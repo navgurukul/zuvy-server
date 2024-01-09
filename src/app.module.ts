@@ -1,12 +1,10 @@
 import { Module } from '@nestjs/common';
-import { BootcampModule } from './modules/bootcamp/bootcamp.module';
-import { BootcampController } from './modules/bootcamp/bootcamp.controller';
-import { BootcampService } from './modules/bootcamp/bootcamp.service';
+import { BootcampModule } from './controller/bootcamp/bootcamp.module';
 import { ConfigModule } from '@nestjs/config';
+import { BatchesModule } from './controller/batches/batch.module';
+
 @Module({
-  imports: [ConfigModule.forRoot(), BootcampModule],
-  controllers: [ BootcampController],
-  providers: [ BootcampService],
+  imports: [ConfigModule.forRoot(), BootcampModule, BatchesModule ],
 })
 export class AppModule {
   
