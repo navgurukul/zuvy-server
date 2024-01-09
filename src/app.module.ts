@@ -1,10 +1,13 @@
 import { Module } from '@nestjs/common';
-import { AppController } from './app.controller';
-import { AppService } from './app.service';
-
+import { BootcampModule } from './modules/bootcamp/bootcamp.module';
+import { BootcampController } from './modules/bootcamp/bootcamp.controller';
+import { BootcampService } from './modules/bootcamp/bootcamp.service';
+import { ConfigModule } from '@nestjs/config';
 @Module({
-  imports: [],
-  controllers: [AppController],
-  providers: [AppService],
+  imports: [ConfigModule.forRoot(), BootcampModule],
+  controllers: [ BootcampController],
+  providers: [ BootcampService],
 })
-export class AppModule {}
+export class AppModule {
+  
+}
