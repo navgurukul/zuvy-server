@@ -13,10 +13,6 @@ export let batchData = {
         bootcamp_id:{
             type: 'number',
             example: 0,
-        },
-        cap_enrollment:{
-            type: 'number',
-            example: 0,
         }
     },
   },

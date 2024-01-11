@@ -12,10 +12,9 @@ export class BatchesController {
     @Get('/:id')
     @ApiOperation({ summary: "Get the batch by id"})
     getBatchById(@Param('id') id: string): Promise<object> {
-        // Logic to fetch and return a batch by ID
         return this.batchService.getBatchById(parseInt(id));
     }
-
+    
     @Post('/')
     @ApiOperation({ summary: "Create the new batch"})
     @ApiBody(batchData)
@@ -32,5 +31,12 @@ export class BatchesController {
     @Delete('/:id')
     deleteBatch(@Param('id') id: string) {
         return this.batchService.deleteBatch(parseInt(id));
+    }
+    
+    @Get('/:bootcamp_id')
+    @ApiOperation({ summary: "Get the batches by bootcamp_id"})
+    getBatchByIdBootcamp(@Param('bootcamp_id') bootcamp_id: string): Promise<object> {
+        console.log('bootcamp_id',bootcamp_id);
+        return this.batchService.getBatchByIdBootcamp(parseInt(bootcamp_id));
     }
 }
