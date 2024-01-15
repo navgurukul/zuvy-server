@@ -1,7 +1,6 @@
 import { Controller, Get, Post, Put, Delete, Body, Param, ValidationPipe, UsePipes } from '@nestjs/common';
 import { BootcampService } from './bootcamp.service';
 import { ApiTags, ApiBody, ApiOperation, ApiCookieAuth  } from '@nestjs/swagger';
-import { bootcampsEntry, bootcampsEditEntry } from './bootcamp.entry';
 import { CreateBootcampDto, EditBootcampDto } from './dto/bootcamp.dto';
 // import { EditBootcampDto } from './dto/editBootcamp.dto';
 // import { AuthGuard } from '@nestjs/passport'; // Assuming JWT authentication
@@ -48,5 +47,11 @@ export class BootcampController {
     deleteBootcamp(@Param('id') id: string): Promise<object> {
         return this.bootcampService.deleteBootcamp(parseInt(id));
     }
+    @Get('/batches/:bootcamp_id')
+    @ApiOperation({ summary: "Get the batches by bootcamp_id"})
+    getBatchByIdBootcamp(@Param('bootcamp_id') bootcamp_id: string): Promise<object> {
+        return this.bootcampService.getBatchByIdBootcamp(parseInt(bootcamp_id));
+    }
+
 }
 

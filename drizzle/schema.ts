@@ -1647,8 +1647,8 @@ export const bootcamps = main.table("bootcamps", {
 export const batches = main.table("batches", {
 	id: serial("id").primaryKey(),
 	name: text('name').notNull(),
-	bootcampId: integer("bootcamp_id").references(() => bootcamps.id),
-	instractorId: integer("instractor_id").references(() => users.id),
+	bootcampId: integer("bootcamp_id").references(() => bootcamps.id, { onDelete: "cascade"} ),
+	instructorId: integer("instructor_id").references(() => users.id ),
 	capEnrollment: integer("cap_enrollment"),
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
 	updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),

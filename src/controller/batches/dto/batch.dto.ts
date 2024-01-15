@@ -14,17 +14,17 @@ export class BatchDto {
   name: string;
 
   @ApiProperty({
-    description: 'The id of the instractor',
+    description: 'The id of the instructor',
     type: Number,
     example: 20230,
     required: true,
   })
   @IsNotEmpty()
   @IsNumber()
-  instractorId: number;
+  instructorId: number;
 
   @ApiProperty({
-    description: 'The id of the instractor',
+    description: 'The id of the instructor',
     type: Number,
     example: 20230,
     required: true,

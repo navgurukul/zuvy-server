@@ -4,7 +4,7 @@ import { BatchesService } from './batch.service';
 @Module({
     controllers: [BatchesController],
     providers: [BatchesService],
-    exports: [BatchesService], // Export BatchesService
+    exports: [BatchesService]
 })
 export class BatchesModule {
     
