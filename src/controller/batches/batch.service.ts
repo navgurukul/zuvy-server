@@ -8,14 +8,14 @@ import { eq } from 'drizzle-orm';
 @Injectable()
 export class BatchesService {
     
-    async capEnrollment(batch) {
+    async capEnrollment(batch, add_num = 0) {
         const bootcamp = await db.select().from(bootcamps).where(eq(bootcamps.id, batch.bootcampId));
         if (bootcamp.length === 0) {
             return { 'status': 'error', 'message': 'Bootcamp not found', 'code': 404 };
         }
 
         const totalBatches = await db.select().from(batches).where(eq(batches.bootcampId, batch.bootcampId));
-        const capPerBatch = Math.floor(bootcamp[0].capEnrollment / (totalBatches.length + 1));
+        const capPerBatch = Math.floor(bootcamp[0].capEnrollment / (totalBatches.length + add_num));
 
         if (capPerBatch < 1) {
             return { 'status': 'error', 'message': 'Batch capacity cannot be less than 1', 'code': 400 };
@@ -33,7 +33,7 @@ export class BatchesService {
 
     async createBatch(batch) {
         try {
-            let batchData = await this.capEnrollment(batch);
+            let batchData = await this.capEnrollment(batch, 1);
             const newData = await db.insert(batches).values(batchData).returning();
             return { 'status': 'success', 'message': 'Batch created successfully', 'code': 200, batch: newData[0] };
         } catch (e) {
