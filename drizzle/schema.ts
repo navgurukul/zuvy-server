@@ -1632,17 +1632,24 @@ export const developersResume = main.table("developers_resume", {
 	}
 });
 
-export const Bootcamps = main.table("bootcamps", {
+export const bootcamps = main.table("bootcamps", {
 	id: serial("id").primaryKey(),
 	name: text('name').notNull(),
-	instractor_id: integer("instractor_id").references(() => users.id),
-	coverImage: text("cover_image").notNull(),
-	bootcampTopic: text("bootcamp_topic").notNull(),
-	startTime: timestamp("start_time", { withTimezone: true, mode: 'string' }),
-	endTime: timestamp("end_time", { withTimezone: true, mode: 'string' }),
+	coverImage: text("cover_image"),
+	bootcampTopic: text("bootcamp_topic"),
 	schedules: jsonb("schedules"), // Assuming schedules will be stored as JSONB
-	language: text("language").notNull(),
-	capEnrollment: integer("cap_enrollment").notNull(),
+	language: text("language"),
+	capEnrollment: integer("cap_enrollment"),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+	updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow(),
+});
+
+export const batches = main.table("batches", {
+	id: serial("id").primaryKey(),
+	name: text('name').notNull(),
+	bootcampId: integer("bootcamp_id").references(() => bootcamps.id),
+	instractorId: integer("instractor_id").references(() => users.id),
+	capEnrollment: integer("cap_enrollment"),
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
 	updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
 });
