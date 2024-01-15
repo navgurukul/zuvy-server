@@ -12,12 +12,12 @@ async function bootstrap() {
     .setVersion('1.0')
     // .setBasePath(`${process.env.BASE_URL}`)
     .addCookieAuth('optional-session-id', { type: 'apiKey', name: 'Authorization',in: 'cookie' })
-    // .setSchemes(['http', 'https'])     
+    // .setSchemes(['http', 'https'])
     .build()
 
   const document = SwaggerModule.createDocument(app, config);
   SwaggerModule.setup('apis', app, document);
 
-  await app.listen(3000);
+  await app.listen(process.env.PORT || 6000);
 }
 bootstrap();

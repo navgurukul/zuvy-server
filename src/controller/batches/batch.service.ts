@@ -9,26 +9,31 @@ import { eq } from 'drizzle-orm';
 export class BatchesService {
     async createBatch(batch){
         try{
-            let bootcamp = await db.select().from(bootcamps).where(eq(bootcamps.id, batch.bootcamp_id));
-            let batchData = await db.select().from(batches).where(eq(batches.bootcamp_id, batch.bootcamp_id));
+            let bootcamp = await db.select().from(bootcamps).where(eq(bootcamps.id, batch.bootcampId));
+            let batchData = await db.select().from(batches).where(eq(batches.bootcampId, batch.bootcampId));
 
             batch['created_at'] = new Date();
             batch['updated_at'] = new Date();
+            console.log('bootcamp: ', bootcamp);
+            console.log('batchData: ', batchData);
+
             if (batchData.length > 0) {
                 let totalBatches = batchData.length + 1;
-                let capPerBatch = Math.floor(bootcamp[0].cap_enrollment / totalBatches);
+                let capPerBatch = Math.floor(bootcamp[0].capEnrollment / totalBatches);
                 if (capPerBatch < 1){
                     return {'status': 'error', 'message': 'Batch capacity cannot be less than 1','code': 400};
                 } 
-                batch['cap_enrollment'] = capPerBatch;
-                let remainder = bootcamp[0].cap_enrollment % totalBatches;
-                await db.update(batches).set({cap_enrollment: batch.cap_enrollment}).where(eq(batches.bootcamp_id, bootcamp[0].id)).returning();
+
+                batch['capEnrollment'] = capPerBatch;
+                console.log('capPerBatch: ', capPerBatch);
+                let remainder = bootcamp[0].capEnrollment % totalBatches;
+                await db.update(batches).set({capEnrollment: batch.capEnrollment}).where(eq(batches.bootcampId, bootcamp[0].id)).returning();
 
                 batch['cap_enrollment'] = capPerBatch + remainder;
                 let newData = await db.insert(batches).values(batch).returning();
                 return {'status': 'success', 'message': 'Batch created successfully','code': 200, batch: newData[0]};
             } else {
-                batch['cap_enrollment'] = bootcamp[0].cap_enrollment;
+                batch['cap_enrollment'] = bootcamp[0].capEnrollment;
                 let newData = await db.insert(batches).values(batch).returning();
                 return {'status': 'success', 'message': 'Batch created successfully','code': 200, batch: newData[0]};
             }
@@ -74,7 +79,7 @@ export class BatchesService {
     async getBatchByIdBootcamp(bootcamp_id: number){
         try {
             console.log('bootcamp_id: ',bootcamp_id);
-            return await db.select().from(batches).where(eq(batches.bootcamp_id, bootcamp_id));
+            return await db.select().from(batches).where(eq(batches.bootcampId, bootcamp_id));
         } catch (e) {
             return {'status': 'error', 'message': e.message,'code': 500};
         }

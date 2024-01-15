@@ -1,13 +1,20 @@
-import { Controller, Get, Post, Put, Delete, Body, Param} from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Body, Param, ValidationPipe, UsePipes } from '@nestjs/common';
 import { BootcampService } from './bootcamp.service';
 import { ApiTags, ApiBody, ApiOperation, ApiCookieAuth  } from '@nestjs/swagger';
-import { bootcampsEntry } from './bootcamp.entry';
+import { bootcampsEntry, bootcampsEditEntry } from './bootcamp.entry';
+import { CreateBootcampDto, EditBootcampDto } from './dto/bootcamp.dto';
+// import { EditBootcampDto } from './dto/editBootcamp.dto';
 // import { AuthGuard } from '@nestjs/passport'; // Assuming JWT authentication
 
 
 @Controller('bootcamp')
 @ApiTags('bootcamp')
 @ApiCookieAuth()
+@UsePipes(new ValidationPipe({
+    whitelist: true,
+    transform: true,
+    forbidNonWhitelisted: true,
+}))
 // @UseGuards(AuthGuard('cookie'))
 export class BootcampController {
     constructor(private bootcampService:BootcampService) { }
@@ -26,16 +33,14 @@ export class BootcampController {
 
     @Post('/')
     @ApiOperation({ summary: "Create the new bootcamp"})
-    @ApiBody(bootcampsEntry)
-    async create(@Body() bootcampsEntry ) {
+    async create(@Body() bootcampsEntry: CreateBootcampDto) {
         return this.bootcampService.createBootcamp(bootcampsEntry);
     }
 
     @Put('/:id')
     @ApiOperation({ summary: "Update the bootcamp"})
-    @ApiBody(bootcampsEntry)
-    updateBootcamp(@Param('id') id: string, @Body() bootcampsEntry) {
-        return this.bootcampService.updateBootcamp(parseInt(id), bootcampsEntry);
+    updateBootcamp(@Param('id') id: string, @Body() editBootcampDto: EditBootcampDto ) {
+        return this.bootcampService.updateBootcamp(parseInt(id), editBootcampDto);
     }
 
     @Delete('/:id')

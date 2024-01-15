@@ -1657,21 +1657,21 @@ export const questionBucketChoices = main.table("question_bucket_choices", {
 export const bootcamps = main.table("bootcamps", {
 	id: serial("id").primaryKey(),
 	name: text('name').notNull(),
-	cover_image: text("cover_image").notNull(),
-	bootcamp_topic: text("bootcamp_topic").notNull(),
+	coverImage: text("cover_image"),
+	bootcampTopic: text("bootcamp_topic"),
 	schedules: jsonb("schedules"), // Assuming schedules will be stored as JSONB
-	language: text("language").notNull(),
-	cap_enrollment: integer("cap_enrollment").notNull(),
-	created_at: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
-	updated_at: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+	language: text("language"),
+	capEnrollment: integer("cap_enrollment"),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+	updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow(),
 });
 
 export const batches = main.table("batches", {
 	id: serial("id").primaryKey(),
 	name: text('name').notNull(),
-	bootcamp_id: integer("bootcamp_id").references(() => bootcamps.id),
-	instractor_id: integer("instractor_id").references(() => users.id),
-	cap_enrollment: integer("cap_enrollment").notNull(),
-	created_at: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
-	updated_at: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+	bootcampId: integer("bootcamp_id").references(() => bootcamps.id),
+	instractorId: integer("instractor_id").references(() => users.id),
+	capEnrollment: integer("cap_enrollment"),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+	updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
 });

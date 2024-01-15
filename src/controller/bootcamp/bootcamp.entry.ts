@@ -1,22 +1,22 @@
-export let bootcampsEntry = {
+export let bootcampsEditEntry = {
     schema: {
     type: 'object',
     properties: {
-        cover_image: {
-            type: 'url',
+        coverImage: {
+            type: 'string',
             example: 'The bootcamp cover image',
         },
         name: {
             type: 'string',
             example: 'The bootcamp name',
         },
-        bootcamp_topic: {
+        bootcampTopic: {
             type: 'string',
             example: 'The bootcamp topic',
         },
-        instractor_id: {
+        instractorId: {
             type: 'number',
-            example: 0,
+            example: 20230,
         },
         schedules: {
             type: 'array',
@@ -42,10 +42,22 @@ export let bootcampsEntry = {
             type: 'string',
             example: 'The bootcamp language',
         },
-        cap_enrollment: {
+        capEnrollment: {
             type: 'number',
-            example: 0,
+            example: 500,
         },
     },
+    }
+}
+
+export let bootcampsEntry = {
+    schema: {
+    type: 'object',
+    properties: {
+        name: {
+            type: 'string',
+            example: 'The bootcamp name',
+            },
+        },
     }
 }
