@@ -19,5 +19,10 @@ async function bootstrap() {
   SwaggerModule.setup('apis', app, document);
 
   await app.listen(process.env.PORT || 6000);
+   //   SwaggerModule.setup('apis', app, document, {
+    //     swaggerOptions: {
+    //         persistAuthorization: true, // this
+    //     },
+    // });
 }
 bootstrap();
