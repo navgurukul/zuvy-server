@@ -86,4 +86,23 @@ export class BootcampService {
             return {'status': 'error', 'message': e.message,'code': 500};
         }
     }
+
+    async updatePartialBootcamp(id: number, partialData): Promise<object> {
+        try {
+            partialData["updatedAt"] = new Date();
+            console.log(partialData)
+            console.log(id)
+            console.log(typeof id,'<<<<<<<<<')
+            let updatedBootcamp = await db.update(bootcamps).set({...partialData}).where(eq(bootcamps.id, id)).returning();
+            
+            if (updatedBootcamp.length === 0) {
+                return {'status': 'error', 'message': 'Bootcamp not found', 'code': 404};
+            }
+
+            return {'status': 'success', 'message': 'Bootcamp partially updated successfully','code': 200, bootcamp: updatedBootcamp[0]};
+
+        } catch (e) {
+            return {'status': 'error', 'message': e.message,'code': 500};
+        }
+    }
 }

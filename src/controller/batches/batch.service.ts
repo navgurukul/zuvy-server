@@ -86,6 +86,18 @@ export class BatchesService {
             return {'status': 'error', 'message': e.message,'code': 500};
         }
     }
+    async updatePartialBatch(id: number, partialBatch) {
+        try {
+            partialBatch['updatedAt'] = new Date();
+            let updateData = await db.update(batches).set(partialBatch).where(eq(batches.id, id)).returning();
+            if (updateData.length === 0) {
+                return { status: 'error', message: 'Batch not found', code: 404 };
+            }
+            return { status: 'success', message: 'Batch updated successfully', code: 200, batch: updateData[0] };
+        } catch (e) {
+            return { 'status': 'error', 'message': e.message, 'code': 500 };
+        }
+    }
 
     
 }

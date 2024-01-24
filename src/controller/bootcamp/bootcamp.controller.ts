@@ -1,7 +1,7 @@
-import { Controller, Get, Post, Put, Delete, Body, Param, ValidationPipe, UsePipes } from '@nestjs/common';
+import { Controller, Get, Post, Put,Patch,  Delete, Body, Param, ValidationPipe, UsePipes } from '@nestjs/common';
 import { BootcampService } from './bootcamp.service';
 import { ApiTags, ApiBody, ApiOperation, ApiCookieAuth  } from '@nestjs/swagger';
-import { CreateBootcampDto, EditBootcampDto } from './dto/bootcamp.dto';
+import { CreateBootcampDto, EditBootcampDto, PatchBootcampDto } from './dto/bootcamp.dto';
 // import { EditBootcampDto } from './dto/editBootcamp.dto';
 // import { AuthGuard } from '@nestjs/passport'; // Assuming JWT authentication
 
@@ -53,5 +53,10 @@ export class BootcampController {
         return this.bootcampService.getBatchByIdBootcamp(parseInt(bootcamp_id));
     }
 
+    @Patch('/:id')
+    @ApiOperation({ summary: 'Update the bootcamp partially' })
+    updatePartialBootcamp(@Param('id') id: string, @Body() patchBootcampDto: PatchBootcampDto) {
+        return this.bootcampService.updatePartialBootcamp(parseInt(id), patchBootcampDto);
+    }
 }
 

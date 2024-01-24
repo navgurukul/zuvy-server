@@ -1,5 +1,5 @@
 import { ApiProperty, ApiResponseProperty } from '@nestjs/swagger';
-import { IsString, IsNotEmpty,IsDate, IsArray,IsObject, ValidateNested, IsEmail, IsNumber } from 'class-validator';
+import { IsString, IsNotEmpty, IsOptional, ValidateNested, IsNumber } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class CreateBootcampDto {
@@ -121,4 +121,64 @@ export class EditBootcampDto{
   @IsNotEmpty({message: 'capEnrollment is required'})
   @IsNumber()
   capEnrollment: number;
+}
+
+export class PatchBootcampDto{
+  @ApiProperty({
+    description: 'The cover image of the bootcamp',
+    type: String,
+    example: 'The bootcamp cover image',
+  })
+  @IsOptional()
+  coverImage: string;
+
+  @ApiProperty({
+    description: 'The name of the bootcamp',
+    type: String,
+    example: 'The bootcamp name',
+  })
+  @IsString()
+  @IsOptional()
+  name: string;
+
+  @ApiProperty({
+    description: 'The topic of the bootcamp',
+    type: String,
+    example: 'The bootcamp topic',
+  })
+  @IsOptional()
+  @IsString()
+  bootcampTopic: string;
+
+  @ApiProperty({
+    description: 'The id of the instructorId',
+    type: Number,
+    example: 20230,
+  })
+  @IsOptional()
+  @IsNumber()
+  instructorId: number;
+
+  @ApiProperty({
+    description: 'The schedules of the bootcamp',
+    type: [ScheduleDto], // Indicate that this is an array of ScheduleDto objects
+    example: 
+      [{
+        startTime: new Date(),
+        endTime: new Date(),
+        day: 'The schedule day',
+      }],
+  })
+  @ValidateNested({ each: true })
+  @Type(() => ScheduleDto) // This decorator is needed to instantiate ScheduleDto objects
+  schedules: ScheduleDto[];
+
+  @ApiProperty({
+    description: 'The language of the bootcamp',
+    type: String,
+    example: 'The bootcamp language',
+  })
+  @IsOptional()
+  @IsString()
+  language: string;
 }

@@ -1,8 +1,8 @@
-import { Controller, Get, Post, Put, Delete, Body, Param, ValidationPipe, UsePipes } from '@nestjs/common';
+import { Controller, Get, Post, Put, Patch, Delete, Body, Param, ValidationPipe, UsePipes } from '@nestjs/common';
 import { BatchesService } from './batch.service';
 import { ApiTags, ApiBody, ApiOperation, ApiCookieAuth  } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport'; // Assuming JWT authentication
-import {BatchDto} from './dto/batch.dto';
+import {BatchDto, PatchBatchDto} from './dto/batch.dto';
 
 // swagger body schema for batch
 @Controller('batch')
@@ -36,5 +36,11 @@ export class BatchesController {
     @ApiOperation({ summary: "Delete the batch by id"})
     deleteBatch(@Param('id') id: string) {
         return this.batchService.deleteBatch(parseInt(id));
+    }
+
+    @Patch('/:id')
+    @ApiOperation({ summary: 'Update the Batch partially' })
+    updatePartialBatch(@Param('id') id: string, @Body() patchBatchDto: PatchBatchDto) {
+        return this.batchService.updatePartialBatch(parseInt(id), patchBatchDto);
     }
 }
