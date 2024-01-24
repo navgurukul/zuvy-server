@@ -24,7 +24,7 @@ export class BatchDto {
   instructorId: number;
 
   @ApiProperty({
-    description: 'The id of the instructor',
+    description: 'The id of the bootcampId',
     type: Number,
     example: 20230,
     required: true,
@@ -52,13 +52,4 @@ export class PatchBatchDto {
   @IsOptional()
   @IsNumber()
   instructorId: number;
-
-  @ApiProperty({
-    description: 'The id of the instructor',
-    type: Number,
-    example: 20230,
-  })
-  @IsOptional()
-  @IsNumber()
-  bootcampId: number;
 }

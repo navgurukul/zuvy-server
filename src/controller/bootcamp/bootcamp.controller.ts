@@ -56,7 +56,7 @@ export class BootcampController {
     @Patch('/:id')
     @ApiOperation({ summary: 'Update the bootcamp partially' })
     updatePartialBootcamp(@Param('id') id: string, @Body() patchBootcampDto: PatchBootcampDto) {
-        return this.bootcampService.updatePartialBootcamp(parseInt(id), patchBootcampDto);
+        return this.bootcampService.updateBootcamp(parseInt(id), patchBootcampDto);
     }
 }
 

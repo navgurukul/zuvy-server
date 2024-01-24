@@ -181,4 +181,13 @@ export class PatchBootcampDto{
   @IsOptional()
   @IsString()
   language: string;
+
+  @ApiProperty({
+    description: 'The cap enrollment of the bootcamp',
+    type: Number,
+    example: 500,
+  })
+  @IsOptional()
+  @IsNumber()
+  capEnrollment: number;
 }

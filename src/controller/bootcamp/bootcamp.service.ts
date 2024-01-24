@@ -57,7 +57,9 @@ export class BootcampService {
                 let newBatch = await db.insert(batches).values(batchData).returning();
                 update_data["batch"] = newBatch[0]
             }
-            await this.batchesService.capEnrollment({bootcampId : id})
+            if (bootcampData && bootcampData.capEnrollment){
+                await this.batchesService.capEnrollment({bootcampId : id})
+            }
             return {'status': 'success', 'message': 'Bootcamp updated successfully','code': 200,update_data}
 
         } catch (e) {
@@ -82,25 +84,6 @@ export class BootcampService {
     async getBatchByIdBootcamp(bootcamp_id: number){
         try {
             return await db.select().from(batches).where(eq(batches.bootcampId, bootcamp_id));
-        } catch (e) {
-            return {'status': 'error', 'message': e.message,'code': 500};
-        }
-    }
-
-    async updatePartialBootcamp(id: number, partialData): Promise<object> {
-        try {
-            partialData["updatedAt"] = new Date();
-            console.log(partialData)
-            console.log(id)
-            console.log(typeof id,'<<<<<<<<<')
-            let updatedBootcamp = await db.update(bootcamps).set({...partialData}).where(eq(bootcamps.id, id)).returning();
-            
-            if (updatedBootcamp.length === 0) {
-                return {'status': 'error', 'message': 'Bootcamp not found', 'code': 404};
-            }
-
-            return {'status': 'success', 'message': 'Bootcamp partially updated successfully','code': 200, bootcamp: updatedBootcamp[0]};
-
         } catch (e) {
             return {'status': 'error', 'message': e.message,'code': 500};
         }
