@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Delete, Body, Param, ValidationPipe, UsePipes } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Body, Param, ValidationPipe, UsePipes, Res, Req } from '@nestjs/common';
 import { ClassesService } from './classes.service';
 import { ApiTags, ApiBody, ApiOperation, ApiCookieAuth  } from '@nestjs/swagger';
 import {  CreateDto, ScheduleDto } from './dto/classes.dto';
@@ -16,6 +16,18 @@ import {  CreateDto, ScheduleDto } from './dto/classes.dto';
 // @UseGuards(AuthGuard('cookie'))
 export class ClassesController {
     constructor(private classesService:ClassesService) { }
+
+    @Get('/')
+    @ApiOperation({ summary: "Google authenticate"})
+    async googleAuth(@Res() res) {
+        return this.classesService.googleAuthentication(res);
+    }
+
+    @Get('/redirect')
+    @ApiOperation({ summary: "Google authentication redirect"})
+    async googleAuthRedirect(@Req() request) {
+        return this.classesService.googleAuthenticationRedirect(request);
+    }
 
     @Post('/')
     @ApiOperation({ summary: "Create the new bootcamp"})
