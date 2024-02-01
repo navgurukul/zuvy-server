@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import {batches, bootcamps,users , sansaarUserRoles} from '../../../drizzle/schema';
 import { db} from '../../db/index';
 import { eq } from 'drizzle-orm';
+import { log } from 'console';
 // import { BatchesModule } from './batch.module';
 
 
@@ -37,6 +38,7 @@ export class BatchesService {
             const newData = await db.insert(batches).values(batchData).returning();
             return { 'status': 'success', 'message': 'Batch created successfully', 'code': 200, batch: newData[0] };
         } catch (e) {
+            log(`error: ${e.message}`)
             return { 'status': 'error', 'message': e.message, 'code': 500 };
         }
     }
@@ -49,6 +51,7 @@ export class BatchesService {
             }
             return {status: 'success', message: 'Batch fetched successfully', code: 200, batch: data[0]};
         } catch (e) {
+            log(`error: ${e.message}`)
             return {'status': 'error', 'message': e.message,'code': 500};
         }
     }
@@ -57,6 +60,7 @@ export class BatchesService {
         try {
             return await db.select().from(batches);
         } catch (e) {
+            log(`error: ${e.message}`)
             return {'status': 'error', 'message': e.message,'code': 500};
         }
     }
@@ -70,6 +74,7 @@ export class BatchesService {
             }
             return {status: 'success', message: 'Batch updated successfully', code: 200, batch: updateData[0]};
         } catch (e) {
+            log(`error: ${e.message}`)
             return {'status': 'error', 'message': e.message,'code': 500};
         }
     }
@@ -83,6 +88,7 @@ export class BatchesService {
             await this.capEnrollment({bootcampId:data[0]?.bootcampId});
             return {status: 'success', message: 'Batch deleted successfully', code: 200};
         } catch (e) {
+            log(`error: ${e.message}`)
             return {'status': 'error', 'message': e.message,'code': 500};
         }
     }
@@ -95,6 +101,7 @@ export class BatchesService {
             }
             return { status: 'success', message: 'Batch updated successfully', code: 200, batch: updateData[0] };
         } catch (e) {
+            log(`error: ${e.message}`)
             return { 'status': 'error', 'message': e.message, 'code': 500 };
         }
     }

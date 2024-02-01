@@ -4,7 +4,9 @@ import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 import { CorsOptions } from '@nestjs/common/interfaces/external/cors-options.interface';
 
+// INPORTING env VALUSE 
 const { PORT, BASE_URL } = process.env;
+
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   // Enable CORS

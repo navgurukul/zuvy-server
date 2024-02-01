@@ -1,6 +1,6 @@
-import { Controller, Get, Post, Put,Patch,  Delete, Body, Param, ValidationPipe, UsePipes } from '@nestjs/common';
+import { Controller, Get, Post, Put,Patch,  Delete, Body, Param, ValidationPipe, UsePipes, Optional, Query } from '@nestjs/common';
 import { BootcampService } from './bootcamp.service';
-import { ApiTags, ApiBody, ApiOperation, ApiCookieAuth  } from '@nestjs/swagger';
+import { ApiTags, ApiBody, ApiOperation, ApiCookieAuth, ApiQuery} from '@nestjs/swagger';
 import { CreateBootcampDto, EditBootcampDto, PatchBootcampDto } from './dto/bootcamp.dto';
 // import { EditBootcampDto } from './dto/editBootcamp.dto';
 // import { AuthGuard } from '@nestjs/passport'; // Assuming JWT authentication
@@ -26,8 +26,9 @@ export class BootcampController {
 
     @Get('/:id')
     @ApiOperation({ summary: "Get the bootcamp by id"})
-    getBootcampById(@Param('id') id: string): Promise<object> {
-        return this.bootcampService.getBootcampById(parseInt(id));
+    @ApiQuery({ name: 'isContent', required: false, type: Boolean, description: 'Optional content flag' })
+    getBootcampById(@Param('id') id: string, @Query('isContent') isContent: boolean = false): Promise<object> {
+        return this.bootcampService.getBootcampById(parseInt(id), isContent);
     }
 
     @Post('/')
