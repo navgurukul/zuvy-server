@@ -1,41 +1,172 @@
 import { pgTable,jsonb, pgSchema, pgEnum, serial, varchar, timestamp, foreignKey, integer, text, unique, date, bigserial, boolean, bigint, index, char, json, uniqueIndex, doublePrecision, customType } from "drizzle-orm/pg-core"
   import { sql } from "drizzle-orm"
 
-export const courseEnrolmentsCourseStatus = pgEnum("course_enrolments_course_status", ['enroll', 'unenroll', 'completed'])
-export const coursesType = pgEnum("courses_type", ['html', 'js', 'python'])
-export const exercisesReviewType = pgEnum("exercises_review_type", ['manual', 'peer', 'facilitator', 'automatic'])
-export const exercisesSubmissionType = pgEnum("exercises_submission_type", ['number', 'text', 'text_large', 'attachments', 'url'])
-export const submissionsState = pgEnum("submissions_state", ['completed', 'pending', 'rejected'])
-export const userRolesCenter = pgEnum("user_roles_center", ['dharamshala', 'banagalore', 'all'])
-export const userRolesRoles = pgEnum("user_roles_roles", ['admin', 'alumni', 'student', 'facilitator'])
-export const usersCenter = pgEnum("users_center", ['dharamshala', 'bangalore'])
+export const courseEnrolmentsCourseStatus = pgEnum("course_enrolments_course_status", ['completed', 'unenroll', 'enroll'])
+export const coursesType = pgEnum("courses_type", ['python', 'js', 'html'])
+export const exercisesReviewType = pgEnum("exercises_review_type", ['automatic', 'facilitator', 'peer', 'manual'])
+export const exercisesSubmissionType = pgEnum("exercises_submission_type", ['url', 'attachments', 'text_large', 'text', 'number'])
+export const submissionsState = pgEnum("submissions_state", ['rejected', 'pending', 'completed'])
+export const userRolesCenter = pgEnum("user_roles_center", ['all', 'banagalore', 'dharamshala'])
+export const userRolesRoles = pgEnum("user_roles_roles", ['facilitator', 'student', 'alumni', 'admin'])
+export const usersCenter = pgEnum("users_center", ['bangalore', 'dharamshala'])
+export const mainExercisesReviewType = pgEnum("main.exercises_review_type", ['manual', 'peer', 'facilitator', 'automatic'])
+export const mainExercisesSubmissionType = pgEnum("main.exercises_submission_type", ['number', 'text', 'text_large', 'attachments', 'url'])
+export const mainSubmissionsState = pgEnum("main.submissions_state", ['completed', 'pending', 'rejected'])
+export const mainUserRolesCenter = pgEnum("main.user_roles_center", ['dharamshala', 'banagalore', 'all'])
+export const mainUserRolesRoles = pgEnum("main.user_roles_roles", ['instractor', 'admin', 'alumni', 'student', 'facilitator'])
+export const mainUsersCenter = pgEnum("main.users_center", ['dharamshala', 'bangalore'])
 
 export const main = pgSchema("main");
 
-export const engArticles = main.table("eng_articles", {
+export const assessmentOutcome = main.table("assessment_outcome", {
 	id: serial("id").primaryKey().notNull(),
-	title: varchar("title", { length: 255 }).notNull(),
-	sourceUrl: varchar("source_url", { length: 255 }).notNull(),
-	imageUrl: varchar("image_url", { length: 255 }),
-	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
-	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+	userId: integer("user_id").references(() => users.id),
+	assessmentId: integer("assessment_id").notNull(),
+	status: varchar("status", { length: 255 }).notNull(),
+	selectedOption: integer("selected_option"),
+	attemptCount: integer("attempt_count").notNull(),
+	teamId: integer("team_id").references(() => c4CaTeams.id, { onDelete: "set null" } ),
+	selectedMultipleOption: varchar("selected_multiple_option", { length: 255 }),
 });
 
-export const engLevelwise = main.table("eng_levelwise", {
+export const assessmentResult = main.table("assessment_result", {
 	id: serial("id").primaryKey().notNull(),
-	level: integer("level").notNull(),
-	content: text("content").notNull(),
-	articleId: integer("article_id").notNull().references(() => engArticles.id),
-	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
-	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+	userId: integer("user_id").references(() => users.id),
+	assessmentId: integer("assessment_id").notNull().references(() => assessment.id),
+	status: varchar("status", { length: 255 }).notNull(),
+	selectedOption: integer("selected_option").notNull(),
+	attemptCount: integer("attempt_count").default(1).notNull(),
+	teamId: integer("team_id").references(() => c4CaTeams.id, { onDelete: "set null" } ),
 });
 
-export const engHistory = main.table("eng_history", {
+export const c4CaTeamProjectsubmitSolution = main.table("c4ca_team_projectsubmit_solution", {
 	id: serial("id").primaryKey().notNull(),
+	projectLink: varchar("project_link", { length: 255 }),
+	projectFileUrl: varchar("project_file_url", { length: 255 }),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }),
+	teamId: integer("team_id").notNull().references(() => c4CaTeams.id, { onDelete: "cascade", onUpdate: "cascade" } ),
+	teamName: varchar("team_name", { length: 255 }).notNull(),
+	isSubmitted: boolean("is_submitted"),
+	unlockedAt: timestamp("unlocked_at", { withTimezone: true, mode: 'string' }),
+	moduleId: integer("module_id").notNull(),
+});
+
+export const c4CaStudents = main.table("c4ca_students", {
+	id: serial("id").primaryKey().notNull(),
+	name: varchar("name", { length: 255 }).notNull(),
+	class: integer("class").notNull(),
+	teacherId: integer("teacher_id").notNull().references(() => c4CaTeachers.id),
+	teamId: integer("team_id").notNull().references(() => c4CaTeams.id),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }),
+});
+
+export const c4CaPartners = main.table("c4ca_partners", {
+	id: serial("id").primaryKey().notNull(),
+	name: varchar("name", { length: 255 }).notNull(),
+	pointOfContact: varchar("point_of_contact", { length: 255 }),
+	email: varchar("email", { length: 255 }).notNull(),
+	phoneNumber: varchar("phone_number", { length: 255 }),
+	status: varchar("status", { length: 255 }),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }),
+});
+
+export const c4CaTeamProjecttopic = main.table("c4ca_team_projecttopic", {
+	id: serial("id").primaryKey().notNull(),
+	projectTitle: varchar("project_title", { length: 255 }),
+	projectSummary: varchar("project_summary", { length: 255 }),
+	projectTopicUrl: varchar("project_topic_url", { length: 255 }),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }),
+	teamId: integer("team_id").notNull().references(() => c4CaTeams.id, { onDelete: "cascade", onUpdate: "cascade" } ),
+	teamName: varchar("team_name", { length: 255 }).notNull(),
+	isSubmitted: boolean("is_submitted"),
+	unlockedAt: timestamp("unlocked_at", { withTimezone: true, mode: 'string' }),
+	moduleId: integer("module_id").notNull(),
+});
+
+export const assessment = main.table("assessment", {
+	id: serial("id").primaryKey().notNull(),
+	name: varchar("name", { length: 255 }).notNull(),
+	content: text("content"),
+	courseId: integer("course_id").references(() => coursesV2.id),
+	exerciseId: integer("exercise_id").references(() => exercisesV2.id),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }),
+},
+(table) => {
+	return {
+		mainAssessmentNameUnique: unique("main_assessment_name_unique").on(table.name),
+	}
+});
+
+export const c4CaRoles = main.table("c4ca_roles", {
+	id: serial("id").primaryKey().notNull(),
+	role: varchar("role", { length: 255 }).notNull(),
 	userId: integer("user_id").notNull().references(() => users.id),
-	engArticlesId: integer("eng_articles_id").notNull().references(() => engArticles.id),
-	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
-	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }),
+});
+
+export const c4CaTeachers = main.table("c4ca_teachers", {
+	id: serial("id").primaryKey().notNull(),
+	name: varchar("name", { length: 255 }).notNull(),
+	school: varchar("school", { length: 255 }),
+	district: varchar("district", { length: 255 }),
+	state: varchar("state", { length: 255 }),
+	phoneNumber: varchar("phone_number", { length: 255 }),
+	email: varchar("email", { length: 255 }).notNull(),
+	userId: integer("user_id").notNull().references(() => users.id),
+	profileUrl: varchar("profile_url", { length: 255 }),
+	facilitatorId: integer("facilitator_id"),
+	profileLink: varchar("profile_link", { length: 255 }),
+	c4CaPartnerId: integer("c4ca_partner_id").references(() => c4CaPartners.id, { onDelete: "set null" } ),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }),
+});
+
+export const c4CaTeams = main.table("c4ca_teams", {
+	id: serial("id").primaryKey().notNull(),
+	teamName: varchar("team_name", { length: 255 }).notNull(),
+	teamSize: integer("team_size").notNull(),
+	teacherId: integer("teacher_id").notNull().references(() => c4CaTeachers.id),
+	loginId: varchar("login_id", { length: 255 }).notNull(),
+	password: varchar("password", { length: 255 }).notNull(),
+	lastLogin: timestamp("last_login", { withTimezone: true, mode: 'string' }),
+	state: varchar("state", { length: 255 }),
+	district: varchar("district", { length: 255 }),
+	school: varchar("school", { length: 255 }),
+},
+(table) => {
+	return {
+		mainC4CaTeamsTeamNameUnique: unique("main_c4ca_teams_team_name_unique").on(table.teamName),
+	}
+});
+
+export const campus = main.table("campus", {
+	id: serial("id").primaryKey().notNull(),
+	campus: varchar("campus", { length: 225 }),
+	address: varchar("address", { length: 255 }),
+});
+
+export const studentCampus = main.table("student_campus", {
+	id: serial("id").primaryKey().notNull(),
+	studentId: integer("student_id").references(() => students.id),
+	campusId: integer("campus_id").references(() => campus.id),
+});
+
+export const chanakyaAccess = main.table("chanakya_access", {
+	id: serial("id").primaryKey().notNull(),
+	userRoleId: integer("user_role_id").references(() => chanakyaUserRoles.id),
+	access: integer("access").notNull(),
+},
+(table) => {
+	return {
+		mainChanakyaAccessUserRoleIdAccessUnique: unique("main_chanakya_access_user_role_id_access_unique").on(table.userRoleId, table.access),
+	}
+});
+
+export const category = main.table("category", {
+	id: serial("id").primaryKey().notNull(),
+	categoryName: varchar("category_name", { length: 100 }).notNull(),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).notNull(),
 });
 
 export const chanakyaUserEmail = main.table("chanakya_user_email", {
@@ -48,6 +179,96 @@ export const chanakyaUserEmail = main.table("chanakya_user_email", {
 	}
 });
 
+export const chanakyaUserRoles = main.table("chanakya_user_roles", {
+	id: serial("id").primaryKey().notNull(),
+	chanakyaUserEmailId: integer("chanakya_user_email_id").notNull(),
+	roles: integer("roles").references(() => chanakyaRoles.id),
+	privilege: integer("privilege").references(() => chanakyaPrivilege.id),
+});
+
+export const chanakyaPartnerGroup = main.table("chanakya_partner_group", {
+	id: serial("id").primaryKey().notNull(),
+	name: varchar("name", { length: 255 }),
+});
+
+export const chanakyaPrivilege = main.table("chanakya_privilege", {
+	id: serial("id").primaryKey().notNull(),
+	privilege: varchar("privilege", { length: 225 }).notNull(),
+	description: varchar("description", { length: 225 }).notNull(),
+},
+(table) => {
+	return {
+		mainChanakyaPrivilegePrivilegeUnique: unique("main_chanakya_privilege_privilege_unique").on(table.privilege),
+		mainChanakyaPrivilegeDescriptionUnique: unique("main_chanakya_privilege_description_unique").on(table.description),
+	}
+});
+
+export const chanakyaRoles = main.table("chanakya_roles", {
+	id: serial("id").primaryKey().notNull(),
+	roles: varchar("roles", { length: 225 }).notNull(),
+	description: varchar("description", { length: 225 }).notNull(),
+},
+(table) => {
+	return {
+		mainChanakyaRolesRolesUnique: unique("main_chanakya_roles_roles_unique").on(table.roles),
+		mainChanakyaRolesDescriptionUnique: unique("main_chanakya_roles_description_unique").on(table.description),
+	}
+});
+
+export const classRegistrations = main.table("class_registrations", {
+	id: serial("id").primaryKey().notNull(),
+	classId: integer("class_id").notNull().references(() => classes.id),
+	userId: integer("user_id").notNull().references(() => users.id),
+	registeredAt: timestamp("registered_at", { withTimezone: true, mode: 'string' }).notNull(),
+	feedback: varchar("feedback", { length: 1000 }),
+	feedbackAt: timestamp("feedback_at", { withTimezone: true, mode: 'string' }),
+	googleRegistrationStatus: boolean("google_registration_status"),
+},
+(table) => {
+	return {
+		mainClassRegistrationsUserIdClassIdUnique: unique("main_class_registrations_user_id_class_id_unique").on(table.classId, table.userId),
+	}
+});
+
+export const coursesV2 = main.table("courses_v2", {
+	id: serial("id").primaryKey().notNull(),
+	name: varchar("name", { length: 255 }).notNull(),
+	logo: varchar("logo", { length: 255 }),
+	shortDescription: varchar("short_description", { length: 255 }),
+	langAvailable: text("lang_available").array(),
+});
+
+export const classes = main.table("classes", {
+	id: serial("id").primaryKey().notNull(),
+	title: varchar("title", { length: 255 }),
+	description: varchar("description", { length: 555 }),
+	facilitatorId: integer("facilitator_id"),
+	startTime: timestamp("start_time", { withTimezone: true, mode: 'string' }).notNull(),
+	endTime: timestamp("end_time", { withTimezone: true, mode: 'string' }).notNull(),
+	categoryId: integer("category_id").notNull().references(() => category.id),
+	videoId: varchar("video_id", { length: 45 }),
+	lang: char("lang", { length: 2 }).default('hi').notNull(),
+	type: varchar("type", { length: 255 }).notNull(),
+	meetLink: varchar("meet_link", { length: 255 }),
+	calendarEventId: varchar("calendar_event_id", { length: 255 }),
+	facilitatorName: varchar("facilitator_name", { length: 80 }),
+	facilitatorEmail: varchar("facilitator_email", { length: 120 }),
+	materialLink: varchar("material_link", { length: 255 }),
+	maxEnrolment: integer("max_enrolment"),
+	recurringId: integer("recurring_id").references(() => recurringClasses.id),
+	subTitle: varchar("sub_title", { length: 255 }),
+	courseVersion: varchar("course_version", { length: 255 }),
+	volunteerId: integer("volunteer_id").references(() => volunteer.id),
+});
+
+export const classesMail = main.table("classes_mail", {
+	id: serial("id").primaryKey().notNull(),
+	classId: integer("class_id").references(() => classes.id),
+	facilitatorEmail: varchar("facilitator_email", { length: 80 }).notNull(),
+	status: varchar("status", { length: 50 }),
+	type: varchar("type", { length: 255 }).notNull(),
+});
+
 export const dailyMetrics = main.table("daily_metrics", {
 	id: serial("id").primaryKey().notNull(),
 	metricName: varchar("metric_name", { length: 255 }),
@@ -57,15 +278,127 @@ export const dailyMetrics = main.table("daily_metrics", {
 	gender: integer("gender"),
 });
 
+export const courseCategories = main.table("course_categories", {
+	id: serial("id").primaryKey().notNull(),
+	courseId: integer("course_id").notNull().references(() => courses.id),
+	categoryId: integer("category_id").notNull().references(() => category.id),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).notNull(),
+});
+
+export const courseCompletion = main.table("course_completion", {
+	id: serial("id").primaryKey().notNull(),
+	userId: integer("user_id").notNull().references(() => users.id),
+	courseId: integer("course_id").notNull().references(() => courses.id),
+},
+(table) => {
+	return {
+		mainCourseCompletionUserIdCourseIdUnique: unique("main_course_completion_user_id_course_id_unique").on(table.userId, table.courseId),
+	}
+});
+
+export const courseCompletionV2 = main.table("course_completion_v2", {
+	id: serial("id").primaryKey().notNull(),
+	userId: integer("user_id").notNull().references(() => users.id),
+	courseId: integer("course_id").notNull().references(() => coursesV2.id),
+	completeAt: timestamp("complete_at", { withTimezone: true, mode: 'string' }),
+},
+(table) => {
+	return {
+		mainCourseCompletionV2CourseIdUnique: unique("main_course_completion_v2_course_id_unique").on(table.courseId),
+	}
+});
+
+export const courseCompletionV3 = main.table("course_completion_v3", {
+	id: serial("id").primaryKey().notNull(),
+	userId: integer("user_id").references(() => users.id),
+	courseId: integer("course_id").notNull(),
+	completeAt: timestamp("complete_at", { withTimezone: true, mode: 'string' }),
+	teamId: integer("team_id").references(() => c4CaTeams.id, { onDelete: "set null" } ),
+	percentage: integer("percentage"),
+});
+
+export const courseEditorStatus = main.table("course_editor_status", {
+	id: serial("id").primaryKey().notNull(),
+	courseId: integer("course_id").references(() => coursesV2.id),
+	courseStates: varchar("course_states", { length: 255 }),
+	stateChangedate: timestamp("stateChangedate", { withTimezone: true, mode: 'string' }),
+	contentEditorsUserId: integer("content_editors_user_id").references(() => users.id),
+});
+
+export const courseProductionVersions = main.table("course_production_versions", {
+	id: serial("id").primaryKey().notNull(),
+	courseId: integer("course_id").references(() => coursesV2.id),
+	lang: char("lang", { length: 2 }).default('en').notNull(),
+	version: varchar("version", { length: 255 }),
+});
+
+export const classesToCourses = main.table("classes_to_courses", {
+	id: serial("id").primaryKey().notNull(),
+	classId: integer("class_id").references(() => classes.id),
+	pathwayV1: integer("pathway_v1").references(() => pathways.id),
+	courseV1: integer("course_v1").references(() => courses.id),
+	exerciseV1: integer("exercise_v1").references(() => exercises.id),
+	pathwayV2: integer("pathway_v2").references(() => pathwaysV2.id),
+	courseV2: integer("course_v2").references(() => coursesV2.id),
+	exerciseV2: integer("exercise_v2").references(() => exercisesV2.id),
+	pathwayV3: integer("pathway_v3"),
+	courseV3: integer("course_v3"),
+	exerciseV3: integer("exercise_v3"),
+});
+
 export const donor = main.table("donor", {
 	id: serial("id").primaryKey().notNull(),
 	donor: varchar("donor", { length: 225 }),
+});
+
+export const dashboardFlags = main.table("dashboard_flags", {
+	id: serial("id").primaryKey().notNull(),
+	studentId: integer("student_id").notNull().references(() => students.id),
+	flag: varchar("flag", { length: 255 }),
+	createdAt: timestamp("createdAt", { withTimezone: true, mode: 'string' }),
 });
 
 export const studentDonor = main.table("student_donor", {
 	id: serial("id").primaryKey().notNull(),
 	studentId: integer("student_id").references(() => students.id),
 	donorId: text("donor_id").array(),
+});
+
+export const exercisesV2 = main.table("exercises_v2", {
+	id: serial("id").primaryKey().notNull(),
+	name: varchar("name", { length: 255 }).notNull(),
+	description: varchar("description", { length: 255 }),
+	courseId: integer("course_id").references(() => coursesV2.id),
+	content: text("content"),
+	type: varchar("type", { length: 255 }),
+	sequenceNum: doublePrecision("sequence_num"),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }),
+});
+
+export const events = main.table("events", {
+	id: serial("id").primaryKey().notNull(),
+	eventName: varchar("event_name", { length: 255 }),
+	startTime: timestamp("start_time", { withTimezone: true, mode: 'string' }),
+	endTime: timestamp("end_time", { withTimezone: true, mode: 'string' }),
+	durations: integer("durations"),
+	viewPageId: integer("view_page_id").notNull().references(() => viewPage.id),
+	sessionId: integer("session_id").notNull().references(() => session.id),
+	userId: integer("user_id").notNull().references(() => userHack.id),
+});
+
+export const interviewOwners = main.table("interview_owners", {
+	id: serial("id").primaryKey().notNull(),
+	userId: integer("user_id").notNull().references(() => cUsers.id),
+	available: boolean("available"),
+	maxLimit: integer("max_limit").default(10),
+	type: text("type").array(),
+	pendingInterviewCount: integer("pending_interview_count"),
+	gender: integer("gender"),
+},
+(table) => {
+	return {
+		mainInterviewOwnersUserIdUnique: unique("main_interview_owners_user_id_unique").on(table.userId),
+	}
 });
 
 export const gtaGame = main.table("gta_game", {
@@ -86,6 +419,47 @@ export const hackathonForTemp = main.table("hackathon_for_temp", {
 	country: varchar("country", { length: 255 }),
 	password: varchar("password", { length: 255 }).notNull(),
 	userId: varchar("user_id", { length: 255 }).notNull(),
+});
+
+export const interviewSlot = main.table("interview_slot", {
+	id: serial("id").primaryKey().notNull(),
+	ownerId: integer("owner_id").references(() => interviewOwners.id),
+	studentId: integer("student_id").notNull().references(() => students.id),
+	studentName: varchar("student_name", { length: 255 }),
+	transitionId: integer("transition_id").references(() => stageTransitions.id),
+	topicName: varchar("topic_name", { length: 255 }).notNull(),
+	startTime: varchar("start_time", { length: 255 }).notNull(),
+	endTime: varchar("end_time", { length: 255 }),
+	endTimeExpected: varchar("end_time_expected", { length: 255 }).notNull(),
+	onDate: timestamp("on_date", { withTimezone: true, mode: 'string' }).notNull(),
+	duration: varchar("duration", { length: 255 }),
+	status: varchar("status", { length: 255 }).notNull(),
+	isCancelled: boolean("is_cancelled").default(false),
+	cancelltionReason: varchar("cancelltion_reason", { length: 255 }),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).notNull(),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }),
+});
+
+export const exercises = main.table("exercises", {
+	id: bigserial("id", { mode: "bigint" }).primaryKey().notNull(),
+	// You can use { mode: "bigint" } if numbers are exceeding js number limitations
+	parentExerciseId: bigint("parent_exercise_id", { mode: "number" }),
+	// You can use { mode: "bigint" } if numbers are exceeding js number limitations
+	courseId: bigint("course_id", { mode: "number" }).notNull().references(() => courses.id),
+	name: varchar("name", { length: 300 }).default('').notNull(),
+	slug: varchar("slug", { length: 100 }).default('').notNull(),
+	sequenceNum: doublePrecision("sequence_num"),
+	reviewType: mainExercisesReviewType("review_type"),
+	content: text("content"),
+	submissionType: mainExercisesSubmissionType("submission_type"),
+	githubLink: varchar("github_link", { length: 300 }),
+	solution: text("solution"),
+},
+(table) => {
+	return {
+		idx50457CourseId: index("idx_50457_course_id").on(table.courseId),
+		idx50457SlugUnique: uniqueIndex("idx_50457_slug__unique").on(table.slug),
+	}
 });
 
 export const kDetails = main.table("k_details", {
@@ -111,6 +485,25 @@ export const knexMigrations = main.table("knex_migrations", {
 	migrationTime: timestamp("migration_time", { withTimezone: true, mode: 'string' }),
 });
 
+export const exerciseCompletionV2 = main.table("exercise_completion_v2", {
+	id: serial("id").primaryKey().notNull(),
+	userId: integer("user_id").references(() => users.id),
+	completeAt: timestamp("complete_at", { withTimezone: true, mode: 'string' }),
+	exerciseId: integer("exercise_id"),
+	teamId: integer("team_id").references(() => c4CaTeams.id, { onDelete: "set null" } ),
+});
+
+export const facilitators = main.table("facilitators", {
+	id: serial("id").primaryKey().notNull(),
+	name: varchar("name", { length: 255 }).notNull(),
+	pointOfContact: varchar("point_of_contact", { length: 255 }),
+	email: varchar("email", { length: 255 }).notNull(),
+	webLink: varchar("web_link", { length: 255 }),
+	phoneNumber: varchar("phone_number", { length: 255 }).notNull(),
+	c4CaPartnerId: integer("c4ca_partner_id").references(() => c4CaPartners.id),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }),
+});
+
 export const knexMigrationsLock = main.table("knex_migrations_lock", {
 	// You can use { mode: "bigint" } if numbers are exceeding js number limitations
 	isLocked: bigint("is_locked", { mode: "number" }),
@@ -129,15 +522,6 @@ export const meetAttendanceTracker = main.table("meet_attendance_tracker", {
 	attendedDurationInSec: varchar("attendedDurationInSec", { length: 255 }),
 	meetCode: varchar("meet_code", { length: 255 }),
 	meetingTime: timestamp("meeting_time", { withTimezone: true, mode: 'string' }).notNull(),
-});
-
-export const moduleCompletionV2 = main.table("module_completion_v2", {
-	id: serial("id").primaryKey().notNull(),
-	userId: integer("user_id").references(() => users.id),
-	moduleId: integer("module_id").notNull(),
-	completeAt: timestamp("complete_at", { withTimezone: true, mode: 'string' }),
-	teamId: integer("team_id").references(() => c4CaTeams.id, { onDelete: "set null" } ),
-	percentage: integer("percentage"),
 });
 
 export const migrations = main.table("migrations", {
@@ -203,11 +587,44 @@ export const partnerAssessments = main.table("partner_assessments", {
 	createdAt: varchar("created_at", { length: 45 }).notNull(),
 });
 
-export const partnerGroupUser = main.table("partner_group_user", {
+export const mentors = main.table("mentors", {
+	id: bigserial("id", { mode: "bigint" }).primaryKey().notNull(),
+	// You can use { mode: "bigint" } if numbers are exceeding js number limitations
+	mentor: bigint("mentor", { mode: "number" }).references(() => users.id),
+	// You can use { mode: "bigint" } if numbers are exceeding js number limitations
+	mentee: bigint("mentee", { mode: "number" }).references(() => users.id),
+	scope: varchar("scope", { length: 255 }),
+	userId: integer("user_id").references(() => users.id),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+},
+(table) => {
+	return {
+		idx50487MentorIbfk1Idx: index("idx_50487_mentor_ibfk_1_idx").on(table.mentor),
+		idx50487MentorIbfk2Idx: index("idx_50487_mentor_ibfk_2_idx").on(table.mentee),
+	}
+});
+
+export const learningTrackStatusOutcome = main.table("learning_track_status_outcome", {
 	id: serial("id").primaryKey().notNull(),
-	userId: integer("user_id"),
-	partnerGroupId: integer("partner_group_id").notNull().references(() => partnerGroup.id),
-	email: varchar("email", { length: 255 }),
+	userId: integer("user_id").references(() => users.id),
+	pathwayId: integer("pathway_id"),
+	courseId: integer("course_id"),
+	exerciseId: integer("exercise_id"),
+	teamId: integer("team_id").references(() => c4CaTeams.id, { onDelete: "set null" } ),
+	moduleId: integer("module_id"),
+});
+
+export const mentorTree = main.table("mentor_tree", {
+	id: serial("id").primaryKey().notNull(),
+	mentorId: integer("mentor_id").notNull().references(() => users.id),
+	menteeId: integer("mentee_id").notNull().references(() => users.id),
+	pathwayId: integer("pathway_id").notNull().references(() => pathways.id),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }),
+},
+(table) => {
+	return {
+		mainMentorTreeMentorIdMenteeIdUnique: unique("main_mentor_tree_mentor_id_mentee_id_unique").on(table.mentorId, table.menteeId),
+	}
 });
 
 export const merakihackthon = main.table("merakihackthon", {
@@ -229,6 +646,15 @@ export const mergedClasses = main.table("merged_classes", {
 	mergedClassId: integer("merged_class_id").references(() => classes.id),
 });
 
+export const moduleCompletionV2 = main.table("module_completion_v2", {
+	id: serial("id").primaryKey().notNull(),
+	userId: integer("user_id").references(() => users.id),
+	moduleId: integer("module_id").notNull(),
+	completeAt: timestamp("complete_at", { withTimezone: true, mode: 'string' }),
+	teamId: integer("team_id").references(() => c4CaTeams.id, { onDelete: "set null" } ),
+	percentage: integer("percentage"),
+});
+
 export const partnerGroup = main.table("partner_group", {
 	id: serial("id").primaryKey().notNull(),
 	name: varchar("name", { length: 255 }).notNull(),
@@ -239,35 +665,6 @@ export const partnerGroup = main.table("partner_group", {
 (table) => {
 	return {
 		mainPartnerGroupNameUnique: unique("main_partner_group_name_unique").on(table.name),
-	}
-});
-
-export const partnerGroupRelationship = main.table("partner_group_relationship", {
-	id: serial("id").primaryKey().notNull(),
-	partnerGroupId: integer("partner_group_id").notNull().references(() => partnerGroup.id),
-	memberOf: integer("member_of").notNull(),
-});
-
-export const partnerRelationship = main.table("partner_relationship", {
-	id: serial("id").primaryKey().notNull(),
-	partnerId: integer("partner_id").notNull().references(() => partners.id),
-	partnerGroupId: integer("partner_group_id").notNull().references(() => partnerGroup.id),
-});
-
-export const mentors = main.table("mentors", {
-	id: bigserial("id", { mode: "bigint" }).primaryKey().notNull(),
-	// You can use { mode: "bigint" } if numbers are exceeding js number limitations
-	mentor: bigint("mentor", { mode: "number" }).references(() => users.id),
-	// You can use { mode: "bigint" } if numbers are exceeding js number limitations
-	mentee: bigint("mentee", { mode: "number" }).references(() => users.id),
-	scope: varchar("scope", { length: 255 }),
-	userId: integer("user_id").references(() => users.id),
-	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
-},
-(table) => {
-	return {
-		idx50487MentorIbfk1Idx: index("idx_50487_mentor_ibfk_1_idx").on(table.mentor),
-		idx50487MentorIbfk2Idx: index("idx_50487_mentor_ibfk_2_idx").on(table.mentee),
 	}
 });
 
@@ -290,18 +687,49 @@ export const partnerSpecificBatches = main.table("partner_specific_batches", {
 	pathwayId: integer("pathway_id").references(() => pathwaysV2.id),
 });
 
-export const partnerSpace = main.table("partner_space", {
+export const pathways = main.table("pathways", {
 	id: serial("id").primaryKey().notNull(),
-	partnerId: integer("partner_id").references(() => partners.id, { onDelete: "cascade", onUpdate: "cascade" } ),
-	spaceName: varchar("space_name", { length: 255 }),
-	pointOfContactName: varchar("point_of_contact_name", { length: 255 }),
-	email: varchar("email", { length: 255 }),
+	code: varchar("code", { length: 6 }).notNull(),
+	name: varchar("name", { length: 45 }).notNull(),
+	description: varchar("description", { length: 5000 }).notNull(),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).notNull(),
+	trackingEnabled: boolean("tracking_enabled").default(false).notNull(),
+	trackingFrequency: varchar("tracking_frequency", { length: 255 }),
+	trackingDayOfWeek: integer("tracking_day_of_week"),
+	trackingDaysLockBeforeCycle: integer("tracking_days_lock_before_cycle"),
+	logo: varchar("logo", { length: 255 }),
+},
+(table) => {
+	return {
+		mainPathwaysCodeUnique: unique("main_pathways_code_unique").on(table.code),
+	}
 });
 
 export const pathwayPartnerGroup = main.table("pathway_partner_group", {
 	id: serial("id").primaryKey().notNull(),
 	partnerId: integer("partner_id").references(() => partners.id),
 	pathwayId: integer("pathway_id").references(() => pathwaysV2.id),
+});
+
+export const partnerGroupUser = main.table("partner_group_user", {
+	id: serial("id").primaryKey().notNull(),
+	userId: integer("user_id"),
+	partnerGroupId: integer("partner_group_id").notNull().references(() => partnerGroup.id),
+	email: varchar("email", { length: 255 }),
+});
+
+export const partnerRelationship = main.table("partner_relationship", {
+	id: serial("id").primaryKey().notNull(),
+	partnerId: integer("partner_id").notNull().references(() => partners.id),
+	partnerGroupId: integer("partner_group_id").notNull().references(() => partnerGroup.id),
+});
+
+export const partnerSpace = main.table("partner_space", {
+	id: serial("id").primaryKey().notNull(),
+	partnerId: integer("partner_id").references(() => partners.id, { onDelete: "cascade", onUpdate: "cascade" } ),
+	spaceName: varchar("space_name", { length: 255 }),
+	pointOfContactName: varchar("point_of_contact_name", { length: 255 }),
+	email: varchar("email", { length: 255 }),
 });
 
 export const partnerUser = main.table("partner_user", {
@@ -325,6 +753,15 @@ export const pathwayCompletion = main.table("pathway_completion", {
 	return {
 		mainPathwayCompletionUserIdPathwayIdUnique: unique("main_pathway_completion_user_id_pathway_id_unique").on(table.userId, table.pathwayId),
 	}
+});
+
+export const pathwayCompletionV2 = main.table("pathway_completion_v2", {
+	id: serial("id").primaryKey().notNull(),
+	userId: integer("user_id").references(() => users.id),
+	completeAt: timestamp("complete_at", { withTimezone: true, mode: 'string' }),
+	teamId: integer("team_id").references(() => c4CaTeams.id, { onDelete: "set null" } ),
+	percentage: integer("percentage"),
+	pathwayId: integer("pathway_id"),
 });
 
 export const pathwayCourses = main.table("pathway_courses", {
@@ -352,8 +789,8 @@ export const pathwayMilestones = main.table("pathway_milestones", {
 export const pathwayTrackingFormStructure = main.table("pathway_tracking_form_structure", {
 	id: serial("id").primaryKey().notNull(),
 	pathwayId: integer("pathway_id").notNull().references(() => pathways.id),
-	parameterId: integer("parameter_id").references(() => progressParameters.id),
-	questionId: integer("question_id").references(() => progressQuestions.id),
+	parameterId: integer("parameter_id"),
+	questionId: integer("question_id"),
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).notNull(),
 });
 
@@ -362,7 +799,7 @@ export const pathwayTrackingRequestDetails = main.table("pathway_tracking_reques
 	pathwayId: integer("pathway_id").notNull().references(() => pathways.id),
 	mentorId: integer("mentor_id").notNull().references(() => users.id),
 	menteeId: integer("mentee_id").notNull().references(() => users.id),
-	requestId: integer("request_id").notNull().references(() => pathwayTrackingRequest.id),
+	requestId: integer("request_id").notNull(),
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).notNull(),
 });
 
@@ -377,47 +814,16 @@ export const pathwayTrackingRequest = main.table("pathway_tracking_request", {
 
 export const pathwayTrackingRequestParameterDetails = main.table("pathway_tracking_request_parameter_details", {
 	id: serial("id").primaryKey().notNull(),
-	parameterId: integer("parameter_id").notNull().references(() => progressParameters.id),
+	parameterId: integer("parameter_id").notNull(),
 	data: integer("data").notNull(),
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).notNull(),
 });
 
 export const pathwayTrackingRequestQuestionDetails = main.table("pathway_tracking_request_question_details", {
 	id: serial("id").primaryKey().notNull(),
-	questionId: integer("question_id").notNull().references(() => progressQuestions.id),
+	questionId: integer("question_id").notNull(),
 	data: varchar("data", { length: 255 }).notNull(),
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).notNull(),
-});
-
-export const pathwaysOngoingTopic = main.table("pathways_ongoing_topic", {
-	id: serial("id").primaryKey().notNull(),
-	userId: integer("user_id").notNull().references(() => users.id),
-	pathwayId: integer("pathway_id").notNull().references(() => pathwaysV2.id),
-	courseId: integer("course_id").notNull().references(() => coursesV2.id),
-	exerciseId: integer("exercise_id").references(() => exercisesV2.id),
-	assessmentId: integer("assessment_id").references(() => assessment.id),
-});
-
-export const pathwaysOngoingTopicOutcome = main.table("pathways_ongoing_topic_outcome", {
-	id: serial("id").primaryKey().notNull(),
-	userId: integer("user_id").references(() => users.id),
-	pathwayId: integer("pathway_id"),
-	courseId: integer("course_id"),
-	exerciseId: integer("exercise_id"),
-	assessmentId: integer("assessment_id"),
-	teamId: integer("team_id"),
-	moduleId: integer("module_id"),
-	projectTopicId: integer("project_topic_id"),
-	projectSolutionId: integer("project_solution_id"),
-});
-
-export const pathwayCompletionV2 = main.table("pathway_completion_v2", {
-	id: serial("id").primaryKey().notNull(),
-	userId: integer("user_id").references(() => users.id),
-	completeAt: timestamp("complete_at", { withTimezone: true, mode: 'string' }),
-	teamId: integer("team_id").references(() => c4CaTeams.id, { onDelete: "set null" } ),
-	percentage: integer("percentage"),
-	pathwayId: integer("pathway_id"),
 });
 
 export const progressParameters = main.table("progress_parameters", {
@@ -445,16 +851,13 @@ export const progressQuestions = main.table("progress_questions", {
 	description: varchar("description", { length: 5000 }).notNull(),
 });
 
-export const questions = main.table("questions", {
+export const pathwaysOngoingTopic = main.table("pathways_ongoing_topic", {
 	id: serial("id").primaryKey().notNull(),
-	commonText: varchar("common_text", { length: 2000 }),
-	enText: varchar("en_text", { length: 2000 }),
-	hiText: varchar("hi_text", { length: 2000 }).notNull(),
-	difficulty: integer("difficulty").notNull(),
-	topic: varchar("topic", { length: 45 }).notNull(),
-	type: integer("type").notNull(),
-	createdAt: varchar("created_at", { length: 45 }).notNull(),
-	maText: varchar("ma_text", { length: 2000 }),
+	userId: integer("user_id").notNull().references(() => users.id),
+	pathwayId: integer("pathway_id").notNull().references(() => pathwaysV2.id),
+	courseId: integer("course_id").notNull().references(() => coursesV2.id),
+	exerciseId: integer("exercise_id").references(() => exercisesV2.id),
+	assessmentId: integer("assessment_id").references(() => assessment.id),
 });
 
 export const questionAttempts = main.table("question_attempts", {
@@ -468,8 +871,8 @@ export const questionAttempts = main.table("question_attempts", {
 
 export const recordVersionsOfPostDeleteExercisedetails = main.table("record_versions_of_post_delete_exercisedetails", {
 	id: serial("id").primaryKey().notNull(),
-	courseId: integer("course_id").references(() => coursesV2.id),
-	exerciseId: integer("exercise_id").references(() => exercisesV2.id),
+	courseId: integer("course_id"),
+	exerciseId: integer("exercise_id"),
 	version: varchar("version", { length: 255 }),
 	addedOrRemoved: boolean("addedOrRemoved"),
 });
@@ -481,16 +884,16 @@ export const questionBuckets = main.table("question_buckets", {
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).notNull(),
 });
 
-export const questionOptions = main.table("question_options", {
+export const pathwaysV2 = main.table("pathways_v2", {
 	id: serial("id").primaryKey().notNull(),
-	text: varchar("text", { length: 2000 }).notNull(),
-	questionId: integer("question_id").notNull().references(() => questions.id),
-	correct: boolean("correct").notNull(),
-	createdAt: varchar("created_at", { length: 45 }).notNull(),
+	code: varchar("code", { length: 6 }).notNull(),
+	name: varchar("name", { length: 100 }).notNull(),
+	logo: varchar("logo", { length: 255 }),
+	description: varchar("description", { length: 5000 }).notNull(),
 },
 (table) => {
 	return {
-		idx80322QuestionIdx: index("idx_80322_question_idx").on(table.questionId),
+		mainPathwaysV2CodeUnique: unique("main_pathways_v2_code_unique").on(table.code),
 	}
 });
 
@@ -515,6 +918,42 @@ export const questionSets = main.table("question_sets", {
 (table) => {
 	return {
 		idx80331QuestionSetsVersionidForeign: index("idx_80331_question_sets_versionid_foreign").on(table.versionId),
+	}
+});
+
+export const pathwaysOngoingTopicOutcome = main.table("pathways_ongoing_topic_outcome", {
+	id: serial("id").primaryKey().notNull(),
+	userId: integer("user_id").references(() => users.id),
+	pathwayId: integer("pathway_id"),
+	courseId: integer("course_id"),
+	exerciseId: integer("exercise_id"),
+	assessmentId: integer("assessment_id"),
+	teamId: integer("team_id"),
+	moduleId: integer("module_id"),
+	projectTopicId: integer("project_topic_id"),
+	projectSolutionId: integer("project_solution_id"),
+});
+
+export const questions = main.table("questions", {
+	id: serial("id").primaryKey().notNull(),
+	commonText: varchar("common_text", { length: 2000 }),
+	enText: varchar("en_text", { length: 2000 }),
+	hiText: varchar("hi_text", { length: 2000 }).notNull(),
+	difficulty: integer("difficulty").notNull(),
+	topic: varchar("topic", { length: 45 }).notNull(),
+	type: integer("type").notNull(),
+	createdAt: varchar("created_at", { length: 45 }).notNull(),
+	maText: varchar("ma_text", { length: 2000 }),
+});
+
+export const registrationFormStructure = main.table("registration_form_structure", {
+	id: serial("id").primaryKey().notNull(),
+	partnerId: integer("partner_id").notNull().references(() => partners.id),
+	formStructure: json("form_structure"),
+},
+(table) => {
+	return {
+		mainRegistrationFormStructurePartnerIdUnique: unique("main_registration_form_structure_partner_id_unique").on(table.partnerId),
 	}
 });
 
@@ -599,14 +1038,42 @@ export const studentPathways = main.table("student_pathways", {
 	}
 });
 
-export const registrationFormStructure = main.table("registration_form_structure", {
+export const school = main.table("school", {
 	id: serial("id").primaryKey().notNull(),
-	partnerId: integer("partner_id").notNull().references(() => partners.id),
-	formStructure: json("form_structure"),
+	name: varchar("name", { length: 255 }),
+});
+
+export const recurringClasses = main.table("recurring_classes", {
+	id: serial("id").primaryKey().notNull(),
+	frequency: varchar("frequency", { length: 255 }).notNull(),
+	occurrence: integer("occurrence"),
+	until: date("until"),
+	onDays: varchar("on_days", { length: 255 }),
+	calendarEventId: varchar("calendar_event_id", { length: 255 }),
+	cohortRoomId: varchar("cohort_room_id", { length: 255 }),
+});
+
+export const session = main.table("session", {
+	id: serial("id").primaryKey().notNull(),
+	sessionName: varchar("session_name", { length: 255 }),
+	startTime: timestamp("start_time", { withTimezone: true, mode: 'string' }),
+	endTime: timestamp("end_time", { withTimezone: true, mode: 'string' }),
+	durations: integer("durations"),
+	userId: integer("user_id").notNull().references(() => userHack.id),
+});
+
+export const stageTransitions = main.table("stage_transitions", {
+	id: serial("id").primaryKey().notNull(),
+	studentId: integer("student_id").references(() => students.id),
+	fromStage: varchar("from_stage", { length: 255 }),
+	toStage: varchar("to_stage", { length: 255 }),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }),
+	transitionDoneBy: varchar("transition_done_by", { length: 255 }),
+	school: varchar("school", { length: 255 }),
 },
 (table) => {
 	return {
-		mainRegistrationFormStructurePartnerIdUnique: unique("main_registration_form_structure_partner_id_unique").on(table.partnerId),
+		idx80349StageTransitionsStudentidForeign: index("idx_80349_stage_transitions_studentid_foreign").on(table.studentId),
 	}
 });
 
@@ -667,8 +1134,8 @@ export const userRoles = main.table("user_roles", {
 	id: bigserial("id", { mode: "bigint" }).primaryKey().notNull(),
 	// You can use { mode: "bigint" } if numbers are exceeding js number limitations
 	userId: bigint("user_id", { mode: "number" }).references(() => users.id),
-	roles: userRolesRoles("roles").default('student'),
-	center: userRolesCenter("center"),
+	roles: mainUserRolesRoles("roles"),
+	center: mainUserRolesCenter("center"),
 },
 (table) => {
 	return {
@@ -699,13 +1166,45 @@ export const testVersions = main.table("test_versions", {
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).notNull(),
 });
 
-export const studentsStages = main.table("students_stages", {
+export const students = main.table("students", {
 	id: serial("id").primaryKey().notNull(),
-	studentId: integer("student_id").references(() => students.id),
-	fromStage: varchar("from_stage", { length: 255 }),
-	toStage: varchar("to_stage", { length: 255 }),
-	createdAt: varchar("created_at", { length: 255 }),
-	transitionDoneBy: varchar("transition_done_by", { length: 255 }),
+	name: varchar("name", { length: 300 }),
+	gender: integer("gender"),
+	dob: timestamp("dob", { withTimezone: true, mode: 'string' }),
+	email: varchar("email", { length: 150 }),
+	state: varchar("state", { length: 2 }),
+	city: varchar("city", { length: 45 }),
+	gpsLat: varchar("gps_lat", { length: 45 }),
+	gpsLong: varchar("gps_long", { length: 45 }),
+	pinCode: varchar("pin_code", { length: 10 }),
+	qualification: integer("qualification"),
+	currentStatus: integer("current_status"),
+	schoolMedium: integer("school_medium"),
+	religon: integer("religon"),
+	caste: integer("caste"),
+	percentageIn10Th: varchar("percentage_in10th", { length: 255 }),
+	mathMarksIn10Th: integer("math_marks_in10th"),
+	percentageIn12Th: varchar("percentage_in12th", { length: 255 }),
+	mathMarksIn12Th: integer("math_marks_in12th"),
+	stage: varchar("stage", { length: 45 }).notNull(),
+	tag: varchar("tag", { length: 255 }),
+	partnerId: integer("partner_id").references(() => partners.id),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).notNull(),
+	lastUpdated: timestamp("last_updated", { withTimezone: true, mode: 'string' }),
+	district: varchar("district", { length: 255 }),
+	currentOwnerId: integer("current_owner_id").references(() => interviewOwners.id),
+	partnerRefer: varchar("partner_refer", { length: 255 }),
+	evaluation: varchar("evaluation", { length: 255 }),
+	redflag: varchar("redflag", { length: 255 }),
+	imageUrl: text("image_url"),
+	otherActivities: varchar("other_activities", { length: 255 }),
+	campusStatus: varchar("campus_status", { length: 255 }),
+	schoolStageId: integer("school_stage_id").references(() => schoolStage.id),
+},
+(table) => {
+	return {
+		idx80358StudentsPartneridForeign: index("idx_80358_students_partnerid_foreign").on(table.partnerId),
+	}
 });
 
 export const usersPopularSearch = main.table("users_popular_search", {
@@ -734,6 +1233,21 @@ export const vbSentences = main.table("vb_sentences", {
 	dLevel: bigint("d_level", { mode: "number" }).notNull(),
 });
 
+export const userHack = main.table("user_hack", {
+	id: serial("id").primaryKey().notNull(),
+	name: varchar("name", { length: 255 }).notNull(),
+	email: varchar("email", { length: 255 }).notNull(),
+});
+
+export const studentsStages = main.table("students_stages", {
+	id: serial("id").primaryKey().notNull(),
+	studentId: integer("student_id").references(() => students.id),
+	fromStage: varchar("from_stage", { length: 255 }),
+	toStage: varchar("to_stage", { length: 255 }),
+	createdAt: varchar("created_at", { length: 255 }),
+	transitionDoneBy: varchar("transition_done_by", { length: 255 }),
+});
+
 export const vbWords = main.table("vb_words", {
 	id: bigserial("id", { mode: "bigint" }).primaryKey().notNull(),
 	word: varchar("word", { length: 250 }).notNull(),
@@ -742,6 +1256,24 @@ export const vbWords = main.table("vb_words", {
 	wordType: varchar("word_type", { length: 5 }).default(''),
 	// You can use { mode: "bigint" } if numbers are exceeding js number limitations
 	dLevel: bigint("d_level", { mode: "number" }).notNull(),
+});
+
+export const viewPage = main.table("view_page", {
+	id: serial("id").primaryKey().notNull(),
+	userId: integer("user_id").notNull().references(() => userHack.id),
+	durations: integer("durations").notNull(),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+	pageUrl: varchar("page_url", { length: 255 }),
+	pageTitle: varchar("page_title", { length: 255 }),
+	startTime: timestamp("start_time", { withTimezone: true, mode: 'string' }),
+	endTime: timestamp("end_time", { withTimezone: true, mode: 'string' }),
+});
+
+export const youtubeBroadcast = main.table("youtube_broadcast", {
+	id: serial("id").primaryKey().notNull(),
+	videoId: varchar("video_id", { length: 255 }).notNull(),
+	classId: integer("class_id"),
+	recurringId: integer("recurring_id"),
 });
 
 export const partners = main.table("partners", {
@@ -870,7 +1402,7 @@ export const users = main.table("users", {
 	name: varchar("name", { length: 250 }).default('').notNull(),
 	profilePicture: varchar("profile_picture", { length: 250 }),
 	googleUserId: varchar("google_user_id", { length: 250 }),
-	center: usersCenter("center"),
+	center: mainUsersCenter("center"),
 	githubLink: varchar("github_link", { length: 145 }),
 	linkedinLink: varchar("linkedin_link", { length: 145 }),
 	mediumLink: varchar("medium_link", { length: 145 }),
@@ -927,69 +1459,6 @@ export const enrolmentKeys = main.table("enrolment_keys", {
 	}
 });
 
-export const exercises = main.table("exercises", {
-	id: bigserial("id", { mode: "bigint" }).primaryKey().notNull(),
-	// You can use { mode: "bigint" } if numbers are exceeding js number limitations
-	parentExerciseId: bigint("parent_exercise_id", { mode: "number" }),
-	// You can use { mode: "bigint" } if numbers are exceeding js number limitations
-	courseId: bigint("course_id", { mode: "number" }).notNull().references(() => courses.id),
-	name: varchar("name", { length: 300 }).default('').notNull(),
-	slug: varchar("slug", { length: 100 }).default('').notNull(),
-	sequenceNum: doublePrecision("sequence_num"),
-	reviewType: exercisesReviewType("review_type").default('manual'),
-	content: text("content"),
-	submissionType: exercisesSubmissionType("submission_type"),
-	githubLink: varchar("github_link", { length: 300 }),
-	solution: text("solution"),
-},
-(table) => {
-	return {
-		idx50457CourseId: index("idx_50457_course_id").on(table.courseId),
-		idx50457SlugUnique: uniqueIndex("idx_50457_slug__unique").on(table.slug),
-	}
-});
-
-export const students = main.table("students", {
-	id: serial("id").primaryKey().notNull(),
-	name: varchar("name", { length: 300 }),
-	gender: integer("gender"),
-	dob: timestamp("dob", { withTimezone: true, mode: 'string' }),
-	email: varchar("email", { length: 150 }),
-	state: varchar("state", { length: 2 }),
-	city: varchar("city", { length: 45 }),
-	gpsLat: varchar("gps_lat", { length: 45 }),
-	gpsLong: varchar("gps_long", { length: 45 }),
-	pinCode: varchar("pin_code", { length: 10 }),
-	qualification: integer("qualification"),
-	currentStatus: integer("current_status"),
-	schoolMedium: integer("school_medium"),
-	religon: integer("religon"),
-	caste: integer("caste"),
-	percentageIn10Th: varchar("percentage_in10th", { length: 255 }),
-	mathMarksIn10Th: integer("math_marks_in10th"),
-	percentageIn12Th: varchar("percentage_in12th", { length: 255 }),
-	mathMarksIn12Th: integer("math_marks_in12th"),
-	stage: varchar("stage", { length: 45 }).notNull(),
-	tag: varchar("tag", { length: 255 }),
-	partnerId: integer("partner_id").references(() => partners.id),
-	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).notNull(),
-	lastUpdated: timestamp("last_updated", { withTimezone: true, mode: 'string' }),
-	district: varchar("district", { length: 255 }),
-	currentOwnerId: integer("current_owner_id").references(() => interviewOwners.id),
-	partnerRefer: varchar("partner_refer", { length: 255 }),
-	evaluation: varchar("evaluation", { length: 255 }),
-	redflag: varchar("redflag", { length: 255 }),
-	imageUrl: text("image_url"),
-	otherActivities: varchar("other_activities", { length: 255 }),
-	campusStatus: varchar("campus_status", { length: 255 }),
-	schoolStageId: integer("school_stage_id").references(() => schoolStage.id),
-},
-(table) => {
-	return {
-		idx80358StudentsPartneridForeign: index("idx_80358_students_partnerid_foreign").on(table.partnerId),
-	}
-});
-
 export const feedbacks = main.table("feedbacks", {
 	id: serial("id").primaryKey().notNull(),
 	studentId: integer("student_id").references(() => students.id),
@@ -1012,60 +1481,14 @@ export const feedbacks = main.table("feedbacks", {
 	}
 });
 
-export const coursesV2 = main.table("courses_v2", {
+export const c4CaStudentsProjectDetail = main.table("c4ca_students_projectDetail", {
 	id: serial("id").primaryKey().notNull(),
-	name: varchar("name", { length: 255 }).notNull(),
-	logo: varchar("logo", { length: 255 }),
-	shortDescription: varchar("short_description", { length: 255 }),
-	langAvailable: text("lang_available").array(),
-});
-
-export const assessment = main.table("assessment", {
-	id: serial("id").primaryKey().notNull(),
-	name: varchar("name", { length: 255 }).notNull(),
-	content: text("content"),
-	courseId: integer("course_id").references(() => coursesV2.id),
-	exerciseId: integer("exercise_id").references(() => exercisesV2.id),
-	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }),
-},
-(table) => {
-	return {
-		mainAssessmentNameUnique: unique("main_assessment_name_unique").on(table.name),
-	}
-});
-
-export const exercisesV2 = main.table("exercises_v2", {
-	id: serial("id").primaryKey().notNull(),
-	name: varchar("name", { length: 255 }).notNull(),
-	description: varchar("description", { length: 255 }),
-	courseId: integer("course_id").references(() => coursesV2.id),
-	content: text("content"),
-	type: varchar("type", { length: 255 }),
-	sequenceNum: doublePrecision("sequence_num"),
-	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }),
-});
-
-export const c4CaRoles = main.table("c4ca_roles", {
-	id: serial("id").primaryKey().notNull(),
-	role: varchar("role", { length: 255 }).notNull(),
-	userId: integer("user_id").notNull().references(() => users.id),
-	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }),
-});
-
-export const c4CaPartners = main.table("c4ca_partners", {
-	id: serial("id").primaryKey().notNull(),
-	name: varchar("name", { length: 255 }).notNull(),
-	pointOfContact: varchar("point_of_contact", { length: 255 }),
-	email: varchar("email", { length: 255 }).notNull(),
-	phoneNumber: varchar("phone_number", { length: 255 }),
-	status: varchar("status", { length: 255 }),
-	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }),
-});
-
-export const campus = main.table("campus", {
-	id: serial("id").primaryKey().notNull(),
-	campus: varchar("campus", { length: 225 }),
-	address: varchar("address", { length: 255 }),
+	projectTitle: varchar("project_title", { length: 255 }),
+	projectSummary: varchar("project_summary", { length: 255 }),
+	projectUploadFileUrl: varchar("project_uploadFile_url", { length: 255 }).notNull(),
+	startedDate: date("Started_date"),
+	teacherId: integer("teacher_id").notNull().references(() => c4CaTeachers.id),
+	teamId: integer("team_id").notNull().references(() => c4CaTeams.id),
 });
 
 export const campusSchool = main.table("campus_school", {
@@ -1080,175 +1503,10 @@ export const campusSchool = main.table("campus_school", {
 	}
 });
 
-export const school = main.table("school", {
-	id: serial("id").primaryKey().notNull(),
-	name: varchar("name", { length: 255 }),
-});
-
-export const studentCampus = main.table("student_campus", {
-	id: serial("id").primaryKey().notNull(),
-	studentId: integer("student_id").references(() => students.id),
-	campusId: integer("campus_id").references(() => campus.id),
-});
-
-export const chanakyaUserRoles = main.table("chanakya_user_roles", {
-	id: serial("id").primaryKey().notNull(),
-	chanakyaUserEmailId: integer("chanakya_user_email_id").notNull(),
-	roles: integer("roles").references(() => chanakyaRoles.id),
-	privilege: integer("privilege").references(() => chanakyaPrivilege.id),
-});
-
-export const chanakyaAccess = main.table("chanakya_access", {
-	id: serial("id").primaryKey().notNull(),
-	userRoleId: integer("user_role_id").references(() => chanakyaUserRoles.id),
-	access: integer("access").notNull(),
-},
-(table) => {
-	return {
-		mainChanakyaAccessUserRoleIdAccessUnique: unique("main_chanakya_access_user_role_id_access_unique").on(table.userRoleId, table.access),
-	}
-});
-
-export const chanakyaPartnerGroup = main.table("chanakya_partner_group", {
-	id: serial("id").primaryKey().notNull(),
-	name: varchar("name", { length: 255 }),
-});
-
 export const chanakyaPartnerRelationship = main.table("chanakya_partner_relationship", {
 	id: serial("id").primaryKey().notNull(),
 	partnerId: integer("partner_id").notNull().references(() => partners.id),
-	partnerGroupId: integer("partner_group_id").notNull().references(() => chanakyaPartnerGroup.id),
-});
-
-export const chanakyaPrivilege = main.table("chanakya_privilege", {
-	id: serial("id").primaryKey().notNull(),
-	privilege: varchar("privilege", { length: 225 }).notNull(),
-	description: varchar("description", { length: 225 }).notNull(),
-},
-(table) => {
-	return {
-		mainChanakyaPrivilegePrivilegeUnique: unique("main_chanakya_privilege_privilege_unique").on(table.privilege),
-		mainChanakyaPrivilegeDescriptionUnique: unique("main_chanakya_privilege_description_unique").on(table.description),
-	}
-});
-
-export const chanakyaRoles = main.table("chanakya_roles", {
-	id: serial("id").primaryKey().notNull(),
-	roles: varchar("roles", { length: 225 }).notNull(),
-	description: varchar("description", { length: 225 }).notNull(),
-},
-(table) => {
-	return {
-		mainChanakyaRolesRolesUnique: unique("main_chanakya_roles_roles_unique").on(table.roles),
-		mainChanakyaRolesDescriptionUnique: unique("main_chanakya_roles_description_unique").on(table.description),
-	}
-});
-
-export const classes = main.table("classes", {
-	id: serial("id").primaryKey().notNull(),
-	title: varchar("title", { length: 255 }),
-	description: varchar("description", { length: 555 }),
-	facilitatorId: integer("facilitator_id"),
-	startTime: timestamp("start_time", { withTimezone: true, mode: 'string' }).notNull(),
-	endTime: timestamp("end_time", { withTimezone: true, mode: 'string' }).notNull(),
-	categoryId: integer("category_id").notNull().references(() => category.id),
-	videoId: varchar("video_id", { length: 45 }),
-	lang: char("lang", { length: 2 }).default('hi').notNull(),
-	type: varchar("type", { length: 255 }).notNull(),
-	meetLink: varchar("meet_link", { length: 255 }),
-	calendarEventId: varchar("calendar_event_id", { length: 255 }),
-	facilitatorName: varchar("facilitator_name", { length: 80 }),
-	facilitatorEmail: varchar("facilitator_email", { length: 120 }),
-	materialLink: varchar("material_link", { length: 255 }),
-	maxEnrolment: integer("max_enrolment"),
-	recurringId: integer("recurring_id").references(() => recurringClasses.id),
-	subTitle: varchar("sub_title", { length: 255 }),
-	courseVersion: varchar("course_version", { length: 255 }),
-	volunteerId: integer("volunteer_id").references(() => volunteer.id),
-});
-
-export const classRegistrations = main.table("class_registrations", {
-	id: serial("id").primaryKey().notNull(),
-	classId: integer("class_id").notNull().references(() => classes.id),
-	userId: integer("user_id").notNull().references(() => users.id),
-	registeredAt: timestamp("registered_at", { withTimezone: true, mode: 'string' }).notNull(),
-	feedback: varchar("feedback", { length: 1000 }),
-	feedbackAt: timestamp("feedback_at", { withTimezone: true, mode: 'string' }),
-	googleRegistrationStatus: boolean("google_registration_status"),
-},
-(table) => {
-	return {
-		mainClassRegistrationsUserIdClassIdUnique: unique("main_class_registrations_user_id_class_id_unique").on(table.classId, table.userId),
-	}
-});
-
-export const category = main.table("category", {
-	id: serial("id").primaryKey().notNull(),
-	categoryName: varchar("category_name", { length: 100 }).notNull(),
-	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).notNull(),
-});
-
-export const classesMail = main.table("classes_mail", {
-	id: serial("id").primaryKey().notNull(),
-	classId: integer("class_id").references(() => classes.id),
-	facilitatorEmail: varchar("facilitator_email", { length: 80 }).notNull(),
-	status: varchar("status", { length: 50 }),
-	type: varchar("type", { length: 255 }).notNull(),
-});
-
-export const recurringClasses = main.table("recurring_classes", {
-	id: serial("id").primaryKey().notNull(),
-	frequency: varchar("frequency", { length: 255 }).notNull(),
-	occurrence: integer("occurrence"),
-	until: date("until"),
-	onDays: varchar("on_days", { length: 255 }),
-	calendarEventId: varchar("calendar_event_id", { length: 255 }),
-	cohortRoomId: varchar("cohort_room_id", { length: 255 }),
-});
-
-export const classesToCourses = main.table("classes_to_courses", {
-	id: serial("id").primaryKey().notNull(),
-	classId: integer("class_id").references(() => classes.id),
-	pathwayV1: integer("pathway_v1").references(() => pathways.id),
-	courseV1: integer("course_v1").references(() => courses.id),
-	exerciseV1: integer("exercise_v1").references(() => exercises.id),
-	pathwayV2: integer("pathway_v2").references(() => pathwaysV2.id),
-	courseV2: integer("course_v2").references(() => coursesV2.id),
-	exerciseV2: integer("exercise_v2").references(() => exercisesV2.id),
-	pathwayV3: integer("pathway_v3"),
-	courseV3: integer("course_v3"),
-	exerciseV3: integer("exercise_v3"),
-});
-
-export const pathways = main.table("pathways", {
-	id: serial("id").primaryKey().notNull(),
-	code: varchar("code", { length: 6 }).notNull(),
-	name: varchar("name", { length: 45 }).notNull(),
-	description: varchar("description", { length: 5000 }).notNull(),
-	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).notNull(),
-	trackingEnabled: boolean("tracking_enabled").default(false).notNull(),
-	trackingFrequency: varchar("tracking_frequency", { length: 255 }),
-	trackingDayOfWeek: integer("tracking_day_of_week"),
-	trackingDaysLockBeforeCycle: integer("tracking_days_lock_before_cycle"),
-	logo: varchar("logo", { length: 255 }),
-},
-(table) => {
-	return {
-		mainPathwaysCodeUnique: unique("main_pathways_code_unique").on(table.code),
-	}
-});
-
-export const pathwaysV2 = main.table("pathways_v2", {
-	id: serial("id").primaryKey().notNull(),
-	code: varchar("code", { length: 6 }).notNull(),
-	name: varchar("name", { length: 100 }).notNull(),
-	logo: varchar("logo", { length: 255 }),
-	description: varchar("description", { length: 5000 }).notNull(),
-},
-(table) => {
-	return {
-		mainPathwaysV2CodeUnique: unique("main_pathways_v2_code_unique").on(table.code),
-	}
+	partnerGroupId: integer("partner_group_id").notNull(),
 });
 
 export const volunteer = main.table("volunteer", {
@@ -1261,58 +1519,6 @@ export const volunteer = main.table("volunteer", {
 	manualStatus: varchar("manual_status", { length: 255 }),
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }),
 	pathwayId: integer("pathway_id"),
-});
-
-export const courseCategories = main.table("course_categories", {
-	id: serial("id").primaryKey().notNull(),
-	courseId: integer("course_id").notNull().references(() => courses.id),
-	categoryId: integer("category_id").notNull().references(() => category.id),
-	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).notNull(),
-});
-
-export const courseCompletion = main.table("course_completion", {
-	id: serial("id").primaryKey().notNull(),
-	userId: integer("user_id").notNull().references(() => users.id),
-	courseId: integer("course_id").notNull().references(() => courses.id),
-},
-(table) => {
-	return {
-		mainCourseCompletionUserIdCourseIdUnique: unique("main_course_completion_user_id_course_id_unique").on(table.userId, table.courseId),
-	}
-});
-
-export const courseCompletionV2 = main.table("course_completion_v2", {
-	id: serial("id").primaryKey().notNull(),
-	userId: integer("user_id").notNull().references(() => users.id),
-	courseId: integer("course_id").notNull().references(() => coursesV2.id),
-	completeAt: timestamp("complete_at", { withTimezone: true, mode: 'string' }),
-},
-(table) => {
-	return {
-		mainCourseCompletionV2CourseIdUnique: unique("main_course_completion_v2_course_id_unique").on(table.courseId),
-	}
-});
-
-export const courseEditorStatus = main.table("course_editor_status", {
-	id: serial("id").primaryKey().notNull(),
-	courseId: integer("course_id").references(() => coursesV2.id),
-	courseStates: varchar("course_states", { length: 255 }),
-	stateChangedate: timestamp("stateChangedate", { withTimezone: true, mode: 'string' }),
-	contentEditorsUserId: integer("content_editors_user_id").references(() => users.id),
-});
-
-export const courseProductionVersions = main.table("course_production_versions", {
-	id: serial("id").primaryKey().notNull(),
-	courseId: integer("course_id").references(() => coursesV2.id),
-	lang: char("lang", { length: 2 }).default('en').notNull(),
-	version: varchar("version", { length: 255 }),
-});
-
-export const dashboardFlags = main.table("dashboard_flags", {
-	id: serial("id").primaryKey().notNull(),
-	studentId: integer("student_id").notNull().references(() => students.id),
-	flag: varchar("flag", { length: 255 }),
-	createdAt: timestamp("createdAt", { withTimezone: true, mode: 'string' }),
 });
 
 export const emailReport = main.table("email_report", {
@@ -1329,245 +1535,6 @@ export const emailReport = main.table("email_report", {
 	}
 });
 
-export const session = main.table("session", {
-	id: serial("id").primaryKey().notNull(),
-	sessionName: varchar("session_name", { length: 255 }),
-	startTime: timestamp("start_time", { withTimezone: true, mode: 'string' }),
-	endTime: timestamp("end_time", { withTimezone: true, mode: 'string' }),
-	durations: integer("durations"),
-	userId: integer("user_id").notNull().references(() => userHack.id),
-});
-
-export const events = main.table("events", {
-	id: serial("id").primaryKey().notNull(),
-	eventName: varchar("event_name", { length: 255 }),
-	startTime: timestamp("start_time", { withTimezone: true, mode: 'string' }),
-	endTime: timestamp("end_time", { withTimezone: true, mode: 'string' }),
-	durations: integer("durations"),
-	viewPageId: integer("view_page_id").notNull().references(() => viewPage.id),
-	sessionId: integer("session_id").notNull().references(() => session.id),
-	userId: integer("user_id").notNull().references(() => userHack.id),
-});
-
-export const userHack = main.table("user_hack", {
-	id: serial("id").primaryKey().notNull(),
-	name: varchar("name", { length: 255 }).notNull(),
-	email: varchar("email", { length: 255 }).notNull(),
-});
-
-export const viewPage = main.table("view_page", {
-	id: serial("id").primaryKey().notNull(),
-	userId: integer("user_id").notNull().references(() => userHack.id),
-	durations: integer("durations").notNull(),
-	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
-	pageUrl: varchar("page_url", { length: 255 }),
-	pageTitle: varchar("page_title", { length: 255 }),
-	startTime: timestamp("start_time", { withTimezone: true, mode: 'string' }),
-	endTime: timestamp("end_time", { withTimezone: true, mode: 'string' }),
-});
-
-export const exerciseCompletion = main.table("exercise_completion", {
-	id: serial("id").primaryKey().notNull(),
-	userId: integer("user_id").notNull().references(() => users.id),
-	exerciseId: integer("exercise_id").notNull().references(() => exercises.id),
-},
-(table) => {
-	return {
-		mainExerciseCompletionUserIdExerciseIdUnique: unique("main_exercise_completion_user_id_exercise_id_unique").on(table.userId, table.exerciseId),
-	}
-});
-
-export const facilitators = main.table("facilitators", {
-	id: serial("id").primaryKey().notNull(),
-	name: varchar("name", { length: 255 }).notNull(),
-	pointOfContact: varchar("point_of_contact", { length: 255 }),
-	email: varchar("email", { length: 255 }).notNull(),
-	webLink: varchar("web_link", { length: 255 }),
-	phoneNumber: varchar("phone_number", { length: 255 }).notNull(),
-	c4CaPartnerId: integer("c4ca_partner_id").references(() => c4CaPartners.id),
-	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }),
-});
-
-export const interviewOwners = main.table("interview_owners", {
-	id: serial("id").primaryKey().notNull(),
-	userId: integer("user_id").notNull().references(() => cUsers.id),
-	available: boolean("available"),
-	maxLimit: integer("max_limit").default(10),
-	type: text("type").array(),
-	pendingInterviewCount: integer("pending_interview_count"),
-	gender: integer("gender"),
-},
-(table) => {
-	return {
-		mainInterviewOwnersUserIdUnique: unique("main_interview_owners_user_id_unique").on(table.userId),
-	}
-});
-
-export const interviewSlot = main.table("interview_slot", {
-	id: serial("id").primaryKey().notNull(),
-	ownerId: integer("owner_id").references(() => interviewOwners.id),
-	studentId: integer("student_id").notNull().references(() => students.id),
-	studentName: varchar("student_name", { length: 255 }),
-	transitionId: integer("transition_id").references(() => stageTransitions.id),
-	topicName: varchar("topic_name", { length: 255 }).notNull(),
-	startTime: varchar("start_time", { length: 255 }).notNull(),
-	endTime: varchar("end_time", { length: 255 }),
-	endTimeExpected: varchar("end_time_expected", { length: 255 }).notNull(),
-	onDate: timestamp("on_date", { withTimezone: true, mode: 'string' }).notNull(),
-	duration: varchar("duration", { length: 255 }),
-	status: varchar("status", { length: 255 }).notNull(),
-	isCancelled: boolean("is_cancelled").default(false),
-	cancelltionReason: varchar("cancelltion_reason", { length: 255 }),
-	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).notNull(),
-	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }),
-});
-
-export const stageTransitions = main.table("stage_transitions", {
-	id: serial("id").primaryKey().notNull(),
-	studentId: integer("student_id").references(() => students.id),
-	fromStage: varchar("from_stage", { length: 255 }),
-	toStage: varchar("to_stage", { length: 255 }),
-	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }),
-	transitionDoneBy: varchar("transition_done_by", { length: 255 }),
-	school: varchar("school", { length: 255 }),
-},
-(table) => {
-	return {
-		idx80349StageTransitionsStudentidForeign: index("idx_80349_stage_transitions_studentid_foreign").on(table.studentId),
-	}
-});
-
-export const mentorTree = main.table("mentor_tree", {
-	id: serial("id").primaryKey().notNull(),
-	mentorId: integer("mentor_id").notNull().references(() => users.id),
-	menteeId: integer("mentee_id").notNull().references(() => users.id),
-	pathwayId: integer("pathway_id").notNull().references(() => pathways.id),
-	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }),
-},
-(table) => {
-	return {
-		mainMentorTreeMentorIdMenteeIdUnique: unique("main_mentor_tree_mentor_id_mentee_id_unique").on(table.mentorId, table.menteeId),
-	}
-});
-
-export const c4CaTeachers = main.table("c4ca_teachers", {
-	id: serial("id").primaryKey().notNull(),
-	name: varchar("name", { length: 255 }).notNull(),
-	school: varchar("school", { length: 255 }),
-	district: varchar("district", { length: 255 }),
-	state: varchar("state", { length: 255 }),
-	phoneNumber: varchar("phone_number", { length: 255 }),
-	email: varchar("email", { length: 255 }).notNull(),
-	userId: integer("user_id").notNull().references(() => users.id),
-	profileUrl: varchar("profile_url", { length: 255 }),
-	facilitatorId: integer("facilitator_id"),
-	profileLink: varchar("profile_link", { length: 255 }),
-	c4CaPartnerId: integer("c4ca_partner_id").references(() => c4CaPartners.id, { onDelete: "set null" } ),
-	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }),
-});
-
-export const c4CaStudents = main.table("c4ca_students", {
-	id: serial("id").primaryKey().notNull(),
-	name: varchar("name", { length: 255 }).notNull(),
-	class: integer("class").notNull(),
-	teacherId: integer("teacher_id").notNull().references(() => c4CaTeachers.id),
-	teamId: integer("team_id").notNull().references(() => c4CaTeams.id),
-	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }),
-});
-
-export const c4CaStudentsProjectDetail = main.table("c4ca_students_projectDetail", {
-	id: serial("id").primaryKey().notNull(),
-	projectTitle: varchar("project_title", { length: 255 }),
-	projectSummary: varchar("project_summary", { length: 255 }),
-	projectUploadFileUrl: varchar("project_uploadFile_url", { length: 255 }).notNull(),
-	startedDate: date("Started_date"),
-	teacherId: integer("teacher_id").notNull().references(() => c4CaTeachers.id),
-	teamId: integer("team_id").notNull().references(() => c4CaTeams.id),
-});
-
-export const c4CaTeams = main.table("c4ca_teams", {
-	id: serial("id").primaryKey().notNull(),
-	teamName: varchar("team_name", { length: 255 }).notNull(),
-	teamSize: integer("team_size").notNull(),
-	teacherId: integer("teacher_id").notNull().references(() => c4CaTeachers.id),
-	loginId: varchar("login_id", { length: 255 }).notNull(),
-	password: varchar("password", { length: 255 }).notNull(),
-	lastLogin: timestamp("last_login", { withTimezone: true, mode: 'string' }),
-	state: varchar("state", { length: 255 }),
-	district: varchar("district", { length: 255 }),
-	school: varchar("school", { length: 255 }),
-},
-(table) => {
-	return {
-		mainC4CaTeamsTeamNameUnique: unique("main_c4ca_teams_team_name_unique").on(table.teamName),
-	}
-});
-
-export const assessmentOutcome = main.table("assessment_outcome", {
-	id: serial("id").primaryKey().notNull(),
-	userId: integer("user_id").references(() => users.id),
-	assessmentId: integer("assessment_id").notNull(),
-	status: varchar("status", { length: 255 }).notNull(),
-	selectedOption: integer("selected_option"),
-	attemptCount: integer("attempt_count").notNull(),
-	teamId: integer("team_id").references(() => c4CaTeams.id, { onDelete: "set null" } ),
-	selectedMultipleOption: varchar("selected_multiple_option", { length: 255 }),
-});
-
-export const assessmentResult = main.table("assessment_result", {
-	id: serial("id").primaryKey().notNull(),
-	userId: integer("user_id").references(() => users.id),
-	assessmentId: integer("assessment_id").notNull().references(() => assessment.id),
-	status: varchar("status", { length: 255 }).notNull(),
-	selectedOption: integer("selected_option").notNull(),
-	attemptCount: integer("attempt_count").default(1).notNull(),
-	teamId: integer("team_id").references(() => c4CaTeams.id, { onDelete: "set null" } ),
-});
-
-export const c4CaTeamProjectsubmitSolution = main.table("c4ca_team_projectsubmit_solution", {
-	id: serial("id").primaryKey().notNull(),
-	projectLink: varchar("project_link", { length: 255 }),
-	projectFileUrl: varchar("project_file_url", { length: 255 }),
-	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }),
-	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }),
-	teamId: integer("team_id").notNull().references(() => c4CaTeams.id, { onDelete: "cascade", onUpdate: "cascade" } ),
-	teamName: varchar("team_name", { length: 255 }).notNull(),
-	isSubmitted: boolean("is_submitted"),
-	unlockedAt: timestamp("unlocked_at", { withTimezone: true, mode: 'string' }),
-	moduleId: integer("module_id").notNull(),
-});
-
-export const c4CaTeamProjecttopic = main.table("c4ca_team_projecttopic", {
-	id: serial("id").primaryKey().notNull(),
-	projectTitle: varchar("project_title", { length: 255 }),
-	projectSummary: varchar("project_summary", { length: 255 }),
-	projectTopicUrl: varchar("project_topic_url", { length: 255 }),
-	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }),
-	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }),
-	teamId: integer("team_id").notNull().references(() => c4CaTeams.id, { onDelete: "cascade", onUpdate: "cascade" } ),
-	teamName: varchar("team_name", { length: 255 }).notNull(),
-	isSubmitted: boolean("is_submitted"),
-	unlockedAt: timestamp("unlocked_at", { withTimezone: true, mode: 'string' }),
-	moduleId: integer("module_id").notNull(),
-});
-
-export const courseCompletionV3 = main.table("course_completion_v3", {
-	id: serial("id").primaryKey().notNull(),
-	userId: integer("user_id").references(() => users.id),
-	courseId: integer("course_id").notNull(),
-	completeAt: timestamp("complete_at", { withTimezone: true, mode: 'string' }),
-	teamId: integer("team_id").references(() => c4CaTeams.id, { onDelete: "set null" } ),
-	percentage: integer("percentage"),
-});
-
-export const exerciseCompletionV2 = main.table("exercise_completion_v2", {
-	id: serial("id").primaryKey().notNull(),
-	userId: integer("user_id").references(() => users.id),
-	completeAt: timestamp("complete_at", { withTimezone: true, mode: 'string' }),
-	exerciseId: integer("exercise_id"),
-	teamId: integer("team_id").references(() => c4CaTeams.id, { onDelete: "set null" } ),
-});
-
 export const learningTrackStatus = main.table("learning_track_status", {
 	id: serial("id").primaryKey().notNull(),
 	userId: integer("user_id").references(() => users.id),
@@ -1577,29 +1544,23 @@ export const learningTrackStatus = main.table("learning_track_status", {
 	teamId: integer("team_id").references(() => c4CaTeams.id, { onDelete: "set null" } ),
 });
 
-export const learningTrackStatusOutcome = main.table("learning_track_status_outcome", {
+export const partnerGroupRelationship = main.table("partner_group_relationship", {
 	id: serial("id").primaryKey().notNull(),
-	userId: integer("user_id").references(() => users.id),
-	pathwayId: integer("pathway_id"),
-	courseId: integer("course_id"),
-	exerciseId: integer("exercise_id"),
-	teamId: integer("team_id").references(() => c4CaTeams.id, { onDelete: "set null" } ),
-	moduleId: integer("module_id"),
+	partnerGroupId: integer("partner_group_id").notNull().references(() => partnerGroup.id),
+	memberOf: integer("member_of").notNull(),
 });
 
-export const youtubeBroadcast = main.table("youtube_broadcast", {
+export const questionOptions = main.table("question_options", {
 	id: serial("id").primaryKey().notNull(),
-	videoId: varchar("video_id", { length: 255 }).notNull(),
-	classId: integer("class_id"),
-	recurringId: integer("recurring_id"),
-});
-
-export const learningProgress = main.table("learning_progress", {
-	id: serial("id").primaryKey().notNull(),
-	developersResumeId: integer("developers_resume_id").notNull(),
-	learningResourceId: integer("learning_resource_id").notNull().references(() => learningResources.id),
-	completed: boolean("completed").default(false),
-	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }),
+	text: varchar("text", { length: 2000 }).notNull(),
+	questionId: integer("question_id").notNull().references(() => questions.id),
+	correct: boolean("correct").notNull(),
+	createdAt: varchar("created_at", { length: 45 }).notNull(),
+},
+(table) => {
+	return {
+		idx80322QuestionIdx: index("idx_80322_question_idx").on(table.questionId),
+	}
 });
 
 export const learningResources = main.table("learning_resources", {
@@ -1609,6 +1570,14 @@ export const learningResources = main.table("learning_resources", {
 	courseDescription: varchar("course_description", { length: 255 }),
 	courseCategory: varchar("course_category", { length: 255 }),
 	developersId: integer("developers_id").references(() => developersResume.id),
+});
+
+export const learningProgress = main.table("learning_progress", {
+	id: serial("id").primaryKey().notNull(),
+	developersResumeId: integer("developers_resume_id").notNull(),
+	learningResourceId: integer("learning_resource_id").notNull().references(() => learningResources.id),
+	completed: boolean("completed").default(false),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }),
 });
 
 export const developersResume = main.table("developers_resume", {
@@ -1633,81 +1602,70 @@ export const developersResume = main.table("developers_resume", {
 });
 
 export const bootcamps = main.table("bootcamps", {
-	id: serial("id").primaryKey(),
-	name: text('name').notNull(),
+	id: serial("id").primaryKey().notNull(),
+	name: text("name").notNull(),
 	coverImage: text("cover_image"),
 	bootcampTopic: text("bootcamp_topic"),
-	// schedules: jsonb("schedules"), // Assuming schedules will be stored as JSONB
+	startTime: timestamp("start_time"),
+	duration: text("duration"),
 	language: text("language"),
 	capEnrollment: integer("cap_enrollment"),
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
-	updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow(),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
 });
 
 export const batches = main.table("batches", {
-	id: serial("id").primaryKey(),
-	name: text('name').notNull(),
-	bootcampId: integer("bootcamp_id").references(() => bootcamps.id, { onDelete: "cascade"} ),
-	instructorId: integer("instructor_id").references(() => users.id ),
+	id: serial("id").primaryKey().notNull(),
+	name: text("name").notNull(),
+	bootcampId: integer("bootcamp_id"),
+	instructorId: integer("instructor_id"),
 	capEnrollment: integer("cap_enrollment"),
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
-	updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
 });
 
-export const batchEnrollment = main.table("batch_enrollments", {
-	id: serial("id").primaryKey(),
-	studentEmail: integer("student_email").references(() => users.email, { onDelete:'set null'}).notNull(),
-	bootcampId: integer("bootcamp_id").references(() => bootcamps.id, { onDelete: "cascade"} ),
-	batchId: integer("batch_id").references(() => batches.id, { onDelete: "cascade"} ),
+export const engArticles = main.table("eng_articles", {
+	id: serial("id").primaryKey().notNull(),
+	title: varchar("title", { length: 255 }).notNull(),
+	sourceUrl: varchar("source_url", { length: 255 }).notNull(),
+	imageUrl: varchar("image_url", { length: 255 }),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+});
+
+export const engHistory = main.table("eng_history", {
+	id: serial("id").primaryKey().notNull(),
+	userId: integer("user_id").notNull(),
+	engArticlesId: integer("eng_articles_id").notNull(),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+});
+
+export const engLevelwise = main.table("eng_levelwise", {
+	id: serial("id").primaryKey().notNull(),
+	level: integer("level").notNull(),
+	content: text("content").notNull(),
+	articleId: integer("article_id").notNull(),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+});
+
+export const exerciseCompletion = main.table("exercise_completion", {
+	id: serial("id").primaryKey().notNull(),
+	userId: integer("user_id").notNull().references(() => users.id),
+	exerciseId: integer("exercise_id").notNull().references(() => exercises.id),
+},
+(table) => {
+	return {
+		mainExerciseCompletionUserIdExerciseIdUnique: unique("main_exercise_completion_user_id_exercise_id_unique").on(table.userId, table.exerciseId),
+	}
+});
+
+export const batchEnrollments = main.table("batch_enrollments", {
+	id: serial("id").primaryKey().notNull(),
+	studentEmail: integer("student_email").notNull().references(() => users.email),
+	bootcampId: integer("bootcamp_id").references(() => bootcamps.id),
+	batchId: integer("batch_id").references(() =>  batches.id),
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
-	updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
 });
-
-// export const articleProgress = main.table("zuvy_article_progress", {
-// 	id: serial("id").primaryKey().notNull(),
-// 	userId: integer("user_id").references(() => users.id),
-// 	courseId: integer("course_id"),
-// 	articleId: integer("article_id"),
-// 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
-// 	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
-// });
-
-// export const mcqProgress = main.table("zuvy_mcq_progress", {
-// 	id: serial("id").primaryKey().notNull(),
-// 	userId: integer("user_id").references(() => users.id),
-// 	courseId: integer("course_id"),
-// 	quizId: integer("quiz_id").references(() => quizProgress.id),
-// 	attemptCount: integer("attempt_count").default(0),
-// 	status: varchar("status", { length: 255 }),
-// 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
-// 	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
-// });
-
-// export const quizProgress = main.table("zuvy_quiz_progress", {
-// 	id: serial("id").primaryKey().notNull(),
-// 	userId: integer("user_id").references(() => users.id),
-// 	courseId: integer("course_id"),
-// 	quizId: integer("quiz_id"),
-// 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
-// 	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
-// });
-
-// export const assignmentSubmission = main.table("zuvy_assignment_submission", {
-// 	id: serial("id").primaryKey().notNull(),
-// 	userId: integer("user_id").references(() => users.id),
-// 	courseId: integer("course_id"),
-// 	assignmentId: integer("assignment_id"),
-// 	projectUrl: varchar("project_url", { length: 255 }),
-// 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
-// 	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
-// });
-
-// export const courseProgress = main.table("zuvy_course_progress", {
-// 	id: serial("id").primaryKey().notNull(),
-// 	userId: integer("user_id").references(() => users.id),
-// 	courseId: integer("course_id"),
-// 	progress: integer("progress").default(0),
-// 	pathwayId: integer("pathway_id"),
-// 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
-// 	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
-// });
