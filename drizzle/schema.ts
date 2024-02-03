@@ -1663,9 +1663,58 @@ export const exerciseCompletion = main.table("exercise_completion", {
 
 export const batchEnrollments = main.table("batch_enrollments", {
 	id: serial("id").primaryKey().notNull(),
-	studentEmail: integer("student_email").notNull().references(() => users.email),
+	userId: integer("user_id").notNull().references(() => users.id),
 	bootcampId: integer("bootcamp_id").references(() => bootcamps.id),
 	batchId: integer("batch_id").references(() =>  batches.id),
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
 	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
 });
+
+// export const articleProgress = main.table("zuvy_article_progress", {
+// 	id: serial("id").primaryKey().notNull(),
+// 	userId: integer("user_id").references(() => users.id),
+// 	courseId: integer("course_id"),
+// 	articleId: integer("article_id"),
+// 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+// 	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+// });
+
+// export const mcqProgress = main.table("zuvy_mcq_progress", {
+// 	id: serial("id").primaryKey().notNull(),
+// 	userId: integer("user_id").references(() => users.id),
+// 	courseId: integer("course_id"),
+// 	quizId: integer("quiz_id").references(() => quizProgress.id),
+// 	attemptCount: integer("attempt_count").default(0),
+// 	status: varchar("status", { length: 255 }),
+// 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+// 	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+// });
+
+// export const quizProgress = main.table("zuvy_quiz_progress", {
+// 	id: serial("id").primaryKey().notNull(),
+// 	userId: integer("user_id").references(() => users.id),
+// 	courseId: integer("course_id"),
+// 	quizId: integer("quiz_id"),
+// 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+// 	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+// });
+
+// export const assignmentSubmission = main.table("zuvy_assignment_submission", {
+// 	id: serial("id").primaryKey().notNull(),
+// 	userId: integer("user_id").references(() => users.id),
+// 	courseId: integer("course_id"),
+// 	assignmentId: integer("assignment_id"),
+// 	projectUrl: varchar("project_url", { length: 255 }),
+// 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+// 	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+// });
+
+// export const courseProgress = main.table("zuvy_course_progress", {
+// 	id: serial("id").primaryKey().notNull(),
+// 	userId: integer("user_id").references(() => users.id),
+// 	courseId: integer("course_id"),
+// 	progress: integer("progress").default(0),
+// 	pathwayId: integer("pathway_id"),
+// 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+// 	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+// });
