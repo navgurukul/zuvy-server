@@ -1,10 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { bootcamps,batches } from '../../../drizzle/schema';
 import { db } from '../../db/index';
 import { eq,sql, } from 'drizzle-orm';
 import { BatchesService } from '../batches/batch.service';
 import axios from 'axios';
 import { log } from 'console';
+import { bootcamps, batches, users, batchEnrollments } from '../../../drizzle/schema';
 
 const {ZUVY_CONTENT_URL} = process.env// INPORTING env VALUSE ZUVY_CONTENT
 
@@ -120,6 +120,37 @@ export class BootcampService {
     async getBatchByIdBootcamp(bootcamp_id: number){
         try {
             return await db.select().from(batches).where(eq(batches.bootcampId, bootcamp_id));
+        } catch (e) {
+            log(`error: ${e.message}`)
+            return {'status': 'error', 'message': e.message,'code': 500};
+        }
+    }
+    async addStudentToBootcamp(bootcampId: number, batchId: number, users_data: any){
+        try {
+            let enrollments = [];
+            for (let i = 0; i < users_data.length; i++) {
+                let newUser = {}
+                newUser["bootcamp_id"] = bootcampId
+                newUser["batch_id"] = batchId
+                newUser["student_email"] = users_data[i]["email"] 
+                let userInfo = await db.select().from(users).where(sql`${users.email} = ${users_data[i]["email"]}`);
+
+                if (userInfo.length === 0){
+                    newUser["createdAt"] = new Date();
+                    newUser["updatedAt"] = new Date();
+                    userInfo = await db.insert(users).values(newUser).returning();
+                } 
+                let enroling = {userId:  userInfo[0].id,
+                    bootcampId};
+                if (batchId){
+                    enroling["batchId"] = batchId
+                }
+                enrollments.push(enroling);
+                }  
+            if (enrollments.length > 0) {
+              await db.insert(batchEnrollments).values(enrollments);
+            }
+            return {'status': 'success', 'message': 'Studentes enrolled successfully', 'code': 200};
         } catch (e) {
             log(`error: ${e.message}`)
             return {'status': 'error', 'message': e.message,'code': 500};

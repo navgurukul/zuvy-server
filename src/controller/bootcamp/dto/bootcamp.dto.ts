@@ -77,30 +77,25 @@ export class EditBootcampDto{
   @IsString()
   bootcampTopic: string;
 
-  // @ApiProperty({
-  //   description: 'The id of the instructorId',
-  //   type: Number,
-  //   example: 20230,
-  //   required: true,
-  // })
-  // @IsNotEmpty()
-  // @IsNumber()
-  // instructorId: number;
+  @ApiProperty({
+    description: 'The duration of the bootcamp',
+    type: String,
+    example: '3 months',
+    required: true,
+  })
+  @IsNotEmpty()
+  @IsString()
+  duration: string;
 
-  // @ApiProperty({
-  //   description: 'The schedules of the bootcamp',
-  //   type: [ScheduleDto], // Indicate that this is an array of ScheduleDto objects
-  //   example: 
-  //     [{
-  //       startTime: new Date(),
-  //       endTime: new Date(),
-  //       day: 'The schedule day',
-  //     }],
-  //   required: true,
-  // })
-  // @ValidateNested({ each: true })
-  // @Type(() => ScheduleDto) // This decorator is needed to instantiate ScheduleDto objects
-  // schedules: ScheduleDto[];
+  @ApiProperty({
+    description: 'The start time of the bootcamp',
+    type: String, 
+    example: '2023-03-01T00:00:00Z',
+    required: true,
+  })
+  @IsNotEmpty()
+  @IsString()
+  startTime: string;
 
   @ApiProperty({
     description: 'The language of the bootcamp',
@@ -150,28 +145,23 @@ export class PatchBootcampDto{
   @IsString()
   bootcampTopic: string;
 
-  // @ApiProperty({
-  //   description: 'The id of the instructorId',
-  //   type: Number,
-  //   example: 20230,
-  // })
-  // @IsOptional()
-  // @IsNumber()
-  // instructorId: number;
+  @ApiProperty({
+    description: 'The duration of the bootcamp',
+    type: String,
+    example: '3 months',
+    required: true,
+  })
+  @IsString()
+  duration: string;
 
-  // @ApiProperty({
-  //   description: 'The schedules of the bootcamp',
-  //   type: [ScheduleDto], // Indicate that this is an array of ScheduleDto objects
-  //   example: 
-  //     [{
-  //       startTime: new Date(),
-  //       endTime: new Date(),
-  //       day: 'The schedule day',
-  //     }],
-  // })
-  // @ValidateNested({ each: true })
-  // @Type(() => ScheduleDto) // This decorator is needed to instantiate ScheduleDto objects
-  // schedules: ScheduleDto[];
+  @ApiProperty({
+    description: 'The start time of the bootcamp',
+    type: String, 
+    example: '2023-03-01T00:00:00Z',
+    required: true,
+  })
+  @IsString()
+  startTime: string;
 
   @ApiProperty({
     description: 'The language of the bootcamp',
