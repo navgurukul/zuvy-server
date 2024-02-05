@@ -3,7 +3,7 @@ import { db } from '../../db/index';
 import { eq,sql, } from 'drizzle-orm';
 import { BatchesService } from '../batches/batch.service';
 import axios from 'axios';
-import { log } from 'console';
+import { error, log } from 'console';
 import { bootcamps, batches, users, batchEnrollments } from '../../../drizzle/schema';
 
 const {ZUVY_CONTENT_URL} = process.env// INPORTING env VALUSE ZUVY_CONTENT
@@ -28,9 +28,14 @@ export class BootcampService {
                 return [{'status': 'Error', 'message': 'Bootcamp not found!','code': 404}, null];
             }
             if(isContent){
-                let respo = await axios.get(ZUVY_CONTENT_URL+`/${id}?populate=zuvy_modules&populate=zuvy_modules.zuvy_articles&populate=zuvy_modules.zuvy_mcqs.quiz.qz`)
-                bootcamp[0]['content'] = respo.data
+                try{
+                    let respo = await axios.get(ZUVY_CONTENT_URL+`/${id}?populate=zuvy_modules&populate=zuvy_modules.zuvy_articles&populate=zuvy_modules.zuvy_mcqs.quiz.qz`)
+                    bootcamp[0]['content'] = respo.data
+                } catch (error) {
+                    log(`Error posting data: ${error.message}`)
+                }
             }
+
             return [null, {'status': 'success', 'message': 'Bootcamp fetched successfully', 'code': 200, bootcamp: bootcamp[0]}];
         } catch (e) {
             log(`error: ${e.message}`)
@@ -42,13 +47,15 @@ export class BootcampService {
         try{
             let newBootcamp = await db.insert(bootcamps).values(bootcampData).returning();
             try {
-            const response = await axios.post(ZUVY_CONTENT_URL, {
-                "data":{
+            try {  
+                const response = await axios.post(ZUVY_CONTENT_URL, {"data":{
                     "id":newBootcamp[0].id,
                     "name": newBootcamp[0].name
-                }
-            });
-            log(`Created the content in strapi with the name of ${newBootcamp[0].name},`)
+                }});
+                log(`Created the content in strapi with the name of ${newBootcamp[0].name},`)
+            } catch (error) {
+                log(`Error posting data: ${error.message}`)
+            }
             } catch (error) {
                 log(`Error posting data: ${error.message}`)
                 return [{'status': 'Error', 'message': error.message,'code': 404}, null];
@@ -80,12 +87,16 @@ export class BootcampService {
                 let batchData = {instructorId, name: "batch 1", capEnrollment: bootcampData.capEnrollment, bootcampId: id}
                 let newBatch = await db.insert(batches).values(batchData).returning();
                 update_data["batch"] = newBatch[0]
-                const response = await axios.put(ZUVY_CONTENT_URL+`/${id}`, {
-                    "data":{
-                        "name": bootcampData.name
-                    }
-                });
-                log('Update the name of the content in strapi')
+                try{
+                    const response = await axios.put(ZUVY_CONTENT_URL+`/${id}`, {
+                        "data":{
+                            "name": bootcampData.name
+                        }
+                    });
+                    log('Update the name of the content in strapi')
+                } catch (error) {
+                    log(`Error posting data: ${error.message}`)
+                }
             }
             if (bootcampData && bootcampData.capEnrollment){
                 await this.batchesService.capEnrollment({bootcampId : id})
