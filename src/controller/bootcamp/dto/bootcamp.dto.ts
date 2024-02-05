@@ -181,3 +181,25 @@ export class PatchBootcampDto{
   @IsNumber()
   capEnrollment: number;
 }
+class studentEmail {
+  @ApiProperty({
+    description: 'The students email',
+    type: String,
+    example: 'The students email',
+    required: true,
+  })
+  @IsNotEmpty()
+  @IsString()
+  students_email: string;
+}
+export class studentDataDto {
+  @ApiProperty({
+    description: 'Array of student data',
+    type: [studentEmail],
+    required: true,
+  })
+  @IsNotEmpty()
+  @ValidateNested({ each: true })
+  @Type(() => studentEmail)
+  students: studentEmail[];
+}

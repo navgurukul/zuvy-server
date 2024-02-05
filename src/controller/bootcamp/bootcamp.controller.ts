@@ -1,7 +1,7 @@
 import { Controller, Get, Post, Put,Patch,  Delete, Body, Param, ValidationPipe, UsePipes, Optional, Query } from '@nestjs/common';
 import { BootcampService } from './bootcamp.service';
 import { ApiTags, ApiBody, ApiOperation, ApiCookieAuth, ApiQuery} from '@nestjs/swagger';
-import { CreateBootcampDto, EditBootcampDto, PatchBootcampDto,studentDataDto } from './dto/bootcamp.dto';
+import { CreateBootcampDto, EditBootcampDto, PatchBootcampDto, studentDataDto } from './dto/bootcamp.dto';
 // import { EditBootcampDto } from './dto/editBootcamp.dto';
 // import { AuthGuard } from '@nestjs/passport'; // Assuming JWT authentication
 
@@ -63,7 +63,7 @@ export class BootcampController {
     @ApiOperation({ summary: "Add the student to the bootcamp"})
     @ApiQuery({ name: 'batch_id', required: false, type: Number, description: 'batch id' })
     addStudentToBootcamp(@Param('bootcamp_id') bootcamp_id: number, @Query('batch_id') batch_id: number, @Body() studentData: studentDataDto) {
-        return this.bootcampService.addStudentToBootcamp(bootcamp_id, batch_id, studentData.students_email);
+        return this.bootcampService.addStudentToBootcamp(bootcamp_id, batch_id, studentData);
     }
 }
 
