@@ -152,6 +152,7 @@ export class PatchBootcampDto{
     required: true,
   })
   @IsString()
+  @IsOptional()
   duration: string;
 
   @ApiProperty({
@@ -161,6 +162,7 @@ export class PatchBootcampDto{
     required: true,
   })
   @IsString()
+  @IsOptional()
   startTime: string;
 
   @ApiProperty({
