@@ -48,18 +48,18 @@ export const chanakyaUserEmail = main.table("chanakya_user_email", {
         }
 });
 
-export const bootcamps = main.table("bootcamps", {
-        id: serial("id").primaryKey().notNull(),
-        name: text("name").notNull(),
-        coverImage: text("cover_image"),
-        bootcampTopic: text("bootcamp_topic"),
-        startTime : timestamp("start_time", { withTimezone: true, mode: 'string' }),
-        duration: text("duration"),
-        language: text("language"),
-        capEnrollment: integer("cap_enrollment"),
-        createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
-        updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
-});
+// export const bootcamps = main.table("bootcamps", {
+//         id: serial("id").primaryKey().notNull(),
+//         name: text("name").notNull(),
+//         coverImage: text("cover_image"),
+//         bootcampTopic: text("bootcamp_topic"),
+//         startTime : timestamp("start_time", { withTimezone: true, mode: 'string' }),
+//         duration: text("duration"),
+//         language: text("language"),
+//         capEnrollment: integer("cap_enrollment"),
+//         createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+//         updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+// });
 
 export const pathwaysOngoingTopicOutcome = main.table("pathways_ongoing_topic_outcome", {
         id: serial("id").primaryKey().notNull(),
@@ -122,15 +122,15 @@ export const feedbacks = main.table("feedbacks", {
         }
 });
 
-export const batches = main.table("batches", {
-        id: serial("id").primaryKey().notNull(),
-        name: text("name").notNull(),
-        bootcampId: integer("bootcamp_id").references(() => bootcamps.id, { onDelete: "cascade" } ),
-        instructorId: integer("instructor_id").references(() => users.id),
-        capEnrollment: integer("cap_enrollment"),
-        createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
-        updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
-});
+// export const batches = main.table("batches", {
+//         id: serial("id").primaryKey().notNull(),
+//         name: text("name").notNull(),
+//         bootcampId: integer("bootcamp_id").references(() => bootcamps.id, { onDelete: "cascade" } ),
+//         instructorId: integer("instructor_id").references(() => users.id),
+//         capEnrollment: integer("cap_enrollment"),
+//         createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+//         updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+// });
 
 export const ongoingTopics = main.table("ongoing_topics", {
         id: serial("id").primaryKey().notNull(),
@@ -1699,14 +1699,14 @@ export const developersResume = main.table("developers_resume", {
         }
 });
 
-export const batchEnrollments = main.table("batch_enrollments", {
-        id: serial("id").primaryKey().notNull(),
-        userId: integer("user_id").notNull().references(() => users.id),
-        bootcampId: integer("bootcamp_id").references(() => bootcamps.id),
-        batchId: integer("batch_id").references(() =>  batches.id),
-        createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
-        updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
-});
+// export const batchEnrollments = main.table("batch_enrollments", {
+//         id: serial("id").primaryKey().notNull(),
+//         userId: integer("user_id").notNull().references(() => users.id),
+//         bootcampId: integer("bootcamp_id").references(() => bootcamps.id),
+//         batchId: integer("batch_id").references(() =>  batches.id),
+//         createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+//         updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+// });
 
 // export const articleProgress = main.table("zuvy_article_progress", {
 //      id: serial("id").primaryKey().notNull(),
