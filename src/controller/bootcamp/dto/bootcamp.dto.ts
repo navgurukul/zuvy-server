@@ -190,7 +190,17 @@ class studentEmail {
   })
   @IsNotEmpty()
   @IsString()
-  students_email: string;
+  email: string;
+
+  @ApiProperty({
+    description: 'The students name',
+    type: String,
+    example: 'The students name',
+    required: true,
+  })
+  @IsNotEmpty()
+  @IsString()
+  name: string;
 }
 export class studentDataDto {
   @ApiProperty({

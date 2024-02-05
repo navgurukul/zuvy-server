@@ -40,11 +40,7 @@ export class BootcampService {
 
     async createBootcamp(bootcampData): Promise<object> {
         try{
-
-            bootcampData["createdAt"] = new Date();
-            bootcampData["updatedAt"] = new Date();
             let newBootcamp = await db.insert(bootcamps).values(bootcampData).returning();
-
             try {
             const response = await axios.post(ZUVY_CONTENT_URL, {
                 "data":{
@@ -132,12 +128,11 @@ export class BootcampService {
                 let newUser = {}
                 newUser["bootcamp_id"] = bootcampId
                 newUser["batch_id"] = batchId
-                newUser["student_email"] = users_data[i]["email"] 
+                newUser["email"] = users_data[i]["email"] 
+                newUser["name"] = users_data[i]["name"]
+                
                 let userInfo = await db.select().from(users).where(sql`${users.email} = ${users_data[i]["email"]}`);
-
                 if (userInfo.length === 0){
-                    newUser["createdAt"] = new Date();
-                    newUser["updatedAt"] = new Date();
                     userInfo = await db.insert(users).values(newUser).returning();
                 } 
                 let enroling = {userId:  userInfo[0].id,
@@ -148,12 +143,28 @@ export class BootcampService {
                 enrollments.push(enroling);
                 }  
             if (enrollments.length > 0) {
-              await db.insert(batchEnrollments).values(enrollments);
+                await db.insert(batchEnrollments).values(enrollments);
             }
             return {'status': 'success', 'message': 'Studentes enrolled successfully', 'code': 200};
         } catch (e) {
             log(`error: ${e.message}`)
             return {'status': 'error', 'message': e.message,'code': 500};
+        }
+    }
+
+    async getStudentsByBootcampOrBatch(bootcamp_id, batch_id){
+        try {
+            let queryString ;
+            if (bootcamp_id){
+                queryString = sql`${batchEnrollments.bootcampId} = ${bootcamp_id}`
+            } else if (batch_id){
+                queryString = sql`${batchEnrollments.batchId} = ${batch_id}`
+            }
+            let batchEnrollmentsData = await db.select().from(batchEnrollments).where(queryString);
+            return [null, batchEnrollmentsData]
+        } catch (e) {
+            log(`error: ${e.message}`)
+            return [{'status': 'error', 'message': e.message,'code': 500},null];
         }
     }
 }
