@@ -1653,3 +1653,13 @@ export const batches = main.table("batches", {
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
 	updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
 });
+
+export const classesGoogleMeetLink= main.table("classes_google_meet_link",{
+	id: serial("id").primaryKey().notNull(),
+	hangoutLink:text("hangout_link").notNull(),
+	creator:text("creator").notNull(),
+	startTime:text("start_time").notNull(),
+	endTime:text("end_time").notNull(),
+	batchId:text("batch_id").notNull(),
+	moduleId:text("module_id").notNull(),
+})

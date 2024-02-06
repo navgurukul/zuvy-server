@@ -1,7 +1,7 @@
 import { Controller, Get, Post, Put, Delete, Body, Param, ValidationPipe, UsePipes, Res, Req } from '@nestjs/common';
 import { ClassesService } from './classes.service';
 import { ApiTags, ApiBody, ApiOperation, ApiCookieAuth  } from '@nestjs/swagger';
-import {  CreateDto, ScheduleDto } from './dto/classes.dto';
+import {  CreateDto, ScheduleDto,CreateLiveBroadcastDto } from './dto/classes.dto';
 // import { AuthGuard } from '@nestjs/passport'; // Assuming JWT authentication
 
 
@@ -30,10 +30,16 @@ export class ClassesController {
     }
 
     @Post('/')
-    @ApiOperation({ summary: "Create the new bootcamp"})
-    async create(@Body() classData: ScheduleDto) {
-        return this.classesService.createLiveBroadcast();
+    @ApiOperation({ summary: "Create the new class"})
+    async create(@Body() classData: CreateLiveBroadcastDto) {
+        return this.classesService.createLiveBroadcast(classData);
     }
+    @Get('/getClassesByBatchId/:batchId')
+    @ApiOperation({ summary: "Get the google classes by batchId"})
+    getClassesByBatchId(@Param('batchId') batchId: string): Promise<object> {
+        return this.classesService.getClassesByBatchId(batchId);
+    }
+}
 
     // @Put('/:id')
     // @ApiOperation({ summary: "Update the bootcamp"})
@@ -52,5 +58,5 @@ export class ClassesController {
     //     return this.bootcampService.getBatchByIdBootcamp(parseInt(bootcamp_id));
     // }
 
-}
+// }
 
