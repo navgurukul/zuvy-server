@@ -9,33 +9,32 @@ import { log } from 'console';
 @Injectable()
 export class BatchesService {
     
-    async capEnrollment(batch, add_num = 0) {
-        const bootcamp = await db.select().from(bootcamps).where(eq(bootcamps.id, batch.bootcampId));
-        if (bootcamp.length === 0) {
-            return { 'status': 'error', 'message': 'Bootcamp not found', 'code': 404 };
-        }
+    // async capEnrollment(batch, add_num = 0) {
+    //     const bootcamp = await db.select().from(bootcamps).where(eq(bootcamps.id, batch.bootcampId));
+    //     if (bootcamp.length === 0) {
+    //         return { 'status': 'error', 'message': 'Bootcamp not found', 'code': 404 };
+    //     }
 
-        const totalBatches = await db.select().from(batches).where(eq(batches.bootcampId, batch.bootcampId));
-        const capPerBatch = Math.floor(bootcamp[0].capEnrollment / (totalBatches.length + add_num));
+    //     const totalBatches = await db.select().from(batches).where(eq(batches.bootcampId, batch.bootcampId));
+    //     const capPerBatch = Math.floor(bootcamp[0].capEnrollment / (totalBatches.length + add_num));
 
-        if (capPerBatch < 1) {
-            return { 'status': 'error', 'message': 'Batch capacity cannot be less than 1', 'code': 400 };
-        }
+    //     if (capPerBatch < 1) {
+    //         return { 'status': 'error', 'message': 'Batch capacity cannot be less than 1', 'code': 400 };
+    //     }
 
-        batch['capEnrollment'] = capPerBatch;
+    //     batch['capEnrollment'] = capPerBatch;
 
-        if (totalBatches.length > 0) {
-            const remainder = bootcamp[0].capEnrollment % (totalBatches.length + 1);
-            batch['capEnrollment'] += remainder;
-            await db.update(batches).set({ capEnrollment: capPerBatch }).where(eq(batches.bootcampId, bootcamp[0].id));
-        }
-        return batch;
-    }
+    //     if (totalBatches.length > 0) {
+    //         const remainder = bootcamp[0].capEnrollment % (totalBatches.length + 1);
+    //         batch['capEnrollment'] += remainder;
+    //         await db.update(batches).set({ capEnrollment: capPerBatch }).where(eq(batches.bootcampId, bootcamp[0].id));
+    //     }
+    //     return batch;
+    // }
 
     async createBatch(batch) {
         try {
-            let batchData = await this.capEnrollment(batch, 1);
-            const newData = await db.insert(batches).values(batchData).returning();
+            const newData = await db.insert(batches).values(batch).returning();
             return { 'status': 'success', 'message': 'Batch created successfully', 'code': 200, batch: newData[0] };
         } catch (e) {
             log(`error: ${e.message}`)
@@ -85,7 +84,6 @@ export class BatchesService {
             if (data.length === 0) {
                 return {status: 'error', message: 'Batch not found', code: 404};
             }
-            await this.capEnrollment({bootcampId:data[0]?.bootcampId});
             return {status: 'success', message: 'Batch deleted successfully', code: 200};
         } catch (e) {
             log(`error: ${e.message}`)

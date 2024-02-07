@@ -32,6 +32,16 @@ export class BatchDto {
   @IsNotEmpty()
   @IsNumber()
   bootcampId: number;
+
+  @ApiProperty({
+    description: 'The cap enrollment of the bootcamp',
+    type: Number,
+    example: 500,
+    required: true,
+  })
+  @IsNotEmpty({message: 'capEnrollment is required'})
+  @IsNumber()
+  capEnrollment: number;
 }
 
 export class PatchBatchDto {
@@ -52,4 +62,14 @@ export class PatchBatchDto {
   @IsOptional()
   @IsNumber()
   instructorId: number;
+
+  @ApiProperty({
+    description: 'The cap enrollment of the bootcamp',
+    type: Number,
+    example: 500,
+    required: true,
+  })
+  @IsOptional()
+  @IsNumber()
+  capEnrollment: number;
 }

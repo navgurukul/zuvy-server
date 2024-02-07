@@ -72,36 +72,13 @@ export class BootcampService {
 
     async updateBootcamp(id: number, bootcampData): Promise<any> {
         try {
-            let instructorId = bootcampData.instructorId
             delete bootcampData.instructorId;
             let updatedBootcamp = await db.update(bootcamps).set({...bootcampData}).where(eq(bootcamps.id, id)).returning();
 
             if (updatedBootcamp.length === 0) {
                 return [{'status': 'error', 'message': 'Bootcamp not found', 'code': 404}, null];
-            }
-
-            let update_data = {"bootcamp":updatedBootcamp[0]}
-            let batch_data = await db.select().from(batches).where(eq(batches.bootcampId, id));
-
-            if (batch_data.length == 0){
-                let batchData = {instructorId, name: "batch 1", capEnrollment: bootcampData.capEnrollment, bootcampId: id}
-                let newBatch = await db.insert(batches).values(batchData).returning();
-                update_data["batch"] = newBatch[0]
-                try{
-                    const response = await axios.put(ZUVY_CONTENT_URL+`/${id}`, {
-                        "data":{
-                            "name": bootcampData.name
-                        }
-                    });
-                    log('Update the name of the content in strapi')
-                } catch (error) {
-                    log(`Error posting data: ${error.message}`)
-                }
-            }
-            if (bootcampData && bootcampData.capEnrollment){
-                await this.batchesService.capEnrollment({bootcampId : id})
-            }
-            return [null, {'status': 'success', 'message': 'Bootcamp updated successfully','code': 200,update_data}];
+            }    
+            return [null, {'status': 'success', 'message': 'Bootcamp updated successfully','code': 200,updatedBootcamp}];
 
         } catch (e) {
             log(`error: ${e.message}`)
@@ -111,9 +88,8 @@ export class BootcampService {
 
     async deleteBootcamp(id: number): Promise<any> {
         try {
-            await db.delete(batches).where(eq(batches.bootcampId, id));
-            let data = await db.delete(bootcamps).where(eq(bootcamps.id, id)).returning();
-            await this.batchesService.capEnrollment({bootcampId : id})
+            let data = await db.delete(batches).where(eq(batches.bootcampId, id)).returning();
+            await db.delete(bootcamps).where(eq(bootcamps.id, id));
             if (data.length === 0) {
                 return [{'status': 'error', 'message': 'Bootcamp not found', 'code': 404}, null];
             }
@@ -133,6 +109,7 @@ export class BootcampService {
             return {'status': 'error', 'message': e.message,'code': 500};
         }
     }
+    
     async addStudentToBootcamp(bootcampId: number, batchId: number, users_data: any){
         try {
             let enrollments = [];
