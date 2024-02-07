@@ -1,12 +1,13 @@
 import { Controller, Get, Post, Put, Patch, Delete, Body, Param, ValidationPipe, UsePipes } from '@nestjs/common';
 import { BatchesService } from './batch.service';
-import { ApiTags, ApiBody, ApiOperation, ApiCookieAuth  } from '@nestjs/swagger';
+import { ApiTags, ApiBody, ApiOperation, ApiCookieAuth,ApiBearerAuth ,ApiForbiddenResponse } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport'; // Assuming JWT authentication
 import {BatchDto, PatchBatchDto} from './dto/batch.dto';
 
 // swagger body schema for batch
 @Controller('batch')
 @ApiTags('batch')
+@ApiBearerAuth()
 @UsePipes(new ValidationPipe({
     whitelist: true,
     transform: true,
