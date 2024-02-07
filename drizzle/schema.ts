@@ -1711,6 +1711,17 @@ export const developersResume = main.table("developers_resume", {
         }
 });
 
+export const classesGoogleMeetLink= main.table("classes_google_meet_link",{
+	id: serial("id").primaryKey().notNull(),
+	hangoutLink:text("hangout_link").notNull(),
+	creator:text("creator").notNull(),
+	startTime:text("start_time").notNull(),
+	endTime:text("end_time").notNull(),
+	batchId:text("batch_id").notNull(),
+	bootcampId:text("bootcamp_id").notNull(),
+	title:text("title").notNull()
+})
+
 
 
 // export const articleProgress = main.table("zuvy_article_progress", {
