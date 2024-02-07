@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { db } from '../../db/index';
 import { eq,sql, } from 'drizzle-orm';
-import { BatchesService } from '../batches/batch.service';
+// import { BatchesService } from '../batches/batch.service';
 import axios from 'axios';
 import { error, log } from 'console';
 import { bootcamps, batches, users, batchEnrollments } from '../../../drizzle/schema';
@@ -10,7 +10,7 @@ const {ZUVY_CONTENT_URL} = process.env// INPORTING env VALUSE ZUVY_CONTENT
 
 @Injectable()
 export class BootcampService {
-    constructor(private batchesService:BatchesService) { }
+    // constructor(private batchesService:BatchesService) { }
     async getAllBootcamps(): Promise<any> {
         try {
             const allUsers = await db.select().from(bootcamps);
@@ -89,7 +89,7 @@ export class BootcampService {
     async deleteBootcamp(id: number): Promise<any> {
         try {
             let data = await db.delete(batches).where(eq(batches.bootcampId, id)).returning();
-            await db.delete(bootcamps).where(eq(bootcamps.id, id));
+            // await db.delete(bootcamps).where(eq(bootcamps.id, id));
             if (data.length === 0) {
                 return [{'status': 'error', 'message': 'Bootcamp not found', 'code': 404}, null];
             }

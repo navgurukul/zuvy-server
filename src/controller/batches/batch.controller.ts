@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Patch, Delete, Body, Param, ValidationPipe, UsePipes } from '@nestjs/common';
+import { Controller, Get, Post, Put, Patch, Delete, Body, Param, ValidationPipe, UsePipes, BadRequestException } from '@nestjs/common';
 import { BatchesService } from './batch.service';
 import { ApiTags, ApiBody, ApiOperation, ApiCookieAuth,ApiBearerAuth ,ApiForbiddenResponse } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport'; // Assuming JWT authentication
@@ -17,31 +17,51 @@ export class BatchesController {
     constructor(private batchService: BatchesService) { }
     @Get('/:id')
     @ApiOperation({ summary: "Get the batch by id"})
-    getBatchById(@Param('id') id: string): Promise<object> {
-        return this.batchService.getBatchById(parseInt(id));
+    async getBatchById(@Param('id') id: string): Promise<object> {
+        const [err, res] = await this.batchService.getBatchById(parseInt(id));
+        if(err){
+            throw new BadRequestException(err);
+        } 
+        return res;
     }
     
     @Post('/')
     @ApiOperation({ summary: "Create the new batch"})
-    createBatch(@Body() batchData: BatchDto) {
-        return this.batchService.createBatch(batchData);
+    async createBatch(@Body() batchData: BatchDto) {
+        const [err, res] = await this.batchService.createBatch(batchData);
+        if(err){
+            throw new BadRequestException(err);
+        } 
+        return res;
     }
 
     @Put('/:id')
     @ApiOperation({ summary: "Put the batch by id"})
-    updateBatch(@Param('id') id: string, @Body() batchData: BatchDto) {
-        return this.batchService.updateBatch(parseInt(id),batchData);
+    async updateBatch(@Param('id') id: string, @Body() batchData: BatchDto) {
+        const [err, res] = await this.batchService.updateBatch(parseInt(id),batchData);
+        if(err){
+            throw new BadRequestException(err);
+        } 
+        return res;
     }
 
     @Delete('/:id')
     @ApiOperation({ summary: "Delete the batch by id"})
-    deleteBatch(@Param('id') id: string) {
-        return this.batchService.deleteBatch(parseInt(id));
+    async deleteBatch(@Param('id') id: string) {
+        const [err, res] = await this.batchService.deleteBatch(parseInt(id));
+        if(err){
+            throw new BadRequestException(err);
+        } 
+        return res;
     }
 
     @Patch('/:id')
     @ApiOperation({ summary: 'Update the Batch partially' })
-    updatePartialBatch(@Param('id') id: string, @Body() patchBatchDto: PatchBatchDto) {
-        return this.batchService.updatePartialBatch(parseInt(id), patchBatchDto);
+    async updatePartialBatch(@Param('id') id: string, @Body() patchBatchDto: PatchBatchDto) {
+        const [err, res] = await this.batchService.updateBatch(parseInt(id), patchBatchDto);
+        if(err){
+            throw new BadRequestException(err);
+        } 
+        return res;
     }
 }

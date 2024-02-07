@@ -1,5 +1,4 @@
-import { pgTable,jsonb, pgSchema, pgEnum, serial, varchar, timestamp, foreignKey, integer, text, unique, date, bigserial, boolean, bigint, index, char, json, uniqueIndex, doublePrecision, customType } from "drizzle-orm/pg-core"
-import { sql } from "drizzle-orm"
+import { pgTable, jsonb, pgSchema, pgEnum, serial, varchar, timestamp, foreignKey, integer, text, unique, date, bigserial, boolean, bigint, index, char, json, uniqueIndex, doublePrecision, customType } from "drizzle-orm/pg-core"
 
 export const courseEnrolmentsCourseStatus = pgEnum("course_enrolments_course_status", ['enroll', 'unenroll', 'completed'])
 export const coursesType = pgEnum("courses_type", ['html', 'js', 'python'])
@@ -37,8 +36,8 @@ export const batches = main.table("batches", {
 export const batchEnrollments = main.table("batch_enrollments", {
     id: serial("id").primaryKey().notNull(),
     userId: integer("user_id").notNull().references(() => users.id),
-    bootcampId: integer("bootcamp_id").references(() => bootcamps.id),
-    batchId: integer("batch_id").references(() =>  batches.id),
+    bootcampId: integer("bootcamp_id").references(() => bootcamps.id, { onDelete: "cascade" } ),
+    batchId: integer("batch_id").references(() =>  batches.id, { onDelete: "cascade" } ),
     createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
 });
@@ -1743,6 +1742,7 @@ export const classesGoogleMeetLink= main.table("classes_google_meet_link",{
 //      createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
 //      updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
 // });
+
 
 // export const quizProgress = main.table("zuvy_quiz_progress", {
 //      id: serial("id").primaryKey().notNull(),

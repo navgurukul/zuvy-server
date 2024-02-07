@@ -1,14 +1,15 @@
 import { Injectable } from '@nestjs/common';
-import {batches, bootcamps,users , sansaarUserRoles} from '../../../drizzle/schema';
-import { db} from '../../db/index';
-import { eq } from 'drizzle-orm';
+import {batches, bootcamps,users , sansaarUserRoles, batchEnrollments} from '../../../drizzle/schema';
+import { db } from '../../db/index';
+import { eq, sql } from 'drizzle-orm';
 import { log } from 'console';
-// import { BatchesModule } from './batch.module';
+// import { BootcampService } from '../bootcamp/bootcamp.service';
 
 
 @Injectable()
 export class BatchesService {
-    
+    // constructor(private bootcampService:BootcampService) { }
+
     // async capEnrollment(batch, add_num = 0) {
     //     const bootcamp = await db.select().from(bootcamps).where(eq(bootcamps.id, batch.bootcampId));
     //     if (bootcamp.length === 0) {
@@ -31,14 +32,38 @@ export class BatchesService {
     //     }
     //     return batch;
     // }
+    async capEnrollment(batch) {
+        const bootcamp = await db.select().from(bootcamps).where(eq(bootcamps.id, batch.bootcampId));
+        if (bootcamp.length === 0) {
+            return [{ 'status': 'error', 'message': 'Bootcamp not found', 'code': 404 }, null];
+        }
+        const totalBatches = await db.select().from(batches).where(eq(batches.bootcampId, batch.bootcampId));
+        let totalEnrolment = totalBatches.reduce((acc, b) => acc + b.capEnrollment, 0);
+        if (totalEnrolment + batch.capEnrollment > bootcamp[0].capEnrollment) {
+            return [{ 'status': 'error', 'message': 'Bootcamp capacity exceeded', 'code': 400 }, null];
+        }
+        return [null, true];
+    }
 
     async createBatch(batch) {
         try {
+            let [err,res] =  await this.capEnrollment(batch);
+            if(err){
+                return [err, null];
+            }
+
             const newData = await db.insert(batches).values(batch).returning();
-            return { 'status': 'success', 'message': 'Batch created successfully', 'code': 200, batch: newData[0] };
+            const usersData = await db.select().from(batchEnrollments).where(sql`${batchEnrollments.bootcampId} = ${batch.bootcampId} AND ${batchEnrollments.batchId} IS NULL`).limit(batch.capEnrollment); 
+            if (usersData.length > 0) {
+                const batchEnrollment = usersData.map((enrollment) => {
+                    return { userId: enrollment.userId, bootcampId: enrollment.bootcampId, batchId: newData[0].id };
+                });
+                await db.insert(batchEnrollments).values(batchEnrollment);
+            }
+            return [null, { 'status': 'success', 'message': 'Batch created successfully', 'code': 200, batch: newData[0] }];
         } catch (e) {
             log(`error: ${e.message}`)
-            return { 'status': 'error', 'message': e.message, 'code': 500 };
+            return [{ 'status': 'error', 'message': e.message, 'code': 500 }, null];
         }
     }
 
@@ -46,35 +71,36 @@ export class BatchesService {
         try {
             let data = await db.select().from(batches).where(eq(batches.id, id));
             if (data.length === 0) {
-                return {status: 'error', message: 'Batch not found', code: 404};
+                return [{status: 'error', message: 'Batch not found', code: 404},null];
             }
-            return {status: 'success', message: 'Batch fetched successfully', code: 200, batch: data[0]};
+            return [null, {status: 'success', message: 'Batch fetched successfully', code: 200, batch: data[0]}];
         } catch (e) {
             log(`error: ${e.message}`)
-            return {'status': 'error', 'message': e.message,'code': 500};
-        }
-    }
-
-    async getAllBatches(){
-        try {
-            return await db.select().from(batches);
-        } catch (e) {
-            log(`error: ${e.message}`)
-            return {'status': 'error', 'message': e.message,'code': 500};
+            return [{'status': 'error', 'message': e.message,'code': 500},null];
         }
     }
 
     async updateBatch(id: number, batch: object) {
         try {
+            let batchData = await db.select().from(batches).where(eq(batches.id, id));
+            if (batchData.length === 0) {
+                return [{status: 'error', message: 'Batch not found', code: 404},null];
+            }
+            if (batch['capEnrollment']) {
+                let [err,res] =  await this.capEnrollment(batchData[0]);
+                if(err){
+                    return [err, null];
+                }
+            }
             batch['updatedAt'] = new Date();
             let updateData = await db.update(batches).set(batch).where(eq(batches.id, id)).returning()
             if (updateData.length === 0) {
-                return {status: 'error', message: 'Batch not found', code: 404};
+                return [{status: 'error', message: 'Batch not found', code: 404},null];
             }
-            return {status: 'success', message: 'Batch updated successfully', code: 200, batch: updateData[0]};
+            return [null, {status: 'success', message: 'Batch updated successfully', code: 200, batch: updateData[0]}];
         } catch (e) {
             log(`error: ${e.message}`)
-            return {'status': 'error', 'message': e.message,'code': 500};
+            return [{'status': 'error', 'message': e.message,'code': 500}, null];
         }
     }
 
@@ -82,27 +108,12 @@ export class BatchesService {
         try {
             let data = await db.delete(batches).where(eq(batches.id, id)).returning();
             if (data.length === 0) {
-                return {status: 'error', message: 'Batch not found', code: 404};
+                return [{status: 'error', message: 'Batch not found', code: 404}, null];
             }
-            return {status: 'success', message: 'Batch deleted successfully', code: 200};
+            return [null, {status: 'success', message: 'Batch deleted successfully', code: 200}];
         } catch (e) {
             log(`error: ${e.message}`)
-            return {'status': 'error', 'message': e.message,'code': 500};
+            return [{'status': 'error', 'message': e.message,'code': 500},null];
         }
     }
-    async updatePartialBatch(id: number, partialBatch) {
-        try {
-            partialBatch['updatedAt'] = new Date();
-            let updateData = await db.update(batches).set(partialBatch).where(eq(batches.id, id)).returning();
-            if (updateData.length === 0) {
-                return { status: 'error', message: 'Batch not found', code: 404 };
-            }
-            return { status: 'success', message: 'Batch updated successfully', code: 200, batch: updateData[0] };
-        } catch (e) {
-            log(`error: ${e.message}`)
-            return { 'status': 'error', 'message': e.message, 'code': 500 };
-        }
-    }
-
-    
 }
