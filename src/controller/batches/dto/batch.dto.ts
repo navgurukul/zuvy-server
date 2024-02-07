@@ -1,10 +1,8 @@
 import { IsString, IsNotEmpty,IsOptional,  IsArray, ValidateNested, IsEmail, IsNumber } from 'class-validator';
 import { ApiProperty, ApiResponseProperty,ApiResponse } from '@nestjs/swagger';
 
-// @ApiResponse({ status: 200, description: 'The fetch operation' })
 export class BatchDto {
   @ApiProperty({
-    description: 'The name of the batch',
     type: String,
     example: 'batch name',
     required: true,
@@ -14,7 +12,6 @@ export class BatchDto {
   name: string;
 
   @ApiProperty({
-    description: 'The id of the instructor',
     type: Number,
     example: 20230,
     required: true,
@@ -24,7 +21,6 @@ export class BatchDto {
   instructorId: number;
 
   @ApiProperty({
-    description: 'The id of the bootcampId',
     type: Number,
     example: 20230,
     required: true,
@@ -34,7 +30,6 @@ export class BatchDto {
   bootcampId: number;
 
   @ApiProperty({
-    description: 'The cap enrollment of the bootcamp',
     type: Number,
     example: 500,
     required: true,
@@ -46,7 +41,6 @@ export class BatchDto {
 
 export class PatchBatchDto {
   @ApiProperty({
-    description: 'The name of the batch',
     type: String,
     example: 'batch name',
   })
@@ -55,7 +49,6 @@ export class PatchBatchDto {
   name: string;
 
   @ApiProperty({
-    description: 'The id of the instructor',
     type: Number,
     example: 20230,
   })
@@ -64,7 +57,6 @@ export class PatchBatchDto {
   instructorId: number;
 
   @ApiProperty({
-    description: 'The cap enrollment of the bootcamp',
     type: Number,
     example: 500,
     required: true,
