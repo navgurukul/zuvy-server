@@ -109,14 +109,14 @@ export class ClassesService {
     }
 
     async createLiveBroadcast(eventDetails: {
-        summary: string;
+        title: string;
         description?: string;
         startDateTime: string;
         endDateTime: string;
         timeZone: string;
         attendees: string[];
         batchId: string;
-        moduleId: string;
+        bootcampId: string;
         userId: number
 
     }) {
@@ -128,10 +128,10 @@ export class ClassesService {
                 refresh_token: fetchedTokens[0].refreshToken,
             });
             const isAdmin = await db.select().from(sansaarUserRoles).where(eq(sansaarUserRoles.userId, eventDetails.userId))
-            if (!isAdmin ) {
+            if (!isAdmin) {
                 return { status: 'error', message: 'You should be an admin to create a class.' };
             }
-            if( isAdmin[0].role !== 'admin'){
+            if (isAdmin[0].role !== 'admin') {
                 return { status: 'error', message: 'You should be an admin to create a class.' };
             }
             const calendar = google.calendar({ version: 'v3', auth: auth2Client });
@@ -139,7 +139,7 @@ export class ClassesService {
                 calendarId: 'primary',
                 conferenceDataVersion: 1,
                 requestBody: {
-                    summary: eventDetails.summary,
+                    summary: eventDetails.title,
                     description: eventDetails.description,
                     start: {
                         dateTime: eventDetails.startDateTime,
@@ -168,15 +168,15 @@ export class ClassesService {
                 startTime: createdEvent.data.start.dateTime,
                 endTime: createdEvent.data.end.dateTime,
                 batchId: eventDetails.batchId,
-                moduleId: eventDetails.moduleId
-
+                bootcampId: eventDetails.bootcampId,
+                title:createdEvent.data.summary,
             }).returning();
             return saveClassDetails
         } catch (error) {
             console.error('Error creating event:', error);
         }
     }
-
+    
     async getClassesByBatchId(batchId: string) {
         try {
             const classesLink = await db.select().from(classesGoogleMeetLink).where(sql`${classesGoogleMeetLink.batchId} = ${batchId}`);
@@ -184,6 +184,52 @@ export class ClassesService {
         }
         catch (error) {
             console.log("Error fetching class Links", error)
+        }
+    }
+
+    async getClassesByBootcampId(bootcampId: string) {
+        try {
+            const classesLink = await db.select().from(classesGoogleMeetLink).where(sql`${classesGoogleMeetLink.bootcampId} = ${bootcampId}`);
+            return { 'status': 'success', 'message': 'classes fetched successfully by bootcampId', 'code': 200, classesLink: classesLink };
+        }
+        catch (error) {
+            console.log("Error fetching class Links", error)
+        }
+    }
+
+    async getMeetingById(id:number){
+        try{
+            const classDetails = await db.select().from(classesGoogleMeetLink).where(sql`${classesGoogleMeetLink.id}=${id}`);
+            if (classDetails.length === 0) {
+                return {status: 'error', message: 'class not found', code: 404};
+            }
+            return {status: 'success', message: 'class fetched successfully', code: 200, class: classDetails[0]};
+
+        }catch(error){
+            return {status:'error',message:'Error fetching class',error:error}
+
+        }
+    }
+
+    async deleteMeetingById(id: number) {
+        try {
+            const deletedMeeting = await db.delete(classesGoogleMeetLink).where(sql`${classesGoogleMeetLink.id} = ${id}`);
+            return { 'status': 'success', 'message': 'Meeting deleted successfully ', 'code': 200 };
+        }
+        catch (error) {
+            console.log("Error Deleting Meeting", error)
+        }
+    }
+
+    async updateMeetingById(id: number, classData:any): Promise<object> {
+        try {
+
+            let updatedMeeting = await db.update(classesGoogleMeetLink).set({...classData}).where(eq(classesGoogleMeetLink.id, id)).returning();
+            console.log(updatedMeeting)
+            return { 'status': 'success', 'message': 'Meeting  updated successfully', 'code': 200, meetingDetails: updatedMeeting };
+
+        } catch (e) {
+            return { 'status': 'error', 'message': e.message, 'code': 405 };
         }
     }
 }

@@ -56,7 +56,7 @@ export class CreateLiveBroadcastDto {
   })
   @IsNotEmpty()
   @IsString()
-  summary: string;
+  title: string;
 
   @ApiProperty({
     description: 'The userId(admin)',
@@ -79,14 +79,14 @@ export class CreateLiveBroadcastDto {
   batchId: string;
 
   @ApiProperty({
-    description: 'Module Id',
+    description: 'Bootcamp Id',
     type: String,
     example: 'abcd',
     required: true,
   })
   @IsNotEmpty()
   @IsString()
-  moduleId: string;
+  bootcampId: string;
 
   @ApiProperty({
     description: 'The description of the live broadcast event',
