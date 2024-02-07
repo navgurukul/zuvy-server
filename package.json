@@ -35,10 +35,14 @@
     "dotenv": "^16.3.1",
     "drizzle-kit": "^0.20.10",
     "drizzle-orm": "^0.29.3",
+    "google-auth-library": "^9.6.2",
+    "googleapis": "^131.0.0",
+    "node-cron": "^3.0.3",
     "pg": "^8.11.3",
     "postgres": "^3.4.3",
     "reflect-metadata": "^0.1.13",
-    "rxjs": "^7.8.1"
+    "rxjs": "^7.8.1",
+    "uuid": "^9.0.1"
   },
   "devDependencies": {
     "@nestjs/cli": "^10.0.0",
