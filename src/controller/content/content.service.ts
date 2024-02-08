@@ -65,7 +65,6 @@ export class ContentService {
     
             return [null, chapter];
         } catch (error) {
-            console.log(error);
             log(`Error posting data: ${error.message}`);
             return [{ 'status': 'error', 'message': error.message, 'code': 500 }, null];
         }

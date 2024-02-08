@@ -43,7 +43,7 @@ export class BatchesService {
         }
         let totalEnrolment = totalBatches.reduce((acc, b) => acc + b.capEnrollment, 0);
         if (totalEnrolment + batch.capEnrollment > bootcamp[0].capEnrollment) {
-            return [{ 'status': 'error', 'message': 'Bootcamp capacity exceeded', 'code': 400 }, null];
+            return [{ 'status': 'error', 'message': 'The maximum capacity for the bootcamp has been reached', 'code': 400 }, null];
         }
         return [null, true];
     }

@@ -28,7 +28,6 @@ export class ContentController {
     @Get('/chapter/:module_id')
     @ApiOperation({ summary: "Get the chapter by module_id"})
     async getChapter(@Param('module_id') module_id: number): Promise<object> {
-        console.log(module_id)
         const [err, res] = await this.contentService.getChapter(module_id);
         if(err){
             throw new BadRequestException(err);
