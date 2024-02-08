@@ -32,12 +32,15 @@ export class BatchesService {
     //     }
     //     return batch;
     // }
-    async capEnrollment(batch) {
+    async capEnrollment(batch, flagUpdate = false) {
         const bootcamp = await db.select().from(bootcamps).where(eq(bootcamps.id, batch.bootcampId));
         if (bootcamp.length === 0) {
             return [{ 'status': 'error', 'message': 'Bootcamp not found', 'code': 404 }, null];
         }
-        const totalBatches = await db.select().from(batches).where(eq(batches.bootcampId, batch.bootcampId));
+        let totalBatches = await db.select().from(batches).where(eq(batches.bootcampId, batch.bootcampId));
+        if (flagUpdate) {
+            totalBatches = totalBatches.filter(b => b.id !== batch.id);
+        }
         let totalEnrolment = totalBatches.reduce((acc, b) => acc + b.capEnrollment, 0);
         if (totalEnrolment + batch.capEnrollment > bootcamp[0].capEnrollment) {
             return [{ 'status': 'error', 'message': 'Bootcamp capacity exceeded', 'code': 400 }, null];
@@ -87,7 +90,8 @@ export class BatchesService {
                 return [{status: 'error', message: 'Batch not found', code: 404},null];
             }
             if (batch['capEnrollment']) {
-                let [err,res] =  await this.capEnrollment(batchData[0]);
+                batchData[0].capEnrollment =batch['capEnrollment']
+                let [err,res] =  await this.capEnrollment(batchData[0], true);
                 if(err){
                     return [err, null];
                 }
