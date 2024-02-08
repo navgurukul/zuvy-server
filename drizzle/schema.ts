@@ -1,3 +1,4 @@
+import { relations } from "drizzle-orm"
 import { pgTable, jsonb, pgSchema, pgEnum, serial, varchar, timestamp, foreignKey, integer, text, unique, date, bigserial, boolean, bigint, index, char, json, uniqueIndex, doublePrecision, customType } from "drizzle-orm/pg-core"
 
 export const courseEnrolmentsCourseStatus = pgEnum("course_enrolments_course_status", ['enroll', 'unenroll', 'completed'])
@@ -24,6 +25,23 @@ export const bootcamps = main.table("bootcamps", {
 	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
 });
 
+export const batchesRelations = relations(bootcamps, ({one, many}) => ({
+	bootcamp: one(batches, {
+		fields: [bootcamps.id], 
+		references: [batches.bootcampId] 
+	}),
+	batches: many(batches)
+}))
+
+export const bootcampEnrollmentsRelations = relations(bootcamps, ({one, many}) => ({
+	bootcamp: one(batches, {
+		fields: [bootcamps.id], 
+		references: [batches.bootcampId] 
+	}),
+	bootcampEnrollments: many(batches)
+}))
+
+
 export const batches = main.table("batches", {
     id: serial("id").primaryKey().notNull(),
     name: text("name").notNull(),
@@ -33,6 +51,15 @@ export const batches = main.table("batches", {
     createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
 });
+
+export const batchEnrollmentsRelations = relations(bootcamps, ({one, many}) => ({
+	bootcamp: one(batchEnrollments, {
+		fields: [bootcamps.id], 
+		references: [batchEnrollments.batchId] 
+	}),
+	batchEnrollments: many(batches)
+}))
+
 export const batchEnrollments = main.table("batch_enrollments", {
     id: serial("id").primaryKey().notNull(),
     userId: integer("user_id").notNull().references(() => users.id),

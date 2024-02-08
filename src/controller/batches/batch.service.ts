@@ -111,6 +111,7 @@ export class BatchesService {
     async deleteBatch(id: number) {
         try {
             let data = await db.delete(batches).where(eq(batches.id, id)).returning();
+            await db.update(batchEnrollments).set({"batchId": null}).where(eq(batchEnrollments.batchId, id)).returning()
             if (data.length === 0) {
                 return [{status: 'error', message: 'Batch not found', code: 404}, null];
             }

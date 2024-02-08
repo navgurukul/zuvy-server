@@ -89,6 +89,7 @@ export class BootcampService {
     async deleteBootcamp(id: number): Promise<any> {
         try {
             await db.delete(batches).where(eq(batches.bootcampId, id));
+            await db.delete(batchEnrollments).where(eq(batchEnrollments.bootcampId, id));
             let data = await db.delete(bootcamps).where(eq(bootcamps.id, id)).returning();
             if (data.length === 0) {
                 return [{'status': 'error', 'message': 'Bootcamp not found', 'code': 404}, null];
