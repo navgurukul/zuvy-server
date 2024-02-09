@@ -13,8 +13,17 @@ export class BootcampService {
     // constructor(private batchesService:BatchesService) { }
     async getAllBootcamps(): Promise<any> {
         try {
-            const allUsers = await db.select().from(bootcamps);
-            return [null, allUsers];
+            let getAllBootcamps = await db.select().from(bootcamps);
+
+            let data = await Promise.all(getAllBootcamps.map(async (bootcamp) => {
+                let enrolled = await db.select().from(batchEnrollments).where(sql`${batchEnrollments.bootcampId} = ${bootcamp.id}`);
+                let unEnrolledBatch = await db.select().from(batchEnrollments).where(sql`${batchEnrollments.bootcampId} = ${bootcamp.id} AND ${batchEnrollments.batchId} IS NULL`);
+
+                bootcamp["students_in_bootcamp"] = enrolled.length;
+                bootcamp["unassigned_students"] = unEnrolledBatch.length;
+                return bootcamp;
+            }));
+            return [null, data];
         } catch (e) {
             log(`error: ${e.message}`)
             return [{'status': 'error', 'message': e.message,'code': 500}, null];
