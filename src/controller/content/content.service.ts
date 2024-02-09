@@ -1,10 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { db } from '../../db/index';
-import { eq,sql, } from 'drizzle-orm';
-// import { BatchesService } from '../batches/batch.service';
+
 import axios from 'axios';
 import { error, log } from 'console';
-import { number } from 'yargs';
 
 const {ZUVY_CONTENT_URL, ZUVY_CONTENTS_API_URL} = process.env// INPORTING env VALUSE ZUVY_CONTENT
 
@@ -23,9 +20,9 @@ export class ContentService {
             })
 
             return [null, modules]
-        } catch (error) {
-            log(`Error posting data: ${error.message}`)
-            return [{'status': 'error', 'message': error.message,'code': 500}, null];
+        } catch (err) {
+            error(`Error posting data: ${err.message}`)
+            return [{'status': 'error', 'message': err.message,'code': 500}, null];
         }
     }
     async getChapter(module_id: number) {
@@ -64,9 +61,9 @@ export class ContentService {
             const chapter = [...formattedArticles, ...formattedData];
     
             return [null, chapter];
-        } catch (error) {
-            log(`Error posting data: ${error.message}`);
-            return [{ 'status': 'error', 'message': error.message, 'code': 500 }, null];
+        } catch (err) {
+            error(`Error posting data: ${err.message}`);
+            return [{ 'status': 'error', 'message': err.message, 'code': 500 }, null];
         }
     }
 }
