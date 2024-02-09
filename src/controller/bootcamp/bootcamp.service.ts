@@ -11,17 +11,28 @@ const {ZUVY_CONTENT_URL} = process.env// INPORTING env VALUSE ZUVY_CONTENT
 @Injectable()
 export class BootcampService {
     // constructor(private batchesService:BatchesService) { }
+    async enrollData(bootcampId: number) {
+        try {
+            let enrolled = await db.select().from(batchEnrollments).where(sql`${batchEnrollments.bootcampId} = ${bootcampId}`);
+            let unEnrolledBatch = await db.select().from(batchEnrollments).where(sql`${batchEnrollments.bootcampId} = ${bootcampId} AND ${batchEnrollments.batchId} IS NULL`);
+            return [null, { 'students_in_bootcamp': enrolled.length, 'unassigned_students': unEnrolledBatch.length }];
+        } catch (error) {
+            log(`error: ${error.message}`)
+            return [{'status': 'error', 'message': error.message,'code': 500}, null];
+        }
+
+    }
+
     async getAllBootcamps(): Promise<any> {
         try {
             let getAllBootcamps = await db.select().from(bootcamps);
 
             let data = await Promise.all(getAllBootcamps.map(async (bootcamp) => {
-                let enrolled = await db.select().from(batchEnrollments).where(sql`${batchEnrollments.bootcampId} = ${bootcamp.id}`);
-                let unEnrolledBatch = await db.select().from(batchEnrollments).where(sql`${batchEnrollments.bootcampId} = ${bootcamp.id} AND ${batchEnrollments.batchId} IS NULL`);
-
-                bootcamp["students_in_bootcamp"] = enrolled.length;
-                bootcamp["unassigned_students"] = unEnrolledBatch.length;
-                return bootcamp;
+                let [err, res] = await this.enrollData(bootcamp.id);
+                if (err) {
+                    return [err, null];
+                }
+                return { ...bootcamp, ...res };
             }));
             return [null, data];
         } catch (e) {
@@ -33,6 +44,8 @@ export class BootcampService {
     async getBootcampById(id: number, isContent: boolean): Promise<any> {
         try {
             let bootcamp = await db.select().from(bootcamps).where(sql`${bootcamps.id} = ${id}`);
+            let [err, res] = await this.enrollData(id);
+
             if (!bootcamp.length){
                 return [{'status': 'Error', 'message': 'Bootcamp not found!','code': 404}, null];
             }
@@ -45,7 +58,7 @@ export class BootcampService {
                 }
             }
 
-            return [null, {'status': 'success', 'message': 'Bootcamp fetched successfully', 'code': 200, bootcamp: bootcamp[0]}];
+            return [null, {'status': 'success', 'message': 'Bootcamp fetched successfully', 'code': 200, bootcamp: {...bootcamp[0], ...res} }];
         } catch (e) {
             log(`error: ${e.message}`)
             return [{'status': 'error', 'message': e.message,'code': 500}, null];
