@@ -11,10 +11,30 @@ const {ZUVY_CONTENT_URL} = process.env// INPORTING env VALUSE ZUVY_CONTENT
 @Injectable()
 export class BootcampService {
     // constructor(private batchesService:BatchesService) { }
+    async enrollData(bootcampId: number) {
+        try {
+            let enrolled = await db.select().from(batchEnrollments).where(sql`${batchEnrollments.bootcampId} = ${bootcampId}`);
+            let unEnrolledBatch = await db.select().from(batchEnrollments).where(sql`${batchEnrollments.bootcampId} = ${bootcampId} AND ${batchEnrollments.batchId} IS NULL`);
+            return [null, { 'students_in_bootcamp': enrolled.length, 'unassigned_students': unEnrolledBatch.length }];
+        } catch (error) {
+            log(`error: ${error.message}`)
+            return [{'status': 'error', 'message': error.message,'code': 500}, null];
+        }
+
+    }
+
     async getAllBootcamps(): Promise<any> {
         try {
-            const allUsers = await db.select().from(bootcamps);
-            return [null, allUsers];
+            let getAllBootcamps = await db.select().from(bootcamps);
+
+            let data = await Promise.all(getAllBootcamps.map(async (bootcamp) => {
+                let [err, res] = await this.enrollData(bootcamp.id);
+                if (err) {
+                    return [err, null];
+                }
+                return { ...bootcamp, ...res };
+            }));
+            return [null, data];
         } catch (e) {
             log(`error: ${e.message}`)
             return [{'status': 'error', 'message': e.message,'code': 500}, null];
@@ -24,6 +44,8 @@ export class BootcampService {
     async getBootcampById(id: number, isContent: boolean): Promise<any> {
         try {
             let bootcamp = await db.select().from(bootcamps).where(sql`${bootcamps.id} = ${id}`);
+            let [err, res] = await this.enrollData(id);
+
             if (!bootcamp.length){
                 return [{'status': 'Error', 'message': 'Bootcamp not found!','code': 404}, null];
             }
@@ -36,7 +58,7 @@ export class BootcampService {
                 }
             }
 
-            return [null, {'status': 'success', 'message': 'Bootcamp fetched successfully', 'code': 200, bootcamp: bootcamp[0]}];
+            return [null, {'status': 'success', 'message': 'Bootcamp fetched successfully', 'code': 200, bootcamp: {...bootcamp[0], ...res} }];
         } catch (e) {
             log(`error: ${e.message}`)
             return [{'status': 'error', 'message': e.message,'code': 500}, null];
@@ -89,6 +111,7 @@ export class BootcampService {
     async deleteBootcamp(id: number): Promise<any> {
         try {
             await db.delete(batches).where(eq(batches.bootcampId, id));
+            await db.delete(batchEnrollments).where(eq(batchEnrollments.bootcampId, id));
             let data = await db.delete(bootcamps).where(eq(bootcamps.id, id)).returning();
             if (data.length === 0) {
                 return [{'status': 'error', 'message': 'Bootcamp not found', 'code': 404}, null];
@@ -113,6 +136,12 @@ export class BootcampService {
     async addStudentToBootcamp(bootcampId: number, batchId: number, users_data: any){
         try {
             let enrollments = [];
+            let totalEnrolStudents = await db.select().from(batchEnrollments).where(sql`${batchEnrollments.bootcampId} = ${bootcampId}`);
+            let bootcampData = await db.select().from(bootcamps).where(sql`${bootcamps.id} = ${bootcampId}`);
+
+            if (totalEnrolStudents.length >= bootcampData[0].capEnrollment){
+                return [{'status': 'error', 'message': 'The maximum capacity for the bootcamp has been reached.', 'code': 403}, null];
+            }
             for (let i = 0; i < users_data.length; i++) {
                 let newUser = {}
                 newUser["bootcamp_id"] = bootcampId

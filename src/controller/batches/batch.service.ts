@@ -43,7 +43,7 @@ export class BatchesService {
         }
         let totalEnrolment = totalBatches.reduce((acc, b) => acc + b.capEnrollment, 0);
         if (totalEnrolment + batch.capEnrollment > bootcamp[0].capEnrollment) {
-            return [{ 'status': 'error', 'message': 'Bootcamp capacity exceeded', 'code': 400 }, null];
+            return [{ 'status': 'error', 'message': 'The maximum capacity for the bootcamp has been reached', 'code': 400 }, null];
         }
         return [null, true];
     }
@@ -56,12 +56,11 @@ export class BatchesService {
             }
 
             const newData = await db.insert(batches).values(batch).returning();
-            const usersData = await db.select().from(batchEnrollments).where(sql`${batchEnrollments.bootcampId} = ${batch.bootcampId} AND ${batchEnrollments.batchId} IS NULL`).limit(batch.capEnrollment); 
+            const usersData = await db.select().from(batchEnrollments).where(sql`${batchEnrollments.bootcampId} = ${batch.bootcampId} AND ${batchEnrollments.batchId} IS NULL`).limit(batch.capEnrollment);
+
             if (usersData.length > 0) {
-                const batchEnrollment = usersData.map((enrollment) => {
-                    return { userId: enrollment.userId, bootcampId: enrollment.bootcampId, batchId: newData[0].id };
-                });
-                await db.insert(batchEnrollments).values(batchEnrollment);
+                let userids = usersData.map(u => u.userId);
+                await db.update(batchEnrollments).set({ batchId: newData[0].id}).where(sql`user_id IN ${userids}`);
             }
             return [null, { 'status': 'success', 'message': 'Batch created successfully', 'code': 200, batch: newData[0] }];
         } catch (e) {
@@ -111,6 +110,7 @@ export class BatchesService {
     async deleteBatch(id: number) {
         try {
             let data = await db.delete(batches).where(eq(batches.id, id)).returning();
+            await db.update(batchEnrollments).set({"batchId": null}).where(eq(batchEnrollments.batchId, id)).returning()
             if (data.length === 0) {
                 return [{status: 'error', message: 'Batch not found', code: 404}, null];
             }
