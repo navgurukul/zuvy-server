@@ -1718,7 +1718,8 @@ export const classesGoogleMeetLink= main.table("classes_google_meet_link",{
 	endTime:text("end_time").notNull(),
 	batchId:text("batch_id").notNull(),
 	bootcampId:text("bootcamp_id").notNull(),
-	title:text("title").notNull()
+	title:text("title").notNull(),
+        attendees:text("attendees").array()
 })
 
 

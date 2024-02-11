@@ -5,6 +5,7 @@ import { eq, sql, } from 'drizzle-orm';
 import { google, calendar_v3 } from 'googleapis';
 import { v4 as uuid } from 'uuid';
 import { createReadStream } from 'fs';
+import * as _ from 'lodash';
 // import { Calendar } from 'node_google_calendar_1';// import { OAuth2Client } from 'google-auth-library';
 
 const { OAuth2 } = google.auth;
@@ -14,6 +15,17 @@ let auth2Client = new OAuth2(
     process.env.GOOGLE_SECRET,
     process.env.GOOGLE_REDIRECT
 );
+
+enum ClassStatus {
+    COMPLETED = 'completed',
+    ONGOING = 'ongoing',
+    UPCOMING = 'upcoming',
+  }
+  
+  interface Class {
+    startTime: String;
+    endTime: string  ;
+  }
 
 const scopes = [
     "https://www.googleapis.com/auth/calendar"
@@ -95,8 +107,9 @@ export class ClassesService {
                 userId,
                 userEmail
             };
+            console.log(existingUser)
 
-            if (existingUser) {
+            if (existingUser.length!==0) {
                 await db.update(userTokens).set({ ...creatorDetails }).where(eq(userTokens.userEmail, userEmail)).returning();
                 console.log('Tokens updated in the database.');
             } else {
@@ -128,6 +141,7 @@ export class ClassesService {
                 refresh_token: fetchedTokens[0].refreshToken,
             });
             const isAdmin = await db.select().from(sansaarUserRoles).where(eq(sansaarUserRoles.userId, eventDetails.userId))
+            console.log(isAdmin)
             if (!isAdmin) {
                 return { status: 'error', message: 'You should be an admin to create a class.' };
             }
@@ -170,13 +184,46 @@ export class ClassesService {
                 batchId: eventDetails.batchId,
                 bootcampId: eventDetails.bootcampId,
                 title:createdEvent.data.summary,
+                attendees:eventDetails.attendees
             }).returning();
             return saveClassDetails
         } catch (error) {
             console.error('Error creating event:', error);
         }
-    }
-    
+          }
+         
+          
+          async  getAllClasses(): Promise<any> {
+            try {
+              const allClasses = await db.select().from(classesGoogleMeetLink);
+          
+              const classifiedClasses = this.classifyClasses(allClasses);
+          
+              return [null, { allClasses, classifiedClasses }];
+            } catch (e) {
+              console.log(`error: ${e.message}`);
+              return [{ status: 'error', message: e.message, code: 500 }, null];
+            }
+          }
+          
+          async classifyClasses(classes: Class[]): Promise<ClassStatus[]> {
+            const now = new Date();
+          
+            return _.map(classes, (classItem) => {
+                const abc = classItem.startTime
+                const def = classItem.endTime
+              const startTime = abc.toISOString().split('T')[0];
+              const endTime =def.toISOString().split('T')[0];
+          
+              if (endTime < now) {
+                return ClassStatus.COMPLETED;
+              } else if (startTime <= now && endTime >= now) {
+                return ClassStatus.ONGOING;
+              } else {
+                return ClassStatus.UPCOMING;
+              }
+            });
+          }
     async getClassesByBatchId(batchId: string) {
         try {
             const classesLink = await db.select().from(classesGoogleMeetLink).where(sql`${classesGoogleMeetLink.batchId} = ${batchId}`);
@@ -194,6 +241,16 @@ export class ClassesService {
         }
         catch (error) {
             console.log("Error fetching class Links", error)
+        }
+    }
+
+    async getAttendeesByMeetingId(id:number){
+        try{
+            const attendeesList = await db.select().from(classesGoogleMeetLink).where(sql`${classesGoogleMeetLink.id}=${id}`);
+            return {status:'success',message:"attendees fetched successfully",attendeesList:attendeesList[0].attendees}
+        }catch(error){
+            return {status:'error',message:'Error fetching attendees',error:error}
+
         }
     }
 
