@@ -130,7 +130,8 @@ export class ClassesService {
         attendees: string[];
         batchId: string;
         bootcampId: string;
-        userId: number
+        userId: number;
+        roles:string[]
 
     }) {
         try {
@@ -140,14 +141,11 @@ export class ClassesService {
                 access_token: fetchedTokens[0].accessToken,
                 refresh_token: fetchedTokens[0].refreshToken,
             });
-            const isAdmin = await db.select().from(sansaarUserRoles).where(eq(sansaarUserRoles.userId, eventDetails.userId))
-            console.log(isAdmin)
-            if (!isAdmin) {
+            
+            if (eventDetails.roles.includes('admin')==false) {
                 return { status: 'error', message: 'You should be an admin to create a class.' };
             }
-            if (isAdmin[0].role !== 'admin') {
-                return { status: 'error', message: 'You should be an admin to create a class.' };
-            }
+          
             const calendar = google.calendar({ version: 'v3', auth: auth2Client });
             const eventData = {
                 calendarId: 'primary',
