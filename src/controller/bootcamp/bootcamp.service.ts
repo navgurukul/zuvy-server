@@ -138,10 +138,14 @@ export class BootcampService {
             let enrollments = [];
             let totalEnrolStudents = await db.select().from(batchEnrollments).where(sql`${batchEnrollments.bootcampId} = ${bootcampId}`);
             let bootcampData = await db.select().from(bootcamps).where(sql`${bootcamps.id} = ${bootcampId}`);
-
+            if (bootcampData.length === 0){
+                return [{'status': 'error', 'message': 'Bootcamp not found', 'code': 404}, null];
+            }
             if (totalEnrolStudents.length >= bootcampData[0].capEnrollment){
                 return [{'status': 'error', 'message': 'The maximum capacity for the bootcamp has been reached.', 'code': 403}, null];
             }
+            let report = [];
+            let userReport = [];
             for (let i = 0; i < users_data.length; i++) {
                 let newUser = {}
                 newUser["bootcamp_id"] = bootcampId
@@ -152,18 +156,39 @@ export class BootcampService {
                 let userInfo = await db.select().from(users).where(sql`${users.email} = ${users_data[i]["email"]}`);
                 if (userInfo.length === 0){
                     userInfo = await db.insert(users).values(newUser).returning();
-                } 
-                let enroling = {userId:  userInfo[0].id,
-                    bootcampId};
+                } else if(userInfo.length > 0){
+                    let userEnrolled = await db.select().from(batchEnrollments).where(sql`${batchEnrollments.userId} = ${userInfo[0].id} AND ${batchEnrollments.bootcampId} = ${bootcampId}`);
+                    if (userEnrolled.length > 0){
+                        report.push({'email': userInfo[0].email, 'message': `already enrolled in anodher bootcamp`});
+                        continue;
+                    }
+                }
+                let enroling = {userId:  userInfo[0].id, bootcampId};
                 if (batchId){
                     enroling["batchId"] = batchId
                 }
+                userReport.push({'email': userInfo[0].email, 'message': `enrolled successfully`});
                 enrollments.push(enroling);
                 }  
+            let students_enrolled ;
             if (enrollments.length > 0) {
-                await db.insert(batchEnrollments).values(enrollments);
+                students_enrolled = await db.insert(batchEnrollments).values(enrollments).returning();
+                if (students_enrolled.length === 0){
+                    return [{'status': 'error', 'message': 'Error enrolling students', 'code': 500}, null];
+                }
             }
-            return [null, {'status': 'success', 'message': 'Studentes enrolled successfully', 'code': 200}];
+
+            return [
+                null,
+                {
+                    status: true,
+                    code: 200,
+                    message: `${enrollments.length} students successfully enrolled!`,
+                    report: report,
+                    students_enrolled: userReport
+                }
+            ]
+            
         } catch (e) {
             log(`error: ${e.message}`)
             return [{'status': 'error', 'message': e.message,'code': 500},null];
