@@ -136,7 +136,9 @@ export class ClassesService {
     }) {
         try {
             const fetchedTokens = await db.select().from(userTokens).where(eq((userTokens.userId), eventDetails.userId));
-
+            if(!fetchedTokens){
+                return { status: 'error', message: 'Unable to fetch tokens' };
+            }
             auth2Client.setCredentials({
                 access_token: fetchedTokens[0].accessToken,
                 refresh_token: fetchedTokens[0].refreshToken,
@@ -184,9 +186,14 @@ export class ClassesService {
                 title:createdEvent.data.summary,
                 attendees:eventDetails.attendees
             }).returning();
-            return saveClassDetails
+            if(saveClassDetails){
+                return  {'status': 'success', 'message': 'Created Class successfully', 'code': 200, saveClassDetails:saveClassDetails };
+            }
+            else{
+                return {'success':'not success','message':"Class creation failed"}
+            }
         } catch (error) {
-            console.error('Error creating event:', error);
+           return {'status':"not success",'message':"error creating class",error:error}
         }
           }
          
