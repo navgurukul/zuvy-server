@@ -99,8 +99,9 @@ export class BootcampController {
 
     @Get('/students/:bootcamp_id')
     @ApiOperation({ summary: "Get the students by bootcamp_id"})
-    async getStudentsByBootcamp(@Param('bootcamp_id') bootcamp_id: number): Promise<object> {
-        const [err, res] = await this.bootcampService.getStudentsByBootcampOrBatch(bootcamp_id, null);
+    @ApiQuery({ name: 'batch_id', required: false, type: Number, description: 'batch id' })
+    async getStudentsByBootcamp(@Param('bootcamp_id') bootcamp_id: number, @Query('batch_id') batch_id: number): Promise<object> {
+        const [err, res] = await this.bootcampService.getStudentsByBootcampOrBatch(bootcamp_id, batch_id);
         if(err){
             throw new BadRequestException(err);
         } 

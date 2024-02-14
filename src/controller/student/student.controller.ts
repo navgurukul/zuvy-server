@@ -6,8 +6,8 @@ import { get } from 'http';
 // import { AuthGuard } from '@nestjs/passport'; // Assuming JWT authentication
 
 
-@Controller('Student')
-@ApiTags('Student')
+@Controller('student')
+@ApiTags('student')
 @ApiCookieAuth()
 @UsePipes(new ValidationPipe({
     whitelist: true,
@@ -22,16 +22,6 @@ export class StudentController {
     @ApiOperation({ summary: "Get all course enrolled by student"})
     async getAllStudents(@Param('userId') userId: number): Promise<object> {
         const [err, res] = await this.studentService.enrollData(userId);
-        if(err){
-            throw new BadRequestException(err);
-        } 
-        return res;
-    }
-
-    @Get('/batches/:bootcamp_id')
-    @ApiOperation({ summary: "Get the batches by bootcamp_id"})
-    async getBatchByIdBootcamp(@Param('bootcamp_id') bootcamp_id: number): Promise<object> {
-        const [err, res] = await this.studentService.enrollData(bootcamp_id);
         if(err){
             throw new BadRequestException(err);
         } 
