@@ -75,23 +75,25 @@ export class BatchesService {
             if (data.length === 0) {
                 return [{ status: 'error', message: 'Batch not found', code: 404 }, null];
             }
-            let enrollStudents = await db.select().from(batchEnrollments).where(eq(batchEnrollments.batchId, id));
-            let enrollStudentsId;
             let respObj = [];
-            if (enrollStudents.length !== 0) {
-                enrollStudentsId = enrollStudents.map(e => BigInt(e.userId)); // Convert e.userId to bigint
-                let students = await db.select().from(users).where(sql`id IN ${enrollStudentsId}`);
-                enrollStudents.map((e) => {
-                    students.find((s) => {
-                        if (s.id === BigInt(e.userId)) {
-                            respObj.push({'id':e.userId,"email":s.email, "name": s.name});
-                        }
+            // if (students){
+                let enrollStudents = await db.select().from(batchEnrollments).where(eq(batchEnrollments.batchId, id));
+                let enrollStudentsId;
+                if (enrollStudents.length !== 0) {
+                    enrollStudentsId = enrollStudents.map(e => BigInt(e.userId)); // Convert e.userId to bigint
+                    let students = await db.select().from(users).where(sql`id IN ${enrollStudentsId}`);
+                    enrollStudents.map((e) => {
+                        students.find((s) => {
+                            if (s.id === BigInt(e.userId)) {
+                                respObj.push({'id':e.userId,"email":s.email, "name": s.name});
+                            }
+                        });
                     });
-                });
-            } 
-            data[0]['students'] = respObj;
-            
-            return [null, {status: 'success', message: 'Batch fetched successfully', code: 200, batch: data[0]}];
+                } 
+                data[0]['students'] = respObj;
+                return [null, {status: 'success', message: 'Batch fetched successfully', code: 200, batch: data[0]}];
+            // }
+            // return [null, {status: 'success', message: 'Batch fetched successfully', code: 200, batch: data[0]}];
         } catch (e) {
             log(`error: ${e.message}`)
             return [{'status': 'error', 'message': e.message,'code': 500},null];

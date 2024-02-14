@@ -1,6 +1,6 @@
-import { Controller, Get, Post, Put, Patch, Delete, Body, Param, ValidationPipe, UsePipes, BadRequestException } from '@nestjs/common';
+import { Controller, Get, Post, Put, Patch, Delete, Body, Param, ValidationPipe, UsePipes, BadRequestException, Query } from '@nestjs/common';
 import { BatchesService } from './batch.service';
-import { ApiTags, ApiBody, ApiOperation, ApiCookieAuth,ApiBearerAuth ,ApiForbiddenResponse } from '@nestjs/swagger';
+import { ApiTags, ApiBody, ApiOperation, ApiCookieAuth,ApiBearerAuth ,ApiForbiddenResponse, ApiQuery } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport'; // Assuming JWT authentication
 import {BatchDto, PatchBatchDto} from './dto/batch.dto';
 
@@ -17,6 +17,7 @@ export class BatchesController {
     constructor(private batchService: BatchesService) { }
     @Get('/:id')
     @ApiOperation({ summary: "Get the batch by id"})
+    // @ApiQuery({ name: 'students', required: false, type: Boolean, description: 'Optional content flag' })
     async getBatchById(@Param('id') id: string): Promise<object> {
         const [err, res] = await this.batchService.getBatchById(parseInt(id));
         if(err){
