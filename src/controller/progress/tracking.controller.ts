@@ -16,10 +16,11 @@ import { CreateQuizDto, PutQuizDto } from './dto/quiz.dto';
 // @UseGuards(AuthGuard('cookie'))
 export class TrackingController {
     constructor(private TrackingService: TrackingService) { }
-    @Get('/:user_id')
+
+    @Get('/:user_id/:module_id')
     @ApiOperation({ summary: "Get the progress by user_id"})
-    async getTracking(@Param('user_id') user_id: number): Promise<object> {
-        const [err, res] = await this.TrackingService.getProgress(user_id);
+    async getTracking(@Param('user_id') user_id: number, @Param('module_id') module_id: number): Promise<object> {
+        const [err, res] = await this.TrackingService.getProgress(user_id, module_id);
         if(err){
             throw new BadRequestException(err);
         } 
@@ -28,8 +29,8 @@ export class TrackingController {
 
     @Post('/assignment')
     @ApiOperation({ summary: "Create assignment submission"})
-    async createAssignmentSubmission(@Body() data: CreateAssignmentDto): Promise<object> {
-        const [err, res] = await this.TrackingService.createAssignmentSubmission(data);
+    async assignmentSubmission(@Body() data: CreateAssignmentDto): Promise<object> {
+        const [err, res] = await this.TrackingService.submissionAssignment(data);
         if(err){
             throw new BadRequestException(err);
         } 
@@ -48,7 +49,7 @@ export class TrackingController {
 
     @Get('/assignment/:assignmentId/:userId')
     @ApiOperation({ summary: "Update assignment submission by id"})
-    async assignmentSubmission( @Param('assignmentId') assignmentId: number,@Param('userId') userId: number ): Promise<object> {
+    async getAssignmentSubmissionBy( @Param('assignmentId') assignmentId: number,@Param('userId') userId: number ): Promise<object> {
         console.log(assignmentId, userId);
         const [err, res] = await this.TrackingService.assignmentSubmissionBy(userId, assignmentId);
         if(err){
@@ -69,7 +70,7 @@ export class TrackingController {
 
     @Post('/article')
     @ApiOperation({ summary: "Create article submission"})
-    async createArticleSubmission(@Body() data: CreateArticleDto): Promise<object> {
+    async articleTracking(@Body() data: CreateArticleDto): Promise<object> {
         const [err, res] = await this.TrackingService.createArticleTracking(data);
         if(err){
             throw new BadRequestException(err);
@@ -99,7 +100,7 @@ export class TrackingController {
 
     @Post('/quiz')
     @ApiOperation({ summary: "Create quiz submission"})
-    async createQuizSubmission(@Body() data: CreateQuizDto, ): Promise<object> {
+    async quizTracking(@Body() data: CreateQuizDto, ): Promise<object> {
         const [err, res] = await this.TrackingService.createQuizTracking(data.quiz);
         if(err){
             throw new BadRequestException(err);
