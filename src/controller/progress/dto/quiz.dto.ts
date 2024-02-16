@@ -11,33 +11,6 @@ export class McqCreateDto {
     })
     @IsNotEmpty()
     @IsNumber()
-    userId: number;
-    
-    @ApiProperty({
-        type: Number,
-        example: 44002,
-        required: true,
-    })
-    @IsNotEmpty()
-    @IsNumber()
-    moduleId: number;
-
-    @ApiProperty({
-        type: Number,
-        example: 44002,
-        required: true,
-    })
-    @IsNotEmpty()
-    @IsNumber()
-    quizId: number;
-
-    @ApiProperty({
-        type: Number,
-        example: 44002,
-        required: true,
-    })
-    @IsNotEmpty()
-    @IsNumber()
     mcqId: number;
 
     @ApiProperty({
@@ -76,6 +49,15 @@ export class PutMcqDto {
     })
     @IsNotEmpty()
     @IsNumber()
+    mcqId: number;
+    
+    @ApiProperty({
+        type: Number,
+        example: 44002,
+        required: true,
+    })
+    @IsNotEmpty()
+    @IsNumber()
     chossenOption: number;
 
     @ApiProperty({
@@ -99,8 +81,45 @@ export class PutMcqDto {
 
 export class CreateQuizDto {
     @ApiProperty({
-      type: [McqCreateDto],
-      required: true,
+        type: Number,
+        example: 44002,
+        required: true,
+    })
+    @IsNotEmpty()
+    @IsNumber()
+    userId: number;
+    
+    @ApiProperty({
+        type: Number,
+        example: 44002,
+        required: true,
+    })
+    @IsNotEmpty()
+    @IsNumber()
+    bootcampId: number;
+    
+    @ApiProperty({
+        type: Number,
+        example: 44002,
+        required: true,
+    })
+    @IsNotEmpty()
+    @IsNumber()
+    moduleId: number;
+
+
+    @ApiProperty({
+        type: Number,
+        example: 44002,
+        required: true,
+    })
+    @IsNotEmpty()
+    @IsNumber()
+    quizId: number;
+
+    @ApiProperty({
+        type: [McqCreateDto],
+        required: true,
     })
     @IsNotEmpty()
     @ValidateNested({ each: true })
@@ -110,8 +129,8 @@ export class CreateQuizDto {
 
 export class PutQuizDto {
     @ApiProperty({
-      type: [PutMcqDto],
-      required: true,
+        type: [PutMcqDto],
+        required: true,
     })
     @IsNotEmpty()
     @ValidateNested({ each: true })

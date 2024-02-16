@@ -23,11 +23,13 @@ export class ContentService {
             let modules = respo.data.data.attributes.zuvy_modules.data;
 
             let modulePromises = modules.map(async (m) => {
-                let getModuleTracking = await db.select().from(ModuleTracking).where(sql`${ModuleTracking.userId} = ${user_id} and ${ModuleTracking.moduleId} = ${m.id}`);
-                if (getModuleTracking.length == 0) {
-                    m.attributes['progress'] = 0
-                } else {
-                    m.attributes['progress'] = getModuleTracking[0].progress || 0;
+                if (user_id) { 
+                    let getModuleTracking = await db.select().from(ModuleTracking).where(sql`${ModuleTracking.userId} = ${user_id} and ${ModuleTracking.moduleId} = ${m.id}`);
+                    if (getModuleTracking.length == 0) {
+                        m.attributes['progress'] = 0
+                    } else {
+                        m.attributes['progress'] = getModuleTracking[0].progress || 0;
+                    }
                 }
                 return {
                     id: m.id,

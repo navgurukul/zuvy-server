@@ -15,9 +15,10 @@ import { ApiTags, ApiBody, ApiOperation, ApiCookieAuth, ApiQuery} from '@nestjs/
 export class ContentController {
     constructor(private contentService:ContentService) { }
 
-    @Get('/modules/:bootcamp_id/:user_id')
+    @Get('/modules/:bootcamp_id/')
     @ApiOperation({ summary: "Get the modules by user_id, bootcamp_id"})
-    async getModules(@Param('bootcamp_id') bootcamp_id: number, @Param('user_id') user_id : number): Promise<object> {
+    @ApiQuery({ name: 'user_id', required: false, type: Number, description: 'user id' })
+    async getModules(@Param('bootcamp_id') bootcamp_id: number, @Query('user_id') user_id : number): Promise<object> {
         const [err, res] = await this.contentService.getModules(bootcamp_id, user_id);
         if(err){
             throw new BadRequestException(err);
