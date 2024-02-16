@@ -1819,3 +1819,12 @@ export const ModuleTracking = main.table("zuvy_module_tracking", {
         createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
         updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
 });
+
+export const bootcampProgress = main.table("zuvy_bootcamp_tracking", {
+        id: serial("id").primaryKey().notNull(),
+        userId: integer("user_id").references(() => users.id),
+        progress: integer("progress").default(0),
+        bootcampId: integer("bootcamp_id").references(() => bootcamps.id),
+        createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+        updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+});
