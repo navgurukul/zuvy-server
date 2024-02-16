@@ -161,7 +161,7 @@ export class ClassesService {
                     return [{ 'status': 'error', 'message': "Fetching emails failed", 'code': 500 }, null];
                 }
             }
-            console.log(studentsEmails)
+         
 
             const calendar = google.calendar({ version: 'v3', auth: auth2Client });
             const eventData = {
@@ -190,7 +190,7 @@ export class ClassesService {
                     },
                 },
             };
-            console.log(eventData)
+          
             const createdEvent = await calendar.events.insert(eventData);
 
             const saveClassDetails = await db.insert(classesGoogleMeetLink).values({
