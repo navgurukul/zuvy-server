@@ -3,6 +3,7 @@ import { db } from '../../db/index';
 import { eq,sql, } from 'drizzle-orm';
 // import { BatchesService } from '../batches/batch.service';
 import axios from 'axios';
+import * as _ from 'lodash';
 import { error, log } from 'console';
 import { bootcamps, batches, users, batchEnrollments } from '../../../drizzle/schema';
 
@@ -195,19 +196,30 @@ export class BootcampService {
         }
     }
 
-    async getStudentsByBootcampOrBatch(bootcamp_id, batch_id){
+    async getStudentsByBootcampOrBatch(bootcamp_id, batch_id) {
         try {
-            let queryString ;
-            if (bootcamp_id){
-                queryString = sql`${batchEnrollments.bootcampId} = ${bootcamp_id}`
-            } else if (batch_id){
-                queryString = sql`${batchEnrollments.batchId} = ${batch_id}`
+            let queryString;
+            if (bootcamp_id) {
+                queryString = sql`${batchEnrollments.bootcampId} = ${bootcamp_id}`;
+            } else if (batch_id) {
+                queryString = sql`${batchEnrollments.batchId} = ${batch_id}`;
             }
             let batchEnrollmentsData = await db.select().from(batchEnrollments).where(queryString);
-            return [null, batchEnrollmentsData]
+            const studentsEmails = [];
+            for (const studentEmail of batchEnrollmentsData) {
+                try {
+                    const emailFetched = await db.select().from(users).where(eq(users.id, studentEmail.userId));
+                    if (emailFetched && emailFetched.length > 0) {
+                        studentsEmails.push({ "email": emailFetched[0].email, "name": emailFetched[0].name });
+                    }
+                } catch (error) {
+                    return [{ 'status': 'error', 'message': "Fetching emails failed", 'code': 500 }, null];
+                }
+            }
+            return [null,{ 'status': "success", "studentsEmails": studentsEmails, 'code': 200 }];
         } catch (e) {
-            log(`error: ${e.message}`)
-            return [{'status': 'error', 'message': e.message,'code': 500},null];
+            return [{ 'status': 'error', 'message': e.message, 'code': 500 }, null];
         }
     }
 }
+    

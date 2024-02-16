@@ -50,7 +50,7 @@ export class ClassesService {
             }
         }
         catch (error) {
-            return { 'success': 'not success', 'message': "Error fetching Admin details","error":error }
+            return { 'success': 'not success', 'message': "Error fetching Admin details", "error": error }
         }
     }
 
@@ -107,17 +107,17 @@ export class ClassesService {
                 userId,
                 userEmail
             };
-          
+
 
             if (existingUser.length !== 0) {
                 await db.update(userTokens).set({ ...creatorDetails }).where(eq(userTokens.userEmail, userEmail)).returning();
-                
+
             } else {
                 await db.insert(userTokens).values(creatorDetails).returning();
-                
+
             }
         } catch (error) {
-            return { 'success': 'not success', 'message': "Error saving tokens to the database","error":error }
+            return { 'success': 'not success', 'message': "Error saving tokens to the database", "error": error }
         }
     }
 
@@ -148,7 +148,7 @@ export class ClassesService {
                 return { status: 'error', message: 'You should be an admin to create a class.' };
             }
 
-            const studentsInTheBatchEmails = await db.select().from(batchEnrollments).where(eq(batchEnrollments.batchId, 1));
+            const studentsInTheBatchEmails = await db.select().from(batchEnrollments).where(eq(batchEnrollments.batchId, parseInt(eventDetails.batchId)));
             const studentsEmails = [];
             _.forEach(studentsInTheBatchEmails, async (studentEmail) => {
                 try {
@@ -220,7 +220,7 @@ export class ClassesService {
 
             return [null, { allClasses, classifiedClasses }];
         } catch (e) {
-           
+
             return [{ status: 'error', message: e.message, code: 500 }, null];
         }
     }
@@ -249,7 +249,7 @@ export class ClassesService {
             return { 'status': 'success', 'message': 'classes fetched successfully by batchId', 'code': 200, classesLink: classesLink };
         }
         catch (error) {
-            return { 'success': 'not success', 'message': "Error fetching class Links","error":error }
+            return { 'success': 'not success', 'message': "Error fetching class Links", "error": error }
         }
     }
 
@@ -259,7 +259,7 @@ export class ClassesService {
             return { 'status': 'success', 'message': 'classes fetched successfully by bootcampId', 'code': 200, classesLink: classesLink };
         }
         catch (error) {
-            return { 'success': 'not success', 'message': "Error fetching class Links","error":error }
+            return { 'success': 'not success', 'message': "Error fetching class Links", "error": error }
         }
     }
 
@@ -293,7 +293,7 @@ export class ClassesService {
             return { 'status': 'success', 'message': 'Meeting deleted successfully ', 'code': 200 };
         }
         catch (error) {
-            return { 'success': 'not success', 'message': "Error deleting meeting","error":error }
+            return { 'success': 'not success', 'message': "Error deleting meeting", "error": error }
         }
     }
 
