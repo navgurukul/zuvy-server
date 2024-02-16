@@ -149,17 +149,19 @@ export class ClassesService {
             }
 
             const studentsInTheBatchEmails = await db.select().from(batchEnrollments).where(eq(batchEnrollments.batchId, parseInt(eventDetails.batchId)));
+            
             const studentsEmails = [];
-            _.forEach(studentsInTheBatchEmails, async (studentEmail) => {
+            for (const studentEmail of studentsInTheBatchEmails) {
                 try {
                     const emailFetched = await db.select().from(users).where(eq(users.id, studentEmail.userId));
                     if (emailFetched && emailFetched.length > 0) {
-                        studentsEmails.push(emailFetched[0].email);
+                        studentsEmails.push( {'email':emailFetched[0].email});
                     }
                 } catch (error) {
-                    return { 'success': 'not success', 'message': "Fetching emails failed" }
+                    return [{ 'status': 'error', 'message': "Fetching emails failed", 'code': 500 }, null];
                 }
-            });
+            }
+         
 
             const calendar = google.calendar({ version: 'v3', auth: auth2Client });
             const eventData = {
@@ -188,6 +190,7 @@ export class ClassesService {
                     },
                 },
             };
+          
             const createdEvent = await calendar.events.insert(eventData);
 
             const saveClassDetails = await db.insert(classesGoogleMeetLink).values({
