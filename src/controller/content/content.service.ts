@@ -1,25 +1,45 @@
 import { Injectable, Logger } from '@nestjs/common';
-
+import { ModuleTracking } from '../../../drizzle/schema';
 import axios from 'axios';
 import { error, log } from 'console';
+import { sql } from 'drizzle-orm';
+import { db } from '../../db/index';
+import { promises } from 'dns';
+// import Strapi from "strapi-sdk-js"
 
 const {ZUVY_CONTENT_URL, ZUVY_CONTENTS_API_URL} = process.env// INPORTING env VALUSE ZUVY_CONTENT
 
+// const strapi = new Strapi({url: ZUVY_CONTENTS_API_URL})
 @Injectable()
 export class ContentService {
-    async getModules(bootcamp_id){
+
+    async getModules(bootcamp_id, user_id) {
         try{
-            let respo = await axios.get(ZUVY_CONTENT_URL+`/${bootcamp_id}?populate=zuvy_modules`)
-            let modules = respo.data.data.attributes.zuvy_modules.data
-            
-            modules = modules.map(m => {
+            let respo = await axios.get(ZUVY_CONTENT_URL+`/${bootcamp_id}?populate=zuvy_modules`);
+            // const { data } = await strapi.findOne('zuvy-contents', bootcamp_id, {
+            //     populate: ['zuvy_modules'],
+            //   });
+            // console.log('data: ',data)
+            let modules = respo.data.data.attributes.zuvy_modules.data;
+
+            let modulePromises = modules.map(async (m) => {
+                if (user_id) { 
+                    let getModuleTracking = await db.select().from(ModuleTracking).where(sql`${ModuleTracking.userId} = ${user_id} and ${ModuleTracking.moduleId} = ${m.id}`);
+                    if (getModuleTracking.length == 0) {
+                        m.attributes['progress'] = 0
+                    } else {
+                        m.attributes['progress'] = getModuleTracking[0].progress || 0;
+                    }
+                }
                 return {
                     id: m.id,
                     ...m.attributes
-                }
-            })
+                };
+            });
 
-            return [null, modules]
+            let modules__ = await Promise.all(modulePromises);
+
+            return [null, modules__];
         } catch (err) {
             error(`Error posting data: ${err.message}`)
             return [{'status': 'error', 'message': err.message,'code': 500}, null];

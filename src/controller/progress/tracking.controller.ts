@@ -1,25 +1,28 @@
-import { Controller, Get, Post, Put, Delete, Patch, Body, Param, ValidationPipe, UsePipes,BadRequestException } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Patch, Body, Param, ValidationPipe, UsePipes,BadRequestException, Query } from '@nestjs/common';
 import { TrackingService } from './tracking.service';
-import { ApiTags, ApiOperation, ApiCookieAuth } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiCookieAuth,ApiOAuth2 } from '@nestjs/swagger';
 import { CreateAssignmentDto, PatchAssignmentDto } from './dto/assignment.dto';
 import { CreateArticleDto } from './dto/article.dto';
 import { CreateQuizDto, PutQuizDto } from './dto/quiz.dto';
 
 @Controller('tracking')
-@ApiTags('tracking')
-@ApiCookieAuth()
-@UsePipes(new ValidationPipe({
-    whitelist: true,
-    transform: true,
-    forbidNonWhitelisted: true,
-}))
+// @ApiTags('tracking')
+// @ApiCookieAuth()
+// @UsePipes(new ValidationPipe({
+//     whitelist: true,
+//     transform: true,
+//     forbidNonWhitelisted: true,
+// }))
+// @ApiOAuth2(['pets:write'])
+
 // @UseGuards(AuthGuard('cookie'))
 export class TrackingController {
     constructor(private TrackingService: TrackingService) { }
-    @Get('/:user_id')
+
+    @Get('/:user_id/:module_id')
     @ApiOperation({ summary: "Get the progress by user_id"})
-    async getTracking(@Param('user_id') user_id: number): Promise<object> {
-        const [err, res] = await this.TrackingService.getProgress(user_id);
+    async getTracking(@Param('userID') userID: number, @Param('moduleID') moduleID: number, @Param('bootcampID') bootcampID: number ): Promise<object> {
+        const [err, res] = await this.TrackingService.getProgress(userID, moduleID, bootcampID);
         if(err){
             throw new BadRequestException(err);
         } 
@@ -28,8 +31,8 @@ export class TrackingController {
 
     @Post('/assignment')
     @ApiOperation({ summary: "Create assignment submission"})
-    async createAssignmentSubmission(@Body() data: CreateAssignmentDto): Promise<object> {
-        const [err, res] = await this.TrackingService.createAssignmentSubmission(data);
+    async assignmentSubmission(@Body() data: CreateAssignmentDto, @Query('bootcampId') bootcampId: number): Promise<object> {
+        const [err, res] = await this.TrackingService.submissionAssignment(data, bootcampId);
         if(err){
             throw new BadRequestException(err);
         } 
@@ -48,7 +51,7 @@ export class TrackingController {
 
     @Get('/assignment/:assignmentId/:userId')
     @ApiOperation({ summary: "Update assignment submission by id"})
-    async assignmentSubmission( @Param('assignmentId') assignmentId: number,@Param('userId') userId: number ): Promise<object> {
+    async getAssignmentSubmissionBy( @Param('assignmentId') assignmentId: number,@Param('userId') userId: number ): Promise<object> {
         console.log(assignmentId, userId);
         const [err, res] = await this.TrackingService.assignmentSubmissionBy(userId, assignmentId);
         if(err){
@@ -69,8 +72,8 @@ export class TrackingController {
 
     @Post('/article')
     @ApiOperation({ summary: "Create article submission"})
-    async createArticleSubmission(@Body() data: CreateArticleDto): Promise<object> {
-        const [err, res] = await this.TrackingService.createArticleTracking(data);
+    async articleTracking(@Body() data: CreateArticleDto,@Query('bootcampId') bootcampId: number): Promise<object> {
+        const [err, res] = await this.TrackingService.createArticleTracking(data, bootcampId);
         if(err){
             throw new BadRequestException(err);
         } 
@@ -99,8 +102,14 @@ export class TrackingController {
 
     @Post('/quiz')
     @ApiOperation({ summary: "Create quiz submission"})
-    async createQuizSubmission(@Body() data: CreateQuizDto, ): Promise<object> {
-        const [err, res] = await this.TrackingService.createQuizTracking(data.quiz);
+    async quizTracking(@Body() data: CreateQuizDto, ): Promise<object> {
+        data.quiz.filter((q) => {
+            q["userId"] = data.userId;
+            q["moduleId"] = data.moduleId;
+            q["quizId"] = data.quizId;
+        })
+        console.log(data.quiz);
+        const [err, res] = await this.TrackingService.createQuizTracking(data.quiz, data.bootcampId);
         if(err){
             throw new BadRequestException(err);
         } 

@@ -135,6 +135,10 @@ export class BootcampService {
     
     async addStudentToBootcamp(bootcampId: number, batchId: number, users_data: any){
         try {
+            console.log('users_data',users_data) 
+            console.log('bootcampId',bootcampId)
+            console.log('batchId',batchId)
+
             let enrollments = [];
             let totalEnrolStudents = await db.select().from(batchEnrollments).where(sql`${batchEnrollments.bootcampId} = ${bootcampId}`);
             let bootcampData = await db.select().from(bootcamps).where(sql`${bootcamps.id} = ${bootcampId}`);
@@ -157,7 +161,7 @@ export class BootcampService {
                 if (userInfo.length === 0){
                     userInfo = await db.insert(users).values(newUser).returning();
                 } else if(userInfo.length > 0){
-                    let userEnrolled = await db.select().from(batchEnrollments).where(sql`${batchEnrollments.userId} = ${userInfo[0].id} AND ${batchEnrollments.bootcampId} = ${bootcampId}`);
+                    let userEnrolled = await db.select().from(batchEnrollments).where(sql`${batchEnrollments.userId} = ${ userInfo[0].id.toString()} AND ${batchEnrollments.bootcampId} = ${bootcampId}`);
                     if (userEnrolled.length > 0){
                         report.push({'email': userInfo[0].email, 'message': `already enrolled in anodher bootcamp`});
                         continue;
