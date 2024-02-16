@@ -1,5 +1,5 @@
 import { Injectable, Req, Res } from '@nestjs/common';
-import { bootcamps, batches, userTokens, classesGoogleMeetLink, sansaarUserRoles, users } from '../../../drizzle/schema';
+import { bootcamps, batches, userTokens, classesGoogleMeetLink, sansaarUserRoles, users, batchEnrollments } from '../../../drizzle/schema';
 import { db } from '../../db/index';
 import { eq, sql, } from 'drizzle-orm';
 import { google, calendar_v3 } from 'googleapis';
@@ -20,12 +20,12 @@ enum ClassStatus {
     COMPLETED = 'completed',
     ONGOING = 'ongoing',
     UPCOMING = 'upcoming',
-  }
-  
-  interface Class {
+}
+
+interface Class {
     startTime: String;
-    endTime: string  ;
-  }
+    endTime: string;
+}
 
 const scopes = [
     "https://www.googleapis.com/auth/calendar"
@@ -109,7 +109,7 @@ export class ClassesService {
             };
             console.log(existingUser)
 
-            if (existingUser.length!==0) {
+            if (existingUser.length !== 0) {
                 await db.update(userTokens).set({ ...creatorDetails }).where(eq(userTokens.userEmail, userEmail)).returning();
                 console.log('Tokens updated in the database.');
             } else {
@@ -131,23 +131,36 @@ export class ClassesService {
         batchId: string;
         bootcampId: string;
         userId: number;
-        roles:string[]
+        roles: string[]
 
     }) {
         try {
             const fetchedTokens = await db.select().from(userTokens).where(eq((userTokens.userId), eventDetails.userId));
-            if(!fetchedTokens){
+            if (!fetchedTokens) {
                 return { status: 'error', message: 'Unable to fetch tokens' };
             }
             auth2Client.setCredentials({
                 access_token: fetchedTokens[0].accessToken,
                 refresh_token: fetchedTokens[0].refreshToken,
             });
-            
-            if (eventDetails.roles.includes('admin')==false) {
+
+            if (eventDetails.roles.includes('admin') == false) {
                 return { status: 'error', message: 'You should be an admin to create a class.' };
             }
-          
+
+            const studentsInTheBatchEmails = await db.select().from(batchEnrollments).where(eq(batchEnrollments.batchId, 1));
+            const studentsEmails = [];
+            _.forEach(studentsInTheBatchEmails, async (studentEmail) => {
+                try {
+                    const emailFetched = await db.select().from(users).where(eq(users.id, studentEmail.userId));
+                    if (emailFetched && emailFetched.length > 0) {
+                        studentsEmails.push(emailFetched[0].email);
+                    }
+                } catch (error) {
+                    console.log("Error fetching email:", error);
+                }
+            });
+
             const calendar = google.calendar({ version: 'v3', auth: auth2Client });
             const eventData = {
                 calendarId: 'primary',
@@ -164,7 +177,7 @@ export class ClassesService {
                         timeZone: eventDetails.timeZone,
                     },
 
-                    attendees: eventDetails.attendees.map(email => ({ email })),
+                    attendees: studentsEmails,
                     conferenceData: {
                         createRequest: {
                             conferenceSolutionKey: {
@@ -176,6 +189,7 @@ export class ClassesService {
                 },
             };
             const createdEvent = await calendar.events.insert(eventData);
+
             const saveClassDetails = await db.insert(classesGoogleMeetLink).values({
                 hangoutLink: createdEvent.data.hangoutLink,
                 creator: createdEvent.data.creator.email,
@@ -183,52 +197,52 @@ export class ClassesService {
                 endTime: createdEvent.data.end.dateTime,
                 batchId: eventDetails.batchId,
                 bootcampId: eventDetails.bootcampId,
-                title:createdEvent.data.summary,
-                attendees:eventDetails.attendees
+                title: createdEvent.data.summary,
+                attendees: studentsEmails
             }).returning();
-            if(saveClassDetails){
-                return  {'status': 'success', 'message': 'Created Class successfully', 'code': 200, saveClassDetails:saveClassDetails };
+            if (saveClassDetails) {
+                return { 'status': 'success', 'message': 'Created Class successfully', 'code': 200, saveClassDetails: saveClassDetails };
             }
-            else{
-                return {'success':'not success','message':"Class creation failed"}
+            else {
+                return { 'success': 'not success', 'message': "Classs creation failed" }
             }
         } catch (error) {
-           return {'status':"not success",'message':"error creating class",error:error}
+            return { 'status': "not success", 'message': "error creating class", error: error }
         }
-          }
-         
-          
-          async  getAllClasses(): Promise<any> {
-            try {
-              const allClasses = await db.select().from(classesGoogleMeetLink);
-          
-              const classifiedClasses = this.classifyClasses(allClasses);
-          
-              return [null, { allClasses, classifiedClasses }];
-            } catch (e) {
-              console.log(`error: ${e.message}`);
-              return [{ status: 'error', message: e.message, code: 500 }, null];
-            }
-          }
-          
-          async classifyClasses(classes: Class[]): Promise<ClassStatus[]> {
-            const now = new Date();
-          
-            return _.map(classes, (classItem) => {
-                const abc = classItem.startTime
-                const def = classItem.endTime
-              const startTime = abc.toISOString().split('T')[0];
-              const endTime =def.toISOString().split('T')[0];
-          
-              if (endTime < now) {
+    }
+
+
+    async getAllClasses(): Promise<any> {
+        try {
+            const allClasses = await db.select().from(classesGoogleMeetLink);
+
+            const classifiedClasses = this.classifyClasses(allClasses);
+
+            return [null, { allClasses, classifiedClasses }];
+        } catch (e) {
+            console.log(`error: ${e.message}`);
+            return [{ status: 'error', message: e.message, code: 500 }, null];
+        }
+    }
+
+    async classifyClasses(classes: Class[]): Promise<ClassStatus[]> {
+        const now = new Date();
+
+        return _.map(classes, (classItem) => {
+            const abc = classItem.startTime
+            const def = classItem.endTime
+            const startTime = abc.toISOString().split('T')[0];
+            const endTime = def.toISOString().split('T')[0];
+
+            if (endTime < now) {
                 return ClassStatus.COMPLETED;
-              } else if (startTime <= now && endTime >= now) {
+            } else if (startTime <= now && endTime >= now) {
                 return ClassStatus.ONGOING;
-              } else {
+            } else {
                 return ClassStatus.UPCOMING;
-              }
-            });
-          }
+            }
+        });
+    }
     async getClassesByBatchId(batchId: string) {
         try {
             const classesLink = await db.select().from(classesGoogleMeetLink).where(sql`${classesGoogleMeetLink.batchId} = ${batchId}`);
@@ -249,26 +263,26 @@ export class ClassesService {
         }
     }
 
-    async getAttendeesByMeetingId(id:number){
-        try{
+    async getAttendeesByMeetingId(id: number) {
+        try {
             const attendeesList = await db.select().from(classesGoogleMeetLink).where(sql`${classesGoogleMeetLink.id}=${id}`);
-            return {status:'success',message:"attendees fetched successfully",attendeesList:attendeesList[0].attendees}
-        }catch(error){
-            return {status:'error',message:'Error fetching attendees',error:error}
+            return { status: 'success', message: "attendees fetched successfully" }
+        } catch (error) {
+            return { status: 'error', message: 'Error fetching attendees', error: error }
 
         }
     }
 
-    async getMeetingById(id:number){
-        try{
+    async getMeetingById(id: number) {
+        try {
             const classDetails = await db.select().from(classesGoogleMeetLink).where(sql`${classesGoogleMeetLink.id}=${id}`);
             if (classDetails.length === 0) {
-                return {status: 'error', message: 'class not found', code: 404};
+                return { status: 'error', message: 'class not found', code: 404 };
             }
-            return {status: 'success', message: 'class fetched successfully', code: 200, class: classDetails[0]};
+            return { status: 'success', message: 'class fetched successfully', code: 200, class: classDetails[0] };
 
-        }catch(error){
-            return {status:'error',message:'Error fetching class',error:error}
+        } catch (error) {
+            return { status: 'error', message: 'Error fetching class', error: error }
 
         }
     }
@@ -283,10 +297,10 @@ export class ClassesService {
         }
     }
 
-    async updateMeetingById(id: number, classData:any): Promise<object> {
+    async updateMeetingById(id: number, classData: any): Promise<object> {
         try {
 
-            let updatedMeeting = await db.update(classesGoogleMeetLink).set({...classData}).where(eq(classesGoogleMeetLink.id, id)).returning();
+            let updatedMeeting = await db.update(classesGoogleMeetLink).set({ ...classData }).where(eq(classesGoogleMeetLink.id, id)).returning();
             console.log(updatedMeeting)
             return { 'status': 'success', 'message': 'Meeting  updated successfully', 'code': 200, meetingDetails: updatedMeeting };
 
