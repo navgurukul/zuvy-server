@@ -157,7 +157,7 @@ export class ClassesService {
                         studentsEmails.push(emailFetched[0].email);
                     }
                 } catch (error) {
-                    console.log("Error fetching email:", error);
+                    return { 'success': 'not success', 'message': "Fetching emails failed" }
                 }
             });
 
