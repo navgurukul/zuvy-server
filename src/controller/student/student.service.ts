@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { error, log } from 'console';
-import { batchEnrollments, batches, bootcamps} from '../../../drizzle/schema';
+import { batchEnrollments, batches, bootcampTracking, bootcamps} from '../../../drizzle/schema';
 import { db } from '../../db/index';
 import { eq, sql, } from 'drizzle-orm';
 
@@ -12,7 +12,8 @@ export class StudentService {
         
         let promises = enrolled.map(async (e) => {
             let bootcamp = await db.select().from(bootcamps).where(eq(bootcamps.id, e.bootcampId));
-
+            let progress = await db.select().from(bootcampTracking).where(sql`${bootcampTracking.userId} = ${userId} AND ${bootcampTracking.bootcampId} = ${e.bootcampId}`);
+            bootcamp[0]['progress'] = progress[0] ? progress[0].progress : 0;
            return bootcamp[0];
         });
         
