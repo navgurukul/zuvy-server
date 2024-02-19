@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { assignmentSubmission, articleTracking, ModuleTracking, bootcampProgress,  quizTracking,batches, bootcamps} from '../../../drizzle/schema';
+import { assignmentSubmission, articleTracking, moduleTracking, bootcampTracking,  quizTracking,batches, bootcamps} from '../../../drizzle/schema';
 import { db } from '../../db/index';
 import { eq, sql, inArray, and } from 'drizzle-orm';
 import axios from 'axios';
@@ -55,16 +55,16 @@ export class TrackingService {
             let total = zuvy_articles_ids.length + zuvy_mcqs_ids.length + zuvy_assignment_ids.length;
             let progress =  Math.floor((total_score/total)*100);
             
-            let getModuleTracking = await db.select().from(ModuleTracking).where(sql`${ModuleTracking.userId} = ${user_id} and ${ModuleTracking.moduleId} = ${module_id}`);
-            if (getModuleTracking.length == 0) {
-                let insertModuleTracking = await db.insert(ModuleTracking).values({userId: user_id, moduleId: module_id, progress, bootcampId}).returning();
+            let getmoduleTracking = await db.select().from(moduleTracking).where(sql`${moduleTracking.userId} = ${user_id} and ${moduleTracking.moduleId} = ${module_id}`);
+            if (getmoduleTracking.length == 0) {
+                let insertmoduleTracking = await db.insert(moduleTracking).values({userId: user_id, moduleId: module_id, progress, bootcampId}).returning();
                 
                 log(`insert the progress of the user_id:${user_id}, ${progress}`)
             } else {
-                let updateModuleTracking = await db.update(ModuleTracking).set({progress: progress}).where(sql`${ModuleTracking.userId} = ${user_id} and ${ModuleTracking.moduleId} = ${module_id}`).returning();
+                let updatemoduleTracking = await db.update(moduleTracking).set({progress: progress}).where(sql`${moduleTracking.userId} = ${user_id} and ${moduleTracking.moduleId} = ${module_id}`).returning();
                 log(`update the progress of the user_id:${user_id}, ${progress}`)
             }
-            // await this.updateBootcampProgress(bootcampId, user_id);
+            await this.updateBootcampProgress( user_id, bootcampId);
             
             return [null, {progress}]
         } catch (e){
@@ -73,30 +73,43 @@ export class TrackingService {
         }
     }
 
-    // updateBootcampProgress = async (bootcamp_id: number, user_id: number) => {
-    //     let getModules = await axios.get(`${ZUVY_CONTENT_URL}/${bootcamp_id}?populate=zuvy_modules`);
-    //     let modules = getModules.data.data.attributes.zuvy_modules.data;
-    //     console.log('modules: ', modules)
-
-    //     console.log('bootcamp_id: ', bootcamp_id, 'user_id: ', user_id)
-    //     let getProgressByBootcamp = await db.select().from(ModuleTracking).where(sql`${ModuleTracking.userId} = ${user_id} and ${ModuleTracking.bootcampId} = ${bootcamp_id}`);
-    //     console.log('getProgressByBootcamp: ', getProgressByBootcamp)
-        
-    //     let get_users_bootcamp = await db.select().from(bootcampProgress).where(sql`${bootcampProgress.userId} = ${user_id} and ${bootcampProgress.bootcampId} = ${bootcamp_id}`);
-        
-    //     let bootcamp_progress = 0;
-
-    //     getProgressByBootcamp.map((module) => {
-    //         bootcamp_progress += module.progress;
-    //     })
-
-    //     bootcamp_progress = Math.floor((bootcamp_progress/(modules.length*100))*100);
-    //     if (get_users_bootcamp.length == 0) {
-    //         let insertBootcampProgress = await db.insert(bootcampProgress).values({userId: user_id, bootcampId:bootcamp_id, progress:bootcamp_progress}).returning();
-    //     } else {
-    //         let updateBatch = await db.update(bootcampProgress).set({progress:bootcamp_progress}).where(sql`${ModuleTracking.userId} = ${user_id} and ${bootcampProgress.id} = ${bootcamp_id}`).returning();
-    //     }
-    // }
+    updateBootcampProgress = async ( user_id: number, bootcamp_id: number) => {
+        try{
+            let getModules;
+            try {
+                getModules = await axios.get(`${ZUVY_CONTENT_URL}/${bootcamp_id}?populate=zuvy_modules`);
+            } catch (e){
+                return [{ status: 'error', message: e.message, code: 402 }];
+            }
+            let modules = getModules.data.data.attributes.zuvy_modules.data;
+    
+            let getProgressByBootcampModule = await db.select().from(moduleTracking).where(sql`${moduleTracking.userId} = ${user_id} and ${moduleTracking.bootcampId} = ${bootcamp_id}`);
+            
+            let get_users_bootcamp = await db.select().from(bootcampTracking).where(sql`${bootcampTracking.userId} = ${user_id} and ${bootcampTracking.bootcampId} = ${bootcamp_id}`);
+  
+            let bootcamp_progress = 0;
+    
+            getProgressByBootcampModule.map((module) => {
+                bootcamp_progress += module.progress;
+            })
+    
+            bootcamp_progress = Math.floor((bootcamp_progress/(modules.length*100))*100);
+            if (get_users_bootcamp.length == 0) {
+                let insertBootcampProgress = await db.insert(bootcampTracking).values({userId: user_id, bootcampId:bootcamp_id, progress:bootcamp_progress}).returning();
+                
+                if (insertBootcampProgress.length){
+                    return [null, {status: 'success', message: 'Progress insert'}];
+                }
+            } else {
+                let updateBatch = await db.update(bootcampTracking).set({progress:bootcamp_progress}).where(sql`${bootcampTracking.userId} = ${user_id} and ${bootcampTracking.id} = ${bootcamp_id}`).returning();
+                if (updateBatch.length){
+                    return [null, {status: 'success', message: 'Progress update'}]
+                }
+            }
+        } catch (e){
+            return [{ status: 'error', message: e.message, code: 402 }];
+        }
+    }
 
     // Create
     async submissionAssignment(data: any, bootcampId: number) {
