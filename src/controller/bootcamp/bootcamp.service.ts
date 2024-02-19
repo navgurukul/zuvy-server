@@ -136,10 +136,6 @@ export class BootcampService {
     
     async addStudentToBootcamp(bootcampId: number, batchId: number, users_data: any){
         try {
-            console.log('users_data',users_data) 
-            console.log('bootcampId',bootcampId)
-            console.log('batchId',batchId)
-
             let enrollments = [];
             let totalEnrolStudents = await db.select().from(batchEnrollments).where(sql`${batchEnrollments.bootcampId} = ${bootcampId}`);
             let bootcampData = await db.select().from(bootcamps).where(sql`${bootcamps.id} = ${bootcampId}`);

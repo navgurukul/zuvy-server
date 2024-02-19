@@ -8,9 +8,7 @@ import { eq, sql, } from 'drizzle-orm';
 export class StudentService {
     async enrollData(userId: number) {
     try {
-        console.log('enrollData', userId);
         let enrolled = await db.select().from(batchEnrollments).where(sql`${batchEnrollments.userId} = ${userId} AND ${batchEnrollments.batchId} IS NOT NULL`);
-        console.log('enrolled: ', enrolled);
         
         let promises = enrolled.map(async (e) => {
             let bootcamp = await db.select().from(bootcamps).where(eq(bootcamps.id, e.bootcampId));
