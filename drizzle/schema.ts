@@ -1810,7 +1810,7 @@ export const assignmentSubmission = main.table("zuvy_assignment_submission", {
         updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
 });
 
-export const ModuleTracking = main.table("zuvy_module_tracking", {
+export const moduleTracking = main.table("zuvy_module_tracking", {
         id: serial("id").primaryKey().notNull(),
         userId: integer("user_id").references(() => users.id),
         moduleId: integer("module_id").notNull(),
@@ -1820,7 +1820,7 @@ export const ModuleTracking = main.table("zuvy_module_tracking", {
         updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
 });
 
-export const bootcampProgress = main.table("zuvy_bootcamp_tracking", {
+export const bootcampTracking = main.table("zuvy_bootcamp_tracking", {
         id: serial("id").primaryKey().notNull(),
         userId: integer("user_id").references(() => users.id),
         progress: integer("progress").default(0),

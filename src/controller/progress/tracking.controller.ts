@@ -1,12 +1,12 @@
 import { Controller, Get, Post, Put, Delete, Patch, Body, Param, ValidationPipe, UsePipes,BadRequestException, Query } from '@nestjs/common';
 import { TrackingService } from './tracking.service';
-import { ApiTags, ApiOperation, ApiCookieAuth,ApiOAuth2 } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiCookieAuth,ApiOAuth2} from '@nestjs/swagger';
 import { CreateAssignmentDto, PatchAssignmentDto } from './dto/assignment.dto';
 import { CreateArticleDto } from './dto/article.dto';
 import { CreateQuizDto, PutQuizDto } from './dto/quiz.dto';
 
 @Controller('tracking')
-// @ApiTags('tracking')
+@ApiTags('tracking')
 // @ApiCookieAuth()
 // @UsePipes(new ValidationPipe({
 //     whitelist: true,
@@ -52,7 +52,6 @@ export class TrackingController {
     @Get('/assignment/:assignmentId/:userId')
     @ApiOperation({ summary: "Update assignment submission by id"})
     async getAssignmentSubmissionBy( @Param('assignmentId') assignmentId: number,@Param('userId') userId: number ): Promise<object> {
-        console.log(assignmentId, userId);
         const [err, res] = await this.TrackingService.assignmentSubmissionBy(userId, assignmentId);
         if(err){
             throw new BadRequestException(err);
@@ -108,7 +107,6 @@ export class TrackingController {
             q["moduleId"] = data.moduleId;
             q["quizId"] = data.quizId;
         })
-        console.log(data.quiz);
         const [err, res] = await this.TrackingService.createQuizTracking(data.quiz, data.bootcampId);
         if(err){
             throw new BadRequestException(err);
@@ -145,4 +143,15 @@ export class TrackingController {
         } 
         return res;
     }
+
+    @Put('/quiz/:userId/:bootcampId')
+    @ApiOperation({ summary: "Update progress submission by user_id"})
+    async updateProgress(@Param('userId') userId: number, @Param('bootcampId') bootcampId: number): Promise<object> {
+        const [err, res] = await this.TrackingService.updateBootcampProgress(userId, bootcampId);
+        if(err){
+            throw new BadRequestException(err);
+        } 
+        return res;
+    }
+
 }

@@ -16,7 +16,7 @@ export class ContentController {
     constructor(private contentService:ContentService) { }
 
     @Get('/modules/:bootcamp_id/')
-    @ApiOperation({ summary: "Get the modules by user_id, bootcamp_id"})
+    @ApiOperation({ summary: "Get the modules of bootcamp, if user_id is provided then it will return the progress of user in the bootcamp"})
     @ApiQuery({ name: 'user_id', required: false, type: Number, description: 'user id' })
     async getModules(@Param('bootcamp_id') bootcamp_id: number, @Query('user_id') user_id : number): Promise<object> {
         const [err, res] = await this.contentService.getModules(bootcamp_id, user_id);
@@ -27,9 +27,10 @@ export class ContentController {
     }
 
     @Get('/chapter/:module_id')
-    @ApiOperation({ summary: "Get the chapter by module_id"})
-    async getChapter(@Param('module_id') module_id: number): Promise<object> {
-        const [err, res] = await this.contentService.getChapter(module_id);
+    @ApiOperation({ summary: "Get the chapter by module_id "})
+    @ApiQuery({ name: 'user_id', required: false, type: Number, description: 'user id' })
+    async getChapter(@Param('module_id') module_id: number, @Query('user_id') user_id : number): Promise<object> {
+        const [err, res] = await this.contentService.getChapter(module_id, user_id);
         if(err){
             throw new BadRequestException(err);
         } 
