@@ -129,7 +129,7 @@ export class ClassesService {
         timeZone: string;
         attendees: string[];
         batchId: string;
-        bootcampId: string;
+        bootcampId: string; 
         userId: number;
         roles: string[]
 
@@ -232,10 +232,10 @@ export class ClassesService {
         const now = new Date();
 
         return _.map(classes, (classItem) => {
-            const abc = classItem.startTime
-            const def = classItem.endTime
-            const startTime = abc.toISOString().split('T')[0];
-            const endTime = def.toISOString().split('T')[0];
+            const classStartTime = classItem.startTime
+            const classEndTime = classItem.endTime
+            const startTime = classStartTime.toISOString().split('T')[0];
+            const endTime = classEndTime.toISOString().split('T')[0];
 
             if (endTime < now) {
                 return ClassStatus.COMPLETED;
@@ -246,25 +246,79 @@ export class ClassesService {
             }
         });
     }
+
     async getClassesByBatchId(batchId: string) {
         try {
-            const classesLink = await db.select().from(classesGoogleMeetLink).where(sql`${classesGoogleMeetLink.batchId} = ${batchId}`);
-            return { 'status': 'success', 'message': 'classes fetched successfully by batchId', 'code': 200, classesLink: classesLink };
-        }
-        catch (error) {
-            return { 'success': 'not success', 'message': "Error fetching class Links", "error": error }
+            const currentTime = new Date();
+    
+            const classes = await db.select().from(classesGoogleMeetLink).where(sql`${classesGoogleMeetLink.batchId} = ${batchId}`);
+    
+            const completedClasses = [];
+            const ongoingClasses = [];
+            const upcomingClasses = [];
+    
+            for (const classObj of classes) {
+                const startTime = new Date(classObj.startTime);
+                const endTime = new Date(classObj.endTime);
+    
+                if (currentTime > endTime) {
+                    completedClasses.push(classObj);
+                } else if (currentTime >= startTime && currentTime <= endTime) {
+                    ongoingClasses.push(classObj);
+                } else {
+                    upcomingClasses.push(classObj);
+                }
+            }
+    
+            return {
+                'status': 'success',
+                'message': 'Classes fetched successfully by batchId',
+                'code': 200,
+                completedClasses,
+                ongoingClasses,
+                upcomingClasses,
+            };
+        } catch (error) {
+            return { 'success': 'not success', 'message': 'Error fetching class Links', 'error': error };
         }
     }
+    
 
-    async getClassesByBootcampId(bootcampId: string) {
-        try {
-            const classesLink = await db.select().from(classesGoogleMeetLink).where(sql`${classesGoogleMeetLink.bootcampId} = ${bootcampId}`);
-            return { 'status': 'success', 'message': 'classes fetched successfully by bootcampId', 'code': 200, classesLink: classesLink };
+   async getClassesByBootcampId(bootcampId: string) {
+    try {
+        const currentTime = new Date();
+
+        const classes = await db.select().from(classesGoogleMeetLink).where(sql`${classesGoogleMeetLink.bootcampId} = ${bootcampId}`);
+
+        const completedClasses = [];
+        const ongoingClasses = [];
+        const upcomingClasses = [];
+
+        for (const classObj of classes) {
+            const startTime = new Date(classObj.startTime);
+            const endTime = new Date(classObj.endTime);
+
+            if (currentTime > endTime) {
+                completedClasses.push(classObj);
+            } else if (currentTime >= startTime && currentTime <= endTime) {
+                ongoingClasses.push(classObj);
+            } else {
+                upcomingClasses.push(classObj);
+            }
         }
-        catch (error) {
-            return { 'success': 'not success', 'message': "Error fetching class Links", "error": error }
-        }
+
+        return {
+            'status': 'success',
+            'message': 'Classes fetched successfully by bootcampId',
+            'code': 200,
+            completedClasses,
+            ongoingClasses,
+            upcomingClasses,
+        };
+    } catch (error) {
+        return { 'success': 'not success', 'message': 'Error fetching class Links', 'error': error };
     }
+}
 
     async getAttendeesByMeetingId(id: number) {
         try {
