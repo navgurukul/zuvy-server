@@ -32,15 +32,18 @@ export class BatchesService {
     //     }
     //     return batch;
     // }
-    async capEnrollment(batch) {
+    async capEnrollment(batch, flagUpdate = false) {
         const bootcamp = await db.select().from(bootcamps).where(eq(bootcamps.id, batch.bootcampId));
         if (bootcamp.length === 0) {
             return [{ 'status': 'error', 'message': 'Bootcamp not found', 'code': 404 }, null];
         }
-        const totalBatches = await db.select().from(batches).where(eq(batches.bootcampId, batch.bootcampId));
+        let totalBatches = await db.select().from(batches).where(eq(batches.bootcampId, batch.bootcampId));
+        if (flagUpdate) {
+            totalBatches = totalBatches.filter(b => b.id !== batch.id);
+        }
         let totalEnrolment = totalBatches.reduce((acc, b) => acc + b.capEnrollment, 0);
         if (totalEnrolment + batch.capEnrollment > bootcamp[0].capEnrollment) {
-            return [{ 'status': 'error', 'message': 'Bootcamp capacity exceeded', 'code': 400 }, null];
+            return [{ 'status': 'error', 'message': 'The maximum capacity for the bootcamp has been reached', 'code': 400 }, null];
         }
         return [null, true];
     }
@@ -53,12 +56,11 @@ export class BatchesService {
             }
 
             const newData = await db.insert(batches).values(batch).returning();
-            const usersData = await db.select().from(batchEnrollments).where(sql`${batchEnrollments.bootcampId} = ${batch.bootcampId} AND ${batchEnrollments.batchId} IS NULL`).limit(batch.capEnrollment); 
+            const usersData = await db.select().from(batchEnrollments).where(sql`${batchEnrollments.bootcampId} = ${batch.bootcampId} AND ${batchEnrollments.batchId} IS NULL`).limit(batch.capEnrollment);
+
             if (usersData.length > 0) {
-                const batchEnrollment = usersData.map((enrollment) => {
-                    return { userId: enrollment.userId, bootcampId: enrollment.bootcampId, batchId: newData[0].id };
-                });
-                await db.insert(batchEnrollments).values(batchEnrollment);
+                let userids = usersData.map(u => u.userId);
+                await db.update(batchEnrollments).set({ batchId: newData[0].id}).where(sql`user_id IN ${userids}`);
             }
             return [null, { 'status': 'success', 'message': 'Batch created successfully', 'code': 200, batch: newData[0] }];
         } catch (e) {
@@ -71,9 +73,27 @@ export class BatchesService {
         try {
             let data = await db.select().from(batches).where(eq(batches.id, id));
             if (data.length === 0) {
-                return [{status: 'error', message: 'Batch not found', code: 404},null];
+                return [{ status: 'error', message: 'Batch not found', code: 404 }, null];
             }
-            return [null, {status: 'success', message: 'Batch fetched successfully', code: 200, batch: data[0]}];
+            let respObj = [];
+            // if (students){
+                let enrollStudents = await db.select().from(batchEnrollments).where(eq(batchEnrollments.batchId, id));
+                let enrollStudentsId;
+                if (enrollStudents.length !== 0) {
+                    enrollStudentsId = enrollStudents.map(e => BigInt(e.userId)); // Convert e.userId to bigint
+                    let students = await db.select().from(users).where(sql`id IN ${enrollStudentsId}`);
+                    enrollStudents.map((e) => {
+                        students.find((s) => {
+                            if (s.id === BigInt(e.userId)) {
+                                respObj.push({'id':e.userId,"email":s.email, "name": s.name});
+                            }
+                        });
+                    });
+                } 
+                data[0]['students'] = respObj;
+                return [null, {status: 'success', message: 'Batch fetched successfully', code: 200, batch: data[0]}];
+            // }
+            // return [null, {status: 'success', message: 'Batch fetched successfully', code: 200, batch: data[0]}];
         } catch (e) {
             log(`error: ${e.message}`)
             return [{'status': 'error', 'message': e.message,'code': 500},null];
@@ -87,7 +107,8 @@ export class BatchesService {
                 return [{status: 'error', message: 'Batch not found', code: 404},null];
             }
             if (batch['capEnrollment']) {
-                let [err,res] =  await this.capEnrollment(batchData[0]);
+                batchData[0].capEnrollment =batch['capEnrollment']
+                let [err,res] =  await this.capEnrollment(batchData[0], true);
                 if(err){
                     return [err, null];
                 }
@@ -107,6 +128,7 @@ export class BatchesService {
     async deleteBatch(id: number) {
         try {
             let data = await db.delete(batches).where(eq(batches.id, id)).returning();
+            await db.update(batchEnrollments).set({"batchId": null}).where(eq(batchEnrollments.batchId, id)).returning()
             if (data.length === 0) {
                 return [{status: 'error', message: 'Batch not found', code: 404}, null];
             }

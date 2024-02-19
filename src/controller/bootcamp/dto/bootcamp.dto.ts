@@ -129,7 +129,6 @@ export class PatchBootcampDto{
   language: string;
 
   @ApiProperty({
-    description: 'The cap enrollment of the bootcamp',
     type: Number,
     example: 500,
   })

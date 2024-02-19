@@ -44,6 +44,11 @@ export class ClassesController {
     getClassesByBootcampId(@Param('bootcampId') bootcampId: string): Promise<object> {
         return this.classesService.getClassesByBootcampId(bootcampId);
     }
+    @Get('/getAttendeesByMeetingId/:id')
+    @ApiOperation({ summary: "Get the google class attendees by meetingId" })
+    getAttendeesByMeetingId(@Param('id') id: number): Promise<object> {
+        return this.classesService.getAttendeesByMeetingId(id);
+    }
     @Get('/:id')
     @ApiOperation({ summary: "getting meeting By id" })
     getMeetingById(@Param('id') id: number): Promise<object> {

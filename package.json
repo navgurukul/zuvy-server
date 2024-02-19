@@ -9,7 +9,7 @@
     "build": "nest build",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\" \"libs/**/*.ts\"",
     "start": "nest start",
-    "start:dev": "nest start --watch",
+    "dev": "nest start --watch",
     "start:debug": "nest start --debug --watch",
     "start:prod": "node dist/main",
     "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
@@ -19,8 +19,14 @@
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
     "test:e2e": "jest --config ./test/jest-e2e.json",
     "migration:import": "drizzle-kit introspect:pg --config=./src/drizzle.config.ts",
-    "migration:generate": "drizzle-kit generate:pg --config=./src/drizzle.config.ts",
-    "migration:push": "drizzle-kit push:pg --config=./src/drizzle.config.ts"
+    "migration:generate": "drizzle-kit generate:pg --schema=./drizzle/schema.ts",
+    "migration:push": "drizzle-kit push:pg --config=./src/drizzle.config.ts",
+    "migration:pull": "drizzle-kit pull --config=./src/drizzle.config.ts",
+    "migration:up": "drizzle-kit up:pg --config=./src/drizzle.config.ts",
+    "migration:drop": "drizzle-kit drop --config=./src/drizzle.config.ts",
+    "migration:down": "drizzle-kit down:pg --config=./src/drizzle.config.ts",
+    "migration:seed": "drizzle-kit seed:pg --config=./src/drizzle.config.ts",
+    "migration": "drizzle-kit generate:pg --schema=./drizzle/schema.ts && drizzle-kit push:pg --config=./src/drizzle.config.ts"
   },
   "dependencies": {
     "@nestjs/common": "^10.0.0",
@@ -37,6 +43,7 @@
     "drizzle-orm": "^0.29.3",
     "google-auth-library": "^9.6.2",
     "googleapis": "^131.0.0",
+    "lodash": "^4.17.21",
     "node-cron": "^3.0.3",
     "pg": "^8.11.3",
     "postgres": "^3.4.3",

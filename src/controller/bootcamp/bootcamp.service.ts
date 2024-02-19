@@ -3,6 +3,7 @@ import { db } from '../../db/index';
 import { eq,sql, } from 'drizzle-orm';
 // import { BatchesService } from '../batches/batch.service';
 import axios from 'axios';
+import * as _ from 'lodash';
 import { error, log } from 'console';
 import { bootcamps, batches, users, batchEnrollments } from '../../../drizzle/schema';
 
@@ -11,10 +12,30 @@ const {ZUVY_CONTENT_URL} = process.env// INPORTING env VALUSE ZUVY_CONTENT
 @Injectable()
 export class BootcampService {
     // constructor(private batchesService:BatchesService) { }
+    async enrollData(bootcampId: number) {
+        try {
+            let enrolled = await db.select().from(batchEnrollments).where(sql`${batchEnrollments.bootcampId} = ${bootcampId}`);
+            let unEnrolledBatch = await db.select().from(batchEnrollments).where(sql`${batchEnrollments.bootcampId} = ${bootcampId} AND ${batchEnrollments.batchId} IS NULL`);
+            return [null, { 'students_in_bootcamp': enrolled.length, 'unassigned_students': unEnrolledBatch.length }];
+        } catch (error) {
+            log(`error: ${error.message}`)
+            return [{'status': 'error', 'message': error.message,'code': 500}, null];
+        }
+
+    }
+
     async getAllBootcamps(): Promise<any> {
         try {
-            const allUsers = await db.select().from(bootcamps);
-            return [null, allUsers];
+            let getAllBootcamps = await db.select().from(bootcamps);
+
+            let data = await Promise.all(getAllBootcamps.map(async (bootcamp) => {
+                let [err, res] = await this.enrollData(bootcamp.id);
+                if (err) {
+                    return [err, null];
+                }
+                return { ...bootcamp, ...res };
+            }));
+            return [null, data];
         } catch (e) {
             log(`error: ${e.message}`)
             return [{'status': 'error', 'message': e.message,'code': 500}, null];
@@ -24,6 +45,8 @@ export class BootcampService {
     async getBootcampById(id: number, isContent: boolean): Promise<any> {
         try {
             let bootcamp = await db.select().from(bootcamps).where(sql`${bootcamps.id} = ${id}`);
+            let [err, res] = await this.enrollData(id);
+
             if (!bootcamp.length){
                 return [{'status': 'Error', 'message': 'Bootcamp not found!','code': 404}, null];
             }
@@ -36,7 +59,7 @@ export class BootcampService {
                 }
             }
 
-            return [null, {'status': 'success', 'message': 'Bootcamp fetched successfully', 'code': 200, bootcamp: bootcamp[0]}];
+            return [null, {'status': 'success', 'message': 'Bootcamp fetched successfully', 'code': 200, bootcamp: {...bootcamp[0], ...res} }];
         } catch (e) {
             log(`error: ${e.message}`)
             return [{'status': 'error', 'message': e.message,'code': 500}, null];
@@ -88,8 +111,9 @@ export class BootcampService {
 
     async deleteBootcamp(id: number): Promise<any> {
         try {
-            let data = await db.delete(batches).where(eq(batches.bootcampId, id)).returning();
-            // await db.delete(bootcamps).where(eq(bootcamps.id, id));
+            await db.delete(batches).where(eq(batches.bootcampId, id));
+            await db.delete(batchEnrollments).where(eq(batchEnrollments.bootcampId, id));
+            let data = await db.delete(bootcamps).where(eq(bootcamps.id, id)).returning();
             if (data.length === 0) {
                 return [{'status': 'error', 'message': 'Bootcamp not found', 'code': 404}, null];
             }
@@ -113,6 +137,16 @@ export class BootcampService {
     async addStudentToBootcamp(bootcampId: number, batchId: number, users_data: any){
         try {
             let enrollments = [];
+            let totalEnrolStudents = await db.select().from(batchEnrollments).where(sql`${batchEnrollments.bootcampId} = ${bootcampId}`);
+            let bootcampData = await db.select().from(bootcamps).where(sql`${bootcamps.id} = ${bootcampId}`);
+            if (bootcampData.length === 0){
+                return [{'status': 'error', 'message': 'Bootcamp not found', 'code': 404}, null];
+            }
+            if (totalEnrolStudents.length >= bootcampData[0].capEnrollment){
+                return [{'status': 'error', 'message': 'The maximum capacity for the bootcamp has been reached.', 'code': 403}, null];
+            }
+            let report = [];
+            let userReport = [];
             for (let i = 0; i < users_data.length; i++) {
                 let newUser = {}
                 newUser["bootcamp_id"] = bootcampId
@@ -123,37 +157,69 @@ export class BootcampService {
                 let userInfo = await db.select().from(users).where(sql`${users.email} = ${users_data[i]["email"]}`);
                 if (userInfo.length === 0){
                     userInfo = await db.insert(users).values(newUser).returning();
-                } 
-                let enroling = {userId:  userInfo[0].id,
-                    bootcampId};
+                } else if(userInfo.length > 0){
+                    let userEnrolled = await db.select().from(batchEnrollments).where(sql`${batchEnrollments.userId} = ${ userInfo[0].id.toString()} AND ${batchEnrollments.bootcampId} = ${bootcampId}`);
+                    if (userEnrolled.length > 0){
+                        report.push({'email': userInfo[0].email, 'message': `already enrolled in anodher bootcamp`});
+                        continue;
+                    }
+                }
+                let enroling = {userId:  userInfo[0].id, bootcampId};
                 if (batchId){
                     enroling["batchId"] = batchId
                 }
+                userReport.push({'email': userInfo[0].email, 'message': `enrolled successfully`});
                 enrollments.push(enroling);
                 }  
+            let students_enrolled ;
             if (enrollments.length > 0) {
-                await db.insert(batchEnrollments).values(enrollments);
+                students_enrolled = await db.insert(batchEnrollments).values(enrollments).returning();
+                if (students_enrolled.length === 0){
+                    return [{'status': 'error', 'message': 'Error enrolling students', 'code': 500}, null];
+                }
             }
-            return [null, {'status': 'success', 'message': 'Studentes enrolled successfully', 'code': 200}];
+
+            return [
+                null,
+                {
+                    status: true,
+                    code: 200,
+                    message: `${enrollments.length} students successfully enrolled!`,
+                    report: report,
+                    students_enrolled: userReport
+                }
+            ]
+            
         } catch (e) {
             log(`error: ${e.message}`)
             return [{'status': 'error', 'message': e.message,'code': 500},null];
         }
     }
 
-    async getStudentsByBootcampOrBatch(bootcamp_id, batch_id){
+    async getStudentsByBootcampOrBatch(bootcamp_id, batch_id) {
         try {
-            let queryString ;
-            if (bootcamp_id){
-                queryString = sql`${batchEnrollments.bootcampId} = ${bootcamp_id}`
-            } else if (batch_id){
-                queryString = sql`${batchEnrollments.batchId} = ${batch_id}`
+            let queryString;
+            if (bootcamp_id) {
+                queryString = sql`${batchEnrollments.bootcampId} = ${bootcamp_id}`;
+            } else if (batch_id) {
+                queryString = sql`${batchEnrollments.batchId} = ${batch_id}`;
             }
             let batchEnrollmentsData = await db.select().from(batchEnrollments).where(queryString);
-            return [null, batchEnrollmentsData]
+            const studentsEmails = [];
+            for (const studentEmail of batchEnrollmentsData) {
+                try {
+                    const emailFetched = await db.select().from(users).where(eq(users.id, studentEmail.userId));
+                    if (emailFetched && emailFetched.length > 0) {
+                        studentsEmails.push({ "email": emailFetched[0].email, "name": emailFetched[0].name });
+                    }
+                } catch (error) {
+                    return [{ 'status': 'error', 'message': "Fetching emails failed", 'code': 500 }, null];
+                }
+            }
+            return [null,{ 'status': "success", "studentsEmails": studentsEmails, 'code': 200 }];
         } catch (e) {
-            log(`error: ${e.message}`)
-            return [{'status': 'error', 'message': e.message,'code': 500},null];
+            return [{ 'status': 'error', 'message': e.message, 'code': 500 }, null];
         }
     }
 }
+    

@@ -139,5 +139,15 @@ export class CreateLiveBroadcastDto {
   @IsNotEmpty()
   @IsArray()
   attendees: string[];
+
+  @ApiProperty({
+    description: 'User roles',
+    type: [String],
+    example: ['admin', 'volunteer'],
+    required: false,
+  })
+  @IsNotEmpty()
+  @IsArray()
+  roles: string[];
 }
 
