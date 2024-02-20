@@ -13,32 +13,50 @@ const {ZUVY_CONTENT_URL, ZUVY_CONTENTS_API_URL} = process.env// INPORTING env VA
 @Injectable()
 export class ContentService {
 
+    async lockContent(modules__, module_id= null){
+        let index = 0;
+        while (index < modules__.length) {
+            let index_run = index + 1;
+            if (index == 0) {
+                modules__[index]['lock'] = true;
+            }
+            if (index_run < modules__.length) {
+                if (modules__[index].progress >= 100) {
+                    modules__[index_run]['lock'] = true;
+                } else {
+                    modules__[index_run]['lock'] = false;
+                }
+            }
+            index++;
+        }
+        return modules__;
+    }
+
     async getModules(bootcamp_id, user_id) {
         try{
             let respo = await axios.get(ZUVY_CONTENT_URL+`/${bootcamp_id}?populate=zuvy_modules`);
-            // const { data } = await strapi.findOne('zuvy-contents', bootcamp_id, {
-            //     populate: ['zuvy_modules'],
-            //   });
             let modules = respo.data.data.attributes.zuvy_modules.data;
 
-            let modulePromises = modules.map(async (m) => {
-                if (user_id) { 
-                    let getModuleTracking = await db.select().from(moduleTracking).where(sql`${moduleTracking.userId} = ${user_id} and ${moduleTracking.moduleId} = ${m.id}`);
-                    if (getModuleTracking.length == 0) {
-                        m.attributes['progress'] = 0
-                    } else {
-                        m.attributes['progress'] = getModuleTracking[0].progress || 0;
+            // if (user_id){    
+                let modulePromises = modules.map(async (m) => {
+                    if (user_id) { 
+                        let getModuleTracking = await db.select().from(moduleTracking).where(sql`${moduleTracking.userId} = ${user_id} and ${moduleTracking.moduleId} = ${m.id}`);
+                        if (getModuleTracking.length == 0) {
+                            m.attributes['progress'] = 0
+                        } else {
+                            m.attributes['progress'] = getModuleTracking[0].progress || 0;
+                        }
                     }
-                }
-                return {
-                    id: m.id,
-                    ...m.attributes
-                };
-            });
+                    return {
+                        id: m.id,
+                        ...m.attributes
+                    };
+                });
 
-            let modules__ = await Promise.all(modulePromises);
-
-            return [null, modules__];
+                modules = await Promise.all(modulePromises);
+                modules = await this.lockContent(modules);
+            // }
+            return [null, modules];
         } catch (err) {
             error(`Error posting data: ${err.message}`)
             return [{'status': 'error', 'message': err.message,'code': 500}, null];

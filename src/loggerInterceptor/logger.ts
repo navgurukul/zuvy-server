@@ -14,6 +14,6 @@ export class LoggingInterceptor implements NestInterceptor {
     return next
       .handle()
       .pipe(
-        tap(() => log(chalk.green(`API call ${new Date()} - ${method} ${url}... ${Date.now() - now}ms`))),      );
+        tap(() => log(chalk.green(`API call ${new Date()} :- ${method} ${url}... ${Date.now() - now}ms`))),      );
   }
 }
