@@ -272,6 +272,9 @@ export class TrackingService {
                 .orderBy(desc(assignmentSubmission.id))// Fix: Call the desc() method on the column object
                 .limit(1);
             let totaldata = [latestIds[0], latestMcqIds[0], latestAssignmentIds[0]];
+            if (totaldata.length == 0) {
+                return [{ status: 'error', message: 'No data found', code: 404 }];
+            }
 
             totaldata.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
             if (totaldata.length != 0) {
