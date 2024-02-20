@@ -32,28 +32,28 @@ export class BatchesService {
     //     }
     //     return batch;
     // }
-    async capEnrollment(batch, flagUpdate = false) {
-        const bootcamp = await db.select().from(bootcamps).where(eq(bootcamps.id, batch.bootcampId));
-        if (bootcamp.length === 0) {
-            return [{ 'status': 'error', 'message': 'Bootcamp not found', 'code': 404 }, null];
-        }
-        let totalBatches = await db.select().from(batches).where(eq(batches.bootcampId, batch.bootcampId));
-        if (flagUpdate) {
-            totalBatches = totalBatches.filter(b => b.id !== batch.id);
-        }
-        let totalEnrolment = totalBatches.reduce((acc, b) => acc + b.capEnrollment, 0);
-        if (totalEnrolment + batch.capEnrollment > bootcamp[0].capEnrollment) {
-            return [{ 'status': 'error', 'message': 'The maximum capacity for the bootcamp has been reached', 'code': 400 }, null];
-        }
-        return [null, true];
-    }
+    // async capEnrollment(batch, flagUpdate = false) {
+    //     const bootcamp = await db.select().from(bootcamps).where(eq(bootcamps.id, batch.bootcampId));
+    //     if (bootcamp.length === 0) {
+    //         return [{ 'status': 'error', 'message': 'Bootcamp not found', 'code': 404 }, null];
+    //     }
+    //     let totalBatches = await db.select().from(batches).where(eq(batches.bootcampId, batch.bootcampId));
+    //     if (flagUpdate) {
+    //         totalBatches = totalBatches.filter(b => b.id !== batch.id);
+    //     }
+    //     // let totalEnrolment = totalBatches.reduce((acc, b) => acc + b.capEnrollment, 0);
+    //     // if (totalEnrolment + batch.capEnrollment > bootcamp[0].capEnrollment) {
+    //     //     return [{ 'status': 'error', 'message': 'The maximum capacity for the bootcamp has been reached', 'code': 400 }, null];
+    //     // }
+    //     return [null, true];
+    // }
 
     async createBatch(batch) {
         try {
-            let [err,res] =  await this.capEnrollment(batch);
-            if(err){
-                return [err, null];
-            }
+            // // let [err,res] =  await this.capEnrollment(batch);
+            // if(err){
+            //     return [err, null];
+            // }
 
             const newData = await db.insert(batches).values(batch).returning();
             const usersData = await db.select().from(batchEnrollments).where(sql`${batchEnrollments.bootcampId} = ${batch.bootcampId} AND ${batchEnrollments.batchId} IS NULL`).limit(batch.capEnrollment);
@@ -106,13 +106,13 @@ export class BatchesService {
             if (batchData.length === 0) {
                 return [{status: 'error', message: 'Batch not found', code: 404},null];
             }
-            if (batch['capEnrollment']) {
-                batchData[0].capEnrollment =batch['capEnrollment']
-                let [err,res] =  await this.capEnrollment(batchData[0], true);
-                if(err){
-                    return [err, null];
-                }
-            }
+            // if (batch['capEnrollment']) {
+            //     batchData[0].capEnrollment =batch['capEnrollment']
+            //     // let [err,res] =  await this.capEnrollment(batchData[0], true);
+            //     // if(err){
+            //     //     return [err, null];
+            //     // }
+            // }
             batch['updatedAt'] = new Date();
             let updateData = await db.update(batches).set(batch).where(eq(batches.id, id)).returning()
             if (updateData.length === 0) {
