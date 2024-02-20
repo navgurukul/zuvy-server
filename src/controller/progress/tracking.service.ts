@@ -274,7 +274,9 @@ export class TrackingService {
             let totaldata = [latestIds[0], latestMcqIds[0], latestAssignmentIds[0]];
 
             totaldata.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-
+            let contents =  await axios.get(`${ZUVY_CONTENTS_API_URL}/zuvy-modules/${totaldata[0].moduleId}?populate=zuvy_contents`);
+            
+            totaldata[0]["bootcampid"] = contents.data.data.attributes.zuvy_contents.data[0].id
             return [null, totaldata[0]];
         } catch (e){
             return [{ status: 'error', message: e.message, code: 402 }];
