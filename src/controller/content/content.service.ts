@@ -64,9 +64,12 @@ export class ContentService {
     }
     async getChapter(module_id: number, user_id: number) {
         try {
-            const response = await axios.get(`${ZUVY_CONTENTS_API_URL}/zuvy-modules/${module_id}?populate=zuvy_articles&populate=zuvy_mcqs.quiz.qz`);
+            const response = await axios.get(`${ZUVY_CONTENTS_API_URL}/zuvy-modules/${module_id}?populate=zuvy_articles&populate=zuvy_mcqs.quiz.qz&populate=zuvy_contents`);
             const zuvy_articles = response.data.data.attributes.zuvy_articles.data;
             const zuvy_mcqs = response.data.data.attributes.zuvy_mcqs;
+            const zuvy_contents = response.data.data.attributes.zuvy_contents.data[0];
+            delete response.data.data.attributes.zuvy_contents;
+            
             interface QuizItem {
                 id: number;
                 question: string;
@@ -98,6 +101,15 @@ export class ContentService {
             let chapter = [...formattedArticles, ...formattedData];
 
             if (user_id) {
+                let [error, bootcampLock] = await this.getModules(zuvy_contents.id, user_id);
+                if (error) {
+                    return [error, null];
+                }
+                let hasUnlockedModule = bootcampLock.some((b) => b.id == module_id && b.lock == false);
+
+                if (hasUnlockedModule) {
+                    return [{'status': 'error', 'message': "you can't open this module because you haven't completed the last module",'code': 402}];
+                }
                 const getModuleTracking = await db.select().from(moduleTracking).where(sql`${moduleTracking.userId} = ${user_id} and ${moduleTracking.moduleId} = ${module_id}`);
                 if (getModuleTracking.length == 0) {
                     chapter['progress'] = 0;
