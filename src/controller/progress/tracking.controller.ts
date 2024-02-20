@@ -154,7 +154,7 @@ export class TrackingController {
         return res;
     }
 
-    @Get('/latest/learning/:userId/:moduleId/')
+    @Get('/latest/learning/:userId')
     @ApiOperation({ summary: "Get latest learning progress by user_id"})
     async latestLearningProgress(@Param('userId') userId: number): Promise<object> {
         const [err, res] = await this.TrackingService.getLatestIds(userId);
