@@ -1,6 +1,29 @@
-<<<<<<< HEAD
 # zuvy-server
-=======
+npm install
+
+## Project Setup
+
+To set up the project, follow these steps:
+
+1. Clone the repository.
+2. Install the dependencies using the command `npm install`.
+3. Set up the database migration by running the following commands:
+  - `npm run migration:import`
+  - `npm run migration:generate`
+  - `npm run migration:push`
+4. Start the development server using the command `npm run dev`.
+
+## Migration
+
+To perform database migration, you can use the following commands:
+
+- `npm run migration:up`: Run the database migration.
+- `npm run migration:down` Revert the database migration.
+- `npm run migration:seed`: Seed the database with initial data.
+
+Please make sure to update the database configuration in the `drizzle.config.ts` file.
+
+Happy coding!
 <p align="center">
   <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="200" alt="Nest Logo" /></a>
 </p>
@@ -74,4 +97,3 @@ Nest is an MIT-licensed open source project. It can grow thanks to the sponsors 
 ## License
 
 Nest is [MIT licensed](LICENSE).
->>>>>>> e3d90b8aa4d67b165c5ac53b76c4201b264066c1
