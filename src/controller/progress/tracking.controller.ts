@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Delete, Patch, Body, Param, ValidationPipe, UsePipes,BadRequestException, Query } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Patch, Body, Param, ValidationPipe, UsePipes,BadRequestException, Query, UseInterceptors } from '@nestjs/common';
 import { TrackingService } from './tracking.service';
 import { ApiTags, ApiOperation, ApiCookieAuth,ApiOAuth2} from '@nestjs/swagger';
 import { CreateAssignmentDto, PatchAssignmentDto } from './dto/assignment.dto';
@@ -144,7 +144,7 @@ export class TrackingController {
         return res;
     }
 
-    @Put('/quiz/:userId/:bootcampId')
+    @Put('/update/:userId/:bootcampId')
     @ApiOperation({ summary: "Update progress submission by user_id"})
     async updateProgress(@Param('userId') userId: number, @Param('bootcampId') bootcampId: number): Promise<object> {
         const [err, res] = await this.TrackingService.updateBootcampProgress(userId, bootcampId);

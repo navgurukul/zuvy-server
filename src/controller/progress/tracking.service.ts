@@ -73,7 +73,7 @@ export class TrackingService {
         }
     }
 
-    updateBootcampProgress = async ( user_id: number, bootcamp_id: number) => {
+    async updateBootcampProgress ( user_id: number, bootcamp_id: number){
         try{
             let getModules;
             try {
@@ -82,7 +82,7 @@ export class TrackingService {
                 return [{ status: 'error', message: e.message, code: 402 }];
             }
             let modules = getModules.data.data.attributes.zuvy_modules.data;
-    
+
             let getProgressByBootcampModule = await db.select().from(moduleTracking).where(sql`${moduleTracking.userId} = ${user_id} and ${moduleTracking.bootcampId} = ${bootcamp_id}`);
             
             let get_users_bootcamp = await db.select().from(bootcampTracking).where(sql`${bootcampTracking.userId} = ${user_id} and ${bootcampTracking.bootcampId} = ${bootcamp_id}`);
@@ -98,11 +98,13 @@ export class TrackingService {
                 let insertBootcampProgress = await db.insert(bootcampTracking).values({userId: user_id, bootcampId:bootcamp_id, progress:bootcamp_progress}).returning();
                 
                 if (insertBootcampProgress.length){
+                    log(`insert the progress of the user_id:${user_id}, ${bootcamp_progress}`)
                     return [null, {status: 'success', message: 'Progress insert'}];
                 }
             } else {
-                let updateBatch = await db.update(bootcampTracking).set({progress:bootcamp_progress}).where(sql`${bootcampTracking.userId} = ${user_id} and ${bootcampTracking.id} = ${bootcamp_id}`).returning();
+                let updateBatch = await db.update(bootcampTracking).set({progress:bootcamp_progress}).where(sql`${bootcampTracking.userId} = ${user_id} and ${bootcampTracking.bootcampId} = ${bootcamp_id}`).returning();
                 if (updateBatch.length){
+                    log(`update the progress of the user_id:${user_id}, ${bootcamp_progress}`)
                     return [null, {status: 'success', message: 'Progress update'}]
                 }
             }
