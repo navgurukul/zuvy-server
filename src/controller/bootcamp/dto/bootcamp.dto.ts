@@ -68,14 +68,6 @@ export class EditBootcampDto{
   @IsString()
   language: string;
 
-  @ApiProperty({
-    type: Number,
-    example: 500,
-    required: true,
-  })
-  @IsNotEmpty({message: 'capEnrollment is required'})
-  @IsNumber()
-  capEnrollment: number;
 }
 
 export class PatchBootcampDto{
@@ -127,14 +119,6 @@ export class PatchBootcampDto{
   @IsOptional()
   @IsString()
   language: string;
-
-  @ApiProperty({
-    type: Number,
-    example: 500,
-  })
-  @IsOptional()
-  @IsNumber()
-  capEnrollment: number;
 }
 class studentEmail {
   @ApiProperty({

@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { assignmentSubmission, articleTracking, moduleTracking, bootcampTracking,  quizTracking,batches, bootcamps} from '../../../drizzle/schema';
 import { db } from '../../db/index';
-import { eq, sql, inArray, and } from 'drizzle-orm';
+import { eq, sql, inArray, and, desc } from 'drizzle-orm';
 import axios from 'axios';
 import { error, log } from 'console';
 
@@ -247,6 +247,35 @@ export class TrackingService {
             return [null, result];
         } catch (err) {
             return [{ status: 'error', message: err.message, code: 402 }];
+        }
+    }
+    // get the latest artical, mcq and assignment ids, with the module id with bootcamp id
+    async getLatestIds(userId: number) {
+        try {
+            const latestIds = await db.select()
+                .from(articleTracking)
+                .where(sql`${articleTracking.userId} = ${userId}`)
+                .orderBy(desc(articleTracking.id))// Fix: Call the desc() method on the column object
+                .limit(1);
+
+            const latestMcqIds = await db.select()
+                .from(quizTracking)
+                .where(sql`${quizTracking.userId} = ${userId}`)
+                .orderBy(desc(quizTracking.id))// Fix: Call the desc() method on the column object
+                .limit(1)
+
+            const latestAssignmentIds = await db.select()
+                .from(assignmentSubmission)
+                .where(sql`${assignmentSubmission.userId} = ${userId}`)
+                .orderBy(desc(assignmentSubmission.id))// Fix: Call the desc() method on the column object
+                .limit(1);
+            let totaldata = [latestIds[0], latestMcqIds[0], latestAssignmentIds[0]];
+
+            totaldata.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+            return [null, totaldata[0]];
+        } catch (e){
+            return [{ status: 'error', message: e.message, code: 402 }];
         }
     }
 }

@@ -137,14 +137,14 @@ export class BootcampService {
     async addStudentToBootcamp(bootcampId: number, batchId: number, users_data: any){
         try {
             let enrollments = [];
-            let totalEnrolStudents = await db.select().from(batchEnrollments).where(sql`${batchEnrollments.bootcampId} = ${bootcampId}`);
+            // let totalEnrolStudents = await db.select().from(batchEnrollments).where(sql`${batchEnrollments.bootcampId} = ${bootcampId}`);
             let bootcampData = await db.select().from(bootcamps).where(sql`${bootcamps.id} = ${bootcampId}`);
             if (bootcampData.length === 0){
                 return [{'status': 'error', 'message': 'Bootcamp not found', 'code': 404}, null];
             }
-            if (totalEnrolStudents.length >= bootcampData[0].capEnrollment){
-                return [{'status': 'error', 'message': 'The maximum capacity for the bootcamp has been reached.', 'code': 403}, null];
-            }
+            // if (totalEnrolStudents.length >= bootcampData[0].capEnrollment){
+            //     return [{'status': 'error', 'message': 'The maximum capacity for the bootcamp has been reached.', 'code': 403}, null];
+            // }
             let report = [];
             let userReport = [];
             for (let i = 0; i < users_data.length; i++) {
