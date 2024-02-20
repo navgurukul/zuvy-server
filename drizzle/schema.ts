@@ -1712,7 +1712,6 @@ export const bootcamps = main.table("zuvy_bootcamps", {
 	startTime : timestamp("start_time", { withTimezone: true, mode: 'string' }),
 	duration: text("duration"),
 	language: text("language"),
-	capEnrollment: integer("cap_enrollment"),
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
 	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
 });
