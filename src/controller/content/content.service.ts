@@ -7,13 +7,13 @@ import { db } from '../../db/index';
 import { promises } from 'dns';
 // import Strapi from "strapi-sdk-js"
 
-const {ZUVY_CONTENT_URL, ZUVY_CONTENTS_API_URL} = process.env// INPORTING env VALUSE ZUVY_CONTENT
+const { ZUVY_CONTENT_URL, ZUVY_CONTENTS_API_URL } = process.env// INPORTING env VALUSE ZUVY_CONTENT
 
 // const strapi = new Strapi({url: ZUVY_CONTENTS_API_URL})
 @Injectable()
 export class ContentService {
 
-    async lockContent(modules__, module_id= null){
+    async lockContent(modules__, module_id = null) {
         let index = 0;
         while (index < modules__.length) {
             let index_run = index + 1;
@@ -33,33 +33,33 @@ export class ContentService {
     }
 
     async getModules(bootcamp_id, user_id) {
-        try{
-            let respo = await axios.get(ZUVY_CONTENT_URL+`/${bootcamp_id}?populate=zuvy_modules`);
+        try {
+            let respo = await axios.get(ZUVY_CONTENT_URL + `/${bootcamp_id}?populate=zuvy_modules`);
             let modules = respo.data.data.attributes.zuvy_modules.data;
 
             // if (user_id){    
-                let modulePromises = modules.map(async (m) => {
-                    if (user_id) { 
-                        let getModuleTracking = await db.select().from(moduleTracking).where(sql`${moduleTracking.userId} = ${user_id} and ${moduleTracking.moduleId} = ${m.id}`);
-                        if (getModuleTracking.length == 0) {
-                            m.attributes['progress'] = 0
-                        } else {
-                            m.attributes['progress'] = getModuleTracking[0].progress || 0;
-                        }
+            let modulePromises = modules.map(async (m) => {
+                if (user_id) {
+                    let getModuleTracking = await db.select().from(moduleTracking).where(sql`${moduleTracking.userId} = ${user_id} and ${moduleTracking.moduleId} = ${m.id}`);
+                    if (getModuleTracking.length == 0) {
+                        m.attributes['progress'] = 0
+                    } else {
+                        m.attributes['progress'] = getModuleTracking[0].progress || 0;
                     }
-                    return {
-                        id: m.id,
-                        ...m.attributes
-                    };
-                });
+                }
+                return {
+                    id: m.id,
+                    ...m.attributes
+                };
+            });
 
-                modules = await Promise.all(modulePromises);
-                modules = await this.lockContent(modules);
+            modules = await Promise.all(modulePromises);
+            modules = await this.lockContent(modules);
             // }
             return [null, modules];
         } catch (err) {
             error(`Error posting data: ${err.message}`)
-            return [{'status': 'error', 'message': err.message,'code': 500}, null];
+            return [{ 'status': 'error', 'message': err.message, 'code': 500 }, null];
         }
     }
     async getChapter(module_id: number, user_id: number) {
@@ -69,13 +69,13 @@ export class ContentService {
             const zuvy_mcqs = response.data.data.attributes.zuvy_mcqs;
             const zuvy_contents = response.data.data.attributes.zuvy_contents.data[0];
             delete response.data.data.attributes.zuvy_contents;
-            
+
             interface QuizItem {
                 id: number;
                 question: string;
                 qz: { number: number; value: { children: { text: string }[] }[]; correct: boolean }[];
             }
-            
+
             interface McqItem {
                 attributes: any;
                 id: number;
@@ -97,7 +97,7 @@ export class ContentService {
                 id: article.id,
                 ...article.attributes
             }));
-    
+
             let chapter = [...formattedArticles, ...formattedData];
 
             if (user_id) {
@@ -108,7 +108,7 @@ export class ContentService {
                 let hasUnlockedModule = bootcampLock.some((b) => b.id == module_id && b.lock == false);
 
                 if (hasUnlockedModule) {
-                    return [{'status': 'error', 'message': "you can't open this module because you haven't completed the last module",'code': 402}];
+                    return [{ 'status': 'error', 'message': "you can't open this module because you haven't completed the last module", 'code': 402 }];
                 }
                 const getModuleTracking = await db.select().from(moduleTracking).where(sql`${moduleTracking.userId} = ${user_id} and ${moduleTracking.moduleId} = ${module_id}`);
                 if (getModuleTracking.length == 0) {
@@ -142,10 +142,10 @@ export class ContentService {
                     }
                     return c;
                 });
-                
+
                 chapter = await Promise.all(promises);
             }
-    
+
             return [null, chapter];
         } catch (err) {
             error(`Error posting data: ${err.message}`);

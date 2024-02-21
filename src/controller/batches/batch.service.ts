@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import {batches, bootcamps,users , sansaarUserRoles, batchEnrollments} from '../../../drizzle/schema';
+import { batches, bootcamps, users, sansaarUserRoles, batchEnrollments } from '../../../drizzle/schema';
 import { db } from '../../db/index';
 import { eq, sql } from 'drizzle-orm';
 import { log } from 'console';
@@ -60,7 +60,7 @@ export class BatchesService {
 
             if (usersData.length > 0) {
                 let userids = usersData.map(u => u.userId);
-                await db.update(batchEnrollments).set({ batchId: newData[0].id}).where(sql`user_id IN ${userids}`);
+                await db.update(batchEnrollments).set({ batchId: newData[0].id }).where(sql`user_id IN ${userids}`);
             }
             return [null, { 'status': 'success', 'message': 'Batch created successfully', 'code': 200, batch: newData[0] }];
         } catch (e) {
@@ -77,26 +77,26 @@ export class BatchesService {
             }
             let respObj = [];
             // if (students){
-                let enrollStudents = await db.select().from(batchEnrollments).where(eq(batchEnrollments.batchId, id));
-                let enrollStudentsId;
-                if (enrollStudents.length !== 0) {
-                    enrollStudentsId = enrollStudents.map(e => BigInt(e.userId)); // Convert e.userId to bigint
-                    let students = await db.select().from(users).where(sql`id IN ${enrollStudentsId}`);
-                    enrollStudents.map((e) => {
-                        students.find((s) => {
-                            if (s.id === BigInt(e.userId)) {
-                                respObj.push({'id':e.userId,"email":s.email, "name": s.name});
-                            }
-                        });
+            let enrollStudents = await db.select().from(batchEnrollments).where(eq(batchEnrollments.batchId, id));
+            let enrollStudentsId;
+            if (enrollStudents.length !== 0) {
+                enrollStudentsId = enrollStudents.map(e => BigInt(e.userId)); // Convert e.userId to bigint
+                let students = await db.select().from(users).where(sql`id IN ${enrollStudentsId}`);
+                enrollStudents.map((e) => {
+                    students.find((s) => {
+                        if (s.id === BigInt(e.userId)) {
+                            respObj.push({ 'id': e.userId, "email": s.email, "name": s.name });
+                        }
                     });
-                } 
-                data[0]['students'] = respObj;
-                return [null, {status: 'success', message: 'Batch fetched successfully', code: 200, batch: data[0]}];
+                });
+            }
+            data[0]['students'] = respObj;
+            return [null, { status: 'success', message: 'Batch fetched successfully', code: 200, batch: data[0] }];
             // }
             // return [null, {status: 'success', message: 'Batch fetched successfully', code: 200, batch: data[0]}];
         } catch (e) {
             log(`error: ${e.message}`)
-            return [{'status': 'error', 'message': e.message,'code': 500},null];
+            return [{ 'status': 'error', 'message': e.message, 'code': 500 }, null];
         }
     }
 
@@ -104,7 +104,7 @@ export class BatchesService {
         try {
             let batchData = await db.select().from(batches).where(eq(batches.id, id));
             if (batchData.length === 0) {
-                return [{status: 'error', message: 'Batch not found', code: 404},null];
+                return [{ status: 'error', message: 'Batch not found', code: 404 }, null];
             }
             // if (batch['capEnrollment']) {
             //     batchData[0].capEnrollment =batch['capEnrollment']
@@ -116,26 +116,26 @@ export class BatchesService {
             batch['updatedAt'] = new Date();
             let updateData = await db.update(batches).set(batch).where(eq(batches.id, id)).returning()
             if (updateData.length === 0) {
-                return [{status: 'error', message: 'Batch not found', code: 404},null];
+                return [{ status: 'error', message: 'Batch not found', code: 404 }, null];
             }
-            return [null, {status: 'success', message: 'Batch updated successfully', code: 200, batch: updateData[0]}];
+            return [null, { status: 'success', message: 'Batch updated successfully', code: 200, batch: updateData[0] }];
         } catch (e) {
             log(`error: ${e.message}`)
-            return [{'status': 'error', 'message': e.message,'code': 500}, null];
+            return [{ 'status': 'error', 'message': e.message, 'code': 500 }, null];
         }
     }
 
     async deleteBatch(id: number) {
         try {
             let data = await db.delete(batches).where(eq(batches.id, id)).returning();
-            await db.update(batchEnrollments).set({"batchId": null}).where(eq(batchEnrollments.batchId, id)).returning()
+            await db.update(batchEnrollments).set({ "batchId": null }).where(eq(batchEnrollments.batchId, id)).returning()
             if (data.length === 0) {
-                return [{status: 'error', message: 'Batch not found', code: 404}, null];
+                return [{ status: 'error', message: 'Batch not found', code: 404 }, null];
             }
-            return [null, {status: 'success', message: 'Batch deleted successfully', code: 200}];
+            return [null, { status: 'success', message: 'Batch deleted successfully', code: 200 }];
         } catch (e) {
             log(`error: ${e.message}`)
-            return [{'status': 'error', 'message': e.message,'code': 500},null];
+            return [{ 'status': 'error', 'message': e.message, 'code': 500 }, null];
         }
     }
 }

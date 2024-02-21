@@ -10,5 +10,5 @@ import { BatchesModule } from '../batches/batch.module';
     // exports: [BootcampService]
 })
 export class BootcampModule {
-    
+
 }
