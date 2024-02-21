@@ -1,9 +1,9 @@
 import { Controller, Get, Post, Put, Delete, Patch, Body, Param, ValidationPipe, UsePipes, BadRequestException, Query, UseInterceptors } from '@nestjs/common';
 import { TrackingService } from './tracking.service';
 import { ApiTags, ApiOperation, ApiCookieAuth, ApiOAuth2 } from '@nestjs/swagger';
-import { CreateAssignmentDto, PatchAssignmentDto } from './dto/assignment.dto.js';
+import { CreateAssignmentDto, PatchAssignmentDto } from './dto/assignment.dto';
 import { CreateArticleDto } from './dto/article.dto';
-import { CreateQuizDto, PutQuizDto } from './dto/quiz.dto.js';
+import { CreateQuizDto, PutQuizDto } from './dto/quiz.dto';
 
 @Controller('tracking')
 @ApiTags('tracking')
