@@ -67,23 +67,3 @@ export class ClassesController {
     //     return this.classesService.updateMeetingById(id, classData);
     // }
 }
-
-// @Put('/:id')
-// @ApiOperation({ summary: "Update the bootcamp"})
-// updateBootcamp(@Param('id') id: string, @Body() editBootcampDto: EditBootcampDto ) {
-//     return this.bootcampService.updateBootcamp(parseInt(id), editBootcampDto);
-// }
-
-// @Delete('/:id')
-// @ApiOperation({ summary: "Delete the bootcamp"})
-// deleteBootcamp(@Param('id') id: string): Promise<object> {
-//     return this.bootcampService.deleteBootcamp(parseInt(id));
-// }
-// @Get('/batches/:bootcamp_id')
-// @ApiOperation({ summary: "Get the batches by bootcamp_id"})
-// getBatchByIdBootcamp(@Param('bootcamp_id') bootcamp_id: string): Promise<object> {
-//     return this.bootcampService.getBatchByIdBootcamp(parseInt(bootcamp_id));
-// }
-
-// }
-

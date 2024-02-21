@@ -129,7 +129,7 @@ export class ClassesService {
         timeZone: string;
         attendees: string[];
         batchId: string;
-        bootcampId: string; 
+        bootcampId: string;
         userId: number;
         roles: string[]
 
@@ -149,19 +149,19 @@ export class ClassesService {
             }
 
             const studentsInTheBatchEmails = await db.select().from(batchEnrollments).where(eq(batchEnrollments.batchId, parseInt(eventDetails.batchId)));
-            
+
             const studentsEmails = [];
             for (const studentEmail of studentsInTheBatchEmails) {
                 try {
                     const emailFetched = await db.select().from(users).where(eq(users.id, studentEmail.userId));
                     if (emailFetched && emailFetched.length > 0) {
-                        studentsEmails.push( {'email':emailFetched[0].email});
+                        studentsEmails.push({ 'email': emailFetched[0].email });
                     }
                 } catch (error) {
                     return [{ 'status': 'error', 'message': "Fetching emails failed", 'code': 500 }, null];
                 }
             }
-         
+
 
             const calendar = google.calendar({ version: 'v3', auth: auth2Client });
             const eventData = {
@@ -190,7 +190,7 @@ export class ClassesService {
                     },
                 },
             };
-          
+
             const createdEvent = await calendar.events.insert(eventData);
 
             const saveClassDetails = await db.insert(classesGoogleMeetLink).values({
@@ -250,17 +250,17 @@ export class ClassesService {
     async getClassesByBatchId(batchId: string) {
         try {
             const currentTime = new Date();
-    
+
             const classes = await db.select().from(classesGoogleMeetLink).where(sql`${classesGoogleMeetLink.batchId} = ${batchId}`);
-    
+
             const completedClasses = [];
             const ongoingClasses = [];
             const upcomingClasses = [];
-    
+
             for (const classObj of classes) {
                 const startTime = new Date(classObj.startTime);
                 const endTime = new Date(classObj.endTime);
-    
+
                 if (currentTime > endTime) {
                     completedClasses.push(classObj);
                 } else if (currentTime >= startTime && currentTime <= endTime) {
@@ -269,7 +269,7 @@ export class ClassesService {
                     upcomingClasses.push(classObj);
                 }
             }
-    
+
             return {
                 'status': 'success',
                 'message': 'Classes fetched successfully by batchId',
@@ -282,43 +282,43 @@ export class ClassesService {
             return { 'success': 'not success', 'message': 'Error fetching class Links', 'error': error };
         }
     }
-    
 
-   async getClassesByBootcampId(bootcampId: string) {
-    try {
-        const currentTime = new Date();
 
-        const classes = await db.select().from(classesGoogleMeetLink).where(sql`${classesGoogleMeetLink.bootcampId} = ${bootcampId}`);
+    async getClassesByBootcampId(bootcampId: string) {
+        try {
+            const currentTime = new Date();
 
-        const completedClasses = [];
-        const ongoingClasses = [];
-        const upcomingClasses = [];
+            const classes = await db.select().from(classesGoogleMeetLink).where(sql`${classesGoogleMeetLink.bootcampId} = ${bootcampId}`);
 
-        for (const classObj of classes) {
-            const startTime = new Date(classObj.startTime);
-            const endTime = new Date(classObj.endTime);
+            const completedClasses = [];
+            const ongoingClasses = [];
+            const upcomingClasses = [];
 
-            if (currentTime > endTime) {
-                completedClasses.push(classObj);
-            } else if (currentTime >= startTime && currentTime <= endTime) {
-                ongoingClasses.push(classObj);
-            } else {
-                upcomingClasses.push(classObj);
+            for (const classObj of classes) {
+                const startTime = new Date(classObj.startTime);
+                const endTime = new Date(classObj.endTime);
+
+                if (currentTime > endTime) {
+                    completedClasses.push(classObj);
+                } else if (currentTime >= startTime && currentTime <= endTime) {
+                    ongoingClasses.push(classObj);
+                } else {
+                    upcomingClasses.push(classObj);
+                }
             }
-        }
 
-        return {
-            'status': 'success',
-            'message': 'Classes fetched successfully by bootcampId',
-            'code': 200,
-            completedClasses,
-            ongoingClasses,
-            upcomingClasses,
-        };
-    } catch (error) {
-        return { 'success': 'not success', 'message': 'Error fetching class Links', 'error': error };
+            return {
+                'status': 'success',
+                'message': 'Classes fetched successfully by bootcampId',
+                'code': 200,
+                completedClasses,
+                ongoingClasses,
+                upcomingClasses,
+            };
+        } catch (error) {
+            return { 'success': 'not success', 'message': 'Error fetching class Links', 'error': error };
+        }
     }
-}
 
     async getAttendeesByMeetingId(id: number) {
         try {
