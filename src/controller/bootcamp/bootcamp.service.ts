@@ -1,11 +1,11 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { db } from '../../db/index';
-import { eq,sql, } from 'drizzle-orm';
+import { eq,sql,and } from 'drizzle-orm';
 // import { BatchesService } from '../batches/batch.service';
 import axios from 'axios';
 import * as _ from 'lodash';
 import { error, log } from 'console';
-import { bootcamps, batches, users, batchEnrollments } from '../../../drizzle/schema';
+import { bootcamps, batches, users, batchEnrollments, bootcampTracking } from '../../../drizzle/schema';
 
 const {ZUVY_CONTENT_URL} = process.env// INPORTING env VALUSE ZUVY_CONTENT
 
@@ -199,20 +199,42 @@ export class BootcampService {
     async getStudentsByBootcampOrBatch(bootcamp_id, batch_id) {
         try {
             let queryString;
-            if (bootcamp_id) {
-                queryString = sql`${batchEnrollments.bootcampId} = ${bootcamp_id}`;
-            } else if (batch_id) {
-                queryString = sql`${batchEnrollments.batchId} = ${batch_id}`;
+            if (bootcamp_id && batch_id) {
+                queryString = sql`${batchEnrollments.bootcampId} = ${bootcamp_id} and ${batchEnrollments.batchId} = ${batch_id}`;
+            } else{
+                queryString = sql`${batchEnrollments.bootcampId} = ${bootcamp_id}`
             }
             let batchEnrollmentsData = await db.select().from(batchEnrollments).where(queryString);
             const studentsEmails = [];
             for (const studentEmail of batchEnrollmentsData) {
                 try {
+                    let student = {}
                     const emailFetched = await db.select().from(users).where(eq(users.id, studentEmail.userId));
                     if (emailFetched && emailFetched.length > 0) {
-                        studentsEmails.push({ "email": emailFetched[0].email, "name": emailFetched[0].name });
+                        student = { "email": emailFetched[0].email, "name": emailFetched[0].name };
+                        let batchInfo;
+                        let progressInfo;
+                        if (studentEmail.batchId){
+                            batchInfo = await db.select().from(batches).where(eq(batches.id, studentEmail.batchId))
+                            if (batchInfo.length > 0){
+                                student["batchName"] = batchInfo[0].name ;
+                                student["batchId"] = batchInfo[0].id ;
+                            }
+                        }
+                        progressInfo = await db.select().from(bootcampTracking).where( sql`${bootcampTracking.userId}= ${studentEmail.userId} and ${bootcampTracking.bootcampId} = ${studentEmail.bootcampId}`);
+                        if (progressInfo.length > 0){
+                            student["progress"] = progressInfo[0].progress;
+                        } else {
+                            student["progress"] = 0;
+                        }
+                    }
+                    if (emailFetched && emailFetched.length > 0) {
+                        studentsEmails.push(student);
                     }
                 } catch (error) {
+                    console.log(error)
+                    log(`error: ${error.message}`)
+                    
                     return [{ 'status': 'error', 'message': "Fetching emails failed", 'code': 500 }, null];
                 }
             }
