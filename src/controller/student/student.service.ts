@@ -52,7 +52,7 @@ export class StudentService {
                     sql`${batchEnrollments.userId} = ${user_id} AND ${batchEnrollments.bootcampId} = ${bootcamp_id} `,
                 )
                 .returning();
-            if (error.length == 0) {
+            if (enrolled.length == 0) {
                 return [{ status: 'error', message: 'id not found', code: 404 }, null];
             }
             return [
