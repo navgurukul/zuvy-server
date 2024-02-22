@@ -213,7 +213,7 @@ export class BootcampService {
                     let student = {}
                     const emailFetched = await db.select().from(users).where(eq(users.id, studentEmail.userId));
                     if (emailFetched && emailFetched.length > 0) {
-                        student = { "email": emailFetched[0].email, "name": emailFetched[0].name, "userId":  emailFetched[0].id, "bootcampId": studentEmail.bootcampId};
+                        student = { "email": emailFetched[0].email, "name": emailFetched[0].name, "userId":  emailFetched[0].id.toString(), "bootcampId": studentEmail.bootcampId};
                         let batchInfo;
                         let progressInfo;
                         if (studentEmail.batchId) {
