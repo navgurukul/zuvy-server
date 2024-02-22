@@ -8,8 +8,9 @@ import { StudentModule } from './controller/student/student.module';
 import { TrackingModule } from './controller/progress/tracking.module'
 import { APP_INTERCEPTOR } from '@nestjs/core';
 import { LoggingInterceptor } from './loggerInterceptor/logger';
+import {DriveModule} from './controller/classDriveUpload/drive.module';
 @Module({
-  imports: [ConfigModule.forRoot(), BootcampModule, BatchesModule, ClassesModule, ContentModule, StudentModule, TrackingModule],
+  imports: [ConfigModule.forRoot(), BootcampModule, BatchesModule, ClassesModule, ContentModule, StudentModule, TrackingModule,DriveModule],
   providers: [
     {
       provide: APP_INTERCEPTOR,
