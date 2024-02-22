@@ -139,14 +139,10 @@ export class BootcampService {
     async addStudentToBootcamp(bootcampId: number, batchId: number, users_data: any) {
         try {
             let enrollments = [];
-            // let totalEnrolStudents = await db.select().from(batchEnrollments).where(sql`${batchEnrollments.bootcampId} = ${bootcampId}`);
             let bootcampData = await db.select().from(bootcamps).where(sql`${bootcamps.id} = ${bootcampId}`);
             if (bootcampData.length === 0) {
                 return [{ 'status': 'error', 'message': 'Bootcamp not found', 'code': 404 }, null];
             }
-            // if (totalEnrolStudents.length >= bootcampData[0].capEnrollment){
-            //     return [{'status': 'error', 'message': 'The maximum capacity for the bootcamp has been reached.', 'code': 403}, null];
-            // }
             let report = [];
             let userReport = [];
             for (let i = 0; i < users_data.length; i++) {
@@ -162,7 +158,11 @@ export class BootcampService {
                 } else if (userInfo.length > 0) {
                     let userEnrolled = await db.select().from(batchEnrollments).where(sql`${batchEnrollments.userId} = ${userInfo[0].id.toString()} AND ${batchEnrollments.bootcampId} = ${bootcampId}`);
                     if (userEnrolled.length > 0) {
-                        report.push({ 'email': userInfo[0].email, 'message': `already enrolled in anodher bootcamp` });
+                        let updateEnrol = await db.update(batchEnrollments).set({ batchId }).where(sql`${batchEnrollments.userId} = ${userInfo[0].id.toString()} AND ${batchEnrollments.bootcampId} = ${bootcampId}`).returning();
+                        if (updateEnrol.length !== 0) {
+                            userReport.push({ 'email': userInfo[0].email, 'message': `Update to the anodher batch` });
+                            continue;
+                        }
                         continue;
                     }
                 }
