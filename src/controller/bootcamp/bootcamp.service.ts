@@ -245,4 +245,21 @@ export class BootcampService {
             return [{ 'status': 'error', 'message': e.message, 'code': 500 }, null];
         }
     }
+    
+    async getStudentProgressBy(userId: number, bootcampId: number) {
+        try {
+            let bootcampData = await db.select().from(bootcamps).where(sql`${bootcamps.id} = ${bootcampId}`);
+            if (bootcampData.length === 0) {
+                return [{ 'status': 'error', 'message': 'Bootcamp not found', 'code': 404 }, null];
+            }
+            let progressInfo = await db.select().from(bootcampTracking).where(sql`${bootcampTracking.userId}= ${userId} and ${bootcampTracking.bootcampId} = ${bootcampId}`);
+            if (progressInfo.length > 0) {
+                return [null, { 'status': "success", "info":{"progress": progressInfo[0].progress, "bootcamp_name": bootcampData[0].name }, 'code': 200 }];
+            } else {
+                return [{ 'status': 'error', 'message': "No progress found", 'code': 404 }, null];
+            }
+        } catch (e) {
+            return [{ 'status': 'error', 'message': e.message, 'code': 500 }, null];
+        }
+    }
 }

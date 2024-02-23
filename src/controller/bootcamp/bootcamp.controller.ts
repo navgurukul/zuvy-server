@@ -107,5 +107,16 @@ export class BootcampController {
         }
         return res;
     }
+
+    @Get('/:user_id/progress')
+    @ApiOperation({ summary: "Get the progress of students in a bootcamp" })
+    @ApiQuery({ name: 'bootcamp_id', required: false, type: Number, description: 'bootcamp_id' })
+    async getStudentProgressByBootcamp(@Param('user_id') user_id: number, @Query('bootcamp_id') bootcamp_id: number): Promise<object> {
+        const [err, res] = await this.bootcampService.getStudentProgressBy(user_id, bootcamp_id);
+        if (err) {
+            throw new BadRequestException(err);
+        }
+        return res;
+    }
 }
 

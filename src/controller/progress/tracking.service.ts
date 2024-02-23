@@ -281,10 +281,13 @@ export class TrackingService {
                 let contents = await axios.get(`${ZUVY_CONTENTS_API_URL}/zuvy-modules/${totaldata[0].moduleId}?populate=zuvy_contents`);
 
                 totaldata[0]["bootcampId"] = contents.data.data.attributes.zuvy_contents.data[0].id
+                totaldata[0]["bootcamp_name"] = contents.data.data.attributes.zuvy_contents.data[0].attributes.name
+                totaldata[0]["module_name"] = contents.data.data.attributes.name
             }
             return [null, totaldata[0]];
         } catch (e) {
             return [{ status: 'error', message: e.message, code: 402 }];
         }
     }
+    
 }
