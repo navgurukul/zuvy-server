@@ -1803,6 +1803,7 @@ export const assignmentSubmission = main.table("zuvy_assignment_submission", {
         id: serial("id").primaryKey().notNull(),
         userId: integer("user_id").references(() => users.id),
         moduleId: integer("module_id").notNull(),
+        bootcampId: integer("bootcamp_id").references(() => bootcamps.id),
         assignmentId: integer("assignment_id").notNull(),
         timeLimit: timestamp("time_limit",{ withTimezone: true, mode: 'string' }).notNull(),
         projectUrl: varchar("project_url", { length: 255 }),
