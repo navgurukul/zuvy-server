@@ -234,7 +234,6 @@ export class BootcampService {
                         studentsEmails.push(student);
                     }
                 } catch (error) {
-                    console.log(error)
                     log(`error: ${error.message}`)
 
                     return [{ 'status': 'error', 'message': "Fetching emails failed", 'code': 500 }, null];
@@ -254,8 +253,10 @@ export class BootcampService {
             }
             let progressInfo = await db.select().from(bootcampTracking).where(sql`${bootcampTracking.userId}= ${userId} and ${bootcampTracking.bootcampId} = ${bootcampId}`);
             let batchInfo = await db.select().from(batchEnrollments).where(sql`${batchEnrollments.userId}= ${userId} and ${batchEnrollments.bootcampId} = ${bootcampId}`);
+            
             if (batchInfo.length > 0) {
-                let user = await db.select().from(users).where(sql`${users.id} = ${batchInfo[0].userId}`);
+                let batch = await db.select().from(batches).where(sql`${batches.id} = ${batchInfo[0].batchId}`);
+                let user = await db.select().from(users).where(sql`${users.id} = ${batch[0].instructorId}`);
                 if (user.length > 0) {
                     return [null, { 'status': "success", "info": { "progress": progressInfo[0].progress,"bootcamp_id": bootcampData[0].id, "bootcamp_name": bootcampData[0].name, "instructor_name" : user[0].name  }, 'code': 200 }];
                 }
