@@ -1804,6 +1804,7 @@ export const assignmentSubmission = main.table("zuvy_assignment_submission", {
         userId: integer("user_id").references(() => users.id),
         moduleId: integer("module_id").notNull(),
         assignmentId: integer("assignment_id").notNull(),
+        timeLimit: timestamp("time_limit",{ withTimezone: true, mode: 'string' }).notNull(),
         projectUrl: varchar("project_url", { length: 255 }),
         createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
         updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
