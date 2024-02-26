@@ -128,10 +128,15 @@ export class BootcampService {
 
     async getBatchByIdBootcamp(bootcamp_id: number): Promise<any> {
         try {
-            let res = await db.select().from(batches).where(eq(batches.bootcampId, bootcamp_id));
-            return [null, res];
+            const batchesData = await db.select().from(batches).where(eq(batches.bootcampId, bootcamp_id));
+            const promises = batchesData.map(async (batch) => {
+                const userEnrolled = await db.select().from(batchEnrollments).where(sql`${batchEnrollments.batchId} = ${batch.id}`);
+                batch["students_enrolled"] = userEnrolled.length;
+                return batch;  // return the modified batch
+            });
+            const batchesWithEnrollment = await Promise.all(promises);  
+            return [null, batchesWithEnrollment];
         } catch (e) {
-            log(`error: ${e.message}`)
             return { 'status': 'error', 'message': e.message, 'code': 500 };
         }
     }
