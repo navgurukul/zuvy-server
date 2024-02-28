@@ -118,5 +118,13 @@ export class BootcampController {
         }
         return res;
     }
+
+    @Get('/studentClasses/:bootcampId')
+    @ApiOperation({ summary: "Get the students classes by bootcamp_id"})
+    @ApiQuery({ name: 'userId', required: false, type: Number, description: 'user id' })
+    async getStudentClassesByBootcampId(@Param('bootcampId') bootcampId: number, @Query('userId')userId: number): Promise<object> {
+        const res = await this.bootcampService.getStudentClassesByBootcampId(bootcampId, userId);
+        return res;
+    }
 }
 

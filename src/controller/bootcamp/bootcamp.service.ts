@@ -5,7 +5,7 @@ import { eq, sql, and } from 'drizzle-orm';
 import axios from 'axios';
 import * as _ from 'lodash';
 import { error, log } from 'console';
-import { bootcamps, batches, users, batchEnrollments, bootcampTracking } from '../../../drizzle/schema';
+import { bootcamps, batches, users, batchEnrollments,classesGoogleMeetLink } from '../../../drizzle/schema';
 
 const { ZUVY_CONTENT_URL } = process.env// INPORTING env VALUSE ZUVY_CONTENT
 
@@ -272,4 +272,62 @@ export class BootcampService {
             return [{ 'status': 'error', 'message': e.message, 'code': 500 }, null];
         }
     }
+
+    async getStudentClassesByBootcampId(bootcampId, userId) {
+        try {
+            console.log(bootcampId,userId)
+            let batchEnrollmentsData = await db.select().from(batchEnrollments)
+                .where(sql`${batchEnrollments.bootcampId} = ${bootcampId} `)
+                console.log(batchEnrollmentsData)
+                
+                const matchingEnrollments = batchEnrollmentsData.filter(enrollment => enrollment.userId.toString() === userId.toString());
+                console.log(matchingEnrollments)
+                if (matchingEnrollments.length === 0) {
+                    return {
+                        'status': 'error',
+                        'message': 'No matching batch enrollments found for the provided bootcampId and userId',
+                        'code': 404
+                    }; 
+                }
+                const batchId = matchingEnrollments[0].batchId;
+                console.log(batchId)
+            try {
+                const currentTime = new Date();
+        
+                const classes = await db.select().from(classesGoogleMeetLink).where(sql`${classesGoogleMeetLink.batchId} = ${batchId}`);
+        
+                const completedClasses = [];
+                const ongoingClasses = [];
+                const upcomingClasses = [];
+        
+                for (const classObj of classes) {
+                    const startTime = new Date(classObj.startTime);
+                    const endTime = new Date(classObj.endTime);
+        
+                    if (currentTime > endTime) {
+                        completedClasses.push(classObj);
+                    } else if (currentTime >= startTime && currentTime <= endTime) {
+                        ongoingClasses.push(classObj);
+                    } else {
+                        upcomingClasses.push(classObj);
+                    }
+                }
+        
+                return {
+                    'status': 'success',
+                    'message': 'Classes fetched successfully by batchId',
+                    'code': 200,
+                    completedClasses,
+                    ongoingClasses,
+                    upcomingClasses,
+                };
+            } catch (error) {
+                return { 'success': 'not success', 'message': 'Error fetching class Links', 'error': error };
+            }
+           
+        } catch (err) {
+            return [{ 'status': 'error', 'message': err.message, 'code': 500 }, null];
+        }
+    }
+    
 }
