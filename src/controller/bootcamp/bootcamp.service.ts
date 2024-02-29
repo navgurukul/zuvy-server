@@ -5,7 +5,7 @@ import { eq, sql, and } from 'drizzle-orm';
 import axios from 'axios';
 import * as _ from 'lodash';
 import { error, log } from 'console';
-import { bootcamps, batches, users, batchEnrollments,classesGoogleMeetLink } from '../../../drizzle/schema';
+import { bootcamps, batches, users, batchEnrollments,classesGoogleMeetLink,bootcampTracking } from '../../../drizzle/schema';
 
 const { ZUVY_CONTENT_URL } = process.env// INPORTING env VALUSE ZUVY_CONTENT
 
