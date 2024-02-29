@@ -5,7 +5,7 @@ import { DriveDto } from './dto/drive.dto';
 import { DriveLinks } from '../../../drizzle/schema';
 import { db } from '../../db/index';
 import { eq, sql } from 'drizzle-orm';
-import { S3 } from 'aws-sdk'; 
+import { S3 } from 'aws-sdk';
 
 @Injectable()
 export class ListFilesService implements OnModuleInit {
@@ -35,7 +35,7 @@ export class ListFilesService implements OnModuleInit {
       console.log('Error listing files:', error);
     }
   }
-
+  
   private async getFilesInFolder(folderId: string) {
     const response = await this.drive.files.list({
       q: `'${folderId}' in parents`,
@@ -52,13 +52,13 @@ export class ListFilesService implements OnModuleInit {
           .select()
           .from(DriveLinks)
           .where(sql`${DriveLinks.fileid} = ${driveFile.id}`);
-
+          
         if (fileExistsInDatabase.length == 0) {
-          const s3UploadResponse = await this.uploadToS3(driveFile.name, driveFile.id);  
+          const s3UploadResponse = await this.uploadToS3(driveFile.name, driveFile.id);
           const createdLinks = await db.insert(DriveLinks).values({
             name: driveFile.name,
             fileid: driveFile.id,
-            s3Link: s3UploadResponse.Location,  
+            s3Link: s3UploadResponse.Location,
           });
           console.log(`File added to database: ${driveFile.name}`);
         }
@@ -67,15 +67,15 @@ export class ListFilesService implements OnModuleInit {
       console.log('Error updating database with files:', error);
     }
   }
-
+  
   private async uploadToS3(fileName: string, fileId: string) {
-    const uploadParams = {
+        const uploadParams = {
       Bucket: '',
-      Key: "",
-      Body: '',
+            Key: "",
+            Body: '',
       ContentType: 'application/octet-stream',
     };
 
     return this.s3.upload(uploadParams).promise();
-  }
+}
 }

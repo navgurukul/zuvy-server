@@ -1694,6 +1694,7 @@ export const developersResume = main.table("developers_resume", {
 
 export const classesGoogleMeetLink= main.table("zuvy_classes_google_meet_link",{
 	id: serial("id").primaryKey().notNull(),
+        meetingid:text("meetingid").notNull(),
 	hangoutLink:text("hangout_link").notNull(),
 	creator:text("creator").notNull(),
 	startTime:text("start_time").notNull(),
@@ -1701,7 +1702,8 @@ export const classesGoogleMeetLink= main.table("zuvy_classes_google_meet_link",{
 	batchId:text("batch_id").notNull(),
 	bootcampId:text("bootcamp_id").notNull(),
 	title:text("title").notNull(),
-        attendees:text("attendees").array()
+        attendees:text("attendees").array(),
+        s3link:text("s3link")
 })
 
 export const bootcamps = main.table("zuvy_bootcamps", {

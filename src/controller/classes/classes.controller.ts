@@ -49,10 +49,16 @@ export class ClassesController {
     getAttendeesByMeetingId(@Param('id') id: number): Promise<object> {
         return this.classesService.getAttendeesByMeetingId(id);
     }
-    @Get('/:id')
-    @ApiOperation({ summary: "getting meeting By id" })
-    getMeetingById(@Param('id') id: number): Promise<object> {
-        return this.classesService.getMeetingById(id);
+    // @Get('/:id')
+    // @ApiOperation({ summary: "getting meeting By id" })
+    // getMeetingById(@Param('id') id: number): Promise<object> {
+    //     return this.classesService.getMeetingById(id);
+    // }
+
+    @Get('/getEventDetails')
+    @ApiOperation({ summary: "getting event details" })
+    getEventDetails(@Res() res): Promise<object> {
+        return this.classesService.getEventDetails(res);
     }
 
     @Delete('/:id')
