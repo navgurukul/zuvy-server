@@ -263,7 +263,7 @@ export class BootcampService {
                 let batch = await db.select().from(batches).where(sql`${batches.id} = ${batchInfo[0].batchId}`);
                 let user = await db.select().from(users).where(sql`${users.id} = ${batch[0].instructorId}`);
                 if (user.length > 0) {
-                    return [null, { 'status': "success", "info": { "progress": progressInfo[0].progress,"bootcamp_id": bootcampData[0].id, "bootcamp_name": bootcampData[0].name, "instructor_name" : user[0].name, "instructor_profile_picture": user[0].profilePicture  }, 'code': 200 }];
+                    return [null, { 'status': "success", "info": { "progress": progressInfo[0]?.progress || 0,"bootcamp_id": bootcampData[0].id, "bootcamp_name": bootcampData[0].name, "instructor_name" : user[0].name, "instructor_profile_picture": user[0].profilePicture  }, 'code': 200 }];
                 }
             }
 
