@@ -90,6 +90,13 @@ export class BatchesService {
                     });
                 });
             }
+             const batchInstructor = await db
+               .select()
+               .from(users)
+               .where(eq(users.id, BigInt(data[0].instructorId)));
+             const instructorName =
+               batchInstructor.length > 0 ? batchInstructor[0].name : null;
+             data[0]['instructorName'] = instructorName;
             data[0]['students'] = respObj;
             return [null, { status: 'success', message: 'Batch fetched successfully', code: 200, batch: data[0] }];
             // }

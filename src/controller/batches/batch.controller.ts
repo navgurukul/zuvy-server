@@ -18,8 +18,8 @@ export class BatchesController {
     @Get('/:id')
     @ApiOperation({ summary: "Get the batch by id" })
     // @ApiQuery({ name: 'students', required: false, type: Boolean, description: 'Optional content flag' })
-    async getBatchById(@Param('id') id: string): Promise<object> {
-        const [err, res] = await this.batchService.getBatchById(parseInt(id));
+    async getBatchById(@Param('id') id: number): Promise<object> {
+        const [err, res] = await this.batchService.getBatchById(id);
         if (err) {
             throw new BadRequestException(err);
         }
