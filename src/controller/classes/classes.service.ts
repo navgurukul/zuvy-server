@@ -287,7 +287,7 @@ export class ClassesService {
             return { 'success': 'not success', 'message': 'Error fetching class Links', 'error': error };
         }
     }
-    @Cron('*/30 * * * *')
+    @Cron('8 * * * *')
     async getEventDetails(@Req() req): Promise<any> {
         try {
             const fetchedTokens = await db.select().from(userTokens).where(eq((userTokens.userId), 44848));
@@ -300,18 +300,18 @@ export class ClassesService {
             });
             const calendar = google.calendar({ version: 'v3', auth: auth2Client });
             const allClasses = await db.select().from(classesGoogleMeetLink)
-            for (const classData of allClasses) {
+                        for (const classData of allClasses) {
                 if (classData.meetingid != null) {
                     if (classData.s3link == null) {
                         const response = await calendar.events.get({
                             calendarId: 'primary',
                             eventId: classData.meetingid,
                         });
-                        if (response.data.attachments){
+                            if (response.data.attachments){
                             for (const attachment of response.data.attachments){
                                 if(attachment.mimeType=="video/mp4"){
-                                    const s3Url = await this.uploadVideoFromGoogleDriveToS3(attachment.fileUrl,attachment.fileId)
-                                    let updatedS3Url = await db.update(classesGoogleMeetLink).set({ ...classData,s3link:s3Url }).where(eq(classesGoogleMeetLink.id, classData.id)).returning();
+                                    // const s3Url = await this.uploadVideoFromGoogleDriveToS3(attachment.fileUrl,attachment.fileId)
+                                    let updatedS3Url = await db.update(classesGoogleMeetLink).set({ ...classData,s3link:attachment.fileUrl }).where(eq(classesGoogleMeetLink.id, classData.id)).returning();
                                     return { 'status': 'success', 'message': 'Meeting  updated successfully', 'code': 200, meetingDetails:updatedS3Url };
                                 }
                             }
