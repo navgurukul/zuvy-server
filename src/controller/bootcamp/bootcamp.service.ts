@@ -476,7 +476,6 @@ export class BootcampService {
     }
 
     return [
-      null,
       {
         status: 'success',
         studentsEmails: studentsEmails,
