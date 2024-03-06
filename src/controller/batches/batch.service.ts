@@ -72,24 +72,29 @@ export class BatchesService {
     async getBatchById(id: number) {
         try {
             let data = await db.select().from(batches).where(eq(batches.id, id));
+            console.log("batches",data)
             if (data.length === 0) {
                 return [{ status: 'error', message: 'Batch not found', code: 404 }, null];
             }
             let respObj = [];
             // if (students){
             let enrollStudents = await db.select().from(batchEnrollments).where(eq(batchEnrollments.batchId, id));
-            let enrollStudentsId;
-            if (enrollStudents.length !== 0) {
-                enrollStudentsId = enrollStudents.map(e => BigInt(e.userId)); // Convert e.userId to bigint
-                let students = await db.select().from(users).where(sql`id IN ${enrollStudentsId}`);
-                enrollStudents.map((e) => {
-                    students.find((s) => {
-                        if (s.id === BigInt(e.userId)) {
-                            respObj.push({ 'id': e.userId, "email": s.email, "name": s.name });
-                        }
-                    });
-                });
-            }
+            
+            // let enrollStudentsId;
+            // if (enrollStudents.length !== 0) {
+            //     enrollStudentsId = enrollStudents.map(e => BigInt(e.userId)); // Convert e.userId to bigint
+            //     console.log("students",enrollStudentsId);
+            //     let students = await db.select().from(users).where(sql`id IN ${enrollStudentsId}`);
+              
+            //     enrollStudents.map((e) => {
+            //         students.find((s) => {
+            //             if (s.id === BigInt(e.userId)) {
+            //                 respObj.push({ 'id': e.userId, "email": s.email, "name": s.name });
+            //             }
+            //         });
+            //     });
+
+            // }
              const batchInstructor = await db
                .select()
                .from(users)
@@ -97,7 +102,7 @@ export class BatchesService {
              const instructorName =
                batchInstructor.length > 0 ? batchInstructor[0].name : null;
              data[0]['instructorName'] = instructorName;
-            data[0]['students'] = respObj;
+           // data[0]['students'] = respObj;
             return [null, { status: 'success', message: 'Batch fetched successfully', code: 200, batch: data[0] }];
             // }
             // return [null, {status: 'success', message: 'Batch fetched successfully', code: 200, batch: data[0]}];
