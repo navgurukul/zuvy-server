@@ -224,10 +224,16 @@ export class BootcampController {
   @ApiQuery({name:'searchTerm',required:true,type: String,description: 'Search by name or email'})
   async searchStudents(
     @Param('bootcampId') bootcampId:number,
-    @Query('searchTerm') searchTerm: string
+    @Query('searchTerm') searchTerm: string 
   ): Promise<object> {
     try {
-      const result = await this.bootcampService.searchStudentsByNameOrEmail(searchTerm,bootcampId);
+      const searchTermAsNumber = !isNaN(Number(searchTerm))
+        ? BigInt(searchTerm)
+        : searchTerm;
+      const result = await this.bootcampService.getStudentsBySearching(
+        searchTermAsNumber,
+        bootcampId,
+      );
       return {
         status:'success',
         data:result,
@@ -238,7 +244,6 @@ export class BootcampController {
       throw new BadRequestException(error.message);
     }
   }
-
 
 }
 
