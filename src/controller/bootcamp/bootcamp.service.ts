@@ -44,10 +44,11 @@ export class BootcampService {
     }
   }
 
-  async getAllBootcamps(): Promise<any> {
+  async getAllBootcamps(limit:number,offset:number): Promise<any> {
     try {
-      let getAllBootcamps = await db.select().from(bootcamps);
-
+      let getAllBootcamps = await db.select().from(bootcamps).limit(limit).offset(offset);
+      const totalCountQuery = await db.select({count : count(bootcamps.id)}).from(bootcamps);
+      let totalPages = Math.ceil(totalCountQuery[0].count/ limit);
       let data = await Promise.all(
         getAllBootcamps.map(async (bootcamp) => {
           let [err, res] = await this.enrollData(bootcamp.id);
@@ -57,11 +58,39 @@ export class BootcampService {
           return { ...bootcamp, ...res };
         }),
       );
-      return [null, data];
+      return [null, {data,totalBootcamps:totalCountQuery[0].count,totalPages}];
     } catch (e) {
       log(`error: ${e.message}`);
       return [{ status: 'error', message: e.message, code: 500 }, null];
     }
+  }
+
+
+   async searchBootcamps(searchTerm:string | number) {
+     try {
+      let getSearchedBootcamps;
+      if(searchTerm.constructor == String)
+      {
+       getSearchedBootcamps = await db.select().from(bootcamps).where(sql`LOWER(${bootcamps.name}) LIKE ${searchTerm.toLowerCase()} || '%'`);
+      }
+      else
+      {
+          getSearchedBootcamps = await db.select().from(bootcamps).where(sql`${bootcamps.id} = ${searchTerm}`);
+      }
+       let data = await Promise.all(
+         getSearchedBootcamps.map(async (bootcamp) => {
+           let [err, res] = await this.enrollData(bootcamp.id);
+           if (err) {
+             return [err, null];
+           }
+           return { ...bootcamp, ...res };
+         }),
+       );
+       return [null, data];
+     } catch (e) {
+       log(`error: ${e.message}`);
+       return [{ status: 'error', message: e.message, code: 500 }, null];
+     }
   }
 
   async getBootcampById(id: number, isContent: boolean): Promise<any> {
@@ -205,12 +234,39 @@ export class BootcampService {
     }
   }
 
-  async getBatchByIdBootcamp(bootcamp_id: number): Promise<any> {
+  async getBatchByIdBootcamp(bootcamp_id: number,limit: number,offset: number): Promise<any> {
     try {
       const batchesData = await db
         .select()
         .from(batches)
-        .where(eq(batches.bootcampId, bootcamp_id));
+        .where(eq(batches.bootcampId, bootcamp_id))
+        .limit(limit)
+        .offset(offset);
+       
+
+      const totalCountQuery = await db.select({count : count(batches.id)}).from(batches);
+      let totalPages = Math.ceil(totalCountQuery[0].count/ limit);
+      const promises = batchesData.map(async (batch) => {
+        const userEnrolled = await db
+          .select()
+          .from(batchEnrollments)
+          .where(sql`${batchEnrollments.batchId} = ${batch.id}`);
+        batch['students_enrolled'] = userEnrolled.length;
+        return batch; // return the modified batch
+      });
+      const batchesWithEnrollment = await Promise.all(promises);
+      return [null, {batchesWithEnrollment,totalBatches: totalCountQuery[0].count,totalPages}];
+    } catch (e) {
+      return { status: 'error', message: e.message, code: 500 };
+    }
+  }
+
+   async searchBatchByIdBootcamp(bootcamp_id: number, searchTerm: string): Promise<any> {
+    try {
+      console.log(searchTerm);
+      const batchesData = await db.select().from(batches).where(sql`${batches.bootcampId}=${bootcamp_id} AND (LOWER(${batches.name}) LIKE ${searchTerm.toLowerCase()} || '%')`);
+     
+     console.log(batchesData);
       const promises = batchesData.map(async (batch) => {
         const userEnrolled = await db
           .select()

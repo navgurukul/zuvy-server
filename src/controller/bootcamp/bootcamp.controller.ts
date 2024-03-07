@@ -21,9 +21,49 @@ export class BootcampController {
   constructor(private bootcampService: BootcampService) {}
   @Get('/')
   @ApiOperation({ summary: 'Get all bootcamps' })
-  async getAllBootcamps(): Promise<object> {
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    type: Number,
+    description: 'Number of bootcamps per page',
+  })
+  @ApiQuery({
+    name: 'offset',
+    required: false,
+    type: Number,
+    description: 'Offset for pagination',
+  })
+  async getAllBootcamps(
+    @Query('limit') limit: number,
+    @Query('offset') offset: number,
+  ): Promise<object> {
     console.log('inside get bootcamps');
-    const [err, res] = await this.bootcampService.getAllBootcamps();
+    const [err, res] = await this.bootcampService.getAllBootcamps(
+      limit,
+      offset,
+    );
+    if (err) {
+      throw new BadRequestException(err);
+    }
+    return res;
+  }
+
+  @Get('/searchBootcamps')
+  @ApiOperation({ summary: 'Search by name or id in bootcamps' })
+  @ApiQuery({
+    name: 'searchTerm',
+    required: true,
+    type: String,
+    description: 'Search by name or id in bootcamps',
+  })
+  async searchBootcamps(
+    @Query('searchTerm') searchTerm: string,
+  ): Promise<object> {
+    const searchTermAsNumber = !isNaN(Number(searchTerm))
+      ? Number(searchTerm)
+      : searchTerm;
+    const [err, res] =
+      await this.bootcampService.searchBootcamps(searchTermAsNumber);
     if (err) {
       throw new BadRequestException(err);
     }
@@ -90,16 +130,53 @@ export class BootcampController {
   }
   @Get('/batches/:bootcamp_id')
   @ApiOperation({ summary: 'Get the batches by bootcamp_id' })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    type: Number,
+    description: 'Number of bootcamps per page',
+  })
+  @ApiQuery({
+    name: 'offset',
+    required: false,
+    type: Number,
+    description: 'Offset for pagination',
+  })
   async getBatchByIdBootcamp(
     @Param('bootcamp_id') bootcamp_id: number,
+    @Query('limit') limit: number,
+    @Query('offset') offset: number,
   ): Promise<object> {
-    const [err, res] =
-      await this.bootcampService.getBatchByIdBootcamp(bootcamp_id);
+    const [err, res] = await this.bootcampService.getBatchByIdBootcamp(
+      bootcamp_id,
+      limit,
+      offset,
+    );
     if (err) {
       throw new BadRequestException(err);
     }
     return res;
   }
+
+  @Get('/searchBatch/:bootcamp_id')
+  @ApiOperation({ summary: 'Get the batches by name by bootcamp id' })
+  @ApiQuery({
+    name: 'searchTerm',
+    required: false,
+    type: String,
+    description: 'Search batches by name in bootcamp',
+  })
+ async searchBatchesByName(@Param('bootcamp_id')bootcamp_id:number,@Query('searchTerm')searchTerm : string): Promise<object>
+ {
+  const [err, res] = await this.bootcampService.searchBatchByIdBootcamp(
+      bootcamp_id,
+      searchTerm
+    );
+    if (err) {
+      throw new BadRequestException(err);
+    }
+    return res;
+ }
 
   @Patch('/:id')
   @ApiOperation({ summary: 'Update the bootcamp partially' })
@@ -170,7 +247,7 @@ export class BootcampController {
       bootcamp_id,
       batch_id,
       limit,
-      offset
+      offset,
     );
     if (err) {
       throw new BadRequestException(err);
@@ -218,13 +295,18 @@ export class BootcampController {
     );
     return res;
   }
-  
+
   @Get('/studentSearch/:bootcampId')
-  @ApiOperation({summary: "Search students by name or email"})
-  @ApiQuery({name:'searchTerm',required:true,type: String,description: 'Search by name or email'})
+  @ApiOperation({ summary: 'Search students by name or email' })
+  @ApiQuery({
+    name: 'searchTerm',
+    required: true,
+    type: String,
+    description: 'Search by name or email',
+  })
   async searchStudents(
-    @Param('bootcampId') bootcampId:number,
-    @Query('searchTerm') searchTerm: string 
+    @Param('bootcampId') bootcampId: number,
+    @Query('searchTerm') searchTerm: string,
   ): Promise<object> {
     try {
       const searchTermAsNumber = !isNaN(Number(searchTerm))
@@ -235,15 +317,14 @@ export class BootcampController {
         bootcampId,
       );
       return {
-        status:'success',
-        data:result,
-        code:200
+        status: 'success',
+        data: result,
+        code: 200,
       };
-    } catch(error) {
-      console.log("error");
+    } catch (error) {
+      console.log('error');
       throw new BadRequestException(error.message);
     }
   }
-
 }
 
