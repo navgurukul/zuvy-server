@@ -12,6 +12,7 @@ import {
   batchEnrollments,
   classesGoogleMeetLink,
   bootcampTracking,
+  bootcampType
 } from '../../../drizzle/schema';
 
 const { ZUVY_CONTENT_URL } = process.env; // INPORTING env VALUSE ZUVY_CONTENT
@@ -140,6 +141,14 @@ export class BootcampService {
         .insert(bootcamps)
         .values(bootcampData)
         .returning();
+
+       const bootcampTypeData = {
+         bootcampId: newBootcamp[0].id,
+         type: bootcampData.bootcampType, // Assuming type is present in bootcampData
+       };
+
+       let insertedBootcampType = await db.insert(bootcampType).values(bootcampTypeData).execute();  
+       console.log(insertedBootcampType)
       try {
         try {
           const response = await axios.post(ZUVY_CONTENT_URL, {
@@ -198,6 +207,37 @@ export class BootcampService {
           updatedBootcamp,
         },
       ];
+    } catch (e) {
+      log(`error: ${e.message}`);
+      return [{ status: 'error', message: e.message, code: 500 }, null];
+    }
+  }
+
+  async updateBootcampSetting(bootcamp_id : number,settingData)
+  {
+    try {
+      console.log(settingData);
+      let updatedBootcampSetting = await db
+        .update(bootcampType)
+        .set({ ...settingData })
+        .where(eq(bootcampType.bootcampId, bootcamp_id))
+        .returning();
+      
+       if (updatedBootcampSetting.length === 0) {
+         return [
+           { status: 'error', message: 'Bootcamp not found for the provided id', code: 404 },
+           null,
+         ];
+       }
+       return [
+         null,
+         {
+           status: 'success',
+           message: 'Bootcamp Type updated successfully',
+           code: 200,
+           updatedBootcampSetting,
+         },
+       ];  
     } catch (e) {
       log(`error: ${e.message}`);
       return [{ status: 'error', message: e.message, code: 500 }, null];

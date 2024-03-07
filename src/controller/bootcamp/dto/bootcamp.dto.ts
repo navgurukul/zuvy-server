@@ -11,6 +11,15 @@ export class CreateBootcampDto {
   @IsNotEmpty()
   @IsString()
   name: string;
+
+  @ApiProperty({
+    type: String,
+    example: 'bootcamp type',
+    required: true
+  })
+  @IsNotEmpty()
+  @IsString()
+  bootcampType: string;
 }
 
 
@@ -68,6 +77,17 @@ export class EditBootcampDto{
   @IsString()
   language: string;
 
+}
+
+export class PatchBootcampSettingDto{
+   @ApiProperty({
+    type: String,
+    example: 'The bootcamp type',
+    required: true,
+  })
+  @IsNotEmpty({message: 'bootcamp type is required'})
+  @IsString()
+  type: string;
 }
 
 export class PatchBootcampDto{
