@@ -414,19 +414,115 @@ export class BootcampService {
       return [{ status: 'error', message: e.message, code: 500 }, null];
     }
   }
+
+  async getStudentsBySearching(searchTerm: string | bigint,bootcamp_id:number) {
+    try {
+      let queryString;
+      let count = 0;
+        queryString = sql`${batchEnrollments.bootcampId} = ${bootcamp_id}`;
+      let batchEnrollmentsData = await db
+        .select()
+        .from(batchEnrollments)
+        .where(queryString)
+      console.log(batchEnrollmentsData);
+      
+      const studentsEmails = [];
+      for (const studentEmail of batchEnrollmentsData) {
+        try {
+          let student = {};
+          let emailFetched;
+          if(searchTerm.constructor === String)
+          {
+          emailFetched = await db
+            .select()
+            .from(users)
+            .where(sql`(${eq(users.id,studentEmail.userId)} AND (LOWER(${users.name}) LIKE ${searchTerm.toLowerCase()} || '%'
+                OR LOWER(${users.email}) LIKE ${searchTerm.toLowerCase()} || '%'))`);
+
+          }
+          else if(count==0){
+            emailFetched = await db
+              .select()
+              .from(users)
+              .where(sql`${users.id} = ${searchTerm}`);
+            count = 1; 
+          }   
+
+         
+          if (emailFetched && emailFetched.length > 0) {
+            student = {
+              email: emailFetched[0].email,
+              name: emailFetched[0].name,
+              userId: emailFetched[0].id.toString(),
+              bootcampId: studentEmail.bootcampId,
+              profilePicture: emailFetched[0].profilePicture,
+            };
+            let batchInfo;
+            let progressInfo;
+            if (studentEmail.batchId) {
+              batchInfo = await db
+                .select()
+                .from(batches)
+                .where(eq(batches.id, studentEmail.batchId));
+              if (batchInfo.length > 0) {
+                student['batchName'] = batchInfo[0].name;
+                student['batchId'] = batchInfo[0].id;
+              }
+            }
+            progressInfo = await db
+              .select()
+              .from(bootcampTracking)
+              .where(
+                sql`${bootcampTracking.userId}= ${studentEmail.userId} and ${bootcampTracking.bootcampId} = ${studentEmail.bootcampId}`,
+              );
+            if (progressInfo.length > 0) {
+              student['progress'] = progressInfo[0].progress;
+            } else {
+              student['progress'] = 0;
+            }
+          }
+          if (emailFetched && emailFetched.length > 0) {
+            studentsEmails.push(student);
+          }
+        } catch (error) {
+          log(`error: ${error.message}`);
+
+          return [
+            { status: 'error', message: 'Fetching emails failed', code: 500 },
+            null,
+          ];
+        }
+      }
+      return [
+        null,
+        { status: 'success', studentsEmails: studentsEmails, code: 200 },
+      ];
+    } catch (e) {
+      return [{ status: 'error', message: e.message, code: 500 }, null];
+    }
+  }
   
-  async searchStudentsByNameOrEmail(searchTerm: string,bootcampId: number) {
+  async searchStudentsByNameOrEmail(searchTerm: string | bigint,bootcampId: number) {
   try {
     const studentsEmails = [];
     console.log("inside service")
-
-  
-   const  emailFetched = await db
+   console.log(searchTerm,typeof searchTerm)
+   let emailFetched;
+   if (searchTerm.constructor === String) {
+    console.log("inside string condition")
+    emailFetched = await db
       .select()
       .from(users)
-      .where(
-        sql`LOWER(${users.name}) LIKE ${searchTerm.toLowerCase()} || '%' or LOWER(${users.email}) LIKE ${searchTerm.toLowerCase()} || '%'` 
+       .where(
+        sql`LOWER(${users.name}) LIKE ${searchTerm.toLowerCase()} || '%' or LOWER(${users.email}) LIKE ${searchTerm.toLowerCase()} || '%'`
       );
+      }
+  else {
+    emailFetched = await db
+      .select()
+      .from(users)
+      .where(sql`${users.id} = ${searchTerm}`);
+  }
       
     //console.log(emailFetched);
     for (const user of emailFetched) {
