@@ -1,7 +1,7 @@
 import { Controller, Get, Post, Put, Patch, Delete, Body, Param, ValidationPipe, UsePipes, Optional, Query, BadRequestException } from '@nestjs/common';
 import { BootcampService } from './bootcamp.service';
 import { ApiTags, ApiBody, ApiOperation, ApiCookieAuth, ApiQuery } from '@nestjs/swagger';
-import { CreateBootcampDto, EditBootcampDto, PatchBootcampDto, studentDataDto } from './dto/bootcamp.dto';
+import { CreateBootcampDto, EditBootcampDto, PatchBootcampDto, studentDataDto ,PatchBootcampSettingDto } from './dto/bootcamp.dto';
 // import { EditBootcampDto } from './dto/editBootcamp.dto';
 // import { AuthGuard } from '@nestjs/passport'; // Assuming JWT authentication
 
@@ -103,6 +103,17 @@ export class BootcampController {
     return res;
   }
 
+  @Put('/bootcampSetting/:bootcampId')
+  @ApiOperation({ summary: 'Update the bootcamp setting' })
+  async updateBootcampSetting(@Body() bootcampSetting: PatchBootcampSettingDto,
+  @Param('bootcampId') bootcampId : number) {
+    const [err,res] = await this.bootcampService.updateBootcampSetting(bootcampId,bootcampSetting);
+    if(err) {
+      throw new BadRequestException(err);
+    }
+    return res;
+  }
+
   @Put('/:id')
   @ApiOperation({ summary: 'Update the bootcamp' })
   async updateBootcamp(
@@ -166,17 +177,19 @@ export class BootcampController {
     type: String,
     description: 'Search batches by name in bootcamp',
   })
- async searchBatchesByName(@Param('bootcamp_id')bootcamp_id:number,@Query('searchTerm')searchTerm : string): Promise<object>
- {
-  const [err, res] = await this.bootcampService.searchBatchByIdBootcamp(
+  async searchBatchesByName(
+    @Param('bootcamp_id') bootcamp_id: number,
+    @Query('searchTerm') searchTerm: string,
+  ): Promise<object> {
+    const [err, res] = await this.bootcampService.searchBatchByIdBootcamp(
       bootcamp_id,
-      searchTerm
+      searchTerm,
     );
     if (err) {
       throw new BadRequestException(err);
     }
     return res;
- }
+  }
 
   @Patch('/:id')
   @ApiOperation({ summary: 'Update the bootcamp partially' })

@@ -1718,6 +1718,14 @@ export const bootcamps = main.table("zuvy_bootcamps", {
 	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
 });
 
+export const bootcampType = main.table('zuvy_bootcamp_type', {
+  id: serial('id').primaryKey().notNull(),
+  bootcampId: integer('bootcamp_id').references(() => bootcamps.id, {
+    onDelete: 'cascade',
+  }), // Foreign key referencing bootcamp table
+  type: text('type').notNull(), // Type of bootcamp (Public, Private, etc.)
+});
+
 export const batchesRelations = relations(bootcamps, ({one, many}) => ({
 	bootcamp: one(batches, {
 		fields: [bootcamps.id], 
