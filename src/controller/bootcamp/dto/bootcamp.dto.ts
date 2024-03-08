@@ -12,14 +12,6 @@ export class CreateBootcampDto {
   @IsString()
   name: string;
 
-  @ApiProperty({
-    type: String,
-    example: 'bootcamp type',
-    required: true
-  })
-  @IsNotEmpty()
-  @IsString()
-  bootcampType: string;
 }
 
 

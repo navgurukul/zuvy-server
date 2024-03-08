@@ -42,6 +42,7 @@ export class BootcampController {
       limit,
       offset,
     );
+    
     if (err) {
       throw new BadRequestException(err);
     }
