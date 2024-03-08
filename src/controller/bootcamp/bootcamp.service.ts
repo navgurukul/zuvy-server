@@ -144,7 +144,7 @@ export class BootcampService {
 
        const bootcampTypeData = {
          bootcampId: newBootcamp[0].id,
-         type: bootcampData.bootcampType, // Assuming type is present in bootcampData
+         type: 'Private', // Assuming type is present in bootcampData
        };
 
        let insertedBootcampType = await db.insert(bootcampType).values(bootcampTypeData).execute();  
@@ -216,7 +216,11 @@ export class BootcampService {
   async updateBootcampSetting(bootcamp_id : number,settingData)
   {
     try {
-      console.log(settingData);
+      const typeOfBootcamp = settingData.type.toLowerCase();
+      settingData.type = settingData.type.charAt(0).toUpperCase() + settingData.type.slice(1).toLowerCase();
+      
+      if(typeOfBootcamp == 'Public'.toLowerCase() ||  typeOfBootcamp == 'Private'.toLowerCase() )
+      {
       let updatedBootcampSetting = await db
         .update(bootcampType)
         .set({ ...settingData })
@@ -237,7 +241,18 @@ export class BootcampService {
            code: 200,
            updatedBootcampSetting,
          },
-       ];  
+       ]; 
+      }
+      else {
+        return [
+          null,
+          {
+            status:'success',
+            message: `Course type can be of type Public or Private`,
+            code:200
+          }
+        ]
+      } 
     } catch (e) {
       log(`error: ${e.message}`);
       return [{ status: 'error', message: e.message, code: 500 }, null];
