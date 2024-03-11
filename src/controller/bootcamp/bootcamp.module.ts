@@ -3,7 +3,7 @@ import { BootcampController } from './bootcamp.controller';
 import { BootcampService } from './bootcamp.service';
 import { BatchesModule } from '../batches/batch.module';
 import { JwtModule,JwtService } from '@nestjs/jwt';
-import { JwtMiddleware } from 'src/middleware/jwt.middleware';
+import { JwtMiddleware } from 'src/middleware/token_validation.middleware';
 
 @Module({
     controllers: [BootcampController],

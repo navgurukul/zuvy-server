@@ -3,6 +3,8 @@ import { BootcampService } from './bootcamp.service';
 import { ApiTags, ApiBody, ApiOperation, ApiCookieAuth, ApiQuery } from '@nestjs/swagger';
 import { CreateBootcampDto, EditBootcampDto, PatchBootcampDto, studentDataDto ,PatchBootcampSettingDto } from './dto/bootcamp.dto';
 import { ApiBearerAuth } from '@nestjs/swagger';
+import { Request, Response } from 'express';
+
 // import { EditBootcampDto } from './dto/editBootcamp.dto';
 // import { AuthGuard } from '@nestjs/passport'; // Assuming JWT authentication
 
@@ -16,7 +18,6 @@ import { ApiBearerAuth } from '@nestjs/swagger';
     forbidNonWhitelisted: true,
   }),
 )
-// @UseGuards(AuthGuard('cookie'))
 export class BootcampController {
   constructor(private bootcampService: BootcampService) {}
   @Get('/')
@@ -35,11 +36,12 @@ export class BootcampController {
   })
   @ApiBearerAuth()
   async getAllBootcamps(
+    // @Request() req: Request,
+    // @Response() res: Response,
     @Query('limit') limit: number,
     @Query('offset') offset: number,
   ): Promise<object> {
-    console.log('inside get bootcamps');
-    const [err, res] = await this.bootcampService.getAllBootcamps(
+    const [err, output] = await this.bootcampService.getAllBootcamps(
       limit,
       offset,
     );
@@ -47,7 +49,7 @@ export class BootcampController {
     if (err) {
       throw new BadRequestException(err);
     }
-    return res;
+    return output;
   }
 
   @Get('/searchBootcamps')

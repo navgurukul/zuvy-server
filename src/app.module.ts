@@ -15,9 +15,7 @@ import { LoggingInterceptor } from './loggerInterceptor/logger';
   imports: [
     ConfigModule.forRoot(),
     JwtModule.register({
-      global:true,
       secret: process.env.JWT_SECRET_KEY,
-      signOptions: { expiresIn: '24h' },
     }),
     BootcampModule,
     BatchesModule,

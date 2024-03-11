@@ -616,11 +616,8 @@ export class BootcampService {
   async searchStudentsByNameOrEmail(searchTerm: string | bigint,bootcampId: number) {
   try {
     const studentsEmails = [];
-    console.log("inside service")
-   console.log(searchTerm,typeof searchTerm)
    let emailFetched;
    if (searchTerm.constructor === String) {
-    console.log("inside string condition")
     emailFetched = await db
       .select()
       .from(users)
