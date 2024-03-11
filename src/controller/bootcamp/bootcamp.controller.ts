@@ -2,13 +2,13 @@ import { Controller, Get, Post, Put, Patch, Delete, Body, Param, ValidationPipe,
 import { BootcampService } from './bootcamp.service';
 import { ApiTags, ApiBody, ApiOperation, ApiCookieAuth, ApiQuery } from '@nestjs/swagger';
 import { CreateBootcampDto, EditBootcampDto, PatchBootcampDto, studentDataDto ,PatchBootcampSettingDto } from './dto/bootcamp.dto';
+import { ApiBearerAuth } from '@nestjs/swagger';
 // import { EditBootcampDto } from './dto/editBootcamp.dto';
 // import { AuthGuard } from '@nestjs/passport'; // Assuming JWT authentication
 
 
 @Controller('bootcamp')
 @ApiTags('bootcamp')
-@ApiCookieAuth()
 @UsePipes(
   new ValidationPipe({
     whitelist: true,
@@ -33,6 +33,7 @@ export class BootcampController {
     type: Number,
     description: 'Offset for pagination',
   })
+  @ApiBearerAuth()
   async getAllBootcamps(
     @Query('limit') limit: number,
     @Query('offset') offset: number,
@@ -42,7 +43,7 @@ export class BootcampController {
       limit,
       offset,
     );
-    
+
     if (err) {
       throw new BadRequestException(err);
     }
@@ -106,10 +107,15 @@ export class BootcampController {
 
   @Put('/bootcampSetting/:bootcampId')
   @ApiOperation({ summary: 'Update the bootcamp setting' })
-  async updateBootcampSetting(@Body() bootcampSetting: PatchBootcampSettingDto,
-  @Param('bootcampId') bootcampId : number) {
-    const [err,res] = await this.bootcampService.updateBootcampSetting(bootcampId,bootcampSetting);
-    if(err) {
+  async updateBootcampSetting(
+    @Body() bootcampSetting: PatchBootcampSettingDto,
+    @Param('bootcampId') bootcampId: number,
+  ) {
+    const [err, res] = await this.bootcampService.updateBootcampSetting(
+      bootcampId,
+      bootcampSetting,
+    );
+    if (err) {
       throw new BadRequestException(err);
     }
     return res;

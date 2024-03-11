@@ -7,10 +7,12 @@ import { JwtMiddleware } from 'src/middleware/jwt.middleware';
 
 @Module({
     controllers: [BootcampController],
-    providers: [BootcampService],
+    providers: [BootcampService,JwtService],
     // imports: [BatchesModule],
     // exports: [BootcampService]
 })
-export class BootcampModule {
-      
+export class BootcampModule implements NestModule {
+       configure(consumer: MiddlewareConsumer) {
+        consumer.apply(JwtMiddleware).forRoutes('*'); // Apply JwtMiddleware to all routes
+    }
 }

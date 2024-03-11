@@ -7,33 +7,39 @@ import { Request, Response, NextFunction } from 'express';
 import { JwtService } from '@nestjs/jwt';
 
 
-interface DecodedUser {
-  id: bigint; // Define id as bigint
-  // Add other properties as needed
-}
+// interface DecodedUser {
+//   id: string; // Define id as bigint
+//   // Add other properties as needed
+// }
 
-declare global {
-  namespace Express {
-    interface Request {
-      user?: DecodedUser;
-    }
-  }
-}
+// declare global {
+//   namespace Express {
+//     interface Request {
+//       user?: DecodedUser;
+//     }
+//   }
+// }
 @Injectable()
 export class JwtMiddleware implements NestMiddleware {
   constructor(private readonly jwtService: JwtService) {}
 
-  use(req: Request, res: Response, next: NextFunction) {
+ async use(req: Request, res: Response, next: NextFunction) {
+    
     const token = req.headers.authorization?.replace('Bearer ', '');
+    
     if (!token) {
       throw new UnauthorizedException('Token not found');
     }
     try {
-      const decoded = this.jwtService.verify(token) as DecodedUser;
+        console.log(token,process.env.JWT_SECRET_KEY);
+      const decoded = await this.jwtService.verifyAsync(token,{
+        secret: process.env.JWT_SECRET_KEY,
+      });
       console.log(decoded);
-      req.user = decoded; 
+      req['user'] = decoded;
       next();
     } catch (error) {
+        console.log("Error",error);
       throw new UnauthorizedException('Invalid token');
     }
   }
