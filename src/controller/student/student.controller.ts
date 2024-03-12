@@ -1,6 +1,6 @@
 import { Controller, Get, Post, Put, Delete, Patch, Body, Param, ValidationPipe, UsePipes, BadRequestException, Query } from '@nestjs/common';
 import { StudentService } from './student.service';
-import { ApiTags, ApiBody, ApiOperation, ApiCookieAuth, ApiQuery } from '@nestjs/swagger';
+import { ApiTags, ApiBody, ApiOperation, ApiCookieAuth, ApiQuery,ApiBearerAuth } from '@nestjs/swagger';
 import { get } from 'http';
 // import { CreateDto, ScheduleDto, CreateLiveBroadcastDto } from './dto/Student.dto';
 // import { AuthGuard } from '@nestjs/passport'; // Assuming JWT authentication
@@ -22,6 +22,7 @@ export class StudentController {
 
   @Get('/:userId')
   @ApiOperation({ summary: 'Get all course enrolled by student' })
+  @ApiBearerAuth()
   async getAllStudents(@Param('userId') userId: number): Promise<object> {
     const [err, res] = await this.studentService.enrollData(userId);
     if (err) {
@@ -32,24 +33,28 @@ export class StudentController {
 
   @Get('/bootcamp/search')
   @ApiOperation({ summary: 'Get Public bootcamp by searching' })
+  @ApiBearerAuth()
   @ApiQuery({
     name: 'searchTerm',
     required: true,
     type: String,
     description: 'Search by name in bootcamps',
   })
-  async getPublicBootcamp(@Query('searchTerm') searchTerm: string): Promise<object> {
-    console.log("inside public seraching")
-    const [err,res] = await this.studentService.searchPublicBootcampByStudent(searchTerm);
-     if (err) {
-       throw new BadRequestException(err);
-     }
-     return res;
+  async getPublicBootcamp(
+    @Query('searchTerm') searchTerm: string,
+  ): Promise<object> {
+    console.log('inside public seraching');
+    const [err, res] =
+      await this.studentService.searchPublicBootcampByStudent(searchTerm);
+    if (err) {
+      throw new BadRequestException(err);
+    }
+    return res;
   }
-
 
   @Delete('/:userId/:bootcampId')
   @ApiOperation({ summary: 'Removing student from bootcamp' })
+  @ApiBearerAuth()
   async removingStudents(
     @Param('userId') userId: number,
     @Param('bootcampId') bootcampId: number,
