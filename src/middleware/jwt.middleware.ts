@@ -9,18 +9,7 @@ import { db } from '../db/index';
 import { eq, sql, count } from 'drizzle-orm';
 import { users } from '../../drizzle/schema';
 
-// interface DecodedUser {
-//   id: string; // Define id as bigint
-//   // Add other properties as needed
-// }
 
-// declare global {
-//   namespace Express {
-//     interface Request {
-//       user?: DecodedUser;
-//     }
-//   }
-// }
 @Injectable()
 export class JwtMiddleware implements NestMiddleware {
   constructor(private readonly jwtService: JwtService) {}

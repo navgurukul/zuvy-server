@@ -6,7 +6,7 @@ import { JwtModule, JwtService } from '@nestjs/jwt';
 import { JwtMiddleware } from 'src/middleware/jwt.middleware';
 @Module({
   controllers: [StudentController],
-  providers: [StudentService],
+  providers: [StudentService,JwtService],
   imports: [BatchesModule],
 })
 export class StudentModule implements NestModule {
