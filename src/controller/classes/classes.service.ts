@@ -6,6 +6,9 @@ import { google, calendar_v3 } from 'googleapis';
 import { v4 as uuid } from 'uuid';
 import { createReadStream } from 'fs';
 import * as _ from 'lodash';
+import Axios from 'axios'
+import { S3 } from 'aws-sdk'; 
+import { Cron } from '@nestjs/schedule';
 // import { Calendar } from 'node_google_calendar_1';// import { OAuth2Client } from 'google-auth-library';
 
 const { OAuth2 } = google.auth;
@@ -28,7 +31,8 @@ interface Class {
 }
 
 const scopes = [
-    "https://www.googleapis.com/auth/calendar"
+    "https://www.googleapis.com/auth/calendar",
+    "https://www.googleapis.com/auth/drive"
 ]
 // export const getOAuth2Client =  () : OAuth2Client  => { // 2. So I set the return type as OAuth2Client  
 
@@ -129,7 +133,7 @@ export class ClassesService {
         timeZone: string;
         attendees: string[];
         batchId: string;
-        bootcampId: string; 
+        bootcampId: string;
         userId: number;
         roles: string[]
 
@@ -149,19 +153,19 @@ export class ClassesService {
             }
 
             const studentsInTheBatchEmails = await db.select().from(batchEnrollments).where(eq(batchEnrollments.batchId, parseInt(eventDetails.batchId)));
-            
+
             const studentsEmails = [];
             for (const studentEmail of studentsInTheBatchEmails) {
                 try {
                     const emailFetched = await db.select().from(users).where(eq(users.id, studentEmail.userId));
                     if (emailFetched && emailFetched.length > 0) {
-                        studentsEmails.push( {'email':emailFetched[0].email});
+                        studentsEmails.push({ 'email': emailFetched[0].email });
                     }
                 } catch (error) {
                     return [{ 'status': 'error', 'message': "Fetching emails failed", 'code': 500 }, null];
                 }
             }
-         
+
 
             const calendar = google.calendar({ version: 'v3', auth: auth2Client });
             const eventData = {
@@ -190,10 +194,11 @@ export class ClassesService {
                     },
                 },
             };
-          
+
             const createdEvent = await calendar.events.insert(eventData);
 
             const saveClassDetails = await db.insert(classesGoogleMeetLink).values({
+                meetingid: createdEvent.data.id,
                 hangoutLink: createdEvent.data.hangoutLink,
                 creator: createdEvent.data.creator.email,
                 startTime: createdEvent.data.start.dateTime,
@@ -250,17 +255,17 @@ export class ClassesService {
     async getClassesByBatchId(batchId: string) {
         try {
             const currentTime = new Date();
-    
+
             const classes = await db.select().from(classesGoogleMeetLink).where(sql`${classesGoogleMeetLink.batchId} = ${batchId}`);
-    
+
             const completedClasses = [];
             const ongoingClasses = [];
             const upcomingClasses = [];
-    
+
             for (const classObj of classes) {
                 const startTime = new Date(classObj.startTime);
                 const endTime = new Date(classObj.endTime);
-    
+
                 if (currentTime > endTime) {
                     completedClasses.push(classObj);
                 } else if (currentTime >= startTime && currentTime <= endTime) {
@@ -269,7 +274,7 @@ export class ClassesService {
                     upcomingClasses.push(classObj);
                 }
             }
-    
+
             return {
                 'status': 'success',
                 'message': 'Classes fetched successfully by batchId',
@@ -282,43 +287,114 @@ export class ClassesService {
             return { 'success': 'not success', 'message': 'Error fetching class Links', 'error': error };
         }
     }
-    
-
-   async getClassesByBootcampId(bootcampId: string) {
-    try {
-        const currentTime = new Date();
-
-        const classes = await db.select().from(classesGoogleMeetLink).where(sql`${classesGoogleMeetLink.bootcampId} = ${bootcampId}`);
-
-        const completedClasses = [];
-        const ongoingClasses = [];
-        const upcomingClasses = [];
-
-        for (const classObj of classes) {
-            const startTime = new Date(classObj.startTime);
-            const endTime = new Date(classObj.endTime);
-
-            if (currentTime > endTime) {
-                completedClasses.push(classObj);
-            } else if (currentTime >= startTime && currentTime <= endTime) {
-                ongoingClasses.push(classObj);
-            } else {
-                upcomingClasses.push(classObj);
+    @Cron('8 * * * *')
+    async getEventDetails(@Req() req): Promise<any> {
+        try {
+            const fetchedTokens = await db.select().from(userTokens).where(eq((userTokens.userId), 44848));
+            if (!fetchedTokens) {
+                return { status: 'error', message: 'Unable to fetch tokens' };
             }
-        }
+            auth2Client.setCredentials({
+                access_token: fetchedTokens[0].accessToken,
+                refresh_token: fetchedTokens[0].refreshToken,
+            });
+            const calendar = google.calendar({ version: 'v3', auth: auth2Client });
+            const allClasses = await db.select().from(classesGoogleMeetLink)
+                        for (const classData of allClasses) {
+                if (classData.meetingid != null) {
+                    if (classData.s3link == null) {
+                        const response = await calendar.events.get({
+                            calendarId: 'primary',
+                            eventId: classData.meetingid,
+                        });
+                            if (response.data.attachments){
+                            for (const attachment of response.data.attachments){
+                                if(attachment.mimeType=="video/mp4"){
+                                    // const s3Url = await this.uploadVideoFromGoogleDriveToS3(attachment.fileUrl,attachment.fileId)
+                                    let updatedS3Url = await db.update(classesGoogleMeetLink).set({ ...classData,s3link:attachment.fileUrl }).where(eq(classesGoogleMeetLink.id, classData.id)).returning();
+                                    return { 'status': 'success', 'message': 'Meeting  updated successfully', 'code': 200, meetingDetails:updatedS3Url };
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            return {'status': 'success', 'message': 'No meetings to update','code': 200}
 
-        return {
-            'status': 'success',
-            'message': 'Classes fetched successfully by bootcampId',
-            'code': 200,
-            completedClasses,
-            ongoingClasses,
-            upcomingClasses,
-        };
-    } catch (error) {
-        return { 'success': 'not success', 'message': 'Error fetching class Links', 'error': error };
+        } catch (error) {
+
+            return {'status': 'failure', error:error}
+        }
     }
-}
+    async uploadVideoFromGoogleDriveToS3(googleDriveLink: string,fileId:string): Promise<string> {
+        try {
+           
+            const response = await Axios.get(googleDriveLink, { responseType: 'arraybuffer' });
+            const fileBuffer = Buffer.from(response.data);
+
+            const s3Url = await this.uploadVideoToS3(fileBuffer, fileId);
+
+            return s3Url;
+        } catch (error) {
+            
+            throw new Error('Error uploading video from Google Drive to S3');
+        }
+    }
+
+    private async uploadVideoToS3(fileBuffer: Buffer, fileName: string): Promise<string> {
+        try { 
+            const s3 = new S3({
+              accessKeyId: process.env.S3_ACCESS_KEY_ID,
+              secretAccessKey:  process.env.S3_SECRET_KEY_ACCESS
+            });
+            const bucketName = process.env.S3_BUCKET_NAME;
+            const s3Key = `class-recordings/${fileName}`;   
+            await s3.upload({
+                Bucket: bucketName,
+                Key: s3Key,
+                Body: fileBuffer,
+            }).promise();
+            const s3Url = `https://${bucketName}.s3.amazonaws.com/${s3Key}`;
+            return s3Url;
+        } catch (error) {
+            throw new Error('Error uploading video to S3');
+        }
+    }
+    async getClassesByBootcampId(bootcampId: string) {
+        try {
+            const currentTime = new Date();
+
+            const classes = await db.select().from(classesGoogleMeetLink).where(sql`${classesGoogleMeetLink.bootcampId} = ${bootcampId}`);
+
+            const completedClasses = [];
+            const ongoingClasses = [];
+            const upcomingClasses = [];
+
+            for (const classObj of classes) {
+                const startTime = new Date(classObj.startTime);
+                const endTime = new Date(classObj.endTime);
+
+                if (currentTime > endTime) {
+                    completedClasses.push(classObj);
+                } else if (currentTime >= startTime && currentTime <= endTime) {
+                    ongoingClasses.push(classObj);
+                } else {
+                    upcomingClasses.push(classObj);
+                }
+            }
+
+            return {
+                'status': 'success',
+                'message': 'Classes fetched successfully by bootcampId',
+                'code': 200,
+                completedClasses,
+                ongoingClasses,
+                upcomingClasses,
+            };
+        } catch (error) {
+            return { 'success': 'not success', 'message': 'Error fetching class Links', 'error': error };
+        }
+    }
 
     async getAttendeesByMeetingId(id: number) {
         try {

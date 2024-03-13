@@ -22,9 +22,15 @@ async function bootstrap() {
     .setVersion('1.0')
     .addCookieAuth('optional-session-id', { type: 'apiKey', name: 'Authorization', in: 'cookie' })
     // .addSecurity('basic', { type: 'http', scheme: 'basic' })
+    .addBearerAuth()
     .build();
 
   const document = SwaggerModule.createDocument(app, config);
+  document.security = [
+    {
+      bearerAuth: [], // This should match the name of the security scheme added in addBearerAuth()
+    },
+  ];
   SwaggerModule.setup('apis', app, document);
   await app.listen(PORT || 6000);
   console.log(`Application is running on swagger: ${BASE_URL}/apis#/`);

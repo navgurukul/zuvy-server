@@ -6,10 +6,31 @@ import { ClassesModule } from './controller/classes/classes.module';
 import { ContentModule } from './controller/content/content.module';
 import { StudentModule } from './controller/student/student.module';
 import { TrackingModule } from './controller/progress/tracking.module'
+import { APP_INTERCEPTOR } from '@nestjs/core';
+import { JwtModule } from '@nestjs/jwt';
+import { LoggingInterceptor } from './loggerInterceptor/logger';
+
 
 @Module({
-  imports: [ConfigModule.forRoot(), BootcampModule, BatchesModule, ClassesModule, ContentModule, StudentModule, TrackingModule],
+  imports: [
+    ConfigModule.forRoot(),
+    JwtModule.register({
+      global:true,
+      secret: process.env.JWT_SECRET_KEY,
+      signOptions: { expiresIn: '24h' },
+    }),
+    BootcampModule,
+    BatchesModule,
+    ClassesModule,
+    ContentModule,
+    StudentModule,
+    TrackingModule,
+  ],
+  providers: [
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: LoggingInterceptor,
+    },
+  ],
 })
-export class AppModule {
-  
-}
+export class AppModule {}

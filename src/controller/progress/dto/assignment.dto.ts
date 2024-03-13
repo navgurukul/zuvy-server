@@ -1,8 +1,30 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsString, IsNotEmpty,IsOptional,IsNumber } from 'class-validator';
+import { IsString, IsNotEmpty,IsOptional,IsNumber, IsDate } from 'class-validator';
 
 
 export class CreateAssignmentDto {
+    @ApiProperty({
+        type: String,
+        example: 'https:://github.com/',
+        required: true,
+    })
+    @IsOptional()
+    @IsString()
+    projectUrl: string;
+}
+
+export class PatchAssignmentDto {
+    @ApiProperty({
+        type: String,
+        example: 'https:://github.com/',
+        required: true,
+    })
+    @IsOptional()
+    @IsString()
+    projectUrl: string;
+}
+
+export class TimeLineAssignmentDto {
     @ApiProperty({
         type: Number,
         example: 44002,
@@ -31,22 +53,20 @@ export class CreateAssignmentDto {
     moduleId: number;
 
     @ApiProperty({
-        type: String,
-        example: 'https:://github.com/',
+        type: Number,
+        example: 44002,
         required: true,
     })
-    @IsOptional()
-    @IsString()
-    projectUrl: string;
-}
+    @IsNotEmpty()
+    @IsNumber()
+    bootcampId: number;
 
-export class PatchAssignmentDto {
     @ApiProperty({
-        type: String,
-        example: 'https:://github.com/',
+        type: String, 
+        example: new Date().toISOString(),
         required: true,
-    })
-    @IsOptional()
-    @IsString()
-    projectUrl: string;
+      })
+      @IsNotEmpty()
+      @IsDate()
+      timeLimit: string;
 }

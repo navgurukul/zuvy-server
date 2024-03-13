@@ -1694,6 +1694,7 @@ export const developersResume = main.table("developers_resume", {
 
 export const classesGoogleMeetLink= main.table("zuvy_classes_google_meet_link",{
 	id: serial("id").primaryKey().notNull(),
+        meetingid:text("meetingid").notNull(),
 	hangoutLink:text("hangout_link").notNull(),
 	creator:text("creator").notNull(),
 	startTime:text("start_time").notNull(),
@@ -1701,7 +1702,8 @@ export const classesGoogleMeetLink= main.table("zuvy_classes_google_meet_link",{
 	batchId:text("batch_id").notNull(),
 	bootcampId:text("bootcamp_id").notNull(),
 	title:text("title").notNull(),
-        attendees:text("attendees").array()
+        attendees:text("attendees").array(),
+        s3link:text("s3link")
 })
 
 export const bootcamps = main.table("zuvy_bootcamps", {
@@ -1712,9 +1714,16 @@ export const bootcamps = main.table("zuvy_bootcamps", {
 	startTime : timestamp("start_time", { withTimezone: true, mode: 'string' }),
 	duration: text("duration"),
 	language: text("language"),
-	capEnrollment: integer("cap_enrollment"),
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
 	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+});
+
+export const bootcampType = main.table('zuvy_bootcamp_type', {
+  id: serial('id').primaryKey().notNull(),
+  bootcampId: integer('bootcamp_id').references(() => bootcamps.id, {
+    onDelete: 'cascade',
+  }), // Foreign key referencing bootcamp table
+  type: text('type').notNull(), // Type of bootcamp (Public, Private, etc.)
 });
 
 export const batchesRelations = relations(bootcamps, ({one, many}) => ({
@@ -1804,7 +1813,9 @@ export const assignmentSubmission = main.table("zuvy_assignment_submission", {
         id: serial("id").primaryKey().notNull(),
         userId: integer("user_id").references(() => users.id),
         moduleId: integer("module_id").notNull(),
+        bootcampId: integer("bootcamp_id").references(() => bootcamps.id),
         assignmentId: integer("assignment_id").notNull(),
+        timeLimit: timestamp("time_limit",{ withTimezone: true, mode: 'string' }).notNull(),
         projectUrl: varchar("project_url", { length: 255 }),
         createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
         updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
@@ -1828,3 +1839,9 @@ export const bootcampTracking = main.table("zuvy_bootcamp_tracking", {
         createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
         updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
 });
+export const DriveLinks = main.table("zuvy_drive_links",{
+        id:serial("id").primaryKey().notNull(),
+        name : varchar("name").notNull(),
+        fileid : varchar("fileid").notNull(),
+        s3Link:varchar('s3Link'),
+})
