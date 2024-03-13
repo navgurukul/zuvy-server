@@ -1,14 +1,15 @@
-import { Controller, Get, Post, Put, Patch, Delete, Body, Param, ValidationPipe, UsePipes, Optional, Query, BadRequestException } from '@nestjs/common';
+import { Controller, Get, Post, Put, Patch, Delete, Body, Param, ValidationPipe, UsePipes, Optional, Query, BadRequestException,Req } from '@nestjs/common';
 import { BootcampService } from './bootcamp.service';
 import { ApiTags, ApiBody, ApiOperation, ApiCookieAuth, ApiQuery } from '@nestjs/swagger';
 import { CreateBootcampDto, EditBootcampDto, PatchBootcampDto, studentDataDto ,PatchBootcampSettingDto } from './dto/bootcamp.dto';
+import { ApiBearerAuth } from '@nestjs/swagger';
+import { Request } from 'express';
 // import { EditBootcampDto } from './dto/editBootcamp.dto';
 // import { AuthGuard } from '@nestjs/passport'; // Assuming JWT authentication
 
 
 @Controller('bootcamp')
 @ApiTags('bootcamp')
-@ApiCookieAuth()
 @UsePipes(
   new ValidationPipe({
     whitelist: true,
@@ -33,16 +34,19 @@ export class BootcampController {
     type: Number,
     description: 'Offset for pagination',
   })
+  @ApiBearerAuth()
   async getAllBootcamps(
     @Query('limit') limit: number,
     @Query('offset') offset: number,
+    @Req() request: Request,
   ): Promise<object> {
+    console.log('bootcamp request', request);
     console.log('inside get bootcamps');
     const [err, res] = await this.bootcampService.getAllBootcamps(
       limit,
       offset,
     );
-    
+
     if (err) {
       throw new BadRequestException(err);
     }
@@ -57,6 +61,7 @@ export class BootcampController {
     type: String,
     description: 'Search by name or id in bootcamps',
   })
+  @ApiBearerAuth()
   async searchBootcamps(
     @Query('searchTerm') searchTerm: string,
   ): Promise<object> {
@@ -79,6 +84,7 @@ export class BootcampController {
     type: Boolean,
     description: 'Optional content flag',
   })
+  @ApiBearerAuth()
   async getBootcampById(
     @Param('id') id: number,
     @Query('isContent') isContent: boolean = false,
@@ -95,6 +101,7 @@ export class BootcampController {
 
   @Post('/')
   @ApiOperation({ summary: 'Create the new bootcamp' })
+  @ApiBearerAuth()
   async create(@Body() bootcampsEntry: CreateBootcampDto) {
     const [err, res] =
       await this.bootcampService.createBootcamp(bootcampsEntry);
@@ -106,10 +113,16 @@ export class BootcampController {
 
   @Put('/bootcampSetting/:bootcampId')
   @ApiOperation({ summary: 'Update the bootcamp setting' })
-  async updateBootcampSetting(@Body() bootcampSetting: PatchBootcampSettingDto,
-  @Param('bootcampId') bootcampId : number) {
-    const [err,res] = await this.bootcampService.updateBootcampSetting(bootcampId,bootcampSetting);
-    if(err) {
+  @ApiBearerAuth()
+  async updateBootcampSetting(
+    @Body() bootcampSetting: PatchBootcampSettingDto,
+    @Param('bootcampId') bootcampId: number,
+  ) {
+    const [err, res] = await this.bootcampService.updateBootcampSetting(
+      bootcampId,
+      bootcampSetting,
+    );
+    if (err) {
       throw new BadRequestException(err);
     }
     return res;
@@ -117,6 +130,7 @@ export class BootcampController {
 
   @Put('/:id')
   @ApiOperation({ summary: 'Update the bootcamp' })
+  @ApiBearerAuth()
   async updateBootcamp(
     @Param('id') id: number,
     @Body() editBootcampDto: EditBootcampDto,
@@ -133,6 +147,7 @@ export class BootcampController {
 
   @Delete('/:id')
   @ApiOperation({ summary: 'Delete the bootcamp' })
+  @ApiBearerAuth()
   async deleteBootcamp(@Param('id') id: number): Promise<object> {
     const [err, res] = await this.bootcampService.deleteBootcamp(id);
     if (err) {
@@ -154,6 +169,7 @@ export class BootcampController {
     type: Number,
     description: 'Offset for pagination',
   })
+  @ApiBearerAuth()
   async getBatchByIdBootcamp(
     @Param('bootcamp_id') bootcamp_id: number,
     @Query('limit') limit: number,
@@ -178,6 +194,7 @@ export class BootcampController {
     type: String,
     description: 'Search batches by name in bootcamp',
   })
+  @ApiBearerAuth()
   async searchBatchesByName(
     @Param('bootcamp_id') bootcamp_id: number,
     @Query('searchTerm') searchTerm: string,
@@ -194,6 +211,7 @@ export class BootcampController {
 
   @Patch('/:id')
   @ApiOperation({ summary: 'Update the bootcamp partially' })
+  @ApiBearerAuth()
   async updatePartialBootcamp(
     @Param('id') id: number,
     @Body() patchBootcampDto: PatchBootcampDto,
@@ -209,6 +227,7 @@ export class BootcampController {
   }
   @Post('/students/:bootcamp_id')
   @ApiOperation({ summary: 'Add the student to the bootcamp' })
+  @ApiBearerAuth()
   @ApiQuery({
     name: 'batch_id',
     required: false,
@@ -251,6 +270,7 @@ export class BootcampController {
     type: Number,
     description: 'Offset for pagination',
   })
+  @ApiBearerAuth()
   async getStudentsByBootcamp(
     @Param('bootcamp_id') bootcamp_id: number,
     @Query('batch_id') batch_id: number,
@@ -277,6 +297,7 @@ export class BootcampController {
     type: Number,
     description: 'bootcamp_id',
   })
+  @ApiBearerAuth()
   async getStudentProgressByBootcamp(
     @Param('user_id') user_id: number,
     @Query('bootcamp_id') bootcamp_id: number,
@@ -299,6 +320,7 @@ export class BootcampController {
     type: Number,
     description: 'user id',
   })
+  @ApiBearerAuth()
   async getStudentClassesByBootcampId(
     @Param('bootcampId') bootcampId: number,
     @Query('userId') userId: number,
@@ -318,6 +340,7 @@ export class BootcampController {
     type: String,
     description: 'Search by name or email',
   })
+  @ApiBearerAuth()
   async searchStudents(
     @Param('bootcampId') bootcampId: number,
     @Query('searchTerm') searchTerm: string,
