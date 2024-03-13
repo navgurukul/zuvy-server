@@ -3,7 +3,8 @@ import { BootcampService } from './bootcamp.service';
 import { ApiTags, ApiBody, ApiOperation, ApiCookieAuth, ApiQuery } from '@nestjs/swagger';
 import { CreateBootcampDto, EditBootcampDto, PatchBootcampDto, studentDataDto ,PatchBootcampSettingDto } from './dto/bootcamp.dto';
 import { ApiBearerAuth } from '@nestjs/swagger';
-import { Request } from 'express';
+import { Request } from '@nestjs/common';
+
 // import { EditBootcampDto } from './dto/editBootcamp.dto';
 // import { AuthGuard } from '@nestjs/passport'; // Assuming JWT authentication
 

@@ -20,8 +20,6 @@ async function bootstrap() {
     .setTitle('NG zuvy API Docs')
     .setDescription(`[Base url: ${BASE_URL}]`)
     .setVersion('1.0')
-    .addCookieAuth('optional-session-id', { type: 'apiKey', name: 'Authorization', in: 'cookie' })
-    // .addSecurity('basic', { type: 'http', scheme: 'basic' })
     .addBearerAuth()
     .build();
   if (!BASE_URL.includes('main-api')) {
