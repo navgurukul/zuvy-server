@@ -7,7 +7,7 @@ import { v4 as uuid } from 'uuid';
 import { createReadStream } from 'fs';
 import * as _ from 'lodash';
 import Axios from 'axios'
-import { S3 } from 'aws-sdk'; 
+import { S3 } from 'aws-sdk';
 import { Cron } from '@nestjs/schedule';
 // import { Calendar } from 'node_google_calendar_1';// import { OAuth2Client } from 'google-auth-library';
 
@@ -287,6 +287,45 @@ export class ClassesService {
             return { 'success': 'not success', 'message': 'Error fetching class Links', 'error': error };
         }
     }
+
+    // async getAttendanceReports(@Req() req):Promise<any>{
+    //     try {
+    //         const fetchedTokens = await db.select().from(userTokens).where(eq((userTokens.userId), 44848));
+    //         if (!fetchedTokens) {
+    //             return { status: 'error', message: 'Unable to fetch tokens' };
+    //         }
+    //         auth2Client.setCredentials({
+    //             access_token: fetchedTokens[0].accessToken,
+    //             refresh_token: fetchedTokens[0].refreshToken,
+    //         });
+    //         const calendar = google.calendar({ version: 'v3', auth: auth2Client });
+    //         const allClasses = await db.select().from(classesGoogleMeetLink)
+    //                     for (const classData of allClasses) {
+    //             if (classData.meetingid != null) {
+    //                 if (classData.s3link == null) {
+    //                     const response = await calendar.events.get({
+    //                         calendarId: 'primary',
+    //                         eventId: classData.meetingid,
+    //                     });
+    //                         if (response.data.attachments){
+    //                         for (const attachment of response.data.attachments){
+    //                             if(attachment.mimeType=="video/mp4"){
+    //                                 // const s3Url = await this.uploadVideoFromGoogleDriveToS3(attachment.fileUrl,attachment.fileId)
+    //                                 let updatedS3Url = await db.update(classesGoogleMeetLink).set({ ...classData,s3link:attachment.fileUrl }).where(eq(classesGoogleMeetLink.id, classData.id)).returning();
+    //                                 return { 'status': 'success', 'message': 'Meeting  updated successfully', 'code': 200, meetingDetails:updatedS3Url };
+    //                             }
+    //                         }
+    //                     }
+    //                 }
+    //             }
+    //         }
+    //         return {'status': 'success', 'message': 'No meetings to update','code': 200}
+
+    //     } catch (error) {
+
+    //         return {'status': 'failure', error:error}
+    //     }
+    // }
     @Cron('8 * * * *')
     async getEventDetails(@Req() req): Promise<any> {
         try {
@@ -300,35 +339,35 @@ export class ClassesService {
             });
             const calendar = google.calendar({ version: 'v3', auth: auth2Client });
             const allClasses = await db.select().from(classesGoogleMeetLink)
-                        for (const classData of allClasses) {
+            for (const classData of allClasses) {
                 if (classData.meetingid != null) {
                     if (classData.s3link == null) {
                         const response = await calendar.events.get({
                             calendarId: 'primary',
                             eventId: classData.meetingid,
                         });
-                            if (response.data.attachments){
-                            for (const attachment of response.data.attachments){
-                                if(attachment.mimeType=="video/mp4"){
+                        if (response.data.attachments) {
+                            for (const attachment of response.data.attachments) {
+                                if (attachment.mimeType == "video/mp4") {
                                     // const s3Url = await this.uploadVideoFromGoogleDriveToS3(attachment.fileUrl,attachment.fileId)
-                                    let updatedS3Url = await db.update(classesGoogleMeetLink).set({ ...classData,s3link:attachment.fileUrl }).where(eq(classesGoogleMeetLink.id, classData.id)).returning();
-                                    return { 'status': 'success', 'message': 'Meeting  updated successfully', 'code': 200, meetingDetails:updatedS3Url };
+                                    let updatedS3Url = await db.update(classesGoogleMeetLink).set({ ...classData, s3link: attachment.fileUrl }).where(eq(classesGoogleMeetLink.id, classData.id)).returning();
+                                    return { 'status': 'success', 'message': 'Meeting  updated successfully', 'code': 200, meetingDetails: updatedS3Url };
                                 }
                             }
                         }
                     }
                 }
             }
-            return {'status': 'success', 'message': 'No meetings to update','code': 200}
+            return { 'status': 'success', 'message': 'No meetings to update', 'code': 200 }
 
         } catch (error) {
 
-            return {'status': 'failure', error:error}
+            return { 'status': 'failure', error: error }
         }
     }
-    async uploadVideoFromGoogleDriveToS3(googleDriveLink: string,fileId:string): Promise<string> {
+    async uploadVideoFromGoogleDriveToS3(googleDriveLink: string, fileId: string): Promise<string> {
         try {
-           
+
             const response = await Axios.get(googleDriveLink, { responseType: 'arraybuffer' });
             const fileBuffer = Buffer.from(response.data);
 
@@ -336,19 +375,19 @@ export class ClassesService {
 
             return s3Url;
         } catch (error) {
-            
+
             throw new Error('Error uploading video from Google Drive to S3');
         }
     }
 
     private async uploadVideoToS3(fileBuffer: Buffer, fileName: string): Promise<string> {
-        try { 
+        try {
             const s3 = new S3({
-              accessKeyId: process.env.S3_ACCESS_KEY_ID,
-              secretAccessKey:  process.env.S3_SECRET_KEY_ACCESS
+                accessKeyId: process.env.S3_ACCESS_KEY_ID,
+                secretAccessKey: process.env.S3_SECRET_KEY_ACCESS
             });
             const bucketName = process.env.S3_BUCKET_NAME;
-            const s3Key = `class-recordings/${fileName}`;   
+            const s3Key = `class-recordings/${fileName}`;
             await s3.upload({
                 Bucket: bucketName,
                 Key: s3Key,
@@ -440,4 +479,837 @@ export class ClassesService {
             return { 'status': 'error', 'message': e.message, 'code': 405 };
         }
     }
+
+    
+
+    async extractMeetAttendance(responseData1: any) {
+        const responseData = {
+            "nextPageToken": "A:1709446841822000:-8535813813327021818:913471609310:C03lvel11", 
+            "items": [
+              {
+                "kind": "admin#reports#activity", 
+                "etag": "\"BvGfkzKoKVD0NM7VdXdzkXDD-nHLkyMjheL_9Z5X0H0/tU8rVgHXNqt64N25FmvgjAK9qhc\"", 
+                "id": {
+                  "uniqueQualifier": "2934178519347955099", 
+                  "applicationName": "meet", 
+                  "customerId": "C03lvel11", 
+                  "time": "2024-03-03T06:20:41.830Z"
+                }, 
+                "actor": {
+                  "key": "HANGOUTS_EXTERNAL_OR_ANONYMOUS", 
+                  "callerType": "KEY"
+                }, 
+                "events": [
+                  {
+                    "type": "call", 
+                    "name": "call_ended", 
+                    "parameters": [
+                      {
+                        "intValue": "0", 
+                        "name": "video_send_seconds"
+                      }, 
+                      {
+                        "name": "identifier_type", 
+                        "value": "email_address"
+                      }, 
+                      {
+                        "intValue": "0", 
+                        "name": "audio_send_bitrate_kbps_mean"
+                      }, 
+                      {
+                        "name": "endpoint_id", 
+                        "value": "boq_hlane_7JrhhxcAFHh"
+                      }, 
+                      {
+                        "name": "device_type", 
+                        "value": "web"
+                      }, 
+                      {
+                        "intValue": "240", 
+                        "name": "video_recv_long_side_median_pixels"
+                      }, 
+                      {
+                        "name": "calendar_event_id", 
+                        "value": "dfh4be7vg6u1cg1bcjtel0qdu8"
+                      }, 
+                      {
+                        "intValue": "0", 
+                        "name": "screencast_send_seconds"
+                      }, 
+                      {
+                        "intValue": "0", 
+                        "name": "audio_send_packet_loss_max"
+                      }, 
+                      {
+                        "intValue": "136", 
+                        "name": "video_recv_short_side_median_pixels"
+                      }, 
+                      {
+                        "intValue": "0", 
+                        "name": "video_recv_packet_loss_mean"
+                      }, 
+                      {
+                        "intValue": "6", 
+                        "name": "network_send_jitter_msec_mean"
+                      }, 
+                      {
+                        "intValue": "7322", 
+                        "name": "audio_recv_seconds"
+                      }, 
+                      {
+                        "intValue": "0", 
+                        "name": "network_congestion"
+                      }, 
+                      {
+                        "intValue": "283", 
+                        "name": "network_estimated_download_kbps_mean"
+                      }, 
+                      {
+                        "intValue": "0", 
+                        "name": "audio_send_packet_loss_mean"
+                      }, 
+                      {
+                        "name": "network_transport_protocol", 
+                        "value": "udp"
+                      }, 
+                      {
+                        "intValue": "9621", 
+                        "name": "duration_seconds"
+                      }, 
+                      {
+                        "name": "identifier", 
+                        "value": "budatichethana@gmail.com"
+                      }, 
+                      {
+                        "intValue": "16", 
+                        "name": "audio_recv_packet_loss_max"
+                      }, 
+                      {
+                        "intValue": "7", 
+                        "name": "video_recv_fps_mean"
+                      }, 
+                      {
+                        "intValue": "0", 
+                        "name": "audio_recv_packet_loss_mean"
+                      }, 
+                      {
+                        "intValue": "90", 
+                        "name": "network_recv_jitter_msec_max"
+                      }, 
+                      {
+                        "name": "organizer_email", 
+                        "value": "team@zuvy.org"
+                      }, 
+                      {
+                        "intValue": "8", 
+                        "name": "network_recv_jitter_msec_mean"
+                      }, 
+                      {
+                        "intValue": "9192", 
+                        "name": "audio_send_seconds"
+                      }, 
+                      {
+                        "name": "display_name", 
+                        "value": "Budati chethana"
+                      }, 
+                      {
+                        "intValue": "44", 
+                        "name": "video_recv_seconds"
+                      }, 
+                      {
+                        "intValue": "65", 
+                        "name": "network_rtt_msec_mean"
+                      }, 
+                      {
+                        "name": "conference_id", 
+                        "value": "M72LdSgb9FV57mAVzdLaDxIWOAkIAjIAGAgIigIgBAg"
+                      }, 
+                      {
+                        "intValue": "9548", 
+                        "name": "screencast_recv_seconds"
+                      }, 
+                      {
+                        "name": "product_type", 
+                        "value": "meet"
+                      }, 
+                      {
+                        "intValue": "8", 
+                        "name": "network_estimated_upload_kbps_mean"
+                      }, 
+                      {
+                        "intValue": "1", 
+                        "name": "video_recv_packet_loss_max"
+                      }, 
+                      {
+                        "name": "meeting_code", 
+                        "value": "WKTIMXIVUK"
+                      }, 
+                      {
+                        "boolValue": true, 
+                        "name": "is_external"
+                      }
+                    ]
+                  }
+                ]
+              }, 
+              {
+                "kind": "admin#reports#activity", 
+                "etag": "\"BvGfkzKoKVD0NM7VdXdzkXDD-nHLkyMjheL_9Z5X0H0/AjjorKI7REa2IhJnXNFZvsFniXE\"", 
+                "id": {
+                  "uniqueQualifier": "2638660162033502599", 
+                  "applicationName": "meet", 
+                  "customerId": "C03lvel11", 
+                  "time": "2024-03-03T06:20:41.828Z"
+                }, 
+                "actor": {
+                  "key": "HANGOUTS_EXTERNAL_OR_ANONYMOUS", 
+                  "callerType": "KEY"
+                }, 
+                "events": [
+                  {
+                    "type": "call", 
+                    "name": "call_ended", 
+                    "parameters": [
+                      {
+                        "intValue": "0", 
+                        "name": "video_send_seconds"
+                      }, 
+                      {
+                        "name": "identifier_type", 
+                        "value": "email_address"
+                      }, 
+                      {
+                        "intValue": "0", 
+                        "name": "audio_send_bitrate_kbps_mean"
+                      }, 
+                      {
+                        "name": "endpoint_id", 
+                        "value": "boq_hlane_8KvY3fzRoSq"
+                      }, 
+                      {
+                        "name": "device_type", 
+                        "value": "web"
+                      }, 
+                      {
+                        "name": "calendar_event_id", 
+                        "value": "dfh4be7vg6u1cg1bcjtel0qdu8"
+                      }, 
+                      {
+                        "intValue": "0", 
+                        "name": "screencast_send_seconds"
+                      }, 
+                      {
+                        "intValue": "0", 
+                        "name": "audio_send_packet_loss_max"
+                      }, 
+                      {
+                        "intValue": "0", 
+                        "name": "network_send_jitter_msec_mean"
+                      }, 
+                      {
+                        "intValue": "5792", 
+                        "name": "audio_recv_seconds"
+                      }, 
+                      {
+                        "intValue": "0", 
+                        "name": "network_congestion"
+                      }, 
+                      {
+                        "intValue": "264", 
+                        "name": "network_estimated_download_kbps_mean"
+                      }, 
+                      {
+                        "intValue": "0", 
+                        "name": "audio_send_packet_loss_mean"
+                      }, 
+                      {
+                        "name": "network_transport_protocol", 
+                        "value": "udp"
+                      }, 
+                      {
+                        "intValue": "8085", 
+                        "name": "duration_seconds"
+                      }, 
+                      {
+                        "name": "identifier", 
+                        "value": "bhoomikarathore1704@gmail.com"
+                      }, 
+                      {
+                        "intValue": "3", 
+                        "name": "audio_recv_packet_loss_max"
+                      }, 
+                      {
+                        "intValue": "0", 
+                        "name": "audio_recv_packet_loss_mean"
+                      }, 
+                      {
+                        "intValue": "26", 
+                        "name": "network_recv_jitter_msec_max"
+                      }, 
+                      {
+                        "name": "organizer_email", 
+                        "value": "team@zuvy.org"
+                      }, 
+                      {
+                        "intValue": "7", 
+                        "name": "network_recv_jitter_msec_mean"
+                      }, 
+                      {
+                        "intValue": "7651", 
+                        "name": "audio_send_seconds"
+                      }, 
+                      {
+                        "name": "display_name", 
+                        "value": "Bhoomika Rathore"
+                      }, 
+                      {
+                        "intValue": "0", 
+                        "name": "video_recv_seconds"
+                      }, 
+                      {
+                        "intValue": "20", 
+                        "name": "network_rtt_msec_mean"
+                      }, 
+                      {
+                        "name": "conference_id", 
+                        "value": "M72LdSgb9FV57mAVzdLaDxIWOAkIAjIAGAgIigIgBAg"
+                      }, 
+                      {
+                        "intValue": "8059", 
+                        "name": "screencast_recv_seconds"
+                      }, 
+                      {
+                        "name": "product_type", 
+                        "value": "meet"
+                      }, 
+                      {
+                        "intValue": "8", 
+                        "name": "network_estimated_upload_kbps_mean"
+                      }, 
+                      {
+                        "name": "meeting_code", 
+                        "value": "WKTIMXIVUK"
+                      }, 
+                      {
+                        "boolValue": true, 
+                        "name": "is_external"
+                      }
+                    ]
+                  }
+                ]
+              }, 
+              {
+                "kind": "admin#reports#activity", 
+                "etag": "\"BvGfkzKoKVD0NM7VdXdzkXDD-nHLkyMjheL_9Z5X0H0/UywJPvRhNC2G0YkSqHt5G_gqyqQ\"", 
+                "id": {
+                  "uniqueQualifier": "-2574777481899936694", 
+                  "applicationName": "meet", 
+                  "customerId": "C03lvel11", 
+                  "time": "2024-03-03T06:20:41.825Z"
+                }, 
+                "actor": {
+                  "key": "HANGOUTS_EXTERNAL_OR_ANONYMOUS", 
+                  "callerType": "KEY"
+                }, 
+                "events": [
+                  {
+                    "type": "call", 
+                    "name": "call_ended", 
+                    "parameters": [
+                      {
+                        "intValue": "0", 
+                        "name": "video_send_seconds"
+                      }, 
+                      {
+                        "name": "identifier_type", 
+                        "value": "email_address"
+                      }, 
+                      {
+                        "name": "endpoint_id", 
+                        "value": "boq_hlane_lguGGjsIcVi"
+                      }, 
+                      {
+                        "name": "device_type", 
+                        "value": "web"
+                      }, 
+                      {
+                        "name": "calendar_event_id", 
+                        "value": "dfh4be7vg6u1cg1bcjtel0qdu8"
+                      }, 
+                      {
+                        "intValue": "0", 
+                        "name": "screencast_send_seconds"
+                      }, 
+                      {
+                        "intValue": "5115", 
+                        "name": "audio_recv_seconds"
+                      }, 
+                      {
+                        "intValue": "0", 
+                        "name": "network_congestion"
+                      }, 
+                      {
+                        "intValue": "271", 
+                        "name": "network_estimated_download_kbps_mean"
+                      }, 
+                      {
+                        "name": "network_transport_protocol", 
+                        "value": "udp"
+                      }, 
+                      {
+                        "intValue": "6926", 
+                        "name": "duration_seconds"
+                      }, 
+                      {
+                        "name": "identifier", 
+                        "value": "deekshagp14@gmail.com"
+                      }, 
+                      {
+                        "intValue": "38", 
+                        "name": "audio_recv_packet_loss_max"
+                      }, 
+                      {
+                        "intValue": "2", 
+                        "name": "audio_recv_packet_loss_mean"
+                      }, 
+                      {
+                        "intValue": "125", 
+                        "name": "network_recv_jitter_msec_max"
+                      }, 
+                      {
+                        "name": "organizer_email", 
+                        "value": "team@zuvy.org"
+                      }, 
+                      {
+                        "intValue": "10", 
+                        "name": "network_recv_jitter_msec_mean"
+                      }, 
+                      {
+                        "intValue": "0", 
+                        "name": "audio_send_seconds"
+                      }, 
+                      {
+                        "name": "display_name", 
+                        "value": "DIVYASHREE G P"
+                      }, 
+                      {
+                        "intValue": "0", 
+                        "name": "video_recv_seconds"
+                      }, 
+                      {
+                        "intValue": "37", 
+                        "name": "network_rtt_msec_mean"
+                      }, 
+                      {
+                        "name": "conference_id", 
+                        "value": "M72LdSgb9FV57mAVzdLaDxIWOAkIAjIAGAgIigIgBAg"
+                      }, 
+                      {
+                        "intValue": "6904", 
+                        "name": "screencast_recv_seconds"
+                      }, 
+                      {
+                        "name": "product_type", 
+                        "value": "meet"
+                      }, 
+                      {
+                        "intValue": "8", 
+                        "name": "network_estimated_upload_kbps_mean"
+                      }, 
+                      {
+                        "name": "meeting_code", 
+                        "value": "WKTIMXIVUK"
+                      }, 
+                      {
+                        "boolValue": true, 
+                        "name": "is_external"
+                      }
+                    ]
+                  }
+                ]
+              }, 
+              {
+                "kind": "admin#reports#activity", 
+                "etag": "\"BvGfkzKoKVD0NM7VdXdzkXDD-nHLkyMjheL_9Z5X0H0/O3EZMf6BE9ddvFzIG4gLfO6c63A\"", 
+                "id": {
+                  "uniqueQualifier": "-4149663180506549357", 
+                  "applicationName": "meet", 
+                  "customerId": "C03lvel11", 
+                  "time": "2024-03-03T06:20:41.823Z"
+                }, 
+                "actor": {
+                  "key": "HANGOUTS_EXTERNAL_OR_ANONYMOUS", 
+                  "callerType": "KEY"
+                }, 
+                "events": [
+                  {
+                    "type": "call", 
+                    "name": "call_ended", 
+                    "parameters": [
+                      {
+                        "intValue": "0", 
+                        "name": "video_send_seconds"
+                      }, 
+                      {
+                        "intValue": "257", 
+                        "name": "screencast_recv_bitrate_kbps_mean"
+                      }, 
+                      {
+                        "name": "identifier_type", 
+                        "value": "email_address"
+                      }, 
+                      {
+                        "intValue": "21", 
+                        "name": "audio_send_bitrate_kbps_mean"
+                      }, 
+                      {
+                        "name": "endpoint_id", 
+                        "value": "hub_android_3308468863578824432"
+                      }, 
+                      {
+                        "name": "device_type", 
+                        "value": "android"
+                      }, 
+                      {
+                        "intValue": "640", 
+                        "name": "video_recv_long_side_median_pixels"
+                      }, 
+                      {
+                        "intValue": "1536", 
+                        "name": "screencast_recv_long_side_median_pixels"
+                      }, 
+                      {
+                        "name": "calendar_event_id", 
+                        "value": "dfh4be7vg6u1cg1bcjtel0qdu8"
+                      }, 
+                      {
+                        "intValue": "0", 
+                        "name": "screencast_send_seconds"
+                      }, 
+                      {
+                        "intValue": "1", 
+                        "name": "audio_send_packet_loss_max"
+                      }, 
+                      {
+                        "intValue": "360", 
+                        "name": "video_recv_short_side_median_pixels"
+                      }, 
+                      {
+                        "intValue": "4", 
+                        "name": "screencast_recv_fps_mean"
+                      }, 
+                      {
+                        "intValue": "10096", 
+                        "name": "audio_recv_seconds"
+                      }, 
+                      {
+                        "intValue": "0", 
+                        "name": "network_congestion"
+                      }, 
+                      {
+                        "intValue": "344", 
+                        "name": "network_estimated_download_kbps_mean"
+                      }, 
+                      {
+                        "intValue": "0", 
+                        "name": "audio_send_packet_loss_mean"
+                      }, 
+                      {
+                        "name": "network_transport_protocol", 
+                        "value": "udp"
+                      }, 
+                      {
+                        "intValue": "10097", 
+                        "name": "duration_seconds"
+                      }, 
+                      {
+                        "name": "identifier", 
+                        "value": "kartikeya@navgurukul.org"
+                      }, 
+                      {
+                        "intValue": "61", 
+                        "name": "audio_recv_packet_loss_max"
+                      }, 
+                      {
+                        "intValue": "1", 
+                        "name": "video_recv_fps_mean"
+                      }, 
+                      {
+                        "intValue": "1", 
+                        "name": "audio_recv_packet_loss_mean"
+                      }, 
+                      {
+                        "intValue": "176", 
+                        "name": "network_recv_jitter_msec_max"
+                      }, 
+                      {
+                        "name": "organizer_email", 
+                        "value": "team@zuvy.org"
+                      }, 
+                      {
+                        "intValue": "864", 
+                        "name": "screencast_recv_short_side_median_pixels"
+                      }, 
+                      {
+                        "intValue": "12", 
+                        "name": "network_recv_jitter_msec_mean"
+                      }, 
+                      {
+                        "intValue": "10096", 
+                        "name": "audio_send_seconds"
+                      }, 
+                      {
+                        "name": "display_name", 
+                        "value": "Kartikeya Gupta"
+                      }, 
+                      {
+                        "intValue": "61", 
+                        "name": "screencast_recv_packet_loss_max"
+                      }, 
+                      {
+                        "intValue": "10", 
+                        "name": "video_recv_seconds"
+                      }, 
+                      {
+                        "intValue": "64", 
+                        "name": "network_rtt_msec_mean"
+                      }, 
+                      {
+                        "intValue": "1", 
+                        "name": "screencast_recv_packet_loss_mean"
+                      }, 
+                      {
+                        "name": "conference_id", 
+                        "value": "M72LdSgb9FV57mAVzdLaDxIWOAkIAjIAGAgIigIgBAg"
+                      }, 
+                      {
+                        "intValue": "8122", 
+                        "name": "screencast_recv_seconds"
+                      }, 
+                      {
+                        "name": "product_type", 
+                        "value": "meet"
+                      }, 
+                      {
+                        "intValue": "49", 
+                        "name": "network_estimated_upload_kbps_mean"
+                      }, 
+                      {
+                        "name": "meeting_code", 
+                        "value": "WKTIMXIVUK"
+                      }, 
+                      {
+                        "boolValue": true, 
+                        "name": "is_external"
+                      }
+                    ]
+                  }
+                ]
+              }, 
+              {
+                "kind": "admin#reports#activity", 
+                "etag": "\"BvGfkzKoKVD0NM7VdXdzkXDD-nHLkyMjheL_9Z5X0H0/KYjUOGXgxfaq6FMpdQmgXdRM-K0\"", 
+                "id": {
+                  "uniqueQualifier": "-8535813813327021818", 
+                  "applicationName": "meet", 
+                  "customerId": "C03lvel11", 
+                  "time": "2024-03-03T06:20:41.822Z"
+                }, 
+                "actor": {
+                  "key": "HANGOUTS_EXTERNAL_OR_ANONYMOUS", 
+                  "callerType": "KEY"
+                }, 
+                "events": [
+                  {
+                    "type": "call", 
+                    "name": "call_ended", 
+                    "parameters": [
+                      {
+                        "intValue": "0", 
+                        "name": "video_send_seconds"
+                      }, 
+                      {
+                        "name": "identifier_type", 
+                        "value": "email_address"
+                      }, 
+                      {
+                        "name": "endpoint_id", 
+                        "value": "boq_hlane_iIi026bXzBT"
+                      }, 
+                      {
+                        "name": "device_type", 
+                        "value": "web"
+                      }, 
+                      {
+                        "intValue": "240", 
+                        "name": "video_recv_long_side_median_pixels"
+                      }, 
+                      {
+                        "name": "calendar_event_id", 
+                        "value": "dfh4be7vg6u1cg1bcjtel0qdu8"
+                      }, 
+                      {
+                        "intValue": "0", 
+                        "name": "screencast_send_seconds"
+                      }, 
+                      {
+                        "intValue": "136", 
+                        "name": "video_recv_short_side_median_pixels"
+                      }, 
+                      {
+                        "intValue": "0", 
+                        "name": "video_recv_packet_loss_mean"
+                      }, 
+                      {
+                        "intValue": "7478", 
+                        "name": "audio_recv_seconds"
+                      }, 
+                      {
+                        "intValue": "0", 
+                        "name": "network_congestion"
+                      }, 
+                      {
+                        "intValue": "260", 
+                        "name": "network_estimated_download_kbps_mean"
+                      }, 
+                      {
+                        "name": "network_transport_protocol", 
+                        "value": "udp"
+                      }, 
+                      {
+                        "intValue": "10023", 
+                        "name": "duration_seconds"
+                      }, 
+                      {
+                        "name": "identifier", 
+                        "value": "pranayaajjapagu@gmail.com"
+                      }, 
+                      {
+                        "intValue": "11", 
+                        "name": "audio_recv_packet_loss_max"
+                      }, 
+                      {
+                        "intValue": "6", 
+                        "name": "video_recv_fps_mean"
+                      }, 
+                      {
+                        "intValue": "1", 
+                        "name": "audio_recv_packet_loss_mean"
+                      }, 
+                      {
+                        "intValue": "68", 
+                        "name": "network_recv_jitter_msec_max"
+                      }, 
+                      {
+                        "name": "organizer_email", 
+                        "value": "team@zuvy.org"
+                      }, 
+                      {
+                        "intValue": "22", 
+                        "name": "network_recv_jitter_msec_mean"
+                      }, 
+                      {
+                        "intValue": "0", 
+                        "name": "audio_send_seconds"
+                      }, 
+                      {
+                        "name": "display_name", 
+                        "value": "pranaya ajjapagu"
+                      }, 
+                      {
+                        "intValue": "42", 
+                        "name": "video_recv_seconds"
+                      }, 
+                      {
+                        "intValue": "54", 
+                        "name": "network_rtt_msec_mean"
+                      }, 
+                      {
+                        "name": "conference_id", 
+                        "value": "M72LdSgb9FV57mAVzdLaDxIWOAkIAjIAGAgIigIgBAg"
+                      }, 
+                      {
+                        "intValue": "9559", 
+                        "name": "screencast_recv_seconds"
+                      }, 
+                      {
+                        "name": "product_type", 
+                        "value": "meet"
+                      }, 
+                      {
+                        "intValue": "7", 
+                        "name": "network_estimated_upload_kbps_mean"
+                      }, 
+                      {
+                        "intValue": "0", 
+                        "name": "video_recv_packet_loss_max"
+                      }, 
+                      {
+                        "name": "meeting_code", 
+                        "value": "WKTIMXIVUK"
+                      }, 
+                      {
+                        "boolValue": true, 
+                        "name": "is_external"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ], 
+            "kind": "admin#reports#activities", 
+            "etag": "\"BvGfkzKoKVD0NM7VdXdzkXDD-nHLkyMjheL_9Z5X0H0/kbT_EUF-UYmUbxxYIYcCKvFCvjc\""
+          }
+        try {
+            const extractedData = responseData.items.map(item => {
+                const event = item.events[0];
+                const durationSeconds = event.parameters.find(param => param.name === 'duration_seconds')?.intValue || '';
+                const email = event.parameters.find(param => param.name === 'identifier')?.value || '';
+                return {
+                    email,
+                    duration: durationSeconds,
+                };
+            });
+
+            return extractedData;
+        }
+        catch (e) {
+            return { "Status": 'error', 'message': e.message, 'code': 405 };
+        }
+    }
+
+    async markAttendance(data: any[], thresholdPercentage: number) {
+        try {
+            const markedData = data.map(item => {
+                const durationSeconds = parseInt(item.duration, 10);
+                const threshold = (thresholdPercentage / 100) * durationSeconds;
+                const isPresent = durationSeconds >= threshold;
+
+                return {
+                    "status": "Success",
+                    "email": item.email,
+                    "duration": item.duration,
+                    "attendance": isPresent ? 'Present' : 'Absent',
+                };
+            });
+            return markedData;
+        } catch (e) {
+            return { 'status': 'error', 'message': e.message, 'code': 405 };
+        }
+    }
+
+    async getAverageAttendance(thresholdPercentage: number): Promise<number> {
+
+        // const allAttendance = await db.fetch(TABLENAME).WHERE_STATEMENT
+        // const totalAttendances = allAttendance.length;
+        // const totalPresent = allAttendance.filter((entry) => entry.attendance === 'Present').length;
+        // const averageAttendance = totalAttendances > 0 ? (totalPresent / totalAttendances) * 100 : 0;
+    
+        // return averageAttendance;
+      }
+
 }
+
+
+
+
