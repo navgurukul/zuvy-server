@@ -80,9 +80,21 @@ export class ClassesController {
     return this.classesService.deleteMeetingById(id);
   }
 
-  // @Patch('/:id')
-  // @ApiOperation({ summary: "Patch the meeting details" })
-  // updateMeetingById(@Param('id') id: number, @Body() classData: CreateLiveBroadcastDto) {
-  //     return this.classesService.updateMeetingById(id, classData);
-  // }
+    // @Get('/getAttendance')
+    // @ApiOperation({ summary: "Get meeting Attendance" })
+    // extractMeetAttendance(@Res() res): Promise<object> {
+    //     return this.classesService.getAttendance();
+    // }
+    @Get('/getAttendance/:meetingId')
+    @ApiOperation({ summary: "Get the google class attendance by meetingId" })
+    extractMeetAttendance(@Param('meetingId') meetingId: string): Promise<object> {
+        return this.classesService.getAttendance(meetingId);
+    }
+
+
+    // @Patch('/:id')
+    // @ApiOperation({ summary: "Patch the meeting details" })
+    // updateMeetingById(@Param('id') id: number, @Body() classData: CreateLiveBroadcastDto) {
+    //     return this.classesService.updateMeetingById(id, classData);
+    // }
 }
