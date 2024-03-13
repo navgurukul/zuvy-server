@@ -8,13 +8,13 @@ import { CorsOptions } from '@nestjs/common/interfaces/external/cors-options.int
 const { PORT, BASE_URL } = process.env;
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
-  // Enable CORS
   const corsOptions: CorsOptions = {
     origin: '*',
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
     credentials: true,
   };
+  const app = await NestFactory.create(AppModule);
+  // Enable CORS
   app.enableCors(corsOptions);
   const config = new DocumentBuilder()
     .setTitle('NG zuvy API Docs')
@@ -24,14 +24,15 @@ async function bootstrap() {
     // .addSecurity('basic', { type: 'http', scheme: 'basic' })
     .addBearerAuth()
     .build();
-
-  const document = SwaggerModule.createDocument(app, config);
-  document.security = [
-    {
-      bearerAuth: [], // This should match the name of the security scheme added in addBearerAuth()
-    },
-  ];
-  SwaggerModule.setup('apis', app, document);
+  if (!BASE_URL.includes('main-api')) {
+    const document = SwaggerModule.createDocument(app, config);
+    document.security = [
+      {
+        bearerAuth: [], // This should match the name of the security scheme added in addBearerAuth()
+      },
+    ];
+    SwaggerModule.setup('apis', app, document);
+  }
   await app.listen(PORT || 6000);
   console.log(`Application is running on swagger: ${BASE_URL}/apis#/`);
 }
