@@ -52,6 +52,20 @@ export class StudentController {
     return res;
   }
 
+  @Get('/bootcamp/public')
+  @ApiOperation({ summary: 'Get all Public Bootcamp' })
+  @ApiBearerAuth()
+  async getPublicBootcamps(
+  ): Promise<object> {
+    const [err, res] =
+      await this.studentService.getPublicBootcamp();
+    if (err) {
+      throw new BadRequestException(err);
+    }
+    return res;
+  }
+
+
   @Delete('/:userId/:bootcampId')
   @ApiOperation({ summary: 'Removing student from bootcamp' })
   @ApiBearerAuth()

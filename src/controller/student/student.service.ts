@@ -97,6 +97,31 @@ export class StudentService {
     }
   }
 
+  async getPublicBootcamp() {
+    try {
+      let getPublicBootcamps = await db
+        .select()
+        .from(bootcamps)
+        .innerJoin(bootcampType, eq(bootcamps.id, bootcampType.bootcampId))
+        .where(
+          sql`${bootcampType.type} = 'Public'`,
+        );
+         let data = await Promise.all(
+      getPublicBootcamps.map(async (bootcamp) => {
+        let [err, res] = await this.enrollmentData(bootcamp.zuvy_bootcamps.id);
+        if (err) {
+          return [err, null];
+        }
+        return { ...bootcamp, ...res };
+      }),
+         );
+         return [null,data];
+    } catch (err) {
+      error(`error: ${err.message}`);
+      return [{ status: 'error', message: err.message, code: 500 }, null];
+    }
+  }
+
   async removingStudent(user_id: number, bootcamp_id) {
     try {
       let enrolled = await db

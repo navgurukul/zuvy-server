@@ -291,6 +291,7 @@ export class BootcampService {
 
   async getBatchByIdBootcamp(bootcamp_id: number,limit: number,offset: number): Promise<any> {
     try {
+      console.log(limit);
       const batchesData = await db
         .select()
         .from(batches)
@@ -298,9 +299,12 @@ export class BootcampService {
         .limit(limit)
         .offset(offset);
        
+      console.log(batchesData);
+      const totalCountQuery = await db.select({count : count(batches.id)}).from(batches).where(eq(batches.bootcampId, bootcamp_id));
+      let totalPages;
+      totalPages = Math.ceil(totalCountQuery[0].count/ limit);
 
-      const totalCountQuery = await db.select({count : count(batches.id)}).from(batches);
-      let totalPages = Math.ceil(totalCountQuery[0].count/ limit);
+
       const promises = batchesData.map(async (batch) => {
         const userEnrolled = await db
           .select()
@@ -309,8 +313,8 @@ export class BootcampService {
         batch['students_enrolled'] = userEnrolled.length;
         return batch; // return the modified batch
       });
-      const batchesWithEnrollment = await Promise.all(promises);
-      return [null, {batchesWithEnrollment,totalBatches: totalCountQuery[0].count,totalPages}];
+      const data = await Promise.all(promises);
+      return [null, {data,totalBatches: totalCountQuery[0].count,totalPages}];
     } catch (e) {
       return { status: 'error', message: e.message, code: 500 };
     }
