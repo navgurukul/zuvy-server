@@ -530,16 +530,21 @@ export class BootcampService {
     }
   }
 
-  async getStudentsBySearching(searchTerm: string | bigint,bootcamp_id:number) {
+  async getStudentsBySearching(searchTerm: string | bigint,bootcamp_id:number,batch_id:number) {
     try {
       let queryString;
       let count = 0;
+      if(bootcamp_id && batch_id)
+      {
+          queryString = sql`${batchEnrollments.bootcampId} = ${bootcamp_id} and ${batchEnrollments.batchId} = ${batch_id}`;
+      }
+      else {
         queryString = sql`${batchEnrollments.bootcampId} = ${bootcamp_id}`;
+      }
       let batchEnrollmentsData = await db
         .select()
         .from(batchEnrollments)
         .where(queryString)
-      console.log(batchEnrollmentsData);
       
       const studentsEmails = [];
       for (const studentEmail of batchEnrollmentsData) {
