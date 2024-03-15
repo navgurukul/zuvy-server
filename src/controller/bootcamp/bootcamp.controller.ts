@@ -40,8 +40,7 @@ export class BootcampController {
     @Query('offset') offset: number,
     @Req() request: Request,
   ): Promise<object> {
-    console.log('bootcamp request', request);
-    console.log('inside get bootcamps');
+   
     const [err, res] = await this.bootcampService.getAllBootcamps(
       limit,
       offset,

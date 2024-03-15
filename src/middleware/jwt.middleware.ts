@@ -22,7 +22,6 @@ export class JwtMiddleware implements NestMiddleware {
       throw new UnauthorizedException('Token not found');
     }
     try {
-        console.log(token,process.env.JWT_SECRET_KEY);
       const decoded = await this.jwtService.decode(token);
       if(decoded != null)
       {
@@ -35,7 +34,6 @@ export class JwtMiddleware implements NestMiddleware {
       }
       next();
     } catch (error) {
-        console.log("Error",error);
       throw new UnauthorizedException('Invalid token');
     }
   } 

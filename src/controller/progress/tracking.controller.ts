@@ -7,11 +7,8 @@ import {
     Patch,
     Body,
     Param,
-    ValidationPipe,
-    UsePipes,
     BadRequestException,
     Query,
-    UseInterceptors,
 } from '@nestjs/common';
 import { TrackingService } from './tracking.service';
 import {
