@@ -22,7 +22,7 @@ export class JwtMiddleware implements NestMiddleware {
       throw new UnauthorizedException('Token not found');
     }
     try {
-      const decoded = await this.jwtService.decode(token);
+     const decoded = await this.jwtService.decode(token);
       if(decoded != null)
       {
         user = await db.select().from(users).where(sql`${users.id} = ${decoded.id} AND ${users.email} = ${decoded.email}`);

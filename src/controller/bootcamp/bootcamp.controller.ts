@@ -38,8 +38,7 @@ export class BootcampController {
   @ApiBearerAuth()
   async getAllBootcamps(
     @Query('limit') limit: number,
-    @Query('offset') offset: number,
-    @Req() request: Request,
+    @Query('offset') offset: number
   ): Promise<object> {
    
     const [err, res] = await this.bootcampService.getAllBootcamps(
@@ -335,6 +334,12 @@ export class BootcampController {
   @Get('/studentSearch/:bootcampId')
   @ApiOperation({ summary: 'Search students by name or email' })
   @ApiQuery({
+    name: 'batch_id',
+    required: false,
+    type: Number,
+    description: 'batch id',
+  })
+  @ApiQuery({
     name: 'searchTerm',
     required: true,
     type: String,
@@ -343,6 +348,7 @@ export class BootcampController {
   @ApiBearerAuth()
   async searchStudents(
     @Param('bootcampId') bootcampId: number,
+    @Query('batch_id') batch_id: number,
     @Query('searchTerm') searchTerm: string,
   ): Promise<object> {
     try {
@@ -352,6 +358,7 @@ export class BootcampController {
       const result = await this.bootcampService.getStudentsBySearching(
         searchTermAsNumber,
         bootcampId,
+        batch_id
       );
       return {
         status: 'success',
