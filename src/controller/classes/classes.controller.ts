@@ -91,8 +91,14 @@ export class ClassesController {
         return this.classesService.getAttendance(meetingId);
     }
 
+    @Get('/getAllAttendance/:batchId')
+    @ApiOperation({ summary: "Get the google all classes attendance by batchID" })
+    extractMeetAttendanceByBatch(@Param('batchId') batchId: string): Promise<object> {
+        return this.classesService.getAttendanceByBatchId(batchId);
+    }
 
-    // @Patch('/:id')
+
+    // @Patch('/:id') 
     // @ApiOperation({ summary: "Patch the meeting details" })
     // updateMeetingById(@Param('id') id: number, @Body() classData: CreateLiveBroadcastDto) {
     //     return this.classesService.updateMeetingById(id, classData);

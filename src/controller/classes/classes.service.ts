@@ -269,7 +269,82 @@ export class ClassesService {
       throw new Error(`Error executing request: ${error.message}`);
     }
   }
-
+  async getAttendanceByBatchId(batchId: any) {
+    try {
+      const fetchedStudents = await db.select().from(batchEnrollments).where(eq(batchEnrollments.batchId, batchId));
+      const fetchedTokens = await db.select().from(userTokens).where(eq((userTokens.userId), 44848));
+      if (!fetchedTokens || fetchedTokens.length === 0) {
+        return { status: 'error', message: 'Unable to fetch tokens' };
+      }
+  
+      const auth2Client = new google.auth.OAuth2();
+      auth2Client.setCredentials({
+        access_token: fetchedTokens[0].accessToken,
+        refresh_token: fetchedTokens[0].refreshToken,
+      });
+  
+      const client = google.admin({ version: 'reports_v1', auth: auth2Client });
+      const allMeetings = await db.select().from(classesGoogleMeetLink).where(eq(classesGoogleMeetLink.batchId, batchId));
+      const attendanceByTitle = {};
+  
+      for (const singleMeeting of allMeetings) {
+        const response = await client.activities.list({
+          userKey: 'all',
+          applicationName: 'meet',
+          eventName: 'call_ended',
+          maxResults: 1000,
+          filters: `calendar_event_id==${singleMeeting.meetingid}`,
+        });
+  
+        const meetingAttendance = {};
+  
+        for (const student of fetchedStudents) {
+         const  emailFetched = await db
+          .select()
+          .from(users)
+          .where(sql`${users.id} = ${student.userId}`);
+          meetingAttendance[emailFetched[0].email] = {
+            email: emailFetched[0].email,
+          };
+        }
+  
+        const extractedData = response.data.items.map(item => {
+          const event = item.events[0];
+          const durationSeconds = event.parameters.find(param => param.name === 'duration_seconds')?.intValue || '';
+          const email = event.parameters.find(param => param.name === 'identifier')?.value || '';
+          const attendanceStatus = durationSeconds ? 'present' : 'absent';
+          if (!meetingAttendance[email]) {
+            meetingAttendance[email] = {};
+          }
+        
+          meetingAttendance[email][`meeting_${singleMeeting.title}_duration_seconds`] = durationSeconds;
+          meetingAttendance[email][`meeting_${singleMeeting.title}_attendance`] = attendanceStatus;
+          
+          return {
+            email,
+            duration: durationSeconds,
+            attendance: attendanceStatus,
+          };
+        });
+        
+  
+        Object.values(meetingAttendance).forEach(student => {
+          const email =student["email"];
+          if (!attendanceByTitle[email]) {
+            attendanceByTitle[email] = {};
+          }
+          Object.assign(attendanceByTitle[email], student);
+        });
+        
+      }
+  
+      const formattedAttendance = Object.values(attendanceByTitle);
+      return { "attendanceByTitle": formattedAttendance, "status": "success" };
+    } catch (error) {
+      throw new Error(`Error executing request: ${error.message}`);
+    }
+  }
+  
 
   async getAllClasses(): Promise<any> {
     try {
