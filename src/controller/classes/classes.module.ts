@@ -16,6 +16,8 @@ export class ClassesModule implements NestModule {
       .exclude(
         { path: '/classes/', method: RequestMethod.GET }, 
         { path: '/classes/redirect', method: RequestMethod.GET }, 
+        { path: '/classes/getAllAttendance/:batchId', method: RequestMethod.GET }, 
+        { path: '/classes/getAllAttendance/:batchId/', method: RequestMethod.GET }, 
       )
       .forRoutes('*'); 
   }

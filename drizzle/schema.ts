@@ -1845,3 +1845,11 @@ export const DriveLinks = main.table("zuvy_drive_links",{
         fileid : varchar("fileid").notNull(),
         s3Link:varchar('s3Link'),
 })
+
+export const ZuvyStudentAttendance = main.table("zuvystudentattendance",{
+        id:serial("id").primaryKey().notNull(),
+        email:varchar("email").notNull(),
+        batchId:varchar("batchId").notNull(),
+        attendance:varchar("attendance"),
+        meetingId:varchar('meetingId').notNull()
+})

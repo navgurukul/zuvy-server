@@ -86,16 +86,26 @@ export class ClassesController {
     //     return this.classesService.getAttendance();
     // }
     @Get('/getAttendance/:meetingId')
+    @ApiBearerAuth()
     @ApiOperation({ summary: "Get the google class attendance by meetingId" })
     extractMeetAttendance(@Param('meetingId') meetingId: string): Promise<object> {
         return this.classesService.getAttendance(meetingId);
     }
 
     @Get('/getAllAttendance/:batchId')
+    @ApiBearerAuth()
     @ApiOperation({ summary: "Get the google all classes attendance by batchID" })
     extractMeetAttendanceByBatch(@Param('batchId') batchId: string): Promise<object> {
         return this.classesService.getAttendanceByBatchId(batchId);
     }
+    @Get('/getStudentAttendance/:email/:batchId')
+    @ApiBearerAuth()
+    @ApiOperation({ summary: "Get the google all classes attendance by batchID" })
+    extractStudentAttendanceByBatch(@Param('batchId') batchId: any, @Param('email') email:any): Promise<object> {
+        return this.classesService.getAttendanceByEmailId(email,batchId);
+    }
+
+
 
 
     // @Patch('/:id') 
