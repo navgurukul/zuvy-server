@@ -1,5 +1,5 @@
 import { Injectable, Req, Res } from '@nestjs/common';
-import { bootcamps, batches, userTokens, classesGoogleMeetLink, sansaarUserRoles, users, batchEnrollments, ZuvyStudentAttendance } from '../../../drizzle/schema';
+import { bootcamps, batches, userTokens, classesGoogleMeetLink, sansaarUserRoles, users, batchEnrollments, zuvyStudentAttendance } from '../../../drizzle/schema';
 import { db } from '../../db/index';
 import { eq, sql, } from 'drizzle-orm';
 import { google, calendar_v3 } from 'googleapis';
@@ -223,18 +223,17 @@ export class ClassesService {
        
         const fetchClasses = await db.select().from(classesGoogleMeetLink).where(eq(classesGoogleMeetLink.batchId, batchId));
         const numberOfClasses = fetchClasses.length;
-        const classesAttended = await db.select().from(ZuvyStudentAttendance)
-            .where(sql`${ZuvyStudentAttendance.email}=${email} 
-                and ${ZuvyStudentAttendance.batchId}=${batchId} 
-                and ${ZuvyStudentAttendance.attendance}="present"`);
+        const classesAttended = await db.select().from(zuvyStudentAttendance)
+            .where(sql`${zuvyStudentAttendance.email}=${email} 
+                and ${zuvyStudentAttendance.batchId}=${batchId} 
+                and ${zuvyStudentAttendance.attendance}="present"`);
         const attendedClasses = classesAttended.length;
 
         const attendancePercentage = numberOfClasses > 0 ? (attendedClasses / numberOfClasses) * 100 : 0;
 
         return {attendancePercentage:attendancePercentage};
-    } catch (err) {
-        console.error("Error occurred while fetching attendance:", err);
-        throw err; 
+    } catch (error) {
+      throw new Error(`Error executing request: ${error.message}`);
     }
 }
 
@@ -281,13 +280,13 @@ export class ClassesService {
         const duration = parseInt(email.duration);
         const attendanceStatus = duration >= threshold ? 'present' : 'absent';
         email.attendance = attendanceStatus;
-        const existingAttendance = await db.select().from(ZuvyStudentAttendance)
-          .where(sql`${ZuvyStudentAttendance.meetingId}=${meetingId} and ${ZuvyStudentAttendance.email}=${email.email}`)
+        const existingAttendance = await db.select().from(zuvyStudentAttendance)
+          .where(sql`${zuvyStudentAttendance.meetingId}=${meetingId} and ${zuvyStudentAttendance.email}=${email.email}`)
         if (!existingAttendance) {
-          const postAttendance = await db.insert(ZuvyStudentAttendance).values({
+          const postAttendance = await db.insert(zuvyStudentAttendance).values({
             meetingId: meetingDetails[0].meetingid,
             email: email.email,
-            batchId: meetingDetails[0].batchId,
+            batchId: meetingDetails[0].batchId, 
             attendance: email.attendance
           });
         }

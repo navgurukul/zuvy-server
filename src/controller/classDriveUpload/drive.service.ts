@@ -2,7 +2,7 @@ import { Injectable, OnModuleInit } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { google } from 'googleapis';
 import { DriveDto } from './dto/drive.dto';
-import { DriveLinks } from '../../../drizzle/schema';
+import { driveLinks } from '../../../drizzle/schema';
 import { db } from '../../db/index';
 import { eq, sql } from 'drizzle-orm';
 import { S3 } from 'aws-sdk';
@@ -29,10 +29,10 @@ export class ListFilesService implements OnModuleInit {
   async listFiles() {
     try {
       const files = await this.getFilesInFolder(this.driveFolderId);
-      console.log('Files in Google Drive folder:', files);
+     
       await this.updateDatabase(files);
     } catch (error) {
-      console.log('Error listing files:', error);
+      throw new Error(`Error executing request: ${error.message}`);
     }
   }
   
@@ -50,21 +50,21 @@ export class ListFilesService implements OnModuleInit {
       for (const driveFile of driveFiles) {
         const fileExistsInDatabase = await db
           .select()
-          .from(DriveLinks)
-          .where(sql`${DriveLinks.fileid} = ${driveFile.id}`);
+          .from(driveLinks)
+          .where(sql`${driveLinks.fileid} = ${driveFile.id}`);
           
         if (fileExistsInDatabase.length == 0) {
           const s3UploadResponse = await this.uploadToS3(driveFile.name, driveFile.id);
-          const createdLinks = await db.insert(DriveLinks).values({
+          const createdLinks = await db.insert(driveLinks).values({
             name: driveFile.name,
             fileid: driveFile.id,
             s3Link: s3UploadResponse.Location,
           });
-          console.log(`File added to database: ${driveFile.name}`);
+          
         }
       }
     } catch (error) {
-      console.log('Error updating database with files:', error);
+      throw new Error(`Error executing request: ${error.message}`);
     }
   }
   
