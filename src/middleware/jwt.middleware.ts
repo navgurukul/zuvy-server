@@ -15,12 +15,22 @@ export class JwtMiddleware implements NestMiddleware {
   constructor(private readonly jwtService: JwtService) {}
 
  async use(req, res: Response, next: NextFunction) {
+
   if(req._parsedUrl.pathname === '/classes'  && req.method === 'GET')
   {
     next();
     return;
   }
   if(req._parsedUrl.pathname === '/classes/redirect/'  && req.method === 'GET')
+  {
+    next();
+    return;
+  }if(req._parsedUrl.pathname === '/classes/getAllAttendance/:batchId'  && req.method === 'GET')
+  {
+    next();
+    return;
+  }
+  if(req._parsedUrl.pathname === '/classes/getAllAttendance/:batchId/'  && req.method === 'GET')
   {
     next();
     return;

@@ -1,5 +1,5 @@
 import { Injectable, Req, Res } from '@nestjs/common';
-import { bootcamps, batches, userTokens, classesGoogleMeetLink, sansaarUserRoles, users, batchEnrollments } from '../../../drizzle/schema';
+import { bootcamps, batches, userTokens, classesGoogleMeetLink, sansaarUserRoles, users, batchEnrollments, zuvyStudentAttendance } from '../../../drizzle/schema';
 import { db } from '../../db/index';
 import { eq, sql, } from 'drizzle-orm';
 import { google, calendar_v3 } from 'googleapis';
@@ -218,9 +218,26 @@ export class ClassesService {
       return { 'status': "not success", 'message': "error creating class", error: error }
     }
   }
+  async getAttendanceByEmailId(email:any, batchId:any) {
+    try {
+       
+        const fetchClasses = await db.select().from(classesGoogleMeetLink).where(eq(classesGoogleMeetLink.batchId, batchId));
+        const numberOfClasses = fetchClasses.length;
+        const classesAttended = await db.select().from(zuvyStudentAttendance)
+            .where(sql`${zuvyStudentAttendance.email}=${email} 
+                and ${zuvyStudentAttendance.batchId}=${batchId} 
+                and ${zuvyStudentAttendance.attendance}="present"`);
+        const attendedClasses = classesAttended.length;
+
+        const attendancePercentage = numberOfClasses > 0 ? (attendedClasses / numberOfClasses) * 100 : 0;
+
+        return {attendancePercentage:attendancePercentage};
+    } catch (error) {
+      throw new Error(`Error executing request: ${error.message}`);
+    }
+}
 
   async getAttendance(meetingId: string) {
-    // dfh4be7vg6u1cg1bcjtel0qdu8 
     try {
       const fetchedTokens = await db.select().from(userTokens).where(eq((userTokens.userId), 44848));
       if (!fetchedTokens || fetchedTokens.length === 0) {
@@ -239,6 +256,7 @@ export class ClassesService {
         maxResults: 1000,
         filters: `calendar_event_id==${meetingId}`,
       });
+      const meetingDetails = await db.select().from(classesGoogleMeetLink).where(eq(classesGoogleMeetLink.meetingid, meetingId))
       const attendanceSheet = []
       const extractedData = response.data.items.map(item => {
         const event = item.events[0];
@@ -262,8 +280,17 @@ export class ClassesService {
         const duration = parseInt(email.duration);
         const attendanceStatus = duration >= threshold ? 'present' : 'absent';
         email.attendance = attendanceStatus;
-      }
-
+        const existingAttendance = await db.select().from(zuvyStudentAttendance)
+          .where(sql`${zuvyStudentAttendance.meetingId}=${meetingId} and ${zuvyStudentAttendance.email}=${email.email}`)
+        if (!existingAttendance) {
+          const postAttendance = await db.insert(zuvyStudentAttendance).values({
+            meetingId: meetingDetails[0].meetingid,
+            email: email.email,
+            batchId: meetingDetails[0].batchId, 
+            attendance: email.attendance
+          });
+        }
+      }  
       return { "attendanceSheet": attendanceSheet, "status": "success" }
     } catch (error) {
       throw new Error(`Error executing request: ${error.message}`);
@@ -276,17 +303,17 @@ export class ClassesService {
       if (!fetchedTokens || fetchedTokens.length === 0) {
         return { status: 'error', message: 'Unable to fetch tokens' };
       }
-  
+
       const auth2Client = new google.auth.OAuth2();
       auth2Client.setCredentials({
         access_token: fetchedTokens[0].accessToken,
         refresh_token: fetchedTokens[0].refreshToken,
       });
-  
+
       const client = google.admin({ version: 'reports_v1', auth: auth2Client });
       const allMeetings = await db.select().from(classesGoogleMeetLink).where(eq(classesGoogleMeetLink.batchId, batchId));
       const attendanceByTitle = {};
-  
+
       for (const singleMeeting of allMeetings) {
         const response = await client.activities.list({
           userKey: 'all',
@@ -295,19 +322,19 @@ export class ClassesService {
           maxResults: 1000,
           filters: `calendar_event_id==${singleMeeting.meetingid}`,
         });
-  
+
         const meetingAttendance = {};
-  
+
         for (const student of fetchedStudents) {
-         const  emailFetched = await db
-          .select()
-          .from(users)
-          .where(sql`${users.id} = ${student.userId}`);
+          const emailFetched = await db
+            .select()
+            .from(users)
+            .where(sql`${users.id} = ${student.userId}`);
           meetingAttendance[emailFetched[0].email] = {
             email: emailFetched[0].email,
           };
         }
-  
+
         const extractedData = response.data.items.map(item => {
           const event = item.events[0];
           const durationSeconds = event.parameters.find(param => param.name === 'duration_seconds')?.intValue || '';
@@ -316,35 +343,35 @@ export class ClassesService {
           if (!meetingAttendance[email]) {
             meetingAttendance[email] = {};
           }
-        
+
           meetingAttendance[email][`meeting_${singleMeeting.title}_duration_seconds`] = durationSeconds;
           meetingAttendance[email][`meeting_${singleMeeting.title}_attendance`] = attendanceStatus;
-          
+
           return {
             email,
             duration: durationSeconds,
             attendance: attendanceStatus,
           };
         });
-        
-  
+
+
         Object.values(meetingAttendance).forEach(student => {
-          const email =student["email"];
+          const email = student["email"];
           if (!attendanceByTitle[email]) {
             attendanceByTitle[email] = {};
           }
           Object.assign(attendanceByTitle[email], student);
         });
-        
+
       }
-  
+
       const formattedAttendance = Object.values(attendanceByTitle);
       return { "attendanceByTitle": formattedAttendance, "status": "success" };
     } catch (error) {
       throw new Error(`Error executing request: ${error.message}`);
     }
   }
-  
+
 
   async getAllClasses(): Promise<any> {
     try {
