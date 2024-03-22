@@ -248,7 +248,6 @@ export class TrackingService {
                 },
             ];
         } catch (err) {
-            console.log('err: ', err);
             return [{ status: 'error', message: err.message, code: 402 }];
         }
     }
@@ -270,8 +269,6 @@ export class TrackingService {
     // Read
     async getAssignmentUpcomming(userId, bootcampId: number) {
         try {
-            console.log('userId:', userId);
-            console.log('bootcampId:', bootcampId);
             const result = await db
                 .select()
                 .from(assignmentSubmission)
@@ -280,7 +277,6 @@ export class TrackingService {
                 );
             return [null, result];
         } catch (err) {
-            console.log('error', err);
             return [{ status: 'error', message: err.message, code: 402 }];
         }
     }

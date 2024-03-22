@@ -1,4 +1,6 @@
+
 import { Module, NestModule, MiddlewareConsumer ,RequestMethod} from '@nestjs/common';
+
 import { ClassesController } from './classes.controller';
 import { ClassesService } from './classes.service';
 import { BatchesModule } from '../batches/batch.module';
@@ -11,6 +13,14 @@ import { JwtMiddleware } from 'src/middleware/jwt.middleware';
 })
 export class ClassesModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
-    consumer.apply(JwtMiddleware).forRoutes('*'); // Apply JwtMiddleware to all routes
+    consumer
+      .apply(JwtMiddleware)
+      .exclude(
+        { path: '/classes/', method: RequestMethod.GET }, 
+        { path: '/classes/redirect', method: RequestMethod.GET }, 
+        { path: '/classes/getAllAttendance/:batchId', method: RequestMethod.GET }, 
+        { path: '/classes/getAllAttendance/:batchId/', method: RequestMethod.GET }, 
+      )
+      .forRoutes('*'); 
   }
 }

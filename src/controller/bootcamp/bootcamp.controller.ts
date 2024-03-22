@@ -1,8 +1,10 @@
-import { Controller, Get, Post, Put, Patch, Delete, Body, Param, ValidationPipe, UsePipes, Optional, Query, BadRequestException,Req } from '@nestjs/common';
+import { Controller, Get, Post, Put, Patch, Delete, Body, Param, ValidationPipe, UsePipes, Optional, Query, BadRequestException, Req } from '@nestjs/common';
 import { BootcampService } from './bootcamp.service';
 import { ApiTags, ApiBody, ApiOperation, ApiCookieAuth, ApiQuery } from '@nestjs/swagger';
-import { CreateBootcampDto, EditBootcampDto, PatchBootcampDto, studentDataDto ,PatchBootcampSettingDto } from './dto/bootcamp.dto';
+import { CreateBootcampDto, EditBootcampDto, PatchBootcampDto, studentDataDto, PatchBootcampSettingDto } from './dto/bootcamp.dto';
 import { ApiBearerAuth } from '@nestjs/swagger';
+import { Request } from '@nestjs/common';
+
 // import { EditBootcampDto } from './dto/editBootcamp.dto';
 // import { AuthGuard } from '@nestjs/passport'; // Assuming JWT authentication
 
@@ -18,7 +20,7 @@ import { ApiBearerAuth } from '@nestjs/swagger';
 )
 // @UseGuards(AuthGuard('cookie'))
 export class BootcampController {
-  constructor(private bootcampService: BootcampService) {}
+  constructor(private bootcampService: BootcampService) { }
   @Get('/')
   @ApiOperation({ summary: 'Get all bootcamps' })
   @ApiQuery({
@@ -38,7 +40,7 @@ export class BootcampController {
     @Query('limit') limit: number,
     @Query('offset') offset: number
   ): Promise<object> {
-   
+
     const [err, res] = await this.bootcampService.getAllBootcamps(
       limit,
       offset,
@@ -284,6 +286,7 @@ export class BootcampController {
       throw new BadRequestException(err);
     }
     return res;
+    
   }
 
   @Get('/:user_id/progress')
