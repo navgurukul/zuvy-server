@@ -3,6 +3,7 @@ import { NestFactory } from '@nestjs/core';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 import { CorsOptions } from '@nestjs/common/interfaces/external/cors-options.interface';
+import { log } from 'console';
 
 // INPORTING env VALUSE 
 const { PORT, BASE_URL } = process.env;
@@ -32,6 +33,6 @@ async function bootstrap() {
     SwaggerModule.setup('apis', app, document);
   }
   await app.listen(PORT || 6000);
-  console.log(`Application is running on swagger: ${BASE_URL}/apis#/`);
+  log(`Application is running on swagger: ${BASE_URL}/apis#/`);
 }
 bootstrap();
