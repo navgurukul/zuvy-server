@@ -286,6 +286,7 @@ export class BootcampController {
       throw new BadRequestException(err);
     }
     return res;
+    
   }
 
   @Get('/:user_id/progress')
