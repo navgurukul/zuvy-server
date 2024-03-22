@@ -82,11 +82,6 @@ export class TrackingController {
     @Query('assignment_id') assignmentId: number,
     @Query('user_id') userId: number,
   ): Promise<object> {
-    console.log('data:', data);
-    console.log('bootcampId:', bootcampId);
-    console.log('assignmentId:', assignmentId);
-    console.log('userId:', userId);
-
     const [err, res] = await this.TrackingService.submissionAssignment(
       data,
       bootcampId,
