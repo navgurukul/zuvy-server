@@ -1839,12 +1839,6 @@ export const bootcampTracking = main.table("zuvy_bootcamp_tracking", {
         createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
         updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
 });
-export const driveLinks = main.table("zuvy_drive_links",{
-        id:serial("id").primaryKey().notNull(),
-        name : varchar("name").notNull(),
-        fileid : varchar("fileid").notNull(),
-        s3Link:varchar('s3Link'),
-})
 
 export const zuvyStudentAttendance = main.table("zuvy_student_attendance",{
         id:serial("id").primaryKey().notNull(),
