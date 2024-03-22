@@ -20,8 +20,17 @@ export class CodingPlatformController {
     @ApiOperation({ summary: 'Run the code' })
     async submitCode(@Body() sourceCode : SubmitCodeDto)
     {
+        console.log(sourceCode)
+        let statusId = 1;
+        let getCodeData;
         const res =
-      await this.codingPlatformService.submitCode(sourceCode.sourceCode);
-    return res;
+      await this.codingPlatformService.submitCode(sourceCode);
+       while(statusId < 3)
+       {
+         getCodeData = await this.codingPlatformService.getCodeInfo(res.token);
+         statusId = getCodeData.status_id;
+         console.log(getCodeData);
+       }
+    return getCodeData;
     }
 }

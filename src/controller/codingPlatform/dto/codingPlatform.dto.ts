@@ -11,4 +11,23 @@ export class SubmitCodeDto {
   @IsNotEmpty()
   @IsString()
   sourceCode: string;
+
+  @ApiProperty({
+    type: String,
+    example: 'Standard input',
+    required: false,
+  })
+  @IsNotEmpty()
+  @IsString()
+  stdInput: string;
+
+  @ApiProperty({
+    type: String,
+    example: 'Expected output',
+    required: false,
+  })
+  @IsOptional()
+  @IsString()
+  expectedOutput: string;
+
 }

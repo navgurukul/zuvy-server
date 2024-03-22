@@ -3,6 +3,7 @@ import { db } from '../../db/index';
 import { eq, sql ,count} from 'drizzle-orm';
 // import { BatchesService } from '../batches/batch.service';
 import axios from 'axios';
+import { SubmitCodeDto } from './dto/codingPlatform.dto';
 import * as _ from 'lodash';
 import { error, log } from 'console';
 import {
@@ -19,7 +20,7 @@ const { ZUVY_CONTENT_URL } = process.env; // INPORTING env VALUSE ZUVY_CONTENT
 
 @Injectable()
 export class CodingPlatformService {
-   async submitCode(sourceCode: string) {
+   async submitCode(sourceCode: SubmitCodeDto) {
     console.log(sourceCode)
     const options = {
   method: 'POST',
@@ -31,12 +32,15 @@ export class CodingPlatformService {
   headers: {
     'content-type': 'application/json',
     'Content-Type': 'application/json',
-    'X-RapidAPI-Key': '994e54529fmsh71160e73892fd3bp18d8fcjsnea8f41812258',
+    'X-RapidAPI-Key': 'e80654c98emshb74fc8ae7d71002p1010c9jsnc34fda088580',
     'X-RapidAPI-Host': 'judge0-ce.p.rapidapi.com'
   },
   data: {
     language_id: 52,
-    source_code: sourceCode
+    source_code: sourceCode.sourceCode,
+    stdin: sourceCode.stdInput,
+    expected_output: sourceCode.expectedOutput
+
   }
 };
 
@@ -47,5 +51,28 @@ export class CodingPlatformService {
     } catch (error) {
       throw error;
     }
-  } 
+  }
+  
+  async getCodeInfo(token:string) {
+    const options = {
+  method: 'GET',
+  url: `https://judge0-ce.p.rapidapi.com/submissions/${token}`,
+  params: {
+    base64_encoded: 'false',
+    fields: '*'
+  },
+  headers: {
+    'X-RapidAPI-Key': 'e80654c98emshb74fc8ae7d71002p1010c9jsnc34fda088580',
+    'X-RapidAPI-Host': 'judge0-ce.p.rapidapi.com'
+  }
+};
+
+try {
+	const response = await axios.request(options);
+	//console.log(response.data);
+    return response.data;
+} catch (error) {
+	console.error(error);
+}
+  }
 }
