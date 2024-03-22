@@ -16,6 +16,7 @@ export class JwtMiddleware implements NestMiddleware {
 
  async use(req, res: Response, next: NextFunction) {
     
+   
     const token = req.headers.authorization?.replace('Bearer ', '');
     let user;
     if (!token) {

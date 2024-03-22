@@ -22,7 +22,6 @@ export class ClassesController {
 
   @Get('/')
   @ApiOperation({ summary: 'Google authenticate' })
-  @ApiBearerAuth()
   async googleAuth(@Res() res) {
     return this.classesService.googleAuthentication(res);
   }
