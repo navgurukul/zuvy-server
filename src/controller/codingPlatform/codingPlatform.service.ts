@@ -16,12 +16,11 @@ import {
   bootcampType
 } from '../../../drizzle/schema';
 
-const { ZUVY_CONTENT_URL } = process.env; // INPORTING env VALUSE ZUVY_CONTENT
+const { ZUVY_CONTENT_URL ,RAPID_API_KEY,RAPID_HOST} = process.env; // INPORTING env VALUSE ZUVY_CONTENT
 
 @Injectable()
 export class CodingPlatformService {
    async submitCode(sourceCode: SubmitCodeDto) {
-    console.log(sourceCode)
     const options = {
   method: 'POST',
   url: 'https://judge0-ce.p.rapidapi.com/submissions',
@@ -32,11 +31,11 @@ export class CodingPlatformService {
   headers: {
     'content-type': 'application/json',
     'Content-Type': 'application/json',
-    'X-RapidAPI-Key': 'e80654c98emshb74fc8ae7d71002p1010c9jsnc34fda088580',
-    'X-RapidAPI-Host': 'judge0-ce.p.rapidapi.com'
+    'X-RapidAPI-Key': RAPID_API_KEY,
+    'X-RapidAPI-Host': RAPID_HOST
   },
   data: {
-    language_id: 52,
+    language_id: sourceCode.languageId,
     source_code: sourceCode.sourceCode,
     stdin: sourceCode.stdInput,
     expected_output: sourceCode.expectedOutput
@@ -46,7 +45,6 @@ export class CodingPlatformService {
 
     try {
       const response = await axios.request(options);
-      console.log(response.data);
       return response.data;
     } catch (error) {
       throw error;
@@ -62,8 +60,8 @@ export class CodingPlatformService {
     fields: '*'
   },
   headers: {
-    'X-RapidAPI-Key': 'e80654c98emshb74fc8ae7d71002p1010c9jsnc34fda088580',
-    'X-RapidAPI-Host': 'judge0-ce.p.rapidapi.com'
+    'X-RapidAPI-Key': RAPID_API_KEY,
+    'X-RapidAPI-Host': RAPID_HOST
   }
 };
 
@@ -72,7 +70,28 @@ try {
 	//console.log(response.data);
     return response.data;
 } catch (error) {
-	console.error(error);
+	throw error;
+}
+  }
+
+
+  async getLanguagesById()
+  {
+  
+const options = {
+  method: 'GET',
+  url: 'https://judge0-ce.p.rapidapi.com/languages',
+  headers: {
+    'X-RapidAPI-Key': RAPID_API_KEY,
+    'X-RapidAPI-Host': RAPID_HOST
+  }
+};
+
+try {
+	const response = await axios.request(options);
+    return response.data;
+} catch (error) {
+	throw error;
 }
   }
 }

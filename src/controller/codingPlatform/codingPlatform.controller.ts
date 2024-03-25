@@ -18,9 +18,9 @@ export class CodingPlatformController {
     constructor(private codingPlatformService: CodingPlatformService) {}
     @Post('submit')
     @ApiOperation({ summary: 'Run the code' })
+    @ApiBearerAuth()
     async submitCode(@Body() sourceCode : SubmitCodeDto)
     {
-        console.log(sourceCode)
         let statusId = 1;
         let getCodeData;
         const res =
@@ -29,8 +29,16 @@ export class CodingPlatformController {
        {
          getCodeData = await this.codingPlatformService.getCodeInfo(res.token);
          statusId = getCodeData.status_id;
-         console.log(getCodeData);
        }
     return getCodeData;
+    }
+
+    @Get('languageId')
+    @ApiOperation({ summary: 'Get language with Id'})
+    @ApiBearerAuth()
+    async getLanguages()
+    {
+        const res = await this.codingPlatformService.getLanguagesById();
+        return res;
     }
 }

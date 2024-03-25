@@ -3,6 +3,17 @@ import { IsString, IsNotEmpty, IsOptional, ValidateNested, IsNumber, IsEmail } f
 import { Type } from 'class-transformer';
 
 export class SubmitCodeDto {
+   
+    @ApiProperty({
+    type: Number,
+    example: 1,
+    required: true,
+  })
+  @IsNotEmpty()
+  @IsNumber()
+  languageId: number;
+    
+
     @ApiProperty({
     type: String,
     example: 'Submit code',
