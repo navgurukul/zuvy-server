@@ -237,65 +237,56 @@ export class ClassesService {
     }
 }
 
-  async getAttendance(meetingId: string) {
-    try {
-      const fetchedTokens = await db.select().from(userTokens).where(eq((userTokens.userId), 44848));
-      if (!fetchedTokens || fetchedTokens.length === 0) {
-        return { status: 'error', message: 'Unable to fetch tokens' };
-      }
-      const auth2Client = new google.auth.OAuth2();
-      auth2Client.setCredentials({
-        access_token: fetchedTokens[0].accessToken,
-        refresh_token: fetchedTokens[0].refreshToken,
-      });
-      const client = google.admin({ version: 'reports_v1', auth: auth2Client });
-      const response = await client.activities.list({
-        userKey: 'all',
-        applicationName: 'meet',
-        eventName: 'call_ended',
-        maxResults: 1000,
-        filters: `calendar_event_id==${meetingId}`,
-      });
-      const meetingDetails = await db.select().from(classesGoogleMeetLink).where(eq(classesGoogleMeetLink.meetingid, meetingId))
-      const attendanceSheet = []
-      const extractedData = response.data.items.map(item => {
-        const event = item.events[0];
-        const durationSeconds = event.parameters.find(param => param.name === 'duration_seconds')?.intValue || '';
-        const email = event.parameters.find(param => param.name === 'identifier')?.value || '';
-        attendanceSheet.push({ email: email, duration: durationSeconds })
-        return {
-          email,
-          duration: durationSeconds,
-        };
-      });
-      const zuvyEmail = attendanceSheet.find(email => email.email === 'team@zuvy.org');
-      const totalDuration = parseInt(zuvyEmail.duration);
-      const threshold = 0.7 * totalDuration;
+async getAttendance(meetingId: string) {
 
-      for (const email of attendanceSheet) {
-
-        if (email.email === 'team@zuvy.org') {
-          continue;
-        }
-        const duration = parseInt(email.duration);
-        const attendanceStatus = duration >= threshold ? 'present' : 'absent';
-        email.attendance = attendanceStatus;
-        const existingAttendance = await db.select().from(zuvyStudentAttendance)
-          .where(sql`${zuvyStudentAttendance.meetingId}=${meetingId} and ${zuvyStudentAttendance.email}=${email.email}`)
-        if (!existingAttendance) {
-          const postAttendance = await db.insert(zuvyStudentAttendance).values({
-            meetingId: meetingDetails[0].meetingid,
-            email: email.email,
-            batchId: meetingDetails[0].batchId, 
-            attendance: email.attendance
-          });
-        }
-      }  
-      return { "attendanceSheet": attendanceSheet, "status": "success" }
-    } catch (error) {
-      throw new Error(`Error executing request: ${error.message}`);
+  try {
+    const fetchedTokens = await db.select().from(userTokens).where(eq((userTokens.userId), 44848));
+    if (!fetchedTokens || fetchedTokens.length === 0) {
+      return { status: 'error', message: 'Unable to fetch tokens' };
     }
+    const auth2Client = new google.auth.OAuth2();
+    auth2Client.setCredentials({
+      access_token: fetchedTokens[0].accessToken,
+      refresh_token: fetchedTokens[0].refreshToken,
+    });
+    const client = google.admin({ version: 'reports_v1', auth: auth2Client });
+    const response = await client.activities.list({
+      userKey: 'all',
+      applicationName: 'meet',
+      eventName: 'call_ended',
+      maxResults: 1000,
+      filters: `calendar_event_id==${meetingId}`,
+    });
+    const attendanceSheet = []
+    const extractedData = response.data.items.map(item => {
+      const event = item.events[0];
+      const durationSeconds = event.parameters.find(param => param.name === 'duration_seconds')?.intValue || '';
+      const email = event.parameters.find(param => param.name === 'identifier')?.value || '';
+      attendanceSheet.push({ email: email, duration: durationSeconds })
+      return {
+        email,
+        duration: durationSeconds,
+      };
+    });
+    const zuvyEmail = attendanceSheet.find(email => email.email === 'team@zuvy.org');
+    const totalDuration = parseInt(zuvyEmail.duration);
+    const threshold = 0.7 * totalDuration;
+
+    for (const email of attendanceSheet) {
+
+      if (email.email === 'team@zuvy.org') {
+        continue;
+      }
+      const duration = parseInt(email.duration);
+      const attendanceStatus = duration >= threshold ? 'present' : 'absent';
+      email.attendance = attendanceStatus;
+    }
+
+    return { "attendanceSheet": attendanceSheet, "status": "success" }
+  } catch (error) {
+    throw new Error(`Error executing request: ${error.message}`);
   }
+}
   async getAttendanceByBatchId(batchId: any) {
     try {
       const fetchedStudents = await db.select().from(batchEnrollments).where(eq(batchEnrollments.batchId, batchId));
