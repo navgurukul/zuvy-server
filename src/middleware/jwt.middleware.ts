@@ -40,7 +40,7 @@ export class JwtMiddleware implements NestMiddleware {
     if (!token) {
       throw new UnauthorizedException('Token not found');
     }
-    try {
+     try {
      const decoded = await this.jwtService.decode(token);
       if(decoded != null)
       {
