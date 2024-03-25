@@ -1,6 +1,6 @@
-import { Controller, Get, Post, Put, Delete, Patch, Body, Param, ValidationPipe, UsePipes, Res, Req } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Patch, Body, Param, ValidationPipe, UsePipes, Res, Req ,Query} from '@nestjs/common';
 import { ClassesService } from './classes.service';
-import { ApiTags, ApiBody, ApiOperation, ApiCookieAuth } from '@nestjs/swagger';
+import { ApiTags, ApiBody, ApiOperation, ApiCookieAuth, ApiQuery } from '@nestjs/swagger';
 import { CreateDto, ScheduleDto, CreateLiveBroadcastDto } from './dto/classes.dto';
 import { ApiBearerAuth } from '@nestjs/swagger';
 // import { AuthGuard } from '@nestjs/passport'; // Assuming JWT authentication
@@ -18,7 +18,7 @@ import { ApiBearerAuth } from '@nestjs/swagger';
 )
 // @UseGuards(AuthGuard('cookie'))
 export class ClassesController {
-  constructor(private classesService: ClassesService) {}
+  constructor(private classesService: ClassesService) { }
 
   @Get('/')
   @ApiOperation({ summary: 'Google authenticate' })
@@ -41,17 +41,47 @@ export class ClassesController {
   }
   @Get('/getClassesByBatchId/:batchId')
   @ApiOperation({ summary: 'Get the google classes by batchId' })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    type: Number,
+    description: 'Number of classes per page',
+  })
+  @ApiQuery({
+    name: 'offset',
+    required: false,
+    type: Number,
+    description: 'Offset for pagination',
+  })
   @ApiBearerAuth()
-  getClassesByBatchId(@Param('batchId') batchId: string): Promise<object> {
-    return this.classesService.getClassesByBatchId(batchId);
+  getClassesByBatchId(
+    @Query('limit') limit: number,
+    @Query('offset') offset: number,
+    @Param('batchId') batchId: string): Promise<object> {
+    return this.classesService.getClassesByBatchId(batchId,limit,offset);
   }
   @Get('/getClassesByBootcampId/:bootcampId')
   @ApiOperation({ summary: 'Get the google classes by bootcampId' })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    type: Number,
+    description: 'Number of classes per page',
+  })
+  @ApiQuery({
+    name: 'offset',
+    required: false,
+    type: Number,
+    description: 'Offset for pagination',
+  })
   @ApiBearerAuth()
   getClassesByBootcampId(
+    @Query('limit') limit: number,
+    @Query('offset') offset: number,
     @Param('bootcampId') bootcampId: string,
   ): Promise<object> {
-    return this.classesService.getClassesByBootcampId(bootcampId);
+    return this.classesService.getClassesByBootcampId(bootcampId,limit,
+      offset);
   }
   @Get('/getAttendeesByMeetingId/:id')
   @ApiOperation({ summary: 'Get the google class attendees by meetingId' })
@@ -79,37 +109,37 @@ export class ClassesController {
     return this.classesService.deleteMeetingById(id);
   }
 
-    // @Get('/getAttendance')
-    // @ApiOperation({ summary: "Get meeting Attendance" })
-    // extractMeetAttendance(@Res() res): Promise<object> {
-    //     return this.classesService.getAttendance();
-    // }
-    @Get('/getAttendance/:meetingId')
-    @ApiBearerAuth()
-    @ApiOperation({ summary: "Get the google class attendance by meetingId" })
-    extractMeetAttendance(@Param('meetingId') meetingId: string): Promise<object> {
-        return this.classesService.getAttendance(meetingId);
-    }
+  // @Get('/getAttendance')
+  // @ApiOperation({ summary: "Get meeting Attendance" })
+  // extractMeetAttendance(@Res() res): Promise<object> {
+  //     return this.classesService.getAttendance();
+  // }
+  @Get('/getAttendance/:meetingId')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "Get the google class attendance by meetingId" })
+  extractMeetAttendance(@Param('meetingId') meetingId: string): Promise<object> {
+    return this.classesService.getAttendance(meetingId);
+  }
 
-    @Get('/getAllAttendance/:batchId')
-    @ApiBearerAuth()
-    @ApiOperation({ summary: "Get the google all classes attendance by batchID" })
-    extractMeetAttendanceByBatch(@Param('batchId') batchId: string): Promise<object> {
-        return this.classesService.getAttendanceByBatchId(batchId);
-    }
-    @Get('/getStudentAttendance/:email/:batchId')
-    @ApiBearerAuth()
-    @ApiOperation({ summary: "Get the google all classes attendance by batchID" })
-    extractStudentAttendanceByBatch(@Param('batchId') batchId: any, @Param('email') email:any): Promise<object> {
-        return this.classesService.getAttendanceByEmailId(email,batchId);
-    }
-
-
+  @Get('/getAllAttendance/:batchId')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "Get the google all classes attendance by batchID" })
+  extractMeetAttendanceByBatch(@Param('batchId') batchId: string): Promise<object> {
+    return this.classesService.getAttendanceByBatchId(batchId);
+  }
+  @Get('/getStudentAttendance/:email/:batchId')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "Get the google all classes attendance by batchID" })
+  extractStudentAttendanceByBatch(@Param('batchId') batchId: any, @Param('email') email: any): Promise<object> {
+    return this.classesService.getAttendanceByEmailId(email, batchId);
+  }
 
 
-    // @Patch('/:id') 
-    // @ApiOperation({ summary: "Patch the meeting details" })
-    // updateMeetingById(@Param('id') id: number, @Body() classData: CreateLiveBroadcastDto) {
-    //     return this.classesService.updateMeetingById(id, classData);
-    // }
+
+
+  // @Patch('/:id') 
+  // @ApiOperation({ summary: "Patch the meeting details" })
+  // updateMeetingById(@Param('id') id: number, @Body() classData: CreateLiveBroadcastDto) {
+  //     return this.classesService.updateMeetingById(id, classData);
+  // }
 }
