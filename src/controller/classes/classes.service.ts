@@ -1,7 +1,7 @@
 import { Injectable, Req, Res } from '@nestjs/common';
 import { bootcamps, batches, userTokens, classesGoogleMeetLink, sansaarUserRoles, users, batchEnrollments, zuvyStudentAttendance } from '../../../drizzle/schema';
 import { db } from '../../db/index';
-import { eq, sql, } from 'drizzle-orm';
+import { eq, sql,count  } from 'drizzle-orm';
 import { google, calendar_v3 } from 'googleapis';
 import { v4 as uuid } from 'uuid';
 import { createReadStream } from 'fs';
@@ -396,17 +396,17 @@ async getAttendance(meetingId: string) {
     });
   }
 
-  async getClassesByBatchId(batchId: string) {
+  async getClassesByBatchId(batchId: string,limit: number, offset: number) {
     try {
       const currentTime = new Date();
 
       const classes = await db.select().from(classesGoogleMeetLink).where(sql`${classesGoogleMeetLink.batchId} = ${batchId}`);
-
+      const sortedClasses = _.orderBy(classes, classObj => new Date(classObj.startTime), 'asc');
       const completedClasses = [];
       const ongoingClasses = [];
       const upcomingClasses = [];
 
-      for (const classObj of classes) {
+      for (const classObj of sortedClasses) {
         const startTime = new Date(classObj.startTime);
         const endTime = new Date(classObj.endTime);
 
@@ -418,14 +418,16 @@ async getAttendance(meetingId: string) {
           upcomingClasses.push(classObj);
         }
       }
-
+      const paginatedCompletedClasses = completedClasses.slice((offset-1)*limit, ((offset-1)*limit) + limit);
+      const paginatedOngoingClasses = ongoingClasses.slice((offset-1)*limit, ((offset-1)*limit)+ limit);
+      const paginatedUpcomingClasses = upcomingClasses.slice((offset-1)*limit, ((offset-1)*limit) + limit);
       return {
         'status': 'success',
         'message': 'Classes fetched successfully by batchId',
         'code': 200,
-        completedClasses,
-        ongoingClasses,
-        upcomingClasses,
+        completedClasses: paginatedCompletedClasses,
+        ongoingClasses: paginatedOngoingClasses,
+        upcomingClasses: paginatedUpcomingClasses,
       };
     } catch (error) {
       return { 'success': 'not success', 'message': 'Error fetching class Links', 'error': error };
@@ -506,41 +508,53 @@ async getAttendance(meetingId: string) {
       throw new Error('Error uploading video to S3');
     }
   }
-  async getClassesByBootcampId(bootcampId: string) {
+  async getClassesByBootcampId(bootcampId: string, limit: number, offset: number) {
     try {
-      const currentTime = new Date();
+        const currentTime = new Date();
+        const classes = await db
+            .select()
+            .from(classesGoogleMeetLink)
+            .where(sql`${classesGoogleMeetLink.bootcampId} = ${bootcampId}`)
+            
 
-      const classes = await db.select().from(classesGoogleMeetLink).where(sql`${classesGoogleMeetLink.bootcampId} = ${bootcampId}`);
+            const sortedClasses = _.orderBy(classes, classObj => new Date(classObj.startTime), 'asc');
+        const completedClasses = [];
+        const ongoingClasses = [];
+        const upcomingClasses = [];
 
-      const completedClasses = [];
-      const ongoingClasses = [];
-      const upcomingClasses = [];
+        for (const classObj of sortedClasses) {
+            const startTime = new Date(classObj.startTime);
+            const endTime = new Date(classObj.endTime);
 
-      for (const classObj of classes) {
-        const startTime = new Date(classObj.startTime);
-        const endTime = new Date(classObj.endTime);
-
-        if (currentTime > endTime) {
-          completedClasses.push(classObj);
-        } else if (currentTime >= startTime && currentTime <= endTime) {
-          ongoingClasses.push(classObj);
-        } else {
-          upcomingClasses.push(classObj);
+            if (currentTime > endTime) {
+                completedClasses.push(classObj);
+            } else if (currentTime >= startTime && currentTime <= endTime) {
+                ongoingClasses.push(classObj);
+            } else {
+                upcomingClasses.push(classObj);
+            }
         }
-      }
+        const paginatedCompletedClasses = completedClasses.slice((offset-1)*limit, ((offset-1)*limit) + limit);
+        const paginatedOngoingClasses = ongoingClasses.slice((offset-1)*limit, ((offset-1)*limit)+ limit);
+        const paginatedUpcomingClasses = upcomingClasses.slice((offset-1)*limit, ((offset-1)*limit) + limit);
 
-      return {
-        'status': 'success',
-        'message': 'Classes fetched successfully by bootcampId',
-        'code': 200,
-        completedClasses,
-        ongoingClasses,
-        upcomingClasses,
-      };
+        return {
+            'status': 'success',
+            'message': 'Classes fetched successfully by bootcampId',
+            'code': 200,
+            completedClasses: paginatedCompletedClasses,
+            ongoingClasses: paginatedOngoingClasses,
+            upcomingClasses: paginatedUpcomingClasses,
+        };
     } catch (error) {
-      return { 'success': 'not success', 'message': 'Error fetching class Links', 'error': error };
+        return {
+            'status': 'error',
+            'message': 'Error fetching class Links',
+            'error': error.message
+        };
     }
-  }
+}
+
 
   async getAttendeesByMeetingId(id: number) {
     try {
