@@ -127,6 +127,21 @@ export class BootcampController {
     return res;
   }
 
+  @Get('bootcampSetting/:id')
+  @ApiOperation({ summary: 'Get the bootcamp setting by id' })
+  @ApiBearerAuth()
+  async getBootcampSettingById(
+    @Param('id') id: number
+  ): Promise<object> {
+    const [err, res] = await this.bootcampService.getBootcampSettingById(
+      id
+    );
+    if (err) {
+      throw new BadRequestException(err);
+    }
+    return res;
+  }
+
   @Put('/:id')
   @ApiOperation({ summary: 'Update the bootcamp' })
   @ApiBearerAuth()

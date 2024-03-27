@@ -255,6 +255,34 @@ export class BootcampService {
     }
   }
 
+  async getBootcampSettingById(bootcampId:number) {
+    try
+    {
+      let bootcampSetting = await db
+          .select()
+          .from(bootcampType)
+          .where(eq(bootcampType.bootcampId, bootcampId))
+      
+      if (bootcampSetting.length === 0) {
+          return [
+            { status: 'error', message: 'Bootcamp not found for the provided id.', code: 404 },
+            null,
+          ];
+        }
+        return [
+          null,
+          {
+            status: 'success',
+            message: 'Bootcamp setting details achieved',
+            code: 200,
+            bootcampSetting
+          },
+        ];    
+    } catch(e) {
+      return [{status: 'error',message: e.message,code: 500},null];
+    }
+  }
+
   async deleteBootcamp(id: number): Promise<any> {
     try {
       await db.delete(batches).where(eq(batches.bootcampId, id));
