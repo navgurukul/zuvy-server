@@ -72,7 +72,6 @@ export class BatchesService {
     async getBatchById(id: number) {
         try {
             let data = await db.select().from(batches).where(eq(batches.id, id));
-            console.log("batches",data)
             if (data.length === 0) {
                 return [{ status: 'error', message: 'Batch not found', code: 404 }, null];
             }

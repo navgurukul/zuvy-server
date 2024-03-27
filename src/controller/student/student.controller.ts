@@ -1,6 +1,6 @@
 import { Controller, Get, Post, Put, Delete, Patch, Body, Param, ValidationPipe, UsePipes, BadRequestException, Query } from '@nestjs/common';
 import { StudentService } from './student.service';
-import { ApiTags, ApiBody, ApiOperation, ApiCookieAuth, ApiQuery,ApiBearerAuth } from '@nestjs/swagger';
+import { ApiTags, ApiBody, ApiOperation, ApiCookieAuth, ApiQuery, ApiBearerAuth } from '@nestjs/swagger';
 import { get } from 'http';
 // import { CreateDto, ScheduleDto, CreateLiveBroadcastDto } from './dto/Student.dto';
 // import { AuthGuard } from '@nestjs/passport'; // Assuming JWT authentication
@@ -18,7 +18,7 @@ import { get } from 'http';
 )
 // @UseGuards(AuthGuard('cookie'))
 export class StudentController {
-  constructor(private studentService: StudentService) {}
+  constructor(private studentService: StudentService) { }
 
   @Get('/:userId')
   @ApiOperation({ summary: 'Get all course enrolled by student' })
