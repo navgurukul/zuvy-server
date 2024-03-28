@@ -9,6 +9,7 @@ import * as _ from 'lodash';
 import Axios from 'axios'
 import { S3 } from 'aws-sdk';
 import { Cron } from '@nestjs/schedule';
+const moment = require('moment-timezone')
 // import { Calendar } from 'node_google_calendar_1';// import { OAuth2Client } from 'google-auth-library';
 
 const { OAuth2 } = google.auth;
@@ -175,11 +176,11 @@ export class ClassesService {
           summary: eventDetails.title,
           description: eventDetails.description,
           start: {
-            dateTime: eventDetails.startDateTime,
+            dateTime: moment(eventDetails.startDateTime).subtract(5, 'hours').subtract(30, 'minutes').format(),
             timeZone: eventDetails.timeZone,
           },
           end: {
-            dateTime: eventDetails.endDateTime,
+            dateTime: moment(eventDetails.endDateTime).subtract(5, 'hours').subtract(30, 'minutes').format(),
             timeZone: eventDetails.timeZone,
           },
 

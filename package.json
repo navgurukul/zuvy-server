@@ -48,6 +48,7 @@
     "google-auth-library": "^9.6.3",
     "googleapis": "^131.0.0",
     "lodash": "^4.17.21",
+    "moment-timezone": "^0.5.45",
     "node-cron": "^3.0.3",
     "pg": "^8.11.3",
     "postgres": "^3.4.3",
