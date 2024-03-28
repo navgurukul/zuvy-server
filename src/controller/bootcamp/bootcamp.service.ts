@@ -511,6 +511,8 @@ export class BootcampService {
               userId: emailFetched[0].id.toString(),
               bootcampId: studentEmail.bootcampId,
               profilePicture: emailFetched[0].profilePicture,
+              attendance:studentEmail.attendance
+             
             };
             let batchInfo;
             let progressInfo;
@@ -524,6 +526,7 @@ export class BootcampService {
                 student['batchId'] = batchInfo[0].id;
               }
             }
+
             progressInfo = await db
               .select()
               .from(bootcampTracking)
@@ -532,6 +535,7 @@ export class BootcampService {
               );
             if (progressInfo.length > 0) {
               student['progress'] = progressInfo[0].progress;
+
             } else {
               student['progress'] = 0;
             }
