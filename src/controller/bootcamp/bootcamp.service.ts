@@ -343,8 +343,8 @@ export class BootcampService {
 
   async searchBatchByIdBootcamp(bootcamp_id: number, searchTerm: string): Promise<any> {
     try {
-      const batchesData = await db.select().from(batches).where(sql`${batches.bootcampId}=${bootcamp_id} AND (LOWER(${batches.name}) LIKE ${searchTerm.toLowerCase()} || '%')`);
 
+      const batchesData = await db.select().from(batches).where(sql`${batches.bootcampId}=${bootcamp_id} AND (LOWER(${batches.name}) LIKE ${searchTerm.toLowerCase()} || '%')`);
       const promises = batchesData.map(async (batch) => {
         const userEnrolled = await db
           .select()
@@ -496,7 +496,6 @@ export class BootcampService {
         .where(queryString)
         .limit(limit)
         .offset(offset);
-
       const studentsEmails = [];
       for (const studentEmail of batchEnrollmentsData) {
         try {
@@ -549,6 +548,7 @@ export class BootcampService {
           ];
         }
       }
+      console.log(studentsEmails)
       return [
         null,
         { status: 'success', studentsEmails: studentsEmails, totalPages, totalStudents: totalStudents[0].count, code: 200 },
@@ -651,6 +651,7 @@ export class BootcampService {
   async searchStudentsByNameOrEmail(searchTerm: string | bigint, bootcampId: number) {
     try {
       const studentsEmails = [];
+     
       let emailFetched;
       if (searchTerm.constructor === String) {
         emailFetched = await db
@@ -666,7 +667,6 @@ export class BootcampService {
           .from(users)
           .where(sql`${users.id} = ${searchTerm}`);
       }
-
       for (const user of emailFetched) {
         const student = {
           email: user.email,
@@ -792,7 +792,6 @@ export class BootcampService {
         .select()
         .from(batchEnrollments)
         .where(sql`${batchEnrollments.bootcampId} = ${bootcampId} `);
-
       const matchingEnrollments = batchEnrollmentsData.filter(
         (enrollment) => enrollment.userId.toString() === userId.toString(),
       );
