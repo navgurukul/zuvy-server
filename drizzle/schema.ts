@@ -1774,6 +1774,8 @@ export const batchEnrollments = main.table("zuvy_batch_enrollments", {
         userId: bigserial("user_id", { mode: "bigint" }).notNull().references(() => users.id),
         bootcampId: integer("bootcamp_id").references(() => bootcamps.id, { onDelete: "cascade" } ),
         batchId: integer("batch_id").references(() =>  batches.id, { onDelete: "cascade" } ),
+        attendance:integer("attendance"),
+        classesAttended:integer("classes_attended"),
         createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
         updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
 });
@@ -1846,4 +1848,12 @@ export const zuvyStudentAttendance = main.table("zuvy_student_attendance",{
         batchId:varchar("batchId").notNull(),
         attendance:varchar("attendance"),
         meetingId:varchar('meetingId').notNull()
+})
+
+export const zuvyMeetingAttendance=main.table("zuvy_meeting_attendance",{
+        id:serial("id").primaryKey().notNull(),
+        meetingId:varchar("meetingid"),
+        batchid:varchar("batchid"),
+        bootcampid:varchar("bootcampid"),
+
 })
