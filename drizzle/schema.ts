@@ -4,6 +4,7 @@ import { pgTable, jsonb, pgSchema, pgEnum, serial, varchar, timestamp, foreignKe
 
 export const courseEnrolmentsCourseStatus = pgEnum("course_enrolments_course_status", ['enroll', 'unenroll', 'completed'])
 export const coursesType = pgEnum("courses_type", ['html', 'js', 'python'])
+export const difficulty = pgEnum("difficulty",['Easy','Medium','Hard'])
 export const exercisesReviewType = pgEnum("exercises_review_type", ['manual', 'peer', 'facilitator', 'automatic'])
 export const exercisesSubmissionType = pgEnum("exercises_submission_type", ['number', 'text', 'text_large', 'attachments', 'url'])
 export const submissionsState = pgEnum("submissions_state", ['completed', 'pending', 'rejected'])
@@ -1850,10 +1851,32 @@ export const zuvyStudentAttendance = main.table("zuvy_student_attendance",{
         meetingId:varchar('meetingId').notNull()
 })
 
+export const codingQuestions = main.table("coding_questions",{
+    id: bigserial("id", { mode: "bigint" }).primaryKey().notNull(),
+    title: varchar("title", { length: 255 }).notNull(),
+    description: text("description").notNull(),
+    difficulty: difficulty("difficulty"),
+    tags: text("tags"),
+    authorId: integer("author_id").notNull(),
+    inputBase64: text("input_base64"), 
+    examples: jsonb("examples"), 
+    testCases: jsonb("test_cases"), 
+    expectedOutput: jsonb("expected_output"), 
+    solution: text("solution"), 
+    createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }),
+    updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }),
+})
+
+export const codingSubmission = main.table("coding_submission", {
+    id: bigserial("id", { mode: "bigint" }).primaryKey().notNull(),
+    user_id: integer("user_id").references(() => users.id).notNull(),
+    question_solved: jsonb("question_solved").notNull(), 
+    created_at: timestamp("created_at", { withTimezone: true, mode: 'string' }),
+    updated_at: timestamp("updated_at", { withTimezone: true, mode: 'string' }),
+})
 export const zuvyMeetingAttendance=main.table("zuvy_meeting_attendance",{
         id:serial("id").primaryKey().notNull(),
         meetingId:varchar("meetingid"),
         batchid:varchar("batchid"),
-        bootcampid:varchar("bootcampid"),
-
+        bootcampid:varchar("bootcampid")
 })
