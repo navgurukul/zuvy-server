@@ -184,11 +184,11 @@ async getQuestionsWithStatus(userId: number) {
       .from(codingSubmission)
       .where(sql`${codingSubmission.user_id} = ${userId}`)
 
-
+    const count = userSubmissions.length;
     const response = questions.map(question => ({
       id: question.id.toString(),
       title: question.title,
-      status: userSubmissions[0].question_solved[question.id.toString()]?.status || null,
+      status: count !== 0 ? (userSubmissions[0].question_solved[question.id.toString()]?.status || null):null,
       difficulty: question.difficulty,
     }));
 
