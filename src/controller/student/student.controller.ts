@@ -43,7 +43,6 @@ export class StudentController {
   async getPublicBootcamp(
     @Query('searchTerm') searchTerm: string,
   ): Promise<object> {
-    console.log('inside public seraching');
     const [err, res] =
       await this.studentService.searchPublicBootcampByStudent(searchTerm);
     if (err) {
