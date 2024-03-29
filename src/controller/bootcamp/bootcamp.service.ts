@@ -381,7 +381,7 @@ export class BootcampService {
       if (users_data.length == 1) {
         let userData = await db.select().from(users).where(sql`${users.email} = ${users_data[0].email}`)
         if (userData.length >= 1){
-          let enrollUser = await db.select().from(batchEnrollments).where(sql`${batchEnrollments.userId} = ${userData[0].id} and ${batchEnrollments.bootcampId} = ${bootcampId}`)
+          let enrollUser = await db.select().from(batchEnrollments).where(sql`${batchEnrollments.userId} = ${userData[0].id} and ${batchEnrollments.batchId} = ${batchId}`)
           if (enrollUser.length != 0) {
             return [
               { status: 'error', message: 'The user is already enrolled in this batch.', code: 407 },
@@ -483,12 +483,13 @@ export class BootcampService {
       } else {
         queryString = sql`${batchEnrollments.bootcampId} = ${bootcamp_id}`;
       }
-
+      console.log('queryString: ',queryString);
       const totalStudents = await db
-        .select({ count: count(batchEnrollments.bootcampId) })
-        .from(batchEnrollments)
-        .where(queryString);
-
+      .select({ count: count(batchEnrollments.bootcampId) })
+      .from(batchEnrollments)
+      .where(queryString);
+      
+      console.log('totalStudents:', totalStudents);
       let totalPages = Math.ceil(totalStudents[0].count / limit);
       let batchEnrollmentsData = await db
         .select()
