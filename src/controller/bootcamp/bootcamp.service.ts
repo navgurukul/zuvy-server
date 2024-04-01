@@ -330,7 +330,7 @@ export class BootcampService {
         const userEnrolled = await db
           .select()
           .from(batchEnrollments)
-          .where(sql`${batchEnrollments.batchId} = ${batch.id}`);
+          .where(sql`${batchEnrollments.batchId} = ${batch.id} and ${batchEnrollments.bootcampId} = ${bootcamp_id}`);
         batch['students_enrolled'] = userEnrolled.length;
         return batch; // return the modified batch
       });
@@ -572,7 +572,6 @@ export class BootcampService {
           ];
         }
       }
-      console.log(studentsEmails)
       return [
         null,
         { status: 'success', studentsEmails: studentsEmails, totalPages, totalStudents: totalStudents[0].count, code: 200 },
