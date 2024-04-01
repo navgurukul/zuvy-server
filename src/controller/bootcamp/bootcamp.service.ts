@@ -378,6 +378,23 @@ export class BootcampService {
         ];
       }
 
+      let batch = await db
+        .select()
+        .from(batches)
+        .where(sql`${batches.id} = ${batchId}`);
+      if (batch.length === 0) {
+        return [
+          { status: 'error', message: 'Batch not found', code: 404 },
+          null,
+        ];
+      }
+      
+      let totalstudents = await db.select().from(batchEnrollments).where(sql`${batchEnrollments.batchId} = ${batchId}`);
+      
+      if ((totalstudents.length + users_data.length) > batch[0].capEnrollment) {
+            return [{ 'status': 'error', 'message': 'The maximum capacity for the batch has been reached', 'code': 400 }, null];
+      }
+
       if (users_data.length == 1) {
         let userData = await db.select().from(users).where(sql`${users.email} = ${users_data[0].email}`)
         if (userData.length >= 1 && batchId ){
@@ -389,7 +406,9 @@ export class BootcampService {
             ];
           }
         }
+
       }
+
       let report = [];
       let userReport = [];
       for (let i = 0; i < users_data.length; i++) {
