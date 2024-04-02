@@ -500,7 +500,7 @@ export class ClassesService {
       const currentTime = new Date();
 
       const classes = await db.select().from(classesGoogleMeetLink).where(sql`${classesGoogleMeetLink.batchId} = ${batchId}`);
-      const sortedClasses = _.orderBy(classes, classObj => new Date(classObj.startTime), 'asc');
+      const sortedClasses = _.orderBy(classes, classObj => new Date(classObj.startTime), 'desc');
       const completedClasses = [];
       const ongoingClasses = [];
       const upcomingClasses = [];
@@ -615,7 +615,7 @@ export class ClassesService {
         .where(sql`${classesGoogleMeetLink.bootcampId} = ${bootcampId}`)
 
 
-      const sortedClasses = _.orderBy(classes, classObj => new Date(classObj.startTime), 'asc');
+      const sortedClasses = _.orderBy(classes, classObj => new Date(classObj.startTime), 'desc');
       const completedClasses = [];
       const ongoingClasses = [];
       const upcomingClasses = [];
