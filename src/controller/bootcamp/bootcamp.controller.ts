@@ -1,6 +1,6 @@
 import { Controller, Get, Post, Put, Patch, Delete, Body, Param, ValidationPipe, UsePipes, Optional, Query, BadRequestException, Req } from '@nestjs/common';
 import { BootcampService } from './bootcamp.service';
-import { ApiTags, ApiBody, ApiOperation, ApiCookieAuth, ApiQuery } from '@nestjs/swagger';
+import { ApiTags, ApiBody, ApiOperation, ApiCookieAuth, ApiQuery, ApiParam } from '@nestjs/swagger';
 import { CreateBootcampDto, EditBootcampDto, PatchBootcampDto, studentDataDto, PatchBootcampSettingDto } from './dto/bootcamp.dto';
 import { ApiBearerAuth } from '@nestjs/swagger';
 import { Request } from '@nestjs/common';
@@ -386,5 +386,49 @@ export class BootcampController {
       throw new BadRequestException(error.message);
     }
   }
+
+  // @Put('/batch/change/:batch_id/:old_batch_id/:student_id')
+  // @ApiOperation({ summary: 'Students batch changing api' })
+  // @ApiQuery({
+  //   name: 'batch_id',
+  //   required: false,
+  //   type: Number,
+  //   description: 'batch id',
+  // })
+  // @ApiQuery({
+  //   name: 'old_batch_id',
+  //   required: false,
+  //   type: Number,
+  //   description: 'old batch id',
+  // })
+  // @ApiQuery({
+  //   name: 'student_id',
+  //   required: false,
+  //   type: Number,
+  //   description: 'student id',
+  // })
+  // @ApiBearerAuth()
+  // async assignOtherBatch(
+  //   @Query('batch_id') batch_id: number,
+  //   @Query('old_batch_id') old_batch_id: number,
+  //   @Query('student_id') student_id: number,
+  // ): Promise<object> {
+  //   try {
+  //     const result = await this.bootcampService.assignOtherBatchToStudent(
+  //       batch_id, old_batch_id, student_id
+  //     );
+  //     // if (error) {
+  //     //   throw new BadRequestException(error);
+  //     // }
+  //     return {
+  //       status: 'success',
+  //       data: result,
+  //       code: 200,
+  //     };
+  //   } catch (error) {
+  //     console.log('error');
+  //     throw new BadRequestException(error.message);
+  //   }
+  // }
 }
 
