@@ -22,7 +22,34 @@ const { ZUVY_CONTENT_URL ,RAPID_API_KEY,RAPID_HOST} = process.env; // INPORTING 
 
 @Injectable()
 export class CodingPlatformService {
-   async submitCode(sourceCode: SubmitCodeDto) {
+   async submitCode(sourceCode: SubmitCodeDto,questionId:number,action:string) {
+
+    var input = [];
+    var output = [];
+    const question = await this.getQuestionById(questionId);
+      const testCases = question[0].testCases;
+      let testCasesCount;
+      if(action == 'submit')
+      {
+      testCasesCount = testCases.length;
+      input.push(testCasesCount);
+      testCases.forEach(testCase => {
+        input.push(...testCase.input.flat());
+        output.push(testCase.output);
+      });
+      }
+      else if(action == 'run')
+      {
+        testCasesCount = 1;
+        input.push(testCasesCount);
+        input.push(...testCases[0].input)
+        output.push(testCases[0].output)
+      }
+      
+    const stdinput = input.map(item => item.toString()).join('\n');
+    const encodedStdInput = Buffer.from(stdinput).toString('base64')
+    const stdoutput = output.map(item => item.toString()).join('\n');
+    const encodedStdOutput = Buffer.from(stdoutput).toString('base64')
     const options = {
   method: 'POST',
   url: 'https://judge0-ce.p.rapidapi.com/submissions',
@@ -39,8 +66,8 @@ export class CodingPlatformService {
   data: {
     language_id: sourceCode.languageId,
     source_code: sourceCode.sourceCode,
-    stdin: sourceCode.stdInput,
-    expected_output: sourceCode.expectedOutput
+    stdin: encodedStdInput.trim(),
+    expected_output: encodedStdOutput.trim()
 
   }
 };

@@ -29,22 +29,32 @@ export class CodingPlatformController {
     type: Number,
     description: 'Question id of the question attempted',
   })
+  @ApiQuery({
+    name: 'action',
+    required:true,
+    type: String,
+    description: 'Action such as submit or run'
+  })
     @ApiBearerAuth()
     async submitCode(@Body() sourceCode : SubmitCodeDto,
     @Query('userId') userId: number,
     @Query('questionId') questionId: number,
+    @Query('action') action: string
     )
     {
         let statusId = 1;
         let getCodeData;
         const res =
-      await this.codingPlatformService.submitCode(sourceCode);
+      await this.codingPlatformService.submitCode(sourceCode,questionId,action);
        while(statusId < 3)
        {
          getCodeData = await this.codingPlatformService.getCodeInfo(res.token);
          statusId = getCodeData.status_id;
        }
+       if(action == 'submit')
+       {
        await this.codingPlatformService.updateSubmissionWithToken(userId,questionId,getCodeData.token,getCodeData.status.description)
+       }
     return getCodeData;
     }
 
