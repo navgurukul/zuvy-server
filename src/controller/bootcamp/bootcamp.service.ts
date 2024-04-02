@@ -602,7 +602,6 @@ export class BootcampService {
         .select()
         .from(batchEnrollments)
         .where(queryString)
-
       const studentsEmails = [];
       for (const studentEmail of batchEnrollmentsData) {
         try {
@@ -613,7 +612,7 @@ export class BootcampService {
               .select()
               .from(users)
               .where(sql`(${eq(users.id, studentEmail.userId)} AND (LOWER(${users.name}) LIKE ${searchTerm.toLowerCase()} || '%'
-                OR LOWER(${users.email}) LIKE ${searchTerm.toLowerCase()} || '%'))`);
+                OR LOWER(${users.email}) LIKE ${searchTerm.toLowerCase()} || '%'))`);  
 
           }
           else if (count == 0) {
