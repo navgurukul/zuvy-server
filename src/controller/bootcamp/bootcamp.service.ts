@@ -407,8 +407,15 @@ export class BootcampService {
               null,
             ];
           }
+        }  else if (userData.length >= 1 && bootcampId ){
+          let enrollUser = await db.select().from(batchEnrollments).where(sql`${batchEnrollments.userId} = ${userData[0].id} and ${batchEnrollments.bootcampId} = ${bootcampId} `)
+          if (enrollUser.length != 0) {
+            return [
+              { status: 'error', message: 'The user is already enrolled in this bootcamp.', code: 407 },
+              null,
+            ];
+          }
         }
-
       }
 
       let report = [];
