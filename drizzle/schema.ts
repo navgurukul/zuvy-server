@@ -141,25 +141,6 @@ export const ongoingTopics = main.table("ongoing_topics", {
         updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }),
 });
 
-export const gtaGame = main.table("gta_game", {
-        id: serial("id").primaryKey().notNull(),
-        firstName: varchar("first_name", { length: 255 }).notNull(),
-        lastName: text("last_name").notNull(),
-        gender: varchar("gender", { length: 255 }).notNull(),
-        country: varchar("country", { length: 255 }),
-        password: varchar("password", { length: 255 }).notNull(),
-        userId: varchar("user_id", { length: 255 }).notNull(),
-});
-
-export const hackathonForTemp = main.table("hackathon_for_temp", {
-        id: serial("id").primaryKey().notNull(),
-        firstName: varchar("first_name", { length: 255 }).notNull(),
-        lastName: text("last_name").notNull(),
-        gender: varchar("gender", { length: 255 }).notNull(),
-        country: varchar("country", { length: 255 }),
-        password: varchar("password", { length: 255 }).notNull(),
-        userId: varchar("user_id", { length: 255 }).notNull(),
-});
 
 export const kDetails = main.table("k_details", {
         id: bigserial("id", { mode: "bigint" }).primaryKey().notNull(),
@@ -283,18 +264,7 @@ export const partnerGroupUser = main.table("partner_group_user", {
         email: varchar("email", { length: 255 }),
 });
 
-export const merakihackthon = main.table("merakihackthon", {
-        id: serial("id").primaryKey().notNull(),
-        userId: integer("user_id").notNull().references(() => users.id),
-        email: varchar("email", { length: 255 }).notNull(),
-        durations: integer("durations").notNull(),
-        createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).notNull(),
-},
-(table) => {
-        return {
-                mainMerakihackthonUserIdUnique: unique("main_merakihackthon_user_id_unique").on(table.userId),
-        }
-});
+
 
 export const mergedClasses = main.table("merged_classes", {
         id: serial("id").primaryKey().notNull(),
@@ -345,12 +315,13 @@ export const mentors = main.table("mentors", {
 });
 
 export const merakiCertificate = main.table("meraki_certificate", {
-        id: serial("id").primaryKey().notNull(),
-        userId: integer("user_id").references(() => users.id),
-        url: varchar("url", { length: 255 }),
-        registerAt: varchar("register_at", { length: 255 }),
-        createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }),
-        pathwayCode: varchar("pathway_code", { length: 255 }),
+	id: serial("id").primaryKey().notNull(),
+	userId: integer("user_id").references(() => users.id),
+	url: varchar("url", { length: 255 }),
+	registerAt: varchar("register_at", { length: 255 }),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }),
+	pathwayId: integer("pathway_id"),
+	pathwayCode: varchar("pathway_code", { length: 255 }),
 });
 
 export const partnerSpecificBatches = main.table("partner_specific_batches", {
@@ -1586,14 +1557,25 @@ export const c4CaTeams = main.table("c4ca_teams", {
 });
 
 export const assessmentOutcome = main.table("assessment_outcome", {
-        id: serial("id").primaryKey().notNull(),
-        userId: integer("user_id").references(() => users.id),
-        assessmentId: integer("assessment_id").notNull(),
-        status: varchar("status", { length: 255 }).notNull(),
-        selectedOption: integer("selected_option"),
-        attemptCount: integer("attempt_count").notNull(),
-        teamId: integer("team_id").references(() => c4CaTeams.id, { onDelete: "set null" } ),
-        selectedMultipleOption: varchar("selected_multiple_option", { length: 255 }),
+	id: serial("id").primaryKey().notNull(),
+	userId: integer("user_id").references(() => users.id),
+	assessmentId: integer("assessment_id").notNull(),
+	status: varchar("status", { length: 255 }).notNull(),
+	selectedOption: integer("selected_option"),
+	attemptCount: integer("attempt_count").notNull(),
+	multipleChoice: varchar("multiple_choice", { length: 255 }),
+	teamId: integer("team_id").references(() => c4CaTeams.id, { onDelete: "set null" } ),
+	selectedMultipleOption: varchar("selected_multiple_option", { length: 255 }),
+});
+
+export const partnerSpecificBatchesV2 = main.table("partner_specific_batches_v2", {
+	id: serial("id").primaryKey().notNull(),
+	classId: integer("class_id").references(() => classes.id),
+	recurringId: integer("recurring_id").references(() => recurringClasses.id),
+	spaceId: integer("space_id").references(() => partnerSpace.id, { onDelete: "set null" } ),
+	groupId: integer("group_id").references(() => spaceGroup.id, { onDelete: "set null" } ),
+	partnerId: integer("partner_id").references(() => partners.id),
+	pathwayId: integer("pathway_id"),
 });
 
 export const assessmentResult = main.table("assessment_result", {
@@ -1669,29 +1651,9 @@ export const scratchSample = main.table("scratch_sample", {
         projectId: varchar("project_id", { length: 255 }).notNull(),
         url: varchar("url", { length: 255 }).notNull(),
         projectName: varchar("project_name", { length: 255 }),
-        createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+        createdAt: date("created_at"),
 });
 
-export const developersResume = main.table("developers_resume", {
-        id: serial("id").primaryKey().notNull(),
-        name: varchar("name", { length: 255 }),
-        email: varchar("email", { length: 255 }),
-        password: varchar("password", { length: 255 }),
-        role: varchar("role", { length: 255 }),
-        education: varchar("education", { length: 255 }),
-        intrests: varchar("intrests", { length: 255 }),
-        skills: varchar("skills", { length: 255 }),
-        experience: varchar("experience", { length: 255 }),
-        programmingLanguages: varchar("programming_languages", { length: 255 }),
-        resonalLanguage: varchar("resonal_language", { length: 255 }),
-        knownFramworks: varchar("known_framworks", { length: 255 }),
-        learningPlan: varchar("learning_plan", { length: 255 }),
-},
-(table) => {
-        return {
-                mainDevelopersResumeEmailUnique: unique("main_developers_resume_email_unique").on(table.email),
-        }
-});
 
 export const classesGoogleMeetLink= main.table("zuvy_classes_google_meet_link",{
 	id: serial("id").primaryKey().notNull(),
