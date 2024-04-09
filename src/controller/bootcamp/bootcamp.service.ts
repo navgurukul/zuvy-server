@@ -631,6 +631,7 @@ export class BootcampService {
               userId: emailFetched[0].id.toString(),
               bootcampId: studentEmail.bootcampId,
               profilePicture: emailFetched[0].profilePicture,
+              attendance: studentEmail.attendance
             };
             let batchInfo;
             let progressInfo;
