@@ -713,7 +713,7 @@ export class BootcampService {
         .from(batches)
         .where(eq(batches.bootcampId, bootcamp_id));
 
-      const batchIds = batchesData.map((obj) => obj.id);  
+      const batchIds = batchesData.map((obj) => obj.id);
       const studentsEmails = [];
       for (const studentEmail of batchEnrollmentsData) {
         try {
@@ -739,11 +739,14 @@ export class BootcampService {
               bootcampId: studentEmail.bootcampId,
               profilePicture: emailFetched[0].profilePicture,
               attendance: studentEmail.attendance,
-              batchName: null
+              batchName: null,
             };
             let batchInfo;
             let progressInfo;
-            if (studentEmail.batchId && batchIds.includes(studentEmail.batchId)) {
+            if (
+              studentEmail.batchId &&
+              batchIds.includes(studentEmail.batchId)
+            ) {
               batchInfo = await db
                 .select()
                 .from(batches)
