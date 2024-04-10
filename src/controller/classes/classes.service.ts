@@ -245,6 +245,7 @@ export class ClassesService {
       if (!fetchedTokens || fetchedTokens.length === 0) {
         return { status: 'error', message: 'Unable to fetch tokens' };
       }
+      //console.log("userTokens",fetchedTokens);
       const auth2Client = new google.auth.OAuth2();
       auth2Client.setCredentials({
         access_token: fetchedTokens[0].accessToken,
@@ -258,8 +259,11 @@ export class ClassesService {
         maxResults: 1000,
         filters: `calendar_event_id==${meetingId}`,
       });
+      
       const attendanceSheet = {};
+      console.log("response",response);
       if (response.data.items) {
+        console.log("items",response.data.items);
         response.data.items.forEach(item => {
           const event = item.events[0];
           const durationSeconds = event.parameters.find(param => param.name === 'duration_seconds')?.intValue || '';
@@ -271,7 +275,6 @@ export class ClassesService {
             attendanceSheet[email] = parseInt(durationSeconds) || 0;
           }
         });
-
         const zuvyEmail = attendanceSheet['team@zuvy.org'];
         const totalDuration = zuvyEmail || 0;
         const threshold = 0.7 * totalDuration;
