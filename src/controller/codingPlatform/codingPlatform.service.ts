@@ -96,7 +96,6 @@ export class CodingPlatformService {
 
 try {
 	const response = await axios.request(options);
-	//console.log(response.data);
     return response.data;
 } catch (error) {
 	throw error;
@@ -206,7 +205,6 @@ async getQuestionsWithStatus(userId: number) {
     const questions = await db.select()
       .from(codingQuestions)
      
-
     const userSubmissions = await db.select()
       .from(codingSubmission)
       .where(sql`${codingSubmission.user_id} = ${userId}`)
