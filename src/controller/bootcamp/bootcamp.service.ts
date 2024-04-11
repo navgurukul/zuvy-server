@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { db } from '../../db/index';
-import { eq, sql, count } from 'drizzle-orm';
+import { eq, sql, count,inArray } from 'drizzle-orm';
 // import { BatchesService } from '../batches/batch.service';
 import axios from 'axios';
 import * as _ from 'lodash';
@@ -26,17 +26,27 @@ export class BootcampService {
         .select()
         .from(batchEnrollments)
         .where(sql`${batchEnrollments.bootcampId} = ${bootcampId}`);
-      let unEnrolledBatch = await db
+      const batchesData = await db
         .select()
-        .from(batchEnrollments)
-        .where(
-          sql`${batchEnrollments.bootcampId} = ${bootcampId} AND ${batchEnrollments.batchId} IS NULL`,
-        );
+        .from(batches)
+        .where(eq(batches.bootcampId, bootcampId));
+
+      const batchIds = batchesData.map((obj) => obj.id);
+      let unEnrolledStudents = enrolled.length;
+      if(batchIds.length!=0)
+        {  
+      let unEnrolledBatch = await db
+      .select()
+      .from(batchEnrollments)
+      .where( inArray(batchEnrollments.batchId, batchIds)
+      );
+        unEnrolledStudents = unEnrolledStudents - unEnrolledBatch.length;
+      }
       return [
         null,
         {
           students_in_bootcamp: enrolled.length,
-          unassigned_students: unEnrolledBatch.length,
+          unassigned_students: unEnrolledStudents,
         },
       ];
     } catch (error) {
