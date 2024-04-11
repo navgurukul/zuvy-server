@@ -38,7 +38,7 @@ export class BootcampService {
       let unEnrolledBatch = await db
       .select()
       .from(batchEnrollments)
-      .where( inArray(batchEnrollments.batchId, batchIds)
+      .where( sql`${batchEnrollments.bootcampId} = ${bootcampId} AND ${inArray(batchEnrollments.batchId, batchIds)}`
       );
         unEnrolledStudents = unEnrolledStudents - unEnrolledBatch.length;
       }
