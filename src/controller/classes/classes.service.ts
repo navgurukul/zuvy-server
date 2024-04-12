@@ -84,6 +84,7 @@ export class ClassesService {
   async googleAuthentication(@Res() res) {
     const url = auth2Client.generateAuthUrl({
       access_type: 'offline',
+      prompt: 'consent',
       scope: [
         ...scopes,
         'https://www.googleapis.com/auth/userinfo.email',
