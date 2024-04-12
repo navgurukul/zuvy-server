@@ -113,6 +113,7 @@ export class ClassesService {
 
   async saveTokensToDatabase(tokens, userData) {
     try {
+      console.log('tokens: ', tokens);
       const { access_token, refresh_token } = tokens;
       const accessToken = access_token;
       const refreshToken = refresh_token;
@@ -127,6 +128,7 @@ export class ClassesService {
         .select()
         .from(userTokens)
         .where(eq(userTokens.userEmail, userEmail));
+      console.log('existingUser: ', existingUser)
 
       const dbUserId = await db
         .select()
@@ -140,7 +142,7 @@ export class ClassesService {
         userId,
         userEmail,
       };
-
+      console.log('creatorDetails: ', creatorDetails);
       if (existingUser.length !== 0) {
         await db
           .update(userTokens)
@@ -148,8 +150,14 @@ export class ClassesService {
           .where(eq(userTokens.userEmail, userEmail))
           .returning();
       } else {
-        await db.insert(userTokens).values(creatorDetails).returning();
+        console.log('creatorDetails: ', creatorDetails);
+         await db.insert(userTokens).values(creatorDetails).returning();
       }
+      console.log('end')
+      return {
+        success: 'success',
+        message: 'Tokens saved to the database',
+      };
     } catch (error) {
       return {
         success: 'not success',
