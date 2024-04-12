@@ -140,11 +140,12 @@ export class ClassesService {
       console.log('creatorDetails: ', creatorDetails);
       if (existingUser.length !== 0) {
         await db
-          .update(userTokens)
-          .set({ ...creatorDetails })
-          .where(eq(userTokens.userEmail, userEmail))
-          .returning();
+        .update(userTokens)
+        .set({ ...creatorDetails })
+        .where(eq(userTokens.userEmail, userEmail))
+        .returning();
       } else {
+        console.log('creatorDetails: ', creatorDetails);
         let res = await db.insert(userTokens).values(creatorDetails).returning();
         console.log('res: ', res);
       }
