@@ -86,7 +86,10 @@ export class ClassesService {
       access_type: 'offline',
       prompt: 'consent',
       scope: [
-        ...scopes
+        ...scopes,
+        'https://www.googleapis.com/auth/userinfo.email',
+        'https://www.googleapis.com/auth/userinfo.profile',
+        'https://www.googleapis.com/auth/admin.reports.audit.readonly',
       ],
     });
     return res.redirect(url);
