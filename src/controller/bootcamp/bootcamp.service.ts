@@ -966,23 +966,27 @@ export class BootcampService {
           .select()
           .from(classesGoogleMeetLink)
           .where(sql`${classesGoogleMeetLink.batchId} = ${batchId}`);
-
-        const completedClasses = [];
-        const ongoingClasses = [];
-        const upcomingClasses = [];
-
-        for (const classObj of classes) {
+          const completedClasses = classes
+          .filter((classObj) => {
+            const endTime = new Date(classObj.endTime);
+            return currentTime > endTime;
+          })
+          .sort((a, b) => {
+            const aStartTime = new Date(a.startTime);
+            const bStartTime = new Date(b.startTime);
+            return bStartTime.getTime() - aStartTime.getTime();
+          });
+  
+        const ongoingClasses = classes.filter((classObj) => {
           const startTime = new Date(classObj.startTime);
           const endTime = new Date(classObj.endTime);
+          return currentTime >= startTime && currentTime <= endTime;
+        });
 
-          if (currentTime > endTime) {
-            completedClasses.push(classObj);
-          } else if (currentTime >= startTime && currentTime <= endTime) {
-            ongoingClasses.push(classObj);
-          } else {
-            upcomingClasses.push(classObj);
-          }
-        }
+        const upcomingClasses = classes.filter((classObj) => {
+          const startTime = new Date(classObj.startTime);
+          return currentTime < startTime;
+        });
 
         return {
           status: 'success',
