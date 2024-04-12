@@ -116,6 +116,10 @@ export class ClassesService {
       const { access_token, refresh_token } = tokens;
       const accessToken = access_token;
       const refreshToken = refresh_token;
+      console.log('userData: ', userData);
+      console.log('userData.email: ', userData.email);
+      console.log('refreshToken: ', refreshToken);
+      console.log('accessToken: ', accessToken);
 
       const userEmail = userData.email;
 
