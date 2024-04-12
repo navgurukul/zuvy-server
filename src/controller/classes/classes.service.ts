@@ -117,7 +117,7 @@ export class ClassesService {
       const { access_token, refresh_token } = tokens;
       const accessToken = access_token;
       const refreshToken = refresh_token;
-
+      console.log('userData: ', userData)
       const userEmail = userData.email;
 
       const existingUser = await db
@@ -137,19 +137,20 @@ export class ClassesService {
         userId,
         userEmail,
       };
-      console.log('creatorDetails: ', creatorDetails);
-      if (existingUser.length !== 0) {
+      console.log('existingUser: ', existingUser);
+      if (existingUser.length == 0) {
+        console.log('Tokens saved to the database')
+        console.log('creatorDetails: ', creatorDetails);
+        let res = await db.insert(userTokens).values(creatorDetails).returning();
+        console.log('res: ', res);
+      } else {
+        console.log('Tokens update to the database')
         await db
         .update(userTokens)
         .set({ ...creatorDetails })
         .where(eq(userTokens.userEmail, userEmail))
         .returning();
-      } else {
-        console.log('creatorDetails: ', creatorDetails);
-        let res = await db.insert(userTokens).values(creatorDetails).returning();
-        console.log('res: ', res);
       }
-      console.log('end')
       return {
         success: 'success',
         message: 'Tokens saved to the database',
