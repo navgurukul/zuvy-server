@@ -86,10 +86,7 @@ export class ClassesService {
       access_type: 'offline',
       prompt: 'consent',
       scope: [
-        ...scopes,
-        'https://www.googleapis.com/auth/userinfo.email',
-        'https://www.googleapis.com/auth/userinfo.profile',
-        'https://www.googleapis.com/auth/admin.reports.audit.readonly',
+        ...scopes
       ],
     });
     return res.redirect(url);
@@ -114,14 +111,9 @@ export class ClassesService {
 
   async saveTokensToDatabase(tokens, userData) {
     try {
-      console.log('tokens: ', tokens);
       const { access_token, refresh_token } = tokens;
       const accessToken = access_token;
       const refreshToken = refresh_token;
-      console.log('userData: ', userData);
-      console.log('userData.email: ', userData.email);
-      console.log('refreshToken: ', refreshToken);
-      console.log('accessToken: ', accessToken);
 
       const userEmail = userData.email;
 
@@ -129,7 +121,6 @@ export class ClassesService {
         .select()
         .from(userTokens)
         .where(eq(userTokens.userEmail, userEmail));
-      console.log('existingUser: ', existingUser)
 
       const dbUserId = await db
         .select()
@@ -151,8 +142,8 @@ export class ClassesService {
           .where(eq(userTokens.userEmail, userEmail))
           .returning();
       } else {
-        console.log('creatorDetails: ', creatorDetails);
-         await db.insert(userTokens).values(creatorDetails).returning();
+        let res = await db.insert(userTokens).values(creatorDetails).returning();
+        console.log('res: ', res);
       }
       console.log('end')
       return {
