@@ -23,14 +23,17 @@ export class ClassesController {
 
   @Get('/')
   @ApiOperation({ summary: 'Google authenticate' })
-  async googleAuth(@Res() res) {
-    return this.classesService.googleAuthentication(res);
+  async googleAuth(@Res() res, 
+  @Query('userID') userId: number,
+  @Query('email') email: string ) {
+    return this.classesService.googleAuthentication(res, email, userId);
   }
 
   @Get('/redirect')
-  @ApiOperation({ summary: 'Google authentication redirect' })
   @ApiBearerAuth()
-  async googleAuthRedirect(@Req() request) {
+  @ApiOperation({ summary: 'Google authentication redirect' })
+  async googleAuthRedirect(@Req() request,
+  ) {
     return this.classesService.googleAuthenticationRedirect(request);
   }
 

@@ -45,10 +45,6 @@ const scopes = [
   'https://www.googleapis.com/auth/calendar',
   'https://www.googleapis.com/auth/drive',
 ];
-// export const getOAuth2Client =  () : OAuth2Client  => { // 2. So I set the return type as OAuth2Client
-
-//     return auth2Client; // 1. Inspecting auth2Client shows its of type OAuth2Client
-// };
 
 @Injectable()
 export class ClassesService {
@@ -81,19 +77,33 @@ export class ClassesService {
   //     return auth2Client;
   // }
 
-  async googleAuthentication(@Res() res) {
-    const url = auth2Client.generateAuthUrl({
+  async googleAuthentication(@Res() res, userEmail: string, userId : number) {
+    let url = auth2Client.generateAuthUrl({
       access_type: 'offline',
-      prompt: 'consent',
       scope: [
         ...scopes,
         'https://www.googleapis.com/auth/userinfo.email',
         'https://www.googleapis.com/auth/userinfo.profile',
         'https://www.googleapis.com/auth/admin.reports.audit.readonly',
       ],
+      prompt: 'consent',
+      state: `redirect_uri=https://dev.api.zuvy.org/classes/redirect/+user_id=${userId}+user_email=${userEmail}`,
     });
-    return res.redirect(url);
+    return res.send({url});
   }
+  // async generateAuthUrl(userId, userEmail, choose) {
+  //   let url;
+  //   // this condtion will give permissions for Calendar and Youtube
+  //   if (choose && choose.toLowerCase() === 'both') {
+  //     url = auth2Client.generateAuthUrl({
+  //       access_type: 'offline',
+  //       scope: Scopes,
+  //       prompt: 'consent',
+  //       state: `user_id=${userId}+user_email=${userEmail}`,
+  //     });
+  //   }
+  //   return url;
+  // }
 
   async googleAuthenticationRedirect(@Req() req) {
     const { code } = req.query;
@@ -117,7 +127,6 @@ export class ClassesService {
       const { access_token, refresh_token } = tokens;
       const accessToken = access_token;
       const refreshToken = refresh_token;
-      console.log('userData: ', userData)
       const userEmail = userData.email;
 
       const existingUser = await db
@@ -137,14 +146,9 @@ export class ClassesService {
         userId,
         userEmail,
       };
-      console.log('existingUser: ', existingUser);
       if (existingUser.length == 0) {
-        console.log('Tokens saved to the database')
-        console.log('creatorDetails: ', creatorDetails);
-        let res = await db.insert(userTokens).values(creatorDetails).returning();
-        console.log('res: ', res);
+        await db.insert(userTokens).values(creatorDetails).returning();
       } else {
-        console.log('Tokens update to the database')
         await db
         .update(userTokens)
         .set({ ...creatorDetails })
