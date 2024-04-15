@@ -1880,3 +1880,57 @@ export const zuvyMeetingAttendance=main.table("zuvy_meeting_attendance",{
         batchid:varchar("batchid"),
         bootcampid:varchar("bootcampid")
 })
+
+export const modules = main.table("zuvy_modules", {
+        id:serial("id").primaryKey().notNull(),
+        bootcampId:integer("bootcamp_id").references(() => bootcamps.id),
+        name:varchar("name"),
+        description:text("description"),
+        order:integer("order")
+})
+
+export const chapters = main.table("zuvy_chapters", {
+        id:serial("id").primaryKey().notNull(),
+        moduleId:integer("module_id").references(() => modules.id),
+        name:varchar("name"),
+        description:text("description"),
+        order:integer("order")
+})
+
+export const topics = main.table("zuvy_topics", {
+        id:serial("id").primaryKey().notNull(),
+        chapterId:integer("chapter_id").references(() => chapters.id),
+        name:varchar("name"),
+        title : varchar("title"),
+        content:text("content"),
+        links:text("links"),
+        lable: text("lable"),
+        order:integer("order")
+})
+
+export const quizzes = main.table("zuvy_quizzes", {
+        id:serial("id").primaryKey().notNull(),
+        chapterId:integer("chapter_id").references(() => chapters.id),
+        name:varchar("name"),
+        option1:varchar("option1"),
+        option2:varchar("option2"),
+        option3:varchar("option3"),
+        option4:varchar("option4"),
+        correctOption:varchar("correct_option"),
+        order:integer("order")
+})
+
+export const assignments = main.table("zuvy_coding_challenges", {
+        id:serial("id").primaryKey().notNull(),
+        chapterId:integer("chapter_id").references(() => chapters.id),
+        name:varchar("name"),
+        title:varchar("title"),
+        examples:text("examples"),
+        testCases:text("test_cases"),
+        expectedOutput:text("expected_output"),
+        difficulty:varchar("difficulty"),
+        tags:text("tags"),
+        description:text("description"),
+        solution:text("solution"),
+        order:integer("order")
+})
