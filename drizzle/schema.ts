@@ -1,4 +1,5 @@
 import { relations } from "drizzle-orm"
+import { binary } from "drizzle-orm/mysql-core"
 import { pgTable, jsonb, pgSchema, pgEnum, serial, varchar, timestamp, foreignKey, integer, text, unique, date, bigserial, boolean, bigint, index, char, json, uniqueIndex, doublePrecision, customType } from "drizzle-orm/pg-core"
 // import { users } from './users'; // Import the 'users' module
 
@@ -1853,6 +1854,7 @@ export const zuvyStudentAttendance = main.table("zuvy_student_attendance",{
 
 export const codingQuestions = main.table("coding_questions",{
     id: bigserial("id", { mode: "bigint" }).primaryKey().notNull(),
+    chapterId: integer("chapter_id").references(() => moduleChapter.id),
     title: varchar("title", { length: 255 }).notNull(),
     description: text("description").notNull(),
     difficulty: difficulty("difficulty"),
@@ -1879,4 +1881,34 @@ export const zuvyMeetingAttendance=main.table("zuvy_meeting_attendance",{
         meetingId:varchar("meetingid"),
         batchid:varchar("batchid"),
         bootcampid:varchar("bootcampid")
+})
+
+export const courseModules = main.table("course_modules",{
+        id:serial("id").primaryKey().notNull(),
+        bootcampId: integer("bootcamp_id").references(() => bootcamps.id),
+        name: varchar("name"),
+        description: text("description"),
+        codingProblems: jsonb("coding_problems"),
+        order: integer("order")
+})
+
+export const topics = main.table("module_topics",{
+       id: serial("id").primaryKey().notNull(),
+       name:varchar("name") 
+})
+
+export const moduleQuiz = main.table("module_quiz",{
+        id: serial("id").primaryKey().notNull(),
+        chapterId: integer("chapter_id").references(() => moduleChapter.id),
+        name: varchar("name"),
+        questions: jsonb("question")
+})
+
+export const moduleChapter = main.table("module_chapter",{
+        id: serial("id").primaryKey().notNull(),
+        title: varchar("title"),
+        description: text("description"),
+        topicId: integer("topic_id").references(() => topics.id),
+        moduleId: integer("module_id").references(() => courseModules.id),
+        file: bytea("file")
 })
