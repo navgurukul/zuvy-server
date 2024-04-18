@@ -121,15 +121,22 @@ export class ClassesController {
   @Get('/getAttendance/:meetingId')
   @ApiBearerAuth()
   @ApiOperation({ summary: "Get the google class attendance by meetingId" })
-  extractMeetAttendance(@Param('meetingId') meetingId: string): Promise<object> {
-    return this.classesService.getAttendance(meetingId);
+  extractMeetAttendance(@Req() req,@Param('meetingId') meetingId: string): Promise<object> {
+    const authToken = req.headers.authorization;
+    // console.log('req.headers.authorization: ',req.headers)
+    // console.log('req: ',req)
+    // console.log('authToken: ',authToken);
+    console.log('req.user: ', req.user)
+
+    return this.classesService.getAttendance(meetingId,req);
   }
 
   @Get('/getAllAttendance/:batchId')
   @ApiBearerAuth()
   @ApiOperation({ summary: "Get the google all classes attendance by batchID" })
-  extractMeetAttendanceByBatch(@Param('batchId') batchId: string): Promise<object> {
-    return this.classesService.getAttendanceByBatchId(batchId);
+  extractMeetAttendanceByBatch(@Req() req,@Param('batchId') batchId: string): Promise<object> {
+
+    return this.classesService.getAttendanceByBatchId(batchId, req.user);
   }
   @Get('/meetingAttendance')
   @ApiBearerAuth()
