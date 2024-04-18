@@ -105,15 +105,17 @@ export class ClassesService {
   //   return url;
   // }
 
-  async googleAuthenticationRedirect(@Req() req, @Res() res){
+  async googleAuthenticationRedirect(@Req() req) {
     const { code } = req.query;
     const { tokens } = await auth2Client.getToken(code);
     auth2Client.setCredentials(tokens);
     const userData = await this.getUserData(auth2Client);
     await this.saveTokensToDatabase(tokens, userData);
-    return res.redirect('https://dev.api.zuvy.org/classes');
+    return {
+      message: 'Authenticated',
+      tokens,
+    };
   }
-
   private async getUserData(auth2Client) {
     const oauth2 = google.oauth2({ version: 'v2', auth: auth2Client });
     const { data } = await oauth2.userinfo.get();
@@ -307,17 +309,16 @@ export class ClassesService {
   //     }
   // }
 
-  async getAttendance(meetingId, req = null) {
+  async getAttendance(meetingId) {
     try {
       const fetchedTokens = await db
         .select()
         .from(userTokens)
-        .where(eq(userTokens.userId, req.user[0].id));
-      console.log('fetchedTokens: ', fetchedTokens);
+        .where(eq(userTokens.userId, 44848));
       if (!fetchedTokens || fetchedTokens.length === 0) {
         return { status: 'error', message: 'Unable to fetch tokens' };
       }
-
+      const auth2Client = new google.auth.OAuth2();
       auth2Client.setCredentials({
         access_token: fetchedTokens[0].accessToken,
         refresh_token: fetchedTokens[0].refreshToken,
@@ -368,23 +369,20 @@ export class ClassesService {
         };
       }
     } catch (error) {
-      console.log('error: ', error);
       throw new Error(`Error executing request: ${error.message}`);
     }
   }
 
-  async getAttendanceByBatchId(batchId: any, userData) {
+  async getAttendanceByBatchId(batchId: any) {
     try {
       const fetchedStudents = await db
         .select()
         .from(batchEnrollments)
         .where(eq(batchEnrollments.batchId, batchId));
-        
       const fetchedTokens = await db
         .select()
         .from(userTokens)
-        .where(eq(userTokens.userId, userData[0].id));
-
+        .where(eq(userTokens.userId, 44848));
       if (!fetchedTokens || fetchedTokens.length === 0) {
         return { status: 'error', message: 'Unable to fetch tokens' };
       }
