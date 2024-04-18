@@ -1,4 +1,4 @@
-import { Injectable, Req, Res } from '@nestjs/common';
+import { Injectable, Req, Res,  HttpStatus, Redirect } from '@nestjs/common';
 import {
   bootcamps,
   batches,
@@ -111,7 +111,7 @@ export class ClassesService {
     auth2Client.setCredentials(tokens);
     const userData = await this.getUserData(auth2Client);
     await this.saveTokensToDatabase(tokens, userData);
-    return res.redirect('https://dev.api.zuvy.org/classes');
+    return res.redirect(HttpStatus.SEE_OTHER,'https://dev.api.zuvy.org/classes');
   }
 
   private async getUserData(auth2Client) {
