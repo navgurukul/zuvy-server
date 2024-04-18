@@ -111,8 +111,8 @@ export class ClassesService {
     auth2Client.setCredentials(tokens);
     const userData = await this.getUserData(auth2Client);
     await this.saveTokensToDatabase(tokens, userData);
-    return `<div style="text-align: center;">
-    <a href="https://dev.api.zuvy.org/classes" style="display: inline-block; padding: 10px 20px; background-color: #28a745; color: white; text-decoration: none; font-weight: bold; border-radius: 5px;">Visit Zuvy Again</a>
+    return `<div style="text-align: center; margin-top: 20px;">
+    <a href="https://dev.app.zuvy.org/admin" style="display: inline-block; padding: 15px 30px; background-color: #28a745; color: white; text-decoration: none; font-weight: bold; border-radius: 8px; box-shadow: 0px 4px 6px rgba(0, 0, 0, 0.1); transition: background-color 0.3s ease;">Visit Zuvy Again</a>
   </div>`
   }
 
