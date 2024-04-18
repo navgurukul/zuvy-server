@@ -111,7 +111,7 @@ export class ClassesService {
     auth2Client.setCredentials(tokens);
     const userData = await this.getUserData(auth2Client);
     await this.saveTokensToDatabase(tokens, userData);
-    return res.redirect(HttpStatus.SEE_OTHER,'https://dev.api.zuvy.org/classes');
+    return res.send(`<a href="https://dev.api.zuvy.org/classes" style="text-decoration: none; color: #007bff; font-weight: bold;">Visit zuvy again</a>`);
   }
 
   private async getUserData(auth2Client) {
