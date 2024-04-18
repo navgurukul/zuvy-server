@@ -111,9 +111,23 @@ export class ClassesService {
     auth2Client.setCredentials(tokens);
     const userData = await this.getUserData(auth2Client);
     await this.saveTokensToDatabase(tokens, userData);
-    return `<div style="text-align: center; margin-top: 20px;">
-    <a href="https://dev.app.zuvy.org/admin" style="display: inline-block; padding: 15px 30px; background-color: #28a745; color: white; text-decoration: none; font-weight: bold; border-radius: 8px; box-shadow: 0px 4px 6px rgba(0, 0, 0, 0.1); transition: background-color 0.3s ease;">Visit Zuvy Again</a>
-  </div>`
+    return `
+    <div id="redirect-container" style="text-align: center; margin-top: 20px;">
+      <a id="redirect-link" href="https://dev.app.zuvy.org/admin/courses" style="display: inline-block; padding: 15px 30px; background-color: #28a745; color: white; text-decoration: none; font-weight: bold; border-radius: 8px; box-shadow: 0px 4px 6px rgba(0, 0, 0, 0.1); transition: background-color 0.3s ease;">Visit Zuvy Again</a>
+    </div>
+    
+    <script>
+      // Function to redirect after a delay
+      function redirectWithDelay(url, delay) {
+        setTimeout(function() {
+          window.location.href = url;
+        }, delay);
+      }
+    
+      // Call the function with the desired URL and delay (2 seconds)
+      redirectWithDelay('https://dev.app.zuvy.org/admin/courses', 2000);
+    </script>
+  `
   }
 
   private async getUserData(auth2Client) {
