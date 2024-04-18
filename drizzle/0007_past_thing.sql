@@ -1,1 +1,0 @@
-ALTER TABLE "main"."module_quiz" ALTER COLUMN "id" SET DATA TYPE integer;

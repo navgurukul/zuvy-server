@@ -8,11 +8,12 @@ import {
   topics,
   courseModules,
   moduleQuiz,
+  codingQuestions,
   questions,
 } from '../../../drizzle/schema';
 import axios from 'axios';
 import { error, log } from 'console';
-import { sql, eq, count } from 'drizzle-orm';
+import { sql, eq, count, inArray } from 'drizzle-orm';
 import { db } from '../../db/index';
 import { promises } from 'dns';
 import {
@@ -21,6 +22,7 @@ import {
   quizDto,
   quizBatchDto,
 } from './dto/content.dto';
+import { CreateProblemDto } from '../codingPlatform/dto/codingPlatform.dto';
 // import Strapi from "strapi-sdk-js"
 
 const { ZUVY_CONTENT_URL, ZUVY_CONTENTS_API_URL } = process.env; // INPORTING env VALUSE ZUVY_CONTENT
@@ -287,11 +289,21 @@ export class ContentService {
           options: q.options,
           correctOption: q.correctOption,
         }));
-        const quizData = {
-          chapterId: chapter.module[0].id,
-          questions: quizQuestions,
-        };
-        const result = await db.insert(moduleQuiz).values(quizData).returning();
+
+        const result = await db
+          .insert(moduleQuiz)
+          .values(quizQuestions)
+          .returning();
+
+        if (result.length > 0) {
+          const quizIds = result.map((q) => {
+            return q.id;
+          });
+          await db
+            .update(moduleChapter)
+            .set({ quizQuestions: quizIds })
+            .where(eq(moduleChapter.id, chapter.module[0].id));
+        }
         return result;
       } else {
         throw new Error('Failed to create chapter');
@@ -403,15 +415,30 @@ export class ContentService {
         .select()
         .from(moduleChapter)
         .where(eq(moduleChapter.id, chapterId));
-      var modifiedChapterDetails = { ...chapterDetails, questionDetails: [] };
+      var modifiedChapterDetails = {
+        ...chapterDetails[0],
+        quizQuestionDetails: [],
+        codingQuestionDetails:[]
+      };
+
       if (chapterDetails.length > 0) {
         if (chapterDetails[0].topicId == 4) {
+          const quizIds = Object.values(chapterDetails[0].quizQuestions);
           const quizDetails = await db
             .select()
             .from(moduleQuiz)
-            .where(eq(moduleQuiz.chapterId, chapterId));
-          modifiedChapterDetails.questionDetails = quizDetails;
+            .where(sql`${inArray(moduleQuiz.id, quizIds)}`);
+          modifiedChapterDetails.quizQuestionDetails = quizDetails;
         }
+        if (chapterDetails[0].topicId == 3)
+            {
+               const codingIds = Object.values(chapterDetails[0].codingQuestions);
+               const codingProblemDetails = await db
+               .select()
+               .from(codingQuestions)
+               .where(sql`${inArray(codingQuestions.id, codingIds)}`);
+               modifiedChapterDetails.codingQuestionDetails = codingProblemDetails;
+            }
         return modifiedChapterDetails;
       } else {
         return 'No Chapter found';
@@ -474,6 +501,42 @@ export class ContentService {
       return {
         message: 'Re-ordered successfully',
       };
+    } catch (err) {
+      throw err;
+    }
+  }
+
+  async createCodingProblemForModule(
+    moduleId: number,
+    topicId: number,
+    module_chapter: chapterDto,
+    codingProblem: CreateProblemDto,
+  ) {
+    try {
+      const chapter = await this.createChapterForModule(
+        moduleId,
+        topicId,
+        module_chapter,
+      );
+      if (chapter.status === 'success') {
+        const result = await db
+          .insert(codingQuestions)
+          .values(codingProblem)
+          .returning();
+
+        if (result.length > 0) {
+          const codingIds = result.map((q) => {
+            return q.id;
+          });
+          await db
+            .update(moduleChapter)
+            .set({ codingQuestions: codingIds })
+            .where(eq(moduleChapter.id, chapter.module[0].id));
+        }
+        return result;
+      } else {
+        throw new Error('Failed to create chapter');
+      }
     } catch (err) {
       throw err;
     }

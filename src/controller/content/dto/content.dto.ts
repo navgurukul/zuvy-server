@@ -31,6 +31,13 @@ export class moduleDto {
   })
   @IsString()
   description: string;
+
+  @ApiProperty({
+    type: Number,
+    example: 120900,
+  })
+  @IsNumber()
+  timeAlloted: number
 }
 
 export class chapterDto {
@@ -48,6 +55,15 @@ export class chapterDto {
   })
   @IsString()
   description: string;
+
+  @ApiProperty({
+    type: String, 
+    example: '2023-03-01T00:00:00Z',
+    required: true,
+  })
+  @IsString()
+  @IsOptional()
+  completionDate: string;
 }
 
 export class quizDto {
@@ -91,8 +107,7 @@ export class quizDto {
         type:Number,
         example: 1
       })
-      @IsNumber()
-      order:number
+      mark: number;
 }
 
 export class quizBatchDto {

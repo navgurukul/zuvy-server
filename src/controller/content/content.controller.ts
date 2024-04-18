@@ -3,6 +3,7 @@ import { ContentService } from './content.service';
 import { ApiTags, ApiBody, ApiOperation, ApiCookieAuth, ApiQuery } from '@nestjs/swagger';
 import { ApiBearerAuth } from '@nestjs/swagger';
 import { moduleDto ,chapterDto,quizBatchDto,quizDto,reOrderDto} from './dto/content.dto';
+import { CreateProblemDto } from '../codingPlatform/dto/codingPlatform.dto';
 
 @Controller('Content')
 @ApiTags('Content')
@@ -94,7 +95,7 @@ export class ContentController {
   }
 
   @Post('/quiz/:moduleId')
-  @ApiOperation({summary:'Create a chapter for this module'})
+  @ApiOperation({summary:'Create a quiz for this module'})
   @ApiQuery({
     name: 'topicId',
     required: true,
@@ -110,11 +111,38 @@ export class ContentController {
   {
     const chapterDetails: chapterDto = {
       title: 'Quiz',
-      description: 'The questions are based on the knowledge that you learned from the classes'
+      description: 'The questions are based on the knowledge that you learned from the classes',
+      completionDate: new Date().toDateString()
     };
      const res = await this.contentService.createQuizForModule(moduleId,topicId,chapterDetails,quizQuestions);
      return res;
   }
+
+  @Post('/codingQuestion/:moduleId')
+  @ApiOperation({summary:'Create a coding question for this module'})
+  @ApiQuery({
+    name: 'topicId',
+    required: true,
+    type: Number,
+    description: 'topic id',
+  })
+  @ApiBearerAuth()
+  async createCodingQuestionForModule(
+    @Body() codingQuestions : CreateProblemDto,
+    @Param('moduleId') moduleId : number,
+    @Query('topicId') topicId : number
+  )
+  {
+    const chapterDetails: chapterDto = {
+      title: 'Coding Problems',
+      description: 'The questions are based on the knowledge that you learned from the classes',
+      completionDate: new Date().toDateString()
+    };
+     const res = await this.contentService.createCodingProblemForModule(moduleId,topicId,chapterDetails,codingQuestions);
+     return res;
+  }
+
+
 
   @Get('/allModules/:bootcampId')
   @ApiOperation({summary:'Get all modules of a course'})

@@ -1,6 +1,6 @@
 {
-  "id": "0df9b7e0-cd9d-402c-83a4-e1286deb901e",
-  "prevId": "33c92477-dceb-44fe-b1a3-10dfcfac9e0f",
+  "id": "8497b80a-8ade-45d9-ba27-7b0a4f131cf2",
+  "prevId": "007ce72d-4b03-4cfe-ab41-7ad55b0f5641",
   "version": "5",
   "dialect": "pg",
   "tables": {
@@ -2675,15 +2675,9 @@
       "columns": {
         "id": {
           "name": "id",
-          "type": "bigserial",
+          "type": "serial",
           "primaryKey": true,
           "notNull": true
-        },
-        "chapter_id": {
-          "name": "chapter_id",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
         },
         "title": {
           "name": "title",
@@ -2705,6 +2699,12 @@
         },
         "tags": {
           "name": "tags",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "constraints": {
+          "name": "constraints",
           "type": "text",
           "primaryKey": false,
           "notNull": false
@@ -2759,22 +2759,7 @@
         }
       },
       "indexes": {},
-      "foreignKeys": {
-        "coding_questions_chapter_id_module_chapter_id_fk": {
-          "name": "coding_questions_chapter_id_module_chapter_id_fk",
-          "tableFrom": "coding_questions",
-          "tableTo": "module_chapter",
-          "schemaTo": "main",
-          "columnsFrom": [
-            "chapter_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
+      "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {}
     },
@@ -3332,8 +3317,8 @@
         }
       }
     },
-    "course_modules": {
-      "name": "course_modules",
+    "zuvy_course_modules": {
+      "name": "zuvy_course_modules",
       "schema": "main",
       "columns": {
         "id": {
@@ -3371,13 +3356,19 @@
           "type": "integer",
           "primaryKey": false,
           "notNull": false
+        },
+        "time_alloted": {
+          "name": "time_alloted",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
         }
       },
       "indexes": {},
       "foreignKeys": {
-        "course_modules_bootcamp_id_zuvy_bootcamps_id_fk": {
-          "name": "course_modules_bootcamp_id_zuvy_bootcamps_id_fk",
-          "tableFrom": "course_modules",
+        "zuvy_course_modules_bootcamp_id_zuvy_bootcamps_id_fk": {
+          "name": "zuvy_course_modules_bootcamp_id_zuvy_bootcamps_id_fk",
+          "tableFrom": "zuvy_course_modules",
           "tableTo": "zuvy_bootcamps",
           "schemaTo": "main",
           "columnsFrom": [
@@ -6111,8 +6102,81 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {}
     },
-    "module_chapter": {
-      "name": "module_chapter",
+    "zuvy_module_assessment": {
+      "name": "zuvy_module_assessment",
+      "schema": "main",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "title": {
+          "name": "title",
+          "type": "varchar",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "description": {
+          "name": "description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "module_id": {
+          "name": "module_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "coding_problems": {
+          "name": "coding_problems",
+          "type": "json",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "mcq": {
+          "name": "mcq",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "theory_questions": {
+          "name": "theory_questions",
+          "type": "json",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "time_limit": {
+          "name": "time_limit",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "zuvy_module_assessment_module_id_zuvy_course_modules_id_fk": {
+          "name": "zuvy_module_assessment_module_id_zuvy_course_modules_id_fk",
+          "tableFrom": "zuvy_module_assessment",
+          "tableTo": "zuvy_course_modules",
+          "schemaTo": "main",
+          "columnsFrom": [
+            "module_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {}
+    },
+    "zuvy_module_chapter": {
+      "name": "zuvy_module_chapter",
       "schema": "main",
       "columns": {
         "id": {
@@ -6150,14 +6214,38 @@
           "type": "bytea",
           "primaryKey": false,
           "notNull": false
+        },
+        "links": {
+          "name": "links",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "quiz_questions": {
+          "name": "quiz_questions",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "coding_questions": {
+          "name": "coding_questions",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "completion_date": {
+          "name": "completion_date",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
         }
       },
       "indexes": {},
       "foreignKeys": {
-        "module_chapter_topic_id_module_topics_id_fk": {
-          "name": "module_chapter_topic_id_module_topics_id_fk",
-          "tableFrom": "module_chapter",
-          "tableTo": "module_topics",
+        "zuvy_module_chapter_topic_id_zuvy_module_topics_id_fk": {
+          "name": "zuvy_module_chapter_topic_id_zuvy_module_topics_id_fk",
+          "tableFrom": "zuvy_module_chapter",
+          "tableTo": "zuvy_module_topics",
           "schemaTo": "main",
           "columnsFrom": [
             "topic_id"
@@ -6168,10 +6256,10 @@
           "onDelete": "no action",
           "onUpdate": "no action"
         },
-        "module_chapter_module_id_course_modules_id_fk": {
-          "name": "module_chapter_module_id_course_modules_id_fk",
-          "tableFrom": "module_chapter",
-          "tableTo": "course_modules",
+        "zuvy_module_chapter_module_id_zuvy_course_modules_id_fk": {
+          "name": "zuvy_module_chapter_module_id_zuvy_course_modules_id_fk",
+          "tableFrom": "zuvy_module_chapter",
+          "tableTo": "zuvy_course_modules",
           "schemaTo": "main",
           "columnsFrom": [
             "module_id"
@@ -6261,8 +6349,8 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {}
     },
-    "module_quiz": {
-      "name": "module_quiz",
+    "zuvy_module_quiz": {
+      "name": "zuvy_module_quiz",
       "schema": "main",
       "columns": {
         "id": {
@@ -6270,12 +6358,6 @@
           "type": "serial",
           "primaryKey": true,
           "notNull": true
-        },
-        "chapter_id": {
-          "name": "chapter_id",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
         },
         "name": {
           "name": "name",
@@ -6285,28 +6367,31 @@
         },
         "question": {
           "name": "question",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "options": {
+          "name": "options",
           "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "correct_option": {
+          "name": "correct_option",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "marks": {
+          "name": "marks",
+          "type": "integer",
           "primaryKey": false,
           "notNull": false
         }
       },
       "indexes": {},
-      "foreignKeys": {
-        "module_quiz_chapter_id_module_chapter_id_fk": {
-          "name": "module_quiz_chapter_id_module_chapter_id_fk",
-          "tableFrom": "module_quiz",
-          "tableTo": "module_chapter",
-          "schemaTo": "main",
-          "columnsFrom": [
-            "chapter_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
+      "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {}
     },
@@ -10685,8 +10770,8 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {}
     },
-    "module_topics": {
-      "name": "module_topics",
+    "zuvy_module_topics": {
+      "name": "zuvy_module_topics",
       "schema": "main",
       "columns": {
         "id": {

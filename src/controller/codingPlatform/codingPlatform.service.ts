@@ -3,7 +3,7 @@ import { db } from '../../db/index';
 import { eq, sql ,count, lte} from 'drizzle-orm';
 // import { BatchesService } from '../batches/batch.service';
 import axios from 'axios';
-import { SubmitCodeDto } from './dto/codingPlatform.dto';
+import { SubmitCodeDto,CreateProblemDto } from './dto/codingPlatform.dto';
 import * as _ from 'lodash';
 import { error, log } from 'console';
 import {
@@ -35,7 +35,7 @@ export class CodingPlatformService {
       input.push(testCasesCount);
       testCases.forEach(testCase => {
         input.push(...testCase.input.flat());
-        output.push(testCase.output);
+        output.push(...testCase.output.flat());
       });
       }
       else if(action == 'run')
@@ -245,6 +245,17 @@ async getQuestionById(questionId: number)
         throw err;
     }
 }
+
+
+   async createCodingProblem(codingProblem:CreateProblemDto){
+       try {
+           const newQuestionCreated = await db.insert(codingQuestions).values(codingProblem).returning();
+           return newQuestionCreated;
+       }catch(err)
+       {
+        throw err;
+       }
+   }
 
 
 }

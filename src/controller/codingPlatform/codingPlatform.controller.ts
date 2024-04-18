@@ -22,7 +22,7 @@ import {
   ApiCookieAuth,
   ApiQuery,
 } from '@nestjs/swagger';
-import { SubmitCodeDto } from './dto/codingPlatform.dto';
+import { SubmitCodeDto,CreateProblemDto } from './dto/codingPlatform.dto';
 import { ApiBearerAuth } from '@nestjs/swagger';
 @Controller('codingPlatform')
 @ApiTags('codingPlatform')
@@ -125,6 +125,27 @@ export class CodingPlatformController {
   @ApiBearerAuth()
   async getQuestionById(@Param('questionId') questionId: number) {
     const res = await this.codingPlatformService.getQuestionById(questionId);
+    return res;
+  }
+
+  @Post('createCodingQuestion')
+  @ApiOperation({summary: 'Create coding question'})
+  @ApiBearerAuth()
+  async createCodingProblems(@Body() createCodingQuestion:CreateProblemDto)
+  {
+    let examples = [];
+    let testCases = [];
+    for(let i=0;i<createCodingQuestion.examples.length;i++)
+      {
+        examples.push(createCodingQuestion.examples[i].inputs);
+      }
+     createCodingQuestion.examples = examples;
+    for(let j=0;j<createCodingQuestion.testCases.length;j++)
+      {
+        testCases.push(createCodingQuestion.testCases[j].inputs)
+      }  
+     createCodingQuestion.testCases = testCases
+    const res = await this.codingPlatformService.createCodingProblem(createCodingQuestion);
     return res;
   }
 }
