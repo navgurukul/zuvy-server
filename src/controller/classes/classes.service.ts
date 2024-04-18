@@ -113,6 +113,9 @@ export class ClassesService {
     await this.saveTokensToDatabase(tokens, userData);
     return `
     <div id="redirect-container" style="text-align: center; margin-top: 20px;">
+      <h1 style="font-size: 24px; color: #333; margin-bottom: 20px;">Zuvy</h1>
+      <p style="font-size: 18px; color: #333; margin-bottom: 20px;">You have successfully authenticated with Zuvy.</p>
+      <p style="font-size: 18px; color: #333; margin-bottom: 20px;">You will be redirected to Zuvy in a moment.</p>
       <a id="redirect-link" href="https://dev.app.zuvy.org/admin/courses" style="display: inline-block; padding: 15px 30px; background-color: #28a745; color: white; text-decoration: none; font-weight: bold; border-radius: 8px; box-shadow: 0px 4px 6px rgba(0, 0, 0, 0.1); transition: background-color 0.3s ease;">Visit Zuvy Again</a>
     </div>
     
@@ -124,8 +127,8 @@ export class ClassesService {
         }, delay);
       }
     
-      // Call the function with the desired URL and delay (2 seconds)
-      redirectWithDelay('https://dev.app.zuvy.org/admin/courses', 2000);
+      // Call the function with the desired URL and delay (1 seconds)
+      redirectWithDelay('https://dev.app.zuvy.org/admin/courses', 1000);
     </script>
   `
   }
