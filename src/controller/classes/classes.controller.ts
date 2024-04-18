@@ -34,7 +34,7 @@ export class ClassesController {
   @ApiOperation({ summary: 'Google authentication redirect' })
   async googleAuthRedirect(@Req() request,
   ) {
-    return this.classesService.googleAuthenticationRedirect(request);
+    return this.classesService.googleAuthenticationRedirect(request, request.user);
   }
 
   @Post('/')
