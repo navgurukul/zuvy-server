@@ -20,15 +20,16 @@ import Axios from 'axios';
 import { S3 } from 'aws-sdk';
 import { Cron } from '@nestjs/schedule';
 const moment = require('moment-timezone');
-// import { Calendar } from 'node_google_calendar_1';// import { OAuth2Client } from 'google-auth-library';
 
 const { OAuth2 } = google.auth;
+let {GOOGLE_CLIENT_ID, GOOGLE_SECRET, GOOGLE_REDIRECT, ZUVY_REDIRECT_URL } = process.env
 
 let auth2Client = new OAuth2(
-  process.env.GOOGLE_CLIENT_ID,
-  process.env.GOOGLE_SECRET,
-  process.env.GOOGLE_REDIRECT,
+  GOOGLE_CLIENT_ID,
+  GOOGLE_SECRET,
+  GOOGLE_REDIRECT
 );
+
 
 enum ClassStatus {
   COMPLETED = 'completed',
@@ -70,13 +71,6 @@ export class ClassesService {
     }
   }
 
-  // async setCalendarCredentials(userId, userEmail) {
-  //     let tokens = await db.select().from(userTokens).where(eq(userTokens.userId, userId));
-  //     console.log('tokens: ', tokens);
-  //     // const tokens = await db.select().from(userTokens).where(sql`${userTokens.userId} = ${userId} && ${userTokens.userEmail} = ${userEmail}`)
-  //     return auth2Client;
-  // }
-
   async googleAuthentication(@Res() res, userEmail: string, userId : number) {
     let url = auth2Client.generateAuthUrl({
       access_type: 'offline',
@@ -91,19 +85,6 @@ export class ClassesService {
     });
     return res.send({url});
   }
-  // async generateAuthUrl(userId, userEmail, choose) {
-  //   let url;
-  //   // this condtion will give permissions for Calendar and Youtube
-  //   if (choose && choose.toLowerCase() === 'both') {
-  //     url = auth2Client.generateAuthUrl({
-  //       access_type: 'offline',
-  //       scope: Scopes,
-  //       prompt: 'consent',
-  //       state: `user_id=${userId}+user_email=${userEmail}`,
-  //     });
-  //   }
-  //   return url;
-  // }
 
   async googleAuthenticationRedirect(@Req() req, @Res() res){
     const { code } = req.query;
@@ -113,10 +94,10 @@ export class ClassesService {
     await this.saveTokensToDatabase(tokens, userData);
     return `
     <div id="redirect-container" style="text-align: center; margin-top: 20px;">
-      <h1 style="font-size: 24px; color: #333; margin-bottom: 20px;">Zuvy</h1>
-      <p style="font-size: 18px; color: #333; margin-bottom: 20px;">You have successfully authenticated with Zuvy.</p>
-      <p style="font-size: 18px; color: #333; margin-bottom: 20px;">You will be redirected to Zuvy in a moment.</p>
-      <a id="redirect-link" href="https://dev.app.zuvy.org/admin/courses" style="display: inline-block; padding: 15px 30px; background-color: #28a745; color: white; text-decoration: none; font-weight: bold; border-radius: 8px; box-shadow: 0px 4px 6px rgba(0, 0, 0, 0.1); transition: background-color 0.3s ease;">Visit Zuvy Again</a>
+      <h1 style="font-size: 30px; color: #333; margin-bottom: 20px;">Zuvy</h1>
+      <p style="font-size: 23px; color: #333; margin-bottom: 20px;">You have successfully authenticated with Zuvy.</p>
+      <p style="font-size: 20px; color: #333; margin-bottom: 20px;">You will be redirected to Zuvy in a moment.</p>
+      <a id="redirect-link" href="${ZUVY_REDIRECT_URL}" style="display: inline-block; padding: 15px 30px; background-color: #28a745; color: white; text-decoration: none; font-weight: bold; border-radius: 8px; box-shadow: 0px 4px 6px rgba(0, 0, 0, 0.1); transition: background-color 0.3s ease;">Visit Zuvy Again</a>
     </div>
     
     <script>
@@ -127,8 +108,8 @@ export class ClassesService {
         }, delay);
       }
     
-      // Call the function with the desired URL and delay (1 seconds)
-      redirectWithDelay('https://dev.app.zuvy.org/admin/courses', 1000);
+      // Call the function with the desired URL and delay (2 seconds)
+      redirectWithDelay('${ZUVY_REDIRECT_URL}', 2000);
     </script>
   `
   }
@@ -308,23 +289,6 @@ export class ClassesService {
       };
     }
   }
-  //   async getAttendanceByEmailId(email:any, batchId:any) {
-  //     try {
-
-  //         const fetchClasses = await db.select().from(classesGoogleMeetLink).where(eq(classesGoogleMeetLink.batchId, batchId));
-  //         const numberOfClasses = fetchClasses.length;
-  //         const classesAttended = await db.select().from(zuvyStudentAttendance)
-  //             .where(sql`${zuvyStudentAttendance.email}=${email}
-  //                 and ${zuvyStudentAttendance.batchId}=${batchId}`);
-  //         const attendedClasses = classesAttended.length;
-
-  //         const attendancePercentage = numberOfClasses > 0 ? (attendedClasses / numberOfClasses) * 100 : 0;
-
-  //         return {attendancePercentage:attendancePercentage};
-  //     } catch (error) {
-  //       throw new Error(`Error executing request: ${error.message}`);
-  //     }
-  // }
 
   async getAttendance(meetingId, req = null) {
     try {
@@ -332,7 +296,6 @@ export class ClassesService {
         .select()
         .from(userTokens)
         .where(eq(userTokens.userId, req.user[0].id));
-      console.log('fetchedTokens: ', fetchedTokens);
       if (!fetchedTokens || fetchedTokens.length === 0) {
         return { status: 'error', message: 'Unable to fetch tokens' };
       }
@@ -407,7 +370,6 @@ export class ClassesService {
       if (!fetchedTokens || fetchedTokens.length === 0) {
         return { status: 'error', message: 'Unable to fetch tokens' };
       }
-
       const auth2Client = new google.auth.OAuth2();
       auth2Client.setCredentials({
         access_token: fetchedTokens[0].accessToken,
@@ -731,7 +693,7 @@ export class ClassesService {
       const fetchedTokens = await db
         .select()
         .from(userTokens)
-        .where(eq(userTokens.userId, 44848));
+        .where(eq(userTokens.userId, req.user[0].id));
       if (!fetchedTokens) {
         return { status: 'error', message: 'Unable to fetch tokens' };
       }
