@@ -12,7 +12,7 @@ import {
 } from '../../../drizzle/schema';
 import { db } from '../../db/index';
 import { eq, sql, count } from 'drizzle-orm';
-import { google, calendar_v3 } from 'googleapis';
+import { google, calendar_v3, Auth } from 'googleapis';
 import { v4 as uuid } from 'uuid';
 import { createReadStream } from 'fs';
 import * as _ from 'lodash';
@@ -290,28 +290,38 @@ export class ClassesService {
     }
   }
 
-  async getAttendance(meetingId, req = null) {
+  async getAttendance(meetingId, UserData__ = null) {
     try {
+      console.log('UserData__: ', UserData__)
       const fetchedTokens = await db
         .select()
         .from(userTokens)
-        .where(eq(userTokens.userId, req.user[0].id));
+        .where(eq(userTokens.userEmail, 'team@zuvy.org'));
+
+      console.log('fetchedTokens: ', fetchedTokens);
       if (!fetchedTokens || fetchedTokens.length === 0) {
         return { status: 'error', message: 'Unable to fetch tokens' };
       }
-
-      auth2Client.setCredentials({
-        access_token: fetchedTokens[0].accessToken,
-        refresh_token: fetchedTokens[0].refreshToken,
-      });
-      const client = google.admin({ version: 'reports_v1', auth: auth2Client });
-      const response = await client.activities.list({
+      const authOptions = {
+        clientId: GOOGLE_CLIENT_ID,
+        clientSecret: GOOGLE_SECRET,
+        accessToken:  fetchedTokens[0].accessToken,
+        refreshToken: fetchedTokens[0].refreshToken,
+    };
+    const auth = new google.auth.OAuth2(authOptions);
+    // Create an instance of the Admin Reports API
+    const reports = google.admin({version: 'reports_v1', auth });
+    console.log('reports: ', reports);
+        // List activities with specified filters
+    const response = await reports.activities.list({
         userKey: 'all',
         applicationName: 'meet',
         eventName: 'call_ended',
         maxResults: 1000,
         filters: `calendar_event_id==${meetingId}`,
       });
+      
+      console.log('response: ', response.data.items);
 
       const attendanceSheet = {};
       if (response.data.items) {
