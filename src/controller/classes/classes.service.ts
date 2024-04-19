@@ -290,12 +290,12 @@ export class ClassesService {
     }
   }
 
-  async getAttendance(meetingId, req = null) {
+  async getAttendance(meetingId,  user = null) {
     try {
       const fetchedTokens = await db
         .select()
         .from(userTokens)
-        .where(eq(userTokens.userId, req.user[0].id));
+        .where(eq(userTokens.userId,user.id));
       if (!fetchedTokens || fetchedTokens.length === 0) {
         return { status: 'error', message: 'Unable to fetch tokens' };
       }

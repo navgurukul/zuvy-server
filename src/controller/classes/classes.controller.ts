@@ -111,8 +111,7 @@ export class ClassesController {
   @ApiBearerAuth()
   @ApiOperation({ summary: "Get the google class attendance by meetingId" })
   extractMeetAttendance(@Req() req,@Param('meetingId') meetingId: string): Promise<object> {
-    const authToken = req.headers.authorization;
-    return this.classesService.getAttendance(meetingId,req.user);
+    return this.classesService.getAttendance(meetingId,req.user[0]);
   }
 
   @Get('/getAllAttendance/:batchId')
