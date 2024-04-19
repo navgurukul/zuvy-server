@@ -50,17 +50,12 @@ export class BatchesService {
 
     async createBatch(batch) {
         try {
-            // // let [err,res] =  await this.capEnrollment(batch);
-            // if(err){
-            //     return [err, null];
-            // }
-
             const newData = await db.insert(batches).values(batch).returning();
             const usersData = await db.select().from(batchEnrollments).where(sql`${batchEnrollments.bootcampId} = ${batch.bootcampId} AND ${batchEnrollments.batchId} IS NULL`).limit(batch.capEnrollment);
 
             if (usersData.length > 0) {
                 let userids = usersData.map(u => u.userId);
-                await db.update(batchEnrollments).set({ batchId: newData[0].id }).where(sql`user_id IN ${userids}`);
+                await db.update(batchEnrollments).set({ batchId: newData[0].id }).where(sql`bootcamp_id = ${batch.bootcampId} AND user_id IN ${userids}`);
             }
             return [null, { 'status': 'success', 'message': 'Batch created successfully', 'code': 200, batch: newData[0] }];
         } catch (e) {

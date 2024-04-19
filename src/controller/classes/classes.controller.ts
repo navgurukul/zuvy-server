@@ -4,7 +4,6 @@ import { ApiTags, ApiBody, ApiOperation, ApiCookieAuth, ApiQuery } from '@nestjs
 import { CreateDto, ScheduleDto, CreateLiveBroadcastDto } from './dto/classes.dto';
 import { ApiBearerAuth } from '@nestjs/swagger';
 import { Cron } from '@nestjs/schedule';
-// import { AuthGuard } from '@nestjs/passport'; // Assuming JWT authentication
 
 
 @Controller('classes')
@@ -17,7 +16,6 @@ import { Cron } from '@nestjs/schedule';
     forbidNonWhitelisted: true,
   }),
 )
-// @UseGuards(AuthGuard('cookie'))
 export class ClassesController {
   constructor(private classesService: ClassesService) { }
 
@@ -93,11 +91,6 @@ export class ClassesController {
   getAttendeesByMeetingId(@Param('id') id: number): Promise<object> {
     return this.classesService.getAttendeesByMeetingId(id);
   }
-  // @Get('/:id')
-  // @ApiOperation({ summary: "getting meeting By id" })
-  // getMeetingById(@Param('id') id: number): Promise<object> {
-  //     return this.classesService.getMeetingById(id);
-  // }
   @Cron('*/3 * * * *')
   @Get('/getEventDetails')
   @ApiOperation({ summary: 'getting event details' })
@@ -113,22 +106,13 @@ export class ClassesController {
     return this.classesService.deleteMeetingById(id);
   }
 
-  // @Get('/getAttendance')
-  // @ApiOperation({ summary: "Get meeting Attendance" })
-  // extractMeetAttendance(@Res() res): Promise<object> {
-  //     return this.classesService.getAttendance();
-  // }
+
   @Get('/getAttendance/:meetingId')
   @ApiBearerAuth()
   @ApiOperation({ summary: "Get the google class attendance by meetingId" })
   extractMeetAttendance(@Req() req,@Param('meetingId') meetingId: string): Promise<object> {
     const authToken = req.headers.authorization;
-    // console.log('req.headers.authorization: ',req.headers)
-    // console.log('req: ',req)
-    // console.log('authToken: ',authToken);
-    console.log('req.user: ', req.user)
-
-    return this.classesService.getAttendance(meetingId,req);
+    return this.classesService.getAttendance(meetingId,req.user);
   }
 
   @Get('/getAllAttendance/:batchId')
@@ -144,15 +128,4 @@ export class ClassesController {
   meetingAttendance(){
     return this.classesService.meetingAttendance();
   }
-  // @Get('/getStudentAttendance/:email/:batchId')
-  // @ApiBearerAuth()
-  // @ApiOperation({ summary: "Get the google all classes attendance by batchID" })
-  // extractStudentAttendanceByBatch(@Param('batchId') batchId: any, @Param('email') email: any): Promise<object> {
-  //   return this.classesService.getAttendanceByEmailId(email, batchId);
-  // }
-  // @Patch('/:id') 
-  // @ApiOperation({ summary: "Patch the meeting details" })
-  // updateMeetingById(@Param('id') id: number, @Body() classData: CreateLiveBroadcastDto) {
-  //     return this.classesService.updateMeetingById(id, classData);
-  // }
 }
