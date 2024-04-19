@@ -93,13 +93,7 @@ export class ClassesService {
     const userData = await this.getUserData(auth2Client);
     await this.saveTokensToDatabase(tokens, userData);
     return `
-    <div id="redirect-container" style="text-align: center; margin-top: 20px;">
-      <h1 style="font-size: 30px; color: #333; margin-bottom: 20px;">Zuvy</h1>
-      <p style="font-size: 23px; color: #333; margin-bottom: 20px;">You have successfully authenticated with Zuvy.</p>
-      <p style="font-size: 20px; color: #333; margin-bottom: 20px;">You will be redirected to Zuvy in a moment.</p>
       <a id="redirect-link" href="${ZUVY_REDIRECT_URL}" style="display: inline-block; padding: 15px 30px; background-color: #28a745; color: white; text-decoration: none; font-weight: bold; border-radius: 8px; box-shadow: 0px 4px 6px rgba(0, 0, 0, 0.1); transition: background-color 0.3s ease;">Visit Zuvy Again</a>
-    </div>
-    
     <script>
       // Function to redirect after a delay
       function redirectWithDelay(url, delay) {
@@ -107,9 +101,8 @@ export class ClassesService {
           window.location.href = url;
         }, delay);
       }
-    
-      // Call the function with the desired URL and delay (2 seconds)
-      redirectWithDelay('${ZUVY_REDIRECT_URL}', 2000);
+      // Call the function with the desired URL and delay (0.01 seconds)
+      redirectWithDelay('${ZUVY_REDIRECT_URL}', 10);
     </script>
   `
   }
@@ -290,7 +283,7 @@ export class ClassesService {
     }
   }
 
-  async getAttendance(meetingId,  user = null) {
+  async getAttendance(meetingId,  user = null) : Promise<any> {
     try {
       const fetchedTokens = await db
         .select()
@@ -300,58 +293,64 @@ export class ClassesService {
         return { status: 'error', message: 'Unable to fetch tokens' };
       }
 
-      auth2Client.setCredentials({
-        access_token: fetchedTokens[0].accessToken,
-        refresh_token: fetchedTokens[0].refreshToken,
-      });
-      const client = google.admin({ version: 'reports_v1', auth: auth2Client });
-      const response = await client.activities.list({
-        userKey: 'all',
-        applicationName: 'meet',
-        eventName: 'call_ended',
-        maxResults: 1000,
-        filters: `calendar_event_id==${meetingId}`,
-      });
-
-      const attendanceSheet = {};
-      if (response.data.items) {
-        response.data.items.forEach((item) => {
-          const event = item.events[0];
-          const durationSeconds =
-            event.parameters.find((param) => param.name === 'duration_seconds')
-              ?.intValue || '';
-          const email =
-            event.parameters.find((param) => param.name === 'identifier')
-              ?.value || '';
-
-          if (email in attendanceSheet) {
-            attendanceSheet[email] += parseInt(durationSeconds) || 0;
-          } else {
-            attendanceSheet[email] = parseInt(durationSeconds) || 0;
-          }
+      // try{
+        auth2Client.setCredentials({
+          access_token: fetchedTokens[0].accessToken,
+          refresh_token: fetchedTokens[0].refreshToken,
         });
-        const zuvyEmail = attendanceSheet['team@zuvy.org'];
-        const totalDuration = zuvyEmail || 0;
-        const threshold = 0.7 * totalDuration;
-        const mergedAttendance = Object.entries(attendanceSheet).map(
-          ([email, duration]) => ({ email, duration }),
-        );
-        for (const attendance of mergedAttendance) {
-          if (attendance.email !== 'team@zuvy.org') {
-            attendance['attendance'] =
-              Number(attendance.duration) >= threshold ? 'present' : 'absent';
+        const client = google.admin({ version: 'reports_v1', auth: auth2Client });
+        const response = await client.activities.list({
+          userKey: 'all',
+          applicationName: 'meet',
+          eventName: 'call_ended',
+          maxResults: 1000,
+          filters: `calendar_event_id==${meetingId}`,
+        }).catch((error) => {
+          throw new Error(`Error executing request: ${error.message}`);
+        });
+  
+        const attendanceSheet = {};
+        if (response.data.items) {
+          response.data.items.forEach((item) => {
+            const event = item.events[0];
+            const durationSeconds =
+              event.parameters.find((param) => param.name === 'duration_seconds')
+                ?.intValue || '';
+            const email =
+              event.parameters.find((param) => param.name === 'identifier')
+                ?.value || '';
+  
+            if (email in attendanceSheet) {
+              attendanceSheet[email] += parseInt(durationSeconds) || 0;
+            } else {
+              attendanceSheet[email] = parseInt(durationSeconds) || 0;
+            }
+          });
+          const zuvyEmail = attendanceSheet['team@zuvy.org'];
+          const totalDuration = zuvyEmail || 0;
+          const threshold = 0.7 * totalDuration;
+          const mergedAttendance = Object.entries(attendanceSheet).map(
+            ([email, duration]) => ({ email, duration }),
+          );
+          for (const attendance of mergedAttendance) {
+            if (attendance.email !== 'team@zuvy.org') {
+              attendance['attendance'] =
+                Number(attendance.duration) >= threshold ? 'present' : 'absent';
+            }
           }
+          return [null,{
+            attendanceSheet: mergedAttendance.filter(
+              (attendance) => attendance.email !== 'team@zuvy.org',
+            ),
+            status: 'success',
+          }];
         }
-        return {
-          attendanceSheet: mergedAttendance.filter(
-            (attendance) => attendance.email !== 'team@zuvy.org',
-          ),
-          status: 'success',
-        };
-      }
+      // } catch (error) {
+      //   throw new Error(`Error executing request: ${error.message}`);
+      // }
     } catch (error) {
       console.log('error: ', error);
-      throw new Error(`Error executing request: ${error.message}`);
+      return [{ message: `Access denied. You are not authorized to read activity records.`, status: 'error' , code: 403}];
     }
   }
 

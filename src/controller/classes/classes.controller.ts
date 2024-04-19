@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Delete, Patch, Body, Param, ValidationPipe, UsePipes, Res, Req ,Query} from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Patch, Body, Param, ValidationPipe, UsePipes, Res, Req ,Query, BadRequestException} from '@nestjs/common';
 import { ClassesService } from './classes.service';
 import { ApiTags, ApiBody, ApiOperation, ApiCookieAuth, ApiQuery } from '@nestjs/swagger';
 import { CreateDto, ScheduleDto, CreateLiveBroadcastDto } from './dto/classes.dto';
@@ -110,8 +110,12 @@ export class ClassesController {
   @Get('/getAttendance/:meetingId')
   @ApiBearerAuth()
   @ApiOperation({ summary: "Get the google class attendance by meetingId" })
-  extractMeetAttendance(@Req() req,@Param('meetingId') meetingId: string): Promise<object> {
-    return this.classesService.getAttendance(meetingId,req.user[0]);
+  async extractMeetAttendance(@Req() req,@Param('meetingId') meetingId: string): Promise<object> {
+    const [err, values] = await this.classesService.getAttendance(meetingId,req.user[0]);
+    if (err) {
+      throw new BadRequestException(err);
+    }
+    return values;
   }
 
   @Get('/getAllAttendance/:batchId')
