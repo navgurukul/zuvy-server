@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { db } from '../../db/index';
-import { eq, sql, count,inArray } from 'drizzle-orm';
+import { eq, sql, count, inArray } from 'drizzle-orm';
 // import { BatchesService } from '../batches/batch.service';
 import axios from 'axios';
 import * as _ from 'lodash';
@@ -33,13 +33,13 @@ export class BootcampService {
 
       const batchIds = batchesData.map((obj) => obj.id);
       let unEnrolledStudents = enrolled.length;
-      if(batchIds.length!=0)
-        {  
-      let unEnrolledBatch = await db
-      .select()
-      .from(batchEnrollments)
-      .where( sql`${batchEnrollments.bootcampId} = ${bootcampId} AND ${inArray(batchEnrollments.batchId, batchIds)}`
-      );
+      if (batchIds.length != 0) {
+        let unEnrolledBatch = await db
+          .select()
+          .from(batchEnrollments)
+          .where(
+            sql`${batchEnrollments.bootcampId} = ${bootcampId} AND ${inArray(batchEnrollments.batchId, batchIds)}`,
+          );
         unEnrolledStudents = unEnrolledStudents - unEnrolledBatch.length;
       }
       return [
@@ -966,7 +966,7 @@ export class BootcampService {
           .select()
           .from(classesGoogleMeetLink)
           .where(sql`${classesGoogleMeetLink.batchId} = ${batchId}`);
-          const completedClasses = classes
+        const completedClasses = classes
           .filter((classObj) => {
             const endTime = new Date(classObj.endTime);
             return currentTime > endTime;
@@ -976,7 +976,7 @@ export class BootcampService {
             const bStartTime = new Date(b.startTime);
             return bStartTime.getTime() - aStartTime.getTime();
           });
-  
+
         const ongoingClasses = classes.filter((classObj) => {
           const startTime = new Date(classObj.startTime);
           const endTime = new Date(classObj.endTime);

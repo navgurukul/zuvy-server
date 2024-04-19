@@ -1,5 +1,7 @@
 import { relations } from "drizzle-orm"
+import { binary } from "drizzle-orm/mysql-core"
 import { pgTable, jsonb, pgSchema, pgEnum, serial, varchar, timestamp, foreignKey, integer, text, unique, date, bigserial, boolean, bigint, index, char, json, uniqueIndex, doublePrecision, customType } from "drizzle-orm/pg-core"
+import { integrations } from "googleapis/build/src/apis/integrations"
 // import { users } from './users'; // Import the 'users' module
 
 export const courseEnrolmentsCourseStatus = pgEnum("course_enrolments_course_status", ['enroll', 'unenroll', 'completed'])
@@ -1851,12 +1853,13 @@ export const zuvyStudentAttendance = main.table("zuvy_student_attendance",{
         meetingId:varchar('meetingId').notNull()
 })
 
-export const codingQuestions = main.table("coding_questions",{
-    id: bigserial("id", { mode: "bigint" }).primaryKey().notNull(),
+export const codingQuestions = main.table("zuvy_coding_questions",{
+    id: serial("id").primaryKey().notNull(),
     title: varchar("title", { length: 255 }).notNull(),
     description: text("description").notNull(),
     difficulty: difficulty("difficulty"),
     tags: text("tags"),
+    constraints: text("constraints"),
     authorId: integer("author_id").notNull(),
     inputBase64: text("input_base64"), 
     examples: jsonb("examples"), 
@@ -1867,7 +1870,7 @@ export const codingQuestions = main.table("coding_questions",{
     updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }),
 })
 
-export const codingSubmission = main.table("coding_submission", {
+export const codingSubmission = main.table("zuvy_coding_submission", {
     id: bigserial("id", { mode: "bigint" }).primaryKey().notNull(),
     user_id: integer("user_id").references(() => users.id).notNull(),
     question_solved: jsonb("question_solved").notNull(), 
@@ -1879,4 +1882,50 @@ export const zuvyMeetingAttendance=main.table("zuvy_meeting_attendance",{
         meetingId:varchar("meetingid"),
         batchid:varchar("batchid"),
         bootcampid:varchar("bootcampid")
+})
+
+export const courseModules = main.table("zuvy_course_modules",{
+        id:serial("id").primaryKey().notNull(),
+        bootcampId: integer("bootcamp_id").references(() => bootcamps.id),
+        name: varchar("name"),
+        description: text("description"),
+        order: integer("order"),
+        timeAlloted: bigint("time_alloted", { mode: "number" })
+})
+
+export const topics = main.table("zuvy_module_topics",{
+       id: serial("id").primaryKey().notNull(),
+       name:varchar("name") 
+})
+
+export const moduleQuiz = main.table("zuvy_module_quiz",{
+        id: serial("id").primaryKey().notNull(),
+        question: text("question"),
+        options: jsonb("options"),
+        correctOption: text("correct_option"),
+        marks: integer("marks")
+})
+
+export const moduleChapter = main.table("zuvy_module_chapter",{
+        id: serial("id").primaryKey().notNull(),
+        title: varchar("title"),
+        description: text("description"),
+        topicId: integer("topic_id").references(() => topics.id),
+        moduleId: integer("module_id").references(() => courseModules.id),
+        file: bytea("file"),
+        links:jsonb("links"),
+        quizQuestions: jsonb("quiz_questions"),
+        codingQuestions: jsonb("coding_questions"),
+        completionDate: timestamp("completion_date", { withTimezone: true, mode: 'string' })
+})
+
+export const moduleAssessment = main.table("zuvy_module_assessment",{
+        id: serial("id").primaryKey().notNull(),
+        title: varchar("title"),
+        description: text("description"),
+        moduleId: integer("module_id").references(() => courseModules.id),
+        codingProblems: json("coding_problems"),
+        mcq: jsonb("mcq"),
+        theoryQuestion: json("theory_questions"),
+        timeLimit: bigint("time_limit", { mode: "number" })
 })
