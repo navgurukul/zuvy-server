@@ -1,8 +1,36 @@
-import { Controller, Get, Post, Put, Patch, Delete, Body, Param, ValidationPipe, UsePipes, Optional, Query, BadRequestException } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Put,
+  Patch,
+  Delete,
+  Body,
+  Param,
+  ValidationPipe,
+  UsePipes,
+  Optional,
+  Query,
+  BadRequestException,
+} from '@nestjs/common';
 import { ContentService } from './content.service';
-import { ApiTags, ApiBody, ApiOperation, ApiCookieAuth, ApiQuery } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiBody,
+  ApiOperation,
+  ApiCookieAuth,
+  ApiQuery,
+} from '@nestjs/swagger';
 import { ApiBearerAuth } from '@nestjs/swagger';
-import { moduleDto ,chapterDto,quizBatchDto,quizDto,reOrderDto} from './dto/content.dto';
+import {
+  moduleDto,
+  chapterDto,
+  quizBatchDto,
+  quizDto,
+  reOrderDto,
+  ReOrderModuleBody,
+  EditChapterDto
+} from './dto/content.dto';
 import { CreateProblemDto } from '../codingPlatform/dto/codingPlatform.dto';
 
 @Controller('Content')
@@ -66,18 +94,21 @@ export class ContentController {
   }
 
   @Post('/modules/:bootcampId')
-  @ApiOperation({summary : 'Create the module of a particular bootcamp'})
+  @ApiOperation({ summary: 'Create the module of a particular bootcamp' })
   @ApiBearerAuth()
   async createModule(
-    @Body() moduleData : moduleDto,
-    @Param('bootcampId') bootcampId: number
+    @Body() moduleData: moduleDto,
+    @Param('bootcampId') bootcampId: number,
   ) {
-     const res = await this.contentService.createModuleForCourse(bootcampId,moduleData);
-     return res;
+    const res = await this.contentService.createModuleForCourse(
+      bootcampId,
+      moduleData,
+    );
+    return res;
   }
 
   @Post('/chapter/:moduleId')
-  @ApiOperation({summary:'Create a chapter for this module'})
+  @ApiOperation({ summary: 'Create a chapter for this module' })
   @ApiQuery({
     name: 'topicId',
     required: true,
@@ -86,16 +117,20 @@ export class ContentController {
   })
   @ApiBearerAuth()
   async createChapter(
-    @Body() chapter : chapterDto,
-    @Param('moduleId') moduleId : number,
-    @Query('topicId') topicId : number
+    @Body() chapter: chapterDto,
+    @Param('moduleId') moduleId: number,
+    @Query('topicId') topicId: number,
   ) {
-      const res = await this.contentService.createChapterForModule(moduleId,topicId,chapter);
-      return res;
+    const res = await this.contentService.createChapterForModule(
+      moduleId,
+      topicId,
+      chapter,
+    );
+    return res;
   }
 
   @Post('/quiz/:moduleId')
-  @ApiOperation({summary:'Create a quiz for this module'})
+  @ApiOperation({ summary: 'Create a quiz for this module' })
   @ApiQuery({
     name: 'topicId',
     required: true,
@@ -104,22 +139,27 @@ export class ContentController {
   })
   @ApiBearerAuth()
   async createQuizForModule(
-    @Body() quizQuestions : quizBatchDto,
-    @Param('moduleId') moduleId : number,
-    @Query('topicId') topicId : number
-  )
-  {
+    @Body() quizQuestions: quizBatchDto,
+    @Param('moduleId') moduleId: number,
+    @Query('topicId') topicId: number,
+  ) {
     const chapterDetails: chapterDto = {
       title: 'Quiz',
-      description: 'The questions are based on the knowledge that you learned from the classes',
-      completionDate: new Date().toDateString()
+      description:
+        'The questions are based on the knowledge that you learned from the classes',
+      completionDate: new Date().toDateString(),
     };
-     const res = await this.contentService.createQuizForModule(moduleId,topicId,chapterDetails,quizQuestions);
-     return res;
+    const res = await this.contentService.createQuizForModule(
+      moduleId,
+      topicId,
+      chapterDetails,
+      quizQuestions,
+    );
+    return res;
   }
 
   @Post('/codingQuestion/:moduleId')
-  @ApiOperation({summary:'Create a coding question for this module'})
+  @ApiOperation({ summary: 'Create a coding question for this module' })
   @ApiQuery({
     name: 'topicId',
     required: true,
@@ -128,63 +168,90 @@ export class ContentController {
   })
   @ApiBearerAuth()
   async createCodingQuestionForModule(
-    @Body() codingQuestions : CreateProblemDto,
-    @Param('moduleId') moduleId : number,
-    @Query('topicId') topicId : number
-  )
-  {
+    @Body() codingQuestions: CreateProblemDto,
+    @Param('moduleId') moduleId: number,
+    @Query('topicId') topicId: number,
+  ) {
     const chapterDetails: chapterDto = {
       title: 'Coding Problems',
-      description: 'The questions are based on the knowledge that you learned from the classes',
-      completionDate: new Date().toDateString()
+      description:
+        'The questions are based on the knowledge that you learned from the classes',
+      completionDate: new Date().toDateString(),
     };
-     const res = await this.contentService.createCodingProblemForModule(moduleId,topicId,chapterDetails,codingQuestions);
-     return res;
+    const res = await this.contentService.createCodingProblemForModule(
+      moduleId,
+      topicId,
+      chapterDetails,
+      codingQuestions,
+    );
+    return res;
   }
 
-
-
   @Get('/allModules/:bootcampId')
-  @ApiOperation({summary:'Get all modules of a course'})
+  @ApiOperation({ summary: 'Get all modules of a course' })
   @ApiBearerAuth()
-  async getAllModules(
-    @Param('bootcampId') bootcampId : number
-  )
-  {
+  async getAllModules(@Param('bootcampId') bootcampId: number) {
     const res = await this.contentService.getAllModuleByBootcampId(bootcampId);
     return res;
   }
 
   @Get('/allChaptersOfModule/:moduleId')
-  @ApiOperation({summary:'Get all the chapters of a module'})
+  @ApiOperation({ summary: 'Get all the chapters of a module' })
   @ApiBearerAuth()
-  async getChapterDetailsOfModule(
-    @Param('moduleId') moduleId : number
-  )
-  {
-    const res =  await this.contentService.getAllChaptersOfModule(moduleId);
+  async getChapterDetailsOfModule(@Param('moduleId') moduleId: number) {
+    const res = await this.contentService.getAllChaptersOfModule(moduleId);
     return res;
   }
 
   @Get('/chapterDetailsById/:chapterId')
-  @ApiOperation({summary:'Get chapter details by id'})
+  @ApiOperation({ summary: 'Get chapter details by id' })
   @ApiBearerAuth()
-  async getChapterDetailsById(
-    @Param('chapterId') chapterId : number
-  )
-  {
+  async getChapterDetailsById(@Param('chapterId') chapterId: number) {
     const res = await this.contentService.getChapterDetailsById(chapterId);
     return res;
   }
 
-  @Put('/reOrderModuleOfBootcamp/:bootcampId')
-  @ApiOperation({summary:'Drag and drop modules in a bootcamp'})
+  @Put('/editModuleOfBootcamp/:bootcampId')
+  @ApiOperation({ summary: 'Drag and drop modules in a bootcamp' })
+  @ApiQuery({
+    name: 'moduleId',
+    required: true,
+    type: Number,
+    description: 'module Id',
+  })
   @ApiBearerAuth()
-  async reOrderModules(@Body() reOrder : reOrderDto,@Param('bootcampId') bootcampId : number)
-  {
-    const res = await this.contentService.updateOrderOfModules(reOrder,bootcampId);
+  async reOrderModules(
+    @Body() reOrder: ReOrderModuleBody,
+    @Param('bootcampId') bootcampId: number,
+    @Query('moduleId') moduleId: number,
+  ) {
+    const res = await this.contentService.updateOrderOfModules(
+      reOrder,
+      bootcampId,
+      moduleId
+    );
     return res;
   }
 
+  @Put('/editChapterOfModule/:moduleId')
+  @ApiOperation({ summary: 'Drag and drop modules in a bootcamp' })
+  @ApiQuery({
+    name: 'chapterId',
+    required: true,
+    type: Number,
+    description: 'chapter id',
+  })
+  @ApiBearerAuth()
+  async editChapter(
+    @Body() reOrder: EditChapterDto,
+    @Param('moduleId') moduleId: number,
+    @Query('chapterId') chapterId: number,
+  ) {
+    const res = await this.contentService.editChapter(
+      reOrder,
+      moduleId,
+      chapterId
+    );
+    return res;
+  }
 }
-

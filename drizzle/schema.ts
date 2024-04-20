@@ -1858,7 +1858,7 @@ export const codingQuestions = main.table("zuvy_coding_questions",{
     title: varchar("title", { length: 255 }).notNull(),
     description: text("description").notNull(),
     difficulty: difficulty("difficulty"),
-    tags: text("tags"),
+    tags: integer("tag_id").references(() => tags.id),
     constraints: text("constraints"),
     authorId: integer("author_id").notNull(),
     inputBase64: text("input_base64"), 
@@ -1898,12 +1898,19 @@ export const topics = main.table("zuvy_module_topics",{
        name:varchar("name") 
 })
 
+export const tags = main.table("zuvy_tags",{
+        id: serial("id").primaryKey().notNull(),
+        tagName:varchar("tag_name") 
+})
+
 export const moduleQuiz = main.table("zuvy_module_quiz",{
         id: serial("id").primaryKey().notNull(),
         question: text("question"),
         options: jsonb("options"),
         correctOption: text("correct_option"),
-        marks: integer("marks")
+        marks: integer("marks"),
+        difficulty: difficulty("difficulty"),
+        tagId: integer("tag_id").references(() => tags.id)
 })
 
 export const moduleChapter = main.table("zuvy_module_chapter",{
@@ -1916,7 +1923,8 @@ export const moduleChapter = main.table("zuvy_module_chapter",{
         links:jsonb("links"),
         quizQuestions: jsonb("quiz_questions"),
         codingQuestions: jsonb("coding_questions"),
-        completionDate: timestamp("completion_date", { withTimezone: true, mode: 'string' })
+        completionDate: timestamp("completion_date", { withTimezone: true, mode: 'string' }),
+        order: integer("order")
 })
 
 export const moduleAssessment = main.table("zuvy_module_assessment",{
@@ -1926,6 +1934,15 @@ export const moduleAssessment = main.table("zuvy_module_assessment",{
         moduleId: integer("module_id").references(() => courseModules.id),
         codingProblems: json("coding_problems"),
         mcq: jsonb("mcq"),
-        theoryQuestion: json("theory_questions"),
+        openEndedQuestions: json("open_ended_questions"),
         timeLimit: bigint("time_limit", { mode: "number" })
 })
+
+export const openEndedQuestion = main.table("zuvy_openEnded_questions",{
+        id: serial("id").primaryKey().notNull(),
+        question: text("question"),
+        answer: text("answer"),
+        difficulty: difficulty("difficulty"),
+        tagId: integer("tag_id").references(() => tags.id)
+})
+

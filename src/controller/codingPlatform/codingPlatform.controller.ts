@@ -144,6 +144,8 @@ export class CodingPlatformController {
       {
         testCases.push(createCodingQuestion.testCases[j].inputs)
       }  
+      console.log("examples",examples);
+      console.log("testCases",testCases);
      createCodingQuestion.testCases = testCases
     const res = await this.codingPlatformService.createCodingProblem(createCodingQuestion);
     return res;
