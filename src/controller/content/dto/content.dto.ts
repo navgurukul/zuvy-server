@@ -10,10 +10,12 @@ import {
   IsObject,
   ArrayNotEmpty,
   isString,
-  IsArray
+  IsArray,
+  isNumber
 } from 'class-validator';
 import { truncateSync } from 'fs';
 import { Type } from 'class-transformer';
+import { difficulty } from 'drizzle/schema';
 
 export class moduleDto {
   @ApiProperty({
@@ -67,12 +69,6 @@ export class chapterDto {
 }
 
 export class quizDto {
-    @ApiProperty({
-        type: String,
-        example: 'name',
-      })
-      @IsString()
-      name: string;
       
       @ApiProperty({
         type: String,
@@ -107,7 +103,26 @@ export class quizDto {
         type:Number,
         example: 1
       })
+      @IsNumber()
+      @IsOptional()
       mark: number;
+
+      @ApiProperty({
+        type: Number,
+        example: 2
+      })
+      @IsNumber()
+      @IsOptional()
+      tagId: number;
+
+      @ApiProperty({
+        type: difficulty,
+        example: 'Easy',
+        required: true,
+      })
+      @IsString()
+      @IsOptional()
+      difficulty: 'Easy' | 'Medium' | 'Hard';
 }
 
 export class quizBatchDto {
@@ -116,7 +131,6 @@ export class quizBatchDto {
       type: [quizDto],
       example: [
         {
-          name: 'Quiz 1',
           question: 'What is the national animal of India?',
           options: {
             option1: 'Option 1',
@@ -125,10 +139,11 @@ export class quizBatchDto {
             option4: 'Option 4',
           },
           correctOption: 'Option 2',
-          order: 1,
+          mark: 1,
+          tagId: 2,
+          difficulty : "Easy" 
         },
         {
-          name: 'Quiz 2',
           question: 'What is the capital of France?',
           options: {
             option1: 'Paris',
@@ -137,7 +152,9 @@ export class quizBatchDto {
             option4: 'Rome',
           },
           correctOption: 'Paris',
-          order: 1,
+          mark: 1,
+          tagId: 2,
+          difficulty : "Easy" 
         },
       ],
       required: true,
@@ -151,17 +168,82 @@ export class quizBatchDto {
   }
 
   export class reOrderDto {
-    @ApiProperty({
-        type: Number,
-        example: 10,
-      })
-      @IsNumber()
-      moduleId: number;
-
       @ApiProperty({
         type: Number,
         example: 2,
       })
       @IsNumber()
       newOrder: number;
+  }
+
+  export class ReOrderModuleBody {
+    @ApiProperty({ type: moduleDto })
+    @IsOptional()
+    @ValidateNested()
+    @Type(() => moduleDto)
+    moduleDto: moduleDto;
+  
+    @ApiProperty({ type: reOrderDto })
+    @IsOptional()
+    @ValidateNested()
+    @Type(() => reOrderDto)
+    reOrderDto: reOrderDto;
+  }
+
+  export class EditChapterDto {
+    @ApiProperty({
+      type: String,
+      example: 'Any thing like article or video or quiz',
+    })
+    @IsString()
+    @IsOptional()
+    title: string;
+  
+    @ApiProperty({
+      type: String,
+      example: 'Any description to the chapter',
+    })
+    @IsString()
+    @IsOptional()
+    description: string;
+  
+    @ApiProperty({
+      type: String, 
+      example: '2023-03-01T00:00:00Z',
+    })
+    @IsString()
+    @IsOptional()
+    completionDate: string;
+    
+     @ApiProperty({
+        type:[String],
+        example: ['https://www.google.com']
+     })
+     @IsArray()
+     @IsOptional()
+     links: any[];
+
+     @ApiProperty({
+        type:[Number],
+        example: [1,2]
+     })
+     @IsArray()
+     @IsOptional()
+     quizQuestions: any[];
+
+     @ApiProperty({
+        type:[Number],
+        example: [1,2]
+     })
+     @IsArray()
+     @IsOptional()
+     codingQuestions: any[];
+
+     @ApiProperty({
+        type:Number,
+        example:2
+     })
+     @IsNumber()
+     @IsOptional()
+     newOrder: number
   }

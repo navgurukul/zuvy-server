@@ -10,6 +10,7 @@ import {
   moduleQuiz,
   codingQuestions,
   questions,
+  difficulty,
 } from '../../../drizzle/schema';
 import axios from 'axios';
 import { error, log } from 'console';
@@ -21,6 +22,9 @@ import {
   chapterDto,
   quizDto,
   quizBatchDto,
+  ReOrderModuleBody,
+  reOrderDto,
+  EditChapterDto
 } from './dto/content.dto';
 import { CreateProblemDto } from '../codingPlatform/dto/codingPlatform.dto';
 // import Strapi from "strapi-sdk-js"
@@ -254,7 +258,12 @@ export class ContentService {
     module_chapter: chapterDto,
   ) {
     try {
-      var chapterData = { moduleId, topicId, ...module_chapter };
+      const existingChaptersForAModule = await db
+        .select()
+        .from(moduleChapter)
+        .where(eq(moduleChapter.moduleId, moduleId));
+      const order = existingChaptersForAModule.length + 1;
+      var chapterData = { moduleId, topicId, ...module_chapter, order };
       const chapter = await db
         .insert(moduleChapter)
         .values(chapterData)
@@ -288,6 +297,9 @@ export class ContentService {
           question: q.question,
           options: q.options,
           correctOption: q.correctOption,
+          marks: q.mark,
+          difficulty: q.difficulty,
+          tagId: q.tagId,
         }));
 
         const result = await db
@@ -354,6 +366,7 @@ export class ContentService {
               name: module.name,
               description: module.description,
               order: module.order,
+              timeAlloted: module.timeAlloted,
               quizCount: quizCount[0].count,
               assignmentCount: assignmentCount[0].count,
               codingProblemsCount: codingQuestionCount[0].count,
@@ -380,9 +393,11 @@ export class ContentService {
           chapterId: moduleChapter.id,
           chapterTitle: moduleChapter.title,
           topicId: moduleChapter.topicId,
+          order: moduleChapter.order,
         })
         .from(moduleChapter)
-        .where(eq(moduleChapter.moduleId, moduleId));
+        .where(eq(moduleChapter.moduleId, moduleId))
+        .orderBy(moduleChapter.order);
 
       const topicNames = await db
         .select({
@@ -400,6 +415,7 @@ export class ContentService {
           chapterTitle: ch.chapterTitle,
           topicId: ch.topicId,
           topicName: topicInfo?.topicName || 'Unknown',
+          order: ch.order
         };
       });
 
@@ -418,7 +434,7 @@ export class ContentService {
       var modifiedChapterDetails = {
         ...chapterDetails[0],
         quizQuestionDetails: [],
-        codingQuestionDetails:[]
+        codingQuestionDetails: [],
       };
 
       if (chapterDetails.length > 0) {
@@ -430,15 +446,14 @@ export class ContentService {
             .where(sql`${inArray(moduleQuiz.id, quizIds)}`);
           modifiedChapterDetails.quizQuestionDetails = quizDetails;
         }
-        if (chapterDetails[0].topicId == 3)
-            {
-               const codingIds = Object.values(chapterDetails[0].codingQuestions);
-               const codingProblemDetails = await db
-               .select()
-               .from(codingQuestions)
-               .where(sql`${inArray(codingQuestions.id, codingIds)}`);
-               modifiedChapterDetails.codingQuestionDetails = codingProblemDetails;
-            }
+        if (chapterDetails[0].topicId == 3) {
+          const codingIds = Object.values(chapterDetails[0].codingQuestions);
+          const codingProblemDetails = await db
+            .select()
+            .from(codingQuestions)
+            .where(sql`${inArray(codingQuestions.id, codingIds)}`);
+          modifiedChapterDetails.codingQuestionDetails = codingProblemDetails;
+        }
         return modifiedChapterDetails;
       } else {
         return 'No Chapter found';
@@ -449,57 +464,62 @@ export class ContentService {
   }
 
   async updateOrderOfModules(
-    reorderData: {
-      moduleId: number;
-      newOrder: number;
-    },
+    reorderData: ReOrderModuleBody,
     bootcampId: number,
+    moduleId: number,
   ) {
     try {
-      const { moduleId, newOrder } = reorderData;
+      if (reorderData.moduleDto == undefined) {
+        const { newOrder } = reorderData.reOrderDto;
 
-      const modules = await db
-        .select()
-        .from(courseModules)
-        .where(eq(courseModules.bootcampId, bootcampId))
-        .orderBy(courseModules.order);
+        const modules = await db
+          .select()
+          .from(courseModules)
+          .where(eq(courseModules.bootcampId, bootcampId))
+          .orderBy(courseModules.order);
 
-      const draggedModuleIndex = modules.findIndex((m) => m.id === moduleId);
+        const draggedModuleIndex = modules.findIndex((m) => m.id === moduleId);
 
-      if (draggedModuleIndex + 1 > newOrder) {
-        for (
-          let i = newOrder - 1;
-          i <= draggedModuleIndex + 1 - newOrder;
-          i++
-        ) {
+        if (draggedModuleIndex + 1 > newOrder) {
+          for (
+            let i = newOrder - 1;
+            i <= draggedModuleIndex + 1 - newOrder;
+            i++
+          ) {
+            await db
+              .update(courseModules)
+              .set({ order: modules[i].order + 1 })
+              .where(eq(courseModules.id, modules[i].id));
+          }
           await db
             .update(courseModules)
-            .set({ order: modules[i].order + 1 })
-            .where(eq(courseModules.id, modules[i].id));
-        }
-        await db
-          .update(courseModules)
-          .set({ order: newOrder })
-          .where(eq(courseModules.id, moduleId));
-      } else if (draggedModuleIndex + 1 < newOrder) {
-        let counting = newOrder - (draggedModuleIndex + 1);
-        let ordering = newOrder - 1;
-        while (counting > 0) {
+            .set({ order: newOrder })
+            .where(eq(courseModules.id, moduleId));
+        } else if (draggedModuleIndex + 1 < newOrder) {
+          let counting = newOrder - (draggedModuleIndex + 1);
+          let ordering = newOrder - 1;
+          while (counting > 0) {
+            await db
+              .update(courseModules)
+              .set({ order: modules[ordering].order - 1 })
+              .where(eq(courseModules.id, modules[ordering].id));
+            counting = counting - 1;
+            ordering = ordering - 1;
+          }
+
           await db
             .update(courseModules)
-            .set({ order: modules[ordering].order - 1 })
-            .where(eq(courseModules.id, modules[ordering].id));
-          counting = counting - 1;
-          ordering = ordering - 1;
+            .set({ order: newOrder })
+            .where(eq(courseModules.id, moduleId));
         }
-
+      } else if (reorderData.reOrderDto == undefined) {
         await db
           .update(courseModules)
-          .set({ order: newOrder })
+          .set(reorderData.moduleDto)
           .where(eq(courseModules.id, moduleId));
       }
       return {
-        message: 'Re-ordered successfully',
+        message: 'Modified successfully',
       };
     } catch (err) {
       throw err;
@@ -519,6 +539,16 @@ export class ContentService {
         module_chapter,
       );
       if (chapter.status === 'success') {
+        let examples = [];
+        let testCases = [];
+        for (let i = 0; i < codingProblem.examples.length; i++) {
+          examples.push(codingProblem.examples[i].inputs);
+        }
+        codingProblem.examples = examples;
+        for (let j = 0; j < codingProblem.testCases.length; j++) {
+          testCases.push(codingProblem.testCases[j].inputs);
+        }
+        codingProblem.testCases = testCases;
         const result = await db
           .insert(codingQuestions)
           .values(codingProblem)
@@ -537,6 +567,69 @@ export class ContentService {
       } else {
         throw new Error('Failed to create chapter');
       }
+    } catch (err) {
+      throw err;
+    }
+  }
+
+  async editChapter(
+    editData: EditChapterDto,
+    moduleId: number,
+    chapterId : number
+  ) {
+    try {
+      if (editData.newOrder != undefined) {
+        const { newOrder } = editData;
+
+        const chapters = await db
+          .select()
+          .from(moduleChapter)
+          .where(eq(moduleChapter.moduleId, moduleId))
+          .orderBy(moduleChapter.order);
+
+        const draggedModuleIndex = chapters.findIndex((m) => m.id === chapterId);
+
+        if (draggedModuleIndex + 1 > newOrder) {
+          for (
+            let i = newOrder - 1;
+            i <= draggedModuleIndex + 1 - newOrder;
+            i++
+          ) {
+            await db
+              .update(moduleChapter)
+              .set({ order: chapters[i].order + 1 })
+              .where(eq(moduleChapter.id, chapters[i].id));
+          }
+          await db
+            .update(moduleChapter)
+            .set({ order: newOrder })
+            .where(eq(moduleChapter.id, chapterId));
+        } else if (draggedModuleIndex + 1 < newOrder) {
+          let counting = newOrder - (draggedModuleIndex + 1);
+          let ordering = newOrder - 1;
+          while (counting > 0) {
+            await db
+              .update(moduleChapter)
+              .set({ order:chapters[ordering].order - 1 })
+              .where(eq(moduleChapter.id, chapters[ordering].id));
+            counting = counting - 1;
+            ordering = ordering - 1;
+          }
+
+          await db
+            .update(moduleChapter)
+            .set({ order: newOrder })
+            .where(eq(moduleChapter.id, chapterId));
+        }
+      } else if (editData.newOrder  == undefined) {
+        await db
+          .update(moduleChapter)
+          .set(editData)
+          .where(eq(moduleChapter.id, chapterId));
+      }
+      return {
+        message: 'Modified successfully',
+      };
     } catch (err) {
       throw err;
     }

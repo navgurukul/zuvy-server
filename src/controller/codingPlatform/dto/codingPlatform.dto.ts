@@ -72,14 +72,14 @@ export class CreateProblemDto {
   })
   @IsNotEmpty()
   @IsString()
-  difficulty: any;
+  difficulty: 'Easy' | 'Medium' | 'Hard';
 
   @ApiProperty({
-    type: String,
-    example: 'Array',
+    type: Number,
+    example: 2,
   })
-  @IsString()
-  tags: string;
+  @IsNumber()
+  tags: number;
 
   @ApiProperty({
     type: String,
