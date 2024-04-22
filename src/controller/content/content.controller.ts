@@ -29,7 +29,9 @@ import {
   quizDto,
   reOrderDto,
   ReOrderModuleBody,
-  EditChapterDto
+  EditChapterDto,
+  openEndedDto,
+  CreateAssessmentBody,
 } from './dto/content.dto';
 import { CreateProblemDto } from '../codingPlatform/dto/codingPlatform.dto';
 
@@ -129,8 +131,16 @@ export class ContentController {
     return res;
   }
 
-  @Post('/quiz/:moduleId')
-  @ApiOperation({ summary: 'Create a quiz for this module' })
+  @Post('/quiz')
+  @ApiOperation({ summary: 'Create a quiz' })
+  @ApiBearerAuth()
+  async createQuizForModule(@Body() quizQuestions: quizBatchDto) {
+    const res = await this.contentService.createQuizForModule(quizQuestions);
+    return res;
+  }
+
+  @Post('/chapterQuiz/:moduleId')
+  @ApiOperation({ summary: 'Create a chapter quiz for this module' })
   @ApiQuery({
     name: 'topicId',
     required: true,
@@ -138,23 +148,25 @@ export class ContentController {
     description: 'topic id',
   })
   @ApiBearerAuth()
-  async createQuizForModule(
-    @Body() quizQuestions: quizBatchDto,
+  async createChapterQuiz(
+    @Body() chapterQuiz: chapterDto,
     @Param('moduleId') moduleId: number,
     @Query('topicId') topicId: number,
   ) {
-    const chapterDetails: chapterDto = {
-      title: 'Quiz',
-      description:
-        'The questions are based on the knowledge that you learned from the classes',
-      completionDate: new Date().toDateString(),
-    };
-    const res = await this.contentService.createQuizForModule(
+    const res = await this.contentService.createChapterQuiz(
       moduleId,
       topicId,
-      chapterDetails,
-      quizQuestions,
+      chapterQuiz,
     );
+    return res;
+  }
+
+  @Post('/createOpenEndedQuestion')
+  @ApiOperation({ summary: 'Create a open ended question' })
+  @ApiBearerAuth()
+  async createOpenEndedQuestion(@Body() oEndedQuestions: openEndedDto) {
+    const res =
+      await this.contentService.createOpenEndedQuestions(oEndedQuestions);
     return res;
   }
 
@@ -177,6 +189,7 @@ export class ContentController {
       description:
         'The questions are based on the knowledge that you learned from the classes',
       completionDate: new Date().toDateString(),
+      quizQuestions: null,
     };
     const res = await this.contentService.createCodingProblemForModule(
       moduleId,
@@ -184,6 +197,28 @@ export class ContentController {
       chapterDetails,
       codingQuestions,
     );
+    return res;
+  }
+
+  @Post('/createAssessment/:moduleId')
+  @ApiOperation({ summary: 'Create a assessment for this module' })
+  @ApiBearerAuth()
+  async createAssessment(
+    @Body() assessmentBody: CreateAssessmentBody,
+    @Param('moduleId') moduleId: number,
+  ) {
+    const res = await this.contentService.createAssessment(
+      moduleId,
+      assessmentBody,
+    );
+    return res;
+  }
+
+  @Get('/getAssessment/:moduleId')
+  @ApiOperation({ summary: 'Get the assessment details inside a module' })
+  @ApiBearerAuth()
+  async getAssessment(@Param('moduleId') moduleId: number) {
+    const res = await this.contentService.getAssessmentDetails(moduleId);
     return res;
   }
 
@@ -228,7 +263,7 @@ export class ContentController {
     const res = await this.contentService.updateOrderOfModules(
       reOrder,
       bootcampId,
-      moduleId
+      moduleId,
     );
     return res;
   }
@@ -250,7 +285,7 @@ export class ContentController {
     const res = await this.contentService.editChapter(
       reOrder,
       moduleId,
-      chapterId
+      chapterId,
     );
     return res;
   }

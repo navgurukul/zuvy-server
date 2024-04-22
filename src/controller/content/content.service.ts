@@ -9,6 +9,8 @@ import {
   courseModules,
   moduleQuiz,
   codingQuestions,
+  openEndedQuestion,
+  moduleAssessment,
   questions,
   difficulty,
 } from '../../../drizzle/schema';
@@ -24,7 +26,9 @@ import {
   quizBatchDto,
   ReOrderModuleBody,
   reOrderDto,
-  EditChapterDto
+  EditChapterDto,
+  openEndedDto,
+  CreateAssessmentBody,
 } from './dto/content.dto';
 import { CreateProblemDto } from '../codingPlatform/dto/codingPlatform.dto';
 // import Strapi from "strapi-sdk-js"
@@ -280,11 +284,32 @@ export class ContentService {
     }
   }
 
-  async createQuizForModule(
+  async createQuizForModule(quiz: quizBatchDto) {
+    try {
+      const quizQuestions = quiz.questions.map((q) => ({
+        question: q.question,
+        options: q.options,
+        correctOption: q.correctOption,
+        marks: q.mark,
+        difficulty: q.difficulty,
+        tagId: q.tagId,
+      }));
+
+      const result = await db
+        .insert(moduleQuiz)
+        .values(quizQuestions)
+        .returning();
+
+      return result;
+    } catch (err) {
+      throw err;
+    }
+  }
+
+  async createChapterQuiz(
     moduleId: number,
     topicId: number,
     module_chapter: chapterDto,
-    quiz: quizBatchDto,
   ) {
     try {
       const chapter = await this.createChapterForModule(
@@ -292,34 +317,19 @@ export class ContentService {
         topicId,
         module_chapter,
       );
-      if (chapter.status === 'success') {
-        const quizQuestions = quiz.questions.map((q) => ({
-          question: q.question,
-          options: q.options,
-          correctOption: q.correctOption,
-          marks: q.mark,
-          difficulty: q.difficulty,
-          tagId: q.tagId,
-        }));
+      return chapter;
+    } catch (err) {
+      throw err;
+    }
+  }
 
-        const result = await db
-          .insert(moduleQuiz)
-          .values(quizQuestions)
-          .returning();
-
-        if (result.length > 0) {
-          const quizIds = result.map((q) => {
-            return q.id;
-          });
-          await db
-            .update(moduleChapter)
-            .set({ quizQuestions: quizIds })
-            .where(eq(moduleChapter.id, chapter.module[0].id));
-        }
-        return result;
-      } else {
-        throw new Error('Failed to create chapter');
-      }
+  async createOpenEndedQuestions(questions: openEndedDto) {
+    try {
+      const openEndedQuestions = await db
+        .insert(openEndedQuestion)
+        .values(questions)
+        .returning();
+      return openEndedQuestions;
     } catch (err) {
       throw err;
     }
@@ -388,6 +398,18 @@ export class ContentService {
 
   async getAllChaptersOfModule(moduleId: number) {
     try {
+      const module = await db
+        .select()
+        .from(courseModules)
+        .where(eq(courseModules.id, moduleId));
+      const assessment = await db
+        .select({
+          assessmentTitle: moduleAssessment.title,
+          assessmentId: moduleAssessment.id,
+          timeDuration: moduleAssessment.timeLimit,
+        })
+        .from(moduleAssessment)
+        .where(eq(moduleAssessment.moduleId, module[0].id));
       const chapterNameWithId = await db
         .select({
           chapterId: moduleChapter.id,
@@ -415,11 +437,11 @@ export class ContentService {
           chapterTitle: ch.chapterTitle,
           topicId: ch.topicId,
           topicName: topicInfo?.topicName || 'Unknown',
-          order: ch.order
+          order: ch.order,
         };
       });
 
-      return chapterWithTopic;
+      return { chapterWithTopic, moduleName: module[0].name, assessment };
     } catch (err) {
       throw err;
     }
@@ -555,9 +577,12 @@ export class ContentService {
           .returning();
 
         if (result.length > 0) {
-          const codingIds = result.map((q) => {
+          let codingIds = result.map((q) => {
             return q.id;
           });
+          if (codingProblem.codingQuestionIds.length > 0) {
+            codingIds.push(...codingProblem.codingQuestionIds);
+          }
           await db
             .update(moduleChapter)
             .set({ codingQuestions: codingIds })
@@ -575,7 +600,7 @@ export class ContentService {
   async editChapter(
     editData: EditChapterDto,
     moduleId: number,
-    chapterId : number
+    chapterId: number,
   ) {
     try {
       if (editData.newOrder != undefined) {
@@ -587,7 +612,9 @@ export class ContentService {
           .where(eq(moduleChapter.moduleId, moduleId))
           .orderBy(moduleChapter.order);
 
-        const draggedModuleIndex = chapters.findIndex((m) => m.id === chapterId);
+        const draggedModuleIndex = chapters.findIndex(
+          (m) => m.id === chapterId,
+        );
 
         if (draggedModuleIndex + 1 > newOrder) {
           for (
@@ -610,7 +637,7 @@ export class ContentService {
           while (counting > 0) {
             await db
               .update(moduleChapter)
-              .set({ order:chapters[ordering].order - 1 })
+              .set({ order: chapters[ordering].order - 1 })
               .where(eq(moduleChapter.id, chapters[ordering].id));
             counting = counting - 1;
             ordering = ordering - 1;
@@ -621,7 +648,7 @@ export class ContentService {
             .set({ order: newOrder })
             .where(eq(moduleChapter.id, chapterId));
         }
-      } else if (editData.newOrder  == undefined) {
+      } else if (editData.newOrder == undefined) {
         await db
           .update(moduleChapter)
           .set(editData)
@@ -630,6 +657,74 @@ export class ContentService {
       return {
         message: 'Modified successfully',
       };
+    } catch (err) {
+      throw err;
+    }
+  }
+
+  async createAssessment(
+    moduleId: number,
+    assessmentBody: CreateAssessmentBody,
+  ) {
+    try {
+      const assessment = { ...assessmentBody, moduleId };
+      const newAssessment = await db
+        .insert(moduleAssessment)
+        .values(assessment)
+        .returning();
+      return newAssessment;
+    } catch (err) {
+      throw err;
+    }
+  }
+
+  async getAssessmentDetails(moduleId: number) {
+    try {
+      const assessment = await db
+        .select()
+        .from(moduleAssessment)
+        .where(eq(moduleAssessment.moduleId, moduleId));
+      if (assessment.length > 0) {
+        const ab = Object.values(assessment[0].codingProblems);
+        const codingQuesIds = ab.reduce((acc, obj) => {
+          const key = Object.keys(obj)[0];
+          const numericKey = Number(key);
+          if (!isNaN(numericKey)) {
+            acc.push(numericKey);
+          }
+          return acc;
+        }, []);
+        const mcqIds = Object.values(assessment[0].mcq);
+        const openEndedQuesIds = Object.values(
+          assessment[0].openEndedQuestions,
+        );
+        const mcqDetails = await db
+          .select()
+          .from(moduleQuiz)
+          .where(sql`${inArray(moduleQuiz.id, mcqIds)}`);
+        const openEndedQuesDetails = await db
+          .select()
+          .from(openEndedQuestion)
+          .where(sql`${inArray(openEndedQuestion.id, openEndedQuesIds)}`);
+        const codingProblems = await db
+          .select()
+          .from(codingQuestions)
+          .where(sql`${inArray(codingQuestions.id, codingQuesIds)}`);
+        let codingQuesDetails = [];
+        for (let i = 0; i < codingProblems.length; i++) {
+          codingQuesDetails.push({
+            ...codingProblems[i],
+            marks: Object.values(ab[i])[0],
+          });
+        }
+
+        return {
+          assessment,
+          mcqDetails,
+          openEndedQuesDetails,
+          codingQuesDetails,
+        };
+      }
     } catch (err) {
       throw err;
     }
