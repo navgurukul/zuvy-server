@@ -1934,7 +1934,8 @@ export const openEndedQuestion = main.table("zuvy_openEnded_questions",{
         question: text("question"),
         answer: text("answer"),
         difficulty: difficulty("difficulty"),
-        tagId: integer("tag_id").references(() => tags.id)
+        tagId: integer("tag_id").references(() => tags.id),
+        marks: integer("marks")
 })
 
 export const zuvyStudentAttendance = main.table("zuvy_student_attendance",{
