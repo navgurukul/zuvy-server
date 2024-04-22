@@ -253,7 +253,7 @@ export class ClassesService {
       const saveClassDetails = await db
         .insert(classesGoogleMeetLink)
         .values({
-          meetingid: createdEvent.data.id,
+          meetingId: createdEvent.data.id,
           hangoutLink: createdEvent.data.hangoutLink,
           creator: createdEvent.data.creator.email,
           startTime: createdEvent.data.start.dateTime,
@@ -261,7 +261,6 @@ export class ClassesService {
           batchId: eventDetails.batchId,
           bootcampId: eventDetails.bootcampId,
           title: createdEvent.data.summary,
-          attendees: studentsEmails,
         })
         .returning();
       if (saveClassDetails) {
@@ -280,77 +279,6 @@ export class ClassesService {
         message: 'error creating class',
         error: error,
       };
-    }
-  }
-
-  async getAttendance(meetingId,  user = null) : Promise<any> {
-    try {
-      const fetchedTokens = await db
-        .select()
-        .from(userTokens)
-        .where(eq(userTokens.userId,user.id));
-      if (!fetchedTokens || fetchedTokens.length === 0) {
-        return { status: 'error', message: 'Unable to fetch tokens' };
-      }
-
-      // try{
-        auth2Client.setCredentials({
-          access_token: fetchedTokens[0].accessToken,
-          refresh_token: fetchedTokens[0].refreshToken,
-        });
-        const client = google.admin({ version: 'reports_v1', auth: auth2Client });
-        const response = await client.activities.list({
-          userKey: 'all',
-          applicationName: 'meet',
-          eventName: 'call_ended',
-          maxResults: 1000,
-          filters: `calendar_event_id==${meetingId}`,
-        }).catch((error) => {
-          throw new Error(`Error executing request: ${error.message}`);
-        });
-  
-        const attendanceSheet = {};
-        if (response.data.items) {
-          response.data.items.forEach((item) => {
-            const event = item.events[0];
-            const durationSeconds =
-              event.parameters.find((param) => param.name === 'duration_seconds')
-                ?.intValue || '';
-            const email =
-              event.parameters.find((param) => param.name === 'identifier')
-                ?.value || '';
-  
-            if (email in attendanceSheet) {
-              attendanceSheet[email] += parseInt(durationSeconds) || 0;
-            } else {
-              attendanceSheet[email] = parseInt(durationSeconds) || 0;
-            }
-          });
-          const zuvyEmail = attendanceSheet['team@zuvy.org'];
-          const totalDuration = zuvyEmail || 0;
-          const threshold = 0.7 * totalDuration;
-          const mergedAttendance = Object.entries(attendanceSheet).map(
-            ([email, duration]) => ({ email, duration }),
-          );
-          for (const attendance of mergedAttendance) {
-            if (attendance.email !== 'team@zuvy.org') {
-              attendance['attendance'] =
-                Number(attendance.duration) >= threshold ? 'present' : 'absent';
-            }
-          }
-          return [null,{
-            attendanceSheet: mergedAttendance.filter(
-              (attendance) => attendance.email !== 'team@zuvy.org',
-            ),
-            status: 'success',
-          }];
-        }
-      // } catch (error) {
-      //   throw new Error(`Error executing request: ${error.message}`);
-      // }
-    } catch (error) {
-      console.log('error: ', error);
-      return [{ message: `Access denied. You are not authorized to read activity records.`, status: 'error' , code: 403}];
     }
   }
 
@@ -388,7 +316,7 @@ export class ClassesService {
           applicationName: 'meet',
           eventName: 'call_ended',
           maxResults: 1000,
-          filters: `calendar_event_id==${singleMeeting.meetingid}`,
+          filters: `calendar_event_id==${singleMeeting.meetingId}`,
         });
 
         const meetingAttendance = {};
@@ -458,16 +386,429 @@ export class ClassesService {
     }
   }
 
-  async meetingAttendance(): Promise<any> {
+  async classifyClasses(classes: Class[]): Promise<ClassStatus[]> {
+    const now = new Date();
+
+    return _.map(classes, (classItem) => {
+      const classStartTime = classItem.startTime;
+      const classEndTime = classItem.endTime;
+      const startTime = classStartTime.toISOString().split('T')[0];
+      const endTime = classEndTime.toISOString().split('T')[0];
+
+      if (endTime < now) {
+        return ClassStatus.COMPLETED;
+      } else if (startTime <= now && endTime >= now) {
+        return ClassStatus.ONGOING;
+      } else {
+        return ClassStatus.UPCOMING;
+      }
+    });
+  }
+
+ 
+  @Cron('*/3 * * * *')
+  async getEventDetails(@Req() req): Promise<any> {
+    try {
+      const fetchedTokens = await db
+        .select()
+        .from(userTokens)
+        .where(eq(userTokens.userId, req.user[0].id));
+      if (!fetchedTokens) {
+        return { status: 'error', message: 'Unable to fetch tokens' };
+      }
+      auth2Client.setCredentials({
+        access_token: fetchedTokens[0].accessToken,
+        refresh_token: fetchedTokens[0].refreshToken,
+      });
+      const calendar = google.calendar({ version: 'v3', auth: auth2Client });
+      const allClasses = await db.select().from(classesGoogleMeetLink);
+      for (const classData of allClasses) {
+        if (classData.meetingId != null) {
+          if (classData.s3link == null) {
+            const response = await calendar.events.get({
+              calendarId: 'primary',
+              eventId: classData.meetingId,
+            });
+            if (response.data.attachments) {
+              for (const attachment of response.data.attachments) {
+                if (attachment.mimeType == 'video/mp4') {
+                  // const s3Url = await this.uploadVideoFromGoogleDriveToS3(attachment.fileUrl,attachment.fileId)
+                  let updatedS3Url = await db
+                    .update(classesGoogleMeetLink)
+                    .set({ ...classData, s3link: attachment.fileUrl })
+                    .where(eq(classesGoogleMeetLink.id, classData.id))
+                    .returning();
+                  return {
+                    status: 'success',
+                    message: 'Meeting  updated successfully',
+                    code: 200,
+                    meetingDetails: updatedS3Url,
+                  };
+                }
+              }
+            }
+          }
+        }
+      }
+      return { status: 'success', message: 'No meetings to update', code: 200 };
+    } catch (error) {
+      return { status: 'failure', error: error };
+    }
+  }
+  
+
+  private async uploadVideoToS3(
+    fileBuffer: Buffer,
+    fileName: string,
+  ): Promise<string> {
+    try {
+      const s3 = new S3({
+        accessKeyId: process.env.S3_ACCESS_KEY_ID,
+        secretAccessKey: process.env.S3_SECRET_KEY_ACCESS,
+      });
+      const bucketName = process.env.S3_BUCKET_NAME;
+      const s3Key = `class-recordings/${fileName}`;
+      await s3
+        .upload({
+          Bucket: bucketName,
+          Key: s3Key,
+          Body: fileBuffer,
+        })
+        .promise();
+      const s3Url = `https://${bucketName}.s3.amazonaws.com/${s3Key}`;
+      return s3Url;
+    } catch (error) {
+      throw new Error('Error uploading video to S3');
+    }
+  }
+  async getClassesByBootcampId(
+    bootcampId: string,
+    limit: number,
+    offset: number,
+  ) {
+    try {
+      const currentTime = new Date();
+      const classes = await db
+        .select()
+        .from(classesGoogleMeetLink)
+        .where(sql`${classesGoogleMeetLink.bootcampId} = ${bootcampId}`);
+
+      const sortedClasses = _.orderBy(
+        classes,
+        (classObj) => new Date(classObj.startTime),
+        'desc',
+      );
+      const completedClasses = [];
+      const ongoingClasses = [];
+      const upcomingClasses = [];
+
+      for (const classObj of sortedClasses) {
+        const startTime = new Date(classObj.startTime);
+        const endTime = new Date(classObj.endTime);
+
+        if (currentTime > endTime) {
+          completedClasses.push(classObj);
+        } else if (currentTime >= startTime && currentTime <= endTime) {
+          ongoingClasses.push(classObj);
+        } else {
+          upcomingClasses.push(classObj);
+        }
+      }
+      const paginatedCompletedClasses = completedClasses.slice(
+        (offset - 1) * limit,
+        (offset - 1) * limit + limit,
+      );
+      const paginatedOngoingClasses = ongoingClasses.slice(
+        (offset - 1) * limit,
+        (offset - 1) * limit + limit,
+      );
+      const paginatedUpcomingClasses = upcomingClasses.slice(
+        (offset - 1) * limit,
+        (offset - 1) * limit + limit,
+      );
+
+      return {
+        status: 'success',
+        message: 'Classes fetched successfully by bootcampId',
+        code: 200,
+        completedClasses: paginatedCompletedClasses,
+        ongoingClasses: paginatedOngoingClasses,
+        upcomingClasses: paginatedUpcomingClasses,
+      };
+    } catch (error) {
+      return {
+        status: 'error',
+        message: 'Error fetching class Links',
+        error: error.message,
+      };
+    }
+  }
+
+  async getAttendeesByMeetingId(id: number) {
+    try {
+      const attendeesList = await db
+        .select()
+        .from(classesGoogleMeetLink)
+        .where(sql`${classesGoogleMeetLink.id}=${id}`);
+      return { status: 'success', message: 'attendees fetched successfully' };
+    } catch (error) {
+      return {
+        status: 'error',
+        message: 'Error fetching attendees',
+        error: error,
+      };
+    }
+  }
+
+  async getMeetingById(id: number) {
+    try {
+      const classDetails = await db
+        .select()
+        .from(classesGoogleMeetLink)
+        .where(sql`${classesGoogleMeetLink.id}=${id}`);
+      if (classDetails.length === 0) {
+        return { status: 'error', message: 'class not found', code: 404 };
+      }
+      return {
+        status: 'success',
+        message: 'class fetched successfully',
+        code: 200,
+        class: classDetails[0],
+      };
+    } catch (error) {
+      return { status: 'error', message: 'Error fetching class', error: error };
+    }
+  }
+
+  async deleteMeetingById(id: number) {
+    try {
+      db
+        .delete(classesGoogleMeetLink)
+        .where(sql`${classesGoogleMeetLink.id} = ${id}`).then((res) => {});
+      return {
+        status: 'success',
+        message: 'Meeting deleted successfully ',
+        code: 200,
+      };
+    } catch (error) {
+      return {
+        success: 'not success',
+        message: 'Error deleting meeting',
+        error: error,
+      };
+    }
+  }
+
+  async updateMeetingById(id: number, classData: any): Promise<object> {
+    try {
+      let updatedMeeting = await db
+        .update(classesGoogleMeetLink)
+        .set({ ...classData })
+        .where(eq(classesGoogleMeetLink.id, id))
+        .returning();
+      return {
+        status: 'success',
+        message: 'Meeting  updated successfully',
+        code: 200,
+        meetingDetails: updatedMeeting,
+      };
+    } catch (e) {
+      return { status: 'error', message: e.message, code: 405 };
+    }
+  }
+
+  async meetingAttendanceAnalytics(meeting_id: string) {
+    try {
+      let classInfo = await db.select().from(classesGoogleMeetLink).where(sql`${classesGoogleMeetLink.meetingId}=${meeting_id}`);
+      if (classInfo.length > 0) {
+        const Meeting = await db.select().from(zuvyStudentAttendance).where(sql`${zuvyStudentAttendance.meetingId}=${meeting_id}`);
+        let {bootcampId,  batchId, s3link } = classInfo[0];
+        let students = await db.select().from(batchEnrollments).where(sql`${batchEnrollments.batchId}=${batchId}`);
+        
+        let attendance: Array<any> = Meeting[0].attendance as Array<any> || [];
+        //attendance number of students present
+        let present = attendance.filter((student) => student.attendance === 'present').length;
+
+        return [null,{ status: 'success', message: 'Meetings fetched successfully', studentsInfo: {total_students: students.length,present:present,s3link: s3link } }];
+      } else {
+        return [{ status: 'error', message: 'Meeting not found', code: 404 }];
+      }
+    } catch (error) {
+      return [{
+        status: 'error',
+        message: 'Error fetching meetings',
+        error: error.message,
+      }];
+    }
+  }
+
+  async getAttendance(meetingId,  user = null) : Promise<any> {
+    try {
+      let attendanceSheet = await db.select().from(zuvyStudentAttendance).where(eq(zuvyStudentAttendance.meetingId, meetingId));
+      if (attendanceSheet.length > 0) {
+        return [null,{
+          attendanceSheet: attendanceSheet[0].attendance,
+          status: 'success',
+        }]
+      }
+
+      const fetchedTokens = await db
+        .select()
+        .from(userTokens)
+        .where(eq(userTokens.userId,user.id));
+      if (!fetchedTokens || fetchedTokens.length === 0) {
+        return { status: 'error', message: 'Unable to fetch tokens' };
+      }
+
+      // try{
+        auth2Client.setCredentials({
+          access_token: fetchedTokens[0].accessToken,
+          refresh_token: fetchedTokens[0].refreshToken,
+        });
+        const client = google.admin({ version: 'reports_v1', auth: auth2Client });
+        const response = await client.activities.list({
+          userKey: 'all',
+          applicationName: 'meet',
+          eventName: 'call_ended',
+          maxResults: 1000,
+          filters: `calendar_event_id==${meetingId}`,
+        }).catch((error) => {
+          throw new Error(`Error executing request: ${error.message}`);
+        });
+        if (response.data.items) {
+          response.data.items.forEach((item) => {
+            const event = item.events[0];
+            const durationSeconds =
+              event.parameters.find((param) => param.name === 'duration_seconds')
+                ?.intValue || '';
+            const email =
+              event.parameters.find((param) => param.name === 'identifier')
+                ?.value || '';
+  
+            if (email in attendanceSheet) {
+              attendanceSheet[email] += parseInt(durationSeconds) || 0;
+            } else {
+              attendanceSheet[email] = parseInt(durationSeconds) || 0;
+            }
+          });
+          const zuvyEmail = attendanceSheet['team@zuvy.org'];
+          const totalDuration = zuvyEmail || 0;
+          const threshold = 0.7 * totalDuration;
+          const mergedAttendance = Object.entries(attendanceSheet).map(
+            ([email, duration]) => ({ email, duration }),
+          );
+          for (const attendance of mergedAttendance) {
+            if (attendance.email !== 'team@zuvy.org') {
+              attendance['attendance'] =
+                Number(attendance.duration) >= threshold ? 'present' : 'absent';
+            }
+          }
+          let attendanceSheetData = mergedAttendance.filter(
+            (attendance) => attendance.email !== 'team@zuvy.org',
+          )
+          if (attendanceSheetData.length > 0) {
+            const zuvy_student_attendance = await db
+              .insert(zuvyStudentAttendance).values({meetingId, attendance: attendanceSheetData }).returning();
+            if (zuvy_student_attendance.length > 0) {
+              console.log('Attendance updated in zuvy_student_attendance  successfully');
+            }
+          }
+          return [null,{
+            attendanceSheetData,
+            status: 'success',
+          }];
+        }
+    } catch (error) {
+      return [{ status: 'error', message: error.message, code: 402 }];
+    }
+  }
+
+  async getClassesByBatchId(batchId: string, limit: number, offset: number) {
+    try {
+      const currentTime = new Date();
+
+      const classes = await db
+        .select()
+        .from(classesGoogleMeetLink)
+        .where(sql`${classesGoogleMeetLink.batchId} = ${batchId}`);
+      const sortedClasses = _.orderBy(
+        classes,
+        (classObj) => new Date(classObj.startTime),
+        'desc',
+      );
+      const completedClasses = [];
+      const ongoingClasses = [];
+      const upcomingClasses = [];
+
+      for (const classObj of sortedClasses) {
+        const startTime = new Date(classObj.startTime);
+        const endTime = new Date(classObj.endTime);
+
+        if (currentTime > endTime) {
+          completedClasses.push(classObj);
+        } else if (currentTime >= startTime && currentTime <= endTime) {
+          ongoingClasses.push(classObj);
+        } else {
+          upcomingClasses.push(classObj);
+        }
+      }
+      const paginatedCompletedClasses = completedClasses.slice(
+        (offset - 1) * limit,
+        (offset - 1) * limit + limit,
+      );
+      const paginatedOngoingClasses = ongoingClasses.slice(
+        (offset - 1) * limit,
+        (offset - 1) * limit + limit,
+      );
+      const paginatedUpcomingClasses = upcomingClasses.slice(
+        (offset - 1) * limit,
+        (offset - 1) * limit + limit,
+      );
+      return {
+        status: 'success',
+        message: 'Classes fetched successfully by batchId',
+        code: 200,
+        completedClasses: paginatedCompletedClasses,
+        ongoingClasses: paginatedOngoingClasses,
+        upcomingClasses: paginatedUpcomingClasses,
+      };
+    } catch (error) {
+      return {
+        success: 'not success',
+        message: 'Error fetching class Links',
+        error: error,
+      };
+    }
+  }
+
+  async uploadVideoFromGoogleDriveToS3(
+    googleDriveLink: string,
+    fileId: string,
+  ): Promise<string> {
+    try {
+      const response = await Axios.get(googleDriveLink, {
+        responseType: 'arraybuffer',
+      });
+      const fileBuffer = Buffer.from(response.data);
+
+      const s3Url = await this.uploadVideoToS3(fileBuffer, fileId);
+
+      return s3Url;
+    } catch (error) {
+      throw new Error('Error uploading video from Google Drive to S3');
+    }
+  }
+
+  async meetingAttendance(meetingId: number): Promise<any> {
     try {
       const allMeets = await db.select().from(classesGoogleMeetLink);
       for (const meet of allMeets) {
         const isMarked = await db
           .select()
           .from(zuvyMeetingAttendance)
-          .where(eq(zuvyMeetingAttendance.meetingId, meet.meetingid));
+          .where(eq(zuvyMeetingAttendance.meetingId, meet.meetingId));
         if (isMarked.length == 0) {
-          const fetchedAttendance = await this.getAttendance(meet.meetingid);
+          const fetchedAttendance = await this.getAttendance(meet.meetingId);
           const fetchedAttendanceList = fetchedAttendance.attendanceSheet;
           const totalMeetsMarked = await db
             .select()
@@ -596,7 +937,7 @@ export class ClassesService {
           const updateMeetingDetails = await db
             .insert(zuvyMeetingAttendance)
             .values({
-              meetingId: meet.meetingid,
+              meetingId: meet.meetingId,
               bootcampid: meet.bootcampId,
               batchid: meet.batchId,
             })
@@ -609,307 +950,4 @@ export class ClassesService {
     }
   }
 
-  async classifyClasses(classes: Class[]): Promise<ClassStatus[]> {
-    const now = new Date();
-
-    return _.map(classes, (classItem) => {
-      const classStartTime = classItem.startTime;
-      const classEndTime = classItem.endTime;
-      const startTime = classStartTime.toISOString().split('T')[0];
-      const endTime = classEndTime.toISOString().split('T')[0];
-
-      if (endTime < now) {
-        return ClassStatus.COMPLETED;
-      } else if (startTime <= now && endTime >= now) {
-        return ClassStatus.ONGOING;
-      } else {
-        return ClassStatus.UPCOMING;
-      }
-    });
-  }
-
-  async getClassesByBatchId(batchId: string, limit: number, offset: number) {
-    try {
-      const currentTime = new Date();
-
-      const classes = await db
-        .select()
-        .from(classesGoogleMeetLink)
-        .where(sql`${classesGoogleMeetLink.batchId} = ${batchId}`);
-      const sortedClasses = _.orderBy(
-        classes,
-        (classObj) => new Date(classObj.startTime),
-        'desc',
-      );
-      const completedClasses = [];
-      const ongoingClasses = [];
-      const upcomingClasses = [];
-
-      for (const classObj of sortedClasses) {
-        const startTime = new Date(classObj.startTime);
-        const endTime = new Date(classObj.endTime);
-
-        if (currentTime > endTime) {
-          completedClasses.push(classObj);
-        } else if (currentTime >= startTime && currentTime <= endTime) {
-          ongoingClasses.push(classObj);
-        } else {
-          upcomingClasses.push(classObj);
-        }
-      }
-      const paginatedCompletedClasses = completedClasses.slice(
-        (offset - 1) * limit,
-        (offset - 1) * limit + limit,
-      );
-      const paginatedOngoingClasses = ongoingClasses.slice(
-        (offset - 1) * limit,
-        (offset - 1) * limit + limit,
-      );
-      const paginatedUpcomingClasses = upcomingClasses.slice(
-        (offset - 1) * limit,
-        (offset - 1) * limit + limit,
-      );
-      return {
-        status: 'success',
-        message: 'Classes fetched successfully by batchId',
-        code: 200,
-        completedClasses: paginatedCompletedClasses,
-        ongoingClasses: paginatedOngoingClasses,
-        upcomingClasses: paginatedUpcomingClasses,
-      };
-    } catch (error) {
-      return {
-        success: 'not success',
-        message: 'Error fetching class Links',
-        error: error,
-      };
-    }
-  }
-
-  @Cron('*/3 * * * *')
-  async getEventDetails(@Req() req): Promise<any> {
-    try {
-      const fetchedTokens = await db
-        .select()
-        .from(userTokens)
-        .where(eq(userTokens.userId, req.user[0].id));
-      if (!fetchedTokens) {
-        return { status: 'error', message: 'Unable to fetch tokens' };
-      }
-      auth2Client.setCredentials({
-        access_token: fetchedTokens[0].accessToken,
-        refresh_token: fetchedTokens[0].refreshToken,
-      });
-      const calendar = google.calendar({ version: 'v3', auth: auth2Client });
-      const allClasses = await db.select().from(classesGoogleMeetLink);
-      for (const classData of allClasses) {
-        if (classData.meetingid != null) {
-          if (classData.s3link == null) {
-            const response = await calendar.events.get({
-              calendarId: 'primary',
-              eventId: classData.meetingid,
-            });
-            if (response.data.attachments) {
-              for (const attachment of response.data.attachments) {
-                if (attachment.mimeType == 'video/mp4') {
-                  // const s3Url = await this.uploadVideoFromGoogleDriveToS3(attachment.fileUrl,attachment.fileId)
-                  let updatedS3Url = await db
-                    .update(classesGoogleMeetLink)
-                    .set({ ...classData, s3link: attachment.fileUrl })
-                    .where(eq(classesGoogleMeetLink.id, classData.id))
-                    .returning();
-                  return {
-                    status: 'success',
-                    message: 'Meeting  updated successfully',
-                    code: 200,
-                    meetingDetails: updatedS3Url,
-                  };
-                }
-              }
-            }
-          }
-        }
-      }
-      return { status: 'success', message: 'No meetings to update', code: 200 };
-    } catch (error) {
-      return { status: 'failure', error: error };
-    }
-  }
-  async uploadVideoFromGoogleDriveToS3(
-    googleDriveLink: string,
-    fileId: string,
-  ): Promise<string> {
-    try {
-      const response = await Axios.get(googleDriveLink, {
-        responseType: 'arraybuffer',
-      });
-      const fileBuffer = Buffer.from(response.data);
-
-      const s3Url = await this.uploadVideoToS3(fileBuffer, fileId);
-
-      return s3Url;
-    } catch (error) {
-      throw new Error('Error uploading video from Google Drive to S3');
-    }
-  }
-
-  private async uploadVideoToS3(
-    fileBuffer: Buffer,
-    fileName: string,
-  ): Promise<string> {
-    try {
-      const s3 = new S3({
-        accessKeyId: process.env.S3_ACCESS_KEY_ID,
-        secretAccessKey: process.env.S3_SECRET_KEY_ACCESS,
-      });
-      const bucketName = process.env.S3_BUCKET_NAME;
-      const s3Key = `class-recordings/${fileName}`;
-      await s3
-        .upload({
-          Bucket: bucketName,
-          Key: s3Key,
-          Body: fileBuffer,
-        })
-        .promise();
-      const s3Url = `https://${bucketName}.s3.amazonaws.com/${s3Key}`;
-      return s3Url;
-    } catch (error) {
-      throw new Error('Error uploading video to S3');
-    }
-  }
-  async getClassesByBootcampId(
-    bootcampId: string,
-    limit: number,
-    offset: number,
-  ) {
-    try {
-      const currentTime = new Date();
-      const classes = await db
-        .select()
-        .from(classesGoogleMeetLink)
-        .where(sql`${classesGoogleMeetLink.bootcampId} = ${bootcampId}`);
-
-      const sortedClasses = _.orderBy(
-        classes,
-        (classObj) => new Date(classObj.startTime),
-        'desc',
-      );
-      const completedClasses = [];
-      const ongoingClasses = [];
-      const upcomingClasses = [];
-
-      for (const classObj of sortedClasses) {
-        const startTime = new Date(classObj.startTime);
-        const endTime = new Date(classObj.endTime);
-
-        if (currentTime > endTime) {
-          completedClasses.push(classObj);
-        } else if (currentTime >= startTime && currentTime <= endTime) {
-          ongoingClasses.push(classObj);
-        } else {
-          upcomingClasses.push(classObj);
-        }
-      }
-      const paginatedCompletedClasses = completedClasses.slice(
-        (offset - 1) * limit,
-        (offset - 1) * limit + limit,
-      );
-      const paginatedOngoingClasses = ongoingClasses.slice(
-        (offset - 1) * limit,
-        (offset - 1) * limit + limit,
-      );
-      const paginatedUpcomingClasses = upcomingClasses.slice(
-        (offset - 1) * limit,
-        (offset - 1) * limit + limit,
-      );
-
-      return {
-        status: 'success',
-        message: 'Classes fetched successfully by bootcampId',
-        code: 200,
-        completedClasses: paginatedCompletedClasses,
-        ongoingClasses: paginatedOngoingClasses,
-        upcomingClasses: paginatedUpcomingClasses,
-      };
-    } catch (error) {
-      return {
-        status: 'error',
-        message: 'Error fetching class Links',
-        error: error.message,
-      };
-    }
-  }
-
-  async getAttendeesByMeetingId(id: number) {
-    try {
-      const attendeesList = await db
-        .select()
-        .from(classesGoogleMeetLink)
-        .where(sql`${classesGoogleMeetLink.id}=${id}`);
-      return { status: 'success', message: 'attendees fetched successfully' };
-    } catch (error) {
-      return {
-        status: 'error',
-        message: 'Error fetching attendees',
-        error: error,
-      };
-    }
-  }
-
-  async getMeetingById(id: number) {
-    try {
-      const classDetails = await db
-        .select()
-        .from(classesGoogleMeetLink)
-        .where(sql`${classesGoogleMeetLink.id}=${id}`);
-      if (classDetails.length === 0) {
-        return { status: 'error', message: 'class not found', code: 404 };
-      }
-      return {
-        status: 'success',
-        message: 'class fetched successfully',
-        code: 200,
-        class: classDetails[0],
-      };
-    } catch (error) {
-      return { status: 'error', message: 'Error fetching class', error: error };
-    }
-  }
-
-  async deleteMeetingById(id: number) {
-    try {
-      const deletedMeeting = await db
-        .delete(classesGoogleMeetLink)
-        .where(sql`${classesGoogleMeetLink.id} = ${id}`);
-      return {
-        status: 'success',
-        message: 'Meeting deleted successfully ',
-        code: 200,
-      };
-    } catch (error) {
-      return {
-        success: 'not success',
-        message: 'Error deleting meeting',
-        error: error,
-      };
-    }
-  }
-
-  async updateMeetingById(id: number, classData: any): Promise<object> {
-    try {
-      let updatedMeeting = await db
-        .update(classesGoogleMeetLink)
-        .set({ ...classData })
-        .where(eq(classesGoogleMeetLink.id, id))
-        .returning();
-      return {
-        status: 'success',
-        message: 'Meeting  updated successfully',
-        code: 200,
-        meetingDetails: updatedMeeting,
-      };
-    } catch (e) {
-      return { status: 'error', message: e.message, code: 405 };
-    }
-  }
 }

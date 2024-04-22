@@ -1697,7 +1697,7 @@ export const developersResume = main.table("developers_resume", {
 
 export const classesGoogleMeetLink= main.table("zuvy_classes_google_meet_link",{
 	id: serial("id").primaryKey().notNull(),
-        meetingid:text("meetingid").notNull(),
+        meetingId:text("meetingid").notNull(),
 	hangoutLink:text("hangout_link").notNull(),
 	creator:text("creator").notNull(),
 	startTime:text("start_time").notNull(),
@@ -1705,8 +1705,7 @@ export const classesGoogleMeetLink= main.table("zuvy_classes_google_meet_link",{
 	batchId:text("batch_id").notNull(),
 	bootcampId:text("bootcamp_id").notNull(),
 	title:text("title").notNull(),
-        attendees:text("attendees").array(),
-        s3link:text("s3link")
+        s3link:text("s3link"),
 })
 
 export const bootcamps = main.table("zuvy_bootcamps", {
@@ -1845,14 +1844,6 @@ export const bootcampTracking = main.table("zuvy_bootcamp_tracking", {
         updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
 });
 
-export const zuvyStudentAttendance = main.table("zuvy_student_attendance",{
-        id:serial("id").primaryKey().notNull(),
-        email:varchar("email").notNull(),
-        batchId:varchar("batchId").notNull(),
-        attendance:varchar("attendance"),
-        meetingId:varchar('meetingId').notNull()
-})
-
 export const codingQuestions = main.table("zuvy_coding_questions",{
     id: serial("id").primaryKey().notNull(),
     title: varchar("title", { length: 255 }).notNull(),
@@ -1947,3 +1938,8 @@ export const openEndedQuestion = main.table("zuvy_openEnded_questions",{
         marks: integer("marks")
 })
 
+export const zuvyStudentAttendance = main.table("zuvy_student_attendance",{
+        id:serial("id").primaryKey().notNull(),
+        meetingId: text("meeting_id").references(() => classesGoogleMeetLink.meetingId),
+        attendance:jsonb("attendance"),
+})
