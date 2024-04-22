@@ -91,6 +91,7 @@ export class ClassesController {
   getAttendeesByMeetingId(@Param('id') id: number): Promise<object> {
     return this.classesService.getAttendeesByMeetingId(id);
   }
+  
   @Cron('*/3 * * * *')
   @Get('/getEventDetails')
   @ApiOperation({ summary: 'getting event details' })
@@ -125,10 +126,21 @@ export class ClassesController {
 
     return this.classesService.getAttendanceByBatchId(batchId, req.user);
   }
-  @Get('/meetingAttendance')
+  // @Get('/meetingAttendance')
+  // @ApiBearerAuth()
+  // @ApiOperation({ summary: "Get the google all classes attendance by batchID" })
+  // meetingAttendance(){
+  //   return this.classesService.meetingAttendance();
+  // }
+
+  @Get('/analytics/:meetingId')
   @ApiBearerAuth()
-  @ApiOperation({ summary: "Get the google all classes attendance by batchID" })
-  meetingAttendance(){
-    return this.classesService.meetingAttendance();
+  @ApiOperation({ summary: "meeting attendance analytics with meeting link" })
+  async meetingAttendanceAnalytics(@Param('meetingId') meetingId: string){
+    const [err, values] = await this.classesService.meetingAttendanceAnalytics(meetingId);
+    if (err) {
+      throw new BadRequestException(err);
+    }
+    return values;
   }
 }
