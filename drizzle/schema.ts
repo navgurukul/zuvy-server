@@ -1844,6 +1844,7 @@ export const bootcampTracking = main.table("zuvy_bootcamp_tracking", {
         updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
 });
 
+
 export const codingQuestions = main.table("zuvy_coding_questions",{
     id: serial("id").primaryKey().notNull(),
     title: varchar("title", { length: 255 }).notNull(),
