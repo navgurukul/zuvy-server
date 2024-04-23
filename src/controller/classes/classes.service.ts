@@ -716,17 +716,14 @@ export class ClassesService {
             let batchStudets = attendanceSheetData
               .filter((student: any) => student.attendance === 'present')
               .map(student => student.email);
-            let students = await db.select().from(users).where(inArray(users.email, [...batchStudets])) //.where(sql`${users.email} in ${batchStudets}`);
-            let total_classes: any = await db.select().from(zuvyStudentAttendance).where(sql`${zuvyStudentAttendance.batchId} = ${parseInt(classInfo[0]?.batchId)}`); // 4
+            let students = await db.select().from(users).where(inArray(users.email, [...batchStudets]))
             students.forEach(async (student) => {
-              let studentAttendance: any = attendanceSheetData.find(attendance => attendance.email === student.email);
               let old_attendance = await db.select().from(batchEnrollments).where(sql`${batchEnrollments.userId} = ${student.id.toString()}`);
               let new_attendance = old_attendance[0]?.attendance ? old_attendance[0].attendance + 1 : 1;
               let batchEnrollmentsDetailsUpdated = await db
                 .update(batchEnrollments)
                 .set({ attendance: new_attendance })
                 .where(sql`${batchEnrollments.userId} = ${student.id.toString()}`).returning();
-              console.log('Attendance updated in batchEnrollments  successfully:');
             });
           }
           return [null, {
