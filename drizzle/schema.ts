@@ -1943,4 +1943,6 @@ export const zuvyStudentAttendance = main.table("zuvy_student_attendance",{
         id:serial("id").primaryKey().notNull(),
         meetingId: text("meeting_id").references(() => classesGoogleMeetLink.meetingId),
         attendance:jsonb("attendance"),
+        batchId: integer("batch_id").references(() =>  batches.id ),
+        bootcampId: integer("bootcamp_id").references(() => bootcamps.id),
 })
