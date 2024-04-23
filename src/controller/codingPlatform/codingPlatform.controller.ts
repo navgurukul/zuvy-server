@@ -143,9 +143,7 @@ export class CodingPlatformController {
     for(let j=0;j<createCodingQuestion.testCases.length;j++)
       {
         testCases.push(createCodingQuestion.testCases[j].inputs)
-      }  
-      console.log("examples",examples);
-      console.log("testCases",testCases);
+      }
      createCodingQuestion.testCases = testCases
     const res = await this.codingPlatformService.createCodingProblem(createCodingQuestion);
     return res;

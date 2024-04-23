@@ -101,11 +101,11 @@ export class CreateProblemDto {
     type: [testCaseDto],
     example: [
       {
-      inputs: {
-        input: [2, 3],
-        output: [5],
-      }
-    },
+        inputs: {
+          input: [2, 3],
+          output: [5],
+        },
+      },
     ],
     required: true,
   })
@@ -119,17 +119,17 @@ export class CreateProblemDto {
     type: [testCaseDto],
     example: [
       {
-      inputs : {
-        input: [2, 3],
-        output: [5],
+        inputs: {
+          input: [2, 3],
+          output: [5],
+        },
       },
-    },
-    {
-      inputs : {
-        input: [5, 6],
-        output: [11],
+      {
+        inputs: {
+          input: [5, 6],
+          output: [11],
+        },
       },
-    }
     ],
     required: true,
   })
@@ -146,7 +146,7 @@ export class CreateProblemDto {
   @IsArray()
   @ArrayNotEmpty()
   expectedOutput: any[];
- 
+
   @ApiProperty({
     type: String,
     example: 'solution of the coding question',
@@ -157,7 +157,7 @@ export class CreateProblemDto {
   solution: string;
 
   @ApiProperty({
-    type: String, 
+    type: String,
     example: '2023-03-01T00:00:00Z',
     required: true,
   })
@@ -166,13 +166,19 @@ export class CreateProblemDto {
   createdAt: string;
 
   @ApiProperty({
-    type: String, 
+    type: String,
     example: '2023-03-01T00:00:00Z',
     required: true,
   })
   @IsString()
   @IsOptional()
   updatedAt: string;
+
+  @ApiProperty({
+    type: [Number],
+    example: [1, 2],
+  })
+  @IsArray()
+  @IsOptional()
+  codingQuestionIds: number[];
 }
-
-
