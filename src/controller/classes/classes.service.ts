@@ -617,19 +617,20 @@ export class ClassesService {
     }
   }
 
-  async meetingAttendanceAnalytics(meeting_id: string) {
+  async meetingAttendanceAnalytics(meeting_id: string, user) {
     try {
+      await this.getAttendance(meeting_id, user);
       let classInfo = await db.select().from(classesGoogleMeetLink).where(sql`${classesGoogleMeetLink.meetingId}=${meeting_id}`);
       if (classInfo.length > 0) {
         const Meeting = await db.select().from(zuvyStudentAttendance).where(sql`${zuvyStudentAttendance.meetingId}=${meeting_id}`);
         let {bootcampId,  batchId, s3link } = classInfo[0];
         let students = await db.select().from(batchEnrollments).where(sql`${batchEnrollments.batchId}=${batchId}`);
         
-        let attendance: Array<any> = Meeting[0].attendance as Array<any> || [];
-        //attendance number of students present
-        let present = attendance.filter((student) => student.attendance === 'present').length;
+        let attendance: Array<any> = Meeting[0]?.attendance as Array<any> || [];
+        let no_of_students = students.length > attendance.length ? students.length : attendance.length ;
+        let present = attendance.filter((student) => student?.attendance === 'present').length;
 
-        return [null,{ status: 'success', message: 'Meetings fetched successfully', studentsInfo: {total_students: students.length,present:present,s3link: s3link } }];
+        return [null,{ status: 'success', message: 'Meetings fetched successfully', studentsInfo: {total_students: no_of_students,present:present,s3link: s3link  } }];
       } else {
         return [{ status: 'error', message: 'Meeting not found', code: 404 }];
       }

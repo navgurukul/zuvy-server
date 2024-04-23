@@ -136,8 +136,8 @@ export class ClassesController {
   @Get('/analytics/:meetingId')
   @ApiBearerAuth()
   @ApiOperation({ summary: "meeting attendance analytics with meeting link" })
-  async meetingAttendanceAnalytics(@Param('meetingId') meetingId: string){
-    const [err, values] = await this.classesService.meetingAttendanceAnalytics(meetingId);
+  async meetingAttendanceAnalytics(@Req() req ,@Param('meetingId') meetingId: string){
+    const [err, values] = await this.classesService.meetingAttendanceAnalytics(meetingId, req.user[0]);
     if (err) {
       throw new BadRequestException(err);
     }
