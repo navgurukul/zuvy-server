@@ -603,12 +603,14 @@ export class BootcampService {
     offset: number,
   ) {
     try {
+
       let queryString;
       if (bootcamp_id && batch_id) {
         queryString = sql`${batchEnrollments.bootcampId} = ${bootcamp_id} and ${batchEnrollments.batchId} = ${batch_id}`;
       } else {
         queryString = sql`${batchEnrollments.bootcampId} = ${bootcamp_id}`;
       }
+      
       const batchesData = await db
         .select()
         .from(batches)
@@ -627,51 +629,48 @@ export class BootcampService {
         .where(queryString)
         .limit(limit)
         .offset(offset);
+
       const studentsEmails = [];
-      for (const studentEmail of batchEnrollmentsData) {
+      for (const student_ of batchEnrollmentsData) {
         try {
           let student = {};
           const emailFetched = await db
             .select()
             .from(users)
-            .where(eq(users.id, studentEmail.userId));
+            .where(eq(users.id, student_.userId));
+
           if (emailFetched && emailFetched.length > 0) {
+            let total_classes = await db.select().from(classesGoogleMeetLink).where(sql`${classesGoogleMeetLink.batchId} = ${ student_.batchId.toString()}`);
             student = {
               email: emailFetched[0].email,
               name: emailFetched[0].name,
               userId: emailFetched[0].id.toString(),
-              bootcampId: studentEmail.bootcampId,
+              bootcampId: student_.bootcampId,
               profilePicture: emailFetched[0].profilePicture,
-              attendance: studentEmail.attendance,
+              attendance: student_.attendance,
               batchName: null,
             };
             let batchInfo;
-            let progressInfo;
 
             if (
-              studentEmail.batchId &&
-              batchIds.includes(studentEmail.batchId)
+              student_.batchId &&
+              batchIds.includes(student_.batchId)
             ) {
+              
               batchInfo = await db
                 .select()
                 .from(batches)
-                .where(eq(batches.id, studentEmail.batchId));
-              if (batchInfo.length > 0) {
-                student['batchName'] = batchInfo[0].name;
-                student['batchId'] = batchInfo[0].id;
-              }
-            }
+                .where(eq(batches.id, student_.batchId));
 
-            progressInfo = await db
-              .select()
-              .from(bootcampTracking)
-              .where(
-                sql`${bootcampTracking.userId}= ${studentEmail.userId} and ${bootcampTracking.bootcampId} = ${studentEmail.bootcampId}`,
-              );
-            if (progressInfo.length > 0) {
-              student['progress'] = progressInfo[0].progress;
-            } else {
-              student['progress'] = 0;
+                if (batchInfo.length > 0) {
+                  student['batchName'] = batchInfo[0].name;
+                  student['batchId'] = batchInfo[0].id;
+              
+                  let student_atte = student_.attendance || 0;
+                  let result = (student_atte / total_classes.length) * 100; 
+                  student['attendance'] = result || 0;
+                  student['progress'] = 0;
+              }
             }
           }
           if (emailFetched && emailFetched.length > 0) {
