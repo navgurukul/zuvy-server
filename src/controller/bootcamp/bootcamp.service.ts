@@ -649,6 +649,7 @@ export class BootcampService {
               profilePicture: emailFetched[0].profilePicture,
               attendance: student_.attendance,
               batchName: null,
+              batchId:null
             };
             let batchInfo;
 
