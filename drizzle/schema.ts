@@ -1833,8 +1833,7 @@ export const moduleTracking = main.table("zuvy_module_tracking", {
         progress: integer("progress").default(0),
         bootcampId: integer("bootcamp_id").references(() => bootcamps.id),
         createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
-        updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
-        // chapterIds: jsonb("chapter_ids")//[1,2]
+        updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow()
 });
 
 export const bootcampTracking = main.table("zuvy_bootcamp_tracking", {

@@ -60,8 +60,7 @@ export class chapterDto {
 
   @ApiProperty({
     type: String,
-    example: '2023-03-01T00:00:00Z',
-    required: true,
+    example: '2023-03-01T00:00:00Z'
   })
   @IsString()
   @IsOptional()
