@@ -190,7 +190,7 @@ export class ContentController {
         'The questions are based on the knowledge that you learned from the classes',
       completionDate: new Date().toDateString(),
       quizQuestions: null,
-      links: null
+      links:null
     };
     const res = await this.contentService.createCodingProblemForModule(
       moduleId,

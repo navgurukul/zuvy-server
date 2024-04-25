@@ -74,6 +74,7 @@ export class chapterDto {
   @IsArray()
   quizQuestions: number[];
 
+  
   @ApiProperty({
     type: [String],
     example: ['https://www.google.com'],
