@@ -60,8 +60,7 @@ export class chapterDto {
 
   @ApiProperty({
     type: String,
-    example: '2023-03-01T00:00:00Z',
-    required: true,
+    example: '2023-03-01T00:00:00Z'
   })
   @IsString()
   @IsOptional()
@@ -74,6 +73,17 @@ export class chapterDto {
   @IsOptional()
   @IsArray()
   quizQuestions: number[];
+
+  
+  @ApiProperty({
+    type: [String],
+    example: ['https://www.google.com'],
+  })
+  @IsArray()
+  @IsOptional()
+  links: string[];
+
+
 }
 
 export class quizDto {
