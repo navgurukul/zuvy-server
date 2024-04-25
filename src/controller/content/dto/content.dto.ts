@@ -74,6 +74,16 @@ export class chapterDto {
   @IsOptional()
   @IsArray()
   quizQuestions: number[];
+
+  @ApiProperty({
+    type: [String],
+    example: ['https://www.google.com'],
+  })
+  @IsArray()
+  @IsOptional()
+  links: string[];
+
+
 }
 
 export class quizDto {
