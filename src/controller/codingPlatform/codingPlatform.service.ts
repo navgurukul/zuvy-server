@@ -22,7 +22,7 @@ const { ZUVY_CONTENT_URL ,RAPID_API_KEY,RAPID_HOST} = process.env; // INPORTING 
 
 @Injectable()
 export class CodingPlatformService {
-   async submitCode(sourceCode: SubmitCodeDto,questionId:number,action:string) {
+  async submitCode(sourceCode: SubmitCodeDto,questionId:number,action:string) {
 
     var input = [];
     var output = [];
@@ -35,7 +35,7 @@ export class CodingPlatformService {
       input.push(testCasesCount);
       testCases.forEach(testCase => {
         input.push(...testCase.input.flat());
-        output.push(testCase.output);
+        output.push(...testCase.output.flat());
       });
       }
       else if(action == 'run')
