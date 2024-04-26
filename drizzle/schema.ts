@@ -1737,7 +1737,6 @@ export const zuvyMeetingAttendance = main.table("zuvy_meeting_attendance", {
 	bootcampid: varchar("bootcampid"),
 });
 
-
 export const zuvyStudentAttendance = main.table("zuvy_student_attendance",{
         id:serial("id").primaryKey().notNull(),
         meetingId: text("meeting_id").references(() => classesGoogleMeetLink.meetingid),
@@ -1745,6 +1744,14 @@ export const zuvyStudentAttendance = main.table("zuvy_student_attendance",{
         batchId: integer("batch_id").references(() =>  batches.id ),
         bootcampId: integer("bootcamp_id").references(() => bootcamps.id),
 })
+
+export const subStage = main.table("sub_stage", {
+	id: serial("id").primaryKey().notNull(),
+	schoolId: integer("school_id"),
+	stageId: integer("stage_id").references(() => schoolStage.id),
+	stageName: varchar("stage_name", { length: 255 }),
+	subStages: varchar("sub_stages", { length: 255 }),
+});
 
 export const partners = main.table("partners", {
 	id: serial("id").primaryKey().notNull(),
