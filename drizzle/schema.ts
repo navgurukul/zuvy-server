@@ -17,21 +17,6 @@ export const userSession = main.table("user_session", {
 	id: varchar("id", { length: 255 }).primaryKey().notNull(),
 });
 
-export const codingQuestions = main.table("coding_questions", {
-	id: bigserial("id", { mode: "bigint" }).primaryKey().notNull(),
-	title: varchar("title", { length: 255 }).notNull(),
-	description: text("description").notNull(),
-	difficulty: difficulty("difficulty"),
-	tags: text("tags"),
-	authorId: integer("author_id").notNull(),
-	inputBase64: text("input_base64"),
-	examples: jsonb("examples"),
-	testCases: jsonb("test_cases"),
-	expectedOutput: jsonb("expected_output"),
-	solution: text("solution"),
-	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }),
-	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }),
-});
 
 export const events = main.table("events", {
 	id: serial("id").primaryKey().notNull(),
@@ -1781,10 +1766,32 @@ export const partners = main.table("partners", {
 	}
 });
 
-export const codingSubmission = main.table("coding_submission", {
+export const codingSubmission = main.table("zuvy_coding_submission", {
 	id: bigserial("id", { mode: "bigint" }).primaryKey().notNull(),
 	userId: integer("user_id").notNull().references(() => users.id),
 	questionSolved: jsonb("question_solved").notNull(),
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }),
 	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }),
 });
+
+export const tags = main.table("zuvy_tags",{
+        id: serial("id").primaryKey().notNull(),
+        tagName:varchar("tag_name") 
+})
+
+export const codingQuestions = main.table("zuvy_coding_questions",{
+        id: serial("id").primaryKey().notNull(),
+        title: varchar("title", { length: 255 }).notNull(),
+        description: text("description").notNull(),
+        difficulty: difficulty("difficulty"),
+        tags: integer("tag_id").references(() => tags.id),
+        constraints: text("constraints"),
+        authorId: integer("author_id").notNull(),
+        inputBase64: text("input_base64"), 
+        examples: jsonb("examples"), 
+        testCases: jsonb("test_cases"), 
+        expectedOutput: jsonb("expected_output"), 
+        solution: text("solution"), 
+        createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }),
+        updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }),
+    })
