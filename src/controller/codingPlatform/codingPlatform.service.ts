@@ -127,9 +127,9 @@ try {
   async findSubmissionByQuestionId(questionId: number,id:number) {
     try {
        const submissions = await db.select().from(codingSubmission)
-        .where(sql`${codingSubmission.question_solved}->>${questionId.toString()} IS NOT NULL AND ${codingSubmission.user_id} = ${id}`)
+        .where(sql`${codingSubmission.questionSolved}->>${questionId.toString()} IS NOT NULL AND ${codingSubmission.userId} = ${id}`)
      
-         const questionSolved = submissions[0]?.question_solved;
+         const questionSolved = submissions[0]?.questionSolved;
          var submissionTokens = {token:[]};
          if(questionSolved)
          {
@@ -162,7 +162,7 @@ try {
     
     const existingSubmission = await db.select()
       .from(codingSubmission)
-      .where(sql`${codingSubmission.user_id} = ${userId}`)
+      .where(sql`${codingSubmission.userId} = ${userId}`)
 
     let questionSolved = {};
     if(status !== 'Accepted')
@@ -174,13 +174,13 @@ try {
       questionSolved[questionId.toString()] = { token: [token],status: status };
       await db.insert(codingSubmission)
         .values({
-          user_id: userId,
-          question_solved: questionSolved
+          userId: userId,
+          questionSolved: questionSolved
         })
         .returning();
     } else {
       
-      questionSolved = existingSubmission[0].question_solved || {};
+      questionSolved = existingSubmission[0].questionSolved || {};
       if (!questionSolved.hasOwnProperty(questionId.toString())) {
         questionSolved[questionId.toString()] = { token: [token],status: status };
       } else {
@@ -192,8 +192,8 @@ try {
         questionSolved[questionId.toString()].token.push(token);
       }
       await db.update(codingSubmission)
-        .set({ question_solved: questionSolved })
-        .where(sql`${codingSubmission.user_id} = ${userId}`)
+        .set({ questionSolved: questionSolved })
+        .where(sql`${codingSubmission.userId} = ${userId}`)
     }
   } catch (error) {
     console.error('Error updating submission:', error);
@@ -209,13 +209,13 @@ async getQuestionsWithStatus(userId: number) {
 
     const userSubmissions = await db.select()
       .from(codingSubmission)
-      .where(sql`${codingSubmission.user_id} = ${userId}`)
+      .where(sql`${codingSubmission.userId} = ${userId}`)
 
     const count = userSubmissions.length;
     const response = questions.map(question => ({
       id: question.id.toString(),
       title: question.title,
-      status: count !== 0 ? (userSubmissions[0].question_solved[question.id.toString()]?.status || null):null,
+      status: count !== 0 ? (userSubmissions[0].questionSolved[question.id.toString()]?.status || null):null,
       difficulty: question.difficulty,
     }));
 
