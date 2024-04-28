@@ -149,5 +149,17 @@ export class CreateLiveBroadcastDto {
   @IsNotEmpty()
   @IsArray()
   roles: string[];
+  
 }
 
+export class reloadDto {
+  @ApiProperty({
+    description: 'meetingid of the live classes',
+    type: Array,
+    example: "['afadfasdadadfadf','asfafasfasfdas']",
+    required: true,
+  })
+  @IsNotEmpty()
+  @IsArray()
+  meetingIds: string[];
+}
