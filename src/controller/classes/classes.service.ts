@@ -102,7 +102,7 @@ export class ClassesService {
         }, delay);
       }
       // Call the function with the desired URL and delay (0.01 seconds)
-      redirectWithDelay('${ZUVY_REDIRECT_URL}', 10);
+      redirectWithDelay('${ZUVY_REDIRECT_URL}', 1);
     </script>
   `
   }
@@ -645,14 +645,20 @@ export class ClassesService {
 
   async getAttendance(meetingId, user = null): Promise<any> {
     try {
-      let attendanceSheet = await db.select().from(zuvyStudentAttendance).where(eq(zuvyStudentAttendance.meetingId, meetingId));
+      let attendanceSheet = await db.select()
+        .from(zuvyStudentAttendance)
+        .where(eq(zuvyStudentAttendance.meetingId, meetingId));
+        
       if (attendanceSheet.length > 0) {
         return [null, {
           attendanceSheet: attendanceSheet[0].attendance,
           status: 'success',
         }]
       }
-      let classInfo = await db.select().from(classesGoogleMeetLink).where(sql`${classesGoogleMeetLink.meetingid}=${meetingId}`);
+      let classInfo = await db.select()
+        .from(classesGoogleMeetLink)
+        .where(sql`${classesGoogleMeetLink.meetingid}=${meetingId}`);
+
       if (classInfo.length == 0) {
         return [{ status: 'error', message: 'Meeting not found', code: 404 }];
       }
@@ -711,14 +717,20 @@ export class ClassesService {
         )
         if (attendanceSheetData.length > 0) {
           const zuvy_student_attendance = await db
-            .insert(zuvyStudentAttendance).values({ meetingId, attendance: attendanceSheetData, batchId: parseInt(classInfo[0]?.batchId), bootcampId: parseInt(classInfo[0]?.bootcampId) }).returning();
+            .insert(zuvyStudentAttendance)
+            .values({ meetingId, attendance: attendanceSheetData, batchId: parseInt(classInfo[0]?.batchId), bootcampId: parseInt(classInfo[0]?.bootcampId) }).returning();
           if (zuvy_student_attendance.length > 0) {
             let batchStudets = attendanceSheetData
               .filter((student: any) => student.attendance === 'present')
               .map(student => student.email);
-            let students = await db.select().from(users).where(inArray(users.email, [...batchStudets]))
+            let students = await db.select()
+              .from(users)
+              .where(inArray(users.email, [...batchStudets]))
+
             students.forEach(async (student) => {
-              let old_attendance = await db.select().from(batchEnrollments).where(sql`${batchEnrollments.userId} = ${student.id.toString()}`);
+              let old_attendance = await db.select()
+                .from(batchEnrollments)
+                .where(sql`${batchEnrollments.userId} = ${student.id.toString()}`);
               let new_attendance = old_attendance[0]?.attendance ? old_attendance[0].attendance + 1 : 1;
               let batchEnrollmentsDetailsUpdated = await db
                 .update(batchEnrollments)
@@ -962,6 +974,18 @@ export class ClassesService {
       return { success: true };
     } catch (err) {
       return { error: err, success: false };
+    }
+  }
+
+  async unattendanceClassesByBootcampId(bootcampId){
+    try {
+      const classes = await db.select().from(classesGoogleMeetLink).where(sql`${classesGoogleMeetLink.bootcampId}=${bootcampId}`);
+      let classIds = classes.map((classObj) => classObj.meetingid);
+      let attendance = await db.select().from(zuvyStudentAttendance).where(inArray(zuvyStudentAttendance.meetingId, [...classIds]));
+      let unattendedClassIds = classIds.filter((classId) => !attendance.some((attend) => attend.meetingId === classId));
+      return { status: 'success', message: 'Classes fetched successfully by bootcampId', code: 200, unattendedClassIds: unattendedClassIds };
+    } catch (error) {
+      return { success: 'not success', message: 'Error fetching class Links', error: error };
     }
   }
 
