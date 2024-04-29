@@ -18,16 +18,6 @@ export const userSession = main.table("user_session", {
 });
 
 
-export const events = main.table("events", {
-	id: serial("id").primaryKey().notNull(),
-	eventName: varchar("event_name", { length: 255 }),
-	startTime: timestamp("start_time", { withTimezone: true, mode: 'string' }),
-	endTime: timestamp("end_time", { withTimezone: true, mode: 'string' }),
-	durations: integer("durations"),
-	viewPageId: integer("view_page_id").notNull().references(() => viewPage.id),
-	sessionId: integer("session_id").notNull().references(() => session.id),
-	userId: integer("user_id").notNull().references(() => userHack.id),
-});
 
 export const chanakyaUserEmail = main.table("chanakya_user_email", {
 	id: serial("id").primaryKey().notNull(),
@@ -1424,14 +1414,6 @@ export const newsApp = main.table("news_app", {
 	userId: varchar("user_id", { length: 255 }).notNull(),
 });
 
-export const session = main.table("session", {
-	id: serial("id").primaryKey().notNull(),
-	sessionName: varchar("session_name", { length: 255 }),
-	startTime: timestamp("start_time", { withTimezone: true, mode: 'string' }),
-	endTime: timestamp("end_time", { withTimezone: true, mode: 'string' }),
-	durations: integer("durations"),
-	userId: integer("user_id").notNull().references(() => userHack.id),
-});
 
 export const c4CaPartners = main.table("c4ca_partners", {
 	id: serial("id").primaryKey().notNull(),
@@ -1698,22 +1680,6 @@ export const talkMitra = main.table("talk_mitra", {
 	userId: varchar("user_id", { length: 255 }).notNull(),
 });
 
-export const userHack = main.table("user_hack", {
-	id: serial("id").primaryKey().notNull(),
-	name: varchar("name", { length: 255 }).notNull(),
-	email: varchar("email", { length: 255 }).notNull(),
-});
-
-export const viewPage = main.table("view_page", {
-	id: serial("id").primaryKey().notNull(),
-	userId: integer("user_id").notNull().references(() => userHack.id),
-	durations: integer("durations").notNull(),
-	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
-	pageUrl: varchar("page_url", { length: 255 }),
-	pageTitle: varchar("page_title", { length: 255 }),
-	startTime: timestamp("start_time", { withTimezone: true, mode: 'string' }),
-	endTime: timestamp("end_time", { withTimezone: true, mode: 'string' }),
-});
 
 export const zuvyMeetingAttendance = main.table("zuvy_meeting_attendance", {
 	id: serial("id").primaryKey().notNull(),

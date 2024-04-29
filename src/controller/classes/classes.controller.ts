@@ -93,10 +93,11 @@ export class ClassesController {
   async meetingAttendanceRefress(@Req() req, @Body() reloadData: reloadDto) {
     let meetingIds: Array<any> = reloadData?.meetingIds;
 
-    let attachment = meetingIds.map( async(meetId) => {
+    let attachment = await Promise.all(meetingIds.map(async (meetId) => {
       const [err, values] = await this.classesService.getAttendance(meetId, req.user[0]);
-    });
-    return { message: 'Data Refreshed', status: 200, };
+  }));
+  
+  return { message: 'Data Refreshed', status: 200 };
   }
 
   @Get('/meetings/:bootcampId')
