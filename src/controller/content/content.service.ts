@@ -314,22 +314,6 @@ export class ContentService {
     }
   }
 
-//   async createChapterQuiz(
-//     moduleId: number,
-//     topicId: number,
-//     module_chapter: chapterDto,
-//   ) {
-//     try {
-//       const chapter = await this.createChapterForModule(
-//         moduleId,
-//         topicId,
-//         module_chapter,
-//       );
-//       return chapter;
-//     } catch (err) {
-//       throw err;
-//     }
-//   }
 
   async createOpenEndedQuestions(questions: openEndedDto) {
     try {
