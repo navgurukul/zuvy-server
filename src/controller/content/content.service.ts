@@ -1,16 +1,16 @@
 import { Injectable, Logger } from '@nestjs/common';
 import {
-  moduleTracking,
-  assignmentSubmission,
-  articleTracking,
-  quizTracking,
+  zuvyModuleTracking,
+  zuvyAssignmentSubmission,
+  zuvyArticleTracking,
+  zuvyQuizTracking,
   moduleChapter,
-  topics,
-  courseModules,
-  moduleQuiz,
-  codingQuestions,
-  openEndedQuestion,
-  moduleAssessment,
+  zuvyModuleTopics,
+  zuvyCourseModules,
+  zuvyModuleQuiz,
+  zuvyCodingQuestions,
+  zuvyOpenEndedQuestions,
+  zuvyModuleAssessment,
   questions,
   difficulty,
 } from '../../../drizzle/schema';
@@ -67,16 +67,16 @@ export class ContentService {
       // if (user_id){
       let modulePromises = modules.map(async (m) => {
         if (user_id) {
-          let getModuleTracking = await db
+          let getzuvyModuleTracking = await db
             .select()
-            .from(moduleTracking)
+            .from(zuvyModuleTracking)
             .where(
-              sql`${moduleTracking.userId} = ${user_id} and ${moduleTracking.moduleId} = ${m.id}`,
+              sql`${zuvyModuleTracking.userId} = ${user_id} and ${zuvyModuleTracking.moduleId} = ${m.id}`,
             );
-          if (getModuleTracking.length == 0) {
+          if (getzuvyModuleTracking.length == 0) {
             m.attributes['progress'] = 0;
           } else {
-            m.attributes['progress'] = getModuleTracking[0].progress || 0;
+            m.attributes['progress'] = getzuvyModuleTracking[0].progress || 0;
           }
         }
         return {
@@ -165,39 +165,39 @@ export class ContentService {
             },
           ];
         }
-        const getModuleTracking = await db
+        const getzuvyModuleTracking = await db
           .select()
-          .from(moduleTracking)
+          .from(zuvyModuleTracking)
           .where(
-            sql`${moduleTracking.userId} = ${user_id} and ${moduleTracking.moduleId} = ${module_id}`,
+            sql`${zuvyModuleTracking.userId} = ${user_id} and ${zuvyModuleTracking.moduleId} = ${module_id}`,
           );
-        if (getModuleTracking.length == 0) {
+        if (getzuvyModuleTracking.length == 0) {
           chapter['progress'] = 0;
         } else {
-          chapter['progress'] = getModuleTracking[0].progress || 0;
+          chapter['progress'] = getzuvyModuleTracking[0].progress || 0;
         }
 
         let promises = chapter.map(async (c) => {
           if (c.label == 'article') {
-            let getArticleTracking = await db
+            let getzuvyArticleTracking = await db
               .select()
-              .from(articleTracking)
+              .from(zuvyArticleTracking)
               .where(
-                sql`${articleTracking.userId} = ${user_id} and ${articleTracking.moduleId} = ${module_id} and ${articleTracking.articleId} = ${c.id}`,
+                sql`${zuvyArticleTracking.userId} = ${user_id} and ${zuvyArticleTracking.moduleId} = ${module_id} and ${zuvyArticleTracking.articleId} = ${c.id}`,
               );
-            if (getArticleTracking.length == 0) {
+            if (getzuvyArticleTracking.length == 0) {
               c['completed'] = false;
             } else {
               c['completed'] = true;
             }
           } else if (c.label == 'assignment') {
-            let getAssignmentSubmission = await db
+            let getzuvyAssignmentSubmission = await db
               .select()
-              .from(assignmentSubmission)
+              .from(zuvyAssignmentSubmission)
               .where(
-                sql`${assignmentSubmission.userId} = ${user_id} and ${assignmentSubmission.moduleId} =  ${module_id} and ${assignmentSubmission.assignmentId} = ${c.id}`,
+                sql`${zuvyAssignmentSubmission.userId} = ${user_id} and ${zuvyAssignmentSubmission.moduleId} =  ${module_id} and ${zuvyAssignmentSubmission.assignmentId} = ${c.id}`,
               );
-            if (getAssignmentSubmission.length == 0) {
+            if (getzuvyAssignmentSubmission.length == 0) {
               c['completed'] = false;
             } else {
               c['completed'] = true;
@@ -205,9 +205,9 @@ export class ContentService {
           } else if (c.label == 'quiz') {
             let getQuizSubmission = await db
               .select()
-              .from(quizTracking)
+              .from(zuvyQuizTracking)
               .where(
-                sql`${quizTracking.userId} = ${user_id} and ${quizTracking.moduleId} = ${module_id} and ${quizTracking.quizId} = ${c.id}`,
+                sql`${zuvyQuizTracking.userId} = ${user_id} and ${zuvyQuizTracking.moduleId} = ${module_id} and ${zuvyQuizTracking.quizId} = ${c.id}`,
               );
             if (getQuizSubmission.length == 0) {
               c['completed'] = false;
@@ -231,9 +231,9 @@ export class ContentService {
   async createModuleForCourse(bootcampId: number, module: moduleDto) {
     try {
       const noOfModuleOfBootcamp = await db
-        .select({ count: count(courseModules.id) })
-        .from(courseModules)
-        .where(eq(courseModules.bootcampId, bootcampId));
+        .select({ count: count(zuvyCourseModules.id) })
+        .from(zuvyCourseModules)
+        .where(eq(zuvyCourseModules.bootcampId, bootcampId));
 
       var moduleWithBootcamp = {
         bootcampId,
@@ -241,7 +241,7 @@ export class ContentService {
         order: noOfModuleOfBootcamp[0].count + 1,
       };
       const moduleData = await db
-        .insert(courseModules)
+        .insert(zuvyCourseModules)
         .values(moduleWithBootcamp)
         .returning();
 
@@ -295,7 +295,7 @@ export class ContentService {
       }));
 
       const result = await db
-        .insert(moduleQuiz)
+        .insert(zuvyModuleQuiz)
         .values(quizQuestions)
         .returning();
         if (result.length > 0) {
@@ -318,7 +318,7 @@ export class ContentService {
   async createOpenEndedQuestions(questions: openEndedDto) {
     try {
       const openEndedQuestions = await db
-        .insert(openEndedQuestion)
+        .insert(zuvyOpenEndedQuestions)
         .values(questions)
         .returning();
       return openEndedQuestions;
@@ -331,9 +331,9 @@ export class ContentService {
     try {
       const allModules = await db
         .select()
-        .from(courseModules)
-        .where(eq(courseModules.bootcampId, bootcampId))
-        .orderBy(courseModules.order);
+        .from(zuvyCourseModules)
+        .where(eq(zuvyCourseModules.bootcampId, bootcampId))
+        .orderBy(zuvyCourseModules.order);
 
       if (allModules.length > 0) {
         const modulesWithDetails = await Promise.all(
@@ -392,16 +392,16 @@ export class ContentService {
     try {
       const module = await db
         .select()
-        .from(courseModules)
-        .where(eq(courseModules.id, moduleId));
+        .from(zuvyCourseModules)
+        .where(eq(zuvyCourseModules.id, moduleId));
       const assessment = await db
         .select({
-          assessmentTitle: moduleAssessment.title,
-          assessmentId: moduleAssessment.id,
-          timeDuration: moduleAssessment.timeLimit,
+          assessmentTitle: zuvyModuleAssessment.title,
+          assessmentId: zuvyModuleAssessment.id,
+          timeDuration: zuvyModuleAssessment.timeLimit,
         })
-        .from(moduleAssessment)
-        .where(eq(moduleAssessment.moduleId, module[0].id));
+        .from(zuvyModuleAssessment)
+        .where(eq(zuvyModuleAssessment.moduleId, module[0].id));
       const chapterNameWithId = await db
         .select({
           chapterId: moduleChapter.id,
@@ -415,10 +415,10 @@ export class ContentService {
 
       const topicNames = await db
         .select({
-          topicId: topics.id,
-          topicName: topics.name,
+          topicId: zuvyModuleTopics.id,
+          topicName: zuvyModuleTopics.name,
         })
-        .from(topics);
+        .from(zuvyModuleTopics);
 
       const chapterWithTopic = chapterNameWithId.map((ch) => {
         const topicInfo = topicNames.find(
@@ -445,6 +445,7 @@ export class ContentService {
         .select()
         .from(moduleChapter)
         .where(eq(moduleChapter.id, chapterId));
+
         const modifiedChapterDetails: {
             id: number;
             moduleId: number;
@@ -465,16 +466,16 @@ export class ContentService {
           const quizIds = Object.values(chapterDetails[0].quizQuestions);
           const quizDetails = await db
             .select()
-            .from(moduleQuiz)
-            .where(sql`${inArray(moduleQuiz.id, quizIds)}`);
+            .from(zuvyModuleQuiz)
+            .where(sql`${inArray(zuvyModuleQuiz.id, quizIds)}`);
           modifiedChapterDetails.quizQuestionDetails = quizDetails;
         }
         if (chapterDetails[0].topicId == 3) {
           const codingIds = Object.values(chapterDetails[0].codingQuestions);
           const codingProblemDetails = await db
             .select()
-            .from(codingQuestions)
-            .where(sql`${inArray(codingQuestions.id, codingIds)}`);
+            .from(zuvyCodingQuestions)
+            .where(sql`${inArray(zuvyCodingQuestions.id, codingIds)}`);
           modifiedChapterDetails.codingQuestionDetails = codingProblemDetails;
         } else {
           let content = [{
@@ -506,9 +507,9 @@ export class ContentService {
 
         const modules = await db
           .select()
-          .from(courseModules)
-          .where(eq(courseModules.bootcampId, bootcampId))
-          .orderBy(courseModules.order);
+          .from(zuvyCourseModules)
+          .where(eq(zuvyCourseModules.bootcampId, bootcampId))
+          .orderBy(zuvyCourseModules.order);
 
         const draggedModuleIndex = modules.findIndex((m) => m.id === moduleId);
 
@@ -519,36 +520,36 @@ export class ContentService {
             i++
           ) {
             await db
-              .update(courseModules)
+              .update(zuvyCourseModules)
               .set({ order: modules[i].order + 1 })
-              .where(eq(courseModules.id, modules[i].id));
+              .where(eq(zuvyCourseModules.id, modules[i].id));
           }
           await db
-            .update(courseModules)
+            .update(zuvyCourseModules)
             .set({ order: newOrder })
-            .where(eq(courseModules.id, moduleId));
+            .where(eq(zuvyCourseModules.id, moduleId));
         } else if (draggedModuleIndex + 1 < newOrder) {
           let counting = newOrder - (draggedModuleIndex + 1);
           let ordering = newOrder - 1;
           while (counting > 0) {
             await db
-              .update(courseModules)
+              .update(zuvyCourseModules)
               .set({ order: modules[ordering].order - 1 })
-              .where(eq(courseModules.id, modules[ordering].id));
+              .where(eq(zuvyCourseModules.id, modules[ordering].id));
             counting = counting - 1;
             ordering = ordering - 1;
           }
 
           await db
-            .update(courseModules)
+            .update(zuvyCourseModules)
             .set({ order: newOrder })
-            .where(eq(courseModules.id, moduleId));
+            .where(eq(zuvyCourseModules.id, moduleId));
         }
       } else if (reorderData.reOrderDto == undefined) {
         await db
-          .update(courseModules)
+          .update(zuvyCourseModules)
           .set(reorderData.moduleDto)
-          .where(eq(courseModules.id, moduleId));
+          .where(eq(zuvyCourseModules.id, moduleId));
       }
       return {
         message: 'Modified successfully',
@@ -575,7 +576,7 @@ export class ContentService {
         }
         codingProblem.testCases = testCases;
         const result = await db
-          .insert(codingQuestions)
+          .insert(zuvyCodingQuestions)
           .values(codingProblem)
           .returning();
         if (result.length > 0) {
@@ -666,7 +667,7 @@ export class ContentService {
     try {
       const assessment = { ...assessmentBody, moduleId };
       const newAssessment = await db
-        .insert(moduleAssessment)
+        .insert(zuvyModuleAssessment)
         .values(assessment)
         .returning();
       return newAssessment;
@@ -679,8 +680,8 @@ export class ContentService {
     try {
       const assessment = await db
         .select()
-        .from(moduleAssessment)
-        .where(eq(moduleAssessment.moduleId, moduleId));
+        .from(zuvyModuleAssessment)
+        .where(eq(zuvyModuleAssessment.moduleId, moduleId));
       if (assessment.length > 0) {
         const ab = Object.values(assessment[0].codingProblems);
         const codingQuesIds = ab.reduce((acc, obj) => {
@@ -697,16 +698,16 @@ export class ContentService {
         );
         const mcqDetails = await db
           .select()
-          .from(moduleQuiz)
-          .where(sql`${inArray(moduleQuiz.id, mcqIds)}`);
+          .from(zuvyModuleQuiz)
+          .where(sql`${inArray(zuvyModuleQuiz.id, mcqIds)}`);
         const openEndedQuesDetails = await db
           .select()
-          .from(openEndedQuestion)
-          .where(sql`${inArray(openEndedQuestion.id, openEndedQuesIds)}`);
+          .from(zuvyOpenEndedQuestions)
+          .where(sql`${inArray(zuvyOpenEndedQuestions.id, openEndedQuesIds)}`);
         const codingProblems = await db
           .select()
-          .from(codingQuestions)
-          .where(sql`${inArray(codingQuestions.id, codingQuesIds)}`);
+          .from(zuvyCodingQuestions)
+          .where(sql`${inArray(zuvyCodingQuestions.id, codingQuesIds)}`);
         let codingQuesDetails = [];
         for (let i = 0; i < codingProblems.length; i++) {
           codingQuesDetails.push({
