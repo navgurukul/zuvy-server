@@ -5,6 +5,12 @@ DO $$ BEGIN
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
+
+DO $$ BEGIN
+ CREATE TYPE "difficulty" AS ENUM('Easy', 'Medium', 'Hard');
+EXCEPTION
+ WHEN duplicate_object THEN null;
+END $$;
 --> statement-breakpoint
 DO $$ BEGIN
  CREATE TYPE "courses_type" AS ENUM('python', 'js', 'html');
@@ -171,6 +177,24 @@ CREATE TABLE IF NOT EXISTS "main"."c4ca_teams" (
 	"school" varchar(255),
 	CONSTRAINT "main_c4ca_teams_team_name_unique" UNIQUE("team_name")
 );
+
+CREATE TABLE IF NOT EXISTS "main"."coding_questions" (
+	"id" bigserial PRIMARY KEY NOT NULL,
+	"title" varchar(255) NOT NULL,
+	"description" text NOT NULL,
+	"difficulty" "difficulty",
+	"tags" text,
+	"author_id" integer NOT NULL,
+	"input_base64" text,
+	"examples" jsonb,
+	"test_cases" jsonb,
+	"expected_output" jsonb,
+	"solution" text,
+	"created_at" timestamp with time zone,
+	"updated_at" timestamp with time zone
+);
+
+
 --> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "main"."c_users" (
 	"id" serial PRIMARY KEY NOT NULL,
