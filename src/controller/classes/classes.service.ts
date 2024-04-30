@@ -1,14 +1,10 @@
 import { Injectable, Req, Res, HttpStatus, Redirect } from '@nestjs/common';
 import {
-  bootcamps,
-  batches,
   userTokens,
-  classesGoogleMeetLink,
-  sansaarUserRoles,
-  users,
-  batchEnrollments,
-  zuvyStudentAttendance,
-  zuvyMeetingAttendance,
+  zuvyClassesGoogleMeetLink,
+  users, 
+  zuvyBatchEnrollments,
+  zuvyStudentAttendance
 } from '../../../drizzle/schema';
 import { db } from '../../db/index';
 import { eq, sql, count, inArray } from 'drizzle-orm';
@@ -193,8 +189,8 @@ export class ClassesService {
 
       const studentsInTheBatchEmails = await db
         .select()
-        .from(batchEnrollments)
-        .where(eq(batchEnrollments.batchId, parseInt(eventDetails.batchId)));
+        .from(zuvyBatchEnrollments)
+        .where(eq(zuvyBatchEnrollments.batchId, parseInt(eventDetails.batchId)));
 
       const studentsEmails = [];
       for (const studentEmail of studentsInTheBatchEmails) {
@@ -251,9 +247,9 @@ export class ClassesService {
       const createdEvent = await calendar.events.insert(eventData);
 
       const saveClassDetails = await db
-        .insert(classesGoogleMeetLink)
+        .insert(zuvyClassesGoogleMeetLink)
         .values({
-          meetingId: createdEvent.data.id,
+          meetingid: createdEvent.data.id,
           hangoutLink: createdEvent.data.hangoutLink,
           creator: createdEvent.data.creator.email,
           startTime: createdEvent.data.start.dateTime,
@@ -286,8 +282,8 @@ export class ClassesService {
     try {
       const fetchedStudents = await db
         .select()
-        .from(batchEnrollments)
-        .where(eq(batchEnrollments.batchId, batchId));
+        .from(zuvyBatchEnrollments)
+        .where(eq(zuvyBatchEnrollments.batchId, batchId));
 
       const fetchedTokens = await db
         .select()
@@ -306,8 +302,8 @@ export class ClassesService {
       const client = google.admin({ version: 'reports_v1', auth: auth2Client });
       const allMeetings = await db
         .select()
-        .from(classesGoogleMeetLink)
-        .where(eq(classesGoogleMeetLink.batchId, batchId));
+        .from(zuvyClassesGoogleMeetLink)
+        .where(eq(zuvyClassesGoogleMeetLink.batchId, batchId));
       const attendanceByTitle = {};
 
       for (const singleMeeting of allMeetings) {
@@ -316,7 +312,7 @@ export class ClassesService {
           applicationName: 'meet',
           eventName: 'call_ended',
           maxResults: 1000,
-          filters: `calendar_event_id==${singleMeeting.meetingId}`,
+          filters: `calendar_event_id==${singleMeeting.meetingid}`,
         });
 
         const meetingAttendance = {};
@@ -376,7 +372,7 @@ export class ClassesService {
 
   async getAllClasses(): Promise<any> {
     try {
-      const allClasses = await db.select().from(classesGoogleMeetLink);
+      const allClasses = await db.select().from(zuvyClassesGoogleMeetLink);
 
       const classifiedClasses = this.classifyClasses(allClasses);
 
@@ -421,22 +417,22 @@ export class ClassesService {
         refresh_token: fetchedTokens[0].refreshToken,
       });
       const calendar = google.calendar({ version: 'v3', auth: auth2Client });
-      const allClasses = await db.select().from(classesGoogleMeetLink);
+      const allClasses = await db.select().from(zuvyClassesGoogleMeetLink);
       for (const classData of allClasses) {
-        if (classData.meetingId != null) {
-          if (classData.s3link == null) {
+        if (classData.meetingid != null) {
+          if (classData.s3Link == null) {
             const response = await calendar.events.get({
               calendarId: 'primary',
-              eventId: classData.meetingId,
+              eventId: classData.meetingid,
             });
             if (response.data.attachments) {
               for (const attachment of response.data.attachments) {
                 if (attachment.mimeType == 'video/mp4') {
                   // const s3Url = await this.uploadVideoFromGoogleDriveToS3(attachment.fileUrl,attachment.fileId)
                   let updatedS3Url = await db
-                    .update(classesGoogleMeetLink)
-                    .set({ ...classData, s3link: attachment.fileUrl })
-                    .where(eq(classesGoogleMeetLink.id, classData.id))
+                    .update(zuvyClassesGoogleMeetLink)
+                    .set({ ...classData, s3Link: attachment.fileUrl })
+                    .where(eq(zuvyClassesGoogleMeetLink.id, classData.id))
                     .returning();
                   return {
                     status: 'success',
@@ -490,8 +486,8 @@ export class ClassesService {
       const currentTime = new Date();
       const classes = await db
         .select()
-        .from(classesGoogleMeetLink)
-        .where(sql`${classesGoogleMeetLink.bootcampId} = ${bootcampId}`);
+        .from(zuvyClassesGoogleMeetLink)
+        .where(sql`${zuvyClassesGoogleMeetLink.bootcampId} = ${bootcampId}`);
 
       const sortedClasses = _.orderBy(
         classes,
@@ -548,8 +544,8 @@ export class ClassesService {
     try {
       const attendeesList = await db
         .select()
-        .from(classesGoogleMeetLink)
-        .where(sql`${classesGoogleMeetLink.id}=${id}`);
+        .from(zuvyClassesGoogleMeetLink)
+        .where(sql`${zuvyClassesGoogleMeetLink.id}=${id}`);
       return { status: 'success', message: 'attendees fetched successfully' };
     } catch (error) {
       return {
@@ -564,8 +560,8 @@ export class ClassesService {
     try {
       const classDetails = await db
         .select()
-        .from(classesGoogleMeetLink)
-        .where(sql`${classesGoogleMeetLink.id}=${id}`);
+        .from(zuvyClassesGoogleMeetLink)
+        .where(sql`${zuvyClassesGoogleMeetLink.id}=${id}`);
       if (classDetails.length === 0) {
         return { status: 'error', message: 'class not found', code: 404 };
       }
@@ -583,8 +579,8 @@ export class ClassesService {
   async deleteMeetingById(id: number) {
     try {
       db
-        .delete(classesGoogleMeetLink)
-        .where(sql`${classesGoogleMeetLink.id} = ${id}`).then((res) => { });
+        .delete(zuvyClassesGoogleMeetLink)
+        .where(sql`${zuvyClassesGoogleMeetLink.id} = ${id}`).then((res) => { });
       return {
         status: 'success',
         message: 'Meeting deleted successfully ',
@@ -602,9 +598,9 @@ export class ClassesService {
   async updateMeetingById(id: number, classData: any): Promise<object> {
     try {
       let updatedMeeting = await db
-        .update(classesGoogleMeetLink)
+        .update(zuvyClassesGoogleMeetLink)
         .set({ ...classData })
-        .where(eq(classesGoogleMeetLink.id, id))
+        .where(eq(zuvyClassesGoogleMeetLink.id, id))
         .returning();
       return {
         status: 'success',
@@ -620,17 +616,17 @@ export class ClassesService {
   async meetingAttendanceAnalytics(meeting_id: string, user) {
     try {
       await this.getAttendance(meeting_id, user);
-      let classInfo = await db.select().from(classesGoogleMeetLink).where(sql`${classesGoogleMeetLink.meetingId}=${meeting_id}`);
+      let classInfo = await db.select().from(zuvyClassesGoogleMeetLink).where(sql`${zuvyClassesGoogleMeetLink.meetingid}=${meeting_id}`);
       if (classInfo.length > 0) {
         const Meeting = await db.select().from(zuvyStudentAttendance).where(sql`${zuvyStudentAttendance.meetingId}=${meeting_id}`);
-        let { bootcampId, batchId, s3link } = classInfo[0];
-        let students = await db.select().from(batchEnrollments).where(sql`${batchEnrollments.batchId}=${batchId}`);
+        let { bootcampId, batchId, s3Link } = classInfo[0];
+        let students = await db.select().from(zuvyBatchEnrollments).where(sql`${zuvyBatchEnrollments.batchId}=${batchId}`);
 
         let attendance: Array<any> = Meeting[0]?.attendance as Array<any> || [];
         let no_of_students = students.length > attendance.length ? students.length : attendance.length;
         let present = attendance.filter((student) => student?.attendance === 'present').length;
 
-        return [null, { status: 'success', message: 'Meetings fetched successfully', studentsInfo: { total_students: no_of_students, present: present, s3link: s3link } }];
+        return [null, { status: 'success', message: 'Meetings fetched successfully', studentsInfo: { total_students: no_of_students, present: present, s3link: s3Link } }];
       } else {
         return [{ status: 'error', message: 'Meeting not found', code: 404 }];
       }
@@ -655,10 +651,7 @@ export class ClassesService {
           status: 'success',
         }]
       }
-      let classInfo = await db.select()
-        .from(classesGoogleMeetLink)
-        .where(sql`${classesGoogleMeetLink.meetingId}=${meetingId}`);
-
+      let classInfo = await db.select().from(zuvyClassesGoogleMeetLink).where(sql`${zuvyClassesGoogleMeetLink.meetingid}=${meetingId}`);
       if (classInfo.length == 0) {
         return [{ status: 'error', message: 'Meeting not found', code: 404 }];
       }
@@ -728,14 +721,12 @@ export class ClassesService {
               .where(inArray(users.email, [...batchStudets]))
 
             students.forEach(async (student) => {
-              let old_attendance = await db.select()
-                .from(batchEnrollments)
-                .where(sql`${batchEnrollments.userId} = ${student.id.toString()}`);
+              let old_attendance = await db.select().from(zuvyBatchEnrollments).where(sql`${zuvyBatchEnrollments.userId} = ${student.id.toString()}`);
               let new_attendance = old_attendance[0]?.attendance ? old_attendance[0].attendance + 1 : 1;
-              let batchEnrollmentsDetailsUpdated = await db
-                .update(batchEnrollments)
+              let zuvyBatchEnrollmentsDetailsUpdated = await db
+                .update(zuvyBatchEnrollments)
                 .set({ attendance: new_attendance })
-                .where(sql`${batchEnrollments.userId} = ${student.id.toString()}`).returning();
+                .where(sql`${zuvyBatchEnrollments.userId} = ${student.id.toString()}`).returning();
             });
           }
           return [null, {
@@ -756,8 +747,8 @@ export class ClassesService {
 
       const classes = await db
         .select()
-        .from(classesGoogleMeetLink)
-        .where(sql`${classesGoogleMeetLink.batchId} = ${batchId}`);
+        .from(zuvyClassesGoogleMeetLink)
+        .where(sql`${zuvyClassesGoogleMeetLink.batchId} = ${batchId}`);
       const sortedClasses = _.orderBy(
         classes,
         (classObj) => new Date(classObj.startTime),
@@ -828,24 +819,24 @@ export class ClassesService {
 
   async meetingAttendance(meetingId: number): Promise<any> {
     try {
-      const allMeets = await db.select().from(classesGoogleMeetLink);
+      const allMeets = await db.select().from(zuvyClassesGoogleMeetLink);
       for (const meet of allMeets) {
         const isMarked = await db
           .select()
-          .from(zuvyMeetingAttendance)
-          .where(eq(zuvyMeetingAttendance.meetingId, meet.meetingId));
+          .from(zuvyStudentAttendance)
+          .where(eq(zuvyStudentAttendance.meetingId, meet.meetingid));
         if (isMarked.length == 0) {
-          const fetchedAttendance = await this.getAttendance(meet.meetingId);
+          const fetchedAttendance = await this.getAttendance(meet.meetingid);
           const fetchedAttendanceList = fetchedAttendance.attendanceSheet;
           const totalMeetsMarked = await db
             .select()
-            .from(zuvyMeetingAttendance)
-            .where(eq(zuvyMeetingAttendance.batchid, meet.batchId));
+            .from(zuvyStudentAttendance)
+            .where(eq(zuvyStudentAttendance.batchId, Number(meet.batchId)));
           const totalMeetsMarkedLength = totalMeetsMarked.length;
           const fetchedStudents = await db
             .select()
-            .from(batchEnrollments)
-            .where(sql`${batchEnrollments.batchId}=${meet.batchId}`);
+            .from(zuvyBatchEnrollments)
+            .where(sql`${zuvyBatchEnrollments.batchId}=${meet.batchId}`);
           for (const student of fetchedStudents) {
             const studentDetails = await db
               .select()
@@ -861,8 +852,8 @@ export class ClassesService {
               );
               const attendancePercentage = await db
                 .select()
-                .from(batchEnrollments)
-                .where(sql`${batchEnrollments.userId}=${student.userId}`);
+                .from(zuvyBatchEnrollments)
+                .where(sql`${zuvyBatchEnrollments.userId}=${student.userId}`);
               const fetchedAttendancePercentage =
                 attendancePercentage[0].attendance;
               if (fetchedAttendancePercentage != null) {
@@ -873,13 +864,13 @@ export class ClassesService {
                     (totalMeetsMarkedLength + 1)
                   );
                   const updateAttendance = await db
-                    .update(batchEnrollments)
+                    .update(zuvyBatchEnrollments)
                     .set({
                       attendance: calculatedPercentage,
                       classesAttended:
                         attendancePercentage[0].classesAttended + 1,
                     })
-                    .where(sql`${batchEnrollments.userId}=${student.userId}`);
+                    .where(sql`${zuvyBatchEnrollments.userId}=${student.userId}`);
                 } else {
                   const calculatedPercentage = ~~(
                     (attendancePercentage[0].attendance *
@@ -888,36 +879,36 @@ export class ClassesService {
                     (totalMeetsMarkedLength + 1)
                   );
                   const updateAttendance = await db
-                    .update(batchEnrollments)
+                    .update(zuvyBatchEnrollments)
                     .set({
                       attendance: calculatedPercentage,
                       classesAttended:
                         attendancePercentage[0].classesAttended + 1,
                     })
-                    .where(sql`${batchEnrollments.userId}=${student.userId}`);
+                    .where(sql`${zuvyBatchEnrollments.userId}=${student.userId}`);
                 }
               } else {
                 if (studentAttendanceDetails['attendance'] == 'absent') {
                   const percentage = 0;
                   const classes = 1;
                   const updateAttendance = await db
-                    .update(batchEnrollments)
+                    .update(zuvyBatchEnrollments)
                     .set({ attendance: percentage, classesAttended: classes })
-                    .where(sql`${batchEnrollments.userId}=${student.userId}`);
+                    .where(sql`${zuvyBatchEnrollments.userId}=${student.userId}`);
                 } else {
                   const percentage = 100;
                   const classes = 1;
                   const updateAttendance = await db
-                    .update(batchEnrollments)
+                    .update(zuvyBatchEnrollments)
                     .set({ attendance: percentage, classesAttended: classes })
-                    .where(sql`${batchEnrollments.userId}=${student.userId}`);
+                    .where(sql`${zuvyBatchEnrollments.userId}=${student.userId}`);
                 }
               }
             } else {
               const attendancePercentage = await db
                 .select()
-                .from(batchEnrollments)
-                .where(sql`${batchEnrollments.userId}=${student.userId}`);
+                .from(zuvyBatchEnrollments)
+                .where(sql`${zuvyBatchEnrollments.userId}=${student.userId}`);
               if (attendancePercentage.length > 0) {
                 const fetchedAttendancePercentage =
                   attendancePercentage[0].attendance;
@@ -925,14 +916,14 @@ export class ClassesService {
                   const percentage = 0;
                   const classes = 1;
                   const updateAttendance = await db
-                    .update(batchEnrollments)
+                    .update(zuvyBatchEnrollments)
                     .set({ attendance: percentage, classesAttended: classes })
-                    .where(sql`${batchEnrollments.userId}=${student.userId}`);
+                    .where(sql`${zuvyBatchEnrollments.userId}=${student.userId}`);
                 } else {
                   const attendancePercentage = await db
                     .select()
-                    .from(batchEnrollments)
-                    .where(sql`${batchEnrollments.userId}=${student.userId}`);
+                    .from(zuvyBatchEnrollments)
+                    .where(sql`${zuvyBatchEnrollments.userId}=${student.userId}`);
                   const fetchedAttendancePercentage =
                     attendancePercentage[0].attendance;
                   if (fetchedAttendancePercentage != null) {
@@ -942,31 +933,32 @@ export class ClassesService {
                       (totalMeetsMarkedLength + 1)
                     );
                     const updateAttendance = await db
-                      .update(batchEnrollments)
+                      .update(zuvyBatchEnrollments)
                       .set({
                         attendance: calculatedPercentage,
                         classesAttended:
                           attendancePercentage[0].classesAttended + 1,
                       })
-                      .where(sql`${batchEnrollments.userId}=${student.userId}`);
+                      .where(sql`${zuvyBatchEnrollments.userId}=${student.userId}`);
                   } else {
                     const percentage = 0;
                     const classes = 1;
                     const updateAttendance = await db
-                      .update(batchEnrollments)
+                      .update(zuvyBatchEnrollments)
                       .set({ attendance: percentage, classesAttended: classes })
-                      .where(sql`${batchEnrollments.userId}=${student.userId}`);
+                      .where(sql`${zuvyBatchEnrollments.userId}=${student.userId}`);
                   }
                 }
               }
             }
           }
+          
           const updateMeetingDetails = await db
-            .insert(zuvyMeetingAttendance)
+            .insert(zuvyStudentAttendance)
             .values({
-              meetingId: meet.meetingId,
-              bootcampid: meet.bootcampId,
-              batchid: meet.batchId,
+              meetingId: meet.meetingid,
+              bootcampId: meet.bootcampId,
+              batchId: meet.batchId,
             })
             .returning();
         }

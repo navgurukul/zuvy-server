@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { batches, bootcamps, users, sansaarUserRoles, batchEnrollments } from '../../../drizzle/schema';
+import { zuvyBatches, users, zuvyBatchEnrollments } from '../../../drizzle/schema';
 import { db } from '../../db/index';
 import { eq, sql } from 'drizzle-orm';
 import { log } from 'console';
@@ -50,12 +50,12 @@ export class BatchesService {
 
     async createBatch(batch) {
         try {
-            const newData = await db.insert(batches).values(batch).returning();
-            const usersData = await db.select().from(batchEnrollments).where(sql`${batchEnrollments.bootcampId} = ${batch.bootcampId} AND ${batchEnrollments.batchId} IS NULL`).limit(batch.capEnrollment);
+            const newData = await db.insert(zuvyBatches).values(batch).returning();
+            const usersData = await db.select().from(zuvyBatchEnrollments).where(sql`${zuvyBatchEnrollments.bootcampId} = ${batch.bootcampId} AND ${zuvyzuvyBatchEnrollments.batchId} IS NULL`).limit(batch.capEnrollment);
 
             if (usersData.length > 0) {
                 let userids = usersData.map(u => u.userId);
-                await db.update(batchEnrollments).set({ batchId: newData[0].id }).where(sql`bootcamp_id = ${batch.bootcampId} AND user_id IN ${userids}`);
+                await db.update(zuvyBatchEnrollments).set({ batchId: newData[0].id }).where(sql`bootcamp_id = ${batch.bootcampId} AND user_id IN ${userids}`);
             }
             return [null, { 'status': 'success', 'message': 'Batch created successfully', 'code': 200, batch: newData[0] }];
         } catch (e) {
@@ -66,13 +66,13 @@ export class BatchesService {
 
     async getBatchById(id: number) {
         try {
-            let data = await db.select().from(batches).where(eq(batches.id, id));
+            let data = await db.select().from(zuvyBatches).where(eq(zuvyBatches.id, id));
             if (data.length === 0) {
                 return [{ status: 'error', message: 'Batch not found', code: 404 }, null];
             }
             let respObj = [];
             // if (students){
-            let enrollStudents = await db.select().from(batchEnrollments).where(eq(batchEnrollments.batchId, id));
+            let enrollStudents = await db.select().from(zuvyBatchEnrollments).where(eq(zuvyBatchEnrollments.batchId, id));
             
             // let enrollStudentsId;
             // if (enrollStudents.length !== 0) {
@@ -108,7 +108,7 @@ export class BatchesService {
 
     async updateBatch(id: number, batch: object) {
         try {
-            let batchData = await db.select().from(batches).where(eq(batches.id, id));
+            let batchData = await db.select().from(zuvyBatches).where(eq(zuvyBatches.id, id));
             if (batchData.length === 0) {
                 return [{ status: 'error', message: 'Batch not found', code: 404 }, null];
             }
@@ -120,7 +120,7 @@ export class BatchesService {
             //     // }
             // }
             batch['updatedAt'] = new Date();
-            let updateData = await db.update(batches).set(batch).where(eq(batches.id, id)).returning()
+            let updateData = await db.update(zuvyBatches).set(batch).where(eq(zuvyBatches.id, id)).returning()
             if (updateData.length === 0) {
                 return [{ status: 'error', message: 'Batch not found', code: 404 }, null];
             }
@@ -133,8 +133,8 @@ export class BatchesService {
 
     async deleteBatch(id: number) {
         try {
-            let data = await db.delete(batches).where(eq(batches.id, id)).returning();
-            await db.update(batchEnrollments).set({ "batchId": null }).where(eq(batchEnrollments.batchId, id)).returning()
+            let data = await db.delete(zuvyBatches).where(eq(zuvyBatches.id, id)).returning();
+            await db.update(zuvyBatchEnrollments).set({ "batchId": null }).where(eq(zuvyBatchEnrollments.batchId, id)).returning()
             if (data.length === 0) {
                 return [{ status: 'error', message: 'Batch not found', code: 404 }, null];
             }
