@@ -15,15 +15,33 @@ export class JwtMiddleware implements NestMiddleware {
   constructor(private readonly jwtService: JwtService) {}
 
  async use(req, res: Response, next: NextFunction) {
-    
+
+  if(req._parsedUrl.pathname === '/classes'  && req.method === 'GET')
+  {
+    next();
+    return;
+  }
+  if(req._parsedUrl.pathname === '/classes/redirect/'  && req.method === 'GET')
+  {
+    next();
+    return;
+  }if(req._parsedUrl.pathname === '/classes/getAllAttendance/:batchId'  && req.method === 'GET')
+  {
+    next();
+    return;
+  }
+  if(req._parsedUrl.pathname === '/classes/getAllAttendance/:batchId/'  && req.method === 'GET')
+  {
+    next();
+    return;
+  }
     const token = req.headers.authorization?.replace('Bearer ', '');
     let user;
     if (!token) {
       throw new UnauthorizedException('Token not found');
     }
-    try {
-        console.log(token,process.env.JWT_SECRET_KEY);
-      const decoded = await this.jwtService.decode(token);
+     try {
+     const decoded = await this.jwtService.decode(token);
       if(decoded != null)
       {
         user = await db.select().from(users).where(sql`${users.id} = ${decoded.id} AND ${users.email} = ${decoded.email}`);
@@ -35,7 +53,6 @@ export class JwtMiddleware implements NestMiddleware {
       }
       next();
     } catch (error) {
-        console.log("Error",error);
       throw new UnauthorizedException('Invalid token');
     }
   } 
