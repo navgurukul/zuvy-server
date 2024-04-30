@@ -1921,6 +1921,7 @@ export const moduleChapter = main.table("zuvy_module_chapter",{
         moduleId: integer("module_id").references(() => courseModules.id),
         file: bytea("file"),
         links:jsonb("links"),
+        articleContent: jsonb("article_content"),
         quizQuestions: jsonb("quiz_questions"),
         codingQuestions: jsonb("coding_questions"),
         completionDate: timestamp("completion_date", { withTimezone: true, mode: 'string' }),
