@@ -258,8 +258,7 @@ export class ContentService {
 
   async createChapterForModule(
     moduleId: number,
-    topicId: number,
-    module_chapter: chapterDto,
+    topicId: number
   ) {
     try {
       const existingChaptersForAModule = await db
@@ -267,7 +266,7 @@ export class ContentService {
         .from(moduleChapter)
         .where(eq(moduleChapter.moduleId, moduleId));
       const order = existingChaptersForAModule.length + 1;
-      var chapterData = { moduleId, topicId, ...module_chapter, order };
+      var chapterData = { title:`Chapter ${order}`,moduleId, topicId, order };
       const chapter = await db
         .insert(moduleChapter)
         .values(chapterData)
@@ -284,7 +283,7 @@ export class ContentService {
     }
   }
 
-  async createQuizForModule(quiz: quizBatchDto) {
+  async createQuizForModule(quiz: quizBatchDto,chapterId:number) {
     try {
       const quizQuestions = quiz.questions.map((q) => ({
         question: q.question,
@@ -299,29 +298,22 @@ export class ContentService {
         .insert(moduleQuiz)
         .values(quizQuestions)
         .returning();
-
+        if (result.length > 0) {
+            let quizIds = result.map((q) => {
+              return q.id;
+            });
+            quizIds.push(...quiz.quizQuestionIds);
+            await db
+              .update(moduleChapter)
+              .set({ quizQuestions: quizIds })
+              .where(eq(moduleChapter.id, chapterId));
+          }
       return result;
     } catch (err) {
       throw err;
     }
   }
 
-  async createChapterQuiz(
-    moduleId: number,
-    topicId: number,
-    module_chapter: chapterDto,
-  ) {
-    try {
-      const chapter = await this.createChapterForModule(
-        moduleId,
-        topicId,
-        module_chapter,
-      );
-      return chapter;
-    } catch (err) {
-      throw err;
-    }
-  }
 
   async createOpenEndedQuestions(questions: openEndedDto) {
     try {
@@ -453,11 +445,20 @@ export class ContentService {
         .select()
         .from(moduleChapter)
         .where(eq(moduleChapter.id, chapterId));
-      var modifiedChapterDetails = {
-        ...chapterDetails[0],
-        quizQuestionDetails: [],
-        codingQuestionDetails: [],
-      };
+        const modifiedChapterDetails: {
+            id: number;
+            moduleId: number;
+            topicId: number;
+            order: number;
+            quizQuestionDetails?: any[];
+            codingQuestionDetails?: any[];
+            contentDetails?: any[]
+        } = {
+            id: chapterDetails[0].id,
+            moduleId: chapterDetails[0].moduleId,
+            topicId: chapterDetails[0].topicId,
+            order: chapterDetails[0].order,
+        };
 
       if (chapterDetails.length > 0) {
         if (chapterDetails[0].topicId == 4) {
@@ -475,6 +476,15 @@ export class ContentService {
             .from(codingQuestions)
             .where(sql`${inArray(codingQuestions.id, codingIds)}`);
           modifiedChapterDetails.codingQuestionDetails = codingProblemDetails;
+        } else {
+          let content = [{
+            title: chapterDetails[0].title,
+            description: chapterDetails[0].description,
+            links: chapterDetails[0].links,
+            file: chapterDetails[0].file,
+            content:chapterDetails[0].articleContent
+          }];
+          modifiedChapterDetails.contentDetails = content;
         }
         return modifiedChapterDetails;
       } else {
@@ -550,17 +560,10 @@ export class ContentService {
 
   async createCodingProblemForModule(
     moduleId: number,
-    topicId: number,
-    module_chapter: chapterDto,
+    chapterId:number,
     codingProblem: CreateProblemDto,
   ) {
     try {
-      const chapter = await this.createChapterForModule(
-        moduleId,
-        topicId,
-        module_chapter,
-      );
-      if (chapter.status === 'success') {
         let examples = [];
         let testCases = [];
         for (let i = 0; i < codingProblem.examples.length; i++) {
@@ -575,23 +578,17 @@ export class ContentService {
           .insert(codingQuestions)
           .values(codingProblem)
           .returning();
-
         if (result.length > 0) {
           let codingIds = result.map((q) => {
             return q.id;
           });
-          if (codingProblem.codingQuestionIds.length > 0) {
-            codingIds.push(...codingProblem.codingQuestionIds);
-          }
           await db
             .update(moduleChapter)
             .set({ codingQuestions: codingIds })
-            .where(eq(moduleChapter.id, chapter.module[0].id));
+            .where(eq(moduleChapter.id, chapterId));
         }
         return result;
-      } else {
-        throw new Error('Failed to create chapter');
-      }
+     
     } catch (err) {
       throw err;
     }

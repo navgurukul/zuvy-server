@@ -119,44 +119,32 @@ export class ContentController {
   })
   @ApiBearerAuth()
   async createChapter(
-    @Body() chapter: chapterDto,
     @Param('moduleId') moduleId: number,
     @Query('topicId') topicId: number,
   ) {
     const res = await this.contentService.createChapterForModule(
       moduleId,
       topicId,
-      chapter,
     );
     return res;
   }
 
   @Post('/quiz')
   @ApiOperation({ summary: 'Create a quiz' })
-  @ApiBearerAuth()
-  async createQuizForModule(@Body() quizQuestions: quizBatchDto) {
-    const res = await this.contentService.createQuizForModule(quizQuestions);
-    return res;
-  }
-
-  @Post('/chapterQuiz/:moduleId')
-  @ApiOperation({ summary: 'Create a chapter quiz for this module' })
   @ApiQuery({
-    name: 'topicId',
+    name: 'chapterId',
     required: true,
     type: Number,
-    description: 'topic id',
+    description: 'chapterId',
   })
   @ApiBearerAuth()
-  async createChapterQuiz(
-    @Body() chapterQuiz: chapterDto,
-    @Param('moduleId') moduleId: number,
-    @Query('topicId') topicId: number,
+  async createQuizForModule(
+    @Body() quizQuestions: quizBatchDto,
+    @Query('chapterId') chapterId: number,
   ) {
-    const res = await this.contentService.createChapterQuiz(
-      moduleId,
-      topicId,
-      chapterQuiz,
+    const res = await this.contentService.createQuizForModule(
+      quizQuestions,
+      chapterId,
     );
     return res;
   }
@@ -173,29 +161,23 @@ export class ContentController {
   @Post('/codingQuestion/:moduleId')
   @ApiOperation({ summary: 'Create a coding question for this module' })
   @ApiQuery({
-    name: 'topicId',
+    name: 'chapterId',
     required: true,
     type: Number,
-    description: 'topic id',
+    description: 'chapterId',
   })
   @ApiBearerAuth()
   async createCodingQuestionForModule(
     @Body() codingQuestions: CreateProblemDto,
     @Param('moduleId') moduleId: number,
-    @Query('topicId') topicId: number,
+    @Query('chapterId') chapterId: number,
   ) {
-    const chapterDetails: chapterDto = {
+    const chapterDetails = {
       title: 'Coding Problems',
-      description:
-        'The questions are based on the knowledge that you learned from the classes',
-      completionDate: new Date().toDateString(),
-      quizQuestions: null,
-      links:null
     };
     const res = await this.contentService.createCodingProblemForModule(
       moduleId,
-      topicId,
-      chapterDetails,
+      chapterId,
       codingQuestions,
     );
     return res;
