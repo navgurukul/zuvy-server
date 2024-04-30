@@ -124,40 +124,30 @@ export class ContentController {
   ) {
     const res = await this.contentService.createChapterForModule(
       moduleId,
-      topicId
+      topicId,
     );
     return res;
   }
 
   @Post('/quiz')
   @ApiOperation({ summary: 'Create a quiz' })
+  @ApiQuery({
+    name: 'chapterId',
+    required: true,
+    type: Number,
+    description: 'chapterId',
+  })
   @ApiBearerAuth()
-  async createQuizForModule(@Body() quizQuestions: quizBatchDto,@Query('chapterId')chapterId:number) {
-    const res = await this.contentService.createQuizForModule(quizQuestions,chapterId);
+  async createQuizForModule(
+    @Body() quizQuestions: quizBatchDto,
+    @Query('chapterId') chapterId: number,
+  ) {
+    const res = await this.contentService.createQuizForModule(
+      quizQuestions,
+      chapterId,
+    );
     return res;
   }
-
-  // @Post('/chapterQuiz/:moduleId')
-  // @ApiOperation({ summary: 'Create a chapter quiz for this module' })
-  // @ApiQuery({
-  //   name: 'topicId',
-  //   required: true,
-  //   type: Number,
-  //   description: 'topic id',
-  // })
-  // @ApiBearerAuth()
-  // async createChapterQuiz(
-  //   @Body() chapterQuiz: chapterDto,
-  //   @Param('moduleId') moduleId: number,
-  //   @Query('topicId') topicId: number,
-  // ) {
-  //   const res = await this.contentService.createChapterQuiz(
-  //     moduleId,
-  //     topicId,
-  //     chapterQuiz,
-  //   );
-  //   return res;
-  // }
 
   @Post('/createOpenEndedQuestion')
   @ApiOperation({ summary: 'Create a open ended question' })
@@ -171,10 +161,10 @@ export class ContentController {
   @Post('/codingQuestion/:moduleId')
   @ApiOperation({ summary: 'Create a coding question for this module' })
   @ApiQuery({
-    name: 'topicId',
+    name: 'chapterId',
     required: true,
     type: Number,
-    description: 'topic id',
+    description: 'chapterId',
   })
   @ApiBearerAuth()
   async createCodingQuestionForModule(
@@ -183,7 +173,7 @@ export class ContentController {
     @Query('chapterId') chapterId: number,
   ) {
     const chapterDetails = {
-      title: 'Coding Problems'
+      title: 'Coding Problems',
     };
     const res = await this.contentService.createCodingProblemForModule(
       moduleId,
@@ -282,8 +272,4 @@ export class ContentController {
     );
     return res;
   }
-
-
-  
-
 }
