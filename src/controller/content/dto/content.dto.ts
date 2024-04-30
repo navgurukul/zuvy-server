@@ -12,6 +12,7 @@ import {
   isString,
   IsArray,
   isNumber,
+  IsJSON,
 } from 'class-validator';
 import { truncateSync } from 'fs';
 import { Type } from 'class-transformer';
@@ -82,6 +83,29 @@ export class chapterDto {
   @IsOptional()
   links: string[];
 
+  @ApiProperty({
+    type : [Object],
+    example: [
+      {
+          "blocks": [
+              {
+                  "key": "fbh77",
+                  "text": "asdfasddfasdf",
+                  "type": "unstyled",
+                  "depth": 0,
+                  "inlineStyleRanges": [],
+                  "entityRanges": [],
+                  "data": {}
+              }
+          ],
+          "entityMap": {}
+      }
+  ]
+  })
+  @IsArray()
+  @IsOptional()
+
+  content: [object];
 
 
 }
@@ -239,14 +263,6 @@ export class EditChapterDto {
   completionDate: string;
 
   @ApiProperty({
-    type: [String],
-    example: ['https://www.google.com'],
-  })
-  @IsArray()
-  @IsOptional()
-  links: any[];
-
-  @ApiProperty({
     type: [Number],
     example: [1, 2],
   })
@@ -269,6 +285,38 @@ export class EditChapterDto {
   @IsNumber()
   @IsOptional()
   newOrder: number;
+
+  @ApiProperty({
+    type: [String],
+    example: ['https://www.google.com'],
+  })
+  @IsArray()
+  @IsOptional()
+  links: string[];
+
+  @ApiProperty({
+    type : [Object],
+    example: [
+      {
+          "blocks": [
+              {
+                  "key": "fbh77",
+                  "text": "asdfasddfasdf",
+                  "type": "unstyled",
+                  "depth": 0,
+                  "inlineStyleRanges": [],
+                  "entityRanges": [],
+                  "data": {}
+              }
+          ],
+          "entityMap": {}
+      }
+  ]
+  })
+  @IsArray()
+  @IsOptional()
+
+  content: [object];
 }
 
 export class openEndedDto {
