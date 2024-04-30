@@ -482,7 +482,7 @@ export class ContentService {
             description: chapterDetails[0].description,
             links: chapterDetails[0].links,
             file: chapterDetails[0].file,
-            content:chapterDetails[0].content
+            content:chapterDetails[0].articleContent
           }];
           modifiedChapterDetails.contentDetails = content;
         }

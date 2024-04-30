@@ -316,7 +316,7 @@ export class EditChapterDto {
   @IsArray()
   @IsOptional()
 
-  content: [object];
+  articleContent: [object];
 }
 
 export class openEndedDto {
