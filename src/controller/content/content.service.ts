@@ -729,4 +729,81 @@ export class ContentService {
       throw err;
     }
   }
+
+  
+async deleteModule(id: number): Promise<any> {
+  try {
+    let data = await db
+      .delete(courseModules)
+      .where(eq(courseModules.id, id))
+      .returning();
+    if (data.length === 0) {
+      return [
+        { status: 'error', message: 'Module not found', code: 404 },
+        null,
+      ];
+    }
+
+    const remainingModules = await db.select().from(courseModules).orderBy(courseModules.order);
+
+    for (let i = 0; i < remainingModules.length; i++) {
+      await db
+        .update(courseModules)
+        .set({ order: i + 1 })
+        .where(eq(courseModules.id, remainingModules[i].id));
+    }
+    return [ 
+      null,
+      {
+        status: 'success',
+        message: 'Module deleted successfully',
+        code: 200,
+      },
+    ];
+  } catch (error) {
+    log(`error: ${error.message}`);
+    return [{ status: 'error', message: error.message, code: 404 }, null];
+  }
+}
+
+async deleteChapter(chapterId: number): Promise<any> {
+  try {
+    let data = await db
+      .delete(moduleChapter)
+      .where(eq(moduleChapter.id, chapterId))
+      .returning();
+    if (data.length === 0) {
+      return [
+        { status: 'error', message: 'Chapter not found', code: 404 },
+        null,
+      ];
+    }
+
+
+    const remainingChapters = await db.select().from(moduleChapter).orderBy(moduleChapter.order);
+
+    for (let i = 0; i < remainingChapters.length; i++) {
+      await db
+        .update(courseModules)
+        .set({ order: i + 1 })
+        .where(eq(courseModules.id, remainingChapters[i].id));
+    }
+
+    return [ 
+      null,
+      {
+        status: 'success',
+        message: 'Chapter deleted successfully',
+        code: 200,
+      },
+    ];
+  } catch (error) {
+    log(`error: ${error.message}`);
+    return [{ status: 'error', message: error.message, code: 404 }, null];
+  }
+}
+
+
+
+
 }

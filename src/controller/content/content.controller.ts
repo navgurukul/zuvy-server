@@ -290,4 +290,27 @@ export class ContentController {
     );
     return res;
   }
+
+@Delete('/deleteModule/:id')
+  @ApiOperation({ summary: 'Delete the module' })
+  @ApiBearerAuth()
+  async deleteModule(@Param('id') id: number): Promise<object> {
+    const [err, res] = await this.contentService.deleteModule(id);
+    if (err) {
+      throw new BadRequestException(err);
+    }
+    return res;
+  }
+
+  @Delete('/deleteChapter/:chapterId')
+  @ApiOperation({ summary: 'Delete the chapter' })
+  @ApiBearerAuth()
+  async deleteChapter(@Param('chapterId') chapterId: number): Promise<object> {
+    const [err, res] = await this.contentService.deleteChapter(chapterId);
+    if (err) {
+      throw new BadRequestException(err);
+    }
+    return res;
+  }
+
 }
