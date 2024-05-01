@@ -158,7 +158,7 @@ export class ContentController {
     return res;
   }
 
-  @Post('/codingQuestion/:moduleId')
+  @Post('/codingQuestion/:chapterId')
   @ApiOperation({ summary: 'Create a coding question for this module' })
   @ApiQuery({
     name: 'chapterId',
@@ -169,16 +169,14 @@ export class ContentController {
   @ApiBearerAuth()
   async createCodingQuestionForModule(
     @Body() codingQuestions: CreateProblemDto,
-    @Param('moduleId') moduleId: number,
-    @Query('chapterId') chapterId: number,
+    @Param('chapterId') chapterId: number,
   ) {
     const chapterDetails = {
       title: 'Coding Problems',
     };
     const res = await this.contentService.createCodingProblemForModule(
-      moduleId,
       chapterId,
-      codingQuestions,
+      codingQuestions
     );
     return res;
   }
@@ -186,12 +184,20 @@ export class ContentController {
   @Post('/createAssessment/:moduleId')
   @ApiOperation({ summary: 'Create a assessment for this module' })
   @ApiBearerAuth()
-  async createAssessment(
+  async createAssessment(@Param('moduleId') moduleId: number) {
+    const res = await this.contentService.createAssessment(moduleId);
+    return res;
+  }
+
+  @Put('/editAssessment/:assessmentId')
+  @ApiOperation({ summary: 'Edit the assessment for this module' })
+  @ApiBearerAuth()
+  async editAssessment(
     @Body() assessmentBody: CreateAssessmentBody,
-    @Param('moduleId') moduleId: number,
+    @Param('assessmentId') assessmentId: number,
   ) {
-    const res = await this.contentService.createAssessment(
-      moduleId,
+    const res = await this.contentService.editAssessment(
+      assessmentId,
       assessmentBody,
     );
     return res;
