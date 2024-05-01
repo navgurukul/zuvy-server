@@ -273,25 +273,37 @@ export class ContentController {
     return res;
   }
 
-@Delete('/deleteModule/:id')
+@Delete('/deleteModule/:bootcampId')
   @ApiOperation({ summary: 'Delete the module' })
+  @ApiQuery({
+    name: 'moduleId',
+    required: true,
+    type: Number,
+    description: 'module Id',
+  })
   @ApiBearerAuth()
-  async deleteModule(@Param('id') id: number): Promise<object> {
-    const [err, res] = await this.contentService.deleteModule(id);
-    if (err) {
-      throw new BadRequestException(err);
-    }
+  async deleteModule(
+    @Param('bootcampId') bootcampId: number,
+    @Query('moduleId') moduleId: number
+    ): Promise<object> {
+    const res = await this.contentService.deleteModule(moduleId,bootcampId);
     return res;
   }
 
-  @Delete('/deleteChapter/:chapterId')
+  @Delete('/deleteChapter/:moduleId')
   @ApiOperation({ summary: 'Delete the chapter' })
+  @ApiQuery({
+    name: 'chapterId',
+    required: true,
+    type: Number,
+    description: 'chapter Id',
+  })
   @ApiBearerAuth()
-  async deleteChapter(@Param('chapterId') chapterId: number): Promise<object> {
-    const [err, res] = await this.contentService.deleteChapter(chapterId);
-    if (err) {
-      throw new BadRequestException(err);
-    }
+  async deleteChapter(
+    @Param('moduleId') moduleId: number,
+    @Query('chapterId') chapterId: number
+    ): Promise<object> {
+    const res = await this.contentService.deleteChapter(chapterId,moduleId);
     return res;
   }
 

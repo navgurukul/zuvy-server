@@ -728,11 +728,13 @@ export class ContentService {
   }
 
   
-async deleteModule(id: number): Promise<any> {
+async deleteModule(
+  moduleId: number,
+  bootcampId: number): Promise<any> {
   try {
     let data = await db
       .delete(courseModules)
-      .where(eq(courseModules.id, id))
+      .where(eq(courseModules.id, moduleId))
       .returning();
     if (data.length === 0) {
       return [
@@ -741,7 +743,13 @@ async deleteModule(id: number): Promise<any> {
       ];
     }
 
-    const remainingModules = await db.select().from(courseModules).orderBy(courseModules.order);
+    const remainingModules = await db
+          .select()
+          .from(courseModules)
+          .where(eq(courseModules.bootcampId, bootcampId))
+          .orderBy(courseModules.order);
+
+    
 
     for (let i = 0; i < remainingModules.length; i++) {
       await db
@@ -749,21 +757,21 @@ async deleteModule(id: number): Promise<any> {
         .set({ order: i + 1 })
         .where(eq(courseModules.id, remainingModules[i].id));
     }
-    return [ 
-      null,
-      {
+    return {
         status: 'success',
         message: 'Module deleted successfully',
         code: 200,
-      },
-    ];
+      };
+    
   } catch (error) {
     log(`error: ${error.message}`);
     return [{ status: 'error', message: error.message, code: 404 }, null];
   }
 }
 
-async deleteChapter(chapterId: number): Promise<any> {
+async deleteChapter(
+  chapterId: number,
+  moduleId:  number): Promise<any> {
   try {
     let data = await db
       .delete(moduleChapter)
@@ -776,24 +784,24 @@ async deleteChapter(chapterId: number): Promise<any> {
       ];
     }
 
-
-    const remainingChapters = await db.select().from(moduleChapter).orderBy(moduleChapter.order);
+    const remainingChapters = await db
+          .select()
+          .from(moduleChapter)
+          .where(eq(moduleChapter.moduleId, moduleId))
+          .orderBy(moduleChapter.order); 
 
     for (let i = 0; i < remainingChapters.length; i++) {
       await db
-        .update(courseModules)
+        .update(moduleChapter)
         .set({ order: i + 1 })
-        .where(eq(courseModules.id, remainingChapters[i].id));
+        .where(eq(moduleChapter.id, remainingChapters[i].id));
     }
 
-    return [ 
-      null,
-      {
+    return{
         status: 'success',
         message: 'Chapter deleted successfully',
         code: 200,
-      },
-    ];
+      };
   } catch (error) {
     log(`error: ${error.message}`);
     return [{ status: 'error', message: error.message, code: 404 }, null];
