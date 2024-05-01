@@ -13,6 +13,7 @@ import {
   moduleAssessment,
   questions,
   difficulty,
+  assessment,
 } from '../../../drizzle/schema';
 import axios from 'axios';
 import { error, log } from 'console';
@@ -256,17 +257,14 @@ export class ContentService {
     }
   }
 
-  async createChapterForModule(
-    moduleId: number,
-    topicId: number
-  ) {
+  async createChapterForModule(moduleId: number, topicId: number) {
     try {
       const existingChaptersForAModule = await db
         .select()
         .from(moduleChapter)
         .where(eq(moduleChapter.moduleId, moduleId));
       const order = existingChaptersForAModule.length + 1;
-      var chapterData = { title:`Chapter ${order}`,moduleId, topicId, order };
+      var chapterData = { title: `Chapter ${order}`, moduleId, topicId, order };
       const chapter = await db
         .insert(moduleChapter)
         .values(chapterData)
@@ -283,7 +281,7 @@ export class ContentService {
     }
   }
 
-  async createQuizForModule(quiz: quizBatchDto,chapterId:number) {
+  async createQuizForModule(quiz: quizBatchDto, chapterId: number) {
     try {
       const quizQuestions = quiz.questions.map((q) => ({
         question: q.question,
@@ -298,22 +296,21 @@ export class ContentService {
         .insert(moduleQuiz)
         .values(quizQuestions)
         .returning();
-        if (result.length > 0) {
-            let quizIds = result.map((q) => {
-              return q.id;
-            });
-            quizIds.push(...quiz.quizQuestionIds);
-            await db
-              .update(moduleChapter)
-              .set({ quizQuestions: quizIds })
-              .where(eq(moduleChapter.id, chapterId));
-          }
+      if (result.length > 0) {
+        let quizIds = result.map((q) => {
+          return q.id;
+        });
+        quizIds.push(...quiz.quizQuestionIds);
+        await db
+          .update(moduleChapter)
+          .set({ quizQuestions: quizIds })
+          .where(eq(moduleChapter.id, chapterId));
+      }
       return result;
     } catch (err) {
       throw err;
     }
   }
-
 
   async createOpenEndedQuestions(questions: openEndedDto) {
     try {
@@ -445,45 +442,54 @@ export class ContentService {
         .select()
         .from(moduleChapter)
         .where(eq(moduleChapter.id, chapterId));
-        const modifiedChapterDetails: {
-            id: number;
-            moduleId: number;
-            topicId: number;
-            order: number;
-            quizQuestionDetails?: any[];
-            codingQuestionDetails?: any[];
-            contentDetails?: any[]
-        } = {
-            id: chapterDetails[0].id,
-            moduleId: chapterDetails[0].moduleId,
-            topicId: chapterDetails[0].topicId,
-            order: chapterDetails[0].order,
-        };
+      const modifiedChapterDetails: {
+        id: number;
+        moduleId: number;
+        topicId: number;
+        order: number;
+        quizQuestionDetails?: any[];
+        codingQuestionDetails?: any[];
+        contentDetails?: any[];
+      } = {
+        id: chapterDetails[0].id,
+        moduleId: chapterDetails[0].moduleId,
+        topicId: chapterDetails[0].topicId,
+        order: chapterDetails[0].order,
+      };
 
       if (chapterDetails.length > 0) {
         if (chapterDetails[0].topicId == 4) {
-          const quizIds = Object.values(chapterDetails[0].quizQuestions);
-          const quizDetails = await db
-            .select()
-            .from(moduleQuiz)
-            .where(sql`${inArray(moduleQuiz.id, quizIds)}`);
+          const quizDetails =
+            chapterDetails[0].quizQuestions !== null
+              ? await db
+                  .select()
+                  .from(moduleQuiz)
+                  .where(
+                    sql`${inArray(moduleQuiz.id, Object.values(chapterDetails[0].quizQuestions))}`,
+                  )
+              : [];
           modifiedChapterDetails.quizQuestionDetails = quizDetails;
-        }
-        if (chapterDetails[0].topicId == 3) {
-          const codingIds = Object.values(chapterDetails[0].codingQuestions);
-          const codingProblemDetails = await db
-            .select()
-            .from(codingQuestions)
-            .where(sql`${inArray(codingQuestions.id, codingIds)}`);
+        } else if (chapterDetails[0].topicId == 3) {
+          const codingProblemDetails =
+            chapterDetails[0].codingQuestions !== null
+              ? await db
+                  .select()
+                  .from(codingQuestions)
+                  .where(
+                    sql`${inArray(codingQuestions.id, Object.values(chapterDetails[0].codingQuestions))}`,
+                  )
+              : [];
           modifiedChapterDetails.codingQuestionDetails = codingProblemDetails;
         } else {
-          let content = [{
-            title: chapterDetails[0].title,
-            description: chapterDetails[0].description,
-            links: chapterDetails[0].links,
-            file: chapterDetails[0].file,
-            content:chapterDetails[0].articleContent
-          }];
+          let content = [
+            {
+              title: chapterDetails[0].title,
+              description: chapterDetails[0].description,
+              links: chapterDetails[0].links,
+              file: chapterDetails[0].file,
+              content: chapterDetails[0].articleContent,
+            },
+          ];
           modifiedChapterDetails.contentDetails = content;
         }
         return modifiedChapterDetails;
@@ -559,36 +565,34 @@ export class ContentService {
   }
 
   async createCodingProblemForModule(
-    moduleId: number,
-    chapterId:number,
+    chapterId: number,
     codingProblem: CreateProblemDto,
   ) {
     try {
-        let examples = [];
-        let testCases = [];
-        for (let i = 0; i < codingProblem.examples.length; i++) {
-          examples.push(codingProblem.examples[i].inputs);
-        }
-        codingProblem.examples = examples;
-        for (let j = 0; j < codingProblem.testCases.length; j++) {
-          testCases.push(codingProblem.testCases[j].inputs);
-        }
-        codingProblem.testCases = testCases;
-        const result = await db
-          .insert(codingQuestions)
-          .values(codingProblem)
-          .returning();
-        if (result.length > 0) {
-          let codingIds = result.map((q) => {
-            return q.id;
-          });
-          await db
-            .update(moduleChapter)
-            .set({ codingQuestions: codingIds })
-            .where(eq(moduleChapter.id, chapterId));
-        }
-        return result;
-     
+      let examples = [];
+      let testCases = [];
+      for (let i = 0; i < codingProblem.examples.length; i++) {
+        examples.push(codingProblem.examples[i].inputs);
+      }
+      codingProblem.examples = examples;
+      for (let j = 0; j < codingProblem.testCases.length; j++) {
+        testCases.push(codingProblem.testCases[j].inputs);
+      }
+      codingProblem.testCases = testCases;
+      const result = await db
+        .insert(codingQuestions)
+        .values(codingProblem)
+        .returning();
+      if (result.length > 0) {
+        let codingIds = result.map((q) => {
+          return q.id;
+        });
+        await db
+          .update(moduleChapter)
+          .set({ codingQuestions: codingIds })
+          .where(eq(moduleChapter.id, chapterId));
+      }
+      return result;
     } catch (err) {
       throw err;
     }
@@ -659,17 +663,37 @@ export class ContentService {
     }
   }
 
-  async createAssessment(
-    moduleId: number,
-    assessmentBody: CreateAssessmentBody,
-  ) {
+  async createAssessment(moduleId: number) {
     try {
-      const assessment = { ...assessmentBody, moduleId };
+      const assessment = {
+        title: `Assessment for module number ${moduleId}`,
+        moduleId,
+      };
       const newAssessment = await db
         .insert(moduleAssessment)
         .values(assessment)
         .returning();
       return newAssessment;
+    } catch (err) {
+      throw err;
+    }
+  }
+
+  async editAssessment(
+    assessmentId: number,
+    assessmentBody: CreateAssessmentBody,
+  ) {
+    try {
+      await db
+        .update(moduleAssessment)
+        .set(assessmentBody)
+        .where(eq(moduleAssessment.id, assessmentId))
+        .returning();
+      return {
+        status: 'success',
+        code: 200,
+        message: 'Updated successfully',
+      };
     } catch (err) {
       throw err;
     }
