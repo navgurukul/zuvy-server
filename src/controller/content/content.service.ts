@@ -458,31 +458,29 @@ export class ContentService {
       };
 
       if (chapterDetails.length > 0) {
-        if (
-          chapterDetails[0].topicId == 4 &&
-          chapterDetails[0].quizQuestions != null
-        ) {
-          const quizIds = Object.values(chapterDetails[0].quizQuestions);
-          const quizDetails = await db
-            .select()
-            .from(moduleQuiz)
-            .where(sql`${inArray(moduleQuiz.id, quizIds)}`);
+        if (chapterDetails[0].topicId == 4) {
+          const quizDetails =
+            chapterDetails[0].quizQuestions !== null
+              ? await db
+                  .select()
+                  .from(moduleQuiz)
+                  .where(
+                    sql`${inArray(moduleQuiz.id, Object.values(chapterDetails[0].quizQuestions))}`,
+                  )
+              : [];
           modifiedChapterDetails.quizQuestionDetails = quizDetails;
-        }
-        else if (
-          chapterDetails[0].topicId == 3 &&
-          chapterDetails[0].codingQuestions != null
-        ) {
-          const codingIds = Object.values(chapterDetails[0].codingQuestions);
-          const codingProblemDetails = await db
-            .select()
-            .from(codingQuestions)
-            .where(sql`${inArray(codingQuestions.id, codingIds)}`);
+        } else if (chapterDetails[0].topicId == 3) {
+          const codingProblemDetails =
+            chapterDetails[0].codingQuestions !== null
+              ? await db
+                  .select()
+                  .from(codingQuestions)
+                  .where(
+                    sql`${inArray(codingQuestions.id, Object.values(chapterDetails[0].codingQuestions))}`,
+                  )
+              : [];
           modifiedChapterDetails.codingQuestionDetails = codingProblemDetails;
-        } else if (
-          chapterDetails[0].topicId !== 3 &&
-          chapterDetails[0].topicId !== 4
-        ) {
+        } else {
           let content = [
             {
               title: chapterDetails[0].title,
