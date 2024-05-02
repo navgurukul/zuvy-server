@@ -51,7 +51,7 @@ export class BatchesService {
     async createBatch(batch) {
         try {
             const newData = await db.insert(zuvyBatches).values(batch).returning();
-            const usersData = await db.select().from(zuvyBatchEnrollments).where(sql`${zuvyBatchEnrollments.bootcampId} = ${batch.bootcampId} AND ${zuvyzuvyBatchEnrollments.batchId} IS NULL`).limit(batch.capEnrollment);
+            const usersData = await db.select().from(zuvyBatchEnrollments).where(sql`${zuvyBatchEnrollments.bootcampId} = ${batch.bootcampId} AND ${zuvyBatchEnrollments.batchId} IS NULL`).limit(batch.capEnrollment);
 
             if (usersData.length > 0) {
                 let userids = usersData.map(u => u.userId);
