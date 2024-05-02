@@ -266,7 +266,7 @@ export class ContentService {
         .from(moduleChapter)
         .where(eq(moduleChapter.moduleId, moduleId));
       const order = existingChaptersForAModule.length + 1;
-      var chapterData = { title:`Chapter ${order}`,moduleId, topicId, order };
+      var chapterData = { title: `Chapter ${order}`, moduleId, topicId, order };
       const chapter = await db
         .insert(moduleChapter)
         .values(chapterData)
@@ -283,7 +283,7 @@ export class ContentService {
     }
   }
 
-  async createQuizForModule(quiz: quizBatchDto,chapterId:number) {
+  async createQuizForModule(quiz: quizBatchDto, chapterId: number) {
     try {
       const quizQuestions = quiz.questions.map((q) => ({
         question: q.question,
@@ -298,16 +298,16 @@ export class ContentService {
         .insert(moduleQuiz)
         .values(quizQuestions)
         .returning();
-        if (result.length > 0) {
-            let quizIds = result.map((q) => {
-              return q.id;
-            });
-            quizIds.push(...quiz.quizQuestionIds);
-            await db
-              .update(moduleChapter)
-              .set({ quizQuestions: quizIds })
-              .where(eq(moduleChapter.id, chapterId));
-          }
+      if (result.length > 0) {
+        let quizIds = result.map((q) => {
+          return q.id;
+        });
+        quizIds.push(...quiz.quizQuestionIds);
+        await db
+          .update(moduleChapter)
+          .set({ quizQuestions: quizIds })
+          .where(eq(moduleChapter.id, chapterId));
+      }
       return result;
     } catch (err) {
       throw err;
@@ -445,20 +445,20 @@ export class ContentService {
         .select()
         .from(moduleChapter)
         .where(eq(moduleChapter.id, chapterId));
-        const modifiedChapterDetails: {
-            id: number;
-            moduleId: number;
-            topicId: number;
-            order: number;
-            quizQuestionDetails?: any[];
-            codingQuestionDetails?: any[];
-            contentDetails?: any[]
-        } = {
-            id: chapterDetails[0].id,
-            moduleId: chapterDetails[0].moduleId,
-            topicId: chapterDetails[0].topicId,
-            order: chapterDetails[0].order,
-        };
+      const modifiedChapterDetails: {
+        id: number;
+        moduleId: number;
+        topicId: number;
+        order: number;
+        quizQuestionDetails?: any[];
+        codingQuestionDetails?: any[];
+        contentDetails?: any[]
+      } = {
+        id: chapterDetails[0].id,
+        moduleId: chapterDetails[0].moduleId,
+        topicId: chapterDetails[0].topicId,
+        order: chapterDetails[0].order,
+      };
 
       if (chapterDetails.length > 0) {
         if (chapterDetails[0].topicId == 4) {
@@ -482,7 +482,7 @@ export class ContentService {
             description: chapterDetails[0].description,
             links: chapterDetails[0].links,
             file: chapterDetails[0].file,
-            content:chapterDetails[0].articleContent
+            content: chapterDetails[0].articleContent
           }];
           modifiedChapterDetails.contentDetails = content;
         }
@@ -560,35 +560,35 @@ export class ContentService {
 
   async createCodingProblemForModule(
     moduleId: number,
-    chapterId:number,
+    chapterId: number,
     codingProblem: CreateProblemDto,
   ) {
     try {
-        let examples = [];
-        let testCases = [];
-        for (let i = 0; i < codingProblem.examples.length; i++) {
-          examples.push(codingProblem.examples[i].inputs);
-        }
-        codingProblem.examples = examples;
-        for (let j = 0; j < codingProblem.testCases.length; j++) {
-          testCases.push(codingProblem.testCases[j].inputs);
-        }
-        codingProblem.testCases = testCases;
-        const result = await db
-          .insert(codingQuestions)
-          .values(codingProblem)
-          .returning();
-        if (result.length > 0) {
-          let codingIds = result.map((q) => {
-            return q.id;
-          });
-          await db
-            .update(moduleChapter)
-            .set({ codingQuestions: codingIds })
-            .where(eq(moduleChapter.id, chapterId));
-        }
-        return result;
-     
+      let examples = [];
+      let testCases = [];
+      for (let i = 0; i < codingProblem.examples.length; i++) {
+        examples.push(codingProblem.examples[i].inputs);
+      }
+      codingProblem.examples = examples;
+      for (let j = 0; j < codingProblem.testCases.length; j++) {
+        testCases.push(codingProblem.testCases[j].inputs);
+      }
+      codingProblem.testCases = testCases;
+      const result = await db
+        .insert(codingQuestions)
+        .values(codingProblem)
+        .returning();
+      if (result.length > 0) {
+        let codingIds = result.map((q) => {
+          return q.id;
+        });
+        await db
+          .update(moduleChapter)
+          .set({ codingQuestions: codingIds })
+          .where(eq(moduleChapter.id, chapterId));
+      }
+      return result;
+
     } catch (err) {
       throw err;
     }
@@ -681,6 +681,7 @@ export class ContentService {
         .select()
         .from(moduleAssessment)
         .where(eq(moduleAssessment.moduleId, moduleId));
+        
       if (assessment.length > 0) {
         const ab = Object.values(assessment[0].codingProblems);
         const codingQuesIds = ab.reduce((acc, obj) => {
@@ -727,86 +728,67 @@ export class ContentService {
     }
   }
 
-  
-async deleteModule(
-  moduleId: number,
-  bootcampId: number): Promise<any> {
-  try {
-    let data = await db
-      .delete(courseModules)
-      .where(eq(courseModules.id, moduleId))
-      .returning();
-    if (data.length === 0) {
-      return [
-        { status: 'error', message: 'Module not found', code: 404 },
-        null,
-      ];
-    }
 
-    const remainingModules = await db
-          .select()
-          .from(courseModules)
-          .where(eq(courseModules.bootcampId, bootcampId))
-          .orderBy(courseModules.order);
-
-    
-
-    for (let i = 0; i < remainingModules.length; i++) {
+  async deleteModule(
+    moduleId: number,
+    bootcampId: number): Promise<any> {
+    try {
+      let data = await db
+        .delete(courseModules)
+        .where(eq(courseModules.id, moduleId))
+        .returning();
+      if (data.length === 0) {
+        return [
+          { status: 'error', message: 'Module not found', code: 404 },
+          null,
+        ];
+      }
       await db
         .update(courseModules)
-        .set({ order: i + 1 })
-        .where(eq(courseModules.id, remainingModules[i].id));
-    }
-    return {
+        .set({ order: sql`${courseModules.order}::numeric - 1` })
+        .where(sql`${courseModules.order} > ${data[0].order} and ${courseModules.bootcampId} = ${bootcampId}`);
+      return {
         status: 'success',
         message: 'Module deleted successfully',
         code: 200,
       };
-    
-  } catch (error) {
-    log(`error: ${error.message}`);
-    return [{ status: 'error', message: error.message, code: 404 }, null];
-  }
-}
 
-async deleteChapter(
-  chapterId: number,
-  moduleId:  number): Promise<any> {
-  try {
-    let data = await db
-      .delete(moduleChapter)
-      .where(eq(moduleChapter.id, chapterId))
-      .returning();
-    if (data.length === 0) {
-      return [
-        { status: 'error', message: 'Chapter not found', code: 404 },
-        null,
-      ];
+    } catch (error) {
+      log(`error: ${error.message}`);
+      return [{ status: 'error', message: error.message, code: 404 }, null];
     }
+  }
 
-    const remainingChapters = await db
-          .select()
-          .from(moduleChapter)
-          .where(eq(moduleChapter.moduleId, moduleId))
-          .orderBy(moduleChapter.order); 
+  async deleteChapter(
+    chapterId: number,
+    moduleId: number): Promise<any> {
+    try {
+      let spyMan = await db
+        .delete(moduleChapter)
+        .where(eq(moduleChapter.id, chapterId))
+        .returning();
+      if (spyMan.length === 0) {
+        return [
+          { status: 'error', message: 'Chapter not found', code: 404 },
+          null,
+        ];
+      }
 
-    for (let i = 0; i < remainingChapters.length; i++) {
       await db
         .update(moduleChapter)
-        .set({ order: i + 1 })
-        .where(eq(moduleChapter.id, remainingChapters[i].id));
-    }
+        .set({ order: sql`${moduleChapter.order}::numeric - 1` })
+        .where(sql`${moduleChapter.order} > ${spyMan[0].order} and ${moduleChapter.moduleId} = ${moduleId}`);
 
-    return{
+      return {
         status: 'success',
         message: 'Chapter deleted successfully',
         code: 200,
       };
-  } catch (error) {
-    log(`error: ${error.message}`);
-    return [{ status: 'error', message: error.message, code: 404 }, null];
+    } catch (error) {
+      log(`error: ${error.message}`);
+      return [{ status: 'error', message: error.message, code: 404 }, null];
+    }
   }
-}
 
 
 
