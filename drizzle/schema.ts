@@ -1559,6 +1559,14 @@ export const c4CaStudents = main.table("c4ca_students", {
         createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }),
 });
 
+export const subStage = main.table("sub_stage", {
+	id: serial("id").primaryKey().notNull(),
+	schoolId: integer("school_id"),
+	stageId: integer("stage_id").references(() => schoolStage.id),
+	stageName: varchar("stage_name", { length: 255 }),
+	subStages: varchar("sub_stages", { length: 255 }),
+});
+
 export const c4CaStudentsProjectDetail = main.table("c4ca_students_projectDetail", {
         id: serial("id").primaryKey().notNull(),
         projectTitle: varchar("project_title", { length: 255 }),
