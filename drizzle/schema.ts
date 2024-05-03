@@ -1918,7 +1918,12 @@ export const courseModules = main.table("zuvy_course_modules",{
 
 export const moduleChapterRelations = relations(courseModules, ({ many }) => ({
         moduleChapterData: many(moduleChapter),
+        chapterTrackingData : many(chapterTracking)
 }));
+
+export const studentChapterRelation = relations(batchEnrollments,({many}) => ({
+        studentChapterDetails : many(chapterTracking)
+}))
 
 export const moduleChapter = main.table("zuvy_module_chapter",{
         id: serial("id").primaryKey().notNull(),
@@ -1979,27 +1984,33 @@ export const chapterTracking = main.table("zuvy_chapter_tracking",{
         answerDetails: text("answer_Details")
 })
 
-export const chapterUserRelations = relations(users, ({many}) => ({
-        chapters: many(chapterTracking),
-}))
-
-export const chapterRelations =  relations(moduleChapter,({many}) => ({
-        chapterDetails: many(chapterTracking),
+// export const chapterUserRelations = relations(users, ({many}) => ({
+//         chapters: many(chapterTracking),
+// }))
+export const chapterRelations =  relations(moduleChapter,({one,many}) => ({
+        chapterTrackingDetails: many(chapterTracking),
+        codingQuestionDetails: one(codingQuestions,{
+                fields: [moduleChapter.codingQuestions],
+                references: [codingQuestions.id]
+        })
 }))
 
 
 export const chapterTrackingRelations = relations(chapterTracking, ({ one }) => ({
-        user: one(users, {
+        user: one(batchEnrollments, {
                 fields: [chapterTracking.userId],
-                references:[users.id]
+                references:[batchEnrollments.userId]
         }),
         chapter : one(moduleChapter,{
                 fields: [chapterTracking.chapterId],
                 references:[moduleChapter.id]
-        }),
-        module : one(courseModules,{
-                fields : [chapterTracking.moduleId],
-                references:[courseModules.id]
         })
 }))
+
+export const trackingPostsRelations = relations(chapterTracking, ({ one }) => ({
+        chapterTrackingData: one(courseModules, {
+                fields: [chapterTracking.moduleId],
+                references: [courseModules.id],
+        }),
+}));
 

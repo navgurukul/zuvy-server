@@ -775,43 +775,27 @@ export class ContentService {
   async getChapterTracking(bootcampId: number) {
     try {
       const topicId = 3;
-      const moduleDetails = await db
-        .select({
-          moduleId: courseModules.id,
-          moduleName: courseModules.name,
-          moduleOrder: courseModules.order,
-          chapterId: moduleChapter.id,
-          chapterTitle: moduleChapter.title,
-          codingProblem: codingQuestions.title,
-          codingQuestionId: moduleChapter.codingQuestions,
-          chapterTrackingCount:
-            sql<number>`cast(coalesce(count(${chapterTracking.id}), 0) as int)`.mapWith(
-              Number,
-            ),
-        })
-        .from(courseModules)
-        .innerJoin(moduleChapter, eq(moduleChapter.moduleId, courseModules.id))
-        .innerJoin(
-          codingQuestions,
-          eq(codingQuestions.id, moduleChapter.codingQuestions),
-        )
-        .leftJoin(
-          chapterTracking,
-          eq(chapterTracking.chapterId, moduleChapter.id),
-        )
-        .innerJoin(
-          batchEnrollments,
-          eq(batchEnrollments.userId, chapterTracking.userId),
-        )
-        .where(
-          and(
-            eq(courseModules.bootcampId, bootcampId),
-            eq(moduleChapter.topicId, topicId),
-            eq(batchEnrollments.bootcampId, bootcampId),
-          ),
-        )
-        .groupBy(courseModules.id, moduleChapter.id, codingQuestions.id);
-
+      const data = await db.query.courseModules.findMany({
+        where: (courseModules, { eq }) => eq(courseModules.bootcampId, bootcampId),
+        with: {
+          moduleChapterData: {
+            columns: {
+                id: true,
+              },
+            where: (moduleChapter, { eq }) => eq(moduleChapter.topicId, topicId),
+            with: {
+              chapterTrackingDetails: true,
+              codingQuestionDetails: {
+                columns: {
+                    id: true,
+                    title: true
+                  },
+              }
+            },
+          }
+        },
+      });
+    
       const batchEnrollmentsCount = await db
         .select({
           count: sql<number>`cast(count(${batchEnrollments.id}) as int)`,
@@ -820,7 +804,7 @@ export class ContentService {
         .where(eq(batchEnrollments.bootcampId, bootcampId));
 
       return {
-        moduleDetails,
+        data,
         batchEnrollmentsCount,
       };
     } catch (err) {
