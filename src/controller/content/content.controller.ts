@@ -158,7 +158,7 @@ export class ContentController {
     return res;
   }
 
-  @Post('/codingQuestion/:chapterId')
+  @Post('/codingQuestion')
   @ApiOperation({ summary: 'Create a coding question for this module' })
   @ApiQuery({
     name: 'chapterId',
@@ -169,11 +169,8 @@ export class ContentController {
   @ApiBearerAuth()
   async createCodingQuestionForModule(
     @Body() codingQuestions: CreateProblemDto,
-    @Param('chapterId') chapterId: number,
+    @Query('chapterId') chapterId: number,
   ) {
-    const chapterDetails = {
-      title: 'Coding Problems',
-    };
     const res = await this.contentService.createCodingProblemForModule(
       chapterId,
       codingQuestions
@@ -277,5 +274,15 @@ export class ContentController {
       chapterId,
     );
     return res;
+  }
+
+  @Get('/practiseProblemOfModules/:bootcampId')
+  @ApiOperation({ summary: 'Get the submission by bootcampId' })
+  @ApiBearerAuth()
+  async getChapterTracking(
+    @Param('bootcampId') bootcampId: number,
+  ){
+    const res = await this.contentService.getChapterTracking(bootcampId);
+     return res;
   }
 }

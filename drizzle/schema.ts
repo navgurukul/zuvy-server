@@ -1923,10 +1923,14 @@ export const moduleChapter = main.table("zuvy_module_chapter",{
         links:jsonb("links"),
         articleContent: jsonb("article_content"),
         quizQuestions: jsonb("quiz_questions"),
-        codingQuestions: jsonb("coding_questions"),
+        codingQuestions: integer("coding_questions"),
         completionDate: timestamp("completion_date", { withTimezone: true, mode: 'string' }),
         order: integer("order")
 })
+
+export const moduleChapterRelation =  relations(courseModules,({many}) => ({
+        moduleChapter: many(moduleChapter),
+}))
 
 export const moduleAssessment = main.table("zuvy_module_assessment",{
         id: serial("id").primaryKey().notNull(),
@@ -1955,3 +1959,39 @@ export const zuvyStudentAttendance = main.table("zuvy_student_attendance",{
         batchId: integer("batch_id").references(() =>  batches.id ),
         bootcampId: integer("bootcamp_id").references(() => bootcamps.id),
 })
+
+export const chapterTracking = main.table("zuvy_chapter_tracking",{
+        id:serial("id").primaryKey().notNull(),
+        userId: integer("user_id").notNull().references(() => users.id),
+        chapterId: integer("chapter_id").notNull().references(() =>moduleChapter.id),
+        moduleId: integer("module_id").notNull().references(() => courseModules.id),
+        completedAt: timestamp("completed_at", { withTimezone: true, mode: 'string' }),
+        answerDetails: text("answer_Details")
+})
+
+export const chapterUserRelations = relations(users, ({many}) => ({
+        chapters: many(chapterTracking),
+}))
+
+export const chapterRelations =  relations(moduleChapter,({many}) => ({
+        chapterDetails: many(chapterTracking),
+}))
+
+export const moduleChapterRelations = relations(courseModules,({many}) => ({
+        moduleDetails: many(chapterTracking),
+}))
+
+export const chapterTrackingRelations = relations(chapterTracking, ({ one }) => ({
+       user: one(users, {
+        fields: [chapterTracking.userId],
+        references:[users.id]
+       }),
+       chapter : one(moduleChapter,{
+        fields: [chapterTracking.chapterId],
+        references:[moduleChapter.id]
+       }),
+       module : one(courseModules,{
+        fields : [chapterTracking.moduleId],
+        references:[courseModules.id]
+       })
+}))

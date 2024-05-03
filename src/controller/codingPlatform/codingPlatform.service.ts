@@ -49,7 +49,7 @@ export class CodingPlatformService {
     const stdinput = input.map(item => item.toString()).join('\n');
     const encodedStdInput = Buffer.from(stdinput).toString('base64')
     const stdoutput = output.map(item => item.toString()).join('\n');
-    const encodedStdOutput = Buffer.from(stdoutput).toString('base64')
+    const encodedStdOutput = Buffer.from(stdoutput).toString('base64');
     const options = {
   method: 'POST',
   url: 'https://judge0-ce.p.rapidapi.com/submissions',
@@ -66,13 +66,12 @@ export class CodingPlatformService {
   data: {
     language_id: sourceCode.languageId,
     source_code: sourceCode.sourceCode,
-    stdin: encodedStdInput.trim(),
-    expected_output: encodedStdOutput.trim()
-
+    stdin: encodedStdInput,
+    expected_output: encodedStdOutput
   }
 };
-
-    try {
+  
+  try {
       const response = await axios.request(options);
       return response.data;
     } catch (error) {
@@ -96,6 +95,7 @@ export class CodingPlatformService {
 
 try {
 	const response = await axios.request(options);
+  console.log(response.data);
     return response.data;
 } catch (error) {
 	throw error;

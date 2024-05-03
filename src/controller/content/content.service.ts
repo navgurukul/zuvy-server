@@ -11,13 +11,16 @@ import {
   codingQuestions,
   openEndedQuestion,
   moduleAssessment,
+  chapterTracking,
+  batchEnrollments,
+  moduleChapterRelation,
   questions,
   difficulty,
   assessment,
 } from '../../../drizzle/schema';
 import axios from 'axios';
 import { error, log } from 'console';
-import { sql, eq, count, inArray } from 'drizzle-orm';
+import { sql, eq, count, inArray, and } from 'drizzle-orm';
 import { db } from '../../db/index';
 import { promises } from 'dns';
 import {
@@ -32,6 +35,7 @@ import {
   CreateAssessmentBody,
 } from './dto/content.dto';
 import { CreateProblemDto } from '../codingPlatform/dto/codingPlatform.dto';
+import { PatchBootcampSettingDto } from '../bootcamp/dto/bootcamp.dto';
 // import Strapi from "strapi-sdk-js"
 
 const { ZUVY_CONTENT_URL, ZUVY_CONTENTS_API_URL } = process.env; // INPORTING env VALUSE ZUVY_CONTENT
@@ -587,9 +591,10 @@ export class ContentService {
         let codingIds = result.map((q) => {
           return q.id;
         });
+        const questionId = codingIds[0];
         await db
           .update(moduleChapter)
-          .set({ codingQuestions: codingIds })
+          .set({ codingQuestions: questionId })
           .where(eq(moduleChapter.id, chapterId));
       }
       return result;
@@ -746,6 +751,62 @@ export class ContentService {
           codingQuesDetails,
         };
       }
+    } catch (err) {
+      throw err;
+    }
+  }
+
+  async getChapterTracking(bootcampId: number) {
+    try {
+      const topicId = 3;
+      const moduleDetails = await db
+        .select({
+          moduleId: courseModules.id,
+          moduleName: courseModules.name,
+          moduleOrder: courseModules.order,
+          chapterId: moduleChapter.id,
+          chapterTitle: moduleChapter.title,
+          codingProblem: codingQuestions.title,
+          codingQuestionId: moduleChapter.codingQuestions,
+          chapterTrackingCount:
+            sql<number>`cast(coalesce(count(${chapterTracking.id}), 0) as int)`.mapWith(
+              Number,
+            ),
+        })
+        .from(courseModules)
+        .innerJoin(moduleChapter, eq(moduleChapter.moduleId, courseModules.id))
+        .innerJoin(
+          codingQuestions,
+          eq(codingQuestions.id, moduleChapter.codingQuestions),
+        )
+        .leftJoin(
+          chapterTracking,
+          eq(chapterTracking.chapterId, moduleChapter.id),
+        )
+        .innerJoin(
+          batchEnrollments,
+          eq(batchEnrollments.userId, chapterTracking.userId),
+        )
+        .where(
+          and(
+            eq(courseModules.bootcampId, bootcampId),
+            eq(moduleChapter.topicId, topicId),
+            eq(batchEnrollments.bootcampId, bootcampId),
+          ),
+        )
+        .groupBy(courseModules.id, moduleChapter.id, codingQuestions.id);
+
+      const batchEnrollmentsCount = await db
+        .select({
+          count: sql<number>`cast(count(${batchEnrollments.id}) as int)`,
+        })
+        .from(batchEnrollments)
+        .where(eq(batchEnrollments.bootcampId, bootcampId));
+
+      return {
+        moduleDetails,
+        batchEnrollmentsCount,
+      };
     } catch (err) {
       throw err;
     }
