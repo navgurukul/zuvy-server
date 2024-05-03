@@ -253,7 +253,7 @@ export class ClassesService {
       const saveClassDetails = await db
         .insert(classesGoogleMeetLink)
         .values({
-          meetingId: createdEvent.data.id,
+          meetingid: createdEvent.data.id,
           hangoutLink: createdEvent.data.hangoutLink,
           creator: createdEvent.data.creator.email,
           startTime: createdEvent.data.start.dateTime,
@@ -316,7 +316,7 @@ export class ClassesService {
           applicationName: 'meet',
           eventName: 'call_ended',
           maxResults: 1000,
-          filters: `calendar_event_id==${singleMeeting.meetingId}`,
+          filters: `calendar_event_id==${singleMeeting.meetingid}`,
         });
 
         const meetingAttendance = {};
@@ -423,11 +423,11 @@ export class ClassesService {
       const calendar = google.calendar({ version: 'v3', auth: auth2Client });
       const allClasses = await db.select().from(classesGoogleMeetLink);
       for (const classData of allClasses) {
-        if (classData.meetingId != null) {
+        if (classData.meetingid != null) {
           if (classData.s3link == null) {
             const response = await calendar.events.get({
               calendarId: 'primary',
-              eventId: classData.meetingId,
+              eventId: classData.meetingid,
             });
             if (response.data.attachments) {
               for (const attachment of response.data.attachments) {
@@ -620,7 +620,7 @@ export class ClassesService {
   async meetingAttendanceAnalytics(meeting_id: string, user) {
     try {
       await this.getAttendance(meeting_id, user);
-      let classInfo = await db.select().from(classesGoogleMeetLink).where(sql`${classesGoogleMeetLink.meetingId}=${meeting_id}`);
+      let classInfo = await db.select().from(classesGoogleMeetLink).where(sql`${classesGoogleMeetLink.meetingid}=${meeting_id}`);
       if (classInfo.length > 0) {
         const Meeting = await db.select().from(zuvyStudentAttendance).where(sql`${zuvyStudentAttendance.meetingId}=${meeting_id}`);
         let { bootcampId, batchId, s3link } = classInfo[0];
@@ -657,7 +657,7 @@ export class ClassesService {
       }
       let classInfo = await db.select()
         .from(classesGoogleMeetLink)
-        .where(sql`${classesGoogleMeetLink.meetingId}=${meetingId}`);
+        .where(sql`${classesGoogleMeetLink.meetingid}=${meetingId}`);
 
       if (classInfo.length == 0) {
         return [{ status: 'error', message: 'Meeting not found', code: 404 }];
@@ -833,9 +833,9 @@ export class ClassesService {
         const isMarked = await db
           .select()
           .from(zuvyMeetingAttendance)
-          .where(eq(zuvyMeetingAttendance.meetingId, meet.meetingId));
+          .where(eq(zuvyMeetingAttendance.meetingId, meet.meetingid));
         if (isMarked.length == 0) {
-          const fetchedAttendance = await this.getAttendance(meet.meetingId);
+          const fetchedAttendance = await this.getAttendance(meet.meetingid);
           const fetchedAttendanceList = fetchedAttendance.attendanceSheet;
           const totalMeetsMarked = await db
             .select()
@@ -964,7 +964,7 @@ export class ClassesService {
           const updateMeetingDetails = await db
             .insert(zuvyMeetingAttendance)
             .values({
-              meetingId: meet.meetingId,
+              meetingId: meet.meetingid,
               bootcampid: meet.bootcampId,
               batchid: meet.batchId,
             })
@@ -980,7 +980,7 @@ export class ClassesService {
   async unattendanceClassesByBootcampId(bootcampId){
     try {
       const classes = await db.select().from(classesGoogleMeetLink).where(sql`${classesGoogleMeetLink.bootcampId}=${bootcampId}`);
-      let classIds = classes.map((classObj) => classObj.meetingId);
+      let classIds = classes.map((classObj) => classObj.meetingid);
       let attendance = await db.select().from(zuvyStudentAttendance).where(inArray(zuvyStudentAttendance.meetingId, [...classIds]));
       let unattendedClassIds = classIds.filter((classId) => !attendance.some((attend) => attend.meetingId === classId));
       return { status: 'success', message: 'Classes fetched successfully by bootcampId', code: 200, unattendedClassIds: unattendedClassIds };

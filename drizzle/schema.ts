@@ -1705,7 +1705,7 @@ export const developersResume = main.table("developers_resume", {
 
 export const classesGoogleMeetLink= main.table("zuvy_classes_google_meet_link",{
 	id: serial("id").primaryKey().notNull(),
-        meetingId:text("meetingid").notNull(),
+        meetingid:text("meetingid").notNull(),
 	hangoutLink:text("hangout_link").notNull(),
 	creator:text("creator").notNull(),
 	startTime:text("start_time").notNull(),
@@ -1884,14 +1884,7 @@ export const zuvyMeetingAttendance=main.table("zuvy_meeting_attendance",{
         bootcampid:varchar("bootcampid")
 })
 
-export const courseModules = main.table("zuvy_course_modules",{
-        id:serial("id").primaryKey().notNull(),
-        bootcampId: integer("bootcamp_id").references(() => bootcamps.id),
-        name: varchar("name"),
-        description: text("description"),
-        order: integer("order"),
-        timeAlloted: bigint("time_alloted", { mode: "number" })
-})
+
 
 export const topics = main.table("zuvy_module_topics",{
        id: serial("id").primaryKey().notNull(),
@@ -1913,6 +1906,20 @@ export const moduleQuiz = main.table("zuvy_module_quiz",{
         tagId: integer("tag_id").references(() => tags.id)
 })
 
+export const courseModules = main.table("zuvy_course_modules",{
+        id:serial("id").primaryKey().notNull(),
+        bootcampId: integer("bootcamp_id").references(() => bootcamps.id),
+        name: varchar("name"),
+        description: text("description"),
+        order: integer("order"),
+        timeAlloted: bigint("time_alloted", { mode: "number" })
+})
+
+
+export const moduleChapterRelations = relations(courseModules, ({ many }) => ({
+        moduleChapterData: many(moduleChapter),
+}));
+
 export const moduleChapter = main.table("zuvy_module_chapter",{
         id: serial("id").primaryKey().notNull(),
         title: varchar("title"),
@@ -1923,14 +1930,17 @@ export const moduleChapter = main.table("zuvy_module_chapter",{
         links:jsonb("links"),
         articleContent: jsonb("article_content"),
         quizQuestions: jsonb("quiz_questions"),
-        codingQuestions: integer("coding_questions"),
+        codingQuestions: jsonb("coding_questions"),
         completionDate: timestamp("completion_date", { withTimezone: true, mode: 'string' }),
         order: integer("order")
 })
 
-export const moduleChapterRelation =  relations(courseModules,({many}) => ({
-        moduleChapter: many(moduleChapter),
-}))
+export const postsRelations = relations(moduleChapter, ({ one }) => ({
+        courseModulesData: one(courseModules, {
+                fields: [moduleChapter.moduleId],
+                references: [courseModules.id],
+        }),
+}));
 
 export const moduleAssessment = main.table("zuvy_module_assessment",{
         id: serial("id").primaryKey().notNull(),
@@ -1954,7 +1964,7 @@ export const openEndedQuestion = main.table("zuvy_openEnded_questions",{
 
 export const zuvyStudentAttendance = main.table("zuvy_student_attendance",{
         id:serial("id").primaryKey().notNull(),
-        meetingId: text("meeting_id").references(() => classesGoogleMeetLink.meetingId),
+        meetingId: text("meeting_id").references(() => classesGoogleMeetLink.meetingid),
         attendance:jsonb("attendance"),
         batchId: integer("batch_id").references(() =>  batches.id ),
         bootcampId: integer("bootcamp_id").references(() => bootcamps.id),
@@ -1977,21 +1987,19 @@ export const chapterRelations =  relations(moduleChapter,({many}) => ({
         chapterDetails: many(chapterTracking),
 }))
 
-export const moduleChapterRelations = relations(courseModules,({many}) => ({
-        moduleDetails: many(chapterTracking),
-}))
 
 export const chapterTrackingRelations = relations(chapterTracking, ({ one }) => ({
-       user: one(users, {
-        fields: [chapterTracking.userId],
-        references:[users.id]
-       }),
-       chapter : one(moduleChapter,{
-        fields: [chapterTracking.chapterId],
-        references:[moduleChapter.id]
-       }),
-       module : one(courseModules,{
-        fields : [chapterTracking.moduleId],
-        references:[courseModules.id]
-       })
+        user: one(users, {
+                fields: [chapterTracking.userId],
+                references:[users.id]
+        }),
+        chapter : one(moduleChapter,{
+                fields: [chapterTracking.chapterId],
+                references:[moduleChapter.id]
+        }),
+        module : one(courseModules,{
+                fields : [chapterTracking.moduleId],
+                references:[courseModules.id]
+        })
 }))
+

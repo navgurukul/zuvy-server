@@ -13,10 +13,11 @@ import {
   moduleAssessment,
   chapterTracking,
   batchEnrollments,
-  moduleChapterRelation,
+  moduleChapterRelations,
   questions,
   difficulty,
   assessment,
+  postsRelations,
 } from '../../../drizzle/schema';
 import axios from 'axios';
 import { error, log } from 'console';
@@ -330,59 +331,74 @@ export class ContentService {
 
   async getAllModuleByBootcampId(bootcampId: number) {
     try {
-      const allModules = await db
-        .select()
-        .from(courseModules)
-        .where(eq(courseModules.bootcampId, bootcampId))
-        .orderBy(courseModules.order);
+      const data = await db.query.courseModules.findMany({
+        where: (courseModules, { eq }) => eq(courseModules.bootcampId, bootcampId),
+        with: {
+          moduleChapterData: true
+        },
+      })
+      let modules = data.map((module) => {
+        return {
+          id: module.id,
+          name: module.name,
+          description: module.description,
+          order: module.order,
+          timeAlloted: module.timeAlloted,
+          quizCount: module.moduleChapterData.filter((chapter) => chapter.topicId === 4).length,
+          assignmentCount: module.moduleChapterData.filter((chapter) => chapter.topicId === 5).length,
+          codingProblemsCount: module.moduleChapterData.filter((chapter) => chapter.topicId === 3).length,
+          articlesCount: module.moduleChapterData.filter((chapter) => chapter.topicId === 2).length,
+        }
+      })
 
-      if (allModules.length > 0) {
-        const modulesWithDetails = await Promise.all(
-          allModules.map(async (module) => {
-            const quizCount = await db
-              .select({ count: count(moduleChapter.topicId) })
-              .from(moduleChapter)
-              .where(
-                sql`${moduleChapter.moduleId} = ${module.id} AND ${moduleChapter.topicId} = 4`,
-              );
-            const assignmentCount = await db
-              .select({ count: count(moduleChapter.topicId) })
-              .from(moduleChapter)
-              .where(
-                sql`${moduleChapter.moduleId} = ${module.id} AND ${moduleChapter.topicId} = 5`,
-              );
-            const codingQuestionCount = await db
-              .select({ count: count(moduleChapter.topicId) })
-              .from(moduleChapter)
-              .where(
-                sql`${moduleChapter.moduleId} = ${module.id} AND ${moduleChapter.topicId} = 3`,
-              );
-            const articleCount = await db
-              .select({ count: count(moduleChapter.topicId) })
-              .from(moduleChapter)
-              .where(
-                sql`${moduleChapter.moduleId} = ${module.id} AND ${moduleChapter.topicId} = 2`,
-              );
 
-            return {
-              id: module.id,
-              name: module.name,
-              description: module.description,
-              order: module.order,
-              timeAlloted: module.timeAlloted,
-              quizCount: quizCount[0].count,
-              assignmentCount: assignmentCount[0].count,
-              codingProblemsCount: codingQuestionCount[0].count,
-              articlesCount: articleCount[0].count,
-              //chapters: chapters,
-            };
-          }),
-        );
+      // if (allModules.length > 0) {
+      //   const modulesWithDetails = await Promise.all(
+      //     allModules.map(async (module) => {
+      //       const quizCount = await db
+      //         .select({ count: count(moduleChapter.topicId) })
+      //         .from(moduleChapter)
+      //         .where(
+      //           sql`${moduleChapter.moduleId} = ${module.id} AND ${moduleChapter.topicId} = 4`,
+      //         );
+      // const assignmentCount = await db
+      //   .select({ count: count(moduleChapter.topicId) })
+      //   .from(moduleChapter)
+      //   .where(
+      //     sql`${moduleChapter.moduleId} = ${module.id} AND ${moduleChapter.topicId} = 5`,
+      //   );
+      // const codingQuestionCount = await db
+      //   .select({ count: count(moduleChapter.topicId) })
+      //   .from(moduleChapter)
+      //   .where(
+      //     sql`${moduleChapter.moduleId} = ${module.id} AND ${moduleChapter.topicId} = 3`,
+      //   );
+      // const articleCount = await db
+      //   .select({ count: count(moduleChapter.topicId) })
+      //   .from(moduleChapter)
+      //   .where(
+      //     sql`${moduleChapter.moduleId} = ${module.id} AND ${moduleChapter.topicId} = 2`,
+      //   );
 
-        return modulesWithDetails;
-      }
+      //   return {
+      //     id: module.id,
+      //     name: module.name,
+      //     description: module.description,
+      //     order: module.order,
+      //     // timeAlloted: module.timeAlloted,
+      //     quizCount: quizCount[0].count,
+      //     // assignmentCount: assignmentCount[0].count,
+      //     // codingProblemsCount: codingQuestionCount[0].count,
+      //     // articlesCount: articleCount[0].count,
+      //     //chapters: chapters,
+      //   };
+      // }),
+      // );
 
-      return [];
+      // return modulesWithDetails;
+      // }
+
+      return modules;
     } catch (err) {
       console.error(err);
       return [];
@@ -466,22 +482,22 @@ export class ContentService {
           const quizDetails =
             chapterDetails[0].quizQuestions !== null
               ? await db
-                  .select()
-                  .from(moduleQuiz)
-                  .where(
-                    sql`${inArray(moduleQuiz.id, Object.values(chapterDetails[0].quizQuestions))}`,
-                  )
+                .select()
+                .from(moduleQuiz)
+                .where(
+                  sql`${inArray(moduleQuiz.id, Object.values(chapterDetails[0].quizQuestions))}`,
+                )
               : [];
           modifiedChapterDetails.quizQuestionDetails = quizDetails;
         } else if (chapterDetails[0].topicId == 3) {
           const codingProblemDetails =
             chapterDetails[0].codingQuestions !== null
               ? await db
-                  .select()
-                  .from(codingQuestions)
-                  .where(
-                    sql`${inArray(codingQuestions.id, Object.values(chapterDetails[0].codingQuestions))}`,
-                  )
+                .select()
+                .from(codingQuestions)
+                .where(
+                  sql`${inArray(codingQuestions.id, Object.values(chapterDetails[0].codingQuestions))}`,
+                )
               : [];
           modifiedChapterDetails.codingQuestionDetails = codingProblemDetails;
         } else {
