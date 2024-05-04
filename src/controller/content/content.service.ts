@@ -775,27 +775,31 @@ export class ContentService {
   async getChapterTracking(bootcampId: number) {
     try {
       const topicId = 3;
-      const data = await db.query.courseModules.findMany({
+      const trackingData = await db.query.courseModules.findMany({
         where: (courseModules, { eq }) => eq(courseModules.bootcampId, bootcampId),
         with: {
           moduleChapterData: {
             columns: {
-                id: true,
-              },
+              id: true,
+            },
             where: (moduleChapter, { eq }) => eq(moduleChapter.topicId, topicId),
             with: {
-              chapterTrackingDetails: true,
+              chapterTrackingDetails: {
+                columns: {
+                  userId: true,
+                },
+              },
               codingQuestionDetails: {
                 columns: {
-                    id: true,
-                    title: true
-                  },
+                  id: true,
+                  title: true
+                },
               }
             },
           }
         },
       });
-    
+
       const batchEnrollmentsCount = await db
         .select({
           count: sql<number>`cast(count(${batchEnrollments.id}) as int)`,
@@ -803,9 +807,15 @@ export class ContentService {
         .from(batchEnrollments)
         .where(eq(batchEnrollments.bootcampId, bootcampId));
 
+        trackingData.forEach(course => {
+          course.moduleChapterData.forEach((chapterTracking) => {
+              chapterTracking['submitStudents'] = chapterTracking["chapterTrackingDetails"].length;
+              delete chapterTracking['chapterTrackingDetails'];
+          });
+      });
       return {
-        data,
-        batchEnrollmentsCount,
+        trackingData,
+        totalStudents:batchEnrollmentsCount[0]?.count,
       };
     } catch (err) {
       throw err;
