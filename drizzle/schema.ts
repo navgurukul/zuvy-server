@@ -1979,7 +1979,7 @@ export const zuvyChapterTracking = main.table("zuvy_chapter_tracking",{
         id:serial("id").primaryKey().notNull(),
         userId: bigserial("user_id", { mode: "bigint" }).notNull().references(() => users.id),
         chapterId: integer("chapter_id").notNull().references(() =>zuvyModuleChapter.id),
-        moduleId: integer("module_id").notNull().references(() => zuvyCourseModules.id),
+        moduleId: integer("module_id").notNull().references(() => zuvyCourseModules.id,{onDelete: "cascade", onUpdate: "cascade" }),
         completedAt: timestamp("completed_at", { withTimezone: true, mode: 'string' }),
         answerDetails: text("answer_Details")
 })
