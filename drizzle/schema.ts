@@ -1853,12 +1853,12 @@ export const bootcampTracking = main.table("zuvy_bootcamp_tracking", {
 });
 
 
-export const codingQuestions = main.table("zuvy_coding_questions",{
+export const zuvyCodingQuestions = main.table("zuvy_coding_questions",{
     id: serial("id").primaryKey().notNull(),
     title: varchar("title", { length: 255 }).notNull(),
     description: text("description").notNull(),
     difficulty: difficulty("difficulty"),
-    tags: integer("tag_id").references(() => tags.id),
+    tags: integer("tag_id").references(() => zuvyTags.id),
     constraints: text("constraints"),
     authorId: integer("author_id").notNull(),
     inputBase64: text("input_base64"), 
@@ -1870,12 +1870,12 @@ export const codingQuestions = main.table("zuvy_coding_questions",{
     updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }),
 })
 
-export const codingSubmission = main.table("zuvy_coding_submission", {
+export const zuvyCodingSubmission = main.table("zuvy_coding_submission", {
     id: bigserial("id", { mode: "bigint" }).primaryKey().notNull(),
-    user_id: integer("user_id").references(() => users.id).notNull(),
-    question_solved: jsonb("question_solved").notNull(), 
-    created_at: timestamp("created_at", { withTimezone: true, mode: 'string' }),
-    updated_at: timestamp("updated_at", { withTimezone: true, mode: 'string' }),
+    userId: bigserial("user_id", { mode: "bigint" }).notNull().references(() => users.id),
+    questionSolved: jsonb("question_solved").notNull(), 
+    createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }),
+    updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }),
 })
 export const zuvyMeetingAttendance=main.table("zuvy_meeting_attendance",{
         id:serial("id").primaryKey().notNull(),
@@ -1886,27 +1886,27 @@ export const zuvyMeetingAttendance=main.table("zuvy_meeting_attendance",{
 
 
 
-export const topics = main.table("zuvy_module_topics",{
+export const zuvyModuleTopics = main.table("zuvy_module_topics",{
        id: serial("id").primaryKey().notNull(),
        name:varchar("name") 
 })
 
-export const tags = main.table("zuvy_tags",{
+export const zuvyTags = main.table("zuvy_tags",{
         id: serial("id").primaryKey().notNull(),
         tagName:varchar("tag_name") 
 })
 
-export const moduleQuiz = main.table("zuvy_module_quiz",{
+export const zuvyModuleQuiz = main.table("zuvy_module_quiz",{
         id: serial("id").primaryKey().notNull(),
         question: text("question"),
         options: jsonb("options"),
         correctOption: text("correct_option"),
         marks: integer("marks"),
         difficulty: difficulty("difficulty"),
-        tagId: integer("tag_id").references(() => tags.id)
+        tagId: integer("tag_id").references(() => zuvyTags.id)
 })
 
-export const courseModules = main.table("zuvy_course_modules",{
+export const zuvyCourseModules = main.table("zuvy_course_modules",{
         id:serial("id").primaryKey().notNull(),
         bootcampId: integer("bootcamp_id").references(() => bootcamps.id),
         name: varchar("name"),
@@ -1916,21 +1916,21 @@ export const courseModules = main.table("zuvy_course_modules",{
 })
 
 
-export const moduleChapterRelations = relations(courseModules, ({ many }) => ({
-        moduleChapterData: many(moduleChapter),
-        chapterTrackingData : many(chapterTracking)
+export const moduleChapterRelations = relations(zuvyCourseModules, ({ many }) => ({
+        moduleChapterData: many(zuvyModuleChapter),
+        chapterTrackingData : many(zuvyChapterTracking)
 }));
 
 export const studentChapterRelation = relations(batchEnrollments,({many}) => ({
-        studentChapterDetails : many(chapterTracking)
+        studentChapterDetails : many(zuvyChapterTracking)
 }))
 
-export const moduleChapter = main.table("zuvy_module_chapter",{
+export const zuvyModuleChapter = main.table("zuvy_module_chapter",{
         id: serial("id").primaryKey().notNull(),
         title: varchar("title"),
         description: text("description"),
-        topicId: integer("topic_id").references(() => topics.id),
-        moduleId: integer("module_id").references(() => courseModules.id),
+        topicId: integer("topic_id").references(() => zuvyModuleTopics.id),
+        moduleId: integer("module_id").references(() => zuvyCourseModules.id),
         file: bytea("file"),
         links:jsonb("links"),
         articleContent: jsonb("article_content"),
@@ -1940,30 +1940,30 @@ export const moduleChapter = main.table("zuvy_module_chapter",{
         order: integer("order")
 })
 
-export const postsRelations = relations(moduleChapter, ({ one }) => ({
-        courseModulesData: one(courseModules, {
-                fields: [moduleChapter.moduleId],
-                references: [courseModules.id],
+export const postsRelations = relations(zuvyModuleChapter, ({ one }) => ({
+        courseModulesData: one(zuvyCourseModules, {
+                fields: [zuvyModuleChapter.moduleId],
+                references: [zuvyCourseModules.id],
         }),
 }));
 
-export const moduleAssessment = main.table("zuvy_module_assessment",{
+export const zuvyModuleAssessment = main.table("zuvy_module_assessment",{
         id: serial("id").primaryKey().notNull(),
         title: varchar("title"),
         description: text("description"),
-        moduleId: integer("module_id").references(() => courseModules.id),
+        moduleId: integer("module_id").references(() => zuvyCourseModules.id),
         codingProblems: json("coding_problems"),
         mcq: jsonb("mcq"),
         openEndedQuestions: json("open_ended_questions"),
         timeLimit: bigint("time_limit", { mode: "number" })
 })
 
-export const openEndedQuestion = main.table("zuvy_openEnded_questions",{
+export const zuvyOpenEndedQuestion = main.table("zuvy_openEnded_questions",{
         id: serial("id").primaryKey().notNull(),
         question: text("question"),
         answer: text("answer"),
         difficulty: difficulty("difficulty"),
-        tagId: integer("tag_id").references(() => tags.id),
+        tagId: integer("tag_id").references(() => zuvyTags.id),
         marks: integer("marks")
 })
 
@@ -1975,11 +1975,11 @@ export const zuvyStudentAttendance = main.table("zuvy_student_attendance",{
         bootcampId: integer("bootcamp_id").references(() => bootcamps.id),
 })
 
-export const chapterTracking = main.table("zuvy_chapter_tracking",{
+export const zuvyChapterTracking = main.table("zuvy_chapter_tracking",{
         id:serial("id").primaryKey().notNull(),
-        userId: integer("user_id").notNull().references(() => users.id),
-        chapterId: integer("chapter_id").notNull().references(() =>moduleChapter.id),
-        moduleId: integer("module_id").notNull().references(() => courseModules.id),
+        userId: bigserial("user_id", { mode: "bigint" }).notNull().references(() => users.id),
+        chapterId: integer("chapter_id").notNull().references(() =>zuvyModuleChapter.id),
+        moduleId: integer("module_id").notNull().references(() => zuvyCourseModules.id),
         completedAt: timestamp("completed_at", { withTimezone: true, mode: 'string' }),
         answerDetails: text("answer_Details")
 })
@@ -1987,30 +1987,40 @@ export const chapterTracking = main.table("zuvy_chapter_tracking",{
 // export const chapterUserRelations = relations(users, ({many}) => ({
 //         chapters: many(chapterTracking),
 // }))
-export const chapterRelations =  relations(moduleChapter,({one,many}) => ({
-        chapterTrackingDetails: many(chapterTracking),
-        codingQuestionDetails: one(codingQuestions,{
-                fields: [moduleChapter.codingQuestions],
-                references: [codingQuestions.id]
+export const chapterRelations =  relations(zuvyModuleChapter,({one,many}) => ({
+        chapterTrackingDetails: many(zuvyChapterTracking),
+        codingQuestionDetails: one(zuvyCodingQuestions,{
+                fields: [zuvyModuleChapter.codingQuestions],
+                references: [zuvyCodingQuestions.id]
         })
 }))
 
+export const userCodeRelations = relations(users, ({ one }) => ({
+        studentCodeDetails : one(zuvyCodingSubmission)
+}));
 
-export const chapterTrackingRelations = relations(chapterTracking, ({ one }) => ({
-        user: one(batchEnrollments, {
-                fields: [chapterTracking.userId],
-                references:[batchEnrollments.userId]
+export const codeUserRelations = relations(zuvyCodingSubmission, ({ one }) => ({
+        codeStatus : one(users,{
+                fields: [zuvyCodingSubmission.userId],
+                references: [users.id]
+        })
+}));
+
+export const chapterTrackingRelations = relations(zuvyChapterTracking, ({ one }) => ({
+        user: one(users, {
+                fields: [zuvyChapterTracking.userId],
+                references:[users.id]
         }),
-        chapter : one(moduleChapter,{
-                fields: [chapterTracking.chapterId],
-                references:[moduleChapter.id]
+        chapter : one(zuvyModuleChapter,{
+                fields: [zuvyChapterTracking.chapterId],
+                references:[zuvyModuleChapter.id]
         })
 }))
 
-export const trackingPostsRelations = relations(chapterTracking, ({ one }) => ({
-        chapterTrackingData: one(courseModules, {
-                fields: [chapterTracking.moduleId],
-                references: [courseModules.id],
+export const trackingPostsRelations = relations(zuvyChapterTracking, ({ one }) => ({
+        chapterTrackingData: one(zuvyCourseModules, {
+                fields: [zuvyChapterTracking.moduleId],
+                references: [zuvyCourseModules.id],
         }),
 }));
 

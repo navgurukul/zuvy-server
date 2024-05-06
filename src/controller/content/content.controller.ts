@@ -173,7 +173,7 @@ export class ContentController {
   ) {
     const res = await this.contentService.createCodingProblemForModule(
       chapterId,
-      codingQuestions
+      codingQuestions,
     );
     return res;
   }
@@ -274,15 +274,5 @@ export class ContentController {
       chapterId,
     );
     return res;
-  }
-
-  @Get('/practiseProblemOfModules/:bootcampId')
-  @ApiOperation({ summary: 'Get the submission by bootcampId' })
-  @ApiBearerAuth()
-  async getChapterTracking(
-    @Param('bootcampId') bootcampId: number,
-  ){
-    const res = await this.contentService.getChapterTracking(bootcampId);
-     return res;
   }
 }

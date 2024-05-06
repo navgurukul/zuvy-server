@@ -7,6 +7,7 @@ import { ContentModule } from './controller/content/content.module';
 import { StudentModule } from './controller/student/student.module';
 import { TrackingModule } from './controller/progress/tracking.module';
 import { CodingPlatformModule } from './controller/codingPlatform/codingPlatform.module';
+import { SubmissionModule } from './controller/submissions/submission.module';
 import { APP_INTERCEPTOR } from '@nestjs/core';
 import { JwtModule } from '@nestjs/jwt';
 import { LoggingInterceptor } from './loggerInterceptor/logger';
@@ -26,13 +27,14 @@ import { LoggingInterceptor } from './loggerInterceptor/logger';
     ContentModule,
     StudentModule,
     TrackingModule,
-    CodingPlatformModule
+    CodingPlatformModule,
+    SubmissionModule
   ],
   providers: [
     {
       provide: APP_INTERCEPTOR,
       useClass: LoggingInterceptor,
     },
-  ],
+  ]
 })
 export class AppModule {}

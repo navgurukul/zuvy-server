@@ -14,8 +14,8 @@ import {
   classesGoogleMeetLink,
   bootcampTracking,
   bootcampType,
-  codingQuestions,
-  codingSubmission
+  zuvyCodingQuestions,
+  zuvyCodingSubmission
 } from '../../../drizzle/schema';
 
 const { ZUVY_CONTENT_URL ,RAPID_API_KEY,RAPID_HOST} = process.env; // INPORTING env VALUSE ZUVY_CONTENT
@@ -95,7 +95,6 @@ export class CodingPlatformService {
 
 try {
 	const response = await axios.request(options);
-  console.log(response.data);
     return response.data;
 } catch (error) {
 	throw error;
@@ -125,10 +124,10 @@ try {
 
   async findSubmissionByQuestionId(questionId: number,id:number) {
     try {
-       const submissions = await db.select().from(codingSubmission)
-        .where(sql`${codingSubmission.question_solved}->>${questionId.toString()} IS NOT NULL AND ${codingSubmission.user_id} = ${id}`)
+       const submissions = await db.select().from(zuvyCodingSubmission)
+        .where(sql`${zuvyCodingSubmission.questionSolved}->>${questionId.toString()} IS NOT NULL AND ${zuvyCodingSubmission.userId} = ${id}`)
      
-         const questionSolved = submissions[0]?.question_solved;
+         const questionSolved = submissions[0]?.questionSolved;
          var submissionTokens = {token:[]};
          if(questionSolved)
          {
@@ -160,8 +159,8 @@ try {
   try {
     
     const existingSubmission = await db.select()
-      .from(codingSubmission)
-      .where(sql`${codingSubmission.user_id} = ${userId}`)
+      .from(zuvyCodingSubmission)
+      .where(sql`${zuvyCodingSubmission.userId} = ${userId}`)
 
     let questionSolved = {};
     if(status !== 'Accepted')
@@ -171,15 +170,15 @@ try {
     if (existingSubmission.length === 0) {
       
       questionSolved[questionId.toString()] = { token: [token],status: status };
-      await db.insert(codingSubmission)
+      await db.insert(zuvyCodingSubmission)
         .values({
-          user_id: userId,
-          question_solved: questionSolved
+          userId: BigInt(userId),
+          questionSolved: questionSolved
         })
         .returning();
     } else {
       
-      questionSolved = existingSubmission[0].question_solved || {};
+      questionSolved = existingSubmission[0].questionSolved || {};
       if (!questionSolved.hasOwnProperty(questionId.toString())) {
         questionSolved[questionId.toString()] = { token: [token],status: status };
       } else {
@@ -190,9 +189,9 @@ try {
         }
         questionSolved[questionId.toString()].token.push(token);
       }
-      await db.update(codingSubmission)
-        .set({ question_solved: questionSolved })
-        .where(sql`${codingSubmission.user_id} = ${userId}`)
+      await db.update(zuvyCodingSubmission)
+        .set({ questionSolved: questionSolved })
+        .where(sql`${zuvyCodingSubmission.userId} = ${userId}`)
     }
   } catch (error) {
     console.error('Error updating submission:', error);
@@ -203,17 +202,17 @@ try {
 async getQuestionsWithStatus(userId: number) {
   try {
     const questions = await db.select()
-      .from(codingQuestions)
+      .from(zuvyCodingQuestions)
      
     const userSubmissions = await db.select()
-      .from(codingSubmission)
-      .where(sql`${codingSubmission.user_id} = ${userId}`)
+      .from(zuvyCodingSubmission)
+      .where(sql`${zuvyCodingSubmission.userId} = ${userId}`)
 
     const count = userSubmissions.length;
     const response = questions.map(question => ({
       id: question.id.toString(),
       title: question.title,
-      status: count !== 0 ? (userSubmissions[0].question_solved[question.id.toString()]?.status || null):null,
+      status: count !== 0 ? (userSubmissions[0].questionSolved[question.id.toString()]?.status || null):null,
       difficulty: question.difficulty,
     }));
 
@@ -227,7 +226,7 @@ async getQuestionsWithStatus(userId: number) {
 async getQuestionById(questionId: number)
 {
     try{
-        const question = await db.select().from(codingQuestions).where(sql`${codingQuestions.id} = ${Number(questionId)}`)
+        const question = await db.select().from(zuvyCodingQuestions).where(sql`${zuvyCodingQuestions.id} = ${Number(questionId)}`)
        if (question.length === 0) {
             return { status: 'error', code: 400, message: "No question available for the given question Id" };
         }
@@ -249,7 +248,7 @@ async getQuestionById(questionId: number)
 
    async createCodingProblem(codingProblem:CreateProblemDto){
        try {
-           const newQuestionCreated = await db.insert(codingQuestions).values(codingProblem).returning();
+           const newQuestionCreated = await db.insert(zuvyCodingQuestions).values(codingProblem).returning();
            return newQuestionCreated;
        }catch(err)
        {

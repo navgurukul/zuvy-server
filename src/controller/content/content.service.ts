@@ -4,14 +4,14 @@ import {
   assignmentSubmission,
   articleTracking,
   quizTracking,
-  moduleChapter,
-  topics,
-  courseModules,
-  moduleQuiz,
-  codingQuestions,
-  openEndedQuestion,
-  moduleAssessment,
-  chapterTracking,
+  zuvyModuleChapter,
+  zuvyModuleTopics,
+  zuvyCourseModules,
+  zuvyModuleQuiz,
+  zuvyCodingQuestions,
+  zuvyOpenEndedQuestion,
+  zuvyModuleAssessment,
+  zuvyChapterTracking,
   batchEnrollments,
   moduleChapterRelations,
   questions,
@@ -237,9 +237,9 @@ export class ContentService {
   async createModuleForCourse(bootcampId: number, module: moduleDto) {
     try {
       const noOfModuleOfBootcamp = await db
-        .select({ count: count(courseModules.id) })
-        .from(courseModules)
-        .where(eq(courseModules.bootcampId, bootcampId));
+        .select({ count: count(zuvyCourseModules.id) })
+        .from(zuvyCourseModules)
+        .where(eq(zuvyCourseModules.bootcampId, bootcampId));
 
       var moduleWithBootcamp = {
         bootcampId,
@@ -247,7 +247,7 @@ export class ContentService {
         order: noOfModuleOfBootcamp[0].count + 1,
       };
       const moduleData = await db
-        .insert(courseModules)
+        .insert(zuvyCourseModules)
         .values(moduleWithBootcamp)
         .returning();
 
@@ -266,12 +266,12 @@ export class ContentService {
     try {
       const existingChaptersForAModule = await db
         .select()
-        .from(moduleChapter)
-        .where(eq(moduleChapter.moduleId, moduleId));
+        .from(zuvyModuleChapter)
+        .where(eq(zuvyModuleChapter.moduleId, moduleId));
       const order = existingChaptersForAModule.length + 1;
       var chapterData = { title: `Chapter ${order}`, moduleId, topicId, order };
       const chapter = await db
-        .insert(moduleChapter)
+        .insert(zuvyModuleChapter)
         .values(chapterData)
         .returning();
 
@@ -298,7 +298,7 @@ export class ContentService {
       }));
 
       const result = await db
-        .insert(moduleQuiz)
+        .insert(zuvyModuleQuiz)
         .values(quizQuestions)
         .returning();
       if (result.length > 0) {
@@ -307,9 +307,9 @@ export class ContentService {
         });
         quizIds.push(...quiz.quizQuestionIds);
         await db
-          .update(moduleChapter)
+          .update(zuvyModuleChapter)
           .set({ quizQuestions: quizIds })
-          .where(eq(moduleChapter.id, chapterId));
+          .where(eq(zuvyModuleChapter.id, chapterId));
       }
       return result;
     } catch (err) {
@@ -320,7 +320,7 @@ export class ContentService {
   async createOpenEndedQuestions(questions: openEndedDto) {
     try {
       const openEndedQuestions = await db
-        .insert(openEndedQuestion)
+        .insert(zuvyOpenEndedQuestion)
         .values(questions)
         .returning();
       return openEndedQuestions;
@@ -331,12 +331,13 @@ export class ContentService {
 
   async getAllModuleByBootcampId(bootcampId: number) {
     try {
-      const data = await db.query.courseModules.findMany({
-        where: (courseModules, { eq }) => eq(courseModules.bootcampId, bootcampId),
+      const data = await db.query.zuvyCourseModules.findMany({
+        where: (courseModules, { eq }) =>
+          eq(courseModules.bootcampId, bootcampId),
         with: {
-          moduleChapterData: true
+          moduleChapterData: true,
         },
-      })
+      });
       let modules = data.map((module) => {
         return {
           id: module.id,
@@ -344,59 +345,20 @@ export class ContentService {
           description: module.description,
           order: module.order,
           timeAlloted: module.timeAlloted,
-          quizCount: module.moduleChapterData.filter((chapter) => chapter.topicId === 4).length,
-          assignmentCount: module.moduleChapterData.filter((chapter) => chapter.topicId === 5).length,
-          codingProblemsCount: module.moduleChapterData.filter((chapter) => chapter.topicId === 3).length,
-          articlesCount: module.moduleChapterData.filter((chapter) => chapter.topicId === 2).length,
-        }
-      })
-
-
-      // if (allModules.length > 0) {
-      //   const modulesWithDetails = await Promise.all(
-      //     allModules.map(async (module) => {
-      //       const quizCount = await db
-      //         .select({ count: count(moduleChapter.topicId) })
-      //         .from(moduleChapter)
-      //         .where(
-      //           sql`${moduleChapter.moduleId} = ${module.id} AND ${moduleChapter.topicId} = 4`,
-      //         );
-      // const assignmentCount = await db
-      //   .select({ count: count(moduleChapter.topicId) })
-      //   .from(moduleChapter)
-      //   .where(
-      //     sql`${moduleChapter.moduleId} = ${module.id} AND ${moduleChapter.topicId} = 5`,
-      //   );
-      // const codingQuestionCount = await db
-      //   .select({ count: count(moduleChapter.topicId) })
-      //   .from(moduleChapter)
-      //   .where(
-      //     sql`${moduleChapter.moduleId} = ${module.id} AND ${moduleChapter.topicId} = 3`,
-      //   );
-      // const articleCount = await db
-      //   .select({ count: count(moduleChapter.topicId) })
-      //   .from(moduleChapter)
-      //   .where(
-      //     sql`${moduleChapter.moduleId} = ${module.id} AND ${moduleChapter.topicId} = 2`,
-      //   );
-
-      //   return {
-      //     id: module.id,
-      //     name: module.name,
-      //     description: module.description,
-      //     order: module.order,
-      //     // timeAlloted: module.timeAlloted,
-      //     quizCount: quizCount[0].count,
-      //     // assignmentCount: assignmentCount[0].count,
-      //     // codingProblemsCount: codingQuestionCount[0].count,
-      //     // articlesCount: articleCount[0].count,
-      //     //chapters: chapters,
-      //   };
-      // }),
-      // );
-
-      // return modulesWithDetails;
-      // }
+          quizCount: module.moduleChapterData.filter(
+            (chapter) => chapter.topicId === 4,
+          ).length,
+          assignmentCount: module.moduleChapterData.filter(
+            (chapter) => chapter.topicId === 5,
+          ).length,
+          codingProblemsCount: module.moduleChapterData.filter(
+            (chapter) => chapter.topicId === 3,
+          ).length,
+          articlesCount: module.moduleChapterData.filter(
+            (chapter) => chapter.topicId === 2,
+          ).length,
+        };
+      });
 
       return modules;
     } catch (err) {
@@ -409,33 +371,33 @@ export class ContentService {
     try {
       const module = await db
         .select()
-        .from(courseModules)
-        .where(eq(courseModules.id, moduleId));
+        .from(zuvyCourseModules)
+        .where(eq(zuvyCourseModules.id, moduleId));
       const assessment = await db
         .select({
-          assessmentTitle: moduleAssessment.title,
-          assessmentId: moduleAssessment.id,
-          timeDuration: moduleAssessment.timeLimit,
+          assessmentTitle: zuvyModuleAssessment.title,
+          assessmentId: zuvyModuleAssessment.id,
+          timeDuration: zuvyModuleAssessment.timeLimit,
         })
-        .from(moduleAssessment)
-        .where(eq(moduleAssessment.moduleId, module[0].id));
+        .from(zuvyModuleAssessment)
+        .where(eq(zuvyModuleAssessment.moduleId, module[0].id));
       const chapterNameWithId = await db
         .select({
-          chapterId: moduleChapter.id,
-          chapterTitle: moduleChapter.title,
-          topicId: moduleChapter.topicId,
-          order: moduleChapter.order,
+          chapterId: zuvyModuleChapter.id,
+          chapterTitle: zuvyModuleChapter.title,
+          topicId: zuvyModuleChapter.topicId,
+          order: zuvyModuleChapter.order,
         })
-        .from(moduleChapter)
-        .where(eq(moduleChapter.moduleId, moduleId))
-        .orderBy(moduleChapter.order);
+        .from(zuvyModuleChapter)
+        .where(eq(zuvyModuleChapter.moduleId, moduleId))
+        .orderBy(zuvyModuleChapter.order);
 
       const topicNames = await db
         .select({
-          topicId: topics.id,
-          topicName: topics.name,
+          topicId: zuvyModuleTopics.id,
+          topicName: zuvyModuleTopics.name,
         })
-        .from(topics);
+        .from(zuvyModuleTopics);
 
       const chapterWithTopic = chapterNameWithId.map((ch) => {
         const topicInfo = topicNames.find(
@@ -460,8 +422,8 @@ export class ContentService {
     try {
       const chapterDetails = await db
         .select()
-        .from(moduleChapter)
-        .where(eq(moduleChapter.id, chapterId));
+        .from(zuvyModuleChapter)
+        .where(eq(zuvyModuleChapter.id, chapterId));
       const modifiedChapterDetails: {
         id: number;
         moduleId: number;
@@ -482,22 +444,22 @@ export class ContentService {
           const quizDetails =
             chapterDetails[0].quizQuestions !== null
               ? await db
-                .select()
-                .from(moduleQuiz)
-                .where(
-                  sql`${inArray(moduleQuiz.id, Object.values(chapterDetails[0].quizQuestions))}`,
-                )
+                  .select()
+                  .from(zuvyModuleQuiz)
+                  .where(
+                    sql`${inArray(zuvyModuleQuiz.id, Object.values(chapterDetails[0].quizQuestions))}`,
+                  )
               : [];
           modifiedChapterDetails.quizQuestionDetails = quizDetails;
         } else if (chapterDetails[0].topicId == 3) {
           const codingProblemDetails =
             chapterDetails[0].codingQuestions !== null
               ? await db
-                .select()
-                .from(codingQuestions)
-                .where(
-                  sql`${inArray(codingQuestions.id, Object.values(chapterDetails[0].codingQuestions))}`,
-                )
+                  .select()
+                  .from(zuvyCodingQuestions)
+                  .where(
+                    sql`${inArray(zuvyCodingQuestions.id, Object.values(chapterDetails[0].codingQuestions))}`,
+                  )
               : [];
           modifiedChapterDetails.codingQuestionDetails = codingProblemDetails;
         } else {
@@ -532,9 +494,9 @@ export class ContentService {
 
         const modules = await db
           .select()
-          .from(courseModules)
-          .where(eq(courseModules.bootcampId, bootcampId))
-          .orderBy(courseModules.order);
+          .from(zuvyCourseModules)
+          .where(eq(zuvyCourseModules.bootcampId, bootcampId))
+          .orderBy(zuvyCourseModules.order);
 
         const draggedModuleIndex = modules.findIndex((m) => m.id === moduleId);
 
@@ -545,36 +507,36 @@ export class ContentService {
             i++
           ) {
             await db
-              .update(courseModules)
+              .update(zuvyCourseModules)
               .set({ order: modules[i].order + 1 })
-              .where(eq(courseModules.id, modules[i].id));
+              .where(eq(zuvyCourseModules.id, modules[i].id));
           }
           await db
-            .update(courseModules)
+            .update(zuvyCourseModules)
             .set({ order: newOrder })
-            .where(eq(courseModules.id, moduleId));
+            .where(eq(zuvyCourseModules.id, moduleId));
         } else if (draggedModuleIndex + 1 < newOrder) {
           let counting = newOrder - (draggedModuleIndex + 1);
           let ordering = newOrder - 1;
           while (counting > 0) {
             await db
-              .update(courseModules)
+              .update(zuvyCourseModules)
               .set({ order: modules[ordering].order - 1 })
-              .where(eq(courseModules.id, modules[ordering].id));
+              .where(eq(zuvyCourseModules.id, modules[ordering].id));
             counting = counting - 1;
             ordering = ordering - 1;
           }
 
           await db
-            .update(courseModules)
+            .update(zuvyCourseModules)
             .set({ order: newOrder })
-            .where(eq(courseModules.id, moduleId));
+            .where(eq(zuvyCourseModules.id, moduleId));
         }
       } else if (reorderData.reOrderDto == undefined) {
         await db
-          .update(courseModules)
+          .update(zuvyCourseModules)
           .set(reorderData.moduleDto)
-          .where(eq(courseModules.id, moduleId));
+          .where(eq(zuvyCourseModules.id, moduleId));
       }
       return {
         message: 'Modified successfully',
@@ -600,7 +562,7 @@ export class ContentService {
       }
       codingProblem.testCases = testCases;
       const result = await db
-        .insert(codingQuestions)
+        .insert(zuvyCodingQuestions)
         .values(codingProblem)
         .returning();
       if (result.length > 0) {
@@ -609,9 +571,9 @@ export class ContentService {
         });
         const questionId = codingIds[0];
         await db
-          .update(moduleChapter)
+          .update(zuvyModuleChapter)
           .set({ codingQuestions: questionId })
-          .where(eq(moduleChapter.id, chapterId));
+          .where(eq(zuvyModuleChapter.id, chapterId));
       }
       return result;
     } catch (err) {
@@ -630,9 +592,9 @@ export class ContentService {
 
         const chapters = await db
           .select()
-          .from(moduleChapter)
-          .where(eq(moduleChapter.moduleId, moduleId))
-          .orderBy(moduleChapter.order);
+          .from(zuvyModuleChapter)
+          .where(eq(zuvyModuleChapter.moduleId, moduleId))
+          .orderBy(zuvyModuleChapter.order);
 
         const draggedModuleIndex = chapters.findIndex(
           (m) => m.id === chapterId,
@@ -645,36 +607,36 @@ export class ContentService {
             i++
           ) {
             await db
-              .update(moduleChapter)
+              .update(zuvyModuleChapter)
               .set({ order: chapters[i].order + 1 })
-              .where(eq(moduleChapter.id, chapters[i].id));
+              .where(eq(zuvyModuleChapter.id, chapters[i].id));
           }
           await db
-            .update(moduleChapter)
+            .update(zuvyModuleChapter)
             .set({ order: newOrder })
-            .where(eq(moduleChapter.id, chapterId));
+            .where(eq(zuvyModuleChapter.id, chapterId));
         } else if (draggedModuleIndex + 1 < newOrder) {
           let counting = newOrder - (draggedModuleIndex + 1);
           let ordering = newOrder - 1;
           while (counting > 0) {
             await db
-              .update(moduleChapter)
+              .update(zuvyModuleChapter)
               .set({ order: chapters[ordering].order - 1 })
-              .where(eq(moduleChapter.id, chapters[ordering].id));
+              .where(eq(zuvyModuleChapter.id, chapters[ordering].id));
             counting = counting - 1;
             ordering = ordering - 1;
           }
 
           await db
-            .update(moduleChapter)
+            .update(zuvyModuleChapter)
             .set({ order: newOrder })
-            .where(eq(moduleChapter.id, chapterId));
+            .where(eq(zuvyModuleChapter.id, chapterId));
         }
       } else if (editData.newOrder == undefined) {
         await db
-          .update(moduleChapter)
+          .update(zuvyModuleChapter)
           .set(editData)
-          .where(eq(moduleChapter.id, chapterId));
+          .where(eq(zuvyModuleChapter.id, chapterId));
       }
       return {
         message: 'Modified successfully',
@@ -691,7 +653,7 @@ export class ContentService {
         moduleId,
       };
       const newAssessment = await db
-        .insert(moduleAssessment)
+        .insert(zuvyModuleAssessment)
         .values(assessment)
         .returning();
       return newAssessment;
@@ -706,9 +668,9 @@ export class ContentService {
   ) {
     try {
       await db
-        .update(moduleAssessment)
+        .update(zuvyModuleAssessment)
         .set(assessmentBody)
-        .where(eq(moduleAssessment.id, assessmentId))
+        .where(eq(zuvyModuleAssessment.id, assessmentId))
         .returning();
       return {
         status: 'success',
@@ -724,8 +686,8 @@ export class ContentService {
     try {
       const assessment = await db
         .select()
-        .from(moduleAssessment)
-        .where(eq(moduleAssessment.moduleId, moduleId));
+        .from(zuvyModuleAssessment)
+        .where(eq(zuvyModuleAssessment.moduleId, moduleId));
       if (assessment.length > 0) {
         const ab = Object.values(assessment[0].codingProblems);
         const codingQuesIds = ab.reduce((acc, obj) => {
@@ -742,16 +704,16 @@ export class ContentService {
         );
         const mcqDetails = await db
           .select()
-          .from(moduleQuiz)
-          .where(sql`${inArray(moduleQuiz.id, mcqIds)}`);
+          .from(zuvyModuleQuiz)
+          .where(sql`${inArray(zuvyModuleQuiz.id, mcqIds)}`);
         const openEndedQuesDetails = await db
           .select()
-          .from(openEndedQuestion)
-          .where(sql`${inArray(openEndedQuestion.id, openEndedQuesIds)}`);
+          .from(zuvyOpenEndedQuestion)
+          .where(sql`${inArray(zuvyOpenEndedQuestion.id, openEndedQuesIds)}`);
         const codingProblems = await db
           .select()
-          .from(codingQuestions)
-          .where(sql`${inArray(codingQuestions.id, codingQuesIds)}`);
+          .from(zuvyCodingQuestions)
+          .where(sql`${inArray(zuvyCodingQuestions.id, codingQuesIds)}`);
         let codingQuesDetails = [];
         for (let i = 0; i < codingProblems.length; i++) {
           codingQuesDetails.push({
@@ -772,53 +734,4 @@ export class ContentService {
     }
   }
 
-  async getChapterTracking(bootcampId: number) {
-    try {
-      const topicId = 3;
-      const trackingData = await db.query.courseModules.findMany({
-        where: (courseModules, { eq }) => eq(courseModules.bootcampId, bootcampId),
-        with: {
-          moduleChapterData: {
-            columns: {
-              id: true,
-            },
-            where: (moduleChapter, { eq }) => eq(moduleChapter.topicId, topicId),
-            with: {
-              chapterTrackingDetails: {
-                columns: {
-                  userId: true,
-                },
-              },
-              codingQuestionDetails: {
-                columns: {
-                  id: true,
-                  title: true
-                },
-              }
-            },
-          }
-        },
-      });
-
-      const batchEnrollmentsCount = await db
-        .select({
-          count: sql<number>`cast(count(${batchEnrollments.id}) as int)`,
-        })
-        .from(batchEnrollments)
-        .where(eq(batchEnrollments.bootcampId, bootcampId));
-
-        trackingData.forEach(course => {
-          course.moduleChapterData.forEach((chapterTracking) => {
-              chapterTracking['submitStudents'] = chapterTracking["chapterTrackingDetails"].length;
-              delete chapterTracking['chapterTrackingDetails'];
-          });
-      });
-      return {
-        trackingData,
-        totalStudents:batchEnrollmentsCount[0]?.count,
-      };
-    } catch (err) {
-      throw err;
-    }
-  }
 }
