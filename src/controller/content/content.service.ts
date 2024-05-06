@@ -431,7 +431,7 @@ export class ContentService {
         order: number;
         quizQuestionDetails?: any[];
         codingQuestionDetails?: any[];
-        contentDetails?: any[]
+        contentDetails?: any[];
       } = {
         id: chapterDetails[0].id,
         moduleId: chapterDetails[0].moduleId,
@@ -463,13 +463,15 @@ export class ContentService {
               : [];
           modifiedChapterDetails.codingQuestionDetails = codingProblemDetails;
         } else {
-          let content = [{
-            title: chapterDetails[0].title,
-            description: chapterDetails[0].description,
-            links: chapterDetails[0].links,
-            file: chapterDetails[0].file,
-            content: chapterDetails[0].articleContent
-          }];
+          let content = [
+            {
+              title: chapterDetails[0].title,
+              description: chapterDetails[0].description,
+              links: chapterDetails[0].links,
+              file: chapterDetails[0].file,
+              content: chapterDetails[0].articleContent,
+            },
+          ];
           modifiedChapterDetails.contentDetails = content;
         }
         return modifiedChapterDetails;
@@ -686,7 +688,7 @@ export class ContentService {
         .select()
         .from(zuvyModuleAssessment)
         .where(eq(zuvyModuleAssessment.moduleId, moduleId));
-        
+
       if (assessment.length > 0) {
         const ab = Object.values(assessment[0].codingProblems);
         const codingQuesIds = ab.reduce((acc, obj) => {
@@ -733,9 +735,7 @@ export class ContentService {
     }
   }
 
-  async deleteModule(
-    moduleId: number,
-    bootcampId: number): Promise<any> {
+  async deleteModule(moduleId: number, bootcampId: number): Promise<any> {
     try {
       let data = await db
         .delete(zuvyCourseModules)
@@ -750,22 +750,21 @@ export class ContentService {
       await db
         .update(zuvyCourseModules)
         .set({ order: sql`${zuvyCourseModules.order}::numeric - 1` })
-        .where(sql`${zuvyCourseModules.order} > ${data[0].order} and ${zuvyCourseModules.bootcampId} = ${bootcampId}`);
+        .where(
+          sql`${zuvyCourseModules.order} > ${data[0].order} and ${zuvyCourseModules.bootcampId} = ${bootcampId}`,
+        );
       return {
         status: 'success',
         message: 'Module deleted successfully',
         code: 200,
       };
-
     } catch (error) {
       log(`error: ${error.message}`);
       return [{ status: 'error', message: error.message, code: 404 }, null];
     }
   }
 
-  async deleteChapter(
-    chapterId: number,
-    moduleId: number): Promise<any> {
+  async deleteChapter(chapterId: number, moduleId: number): Promise<any> {
     try {
       let spyMan = await db
         .delete(zuvyModuleChapter)
@@ -781,7 +780,9 @@ export class ContentService {
       await db
         .update(zuvyModuleChapter)
         .set({ order: sql`${zuvyModuleChapter.order}::numeric - 1` })
-        .where(sql`${zuvyModuleChapter.order} > ${spyMan[0].order} and ${zuvyModuleChapter.moduleId} = ${moduleId}`);
+        .where(
+          sql`${zuvyModuleChapter.order} > ${spyMan[0].order} and ${zuvyModuleChapter.moduleId} = ${moduleId}`,
+        );
 
       return {
         status: 'success',
