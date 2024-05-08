@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { db } from '../../db/index';
-import { eq, sql, count, inArray, or } from 'drizzle-orm';
+import { eq, sql, count, inArray, or, and } from 'drizzle-orm';
 // import { BatchesService } from '../batches/batch.service';
 import axios from 'axios';
 import * as _ from 'lodash';
@@ -605,7 +605,6 @@ export class BootcampService {
   ) {
     try {
       let queryString;
-      let countVariable = 0;
       if (bootcamp_id && batch_id) {
         queryString = sql`${batchEnrollments.bootcampId} = ${bootcamp_id} and ${batchEnrollments.batchId} = ${batch_id}`;
       } else {
@@ -618,79 +617,75 @@ export class BootcampService {
         .where(eq(batches.bootcampId, bootcamp_id));
 
       const batchIds = batchesData.map((obj) => obj.id);
-      let totalStudentsCount = await db
-        .select({ count: count(batchEnrollments.bootcampId) })
-        .from(batchEnrollments)
-        .where(queryString);
-      let totalStudents = totalStudentsCount[0].count;
+
+      const [count, dataResult] = await Promise.all([
+        db
+          .select({ count: sql<number>`count(*)` })
+          .from(batchEnrollments)
+          .innerJoin(users, eq(batchEnrollments.userId, users.id))
+          .where(
+            and(
+              queryString,
+              searchTerm.constructor === String
+                ? sql`((LOWER(${users.name}) LIKE ${searchTerm.toLowerCase()} || '%' OR LOWER(${users.email}) LIKE ${searchTerm.toLowerCase()} || '%'))`
+                : sql`${users.id} = ${searchTerm}`,
+            ),
+          )
+          .execute(),
+        db
+          .select({
+            email: users.email,
+            name: users.name,
+            userId: users.id,
+            bootcampId: batchEnrollments.bootcampId,
+            batchId: batchEnrollments.batchId,
+            attendance: batchEnrollments.attendance,
+            profilePicture: users.profilePicture,
+          })
+          .from(batchEnrollments)
+          .innerJoin(users, eq(batchEnrollments.userId, users.id))
+          .where(
+            and(
+              queryString,
+              searchTerm.constructor === String
+                ? sql`((LOWER(${users.name}) LIKE ${searchTerm.toLowerCase()} || '%' OR LOWER(${users.email}) LIKE ${searchTerm.toLowerCase()} || '%'))`
+                : sql`${users.id} = ${searchTerm}`,
+            ),
+          )
+          .limit(limit)
+          .offset(offset)
+          .execute(),
+      ]);
+      const filteredData = dataResult.map((student) => {
+        return {
+          ...student,
+          userId: Number(student.userId),
+        };
+      });
+      let totalStudents = Number(count[0].count);
       let totalPages = isNaN(limit) ? 1 : Math.ceil(totalStudents / limit);
-      let batchEnrollmentsData = await db
-        .select()
-        .from(batchEnrollments)
-        .where(queryString);
-
-      let studentsEmails = [];
-      for (const student_ of batchEnrollmentsData) {
+      for (let student_ of filteredData) {
         try {
-          let student = {};
-          let emailFetched;
-          if (searchTerm.constructor === String) {
-            emailFetched = await db
+          let total_classes = await db
+            .select()
+            .from(classesGoogleMeetLink)
+            .where(
+              sql`${classesGoogleMeetLink.batchId} = ${student_.batchId.toString()}`,
+            );
+          student_['batchName'] = null;
+
+          if (student_.batchId && batchIds.includes(student_.batchId)) {
+            let batchInfo = await db
               .select()
-              .from(users)
-              .where(
-                sql`(${eq(users.id, student_.userId)} AND (LOWER(${users.name}) LIKE ${searchTerm.toLowerCase()} || '%'
-                OR LOWER(${users.email}) LIKE ${searchTerm.toLowerCase()} || '%'))`,
-              );
-          } else if (countVariable == 0) {
-            emailFetched = await db
-              .select()
-              .from(users)
-              .where(sql`${users.id} = ${searchTerm}`);
-            countVariable = 1;
-          }
+              .from(batches)
+              .where(eq(batches.id, student_.batchId));
 
-          if (emailFetched && emailFetched.length > 0) {
-            let total_classes = await db
-              .select()
-              .from(classesGoogleMeetLink)
-              .where(
-                sql`${classesGoogleMeetLink.batchId} = ${student_.batchId.toString()}`,
-              );
-            student = {
-              email: emailFetched[0].email,
-              name: emailFetched[0].name,
-              userId: emailFetched[0].id.toString(),
-              bootcampId: student_.bootcampId,
-              profilePicture: emailFetched[0].profilePicture,
-              attendance: student_.attendance,
-              batchName: null,
-              batchId: null,
-            };
-            let batchInfo;
-
-            if (student_.batchId && batchIds.includes(student_.batchId)) {
-              batchInfo = await db
-                .select()
-                .from(batches)
-                .where(eq(batches.id, student_.batchId));
-
-              if (batchInfo.length > 0) {
-                student['batchName'] = batchInfo[0].name;
-                student['batchId'] = batchInfo[0].id;
-
-                let student_atte = student_.attendance || 0;
-                let result = (student_atte / total_classes.length) * 100;
-                student['attendance'] = result || 0;
-                student['progress'] = 0;
-              }
-            }
-          }
-          if (emailFetched && emailFetched.length > 0) {
-            studentsEmails.push(student);
-            if (searchTerm !== '') {
-              totalStudents = studentsEmails.length;
-              totalPages = isNaN(limit) ? 1 : Math.ceil(totalStudents / limit);
+            if (batchInfo.length > 0) {
+              student_['batchName'] = batchInfo[0].name;
+              let student_atte = student_.attendance || 0;
+              let result = (student_atte / total_classes.length) * 100;
+              student_['attendance'] = result || 0;
+              student_['progress'] = 0;
             }
           }
         } catch (error) {
@@ -706,9 +701,7 @@ export class BootcampService {
         null,
         {
           status: 'success',
-          studentsEmails: isNaN(limit)
-            ? studentsEmails
-            : studentsEmails.slice(offset, offset + limit),
+          studentsEmails: filteredData,
           totalPages,
           totalStudents,
           code: 200,
@@ -718,7 +711,6 @@ export class BootcampService {
       return [{ status: 'error', message: e.message, code: 500 }, null];
     }
   }
-
 
   async searchStudentsByNameOrEmail(
     searchTerm: string | bigint,

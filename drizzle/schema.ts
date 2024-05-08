@@ -1921,6 +1921,7 @@ export const moduleChapterRelations = relations(zuvyCourseModules, ({ many }) =>
         chapterTrackingData : many(zuvyChapterTracking)
 }));
 
+
 export const studentChapterRelation = relations(batchEnrollments,({many}) => ({
         studentChapterDetails : many(zuvyChapterTracking)
 }))
