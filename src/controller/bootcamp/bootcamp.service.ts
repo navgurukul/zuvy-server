@@ -19,6 +19,8 @@ const { ZUVY_CONTENT_URL } = process.env; // INPORTING env VALUSE ZUVY_CONTENT
 
 @Injectable()
 export class BootcampService {
+  private logger = new Logger('API');
+
   // constructor(private batchesService:BatchesService) { }
   async enrollData(bootcampId: number) {
     try {
@@ -50,7 +52,7 @@ export class BootcampService {
         },
       ];
     } catch (error) {
-      log(`error: ${error.message}`);
+      this.logger.log(`error: ${error.message}`);
       return [{ status: 'error', message: error.message, code: 500 }, null];
     }
   }
@@ -80,7 +82,7 @@ export class BootcampService {
         { data, totalzuvyBootcamps: totalCountQuery[0].count, totalPages },
       ];
     } catch (e) {
-      log(`error: ${e.message}`);
+      this.logger.log(`error: ${e.message}`);
       return [{ status: 'error', message: e.message, code: 500 }, null];
     }
   }
@@ -112,7 +114,7 @@ export class BootcampService {
       );
       return [null, data];
     } catch (e) {
-      log(`error: ${e.message}`);
+      this.logger.log(`error: ${e.message}`);
       return [{ status: 'error', message: e.message, code: 500 }, null];
     }
   }
@@ -139,7 +141,7 @@ export class BootcampService {
           );
           bootcamp[0]['content'] = respo.data;
         } catch (error) {
-          log(`Error posting data: ${error.message}`);
+          this.logger.log(`Error posting data: ${error.message}`);
         }
       }
 
@@ -153,7 +155,7 @@ export class BootcampService {
         },
       ];
     } catch (e) {
-      log(`error: ${e.message}`);
+      this.logger.log(`error: ${e.message}`);
       return [{ status: 'error', message: e.message, code: 500 }, null];
     }
   }
@@ -182,17 +184,17 @@ export class BootcampService {
               name: newBootcamp[0].name,
             },
           });
-          log(
+          this.logger.log(
             `Created the content in strapi with the name of ${newBootcamp[0].name},`,
           );
         } catch (error) {
-          log(`Error posting data: ${error.message}`);
+          this.logger.log(`Error posting data: ${error.message}`);
         }
       } catch (error) {
-        log(`Error posting data: ${error.message}`);
+        this.logger.log(`Error posting data: ${error.message}`);
         return [{ status: 'Error', message: error.message, code: 404 }, null];
       }
-      log(`Bootcamp created successfully`);
+      this.logger.log(`Bootcamp created successfully`);
       return [
         null,
         {
@@ -203,7 +205,7 @@ export class BootcampService {
         },
       ];
     } catch (e) {
-      log(`Error: ${e.message}`);
+      this.logger.log(`Error: ${e.message}`);
       return [{ status: 'error', message: e.message, code: 405 }, null];
     }
   }
@@ -233,7 +235,7 @@ export class BootcampService {
         },
       ];
     } catch (e) {
-      log(`error: ${e.message}`);
+      this.logger.log(`error: ${e.message}`);
       return [{ status: 'error', message: e.message, code: 500 }, null];
     }
   }
@@ -285,7 +287,7 @@ export class BootcampService {
         ];
       }
     } catch (e) {
-      log(`error: ${e.message}`);
+      this.logger.log(`error: ${e.message}`);
       return [{ status: 'error', message: e.message, code: 500 }, null];
     }
   }
@@ -317,6 +319,7 @@ export class BootcampService {
         },
       ];
     } catch (e) {
+      this.logger.log(`error: ${e.message}`);
       return [{ status: 'error', message: e.message, code: 500 }, null];
     }
   }
@@ -346,7 +349,7 @@ export class BootcampService {
         },
       ];
     } catch (error) {
-      log(`error: ${error.message}`);
+      this.logger.log(`error: ${error.message}`);
       return [{ status: 'error', message: error.message, code: 404 }, null];
     }
   }
@@ -415,6 +418,7 @@ export class BootcampService {
       const zuvyBatchesWithEnrollment = await Promise.all(promises);
       return [null, zuvyBatchesWithEnrollment];
     } catch (e) {
+      this.logger.log(`error: ${e.message}`);
       return { status: 'error', message: e.message, code: 500 };
     }
   }
@@ -587,7 +591,7 @@ export class BootcampService {
         },
       ];
     } catch (e) {
-      log(`error: ${e.message}`);
+      this.logger.log(`error: ${e.message}`);
       return [{ status: 'error', message: e.message, code: 500 }, null];
     }
   }
@@ -674,7 +678,7 @@ export class BootcampService {
             studentsEmails.push(student);
           }
         } catch (error) {
-          log(`error: ${error.message}`);
+          this.logger.log(`error: ${error.message}`);
 
           return [
             { status: 'error', message: 'Fetching emails failed', code: 500 },
@@ -693,6 +697,7 @@ export class BootcampService {
         },
       ];
     } catch (e) {
+      this.logger.log(`error: ${e.message}`);
       return [{ status: 'error', message: e.message, code: 500 }, null];
     }
   }
@@ -778,7 +783,7 @@ export class BootcampService {
             studentsEmails.push(student);
           }
         } catch (error) {
-          log(`error: ${error.message}`);
+          this.logger.log(`error: ${error.message}`);
 
           return [
             { status: 'error', message: 'Fetching emails failed', code: 500 },
@@ -791,6 +796,7 @@ export class BootcampService {
         { status: 'success', studentsEmails: studentsEmails, code: 200 },
       ];
     } catch (e) {
+      this.logger.log(`error: ${e.message}`);
       return [{ status: 'error', message: e.message, code: 500 }, null];
     }
   }
@@ -872,6 +878,7 @@ export class BootcampService {
         },
       ];
     } catch (error) {
+      this.logger.log(`error: ${error}`);
       return [{ status: 'error', message: error.message, code: 500 }, null];
     }
   }
@@ -933,6 +940,7 @@ export class BootcampService {
         null,
       ];
     } catch (e) {
+      
       return [{ status: 'error', message: e.message, code: 500 }, null];
     }
   }

@@ -9,7 +9,7 @@ import { TrackingModule } from './controller/progress/tracking.module';
 import { CodingPlatformModule } from './controller/codingPlatform/codingPlatform.module';
 import { APP_INTERCEPTOR } from '@nestjs/core';
 import { JwtModule } from '@nestjs/jwt';
-import { LoggingInterceptor } from './loggerInterceptor/logger';
+import { LoggingInterceptor } from './logger/logger';
 
 
 @Module({

@@ -1,4 +1,4 @@
-import { Injectable, NestInterceptor, ExecutionContext, CallHandler } from '@nestjs/common';
+import { Injectable, NestInterceptor, ExecutionContext, CallHandler, Logger } from '@nestjs/common';
 import { Observable } from 'rxjs';
 import { tap } from 'rxjs/operators';
 import { log, timeStamp } from 'console';
@@ -6,6 +6,8 @@ const chalk = require('chalk');
 
 @Injectable()
 export class LoggingInterceptor implements NestInterceptor {
+  private logger = new Logger('API');
+
   intercept(context: ExecutionContext, next: CallHandler): Observable<any> {
     const request = context.switchToHttp().getRequest();
     const method = request.method;
@@ -14,6 +16,6 @@ export class LoggingInterceptor implements NestInterceptor {
     return next
       .handle()
       .pipe(
-        tap(() => log(chalk.green(`API call ${new Date()} :- ${method} ${url}... ${Date.now() - now}ms`))),      );
+        tap(() => this.logger.log(chalk.green(`:- ${method} ${url}... ${Date.now() - now}ms`))),);
   }
 }
