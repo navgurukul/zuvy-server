@@ -34,6 +34,7 @@ import {
   CreateAssessmentBody,
 } from './dto/content.dto';
 import { CreateProblemDto } from '../codingPlatform/dto/codingPlatform.dto';
+import { difficulty } from 'drizzle/schema';
 
 @Controller('Content')
 @ApiTags('Content')
@@ -158,7 +159,7 @@ export class ContentController {
     return res;
   }
 
-  @Post('/codingQuestion/:chapterId')
+  @Post('/codingQuestion')
   @ApiOperation({ summary: 'Create a coding question for this module' })
   @ApiQuery({
     name: 'chapterId',
@@ -169,14 +170,11 @@ export class ContentController {
   @ApiBearerAuth()
   async createCodingQuestionForModule(
     @Body() codingQuestions: CreateProblemDto,
-    @Param('chapterId') chapterId: number,
+    @Query('chapterId') chapterId: number,
   ) {
-    const chapterDetails = {
-      title: 'Coding Problems',
-    };
     const res = await this.contentService.createCodingProblemForModule(
       chapterId,
-      codingQuestions
+      codingQuestions,
     );
     return res;
   }
@@ -279,7 +277,7 @@ export class ContentController {
     return res;
   }
 
-@Delete('/deleteModule/:bootcampId')
+  @Delete('/deleteModule/:bootcampId')
   @ApiOperation({ summary: 'Delete the module' })
   @ApiQuery({
     name: 'moduleId',
@@ -290,9 +288,9 @@ export class ContentController {
   @ApiBearerAuth()
   async deleteModule(
     @Param('bootcampId') bootcampId: number,
-    @Query('moduleId') moduleId: number
-    ): Promise<object> {
-    const res = await this.contentService.deleteModule(moduleId,bootcampId);
+    @Query('moduleId') moduleId: number,
+  ): Promise<object> {
+    const res = await this.contentService.deleteModule(moduleId, bootcampId);
     return res;
   }
 
@@ -307,10 +305,77 @@ export class ContentController {
   @ApiBearerAuth()
   async deleteChapter(
     @Param('moduleId') moduleId: number,
-    @Query('chapterId') chapterId: number
-    ): Promise<object> {
-    const res = await this.contentService.deleteChapter(chapterId,moduleId);
+    @Query('chapterId') chapterId: number,
+  ): Promise<object> {
+    const res = await this.contentService.deleteChapter(chapterId, moduleId);
     return res;
   }
 
+  @Get('/allQuizQuestions')
+  @ApiOperation({ summary: 'Get all quiz Questions' })
+  @ApiQuery({
+    name: 'tagId',
+    required: false,
+    type: Number,
+    description: 'tagId',
+  })
+  @ApiQuery({
+    name: 'difficulty',
+    required: false,
+    type: String,
+    description: 'difficulty',
+  })
+  @ApiQuery({
+    name: 'searchTerm',
+    required: false,
+    type: String,
+    description: 'Search by name or email',
+  })
+  @ApiBearerAuth()
+  async getAllQuizQuestions(
+    @Query('tagId') tagId: number,
+    @Query('difficulty') difficulty: 'Easy' | 'Medium' | 'Hard',
+    @Query('searchTerm') searchTerm: string,
+  ): Promise<object> {
+    const res = await this.contentService.getAllQuizQuestions(
+      tagId,
+      difficulty,
+      searchTerm,
+    );
+    return res;
+  }
+
+  @Get('/allCodingQuestions')
+  @ApiOperation({ summary: 'Get all coding Questions' })
+  @ApiQuery({
+    name: 'tagId',
+    required: false,
+    type: Number,
+    description: 'tagId',
+  })
+  @ApiQuery({
+    name: 'difficulty',
+    required: false,
+    type: String,
+    description: 'difficulty',
+  })
+  @ApiQuery({
+    name: 'searchTerm',
+    required: false,
+    type: String,
+    description: 'Search by name or email',
+  })
+  @ApiBearerAuth()
+  async getAllCodingQuestions(
+    @Query('tagId') tagId: number,
+    @Query('difficulty') difficulty: 'Easy' | 'Medium' | 'Hard',
+    @Query('searchTerm') searchTerm: string,
+  ): Promise<object> {
+    const res = await this.contentService.getAllCodingQuestions(
+      tagId,
+      difficulty,
+      searchTerm,
+    );
+    return res;
+  }
 }

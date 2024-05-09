@@ -271,12 +271,12 @@ export class EditChapterDto {
   quizQuestions: any[];
 
   @ApiProperty({
-    type: [Number],
-    example: [1, 2],
+    type: Number,
+    example: 10,
   })
-  @IsArray()
+  @IsNumber()
   @IsOptional()
-  codingQuestions: any[];
+  codingQuestions: number;
 
   @ApiProperty({
     type: Number,
