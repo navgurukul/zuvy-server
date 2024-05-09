@@ -161,7 +161,7 @@ export class ClassesController {
     return this.classesService.getAttendeesByMeetingId(id);
   }
 
-  @Cron('*/30 * * * *')
+  @Cron('0 * * * *')
   @Get('/getEventDetails')
   @ApiOperation({ summary: 'getting event details' })
   @ApiBearerAuth()

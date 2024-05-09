@@ -11,7 +11,7 @@ import {
   zuvyMeetingAttendance,
 } from '../../../drizzle/schema';
 import { db } from '../../db/index';
-import { eq, sql, count, inArray } from 'drizzle-orm';
+import { eq, sql, count, inArray, isNull } from 'drizzle-orm';
 import { google, calendar_v3 } from 'googleapis';
 import { v4 as uuid } from 'uuid';
 import { createReadStream } from 'fs';
@@ -409,7 +409,7 @@ export class ClassesService {
   async getEventDetails(@Req() req): Promise<any> { 
     try { 
       // Retrieve all classes with null s3link
-      const classesWithNullS3Link = await db.select().from(classesGoogleMeetLink).where(eq(classesGoogleMeetLink.s3link, null));
+      const classesWithNullS3Link = await db.select().from(classesGoogleMeetLink).where(isNull(classesGoogleMeetLink.s3link));
 
       // Iterate through each class
       for (const classData of classesWithNullS3Link) {
@@ -432,7 +432,7 @@ export class ClassesService {
         const calendar = google.calendar({ version: 'v3', auth: auth2Client });
 
         // Check if meetingid exists and s3link is null
-        if (classData.meetingid && !classData.s3link) {
+        if (classData.meetingid) {
           // Retrieve event details
           const eventDetails = await calendar.events.get({
             calendarId: 'primary',
@@ -464,6 +464,12 @@ export class ClassesService {
           }
         }
       }
+      
+      // await db
+      //   .update(classesGoogleMeetLink)
+      //   .set({ s3link: 'not found' })
+      //   .where(isNull(classesGoogleMeetLink.s3link));
+
       // Return success response if no meetings need updating
        return { status: 'success', message: 'No meetings to update', code: 200 };
     } catch (error) { 
@@ -824,23 +830,23 @@ export class ClassesService {
     }
   }
 
-  async uploadVideoFromGoogleDriveToS3(
-    googleDriveLink: string,
-    fileId: string,
-  ): Promise<string> {
-    try {
-      const response = await Axios.get(googleDriveLink, {
-        responseType: 'arraybuffer',
-      });
-      const fileBuffer = Buffer.from(response.data);
+  // async uploadVideoFromGoogleDriveToS3(
+  //   googleDriveLink: string,
+  //   fileId: string,
+  // ): Promise<string> {
+  //   try {
+  //     const response = await Axios.get(googleDriveLink, {
+  //       responseType: 'arraybuffer',
+  //     });
+  //     const fileBuffer = Buffer.from(response.data);
 
-      const s3Url = await this.uploadVideoToS3(fileBuffer, fileId);
+  //     const s3Url = await this.uploadVideoToS3(fileBuffer, fileId);
 
-      return s3Url;
-    } catch (error) {
-      throw new Error('Error uploading video from Google Drive to S3');
-    }
-  }
+  //     return s3Url;
+  //   } catch (error) {
+  //     throw new Error('Error uploading video from Google Drive to S3');
+  //   }
+  // }
 
   async meetingAttendance(meetingId: number): Promise<any> {
     try {
