@@ -517,6 +517,7 @@ export const questions = main.table("questions", {
         type: integer("type").notNull(),
         createdAt: varchar("created_at", { length: 45 }).notNull(),
         maText: varchar("ma_text", { length: 2000 }),
+        schoolTest: varchar("school_test", { length: 255 }),
 });
 
 export const questionAttempts = main.table("question_attempts", {
