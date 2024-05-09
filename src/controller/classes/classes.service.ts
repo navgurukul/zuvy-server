@@ -11,7 +11,7 @@ import {
   zuvyMeetingAttendance,
 } from '../../../drizzle/schema';
 import { db } from '../../db/index';
-import { eq, sql, count, inArray } from 'drizzle-orm';
+import { eq, sql, count, inArray, isNull } from 'drizzle-orm';
 import { google, calendar_v3 } from 'googleapis';
 import { v4 as uuid } from 'uuid';
 import { createReadStream } from 'fs';
@@ -406,53 +406,76 @@ export class ClassesService {
   }
 
 
-  @Cron('*/3 * * * *')
+  @Cron('0 * * * *')
   async getEventDetails(@Req() req): Promise<any> {
     try {
-      const fetchedTokens = await db
-        .select()
-        .from(userTokens)
-        .where(eq(userTokens.userId, req.user[0].id));
-      if (!fetchedTokens) {
-        return { status: 'error', message: 'Unable to fetch tokens' };
-      }
-      auth2Client.setCredentials({
-        access_token: fetchedTokens[0].accessToken,
-        refresh_token: fetchedTokens[0].refreshToken,
-      });
-      const calendar = google.calendar({ version: 'v3', auth: auth2Client });
-      const allClasses = await db.select().from(classesGoogleMeetLink);
-      for (const classData of allClasses) {
-        if (classData.meetingid != null) {
-          if (classData.s3link == null) {
-            const response = await calendar.events.get({
-              calendarId: 'primary',
-              eventId: classData.meetingid,
-            });
-            if (response.data.attachments) {
-              for (const attachment of response.data.attachments) {
-                if (attachment.mimeType == 'video/mp4') {
-                  // const s3Url = await this.uploadVideoFromGoogleDriveToS3(attachment.fileUrl,attachment.fileId)
-                  let updatedS3Url = await db
-                    .update(classesGoogleMeetLink)
-                    .set({ ...classData, s3link: attachment.fileUrl })
-                    .where(eq(classesGoogleMeetLink.id, classData.id))
-                    .returning();
-                  return {
-                    status: 'success',
-                    message: 'Meeting  updated successfully',
-                    code: 200,
-                    meetingDetails: updatedS3Url,
-                  };
-                }
+      // Retrieve all classes with null s3link
+      const classesWithNullS3Link = await db.select().from(classesGoogleMeetLink).where(isNull(classesGoogleMeetLink.s3link));
+
+      // Iterate through each class
+      for (const classData of classesWithNullS3Link) {
+        // Fetch user tokens
+        const userTokenData = await db.select().from(userTokens).where(eq(userTokens.userEmail, classData.creator));
+
+        // Check if tokens are fetched successfully
+        if (!userTokenData || userTokenData.length === 0) {
+          return { status: 'error', message: 'Unable to fetch tokens' };
+        }
+
+        // Set credentials
+        const tokens = userTokenData[0];
+        auth2Client.setCredentials({
+          access_token: tokens.accessToken,
+          refresh_token: tokens.refreshToken,
+        });
+
+        // Create calendar instance
+        const calendar = google.calendar({ version: 'v3', auth: auth2Client });
+
+        // Check if meetingid exists and s3link is null
+        if (classData.meetingid) {
+          // Retrieve event details
+          const eventDetails = await calendar.events.get({
+            calendarId: 'primary',
+            eventId: classData.meetingid,
+          });
+
+          // Check if event has attachments
+          if (eventDetails.data.attachments) {
+            // Iterate through attachments
+            for (const attachment of eventDetails.data.attachments) {
+              // If attachment is a video, update s3link
+              if (attachment.mimeType === 'video/mp4') {
+                // Update s3link
+                const updatedClass = await db
+                  .update(classesGoogleMeetLink)
+                  .set({ ...classData, s3link: attachment.fileUrl })
+                  .where(eq(classesGoogleMeetLink.id, classData.id))
+                  .returning();
+
+                // Return success response with updated meeting details
+                return {
+                  status: 'success',
+                  message: 'Meeting updated successfully',
+                  code: 200,
+                  meetingDetails: updatedClass,
+                };
               }
             }
           }
         }
       }
+
+      // await db
+      //   .update(classesGoogleMeetLink)
+      //   .set({ s3link: 'not found' })
+      //   .where(isNull(classesGoogleMeetLink.s3link));
+
+      // Return success response if no meetings need updating
       return { status: 'success', message: 'No meetings to update', code: 200 };
     } catch (error) {
-      return { status: 'failure', error: error };
+      // Handle and log errors
+      return { status: 'failure', error: error.message };
     }
   }
 
@@ -648,7 +671,7 @@ export class ClassesService {
       let attendanceSheet = await db.select()
         .from(zuvyStudentAttendance)
         .where(eq(zuvyStudentAttendance.meetingId, meetingId));
-        
+
       if (attendanceSheet.length > 0) {
         return [null, {
           attendanceSheet: attendanceSheet[0].attendance,
@@ -977,7 +1000,7 @@ export class ClassesService {
     }
   }
 
-  async unattendanceClassesByBootcampId(bootcampId){
+  async unattendanceClassesByBootcampId(bootcampId) {
     try {
       const classes = await db.select().from(classesGoogleMeetLink).where(sql`${classesGoogleMeetLink.bootcampId}=${bootcampId}`);
       let classIds = classes.map((classObj) => classObj.meetingid);
