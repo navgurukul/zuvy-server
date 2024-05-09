@@ -21,7 +21,7 @@ import {
 } from '../../../drizzle/schema';
 import axios from 'axios';
 import { error, log } from 'console';
-import { sql, eq, count, inArray, and } from 'drizzle-orm';
+import { sql, eq, count, inArray, and, or } from 'drizzle-orm';
 import { db } from '../../db/index';
 import { promises } from 'dns';
 import {
@@ -690,7 +690,8 @@ export class ContentService {
         .where(eq(zuvyModuleAssessment.moduleId, moduleId));
 
       if (assessment.length > 0) {
-        const ab = Object.values(assessment[0].codingProblems);
+        let ab = [];
+        ab = Object.values(assessment[0].codingProblems);
         const codingQuesIds = ab.reduce((acc, obj) => {
           const key = Object.keys(obj)[0];
           const numericKey = Number(key);
@@ -792,6 +793,70 @@ export class ContentService {
     } catch (error) {
       log(`error: ${error.message}`);
       return [{ status: 'error', message: error.message, code: 404 }, null];
+    }
+  }
+
+  async getAllQuizQuestions(
+    tagId: number,
+    difficulty: 'Easy' | 'Medium' | 'Hard',
+    searchTerm: string = '',
+  ) {
+    try {
+      let queryString;
+      if (!Number.isNaN(tagId) && difficulty == undefined) {
+        queryString = sql`${zuvyModuleQuiz.tagId} = ${tagId}`;
+      } else if (Number.isNaN(tagId) && difficulty != undefined) {
+        queryString = sql`${zuvyModuleQuiz.difficulty} = ${difficulty}`;
+      } else if (!Number.isNaN(tagId) && difficulty != undefined) {
+        queryString = and(
+          eq(zuvyModuleQuiz.difficulty, difficulty),
+          eq(zuvyModuleQuiz.tagId, tagId),
+        );
+      }
+      const result = await db
+        .select()
+        .from(zuvyModuleQuiz)
+        .where(
+          and(
+            queryString,
+            sql`((LOWER(${zuvyModuleQuiz.question}) LIKE '%' || ${searchTerm.toLowerCase()} || '%'))`,
+          ),
+        );
+      return result;
+    } catch (err) {
+      throw err;
+    }
+  }
+
+  async getAllCodingQuestions(
+    tagId: number,
+    difficulty: 'Easy' | 'Medium' | 'Hard',
+    searchTerm: string = '',
+  ) {
+    try {
+      let queryString;
+      if (!Number.isNaN(tagId) && difficulty == undefined) {
+        queryString = sql`${zuvyCodingQuestions.tags} = ${tagId}`;
+      } else if (Number.isNaN(tagId) && difficulty != undefined) {
+        queryString = sql`${zuvyCodingQuestions.difficulty} = ${difficulty}`;
+      } else if (!Number.isNaN(tagId) && difficulty != undefined) {
+        queryString = and(
+          eq(zuvyCodingQuestions.difficulty, difficulty),
+          eq(zuvyCodingQuestions.tags, tagId),
+        );
+      }
+      const result = await db
+        .select()
+        .from(zuvyCodingQuestions)
+        .where(
+          and(
+            queryString,
+            sql`((LOWER(${zuvyCodingQuestions.title}) LIKE '%' || ${searchTerm.toLowerCase()} || '%'))`,
+          ),
+        );
+      return result;
+    } catch (err) {
+      throw err;
     }
   }
 }
