@@ -458,7 +458,7 @@ export class ContentService {
                   .select()
                   .from(zuvyCodingQuestions)
                   .where(
-                    sql`${inArray(zuvyCodingQuestions.id, Object.values(chapterDetails[0].codingQuestions))}`,
+                    eq(zuvyCodingQuestions.id,chapterDetails[0].codingQuestions),
                   )
               : [];
           modifiedChapterDetails.codingQuestionDetails = codingProblemDetails;

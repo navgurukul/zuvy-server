@@ -1937,7 +1937,7 @@ export const zuvyModuleChapter = main.table("zuvy_module_chapter",{
         links:jsonb("links"),
         articleContent: jsonb("article_content"),
         quizQuestions: jsonb("quiz_questions"),
-        codingQuestions: jsonb("coding_questions"),
+        codingQuestions: integer("coding_questions"),
         completionDate: timestamp("completion_date", { withTimezone: true, mode: 'string' }),
         order: integer("order")
 })
