@@ -122,10 +122,10 @@ export class quizDto {
   @ApiProperty({
     type: 'object',
     example: {
-      option1: 'Option 1',
-      option2: 'Option 2',
-      option3: 'Option 3',
-      option4: 'Option 4',
+      1: 'Option 1',
+      2: 'Option 2',
+      3: 'Option 3',
+      4: 'Option 4',
     },
     required: true,
   })
@@ -133,12 +133,12 @@ export class quizDto {
   options: object;
 
   @ApiProperty({
-    type: String,
-    example: 'Option 2',
+    type: Number,
+    example: 2,
     required: true,
   })
-  @IsString()
-  correctOption: string;
+  @IsNumber()
+  correctOption: number;
 
   @ApiProperty({
     type: Number,
@@ -173,12 +173,12 @@ export class quizBatchDto {
       {
         question: 'What is the national animal of India?',
         options: {
-          option1: 'Option 1',
-          option2: 'Option 2',
-          option3: 'Option 3',
-          option4: 'Option 4',
+          1: 'Option 1',
+          2: 'Option 2',
+          3: 'Option 3',
+          4: 'Option 4',
         },
-        correctOption: 'Option 2',
+        correctOption: 2,
         mark: 1,
         tagId: 2,
         difficulty: 'Easy',
@@ -186,12 +186,12 @@ export class quizBatchDto {
       {
         question: 'What is the capital of France?',
         options: {
-          option1: 'Paris',
-          option2: 'London',
-          option3: 'Berlin',
-          option4: 'Rome',
+          1: 'Paris',
+          2: 'London',
+          3: 'Berlin',
+          4: 'Rome',
         },
-        correctOption: 'Paris',
+        correctOption: 3,
         mark: 1,
         tagId: 2,
         difficulty: 'Easy',
@@ -409,4 +409,110 @@ export class CreateAssessmentBody {
   })
   @IsNumber()
   timeLimit: number;
+}
+
+
+export class editQuizDto {
+  
+  @ApiProperty({
+    type: Number,
+    example: 1,
+    required: true
+  })
+  @IsNumber()
+  id: number;
+
+  @ApiProperty({
+    type: String,
+    example: 'What is the national animal of India',
+  })
+  @IsString()
+  @IsOptional()
+  question: string;
+
+  @ApiProperty({
+    type: 'object',
+    example: {
+      1: 'Option 1',
+      2: 'Option 2',
+      3: 'Option 3',
+      4: 'Option 4',
+    }
+  })
+  @IsObject()
+  @IsOptional()
+  options: object;
+
+  @ApiProperty({
+    type: Number,
+    example: 2
+  })
+  @IsNumber()
+  @IsOptional()
+  correctOption: number;
+
+  @ApiProperty({
+    type: Number,
+    example: 1,
+  })
+  @IsNumber()
+  @IsOptional()
+  marks: number;
+
+  @ApiProperty({
+    type: Number,
+    example: 2,
+  })
+  @IsNumber()
+  @IsOptional()
+  tagId: number;
+
+  @ApiProperty({
+    type: difficulty,
+    example: 'Easy'
+  })
+  @IsString()
+  @IsOptional()
+  difficulty: 'Easy' | 'Medium' | 'Hard';
+}
+
+export class editQuizBatchDto {
+  @ApiProperty({
+    type: [editQuizDto],
+    example: [
+      {
+        id: 1,
+        question: 'What is the national animal of India?',
+        options: {
+          1: 'Option 1',
+          2: 'Option 2',
+          3: 'Option 3',
+          4: 'Option 4',
+        },
+        correctOption: 2,
+        marks: 1,
+        tagId: 2,
+        difficulty: 'Easy',
+      },
+      {
+        question: 'What is the capital of France?',
+        options: {
+          1: 'Paris',
+          2: 'London',
+          3: 'Berlin',
+          4: 'Rome',
+        },
+        correctOption: 3,
+        marks: 1,
+        tagId: 2,
+        difficulty: 'Easy',
+      },
+    ],
+    required: true,
+  })
+  @IsArray()
+  @ArrayNotEmpty()
+  @ValidateNested({ each: true })
+  @Type(() => editQuizDto)
+  questions: editQuizDto[];
 }
