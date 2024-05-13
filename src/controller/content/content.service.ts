@@ -511,7 +511,7 @@ export class ContentService {
         if (draggedModuleIndex + 1 > newOrder) {
           for (
             let i = newOrder - 1;
-            i <= draggedModuleIndex + 1 - newOrder;
+            i <= draggedModuleIndex-1;
             i++
           ) {
             await db
@@ -607,11 +607,11 @@ export class ContentService {
         const draggedModuleIndex = chapters.findIndex(
           (m) => m.id === chapterId,
         );
-
+         console.log(draggedModuleIndex);
         if (draggedModuleIndex + 1 > newOrder) {
           for (
             let i = newOrder - 1;
-            i <= draggedModuleIndex + 1 - newOrder;
+            i <= draggedModuleIndex-1;
             i++
           ) {
             await db
