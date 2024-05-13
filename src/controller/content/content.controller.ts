@@ -180,13 +180,6 @@ export class ContentController {
     return res;
   }
 
-  @Post('/createAssessment/:moduleId')
-  @ApiOperation({ summary: 'Create a assessment for this module' })
-  @ApiBearerAuth()
-  async createAssessment(@Param('moduleId') moduleId: number) {
-    const res = await this.contentService.createAssessment(moduleId);
-    return res;
-  }
 
   @Put('/editAssessment/:assessmentId')
   @ApiOperation({ summary: 'Edit the assessment for this module' })
@@ -202,13 +195,6 @@ export class ContentController {
     return res;
   }
 
-  @Get('/getAssessment/:moduleId')
-  @ApiOperation({ summary: 'Get the assessment details inside a module' })
-  @ApiBearerAuth()
-  async getAssessment(@Param('moduleId') moduleId: number) {
-    const res = await this.contentService.getAssessmentDetails(moduleId);
-    return res;
-  }
 
   @Get('/allModules/:bootcampId')
   @ApiOperation({ summary: 'Get all modules of a course' })
@@ -383,12 +369,8 @@ export class ContentController {
   @Post('/editquiz')
   @ApiOperation({ summary: 'Create a quiz' })
   @ApiBearerAuth()
-  async editQuizForModule(
-    @Body() quizQuestions: editQuizBatchDto,
-  ) {
-    const res = await this.contentService.editQuizQuestions(
-      quizQuestions
-    );
+  async editQuizForModule(@Body() quizQuestions: editQuizBatchDto) {
+    const res = await this.contentService.editQuizQuestions(quizQuestions);
     return res;
   }
 }

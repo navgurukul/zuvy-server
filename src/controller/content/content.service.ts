@@ -21,7 +21,17 @@ import {
 } from '../../../drizzle/schema';
 import axios from 'axios';
 import { error, log } from 'console';
-import { SQL,sql, eq, count, inArray, and, or, isNull, getTableColumns } from 'drizzle-orm';
+import {
+  SQL,
+  sql,
+  eq,
+  count,
+  inArray,
+  and,
+  or,
+  isNull,
+  getTableColumns,
+} from 'drizzle-orm';
 import { db } from '../../db/index';
 import { PgTable } from 'drizzle-orm/pg-core';
 import { SQLiteTable } from 'drizzle-orm/sqlite-core';
@@ -272,7 +282,21 @@ export class ContentService {
         .from(zuvyModuleChapter)
         .where(eq(zuvyModuleChapter.moduleId, moduleId));
       const order = existingChaptersForAModule.length + 1;
-      var chapterData = { title: `Chapter ${order}`, moduleId, topicId, order };
+      let newAssessment;
+      let chapterData;
+      if (topicId == 6) {
+        newAssessment = await this.createAssessment(moduleId);
+        chapterData = {
+          title: `Chapter ${order}`,
+          moduleId,
+          topicId,
+          order,
+          assessmentId: newAssessment[0].id,
+        };
+      } else {
+        chapterData = { title: `Chapter ${order}`, moduleId, topicId, order };
+      }
+
       const chapter = await db
         .insert(zuvyModuleChapter)
         .values(chapterData)
@@ -429,6 +453,9 @@ export class ContentService {
         .select()
         .from(zuvyModuleChapter)
         .where(eq(zuvyModuleChapter.id, chapterId));
+      if (chapterDetails[0].topicId == 6) {
+        return await this.getAssessmentDetails(chapterDetails[0].assessmentId);
+      }
       const modifiedChapterDetails: {
         id: number;
         moduleId: number;
@@ -509,11 +536,7 @@ export class ContentService {
         const draggedModuleIndex = modules.findIndex((m) => m.id === moduleId);
 
         if (draggedModuleIndex + 1 > newOrder) {
-          for (
-            let i = newOrder - 1;
-            i <= draggedModuleIndex-1;
-            i++
-          ) {
+          for (let i = newOrder - 1; i <= draggedModuleIndex - 1; i++) {
             await db
               .update(zuvyCourseModules)
               .set({ order: modules[i].order + 1 })
@@ -607,13 +630,8 @@ export class ContentService {
         const draggedModuleIndex = chapters.findIndex(
           (m) => m.id === chapterId,
         );
-         console.log(draggedModuleIndex);
         if (draggedModuleIndex + 1 > newOrder) {
-          for (
-            let i = newOrder - 1;
-            i <= draggedModuleIndex-1;
-            i++
-          ) {
+          for (let i = newOrder - 1; i <= draggedModuleIndex - 1; i++) {
             await db
               .update(zuvyModuleChapter)
               .set({ order: chapters[i].order + 1 })
@@ -690,12 +708,12 @@ export class ContentService {
     }
   }
 
-  async getAssessmentDetails(moduleId: number) {
+  async getAssessmentDetails(assessmentId: number) {
     try {
       const assessment = await db
         .select()
         .from(zuvyModuleAssessment)
-        .where(eq(zuvyModuleAssessment.moduleId, moduleId));
+        .where(eq(zuvyModuleAssessment.id, assessmentId));
       if (assessment.length > 0) {
         let ab = [];
         ab =
@@ -886,42 +904,45 @@ export class ContentService {
     }
   }
 
-   buildConflictUpdateColumns <
-  T extends PgTable | SQLiteTable,
-  Q extends keyof T['_']['columns']
->(
-  table: T,
-  columns: Q[],
-) {
-  const cls = getTableColumns(table);
-  return columns.reduce((acc, column) => {
-    const colName = cls[column].name;
-    acc[column] = sql.raw(`excluded.${colName}`);
-    return acc;
-  }, {} as Record<Q, SQL>);
-};
+  buildConflictUpdateColumns<
+    T extends PgTable | SQLiteTable,
+    Q extends keyof T['_']['columns'],
+  >(table: T, columns: Q[]) {
+    const cls = getTableColumns(table);
+    return columns.reduce(
+      (acc, column) => {
+        const colName = cls[column].name;
+        acc[column] = sql.raw(`excluded.${colName}`);
+        return acc;
+      },
+      {} as Record<Q, SQL>,
+    );
+  }
 
   async editQuizQuestions(editQuesDetails: editQuizBatchDto) {
     try {
-       await db.insert(zuvyModuleQuiz).values(editQuesDetails.questions).onConflictDoUpdate({
-        target: zuvyModuleQuiz.id,
-        set: {
-          question: sql`excluded.question`,
-          options: sql`excluded.options`,
-          difficulty: sql`excluded.difficulty`,
-          tagId: sql`excluded.tag_id`,
-          marks: sql`excluded.marks`,
-           correctOption: sql`excluded.correct_option`
-        }
-       })
+      await db
+        .insert(zuvyModuleQuiz)
+        .values(editQuesDetails.questions)
+        .onConflictDoUpdate({
+          target: zuvyModuleQuiz.id,
+          set: {
+            question: sql`excluded.question`,
+            options: sql`excluded.options`,
+            difficulty: sql`excluded.difficulty`,
+            tagId: sql`excluded.tag_id`,
+            marks: sql`excluded.marks`,
+            correctOption: sql`excluded.correct_option`,
+          },
+        });
 
-       return {
-        status : 'success',
+      return {
+        status: 'success',
         code: 200,
-        message: 'Quiz questions are updated successfully'
-       }
+        message: 'Quiz questions are updated successfully',
+      };
     } catch (error) {
-        throw error;
+      throw error;
     }
   }
 }

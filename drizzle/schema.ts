@@ -1937,6 +1937,7 @@ export const zuvyModuleChapter = main.table("zuvy_module_chapter",{
         articleContent: jsonb("article_content"),
         quizQuestions: jsonb("quiz_questions"),
         codingQuestions: integer("coding_questions"),
+        assessmentId: integer("assessment_id"),
         completionDate: timestamp("completion_date", { withTimezone: true, mode: 'string' }),
         order: integer("order")
 })
@@ -1956,6 +1957,7 @@ export const zuvyModuleAssessment = main.table("zuvy_module_assessment",{
         codingProblems: json("coding_problems"),
         mcq: jsonb("mcq"),
         openEndedQuestions: json("open_ended_questions"),
+        passPercentage: integer("pass_percentage"),
         timeLimit: bigint("time_limit", { mode: "number" })
 })
 

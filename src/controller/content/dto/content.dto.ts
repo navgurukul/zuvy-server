@@ -404,6 +404,14 @@ export class CreateAssessmentBody {
 
   @ApiProperty({
     type: Number,
+    example: 70,
+    required: true,
+  })
+  @IsNumber()
+  passPercentage: number;
+
+  @ApiProperty({
+    type: Number,
     example: 129304,
     required: true,
   })
