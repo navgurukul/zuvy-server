@@ -11,7 +11,6 @@ import {
   users,
   batchEnrollments,
   classesGoogleMeetLink,
-  bootcampTracking,
   bootcampType,
   zuvyCodingQuestions,
   zuvyCodingSubmission,

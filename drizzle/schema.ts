@@ -1808,13 +1808,13 @@ export const articleTracking = main.table("zuvy_article_tracking", {
         updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
 });
 
-export const quizTracking = main.table("zuvy_quiz_tracking", {
+export const zuvyQuizTracking = main.table("zuvy_quiz_tracking", {
         id: serial("id").primaryKey().notNull(),
         userId: integer("user_id").references(() => users.id),
         moduleId: integer("module_id").notNull(),
         mcqId: integer("mcq_id").notNull(),
-        quizId: integer("quiz_id"),
         attemptCount: integer("attempt_count").default(0).notNull(),
+        chapterId: integer("chapter_id").notNull(),
         status: varchar("status", { length: 255 }),
         chossenOption: integer("chossen_option").notNull(),
         createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
@@ -1822,19 +1822,19 @@ export const quizTracking = main.table("zuvy_quiz_tracking", {
 });
 
 
-export const assignmentSubmission = main.table("zuvy_assignment_submission", {
+export const zuvyAssignmentSubmission = main.table("zuvy_assignment_submission", {
         id: serial("id").primaryKey().notNull(),
         userId: integer("user_id").references(() => users.id),
         moduleId: integer("module_id").notNull(),
         bootcampId: integer("bootcamp_id").references(() => bootcamps.id),
-        assignmentId: integer("assignment_id").notNull(),
+        chapterId: integer("chapter_id").notNull(),
         timeLimit: timestamp("time_limit",{ withTimezone: true, mode: 'string' }).notNull(),
         projectUrl: varchar("project_url", { length: 255 }),
         createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
         updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
 });
 
-export const moduleTracking = main.table("zuvy_module_tracking", {
+export const zuvyModuleTracking = main.table("zuvy_module_tracking", {
         id: serial("id").primaryKey().notNull(),
         userId: integer("user_id").references(() => users.id),
         moduleId: integer("module_id").notNull(),
@@ -1844,7 +1844,7 @@ export const moduleTracking = main.table("zuvy_module_tracking", {
         updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
 });
 
-export const bootcampTracking = main.table("zuvy_bootcamp_tracking", {
+export const zuvyBootcampTracking = main.table("zuvy_bootcamp_tracking", {
         id: serial("id").primaryKey().notNull(),
         userId: integer("user_id").references(() => users.id),
         progress: integer("progress").default(0),
@@ -1901,7 +1901,7 @@ export const zuvyModuleQuiz = main.table("zuvy_module_quiz",{
         id: serial("id").primaryKey().notNull(),
         question: text("question"),
         options: jsonb("options"),
-        correctOption: text("correct_option"),
+        correctOption: integer("correct_option"),
         marks: integer("marks"),
         difficulty: difficulty("difficulty"),
         tagId: integer("tag_id").references(() => zuvyTags.id)
@@ -1938,6 +1938,7 @@ export const zuvyModuleChapter = main.table("zuvy_module_chapter",{
         articleContent: jsonb("article_content"),
         quizQuestions: jsonb("quiz_questions"),
         codingQuestions: integer("coding_questions"),
+        assessmentId: integer("assessment_id"),
         completionDate: timestamp("completion_date", { withTimezone: true, mode: 'string' }),
         order: integer("order")
 })
@@ -1957,6 +1958,7 @@ export const zuvyModuleAssessment = main.table("zuvy_module_assessment",{
         codingProblems: json("coding_problems"),
         mcq: jsonb("mcq"),
         openEndedQuestions: json("open_ended_questions"),
+        passPercentage: integer("pass_percentage"),
         timeLimit: bigint("time_limit", { mode: "number" })
 })
 

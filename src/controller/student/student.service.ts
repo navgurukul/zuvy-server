@@ -3,7 +3,7 @@ import { error, log } from 'console';
 import {
     batchEnrollments,
     batches,
-    bootcampTracking,
+    zuvyBootcampTracking,
     bootcamps,
     bootcampType
 } from '../../../drizzle/schema';
@@ -28,9 +28,9 @@ export class StudentService {
           .where(eq(bootcamps.id, e.bootcampId));
         let progress = await db
           .select()
-          .from(bootcampTracking)
+          .from(zuvyBootcampTracking)
           .where(
-            sql`${bootcampTracking.userId} = ${userId} AND ${bootcampTracking.bootcampId} = ${e.bootcampId}`,
+            sql`${zuvyBootcampTracking.userId} = ${userId} AND ${zuvyBootcampTracking.bootcampId} = ${e.bootcampId}`,
           );
         bootcamp[0]['progress'] = progress[0] ? progress[0].progress : 0;
         return bootcamp[0];

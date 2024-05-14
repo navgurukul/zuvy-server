@@ -11,7 +11,7 @@ import {
   users,
   batchEnrollments,
   classesGoogleMeetLink,
-  bootcampTracking,
+  zuvyBootcampTracking,
   bootcampType,
 } from '../../../drizzle/schema';
 
@@ -768,9 +768,9 @@ export class BootcampService {
 
           const progressInfo = await db
             .select()
-            .from(bootcampTracking)
+            .from(zuvyBootcampTracking)
             .where(
-              sql`${bootcampTracking.userId} = ${user.id} and ${bootcampTracking.bootcampId} = ${enrollment.bootcampId}`,
+              sql`${zuvyBootcampTracking.userId} = ${user.id} and ${zuvyBootcampTracking.bootcampId} = ${enrollment.bootcampId}`,
             );
 
           if (progressInfo.length > 0) {
@@ -807,9 +807,9 @@ export class BootcampService {
       }
       let progressInfo = await db
         .select()
-        .from(bootcampTracking)
+        .from(zuvyBootcampTracking)
         .where(
-          sql`${bootcampTracking.userId}= ${userId} and ${bootcampTracking.bootcampId} = ${bootcampId}`,
+          sql`${zuvyBootcampTracking.userId}= ${userId} and ${zuvyBootcampTracking.bootcampId} = ${bootcampId}`,
         );
       let batchInfo = await db
         .select()
