@@ -446,35 +446,34 @@ export class ClassesService {
               // If attachment is a video, update s3link
               if (attachment.mimeType === 'video/mp4') {
                 // Update s3link
-                const updatedClass = await db
+                await db
                   .update(classesGoogleMeetLink)
                   .set({ ...classData, s3link: attachment.fileUrl })
                   .where(eq(classesGoogleMeetLink.id, classData.id))
                   .returning();
 
                 // Return success response with updated meeting details
-                return {
-                  status: 'success',
-                  message: 'Meeting updated successfully',
-                  code: 200,
-                  meetingDetails: updatedClass,
-                };
               }
             }
           }
         }
       }
-      
+
+      return [null, {
+        status: 'success',
+        message: 'Meeting updated successfully',
+        code: 200,
+      }];
+      // Return success response if no meetings need updating
+
       // await db
       //   .update(classesGoogleMeetLink)
       //   .set({ s3link: 'not found' })
       //   .where(isNull(classesGoogleMeetLink.s3link));
 
-      // Return success response if no meetings need updating
-       return { status: 'success', message: 'No meetings to update', code: 200 };
     } catch (error) { 
       // Handle and log errors
-      return { status: 'failure', error: error.message };
+      return [{ status: 'failure', error: error.message }];
     }
   }
 

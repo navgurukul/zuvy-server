@@ -163,9 +163,13 @@ export class ClassesController {
 
   @Cron('0 * * * *')
   @Get('/getEventDetails')
-  @ApiOperation({ summary: 'getting event details' })
+  @ApiOperation({ summary: 'Update the drive s3link ' })
   @ApiBearerAuth()
-  getEventDetails(@Res() res): Promise<object> {
-    return this.classesService.getEventDetails(res);
+  async getEventDetails(@Res() res): Promise<object> {
+    const [err, succes] = await this.classesService.getEventDetails(res);
+    if(err){
+      throw new BadRequestException(err);
+    }
+    return succes;
   }
 }
