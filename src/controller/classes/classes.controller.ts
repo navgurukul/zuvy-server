@@ -160,11 +160,10 @@ export class ClassesController {
     return this.classesService.getAttendeesByMeetingId(id);
   }
 
-  @Cron('*/30 * * * *')
-  @Get('/getEventDetails')
-  @ApiOperation({ summary: 'getting event details' })
+  @Post('/seeding/table')
+  @ApiOperation({ summary: 'Get the google class attendees by meetingId' })
   @ApiBearerAuth()
-  getEventDetails(@Res() res): Promise<object> {
-    return this.classesService.getEventDetails(res);
+  async seedingClass(): Promise<object> {
+    return await this.classesService.seedingClass();
   }
 }

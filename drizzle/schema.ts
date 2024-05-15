@@ -1717,6 +1717,23 @@ export const classesGoogleMeetLink= main.table("zuvy_classes_google_meet_link",{
         s3link:text("s3link"),
 })
 
+export const zuvySessions = main.table("zuvy_sessions", {
+        id: serial("id").primaryKey().notNull(),
+        meetingId:text("meetingid").notNull(),
+	hangoutLink:text("hangout_link").notNull(),
+	creator:text("creator").notNull(),
+	startTime:text("start_time").notNull(),
+	endTime:text("end_time").notNull(),
+        batchId: integer('batch_id').notNull().references(() => batches.id, {
+                onDelete: 'cascade',
+        }),
+        bootcampId: integer('bootcamp_id').notNull().references(() => bootcamps.id, {
+                onDelete: 'cascade',
+        }),
+	title:text("title").notNull(),
+        s3link:text("s3link"),
+})
+
 export const bootcamps = main.table("zuvy_bootcamps", {
 	id: serial("id").primaryKey().notNull(),
 	name: text("name").notNull(),
@@ -1790,6 +1807,27 @@ export const batchEnrollments = main.table("zuvy_batch_enrollments", {
         createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
         updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
 });
+
+export const classesInTheBatch = relations(batchEnrollments, ({one, many}) => ({
+        classesInfo: many(classesGoogleMeetLink)
+
+}))
+
+export const batchEnrollmentsRelations = relations(batchEnrollments, ({one, many}) => ({
+        userInfo: one(users, {
+                fields: [batchEnrollments.userId], 
+                references: [users.id] 
+        }),
+        batchInfo: one(batches, {
+                fields: [batchEnrollments.batchId], 
+                references: [batches.id] 
+        }),
+        // classesInfo: many(classesGoogleMeetLink, {
+        //     references: {
+        //         // Add your references here
+        //     }
+        // })
+}))       // bootcamps: many(bootcamps)
 
 // export const bootcampUsersRelations = relations(users, ({one, many}) => ({
 //         batches: one(batches, {
