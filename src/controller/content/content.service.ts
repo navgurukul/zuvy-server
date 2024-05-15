@@ -721,7 +721,7 @@ export class ContentService {
       if (assessmentBody.openEndedQuestions) {
         await db
           .update(zuvyOpenEndedQuestion)
-          .set({ usage: sql`${zuvyModuleQuiz.usage}::numeric + 1` })
+          .set({ usage: sql`${zuvyOpenEndedQuestion.usage}::numeric + 1` })
           .where(
             sql`${inArray(zuvyOpenEndedQuestion.id, assessmentBody.openEndedQuestions)}`,
           );
