@@ -47,6 +47,9 @@ import {
   openEndedDto,
   CreateAssessmentBody,
   editQuizBatchDto,
+  UpdateProblemDto,
+  deleteQuestionDto,
+  UpdateOpenEndedDto
 } from './dto/content.dto';
 import { CreateProblemDto } from '../codingPlatform/dto/codingPlatform.dto';
 import { PatchBootcampSettingDto } from '../bootcamp/dto/bootcamp.dto';
@@ -577,36 +580,36 @@ export class ContentService {
     }
   }
 
-  async createCodingProblemForModule(
-    chapterId: number,
-    codingProblem: CreateProblemDto,
+  async updateCodingProblemForModule(
+    questionId: number,
+    codingProblem: UpdateProblemDto,
   ) {
     try {
       let examples = [];
       let testCases = [];
-      for (let i = 0; i < codingProblem.examples.length; i++) {
-        examples.push(codingProblem.examples[i].inputs);
+
+      if (codingProblem.examples) {
+        for (let i = 0; i < codingProblem.examples.length; i++) {
+          examples.push(codingProblem.examples[i].inputs);
+        }
+        codingProblem.examples = examples;
       }
-      codingProblem.examples = examples;
-      for (let j = 0; j < codingProblem.testCases.length; j++) {
-        testCases.push(codingProblem.testCases[j].inputs);
+      if (codingProblem.testCases) {
+        for (let j = 0; j < codingProblem.testCases.length; j++) {
+          testCases.push(codingProblem.testCases[j].inputs);
+        }
+        codingProblem.testCases = testCases;
       }
-      codingProblem.testCases = testCases;
-      const result = await db
-        .insert(zuvyCodingQuestions)
-        .values(codingProblem)
-        .returning();
-      if (result.length > 0) {
-        let codingIds = result.map((q) => {
-          return q.id;
-        });
-        const questionId = codingIds[0];
-        await db
-          .update(zuvyModuleChapter)
-          .set({ codingQuestions: questionId })
-          .where(eq(zuvyModuleChapter.id, chapterId));
-      }
-      return result;
+      await db
+        .update(zuvyCodingQuestions)
+        .set(codingProblem)
+        .where(eq(zuvyCodingQuestions.id, questionId));
+
+      return {
+        status: 'success',
+        code: 200,
+        message: 'Coding question has been updated successfully'
+      };
     } catch (err) {
       throw err;
     }
@@ -904,21 +907,6 @@ export class ContentService {
     }
   }
 
-  buildConflictUpdateColumns<
-    T extends PgTable | SQLiteTable,
-    Q extends keyof T['_']['columns'],
-  >(table: T, columns: Q[]) {
-    const cls = getTableColumns(table);
-    return columns.reduce(
-      (acc, column) => {
-        const colName = cls[column].name;
-        acc[column] = sql.raw(`excluded.${colName}`);
-        return acc;
-      },
-      {} as Record<Q, SQL>,
-    );
-  }
-
   async editQuizQuestions(editQuesDetails: editQuizBatchDto) {
     try {
       await db
@@ -943,6 +931,65 @@ export class ContentService {
       };
     } catch (error) {
       throw error;
+    }
+  }
+ 
+  async updateOpenEndedQuestion(questionId:number,openEndedBody: UpdateOpenEndedDto)
+  {
+    try{
+      await db
+      .update(zuvyOpenEndedQuestion)
+      .set(openEndedBody)
+      .where(eq(zuvyOpenEndedQuestion.id, questionId));
+
+      return {
+        status: 'success',
+        code: 200,
+        message: 'Open ended question has been updated successfully'
+      }
+    }
+    catch(err)
+    {
+      throw err;
+    }
+  }
+
+  async deleteQuiz(id: deleteQuestionDto) {
+    try {
+      await db.delete(zuvyModuleQuiz).where(sql`${inArray(zuvyModuleQuiz.id,id.questionIds)}`);
+      return {
+        status: 'success',
+        code: 200,
+        message: 'The quiz questions has been deleted successfully',
+      };
+    } catch (err) {
+      throw err;
+    }
+  }
+
+  async deleteCodingProblem(id: deleteQuestionDto) {
+    try {
+      await db.delete(zuvyCodingQuestions).where(sql`${inArray(zuvyCodingQuestions.id,id.questionIds)}`);
+      return {
+        status: 'success',
+        code: 200,
+        message: 'The coding question has been deleted successfully',
+      };
+    } catch (err) {
+      throw err;
+    }
+  }
+
+  async deleteOpenEndedQuestion(id: deleteQuestionDto) {
+    try {
+      await db.delete(zuvyOpenEndedQuestion).where(sql`${inArray(zuvyOpenEndedQuestion.id,id.questionIds)}`);
+      return {
+        status: 'success',
+        code: 200,
+        message: 'The open ended question has been deleted successfully',
+      };
+    } catch (err) {
+      throw err;
     }
   }
 }

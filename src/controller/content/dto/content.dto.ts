@@ -361,6 +361,48 @@ export class openEndedDto {
   @IsOptional()
   difficulty: 'Easy' | 'Medium' | 'Hard';
 }
+
+export class UpdateOpenEndedDto {
+  @ApiProperty({
+    type: String,
+    example: 'What is the national animal of India'
+  })
+  @IsOptional()
+  @IsString()
+  question: string;
+
+  @ApiProperty({
+    type: String,
+    example: 'Tiger is the national animal of India'
+  })
+  @IsOptional()
+  @IsString()
+  answer: string;
+
+  @ApiProperty({
+    type: Number,
+    example: 1,
+  })
+  @IsNumber()
+  @IsOptional()
+  marks: number;
+
+  @ApiProperty({
+    type: Number,
+    example: 2,
+  })
+  @IsNumber()
+  @IsOptional()
+  tagId: number;
+
+  @ApiProperty({
+    type: difficulty,
+    example: 'Easy'
+  })
+  @IsString()
+  @IsOptional()
+  difficulty: 'Easy' | 'Medium' | 'Hard';
+}
 export class CreateAssessmentBody {
   @ApiProperty({
     type: String,
@@ -523,4 +565,154 @@ export class editQuizBatchDto {
   @ValidateNested({ each: true })
   @Type(() => editQuizDto)
   questions: editQuizDto[];
+}
+
+export class testCaseDto {
+  @ApiProperty({
+    type: 'object',
+    example: {
+      input: [2, 3],
+      output: [5],
+    },
+    required: true,
+  })
+  @IsObject()
+  inputs: object;
+}
+
+export class UpdateProblemDto {
+  @ApiProperty({
+    type: String,
+    example: 'Add two numbers'
+  })
+  @IsOptional()
+  @IsString()
+  title: string;
+
+  @ApiProperty({
+    type: String,
+    example: 'Write a program to add two float values'
+  })
+  @IsOptional()
+  @IsString()
+  description: string;
+
+  @ApiProperty({
+    type: difficulty,
+    example: 'Easy',
+  })
+  @IsOptional()
+  @IsString()
+  difficulty: 'Easy' | 'Medium' | 'Hard';
+
+  @ApiProperty({
+    type: Number,
+    example: 2,
+  })
+  @IsOptional()
+  @IsNumber()
+  tags: number;
+
+  @ApiProperty({
+    type: String,
+    example: ' 10 <number < 1000'
+  })
+  @IsOptional()
+  @IsString()
+  constraints: string;
+
+  @ApiProperty({
+    type: Number,
+    example: 45499,
+  })
+  @IsOptional()
+  @IsNumber()
+  authorId: number;
+
+  @ApiProperty({
+    type: [testCaseDto],
+    example: [
+      {
+        inputs: {
+          input: [2, 3],
+          output: [5],
+        },
+      },
+    ]
+  })
+  @IsOptional()
+  @IsArray()
+  @ArrayNotEmpty()
+  @ValidateNested({ each: true })
+  @Type(() => testCaseDto)
+  examples: testCaseDto[];
+
+  @ApiProperty({
+    type: [testCaseDto],
+    example: [
+      {
+        inputs: {
+          input: [2, 3],
+          output: [5],
+        },
+      },
+      {
+        inputs: {
+          input: [5, 6],
+          output: [11],
+        },
+      },
+    ]
+  })
+  @IsOptional()
+  @IsArray()
+  @ArrayNotEmpty()
+  @ValidateNested({ each: true })
+  @Type(() => testCaseDto)
+  testCases: testCaseDto[];
+
+  @ApiProperty({
+    type: [Number, String],
+    examples: [5, 'hello', 11],
+  })
+  @IsOptional()
+  @IsArray()
+  @ArrayNotEmpty()
+  expectedOutput: any[];
+
+  @ApiProperty({
+    type: String,
+    example: 'solution of the coding question'
+  })
+  @IsOptional()
+  @IsString()
+  solution: string;
+
+  @ApiProperty({
+    type: String,
+    example: '2023-03-01T00:00:00Z'
+  })
+  @IsString()
+  @IsOptional()
+  createdAt: string;
+
+  @ApiProperty({
+    type: String,
+    example: '2023-03-01T00:00:00Z'
+  })
+  @IsString()
+  @IsOptional()
+  updatedAt: string;
+
+}
+
+export class deleteQuestionDto{
+  @ApiProperty({
+    type: [Number],
+    examples: [1,2,3],
+    required: true
+  })
+  @IsArray()
+  @ArrayNotEmpty()
+  questionIds: any[];
 }
