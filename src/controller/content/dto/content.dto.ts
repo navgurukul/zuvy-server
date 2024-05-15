@@ -446,16 +446,14 @@ export class CreateAssessmentBody {
 
   @ApiProperty({
     type: Number,
-    example: 70,
-    required: true,
+    example: 70
   })
   @IsNumber()
   passPercentage: number;
 
   @ApiProperty({
     type: Number,
-    example: 129304,
-    required: true,
+    example: 129304
   })
   @IsNumber()
   timeLimit: number;

@@ -662,21 +662,66 @@ export class ContentService {
             .where(eq(zuvyModuleChapter.id, chapterId));
         }
       } else if (editData.newOrder == undefined) {
+        const chapter = await db
+          .select()
+          .from(zuvyModuleChapter)
+          .where(eq(zuvyModuleChapter.id, chapterId));
+
+        if (editData.quizQuestions) {
+          if (editData.quizQuestions.length == 0) {
+            editData.quizQuestions = null;
+          }
+          const earlierQuizIds =
+            chapter[0].quizQuestions != null
+              ? Object.values(chapter[0].quizQuestions)
+              : [];
+          const remainingQuizIds =
+            editData.quizQuestions != null && earlierQuizIds.length > 0
+              ? earlierQuizIds.filter(
+                  (questionId) => !editData.quizQuestions.includes(questionId),
+                )
+              : [];
+          const toUpdateIds =
+            editData.quizQuestions != null && earlierQuizIds.length > 0
+              ? editData.quizQuestions.filter(
+                  (questionId) => !earlierQuizIds.includes(questionId),
+                )
+              : editData.quizQuestions;
+          if (remainingQuizIds.length > 0) {
+            await db
+              .update(zuvyModuleQuiz)
+              .set({ usage: sql`${zuvyModuleQuiz.usage}::numeric - 1` })
+              .where(sql`${inArray(zuvyModuleQuiz.id, remainingQuizIds)}`);
+          }
+          if (toUpdateIds.length > 0) {
+            await db
+              .update(zuvyModuleQuiz)
+              .set({ usage: sql`${zuvyModuleQuiz.usage}::numeric + 1` })
+              .where(sql`${inArray(zuvyModuleQuiz.id, toUpdateIds)}`);
+          }
+        } else if (
+          editData.codingQuestions ||
+          (editData.codingQuestions == null &&
+            chapter[0].codingQuestions != null)
+        ) {
+          const earlierCodingId = chapter[0].codingQuestions;
+
+          if (earlierCodingId !== editData.codingQuestions) {
+            await db
+              .update(zuvyCodingQuestions)
+              .set({ usage: sql`${zuvyCodingQuestions.usage}::numeric - 1` })
+              .where(eq(zuvyCodingQuestions.id, earlierCodingId));
+
+            await db
+              .update(zuvyCodingQuestions)
+              .set({ usage: sql`${zuvyCodingQuestions.usage}::numeric + 1` })
+              .where(eq(zuvyCodingQuestions.id, editData.codingQuestions));
+          }
+        }
         await db
           .update(zuvyModuleChapter)
           .set(editData)
           .where(eq(zuvyModuleChapter.id, chapterId));
-        if (editData.quizQuestions) {
-          await db
-            .update(zuvyModuleQuiz)
-            .set({ usage: sql`${zuvyModuleQuiz.usage}::numeric + 1` })
-            .where(sql`${inArray(zuvyModuleQuiz.id, editData.quizQuestions)}`);
-        } else if (editData.codingQuestions) {
-          await db
-            .update(zuvyCodingQuestions)
-            .set({ usage: sql`${zuvyCodingQuestions.usage}::numeric + 1` })
-            .where(eq(zuvyCodingQuestions.id, editData.codingQuestions));
-        }
       }
       return {
         message: 'Modified successfully',
@@ -707,27 +752,80 @@ export class ContentService {
     assessmentBody: CreateAssessmentBody,
   ) {
     try {
-      await db
-        .update(zuvyModuleAssessment)
-        .set(assessmentBody)
-        .where(eq(zuvyModuleAssessment.id, assessmentId))
-        .returning();
+      const assessment = await db
+        .select()
+        .from(zuvyModuleAssessment)
+        .where(eq(zuvyModuleAssessment.id, assessmentId)); 
       if (assessmentBody.mcq) {
-        await db
-          .update(zuvyModuleQuiz)
-          .set({ usage: sql`${zuvyModuleQuiz.usage}::numeric + 1` })
-          .where(sql`${inArray(zuvyModuleQuiz.id, assessmentBody.mcq)}`);
+        
+        const earlierQuizIds =
+          assessment[0].mcq != null
+            ? Object.values(assessment[0].mcq)
+            : [];
+        const remainingQuizIds =
+          assessmentBody.mcq != null && earlierQuizIds.length > 0
+            ? earlierQuizIds.filter(
+                (questionId) => !assessmentBody.mcq.includes(questionId),
+              )
+            : [];
+        const toUpdateIds =
+        assessmentBody.mcq != null && earlierQuizIds.length > 0
+            ? assessmentBody.mcq.filter(
+                (questionId) => !earlierQuizIds.includes(questionId),
+              )
+            : assessmentBody.mcq;
+        if (remainingQuizIds.length > 0) {
+          await db
+            .update(zuvyModuleQuiz)
+            .set({ usage: sql`${zuvyModuleQuiz.usage}::numeric - 1` })
+            .where(sql`${inArray(zuvyModuleQuiz.id, remainingQuizIds)}`);
+        }
+        if (toUpdateIds.length > 0) {
+          await db
+            .update(zuvyModuleQuiz)
+            .set({ usage: sql`${zuvyModuleQuiz.usage}::numeric + 1` })
+            .where(sql`${inArray(zuvyModuleQuiz.id, toUpdateIds)}`);
+        }
+        if (assessmentBody.mcq.length == 0) {
+          assessmentBody.mcq = null;
+        }
       }
       if (assessmentBody.openEndedQuestions) {
-        await db
-          .update(zuvyOpenEndedQuestion)
-          .set({ usage: sql`${zuvyOpenEndedQuestion.usage}::numeric + 1` })
-          .where(
-            sql`${inArray(zuvyOpenEndedQuestion.id, assessmentBody.openEndedQuestions)}`,
-          );
+        const earlierOpenEndedIds =
+          assessment[0].openEndedQuestions != null
+            ? Object.values(assessment[0].openEndedQuestions)
+            : [];
+        const remainingQuizIds =
+          assessmentBody.openEndedQuestions != null && earlierOpenEndedIds.length > 0
+            ? earlierOpenEndedIds.filter(
+                (questionId) => !assessmentBody.openEndedQuestions.includes(questionId),
+              )
+            : [];
+        const toUpdateIds =
+        assessmentBody.openEndedQuestions != null && earlierOpenEndedIds.length > 0
+            ? assessmentBody.openEndedQuestions.filter(
+                (questionId) => !earlierOpenEndedIds.includes(questionId),
+              )
+            : assessmentBody.openEndedQuestions;
+        if (remainingQuizIds.length > 0) {
+          await db
+            .update(zuvyOpenEndedQuestion)
+            .set({ usage: sql`${zuvyOpenEndedQuestion.usage}::numeric - 1` })
+            .where(sql`${inArray(zuvyOpenEndedQuestion.id, remainingQuizIds)}`);
+        }
+        if (toUpdateIds.length > 0) {
+          await db
+            .update(zuvyOpenEndedQuestion)
+            .set({ usage: sql`${zuvyOpenEndedQuestion.usage}::numeric + 1` })
+            .where(sql`${inArray(zuvyOpenEndedQuestion.id, toUpdateIds)}`);
+        }
+        if (assessmentBody.openEndedQuestions.length == 0) {
+          assessmentBody.openEndedQuestions = null;
+        }
       }
       if (assessmentBody.codingProblems) {
         let ab = [];
+        let ab1 = [];
         ab =
           assessmentBody.codingProblems != null
             ? Object.values(assessmentBody.codingProblems)
@@ -743,12 +841,55 @@ export class ContentService {
                 return acc;
               }, [])
             : null;
-
-        await db
-          .update(zuvyCodingQuestions)
-          .set({ usage: sql`${zuvyCodingQuestions.usage}::numeric + 1` })
-          .where(sql`${inArray(zuvyCodingQuestions.id, codingQuesIds)}`);
+            ab1 =
+          assessmentBody.codingProblems != null
+            ? Object.values(assessment[0].codingProblems)
+            : null;
+            const previousIds = ab1.reduce((acc, obj) => {
+              const key = Object.keys(obj)[0];
+              const numericKey = Number(key);
+              if (!isNaN(numericKey)) {
+                acc.push(numericKey);
+              }
+              return acc;
+            }, [])
+            const earlierCodingIds =
+            assessment[0].codingProblems != null
+              ? previousIds
+              : [];
+          const remainingQuizIds =
+            codingQuesIds != null && earlierCodingIds.length > 0
+              ? earlierCodingIds.filter(
+                  (questionId) => !codingQuesIds.includes(questionId),
+                )
+              : [];
+          const toUpdateIds =
+          assessmentBody.codingProblems != null && earlierCodingIds.length > 0
+              ? codingQuesIds.filter(
+                  (questionId) => !earlierCodingIds.includes(questionId),
+                )
+              : codingQuesIds;
+          if (remainingQuizIds.length > 0) {
+            await db
+              .update(zuvyCodingQuestions)
+              .set({ usage: sql`${zuvyCodingQuestions.usage}::numeric - 1` })
+              .where(sql`${inArray(zuvyCodingQuestions.id, remainingQuizIds)}`);
+          }
+          if (toUpdateIds.length > 0) {
+            await db
+              .update(zuvyCodingQuestions)
+              .set({ usage: sql`${zuvyCodingQuestions.usage}::numeric + 1` })
+              .where(sql`${inArray(zuvyCodingQuestions.id, toUpdateIds)}`);
+          }
+          if (ab.length == 0) {
+            assessmentBody.codingProblems = null;
+          }
       }
+      await db
+        .update(zuvyModuleAssessment)
+        .set(assessmentBody)
+        .where(eq(zuvyModuleAssessment.id, assessmentId))
+        .returning();
       return {
         status: 'success',
         code: 200,
@@ -1081,18 +1222,15 @@ export class ContentService {
           sql`${inArray(zuvyOpenEndedQuestion.id, id.questionIds)} and ${zuvyOpenEndedQuestion.usage} > 0`,
         );
       if (usedOpenEndedQuestions.length > 0) {
-        const usedIds = usedOpenEndedQuestions.map((openEndedQues) => openEndedQues.id);
+        const usedIds = usedOpenEndedQuestions.map(
+          (openEndedQues) => openEndedQues.id,
+        );
         const remainingIds = id.questionIds.filter(
           (questionId) => !usedIds.includes(questionId),
         );
         await db
           .delete(zuvyOpenEndedQuestion)
           .where(sql`${inArray(zuvyOpenEndedQuestion.id, remainingIds)}`);
-        return {
-          status: 'success',
-          code: 200,
-          message: `Coding question which is used in other places like chapters and assessment cannot be deleted`,
-        };
         return {
           status: 'success',
           code: 200,
