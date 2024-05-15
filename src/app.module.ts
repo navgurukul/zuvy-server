@@ -10,10 +10,13 @@ import { CodingPlatformModule } from './controller/codingPlatform/codingPlatform
 import { APP_INTERCEPTOR } from '@nestjs/core';
 import { JwtModule } from '@nestjs/jwt';
 import { LoggingInterceptor } from './loggerInterceptor/logger';
+import { ScheduleModule } from '@nestjs/schedule';
+import { ScheduleService } from './schedule/schedule.service';
 
 
 @Module({
   imports: [
+    ScheduleModule.forRoot(),
     ConfigModule.forRoot(),
     JwtModule.register({
       global:true,
@@ -29,6 +32,7 @@ import { LoggingInterceptor } from './loggerInterceptor/logger';
     CodingPlatformModule
   ],
   providers: [
+    ScheduleService,
     {
       provide: APP_INTERCEPTOR,
       useClass: LoggingInterceptor,

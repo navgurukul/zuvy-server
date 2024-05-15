@@ -161,15 +161,15 @@ export class ClassesController {
     return this.classesService.getAttendeesByMeetingId(id);
   }
 
-  @Cron('0 * * * *')
-  @Get('/getEventDetails')
-  @ApiOperation({ summary: 'Update the drive s3link ' })
-  @ApiBearerAuth()
-  async getEventDetails(@Res() res): Promise<object> {
-    const [err, succes] = await this.classesService.getEventDetails(res);
-    if(err){
-      throw new BadRequestException(err);
-    }
-    return succes;
-  }
+  // @Cron('0 */1 * * *')
+  // @Get('/getEventDetails')
+  // @ApiOperation({ summary: 'Update the drive s3link ' })
+  // @ApiBearerAuth()
+  // async getEventDetails(@Res() res): Promise<object> {
+  //   const [err, succes] = await this.classesService.getEventDetails(res);
+  //   if(err){
+  //     throw new BadRequestException(err);
+  //   }
+  //   return succes;
+  // }
 }
