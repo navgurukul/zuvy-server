@@ -755,13 +755,10 @@ export class ContentService {
       const assessment = await db
         .select()
         .from(zuvyModuleAssessment)
-        .where(eq(zuvyModuleAssessment.id, assessmentId)); 
+        .where(eq(zuvyModuleAssessment.id, assessmentId));
       if (assessmentBody.mcq) {
-        
         const earlierQuizIds =
-          assessment[0].mcq != null
-            ? Object.values(assessment[0].mcq)
-            : [];
+          assessment[0].mcq != null ? Object.values(assessment[0].mcq) : [];
         const remainingQuizIds =
           assessmentBody.mcq != null && earlierQuizIds.length > 0
             ? earlierQuizIds.filter(
@@ -769,7 +766,7 @@ export class ContentService {
               )
             : [];
         const toUpdateIds =
-        assessmentBody.mcq != null && earlierQuizIds.length > 0
+          assessmentBody.mcq != null && earlierQuizIds.length > 0
             ? assessmentBody.mcq.filter(
                 (questionId) => !earlierQuizIds.includes(questionId),
               )
@@ -796,13 +793,16 @@ export class ContentService {
             ? Object.values(assessment[0].openEndedQuestions)
             : [];
         const remainingQuizIds =
-          assessmentBody.openEndedQuestions != null && earlierOpenEndedIds.length > 0
+          assessmentBody.openEndedQuestions != null &&
+          earlierOpenEndedIds.length > 0
             ? earlierOpenEndedIds.filter(
-                (questionId) => !assessmentBody.openEndedQuestions.includes(questionId),
+                (questionId) =>
+                  !assessmentBody.openEndedQuestions.includes(questionId),
               )
             : [];
         const toUpdateIds =
-        assessmentBody.openEndedQuestions != null && earlierOpenEndedIds.length > 0
+          assessmentBody.openEndedQuestions != null &&
+          earlierOpenEndedIds.length > 0
             ? assessmentBody.openEndedQuestions.filter(
                 (questionId) => !earlierOpenEndedIds.includes(questionId),
               )
@@ -841,49 +841,47 @@ export class ContentService {
                 return acc;
               }, [])
             : null;
-            ab1 =
+        ab1 =
           assessmentBody.codingProblems != null
             ? Object.values(assessment[0].codingProblems)
             : null;
-            const previousIds = ab1.reduce((acc, obj) => {
-              const key = Object.keys(obj)[0];
-              const numericKey = Number(key);
-              if (!isNaN(numericKey)) {
-                acc.push(numericKey);
-              }
-              return acc;
-            }, [])
-            const earlierCodingIds =
-            assessment[0].codingProblems != null
-              ? previousIds
-              : [];
-          const remainingQuizIds =
-            codingQuesIds != null && earlierCodingIds.length > 0
-              ? earlierCodingIds.filter(
-                  (questionId) => !codingQuesIds.includes(questionId),
-                )
-              : [];
-          const toUpdateIds =
+        const previousIds = ab1.reduce((acc, obj) => {
+          const key = Object.keys(obj)[0];
+          const numericKey = Number(key);
+          if (!isNaN(numericKey)) {
+            acc.push(numericKey);
+          }
+          return acc;
+        }, []);
+        const earlierCodingIds =
+          assessment[0].codingProblems != null ? previousIds : [];
+        const remainingQuizIds =
+          codingQuesIds != null && earlierCodingIds.length > 0
+            ? earlierCodingIds.filter(
+                (questionId) => !codingQuesIds.includes(questionId),
+              )
+            : [];
+        const toUpdateIds =
           assessmentBody.codingProblems != null && earlierCodingIds.length > 0
-              ? codingQuesIds.filter(
-                  (questionId) => !earlierCodingIds.includes(questionId),
-                )
-              : codingQuesIds;
-          if (remainingQuizIds.length > 0) {
-            await db
-              .update(zuvyCodingQuestions)
-              .set({ usage: sql`${zuvyCodingQuestions.usage}::numeric - 1` })
-              .where(sql`${inArray(zuvyCodingQuestions.id, remainingQuizIds)}`);
-          }
-          if (toUpdateIds.length > 0) {
-            await db
-              .update(zuvyCodingQuestions)
-              .set({ usage: sql`${zuvyCodingQuestions.usage}::numeric + 1` })
-              .where(sql`${inArray(zuvyCodingQuestions.id, toUpdateIds)}`);
-          }
-          if (ab.length == 0) {
-            assessmentBody.codingProblems = null;
-          }
+            ? codingQuesIds.filter(
+                (questionId) => !earlierCodingIds.includes(questionId),
+              )
+            : codingQuesIds;
+        if (remainingQuizIds.length > 0) {
+          await db
+            .update(zuvyCodingQuestions)
+            .set({ usage: sql`${zuvyCodingQuestions.usage}::numeric - 1` })
+            .where(sql`${inArray(zuvyCodingQuestions.id, remainingQuizIds)}`);
+        }
+        if (toUpdateIds.length > 0) {
+          await db
+            .update(zuvyCodingQuestions)
+            .set({ usage: sql`${zuvyCodingQuestions.usage}::numeric + 1` })
+            .where(sql`${inArray(zuvyCodingQuestions.id, toUpdateIds)}`);
+        }
+        if (ab.length == 0) {
+          assessmentBody.codingProblems = null;
+        }
       }
       await db
         .update(zuvyModuleAssessment)
@@ -1151,28 +1149,45 @@ export class ContentService {
         .where(
           sql`${inArray(zuvyModuleQuiz.id, id.questionIds)} and ${zuvyModuleQuiz.usage} > 0`,
         );
+      let deletedQuestions;
       if (usedQuiz.length > 0) {
         const usedIds = usedQuiz.map((quiz) => quiz.id);
         const remainingIds = id.questionIds.filter(
           (questionId) => !usedIds.includes(questionId),
         );
-        await db
+        deletedQuestions = await db
           .delete(zuvyModuleQuiz)
           .where(sql`${inArray(zuvyModuleQuiz.id, remainingIds)}`);
+        if (deletedQuestions.rowCount > 0) {
+          return {
+            status: 'success',
+            code: 200,
+            message: `Quiz questions which is used in other places like chapters and assessment cannot be deleted`,
+          };
+        } else {
+          return {
+            status: 'error',
+            code: 400,
+            message: `Questions cannot be deleted`,
+          };
+        }
+      }
+      deletedQuestions = await db
+        .delete(zuvyModuleQuiz)
+        .where(sql`${inArray(zuvyModuleQuiz.id, id.questionIds)}`);
+      if (deletedQuestions.rowCount > 0) {
         return {
           status: 'success',
           code: 200,
-          message: `Quiz question which is used in other places like chapters and assessment cannot be deleted`,
+          message: 'The quiz questions has been deleted successfully',
+        };
+      } else {
+        return {
+          status: 'error',
+          code: 400,
+          message: `Questions cannot be deleted`,
         };
       }
-      await db
-        .delete(zuvyModuleQuiz)
-        .where(sql`${inArray(zuvyModuleQuiz.id, id.questionIds)}`);
-      return {
-        status: 'success',
-        code: 200,
-        message: 'The quiz questions has been deleted successfully',
-      };
     } catch (err) {
       throw err;
     }
@@ -1186,28 +1201,45 @@ export class ContentService {
         .where(
           sql`${inArray(zuvyCodingQuestions.id, id.questionIds)} and ${zuvyCodingQuestions.usage} > 0`,
         );
+      let deletedQuestions;
       if (usedCodingQuestions.length > 0) {
         const usedIds = usedCodingQuestions.map((problem) => problem.id);
         const remainingIds = id.questionIds.filter(
           (questionId) => !usedIds.includes(questionId),
         );
-        await db
+        deletedQuestions = await db
           .delete(zuvyCodingQuestions)
           .where(sql`${inArray(zuvyCodingQuestions.id, remainingIds)}`);
+        if (deletedQuestions.rowCount > 0) {
+          return {
+            status: 'success',
+            code: 200,
+            message: `Coding question which is used in other places like chapters and assessment cannot be deleted`,
+          };
+        } else {
+          return {
+            status: 'error',
+            code: 400,
+            message: `Questions cannot be deleted`,
+          };
+        }
+      }
+      deletedQuestions = await db
+        .delete(zuvyCodingQuestions)
+        .where(sql`${inArray(zuvyCodingQuestions.id, id.questionIds)}`);
+      if (deletedQuestions.rowCount > 0) {
         return {
           status: 'success',
           code: 200,
-          message: `Coding question which is used in other places like chapters and assessment cannot be deleted`,
+          message: 'The coding question has been deleted successfully',
+        };
+      } else {
+        return {
+          status: 'error',
+          code: 400,
+          message: `Questions cannot be deleted`,
         };
       }
-      await db
-        .delete(zuvyCodingQuestions)
-        .where(sql`${inArray(zuvyCodingQuestions.id, id.questionIds)}`);
-      return {
-        status: 'success',
-        code: 200,
-        message: 'The coding question has been deleted successfully',
-      };
     } catch (err) {
       throw err;
     }
@@ -1221,6 +1253,7 @@ export class ContentService {
         .where(
           sql`${inArray(zuvyOpenEndedQuestion.id, id.questionIds)} and ${zuvyOpenEndedQuestion.usage} > 0`,
         );
+      let deletedQuestions;
       if (usedOpenEndedQuestions.length > 0) {
         const usedIds = usedOpenEndedQuestions.map(
           (openEndedQues) => openEndedQues.id,
@@ -1228,23 +1261,41 @@ export class ContentService {
         const remainingIds = id.questionIds.filter(
           (questionId) => !usedIds.includes(questionId),
         );
-        await db
+
+        deletedQuestions = await db
           .delete(zuvyOpenEndedQuestion)
-          .where(sql`${inArray(zuvyOpenEndedQuestion.id, remainingIds)}`);
+          .where(sql`${inArray(zuvyOpenEndedQuestion.id, remainingIds)}`)
+          .returning();
+        if (deletedQuestions.rowCount > 0) {
+          return {
+            status: 'success',
+            code: 200,
+            message: `Open ended question which is used in other places like chapters and assessment cannot be deleted`,
+          };
+        } else {
+          return {
+            status: 'error',
+            code: 400,
+            message: `Questions cannot be deleted`,
+          };
+        }
+      }
+      deletedQuestions = await db
+        .delete(zuvyOpenEndedQuestion)
+        .where(sql`${inArray(zuvyOpenEndedQuestion.id, id.questionIds)}`);
+      if (deletedQuestions.rowCount > 0) {
         return {
           status: 'success',
           code: 200,
-          message: `Open ended question which is used in other places like chapters and assessment cannot be deleted`,
+          message: 'The open ended question has been deleted successfully',
+        };
+      } else {
+        return {
+          status: 'error',
+          code: 400,
+          message: `Questions cannot be deleted`,
         };
       }
-      await db
-        .delete(zuvyOpenEndedQuestion)
-        .where(sql`${inArray(zuvyOpenEndedQuestion.id, id.questionIds)}`);
-      return {
-        status: 'success',
-        code: 200,
-        message: 'The open ended question has been deleted successfully',
-      };
     } catch (err) {
       throw err;
     }
