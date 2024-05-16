@@ -1869,6 +1869,7 @@ export const zuvyCodingQuestions = main.table("zuvy_coding_questions",{
     solution: text("solution"), 
     createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }),
     updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }),
+    usage: integer("usage").default(0)
 })
 
 export const zuvyCodingSubmission = main.table("zuvy_coding_submission", {
@@ -1904,7 +1905,8 @@ export const zuvyModuleQuiz = main.table("zuvy_module_quiz",{
         correctOption: integer("correct_option"),
         marks: integer("marks"),
         difficulty: difficulty("difficulty"),
-        tagId: integer("tag_id").references(() => zuvyTags.id)
+        tagId: integer("tag_id").references(() => zuvyTags.id),
+        usage: integer("usage").default(0)
 })
 
 export const zuvyCourseModules = main.table("zuvy_course_modules",{
@@ -1937,7 +1939,7 @@ export const zuvyModuleChapter = main.table("zuvy_module_chapter",{
         links:jsonb("links"),
         articleContent: jsonb("article_content"),
         quizQuestions: jsonb("quiz_questions"),
-        codingQuestions: integer("coding_questions"),
+        codingQuestions: integer("coding_questions").references(() => zuvyCodingQuestions.id,{onDelete: "set null", onUpdate: "set null" }),
         assessmentId: integer("assessment_id"),
         completionDate: timestamp("completion_date", { withTimezone: true, mode: 'string' }),
         order: integer("order")
@@ -1968,7 +1970,8 @@ export const zuvyOpenEndedQuestion = main.table("zuvy_openEnded_questions",{
         answer: text("answer"),
         difficulty: difficulty("difficulty"),
         tagId: integer("tag_id").references(() => zuvyTags.id),
-        marks: integer("marks")
+        marks: integer("marks"),
+        usage: integer("usage").default(0)
 })
 
 export const zuvyStudentAttendance = main.table("zuvy_student_attendance",{
