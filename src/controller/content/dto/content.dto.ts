@@ -714,3 +714,15 @@ export class deleteQuestionDto{
   @ArrayNotEmpty()
   questionIds: any[];
 }
+
+export class CreateTagDto{
+  @ApiProperty({
+    type: String,
+    example : 'Linked List',
+    required: true
+  })
+
+  @IsString()
+  @IsNotEmpty()
+  tagName : string
+}

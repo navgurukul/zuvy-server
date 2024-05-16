@@ -18,6 +18,7 @@ import {
   difficulty,
   assessment,
   postsRelations,
+  zuvyTags,
 } from '../../../drizzle/schema';
 import axios from 'axios';
 import { error, log } from 'console';
@@ -50,6 +51,7 @@ import {
   UpdateProblemDto,
   deleteQuestionDto,
   UpdateOpenEndedDto,
+  CreateTagDto
 } from './dto/content.dto';
 import { CreateProblemDto } from '../codingPlatform/dto/codingPlatform.dto';
 import { PatchBootcampSettingDto } from '../bootcamp/dto/bootcamp.dto';
@@ -461,6 +463,8 @@ export class ContentService {
       }
       const modifiedChapterDetails: {
         id: number;
+        title: string,
+        description: string,
         moduleId: number;
         topicId: number;
         order: number;
@@ -469,6 +473,8 @@ export class ContentService {
         contentDetails?: any[];
       } = {
         id: chapterDetails[0].id,
+        title: chapterDetails[0].title,
+        description: chapterDetails[0].description,
         moduleId: chapterDetails[0].moduleId,
         topicId: chapterDetails[0].topicId,
         order: chapterDetails[0].order,
@@ -1313,6 +1319,59 @@ export class ContentService {
         };
       }
     } catch (err) {
+      throw err;
+    }
+  }
+
+  async getAllTags() {
+    try {
+      const allTags = await db.select().from(zuvyTags);
+      if(allTags.length > 0)
+        {
+          return {
+            status: 'success',
+            code: 200,
+            allTags
+          }
+        }
+      else {
+        return {
+        
+            status: 'error',
+            code: 404,
+            message : 'No tags found.Please create one'
+          
+        }
+      }  
+    }
+    catch(err)
+    {
+      throw err;
+    }
+  }
+
+  async createTag(tag: CreateTagDto)
+  {
+    try {
+      const newTag = await db.insert(zuvyTags).values(tag).returning();
+      if(newTag.length> 0)
+        {
+          return {
+            status: 'success',
+            code: 200,
+            newTag
+          }
+        }
+        else {
+          return {
+            status: 'error',
+            code: 404,
+            message: 'Tag is not created.Please try again.'
+          }
+        }
+    }
+    catch(err)
+    {
       throw err;
     }
   }
