@@ -318,7 +318,7 @@ export class ContentService {
     }
   }
 
-  async createQuizForModule(quiz: quizBatchDto, chapterId: number) {
+  async createQuizForModule(quiz: quizBatchDto) {
     try {
       const quizQuestions = quiz.questions.map((q) => ({
         question: q.question,
@@ -334,18 +334,19 @@ export class ContentService {
         .values(quizQuestions)
         .returning();
       if (result.length > 0) {
-        let quizIds = result.map((q) => {
-          return q.id;
-        });
-        if (quiz.quizQuestionIds) {
-          quizIds.push(...quiz.quizQuestionIds);
+        return {
+          status: "success",
+          code: 200,
+          result
         }
-        await db
-          .update(zuvyModuleChapter)
-          .set({ quizQuestions: quizIds })
-          .where(eq(zuvyModuleChapter.id, chapterId));
       }
-      return result;
+      else {
+        return {
+          status: "error",
+          code: 404,
+          message: "Quiz questions did not create successfully.Please try again"
+        }
+      }
     } catch (err) {
       throw err;
     }
