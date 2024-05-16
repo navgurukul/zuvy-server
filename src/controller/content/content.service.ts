@@ -600,16 +600,24 @@ export class ContentService {
         }
         codingProblem.testCases = testCases;
       }
-      await db
+      const updatedQuestion = await db
         .update(zuvyCodingQuestions)
         .set(codingProblem)
-        .where(eq(zuvyCodingQuestions.id, questionId));
-
-      return {
-        status: 'success',
-        code: 200,
-        message: 'Coding question has been updated successfully',
-      };
+        .where(eq(zuvyCodingQuestions.id, questionId))
+        .returning();
+      if (updatedQuestion.length > 0) {
+        return {
+          status: 'success',
+          code: 200,
+          message: 'Coding question has been updated successfully',
+        };
+      } else {
+        return {
+          status: 'error',
+          code: 404,
+          message: 'Coding question not available',
+        };
+      }
     } catch (err) {
       throw err;
     }
@@ -1126,16 +1134,24 @@ export class ContentService {
     openEndedBody: UpdateOpenEndedDto,
   ) {
     try {
-      await db
+      const updatedQuestion = await db
         .update(zuvyOpenEndedQuestion)
         .set(openEndedBody)
-        .where(eq(zuvyOpenEndedQuestion.id, questionId));
-
-      return {
-        status: 'success',
-        code: 200,
-        message: 'Open ended question has been updated successfully',
-      };
+        .where(eq(zuvyOpenEndedQuestion.id, questionId))
+        .returning();
+      if (updatedQuestion.length > 0) {
+        return {
+          status: 'success',
+          code: 200,
+          message: 'Open ended question has been updated successfully',
+        };
+      } else {
+        return {
+          status: 'error',
+          code: 404,
+          message: 'Open ended question not available',
+        };
+      }
     } catch (err) {
       throw err;
     }
