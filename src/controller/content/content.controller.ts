@@ -35,7 +35,8 @@ import {
   editQuizBatchDto,
   UpdateProblemDto,
   deleteQuestionDto,
-  UpdateOpenEndedDto
+  UpdateOpenEndedDto,
+  CreateTagDto
 } from './dto/content.dto';
 import { CreateProblemDto } from '../codingPlatform/dto/codingPlatform.dto';
 import { difficulty } from 'drizzle/schema';
@@ -411,4 +412,22 @@ export class ContentController {
     const res = await this.contentService.deleteOpenEndedQuestion(questionIds);
     return res;
   }
+
+  @Get('/allTags')
+  @ApiOperation({ summary: 'Get all the available tags' })
+  @ApiBearerAuth()
+  async getAllTags() {
+    const res = await this.contentService.getAllTags();
+    return res;
+  }
+
+  @Post('/createTag')
+  @ApiOperation({summary: 'Create a tag for the curriculum'})
+  @ApiBearerAuth()
+  async createTag(@Body() tag:CreateTagDto)
+  {
+    const res = await this.contentService.createTag(tag);
+    return res;
+  }
+
 }
