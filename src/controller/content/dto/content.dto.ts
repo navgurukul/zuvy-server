@@ -205,13 +205,6 @@ export class quizBatchDto {
   @Type(() => quizDto)
   questions: quizDto[];
 
-  @ApiProperty({
-    type: [Number],
-    example: [1, 2],
-  })
-  @IsArray()
-  @IsOptional()
-  quizQuestionIds: number[];
 }
 
 export class reOrderDto {

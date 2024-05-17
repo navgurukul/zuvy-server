@@ -137,20 +137,12 @@ export class ContentController {
 
   @Post('/quiz')
   @ApiOperation({ summary: 'Create a quiz' })
-  @ApiQuery({
-    name: 'chapterId',
-    required: true,
-    type: Number,
-    description: 'chapterId',
-  })
   @ApiBearerAuth()
   async createQuizForModule(
-    @Body() quizQuestions: quizBatchDto,
-    @Query('chapterId') chapterId: number,
+    @Body() quizQuestions: quizBatchDto
   ) {
     const res = await this.contentService.createQuizForModule(
-      quizQuestions,
-      chapterId,
+      quizQuestions
     );
     return res;
   }
