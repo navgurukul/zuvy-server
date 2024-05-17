@@ -13,6 +13,8 @@ import {
   IsArray,
   isNumber,
   IsJSON,
+  isObject,
+  IsBoolean,
 } from 'class-validator';
 import { truncateSync } from 'fs';
 import { Type } from 'class-transformer';
@@ -41,6 +43,51 @@ export class moduleDto {
   })
   @IsNumber()
   timeAlloted: number;
+
+  @ApiProperty({
+    type: Boolean,
+    example: false
+  })
+  @IsOptional()
+  @IsBoolean()
+  isLock: boolean;
+}
+
+export class projectDto {
+  @ApiProperty({
+    type: String,
+    example: 'Project on advance Python',
+  })
+  @IsOptional()
+  @IsString()
+  title: string;
+
+  @ApiProperty({
+    type: Object,
+    example : {
+      "description" : "This project is based on the 3 months bootcamps that you have been taught"
+    }
+  })
+  @IsOptional()
+  @IsObject()
+  instruction: object;
+
+  @ApiProperty({
+    type: Boolean,
+    example: false
+  })
+  @IsOptional()
+  @IsBoolean()
+  isLock: boolean;
+
+  @ApiProperty({
+    type: String,
+    example: '2023-03-01T00:00:00Z'
+  })
+  @IsString()
+  @IsOptional()
+  deadline: string;
+
 }
 
 export class chapterDto {

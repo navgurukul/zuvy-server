@@ -36,7 +36,8 @@ import {
   UpdateProblemDto,
   deleteQuestionDto,
   UpdateOpenEndedDto,
-  CreateTagDto
+  CreateTagDto,
+  projectDto
 } from './dto/content.dto';
 import { CreateProblemDto } from '../codingPlatform/dto/codingPlatform.dto';
 import { difficulty } from 'drizzle/schema';
@@ -103,17 +104,110 @@ export class ContentController {
 
   @Post('/modules/:bootcampId')
   @ApiOperation({ summary: 'Create the module of a particular bootcamp' })
+  @ApiQuery({
+    name: 'typeId',
+    required: true,
+    type: Number,
+    description: 'type id',
+  })
   @ApiBearerAuth()
   async createModule(
     @Body() moduleData: moduleDto,
     @Param('bootcampId') bootcampId: number,
+    @Query('typeId') typeId: number,
   ) {
     const res = await this.contentService.createModuleForCourse(
       bootcampId,
       moduleData,
+      typeId
     );
     return res;
   }
+
+  @Post('/projects/:bootcampId')
+  @ApiOperation({ summary: 'Create a project of a particular bootcamp' })
+  @ApiQuery({
+    name: 'typeId',
+    required: true,
+    type: Number,
+    description: 'type id',
+  })
+  @ApiBearerAuth()
+  async createProject(
+    @Body() projectData: projectDto,
+    @Param('bootcampId') bootcampId: number,
+    @Query('typeId') typeId: number,
+  ) {
+    const res = await this.contentService.createProjectForCourse(
+      bootcampId,
+      projectData,
+      typeId
+    );
+    return res;
+  }
+
+  @Get('/project/:id')
+  @ApiOperation({ summary: 'Get the project details of a particular bootcamp' })
+  @ApiQuery({
+    name: 'bootcampId',
+    required: true,
+    type: Number,
+    description: 'bootcamp id',
+  })
+  @ApiBearerAuth()
+  async getProjectDetails(
+    @Param('id') id: number,
+    @Query('bootcampId') bootcampId: number,
+  ) {
+    const res = await this.contentService.getProjectDetails(
+      bootcampId,
+      id
+    );
+    return res;
+  }
+
+  @Patch('/updateProjects/:projectId')
+  @ApiOperation({ summary: 'Update the project'})
+  @ApiBearerAuth()
+  async updateProject(
+    @Body() projectData: projectDto,
+    @Param('projectId') projectId: number,
+  ) {
+    const res = await this.contentService.updateProjectDetails(
+      projectId,
+      projectData
+    );
+    return res;
+  }
+
+  @Delete('/deleteProject/:projectId')
+  @ApiOperation({ summary: 'Delete the project' })
+  @ApiQuery({
+    name: 'bootcampId',
+    required: true,
+    type: Number,
+    description: 'bootcamp id',
+  })
+  @ApiQuery({
+    name: 'moduleId',
+    required: true,
+    type: Number,
+    description: 'module id',
+  })
+  @ApiBearerAuth()
+  async deleteProject(
+    @Param('projectId') projectId: number,
+    @Query('bootcampId') bootcampId : number,
+    @Query('moduleId') moduleId : number
+  ) {
+    const res = await this.contentService.deleteProjectForBootcamp(
+      projectId,
+      moduleId,
+      bootcampId
+    );
+    return res;
+  }
+
 
   @Post('/chapter/:moduleId')
   @ApiOperation({ summary: 'Create a chapter for this module' })
