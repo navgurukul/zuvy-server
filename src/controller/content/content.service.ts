@@ -2,25 +2,17 @@ import { Injectable, Logger } from '@nestjs/common';
 import {
   zuvyModuleTracking,
   zuvyAssignmentSubmission,
-  articleTracking,
   zuvyQuizTracking,
   zuvyModuleChapter,
   zuvyModuleTopics,
   zuvyCourseModules,
   zuvyModuleQuiz,
   zuvyCodingQuestions,
-  zuvyOpenEndedQuestion,
+  zuvyOpenEndedQuestions,
   zuvyModuleAssessment,
-  zuvyChapterTracking,
-  batchEnrollments,
-  moduleChapterRelations,
-  questions,
-  difficulty,
-  assessment,
-  postsRelations,
-  zuvyTags,
-  zuvyCourseProjects,
+  zuvyCourseProjects
 } from '../../../drizzle/schema';
+
 import axios from 'axios';
 import { error, log } from 'console';
 import {
@@ -505,7 +497,7 @@ export class ContentService {
   async createOpenEndedQuestions(questions: openEndedDto) {
     try {
       const openEndedQuestions = await db
-        .insert(zuvyOpenEndedQuestion)
+        .insert(zuvyOpenEndedQuestions)
         .values(questions)
         .returning();
       return openEndedQuestions;
@@ -976,15 +968,15 @@ export class ContentService {
             : assessmentBody.openEndedQuestions;
         if (remainingQuizIds.length > 0) {
           await db
-            .update(zuvyOpenEndedQuestion)
-            .set({ usage: sql`${zuvyOpenEndedQuestion.usage}::numeric - 1` })
-            .where(sql`${inArray(zuvyOpenEndedQuestion.id, remainingQuizIds)}`);
+            .update(zuvyOpenEndedQuestions)
+            .set({ usage: sql`${zuvyOpenEndedQuestions.usage}::numeric - 1` })
+            .where(sql`${inArray(zuvyOpenEndedQuestions.id, remainingQuizIds)}`);
         }
         if (toUpdateIds.length > 0) {
           await db
-            .update(zuvyOpenEndedQuestion)
-            .set({ usage: sql`${zuvyOpenEndedQuestion.usage}::numeric + 1` })
-            .where(sql`${inArray(zuvyOpenEndedQuestion.id, toUpdateIds)}`);
+            .update(zuvyOpenEndedQuestions)
+            .set({ usage: sql`${zuvyOpenEndedQuestions.usage}::numeric + 1` })
+            .where(sql`${inArray(zuvyOpenEndedQuestions.id, toUpdateIds)}`);
         }
         if (assessmentBody.openEndedQuestions.length == 0) {
           assessmentBody.openEndedQuestions = null;
@@ -1105,9 +1097,9 @@ export class ContentService {
           openEndedQuesIds != null
             ? await db
                 .select()
-                .from(zuvyOpenEndedQuestion)
+                .from(zuvyOpenEndedQuestions)
                 .where(
-                  sql`${inArray(zuvyOpenEndedQuestion.id, openEndedQuesIds)}`,
+                  sql`${inArray(zuvyOpenEndedQuestions.id, openEndedQuesIds)}`,
                 )
             : [];
         const codingProblems =
@@ -1294,9 +1286,9 @@ export class ContentService {
   ) {
     try {
       const updatedQuestion = await db
-        .update(zuvyOpenEndedQuestion)
+        .update(zuvyOpenEndedQuestions)
         .set(openEndedBody)
-        .where(eq(zuvyOpenEndedQuestion.id, questionId))
+        .where(eq(zuvyOpenEndedQuestions.id, questionId))
         .returning();
       if (updatedQuestion.length > 0) {
         return {
@@ -1424,9 +1416,9 @@ export class ContentService {
     try {
       const usedOpenEndedQuestions = await db
         .select()
-        .from(zuvyOpenEndedQuestion)
+        .from(zuvyOpenEndedQuestions)
         .where(
-          sql`${inArray(zuvyOpenEndedQuestion.id, id.questionIds)} and ${zuvyOpenEndedQuestion.usage} > 0`,
+          sql`${inArray(zuvyOpenEndedQuestions.id, id.questionIds)} and ${zuvyOpenEndedQuestions.usage} > 0`,
         );
       let deletedQuestions;
       if (usedOpenEndedQuestions.length > 0) {
@@ -1438,8 +1430,8 @@ export class ContentService {
         );
 
         deletedQuestions = await db
-          .delete(zuvyOpenEndedQuestion)
-          .where(sql`${inArray(zuvyOpenEndedQuestion.id, remainingIds)}`)
+          .delete(zuvyOpenEndedQuestions)
+          .where(sql`${inArray(zuvyOpenEndedQuestions.id, remainingIds)}`)
           .returning();
         if (deletedQuestions.rowCount > 0) {
           return {
@@ -1456,8 +1448,8 @@ export class ContentService {
         }
       }
       deletedQuestions = await db
-        .delete(zuvyOpenEndedQuestion)
-        .where(sql`${inArray(zuvyOpenEndedQuestion.id, id.questionIds)}`);
+        .delete(zuvyOpenEndedQuestions)
+        .where(sql`${inArray(zuvyOpenEndedQuestions.id, id.questionIds)}`);
       if (deletedQuestions.rowCount > 0) {
         return {
           status: 'success',

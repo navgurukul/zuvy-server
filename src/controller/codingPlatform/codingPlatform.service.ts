@@ -7,12 +7,6 @@ import { SubmitCodeDto,CreateProblemDto } from './dto/codingPlatform.dto';
 import * as _ from 'lodash';
 import { error, log } from 'console';
 import {
-  bootcamps,
-  batches,
-  users,
-  batchEnrollments,
-  classesGoogleMeetLink,
-  bootcampType,
   zuvyCodingQuestions,
   zuvyCodingSubmission
 } from '../../../drizzle/schema';

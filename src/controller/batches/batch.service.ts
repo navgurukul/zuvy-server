@@ -1,10 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import {
-  batches,
-  bootcamps,
+  zuvyBatches,
   users,
   sansaarUserRoles,
-  batchEnrollments,
+  zuvyBatchEnrollments,
 } from '../../../drizzle/schema';
 import { db } from '../../db/index';
 import { eq, sql } from 'drizzle-orm';
@@ -14,19 +13,19 @@ import { log } from 'console';
 export class BatchesService {
   async createBatch(batch) {
     try {
-      const newData = await db.insert(batches).values(batch).returning();
+      const newData = await db.insert(zuvyBatches).values(batch).returning();
       const usersData = await db
         .select()
-        .from(batchEnrollments)
+        .from(zuvyBatchEnrollments)
         .where(
-          sql`${batchEnrollments.bootcampId} = ${batch.bootcampId} AND ${batchEnrollments.batchId} IS NULL`,
+          sql`${zuvyBatchEnrollments.bootcampId} = ${zuvyBatchEnrollments.bootcampId} AND ${zuvyBatchEnrollments.batchId} IS NULL`,
         )
         .limit(batch.capEnrollment);
 
       if (usersData.length > 0) {
         let userids = usersData.map((u) => u.userId);
         await db
-          .update(batchEnrollments)
+          .update(zuvyBatchEnrollments)
           .set({ batchId: newData[0].id })
           .where(
             sql`bootcamp_id = ${batch.bootcampId} AND user_id IN ${userids}`,
@@ -49,7 +48,7 @@ export class BatchesService {
 
   async getBatchById(id: number) {
     try {
-      let data = await db.select().from(batches).where(eq(batches.id, id));
+      let data = await db.select().from(zuvyBatches).where(eq(zuvyBatches.id, id));
       if (data.length === 0) {
         return [
           { status: 'error', message: 'Batch not found', code: 404 },
@@ -60,8 +59,8 @@ export class BatchesService {
       // if (students){
       let enrollStudents = await db
         .select()
-        .from(batchEnrollments)
-        .where(eq(batchEnrollments.batchId, id));
+        .from(zuvyBatchEnrollments)
+        .where(eq(zuvyBatchEnrollments.batchId, id));
 
       const batchInstructor = await db
         .select()
@@ -90,25 +89,18 @@ export class BatchesService {
 
   async updateBatch(id: number, batch: object) {
     try {
-      let batchData = await db.select().from(batches).where(eq(batches.id, id));
+      let batchData = await db.select().from(zuvyBatches).where(eq(zuvyBatches.id, id));
       if (batchData.length === 0) {
         return [
           { status: 'error', message: 'Batch not found', code: 404 },
           null,
         ];
       }
-      // if (batch['capEnrollment']) {
-      //     batchData[0].capEnrollment =batch['capEnrollment']
-      //     // let [err,res] =  await this.capEnrollment(batchData[0], true);
-      //     // if(err){
-      //     //     return [err, null];
-      //     // }
-      // }
       batch['updatedAt'] = new Date();
       let updateData = await db
-        .update(batches)
+        .update(zuvyBatches)
         .set(batch)
-        .where(eq(batches.id, id))
+        .where(eq(zuvyBatches.id, id))
         .returning();
       if (updateData.length === 0) {
         return [
@@ -133,11 +125,11 @@ export class BatchesService {
 
   async deleteBatch(id: number) {
     try {
-      let data = await db.delete(batches).where(eq(batches.id, id)).returning();
+      let data = await db.delete(zuvyBatches).where(eq(zuvyBatches.id, id)).returning();
       await db
-        .update(batchEnrollments)
+        .update(zuvyBatchEnrollments)
         .set({ batchId: null })
-        .where(eq(batchEnrollments.batchId, id))
+        .where(eq(zuvyBatchEnrollments.batchId, id))
         .returning();
       if (data.length === 0) {
         return [
@@ -158,20 +150,20 @@ export class BatchesService {
   async reassignBatch(studentID, newBatchID: number, oldBatchID: number) {
     try {
       const res = await db
-        .update(batchEnrollments)
+        .update(zuvyBatchEnrollments)
         .set({ batchId: newBatchID })
         .where(
-          sql`${batchEnrollments.userId} = ${BigInt(studentID)} AND ${batchEnrollments.batchId} = ${oldBatchID}`,
+          sql`${zuvyBatchEnrollments.userId} = ${BigInt(studentID)} AND ${zuvyBatchEnrollments.batchId} = ${oldBatchID}`,
         )
         .returning();
     if (res.length){
         return [
-          null,
-          {
-            status: 'success',
-            message: 'Batch reassign successfully',
-            code: 200,
-          },
+            null,
+            {
+                status: 'success',
+                message: 'Batch reassign successfully',
+                code: 200,
+            },
         ];
     }
     return [{code: 200, status: 'success', message : 'Unassign to the new batch'}]

@@ -6,14 +6,7 @@ import axios from 'axios';
 import * as _ from 'lodash';
 import { error, log } from 'console';
 import {
-  bootcamps,
-  batches,
-  users,
-  batchEnrollments,
-  classesGoogleMeetLink,
-  bootcampType,
-  zuvyCodingQuestions,
-  zuvyCodingSubmission,
+  zuvyBatchEnrollments
 } from '../../../drizzle/schema';
 
 const { ZUVY_CONTENT_URL } = process.env;
@@ -50,12 +43,12 @@ export class SubmissionService {
         },
       });
 
-      const batchEnrollmentsCount = await db
+      const zuvyBatchEnrollmentsCount = await db
         .select({
-          count: sql<number>`cast(count(${batchEnrollments.id}) as int)`,
+          count: sql<number>`cast(count(${zuvyBatchEnrollments.id}) as int)`,
         })
-        .from(batchEnrollments)
-        .where(eq(batchEnrollments.bootcampId, bootcampId));
+        .from(zuvyBatchEnrollments)
+        .where(eq(zuvyBatchEnrollments.bootcampId, bootcampId));
 
       trackingData.forEach((course) => {
         course.moduleChapterData.forEach((chapterTracking) => {
@@ -67,7 +60,7 @@ export class SubmissionService {
 
       return {
         trackingData,
-        totalStudents: batchEnrollmentsCount[0]?.count,
+        totalStudents: zuvyBatchEnrollmentsCount[0]?.count,
       };
     } catch (err) {
       throw err;
