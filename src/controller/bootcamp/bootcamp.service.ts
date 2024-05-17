@@ -135,7 +135,7 @@ export class BootcampService {
         try {
           let respo = await axios.get(
             ZUVY_CONTENT_URL +
-              `/${id}?populate=zuvy_modules&populate=zuvy_modules.zuvy_articles&populate=zuvy_modules.zuvy_mcqs.quiz.qz`,
+            `/${id}?populate=zuvy_modules&populate=zuvy_modules.zuvy_articles&populate=zuvy_modules.zuvy_mcqs.quiz.qz`,
           );
           bootcamp[0]['content'] = respo.data;
         } catch (error) {
@@ -527,22 +527,18 @@ export class BootcampService {
             .select()
             .from(zuvyBatchEnrollments)
             .where(
-              sql`${
-                zuvyBatchEnrollments.userId
-              } = ${userInfo[0].id.toString()} AND ${
-                zuvyBatchEnrollments.bootcampId
-              } = ${bootcampId}`,
+              sql`${zuvyBatchEnrollments.userId
+                } = ${userInfo[0].id.toString()} AND ${zuvyBatchEnrollments.bootcampId
+                } = ${bootcampId}`,
             );
           if (userEnrolled.length > 0) {
             let updateEnrol = await db
               .update(zuvyBatchEnrollments)
               .set({ batchId })
               .where(
-                sql`${
-                  zuvyBatchEnrollments.userId
-                } = ${userInfo[0].id.toString()} AND ${
-                  zuvyBatchEnrollments.bootcampId
-                } = ${bootcampId}`,
+                sql`${zuvyBatchEnrollments.userId
+                  } = ${userInfo[0].id.toString()} AND ${zuvyBatchEnrollments.bootcampId
+                  } = ${bootcampId}`,
               )
               .returning();
             if (updateEnrol.length !== 0) {
@@ -713,65 +709,100 @@ export class BootcampService {
   // }
 
   async getStudentsByBootcampOrBatch(
-      bootcamp_id,
-      batch_id,
-      searchTerm: string | bigint = '',
-      limit: number,
-      offset: number,
-    ) {
-      console.log('bootcamp_id', bootcamp_id);
-      console.log('batch_id', batch_id);
-      console.log('searchTerm', searchTerm);
-      console.log('limit', limit);
-      console.log('offset', offset);
+    bootcamp_id,
+    batch_id,
+    searchTerm: string | bigint = '',
+    limit: number,
+    offset: number,
+  ) {
+    let queryString;
+    if (bootcamp_id && batch_id) {
+      queryString = sql`${zuvyBatchEnrollments.bootcampId} = ${bootcamp_id} and ${zuvyBatchEnrollments.batchId} = ${batch_id}`;
+    } else {
+      queryString = sql`${zuvyBatchEnrollments.bootcampId} = ${bootcamp_id}`;
+    }
+    let totalStudentsInTheBatch, studentsIds, studentsInTheBatch;
 
-      let queryString;
-      if (bootcamp_id && batch_id) {
-        queryString = sql`${zuvyBatchEnrollments.bootcampId} = ${bootcamp_id} and ${zuvyBatchEnrollments.batchId} = ${batch_id}`;
-      } else  {
-        queryString = sql`${zuvyBatchEnrollments.bootcampId} = ${bootcamp_id}`;
-      }
-      if (searchTerm && searchTerm.constructor === String) {
-        console.log('searchTerm', searchTerm)
-
-        queryString = sql`(LOWER(${users.name}) LIKE ${searchTerm.toLowerCase()} || '%' or LOWER(${users.email}) LIKE ${searchTerm.toLowerCase()} || '%')`
-
-        let usersData = await db.select().from(users).where(queryString).limit(limit).offset(offset);
-        let studentsIds =  usersData.map((student) => student?.id)
-        console.log('studentsIds', studentsIds)
-
-      }
-
-      let studentsInTheBatch = await db.select().from(zuvyBatchEnrollments).where(queryString).offset(offset).limit(limit);
-      let totalStudentsInTheBatch = await db.select().from(zuvyBatchEnrollments).where(queryString);
-
-      let totalStudents = totalStudentsInTheBatch.length;
-      let studentsIds =  studentsInTheBatch.map((student) => student?.userId)
-      console.log('totalStudents', totalStudents)
-      console.log('studentsIds', studentsIds)
-      let ed = `${studentsIds.join(", ")}`
-      console.log('ed', ed)
-        let mapData = await db.query.zuvyBatchEnrollments.findMany({
-          where: (zuvyBatchEnrollments, { sql }) =>
-            sql`${zuvyBatchEnrollments.userId} IN (${sql.join(studentsIds, sql`, `)})`,
-          with: {
-            userInfo: {
-              columns: {
-                id: true,
-                name: true,
-                email: true,
-              },
-            },
-            batchInfo: {
-              columns: {
-                name: true,
-              },
-            }
-          }
+    if (searchTerm && searchTerm.constructor === String) {
+      let studentStringQuery = sql`(${queryString}) AND (LOWER(${users.name}) LIKE ${searchTerm.toLowerCase()} || '%' OR LOWER(${users.email}) LIKE ${searchTerm.toLowerCase()} || '%')`;
+      let usersData = await db
+        .select({
+          id: users.id,
         })
-        console.log('mapData', mapData)
-        let totalStudentsInfo = [];
-        mapData.forEach((student:any) => {
+        .from(users)
+        .leftJoin(
+          zuvyBatchEnrollments,
+          sql`${zuvyBatchEnrollments.userId} = ${users.id}`,
+        )
+        .where(studentStringQuery)
+        .limit(limit)
+        .offset(offset);
+
+      totalStudentsInTheBatch = await db
+        .select({
+          id: users.id,
+        })
+        .from(users)
+        .leftJoin(
+          zuvyBatchEnrollments,
+          sql`${zuvyBatchEnrollments.userId} = ${users.id}`,
+        )
+        .where(studentStringQuery);
+
+      studentsIds = usersData.map((user) => user.id);
+    } else {
+      studentsInTheBatch = await db
+        .select()
+        .from(zuvyBatchEnrollments)
+        .where(queryString)
+        .offset(offset)
+        .limit(limit)
+        .orderBy(zuvyBatchEnrollments.userId);
+      totalStudentsInTheBatch = await db
+        .select()
+        .from(zuvyBatchEnrollments)
+        .where(queryString);
+      studentsIds = studentsInTheBatch.map((student) => student?.userId);
+    }
+
+    if (studentsIds.length === 0) {
+      return [{
+        "totalStudents": [],
+        "totalStudentsCount": 0,
+        "code": 200
+      }]
+    }
+    let totalStudents = totalStudentsInTheBatch.length;
+    let ed = `${studentsIds.join(', ')}`;
+    let mapData = await db.query.zuvyBatchEnrollments.findMany({
+      where: (zuvyBatchEnrollments, { sql }) =>
+        sql`${zuvyBatchEnrollments.userId} IN (${sql.join(studentsIds, sql`, `)})`,
+      with: {
+        userInfo: {
+          columns: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
+        batchInfo: {
+          columns: {
+            id: true,
+            name: true,
+          },
+        },
+      },
+    });
+    let totalStudentsInfo = await Promise.all(
+      mapData.map(async (student: any) => {
+        try {
+          let classesInfo = await db
+            .select()
+            .from(zuvySessions)
+            .where(sql`${zuvySessions.batchId} = ${student.batchInfo.id}`);
+          console.log('classesInfo', classesInfo);
+          console.log('student', student);
+
           let studentBatchInfo = {
             email: student?.userInfo.email,
             name: student?.userInfo.name,
@@ -779,16 +810,32 @@ export class BootcampService {
             profilePicture: student?.userInfo.profilePicture,
             bootcampId: student.bootcampId,
             batchId: student.batchId,
-            batchName: student.batchInfo?.name || "not found",
-            attendance: (student.attendance / 3) * 100,
+            batchName: student.batchInfo?.name || 'not found',
+            attendance: (student.attendance / classesInfo.length) * 100 || 0,
             progress: 0,
-            classesInfo: student.classesInfo
+            classesInfo: student.classesInfo,
           };
-          totalStudentsInfo.push(studentBatchInfo);
-        });
-      
-      return [null, { totalStudents: totalStudentsInfo, totalStudentsCount: totalStudents, code: 200 }];
-    // }
+
+          return studentBatchInfo;
+        } catch (error) {
+          console.error(
+            'Error fetching classes info for student:',
+            student,
+            error,
+          );
+          throw error;
+        }
+      }),
+    );
+
+    return [
+      null,
+      {
+        totalStudents: totalStudentsInfo,
+        totalStudentsCount: totalStudents,
+        code: 200,
+      },
+    ];
   }
   async searchStudentsByNameOrEmail(
     searchTerm: string | bigint,
