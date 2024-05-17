@@ -2598,14 +2598,17 @@ export const zuvyModuleQuiz = main.table('zuvy_module_quiz', {
   usage: integer('usage').default(0),
 });
 
-export const zuvyCourseModules = main.table('zuvy_course_modules', {
-  id: serial('id').primaryKey().notNull(),
-  bootcampId: integer('bootcamp_id').references(() => zuvyBootcamps.id),
-  name: varchar('name'),
-  description: text('description'),
-  order: integer('order'),
-  timeAlloted: bigint('time_alloted', { mode: 'number' }),
-});
+export const zuvyCourseModules = main.table("zuvy_course_modules",{
+	id:serial("id").primaryKey().notNull(),
+	typeId: integer("type_id"),
+	isLock: boolean("is_lock").default(false),
+	bootcampId: integer("bootcamp_id").references(() => zuvyBootcamps.id),
+	name: varchar("name"),
+	description: text("description"),
+	projectId: integer("project_id").references(() => zuvyCourseProjects.id),
+	order: integer("order"),
+	timeAlloted: bigint("time_alloted", { mode: "number" })
+})
 
 export const moduleChapterRelations = relations(
   zuvyCourseModules,
@@ -2634,6 +2637,56 @@ export const zuvyCodingSubmission = main.table("zuvy_coding_submission", {
     createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }),
     updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }),
 })
+export const zuvyAssignmentSubmission = main.table("zuvy_assignment_submission", {
+	id: serial("id").primaryKey().notNull(),
+	userId: integer("user_id").references(() => users.id),
+	moduleId: integer("module_id").notNull(),
+	bootcampId: integer("bootcamp_id").references(() => zuvyBootcamps.id),
+	chapterId: integer("chapter_id").notNull(),
+	timeLimit: timestamp("time_limit",{ withTimezone: true, mode: 'string' }).notNull(),
+	projectUrl: varchar("project_url", { length: 255 }),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+});
+export const zuvyCourseProjects = main.table("zuvy_course_projects",{
+	id: serial("id").primaryKey().notNull(),
+	title: varchar("title"),
+	instruction: jsonb("instruction"),
+	isLock: boolean("is_lock").default(false),
+	deadline: timestamp("completed_at", { withTimezone: true, mode: 'string' })
+})
+
+export const zuvyBootcampTracking = main.table("zuvy_bootcamp_tracking", {
+	id: serial("id").primaryKey().notNull(),
+	userId: integer("user_id").references(() => users.id),
+	progress: integer("progress").default(0),
+	bootcampId: integer("bootcamp_id").references(() => zuvyBootcamps.id),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+});
+
+export const zuvyQuizTracking = main.table("zuvy_quiz_tracking", {
+	id: serial("id").primaryKey().notNull(),
+	userId: integer("user_id").references(() => users.id),
+	moduleId: integer("module_id").notNull(),
+	mcqId: integer("mcq_id").notNull(),
+	attemptCount: integer("attempt_count").default(0).notNull(),
+	chapterId: integer("chapter_id").notNull(),
+	status: varchar("status", { length: 255 }),
+	chossenOption: integer("chossen_option").notNull(),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+});
+
+export const zuvyModuleTracking = main.table("zuvy_module_tracking", {
+	id: serial("id").primaryKey().notNull(),
+	userId: integer("user_id").references(() => users.id),
+	moduleId: integer("module_id").notNull(),
+	progress: integer("progress").default(0),
+	bootcampId: integer("bootcamp_id").references(() => zuvyBootcamps.id),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+});
 
 export const zuvyModuleChapter = main.table('zuvy_module_chapter', {
   id: serial('id').primaryKey().notNull(),
