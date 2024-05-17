@@ -1949,13 +1949,23 @@ export const zuvyModuleQuiz = main.table("zuvy_module_quiz",{
 
 export const zuvyCourseModules = main.table("zuvy_course_modules",{
         id:serial("id").primaryKey().notNull(),
+        typeId: integer("type_id"),
+        isLock: boolean("is_lock").default(false),
         bootcampId: integer("bootcamp_id").references(() => bootcamps.id),
         name: varchar("name"),
         description: text("description"),
+        projectId: integer("project_id").references(() => zuvyCourseProjects.id),
         order: integer("order"),
         timeAlloted: bigint("time_alloted", { mode: "number" })
 })
 
+export const zuvyCourseProjects = main.table("zuvy_course_projects",{
+        id: serial("id").primaryKey().notNull(),
+        title: varchar("title"),
+        instruction: jsonb("instruction"),
+        isLock: boolean("is_lock").default(false),
+        deadline: timestamp("completed_at", { withTimezone: true, mode: 'string' })
+})
 
 export const moduleChapterRelations = relations(zuvyCourseModules, ({ many }) => ({
         moduleChapterData: many(zuvyModuleChapter),
