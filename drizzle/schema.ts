@@ -2622,6 +2622,19 @@ export const studentChapterRelation = relations(
   }),
 );
 
+export const zuvyModuleTopics = main.table("zuvy_module_topics",{
+	id: serial("id").primaryKey().notNull(),
+	name:varchar("name") 
+})
+
+export const zuvyCodingSubmission = main.table("zuvy_coding_submission", {
+    id: bigserial("id", { mode: "bigint" }).primaryKey().notNull(),
+    userId: bigserial("user_id", { mode: "bigint" }).notNull().references(() => users.id),
+    questionSolved: jsonb("question_solved").notNull(), 
+    createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }),
+    updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }),
+})
+
 export const zuvyModuleChapter = main.table('zuvy_module_chapter', {
   id: serial('id').primaryKey().notNull(),
   title: varchar('title'),
@@ -2811,6 +2824,23 @@ export const trackingPostsRelations = relations(
     }),
   }),
 );
+export const zuvyCodingQuestions = main.table("zuvy_coding_questions",{
+    id: serial("id").primaryKey().notNull(),
+    title: varchar("title", { length: 255 }).notNull(),
+    description: text("description").notNull(),
+    difficulty: difficulty("difficulty"),
+    tags: integer("tag_id").references(() => zuvyTags.id),
+    constraints: text("constraints"),
+    authorId: integer("author_id").notNull(),
+    inputBase64: text("input_base64"), 
+    examples: jsonb("examples"), 
+    testCases: jsonb("test_cases"), 
+    expectedOutput: jsonb("expected_output"), 
+    solution: text("solution"), 
+    createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }),
+    updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }),
+    usage: integer("usage").default(0)
+})
 
 export const chapterRelations = relations(
   zuvyModuleChapter,
@@ -2822,6 +2852,8 @@ export const chapterRelations = relations(
     }),
   }),
 );
+
+
 
 export const codeUserRelations = relations(zuvyCodingSubmission, ({ one }) => ({
   codeStatus: one(users, {
