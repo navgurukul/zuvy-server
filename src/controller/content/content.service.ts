@@ -10,7 +10,8 @@ import {
   zuvyCodingQuestions,
   zuvyOpenEndedQuestions,
   zuvyModuleAssessment,
-  zuvyCourseProjects
+  zuvyCourseProjects,
+  zuvyTags
 } from '../../../drizzle/schema';
 
 import axios from 'axios';
@@ -515,7 +516,7 @@ export class ContentService {
           moduleChapterData: true,
         },
       });
-      let modules = data.map((module) => {
+      let modules = data.map((module: any) => {
         return {
           id: module.id,
           name: module.name,
