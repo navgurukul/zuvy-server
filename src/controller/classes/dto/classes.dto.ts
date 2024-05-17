@@ -65,28 +65,28 @@ export class CreateLiveBroadcastDto {
     required: true,
   })
   @IsNotEmpty()
-  @IsString()
+  @IsNumber()
   userId: number;
 
   @ApiProperty({
     description: 'The batchId of the live broadcast ',
-    type: String,
+    type: Number,
     example: 'abcd',
     required: true,
   })
   @IsNotEmpty()
-  @IsString()
-  batchId: string;
+  @IsNumber()
+  batchId: number;
 
   @ApiProperty({
     description: 'Bootcamp Id',
-    type: String,
+    type: Number,
     example: 'abcd',
     required: true,
   })
   @IsNotEmpty()
-  @IsString()
-  bootcampId: string;
+  @IsNumber()
+  bootcampId: number;
 
   @ApiProperty({
     description: 'The description of the live broadcast event',
@@ -149,7 +149,6 @@ export class CreateLiveBroadcastDto {
   @IsNotEmpty()
   @IsArray()
   roles: string[];
-  
 }
 
 export class reloadDto {

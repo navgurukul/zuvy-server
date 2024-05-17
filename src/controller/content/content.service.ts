@@ -2,23 +2,16 @@ import { Injectable, Logger } from '@nestjs/common';
 import {
   zuvyModuleTracking,
   zuvyAssignmentSubmission,
-  articleTracking,
   zuvyQuizTracking,
   zuvyModuleChapter,
   zuvyModuleTopics,
   zuvyCourseModules,
   zuvyModuleQuiz,
   zuvyCodingQuestions,
-  zuvyOpenEndedQuestion,
+  zuvyOpenEndedQuestions,
   zuvyModuleAssessment,
-  zuvyChapterTracking,
-  batchEnrollments,
-  moduleChapterRelations,
-  questions,
-  difficulty,
-  assessment,
-  postsRelations,
 } from '../../../drizzle/schema';
+
 import axios from 'axios';
 import { error, log } from 'console';
 import {
@@ -349,7 +342,7 @@ export class ContentService {
   async createOpenEndedQuestions(questions: openEndedDto) {
     try {
       const openEndedQuestions = await db
-        .insert(zuvyOpenEndedQuestion)
+        .insert(zuvyOpenEndedQuestions)
         .values(questions)
         .returning();
       return openEndedQuestions;
@@ -748,9 +741,9 @@ export class ContentService {
           openEndedQuesIds != null
             ? await db
                 .select()
-                .from(zuvyOpenEndedQuestion)
+                .from(zuvyOpenEndedQuestions)
                 .where(
-                  sql`${inArray(zuvyOpenEndedQuestion.id, openEndedQuesIds)}`,
+                  sql`${inArray(zuvyOpenEndedQuestions.id, openEndedQuesIds)}`,
                 )
             : [];
         const codingProblems =

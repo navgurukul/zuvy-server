@@ -1,14 +1,14 @@
 import { Injectable, Logger } from '@nestjs/common';
-import {
-    zuvyAssignmentSubmission,
-    articleTracking,
-    zuvyModuleTracking,
-    zuvyBootcampTracking,
-    zuvyQuizTracking,
-    batches,
-    bootcamps,
-    zuvyChapterTracking
-} from '../../../drizzle/schema';
+// import {
+//     zuvyAssignmentSubmission,
+//     zuvyArticleTracking,
+//     zuvyModuleTracking,
+//     zuvyBootcampTracking,
+//     zuvyQuizTracking,
+//     zuvyBatches,
+//     bootcamps,
+//     zuvyChapterTracking
+// } from '../../../drizzle/schema';
 import { db } from '../../db/index';
 import { eq, sql, inArray, and, desc } from 'drizzle-orm';
 import axios from 'axios';
@@ -55,13 +55,13 @@ export class TrackingService {
     //         if (zuvy_articles_ids.length) {
     //             a = await db
     //                 .select()
-    //                 .from(articleTracking)
+    //                 .from(zuvyArticleTracking)
     //                 .where(
     //                     and(
-    //                         inArray(articleTracking.articleId, zuvy_articles_ids),
-    //                         sql`${articleTracking.userId} = ${user_id}`,
+    //                         inArray(zuvyArticleTracking.articleId, zuvy_articles_ids),
+    //                         sql`${zuvyArticleTracking.userId} = ${user_id}`,
     //                     ),
-    //                 ); //.where(sql`${articleTracking.userId} = ${user_id}`);
+    //                 ); //.where(sql`${zuvyArticleTracking.userId} = ${user_id}`);
     //         }
     //         if (zuvy_mcqs_ids.length) {
     //             b = await db
@@ -297,17 +297,17 @@ export class TrackingService {
     // }
 
     // // Create
-    // async createArticleTracking(data: any, bootcampId: number) {
+    // async createzuvyArticleTracking(data: any, bootcampId: number) {
     //     try {
     //         const artical = await db
     //             .select()
-    //             .from(articleTracking)
+    //             .from(zuvyArticleTracking)
     //             .where(
-    //                 sql`${articleTracking.articleId} = ${data.articleId} and ${articleTracking.userId} = ${data.userId}`,
+    //                 sql`${zuvyArticleTracking.articleId} = ${data.articleId} and ${zuvyArticleTracking.userId} = ${data.userId}`,
     //             );
     //         if (artical.length == 0) {
     //             const result = await db
-    //                 .insert(articleTracking)
+    //                 .insert(zuvyArticleTracking)
     //                 .values(data)
     //                 .returning();
     //             let [err, out] = await this.getProgress(
@@ -337,13 +337,13 @@ export class TrackingService {
     // }
 
     // // Read
-    // async articleTrackingBy(ArticleId: number, userId: number) {
+    // async zuvyArticleTrackingBy(ArticleId: number, userId: number) {
     //     try {
     //         const result = await db
     //             .select()
-    //             .from(articleTracking)
+    //             .from(zuvyArticleTracking)
     //             .where(
-    //                 sql`${articleTracking.articleId} = ${ArticleId} and ${articleTracking.userId} = ${userId}`,
+    //                 sql`${zuvyArticleTracking.articleId} = ${ArticleId} and ${zuvyArticleTracking.userId} = ${userId}`,
     //             );
 
     //         return [null, result];
@@ -353,12 +353,12 @@ export class TrackingService {
     // }
 
     // // Read
-    // async getArticleTracking(userId: number) {
+    // async getzuvyArticleTracking(userId: number) {
     //     try {
     //         const result = await db
     //             .select()
-    //             .from(articleTracking)
-    //             .where(sql`${articleTracking.userId} = ${userId}`);
+    //             .from(zuvyArticleTracking)
+    //             .where(sql`${zuvyArticleTracking.userId} = ${userId}`);
     //         return [null, result];
     //     } catch (err) {
     //         return [{ status: 'error', message: err.message, code: 402 }];
@@ -366,12 +366,12 @@ export class TrackingService {
     // }
 
     // // Update
-    // async updateArticleTracking(id: number, data: any) {
+    // async updatezuvyArticleTracking(id: number, data: any) {
     //     try {
     //         const result = await db
-    //             .update(articleTracking)
+    //             .update(zuvyArticleTracking)
     //             .set(data)
-    //             .where(sql`${articleTracking.id} = ${id}`);
+    //             .where(sql`${zuvyArticleTracking.id} = ${id}`);
     //         return [null, result];
     //     } catch (err) {
     //         return [{ status: 'error', message: err.message, code: 402 }];
@@ -437,9 +437,9 @@ export class TrackingService {
     //     try {
     //         const latestIds = await db
     //             .select()
-    //             .from(articleTracking)
-    //             .where(sql`${articleTracking.userId} = ${userId}`)
-    //             .orderBy(desc(articleTracking.id)) // Fix: Call the desc() method on the column object
+    //             .from(zuvyArticleTracking)
+    //             .where(sql`${zuvyArticleTracking.userId} = ${userId}`)
+    //             .orderBy(desc(zuvyArticleTracking.id)) // Fix: Call the desc() method on the column object
     //             .limit(1);
 
     //         const latestMcqIds = await db
