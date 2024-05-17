@@ -33,6 +33,10 @@ import {
   openEndedDto,
   CreateAssessmentBody,
   editQuizBatchDto,
+  UpdateProblemDto,
+  deleteQuestionDto,
+  UpdateOpenEndedDto,
+  CreateTagDto
 } from './dto/content.dto';
 import { CreateProblemDto } from '../codingPlatform/dto/codingPlatform.dto';
 import { difficulty } from 'drizzle/schema';
@@ -133,20 +137,12 @@ export class ContentController {
 
   @Post('/quiz')
   @ApiOperation({ summary: 'Create a quiz' })
-  @ApiQuery({
-    name: 'chapterId',
-    required: true,
-    type: Number,
-    description: 'chapterId',
-  })
   @ApiBearerAuth()
   async createQuizForModule(
-    @Body() quizQuestions: quizBatchDto,
-    @Query('chapterId') chapterId: number,
+    @Body() quizQuestions: quizBatchDto
   ) {
     const res = await this.contentService.createQuizForModule(
-      quizQuestions,
-      chapterId,
+      quizQuestions
     );
     return res;
   }
@@ -160,21 +156,15 @@ export class ContentController {
     return res;
   }
 
-  @Post('/codingQuestion')
-  @ApiOperation({ summary: 'Create a coding question for this module' })
-  @ApiQuery({
-    name: 'chapterId',
-    required: true,
-    type: Number,
-    description: 'chapterId',
-  })
+  @Patch('/updateCodingQuestion/:questionId')
+  @ApiOperation({ summary: 'Update the coding question for this module' })
   @ApiBearerAuth()
-  async createCodingQuestionForModule(
-    @Body() codingQuestions: CreateProblemDto,
-    @Query('chapterId') chapterId: number,
+  async updateCodingQuestionForModule(
+    @Body() codingQuestions: UpdateProblemDto,
+    @Param('questionId') questionId: number,
   ) {
-    const res = await this.contentService.createCodingProblemForModule(
-      chapterId,
+    const res = await this.contentService.updateCodingProblemForModule(
+      questionId,
       codingQuestions,
     );
     return res;
@@ -373,4 +363,63 @@ export class ContentController {
     const res = await this.contentService.editQuizQuestions(quizQuestions);
     return res;
   }
+
+  @Patch('/updateOpenEndedQuestion/:questionId')
+  @ApiOperation({ summary: 'Update the open ended question for this module' })
+  @ApiBearerAuth()
+  async updateOpenEndedQuestionForModule(
+    @Body() openEndedQuestions: UpdateOpenEndedDto,
+    @Param('questionId') questionId: number,
+  ) {
+    const res = await this.contentService.updateOpenEndedQuestion(
+      questionId,
+      openEndedQuestions,
+    );
+    return res;
+  }
+
+  @Delete('/deleteQuizQuestion')
+  @ApiOperation({ summary: 'Delete quiz question' })
+  @ApiBearerAuth()
+  async deleteQuizQuestion(@Body() questionIds : deleteQuestionDto)
+  {
+    const res = await this.contentService.deleteQuiz(questionIds);
+    return res;
+  }
+
+  @Delete('/deleteCodingQuestion')
+  @ApiOperation({ summary: 'Delete coding question' })
+  @ApiBearerAuth()
+  async deleteCodingQuestion(@Body() questionIds : deleteQuestionDto)
+  {
+    const res = await this.contentService.deleteCodingProblem(questionIds);
+    return res;
+  }
+
+  @Delete('/deleteOpenEndedQuestion')
+  @ApiOperation({ summary: 'Delete openended question' })
+  @ApiBearerAuth()
+  async deleteOpenEndedQuestion(@Body() questionIds : deleteQuestionDto)
+  {
+    const res = await this.contentService.deleteOpenEndedQuestion(questionIds);
+    return res;
+  }
+
+  @Get('/allTags')
+  @ApiOperation({ summary: 'Get all the available tags' })
+  @ApiBearerAuth()
+  async getAllTags() {
+    const res = await this.contentService.getAllTags();
+    return res;
+  }
+
+  @Post('/createTag')
+  @ApiOperation({summary: 'Create a tag for the curriculum'})
+  @ApiBearerAuth()
+  async createTag(@Body() tag:CreateTagDto)
+  {
+    const res = await this.contentService.createTag(tag);
+    return res;
+  }
+
 }

@@ -10,6 +10,7 @@ import {
   zuvyCodingQuestions,
   zuvyOpenEndedQuestions,
   zuvyModuleAssessment,
+  zuvyTags
 } from '../../../drizzle/schema';
 
 import axios from 'axios';
@@ -40,6 +41,10 @@ import {
   openEndedDto,
   CreateAssessmentBody,
   editQuizBatchDto,
+  UpdateProblemDto,
+  deleteQuestionDto,
+  UpdateOpenEndedDto,
+  CreateTagDto
 } from './dto/content.dto';
 import { CreateProblemDto } from '../codingPlatform/dto/codingPlatform.dto';
 import { PatchBootcampSettingDto } from '../bootcamp/dto/bootcamp.dto';
@@ -306,7 +311,7 @@ export class ContentService {
     }
   }
 
-  async createQuizForModule(quiz: quizBatchDto, chapterId: number) {
+  async createQuizForModule(quiz: quizBatchDto) {
     try {
       const quizQuestions = quiz.questions.map((q) => ({
         question: q.question,
@@ -322,18 +327,19 @@ export class ContentService {
         .values(quizQuestions)
         .returning();
       if (result.length > 0) {
-        let quizIds = result.map((q) => {
-          return q.id;
-        });
-        if (quiz.quizQuestionIds) {
-          quizIds.push(...quiz.quizQuestionIds);
+        return {
+          status: "success",
+          code: 200,
+          result
         }
-        await db
-          .update(zuvyModuleChapter)
-          .set({ quizQuestions: quizIds })
-          .where(eq(zuvyModuleChapter.id, chapterId));
       }
-      return result;
+      else {
+        return {
+          status: "error",
+          code: 404,
+          message: "Quiz questions did not create successfully.Please try again"
+        }
+      }
     } catch (err) {
       throw err;
     }
@@ -451,6 +457,8 @@ export class ContentService {
       }
       const modifiedChapterDetails: {
         id: number;
+        title: string,
+        description: string,
         moduleId: number;
         topicId: number;
         order: number;
@@ -459,6 +467,8 @@ export class ContentService {
         contentDetails?: any[];
       } = {
         id: chapterDetails[0].id,
+        title: chapterDetails[0].title,
+        description: chapterDetails[0].description,
         moduleId: chapterDetails[0].moduleId,
         topicId: chapterDetails[0].topicId,
         order: chapterDetails[0].order,
@@ -570,36 +580,44 @@ export class ContentService {
     }
   }
 
-  async createCodingProblemForModule(
-    chapterId: number,
-    codingProblem: CreateProblemDto,
+  async updateCodingProblemForModule(
+    questionId: number,
+    codingProblem: UpdateProblemDto,
   ) {
     try {
       let examples = [];
       let testCases = [];
-      for (let i = 0; i < codingProblem.examples.length; i++) {
-        examples.push(codingProblem.examples[i].inputs);
+
+      if (codingProblem.examples) {
+        for (let i = 0; i < codingProblem.examples.length; i++) {
+          examples.push(codingProblem.examples[i].inputs);
+        }
+        codingProblem.examples = examples;
       }
-      codingProblem.examples = examples;
-      for (let j = 0; j < codingProblem.testCases.length; j++) {
-        testCases.push(codingProblem.testCases[j].inputs);
+      if (codingProblem.testCases) {
+        for (let j = 0; j < codingProblem.testCases.length; j++) {
+          testCases.push(codingProblem.testCases[j].inputs);
+        }
+        codingProblem.testCases = testCases;
       }
-      codingProblem.testCases = testCases;
-      const result = await db
-        .insert(zuvyCodingQuestions)
-        .values(codingProblem)
+      const updatedQuestion = await db
+        .update(zuvyCodingQuestions)
+        .set(codingProblem)
+        .where(eq(zuvyCodingQuestions.id, questionId))
         .returning();
-      if (result.length > 0) {
-        let codingIds = result.map((q) => {
-          return q.id;
-        });
-        const questionId = codingIds[0];
-        await db
-          .update(zuvyModuleChapter)
-          .set({ codingQuestions: questionId })
-          .where(eq(zuvyModuleChapter.id, chapterId));
+      if (updatedQuestion.length > 0) {
+        return {
+          status: 'success',
+          code: 200,
+          message: 'Coding question has been updated successfully',
+        };
+      } else {
+        return {
+          status: 'error',
+          code: 404,
+          message: 'Coding question not available',
+        };
       }
-      return result;
     } catch (err) {
       throw err;
     }
@@ -652,6 +670,62 @@ export class ContentService {
             .where(eq(zuvyModuleChapter.id, chapterId));
         }
       } else if (editData.newOrder == undefined) {
+        const chapter = await db
+          .select()
+          .from(zuvyModuleChapter)
+          .where(eq(zuvyModuleChapter.id, chapterId));
+
+        if (editData.quizQuestions) {
+          if (editData.quizQuestions.length == 0) {
+            editData.quizQuestions = null;
+          }
+          const earlierQuizIds =
+            chapter[0].quizQuestions != null
+              ? Object.values(chapter[0].quizQuestions)
+              : [];
+          const remainingQuizIds =
+            editData.quizQuestions != null && earlierQuizIds.length > 0
+              ? earlierQuizIds.filter(
+                  (questionId) => !editData.quizQuestions.includes(questionId),
+                )
+              : [];
+          const toUpdateIds =
+            editData.quizQuestions != null && earlierQuizIds.length > 0
+              ? editData.quizQuestions.filter(
+                  (questionId) => !earlierQuizIds.includes(questionId),
+                )
+              : editData.quizQuestions;
+          if (remainingQuizIds.length > 0) {
+            await db
+              .update(zuvyModuleQuiz)
+              .set({ usage: sql`${zuvyModuleQuiz.usage}::numeric - 1` })
+              .where(sql`${inArray(zuvyModuleQuiz.id, remainingQuizIds)}`);
+          }
+          if (toUpdateIds.length > 0) {
+            await db
+              .update(zuvyModuleQuiz)
+              .set({ usage: sql`${zuvyModuleQuiz.usage}::numeric + 1` })
+              .where(sql`${inArray(zuvyModuleQuiz.id, toUpdateIds)}`);
+          }
+        } else if (
+          editData.codingQuestions ||
+          (editData.codingQuestions == null &&
+            chapter[0].codingQuestions != null)
+        ) {
+          const earlierCodingId = chapter[0].codingQuestions;
+
+          if (earlierCodingId !== editData.codingQuestions) {
+            await db
+              .update(zuvyCodingQuestions)
+              .set({ usage: sql`${zuvyCodingQuestions.usage}::numeric - 1` })
+              .where(eq(zuvyCodingQuestions.id, earlierCodingId));
+
+            await db
+              .update(zuvyCodingQuestions)
+              .set({ usage: sql`${zuvyCodingQuestions.usage}::numeric + 1` })
+              .where(eq(zuvyCodingQuestions.id, editData.codingQuestions));
+          }
+        }
         await db
           .update(zuvyModuleChapter)
           .set(editData)
@@ -686,6 +760,137 @@ export class ContentService {
     assessmentBody: CreateAssessmentBody,
   ) {
     try {
+      const assessment = await db
+        .select()
+        .from(zuvyModuleAssessment)
+        .where(eq(zuvyModuleAssessment.id, assessmentId));
+      if (assessmentBody.mcq) {
+        const earlierQuizIds =
+          assessment[0].mcq != null ? Object.values(assessment[0].mcq) : [];
+        const remainingQuizIds =
+          assessmentBody.mcq != null && earlierQuizIds.length > 0
+            ? earlierQuizIds.filter(
+                (questionId) => !assessmentBody.mcq.includes(questionId),
+              )
+            : [];
+        const toUpdateIds =
+          assessmentBody.mcq != null && earlierQuizIds.length > 0
+            ? assessmentBody.mcq.filter(
+                (questionId) => !earlierQuizIds.includes(questionId),
+              )
+            : assessmentBody.mcq;
+        if (remainingQuizIds.length > 0) {
+          await db
+            .update(zuvyModuleQuiz)
+            .set({ usage: sql`${zuvyModuleQuiz.usage}::numeric - 1` })
+            .where(sql`${inArray(zuvyModuleQuiz.id, remainingQuizIds)}`);
+        }
+        if (toUpdateIds.length > 0) {
+          await db
+            .update(zuvyModuleQuiz)
+            .set({ usage: sql`${zuvyModuleQuiz.usage}::numeric + 1` })
+            .where(sql`${inArray(zuvyModuleQuiz.id, toUpdateIds)}`);
+        }
+        if (assessmentBody.mcq.length == 0) {
+          assessmentBody.mcq = null;
+        }
+      }
+      if (assessmentBody.openEndedQuestions) {
+        const earlierOpenEndedIds =
+          assessment[0].openEndedQuestions != null
+            ? Object.values(assessment[0].openEndedQuestions)
+            : [];
+        const remainingQuizIds =
+          assessmentBody.openEndedQuestions != null &&
+          earlierOpenEndedIds.length > 0
+            ? earlierOpenEndedIds.filter(
+                (questionId) =>
+                  !assessmentBody.openEndedQuestions.includes(questionId),
+              )
+            : [];
+        const toUpdateIds =
+          assessmentBody.openEndedQuestions != null &&
+          earlierOpenEndedIds.length > 0
+            ? assessmentBody.openEndedQuestions.filter(
+                (questionId) => !earlierOpenEndedIds.includes(questionId),
+              )
+            : assessmentBody.openEndedQuestions;
+        if (remainingQuizIds.length > 0) {
+          await db
+            .update(zuvyOpenEndedQuestions)
+            .set({ usage: sql`${zuvyOpenEndedQuestions.usage}::numeric - 1` })
+            .where(sql`${inArray(zuvyOpenEndedQuestions.id, remainingQuizIds)}`);
+        }
+        if (toUpdateIds.length > 0) {
+          await db
+            .update(zuvyOpenEndedQuestions)
+            .set({ usage: sql`${zuvyOpenEndedQuestions.usage}::numeric + 1` })
+            .where(sql`${inArray(zuvyOpenEndedQuestions.id, toUpdateIds)}`);
+        }
+        if (assessmentBody.openEndedQuestions.length == 0) {
+          assessmentBody.openEndedQuestions = null;
+        }
+      }
+      if (assessmentBody.codingProblems) {
+        let ab = [];
+        let ab1 = [];
+        ab =
+          assessmentBody.codingProblems != null
+            ? Object.values(assessmentBody.codingProblems)
+            : null;
+        const codingQuesIds =
+          ab != null
+            ? ab.reduce((acc, obj) => {
+                const key = Object.keys(obj)[0];
+                const numericKey = Number(key);
+                if (!isNaN(numericKey)) {
+                  acc.push(numericKey);
+                }
+                return acc;
+              }, [])
+            : null;
+        ab1 =
+          assessmentBody.codingProblems != null
+            ? Object.values(assessment[0].codingProblems)
+            : null;
+        const previousIds = ab1.reduce((acc, obj) => {
+          const key = Object.keys(obj)[0];
+          const numericKey = Number(key);
+          if (!isNaN(numericKey)) {
+            acc.push(numericKey);
+          }
+          return acc;
+        }, []);
+        const earlierCodingIds =
+          assessment[0].codingProblems != null ? previousIds : [];
+        const remainingQuizIds =
+          codingQuesIds != null && earlierCodingIds.length > 0
+            ? earlierCodingIds.filter(
+                (questionId) => !codingQuesIds.includes(questionId),
+              )
+            : [];
+        const toUpdateIds =
+          assessmentBody.codingProblems != null && earlierCodingIds.length > 0
+            ? codingQuesIds.filter(
+                (questionId) => !earlierCodingIds.includes(questionId),
+              )
+            : codingQuesIds;
+        if (remainingQuizIds.length > 0) {
+          await db
+            .update(zuvyCodingQuestions)
+            .set({ usage: sql`${zuvyCodingQuestions.usage}::numeric - 1` })
+            .where(sql`${inArray(zuvyCodingQuestions.id, remainingQuizIds)}`);
+        }
+        if (toUpdateIds.length > 0) {
+          await db
+            .update(zuvyCodingQuestions)
+            .set({ usage: sql`${zuvyCodingQuestions.usage}::numeric + 1` })
+            .where(sql`${inArray(zuvyCodingQuestions.id, toUpdateIds)}`);
+        }
+        if (ab.length == 0) {
+          assessmentBody.codingProblems = null;
+        }
+      }
       await db
         .update(zuvyModuleAssessment)
         .set(assessmentBody)
@@ -897,21 +1102,6 @@ export class ContentService {
     }
   }
 
-  buildConflictUpdateColumns<
-    T extends PgTable | SQLiteTable,
-    Q extends keyof T['_']['columns'],
-  >(table: T, columns: Q[]) {
-    const cls = getTableColumns(table);
-    return columns.reduce(
-      (acc, column) => {
-        const colName = cls[column].name;
-        acc[column] = sql.raw(`excluded.${colName}`);
-        return acc;
-      },
-      {} as Record<Q, SQL>,
-    );
-  }
-
   async editQuizQuestions(editQuesDetails: editQuizBatchDto) {
     try {
       await db
@@ -936,6 +1126,247 @@ export class ContentService {
       };
     } catch (error) {
       throw error;
+    }
+  }
+
+  async updateOpenEndedQuestion(
+    questionId: number,
+    openEndedBody: UpdateOpenEndedDto,
+  ) {
+    try {
+      const updatedQuestion = await db
+        .update(zuvyOpenEndedQuestions)
+        .set(openEndedBody)
+        .where(eq(zuvyOpenEndedQuestions.id, questionId))
+        .returning();
+      if (updatedQuestion.length > 0) {
+        return {
+          status: 'success',
+          code: 200,
+          message: 'Open ended question has been updated successfully',
+        };
+      } else {
+        return {
+          status: 'error',
+          code: 404,
+          message: 'Open ended question not available',
+        };
+      }
+    } catch (err) {
+      throw err;
+    }
+  }
+
+  async deleteQuiz(id: deleteQuestionDto) {
+    try {
+      const usedQuiz = await db
+        .select()
+        .from(zuvyModuleQuiz)
+        .where(
+          sql`${inArray(zuvyModuleQuiz.id, id.questionIds)} and ${zuvyModuleQuiz.usage} > 0`,
+        );
+      let deletedQuestions;
+      if (usedQuiz.length > 0) {
+        const usedIds = usedQuiz.map((quiz) => quiz.id);
+        const remainingIds = id.questionIds.filter(
+          (questionId) => !usedIds.includes(questionId),
+        );
+        deletedQuestions = await db
+          .delete(zuvyModuleQuiz)
+          .where(sql`${inArray(zuvyModuleQuiz.id, remainingIds)}`);
+        if (deletedQuestions.rowCount > 0) {
+          return {
+            status: 'success',
+            code: 200,
+            message: `Quiz questions which is used in other places like chapters and assessment cannot be deleted`,
+          };
+        } else {
+          return {
+            status: 'error',
+            code: 400,
+            message: `Questions cannot be deleted`,
+          };
+        }
+      }
+      deletedQuestions = await db
+        .delete(zuvyModuleQuiz)
+        .where(sql`${inArray(zuvyModuleQuiz.id, id.questionIds)}`);
+      if (deletedQuestions.rowCount > 0) {
+        return {
+          status: 'success',
+          code: 200,
+          message: 'The quiz questions has been deleted successfully',
+        };
+      } else {
+        return {
+          status: 'error',
+          code: 400,
+          message: `Questions cannot be deleted`,
+        };
+      }
+    } catch (err) {
+      throw err;
+    }
+  }
+
+  async deleteCodingProblem(id: deleteQuestionDto) {
+    try {
+      const usedCodingQuestions = await db
+        .select()
+        .from(zuvyCodingQuestions)
+        .where(
+          sql`${inArray(zuvyCodingQuestions.id, id.questionIds)} and ${zuvyCodingQuestions.usage} > 0`,
+        );
+      let deletedQuestions;
+      if (usedCodingQuestions.length > 0) {
+        const usedIds = usedCodingQuestions.map((problem) => problem.id);
+        const remainingIds = id.questionIds.filter(
+          (questionId) => !usedIds.includes(questionId),
+        );
+        deletedQuestions = await db
+          .delete(zuvyCodingQuestions)
+          .where(sql`${inArray(zuvyCodingQuestions.id, remainingIds)}`);
+        if (deletedQuestions.rowCount > 0) {
+          return {
+            status: 'success',
+            code: 200,
+            message: `Coding question which is used in other places like chapters and assessment cannot be deleted`,
+          };
+        } else {
+          return {
+            status: 'error',
+            code: 400,
+            message: `Questions cannot be deleted`,
+          };
+        }
+      }
+      deletedQuestions = await db
+        .delete(zuvyCodingQuestions)
+        .where(sql`${inArray(zuvyCodingQuestions.id, id.questionIds)}`);
+      if (deletedQuestions.rowCount > 0) {
+        return {
+          status: 'success',
+          code: 200,
+          message: 'The coding question has been deleted successfully',
+        };
+      } else {
+        return {
+          status: 'error',
+          code: 400,
+          message: `Questions cannot be deleted`,
+        };
+      }
+    } catch (err) {
+      throw err;
+    }
+  }
+
+  async deleteOpenEndedQuestion(id: deleteQuestionDto) {
+    try {
+      const usedOpenEndedQuestions = await db
+        .select()
+        .from(zuvyOpenEndedQuestions)
+        .where(
+          sql`${inArray(zuvyOpenEndedQuestions.id, id.questionIds)} and ${zuvyOpenEndedQuestions.usage} > 0`,
+        );
+      let deletedQuestions;
+      if (usedOpenEndedQuestions.length > 0) {
+        const usedIds = usedOpenEndedQuestions.map(
+          (openEndedQues) => openEndedQues.id,
+        );
+        const remainingIds = id.questionIds.filter(
+          (questionId) => !usedIds.includes(questionId),
+        );
+
+        deletedQuestions = await db
+          .delete(zuvyOpenEndedQuestions)
+          .where(sql`${inArray(zuvyOpenEndedQuestions.id, remainingIds)}`)
+          .returning();
+        if (deletedQuestions.rowCount > 0) {
+          return {
+            status: 'success',
+            code: 200,
+            message: `Open ended question which is used in other places like chapters and assessment cannot be deleted`,
+          };
+        } else {
+          return {
+            status: 'error',
+            code: 400,
+            message: `Questions cannot be deleted`,
+          };
+        }
+      }
+      deletedQuestions = await db
+        .delete(zuvyOpenEndedQuestions)
+        .where(sql`${inArray(zuvyOpenEndedQuestions.id, id.questionIds)}`);
+      if (deletedQuestions.rowCount > 0) {
+        return {
+          status: 'success',
+          code: 200,
+          message: 'The open ended question has been deleted successfully',
+        };
+      } else {
+        return {
+          status: 'error',
+          code: 400,
+          message: `Questions cannot be deleted`,
+        };
+      }
+    } catch (err) {
+      throw err;
+    }
+  }
+
+  async getAllTags() {
+    try {
+      const allTags = await db.select().from(zuvyTags);
+      if(allTags.length > 0)
+        {
+          return {
+            status: 'success',
+            code: 200,
+            allTags
+          }
+        }
+      else {
+        return {
+        
+            status: 'error',
+            code: 404,
+            message : 'No tags found.Please create one'
+          
+        }
+      }  
+    }
+    catch(err)
+    {
+      throw err;
+    }
+  }
+
+  async createTag(tag: CreateTagDto)
+  {
+    try {
+      const newTag = await db.insert(zuvyTags).values(tag).returning();
+      if(newTag.length> 0)
+        {
+          return {
+            status: 'success',
+            code: 200,
+            newTag
+          }
+        }
+        else {
+          return {
+            status: 'error',
+            code: 404,
+            message: 'Tag is not created.Please try again.'
+          }
+        }
+    }
+    catch(err)
+    {
+      throw err;
     }
   }
 }
