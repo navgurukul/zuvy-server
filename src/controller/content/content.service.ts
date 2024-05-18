@@ -264,59 +264,59 @@ export class ContentService {
         .insert(zuvyCourseModules)
         .values(moduleWithBootcamp)
         .returning();
-      if(moduleData.length > 0)
-        {
+      if(moduleData.length > 0) 
+         {
       return {
         status: 'success',
         message: 'Module created successfully for this course',
         code: 200,
         module: moduleData,
-      };
-    }
-    else {
-      return {
-        status: 'error',
-        code: 400,
-        message: 'Module creation failed.Please try again'
+        };
+      } 
+      else {
+        return {
+          status: 'error',
+          code: 400,
+          message: 'Module creation failed.Please try again'
+        }
       }
-    }
     } catch (err) {
       throw err;
     }
   }
 
-  async createProjectForCourse(bootcampId: number, project: projectDto, typeId : number)
+  async createProjectForCourse(bootcampId: number, project: projectDto, typeId : number) 
   {
-      try {
-         const newProject = await db.insert(zuvyCourseProjects).values(project).returning();
-         if(newProject.length>0)
+    try {
+      const newProject = await db.insert(zuvyCourseProjects).values(project).returning();
+      if(newProject.length>0) 
+       {
+           const newModule = {
+             bootcampId,
+             isLock: project.isLock,
+             name: null,
+             timeAlloted:null,
+          description: null,
+          projectId: newProject[0].id
+        }
+        const moduleCreated = await this.createModuleForCourse(bootcampId , newModule, typeId);
+        if(moduleCreated.status == 'success')
           {
-              const newModule = {
-                bootcampId,
-                isLock: project.isLock,
-                name: null,
-                timeAlloted:null,
-                description: null,
-                projectId: newProject[0].id
-              }
-              const moduleCreated = await this.createModuleForCourse(bootcampId , newModule, typeId);
-              if(moduleCreated.status == 'success')
-                {
-                  return {
-                    status : 'success',
-                    code: 200,
-                    projectCreated : {
-                      ...newProject[0],
-                      order : moduleCreated.module[0]?.order
-                    }
-                  }
-                }
+          return {
+            status : 'success',
+            code: 200,
+            projectCreated : {
+              ...newProject[0],
+              order : moduleCreated.module[0]?.order
+            }
           }
+        }
       }
-      catch(err)
-      {
-        throw err;
-      }
+    }
+    catch(err)
+    {
+      throw err;
+    }
   }
 
   async getProjectDetails(bootcampId:number,projectId:number)
@@ -326,22 +326,21 @@ export class ContentService {
       const correspondingModule = await db.select().from(zuvyCourseModules).where(sql`${zuvyCourseModules.bootcampId} = ${bootcampId} and ${zuvyCourseModules.projectId} = ${projectId}`);
       if(project.length > 0)
         {
-          return {
-            status: 'success',
-            code : 200,
-            project,
-            bootcampId,
-            moduleId : correspondingModule[0].id
-          }
+        return {
+          status: 'success',
+          code : 200,
+          project,
+          bootcampId,
+          moduleId : correspondingModule[0].id,
         }
-        else {
-          return {
-            status : 'error',
-            code : 404,
-            message: 'There is no such project with this id'
-          }
+      }
+      else {
+        return {
+          status : 'error',
+          code : 404,
+          message: 'There is no such project with this id'
         }
-      
+      }
     }catch(err)
     {
       throw err;
@@ -354,20 +353,19 @@ export class ContentService {
       const updatedProjects = await db.update(zuvyCourseProjects).set(project).where(eq(zuvyCourseProjects.id,projectId)).returning();
       if(updatedProjects.length > 0)
         {
-          return {
-            status: 'success',
-            code : 200,
-            message: 'The project has been updated successfully'
-          }
+        return {
+          status: 'success',
+          code : 200,
+          message: 'The project has been updated successfully'
         }
+      }
       else {
         return {
           status: 'error',
           code: 400,
           message: 'Update failed.Please try again'
         }
-      }  
-
+      }
     }catch(err)
     {
       throw err;
@@ -377,41 +375,41 @@ export class ContentService {
   async deleteProjectForBootcamp(projectId:number,moduleId:number,bootcampId:number)
   {
     try {
-    let deletedProject = await db
-      .delete(zuvyCourseProjects)
-      .where(eq(zuvyCourseProjects.id, projectId))
-      .returning();
-     if(deletedProject.length > 0)
-      {
-        let data = await db
-        .delete(zuvyCourseModules)
-        .where(eq(zuvyCourseModules.id, moduleId))
+      let deletedProject = await db
+        .delete(zuvyCourseProjects)
+        .where(eq(zuvyCourseProjects.id, projectId))
         .returning();
-      if (data.length === 0) {
-        return [
-          { status: 'error', message: 'Module not found', code: 404 },
-          null,
-        ];
-      }
-      await db
-        .update(zuvyCourseModules)
-        .set({ order: sql`${zuvyCourseModules.order}::numeric - 1` })
-        .where(
-          sql`${zuvyCourseModules.order} > ${data[0].order} and ${zuvyCourseModules.bootcampId} = ${bootcampId}`,
-        );
+      if(deletedProject.length > 0)
+        {
+        let data = await db
+          .delete(zuvyCourseModules)
+          .where(eq(zuvyCourseModules.id, moduleId))
+          .returning();
+        if (data.length === 0) {
+          return [
+            { status: 'error', message: 'Module not found', code: 404 },
+            null,
+          ];
+        }
+        await db
+          .update(zuvyCourseModules)
+          .set({ order: sql`${zuvyCourseModules.order}::numeric - 1` })
+          .where(
+            sql`${zuvyCourseModules.order} > ${data[0].order} and ${zuvyCourseModules.bootcampId} = ${bootcampId}`,
+          );
 
-       return {
-        status: 'success',
-        code:200,
-        message: 'Project has been deleted successfully'
-       } 
-      } 
+        return {
+          status: 'success',
+          code:200,
+          message: 'Project has been deleted successfully'
+        }
+      }
       else {
         return {
           status: 'error',
           code:404,
           message: 'Project not found with this id'
-         } 
+        }
       }
     }
     catch(err)
@@ -419,9 +417,6 @@ export class ContentService {
       throw err;
     }
   }
-  
-
-
 
   async createChapterForModule(moduleId: number, topicId: number) {
     try {
@@ -609,8 +604,8 @@ export class ContentService {
       }
       const modifiedChapterDetails: {
         id: number;
-        title: string,
-        description: string,
+        title: string;
+        description: string;
         moduleId: number;
         topicId: number;
         order: number;
@@ -631,25 +626,25 @@ export class ContentService {
           const quizDetails =
             chapterDetails[0].quizQuestions !== null
               ? await db
-                  .select()
-                  .from(zuvyModuleQuiz)
-                  .where(
-                    sql`${inArray(zuvyModuleQuiz.id, Object.values(chapterDetails[0].quizQuestions))}`,
-                  )
+                .select()
+                .from(zuvyModuleQuiz)
+                .where(
+                  sql`${inArray(zuvyModuleQuiz.id, Object.values(chapterDetails[0].quizQuestions))}`,
+                )
               : [];
           modifiedChapterDetails.quizQuestionDetails = quizDetails;
         } else if (chapterDetails[0].topicId == 3) {
           const codingProblemDetails =
             chapterDetails[0].codingQuestions !== null
               ? await db
-                  .select()
-                  .from(zuvyCodingQuestions)
-                  .where(
-                    eq(
-                      zuvyCodingQuestions.id,
-                      chapterDetails[0].codingQuestions,
-                    ),
-                  )
+                .select()
+                .from(zuvyCodingQuestions)
+                .where(
+                  eq(
+                    zuvyCodingQuestions.id,
+                    chapterDetails[0].codingQuestions,
+                  ),
+                )
               : [];
           modifiedChapterDetails.codingQuestionDetails = codingProblemDetails;
         } else {
@@ -838,14 +833,14 @@ export class ContentService {
           const remainingQuizIds =
             editData.quizQuestions != null && earlierQuizIds.length > 0
               ? earlierQuizIds.filter(
-                  (questionId) => !editData.quizQuestions.includes(questionId),
-                )
+                (questionId) => !editData.quizQuestions.includes(questionId),
+              )
               : [];
           const toUpdateIds =
             editData.quizQuestions != null && earlierQuizIds.length > 0
               ? editData.quizQuestions.filter(
-                  (questionId) => !earlierQuizIds.includes(questionId),
-                )
+                (questionId) => !earlierQuizIds.includes(questionId),
+              )
               : editData.quizQuestions;
           if (remainingQuizIds.length > 0) {
             await db
@@ -922,14 +917,14 @@ export class ContentService {
         const remainingQuizIds =
           assessmentBody.mcq != null && earlierQuizIds.length > 0
             ? earlierQuizIds.filter(
-                (questionId) => !assessmentBody.mcq.includes(questionId),
-              )
+              (questionId) => !assessmentBody.mcq.includes(questionId),
+            )
             : [];
         const toUpdateIds =
           assessmentBody.mcq != null && earlierQuizIds.length > 0
             ? assessmentBody.mcq.filter(
-                (questionId) => !earlierQuizIds.includes(questionId),
-              )
+              (questionId) => !earlierQuizIds.includes(questionId),
+            )
             : assessmentBody.mcq;
         if (remainingQuizIds.length > 0) {
           await db
@@ -954,18 +949,18 @@ export class ContentService {
             : [];
         const remainingQuizIds =
           assessmentBody.openEndedQuestions != null &&
-          earlierOpenEndedIds.length > 0
+            earlierOpenEndedIds.length > 0
             ? earlierOpenEndedIds.filter(
-                (questionId) =>
-                  !assessmentBody.openEndedQuestions.includes(questionId),
-              )
+              (questionId) =>
+                !assessmentBody.openEndedQuestions.includes(questionId),
+            )
             : [];
         const toUpdateIds =
           assessmentBody.openEndedQuestions != null &&
-          earlierOpenEndedIds.length > 0
+            earlierOpenEndedIds.length > 0
             ? assessmentBody.openEndedQuestions.filter(
-                (questionId) => !earlierOpenEndedIds.includes(questionId),
-              )
+              (questionId) => !earlierOpenEndedIds.includes(questionId),
+            )
             : assessmentBody.openEndedQuestions;
         if (remainingQuizIds.length > 0) {
           await db
@@ -993,13 +988,13 @@ export class ContentService {
         const codingQuesIds =
           ab != null
             ? ab.reduce((acc, obj) => {
-                const key = Object.keys(obj)[0];
-                const numericKey = Number(key);
-                if (!isNaN(numericKey)) {
-                  acc.push(numericKey);
-                }
-                return acc;
-              }, [])
+              const key = Object.keys(obj)[0];
+              const numericKey = Number(key);
+              if (!isNaN(numericKey)) {
+                acc.push(numericKey);
+              }
+              return acc;
+            }, [])
             : null;
         ab1 =
           assessmentBody.codingProblems != null
@@ -1018,14 +1013,14 @@ export class ContentService {
         const remainingQuizIds =
           codingQuesIds != null && earlierCodingIds.length > 0
             ? earlierCodingIds.filter(
-                (questionId) => !codingQuesIds.includes(questionId),
-              )
+              (questionId) => !codingQuesIds.includes(questionId),
+            )
             : [];
         const toUpdateIds =
           assessmentBody.codingProblems != null && earlierCodingIds.length > 0
             ? codingQuesIds.filter(
-                (questionId) => !earlierCodingIds.includes(questionId),
-              )
+              (questionId) => !earlierCodingIds.includes(questionId),
+            )
             : codingQuesIds;
         if (remainingQuizIds.length > 0) {
           await db
@@ -1073,13 +1068,13 @@ export class ContentService {
         const codingQuesIds =
           ab != null
             ? ab.reduce((acc, obj) => {
-                const key = Object.keys(obj)[0];
-                const numericKey = Number(key);
-                if (!isNaN(numericKey)) {
-                  acc.push(numericKey);
-                }
-                return acc;
-              }, [])
+              const key = Object.keys(obj)[0];
+              const numericKey = Number(key);
+              if (!isNaN(numericKey)) {
+                acc.push(numericKey);
+              }
+              return acc;
+            }, [])
             : null;
         const mcqIds =
           assessment[0].mcq != null ? Object.values(assessment[0].mcq) : null;
@@ -1090,25 +1085,25 @@ export class ContentService {
         const mcqDetails =
           mcqIds != null
             ? await db
-                .select()
-                .from(zuvyModuleQuiz)
-                .where(sql`${inArray(zuvyModuleQuiz.id, mcqIds)}`)
+              .select()
+              .from(zuvyModuleQuiz)
+              .where(sql`${inArray(zuvyModuleQuiz.id, mcqIds)}`)
             : [];
         const openEndedQuesDetails =
           openEndedQuesIds != null
             ? await db
-                .select()
-                .from(zuvyOpenEndedQuestions)
-                .where(
-                  sql`${inArray(zuvyOpenEndedQuestions.id, openEndedQuesIds)}`,
-                )
+              .select()
+              .from(zuvyOpenEndedQuestions)
+              .where(
+                sql`${inArray(zuvyOpenEndedQuestions.id, openEndedQuesIds)}`,
+              )
             : [];
         const codingProblems =
           codingQuesIds != null
             ? await db
-                .select()
-                .from(zuvyCodingQuestions)
-                .where(sql`${inArray(zuvyCodingQuestions.id, codingQuesIds)}`)
+              .select()
+              .from(zuvyCodingQuestions)
+              .where(sql`${inArray(zuvyCodingQuestions.id, codingQuesIds)}`)
             : [];
         let codingQuesDetails = [];
         for (let i = 0; i < codingProblems.length; i++) {
@@ -1323,10 +1318,14 @@ export class ContentService {
         const remainingIds = id.questionIds.filter(
           (questionId) => !usedIds.includes(questionId),
         );
-        deletedQuestions = await db
-          .delete(zuvyModuleQuiz)
-          .where(sql`${inArray(zuvyModuleQuiz.id, remainingIds)}`);
-        if (deletedQuestions.rowCount > 0) {
+        deletedQuestions =
+          remainingIds.length > 0
+            ? await db
+              .delete(zuvyModuleQuiz)
+              .where(sql`${inArray(zuvyModuleQuiz.id, remainingIds)}`)
+              .returning()
+            : [];
+        if (deletedQuestions.length > 0) {
           return {
             status: 'success',
             code: 200,
@@ -1342,8 +1341,9 @@ export class ContentService {
       }
       deletedQuestions = await db
         .delete(zuvyModuleQuiz)
-        .where(sql`${inArray(zuvyModuleQuiz.id, id.questionIds)}`);
-      if (deletedQuestions.rowCount > 0) {
+        .where(sql`${inArray(zuvyModuleQuiz.id, id.questionIds)}`)
+        .returning();
+      if (deletedQuestions.length > 0) {
         return {
           status: 'success',
           code: 200,
@@ -1375,10 +1375,14 @@ export class ContentService {
         const remainingIds = id.questionIds.filter(
           (questionId) => !usedIds.includes(questionId),
         );
-        deletedQuestions = await db
-          .delete(zuvyCodingQuestions)
-          .where(sql`${inArray(zuvyCodingQuestions.id, remainingIds)}`);
-        if (deletedQuestions.rowCount > 0) {
+        deletedQuestions =
+          remainingIds.length > 0
+            ? await db
+              .delete(zuvyCodingQuestions)
+              .where(sql`${inArray(zuvyCodingQuestions.id, remainingIds)}`)
+              .returning()
+            : [];
+        if (deletedQuestions.length > 0) {
           return {
             status: 'success',
             code: 200,
@@ -1394,8 +1398,9 @@ export class ContentService {
       }
       deletedQuestions = await db
         .delete(zuvyCodingQuestions)
-        .where(sql`${inArray(zuvyCodingQuestions.id, id.questionIds)}`);
-      if (deletedQuestions.rowCount > 0) {
+        .where(sql`${inArray(zuvyCodingQuestions.id, id.questionIds)}`)
+        .returning();
+      if (deletedQuestions.length > 0) {
         return {
           status: 'success',
           code: 200,
@@ -1430,11 +1435,14 @@ export class ContentService {
           (questionId) => !usedIds.includes(questionId),
         );
 
-        deletedQuestions = await db
-          .delete(zuvyOpenEndedQuestions)
-          .where(sql`${inArray(zuvyOpenEndedQuestions.id, remainingIds)}`)
-          .returning();
-        if (deletedQuestions.rowCount > 0) {
+        deletedQuestions =
+          remainingIds.length > 0
+            ? await db
+              .delete(zuvyOpenEndedQuestions)
+              .where(sql`${inArray(zuvyOpenEndedQuestions.id, remainingIds)}`)
+              .returning()
+            : [];
+        if (deletedQuestions.length > 0) {
           return {
             status: 'success',
             code: 200,
@@ -1450,8 +1458,9 @@ export class ContentService {
       }
       deletedQuestions = await db
         .delete(zuvyOpenEndedQuestions)
-        .where(sql`${inArray(zuvyOpenEndedQuestions.id, id.questionIds)}`);
-      if (deletedQuestions.rowCount > 0) {
+        .where(sql`${inArray(zuvyOpenEndedQuestions.id, id.questionIds)}`)
+        .returning();
+      if (deletedQuestions.length > 0) {
         return {
           status: 'success',
           code: 200,
@@ -1472,52 +1481,41 @@ export class ContentService {
   async getAllTags() {
     try {
       const allTags = await db.select().from(zuvyTags);
-      if(allTags.length > 0)
-        {
-          return {
-            status: 'success',
-            code: 200,
-            allTags
-          }
-        }
-      else {
+      if (allTags.length > 0) {
         return {
-        
-            status: 'error',
-            code: 404,
-            message : 'No tags found.Please create one'
-          
-        }
-      }  
-    }
-    catch(err)
-    {
+          status: 'success',
+          code: 200,
+          allTags,
+        };
+      } else {
+        return {
+          status: 'error',
+          code: 404,
+          message: 'No tags found.Please create one',
+        };
+      }
+    } catch (err) {
       throw err;
     }
   }
 
-  async createTag(tag: CreateTagDto)
-  {
+  async createTag(tag: CreateTagDto) {
     try {
       const newTag = await db.insert(zuvyTags).values(tag).returning();
-      if(newTag.length> 0)
-        {
-          return {
-            status: 'success',
-            code: 200,
-            newTag
-          }
-        }
-        else {
-          return {
-            status: 'error',
-            code: 404,
-            message: 'Tag is not created.Please try again.'
-          }
-        }
-    }
-    catch(err)
-    {
+      if (newTag.length > 0) {
+        return {
+          status: 'success',
+          code: 200,
+          newTag,
+        };
+      } else {
+        return {
+          status: 'error',
+          code: 404,
+          message: 'Tag is not created.Please try again.',
+        };
+      }
+    } catch (err) {
       throw err;
     }
   }
