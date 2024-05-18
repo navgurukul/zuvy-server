@@ -427,7 +427,6 @@ export class ClassesService {
           s3link: row.s3link
       }
     });
-    console.log('new',newClassesData )
     newClassesData.map(async (batch__) =>{
       try{
         await db.insert(zuvySessions).values(batch__);
