@@ -11,7 +11,7 @@ import {
   zuvyOpenEndedQuestions,
   zuvyModuleAssessment,
   zuvyCourseProjects,
-  zuvyTags
+  zuvyTags,
 } from '../../../drizzle/schema';
 
 import axios from 'axios';
@@ -46,7 +46,7 @@ import {
   deleteQuestionDto,
   UpdateOpenEndedDto,
   CreateTagDto,
-  projectDto
+  projectDto,
 } from './dto/content.dto';
 import { CreateProblemDto } from '../codingPlatform/dto/codingPlatform.dto';
 import { PatchBootcampSettingDto } from '../bootcamp/dto/bootcamp.dto';
@@ -247,7 +247,11 @@ export class ContentService {
   //   }
   // }
 
-  async createModuleForCourse(bootcampId: number, module: moduleDto,typeId : number) {
+  async createModuleForCourse(
+    bootcampId: number,
+    module: moduleDto,
+    typeId: number,
+  ) {
     try {
       const noOfModuleOfBootcamp = await db
         .select({ count: count(zuvyCourseModules.id) })
@@ -264,164 +268,166 @@ export class ContentService {
         .insert(zuvyCourseModules)
         .values(moduleWithBootcamp)
         .returning();
-      if(moduleData.length > 0)
-        {
-      return {
-        status: 'success',
-        message: 'Module created successfully for this course',
-        code: 200,
-        module: moduleData,
-      };
-    }
-    else {
-      return {
-        status: 'error',
-        code: 400,
-        message: 'Module creation failed.Please try again'
+      if (moduleData.length > 0) {
+        return {
+          status: 'success',
+          message: 'Module created successfully for this course',
+          code: 200,
+          module: moduleData,
+        };
+      } else {
+        return {
+          status: 'error',
+          code: 400,
+          message: 'Module creation failed.Please try again',
+        };
       }
-    }
     } catch (err) {
       throw err;
     }
   }
 
-  async createProjectForCourse(bootcampId: number, project: projectDto, typeId : number)
-  {
-      try {
-         const newProject = await db.insert(zuvyCourseProjects).values(project).returning();
-         if(newProject.length>0)
-          {
-              const newModule = {
-                bootcampId,
-                isLock: project.isLock,
-                name: null,
-                timeAlloted:null,
-                description: null,
-                projectId: newProject[0].id
-              }
-              const moduleCreated = await this.createModuleForCourse(bootcampId , newModule, typeId);
-              if(moduleCreated.status == 'success')
-                {
-                  return {
-                    status : 'success',
-                    code: 200,
-                    projectCreated : {
-                      ...newProject[0],
-                      order : moduleCreated.module[0]?.order
-                    }
-                  }
-                }
-          }
-      }
-      catch(err)
-      {
-        throw err;
-      }
-  }
-
-  async getProjectDetails(bootcampId:number,projectId:number)
-  {
-    try{
-      const project = await db.select().from(zuvyCourseProjects).where(eq(zuvyCourseProjects.id,projectId));
-      const correspondingModule = await db.select().from(zuvyCourseModules).where(sql`${zuvyCourseModules.bootcampId} = ${bootcampId} and ${zuvyCourseModules.projectId} = ${projectId}`);
-      if(project.length > 0)
-        {
+  async createProjectForCourse(
+    bootcampId: number,
+    project: projectDto,
+    typeId: number,
+  ) {
+    try {
+      const newProject = await db
+        .insert(zuvyCourseProjects)
+        .values(project)
+        .returning();
+      if (newProject.length > 0) {
+        const newModule = {
+          bootcampId,
+          isLock: project.isLock,
+          name: null,
+          timeAlloted: null,
+          description: null,
+          projectId: newProject[0].id,
+        };
+        const moduleCreated = await this.createModuleForCourse(
+          bootcampId,
+          newModule,
+          typeId,
+        );
+        if (moduleCreated.status == 'success') {
           return {
             status: 'success',
-            code : 200,
-            project,
-            bootcampId,
-            moduleId : correspondingModule[0].id
-          }
+            code: 200,
+            projectCreated: {
+              ...newProject[0],
+              order: moduleCreated.module[0]?.order,
+            },
+          };
         }
-        else {
-          return {
-            status : 'error',
-            code : 404,
-            message: 'There is no such project with this id'
-          }
-        }
-      
-    }catch(err)
-    {
+      }
+    } catch (err) {
       throw err;
     }
   }
 
-  async updateProjectDetails(projectId: number,project: projectDto)
-  {
+  async getProjectDetails(bootcampId: number, projectId: number) {
     try {
-      const updatedProjects = await db.update(zuvyCourseProjects).set(project).where(eq(zuvyCourseProjects.id,projectId)).returning();
-      if(updatedProjects.length > 0)
-        {
-          return {
-            status: 'success',
-            code : 200,
-            message: 'The project has been updated successfully'
-          }
-        }
-      else {
+      const project = await db
+        .select()
+        .from(zuvyCourseProjects)
+        .where(eq(zuvyCourseProjects.id, projectId));
+      const correspondingModule = await db
+        .select()
+        .from(zuvyCourseModules)
+        .where(
+          sql`${zuvyCourseModules.bootcampId} = ${bootcampId} and ${zuvyCourseModules.projectId} = ${projectId}`,
+        );
+      if (project.length > 0) {
+        return {
+          status: 'success',
+          code: 200,
+          project,
+          bootcampId,
+          moduleId: correspondingModule[0].id,
+        };
+      } else {
+        return {
+          status: 'error',
+          code: 404,
+          message: 'There is no such project with this id',
+        };
+      }
+    } catch (err) {
+      throw err;
+    }
+  }
+
+  async updateProjectDetails(projectId: number, project: projectDto) {
+    try {
+      const updatedProjects = await db
+        .update(zuvyCourseProjects)
+        .set(project)
+        .where(eq(zuvyCourseProjects.id, projectId))
+        .returning();
+      if (updatedProjects.length > 0) {
+        return {
+          status: 'success',
+          code: 200,
+          message: 'The project has been updated successfully',
+        };
+      } else {
         return {
           status: 'error',
           code: 400,
-          message: 'Update failed.Please try again'
-        }
-      }  
-
-    }catch(err)
-    {
+          message: 'Update failed.Please try again',
+        };
+      }
+    } catch (err) {
       throw err;
     }
   }
 
-  async deleteProjectForBootcamp(projectId:number,moduleId:number,bootcampId:number)
-  {
+  async deleteProjectForBootcamp(
+    projectId: number,
+    moduleId: number,
+    bootcampId: number,
+  ) {
     try {
-    let deletedProject = await db
-      .delete(zuvyCourseProjects)
-      .where(eq(zuvyCourseProjects.id, projectId))
-      .returning();
-     if(deletedProject.length > 0)
-      {
-        let data = await db
-        .delete(zuvyCourseModules)
-        .where(eq(zuvyCourseModules.id, moduleId))
+      let deletedProject = await db
+        .delete(zuvyCourseProjects)
+        .where(eq(zuvyCourseProjects.id, projectId))
         .returning();
-      if (data.length === 0) {
-        return [
-          { status: 'error', message: 'Module not found', code: 404 },
-          null,
-        ];
-      }
-      await db
-        .update(zuvyCourseModules)
-        .set({ order: sql`${zuvyCourseModules.order}::numeric - 1` })
-        .where(
-          sql`${zuvyCourseModules.order} > ${data[0].order} and ${zuvyCourseModules.bootcampId} = ${bootcampId}`,
-        );
+      if (deletedProject.length > 0) {
+        let data = await db
+          .delete(zuvyCourseModules)
+          .where(eq(zuvyCourseModules.id, moduleId))
+          .returning();
+        if (data.length === 0) {
+          return [
+            { status: 'error', message: 'Module not found', code: 404 },
+            null,
+          ];
+        }
+        await db
+          .update(zuvyCourseModules)
+          .set({ order: sql`${zuvyCourseModules.order}::numeric - 1` })
+          .where(
+            sql`${zuvyCourseModules.order} > ${data[0].order} and ${zuvyCourseModules.bootcampId} = ${bootcampId}`,
+          );
 
-       return {
-        status: 'success',
-        code:200,
-        message: 'Project has been deleted successfully'
-       } 
-      } 
-      else {
+        return {
+          status: 'success',
+          code: 200,
+          message: 'Project has been deleted successfully',
+        };
+      } else {
         return {
           status: 'error',
-          code:404,
-          message: 'Project not found with this id'
-         } 
+          code: 404,
+          message: 'Project not found with this id',
+        };
       }
-    }
-    catch(err)
-    {
+    } catch (err) {
       throw err;
     }
   }
-  
-
-
 
   async createChapterForModule(moduleId: number, topicId: number) {
     try {
@@ -478,17 +484,17 @@ export class ContentService {
         .returning();
       if (result.length > 0) {
         return {
-          status: "success",
+          status: 'success',
           code: 200,
-          result
-        }
-      }
-      else {
+          result,
+        };
+      } else {
         return {
-          status: "error",
+          status: 'error',
           code: 404,
-          message: "Quiz questions did not create successfully.Please try again"
-        }
+          message:
+            'Quiz questions did not create successfully.Please try again',
+        };
       }
     } catch (err) {
       throw err;
@@ -609,8 +615,8 @@ export class ContentService {
       }
       const modifiedChapterDetails: {
         id: number;
-        title: string,
-        description: string,
+        title: string;
+        description: string;
         moduleId: number;
         topicId: number;
         order: number;
@@ -971,7 +977,9 @@ export class ContentService {
           await db
             .update(zuvyOpenEndedQuestions)
             .set({ usage: sql`${zuvyOpenEndedQuestions.usage}::numeric - 1` })
-            .where(sql`${inArray(zuvyOpenEndedQuestions.id, remainingQuizIds)}`);
+            .where(
+              sql`${inArray(zuvyOpenEndedQuestions.id, remainingQuizIds)}`,
+            );
         }
         if (toUpdateIds.length > 0) {
           await db
@@ -1323,10 +1331,14 @@ export class ContentService {
         const remainingIds = id.questionIds.filter(
           (questionId) => !usedIds.includes(questionId),
         );
-        deletedQuestions = await db
-          .delete(zuvyModuleQuiz)
-          .where(sql`${inArray(zuvyModuleQuiz.id, remainingIds)}`);
-        if (deletedQuestions.rowCount > 0) {
+        deletedQuestions =
+          remainingIds.length > 0
+            ? await db
+                .delete(zuvyModuleQuiz)
+                .where(sql`${inArray(zuvyModuleQuiz.id, remainingIds)}`)
+                .returning()
+            : [];
+        if (deletedQuestions.length > 0) {
           return {
             status: 'success',
             code: 200,
@@ -1342,8 +1354,9 @@ export class ContentService {
       }
       deletedQuestions = await db
         .delete(zuvyModuleQuiz)
-        .where(sql`${inArray(zuvyModuleQuiz.id, id.questionIds)}`);
-      if (deletedQuestions.rowCount > 0) {
+        .where(sql`${inArray(zuvyModuleQuiz.id, id.questionIds)}`)
+        .returning();
+      if (deletedQuestions.length > 0) {
         return {
           status: 'success',
           code: 200,
@@ -1375,10 +1388,14 @@ export class ContentService {
         const remainingIds = id.questionIds.filter(
           (questionId) => !usedIds.includes(questionId),
         );
-        deletedQuestions = await db
-          .delete(zuvyCodingQuestions)
-          .where(sql`${inArray(zuvyCodingQuestions.id, remainingIds)}`);
-        if (deletedQuestions.rowCount > 0) {
+        deletedQuestions =
+          remainingIds.length > 0
+            ? await db
+                .delete(zuvyCodingQuestions)
+                .where(sql`${inArray(zuvyCodingQuestions.id, remainingIds)}`)
+                .returning()
+            : [];
+        if (deletedQuestions.length > 0) {
           return {
             status: 'success',
             code: 200,
@@ -1394,8 +1411,9 @@ export class ContentService {
       }
       deletedQuestions = await db
         .delete(zuvyCodingQuestions)
-        .where(sql`${inArray(zuvyCodingQuestions.id, id.questionIds)}`);
-      if (deletedQuestions.rowCount > 0) {
+        .where(sql`${inArray(zuvyCodingQuestions.id, id.questionIds)}`)
+        .returning();
+      if (deletedQuestions.length > 0) {
         return {
           status: 'success',
           code: 200,
@@ -1430,11 +1448,14 @@ export class ContentService {
           (questionId) => !usedIds.includes(questionId),
         );
 
-        deletedQuestions = await db
-          .delete(zuvyOpenEndedQuestions)
-          .where(sql`${inArray(zuvyOpenEndedQuestions.id, remainingIds)}`)
-          .returning();
-        if (deletedQuestions.rowCount > 0) {
+        deletedQuestions =
+          remainingIds.length > 0
+            ? await db
+                .delete(zuvyOpenEndedQuestions)
+                .where(sql`${inArray(zuvyOpenEndedQuestions.id, remainingIds)}`)
+                .returning()
+            : [];
+        if (deletedQuestions.length > 0) {
           return {
             status: 'success',
             code: 200,
@@ -1450,8 +1471,9 @@ export class ContentService {
       }
       deletedQuestions = await db
         .delete(zuvyOpenEndedQuestions)
-        .where(sql`${inArray(zuvyOpenEndedQuestions.id, id.questionIds)}`);
-      if (deletedQuestions.rowCount > 0) {
+        .where(sql`${inArray(zuvyOpenEndedQuestions.id, id.questionIds)}`)
+        .returning();
+      if (deletedQuestions.length > 0) {
         return {
           status: 'success',
           code: 200,
@@ -1472,52 +1494,41 @@ export class ContentService {
   async getAllTags() {
     try {
       const allTags = await db.select().from(zuvyTags);
-      if(allTags.length > 0)
-        {
-          return {
-            status: 'success',
-            code: 200,
-            allTags
-          }
-        }
-      else {
+      if (allTags.length > 0) {
         return {
-        
-            status: 'error',
-            code: 404,
-            message : 'No tags found.Please create one'
-          
-        }
-      }  
-    }
-    catch(err)
-    {
+          status: 'success',
+          code: 200,
+          allTags,
+        };
+      } else {
+        return {
+          status: 'error',
+          code: 404,
+          message: 'No tags found.Please create one',
+        };
+      }
+    } catch (err) {
       throw err;
     }
   }
 
-  async createTag(tag: CreateTagDto)
-  {
+  async createTag(tag: CreateTagDto) {
     try {
       const newTag = await db.insert(zuvyTags).values(tag).returning();
-      if(newTag.length> 0)
-        {
-          return {
-            status: 'success',
-            code: 200,
-            newTag
-          }
-        }
-        else {
-          return {
-            status: 'error',
-            code: 404,
-            message: 'Tag is not created.Please try again.'
-          }
-        }
-    }
-    catch(err)
-    {
+      if (newTag.length > 0) {
+        return {
+          status: 'success',
+          code: 200,
+          newTag,
+        };
+      } else {
+        return {
+          status: 'error',
+          code: 404,
+          message: 'Tag is not created.Please try again.',
+        };
+      }
+    } catch (err) {
       throw err;
     }
   }
