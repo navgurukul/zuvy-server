@@ -422,7 +422,7 @@ export class ClassesService {
           startTime: row.startTime,
           endTime: row.endTime ,
           batchId: parseInt(row.batchId),
-          bootcampId: parseInt(row.bootcampId) ,
+          bootcampId: parseInt(row.bootcampId),
           title: row.title,
           s3link: row.s3link
       }
