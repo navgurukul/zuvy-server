@@ -114,10 +114,6 @@ export class BatchesController {
     @Param('new_batch_id') newBatchID: number,
     @Param('old_batch_id') oldBatchID: number,
   ) {
-    console.log('student_id', studentID);
-    console.log('new_batch', newBatchID);
-    console.log('old_batch', oldBatchID);
-
     const [err, res] = await this.batchService.reassignBatch(
       studentID,
       newBatchID,

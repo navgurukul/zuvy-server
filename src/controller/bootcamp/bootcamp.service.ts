@@ -800,8 +800,6 @@ export class BootcampService {
             .select()
             .from(zuvySessions)
             .where(sql`${zuvySessions.batchId} = ${student.batchInfo.id}`);
-          console.log('classesInfo', classesInfo);
-          console.log('student', student);
 
           let studentBatchInfo = {
             email: student?.userInfo.email,
@@ -818,11 +816,6 @@ export class BootcampService {
 
           return studentBatchInfo;
         } catch (error) {
-          console.error(
-            'Error fetching classes info for student:',
-            student,
-            error,
-          );
           throw error;
         }
       }),
@@ -833,6 +826,7 @@ export class BootcampService {
       {
         totalStudents: totalStudentsInfo,
         totalStudentsCount: totalStudents,
+        totalPages: Math.ceil(totalStudents / limit),
         code: 200,
       },
     ];

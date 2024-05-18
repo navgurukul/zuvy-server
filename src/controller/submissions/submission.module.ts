@@ -9,6 +9,6 @@ import { JwtMiddleware } from 'src/middleware/jwt.middleware';
 })
 export class SubmissionModule implements NestModule {
    configure(consumer: MiddlewareConsumer) {
-        consumer.apply(JwtMiddleware).forRoutes('*'); // Apply JwtMiddleware to all routes
+        consumer.apply(JwtMiddleware).forRoutes('*');
     }
 }
