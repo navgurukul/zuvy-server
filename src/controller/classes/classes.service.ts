@@ -245,23 +245,30 @@ export class ClassesService {
           },
         },
       };
-
+      let saveClassDetails;
       const createdEvent = await calendar.events.insert(eventData);
-
-      const saveClassDetails = await db
-        .insert(zuvySessions)
-        .values({
-          hangoutLink: createdEvent.data.hangoutLink,
-          creator: createdEvent.data.creator.email,
-          startTime: createdEvent.data.start.dateTime,
-          endTime: createdEvent.data.end.dateTime,
-          batchId: eventDetails.batchId,
-          bootcampId: eventDetails.bootcampId,
-          title: createdEvent.data.summary,
-          meetingId: createdEvent.data.id,
-        })
-        .returning();
-      if (saveClassDetails) {
+      try{
+        saveClassDetails = await db
+          .insert(zuvySessions)
+          .values({
+            hangoutLink: createdEvent.data.hangoutLink,
+            creator: createdEvent.data.creator.email,
+            startTime: createdEvent.data.start.dateTime,
+            endTime: createdEvent.data.end.dateTime,
+            batchId: eventDetails.batchId,
+            bootcampId: eventDetails.bootcampId,
+            title: createdEvent.data.summary,
+            meetingId: createdEvent.data.id,
+          })
+          .returning();
+      } catch (error) {
+        return {
+          status: 'error',
+          message: 'Error saving class details to the database',
+          error: error,
+        };
+      }
+      if (saveClassDetails != undefined && saveClassDetails != null && saveClassDetails) {
         return {
           status: 'success',
           message: 'Created Class successfully',
@@ -409,7 +416,7 @@ export class ClassesService {
     const newClassesData = classesRow.map((row) => {
       return {
           id: row.id,
-          meetingId: row.meetingid,
+          meetingId: row.meetingId,
           hangoutLink: row.hangoutLink,
           creator: row.creator,
           startTime: row.startTime,
@@ -428,9 +435,8 @@ export class ClassesService {
       } catch (err){
         console.error(err)
       }
-
     })
-    return { status: 'success', message: 'No meetings to update', code: 200 };
+    return { status: 'success', message: 'meetings to update', code: 200 };
   }
 
   private async uploadVideoToS3(
