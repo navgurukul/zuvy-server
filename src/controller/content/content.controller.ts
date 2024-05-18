@@ -241,30 +241,6 @@ export class ContentController {
     return res;
   }
 
-  @Post('/createOpenEndedQuestion')
-  @ApiOperation({ summary: 'Create a open ended question' })
-  @ApiBearerAuth()
-  async createOpenEndedQuestion(@Body() oEndedQuestions: openEndedDto) {
-    const res =
-      await this.contentService.createOpenEndedQuestions(oEndedQuestions);
-    return res;
-  }
-
-  @Patch('/updateCodingQuestion/:questionId')
-  @ApiOperation({ summary: 'Update the coding question for this module' })
-  @ApiBearerAuth()
-  async updateCodingQuestionForModule(
-    @Body() codingQuestions: UpdateProblemDto,
-    @Param('questionId') questionId: number,
-  ) {
-    const res = await this.contentService.updateCodingProblemForModule(
-      questionId,
-      codingQuestions,
-    );
-    return res;
-  }
-
-
   @Put('/editAssessment/:assessmentId')
   @ApiOperation({ summary: 'Edit the assessment for this module' })
   @ApiBearerAuth()
@@ -326,6 +302,23 @@ export class ContentController {
     return res;
   }
 
+  @Delete('/deleteModule/:bootcampId')
+  @ApiOperation({ summary: 'Delete the module' })
+  @ApiQuery({
+    name: 'moduleId',
+    required: true,
+    type: Number,
+    description: 'module Id',
+  })
+  @ApiBearerAuth()
+  async deleteModule(
+    @Param('bootcampId') bootcampId: number,
+    @Query('moduleId') moduleId: number,
+  ): Promise<object> {
+    const res = await this.contentService.deleteModule(moduleId, bootcampId);
+    return res;
+  }
+
   @Put('/editChapterOfModule/:moduleId')
   @ApiOperation({ summary: 'Drag and drop modules in a bootcamp' })
   @ApiQuery({
@@ -346,24 +339,7 @@ export class ContentController {
       chapterId,
     );
     return res;
-  }
-
-  @Delete('/deleteModule/:bootcampId')
-  @ApiOperation({ summary: 'Delete the module' })
-  @ApiQuery({
-    name: 'moduleId',
-    required: true,
-    type: Number,
-    description: 'module Id',
-  })
-  @ApiBearerAuth()
-  async deleteModule(
-    @Param('bootcampId') bootcampId: number,
-    @Query('moduleId') moduleId: number,
-  ): Promise<object> {
-    const res = await this.contentService.deleteModule(moduleId, bootcampId);
-    return res;
-  }
+  } 
 
   @Delete('/deleteChapter/:moduleId')
   @ApiOperation({ summary: 'Delete the chapter' })
@@ -415,6 +391,19 @@ export class ContentController {
     );
     return res;
   }
+  @Patch('/updateCodingQuestion/:questionId')
+  @ApiOperation({ summary: 'Update the coding question for this module' })
+  @ApiBearerAuth()
+  async updateCodingQuestionForModule(
+    @Body() codingQuestions: UpdateProblemDto,
+    @Param('questionId') questionId: number,
+  ) {
+    const res = await this.contentService.updateCodingProblemForModule(
+      questionId,
+      codingQuestions,
+    );
+    return res;
+  }
 
   @Get('/allCodingQuestions')
   @ApiOperation({ summary: 'Get all coding Questions' })
@@ -450,11 +439,101 @@ export class ContentController {
     return res;
   }
 
+  @Delete('/deleteCodingQuestion')
+  @ApiOperation({ summary: 'Delete coding question' })
+  @ApiBearerAuth()
+  async deleteCodingQuestion(@Body() questionIds : deleteQuestionDto)
+  {
+    const res = await this.contentService.deleteCodingProblem(questionIds);
+    return res;
+  }
+
   @Post('/editquiz')
   @ApiOperation({ summary: 'Create a quiz' })
   @ApiBearerAuth()
   async editQuizForModule(@Body() quizQuestions: editQuizBatchDto) {
     const res = await this.contentService.editQuizQuestions(quizQuestions);
+    return res;
+  }
+
+ 
+
+  @Delete('/deleteQuizQuestion')
+  @ApiOperation({ summary: 'Delete quiz question' })
+  @ApiBearerAuth()
+  async deleteQuizQuestion(@Body() questionIds : deleteQuestionDto)
+  {
+    const res = await this.contentService.deleteQuiz(questionIds);
+    return res;
+  }
+
+ 
+
+  @Post('/createTag')
+  @ApiOperation({summary: 'Create a tag for the curriculum'})
+  @ApiBearerAuth()
+  async createTag(@Body() tag:CreateTagDto)
+  {
+    const res = await this.contentService.createTag(tag);
+    return res;
+  }
+
+  @Get('/allTags')
+  @ApiOperation({ summary: 'Get all the available tags' })
+  @ApiBearerAuth()
+  async getAllTags() {
+    const res = await this.contentService.getAllTags();
+    return res;
+  }
+  
+
+  @Get('/openEndedQuestions')
+  @ApiOperation({ summary: 'Get all open ended Questions' })
+  @ApiQuery({
+    name: 'tagId',
+    required: false,
+    type: Number,
+    description: 'tagId',
+  })
+  @ApiQuery({
+    name: 'difficulty',
+    required: false,
+    type: String,
+    description: 'difficulty',
+  })
+  @ApiQuery({
+    name: 'searchTerm',
+    required: false,
+    type: String,
+    description: 'Search by name or email',
+  })
+  @ApiQuery({
+    name: 'pageNo',
+    required: false,
+    type: Number,
+    description: 'page number',
+  })
+  @ApiQuery({
+    name: 'limit_',
+    required: false,
+    type: Number,
+    description: 'limit',
+  })
+  @ApiBearerAuth()
+  async getAllOpenEndedQuestions(
+    @Query('tagId') tagId: number,
+    @Query('difficulty') difficulty: 'Easy' | 'Medium' | 'Hard',
+    @Query('searchTerm') searchTerm: string,
+    @Query('pageNo') pageNo: number,
+    @Query('limit_') limit_: number,
+  ): Promise<object> {
+    const res = await this.contentService.getAllOpenEndedQuestions(
+      tagId,
+      difficulty,
+      searchTerm,
+      pageNo,
+      limit_
+    );
     return res;
   }
 
@@ -472,21 +551,12 @@ export class ContentController {
     return res;
   }
 
-  @Delete('/deleteQuizQuestion')
-  @ApiOperation({ summary: 'Delete quiz question' })
+  @Post('/createOpenEndedQuestion')
+  @ApiOperation({ summary: 'Create a open ended question' })
   @ApiBearerAuth()
-  async deleteQuizQuestion(@Body() questionIds : deleteQuestionDto)
-  {
-    const res = await this.contentService.deleteQuiz(questionIds);
-    return res;
-  }
-
-  @Delete('/deleteCodingQuestion')
-  @ApiOperation({ summary: 'Delete coding question' })
-  @ApiBearerAuth()
-  async deleteCodingQuestion(@Body() questionIds : deleteQuestionDto)
-  {
-    const res = await this.contentService.deleteCodingProblem(questionIds);
+  async createOpenEndedQuestion(@Body() oEndedQuestions: openEndedDto) {
+    const res =
+      await this.contentService.createOpenEndedQuestions(oEndedQuestions);
     return res;
   }
 
@@ -499,21 +569,5 @@ export class ContentController {
     return res;
   }
 
-  @Get('/allTags')
-  @ApiOperation({ summary: 'Get all the available tags' })
-  @ApiBearerAuth()
-  async getAllTags() {
-    const res = await this.contentService.getAllTags();
-    return res;
-  }
-
-  @Post('/createTag')
-  @ApiOperation({summary: 'Create a tag for the curriculum'})
-  @ApiBearerAuth()
-  async createTag(@Body() tag:CreateTagDto)
-  {
-    const res = await this.contentService.createTag(tag);
-    return res;
-  }
 
 }

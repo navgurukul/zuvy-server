@@ -2734,8 +2734,7 @@ export const zuvyModuleAssessment = main.table('zuvy_module_assessment', {
 
 export const zuvyOpenEndedQuestions = main.table('zuvy_openEnded_questions', {
   id: serial('id').primaryKey().notNull(),
-  question: text('question'),
-  answer: text('answer'),
+  question: text('question').notNull(),
   difficulty: difficulty('difficulty'),
   tagId: integer('tag_id').references(() => zuvyTags.id),
   marks: integer('marks'),

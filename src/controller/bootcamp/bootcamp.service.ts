@@ -751,6 +751,7 @@ export class BootcampService {
 
       studentsIds = usersData.map((user) => user.id);
     } else {
+
       studentsInTheBatch = await db
         .select()
         .from(zuvyBatchEnrollments)
@@ -758,10 +759,12 @@ export class BootcampService {
         .offset(offset)
         .limit(limit)
         .orderBy(zuvyBatchEnrollments.userId);
+
       totalStudentsInTheBatch = await db
         .select()
         .from(zuvyBatchEnrollments)
         .where(queryString);
+
       studentsIds = studentsInTheBatch.map((student) => student?.userId);
     }
 
@@ -776,7 +779,7 @@ export class BootcampService {
     let ed = `${studentsIds.join(', ')}`;
     let mapData = await db.query.zuvyBatchEnrollments.findMany({
       where: (zuvyBatchEnrollments, { sql }) =>
-        sql`${zuvyBatchEnrollments.userId} IN (${sql.join(studentsIds, sql`, `)})`,
+        sql`(${queryString})AND (${zuvyBatchEnrollments.userId} IN (${sql.join(studentsIds, sql`, `)}))`,
       with: {
         userInfo: {
           columns: {
@@ -790,37 +793,48 @@ export class BootcampService {
             id: true,
             name: true,
           },
-        },
+        }
       },
     });
     let totalStudentsInfo = await Promise.all(
       mapData.map(async (student: any) => {
         try {
-          let classesInfo = await db
-            .select()
-            .from(zuvySessions)
-            .where(sql`${zuvySessions.batchId} = ${student.batchInfo.id}`);
+          let studentBatchInfo, batchData;
+          if (student?.batchInfo) {
+            let classesInfo = await db
+              .select()
+              .from(zuvySessions)
+              .where(sql`${zuvySessions.batchId} = ${student.batchInfo.id}`);
 
-          let studentBatchInfo = {
+            let attendancePercentage = classesInfo.length > 0 ? (student.attendance / classesInfo.length) * 100 : 0;
+            batchData = {
+              batchId: student?.batchId ,
+              batchName: student.batchInfo?.name ,
+              attendance: attendancePercentage,
+            }
+          } else {
+            batchData = {
+              batchId: "unassigned",
+              batchName: "unassigned",
+              attendance: 0,
+            }
+          }
+          studentBatchInfo = {
             email: student?.userInfo.email,
             name: student?.userInfo.name,
             userId: student?.userInfo.id.toString(),
-            profilePicture: student?.userInfo.profilePicture,
             bootcampId: student.bootcampId,
-            batchId: student.batchId,
-            batchName: student.batchInfo?.name || 'not found',
-            attendance: (student.attendance / classesInfo.length) * 100 || 0,
+            profilePicture: student?.userInfo?.profilePicture,
             progress: 0,
-            classesInfo: student.classesInfo,
+            ...batchData
           };
-
           return studentBatchInfo;
+
         } catch (error) {
           throw error;
         }
       }),
     );
-
     return [
       null,
       {
@@ -830,6 +844,7 @@ export class BootcampService {
         code: 200,
       },
     ];
+    
   }
   async searchStudentsByNameOrEmail(
     searchTerm: string | bigint,
@@ -908,6 +923,7 @@ export class BootcampService {
         },
       ];
     } catch (error) {
+
       return [{ status: 'error', message: error.message, code: 500 }, null];
     }
   }
