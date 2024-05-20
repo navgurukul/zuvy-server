@@ -147,15 +147,24 @@ export class BatchesService {
     }
   }
 
-  async reassignBatch(studentID, newBatchID: number, oldBatchID: number) {
+  async reassignBatch(studentID, newBatchID: number, oldBatchID: any, bootcampID: any) {
     try {
+      let querySQL ;
+      if (isNaN(oldBatchID)) {
+        if (isNaN(bootcampID)) {
+          return [{ status: 'error', message: 'Either Bootcamp ID or old batch ID is required.', code: 400 }, null];
+        }
+        querySQL = sql`${zuvyBatchEnrollments.userId} = ${BigInt(studentID)} AND ${zuvyBatchEnrollments.bootcampId} = ${bootcampID}`;
+      } else {
+        querySQL = sql`${zuvyBatchEnrollments.userId} = ${BigInt(studentID)} AND ${zuvyBatchEnrollments.batchId} = ${oldBatchID}`;
+      }
+
       const res = await db
         .update(zuvyBatchEnrollments)
         .set({ batchId: newBatchID })
-        .where(
-          sql`${zuvyBatchEnrollments.userId} = ${BigInt(studentID)} AND ${zuvyBatchEnrollments.batchId} = ${oldBatchID}`,
-        )
+        .where(querySQL)
         .returning();
+
     if (res.length){
         return [
             null,
@@ -166,7 +175,7 @@ export class BatchesService {
             },
         ];
     }
-    return [{code: 200, status: 'success', message : 'Unassign to the new batch'}]
+    return [{code: 401, status: 'error', message : 'error in reassigning batch'}];
     } catch (e) {
       log(`error: ${e}`);
       return [{ status: 'error', message: e.message, code: 500 }, null];
