@@ -1,5 +1,5 @@
 import { pgTable, pgSchema, pgEnum, varchar, bigserial, text, integer, jsonb, timestamp, foreignKey, serial, unique, uniqueIndex, bigint, date, boolean, char, index, doublePrecision, json, customType } from "drizzle-orm/pg-core"
-  import { sql } from "drizzle-orm"
+import { sql, relations } from "drizzle-orm"
 
 export const courseEnrolmentsCourseStatus = pgEnum("course_enrolments_course_status", ['enroll', 'unenroll', 'completed'])
 export const coursesType = pgEnum("courses_type", ['html', 'js', 'python'])
@@ -23,27 +23,27 @@ export const chanakyaUserEmail = main.table("chanakya_user_email", {
 	id: serial("id").primaryKey().notNull(),
 	email: varchar("email", { length: 255 }).notNull(),
 },
-(table) => {
-	return {
-		mainChanakyaUserEmailEmailUnique: unique("main_chanakya_user_email_email_unique").on(table.email),
-	}
-});
+	(table) => {
+		return {
+			mainChanakyaUserEmailEmailUnique: unique("main_chanakya_user_email_email_unique").on(table.email),
+		}
+	});
 
 const bytea = customType<{ data: string; notNull: false; default: false }>({
-        dataType() {
-          return "bytea";
-        },
-        toDriver(val: string) {
-          let newVal = val;
-          if (val.startsWith("0x")) {
-                newVal = val.slice(2);
-          }
+	dataType() {
+		return "bytea";
+	},
+	toDriver(val: string) {
+		let newVal = val;
+		if (val.startsWith("0x")) {
+			newVal = val.slice(2);
+		}
 
-          return Buffer.from(newVal, "hex");
-        },
-        fromDriver(val: Buffer) {
-          return val.toString("hex");
-        },
+		return Buffer.from(newVal, "hex");
+	},
+	fromDriver(val: Buffer) {
+		return val.toString("hex");
+	},
 });
 
 
@@ -60,11 +60,11 @@ export const cUsers = main.table("c_users", {
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).notNull(),
 	partnerId: integer("partner_id").references(() => partners.id),
 },
-(table) => {
-	return {
-		idx80228UsersEmailUnique: uniqueIndex("idx_80228_users_email_unique").on(table.email),
-	}
-});
+	(table) => {
+		return {
+			idx80228UsersEmailUnique: uniqueIndex("idx_80228_users_email_unique").on(table.email),
+		}
+	});
 
 export const meetAttendance = main.table("meet_attendance", {
 	id: serial("id").primaryKey().notNull(),
@@ -103,11 +103,11 @@ export const studentsSchool = main.table("students_school", {
 	schoolId: integer("school_id").references(() => school.id),
 	studentId: integer("student_id").references(() => students.id),
 },
-(table) => {
-	return {
-		mainStudentsSchoolStudentIdUnique: unique("main_students_school_student_id_unique").on(table.studentId),
-	}
-});
+	(table) => {
+		return {
+			mainStudentsSchoolStudentIdUnique: unique("main_students_school_student_id_unique").on(table.studentId),
+		}
+	});
 
 export const donor = main.table("donor", {
 	id: serial("id").primaryKey().notNull(),
@@ -171,11 +171,11 @@ export const campusSchool = main.table("campus_school", {
 	schoolId: integer("school_id").references(() => school.id),
 	capacityofschool: integer("capacityofschool"),
 },
-(table) => {
-	return {
-		mainCampusSchoolCampusIdSchoolIdUnique: unique("main_campus_school_campus_id_school_id_unique").on(table.campusId, table.schoolId),
-	}
-});
+	(table) => {
+		return {
+			mainCampusSchoolCampusIdSchoolIdUnique: unique("main_campus_school_campus_id_school_id_unique").on(table.campusId, table.schoolId),
+		}
+	});
 
 export const studentsStages = main.table("students_stages", {
 	id: serial("id").primaryKey().notNull(),
@@ -264,11 +264,11 @@ export const scratch = main.table("scratch", {
 	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }),
 	teamId: integer("team_id"),
 },
-(table) => {
-	return {
-		mainScratchProjectIdUnique: unique("main_scratch_project_id_unique").on(table.projectId),
-	}
-});
+	(table) => {
+		return {
+			mainScratchProjectIdUnique: unique("main_scratch_project_id_unique").on(table.projectId),
+		}
+	});
 
 export const scratchSample = main.table("scratch_sample", {
 	id: serial("id").primaryKey().notNull(),
@@ -311,11 +311,11 @@ export const userRoles = main.table("user_roles", {
 	roles: userRolesRoles("roles").default('student'),
 	center: userRolesCenter("center"),
 },
-(table) => {
-	return {
-		idx50519UserRoleIbfk1Idx: index("idx_50519_user_role_ibfk_1_idx").on(table.userId),
-	}
-});
+	(table) => {
+		return {
+			idx50519UserRoleIbfk1Idx: index("idx_50519_user_role_ibfk_1_idx").on(table.userId),
+		}
+	});
 
 export const exercisesHistory = main.table("exercises_history", {
 	id: serial("id").primaryKey().notNull(),
@@ -347,27 +347,27 @@ export const users = main.table("users", {
 	mode: varchar("mode", { length: 255 }),
 	contact: varchar("contact", { length: 255 }),
 	lastLoginAt: timestamp("last_login_at", { withTimezone: true, mode: 'string' }),
-	spaceId: integer("space_id").references(() => partnerSpace.id, { onDelete: "cascade", onUpdate: "cascade" } ),
-	groupId: integer("group_id").references(() => spaceGroup.id, { onDelete: "set null" } ),
-	c4CaPartnerId: integer("c4ca_partner_id").references(() => c4CaPartners.id, { onDelete: "set null" } ),
-	c4CaFacilitatorId: integer("c4ca_facilitator_id").references(() => facilitators.id, { onDelete: "set null" } ),
+	spaceId: integer("space_id").references(() => partnerSpace.id, { onDelete: "cascade", onUpdate: "cascade" }),
+	groupId: integer("group_id").references(() => spaceGroup.id, { onDelete: "set null" }),
+	c4CaPartnerId: integer("c4ca_partner_id").references(() => c4CaPartners.id, { onDelete: "set null" }),
+	c4CaFacilitatorId: integer("c4ca_facilitator_id").references(() => facilitators.id, { onDelete: "set null" }),
 },
-(table) => {
-	return {
-		idx50526GoogleUserId: uniqueIndex("idx_50526_google_user_id").on(table.googleUserId),
-	}
-});
+	(table) => {
+		return {
+			idx50526GoogleUserId: uniqueIndex("idx_50526_google_user_id").on(table.googleUserId),
+		}
+	});
 
 export const usersPopularSearch = main.table("users_popular_search", {
 	id: serial("id").primaryKey().notNull(),
 	courseName: varchar("course_name", { length: 255 }),
 	count: integer("count").default(0).notNull(),
 },
-(table) => {
-	return {
-		mainUsersPopularSearchCourseNameUnique: unique("main_users_popular_search_course_name_unique").on(table.courseName),
-	}
-});
+	(table) => {
+		return {
+			mainUsersPopularSearchCourseNameUnique: unique("main_users_popular_search_course_name_unique").on(table.courseName),
+		}
+	});
 
 export const usersSearch = main.table("users_search", {
 	id: serial("id").primaryKey().notNull(),
@@ -403,11 +403,11 @@ export const contacts = main.table("contacts", {
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }),
 	altMobile: varchar("alt_mobile", { length: 255 }),
 },
-(table) => {
-	return {
-		idx80237StudentIdx: index("idx_80237_student_idx").on(table.studentId),
-	}
-});
+	(table) => {
+		return {
+			idx80237StudentIdx: index("idx_80237_student_idx").on(table.studentId),
+		}
+	});
 
 export const incomingCalls = main.table("incoming_calls", {
 	id: serial("id").primaryKey().notNull(),
@@ -415,11 +415,11 @@ export const incomingCalls = main.table("incoming_calls", {
 	callType: varchar("call_type", { length: 15 }),
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }),
 },
-(table) => {
-	return {
-		idx80265ContactIdx: index("idx_80265_contact_idx").on(table.contactId),
-	}
-});
+	(table) => {
+		return {
+			idx80265ContactIdx: index("idx_80265_contact_idx").on(table.contactId),
+		}
+	});
 
 export const courseEnrolments = main.table("course_enrolments", {
 	id: bigserial("id", { mode: "bigint" }).primaryKey().notNull(),
@@ -430,13 +430,13 @@ export const courseEnrolments = main.table("course_enrolments", {
 	enrolledAt: timestamp("enrolled_at", { withTimezone: true, mode: 'string' }).defaultNow(),
 	completedAt: timestamp("completed_at", { withTimezone: true, mode: 'string' }),
 },
-(table) => {
-	return {
-		idx50433CourseEnrolmentsIbfk2Idx: index("idx_50433_course_enrolments_ibfk_2_idx").on(table.studentId),
-		idx50433CourseEnrolmentsIbfk1Idx: index("idx_50433_course_enrolments_ibfk_1_idx").on(table.courseId),
-		mainCourseEnrolmentsStudentIdCourseIdUnique: unique("main_course_enrolments_student_id_course_id_unique").on(table.studentId, table.courseId),
-	}
-});
+	(table) => {
+		return {
+			idx50433CourseEnrolmentsIbfk2Idx: index("idx_50433_course_enrolments_ibfk_2_idx").on(table.studentId),
+			idx50433CourseEnrolmentsIbfk1Idx: index("idx_50433_course_enrolments_ibfk_1_idx").on(table.courseId),
+			mainCourseEnrolmentsStudentIdCourseIdUnique: unique("main_course_enrolments_student_id_course_id_unique").on(table.studentId, table.courseId),
+		}
+	});
 
 export const courseRelation = main.table("course_relation", {
 	id: bigserial("id", { mode: "bigint" }).primaryKey().notNull(),
@@ -445,12 +445,12 @@ export const courseRelation = main.table("course_relation", {
 	// You can use { mode: "bigint" } if numbers are exceeding js number limitations
 	reliesOn: bigint("relies_on", { mode: "number" }).references(() => courses.id),
 },
-(table) => {
-	return {
-		idx50441CourseRelationIbfk1: index("idx_50441_course_relation_ibfk_1").on(table.courseId),
-		idx50441CourseRelationIbfk2: index("idx_50441_course_relation_ibfk_2").on(table.reliesOn),
-	}
-});
+	(table) => {
+		return {
+			idx50441CourseRelationIbfk1: index("idx_50441_course_relation_ibfk_1").on(table.courseId),
+			idx50441CourseRelationIbfk2: index("idx_50441_course_relation_ibfk_2").on(table.reliesOn),
+		}
+	});
 
 export const questionSets = main.table("question_sets", {
 	id: serial("id").primaryKey().notNull(),
@@ -458,11 +458,11 @@ export const questionSets = main.table("question_sets", {
 	versionId: integer("version_id").notNull().references(() => testVersions.id),
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }),
 },
-(table) => {
-	return {
-		idx80331QuestionSetsVersionidForeign: index("idx_80331_question_sets_versionid_foreign").on(table.versionId),
-	}
-});
+	(table) => {
+		return {
+			idx80331QuestionSetsVersionidForeign: index("idx_80331_question_sets_versionid_foreign").on(table.versionId),
+		}
+	});
 
 export const enrolmentKeys = main.table("enrolment_keys", {
 	id: serial("id").primaryKey().notNull(),
@@ -475,13 +475,13 @@ export const enrolmentKeys = main.table("enrolment_keys", {
 	questionSetId: integer("question_set_id").references(() => questionSets.id),
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).notNull(),
 },
-(table) => {
-	return {
-		idx80250KeyUnique: uniqueIndex("idx_80250_key__unique").on(table.key),
-		idx80250StudentIdx: index("idx_80250_student_idx").on(table.studentId),
-		idx80250EnrolmentKeysQuestionsetidForeign: index("idx_80250_enrolment_keys_questionsetid_foreign").on(table.questionSetId),
-	}
-});
+	(table) => {
+		return {
+			idx80250KeyUnique: uniqueIndex("idx_80250_key__unique").on(table.key),
+			idx80250StudentIdx: index("idx_80250_student_idx").on(table.studentId),
+			idx80250EnrolmentKeysQuestionsetidForeign: index("idx_80250_enrolment_keys_questionsetid_foreign").on(table.questionSetId),
+		}
+	});
 
 export const exercises = main.table("exercises", {
 	id: bigserial("id", { mode: "bigint" }).primaryKey().notNull(),
@@ -498,12 +498,12 @@ export const exercises = main.table("exercises", {
 	githubLink: varchar("github_link", { length: 300 }),
 	solution: text("solution"),
 },
-(table) => {
-	return {
-		idx50457CourseId: index("idx_50457_course_id").on(table.courseId),
-		idx50457SlugUnique: uniqueIndex("idx_50457_slug__unique").on(table.slug),
-	}
-});
+	(table) => {
+		return {
+			idx50457CourseId: index("idx_50457_course_id").on(table.courseId),
+			idx50457SlugUnique: uniqueIndex("idx_50457_slug__unique").on(table.slug),
+		}
+	});
 
 export const coursesV2 = main.table("courses_v2", {
 	id: serial("id").primaryKey().notNull(),
@@ -521,11 +521,11 @@ export const assessment = main.table("assessment", {
 	exerciseId: integer("exercise_id").references(() => exercisesV2.id),
 	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }),
 },
-(table) => {
-	return {
-		mainAssessmentNameUnique: unique("main_assessment_name_unique").on(table.name),
-	}
-});
+	(table) => {
+		return {
+			mainAssessmentNameUnique: unique("main_assessment_name_unique").on(table.name),
+		}
+	});
 
 export const exercisesV2 = main.table("exercises_v2", {
 	id: serial("id").primaryKey().notNull(),
@@ -573,11 +573,11 @@ export const students = main.table("students", {
 	campusStatus: varchar("campus_status", { length: 255 }),
 	schoolStageId: integer("school_stage_id").references(() => schoolStage.id),
 },
-(table) => {
-	return {
-		idx80358StudentsPartneridForeign: index("idx_80358_students_partnerid_foreign").on(table.partnerId),
-	}
-});
+	(table) => {
+		return {
+			idx80358StudentsPartneridForeign: index("idx_80358_students_partnerid_foreign").on(table.partnerId),
+		}
+	});
 
 export const stageTransitions = main.table("stage_transitions", {
 	id: serial("id").primaryKey().notNull(),
@@ -588,11 +588,11 @@ export const stageTransitions = main.table("stage_transitions", {
 	transitionDoneBy: varchar("transition_done_by", { length: 255 }),
 	school: varchar("school", { length: 255 }),
 },
-(table) => {
-	return {
-		idx80349StageTransitionsStudentidForeign: index("idx_80349_stage_transitions_studentid_foreign").on(table.studentId),
-	}
-});
+	(table) => {
+		return {
+			idx80349StageTransitionsStudentidForeign: index("idx_80349_stage_transitions_studentid_foreign").on(table.studentId),
+		}
+	});
 
 export const studentCampus = main.table("student_campus", {
 	id: serial("id").primaryKey().notNull(),
@@ -612,11 +612,11 @@ export const chanakyaAccess = main.table("chanakya_access", {
 	userRoleId: integer("user_role_id").references(() => chanakyaUserRoles.id),
 	access: integer("access").notNull(),
 },
-(table) => {
-	return {
-		mainChanakyaAccessUserRoleIdAccessUnique: unique("main_chanakya_access_user_role_id_access_unique").on(table.userRoleId, table.access),
-	}
-});
+	(table) => {
+		return {
+			mainChanakyaAccessUserRoleIdAccessUnique: unique("main_chanakya_access_user_role_id_access_unique").on(table.userRoleId, table.access),
+		}
+	});
 
 export const chanakyaPartnerGroup = main.table("chanakya_partner_group", {
 	id: serial("id").primaryKey().notNull(),
@@ -634,24 +634,24 @@ export const chanakyaPrivilege = main.table("chanakya_privilege", {
 	privilege: varchar("privilege", { length: 225 }).notNull(),
 	description: varchar("description", { length: 225 }).notNull(),
 },
-(table) => {
-	return {
-		mainChanakyaPrivilegePrivilegeUnique: unique("main_chanakya_privilege_privilege_unique").on(table.privilege),
-		mainChanakyaPrivilegeDescriptionUnique: unique("main_chanakya_privilege_description_unique").on(table.description),
-	}
-});
+	(table) => {
+		return {
+			mainChanakyaPrivilegePrivilegeUnique: unique("main_chanakya_privilege_privilege_unique").on(table.privilege),
+			mainChanakyaPrivilegeDescriptionUnique: unique("main_chanakya_privilege_description_unique").on(table.description),
+		}
+	});
 
 export const chanakyaRoles = main.table("chanakya_roles", {
 	id: serial("id").primaryKey().notNull(),
 	roles: varchar("roles", { length: 225 }).notNull(),
 	description: varchar("description", { length: 225 }).notNull(),
 },
-(table) => {
-	return {
-		mainChanakyaRolesRolesUnique: unique("main_chanakya_roles_roles_unique").on(table.roles),
-		mainChanakyaRolesDescriptionUnique: unique("main_chanakya_roles_description_unique").on(table.description),
-	}
-});
+	(table) => {
+		return {
+			mainChanakyaRolesRolesUnique: unique("main_chanakya_roles_roles_unique").on(table.roles),
+			mainChanakyaRolesDescriptionUnique: unique("main_chanakya_roles_description_unique").on(table.description),
+		}
+	});
 
 export const classes = main.table("classes", {
 	id: serial("id").primaryKey().notNull(),
@@ -685,11 +685,11 @@ export const classRegistrations = main.table("class_registrations", {
 	feedbackAt: timestamp("feedback_at", { withTimezone: true, mode: 'string' }),
 	googleRegistrationStatus: boolean("google_registration_status"),
 },
-(table) => {
-	return {
-		mainClassRegistrationsUserIdClassIdUnique: unique("main_class_registrations_user_id_class_id_unique").on(table.classId, table.userId),
-	}
-});
+	(table) => {
+		return {
+			mainClassRegistrationsUserIdClassIdUnique: unique("main_class_registrations_user_id_class_id_unique").on(table.classId, table.userId),
+		}
+	});
 
 export const category = main.table("category", {
 	id: serial("id").primaryKey().notNull(),
@@ -717,7 +717,7 @@ export const recurringClasses = main.table("recurring_classes", {
 
 export const partnerSpace = main.table("partner_space", {
 	id: serial("id").primaryKey().notNull(),
-	partnerId: integer("partner_id").references(() => partners.id, { onDelete: "cascade", onUpdate: "cascade" } ),
+	partnerId: integer("partner_id").references(() => partners.id, { onDelete: "cascade", onUpdate: "cascade" }),
 	spaceName: varchar("space_name", { length: 255 }),
 	pointOfContactName: varchar("point_of_contact_name", { length: 255 }),
 	email: varchar("email", { length: 255 }),
@@ -735,11 +735,11 @@ export const pathways = main.table("pathways", {
 	trackingDaysLockBeforeCycle: integer("tracking_days_lock_before_cycle"),
 	logo: varchar("logo", { length: 255 }),
 },
-(table) => {
-	return {
-		mainPathwaysCodeUnique: unique("main_pathways_code_unique").on(table.code),
-	}
-});
+	(table) => {
+		return {
+			mainPathwaysCodeUnique: unique("main_pathways_code_unique").on(table.code),
+		}
+	});
 
 export const pathwaysV2 = main.table("pathways_v2", {
 	id: serial("id").primaryKey().notNull(),
@@ -748,11 +748,11 @@ export const pathwaysV2 = main.table("pathways_v2", {
 	logo: varchar("logo", { length: 255 }),
 	description: varchar("description", { length: 5000 }).notNull(),
 },
-(table) => {
-	return {
-		mainPathwaysV2CodeUnique: unique("main_pathways_v2_code_unique").on(table.code),
-	}
-});
+	(table) => {
+		return {
+			mainPathwaysV2CodeUnique: unique("main_pathways_v2_code_unique").on(table.code),
+		}
+	});
 
 export const volunteer = main.table("volunteer", {
 	id: serial("id").primaryKey().notNull(),
@@ -778,11 +778,11 @@ export const courseCompletion = main.table("course_completion", {
 	userId: integer("user_id").notNull().references(() => users.id),
 	courseId: integer("course_id").notNull().references(() => courses.id),
 },
-(table) => {
-	return {
-		mainCourseCompletionUserIdCourseIdUnique: unique("main_course_completion_user_id_course_id_unique").on(table.userId, table.courseId),
-	}
-});
+	(table) => {
+		return {
+			mainCourseCompletionUserIdCourseIdUnique: unique("main_course_completion_user_id_course_id_unique").on(table.userId, table.courseId),
+		}
+	});
 
 export const courseCompletionV2 = main.table("course_completion_v2", {
 	id: serial("id").primaryKey().notNull(),
@@ -790,11 +790,11 @@ export const courseCompletionV2 = main.table("course_completion_v2", {
 	courseId: integer("course_id").notNull().references(() => coursesV2.id),
 	completeAt: timestamp("complete_at", { withTimezone: true, mode: 'string' }),
 },
-(table) => {
-	return {
-		mainCourseCompletionV2CourseIdUnique: unique("main_course_completion_v2_course_id_unique").on(table.courseId),
-	}
-});
+	(table) => {
+		return {
+			mainCourseCompletionV2CourseIdUnique: unique("main_course_completion_v2_course_id_unique").on(table.courseId),
+		}
+	});
 
 export const courseEditorStatus = main.table("course_editor_status", {
 	id: serial("id").primaryKey().notNull(),
@@ -832,22 +832,22 @@ export const emailReport = main.table("email_report", {
 	emails: text("emails").array(),
 	repeat: varchar("repeat", { length: 255 }),
 },
-(table) => {
-	return {
-		mainEmailReportPartnerIdUnique: unique("main_email_report_partner_id_unique").on(table.partnerId),
-	}
-});
+	(table) => {
+		return {
+			mainEmailReportPartnerIdUnique: unique("main_email_report_partner_id_unique").on(table.partnerId),
+		}
+	});
 
 export const exerciseCompletion = main.table("exercise_completion", {
 	id: serial("id").primaryKey().notNull(),
 	userId: integer("user_id").notNull().references(() => users.id),
 	exerciseId: integer("exercise_id").notNull().references(() => exercises.id),
 },
-(table) => {
-	return {
-		mainExerciseCompletionUserIdExerciseIdUnique: unique("main_exercise_completion_user_id_exercise_id_unique").on(table.userId, table.exerciseId),
-	}
-});
+	(table) => {
+		return {
+			mainExerciseCompletionUserIdExerciseIdUnique: unique("main_exercise_completion_user_id_exercise_id_unique").on(table.userId, table.exerciseId),
+		}
+	});
 
 export const feedbacks = main.table("feedbacks", {
 	id: serial("id").primaryKey().notNull(),
@@ -866,12 +866,12 @@ export const feedbacks = main.table("feedbacks", {
 	notificationSentAt: text("notification_sent_at"),
 	notificationStatus: text("notification_status"),
 },
-(table) => {
-	return {
-		idx80256FeedbacksStudentidForeign: index("idx_80256_feedbacks_studentid_foreign").on(table.studentId),
-		idx80256FeedbacksUseridForeign: index("idx_80256_feedbacks_userid_foreign").on(table.userId),
-	}
-});
+	(table) => {
+		return {
+			idx80256FeedbacksStudentidForeign: index("idx_80256_feedbacks_studentid_foreign").on(table.studentId),
+			idx80256FeedbacksUseridForeign: index("idx_80256_feedbacks_userid_foreign").on(table.userId),
+		}
+	});
 
 export const interviewOwners = main.table("interview_owners", {
 	id: serial("id").primaryKey().notNull(),
@@ -882,11 +882,11 @@ export const interviewOwners = main.table("interview_owners", {
 	pendingInterviewCount: integer("pending_interview_count"),
 	gender: integer("gender"),
 },
-(table) => {
-	return {
-		mainInterviewOwnersUserIdUnique: unique("main_interview_owners_user_id_unique").on(table.userId),
-	}
-});
+	(table) => {
+		return {
+			mainInterviewOwnersUserIdUnique: unique("main_interview_owners_user_id_unique").on(table.userId),
+		}
+	});
 
 export const interviewSlot = main.table("interview_slot", {
 	id: serial("id").primaryKey().notNull(),
@@ -911,8 +911,8 @@ export const partnerSpecificBatchesV2 = main.table("partner_specific_batches_v2"
 	id: serial("id").primaryKey().notNull(),
 	classId: integer("class_id").references(() => classes.id),
 	recurringId: integer("recurring_id").references(() => recurringClasses.id),
-	spaceId: integer("space_id").references(() => partnerSpace.id, { onDelete: "set null" } ),
-	groupId: integer("group_id").references(() => spaceGroup.id, { onDelete: "set null" } ),
+	spaceId: integer("space_id").references(() => partnerSpace.id, { onDelete: "set null" }),
+	groupId: integer("group_id").references(() => spaceGroup.id, { onDelete: "set null" }),
 	partnerId: integer("partner_id").references(() => partners.id),
 	pathwayId: integer("pathway_id"),
 });
@@ -924,11 +924,11 @@ export const mentorTree = main.table("mentor_tree", {
 	pathwayId: integer("pathway_id").notNull().references(() => pathways.id),
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }),
 },
-(table) => {
-	return {
-		mainMentorTreeMentorIdMenteeIdUnique: unique("main_mentor_tree_mentor_id_mentee_id_unique").on(table.mentorId, table.menteeId),
-	}
-});
+	(table) => {
+		return {
+			mainMentorTreeMentorIdMenteeIdUnique: unique("main_mentor_tree_mentor_id_mentee_id_unique").on(table.mentorId, table.menteeId),
+		}
+	});
 
 export const mergedClasses = main.table("merged_classes", {
 	id: serial("id").primaryKey().notNull(),
@@ -943,11 +943,11 @@ export const partnerGroup = main.table("partner_group", {
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }),
 	scope: varchar("scope", { length: 255 }),
 },
-(table) => {
-	return {
-		mainPartnerGroupNameUnique: unique("main_partner_group_name_unique").on(table.name),
-	}
-});
+	(table) => {
+		return {
+			mainPartnerGroupNameUnique: unique("main_partner_group_name_unique").on(table.name),
+		}
+	});
 
 export const partnerGroupRelationship = main.table("partner_group_relationship", {
 	id: serial("id").primaryKey().notNull(),
@@ -971,7 +971,7 @@ export const partnerRelationship = main.table("partner_relationship", {
 export const spaceGroup = main.table("space_group", {
 	id: serial("id").primaryKey().notNull(),
 	groupName: varchar("group_name", { length: 255 }),
-	spaceId: integer("space_id").references(() => partnerSpace.id, { onDelete: "cascade", onUpdate: "cascade" } ),
+	spaceId: integer("space_id").references(() => partnerSpace.id, { onDelete: "cascade", onUpdate: "cascade" }),
 	webLink: varchar("web_link", { length: 255 }),
 	androidLink: varchar("android_link", { length: 255 }),
 	crcaLink: varchar("crca_link", { length: 255 }),
@@ -983,30 +983,30 @@ export const partnerUser = main.table("partner_user", {
 	email: varchar("email", { length: 225 }),
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).notNull(),
 },
-(table) => {
-	return {
-		mainPartnerUserEmailUnique: unique("main_partner_user_email_unique").on(table.email),
-	}
-});
+	(table) => {
+		return {
+			mainPartnerUserEmailUnique: unique("main_partner_user_email_unique").on(table.email),
+		}
+	});
 
 export const pathwayCompletion = main.table("pathway_completion", {
 	id: serial("id").primaryKey().notNull(),
 	userId: integer("user_id").notNull().references(() => users.id),
 	pathwayId: integer("pathway_id").notNull().references(() => pathways.id),
 },
-(table) => {
-	return {
-		mainPathwayCompletionUserIdPathwayIdUnique: unique("main_pathway_completion_user_id_pathway_id_unique").on(table.userId, table.pathwayId),
-	}
-});
+	(table) => {
+		return {
+			mainPathwayCompletionUserIdPathwayIdUnique: unique("main_pathway_completion_user_id_pathway_id_unique").on(table.userId, table.pathwayId),
+		}
+	});
 
 export const partnerSpecificBatches = main.table("partner_specific_batches", {
 	id: serial("id").primaryKey().notNull(),
 	classId: integer("class_id").references(() => classes.id),
 	recurringId: integer("recurring_id").references(() => recurringClasses.id),
 	partnerId: integer("partner_id").references(() => partners.id),
-	spaceId: integer("space_id").references(() => partnerSpace.id, { onDelete: "set null" } ),
-	groupId: integer("group_id").references(() => spaceGroup.id, { onDelete: "set null" } ),
+	spaceId: integer("space_id").references(() => partnerSpace.id, { onDelete: "set null" }),
+	groupId: integer("group_id").references(() => spaceGroup.id, { onDelete: "set null" }),
 	pathwayId: integer("pathway_id").references(() => pathwaysV2.id),
 });
 
@@ -1116,22 +1116,22 @@ export const registrationFormData = main.table("registration_form_data", {
 	partnerId: integer("partner_id").notNull().references(() => partners.id),
 	formData: json("form_data"),
 },
-(table) => {
-	return {
-		mainRegistrationFormDataPartnerIdUnique: unique("main_registration_form_data_partner_id_unique").on(table.partnerId),
-	}
-});
+	(table) => {
+		return {
+			mainRegistrationFormDataPartnerIdUnique: unique("main_registration_form_data_partner_id_unique").on(table.partnerId),
+		}
+	});
 
 export const registrationFormStructure = main.table("registration_form_structure", {
 	id: serial("id").primaryKey().notNull(),
 	partnerId: integer("partner_id").notNull().references(() => partners.id),
 	formStructure: json("form_structure"),
 },
-(table) => {
-	return {
-		mainRegistrationFormStructurePartnerIdUnique: unique("main_registration_form_structure_partner_id_unique").on(table.partnerId),
-	}
-});
+	(table) => {
+		return {
+			mainRegistrationFormStructurePartnerIdUnique: unique("main_registration_form_structure_partner_id_unique").on(table.partnerId),
+		}
+	});
 
 export const sansaarUserRoles = main.table("sansaar_user_roles", {
 	id: serial("id").primaryKey().notNull(),
@@ -1139,11 +1139,11 @@ export const sansaarUserRoles = main.table("sansaar_user_roles", {
 	role: varchar("role", { length: 255 }),
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }),
 },
-(table) => {
-	return {
-		mainSansaarUserRolesUserIdRoleUnique: unique("main_sansaar_user_roles_user_id_role_unique").on(table.userId, table.role),
-	}
-});
+	(table) => {
+		return {
+			mainSansaarUserRolesUserIdRoleUnique: unique("main_sansaar_user_roles_user_id_role_unique").on(table.userId, table.role),
+		}
+	});
 
 export const slotBooked = main.table("slot_booked", {
 	id: serial("id").primaryKey().notNull(),
@@ -1182,15 +1182,15 @@ export const studentPathways = main.table("student_pathways", {
 	pathwayId: integer("pathway_id").notNull().references(() => pathways.id),
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }),
 },
-(table) => {
-	return {
-		mainStudentPathwaysUserIdPathwayIdUnique: unique("main_student_pathways_user_id_pathway_id_unique").on(table.userId, table.pathwayId),
-	}
-});
+	(table) => {
+		return {
+			mainStudentPathwaysUserIdPathwayIdUnique: unique("main_student_pathways_user_id_pathway_id_unique").on(table.userId, table.pathwayId),
+		}
+	});
 
 export const teacherCapacityBuilding = main.table("teacher_capacity_building", {
 	id: serial("id").primaryKey().notNull(),
-	userId: integer("user_id").references(() => users.id, { onDelete: "cascade" } ),
+	userId: integer("user_id").references(() => users.id, { onDelete: "cascade" }),
 	zone: varchar("zone", { length: 255 }),
 	schoolName: varchar("school_name", { length: 255 }),
 	teacherName: varchar("teacher_name", { length: 255 }),
@@ -1208,12 +1208,12 @@ export const userTokens = main.table("user_tokens", {
 	accessToken: varchar("access_token", { length: 255 }).notNull(),
 	refreshToken: varchar("refresh_token", { length: 255 }).notNull(),
 },
-(table) => {
-	return {
-		mainUserTokensUserIdUnique: unique("main_user_tokens_user_id_unique").on(table.userId),
-		mainUserTokensUserEmailUnique: unique("main_user_tokens_user_email_unique").on(table.userEmail),
-	}
-});
+	(table) => {
+		return {
+			mainUserTokensUserIdUnique: unique("main_user_tokens_user_id_unique").on(table.userId),
+			mainUserTokensUserEmailUnique: unique("main_user_tokens_user_email_unique").on(table.userEmail),
+		}
+	});
 
 export const mentors = main.table("mentors", {
 	id: bigserial("id", { mode: "bigint" }).primaryKey().notNull(),
@@ -1225,12 +1225,12 @@ export const mentors = main.table("mentors", {
 	userId: integer("user_id").references(() => users.id),
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
 },
-(table) => {
-	return {
-		idx50487MentorIbfk1Idx: index("idx_50487_mentor_ibfk_1_idx").on(table.mentor),
-		idx50487MentorIbfk2Idx: index("idx_50487_mentor_ibfk_2_idx").on(table.mentee),
-	}
-});
+	(table) => {
+		return {
+			idx50487MentorIbfk1Idx: index("idx_50487_mentor_ibfk_1_idx").on(table.mentor),
+			idx50487MentorIbfk2Idx: index("idx_50487_mentor_ibfk_2_idx").on(table.mentee),
+		}
+	});
 
 export const merakiCertificate = main.table("meraki_certificate", {
 	id: serial("id").primaryKey().notNull(),
@@ -1261,11 +1261,11 @@ export const questionOptions = main.table("question_options", {
 	correct: boolean("correct").notNull(),
 	createdAt: varchar("created_at", { length: 45 }).notNull(),
 },
-(table) => {
-	return {
-		idx80322QuestionIdx: index("idx_80322_question_idx").on(table.questionId),
-	}
-});
+	(table) => {
+		return {
+			idx80322QuestionIdx: index("idx_80322_question_idx").on(table.questionId),
+		}
+	});
 
 export const questionBuckets = main.table("question_buckets", {
 	id: serial("id").primaryKey().notNull(),
@@ -1280,11 +1280,11 @@ export const questionBucketChoices = main.table("question_bucket_choices", {
 	questionIds: text("question_ids").notNull(),
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).notNull(),
 },
-(table) => {
-	return {
-		idx80307QuestionBucketChoicesBucketidForeign: index("idx_80307_question_bucket_choices_bucketid_foreign").on(table.bucketId),
-	}
-});
+	(table) => {
+		return {
+			idx80307QuestionBucketChoicesBucketidForeign: index("idx_80307_question_bucket_choices_bucketid_foreign").on(table.bucketId),
+		}
+	});
 
 export const testVersions = main.table("test_versions", {
 	id: serial("id").primaryKey().notNull(),
@@ -1305,14 +1305,14 @@ export const recordVersionsOfPostDeleteExercisedetails = main.table("record_vers
 export const ongoingTopics = main.table("ongoing_topics", {
 	id: serial("id").primaryKey().notNull(),
 	userId: integer("user_id").references(() => users.id),
-	teamId: integer("team_id").references(() => c4CaTeams.id, { onDelete: "cascade", onUpdate: "cascade" } ),
+	teamId: integer("team_id").references(() => c4CaTeams.id, { onDelete: "cascade", onUpdate: "cascade" }),
 	pathwayId: integer("pathway_id").notNull(),
 	courseId: integer("course_id").notNull(),
 	slugId: integer("slug_id").notNull(),
 	type: text("type").notNull(),
 	moduleId: integer("module_id"),
-	projectTopicId: integer("project_topic_id").references(() => c4CaTeamProjecttopic.id, { onDelete: "cascade", onUpdate: "cascade" } ),
-	projectSolutionId: integer("project_solution_id").references(() => c4CaTeamProjectsubmitSolution.id, { onDelete: "cascade", onUpdate: "cascade" } ),
+	projectTopicId: integer("project_topic_id").references(() => c4CaTeamProjecttopic.id, { onDelete: "cascade", onUpdate: "cascade" }),
+	projectSolutionId: integer("project_solution_id").references(() => c4CaTeamProjectsubmitSolution.id, { onDelete: "cascade", onUpdate: "cascade" }),
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
 	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }),
 });
@@ -1337,7 +1337,7 @@ export const courseCompletionV3 = main.table("course_completion_v3", {
 	userId: integer("user_id").references(() => users.id),
 	courseId: integer("course_id").notNull(),
 	completeAt: timestamp("complete_at", { withTimezone: true, mode: 'string' }),
-	teamId: integer("team_id").references(() => c4CaTeams.id, { onDelete: "set null" } ),
+	teamId: integer("team_id").references(() => c4CaTeams.id, { onDelete: "set null" }),
 	percentage: integer("percentage"),
 });
 
@@ -1345,7 +1345,7 @@ export const pathwayCompletionV2 = main.table("pathway_completion_v2", {
 	id: serial("id").primaryKey().notNull(),
 	userId: integer("user_id").references(() => users.id),
 	completeAt: timestamp("complete_at", { withTimezone: true, mode: 'string' }),
-	teamId: integer("team_id").references(() => c4CaTeams.id, { onDelete: "set null" } ),
+	teamId: integer("team_id").references(() => c4CaTeams.id, { onDelete: "set null" }),
 	percentage: integer("percentage"),
 	pathwayId: integer("pathway_id"),
 });
@@ -1355,7 +1355,7 @@ export const c4CaStudents = main.table("c4ca_students", {
 	name: varchar("name", { length: 255 }).notNull(),
 	class: integer("class").notNull(),
 	teacherId: integer("teacher_id").notNull().references(() => c4CaTeachers.id),
-	teamId: integer("team_id").notNull().references(() => c4CaTeams.id, { onDelete: "cascade", onUpdate: "cascade" } ),
+	teamId: integer("team_id").notNull().references(() => c4CaTeams.id, { onDelete: "cascade", onUpdate: "cascade" }),
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }),
 });
 
@@ -1378,7 +1378,7 @@ export const exerciseCompletionV2 = main.table("exercise_completion_v2", {
 	userId: integer("user_id").references(() => users.id),
 	completeAt: timestamp("complete_at", { withTimezone: true, mode: 'string' }),
 	exerciseId: integer("exercise_id"),
-	teamId: integer("team_id").references(() => c4CaTeams.id, { onDelete: "set null" } ),
+	teamId: integer("team_id").references(() => c4CaTeams.id, { onDelete: "set null" }),
 	slugId: integer("slug_id"),
 	courseId: integer("course_id"),
 	lang: varchar("lang", { length: 255 }),
@@ -1400,7 +1400,7 @@ export const moduleCompletionV2 = main.table("module_completion_v2", {
 	userId: integer("user_id").references(() => users.id),
 	moduleId: integer("module_id").notNull(),
 	completeAt: timestamp("complete_at", { withTimezone: true, mode: 'string' }),
-	teamId: integer("team_id").references(() => c4CaTeams.id, { onDelete: "set null" } ),
+	teamId: integer("team_id").references(() => c4CaTeams.id, { onDelete: "set null" }),
 	percentage: integer("percentage"),
 });
 
@@ -1432,7 +1432,7 @@ export const assessmentResult = main.table("assessment_result", {
 	status: varchar("status", { length: 255 }).notNull(),
 	selectedOption: integer("selected_option").notNull(),
 	attemptCount: integer("attempt_count").default(1).notNull(),
-	teamId: integer("team_id").references(() => c4CaTeams.id, { onDelete: "set null" } ),
+	teamId: integer("team_id").references(() => c4CaTeams.id, { onDelete: "set null" }),
 });
 
 export const learningTrackStatus = main.table("learning_track_status", {
@@ -1441,7 +1441,7 @@ export const learningTrackStatus = main.table("learning_track_status", {
 	pathwayId: integer("pathway_id"),
 	courseId: integer("course_id"),
 	exerciseId: integer("exercise_id").notNull().references(() => exercisesV2.id),
-	teamId: integer("team_id").references(() => c4CaTeams.id, { onDelete: "set null" } ),
+	teamId: integer("team_id").references(() => c4CaTeams.id, { onDelete: "set null" }),
 });
 
 export const c4CaTeachers = main.table("c4ca_teachers", {
@@ -1456,7 +1456,7 @@ export const c4CaTeachers = main.table("c4ca_teachers", {
 	profileUrl: varchar("profile_url", { length: 255 }),
 	facilitatorId: integer("facilitator_id"),
 	profileLink: varchar("profile_link", { length: 255 }),
-	c4CaPartnerId: integer("c4ca_partner_id").references(() => c4CaPartners.id, { onDelete: "set null" } ),
+	c4CaPartnerId: integer("c4ca_partner_id").references(() => c4CaPartners.id, { onDelete: "set null" }),
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }),
 });
 
@@ -1468,7 +1468,7 @@ export const assessmentOutcome = main.table("assessment_outcome", {
 	selectedOption: integer("selected_option"),
 	attemptCount: integer("attempt_count").notNull(),
 	multipleChoice: varchar("multiple_choice", { length: 255 }),
-	teamId: integer("team_id").references(() => c4CaTeams.id, { onDelete: "set null" } ),
+	teamId: integer("team_id").references(() => c4CaTeams.id, { onDelete: "set null" }),
 	selectedMultipleOption: varchar("selected_multiple_option", { length: 255 }),
 });
 
@@ -1489,7 +1489,7 @@ export const c4CaTeamProjectsubmitSolution = main.table("c4ca_team_projectsubmit
 	projectFileUrl: varchar("project_file_url", { length: 255 }),
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }),
 	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }),
-	teamId: integer("team_id").notNull().references(() => c4CaTeams.id, { onDelete: "cascade", onUpdate: "cascade" } ),
+	teamId: integer("team_id").notNull().references(() => c4CaTeams.id, { onDelete: "cascade", onUpdate: "cascade" }),
 	teamName: varchar("team_name", { length: 255 }).notNull(),
 	isSubmitted: boolean("is_submitted"),
 	unlockedAt: timestamp("unlocked_at", { withTimezone: true, mode: 'string' }),
@@ -1504,7 +1504,7 @@ export const c4CaTeamProjecttopic = main.table("c4ca_team_projecttopic", {
 	projectTopicUrl: varchar("project_topic_url", { length: 255 }),
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }),
 	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }),
-	teamId: integer("team_id").notNull().references(() => c4CaTeams.id, { onDelete: "cascade", onUpdate: "cascade" } ),
+	teamId: integer("team_id").notNull().references(() => c4CaTeams.id, { onDelete: "cascade", onUpdate: "cascade" }),
 	teamName: varchar("team_name", { length: 255 }).notNull(),
 	isSubmitted: boolean("is_submitted"),
 	unlockedAt: timestamp("unlocked_at", { withTimezone: true, mode: 'string' }),
@@ -1524,11 +1524,11 @@ export const c4CaTeams = main.table("c4ca_teams", {
 	district: varchar("district", { length: 255 }),
 	school: varchar("school", { length: 255 }),
 },
-(table) => {
-	return {
-		mainC4CaTeamsTeamNameUnique: unique("main_c4ca_teams_team_name_unique").on(table.teamName),
-	}
-});
+	(table) => {
+		return {
+			mainC4CaTeamsTeamNameUnique: unique("main_c4ca_teams_team_name_unique").on(table.teamName),
+		}
+	});
 
 export const pathwaysOngoingTopicOutcome = main.table("pathways_ongoing_topic_outcome", {
 	id: serial("id").primaryKey().notNull(),
@@ -1553,7 +1553,7 @@ export const learningTrackStatusOutcome = main.table("learning_track_status_outc
 	pathwayId: integer("pathway_id"),
 	courseId: integer("course_id"),
 	exerciseId: integer("exercise_id"),
-	teamId: integer("team_id").references(() => c4CaTeams.id, { onDelete: "set null" } ),
+	teamId: integer("team_id").references(() => c4CaTeams.id, { onDelete: "set null" }),
 	moduleId: integer("module_id"),
 });
 
@@ -1581,8 +1581,8 @@ export const assignmentSubmission = main.table("zuvy_assignment_submission", {
 export const batchEnrollments = main.table("zuvy_batch_enrollments", {
 	id: serial("id").primaryKey().notNull(),
 	userId: bigserial("user_id", { mode: "bigint" }).notNull().references(() => users.id),
-	bootcampId: integer("bootcamp_id").references(() => bootcamps.id, { onDelete: "cascade" } ),
-	batchId: integer("batch_id").references(() => batches.id, { onDelete: "cascade" } ),
+	bootcampId: integer("bootcamp_id").references(() => bootcamps.id, { onDelete: "cascade" }),
+	batchId: integer("batch_id").references(() => batches.id, { onDelete: "cascade" }),
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
 	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
 	attendance: integer("attendance"),
@@ -1625,7 +1625,7 @@ export const bootcamps = main.table("zuvy_bootcamps", {
 export const batches = main.table("zuvy_batches", {
 	id: serial("id").primaryKey().notNull(),
 	name: text("name").notNull(),
-	bootcampId: integer("bootcamp_id").references(() => bootcamps.id, { onDelete: "cascade" } ),
+	bootcampId: integer("bootcamp_id").references(() => bootcamps.id, { onDelete: "cascade" }),
 	instructorId: integer("instructor_id").references(() => users.id),
 	capEnrollment: integer("cap_enrollment"),
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
@@ -1643,7 +1643,7 @@ export const bootcampTracking = main.table("zuvy_bootcamp_tracking", {
 
 export const bootcampType = main.table("zuvy_bootcamp_type", {
 	id: serial("id").primaryKey().notNull(),
-	bootcampId: integer("bootcamp_id").references(() => bootcamps.id, { onDelete: "cascade" } ),
+	bootcampId: integer("bootcamp_id").references(() => bootcamps.id, { onDelete: "cascade" }),
 	type: text("type").notNull(),
 });
 
@@ -1688,12 +1688,12 @@ export const zuvyMeetingAttendance = main.table("zuvy_meeting_attendance", {
 	bootcampid: varchar("bootcampid"),
 });
 
-export const zuvyStudentAttendance = main.table("zuvy_student_attendance",{
-        id:serial("id").primaryKey().notNull(),
-        meetingId: text("meeting_id").references(() => classesGoogleMeetLink.meetingid),
-        attendance:jsonb("attendance"),
-        batchId: integer("batch_id").references(() =>  batches.id ),
-        bootcampId: integer("bootcamp_id").references(() => bootcamps.id),
+export const zuvyStudentAttendance = main.table("zuvy_student_attendance", {
+	id: serial("id").primaryKey().notNull(),
+	meetingId: text("meeting_id").references(() => zuvySessions.meetingId),
+	attendance: jsonb("attendance"),
+	batchId: integer("batch_id").references(() => batches.id),
+	bootcampId: integer("bootcamp_id").references(() => bootcamps.id),
 })
 
 export const subStage = main.table("sub_stage", {
@@ -1703,6 +1703,7 @@ export const subStage = main.table("sub_stage", {
 	stageName: varchar("stage_name", { length: 255 }),
 	subStages: varchar("sub_stages", { length: 255 }),
 });
+
 
 export const partners = main.table("partners", {
 	id: serial("id").primaryKey().notNull(),
@@ -1725,12 +1726,12 @@ export const partners = main.table("partners", {
 	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }),
 	phoneNumber: varchar("phone_number", { length: 255 }),
 },
-(table) => {
-	return {
-		idx80292PartnerName: uniqueIndex("idx_80292_partner_name").on(table.name),
-		idx80292PartnersSlugUnique: uniqueIndex("idx_80292_partners_slug_unique").on(table.slug),
-	}
-});
+	(table) => {
+		return {
+			idx80292PartnerName: uniqueIndex("idx_80292_partner_name").on(table.name),
+			idx80292PartnersSlugUnique: uniqueIndex("idx_80292_partners_slug_unique").on(table.slug),
+		}
+	});
 
 export const codingSubmission = main.table("zuvy_coding_submission", {
 	id: bigserial("id", { mode: "bigint" }).primaryKey().notNull(),
@@ -1740,24 +1741,62 @@ export const codingSubmission = main.table("zuvy_coding_submission", {
 	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }),
 });
 
-export const tags = main.table("zuvy_tags",{
-        id: serial("id").primaryKey().notNull(),
-        tagName:varchar("tag_name") 
+export const tags = main.table("zuvy_tags", {
+	id: serial("id").primaryKey().notNull(),
+	tagName: varchar("tag_name")
 })
 
-export const codingQuestions = main.table("zuvy_coding_questions",{
-        id: serial("id").primaryKey().notNull(),
-        title: varchar("title", { length: 255 }).notNull(),
-        description: text("description").notNull(),
-        difficulty: difficulty("difficulty"),
-        tags: integer("tag_id").references(() => tags.id),
-        constraints: text("constraints"),
-        authorId: integer("author_id").notNull(),
-        inputBase64: text("input_base64"), 
-        examples: jsonb("examples"), 
-        testCases: jsonb("test_cases"), 
-        expectedOutput: jsonb("expected_output"), 
-        solution: text("solution"), 
-        createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }),
-        updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }),
-    })
+export const codingQuestions = main.table("zuvy_coding_questions", {
+	id: serial("id").primaryKey().notNull(),
+	title: varchar("title", { length: 255 }).notNull(),
+	description: text("description").notNull(),
+	difficulty: difficulty("difficulty"),
+	tags: integer("tag_id").references(() => tags.id),
+	constraints: text("constraints"),
+	authorId: integer("author_id").notNull(),
+	inputBase64: text("input_base64"),
+	examples: jsonb("examples"),
+	testCases: jsonb("test_cases"),
+	expectedOutput: jsonb("expected_output"),
+	solution: text("solution"),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }),
+})
+
+export const zuvySessions = main.table('zuvy_sessions', {
+	id: serial('id').primaryKey().notNull(),
+	meetingId: text('meeting_id').notNull(),
+	hangoutLink: text('hangout_link').notNull(),
+	creator: text('creator').notNull(),
+	startTime: text('start_time').notNull(),
+	endTime: text('end_time').notNull(),
+	batchId: integer('batch_id')
+		.notNull()
+		.references(() => batches.id, {
+			onDelete: 'cascade',
+			onUpdate: 'cascade',
+		}),
+	bootcampId: integer('bootcamp_id')
+		.notNull()
+		.references(() => bootcamps.id, {
+			onDelete: 'cascade',
+			onUpdate: 'cascade',
+		}),
+	title: text('title').notNull(),
+	s3link: text('s3link'),
+	recurringId: integer('recurring_id'),
+});
+
+export const zuvyBatchEnrollmentsRelations = relations(
+	batchEnrollments,
+	({ one, many }) => ({
+		userInfo: one(users, {
+			fields: [batchEnrollments.userId],
+			references: [users.id],
+		}),
+		batchInfo: one(batches, {
+			fields: [batchEnrollments.batchId],
+			references: [batches.id],
+		}),
+	}),
+);

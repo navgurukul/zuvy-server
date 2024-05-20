@@ -1,4 +1,4 @@
-import { Injectable, Logger} from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import {
   userTokens,
@@ -21,8 +21,8 @@ let auth2Client = new OAuth2(
 export class ScheduleService {
 
   @Cron('*/59 * * * *') // Runs every 59 minutes
-  async getEventDetails(): Promise<any> { 
-    try { 
+  async getEventDetails(): Promise<any> {
+    try {
       // Retrieve all classes with null s3link
       const classesWithNullS3Link = await db.select().from(classesGoogleMeetLink).where(isNull(classesGoogleMeetLink.s3link));
 
@@ -72,9 +72,13 @@ export class ScheduleService {
         }
       }
       Logger.log('Cron job executed successfully update meeting link');
-    } catch (error) { 
-      // Handle and log errors
+    } catch (error) {
       Logger.error(error.message);
     }
+  }
+  // add function to run in ever 1 minute
+  @Cron('*/1 * * * *') // Runs every 1 minute
+  async red() {
+    Logger.log('This is the cron job running every 10 minute');
   }
 }

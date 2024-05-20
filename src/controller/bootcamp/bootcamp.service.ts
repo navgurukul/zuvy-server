@@ -12,7 +12,8 @@ import {
   batchEnrollments,
   classesGoogleMeetLink,
   bootcampTracking,
-  bootcampType
+  bootcampType,
+  zuvySessions
 } from '../../../drizzle/schema';
 
 const { ZUVY_CONTENT_URL } = process.env; // INPORTING env VALUSE ZUVY_CONTENT
@@ -503,89 +504,143 @@ export class BootcampService {
     }
   }
 
-  async getStudentsByBootcampOrBatch(bootcamp_id, batch_id, limit: number, offset: number) {
-    try {
-      let queryString;
-      if (bootcamp_id && batch_id) {
-        queryString = sql`${batchEnrollments.bootcampId} = ${bootcamp_id} and ${batchEnrollments.batchId} = ${batch_id}`;
-      } else {
-        queryString = sql`${batchEnrollments.bootcampId} = ${bootcamp_id}`;
-      }
-      const totalStudents = await db
-      .select({ count: count(batchEnrollments.bootcampId) })
-      .from(batchEnrollments)
-      .where(queryString);
-      
-      let totalPages = Math.ceil(totalStudents[0].count / limit);
-      let batchEnrollmentsData = await db
+  async getStudentsByBootcampOrBatch(
+    bootcamp_id,
+    batch_id,
+    searchTerm: string | bigint = '',
+    limit: number,
+    offset: number,
+  ) {
+    let queryString;
+    if (bootcamp_id && batch_id) {
+      queryString = sql`${batchEnrollments.bootcampId} = ${bootcamp_id} and ${batchEnrollments.batchId} = ${batch_id}`;
+    } else {
+      queryString = sql`${batchEnrollments.bootcampId} = ${bootcamp_id}`;
+    }
+    let totalStudentsInTheBatch, studentsIds, studentsInTheBatch;
+
+    if (searchTerm && searchTerm.constructor === String) {
+      let studentStringQuery = sql`(${queryString}) AND (LOWER(${users.name}) LIKE ${searchTerm.toLowerCase()} || '%' OR LOWER(${users.email}) LIKE ${searchTerm.toLowerCase()} || '%')`;
+      let usersData = await db
+        .select({
+          id: users.id,
+        })
+        .from(users)
+        .leftJoin(
+          batchEnrollments,
+          sql`${batchEnrollments.userId} = ${users.id}`,
+        )
+        .where(studentStringQuery)
+        .limit(limit)
+        .offset(offset);
+
+      totalStudentsInTheBatch = await db
+        .select({
+          id: users.id,
+        })
+        .from(users)
+        .leftJoin(
+          batchEnrollments,
+          sql`${batchEnrollments.userId} = ${users.id}`,
+        )
+        .where(studentStringQuery);
+
+      studentsIds = usersData.map((user) => user.id);
+    } else {
+
+      studentsInTheBatch = await db
         .select()
         .from(batchEnrollments)
         .where(queryString)
+        .offset(offset)
         .limit(limit)
-        .offset(offset);
-      const studentsEmails = [];
-      for (const studentEmail of batchEnrollmentsData) {
-        try {
-          let student = {};
-          const emailFetched = await db
-            .select()
-            .from(users)
-            .where(eq(users.id, studentEmail.userId));
-          if (emailFetched && emailFetched.length > 0) {
-            student = {
-              email: emailFetched[0].email,
-              name: emailFetched[0].name,
-              userId: emailFetched[0].id.toString(),
-              bootcampId: studentEmail.bootcampId,
-              profilePicture: emailFetched[0].profilePicture,
-              attendance:studentEmail.attendance
-             
-            };
-            let batchInfo;
-            let progressInfo;
-            if (studentEmail.batchId) {
-              batchInfo = await db
-                .select()
-                .from(batches)
-                .where(eq(batches.id, studentEmail.batchId));
-              if (batchInfo.length > 0) {
-                student['batchName'] = batchInfo[0].name;
-                student['batchId'] = batchInfo[0].id;
-              }
-            }
+        .orderBy(batchEnrollments.userId);
 
-            progressInfo = await db
-              .select()
-              .from(bootcampTracking)
-              .where(
-                sql`${bootcampTracking.userId}= ${studentEmail.userId} and ${bootcampTracking.bootcampId} = ${studentEmail.bootcampId}`,
-              );
-            if (progressInfo.length > 0) {
-              student['progress'] = progressInfo[0].progress;
+      totalStudentsInTheBatch = await db
+        .select()
+        .from(batchEnrollments)
+        .where(queryString);
 
-            } else {
-              student['progress'] = 0;
-            }
-          }
-          if (emailFetched && emailFetched.length > 0) {
-            studentsEmails.push(student);
-          }
-        } catch (error) {
-          log(`error: ${error.message}`);
-
-          return [
-            { status: 'error', message: 'Fetching emails failed', code: 500 },
-            null,
-          ];
-        }
-      }
-      return [
-        null,
-        { status: 'success', studentsEmails: studentsEmails, totalPages, totalStudents: totalStudents[0].count, code: 200 },
-      ];
-    } catch (e) {
-      return [{ status: 'error', message: e.message, code: 500 }, null];
+      studentsIds = studentsInTheBatch.map((student) => student?.userId);
     }
+
+    if (studentsIds.length === 0) {
+      return [{
+        "totalStudents": [],
+        "totalStudentsCount": 0,
+        "code": 200
+      }]
+    }
+    let totalStudents = totalStudentsInTheBatch.length;
+    let ed = `${studentsIds.join(', ')}`;
+    let mapData = await db.query.batchEnrollments.findMany({
+      where: (zuvyBatchEnrollments, { sql }) =>
+        sql`(${queryString})AND (${zuvyBatchEnrollments.userId} IN (${sql.join(studentsIds, sql`, `)}))`,
+      with: {
+        userInfo: {
+          columns: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
+        batchInfo: {
+          columns: {
+            id: true,
+            name: true,
+          },
+        }
+      },
+    });
+    let totalStudentsInfo = await Promise.all(
+      mapData.map(async (student: any) => {
+        try {
+          let studentBatchInfo, batchData;
+          if (student?.batchInfo) {
+            let classesInfo = await db
+              .select()
+              .from(zuvySessions)
+              .where(sql`${zuvySessions.batchId} = ${student.batchInfo.id}`);
+
+            let attendancePercentage = classesInfo.length > 0 ? (student.attendance / classesInfo.length) * 100 : 0;
+            batchData = {
+              batchId: student?.batchId ,
+              batchName: student.batchInfo?.name ,
+              attendance: attendancePercentage,
+            }
+          } else {
+            batchData = {
+              batchId: "unassigned",
+              batchName: "unassigned",
+              attendance: 0,
+            }
+          }
+          studentBatchInfo = {
+            email: student?.userInfo.email,
+            name: student?.userInfo.name,
+            userId: student?.userInfo.id.toString(),
+            bootcampId: student.bootcampId,
+            profilePicture: student?.userInfo?.profilePicture,
+            progress: 0,
+            ...batchData
+          };
+          return studentBatchInfo;
+
+        } catch (error) {
+          throw error;
+        }
+      }),
+    );
+    return [
+      null,
+      {
+        totalStudents: totalStudentsInfo,
+        totalStudentsCount: totalStudents,
+        totalPages: Math.ceil(totalStudents / limit),
+        code: 200,
+      },
+    ];
+    
   }
 
   async getStudentsBySearching(searchTerm: string | bigint, bootcamp_id: number, batch_id: number) {
@@ -877,4 +932,5 @@ export class BootcampService {
       return [{ status: 'error', message: err.message, code: 500 }, null];
     }
   }
+
 }
