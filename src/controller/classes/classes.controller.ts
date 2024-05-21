@@ -104,7 +104,7 @@ export class ClassesController {
   @ApiOperation({ summary: 'Get the google classes id by bootcampId' })
   @ApiBearerAuth()
   getClassesBybootcampId(
-    @Query('bootcampId') bootcampId: string,
+    @Query('bootcampId') bootcampId: number,
     ): Promise<object> {
     return this.classesService.unattendanceClassesByBootcampId(bootcampId);
   }
@@ -172,4 +172,10 @@ export class ClassesController {
   //   }
   //   return succes;
   // }
+  @Post('/seeding/table')
+  @ApiOperation({ summary: 'Get the google class attendees by meetingId' })
+  @ApiBearerAuth()
+  async seedingClass(): Promise<object> {
+    return await this.classesService.seedingClass();
+  }
 }
