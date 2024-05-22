@@ -1520,4 +1520,52 @@ export class ContentService {
       throw err;
     }
   }
+
+  async getAllOpenEndedQuestions(
+    tagId: number,
+    difficulty: 'Easy' | 'Medium' | 'Hard',
+    searchTerm: string = '',
+    pageNo: number,
+    limit_: number
+  ) {
+    try {
+      let queryString;
+      if (!Number.isNaN(tagId) && difficulty == undefined) {
+        queryString = sql`${zuvyOpenEndedQuestions.tagId} = ${tagId}`;
+      } else if (Number.isNaN(tagId) && difficulty != undefined) {
+        queryString = sql`${zuvyOpenEndedQuestions.difficulty} = ${difficulty}`;
+      } else if (!Number.isNaN(tagId) && difficulty != undefined) {
+        queryString = and(
+          eq(zuvyOpenEndedQuestions.difficulty, difficulty),
+          eq(zuvyOpenEndedQuestions.tagId, tagId),
+        );
+      }
+      const totalRows = await db
+      .select()
+      .from(zuvyOpenEndedQuestions)
+      .where(
+        and(
+          queryString,
+          sql`((LOWER(${zuvyOpenEndedQuestions.question}) LIKE '%' || ${searchTerm.toLowerCase()} || '%'))`,
+        ),
+      )
+      .execute();
+
+      const result = await db
+        .select()
+        .from(zuvyOpenEndedQuestions)
+        .where(
+          and(
+            queryString,
+            sql`((LOWER(${zuvyOpenEndedQuestions.question}) LIKE '%' || ${searchTerm.toLowerCase()} || '%'))`,
+          ),
+        ).offset(pageNo).limit(limit_);
+
+      
+      return { data: result, totalRows: totalRows.length, totalPages: Math.ceil(totalRows.length / limit_) };
+    } catch (err) {
+      throw err;
+    }
+
+  }
 }

@@ -2424,7 +2424,7 @@ export const ZuvyClassesGoogleMeetLink = main.table(
   'zuvy_classes_google_meet_link',
   {
     id: serial('id').primaryKey().notNull(),
-    meetingid: text('meetingid').notNull(),
+    meetingId: text('meetingid').notNull(),
     hangoutLink: text('hangout_link').notNull(),
     creator: text('creator').notNull(),
     startTime: text('start_time').notNull(),
@@ -2438,7 +2438,7 @@ export const ZuvyClassesGoogleMeetLink = main.table(
 
 export const zuvySessions = main.table('zuvy_sessions', {
   id: serial('id').primaryKey().notNull(),
-  meetingId: text('meetingid').notNull(),
+  meetingId: text('meeting_id').notNull(),
   hangoutLink: text('hangout_link').notNull(),
   creator: text('creator').notNull(),
   startTime: text('start_time').notNull(),
@@ -2734,8 +2734,7 @@ export const zuvyModuleAssessment = main.table('zuvy_module_assessment', {
 
 export const zuvyOpenEndedQuestions = main.table('zuvy_openEnded_questions', {
   id: serial('id').primaryKey().notNull(),
-  question: text('question'),
-  answer: text('answer'),
+  question: text('question').notNull(),
   difficulty: difficulty('difficulty'),
   tagId: integer('tag_id').references(() => zuvyTags.id),
   marks: integer('marks'),

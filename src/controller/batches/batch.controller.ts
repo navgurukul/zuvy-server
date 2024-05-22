@@ -104,24 +104,35 @@ export class BatchesController {
     return res;
   }
 
+
   @Patch(
-    'reassign/student_id:student_id/new_batch_id:new_batch_id/old_batch_id:old_batch_id',
+    'reassign/student_id=:student_id/new_batch_id=:new_batch_id',
   )
+  @ApiQuery({
+    name: 'old_batch_id',
+    required: false,
+    type: Number,
+    description: 'Offset for pagination',
+  })
+  @ApiQuery({
+    name: 'bootcamp_id',
+    required: false,
+    type: Number,
+    description: 'Offset for pagination',
+  })
   @ApiOperation({ summary: 'reassign Batch' })
   @ApiBearerAuth()
   async reassignBatch(
     @Param('student_id') studentID: string,
     @Param('new_batch_id') newBatchID: number,
-    @Param('old_batch_id') oldBatchID: number,
+    @Query('old_batch_id') oldBatchID: number,
+    @Query('bootcamp_id') bootcampID: number,
   ) {
-    console.log('student_id', studentID);
-    console.log('new_batch', newBatchID);
-    console.log('old_batch', oldBatchID);
-
     const [err, res] = await this.batchService.reassignBatch(
       studentID,
       newBatchID,
       oldBatchID,
+      bootcampID
     );
     if (err) {
       throw new BadRequestException(err);

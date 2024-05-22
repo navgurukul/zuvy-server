@@ -369,14 +369,6 @@ export class openEndedDto {
   question: string;
 
   @ApiProperty({
-    type: String,
-    example: 'Tiger is the national animal of India',
-    required: true,
-  })
-  @IsString()
-  answer: string;
-
-  @ApiProperty({
     type: Number,
     example: 1,
   })
@@ -410,14 +402,6 @@ export class UpdateOpenEndedDto {
   @IsOptional()
   @IsString()
   question: string;
-
-  @ApiProperty({
-    type: String,
-    example: 'Tiger is the national animal of India'
-  })
-  @IsOptional()
-  @IsString()
-  answer: string;
 
   @ApiProperty({
     type: Number,
