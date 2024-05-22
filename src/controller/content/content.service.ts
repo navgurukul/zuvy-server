@@ -978,6 +978,7 @@ export class ContentService {
           assessmentBody.openEndedQuestions = null;
         }
       }
+      
       if (assessmentBody.codingProblems) {
         let ab = [];
         let ab1 = [];
@@ -997,17 +998,17 @@ export class ContentService {
             }, [])
             : null;
         ab1 =
-          assessmentBody.codingProblems != null
+          assessment[0].codingProblems != null
             ? Object.values(assessment[0].codingProblems)
             : null;
-        const previousIds = ab1.reduce((acc, obj) => {
+        const previousIds =ab1 != null ? ab1.reduce((acc, obj) => {
           const key = Object.keys(obj)[0];
           const numericKey = Number(key);
           if (!isNaN(numericKey)) {
             acc.push(numericKey);
           }
           return acc;
-        }, []);
+        }, []) : null;
         const earlierCodingIds =
           assessment[0].codingProblems != null ? previousIds : [];
         const remainingQuizIds =
