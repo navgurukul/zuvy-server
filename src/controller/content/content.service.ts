@@ -253,11 +253,17 @@ export class ContentService {
         .select({ count: count(zuvyCourseModules.id) })
         .from(zuvyCourseModules)
         .where(eq(zuvyCourseModules.bootcampId, bootcampId));
-
+      let projectId = null;  
+      if(typeId == 2)
+        {
+          const newProject = await db.insert(zuvyCourseProjects).values({}).returning();
+          projectId = newProject.length > 0 ? newProject[0].id : null;
+        }
       var moduleWithBootcamp = {
         bootcampId,
         ...module,
         typeId,
+        projectId,
         order: noOfModuleOfBootcamp[0].count + 1,
       };
       const moduleData = await db

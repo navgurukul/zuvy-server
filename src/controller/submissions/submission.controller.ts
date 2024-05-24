@@ -56,16 +56,30 @@ import {
       type: Number,
       description: 'question Id',
     })
+    @ApiQuery({
+      name: 'limit',
+      type: Number,
+      description: 'limit',
+    })
+    @ApiQuery({
+      name: 'offset',
+      type: Number,
+      description: 'offset',
+    })
     @ApiBearerAuth()
     async getStatusOfPractiseProblem(
       @Param('moduleId') moduleId: number,
       @Query('chapterId') chapterId: number,
       @Query('questionId') questionId: number,
+      @Query('limit') limit: number,
+      @Query('offset') offset : number
     ) {
       const res = await this.submissionService.practiseProblemStatusOfStudents(
         questionId,
         chapterId,
         moduleId,
+        limit,
+        offset
       );
       return res;
     }
