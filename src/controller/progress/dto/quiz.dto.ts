@@ -21,24 +21,6 @@ export class McqCreateDto {
     @IsNotEmpty()
     @IsNumber()
     chossenOption: number;
-
-    @ApiProperty({
-        type: String,
-        example: 'fail',
-        required: true,
-    })
-    @IsNotEmpty()
-    @IsString()
-    status: string;
-
-    @ApiProperty({
-        type: Number,
-        example: 44002,
-        required: true,
-    })
-    @IsNotEmpty()
-    @IsNumber()
-    attemptCount: number;
 }
 
 export class PutMcqDto {
