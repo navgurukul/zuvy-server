@@ -253,11 +253,17 @@ export class ContentService {
         .select({ count: count(zuvyCourseModules.id) })
         .from(zuvyCourseModules)
         .where(eq(zuvyCourseModules.bootcampId, bootcampId));
-
+      let projectId = null;  
+      if(typeId == 2)
+        {
+          const newProject = await db.insert(zuvyCourseProjects).values({}).returning();
+          projectId = newProject.length > 0 ? newProject[0].id : null;
+        }
       var moduleWithBootcamp = {
         bootcampId,
         ...module,
         typeId,
+        projectId,
         order: noOfModuleOfBootcamp[0].count + 1,
       };
       const moduleData = await db
@@ -978,6 +984,7 @@ export class ContentService {
           assessmentBody.openEndedQuestions = null;
         }
       }
+      
       if (assessmentBody.codingProblems) {
         let ab = [];
         let ab1 = [];
@@ -997,17 +1004,17 @@ export class ContentService {
             }, [])
             : null;
         ab1 =
-          assessmentBody.codingProblems != null
+          assessment[0].codingProblems != null
             ? Object.values(assessment[0].codingProblems)
             : null;
-        const previousIds = ab1.reduce((acc, obj) => {
+        const previousIds =ab1 != null ? ab1.reduce((acc, obj) => {
           const key = Object.keys(obj)[0];
           const numericKey = Number(key);
           if (!isNaN(numericKey)) {
             acc.push(numericKey);
           }
           return acc;
-        }, []);
+        }, []) : null;
         const earlierCodingIds =
           assessment[0].codingProblems != null ? previousIds : [];
         const remainingQuizIds =

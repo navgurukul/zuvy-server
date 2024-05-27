@@ -6,7 +6,8 @@ import axios from 'axios';
 import * as _ from 'lodash';
 import { error, log } from 'console';
 import {
-  zuvyBatchEnrollments
+  zuvyBatchEnrollments,
+  zuvyChapterTracking
 } from '../../../drizzle/schema';
 
 const { ZUVY_CONTENT_URL } = process.env;
@@ -19,6 +20,7 @@ export class SubmissionService {
       const trackingData = await db.query.zuvyCourseModules.findMany({
         where: (courseModules, { eq }) =>
           eq(courseModules.bootcampId, bootcampId),
+        orderBy: (courseModules, { asc }) => asc(courseModules.order),
         with: {
           moduleChapterData: {
             columns: {
@@ -40,7 +42,7 @@ export class SubmissionService {
               },
             },
           },
-        },
+        }
       });
 
       const zuvyBatchEnrollmentsCount = await db
@@ -71,6 +73,8 @@ export class SubmissionService {
     questionId: number,
     chapterId: number,
     moduleId: number,
+    limit: number,
+    offset: number
   ) {
     try {
       const statusOfStudentCode = await db.query.zuvyChapterTracking.findMany({
@@ -88,7 +92,12 @@ export class SubmissionService {
             },
           },
         },
+        limit:limit,
+        offset:offset
       });
+      const totalStudents = await db.select().from(zuvyChapterTracking).where(sql`${zuvyChapterTracking.moduleId} = ${moduleId} and ${zuvyChapterTracking.chapterId} = ${chapterId}`);
+      const totalStudentsCount = totalStudents.length;
+      const totalPages = Math.ceil(totalStudentsCount/limit);
       const data = statusOfStudentCode.map((statusCode) => {
         return {
           id: Number(statusCode['user']['id']),
@@ -105,7 +114,7 @@ export class SubmissionService {
         };
       });
 
-      return data;
+      return {data,totalPages,totalStudentsCount};
     } catch (err) {
       throw err;
     }
