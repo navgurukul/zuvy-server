@@ -599,57 +599,59 @@ export class TrackingService {
               .returning();
           }
 
-          const progressSofar = (completedChapter / totalChapter) * 100;
-          if (progressSofar == 100) {
-            const totalModules = await db
-              .select()
-              .from(zuvyCourseModules)
-              .where(eq(zuvyCourseModules.bootcampId, bootcampId));
-            const completedModules = await db
-              .select()
-              .from(zuvyModuleTracking)
+          const totalModules = await db
+            .select()
+            .from(zuvyCourseModules)
+            .where(eq(zuvyCourseModules.bootcampId, bootcampId));
+          const moduleIds = totalModules.map((module) => module.id);
+          const allChapterTracking = await db
+            .select()
+            .from(zuvyChapterTracking)
+            .where(
+              sql`${inArray(zuvyChapterTracking.moduleId, moduleIds)} AND ${zuvyChapterTracking.userId} = ${userId}`,
+            );
+          const allChapters = await db
+            .select()
+            .from(zuvyModuleChapter)
+            .where(sql`${inArray(zuvyModuleChapter.moduleId, moduleIds)}`);
+          const userBootcampTracking = await db
+            .select()
+            .from(zuvyBootcampTracking)
+            .where(
+              sql`${zuvyBootcampTracking.userId} = ${userId} AND ${zuvyBootcampTracking.bootcampId} = ${bootcampId}`,
+            );
+          if (userBootcampTracking.length > 0) {
+            const updatedBootcampProgress = await db
+              .update(zuvyBootcampTracking)
+              .set({
+                progress: Math.ceil(
+                  (allChapterTracking.length / allChapters.length) * 100,
+                ),
+                updatedAt: sql`NOW()`,
+              })
               .where(
-                sql`${zuvyModuleTracking.userId} = ${userId} and ${zuvyModuleTracking.bootcampId} = ${bootcampId} and ${zuvyModuleTracking.progress} = 100`,
+                eq(
+                  zuvyBootcampTracking.bootcampId,
+                  userBootcampTracking[0].bootcampId,
+                ),
               );
-            const userBootcampTracking = await db
-              .select()
-              .from(zuvyBootcampTracking)
-              .where(
-                sql`${zuvyBootcampTracking.userId} = ${userId} AND ${zuvyBootcampTracking.bootcampId} = ${bootcampId}`,
-              );
-            if (userBootcampTracking.length > 0) {
-              const updatedBootcampProgress = await db
-                .update(zuvyBootcampTracking)
-                .set({
-                  progress: Math.ceil(
-                    (completedModules.length / totalModules.length) * 100,
-                  ),
-                  updatedAt: sql`NOW()`,
-                })
-                .where(
-                  eq(
-                    zuvyBootcampTracking.bootcampId,
-                    userBootcampTracking[0].bootcampId,
-                  ),
-                );
-            } else {
-              const updatedBootcampProgress = await db
-                .insert(zuvyBootcampTracking)
-                .values({
-                  userId,
-                  bootcampId,
-                  progress: Math.ceil(
-                    (completedModules.length / totalModules.length) * 100,
-                  ),
-                  updatedAt: sql`NOW()`,
-                });
-            }
-
-            return {
-              status: 'success',
-              message: 'Your progress has been updated successfully',
-            };
+          } else {
+            const updatedBootcampProgress = await db
+              .insert(zuvyBootcampTracking)
+              .values({
+                userId,
+                bootcampId,
+                progress: Math.ceil(
+                  (allChapterTracking.length / allChapters.length) * 100,
+                ),
+                updatedAt: sql`NOW()`,
+              });
           }
+
+          return {
+            status: 'success',
+            message: 'Your progress has been updated successfully',
+          };
         } else {
           return [
             {
@@ -809,25 +811,22 @@ export class TrackingService {
     }
   }
 
-  async getBootcampTrackingForAUser(bootcampId:number,userId:number)
-  {
+  async getBootcampTrackingForAUser(bootcampId: number, userId: number) {
     try {
-        const data = await db.query.zuvyBootcampTracking.findFirst({
-            where: (bootcampTracking, { sql }) =>
-              sql`${bootcampTracking.bootcampId} = ${bootcampId} AND ${bootcampTracking.userId} = ${userId}`,
-            with: {
-                bootcampTracking: true,
-            },
-          });
-          return {
-            status: 'success',
-            message: 'Bootcamp progress fetched successfully',
-            data
-          }
-    }
-    catch(err)
-    {
-        throw err;
+      const data = await db.query.zuvyBootcampTracking.findFirst({
+        where: (bootcampTracking, { sql }) =>
+          sql`${bootcampTracking.bootcampId} = ${bootcampId} AND ${bootcampTracking.userId} = ${userId}`,
+        with: {
+          bootcampTracking: true,
+        },
+      });
+      return {
+        status: 'success',
+        message: 'Bootcamp progress fetched successfully',
+        data,
+      };
+    } catch (err) {
+      throw err;
     }
   }
 }
