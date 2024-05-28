@@ -364,7 +364,7 @@ export class TrackingController {
   }
 
   @Get('/bootcampProgress/:bootcampId/:userId')
-  @ApiOperation({ summary: 'Get all modules of a course' })
+  @ApiOperation({ summary: 'Get bootcamp progress for a user' })
   @ApiBearerAuth()
   async getBootcampProgress(
     @Param('bootcampId') bootcampId: number,
