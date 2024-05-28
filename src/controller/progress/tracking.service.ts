@@ -18,7 +18,8 @@ import {
   zuvyChapterTracking,
   zuvyModuleChapter,
   zuvyModuleQuiz,
-  zuvyQuizTracking
+  zuvyQuizTracking,
+  zuvyModuleTracking,
 } from 'drizzle/schema';
 import { throwError } from 'rxjs';
 import {
@@ -525,6 +526,7 @@ export class TrackingService {
   // }
 
   async updateChapterStatus(
+    bootcampId: number,
     userId: number,
     moduleId: number,
     chapterId: number,
@@ -555,14 +557,51 @@ export class TrackingService {
             })
             .returning();
 
-          const serializedResult = result.map((row) => ({
-            ...row,
-            userId: row.userId.toString(),
-          }));
-
-          return {
-            serializedResult,
-          };
+          const moduleTracking = await db
+            .select()
+            .from(zuvyModuleTracking)
+            .where(
+              sql`${zuvyModuleTracking.userId} = ${userId} and ${zuvyModuleTracking.bootcampId} = ${bootcampId} and ${zuvyModuleTracking.moduleId} = ${moduleId}`,
+            );
+          const totalModuleChapter = await db
+            .select()
+            .from(zuvyModuleChapter)
+            .where(sql`${zuvyModuleChapter.moduleId} = ${moduleId}`);
+          const completedModuleChapter = await db
+            .select()
+            .from(zuvyChapterTracking)
+            .where(
+              sql`${zuvyChapterTracking.moduleId} = ${moduleId} AND ${zuvyChapterTracking.userId} = ${userId}`,
+            );
+          let totalChapter = totalModuleChapter.length;
+          let completedChapter = completedModuleChapter.length;
+          if (moduleTracking.length == 0) {
+            const results = await db
+              .insert(zuvyModuleTracking)
+              .values({
+                userId,
+                moduleId,
+                progress: (completedChapter / totalChapter) * 100,
+                bootcampId,
+                updatedAt: sql`NOW()`,
+              })
+              .returning();
+            return {
+              results,
+            };
+          } else {
+            const results = await db
+              .update(zuvyModuleTracking)
+              .set({
+                progress: (completedChapter / totalChapter) * 100,
+                updatedAt: sql`NOW()`,
+              })
+              .where(eq(zuvyModuleTracking.id, moduleTracking[0].id))
+              .returning();
+            return {
+              results,
+            };
+          }
         } else {
           return [
             {

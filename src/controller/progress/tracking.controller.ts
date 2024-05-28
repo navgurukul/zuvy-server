@@ -288,15 +288,17 @@ export class TrackingController {
   //   return res;
   // }
 
-  @Post('updateChapterStatus/:userId/:moduleId')
+  @Post('updateChapterStatus/:bootcampId/:userId/:moduleId')
   @ApiOperation({ summary: 'Update Chapter status' })
   @ApiBearerAuth()
   async updateChapterStatus(
+    @Param('bootcampId') bootcampId: number,
     @Param('userId') userId: number,
     @Param('moduleId') moduleId: number,
     @Query('chapterId') chapterId: number,
   ) {
     const res = await this.TrackingService.updateChapterStatus(
+      bootcampId,
       userId,
       moduleId,
       chapterId
