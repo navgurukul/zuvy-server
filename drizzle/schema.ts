@@ -2659,6 +2659,7 @@ export const zuvyBootcampTracking = main.table("zuvy_bootcamp_tracking", {
 	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
 });
 
+
 export const zuvyQuizTracking = main.table("zuvy_quiz_tracking", {
 	id: serial("id").primaryKey().notNull(),
 	userId: integer("user_id").references(() => users.id),
@@ -2719,6 +2720,16 @@ export const moduleChapterRelations = relations(
     moduleTracking: many(zuvyModuleTracking)
   }),
 );
+
+export const BootcampTrackingRelation = relations(
+  zuvyBootcampTracking,
+  ({one}) => ({
+    bootcampTracking: one(zuvyBootcamps,{
+      fields:[zuvyBootcampTracking.bootcampId],
+      references: [zuvyBootcamps.id]
+    })
+  })
+)
 
 export const moduleTrackingRelationOfUsers = relations(
   zuvyModuleTracking,

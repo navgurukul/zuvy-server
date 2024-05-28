@@ -362,4 +362,18 @@ export class TrackingController {
     );
     return res;
   }
+
+  @Get('/bootcampProgress/:bootcampId/:userId')
+  @ApiOperation({ summary: 'Get all modules of a course' })
+  @ApiBearerAuth()
+  async getBootcampProgress(
+    @Param('bootcampId') bootcampId: number,
+    @Param('userId') userId: number,
+  ) {
+    const res = await this.TrackingService.getBootcampTrackingForAUser(
+      bootcampId,
+      userId,
+    );
+    return res;
+  }
 }
