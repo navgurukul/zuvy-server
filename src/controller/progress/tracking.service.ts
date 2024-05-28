@@ -18,7 +18,7 @@ import {
   zuvyChapterTracking,
   zuvyModuleChapter,
   zuvyModuleQuiz,
-  zuvyQuizTracking,
+  zuvyQuizTracking
 } from 'drizzle/schema';
 import { throwError } from 'rxjs';
 import {
@@ -669,6 +669,56 @@ export class TrackingService {
       return result;
     } catch (err) {
       throw err;
+    }
+  }
+
+  async getAllModuleByBootcampIdForStudent(bootcampId: number, userId: number) {
+    try {
+      const data = await db.query.zuvyCourseModules.findMany({
+        where: (courseModules, { eq }) =>
+          eq(courseModules.bootcampId, bootcampId),
+        with: {
+          moduleChapterData: true,
+          moduleTracking: {
+            columns: {
+              progress: true,
+            },
+            where: (moduleTrack, { eq }) => eq(moduleTrack.userId, userId),
+          },
+        },
+      });
+      let modules = data.map((module: any) => {
+        return {
+          id: module.id,
+          name: module.name,
+          description: module.description,
+          typeId: module.typeId,
+          order: module.order,
+          projectId: module.projectId,
+          timeAlloted: module.timeAlloted,
+          progress:
+            module['moduleTracking'].length != 0
+              ? module['moduleTracking'][0]['progress']
+              : 0,
+          quizCount: module.moduleChapterData.filter(
+            (chapter) => chapter.topicId === 4,
+          ).length,
+          assignmentCount: module.moduleChapterData.filter(
+            (chapter) => chapter.topicId === 5,
+          ).length,
+          codingProblemsCount: module.moduleChapterData.filter(
+            (chapter) => chapter.topicId === 3,
+          ).length,
+          articlesCount: module.moduleChapterData.filter(
+            (chapter) => chapter.topicId === 2,
+          ).length,
+        };
+      });
+      modules.sort((a, b) => a.order - b.order);
+      return modules;
+    } catch (err) {
+      console.error(err);
+      return [];
     }
   }
 }

@@ -2610,13 +2610,7 @@ export const zuvyCourseModules = main.table("zuvy_course_modules",{
 	timeAlloted: bigint("time_alloted", { mode: "number" })
 })
 
-export const moduleChapterRelations = relations(
-  zuvyCourseModules,
-  ({ many }) => ({
-    moduleChapterData: many(zuvyModuleChapter),
-    chapterTrackingData: many(zuvyChapterTracking),
-  }),
-);
+
 
 export const studentChapterRelation = relations(
   zuvyBatchEnrollments,
@@ -2716,6 +2710,25 @@ export const postsRelations = relations(zuvyModuleChapter, ({ one }) => ({
     references: [zuvyCourseModules.id],
   }),
 }));
+
+export const moduleChapterRelations = relations(
+  zuvyCourseModules,
+  ({many }) => ({
+    moduleChapterData: many(zuvyModuleChapter),
+    chapterTrackingData: many(zuvyChapterTracking),
+    moduleTracking: many(zuvyModuleTracking)
+  }),
+);
+
+export const moduleTrackingRelationOfUsers = relations(
+  zuvyModuleTracking,
+  ({one}) => ({
+     trackOfModuleForUser: one(zuvyCourseModules, {
+      fields:[zuvyModuleTracking.moduleId],
+      references: [zuvyCourseModules.id]
+     })
+  })
+)
 
 export const zuvyModuleAssessment = main.table('zuvy_module_assessment', {
   id: serial('id').primaryKey().notNull(),
@@ -2866,6 +2879,8 @@ export const zuvyChapterRelations = relations(
     }),
   }),
 );
+
+
 
 export const trackingPostsRelations = relations(
   zuvyChapterTracking,

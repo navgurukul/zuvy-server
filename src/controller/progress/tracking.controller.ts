@@ -26,7 +26,7 @@ import {
   CreateAssignmentDto,
   PatchAssignmentDto,
   TimeLineAssignmentDto,
-  SubmitBodyDto
+  SubmitBodyDto,
 } from './dto/assignment.dto';
 import { CreateArticleDto } from './dto/article.dto';
 import { CreateQuizDto, McqCreateDto, PutQuizDto } from './dto/quiz.dto';
@@ -299,7 +299,7 @@ export class TrackingController {
     const res = await this.TrackingService.updateChapterStatus(
       userId,
       moduleId,
-      chapterId,
+      chapterId
     );
     return res;
   }
@@ -330,23 +330,34 @@ export class TrackingController {
   @ApiOperation({ summary: 'Update Chapter status' })
   @ApiBody({ type: SubmitBodyDto, required: false })
   @ApiBearerAuth()
-    async updateQuizAndAssignmentStatus(
-      @Param('bootcampId') bootcampId: number,
-      @Param('userId') userId: number,
-      @Param('moduleId') moduleId: number,
-      @Query('chapterId') chapterId: number,
-      // @Body() SubmitQuiz : McqCreateDto,
-      // @Body() SubmitAssignment: TimeLineAssignmentDto
-      @Body() submitBody: SubmitBodyDto
-    ) {
-      const res =  await this.TrackingService.updateQuizAndAssignmentStatus(
-        userId, 
-        moduleId, 
-        chapterId,
-        bootcampId,
-        submitBody
-      );
-      return res;
-    }
+  async updateQuizAndAssignmentStatus(
+    @Param('bootcampId') bootcampId: number,
+    @Param('userId') userId: number,
+    @Param('moduleId') moduleId: number,
+    @Query('chapterId') chapterId: number,
+    @Body() submitBody: SubmitBodyDto,
+  ) {
+    const res = await this.TrackingService.updateQuizAndAssignmentStatus(
+      userId,
+      moduleId,
+      chapterId,
+      bootcampId,
+      submitBody,
+    );
+    return res;
+  }
 
+  @Get('/allModulesForStudents/:bootcampId/:userId')
+  @ApiOperation({ summary: 'Get all modules of a course' })
+  @ApiBearerAuth()
+  async getAllModules(
+    @Param('bootcampId') bootcampId: number,
+    @Param('userId') userId: number,
+  ) {
+    const res = await this.TrackingService.getAllModuleByBootcampIdForStudent(
+      bootcampId,
+      userId,
+    );
+    return res;
+  }
 }
