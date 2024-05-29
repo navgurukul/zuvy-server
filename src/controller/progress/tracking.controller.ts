@@ -376,4 +376,18 @@ export class TrackingController {
     );
     return res;
   }
+
+  @Get('/upcomingSubmission/:bootcampId/:userId')
+  @ApiOperation({ summary: 'Get upcoming assignment submission' })
+  @ApiBearerAuth()
+  async getUpcomingAssignment(
+    @Param('bootcampId') bootcampId: number,
+    @Param('userId') userId: number,
+  ) {
+    const res = await this.TrackingService.getPendingAssignmentForStudent(
+      bootcampId,
+      userId,
+    );
+    return res;
+  }
 }
