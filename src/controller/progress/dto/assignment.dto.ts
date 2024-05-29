@@ -1,6 +1,7 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsString, IsNotEmpty,IsOptional,IsNumber, IsDate } from 'class-validator';
-
+import { IsString, IsNotEmpty,IsOptional,IsNumber, IsDate, ValidateNested } from 'class-validator';
+import { McqCreateDto } from './quiz.dto';
+import { Type } from 'class-transformer';
 
 export class CreateAssignmentDto {
     @ApiProperty({
@@ -24,49 +25,37 @@ export class PatchAssignmentDto {
     projectUrl: string;
 }
 
-export class TimeLineAssignmentDto {
+export class TimeLineAssignmentDto { 
     @ApiProperty({
-        type: Number,
-        example: 44002,
+        type: String,
+        example: 'https:://github.com/',
         required: true,
     })
-    @IsNotEmpty()
-    @IsNumber()
-    userId: number;
-
-    @ApiProperty({
-        type: Number,
-        example: 44002,
-        required: true,
-    })
-    @IsNotEmpty()
-    @IsNumber()
-    assignmentId: number;
-
-    @ApiProperty({
-        type: Number,
-        example: 44002,
-        required: true,
-    })
-    @IsNotEmpty()
-    @IsNumber()
-    moduleId: number;
-
-    @ApiProperty({
-        type: Number,
-        example: 44002,
-        required: true,
-    })
-    @IsNotEmpty()
-    @IsNumber()
-    bootcampId: number;
+    @IsOptional()
+    @IsString()
+    projectUrl: string;
 
     @ApiProperty({
         type: String, 
-        example: new Date().toISOString(),
+        example: '2023-03-01T00:00:00Z',
         required: true,
       })
       @IsNotEmpty()
-      @IsDate()
+      @IsString()
       timeLimit: string;
 }
+
+export class SubmitBodyDto {
+    @ApiProperty({ type: TimeLineAssignmentDto })
+    @IsOptional()
+    @ValidateNested()
+    @Type(() => TimeLineAssignmentDto)
+    submitAssignment: TimeLineAssignmentDto;
+  
+    @ApiProperty({ type: [McqCreateDto] })
+    @IsOptional()
+    @ValidateNested()
+    @Type(() => McqCreateDto)
+    submitQuiz: McqCreateDto[];
+  }
+

@@ -1,14 +1,14 @@
 import {
-    Controller,
-    Get,
-    Post,
-    Put,
-    Delete,
-    Patch,
-    Body,
-    Param,
-    BadRequestException,
-    Query,
+  Controller,
+  Get,
+  Post,
+  Put,
+  Delete,
+  Patch,
+  Body,
+  Param,
+  BadRequestException,
+  Query,
 } from '@nestjs/common';
 import { TrackingService } from './tracking.service';
 import {
@@ -18,14 +18,19 @@ import {
   ApiCookieAuth,
   ApiOAuth2,
   ApiBearerAuth,
+  ApiExtraModels,
+  ApiBody,
+  getSchemaPath,
 } from '@nestjs/swagger';
 import {
-    CreateAssignmentDto,
-    PatchAssignmentDto,
-    TimeLineAssignmentDto,
+  CreateAssignmentDto,
+  PatchAssignmentDto,
+  TimeLineAssignmentDto,
+  SubmitBodyDto,
 } from './dto/assignment.dto';
 import { CreateArticleDto } from './dto/article.dto';
-import { CreateQuizDto, PutQuizDto } from './dto/quiz.dto';
+import { CreateQuizDto, McqCreateDto, PutQuizDto } from './dto/quiz.dto';
+import { quizBatchDto } from '../content/dto/content.dto';
 
 @Controller('tracking')
 @ApiTags('tracking')
@@ -282,4 +287,93 @@ export class TrackingController {
   //   }
   //   return res;
   // }
+
+  @Post('updateChapterStatus/:bootcampId/:userId/:moduleId')
+  @ApiOperation({ summary: 'Update Chapter status' })
+  @ApiBearerAuth()
+  async updateChapterStatus(
+    @Param('bootcampId') bootcampId: number,
+    @Param('userId') userId: number,
+    @Param('moduleId') moduleId: number,
+    @Query('chapterId') chapterId: number,
+  ) {
+    const res = await this.TrackingService.updateChapterStatus(
+      bootcampId,
+      userId,
+      moduleId,
+      chapterId
+    );
+    return res;
+  }
+
+  @Get('/getAllChaptersWithStatus/:moduleId')
+  @ApiOperation({
+    summary: 'Get all chapters with status for a user by bootcampId',
+  })
+  @ApiQuery({
+    name: 'userId',
+    required: true,
+    type: Number,
+    description: 'user Id',
+  })
+  @ApiBearerAuth()
+  async getAllChapterForUser(
+    @Param('moduleId') moduleId: number,
+    @Query('userId') userId: number,
+  ) {
+    const res = await this.TrackingService.getAllChapterWithStatus(
+      moduleId,
+      userId,
+    );
+    return res;
+  }
+
+  @Post('updateQuizAndAssignmentStatus/:bootcampId/:userId/:moduleId')
+  @ApiOperation({ summary: 'Update Chapter status' })
+  @ApiBody({ type: SubmitBodyDto, required: false })
+  @ApiBearerAuth()
+  async updateQuizAndAssignmentStatus(
+    @Param('bootcampId') bootcampId: number,
+    @Param('userId') userId: number,
+    @Param('moduleId') moduleId: number,
+    @Query('chapterId') chapterId: number,
+    @Body() submitBody: SubmitBodyDto,
+  ) {
+    const res = await this.TrackingService.updateQuizAndAssignmentStatus(
+      userId,
+      moduleId,
+      chapterId,
+      bootcampId,
+      submitBody,
+    );
+    return res;
+  }
+
+  @Get('/allModulesForStudents/:bootcampId/:userId')
+  @ApiOperation({ summary: 'Get all modules of a course' })
+  @ApiBearerAuth()
+  async getAllModules(
+    @Param('bootcampId') bootcampId: number,
+    @Param('userId') userId: number,
+  ) {
+    const res = await this.TrackingService.getAllModuleByBootcampIdForStudent(
+      bootcampId,
+      userId,
+    );
+    return res;
+  }
+
+  @Get('/bootcampProgress/:bootcampId/:userId')
+  @ApiOperation({ summary: 'Get bootcamp progress for a user' })
+  @ApiBearerAuth()
+  async getBootcampProgress(
+    @Param('bootcampId') bootcampId: number,
+    @Param('userId') userId: number,
+  ) {
+    const res = await this.TrackingService.getBootcampTrackingForAUser(
+      bootcampId,
+      userId,
+    );
+    return res;
+  }
 }
