@@ -1,7 +1,28 @@
-import { Controller, Get, Post, Put, Patch, Delete, Body, Param, ValidationPipe, UsePipes, Optional, Query, BadRequestException, Req } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Put,
+  Patch,
+  Delete,
+  Body,
+  Param,
+  ValidationPipe,
+  UsePipes,
+  Optional,
+  Query,
+  BadRequestException,
+  Req,
+} from '@nestjs/common';
 import { CodingPlatformService } from './codingPlatform.service';
-import { ApiTags, ApiBody, ApiOperation, ApiCookieAuth, ApiQuery } from '@nestjs/swagger';
-import { SubmitCodeDto } from './dto/codingPlatform.dto';
+import {
+  ApiTags,
+  ApiBody,
+  ApiOperation,
+  ApiCookieAuth,
+  ApiQuery,
+} from '@nestjs/swagger';
+import { SubmitCodeDto,CreateProblemDto } from './dto/codingPlatform.dto';
 import { ApiBearerAuth } from '@nestjs/swagger';
 @Controller('codingPlatform')
 @ApiTags('codingPlatform')
@@ -12,9 +33,8 @@ import { ApiBearerAuth } from '@nestjs/swagger';
     forbidNonWhitelisted: true,
   }),
 )
-
 export class CodingPlatformController {
-  constructor(private codingPlatformService: CodingPlatformService) { }
+  constructor(private codingPlatformService: CodingPlatformService) {}
   @Post('submit')
   @ApiOperation({ summary: 'Run the code' })
   @ApiQuery({
@@ -33,24 +53,33 @@ export class CodingPlatformController {
     name: 'action',
     required: true,
     type: String,
-    description: 'Action such as submit or run'
+    description: 'Action such as submit or run',
   })
   @ApiBearerAuth()
-  async submitCode(@Body() sourceCode: SubmitCodeDto,
+  async submitCode(
+    @Body() sourceCode: SubmitCodeDto,
     @Query('userId') userId: number,
     @Query('questionId') questionId: number,
-    @Query('action') action: string
+    @Query('action') action: string,
   ) {
     let statusId = 1;
     let getCodeData;
-    const res =
-      await this.codingPlatformService.submitCode(sourceCode, questionId, action);
+    const res = await this.codingPlatformService.submitCode(
+      sourceCode,
+      questionId,
+      action,
+    );
     while (statusId < 3) {
       getCodeData = await this.codingPlatformService.getCodeInfo(res.token);
       statusId = getCodeData.status_id;
     }
     if (action == 'submit') {
-      await this.codingPlatformService.updateSubmissionWithToken(userId, questionId, getCodeData.token, getCodeData.status.description)
+      await this.codingPlatformService.updateSubmissionWithToken(
+        userId,
+        questionId,
+        getCodeData.token,
+        getCodeData.status.description,
+      );
     }
     return getCodeData;
   }
@@ -76,16 +105,17 @@ export class CodingPlatformController {
     @Param('questionId') question_id: number,
     @Query('userId') userId: number,
   ) {
-    const res = await this.codingPlatformService.findSubmissionByQuestionId(question_id, userId);
+    const res = await this.codingPlatformService.findSubmissionByQuestionId(
+      question_id,
+      userId,
+    );
     return res;
   }
 
   @Get('allQuestions/:userId')
   @ApiOperation({ summary: 'Get all the questions with status' })
   @ApiBearerAuth()
-  async getAllQuestionByUserId(
-    @Param('userId') userId: number
-  ) {
+  async getAllQuestionByUserId(@Param('userId') userId: number) {
     const res = await this.codingPlatformService.getQuestionsWithStatus(userId);
     return res;
   }
@@ -93,11 +123,29 @@ export class CodingPlatformController {
   @Get('questionById/:questionId')
   @ApiOperation({ summary: 'Get the questions by Id' })
   @ApiBearerAuth()
-  async getQuestionById(
-    @Param('questionId') questionId: number
-  ) {
+  async getQuestionById(@Param('questionId') questionId: number) {
     const res = await this.codingPlatformService.getQuestionById(questionId);
     return res;
   }
 
+  @Post('createCodingQuestion')
+  @ApiOperation({summary: 'Create coding question'})
+  @ApiBearerAuth()
+  async createCodingProblems(@Body() createCodingQuestion:CreateProblemDto)
+  {
+    let examples = [];
+    let testCases = [];
+    for(let i=0;i<createCodingQuestion.examples.length;i++)
+      {
+        examples.push(createCodingQuestion.examples[i].inputs);
+      }
+     createCodingQuestion.examples = examples;
+    for(let j=0;j<createCodingQuestion.testCases.length;j++)
+      {
+        testCases.push(createCodingQuestion.testCases[j].inputs)
+      }
+     createCodingQuestion.testCases = testCases
+    const res = await this.codingPlatformService.createCodingProblem(createCodingQuestion);
+    return res;
+  }
 }

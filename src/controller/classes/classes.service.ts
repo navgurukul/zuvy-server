@@ -3,10 +3,10 @@ import {
   userTokens,
   sansaarUserRoles,
   users,
-  batchEnrollments,
+  zuvyBatchEnrollments,
   zuvyStudentAttendance,
   zuvySessions,
-  classesGoogleMeetLink
+  ZuvyClassesGoogleMeetLink
 } from '../../../drizzle/schema';
 import { db } from '../../db/index';
 import { eq, sql, count, inArray, isNull } from 'drizzle-orm';
@@ -191,8 +191,8 @@ export class ClassesService {
 
       const studentsInTheBatchEmails = await db
         .select()
-        .from(batchEnrollments)
-        .where(eq(batchEnrollments.batchId, eventDetails.batchId));
+        .from(zuvyBatchEnrollments)
+        .where(eq(zuvyBatchEnrollments.batchId, eventDetails.batchId));
 
       const studentsEmails = [];
       for (const studentEmail of studentsInTheBatchEmails) {
@@ -247,7 +247,7 @@ export class ClassesService {
       };
       let saveClassDetails;
       const createdEvent = await calendar.events.insert(eventData);
-      try {
+      try{
         saveClassDetails = await db
           .insert(zuvySessions)
           .values({
@@ -291,8 +291,8 @@ export class ClassesService {
     try {
       const fetchedStudents = await db
         .select()
-        .from(batchEnrollments)
-        .where(eq(batchEnrollments.batchId, batchId));
+        .from(zuvyBatchEnrollments)
+        .where(eq(zuvyBatchEnrollments.batchId, batchId));
 
       const fetchedTokens = await db
         .select()
@@ -410,28 +410,28 @@ export class ClassesService {
     });
   }
 
-  async seedingClass() {
-    const classesRow = await db.select().from(classesGoogleMeetLink);
+  async seedingClass(){
+    const classesRow = await db.select().from(ZuvyClassesGoogleMeetLink);
 
     const newClassesData = classesRow.map((row) => {
       return {
-        id: row.id,
-        meetingId: row.meetingid,
-        hangoutLink: row.hangoutLink,
-        creator: row.creator,
-        startTime: row.startTime,
-        endTime: row.endTime,
-        batchId: parseInt(row.batchId),
-        bootcampId: parseInt(row.bootcampId),
-        title: row.title,
-        s3link: row.s3link
+          id: row.id,
+          meetingId: row.meetingId,
+          hangoutLink: row.hangoutLink,
+          creator: row.creator,
+          startTime: row.startTime,
+          endTime: row.endTime ,
+          batchId: parseInt(row.batchId),
+          bootcampId: parseInt(row.bootcampId),
+          title: row.title,
+          s3link: row.s3link
       }
     });
-    newClassesData.map(async (batch__) => {
-      try {
+    newClassesData.map(async (batch__) =>{
+      try{
         await db.insert(zuvySessions).values(batch__);
 
-      } catch (err) {
+      } catch (err){
         console.error(err)
       }
     })
@@ -605,7 +605,7 @@ export class ClassesService {
       if (classInfo.length > 0) {
         const Meeting = await db.select().from(zuvyStudentAttendance).where(sql`${zuvyStudentAttendance.meetingId}=${meeting_id}`);
         let { bootcampId, batchId, s3link } = classInfo[0];
-        let students = await db.select().from(batchEnrollments).where(sql`${batchEnrollments.batchId}=${batchId}`);
+        let students = await db.select().from(zuvyBatchEnrollments).where(sql`${zuvyBatchEnrollments.batchId}=${batchId}`);
 
         let attendance: Array<any> = Meeting[0]?.attendance as Array<any> || [];
         let no_of_students = students.length > attendance.length ? students.length : attendance.length;
@@ -699,7 +699,7 @@ export class ClassesService {
         if (attendanceSheetData.length > 0) {
           const zuvy_student_attendance = await db
             .insert(zuvyStudentAttendance)
-            .values({ meetingId, attendance: attendanceSheetData, batchId: classInfo[0]?.batchId, bootcampId: classInfo[0]?.bootcampId }).returning();
+            .values({ meetingId, attendance: attendanceSheetData, batchId:classInfo[0]?.batchId, bootcampId: classInfo[0]?.bootcampId }).returning();
           if (zuvy_student_attendance.length > 0) {
             let batchStudets = attendanceSheetData
               .filter((student: any) => student.attendance === 'present')
@@ -710,13 +710,13 @@ export class ClassesService {
 
             students.forEach(async (student) => {
               let old_attendance = await db.select()
-                .from(batchEnrollments)
-                .where(sql`${batchEnrollments.userId} = ${student.id.toString()}`);
+                .from(zuvyBatchEnrollments)
+                .where(sql`${zuvyBatchEnrollments.userId} = ${student.id.toString()}`);
               let new_attendance = old_attendance[0]?.attendance ? old_attendance[0].attendance + 1 : 1;
-              let batchEnrollmentsDetailsUpdated = await db
-                .update(batchEnrollments)
+              let zuvyBatchEnrollmentsDetailsUpdated = await db
+                .update(zuvyBatchEnrollments)
                 .set({ attendance: new_attendance })
-                .where(sql`${batchEnrollments.userId} = ${student.id.toString()}`).returning();
+                .where(sql`${zuvyBatchEnrollments.userId} = ${student.id.toString()}`).returning();
             });
           }
           return [null, {
@@ -825,8 +825,8 @@ export class ClassesService {
   //         const totalMeetsMarkedLength = totalMeetsMarked.length;
   //         const fetchedStudents = await db
   //           .select()
-  //           .from(batchEnrollments)
-  //           .where(sql`${batchEnrollments.batchId}=${meet.batchId}`);
+  //           .from(zuvyBatchEnrollments)
+  //           .where(sql`${zuvyBatchEnrollments.batchId}=${meet.batchId}`);
   //         for (const student of fetchedStudents) {
   //           const studentDetails = await db
   //             .select()
@@ -842,8 +842,8 @@ export class ClassesService {
   //             );
   //             const attendancePercentage = await db
   //               .select()
-  //               .from(batchEnrollments)
-  //               .where(sql`${batchEnrollments.userId}=${student.userId}`);
+  //               .from(zuvyBatchEnrollments)
+  //               .where(sql`${zuvyBatchEnrollments.userId}=${student.userId}`);
   //             const fetchedAttendancePercentage =
   //               attendancePercentage[0].attendance;
   //             if (fetchedAttendancePercentage != null) {
@@ -854,13 +854,13 @@ export class ClassesService {
   //                   (totalMeetsMarkedLength + 1)
   //                 );
   //                 const updateAttendance = await db
-  //                   .update(batchEnrollments)
+  //                   .update(zuvyBatchEnrollments)
   //                   .set({
   //                     attendance: calculatedPercentage,
   //                     classesAttended:
   //                       attendancePercentage[0].classesAttended + 1,
   //                   })
-  //                   .where(sql`${batchEnrollments.userId}=${student.userId}`);
+  //                   .where(sql`${zuvyBatchEnrollments.userId}=${student.userId}`);
   //               } else {
   //                 const calculatedPercentage = ~~(
   //                   (attendancePercentage[0].attendance *
@@ -869,36 +869,36 @@ export class ClassesService {
   //                   (totalMeetsMarkedLength + 1)
   //                 );
   //                 const updateAttendance = await db
-  //                   .update(batchEnrollments)
+  //                   .update(zuvyBatchEnrollments)
   //                   .set({
   //                     attendance: calculatedPercentage,
   //                     classesAttended:
   //                       attendancePercentage[0].classesAttended + 1,
   //                   })
-  //                   .where(sql`${batchEnrollments.userId}=${student.userId}`);
+  //                   .where(sql`${zuvyBatchEnrollments.userId}=${student.userId}`);
   //               }
   //             } else {
   //               if (studentAttendanceDetails['attendance'] == 'absent') {
   //                 const percentage = 0;
   //                 const classes = 1;
   //                 const updateAttendance = await db
-  //                   .update(batchEnrollments)
+  //                   .update(zuvyBatchEnrollments)
   //                   .set({ attendance: percentage, classesAttended: classes })
-  //                   .where(sql`${batchEnrollments.userId}=${student.userId}`);
+  //                   .where(sql`${zuvyBatchEnrollments.userId}=${student.userId}`);
   //               } else {
   //                 const percentage = 100;
   //                 const classes = 1;
   //                 const updateAttendance = await db
-  //                   .update(batchEnrollments)
+  //                   .update(zuvyBatchEnrollments)
   //                   .set({ attendance: percentage, classesAttended: classes })
-  //                   .where(sql`${batchEnrollments.userId}=${student.userId}`);
+  //                   .where(sql`${zuvyBatchEnrollments.userId}=${student.userId}`);
   //               }
   //             }
   //           } else {
   //             const attendancePercentage = await db
   //               .select()
-  //               .from(batchEnrollments)
-  //               .where(sql`${batchEnrollments.userId}=${student.userId}`);
+  //               .from(zuvyBatchEnrollments)
+  //               .where(sql`${zuvyBatchEnrollments.userId}=${student.userId}`);
   //             if (attendancePercentage.length > 0) {
   //               const fetchedAttendancePercentage =
   //                 attendancePercentage[0].attendance;
@@ -906,14 +906,14 @@ export class ClassesService {
   //                 const percentage = 0;
   //                 const classes = 1;
   //                 const updateAttendance = await db
-  //                   .update(batchEnrollments)
+  //                   .update(zuvyBatchEnrollments)
   //                   .set({ attendance: percentage, classesAttended: classes })
-  //                   .where(sql`${batchEnrollments.userId}=${student.userId}`);
+  //                   .where(sql`${zuvyBatchEnrollments.userId}=${student.userId}`);
   //               } else {
   //                 const attendancePercentage = await db
   //                   .select()
-  //                   .from(batchEnrollments)
-  //                   .where(sql`${batchEnrollments.userId}=${student.userId}`);
+  //                   .from(zuvyBatchEnrollments)
+  //                   .where(sql`${zuvyBatchEnrollments.userId}=${student.userId}`);
   //                 const fetchedAttendancePercentage =
   //                   attendancePercentage[0].attendance;
   //                 if (fetchedAttendancePercentage != null) {
@@ -923,20 +923,20 @@ export class ClassesService {
   //                     (totalMeetsMarkedLength + 1)
   //                   );
   //                   const updateAttendance = await db
-  //                     .update(batchEnrollments)
+  //                     .update(zuvyBatchEnrollments)
   //                     .set({
   //                       attendance: calculatedPercentage,
   //                       classesAttended:
   //                         attendancePercentage[0].classesAttended + 1,
   //                     })
-  //                     .where(sql`${batchEnrollments.userId}=${student.userId}`);
+  //                     .where(sql`${zuvyBatchEnrollments.userId}=${student.userId}`);
   //                 } else {
   //                   const percentage = 0;
   //                   const classes = 1;
   //                   const updateAttendance = await db
-  //                     .update(batchEnrollments)
+  //                     .update(zuvyBatchEnrollments)
   //                     .set({ attendance: percentage, classesAttended: classes })
-  //                     .where(sql`${batchEnrollments.userId}=${student.userId}`);
+  //                     .where(sql`${zuvyBatchEnrollments.userId}=${student.userId}`);
   //                 }
   //               }
   //             }
@@ -969,4 +969,5 @@ export class ClassesService {
       return { success: 'not success', message: 'Error fetching class Links', error: error };
     }
   }
+
 }

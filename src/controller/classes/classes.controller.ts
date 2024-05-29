@@ -93,18 +93,17 @@ export class ClassesController {
   async meetingAttendanceRefress(@Req() req, @Body() reloadData: reloadDto) {
     let meetingIds: Array<any> = reloadData?.meetingIds;
 
-    let attachment = await Promise.all(meetingIds.map(async (meetId) => {
+    let attachment = meetingIds.map( async(meetId) => {
       const [err, values] = await this.classesService.getAttendance(meetId, req.user[0]);
-  }));
-  
-  return { message: 'Data Refreshed', status: 200 };
+    });
+    return { message: 'Data Refreshed', status: 200, };
   }
 
   @Get('/meetings/:bootcampId')
   @ApiOperation({ summary: 'Get the google classes id by bootcampId' })
   @ApiBearerAuth()
   getClassesBybootcampId(
-    @Query('bootcampId') bootcampId: number,
+    @Query('bootcampId') bootcampId: string,
     ): Promise<object> {
     return this.classesService.unattendanceClassesByBootcampId(bootcampId);
   }
@@ -161,17 +160,6 @@ export class ClassesController {
     return this.classesService.getAttendeesByMeetingId(id);
   }
 
-  // @Cron('0 */1 * * *')
-  // @Get('/getEventDetails')
-  // @ApiOperation({ summary: 'Update the drive s3link ' })
-  // @ApiBearerAuth()
-  // async getEventDetails(@Res() res): Promise<object> {
-  //   const [err, succes] = await this.classesService.getEventDetails(res);
-  //   if(err){
-  //     throw new BadRequestException(err);
-  //   }
-  //   return succes;
-  // }
   @Post('/seeding/table')
   @ApiOperation({ summary: 'Get the google class attendees by meetingId' })
   @ApiBearerAuth()

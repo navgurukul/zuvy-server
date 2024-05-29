@@ -1,11 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { error, log } from 'console';
 import {
-    batchEnrollments,
-    batches,
-    bootcampTracking,
-    bootcamps,
-    bootcampType
+  zuvyBatchEnrollments,
+  zuvyBootcampTracking,
+  zuvyBootcamps,
+  zuvyBootcampType
 } from '../../../drizzle/schema';
 import { db } from '../../db/index';
 import { eq, sql } from 'drizzle-orm';
@@ -16,21 +15,21 @@ export class StudentService {
     try {
       let enrolled = await db
         .select()
-        .from(batchEnrollments)
+        .from(zuvyBatchEnrollments)
         .where(
-          sql`${batchEnrollments.userId} = ${userId} AND ${batchEnrollments.batchId} IS NOT NULL`,
+          sql`${zuvyBatchEnrollments.userId} = ${userId} AND ${zuvyBatchEnrollments.batchId} IS NOT NULL`,
         );
 
       let promises = enrolled.map(async (e) => {
         let bootcamp = await db
           .select()
-          .from(bootcamps)
-          .where(eq(bootcamps.id, e.bootcampId));
+          .from(zuvyBootcamps)
+          .where(eq(zuvyBootcamps.id, e.bootcampId));
         let progress = await db
           .select()
-          .from(bootcampTracking)
+          .from(zuvyBootcampTracking)
           .where(
-            sql`${bootcampTracking.userId} = ${userId} AND ${bootcampTracking.bootcampId} = ${e.bootcampId}`,
+            sql`${zuvyBootcampTracking.userId} = ${userId} AND ${zuvyBootcampTracking.bootcampId} = ${e.bootcampId}`,
           );
         bootcamp[0]['progress'] = progress[0] ? progress[0].progress : 0;
         return bootcamp[0];
@@ -49,13 +48,13 @@ export class StudentService {
     try {
       let enrolled = await db
         .select()
-        .from(batchEnrollments)
-        .where(sql`${batchEnrollments.bootcampId} = ${bootcampId}`);
+        .from(zuvyBatchEnrollments)
+        .where(sql`${zuvyBatchEnrollments.bootcampId} = ${bootcampId}`);
       let unEnrolledBatch = await db
         .select()
-        .from(batchEnrollments)
+        .from(zuvyBatchEnrollments)
         .where(
-          sql`${batchEnrollments.bootcampId} = ${bootcampId} AND ${batchEnrollments.batchId} IS NULL`,
+          sql`${zuvyBatchEnrollments.bootcampId} = ${bootcampId} AND ${zuvyBatchEnrollments.batchId} IS NULL`,
         );
       return [
         null,
@@ -72,25 +71,24 @@ export class StudentService {
 
   async searchPublicBootcampByStudent(searchTerm: string) {
     try {
-      let getPublicBootcamps = await db
+      let getPubliczuvyBootcamps = await db
         .select()
-        .from(bootcamps)
-        .innerJoin(bootcampType, eq(bootcamps.id, bootcampType.bootcampId))
+        .from(zuvyBootcamps)
+        .innerJoin(zuvyBootcampType, eq(zuvyBootcamps.id, zuvyBootcampType.bootcampId))
         .where(
-          sql`${bootcampType.type} = 'Public' AND (LOWER(${
-            bootcamps.name
-          }) LIKE ${searchTerm.toLowerCase()} || '%')`,
+          sql`${zuvyBootcampType.type} = 'Public' AND (LOWER(${zuvyBootcamps.name
+            }) LIKE ${searchTerm.toLowerCase()} || '%')`,
         );
-         let data = await Promise.all(
-      getPublicBootcamps.map(async (bootcamp) => {
-        let [err, res] = await this.enrollmentData(bootcamp.zuvy_bootcamps.id);
-        if (err) {
-          return [err, null];
-        }
-        return { ...bootcamp, ...res };
-      }),
-         );
-         return [null,data];
+      let data = await Promise.all(
+        getPubliczuvyBootcamps.map(async (bootcamp) => {
+          let [err, res] = await this.enrollmentData(bootcamp.zuvy_bootcamp_type.bootcampId);
+          if (err) {
+            return [err, null];
+          }
+          return { ...bootcamp, ...res };
+        }),
+      );
+      return [null, data];
     } catch (err) {
       error(`error: ${err.message}`);
       return [{ status: 'error', message: err.message, code: 500 }, null];
@@ -99,23 +97,23 @@ export class StudentService {
 
   async getPublicBootcamp() {
     try {
-      let getPublicBootcamps = await db
+      let getPubliczuvyBootcamps = await db
         .select()
-        .from(bootcamps)
-        .innerJoin(bootcampType, eq(bootcamps.id, bootcampType.bootcampId))
+        .from(zuvyBootcamps)
+        .innerJoin(zuvyBootcampType, eq(zuvyBootcamps.id, zuvyBootcampType.bootcampId))
         .where(
-          sql`${bootcampType.type} = 'Public'`,
+          sql`${zuvyBootcampType.type} = 'Public'`,
         );
-         let data = await Promise.all(
-      getPublicBootcamps.map(async (bootcamp) => {
-        let [err, res] = await this.enrollmentData(bootcamp.zuvy_bootcamps.id);
-        if (err) {
-          return [err, null];
-        }
-        return { ...bootcamp, ...res };
-      }),
-         );
-         return [null,data];
+      let data = await Promise.all(
+        getPubliczuvyBootcamps.map(async (bootcamp) => {
+          let [err, res] = await this.enrollmentData(bootcamp.zuvy_bootcamp_type.bootcampId);
+          if (err) {
+            return [err, null];
+          }
+          return { ...bootcamp, ...res };
+        }),
+      );
+      return [null, data];
     } catch (err) {
       error(`error: ${err.message}`);
       return [{ status: 'error', message: err.message, code: 500 }, null];
@@ -125,9 +123,9 @@ export class StudentService {
   async removingStudent(user_id: number, bootcamp_id) {
     try {
       let enrolled = await db
-        .delete(batchEnrollments)
+        .delete(zuvyBatchEnrollments)
         .where(
-          sql`${batchEnrollments.userId} = ${user_id} AND ${batchEnrollments.bootcampId} = ${bootcamp_id} `,
+          sql`${zuvyBatchEnrollments.userId} = ${user_id} AND ${zuvyBatchEnrollments.bootcampId} = ${bootcamp_id} `,
         )
         .returning();
       if (enrolled.length == 0) {
