@@ -263,6 +263,7 @@ export class BootcampController {
     }
     return res;
   }
+
   @Get('/students/:bootcamp_id')
   @ApiOperation({ summary: 'Get the students by bootcamp_id' })
   @ApiQuery({
@@ -356,44 +357,4 @@ export class BootcampController {
     );
     return res;
   }
-
-  @Get('/studentSearch/:bootcampId')
-  @ApiOperation({ summary: 'Search students by name or email' })
-  @ApiQuery({
-    name: 'batch_id',
-    required: false,
-    type: Number,
-    description: 'batch id',
-  })
-  @ApiQuery({
-    name: 'searchTerm',
-    required: true,
-    type: String,
-    description: 'Search by name or email',
-  })
-  @ApiBearerAuth()
-  async searchStudents(
-    @Param('bootcampId') bootcampId: number,
-    @Query('batch_id') batch_id: number,
-    @Query('searchTerm') searchTerm: string,
-  ): Promise<object> {
-    try {
-      const searchTermAsNumber = !isNaN(Number(searchTerm))
-        ? BigInt(searchTerm)
-        : searchTerm;
-      const result = await this.bootcampService.getStudentsBySearching(
-        searchTermAsNumber,
-        bootcampId,
-        batch_id
-      );
-      return {
-        status: 'success',
-        data: result,
-        code: 200,
-      };
-    } catch (error) {
-      throw new BadRequestException(error.message);
-    }
-  }
 }
-
