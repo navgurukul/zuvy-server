@@ -20,7 +20,7 @@ let auth2Client = new OAuth2(
 @Injectable()
 export class ScheduleService {
 
-  @Cron('*/1 * * * *') // Runs every 59 minutes
+  @Cron('*/59 * * * *') // Runs every 59 minutes
   async getEventDetails(): Promise<any> {
     try {
       // Retrieve all classes with null s3link
