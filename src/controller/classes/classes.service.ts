@@ -9,7 +9,7 @@ import {
   ZuvyClassesGoogleMeetLink
 } from '../../../drizzle/schema';
 import { db } from '../../db/index';
-import { eq, sql, count, inArray, isNull } from 'drizzle-orm';
+import { eq, sql, count, inArray, isNull, desc } from 'drizzle-orm';
 import { google, calendar_v3 } from 'googleapis';
 import { v4 as uuid } from 'uuid';
 import { createReadStream } from 'fs';
@@ -463,7 +463,8 @@ export class ClassesService {
     }
   }
   async getClassesByBootcampId(
-    bootcampId: string,
+    batch_id: string,
+    status: string,
     limit: number,
     offset: number,
   ) {
@@ -472,7 +473,7 @@ export class ClassesService {
       const classes = await db
         .select()
         .from(zuvySessions)
-        .where(sql`${zuvySessions.bootcampId} = ${bootcampId}`);
+        .where(sql`${zuvySessions.batchId} = ${batch_id}`);
 
       const sortedClasses = _.orderBy(
         classes,
@@ -487,9 +488,9 @@ export class ClassesService {
         const startTime = new Date(classObj.startTime);
         const endTime = new Date(classObj.endTime);
 
-        if (currentTime > endTime) {
+        if (currentTime > endTime && status === 'completed') {
           completedClasses.push(classObj);
-        } else if (currentTime >= startTime && currentTime <= endTime) {
+        } else if (currentTime >= startTime && currentTime <= endTime && status === 'ongoing') {
           ongoingClasses.push(classObj);
         } else {
           upcomingClasses.push(classObj);
@@ -510,7 +511,7 @@ export class ClassesService {
 
       return {
         status: 'success',
-        message: 'Classes fetched successfully by bootcampId',
+        message: 'Classes fetched successfully by batch_id',
         code: 200,
         completedClasses: paginatedCompletedClasses,
         ongoingClasses: paginatedOngoingClasses,
@@ -789,174 +790,24 @@ export class ClassesService {
     }
   }
 
-  async uploadVideoFromGoogleDriveToS3(
-    googleDriveLink: string,
-    fileId: string,
-  ): Promise<string> {
-    try {
-      const response = await Axios.get(googleDriveLink, {
-        responseType: 'arraybuffer',
-      });
-      const fileBuffer = Buffer.from(response.data);
-
-      const s3Url = await this.uploadVideoToS3(fileBuffer, fileId);
-
-      return s3Url;
-    } catch (error) {
-      throw new Error('Error uploading video from Google Drive to S3');
-    }
-  }
-
-  // async meetingAttendance(meetingId: number): Promise<any> {
+  // async uploadVideoFromGoogleDriveToS3(
+  //   googleDriveLink: string,
+  //   fileId: string,
+  // ): Promise<string> {
   //   try {
-  //     const allMeets = await db.select().from(zuvySessions);
-  //     for (const meet of allMeets) {
-  //       const isMarked = await db
-  //         .select()
-  //         .from(zuvyMeetingAttendance)
-  //         .where(eq(zuvyMeetingAttendance.meetingId, meet.meetingId));
-  //       if (isMarked.length == 0) {
-  //         const fetchedAttendance = await this.getAttendance(meet.meetingId);
-  //         const fetchedAttendanceList = fetchedAttendance.attendanceSheet;
-  //         const totalMeetsMarked = await db
-  //           .select()
-  //           .from(zuvyMeetingAttendance)
-  //           .where(eq(zuvyMeetingAttendance.batchid, meet.batchId));
-  //         const totalMeetsMarkedLength = totalMeetsMarked.length;
-  //         const fetchedStudents = await db
-  //           .select()
-  //           .from(zuvyBatchEnrollments)
-  //           .where(sql`${zuvyBatchEnrollments.batchId}=${meet.batchId}`);
-  //         for (const student of fetchedStudents) {
-  //           const studentDetails = await db
-  //             .select()
-  //             .from(users)
-  //             .where(sql`${users.id} = ${student.userId}`);
-  //           const studentEmail = studentDetails[0].email;
-  //           const isPresent = fetchedAttendanceList.some(
-  //             (entry) => entry.email === studentEmail,
-  //           );
-  //           if (isPresent) {
-  //             const studentAttendanceDetails = fetchedAttendanceList.find(
-  //               (entry) => entry.email === studentEmail,
-  //             );
-  //             const attendancePercentage = await db
-  //               .select()
-  //               .from(zuvyBatchEnrollments)
-  //               .where(sql`${zuvyBatchEnrollments.userId}=${student.userId}`);
-  //             const fetchedAttendancePercentage =
-  //               attendancePercentage[0].attendance;
-  //             if (fetchedAttendancePercentage != null) {
-  //               if (studentAttendanceDetails['attendance'] == 'absent') {
-  //                 const calculatedPercentage = ~~(
-  //                   (attendancePercentage[0].attendance *
-  //                     totalMeetsMarkedLength) /
-  //                   (totalMeetsMarkedLength + 1)
-  //                 );
-  //                 const updateAttendance = await db
-  //                   .update(zuvyBatchEnrollments)
-  //                   .set({
-  //                     attendance: calculatedPercentage,
-  //                     classesAttended:
-  //                       attendancePercentage[0].classesAttended + 1,
-  //                   })
-  //                   .where(sql`${zuvyBatchEnrollments.userId}=${student.userId}`);
-  //               } else {
-  //                 const calculatedPercentage = ~~(
-  //                   (attendancePercentage[0].attendance *
-  //                     totalMeetsMarkedLength +
-  //                     100) /
-  //                   (totalMeetsMarkedLength + 1)
-  //                 );
-  //                 const updateAttendance = await db
-  //                   .update(zuvyBatchEnrollments)
-  //                   .set({
-  //                     attendance: calculatedPercentage,
-  //                     classesAttended:
-  //                       attendancePercentage[0].classesAttended + 1,
-  //                   })
-  //                   .where(sql`${zuvyBatchEnrollments.userId}=${student.userId}`);
-  //               }
-  //             } else {
-  //               if (studentAttendanceDetails['attendance'] == 'absent') {
-  //                 const percentage = 0;
-  //                 const classes = 1;
-  //                 const updateAttendance = await db
-  //                   .update(zuvyBatchEnrollments)
-  //                   .set({ attendance: percentage, classesAttended: classes })
-  //                   .where(sql`${zuvyBatchEnrollments.userId}=${student.userId}`);
-  //               } else {
-  //                 const percentage = 100;
-  //                 const classes = 1;
-  //                 const updateAttendance = await db
-  //                   .update(zuvyBatchEnrollments)
-  //                   .set({ attendance: percentage, classesAttended: classes })
-  //                   .where(sql`${zuvyBatchEnrollments.userId}=${student.userId}`);
-  //               }
-  //             }
-  //           } else {
-  //             const attendancePercentage = await db
-  //               .select()
-  //               .from(zuvyBatchEnrollments)
-  //               .where(sql`${zuvyBatchEnrollments.userId}=${student.userId}`);
-  //             if (attendancePercentage.length > 0) {
-  //               const fetchedAttendancePercentage =
-  //                 attendancePercentage[0].attendance;
-  //               if (fetchedAttendancePercentage == null) {
-  //                 const percentage = 0;
-  //                 const classes = 1;
-  //                 const updateAttendance = await db
-  //                   .update(zuvyBatchEnrollments)
-  //                   .set({ attendance: percentage, classesAttended: classes })
-  //                   .where(sql`${zuvyBatchEnrollments.userId}=${student.userId}`);
-  //               } else {
-  //                 const attendancePercentage = await db
-  //                   .select()
-  //                   .from(zuvyBatchEnrollments)
-  //                   .where(sql`${zuvyBatchEnrollments.userId}=${student.userId}`);
-  //                 const fetchedAttendancePercentage =
-  //                   attendancePercentage[0].attendance;
-  //                 if (fetchedAttendancePercentage != null) {
-  //                   const calculatedPercentage = ~~(
-  //                     (attendancePercentage[0].attendance *
-  //                       totalMeetsMarkedLength) /
-  //                     (totalMeetsMarkedLength + 1)
-  //                   );
-  //                   const updateAttendance = await db
-  //                     .update(zuvyBatchEnrollments)
-  //                     .set({
-  //                       attendance: calculatedPercentage,
-  //                       classesAttended:
-  //                         attendancePercentage[0].classesAttended + 1,
-  //                     })
-  //                     .where(sql`${zuvyBatchEnrollments.userId}=${student.userId}`);
-  //                 } else {
-  //                   const percentage = 0;
-  //                   const classes = 1;
-  //                   const updateAttendance = await db
-  //                     .update(zuvyBatchEnrollments)
-  //                     .set({ attendance: percentage, classesAttended: classes })
-  //                     .where(sql`${zuvyBatchEnrollments.userId}=${student.userId}`);
-  //                 }
-  //               }
-  //             }
-  //           }
-  //         }
-  //         const updateMeetingDetails = await db
-  //           .insert(zuvyMeetingAttendance)
-  //           .values({
-  //             meetingId: meet.meetingId,
-  //             bootcampid: meet.bootcampId,
-  //             batchid: meet.batchId,
-  //           })
-  //           .returning();
-  //       }
-  //     }
-  //     return { success: true };
-  //   } catch (err) {
-  //     return { error: err, success: false };
+  //     const response = await Axios.get(googleDriveLink, {
+  //       responseType: 'arraybuffer',
+  //     });
+  //     const fileBuffer = Buffer.from(response.data);
+
+  //     const s3Url = await this.uploadVideoToS3(fileBuffer, fileId);
+
+  //     return s3Url;
+  //   } catch (error) {
+  //     throw new Error('Error uploading video from Google Drive to S3');
   //   }
   // }
+
 
   async unattendanceClassesByBootcampId(bootcampId) {
     try {
@@ -970,4 +821,138 @@ export class ClassesService {
     }
   }
 
+  async updatingStatusOfClass(bootcamp_id:number){
+    try {
+      const currentTime = new Date();
+      // Fetch all classes
+      let classes = await db
+        .select()
+        .from(zuvySessions)
+        .where(sql`${zuvySessions.bootcampId} = ${bootcamp_id}`);
+
+      // Update the status of each class in the database
+      for (let classObj of classes) {
+        const startTime = new Date(classObj.startTime);
+        const endTime = new Date(classObj.endTime);
+        let newStatus;
+
+        if (currentTime > endTime) {
+          newStatus = 'completed';
+        } else if (currentTime >= startTime && currentTime <= endTime) {
+          newStatus = 'ongoing';
+        } else if (currentTime < startTime) {
+          newStatus = 'upcoming';
+        }
+        // Update the status in the database
+        try {
+          if (newStatus !== classObj.status) {
+            let newObj = await db.update(zuvySessions).set({ status: newStatus }).where(eq(zuvySessions.id, classObj.id)).returning();
+          }
+        } catch (error) {
+          console.log('error: ', error)
+        }
+      }
+    } catch (error) {
+      console.log('Error fetching class Links', error);
+      return {
+        success: 'not success',
+        message: 'Error fetching class Links',
+        error: error,
+      };
+    }
+  }
+  async BootcampOrBatchEnrollments(batch_id: number, bootcamp_id: number, user_id = null) {
+    let queryString;
+
+    if (user_id && batch_id && bootcamp_id) { 
+      queryString = sql`${zuvyBatchEnrollments.bootcampId} = ${bootcamp_id} and ${zuvyBatchEnrollments.batchId} = ${batch_id} and ${zuvyBatchEnrollments.userId} = ${user_id}`;
+    } else if (bootcamp_id && batch_id) {
+      queryString = sql`${zuvyBatchEnrollments.bootcampId} = ${bootcamp_id} and ${zuvyBatchEnrollments.batchId} = ${batch_id}`;
+    } else {
+      queryString = sql`${zuvyBatchEnrollments.bootcampId} = ${bootcamp_id}`;
+    }
+    return queryString
+  }
+
+  async getClassesBy(bootcamp_id: number, user, batch_id: number, limit: number, offset: number, search_term: string, status: string) {
+    try {
+      // update the status of the classes in the database
+      await this.updatingStatusOfClass(bootcamp_id);
+      
+      if (user?.roles?.includes('admin')) {
+      } else if (batch_id && bootcamp_id && user.id) {
+          let queryString = await this.BootcampOrBatchEnrollments(batch_id, bootcamp_id, user.id);
+      
+          let zuvyBatchEnrollmentsData = await db
+            .select()
+            .from(zuvyBatchEnrollments)
+            .where(queryString);
+      
+          if (zuvyBatchEnrollmentsData.length === 0) {
+            return {
+              status: 'error',
+              message:
+                'No matching batch enrollments found for the provided bootcampId and userId',
+              code: 404,
+            };
+          } 
+        } else {
+          return {
+            status: 'error',
+            message: 'Unauthorized access',
+            code: 401,
+          };
+        }
+    
+      
+      let zuvy_sessions_query ;
+      if (search_term && status && bootcamp_id) {
+        zuvy_sessions_query = sql`${zuvySessions.bootcampId} = ${bootcamp_id} AND ${zuvySessions.status} = ${status} AND ${zuvySessions.title} LIKE ${search_term.toLowerCase()} || '%'`;
+      } else if (search_term && bootcamp_id && batch_id) {
+        zuvy_sessions_query = sql`${zuvySessions.bootcampId} = ${bootcamp_id} AND ${zuvySessions.batchId} = ${batch_id} AND ${zuvySessions.title} LIKE ${search_term.toLowerCase()} || '%'`;
+      }  else if (bootcamp_id && batch_id && status.toLowerCase() == 'all') {
+        zuvy_sessions_query = sql`${zuvySessions.bootcampId} = ${bootcamp_id} AND ${zuvySessions.status} IN ('completed', 'ongoing', 'upcoming') AND ${zuvySessions.batchId} = ${batch_id}`;
+      } else if (bootcamp_id && batch_id && status) {
+        zuvy_sessions_query = sql`${zuvySessions.bootcampId} = ${bootcamp_id} AND ${zuvySessions.batchId} = ${batch_id} AND ${zuvySessions.status} = ${status}`;
+      } else if (bootcamp_id && !batch_id && status.toLowerCase() == 'all') {
+        zuvy_sessions_query = sql`${zuvySessions.bootcampId} = ${bootcamp_id} AND ${zuvySessions.status} IN ('completed', 'ongoing', 'upcoming')`;
+      } else if (bootcamp_id && !batch_id && status) {
+        zuvy_sessions_query = sql`${zuvySessions.bootcampId} = ${bootcamp_id} AND ${zuvySessions.status} = ${status}`;
+      } else if (bootcamp_id && !batch_id && !status) {
+        zuvy_sessions_query = sql`${zuvySessions.bootcampId} = ${bootcamp_id} AND ${zuvySessions.status} IN ('completed', 'ongoing', 'upcoming')`;
+      } else {
+        zuvy_sessions_query = sql`${zuvySessions.bootcampId} = ${bootcamp_id}`;
+      }
+      // Fetch the classes again  
+      
+      let classes = await db
+        .select()
+        .from(zuvySessions)
+        .orderBy(desc(zuvySessions.id))
+        .where(() => zuvy_sessions_query)
+        .offset(offset)
+        .limit(limit);
+
+      let total_zuvy_sessions = await db
+        .select({ count: count(zuvySessions.id) })
+        .from(zuvySessions)
+        .where(() => zuvy_sessions_query);
+
+
+      return {
+        status: 'success',
+        message: 'Classes fetched successfully by batchId',
+        code: 200,
+        classes, total_items: total_zuvy_sessions[0].count, total_pages: (Math.ceil(total_zuvy_sessions[0].count / limit) || 0)
+      };
+    } catch (err) {
+      return { status: 'error', message: err.message, code: 500 }
+    }
+  }
+
+
 }
+
+
+
+

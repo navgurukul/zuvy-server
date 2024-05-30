@@ -54,7 +54,7 @@ import { difficulty } from 'drizzle/schema';
 )
 // @UseGuards(AuthGuard('cookie'))
 export class ContentController {
-  constructor(private contentService: ContentService) {}
+  constructor(private contentService: ContentService) { }
 
   // @Get('/modules/:bootcamp_id/')
   // @ApiOperation({
@@ -167,7 +167,7 @@ export class ContentController {
   }
 
   @Patch('/updateProjects/:projectId')
-  @ApiOperation({ summary: 'Update the project'})
+  @ApiOperation({ summary: 'Update the project' })
   @ApiBearerAuth()
   async updateProject(
     @Body() projectData: projectDto,
@@ -197,8 +197,8 @@ export class ContentController {
   @ApiBearerAuth()
   async deleteProject(
     @Param('projectId') projectId: number,
-    @Query('bootcampId') bootcampId : number,
-    @Query('moduleId') moduleId : number
+    @Query('bootcampId') bootcampId: number,
+    @Query('moduleId') moduleId: number
   ) {
     const res = await this.contentService.deleteProjectForBootcamp(
       projectId,
@@ -339,7 +339,7 @@ export class ContentController {
       chapterId,
     );
     return res;
-  } 
+  }
 
   @Delete('/deleteChapter/:moduleId')
   @ApiOperation({ summary: 'Delete the chapter' })
@@ -442,8 +442,7 @@ export class ContentController {
   @Delete('/deleteCodingQuestion')
   @ApiOperation({ summary: 'Delete coding question' })
   @ApiBearerAuth()
-  async deleteCodingQuestion(@Body() questionIds : deleteQuestionDto)
-  {
+  async deleteCodingQuestion(@Body() questionIds: deleteQuestionDto) {
     const res = await this.contentService.deleteCodingProblem(questionIds);
     return res;
   }
@@ -456,24 +455,22 @@ export class ContentController {
     return res;
   }
 
- 
+
 
   @Delete('/deleteQuizQuestion')
   @ApiOperation({ summary: 'Delete quiz question' })
   @ApiBearerAuth()
-  async deleteQuizQuestion(@Body() questionIds : deleteQuestionDto)
-  {
+  async deleteQuizQuestion(@Body() questionIds: deleteQuestionDto) {
     const res = await this.contentService.deleteQuiz(questionIds);
     return res;
   }
 
- 
+
 
   @Post('/createTag')
-  @ApiOperation({summary: 'Create a tag for the curriculum'})
+  @ApiOperation({ summary: 'Create a tag for the curriculum' })
   @ApiBearerAuth()
-  async createTag(@Body() tag:CreateTagDto)
-  {
+  async createTag(@Body() tag: CreateTagDto) {
     const res = await this.contentService.createTag(tag);
     return res;
   }
@@ -485,7 +482,7 @@ export class ContentController {
     const res = await this.contentService.getAllTags();
     return res;
   }
-  
+
 
   @Get('/openEndedQuestions')
   @ApiOperation({ summary: 'Get all open ended Questions' })
@@ -563,8 +560,7 @@ export class ContentController {
   @Delete('/deleteOpenEndedQuestion')
   @ApiOperation({ summary: 'Delete openended question' })
   @ApiBearerAuth()
-  async deleteOpenEndedQuestion(@Body() questionIds : deleteQuestionDto)
-  {
+  async deleteOpenEndedQuestion(@Body() questionIds: deleteQuestionDto) {
     const res = await this.contentService.deleteOpenEndedQuestion(questionIds);
     return res;
   }

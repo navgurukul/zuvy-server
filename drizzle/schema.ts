@@ -2458,6 +2458,7 @@ export const zuvySessions = main.table('zuvy_sessions', {
   title: text('title').notNull(),
   s3link: text('s3link'),
   recurringId: integer('recurring_id'),
+  status: text('status').default('upcoming'),
 });
 
 export const zuvyBootcamps = main.table('zuvy_bootcamps', {

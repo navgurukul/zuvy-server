@@ -1,14 +1,4 @@
 import { Injectable, Logger } from '@nestjs/common';
-// import {
-//     zuvyAssignmentSubmission,
-//     zuvyArticleTracking,
-//     zuvyModuleTracking,
-//     zuvyBootcampTracking,
-//     zuvyQuizTracking,
-//     zuvyBatches,
-//     bootcamps,
-//     zuvyChapterTracking
-// } from '../../../drizzle/schema';
 import { db } from '../../db/index';
 import { eq, sql, inArray, and, desc } from 'drizzle-orm';
 import axios from 'axios';
