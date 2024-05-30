@@ -973,6 +973,10 @@ export class TrackingService {
           })
           .from(zuvyModuleQuiz);
 
+        questions['status'] =
+        QuizTracking.length != 0
+          ? 'Completed'
+          : 'Pending';
           if(AssignmentTracking.length!=0){
             return [{
               AssignmentTracking,
@@ -996,13 +1000,22 @@ export class TrackingService {
           .from(zuvyModuleQuiz)
           .leftJoin(zuvyQuizTracking, eq(zuvyModuleQuiz.id, zuvyQuizTracking.mcqId));
              
+        trackedData['status'] =
+        QuizTracking.length > 0
+          ? 'Completed'
+          : 'Pending';
+
           if(AssignmentTracking.length!=0){
             return [{
+              status: 'success',
+              code: 200,
               AssignmentTracking,
               trackedData,
           }]
           }else{
             return [{
+              status: 'success',
+              code: 200,
               trackedData
           }]
           }
