@@ -678,6 +678,9 @@ export class TrackingService {
 
   async getAllChapterWithStatus(moduleId: number, userId: number) {
     try {
+       const moduleDetails = await db.select().from(zuvyCourseModules).where(eq(zuvyCourseModules.id,moduleId));
+       if(moduleDetails.length > 0)
+        { 
       const trackingData = await db.query.zuvyModuleChapter.findMany({
         where: (moduleChapter, { eq }) => eq(moduleChapter.moduleId, moduleId),
         with: {
@@ -699,8 +702,19 @@ export class TrackingService {
       });
 
       return {
+        status:'success',
+        code: 200,
         trackingData,
+        moduleDetails
       };
+    }
+    else {
+        return {
+            status:'error',
+            code: 404,
+            message:'No module found'
+        }
+    }
     } catch (err) {
       throw err;
     }
@@ -772,6 +786,7 @@ export class TrackingService {
         orderBy: (courseModules, { asc }) => asc(courseModules.order),
         with: {
           moduleChapterData: true,
+          projectData: true,
           moduleTracking: {
             columns: {
               progress: true,
@@ -783,7 +798,7 @@ export class TrackingService {
       let modules = data.map((module: any) => {
         return {
           id: module.id,
-          name: module.name,
+          name: module.typeId == 2 ? module['projectData'][0]['title']: module.name,
           description: module.description,
           typeId: module.typeId,
           order: module.order,
