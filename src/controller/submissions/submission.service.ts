@@ -163,8 +163,6 @@ export class SubmissionService {
                 columns: {
                   userId: true,
                   assessmentId: true,
-                  // bootcampId: true,
-                  // moduleId: true, // Include the moduleId
 
                 },
               },

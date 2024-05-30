@@ -2804,6 +2804,13 @@ export const zuvyAssessmentSubmission = main.table("zuvy_assessment_submission",
   }).defaultNow(),
 });
 
+export const zuvyAssessmentSubmissionRelation = relations(zuvyAssessmentSubmission, ({one, many})=> ({
+  user: one(users, {
+    fields: [zuvyAssessmentSubmission.userId],
+    references: [users.id],
+  }),
+}))
+
 
 
 // Define the relations
