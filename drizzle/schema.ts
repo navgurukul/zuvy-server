@@ -2726,12 +2726,20 @@ export const postsRelations = relations(zuvyModuleChapter, ({ one }) => ({
   }),
 }));
 
+export const projectModuleRelations = relations(zuvyCourseProjects,({one}) => ({
+  projectModuleData: one(zuvyCourseModules,{
+    fields: [zuvyCourseProjects.id],
+    references: [zuvyCourseModules.projectId]
+  })
+}))
+
 export const moduleChapterRelations = relations(
   zuvyCourseModules,
   ({many }) => ({
     moduleChapterData: many(zuvyModuleChapter),
     chapterTrackingData: many(zuvyChapterTracking),
-    moduleTracking: many(zuvyModuleTracking)
+    moduleTracking: many(zuvyModuleTracking),
+    projectData: many(zuvyCourseProjects)
   }),
 );
 
