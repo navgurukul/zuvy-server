@@ -797,7 +797,7 @@ export class TrackingService {
         return {
           id: module.id,
           name:
-            module.typeId == 2
+          module['projectData'].length > 0
               ? module['projectData'][0]['title']
               : module.name,
           description: module.description,
