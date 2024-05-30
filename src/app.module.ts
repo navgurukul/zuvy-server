@@ -11,13 +11,16 @@ import { SubmissionModule } from './controller/submissions/submission.module';
 import { APP_INTERCEPTOR } from '@nestjs/core';
 import { JwtModule } from '@nestjs/jwt';
 import { LoggingInterceptor } from './loggerInterceptor/logger';
+import { ScheduleModule } from '@nestjs/schedule';
 
+import { ScheduleService } from './schedule/schedule.service';
 
 @Module({
   imports: [
+    ScheduleModule.forRoot(),
     ConfigModule.forRoot(),
     JwtModule.register({
-      global:true,
+      global: true,
       secret: process.env.JWT_SECRET_KEY,
       signOptions: { expiresIn: '24h' },
     }),
@@ -31,10 +34,11 @@ import { LoggingInterceptor } from './loggerInterceptor/logger';
     SubmissionModule
   ],
   providers: [
+    ScheduleService,
     {
       provide: APP_INTERCEPTOR,
       useClass: LoggingInterceptor,
     },
   ]
 })
-export class AppModule {}
+export class AppModule { }
