@@ -376,4 +376,22 @@ export class TrackingController {
     );
     return res;
   }
+
+  @Get('getAllQuizAndAssignmentWithStatus/:userId/:moduleId')
+  @ApiOperation({ summary: 'get All Quiz And Assignment With Status' })
+  @ApiBearerAuth()
+  async getAllQuizAndAssignmentWithStatus(
+    @Param('userId') userId: number,
+    @Param('moduleId') moduleId: number,
+    @Query('chapterId') chapterId: number,
+  ) {
+    const res = await this.TrackingService.getAllQuizAndAssignmentWithStatus(
+      userId,
+      moduleId,
+      chapterId,
+    );
+    return res;
+  }
+
+  
 }
