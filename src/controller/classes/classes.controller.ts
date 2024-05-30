@@ -211,7 +211,6 @@ export class ClassesController {
     @Query('searchTerm') searchTerm: string,
     @Req() req,
   ): Promise<object> {
-    console.log(req.user[0])
     const userId =  parseInt(req.user[0].id);
     return this.classesService.getClassesBy(
       bootcampId,

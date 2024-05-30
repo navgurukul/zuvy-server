@@ -880,7 +880,7 @@ export class ClassesService {
       await this.updatingStatusOfClass(bootcamp_id);
       
       if (user?.roles?.includes('admin')) {
-      } else if (batch_id && bootcamp_id && user.id) {
+      } else if (bootcamp_id && user.id) {
           let queryString = await this.BootcampOrBatchEnrollments(batch_id, bootcamp_id, user.id);
       
           let zuvyBatchEnrollmentsData = await db
@@ -905,24 +905,32 @@ export class ClassesService {
         }
     
       
-      let zuvy_sessions_query ;
-      if (search_term && status && bootcamp_id) {
-        zuvy_sessions_query = sql`${zuvySessions.bootcampId} = ${bootcamp_id} AND ${zuvySessions.status} = ${status} AND ${zuvySessions.title} LIKE ${search_term.toLowerCase()} || '%'`;
-      } else if (search_term && bootcamp_id && batch_id) {
-        zuvy_sessions_query = sql`${zuvySessions.bootcampId} = ${bootcamp_id} AND ${zuvySessions.batchId} = ${batch_id} AND ${zuvySessions.title} LIKE ${search_term.toLowerCase()} || '%'`;
-      }  else if (bootcamp_id && batch_id && status.toLowerCase() == 'all') {
-        zuvy_sessions_query = sql`${zuvySessions.bootcampId} = ${bootcamp_id} AND ${zuvySessions.status} IN ('completed', 'ongoing', 'upcoming') AND ${zuvySessions.batchId} = ${batch_id}`;
-      } else if (bootcamp_id && batch_id && status) {
-        zuvy_sessions_query = sql`${zuvySessions.bootcampId} = ${bootcamp_id} AND ${zuvySessions.batchId} = ${batch_id} AND ${zuvySessions.status} = ${status}`;
-      } else if (bootcamp_id && !batch_id && status.toLowerCase() == 'all') {
-        zuvy_sessions_query = sql`${zuvySessions.bootcampId} = ${bootcamp_id} AND ${zuvySessions.status} IN ('completed', 'ongoing', 'upcoming')`;
-      } else if (bootcamp_id && !batch_id && status) {
-        zuvy_sessions_query = sql`${zuvySessions.bootcampId} = ${bootcamp_id} AND ${zuvySessions.status} = ${status}`;
-      } else if (bootcamp_id && !batch_id && !status) {
-        zuvy_sessions_query = sql`${zuvySessions.bootcampId} = ${bootcamp_id} AND ${zuvySessions.status} IN ('completed', 'ongoing', 'upcoming')`;
-      } else {
-        zuvy_sessions_query = sql`${zuvySessions.bootcampId} = ${bootcamp_id}`;
-      }
+        let zuvy_sessions_query;
+        if (search_term && status && bootcamp_id && !batch_id) {
+          if (status.toLowerCase() == 'all') {
+            zuvy_sessions_query = sql`${zuvySessions.bootcampId} = ${bootcamp_id} AND ${zuvySessions.status} IN ('completed', 'ongoing', 'upcoming') AND ${zuvySessions.title} LIKE '%' ||${search_term} || '%'`;
+          } else {
+            zuvy_sessions_query = sql`${zuvySessions.bootcampId} = ${bootcamp_id} AND ${zuvySessions.status} = ${status} AND ${zuvySessions.title} LIKE '%' ||${search_term} || '%'`;
+          }
+        }else if (search_term && status && bootcamp_id && batch_id) {
+          zuvy_sessions_query = sql`${zuvySessions.bootcampId} = ${bootcamp_id} AND ${zuvySessions.batchId} = ${batch_id} AND ${zuvySessions.status} = ${status} AND ${zuvySessions.title} LIKE '%' ||${search_term} || '%'`;
+        } else if (search_term && status && bootcamp_id) {
+          zuvy_sessions_query = sql`${zuvySessions.bootcampId} = ${bootcamp_id} AND ${zuvySessions.status} = ${status} AND ${zuvySessions.title} LIKE '%' ||${search_term} || '%'`;
+        } else if (search_term && bootcamp_id && batch_id) {
+          zuvy_sessions_query = sql`${zuvySessions.bootcampId} = ${bootcamp_id} AND ${zuvySessions.batchId} = ${batch_id} AND ${zuvySessions.title} LIKE '%' || ${search_term} || '%'`;
+        } else if (bootcamp_id && batch_id && status.toLowerCase() == 'all') {
+          zuvy_sessions_query = sql`${zuvySessions.bootcampId} = ${bootcamp_id} AND ${zuvySessions.status} IN ('completed', 'ongoing', 'upcoming') AND ${zuvySessions.batchId} = ${batch_id}`;
+        } else if (bootcamp_id && batch_id && status) {
+          zuvy_sessions_query = sql`${zuvySessions.bootcampId} = ${bootcamp_id} AND ${zuvySessions.batchId} = ${batch_id} AND ${zuvySessions.status} = ${status}`;
+        } else if (bootcamp_id && !batch_id && status.toLowerCase() == 'all') {
+          zuvy_sessions_query = sql`${zuvySessions.bootcampId} = ${bootcamp_id} AND ${zuvySessions.status} IN ('completed', 'ongoing', 'upcoming')`;
+        } else if (bootcamp_id && !batch_id && status) {
+          zuvy_sessions_query = sql`${zuvySessions.bootcampId} = ${bootcamp_id} AND ${zuvySessions.status} = ${status}`;
+        } else if (bootcamp_id && !batch_id && !status) {
+          zuvy_sessions_query = sql`${zuvySessions.bootcampId} = ${bootcamp_id} AND ${zuvySessions.status} IN ('completed', 'ongoing', 'upcoming')`;
+        } else {
+          zuvy_sessions_query = sql`${zuvySessions.bootcampId} = ${bootcamp_id}`;
+        }
       // Fetch the classes again  
       
       let classes = await db

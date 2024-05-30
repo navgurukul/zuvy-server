@@ -117,30 +117,54 @@ export class SubmissionService {
       throw err;
     }
   }
-  async assessmentStudentsInfoBy(assessment_id: number,limit:number, offset:number, bootcamp_id:number) {
+
+  async assessmentStudentsInfoBy(assessment_id: number, limit: number, offset: number, bootcamp_id: number) {
     try {
       const assessmentSubmissionData = await db.query.zuvyModuleAssessment.findMany({
-        where: (zuvyModuleAssessment, {sql}) => sql`${zuvyModuleAssessment.id}= ${assessment_id}`,
+        where: (zuvyModuleAssessment, { sql }) => sql`${zuvyModuleAssessment.id} = ${assessment_id}`,
+        columns: {
+          id:true,
+          title:true,
+          passPercentage:true,
+          timeLimit:true,
+        },
         with: {
           assessmentSubmissions: {
-            where: (zuvyAssessmentSubmission, { eq }) => eq(zuvyAssessmentSubmission.bootcampId ,bootcamp_id ),
+            where: (zuvyAssessmentSubmission, { eq }) => eq(zuvyAssessmentSubmission.bootcampId, bootcamp_id),
             columns: {
+              id:true,
               userId: true,
               assessmentId: true,
-              bootcampId:true
-            }
+              bootcampId: true,
+              marks:true,
+              submitAt:true,
+            },
+            with: {
+              user: {
+                columns: {
+                  name: true,
+                  email: true,
+                },
+              },
+            },
           }
-        }
+          
+        },
+        limit: limit,
+        offset: offset,
       });
+
+      let bootcampStudents = await db
+        .select()
+        .from(zuvyBatchEnrollments)
+        .where(sql`${zuvyBatchEnrollments.bootcampId} = ${bootcamp_id} AND ${zuvyBatchEnrollments.batchId} IS NOT NULL`);
+
+
       return assessmentSubmissionData;
     } catch (err) {
       throw err;
     }
   }
-
-  // async submissionOfAssessment(studentId: number, submisionData){
-  //   await db.insert(zuvyAssessmentSubmission).values(submisionData)
-  // }
 
   async getAssessmentInfoBy(bootcamp_id, limit:number, offset:number) {
     try {
@@ -150,11 +174,12 @@ export class SubmissionService {
         with: {
           moduleAssessments: {
             columns: {
-              moduleId: true, // Include the moduleId
+              moduleId: true, 
               title: true,
               codingProblems: true,
               mcq: true,
               openEndedQuestions: true,
+              id: true
             },
             with: {
               assessmentSubmissions: {
@@ -162,10 +187,7 @@ export class SubmissionService {
                   sql`${zuvyAssessmentSubmission.bootcampId} = ${bootcamp_id}`,
                 columns: {
                   userId: true,
-                  assessmentId: true,
-                  // bootcampId: true,
-                  // moduleId: true, // Include the moduleId
-
+                  assessmentId: true
                 },
               },
             },
@@ -185,27 +207,4 @@ export class SubmissionService {
   }
 
 
-  // async getAssessmentInfoBy(bootcamp_id) {
-  //   try{
-  //     console.log('bootcamp', bootcamp_id);
-  //     const courseModule = await db.select().from(zuvyCourseModules).where(eq(zuvyCourseModules.bootcampId, bootcamp_id))
-      
-  //     let moduleIds = courseModule.map(module => module.id)
-  //     console.log('module: ', moduleIds)
-      
-  //     const assessment = await db.select().from(zuvyModuleAssessment).where(sql`${zuvyModuleAssessment.moduleId} IN ${moduleIds}`)
-  //     const totalStudents = await db.select().from(zuvyBatchEnrollments).where(eq(zuvyBatchEnrollments.bootcampId, bootcamp_id))
-  //     const assessmentSubmit = await db.select().from(zuvyAssessmentSubmission).where(eq(zuvyAssessmentSubmission.bootcampId, bootcamp_id))
-
-  //     assessment.forEach((mod)=>{
-        
-  //     })
-
-
-  //     return {total_students: totalStudents.length, submisions : assessmentSubmit.length, assessment  };
-
-  //   } catch (err){
-  //     throw err
-  //   }
-  // }
 }
