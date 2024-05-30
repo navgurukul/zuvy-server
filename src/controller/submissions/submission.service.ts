@@ -117,49 +117,21 @@ export class SubmissionService {
       throw err;
     }
   }
-
-  async assessmentStudentsInfoBy(assessment_id: number, limit: number, offset: number, bootcamp_id: number) {
+  async assessmentStudentsInfoBy(assessment_id: number,limit:number, offset:number, bootcamp_id:number) {
     try {
       const assessmentSubmissionData = await db.query.zuvyModuleAssessment.findMany({
-        where: (zuvyModuleAssessment, { sql }) => sql`${zuvyModuleAssessment.id} = ${assessment_id}`,
-        columns: {
-          id:true,
-          title:true,
-          passPercentage:true,
-          timeLimit:true,
-        },
+        where: (zuvyModuleAssessment, {sql}) => sql`${zuvyModuleAssessment.id}= ${assessment_id}`,
         with: {
           assessmentSubmissions: {
-            where: (zuvyAssessmentSubmission, { eq }) => eq(zuvyAssessmentSubmission.bootcampId, bootcamp_id),
+            where: (zuvyAssessmentSubmission, { eq }) => eq(zuvyAssessmentSubmission.bootcampId ,bootcamp_id ),
             columns: {
-              id:true,
               userId: true,
               assessmentId: true,
-              bootcampId: true,
-              marks:true,
-              submitAt:true,
-            },
-            with: {
-              user: {
-                columns: {
-                  name: true,
-                  email: true,
-                },
-              },
-            },
+              bootcampId:true
+            }
           }
-          
-        },
-        limit: limit,
-        offset: offset,
+        }
       });
-
-      let bootcampStudents = await db
-        .select()
-        .from(zuvyBatchEnrollments)
-        .where(sql`${zuvyBatchEnrollments.bootcampId} = ${bootcamp_id} AND ${zuvyBatchEnrollments.batchId} IS NOT NULL`);
-
-
       return assessmentSubmissionData;
     } catch (err) {
       throw err;
@@ -178,12 +150,11 @@ export class SubmissionService {
         with: {
           moduleAssessments: {
             columns: {
-              moduleId: true, 
+              moduleId: true, // Include the moduleId
               title: true,
               codingProblems: true,
               mcq: true,
               openEndedQuestions: true,
-              id: true
             },
             with: {
               assessmentSubmissions: {
@@ -191,7 +162,10 @@ export class SubmissionService {
                   sql`${zuvyAssessmentSubmission.bootcampId} = ${bootcamp_id}`,
                 columns: {
                   userId: true,
-                  assessmentId: true
+                  assessmentId: true,
+                  // bootcampId: true,
+                  // moduleId: true, // Include the moduleId
+
                 },
               },
             },
