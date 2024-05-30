@@ -678,43 +678,51 @@ export class TrackingService {
 
   async getAllChapterWithStatus(moduleId: number, userId: number) {
     try {
-       const moduleDetails = await db.select().from(zuvyCourseModules).where(eq(zuvyCourseModules.id,moduleId));
-       if(moduleDetails.length > 0)
-        { 
-      const trackingData = await db.query.zuvyModuleChapter.findMany({
-        where: (moduleChapter, { eq }) => eq(moduleChapter.moduleId, moduleId),
-        with: {
-          chapterTrackingDetails: {
-            columns: {
-              id: true,
-            },
-            where: (chapterTracking, { eq }) =>
-              eq(chapterTracking.userId, BigInt(userId)),
+      const moduleDetails = await db
+        .select()
+        .from(zuvyCourseModules)
+        .where(eq(zuvyCourseModules.id, moduleId));
+      if (moduleDetails.length > 0) {
+        const trackingData = await db.query.zuvyModuleChapter.findMany({
+          where: (moduleChapter, { eq }) =>
+            eq(moduleChapter.moduleId, moduleId),
+          orderBy: (moduleChapter, { asc }) => asc(moduleChapter.order),
+          columns: {
+            id: true,
+            title: true,
+            topicId: true,
           },
-        },
-      });
+          with: {
+            chapterTrackingDetails: {
+              columns: {
+                id: true,
+              },
+              where: (chapterTracking, { eq }) =>
+                eq(chapterTracking.userId, BigInt(userId)),
+            },
+          },
+        });
 
-      trackingData.forEach((chapter) => {
-        chapter['status'] =
-          chapter['chapterTrackingDetails'].length > 0
-            ? 'Completed'
-            : 'Pending';
-      });
+        trackingData.forEach((chapter) => {
+          chapter['status'] =
+            chapter['chapterTrackingDetails'].length > 0
+              ? 'Completed'
+              : 'Pending';
+        });
 
-      return {
-        status:'success',
-        code: 200,
-        trackingData,
-        moduleDetails
-      };
-    }
-    else {
         return {
-            status:'error',
-            code: 404,
-            message:'No module found'
-        }
-    }
+          status: 'success',
+          code: 200,
+          trackingData,
+          moduleDetails,
+        };
+      } else {
+        return {
+          status: 'error',
+          code: 404,
+          message: 'No module found',
+        };
+      }
     } catch (err) {
       throw err;
     }
@@ -798,7 +806,10 @@ export class TrackingService {
       let modules = data.map((module: any) => {
         return {
           id: module.id,
-          name: module.typeId == 2 ? module['projectData'][0]['title']: module.name,
+          name:
+            module.typeId == 2
+              ? module['projectData'][0]['title']
+              : module.name,
           description: module.description,
           typeId: module.typeId,
           order: module.order,
@@ -826,11 +837,7 @@ export class TrackingService {
 
       if (modules.length > 0) {
         for (let i = 1; i < modules.length; i++) {
-          if (
-            modules[i - 1].progress == 100 &&
-            modules[i].progress > 0 &&
-            modules[i].isLock == false
-          ) {
+          if (modules[i - 1].progress == 100 && modules[i].isLock == false) {
             modules[i].isLock = false;
           } else {
             modules[i].isLock = true;
@@ -867,7 +874,7 @@ export class TrackingService {
         .where(eq(zuvyBatches.id, batchId[0].batchId));
       const instructorDetails = await db
         .select({
-          instructorId: sql<number>`cast(${users.id} as int)`,  
+          instructorId: sql<number>`cast(${users.id} as int)`,
           instructorName: users.name,
           instructorPicture: users.profilePicture,
         })
@@ -915,6 +922,37 @@ export class TrackingService {
         );
         return pendingAssignment;
       }
+    } catch (err) {
+      throw err;
+    }
+  }
+
+  async getChapterDetailsWithStatus(chapterId: number, userId: number) {
+    try {
+      const trackingData = await db.query.zuvyModuleChapter.findFirst({
+        where: (moduleChapter, { eq }) => eq(moduleChapter.id, chapterId),
+        orderBy: (moduleChapter, { asc }) => asc(moduleChapter.order),
+        with: {
+          chapterTrackingDetails: {
+            columns: {
+              id: true,
+            },
+            where: (chapterTracking, { eq }) =>
+              eq(chapterTracking.userId, BigInt(userId)),
+          },
+        },
+      });
+
+      trackingData['status'] =
+        trackingData['chapterTrackingDetails'].length > 0
+          ? 'Completed'
+          : 'Pending';
+
+      return {
+        status: 'success',
+        code: 200,
+        trackingData,
+      };
     } catch (err) {
       throw err;
     }
