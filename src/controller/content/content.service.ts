@@ -506,7 +506,7 @@ export class ContentService {
       let modules = data.map((module: any) => {
         return {
           id: module.id,
-          name: module.typeId == 2 ? module['projectData'][0]['title']: module.name,
+          name: module['projectData'].length > 0 ? module['projectData'][0]['title']: module.name,
           description: module.description,
           typeId: module.typeId,
           order: module.order,

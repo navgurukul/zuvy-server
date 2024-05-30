@@ -481,6 +481,46 @@ export class CreateAssessmentBody {
   })
   @IsNumber()
   timeLimit: number;
+
+  @ApiProperty({
+    type: Boolean,
+    example: true
+  })
+  @IsOptional()
+  @IsBoolean()
+  copyPaste: boolean;
+
+  @ApiProperty({
+    type: Boolean,
+    example: true
+  })
+  @IsOptional()
+  @IsBoolean()
+  embeddedGoogleSearch: boolean;
+
+  @ApiProperty({
+    type: Boolean,
+    example: false
+  })
+  @IsOptional()
+  @IsBoolean()
+  tabChange: boolean;
+
+  @ApiProperty({
+    type: Boolean,
+    example: true
+  })
+  @IsOptional()
+  @IsBoolean()
+  screenRecord: boolean;
+
+  @ApiProperty({
+    type: Boolean,
+    example: true
+  })
+  @IsOptional()
+  @IsBoolean()
+  webCamera: boolean;
 }
 
 
