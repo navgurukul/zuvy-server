@@ -4,6 +4,7 @@ import { ApiTags, ApiBody, ApiOperation, ApiCookieAuth, ApiQuery } from '@nestjs
 import { CreateBootcampDto, EditBootcampDto, PatchBootcampDto, studentDataDto, PatchBootcampSettingDto } from './dto/bootcamp.dto';
 import { ApiBearerAuth } from '@nestjs/swagger';
 import { Request } from '@nestjs/common';
+import { query } from 'express';
 
 // import { EditBootcampDto } from './dto/editBootcamp.dto';
 // import { AuthGuard } from '@nestjs/passport'; // Assuming JWT authentication
@@ -169,6 +170,7 @@ export class BootcampController {
     }
     return res;
   }
+
   @Get('/batches/:bootcamp_id')
   @ApiOperation({ summary: 'Get the batches by bootcamp_id' })
   @ApiQuery({
@@ -337,25 +339,4 @@ export class BootcampController {
     }
     return res;
   }
-
-  @Get('/studentClasses/:bootcampId')
-  @ApiOperation({ summary: 'Get the students classes by bootcamp_id' })
-  @ApiQuery({
-    name: 'userId',
-    required: false,
-    type: Number,
-    description: 'user id',
-  })
-  @ApiBearerAuth()
-  async getStudentClassesByBootcampId(
-    @Param('bootcampId') bootcampId: number,
-    @Query('userId') userId: number,
-  ): Promise<object> {
-    const res = await this.bootcampService.getStudentClassesByBootcampId(
-      bootcampId,
-      userId,
-    );
-    return res;
-  }
 }
-

@@ -707,6 +707,18 @@ export class BootcampService {
   //     return [{ status: 'error', message: e.message, code: 500 }, null];
   //   }
   // }
+  async BootcampOrBatchEnrollments(batch_id: number, bootcamp_id: number, user_id = null) {
+    let queryString;
+
+    if (user_id && batch_id && bootcamp_id) { 
+      queryString = sql`${zuvyBatchEnrollments.bootcampId} = ${bootcamp_id} and ${zuvyBatchEnrollments.batchId} = ${batch_id} and ${zuvyBatchEnrollments.userId} = ${user_id}`;
+    } else if (bootcamp_id && batch_id) {
+      queryString = sql`${zuvyBatchEnrollments.bootcampId} = ${bootcamp_id} and ${zuvyBatchEnrollments.batchId} = ${batch_id}`;
+    } else {
+      queryString = sql`${zuvyBatchEnrollments.bootcampId} = ${bootcamp_id}`;
+    }
+    return queryString
+  }
 
   async getStudentsByBootcampOrBatch(
     bootcamp_id,
@@ -715,12 +727,7 @@ export class BootcampService {
     limit: number,
     offset: number,
   ) {
-    let queryString;
-    if (bootcamp_id && batch_id) {
-      queryString = sql`${zuvyBatchEnrollments.bootcampId} = ${bootcamp_id} and ${zuvyBatchEnrollments.batchId} = ${batch_id}`;
-    } else {
-      queryString = sql`${zuvyBatchEnrollments.bootcampId} = ${bootcamp_id}`;
-    }
+    let queryString = await this.BootcampOrBatchEnrollments(batch_id, bootcamp_id);
     let totalStudentsInTheBatch, studentsIds, studentsInTheBatch;
 
     if (searchTerm && searchTerm.constructor === String) {
@@ -808,8 +815,8 @@ export class BootcampService {
 
             let attendancePercentage = classesInfo.length > 0 ? (student.attendance / classesInfo.length) * 100 : 0;
             batchData = {
-              batchId: student?.batchId ,
-              batchName: student.batchInfo?.name ,
+              batchId: student?.batchId,
+              batchName: student.batchInfo?.name,
               attendance: attendancePercentage,
             }
           } else {
@@ -844,7 +851,7 @@ export class BootcampService {
         code: 200,
       },
     ];
-    
+
   }
   async searchStudentsByNameOrEmail(
     searchTerm: string | bigint,
@@ -986,73 +993,6 @@ export class BootcampService {
       ];
     } catch (e) {
       return [{ status: 'error', message: e.message, code: 500 }, null];
-    }
-  }
-
-  async getStudentClassesByBootcampId(bootcampId, userId) {
-    try {
-      let zuvyBatchEnrollmentsData = await db
-        .select()
-        .from(zuvyBatchEnrollments)
-        .where(sql`${zuvyBatchEnrollments.bootcampId} = ${bootcampId} `);
-      const matchingEnrollments = zuvyBatchEnrollmentsData.filter(
-        (enrollment) => enrollment.userId.toString() === userId.toString(),
-      );
-      if (matchingEnrollments.length === 0) {
-        return {
-          status: 'error',
-          message:
-            'No matching batch enrollments found for the provided bootcampId and userId',
-          code: 404,
-        };
-      }
-      const batchId = matchingEnrollments[0].batchId;
-      try {
-        const currentTime = new Date();
-
-        const classes = await db
-          .select()
-          .from(zuvySessions)
-          .where(sql`${zuvySessions.batchId} = ${batchId}`);
-        const completedClasses = classes
-          .filter((classObj) => {
-            const endTime = new Date(classObj.endTime);
-            return currentTime > endTime;
-          })
-          .sort((a, b) => {
-            const aStartTime = new Date(a.startTime);
-            const bStartTime = new Date(b.startTime);
-            return bStartTime.getTime() - aStartTime.getTime();
-          });
-
-        const ongoingClasses = classes.filter((classObj) => {
-          const startTime = new Date(classObj.startTime);
-          const endTime = new Date(classObj.endTime);
-          return currentTime >= startTime && currentTime <= endTime;
-        });
-
-        const upcomingClasses = classes.filter((classObj) => {
-          const startTime = new Date(classObj.startTime);
-          return currentTime < startTime;
-        });
-
-        return {
-          status: 'success',
-          message: 'Classes fetched successfully by batchId',
-          code: 200,
-          completedClasses,
-          ongoingClasses,
-          upcomingClasses,
-        };
-      } catch (error) {
-        return {
-          success: 'not success',
-          message: 'Error fetching class Links',
-          error: error,
-        };
-      }
-    } catch (err) {
-      return [{ status: 'error', message: err.message, code: 500 }, null];
     }
   }
 }
