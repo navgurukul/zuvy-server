@@ -3046,3 +3046,16 @@ export const zuvyChapterTrackingRelations = relations(
 //     }),
 //   }),
 // );
+
+
+
+export const quizChapterRelations = relations(
+  zuvyCourseModules,
+  ({many }) => ({
+    moduleChapterData: many(zuvyModuleChapter),
+    chapterTrackingData: many(zuvyChapterTracking),
+    moduleTracking: many(zuvyModuleTracking),
+    quizTrackingData: many(zuvyQuizTracking),
+    moduleQuizData: many (zuvyModuleQuiz)
+  }),
+);
