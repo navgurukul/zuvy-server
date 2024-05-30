@@ -377,6 +377,42 @@ export class TrackingController {
     return res;
   }
 
+  @Get('/upcomingSubmission/:bootcampId/:userId')
+  @ApiOperation({ summary: 'Get upcoming assignment submission' })
+  @ApiBearerAuth()
+  async getUpcomingAssignment(
+    @Param('bootcampId') bootcampId: number,
+    @Param('userId') userId: number,
+  ) {
+    const res = await this.TrackingService.getPendingAssignmentForStudent(
+      bootcampId,
+      userId,
+    );
+    return res;
+  }
+
+  @Get('/getChapterDetailsWithStatus/:chapterId')
+  @ApiOperation({
+    summary: 'Get chapter details for a user along with status',
+  })
+  @ApiQuery({
+    name: 'userId',
+    required: true,
+    type: Number,
+    description: 'user Id',
+  })
+  @ApiBearerAuth()
+  async getChapterDetailsForUser(
+    @Param('chapterId') chapterId: number,
+    @Query('userId') userId: number,
+  ) {
+    const res = await this.TrackingService.getChapterDetailsWithStatus(
+      chapterId,
+      userId,
+    );
+    return res;
+  }
+
   @Get('getAllQuizAndAssignmentWithStatus/:userId/:moduleId')
   @ApiOperation({ summary: 'get All Quiz And Assignment With Status' })
   @ApiBearerAuth()

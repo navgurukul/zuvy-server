@@ -2458,6 +2458,7 @@ export const zuvySessions = main.table('zuvy_sessions', {
   title: text('title').notNull(),
   s3link: text('s3link'),
   recurringId: integer('recurring_id'),
+  status: text('status').default('upcoming'),
 });
 
 export const zuvyBootcamps = main.table('zuvy_bootcamps', {
@@ -2726,12 +2727,20 @@ export const postsRelations = relations(zuvyModuleChapter, ({ one }) => ({
   }),
 }));
 
+export const projectModuleRelations = relations(zuvyCourseProjects,({one}) => ({
+  projectModuleData: one(zuvyCourseModules,{
+    fields: [zuvyCourseProjects.id],
+    references: [zuvyCourseModules.projectId]
+  })
+}))
+
 export const moduleChapterRelations = relations(
   zuvyCourseModules,
   ({many }) => ({
     moduleChapterData: many(zuvyModuleChapter),
     chapterTrackingData: many(zuvyChapterTracking),
-    moduleTracking: many(zuvyModuleTracking)
+    moduleTracking: many(zuvyModuleTracking),
+    projectData: many(zuvyCourseProjects)
   }),
 );
 
@@ -2767,6 +2776,11 @@ export const zuvyModuleAssessment = main.table('zuvy_module_assessment', {
   mcq: jsonb('mcq'),
   openEndedQuestions: json('open_ended_questions'),
   passPercentage: integer('pass_percentage'),
+  copyPaste: boolean('copy_paste'),
+  embeddedGoogleSearch: boolean('embedded_google_search'),
+  tabChange: boolean('tab_change'),
+  screenRecord: boolean('screen_record'),
+  webCamera: boolean('web_camera'),
   timeLimit: bigint('time_limit', { mode: 'number' }),
 });
 

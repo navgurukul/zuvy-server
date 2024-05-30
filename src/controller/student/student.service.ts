@@ -7,7 +7,7 @@ import {
   zuvyBootcampType
 } from '../../../drizzle/schema';
 import { db } from '../../db/index';
-import { eq, sql } from 'drizzle-orm';
+import { eq, sql,desc, count } from 'drizzle-orm';
 
 @Injectable()
 export class StudentService {
