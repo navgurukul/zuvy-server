@@ -390,4 +390,26 @@ export class TrackingController {
     );
     return res;
   }
+
+  @Get('/getChapterDetailsWithStatus/:chapterId')
+  @ApiOperation({
+    summary: 'Get chapter details for a user along with status',
+  })
+  @ApiQuery({
+    name: 'userId',
+    required: true,
+    type: Number,
+    description: 'user Id',
+  })
+  @ApiBearerAuth()
+  async getChapterDetailsForUser(
+    @Param('chapterId') chapterId: number,
+    @Query('userId') userId: number,
+  ) {
+    const res = await this.TrackingService.getChapterDetailsWithStatus(
+      chapterId,
+      userId,
+    );
+    return res;
+  }
 }

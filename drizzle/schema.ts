@@ -2776,6 +2776,11 @@ export const zuvyModuleAssessment = main.table('zuvy_module_assessment', {
   mcq: jsonb('mcq'),
   openEndedQuestions: json('open_ended_questions'),
   passPercentage: integer('pass_percentage'),
+  copyPaste: boolean('copy_paste'),
+  embeddedGoogleSearch: boolean('embedded_google_search'),
+  tabChange: boolean('tab_change'),
+  screenRecord: boolean('screen_record'),
+  webCamera: boolean('web_camera'),
   timeLimit: bigint('time_limit', { mode: 'number' }),
 });
 
