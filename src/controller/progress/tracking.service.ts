@@ -914,12 +914,28 @@ export class TrackingService {
           bootcampTracking: true,
         },
       });
-        const instructorDetails = await db.select({instructorId: sql<number>`cast(${users.id} as int)`,
-        instructorName: users.name,
-        instructorPicture: users.profilePicture,}).from(zuvyBatchEnrollments).where(
-            sql`${zuvyBatchEnrollments.userId} = ${BigInt(userId)} AND ${zuvyBatchEnrollments.bootcampId} = ${bootcampId}`,
-          ).leftJoin(zuvyBatches,eq(zuvyBatchEnrollments.batchId,zuvyBatches.id))
-          .leftJoin(users,eq(zuvyBatches.instructorId,users.id));
+        const batchDetails = await db.query.zuvyBatchEnrollments.findFirst({
+            where: (batchEnroll, { eq }) =>
+                sql`${batchEnroll.userId} = ${BigInt(userId)} AND ${batchEnroll.bootcampId} = ${bootcampId}`,
+            with: {
+                batchInfo: {
+                    with : {
+                        instructorDetails : {
+                            columns:{
+                                id:true,
+                                name:true,
+                                profilePicture:true
+                            }
+                        }
+                    }
+                }
+            },
+          });
+          const instructorDetails = {
+            instructorId: batchDetails['batchInfo']['instructorDetails']['id'],
+            instructorName: batchDetails['batchInfo']['instructorDetails']['name'],
+            instructorProfilePicture : batchDetails['batchInfo']['instructorDetails']['profilePicture']
+          }
       return {
         status: 'success',
         message: 'Bootcamp progress fetched successfully',

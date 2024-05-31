@@ -2593,6 +2593,15 @@ export const zuvyBatchEnrollmentsRelations = relations(
   }),
 );
 
+export const zuvyBatchInstructorRelation = relations(
+  zuvyBatches,({one}) => ({
+    instructorDetails: one(users,{
+      fields: [zuvyBatches.instructorId],
+      references: [users.id]
+    })
+  })
+)
+
 export const zuvyTags = main.table('zuvy_tags', {
   id: serial('id').primaryKey().notNull(),
   tagName: varchar('tag_name'),
