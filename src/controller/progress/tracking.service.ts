@@ -847,24 +847,27 @@ export class TrackingService {
 
   async getBootcampTrackingForAUser(bootcampId: number, userId: number) {
     try {
-        const totalModules = await db
-            .select()
-            .from(zuvyCourseModules)
-            .where(eq(zuvyCourseModules.bootcampId, bootcampId));
-          const projectModules = totalModules.filter((module) => module.typeId === 2);
+            const moduleDetails = await db.query.zuvyCourseModules.findMany({
+                where: (courseModules, { eq }) =>
+                  eq(courseModules.bootcampId, bootcampId),
+                with: {
+                  moduleChapterData: true
+                },
+              });
+            const totalLength = moduleDetails.reduce((accumulator, currentObj) => {
+                return accumulator + currentObj['moduleChapterData'].length;
+              }, 0);
+          const projectModules = moduleDetails.filter((module) => module.typeId === 2);
           const projectModuleIds = projectModules.length > 0 ? projectModules.map((module) => module.id) : [];
           const completedProjectForAUser = projectModuleIds.length > 0 ? await db.select().from(zuvyModuleTracking).where(sql`${inArray(zuvyModuleTracking.moduleId,projectModuleIds)} and ${zuvyModuleTracking.userId} = ${userId}`) : [];
-          const moduleIds = totalModules.map((module) => module.id);
+          const moduleIds = moduleDetails.map((module) => module.id);
           const allChapterTracking = moduleIds.length > 0 ? await db
             .select()
             .from(zuvyChapterTracking)
             .where(
               sql`${inArray(zuvyChapterTracking.moduleId, moduleIds)} AND ${zuvyChapterTracking.userId} = ${userId}`,
             ): [];
-          const allChapters = moduleIds.length > 0 ? await db
-            .select()
-            .from(zuvyModuleChapter)
-            .where(sql`${inArray(zuvyModuleChapter.moduleId, moduleIds)}`):[];
+          const allChapters = moduleIds.length > 0 ? totalLength :[];
           if(moduleIds.length == 0 || allChapters.length  == 0)
             {
                 return {
@@ -884,7 +887,7 @@ export class TrackingService {
               .update(zuvyBootcampTracking)
               .set({
                 progress: Math.ceil(
-                  (allChapterTracking.length + completedProjectForAUser.length) / (allChapters.length+projectModules.length) * 100,
+                  (allChapterTracking.length + completedProjectForAUser.length) / (allChapters+projectModules.length) * 100,
                 ),
                 updatedAt: sql`NOW()`,
               })
@@ -898,7 +901,7 @@ export class TrackingService {
                 userId,
                 bootcampId,
                 progress: Math.ceil(
-                    (allChapterTracking.length + completedProjectForAUser.length) / (allChapters.length+projectModules.length) * 100,
+                    (allChapterTracking.length + completedProjectForAUser.length) / (allChapters+projectModules.length) * 100,
                   ),
                 updatedAt: sql`NOW()`,
               }).returning();
