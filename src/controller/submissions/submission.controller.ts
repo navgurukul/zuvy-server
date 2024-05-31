@@ -23,6 +23,8 @@ import {
     ApiQuery,
   } from '@nestjs/swagger';
   import { ApiBearerAuth } from '@nestjs/swagger';
+  import {InstructorFeedbackDto, PatchOpenendedQuestionDto, CreateOpenendedQuestionDto, SubmissionassessmentDto, StartAssessmentDto} from './dto/submission.dto';
+
   @Controller('submission')
   @ApiTags('submission')
   @UsePipes(
@@ -38,8 +40,7 @@ import {
     @ApiOperation({ summary: 'Get the submission by bootcampId' })
     @ApiBearerAuth()
     async getChapterTracking(@Param('bootcampId') bootcampId: number) {
-      const res = await this.submissionService.getSubmissionOfPractiseProblem(bootcampId);
-      return res;
+      return this.submissionService.getSubmissionOfPractiseProblem(bootcampId);
     }
   
     @Get('/practiseProblemStatus/:moduleId')
@@ -74,14 +75,13 @@ import {
       @Query('limit') limit: number,
       @Query('offset') offset : number
     ) {
-      const res = await this.submissionService.practiseProblemStatusOfStudents(
+      return this.submissionService.practiseProblemStatusOfStudents(
         questionId,
         chapterId,
         moduleId,
         limit,
         offset
       );
-      return res;
     }
 
     // @Post('/assessment')
@@ -104,8 +104,7 @@ import {
       @Query('limit') limit: number,
       @Query('offset') offset : number
     ){
-      let res = await this.submissionService.getAssessmentInfoBy(bootcampId, limit, offset);
-      return res;
+      return this.submissionService.getAssessmentInfoBy(bootcampId, limit, offset);
     }
 
     @Get('/assessment/students')
@@ -126,8 +125,50 @@ import {
       @Query('limit') limit: number,
       @Query('offset') offset : number
     ){
-      let res = await this.submissionService.assessmentStudentsInfoBy(assessmentId, limit, offset,bootcampId);
-      return res;
+      return this.submissionService.assessmentStudentsInfoBy(assessmentId, limit, offset,bootcampId);
+    }
+
+
+    @Post('/openended/questions')
+    @ApiBearerAuth()
+    async submissionOpenended(@Body() data: CreateOpenendedQuestionDto, @Req() req){
+      return this.submissionService.submissionOpenended(data,req.user[0].id);
+    }
+
+    @Patch('/openended/questions')
+    @ApiBearerAuth()
+    async patchOpenendedQuestion(@Body() data: PatchOpenendedQuestionDto, @Query('id') id: number){
+      return this.submissionService.patchOpenendedQuestion(data, id);
+    }
+
+    @Post('/instructor/feedback')
+    @ApiBearerAuth()
+    async instructorFeedback(@Body() data: InstructorFeedbackDto, @Query('id') id: number){
+      return this.submissionService.instructorFeedback(data, id);
+    }
+
+    @Get('/openended/questions')
+    @ApiBearerAuth()
+    async getOpenendedQuestionSubmission(@Query('id') id: number){
+      return this.submissionService.getOpenendedQuestionSubmission(id);
+    }
+    
+    @Post('/assessment/start')
+    @ApiBearerAuth()
+    async assessmentStart(@Body() data:StartAssessmentDto , @Req() req){
+      return this.submissionService.assessmentStart(data, req.user[0].id);
+    }
+    
+    @Patch('/assessment/submit')
+    @ApiBearerAuth()
+    async assessmentSubmission(@Body() data:SubmissionassessmentDto, @Query('id') id:number , @Req() req){
+      return this.submissionService.assessmentSubmission(data, id);
+    }
+
+    @Get('/assessment')
+    @ApiBearerAuth()
+    async getAssessmentSubmission(@Query('assessment_id') assessment_id: number,  @Req() req){
+      return this.submissionService.getAssessmentSubmission(assessment_id, req.user[0].id);
     }
   }
   

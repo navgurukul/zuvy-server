@@ -5,8 +5,8 @@ import { eq, sql, count, lte } from 'drizzle-orm';
 import axios from 'axios';
 import * as _ from 'lodash';
 import { error, log } from 'console';
-import { zuvyBatchEnrollments, zuvyAssessmentSubmission, users, zuvyModuleAssessment, zuvyCourseModules, zuvyChapterTracking, zuvyBootcamps } from '../../../drizzle/schema';
-
+import { zuvyBatchEnrollments, zuvyAssessmentSubmission, users, zuvyModuleAssessment, zuvyCourseModules, zuvyChapterTracking, zuvyBootcamps, zuvyOpenEndedQuestionSubmission } from '../../../drizzle/schema';
+import {InstructorFeedbackDto, PatchOpenendedQuestionDto, CreateOpenendedQuestionDto} from './dto/submission.dto';
 
 const { ZUVY_CONTENT_URL } = process.env;
 
@@ -137,7 +137,8 @@ export class SubmissionService {
               assessmentId: true,
               bootcampId: true,
               marks:true,
-              submitAt:true,
+              startedAt:true,
+              submitedAt:true,
             },
             with: {
               user: {
@@ -206,5 +207,139 @@ export class SubmissionService {
       }
   }
 
+  // assessment submission api 
+  async assessmentStart(assessmentData, studentId: number) {
+    try {
+      return await db.insert(zuvyAssessmentSubmission).values({...assessmentData, userId:studentId}).returning();
+    } catch (err) {
+      throw err;
+    }
+  }
 
+  async assessmentSubmission(data, id: number) {
+    try {
+      console.log('data', data, id)
+      return await db.update(zuvyAssessmentSubmission).set(data).where(eq(zuvyAssessmentSubmission.id, id)).returning();
+    } catch (err) {
+      throw err;
+    }
+  }
+
+  async submissionOpenended(OpenendedQuestionData:CreateOpenendedQuestionDto, studentId:number){
+    try{
+      const OpenendedQuestionSubmission = await db.insert(zuvyOpenEndedQuestionSubmission).values({...OpenendedQuestionData, studentId}).returning();
+      return OpenendedQuestionSubmission;
+    }catch(err){
+      throw err;
+    }
+  }
+
+  async patchOpenendedQuestion(data: PatchOpenendedQuestionDto, id: number){
+    try{
+      const res = await db.update(zuvyOpenEndedQuestionSubmission).set(data).where(eq(zuvyOpenEndedQuestionSubmission.id, id)).returning();
+      return res;
+    }catch(err){
+      throw err;
+    }
+  }
+
+  async instructorFeedback(data: InstructorFeedbackDto, id: number){
+    try{
+      const res = await db.update(zuvyOpenEndedQuestionSubmission).set(data).where(eq(zuvyOpenEndedQuestionSubmission.id, id)).returning();
+      return res;
+    }catch(err){
+      throw err;
+    }
+  }
+
+  async getOpenendedQuestionSubmission(submer_assissment_id){
+    try{
+      const res = await db.query.zuvyOpenEndedQuestionSubmission.findMany({
+        where: (zuvyOpenEndedQuestionSubmission, {eq}) => eq(zuvyOpenEndedQuestionSubmission.id, submer_assissment_id),
+        with: {
+          user: {
+            columns: {
+              name: true,
+              email: true,
+            },
+          },
+          openEnded: {
+            columns: {
+              id: true,
+              question: true,
+              difficulty: true,
+            },
+          },
+        }
+      })
+      return res;
+    } catch (err){
+      throw err;
+    }
+  }
+
+  async getAssessmentSubmission(assessment_id, studentId){
+    try{
+      const res = await db.query.zuvyAssessmentSubmission.findMany({
+        where: (zuvyAssessmentSubmission, {eq, and}) => and(eq(zuvyAssessmentSubmission.assessmentId, assessment_id), eq(zuvyAssessmentSubmission.userId, studentId)),
+        with: {
+          user: {
+            columns: {
+              name: true,
+              email: true,
+            },
+          },
+          assessment: {
+            columns: {
+              id: true,
+              title: true,
+              passPercentage: true,
+              timeLimit: true,
+            },
+          },
+          openEndedSubmission: {
+            columns: {
+              id: true,
+              question_id: true,
+              answer: true,
+              marks: true,
+              feedback: true,
+              submitAt: true,
+              assessmentId: true,
+            },
+            with: {
+              openEnded: {
+                columns: {
+                  id: true,
+                  question: true,
+                  difficulty: true,
+                },
+              },
+            
+            },
+          },
+          codingSubmission: {
+            columns: {
+              id: true,
+              questionSolved: true,
+              assessmentId: true,
+            },
+          },
+          quizSubmission: {
+            columns: {
+              id: true,
+              mcqId: true,
+              status: true,
+              chosenOption: true,
+              attempt: true,
+              assessmentId: true,
+            },
+          },
+        }
+      })
+      return res;
+    } catch (err){
+      throw err;
+    }
+  }
 }
