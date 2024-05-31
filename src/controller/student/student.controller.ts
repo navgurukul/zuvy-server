@@ -84,7 +84,7 @@ export class StudentController {
 
   
   @Get('/Dashboard/classes')
-  @ApiOperation({ summary: 'Get all Public Bootcamp' })
+  @ApiOperation({ summary: 'Get dashboard upcoming class' })
   @ApiBearerAuth()
   async getUpcomingClass( @Req() req
   ){
@@ -92,7 +92,7 @@ export class StudentController {
   }
 
   @Get('/Dashboard/attendance')
-  @ApiOperation({ summary: 'Get all Public Bootcamp' })
+  @ApiOperation({ summary: 'Get dashboard Attendance.' })
   @ApiBearerAuth()
   async getAttendanceClass( @Req() req
   ){
