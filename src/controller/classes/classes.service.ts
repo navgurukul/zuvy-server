@@ -6,7 +6,7 @@ import {
   zuvyBatchEnrollments,
   zuvyStudentAttendance,
   zuvySessions,
-  ZuvyClassesGoogleMeetLink
+  // ZuvyClassesGoogleMeetLink
 } from '../../../drizzle/schema';
 import { db } from '../../db/index';
 import { eq, sql, count, inArray, isNull, desc } from 'drizzle-orm';
@@ -410,33 +410,33 @@ export class ClassesService {
     });
   }
 
-  async seedingClass(){
-    const classesRow = await db.select().from(ZuvyClassesGoogleMeetLink);
+  // async seedingClass(){
+  //   const classesRow = await db.select().from(ZuvyClassesGoogleMeetLink);
 
-    const newClassesData = classesRow.map((row) => {
-      return {
-          id: row.id,
-          meetingId: row.meetingId,
-          hangoutLink: row.hangoutLink,
-          creator: row.creator,
-          startTime: row.startTime,
-          endTime: row.endTime ,
-          batchId: parseInt(row.batchId),
-          bootcampId: parseInt(row.bootcampId),
-          title: row.title,
-          s3link: row.s3link
-      }
-    });
-    newClassesData.map(async (batch__) =>{
-      try{
-        await db.insert(zuvySessions).values(batch__);
+  //   const newClassesData = classesRow.map((row) => {
+  //     return {
+  //         id: row.id,
+  //         meetingId: row.meetingId,
+  //         hangoutLink: row.hangoutLink,
+  //         creator: row.creator,
+  //         startTime: row.startTime,
+  //         endTime: row.endTime ,
+  //         batchId: parseInt(row.batchId),
+  //         bootcampId: parseInt(row.bootcampId),
+  //         title: row.title,
+  //         s3link: row.s3link
+  //     }
+  //   });
+  //   newClassesData.map(async (batch__) =>{
+  //     try{
+  //       await db.insert(zuvySessions).values(batch__);
 
-      } catch (err){
-        console.error(err)
-      }
-    })
-    return { status: 'success', message: 'meetings to update', code: 200 };
-  }
+  //     } catch (err){
+  //       console.error(err)
+  //     }
+  //   })
+  //   return { status: 'success', message: 'meetings to update', code: 200 };
+  // }
 
   private async uploadVideoToS3(
     fileBuffer: Buffer,
