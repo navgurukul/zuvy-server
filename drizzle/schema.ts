@@ -2665,6 +2665,29 @@ export const zuvyCourseProjects = main.table("zuvy_course_projects", {
   deadline: timestamp("completed_at", { withTimezone: true, mode: 'string' }).defaultNow()
 })
 
+export const zuvyProjectTracking = main.table("zuvy_project_tracking",{
+  id:serial("id").primaryKey().notNull(),
+  userId: integer("user_id").references(() => users.id, {
+    onDelete: 'cascade',
+    onUpdate: 'cascade',
+  }),
+  projectId: integer("project_id").references(() => zuvyCourseProjects.id, {
+    onDelete: 'cascade',
+    onUpdate: 'cascade',
+  }),
+  moduleId: integer("module_id").references(() => zuvyCourseModules.id, {
+    onDelete: 'cascade',
+    onUpdate: 'cascade',
+  }),
+  bootcampId: integer("bootcamp_id").references(() => zuvyBootcamps.id, {
+    onDelete: 'cascade',
+    onUpdate: 'cascade',
+  }),
+  projectLink: varchar("project_link"),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+})
+
 export const zuvyBootcampTracking = main.table("zuvy_bootcamp_tracking", {
   id: serial("id").primaryKey().notNull(),
   userId: integer("user_id").references(() => users.id),
