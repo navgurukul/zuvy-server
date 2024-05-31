@@ -4,13 +4,16 @@ import {
   zuvyBatchEnrollments,
   zuvyBootcampTracking,
   zuvyBootcamps,
-  zuvyBootcampType
+  zuvyBootcampType,
+  zuvySessions
 } from '../../../drizzle/schema';
 import { db } from '../../db/index';
 import { eq, sql,desc, count } from 'drizzle-orm';
+import { ClassesService } from '../classes/classes.service'
 
 @Injectable()
 export class StudentService {
+  constructor(private ClassesService: ClassesService) { }
   async enrollData(userId: number) {
     try {
       let enrolled = await db
@@ -143,4 +146,64 @@ export class StudentService {
       return [{ status: 'error', message: e.message, code: 500 }, null];
     }
   }
+
+  async getUpcomingClass(student_id:number) {
+    try {
+      
+      let enrolled = await db.select().from(zuvyBatchEnrollments).where(sql`${zuvyBatchEnrollments.userId} = ${student_id}`);
+
+      if (enrolled.length == 0) {
+        return [{ status: 'error', message: 'not enrolled in any course.', code: 404 }, null];
+      }
+      
+      let bootcampIds = await Promise.all(enrolled.map(async (e) => {
+        await this.ClassesService.updatingStatusOfClass(e.bootcampId)
+        return e.bootcampId;
+      }));
+
+      let upcomingClasses = await db
+        .select()
+        .from(zuvySessions)
+        .where(
+          sql`${zuvySessions.bootcampId} IN ${bootcampIds} AND ${zuvySessions.status} != 'completed'`,
+        )
+        .orderBy(desc(zuvySessions.startTime))
+
+      return upcomingClasses;
+    } catch (err) {
+      throw err;
+    }
+  }
+
+    async getAttendanceClass(student_id:number) {
+      try{
+        let enrolled = await db.query.zuvyBatchEnrollments.findMany({
+          where: (zuvyBatchEnrollments, { sql }) => sql`${zuvyBatchEnrollments.userId} = ${student_id}`,
+          with:{
+            bootcamp:{
+              id:true,
+              name:true
+            }
+          }
+        });
+        
+        if (enrolled.length == 0) {
+          return [{ status: 'error', message: 'not enrolled in any course.', code: 404 }, null];
+        }
+        
+        let totalAttendance = await Promise.all(enrolled.map(async (e:any) => {
+          let classes = await db.select().from(zuvySessions).where(sql`${zuvySessions.batchId} = ${e.batchId} AND ${zuvySessions.status} = 'completed'`).orderBy(desc(zuvySessions.startTime));
+          e.attendance = (e.attendance/classes.length)*100 || 0;
+          e.totalClasses = classes.length;
+          e.attendedClasses = e.attendance;
+          delete e.userId;
+          delete e.bootcamp
+          return e;
+        }));
+        return totalAttendance;
+      } catch (err) {
+        throw err;
+      }
+
+    }
 }
