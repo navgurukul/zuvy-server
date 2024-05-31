@@ -2688,6 +2688,7 @@ export const zuvyProjectTracking = main.table("zuvy_project_tracking",{
   updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
 })
 
+
 export const zuvyBootcampTracking = main.table("zuvy_bootcamp_tracking", {
   id: serial("id").primaryKey().notNull(),
   userId: integer("user_id").references(() => users.id),

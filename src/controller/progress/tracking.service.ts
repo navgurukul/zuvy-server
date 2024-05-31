@@ -15,6 +15,7 @@ import {
   zuvyBatchEnrollments,
   zuvyBatches,
   users,
+  zuvyProjectTracking,
 } from 'drizzle/schema';
 import { throwError } from 'rxjs';
 import {
@@ -23,6 +24,8 @@ import {
   TimeLineAssignmentDto,
 } from './dto/assignment.dto';
 import { date } from 'drizzle-orm/mysql-core';
+import { UpdateProjectDto } from './dto/project.dto';
+
 import { quizBatchDto } from '../content/dto/content.dto';
 
 const { ZUVY_CONTENT_URL, ZUVY_CONTENTS_API_URL } = process.env; // INPORTING env VALUSE ZUVY_CONTENT
@@ -596,6 +599,9 @@ export class TrackingService {
             .select()
             .from(zuvyCourseModules)
             .where(eq(zuvyCourseModules.bootcampId, bootcampId));
+          const projectModules = totalModules.filter((module) => module.typeId === 2);
+          const projectModuleIds = projectModules.length > 0 ? projectModules.map((module) => module.id) : [];
+          const completedProjectForAUser = projectModuleIds.length > 0 ? await db.select().from(zuvyModuleTracking).where(sql`${inArray(zuvyModuleTracking.moduleId,projectModuleIds)} and ${zuvyModuleTracking.userId} = ${userId}`) : [];
           const moduleIds = totalModules.map((module) => module.id);
           const allChapterTracking = await db
             .select()
@@ -618,16 +624,13 @@ export class TrackingService {
               .update(zuvyBootcampTracking)
               .set({
                 progress: Math.ceil(
-                  (allChapterTracking.length / allChapters.length) * 100,
+                  (allChapterTracking.length + completedProjectForAUser.length) / (allChapters.length+projectModules.length) * 100,
                 ),
                 updatedAt: sql`NOW()`,
               })
               .where(
-                eq(
-                  zuvyBootcampTracking.bootcampId,
-                  userBootcampTracking[0].bootcampId,
-                ),
-              );
+                sql`${zuvyBootcampTracking.userId} = ${userId} AND ${zuvyBootcampTracking.bootcampId} = ${userBootcampTracking[0].bootcampId}`
+              ).returning();
           } else {
             const updatedBootcampProgress = await db
               .insert(zuvyBootcampTracking)
@@ -635,10 +638,10 @@ export class TrackingService {
                 userId,
                 bootcampId,
                 progress: Math.ceil(
-                  (allChapterTracking.length / allChapters.length) * 100,
-                ),
+                    (allChapterTracking.length + completedProjectForAUser.length) / (allChapters.length+projectModules.length) * 100,
+                  ),
                 updatedAt: sql`NOW()`,
-              });
+              }).returning();
           }
 
           return {
@@ -797,7 +800,7 @@ export class TrackingService {
         return {
           id: module.id,
           name:
-          module['projectData'].length > 0
+            module['projectData'].length > 0
               ? module['projectData'][0]['title']
               : module.name,
           description: module.description,
@@ -844,6 +847,55 @@ export class TrackingService {
 
   async getBootcampTrackingForAUser(bootcampId: number, userId: number) {
     try {
+        const totalModules = await db
+            .select()
+            .from(zuvyCourseModules)
+            .where(eq(zuvyCourseModules.bootcampId, bootcampId));
+          const projectModules = totalModules.filter((module) => module.typeId === 2);
+          const projectModuleIds = projectModules.length > 0 ? projectModules.map((module) => module.id) : [];
+          const completedProjectForAUser = projectModuleIds.length > 0 ? await db.select().from(zuvyModuleTracking).where(sql`${inArray(zuvyModuleTracking.moduleId,projectModuleIds)} and ${zuvyModuleTracking.userId} = ${userId}`) : [];
+          const moduleIds = totalModules.map((module) => module.id);
+          const allChapterTracking = await db
+            .select()
+            .from(zuvyChapterTracking)
+            .where(
+              sql`${inArray(zuvyChapterTracking.moduleId, moduleIds)} AND ${zuvyChapterTracking.userId} = ${userId}`,
+            );
+          const allChapters = await db
+            .select()
+            .from(zuvyModuleChapter)
+            .where(sql`${inArray(zuvyModuleChapter.moduleId, moduleIds)}`);
+          const userBootcampTracking = await db
+            .select()
+            .from(zuvyBootcampTracking)
+            .where(
+              sql`${zuvyBootcampTracking.userId} = ${userId} AND ${zuvyBootcampTracking.bootcampId} = ${bootcampId}`,
+            );
+          if (userBootcampTracking.length > 0) {
+            const updatedBootcampProgress = await db
+              .update(zuvyBootcampTracking)
+              .set({
+                progress: Math.ceil(
+                  (allChapterTracking.length + completedProjectForAUser.length) / (allChapters.length+projectModules.length) * 100,
+                ),
+                updatedAt: sql`NOW()`,
+              })
+              .where(
+                sql`${zuvyBootcampTracking.userId} = ${userId} AND ${zuvyBootcampTracking.bootcampId} = ${userBootcampTracking[0].bootcampId}`
+              ).returning();
+          } else {
+            const updatedBootcampProgress = await db
+              .insert(zuvyBootcampTracking)
+              .values({
+                userId,
+                bootcampId,
+                progress: Math.ceil(
+                    (allChapterTracking.length + completedProjectForAUser.length) / (allChapters.length+projectModules.length) * 100,
+                  ),
+                updatedAt: sql`NOW()`,
+              }).returning();
+          }
+
       const data = await db.query.zuvyBootcampTracking.findFirst({
         where: (bootcampTracking, { sql }) =>
           sql`${bootcampTracking.bootcampId} = ${bootcampId} AND ${bootcampTracking.userId} = ${userId}`,
@@ -948,44 +1000,52 @@ export class TrackingService {
     }
   }
 
-
-
-  async getAllQuizAndAssignmentWithStatus(userId: number,
+  async getAllQuizAndAssignmentWithStatus(
+    userId: number,
     moduleId: number,
-    chapterId: number,) {
+    chapterId: number,
+  ) {
     try {
-          const AssignmentTracking = await db
-              .select()
-              .from(zuvyAssignmentSubmission)
-              .where(sql`${zuvyAssignmentSubmission.userId} = ${userId} and ${zuvyAssignmentSubmission.chapterId} = ${chapterId} and ${zuvyAssignmentSubmission.moduleId} = ${moduleId} `);
-          
-          const QuizTracking = await db
-              .select()
-              .from(zuvyQuizTracking)
-              .where(sql`${zuvyQuizTracking.userId} = ${userId} and ${zuvyQuizTracking.chapterId} = ${chapterId} and ${zuvyQuizTracking.moduleId} = ${moduleId}`);
-          
-          
-          if (QuizTracking.length==0) {
-            const questions = await db.select({
+      const AssignmentTracking = await db
+        .select()
+        .from(zuvyAssignmentSubmission)
+        .where(
+          sql`${zuvyAssignmentSubmission.userId} = ${userId} and ${zuvyAssignmentSubmission.chapterId} = ${chapterId} and ${zuvyAssignmentSubmission.moduleId} = ${moduleId} `,
+        );
+
+      const QuizTracking = await db
+        .select()
+        .from(zuvyQuizTracking)
+        .where(
+          sql`${zuvyQuizTracking.userId} = ${userId} and ${zuvyQuizTracking.chapterId} = ${chapterId} and ${zuvyQuizTracking.moduleId} = ${moduleId}`,
+        );
+
+      if (QuizTracking.length == 0) {
+        const questions = await db
+          .select({
             id: zuvyModuleQuiz.id,
             question: zuvyModuleQuiz.question,
             options: zuvyModuleQuiz.options,
           })
           .from(zuvyModuleQuiz);
 
-          if(AssignmentTracking.length!=0){
-            return [{
+        if (AssignmentTracking.length != 0) {
+          return [
+            {
               AssignmentTracking,
-              questions
-          }]
-          }else{
-            return [{
-              questions
-          }]
-          }
-
-          }else {
-          const trackedData = await db.select({
+              questions,
+            },
+          ];
+        } else {
+          return [
+            {
+              questions,
+            },
+          ];
+        }
+      } else {
+        const trackedData = await db
+          .select({
             id: zuvyModuleQuiz.id,
             question: zuvyModuleQuiz.question,
             options: zuvyModuleQuiz.options,
@@ -994,25 +1054,125 @@ export class TrackingService {
             status: zuvyQuizTracking.status,
           })
           .from(zuvyModuleQuiz)
-          .leftJoin(zuvyQuizTracking, eq(zuvyModuleQuiz.id, zuvyQuizTracking.mcqId));
-             
-          if(AssignmentTracking.length!=0){
-            return [{
+          .leftJoin(
+            zuvyQuizTracking,
+            eq(zuvyModuleQuiz.id, zuvyQuizTracking.mcqId),
+          );
+
+        if (AssignmentTracking.length != 0) {
+          return [
+            {
               AssignmentTracking,
               trackedData,
-          }]
-          }else{
-            return [{
-              trackedData
-          }]
-          }
-            
+            },
+          ];
+        } else {
+          return [
+            {
+              trackedData,
+            },
+          ];
         }
-      
-      }catch (err) {
+      }
+    } catch (err) {
       throw err;
     }
   }
 
+  async submitProjectForAUser(
+    userId: number,
+    bootcampId: number,
+    moduleId: number,
+    projectId: number,
+    projectBody:UpdateProjectDto
+  ) {
+    try {
+      const projectTrackingForUser = await db
+        .select()
+        .from(zuvyProjectTracking)
+        .where(
+          sql`${zuvyProjectTracking.userId}=${userId} and ${zuvyProjectTracking.projectId}=${projectId} and ${zuvyProjectTracking.moduleId} =${moduleId} and ${zuvyProjectTracking.bootcampId} = ${bootcampId}`,
+        );
+        let updatedBody = {bootcampId,moduleId,projectId,userId,...projectBody,updatedAt:sql`NOW()`}
+       if(projectTrackingForUser.length > 0)
+        {
+            let updateProject = await db.update(zuvyProjectTracking).set(updatedBody).where(eq(zuvyProjectTracking.id,projectTrackingForUser[0].id)).returning();
+            if(updateProject.length > 0)
+                {
+                    return {
+                        status: 'success',
+                        code: 200,
+                        message: 'Your project has been submitted and course progress has been updated successfully',
+                        updateProject
+                    }
+                }
+                else {
+                    return {
+                        status: 'error',
+                        code: 400,
+                        message: 'There is some error while submitting your project.Try again'
+                    }
+                }
+        } 
+        else {
+            const moduleTrackingBody = {userId,moduleId,bootcampId,progress: 100,createdAt: sql`NOW()`,updatedAt: sql `NOW()`}
+            const projectTracked = await db.insert(zuvyProjectTracking).values(updatedBody).returning();
+            const moduleTracked = await db.insert(zuvyModuleTracking).values(moduleTrackingBody).returning();
+            if(projectTracked.length > 0 && moduleTracked.length > 0)
+                {
+                    return {
+                        status: 'success',
+                        code: 200,
+                        message: 'Your project has been submitted and course progress has been updated successfully',
+                        projectTracked
+                    }
+                }
+                else {
+                    return {
+                        status: 'error',
+                        code: 400,
+                        message: 'There is some error while submitting your project.Try again'
+                    }
+                }
+        }     
+    } catch (err) {}
+  }
 
+  async getProjectDetailsWithStatus(projectId:number,moduleId:number,userId:number)
+  {
+    try {
+        const data = await db.query.zuvyCourseModules.findFirst({
+            where: (courseModules, { eq }) =>
+              eq(courseModules.id, moduleId),
+            with: {
+              projectData: {
+                where: (projectDetails, { eq }) =>
+                    eq(projectDetails.id, projectId),
+              },
+              moduleTracking: {
+                columns: {
+                  progress: true,
+                },
+                where: (moduleTrack, { eq }) => eq(moduleTrack.userId, userId),
+              },
+            },
+          });
+         const projectDetails = {
+            moduleId: data.id,
+            bootcampId: data.bootcampId,
+            typeId: data.typeId,
+            projectData: data['projectData'],
+            status: data['moduleTracking'].length > 0 ? 'Completed' : 'Pending'
+         }
+         return {
+            status: 'success',
+            code: 200,
+            projectDetails
+         }
+    }catch(err)
+    {
+       throw err;
+    }
+  }
+  
 }

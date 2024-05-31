@@ -29,6 +29,7 @@ import {
   SubmitBodyDto,
 } from './dto/assignment.dto';
 import { CreateArticleDto } from './dto/article.dto';
+import { UpdateProjectDto } from './dto/project.dto';
 import { CreateQuizDto, McqCreateDto, PutQuizDto } from './dto/quiz.dto';
 import { quizBatchDto } from '../content/dto/content.dto';
 
@@ -429,5 +430,59 @@ export class TrackingController {
     return res;
   }
 
-  
+  @Post('updateProject/:projectId/:userId')
+  @ApiOperation({ summary: 'Update project for a user' })
+  @ApiBearerAuth()
+  @ApiQuery({
+    name: 'moduleId',
+    required: true,
+    type: Number,
+    description: 'moduleId',
+  })
+  @ApiQuery({
+    name: 'bootcampId',
+    required: true,
+    type: Number,
+    description: 'bootcampId',
+  })
+  async updateProject(
+    @Param('projectId') projectId: number,
+    @Param('userId') userId: number,
+    @Query('moduleId') moduleId: number,
+    @Query('bootcampId') bootcampId: number,
+    @Body() submitProject:UpdateProjectDto
+  ) {
+    const res = await this.TrackingService.submitProjectForAUser(
+      userId,
+      bootcampId,
+      moduleId,
+      projectId,
+      submitProject
+    );
+    return res;
+  }
+
+  @Get('/getProjectDetailsWithStatus/:projectId/:moduleId')
+  @ApiOperation({
+    summary: 'Get project details details for a user along with status',
+  })
+  @ApiQuery({
+    name: 'userId',
+    required: true,
+    type: Number,
+    description: 'user Id',
+  })
+  @ApiBearerAuth()
+  async getProjectDetailsForUser(
+    @Param('projectId') projectId: number,
+    @Param('moduleId') moduleId: number,
+    @Query('userId') userId: number,
+  ) {
+    const res = await this.TrackingService.getProjectDetailsWithStatus(
+      projectId,
+      moduleId,
+      userId
+    );
+    return res;
+  }
 }
