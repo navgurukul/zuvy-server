@@ -2827,6 +2827,13 @@ export const zuvyAssessmentSubmission = main.table("zuvy_assessment_submission",
   }).defaultNow(),
 });
 
+export const zuvyAssessmentSubmissionRelation = relations(zuvyAssessmentSubmission, ({one, many})=> ({
+  user: one(users, {
+    fields: [zuvyAssessmentSubmission.userId],
+    references: [users.id],
+  }),
+}))
+
 
 
 // Define the relations
@@ -3069,3 +3076,16 @@ export const zuvyChapterTrackingRelations = relations(
 //     }),
 //   }),
 // );
+
+
+
+export const quizChapterRelations = relations(
+  zuvyCourseModules,
+  ({many }) => ({
+    moduleChapterData: many(zuvyModuleChapter),
+    chapterTrackingData: many(zuvyChapterTracking),
+    moduleTracking: many(zuvyModuleTracking),
+    quizTrackingData: many(zuvyQuizTracking),
+    moduleQuizData: many (zuvyModuleQuiz)
+  }),
+);

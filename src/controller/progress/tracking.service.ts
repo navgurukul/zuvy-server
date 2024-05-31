@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { db } from '../../db/index';
-import { eq, sql, inArray, and, desc } from 'drizzle-orm';
+import { eq, sql, inArray, and, desc, arrayContains } from 'drizzle-orm';
 import axios from 'axios';
 import { error, log } from 'console';
 import {
@@ -947,4 +947,72 @@ export class TrackingService {
       throw err;
     }
   }
+
+
+
+  async getAllQuizAndAssignmentWithStatus(userId: number,
+    moduleId: number,
+    chapterId: number,) {
+    try {
+          const AssignmentTracking = await db
+              .select()
+              .from(zuvyAssignmentSubmission)
+              .where(sql`${zuvyAssignmentSubmission.userId} = ${userId} and ${zuvyAssignmentSubmission.chapterId} = ${chapterId} and ${zuvyAssignmentSubmission.moduleId} = ${moduleId} `);
+          
+          const QuizTracking = await db
+              .select()
+              .from(zuvyQuizTracking)
+              .where(sql`${zuvyQuizTracking.userId} = ${userId} and ${zuvyQuizTracking.chapterId} = ${chapterId} and ${zuvyQuizTracking.moduleId} = ${moduleId}`);
+          
+          
+          if (QuizTracking.length==0) {
+            const questions = await db.select({
+            id: zuvyModuleQuiz.id,
+            question: zuvyModuleQuiz.question,
+            options: zuvyModuleQuiz.options,
+          })
+          .from(zuvyModuleQuiz);
+
+          if(AssignmentTracking.length!=0){
+            return [{
+              AssignmentTracking,
+              questions
+          }]
+          }else{
+            return [{
+              questions
+          }]
+          }
+
+          }else {
+          const trackedData = await db.select({
+            id: zuvyModuleQuiz.id,
+            question: zuvyModuleQuiz.question,
+            options: zuvyModuleQuiz.options,
+            correctOption: zuvyModuleQuiz.correctOption,
+            chosenOption: zuvyQuizTracking.chossenOption,
+            status: zuvyQuizTracking.status,
+          })
+          .from(zuvyModuleQuiz)
+          .leftJoin(zuvyQuizTracking, eq(zuvyModuleQuiz.id, zuvyQuizTracking.mcqId));
+             
+          if(AssignmentTracking.length!=0){
+            return [{
+              AssignmentTracking,
+              trackedData,
+          }]
+          }else{
+            return [{
+              trackedData
+          }]
+          }
+            
+        }
+      
+      }catch (err) {
+      throw err;
+    }
+  }
+
+
 }
