@@ -931,8 +931,10 @@ export class TrackingService {
                 }
             },
           });
+          
+          
           const instructorDetails = {
-            instructorId: batchDetails['batchInfo']['instructorDetails']['id'],
+            instructorId: batchDetails['batchInfo']['instructorDetails']['id'].toString(),
             instructorName: batchDetails['batchInfo']['instructorDetails']['name'],
             instructorProfilePicture : batchDetails['batchInfo']['instructorDetails']['profilePicture']
           }
