@@ -855,16 +855,24 @@ export class TrackingService {
           const projectModuleIds = projectModules.length > 0 ? projectModules.map((module) => module.id) : [];
           const completedProjectForAUser = projectModuleIds.length > 0 ? await db.select().from(zuvyModuleTracking).where(sql`${inArray(zuvyModuleTracking.moduleId,projectModuleIds)} and ${zuvyModuleTracking.userId} = ${userId}`) : [];
           const moduleIds = totalModules.map((module) => module.id);
-          const allChapterTracking = await db
+          const allChapterTracking = moduleIds.length > 0 ? await db
             .select()
             .from(zuvyChapterTracking)
             .where(
               sql`${inArray(zuvyChapterTracking.moduleId, moduleIds)} AND ${zuvyChapterTracking.userId} = ${userId}`,
-            );
-          const allChapters = await db
+            ): [];
+          const allChapters = moduleIds.length > 0 ? await db
             .select()
             .from(zuvyModuleChapter)
-            .where(sql`${inArray(zuvyModuleChapter.moduleId, moduleIds)}`);
+            .where(sql`${inArray(zuvyModuleChapter.moduleId, moduleIds)}`):[];
+          if(moduleIds.length == 0 || allChapters.length  == 0)
+            {
+                return {
+                    status: 'error',
+                    code: 404,
+                    message: 'No chapters created for this course yet.'
+                }
+            }  
           const userBootcampTracking = await db
             .select()
             .from(zuvyBootcampTracking)
