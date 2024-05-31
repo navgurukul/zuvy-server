@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Delete, Patch, Body, Param, ValidationPipe, UsePipes, BadRequestException, Query } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Patch, Body, Param, ValidationPipe, UsePipes, BadRequestException, Query, Req } from '@nestjs/common';
 import { StudentService } from './student.service';
 import { ApiTags, ApiBody, ApiOperation, ApiCookieAuth, ApiQuery, ApiBearerAuth } from '@nestjs/swagger';
 import { get } from 'http';
@@ -80,5 +80,22 @@ export class StudentController {
       throw new BadRequestException(err);
     }
     return res;
+  }
+
+  
+  @Get('/Dashboard/classes')
+  @ApiOperation({ summary: 'Get all Public Bootcamp' })
+  @ApiBearerAuth()
+  async getUpcomingClass( @Req() req
+  ){
+    return  await this.studentService.getUpcomingClass(req.user[0].id);
+  }
+
+  @Get('/Dashboard/attendance')
+  @ApiOperation({ summary: 'Get all Public Bootcamp' })
+  @ApiBearerAuth()
+  async getAttendanceClass( @Req() req
+  ){
+    return  await this.studentService.getAttendanceClass(req.user[0].id);
   }
 }

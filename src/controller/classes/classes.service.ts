@@ -1,4 +1,4 @@
-import { Injectable, Req, Res, HttpStatus, Redirect } from '@nestjs/common';
+import { Injectable, Req, Res, HttpStatus, Redirect,Logger } from '@nestjs/common';
 import {
   userTokens,
   sansaarUserRoles,
@@ -847,6 +847,7 @@ export class ClassesService {
         try {
           if (newStatus !== classObj.status) {
             let newObj = await db.update(zuvySessions).set({ status: newStatus }).where(eq(zuvySessions.id, classObj.id)).returning();
+            Logger.log(`Status of class with id ${classObj.id} updated to ${newStatus}`);
           }
         } catch (error) {
           console.log('error: ', error)
