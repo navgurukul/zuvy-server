@@ -2553,7 +2553,6 @@ export const zuvyBatchEnrollments = main.table('zuvy_batch_enrollments', {
     onDelete: 'cascade',
   }),
   attendance: integer('attendance'),
-  classesAttended: integer('classes_attended'),
   createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' })
     .defaultNow()
     .notNull(),
@@ -2566,7 +2565,18 @@ export const classesInTheBatch = relations(
   zuvyBatchEnrollments,
   ({ one, many }) => ({
     batchClasses: many(zuvySessions),
-  }),
+
+    classInfo: one(zuvySessions, {
+      fields: [zuvyBatchEnrollments.batchId],
+      references: [zuvySessions.batchId],
+    }),
+    
+    classesInfo: many(zuvySessions),
+    bootcamp: one(zuvyBootcamps, {
+      fields: [zuvyBatchEnrollments.bootcampId],
+      references: [zuvyBootcamps.id],
+    }),
+    })
 );
 
 export const zuvyBatchEnrollmentsRelations = relations(
@@ -2802,6 +2812,16 @@ export const zuvyAssessmentSubmission = main.table("zuvy_assessment_submission",
     withTimezone: true,
     mode: 'string',
   }).defaultNow(),
+});
+
+export const zuvyOpenEndedQuestionSubmission = main.table("zuvy_open_ended_question_submission", {
+  id: serial("id").primaryKey().notNull(),
+  questionId: integer("question_id").references(() => zuvyOpenEndedQuestions.id).notNull(),
+  submissionId: integer("submission_id").references(() => zuvyAssessmentSubmission.id).notNull(),
+  answer: text("answer"),
+  marks: integer("marks"),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
 });
 
 export const zuvyAssessmentSubmissionRelation = relations(zuvyAssessmentSubmission, ({one, many})=> ({
