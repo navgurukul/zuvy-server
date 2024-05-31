@@ -934,7 +934,7 @@ export class TrackingService {
           
           
           const instructorDetails = {
-            instructorId: batchDetails['batchInfo']['instructorDetails']['id'].toString(),
+            instructorId: Number(batchDetails['batchInfo']['instructorDetails']['id']),
             instructorName: batchDetails['batchInfo']['instructorDetails']['name'],
             instructorProfilePicture : batchDetails['batchInfo']['instructorDetails']['profilePicture']
           }
