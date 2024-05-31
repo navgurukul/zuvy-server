@@ -914,30 +914,17 @@ export class TrackingService {
           bootcampTracking: true,
         },
       });
-
-      const batchId = await db
-        .select({ batchId: zuvyBatchEnrollments.batchId })
-        .from(zuvyBatchEnrollments)
-        .where(
-          sql`${zuvyBatchEnrollments.userId} = ${BigInt(userId)} AND ${zuvyBatchEnrollments.bootcampId} = ${bootcampId}`,
-        );
-      const instructorId = await db
-        .select({ instructorId: zuvyBatches.instructorId })
-        .from(zuvyBatches)
-        .where(eq(zuvyBatches.id, batchId[0].batchId));
-      const instructorDetails = await db
-        .select({
-          instructorId: sql<number>`cast(${users.id} as int)`,
-          instructorName: users.name,
-          instructorPicture: users.profilePicture,
-        })
-        .from(users)
-        .where(sql`${users.id} = ${instructorId[0].instructorId}`);
+        const instructorDetails = await db.select({instructorId: sql<number>`cast(${users.id} as int)`,
+        instructorName: users.name,
+        instructorPicture: users.profilePicture,}).from(zuvyBatchEnrollments).where(
+            sql`${zuvyBatchEnrollments.userId} = ${BigInt(userId)} AND ${zuvyBatchEnrollments.bootcampId} = ${bootcampId}`,
+          ).leftJoin(zuvyBatches,eq(zuvyBatchEnrollments.batchId,zuvyBatches.id))
+          .leftJoin(users,eq(zuvyBatches.instructorId,users.id));
       return {
         status: 'success',
         message: 'Bootcamp progress fetched successfully',
         data,
-        instructorDetails,
+        instructorDetails
       };
     } catch (err) {
       throw err;
