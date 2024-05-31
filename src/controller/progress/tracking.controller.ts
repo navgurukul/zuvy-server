@@ -9,6 +9,7 @@ import {
   Param,
   BadRequestException,
   Query,
+  Req
 } from '@nestjs/common';
 import { TrackingService } from './tracking.service';
 import {
@@ -29,6 +30,7 @@ import {
   SubmitBodyDto,
 } from './dto/assignment.dto';
 import { CreateArticleDto } from './dto/article.dto';
+import { UpdateProjectDto } from './dto/project.dto';
 import { CreateQuizDto, McqCreateDto, PutQuizDto } from './dto/quiz.dto';
 import { quizBatchDto } from '../content/dto/content.dto';
 
@@ -288,18 +290,18 @@ export class TrackingController {
   //   return res;
   // }
 
-  @Post('updateChapterStatus/:bootcampId/:userId/:moduleId')
+  @Post('updateChapterStatus/:bootcampId/:moduleId')
   @ApiOperation({ summary: 'Update Chapter status' })
   @ApiBearerAuth()
   async updateChapterStatus(
     @Param('bootcampId') bootcampId: number,
-    @Param('userId') userId: number,
+    @Req() req,
     @Param('moduleId') moduleId: number,
     @Query('chapterId') chapterId: number,
   ) {
     const res = await this.TrackingService.updateChapterStatus(
       bootcampId,
-      userId,
+      req.user[0].id,
       moduleId,
       chapterId
     );
@@ -310,37 +312,31 @@ export class TrackingController {
   @ApiOperation({
     summary: 'Get all chapters with status for a user by bootcampId',
   })
-  @ApiQuery({
-    name: 'userId',
-    required: true,
-    type: Number,
-    description: 'user Id',
-  })
   @ApiBearerAuth()
   async getAllChapterForUser(
     @Param('moduleId') moduleId: number,
-    @Query('userId') userId: number,
+    @Req() req
   ) {
     const res = await this.TrackingService.getAllChapterWithStatus(
       moduleId,
-      userId,
+      req.user[0].id,
     );
     return res;
   }
 
-  @Post('updateQuizAndAssignmentStatus/:bootcampId/:userId/:moduleId')
+  @Post('updateQuizAndAssignmentStatus/:bootcampId/:moduleId')
   @ApiOperation({ summary: 'Update Chapter status' })
   @ApiBody({ type: SubmitBodyDto, required: false })
   @ApiBearerAuth()
   async updateQuizAndAssignmentStatus(
     @Param('bootcampId') bootcampId: number,
-    @Param('userId') userId: number,
+    @Req() req,
     @Param('moduleId') moduleId: number,
     @Query('chapterId') chapterId: number,
     @Body() submitBody: SubmitBodyDto,
   ) {
     const res = await this.TrackingService.updateQuizAndAssignmentStatus(
-      userId,
+      req.user[0].id,
       moduleId,
       chapterId,
       bootcampId,
@@ -349,44 +345,44 @@ export class TrackingController {
     return res;
   }
 
-  @Get('/allModulesForStudents/:bootcampId/:userId')
+  @Get('/allModulesForStudents/:bootcampId')
   @ApiOperation({ summary: 'Get all modules of a course' })
   @ApiBearerAuth()
   async getAllModules(
     @Param('bootcampId') bootcampId: number,
-    @Param('userId') userId: number,
+    @Req() req,
   ) {
     const res = await this.TrackingService.getAllModuleByBootcampIdForStudent(
       bootcampId,
-      userId,
+      req.user[0].id,
     );
     return res;
   }
 
-  @Get('/bootcampProgress/:bootcampId/:userId')
+  @Get('/bootcampProgress/:bootcampId')
   @ApiOperation({ summary: 'Get bootcamp progress for a user' })
   @ApiBearerAuth()
   async getBootcampProgress(
     @Param('bootcampId') bootcampId: number,
-    @Param('userId') userId: number,
+    @Req() req,
   ) {
     const res = await this.TrackingService.getBootcampTrackingForAUser(
       bootcampId,
-      userId,
+      req.user[0].id,
     );
     return res;
   }
 
-  @Get('/upcomingSubmission/:bootcampId/:userId')
+  @Get('/upcomingSubmission/:bootcampId')
   @ApiOperation({ summary: 'Get upcoming assignment submission' })
   @ApiBearerAuth()
   async getUpcomingAssignment(
     @Param('bootcampId') bootcampId: number,
-    @Param('userId') userId: number,
+    @Req() req,
   ) {
     const res = await this.TrackingService.getPendingAssignmentForStudent(
       bootcampId,
-      userId,
+      req.user[0].id
     );
     return res;
   }
@@ -395,39 +391,81 @@ export class TrackingController {
   @ApiOperation({
     summary: 'Get chapter details for a user along with status',
   })
-  @ApiQuery({
-    name: 'userId',
-    required: true,
-    type: Number,
-    description: 'user Id',
-  })
   @ApiBearerAuth()
   async getChapterDetailsForUser(
     @Param('chapterId') chapterId: number,
-    @Query('userId') userId: number,
+    @Req() req,
   ) {
     const res = await this.TrackingService.getChapterDetailsWithStatus(
       chapterId,
-      userId,
+      req.user[0].id,
     );
     return res;
   }
 
-  @Get('getAllQuizAndAssignmentWithStatus/:userId/:moduleId')
+  @Get('getAllQuizAndAssignmentWithStatus/:moduleId')
   @ApiOperation({ summary: 'get All Quiz And Assignment With Status' })
   @ApiBearerAuth()
   async getAllQuizAndAssignmentWithStatus(
-    @Param('userId') userId: number,
+    @Req() req,
     @Param('moduleId') moduleId: number,
     @Query('chapterId') chapterId: number,
   ) {
     const res = await this.TrackingService.getAllQuizAndAssignmentWithStatus(
-      userId,
+      req.user[0].id,
       moduleId,
       chapterId,
     );
     return res;
   }
 
-  
+  @Post('updateProject/:projectId')
+  @ApiOperation({ summary: 'Update project for a user' })
+  @ApiBearerAuth()
+  @ApiQuery({
+    name: 'moduleId',
+    required: true,
+    type: Number,
+    description: 'moduleId',
+  })
+  @ApiQuery({
+    name: 'bootcampId',
+    required: true,
+    type: Number,
+    description: 'bootcampId',
+  })
+  async updateProject(
+    @Param('projectId') projectId: number,
+    @Req() req,
+    @Query('moduleId') moduleId: number,
+    @Query('bootcampId') bootcampId: number,
+    @Body() submitProject:UpdateProjectDto
+  ) {
+    const res = await this.TrackingService.submitProjectForAUser(
+      req.user[0].id,
+      bootcampId,
+      moduleId,
+      projectId,
+      submitProject
+    );
+    return res;
+  }
+
+  @Get('/getProjectDetailsWithStatus/:projectId/:moduleId')
+  @ApiOperation({
+    summary: 'Get project details details for a user along with status',
+  })
+  @ApiBearerAuth()
+  async getProjectDetailsForUser(
+    @Param('projectId') projectId: number,
+    @Param('moduleId') moduleId: number,
+    @Req() req,
+  ) {
+    const res = await this.TrackingService.getProjectDetailsWithStatus(
+      projectId,
+      moduleId,
+      req.user[0].id
+    );
+    return res;
+  }
 }
