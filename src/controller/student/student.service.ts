@@ -169,7 +169,16 @@ export class StudentService {
         )
         .orderBy(desc(zuvySessions.startTime))
 
-      return upcomingClasses;
+      let filterClasses = upcomingClasses.reduce((acc, e) => {
+        if (e.status == 'upcoming') {
+          acc.upcoming.push(e);
+        } else {
+          acc.ongoing.push(e);
+        }
+        return acc;
+      }, {upcoming: [], ongoing: []});
+
+      return filterClasses;
     } catch (err) {
       throw err;
     }
