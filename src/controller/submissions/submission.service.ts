@@ -5,8 +5,9 @@ import { eq, sql, count, lte } from 'drizzle-orm';
 import axios from 'axios';
 import * as _ from 'lodash';
 import { error, log } from 'console';
-import { zuvyBatchEnrollments, zuvyAssessmentSubmission, users, zuvyModuleAssessment, zuvyCourseModules, zuvyChapterTracking, zuvyBootcamps, zuvyOpenEndedQuestionSubmission } from '../../../drizzle/schema';
+import { zuvyBatchEnrollments, zuvyAssessmentSubmission, users, zuvyModuleAssessment, zuvyCourseModules, zuvyChapterTracking, zuvyBootcamps, zuvyOpenEndedQuestionSubmission, zuvyProjectTracking } from '../../../drizzle/schema';
 import {InstructorFeedbackDto, PatchOpenendedQuestionDto, CreateOpenendedQuestionDto} from './dto/submission.dto';
+import { truncate } from 'fs/promises';
 
 const { ZUVY_CONTENT_URL } = process.env;
 
@@ -342,4 +343,169 @@ export class SubmissionService {
       throw err;
     }
   }
+
+  async getAllProjectSubmissions(bootcampId : number)
+  {
+    try {
+      const data = await db.query.zuvyBootcamps.findFirst({
+        columns: {
+          id:true,
+          name:true
+        },
+        where : (bootcamp,{eq}) => 
+          eq(bootcamp.id,bootcampId),
+        with : {
+          bootcampModules : {
+            columns: {
+              id:true
+            },
+            where : (courseModule,{sql}) => 
+              sql`${courseModule.typeId} = 2`,
+            orderBy: (courseModule, { asc }) => asc(courseModule.order),
+            with : {
+              projectData : {
+                columns:{
+                  id:true,
+                  title:true
+                },
+                with : {
+                  projectTrackingData:true
+                }
+              }
+            }
+          }
+        }
+      })
+
+      const zuvyBatchEnrollmentsCount = await db
+        .select({
+          count: sql<number>`cast(count(${zuvyBatchEnrollments.id}) as int)`,
+        })
+        .from(zuvyBatchEnrollments)
+        .where(eq(zuvyBatchEnrollments.bootcampId, bootcampId));
+      
+        data['bootcampModules'].forEach((module: any) => {
+          module.projectData.forEach((project) => {
+            project['submitStudents'] =
+              project['projectTrackingData'].length;
+            delete project['projectTrackingData'];
+          });
+        });
+       
+        if(data['bootcampModules'].length > 0)
+          {
+        return {
+          status: 'success',
+          code: 200,
+          data,
+          totalStudents: zuvyBatchEnrollmentsCount[0]?.count
+        }
+      }
+      else {
+        return{
+         status:'error',
+         code: 404,
+         message: 'No project in this course.'
+        }
+      }
+
+    }
+    catch(err)
+    {
+      throw err;
+    }
+  }
+
+  async getUserDetailsForProject(projectId:number,bootcampId:number,limit:number,offset:number)
+  {
+    try {
+      const projectSubmissionData = await db.query.zuvyCourseProjects.findFirst({
+        where: (zuvyProject, { sql }) => sql`${zuvyProject.id} = ${projectId}`,
+        columns: {
+          id:true,
+          title:true,
+        },
+        with: {
+          projectTrackingData: {
+            where: (projectTracking, { eq }) => eq(projectTracking.bootcampId, bootcampId),
+            columns: {
+              id:true,
+              userId: true,
+              projectId:true,
+              bootcampId:true,
+              isChecked:true,
+              moduleId:true
+            },
+            with: {
+              userDetails: {
+                columns: {
+                  name: true,
+                  email: true,
+                }
+              },
+            },
+            limit: limit,
+            offset: offset
+          }
+          
+        }
+      });
+    
+      const totalStudentsCount = await db.select().from(zuvyProjectTracking).where(sql `${zuvyProjectTracking.projectId} = ${projectId} and ${zuvyProjectTracking.bootcampId} = ${bootcampId}`);
+      const totalPages = Math.ceil(totalStudentsCount.length/limit);
+
+      if(projectSubmissionData['projectTrackingData'].length > 0)
+        {
+
+      return {
+        status: 'success',
+        code: 200,
+        projectSubmissionData,
+        totalPages
+      }
+    }
+    else {
+      return {
+        status: 'error',
+        code: 404,
+        message: 'No submission from any student for this project'
+      }
+    }
+    }catch(err)
+    {
+       throw err;
+    }
+  }
+
+  async getProjectDetailsForAUser(projectId:number,userId:number,bootcampId:number)
+  {
+    try {
+      const projectSubmissionDetails = await db.query.zuvyCourseProjects.findFirst({
+        where: (zuvyProject, { sql }) => sql`${zuvyProject.id} = ${projectId}`,
+        with: {
+          projectTrackingData: {
+            where: (projectTracking, { sql }) => sql`${projectTracking.bootcampId} = ${bootcampId} and ${projectTracking.userId} = ${userId}`,
+            with: {
+              userDetails: {
+                columns: {
+                  name: true,
+                  email: true,
+                }
+              },
+            }
+          } 
+        }
+      });
+
+      return {
+        status:'success',
+        code: 200,
+        projectSubmissionDetails
+      }
+    }catch(err)
+    {
+      throw err;
+    }
+  }
+  
 }
