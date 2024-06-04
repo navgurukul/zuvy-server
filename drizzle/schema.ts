@@ -2458,6 +2458,7 @@ export const zuvySessions = main.table('zuvy_sessions', {
   title: text('title').notNull(),
   s3link: text('s3link'),
   recurringId: integer('recurring_id'),
+  status: text('status').default('upcoming'),
 });
 
 export const zuvyBootcamps = main.table('zuvy_bootcamps', {
@@ -2645,6 +2646,7 @@ export const zuvyCodingSubmission = main.table("zuvy_coding_submission", {
   createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
 })
+
 export const zuvyAssignmentSubmission = main.table("zuvy_assignment_submission", {
   id: serial("id").primaryKey().notNull(),
   userId: integer("user_id").references(() => users.id),
@@ -2866,29 +2868,29 @@ export const zuvyCodingSubmissionRelations = relations(
   }),
 );
 
-export const merakiStudents = main.table(
-  'meraki_students',
-  {
-    id: serial('id').primaryKey().notNull(),
-    loginId: varchar('login_id', { length: 255 }).notNull(),
-    name: varchar('name', { length: 255 }).notNull(),
-    password: varchar('password', { length: 255 }).notNull(),
-    partnerId: integer('partner_id')
-      .notNull()
-      .references(() => partners.id, { onDelete: 'cascade' }),
-    createdAt: timestamp('created_at', {
-      withTimezone: true,
-      mode: 'string',
-    }).defaultNow(),
-  },
-  (table) => {
-    return {
-      mainMerakiStudentsLoginIdUnique: unique(
-        'main_meraki_students_login_id_unique',
-      ).on(table.loginId),
-    };
-  },
-);
+// export const merakiStudents = main.table(
+//   'meraki_students',
+//   {
+//     id: serial('id').primaryKey().notNull(),
+//     loginId: varchar('login_id', { length: 255 }).notNull(),
+//     name: varchar('name', { length: 255 }).notNull(),
+//     password: varchar('password', { length: 255 }).notNull(),
+//     partnerId: integer('partner_id')
+//       .notNull()
+//       .references(() => partners.id, { onDelete: 'cascade' }),
+//     createdAt: timestamp('created_at', {
+//       withTimezone: true,
+//       mode: 'string',
+//     }).defaultNow(),
+//   },
+//   (table) => {
+//     return {
+//       mainMerakiStudentsLoginIdUnique: unique(
+//         'main_meraki_students_login_id_unique',
+//       ).on(table.loginId),
+//     };
+//   },
+// );
 
 export const zuvyChapterTracking = main.table('zuvy_chapter_tracking', {
   id: serial('id').primaryKey().notNull(),

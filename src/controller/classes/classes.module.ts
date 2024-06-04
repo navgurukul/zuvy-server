@@ -10,6 +10,7 @@ import { JwtMiddleware } from 'src/middleware/jwt.middleware';
   controllers: [ClassesController],
   providers: [ClassesService, JwtService],
   imports: [BatchesModule],
+  exports: [ClassesService]
 })
 export class ClassesModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
