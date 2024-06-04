@@ -10,6 +10,7 @@ import {
 import { db } from '../../db/index';
 import { eq, sql,desc, count } from 'drizzle-orm';
 import { ClassesService } from '../classes/classes.service'
+import { query } from 'express';
 
 @Injectable()
 export class StudentService {
@@ -147,13 +148,18 @@ export class StudentService {
     }
   }
 
-  async getUpcomingClass(student_id:number) {
+  async getUpcomingClass(student_id:number, batchID:number) {
     try {
-      
-      let enrolled = await db.select().from(zuvyBatchEnrollments).where(sql`${zuvyBatchEnrollments.userId} = ${student_id}`);
+    let queryString
+      if (batchID){
+        queryString = sql`${zuvyBatchEnrollments.userId} = ${student_id} AND ${zuvyBatchEnrollments.batchId} = ${batchID}`
+      } else {
+        queryString = sql`${zuvyBatchEnrollments.userId} = ${student_id}`
+      }
+      let enrolled = await db.select().from(zuvyBatchEnrollments).where(queryString);
 
       if (enrolled.length == 0) {
-        return [{ status: 'error', message: 'not enrolled in any course.', code: 404 }, null];
+        return { status: 'error', message: 'not enrolled in any course.', code: 404 };
       }
       
       let bootcampIds = await Promise.all(enrolled.map(async (e) => {
