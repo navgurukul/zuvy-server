@@ -18,29 +18,39 @@ export class StudentService {
 
   async enrollData(userId: number) {
     try {
-      let enrolled = await db
-        .select()
-        .from(zuvyBatchEnrollments)
-        .where(
-          sql`${zuvyBatchEnrollments.userId} = ${userId} AND ${zuvyBatchEnrollments.batchId} IS NOT NULL`,
-        );
+      let enrolled = await db.query.zuvyBatchEnrollments.findMany({
+        where: (zuvyBatchEnrollments, { sql }) => sql`${zuvyBatchEnrollments.userId} = ${userId}`,
+        columns: {
+          id:true
+        },
+        with:{
+          bootcamp:{
+            columns: {
+              id:true,
+              name:true,
+              coverImage:true,
+              duration:true,
+              language:true,
+              bootcampTopic:true
+            },
+          },
+          batch:true,
+          tracking:true
+        }
+      })
 
-      let promises = enrolled.map(async (e) => {
-        let bootcamp = await db
-          .select()
-          .from(zuvyBootcamps)
-          .where(eq(zuvyBootcamps.id, e.bootcampId));
-        let progress = await db
-          .select()
-          .from(zuvyBootcampTracking)
-          .where(
-            sql`${zuvyBootcampTracking.userId} = ${userId} AND ${zuvyBootcampTracking.bootcampId} = ${e.bootcampId}`,
-          );
-        bootcamp[0]['progress'] = progress[0] ? progress[0].progress : 0;
-        return bootcamp[0];
-      });
+      let totalData = enrolled.map((e:any) => {
+        const { batch, tracking, bootcamp } = e;
 
-      let totalData = await Promise.all(promises);
+        return {
+            ...bootcamp,
+            batchId: batch?.id,
+            progress: tracking?.progress || 0,
+            ...batch?.bootcamp,
+        };
+    });
+    
+
 
       return [null, totalData];
     } catch (err) {

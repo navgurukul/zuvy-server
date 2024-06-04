@@ -2566,7 +2566,27 @@ export const classesInTheBatch = relations(
   zuvyBatchEnrollments,
   ({ one, many }) => ({
     batchClasses: many(zuvySessions),
-  }),
+    tracking: one(zuvyBootcampTracking, {
+      fields: [zuvyBatchEnrollments.bootcampId],
+      references: [zuvyBootcampTracking.bootcampId],
+    }),
+    
+    batch: one(zuvyBatches, {
+      fields: [zuvyBatchEnrollments.batchId],
+      references: [zuvyBatches.id],
+    }),
+
+    classInfo: one(zuvySessions, {
+      fields: [zuvyBatchEnrollments.batchId],
+      references: [zuvySessions.batchId],
+    }),
+    
+    classesInfo: many(zuvySessions),
+    bootcamp: one(zuvyBootcamps, {
+      fields: [zuvyBatchEnrollments.bootcampId],
+      references: [zuvyBootcamps.id],
+    }),
+    })
 );
 
 export const zuvyBatchEnrollmentsRelations = relations(
