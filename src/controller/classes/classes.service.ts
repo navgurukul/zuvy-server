@@ -850,7 +850,6 @@ export class ClassesService {
             Logger.log(`Status of class with id ${classObj.id} updated to ${newStatus}`);
           }
         } catch (error) {
-          console.log('error: ', error)
         }
       }
     } catch (error) {
