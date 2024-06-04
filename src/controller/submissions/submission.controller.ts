@@ -170,5 +170,43 @@ import {
     async getAssessmentSubmission(@Query('assessment_id') assessment_id: number,  @Req() req){
       return this.submissionService.getAssessmentSubmission(assessment_id, req.user[0].id);
     }
+
+    @Get('/submissionsOfProjects/:bootcampId')
+    @ApiOperation({ summary: 'Get the submission of projects by bootcampId' })
+    @ApiBearerAuth()
+    async getProjectSubmissions(@Param('bootcampId') bootcampId: number) {
+      return this.submissionService.getAllProjectSubmissions(bootcampId);
+    }
+
+    @Get('/projects/students')
+    @ApiBearerAuth()
+    @ApiQuery({
+      name: 'limit',
+      required: false,
+      type: Number,
+    })
+    @ApiQuery({
+      name: 'offset',
+      required: false,
+      type: Number,
+    })
+    async projectStudentsInfoBy(
+      @Query('projectId') projectId: number,
+      @Query('bootcampId') bootcampId: number,
+      @Query('limit') limit: number,
+      @Query('offset') offset : number
+    ){
+      return this.submissionService.getUserDetailsForProject(projectId,bootcampId, limit, offset);
+    }
+
+    @Get('/projectDetail/:userId')
+    @ApiBearerAuth()
+    async projectStudentsDetails(
+      @Query('projectId') projectId: number,
+      @Query('bootcampId') bootcampId: number,
+      @Param('userId') userId: number
+    ){
+      return this.submissionService.getProjectDetailsForAUser(projectId,userId,bootcampId);
+    }
   }
   

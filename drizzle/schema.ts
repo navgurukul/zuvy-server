@@ -2711,11 +2711,22 @@ export const zuvyProjectTracking = main.table("zuvy_project_tracking",{
     onUpdate: 'cascade',
   }),
   projectLink: varchar("project_link"),
+  isChecked: boolean("is_checked").default(false),
+  grades : integer("grades"),
   createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
 })
 
-
+export const projectTrackingModuleRelation =  relations(zuvyProjectTracking, ({one,many}) => ({
+  projectTrackingData: one(zuvyCourseProjects, {
+    fields: [zuvyProjectTracking.projectId],
+    references: [zuvyCourseProjects.id],
+  }),
+  userDetails: one(users, {
+    fields: [zuvyProjectTracking.userId],
+    references: [users.id],
+  }),
+}))
 export const zuvyBootcampTracking = main.table("zuvy_bootcamp_tracking", {
   id: serial("id").primaryKey().notNull(),
   userId: integer("user_id").references(() => users.id),
@@ -2803,6 +2814,13 @@ export const moduleChapterRelations = relations(
     projectData: many(zuvyCourseProjects)
   }),
 );
+
+export const projectTrackingRelations = relations(
+  zuvyCourseProjects,
+  ({many}) => ({
+    projectTrackingData: many(zuvyProjectTracking)
+  })
+)
 
 export const BootcampTrackingRelation = relations(
   zuvyBootcampTracking,
