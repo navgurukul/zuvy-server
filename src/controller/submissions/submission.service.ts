@@ -219,7 +219,6 @@ export class SubmissionService {
 
   async assessmentSubmission(data, id: number) {
     try {
-      console.log('data', data, id)
       return await db.update(zuvyAssessmentSubmission).set(data).where(eq(zuvyAssessmentSubmission.id, id)).returning();
     } catch (err) {
       throw err;

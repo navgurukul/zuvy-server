@@ -20,11 +20,11 @@ import { get } from 'http';
 export class StudentController {
   constructor(private studentService: StudentService) { }
 
-  @Get('/:userId')
+  @Get('/')
   @ApiOperation({ summary: 'Get all course enrolled by student' })
   @ApiBearerAuth()
-  async getAllStudents(@Param('userId') userId: number): Promise<object> {
-    const [err, res] = await this.studentService.enrollData(userId);
+  async getAllStudents(@Req() req): Promise<object> {
+    const [err, res] = await this.studentService.enrollData(req.user[0].id);
     if (err) {
       throw new BadRequestException(err);
     }
