@@ -83,12 +83,18 @@ export class StudentController {
   }
 
   
-  @Get('/Dashboard/classes')
+  @Get('/Dashboard/classes/:batch_id')
   @ApiOperation({ summary: 'Get dashboard upcoming class' })
   @ApiBearerAuth()
-  async getUpcomingClass( @Req() req
+  @ApiQuery({
+    name: 'batch_id',
+    required: false,
+    type: String,
+    description: 'batch_id',
+  })
+  async getUpcomingClass( @Req() req, @Query('batch_id') batchID: number
   ){
-    return  await this.studentService.getUpcomingClass(req.user[0].id);
+    return  await this.studentService.getUpcomingClass(req.user[0].id,batchID);
   }
 
   @Get('/Dashboard/attendance')
