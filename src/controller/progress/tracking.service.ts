@@ -954,7 +954,12 @@ export class TrackingService {
     moduleId: number,
     chapterId: number,) {
     try {
-          const AssignmentTracking = await db
+          const chapterDetails = await db
+            .select()
+            .from(zuvyModuleChapter)
+            .where(eq(zuvyModuleChapter.id, chapterId));
+          
+            const AssignmentTracking = await db
               .select()
               .from(zuvyAssignmentSubmission)
               .where(sql`${zuvyAssignmentSubmission.userId} = ${userId} and ${zuvyAssignmentSubmission.chapterId} = ${chapterId} and ${zuvyAssignmentSubmission.moduleId} = ${moduleId} `);
@@ -989,7 +994,9 @@ export class TrackingService {
           }
 
           }else {
-          const trackedData = await db.select({
+          if(chapterDetails[0].quizQuestions !== null)
+          {
+            const trackedData = await db.select({
             id: zuvyModuleQuiz.id,
             question: zuvyModuleQuiz.question,
             options: zuvyModuleQuiz.options,
@@ -999,7 +1006,8 @@ export class TrackingService {
           })
           .from(zuvyModuleQuiz)
           .leftJoin(zuvyQuizTracking, eq(zuvyModuleQuiz.id, zuvyQuizTracking.mcqId));
-             
+        
+
         trackedData['status'] =
         QuizTracking.length > 0
           ? 'Completed'
@@ -1019,7 +1027,7 @@ export class TrackingService {
               trackedData
           }]
           }
-            
+        }   
         }
       
       }catch (err) {
