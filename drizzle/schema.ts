@@ -2420,22 +2420,6 @@ export const developersResume = main.table(
   },
 );
 
-export const ZuvyClassesGoogleMeetLink = main.table(
-  'zuvy_classes_google_meet_link',
-  {
-    id: serial('id').primaryKey().notNull(),
-    meetingId: text('meetingid').notNull(),
-    hangoutLink: text('hangout_link').notNull(),
-    creator: text('creator').notNull(),
-    startTime: text('start_time').notNull(),
-    endTime: text('end_time').notNull(),
-    batchId: text('batch_id').notNull(),
-    bootcampId: text('bootcamp_id').notNull(),
-    title: text('title').notNull(),
-    s3link: text('s3link'),
-  },
-);
-
 export const zuvySessions = main.table('zuvy_sessions', {
   id: serial('id').primaryKey().notNull(),
   meetingId: text('meeting_id').notNull(),
@@ -2458,6 +2442,7 @@ export const zuvySessions = main.table('zuvy_sessions', {
   title: text('title').notNull(),
   s3link: text('s3link'),
   recurringId: integer('recurring_id'),
+  status: text('status').default('upcoming'),
 });
 
 export const zuvyBootcamps = main.table('zuvy_bootcamps', {
@@ -2492,18 +2477,8 @@ export const batchesRelations = relations(zuvyBootcamps, ({ one, many }) => ({
     references: [zuvyBatches.bootcampId],
   }),
   batches: many(zuvyBatches),
+  bootcampEnrollments: many(zuvyBatches),
 }));
-
-export const bootcampEnrollmentsRelations = relations(
-  zuvyBootcamps,
-  ({ one, many }) => ({
-    bootcamp: one(zuvyBatches, {
-      fields: [zuvyBootcamps.id],
-      references: [zuvyBatches.bootcampId],
-    }),
-    bootcampEnrollments: many(zuvyBatches),
-  }),
-);
 
 export const zuvyBatches = main.table('zuvy_batches', {
   id: serial('id').primaryKey().notNull(),
@@ -2552,7 +2527,6 @@ export const zuvyBatchEnrollments = main.table('zuvy_batch_enrollments', {
     onDelete: 'cascade',
   }),
   attendance: integer('attendance'),
-  classesAttended: integer('classes_attended'),
   createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' })
     .defaultNow()
     .notNull(),
@@ -2565,6 +2539,10 @@ export const classesInTheBatch = relations(
   zuvyBatchEnrollments,
   ({ one, many }) => ({
     batchClasses: many(zuvySessions),
+    bootcamp: one(zuvyBootcamps, {
+      fields: [zuvyBatchEnrollments.bootcampId],
+      references: [zuvyBootcamps.id],
+    }),
   }),
 );
 
@@ -2645,6 +2623,7 @@ export const zuvyCodingSubmission = main.table("zuvy_coding_submission", {
   createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
 })
+
 export const zuvyAssignmentSubmission = main.table("zuvy_assignment_submission", {
   id: serial("id").primaryKey().notNull(),
   userId: integer("user_id").references(() => users.id),
@@ -2864,30 +2843,6 @@ export const zuvyCodingSubmissionRelations = relations(
       references: [users.id],
     }),
   }),
-);
-
-export const merakiStudents = main.table(
-  'meraki_students',
-  {
-    id: serial('id').primaryKey().notNull(),
-    loginId: varchar('login_id', { length: 255 }).notNull(),
-    name: varchar('name', { length: 255 }).notNull(),
-    password: varchar('password', { length: 255 }).notNull(),
-    partnerId: integer('partner_id')
-      .notNull()
-      .references(() => partners.id, { onDelete: 'cascade' }),
-    createdAt: timestamp('created_at', {
-      withTimezone: true,
-      mode: 'string',
-    }).defaultNow(),
-  },
-  (table) => {
-    return {
-      mainMerakiStudentsLoginIdUnique: unique(
-        'main_meraki_students_login_id_unique',
-      ).on(table.loginId),
-    };
-  },
 );
 
 export const zuvyChapterTracking = main.table('zuvy_chapter_tracking', {

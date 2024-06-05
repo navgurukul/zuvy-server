@@ -62,6 +62,7 @@ export class BootcampService {
         .from(zuvyBootcamps)
         .limit(limit)
         .offset(offset);
+        
       const totalCountQuery = await db
         .select({ count: count(zuvyBootcamps.id) })
         .from(zuvyBootcamps);
