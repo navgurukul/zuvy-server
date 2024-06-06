@@ -413,15 +413,15 @@ export class TrackingController {
     return res;
   }
 
-  @Get('getAllQuizAndAssignmentWithStatus/:userId/:moduleId')
-  @ApiOperation({ summary: 'get All Quiz And Assignment With Status' })
+  @Get('getAllChapterDetailsWithStatus/:userId/:moduleId')
+  @ApiOperation({ summary: 'get All Quiz , Assignment and Coding Problems With Status' })
   @ApiBearerAuth()
-  async getAllQuizAndAssignmentWithStatus(
+  async getAllChapterDetailsWithStatus(
     @Param('userId') userId: number,
     @Param('moduleId') moduleId: number,
     @Query('chapterId') chapterId: number,
   ) {
-    const res = await this.TrackingService.getAllQuizAndAssignmentWithStatus(
+    const res = await this.TrackingService.getAllChapterDetailsWithStatus(
       userId,
       moduleId,
       chapterId,

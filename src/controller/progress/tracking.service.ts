@@ -15,6 +15,8 @@ import {
   zuvyBatchEnrollments,
   zuvyBatches,
   users,
+  zuvyCodingQuestions,
+  zuvyCodingSubmission,
 } from 'drizzle/schema';
 import { throwError } from 'rxjs';
 import {
@@ -24,6 +26,7 @@ import {
 } from './dto/assignment.dto';
 import { date } from 'drizzle-orm/mysql-core';
 import { quizBatchDto } from '../content/dto/content.dto';
+import { title } from 'process';
 
 const { ZUVY_CONTENT_URL, ZUVY_CONTENTS_API_URL } = process.env; // INPORTING env VALUSE ZUVY_CONTENT
 
@@ -950,7 +953,7 @@ export class TrackingService {
 
 
 
-  async getAllQuizAndAssignmentWithStatus(userId: number,
+  async getAllChapterDetailsWithStatus(userId: number,
     moduleId: number,
     chapterId: number,) {
     try {
@@ -959,52 +962,58 @@ export class TrackingService {
             .from(zuvyModuleChapter)
             .where(eq(zuvyModuleChapter.id, chapterId));
           
-            const AssignmentTracking = await db
-              .select()
-              .from(zuvyAssignmentSubmission)
-              .where(sql`${zuvyAssignmentSubmission.userId} = ${userId} and ${zuvyAssignmentSubmission.chapterId} = ${chapterId} and ${zuvyAssignmentSubmission.moduleId} = ${moduleId} `);
+          const AssignmentTracking = await db
+            .select()
+            .from(zuvyAssignmentSubmission)
+            .where(sql`${zuvyAssignmentSubmission.userId} = ${userId} and ${zuvyAssignmentSubmission.chapterId} = ${chapterId} and ${zuvyAssignmentSubmission.moduleId} = ${moduleId} `);
           
           const QuizTracking = await db
-              .select()
-              .from(zuvyQuizTracking)
-              .where(sql`${zuvyQuizTracking.userId} = ${userId} and ${zuvyQuizTracking.chapterId} = ${chapterId} and ${zuvyQuizTracking.moduleId} = ${moduleId}`);
-          
-          
+            .select()
+            .from(zuvyQuizTracking)
+            .where(sql`${zuvyQuizTracking.userId} = ${userId} and ${zuvyQuizTracking.chapterId} = ${chapterId} and ${zuvyQuizTracking.moduleId} = ${moduleId}`);
+        
+          const codingQuestionTracking = await db
+            .select()
+            .from(zuvyCodingSubmission)
+            .where(sql`${zuvyCodingSubmission.userId} = ${userId}`);
+
+      if (chapterDetails[0].topicId == 4) {
+        if(chapterDetails[0].quizQuestions !== null)
+        {
           if (QuizTracking.length==0) {
-            const questions = await db.select({
+          const questions = await db
+          .select({
             id: zuvyModuleQuiz.id,
             question: zuvyModuleQuiz.question,
             options: zuvyModuleQuiz.options,
           })
-          .from(zuvyModuleQuiz);
-
+          .from(zuvyModuleQuiz)
+          .where(
+            sql`${inArray(zuvyModuleQuiz.id, Object.values(chapterDetails[0].quizQuestions))}`,
+          );
         questions['status'] =
         QuizTracking.length != 0
           ? 'Completed'
           : 'Pending';
-          if(AssignmentTracking.length!=0){
-            return [{
-              AssignmentTracking,
-              questions
-          }]
-          }else{
-            return [{
-              questions
-          }]
-          }
 
-          }else {
-          if(chapterDetails[0].quizQuestions !== null)
-          {
+            return [{
+              questions
+          }]
+
+          }
+          else {
             const trackedData = await db.select({
             id: zuvyModuleQuiz.id,
             question: zuvyModuleQuiz.question,
             options: zuvyModuleQuiz.options,
             correctOption: zuvyModuleQuiz.correctOption,
             chosenOption: zuvyQuizTracking.chossenOption,
-            status: zuvyQuizTracking.status,
+            //status: zuvyQuizTracking.status,
           })
           .from(zuvyModuleQuiz)
+          .where(
+            sql`${inArray(zuvyModuleQuiz.id, Object.values(chapterDetails[0].quizQuestions))}`,
+          )
           .leftJoin(zuvyQuizTracking, eq(zuvyModuleQuiz.id, zuvyQuizTracking.mcqId));
         
 
@@ -1013,24 +1022,84 @@ export class TrackingService {
           ? 'Completed'
           : 'Pending';
 
-          if(AssignmentTracking.length!=0){
             return [{
-              status: 'success',
-              code: 200,
-              AssignmentTracking,
-              trackedData,
-          }]
-          }else{
-            return [{
-              status: 'success',
-              code: 200,
               trackedData
           }]
-          }
         }   
         }
       
-      }catch (err) {
+      }
+      else if (chapterDetails[0].topicId == 5) {
+        if(AssignmentTracking.length!=0){
+          return [{
+            status: 'success',
+            code: 200,
+            AssignmentTracking,
+        }]
+        }else{
+          return 'No Assignment found';
+        }
+      }
+      else if (chapterDetails[0].topicId == 3) {
+        if(chapterDetails[0].codingQuestions !== null){
+          if(codingQuestionTracking.length==0){
+            const codingProblemDetails = await db
+            .select({
+              title: zuvyCodingQuestions.title,
+              description:zuvyCodingQuestions.description,
+            })
+            .from(zuvyCodingQuestions)
+            .where(
+              eq(
+                zuvyCodingQuestions.id,
+                chapterDetails[0].codingQuestions,
+              ),
+            )
+          codingProblemDetails['status'] =
+          codingQuestionTracking.length != 0
+            ? 'Completed'
+            : 'Pending';
+  
+              return [{
+              codingProblemDetails,
+            }]
+          }
+          else{
+            const codingProblemSubmitted = await db
+            .select()
+            .from(zuvyCodingQuestions)
+            .where(
+              eq(
+                zuvyCodingQuestions.id,
+                chapterDetails[0].codingQuestions,
+              ),
+            )
+          codingProblemSubmitted ['status'] =
+          codingQuestionTracking.length != 0
+            ? 'Completed'
+            : 'Pending';
+  
+              return [{
+                codingProblemSubmitted ,
+            }]
+          }
+        
+        }else{
+          return 'No coding Problem found';
+        }
+      }else {
+        let content = [
+          {
+            title: chapterDetails[0].title,
+            description: chapterDetails[0].description,
+            links: chapterDetails[0].links,
+            file: chapterDetails[0].file,
+            content: chapterDetails[0].articleContent,
+          },
+        ];
+        return content;
+      }
+    }catch (err) {
       throw err;
     }
   }
