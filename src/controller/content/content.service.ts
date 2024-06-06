@@ -590,80 +590,50 @@ export class ContentService {
     }
   }
 
-  // async getChapterDetailsById(chapterId: number) {
-  //   try {
-  //     const chapterDetails = await db
-  //       .select()
-  //       .from(zuvyModuleChapter)
-  //       .where(eq(zuvyModuleChapter.id, chapterId));
-  //     if (chapterDetails[0].topicId == 6) {
-  //       return await this.getAssessmentDetails(chapterDetails[0].assessmentId);
-  //     }
-  //     const modifiedChapterDetails: {
-  //       id: number;
-  //       title: string;
-  //       description: string;
-  //       moduleId: number;
-  //       topicId: number;
-  //       order: number;
-  //       quizQuestionDetails?: any[];
-  //       codingQuestionDetails?: any[];
-  //       contentDetails?: any[];
-  //     } = {
-  //       id: chapterDetails[0].id,
-  //       title: chapterDetails[0].title,
-  //       description: chapterDetails[0].description,
-  //       moduleId: chapterDetails[0].moduleId,
-  //       topicId: chapterDetails[0].topicId,
-  //       order: chapterDetails[0].order,
-  //     };
-
-  //     if (chapterDetails.length > 0) {
-  //       if (chapterDetails[0].topicId == 4) {
-  //         const quizDetails =
-  //           chapterDetails[0].quizQuestions !== null
-  //             ? await db
-  //               .select()
-  //               .from(zuvyModuleQuiz)
-  //               .where(
-  //                 sql`${inArray(zuvyModuleQuiz.id, Object.values(chapterDetails[0].quizQuestions))}`,
-  //               )
-  //             : [];
-  //         modifiedChapterDetails.quizQuestionDetails = quizDetails;
-  //       } else if (chapterDetails[0].topicId == 3) {
-  //         const codingProblemDetails =
-  //           chapterDetails[0].codingQuestions !== null
-  //             ? await db
-  //               .select()
-  //               .from(zuvyCodingQuestions)
-  //               .where(
-  //                 eq(
-  //                   zuvyCodingQuestions.id,
-  //                   chapterDetails[0].codingQuestions,
-  //                 ),
-  //               )
-  //             : [];
-  //         modifiedChapterDetails.codingQuestionDetails = codingProblemDetails;
-  //       } else {
-  //         let content = [
-  //           {
-  //             title: chapterDetails[0].title,
-  //             description: chapterDetails[0].description,
-  //             links: chapterDetails[0].links,
-  //             file: chapterDetails[0].file,
-  //             content: chapterDetails[0].articleContent,
-  //           },
-  //         ];
-  //         modifiedChapterDetails.contentDetails = content;
-  //       }
-  //       return modifiedChapterDetails;
-  //     } else {
-  //       return 'No Chapter found';
-  //     }
-  //   } catch (err) {
-  //     throw err;
-  //   }
-  // }
+  async getChapterDetailsById(chapterId: number, bootcampId: number, moduleId: number) {
+    try {
+      const chapterDetails = await db.query.zuvyOutsourseAssessments.findMany({
+        where: (zuvyOutsourseAssessments, { eq }) => eq(zuvyOutsourseAssessments.chapterId, chapterId),
+        columns: {
+          id: true,
+          assessmentId: true,
+          moduleId: true,
+          chapterId: true,
+          order: true,
+        },
+        with: {
+          ModuleAssessment: {
+            columns: {
+              id: true,
+              title: true,
+              description: true
+            }
+          },
+          Quizzes: {
+            where: (zuvyOutsourseQuizzes, {sql}) => sql`${zuvyOutsourseQuizzes.bootcampId} = ${bootcampId} AND ${zuvyOutsourseQuizzes.chapterId} = ${chapterId}`,
+            with: {
+              Quiz:true
+            }
+          },
+          OpenEndedQuestions:{
+            where: (zuvyOutsourseOpenEndedQuestions, {sql}) => sql`${zuvyOutsourseOpenEndedQuestions.bootcampId} = ${bootcampId} AND ${zuvyOutsourseOpenEndedQuestions.chapterId} = ${chapterId} AND ${zuvyOutsourseOpenEndedQuestions.moduleId} = ${moduleId}`,
+            with: {
+              OpenEndedQuestion:true
+            }
+          },
+          CodingQuestions:{ 
+            where: (zuvyOutsourseCodingQuestions, {sql}) => sql`${zuvyOutsourseCodingQuestions.bootcampId} = ${bootcampId} AND ${zuvyOutsourseCodingQuestions.chapterId} = ${chapterId}`,
+            with: {
+              CodingQuestion:true
+            }
+          }
+        },
+      });
+      return chapterDetails[0];
+    } catch (err) {
+      throw err;
+    }
+  }
 
   async updateOrderOfModules(
     reorderData: ReOrderModuleBody,
@@ -920,7 +890,6 @@ export class ContentService {
           message: 'Assessment not found',
         };
       } else {
-        console.log("assessment: ",assessment);
         let { bootcampId, moduleId, chapterId, ModuleAssessment  } = assessment[0];
         let { mcqIds, openEndedQuestionIds, codingProblemIds, title, description, passPercentage, timeLimit } = assessmentBody;
         let assessment_id = ModuleAssessment.id;
@@ -1127,77 +1096,91 @@ export class ContentService {
     }
   }
 
-  // async getAssessmentDetails(assessmentId: number) {
-  //   try {
-  //     const assessment = await db
-  //       .select()
-  //       .from(zuvyModuleAssessment)
-  //       .where(eq(zuvyModuleAssessment.id, assessmentId));
-  //     if (assessment.length > 0) {
-  //       let ab = [];
-  //       ab =
-  //         assessment[0].codingProblems != null
-  //           ? Object.values(assessment[0].codingProblems)
-  //           : null;
-  //       const codingQuesIds =
-  //         ab != null
-  //           ? ab.reduce((acc, obj) => {
-  //             const key = Object.keys(obj)[0];
-  //             const numericKey = Number(key);
-  //             if (!isNaN(numericKey)) {
-  //               acc.push(numericKey);
-  //             }
-  //             return acc;
-  //           }, [])
-  //           : null;
-  //       const mcqIds =
-  //         assessment[0].mcq != null ? Object.values(assessment[0].mcq) : null;
-  //       const openEndedQuesIds =
-  //         assessment[0].openEndedQuestions != null
-  //           ? Object.values(assessment[0].openEndedQuestions)
-  //           : null;
-  //       const mcqDetails =
-  //         mcqIds != null
-  //           ? await db
-  //             .select()
-  //             .from(zuvyModuleQuiz)
-  //             .where(sql`${inArray(zuvyModuleQuiz.id, mcqIds)}`)
-  //           : [];
-  //       const openEndedQuesDetails =
-  //         openEndedQuesIds != null
-  //           ? await db
-  //             .select()
-  //             .from(zuvyOpenEndedQuestions)
-  //             .where(
-  //               sql`${inArray(zuvyOpenEndedQuestions.id, openEndedQuesIds)}`,
-  //             )
-  //           : [];
-  //       const codingProblems =
-  //         codingQuesIds != null
-  //           ? await db
-  //             .select()
-  //             .from(zuvyCodingQuestions)
-  //             .where(sql`${inArray(zuvyCodingQuestions.id, codingQuesIds)}`)
-  //           : [];
-  //       let codingQuesDetails = [];
-  //       for (let i = 0; i < codingProblems.length; i++) {
-  //         codingQuesDetails.push({
-  //           ...codingProblems[i],
-  //           marks: Object.values(ab[i])[0],
-  //         });
-  //       }
+  async getAssessmentDetails(assessmentOutsourseId: number) {
+    try {
 
-  //       return {
-  //         assessment,
-  //         mcqDetails,
-  //         openEndedQuesDetails,
-  //         codingQuesDetails,
-  //       };
-  //     }
-  //   } catch (err) {
-  //     throw err;
-  //   }
-  // }
+      const assessment = await db.query.zuvyOutsourseAssessments.findMany({
+        where: (zuvyOutsourseAssessments, { eq }) =>
+          eq(zuvyOutsourseAssessments.id, assessmentOutsourseId),
+        with: {
+          ModuleAssessment: true,
+          Quizzes: true,
+          OpenEndedQuestions: true,
+          CodingQuestions: true
+        },
+      })
+      console.log(assessment, 'assessment');
+      // const assessment = await db
+      //   .select()
+      //   .from(zuvyModuleAssessment)
+      //   .where(eq(zuvyModuleAssessment.id, assessmentId));
+
+      // if (assessment.length > 0) {
+      //   let ab = [];
+      //   ab =
+      //     assessment[0].codingProblems != null
+      //       ? Object.values(assessment[0].codingProblems)
+      //       : null;
+      //   const codingQuesIds =
+      //     ab != null
+      //       ? ab.reduce((acc, obj) => {
+      //         const key = Object.keys(obj)[0];
+      //         const numericKey = Number(key);
+      //         if (!isNaN(numericKey)) {
+      //           acc.push(numericKey);
+      //         }
+      //         return acc;
+      //       }, [])
+      //       : null;
+      //   const mcqIds =
+      //     assessment[0].mcq != null ? Object.values(assessment[0].mcq) : null;
+      //   const openEndedQuesIds =
+      //     assessment[0].openEndedQuestions != null
+      //       ? Object.values(assessment[0].openEndedQuestions)
+      //       : null;
+      //   const mcqDetails =
+      //     mcqIds != null
+      //       ? await db
+      //         .select()
+      //         .from(zuvyModuleQuiz)
+      //         .where(sql`${inArray(zuvyModuleQuiz.id, mcqIds)}`)
+      //       : [];
+      //   const openEndedQuesDetails =
+      //     openEndedQuesIds != null
+      //       ? await db
+      //         .select()
+      //         .from(zuvyOpenEndedQuestions)
+      //         .where(
+      //           sql`${inArray(zuvyOpenEndedQuestions.id, openEndedQuesIds)}`,
+      //         )
+      //       : [];
+      //   const codingProblems =
+      //     codingQuesIds != null
+      //       ? await db
+      //         .select()
+      //         .from(zuvyCodingQuestions)
+      //         .where(sql`${inArray(zuvyCodingQuestions.id, codingQuesIds)}`)
+      //       : [];
+      //   let codingQuesDetails = [];
+      //   for (let i = 0; i < codingProblems.length; i++) {
+      //     codingQuesDetails.push({
+      //       ...codingProblems[i],
+      //       marks: Object.values(ab[i])[0],
+      //     });
+      //   }
+
+      //   return {
+      //     assessment,
+      //     mcqDetails,
+      //     openEndedQuesDetails,
+      //     codingQuesDetails,
+      //   };
+    // }
+    return assessment;
+    } catch (err) {
+      throw err;
+    }
+  }
 
   async deleteModule(moduleId: number, bootcampId: number): Promise<any> {
     try {

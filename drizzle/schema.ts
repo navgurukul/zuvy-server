@@ -2799,13 +2799,22 @@ export const zuvyModuleChapter = main.table('zuvy_module_chapter', {
   }),
   order: integer('order'),
 });
-
-export const postsRelations = relations(zuvyModuleChapter, ({ one }) => ({
+export const postsRelations = relations(zuvyModuleChapter, ({ one, many }) => ({
   courseModulesData: one(zuvyCourseModules, {
     fields: [zuvyModuleChapter.moduleId],
     references: [zuvyCourseModules.id],
   }),
+  chapterTrackingDetails: many(zuvyChapterTracking),
+  codingQuestionDetails: one(zuvyCodingQuestions, {
+    fields: [zuvyModuleChapter.codingQuestions],
+    references: [zuvyCodingQuestions.id],
+  }),
+  quizTrackingDetails: many(zuvyQuizTracking),
+  OutsourseAssessments: many(zuvyOutsourseAssessments),
+  ModuleAssessment: many(zuvyModuleAssessment)
 }));
+
+
 
 export const projectModuleRelations = relations(zuvyCourseProjects,({one}) => ({
   projectModuleData: one(zuvyCourseModules,{
@@ -2986,16 +2995,7 @@ export const zuvyStudentAttendance = main.table('zuvy_student_attendance', {
 // export const chapterUserRelations = relations(users, ({many}) => ({
 //         chapters: many(chapterTracking),
 // }))
-export const zuvyModuleChapterRelations = relations(
-  zuvyModuleChapter,
-  ({ one, many }) => ({
-    chapterTrackingDetails: many(zuvyChapterTracking),
-    codingQuestionDetails: one(zuvyCodingQuestions, {
-      fields: [zuvyModuleChapter.codingQuestions],
-      references: [zuvyCodingQuestions.id],
-    }),
-  }),
-);
+
 
 export const zuvyCodingSubmissionRelations = relations(
   zuvyCodingSubmission,
@@ -3124,16 +3124,7 @@ export const zuvyCodingQuestions = main.table("zuvy_coding_questions", {
   usage: integer("usage").default(0)
 })
 
-export const chapterRelations = relations(
-  zuvyModuleChapter,
-  ({ one, many }) => ({
-    chapterTrackingDetails: many(zuvyChapterTracking),
-    codingQuestionDetails: one(zuvyCodingQuestions, {
-      fields: [zuvyModuleChapter.codingQuestions],
-      references: [zuvyCodingQuestions.id],
-    }),
-  }),
-);
+
 
 export const zuvyOutsourseAssessments = main.table('zuvy_outsourse_assessments', {
   id: serial('id').primaryKey().notNull(),
@@ -3185,6 +3176,9 @@ export const zuvyOutsourseAssessmentsRelations = relations(zuvyOutsourseAssessme
     fields: [zuvyOutsourseAssessments.moduleId],
     references: [zuvyCourseModules.id],
   }),
+  Quizzes: many(zuvyOutsourseQuizzes),
+  OpenEndedQuestions: many(zuvyOutsourseOpenEndedQuestions),
+  CodingQuestions: many(zuvyOutsourseCodingQuestions),
 }))
 
 
@@ -3211,6 +3205,10 @@ export const zuvyOutsourseCodingQuestionsRelations = relations(zuvyOutsourseCodi
   ModuleAssessment: one(zuvyModuleAssessment, {
     fields: [zuvyOutsourseCodingQuestions.assessmentOutsourseId],
     references: [zuvyModuleAssessment.id],
+  }),
+  OutsourseCodingQuestion: one(zuvyOutsourseAssessments,{
+    fields: [zuvyOutsourseCodingQuestions.assessmentOutsourseId],
+    references: [zuvyOutsourseAssessments.id],
   }),
   ModuleChapter: one(zuvyModuleChapter, {
     fields: [zuvyOutsourseCodingQuestions.chapterId],
@@ -3254,6 +3252,10 @@ export const OutsourseOpenEndedQuestionsRelations = relations(zuvyOutsourseOpenE
   ModuleAssessment: one(zuvyModuleAssessment, {
     fields: [zuvyOutsourseOpenEndedQuestions.assessmentOutsourseId],
     references: [zuvyModuleAssessment.id],
+  }),
+  OutsourseOpenEndedQuestion: one(zuvyOutsourseAssessments,{
+    fields: [zuvyOutsourseOpenEndedQuestions.assessmentOutsourseId],
+    references: [zuvyOutsourseAssessments.id],
   }),
   ModuleChapter: one(zuvyModuleChapter, {
     fields: [zuvyOutsourseOpenEndedQuestions.chapterId],
@@ -3304,6 +3306,10 @@ export const OutsourseQuizzesRelations = relations(zuvyOutsourseQuizzes, ({ one 
   Quiz: one(zuvyModuleQuiz, {
     fields: [zuvyOutsourseQuizzes.Quiz_id],
     references: [zuvyModuleQuiz.id],
+  }),
+  OutsourseQuizzes: one(zuvyOutsourseAssessments,{
+    fields: [zuvyOutsourseQuizzes.assessmentOutsourseId],
+    references: [zuvyOutsourseAssessments.id],
   }),
 }))
 

@@ -231,15 +231,15 @@ export class ContentController {
     return res;
   }
 
-  @Put('/editAssessment/:assessmentId')
+  @Put('/editAssessment/:assessmentOutsourseId')
   @ApiOperation({ summary: 'Edit the assessment for this module' })
   @ApiBearerAuth()
   async editAssessment(
     @Body() assessmentBody: CreateAssessmentBody,
-    @Param('assessmentId') assessmentId: number,
+    @Param('assessmentOutsourseId') assessmentOutsourseId: number,
   ) {
     const res = await this.contentService.editAssessment(
-      assessmentId,
+      assessmentOutsourseId,
       assessmentBody,
     );
     return res;
@@ -262,13 +262,12 @@ export class ContentController {
     return res;
   }
 
-  // @Get('/chapterDetailsById/:chapterId')
-  // @ApiOperation({ summary: 'Get chapter details by id' })
-  // @ApiBearerAuth()
-  // async getChapterDetailsById(@Param('chapterId') chapterId: number) {
-  //   const res = await this.contentService.getChapterDetailsById(chapterId);
-  //   return res;
-  // }
+  @Get('/chapterDetailsById/:chapterId')
+  @ApiOperation({ summary: 'Get chapter details by id' })
+  @ApiBearerAuth()
+  async getChapterDetailsById(@Param('chapterId') chapterId: number, @Query('bootcampId') bootcampId: number, @Query('moduleId') moduleId: number){
+    return this.contentService.getChapterDetailsById(chapterId, bootcampId, moduleId)
+  }
 
   @Put('/editModuleOfBootcamp/:bootcampId')
   @ApiOperation({ summary: 'Drag and drop modules in a bootcamp' })
