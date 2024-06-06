@@ -17,6 +17,7 @@ import {
   users,
   zuvyCodingQuestions,
   zuvyCodingSubmission,
+  zuvyProjectTracking,
 } from 'drizzle/schema';
 import { throwError } from 'rxjs';
 import {
@@ -1106,5 +1107,100 @@ export class TrackingService {
     }
   }
 
+  async submitProjectForAUser(
+    userId: number,
+    bootcampId: number,
+    moduleId: number,
+    projectId: number,
+    projectBody:UpdateProjectDto
+  ) {
+    try {
+      const projectTrackingForUser = await db
+        .select()
+        .from(zuvyProjectTracking)
+        .where(
+          sql`${zuvyProjectTracking.userId}=${userId} and ${zuvyProjectTracking.projectId}=${projectId} and ${zuvyProjectTracking.moduleId} =${moduleId} and ${zuvyProjectTracking.bootcampId} = ${bootcampId}`,
+        );
+        let updatedBody = {bootcampId,moduleId,projectId,userId,...projectBody,updatedAt:sql`NOW()`}
+       if(projectTrackingForUser.length > 0)
+        {
+            let updateProject = await db.update(zuvyProjectTracking).set(updatedBody).where(eq(zuvyProjectTracking.id,projectTrackingForUser[0].id)).returning();
+            if(updateProject.length > 0)
+                {
+                    return {
+                        status: 'success',
+                        code: 200,
+                        message: 'Your project has been submitted and course progress has been updated successfully',
+                        updateProject
+                    }
+                }
+                else {
+                    return {
+                        status: 'error',
+                        code: 400,
+                        message: 'There is some error while submitting your project.Try again'
+                    }
+                }
+        } 
+        else {
+            const moduleTrackingBody = {userId,moduleId,bootcampId,progress: 100,createdAt: sql`NOW()`,updatedAt: sql `NOW()`}
+            const projectTracked = await db.insert(zuvyProjectTracking).values(updatedBody).returning();
+            const moduleTracked = await db.insert(zuvyModuleTracking).values(moduleTrackingBody).returning();
+            if(projectTracked.length > 0 && moduleTracked.length > 0)
+                {
+                    return {
+                        status: 'success',
+                        code: 200,
+                        message: 'Your project has been submitted and course progress has been updated successfully',
+                        projectTracked
+                    }
+                }
+                else {
+                    return {
+                        status: 'error',
+                        code: 400,
+                        message: 'There is some error while submitting your project.Try again'
+                    }
+                }
+        }     
+    } catch (err) {}
+  }
+
+  async getProjectDetailsWithStatus(projectId:number,moduleId:number,userId:number)
+  {
+    try {
+        const data = await db.query.zuvyCourseModules.findFirst({
+            where: (courseModules, { eq }) =>
+              eq(courseModules.id, moduleId),
+            with: {
+              projectData: {
+                where: (projectDetails, { eq }) =>
+                    eq(projectDetails.id, projectId),
+              },
+              moduleTracking: {
+                columns: {
+                  progress: true,
+                },
+                where: (moduleTrack, { eq }) => eq(moduleTrack.userId, userId),
+              },
+            },
+          });
+         const projectDetails = {
+            moduleId: data.id,
+            bootcampId: data.bootcampId,
+            typeId: data.typeId,
+            projectData: data['projectData'],
+            status: data['moduleTracking'].length > 0 ? 'Completed' : 'Pending'
+         }
+         return {
+            status: 'success',
+            code: 200,
+            projectDetails
+         }
+    }catch(err)
+    {
+       throw err;
+    }
+  }
 
 }
