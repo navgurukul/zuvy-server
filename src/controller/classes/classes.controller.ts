@@ -161,12 +161,12 @@ export class ClassesController {
     return this.classesService.getAttendeesByMeetingId(id);
   }
 
-  @Post('/seeding/table')
-  @ApiOperation({ summary: 'Get the google class attendees by meetingId' })
-  @ApiBearerAuth()
-  async seedingClass(): Promise<object> {
-    return await this.classesService.seedingClass();
-  }
+  // @Post('/seeding/table')
+  // @ApiOperation({ summary: 'Get the google class attendees by meetingId' })
+  // @ApiBearerAuth()
+  // async seedingClass(): Promise<object> {
+  //   return await this.classesService.seedingClass();
+  // }
 
   
   @Get('/all/:bootcampId')
@@ -211,7 +211,6 @@ export class ClassesController {
     @Query('searchTerm') searchTerm: string,
     @Req() req,
   ): Promise<object> {
-    console.log(req.user[0])
     const userId =  parseInt(req.user[0].id);
     return this.classesService.getClassesBy(
       bootcampId,

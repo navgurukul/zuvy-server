@@ -25,6 +25,8 @@ import {
   TimeLineAssignmentDto,
 } from './dto/assignment.dto';
 import { date } from 'drizzle-orm/mysql-core';
+import { UpdateProjectDto } from './dto/project.dto';
+
 import { quizBatchDto } from '../content/dto/content.dto';
 import { title } from 'process';
 

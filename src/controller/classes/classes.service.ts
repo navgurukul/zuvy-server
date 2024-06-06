@@ -1,4 +1,4 @@
-import { Injectable, Req, Res, HttpStatus, Redirect } from '@nestjs/common';
+import { Injectable, Req, Res, HttpStatus, Redirect,Logger } from '@nestjs/common';
 import {
   userTokens,
   sansaarUserRoles,
@@ -6,7 +6,7 @@ import {
   zuvyBatchEnrollments,
   zuvyStudentAttendance,
   zuvySessions,
-  ZuvyClassesGoogleMeetLink
+  // ZuvyClassesGoogleMeetLink
 } from '../../../drizzle/schema';
 import { db } from '../../db/index';
 import { eq, sql, count, inArray, isNull, desc } from 'drizzle-orm';
@@ -410,33 +410,33 @@ export class ClassesService {
     });
   }
 
-  async seedingClass(){
-    const classesRow = await db.select().from(ZuvyClassesGoogleMeetLink);
+  // async seedingClass(){
+  //   const classesRow = await db.select().from(ZuvyClassesGoogleMeetLink);
 
-    const newClassesData = classesRow.map((row) => {
-      return {
-          id: row.id,
-          meetingId: row.meetingId,
-          hangoutLink: row.hangoutLink,
-          creator: row.creator,
-          startTime: row.startTime,
-          endTime: row.endTime ,
-          batchId: parseInt(row.batchId),
-          bootcampId: parseInt(row.bootcampId),
-          title: row.title,
-          s3link: row.s3link
-      }
-    });
-    newClassesData.map(async (batch__) =>{
-      try{
-        await db.insert(zuvySessions).values(batch__);
+  //   const newClassesData = classesRow.map((row) => {
+  //     return {
+  //         id: row.id,
+  //         meetingId: row.meetingId,
+  //         hangoutLink: row.hangoutLink,
+  //         creator: row.creator,
+  //         startTime: row.startTime,
+  //         endTime: row.endTime ,
+  //         batchId: parseInt(row.batchId),
+  //         bootcampId: parseInt(row.bootcampId),
+  //         title: row.title,
+  //         s3link: row.s3link
+  //     }
+  //   });
+  //   newClassesData.map(async (batch__) =>{
+  //     try{
+  //       await db.insert(zuvySessions).values(batch__);
 
-      } catch (err){
-        console.error(err)
-      }
-    })
-    return { status: 'success', message: 'meetings to update', code: 200 };
-  }
+  //     } catch (err){
+  //       console.error(err)
+  //     }
+  //   })
+  //   return { status: 'success', message: 'meetings to update', code: 200 };
+  // }
 
   private async uploadVideoToS3(
     fileBuffer: Buffer,
@@ -847,9 +847,9 @@ export class ClassesService {
         try {
           if (newStatus !== classObj.status) {
             let newObj = await db.update(zuvySessions).set({ status: newStatus }).where(eq(zuvySessions.id, classObj.id)).returning();
+            Logger.log(`Status of class with id ${classObj.id} updated to ${newStatus}`);
           }
         } catch (error) {
-          console.log('error: ', error)
         }
       }
     } catch (error) {
@@ -880,7 +880,7 @@ export class ClassesService {
       await this.updatingStatusOfClass(bootcamp_id);
       
       if (user?.roles?.includes('admin')) {
-      } else if (batch_id && bootcamp_id && user.id) {
+      } else if (bootcamp_id && user.id) {
           let queryString = await this.BootcampOrBatchEnrollments(batch_id, bootcamp_id, user.id);
       
           let zuvyBatchEnrollmentsData = await db
@@ -905,24 +905,32 @@ export class ClassesService {
         }
     
       
-      let zuvy_sessions_query ;
-      if (search_term && status && bootcamp_id) {
-        zuvy_sessions_query = sql`${zuvySessions.bootcampId} = ${bootcamp_id} AND ${zuvySessions.status} = ${status} AND ${zuvySessions.title} LIKE ${search_term.toLowerCase()} || '%'`;
-      } else if (search_term && bootcamp_id && batch_id) {
-        zuvy_sessions_query = sql`${zuvySessions.bootcampId} = ${bootcamp_id} AND ${zuvySessions.batchId} = ${batch_id} AND ${zuvySessions.title} LIKE ${search_term.toLowerCase()} || '%'`;
-      }  else if (bootcamp_id && batch_id && status.toLowerCase() == 'all') {
-        zuvy_sessions_query = sql`${zuvySessions.bootcampId} = ${bootcamp_id} AND ${zuvySessions.status} IN ('completed', 'ongoing', 'upcoming') AND ${zuvySessions.batchId} = ${batch_id}`;
-      } else if (bootcamp_id && batch_id && status) {
-        zuvy_sessions_query = sql`${zuvySessions.bootcampId} = ${bootcamp_id} AND ${zuvySessions.batchId} = ${batch_id} AND ${zuvySessions.status} = ${status}`;
-      } else if (bootcamp_id && !batch_id && status.toLowerCase() == 'all') {
-        zuvy_sessions_query = sql`${zuvySessions.bootcampId} = ${bootcamp_id} AND ${zuvySessions.status} IN ('completed', 'ongoing', 'upcoming')`;
-      } else if (bootcamp_id && !batch_id && status) {
-        zuvy_sessions_query = sql`${zuvySessions.bootcampId} = ${bootcamp_id} AND ${zuvySessions.status} = ${status}`;
-      } else if (bootcamp_id && !batch_id && !status) {
-        zuvy_sessions_query = sql`${zuvySessions.bootcampId} = ${bootcamp_id} AND ${zuvySessions.status} IN ('completed', 'ongoing', 'upcoming')`;
-      } else {
-        zuvy_sessions_query = sql`${zuvySessions.bootcampId} = ${bootcamp_id}`;
-      }
+        let zuvy_sessions_query;
+        if (search_term && status && bootcamp_id && !batch_id) {
+          if (status.toLowerCase() == 'all') {
+            zuvy_sessions_query = sql`${zuvySessions.bootcampId} = ${bootcamp_id} AND ${zuvySessions.status} IN ('completed', 'ongoing', 'upcoming') AND ${zuvySessions.title} LIKE '%' ||${search_term} || '%'`;
+          } else {
+            zuvy_sessions_query = sql`${zuvySessions.bootcampId} = ${bootcamp_id} AND ${zuvySessions.status} = ${status} AND ${zuvySessions.title} LIKE '%' ||${search_term} || '%'`;
+          }
+        }else if (search_term && status && bootcamp_id && batch_id) {
+          zuvy_sessions_query = sql`${zuvySessions.bootcampId} = ${bootcamp_id} AND ${zuvySessions.batchId} = ${batch_id} AND ${zuvySessions.status} = ${status} AND ${zuvySessions.title} LIKE '%' ||${search_term} || '%'`;
+        } else if (search_term && status && bootcamp_id) {
+          zuvy_sessions_query = sql`${zuvySessions.bootcampId} = ${bootcamp_id} AND ${zuvySessions.status} = ${status} AND ${zuvySessions.title} LIKE '%' ||${search_term} || '%'`;
+        } else if (search_term && bootcamp_id && batch_id) {
+          zuvy_sessions_query = sql`${zuvySessions.bootcampId} = ${bootcamp_id} AND ${zuvySessions.batchId} = ${batch_id} AND ${zuvySessions.title} LIKE '%' || ${search_term} || '%'`;
+        } else if (bootcamp_id && batch_id && status.toLowerCase() == 'all') {
+          zuvy_sessions_query = sql`${zuvySessions.bootcampId} = ${bootcamp_id} AND ${zuvySessions.status} IN ('completed', 'ongoing', 'upcoming') AND ${zuvySessions.batchId} = ${batch_id}`;
+        } else if (bootcamp_id && batch_id && status) {
+          zuvy_sessions_query = sql`${zuvySessions.bootcampId} = ${bootcamp_id} AND ${zuvySessions.batchId} = ${batch_id} AND ${zuvySessions.status} = ${status}`;
+        } else if (bootcamp_id && !batch_id && status.toLowerCase() == 'all') {
+          zuvy_sessions_query = sql`${zuvySessions.bootcampId} = ${bootcamp_id} AND ${zuvySessions.status} IN ('completed', 'ongoing', 'upcoming')`;
+        } else if (bootcamp_id && !batch_id && status) {
+          zuvy_sessions_query = sql`${zuvySessions.bootcampId} = ${bootcamp_id} AND ${zuvySessions.status} = ${status}`;
+        } else if (bootcamp_id && !batch_id && !status) {
+          zuvy_sessions_query = sql`${zuvySessions.bootcampId} = ${bootcamp_id} AND ${zuvySessions.status} IN ('completed', 'ongoing', 'upcoming')`;
+        } else {
+          zuvy_sessions_query = sql`${zuvySessions.bootcampId} = ${bootcamp_id}`;
+        }
       // Fetch the classes again  
       
       let classes = await db
