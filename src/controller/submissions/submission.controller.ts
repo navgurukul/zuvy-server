@@ -107,26 +107,26 @@ import {
       return this.submissionService.getAssessmentInfoBy(bootcampId, limit, offset);
     }
 
-    @Get('/assessment/students')
-    @ApiBearerAuth()
-    @ApiQuery({
-      name: 'limit',
-      required: false,
-      type: Number,
-    })
-    @ApiQuery({
-      name: 'offset',
-      required: false,
-      type: Number,
-    })
-    async assessmentStudentsInfoBy(
-      @Query('assessmentId') assessmentId: number,
-      @Query('bootcampId') bootcampId: number,
-      @Query('limit') limit: number,
-      @Query('offset') offset : number
-    ){
-      return this.submissionService.assessmentStudentsInfoBy(assessmentId, limit, offset,bootcampId);
-    }
+    // @Get('/assessment/students')
+    // @ApiBearerAuth()
+    // @ApiQuery({
+    //   name: 'limit',
+    //   required: false,
+    //   type: Number,
+    // })
+    // @ApiQuery({
+    //   name: 'offset',
+    //   required: false,
+    //   type: Number,
+    // })
+    // async assessmentStudentsInfoBy(
+    //   @Query('assessmentId') assessmentId: number,
+    //   @Query('bootcampId') bootcampId: number,
+    //   @Query('limit') limit: number,
+    //   @Query('offset') offset : number
+    // ){
+    //   return this.submissionService.assessmentStudentsInfoBy(assessmentId, limit, offset,bootcampId);
+    // }
 
 
     @Post('/openended/questions')

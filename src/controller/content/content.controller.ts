@@ -37,7 +37,8 @@ import {
   deleteQuestionDto,
   UpdateOpenEndedDto,
   CreateTagDto,
-  projectDto
+  projectDto,
+  CreateChapterDto
 } from './dto/content.dto';
 import { CreateProblemDto } from '../codingPlatform/dto/codingPlatform.dto';
 import { difficulty } from 'drizzle/schema';
@@ -209,24 +210,13 @@ export class ContentController {
   }
 
 
-  @Post('/chapter/:moduleId')
+  @Post('/chapter')
   @ApiOperation({ summary: 'Create a chapter for this module' })
-  @ApiQuery({
-    name: 'topicId',
-    required: true,
-    type: Number,
-    description: 'topic id',
-  })
   @ApiBearerAuth()
   async createChapter(
-    @Param('moduleId') moduleId: number,
-    @Query('topicId') topicId: number,
+    @Body() chapterData: CreateChapterDto,
   ) {
-    const res = await this.contentService.createChapterForModule(
-      moduleId,
-      topicId,
-    );
-    return res;
+    return this.contentService.createChapterForModule(chapterData.moduleId, chapterData.topicId, chapterData.order, chapterData.bootcampId);
   }
 
   @Post('/quiz')
@@ -272,13 +262,13 @@ export class ContentController {
     return res;
   }
 
-  @Get('/chapterDetailsById/:chapterId')
-  @ApiOperation({ summary: 'Get chapter details by id' })
-  @ApiBearerAuth()
-  async getChapterDetailsById(@Param('chapterId') chapterId: number) {
-    const res = await this.contentService.getChapterDetailsById(chapterId);
-    return res;
-  }
+  // @Get('/chapterDetailsById/:chapterId')
+  // @ApiOperation({ summary: 'Get chapter details by id' })
+  // @ApiBearerAuth()
+  // async getChapterDetailsById(@Param('chapterId') chapterId: number) {
+  //   const res = await this.contentService.getChapterDetailsById(chapterId);
+  //   return res;
+  // }
 
   @Put('/editModuleOfBootcamp/:bootcampId')
   @ApiOperation({ summary: 'Drag and drop modules in a bootcamp' })

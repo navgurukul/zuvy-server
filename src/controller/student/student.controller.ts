@@ -83,7 +83,7 @@ export class StudentController {
   }
 
   
-  @Get('/Dashboard/classes/:batch_id')
+  @Get('/Dashboard/classes')
   @ApiOperation({ summary: 'Get dashboard upcoming class' })
   @ApiBearerAuth()
   @ApiQuery({

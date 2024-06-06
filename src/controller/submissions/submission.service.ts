@@ -119,54 +119,54 @@ export class SubmissionService {
     }
   }
 
-  async assessmentStudentsInfoBy(assessment_id: number, limit: number, offset: number, bootcamp_id: number) {
-    try {
-      const assessmentSubmissionData = await db.query.zuvyModuleAssessment.findMany({
-        where: (zuvyModuleAssessment, { sql }) => sql`${zuvyModuleAssessment.id} = ${assessment_id}`,
-        columns: {
-          id:true,
-          title:true,
-          passPercentage:true,
-          timeLimit:true,
-        },
-        with: {
-          assessmentSubmissions: {
-            where: (zuvyAssessmentSubmission, { eq }) => eq(zuvyAssessmentSubmission.bootcampId, bootcamp_id),
-            columns: {
-              id:true,
-              userId: true,
-              assessmentId: true,
-              bootcampId: true,
-              marks:true,
-              startedAt:true,
-              submitedAt:true,
-            },
-            with: {
-              user: {
-                columns: {
-                  name: true,
-                  email: true,
-                },
-              },
-            },
-          }
+  // async assessmentStudentsInfoBy(assessment_id: number, limit: number, offset: number, bootcamp_id: number) {
+  //   try {
+  //     const assessmentSubmissionData = await db.query.zuvyModuleAssessment.findMany({
+  //       where: (zuvyModuleAssessment, { sql }) => sql`${zuvyModuleAssessment.id} = ${assessment_id}`,
+  //       columns: {
+  //         id:true,
+  //         title:true,
+  //         passPercentage:true,
+  //         timeLimit:true,
+  //       },
+  //       with: {
+  //         assessmentSubmissions: {
+  //           where: (zuvyAssessmentSubmission, { eq }) => eq(zuvyAssessmentSubmission.bootcampId, bootcamp_id),
+  //           columns: {
+  //             id:true,
+  //             userId: true,
+  //             assessmentId: true,
+  //             bootcampId: true,
+  //             marks:true,
+  //             startedAt:true,
+  //             submitedAt:true,
+  //           },
+  //           with: {
+  //             user: {
+  //               columns: {
+  //                 name: true,
+  //                 email: true,
+  //               },
+  //             },
+  //           },
+  //         }
           
-        },
-        limit: limit,
-        offset: offset,
-      });
+  //       },
+  //       limit: limit,
+  //       offset: offset,
+  //     });
 
-      let bootcampStudents = await db
-        .select()
-        .from(zuvyBatchEnrollments)
-        .where(sql`${zuvyBatchEnrollments.bootcampId} = ${bootcamp_id} AND ${zuvyBatchEnrollments.batchId} IS NOT NULL`);
+  //     let bootcampStudents = await db
+  //       .select()
+  //       .from(zuvyBatchEnrollments)
+  //       .where(sql`${zuvyBatchEnrollments.bootcampId} = ${bootcamp_id} AND ${zuvyBatchEnrollments.batchId} IS NOT NULL`);
 
 
-      return assessmentSubmissionData;
-    } catch (err) {
-      throw err;
-    }
-  }
+  //     return assessmentSubmissionData;
+  //   } catch (err) {
+  //     throw err;
+  //   }
+  // }
 
   async getAssessmentInfoBy(bootcamp_id, limit:number, offset:number) {
     try {
