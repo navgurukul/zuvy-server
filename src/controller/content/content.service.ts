@@ -590,46 +590,129 @@ export class ContentService {
     }
   }
 
-  async getChapterDetailsById(chapterId: number, bootcampId: number, moduleId: number) {
+  async getChapterDetailsById(chapterId: number, bootcampId: number, moduleId: number, tagId: number) {
     try {
-      const chapterDetails = await db.query.zuvyOutsourseAssessments.findMany({
-        where: (zuvyOutsourseAssessments, { eq }) => eq(zuvyOutsourseAssessments.chapterId, chapterId),
-        columns: {
-          id: true,
-          assessmentId: true,
-          moduleId: true,
-          chapterId: true,
-          order: true,
-        },
-        with: {
-          ModuleAssessment: {
-            columns: {
-              id: true,
-              title: true,
-              description: true
+
+      if (tagId == 6) {
+        const chapterDetails = await db.query.zuvyOutsourseAssessments.findMany({
+          where: (zuvyOutsourseAssessments, { eq }) => eq(zuvyOutsourseAssessments.chapterId, chapterId),
+          columns: {
+            id: true,
+            assessmentId: true,
+            moduleId: true,
+            chapterId: true,
+            order: true,
+          },
+          with: {
+            ModuleAssessment: {
+              columns: {
+                id: true,
+                title: true,
+                description: true
+              }
+            },
+            Quizzes: {
+              where: (zuvyOutsourseQuizzes, {sql}) => sql`${zuvyOutsourseQuizzes.bootcampId} = ${bootcampId} AND ${zuvyOutsourseQuizzes.chapterId} = ${chapterId}`,
+              with: {
+                Quiz:true
+              }
+            },
+            OpenEndedQuestions:{
+              where: (zuvyOutsourseOpenEndedQuestions, {sql}) => sql`${zuvyOutsourseOpenEndedQuestions.bootcampId} = ${bootcampId} AND ${zuvyOutsourseOpenEndedQuestions.chapterId} = ${chapterId} AND ${zuvyOutsourseOpenEndedQuestions.moduleId} = ${moduleId}`,
+              with: {
+                OpenEndedQuestion:true
+              }
+            },
+            CodingQuestions:{ 
+              where: (zuvyOutsourseCodingQuestions, {sql}) => sql`${zuvyOutsourseCodingQuestions.bootcampId} = ${bootcampId} AND ${zuvyOutsourseCodingQuestions.chapterId} = ${chapterId}`,
+              with: {
+                CodingQuestion:true
+              }
             }
           },
-          Quizzes: {
-            where: (zuvyOutsourseQuizzes, {sql}) => sql`${zuvyOutsourseQuizzes.bootcampId} = ${bootcampId} AND ${zuvyOutsourseQuizzes.chapterId} = ${chapterId}`,
-            with: {
-              Quiz:true
-            }
-          },
-          OpenEndedQuestions:{
-            where: (zuvyOutsourseOpenEndedQuestions, {sql}) => sql`${zuvyOutsourseOpenEndedQuestions.bootcampId} = ${bootcampId} AND ${zuvyOutsourseOpenEndedQuestions.chapterId} = ${chapterId} AND ${zuvyOutsourseOpenEndedQuestions.moduleId} = ${moduleId}`,
-            with: {
-              OpenEndedQuestion:true
-            }
-          },
-          CodingQuestions:{ 
-            where: (zuvyOutsourseCodingQuestions, {sql}) => sql`${zuvyOutsourseCodingQuestions.bootcampId} = ${bootcampId} AND ${zuvyOutsourseCodingQuestions.chapterId} = ${chapterId}`,
-            with: {
-              CodingQuestion:true
-            }
-          }
-        },
-      });
-      return chapterDetails[0];
+        });
+        return chapterDetails[0];
+      }
+      const chapterDetails = await db
+      .select()
+      .from(zuvyModuleChapter)
+      .where(eq(zuvyModuleChapter.id, chapterId));
+      
+      const modifiedChapterDetails: {
+        id: number;
+        title: string;
+        description: string;
+        moduleId: number;
+        topicId: number;
+        order: number;
+        quizQuestionDetails?: any[];
+        codingQuestionDetails?: any[];
+        contentDetails?: any[];
+      } = {
+        id: chapterDetails[0].id,
+        title: chapterDetails[0].title,
+        description: chapterDetails[0].description,
+        moduleId: chapterDetails[0].moduleId,
+        topicId: chapterDetails[0].topicId,
+        order: chapterDetails[0].order,
+      };
+      if (chapterDetails.length > 0) {
+        if (chapterDetails[0].topicId == 4) {
+          const quizDetails =
+            chapterDetails[0].quizQuestions !== null
+              ? await db
+                .select()
+                .from(zuvyModuleQuiz)
+                .where(
+                  sql`${inArray(zuvyModuleQuiz.id, Object.values(chapterDetails[0].quizQuestions))}`,
+                )
+              : [];
+          modifiedChapterDetails.quizQuestionDetails = quizDetails;
+        } else if (chapterDetails[0].topicId == 3) {
+          const codingProblemDetails =
+            chapterDetails[0].codingQuestions !== null
+              ? await db
+                .select()
+                .from(zuvyCodingQuestions)
+                .where(
+                  eq(
+                    zuvyCodingQuestions.id,
+                    chapterDetails[0].codingQuestions,
+                  ),
+                )
+              : [];
+          modifiedChapterDetails.codingQuestionDetails = codingProblemDetails;
+        } else {
+          let content = [
+            {
+              title: chapterDetails[0].title,
+              description: chapterDetails[0].description,
+              links: chapterDetails[0].links,
+              file: chapterDetails[0].file,
+              content: chapterDetails[0].articleContent,
+            },
+          ];
+          modifiedChapterDetails.contentDetails = content;
+        }
+        return modifiedChapterDetails;
+      } else {
+        return 'No Chapter found';
+      }
+      // const chapterDetails = await db.query.zuvyModuleChapter.findMany({
+      //   where: (moduleChapter, { eq }) => eq(moduleChapter.id, chapterId),
+      //   with: {
+      //     quizTrackingDetails: {
+      //       where: (moduleQuiz, { eq }) => eq(moduleQuiz.bootcampId, bootcampId),
+      //     },
+      //     OpenEndedQuestion: {
+      //       where: (openEndedQuestion, { eq }) => eq(openEndedQuestion.bootcampId, bootcampId),
+      //     },
+      //     CodingQuestion: {
+      //       where: (codingQuestion, { eq }) => eq(codingQuestion.bootcampId, bootcampId),
+      //     },
+      //   },
+      // });
+      // return chapterDetails
     } catch (err) {
       throw err;
     }
@@ -884,25 +967,18 @@ export class ContentService {
       
 
       if (assessment.length == 0) {
-        return {
+        throw ({
           status: 'error',
-          code: 404,
+          statusCode: 404,
           message: 'Assessment not found',
-        };
+        });
       } else {
         let { bootcampId, moduleId, chapterId, ModuleAssessment  } = assessment[0];
-        let { mcqIds, openEndedQuestionIds, codingProblemIds, title, description, passPercentage, timeLimit } = assessmentBody;
+        let { mcqIds, openEndedQuestionIds, codingProblemIds, title, description, ...OutsourseAssessmentData} = assessmentBody;
+
         let assessment_id = ModuleAssessment.id;
 
         let assessmentData:any = {};
-        let OutsourseAssessmentData:any = {};
-        if (passPercentage) {
-          OutsourseAssessmentData["passPercentage"] = passPercentage;
-        }
-        if (timeLimit) {
-          OutsourseAssessmentData["timeLimit"] = timeLimit;
-        }
-
         if (title) {
           assessmentData["title"] = title;
         }

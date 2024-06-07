@@ -69,6 +69,15 @@ export class ScheduleService {
                 }
               }
             }
+            // The classData start_time for the class has 3 days after the update the s3link to not found string
+            // if the s3link is still null
+            if (new Date(classData.startTime) < new Date(Date.now() - 3 * 24 * 60 * 60 * 1000)) {
+              await db
+                .update(zuvySessions)
+                .set({ ...classData, s3link: 'not found' })
+                .where(eq(zuvySessions.id, classData.id))
+                .returning();
+            }
           }
         } catch (error) {
           
