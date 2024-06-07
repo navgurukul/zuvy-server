@@ -1352,55 +1352,38 @@ export const courseEnrolments = main.table(
     };
   },
 );
-
-export const users = main.table(
-  'users',
-  {
-    id: bigserial('id', { mode: 'bigint' }).primaryKey().notNull(),
-    email: varchar('email', { length: 50 }).default('').notNull(),
-    name: varchar('name', { length: 250 }).default('').notNull(),
-    profilePicture: varchar('profile_picture', { length: 250 }),
-    googleUserId: varchar('google_user_id', { length: 250 }),
-    center: usersCenter('center'),
-    githubLink: varchar('github_link', { length: 145 }),
-    linkedinLink: varchar('linkedin_link', { length: 145 }),
-    mediumLink: varchar('medium_link', { length: 145 }),
-    createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }),
-    chatId: varchar('chat_id', { length: 255 }),
-    chatPassword: varchar('chat_password', { length: 32 }),
-    partnerId: integer('partner_id').references(() => partners.id),
-    lang1: char('lang_1', { length: 2 }),
-    lang2: char('lang_2', { length: 2 }),
-    mode: varchar('mode', { length: 255 }),
-    contact: varchar('contact', { length: 255 }),
-    lastLoginAt: timestamp('last_login_at', {
-      withTimezone: true,
-      mode: 'string',
-    }),
-    groupId: integer('group_id').references(() => spaceGroup.id, {
-      onDelete: 'set null',
-    }),
-    spaceId: integer('space_id').references(() => partnerSpace.id, {
-      onDelete: 'cascade',
-      onUpdate: 'cascade',
-    }),
-    c4CaPartnerId: integer('c4ca_partner_id').references(
-      () => c4CaPartners.id,
-      { onDelete: 'set null' },
-    ),
-    c4CaFacilitatorId: integer('c4ca_facilitator_id').references(
-      () => facilitators.id,
-      { onDelete: 'set null' },
-    ),
-  },
-  (table) => {
-    return {
-      idx50526GoogleUserId: uniqueIndex('idx_50526_google_user_id').on(
-        table.googleUserId,
-      ),
-    };
-  },
-);
+export const users = main.table("users", {
+	id: bigserial("id", { mode: "bigint" }).primaryKey().notNull(),
+	email: varchar("email", { length: 255 }),
+	name: varchar("name", { length: 250 }).default('').notNull(),
+	profilePicture: varchar("profile_picture", { length: 250 }),
+	googleUserId: varchar("google_user_id", { length: 250 }),
+	center: usersCenter("center"),
+	githubLink: varchar("github_link", { length: 145 }),
+	linkedinLink: varchar("linkedin_link", { length: 145 }),
+	mediumLink: varchar("medium_link", { length: 145 }),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }),
+	chatId: varchar("chat_id", { length: 255 }),
+	chatPassword: varchar("chat_password", { length: 32 }),
+	partnerId: integer("partner_id").references(() => partners.id),
+	lang1: char("lang_1", { length: 2 }),
+	lang2: char("lang_2", { length: 2 }),
+	mode: varchar("mode", { length: 255 }),
+	contact: varchar("contact", { length: 255 }),
+	lastLoginAt: timestamp("last_login_at", { withTimezone: true, mode: 'string' }),
+	groupId: integer("group_id").references(() => spaceGroup.id, { onDelete: "set null" } ),
+	spaceId: integer("space_id").references(() => partnerSpace.id, { onDelete: "cascade", onUpdate: "cascade" } ),
+	c4CaPartnerId: integer("c4ca_partner_id").references(() => c4CaPartners.id, { onDelete: "set null" } ),
+	c4CaFacilitatorId: integer("c4ca_facilitator_id").references(() => facilitators.id, { onDelete: "set null" } ),
+	userName: varchar("user_name", { length: 255 }),
+	password: varchar("password", { length: 255 }),
+},
+(table) => {
+	return {
+		idx50526GoogleUserId: uniqueIndex("idx_50526_google_user_id").on(table.googleUserId),
+		mainUsersUserNameUnique: unique("main_users_user_name_unique").on(table.userName),
+	}
+});
 
 export const courseRelation = main.table(
   'course_relation',
@@ -2811,7 +2794,7 @@ export const postsRelations = relations(zuvyModuleChapter, ({ one, many }) => ({
   }),
   quizTrackingDetails: many(zuvyQuizTracking),
   OutsourseAssessments: many(zuvyOutsourseAssessments),
-  ModuleAssessment: many(zuvyModuleAssessment),
+  ModuleAssessment: many(zuvyModuleAssessment)
 }));
 
 
