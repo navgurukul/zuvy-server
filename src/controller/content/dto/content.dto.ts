@@ -15,6 +15,7 @@ import {
   IsJSON,
   isObject,
   IsBoolean,
+  IsDefined,
 } from 'class-validator';
 import { truncateSync } from 'fs';
 import { Type } from 'class-transformer';
@@ -445,12 +446,12 @@ export class CreateAssessmentBody {
   description: string;
 
   @ApiProperty({
-    type: [Object],
-    example: [{ 1: 2 }, { 2: 3 }],
+    type: [Number],
+    example: [1, 2, 3],
   })
   @IsArray()
   @IsOptional()
-  codingProblems: object[];
+  codingProblemIds: number[];
 
   @ApiProperty({
     type: [Number],
@@ -458,7 +459,7 @@ export class CreateAssessmentBody {
   })
   @IsArray()
   @IsOptional()
-  mcq: number[];
+  mcqIds: number[];
 
   @ApiProperty({
     type: [Number],
@@ -466,20 +467,22 @@ export class CreateAssessmentBody {
   })
   @IsArray()
   @IsOptional()
-  openEndedQuestions: number[];
+  openEndedQuestionIds: number[];
 
   @ApiProperty({
     type: Number,
     example: 70
   })
   @IsNumber()
+  @IsDefined()
   passPercentage: number;
 
   @ApiProperty({
     type: Number,
-    example: 129304
+    example: 7200
   })
   @IsNumber()
+  @IsDefined()
   timeLimit: number;
 
   @ApiProperty({
@@ -789,4 +792,38 @@ export class CreateTagDto{
   @IsString()
   @IsNotEmpty()
   tagName : string
+}
+
+export class CreateChapterDto {
+  @ApiProperty({
+    type: Number,
+    example: 9,
+  })
+  @IsOptional()
+  @IsNumber()
+  moduleId: number;
+
+  @ApiProperty({
+    type: Number,
+    example: 9,
+  })
+  @IsOptional()
+  @IsNumber()
+  bootcampId: number;
+
+  @ApiProperty({
+    type: Number,
+    example: 4,
+  })
+  @IsOptional()
+  @IsNumber()
+  topicId: number;
+
+  @ApiProperty({
+    type: Number,
+    example: 4,
+  })
+  @IsOptional()
+  @IsNumber()
+  order: number;
 }
