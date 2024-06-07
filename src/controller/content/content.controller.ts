@@ -265,8 +265,8 @@ export class ContentController {
   @Get('/chapterDetailsById/:chapterId')
   @ApiOperation({ summary: 'Get chapter details by id' })
   @ApiBearerAuth()
-  async getChapterDetailsById(@Param('chapterId') chapterId: number, @Query('bootcampId') bootcampId: number, @Query('moduleId') moduleId: number){
-    return this.contentService.getChapterDetailsById(chapterId, bootcampId, moduleId)
+  async getChapterDetailsById(@Param('chapterId') chapterId: number, @Query('bootcampId') bootcampId: number, @Query('moduleId') moduleId: number, @Query('tagId') tagId: number){
+    return this.contentService.getChapterDetailsById(chapterId, bootcampId, moduleId, tagId);
   }
 
   @Put('/editModuleOfBootcamp/:bootcampId')

@@ -2811,7 +2811,7 @@ export const postsRelations = relations(zuvyModuleChapter, ({ one, many }) => ({
   }),
   quizTrackingDetails: many(zuvyQuizTracking),
   OutsourseAssessments: many(zuvyOutsourseAssessments),
-  ModuleAssessment: many(zuvyModuleAssessment)
+  ModuleAssessment: many(zuvyModuleAssessment),
 }));
 
 
