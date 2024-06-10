@@ -236,7 +236,7 @@ export class ContentController {
   @ApiBearerAuth()
   async editAssessment(
     @Body() assessmentBody: CreateAssessmentBody,
-    @Param('assessmentOutsourseId') assessmentOutsourseId: number,
+    @Param('assessmentOutsourseId') assessmentOutsourseId: number
   ) {
     const res = await this.contentService.editAssessment(
       assessmentOutsourseId,
