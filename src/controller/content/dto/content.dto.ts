@@ -524,17 +524,6 @@ export class CreateAssessmentBody {
   @IsOptional()
   @IsBoolean()
   webCamera: boolean;
-  
-  @ApiProperty({
-    description: 'The schedule end time',
-    type: String,
-    format: 'date-time',
-    example: '2022-03-01T00:00:00Z',
-    required: true,
-  })
-  @IsNotEmpty()
-  @IsString()
-  deadline: String;
 }
 
 export class editQuizDto {
