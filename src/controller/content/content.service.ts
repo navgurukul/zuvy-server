@@ -590,19 +590,11 @@ export class ContentService {
     }
   }
 
-  async getChapterDetailsById(chapterId: number, bootcampId: number, moduleId: number, tagId: number) {
+  async getChapterDetailsById(chapterId: number, bootcampId: number, moduleId: number, topicId: number) {
     try {
-
-      if (tagId == 6) {
+      if (topicId == 6) {
         const chapterDetails = await db.query.zuvyOutsourseAssessments.findMany({
           where: (zuvyOutsourseAssessments, { eq }) => eq(zuvyOutsourseAssessments.chapterId, chapterId),
-          columns: {
-            id: true,
-            assessmentId: true,
-            moduleId: true,
-            chapterId: true,
-            order: true,
-          },
           with: {
             ModuleAssessment: {
               columns: {
