@@ -3133,8 +3133,9 @@ export const zuvyOutsourseAssessments = main.table('zuvy_outsourse_assessments',
   passPercentage: integer('pass_percentage'),
   screenRecord: boolean('screen_record'),
   embeddedGoogleSearch: boolean('embedded_google_search'),
-
+  
   timeLimit: bigint('time_limit', { mode: 'number' }),
+  deadline:  text('deadline').notNull(),
   marks: integer('marks'),
   copyPaste: boolean('copy_paste'),
   order: integer('order'),
@@ -3162,6 +3163,9 @@ export const zuvyOutsourseAssessmentsRelations = relations(zuvyOutsourseAssessme
   Quizzes: many(zuvyOutsourseQuizzes),
   OpenEndedQuestions: many(zuvyOutsourseOpenEndedQuestions),
   CodingQuestions: many(zuvyOutsourseCodingQuestions),
+  OutsourseQuizzes: many(zuvyOutsourseQuizzes),
+  OutsourseOpenEndedQuestions: many(zuvyOutsourseOpenEndedQuestions),
+  OutsourseCodingQuestions: many(zuvyOutsourseCodingQuestions),
 }))
 
 
@@ -3290,7 +3294,7 @@ export const OutsourseQuizzesRelations = relations(zuvyOutsourseQuizzes, ({ one 
     fields: [zuvyOutsourseQuizzes.Quiz_id],
     references: [zuvyModuleQuiz.id],
   }),
-  OutsourseQuizzes: one(zuvyOutsourseAssessments,{
+  OutsourseQuiz: one(zuvyOutsourseAssessments,{
     fields: [zuvyOutsourseQuizzes.assessmentOutsourseId],
     references: [zuvyOutsourseAssessments.id],
   }),

@@ -623,6 +623,8 @@ export class ContentService {
             }
           },
         });
+        chapterDetails[0]["assessmentOutsourseId"] = chapterDetails[0].id
+
         return chapterDetails[0];
       }
       const chapterDetails = await db
@@ -968,7 +970,7 @@ export class ContentService {
       } else {
 
         let { bootcampId, moduleId, chapterId, ModuleAssessment, OutsourseQuizzes, OutsourseOpenEndedQuestions, OutsourseCodingQuestions } = assessment[0];
-        let { mcqIds, openEndedQuestionIds, codingProblemIds, title, description, ...OutsourseAssessmentData} = assessmentBody;
+        let { mcqIds, openEndedQuestionIds, codingProblemIds, title, description, ...OutsourseAssessmentData__} = assessmentBody;
 
         let assessment_id = ModuleAssessment.id;
 
@@ -1007,8 +1009,7 @@ export class ContentService {
             .delete(zuvyOutsourseCodingQuestions)
             .where(sql`${zuvyOutsourseCodingQuestions.assessmentOutsourseId} = ${assessmentOutsourseId} AND${inArray(zuvyOutsourseCodingQuestions.codingQuestionId, filteredCodingQuestionIdsToDelete)}`);
         }
-
-        let updatedOutsourseAssessment = await db.update(zuvyOutsourseAssessments).set(OutsourseAssessmentData).where(eq(zuvyOutsourseAssessments.id, assessmentOutsourseId)).returning();
+        let updatedOutsourseAssessment = await db.update(zuvyOutsourseAssessments).set(OutsourseAssessmentData__).where(eq(zuvyOutsourseAssessments.id, assessmentOutsourseId)).returning();
 
         let updatedAssessment = await db
           .update(zuvyModuleAssessment)
@@ -1056,7 +1057,6 @@ export class ContentService {
         status: 'success',
         code: 200,
         message: 'Updated successfully',
-        assessment
       };
     } catch (err) {
       throw err;
