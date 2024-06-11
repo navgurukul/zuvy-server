@@ -5,7 +5,7 @@ import { eq, sql, count, lte } from 'drizzle-orm';
 import axios from 'axios';
 import * as _ from 'lodash';
 import { error, log } from 'console';
-import { zuvyBatchEnrollments, zuvyAssessmentSubmission, users, zuvyModuleAssessment, zuvyCourseModules, zuvyChapterTracking, zuvyBootcamps, zuvyOpenEndedQuestionSubmission, zuvyProjectTracking } from '../../../drizzle/schema';
+import { zuvyBatchEnrollments, zuvyAssessmentSubmission, users, zuvyModuleAssessment, zuvyCourseModules, zuvyChapterTracking, zuvyBootcamps, zuvyOpenEndedQuestionSubmission, zuvyProjectTracking, zuvyQuizTracking } from '../../../drizzle/schema';
 import {InstructorFeedbackDto, PatchOpenendedQuestionDto, CreateOpenendedQuestionDto} from './dto/submission.dto';
 import { truncate } from 'fs/promises';
 
@@ -225,9 +225,9 @@ export class SubmissionService {
     }
   }
 
-  async submissionOpenended(OpenendedQuestionData:CreateOpenendedQuestionDto, studentId:number){
+  async submissionOpenended(OpenendedQuestionData:CreateOpenendedQuestionDto, userId:number){
     try{
-      const OpenendedQuestionSubmission = await db.insert(zuvyOpenEndedQuestionSubmission).values({...OpenendedQuestionData, studentId}).returning();
+      const OpenendedQuestionSubmission = await db.insert(zuvyOpenEndedQuestionSubmission).values({...OpenendedQuestionData, userId}).returning();
       return OpenendedQuestionSubmission;
     }catch(err){
       throw err;
@@ -278,70 +278,70 @@ export class SubmissionService {
     }
   }
 
-  async getAssessmentSubmission(assessment_id, studentId){
-    try{
-      const res = await db.query.zuvyAssessmentSubmission.findMany({
-        where: (zuvyAssessmentSubmission, {eq, and}) => and(eq(zuvyAssessmentSubmission.assessmentId, assessment_id), eq(zuvyAssessmentSubmission.userId, studentId)),
-        with: {
-          user: {
-            columns: {
-              name: true,
-              email: true,
-            },
-          },
-          assessment: {
-            columns: {
-              id: true,
-              title: true,
-              passPercentage: true,
-              timeLimit: true,
-            },
-          },
-          openEndedSubmission: {
-            columns: {
-              id: true,
-              question_id: true,
-              answer: true,
-              marks: true,
-              feedback: true,
-              submitAt: true,
-              assessmentId: true,
-            },
-            with: {
-              openEnded: {
-                columns: {
-                  id: true,
-                  question: true,
-                  difficulty: true,
-                },
-              },
+  // async getAssessmentSubmission(assessment_id, studentId){
+  //   try{
+  //     const res = await db.query.zuvyAssessmentSubmission.findMany({
+  //       where: (zuvyAssessmentSubmission, {eq, and}) => and(eq(zuvyAssessmentSubmission.assessmentId, assessment_id), eq(zuvyAssessmentSubmission.userId, studentId)),
+  //       with: {
+  //         user: {
+  //           columns: {
+  //             name: true,
+  //             email: true,
+  //           },
+  //         },
+  //         assessment: {
+  //           columns: {
+  //             id: true,
+  //             title: true,
+  //             passPercentage: true,
+  //             timeLimit: true,
+  //           },
+  //         },
+  //         openEndedSubmission: {
+  //           columns: {
+  //             id: true,
+  //             question_id: true,
+  //             answer: true,
+  //             marks: true,
+  //             feedback: true,
+  //             submitAt: true,
+  //             assessmentId: true,
+  //           },
+  //           with: {
+  //             openEnded: {
+  //               columns: {
+  //                 id: true,
+  //                 question: true,
+  //                 difficulty: true,
+  //               },
+  //             },
             
-            },
-          },
-          codingSubmission: {
-            columns: {
-              id: true,
-              questionSolved: true,
-              assessmentId: true,
-            },
-          },
-          quizSubmission: {
-            columns: {
-              id: true,
-              mcqId: true,
-              status: true,
-              chosenOption: true,
-              attempt: true,
-              assessmentId: true,
-            },
-          },
-        }
-      })
-      return res;
-    } catch (err){
-      throw err;
-    }
-  }
+  //           },
+  //         },
+  //         codingSubmission: {
+  //           columns: {
+  //             id: true,
+  //             questionSolved: true,
+  //             assessmentId: true,
+  //           },
+  //         },
+  //         quizSubmission: {
+  //           columns: {
+  //             id: true,
+  //             mcqId: true,
+  //             status: true,
+  //             chosenOption: true,
+  //             attempt: true,
+  //             assessmentId: true,
+  //           },
+  //         },
+  //       }
+  //     })
+  //     return res;
+  //   } catch (err){
+  //     throw err;
+  //   }
+  // }
 
   async getAllProjectSubmissions(bootcampId : number)
   {
@@ -495,7 +495,6 @@ export class SubmissionService {
           } 
         }
       });
-
       return {
         status:'success',
         code: 200,
@@ -506,5 +505,79 @@ export class SubmissionService {
       throw err;
     }
   }
-  
+
+  // submission of the quizzez , and open ended questions, And  two different functons
+  async submitQuiz(answers, userId: number, assessmentSubmissionId: number) {
+    try {
+      let submissionData = await this.getSubmissionQuiz(assessmentSubmissionId, userId);
+      let updateData, InsertData
+      // if submission already exists then update the submission
+      if(submissionData.length > 0) {
+        let filterQuestionId = submissionData.map((answer) => answer.questionId);
+        updateData = answers.map((answer) => {
+          if (filterQuestionId.includes(answer.questionId)) {
+            return {...answer}
+          } else {
+            InsertData.push({...answer, userId, assessmentSubmissionId})
+          }
+        });
+        updateData = await db.update(zuvyQuizTracking).set(updateData).where(sql`${zuvyQuizTracking.assessmentSubmissionId} = ${assessmentSubmissionId} and ${zuvyQuizTracking.userId} = ${userId}`).returning();
+        InsertData = await db.insert(zuvyQuizTracking).values(InsertData).returning();
+
+      } else {
+        // filter the submission data and insert the new submission if not exists then insert the new submission
+        let quizInsertData = answers.map((answer) => {return {...answer, userId, assessmentSubmissionId }});
+        InsertData = await db.insert(zuvyQuizTracking).values(quizInsertData).returning();
+      }
+      return [...InsertData, ...updateData];
+    } catch (err) {
+      throw err;
+    }
+  }
+
+  async getSubmissionQuiz(assessmentSubmissionId, userId: number) {
+    try{
+      const submissionQuiz = await db.select().from(zuvyQuizTracking).where(sql`${zuvyQuizTracking.assessmentSubmissionId} = ${assessmentSubmissionId} and ${zuvyQuizTracking.userId} = ${userId}`);
+      return submissionQuiz;
+    } catch (err){
+      throw err;
+    }
+  }
+
+  async submitOpenEndedQuestion(answers, userId: number, assessmentSubmissionId: number) {
+    try {
+      let submissionData = await this.getSubmissionOpenEnded(assessmentSubmissionId, userId);
+      let updateData, InsertData
+      // if submission already exists then update the submission
+      if(submissionData.length > 0) {
+        let filterQuestionId = submissionData.map((answer) => answer.questionId);
+        updateData = answers.map((answer) => {
+          if (filterQuestionId.includes(answer.questionId)) {
+            return {...answer}
+          } else {
+            InsertData.push({...answer, userId, assessmentSubmissionId})
+          }
+        });
+        updateData = await db.update(zuvyOpenEndedQuestionSubmission).set(updateData).where(sql`${zuvyOpenEndedQuestionSubmission.assessmentSubmissionId} = ${assessmentSubmissionId} and ${zuvyOpenEndedQuestionSubmission.userId} = ${userId}`).returning();
+        InsertData = await db.insert(zuvyOpenEndedQuestionSubmission).values(InsertData).returning();
+
+      } else {
+        // filter the submission data and insert the new submission if not exists then insert the new submission
+        let quizInsertData = answers.map((answer) => {return {...answer, userId, assessmentSubmissionId }});
+        InsertData = await db.insert(zuvyOpenEndedQuestionSubmission).values(quizInsertData).returning();
+      }
+      return [...InsertData, ...updateData];
+    } catch (err) {
+      throw err;
+    }
+  }
+
+  async getSubmissionOpenEnded(assessmentSubmissionId, userId: number) {
+    try{
+      const submissionOpenEnded = await db.select().from(zuvyOpenEndedQuestionSubmission).where(sql`${zuvyOpenEndedQuestionSubmission.assessmentSubmissionId} = ${assessmentSubmissionId} and ${zuvyOpenEndedQuestionSubmission.userId} = ${userId}`);
+      return submissionOpenEnded;
+    } catch (err){
+      throw err;
+    }
+  }
 }
