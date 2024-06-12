@@ -6,6 +6,7 @@ import { JwtMiddleware } from 'src/middleware/jwt.middleware';
 @Module({
     controllers: [SubmissionController],
     providers: [SubmissionService,JwtService],
+    exports: [SubmissionService]
 })
 export class SubmissionModule implements NestModule {
    configure(consumer: MiddlewareConsumer) {

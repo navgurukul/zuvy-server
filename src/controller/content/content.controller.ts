@@ -567,4 +567,18 @@ export class ContentController {
     return this.contentService.startAssessmentForStudent(assessmentOutsourseId,req);
   }
 
+  @Get('/assessmentDetailsOfQuiz/:assessmentOutsourseId')
+  @ApiOperation({ summary: 'Get the assessment details of the Quiz' })
+  @ApiBearerAuth()
+  async getAssessmentDetailsOfQuiz(@Param('assessmentOutsourseId') assessmentOutsourseId: number, @Req() req){
+    return this.contentService.getAssessmentDetailsOfQuiz(assessmentOutsourseId, req.user[0].id);
+  }
+
+  // openended questions
+  @Get('/assessmentDetailsOfOpenEnded/:assessmentOutsourseId')
+  @ApiOperation({ summary: 'Get the assessment details of the open Ended questions' })
+  @ApiBearerAuth()
+  async getAssessmentDetailsOfOpenEnded(@Param('assessmentOutsourseId') assessmentOutsourseId: number, @Req() req){
+    return this.contentService.getAssessmentDetailsOfOpenEnded(assessmentOutsourseId, req.user[0].id);
+  }
 }
