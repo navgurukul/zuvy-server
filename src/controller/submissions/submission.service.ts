@@ -519,7 +519,7 @@ export class SubmissionService {
       } else {
         // filter the submission data and insert the new submission if not exists then insert the new submission
         let quizInsertData = answers.map((answer) => { return { ...answer, userId, assessmentSubmissionId } });
-        console.log('quizInsertData', quizInsertData)
+        updateData = [] // if no submission data then update data will be empty
         InsertData = await db.insert(zuvyQuizTracking).values(quizInsertData).returning();
       }
       return [...InsertData, ...updateData];
@@ -530,9 +530,7 @@ export class SubmissionService {
 
   async getSubmissionQuiz(assessmentSubmissionId, userId: number) {
     try {
-      console.log('assessmentSubmissionId', assessmentSubmissionId, 'userId', userId)
       const submissionQuiz = await db.select().from(zuvyQuizTracking).where(sql`${zuvyQuizTracking.assessmentSubmissionId} = ${assessmentSubmissionId} and ${zuvyQuizTracking.userId} = ${userId}`);
-      console.log('submissionQuiz', submissionQuiz)
       return submissionQuiz;
     } catch (err) {
       throw err;
@@ -559,6 +557,8 @@ export class SubmissionService {
       } else {
         // filter the submission data and insert the new submission if not exists then insert the new submission
         let quizInsertData = answers.map((answer) => { return { ...answer, userId, assessmentSubmissionId } });
+        updateData = [] // if no submission data then update data will be empty
+
         InsertData = await db.insert(zuvyOpenEndedQuestionSubmission).values(quizInsertData).returning();
       }
       return [...InsertData, ...updateData];

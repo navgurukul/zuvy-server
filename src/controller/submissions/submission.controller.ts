@@ -209,16 +209,15 @@ import {
       return this.submissionService.getProjectDetailsForAUser(projectId,userId,bootcampId);
     }
 
-    @Post('/quiz/assessmentSubmissionId=:assessmentSubmissionId')
+    @Patch('/quiz/assessmentSubmissionId=:assessmentSubmissionId')
     @ApiBearerAuth()
     async submitQuiz(@Body() QuizSubmission:QuizSubmissionDtoList, @Param('assessmentSubmissionId') assessmentSubmissionId: number, @Req() req){
       return this.submissionService.submitQuiz(QuizSubmission.quizSubmissionDto,  req.user[0].id, assessmentSubmissionId);
     }
 
-    @Post("/openended/assessmentSubmissionId=:assessmentSubmissionId")
+    @Patch("/openended/assessmentSubmissionId=:assessmentSubmissionId")
     @ApiBearerAuth()
     async submitOpenended(@Body() OpenEndedQuestionSubmission:OpenEndedQuestionSubmissionDtoList, @Param('assessmentSubmissionId') assessmentSubmissionId: number, @Req() req){
-
       return this.submissionService.submitOpenEndedQuestion(OpenEndedQuestionSubmission.openEndedQuestionSubmissionDto, req.user[0].id, assessmentSubmissionId);
     }
   }

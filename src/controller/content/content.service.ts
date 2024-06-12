@@ -633,7 +633,7 @@ export class ContentService {
             },
             Quizzes: {
               columns: {
-                // id: true,
+                id: true,
                 assessmentOutsourseId: true,
                 bootcampId:true
               },
@@ -1011,7 +1011,8 @@ export class ContentService {
           OutsourseOpenEndedQuestions: true,
           OutsourseCodingQuestions: true
         },
-      })
+      });
+        
       if (assessment.length == 0) {
         throw ({
           status: 'error',
@@ -1019,91 +1020,90 @@ export class ContentService {
           message: 'Assessment not found',
         });
       } else {
-
         let { bootcampId, moduleId, chapterId, ModuleAssessment, OutsourseQuizzes, OutsourseOpenEndedQuestions, OutsourseCodingQuestions } = assessment[0];
-        let { mcqIds, openEndedQuestionIds, codingProblemIds, title, description, ...OutsourseAssessmentData__} = assessmentBody;
-
+        let { mcqIds, openEndedQuestionIds, codingProblemIds, title, description, ...OutsourseAssessmentData__ } = assessmentBody;
+      
         let assessment_id = ModuleAssessment.id;
-
-        let assessmentData:any = {};
-        if (title) {
-          assessmentData["title"] = title;
-        }
-        if (description) {
-          assessmentData["description"] = description;
-        }
+      
+        let assessmentData = { title, description};
+      
         // filter out the ids that are not in the assessment
-        let filteredQuizIds = OutsourseQuizzes.map((q) => q.quiz_id);
-        let filteredOpenEndedQuestionIds = OutsourseOpenEndedQuestions.map((q) => q.openEndedQuestionId);
-        let filteredCodingQuestionIds = OutsourseCodingQuestions.map((q) => q.codingQuestionId);
+        let existingQuizIds = OutsourseQuizzes.map((q) => q.quiz_id).filter(id => id !== null);
+        let existingOpenEndedQuestionIds = OutsourseOpenEndedQuestions.map((q) => q.openEndedQuestionId).filter(id => id !== null);
+        let existingCodingQuestionIds = OutsourseCodingQuestions.map((q) => q.codingQuestionId).filter(id => id !== null);
 
-        let filteredQuizIdsToDelete = filteredQuizIds.filter((id) => !mcqIds.includes(id));
-        let filteredOpenEndedQuestionIdsToDelete = filteredOpenEndedQuestionIds.filter((id) => !openEndedQuestionIds.includes(id));
-        let filteredCodingQuestionIdsToDelete = filteredCodingQuestionIds.filter((id) => !codingProblemIds.includes(id));
-        
-        let addQuizIds = mcqIds.filter((id) => !filteredQuizIds.includes(id));
-        let addOpenEndedQuestionIds = openEndedQuestionIds.filter((id) => !filteredOpenEndedQuestionIds.includes(id));
-        let addCodingQuestionIds = codingProblemIds.filter((id) => !filteredCodingQuestionIds.includes(id));
+        let quizIdsToDelete = existingQuizIds.filter((id) => !mcqIds.includes(id));
+        let openEndedQuestionIdsToDelete = existingOpenEndedQuestionIds.filter((id) => !openEndedQuestionIds.includes(id));
+        let codingQuestionIdsToDelete = existingCodingQuestionIds.filter((id) => !codingProblemIds.includes(id));
 
-        if (filteredQuizIdsToDelete.length > 0) {
+        let quizIdsToAdd = mcqIds.filter((id) => !existingQuizIds.includes(id));
+        let openEndedQuestionIdsToAdd = openEndedQuestionIds.filter((id) => !existingOpenEndedQuestionIds.includes(id));
+        let codingQuestionIdsToAdd = codingProblemIds.filter((id) => !existingCodingQuestionIds.includes(id));
+  
+        // Delete operations
+        if (quizIdsToDelete.length > 0) {
           await db
             .delete(zuvyOutsourseQuizzes)
-            .where(sql`${zuvyOutsourseQuizzes.assessmentOutsourseId} = ${assessmentOutsourseId} AND${inArray(zuvyOutsourseQuizzes.quiz_id, filteredQuizIdsToDelete)}`);
+            .where(sql`${zuvyOutsourseQuizzes.assessmentOutsourseId} = ${assessmentOutsourseId} AND ${inArray(zuvyOutsourseQuizzes.quiz_id, quizIdsToDelete)}`);
         }
-        if (filteredOpenEndedQuestionIdsToDelete.length > 0) {
+        if (openEndedQuestionIdsToDelete.length > 0) {
           await db
             .delete(zuvyOutsourseOpenEndedQuestions)
-            .where(sql`${zuvyOutsourseOpenEndedQuestions.assessmentOutsourseId} = ${assessmentOutsourseId} AND${inArray(zuvyOutsourseOpenEndedQuestions.openEndedQuestionId, filteredOpenEndedQuestionIdsToDelete)}`);
+            .where(sql`${zuvyOutsourseOpenEndedQuestions.assessmentOutsourseId} = ${assessmentOutsourseId} AND ${inArray(zuvyOutsourseOpenEndedQuestions.openEndedQuestionId, openEndedQuestionIdsToDelete)}`);
         }
-        if (filteredCodingQuestionIdsToDelete.length > 0) {
+        if (codingQuestionIdsToDelete.length > 0) {
           await db
             .delete(zuvyOutsourseCodingQuestions)
-            .where(sql`${zuvyOutsourseCodingQuestions.assessmentOutsourseId} = ${assessmentOutsourseId} AND${inArray(zuvyOutsourseCodingQuestions.codingQuestionId, filteredCodingQuestionIdsToDelete)}`);
+            .where(sql`${zuvyOutsourseCodingQuestions.assessmentOutsourseId} = ${assessmentOutsourseId} AND ${inArray(zuvyOutsourseCodingQuestions.codingQuestionId, codingQuestionIdsToDelete)}`);
         }
+      
+        // Update assessment data
         let updatedOutsourseAssessment = await db.update(zuvyOutsourseAssessments).set(OutsourseAssessmentData__).where(eq(zuvyOutsourseAssessments.id, assessmentOutsourseId)).returning();
-
+      
         let updatedAssessment = await db
           .update(zuvyModuleAssessment)
           .set(assessmentData)
           .where(eq(zuvyModuleAssessment.id, assessment_id))
           .returning();
-
-
-        let mcqArray = addQuizIds.map(id => ({ Quiz_id: id, bootcampId, chapterId, assessmentOutsourseId}));
-        let openEndedQuestionsArray = addOpenEndedQuestionIds.map(id => ({ openEndedQuestionId: id, bootcampId, moduleId, chapterId, assessmentOutsourseId }));
-        let codingProblemsArray = addCodingQuestionIds.map(id => ({ codingQuestionId: id, bootcampId, moduleId, chapterId, assessmentOutsourseId }));
-
-        if (codingProblemsArray.length > 0){
-          let createZOCQ = await db.insert(zuvyOutsourseCodingQuestions).values(codingProblemsArray).returning();
-          if (createZOCQ.length > 0) {
-              const toUpdateIds = createZOCQ.filter((c) => c.codingQuestionId).map((c) => c.codingQuestionId);
-            await db
-                .update(zuvyCodingQuestions)
-                .set({ usage: sql`${zuvyCodingQuestions.usage}::numeric + 1` })
-                .where(sql`${inArray(zuvyCodingQuestions.id, toUpdateIds)}`);
-          }
-        }
-        if (mcqArray.length > 0){
+      
+        // Insert new data
+        let mcqArray = quizIdsToAdd.map(id => ({ quiz_id: id, bootcampId, chapterId, assessmentOutsourseId }));
+        let openEndedQuestionsArray = openEndedQuestionIdsToAdd.map(id => ({ openEndedQuestionId: id, bootcampId, moduleId, chapterId, assessmentOutsourseId }));
+        let codingProblemsArray = codingQuestionIdsToAdd.map(id => ({ codingQuestionId: id, bootcampId, moduleId, chapterId, assessmentOutsourseId }));
+      
+        if (mcqArray.length > 0) {
           let createZOMQ = await db.insert(zuvyOutsourseQuizzes).values(mcqArray).returning();
           if (createZOMQ.length > 0) {
-              const toUpdateIds = createZOMQ.filter((c) => c.quiz_id).map((c) => c.quiz_id);
+            const toUpdateIds = createZOMQ.filter((c) => c.quiz_id).map((c) => c.quiz_id);
             await db
-                .update(zuvyModuleQuiz)
-                .set({ usage: sql`${zuvyModuleQuiz.usage}::numeric + 1` })
-                .where(sql`${inArray(zuvyModuleQuiz.id, toUpdateIds)}`);
+              .update(zuvyModuleQuiz)
+              .set({ usage: sql`${zuvyModuleQuiz.usage}::numeric + 1` })
+              .where(sql`${inArray(zuvyModuleQuiz.id, toUpdateIds)}`);
           }
         }
-        if (openEndedQuestionsArray.length > 0){
+      
+        if (openEndedQuestionsArray.length > 0) {
           let createZOOQ = await db.insert(zuvyOutsourseOpenEndedQuestions).values(openEndedQuestionsArray).returning();
           if (createZOOQ.length > 0) {
-              const toUpdateIds = createZOOQ.filter((c) => c.openEndedQuestionId).map((c) => c.openEndedQuestionId);
+            const toUpdateIds = createZOOQ.filter((c) => c.openEndedQuestionId).map((c) => c.openEndedQuestionId);
             await db
-                .update(zuvyOpenEndedQuestions)
-                .set({ usage: sql`${zuvyOpenEndedQuestions.usage}::numeric + 1` })
-                .where(sql`${inArray(zuvyOpenEndedQuestions.id, toUpdateIds)}`);
+              .update(zuvyOpenEndedQuestions)
+              .set({ usage: sql`${zuvyOpenEndedQuestions.usage}::numeric + 1` })
+              .where(sql`${inArray(zuvyOpenEndedQuestions.id, toUpdateIds)}`);
           }
         }
-      }
+      
+        if (codingProblemsArray.length > 0) {
+          let createZOCQ = await db.insert(zuvyOutsourseCodingQuestions).values(codingProblemsArray).returning();
+          if (createZOCQ.length > 0) {
+            const toUpdateIds = createZOCQ.filter((c) => c.codingQuestionId).map((c) => c.codingQuestionId);
+            await db
+              .update(zuvyCodingQuestions)
+              .set({ usage: sql`${zuvyCodingQuestions.usage}::numeric + 1` })
+              .where(sql`${inArray(zuvyCodingQuestions.id, toUpdateIds)}`);
+          }
+        }
+      }      
       return {
         status: 'success',
         code: 200,
@@ -1733,7 +1733,7 @@ export class ContentService {
           },
           Quizzes: {
             columns: {
-              // id: true,
+              id: true,
               assessmentOutsourseId: true,
               bootcampId:true
             },
@@ -1769,6 +1769,88 @@ export class ContentService {
       }
       let formatedData = await this.formatedChapterDetails(assessment[0]);
       return {...formatedData, submission: submission[0]};
+    } catch (err) {
+      throw err;
+    }
+  }
+
+  async getAssessmentDetailsOfQuiz(assessment_outsourse_id:number, userId){
+    try {
+      const assessment = await db.query.zuvyOutsourseQuizzes.findMany({
+        where: (zuvyOutsourseQuizzes, { eq }) =>
+          eq(zuvyOutsourseQuizzes.assessmentOutsourseId, assessment_outsourse_id),
+        with: {
+          submissionsData:{
+            where: (zuvyQuizTracking, { eq }) => eq(zuvyQuizTracking.userId, userId),
+            columns: {
+              id: true,
+              userId: true,
+              chosenOption: true,
+              chossenOption: true,
+              questionId: true,
+              attemptCount: true,
+            }
+          },
+          Quiz: {
+            columns: {
+              id:true,
+              question: true,
+              options: true,
+              difficulty: true,
+              correctOption: true,
+              marks: true,
+            }
+          },
+        }
+      })
+      if (assessment.length == 0) {
+        throw ({
+          status: 'error',
+          statusCode: 404,
+          message: 'Assessment not found',
+        });
+      } 
+      return assessment[0];
+    } catch (err) {
+      throw err;
+    }
+  }
+
+  async getAssessmentDetailsOfOpenEnded(assessment_outsourse_id:number, userId){
+    try {
+      const assessment = await db.query.zuvyOutsourseOpenEndedQuestions.findMany({
+        where: (zuvyOutsourseOpenEndedQuestions, { eq }) =>
+          eq(zuvyOutsourseOpenEndedQuestions.assessmentOutsourseId, assessment_outsourse_id),
+        with: {
+          submissionsData:{
+            where: (zuvyOpenEndedQuestionSubmission, { eq }) => eq(zuvyOpenEndedQuestionSubmission.userId, userId),
+            columns: {
+              id: true,
+              userId: true,
+              answer: true,
+              questionId: true,
+              submitAt:true,
+              assessmentSubmissionId:true
+            }
+          },
+          OpenEndedQuestion: {
+            columns: {
+              id: true,
+              question: true,
+              difficulty: true,
+              marks: true,
+            }
+          }
+        }
+      })
+      if (assessment.length == 0) {
+        throw ({
+          status: 'error',
+          statusCode: 404,
+          message: 'Assessment not found',
+        });
+      } 
+      return assessment[0];
     } catch (err) {
       throw err;
     }
