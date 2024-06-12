@@ -1377,6 +1377,7 @@ export const users = main.table("users", {
 	c4CaFacilitatorId: integer("c4ca_facilitator_id").references(() => facilitators.id, { onDelete: "set null" } ),
 	userName: varchar("user_name", { length: 255 }),
 	password: varchar("password", { length: 255 }),
+  pass_iv: varchar("pass_iv", { length: 255 }),
 },
 (table) => {
 	return {
@@ -2764,7 +2765,7 @@ export const zuvyQuizTracking = main.table("zuvy_quiz_tracking", {
     onDelete: 'cascade',
     onUpdate: 'cascade',
   }),
-  questionId: integer("question_id").notNull(),
+  questionId: integer("question_id").notNull().references(() => zuvyModuleQuiz.id),
   chosenOption: integer("chosen_option"),
 });
 

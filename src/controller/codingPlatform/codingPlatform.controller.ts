@@ -55,13 +55,19 @@ export class CodingPlatformController {
     type: String,
     description: 'Action such as submit or run',
   })
+  @ApiQuery({
+    name: 'assessmentSubmissionId',
+    required: true,
+    type: String,
+    description: 'Action such as submit or run',
+  })
   @ApiBearerAuth()
   async submitCode(
     @Body() sourceCode: SubmitCodeDto,
     @Query('userId') userId: number,
     @Query('questionId') questionId: number,
     @Query('action') action: string,
-    @Query('assessmentOutsourseId') assessmentOutsourseId: number,
+    @Query('assessmentSubmissionId') assessmentSubmissionId: number,
   ) {
     let statusId = 1;
     let getCodeData;
@@ -80,7 +86,7 @@ export class CodingPlatformController {
         questionId,
         getCodeData.token,
         getCodeData.status.description,
-        assessmentOutsourseId
+        assessmentSubmissionId
       );
     }
     return getCodeData;

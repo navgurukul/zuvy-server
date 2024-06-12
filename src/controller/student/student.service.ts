@@ -8,7 +8,7 @@ import {
   zuvySessions
 } from '../../../drizzle/schema';
 import { db } from '../../db/index';
-import { eq, sql,desc, count } from 'drizzle-orm';
+import { eq, sql, desc, count } from 'drizzle-orm';
 import { ClassesService } from '../classes/classes.service'
 import { query } from 'express';
 
@@ -20,35 +20,35 @@ export class StudentService {
       let enrolled = await db.query.zuvyBatchEnrollments.findMany({
         where: (zuvyBatchEnrollments, { sql }) => sql`${zuvyBatchEnrollments.userId} = ${userId}`,
         columns: {
-          id:true
+          id: true
         },
-        with:{
-          bootcamp:{
+        with: {
+          bootcamp: {
             columns: {
-              id:true,
-              name:true,
-              coverImage:true,
-              duration:true,
-              language:true,
-              bootcampTopic:true
+              id: true,
+              name: true,
+              coverImage: true,
+              duration: true,
+              language: true,
+              bootcampTopic: true
             },
           },
-          batch:true,
-          tracking:true
+          batch: true,
+          tracking: true
         }
       })
 
-      let totalData = enrolled.map((e:any) => {
+      let totalData = enrolled.map((e: any) => {
         const { batch, tracking, bootcamp } = e;
 
         return {
-            ...bootcamp,
-            batchId: batch?.id,
-            progress: tracking?.progress || 0,
-            ...batch?.bootcamp,
+          ...bootcamp,
+          batchId: batch?.id,
+          progress: tracking?.progress || 0,
+          ...batch?.bootcamp,
         };
-    });
-    
+      });
+
 
 
       return [null, totalData];
@@ -158,10 +158,10 @@ export class StudentService {
     }
   }
 
-  async getUpcomingClass(student_id:number, batchID:number) {
+  async getUpcomingClass(student_id: number, batchID: number) {
     try {
-    let queryString
-      if (batchID){
+      let queryString
+      if (batchID) {
         queryString = sql`${zuvyBatchEnrollments.userId} = ${student_id} AND ${zuvyBatchEnrollments.batchId} = ${batchID}`
       } else {
         queryString = sql`${zuvyBatchEnrollments.userId} = ${student_id}`
@@ -171,7 +171,7 @@ export class StudentService {
       if (enrolled.length == 0) {
         return { status: 'error', message: 'not enrolled in any course.', code: 404 };
       }
-      
+
       let bootcampIds = await Promise.all(enrolled.map(async (e) => {
         await this.ClassesService.updatingStatusOfClass(e.bootcampId)
         return e.bootcampId;
@@ -192,7 +192,7 @@ export class StudentService {
           acc.ongoing.push(e);
         }
         return acc;
-      }, {upcoming: [], ongoing: []});
+      }, { upcoming: [], ongoing: [] });
 
       return filterClasses;
     } catch (err) {
@@ -200,35 +200,35 @@ export class StudentService {
     }
   }
 
-    async getAttendanceClass(student_id:number) {
-      try{
-        let enrolled = await db.query.zuvyBatchEnrollments.findMany({
-          where: (zuvyBatchEnrollments, { sql }) => sql`${zuvyBatchEnrollments.userId} = ${student_id}`,
-          with:{
-            bootcamp:{
-              id:true,
-              name:true
-            }
+  async getAttendanceClass(student_id: number) {
+    try {
+      let enrolled = await db.query.zuvyBatchEnrollments.findMany({
+        where: (zuvyBatchEnrollments, { sql }) => sql`${zuvyBatchEnrollments.userId} = ${student_id}`,
+        with: {
+          bootcamp: {
+            id: true,
+            name: true
           }
-        });
-        
-        if (enrolled.length == 0) {
-          return [{ status: 'error', message: 'not enrolled in any course.', code: 404 }, null];
         }
-        
-        let totalAttendance = await Promise.all(enrolled.map(async (e:any) => {
-          let classes = await db.select().from(zuvySessions).where(sql`${zuvySessions.batchId} = ${e.batchId} AND ${zuvySessions.status} = 'completed'`).orderBy(desc(zuvySessions.startTime));
-          e.attendance = (e.attendance/classes.length)*100 || 0;
-          e.totalClasses = classes.length;
-          e.attendedClasses = e.attendance;
-          delete e.userId;
-          delete e.bootcamp
-          return e;
-        }));
-        return totalAttendance;
-      } catch (err) {
-        throw err;
+      });
+
+      if (enrolled.length == 0) {
+        return [{ status: 'error', message: 'not enrolled in any course.', code: 404 }, null];
       }
 
+      let totalAttendance = await Promise.all(enrolled.map(async (e: any) => {
+        let classes = await db.select().from(zuvySessions).where(sql`${zuvySessions.batchId} = ${e.batchId} AND ${zuvySessions.status} = 'completed'`).orderBy(desc(zuvySessions.startTime));
+        e.attendance = (e.attendance / classes.length) * 100 || 0;
+        e.totalClasses = classes.length;
+        e.attendedClasses = e.attendance;
+        delete e.userId;
+        delete e.bootcamp
+        return e;
+      }));
+      return totalAttendance;
+    } catch (err) {
+      throw err;
     }
+
+  }
 }

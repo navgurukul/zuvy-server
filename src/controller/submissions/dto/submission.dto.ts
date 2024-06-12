@@ -140,13 +140,12 @@ export class QuizSubmissionDto {
 
 export class QuizSubmissionDtoList {
     @ApiProperty({
-        type: QuizSubmissionDto,
-        example: QuizSubmissionDto,
+        type: [QuizSubmissionDto],
         required: true,
-        isArray: true,
     })
-    @IsArray()
+    @IsNotEmpty()
     @ValidateNested({ each: true })
+    @Type(() => QuizSubmissionDto)
     quizSubmissionDto: QuizSubmissionDto[];
 }
 
@@ -169,20 +168,16 @@ export class OpenEndedQuestionSubmissionDto{
     answer: string;
 }
 
-
-// list of OpenEndedQuestionSubmissionDto
-export class OpenEndedQuestionSubmissionDtoList {
+  export class OpenEndedQuestionSubmissionDtoList {
     @ApiProperty({
-        type: OpenEndedQuestionSubmissionDto,
-        example: OpenEndedQuestionSubmissionDto,
-        required: true,
-        isArray: true,
+      type: [OpenEndedQuestionSubmissionDto],
+      required: true,
     })
-    @IsArray()
+    @IsNotEmpty()
     @ValidateNested({ each: true })
+    @Type(() => OpenEndedQuestionSubmissionDto)
     openEndedQuestionSubmissionDto: OpenEndedQuestionSubmissionDto[];
-}
-
+  }
 // list of QuizSubmissionDto
 
 

@@ -212,14 +212,13 @@ import {
     @Post('/quiz/assessmentSubmissionId=:assessmentSubmissionId')
     @ApiBearerAuth()
     async submitQuiz(@Body() QuizSubmission:QuizSubmissionDtoList, @Param('assessmentSubmissionId') assessmentSubmissionId: number, @Req() req){
-      console.log(QuizSubmission, 'QuizSubmission');
       return this.submissionService.submitQuiz(QuizSubmission.quizSubmissionDto,  req.user[0].id, assessmentSubmissionId);
     }
 
     @Post("/openended/assessmentSubmissionId=:assessmentSubmissionId")
     @ApiBearerAuth()
     async submitOpenended(@Body() OpenEndedQuestionSubmission:OpenEndedQuestionSubmissionDtoList, @Param('assessmentSubmissionId') assessmentSubmissionId: number, @Req() req){
-      console.log(OpenEndedQuestionSubmission, 'OpenEndedQuestionSubmission');
+
       return this.submissionService.submitOpenEndedQuestion(OpenEndedQuestionSubmission.openEndedQuestionSubmissionDto, req.user[0].id, assessmentSubmissionId);
     }
   }
