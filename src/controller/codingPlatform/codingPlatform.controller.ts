@@ -22,7 +22,7 @@ import {
   ApiCookieAuth,
   ApiQuery,
 } from '@nestjs/swagger';
-import { SubmitCodeDto,CreateProblemDto } from './dto/codingPlatform.dto';
+import { SubmitCodeDto, CreateProblemDto } from './dto/codingPlatform.dto';
 import { ApiBearerAuth } from '@nestjs/swagger';
 @Controller('codingPlatform')
 @ApiTags('codingPlatform')
@@ -34,7 +34,7 @@ import { ApiBearerAuth } from '@nestjs/swagger';
   }),
 )
 export class CodingPlatformController {
-  constructor(private codingPlatformService: CodingPlatformService) {}
+  constructor(private codingPlatformService: CodingPlatformService) { }
   @Post('submit')
   @ApiOperation({ summary: 'Run the code' })
   @ApiQuery({
@@ -55,12 +55,19 @@ export class CodingPlatformController {
     type: String,
     description: 'Action such as submit or run',
   })
+  @ApiQuery({
+    name: 'assessmentSubmissionId',
+    required: true,
+    type: String,
+    description: 'Action such as submit or run',
+  })
   @ApiBearerAuth()
   async submitCode(
     @Body() sourceCode: SubmitCodeDto,
     @Query('userId') userId: number,
     @Query('questionId') questionId: number,
     @Query('action') action: string,
+    @Query('assessmentSubmissionId') assessmentSubmissionId: number,
   ) {
     let statusId = 1;
     let getCodeData;
@@ -79,6 +86,7 @@ export class CodingPlatformController {
         questionId,
         getCodeData.token,
         getCodeData.status.description,
+        assessmentSubmissionId
       );
     }
     return getCodeData;
@@ -129,22 +137,19 @@ export class CodingPlatformController {
   }
 
   @Post('createCodingQuestion')
-  @ApiOperation({summary: 'Create coding question'})
+  @ApiOperation({ summary: 'Create coding question' })
   @ApiBearerAuth()
-  async createCodingProblems(@Body() createCodingQuestion:CreateProblemDto)
-  {
+  async createCodingProblems(@Body() createCodingQuestion: CreateProblemDto) {
     let examples = [];
     let testCases = [];
-    for(let i=0;i<createCodingQuestion.examples.length;i++)
-      {
-        examples.push(createCodingQuestion.examples[i].inputs);
-      }
-     createCodingQuestion.examples = examples;
-    for(let j=0;j<createCodingQuestion.testCases.length;j++)
-      {
-        testCases.push(createCodingQuestion.testCases[j].inputs)
-      }
-     createCodingQuestion.testCases = testCases
+    for (let i = 0; i < createCodingQuestion.examples.length; i++) {
+      examples.push(createCodingQuestion.examples[i].inputs);
+    }
+    createCodingQuestion.examples = examples;
+    for (let j = 0; j < createCodingQuestion.testCases.length; j++) {
+      testCases.push(createCodingQuestion.testCases[j].inputs)
+    }
+    createCodingQuestion.testCases = testCases
     const res = await this.codingPlatformService.createCodingProblem(createCodingQuestion);
     return res;
   }

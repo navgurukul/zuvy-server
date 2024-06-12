@@ -790,24 +790,6 @@ export class ClassesService {
     }
   }
 
-  // async uploadVideoFromGoogleDriveToS3(
-  //   googleDriveLink: string,
-  //   fileId: string,
-  // ): Promise<string> {
-  //   try {
-  //     const response = await Axios.get(googleDriveLink, {
-  //       responseType: 'arraybuffer',
-  //     });
-  //     const fileBuffer = Buffer.from(response.data);
-
-  //     const s3Url = await this.uploadVideoToS3(fileBuffer, fileId);
-
-  //     return s3Url;
-  //   } catch (error) {
-  //     throw new Error('Error uploading video from Google Drive to S3');
-  //   }
-  // }
-
 
   async unattendanceClassesByBootcampId(bootcampId) {
     try {

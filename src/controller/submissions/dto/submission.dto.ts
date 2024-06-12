@@ -108,3 +108,76 @@ export class SubmissionassessmentDto{
     @IsDateString()
     submitedAt: string;
 }
+export class QuizSubmissionDto {
+    @ApiProperty({
+        type: Number,
+        example: 44002,
+        required: true,
+    })
+    @IsNotEmpty()
+    @IsNumber()
+    questionId: number;
+
+    //attempted
+    @ApiProperty({
+        type: Number,
+        example: 2,
+        required: true,
+    })
+    @IsNumber()
+    @IsNotEmpty()
+    attemptCount: number;
+
+    @ApiProperty({
+        type: Number,
+        example: 2,
+        required: true,
+    })
+    @IsNumber()
+    @IsNotEmpty()
+    chosenOption: number;
+}
+
+export class QuizSubmissionDtoList {
+    @ApiProperty({
+        type: [QuizSubmissionDto],
+        required: true,
+    })
+    @IsNotEmpty()
+    @ValidateNested({ each: true })
+    @Type(() => QuizSubmissionDto)
+    quizSubmissionDto: QuizSubmissionDto[];
+}
+
+export class OpenEndedQuestionSubmissionDto{
+    @ApiProperty({
+        type: Number,
+        example: 44002,
+        required: true,
+    })
+    @IsNotEmpty()
+    @IsNumber()
+    questionId: number;
+
+    @ApiProperty({
+        type: String,
+        example: 'fail',
+        required: true,
+    })
+    @IsString()
+    answer: string;
+}
+
+  export class OpenEndedQuestionSubmissionDtoList {
+    @ApiProperty({
+      type: [OpenEndedQuestionSubmissionDto],
+      required: true,
+    })
+    @IsNotEmpty()
+    @ValidateNested({ each: true })
+    @Type(() => OpenEndedQuestionSubmissionDto)
+    openEndedQuestionSubmissionDto: OpenEndedQuestionSubmissionDto[];
+  }
+// list of QuizSubmissionDto
+
+

@@ -12,6 +12,7 @@ import {
   Optional,
   Query,
   BadRequestException,
+  Req
 } from '@nestjs/common';
 import { ContentService } from './content.service';
 import {
@@ -541,18 +542,29 @@ export class ContentController {
   @ApiOperation({ summary: 'Create a open ended question' })
   @ApiBearerAuth()
   async createOpenEndedQuestion(@Body() oEndedQuestions: openEndedDto) {
-    const res =
-      await this.contentService.createOpenEndedQuestions(oEndedQuestions);
-    return res;
+    return this.contentService.createOpenEndedQuestions(oEndedQuestions);
   }
 
   @Delete('/deleteOpenEndedQuestion')
   @ApiOperation({ summary: 'Delete openended question' })
   @ApiBearerAuth()
   async deleteOpenEndedQuestion(@Body() questionIds: deleteQuestionDto) {
-    const res = await this.contentService.deleteOpenEndedQuestion(questionIds);
-    return res;
+    return this.contentService.deleteOpenEndedQuestion(questionIds);
   }
 
+  @Get('/students/assessmentOutsourseId=:assessmentOutsourseId')
+  @ApiOperation({ summary: 'Get the student of a particular assessment' })
+  @ApiBearerAuth()
+  async getStudentsOfAssessment(@Param('assessmentOutsourseId') assessmentOutsourseId: number, @Req() req) {
+    return this.contentService.getStudentsOfAssessment(assessmentOutsourseId,req);
+  }
+
+  // startAssessmentForStudent
+  @Get('/startAssessmentForStudent/assessmentOutsourseId=:assessmentOutsourseId')
+  @ApiOperation({ summary: 'Start the assessment for a student' })
+  @ApiBearerAuth()
+  async startAssessmentForStudent(@Req() req, @Param('assessmentOutsourseId') assessmentOutsourseId: number){
+    return this.contentService.startAssessmentForStudent(assessmentOutsourseId,req);
+  }
 
 }
