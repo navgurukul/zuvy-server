@@ -2650,6 +2650,10 @@ export const zuvyModuleData =  relations( zuvyBootcamps, ({one, many}) =>({
       references: [zuvyCourseModules.bootcampId],
     }),
     bootcampModules: many(zuvyCourseModules),
+    bootcampTracking : one(zuvyBootcampTracking, {
+      fields: [zuvyBootcamps.id],
+      references: [zuvyBootcampTracking.bootcampId],
+    })
 }))
 
 export const bootcampModuleRelation =  relations(zuvyCourseModules, ({one}) => ({

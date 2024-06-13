@@ -27,6 +27,7 @@ import { date } from 'drizzle-orm/mysql-core';
 import { UpdateProjectDto } from './dto/project.dto';
 
 import { quizBatchDto } from '../content/dto/content.dto';
+import { BootcampController } from '../bootcamp/bootcamp.controller';
 
 const { ZUVY_CONTENT_URL, ZUVY_CONTENTS_API_URL } = process.env; // INPORTING env VALUSE ZUVY_CONTENT
 
@@ -1188,6 +1189,55 @@ export class TrackingService {
     }catch(err)
     {
        throw err;
+    }
+  }
+
+  async allBootcampProgressForStudents(userId : number)
+  {
+    try {
+        const data = await db.query.zuvyBatchEnrollments.findMany({
+            columns : {
+                bootcampId : true
+            },
+            where: (batchEnroll, { eq }) =>
+              eq(batchEnroll.userId, BigInt(userId)),
+            with: {
+              bootcamp: {
+                columns: {
+                    id:true,
+                    name:true,
+                    coverImage: true
+                },
+                with : {
+                    bootcampTracking: {
+                        where: (bootcampTrack,{eq}) => 
+                            eq(bootcampTrack.userId,userId)
+                    }
+                }
+              }
+            },
+          });
+
+          return data;
+    }
+    catch(err)
+    {
+       throw err;
+    }
+  }
+
+  async getLatestUpdatedCourseForStudents(userId: number)
+  {
+    try {
+        const latestTracking = await db.select().from(zuvyBootcampTracking)
+        .where(eq(zuvyBootcampTracking.userId, userId))
+        .orderBy(desc(zuvyBootcampTracking.updatedAt))
+        .limit(1);
+       
+    }
+    catch(err)
+    {
+      throw err;
     }
   }
   

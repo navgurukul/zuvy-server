@@ -468,4 +468,32 @@ export class TrackingController {
     );
     return res;
   }
+
+  @Get('/allBootcampProgress')
+  @ApiOperation({
+    summary: 'Get all bootcamp progress for a particular student',
+  })
+  @ApiBearerAuth()
+  async getAllBootcampProgressForStudents(
+    @Req() req,
+  ) {
+    const res = await this.TrackingService.allBootcampProgressForStudents(
+      req.user[0].id
+    );
+    return res;
+  }
+
+  @Get('/latestUpdatedCourse')
+  @ApiOperation({
+    summary: 'Get all bootcamp progress for a particular student',
+  })
+  @ApiBearerAuth()
+  async getLatestUpdatedCourseForStudent(
+    @Req() req,
+  ) {
+    const res = await this.TrackingService.getLatestUpdatedCourseForStudents(
+      req.user[0].id
+    );
+    return res;
+  }
 }
