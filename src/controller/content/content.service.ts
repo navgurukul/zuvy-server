@@ -1695,7 +1695,7 @@ export class ContentService {
           message: 'Assessment not found',
         });
       } 
-      assessment[0]["toatalQuizzes"] = assessment[0]?.Quizzes.length|| 0;
+      assessment[0]["totalQuizzes"] = assessment[0]?.Quizzes.length|| 0;
       assessment[0]["totalOpenEndedQuestions"] = assessment[0]?.OpenEndedQuestions.length || 0;
       assessment[0]["totalCodingQuestions"] = assessment[0]?.CodingQuestions.length || 0;
       
