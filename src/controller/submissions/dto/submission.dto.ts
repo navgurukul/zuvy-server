@@ -100,13 +100,26 @@ export class StartAssessmentDto{
 
 export class SubmissionassessmentDto{
     @ApiProperty({
-        type: String,
+        type: Number,
+        example: 2,
+        required: true,
+    })
+    @IsNotEmpty()
+    tabChange: number;
+    @ApiProperty({
+        type: Number,
+        example: 2,
+        required: true,
+    })
+    @IsNotEmpty()
+    copyPaste: number;
+    @ApiProperty({
+        type: Number,
         example: 44002,
         required: true,
     })
     @IsNotEmpty()
-    @IsDateString()
-    submitedAt: string;
+    embeddedGoogleSearch: number;
 }
 export class QuizSubmissionDto {
     @ApiProperty({

@@ -219,6 +219,7 @@ export class SubmissionService {
 
   async assessmentSubmission(data, id: number) {
     try {
+      data['submitedAt'] = new Date().toISOString();
       return await db.update(zuvyAssessmentSubmission).set(data).where(eq(zuvyAssessmentSubmission.id, id)).returning();
     } catch (err) {
       throw err;
