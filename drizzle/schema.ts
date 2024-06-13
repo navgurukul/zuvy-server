@@ -2634,6 +2634,10 @@ export const zuvyModuleData =  relations( zuvyBootcamps, ({one, many}) =>({
       references: [zuvyCourseModules.bootcampId],
     }),
     bootcampModules: many(zuvyCourseModules),
+    bootcampTracking : one(zuvyBootcampTracking, {
+      fields: [zuvyBootcamps.id],
+      references: [zuvyBootcampTracking.bootcampId],
+    })
 }))
 
 export const bootcampModuleRelation =  relations(zuvyCourseModules, ({one}) => ({
@@ -3321,6 +3325,27 @@ export const zuvyOutsourseQuizzes = main.table('zuvy_outsourse_quizzes', {
   }).notNull(),
   createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow(),
 });
+
+export const zuvyRecentBootcamp = main.table('zuvy_recent_bootcamp', {
+  id: serial('id').primaryKey().notNull(),
+  userId: bigserial('user_id', { mode: 'bigint' })
+    .notNull()
+    .references(() => users.id),
+  bootcampId: integer("bootcamp_id").notNull().references(() => zuvyBootcamps.id, {
+    onDelete: 'cascade',
+    onUpdate: 'cascade',
+  }).notNull(),
+  moduleId: integer('module_id').references(() => zuvyCourseModules.id, {
+    onDelete: 'cascade',
+    onUpdate: 'cascade',
+  }).notNull(),
+  chapterId: integer('chapter_id').references(() => zuvyModuleChapter.id, {
+    onDelete: 'cascade',
+    onUpdate: 'cascade',
+  }),
+  progress : integer('progress'),
+  updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow(),
+})
 
 export const OutsourseQuizzesRelations = relations(zuvyOutsourseQuizzes, ({ one, many }) => ({
   ModuleAssessment: one(zuvyModuleAssessment, {
