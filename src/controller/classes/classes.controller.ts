@@ -99,15 +99,6 @@ export class ClassesController {
     return { message: 'Data Refreshed', status: 200, };
   }
 
-  // @Get('/meetings/:bootcampId')
-  // @ApiOperation({ summary: 'Get the google classes id by bootcampId' })
-  // @ApiBearerAuth()
-  // getClassesBybootcampId(
-  //   @Query('bootcampId') bootcampId: string,
-  //   ): Promise<object> {
-  //   return this.classesService.unattendanceClassesByBootcampId(bootcampId);
-  // }
-
   @Get('/getClassesByBatchId/:batchId')
   @ApiOperation({ summary: 'Get the google classes by batchId' })
   @ApiQuery({

@@ -5,8 +5,8 @@ import { eq, sql, count, lte } from 'drizzle-orm';
 import axios from 'axios';
 import * as _ from 'lodash';
 import { error, log } from 'console';
-import { zuvyBatchEnrollments, zuvyAssessmentSubmission, users, zuvyModuleAssessment, zuvyCourseModules, zuvyChapterTracking, zuvyBootcamps, zuvyOpenEndedQuestionSubmission, zuvyProjectTracking } from '../../../drizzle/schema';
-import {InstructorFeedbackDto, PatchOpenendedQuestionDto, CreateOpenendedQuestionDto} from './dto/submission.dto';
+import { zuvyBatchEnrollments, zuvyAssessmentSubmission, users, zuvyModuleAssessment, zuvyCourseModules, zuvyChapterTracking, zuvyBootcamps, zuvyOpenEndedQuestionSubmission, zuvyProjectTracking, zuvyQuizTracking } from '../../../drizzle/schema';
+import { InstructorFeedbackDto, PatchOpenendedQuestionDto, CreateOpenendedQuestionDto } from './dto/submission.dto';
 import { truncate } from 'fs/promises';
 
 const { ZUVY_CONTENT_URL } = process.env;
@@ -91,12 +91,12 @@ export class SubmissionService {
             },
           },
         },
-        limit:limit,
-        offset:offset
+        limit: limit,
+        offset: offset
       });
       const totalStudents = await db.select().from(zuvyChapterTracking).where(sql`${zuvyChapterTracking.moduleId} = ${moduleId} and ${zuvyChapterTracking.chapterId} = ${chapterId}`);
       const totalStudentsCount = totalStudents.length;
-      const totalPages = Math.ceil(totalStudentsCount/limit);
+      const totalPages = Math.ceil(totalStudentsCount / limit);
       const data = statusOfStudentCode.map((statusCode) => {
         return {
           id: Number(statusCode['user']['id']),
@@ -108,67 +108,67 @@ export class SubmissionService {
             ]?.['token'].length,
           status:
             statusCode['user']['studentCodeDetails']?.['questionSolved'][
-              `${questionId}`
+            `${questionId}`
             ]?.['status'],
         };
       });
 
-      return {data,totalPages,totalStudentsCount};
+      return { data, totalPages, totalStudentsCount };
     } catch (err) {
       throw err;
     }
   }
 
-  async assessmentStudentsInfoBy(assessment_id: number, limit: number, offset: number, bootcamp_id: number) {
-    try {
-      const assessmentSubmissionData = await db.query.zuvyModuleAssessment.findMany({
-        where: (zuvyModuleAssessment, { sql }) => sql`${zuvyModuleAssessment.id} = ${assessment_id}`,
-        columns: {
-          id:true,
-          title:true,
-          passPercentage:true,
-          timeLimit:true,
-        },
-        with: {
-          assessmentSubmissions: {
-            where: (zuvyAssessmentSubmission, { eq }) => eq(zuvyAssessmentSubmission.bootcampId, bootcamp_id),
-            columns: {
-              id:true,
-              userId: true,
-              assessmentId: true,
-              bootcampId: true,
-              marks:true,
-              startedAt:true,
-              submitedAt:true,
-            },
-            with: {
-              user: {
-                columns: {
-                  name: true,
-                  email: true,
-                },
-              },
-            },
-          }
-          
-        },
-        limit: limit,
-        offset: offset,
-      });
+  // async assessmentStudentsInfoBy(assessment_id: number, limit: number, offset: number, bootcamp_id: number) {
+  //   try {
+  //     const assessmentSubmissionData = await db.query.zuvyModuleAssessment.findMany({
+  //       where: (zuvyModuleAssessment, { sql }) => sql`${zuvyModuleAssessment.id} = ${assessment_id}`,
+  //       columns: {
+  //         id:true,
+  //         title:true,
+  //         passPercentage:true,
+  //         timeLimit:true,
+  //       },
+  //       with: {
+  //         assessmentSubmissions: {
+  //           where: (zuvyAssessmentSubmission, { eq }) => eq(zuvyAssessmentSubmission.bootcampId, bootcamp_id),
+  //           columns: {
+  //             id:true,
+  //             userId: true,
+  //             assessmentId: true,
+  //             bootcampId: true,
+  //             marks:true,
+  //             startedAt:true,
+  //             submitedAt:true,
+  //           },
+  //           with: {
+  //             user: {
+  //               columns: {
+  //                 name: true,
+  //                 email: true,
+  //               },
+  //             },
+  //           },
+  //         }
 
-      let bootcampStudents = await db
-        .select()
-        .from(zuvyBatchEnrollments)
-        .where(sql`${zuvyBatchEnrollments.bootcampId} = ${bootcamp_id} AND ${zuvyBatchEnrollments.batchId} IS NOT NULL`);
+  //       },
+  //       limit: limit,
+  //       offset: offset,
+  //     });
+
+  //     let bootcampStudents = await db
+  //       .select()
+  //       .from(zuvyBatchEnrollments)
+  //       .where(sql`${zuvyBatchEnrollments.bootcampId} = ${bootcamp_id} AND ${zuvyBatchEnrollments.batchId} IS NOT NULL`);
 
 
-      return assessmentSubmissionData;
-    } catch (err) {
-      throw err;
-    }
-  }
+  //     return assessmentSubmissionData;
+  //   } catch (err) {
+  //     throw err;
+  //   }
+  // }
 
-  async getAssessmentInfoBy(bootcamp_id, limit:number, offset:number) {
+  async getAssessmentInfoBy(bootcamp_id, limit: number, offset: number) {
     try {
       const statusOfStudentCode = await db.query.zuvyCourseModules.findMany({
         where: (zuvyCourseModules, { sql }) =>
@@ -176,7 +176,7 @@ export class SubmissionService {
         with: {
           moduleAssessments: {
             columns: {
-              moduleId: true, 
+              moduleId: true,
               title: true,
               codingProblems: true,
               mcq: true,
@@ -198,20 +198,20 @@ export class SubmissionService {
         limit: limit,
         offset: offset,
       });
-      
+
       let bootcampStudents = await db.select().from(zuvyBatchEnrollments).where(sql` ${zuvyBatchEnrollments.bootcampId} = ${bootcamp_id} AND${zuvyBatchEnrollments.batchId} IS NOT NULL  `)
 
-        return { data: statusOfStudentCode, totalstudents:bootcampStudents.length};
-      } catch (error) {
-          console.error('Error fetching assessment info:', error);
-          throw error;
-      }
+      return { data: statusOfStudentCode, totalstudents: bootcampStudents.length };
+    } catch (error) {
+      console.error('Error fetching assessment info:', error);
+      throw error;
+    }
   }
 
   // assessment submission api 
   async assessmentStart(assessmentData, studentId: number) {
     try {
-      return await db.insert(zuvyAssessmentSubmission).values({...assessmentData, userId:studentId}).returning();
+      return await db.insert(zuvyAssessmentSubmission).values({ ...assessmentData, userId: studentId }).returning();
     } catch (err) {
       throw err;
     }
@@ -225,37 +225,37 @@ export class SubmissionService {
     }
   }
 
-  async submissionOpenended(OpenendedQuestionData:CreateOpenendedQuestionDto, studentId:number){
-    try{
-      const OpenendedQuestionSubmission = await db.insert(zuvyOpenEndedQuestionSubmission).values({...OpenendedQuestionData, studentId}).returning();
+  async submissionOpenended(OpenendedQuestionData: CreateOpenendedQuestionDto, userId: number) {
+    try {
+      const OpenendedQuestionSubmission = await db.insert(zuvyOpenEndedQuestionSubmission).values({ ...OpenendedQuestionData, userId }).returning();
       return OpenendedQuestionSubmission;
-    }catch(err){
+    } catch (err) {
       throw err;
     }
   }
 
-  async patchOpenendedQuestion(data: PatchOpenendedQuestionDto, id: number){
-    try{
+  async patchOpenendedQuestion(data: PatchOpenendedQuestionDto, id: number) {
+    try {
       const res = await db.update(zuvyOpenEndedQuestionSubmission).set(data).where(eq(zuvyOpenEndedQuestionSubmission.id, id)).returning();
       return res;
-    }catch(err){
+    } catch (err) {
       throw err;
     }
   }
 
-  async instructorFeedback(data: InstructorFeedbackDto, id: number){
-    try{
+  async instructorFeedback(data: InstructorFeedbackDto, id: number) {
+    try {
       const res = await db.update(zuvyOpenEndedQuestionSubmission).set(data).where(eq(zuvyOpenEndedQuestionSubmission.id, id)).returning();
       return res;
-    }catch(err){
+    } catch (err) {
       throw err;
     }
   }
 
-  async getOpenendedQuestionSubmission(submer_assissment_id){
-    try{
+  async getOpenendedQuestionSubmission(submer_assissment_id) {
+    try {
       const res = await db.query.zuvyOpenEndedQuestionSubmission.findMany({
-        where: (zuvyOpenEndedQuestionSubmission, {eq}) => eq(zuvyOpenEndedQuestionSubmission.id, submer_assissment_id),
+        where: (zuvyOpenEndedQuestionSubmission, { eq }) => eq(zuvyOpenEndedQuestionSubmission.id, submer_assissment_id),
         with: {
           user: {
             columns: {
@@ -273,102 +273,101 @@ export class SubmissionService {
         }
       })
       return res;
-    } catch (err){
+    } catch (err) {
       throw err;
     }
   }
 
-  async getAssessmentSubmission(assessment_id, studentId){
-    try{
-      const res = await db.query.zuvyAssessmentSubmission.findMany({
-        where: (zuvyAssessmentSubmission, {eq, and}) => and(eq(zuvyAssessmentSubmission.assessmentId, assessment_id), eq(zuvyAssessmentSubmission.userId, studentId)),
-        with: {
-          user: {
-            columns: {
-              name: true,
-              email: true,
-            },
-          },
-          assessment: {
-            columns: {
-              id: true,
-              title: true,
-              passPercentage: true,
-              timeLimit: true,
-            },
-          },
-          openEndedSubmission: {
-            columns: {
-              id: true,
-              question_id: true,
-              answer: true,
-              marks: true,
-              feedback: true,
-              submitAt: true,
-              assessmentId: true,
-            },
-            with: {
-              openEnded: {
-                columns: {
-                  id: true,
-                  question: true,
-                  difficulty: true,
-                },
-              },
-            
-            },
-          },
-          codingSubmission: {
-            columns: {
-              id: true,
-              questionSolved: true,
-              assessmentId: true,
-            },
-          },
-          quizSubmission: {
-            columns: {
-              id: true,
-              mcqId: true,
-              status: true,
-              chosenOption: true,
-              attempt: true,
-              assessmentId: true,
-            },
-          },
-        }
-      })
-      return res;
-    } catch (err){
-      throw err;
-    }
-  }
+  // async getAssessmentSubmission(assessment_id, studentId){
+  //   try{
+  //     const res = await db.query.zuvyAssessmentSubmission.findMany({
+  //       where: (zuvyAssessmentSubmission, {eq, and}) => and(eq(zuvyAssessmentSubmission.assessmentId, assessment_id), eq(zuvyAssessmentSubmission.userId, studentId)),
+  //       with: {
+  //         user: {
+  //           columns: {
+  //             name: true,
+  //             email: true,
+  //           },
+  //         },
+  //         assessment: {
+  //           columns: {
+  //             id: true,
+  //             title: true,
+  //             passPercentage: true,
+  //             timeLimit: true,
+  //           },
+  //         },
+  //         openEndedSubmission: {
+  //           columns: {
+  //             id: true,
+  //             question_id: true,
+  //             answer: true,
+  //             marks: true,
+  //             feedback: true,
+  //             submitAt: true,
+  //             assessmentId: true,
+  //           },
+  //           with: {
+  //             openEnded: {
+  //               columns: {
+  //                 id: true,
+  //                 question: true,
+  //                 difficulty: true,
+  //               },
+  //             },
 
-  async getAllProjectSubmissions(bootcampId : number)
-  {
+  //           },
+  //         },
+  //         codingSubmission: {
+  //           columns: {
+  //             id: true,
+  //             questionSolved: true,
+  //             assessmentId: true,
+  //           },
+  //         },
+  //         quizSubmission: {
+  //           columns: {
+  //             id: true,
+  //             mcqId: true,
+  //             status: true,
+  //             chosenOption: true,
+  //             attempt: true,
+  //             assessmentId: true,
+  //           },
+  //         },
+  //       }
+  //     })
+  //     return res;
+  //   } catch (err){
+  //     throw err;
+  //   }
+  // }
+
+  async getAllProjectSubmissions(bootcampId: number) {
     try {
       const data = await db.query.zuvyBootcamps.findFirst({
         columns: {
-          id:true,
-          name:true
+          id: true,
+          name: true
         },
-        where : (bootcamp,{eq}) => 
-          eq(bootcamp.id,bootcampId),
-        with : {
-          bootcampModules : {
+        where: (bootcamp, { eq }) =>
+          eq(bootcamp.id, bootcampId),
+        with: {
+          bootcampModules: {
             columns: {
-              id:true
+              id: true
             },
-            where : (courseModule,{sql}) => 
+            where: (courseModule, { sql }) =>
               sql`${courseModule.typeId} = 2`,
             orderBy: (courseModule, { asc }) => asc(courseModule.order),
-            with : {
-              projectData : {
-                columns:{
-                  id:true,
-                  title:true
+            with: {
+              projectData: {
+                columns: {
+                  id: true,
+                  title: true
                 },
-                with : {
-                  projectTrackingData:true
+                with: {
+                  projectTrackingData: true
                 }
               }
             }
@@ -382,17 +381,16 @@ export class SubmissionService {
         })
         .from(zuvyBatchEnrollments)
         .where(eq(zuvyBatchEnrollments.bootcampId, bootcampId));
-      
-        data['bootcampModules'].forEach((module: any) => {
-          module.projectData.forEach((project) => {
-            project['submitStudents'] =
-              project['projectTrackingData'].length;
-            delete project['projectTrackingData'];
-          });
+
+      data['bootcampModules'].forEach((module: any) => {
+        module.projectData.forEach((project) => {
+          project['submitStudents'] =
+            project['projectTrackingData'].length;
+          delete project['projectTrackingData'];
         });
-       
-        if(data['bootcampModules'].length > 0)
-          {
+      });
+
+      if (data['bootcampModules'].length > 0) {
         return {
           status: 'success',
           code: 200,
@@ -401,39 +399,37 @@ export class SubmissionService {
         }
       }
       else {
-        return{
-         status:'error',
-         code: 404,
-         message: 'No project in this course.'
+        return {
+          status: 'error',
+          code: 404,
+          message: 'No project in this course.'
         }
       }
 
     }
-    catch(err)
-    {
+    catch (err) {
       throw err;
     }
   }
 
-  async getUserDetailsForProject(projectId:number,bootcampId:number,limit:number,offset:number)
-  {
+  async getUserDetailsForProject(projectId: number, bootcampId: number, limit: number, offset: number) {
     try {
       const projectSubmissionData = await db.query.zuvyCourseProjects.findFirst({
         where: (zuvyProject, { sql }) => sql`${zuvyProject.id} = ${projectId}`,
         columns: {
-          id:true,
-          title:true,
+          id: true,
+          title: true,
         },
         with: {
           projectTrackingData: {
             where: (projectTracking, { eq }) => eq(projectTracking.bootcampId, bootcampId),
             columns: {
-              id:true,
+              id: true,
               userId: true,
-              projectId:true,
-              bootcampId:true,
-              isChecked:true,
-              moduleId:true
+              projectId: true,
+              bootcampId: true,
+              isChecked: true,
+              moduleId: true
             },
             with: {
               userDetails: {
@@ -446,38 +442,35 @@ export class SubmissionService {
             limit: limit,
             offset: offset
           }
-          
+
         }
       });
-    
-      const totalStudentsCount = await db.select().from(zuvyProjectTracking).where(sql `${zuvyProjectTracking.projectId} = ${projectId} and ${zuvyProjectTracking.bootcampId} = ${bootcampId}`);
-      const totalPages = Math.ceil(totalStudentsCount.length/limit);
 
-      if(projectSubmissionData['projectTrackingData'].length > 0)
-        {
+      const totalStudentsCount = await db.select().from(zuvyProjectTracking).where(sql`${zuvyProjectTracking.projectId} = ${projectId} and ${zuvyProjectTracking.bootcampId} = ${bootcampId}`);
+      const totalPages = Math.ceil(totalStudentsCount.length / limit);
 
-      return {
-        status: 'success',
-        code: 200,
-        projectSubmissionData,
-        totalPages
+      if (projectSubmissionData['projectTrackingData'].length > 0) {
+
+        return {
+          status: 'success',
+          code: 200,
+          projectSubmissionData,
+          totalPages
+        }
       }
-    }
-    else {
-      return {
-        status: 'error',
-        code: 404,
-        message: 'No submission from any student for this project'
+      else {
+        return {
+          status: 'error',
+          code: 404,
+          message: 'No submission from any student for this project'
+        }
       }
-    }
-    }catch(err)
-    {
-       throw err;
+    } catch (err) {
+      throw err;
     }
   }
 
-  async getProjectDetailsForAUser(projectId:number,userId:number,bootcampId:number)
-  {
+  async getProjectDetailsForAUser(projectId: number, userId: number, bootcampId: number) {
     try {
       const projectSubmissionDetails = await db.query.zuvyCourseProjects.findFirst({
         where: (zuvyProject, { sql }) => sql`${zuvyProject.id} = ${projectId}`,
@@ -492,19 +485,94 @@ export class SubmissionService {
                 }
               },
             }
-          } 
+          }
         }
       });
-
       return {
-        status:'success',
+        status: 'success',
         code: 200,
         projectSubmissionDetails
       }
-    }catch(err)
-    {
+    } catch (err) {
       throw err;
     }
   }
-  
+
+  // submission of the quizzez , and open ended questions, And  two different functons
+  async submitQuiz(answers, userId: number, assessmentSubmissionId: number) {
+    try {
+      let submissionData = await this.getSubmissionQuiz(assessmentSubmissionId, userId);
+      let updateData, InsertData
+      // if submission already exists then update the submission
+      if (submissionData.length > 0) {
+        let filterQuestionId = submissionData.map((answer) => answer.questionId);
+        updateData = answers.map((answer) => {
+          if (filterQuestionId.includes(answer.questionId)) {
+            return { ...answer }
+          } else {
+            InsertData.push({ ...answer, userId, assessmentSubmissionId })
+          }
+        });
+        updateData = await db.update(zuvyQuizTracking).set(updateData).where(sql`${zuvyQuizTracking.assessmentSubmissionId} = ${assessmentSubmissionId} and ${zuvyQuizTracking.userId} = ${userId}`).returning();
+        InsertData = await db.insert(zuvyQuizTracking).values(InsertData).returning();
+
+      } else {
+        // filter the submission data and insert the new submission if not exists then insert the new submission
+        let quizInsertData = answers.map((answer) => { return { ...answer, userId, assessmentSubmissionId } });
+        updateData = [] // if no submission data then update data will be empty
+        InsertData = await db.insert(zuvyQuizTracking).values(quizInsertData).returning();
+      }
+      return [...InsertData, ...updateData];
+    } catch (err) {
+      throw err;
+    }
+  }
+
+  async getSubmissionQuiz(assessmentSubmissionId, userId: number) {
+    try {
+      const submissionQuiz = await db.select().from(zuvyQuizTracking).where(sql`${zuvyQuizTracking.assessmentSubmissionId} = ${assessmentSubmissionId} and ${zuvyQuizTracking.userId} = ${userId}`);
+      return submissionQuiz;
+    } catch (err) {
+      throw err;
+    }
+  }
+
+  async submitOpenEndedQuestion(answers, userId: number, assessmentSubmissionId: number) {
+    try {
+      let submissionData = await this.getSubmissionOpenEnded(assessmentSubmissionId, userId);
+      let updateData, InsertData
+      // if submission already exists then update the submission
+      if (submissionData.length > 0) {
+        let filterQuestionId = submissionData.map((answer) => answer.questionId);
+        updateData = answers.map((answer) => {
+          if (filterQuestionId.includes(answer.questionId)) {
+            return { ...answer }
+          } else {
+            InsertData.push({ ...answer, userId, assessmentSubmissionId })
+          }
+        });
+        updateData = await db.update(zuvyOpenEndedQuestionSubmission).set(updateData).where(sql`${zuvyOpenEndedQuestionSubmission.assessmentSubmissionId} = ${assessmentSubmissionId} and ${zuvyOpenEndedQuestionSubmission.userId} = ${userId}`).returning();
+        InsertData = await db.insert(zuvyOpenEndedQuestionSubmission).values(InsertData).returning();
+
+      } else {
+        // filter the submission data and insert the new submission if not exists then insert the new submission
+        let quizInsertData = answers.map((answer) => { return { ...answer, userId, assessmentSubmissionId } });
+        updateData = [] // if no submission data then update data will be empty
+
+        InsertData = await db.insert(zuvyOpenEndedQuestionSubmission).values(quizInsertData).returning();
+      }
+      return [...InsertData, ...updateData];
+    } catch (err) {
+      throw err;
+    }
+  }
+
+  async getSubmissionOpenEnded(assessmentSubmissionId, userId: number) {
+    try {
+      const submissionOpenEnded = await db.select().from(zuvyOpenEndedQuestionSubmission).where(sql`${zuvyOpenEndedQuestionSubmission.assessmentSubmissionId} = ${assessmentSubmissionId} and ${zuvyOpenEndedQuestionSubmission.userId} = ${userId}`);
+      return submissionOpenEnded;
+    } catch (err) {
+      throw err;
+    }
+  }
 }

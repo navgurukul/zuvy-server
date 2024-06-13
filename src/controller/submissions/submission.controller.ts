@@ -23,7 +23,7 @@ import {
     ApiQuery,
   } from '@nestjs/swagger';
   import { ApiBearerAuth } from '@nestjs/swagger';
-  import {InstructorFeedbackDto, PatchOpenendedQuestionDto, CreateOpenendedQuestionDto, SubmissionassessmentDto, StartAssessmentDto} from './dto/submission.dto';
+  import {InstructorFeedbackDto, PatchOpenendedQuestionDto, CreateOpenendedQuestionDto, SubmissionassessmentDto, StartAssessmentDto, OpenEndedQuestionSubmissionDtoList, QuizSubmissionDtoList} from './dto/submission.dto';
 
   @Controller('submission')
   @ApiTags('submission')
@@ -107,26 +107,26 @@ import {
       return this.submissionService.getAssessmentInfoBy(bootcampId, limit, offset);
     }
 
-    @Get('/assessment/students')
-    @ApiBearerAuth()
-    @ApiQuery({
-      name: 'limit',
-      required: false,
-      type: Number,
-    })
-    @ApiQuery({
-      name: 'offset',
-      required: false,
-      type: Number,
-    })
-    async assessmentStudentsInfoBy(
-      @Query('assessmentId') assessmentId: number,
-      @Query('bootcampId') bootcampId: number,
-      @Query('limit') limit: number,
-      @Query('offset') offset : number
-    ){
-      return this.submissionService.assessmentStudentsInfoBy(assessmentId, limit, offset,bootcampId);
-    }
+    // @Get('/assessment/students')
+    // @ApiBearerAuth()
+    // @ApiQuery({
+    //   name: 'limit',
+    //   required: false,
+    //   type: Number,
+    // })
+    // @ApiQuery({
+    //   name: 'offset',
+    //   required: false,
+    //   type: Number,
+    // })
+    // async assessmentStudentsInfoBy(
+    //   @Query('assessmentId') assessmentId: number,
+    //   @Query('bootcampId') bootcampId: number,
+    //   @Query('limit') limit: number,
+    //   @Query('offset') offset : number
+    // ){
+    //   return this.submissionService.assessmentStudentsInfoBy(assessmentId, limit, offset,bootcampId);
+    // }
 
 
     @Post('/openended/questions')
@@ -165,11 +165,11 @@ import {
       return this.submissionService.assessmentSubmission(data, id);
     }
 
-    @Get('/assessment')
-    @ApiBearerAuth()
-    async getAssessmentSubmission(@Query('assessment_id') assessment_id: number,  @Req() req){
-      return this.submissionService.getAssessmentSubmission(assessment_id, req.user[0].id);
-    }
+    // @Get('/assessment')
+    // @ApiBearerAuth()
+    // async getAssessmentSubmission(@Query('assessment_id') assessment_id: number,  @Req() req){
+    //   return this.submissionService.getAssessmentSubmission(assessment_id, req.user[0].id);
+    // }
 
     @Get('/submissionsOfProjects/:bootcampId')
     @ApiOperation({ summary: 'Get the submission of projects by bootcampId' })
@@ -207,6 +207,18 @@ import {
       @Param('userId') userId: number
     ){
       return this.submissionService.getProjectDetailsForAUser(projectId,userId,bootcampId);
+    }
+
+    @Patch('/quiz/assessmentSubmissionId=:assessmentSubmissionId')
+    @ApiBearerAuth()
+    async submitQuiz(@Body() QuizSubmission:QuizSubmissionDtoList, @Param('assessmentSubmissionId') assessmentSubmissionId: number, @Req() req){
+      return this.submissionService.submitQuiz(QuizSubmission.quizSubmissionDto,  req.user[0].id, assessmentSubmissionId);
+    }
+
+    @Patch("/openended/assessmentSubmissionId=:assessmentSubmissionId")
+    @ApiBearerAuth()
+    async submitOpenended(@Body() OpenEndedQuestionSubmission:OpenEndedQuestionSubmissionDtoList, @Param('assessmentSubmissionId') assessmentSubmissionId: number, @Req() req){
+      return this.submissionService.submitOpenEndedQuestion(OpenEndedQuestionSubmission.openEndedQuestionSubmissionDto, req.user[0].id, assessmentSubmissionId);
     }
   }
   

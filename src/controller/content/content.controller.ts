@@ -12,6 +12,7 @@ import {
   Optional,
   Query,
   BadRequestException,
+  Req
 } from '@nestjs/common';
 import { ContentService } from './content.service';
 import {
@@ -37,7 +38,8 @@ import {
   deleteQuestionDto,
   UpdateOpenEndedDto,
   CreateTagDto,
-  projectDto
+  projectDto,
+  CreateChapterDto
 } from './dto/content.dto';
 import { CreateProblemDto } from '../codingPlatform/dto/codingPlatform.dto';
 import { difficulty } from 'drizzle/schema';
@@ -209,24 +211,13 @@ export class ContentController {
   }
 
 
-  @Post('/chapter/:moduleId')
+  @Post('/chapter')
   @ApiOperation({ summary: 'Create a chapter for this module' })
-  @ApiQuery({
-    name: 'topicId',
-    required: true,
-    type: Number,
-    description: 'topic id',
-  })
   @ApiBearerAuth()
   async createChapter(
-    @Param('moduleId') moduleId: number,
-    @Query('topicId') topicId: number,
+    @Body() chapterData: CreateChapterDto,
   ) {
-    const res = await this.contentService.createChapterForModule(
-      moduleId,
-      topicId,
-    );
-    return res;
+    return this.contentService.createChapterForModule(chapterData.moduleId, chapterData.topicId, chapterData.order, chapterData.bootcampId);
   }
 
   @Post('/quiz')
@@ -241,15 +232,15 @@ export class ContentController {
     return res;
   }
 
-  @Put('/editAssessment/:assessmentId')
+  @Put('/editAssessment/:assessmentOutsourseId')
   @ApiOperation({ summary: 'Edit the assessment for this module' })
   @ApiBearerAuth()
   async editAssessment(
     @Body() assessmentBody: CreateAssessmentBody,
-    @Param('assessmentId') assessmentId: number,
+    @Param('assessmentOutsourseId') assessmentOutsourseId: number
   ) {
     const res = await this.contentService.editAssessment(
-      assessmentId,
+      assessmentOutsourseId,
       assessmentBody,
     );
     return res;
@@ -275,9 +266,8 @@ export class ContentController {
   @Get('/chapterDetailsById/:chapterId')
   @ApiOperation({ summary: 'Get chapter details by id' })
   @ApiBearerAuth()
-  async getChapterDetailsById(@Param('chapterId') chapterId: number) {
-    const res = await this.contentService.getChapterDetailsById(chapterId);
-    return res;
+  async getChapterDetailsById(@Param('chapterId') chapterId: number, @Query('bootcampId') bootcampId: number, @Query('moduleId') moduleId: number, @Query('topicId') topicId: number){
+    return this.contentService.getChapterDetailsById(chapterId, bootcampId, moduleId, topicId);
   }
 
   @Put('/editModuleOfBootcamp/:bootcampId')
@@ -552,18 +542,43 @@ export class ContentController {
   @ApiOperation({ summary: 'Create a open ended question' })
   @ApiBearerAuth()
   async createOpenEndedQuestion(@Body() oEndedQuestions: openEndedDto) {
-    const res =
-      await this.contentService.createOpenEndedQuestions(oEndedQuestions);
-    return res;
+    return this.contentService.createOpenEndedQuestions(oEndedQuestions);
   }
 
   @Delete('/deleteOpenEndedQuestion')
   @ApiOperation({ summary: 'Delete openended question' })
   @ApiBearerAuth()
   async deleteOpenEndedQuestion(@Body() questionIds: deleteQuestionDto) {
-    const res = await this.contentService.deleteOpenEndedQuestion(questionIds);
-    return res;
+    return this.contentService.deleteOpenEndedQuestion(questionIds);
   }
 
+  @Get('/students/assessmentOutsourseId=:assessmentOutsourseId')
+  @ApiOperation({ summary: 'Get the student of a particular assessment' })
+  @ApiBearerAuth()
+  async getStudentsOfAssessment(@Param('assessmentOutsourseId') assessmentOutsourseId: number, @Req() req) {
+    return this.contentService.getStudentsOfAssessment(assessmentOutsourseId,req);
+  }
 
+  // startAssessmentForStudent
+  @Get('/startAssessmentForStudent/assessmentOutsourseId=:assessmentOutsourseId')
+  @ApiOperation({ summary: 'Start the assessment for a student' })
+  @ApiBearerAuth()
+  async startAssessmentForStudent(@Req() req, @Param('assessmentOutsourseId') assessmentOutsourseId: number){
+    return this.contentService.startAssessmentForStudent(assessmentOutsourseId,req);
+  }
+
+  @Get('/assessmentDetailsOfQuiz/:assessmentOutsourseId')
+  @ApiOperation({ summary: 'Get the assessment details of the Quiz' })
+  @ApiBearerAuth()
+  async getAssessmentDetailsOfQuiz(@Param('assessmentOutsourseId') assessmentOutsourseId: number, @Req() req){
+    return this.contentService.getAssessmentDetailsOfQuiz(assessmentOutsourseId, req.user[0].id);
+  }
+
+  // openended questions
+  @Get('/assessmentDetailsOfOpenEnded/:assessmentOutsourseId')
+  @ApiOperation({ summary: 'Get the assessment details of the open Ended questions' })
+  @ApiBearerAuth()
+  async getAssessmentDetailsOfOpenEnded(@Param('assessmentOutsourseId') assessmentOutsourseId: number, @Req() req){
+    return this.contentService.getAssessmentDetailsOfOpenEnded(assessmentOutsourseId, req.user[0].id);
+  }
 }

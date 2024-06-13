@@ -148,7 +148,7 @@ try {
     }
   }
 
-  async updateSubmissionWithToken(userId: number, questionId: number, token: string,status:string) {
+  async updateSubmissionWithToken(userId: number, questionId: number, token: string,status:string, assessmentSubmissionId = null) {
   try {
     
     const existingSubmission = await db.select()
@@ -166,7 +166,9 @@ try {
       await db.insert(zuvyCodingSubmission)
         .values({
           userId: BigInt(userId),
-          questionSolved: questionSolved
+          questionSolved: questionSolved,
+          assessmentSubmissionId,
+          questionId
         })
         .returning();
     } else {

@@ -82,8 +82,8 @@ export class StudentController {
     return res;
   }
 
-  
-  @Get('/Dashboard/classes/:batch_id')
+
+  @Get('/Dashboard/classes')
   @ApiOperation({ summary: 'Get dashboard upcoming class' })
   @ApiBearerAuth()
   @ApiQuery({
@@ -92,16 +92,16 @@ export class StudentController {
     type: String,
     description: 'batch_id',
   })
-  async getUpcomingClass( @Req() req, @Query('batch_id') batchID: number
-  ){
-    return  await this.studentService.getUpcomingClass(req.user[0].id,batchID);
+  async getUpcomingClass(@Req() req, @Query('batch_id') batchID: number
+  ) {
+    return await this.studentService.getUpcomingClass(req.user[0].id, batchID);
   }
 
   @Get('/Dashboard/attendance')
   @ApiOperation({ summary: 'Get dashboard Attendance.' })
   @ApiBearerAuth()
-  async getAttendanceClass( @Req() req
-  ){
-    return  await this.studentService.getAttendanceClass(req.user[0].id);
+  async getAttendanceClass(@Req() req
+  ) {
+    return await this.studentService.getAttendanceClass(req.user[0].id);
   }
 }
