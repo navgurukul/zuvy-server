@@ -552,11 +552,11 @@ export class ContentController {
     return this.contentService.deleteOpenEndedQuestion(questionIds);
   }
 
-  @Get('/students/assessmentOutsourseId=:assessmentOutsourseId')
+  @Get('/students/assessmentId=:assessmentId')
   @ApiOperation({ summary: 'Get the student of a particular assessment' })
   @ApiBearerAuth()
-  async getStudentsOfAssessment(@Param('assessmentOutsourseId') assessmentOutsourseId: number, @Req() req) {
-    return this.contentService.getStudentsOfAssessment(assessmentOutsourseId,req);
+  async getStudentsOfAssessment(@Param('assessmentId') assessmentId: number , @Query('moduleId') moduleId:number , @Query('bootcampId') bootcampId:number, @Query('chapterId') chapterId:number, @Req() req) {
+    return this.contentService.getStudentsOfAssessment(assessmentId, chapterId, moduleId, bootcampId, req);
   }
 
   // startAssessmentForStudent
