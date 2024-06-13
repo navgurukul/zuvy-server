@@ -1804,13 +1804,9 @@ export class ContentService {
         }
       })
       if (assessment.length == 0) {
-        throw ({
-          status: 'error',
-          statusCode: 404,
-          message: 'Assessment not found',
-        });
+        return [];
       } 
-      return assessment[0];
+      return assessment;
     } catch (err) {
       throw err;
     }
@@ -1844,13 +1840,9 @@ export class ContentService {
         }
       })
       if (assessment.length == 0) {
-        throw ({
-          status: 'error',
-          statusCode: 404,
-          message: 'Assessment not found',
-        });
+        return [];
       } 
-      return assessment[0];
+      return assessment;
     } catch (err) {
       throw err;
     }
