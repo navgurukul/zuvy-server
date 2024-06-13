@@ -153,16 +153,16 @@ import {
       return this.submissionService.getOpenendedQuestionSubmission(id);
     }
     
-    @Post('/assessment/start')
-    @ApiBearerAuth()
-    async assessmentStart(@Body() data:StartAssessmentDto , @Req() req){
-      return this.submissionService.assessmentStart(data, req.user[0].id);
-    }
+    // @Post('/assessment/start')
+    // @ApiBearerAuth()
+    // async assessmentStart(@Body() data:StartAssessmentDto , @Req() req){
+    //   return this.submissionService.assessmentStart(data, req.user[0].id);
+    // }
     
     @Patch('/assessment/submit')
     @ApiBearerAuth()
-    async assessmentSubmission(@Body() data:SubmissionassessmentDto, @Query('id') id:number , @Req() req){
-      return this.submissionService.assessmentSubmission(data, id);
+    async assessmentSubmission(@Body() data:SubmissionassessmentDto, @Query('assessmentSubmissionId') assessmentSubmissionId:number , @Req() req){
+      return this.submissionService.assessmentSubmission(data, assessmentSubmissionId);
     }
 
     // @Get('/assessment')

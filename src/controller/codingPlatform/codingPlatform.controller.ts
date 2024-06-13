@@ -57,7 +57,7 @@ export class CodingPlatformController {
   })
   @ApiQuery({
     name: 'assessmentSubmissionId',
-    required: true,
+    required: false,
     type: String,
     description: 'Action such as submit or run',
   })

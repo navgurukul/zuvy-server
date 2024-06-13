@@ -1695,7 +1695,7 @@ export class ContentService {
           message: 'Assessment not found',
         });
       } 
-      assessment[0]["toatalQuizzes"] = assessment[0]?.Quizzes.length|| 0;
+      assessment[0]["totalQuizzes"] = assessment[0]?.Quizzes.length|| 0;
       assessment[0]["totalOpenEndedQuestions"] = assessment[0]?.OpenEndedQuestions.length || 0;
       assessment[0]["totalCodingQuestions"] = assessment[0]?.CodingQuestions.length || 0;
       
@@ -1804,13 +1804,9 @@ export class ContentService {
         }
       })
       if (assessment.length == 0) {
-        throw ({
-          status: 'error',
-          statusCode: 404,
-          message: 'Assessment not found',
-        });
+        return [];
       } 
-      return assessment[0];
+      return assessment;
     } catch (err) {
       throw err;
     }
@@ -1844,13 +1840,9 @@ export class ContentService {
         }
       })
       if (assessment.length == 0) {
-        throw ({
-          status: 'error',
-          statusCode: 404,
-          message: 'Assessment not found',
-        });
+        return [];
       } 
-      return assessment[0];
+      return assessment;
     } catch (err) {
       throw err;
     }
