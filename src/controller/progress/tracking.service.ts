@@ -1337,8 +1337,26 @@ export class TrackingService {
                               projectData: true,
                             },
                           });
+                      
+                        if(data)
+                            {
+                          return {
+                            moduleId:data.id,
+                            moduleName: data.name,
+                            typeId: data.typeId,
+                            bootcampId: data['moduleData'].id,
+                            bootcampName: data['moduleData'],
+                            newChapter: data.typeId == 1 ? data['moduleChapterData'][0] : data['projectData'][0]
+                          };
+                        }
+                        else {
+                            return {
+                            status: 'error',
+                            code: 404,
+                            message: 'Start a course'
+                        }
 
-                          return data;
+                        }
                     }
             }
          else {
