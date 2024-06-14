@@ -55,20 +55,34 @@ export class BootcampService {
     }
   }
 
-  async getAllBootcamps(limit: number, offset: number): Promise<any> {
+  async getAllBootcamps(limit: number, offset: number, searchTerm?: string | number): Promise<any> {
     try {
-      let getAllBootcamps = await db
-        .select()
-        .from(zuvyBootcamps)
-        .limit(limit)
-        .offset(offset);
+      let query;
+      let countQuery;
+      if (searchTerm) {
+        if (typeof searchTerm === 'string') {
+          const searchCondition = sql`LOWER(${zuvyBootcamps.name}) LIKE ${searchTerm.toLowerCase()} || '%'`;
+          query = db.select().from(zuvyBootcamps).where(searchCondition).limit(limit).offset(offset);
+          countQuery = db.select({ count: count(zuvyBootcamps.id) }).from(zuvyBootcamps).where(searchCondition);
+        } else {
+          const searchCondition = sql`${zuvyBootcamps.id} = ${searchTerm}`;
+          query = db.select().from(zuvyBootcamps).where(searchCondition).limit(limit).offset(offset);
+          countQuery = db.select({ count: count(zuvyBootcamps.id) }).from(zuvyBootcamps).where(searchCondition);
+        }
+      }
+      else {
+        query = db.select().from(zuvyBootcamps).limit(limit).offset(offset);
+        countQuery = db.select({ count: count(zuvyBootcamps.id) }).from(zuvyBootcamps);      }
+      
+      const getBootcamps = await query;
+  
+      const totalCountQuery = await countQuery;
+      const totalCount = totalCountQuery[0].count;
+  
+      const totalPages = Math.ceil(totalCount / limit);
 
-      const totalCountQuery = await db
-        .select({ count: count(zuvyBootcamps.id) })
-        .from(zuvyBootcamps);
-      let totalPages = Math.ceil(totalCountQuery[0].count / limit);
-      let data = await Promise.all(
-        getAllBootcamps.map(async (bootcamp) => {
+      const data = await Promise.all(
+        getBootcamps.map(async (bootcamp) => {
           let [err, res] = await this.enrollData(bootcamp.id);
           if (err) {
             return [err, null];
@@ -76,9 +90,10 @@ export class BootcampService {
           return { ...bootcamp, ...res };
         }),
       );
+  
       return [
         null,
-        { data, totalBootcamps: totalCountQuery[0].count, totalPages },
+        { data, totalBootcamps: totalCount, totalPages },
       ];
     } catch (e) {
       log(`error: ${e.message}`);
@@ -86,37 +101,6 @@ export class BootcampService {
     }
   }
 
-  async searchBootcamps(searchTerm: string | number) {
-    try {
-      let getSearchedBootcamps;
-      if (searchTerm.constructor == String) {
-        getSearchedBootcamps = await db
-          .select()
-          .from(zuvyBootcamps)
-          .where(
-            sql`LOWER(${zuvyBootcamps.name}) LIKE ${searchTerm.toLowerCase()} || '%'`,
-          );
-      } else {
-        getSearchedBootcamps = await db
-          .select()
-          .from(zuvyBootcamps)
-          .where(sql`${zuvyBootcamps.id} = ${searchTerm}`);
-      }
-      let data = await Promise.all(
-        getSearchedBootcamps.map(async (bootcamp) => {
-          let [err, res] = await this.enrollData(bootcamp.id);
-          if (err) {
-            return [err, null];
-          }
-          return { ...bootcamp, ...res };
-        }),
-      );
-      return [null, data];
-    } catch (e) {
-      log(`error: ${e.message}`);
-      return [{ status: 'error', message: e.message, code: 500 }, null];
-    }
-  }
 
   async getBootcampById(id: number, isContent: boolean): Promise<any> {
     try {
