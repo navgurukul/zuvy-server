@@ -1637,12 +1637,12 @@ export class ContentService {
       throw err;
     }
   }
-  async getStudentsOfAssessment(assessmentOutsourseId: number, req) {
+  async getStudentsOfAssessment(assessmentId:number, chapterId: number, moduleId: number, bootcampId: number, req) {
     try {
       let {id} = req.user[0];
       const assessment = await db.query.zuvyOutsourseAssessments.findMany({
         where: (zuvyOutsourseAssessments, { eq }) =>
-          eq(zuvyOutsourseAssessments.id, assessmentOutsourseId),
+          sql`${zuvyOutsourseAssessments.assessmentId} = ${assessmentId} AND ${zuvyOutsourseAssessments.bootcampId} = ${bootcampId} AND ${zuvyOutsourseAssessments.chapterId} = ${chapterId} AND ${zuvyOutsourseAssessments.moduleId} = ${moduleId}`,
         with: {
           submitedOutsourseAssessments: {
             where: (zuvyAssessmentSubmission, { eq }) => eq(zuvyAssessmentSubmission.userId, id),
