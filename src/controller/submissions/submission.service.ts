@@ -449,14 +449,18 @@ export class SubmissionService {
 
       const totalStudentsCount = await db.select().from(zuvyProjectTracking).where(sql`${zuvyProjectTracking.projectId} = ${projectId} and ${zuvyProjectTracking.bootcampId} = ${bootcampId}`);
       const totalPages = Math.ceil(totalStudentsCount.length / limit);
-
       if (projectSubmissionData['projectTrackingData'].length > 0) {
-
+        projectSubmissionData['projectTrackingData'].forEach((project: any) => {
+          project['userName'] = project['userDetails']['name'];
+          project['userEmail'] = project['userDetails']['email'];
+          delete project['userDetails']
+        });
         return {
           status: 'success',
           code: 200,
           projectSubmissionData,
-          totalPages
+          totalPages: limit > 0 ? totalPages : 1,
+          totalStudents : totalStudentsCount.length
         }
       }
       else {
