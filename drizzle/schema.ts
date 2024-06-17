@@ -2669,12 +2669,12 @@ export const zuvyCodingSubmission = main.table("zuvy_coding_submission", {
   assessmentSubmissionId: integer("assessment_submission_id").references(() => zuvyAssessmentSubmission.id, {
     onDelete: 'cascade',
     onUpdate: 'cascade',
-  }).notNull(),
+  }),
   assessmentOutsourseId: integer("assessment_outsourse_id").references(() => zuvyOutsourseAssessments.id, {
     onDelete: 'cascade',
     onUpdate: 'cascade',
   }),
-  questionId: integer("question_id").notNull().references(() => zuvyOutsourseCodingQuestions.id),
+  questionId: integer("question_id").references(() => zuvyOutsourseCodingQuestions.id),
 })
 
 export const zuvyCodingSubmissionRelations = relations(zuvyCodingSubmission, ({ one }) => ({
@@ -2690,6 +2690,14 @@ export const zuvyCodingSubmissionRelations = relations(zuvyCodingSubmission, ({ 
     fields: [zuvyCodingSubmission.questionId],
     references: [zuvyOutsourseCodingQuestions.id],
   }),
+  submission: one(zuvyAssessmentSubmission, {
+    fields: [zuvyCodingSubmission.assessmentSubmissionId],
+    references: [zuvyAssessmentSubmission.id],
+  }),
+  // dataSubmission: one(zuvyCodingQuestions, {
+  //   fields: [zuvyCodingSubmission.assessmentOutsourseId],
+  //   references: [zuvyCodingQuestions.assessmentOutsourseId],
+  // }),
 }))
 
 export const zuvyAssignmentSubmission = main.table("zuvy_assignment_submission", {
@@ -2765,7 +2773,7 @@ export const zuvyQuizTracking = main.table("zuvy_quiz_tracking", {
   attemptCount: integer("attempt_count").default(0),
   chapterId: integer("chapter_id"),
   status: varchar("status", { length: 255 }),
-  chossenOption: integer("chossen_option"),
+  // chossenOption: integer("chossen_option"),
   assessmentSubmissionId: integer("assessment_submission_id").references(() => zuvyAssessmentSubmission.id, {
     onDelete: 'cascade',
     onUpdate: 'cascade',
@@ -2789,6 +2797,7 @@ export const zuvyQuizTrackingRelations = relations(zuvyQuizTracking, ({ one }) =
     fields: [zuvyQuizTracking.questionId],
     references: [zuvyOutsourseQuizzes.id]
   })
+  
 }))
 
 // export const alterZuvyQuizTracking = main.table("")
@@ -2889,13 +2898,6 @@ export const zuvyModuleAssessment = main.table('zuvy_module_assessment', {
   id: serial('id').primaryKey().notNull(),
   title: varchar('title'),
   description: text('description'),
-  passPercentage: integer('pass_percentage'),
-  copyPaste: boolean('copy_paste'),
-  embeddedGoogleSearch: boolean('embedded_google_search'),
-  tabChange: boolean('tab_change'),
-  screenRecord: boolean('screen_record'),
-  webCamera: boolean('web_camera'),
-  timeLimit: bigint('time_limit', { mode: 'number' }),
 });
 
 export const zuvyAssessmentrelations = relations(zuvyModuleAssessment, ({ one, many}) => ({
@@ -2949,6 +2951,7 @@ export const zuvyAssessmentSubmissionRelation = relations(zuvyAssessmentSubmissi
   }),
   openEndedSubmission: many(zuvyOpenEndedQuestionSubmission),
   quizSubmission: many(zuvyQuizTracking),
+  codingSubmission: many(zuvyCodingSubmission),
 }))
 
 
@@ -2985,6 +2988,10 @@ export const zuvyOpenEndedQuestionSubmissionRelation = relations(zuvyOpenEndedQu
     fields: [zuvyOpenEndedQuestionSubmission.questionId],
     references: [zuvyOutsourseOpenEndedQuestions.id],
   }),
+  submission: one(zuvyAssessmentSubmission, {
+    fields: [zuvyOpenEndedQuestionSubmission.assessmentSubmissionId],
+    references: [zuvyAssessmentSubmission.id],
+  })
 }))
 
 
