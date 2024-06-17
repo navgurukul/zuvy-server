@@ -3024,7 +3024,7 @@ export const zuvyOpenEndedQuestions = main.table('zuvy_openEnded_questions', {
   difficulty: difficulty('difficulty'),
 
   tagId: integer('tag_id').references(() => zuvyTags.id),
-  marks: integer('marks'),
+  // marks: integer('marks'),
   usage: integer('usage').default(0),
 });
 
@@ -3267,7 +3267,7 @@ export const zuvyOutsourseCodingQuestionsRelations = relations(zuvyOutsourseCodi
 export const zuvyOutsourseOpenEndedQuestions = main.table('zuvy_outsourse_openEnded_questions', {
   id: serial('id').primaryKey().notNull(),
   openEndedQuestionId: integer('open_ended_question_id').references(() => zuvyOpenEndedQuestions.id),
-  marks: integer('marks'),
+  // marks: integer('marks'),
 
   assessmentOutsourseId: integer("assessment_outsourse_id").references(() => zuvyOutsourseAssessments.id, {
     onDelete: 'cascade',
@@ -3315,7 +3315,7 @@ export const OutsourseOpenEndedQuestionsRelations = relations(zuvyOutsourseOpenE
 export const zuvyOutsourseQuizzes = main.table('zuvy_outsourse_quizzes', {
   id: serial('id').primaryKey().notNull(),
   quiz_id: integer('quiz_id').references(() => zuvyModuleQuiz.id),
-  marks: integer('marks'),
+  // marks: integer('marks'),
 
   assessmentOutsourseId: integer("assessment_outsourse_id").references(() => zuvyOutsourseAssessments.id, {
     onDelete: 'cascade',
