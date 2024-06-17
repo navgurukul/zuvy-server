@@ -2773,7 +2773,6 @@ export const zuvyQuizTracking = main.table("zuvy_quiz_tracking", {
   attemptCount: integer("attempt_count").default(0),
   chapterId: integer("chapter_id"),
   status: varchar("status", { length: 255 }),
-  // chossenOption: integer("chossen_option"),
   assessmentSubmissionId: integer("assessment_submission_id").references(() => zuvyAssessmentSubmission.id, {
     onDelete: 'cascade',
     onUpdate: 'cascade',

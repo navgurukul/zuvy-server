@@ -1787,7 +1787,6 @@ export class ContentService {
               id: true,
               userId: true,
               chosenOption: true,
-              chossenOption: true,
               questionId: true,
               attemptCount: true,
             }
