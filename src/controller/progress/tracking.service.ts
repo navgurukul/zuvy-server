@@ -1375,84 +1375,6 @@ export class TrackingService {
       throw err;
     }
   }
-  async calculateTotalPoints(data: any){
-    const pointsMapping = {
-      mcq: { "Easy": 1, "Medium": 2, "Hard": 3 },
-      open: { "Easy": 3, "Medium": 5, "Hard": 7 },
-      coding: { "Easy": 5, "Medium": 10, "Hard": 15 }
-  };
-    const totalMCQPoints = data.Quizzes.reduce((sum, q) => sum + pointsMapping.mcq[q.difficulty], 0);
-    const totalOpenPoints = data.OpenEndedQuestions.reduce((sum, q) => sum + pointsMapping.open[q.difficulty], 0);
-    const totalCodingPoints = data.CodingQuestions.reduce((sum, q) => sum + pointsMapping.coding[q.difficulty], 0);
-
-    const totalPoints = totalMCQPoints + totalOpenPoints + totalCodingPoints;
-
-    return { totalMCQPoints, totalOpenPoints, totalCodingPoints, totalPoints };
-  }
-
-  async calculateAssessmentResults(data,totalOpenEnded, totalQuiz, totalCoding) {
-   
-    let quizTotalAttemted = 0;
-    let quizCorrect = 0;
-    let quizScore = 0;
-
-    let openTotalAttemted = 0;
-    let openScore = 0;
-
-    let codingTotalAttemted = 0
-    let codingScore = 0
-
-    // Difficulty Points Mapping
-    const mcqPoints: { [key: string]: number } = { "Easy": 1, "Medium": 2, "Hard": 3 };
-    const openPoints: { [key: string]: number } = { "Easy": 3, "Medium": 5, "Hard": 7 };
-    const codingPoints: { [key: string]: number } = { "Easy": 5, "Medium": 10, "Hard": 15 };
-
-    console.log('data', data)
-    // Processing Quizzes
-    let needQuizScore = 0;
-    data.quizSubmission.forEach(quiz => {
-      quizTotalAttemted += 1;
-      if (quiz.correctOption) {
-          quizCorrect += 1;
-          quizScore += mcqPoints[quiz.difficulty];
-      }
-      needQuizScore += mcqPoints[quiz.difficulty];
-    });
-
-    // Processing Open-Ended Questions
-    let needOpenScore = 0;
-    data.openEndedSubmission.forEach(question => {
-      openTotalAttemted += 1;
-      openScore += openPoints[question.submissionData.OpenEndedQuestion.difficulty];
-    });
-
-    // Processing Coding Questions
-    let needCodingScore = 0;
-    data.codingSubmission.forEach(question => {
-      needCodingScore += codingPoints[question.different]
-      
-    });
-
-    // Total scores
-    const totalScore = quizScore + openScore;
-    const totalPossibleScore = (totalQuiz * Math.max(...Object.values(mcqPoints))) + (totalOpenEnded * Math.max(...Object.values(openPoints)));
-
-    // Calculate percentage
-    const percentageScore = (totalScore / totalPossibleScore) * 100;
-
-    // Assessment pass status
-    const passStatus = percentageScore >= data.passPercentage;
-
-  
-    return {
-      totalQuiz,
-      quizCorrect,
-      quizScore,
-      totalOpenEnded,
-      openScore,
-      passStatus
-    };
-  }
 
   async formatedChapterDetails(chapterDetails: any) {
     try{
@@ -1480,6 +1402,84 @@ export class TrackingService {
     }
   }
 
+  async calculateTotalPoints(data: any){
+    const pointsMapping = {
+      mcq: { "Easy": 1, "Medium": 2, "Hard": 3 },
+      open: { "Easy": 3, "Medium": 5, "Hard": 7 },
+      coding: { "Easy": 5, "Medium": 10, "Hard": 15 }
+  };
+    const totalMCQPoints = data.Quizzes.reduce((sum, q) => sum + pointsMapping.mcq[q.difficulty], 0);
+    const totalOpenPoints = data.OpenEndedQuestions.reduce((sum, q) => sum + pointsMapping.open[q.difficulty], 0);
+    const totalCodingPoints = data.CodingQuestions.reduce((sum, q) => sum + pointsMapping.coding[q.difficulty], 0);
+
+    const totalPoints = totalMCQPoints + totalOpenPoints + totalCodingPoints;
+
+    return { totalMCQPoints, totalOpenPoints, totalCodingPoints, totalPoints };
+  }
+
+  async calculateAssessmentResults(data, totalOpenEndedScore, totalQuizScore, totalCodingScore) {
+   
+    let quizTotalAttemted = 0;
+    let quizCorrect = 0;
+    let quizScore = 0;
+
+    let openTotalAttemted = 0;
+    let openScore = 0;
+
+    let codingTotalAttemted = 0
+    let codingScore = 0
+
+    // Difficulty Points Mapping
+    const mcqPoints: { [key: string]: number } = { "Easy": 1, "Medium": 2, "Hard": 3 };
+    const openPoints: { [key: string]: number } = { "Easy": 3, "Medium": 5, "Hard": 7 };
+    const codingPoints: { [key: string]: number } = { "Easy": 5, "Medium": 10, "Hard": 15 };
+
+    // Processing Quizzes
+    data.quizSubmission.forEach(quiz => {
+      quizTotalAttemted += 1;
+      if (quiz.chosenOption == quiz.submissionData.Quiz.correctOption) {
+          quizCorrect += 1;
+          quizScore += mcqPoints[quiz.submissionData.Quiz.difficulty];
+      }
+    });
+
+    // Processing Open-Ended Questions
+    let needOpenScore = 0;
+    data.openEndedSubmission.forEach(question => {
+      openTotalAttemted += 1;
+      openScore += (question.marks > openPoints[question.submissionData.OpenEndedQuestion.difficulty]) ? openPoints[question.submissionData.OpenEndedQuestion.difficulty] : question.marks;
+    });
+
+    // Processing Coding Questions
+    let needCodingScore = 0;
+    data.codingSubmission.forEach(question => {
+      codingTotalAttemted += 1;
+      needCodingScore += codingPoints[question.different]
+      
+    });
+
+    // Total scores
+    const totalScore = quizScore + openScore;
+    // Calculate percentage
+    const percentageScore = (totalScore / (totalOpenEndedScore + totalQuizScore + totalCodingScore)) * 100;
+    // Assessment pass status
+    const passStatus = percentageScore >= data.submitedOutsourseAssessment.passPercentage;
+
+    data.openEndedSubmission = {
+      openTotalAttemted,
+      openScore,
+      totalOpenEndedScore
+    }
+    data.quizSubmission = {
+      quizTotalAttemted,
+      quizCorrect,
+      quizScore,
+      totalQuizScore
+    }
+    return {...data, passStatus, percentageScore, passPercentage: data.submitedOutsourseAssessment.passPercentage };
+  }
+
+
   async assessmentSubmit(assessmentOutsourseId: number, req) {
     try {
       let {id} = req.user[0];
@@ -1493,6 +1493,7 @@ export class TrackingService {
               id: true,
               assessmentOutsourseId: true,
               bootcampId:true
+
             },
             with: {
               CodingQuestion:true
@@ -1521,7 +1522,7 @@ export class TrackingService {
         },
       })
 
-      if (assessment.length == 0) {
+      if (assessment == undefined || assessment.length == 0) {
         throw ({
           status: 'error',
           statusCode: 404,
@@ -1534,7 +1535,6 @@ export class TrackingService {
       if (submission.length == 0) {
         submission = await db.insert(zuvyAssessmentSubmission).values({userId: id, assessmentOutsourseId, startedAt }).returning();
       }
-      console.log('submission', submission)
       let formatedData = await this.formatedChapterDetails(assessment[0]);
 
       return {...formatedData, submission: submission[0]};
@@ -1558,6 +1558,7 @@ export class TrackingService {
                   answer: true,
                   questionId: true,
                   feedback: true,
+                  marks: true
                 },
                 with: {
                   submissionData: {
@@ -1588,21 +1589,43 @@ export class TrackingService {
                   id: true,
                   questionSolved: true,
                   questionId: true,
+                },
+                with: {
+                  questionDetails:{
+                    with: {
+                      CodingQuestion: true
+                    }
+                  }
                 }
+                
               }
             },
           });
+
+        if (data == undefined || data.length == 0) {
+          throw ({
+            status: 'error',
+            statusCode: 404,
+            message: 'Assessment not found',
+          });
+        }
+        if (data.submitedAt == null) {
+          throw ({
+            status: 'error',
+            statusCode: 400,
+            message: 'Assessment not submitted yet',
+          });
+        }
+        console.log('assessment', data.codingSubmission)
+
         let assessment_data =  await this.assessmentSubmit(data.assessmentOutsourseId, {user: [{id: userId}]});
-        const { totalMCQPoints, totalOpenPoints, totalCodingPoints, totalPoints } =  await this.calculateTotalPoints(assessment_data);
-        console.log(totalMCQPoints, totalOpenPoints, totalCodingPoints, totalPoints,'totalMCQPoints, totalOpenPoints, totalCodingPoints, totalPoints')
-  
+        const { totalMCQPoints, totalOpenPoints, totalCodingPoints, totalPoints } =  await this.calculateTotalPoints(assessment_data);  
         let total = {totalMCQPoints, totalOpenPoints, totalCodingPoints, totalPoints}
         let {OpenEndedQuestions, Quizzes, CodingQuestions} = assessment_data;
-        let calData =  await this.calculateAssessmentResults(data, OpenEndedQuestions.length, Quizzes.length, CodingQuestions.length);
-        calData['totalOpenEnded'] = OpenEndedQuestions.length;
-        calData['totalQuiz'] = Quizzes.length;
-        calData['totalCoding'] = CodingQuestions.length;
-        return [{totalMCQPoints, totalOpenPoints, totalCodingPoints, totalPoints, ...calData}, data];
+        let calData =  await this.calculateAssessmentResults(data, totalOpenPoints,totalMCQPoints, totalCodingPoints);
+        // delete data.openEndedSubmission
+        // delete data.quizSubmission
+        return calData;
     }
     catch(err)
     {

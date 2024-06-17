@@ -1013,7 +1013,7 @@ export class ContentService {
         },
       });
         
-      if (assessment.length == 0) {
+      if (assessment == undefined ||assessment.length == 0) {
         throw ({
           status: 'error',
           statusCode: 404,
@@ -1688,7 +1688,7 @@ export class ContentService {
           },
         },
       })
-      if (assessment.length == 0) {
+      if (assessment == undefined ||assessment.length == 0) {
         throw ({
           status: 'error',
           statusCode: 404,
@@ -1754,7 +1754,7 @@ export class ContentService {
         },
       })
 
-      if (assessment.length == 0) {
+      if (assessment == undefined || assessment.length == 0) {
         throw ({
           status: 'error',
           statusCode: 404,
@@ -1834,7 +1834,6 @@ export class ContentService {
               id: true,
               question: true,
               difficulty: true,
-              marks: true,
             }
           }
         }
