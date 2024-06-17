@@ -1767,6 +1767,7 @@ export class ContentService {
       if (submission.length == 0) {
         submission = await db.insert(zuvyAssessmentSubmission).values({userId: id, assessmentOutsourseId, startedAt }).returning();
       }
+      
       let formatedData = await this.formatedChapterDetails(assessment[0]);
       return {...formatedData, submission: submission[0]};
     } catch (err) {

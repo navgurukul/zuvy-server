@@ -507,27 +507,46 @@ export class SubmissionService {
   async submitQuiz(answers, userId: number, assessmentSubmissionId: number) {
     try {
       let submissionData = await this.getSubmissionQuiz(assessmentSubmissionId, userId);
-      let updateData, InsertData
+      console.log('submissionData', submissionData);
+      let InsertData = []; // Initialize InsertData as an array
+      let updateData = []; // Initialize updateData as an array
+      let updatePromises = []; // Use an array to collect update promises
+      let insertPromises = []; // Use an array to collect insert promises
+  
       // if submission already exists then update the submission
       if (submissionData.length > 0) {
         let filterQuestionId = submissionData.map((answer) => answer.questionId);
-        updateData = answers.map((answer) => {
+  
+        answers.forEach((answer) => {
           if (filterQuestionId.includes(answer.questionId)) {
-            return { ...answer }
+            // Collect update promises
+            updatePromises.push(db.update(zuvyQuizTracking).set({ ...answer }).where(sql`${zuvyQuizTracking.questionId} = ${answer.questionId} and ${zuvyQuizTracking.assessmentSubmissionId} = ${assessmentSubmissionId} and ${zuvyQuizTracking.userId} = ${userId}`).returning());
           } else {
-            InsertData.push({ ...answer, userId, assessmentSubmissionId })
+            // Prepare data for insertion
+            InsertData.push({ ...answer, userId, assessmentSubmissionId });
           }
         });
-        updateData = await db.update(zuvyQuizTracking).set(updateData).where(sql`${zuvyQuizTracking.assessmentSubmissionId} = ${assessmentSubmissionId} and ${zuvyQuizTracking.userId} = ${userId}`).returning();
-        InsertData = await db.insert(zuvyQuizTracking).values(InsertData).returning();
-
+  
+        // Execute all update operations
+        if (updatePromises.length > 0) {
+          let updateResults = await Promise.all(updatePromises);
+          updateResults.forEach(result => {
+            updateData.push(result[0]);
+          });
+        }
       } else {
-        // filter the submission data and insert the new submission if not exists then insert the new submission
-        let quizInsertData = answers.map((answer) => { return { ...answer, userId, assessmentSubmissionId } });
-        updateData = [] // if no submission data then update data will be empty
-        InsertData = await db.insert(zuvyQuizTracking).values(quizInsertData).returning();
+        // Prepare data for insertion if no submission data exists
+        InsertData = answers.map((answer) => ({ ...answer, userId, assessmentSubmissionId }));
       }
-      return [...InsertData, ...updateData];
+  
+      // Execute insert operation if there's data to insert
+      if (InsertData.length > 0) {
+        InsertData = await db.insert(zuvyQuizTracking).values(InsertData).returning();
+      }
+  
+      console.log('InsertData', [...InsertData, ...updateData]);
+      // Since updateData is not directly returned from db.update, it's not included in the return statement
+      return { message: 'Successfully save the Quiz.', data: [...InsertData, ...updateData]}; // Adjusted return value
     } catch (err) {
       throw err;
     }
@@ -542,35 +561,54 @@ export class SubmissionService {
     }
   }
 
-  async submitOpenEndedQuestion(answers, userId: number, assessmentSubmissionId: number) {
+  async submitOpenEndedQuestion(answers, userId, assessmentSubmissionId) {
     try {
+      let updateData = [];
+      let insertData = [];
       let submissionData = await this.getSubmissionOpenEnded(assessmentSubmissionId, userId);
-      let updateData, InsertData
-      // if submission already exists then update the submission
+      let updateResults = []; // Declare the updateResults variable
+      
       if (submissionData.length > 0) {
         let filterQuestionId = submissionData.map((answer) => answer.questionId);
-        updateData = answers.map((answer) => {
+        let updatePromises = [];
+        let insertPromises = [];
+      
+        for (let answer of answers) {
           if (filterQuestionId.includes(answer.questionId)) {
-            return { ...answer }
+            let updatePromise = db.update(zuvyOpenEndedQuestionSubmission)
+              .set({ ...answer })
+              .where(sql`${zuvyOpenEndedQuestionSubmission.questionId} = ${answer.questionId} and ${zuvyOpenEndedQuestionSubmission.userId} = ${userId} and ${zuvyOpenEndedQuestionSubmission.assessmentSubmissionId} = ${assessmentSubmissionId}`)
+              .returning();
+            updatePromises.push(updatePromise);
           } else {
-            InsertData.push({ ...answer, userId, assessmentSubmissionId })
+            insertData.push({ ...answer, userId, assessmentSubmissionId });
           }
-        });
-        updateData = await db.update(zuvyOpenEndedQuestionSubmission).set(updateData).where(sql`${zuvyOpenEndedQuestionSubmission.assessmentSubmissionId} = ${assessmentSubmissionId} and ${zuvyOpenEndedQuestionSubmission.userId} = ${userId}`).returning();
-        InsertData = await db.insert(zuvyOpenEndedQuestionSubmission).values(InsertData).returning();
+        }
+  
+        // Await all update promises
+        if (updatePromises.length > 0) {
+          let updateResults = await Promise.all(updatePromises);
+          updateResults.forEach(result => {
+            updateData.push(result[0]);
+          });
+        }
 
+        // Insert new answers if any
+        if (insertData.length > 0) {
+          const insertResults = await db.insert(zuvyOpenEndedQuestionSubmission).values(insertData).returning();
+          insertData = insertResults;
+        }
       } else {
-        // filter the submission data and insert the new submission if not exists then insert the new submission
-        let quizInsertData = answers.map((answer) => { return { ...answer, userId, assessmentSubmissionId } });
-        updateData = [] // if no submission data then update data will be empty
-
-        InsertData = await db.insert(zuvyOpenEndedQuestionSubmission).values(quizInsertData).returning();
+        let quizInsertData = answers.map((answer) => ({ ...answer, userId, assessmentSubmissionId }));
+        insertData = await db.insert(zuvyOpenEndedQuestionSubmission).values(quizInsertData).returning();
       }
-      return [...InsertData, ...updateData];
+      return {message: "Successfully save the open ended question.", data: [...insertData, ...updateData]};
     } catch (err) {
-      throw err;
+      console.error('Error in submitOpenEndedQuestion:', err);
+      throw err; // Ensure proper error handling/logging here
     }
   }
+  
 
   async getSubmissionOpenEnded(assessmentSubmissionId, userId: number) {
     try {

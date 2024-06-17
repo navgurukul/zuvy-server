@@ -16,7 +16,8 @@ import {
   zuvyBatches,
   users,
   zuvyProjectTracking,
-  zuvyRecentBootcamp
+  zuvyRecentBootcamp,
+  zuvyAssessmentSubmission
 } from 'drizzle/schema';
 import { throwError } from 'rxjs';
 import {
@@ -1015,10 +1016,12 @@ export class TrackingService {
 
   async getChapterDetailsWithStatus(chapterId: number, userId: number) {
     try {
+
       const trackingData = await db.query.zuvyModuleChapter.findFirst({
         where: (moduleChapter, { eq }) => eq(moduleChapter.id, chapterId),
         orderBy: (moduleChapter, { asc }) => asc(moduleChapter.order),
         with: {
+          
           chapterTrackingDetails: {
             columns: {
               id: true,
@@ -1094,7 +1097,7 @@ export class TrackingService {
             question: zuvyModuleQuiz.question,
             options: zuvyModuleQuiz.options,
             correctOption: zuvyModuleQuiz.correctOption,
-            chosenOption: zuvyQuizTracking.chossenOption,
+            chosenOption: zuvyQuizTracking.chosenOption,
             status: zuvyQuizTracking.status,
           })
           .from(zuvyModuleQuiz)
@@ -1366,13 +1369,244 @@ export class TrackingService {
                 message: 'You have not yet started any course module'
             }
          }   
-       
     }
     catch(err)
     {
       throw err;
     }
   }
+  async calculateTotalPoints(data: any){
+    const pointsMapping = {
+      mcq: { "Easy": 1, "Medium": 2, "Hard": 3 },
+      open: { "Easy": 3, "Medium": 5, "Hard": 7 },
+      coding: { "Easy": 5, "Medium": 10, "Hard": 15 }
+  };
+    const totalMCQPoints = data.Quizzes.reduce((sum, q) => sum + pointsMapping.mcq[q.difficulty], 0);
+    const totalOpenPoints = data.OpenEndedQuestions.reduce((sum, q) => sum + pointsMapping.open[q.difficulty], 0);
+    const totalCodingPoints = data.CodingQuestions.reduce((sum, q) => sum + pointsMapping.coding[q.difficulty], 0);
+
+    const totalPoints = totalMCQPoints + totalOpenPoints + totalCodingPoints;
+
+    return { totalMCQPoints, totalOpenPoints, totalCodingPoints, totalPoints };
+  }
+
+  async calculateAssessmentResults(data,totalOpenEnded, totalQuiz, totalCoding) {
+   
+    let quizTotalAttemted = 0;
+    let quizCorrect = 0;
+    let quizScore = 0;
+
+    let openTotalAttemted = 0;
+    let openScore = 0;
+
+    let codingTotalAttemted = 0
+    let codingScore = 0
+
+    // Difficulty Points Mapping
+    const mcqPoints: { [key: string]: number } = { "Easy": 1, "Medium": 2, "Hard": 3 };
+    const openPoints: { [key: string]: number } = { "Easy": 3, "Medium": 5, "Hard": 7 };
+    const codingPoints: { [key: string]: number } = { "Easy": 5, "Medium": 10, "Hard": 15 };
+
+    console.log('data', data)
+    // Processing Quizzes
+    let needQuizScore = 0;
+    data.quizSubmission.forEach(quiz => {
+      quizTotalAttemted += 1;
+      if (quiz.correctOption) {
+          quizCorrect += 1;
+          quizScore += mcqPoints[quiz.difficulty];
+      }
+      needQuizScore += mcqPoints[quiz.difficulty];
+    });
+
+    // Processing Open-Ended Questions
+    let needOpenScore = 0;
+    data.openEndedSubmission.forEach(question => {
+      openTotalAttemted += 1;
+      openScore += openPoints[question.submissionData.OpenEndedQuestion.difficulty];
+    });
+
+    // Processing Coding Questions
+    let needCodingScore = 0;
+    data.codingSubmission.forEach(question => {
+      needCodingScore += codingPoints[question.different]
+      
+    });
+
+    // Total scores
+    const totalScore = quizScore + openScore;
+    const totalPossibleScore = (totalQuiz * Math.max(...Object.values(mcqPoints))) + (totalOpenEnded * Math.max(...Object.values(openPoints)));
+
+    // Calculate percentage
+    const percentageScore = (totalScore / totalPossibleScore) * 100;
+
+    // Assessment pass status
+    const passStatus = percentageScore >= data.passPercentage;
 
   
+    return {
+      totalQuiz,
+      quizCorrect,
+      quizScore,
+      totalOpenEnded,
+      openScore,
+      passStatus
+    };
+  }
+
+  async formatedChapterDetails(chapterDetails: any) {
+    try{
+      chapterDetails.Quizzes = chapterDetails?.Quizzes.map((Quizzes) => {
+        let quizDetails = {...Quizzes.Quiz, }
+        delete Quizzes.Quiz
+        return {...Quizzes, ...quizDetails}
+      })
+
+      chapterDetails.OpenEndedQuestions = chapterDetails?.OpenEndedQuestions.map((OpenEndedQuestions) => {
+        let openEndedDetails = {...OpenEndedQuestions.OpenEndedQuestion, }
+        delete OpenEndedQuestions.OpenEndedQuestion
+        return {...OpenEndedQuestions, ...openEndedDetails}
+      })
+
+      chapterDetails.CodingQuestions = chapterDetails?.CodingQuestions.map((CodingQuestions) => {
+        let codingDetails = {...CodingQuestions.CodingQuestion, }
+        delete CodingQuestions.CodingQuestion
+        return {...CodingQuestions, ...codingDetails}
+      })
+      
+      return chapterDetails
+    } catch(err) {
+      throw err;
+    }
+  }
+
+  async assessmentSubmit(assessmentOutsourseId: number, req) {
+    try {
+      let {id} = req.user[0];
+      const assessment = await db.query.zuvyOutsourseAssessments.findMany({
+        where: (zuvyOutsourseAssessments, { eq }) =>
+          eq(zuvyOutsourseAssessments.id, assessmentOutsourseId),
+        with: {
+          ModuleAssessment: true,
+          CodingQuestions: {
+            columns: {
+              id: true,
+              assessmentOutsourseId: true,
+              bootcampId:true
+            },
+            with: {
+              CodingQuestion:true
+            }
+          },
+          Quizzes: {
+            columns: {
+              id: true,
+              assessmentOutsourseId: true,
+              bootcampId:true
+            },
+            with: {
+              Quiz: true,
+            }
+          },
+          OpenEndedQuestions: {
+            columns: {
+              id: true,
+              assessmentOutsourseId: true,
+              bootcampId:true
+            },
+            with: {
+              OpenEndedQuestion: true
+            }
+          }
+        },
+      })
+
+      if (assessment.length == 0) {
+        throw ({
+          status: 'error',
+          statusCode: 404,
+          message: 'Assessment not found',
+        });
+      } 
+      let startedAt = new Date().toISOString();
+      let submission;
+      submission = await db.select().from(zuvyAssessmentSubmission).where( sql`${zuvyAssessmentSubmission.userId} = ${id} AND ${zuvyAssessmentSubmission.assessmentOutsourseId} = ${assessmentOutsourseId} AND ${zuvyAssessmentSubmission.submitedAt} IS NULL`);
+      if (submission.length == 0) {
+        submission = await db.insert(zuvyAssessmentSubmission).values({userId: id, assessmentOutsourseId, startedAt }).returning();
+      }
+      console.log('submission', submission)
+      let formatedData = await this.formatedChapterDetails(assessment[0]);
+
+      return {...formatedData, submission: submission[0]};
+    } catch (err) {
+      throw err;
+    }
+  }
+  
+
+  async getAssessmentSubmission(assessmentSubmissionId:number, userId: number)
+  {
+    try {
+        const data:any = await db.query.zuvyAssessmentSubmission.findFirst({
+            where: (zuvyAssessmentSubmission, { eq }) =>
+              eq(zuvyAssessmentSubmission.id, assessmentSubmissionId),
+            with: {
+              submitedOutsourseAssessment: true,
+              openEndedSubmission: {
+                columns: {
+                  id: true,
+                  answer: true,
+                  questionId: true,
+                  feedback: true,
+                },
+                with: {
+                  submissionData: {
+                    with: {
+                      OpenEndedQuestion: true
+                    }
+                  },
+                  
+                }
+              },
+              quizSubmission:{
+                columns: {
+                  id: true,
+                  chosenOption: true,
+                  questionId: true,
+                  attemptCount: true,
+                },
+                with: {
+                  submissionData: {
+                    with: {
+                      Quiz: true
+                    }
+                  }
+                }
+              },
+              codingSubmission: {
+                columns: {
+                  id: true,
+                  questionSolved: true,
+                  questionId: true,
+                }
+              }
+            },
+          });
+        let assessment_data =  await this.assessmentSubmit(data.assessmentOutsourseId, {user: [{id: userId}]});
+        const { totalMCQPoints, totalOpenPoints, totalCodingPoints, totalPoints } =  await this.calculateTotalPoints(assessment_data);
+        console.log(totalMCQPoints, totalOpenPoints, totalCodingPoints, totalPoints,'totalMCQPoints, totalOpenPoints, totalCodingPoints, totalPoints')
+  
+        let total = {totalMCQPoints, totalOpenPoints, totalCodingPoints, totalPoints}
+        let {OpenEndedQuestions, Quizzes, CodingQuestions} = assessment_data;
+        let calData =  await this.calculateAssessmentResults(data, OpenEndedQuestions.length, Quizzes.length, CodingQuestions.length);
+        calData['totalOpenEnded'] = OpenEndedQuestions.length;
+        calData['totalQuiz'] = Quizzes.length;
+        calData['totalCoding'] = CodingQuestions.length;
+        return [{totalMCQPoints, totalOpenPoints, totalCodingPoints, totalPoints, ...calData}, data];
+    }
+    catch(err)
+    {
+        throw err; 
+    }
+  }
 }

@@ -38,12 +38,6 @@ export class CodingPlatformController {
   @Post('submit')
   @ApiOperation({ summary: 'Run the code' })
   @ApiQuery({
-    name: 'userId',
-    required: false,
-    type: Number,
-    description: 'User id of the user',
-  })
-  @ApiQuery({
     name: 'questionId',
     required: false,
     type: Number,
@@ -58,31 +52,31 @@ export class CodingPlatformController {
   @ApiQuery({
     name: 'assessmentSubmissionId',
     required: false,
-    type: String,
-    description: 'Action such as submit or run',
+    type: Number,
+    description: 'Assessment submission id',
   })
   @ApiBearerAuth()
   async submitCode(
     @Body() sourceCode: SubmitCodeDto,
-    @Query('userId') userId: number,
     @Query('questionId') questionId: number,
     @Query('action') action: string,
     @Query('assessmentSubmissionId') assessmentSubmissionId: number,
+    @Req() req,
   ) {
-    let statusId = 1;
-    let getCodeData;
     const res = await this.codingPlatformService.submitCode(
       sourceCode,
       questionId,
       action,
-    );
+      );
+    let statusId = 1;
+    let getCodeData;
     while (statusId < 3) {
       getCodeData = await this.codingPlatformService.getCodeInfo(res.token);
       statusId = getCodeData.status_id;
     }
     if (action == 'submit') {
       await this.codingPlatformService.updateSubmissionWithToken(
-        userId,
+        req.user[0].id,
         questionId,
         getCodeData.token,
         getCodeData.status.description,
