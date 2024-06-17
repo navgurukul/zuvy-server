@@ -36,15 +36,23 @@ export class BootcampController {
     type: Number,
     description: 'Offset for pagination',
   })
+  @ApiQuery({
+    name: 'searchTerm',
+    required: false,
+    type: String,
+    description: 'Search by name or id in bootcamps',
+  })
   @ApiBearerAuth()
   async getAllBootcamps(
     @Query('limit') limit: number,
-    @Query('offset') offset: number
+    @Query('offset') offset: number,
+    @Query('searchTerm') searchTerm: string
   ): Promise<object> {
-
+    const searchTermAsNumber = !isNaN(Number(searchTerm)) ? Number(searchTerm) : searchTerm
     const [err, res] = await this.bootcampService.getAllBootcamps(
       limit,
       offset,
+      searchTermAsNumber
     );
 
     if (err) {
@@ -53,28 +61,6 @@ export class BootcampController {
     return res;
   }
 
-  @Get('/searchBootcamps')
-  @ApiOperation({ summary: 'Search by name or id in bootcamps' })
-  @ApiQuery({
-    name: 'searchTerm',
-    required: true,
-    type: String,
-    description: 'Search by name or id in bootcamps',
-  })
-  @ApiBearerAuth()
-  async searchBootcamps(
-    @Query('searchTerm') searchTerm: string,
-  ): Promise<object> {
-    const searchTermAsNumber = !isNaN(Number(searchTerm))
-      ? Number(searchTerm)
-      : searchTerm;
-    const [err, res] =
-      await this.bootcampService.searchBootcamps(searchTermAsNumber);
-    if (err) {
-      throw new BadRequestException(err);
-    }
-    return res;
-  }
 
   @Get('/:id')
   @ApiOperation({ summary: 'Get the bootcamp by id' })
