@@ -505,5 +505,5 @@ export class TrackingController {
   ) {
     const res = await this.TrackingService.getAssessmentSubmission(submissionId, req.user[0].id);
     return res;
-  }
+  }   
 }

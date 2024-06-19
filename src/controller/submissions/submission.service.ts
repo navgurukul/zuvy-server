@@ -507,7 +507,6 @@ export class SubmissionService {
   async submitQuiz(answers, userId: number, assessmentSubmissionId: number) {
     try {
       let submissionData = await this.getSubmissionQuiz(assessmentSubmissionId, userId);
-      console.log('submissionData', submissionData);
       let InsertData = []; // Initialize InsertData as an array
       let updateData = []; // Initialize updateData as an array
       let updatePromises = []; // Use an array to collect update promises
@@ -543,8 +542,6 @@ export class SubmissionService {
       if (InsertData.length > 0) {
         InsertData = await db.insert(zuvyQuizTracking).values(InsertData).returning();
       }
-  
-      console.log('InsertData', [...InsertData, ...updateData]);
       // Since updateData is not directly returned from db.update, it's not included in the return statement
       return { message: 'Successfully save the Quiz.', data: [...InsertData, ...updateData]}; // Adjusted return value
     } catch (err) {
