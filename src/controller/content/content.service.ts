@@ -1013,7 +1013,7 @@ export class ContentService {
         },
       });
         
-      if (assessment.length == 0) {
+      if (assessment == undefined ||assessment.length == 0) {
         throw ({
           status: 'error',
           statusCode: 404,
@@ -1688,7 +1688,7 @@ export class ContentService {
           },
         },
       })
-      if (assessment.length == 0) {
+      if (assessment == undefined ||assessment.length == 0) {
         throw ({
           status: 'error',
           statusCode: 404,
@@ -1754,7 +1754,7 @@ export class ContentService {
         },
       })
 
-      if (assessment.length == 0) {
+      if (assessment == undefined || assessment.length == 0) {
         throw ({
           status: 'error',
           statusCode: 404,
@@ -1767,6 +1767,7 @@ export class ContentService {
       if (submission.length == 0) {
         submission = await db.insert(zuvyAssessmentSubmission).values({userId: id, assessmentOutsourseId, startedAt }).returning();
       }
+      
       let formatedData = await this.formatedChapterDetails(assessment[0]);
       return {...formatedData, submission: submission[0]};
     } catch (err) {
@@ -1786,7 +1787,6 @@ export class ContentService {
               id: true,
               userId: true,
               chosenOption: true,
-              chossenOption: true,
               questionId: true,
               attemptCount: true,
             }
@@ -1834,7 +1834,6 @@ export class ContentService {
               id: true,
               question: true,
               difficulty: true,
-              marks: true,
             }
           }
         }

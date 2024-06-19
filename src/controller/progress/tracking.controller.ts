@@ -496,4 +496,14 @@ export class TrackingController {
     );
     return res;
   }
+
+  @Get('assessment/submissionId=:submissionId')
+  @ApiOperation({ summary: 'Get assessment submission by submissionId' })
+  @ApiBearerAuth()
+  async getAssessmentSubmission(
+    @Param('submissionId') submissionId: number, @Req() req
+  ) {
+    const res = await this.TrackingService.getAssessmentSubmission(submissionId, req.user[0].id);
+    return res;
+  }
 }
