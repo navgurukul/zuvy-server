@@ -794,6 +794,7 @@ export class TrackingService {
             moduleId,
             chapterId,
             status,
+            chosenOption:choosenOptions[i],
             ...SubmitBody.submitQuiz[i],
             attemptCount: 1,
             updatedAt: sql`Now()`,
@@ -1099,28 +1100,17 @@ export class TrackingService {
   
             }
             else {
-              
-             
               const trackedData = await db.query.zuvyModuleQuiz.findMany({
-                where: (sql`${inArray(zuvyModuleQuiz.id, Object.values(chapterDetails[0].quizQuestions))}`),
+                where: (moduleQuiz, { sql }) => sql`${inArray(moduleQuiz.id, Object.values(chapterDetails[0].quizQuestions))}`,
                 with: {
+                  
+                  quizTrackingData: {  
                     columns: {
-                      id: true,
-                      question: true,
-                      options: true,
-                      correctOption: true,
-  
-                    },
-                  Quizzes: {  
-                    columns: {
-                      chossenOption: true,
+                      chosenOption: true,
                       status: true
                     },
-                    where: (sql`${zuvyQuizTracking.userId} = ${userId} and ${zuvyQuizTracking.chapterId} = ${chapterId} and ${zuvyQuizTracking.moduleId} = ${moduleId}`),
-                    with: {
-                      Quiz:true,
+                    where: (quizTracking, { sql }) => sql`${quizTracking.userId} = ${userId} and ${quizTracking.chapterId} = ${chapterId} and ${quizTracking.moduleId} = ${moduleId}`,
                     }
-                  }
                 }
               });
   
@@ -1128,6 +1118,12 @@ export class TrackingService {
               QuizTracking.length != 0
                 ? 'Completed'
                 : 'Pending';
+
+                return{
+                  status:"success",
+                  code:200,
+                  trackedData
+                }
             }
           }
         }
