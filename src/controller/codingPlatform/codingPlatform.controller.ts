@@ -67,7 +67,7 @@ export class CodingPlatformController {
       sourceCode,
       questionId,
       action,
-      );
+    );
     let statusId = 1;
     let getCodeData;
     while (statusId < 3) {

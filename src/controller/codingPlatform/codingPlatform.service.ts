@@ -118,30 +118,19 @@ try {
   async findSubmissionByQuestionId(questionId: number,id:number) {
     try {
        const submissions = await db.select().from(zuvyCodingSubmission)
-        .where(sql`${zuvyCodingSubmission.questionSolved}->>${questionId.toString()} IS NOT NULL AND ${zuvyCodingSubmission.userId} = ${id}`)
+        .where(sql`${zuvyCodingSubmission.questionId} = ${questionId} AND ${zuvyCodingSubmission.userId} = ${id}`)
      
-         const questionSolved = submissions[0]?.questionSolved;
+         const questionSolved: any = submissions[0]?.questionSolved;
          var submissionTokens = {token:[]};
-         if(questionSolved)
-         {
-         submissionTokens.token = questionSolved[questionId.toString()].token;
-         }
          var respond = [];
-        
-         if(submissionTokens.token.length !==0)
-         {
-            const getInfoPromises = submissionTokens.token.map(async token => {
-                const getInfo = await this.getCodeInfo(token);
-                return getInfo;
-            });
+  
+        const getInfoPromises = questionSolved.map(async token => {
+            const getInfo = await this.getCodeInfo(token);
+            return getInfo;
+        });
 
-           
-            const getInfoResults = await Promise.all(getInfoPromises);
-
-           
-            respond.push(...getInfoResults);
-         }
-        
+        const getInfoResults = await Promise.all(getInfoPromises);
+        respond.push(...getInfoResults);        
      return {code:200,respond};
     }catch(err) {
         throw err;
@@ -151,42 +140,37 @@ try {
   async updateSubmissionWithToken(userId: number, questionId: number, token: string,status:string, assessmentSubmissionId = null) {
   try {
     
-    const existingSubmission = await db.select()
+    const existingSubmission:any = await db.select()
       .from(zuvyCodingSubmission)
-      .where(sql`${zuvyCodingSubmission.userId} = ${userId}`)
+      .where(sql`${zuvyCodingSubmission.userId} = ${userId} AND ${zuvyCodingSubmission.questionId} = ${questionId}`)
 
-    let questionSolved = {};
+    let questionSolved = [];
+    let updatedStatus;
     if(status !== 'Accepted')
     {
         status = 'Not Accepted';
     }
     if (existingSubmission.length === 0) {
-      
-      questionSolved[questionId.toString()] = { token: [token],status: status };
+      questionSolved.push(token)
       await db.insert(zuvyCodingSubmission)
         .values({
           userId: BigInt(userId),
           questionSolved: questionSolved,
           assessmentSubmissionId,
-          questionId
+          questionId,
+          status
         })
         .returning();
     } else {
-      
-      questionSolved = existingSubmission[0].questionSolved || {};
-      if (!questionSolved.hasOwnProperty(questionId.toString())) {
-        questionSolved[questionId.toString()] = { token: [token],status: status };
+        questionSolved = existingSubmission[0]?.questionSolved.push(token)
+      if (status === 'Accepted' || existingSubmission[0].status === 'Accepted') {
+        updatedStatus = 'Accepted';
       } else {
-         if (status === 'Accepted' || questionSolved[questionId.toString()].status === 'Accepted') {
-          questionSolved[questionId.toString()].status = 'Accepted';
-        } else {
-          questionSolved[questionId.toString()].status = 'Not Accepted';
-        }
-        questionSolved[questionId.toString()].token.push(token);
+        updatedStatus = 'Not Accepted';
       }
       await db.update(zuvyCodingSubmission)
-        .set({ questionSolved: questionSolved })
-        .where(sql`${zuvyCodingSubmission.userId} = ${userId}`)
+        .set({ questionSolved: questionSolved , status: updatedStatus})
+        .where(sql`${zuvyCodingSubmission.userId} = ${userId} AND ${zuvyCodingSubmission.questionId} = ${questionId}`)
     }
   } catch (error) {
     console.error('Error updating submission:', error);
@@ -196,7 +180,7 @@ try {
 
 async getQuestionsWithStatus(userId: number) {
   try {
-    const questions = await db.select()
+    const questions = await db.select() 
       .from(zuvyCodingQuestions)
      
     const userSubmissions = await db.select()
@@ -221,19 +205,11 @@ async getQuestionsWithStatus(userId: number) {
 async getQuestionById(questionId: number)
 {
     try{
-        const question = await db.select().from(zuvyCodingQuestions).where(sql`${zuvyCodingQuestions.id} = ${Number(questionId)}`)
-       if (question.length === 0) {
-            return { status: 'error', code: 400, message: "No question available for the given question Id" };
-        }
-
-       
-        const processedQuestion = question.map(q => ({
-            ...q,
-            id: Number(q.id) 
-        }));
-
-        return processedQuestion;
-
+      const question = await db.select().from(zuvyCodingQuestions).where(sql`${zuvyCodingQuestions.id} = ${questionId}`)
+      if (question.length === 0) {
+          return { status: 'error', code: 400, message: "No question available for the given question Id" };
+      }
+      return question;
     }catch(err)
     {
         throw err;

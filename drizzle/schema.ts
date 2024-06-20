@@ -2675,6 +2675,7 @@ export const zuvyCodingSubmission = main.table("zuvy_coding_submission", {
     onUpdate: 'cascade',
   }),
   questionId: integer("question_id").references(() => zuvyOutsourseCodingQuestions.id),
+  status: varchar("status", { length: 255 }),
 })
 
 export const zuvyCodingSubmissionRelations = relations(zuvyCodingSubmission, ({ one }) => ({
@@ -3433,22 +3434,4 @@ export const quizChapterRelations = relations(
     quizTrackingData: many(zuvyQuizTracking),
     moduleQuizData: many (zuvyModuleQuiz)
   }),
-);
-
-export const quizModuleRelation= relations(
-  zuvyModuleQuiz,
-  ({many})=>({
-    quizTrackingData: many(zuvyQuizTracking)
-  })
-
-);
-
-export const quizTrackingRelation = relations(
-  zuvyQuizTracking,
-  ({ one }) => ({
-    quizQuestion: one(zuvyModuleQuiz, {
-      fields: [zuvyQuizTracking.mcqId],
-      references: [zuvyModuleQuiz.id],
-    }),
-  })
 );
