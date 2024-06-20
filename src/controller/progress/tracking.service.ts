@@ -1615,6 +1615,7 @@ export class TrackingService {
             message: 'Assessment not submitted yet',
           });
         }
+
         let assessment_data =  await this.assessmentOutsourseData(data.assessmentOutsourseId, {user: [{id: userId}]});
         const { totalMCQPoints, totalOpenPoints, totalCodingPoints, totalPoints } =  await this.calculateTotalPoints(assessment_data);  
         let total = {totalMCQPoints, totalOpenPoints, totalCodingPoints, totalPoints}
