@@ -119,6 +119,18 @@ export class AdminAssessmentService {
       let studentsEnrolled = await this.getTotalStudentsEnrolled(assessment[0].bootcampId);
       assessment[0].ModuleAssessment["totalStudents"] = studentsEnrolled.length;
       assessment[0].ModuleAssessment["totalSubmitedStudents"] = assessment[0].submitedOutsourseAssessments.length || 0;
+
+      assessment[0].submitedOutsourseAssessments = assessment[0].submitedOutsourseAssessments.map((submission: any) => {
+        return {
+          id: submission.id,
+          userId: submission.userId,
+          marks: submission.marks,
+          startedAt: submission.startedAt,
+          submitedAt: submission.submitedAt,
+          ...submission.user
+        }
+      })
+
       return assessment[0];
     } catch (error) {
       throw error;

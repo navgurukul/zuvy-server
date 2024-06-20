@@ -1510,9 +1510,9 @@ export class TrackingService {
     // Processing Quizzes
     data.quizSubmission.forEach(quiz => {
       quizTotalAttemted += 1;
-      if (quiz.chosenOption == quiz.submissionData.Quiz.correctOption) {
+      if (quiz.chosenOption == quiz.submissionData?.Quiz.correctOption) {
         quizCorrect += 1;
-        quizScore += mcqPoints[quiz.submissionData.Quiz.difficulty];
+        quizScore += mcqPoints[quiz.submissionData?.Quiz.difficulty];
       }
     });
 
@@ -1520,7 +1520,7 @@ export class TrackingService {
     let needOpenScore = 0;
     data.openEndedSubmission.forEach(question => {
       openTotalAttemted += 1;
-      openScore += (question.marks > openPoints[question.submissionData.OpenEndedQuestion.difficulty]) ? openPoints[question.submissionData.OpenEndedQuestion.difficulty] : question.marks;
+      openScore += (question.marks > openPoints[question.submissionData?.OpenEndedQuestion.difficulty]) ? openPoints[question.submissionData?.OpenEndedQuestion.difficulty] : question.marks;
     });
 
     // Processing Coding Questions
@@ -1536,7 +1536,7 @@ export class TrackingService {
     // Calculate percentage
     const percentageScore = (totalScore / (totalOpenEndedScore + totalQuizScore + totalCodingScore)) * 100;
     // Assessment pass status
-    const passStatus = percentageScore >= data.submitedOutsourseAssessment.passPercentage;
+    const passStatus = percentageScore >= data.submitedOutsourseAssessment?.passPercentage;
 
     data.openEndedSubmission = {
       openTotalAttemted,
@@ -1549,11 +1549,11 @@ export class TrackingService {
       quizScore,
       totalQuizScore
     }
-    return { ...data, passStatus, percentageScore, passPercentage: data.submitedOutsourseAssessment.passPercentage };
+    return { ...data, passStatus, percentageScore, passPercentage: data?.submitedOutsourseAssessment?.passPercentage };
   }
 
 
-  async assessmentSubmit(assessmentOutsourseId: number, req) {
+  async assessmentOutsourseData(assessmentOutsourseId: number, req) {
     try {
       let { id } = req.user[0];
       const assessment = await db.query.zuvyOutsourseAssessments.findMany({
@@ -1688,14 +1688,12 @@ export class TrackingService {
           message: 'Assessment not submitted yet',
         });
       }
-      let assessment_data = await this.assessmentSubmit(data.assessmentOutsourseId, { user: [{ id: userId }] });
-      const { totalMCQPoints, totalOpenPoints, totalCodingPoints, totalPoints } = await this.calculateTotalPoints(assessment_data);
-      let total = { totalMCQPoints, totalOpenPoints, totalCodingPoints, totalPoints }
-      let { OpenEndedQuestions, Quizzes, CodingQuestions } = assessment_data;
-      let calData = await this.calculateAssessmentResults(data, totalOpenPoints, totalMCQPoints, totalCodingPoints);
-      // delete data.openEndedSubmission
-      // delete data.quizSubmission
-      return calData;
+      let assessment_data =  await this.assessmentOutsourseData(data.assessmentOutsourseId, {user: [{id: userId}]});
+      const { totalMCQPoints, totalOpenPoints, totalCodingPoints, totalPoints } =  await this.calculateTotalPoints(assessment_data);  
+      let total = {totalMCQPoints, totalOpenPoints, totalCodingPoints, totalPoints}
+      let {OpenEndedQuestions, Quizzes, CodingQuestions} = assessment_data;
+      let calData =  await this.calculateAssessmentResults(data, totalOpenPoints,totalMCQPoints, totalCodingPoints);
+      return {...calData, totalOpenEndedQuestions: OpenEndedQuestions.length,totalQuizzes:Quizzes.length, totalCodingQuestions: CodingQuestions.length};
     }
     catch (err) {
       throw err;
