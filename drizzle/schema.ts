@@ -1203,20 +1203,20 @@ export const partners = main.table(
 );
 
 const bytea = customType<{ data: string; notNull: false; default: false }>({
-  // dataType() {
-  //   return 'bytea';
-  // },
-  // toDriver(val: string) {
-  //   let newVal = val;
-  //   if (val.startsWith('0x')) {
-  //     newVal = val.slice(2);
-  //   }
+  dataType() {
+    return 'bytea';
+  },
+  toDriver(val: string) {
+    let newVal = val;
+    if (val.startsWith('0x')) {
+      newVal = val.slice(2);
+    }
 
-  //   return Buffer.from(newVal, 'hex');
-  // },
-  // fromDriver(val: Buffer) {
-  //   return val.toString('hex');
-  // },
+    return Buffer.from(newVal, 'hex');
+  },
+  fromDriver(val: Buffer) {
+    return val.toString('hex');
+  },
 });
 
 export const cUsers = main.table(
