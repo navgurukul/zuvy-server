@@ -163,11 +163,9 @@ export class ClassesService {
     startDateTime: string;
     endDateTime: string;
     timeZone: string;
-    attendees: string[];
     batchId: number;
     bootcampId: number;
     userId: number;
-    roles: string[];
   }) {
     try {
       const fetchedTokens = await db
@@ -182,12 +180,12 @@ export class ClassesService {
         refresh_token: fetchedTokens[0].refreshToken,
       });
 
-      if (eventDetails.roles.includes('admin') == false) {
-        return {
-          status: 'error',
-          message: 'You should be an admin to create a class.',
-        };
-      }
+      // if (eventDetails.roles.includes('admin') == false) {
+      //   return {
+      //     status: 'error',
+      //     message: 'You should be an admin to create a class.',
+      //   };
+      // }
 
       const studentsInTheBatchEmails = await db
         .select()
