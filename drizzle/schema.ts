@@ -26,43 +26,16 @@ import {
 import { integrations } from 'googleapis/build/src/apis/integrations';
 // import { users } from './users'; // Import the 'users' module
 
-export const courseEnrolmentsCourseStatus = pgEnum(
-  'course_enrolments_course_status',
-  ['enroll', 'unenroll', 'completed'],
-);
-export const coursesType = pgEnum('courses_type', ['html', 'js', 'python']);
-export const difficulty = pgEnum('difficulty', ['Easy', 'Medium', 'Hard']);
-export const exercisesReviewType = pgEnum('exercises_review_type', [
-  'manual',
-  'peer',
-  'facilitator',
-  'automatic',
-]);
-export const exercisesSubmissionType = pgEnum('exercises_submission_type', [
-  'number',
-  'text',
-  'text_large',
-  'attachments',
-  'url',
-]);
-export const submissionsState = pgEnum('submissions_state', [
-  'completed',
-  'pending',
-  'rejected',
-]);
-export const userRolesCenter = pgEnum('user_roles_center', [
-  'dharamshala',
-  'banagalore',
-  'all',
-]);
-export const userRolesRoles = pgEnum('user_roles_roles', [
-  'admin',
-  'alumni',
-  'student',
-  'facilitator',
-]);
-export const usersCenter = pgEnum('users_center', ['dharamshala', 'bangalore']);
 
+export const courseEnrolmentsCourseStatus = pgEnum("course_enrolments_course_status", ['completed', 'unenroll', 'enroll'])
+export const coursesType = pgEnum("courses_type", ['python', 'js', 'html'])
+export const difficulty = pgEnum("difficulty", ['Hard', 'Medium', 'Easy'])
+export const exercisesReviewType = pgEnum("exercises_review_type", ['automatic', 'facilitator', 'peer', 'manual'])
+export const exercisesSubmissionType = pgEnum("exercises_submission_type", ['url', 'attachments', 'text_large', 'text', 'number'])
+export const submissionsState = pgEnum("submissions_state", ['rejected', 'pending', 'completed'])
+export const userRolesCenter = pgEnum("user_roles_center", ['all', 'banagalore', 'dharamshala'])
+export const userRolesRoles = pgEnum("user_roles_roles", ['facilitator', 'student', 'alumni', 'admin'])
+export const usersCenter = pgEnum("users_center", ['bangalore', 'dharamshala'])
 export const main = pgSchema('main');
 
 // relations(users, ({one, many}) => ({
@@ -512,13 +485,14 @@ export const mentors = main.table(
   },
 );
 
-export const merakiCertificate = main.table('meraki_certificate', {
-  id: serial('id').primaryKey().notNull(),
-  userId: integer('user_id').references(() => users.id),
-  url: varchar('url', { length: 255 }),
-  registerAt: varchar('register_at', { length: 255 }),
-  createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }),
-  pathwayCode: varchar('pathway_code', { length: 255 }),
+export const merakiCertificate = main.table("meraki_certificate", {
+	id: serial("id").primaryKey().notNull(),
+	userId: integer("user_id").references(() => users.id),
+	url: varchar("url", { length: 255 }),
+	registerAt: varchar("register_at", { length: 255 }),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }),
+	pathwayId: integer("pathway_id"),
+	pathwayCode: varchar("pathway_code", { length: 255 }),
 });
 
 export const partnerSpecificBatches = main.table('partner_specific_batches', {
@@ -1310,7 +1284,6 @@ export const courses = main.table('courses', {
   name: varchar('name', { length: 100 }),
   logo: varchar('logo', { length: 100 }),
   notes: varchar('notes', { length: 10000 }),
-  // You can use { mode: "bigint" } if numbers are exceeding js number limitations
   daysToComplete: bigint('days_to_complete', { mode: 'number' }),
   shortDescription: varchar('short_description', { length: 300 }),
   type: text('type').default('html').notNull(),
@@ -1354,7 +1327,7 @@ export const courseEnrolments = main.table(
 );
 export const users = main.table("users", {
 	id: bigserial("id", { mode: "bigint" }).primaryKey().notNull(),
-	email: varchar("email", { length: 255 }),
+	email: varchar("email", { length: 50 }),
 	name: varchar("name", { length: 250 }).default('').notNull(),
 	profilePicture: varchar("profile_picture", { length: 250 }),
 	googleUserId: varchar("google_user_id", { length: 250 }),
@@ -1375,14 +1348,10 @@ export const users = main.table("users", {
 	spaceId: integer("space_id").references(() => partnerSpace.id, { onDelete: "cascade", onUpdate: "cascade" } ),
 	c4CaPartnerId: integer("c4ca_partner_id").references(() => c4CaPartners.id, { onDelete: "set null" } ),
 	c4CaFacilitatorId: integer("c4ca_facilitator_id").references(() => facilitators.id, { onDelete: "set null" } ),
-	// userName: varchar("user_name", { length: 255 }),
-	// password: varchar("password", { length: 255 }),
-  // pass_iv: varchar("pass_iv", { length: 255 }),
 },
 (table) => {
 	return {
 		idx50526GoogleUserId: uniqueIndex("idx_50526_google_user_id").on(table.googleUserId),
-		//mainUsersUserNameUnique: unique("main_users_user_name_unique").on(table.userName),
 	}
 });
 
@@ -1439,15 +1408,16 @@ export const enrolmentKeys = main.table(
 
 );
 
-let PartnerSpecificBatchV2 = main.table('partner_specific_batches_v2', {
-  id: serial('id').primaryKey().notNull(),
-  partnerId: integer('partner_id').references(() => partners.id),
-  pathwayId: integer('pathway_id').references(() => pathwaysV2.id),
-  spaceId: integer('space_id').references(() => partnerSpace.id),
-  groupId: integer('group_id').references(() => spaceGroup.id),
-  classId: integer('class_id').references(() => classes.id),
-  recurringId: integer('recurring_id').references(() => recurringClasses.id),
+export const partnerSpecificBatchesV2 = main.table("partner_specific_batches_v2", {
+	id: serial("id").primaryKey().notNull(),
+	classId: integer("class_id").references(() => classes.id),
+	recurringId: integer("recurring_id").references(() => recurringClasses.id),
+	spaceId: integer("space_id").references(() => partnerSpace.id, { onDelete: "set null" } ),
+	groupId: integer("group_id").references(() => spaceGroup.id, { onDelete: "set null" } ),
+	partnerId: integer("partner_id").references(() => partners.id),
+	pathwayId: integer("pathway_id"),
 });
+
 
 export const exercises = main.table(
   'exercises',
@@ -2225,17 +2195,16 @@ export const c4CaTeams = main.table(
   },
 );
 
-export const assessmentOutcome = main.table('assessment_outcome', {
-  id: serial('id').primaryKey().notNull(),
-  userId: integer('user_id').references(() => users.id),
-  assessmentId: integer('assessment_id').notNull(),
-  status: varchar('status', { length: 255 }).notNull(),
-  selectedOption: integer('selected_option'),
-  attemptCount: integer('attempt_count').notNull(),
-  teamId: integer('team_id').references(() => c4CaTeams.id, {
-    onDelete: 'set null',
-  }),
-  selectedMultipleOption: varchar('selected_multiple_option', { length: 255 }),
+export const assessmentOutcome = main.table("assessment_outcome", {
+	id: serial("id").primaryKey().notNull(),
+	userId: integer("user_id").references(() => users.id),
+	assessmentId: integer("assessment_id").notNull(),
+	status: varchar("status", { length: 255 }).notNull(),
+	selectedOption: integer("selected_option"),
+	attemptCount: integer("attempt_count").notNull(),
+	multipleChoice: varchar("multiple_choice", { length: 255 }),
+	teamId: integer("team_id").references(() => c4CaTeams.id, { onDelete: "set null" } ),
+	selectedMultipleOption: varchar("selected_multiple_option", { length: 255 }),
 });
 
 export const assessmentResult = main.table('assessment_result', {
@@ -2334,10 +2303,7 @@ export const scratchSample = main.table('scratch_sample', {
   projectId: varchar('project_id', { length: 255 }).notNull(),
   url: varchar('url', { length: 255 }).notNull(),
   projectName: varchar('project_name', { length: 255 }),
-  createdAt: timestamp('created_at', {
-    withTimezone: true,
-    mode: 'string',
-  }).defaultNow(),
+	createdAt: date("created_at"),
 });
 
 export const zuvySessions = main.table('zuvy_sessions', {
