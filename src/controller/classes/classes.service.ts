@@ -165,13 +165,13 @@ export class ClassesService {
     timeZone: string;
     batchId: number;
     bootcampId: number;
-    userId: number;
-  }) {
+  },creatorInfo : any) {
     try {
+      const userId = Number(creatorInfo.id)
       const fetchedTokens = await db
         .select()
         .from(userTokens)
-        .where(eq(userTokens.userId, eventDetails.userId));
+        .where(eq(userTokens.userId, userId));
       if (!fetchedTokens) {
         return { status: 'error', message: 'Unable to fetch tokens' };
       }
@@ -179,13 +179,19 @@ export class ClassesService {
         access_token: fetchedTokens[0].accessToken,
         refresh_token: fetchedTokens[0].refreshToken,
       });
+      if (!creatorInfo.email.endsWith('@zuvy.org')) {
+        return {
+          status: 'error',
+          message: 'Unauthorized email id.'
+        };
+      }
 
-      // if (eventDetails.roles.includes('admin') == false) {
-      //   return {
-      //     status: 'error',
-      //     message: 'You should be an admin to create a class.',
-      //   };
-      // }
+      if (!creatorInfo.roles.includes('admin')) {
+        return {
+          status: 'error',
+          message: 'You should be an admin to create a class.',
+        };
+      }
 
       const studentsInTheBatchEmails = await db
         .select()

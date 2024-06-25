@@ -59,16 +59,6 @@ export class CreateLiveBroadcastDto {
   title: string;
 
   @ApiProperty({
-    description: 'The userId(admin)',
-    type: Number,
-    example: 44848,
-    required: true,
-  })
-  @IsNotEmpty()
-  @IsNumber()
-  userId: number;
-
-  @ApiProperty({
     description: 'The batchId of the live broadcast ',
     type: Number,
     example: 1,
