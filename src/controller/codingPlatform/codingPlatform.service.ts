@@ -3,19 +3,12 @@ import { db } from '../../db/index';
 import { eq, sql ,count, lte} from 'drizzle-orm';
 // import { BatchesService } from '../batches/batch.service';
 import axios from 'axios';
-import { SubmitCodeDto } from './dto/codingPlatform.dto';
+import { SubmitCodeDto,CreateProblemDto } from './dto/codingPlatform.dto';
 import * as _ from 'lodash';
 import { error, log } from 'console';
 import {
-  bootcamps,
-  batches,
-  users,
-  batchEnrollments,
-  classesGoogleMeetLink,
-  bootcampTracking,
-  bootcampType,
-  codingQuestions,
-  codingSubmission
+  zuvyCodingQuestions,
+  zuvyCodingSubmission
 } from '../../../drizzle/schema';
 
 const { ZUVY_CONTENT_URL ,RAPID_API_KEY,RAPID_HOST} = process.env; // INPORTING env VALUSE ZUVY_CONTENT
@@ -35,7 +28,7 @@ export class CodingPlatformService {
       input.push(testCasesCount);
       testCases.forEach(testCase => {
         input.push(...testCase.input.flat());
-        output.push(testCase.output);
+        output.push(...testCase.output.flat());
       });
       }
       else if(action == 'run')
@@ -49,7 +42,7 @@ export class CodingPlatformService {
     const stdinput = input.map(item => item.toString()).join('\n');
     const encodedStdInput = Buffer.from(stdinput).toString('base64')
     const stdoutput = output.map(item => item.toString()).join('\n');
-    const encodedStdOutput = Buffer.from(stdoutput).toString('base64')
+    const encodedStdOutput = Buffer.from(stdoutput).toString('base64');
     const options = {
   method: 'POST',
   url: 'https://judge0-ce.p.rapidapi.com/submissions',
@@ -66,13 +59,12 @@ export class CodingPlatformService {
   data: {
     language_id: sourceCode.languageId,
     source_code: sourceCode.sourceCode,
-    stdin: encodedStdInput.trim(),
-    expected_output: encodedStdOutput.trim()
-
+    stdin: encodedStdInput,
+    expected_output: encodedStdOutput
   }
 };
-
-    try {
+  
+  try {
       const response = await axios.request(options);
       return response.data;
     } catch (error) {
@@ -96,7 +88,6 @@ export class CodingPlatformService {
 
 try {
 	const response = await axios.request(options);
-	//console.log(response.data);
     return response.data;
 } catch (error) {
 	throw error;
@@ -126,10 +117,10 @@ try {
 
   async findSubmissionByQuestionId(questionId: number,id:number) {
     try {
-       const submissions = await db.select().from(codingSubmission)
-        .where(sql`${codingSubmission.question_solved}->>${questionId.toString()} IS NOT NULL AND ${codingSubmission.user_id} = ${id}`)
+       const submissions = await db.select().from(zuvyCodingSubmission)
+        .where(sql`${zuvyCodingSubmission.questionSolved}->>${questionId.toString()} IS NOT NULL AND ${zuvyCodingSubmission.userId} = ${id}`)
      
-         const questionSolved = submissions[0]?.question_solved;
+         const questionSolved = submissions[0]?.questionSolved;
          var submissionTokens = {token:[]};
          if(questionSolved)
          {
@@ -157,12 +148,12 @@ try {
     }
   }
 
-  async updateSubmissionWithToken(userId: number, questionId: number, token: string,status:string) {
+  async updateSubmissionWithToken(userId: number, questionId: number, token: string,status:string, assessmentSubmissionId = null) {
   try {
     
     const existingSubmission = await db.select()
-      .from(codingSubmission)
-      .where(sql`${codingSubmission.user_id} = ${userId}`)
+      .from(zuvyCodingSubmission)
+      .where(sql`${zuvyCodingSubmission.userId} = ${userId}`)
 
     let questionSolved = {};
     if(status !== 'Accepted')
@@ -172,15 +163,17 @@ try {
     if (existingSubmission.length === 0) {
       
       questionSolved[questionId.toString()] = { token: [token],status: status };
-      await db.insert(codingSubmission)
+      await db.insert(zuvyCodingSubmission)
         .values({
-          user_id: userId,
-          question_solved: questionSolved
+          userId: BigInt(userId),
+          questionSolved: questionSolved,
+          assessmentSubmissionId,
+          questionId
         })
         .returning();
     } else {
       
-      questionSolved = existingSubmission[0].question_solved || {};
+      questionSolved = existingSubmission[0].questionSolved || {};
       if (!questionSolved.hasOwnProperty(questionId.toString())) {
         questionSolved[questionId.toString()] = { token: [token],status: status };
       } else {
@@ -191,9 +184,9 @@ try {
         }
         questionSolved[questionId.toString()].token.push(token);
       }
-      await db.update(codingSubmission)
-        .set({ question_solved: questionSolved })
-        .where(sql`${codingSubmission.user_id} = ${userId}`)
+      await db.update(zuvyCodingSubmission)
+        .set({ questionSolved: questionSolved })
+        .where(sql`${zuvyCodingSubmission.userId} = ${userId}`)
     }
   } catch (error) {
     console.error('Error updating submission:', error);
@@ -204,18 +197,17 @@ try {
 async getQuestionsWithStatus(userId: number) {
   try {
     const questions = await db.select()
-      .from(codingQuestions)
+      .from(zuvyCodingQuestions)
      
-
     const userSubmissions = await db.select()
-      .from(codingSubmission)
-      .where(sql`${codingSubmission.user_id} = ${userId}`)
+      .from(zuvyCodingSubmission)
+      .where(sql`${zuvyCodingSubmission.userId} = ${userId}`)
 
     const count = userSubmissions.length;
     const response = questions.map(question => ({
       id: question.id.toString(),
       title: question.title,
-      status: count !== 0 ? (userSubmissions[0].question_solved[question.id.toString()]?.status || null):null,
+      status: count !== 0 ? (userSubmissions[0].questionSolved[question.id.toString()]?.status || null):null,
       difficulty: question.difficulty,
     }));
 
@@ -229,7 +221,7 @@ async getQuestionsWithStatus(userId: number) {
 async getQuestionById(questionId: number)
 {
     try{
-        const question = await db.select().from(codingQuestions).where(sql`${codingQuestions.id} = ${Number(questionId)}`)
+        const question = await db.select().from(zuvyCodingQuestions).where(sql`${zuvyCodingQuestions.id} = ${Number(questionId)}`)
        if (question.length === 0) {
             return { status: 'error', code: 400, message: "No question available for the given question Id" };
         }
@@ -247,5 +239,17 @@ async getQuestionById(questionId: number)
         throw err;
     }
 }
+
+
+   async createCodingProblem(codingProblem:CreateProblemDto){
+       try {
+           const newQuestionCreated = await db.insert(zuvyCodingQuestions).values(codingProblem).returning();
+           return newQuestionCreated;
+       }catch(err)
+       {
+        throw err;
+       }
+   }
+
 
 }
