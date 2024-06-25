@@ -254,25 +254,25 @@ export const ongoingTopics = main.table('ongoing_topics', {
   updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }),
 });
 
-export const gtaGame = main.table('gta_game', {
-  id: serial('id').primaryKey().notNull(),
-  firstName: varchar('first_name', { length: 255 }).notNull(),
-  lastName: text('last_name').notNull(),
-  gender: varchar('gender', { length: 255 }).notNull(),
-  country: varchar('country', { length: 255 }),
-  password: varchar('password', { length: 255 }).notNull(),
-  userId: varchar('user_id', { length: 255 }).notNull(),
-});
+// export const gtaGame = main.table('gta_game', {
+//   id: serial('id').primaryKey().notNull(),
+//   firstName: varchar('first_name', { length: 255 }).notNull(),
+//   lastName: text('last_name').notNull(),
+//   gender: varchar('gender', { length: 255 }).notNull(),
+//   country: varchar('country', { length: 255 }),
+//   password: varchar('password', { length: 255 }).notNull(),
+//   userId: varchar('user_id', { length: 255 }).notNull(),
+// });
 
-export const hackathonForTemp = main.table('hackathon_for_temp', {
-  id: serial('id').primaryKey().notNull(),
-  firstName: varchar('first_name', { length: 255 }).notNull(),
-  lastName: text('last_name').notNull(),
-  gender: varchar('gender', { length: 255 }).notNull(),
-  country: varchar('country', { length: 255 }),
-  password: varchar('password', { length: 255 }).notNull(),
-  userId: varchar('user_id', { length: 255 }).notNull(),
-});
+// export const hackathonForTemp = main.table('hackathon_for_temp', {
+//   id: serial('id').primaryKey().notNull(),
+//   firstName: varchar('first_name', { length: 255 }).notNull(),
+//   lastName: text('last_name').notNull(),
+//   gender: varchar('gender', { length: 255 }).notNull(),
+//   country: varchar('country', { length: 255 }),
+//   password: varchar('password', { length: 255 }).notNull(),
+//   userId: varchar('user_id', { length: 255 }).notNull(),
+// });
 
 export const kDetails = main.table('k_details', {
   id: bigserial('id', { mode: 'bigint' }).primaryKey().notNull(),
@@ -389,15 +389,15 @@ export const newStudentsTemp = main.table('new_students_temp', {
   schoolStageId: integer('school_stage_id'),
 });
 
-export const newsApp = main.table('news_app', {
-  id: serial('id').primaryKey().notNull(),
-  firstName: varchar('first_name', { length: 255 }).notNull(),
-  lastName: text('last_name').notNull(),
-  gender: varchar('gender', { length: 255 }).notNull(),
-  country: varchar('country', { length: 255 }),
-  password: varchar('password', { length: 255 }).notNull(),
-  userId: varchar('user_id', { length: 255 }).notNull(),
-});
+// export const newsApp = main.table('news_app', {
+//   id: serial('id').primaryKey().notNull(),
+//   firstName: varchar('first_name', { length: 255 }).notNull(),
+//   lastName: text('last_name').notNull(),
+//   gender: varchar('gender', { length: 255 }).notNull(),
+//   country: varchar('country', { length: 255 }),
+//   password: varchar('password', { length: 255 }).notNull(),
+//   userId: varchar('user_id', { length: 255 }).notNull(),
+// });
 
 export const partnerAssessments = main.table('partner_assessments', {
   id: serial('id').primaryKey().notNull(),
@@ -418,28 +418,28 @@ export const partnerGroupUser = main.table('partner_group_user', {
   email: varchar('email', { length: 255 }),
 });
 
-export const merakihackthon = main.table(
-  'merakihackthon',
-  {
-    id: serial('id').primaryKey().notNull(),
-    userId: integer('user_id')
-      .notNull()
-      .references(() => users.id),
-    email: varchar('email', { length: 255 }).notNull(),
-    durations: integer('durations').notNull(),
-    createdAt: timestamp('created_at', {
-      withTimezone: true,
-      mode: 'string',
-    }).notNull(),
-  },
-  (table) => {
-    return {
-      mainMerakihackthonUserIdUnique: unique(
-        'main_merakihackthon_user_id_unique',
-      ).on(table.userId),
-    };
-  },
-);
+// export const merakihackthon = main.table(
+//   'merakihackthon',
+//   {
+//     id: serial('id').primaryKey().notNull(),
+//     userId: integer('user_id')
+//       .notNull()
+//       .references(() => users.id),
+//     email: varchar('email', { length: 255 }).notNull(),
+//     durations: integer('durations').notNull(),
+//     createdAt: timestamp('created_at', {
+//       withTimezone: true,
+//       mode: 'string',
+//     }).notNull(),
+//   },
+//   (table) => {
+//     return {
+//       mainMerakihackthonUserIdUnique: unique(
+//         'main_merakihackthon_user_id_unique',
+//       ).on(table.userId),
+//     };
+//   },
+// );
 
 export const mergedClasses = main.table('merged_classes', {
   id: serial('id').primaryKey().notNull(),
@@ -1375,14 +1375,14 @@ export const users = main.table("users", {
 	spaceId: integer("space_id").references(() => partnerSpace.id, { onDelete: "cascade", onUpdate: "cascade" } ),
 	c4CaPartnerId: integer("c4ca_partner_id").references(() => c4CaPartners.id, { onDelete: "set null" } ),
 	c4CaFacilitatorId: integer("c4ca_facilitator_id").references(() => facilitators.id, { onDelete: "set null" } ),
-	userName: varchar("user_name", { length: 255 }),
-	password: varchar("password", { length: 255 }),
-  pass_iv: varchar("pass_iv", { length: 255 }),
+	// userName: varchar("user_name", { length: 255 }),
+	// password: varchar("password", { length: 255 }),
+  // pass_iv: varchar("pass_iv", { length: 255 }),
 },
 (table) => {
 	return {
 		idx50526GoogleUserId: uniqueIndex("idx_50526_google_user_id").on(table.googleUserId),
-		mainUsersUserNameUnique: unique("main_users_user_name_unique").on(table.userName),
+		//mainUsersUserNameUnique: unique("main_users_user_name_unique").on(table.userName),
 	}
 });
 
@@ -1436,7 +1436,18 @@ export const enrolmentKeys = main.table(
       ).on(table.questionSetId),
     };
   },
+
 );
+
+let PartnerSpecificBatchV2 = main.table('partner_specific_batches_v2', {
+  id: serial('id').primaryKey().notNull(),
+  partnerId: integer('partner_id').references(() => partners.id),
+  pathwayId: integer('pathway_id').references(() => pathwaysV2.id),
+  spaceId: integer('space_id').references(() => partnerSpace.id),
+  groupId: integer('group_id').references(() => spaceGroup.id),
+  classId: integer('class_id').references(() => classes.id),
+  recurringId: integer('recurring_id').references(() => recurringClasses.id),
+});
 
 export const exercises = main.table(
   'exercises',
@@ -1959,55 +1970,6 @@ export const emailReport = main.table(
   },
 );
 
-export const session = main.table('session', {
-  id: serial('id').primaryKey().notNull(),
-  sessionName: varchar('session_name', { length: 255 }),
-  startTime: timestamp('start_time', { withTimezone: true, mode: 'string' }),
-  endTime: timestamp('end_time', { withTimezone: true, mode: 'string' }),
-  durations: integer('durations'),
-  userId: integer('user_id')
-    .notNull()
-    .references(() => userHack.id),
-});
-
-export const events = main.table('events', {
-  id: serial('id').primaryKey().notNull(),
-  eventName: varchar('event_name', { length: 255 }),
-  startTime: timestamp('start_time', { withTimezone: true, mode: 'string' }),
-  endTime: timestamp('end_time', { withTimezone: true, mode: 'string' }),
-  durations: integer('durations'),
-  viewPageId: integer('view_page_id')
-    .notNull()
-    .references(() => viewPage.id),
-  sessionId: integer('session_id')
-    .notNull()
-    .references(() => session.id),
-  userId: integer('user_id')
-    .notNull()
-    .references(() => userHack.id),
-});
-
-export const userHack = main.table('user_hack', {
-  id: serial('id').primaryKey().notNull(),
-  name: varchar('name', { length: 255 }).notNull(),
-  email: varchar('email', { length: 255 }).notNull(),
-});
-
-export const viewPage = main.table('view_page', {
-  id: serial('id').primaryKey().notNull(),
-  userId: integer('user_id')
-    .notNull()
-    .references(() => userHack.id),
-  durations: integer('durations').notNull(),
-  createdAt: timestamp('created_at', {
-    withTimezone: true,
-    mode: 'string',
-  }).defaultNow(),
-  pageUrl: varchar('page_url', { length: 255 }),
-  pageTitle: varchar('page_title', { length: 255 }),
-  startTime: timestamp('start_time', { withTimezone: true, mode: 'string' }),
-  endTime: timestamp('end_time', { withTimezone: true, mode: 'string' }),
-});
 
 export const exerciseCompletion = main.table(
   'exercise_completion',
@@ -2378,48 +2340,6 @@ export const scratchSample = main.table('scratch_sample', {
   }).defaultNow(),
 });
 
-export const developersResume = main.table(
-  'developers_resume',
-  {
-    id: serial('id').primaryKey().notNull(),
-    name: varchar('name', { length: 255 }),
-    email: varchar('email', { length: 255 }),
-    password: varchar('password', { length: 255 }),
-    role: varchar('role', { length: 255 }),
-    education: varchar('education', { length: 255 }),
-    intrests: varchar('intrests', { length: 255 }),
-    skills: varchar('skills', { length: 255 }),
-    experience: varchar('experience', { length: 255 }),
-    programmingLanguages: varchar('programming_languages', { length: 255 }),
-    resonalLanguage: varchar('resonal_language', { length: 255 }),
-    knownFramworks: varchar('known_framworks', { length: 255 }),
-    learningPlan: varchar('learning_plan', { length: 255 }),
-  },
-  (table) => {
-    return {
-      mainDevelopersResumeEmailUnique: unique(
-        'main_developers_resume_email_unique',
-      ).on(table.email),
-    };
-  },
-);
-
-// export const ZuvyClassesGoogleMeetLink = main.table(
-//   'zuvy_classes_google_meet_link',
-//   {
-//     id: serial('id').primaryKey().notNull(),
-//     meetingId: text('meetingid').notNull(),
-//     hangoutLink: text('hangout_link').notNull(),
-//     creator: text('creator').notNull(),
-//     startTime: text('start_time').notNull(),
-//     endTime: text('end_time').notNull(),
-//     batchId: text('batch_id').notNull(),
-//     bootcampId: text('bootcamp_id').notNull(),
-//     title: text('title').notNull(),
-//     s3link: text('s3link'),
-//   },
-// );
-
 export const zuvySessions = main.table('zuvy_sessions', {
   id: serial('id').primaryKey().notNull(),
   meetingId: text('meeting_id').notNull(),
@@ -2516,14 +2436,6 @@ export const bootcampsEnrollmentsRelations = relations(
     bootcamps: many(zuvyBootcamps),
   }),
 );
-
-// export const batchEnrollmentsRelations = relations(batches, ({one, many}) => ({
-//         // enrolles: many(batchEnrollments, {
-//         //         relationName: bootcampsEnrollmentsRelations,
-//         //         references: [batchEnrollments.batchId]
-//         // }),
-//         batchEnrollments: many(batches)
-// }))
 
 export const zuvyBatchEnrollments = main.table('zuvy_batch_enrollments', {
   id: serial('id').primaryKey().notNull(),
@@ -2675,7 +2587,29 @@ export const zuvyCodingSubmission = main.table("zuvy_coding_submission", {
     onUpdate: 'cascade',
   }),
   questionId: integer("question_id").references(() => zuvyOutsourseCodingQuestions.id),
+  status: varchar("status", { length: 255 }),
 })
+
+
+export const zuvyPracticeCode = main.table("zuvy_practice_code", {
+  id: serial("id").primaryKey().notNull(),
+  userId: bigserial("user_id", { mode: "bigint" }).notNull().references(() => users.id),
+  questionSolved: jsonb("question_solved").notNull(),
+  status: varchar("status", { length: 255 }),
+  questionId: integer("question_id").references(() => zuvyCodingQuestions.id),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+})
+
+export const zuvyPracticeCodeRelations = relations(zuvyPracticeCode, ({ one }) => ({
+  codeStatus: one(users, {
+    fields: [zuvyPracticeCode.userId],
+    references: [users.id],
+  }),
+  questionDetail: one(zuvyCodingQuestions, {
+    fields: [zuvyPracticeCode.questionId],
+    references: [zuvyCodingQuestions.id],
+  }),
+}))
 
 export const zuvyCodingSubmissionRelations = relations(zuvyCodingSubmission, ({ one }) => ({
   codeStatus: one(users, {
@@ -2687,7 +2621,7 @@ export const zuvyCodingSubmissionRelations = relations(zuvyCodingSubmission, ({ 
     references: [zuvyOutsourseAssessments.id],
   }),
   questionDetails: one(zuvyOutsourseCodingQuestions, {
-    fields: [zuvyCodingSubmission.questionId],
+    fields: [zuvyCodingSubmission.codingOutsourseId],
     references: [zuvyOutsourseCodingQuestions.id],
   }),
   submission: one(zuvyAssessmentSubmission, {
@@ -2784,10 +2718,6 @@ export const zuvyQuizTracking = main.table("zuvy_quiz_tracking", {
 });
 
 export const zuvyQuizTrackingRelations = relations(zuvyQuizTracking, ({ one }) => ({
-  // submissionAssessment: one(zuvyAssessmentSubmission,{
-  //   fields: [zuvyQuizTracking.assessmentId],
-  //   references: [zuvyAssessmentSubmission.id]
-  // }),
   quizSubmissions: one(zuvyAssessmentSubmission, {
     fields: [zuvyQuizTracking.assessmentSubmissionId],
     references: [zuvyAssessmentSubmission.id]
@@ -2798,8 +2728,6 @@ export const zuvyQuizTrackingRelations = relations(zuvyQuizTracking, ({ one }) =
   })
   
 }))
-
-// export const alterZuvyQuizTracking = main.table("")
 
 export const zuvyModuleTracking = main.table("zuvy_module_tracking", {
   id: serial("id").primaryKey().notNull(),
@@ -2900,18 +2828,8 @@ export const zuvyModuleAssessment = main.table('zuvy_module_assessment', {
 });
 
 export const zuvyAssessmentrelations = relations(zuvyModuleAssessment, ({ one, many}) => ({
-  // assessmentSubmission: one(zuvyAssessmentSubmission, {
-  //   fields: [zuvyModuleAssessment.id],
-  //   references: [zuvyAssessmentSubmission.assessmentId],
-  // }),
-  // assessmentDetails: one(zuvyCourseModules, {
-  //   fields: [zuvyModuleAssessment.moduleId],
-  //   references: [zuvyCourseModules.id],
-  // }),
   assessmentSubmissions: many(zuvyAssessmentSubmission)
 }));
-
-
 
 // Define zuvyAssessmentSubmission
 export const zuvyAssessmentSubmission = main.table("zuvy_assessment_submission", {
@@ -2953,8 +2871,6 @@ export const zuvyAssessmentSubmissionRelation = relations(zuvyAssessmentSubmissi
   codingSubmission: many(zuvyCodingSubmission),
 }))
 
-
-
 export const zuvyOpenEndedQuestionSubmission = main.table("zuvy_open_ended_question_submission", {
   id: serial("id").primaryKey().notNull(),
   questionId: integer("question_id").references(() => zuvyOutsourseOpenEndedQuestions.id).notNull(),
@@ -2969,10 +2885,6 @@ export const zuvyOpenEndedQuestionSubmission = main.table("zuvy_open_ended_quest
   submitAt: timestamp("submit_at", { withTimezone: true, mode: 'string' }).defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
 });
-
-
-
-
 
 export const zuvyOpenEndedQuestionSubmissionRelation = relations(zuvyOpenEndedQuestionSubmission, ({one, many})=> ({
   user: one(users, {
@@ -2993,28 +2905,14 @@ export const zuvyOpenEndedQuestionSubmissionRelation = relations(zuvyOpenEndedQu
   })
 }))
 
-
-
-// Define the relations
-
-
 export const assessmentData = relations(zuvyCourseModules,({one, many})=>({
-  // assessmentDetails: one(zuvyModuleAssessment, {
-  //   fields: [zuvyCourseModules.id],
-  //   references: [zuvyModuleAssessment.moduleId],
-  // }),
   moduleAssessments: many(zuvyModuleAssessment),
   moduleChapterData: many(zuvyModuleChapter),
   chapterTrackingData: many(zuvyChapterTracking),
 })) 
 
 export const assessmentSubmissionRelations = relations(zuvyAssessmentSubmission,({one, many})=>({
-  // assessmentSubmission: one(zuvyModuleAssessment, {
-  //   fields: [zuvyAssessmentSubmission.assessmentId],
-  //   references: [zuvyModuleAssessment.id],
-  // }),
   assessmentSubmissions: many(zuvyAssessmentSubmission),
-  // assessmentSubmissions: many(zuvyModuleAssessment)
 })) 
 
 
@@ -3035,29 +2933,6 @@ export const zuvyStudentAttendance = main.table('zuvy_student_attendance', {
   batchId: integer('batch_id').references(() => zuvyBatches.id),
   bootcampId: integer('bootcamp_id').references(() => zuvyBootcamps.id),
 });
-
-// export const chapterUserRelations = relations(users, ({many}) => ({
-//         chapters: many(chapterTracking),
-// }))
-
-
-export const merakiStudents = main.table(
-  'meraki_students',
-  {
-    id: serial('id').primaryKey().notNull(),
-    userName: varchar('user_name', { length: 255 }).notNull(),
-    name: varchar('name', { length: 255 }).notNull(),
-    password: varchar('password', { length: 255 }).notNull(),
-    partnerId: integer('partner_id')
-      .notNull()
-      .references(() => partners.id, { onDelete: 'cascade' }),
-    createdAt: timestamp('created_at', {
-      withTimezone: true,
-      mode: 'string',
-    }).defaultNow(),
-  },
-
-);
 
 export const zuvyChapterTracking = main.table('zuvy_chapter_tracking', {
   id: serial('id').primaryKey().notNull(),
@@ -3154,7 +3029,9 @@ export const zuvyCodingQuestions = main.table("zuvy_coding_questions", {
   usage: integer("usage").default(0)
 })
 
-
+export const codingQuestionRelations = relations(zuvyCodingQuestions, ({one, many}) => ({
+  submissions: many(zuvyPracticeCode),
+}))
 
 export const zuvyOutsourseAssessments = main.table('zuvy_outsourse_assessments', {
   id: serial('id').primaryKey().notNull(),
@@ -3259,15 +3136,11 @@ export const zuvyOutsourseCodingQuestionsRelations = relations(zuvyOutsourseCodi
     fields: [zuvyOutsourseCodingQuestions.codingQuestionId],
     references: [zuvyCodingQuestions.id],
   }),
-  // submission: one(zuvyCodingSubmission, {
-
-  // })
 }))
 
 export const zuvyOutsourseOpenEndedQuestions = main.table('zuvy_outsourse_openEnded_questions', {
   id: serial('id').primaryKey().notNull(),
   openEndedQuestionId: integer('open_ended_question_id').references(() => zuvyOpenEndedQuestions.id),
-  // marks: integer('marks'),
 
   assessmentOutsourseId: integer("assessment_outsourse_id").references(() => zuvyOutsourseAssessments.id, {
     onDelete: 'cascade',
@@ -3315,8 +3188,6 @@ export const OutsourseOpenEndedQuestionsRelations = relations(zuvyOutsourseOpenE
 export const zuvyOutsourseQuizzes = main.table('zuvy_outsourse_quizzes', {
   id: serial('id').primaryKey().notNull(),
   quiz_id: integer('quiz_id').references(() => zuvyModuleQuiz.id),
-  // marks: integer('marks'),
-
   assessmentOutsourseId: integer("assessment_outsourse_id").references(() => zuvyOutsourseAssessments.id, {
     onDelete: 'cascade',
     onUpdate: 'cascade',
@@ -3408,8 +3279,6 @@ export const zuvyChapterTrackingRelations = relations(
   }),
 );
 
-
-
 // export const chapterRelations = relations(
 //   zuvyModuleChapter,
 //   ({ one, many }) => ({
@@ -3420,9 +3289,6 @@ export const zuvyChapterTrackingRelations = relations(
 //     }),
 //   }),
 // );
-
-
-
 
 export const quizChapterRelations = relations(
   zuvyCourseModules,
