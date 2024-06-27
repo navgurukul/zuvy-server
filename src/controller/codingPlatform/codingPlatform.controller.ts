@@ -147,4 +147,22 @@ export class CodingPlatformController {
     const res = await this.codingPlatformService.createCodingProblem(createCodingQuestion);
     return res;
   }
+
+  @Post('/practicecode/questionId=:questionId')
+  @ApiOperation({ summary: 'Submiting the coding question' })
+  @ApiBearerAuth()
+  async getPracticeCode(@Param('questionId') questionId: number, 
+    @Body() sourceCode: SubmitCodeDto,
+    @Query('action') action: string,
+    @Req() req,
+  ) {
+   return this.codingPlatformService.submitPracticeCode(questionId, sourceCode, action, req.user[0].id);
+  }
+
+  @Get('/practicecode/questionId=:questionId')
+  @ApiOperation({ summary: 'Get the question AND submissions by question id ' })
+  @ApiBearerAuth()
+  async getPracticeCodeById(@Param('questionId') questionId: number, @Req() req){
+    return this.codingPlatformService.getPracticeCode(questionId, req.user[0].id);
+  }
 }
