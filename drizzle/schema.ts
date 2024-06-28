@@ -1376,14 +1376,14 @@ export const users = main.table("users", {
 	spaceId: integer("space_id").references(() => partnerSpace.id, { onDelete: "cascade", onUpdate: "cascade" } ),
 	c4CaPartnerId: integer("c4ca_partner_id").references(() => c4CaPartners.id, { onDelete: "set null" } ),
 	c4CaFacilitatorId: integer("c4ca_facilitator_id").references(() => facilitators.id, { onDelete: "set null" } ),
-	userName: varchar("user_name", { length: 255 }),
-	password: varchar("password", { length: 255 }),
-  pass_iv: varchar("pass_iv", { length: 255 }),
+	// userName: varchar("user_name", { length: 255 }),
+	// password: varchar("password", { length: 255 }),
+  // pass_iv: varchar("pass_iv", { length: 255 }),
 },
 (table) => {
 	return {
 		idx50526GoogleUserId: uniqueIndex("idx_50526_google_user_id").on(table.googleUserId),
-		mainUsersUserNameUnique: unique("main_users_user_name_unique").on(table.userName),
+		// mainUsersUserNameUnique: unique("main_users_user_name_unique").on(table.userName),
 	}
 });
 
