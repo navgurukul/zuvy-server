@@ -18,7 +18,7 @@ import {
   zuvyProjectTracking,
   zuvyRecentBootcamp,
   zuvyAssessmentSubmission,
-  zuvyPracticeCode,
+  zuvyCodingSubmission,
   zuvyCodingQuestions
 } from 'drizzle/schema';
 import { throwError } from 'rxjs';
@@ -1072,8 +1072,8 @@ export class TrackingService {
 
       const codingQuestionTracking = await db
         .select()
-        .from(zuvyPracticeCode)
-        .where(sql`${zuvyPracticeCode.userId} = ${userId}`);
+        .from(zuvyCodingSubmission)
+        .where(sql`${zuvyCodingSubmission.userId} = ${userId}`);
 
       if(chapterDetails.length > 0){
         if (chapterDetails[0].topicId == 4) {

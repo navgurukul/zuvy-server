@@ -59,9 +59,19 @@ export class CreateLiveBroadcastDto {
   title: string;
 
   @ApiProperty({
+    description: 'The userId(admin)',
+    type: String,
+    example: '44002',
+    required: true,
+  })
+  @IsNotEmpty()
+  @IsNumber()
+  userId: number;
+
+  @ApiProperty({
     description: 'The batchId of the live broadcast ',
     type: Number,
-    example: 1,
+    example: 'abcd',
     required: true,
   })
   @IsNotEmpty()
@@ -71,7 +81,7 @@ export class CreateLiveBroadcastDto {
   @ApiProperty({
     description: 'Bootcamp Id',
     type: Number,
-    example: 9,
+    example: 'abcd',
     required: true,
   })
   @IsNotEmpty()
@@ -119,6 +129,26 @@ export class CreateLiveBroadcastDto {
   @IsNotEmpty()
   @IsString()
   timeZone: string;
+
+  @ApiProperty({
+    description: 'List of attendees for the live broadcast',
+    type: [String],
+    example: ['attendee1@example.com', 'attendee2@example.com'],
+    required: true,
+  })
+  @IsNotEmpty()
+  @IsArray()
+  attendees: string[];
+
+  @ApiProperty({
+    description: 'User roles',
+    type: [String],
+    example: ['admin', 'volunteer'],
+    required: false,
+  })
+  @IsNotEmpty()
+  @IsArray()
+  roles: string[];
 }
 
 export class reloadDto {

@@ -163,15 +163,17 @@ export class ClassesService {
     startDateTime: string;
     endDateTime: string;
     timeZone: string;
+    attendees: string[];
     batchId: number;
     bootcampId: number;
-  },creatorInfo : any) {
+    userId: number;
+    roles: string[];
+  }) {
     try {
-      const userId = Number(creatorInfo.id)
       const fetchedTokens = await db
         .select()
         .from(userTokens)
-        .where(eq(userTokens.userId, userId));
+        .where(eq(userTokens.userId, eventDetails.userId));
       if (!fetchedTokens) {
         return { status: 'error', message: 'Unable to fetch tokens' };
       }
@@ -179,14 +181,8 @@ export class ClassesService {
         access_token: fetchedTokens[0].accessToken,
         refresh_token: fetchedTokens[0].refreshToken,
       });
-      if (!creatorInfo.email.endsWith('@zuvy.org')) {
-        return {
-          status: 'error',
-          message: 'Unauthorized email id.'
-        };
-      }
 
-      if (!creatorInfo.roles.includes('admin')) {
+      if (eventDetails.roles.includes('admin') == false) {
         return {
           status: 'error',
           message: 'You should be an admin to create a class.',
