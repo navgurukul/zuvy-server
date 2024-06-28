@@ -38,8 +38,8 @@ export class ClassesController {
   @Post('/')
   @ApiOperation({ summary: 'Create the new class' })
   @ApiBearerAuth()
-  async create(@Body() classData: CreateLiveBroadcastDto) {
-    return this.classesService.createLiveBroadcast(classData);
+  async create(@Body() classData: CreateLiveBroadcastDto,@Req() req) {
+    return this.classesService.createLiveBroadcast(classData,req.user[0]);
   }
 
   @Delete('/:id')
