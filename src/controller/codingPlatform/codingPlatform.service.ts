@@ -265,8 +265,24 @@ export class CodingPlatformService {
   async getQuestionsWithStatus(userId: number, difficulty: string, page: number, limit: number) {
     try {
 
-      
-     const toatalQuestionsWithSubmisionStatus = await db.query.zuvyCodingQuestions.findMany({
+      let queryString 
+      if (difficulty !== undefined) {
+        if (!['easy', 'medium', 'hard'].includes(difficulty.toLowerCase())) {
+          return { status: 'error', code: 400, message: 'Invalid difficulty level' };
+        }
+        queryString = sql`${zuvyCodingQuestions.difficulty} = ${difficulty}`;
+      } else {
+        if (difficulty !== undefined) {
+          queryString = sql`${zuvyCodingQuestions.difficulty} = ${difficulty}`;
+        } else {
+          queryString = sql`${zuvyCodingQuestions.id} > 0`;
+        }
+      }
+      const toatalQuestionsWithSubmisionStatus = await db.query.zuvyCodingQuestions.findMany({
+        where : queryString,
+        limit: limit,
+        offset: (page - 1) * limit,
+        orderBy: desc(zuvyCodingQuestions.id),
         columns: {
           id: true,
           difficulty: true,
@@ -274,7 +290,7 @@ export class CodingPlatformService {
         },
         with: {
           submissions: {
-            where: (zuvyPracticeCode, { sql }) => sql`${zuvyPracticeCode.userId} = ${userId} AND ${zuvyPracticeCode.difficulty} = ${difficulty}`,
+            where: (zuvyPracticeCode, { sql }) => sql`${zuvyPracticeCode.userId} = ${userId} `,
             columns: {
               status: true,
               token: true,
@@ -283,11 +299,8 @@ export class CodingPlatformService {
             }
           }
         },
-        limit: limit,
-        offset: (page - 1) * limit,
-        orderBy: desc(zuvyCodingQuestions.id)
       })
-      const toatalQuestions = await db.query.zuvyCodingQuestions.findMany({columns: {id: true,}})
+      const toatalQuestions = await db.query.zuvyCodingQuestions.findMany({columns: {id: true,}, where: queryString})
 
       const response = toatalQuestionsWithSubmisionStatus.map((question: any) => {
         const acceptedSubmission = question.submissions.find(submission => submission.status === 'Accepted');
@@ -301,7 +314,7 @@ export class CodingPlatformService {
         return {
           ...question
         }
-     })
+      })
       return {toatalQuestionsWithSubmisionStatus, totalQuestions: toatalQuestions.length};
     } catch (error) {
       console.error('Error fetching questions with status:', error);
