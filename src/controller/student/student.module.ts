@@ -4,10 +4,11 @@ import { StudentService } from './student.service';
 import { BatchesModule } from '../batches/batch.module';
 import { JwtModule, JwtService } from '@nestjs/jwt';
 import { JwtMiddleware } from 'src/middleware/jwt.middleware';
+import { ClassesModule } from '../classes/classes.module'; 
 @Module({
   controllers: [StudentController],
   providers: [StudentService,JwtService],
-  imports: [BatchesModule],
+  imports: [BatchesModule, ClassesModule],
 })
 export class StudentModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {

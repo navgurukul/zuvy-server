@@ -8,7 +8,6 @@ import { JwtMiddleware } from 'src/middleware/jwt.middleware';
 @Module({
   controllers: [ContentController],
   providers: [ContentService, JwtService],
-  // imports: [BatchesModule],
   // exports: [ContentService]
 })
 export class ContentModule implements NestModule {

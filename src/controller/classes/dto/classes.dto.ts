@@ -59,34 +59,24 @@ export class CreateLiveBroadcastDto {
   title: string;
 
   @ApiProperty({
-    description: 'The userId(admin)',
-    type: String,
-    example: '44002',
-    required: true,
-  })
-  @IsNotEmpty()
-  @IsString()
-  userId: number;
-
-  @ApiProperty({
     description: 'The batchId of the live broadcast ',
-    type: String,
-    example: 'abcd',
+    type: Number,
+    example: 1,
     required: true,
   })
   @IsNotEmpty()
-  @IsString()
-  batchId: string;
+  @IsNumber()
+  batchId: number;
 
   @ApiProperty({
     description: 'Bootcamp Id',
-    type: String,
-    example: 'abcd',
+    type: Number,
+    example: 9,
     required: true,
   })
   @IsNotEmpty()
-  @IsString()
-  bootcampId: string;
+  @IsNumber()
+  bootcampId: number;
 
   @ApiProperty({
     description: 'The description of the live broadcast event',
@@ -129,25 +119,16 @@ export class CreateLiveBroadcastDto {
   @IsNotEmpty()
   @IsString()
   timeZone: string;
+}
 
+export class reloadDto {
   @ApiProperty({
-    description: 'List of attendees for the live broadcast',
-    type: [String],
-    example: ['attendee1@example.com', 'attendee2@example.com'],
+    description: 'meetingid of the live classes',
+    type: Array,
+    example: "['afadfasdadadfadf','asfafasfasfdas']",
     required: true,
   })
   @IsNotEmpty()
   @IsArray()
-  attendees: string[];
-
-  @ApiProperty({
-    description: 'User roles',
-    type: [String],
-    example: ['admin', 'volunteer'],
-    required: false,
-  })
-  @IsNotEmpty()
-  @IsArray()
-  roles: string[];
+  meetingIds: string[];
 }
-

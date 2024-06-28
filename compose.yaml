@@ -1,0 +1,12 @@
+version: "3.7"
+services:
+  zuvy:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image : zuvy
+    container_name: zuvy_container
+    ports:
+      - "5001:5000"
+    env_file:
+      - .env
