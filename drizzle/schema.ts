@@ -2506,6 +2506,13 @@ export const zuvyBatches = main.table('zuvy_batches', {
     .defaultNow()
     .notNull(),
 });
+export const zuvyBatchesRelations = relations(
+  zuvyBatches,
+  ({ one, many }) => ({
+
+    students: many(zuvyBatchEnrollments),
+  }),
+);
 
 export const bootcampsEnrollmentsRelations = relations(
   zuvyBootcamps,
@@ -2515,6 +2522,7 @@ export const bootcampsEnrollmentsRelations = relations(
       references: [zuvyBatches.bootcampId],
     }),
     bootcamps: many(zuvyBootcamps),
+    students: many(zuvyBatchEnrollments),
   }),
 );
 
@@ -2539,7 +2547,7 @@ export const zuvyBatchEnrollments = main.table('zuvy_batch_enrollments', {
     onUpdate: 'cascade'
   }),
   batchId: integer('batch_id').references(() => zuvyBatches.id, {
-    onDelete: 'cascade',
+    onDelete: 'set null',
     onUpdate: 'cascade'
   }),
   attendance: integer('attendance'),
@@ -2559,11 +2567,6 @@ export const classesInTheBatch = relations(
       fields: [zuvyBatchEnrollments.bootcampId],
       references: [zuvyBootcampTracking.bootcampId],
     }),
-    
-    batch: one(zuvyBatches, {
-      fields: [zuvyBatchEnrollments.batchId],
-      references: [zuvyBatches.id],
-    }),
 
     classInfo: one(zuvySessions, {
       fields: [zuvyBatchEnrollments.batchId],
@@ -2575,12 +2578,6 @@ export const classesInTheBatch = relations(
       fields: [zuvyBatchEnrollments.bootcampId],
       references: [zuvyBootcamps.id],
     }),
-    })
-);
-
-export const zuvyBatchEnrollmentsRelations = relations(
-  zuvyBatchEnrollments,
-  ({ one, many }) => ({
     userInfo: one(users, {
       fields: [zuvyBatchEnrollments.userId],
       references: [users.id],
@@ -2589,8 +2586,9 @@ export const zuvyBatchEnrollmentsRelations = relations(
       fields: [zuvyBatchEnrollments.batchId],
       references: [zuvyBatches.id],
     }),
-  }),
+    })
 );
+
 
 export const zuvyBatchInstructorRelation = relations(
   zuvyBatches,({one}) => ({
