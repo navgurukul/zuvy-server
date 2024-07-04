@@ -152,6 +152,7 @@ export class AdminAssessmentService {
           tabChange: true,
           copyPaste: true,
           embeddedGoogleSearch: true,
+          assessmentOutsourseId: true
         },
         with: {
           user: {
@@ -192,26 +193,25 @@ export class AdminAssessmentService {
               }
             }
           },
-          codingSubmission: {
+          PracticeCode: {
             columns: {
               id: true,
               questionSolved: true,
               questionId: true,
             },
             with: {
-              questionDetails:{
-                with: {
-                  CodingQuestion: true
-                }
-              }
+              questionDetail: true
             }
             
           }
         },
       });
+      if (assessment.length == 0) {
+        throw {statusCode: 404, massage: 'error not'}
+      }
       const outsourseAssessment = await db.query.zuvyOutsourseAssessments.findMany({
         where: (zuvyOutsourseAssessments, { eq }) =>
-          eq(zuvyOutsourseAssessments.bootcampId, 9),
+          eq(zuvyOutsourseAssessments.id, assessment[0].assessmentOutsourseId),
         columns: {
           id: true,
           order: true,
@@ -226,6 +226,7 @@ export class AdminAssessmentService {
       assessment[0].totalQuizzes = outsourseAssessment[0].Quizzes.length;
       assessment[0].totalOpenEndedQuestions = outsourseAssessment[0].OpenEndedQuestions.length;
       assessment[0].totalCodingQuestions = outsourseAssessment[0].CodingQuestions.length;
+      
       return assessment[0];
     } catch (error) {
       throw error;
