@@ -70,45 +70,45 @@ export class CodingPlatformService {
       }
     } catch (error) {
         throw error;
-    }
-  }
+    }
+  }
   
 
-async getPracticeCode(questionId, userId, submissionId) {
-  try {
-    let queryString;
-    if (isNaN(submissionId)) {
-      queryString = sql`${zuvyPracticeCode.questionId} = ${questionId} AND ${zuvyPracticeCode.userId} = ${userId}`
-    } else {
-      queryString = sql`${zuvyPracticeCode.questionId} = ${questionId} AND ${zuvyPracticeCode.userId} = ${userId} AND ${zuvyPracticeCode.id} = ${submissionId}`
-    }
-    let response = await db.query.zuvyPracticeCode.findMany({
-      where: (zuvyPracticeCode, { sql }) => queryString,
-      columns: {
-        token: true,
-        status: true,
-        action: true,
-        questionId: true,
-        submissionId: true
+  async getPracticeCode(questionId, userId, submissionId, codingOutsourseId) {
+    try {
+      let queryString;
+      if (isNaN(submissionId)) {
+        queryString = sql`${zuvyPracticeCode.questionId} = ${questionId} AND ${zuvyPracticeCode.userId} = ${userId}`
+      } else {
+        queryString = sql`${zuvyPracticeCode.questionId} = ${questionId} AND ${zuvyPracticeCode.userId} = ${userId} AND ${zuvyPracticeCode.id} = ${submissionId} AND ${zuvyPracticeCode.codingOutsourseId} = ${codingOutsourseId}`
       }
-    })
-    if (response.length === 0) {
-      return { status: 'error', code: 400, message: "No practice code available for the given question Id" };
-    } else {
-      let questionInfo = await this.getQuestionById(questionId);
-      const submissionsInfoPromises = response.map( async (submission: any) => {
-        const token = submission.token;
-        let data = await this.getCodeInfo(token)
-        return data;
-      });
-      const submissionsInfo = await Promise.all(submissionsInfoPromises);
-      return { ...questionInfo[0], submissions: submissionsInfo };
+      let response = await db.query.zuvyPracticeCode.findMany({
+        where: (zuvyPracticeCode, { sql }) => queryString,
+        columns: {
+          token: true,
+          status: true,
+          action: true,
+          questionId: true,
+          submissionId: true
+        }
+      })
+      if (response.length === 0) {
+        return { status: 'error', code: 400, message: "No practice code available for the given question Id" };
+      } else {
+        let questionInfo = await this.getQuestionById(questionId);
+        const submissionsInfoPromises = response.map( async (submission: any) => {
+          const token = submission.token;
+          let data = await this.getCodeInfo(token)
+          return data;
+        });
+        const submissionsInfo = await Promise.all(submissionsInfoPromises);
+        return { ...questionInfo[0], submissions: submissionsInfo };
+      }
+    } catch (error) {
+      console.error('Error getting practice code:', error);
+      throw error;
     }
-  } catch (error) {
-    console.error('Error getting practice code:', error);
-    throw error;
-    }
-  }
+  }
 
   async submitCode(sourceCode: SubmitCodeDto, codingOutsourseId: number, action: string) {
 
