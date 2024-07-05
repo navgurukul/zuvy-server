@@ -168,7 +168,7 @@ export class CodingPlatformController {
     const res = await this.codingPlatformService.createCodingProblem(createCodingQuestion);
     return res;
   }
-
+  
   @Post('/practicecode/questionId=:questionId')
   @ApiOperation({ summary: 'Submiting the coding question' })
   @ApiBearerAuth()
@@ -178,13 +178,24 @@ export class CodingPlatformController {
     type: Number,
     description: 'if you give the submissionId it for assessment code submission',
   })
+  @ApiQuery({
+    name: 'codingOutsourseId',
+    required: false,
+    type: Number,
+    description: 'if you give the codingOutsourseId it for assessment code submission',
+  })
   async getPracticeCode(@Param('questionId') questionId: number, 
     @Body() sourceCode: SubmitCodeDto,
     @Query('action') action: string,
     @Query('submissionId') submissionId: number,
+    @Query('codingOutsourseId') codingOutsourseId: number,
     @Req() req,
   ) {
-    return this.codingPlatformService.submitPracticeCode(questionId, sourceCode, action, req.user[0].id, submissionId);
+    if (Number.isNaN(submissionId) && !Number.isNaN(codingOutsourseId) || !Number.isNaN(submissionId) && Number.isNaN(codingOutsourseId)){
+      return {statusCode: 404, massage: "Either submissionId or codingOutsourseId should be provided"}
+    }
+
+      return this.codingPlatformService.submitPracticeCode(questionId, sourceCode, action, req.user[0].id, submissionId, codingOutsourseId);
   }
 
   @Get('/practicecode/questionId=:questionId')
@@ -196,7 +207,13 @@ export class CodingPlatformController {
     type: Number,
     description: 'if you give the assessmentSubmissionId it for assessment code submission ',
   })
-  async getPracticeCodeById(@Param('questionId') questionId: number, @Req() req, @Query('assessmentSubmissionId') submissionId: number) {
+  @ApiQuery({
+    name: 'codingOutsourseId', 
+    required: false,
+    type: Number,
+    description: 'if you give the codingOutsourseId it for assessment code submission ',
+  })
+  async getPracticeCodeById(@Param('questionId') questionId: number, @Req() req, @Query('assessmentSubmissionId') submissionId: number, @Query('codingOutsourseId') codingOutsourseId:number){
     return this.codingPlatformService.getPracticeCode(questionId, req.user[0].id, submissionId);
-  }
+  }
 }

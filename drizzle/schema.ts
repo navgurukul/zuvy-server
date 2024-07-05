@@ -2677,6 +2677,7 @@ export const zuvyPracticeCode = main.table("zuvy_practice_code", {
   status: varchar("status", { length: 255 }).notNull(),
   action: action("action").notNull(),
   questionId: integer("question_id").references(() => zuvyCodingQuestions.id),
+  codingOutsourseId: integer("coding_outsourse_id").references(() => zuvyOutsourseCodingQuestions.id),
   submissionId: integer("submission_id").references(() => zuvyAssessmentSubmission.id),
   createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
 })
