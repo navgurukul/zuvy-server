@@ -458,7 +458,7 @@ export class TrackingService {
   //             .select()
   //             .from(zuvyArticleTracking)
   //             .where(sql`${zuvyArticleTracking.userId} = ${userId}`)
-  //             .orderBy(desc(zuvyArticleTracking.id)) // Fix: Call the desc() method on the column object
+  //             .(desc(zuvyorderByArticleTracking.id)) // Fix: Call the desc() method on the column object
   //             .limit(1);
 
   //         const latestMcqIds = await db
@@ -782,7 +782,8 @@ export class TrackingService {
         const questions = await db
           .select({ correctOption: zuvyModuleQuiz.correctOption })
           .from(zuvyModuleQuiz)
-          .where(sql`${inArray(zuvyModuleQuiz.id, mcqIdArray)}`);
+          .where(sql`${inArray(zuvyModuleQuiz.id, mcqIdArray)}`)
+          .orderBy(zuvyModuleQuiz.id);
         let updatedQuizBody = [];
         for (let i = 0; i < questions.length; i++) {
           let status = 'fail';
