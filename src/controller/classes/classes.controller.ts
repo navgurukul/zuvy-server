@@ -213,4 +213,12 @@ export class ClassesController {
       status,
     );
   }
+  @Get('/meetings/:bootcampId')
+  @ApiOperation({ summary: 'Get the google classes id by bootcampId' })
+  @ApiBearerAuth()
+  getClassesBybootcampId(
+    @Query('bootcampId') bootcampId: string,
+    ): Promise<object> {
+    return this.classesService.unattendanceClassesByBootcampId(bootcampId);
+  }
 }

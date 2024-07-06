@@ -16,7 +16,7 @@ const { ZUVY_CONTENT_URL, RAPID_API_KEY, RAPID_HOST } = process.env; // INPORTIN
 
 @Injectable()
 export class CodingPlatformService {
-  async submitPracticeCode(questionId, sourceCode, action, userId, codingOutsourseId) {
+  async submitPracticeCode(questionId, sourceCode, action, userId, submissionId, codingOutsourseId) {
     try {
       if (!['run', 'submit'].includes(action.toLowerCase())) {
         return { statusCode: 400, message: 'Invalid action' };
@@ -29,9 +29,10 @@ export class CodingPlatformService {
       let insertValues = { token, status, action, userId, questionId };
       let getSubmitQuery;
 
-      if (!Number.isNaN(codingOutsourseId)) {
-        getSubmitQuery = sql`${zuvyPracticeCode.userId} = ${userId} AND ${zuvyPracticeCode.codingOutsourseId} = ${codingOutsourseId}`;
-        insertValues["codingOutsourseId"] = codingOutsourseId;
+      if (!Number.isNaN(submissionId)) {
+        getSubmitQuery = sql`${zuvyPracticeCode.userId} = ${userId} AND ${zuvyPracticeCode.submissionId} = ${submissionId} AND ${zuvyPracticeCode.codingOutsourseId} = ${codingOutsourseId}`;
+        insertValues["submissionId"] = submissionId;
+        insertValues["codingOutsourseId"] = codingOutsourseId
       } else {
         getSubmitQuery = sql`${zuvyPracticeCode.userId} = ${userId} AND ${zuvyPracticeCode.questionId} = ${questionId}`;
       }
@@ -63,7 +64,7 @@ export class CodingPlatformService {
       }
 
       if (newSubmission.length !== 0) {
-        return { statusCode: 200, message: 'Submission successful' };
+        return { statusCode: 200, message: 'Submission successful', data: submissionInfo  };
       } else {
         return { statusCode: 500, message: 'Error in submitting code' };
       }
@@ -73,15 +74,22 @@ export class CodingPlatformService {
   }
   
 
-  async getPracticeCode(questionId, userId) {
+  async getPracticeCode(questionId, userId, submissionId, codingOutsourseId) {
     try {
+      let queryString;
+      if (isNaN(submissionId)) {
+        queryString = sql`${zuvyPracticeCode.questionId} = ${questionId} AND ${zuvyPracticeCode.userId} = ${userId}`
+      } else {
+        queryString = sql`${zuvyPracticeCode.questionId} = ${questionId} AND ${zuvyPracticeCode.userId} = ${userId} AND ${zuvyPracticeCode.id} = ${submissionId} AND ${zuvyPracticeCode.codingOutsourseId} = ${codingOutsourseId}`
+      }
       let response = await db.query.zuvyPracticeCode.findMany({
-        where: (zuvyPracticeCode, { sql }) => sql`${zuvyPracticeCode.questionId} = ${questionId} AND ${zuvyPracticeCode.userId} = ${userId}`,
+        where: (zuvyPracticeCode, { sql }) => queryString,
         columns: {
           token: true,
           status: true,
           action: true,
-          questionId: true
+          questionId: true,
+          submissionId: true
         }
       })
       if (response.length === 0) {

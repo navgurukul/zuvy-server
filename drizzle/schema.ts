@@ -2678,6 +2678,7 @@ export const zuvyPracticeCode = main.table("zuvy_practice_code", {
   action: action("action").notNull(),
   questionId: integer("question_id").references(() => zuvyCodingQuestions.id),
   codingOutsourseId: integer("coding_outsourse_id").references(() => zuvyOutsourseCodingQuestions.id),
+  submissionId: integer("submission_id").references(() => zuvyAssessmentSubmission.id),
   createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
 })
 
@@ -2690,22 +2691,12 @@ export const zuvyPracticeCodeRelations = relations(zuvyPracticeCode, ({ one }) =
     fields: [zuvyPracticeCode.questionId],
     references: [zuvyCodingQuestions.id],
   }),
+  submission: one(zuvyAssessmentSubmission, {
+    fields: [zuvyPracticeCode.submissionId],
+    references: [zuvyAssessmentSubmission.id],
+  })
+  
 }))
-
-// export const zuvyPracticeCodeRelations = relations(zuvyPracticeCode, ({ one }) => ({
-//   codeStatus: one(users, {
-//     fields: [zuvyPracticeCode.userId],
-//     references: [users.id],
-//   }),
-//   questionDetails: one(zuvyOutsourseCodingQuestions, {
-//     fields: [zuvyPracticeCode.codingOutsourseId],
-//     references: [zuvyOutsourseCodingQuestions.id],
-//   }),
-//   // submission: one(zuvyAssessmentSubmission, {
-//   //   fields: [zuvyPracticeCode.assessmentSubmissionId],
-//   //   references: [zuvyAssessmentSubmission.id],
-//   // }),
-// }))
 
 export const zuvyAssignmentSubmission = main.table("zuvy_assignment_submission", {
   id: serial("id").primaryKey().notNull(),
@@ -2957,7 +2948,7 @@ export const zuvyAssessmentSubmissionRelation = relations(zuvyAssessmentSubmissi
   }),
   openEndedSubmission: many(zuvyOpenEndedQuestionSubmission),
   quizSubmission: many(zuvyQuizTracking),
-  codingSubmission: many(zuvyPracticeCode),
+  PracticeCode: many(zuvyPracticeCode),
 }))
 
 
