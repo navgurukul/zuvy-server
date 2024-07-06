@@ -9,7 +9,7 @@ import {
   Param,
   BadRequestException,
   Query,
-  Req
+  Req,
 } from '@nestjs/common';
 import { TrackingService } from './tracking.service';
 import {
@@ -31,6 +31,7 @@ import {
 } from './dto/assignment.dto';
 import { CreateArticleDto } from './dto/article.dto';
 import { UpdateProjectDto } from './dto/project.dto';
+import { CreateFeedbackDto } from './dto/form.dto';
 import { CreateQuizDto, McqCreateDto, PutQuizDto } from './dto/quiz.dto';
 import { quizBatchDto } from '../content/dto/content.dto';
 
@@ -303,7 +304,7 @@ export class TrackingController {
       bootcampId,
       req.user[0].id,
       moduleId,
-      chapterId
+      chapterId,
     );
     return res;
   }
@@ -313,14 +314,13 @@ export class TrackingController {
     summary: 'Get all chapters with status for a user by bootcampId',
   })
   @ApiBearerAuth()
-  async getAllChapterForUser(
-    @Param('moduleId') moduleId: number,
-    @Req() req
-  ) {
+  async getAllChapterForUser(@Param('moduleId') moduleId: number, @Req() req) {
+    console.log('req in Module****', req.user);
     const res = await this.TrackingService.getAllChapterWithStatus(
       moduleId,
       req.user[0].id,
     );
+    console.log('res in Module', res);
     return res;
   }
 
@@ -348,10 +348,7 @@ export class TrackingController {
   @Get('/allModulesForStudents/:bootcampId')
   @ApiOperation({ summary: 'Get all modules of a course' })
   @ApiBearerAuth()
-  async getAllModules(
-    @Param('bootcampId') bootcampId: number,
-    @Req() req,
-  ) {
+  async getAllModules(@Param('bootcampId') bootcampId: number, @Req() req) {
     const res = await this.TrackingService.getAllModuleByBootcampIdForStudent(
       bootcampId,
       req.user[0].id,
@@ -382,7 +379,7 @@ export class TrackingController {
   ) {
     const res = await this.TrackingService.getPendingAssignmentForStudent(
       bootcampId,
-      req.user[0].id
+      req.user[0].id,
     );
     return res;
   }
@@ -400,6 +397,41 @@ export class TrackingController {
       chapterId,
       req.user[0].id,
     );
+    console.log('res in Chapter', res);
+    return res;
+  }
+
+  @Get('/getFormDetailsWithStatus/:chapterId')
+  @ApiOperation({
+    summary: 'Get Form details for a user along with status',
+  })
+  @ApiBearerAuth()
+  async getFormDetails(@Param('chapterId') chapterId: number, @Req() req) {
+    const res = await this.TrackingService.getFormDetailsWithStatus(
+      chapterId,
+      req.user[0].id,
+    );
+    console.log('res in Chapter', res);
+    return res;
+  }
+
+  @Post('/submitFeedback/:chapterId')
+  @ApiOperation({
+    summary: 'Get Form details for a user along with status',
+  })
+  @ApiBearerAuth()
+  async createFeedback(
+    @Param('chapterId') chapterId: number,
+    @Req() req,
+    @Body() createFeedbackDto: CreateFeedbackDto,
+  ) {
+    console.log('createFeedbackDto', createFeedbackDto);
+    const res = await this.TrackingService.createFormFeedback(
+      chapterId,
+      req.user[0].id,
+      createFeedbackDto,
+    );
+    console.log('res in Chapter', res);
     return res;
   }
 
@@ -439,14 +471,14 @@ export class TrackingController {
     @Req() req,
     @Query('moduleId') moduleId: number,
     @Query('bootcampId') bootcampId: number,
-    @Body() submitProject:UpdateProjectDto
+    @Body() submitProject: UpdateProjectDto,
   ) {
     const res = await this.TrackingService.submitProjectForAUser(
       req.user[0].id,
       bootcampId,
       moduleId,
       projectId,
-      submitProject
+      submitProject,
     );
     return res;
   }
@@ -464,7 +496,7 @@ export class TrackingController {
     const res = await this.TrackingService.getProjectDetailsWithStatus(
       projectId,
       moduleId,
-      req.user[0].id
+      req.user[0].id,
     );
     return res;
   }
@@ -474,11 +506,9 @@ export class TrackingController {
     summary: 'Get all bootcamp progress for a particular student',
   })
   @ApiBearerAuth()
-  async getAllBootcampProgressForStudents(
-    @Req() req,
-  ) {
+  async getAllBootcampProgressForStudents(@Req() req) {
     const res = await this.TrackingService.allBootcampProgressForStudents(
-      req.user[0].id
+      req.user[0].id,
     );
     return res;
   }
@@ -488,11 +518,9 @@ export class TrackingController {
     summary: 'Get all bootcamp progress for a particular student',
   })
   @ApiBearerAuth()
-  async getLatestUpdatedCourseForStudent(
-    @Req() req,
-  ) {
+  async getLatestUpdatedCourseForStudent(@Req() req) {
     const res = await this.TrackingService.getLatestUpdatedCourseForStudents(
-      req.user[0].id
+      req.user[0].id,
     );
     return res;
   }
@@ -501,9 +529,13 @@ export class TrackingController {
   @ApiOperation({ summary: 'Get assessment submission by submissionId' })
   @ApiBearerAuth()
   async getAssessmentSubmission(
-    @Param('submissionId') submissionId: number, @Req() req
+    @Param('submissionId') submissionId: number,
+    @Req() req,
   ) {
-    const res = await this.TrackingService.getAssessmentSubmission(submissionId, req.user[0].id);
+    const res = await this.TrackingService.getAssessmentSubmission(
+      submissionId,
+      req.user[0].id,
+    );
     return res;
-  }   
+  }
 }

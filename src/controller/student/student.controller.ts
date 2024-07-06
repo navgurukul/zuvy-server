@@ -1,10 +1,30 @@
-import { Controller, Get, Post, Put, Delete, Patch, Body, Param, ValidationPipe, UsePipes, BadRequestException, Query, Req } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Put,
+  Delete,
+  Patch,
+  Body,
+  Param,
+  ValidationPipe,
+  UsePipes,
+  BadRequestException,
+  Query,
+  Req,
+} from '@nestjs/common';
 import { StudentService } from './student.service';
-import { ApiTags, ApiBody, ApiOperation, ApiCookieAuth, ApiQuery, ApiBearerAuth } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiBody,
+  ApiOperation,
+  ApiCookieAuth,
+  ApiQuery,
+  ApiBearerAuth,
+} from '@nestjs/swagger';
 import { get } from 'http';
 // import { CreateDto, ScheduleDto, CreateLiveBroadcastDto } from './dto/Student.dto';
 // import { AuthGuard } from '@nestjs/passport'; // Assuming JWT authentication
-
 
 @Controller('student')
 @ApiTags('student')
@@ -18,7 +38,7 @@ import { get } from 'http';
 )
 // @UseGuards(AuthGuard('cookie'))
 export class StudentController {
-  constructor(private studentService: StudentService) { }
+  constructor(private studentService: StudentService) {}
 
   @Get('/')
   @ApiOperation({ summary: 'Get all course enrolled by student' })
@@ -54,16 +74,13 @@ export class StudentController {
   @Get('/bootcamp/public')
   @ApiOperation({ summary: 'Get all Public Bootcamp' })
   @ApiBearerAuth()
-  async getPublicBootcamps(
-  ): Promise<object> {
-    const [err, res] =
-      await this.studentService.getPublicBootcamp();
+  async getPublicBootcamps(): Promise<object> {
+    const [err, res] = await this.studentService.getPublicBootcamp();
     if (err) {
       throw new BadRequestException(err);
     }
     return res;
   }
-
 
   @Delete('/:userId/:bootcampId')
   @ApiOperation({ summary: 'Removing student from bootcamp' })
@@ -82,7 +99,6 @@ export class StudentController {
     return res;
   }
 
-
   @Get('/Dashboard/classes')
   @ApiOperation({ summary: 'Get dashboard upcoming class' })
   @ApiBearerAuth()
@@ -92,16 +108,28 @@ export class StudentController {
     type: String,
     description: 'batch_id',
   })
-  async getUpcomingClass(@Req() req, @Query('batch_id') batchID: number
-  ) {
+  async getUpcomingClass(@Req() req, @Query('batch_id') batchID: number) {
     return await this.studentService.getUpcomingClass(req.user[0].id, batchID);
   }
 
   @Get('/Dashboard/attendance')
   @ApiOperation({ summary: 'Get dashboard Attendance.' })
   @ApiBearerAuth()
-  async getAttendanceClass(@Req() req
-  ) {
+  async getAttendanceClass(@Req() req) {
     return await this.studentService.getAttendanceClass(req.user[0].id);
   }
+
+  @Get('/bootcamp/form')
+  @ApiOperation({ summary: 'Get all Public Bootcamp' })
+  @ApiBearerAuth()
+  async getForm(@Req() req) {
+    return await this.studentService.getForm(req.user[0].id);
+  }
+  // async getForm(): Promise<object> {
+  //   const [err, res] = await this.studentService.getPublicBootcamp();
+  //   if (err) {
+  //     throw new BadRequestException(err);
+  //   }
+  //   return res;
+  // }
 }
