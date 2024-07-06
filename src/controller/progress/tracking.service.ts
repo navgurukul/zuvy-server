@@ -458,7 +458,7 @@ export class TrackingService {
   //             .select()
   //             .from(zuvyArticleTracking)
   //             .where(sql`${zuvyArticleTracking.userId} = ${userId}`)
-  //             .orderBy(desc(zuvyorderByArticleTracking.id)) // Fix: Call the desc() method on the column object
+  //             .orderBy(desc(zuvyArticleTracking.id)) // Fix: Call the desc() method on the column object
   //             .limit(1);
 
   //         const latestMcqIds = await db
