@@ -198,11 +198,16 @@ export class AdminAssessmentService {
               id: true,
               questionSolved: true,
               questionId: true,
+              action: true,
+              status: true,  
+              createdAt: true,
             },
+            where: (zuvyPracticeCode, { sql }) =>
+              sql`${zuvyPracticeCode.status} = 'Accepted' AND ${zuvyPracticeCode.action} = 'submit'`,
+            distinct: ['questionId'],
             with: {
               questionDetail: true
             }
-            
           }
         },
       });

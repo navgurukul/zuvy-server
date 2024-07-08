@@ -80,10 +80,10 @@ export class CodingPlatformService {
       if (isNaN(submissionId)) {
         queryString = sql`${zuvyPracticeCode.questionId} = ${questionId} AND ${zuvyPracticeCode.userId} = ${userId}`
       } else {
-        queryString = sql`${zuvyPracticeCode.questionId} = ${questionId} AND ${zuvyPracticeCode.userId} = ${userId} AND ${zuvyPracticeCode.id} = ${submissionId} AND ${zuvyPracticeCode.codingOutsourseId} = ${codingOutsourseId}`
+        queryString = sql`${zuvyPracticeCode.questionId} = ${questionId} AND ${zuvyPracticeCode.userId} = ${userId} AND ${zuvyPracticeCode.submissionId} = ${submissionId} AND ${zuvyPracticeCode.codingOutsourseId} = ${codingOutsourseId}`
       }
       let response = await db.query.zuvyPracticeCode.findMany({
-        where: (zuvyPracticeCode, { sql }) => queryString,
+        where: (zuvyPracticeCode, { sql }) => queryString,        
         columns: {
           token: true,
           status: true,
@@ -98,17 +98,17 @@ export class CodingPlatformService {
         let questionInfo = await this.getQuestionById(questionId);
         const submissionsInfoPromises = response.map( async (submission: any) => {
           const token = submission.token;
-          let data = await this.getCodeInfo(token)
+          let data = await this.getCodeInfo(token)          
           return data;
-        });
-        const submissionsInfo = await Promise.all(submissionsInfoPromises);
-        return { ...questionInfo[0], submissions: submissionsInfo };
+        });        
+        const submissions = await Promise.all(submissionsInfoPromises);
+        return { ...questionInfo[0], submissions };
       }
     } catch (error) {
       console.error('Error getting practice code:', error);
       throw error;
-    }
-  }
+    }
+  }
 
   async submitCode(sourceCode: SubmitCodeDto, codingOutsourseId: number, action: string) {
 
