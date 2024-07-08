@@ -782,7 +782,8 @@ export class TrackingService {
         const questions = await db
           .select({ correctOption: zuvyModuleQuiz.correctOption })
           .from(zuvyModuleQuiz)
-          .where(sql`${inArray(zuvyModuleQuiz.id, mcqIdArray)}`);
+          .where(sql`${inArray(zuvyModuleQuiz.id, mcqIdArray)}`)
+          .orderBy(zuvyModuleQuiz.id);
         let updatedQuizBody = [];
         for (let i = 0; i < questions.length; i++) {
           let status = 'fail';
