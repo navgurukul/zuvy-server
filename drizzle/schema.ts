@@ -3452,3 +3452,37 @@ export const quizTrackingRelation = relations(
     }),
   })
 );
+
+export const zuvyModuleForm = main.table('zuvy_module_form', {
+  id: serial('id').primaryKey().notNull(),
+  title: varchar('title'),
+  description: text('description'),
+  question: text('question'),
+  options: jsonb('options'),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }),
+  updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }),
+  typeId: integer('tag_id').references(() => zuvyQuestionTypes.id),
+  usage: integer('usage').default(0),
+});
+
+export const zuvyQuestionTypes = main.table('zuvy_question_type', {
+  id: serial('id').primaryKey().notNull(),
+  questionType: varchar('question_type'),
+});
+
+export const zuvyFormTracking = main.table("zuvy_form_tracking", {
+  id: serial("id").primaryKey().notNull(),
+  userId: integer("user_id").references(() => users.id),
+  moduleId: integer("module_id"),
+  questionId: integer("question_id"),
+  chapterId: integer("chapter_id"),
+  status: varchar("status", { length: 255 }),
+  assessmentSubmissionId: integer("assessment_submission_id").references(() => zuvyAssessmentSubmission.id, {
+    onDelete: 'cascade',
+    onUpdate: 'cascade',
+  }),
+  chosenOptions: integer("chosen_options"),
+  answer: text("answer"),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+});
