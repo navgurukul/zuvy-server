@@ -1830,8 +1830,8 @@ export class ContentService {
               userId: true,
               answer: true,
               questionId: true,
-              submitAt:true,
-              assessmentSubmissionId:true
+              submitAt: true,
+              assessmentSubmissionId: true
             }
           },
           OpenEndedQuestion: {
