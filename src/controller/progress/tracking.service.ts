@@ -1660,7 +1660,9 @@ export class TrackingService {
               answer: true,
               questionId: true,
               feedback: true,
-              marks: true
+              marks: true,
+              startAt: true,
+              submitedAt: true,
             },
             with: {
               submissionData: {
@@ -1721,6 +1723,7 @@ export class TrackingService {
       let total = {totalMCQPoints, totalOpenPoints, totalCodingPoints, totalPoints}
       let {OpenEndedQuestions, Quizzes, CodingQuestions} = assessment_data;
       let calData =  await this.calculateAssessmentResults(data, totalOpenPoints,totalMCQPoints, totalCodingPoints);
+      
       return {...calData, totalOpenEndedQuestions: OpenEndedQuestions.length,totalQuizzes:Quizzes.length, totalCodingQuestions: CodingQuestions.length};
     }
     catch (err) {

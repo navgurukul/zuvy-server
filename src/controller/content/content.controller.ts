@@ -569,8 +569,17 @@ export class ContentController {
 
   @Get('/assessmentDetailsOfQuiz/:assessmentOutsourseId')
   @ApiOperation({ summary: 'Get the assessment details of the Quiz' })
+  @ApiQuery({
+    name: 'studentId',
+    required: false,
+    type: Number,
+    description: 'studentId of the assessment',
+  })
   @ApiBearerAuth()
-  async getAssessmentDetailsOfQuiz(@Param('assessmentOutsourseId') assessmentOutsourseId: number, @Req() req){
+  async getAssessmentDetailsOfQuiz(@Param('assessmentOutsourseId') assessmentOutsourseId: number, @Req() req, @Query('userId') userId:number ){
+    if (!userId) {
+      userId = req.user[0].id;
+    }
     return this.contentService.getAssessmentDetailsOfQuiz(assessmentOutsourseId, req.user[0].id);
   }
 
@@ -578,7 +587,16 @@ export class ContentController {
   @Get('/assessmentDetailsOfOpenEnded/:assessmentOutsourseId')
   @ApiOperation({ summary: 'Get the assessment details of the open Ended questions' })
   @ApiBearerAuth()
-  async getAssessmentDetailsOfOpenEnded(@Param('assessmentOutsourseId') assessmentOutsourseId: number, @Req() req){
+  @ApiQuery({
+    name: 'studentId',
+    required: false,
+    type: Number,
+    description: 'studentId of the assessment',
+  })
+  async getAssessmentDetailsOfOpenEnded(@Param('assessmentOutsourseId') assessmentOutsourseId: number, @Req() req, @Query('studentId') userId:number){
+    if (Number.isNaN(userId)) {
+      userId = req.user[0].id;
+    }
     return this.contentService.getAssessmentDetailsOfOpenEnded(assessmentOutsourseId, req.user[0].id);
   }
 }
