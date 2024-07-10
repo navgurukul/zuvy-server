@@ -19,7 +19,7 @@ import {
 } from 'class-validator';
 import { truncateSync } from 'fs';
 import { Type } from 'class-transformer';
-import { difficulty } from 'drizzle/schema';
+import { difficulty, questionType } from 'drizzle/schema';
 
 export class moduleDto {
   @ApiProperty({
@@ -124,6 +124,14 @@ export class chapterDto {
   quizQuestions: number[];
 
   @ApiProperty({
+    type: [Number],
+    example: [1, 2],
+  })
+  @IsOptional()
+  @IsArray()
+  formQuestions: number[];
+  
+  @ApiProperty({
     type: [String],
     example: ['https://www.google.com'],
   })
@@ -214,7 +222,7 @@ export class quizDto {
   difficulty: 'Easy' | 'Medium' | 'Hard';
 }
 
-export class quizBatchDto {
+export class  quizBatchDto {
   @ApiProperty({
     type: [quizDto],
     example: [
@@ -311,6 +319,14 @@ export class EditChapterDto {
   @IsOptional()
   quizQuestions: any[];
 
+  @ApiProperty({
+    type: [Number],
+    example: [1, 2],
+  })
+  @IsArray()
+  @IsOptional()
+  formQuestions: any[];
+  
   @ApiProperty({
     type: Number,
     example: 10,
@@ -825,4 +841,223 @@ export class CreateChapterDto {
   @IsOptional()
   @IsNumber()
   order: number;
+}
+
+
+////////////formdtos///////////
+export class formDto {
+  
+  @ApiProperty({
+    type: String,
+    example: 'Feedback Form',
+  })
+  @IsString()
+  @IsOptional()
+  title: string;
+
+  @ApiProperty({ 
+    type: String,
+    example: 'This is a feedback form about our course',
+  })
+  @IsString()
+  @IsOptional()
+  description: string;
+
+  @ApiProperty({
+    type: String,
+    example: 'What is your opinion about the course?',
+  })
+  @IsString()
+  @IsOptional()
+  question: string;
+
+  @ApiProperty({
+    type: 'object',
+    example: {
+      1: 'Option 1',
+      2: 'Option 2',
+      3: 'Option 3',
+      4: 'Option 4',
+    }
+  })
+  @IsObject()
+  @IsOptional() 
+  options: object;
+
+  @ApiProperty({
+    type: Number,
+    example: 2,
+  })
+  @IsNumber()
+  @IsOptional()
+  typeId: number;
+
+  @ApiProperty({
+    type: questionType,
+    example: 'Multiple Choice',
+    required: true,
+  })
+  @IsString()
+  @IsOptional()
+  questionType: 'Multiple Choice' | 'Checkboxes' | 'Long Text Answer' | 'Date' | 'Time';
+}
+
+export class formBatchDto {
+  @ApiProperty({
+    type: [formDto],
+    example: [
+      {
+        question: 'What is the national animal of India?',
+        options: {
+          1: 'Option 1',
+          2: 'Option 2',
+          3: 'Option 3',
+          4: 'Option 4',
+        },
+        typeId: 1,
+        questionType: 'Multiple Choice',
+      },
+      {
+        question: 'What is the capital of France?',
+        options: {
+          1: 'Paris',
+          2: 'London',
+          3: 'Berlin',
+          4: 'Rome',
+        },
+        typeId: 2,
+        questionType: 'Checkboxes',
+      },
+      {
+        question: 'What is the national animal of India?',
+        typeId: 3,
+        questionType: 'Long Text Answer',
+      },
+      {
+        question: 'Choose date of opting the course',
+        typeId: 4,
+        questionType: 'Date',
+      },
+      {
+        question: 'Choose time of opting the course',
+        typeId: 5,
+        questionType: 'Time',
+      },
+    ],
+    required: true,
+  })
+  @IsArray()
+  @ArrayNotEmpty()
+  @ValidateNested({ each: true })
+  @Type(() => formDto)
+  questions: formDto[];
+}
+
+export class editFormDto {
+
+  @ApiProperty({
+    type: Number,
+    example: 1,
+    required: true
+  })
+  @IsNumber()
+  id: number;
+
+  @ApiProperty({
+    type: String,
+    example: 'Feedback Form',
+  })
+  @IsString()
+  @IsOptional()
+  title: string;
+
+  @ApiProperty({ 
+    type: String,
+    example: 'This is a feedback form about our course',
+  })
+  @IsString()
+  @IsOptional()
+  description: string;
+
+  @ApiProperty({
+    type: String,
+    example: 'What is your opinion about the course?',
+  })
+  @IsString()
+  @IsOptional()
+  question: string;
+
+  @ApiProperty({
+    type: 'object',
+    example: {
+      1: 'Option 1',
+      2: 'Option 2',
+      3: 'Option 3',
+      4: 'Option 4',
+    }
+  })
+  @IsObject()
+  @IsOptional()
+  options: object;
+
+  @ApiProperty({
+    type: questionType,
+    example: 'Multiple Choice',
+  })
+  @IsString()
+  @IsOptional()
+  questionType: 'Multiple Choice' | 'Checkboxes' | 'Long Text Answer' | 'Date' | 'Time';
+}
+
+export class editFormBatchDto {
+  @ApiProperty({
+    type: [editFormDto],
+    example: [
+      {
+        id: 1,
+        question: 'What is the national animal of India?',
+        options: {
+          1: 'Option 1',
+          2: 'Option 2',
+          3: 'Option 3',
+          4: 'Option 4',
+        },
+        typeId: 1,
+        questionType: 'Multiple Choice',
+      },
+      {
+        question: 'What is the capital of France?',
+        options: {
+          1: 'Paris',
+          2: 'London',
+          3: 'Berlin',
+          4: 'Rome',
+        },
+        typeId: 2,
+        questionType: 'Checkboxes',
+      },
+      {
+        question: 'What is the national animal of India?',
+        typeId: 3,
+        questionType: 'Long Text Answer',
+      },
+      {
+        question: 'Choose date of opting the course',
+        typeId: 4,
+        questionType: 'Date',
+      },
+      {
+        question: 'Choose time of opting the course',
+        typeId: 5,
+        questionType: 'Time',
+      },
+    ],
+    required: true,
+  })
+  @IsArray()
+  @ArrayNotEmpty()
+  @ValidateNested({ each: true })
+  @Type(() => editFormDto)
+  questions: editFormDto[];
+
 }

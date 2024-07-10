@@ -3453,6 +3453,9 @@ export const quizTrackingRelation = relations(
   })
 );
 
+
+export const questionType = pgEnum('questionType', ['Multiple Choice' , 'Checkboxes' , 'Long Text Answer', 'Date' , 'Time']);
+
 export const zuvyModuleForm = main.table('zuvy_module_form', {
   id: serial('id').primaryKey().notNull(),
   title: varchar('title'),
@@ -3461,7 +3464,7 @@ export const zuvyModuleForm = main.table('zuvy_module_form', {
   options: jsonb('options'),
   createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }),
   updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }),
-  typeId: integer('tag_id').references(() => zuvyQuestionTypes.id),
+  typeId: integer('type_id').references(() => zuvyQuestionTypes.id),
   usage: integer('usage').default(0),
 });
 
