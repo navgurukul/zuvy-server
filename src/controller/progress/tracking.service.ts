@@ -1505,7 +1505,7 @@ export class TrackingService {
 
     // Difficulty Points Mapping
     const mcqPoints: { [key: string]: number } = { "Easy": 1, "Medium": 2, "Hard": 3 };
-    const openPoints: { [key: string]: number } = { "Easy": 3, "Medium": 5, "Hard": 7 };
+    // const openPoints: { [key: string]: number } = { "Easy": 3, "Medium": 5, "Hard": 7 };
     const codingPoints: { [key: string]: number } = { "Easy": 5, "Medium": 10, "Hard": 15 };
 
     // Processing Quizzes
@@ -1518,10 +1518,10 @@ export class TrackingService {
     });
 
     // Processing Open-Ended Questions
-    let needOpenScore = 0;
+    // let needOpenScore = 0;
     data.openEndedSubmission.forEach(question => {
       openTotalAttemted += 1;
-      openScore += (question.marks > openPoints[question.submissionData?.OpenEndedQuestion.difficulty]) ? openPoints[question.submissionData?.OpenEndedQuestion.difficulty] : question.marks;
+      // openScore += (question.marks > openPoints[question.submissionData?.OpenEndedQuestion.difficulty]) ? openPoints[question.submissionData?.OpenEndedQuestion.difficulty] : question.marks;
     });
 
     let needCodingScore = 0;
@@ -1556,8 +1556,8 @@ export class TrackingService {
       }
     });
 
-    const totalScore = totalOpenEndedScore + totalQuizScore + totalCodingScore;
-    const needScore = needOpenScore + needCodingScore + quizScore
+    const totalScore =  totalQuizScore + totalCodingScore;
+    const needScore =  needCodingScore + quizScore
 
     // Calculate percentage
     const percentageScore = (needScore / totalScore) * 100;
@@ -1567,8 +1567,6 @@ export class TrackingService {
 
     data.openEndedSubmission = {
       openTotalAttemted,
-      openScore,
-      totalOpenEndedScore
     }
     data.quizSubmission = {
       quizTotalAttemted,
