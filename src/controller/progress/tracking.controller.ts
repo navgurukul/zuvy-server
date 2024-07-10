@@ -501,13 +501,13 @@ export class TrackingController {
   @ApiOperation({ summary: 'Get assessment submission by submissionId' })
   @ApiBearerAuth()
   @ApiQuery({
-    name: 'userId',
+    name: 'studentId',
     required: false,
     type: Number,
-    description: 'User id of the user',
+    description: 'studentId of the assessment',
   })
   async getAssessmentSubmission(
-    @Param('submissionId') submissionId: number, @Req() req, @Query('userId') userId:number ) {
+    @Param('submissionId') submissionId: number, @Req() req, @Query('studentId') userId:number ) {
     if (Number.isNaN(userId)) {
         userId = req.user[0].id;
     }
