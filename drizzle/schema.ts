@@ -3458,8 +3458,6 @@ export const questionType = pgEnum('questionType', ['Multiple Choice' , 'Checkbo
 
 export const zuvyModuleForm = main.table('zuvy_module_form', {
   id: serial('id').primaryKey().notNull(),
-  title: varchar('title'),
-  description: text('description'),
   question: text('question'),
   options: jsonb('options'),
   createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }),

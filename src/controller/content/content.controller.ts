@@ -39,7 +39,8 @@ import {
   UpdateOpenEndedDto,
   CreateTagDto,
   projectDto,
-  CreateChapterDto
+  CreateChapterDto,
+  formBatchDto
 } from './dto/content.dto';
 import { CreateProblemDto } from '../codingPlatform/dto/codingPlatform.dto';
 import { difficulty } from 'drizzle/schema';
@@ -581,4 +582,21 @@ export class ContentController {
   async getAssessmentDetailsOfOpenEnded(@Param('assessmentOutsourseId') assessmentOutsourseId: number, @Req() req){
     return this.contentService.getAssessmentDetailsOfOpenEnded(assessmentOutsourseId, req.user[0].id);
   }
+
+  @Post('/form')
+  @ApiOperation({ summary: 'Create a form' })
+  @ApiBearerAuth()
+  async createFormForModule (
+    @Body() formQuestions: formBatchDto
+  ){
+    const res = await this.contentService.createFormForModule(
+      formQuestions
+    );
+    return res;
+  }
+
+
 }
+
+
+

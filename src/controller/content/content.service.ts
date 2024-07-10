@@ -17,6 +17,8 @@ import {
   zuvyOutsourseOpenEndedQuestions,
   zuvyOutsourseQuizzes,
   zuvyAssessmentSubmission,
+  zuvyModuleForm,
+  questionType,
 } from '../../../drizzle/schema';
 
 import axios from 'axios';
@@ -51,7 +53,8 @@ import {
   deleteQuestionDto,
   UpdateOpenEndedDto,
   CreateTagDto,
-  projectDto
+  projectDto,
+  formBatchDto
 } from './dto/content.dto';
 import { CreateProblemDto } from '../codingPlatform/dto/codingPlatform.dto';
 import { PatchBootcampSettingDto } from '../bootcamp/dto/bootcamp.dto';
@@ -1842,6 +1845,38 @@ export class ContentService {
         return [];
       } 
       return assessment;
+    } catch (err) {
+      throw err;
+    }
+  }
+
+  async createFormForModule(form: formBatchDto) {
+    try {
+      const formQuestions = form.questions.map((q) => ({
+        question: q.question,
+        options: q.options,
+        questionType: q.questionType,
+        typeId: q.typeId,
+      }));
+
+      const result = await db
+        .insert(zuvyModuleForm)
+        .values(formQuestions)
+        .returning();
+      if (result.length > 0) {
+        return {
+          status: "success",
+          code: 200,
+          result
+        }
+      }
+      else {
+        return {
+          status: "error",
+          code: 404,
+          message: "Form questions did not create successfully.Please try again"
+        }
+      }
     } catch (err) {
       throw err;
     }
