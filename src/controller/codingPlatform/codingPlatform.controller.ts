@@ -36,56 +36,6 @@ import { ApiBearerAuth } from '@nestjs/swagger';
 export class CodingPlatformController {
   constructor(private codingPlatformService: CodingPlatformService) { }
 
-  // @Post('submit')
-  // @ApiOperation({ summary: 'Run the code' })
-  // @ApiQuery({
-  //   name: 'codingOutsourseId',
-  //   required: false,
-  //   type: Number,
-  //   description: 'Question id of the question attempted',
-  // })
-  // @ApiQuery({
-  //   name: 'action',
-  //   required: true,
-  //   type: String,
-  //   description: 'Action such as submit or run',
-  // })
-  // @ApiQuery({
-  //   name: 'assessmentSubmissionId',
-  //   required: false,
-  //   type: Number,
-  //   description: 'Assessment submission id',
-  // })
-  // @ApiBearerAuth()
-  // async submitCode(
-  //   @Body() sourceCode: SubmitCodeDto,
-  //   @Query('codingOutsourseId') codingOutsourseId: number,
-  //   @Query('action') action: string,
-  //   @Query('assessmentSubmissionId') assessmentSubmissionId: number,
-  //   @Req() req,
-  // ) {
-  //   const res = await this.codingPlatformService.submitCode(
-  //     sourceCode,
-  //     codingOutsourseId,
-  //     action,
-  //     );
-  //   let statusId = 1;
-  //   let getCodeData;
-  //   while (statusId < 3) {
-  //     getCodeData = await this.codingPlatformService.getCodeInfo(res.token);
-  //     statusId = getCodeData.status_id;
-  //   }
-  //   if (action == 'submit') {
-  //     await this.codingPlatformService.updateSubmissionWithToken(
-  //       req.user[0].id,
-  //       codingOutsourseId,
-  //       getCodeData.token,
-  //       getCodeData.status.description,
-  //       assessmentSubmissionId
-  //     );
-  //   }
-  //   return getCodeData;
-  // }
 
   @Get('languageId')
   @ApiOperation({ summary: 'Get language with Id' })
@@ -95,28 +45,7 @@ export class CodingPlatformController {
     return res;
   }
 
-  // @Get('allSubmissionsByQuestionId/:questionId')
-  // @ApiOperation({ summary: 'Get all submission by question id' })
-  // @ApiQuery({
-  //   name: 'userId',
-  //   required: false,
-  //   type: Number,
-  //   description: 'User id of the user',
-  // })
-  // @ApiBearerAuth()
-  // async getAllSubmissionByQuestionId(
-  //   @Param('questionId') question_id: number,
-  //   @Query('userId') userId: number,
-  // ) {
-  //   const res = await this.codingPlatformService.findSubmissionByQuestionId(
-  //     question_id,
-  //     userId,
-  //   );
-  //   return res;
-  // }
 
-
-   // page=1&limit=10
   @Get('allQuestions')
   @ApiOperation({ summary: 'Get all the questions with status.' })
   @ApiQuery({
