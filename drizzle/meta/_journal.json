@@ -29,6 +29,20 @@
       "when": 1711617057844,
       "tag": "0003_fixed_loa",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "5",
+      "when": 1720507754559,
+      "tag": "0004_melted_captain_britain",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "5",
+      "when": 1720602318526,
+      "tag": "0005_chubby_earthquake",
+      "breakpoints": true
     }
   ]
 }
