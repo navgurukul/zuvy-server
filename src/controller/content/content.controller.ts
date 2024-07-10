@@ -580,7 +580,7 @@ export class ContentController {
     if (!userId) {
       userId = req.user[0].id;
     }
-    return this.contentService.getAssessmentDetailsOfQuiz(assessmentOutsourseId, req.user[0].id);
+    return this.contentService.getAssessmentDetailsOfQuiz(assessmentOutsourseId, userId);
   }
 
   // openended questions
@@ -594,9 +594,9 @@ export class ContentController {
     description: 'studentId of the assessment',
   })
   async getAssessmentDetailsOfOpenEnded(@Param('assessmentOutsourseId') assessmentOutsourseId: number, @Req() req, @Query('studentId') userId:number){
-    if (Number.isNaN(userId)) {
+    if (!userId) {
       userId = req.user[0].id;
     }
-    return this.contentService.getAssessmentDetailsOfOpenEnded(assessmentOutsourseId, req.user[0].id);
+    return this.contentService.getAssessmentDetailsOfOpenEnded(assessmentOutsourseId, userId);
   }
 }

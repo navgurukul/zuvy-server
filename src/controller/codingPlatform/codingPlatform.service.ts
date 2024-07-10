@@ -12,7 +12,7 @@ import {
 } from '../../../drizzle/schema';
 import { relativeTimeRounding } from 'moment-timezone';
 
-const { ZUVY_CONTENT_URL, RAPID_API_KEY, RAPID_HOST } = process.env; // INPORTING env VALUSE ZUVY_CONTENT
+const { ZUVY_CONTENT_URL,RAPID_BASE_URL, RAPID_API_KEY, RAPID_HOST } = process.env; // INPORTING env VALUSE ZUVY_CONTENT
 
 @Injectable()
 export class CodingPlatformService {
@@ -21,12 +21,16 @@ export class CodingPlatformService {
       if (!['run', 'submit'].includes(action.toLowerCase())) {
         return { statusCode: 400, message: 'Invalid action' };
       }
-      let response: any = await this.submitCode(sourceCode, questionId, action);
-      const token = response.token;
-      let submissionInfo: any = await this.getCodeInfo(token);
-      const status = submissionInfo.status.description;
+      let response, token, submissionInfo;
+      let status = 0;
+      while (status >= 3) {
+        response = await this.submitCode(sourceCode, questionId, action);
+        token = response.token;
+        submissionInfo = await this.getCodeInfo(token);
+        status = submissionInfo.status.id;
+      }
 
-      let insertValues = { token, status, action, userId, questionId };
+      let insertValues:any = { token, status, action, userId, questionId };
       let getSubmitQuery;
 
       if (!Number.isNaN(submissionId)) {
@@ -45,7 +49,7 @@ export class CodingPlatformService {
         .limit(1);
 
       let newSubmission;
-      let updateValues = { token, status, action };
+      let updateValues:any = { token, status, action };
 
       if (getSubmissionsRun.length === 0) {
         // Insert if no previous submission exists
@@ -138,7 +142,7 @@ export class CodingPlatformService {
     const encodedStdOutput = Buffer.from(stdoutput).toString('base64');
     const options = {
       method: 'POST',
-      url: 'https://judge0-ce.p.rapidapi.com/submissions',
+      url: `${RAPID_BASE_URL}/submissions`,
       params: {
         base64_encoded: 'true',
         fields: '*'
@@ -168,7 +172,7 @@ export class CodingPlatformService {
   async getCodeInfo(token: string) {
     const options = {
       method: 'GET',
-      url: `https://judge0-ce.p.rapidapi.com/submissions/${token}`,
+      url: `${RAPID_BASE_URL}/submissions/${token}`,
       params: {
         base64_encoded: 'true',
         fields: '*'
@@ -192,7 +196,7 @@ export class CodingPlatformService {
 
     const options = {
       method: 'GET',
-      url: 'https://judge0-ce.p.rapidapi.com/languages',
+      url: `${RAPID_BASE_URL}/languages`,
       headers: {
         'X-RapidAPI-Key': RAPID_API_KEY,
         'X-RapidAPI-Host': RAPID_HOST
@@ -206,69 +210,6 @@ export class CodingPlatformService {
       throw error;
     }
   }
-
-  // async findSubmissionByQuestionId(questionId: number, id: number) {
-  //   try {
-  //     const submissions = await db.select().from(zuvyPracticeCode)
-  //       .where(sql`${zuvyPracticeCode.questionId} = ${questionId}AND ${zuvyPracticeCode.userId} = ${id}`)
-
-  //     const questionSolved = submissions[0]?.questionSolved;
-  //     var submissionTokens = { token: [] };
-  //     if (questionSolved) {
-  //       submissionTokens.token = questionSolved[questionId.toString()].token;
-  //     }
-  //     var respond = [];
-
-  //     if (submissionTokens.token.length !== 0) {
-  //       const getInfoPromises = submissionTokens.token.map(async token => {
-  //         const getInfo = await this.getCodeInfo(token);
-  //         return getInfo;
-  //       });
-
-
-  //       const getInfoResults = await Promise.all(getInfoPromises);
-
-
-  //       respond.push(...getInfoResults);
-  //     }
-
-  //     return { code: 200, respond };
-  //   } catch (err) {
-  //     throw err;
-  //   }
-  // }
-
-  // async updateSubmissionWithToken(userId: number, codingOutsourseId: number, token: string, status: string, assessmentSubmissionId: number) {
-  //   try {
-  //     const existingSubmission: any = await db.select()
-  //       .from(zuvyPracticeCode)
-  //       .where(sql`${zuvyPracticeCode.userId} = ${userId} AND ${zuvyPracticeCode.codingOutsourseId} = ${codingOutsourseId}`)
-
-  //     let updatedStatus;
-  //     if (status !== 'Accepted') {
-  //       status = 'Not Accepted';
-  //     }
-  //     if (existingSubmission.length === 0) {
-  //       let questionObj = 
-  //       await db.insert(zuvyPracticeCode)
-  //         .values({
-  //           userId: BigInt(userId),
-  //           token,
-  //           codingOutsourseId,
-  //           status
-  //         })
-  //         .returning();
-
-  //     } else {
-  //       await db.update(zuvyPracticeCode)
-  //         .set({ token, status: updatedStatus })
-  //         .where(sql`${zuvyPracticeCode.userId} = ${userId} AND ${zuvyPracticeCode.codingOutsourseId} = ${codingOutsourseId}`)
-  //     }
-  //   } catch (error) {
-  //     console.error('Error updating submission:', error);
-  //     throw error;
-  //   }
-  // }
 
   async getQuestionsWithStatus(userId: number, difficulty: string, page: number, limit: number) {
     try {
