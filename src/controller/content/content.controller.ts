@@ -577,7 +577,7 @@ export class ContentController {
   })
   @ApiBearerAuth()
   async getAssessmentDetailsOfQuiz(@Param('assessmentOutsourseId') assessmentOutsourseId: number, @Req() req, @Query('userId') userId:number ){
-    if (!userId) {
+    if (Number.isNaN(userId)) {
       userId = req.user[0].id;
     }
     return this.contentService.getAssessmentDetailsOfQuiz(assessmentOutsourseId, req.user[0].id);
@@ -594,9 +594,10 @@ export class ContentController {
     description: 'User id of the user',
   })
   async getAssessmentDetailsOfOpenEnded(@Param('assessmentOutsourseId') assessmentOutsourseId: number, @Req() req, @Query('userId') userId:number){
-    if (!userId) {
+    if (Number.isNaN(userId)) {
       userId = req.user[0].id;
     }
+    console.log('userId:: ', userId);
     return this.contentService.getAssessmentDetailsOfOpenEnded(assessmentOutsourseId, req.user[0].id);
   }
 }

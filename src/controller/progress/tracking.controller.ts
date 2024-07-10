@@ -508,8 +508,8 @@ export class TrackingController {
   })
   async getAssessmentSubmission(
     @Param('submissionId') submissionId: number, @Req() req, @Query('userId') userId:number ) {
-    if (!userId) {
-      userId = req.user[0].id;
+    if (Number.isNaN(userId)) {
+        userId = req.user[0].id;
     }
     const res = await this.TrackingService.getAssessmentSubmission(submissionId, userId);
     return res;
