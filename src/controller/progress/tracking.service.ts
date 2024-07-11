@@ -958,13 +958,15 @@ export class TrackingService {
           }
         },
       });
-
-
-      const instructorDetails = {
+         let instructorDetails = {}
+       if(batchDetails['batchInfo'] != null)
+        {
+        instructorDetails = {
         instructorId: Number(batchDetails['batchInfo']['instructorDetails']['id']),
         instructorName: batchDetails['batchInfo']['instructorDetails']['name'],
         instructorProfilePicture: batchDetails['batchInfo']['instructorDetails']['profilePicture']
       }
+    }
       return {
         status: 'success',
         message: 'Bootcamp progress fetched successfully',
