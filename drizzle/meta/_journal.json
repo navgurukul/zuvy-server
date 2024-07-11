@@ -43,6 +43,13 @@
       "when": 1720602318526,
       "tag": "0005_chubby_earthquake",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "5",
+      "when": 1720673616408,
+      "tag": "0006_overconfident_gorilla_man",
+      "breakpoints": true
     }
   ]
 }
