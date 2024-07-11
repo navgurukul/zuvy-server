@@ -901,13 +901,13 @@ export class TrackingService {
           sql`${inArray(zuvyChapterTracking.moduleId, moduleIds)} AND ${zuvyChapterTracking.userId} = ${userId}`,
         ) : [];
       const allChapters = moduleIds.length > 0 ? totalLength : [];
-      if (moduleIds.length == 0 || allChapters.length == 0) {
-        return {
-          status: 'error',
-          code: 404,
-          message: 'No chapters created for this course yet.'
-        }
-      }
+      let initialProgress = 0;
+        if(allChapters != 0 || projectModules.length !=0)
+          {
+           initialProgress = Math.ceil(
+              (allChapterTracking.length + completedProjectForAUser.length) / (allChapters + projectModules.length) * 100,
+            )
+          }
       const userBootcampTracking = await db
         .select()
         .from(zuvyBootcampTracking)
@@ -918,9 +918,7 @@ export class TrackingService {
         const updatedBootcampProgress = await db
           .update(zuvyBootcampTracking)
           .set({
-            progress: Math.ceil(
-              (allChapterTracking.length + completedProjectForAUser.length) / (allChapters + projectModules.length) * 100,
-            ),
+            progress: initialProgress,
             updatedAt: sql`NOW()`,
           })
           .where(
@@ -932,13 +930,10 @@ export class TrackingService {
           .values({
             userId,
             bootcampId,
-            progress: Math.ceil(
-              (allChapterTracking.length + completedProjectForAUser.length) / (allChapters + projectModules.length) * 100,
-            ),
+            progress: initialProgress,
             updatedAt: sql`NOW()`,
           }).returning();
       }
-
       const data = await db.query.zuvyBootcampTracking.findFirst({
         where: (bootcampTracking, { sql }) =>
           sql`${bootcampTracking.bootcampId} = ${bootcampId} AND ${bootcampTracking.userId} = ${userId}`,
