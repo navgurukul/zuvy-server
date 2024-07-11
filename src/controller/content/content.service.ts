@@ -17,6 +17,8 @@ import {
   zuvyOutsourseOpenEndedQuestions,
   zuvyOutsourseQuizzes,
   zuvyAssessmentSubmission,
+  zuvyModuleForm,
+  questionType,
 } from '../../../drizzle/schema';
 
 import axios from 'axios';
@@ -51,7 +53,8 @@ import {
   deleteQuestionDto,
   UpdateOpenEndedDto,
   CreateTagDto,
-  projectDto
+  projectDto,
+  formBatchDto
 } from './dto/content.dto';
 import { CreateProblemDto } from '../codingPlatform/dto/codingPlatform.dto';
 import { PatchBootcampSettingDto } from '../bootcamp/dto/bootcamp.dto';
@@ -967,6 +970,38 @@ export class ContentService {
               .set({ usage: sql`${zuvyCodingQuestions.usage}::numeric + 1` })
               .where(eq(zuvyCodingQuestions.id, editData.codingQuestions));
           }
+        }else if (editData.formQuestions) {
+          if (editData.formQuestions.length == 0) {
+            editData.formQuestions = null;
+          }
+          const earlierFormIds =
+            chapter[0].formQuestions != null
+              ? Object.values(chapter[0].formQuestions)
+              : [];
+          const remainingFormIds =
+            editData.formQuestions != null && earlierFormIds.length > 0
+              ? earlierFormIds.filter(
+                (questionId) => !editData.formQuestions.includes(questionId),
+              )
+              : [];
+          const toUpdateIds =
+            editData.formQuestions != null && earlierFormIds.length > 0
+              ? editData.formQuestions.filter(
+                (questionId) => !earlierFormIds.includes(questionId),
+              )
+              : editData.formQuestions;
+          if (remainingFormIds.length > 0) {
+            await db
+              .update(zuvyModuleForm)
+              .set({ usage: sql`${zuvyModuleForm.usage}::numeric - 1` })
+              .where(sql`${inArray(zuvyModuleForm.id, remainingFormIds)}`);
+          }
+          if (toUpdateIds.length > 0) {
+            await db
+              .update(zuvyModuleForm)
+              .set({ usage: sql`${zuvyModuleForm.usage}::numeric + 1` })
+              .where(sql`${inArray(zuvyModuleForm.id, toUpdateIds)}`);
+          }
         }
         await db
           .update(zuvyModuleChapter)
@@ -1842,6 +1877,38 @@ export class ContentService {
         return [];
       } 
       return assessment;
+    } catch (err) {
+      throw err;
+    }
+  }
+
+  async createFormForModule(form: formBatchDto) {
+    try {
+      const formQuestions = form.questions.map((q) => ({
+        question: q.question,
+        options: q.options,
+        questionType: q.questionType,
+        typeId: q.typeId,
+      }));
+
+      const result = await db
+        .insert(zuvyModuleForm)
+        .values(formQuestions)
+        .returning();
+      if (result.length > 0) {
+        return {
+          status: "success",
+          code: 200,
+          result
+        }
+      }
+      else {
+        return {
+          status: "error",
+          code: 404,
+          message: "Form questions did not create successfully.Please try again"
+        }
+      }
     } catch (err) {
       throw err;
     }

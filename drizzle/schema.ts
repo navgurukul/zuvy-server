@@ -2825,6 +2825,7 @@ export const zuvyModuleChapter = main.table('zuvy_module_chapter', {
   articleContent: jsonb('article_content'),
   quizQuestions: jsonb('quiz_questions'),
   codingQuestions: integer('coding_questions'),
+  formQuestions: jsonb('form_questions'),
   assessmentId: integer('assessment_id'),
   completionDate: timestamp('completion_date', {
     withTimezone: true,
@@ -3458,8 +3459,6 @@ export const questionType = pgEnum('questionType', ['Multiple Choice' , 'Checkbo
 
 export const zuvyModuleForm = main.table('zuvy_module_form', {
   id: serial('id').primaryKey().notNull(),
-  title: varchar('title'),
-  description: text('description'),
   question: text('question'),
   options: jsonb('options'),
   createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }),
