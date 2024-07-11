@@ -2825,6 +2825,7 @@ export const zuvyModuleChapter = main.table('zuvy_module_chapter', {
   articleContent: jsonb('article_content'),
   quizQuestions: jsonb('quiz_questions'),
   codingQuestions: integer('coding_questions'),
+  formQuestions: jsonb('form_questions'),
   assessmentId: integer('assessment_id'),
   completionDate: timestamp('completion_date', {
     withTimezone: true,

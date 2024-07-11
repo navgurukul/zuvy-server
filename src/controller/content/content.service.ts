@@ -970,6 +970,38 @@ export class ContentService {
               .set({ usage: sql`${zuvyCodingQuestions.usage}::numeric + 1` })
               .where(eq(zuvyCodingQuestions.id, editData.codingQuestions));
           }
+        }else if (editData.formQuestions) {
+          if (editData.formQuestions.length == 0) {
+            editData.formQuestions = null;
+          }
+          const earlierFormIds =
+            chapter[0].formQuestions != null
+              ? Object.values(chapter[0].formQuestions)
+              : [];
+          const remainingFormIds =
+            editData.formQuestions != null && earlierFormIds.length > 0
+              ? earlierFormIds.filter(
+                (questionId) => !editData.formQuestions.includes(questionId),
+              )
+              : [];
+          const toUpdateIds =
+            editData.formQuestions != null && earlierFormIds.length > 0
+              ? editData.formQuestions.filter(
+                (questionId) => !earlierFormIds.includes(questionId),
+              )
+              : editData.formQuestions;
+          if (remainingFormIds.length > 0) {
+            await db
+              .update(zuvyModuleForm)
+              .set({ usage: sql`${zuvyModuleForm.usage}::numeric - 1` })
+              .where(sql`${inArray(zuvyModuleForm.id, remainingFormIds)}`);
+          }
+          if (toUpdateIds.length > 0) {
+            await db
+              .update(zuvyModuleForm)
+              .set({ usage: sql`${zuvyModuleForm.usage}::numeric + 1` })
+              .where(sql`${inArray(zuvyModuleForm.id, toUpdateIds)}`);
+          }
         }
         await db
           .update(zuvyModuleChapter)
