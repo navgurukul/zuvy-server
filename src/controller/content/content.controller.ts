@@ -576,7 +576,7 @@ export class ContentController {
     description: 'studentId of the assessment',
   })
   @ApiBearerAuth()
-  async getAssessmentDetailsOfQuiz(@Param('assessmentOutsourseId') assessmentOutsourseId: number, @Req() req, @Query('userId') userId:number ){
+  async getAssessmentDetailsOfQuiz(@Param('assessmentOutsourseId') assessmentOutsourseId: number, @Req() req, @Query('studentId') userId:number ){
     if (!userId) {
       userId = req.user[0].id;
     }
