@@ -901,7 +901,7 @@ export class TrackingService {
           sql`${inArray(zuvyChapterTracking.moduleId, moduleIds)} AND ${zuvyChapterTracking.userId} = ${userId}`,
         ) : [];
       const allChapters = moduleIds.length > 0 ? totalLength : [];
-      var initialProgress = 0;
+      let initialProgress = 0;
         if(allChapters != 0 || projectModules.length !=0)
           {
            initialProgress = Math.ceil(
