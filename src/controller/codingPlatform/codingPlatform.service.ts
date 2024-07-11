@@ -21,15 +21,11 @@ export class CodingPlatformService {
       if (!['run', 'submit'].includes(action.toLowerCase())) {
         return { statusCode: 400, message: 'Invalid action' };
       }
-      let response, token, submissionInfo;
-      let status = 0;
-      while (status >= 3) {
-        response = await this.submitCode(sourceCode, questionId, action);
-        token = response.token;
-        submissionInfo = await this.getCodeInfo(token);
-        status = submissionInfo.status.id;
-      }
-
+      let {submissionInfo, token, status }= await this.submitCode(sourceCode, questionId, action);
+      console.log('submissionInfo', submissionInfo);
+      console.log('token', token);
+      console.log('status', status);
+      status = submissionInfo.status_id;
       let insertValues:any = { token, status, action, userId, questionId };
       let getSubmitQuery;
 
@@ -162,8 +158,15 @@ export class CodingPlatformService {
     };
 
     try {
-      const response = await axios.request(options);
-      return response.data;
+      let status = 0;
+      let response, token, submissionInfo
+      response = await axios.request(options);
+      token = response.token;
+      while (status <= 3) {
+        submissionInfo = await this.getCodeInfo(token);
+        status = submissionInfo.status
+      }
+      return {submissionInfo: response.data, token, status };
     } catch (error) {
       throw error;
     }
