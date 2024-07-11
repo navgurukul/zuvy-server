@@ -847,21 +847,21 @@ export class CreateChapterDto {
 ////////////formdtos///////////
 export class formDto {
   
-  @ApiProperty({
-    type: String,
-    example: 'Feedback Form',
-  })
-  @IsString()
-  @IsOptional()
-  title: string;
+  // @ApiProperty({
+  //   type: String,
+  //   example: 'Feedback Form',
+  // })
+  // @IsString()
+  // @IsOptional()
+  // title: string;
 
-  @ApiProperty({ 
-    type: String,
-    example: 'This is a feedback form about our course',
-  })
-  @IsString()
-  @IsOptional()
-  description: string;
+  // @ApiProperty({ 
+  //   type: String,
+  //   example: 'This is a feedback form about our course',
+  // })
+  // @IsString()
+  // @IsOptional()
+  // description: string;
 
   @ApiProperty({
     type: String,
@@ -963,21 +963,21 @@ export class editFormDto {
   @IsNumber()
   id: number;
 
-  @ApiProperty({
-    type: String,
-    example: 'Feedback Form',
-  })
-  @IsString()
-  @IsOptional()
-  title: string;
+  // @ApiProperty({
+  //   type: String,
+  //   example: 'Feedback Form',
+  // })
+  // @IsString()
+  // @IsOptional()
+  // title: string;
 
-  @ApiProperty({ 
-    type: String,
-    example: 'This is a feedback form about our course',
-  })
-  @IsString()
-  @IsOptional()
-  description: string;
+  // @ApiProperty({ 
+  //   type: String,
+  //   example: 'This is a feedback form about our course',
+  // })
+  // @IsString()
+  // @IsOptional()
+  // description: string;
 
   @ApiProperty({
     type: String,

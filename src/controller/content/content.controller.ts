@@ -40,7 +40,8 @@ import {
   CreateTagDto,
   projectDto,
   CreateChapterDto,
-  formBatchDto
+  formBatchDto,
+  editFormBatchDto
 } from './dto/content.dto';
 import { CreateProblemDto } from '../codingPlatform/dto/codingPlatform.dto';
 import { difficulty } from 'drizzle/schema';
@@ -594,6 +595,56 @@ export class ContentController {
     );
     return res;
   }
+
+  @Get('/allFormQuestions')
+  @ApiOperation({ summary: 'Get all form Questions' })
+  @ApiQuery({
+    name: 'typeId',
+    required: false,
+    type: Number,
+    description: 'typeId',
+  })
+  @ApiQuery({
+    name: 'searchTerm',
+    required: false,
+    type: String,
+    description: 'Search by name or email',
+  })
+  @ApiQuery({
+    name: 'questionType',
+    required: false,
+    type: String,
+    description: 'questionType',
+  })
+  @ApiBearerAuth()
+  async getAllFormQuestions(
+    @Query('typeId') typeId: number,
+    @Query('questionType') questionType: 'Multiple Choice' | 'Checkboxes' | 'Long Text Answer' | 'Date' | 'Time',
+	@Query('searchTerm') searchTerm: string,
+  ): Promise<object> {
+    const res = await this.contentService.getAllFormQuestions(
+      typeId,
+      questionType,
+	  searchTerm,
+    );
+    return res;
+  }
+
+  @Delete('/deleteFormQuestion')
+  @ApiOperation({ summary: 'Delete form question' })
+  @ApiBearerAuth()
+  async deleteFormQuestion(@Body() questionIds: deleteQuestionDto) {
+    const res = await this.contentService.deleteForm(questionIds);
+    return res;
+  }
+
+  // @Post('/editform')
+  // @ApiOperation({ summary: 'Create a form' })
+  // @ApiBearerAuth()
+  // async editFormForModule(@Body() formQuestions: editFormBatchDto) {
+  //   const res = await this.contentService.editFormQuestions(formQuestions);
+  //   return res;
+  // }
 
 
 }

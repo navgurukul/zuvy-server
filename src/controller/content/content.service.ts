@@ -54,7 +54,8 @@ import {
   UpdateOpenEndedDto,
   CreateTagDto,
   projectDto,
-  formBatchDto
+  formBatchDto,
+  editFormBatchDto
 } from './dto/content.dto';
 import { CreateProblemDto } from '../codingPlatform/dto/codingPlatform.dto';
 import { PatchBootcampSettingDto } from '../bootcamp/dto/bootcamp.dto';
@@ -531,6 +532,9 @@ export class ContentService {
           ).length,
           articlesCount: module.moduleChapterData.filter(
             (chapter) => chapter.topicId === 2,
+          ).length,
+          formCount: module.moduleChapterData.filter(
+            (chapter) => chapter.topicId === 7,
           ).length,
         };
       });
@@ -1884,11 +1888,11 @@ export class ContentService {
 
   async createFormForModule(form: formBatchDto) {
     try {
-      const formQuestions = form.questions.map((q) => ({
-        question: q.question,
-        options: q.options,
-        questionType: q.questionType,
-        typeId: q.typeId,
+      const formQuestions = form.questions.map((f) => ({
+        question: f.question,
+        options: f.options,
+        questionType: f.questionType,
+        typeId: f.typeId,
       }));
 
       const result = await db
@@ -1914,5 +1918,118 @@ export class ContentService {
     }
   }
 
+  async getAllFormQuestions(
+    typeId: number,
+    questionType: 'Multiple Choice' | 'Checkboxes' | 'Long Text Answer' | 'Date' | 'Time',
+    searchTerm: string = '',
+  ) {
+    try {
+      let queryString;
+      if (!Number.isNaN(typeId) && questionType == undefined) {
+        queryString = sql`${zuvyModuleForm.typeId} = ${typeId}`;
+      // } else if (Number.isNaN(typeId) && questionType != undefined) {
+      //   queryString = sql`${zuvyModuleForm.questionType} = ${questionType}`;
+      // } else if (!Number.isNaN(typeId) && questionType != undefined) {
+      //   queryString = and(
+      //     eq(zuvyModuleForm.questionType, questionType),
+      //     eq(zuvyModuleForm.typeId, typeId),
+      //   );
+       }
+      const result = await db
+        .select()
+        .from(zuvyModuleForm)
+        .where(
+          and(
+            queryString,
+            sql`((LOWER(${zuvyModuleForm.question}) LIKE '%' || ${searchTerm.toLowerCase()} || '%'))`,
+          ),
+        );
+      return result;
+    } catch (err) {
+      throw err;
+    }
+  }
+
+  // async editFormQuestions(editFormDetails: editFormBatchDto) {
+  //   try {
+  //     await db
+  //       .insert(zuvyModuleForm)
+  //       .values(editFormDetails.questions)
+  //       .onConflictDoUpdate({
+  //         target: zuvyModuleForm.id,
+  //         set: {
+  //           question: sql`excluded.question`,
+  //           options: sql`excluded.options`,
+  //           typeId: sql`excluded.type_id`,
+            
+  //         },
+  //       });
+
+  //     return {
+  //       status: 'success',
+  //       code: 200,
+  //       message: 'Form questions are updated successfully',
+  //     };
+  //   } catch (error) {
+  //     throw error;
+  //   }
+  // }
+
+  async deleteForm(id: deleteQuestionDto) {
+    try {
+      const usedForm = await db
+        .select()
+        .from(zuvyModuleForm)
+        .where(
+          sql`${inArray(zuvyModuleForm.id, id.questionIds)} and ${zuvyModuleForm.usage} > 0`,
+        );
+      let deletedQuestions;
+      if (usedForm.length > 0) {
+        const usedIds = usedForm.map((form) => form.id);
+        const remainingIds = id.questionIds.filter(
+          (questionId) => !usedIds.includes(questionId),
+        );
+        deletedQuestions =
+          remainingIds.length > 0
+            ? await db
+              .delete(zuvyModuleForm)
+              .where(sql`${inArray(zuvyModuleForm.id, remainingIds)}`)
+              .returning()
+            : [];
+        if (deletedQuestions.length > 0) {
+          return {
+            status: 'success',
+            code: 200,
+            message: `Form questions which is used in other places like chapters and assessment cannot be deleted`,
+          };
+        } else {
+          return {
+            status: 'error',
+            code: 400,
+            message: `Questions cannot be deleted`,
+          };
+        }
+      }
+      deletedQuestions = await db
+        .delete(zuvyModuleForm)
+        .where(sql`${inArray(zuvyModuleForm.id, id.questionIds)}`)
+        .returning();
+      if (deletedQuestions.length > 0) {
+        return {
+          status: 'success',
+          code: 200,
+          message: 'The form questions has been deleted successfully',
+        };
+      } else {
+        return {
+          status: 'error',
+          code: 400,
+          message: `Questions cannot be deleted`,
+        };
+      }
+    } catch (err) {
+      throw err;
+    }
+  }
 
 }
