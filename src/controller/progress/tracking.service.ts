@@ -942,7 +942,7 @@ export class TrackingService {
         },
       });
       const batchDetails = await db.query.zuvyBatchEnrollments.findFirst({
-        where: (batchEnroll, { eq }) =>
+        where: (batchEnroll, { sql }) =>
           sql`${batchEnroll.userId} = ${BigInt(userId)} AND ${batchEnroll.bootcampId} = ${bootcampId}`,
         with: {
           batchInfo: {
