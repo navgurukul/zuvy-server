@@ -1098,19 +1098,47 @@ export class TrackingService {
 
   async getFormDetailsWithStatus(chapterId: number, userId: number) {
     try {
-      const trackingData = await db.query.zuvyModuleChapter.findFirst({
-        where: (moduleChapter, { eq }) => eq(moduleChapter.id, chapterId),
-        orderBy: (moduleChapter, { asc }) => asc(moduleChapter.order),
-        with: {
-          chapterTrackingDetails: {
-            columns: {
-              id: true,
-            },
-            where: (chapterTracking, { eq }) =>
-              eq(chapterTracking.userId, BigInt(userId)),
-          },
-        },
-      });
+      // const trackingData = await db.query.zuvyModuleChapter.findFirst({
+      //   where: (moduleChapter, { eq }) => eq(moduleChapter.id, chapterId),
+      //   orderBy: (moduleChapter, { asc }) => asc(moduleChapter.order),
+      //   with: {
+      //     chapterTrackingDetails: {
+      //       columns: {
+      //         id: true,
+      //       },
+      //       where: (chapterTracking, { eq }) =>
+      //         eq(chapterTracking.userId, BigInt(userId)),
+      //     },
+      //   },
+      // });
+
+      const trackingData = await this.getChapterDetailsWithStatus(
+        chapterId,
+        userId,
+      );
+
+      // console.log('moduleChapter.id', moduleChapter.id);
+      console.log('chapterId', chapterId);
+
+      // const formData = await db.select()
+      // .from(zuvyModuleTracking)
+      // .where(
+      //   sql`${zuvyModuleTracking.bootcampId} = ${bootcampId} and ${zuvyModuleTracking.userId} = ${userId} and ${zuvyModuleTracking.progress} < 100`,
+      // );
+
+      // const trackingData = await db.query.zuvyModuleForm.findFirst({
+      //   where: (moduleChapter, { eq }) => eq(moduleChapter.id, chapterId),
+      //   // orderBy: (moduleChapter, { asc }) => asc(moduleChapter.order),
+      //   // with: {
+      //   //   chapterTrackingDetails: {
+      //   //     columns: {
+      //   //       id: true,
+      //   //     },
+      //   //     where: (chapterTracking, { eq }) =>
+      //   //       eq(chapterTracking.userId, BigInt(userId)),
+      //   //   },
+      //   // },
+      // });
 
       const newContent = {
         title: 'Module 1 Feedback',
@@ -1151,20 +1179,21 @@ export class TrackingService {
         ],
       };
 
-      trackingData['formContent'] = newContent;
+      // trackingData['formContent'] = newContent;
 
-      trackingData['status'] =
-        trackingData['chapterTrackingDetails'].length > 0
-          ? 'Completed'
-          : 'Pending';
+      // trackingData['status'] =
+      //   trackingData['chapterTrackingDetails'].length > 0
+      //     ? 'Completed'
+      //     : 'Pending';
 
       console.log('trackingData', trackingData);
 
-      return {
-        status: 'success',
-        code: 200,
-        trackingData,
-      };
+      // return {
+      //   status: 'success',
+      //   code: 200,
+      //   trackingData,
+      // };
+      return trackingData;
     } catch (err) {
       throw err;
     }

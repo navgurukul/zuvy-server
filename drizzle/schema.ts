@@ -1352,39 +1352,60 @@ export const courseEnrolments = main.table(
     };
   },
 );
-export const users = main.table("users", {
-	id: bigserial("id", { mode: "bigint" }).primaryKey().notNull(),
-	email: varchar("email", { length: 255 }),
-	name: varchar("name", { length: 250 }).default('').notNull(),
-	profilePicture: varchar("profile_picture", { length: 250 }),
-	googleUserId: varchar("google_user_id", { length: 250 }),
-	center: usersCenter("center"),
-	githubLink: varchar("github_link", { length: 145 }),
-	linkedinLink: varchar("linkedin_link", { length: 145 }),
-	mediumLink: varchar("medium_link", { length: 145 }),
-	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }),
-	chatId: varchar("chat_id", { length: 255 }),
-	chatPassword: varchar("chat_password", { length: 32 }),
-	partnerId: integer("partner_id").references(() => partners.id),
-	lang1: char("lang_1", { length: 2 }),
-	lang2: char("lang_2", { length: 2 }),
-	mode: varchar("mode", { length: 255 }),
-	contact: varchar("contact", { length: 255 }),
-	lastLoginAt: timestamp("last_login_at", { withTimezone: true, mode: 'string' }),
-	groupId: integer("group_id").references(() => spaceGroup.id, { onDelete: "set null" } ),
-	spaceId: integer("space_id").references(() => partnerSpace.id, { onDelete: "cascade", onUpdate: "cascade" } ),
-	c4CaPartnerId: integer("c4ca_partner_id").references(() => c4CaPartners.id, { onDelete: "set null" } ),
-	c4CaFacilitatorId: integer("c4ca_facilitator_id").references(() => facilitators.id, { onDelete: "set null" } ),
-	userName: varchar("user_name", { length: 255 }),
-	password: varchar("password", { length: 255 }),
-  pass_iv: varchar("pass_iv", { length: 255 }),
-},
-(table) => {
-	return {
-		idx50526GoogleUserId: uniqueIndex("idx_50526_google_user_id").on(table.googleUserId),
-		mainUsersUserNameUnique: unique("main_users_user_name_unique").on(table.userName),
-	}
-});
+export const users = main.table(
+  'users',
+  {
+    id: bigserial('id', { mode: 'bigint' }).primaryKey().notNull(),
+    email: varchar('email', { length: 255 }),
+    name: varchar('name', { length: 250 }).default('').notNull(),
+    profilePicture: varchar('profile_picture', { length: 250 }),
+    googleUserId: varchar('google_user_id', { length: 250 }),
+    center: usersCenter('center'),
+    githubLink: varchar('github_link', { length: 145 }),
+    linkedinLink: varchar('linkedin_link', { length: 145 }),
+    mediumLink: varchar('medium_link', { length: 145 }),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }),
+    chatId: varchar('chat_id', { length: 255 }),
+    chatPassword: varchar('chat_password', { length: 32 }),
+    partnerId: integer('partner_id').references(() => partners.id),
+    lang1: char('lang_1', { length: 2 }),
+    lang2: char('lang_2', { length: 2 }),
+    mode: varchar('mode', { length: 255 }),
+    contact: varchar('contact', { length: 255 }),
+    lastLoginAt: timestamp('last_login_at', {
+      withTimezone: true,
+      mode: 'string',
+    }),
+    groupId: integer('group_id').references(() => spaceGroup.id, {
+      onDelete: 'set null',
+    }),
+    spaceId: integer('space_id').references(() => partnerSpace.id, {
+      onDelete: 'cascade',
+      onUpdate: 'cascade',
+    }),
+    c4CaPartnerId: integer('c4ca_partner_id').references(
+      () => c4CaPartners.id,
+      { onDelete: 'set null' },
+    ),
+    c4CaFacilitatorId: integer('c4ca_facilitator_id').references(
+      () => facilitators.id,
+      { onDelete: 'set null' },
+    ),
+    userName: varchar('user_name', { length: 255 }),
+    password: varchar('password', { length: 255 }),
+    pass_iv: varchar('pass_iv', { length: 255 }),
+  },
+  (table) => {
+    return {
+      idx50526GoogleUserId: uniqueIndex('idx_50526_google_user_id').on(
+        table.googleUserId,
+      ),
+      mainUsersUserNameUnique: unique('main_users_user_name_unique').on(
+        table.userName,
+      ),
+    };
+  },
+);
 
 export const courseRelation = main.table(
   'course_relation',
@@ -2531,15 +2552,15 @@ export const zuvyBatchEnrollments = main.table('zuvy_batch_enrollments', {
     .notNull()
     .references(() => users.id, {
       onDelete: 'cascade',
-      onUpdate: 'cascade'
+      onUpdate: 'cascade',
     }),
   bootcampId: integer('bootcamp_id').references(() => zuvyBootcamps.id, {
     onDelete: 'cascade',
-    onUpdate: 'cascade'
+    onUpdate: 'cascade',
   }),
   batchId: integer('batch_id').references(() => zuvyBatches.id, {
     onDelete: 'cascade',
-    onUpdate: 'cascade'
+    onUpdate: 'cascade',
   }),
   attendance: integer('attendance'),
   createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' })
@@ -2558,7 +2579,7 @@ export const classesInTheBatch = relations(
       fields: [zuvyBatchEnrollments.bootcampId],
       references: [zuvyBootcampTracking.bootcampId],
     }),
-    
+
     batch: one(zuvyBatches, {
       fields: [zuvyBatchEnrollments.batchId],
       references: [zuvyBatches.id],
@@ -2568,13 +2589,13 @@ export const classesInTheBatch = relations(
       fields: [zuvyBatchEnrollments.batchId],
       references: [zuvySessions.batchId],
     }),
-    
+
     classesInfo: many(zuvySessions),
     bootcamp: one(zuvyBootcamps, {
       fields: [zuvyBatchEnrollments.bootcampId],
       references: [zuvyBootcamps.id],
     }),
-    })
+  }),
 );
 
 export const zuvyBatchEnrollmentsRelations = relations(
@@ -2592,13 +2613,14 @@ export const zuvyBatchEnrollmentsRelations = relations(
 );
 
 export const zuvyBatchInstructorRelation = relations(
-  zuvyBatches,({one}) => ({
-    instructorDetails: one(users,{
+  zuvyBatches,
+  ({ one }) => ({
+    instructorDetails: one(users, {
       fields: [zuvyBatches.instructorId],
-      references: [users.id]
-    })
-  })
-)
+      references: [users.id],
+    }),
+  }),
+);
 
 export const zuvyTags = main.table('zuvy_tags', {
   id: serial('id').primaryKey().notNull(),
@@ -2616,37 +2638,39 @@ export const zuvyModuleQuiz = main.table('zuvy_module_quiz', {
   usage: integer('usage').default(0),
 });
 
-export const zuvyCourseModules = main.table("zuvy_course_modules", {
-  id: serial("id").primaryKey().notNull(),
-  typeId: integer("type_id"),
-  isLock: boolean("is_lock").default(false),
-  bootcampId: integer("bootcamp_id").references(() => zuvyBootcamps.id),
-  name: varchar("name"),
-  description: text("description"),
-  projectId: integer("project_id").references(() => zuvyCourseProjects.id),
-  order: integer("order"),
-  timeAlloted: bigint("time_alloted", { mode: "number" })
-})
+export const zuvyCourseModules = main.table('zuvy_course_modules', {
+  id: serial('id').primaryKey().notNull(),
+  typeId: integer('type_id'),
+  isLock: boolean('is_lock').default(false),
+  bootcampId: integer('bootcamp_id').references(() => zuvyBootcamps.id),
+  name: varchar('name'),
+  description: text('description'),
+  projectId: integer('project_id').references(() => zuvyCourseProjects.id),
+  order: integer('order'),
+  timeAlloted: bigint('time_alloted', { mode: 'number' }),
+});
 
-export const zuvyModuleData =  relations( zuvyBootcamps, ({one, many}) =>({
-  bootcampModulesData :  one(zuvyCourseModules, {
-      fields: [zuvyBootcamps.id],
-      references: [zuvyCourseModules.bootcampId],
-    }),
-    bootcampModules: many(zuvyCourseModules),
-    bootcampTracking : one(zuvyBootcampTracking, {
-      fields: [zuvyBootcamps.id],
-      references: [zuvyBootcampTracking.bootcampId],
-    })
-}))
+export const zuvyModuleData = relations(zuvyBootcamps, ({ one, many }) => ({
+  bootcampModulesData: one(zuvyCourseModules, {
+    fields: [zuvyBootcamps.id],
+    references: [zuvyCourseModules.bootcampId],
+  }),
+  bootcampModules: many(zuvyCourseModules),
+  bootcampTracking: one(zuvyBootcampTracking, {
+    fields: [zuvyBootcamps.id],
+    references: [zuvyBootcampTracking.bootcampId],
+  }),
+}));
 
-export const bootcampModuleRelation =  relations(zuvyCourseModules, ({one}) => ({
+export const bootcampModuleRelation = relations(
+  zuvyCourseModules,
+  ({ one }) => ({
     moduleData: one(zuvyBootcamps, {
       fields: [zuvyCourseModules.bootcampId],
       references: [zuvyBootcamps.id],
-    })
-}))
-
+    }),
+  }),
+);
 
 export const studentChapterRelation = relations(
   zuvyBatchEnrollments,
@@ -2655,160 +2679,227 @@ export const studentChapterRelation = relations(
   }),
 );
 
-export const zuvyModuleTopics = main.table("zuvy_module_topics", {
-  id: serial("id").primaryKey().notNull(),
-  name: varchar("name")
-})
-
-export const zuvyCodingSubmission = main.table("zuvy_coding_submission", {
-  id: serial("id").primaryKey().notNull(),
-  userId: bigserial("user_id", { mode: "bigint" }).notNull().references(() => users.id),
-  questionSolved: jsonb("question_solved").notNull(),
-  createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
-  updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
-  assessmentSubmissionId: integer("assessment_submission_id").references(() => zuvyAssessmentSubmission.id, {
-    onDelete: 'cascade',
-    onUpdate: 'cascade',
-  }),
-  assessmentOutsourseId: integer("assessment_outsourse_id").references(() => zuvyOutsourseAssessments.id, {
-    onDelete: 'cascade',
-    onUpdate: 'cascade',
-  }),
-  questionId: integer("question_id").references(() => zuvyOutsourseCodingQuestions.id),
-})
-
-export const zuvyCodingSubmissionRelations = relations(zuvyCodingSubmission, ({ one }) => ({
-  codeStatus: one(users, {
-    fields: [zuvyCodingSubmission.userId],
-    references: [users.id],
-  }),
-  submissionAssessment: one(zuvyOutsourseAssessments, {
-    fields: [zuvyCodingSubmission.assessmentSubmissionId],
-    references: [zuvyOutsourseAssessments.id],
-  }),
-  questionDetails: one(zuvyOutsourseCodingQuestions, {
-    fields: [zuvyCodingSubmission.questionId],
-    references: [zuvyOutsourseCodingQuestions.id],
-  }),
-  submission: one(zuvyAssessmentSubmission, {
-    fields: [zuvyCodingSubmission.assessmentSubmissionId],
-    references: [zuvyAssessmentSubmission.id],
-  }),
-  // dataSubmission: one(zuvyCodingQuestions, {
-  //   fields: [zuvyCodingSubmission.assessmentOutsourseId],
-  //   references: [zuvyCodingQuestions.assessmentOutsourseId],
-  // }),
-}))
-
-export const zuvyAssignmentSubmission = main.table("zuvy_assignment_submission", {
-  id: serial("id").primaryKey().notNull(),
-  userId: integer("user_id").references(() => users.id),
-  moduleId: integer("module_id").notNull(),
-  bootcampId: integer("bootcamp_id").references(() => zuvyBootcamps.id),
-  chapterId: integer("chapter_id").notNull(),
-  timeLimit: timestamp("time_limit", { withTimezone: true, mode: 'string' }).notNull(),
-  projectUrl: varchar("project_url", { length: 255 }),
-  createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
-  updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+export const zuvyModuleTopics = main.table('zuvy_module_topics', {
+  id: serial('id').primaryKey().notNull(),
+  name: varchar('name'),
 });
 
-export const zuvyCourseProjects = main.table("zuvy_course_projects", {
-  id: serial("id").primaryKey().notNull(),
-  title: varchar("title"),
-  instruction: jsonb("instruction"),
-  isLock: boolean("is_lock").default(false),
-  deadline: timestamp("completed_at", { withTimezone: true, mode: 'string' }).defaultNow()
-})
-
-export const zuvyProjectTracking = main.table("zuvy_project_tracking",{
-  id:serial("id").primaryKey().notNull(),
-  userId: integer("user_id").references(() => users.id, {
-    onDelete: 'cascade',
-    onUpdate: 'cascade',
-  }),
-  projectId: integer("project_id").references(() => zuvyCourseProjects.id, {
-    onDelete: 'cascade',
-    onUpdate: 'cascade',
-  }),
-  moduleId: integer("module_id").references(() => zuvyCourseModules.id, {
-    onDelete: 'cascade',
-    onUpdate: 'cascade',
-  }),
-  bootcampId: integer("bootcamp_id").references(() => zuvyBootcamps.id, {
-    onDelete: 'cascade',
-    onUpdate: 'cascade',
-  }),
-  projectLink: varchar("project_link"),
-  isChecked: boolean("is_checked").default(false),
-  grades : integer("grades"),
-  createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
-  updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
-})
-
-export const projectTrackingModuleRelation =  relations(zuvyProjectTracking, ({one,many}) => ({
-  projectTrackingData: one(zuvyCourseProjects, {
-    fields: [zuvyProjectTracking.projectId],
-    references: [zuvyCourseProjects.id],
-  }),
-  userDetails: one(users, {
-    fields: [zuvyProjectTracking.userId],
-    references: [users.id],
-  }),
-}))
-export const zuvyBootcampTracking = main.table("zuvy_bootcamp_tracking", {
-  id: serial("id").primaryKey().notNull(),
-  userId: integer("user_id").references(() => users.id),
-  progress: integer("progress").default(0),
-  bootcampId: integer("bootcamp_id").references(() => zuvyBootcamps.id),
-  createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
-  updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+export const zuvyCodingSubmission = main.table('zuvy_coding_submission', {
+  id: serial('id').primaryKey().notNull(),
+  userId: bigserial('user_id', { mode: 'bigint' })
+    .notNull()
+    .references(() => users.id),
+  questionSolved: jsonb('question_solved').notNull(),
+  createdAt: timestamp('created_at', {
+    withTimezone: true,
+    mode: 'string',
+  }).defaultNow(),
+  updatedAt: timestamp('updated_at', {
+    withTimezone: true,
+    mode: 'string',
+  }).defaultNow(),
+  assessmentSubmissionId: integer('assessment_submission_id').references(
+    () => zuvyAssessmentSubmission.id,
+    {
+      onDelete: 'cascade',
+      onUpdate: 'cascade',
+    },
+  ),
+  assessmentOutsourseId: integer('assessment_outsourse_id').references(
+    () => zuvyOutsourseAssessments.id,
+    {
+      onDelete: 'cascade',
+      onUpdate: 'cascade',
+    },
+  ),
+  questionId: integer('question_id').references(
+    () => zuvyOutsourseCodingQuestions.id,
+  ),
 });
 
+export const zuvyCodingSubmissionRelations = relations(
+  zuvyCodingSubmission,
+  ({ one }) => ({
+    codeStatus: one(users, {
+      fields: [zuvyCodingSubmission.userId],
+      references: [users.id],
+    }),
+    submissionAssessment: one(zuvyOutsourseAssessments, {
+      fields: [zuvyCodingSubmission.assessmentSubmissionId],
+      references: [zuvyOutsourseAssessments.id],
+    }),
+    questionDetails: one(zuvyOutsourseCodingQuestions, {
+      fields: [zuvyCodingSubmission.questionId],
+      references: [zuvyOutsourseCodingQuestions.id],
+    }),
+    submission: one(zuvyAssessmentSubmission, {
+      fields: [zuvyCodingSubmission.assessmentSubmissionId],
+      references: [zuvyAssessmentSubmission.id],
+    }),
+    // dataSubmission: one(zuvyCodingQuestions, {
+    //   fields: [zuvyCodingSubmission.assessmentOutsourseId],
+    //   references: [zuvyCodingQuestions.assessmentOutsourseId],
+    // }),
+  }),
+);
 
-export const zuvyQuizTracking = main.table("zuvy_quiz_tracking", {
-  id: serial("id").primaryKey().notNull(),
-  userId: integer("user_id").references(() => users.id),
-  moduleId: integer("module_id"),
-  mcqId: integer("mcq_id"),
-  attemptCount: integer("attempt_count").default(0),
-  chapterId: integer("chapter_id"),
-  status: varchar("status", { length: 255 }),
-  assessmentSubmissionId: integer("assessment_submission_id").references(() => zuvyAssessmentSubmission.id, {
+export const zuvyAssignmentSubmission = main.table(
+  'zuvy_assignment_submission',
+  {
+    id: serial('id').primaryKey().notNull(),
+    userId: integer('user_id').references(() => users.id),
+    moduleId: integer('module_id').notNull(),
+    bootcampId: integer('bootcamp_id').references(() => zuvyBootcamps.id),
+    chapterId: integer('chapter_id').notNull(),
+    timeLimit: timestamp('time_limit', {
+      withTimezone: true,
+      mode: 'string',
+    }).notNull(),
+    projectUrl: varchar('project_url', { length: 255 }),
+    createdAt: timestamp('created_at', {
+      withTimezone: true,
+      mode: 'string',
+    }).defaultNow(),
+    updatedAt: timestamp('updated_at', {
+      withTimezone: true,
+      mode: 'string',
+    }).defaultNow(),
+  },
+);
+
+export const zuvyCourseProjects = main.table('zuvy_course_projects', {
+  id: serial('id').primaryKey().notNull(),
+  title: varchar('title'),
+  instruction: jsonb('instruction'),
+  isLock: boolean('is_lock').default(false),
+  deadline: timestamp('completed_at', {
+    withTimezone: true,
+    mode: 'string',
+  }).defaultNow(),
+});
+
+export const zuvyProjectTracking = main.table('zuvy_project_tracking', {
+  id: serial('id').primaryKey().notNull(),
+  userId: integer('user_id').references(() => users.id, {
     onDelete: 'cascade',
     onUpdate: 'cascade',
   }),
-  questionId: integer("question_id").notNull().references(() => zuvyOutsourseQuizzes.id),
-  chosenOption: integer("chosen_option"),
-  createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
-  updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+  projectId: integer('project_id').references(() => zuvyCourseProjects.id, {
+    onDelete: 'cascade',
+    onUpdate: 'cascade',
+  }),
+  moduleId: integer('module_id').references(() => zuvyCourseModules.id, {
+    onDelete: 'cascade',
+    onUpdate: 'cascade',
+  }),
+  bootcampId: integer('bootcamp_id').references(() => zuvyBootcamps.id, {
+    onDelete: 'cascade',
+    onUpdate: 'cascade',
+  }),
+  projectLink: varchar('project_link'),
+  isChecked: boolean('is_checked').default(false),
+  grades: integer('grades'),
+  createdAt: timestamp('created_at', {
+    withTimezone: true,
+    mode: 'string',
+  }).defaultNow(),
+  updatedAt: timestamp('updated_at', {
+    withTimezone: true,
+    mode: 'string',
+  }).defaultNow(),
 });
 
-export const zuvyQuizTrackingRelations = relations(zuvyQuizTracking, ({ one }) => ({
-  // submissionAssessment: one(zuvyAssessmentSubmission,{
-  //   fields: [zuvyQuizTracking.assessmentId],
-  //   references: [zuvyAssessmentSubmission.id]
-  // }),
-  quizSubmissions: one(zuvyAssessmentSubmission, {
-    fields: [zuvyQuizTracking.assessmentSubmissionId],
-    references: [zuvyAssessmentSubmission.id]
+export const projectTrackingModuleRelation = relations(
+  zuvyProjectTracking,
+  ({ one, many }) => ({
+    projectTrackingData: one(zuvyCourseProjects, {
+      fields: [zuvyProjectTracking.projectId],
+      references: [zuvyCourseProjects.id],
+    }),
+    userDetails: one(users, {
+      fields: [zuvyProjectTracking.userId],
+      references: [users.id],
+    }),
   }),
-  submissionData : one(zuvyOutsourseQuizzes, {
-    fields: [zuvyQuizTracking.questionId],
-    references: [zuvyOutsourseQuizzes.id]
-  })
-  
-}))
+);
+export const zuvyBootcampTracking = main.table('zuvy_bootcamp_tracking', {
+  id: serial('id').primaryKey().notNull(),
+  userId: integer('user_id').references(() => users.id),
+  progress: integer('progress').default(0),
+  bootcampId: integer('bootcamp_id').references(() => zuvyBootcamps.id),
+  createdAt: timestamp('created_at', {
+    withTimezone: true,
+    mode: 'string',
+  }).defaultNow(),
+  updatedAt: timestamp('updated_at', {
+    withTimezone: true,
+    mode: 'string',
+  }).defaultNow(),
+});
+
+export const zuvyQuizTracking = main.table('zuvy_quiz_tracking', {
+  id: serial('id').primaryKey().notNull(),
+  userId: integer('user_id').references(() => users.id),
+  moduleId: integer('module_id'),
+  mcqId: integer('mcq_id'),
+  attemptCount: integer('attempt_count').default(0),
+  chapterId: integer('chapter_id'),
+  status: varchar('status', { length: 255 }),
+  assessmentSubmissionId: integer('assessment_submission_id').references(
+    () => zuvyAssessmentSubmission.id,
+    {
+      onDelete: 'cascade',
+      onUpdate: 'cascade',
+    },
+  ),
+  questionId: integer('question_id')
+    .notNull()
+    .references(() => zuvyOutsourseQuizzes.id),
+  chosenOption: integer('chosen_option'),
+  createdAt: timestamp('created_at', {
+    withTimezone: true,
+    mode: 'string',
+  }).defaultNow(),
+  updatedAt: timestamp('updated_at', {
+    withTimezone: true,
+    mode: 'string',
+  }).defaultNow(),
+});
+
+export const zuvyQuizTrackingRelations = relations(
+  zuvyQuizTracking,
+  ({ one }) => ({
+    // submissionAssessment: one(zuvyAssessmentSubmission,{
+    //   fields: [zuvyQuizTracking.assessmentId],
+    //   references: [zuvyAssessmentSubmission.id]
+    // }),
+    quizSubmissions: one(zuvyAssessmentSubmission, {
+      fields: [zuvyQuizTracking.assessmentSubmissionId],
+      references: [zuvyAssessmentSubmission.id],
+    }),
+    submissionData: one(zuvyOutsourseQuizzes, {
+      fields: [zuvyQuizTracking.questionId],
+      references: [zuvyOutsourseQuizzes.id],
+    }),
+  }),
+);
 
 // export const alterZuvyQuizTracking = main.table("")
 
-export const zuvyModuleTracking = main.table("zuvy_module_tracking", {
-  id: serial("id").primaryKey().notNull(),
-  userId: integer("user_id").references(() => users.id),
-  moduleId: integer("module_id").notNull(),
-  progress: integer("progress").default(0),
-  bootcampId: integer("bootcamp_id").references(() => zuvyBootcamps.id),
-  createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
-  updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+export const zuvyModuleTracking = main.table('zuvy_module_tracking', {
+  id: serial('id').primaryKey().notNull(),
+  userId: integer('user_id').references(() => users.id),
+  moduleId: integer('module_id').notNull(),
+  progress: integer('progress').default(0),
+  bootcampId: integer('bootcamp_id').references(() => zuvyBootcamps.id),
+  createdAt: timestamp('created_at', {
+    withTimezone: true,
+    mode: 'string',
+  }).defaultNow(),
+  updatedAt: timestamp('updated_at', {
+    withTimezone: true,
+    mode: 'string',
+  }).defaultNow(),
 });
 
 export const zuvyModuleChapter = main.table('zuvy_module_chapter', {
@@ -2843,56 +2934,62 @@ export const postsRelations = relations(zuvyModuleChapter, ({ one, many }) => ({
     fields: [zuvyModuleChapter.codingQuestions],
     references: [zuvyCodingQuestions.id],
   }),
+  FormQuestion: one(zuvyModuleForm, {
+    fields: [zuvyModuleChapter.formQuestions],
+    references: [zuvyModuleForm.id],
+  }),
+  // FormQuestion: many(zuvyModuleForm),
   quizTrackingDetails: many(zuvyQuizTracking),
   OutsourseAssessments: many(zuvyOutsourseAssessments),
-  ModuleAssessment: many(zuvyModuleAssessment)
+  ModuleAssessment: many(zuvyModuleAssessment),
 }));
 
-
-
-export const projectModuleRelations = relations(zuvyCourseProjects,({one}) => ({
-  projectModuleData: one(zuvyCourseModules,{
-    fields: [zuvyCourseProjects.id],
-    references: [zuvyCourseModules.projectId]
-  })
-}))
+export const projectModuleRelations = relations(
+  zuvyCourseProjects,
+  ({ one }) => ({
+    projectModuleData: one(zuvyCourseModules, {
+      fields: [zuvyCourseProjects.id],
+      references: [zuvyCourseModules.projectId],
+    }),
+  }),
+);
 
 export const moduleChapterRelations = relations(
   zuvyCourseModules,
-  ({many }) => ({
+  ({ many }) => ({
     moduleChapterData: many(zuvyModuleChapter),
     chapterTrackingData: many(zuvyChapterTracking),
     moduleTracking: many(zuvyModuleTracking),
-    projectData: many(zuvyCourseProjects)
+    projectData: many(zuvyCourseProjects),
   }),
 );
 
 export const projectTrackingRelations = relations(
   zuvyCourseProjects,
-  ({many}) => ({
-    projectTrackingData: many(zuvyProjectTracking)
-  })
-)
+  ({ many }) => ({
+    projectTrackingData: many(zuvyProjectTracking),
+  }),
+);
 
 export const BootcampTrackingRelation = relations(
   zuvyBootcampTracking,
-  ({one}) => ({
-    bootcampTracking: one(zuvyBootcamps,{
-      fields:[zuvyBootcampTracking.bootcampId],
-      references: [zuvyBootcamps.id]
-    })
-  })
-)
+  ({ one }) => ({
+    bootcampTracking: one(zuvyBootcamps, {
+      fields: [zuvyBootcampTracking.bootcampId],
+      references: [zuvyBootcamps.id],
+    }),
+  }),
+);
 
 export const moduleTrackingRelationOfUsers = relations(
   zuvyModuleTracking,
-  ({one}) => ({
-     trackOfModuleForUser: one(zuvyCourseModules, {
-      fields:[zuvyModuleTracking.moduleId],
-      references: [zuvyCourseModules.id]
-     })
-  })
-)
+  ({ one }) => ({
+    trackOfModuleForUser: one(zuvyCourseModules, {
+      fields: [zuvyModuleTracking.moduleId],
+      references: [zuvyCourseModules.id],
+    }),
+  }),
+);
 
 export const zuvyModuleAssessment = main.table('zuvy_module_assessment', {
   id: serial('id').primaryKey().notNull(),
@@ -2900,106 +2997,127 @@ export const zuvyModuleAssessment = main.table('zuvy_module_assessment', {
   description: text('description'),
 });
 
-export const zuvyAssessmentrelations = relations(zuvyModuleAssessment, ({ one, many}) => ({
-  // assessmentSubmission: one(zuvyAssessmentSubmission, {
-  //   fields: [zuvyModuleAssessment.id],
-  //   references: [zuvyAssessmentSubmission.assessmentId],
-  // }),
-  // assessmentDetails: one(zuvyCourseModules, {
-  //   fields: [zuvyModuleAssessment.moduleId],
-  //   references: [zuvyCourseModules.id],
-  // }),
-  assessmentSubmissions: many(zuvyAssessmentSubmission)
-}));
-
-
+export const zuvyAssessmentrelations = relations(
+  zuvyModuleAssessment,
+  ({ one, many }) => ({
+    // assessmentSubmission: one(zuvyAssessmentSubmission, {
+    //   fields: [zuvyModuleAssessment.id],
+    //   references: [zuvyAssessmentSubmission.assessmentId],
+    // }),
+    // assessmentDetails: one(zuvyCourseModules, {
+    //   fields: [zuvyModuleAssessment.moduleId],
+    //   references: [zuvyCourseModules.id],
+    // }),
+    assessmentSubmissions: many(zuvyAssessmentSubmission),
+  }),
+);
 
 // Define zuvyAssessmentSubmission
-export const zuvyAssessmentSubmission = main.table("zuvy_assessment_submission", {
-  id: serial("id").primaryKey().notNull(),
-  assessmentOutsourseId: integer("assessment_outsourse_id").references(() => zuvyOutsourseAssessments.id, {
-    onDelete: 'cascade',
-    onUpdate: 'cascade',
-  }).notNull(),
-  userId: integer("user_id").references(() => users.id).notNull(),
-  marks: integer('marks'),
-  startedAt:timestamp('started_at', {
-    withTimezone: true,
-    mode: 'string',
-  }).defaultNow(),
-  copyPaste: integer('copy_paste'),
-  embeddedGoogleSearch: integer('embedded_google_search'),
-  tabChange: integer('tab_change'),
-  submitedAt: timestamp('submited_at', {
-    withTimezone: true,
-    mode: 'string',
+export const zuvyAssessmentSubmission = main.table(
+  'zuvy_assessment_submission',
+  {
+    id: serial('id').primaryKey().notNull(),
+    assessmentOutsourseId: integer('assessment_outsourse_id')
+      .references(() => zuvyOutsourseAssessments.id, {
+        onDelete: 'cascade',
+        onUpdate: 'cascade',
+      })
+      .notNull(),
+    userId: integer('user_id')
+      .references(() => users.id)
+      .notNull(),
+    marks: integer('marks'),
+    startedAt: timestamp('started_at', {
+      withTimezone: true,
+      mode: 'string',
+    }).defaultNow(),
+    copyPaste: integer('copy_paste'),
+    embeddedGoogleSearch: integer('embedded_google_search'),
+    tabChange: integer('tab_change'),
+    submitedAt: timestamp('submited_at', {
+      withTimezone: true,
+      mode: 'string',
+    }),
+  },
+);
+
+export const zuvyAssessmentSubmissionRelation = relations(
+  zuvyAssessmentSubmission,
+  ({ one, many }) => ({
+    user: one(users, {
+      fields: [zuvyAssessmentSubmission.userId],
+      references: [users.id],
+    }),
+    // assessment: one(zuvyModuleAssessment, {
+    //   fields: [zuvyAssessmentSubmission.assessmentId],
+    //   references: [zuvyModuleAssessment.id],
+    // }),
+    submitedOutsourseAssessment: one(zuvyOutsourseAssessments, {
+      fields: [zuvyAssessmentSubmission.assessmentOutsourseId],
+      references: [zuvyOutsourseAssessments.id],
+    }),
+    openEndedSubmission: many(zuvyOpenEndedQuestionSubmission),
+    quizSubmission: many(zuvyQuizTracking),
+    codingSubmission: many(zuvyCodingSubmission),
   }),
-});
+);
 
-export const zuvyAssessmentSubmissionRelation = relations(zuvyAssessmentSubmission, ({one, many})=> ({
-  user: one(users, {
-    fields: [zuvyAssessmentSubmission.userId],
-    references: [users.id],
+export const zuvyOpenEndedQuestionSubmission = main.table(
+  'zuvy_open_ended_question_submission',
+  {
+    id: serial('id').primaryKey().notNull(),
+    questionId: integer('question_id')
+      .references(() => zuvyOutsourseOpenEndedQuestions.id)
+      .notNull(),
+    assessmentSubmissionId: integer('assessment_submission_id').references(
+      () => zuvyAssessmentSubmission.id,
+      {
+        onDelete: 'cascade',
+        onUpdate: 'cascade',
+      },
+    ),
+    userId: integer('user_id')
+      .references(() => users.id)
+      .notNull(),
+    answer: text('answer'),
+    marks: integer('marks'),
+    feedback: text('feedback'),
+    submitAt: timestamp('submit_at', {
+      withTimezone: true,
+      mode: 'string',
+    }).defaultNow(),
+    updatedAt: timestamp('updated_at', {
+      withTimezone: true,
+      mode: 'string',
+    }).defaultNow(),
+  },
+);
+
+export const zuvyOpenEndedQuestionSubmissionRelation = relations(
+  zuvyOpenEndedQuestionSubmission,
+  ({ one, many }) => ({
+    user: one(users, {
+      fields: [zuvyOpenEndedQuestionSubmission.userId],
+      references: [users.id],
+    }),
+    openEnded: one(zuvyOpenEndedQuestions, {
+      fields: [zuvyOpenEndedQuestionSubmission.questionId],
+      references: [zuvyOpenEndedQuestions.id],
+    }),
+    submissionData: one(zuvyOutsourseOpenEndedQuestions, {
+      fields: [zuvyOpenEndedQuestionSubmission.questionId],
+      references: [zuvyOutsourseOpenEndedQuestions.id],
+    }),
+    submission: one(zuvyAssessmentSubmission, {
+      fields: [zuvyOpenEndedQuestionSubmission.assessmentSubmissionId],
+      references: [zuvyAssessmentSubmission.id],
+    }),
   }),
-  // assessment: one(zuvyModuleAssessment, {
-  //   fields: [zuvyAssessmentSubmission.assessmentId],
-  //   references: [zuvyModuleAssessment.id],
-  // }),
-  submitedOutsourseAssessment: one(zuvyOutsourseAssessments, {
-    fields: [zuvyAssessmentSubmission.assessmentOutsourseId],
-    references: [zuvyOutsourseAssessments.id],
-  }),
-  openEndedSubmission: many(zuvyOpenEndedQuestionSubmission),
-  quizSubmission: many(zuvyQuizTracking),
-  codingSubmission: many(zuvyCodingSubmission),
-}))
-
-
-
-export const zuvyOpenEndedQuestionSubmission = main.table("zuvy_open_ended_question_submission", {
-  id: serial("id").primaryKey().notNull(),
-  questionId: integer("question_id").references(() => zuvyOutsourseOpenEndedQuestions.id).notNull(),
-  assessmentSubmissionId: integer("assessment_submission_id").references(() => zuvyAssessmentSubmission.id, {
-    onDelete: 'cascade',
-    onUpdate: 'cascade',
-  }),
-  userId: integer("user_id").references(() => users.id).notNull(),
-  answer: text("answer"),
-  marks: integer("marks"),
-  feedback: text("feedback"),
-  submitAt: timestamp("submit_at", { withTimezone: true, mode: 'string' }).defaultNow(),
-  updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
-});
-
-
-
-
-
-export const zuvyOpenEndedQuestionSubmissionRelation = relations(zuvyOpenEndedQuestionSubmission, ({one, many})=> ({
-  user: one(users, {
-    fields: [zuvyOpenEndedQuestionSubmission.userId],
-    references: [users.id],
-  }),
-  openEnded: one(zuvyOpenEndedQuestions, {
-    fields: [zuvyOpenEndedQuestionSubmission.questionId],
-    references: [zuvyOpenEndedQuestions.id],
-  }),
-  submissionData: one(zuvyOutsourseOpenEndedQuestions, {
-    fields: [zuvyOpenEndedQuestionSubmission.questionId],
-    references: [zuvyOutsourseOpenEndedQuestions.id],
-  }),
-  submission: one(zuvyAssessmentSubmission, {
-    fields: [zuvyOpenEndedQuestionSubmission.assessmentSubmissionId],
-    references: [zuvyAssessmentSubmission.id],
-  })
-}))
-
-
+);
 
 // Define the relations
 
-
-export const assessmentData = relations(zuvyCourseModules,({one, many})=>({
+export const assessmentData = relations(zuvyCourseModules, ({ one, many }) => ({
   // assessmentDetails: one(zuvyModuleAssessment, {
   //   fields: [zuvyCourseModules.id],
   //   references: [zuvyModuleAssessment.moduleId],
@@ -3007,17 +3125,19 @@ export const assessmentData = relations(zuvyCourseModules,({one, many})=>({
   moduleAssessments: many(zuvyModuleAssessment),
   moduleChapterData: many(zuvyModuleChapter),
   chapterTrackingData: many(zuvyChapterTracking),
-})) 
+}));
 
-export const assessmentSubmissionRelations = relations(zuvyAssessmentSubmission,({one, many})=>({
-  // assessmentSubmission: one(zuvyModuleAssessment, {
-  //   fields: [zuvyAssessmentSubmission.assessmentId],
-  //   references: [zuvyModuleAssessment.id],
-  // }),
-  assessmentSubmissions: many(zuvyAssessmentSubmission),
-  // assessmentSubmissions: many(zuvyModuleAssessment)
-})) 
-
+export const assessmentSubmissionRelations = relations(
+  zuvyAssessmentSubmission,
+  ({ one, many }) => ({
+    // assessmentSubmission: one(zuvyModuleAssessment, {
+    //   fields: [zuvyAssessmentSubmission.assessmentId],
+    //   references: [zuvyModuleAssessment.id],
+    // }),
+    assessmentSubmissions: many(zuvyAssessmentSubmission),
+    // assessmentSubmissions: many(zuvyModuleAssessment)
+  }),
+);
 
 export const zuvyOpenEndedQuestions = main.table('zuvy_openEnded_questions', {
   id: serial('id').primaryKey().notNull(),
@@ -3041,24 +3161,19 @@ export const zuvyStudentAttendance = main.table('zuvy_student_attendance', {
 //         chapters: many(chapterTracking),
 // }))
 
-
-export const merakiStudents = main.table(
-  'meraki_students',
-  {
-    id: serial('id').primaryKey().notNull(),
-    userName: varchar('user_name', { length: 255 }).notNull(),
-    name: varchar('name', { length: 255 }).notNull(),
-    password: varchar('password', { length: 255 }).notNull(),
-    partnerId: integer('partner_id')
-      .notNull()
-      .references(() => partners.id, { onDelete: 'cascade' }),
-    createdAt: timestamp('created_at', {
-      withTimezone: true,
-      mode: 'string',
-    }).defaultNow(),
-  },
-
-);
+export const merakiStudents = main.table('meraki_students', {
+  id: serial('id').primaryKey().notNull(),
+  userName: varchar('user_name', { length: 255 }).notNull(),
+  name: varchar('name', { length: 255 }).notNull(),
+  password: varchar('password', { length: 255 }).notNull(),
+  partnerId: integer('partner_id')
+    .notNull()
+    .references(() => partners.id, { onDelete: 'cascade' }),
+  createdAt: timestamp('created_at', {
+    withTimezone: true,
+    mode: 'string',
+  }).defaultNow(),
+});
 
 export const zuvyChapterTracking = main.table('zuvy_chapter_tracking', {
   id: serial('id').primaryKey().notNull(),
@@ -3126,8 +3241,6 @@ export const zuvyChapterRelations = relations(
   }),
 );
 
-
-
 export const trackingPostsRelations = relations(
   zuvyChapterTracking,
   ({ one }) => ({
@@ -3137,200 +3250,253 @@ export const trackingPostsRelations = relations(
     }),
   }),
 );
-export const zuvyCodingQuestions = main.table("zuvy_coding_questions", {
-  id: serial("id").primaryKey().notNull(),
-  title: varchar("title", { length: 255 }).notNull(),
-  description: text("description").notNull(),
-  difficulty: difficulty("difficulty"),
-  tags: integer("tag_id").references(() => zuvyTags.id),
-  constraints: text("constraints"),
-  authorId: integer("author_id").notNull(),
-  inputBase64: text("input_base64"),
-  examples: jsonb("examples"),
-  testCases: jsonb("test_cases"),
-  expectedOutput: jsonb("expected_output"),
-  solution: text("solution"),
-  createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }),
-  updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }),
-  usage: integer("usage").default(0)
-})
-
-
-
-export const zuvyOutsourseAssessments = main.table('zuvy_outsourse_assessments', {
+export const zuvyCodingQuestions = main.table('zuvy_coding_questions', {
   id: serial('id').primaryKey().notNull(),
-  assessmentId: integer('assessment_id').references(() => zuvyModuleAssessment.id, {
-    onDelete: 'cascade',
-    onUpdate: 'cascade',
-  }).notNull(),
-  bootcampId: integer("bootcamp_id").references(() => zuvyBootcamps.id, {
-    onDelete: 'cascade',
-    onUpdate: 'cascade',
-  }),
-  moduleId: integer('module_id').references(() => zuvyCourseModules.id, {
-    onDelete: 'cascade',
-    onUpdate: 'cascade',
-  }),
-  chapterId: integer('chapter_id').references(() => zuvyModuleChapter.id, {
-    onDelete: 'cascade',
-    onUpdate: 'cascade',
-  }),
-
-  tabChange: boolean('tab_change'),
-  webCamera: boolean('web_camera'),
-  passPercentage: integer('pass_percentage'),
-  screenRecord: boolean('screen_record'),
-  embeddedGoogleSearch: boolean('embedded_google_search'),
-  deadline:  text('deadline'),
-  timeLimit: bigint('time_limit', { mode: 'number' }),
-  marks: integer('marks'),
-  copyPaste: boolean('copy_paste'),
-  order: integer('order'),
-  createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow(),
+  title: varchar('title', { length: 255 }).notNull(),
+  description: text('description').notNull(),
+  difficulty: difficulty('difficulty'),
+  tags: integer('tag_id').references(() => zuvyTags.id),
+  constraints: text('constraints'),
+  authorId: integer('author_id').notNull(),
+  inputBase64: text('input_base64'),
+  examples: jsonb('examples'),
+  testCases: jsonb('test_cases'),
+  expectedOutput: jsonb('expected_output'),
+  solution: text('solution'),
+  createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }),
+  updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }),
+  usage: integer('usage').default(0),
 });
 
-export const zuvyOutsourseAssessmentsRelations = relations(zuvyOutsourseAssessments, ({ one, many }) => ({
-  ModuleAssessment: one(zuvyModuleAssessment, {
-    fields: [zuvyOutsourseAssessments.assessmentId],
-    references: [zuvyModuleAssessment.id],
-  }),
-  ModuleAssessments: many(zuvyModuleAssessment),
-  ModuleChapter: one(zuvyModuleChapter, {
-    fields: [zuvyOutsourseAssessments.moduleId],
-    references: [zuvyModuleChapter.id],
-  }),
-  Bootcamp: one(zuvyBootcamps, {
-    fields: [zuvyOutsourseAssessments.bootcampId],
-    references: [zuvyBootcamps.id],
-  }),
-  
-  submitedOutsourseAssessments: many(zuvyAssessmentSubmission),
-  Module : one(zuvyCourseModules, {
-    fields: [zuvyOutsourseAssessments.moduleId],
-    references: [zuvyCourseModules.id],
-  }),
-  Quizzes: many(zuvyOutsourseQuizzes),
-  OpenEndedQuestions: many(zuvyOutsourseOpenEndedQuestions),
-  CodingQuestions: many(zuvyOutsourseCodingQuestions),
-  OutsourseQuizzes: many(zuvyOutsourseQuizzes),
-  OutsourseOpenEndedQuestions: many(zuvyOutsourseOpenEndedQuestions),
-  OutsourseCodingQuestions: many(zuvyOutsourseCodingQuestions),
-  codingSubmissions: many(zuvyCodingSubmission),
-
-}))
-
-
-export const zuvyOutsourseCodingQuestions = main.table("zuvy_outsourse_coding_questions", {
-  id: serial("id").primaryKey().notNull(),
-  codingQuestionId: integer("coding_question_id").references(() => zuvyCodingQuestions.id),
-
-  assessmentOutsourseId: integer("assessment_outsourse_id").references(() => zuvyOutsourseAssessments.id, {
-    onDelete: 'cascade',
-    onUpdate: 'cascade',
-  }).notNull(),
-  bootcampId: integer("bootcamp_id").notNull().references(() => zuvyBootcamps.id, {
-    onDelete: 'cascade',
-    onUpdate: 'cascade',
-  }).notNull(),
-  chapterId: integer('chapter_id').references(() => zuvyModuleChapter.id, {
-    onDelete: 'cascade',
-    onUpdate: 'cascade',
-  }).notNull(),
-  createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow(),
-})
-
-export const zuvyOutsourseCodingQuestionsRelations = relations(zuvyOutsourseCodingQuestions, ({ one, many}) => ({
-  ModuleAssessment: one(zuvyModuleAssessment, {
-    fields: [zuvyOutsourseCodingQuestions.assessmentOutsourseId],
-    references: [zuvyModuleAssessment.id],
-  }),
-  OutsourseCodingQuestion: one(zuvyOutsourseAssessments,{
-    fields: [zuvyOutsourseCodingQuestions.assessmentOutsourseId],
-    references: [zuvyOutsourseAssessments.id],
-  }),
-  ModuleChapter: one(zuvyModuleChapter, {
-    fields: [zuvyOutsourseCodingQuestions.chapterId],
-    references: [zuvyModuleChapter.id],
-  }),
-  Bootcamp: one(zuvyBootcamps, {
-    fields: [zuvyOutsourseCodingQuestions.bootcampId],
-    references: [zuvyBootcamps.id],
-  }),
-  CodingQuestion: one(zuvyCodingQuestions, {
-    fields: [zuvyOutsourseCodingQuestions.codingQuestionId],
-    references: [zuvyCodingQuestions.id],
-  }),
-  // submission: one(zuvyCodingSubmission, {
-
-  // })
-}))
-
-export const zuvyOutsourseOpenEndedQuestions = main.table('zuvy_outsourse_openEnded_questions', {
-  id: serial('id').primaryKey().notNull(),
-  openEndedQuestionId: integer('open_ended_question_id').references(() => zuvyOpenEndedQuestions.id),
-  // marks: integer('marks'),
-
-  assessmentOutsourseId: integer("assessment_outsourse_id").references(() => zuvyOutsourseAssessments.id, {
-    onDelete: 'cascade',
-    onUpdate: 'cascade',
-  }).notNull(),
-  bootcampId: integer("bootcamp_id").notNull().references(() => zuvyBootcamps.id, {
-    onDelete: 'cascade',
-    onUpdate: 'cascade',
-  }).notNull(),
-  moduleId: integer('module_id').references(() => zuvyCourseModules.id, {
-    onDelete: 'cascade',
-    onUpdate: 'cascade',
-  }),
-  chapterId: integer('chapter_id').references(() => zuvyModuleChapter.id, {
+export const zuvyOutsourseAssessments = main.table(
+  'zuvy_outsourse_assessments',
+  {
+    id: serial('id').primaryKey().notNull(),
+    assessmentId: integer('assessment_id')
+      .references(() => zuvyModuleAssessment.id, {
+        onDelete: 'cascade',
+        onUpdate: 'cascade',
+      })
+      .notNull(),
+    bootcampId: integer('bootcamp_id').references(() => zuvyBootcamps.id, {
       onDelete: 'cascade',
       onUpdate: 'cascade',
-    }).notNull(),
-  createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow(),
-})
+    }),
+    moduleId: integer('module_id').references(() => zuvyCourseModules.id, {
+      onDelete: 'cascade',
+      onUpdate: 'cascade',
+    }),
+    chapterId: integer('chapter_id').references(() => zuvyModuleChapter.id, {
+      onDelete: 'cascade',
+      onUpdate: 'cascade',
+    }),
 
-export const OutsourseOpenEndedQuestionsRelations = relations(zuvyOutsourseOpenEndedQuestions, ({ one, many}) => ({
-  ModuleAssessment: one(zuvyModuleAssessment, {
-    fields: [zuvyOutsourseOpenEndedQuestions.assessmentOutsourseId],
-    references: [zuvyModuleAssessment.id],
+    tabChange: boolean('tab_change'),
+    webCamera: boolean('web_camera'),
+    passPercentage: integer('pass_percentage'),
+    screenRecord: boolean('screen_record'),
+    embeddedGoogleSearch: boolean('embedded_google_search'),
+    deadline: text('deadline'),
+    timeLimit: bigint('time_limit', { mode: 'number' }),
+    marks: integer('marks'),
+    copyPaste: boolean('copy_paste'),
+    order: integer('order'),
+    createdAt: timestamp('created_at', {
+      withTimezone: true,
+      mode: 'string',
+    }).defaultNow(),
+  },
+);
+
+export const zuvyOutsourseAssessmentsRelations = relations(
+  zuvyOutsourseAssessments,
+  ({ one, many }) => ({
+    ModuleAssessment: one(zuvyModuleAssessment, {
+      fields: [zuvyOutsourseAssessments.assessmentId],
+      references: [zuvyModuleAssessment.id],
+    }),
+    ModuleAssessments: many(zuvyModuleAssessment),
+    ModuleChapter: one(zuvyModuleChapter, {
+      fields: [zuvyOutsourseAssessments.moduleId],
+      references: [zuvyModuleChapter.id],
+    }),
+    Bootcamp: one(zuvyBootcamps, {
+      fields: [zuvyOutsourseAssessments.bootcampId],
+      references: [zuvyBootcamps.id],
+    }),
+
+    submitedOutsourseAssessments: many(zuvyAssessmentSubmission),
+    Module: one(zuvyCourseModules, {
+      fields: [zuvyOutsourseAssessments.moduleId],
+      references: [zuvyCourseModules.id],
+    }),
+    Quizzes: many(zuvyOutsourseQuizzes),
+    OpenEndedQuestions: many(zuvyOutsourseOpenEndedQuestions),
+    CodingQuestions: many(zuvyOutsourseCodingQuestions),
+    OutsourseQuizzes: many(zuvyOutsourseQuizzes),
+    OutsourseOpenEndedQuestions: many(zuvyOutsourseOpenEndedQuestions),
+    OutsourseCodingQuestions: many(zuvyOutsourseCodingQuestions),
+    codingSubmissions: many(zuvyCodingSubmission),
   }),
-  OutsourseOpenEndedQuestion: one(zuvyOutsourseAssessments,{
-    fields: [zuvyOutsourseOpenEndedQuestions.assessmentOutsourseId],
-    references: [zuvyOutsourseAssessments.id],
+);
+
+export const zuvyOutsourseCodingQuestions = main.table(
+  'zuvy_outsourse_coding_questions',
+  {
+    id: serial('id').primaryKey().notNull(),
+    codingQuestionId: integer('coding_question_id').references(
+      () => zuvyCodingQuestions.id,
+    ),
+
+    assessmentOutsourseId: integer('assessment_outsourse_id')
+      .references(() => zuvyOutsourseAssessments.id, {
+        onDelete: 'cascade',
+        onUpdate: 'cascade',
+      })
+      .notNull(),
+    bootcampId: integer('bootcamp_id')
+      .notNull()
+      .references(() => zuvyBootcamps.id, {
+        onDelete: 'cascade',
+        onUpdate: 'cascade',
+      })
+      .notNull(),
+    chapterId: integer('chapter_id')
+      .references(() => zuvyModuleChapter.id, {
+        onDelete: 'cascade',
+        onUpdate: 'cascade',
+      })
+      .notNull(),
+    createdAt: timestamp('created_at', {
+      withTimezone: true,
+      mode: 'string',
+    }).defaultNow(),
+  },
+);
+
+export const zuvyOutsourseCodingQuestionsRelations = relations(
+  zuvyOutsourseCodingQuestions,
+  ({ one, many }) => ({
+    ModuleAssessment: one(zuvyModuleAssessment, {
+      fields: [zuvyOutsourseCodingQuestions.assessmentOutsourseId],
+      references: [zuvyModuleAssessment.id],
+    }),
+    OutsourseCodingQuestion: one(zuvyOutsourseAssessments, {
+      fields: [zuvyOutsourseCodingQuestions.assessmentOutsourseId],
+      references: [zuvyOutsourseAssessments.id],
+    }),
+    ModuleChapter: one(zuvyModuleChapter, {
+      fields: [zuvyOutsourseCodingQuestions.chapterId],
+      references: [zuvyModuleChapter.id],
+    }),
+    Bootcamp: one(zuvyBootcamps, {
+      fields: [zuvyOutsourseCodingQuestions.bootcampId],
+      references: [zuvyBootcamps.id],
+    }),
+    CodingQuestion: one(zuvyCodingQuestions, {
+      fields: [zuvyOutsourseCodingQuestions.codingQuestionId],
+      references: [zuvyCodingQuestions.id],
+    }),
+    // submission: one(zuvyCodingSubmission, {
+
+    // })
   }),
-  ModuleChapter: one(zuvyModuleChapter, {
-    fields: [zuvyOutsourseOpenEndedQuestions.chapterId],
-    references: [zuvyModuleChapter.id],
+);
+
+export const zuvyOutsourseOpenEndedQuestions = main.table(
+  'zuvy_outsourse_openEnded_questions',
+  {
+    id: serial('id').primaryKey().notNull(),
+    openEndedQuestionId: integer('open_ended_question_id').references(
+      () => zuvyOpenEndedQuestions.id,
+    ),
+    // marks: integer('marks'),
+
+    assessmentOutsourseId: integer('assessment_outsourse_id')
+      .references(() => zuvyOutsourseAssessments.id, {
+        onDelete: 'cascade',
+        onUpdate: 'cascade',
+      })
+      .notNull(),
+    bootcampId: integer('bootcamp_id')
+      .notNull()
+      .references(() => zuvyBootcamps.id, {
+        onDelete: 'cascade',
+        onUpdate: 'cascade',
+      })
+      .notNull(),
+    moduleId: integer('module_id').references(() => zuvyCourseModules.id, {
+      onDelete: 'cascade',
+      onUpdate: 'cascade',
+    }),
+    chapterId: integer('chapter_id')
+      .references(() => zuvyModuleChapter.id, {
+        onDelete: 'cascade',
+        onUpdate: 'cascade',
+      })
+      .notNull(),
+    createdAt: timestamp('created_at', {
+      withTimezone: true,
+      mode: 'string',
+    }).defaultNow(),
+  },
+);
+
+export const OutsourseOpenEndedQuestionsRelations = relations(
+  zuvyOutsourseOpenEndedQuestions,
+  ({ one, many }) => ({
+    ModuleAssessment: one(zuvyModuleAssessment, {
+      fields: [zuvyOutsourseOpenEndedQuestions.assessmentOutsourseId],
+      references: [zuvyModuleAssessment.id],
+    }),
+    OutsourseOpenEndedQuestion: one(zuvyOutsourseAssessments, {
+      fields: [zuvyOutsourseOpenEndedQuestions.assessmentOutsourseId],
+      references: [zuvyOutsourseAssessments.id],
+    }),
+    ModuleChapter: one(zuvyModuleChapter, {
+      fields: [zuvyOutsourseOpenEndedQuestions.chapterId],
+      references: [zuvyModuleChapter.id],
+    }),
+    Bootcamp: one(zuvyBootcamps, {
+      fields: [zuvyOutsourseOpenEndedQuestions.bootcampId],
+      references: [zuvyBootcamps.id],
+    }),
+    OpenEndedQuestion: one(zuvyOpenEndedQuestions, {
+      fields: [zuvyOutsourseOpenEndedQuestions.openEndedQuestionId],
+      references: [zuvyOpenEndedQuestions.id],
+    }),
+    submissionsData: many(zuvyOpenEndedQuestionSubmission),
   }),
-  Bootcamp: one(zuvyBootcamps, {
-    fields: [zuvyOutsourseOpenEndedQuestions.bootcampId],
-    references: [zuvyBootcamps.id],
-  }),
-  OpenEndedQuestion: one(zuvyOpenEndedQuestions, {
-    fields: [zuvyOutsourseOpenEndedQuestions.openEndedQuestionId],
-    references: [zuvyOpenEndedQuestions.id],
-  }),
-  submissionsData: many(zuvyOpenEndedQuestionSubmission),
-}))
+);
 
 export const zuvyOutsourseQuizzes = main.table('zuvy_outsourse_quizzes', {
   id: serial('id').primaryKey().notNull(),
   quiz_id: integer('quiz_id').references(() => zuvyModuleQuiz.id),
   // marks: integer('marks'),
 
-  assessmentOutsourseId: integer("assessment_outsourse_id").references(() => zuvyOutsourseAssessments.id, {
-    onDelete: 'cascade',
-    onUpdate: 'cascade',
-  }).notNull(),
-  bootcampId: integer("bootcamp_id").notNull().references(() => zuvyBootcamps.id, {
-    onDelete: 'cascade',
-    onUpdate: 'cascade',
-  }).notNull(),
-  chapterId: integer('chapter_id').references(() => zuvyModuleChapter.id, {
-    onDelete: 'cascade',
-    onUpdate: 'cascade',
-  }).notNull(),
-  createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow(),
+  assessmentOutsourseId: integer('assessment_outsourse_id')
+    .references(() => zuvyOutsourseAssessments.id, {
+      onDelete: 'cascade',
+      onUpdate: 'cascade',
+    })
+    .notNull(),
+  bootcampId: integer('bootcamp_id')
+    .notNull()
+    .references(() => zuvyBootcamps.id, {
+      onDelete: 'cascade',
+      onUpdate: 'cascade',
+    })
+    .notNull(),
+  chapterId: integer('chapter_id')
+    .references(() => zuvyModuleChapter.id, {
+      onDelete: 'cascade',
+      onUpdate: 'cascade',
+    })
+    .notNull(),
+  createdAt: timestamp('created_at', {
+    withTimezone: true,
+    mode: 'string',
+  }).defaultNow(),
 });
 
 export const zuvyRecentBootcamp = main.table('zuvy_recent_bootcamp', {
@@ -3338,50 +3504,57 @@ export const zuvyRecentBootcamp = main.table('zuvy_recent_bootcamp', {
   userId: bigserial('user_id', { mode: 'bigint' })
     .notNull()
     .references(() => users.id),
-  bootcampId: integer("bootcamp_id").notNull().references(() => zuvyBootcamps.id, {
-    onDelete: 'cascade',
-    onUpdate: 'cascade',
-  }).notNull(),
-  moduleId: integer('module_id').references(() => zuvyCourseModules.id, {
-    onDelete: 'cascade',
-    onUpdate: 'cascade',
-  }).notNull(),
+  bootcampId: integer('bootcamp_id')
+    .notNull()
+    .references(() => zuvyBootcamps.id, {
+      onDelete: 'cascade',
+      onUpdate: 'cascade',
+    })
+    .notNull(),
+  moduleId: integer('module_id')
+    .references(() => zuvyCourseModules.id, {
+      onDelete: 'cascade',
+      onUpdate: 'cascade',
+    })
+    .notNull(),
   chapterId: integer('chapter_id').references(() => zuvyModuleChapter.id, {
     onDelete: 'cascade',
     onUpdate: 'cascade',
   }),
-  progress : integer('progress'),
-  updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow(),
-})
+  progress: integer('progress'),
+  updatedAt: timestamp('updated_at', {
+    withTimezone: true,
+    mode: 'string',
+  }).defaultNow(),
+});
 
-export const OutsourseQuizzesRelations = relations(zuvyOutsourseQuizzes, ({ one, many }) => ({
-  ModuleAssessment: one(zuvyModuleAssessment, {
-    fields: [zuvyOutsourseQuizzes.assessmentOutsourseId],
-    references: [zuvyModuleAssessment.id],
+export const OutsourseQuizzesRelations = relations(
+  zuvyOutsourseQuizzes,
+  ({ one, many }) => ({
+    ModuleAssessment: one(zuvyModuleAssessment, {
+      fields: [zuvyOutsourseQuizzes.assessmentOutsourseId],
+      references: [zuvyModuleAssessment.id],
+    }),
+
+    ModuleChapter: one(zuvyModuleChapter, {
+      fields: [zuvyOutsourseQuizzes.chapterId],
+      references: [zuvyModuleChapter.id],
+    }),
+    Bootcamp: one(zuvyBootcamps, {
+      fields: [zuvyOutsourseQuizzes.bootcampId],
+      references: [zuvyBootcamps.id],
+    }),
+    Quiz: one(zuvyModuleQuiz, {
+      fields: [zuvyOutsourseQuizzes.quiz_id],
+      references: [zuvyModuleQuiz.id],
+    }),
+    OutsourseQuiz: one(zuvyOutsourseAssessments, {
+      fields: [zuvyOutsourseQuizzes.assessmentOutsourseId],
+      references: [zuvyOutsourseAssessments.id],
+    }),
+    submissionsData: many(zuvyQuizTracking),
   }),
-
-  ModuleChapter: one(zuvyModuleChapter, {
-    fields: [zuvyOutsourseQuizzes.chapterId],
-    references: [zuvyModuleChapter.id],
-  }),
-  Bootcamp: one(zuvyBootcamps, {
-    fields: [zuvyOutsourseQuizzes.bootcampId],
-    references: [zuvyBootcamps.id],
-  }),
-  Quiz: one(zuvyModuleQuiz, {
-    fields: [zuvyOutsourseQuizzes.quiz_id],
-    references: [zuvyModuleQuiz.id],
-  }),
-  OutsourseQuiz: one(zuvyOutsourseAssessments,{
-    fields: [zuvyOutsourseQuizzes.assessmentOutsourseId],
-    references: [zuvyOutsourseAssessments.id],
-  }),
-  submissionsData: many(zuvyQuizTracking),
-
-}))
-
-
-
+);
 
 export const codeUserRelations = relations(zuvyCodingSubmission, ({ one }) => ({
   codeStatus: one(users, {
@@ -3409,8 +3582,6 @@ export const zuvyChapterTrackingRelations = relations(
   }),
 );
 
-
-
 // export const chapterRelations = relations(
 //   zuvyModuleChapter,
 //   ({ one, many }) => ({
@@ -3422,47 +3593,42 @@ export const zuvyChapterTrackingRelations = relations(
 //   }),
 // );
 
-
-
-
 export const quizChapterRelations = relations(
   zuvyCourseModules,
-  ({many, one }) => ({
+  ({ many, one }) => ({
     moduleChapterData: many(zuvyModuleChapter),
     chapterTrackingData: many(zuvyChapterTracking),
     moduleTracking: many(zuvyModuleTracking),
     quizTrackingData: many(zuvyQuizTracking),
-    moduleQuizData: many (zuvyModuleQuiz)
+    moduleQuizData: many(zuvyModuleQuiz),
   }),
 );
 
-export const quizModuleRelation= relations(
-  zuvyModuleQuiz,
-  ({many})=>({
-    quizTrackingData: many(zuvyQuizTracking)
-  })
+export const quizModuleRelation = relations(zuvyModuleQuiz, ({ many }) => ({
+  quizTrackingData: many(zuvyQuizTracking),
+}));
 
-);
+export const quizTrackingRelation = relations(zuvyQuizTracking, ({ one }) => ({
+  quizQuestion: one(zuvyModuleQuiz, {
+    fields: [zuvyQuizTracking.mcqId],
+    references: [zuvyModuleQuiz.id],
+  }),
+}));
 
-export const quizTrackingRelation = relations(
-  zuvyQuizTracking,
-  ({ one }) => ({
-    quizQuestion: one(zuvyModuleQuiz, {
-      fields: [zuvyQuizTracking.mcqId],
-      references: [zuvyModuleQuiz.id],
-    }),
-  })
-);
-
-
-export const questionType = pgEnum('questionType', ['Multiple Choice' , 'Checkboxes' , 'Long Text Answer', 'Date' , 'Time']);
+export const questionType = pgEnum('questionType', [
+  'Multiple Choice',
+  'Checkboxes',
+  'Long Text Answer',
+  'Date',
+  'Time',
+]);
 
 export const zuvyModuleForm = main.table('zuvy_module_form', {
   id: serial('id').primaryKey().notNull(),
   question: text('question'),
   options: jsonb('options'),
-  createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }),
-  updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }),
+  createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }),
+  updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }),
   typeId: integer('type_id').references(() => zuvyQuestionTypes.id),
   usage: integer('usage').default(0),
 });
@@ -3472,19 +3638,28 @@ export const zuvyQuestionTypes = main.table('zuvy_question_type', {
   questionType: varchar('question_type'),
 });
 
-export const zuvyFormTracking = main.table("zuvy_form_tracking", {
-  id: serial("id").primaryKey().notNull(),
-  userId: integer("user_id").references(() => users.id),
-  moduleId: integer("module_id"),
-  questionId: integer("question_id"),
-  chapterId: integer("chapter_id"),
-  status: varchar("status", { length: 255 }),
-  assessmentSubmissionId: integer("assessment_submission_id").references(() => zuvyAssessmentSubmission.id, {
-    onDelete: 'cascade',
-    onUpdate: 'cascade',
-  }),
-  chosenOptions: integer("chosen_options"),
-  answer: text("answer"),
-  createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
-  updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+export const zuvyFormTracking = main.table('zuvy_form_tracking', {
+  id: serial('id').primaryKey().notNull(),
+  userId: integer('user_id').references(() => users.id),
+  moduleId: integer('module_id'),
+  questionId: integer('question_id'),
+  chapterId: integer('chapter_id'),
+  status: varchar('status', { length: 255 }),
+  assessmentSubmissionId: integer('assessment_submission_id').references(
+    () => zuvyAssessmentSubmission.id,
+    {
+      onDelete: 'cascade',
+      onUpdate: 'cascade',
+    },
+  ),
+  chosenOptions: integer('chosen_options'),
+  answer: text('answer'),
+  createdAt: timestamp('created_at', {
+    withTimezone: true,
+    mode: 'string',
+  }).defaultNow(),
+  updatedAt: timestamp('updated_at', {
+    withTimezone: true,
+    mode: 'string',
+  }).defaultNow(),
 });
