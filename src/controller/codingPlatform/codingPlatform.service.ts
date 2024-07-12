@@ -22,10 +22,6 @@ export class CodingPlatformService {
         return { statusCode: 400, message: 'Invalid action' };
       }
       let {submissionInfo, token, status }= await this.submitCode(sourceCode, questionId, action);
-      console.log('submissionInfo', submissionInfo);
-      console.log('token', token);
-      console.log('status', status);
-      status = submissionInfo.status_id;
       let insertValues:any = { token, status, action, userId, questionId };
       let getSubmitQuery;
 
@@ -161,12 +157,12 @@ export class CodingPlatformService {
       let status = 0;
       let response, token, submissionInfo
       response = await axios.request(options);
-      token = response.token;
-      while (status <= 3) {
+      token = response.data.token;
+      while (status < 3) {
         submissionInfo = await this.getCodeInfo(token);
-        status = submissionInfo.status
+        status = submissionInfo.status_id
       }
-      return {submissionInfo: response.data, token, status };
+      return {submissionInfo, token, status };
     } catch (error) {
       throw error;
     }
@@ -301,4 +297,33 @@ export class CodingPlatformService {
       throw err;
     }
   }
+
+  async codingSubmission(userId:number , codingOutsourseId:number){
+    try{
+      let results = await db.select({
+        id: zuvyPracticeCode.id,
+        token: zuvyPracticeCode.token,
+        status: zuvyPracticeCode.status,
+        action: zuvyPracticeCode.action,
+        questionId: zuvyPracticeCode.questionId,
+        codingOutsourseId: zuvyPracticeCode.codingOutsourseId,
+        submissionId: zuvyPracticeCode.submissionId,
+        createdAt: zuvyPracticeCode.createdAt,
+      }).from(zuvyPracticeCode).where(sql`
+        ${zuvyPracticeCode.codingOutsourseId} = ${codingOutsourseId}
+        AND ${zuvyPracticeCode.userId} = ${userId}
+        AND ${zuvyPracticeCode.status} = 'Accepted'
+        AND ${zuvyPracticeCode.action} = 'submit'
+      `).limit(1);
+      console.log('results:', results)
+      if (results.length === 0) {
+        return { status: 'error', code: 400, message: "Submission or not Accepted or not submitted yet" };
+      }
+      let shapecode = await this.getCodeInfo(results[0].token)
+      return {...results[0], shapecode}
+    } catch (error){
+      throw error
+    }
+
+  }
 }
