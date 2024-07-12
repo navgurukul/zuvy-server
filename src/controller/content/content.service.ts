@@ -19,6 +19,7 @@ import {
   zuvyAssessmentSubmission,
   zuvyModuleForm,
   questionType,
+  zuvyQuestionTypes,
 } from '../../../drizzle/schema';
 
 import axios from 'axios';
@@ -55,7 +56,8 @@ import {
   CreateTagDto,
   projectDto,
   formBatchDto,
-  editFormBatchDto
+  editFormBatchDto,
+  CreateTypeDto
 } from './dto/content.dto';
 import { CreateProblemDto } from '../codingPlatform/dto/codingPlatform.dto';
 import { PatchBootcampSettingDto } from '../bootcamp/dto/bootcamp.dto';
@@ -618,6 +620,12 @@ export class ContentService {
         return {...CodingQuestions, ...codingDetails}
       })
       
+      chapterDetails.Forms = chapterDetails?.Forms.map((Forms) => {
+        let FormDetails = {...Forms.Form, }
+        delete Forms.Form
+        return {...Forms, ...FormDetails}
+      })
+
       return chapterDetails
     } catch(err) {
       throw err;
@@ -699,6 +707,7 @@ export class ContentService {
         order: number;
         quizQuestionDetails?: any[];
         codingQuestionDetails?: any[];
+        formQuestionDetails?: any[];
         contentDetails?: any[];
       } = {
         id: chapterDetails[0].id,
@@ -734,7 +743,18 @@ export class ContentService {
                 )
               : [];
           modifiedChapterDetails.codingQuestionDetails = codingProblemDetails;
-        } else {
+        }else if (chapterDetails[0].topicId == 7) {
+          const formDetails =
+            chapterDetails[0].formQuestions !== null
+              ? await db
+                .select()
+                .from(zuvyModuleForm)
+                .where(
+                  sql`${inArray(zuvyModuleForm.id, Object.values(chapterDetails[0].formQuestions))}`,
+                )
+              : [];
+          modifiedChapterDetails.formQuestionDetails = formDetails;
+        }else {
           let content = [
             {
               title: chapterDetails[0].title,
@@ -1886,12 +1906,55 @@ export class ContentService {
     }
   }
 
+
+  async getAllQuestionTypes() {
+    try {
+      const allQuestionTypes = await db.select().from(zuvyQuestionTypes);
+      if (allQuestionTypes.length > 0) {
+        return {
+          status: 'success',
+          code: 200,
+          allQuestionTypes,
+        };
+      } else {
+        return {
+          status: 'error',
+          code: 404,
+          message: 'No Question Types found.Please create one',
+        };
+      }
+    } catch (err) {
+      throw err;
+    }
+  }
+
+  async createQuestionType(questionType: CreateTypeDto) {
+    try {
+      const newQuestionType = await db.insert(zuvyQuestionTypes).values(questionType).returning();
+      if (newQuestionType.length > 0) {
+        return {
+          status: 'success',
+          code: 200,
+          newQuestionType,
+        };
+      } else {
+        return {
+          status: 'error',
+          code: 404,
+          message: 'Question Type is not created.Please try again.',
+        };
+      }
+    } catch (err) {
+      throw err;
+    }
+  }
+
+
   async createFormForModule(form: formBatchDto) {
     try {
       const formQuestions = form.questions.map((f) => ({
         question: f.question,
         options: f.options,
-        questionType: f.questionType,
         typeId: f.typeId,
       }));
 
@@ -1920,20 +1983,12 @@ export class ContentService {
 
   async getAllFormQuestions(
     typeId: number,
-    questionType: 'Multiple Choice' | 'Checkboxes' | 'Long Text Answer' | 'Date' | 'Time',
     searchTerm: string = '',
   ) {
     try {
       let queryString;
       if (!Number.isNaN(typeId) && questionType == undefined) {
         queryString = sql`${zuvyModuleForm.typeId} = ${typeId}`;
-      // } else if (Number.isNaN(typeId) && questionType != undefined) {
-      //   queryString = sql`${zuvyModuleForm.questionType} = ${questionType}`;
-      // } else if (!Number.isNaN(typeId) && questionType != undefined) {
-      //   queryString = and(
-      //     eq(zuvyModuleForm.questionType, questionType),
-      //     eq(zuvyModuleForm.typeId, typeId),
-      //   );
        }
       const result = await db
         .select()
@@ -1950,30 +2005,30 @@ export class ContentService {
     }
   }
 
-  // async editFormQuestions(editFormDetails: editFormBatchDto) {
-  //   try {
-  //     await db
-  //       .insert(zuvyModuleForm)
-  //       .values(editFormDetails.questions)
-  //       .onConflictDoUpdate({
-  //         target: zuvyModuleForm.id,
-  //         set: {
-  //           question: sql`excluded.question`,
-  //           options: sql`excluded.options`,
-  //           typeId: sql`excluded.type_id`,
+  async editFormQuestions(editFormDetails: editFormBatchDto) {
+    try {
+      await db
+        .insert(zuvyModuleForm)
+        .values(editFormDetails.questions)
+        .onConflictDoUpdate({
+          target: zuvyModuleForm.id,
+          set: {
+            question: sql`excluded.question`,
+            options: sql`excluded.options`,
+            typeId: sql`excluded.type_id`,
             
-  //         },
-  //       });
+          },
+        });
 
-  //     return {
-  //       status: 'success',
-  //       code: 200,
-  //       message: 'Form questions are updated successfully',
-  //     };
-  //   } catch (error) {
-  //     throw error;
-  //   }
-  // }
+      return {
+        status: 'success',
+        code: 200,
+        message: 'Form questions are updated successfully',
+      };
+    } catch (error) {
+      throw error;
+    }
+  }
 
   async deleteForm(id: deleteQuestionDto) {
     try {

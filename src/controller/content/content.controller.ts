@@ -41,10 +41,11 @@ import {
   projectDto,
   CreateChapterDto,
   formBatchDto,
-  editFormBatchDto
+  editFormBatchDto,
+  CreateTypeDto
 } from './dto/content.dto';
 import { CreateProblemDto } from '../codingPlatform/dto/codingPlatform.dto';
-import { difficulty } from 'drizzle/schema';
+import { difficulty, questionType } from 'drizzle/schema';
 
 @Controller('Content')
 @ApiTags('Content')
@@ -584,6 +585,23 @@ export class ContentController {
     return this.contentService.getAssessmentDetailsOfOpenEnded(assessmentOutsourseId, req.user[0].id);
   }
 
+  
+  @Post('/createQuestionType')
+  @ApiOperation({ summary: 'Create a Question Type for the form' })
+  @ApiBearerAuth()
+  async createQuestionType(@Body() questionType: CreateTypeDto) {
+    const res = await this.contentService.createQuestionType(questionType);
+    return res;
+  }
+
+  @Get('/allQuestionType')
+  @ApiOperation({ summary: 'Get all the available Question Types' })
+  @ApiBearerAuth()
+  async getAllQuestionTypes() {
+    const res = await this.contentService.getAllQuestionTypes();
+    return res;
+  }
+  
   @Post('/form')
   @ApiOperation({ summary: 'Create a form' })
   @ApiBearerAuth()
@@ -610,26 +628,26 @@ export class ContentController {
     type: String,
     description: 'Search by name or email',
   })
-  @ApiQuery({
-    name: 'questionType',
-    required: false,
-    type: String,
-    description: 'questionType',
-  })
   @ApiBearerAuth()
   async getAllFormQuestions(
-    @Query('typeId') typeId: number,
-    @Query('questionType') questionType: 'Multiple Choice' | 'Checkboxes' | 'Long Text Answer' | 'Date' | 'Time',
-	@Query('searchTerm') searchTerm: string,
+  @Query('typeId') typeId: number,
+  @Query('searchTerm') searchTerm: string,
   ): Promise<object> {
     const res = await this.contentService.getAllFormQuestions(
-      typeId,
-      questionType,
+    typeId,
 	  searchTerm,
     );
     return res;
   }
 
+  @Post('/editform')
+  @ApiOperation({ summary: 'Create a form' })
+  @ApiBearerAuth()
+  async editFormForModule(@Body() formQuestions: editFormBatchDto) {
+    const res = await this.contentService.editFormQuestions(formQuestions);
+    return res;
+  }
+   
   @Delete('/deleteFormQuestion')
   @ApiOperation({ summary: 'Delete form question' })
   @ApiBearerAuth()
@@ -637,15 +655,6 @@ export class ContentController {
     const res = await this.contentService.deleteForm(questionIds);
     return res;
   }
-
-  // @Post('/editform')
-  // @ApiOperation({ summary: 'Create a form' })
-  // @ApiBearerAuth()
-  // async editFormForModule(@Body() formQuestions: editFormBatchDto) {
-  //   const res = await this.contentService.editFormQuestions(formQuestions);
-  //   return res;
-  // }
-
 
 }
 

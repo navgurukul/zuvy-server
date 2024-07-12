@@ -2844,6 +2844,7 @@ export const postsRelations = relations(zuvyModuleChapter, ({ one, many }) => ({
     references: [zuvyCodingQuestions.id],
   }),
   quizTrackingDetails: many(zuvyQuizTracking),
+  formTrackingDetails: many(zuvyFormTracking),
   OutsourseAssessments: many(zuvyOutsourseAssessments),
   ModuleAssessment: many(zuvyModuleAssessment)
 }));
@@ -2952,6 +2953,7 @@ export const zuvyAssessmentSubmissionRelation = relations(zuvyAssessmentSubmissi
   openEndedSubmission: many(zuvyOpenEndedQuestionSubmission),
   quizSubmission: many(zuvyQuizTracking),
   codingSubmission: many(zuvyCodingSubmission),
+  formSubmission: many(zuvyFormTracking),
 }))
 
 
@@ -3461,9 +3463,9 @@ export const zuvyModuleForm = main.table('zuvy_module_form', {
   id: serial('id').primaryKey().notNull(),
   question: text('question'),
   options: jsonb('options'),
+  typeId: integer('type_id').references(() => zuvyQuestionTypes.id),
   createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }),
   updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }),
-  typeId: integer('type_id').references(() => zuvyQuestionTypes.id),
   usage: integer('usage').default(0),
 });
 
@@ -3488,3 +3490,41 @@ export const zuvyFormTracking = main.table("zuvy_form_tracking", {
   createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
 });
+
+export const zuvyFormTrackingRelations = relations(zuvyFormTracking, ({ one }) => ({
+
+  formSubmissions: one(zuvyAssessmentSubmission, {
+    fields: [zuvyFormTracking.assessmentSubmissionId],
+    references: [zuvyAssessmentSubmission.id]
+  })
+
+}))
+
+export const formChapterRelations = relations(
+  zuvyCourseModules,
+  ({many, one }) => ({
+    moduleChapterData: many(zuvyModuleChapter),
+    chapterTrackingData: many(zuvyChapterTracking),
+    moduleTracking: many(zuvyModuleTracking),
+    formTrackingData: many(zuvyFormTracking),
+    moduleFormData: many (zuvyModuleForm)
+  }),
+);
+
+export const formModuleRelation= relations(
+  zuvyModuleForm,
+  ({many})=>({
+    formTrackingData: many(zuvyFormTracking)
+  })
+
+);
+
+export const formTrackingRelation = relations(
+  zuvyFormTracking,
+  ({ one }) => ({
+    formQuestion: one(zuvyModuleForm, {
+      fields: [zuvyFormTracking.questionId],
+      references: [zuvyModuleForm.id],
+    }),
+  })
+);

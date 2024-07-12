@@ -843,26 +843,20 @@ export class CreateChapterDto {
   order: number;
 }
 
+export class CreateTypeDto{
+  @ApiProperty({
+    type: String,
+    example : 'Linked List',
+    required: true
+  })
 
-////////////formdtos///////////
+  @IsString()
+  @IsNotEmpty()
+  questionType : string
+}
+
 export class formDto {
   
-  // @ApiProperty({
-  //   type: String,
-  //   example: 'Feedback Form',
-  // })
-  // @IsString()
-  // @IsOptional()
-  // title: string;
-
-  // @ApiProperty({ 
-  //   type: String,
-  //   example: 'This is a feedback form about our course',
-  // })
-  // @IsString()
-  // @IsOptional()
-  // description: string;
-
   @ApiProperty({
     type: String,
     example: 'What is your opinion about the course?',
@@ -892,14 +886,6 @@ export class formDto {
   @IsOptional()
   typeId: number;
 
-  @ApiProperty({
-    type: questionType,
-    example: 'Multiple Choice',
-    required: true,
-  })
-  @IsString()
-  @IsOptional()
-  questionType: 'Multiple Choice' | 'Checkboxes' | 'Long Text Answer' | 'Date' | 'Time';
 }
 
 export class formBatchDto {
@@ -907,7 +893,7 @@ export class formBatchDto {
     type: [formDto],
     example: [
       {
-        question: 'What is the national animal of India?',
+        question: 'What do you like about the course?',
         options: {
           1: 'Option 1',
           2: 'Option 2',
@@ -915,10 +901,10 @@ export class formBatchDto {
           4: 'Option 4',
         },
         typeId: 1,
-        questionType: 'Multiple Choice',
+        
       },
       {
-        question: 'What is the capital of France?',
+        question: 'What do you want to improve about the course?',
         options: {
           1: 'Paris',
           2: 'London',
@@ -926,22 +912,22 @@ export class formBatchDto {
           4: 'Rome',
         },
         typeId: 2,
-        questionType: 'Checkboxes',
+        
       },
       {
-        question: 'What is the national animal of India?',
+        question: 'What is your opinion about the course?',
         typeId: 3,
-        questionType: 'Long Text Answer',
+        
       },
       {
         question: 'Choose date of opting the course',
         typeId: 4,
-        questionType: 'Date',
+        
       },
       {
         question: 'Choose time of opting the course',
         typeId: 5,
-        questionType: 'Time',
+        
       },
     ],
     required: true,
@@ -962,22 +948,6 @@ export class editFormDto {
   })
   @IsNumber()
   id: number;
-
-  // @ApiProperty({
-  //   type: String,
-  //   example: 'Feedback Form',
-  // })
-  // @IsString()
-  // @IsOptional()
-  // title: string;
-
-  // @ApiProperty({ 
-  //   type: String,
-  //   example: 'This is a feedback form about our course',
-  // })
-  // @IsString()
-  // @IsOptional()
-  // description: string;
 
   @ApiProperty({
     type: String,
@@ -1001,12 +971,13 @@ export class editFormDto {
   options: object;
 
   @ApiProperty({
-    type: questionType,
-    example: 'Multiple Choice',
+    type: Number,
+    example: 1,
   })
-  @IsString()
+  @IsNumber()
   @IsOptional()
-  questionType: 'Multiple Choice' | 'Checkboxes' | 'Long Text Answer' | 'Date' | 'Time';
+  typeId: number;
+
 }
 
 export class editFormBatchDto {
@@ -1023,9 +994,10 @@ export class editFormBatchDto {
           4: 'Option 4',
         },
         typeId: 1,
-        questionType: 'Multiple Choice',
+        
       },
       {
+        id: 2,
         question: 'What is the capital of France?',
         options: {
           1: 'Paris',
@@ -1034,22 +1006,25 @@ export class editFormBatchDto {
           4: 'Rome',
         },
         typeId: 2,
-        questionType: 'Checkboxes',
+        
       },
       {
+        id: 3,
         question: 'What is the national animal of India?',
         typeId: 3,
-        questionType: 'Long Text Answer',
+        
       },
       {
+        id: 4,
         question: 'Choose date of opting the course',
         typeId: 4,
-        questionType: 'Date',
+        
       },
       {
+        id: 5,
         question: 'Choose time of opting the course',
         typeId: 5,
-        questionType: 'Time',
+        
       },
     ],
     required: true,
