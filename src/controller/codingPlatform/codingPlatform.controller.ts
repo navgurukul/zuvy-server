@@ -127,7 +127,7 @@ export class CodingPlatformController {
       return this.codingPlatformService.submitPracticeCode(questionId, sourceCode, action, req.user[0].id, submissionId, codingOutsourseId);
   }
 
-  @Get('practicecode/questionId:questionId')
+  @Get('/practicecode/questionId=:questionId')
   @ApiOperation({ summary: 'Get the question AND submissions by question id ' })
   @ApiBearerAuth()
   @ApiQuery({
@@ -143,8 +143,7 @@ export class CodingPlatformController {
     description: 'if you give the codingOutsourseId it for assessment code submission ',
   })
   async getPracticeCodeById(@Param('questionId') questionId: number, @Req() req, @Query('assessmentSubmissionId') submissionId: number, @Query('codingOutsourseId') codingOutsourseId:number){
-    const userId = req.user && req.user.length > 0 ? req.user[0].id : null; // Handle missing user data
-    return this.codingPlatformService.getPracticeCode(questionId, userId, submissionId, codingOutsourseId);
+    return this.codingPlatformService.getPracticeCode(questionId, req.user[0].id, submissionId, codingOutsourseId);
   }
   @Get('PracticeCode')
   @ApiOperation({ summary: 'Get the codingOutsourse by userId and codingOutsourseId' })
