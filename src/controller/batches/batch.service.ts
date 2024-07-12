@@ -8,38 +8,45 @@ import {
 import { db } from '../../db/index';
 import { eq, sql } from 'drizzle-orm';
 import { log } from 'console';
+import { PatchBatchDto } from './dto/batch.dto';
 
 @Injectable()
 export class BatchesService {
   async createBatch(batch) {
     try {
-      const newData = await db.insert(zuvyBatches).values(batch).returning();
       const usersData = await db
-        .select()
+      .select()
         .from(zuvyBatchEnrollments)
         .where(
-          sql`${zuvyBatchEnrollments.bootcampId} = ${zuvyBatchEnrollments.bootcampId} AND ${zuvyBatchEnrollments.batchId} IS NULL`,
+          sql`${zuvyBatchEnrollments.bootcampId} = ${batch.bootcampId} AND ${zuvyBatchEnrollments.batchId} IS NULL`,
         )
         .limit(batch.capEnrollment);
-
       if (usersData.length > 0) {
+        const newData = await db.insert(zuvyBatches).values(batch).returning();
         let userids = usersData.map((u) => u.userId);
+        
         await db
-          .update(zuvyBatchEnrollments)
+        .update(zuvyBatchEnrollments)
           .set({ batchId: newData[0].id })
           .where(
             sql`bootcamp_id = ${batch.bootcampId} AND user_id IN ${userids}`,
           );
+          return [
+            null,
+            {
+              status: 'success',
+              message: 'Batch created successfully',
+              code: 200,
+              batch: newData[0],
+            },
+          ];
+      } else {
+        // return error if no user found
+        return [
+          { status: 'error', message: 'No students found to enroll in this Batch', code: 400 },
+          null,
+        ];
       }
-      return [
-        null,
-        {
-          status: 'success',
-          message: 'Batch created successfully',
-          code: 200,
-          batch: newData[0],
-        },
-      ];
     } catch (e) {
       log(`error: ${e.message}`);
       return [{ status: 'error', message: e.message, code: 500 }, null];
@@ -87,15 +94,21 @@ export class BatchesService {
     }
   }
 
-  async updateBatch(id: number, batch: object) {
+  async updateBatch(id: number, batch: PatchBatchDto) {
     try {
-      let batchData = await db.select().from(zuvyBatches).where(eq(zuvyBatches.id, id));
-      if (batchData.length === 0) {
-        return [
-          { status: 'error', message: 'Batch not found', code: 404 },
-          null,
-        ];
+      let batchOld:any = await db.query.zuvyBatches.findMany({ 
+        where: sql`${zuvyBatches.id} = ${id}`,
+        with : {
+          students: true
+        }
+      });
+      if (!batchOld.length) {
+        return [{ status: 'error', message: 'Batch not found', code: 404 }, null];
       }
+      if (batchOld[0].students.length > batch.capEnrollment) {
+        return [{ status: 'error', message: 'Students are enrolled in more than this capEnrollment.', code: 400 }, null];
+      }
+
       batch['updatedAt'] = new Date();
       let updateData = await db
         .update(zuvyBatches)
@@ -150,6 +163,19 @@ export class BatchesService {
   async reassignBatch(studentID, newBatchID: number, oldBatchID: any, bootcampID: any) {
     try {
       let querySQL ;
+      let batch:any = await db.query.zuvyBatches.findMany({ 
+          where: sql`${zuvyBatches.id} = ${newBatchID}`,
+          with : {
+            students: true
+          }
+      });
+      if (!batch.length) {
+        return [{ status: 'error', message: 'Reassign Batch not found', code: 404 }, null];
+      }
+      if (batch[0].students.length >= batch[0].capEnrollment) {
+        return [{ status: 'error', message: 'Batch is full', code: 400 }, null];
+      }
+
       if (isNaN(oldBatchID)) {
         if (isNaN(bootcampID)) {
           return [{ status: 'error', message: 'Either Bootcamp ID or old batch ID is required.', code: 400 }, null];
@@ -158,6 +184,7 @@ export class BatchesService {
       } else {
         querySQL = sql`${zuvyBatchEnrollments.userId} = ${BigInt(studentID)} AND ${zuvyBatchEnrollments.batchId} = ${oldBatchID}`;
       }
+
 
       const res = await db
         .update(zuvyBatchEnrollments)

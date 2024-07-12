@@ -38,8 +38,8 @@ export class ClassesController {
   @Post('/')
   @ApiOperation({ summary: 'Create the new class' })
   @ApiBearerAuth()
-  async create(@Body() classData: CreateLiveBroadcastDto) {
-    return this.classesService.createLiveBroadcast(classData);
+  async create(@Body() classData: CreateLiveBroadcastDto,@Req() req) {
+    return this.classesService.createLiveBroadcast(classData,req.user[0]);
   }
 
   @Delete('/:id')
@@ -212,5 +212,13 @@ export class ClassesController {
       searchTerm,
       status,
     );
+  }
+  @Get('/meetings/:bootcampId')
+  @ApiOperation({ summary: 'Get the google classes id by bootcampId' })
+  @ApiBearerAuth()
+  getClassesBybootcampId(
+    @Query('bootcampId') bootcampId: string,
+    ): Promise<object> {
+    return this.classesService.unattendanceClassesByBootcampId(bootcampId);
   }
 }

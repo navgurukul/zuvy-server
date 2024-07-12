@@ -500,10 +500,18 @@ export class TrackingController {
   @Get('assessment/submissionId=:submissionId')
   @ApiOperation({ summary: 'Get assessment submission by submissionId' })
   @ApiBearerAuth()
+  @ApiQuery({
+    name: 'studentId',
+    required: false,
+    type: Number,
+    description: 'studentId of the assessment',
+  })
   async getAssessmentSubmission(
-    @Param('submissionId') submissionId: number, @Req() req
-  ) {
-    const res = await this.TrackingService.getAssessmentSubmission(submissionId, req.user[0].id);
+    @Param('submissionId') submissionId: number, @Req() req, @Query('studentId') userId:number ) {
+    if (!userId) {
+        userId = req.user[0].id;
+    }
+    const res = await this.TrackingService.getAssessmentSubmission(submissionId, userId);
     return res;
   }   
 }

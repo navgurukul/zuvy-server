@@ -33,19 +33,21 @@ export class StudentService {
               bootcampTopic: true
             },
           },
-          batch: true,
-          tracking: true
+          batchInfo: true,
+          tracking: {
+            where: (bootcampTracking, { sql }) =>
+              sql`${bootcampTracking.userId} = ${userId}`,
+          }
         }
       })
-
       let totalData = enrolled.map((e: any) => {
-        const { batch, tracking, bootcamp } = e;
+        const { batchInfo, tracking, bootcamp } = e;
 
         return {
           ...bootcamp,
-          batchId: batch?.id,
-          progress: tracking?.progress || 0,
-          ...batch?.bootcamp,
+          batchId: batchInfo?.id,
+          batchName: batchInfo?.name,
+          progress: tracking?.progress || 0
         };
       });
 

@@ -420,7 +420,7 @@ export class ContentService {
     }
   }
 
-  async createChapterForModule(moduleId: number, topicId: number, order: number, bootcampId: number) {
+  async createChapterForModule(moduleId: number, topicId: number,order:number, bootcampId: number, ) {
     try {
       let newAssessment;
       let chapterData;
@@ -615,7 +615,8 @@ export class ContentService {
       })
 
       chapterDetails.CodingQuestions = chapterDetails?.CodingQuestions.map((CodingQuestions) => {
-        let codingDetails = {...CodingQuestions.CodingQuestion, }
+        let codingOutsourseId = CodingQuestions.id
+        let codingDetails = {codingOutsourseId, ...CodingQuestions.CodingQuestion}
         delete CodingQuestions.CodingQuestion
         return {...CodingQuestions, ...codingDetails}
       })
@@ -1828,6 +1829,10 @@ export class ContentService {
       }
       
       let formatedData = await this.formatedChapterDetails(assessment[0]);
+
+      formatedData.Quizzes = formatedData.Quizzes.length
+      formatedData.OpenEndedQuestions = formatedData.OpenEndedQuestions.length
+
       return {...formatedData, submission: submission[0]};
     } catch (err) {
       throw err;
@@ -1884,8 +1889,8 @@ export class ContentService {
               userId: true,
               answer: true,
               questionId: true,
-              submitAt:true,
-              assessmentSubmissionId:true
+              submitAt: true,
+              assessmentSubmissionId: true
             }
           },
           OpenEndedQuestion: {

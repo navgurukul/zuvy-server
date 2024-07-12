@@ -422,14 +422,6 @@ export class UpdateOpenEndedDto {
 
   @ApiProperty({
     type: Number,
-    example: 1,
-  })
-  @IsNumber()
-  @IsOptional()
-  marks: number;
-
-  @ApiProperty({
-    type: Number,
     example: 2,
   })
   @IsNumber()
