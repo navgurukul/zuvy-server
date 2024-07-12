@@ -901,13 +901,13 @@ export class TrackingService {
           sql`${inArray(zuvyChapterTracking.moduleId, moduleIds)} AND ${zuvyChapterTracking.userId} = ${userId}`,
         ) : [];
       const allChapters = moduleIds.length > 0 ? totalLength : [];
-      if (moduleIds.length == 0 || allChapters.length == 0) {
-        return {
-          status: 'error',
-          code: 404,
-          message: 'No chapters created for this course yet.'
-        }
-      }
+      let initialProgress = 0;
+        if(allChapters != 0 || projectModules.length !=0)
+          {
+           initialProgress = Math.ceil(
+              (allChapterTracking.length + completedProjectForAUser.length) / (allChapters + projectModules.length) * 100,
+            )
+          }
       const userBootcampTracking = await db
         .select()
         .from(zuvyBootcampTracking)
@@ -918,9 +918,7 @@ export class TrackingService {
         const updatedBootcampProgress = await db
           .update(zuvyBootcampTracking)
           .set({
-            progress: Math.ceil(
-              (allChapterTracking.length + completedProjectForAUser.length) / (allChapters + projectModules.length) * 100,
-            ),
+            progress: initialProgress,
             updatedAt: sql`NOW()`,
           })
           .where(
@@ -932,13 +930,10 @@ export class TrackingService {
           .values({
             userId,
             bootcampId,
-            progress: Math.ceil(
-              (allChapterTracking.length + completedProjectForAUser.length) / (allChapters + projectModules.length) * 100,
-            ),
+            progress: initialProgress,
             updatedAt: sql`NOW()`,
           }).returning();
       }
-
       const data = await db.query.zuvyBootcampTracking.findFirst({
         where: (bootcampTracking, { sql }) =>
           sql`${bootcampTracking.bootcampId} = ${bootcampId} AND ${bootcampTracking.userId} = ${userId}`,
@@ -947,7 +942,7 @@ export class TrackingService {
         },
       });
       const batchDetails = await db.query.zuvyBatchEnrollments.findFirst({
-        where: (batchEnroll, { eq }) =>
+        where: (batchEnroll, { sql }) =>
           sql`${batchEnroll.userId} = ${BigInt(userId)} AND ${batchEnroll.bootcampId} = ${bootcampId}`,
         with: {
           batchInfo: {
@@ -963,13 +958,15 @@ export class TrackingService {
           }
         },
       });
-
-
-      const instructorDetails = {
+         let instructorDetails = {}
+       if(batchDetails['batchInfo'] != null)
+        {
+        instructorDetails = {
         instructorId: Number(batchDetails['batchInfo']['instructorDetails']['id']),
         instructorName: batchDetails['batchInfo']['instructorDetails']['name'],
         instructorProfilePicture: batchDetails['batchInfo']['instructorDetails']['profilePicture']
       }
+    }
       return {
         status: 'success',
         message: 'Bootcamp progress fetched successfully',
