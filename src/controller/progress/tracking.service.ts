@@ -1651,6 +1651,13 @@ export class TrackingService {
         where: (zuvyAssessmentSubmission, { eq }) =>
           eq(zuvyAssessmentSubmission.id, assessmentSubmissionId),
         with: {
+          user: {
+            columns: {
+              email:true,
+              name:true
+
+            }
+          },
           submitedOutsourseAssessment: true,
           openEndedSubmission: {
             columns: {
@@ -1659,7 +1666,6 @@ export class TrackingService {
               questionId: true,
               feedback: true,
               marks: true,
-              startAt: true,
               submitedAt: true,
             },
             with: {
