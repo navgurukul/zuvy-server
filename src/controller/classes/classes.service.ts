@@ -47,28 +47,38 @@ const scopes = [
 
 @Injectable()
 export class ClassesService {
-  // FETCHING ADMIN ROLES
-  async getAdminDetails(userId) {
-    try {
-      let userDetails = await db
+
+  async accessOfCalendar(creatorInfo) {
+    const userId = Number(creatorInfo.id)
+      const fetchedTokens = await db
         .select()
         .from(userTokens)
         .where(eq(userTokens.userId, userId));
-      if (userDetails) {
-        auth2Client.setCredentials({
-          access_token: userDetails[0].accessToken,
-          refresh_token: userDetails[0].refreshToken,
-        });
+      if (!fetchedTokens) {
+        return { status: 'error', message: 'Unable to fetch tokens' };
       }
-    } catch (error) {
-      return {
-        success: 'not success',
-        message: 'Error fetching Admin details',
-        error: error,
-      };
-    }
-  }
+      auth2Client.setCredentials({
+        access_token: fetchedTokens[0].accessToken,
+        refresh_token: fetchedTokens[0].refreshToken,
+      });
+      if (!creatorInfo.email.endsWith('@zuvy.org')) {
+        return {
+          status: 'error',
+          message: 'Unauthorized email id.'
+        };
+      }
 
+      if (!creatorInfo.roles.includes('admin')) {
+        return {
+          status: 'error',
+          message: 'You should be an admin to create a class.',
+        };
+      }
+
+      const calendar = google.calendar({ version: 'v3', auth: auth2Client });
+      return calendar;
+  }
+  
   async googleAuthentication(@Res() res, userEmail: string, userId: number) {
     let url = auth2Client.generateAuthUrl({
       access_type: 'offline',
@@ -157,7 +167,7 @@ export class ClassesService {
     }
   }
 
-  async createLiveBroadcast(eventDetails: {
+  async createSession(eventDetails: {
     title: string;
     description?: string;
     startDateTime: string;
@@ -167,31 +177,7 @@ export class ClassesService {
     bootcampId: number;
   },creatorInfo : any) {
     try {
-      const userId = Number(creatorInfo.id)
-      const fetchedTokens = await db
-        .select()
-        .from(userTokens)
-        .where(eq(userTokens.userId, userId));
-      if (!fetchedTokens) {
-        return { status: 'error', message: 'Unable to fetch tokens' };
-      }
-      auth2Client.setCredentials({
-        access_token: fetchedTokens[0].accessToken,
-        refresh_token: fetchedTokens[0].refreshToken,
-      });
-      if (!creatorInfo.email.endsWith('@zuvy.org')) {
-        return {
-          status: 'error',
-          message: 'Unauthorized email id.'
-        };
-      }
-
-      if (!creatorInfo.roles.includes('admin')) {
-        return {
-          status: 'error',
-          message: 'You should be an admin to create a class.',
-        };
-      }
+      let calendar:any = await this.accessOfCalendar(creatorInfo);
 
       const studentsInTheBatchEmails = await db
         .select()
@@ -216,7 +202,6 @@ export class ClassesService {
         }
       }
 
-      const calendar = google.calendar({ version: 'v3', auth: auth2Client });
       const eventData = {
         calendarId: 'primary',
         conferenceDataVersion: 1,
@@ -414,33 +399,6 @@ export class ClassesService {
     });
   }
 
-  // async seedingClass(){
-  //   const classesRow = await db.select().from(ZuvyClassesGoogleMeetLink);
-
-  //   const newClassesData = classesRow.map((row) => {
-  //     return {
-  //         id: row.id,
-  //         meetingId: row.meetingId,
-  //         hangoutLink: row.hangoutLink,
-  //         creator: row.creator,
-  //         startTime: row.startTime,
-  //         endTime: row.endTime ,
-  //         batchId: parseInt(row.batchId),
-  //         bootcampId: parseInt(row.bootcampId),
-  //         title: row.title,
-  //         s3link: row.s3link
-  //     }
-  //   });
-  //   newClassesData.map(async (batch__) =>{
-  //     try{
-  //       await db.insert(zuvySessions).values(batch__);
-
-  //     } catch (err){
-  //       console.error(err)
-  //     }
-  //   })
-  //   return { status: 'success', message: 'meetings to update', code: 200 };
-  // }
 
   private async uploadVideoToS3(
     fileBuffer: Buffer,
@@ -563,25 +521,6 @@ export class ClassesService {
       };
     } catch (error) {
       return { status: 'error', message: 'Error fetching class', error: error };
-    }
-  }
-
-  async deleteMeetingById(id: number) {
-    try {
-      db
-        .delete(zuvySessions)
-        .where(sql`${zuvySessions.id} = ${id}`).then((res) => { });
-      return {
-        status: 'success',
-        message: 'Meeting deleted successfully ',
-        code: 200,
-      };
-    } catch (error) {
-      return {
-        success: 'not success',
-        message: 'Error deleting meeting',
-        error: error,
-      };
     }
   }
 
@@ -942,37 +881,6 @@ export class ClassesService {
     } catch (err) {
       return { status: 'error', message: err.message, code: 500 }
     }
-  }
-
-  async accessOfCalendar(creatorInfo) {
-    const userId = Number(creatorInfo.id)
-      const fetchedTokens = await db
-        .select()
-        .from(userTokens)
-        .where(eq(userTokens.userId, userId));
-      if (!fetchedTokens) {
-        return { status: 'error', message: 'Unable to fetch tokens' };
-      }
-      auth2Client.setCredentials({
-        access_token: fetchedTokens[0].accessToken,
-        refresh_token: fetchedTokens[0].refreshToken,
-      });
-      if (!creatorInfo.email.endsWith('@zuvy.org')) {
-        return {
-          status: 'error',
-          message: 'Unauthorized email id.'
-        };
-      }
-
-      if (!creatorInfo.roles.includes('admin')) {
-        return {
-          status: 'error',
-          message: 'You should be an admin to create a class.',
-        };
-      }
-
-      const calendar = google.calendar({ version: 'v3', auth: auth2Client });
-      return calendar;
   }
 
   async deleteSession(eventId, creatorInfo) {

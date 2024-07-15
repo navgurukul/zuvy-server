@@ -1,7 +1,7 @@
 import { Controller, Get, Post, Put, Delete, Patch, Body, Param, ValidationPipe, UsePipes, Res, Req, Query, BadRequestException } from '@nestjs/common';
 import { ClassesService } from './classes.service';
 import { ApiTags, ApiBody, ApiOperation, ApiCookieAuth, ApiQuery } from '@nestjs/swagger';
-import { CreateDto, ScheduleDto, CreateLiveBroadcastDto, reloadDto , updateSessionDto } from './dto/classes.dto';
+import { CreateDto, ScheduleDto, CreateSessionDto, reloadDto , updateSessionDto } from './dto/classes.dto';
 import { ApiBearerAuth } from '@nestjs/swagger';
 import { Cron } from '@nestjs/schedule';
 
@@ -38,16 +38,10 @@ export class ClassesController {
   @Post('/')
   @ApiOperation({ summary: 'Create the new class' })
   @ApiBearerAuth()
-  async create(@Body() classData: CreateLiveBroadcastDto,@Req() req) {
-    return this.classesService.createLiveBroadcast(classData,req.user[0]);
+  async create(@Body() classData: CreateSessionDto,@Req() req) {
+    return this.classesService.createSession(classData,req.user[0]);
   }
 
-  @Delete('/:id')
-  @ApiOperation({ summary: 'Delete the meeting' })
-  @ApiBearerAuth()
-  deleteMeetingById(@Param('id') id: number): Promise<object> {
-    return this.classesService.deleteMeetingById(id);
-  }
 
 
   @Get('/getAttendance/:meetingId')
@@ -69,12 +63,6 @@ export class ClassesController {
 
     return this.classesService.getAttendanceByBatchId(batchId, req.user);
   }
-  // @Get('/meetingAttendance')
-  // @ApiBearerAuth()
-  // @ApiOperation({ summary: "Get the google all classes attendance by batchID" })
-  // meetingAttendance(){
-  //   return this.classesService.meetingAttendance();
-  // }
 
   @Get('/analytics/:meetingId')
   @ApiBearerAuth()
@@ -121,44 +109,12 @@ export class ClassesController {
     return this.classesService.getClassesByBatchId(batchId, limit, offset);
   }
 
-  // @Get('/getClassesByBootcampId/:bootcampId')
-  // @ApiOperation({ summary: 'Get the google classes by bootcampId' })
-  // @ApiQuery({
-  //   name: 'limit',
-  //   required: false,
-  //   type: Number,
-  //   description: 'Number of classes per page',
-  // })
-  // @ApiQuery({
-  //   name: 'offset',
-  //   required: false,
-  //   type: Number,
-  //   description: 'Offset for pagination',
-  // })
-  // @ApiBearerAuth()
-  // getClassesByBootcampId(
-  //   @Query('limit') limit: number,
-  //   @Query('offset') offset: number,
-  //   @Param('bootcampId') bootcampId: string,
-  // ): Promise<object> {
-  //   return this.classesService.getClassesByBootcampId(bootcampId, limit,
-  //     offset);
-  // }
-
   @Get('/getAttendeesByMeetingId/:id')
   @ApiOperation({ summary: 'Get the google class attendees by meetingId' })
   @ApiBearerAuth()
   getAttendeesByMeetingId(@Param('id') id: number): Promise<object> {
     return this.classesService.getAttendeesByMeetingId(id);
   }
-
-  // @Post('/seeding/table')
-  // @ApiOperation({ summary: 'Get the google class attendees by meetingId' })
-  // @ApiBearerAuth()
-  // async seedingClass(): Promise<object> {
-  //   return await this.classesService.seedingClass();
-  // }
-
   
   @Get('/all/:bootcampId')
   @ApiOperation({ summary: 'Get the students classes by bootcamp and batch' })

@@ -47,7 +47,7 @@ export class ScheduleDto {
   day: string;
 }
 
-export class CreateLiveBroadcastDto {
+export class CreateSessionDto {
   @ApiProperty({
     description: 'The summary of the live broadcast event',
     type: String,
