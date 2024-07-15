@@ -18,7 +18,7 @@ import {
   zuvyProjectTracking,
   zuvyRecentBootcamp,
   zuvyAssessmentSubmission,
-  zuvyCodingSubmission,
+  zuvyPracticeCode,
   zuvyCodingQuestions
 } from 'drizzle/schema';
 import { throwError } from 'rxjs';
@@ -782,7 +782,8 @@ export class TrackingService {
         const questions = await db
           .select({ correctOption: zuvyModuleQuiz.correctOption })
           .from(zuvyModuleQuiz)
-          .where(sql`${inArray(zuvyModuleQuiz.id, mcqIdArray)}`);
+          .where(sql`${inArray(zuvyModuleQuiz.id, mcqIdArray)}`)
+          .orderBy(zuvyModuleQuiz.id);
         let updatedQuizBody = [];
         for (let i = 0; i < questions.length; i++) {
           let status = 'fail';
@@ -872,7 +873,7 @@ export class TrackingService {
 
       return modules;
     } catch (err) {
-      console.error(err);
+      error(err);
       return [];
     }
   }
@@ -900,13 +901,13 @@ export class TrackingService {
           sql`${inArray(zuvyChapterTracking.moduleId, moduleIds)} AND ${zuvyChapterTracking.userId} = ${userId}`,
         ) : [];
       const allChapters = moduleIds.length > 0 ? totalLength : [];
-      if (moduleIds.length == 0 || allChapters.length == 0) {
-        return {
-          status: 'error',
-          code: 404,
-          message: 'No chapters created for this course yet.'
-        }
-      }
+      let initialProgress = 0;
+        if(allChapters != 0 || projectModules.length !=0)
+          {
+           initialProgress = Math.ceil(
+              (allChapterTracking.length + completedProjectForAUser.length) / (allChapters + projectModules.length) * 100,
+            )
+          }
       const userBootcampTracking = await db
         .select()
         .from(zuvyBootcampTracking)
@@ -917,9 +918,7 @@ export class TrackingService {
         const updatedBootcampProgress = await db
           .update(zuvyBootcampTracking)
           .set({
-            progress: Math.ceil(
-              (allChapterTracking.length + completedProjectForAUser.length) / (allChapters + projectModules.length) * 100,
-            ),
+            progress: initialProgress,
             updatedAt: sql`NOW()`,
           })
           .where(
@@ -931,13 +930,10 @@ export class TrackingService {
           .values({
             userId,
             bootcampId,
-            progress: Math.ceil(
-              (allChapterTracking.length + completedProjectForAUser.length) / (allChapters + projectModules.length) * 100,
-            ),
+            progress: initialProgress,
             updatedAt: sql`NOW()`,
           }).returning();
       }
-
       const data = await db.query.zuvyBootcampTracking.findFirst({
         where: (bootcampTracking, { sql }) =>
           sql`${bootcampTracking.bootcampId} = ${bootcampId} AND ${bootcampTracking.userId} = ${userId}`,
@@ -946,7 +942,7 @@ export class TrackingService {
         },
       });
       const batchDetails = await db.query.zuvyBatchEnrollments.findFirst({
-        where: (batchEnroll, { eq }) =>
+        where: (batchEnroll, { sql }) =>
           sql`${batchEnroll.userId} = ${BigInt(userId)} AND ${batchEnroll.bootcampId} = ${bootcampId}`,
         with: {
           batchInfo: {
@@ -962,13 +958,15 @@ export class TrackingService {
           }
         },
       });
-
-
-      const instructorDetails = {
+         let instructorDetails = {}
+       if(batchDetails['batchInfo'] != null)
+        {
+        instructorDetails = {
         instructorId: Number(batchDetails['batchInfo']['instructorDetails']['id']),
         instructorName: batchDetails['batchInfo']['instructorDetails']['name'],
         instructorProfilePicture: batchDetails['batchInfo']['instructorDetails']['profilePicture']
       }
+    }
       return {
         status: 'success',
         message: 'Bootcamp progress fetched successfully',
@@ -1072,8 +1070,8 @@ export class TrackingService {
 
       const codingQuestionTracking = await db
         .select()
-        .from(zuvyCodingSubmission)
-        .where(sql`${zuvyCodingSubmission.userId} = ${userId}`);
+        .from(zuvyPracticeCode)
+        .where(sql`${zuvyPracticeCode.userId} = ${userId}`);
 
       if(chapterDetails.length > 0){
         if (chapterDetails[0].topicId == 4) {
@@ -1504,7 +1502,7 @@ export class TrackingService {
 
     // Difficulty Points Mapping
     const mcqPoints: { [key: string]: number } = { "Easy": 1, "Medium": 2, "Hard": 3 };
-    const openPoints: { [key: string]: number } = { "Easy": 3, "Medium": 5, "Hard": 7 };
+    // const openPoints: { [key: string]: number } = { "Easy": 3, "Medium": 5, "Hard": 7 };
     const codingPoints: { [key: string]: number } = { "Easy": 5, "Medium": 10, "Hard": 15 };
 
     // Processing Quizzes
@@ -1517,31 +1515,55 @@ export class TrackingService {
     });
 
     // Processing Open-Ended Questions
-    let needOpenScore = 0;
+    // let needOpenScore = 0;
     data.openEndedSubmission.forEach(question => {
       openTotalAttemted += 1;
-      openScore += (question.marks > openPoints[question.submissionData?.OpenEndedQuestion.difficulty]) ? openPoints[question.submissionData?.OpenEndedQuestion.difficulty] : question.marks;
+      // openScore += (question.marks > openPoints[question.submissionData?.OpenEndedQuestion.difficulty]) ? openPoints[question.submissionData?.OpenEndedQuestion.difficulty] : question.marks;
     });
 
-    // Processing Coding Questions
     let needCodingScore = 0;
-    data.codingSubmission.forEach(question => {
-      codingTotalAttemted += 1;
-      needCodingScore += codingPoints[question.different]
 
+    let codingSubmission: any[] = [];
+
+    data.PracticeCode.forEach(question => {
+      let existingEntry = codingSubmission.find(entry => entry.questionId === question.questionId);
+
+      if (existingEntry) {
+        existingEntry.submissions.push({
+          id: question.id,
+          status: question.status,
+          action: question.action,
+          createdAt: question.createdAt,
+          codingOutsourseId: question.codingOutsourseId
+        });
+      } else {
+        codingTotalAttemted += 1;
+        needCodingScore += codingPoints[question?.questionDetail.difficulty];
+        codingSubmission.push({
+          questionId: question.questionId,
+          ...question.questionDetail,
+          submissions: [{
+            id: question.id,
+            status: question.status,
+            action: question.action,
+            createdAt: question.createdAt,
+            codingOutsourseId: question.codingOutsourseId
+          }]
+        });
+      }
     });
 
-    // Total scores
-    const totalScore = quizScore + openScore;
+    const totalScore =  totalQuizScore + totalCodingScore;
+    const needScore =  needCodingScore + quizScore
+
     // Calculate percentage
-    const percentageScore = (totalScore / (totalOpenEndedScore + totalQuizScore + totalCodingScore)) * 100;
+    const percentageScore = (needScore / totalScore) * 100;
+
     // Assessment pass status
     const passStatus = percentageScore >= data.submitedOutsourseAssessment?.passPercentage;
 
     data.openEndedSubmission = {
       openTotalAttemted,
-      openScore,
-      totalOpenEndedScore
     }
     data.quizSubmission = {
       quizTotalAttemted,
@@ -1549,7 +1571,12 @@ export class TrackingService {
       quizScore,
       totalQuizScore
     }
-    return { ...data, passStatus, percentageScore, passPercentage: data?.submitedOutsourseAssessment?.passPercentage };
+    data.PracticeCode = {
+      codingTotalAttemted,
+      needCodingScore,
+      totalCodingScore
+    }
+    return { ...data, passStatus, percentageScore, passPercentage: data?.submitedOutsourseAssessment?.passPercentage, codingSubmission };
   }
 
 
@@ -1560,18 +1587,18 @@ export class TrackingService {
         where: (zuvyOutsourseAssessments, { eq }) =>
           eq(zuvyOutsourseAssessments.id, assessmentOutsourseId),
         with: {
-          ModuleAssessment: true,
           CodingQuestions: {
             columns: {
               id: true,
               assessmentOutsourseId: true,
               bootcampId: true
-
+              
             },
             with: {
               CodingQuestion: true
             }
           },
+          ModuleAssessment: true,
           Quizzes: {
             columns: {
               id: true,
@@ -1609,13 +1636,11 @@ export class TrackingService {
         submission = await db.insert(zuvyAssessmentSubmission).values({ userId: id, assessmentOutsourseId, startedAt }).returning();
       }
       let formatedData = await this.formatedChapterDetails(assessment[0]);
-
       return { ...formatedData, submission: submission[0] };
     } catch (err) {
       throw err;
     }
   }
-
 
   async getAssessmentSubmission(assessmentSubmissionId: number, userId: number) {
     try {
@@ -1630,7 +1655,9 @@ export class TrackingService {
               answer: true,
               questionId: true,
               feedback: true,
-              marks: true
+              marks: true,
+              startAt: true,
+              submitedAt: true,
             },
             with: {
               submissionData: {
@@ -1656,24 +1683,22 @@ export class TrackingService {
               }
             }
           },
-          codingSubmission: {
+          PracticeCode: {
             columns: {
               id: true,
               questionSolved: true,
               questionId: true,
+              status: true,
+              action: true,
+              createdAt: true,
+              codingOutsourseId: true
             },
             with: {
-              questionDetails: {
-                with: {
-                  CodingQuestion: true
-                }
-              }
+              questionDetail: true
             }
-
           }
-        },
+        }
       });
-
       if (data == undefined || data.length == 0) {
         throw ({
           status: 'error',
@@ -1693,10 +1718,11 @@ export class TrackingService {
       let total = {totalMCQPoints, totalOpenPoints, totalCodingPoints, totalPoints}
       let {OpenEndedQuestions, Quizzes, CodingQuestions} = assessment_data;
       let calData =  await this.calculateAssessmentResults(data, totalOpenPoints,totalMCQPoints, totalCodingPoints);
+      
       return {...calData, totalOpenEndedQuestions: OpenEndedQuestions.length,totalQuizzes:Quizzes.length, totalCodingQuestions: CodingQuestions.length};
     }
     catch (err) {
-      throw err;
-    }
-  }
+      throw err;
+    }
+  }
 }
