@@ -162,6 +162,7 @@ export class CodingPlatformService {
         submissionInfo = await this.getCodeInfo(token);
         status = submissionInfo.status_id
       }
+      status = submissionInfo.status.description
       return {submissionInfo, token, status };
     } catch (error) {
       throw error;
