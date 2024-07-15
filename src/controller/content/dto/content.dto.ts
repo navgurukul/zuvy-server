@@ -846,7 +846,7 @@ export class CreateChapterDto {
 export class CreateTypeDto{
   @ApiProperty({
     type: String,
-    example : 'Linked List',
+    example : 'Multiple Choice',
     required: true
   })
 

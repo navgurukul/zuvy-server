@@ -62,6 +62,13 @@ export const userRolesRoles = pgEnum('user_roles_roles', [
   'facilitator',
 ]);
 export const usersCenter = pgEnum('users_center', ['dharamshala', 'bangalore']);
+export const questionType = pgEnum('questionType', [
+  'Multiple Choice' , 
+  'Checkboxes' , 
+  'Long Text Answer', 
+  'Date' , 
+  'Time',
+]);
 
 export const main = pgSchema('main');
 
@@ -3456,8 +3463,6 @@ export const quizTrackingRelation = relations(
   })
 );
 
-
-export const questionType = pgEnum('questionType', ['Multiple Choice' , 'Checkboxes' , 'Long Text Answer', 'Date' , 'Time']);
 
 export const zuvyModuleForm = main.table('zuvy_module_form', {
   id: serial('id').primaryKey().notNull(),

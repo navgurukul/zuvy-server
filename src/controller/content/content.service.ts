@@ -1917,11 +1917,7 @@ export class ContentService {
           allQuestionTypes,
         };
       } else {
-        return {
-          status: 'error',
-          code: 404,
-          message: 'No Question Types found.Please create one',
-        };
+        return [];
       }
     } catch (err) {
       throw err;
