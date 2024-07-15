@@ -1,7 +1,7 @@
 import { Controller, Get, Post, Put, Delete, Patch, Body, Param, ValidationPipe, UsePipes, Res, Req, Query, BadRequestException } from '@nestjs/common';
 import { ClassesService } from './classes.service';
 import { ApiTags, ApiBody, ApiOperation, ApiCookieAuth, ApiQuery } from '@nestjs/swagger';
-import { CreateDto, ScheduleDto, CreateLiveBroadcastDto, reloadDto  } from './dto/classes.dto';
+import { CreateDto, ScheduleDto, CreateLiveBroadcastDto, reloadDto , updateSessionDto } from './dto/classes.dto';
 import { ApiBearerAuth } from '@nestjs/swagger';
 import { Cron } from '@nestjs/schedule';
 
@@ -220,5 +220,19 @@ export class ClassesController {
     @Query('bootcampId') bootcampId: string,
     ): Promise<object> {
     return this.classesService.unattendanceClassesByBootcampId(bootcampId);
+  }
+
+  @Delete('/delete/:meetingId')
+  @ApiOperation({ summary: 'Delete the google class by meetingId' })
+  @ApiBearerAuth()
+  deleteClassByMeetingId(@Param('meetingId') meetingId: string, @Req() req): Promise<object> {
+    return this.classesService.deleteSession(meetingId, req.user[0]);
+  }
+
+  @Patch('/update/:meetingId')
+  @ApiOperation({ summary: 'Update the google class by meetingId' })
+  @ApiBearerAuth()
+  updateClassByMeetingId(@Param('meetingId') meetingId: string, @Body() classData: updateSessionDto, @Req() req): Promise<object> {
+    return this.classesService.updateSession(meetingId, classData, req.user[0]);
   }
 }

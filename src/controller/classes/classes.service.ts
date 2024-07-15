@@ -943,6 +943,124 @@ export class ClassesService {
       return { status: 'error', message: err.message, code: 500 }
     }
   }
+
+  async accessOfCalendar(creatorInfo) {
+    const userId = Number(creatorInfo.id)
+      const fetchedTokens = await db
+        .select()
+        .from(userTokens)
+        .where(eq(userTokens.userId, userId));
+      if (!fetchedTokens) {
+        return { status: 'error', message: 'Unable to fetch tokens' };
+      }
+      auth2Client.setCredentials({
+        access_token: fetchedTokens[0].accessToken,
+        refresh_token: fetchedTokens[0].refreshToken,
+      });
+      if (!creatorInfo.email.endsWith('@zuvy.org')) {
+        return {
+          status: 'error',
+          message: 'Unauthorized email id.'
+        };
+      }
+
+      if (!creatorInfo.roles.includes('admin')) {
+        return {
+          status: 'error',
+          message: 'You should be an admin to create a class.',
+        };
+      }
+
+      const calendar = google.calendar({ version: 'v3', auth: auth2Client });
+      return calendar;
+  }
+
+  async deleteSession(eventId, creatorInfo) {
+    try {
+      
+      let calendar:any = await this.accessOfCalendar(creatorInfo);
+      // Delete event from Google Calendar
+      await calendar.events.delete({
+        calendarId: 'primary',
+        eventId: eventId,
+      });
+  
+      // Delete class details from the database
+      await db
+        .delete(zuvySessions)
+        .where(eq(zuvySessions.meetingId, eventId));
+  
+      return {
+        status: 'success',
+        message: 'Deleted Class successfully',
+        code: 200,
+      };
+    } catch (error) {
+      console.log('Error deleting class', error);
+      return {
+        status: 'error',
+        message: 'Error deleting class',
+        error: error,
+      };
+    }
+  }
+  
+
+  async updateSession(eventId, updatedEventDetails,creatorInfo) {
+    try {
+      let calendar:any = await this.accessOfCalendar(creatorInfo);
+  
+      // Update event in Google Calendar
+      const eventUpdateData = {
+        calendarId: 'primary',
+        eventId: eventId,
+        requestBody: {
+          summary: updatedEventDetails.title,
+          description: updatedEventDetails.description,
+          start: {
+            dateTime: moment(updatedEventDetails.startDateTime),
+              // .subtract(5, 'hours')
+              // .subtract(30, 'minutes')
+              // .format(),
+            timeZone: updatedEventDetails.timeZone,
+          },
+          end: {
+            dateTime: moment(updatedEventDetails.endDateTime),
+              // .subtract(5, 'hours')
+              // .subtract(30, 'minutes')
+              // .format(),
+            timeZone: updatedEventDetails.timeZone,
+          },
+        },
+      };
+  
+      const updatedEvent = await calendar.events.update(eventUpdateData);
+  
+      // Update class details in the database
+      const updatedClassDetails = await db
+        .update(zuvySessions)
+        .set({
+          title: updatedEventDetails.title,
+          startTime: updatedEvent.data.start.dateTime,
+          endTime: updatedEvent.data.end.dateTime,
+        })
+        .where(eq(zuvySessions.meetingId, eventId))
+        .returning();
+  
+      return {
+        status: 'success',
+        message: 'Updated Class successfully',
+        code: 200,
+        updatedClassDetails: updatedClassDetails,
+      };
+    } catch (error) {
+      return {
+        status: 'error',
+        message: 'Error updating class',
+        error: error,
+      };
+    }
+  }
 }
 
 
