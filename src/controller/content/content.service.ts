@@ -1959,15 +1959,14 @@ export class ContentService {
         typeId: f.typeId,
       }));
 
-      for(let i=0; i<formQuestions.length;i++){
-        if(formQuestions[i].question== null || formQuestions[i].options== null ||formQuestions[i].typeId== null)
-          return {
-            status: "error",
-            code: 400,
-            message: "One or more Fields are empty.Please try again"
-          }
-
-      }
+      const allFieldsFilled = formQuestions.every(question => question.question !== null && question.options !== null && question.typeId !== null);
+      if (!allFieldsFilled) 
+        { return { 
+            status: "error", 
+            code: 400, 
+            message: " One or more fields are empty. Please try again." 
+          };
+        }
 
       const result = await db
         .insert(zuvyModuleForm)
