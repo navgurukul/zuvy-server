@@ -47,7 +47,7 @@ export class ScheduleDto {
   day: string;
 }
 
-export class CreateLiveBroadcastDto {
+export class CreateSessionDto {
   @ApiProperty({
     description: 'The summary of the live broadcast event',
     type: String,
@@ -131,4 +131,48 @@ export class reloadDto {
   @IsNotEmpty()
   @IsArray()
   meetingIds: string[];
+}
+
+export class updateSessionDto {
+  @ApiProperty({
+    description: 'title of the live classes',
+    type: String,
+    example: 'python class',
+    required: true,
+  })
+  @IsNotEmpty()
+  @IsString()
+  title: string;
+
+  @ApiProperty({
+    description: 'The description of the live broadcast event',
+    type: String,
+    example: 'Description of the event',
+    required: true,
+  })
+  @IsOptional()
+  @IsString()
+  description?: string;
+
+  @ApiProperty({
+    description: 'The start time of the live broadcast event',
+    type: String,
+    format: 'date-time',
+    example: '2022-03-01T00:00:00Z',
+    required: true,
+  })
+  @IsNotEmpty()
+  @IsDateString()
+  startDateTime: string;
+
+  @ApiProperty({
+    description: 'The end time of the live broadcast event',
+    type: String,
+    format: 'date-time',
+    example: '2022-03-01T00:00:00Z',
+    required: true,
+  })
+  @IsNotEmpty()
+  @IsDateString()
+  endDateTime: string;
 }

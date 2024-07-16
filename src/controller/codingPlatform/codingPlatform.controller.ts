@@ -145,4 +145,10 @@ export class CodingPlatformController {
   async getPracticeCodeById(@Param('questionId') questionId: number, @Req() req, @Query('assessmentSubmissionId') submissionId: number, @Query('codingOutsourseId') codingOutsourseId:number){
     return this.codingPlatformService.getPracticeCode(questionId, req.user[0].id, submissionId, codingOutsourseId);
   }
+  @Get('PracticeCode')
+  @ApiOperation({ summary: 'Get the codingOutsourse by userId and codingOutsourseId' })
+  @ApiBearerAuth()
+  async codingSubmission(@Req() req, @Query('studentId') studentId: number, @Query('codingOutsourseId') codingOutsourseId: number) {
+    return this.codingPlatformService.codingSubmission(studentId, codingOutsourseId);
+  }
 }

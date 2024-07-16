@@ -1648,6 +1648,13 @@ export class TrackingService {
         where: (zuvyAssessmentSubmission, { eq }) =>
           eq(zuvyAssessmentSubmission.id, assessmentSubmissionId),
         with: {
+          user: {
+            columns: {
+              email:true,
+              name:true
+
+            }
+          },
           submitedOutsourseAssessment: true,
           openEndedSubmission: {
             columns: {
@@ -1656,7 +1663,6 @@ export class TrackingService {
               questionId: true,
               feedback: true,
               marks: true,
-              startAt: true,
               submitedAt: true,
             },
             with: {
@@ -1690,8 +1696,9 @@ export class TrackingService {
               questionId: true,
               status: true,
               action: true,
+              token: true,
               createdAt: true,
-              codingOutsourseId: true
+              codingOutsourseId: true,
             },
             with: {
               questionDetail: true
@@ -1718,7 +1725,6 @@ export class TrackingService {
       let total = {totalMCQPoints, totalOpenPoints, totalCodingPoints, totalPoints}
       let {OpenEndedQuestions, Quizzes, CodingQuestions} = assessment_data;
       let calData =  await this.calculateAssessmentResults(data, totalOpenPoints,totalMCQPoints, totalCodingPoints);
-      
       return {...calData, totalOpenEndedQuestions: OpenEndedQuestions.length,totalQuizzes:Quizzes.length, totalCodingQuestions: CodingQuestions.length};
     }
     catch (err) {
