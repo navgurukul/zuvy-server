@@ -19,7 +19,7 @@ import {
 } from 'class-validator';
 import { truncateSync } from 'fs';
 import { Type } from 'class-transformer';
-import { difficulty } from 'drizzle/schema';
+import { difficulty, questionType } from 'drizzle/schema';
 
 export class moduleDto {
   @ApiProperty({
@@ -124,6 +124,14 @@ export class chapterDto {
   quizQuestions: number[];
 
   @ApiProperty({
+    type: [Number],
+    example: [1, 2],
+  })
+  @IsOptional()
+  @IsArray()
+  formQuestions: number[];
+  
+  @ApiProperty({
     type: [String],
     example: ['https://www.google.com'],
   })
@@ -214,7 +222,7 @@ export class quizDto {
   difficulty: 'Easy' | 'Medium' | 'Hard';
 }
 
-export class quizBatchDto {
+export class  quizBatchDto {
   @ApiProperty({
     type: [quizDto],
     example: [
@@ -311,6 +319,14 @@ export class EditChapterDto {
   @IsOptional()
   quizQuestions: any[];
 
+  @ApiProperty({
+    type: [Number],
+    example: [1, 2],
+  })
+  @IsArray()
+  @IsOptional()
+  formQuestions: any[];
+  
   @ApiProperty({
     type: Number,
     example: 10,
@@ -817,4 +833,198 @@ export class CreateChapterDto {
   @IsOptional()
   @IsNumber()
   order: number;
+}
+
+export class CreateTypeDto{
+  @ApiProperty({
+    type: String,
+    example : 'Multiple Choice',
+    required: true
+  })
+
+  @IsString()
+  @IsNotEmpty()
+  questionType : string
+}
+
+export class formDto {
+  
+  @ApiProperty({
+    type: String,
+    example: 'What is your opinion about the course?',
+  })
+  @IsString()
+  @IsOptional()
+  question: string;
+
+  @ApiProperty({
+    type: 'object',
+    example: {
+      1: 'Option 1',
+      2: 'Option 2',
+      3: 'Option 3',
+      4: 'Option 4',
+    }
+  })
+  @IsObject()
+  @IsOptional() 
+  options: object;
+
+  @ApiProperty({
+    type: Number,
+    example: 2,
+  })
+  @IsNumber()
+  @IsOptional()
+  typeId: number;
+
+}
+
+export class formBatchDto {
+  @ApiProperty({
+    type: [formDto],
+    example: [
+      {
+        question: 'What do you like about the course?',
+        options: {
+          1: 'Option 1',
+          2: 'Option 2',
+          3: 'Option 3',
+          4: 'Option 4',
+        },
+        typeId: 1,
+        
+      },
+      {
+        question: 'What do you want to improve about the course?',
+        options: {
+          1: 'Paris',
+          2: 'London',
+          3: 'Berlin',
+          4: 'Rome',
+        },
+        typeId: 2,
+        
+      },
+      {
+        question: 'What is your opinion about the course?',
+        typeId: 3,
+        
+      },
+      {
+        question: 'Choose date of opting the course',
+        typeId: 4,
+        
+      },
+      {
+        question: 'Choose time of opting the course',
+        typeId: 5,
+        
+      },
+    ],
+    required: true,
+  })
+  @IsArray()
+  @ArrayNotEmpty()
+  @ValidateNested({ each: true })
+  @Type(() => formDto)
+  questions: formDto[];
+}
+
+export class editFormDto {
+
+  @ApiProperty({
+    type: Number,
+    example: 1,
+    required: true
+  })
+  @IsNumber()
+  id: number;
+
+  @ApiProperty({
+    type: String,
+    example: 'What is your opinion about the course?',
+  })
+  @IsString()
+  @IsOptional()
+  question: string;
+
+  @ApiProperty({
+    type: 'object',
+    example: {
+      1: 'Option 1',
+      2: 'Option 2',
+      3: 'Option 3',
+      4: 'Option 4',
+    }
+  })
+  @IsObject()
+  @IsOptional()
+  options: object;
+
+  @ApiProperty({
+    type: Number,
+    example: 1,
+  })
+  @IsNumber()
+  @IsOptional()
+  typeId: number;
+
+}
+
+export class editFormBatchDto {
+  @ApiProperty({
+    type: [editFormDto],
+    example: [
+      {
+        id: 1,
+        question: 'What is the national animal of India?',
+        options: {
+          1: 'Option 1',
+          2: 'Option 2',
+          3: 'Option 3',
+          4: 'Option 4',
+        },
+        typeId: 1,
+        
+      },
+      {
+        id: 2,
+        question: 'What is the capital of France?',
+        options: {
+          1: 'Paris',
+          2: 'London',
+          3: 'Berlin',
+          4: 'Rome',
+        },
+        typeId: 2,
+        
+      },
+      {
+        id: 3,
+        question: 'What is the national animal of India?',
+        typeId: 3,
+        
+      },
+      {
+        id: 4,
+        question: 'Choose date of opting the course',
+        typeId: 4,
+        
+      },
+      {
+        id: 5,
+        question: 'Choose time of opting the course',
+        typeId: 5,
+        
+      },
+    ],
+    required: true,
+  })
+  @IsArray()
+  @ArrayNotEmpty()
+  @ValidateNested({ each: true })
+  @Type(() => editFormDto)
+  questions: editFormDto[];
+
 }
