@@ -3486,7 +3486,7 @@ export const zuvyFormTracking = main.table("zuvy_form_tracking", {
     onDelete: 'cascade',
     onUpdate: 'cascade',
   }),
-  chosenOptions: integer("chosen_options"),
+  chosenOptions: text("chosen_options").array(),
   answer: text("answer"),
   createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),

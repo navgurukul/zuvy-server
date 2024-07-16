@@ -1959,6 +1959,16 @@ export class ContentService {
         typeId: f.typeId,
       }));
 
+      for(let i=0; i<formQuestions.length;i++){
+        if(formQuestions[i].question== null || formQuestions[i].options== null ||formQuestions[i].typeId== null)
+          return {
+            status: "error",
+            code: 400,
+            message: "One or more Fields are empty.Please try again"
+          }
+
+      }
+
       const result = await db
         .insert(zuvyModuleForm)
         .values(formQuestions)
@@ -2008,6 +2018,28 @@ export class ContentService {
 
   async editFormQuestions(editFormDetails: editFormBatchDto) {
     try {
+
+      const isValid = editFormDetails.questions.every(question => {
+        if (typeof question.question !== 'string' || question.question.trim().length === 0) {
+          return false;
+        }
+        if (typeof question.options !== 'object' || Object.values(question.options).some(option => typeof option !== 'string' || option.trim().length === 0)) {
+          return false;
+        }
+        if (typeof question.typeId !== 'number' || question.typeId <= 0) {
+          return false;
+        }
+        return true;
+      });
+  
+      if (!isValid) {
+        return {
+          status: 'failure',
+          code: 400,
+          message: 'All questions and options must have a length greater than 0',
+        };
+      }
+
       await db
         .insert(zuvyModuleForm)
         .values(editFormDetails.questions)
