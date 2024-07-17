@@ -22,6 +22,11 @@ export class CodingPlatformService {
         return { statusCode: 400, message: 'Invalid action' };
       }
       let {submissionInfo, token, status }= await this.submitCode(sourceCode, questionId, action);
+  
+      if (status !== 'Accepted') {
+        return { statusCode: 407, message: status, data: submissionInfo};
+      }
+      
       let insertValues:any = { token, status, action, userId, questionId };
       let getSubmitQuery;
 
@@ -43,7 +48,7 @@ export class CodingPlatformService {
       let newSubmission;
       let updateValues:any = { token, status, action };
 
-      if (getSubmissionsRun.length === 0) {
+      if (getSubmissionsRun.length === 0 ) {
         // Insert if no previous submission exists
         newSubmission = await db.insert(zuvyPracticeCode).values(insertValues).returning();
       } else {
@@ -154,15 +159,15 @@ export class CodingPlatformService {
     };
 
     try {
-      let status = 0;
+      let status_code = 0;
       let response, token, submissionInfo
       response = await axios.request(options);
       token = response.data.token;
-      while (status < 3) {
+      while (status_code < 3) {
         submissionInfo = await this.getCodeInfo(token);
-        status = submissionInfo.status_id
+        status_code = submissionInfo.status_id
       }
-      status = submissionInfo.status.description
+      let status = submissionInfo.status.description
       return {submissionInfo, token, status };
     } catch (error) {
       throw error;
@@ -315,16 +320,18 @@ export class CodingPlatformService {
         AND ${zuvyPracticeCode.userId} = ${userId}
         AND ${zuvyPracticeCode.status} = 'Accepted'
         AND ${zuvyPracticeCode.action} = 'submit'
-      `).limit(1);
-      console.log('results:', results)
-      if (results.length === 0) {
+      `).limit(1).orderBy(desc(zuvyPracticeCode.id));
+
+      let data;
+      if (results?.length === 0) {
         return { status: 'error', code: 400, message: "Submission or not Accepted or not submitted yet" };
+      } else {
+        data = await db.select().from(zuvyCodingQuestions).where(sql`${zuvyCodingQuestions.id} = ${results[0].questionId}`)
       }
       let shapecode = await this.getCodeInfo(results[0].token)
-      return {...results[0], shapecode}
+      return {...results[0], questionInfo: data[0], shapecode}
     } catch (error){
       throw error
     }
-
   }
 }
