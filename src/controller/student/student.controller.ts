@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Delete, Patch, Body, Param, ValidationPipe, UsePipes, BadRequestException, Query } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Patch, Body, Param, ValidationPipe, UsePipes, BadRequestException, Query, Req } from '@nestjs/common';
 import { StudentService } from './student.service';
 import { ApiTags, ApiBody, ApiOperation, ApiCookieAuth, ApiQuery, ApiBearerAuth } from '@nestjs/swagger';
 import { get } from 'http';
@@ -20,11 +20,11 @@ import { get } from 'http';
 export class StudentController {
   constructor(private studentService: StudentService) { }
 
-  @Get('/:userId')
+  @Get('/')
   @ApiOperation({ summary: 'Get all course enrolled by student' })
   @ApiBearerAuth()
-  async getAllStudents(@Param('userId') userId: number): Promise<object> {
-    const [err, res] = await this.studentService.enrollData(userId);
+  async getAllStudents(@Req() req): Promise<object> {
+    const [err, res] = await this.studentService.enrollData(req.user[0].id);
     if (err) {
       throw new BadRequestException(err);
     }
@@ -80,5 +80,28 @@ export class StudentController {
       throw new BadRequestException(err);
     }
     return res;
+  }
+
+
+  @Get('/Dashboard/classes')
+  @ApiOperation({ summary: 'Get dashboard upcoming class' })
+  @ApiBearerAuth()
+  @ApiQuery({
+    name: 'batch_id',
+    required: false,
+    type: String,
+    description: 'batch_id',
+  })
+  async getUpcomingClass(@Req() req, @Query('batch_id') batchID: number
+  ) {
+    return await this.studentService.getUpcomingClass(req.user[0].id, batchID);
+  }
+
+  @Get('/Dashboard/attendance')
+  @ApiOperation({ summary: 'Get dashboard Attendance.' })
+  @ApiBearerAuth()
+  async getAttendanceClass(@Req() req
+  ) {
+    return await this.studentService.getAttendanceClass(req.user[0].id);
   }
 }

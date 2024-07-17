@@ -38,8 +38,8 @@ export class ClassesController {
   @Post('/')
   @ApiOperation({ summary: 'Create the new class' })
   @ApiBearerAuth()
-  async create(@Body() classData: CreateLiveBroadcastDto) {
-    return this.classesService.createLiveBroadcast(classData);
+  async create(@Body() classData: CreateLiveBroadcastDto,@Req() req) {
+    return this.classesService.createLiveBroadcast(classData,req.user[0]);
   }
 
   @Delete('/:id')
@@ -99,15 +99,6 @@ export class ClassesController {
     return { message: 'Data Refreshed', status: 200, };
   }
 
-  @Get('/meetings/:bootcampId')
-  @ApiOperation({ summary: 'Get the google classes id by bootcampId' })
-  @ApiBearerAuth()
-  getClassesBybootcampId(
-    @Query('bootcampId') bootcampId: string,
-    ): Promise<object> {
-    return this.classesService.unattendanceClassesByBootcampId(bootcampId);
-  }
-
   @Get('/getClassesByBatchId/:batchId')
   @ApiOperation({ summary: 'Get the google classes by batchId' })
   @ApiQuery({
@@ -130,29 +121,30 @@ export class ClassesController {
     return this.classesService.getClassesByBatchId(batchId, limit, offset);
   }
 
-  @Get('/getClassesByBootcampId/:bootcampId')
-  @ApiOperation({ summary: 'Get the google classes by bootcampId' })
-  @ApiQuery({
-    name: 'limit',
-    required: false,
-    type: Number,
-    description: 'Number of classes per page',
-  })
-  @ApiQuery({
-    name: 'offset',
-    required: false,
-    type: Number,
-    description: 'Offset for pagination',
-  })
-  @ApiBearerAuth()
-  getClassesByBootcampId(
-    @Query('limit') limit: number,
-    @Query('offset') offset: number,
-    @Param('bootcampId') bootcampId: string,
-  ): Promise<object> {
-    return this.classesService.getClassesByBootcampId(bootcampId, limit,
-      offset);
-  }
+  // @Get('/getClassesByBootcampId/:bootcampId')
+  // @ApiOperation({ summary: 'Get the google classes by bootcampId' })
+  // @ApiQuery({
+  //   name: 'limit',
+  //   required: false,
+  //   type: Number,
+  //   description: 'Number of classes per page',
+  // })
+  // @ApiQuery({
+  //   name: 'offset',
+  //   required: false,
+  //   type: Number,
+  //   description: 'Offset for pagination',
+  // })
+  // @ApiBearerAuth()
+  // getClassesByBootcampId(
+  //   @Query('limit') limit: number,
+  //   @Query('offset') offset: number,
+  //   @Param('bootcampId') bootcampId: string,
+  // ): Promise<object> {
+  //   return this.classesService.getClassesByBootcampId(bootcampId, limit,
+  //     offset);
+  // }
+
   @Get('/getAttendeesByMeetingId/:id')
   @ApiOperation({ summary: 'Get the google class attendees by meetingId' })
   @ApiBearerAuth()
@@ -160,10 +152,65 @@ export class ClassesController {
     return this.classesService.getAttendeesByMeetingId(id);
   }
 
-  @Post('/seeding/table')
-  @ApiOperation({ summary: 'Get the google class attendees by meetingId' })
+  // @Post('/seeding/table')
+  // @ApiOperation({ summary: 'Get the google class attendees by meetingId' })
+  // @ApiBearerAuth()
+  // async seedingClass(): Promise<object> {
+  //   return await this.classesService.seedingClass();
+  // }
+
+  
+  @Get('/all/:bootcampId')
+  @ApiOperation({ summary: 'Get the students classes by bootcamp and batch' })
+  @ApiQuery({
+    name: 'offset',
+    required: true,
+    type: Number,
+    description: 'Offset for pagination',
+  })
+  @ApiQuery({
+    name: 'limit',
+    required: true,
+    type: Number,
+    description: 'Number of classes limit per page',
+  })
+  @ApiQuery({
+    name: 'batchId',
+    required: false,
+    type: Number,
+    description: 'batch id',
+  })
+  @ApiQuery({
+    name: 'searchTerm',
+    required: false,
+    type: String,
+    description: 'Search by class title',
+  })
+  @ApiQuery({
+    name: 'status',
+    required: true,
+    type: String,
+    description: 'completed, upcoming, ongoing or all',
+  })
   @ApiBearerAuth()
-  async seedingClass(): Promise<object> {
-    return await this.classesService.seedingClass();
+  async getClassesBy(
+    @Param('bootcampId') bootcampId: number,
+    @Query('batchId') batchId: number,
+    @Query('status') status: string,
+    @Query('limit') limit: number,
+    @Query('offset') offset: number,
+    @Query('searchTerm') searchTerm: string,
+    @Req() req,
+  ): Promise<object> {
+    const userId =  parseInt(req.user[0].id);
+    return this.classesService.getClassesBy(
+      bootcampId,
+      req.user[0],
+      batchId,
+      limit,
+      offset,
+      searchTerm,
+      status,
+    );
   }
 }

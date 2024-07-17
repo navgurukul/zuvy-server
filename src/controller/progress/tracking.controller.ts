@@ -1,14 +1,15 @@
 import {
-    Controller,
-    Get,
-    Post,
-    Put,
-    Delete,
-    Patch,
-    Body,
-    Param,
-    BadRequestException,
-    Query,
+  Controller,
+  Get,
+  Post,
+  Put,
+  Delete,
+  Patch,
+  Body,
+  Param,
+  BadRequestException,
+  Query,
+  Req
 } from '@nestjs/common';
 import { TrackingService } from './tracking.service';
 import {
@@ -18,14 +19,20 @@ import {
   ApiCookieAuth,
   ApiOAuth2,
   ApiBearerAuth,
+  ApiExtraModels,
+  ApiBody,
+  getSchemaPath,
 } from '@nestjs/swagger';
 import {
-    CreateAssignmentDto,
-    PatchAssignmentDto,
-    TimeLineAssignmentDto,
+  CreateAssignmentDto,
+  PatchAssignmentDto,
+  TimeLineAssignmentDto,
+  SubmitBodyDto,
 } from './dto/assignment.dto';
 import { CreateArticleDto } from './dto/article.dto';
-import { CreateQuizDto, PutQuizDto } from './dto/quiz.dto';
+import { UpdateProjectDto } from './dto/project.dto';
+import { CreateQuizDto, McqCreateDto, PutQuizDto } from './dto/quiz.dto';
+import { quizBatchDto } from '../content/dto/content.dto';
 
 @Controller('tracking')
 @ApiTags('tracking')
@@ -282,4 +289,221 @@ export class TrackingController {
   //   }
   //   return res;
   // }
+
+  @Post('updateChapterStatus/:bootcampId/:moduleId')
+  @ApiOperation({ summary: 'Update Chapter status' })
+  @ApiBearerAuth()
+  async updateChapterStatus(
+    @Param('bootcampId') bootcampId: number,
+    @Req() req,
+    @Param('moduleId') moduleId: number,
+    @Query('chapterId') chapterId: number,
+  ) {
+    const res = await this.TrackingService.updateChapterStatus(
+      bootcampId,
+      req.user[0].id,
+      moduleId,
+      chapterId
+    );
+    return res;
+  }
+
+  @Get('/getAllChaptersWithStatus/:moduleId')
+  @ApiOperation({
+    summary: 'Get all chapters with status for a user by bootcampId',
+  })
+  @ApiBearerAuth()
+  async getAllChapterForUser(
+    @Param('moduleId') moduleId: number,
+    @Req() req
+  ) {
+    const res = await this.TrackingService.getAllChapterWithStatus(
+      moduleId,
+      req.user[0].id,
+    );
+    return res;
+  }
+
+  @Post('updateQuizAndAssignmentStatus/:bootcampId/:moduleId')
+  @ApiOperation({ summary: 'Update Chapter status' })
+  @ApiBody({ type: SubmitBodyDto, required: false })
+  @ApiBearerAuth()
+  async updateQuizAndAssignmentStatus(
+    @Param('bootcampId') bootcampId: number,
+    @Req() req,
+    @Param('moduleId') moduleId: number,
+    @Query('chapterId') chapterId: number,
+    @Body() submitBody: SubmitBodyDto,
+  ) {
+    const res = await this.TrackingService.updateQuizAndAssignmentStatus(
+      req.user[0].id,
+      moduleId,
+      chapterId,
+      bootcampId,
+      submitBody,
+    );
+    return res;
+  }
+
+  @Get('/allModulesForStudents/:bootcampId')
+  @ApiOperation({ summary: 'Get all modules of a course' })
+  @ApiBearerAuth()
+  async getAllModules(
+    @Param('bootcampId') bootcampId: number,
+    @Req() req,
+  ) {
+    const res = await this.TrackingService.getAllModuleByBootcampIdForStudent(
+      bootcampId,
+      req.user[0].id,
+    );
+    return res;
+  }
+
+  @Get('/bootcampProgress/:bootcampId')
+  @ApiOperation({ summary: 'Get bootcamp progress for a user' })
+  @ApiBearerAuth()
+  async getBootcampProgress(
+    @Param('bootcampId') bootcampId: number,
+    @Req() req,
+  ) {
+    const res = await this.TrackingService.getBootcampTrackingForAUser(
+      bootcampId,
+      req.user[0].id,
+    );
+    return res;
+  }
+
+  @Get('/upcomingSubmission/:bootcampId')
+  @ApiOperation({ summary: 'Get upcoming assignment submission' })
+  @ApiBearerAuth()
+  async getUpcomingAssignment(
+    @Param('bootcampId') bootcampId: number,
+    @Req() req,
+  ) {
+    const res = await this.TrackingService.getPendingAssignmentForStudent(
+      bootcampId,
+      req.user[0].id
+    );
+    return res;
+  }
+
+  @Get('/getChapterDetailsWithStatus/:chapterId')
+  @ApiOperation({
+    summary: 'Get chapter details for a user along with status',
+  })
+  @ApiBearerAuth()
+  async getChapterDetailsForUser(
+    @Param('chapterId') chapterId: number,
+    @Req() req,
+  ) {
+    const res = await this.TrackingService.getChapterDetailsWithStatus(
+      chapterId,
+      req.user[0].id,
+    );
+    return res;
+  }
+
+  @Get('getAllQuizAndAssignmentWithStatus/:moduleId')
+  @ApiOperation({ summary: 'get All Quiz And Assignment With Status' })
+  @ApiBearerAuth()
+  async getAllQuizAndAssignmentWithStatus(
+    @Req() req,
+    @Param('moduleId') moduleId: number,
+    @Query('chapterId') chapterId: number,
+  ) {
+    const res = await this.TrackingService.getAllQuizAndAssignmentWithStatus(
+      req.user[0].id,
+      moduleId,
+      chapterId,
+    );
+    return res;
+  }
+
+  @Post('updateProject/:projectId')
+  @ApiOperation({ summary: 'Update project for a user' })
+  @ApiBearerAuth()
+  @ApiQuery({
+    name: 'moduleId',
+    required: true,
+    type: Number,
+    description: 'moduleId',
+  })
+  @ApiQuery({
+    name: 'bootcampId',
+    required: true,
+    type: Number,
+    description: 'bootcampId',
+  })
+  async updateProject(
+    @Param('projectId') projectId: number,
+    @Req() req,
+    @Query('moduleId') moduleId: number,
+    @Query('bootcampId') bootcampId: number,
+    @Body() submitProject:UpdateProjectDto
+  ) {
+    const res = await this.TrackingService.submitProjectForAUser(
+      req.user[0].id,
+      bootcampId,
+      moduleId,
+      projectId,
+      submitProject
+    );
+    return res;
+  }
+
+  @Get('/getProjectDetailsWithStatus/:projectId/:moduleId')
+  @ApiOperation({
+    summary: 'Get project details details for a user along with status',
+  })
+  @ApiBearerAuth()
+  async getProjectDetailsForUser(
+    @Param('projectId') projectId: number,
+    @Param('moduleId') moduleId: number,
+    @Req() req,
+  ) {
+    const res = await this.TrackingService.getProjectDetailsWithStatus(
+      projectId,
+      moduleId,
+      req.user[0].id
+    );
+    return res;
+  }
+
+  @Get('/allBootcampProgress')
+  @ApiOperation({
+    summary: 'Get all bootcamp progress for a particular student',
+  })
+  @ApiBearerAuth()
+  async getAllBootcampProgressForStudents(
+    @Req() req,
+  ) {
+    const res = await this.TrackingService.allBootcampProgressForStudents(
+      req.user[0].id
+    );
+    return res;
+  }
+
+  @Get('/latestUpdatedCourse')
+  @ApiOperation({
+    summary: 'Get all bootcamp progress for a particular student',
+  })
+  @ApiBearerAuth()
+  async getLatestUpdatedCourseForStudent(
+    @Req() req,
+  ) {
+    const res = await this.TrackingService.getLatestUpdatedCourseForStudents(
+      req.user[0].id
+    );
+    return res;
+  }
+
+  @Get('assessment/submissionId=:submissionId')
+  @ApiOperation({ summary: 'Get assessment submission by submissionId' })
+  @ApiBearerAuth()
+  async getAssessmentSubmission(
+    @Param('submissionId') submissionId: number, @Req() req
+  ) {
+    const res = await this.TrackingService.getAssessmentSubmission(submissionId, req.user[0].id);
+    return res;
+  }   
 }

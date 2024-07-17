@@ -55,19 +55,35 @@ export class BootcampService {
     }
   }
 
-  async getAllBootcamps(limit: number, offset: number): Promise<any> {
+  async getAllBootcamps(limit: number, offset: number, searchTerm?: string | number): Promise<any> {
     try {
-      let getAllBootcamps = await db
-        .select()
-        .from(zuvyBootcamps)
-        .limit(limit)
-        .offset(offset);
-      const totalCountQuery = await db
-        .select({ count: count(zuvyBootcamps.id) })
-        .from(zuvyBootcamps);
-      let totalPages = Math.ceil(totalCountQuery[0].count / limit);
-      let data = await Promise.all(
-        getAllBootcamps.map(async (bootcamp) => {
+      let query;
+      let countQuery;
+      if (searchTerm) {
+        if (typeof searchTerm === 'string') {
+          const searchCondition = sql`LOWER(${zuvyBootcamps.name}) LIKE ${searchTerm.toLowerCase()} || '%'`;
+          query = db.select().from(zuvyBootcamps).where(searchCondition).limit(limit).offset(offset);
+          countQuery = db.select({ count: count(zuvyBootcamps.id) }).from(zuvyBootcamps).where(searchCondition);
+        } else {
+          const searchCondition = sql`${zuvyBootcamps.id} = ${searchTerm}`;
+          query = db.select().from(zuvyBootcamps).where(searchCondition).limit(limit).offset(offset);
+          countQuery = db.select({ count: count(zuvyBootcamps.id) }).from(zuvyBootcamps).where(searchCondition);
+        }
+      }
+      else {
+        query = db.select().from(zuvyBootcamps).limit(limit).offset(offset);
+        countQuery = db.select({ count: count(zuvyBootcamps.id) }).from(zuvyBootcamps);      
+      }
+      
+      const getBootcamps = await query;
+  
+      const totalCountQuery = await countQuery;
+      const totalCount = totalCountQuery[0].count;
+  
+      const totalPages = Math.ceil(totalCount / limit);
+
+      const data = await Promise.all(
+        getBootcamps.map(async (bootcamp) => {
           let [err, res] = await this.enrollData(bootcamp.id);
           if (err) {
             return [err, null];
@@ -75,9 +91,10 @@ export class BootcampService {
           return { ...bootcamp, ...res };
         }),
       );
+  
       return [
         null,
-        { data, totalBootcamps: totalCountQuery[0].count, totalPages },
+        { data, totalBootcamps: totalCount, totalPages },
       ];
     } catch (e) {
       log(`error: ${e.message}`);
@@ -85,37 +102,6 @@ export class BootcampService {
     }
   }
 
-  async searchBootcamps(searchTerm: string | number) {
-    try {
-      let getSearchedBootcamps;
-      if (searchTerm.constructor == String) {
-        getSearchedBootcamps = await db
-          .select()
-          .from(zuvyBootcamps)
-          .where(
-            sql`LOWER(${zuvyBootcamps.name}) LIKE ${searchTerm.toLowerCase()} || '%'`,
-          );
-      } else {
-        getSearchedBootcamps = await db
-          .select()
-          .from(zuvyBootcamps)
-          .where(sql`${zuvyBootcamps.id} = ${searchTerm}`);
-      }
-      let data = await Promise.all(
-        getSearchedBootcamps.map(async (bootcamp) => {
-          let [err, res] = await this.enrollData(bootcamp.id);
-          if (err) {
-            return [err, null];
-          }
-          return { ...bootcamp, ...res };
-        }),
-      );
-      return [null, data];
-    } catch (e) {
-      log(`error: ${e.message}`);
-      return [{ status: 'error', message: e.message, code: 500 }, null];
-    }
-  }
 
   async getBootcampById(id: number, isContent: boolean): Promise<any> {
     try {
@@ -591,122 +577,18 @@ export class BootcampService {
       return [{ status: 'error', message: e.message, code: 500 }, null];
     }
   }
+  async BootcampOrBatchEnrollments(batch_id: number, bootcamp_id: number, user_id = null) {
+    let queryString;
 
-  // async getStudentsByBootcampOrBatch(
-  //   bootcamp_id,
-  //   batch_id,
-  //   searchTerm: string | bigint = '',
-  //   limit: number,
-  //   offset: number,
-  // ) {
-  //   try {
-  //     let queryString;
-  //     if (bootcamp_id && batch_id) {
-  //       queryString = sql`${zuvyBatchEnrollments.bootcampId} = ${bootcamp_id} and ${zuvyBatchEnrollments.batchId} = ${batch_id}`;
-  //     } else {
-  //       queryString = sql`${zuvyBatchEnrollments.bootcampId} = ${bootcamp_id}`;
-  //     }
-
-  //     const batchesData = await db
-  //       .select()
-  //       .from(batches)
-  //       .where(eq(batches.bootcampId, bootcamp_id));
-
-  //     const batchIds = batchesData.map((obj) => obj.id);
-
-  //     const [count, dataResult] = await Promise.all([
-  //       db
-  //         .select({ count: sql<number>`count(*)` })
-  //         .from(zuvyBatchEnrollments)
-  //         .innerJoin(users, eq(zuvyBatchEnrollments.userId, users.id))
-  //         .where(
-  //           and(
-  //             queryString,
-  //             searchTerm.constructor === String
-  //               ? sql`((LOWER(${users.name}) LIKE ${searchTerm.toLowerCase()} || '%' OR LOWER(${users.email}) LIKE ${searchTerm.toLowerCase()} || '%'))`
-  //               : sql`${users.id} = ${searchTerm}`,
-  //           ),
-  //         )
-  //         .execute(),
-  //       db
-  //         .select({
-  //           email: users.email,
-  //           name: users.name,
-  //           userId: users.id,
-  //           bootcampId: zuvyBatchEnrollments.bootcampId,
-  //           batchId: zuvyBatchEnrollments.batchId,
-  //           attendance: zuvyBatchEnrollments.attendance,
-  //           profilePicture: users.profilePicture,
-  //         })
-  //         .from(zuvyBatchEnrollments)
-  //         .innerJoin(users, eq(zuvyBatchEnrollments.userId, users.id))
-  //         .where(
-  //           and(
-  //             queryString,
-  //             searchTerm.constructor === String
-  //               ? sql`((LOWER(${users.name}) LIKE ${searchTerm.toLowerCase()} || '%' OR LOWER(${users.email}) LIKE ${searchTerm.toLowerCase()} || '%'))`
-  //               : sql`${users.id} = ${searchTerm}`,
-  //           ),
-  //         )
-  //         .limit(limit)
-  //         .offset(offset)
-  //         .execute(),
-  //     ]);
-  //     const filteredData = dataResult.map((student) => {
-  //       return {
-  //         ...student,
-  //         userId: Number(student.userId),
-  //       };
-  //     });
-  //     let totalStudents = Number(count[0].count);
-  //     let totalPages = isNaN(limit) ? 1 : Math.ceil(totalStudents / limit);
-  //     for (let student_ of filteredData) {
-  //       try {
-  //         let total_classes = await db
-  //           .select()
-  //           .from(classesGoogleMeetLink)
-  //           .where(
-  //             sql`${classesGoogleMeetLink.batchId} = ${student_.batchId.toString()}`,
-  //           );
-  //         student_['batchName'] = null;
-
-  //         if (student_.batchId && batchIds.includes(student_.batchId)) {
-  //           let batchInfo = await db
-  //             .select()
-  //             .from(batches)
-  //             .where(eq(batches.id, student_.batchId));
-
-  //           if (batchInfo.length > 0) {
-  //             student_['batchName'] = batchInfo[0].name;
-  //             let student_atte = student_.attendance || 0;
-  //             let result = (student_atte / total_classes.length) * 100;
-  //             student_['attendance'] = result || 0;
-  //             student_['progress'] = 0;
-  //           }
-  //         }
-  //       } catch (error) {
-  //         log(`error: ${error.message}`);
-
-  //         return [
-  //           { status: 'error', message: 'Fetching emails failed', code: 500 },
-  //           null,
-  //         ];
-  //       }
-  //     }
-  //     return [
-  //       null,
-  //       {
-  //         status: 'success',
-  //         studentsEmails: filteredData,
-  //         totalPages,
-  //         totalStudents,
-  //         code: 200,
-  //       },
-  //     ];
-  //   } catch (e) {
-  //     return [{ status: 'error', message: e.message, code: 500 }, null];
-  //   }
-  // }
+    if (user_id && batch_id && bootcamp_id) {
+      queryString = sql`${zuvyBatchEnrollments.bootcampId} = ${bootcamp_id} and ${zuvyBatchEnrollments.batchId} = ${batch_id} and ${zuvyBatchEnrollments.userId} = ${user_id}`;
+    } else if (bootcamp_id && batch_id) {
+      queryString = sql`${zuvyBatchEnrollments.bootcampId} = ${bootcamp_id} and ${zuvyBatchEnrollments.batchId} = ${batch_id}`;
+    } else {
+      queryString = sql`${zuvyBatchEnrollments.bootcampId} = ${bootcamp_id}`;
+    }
+    return queryString
+  }
 
   async getStudentsByBootcampOrBatch(
     bootcamp_id,
@@ -715,12 +597,7 @@ export class BootcampService {
     limit: number,
     offset: number,
   ) {
-    let queryString;
-    if (bootcamp_id && batch_id) {
-      queryString = sql`${zuvyBatchEnrollments.bootcampId} = ${bootcamp_id} and ${zuvyBatchEnrollments.batchId} = ${batch_id}`;
-    } else {
-      queryString = sql`${zuvyBatchEnrollments.bootcampId} = ${bootcamp_id}`;
-    }
+    let queryString = await this.BootcampOrBatchEnrollments(batch_id, bootcamp_id);
     let totalStudentsInTheBatch, studentsIds, studentsInTheBatch;
 
     if (searchTerm && searchTerm.constructor === String) {
@@ -808,8 +685,8 @@ export class BootcampService {
 
             let attendancePercentage = classesInfo.length > 0 ? (student.attendance / classesInfo.length) * 100 : 0;
             batchData = {
-              batchId: student?.batchId ,
-              batchName: student.batchInfo?.name ,
+              batchId: student?.batchId,
+              batchName: student.batchInfo?.name,
               attendance: attendancePercentage,
             }
           } else {
@@ -844,7 +721,7 @@ export class BootcampService {
         code: 200,
       },
     ];
-    
+
   }
   async searchStudentsByNameOrEmail(
     searchTerm: string | bigint,
@@ -986,73 +863,6 @@ export class BootcampService {
       ];
     } catch (e) {
       return [{ status: 'error', message: e.message, code: 500 }, null];
-    }
-  }
-
-  async getStudentClassesByBootcampId(bootcampId, userId) {
-    try {
-      let zuvyBatchEnrollmentsData = await db
-        .select()
-        .from(zuvyBatchEnrollments)
-        .where(sql`${zuvyBatchEnrollments.bootcampId} = ${bootcampId} `);
-      const matchingEnrollments = zuvyBatchEnrollmentsData.filter(
-        (enrollment) => enrollment.userId.toString() === userId.toString(),
-      );
-      if (matchingEnrollments.length === 0) {
-        return {
-          status: 'error',
-          message:
-            'No matching batch enrollments found for the provided bootcampId and userId',
-          code: 404,
-        };
-      }
-      const batchId = matchingEnrollments[0].batchId;
-      try {
-        const currentTime = new Date();
-
-        const classes = await db
-          .select()
-          .from(zuvySessions)
-          .where(sql`${zuvySessions.batchId} = ${batchId}`);
-        const completedClasses = classes
-          .filter((classObj) => {
-            const endTime = new Date(classObj.endTime);
-            return currentTime > endTime;
-          })
-          .sort((a, b) => {
-            const aStartTime = new Date(a.startTime);
-            const bStartTime = new Date(b.startTime);
-            return bStartTime.getTime() - aStartTime.getTime();
-          });
-
-        const ongoingClasses = classes.filter((classObj) => {
-          const startTime = new Date(classObj.startTime);
-          const endTime = new Date(classObj.endTime);
-          return currentTime >= startTime && currentTime <= endTime;
-        });
-
-        const upcomingClasses = classes.filter((classObj) => {
-          const startTime = new Date(classObj.startTime);
-          return currentTime < startTime;
-        });
-
-        return {
-          status: 'success',
-          message: 'Classes fetched successfully by batchId',
-          code: 200,
-          completedClasses,
-          ongoingClasses,
-          upcomingClasses,
-        };
-      } catch (error) {
-        return {
-          success: 'not success',
-          message: 'Error fetching class Links',
-          error: error,
-        };
-      }
-    } catch (err) {
-      return [{ status: 'error', message: err.message, code: 500 }, null];
     }
   }
 }

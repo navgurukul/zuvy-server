@@ -112,13 +112,11 @@ export class BatchesController {
     name: 'old_batch_id',
     required: false,
     type: Number,
-    description: 'Offset for pagination',
   })
   @ApiQuery({
     name: 'bootcamp_id',
     required: false,
     type: Number,
-    description: 'Offset for pagination',
   })
   @ApiOperation({ summary: 'reassign Batch' })
   @ApiBearerAuth()
