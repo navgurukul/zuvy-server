@@ -6,7 +6,6 @@ services:
       dockerfile: Dockerfile
     image : zuvy_production
     container_name: zuvy_container_production
-
     ports:
       - "4777:5000"
     env_file:
