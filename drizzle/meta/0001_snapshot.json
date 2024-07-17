@@ -1,6 +1,6 @@
 {
-  "id": "608db064-dc25-4fb2-8b61-2b681df2c47b",
-  "prevId": "3c3a46d8-950e-4d78-9936-8b77034818b5",
+  "id": "f5d68f1e-35f0-42f8-8630-ed0b19ef9083",
+  "prevId": "ec5dab3d-67ee-4a56-8db5-06e370b30304",
   "version": "5",
   "dialect": "pg",
   "tables": {
@@ -189,6 +189,12 @@
           "type": "integer",
           "primaryKey": false,
           "notNull": true
+        },
+        "multiple_choice": {
+          "name": "multiple_choice",
+          "type": "varchar(255)",
+          "primaryKey": false,
+          "notNull": false
         },
         "team_id": {
           "name": "team_id",
@@ -575,6 +581,18 @@
           "primaryKey": false,
           "notNull": true,
           "default": "now()"
+        },
+        "attendance": {
+          "name": "attendance",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "classes_attended": {
+          "name": "classes_attended",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
         }
       },
       "indexes": {},
@@ -1064,8 +1082,8 @@
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onDelete": "cascade",
+          "onUpdate": "cascade"
         }
       },
       "compositePrimaryKeys": {},
@@ -2657,13 +2675,13 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {}
     },
-    "coding_questions": {
-      "name": "coding_questions",
+    "zuvy_coding_questions": {
+      "name": "zuvy_coding_questions",
       "schema": "main",
       "columns": {
         "id": {
           "name": "id",
-          "type": "bigserial",
+          "type": "serial",
           "primaryKey": true,
           "notNull": true
         },
@@ -2685,8 +2703,14 @@
           "primaryKey": false,
           "notNull": false
         },
-        "tags": {
-          "name": "tags",
+        "tag_id": {
+          "name": "tag_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "constraints": {
+          "name": "constraints",
           "type": "text",
           "primaryKey": false,
           "notNull": false
@@ -2741,12 +2765,27 @@
         }
       },
       "indexes": {},
-      "foreignKeys": {},
+      "foreignKeys": {
+        "zuvy_coding_questions_tag_id_zuvy_tags_id_fk": {
+          "name": "zuvy_coding_questions_tag_id_zuvy_tags_id_fk",
+          "tableFrom": "zuvy_coding_questions",
+          "tableTo": "zuvy_tags",
+          "schemaTo": "main",
+          "columnsFrom": [
+            "tag_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {}
     },
-    "coding_submission": {
-      "name": "coding_submission",
+    "zuvy_coding_submission": {
+      "name": "zuvy_coding_submission",
       "schema": "main",
       "columns": {
         "id": {
@@ -2782,9 +2821,9 @@
       },
       "indexes": {},
       "foreignKeys": {
-        "coding_submission_user_id_users_id_fk": {
-          "name": "coding_submission_user_id_users_id_fk",
-          "tableFrom": "coding_submission",
+        "zuvy_coding_submission_user_id_users_id_fk": {
+          "name": "zuvy_coding_submission_user_id_users_id_fk",
+          "tableFrom": "zuvy_coding_submission",
           "tableTo": "users",
           "schemaTo": "main",
           "columnsFrom": [
@@ -3615,102 +3654,6 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {}
     },
-    "developers_resume": {
-      "name": "developers_resume",
-      "schema": "main",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "serial",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "name": {
-          "name": "name",
-          "type": "varchar(255)",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "email": {
-          "name": "email",
-          "type": "varchar(255)",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "password": {
-          "name": "password",
-          "type": "varchar(255)",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "role": {
-          "name": "role",
-          "type": "varchar(255)",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "education": {
-          "name": "education",
-          "type": "varchar(255)",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "intrests": {
-          "name": "intrests",
-          "type": "varchar(255)",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "skills": {
-          "name": "skills",
-          "type": "varchar(255)",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "experience": {
-          "name": "experience",
-          "type": "varchar(255)",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "programming_languages": {
-          "name": "programming_languages",
-          "type": "varchar(255)",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "resonal_language": {
-          "name": "resonal_language",
-          "type": "varchar(255)",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "known_framworks": {
-          "name": "known_framworks",
-          "type": "varchar(255)",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "learning_plan": {
-          "name": "learning_plan",
-          "type": "varchar(255)",
-          "primaryKey": false,
-          "notNull": false
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "main_developers_resume_email_unique": {
-          "name": "main_developers_resume_email_unique",
-          "nullsNotDistinct": false,
-          "columns": [
-            "email"
-          ]
-        }
-      }
-    },
     "donor": {
       "name": "donor",
       "schema": "main",
@@ -4088,107 +4031,6 @@
           "schemaTo": "main",
           "columnsFrom": [
             "question_set_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {}
-    },
-    "events": {
-      "name": "events",
-      "schema": "main",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "serial",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "event_name": {
-          "name": "event_name",
-          "type": "varchar(255)",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "start_time": {
-          "name": "start_time",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "end_time": {
-          "name": "end_time",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "durations": {
-          "name": "durations",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "view_page_id": {
-          "name": "view_page_id",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "session_id": {
-          "name": "session_id",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "user_id": {
-          "name": "user_id",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "events_view_page_id_view_page_id_fk": {
-          "name": "events_view_page_id_view_page_id_fk",
-          "tableFrom": "events",
-          "tableTo": "view_page",
-          "schemaTo": "main",
-          "columnsFrom": [
-            "view_page_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "events_session_id_session_id_fk": {
-          "name": "events_session_id_session_id_fk",
-          "tableFrom": "events",
-          "tableTo": "session",
-          "schemaTo": "main",
-          "columnsFrom": [
-            "session_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "events_user_id_user_hack_id_fk": {
-          "name": "events_user_id_user_hack_id_fk",
-          "tableFrom": "events",
-          "tableTo": "user_hack",
-          "schemaTo": "main",
-          "columnsFrom": [
-            "user_id"
           ],
           "columnsTo": [
             "id"
@@ -4844,110 +4686,6 @@
           "onUpdate": "no action"
         }
       },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {}
-    },
-    "gta_game": {
-      "name": "gta_game",
-      "schema": "main",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "serial",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "first_name": {
-          "name": "first_name",
-          "type": "varchar(255)",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "last_name": {
-          "name": "last_name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "gender": {
-          "name": "gender",
-          "type": "varchar(255)",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "country": {
-          "name": "country",
-          "type": "varchar(255)",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "password": {
-          "name": "password",
-          "type": "varchar(255)",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "user_id": {
-          "name": "user_id",
-          "type": "varchar(255)",
-          "primaryKey": false,
-          "notNull": true
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {}
-    },
-    "hackathon_for_temp": {
-      "name": "hackathon_for_temp",
-      "schema": "main",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "serial",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "first_name": {
-          "name": "first_name",
-          "type": "varchar(255)",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "last_name": {
-          "name": "last_name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "gender": {
-          "name": "gender",
-          "type": "varchar(255)",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "country": {
-          "name": "country",
-          "type": "varchar(255)",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "password": {
-          "name": "password",
-          "type": "varchar(255)",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "user_id": {
-          "name": "user_id",
-          "type": "varchar(255)",
-          "primaryKey": false,
-          "notNull": true
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {}
     },
@@ -5842,6 +5580,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "pathway_id": {
+          "name": "pathway_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
         "pathway_code": {
           "name": "pathway_code",
           "type": "varchar(255)",
@@ -5868,69 +5612,6 @@
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {}
-    },
-    "merakihackthon": {
-      "name": "merakihackthon",
-      "schema": "main",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "serial",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "user_id": {
-          "name": "user_id",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "email": {
-          "name": "email",
-          "type": "varchar(255)",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "durations": {
-          "name": "durations",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "merakihackthon_user_id_users_id_fk": {
-          "name": "merakihackthon_user_id_users_id_fk",
-          "tableFrom": "merakihackthon",
-          "tableTo": "users",
-          "schemaTo": "main",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "main_merakihackthon_user_id_unique": {
-          "name": "main_merakihackthon_user_id_unique",
-          "nullsNotDistinct": false,
-          "columns": [
-            "user_id"
-          ]
-        }
-      }
     },
     "merged_classes": {
       "name": "merged_classes",
@@ -6914,14 +6595,14 @@
           "primaryKey": false,
           "notNull": false
         },
-        "group_id": {
-          "name": "group_id",
+        "space_id": {
+          "name": "space_id",
           "type": "integer",
           "primaryKey": false,
           "notNull": false
         },
-        "space_id": {
-          "name": "space_id",
+        "group_id": {
+          "name": "group_id",
           "type": "integer",
           "primaryKey": false,
           "notNull": false
@@ -6977,20 +6658,6 @@
           "onDelete": "no action",
           "onUpdate": "no action"
         },
-        "partner_specific_batches_group_id_space_group_id_fk": {
-          "name": "partner_specific_batches_group_id_space_group_id_fk",
-          "tableFrom": "partner_specific_batches",
-          "tableTo": "space_group",
-          "schemaTo": "main",
-          "columnsFrom": [
-            "group_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "set null",
-          "onUpdate": "no action"
-        },
         "partner_specific_batches_space_id_partner_space_id_fk": {
           "name": "partner_specific_batches_space_id_partner_space_id_fk",
           "tableFrom": "partner_specific_batches",
@@ -7005,6 +6672,20 @@
           "onDelete": "set null",
           "onUpdate": "no action"
         },
+        "partner_specific_batches_group_id_space_group_id_fk": {
+          "name": "partner_specific_batches_group_id_space_group_id_fk",
+          "tableFrom": "partner_specific_batches",
+          "tableTo": "space_group",
+          "schemaTo": "main",
+          "columnsFrom": [
+            "group_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
         "partner_specific_batches_pathway_id_pathways_v2_id_fk": {
           "name": "partner_specific_batches_pathway_id_pathways_v2_id_fk",
           "tableFrom": "partner_specific_batches",
@@ -7012,6 +6693,129 @@
           "schemaTo": "main",
           "columnsFrom": [
             "pathway_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {}
+    },
+    "partner_specific_batches_v2": {
+      "name": "partner_specific_batches_v2",
+      "schema": "main",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "class_id": {
+          "name": "class_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "recurring_id": {
+          "name": "recurring_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "space_id": {
+          "name": "space_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "group_id": {
+          "name": "group_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "partner_id": {
+          "name": "partner_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "pathway_id": {
+          "name": "pathway_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "partner_specific_batches_v2_class_id_classes_id_fk": {
+          "name": "partner_specific_batches_v2_class_id_classes_id_fk",
+          "tableFrom": "partner_specific_batches_v2",
+          "tableTo": "classes",
+          "schemaTo": "main",
+          "columnsFrom": [
+            "class_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "partner_specific_batches_v2_recurring_id_recurring_classes_id_fk": {
+          "name": "partner_specific_batches_v2_recurring_id_recurring_classes_id_fk",
+          "tableFrom": "partner_specific_batches_v2",
+          "tableTo": "recurring_classes",
+          "schemaTo": "main",
+          "columnsFrom": [
+            "recurring_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "partner_specific_batches_v2_space_id_partner_space_id_fk": {
+          "name": "partner_specific_batches_v2_space_id_partner_space_id_fk",
+          "tableFrom": "partner_specific_batches_v2",
+          "tableTo": "partner_space",
+          "schemaTo": "main",
+          "columnsFrom": [
+            "space_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
+        "partner_specific_batches_v2_group_id_space_group_id_fk": {
+          "name": "partner_specific_batches_v2_group_id_space_group_id_fk",
+          "tableFrom": "partner_specific_batches_v2",
+          "tableTo": "space_group",
+          "schemaTo": "main",
+          "columnsFrom": [
+            "group_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
+        "partner_specific_batches_v2_partner_id_partners_id_fk": {
+          "name": "partner_specific_batches_v2_partner_id_partners_id_fk",
+          "tableFrom": "partner_specific_batches_v2",
+          "tableTo": "partners",
+          "schemaTo": "main",
+          "columnsFrom": [
+            "partner_id"
           ],
           "columnsTo": [
             "id"
@@ -9304,75 +9108,13 @@
         },
         "created_at": {
           "name": "created_at",
-          "type": "timestamp with time zone",
+          "type": "date",
           "primaryKey": false,
-          "notNull": false,
-          "default": "now()"
+          "notNull": false
         }
       },
       "indexes": {},
       "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {}
-    },
-    "session": {
-      "name": "session",
-      "schema": "main",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "serial",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "session_name": {
-          "name": "session_name",
-          "type": "varchar(255)",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "start_time": {
-          "name": "start_time",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "end_time": {
-          "name": "end_time",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "durations": {
-          "name": "durations",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "user_id": {
-          "name": "user_id",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "session_user_id_user_hack_id_fk": {
-          "name": "session_user_id_user_hack_id_fk",
-          "tableFrom": "session",
-          "tableTo": "user_hack",
-          "schemaTo": "main",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {}
     },
@@ -10290,6 +10032,83 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {}
     },
+    "sub_stage": {
+      "name": "sub_stage",
+      "schema": "main",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "school_id": {
+          "name": "school_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "stage_id": {
+          "name": "stage_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "stage_name": {
+          "name": "stage_name",
+          "type": "varchar(255)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "sub_stages": {
+          "name": "sub_stages",
+          "type": "varchar(255)",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "sub_stage_stage_id_school_stage_id_fk": {
+          "name": "sub_stage_stage_id_school_stage_id_fk",
+          "tableFrom": "sub_stage",
+          "tableTo": "school_stage",
+          "schemaTo": "main",
+          "columnsFrom": [
+            "stage_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {}
+    },
+    "zuvy_tags": {
+      "name": "zuvy_tags",
+      "schema": "main",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "tag_name": {
+          "name": "tag_name",
+          "type": "varchar",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {}
+    },
     "talk_mitra": {
       "name": "talk_mitra",
       "schema": "main",
@@ -10458,34 +10277,6 @@
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {}
-    },
-    "user_hack": {
-      "name": "user_hack",
-      "schema": "main",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "serial",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "name": {
-          "name": "name",
-          "type": "varchar(255)",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "email": {
-          "name": "email",
-          "type": "varchar(255)",
           "primaryKey": false,
           "notNull": true
         }
@@ -10767,14 +10558,14 @@
           "primaryKey": false,
           "notNull": false
         },
-        "group_id": {
-          "name": "group_id",
+        "space_id": {
+          "name": "space_id",
           "type": "integer",
           "primaryKey": false,
           "notNull": false
         },
-        "space_id": {
-          "name": "space_id",
+        "group_id": {
+          "name": "group_id",
           "type": "integer",
           "primaryKey": false,
           "notNull": false
@@ -10816,20 +10607,6 @@
           "onDelete": "no action",
           "onUpdate": "no action"
         },
-        "users_group_id_space_group_id_fk": {
-          "name": "users_group_id_space_group_id_fk",
-          "tableFrom": "users",
-          "tableTo": "space_group",
-          "schemaTo": "main",
-          "columnsFrom": [
-            "group_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "set null",
-          "onUpdate": "no action"
-        },
         "users_space_id_partner_space_id_fk": {
           "name": "users_space_id_partner_space_id_fk",
           "tableFrom": "users",
@@ -10843,6 +10620,20 @@
           ],
           "onDelete": "cascade",
           "onUpdate": "cascade"
+        },
+        "users_group_id_space_group_id_fk": {
+          "name": "users_group_id_space_group_id_fk",
+          "tableFrom": "users",
+          "tableTo": "space_group",
+          "schemaTo": "main",
+          "columnsFrom": [
+            "group_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
         },
         "users_c4ca_partner_id_c4ca_partners_id_fk": {
           "name": "users_c4ca_partner_id_c4ca_partners_id_fk",
@@ -11031,80 +10822,6 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {}
     },
-    "view_page": {
-      "name": "view_page",
-      "schema": "main",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "serial",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "user_id": {
-          "name": "user_id",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "durations": {
-          "name": "durations",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false,
-          "default": "now()"
-        },
-        "page_url": {
-          "name": "page_url",
-          "type": "varchar(255)",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "page_title": {
-          "name": "page_title",
-          "type": "varchar(255)",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "start_time": {
-          "name": "start_time",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "end_time": {
-          "name": "end_time",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "view_page_user_id_user_hack_id_fk": {
-          "name": "view_page_user_id_user_hack_id_fk",
-          "tableFrom": "view_page",
-          "tableTo": "user_hack",
-          "schemaTo": "main",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {}
-    },
     "volunteer": {
       "name": "volunteer",
       "schema": "main",
@@ -11218,6 +10935,145 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {}
     },
+    "zuvy_meeting_attendance": {
+      "name": "zuvy_meeting_attendance",
+      "schema": "main",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "meetingid": {
+          "name": "meetingid",
+          "type": "varchar",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "batchid": {
+          "name": "batchid",
+          "type": "varchar",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "bootcampid": {
+          "name": "bootcampid",
+          "type": "varchar",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {}
+    },
+    "zuvy_sessions": {
+      "name": "zuvy_sessions",
+      "schema": "main",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "meeting_id": {
+          "name": "meeting_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "hangout_link": {
+          "name": "hangout_link",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "creator": {
+          "name": "creator",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "start_time": {
+          "name": "start_time",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "end_time": {
+          "name": "end_time",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "batch_id": {
+          "name": "batch_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "bootcamp_id": {
+          "name": "bootcamp_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "title": {
+          "name": "title",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "s3link": {
+          "name": "s3link",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "recurring_id": {
+          "name": "recurring_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "zuvy_sessions_batch_id_zuvy_batches_id_fk": {
+          "name": "zuvy_sessions_batch_id_zuvy_batches_id_fk",
+          "tableFrom": "zuvy_sessions",
+          "tableTo": "zuvy_batches",
+          "schemaTo": "main",
+          "columnsFrom": [
+            "batch_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "cascade"
+        },
+        "zuvy_sessions_bootcamp_id_zuvy_bootcamps_id_fk": {
+          "name": "zuvy_sessions_bootcamp_id_zuvy_bootcamps_id_fk",
+          "tableFrom": "zuvy_sessions",
+          "tableTo": "zuvy_bootcamps",
+          "schemaTo": "main",
+          "columnsFrom": [
+            "bootcamp_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "cascade"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {}
+    },
     "zuvy_student_attendance": {
       "name": "zuvy_student_attendance",
       "schema": "main",
@@ -11228,33 +11084,76 @@
           "primaryKey": true,
           "notNull": true
         },
-        "email": {
-          "name": "email",
-          "type": "varchar",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "batchId": {
-          "name": "batchId",
-          "type": "varchar",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "attendance": {
-          "name": "attendance",
-          "type": "varchar",
+        "meeting_id": {
+          "name": "meeting_id",
+          "type": "text",
           "primaryKey": false,
           "notNull": false
         },
-        "meetingId": {
-          "name": "meetingId",
-          "type": "varchar",
+        "attendance": {
+          "name": "attendance",
+          "type": "jsonb",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
+        },
+        "batch_id": {
+          "name": "batch_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "bootcamp_id": {
+          "name": "bootcamp_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
         }
       },
       "indexes": {},
-      "foreignKeys": {},
+      "foreignKeys": {
+        "zuvy_student_attendance_meeting_id_zuvy_classes_google_meet_link_meetingid_fk": {
+          "name": "zuvy_student_attendance_meeting_id_zuvy_classes_google_meet_link_meetingid_fk",
+          "tableFrom": "zuvy_student_attendance",
+          "tableTo": "zuvy_classes_google_meet_link",
+          "schemaTo": "main",
+          "columnsFrom": [
+            "meeting_id"
+          ],
+          "columnsTo": [
+            "meetingid"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "zuvy_student_attendance_batch_id_zuvy_batches_id_fk": {
+          "name": "zuvy_student_attendance_batch_id_zuvy_batches_id_fk",
+          "tableFrom": "zuvy_student_attendance",
+          "tableTo": "zuvy_batches",
+          "schemaTo": "main",
+          "columnsFrom": [
+            "batch_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "zuvy_student_attendance_bootcamp_id_zuvy_bootcamps_id_fk": {
+          "name": "zuvy_student_attendance_bootcamp_id_zuvy_bootcamps_id_fk",
+          "tableFrom": "zuvy_student_attendance",
+          "tableTo": "zuvy_bootcamps",
+          "schemaTo": "main",
+          "columnsFrom": [
+            "bootcamp_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {}
     }
