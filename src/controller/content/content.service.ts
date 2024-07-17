@@ -1953,13 +1953,15 @@ export class ContentService {
 
   async createFormForModule(form: formBatchDto) {
     try {
-      const formQuestions = form.questions.map((f) => ({
+      const formQuestion = form.questions.map((f) => ({
+        chapterId: f.chapterId,
         question: f.question,
         options: f.options,
         typeId: f.typeId,
+        isRequired: f.isRequired,
       }));
 
-      const allFieldsFilled = formQuestions.every(question => question.question !== null && question.options !== null && question.typeId !== null);
+      const allFieldsFilled = formQuestion.every(question => question.question !== null && question.options !== null && question.typeId !== null && question.isRequired !== null);
       if (!allFieldsFilled) 
         { return { 
             status: "error", 
@@ -1970,13 +1972,31 @@ export class ContentService {
 
       const result = await db
         .insert(zuvyModuleForm)
-        .values(formQuestions)
+        .values(formQuestion)
         .returning();
-      if (result.length > 0) {
+
+        //console.log('Updated Chapter:', result);
+
+        const formIds= result.length>0?result.map(obj => obj.id):[];
+      
+        const updatedChapter = await db
+        .update(zuvyModuleChapter)
+        .set({
+          formQuestions: formIds
+         })
+        .where(eq(zuvyModuleChapter.id,formQuestion[0].chapterId))
+        .returning();
+      
+        //console.log('Updated Chapter:', updatedChapter);
+
+
+      if (result.length > 0 || updatedChapter.length>0) {
         return {
+
           status: "success",
           code: 200,
-          result
+          result,
+          updatedChapter
         }
       }
       else {
@@ -2048,7 +2068,7 @@ export class ContentService {
             question: sql`excluded.question`,
             options: sql`excluded.options`,
             typeId: sql`excluded.type_id`,
-            
+            isRequired: sql`excluded.is_required`,
           },
         });
 

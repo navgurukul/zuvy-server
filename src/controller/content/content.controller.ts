@@ -624,10 +624,10 @@ export class ContentController {
   @ApiOperation({ summary: 'Create a form' })
   @ApiBearerAuth()
   async createFormForModule (
-    @Body() formQuestions: formBatchDto
+    @Body() formQuestion: formBatchDto
   ){
     const res = await this.contentService.createFormForModule(
-      formQuestions
+      formQuestion
     );
     return res;
   }
