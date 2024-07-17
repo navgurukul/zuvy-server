@@ -1853,4 +1853,231 @@ export class ContentService {
   }
 
 
+  async getAllQuestionTypes() {
+    try {
+      const allQuestionTypes = await db.select().from(zuvyQuestionTypes);
+      if (allQuestionTypes.length > 0) {
+        return {
+          status: 'success',
+          code: 200,
+          allQuestionTypes,
+        };
+      } else {
+        return [];
+      }
+    } catch (err) {
+      throw err;
+    }
+  }
+
+  async createQuestionType(questionType: CreateTypeDto) {
+    try {
+      const newQuestionType = await db.insert(zuvyQuestionTypes).values(questionType).returning();
+      if (newQuestionType.length > 0) {
+        return {
+          status: 'success',
+          code: 200,
+          newQuestionType,
+        };
+      } else {
+        return {
+          status: 'error',
+          code: 404,
+          message: 'Question Type is not created.Please try again.',
+        };
+      }
+    } catch (err) {
+      throw err;
+    }
+  }
+
+
+  async createFormForModule(form: formBatchDto) {
+    try {
+      const formQuestion = form.questions.map((f) => ({
+        chapterId: f.chapterId,
+        question: f.question,
+        options: f.options,
+        typeId: f.typeId,
+        isRequired: f.isRequired,
+      }));
+
+      const allFieldsFilled = formQuestion.every(question => question.question !== null && question.options !== null && question.typeId !== null && question.isRequired !== null);
+      if (!allFieldsFilled) 
+        { return { 
+            status: "error", 
+            code: 400, 
+            message: " One or more fields are empty. Please try again." 
+          };
+        }
+
+      const result = await db
+        .insert(zuvyModuleForm)
+        .values(formQuestion)
+        .returning();
+
+        //console.log('Updated Chapter:', result);
+
+        const formIds= result.length>0?result.map(obj => obj.id):[];
+      
+        const updatedChapter = await db
+        .update(zuvyModuleChapter)
+        .set({
+          formQuestions: formIds
+         })
+        .where(eq(zuvyModuleChapter.id,formQuestion[0].chapterId))
+        .returning();
+      
+        //console.log('Updated Chapter:', updatedChapter);
+
+
+      if (result.length > 0 || updatedChapter.length>0) {
+        return {
+
+          status: "success",
+          code: 200,
+          result,
+          updatedChapter
+        }
+      }
+      else {
+        return {
+          status: "error",
+          code: 404,
+          message: "Form questions did not create successfully.Please try again"
+        }
+      }
+    } catch (err) {
+      throw err;
+    }
+  }
+
+  async getAllFormQuestions(
+    typeId: number,
+    searchTerm: string = '',
+  ) {
+    try {
+      let queryString;
+      if (!Number.isNaN(typeId) && questionType == undefined) {
+        queryString = sql`${zuvyModuleForm.typeId} = ${typeId}`;
+       }
+      const result = await db
+        .select()
+        .from(zuvyModuleForm)
+        .where(
+          and(
+            queryString,
+            sql`((LOWER(${zuvyModuleForm.question}) LIKE '%' || ${searchTerm.toLowerCase()} || '%'))`,
+          ),
+        );
+      return result;
+    } catch (err) {
+      throw err;
+    }
+  }
+
+  async editFormQuestions(editFormDetails: editFormBatchDto) {
+    try {
+
+      const isValid = editFormDetails.questions.every(question => {
+        if (typeof question.question !== 'string' || question.question.trim().length === 0) {
+          return false;
+        }
+        if (typeof question.options !== 'object' || Object.values(question.options).some(option => typeof option !== 'string' || option.trim().length === 0)) {
+          return false;
+        }
+        if (typeof question.typeId !== 'number' || question.typeId <= 0) {
+          return false;
+        }
+        return true;
+      });
+  
+      if (!isValid) {
+        return {
+          status: 'failure',
+          code: 400,
+          message: 'All questions and options must have a length greater than 0',
+        };
+      }
+
+      await db
+        .insert(zuvyModuleForm)
+        .values(editFormDetails.questions)
+        .onConflictDoUpdate({
+          target: zuvyModuleForm.id,
+          set: {
+            question: sql`excluded.question`,
+            options: sql`excluded.options`,
+            typeId: sql`excluded.type_id`,
+            isRequired: sql`excluded.is_required`,
+          },
+        });
+
+      return {
+        status: 'success',
+        code: 200,
+        message: 'Form questions are updated successfully',
+      };
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  async deleteForm(id: deleteQuestionDto) {
+    try {
+      const usedForm = await db
+        .select()
+        .from(zuvyModuleForm)
+        .where(
+          sql`${inArray(zuvyModuleForm.id, id.questionIds)} and ${zuvyModuleForm.usage} > 0`,
+        );
+      let deletedQuestions;
+      if (usedForm.length > 0) {
+        const usedIds = usedForm.map((form) => form.id);
+        const remainingIds = id.questionIds.filter(
+          (questionId) => !usedIds.includes(questionId),
+        );
+        deletedQuestions =
+          remainingIds.length > 0
+            ? await db
+              .delete(zuvyModuleForm)
+              .where(sql`${inArray(zuvyModuleForm.id, remainingIds)}`)
+              .returning()
+            : [];
+        if (deletedQuestions.length > 0) {
+          return {
+            status: 'success',
+            code: 200,
+            message: `Form questions which is used in other places like chapters and assessment cannot be deleted`,
+          };
+        } else {
+          return {
+            status: 'error',
+            code: 400,
+            message: `Questions cannot be deleted`,
+          };
+        }
+      }
+      deletedQuestions = await db
+        .delete(zuvyModuleForm)
+        .where(sql`${inArray(zuvyModuleForm.id, id.questionIds)}`)
+        .returning();
+      if (deletedQuestions.length > 0) {
+        return {
+          status: 'success',
+          code: 200,
+          message: 'The form questions has been deleted successfully',
+        };
+      } else {
+        return {
+          status: 'error',
+          code: 400,
+          message: `Questions cannot be deleted`,
+        };
+      }
+    } catch (err) {
+      throw err;
+    }
+  }
+
 }
