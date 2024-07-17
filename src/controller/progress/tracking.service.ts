@@ -526,6 +526,7 @@ export class TrackingService {
   //     } catch (err) {
   //         return [{ status: 'error', message: err.message, code: 402 }];
   //     }
+  
   // }
 
   async updateChapterStatus(
