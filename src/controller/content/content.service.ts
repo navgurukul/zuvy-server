@@ -1990,10 +1990,22 @@ export class ContentService {
 
       const formIds = result.length > 0 ? result.map(obj => obj.id) : [];
 
+      const existingChapter = await db
+        .select()
+        .from(zuvyModuleChapter)
+        .where(eq(zuvyModuleChapter.id, chapterId))
+        .limit(1);
+
+      const chapter = existingChapter[0] as { formQuestions: number[] };
+
+      const existingFormQuestions = chapter.formQuestions || [];
+
+      const updatedFormQuestions = [...existingFormQuestions, ...formIds];
+
       const updatedChapter = await db
         .update(zuvyModuleChapter)
         .set({
-          formQuestions: formIds
+          formQuestions: updatedFormQuestions
         })
         .where(eq(zuvyModuleChapter.id, formQuestion[0].chapterId))
         .returning();
@@ -2022,6 +2034,7 @@ export class ContentService {
   }
 
   async getAllFormQuestions(
+    chapterId: number,
     typeId: number,
     searchTerm: string = '',
   ) {
@@ -2036,6 +2049,7 @@ export class ContentService {
         .where(
           and(
             queryString,
+            sql`${zuvyModuleForm.chapterId} = ${chapterId}`,
             sql`((LOWER(${zuvyModuleForm.question}) LIKE '%' || ${searchTerm.toLowerCase()} || '%'))`,
           ),
         );
@@ -2056,7 +2070,7 @@ export class ContentService {
         typeId: f.typeId,
         isRequired: f.isRequired,
       }));
-  
+
       const allFieldsFilled = editFormQuestions.every(
         (question) =>
           question.question !== null &&
@@ -2064,7 +2078,7 @@ export class ContentService {
           question.typeId !== null &&
           question.isRequired !== null
       );
-  
+
       if (!allFieldsFilled) {
         return {
           status: "error",
@@ -2072,16 +2086,32 @@ export class ContentService {
           message: "One or more fields are empty. Please try again.",
         };
       }
-  
+
       const results = [];
-  
+
+      const existingFormRecords = await db
+        .select()
+        .from(zuvyModuleForm)
+        .where(eq(zuvyModuleForm.chapterId, chapterId));
+
+      const existingFormIds = existingFormRecords.map((record) => record.id);
+      const providedFormIds = editFormQuestions.map((question) => question.id);
+      const idsToRemove = existingFormIds.filter(id => !providedFormIds.includes(id));
+
+
+      if (idsToRemove.length > 0) {
+        await db
+          .delete(zuvyModuleForm)
+          .where(inArray(zuvyModuleForm.id, idsToRemove));
+      }
+
       for (const formQuestion of editFormQuestions) {
         if (formQuestion.id) {
           const existingRecord = await db
             .select()
             .from(zuvyModuleForm)
             .where(eq(zuvyModuleForm.id, formQuestion.id))
-  
+
           if (existingRecord) {
             const result = await db
               .update(zuvyModuleForm)
@@ -2110,10 +2140,10 @@ export class ContentService {
           };
         }
       }
-  
-  
+
+
       const formIds = results.flat().map((obj) => obj.id);
-  
+
       const updatedChapter = await db
         .update(zuvyModuleChapter)
         .set({
@@ -2121,7 +2151,7 @@ export class ContentService {
         })
         .where(eq(zuvyModuleChapter.id, chapterId))
         .returning();
-  
+
       return {
         status: "success",
         code: 200,
@@ -2133,64 +2163,64 @@ export class ContentService {
       throw error;
     }
   }
-  
 
-  async deleteForm(id: deleteQuestionDto) {
-    try {
-      const usedForm = await db
-        .select()
-        .from(zuvyModuleForm)
-        .where(
-          sql`${inArray(zuvyModuleForm.id, id.questionIds)} and ${zuvyModuleForm.usage} > 0`,
-        );
-      let deletedQuestions;
-      if (usedForm.length > 0) {
-        const usedIds = usedForm.map((form) => form.id);
-        const remainingIds = id.questionIds.filter(
-          (questionId) => !usedIds.includes(questionId),
-        );
-        deletedQuestions =
-          remainingIds.length > 0
-            ? await db
-              .delete(zuvyModuleForm)
-              .where(sql`${inArray(zuvyModuleForm.id, remainingIds)}`)
-              .returning()
-            : [];
-        if (deletedQuestions.length > 0) {
-          return {
-            status: 'success',
-            code: 200,
-            message: `Form questions which is used in other places like chapters and assessment cannot be deleted`,
-          };
-        } else {
-          return {
-            status: 'error',
-            code: 400,
-            message: `Questions cannot be deleted`,
-          };
-        }
-      }
-      deletedQuestions = await db
-        .delete(zuvyModuleForm)
-        .where(sql`${inArray(zuvyModuleForm.id, id.questionIds)}`)
-        .returning();
-      if (deletedQuestions.length > 0) {
-        return {
-          status: 'success',
-          code: 200,
-          message: 'The form questions has been deleted successfully',
-        };
-      } else {
-        return {
-          status: 'error',
-          code: 400,
-          message: `Questions cannot be deleted`,
-        };
-      }
-    } catch (err) {
-      throw err;
-    }
-  }
+
+  // async deleteForm(id: deleteQuestionDto) {
+  //   try {
+  //     const usedForm = await db
+  //       .select()
+  //       .from(zuvyModuleForm)
+  //       .where(
+  //         sql`${inArray(zuvyModuleForm.id, id.questionIds)} and ${zuvyModuleForm.usage} > 0`,
+  //       );
+  //     let deletedQuestions;
+  //     if (usedForm.length > 0) {
+  //       const usedIds = usedForm.map((form) => form.id);
+  //       const remainingIds = id.questionIds.filter(
+  //         (questionId) => !usedIds.includes(questionId),
+  //       );
+  //       deletedQuestions =
+  //         remainingIds.length > 0
+  //           ? await db
+  //             .delete(zuvyModuleForm)
+  //             .where(sql`${inArray(zuvyModuleForm.id, remainingIds)}`)
+  //             .returning()
+  //           : [];
+  //       if (deletedQuestions.length > 0) {
+  //         return {
+  //           status: 'success',
+  //           code: 200,
+  //           message: `Form questions which is used in other places like chapters and assessment cannot be deleted`,
+  //         };
+  //       } else {
+  //         return {
+  //           status: 'error',
+  //           code: 400,
+  //           message: `Questions cannot be deleted`,
+  //         };
+  //       }
+  //     }
+  //     deletedQuestions = await db
+  //       .delete(zuvyModuleForm)
+  //       .where(sql`${inArray(zuvyModuleForm.id, id.questionIds)}`)
+  //       .returning();
+  //     if (deletedQuestions.length > 0) {
+  //       return {
+  //         status: 'success',
+  //         code: 200,
+  //         message: 'The form questions has been deleted successfully',
+  //       };
+  //     } else {
+  //       return {
+  //         status: 'error',
+  //         code: 400,
+  //         message: `Questions cannot be deleted`,
+  //       };
+  //     }
+  //   } catch (err) {
+  //     throw err;
+  //   }
+  // }
 
 
 
@@ -2206,28 +2236,39 @@ export class ContentService {
         };
       }
 
+
+
+
+      if (form.formQuestionDto && !(form.editFormQuestionDto)) {
+        await this.createFormForModule(chapterId, form.formQuestionDto);
+
+
+      } else if (form.editFormQuestionDto && !(form.formQuestionDto)) {
+        await this.editFormQuestions(chapterId, form.editFormQuestionDto);
+
+      } else if (form.editFormQuestionDto && form.formQuestionDto) {
+
+        await this.editFormQuestions(chapterId, form.editFormQuestionDto);
+        await this.createFormForModule(chapterId, form.formQuestionDto);
+      }
       const res1 = await db
         .select()
         .from(zuvyModuleForm)
         .where(eq(zuvyModuleForm.chapterId, chapterId))
 
       const res2 = await db
-        .select({
-          formQuestions: zuvyModuleChapter.formQuestions
-        })
+        .select()
         .from(zuvyModuleChapter)
         .where(eq(zuvyModuleChapter.id, chapterId))
 
-      if (!(res1.length > 0 && res2.length > 0)) {
-        this.createFormForModule(chapterId,form.formQuestionDto)
 
-      // }else if(form.formQuestionDto !==isNullOrUndefined){
-
-      // }
-      }else{
-        this.editFormQuestions(chapterId,form.editFormquestionDto)
-      }
-
+      return {
+        status: "success",
+        code: 200,
+        message: "Form questions are updated successfully",
+        res1,
+        res2,
+      };
 
     } catch (err) {
       throw err;

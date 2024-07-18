@@ -1083,6 +1083,6 @@ export class CreateAndEditFormBody {
   @IsOptional()
   @ValidateNested()
   @Type(() => editFormBatchDto)
-  editFormquestionDto: editFormBatchDto;
+  editFormQuestionDto: editFormBatchDto;
   //questions: any;
 }

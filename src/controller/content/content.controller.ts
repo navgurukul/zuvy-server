@@ -635,7 +635,7 @@ export class ContentController {
     return res;
   }
 
-  @Get('/allFormQuestions')
+  @Get('/allFormQuestions/:chapterId')
   @ApiOperation({ summary: 'Get all form Questions' })
   @ApiQuery({
     name: 'typeId',
@@ -651,10 +651,12 @@ export class ContentController {
   })
   @ApiBearerAuth()
   async getAllFormQuestions(
+  @Param('chapterId') chapterId: number,
   @Query('typeId') typeId: number,
   @Query('searchTerm') searchTerm: string,
   ): Promise<object> {
     const res = await this.contentService.getAllFormQuestions(
+    chapterId,
     typeId,
 	  searchTerm,
     );
@@ -688,13 +690,13 @@ export class ContentController {
     return res;
   }
    
-  @Delete('/deleteFormQuestion')
-  @ApiOperation({ summary: 'Delete form question' })
-  @ApiBearerAuth()
-  async deleteFormQuestion(@Body() questionIds: deleteQuestionDto) {
-    const res = await this.contentService.deleteForm(questionIds);
-    return res;
-  }
+  // @Delete('/deleteFormQuestion')
+  // @ApiOperation({ summary: 'Delete form question' })
+  // @ApiBearerAuth()
+  // async deleteFormQuestion(@Body() questionIds: deleteQuestionDto) {
+  //   const res = await this.contentService.deleteForm(questionIds);
+  //   return res;
+  // }
 
 }
 
