@@ -849,14 +849,14 @@ export class CreateTypeDto{
 
 export class formDto {
   
-  @ApiProperty({
-    type: Number,
-    example: 34,
-    required: true
-  })
-  @IsNumber()
-  @IsNotEmpty()
-  chapterId: number;
+  // @ApiProperty({
+  //   type: Number,
+  //   example: 34,
+  //   required: true
+  // })
+  // @IsNumber()
+  // @IsNotEmpty()
+  // chapterId: number;
 
   @ApiProperty({
     type: String,
@@ -902,7 +902,7 @@ export class formBatchDto {
     type: [formDto],
     example: [
       {
-        chapterId:34,
+        // chapterId:34,
         question: 'What do you like about the course?',
         options: {
           1: 'Option 1',
@@ -914,7 +914,7 @@ export class formBatchDto {
         isRequired:false,
       },
       {
-        chapterId:34,
+        // chapterId:34,
         question: 'What do you want to improve about the course?',
         options: {
           1: 'Paris',
@@ -926,19 +926,19 @@ export class formBatchDto {
         isRequired:false,
       },
       {
-        chapterId:34,
+        // chapterId:34,
         question: 'What is your opinion about the course?',
         typeId: 3,
         isRequired:false,
       },
       {
-        chapterId:34,
+        // chapterId:34,
         question: 'Choose date of opting the course',
         typeId: 4,
         isRequired:false,
       },
       {
-        chapterId:34,
+        // chapterId:34,
         question: 'Choose time of opting the course',
         typeId: 5,
         isRequired:false,
@@ -963,14 +963,14 @@ export class editFormDto {
   @IsNumber()
   id: number;
 
-  @ApiProperty({
-    type: Number,
-    example: 34,
-    required: true
-  })
-  @IsNumber()
-  @IsNotEmpty()
-  chapterId: number;
+  // @ApiProperty({
+  //   type: Number,
+  //   example: 34,
+  //   required: true
+  // })
+  // @IsNumber()
+  // @IsNotEmpty()
+  // chapterId: number;
 
   @ApiProperty({
     type: String,
@@ -1016,7 +1016,7 @@ export class editFormBatchDto {
     example: [
       {
         id: 1,
-        chapterId:34,
+        // chapterId:34,
         question: 'What is the national animal of India?',
         options: {
           1: 'Option 1',
@@ -1029,7 +1029,7 @@ export class editFormBatchDto {
       },
       {
         id: 2,
-        chapterId:34,
+        // chapterId:34,
         question: 'What is the capital of France?',
         options: {
           1: 'Paris',
@@ -1042,21 +1042,21 @@ export class editFormBatchDto {
       },
       {
         id: 3,
-        chapterId:34,
+        // chapterId:34,
         question: 'What is the national animal of India?',
         typeId: 3,
         isRequired:false,
       },
       {
         id: 4,
-        chapterId:34,
+        // chapterId:34,
         question: 'Choose date of opting the course',
         typeId: 4,
         isRequired:false,
       },
       {
         id: 5,
-        chapterId:34,
+        // chapterId:34,
         question: 'Choose time of opting the course',
         typeId: 5,
         isRequired:false,
@@ -1072,16 +1072,17 @@ export class editFormBatchDto {
 
 }
 
-export class EditFormChapterBody {
-  @ApiProperty({ type: formDto })
+export class CreateAndEditFormBody {
+  @ApiProperty({ type: formBatchDto })
   @IsOptional()
   @ValidateNested()
-  @Type(() => formDto)
-  formDto: formDto;
+  @Type(() => formBatchDto)
+  formQuestionDto: formBatchDto;
 
-  @ApiProperty({ type: editFormDto })
+  @ApiProperty({ type: editFormBatchDto })
   @IsOptional()
   @ValidateNested()
-  @Type(() => editFormDto)
-  editFormDto: editFormDto;
+  @Type(() => editFormBatchDto)
+  editFormquestionDto: editFormBatchDto;
+  //questions: any;
 }

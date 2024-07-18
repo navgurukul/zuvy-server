@@ -42,7 +42,8 @@ import {
   CreateChapterDto,
   formBatchDto,
   editFormBatchDto,
-  CreateTypeDto
+  CreateTypeDto,
+  CreateAndEditFormBody
 } from './dto/content.dto';
 import { CreateProblemDto } from '../codingPlatform/dto/codingPlatform.dto';
 import { difficulty, questionType } from 'drizzle/schema';
@@ -624,9 +625,11 @@ export class ContentController {
   @ApiOperation({ summary: 'Create a form' })
   @ApiBearerAuth()
   async createFormForModule (
+    @Query('chapterId') chapterId: number,
     @Body() formQuestion: formBatchDto
   ){
     const res = await this.contentService.createFormForModule(
+      chapterId,
       formQuestion
     );
     return res;
@@ -661,8 +664,27 @@ export class ContentController {
   @Post('/editform')
   @ApiOperation({ summary: 'Create a form' })
   @ApiBearerAuth()
-  async editFormForModule(@Body() formQuestions: editFormBatchDto) {
-    const res = await this.contentService.editFormQuestions(formQuestions);
+  async editFormForModule(
+    @Query('chapterId') chapterId: number,
+    @Body() formQuestions: editFormBatchDto) {
+    const res = await this.contentService.editFormQuestions(
+      chapterId,
+      formQuestions
+    );
+    return res;
+  }
+
+  
+  @Post('/createAndEditForm/:chapterId')
+  @ApiOperation({ summary: 'Create a form' })
+  @ApiBearerAuth()
+  async createAndEditForm(
+    @Param('chapterId') chapterId: number,
+    @Body() formQuestions: CreateAndEditFormBody) {
+    const res = await this.contentService.createAndEditFormQuestions(
+      chapterId,
+      formQuestions
+    );
     return res;
   }
    

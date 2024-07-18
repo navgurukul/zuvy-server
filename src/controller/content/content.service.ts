@@ -57,10 +57,13 @@ import {
   projectDto,
   formBatchDto,
   editFormBatchDto,
-  CreateTypeDto
+  CreateTypeDto,
+  CreateAndEditFormBody,
+  formDto
 } from './dto/content.dto';
 import { CreateProblemDto } from '../codingPlatform/dto/codingPlatform.dto';
 import { PatchBootcampSettingDto } from '../bootcamp/dto/bootcamp.dto';
+import { isNullOrUndefined } from 'util';
 // import Strapi from "strapi-sdk-js"
 
 const { ZUVY_CONTENT_URL, ZUVY_CONTENTS_API_URL } = process.env; // INPORTING env VALUSE ZUVY_CONTENT
@@ -420,7 +423,7 @@ export class ContentService {
     }
   }
 
-  async createChapterForModule(moduleId: number, topicId: number,order:number, bootcampId: number, ) {
+  async createChapterForModule(moduleId: number, topicId: number, order: number, bootcampId: number,) {
     try {
       let newAssessment;
       let chapterData;
@@ -517,7 +520,7 @@ export class ContentService {
       let modules = data.map((module: any) => {
         return {
           id: module.id,
-          name: module['projectData'].length > 0 ? module['projectData'][0]['title']: module.name,
+          name: module['projectData'].length > 0 ? module['projectData'][0]['title'] : module.name,
           description: module.description,
           typeId: module.typeId,
           order: module.order,
@@ -554,7 +557,7 @@ export class ContentService {
         .select()
         .from(zuvyCourseModules)
         .where(eq(zuvyCourseModules.id, moduleId));
-      
+
       // const assessment = await db.query.zuvyOutsourseAssessments.findMany({
       //   where: (outsourseAssessments, { eq }) =>
       //     eq(outsourseAssessments.moduleId, module[0].id),
@@ -601,34 +604,34 @@ export class ContentService {
   }
 
   async formatedChapterDetails(chapterDetails: any) {
-    try{
+    try {
       chapterDetails.Quizzes = chapterDetails?.Quizzes.map((Quizzes) => {
-        let quizDetails = {...Quizzes.Quiz, }
+        let quizDetails = { ...Quizzes.Quiz, }
         delete Quizzes.Quiz
-        return {...Quizzes, ...quizDetails}
+        return { ...Quizzes, ...quizDetails }
       })
 
       chapterDetails.OpenEndedQuestions = chapterDetails?.OpenEndedQuestions.map((OpenEndedQuestions) => {
-        let openEndedDetails = {...OpenEndedQuestions.OpenEndedQuestion, }
+        let openEndedDetails = { ...OpenEndedQuestions.OpenEndedQuestion, }
         delete OpenEndedQuestions.OpenEndedQuestion
-        return {...OpenEndedQuestions, ...openEndedDetails}
+        return { ...OpenEndedQuestions, ...openEndedDetails }
       })
 
       chapterDetails.CodingQuestions = chapterDetails?.CodingQuestions.map((CodingQuestions) => {
         let codingOutsourseId = CodingQuestions.id
-        let codingDetails = {codingOutsourseId, ...CodingQuestions.CodingQuestion}
+        let codingDetails = { codingOutsourseId, ...CodingQuestions.CodingQuestion }
         delete CodingQuestions.CodingQuestion
-        return {...CodingQuestions, ...codingDetails}
+        return { ...CodingQuestions, ...codingDetails }
       })
-      
+
       chapterDetails.Forms = chapterDetails?.Forms.map((Forms) => {
-        let FormDetails = {...Forms.Form, }
+        let FormDetails = { ...Forms.Form, }
         delete Forms.Form
-        return {...Forms, ...FormDetails}
+        return { ...Forms, ...FormDetails }
       })
 
       return chapterDetails
-    } catch(err) {
+    } catch (err) {
       throw err;
     }
   }
@@ -651,33 +654,33 @@ export class ContentService {
               columns: {
                 id: true,
                 assessmentOutsourseId: true,
-                bootcampId:true
+                bootcampId: true
               },
-              where: (zuvyOutsourseQuizzes, {sql}) => sql`${zuvyOutsourseQuizzes.bootcampId} = ${bootcampId} AND ${zuvyOutsourseQuizzes.chapterId} = ${chapterId}`,
+              where: (zuvyOutsourseQuizzes, { sql }) => sql`${zuvyOutsourseQuizzes.bootcampId} = ${bootcampId} AND ${zuvyOutsourseQuizzes.chapterId} = ${chapterId}`,
               with: {
-                Quiz:true
+                Quiz: true
               }
             },
-            OpenEndedQuestions:{
+            OpenEndedQuestions: {
               columns: {
                 id: true,
                 assessmentOutsourseId: true,
-                bootcampId:true
+                bootcampId: true
               },
-              where: (zuvyOutsourseOpenEndedQuestions, {sql}) => sql`${zuvyOutsourseOpenEndedQuestions.bootcampId} = ${bootcampId} AND ${zuvyOutsourseOpenEndedQuestions.chapterId} = ${chapterId} AND ${zuvyOutsourseOpenEndedQuestions.moduleId} = ${moduleId}`,
+              where: (zuvyOutsourseOpenEndedQuestions, { sql }) => sql`${zuvyOutsourseOpenEndedQuestions.bootcampId} = ${bootcampId} AND ${zuvyOutsourseOpenEndedQuestions.chapterId} = ${chapterId} AND ${zuvyOutsourseOpenEndedQuestions.moduleId} = ${moduleId}`,
               with: {
-                OpenEndedQuestion:true
+                OpenEndedQuestion: true
               }
             },
-            CodingQuestions:{ 
+            CodingQuestions: {
               columns: {
                 id: true,
                 assessmentOutsourseId: true,
-                bootcampId:true
+                bootcampId: true
               },
-              where: (zuvyOutsourseCodingQuestions, {sql}) => sql`${zuvyOutsourseCodingQuestions.bootcampId} = ${bootcampId} AND ${zuvyOutsourseCodingQuestions.chapterId} = ${chapterId}`,
+              where: (zuvyOutsourseCodingQuestions, { sql }) => sql`${zuvyOutsourseCodingQuestions.bootcampId} = ${bootcampId} AND ${zuvyOutsourseCodingQuestions.chapterId} = ${chapterId}`,
               with: {
-                CodingQuestion:{
+                CodingQuestion: {
                   columns: {
                     id: true,
                     title: true,
@@ -695,10 +698,10 @@ export class ContentService {
         return formatedData;
       }
       const chapterDetails = await db
-      .select()
-      .from(zuvyModuleChapter)
-      .where(eq(zuvyModuleChapter.id, chapterId));
-      
+        .select()
+        .from(zuvyModuleChapter)
+        .where(eq(zuvyModuleChapter.id, chapterId));
+
       const modifiedChapterDetails: {
         id: number;
         title: string;
@@ -744,7 +747,7 @@ export class ContentService {
                 )
               : [];
           modifiedChapterDetails.codingQuestionDetails = codingProblemDetails;
-        }else if (chapterDetails[0].topicId == 7) {
+        } else if (chapterDetails[0].topicId == 7) {
           const formDetails =
             chapterDetails[0].formQuestions !== null
               ? await db
@@ -755,7 +758,7 @@ export class ContentService {
                 )
               : [];
           modifiedChapterDetails.formQuestionDetails = formDetails;
-        }else {
+        } else {
           let content = [
             {
               title: chapterDetails[0].title,
@@ -995,7 +998,7 @@ export class ContentService {
               .set({ usage: sql`${zuvyCodingQuestions.usage}::numeric + 1` })
               .where(eq(zuvyCodingQuestions.id, editData.codingQuestions));
           }
-        }else if (editData.formQuestions) {
+        } else if (editData.formQuestions) {
           if (editData.formQuestions.length == 0) {
             editData.formQuestions = null;
           }
@@ -1050,7 +1053,7 @@ export class ContentService {
         .insert(zuvyModuleAssessment)
         .values(assessment)
         .returning();
-      
+
       return newAssessment;
     } catch (err) {
       throw err;
@@ -1072,8 +1075,8 @@ export class ContentService {
           OutsourseCodingQuestions: true
         },
       });
-        
-      if (assessment == undefined ||assessment.length == 0) {
+
+      if (assessment == undefined || assessment.length == 0) {
         throw ({
           status: 'error',
           statusCode: 404,
@@ -1082,11 +1085,11 @@ export class ContentService {
       } else {
         let { bootcampId, moduleId, chapterId, ModuleAssessment, OutsourseQuizzes, OutsourseOpenEndedQuestions, OutsourseCodingQuestions } = assessment[0];
         let { mcqIds, openEndedQuestionIds, codingProblemIds, title, description, ...OutsourseAssessmentData__ } = assessmentBody;
-      
+
         let assessment_id = ModuleAssessment.id;
-      
-        let assessmentData = { title, description};
-      
+
+        let assessmentData = { title, description };
+
         // filter out the ids that are not in the assessment
         let existingQuizIds = OutsourseQuizzes.map((q) => q.quiz_id).filter(id => id !== null);
         let existingOpenEndedQuestionIds = OutsourseOpenEndedQuestions.map((q) => q.openEndedQuestionId).filter(id => id !== null);
@@ -1099,7 +1102,7 @@ export class ContentService {
         let quizIdsToAdd = mcqIds.filter((id) => !existingQuizIds.includes(id));
         let openEndedQuestionIdsToAdd = openEndedQuestionIds.filter((id) => !existingOpenEndedQuestionIds.includes(id));
         let codingQuestionIdsToAdd = codingProblemIds.filter((id) => !existingCodingQuestionIds.includes(id));
-  
+
         // Delete operations
         if (quizIdsToDelete.length > 0) {
           await db
@@ -1116,21 +1119,21 @@ export class ContentService {
             .delete(zuvyOutsourseCodingQuestions)
             .where(sql`${zuvyOutsourseCodingQuestions.assessmentOutsourseId} = ${assessmentOutsourseId} AND ${inArray(zuvyOutsourseCodingQuestions.codingQuestionId, codingQuestionIdsToDelete)}`);
         }
-      
+
         // Update assessment data
         let updatedOutsourseAssessment = await db.update(zuvyOutsourseAssessments).set(OutsourseAssessmentData__).where(eq(zuvyOutsourseAssessments.id, assessmentOutsourseId)).returning();
-      
+
         let updatedAssessment = await db
           .update(zuvyModuleAssessment)
           .set(assessmentData)
           .where(eq(zuvyModuleAssessment.id, assessment_id))
           .returning();
-      
+
         // Insert new data
         let mcqArray = quizIdsToAdd.map(id => ({ quiz_id: id, bootcampId, chapterId, assessmentOutsourseId }));
         let openEndedQuestionsArray = openEndedQuestionIdsToAdd.map(id => ({ openEndedQuestionId: id, bootcampId, moduleId, chapterId, assessmentOutsourseId }));
         let codingProblemsArray = codingQuestionIdsToAdd.map(id => ({ codingQuestionId: id, bootcampId, moduleId, chapterId, assessmentOutsourseId }));
-      
+
         if (mcqArray.length > 0) {
           let createZOMQ = await db.insert(zuvyOutsourseQuizzes).values(mcqArray).returning();
           if (createZOMQ.length > 0) {
@@ -1141,7 +1144,7 @@ export class ContentService {
               .where(sql`${inArray(zuvyModuleQuiz.id, toUpdateIds)}`);
           }
         }
-      
+
         if (openEndedQuestionsArray.length > 0) {
           let createZOOQ = await db.insert(zuvyOutsourseOpenEndedQuestions).values(openEndedQuestionsArray).returning();
           if (createZOOQ.length > 0) {
@@ -1152,7 +1155,7 @@ export class ContentService {
               .where(sql`${inArray(zuvyOpenEndedQuestions.id, toUpdateIds)}`);
           }
         }
-      
+
         if (codingProblemsArray.length > 0) {
           let createZOCQ = await db.insert(zuvyOutsourseCodingQuestions).values(codingProblemsArray).returning();
           if (createZOCQ.length > 0) {
@@ -1163,7 +1166,7 @@ export class ContentService {
               .where(sql`${inArray(zuvyCodingQuestions.id, toUpdateIds)}`);
           }
         }
-      }      
+      }
       return {
         status: 'success',
         code: 200,
@@ -1251,8 +1254,8 @@ export class ContentService {
       //     openEndedQuesDetails,
       //     codingQuesDetails,
       //   };
-    // }
-    return assessment;
+      // }
+      return assessment;
     } catch (err) {
       throw err;
     }
@@ -1697,16 +1700,16 @@ export class ContentService {
       throw err;
     }
   }
-  async getStudentsOfAssessment(assessmentId:number, chapterId: number, moduleId: number, bootcampId: number, req) {
+  async getStudentsOfAssessment(assessmentId: number, chapterId: number, moduleId: number, bootcampId: number, req) {
     try {
-      let {id} = req.user[0];
+      let { id } = req.user[0];
       const assessment = await db.query.zuvyOutsourseAssessments.findMany({
         where: (zuvyOutsourseAssessments, { eq }) =>
           sql`${zuvyOutsourseAssessments.assessmentId} = ${assessmentId} AND ${zuvyOutsourseAssessments.bootcampId} = ${bootcampId} AND ${zuvyOutsourseAssessments.chapterId} = ${chapterId} AND ${zuvyOutsourseAssessments.moduleId} = ${moduleId}`,
         with: {
           submitedOutsourseAssessments: {
             where: (zuvyAssessmentSubmission, { eq }) => eq(zuvyAssessmentSubmission.userId, id),
-            columns:{
+            columns: {
               id: true,
               marks: true,
               userId: true,
@@ -1720,7 +1723,7 @@ export class ContentService {
             columns: {
               // id: true,
               assessmentOutsourseId: true,
-              bootcampId:true
+              bootcampId: true
             },
             with: {
               Quiz: true,
@@ -1730,7 +1733,7 @@ export class ContentService {
             columns: {
               id: true,
               assessmentOutsourseId: true,
-              bootcampId:true
+              bootcampId: true
             },
             with: {
               OpenEndedQuestion: true
@@ -1740,7 +1743,7 @@ export class ContentService {
             columns: {
               id: true,
               assessmentOutsourseId: true,
-              bootcampId:true
+              bootcampId: true
             },
             with: {
               CodingQuestion: true
@@ -1748,17 +1751,17 @@ export class ContentService {
           },
         },
       })
-      if (assessment == undefined ||assessment.length == 0) {
+      if (assessment == undefined || assessment.length == 0) {
         throw ({
           status: 'error',
           statusCode: 404,
           message: 'Assessment not found',
         });
-      } 
-      assessment[0]["totalQuizzes"] = assessment[0]?.Quizzes.length|| 0;
+      }
+      assessment[0]["totalQuizzes"] = assessment[0]?.Quizzes.length || 0;
       assessment[0]["totalOpenEndedQuestions"] = assessment[0]?.OpenEndedQuestions.length || 0;
       assessment[0]["totalCodingQuestions"] = assessment[0]?.CodingQuestions.length || 0;
-      
+
       delete assessment[0].Quizzes;
       delete assessment[0].OpenEndedQuestions;
       delete assessment[0].CodingQuestions;
@@ -1775,7 +1778,7 @@ export class ContentService {
  */
   async startAssessmentForStudent(assessmentOutsourseId: number, req) {
     try {
-      let {id} = req.user[0];
+      let { id } = req.user[0];
       const assessment = await db.query.zuvyOutsourseAssessments.findMany({
         where: (zuvyOutsourseAssessments, { eq }) =>
           eq(zuvyOutsourseAssessments.id, assessmentOutsourseId),
@@ -1785,17 +1788,17 @@ export class ContentService {
             columns: {
               id: true,
               assessmentOutsourseId: true,
-              bootcampId:true
+              bootcampId: true
             },
             with: {
-              CodingQuestion:true
+              CodingQuestion: true
             }
           },
           Quizzes: {
             columns: {
               id: true,
               assessmentOutsourseId: true,
-              bootcampId:true
+              bootcampId: true
             },
             with: {
               Quiz: true,
@@ -1805,7 +1808,7 @@ export class ContentService {
             columns: {
               id: true,
               assessmentOutsourseId: true,
-              bootcampId:true
+              bootcampId: true
             },
             with: {
               OpenEndedQuestion: true
@@ -1820,32 +1823,32 @@ export class ContentService {
           statusCode: 404,
           message: 'Assessment not found',
         });
-      } 
+      }
       let startedAt = new Date().toISOString();
       let submission;
-      submission = await db.select().from(zuvyAssessmentSubmission).where( sql`${zuvyAssessmentSubmission.userId} = ${id} AND ${zuvyAssessmentSubmission.assessmentOutsourseId} = ${assessmentOutsourseId} AND ${zuvyAssessmentSubmission.submitedAt} IS NULL`);
+      submission = await db.select().from(zuvyAssessmentSubmission).where(sql`${zuvyAssessmentSubmission.userId} = ${id} AND ${zuvyAssessmentSubmission.assessmentOutsourseId} = ${assessmentOutsourseId} AND ${zuvyAssessmentSubmission.submitedAt} IS NULL`);
       if (submission.length == 0) {
-        submission = await db.insert(zuvyAssessmentSubmission).values({userId: id, assessmentOutsourseId, startedAt }).returning();
+        submission = await db.insert(zuvyAssessmentSubmission).values({ userId: id, assessmentOutsourseId, startedAt }).returning();
       }
-      
+
       let formatedData = await this.formatedChapterDetails(assessment[0]);
 
       formatedData.Quizzes = formatedData.Quizzes.length
       formatedData.OpenEndedQuestions = formatedData.OpenEndedQuestions.length
 
-      return {...formatedData, submission: submission[0]};
+      return { ...formatedData, submission: submission[0] };
     } catch (err) {
       throw err;
     }
   }
 
-  async getAssessmentDetailsOfQuiz(assessment_outsourse_id:number, userId){
+  async getAssessmentDetailsOfQuiz(assessment_outsourse_id: number, userId) {
     try {
       const assessment = await db.query.zuvyOutsourseQuizzes.findMany({
         where: (zuvyOutsourseQuizzes, { eq }) =>
           eq(zuvyOutsourseQuizzes.assessmentOutsourseId, assessment_outsourse_id),
         with: {
-          submissionsData:{
+          submissionsData: {
             where: (zuvyQuizTracking, { eq }) => eq(zuvyQuizTracking.userId, userId),
             columns: {
               id: true,
@@ -1857,7 +1860,7 @@ export class ContentService {
           },
           Quiz: {
             columns: {
-              id:true,
+              id: true,
               question: true,
               options: true,
               difficulty: true,
@@ -1869,20 +1872,20 @@ export class ContentService {
       })
       if (assessment.length == 0) {
         return [];
-      } 
+      }
       return assessment;
     } catch (err) {
       throw err;
     }
   }
 
-  async getAssessmentDetailsOfOpenEnded(assessment_outsourse_id:number, userId){
+  async getAssessmentDetailsOfOpenEnded(assessment_outsourse_id: number, userId) {
     try {
       const assessment = await db.query.zuvyOutsourseOpenEndedQuestions.findMany({
         where: (zuvyOutsourseOpenEndedQuestions, { eq }) =>
           eq(zuvyOutsourseOpenEndedQuestions.assessmentOutsourseId, assessment_outsourse_id),
         with: {
-          submissionsData:{
+          submissionsData: {
             where: (zuvyOpenEndedQuestionSubmission, { eq }) => eq(zuvyOpenEndedQuestionSubmission.userId, userId),
             columns: {
               id: true,
@@ -1904,7 +1907,7 @@ export class ContentService {
       })
       if (assessment.length == 0) {
         return [];
-      } 
+      }
       return assessment;
     } catch (err) {
       throw err;
@@ -1951,10 +1954,19 @@ export class ContentService {
   }
 
 
-  async createFormForModule(form: formBatchDto) {
+  async createFormForModule(chapterId: number, form: formBatchDto) {
     try {
+
+      if (isNaN(chapterId)) {
+        return {
+          status: "error",
+          code: 400,
+          message: "Invalid chapterId. Please provide a valid number."
+        };
+      }
+
       const formQuestion = form.questions.map((f) => ({
-        chapterId: f.chapterId,
+        chapterId,
         question: f.question,
         options: f.options,
         typeId: f.typeId,
@@ -1962,35 +1974,33 @@ export class ContentService {
       }));
 
       const allFieldsFilled = formQuestion.every(question => question.question !== null && question.options !== null && question.typeId !== null && question.isRequired !== null);
-      if (!allFieldsFilled) 
-        { return { 
-            status: "error", 
-            code: 400, 
-            message: " One or more fields are empty. Please try again." 
-          };
-        }
+      if (!allFieldsFilled) {
+        return {
+          status: "error",
+          code: 400,
+          message: " One or more fields are empty. Please try again."
+        };
+      }
 
       const result = await db
         .insert(zuvyModuleForm)
         .values(formQuestion)
         .returning();
 
-        //console.log('Updated Chapter:', result);
 
-        const formIds= result.length>0?result.map(obj => obj.id):[];
-      
-        const updatedChapter = await db
+      const formIds = result.length > 0 ? result.map(obj => obj.id) : [];
+
+      const updatedChapter = await db
         .update(zuvyModuleChapter)
         .set({
           formQuestions: formIds
-         })
-        .where(eq(zuvyModuleChapter.id,formQuestion[0].chapterId))
+        })
+        .where(eq(zuvyModuleChapter.id, formQuestion[0].chapterId))
         .returning();
-      
-        //console.log('Updated Chapter:', updatedChapter);
 
 
-      if (result.length > 0 || updatedChapter.length>0) {
+
+      if (result.length > 0 || updatedChapter.length > 0) {
         return {
 
           status: "success",
@@ -2019,7 +2029,7 @@ export class ContentService {
       let queryString;
       if (!Number.isNaN(typeId) && questionType == undefined) {
         queryString = sql`${zuvyModuleForm.typeId} = ${typeId}`;
-       }
+      }
       const result = await db
         .select()
         .from(zuvyModuleForm)
@@ -2035,52 +2045,95 @@ export class ContentService {
     }
   }
 
-  async editFormQuestions(editFormDetails: editFormBatchDto) {
-    try {
 
-      const isValid = editFormDetails.questions.every(question => {
-        if (typeof question.question !== 'string' || question.question.trim().length === 0) {
-          return false;
-        }
-        if (typeof question.options !== 'object' || Object.values(question.options).some(option => typeof option !== 'string' || option.trim().length === 0)) {
-          return false;
-        }
-        if (typeof question.typeId !== 'number' || question.typeId <= 0) {
-          return false;
-        }
-        return true;
-      });
+  async editFormQuestions(chapterId: number, editFormDetails: editFormBatchDto) {
+    try {
+      const editFormQuestions = editFormDetails.questions.map((f) => ({
+        chapterId,
+        id: f.id,
+        question: f.question,
+        options: f.options,
+        typeId: f.typeId,
+        isRequired: f.isRequired,
+      }));
   
-      if (!isValid) {
+      const allFieldsFilled = editFormQuestions.every(
+        (question) =>
+          question.question !== null &&
+          question.options !== null &&
+          question.typeId !== null &&
+          question.isRequired !== null
+      );
+  
+      if (!allFieldsFilled) {
         return {
-          status: 'failure',
+          status: "error",
           code: 400,
-          message: 'All questions and options must have a length greater than 0',
+          message: "One or more fields are empty. Please try again.",
         };
       }
-
-      await db
-        .insert(zuvyModuleForm)
-        .values(editFormDetails.questions)
-        .onConflictDoUpdate({
-          target: zuvyModuleForm.id,
-          set: {
-            question: sql`excluded.question`,
-            options: sql`excluded.options`,
-            typeId: sql`excluded.type_id`,
-            isRequired: sql`excluded.is_required`,
-          },
-        });
-
+  
+      const results = [];
+  
+      for (const formQuestion of editFormQuestions) {
+        if (formQuestion.id) {
+          const existingRecord = await db
+            .select()
+            .from(zuvyModuleForm)
+            .where(eq(zuvyModuleForm.id, formQuestion.id))
+  
+          if (existingRecord) {
+            const result = await db
+              .update(zuvyModuleForm)
+              .set({
+                chapterId: formQuestion.chapterId,
+                question: formQuestion.question,
+                options: formQuestion.options,
+                typeId: formQuestion.typeId,
+                isRequired: formQuestion.isRequired,
+              })
+              .where(eq(zuvyModuleForm.id, formQuestion.id))
+              .returning();
+            results.push(result);
+          } else {
+            return {
+              status: "Error",
+              code: 400,
+              message: "Form question id(s) are invalid",
+            };
+          }
+        } else {
+          return {
+            status: "Error",
+            code: 400,
+            message: "Form question ids(s) are missing",
+          };
+        }
+      }
+  
+  
+      const formIds = results.flat().map((obj) => obj.id);
+  
+      const updatedChapter = await db
+        .update(zuvyModuleChapter)
+        .set({
+          formQuestions: formIds,
+        })
+        .where(eq(zuvyModuleChapter.id, chapterId))
+        .returning();
+  
       return {
-        status: 'success',
+        status: "success",
         code: 200,
-        message: 'Form questions are updated successfully',
+        message: "Form questions are updated successfully",
+        results,
+        updatedChapter,
       };
     } catch (error) {
       throw error;
     }
   }
+  
 
   async deleteForm(id: deleteQuestionDto) {
     try {
@@ -2134,6 +2187,48 @@ export class ContentService {
           message: `Questions cannot be deleted`,
         };
       }
+    } catch (err) {
+      throw err;
+    }
+  }
+
+
+
+
+  async createAndEditFormQuestions(chapterId: number, form: CreateAndEditFormBody) {
+    try {
+
+      if (isNaN(chapterId)) {
+        return {
+          status: "error",
+          code: 400,
+          message: "Invalid chapterId. Please provide a valid number."
+        };
+      }
+
+      const res1 = await db
+        .select()
+        .from(zuvyModuleForm)
+        .where(eq(zuvyModuleForm.chapterId, chapterId))
+
+      const res2 = await db
+        .select({
+          formQuestions: zuvyModuleChapter.formQuestions
+        })
+        .from(zuvyModuleChapter)
+        .where(eq(zuvyModuleChapter.id, chapterId))
+
+      if (!(res1.length > 0 && res2.length > 0)) {
+        this.createFormForModule(chapterId,form.formQuestionDto)
+
+      // }else if(form.formQuestionDto !==isNullOrUndefined){
+
+      // }
+      }else{
+        this.editFormQuestions(chapterId,form.editFormquestionDto)
+      }
+
+
     } catch (err) {
       throw err;
     }
