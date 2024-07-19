@@ -19,7 +19,7 @@ import {
 } from 'class-validator';
 import { truncateSync } from 'fs';
 import { Type } from 'class-transformer';
-import { difficulty, questionType } from 'drizzle/schema';
+import { difficulty } from 'drizzle/schema';
 
 export class moduleDto {
   @ApiProperty({
@@ -124,14 +124,6 @@ export class chapterDto {
   quizQuestions: number[];
 
   @ApiProperty({
-    type: [Number],
-    example: [1, 2],
-  })
-  @IsOptional()
-  @IsArray()
-  formQuestions: number[];
-  
-  @ApiProperty({
     type: [String],
     example: ['https://www.google.com'],
   })
@@ -222,7 +214,7 @@ export class quizDto {
   difficulty: 'Easy' | 'Medium' | 'Hard';
 }
 
-export class  quizBatchDto {
+export class quizBatchDto {
   @ApiProperty({
     type: [quizDto],
     example: [
@@ -319,14 +311,6 @@ export class EditChapterDto {
   @IsOptional()
   quizQuestions: any[];
 
-  @ApiProperty({
-    type: [Number],
-    example: [1, 2],
-  })
-  @IsArray()
-  @IsOptional()
-  formQuestions: any[];
-  
   @ApiProperty({
     type: Number,
     example: 10,
@@ -848,15 +832,6 @@ export class CreateTypeDto{
 }
 
 export class formDto {
-  
-  // @ApiProperty({
-  //   type: Number,
-  //   example: 34,
-  //   required: true
-  // })
-  // @IsNumber()
-  // @IsNotEmpty()
-  // chapterId: number;
 
   @ApiProperty({
     type: String,
@@ -902,7 +877,6 @@ export class formBatchDto {
     type: [formDto],
     example: [
       {
-        // chapterId:34,
         question: 'What do you like about the course?',
         options: {
           1: 'Option 1',
@@ -914,7 +888,6 @@ export class formBatchDto {
         isRequired:false,
       },
       {
-        // chapterId:34,
         question: 'What do you want to improve about the course?',
         options: {
           1: 'Paris',
@@ -926,19 +899,16 @@ export class formBatchDto {
         isRequired:false,
       },
       {
-        // chapterId:34,
         question: 'What is your opinion about the course?',
         typeId: 3,
         isRequired:false,
       },
       {
-        // chapterId:34,
         question: 'Choose date of opting the course',
         typeId: 4,
         isRequired:false,
       },
       {
-        // chapterId:34,
         question: 'Choose time of opting the course',
         typeId: 5,
         isRequired:false,
@@ -962,15 +932,6 @@ export class editFormDto {
   })
   @IsNumber()
   id: number;
-
-  // @ApiProperty({
-  //   type: Number,
-  //   example: 34,
-  //   required: true
-  // })
-  // @IsNumber()
-  // @IsNotEmpty()
-  // chapterId: number;
 
   @ApiProperty({
     type: String,
@@ -1016,7 +977,6 @@ export class editFormBatchDto {
     example: [
       {
         id: 1,
-        // chapterId:34,
         question: 'What is the national animal of India?',
         options: {
           1: 'Option 1',
@@ -1029,7 +989,6 @@ export class editFormBatchDto {
       },
       {
         id: 2,
-        // chapterId:34,
         question: 'What is the capital of France?',
         options: {
           1: 'Paris',
@@ -1042,21 +1001,18 @@ export class editFormBatchDto {
       },
       {
         id: 3,
-        // chapterId:34,
         question: 'What is the national animal of India?',
         typeId: 3,
         isRequired:false,
       },
       {
         id: 4,
-        // chapterId:34,
         question: 'Choose date of opting the course',
         typeId: 4,
         isRequired:false,
       },
       {
         id: 5,
-        // chapterId:34,
         question: 'Choose time of opting the course',
         typeId: 5,
         isRequired:false,
@@ -1084,5 +1040,4 @@ export class CreateAndEditFormBody {
   @ValidateNested()
   @Type(() => editFormBatchDto)
   editFormQuestionDto: editFormBatchDto;
-  //questions: any;
 }

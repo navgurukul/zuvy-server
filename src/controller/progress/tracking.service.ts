@@ -1488,7 +1488,7 @@ export class TrackingService {
     return { totalMCQPoints, totalOpenPoints, totalCodingPoints, totalPoints };
   }
 
-  async calculateAssessmentResults(data, totalOpenEndedScore, totalQuizScore, totalCodingScore) {
+  async calculateAssessmentResults(data, totalOpenEndedScore, totalQuizScore, totalCodingScore, codingSubmission) {
 
     let quizTotalAttemted = 0;
     let quizCorrect = 0;
@@ -1523,12 +1523,12 @@ export class TrackingService {
 
     let needCodingScore = 0;
 
-    let codingSubmission: any[] = [];
-
     data.PracticeCode.forEach(question => {
-      let existingEntry = codingSubmission.find(entry => entry.questionId === question.questionId);
-
+      let existingEntry = codingSubmission.find(entry => entry.id === question.questionId);      
       if (existingEntry) {
+        if (!existingEntry.submissions) {
+          existingEntry.submissions = [];
+        }
         existingEntry.submissions.push({
           id: question.id,
           status: question.status,
@@ -1540,7 +1540,7 @@ export class TrackingService {
         codingTotalAttemted += 1;
         needCodingScore += codingPoints[question?.questionDetail.difficulty];
         codingSubmission.push({
-          questionId: question.questionId,
+          id: question.questionId,
           ...question.questionDetail,
           submissions: [{
             id: question.id,
@@ -1552,7 +1552,11 @@ export class TrackingService {
         });
       }
     });
-
+    codingSubmission.forEach(question => {
+      if (!question?.submissions) {
+        question.submissions = [];
+      }
+    })
     const totalScore =  totalQuizScore + totalCodingScore;
     const needScore =  needCodingScore + quizScore
 
@@ -1636,7 +1640,7 @@ export class TrackingService {
         submission = await db.insert(zuvyAssessmentSubmission).values({ userId: id, assessmentOutsourseId, startedAt }).returning();
       }
       let formatedData = await this.formatedChapterDetails(assessment[0]);
-      return { ...formatedData, submission: submission[0] };
+      return { ...formatedData, submission: submission[0], codingQuestions:  assessment[0].CodingQuestions };
     } catch (err) {
       throw err;
     }
@@ -1663,6 +1667,7 @@ export class TrackingService {
               questionId: true,
               feedback: true,
               marks: true,
+              startAt: true,
               submitedAt: true,
             },
             with: {
@@ -1720,11 +1725,12 @@ export class TrackingService {
           message: 'Assessment not submitted yet',
         });
       }
-      let assessment_data =  await this.assessmentOutsourseData(data.assessmentOutsourseId, {user: [{id: userId}]});
+      let {codingQuestions, ...assessment_data} =  await this.assessmentOutsourseData(data.assessmentOutsourseId, {user: [{id: userId}]});
       const { totalMCQPoints, totalOpenPoints, totalCodingPoints, totalPoints } =  await this.calculateTotalPoints(assessment_data);  
       let total = {totalMCQPoints, totalOpenPoints, totalCodingPoints, totalPoints}
       let {OpenEndedQuestions, Quizzes, CodingQuestions} = assessment_data;
-      let calData =  await this.calculateAssessmentResults(data, totalOpenPoints,totalMCQPoints, totalCodingPoints);
+      let calData =  await this.calculateAssessmentResults(data, totalOpenPoints,totalMCQPoints, totalCodingPoints,codingQuestions);
+      
       return {...calData, totalOpenEndedQuestions: OpenEndedQuestions.length,totalQuizzes:Quizzes.length, totalCodingQuestions: CodingQuestions.length};
     }
     catch (err) {

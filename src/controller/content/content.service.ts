@@ -17,9 +17,6 @@ import {
   zuvyOutsourseOpenEndedQuestions,
   zuvyOutsourseQuizzes,
   zuvyAssessmentSubmission,
-  zuvyModuleForm,
-  questionType,
-  zuvyQuestionTypes,
 } from '../../../drizzle/schema';
 
 import axios from 'axios';
@@ -538,9 +535,6 @@ export class ContentService {
           articlesCount: module.moduleChapterData.filter(
             (chapter) => chapter.topicId === 2,
           ).length,
-          formCount: module.moduleChapterData.filter(
-            (chapter) => chapter.topicId === 7,
-          ).length,
         };
       });
       modules.sort((a, b) => a.order - b.order);
@@ -624,12 +618,6 @@ export class ContentService {
         return { ...CodingQuestions, ...codingDetails }
       })
 
-      chapterDetails.Forms = chapterDetails?.Forms.map((Forms) => {
-        let FormDetails = { ...Forms.Form, }
-        delete Forms.Form
-        return { ...Forms, ...FormDetails }
-      })
-
       return chapterDetails
     } catch (err) {
       throw err;
@@ -711,7 +699,6 @@ export class ContentService {
         order: number;
         quizQuestionDetails?: any[];
         codingQuestionDetails?: any[];
-        formQuestionDetails?: any[];
         contentDetails?: any[];
       } = {
         id: chapterDetails[0].id,
@@ -2237,8 +2224,6 @@ export class ContentService {
       }
 
 
-
-
       if (form.formQuestionDto && !(form.editFormQuestionDto)) {
         await this.createFormForModule(chapterId, form.formQuestionDto);
 
@@ -2281,5 +2266,4 @@ export class ContentService {
       throw err;
     }
   }
-
 }

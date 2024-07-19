@@ -46,7 +46,7 @@ import {
   CreateAndEditFormBody
 } from './dto/content.dto';
 import { CreateProblemDto } from '../codingPlatform/dto/codingPlatform.dto';
-import { difficulty, questionType } from 'drizzle/schema';
+import { difficulty } from 'drizzle/schema';
 
 @Controller('Content')
 @ApiTags('Content')
@@ -699,6 +699,3 @@ export class ContentController {
   // }
 
 }
-
-
-

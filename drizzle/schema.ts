@@ -63,13 +63,6 @@ export const userRolesRoles = pgEnum('user_roles_roles', [
 ]);
 export const usersCenter = pgEnum('users_center', ['dharamshala', 'bangalore']);
 export const action = pgEnum('action', ['submit', 'run']);
-export const questionType = pgEnum('questionType', [
-  'Multiple Choice' , 
-  'Checkboxes' , 
-  'Long Text Answer', 
-  'Date' , 
-  'Time',
-]);
 
 export const main = pgSchema('main');
 
@@ -2830,7 +2823,6 @@ export const zuvyModuleChapter = main.table('zuvy_module_chapter', {
   articleContent: jsonb('article_content'),
   quizQuestions: jsonb('quiz_questions'),
   codingQuestions: integer('coding_questions'),
-  formQuestions: jsonb('form_questions'),
   assessmentId: integer('assessment_id'),
   completionDate: timestamp('completion_date', {
     withTimezone: true,
@@ -2849,7 +2841,6 @@ export const postsRelations = relations(zuvyModuleChapter, ({ one, many }) => ({
     references: [zuvyCodingQuestions.id],
   }),
   quizTrackingDetails: many(zuvyQuizTracking),
-  formTrackingDetails: many(zuvyFormTracking),
   OutsourseAssessments: many(zuvyOutsourseAssessments),
   ModuleAssessment: many(zuvyModuleAssessment)
 }));
@@ -2957,7 +2948,6 @@ export const zuvyAssessmentSubmissionRelation = relations(zuvyAssessmentSubmissi
   }),
   openEndedSubmission: many(zuvyOpenEndedQuestionSubmission),
   quizSubmission: many(zuvyQuizTracking),
-  formSubmission: many(zuvyFormTracking),
   PracticeCode: many(zuvyPracticeCode),
 }))
 
