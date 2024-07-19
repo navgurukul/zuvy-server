@@ -2250,7 +2250,14 @@ export class ContentService {
 
         await this.editFormQuestions(chapterId, form.editFormQuestionDto);
         await this.createFormForModule(chapterId, form.formQuestionDto);
+      }else{
+        return {
+          status: "error",
+          code: 400,
+          message: "Invalid input."
+        };
       }
+
       const res1 = await db
         .select()
         .from(zuvyModuleForm)
