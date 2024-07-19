@@ -818,3 +818,226 @@ export class CreateChapterDto {
   @IsNumber()
   order: number;
 }
+
+export class CreateTypeDto{
+  @ApiProperty({
+    type: String,
+    example : 'Multiple Choice',
+    required: true
+  })
+
+  @IsString()
+  @IsNotEmpty()
+  questionType : string
+}
+
+export class formDto {
+
+  @ApiProperty({
+    type: String,
+    example: 'What is your opinion about the course?',
+  })
+  @IsString()
+  @IsOptional()
+  question: string;
+
+  @ApiProperty({
+    type: 'object',
+    example: {
+      1: 'Option 1',
+      2: 'Option 2',
+      3: 'Option 3',
+      4: 'Option 4',
+    }
+  })
+  @IsObject()
+  @IsOptional() 
+  options: object;
+
+  @ApiProperty({
+    type: Number,
+    example: 2,
+  })
+  @IsNumber()
+  @IsOptional()
+  typeId: number;
+
+  @ApiProperty({
+    type: Boolean,
+    example: false
+  })
+  @IsOptional()
+  @IsBoolean()
+  isRequired: boolean;
+
+}
+
+export class formBatchDto {
+  @ApiProperty({
+    type: [formDto],
+    example: [
+      {
+        question: 'What do you like about the course?',
+        options: {
+          1: 'Option 1',
+          2: 'Option 2',
+          3: 'Option 3',
+          4: 'Option 4',
+        },
+        typeId: 1,
+        isRequired:false,
+      },
+      {
+        question: 'What do you want to improve about the course?',
+        options: {
+          1: 'Paris',
+          2: 'London',
+          3: 'Berlin',
+          4: 'Rome',
+        },
+        typeId: 2,
+        isRequired:false,
+      },
+      {
+        question: 'What is your opinion about the course?',
+        typeId: 3,
+        isRequired:false,
+      },
+      {
+        question: 'Choose date of opting the course',
+        typeId: 4,
+        isRequired:false,
+      },
+      {
+        question: 'Choose time of opting the course',
+        typeId: 5,
+        isRequired:false,
+      },
+    ],
+    required: true,
+  })
+  @IsArray()
+  @ArrayNotEmpty()
+  @ValidateNested({ each: true })
+  @Type(() => formDto)
+  questions: formDto[];
+}
+
+export class editFormDto {
+
+  @ApiProperty({
+    type: Number,
+    example: 1,
+    required: true
+  })
+  @IsNumber()
+  id: number;
+
+  @ApiProperty({
+    type: String,
+    example: 'What is your opinion about the course?',
+  })
+  @IsString()
+  @IsOptional()
+  question: string;
+
+  @ApiProperty({
+    type: 'object',
+    example: {
+      1: 'Option 1',
+      2: 'Option 2',
+      3: 'Option 3',
+      4: 'Option 4',
+    }
+  })
+  @IsObject()
+  @IsOptional()
+  options: object;
+
+  @ApiProperty({
+    type: Number,
+    example: 1,
+  })
+  @IsNumber()
+  @IsOptional()
+  typeId: number;
+
+  @ApiProperty({
+    type: Boolean,
+    example: false
+  })
+  @IsOptional()
+  @IsBoolean()
+  isRequired: boolean;
+}
+
+export class editFormBatchDto {
+  @ApiProperty({
+    type: [editFormDto],
+    example: [
+      {
+        id: 1,
+        question: 'What is the national animal of India?',
+        options: {
+          1: 'Option 1',
+          2: 'Option 2',
+          3: 'Option 3',
+          4: 'Option 4',
+        },
+        typeId: 1,
+        isRequired:false,
+      },
+      {
+        id: 2,
+        question: 'What is the capital of France?',
+        options: {
+          1: 'Paris',
+          2: 'London',
+          3: 'Berlin',
+          4: 'Rome',
+        },
+        typeId: 2,
+        isRequired:false,
+      },
+      {
+        id: 3,
+        question: 'What is the national animal of India?',
+        typeId: 3,
+        isRequired:false,
+      },
+      {
+        id: 4,
+        question: 'Choose date of opting the course',
+        typeId: 4,
+        isRequired:false,
+      },
+      {
+        id: 5,
+        question: 'Choose time of opting the course',
+        typeId: 5,
+        isRequired:false,
+      },
+    ],
+    required: true,
+  })
+  @IsArray()
+  @ArrayNotEmpty()
+  @ValidateNested({ each: true })
+  @Type(() => editFormDto)
+  questions: editFormDto[];
+
+}
+
+export class CreateAndEditFormBody {
+  @ApiProperty({ type: formBatchDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => formBatchDto)
+  formQuestionDto: formBatchDto;
+
+  @ApiProperty({ type: editFormBatchDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => editFormBatchDto)
+  editFormQuestionDto: editFormBatchDto;
+}
