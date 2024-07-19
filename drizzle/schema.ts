@@ -3484,35 +3484,35 @@ export const zuvyFormTracking = main.table("zuvy_form_tracking", {
   questionId: integer("question_id"),
   chapterId: integer("chapter_id"),
   status: varchar("status", { length: 255 }),
-  assessmentSubmissionId: integer("assessment_submission_id").references(() => zuvyAssessmentSubmission.id, {
-    onDelete: 'cascade',
-    onUpdate: 'cascade',
-  }),
+  // assessmentSubmissionId: integer("assessment_submission_id").references(() => zuvyAssessmentSubmission.id, {
+  //   onDelete: 'cascade',
+  //   onUpdate: 'cascade',
+  // }),
   chosenOptions: text("chosen_options").array(),
   answer: text("answer"),
   createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
 });
 
-export const zuvyFormTrackingRelations = relations(zuvyFormTracking, ({ one }) => ({
+// export const zuvyFormTrackingRelations = relations(zuvyFormTracking, ({ one }) => ({
 
-  formSubmissions: one(zuvyAssessmentSubmission, {
-    fields: [zuvyFormTracking.assessmentSubmissionId],
-    references: [zuvyAssessmentSubmission.id]
-  })
+//   formSubmissions: one(zuvyAssessmentSubmission, {
+//     fields: [zuvyFormTracking.assessmentSubmissionId],
+//     references: [zuvyAssessmentSubmission.id]
+//   })
 
-}))
+// }))
 
-export const formChapterRelations = relations(
-  zuvyCourseModules,
-  ({many, one }) => ({
-    moduleChapterData: many(zuvyModuleChapter),
-    chapterTrackingData: many(zuvyChapterTracking),
-    moduleTracking: many(zuvyModuleTracking),
-    formTrackingData: many(zuvyFormTracking),
-    moduleFormData: many (zuvyModuleForm)
-  }),
-);
+// export const formChapterRelations = relations(
+//   zuvyCourseModules,
+//   ({many, one }) => ({
+//     moduleChapterData: many(zuvyModuleChapter),
+//     chapterTrackingData: many(zuvyChapterTracking),
+//     moduleTracking: many(zuvyModuleTracking),
+//     formTrackingData: many(zuvyFormTracking),
+//     moduleFormData: many (zuvyModuleForm)
+//   }),
+// );
 
 export const formModuleRelation= relations(
   zuvyModuleForm,
