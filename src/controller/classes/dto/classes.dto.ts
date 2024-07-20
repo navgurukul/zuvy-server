@@ -45,7 +45,6 @@ export class ScheduleDto {
   })
   @IsNotEmpty()
   day: string;
-
 }
 
 export class CreateSessionDto {
@@ -121,9 +120,6 @@ export class CreateSessionDto {
   @IsString()
   timeZone: string;
 
-    // daysOfWeek: string[]; // New field: array of days (e.g., ['Monday', 'Wednesday', 'Friday'])
-  // totalClasses: number; // New field: total number of classes/sessions
-  // totalDuration: number; // New field: total duration of the classes/sessions
   @ApiProperty({
     description: 'The days of the week for the live  event',
     type: Array,
