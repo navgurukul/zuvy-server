@@ -39,10 +39,14 @@ import {
   UpdateOpenEndedDto,
   CreateTagDto,
   projectDto,
-  CreateChapterDto
+  CreateChapterDto,
+  formBatchDto,
+  editFormBatchDto,
+  CreateTypeDto,
+  CreateAndEditFormBody
 } from './dto/content.dto';
 import { CreateProblemDto } from '../codingPlatform/dto/codingPlatform.dto';
-import { difficulty } from 'drizzle/schema';
+import { difficulty, questionType } from 'drizzle/schema';
 
 @Controller('Content')
 @ApiTags('Content')
@@ -621,15 +625,17 @@ export class ContentController {
   @ApiOperation({ summary: 'Create a form' })
   @ApiBearerAuth()
   async createFormForModule (
+    @Query('chapterId') chapterId: number,
     @Body() formQuestion: formBatchDto
   ){
     const res = await this.contentService.createFormForModule(
+      chapterId,
       formQuestion
     );
     return res;
   }
 
-  @Get('/allFormQuestions')
+  @Get('/allFormQuestions/:chapterId')
   @ApiOperation({ summary: 'Get all form Questions' })
   @ApiQuery({
     name: 'typeId',
@@ -645,10 +651,12 @@ export class ContentController {
   })
   @ApiBearerAuth()
   async getAllFormQuestions(
+  @Param('chapterId') chapterId: number,
   @Query('typeId') typeId: number,
   @Query('searchTerm') searchTerm: string,
   ): Promise<object> {
     const res = await this.contentService.getAllFormQuestions(
+    chapterId,
     typeId,
 	  searchTerm,
     );
@@ -658,18 +666,37 @@ export class ContentController {
   @Post('/editform')
   @ApiOperation({ summary: 'Create a form' })
   @ApiBearerAuth()
-  async editFormForModule(@Body() formQuestions: editFormBatchDto) {
-    const res = await this.contentService.editFormQuestions(formQuestions);
+  async editFormForModule(
+    @Query('chapterId') chapterId: number,
+    @Body() formQuestions: editFormBatchDto) {
+    const res = await this.contentService.editFormQuestions(
+      chapterId,
+      formQuestions
+    );
+    return res;
+  }
+
+  
+  @Post('/createAndEditForm/:chapterId')
+  @ApiOperation({ summary: 'Create a form' })
+  @ApiBearerAuth()
+  async createAndEditForm(
+    @Param('chapterId') chapterId: number,
+    @Body() formQuestions: CreateAndEditFormBody) {
+    const res = await this.contentService.createAndEditFormQuestions(
+      chapterId,
+      formQuestions
+    );
     return res;
   }
    
-  @Delete('/deleteFormQuestion')
-  @ApiOperation({ summary: 'Delete form question' })
-  @ApiBearerAuth()
-  async deleteFormQuestion(@Body() questionIds: deleteQuestionDto) {
-    const res = await this.contentService.deleteForm(questionIds);
-    return res;
-  }
+  // @Delete('/deleteFormQuestion')
+  // @ApiOperation({ summary: 'Delete form question' })
+  // @ApiBearerAuth()
+  // async deleteFormQuestion(@Body() questionIds: deleteQuestionDto) {
+  //   const res = await this.contentService.deleteForm(questionIds);
+  //   return res;
+  // }
 
 }
 
