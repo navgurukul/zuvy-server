@@ -129,16 +129,6 @@ export class CreateSessionDto {
   @IsNumber()
   @IsOptional()
   totalClasses: number;
-
-  @ApiProperty({
-    description: 'The total duration of the classes/sessions',
-    type: Number,
-    example: 10,
-    required: false,
-  })
-  @IsNumber()
-  @IsOptional()
-  totalDuration: number;
 }
 
 export class reloadDto {

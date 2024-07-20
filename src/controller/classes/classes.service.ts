@@ -192,7 +192,7 @@ export class ClassesService {
           };
 
           // Validate totalClasses
-          if (eventDetails.totalClasses <= 0) {
+          if (eventDetails?.totalClasses <= 0) {
               return {
                   status: 'error',
                   message: 'Total classes should be greater than 0',
