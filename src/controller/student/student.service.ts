@@ -246,7 +246,7 @@ export class StudentService {
             columns: { attendance: true },
             with: {
               userInfo: {
-                columns: { name: true ,email:true},
+                columns: { id:true, name: true ,email:true},
               },
               userTracking: {
                 columns: { progress: true, updatedAt: true },
@@ -266,11 +266,13 @@ export class StudentService {
           student['userTracking']['updatedAt'] = student['userTracking']['updatedAt'] != null ? student['userTracking']['updatedAt'] : new Date().toISOString();
           const attendance = student['attendance'] != null ?student['attendance']: 0;
           const averageScore = (attendance + progress) / 2;
-  
+          student['attendance'] = attendance;
           return {
             ...student,
             userInfo: {
-              ...student.userInfo,
+              id:Number(student.userInfo.id),
+              name:student.userInfo.name,
+              email:student.userInfo.email,
               averageScore,
             },
           };
