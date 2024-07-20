@@ -258,10 +258,11 @@ export class StudentService {
       });
       const processedData = data.map(bootcamp => {
         const studentsWithAvg = bootcamp['students'].map(student => {
-          const progress = student['userTracking'] != null? student['userTracking']['progress'] : 0;
           if (student['userTracking'] == null) {
             student['userTracking'] = {};
         }
+          student['userTracking']['progress'] = student['userTracking']['progress'] != null ? student['userTracking']['progress'] : 0;
+          const progress =student['userTracking']['progress'];
           student['userTracking']['updatedAt'] = student['userTracking']['updatedAt'] != null ? student['userTracking']['updatedAt'] : new Date().toISOString();
           const attendance = student['attendance'] != null ?student['attendance']: 0;
           const averageScore = (attendance + progress) / 2;
