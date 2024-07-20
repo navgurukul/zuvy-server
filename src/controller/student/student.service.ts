@@ -5,7 +5,8 @@ import {
   zuvyBootcampTracking,
   zuvyBootcamps,
   zuvyBootcampType,
-  zuvySessions
+  zuvySessions,
+  users
 } from '../../../drizzle/schema';
 import { db } from '../../db/index';
 import { eq, sql, desc, count } from 'drizzle-orm';
@@ -232,5 +233,64 @@ export class StudentService {
       throw err;
     }
 
+  }
+
+
+  async getLeaderBoardDetailByBootcamp(bootcampId:number)
+  {
+    try {
+      const data = await db.query.zuvyBootcamps.findMany({
+        where: (bootcamp, { eq }) => eq(bootcamp.id, bootcampId),
+        with: {
+          students: {
+            columns: { attendance: true },
+            with: {
+              userInfo: {
+                columns: { name: true ,email:true},
+              },
+              userTracking: {
+                columns: { progress: true, updatedAt: true },
+                where: (track, { eq }) => eq(track.bootcampId, bootcampId),
+              },
+            },
+          },
+        },
+      });
+      const processedData = data.map(bootcamp => {
+        const studentsWithAvg = bootcamp['students'].map(student => {
+          const progress = student['userTracking'] != null? student['userTracking']['progress'] : 0;
+          if (student['userTracking'] == null) {
+            student['userTracking'] = {};
+        }
+          student['userTracking']['updatedAt'] = student['userTracking']['updatedAt'] != null ? student['userTracking']['updatedAt'] : new Date().toISOString();
+          const attendance = student['attendance'] != null ?student['attendance']: 0;
+          const averageScore = (attendance + progress) / 2;
+  
+          return {
+            ...student,
+            userInfo: {
+              ...student.userInfo,
+              averageScore,
+            },
+          };
+        }).sort((a, b) => {
+          if (b.userInfo.averageScore === a.userInfo.averageScore) {
+            return new Date(a.userTracking['updatedAt']).getTime() - new Date(b.userTracking.updatedAt).getTime();
+          }
+          return b.userInfo.averageScore - a.userInfo.averageScore;
+        });
+  
+        return {
+          ...bootcamp,
+          students: studentsWithAvg,
+        };
+      });
+  
+      return processedData;
+    }
+    catch(err)
+    {
+         throw err;
+    }
   }
 }

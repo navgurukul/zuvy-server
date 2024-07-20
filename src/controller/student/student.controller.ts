@@ -104,4 +104,17 @@ export class StudentController {
   ) {
     return await this.studentService.getAttendanceClass(req.user[0].id);
   }
+
+
+  @Get('/leaderboard/:bootcampId')
+  @ApiOperation({ summary: 'Get the leaderboard of a course' })
+  @ApiBearerAuth()
+  async getleaderboardDetails(
+    @Param('bootcampId') bootcampId: number,
+  ): Promise<object> {
+    const res = await this.studentService.getLeaderBoardDetailByBootcamp(
+      bootcampId,
+    );
+    return res;
+  }
 }
