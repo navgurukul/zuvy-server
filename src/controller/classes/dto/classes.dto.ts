@@ -69,16 +69,6 @@ export class CreateSessionDto {
   batchId: number;
 
   @ApiProperty({
-    description: 'Bootcamp Id',
-    type: Number,
-    example: 9,
-    required: true,
-  })
-  @IsNotEmpty()
-  @IsNumber()
-  bootcampId: number;
-
-  @ApiProperty({
     description: 'The description of the live  event',
     type: String,
     example: 'Description of the event',
