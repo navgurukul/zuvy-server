@@ -287,7 +287,7 @@ export class StudentService {
           return b.userInfo.averageScore - a.userInfo.averageScore;
         });
         const totalStudents = studentsWithAvg.length;
-        const totalPages = Math.ceil(totalStudents / limit);
+        const totalPages =!isNaN(limit) ? Math.ceil(totalStudents / limit) : 1;
         return {
           ...bootcamp,
           students: !isNaN(limit) && !isNaN(offset) ? studentsWithAvg.slice(offset, limit+offset) : studentsWithAvg,
