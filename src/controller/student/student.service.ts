@@ -240,7 +240,7 @@ export class StudentService {
   //The query has a hierarchy from:-
   //zuvyBootcamp->zuvyBatchEnrollments(It has all the students of that particular bootcamp along with attendance)
   //ZuvyBatchEnrollments has a relation with userInfo and bootcamp Tracking table(contains course Progress)
-  async getLeaderBoardDetailByBootcamp(bootcampId:number)
+  async getLeaderBoardDetailByBootcamp(bootcampId:number,limit:number,offset:number)
   {
     try {
       const data = await db.query.zuvyBootcamps.findMany({
@@ -286,15 +286,16 @@ export class StudentService {
           }
           return b.userInfo.averageScore - a.userInfo.averageScore;
         });
-  
+        const totalStudents = studentsWithAvg.length;
+        const totalPages = Math.ceil(totalStudents / limit);
         return {
           ...bootcamp,
-          students: studentsWithAvg,
+          students: !isNaN(limit) && !isNaN(offset) ? studentsWithAvg.slice(offset, limit+offset) : studentsWithAvg,
+          totalStudents,
+          totalPages
         };
       });
-      const result = processedData.length > 10 ? processedData.slice(0, 10) : processedData;
-
-      return result;
+      return processedData;
     }
     catch(err)
     {

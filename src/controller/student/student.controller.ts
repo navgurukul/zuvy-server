@@ -108,12 +108,26 @@ export class StudentController {
 
   @Get('/leaderboard/:bootcampId')
   @ApiOperation({ summary: 'Get the leaderboard of a course' })
+  @ApiQuery({
+    name: 'limit',
+    type: Number,
+    description: 'limit',
+    required:false
+  })
+  @ApiQuery({
+    name: 'offset',
+    type: Number,
+    description: 'offset',
+    required:false
+  })
   @ApiBearerAuth()
   async getleaderboardDetails(
     @Param('bootcampId') bootcampId: number,
+    @Query('limit') limit: number,
+    @Query('offset') offset : number
   ): Promise<object> {
     const res = await this.studentService.getLeaderBoardDetailByBootcamp(
-      bootcampId,
+      bootcampId,limit,offset
     );
     return res;
   }
