@@ -235,7 +235,11 @@ export class StudentService {
 
   }
 
-
+  
+  //This function returns the rank of a particular course based on avg of attendance and course progress
+  //The query has a hierarchy from:-
+  //zuvyBootcamp->zuvyBatchEnrollments(It has all the students of that particular bootcamp along with attendance)
+  //ZuvyBatchEnrollments has a relation with userInfo and bootcamp Tracking table(contains course Progress)
   async getLeaderBoardDetailByBootcamp(bootcampId:number)
   {
     try {
@@ -250,9 +254,9 @@ export class StudentService {
               },
               userTracking: {
                 columns: { progress: true, updatedAt: true },
-                where: (track, { eq }) => eq(track.bootcampId, bootcampId),
+                where: (track, { eq }) => eq(track.bootcampId, bootcampId)
               },
-            },
+            }
           },
         },
       });
@@ -288,8 +292,9 @@ export class StudentService {
           students: studentsWithAvg,
         };
       });
-  
-      return processedData;
+      const result = processedData.length > 10 ? processedData.slice(0, 10) : processedData;
+
+      return result;
     }
     catch(err)
     {
