@@ -2574,6 +2574,10 @@ export const classesInTheBatch = relations(
       fields: [zuvyBatchEnrollments.bootcampId],
       references: [zuvyBootcampTracking.bootcampId],
     }),
+    userTracking: one(zuvyBootcampTracking, {
+      fields: [zuvyBatchEnrollments.userId],
+      references: [zuvyBootcampTracking.userId],
+    }),
 
     classInfo: one(zuvySessions, {
       fields: [zuvyBatchEnrollments.batchId],
