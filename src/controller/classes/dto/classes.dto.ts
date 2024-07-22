@@ -49,9 +49,9 @@ export class ScheduleDto {
 
 export class CreateSessionDto {
   @ApiProperty({
-    description: 'The summary of the live broadcast event',
+    description: 'The summary of the live  event',
     type: String,
-    example: 'Live Broadcast Event',
+    example: 'Live  Event',
     required: true,
   })
   @IsNotEmpty()
@@ -59,7 +59,7 @@ export class CreateSessionDto {
   title: string;
 
   @ApiProperty({
-    description: 'The batchId of the live broadcast ',
+    description: 'The batchId of the live  ',
     type: Number,
     example: 1,
     required: true,
@@ -69,17 +69,7 @@ export class CreateSessionDto {
   batchId: number;
 
   @ApiProperty({
-    description: 'Bootcamp Id',
-    type: Number,
-    example: 9,
-    required: true,
-  })
-  @IsNotEmpty()
-  @IsNumber()
-  bootcampId: number;
-
-  @ApiProperty({
-    description: 'The description of the live broadcast event',
+    description: 'The description of the live  event',
     type: String,
     example: 'Description of the event',
     required: false,
@@ -89,10 +79,10 @@ export class CreateSessionDto {
   description?: string;
 
   @ApiProperty({
-    description: 'The start time of the live broadcast event',
+    description: 'The start time of the live  event',
     type: String,
     format: 'date-time',
-    example: '2022-03-01T00:00:00Z',
+    example: '2024-07-21T00:00:00Z',
     required: true,
   })
   @IsNotEmpty()
@@ -100,10 +90,10 @@ export class CreateSessionDto {
   startDateTime: string;
 
   @ApiProperty({
-    description: 'The end time of the live broadcast event',
+    description: 'The end time of the live  event',
     type: String,
     format: 'date-time',
-    example: '2022-03-01T00:00:00Z',
+    example: '2024-07-21T00:00:00Z',
     required: true,
   })
   @IsNotEmpty()
@@ -111,7 +101,7 @@ export class CreateSessionDto {
   endDateTime: string;
 
   @ApiProperty({
-    description: 'The timezone for the live broadcast event',
+    description: 'The timezone for the live  event',
     type: String,
     example: 'Asia/Kolkata',
     required: true,
@@ -119,6 +109,26 @@ export class CreateSessionDto {
   @IsNotEmpty()
   @IsString()
   timeZone: string;
+
+  @ApiProperty({
+    description: 'The days of the week for the live  event',
+    type: Array,
+    example: ["Monday", "Wednesday", "Friday"],
+    required: false,
+  })
+  @IsArray()
+  @IsOptional()
+  daysOfWeek: string[];
+
+  @ApiProperty({
+    description: 'The total number of classes/sessions',
+    type: Number,
+    example: 10,
+    required: false,
+  })
+  @IsNumber()
+  @IsOptional()
+  totalClasses: number;
 }
 
 export class reloadDto {
@@ -145,7 +155,7 @@ export class updateSessionDto {
   title: string;
 
   @ApiProperty({
-    description: 'The description of the live broadcast event',
+    description: 'The description of the live  event',
     type: String,
     example: 'Description of the event',
     required: true,
@@ -155,7 +165,7 @@ export class updateSessionDto {
   description?: string;
 
   @ApiProperty({
-    description: 'The start time of the live broadcast event',
+    description: 'The start time of the live  event',
     type: String,
     format: 'date-time',
     example: '2022-03-01T00:00:00Z',
@@ -166,7 +176,7 @@ export class updateSessionDto {
   startDateTime: string;
 
   @ApiProperty({
-    description: 'The end time of the live broadcast event',
+    description: 'The end time of the live  event',
     type: String,
     format: 'date-time',
     example: '2022-03-01T00:00:00Z',

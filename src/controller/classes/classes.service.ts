@@ -6,6 +6,7 @@ import {
   zuvyBatchEnrollments,
   zuvyStudentAttendance,
   zuvySessions,
+  zuvyBatches
   // ZuvyClassesGoogleMeetLink
 } from '../../../drizzle/schema';
 import { db } from '../../db/index';
@@ -17,6 +18,7 @@ import * as _ from 'lodash';
 import Axios from 'axios';
 import { S3 } from 'aws-sdk';
 import { Cron } from '@nestjs/schedule';
+import { Console } from 'console';
 const moment = require('moment-timezone');
 
 const { OAuth2 } = google.auth;
@@ -174,106 +176,219 @@ export class ClassesService {
     endDateTime: string;
     timeZone: string;
     batchId: number;
-    bootcampId: number;
-  },creatorInfo : any) {
-    try {
-      let calendar:any = await this.accessOfCalendar(creatorInfo);
+    daysOfWeek: string[]; // New field: array of days (e.g., ['Monday', 'Wednesday', 'Friday'])
+    totalClasses: number; // New field: total number of classes
+  }, creatorInfo: any) {
+      try {
+          // Mapping days of the week to moment.js day indices
+          const dayToMomentDay: { [key: string]: number } = {
+              'Sunday': 0,
+              'Monday': 1,
+              'Tuesday': 2,
+              'Wednesday': 3,
+              'Thursday': 4,
+              'Friday': 5,
+              'Saturday': 6
+          };
 
-      const studentsInTheBatchEmails = await db
-        .select()
-        .from(zuvyBatchEnrollments)
-        .where(eq(zuvyBatchEnrollments.batchId, eventDetails.batchId));
-
-      const studentsEmails = [];
-      for (const studentEmail of studentsInTheBatchEmails) {
-        try {
-          const emailFetched = await db
-            .select()
-            .from(users)
-            .where(eq(users.id, studentEmail.userId));
-          if (emailFetched && emailFetched.length > 0) {
-            studentsEmails.push({ email: emailFetched[0].email });
+          // Validate totalClasses
+          if (eventDetails?.totalClasses <= 0) {
+              return {
+                  status: 'error',
+                  message: 'Total classes should be greater than 0',
+              };
           }
-        } catch (error) {
-          return [
-            { status: 'error', message: 'Fetching emails failed', code: 500 },
-            null,
-          ];
-        }
-      }
 
-      const eventData = {
-        calendarId: 'primary',
-        conferenceDataVersion: 1,
-        requestBody: {
-          summary: eventDetails.title,
-          description: eventDetails.description,
-          start: {
-            dateTime: moment(eventDetails.startDateTime)
-              .subtract(5, 'hours')
-              .subtract(30, 'minutes')
-              .format(),
-            timeZone: eventDetails.timeZone,
-          },
-          end: {
-            dateTime: moment(eventDetails.endDateTime)
-              .subtract(5, 'hours')
-              .subtract(30, 'minutes')
-              .format(),
-            timeZone: eventDetails.timeZone,
-          },
+          const startDateTime__ = new Date(eventDetails.startDateTime);
+          const presentTime = new Date();
 
-          attendees: studentsEmails,
-          conferenceData: {
-            createRequest: {
-              conferenceSolutionKey: {
-                type: 'hangoutsMeet',
+          // Validate start and end date times
+          if (startDateTime__ >= new Date(eventDetails.endDateTime)) {
+              return {
+                  status: 'error',
+                  message: 'Start date and time should be less than end date and time',
+              };
+          }
+
+          if (startDateTime__ <= presentTime) {
+              return {
+                  status: 'error',
+                  message: 'Start date and time should be greater than the present time',
+              };
+          }
+
+          // Validate daysOfWeek and totalClasses
+          if (eventDetails?.daysOfWeek.length > 0) {
+              const startDay = new Date(eventDetails.startDateTime).getDay();
+              const daysOfWeek = eventDetails.daysOfWeek.map(day => dayToMomentDay[day]);
+
+              if (!daysOfWeek.includes(startDay)) {
+                  return {
+                      status: 'error',
+                      message: 'Start date should be one of the specified days of the week',
+                  };
+              }
+
+              if (eventDetails?.totalClasses < eventDetails?.daysOfWeek.length) {
+                  return {
+                      status: 'error',
+                      message: 'Total classes should be greater than the number of days of the week',
+                  };
+              }
+          }
+
+          // Fetch batch information
+          let batchInfo = await db.select().from(zuvyBatches).where(eq(zuvyBatches.id, eventDetails.batchId));
+          if (batchInfo.length === 0) {
+              return {
+                  status: 'error',
+                  message: 'Batch not found',
+                  code: 404,
+              };
+          }
+          let bootcampId = batchInfo[0].bootcampId;
+
+          // Access calendar
+          let calendar: any = await this.accessOfCalendar(creatorInfo);
+
+          // Fetch students' emails in the batch
+          const studentsInTheBatchEmails = await db
+              .select()
+              .from(zuvyBatchEnrollments)
+              .where(eq(zuvyBatchEnrollments.batchId, eventDetails.batchId));
+
+          const studentsEmails = [];
+          for (const studentEmail of studentsInTheBatchEmails) {
+              try {
+                  const emailFetched = await db
+                      .select()
+                      .from(users)
+                      .where(eq(users.id, studentEmail.userId));
+                  if (emailFetched && emailFetched.length > 0) {
+                      studentsEmails.push({ email: emailFetched[0].email });
+                  }
+              } catch (error) {
+                  return [
+                      { status: 'error', message: 'Fetching emails failed', code: 500 },
+                      null,
+                  ];
+              }
+          }
+
+          // Function to get the next class date
+          const getNextClassDate = (startDate: moment.Moment, day: string, occurrence: number) => {
+              const dayIndex = dayToMomentDay[day];
+              let nextDate = startDate.clone().day(dayIndex);
+              if (nextDate.isBefore(startDate)) {
+                  nextDate.add(1, 'week');
+              }
+              nextDate.add(occurrence, 'week');
+              return nextDate;
+          };
+
+          const startDateTime = moment(eventDetails.startDateTime);
+          const endDateTime = moment(eventDetails.endDateTime);
+
+          const classes = [];
+          let classCount = 0;
+          let occurrence = 0;
+
+          // Generate class dates
+          while (classCount < eventDetails.totalClasses) {
+              for (const day of eventDetails.daysOfWeek) {
+                  if (classCount >= eventDetails.totalClasses) break;
+                  const classStartDateTime = getNextClassDate(startDateTime, day, occurrence);
+                  const classEndDateTime = classStartDateTime.clone()
+                      .add(endDateTime.diff(startDateTime));
+
+                  classes.push({
+                      startDateTime: classStartDateTime.format(),
+                      endDateTime: classEndDateTime.format()
+                  });
+
+                  classCount++;
+              }
+              occurrence++;
+          }
+
+          // Create the initial event with recurrence rules
+          const firstEvent = classes[0];
+          const recurrenceRule = `RRULE:FREQ=WEEKLY;COUNT=${eventDetails.totalClasses};BYDAY=${eventDetails.daysOfWeek.map(day => day.slice(0, 2).toUpperCase()).join(',')}`;
+          const eventData = {
+              calendarId: 'primary',
+              conferenceDataVersion: 1,
+              requestBody: {
+                  summary: eventDetails.title,
+                  description: eventDetails.description,
+                  start: {
+                      dateTime: moment(firstEvent.startDateTime).subtract(5, 'hours').subtract(30, 'minutes').format(),
+                      timeZone: eventDetails.timeZone,
+                  },
+                  end: {
+                      dateTime: moment(firstEvent.endDateTime).subtract(5, 'hours').subtract(30, 'minutes').format(),
+                      timeZone: eventDetails.timeZone,
+                  },
+                  attendees: studentsEmails,
+                  conferenceData: {
+                      createRequest: {
+                          conferenceSolutionKey: {
+                              type: 'hangoutsMeet',
+                          },
+                          requestId: uuid(),
+                      },
+                  },
+                  recurrence: [recurrenceRule],
               },
-              requestId: uuid(),
-            },
-          },
-        },
-      };
-      let saveClassDetails;
-      const createdEvent = await calendar.events.insert(eventData);
-      try{
-        saveClassDetails = await db
-          .insert(zuvySessions)
-          .values({
-            hangoutLink: createdEvent.data.hangoutLink,
-            creator: createdEvent.data.creator.email,
-            startTime: createdEvent.data.start.dateTime,
-            endTime: createdEvent.data.end.dateTime,
-            batchId: eventDetails.batchId,
-            bootcampId: eventDetails.bootcampId,
-            title: createdEvent.data.summary,
-            meetingId: createdEvent.data.id,
-          })
-          .returning();
+          };
+
+          const createdEvent = await calendar.events.insert(eventData);
+
+          // Fetch instances of the recurring event
+          const instances = await calendar.events.instances({
+              calendarId: 'primary',
+              eventId: createdEvent.data.id
+          });
+
+          let totalClasses = [];
+
+          // Map instances to class details
+          instances.data.items.map((instance) => {
+              totalClasses.push({
+                  hangoutLink: instance.hangoutLink,
+                  creator: instance.creator.email,
+                  startTime: instance.start.dateTime,
+                  endTime: instance.end.dateTime,
+                  batchId: eventDetails.batchId,
+                  bootcampId,
+                  title: instance.summary,
+                  meetingId: instance.id,
+              });
+          });
+
+          // Save class details to the database
+          const savedClassDetail = await db
+              .insert(zuvySessions)
+              .values(totalClasses)
+              .returning();
+
+          if (savedClassDetail.length > 0) {
+              return {
+                  status: 'success',
+                  message: 'Created Classes successfully',
+                  code: 200,
+                  savedClassDetail: savedClassDetail,
+              };
+          } else {
+              return { success: 'not success', message: 'Class creation failed' };
+          }
       } catch (error) {
-        return {
-          status: 'error',
-          message: 'Error saving class details to the database',
-          error: error,
-        };
+          console.log('Error creating class', error);
+          return {
+              status: 'not success',
+              message: 'error creating class',
+              error: error,
+          };
       }
-      if (saveClassDetails != undefined && saveClassDetails != null && saveClassDetails) {
-        return {
-          status: 'success',
-          message: 'Created Class successfully',
-          code: 200,
-          saveClassDetails: saveClassDetails,
-        };
-      } else {
-        return { success: 'not success', message: 'Classs creation failed' };
-      }
-    } catch (error) {
-      return {
-        status: 'not success',
-        message: 'error creating class',
-        error: error,
-      };
-    }
   }
 
   async getAttendanceByBatchId(batchId: any, userData) {
