@@ -924,7 +924,6 @@ export class TrackingService {
           .update(zuvyBootcampTracking)
           .set({
             progress: initialProgress,
-            updatedAt: sql`NOW()`,
           })
           .where(
             sql`${zuvyBootcampTracking.userId} = ${userId} AND ${zuvyBootcampTracking.bootcampId} = ${userBootcampTracking[0].bootcampId}`
@@ -935,8 +934,7 @@ export class TrackingService {
           .values({
             userId,
             bootcampId,
-            progress: initialProgress,
-            updatedAt: sql`NOW()`,
+            progress: initialProgress
           }).returning();
       }
       const data = await db.query.zuvyBootcampTracking.findFirst({
