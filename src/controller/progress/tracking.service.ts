@@ -1759,6 +1759,11 @@ export class TrackingService {
         .from(zuvyFormTracking)
         .where(sql`${zuvyFormTracking.userId} = ${userId} and ${zuvyFormTracking.chapterId} = ${chapterId} and ${zuvyFormTracking.moduleId} = ${moduleId}`);
 
+      const ChapterTracking = await db
+        .select()
+        .from(zuvyChapterTracking)
+        .where(sql`${zuvyChapterTracking.userId} = ${userId} and ${zuvyChapterTracking.chapterId} = ${chapterId} and ${zuvyChapterTracking.moduleId} = ${moduleId}`);
+
 
 
       if (chapterDetails.length > 0) {
@@ -1778,11 +1783,13 @@ export class TrackingService {
                   sql`${inArray(zuvyModuleForm.id, Object.values(chapterDetails[0].formQuestions))}`,
                 );
               questions['status'] =
-                FormTracking.length != 0
+                ChapterTracking.length != 0
                   ? 'Completed'
                   : 'Pending';
 
               return [{
+                status: "Pending",
+                code: 200,
                 questions
               }]
 
@@ -1804,12 +1811,12 @@ export class TrackingService {
               });
 
               trackedData['status'] =
-                FormTracking.length != 0
+                ChapterTracking.length != 0
                   ? 'Completed'
                   : 'Pending';
 
               return {
-                status: "success",
+                status: "Completed",
                 code: 200,
                 trackedData
               }
