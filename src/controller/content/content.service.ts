@@ -623,13 +623,7 @@ export class ContentService {
         delete CodingQuestions.CodingQuestion
         return { ...CodingQuestions, ...codingDetails }
       })
-
-      chapterDetails.Forms = chapterDetails?.Forms.map((Forms) => {
-        let FormDetails = { ...Forms.Form, }
-        delete Forms.Form
-        return { ...Forms, ...FormDetails }
-      })
-
+      
       return chapterDetails
     } catch (err) {
       throw err;
