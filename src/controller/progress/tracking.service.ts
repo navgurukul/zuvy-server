@@ -798,7 +798,7 @@ export class TrackingService {
             moduleId,
             chapterId,
             status,
-            chosenOption: choosenOptions[i],
+            chosenOption:choosenOptions[i],
             ...SubmitBody.submitQuiz[i],
             attemptCount: 1,
             updatedAt: sql`Now()`,
