@@ -733,31 +733,9 @@ export class SubmissionService {
 
       });
 
-      // const statusOfIncompletedStudentForm = await db.query.zuvyModuleTracking.findMany({
-      //   where: (moduleTracking, { sql }) =>
-      //     sql`${moduleTracking.moduleId} = ${moduleId}`,
-      //   with: {
-      //     user: {
-      //       columns: {
-      //         id: true,
-      //         name: true,
-      //         email: true,
-      //       },
-
-      //     },
-      //   },
-
-      // });
-
-
-
-      // const totalStudents = zuvyBatchEnrollmentsCount[0]?.count ?? 0;
-      //const totalStudents = await db.select().from(zuvyModuleTracking).where(sql`${zuvyModuleTracking.moduleId} = ${moduleId} `);
-      //const totalStudentsCount = totalStudents.length;
       const totalStudentsCount = totalStudentss;
       const totalPages = Math.ceil(totalStudentsCount / limit);
-      //const totalPages = Math.ceil(totalStudents / limit);
-
+      
       const data1 = statusOfCompletedStudentForm.map((statusForm) => {
         return {
           id: Number(statusForm['user']['id']),
@@ -766,14 +744,7 @@ export class SubmissionService {
           status: ['Submitted'],
         };
       });
-      // const data2 = statusOfIncompletedStudentForm.map((statusForm) => {
-      //   return {
-      //     id: Number(statusForm['user']['id']),
-      //     name: statusForm['user']['name'],
-      //     emailId: statusForm['user']['email'],
-      //     status:['Not Submitted'],
-      //   };
-      // });
+      
       const completedIds = new Set(data1.map(item => item.id));
       const data2 = statusOfIncompletedStudentForm
         .map((statusForm) => {
