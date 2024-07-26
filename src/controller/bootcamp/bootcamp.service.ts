@@ -718,6 +718,7 @@ export class BootcampService {
         totalStudents: totalStudentsInfo,
         totalStudentsCount: totalStudents,
         totalPages: Math.ceil(totalStudents / limit),
+        currentPage: Math.ceil((limit+offset)/limit) ,
         code: 200,
       },
     ];
