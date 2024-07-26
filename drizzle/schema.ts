@@ -3530,3 +3530,31 @@ export const formTrackingRelation = relations(
     }),
   })
 );
+
+export const zuvyFormModuleRelations = relations(
+  zuvyModuleTracking,
+  ({ one }) => ({
+    user: one(users, {
+      fields: [zuvyModuleTracking.userId],
+      references: [users.id],
+    }),
+    module: one(zuvyCourseModules, {
+      fields: [zuvyModuleTracking.moduleId],
+      references: [zuvyCourseModules.id],
+    }),
+  }),
+);
+
+export const zuvyFormBatchRelations = relations(
+  zuvyBatchEnrollments,
+  ({ one }) => ({
+    user: one(users, {
+      fields: [zuvyBatchEnrollments.userId],
+      references: [users.id],
+    }),
+    bootcamp: one(zuvyBootcamps, {
+      fields: [zuvyBatchEnrollments.bootcampId],
+      references: [zuvyBootcamps.id],
+    }),
+  }),
+);

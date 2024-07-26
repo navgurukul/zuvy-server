@@ -1,11 +1,11 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { db } from '../../db/index';
-import { eq, sql, count, lte } from 'drizzle-orm';
+import { eq, sql, count, lte, inArray } from 'drizzle-orm';
 // import { BatchesService } from '../batches/batch.service';
 import axios from 'axios';
 import * as _ from 'lodash';
 import { error, log } from 'console';
-import { zuvyBatchEnrollments, zuvyAssessmentSubmission, users, zuvyModuleAssessment, zuvyCourseModules, zuvyChapterTracking, zuvyBootcamps, zuvyOpenEndedQuestionSubmission, zuvyProjectTracking, zuvyQuizTracking } from '../../../drizzle/schema';
+import { zuvyBatchEnrollments, zuvyAssessmentSubmission, users, zuvyModuleAssessment, zuvyCourseModules, zuvyChapterTracking, zuvyBootcamps, zuvyOpenEndedQuestionSubmission, zuvyProjectTracking, zuvyQuizTracking, zuvyModuleTracking, zuvyModuleChapter, zuvyFormTracking, zuvyModuleForm } from '../../../drizzle/schema';
 import { InstructorFeedbackDto, PatchOpenendedQuestionDto, CreateOpenendedQuestionDto } from './dto/submission.dto';
 import { truncate } from 'fs/promises';
 
@@ -460,7 +460,7 @@ export class SubmissionService {
           code: 200,
           projectSubmissionData,
           totalPages: limit > 0 ? totalPages : 1,
-          totalStudents : totalStudentsCount.length
+          totalStudents: totalStudentsCount.length
         }
       }
       else {
@@ -511,11 +511,11 @@ export class SubmissionService {
       let updateData = []; // Initialize updateData as an array
       let updatePromises = []; // Use an array to collect update promises
       let insertPromises = []; // Use an array to collect insert promises
-  
+
       // if submission already exists then update the submission
       if (submissionData.length > 0) {
         let filterQuestionId = submissionData.map((answer) => answer.questionId);
-  
+
         answers.forEach((answer) => {
           if (filterQuestionId.includes(answer.questionId)) {
             // Collect update promises
@@ -525,7 +525,7 @@ export class SubmissionService {
             InsertData.push({ ...answer, userId, assessmentSubmissionId });
           }
         });
-  
+
         // Execute all update operations
         if (updatePromises.length > 0) {
           let updateResults = await Promise.all(updatePromises);
@@ -537,13 +537,13 @@ export class SubmissionService {
         // Prepare data for insertion if no submission data exists
         InsertData = answers.map((answer) => ({ ...answer, userId, assessmentSubmissionId }));
       }
-  
+
       // Execute insert operation if there's data to insert
       if (InsertData.length > 0) {
         InsertData = await db.insert(zuvyQuizTracking).values(InsertData).returning();
       }
       // Since updateData is not directly returned from db.update, it's not included in the return statement
-      return { message: 'Successfully save the Quiz.', data: [...InsertData, ...updateData]}; // Adjusted return value
+      return { message: 'Successfully save the Quiz.', data: [...InsertData, ...updateData] }; // Adjusted return value
     } catch (err) {
       throw err;
     }
@@ -564,12 +564,12 @@ export class SubmissionService {
       let insertData = [];
       let submissionData = await this.getSubmissionOpenEnded(assessmentSubmissionId, userId);
       let updateResults = []; // Declare the updateResults variable
-      
+
       if (submissionData.length > 0) {
         let filterQuestionId = submissionData.map((answer) => answer.questionId);
         let updatePromises = [];
         let insertPromises = [];
-      
+
         for (let answer of answers) {
           if (filterQuestionId.includes(answer.questionId)) {
             let updatePromise = db.update(zuvyOpenEndedQuestionSubmission)
@@ -581,7 +581,7 @@ export class SubmissionService {
             insertData.push({ ...answer, userId, assessmentSubmissionId });
           }
         }
-  
+
         // Await all update promises
         if (updatePromises.length > 0) {
           let updateResults = await Promise.all(updatePromises);
@@ -599,13 +599,13 @@ export class SubmissionService {
         let quizInsertData = answers.map((answer) => ({ ...answer, userId, assessmentSubmissionId }));
         insertData = await db.insert(zuvyOpenEndedQuestionSubmission).values(quizInsertData).returning();
       }
-      return {message: "Successfully save the open ended question.", data: [...insertData, ...updateData]};
+      return { message: "Successfully save the open ended question.", data: [...insertData, ...updateData] };
     } catch (err) {
       console.error('Error in submitOpenEndedQuestion:', err);
       throw err; // Ensure proper error handling/logging here
     }
   }
-  
+
 
   async getSubmissionOpenEnded(assessmentSubmissionId, userId: number) {
     try {
@@ -615,4 +615,284 @@ export class SubmissionService {
       throw err;
     }
   }
+
+  async getSubmissionOfForms(bootcampId: number) {
+    try {
+      const topicId = 7;
+      const trackingData = await db.query.zuvyCourseModules.findMany({
+        where: (courseModules, { eq }) =>
+          eq(courseModules.bootcampId, bootcampId),
+        orderBy: (courseModules, { asc }) => asc(courseModules.order),
+        with: {
+          moduleChapterData: {
+            columns: {
+              id: true,
+              title: true,
+            },
+            where: (moduleChapter, { eq }) =>
+              eq(moduleChapter.topicId, topicId),
+            with: {
+              chapterTrackingDetails: {
+                columns: {
+                  userId: true,
+                },
+              },
+            },
+          },
+        }
+      });
+
+      const zuvyBatchEnrollmentsCount = await db
+        .select({
+          count: sql<number>`cast(count(${zuvyBatchEnrollments.id}) as int)`,
+        })
+        .from(zuvyBatchEnrollments)
+        .where(eq(zuvyBatchEnrollments.bootcampId, bootcampId));
+
+
+      const filteredTrackingData = trackingData.filter((course: any) => course.moduleChapterData.length > 0);
+
+      filteredTrackingData.forEach((course: any) => {
+        course.moduleChapterData.forEach((chapterTracking) => {
+          chapterTracking['submitStudents'] =
+            chapterTracking['chapterTrackingDetails'].length;
+          delete chapterTracking['chapterTrackingDetails'];
+        });
+      });
+
+      if (filteredTrackingData.length > 0) {
+        return {
+          status: 'success',
+          code: 200,
+          trackingData: filteredTrackingData,
+          totalStudents: zuvyBatchEnrollmentsCount[0]?.count,
+        }
+      }
+      else {
+        return {
+          status: 'error',
+          code: 404,
+          message: 'No forms in this course.'
+        }
+      }
+
+    } catch (err) {
+      throw err;
+    }
+  }
+
+  async formsStatusOfStudents(
+    bootcampId: number,
+    chapterId: number,
+    moduleId: number,
+    limit: number,
+    offset: number
+  ) {
+    try {
+      if (isNaN(bootcampId) || bootcampId <= 0) {
+        throw new Error('Invalid bootcampId');
+      }
+
+      const zuvyBatchEnrollmentsCount = await db
+        .select({
+          count: sql<number>`cast(count(${zuvyBatchEnrollments.id}) as int)`,
+        })
+        .from(zuvyBatchEnrollments)
+        .where(eq(zuvyBatchEnrollments.bootcampId, bootcampId));
+      const totalStudentss = zuvyBatchEnrollmentsCount[0]?.count ?? 0;
+
+      const statusOfIncompletedStudentForm = await db.query.zuvyBatchEnrollments.findMany({
+        where: (batchEnrollments, { sql }) =>
+          sql`${batchEnrollments.bootcampId} = ${bootcampId}`,
+        with: {
+          user: {
+            columns: {
+              id: true,
+              name: true,
+              email: true,
+            },
+
+          },
+        },
+
+      });
+
+      const statusOfCompletedStudentForm = await db.query.zuvyChapterTracking.findMany({
+        where: (chapterTracking, { sql }) =>
+          sql`${chapterTracking.chapterId} = ${chapterId} AND ${chapterTracking.moduleId} = ${moduleId}`,
+        with: {
+          user: {
+            columns: {
+              id: true,
+              name: true,
+              email: true,
+            },
+
+          },
+        },
+
+      });
+
+      // const statusOfIncompletedStudentForm = await db.query.zuvyModuleTracking.findMany({
+      //   where: (moduleTracking, { sql }) =>
+      //     sql`${moduleTracking.moduleId} = ${moduleId}`,
+      //   with: {
+      //     user: {
+      //       columns: {
+      //         id: true,
+      //         name: true,
+      //         email: true,
+      //       },
+
+      //     },
+      //   },
+
+      // });
+
+
+
+      // const totalStudents = zuvyBatchEnrollmentsCount[0]?.count ?? 0;
+      //const totalStudents = await db.select().from(zuvyModuleTracking).where(sql`${zuvyModuleTracking.moduleId} = ${moduleId} `);
+      //const totalStudentsCount = totalStudents.length;
+      const totalStudentsCount = totalStudentss;
+      const totalPages = Math.ceil(totalStudentsCount / limit);
+      //const totalPages = Math.ceil(totalStudents / limit);
+
+      const data1 = statusOfCompletedStudentForm.map((statusForm) => {
+        return {
+          id: Number(statusForm['user']['id']),
+          name: statusForm['user']['name'],
+          emailId: statusForm['user']['email'],
+          status: ['Submitted'],
+        };
+      });
+      // const data2 = statusOfIncompletedStudentForm.map((statusForm) => {
+      //   return {
+      //     id: Number(statusForm['user']['id']),
+      //     name: statusForm['user']['name'],
+      //     emailId: statusForm['user']['email'],
+      //     status:['Not Submitted'],
+      //   };
+      // });
+      const completedIds = new Set(data1.map(item => item.id));
+      const data2 = statusOfIncompletedStudentForm
+        .map((statusForm) => {
+          return {
+            id: Number(statusForm['user']['id']),
+            name: statusForm['user']['name'],
+            emailId: statusForm['user']['email'],
+            status: ['Not Submitted'],
+          };
+        })
+        .filter(statusForm => !completedIds.has(statusForm.id));
+
+
+      return { data1, data2, totalPages, totalStudentsCount };
+    } catch (err) {
+      throw err;
+    }
+  }
+
+
+  async getFormDetailsById(
+    userId: number,
+    moduleId: number,
+    chapterId: number,
+  ) {
+    try {
+      const chapterDetails = await db
+        .select()
+        .from(zuvyModuleChapter)
+        .where(eq(zuvyModuleChapter.id, chapterId));
+
+      const FormTracking = await db
+        .select()
+        .from(zuvyFormTracking)
+        .where(sql`${zuvyFormTracking.userId} = ${userId} and ${zuvyFormTracking.chapterId} = ${chapterId} and ${zuvyFormTracking.moduleId} = ${moduleId}`);
+
+      const ChapterTracking = await db
+        .select()
+        .from(zuvyChapterTracking)
+        .where(sql`${zuvyChapterTracking.userId} = ${userId} and ${zuvyChapterTracking.chapterId} = ${chapterId} and ${zuvyChapterTracking.moduleId} = ${moduleId}`);
+
+
+
+      if (chapterDetails.length > 0) {
+        if (chapterDetails[0].topicId == 7) {
+          if (chapterDetails[0].formQuestions !== null) {
+            if (FormTracking.length == 0) {
+              const questions = await db
+                .select({
+                  id: zuvyModuleForm.id,
+                  question: zuvyModuleForm.question,
+                  options: zuvyModuleForm.options,
+                  typeId: zuvyModuleForm.typeId,
+                  isRequired: zuvyModuleForm.isRequired
+                })
+                .from(zuvyModuleForm)
+                .where(
+                  sql`${inArray(zuvyModuleForm.id, Object.values(chapterDetails[0].formQuestions))}`,
+                );
+              questions['status'] =
+                ChapterTracking.length != 0
+                  ? 'Completed'
+                  : 'Pending';
+
+              return [{
+                status: "Pending",
+                code: 200,
+                questions
+              }]
+
+            }
+            else {
+              const trackedData = await db.query.zuvyModuleForm.findMany({
+                where: (moduleForm, { sql }) => sql`${inArray(moduleForm.id, Object.values(chapterDetails[0].formQuestions))}`,
+                with: {
+
+                  formTrackingData: {
+                    columns: {
+                      chosenOptions: true,
+                      answer: true,
+                      status: true
+                    },
+                    where: (formTracking, { sql }) => sql`${formTracking.userId} = ${userId} and ${formTracking.chapterId} = ${chapterId} and ${formTracking.moduleId} = ${moduleId}`,
+                  }
+                }
+              });
+
+              trackedData['status'] =
+                ChapterTracking.length != 0
+                  ? 'Completed'
+                  : 'Pending';
+
+              return {
+                status: "Completed",
+                code: 200,
+                trackedData
+              }
+            }
+          }
+        }
+        else {
+          let content = [
+            {
+              title: chapterDetails[0].title,
+              description: chapterDetails[0].description,
+              links: chapterDetails[0].links,
+              file: chapterDetails[0].file,
+              content: chapterDetails[0].articleContent,
+            },
+          ];
+          return content;
+        }
+      }
+      else {
+        return 'No Form found';
+      }
+    } catch (err) {
+      throw err;
+    }
+  }
+
 }
