@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { db } from '../../db/index';
-import { eq, sql, inArray, and, desc, arrayContains } from 'drizzle-orm';
+import { eq, sql, inArray, and, desc, arrayContains, notInArray } from 'drizzle-orm';
 import axios from 'axios';
 import { error, log } from 'console';
 import {
@@ -1009,6 +1009,125 @@ export class TrackingService {
       }
     } catch (err) {
       throw err;
+    }
+  }
+
+  async getAllUpcomingSubmission(userId: number,bootcampId:number)
+  {
+    try {
+      const data = await db.query.zuvyBatchEnrollments.findMany({
+        where: (zuvybatchenrollment, { eq, and }) => {
+          const conditions = [eq(zuvybatchenrollment.userId, BigInt(userId))];
+          if (bootcampId) {
+            conditions.push(eq(zuvybatchenrollment.bootcampId, bootcampId));
+          }
+          return and(...conditions);
+        },
+        with: {
+          bootcamp : {
+            columns : {
+              id:true,
+              name:true
+            },
+            with : {
+              bootcampModules : {
+                columns : {
+                  id:true,
+                  name: true
+                },
+                with : {
+                  moduleTracking : {
+                    where: (moduleTracked, { sql }) =>
+                      sql`${moduleTracked.userId} = ${userId} and ${moduleTracked.progress} < 100`,
+                    columns : {
+                      id: true,
+                      progress:true
+                    },
+                    with : {
+                      chapterDetailss : {
+                        columns:{
+                          id:true,
+                          title:true,
+                          completionDate:true
+                        },
+                        where: (moduleChapter, { eq }) =>
+                          eq(moduleChapter.topicId,5)
+                     } 
+                    }
+                   }
+                 }
+               }
+             }
+          }
+        }
+      })
+
+         
+const chapterIds = [];
+
+data.forEach(item => {
+  item['bootcamp']['bootcampModules'].forEach(module => {
+    if (module['moduleTracking'].length > 0) {
+      module['moduleTracking'].forEach(tracking => {
+        if (tracking['chapterDetailss'].length > 0) {
+          tracking['chapterDetailss'].forEach(chapter => {
+            chapterIds.push(chapter.id);
+          });
+        }
+      });
+    }
+  });
+});
+      const completedChapterIds = await db.select({ id: zuvyChapterTracking.chapterId })
+       .from(zuvyChapterTracking)
+        .where( and( inArray(zuvyChapterTracking.chapterId, chapterIds), eq(zuvyChapterTracking.userId, BigInt(userId)) ) );
+ 
+        const completedChapterIdsSet = new Set(completedChapterIds.map(chapter => chapter.id));
+
+        const todayISOString = Date.now();
+        
+        const upcomingAssignments = [];
+        const lateAssignments = [];
+        
+        data.forEach(item => {
+          item['bootcamp']['bootcampModules'].forEach(module => {
+            if (module['moduleTracking'].length > 0) {
+              module['moduleTracking'].forEach(tracking => {
+                if (tracking['chapterDetailss'].length > 0) {
+                  tracking['chapterDetailss'].forEach(chapter => {
+                    if (!completedChapterIdsSet.has(chapter.id)) {
+                      const completionDateISOString = new Date(chapter.completionDate).getTime();
+                      const chapterInfo = {
+                        bootcampName: item['bootcamp'].name,
+                        bootcampId: item['bootcamp'].id,
+                        moduleName: module.name,
+                        moduleId: module.id,
+                        chapterId: chapter.id,
+                        chapterTitle: chapter.title
+                      };
+                      if (completionDateISOString > todayISOString) {
+                        upcomingAssignments.push(chapterInfo);
+                      } else {
+                        lateAssignments.push(chapterInfo);
+                      }
+                    }
+                  });
+                }
+              });
+            }
+          });
+        });
+
+      return {
+        status:'success',
+        code:200,
+        upcomingAssignments,
+        lateAssignments
+      };
+    }
+    catch(err)
+    {
+        throw err;
     }
   }
 

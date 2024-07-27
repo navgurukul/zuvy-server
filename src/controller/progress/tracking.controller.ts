@@ -387,6 +387,25 @@ export class TrackingController {
     return res;
   }
 
+  @Get('/allupcomingSubmission')
+  @ApiOperation({ summary: 'Get all upcoming assignment submission' })
+  @ApiBearerAuth()
+  @ApiQuery({
+    name: 'bootcampId',
+    type: Number,
+    description: 'bootcampId',
+    required:false
+  })
+  async getAllUpcomingAssignment(
+    @Req() req,
+    @Query('bootcampId') bootcampId: number,
+  ) {
+    const res = await this.TrackingService.getAllUpcomingSubmission(
+      req.user[0].id,bootcampId
+    );
+    return res;
+  }
+
   @Get('/getChapterDetailsWithStatus/:chapterId')
   @ApiOperation({
     summary: 'Get chapter details for a user along with status',
