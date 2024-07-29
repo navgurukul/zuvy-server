@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { db } from '../../db/index';
-import { eq, sql, count, inArray, or, and } from 'drizzle-orm';
+import { eq, sql, count, inArray, or, and, like } from 'drizzle-orm';
 // import { BatchesService } from '../batches/batch.service';
 import axios from 'axios';
 import * as _ from 'lodash';
@@ -723,6 +723,64 @@ export class BootcampService {
       },
     ];
 
+  }
+
+  async getStudentsInABootcamp(
+    bootcampId,
+    batchId,
+    searchTerm: string | bigint = '',
+    limit: number,
+    offset: number,
+  ) {
+      try {
+        
+     const query = db.select({
+       userId:users.id,
+       name: users.name,
+       email:users.email,
+       profilePicture:users.profilePicture,
+       attendance: zuvyBatchEnrollments.attendance,
+       batchName:zuvyBatches.name,
+       batchId:zuvyBatches.id,
+       progress:zuvyBootcampTracking.progress,
+      })
+     .from(zuvyBatchEnrollments)
+     .leftJoin(users, eq(zuvyBatchEnrollments.userId, users.id))
+     .leftJoin(zuvyBatches, eq(zuvyBatchEnrollments.batchId, zuvyBatches.id))
+     .leftJoin(zuvyBootcampTracking, and(
+        eq(zuvyBootcampTracking.userId, zuvyBatchEnrollments.userId),
+        eq(zuvyBootcampTracking.bootcampId, zuvyBatchEnrollments.bootcampId)
+       ))
+     .where(and(
+        eq(zuvyBatchEnrollments.bootcampId, bootcampId),
+        batchId ? eq(zuvyBatchEnrollments.batchId, batchId) : undefined,
+        searchTerm && searchTerm.constructor === String ? sql`(LOWER(${users.name}) LIKE ${searchTerm.toLowerCase()} || '%' OR LOWER(${users.email}) LIKE ${searchTerm.toLowerCase()} || '%')` : undefined
+      ))
+      .orderBy(users.name);
+
+     const mapData = await query;
+     const totalNumberOfStudents = mapData.length;
+     const studentsInfo = !isNaN(limit) && !isNaN(offset) ? mapData.slice(offset, offset + limit) : mapData;
+     const modifiedStudentInfo = studentsInfo.map(item => {
+      return {
+        ...item,
+        userId: Number(item.userId)
+      };
+    });
+     const currentPage =!isNaN(limit) && !isNaN(offset) ? offset/limit + 1 : 1;
+     const totalPages =!isNaN(limit) ? Math.ceil(totalNumberOfStudents/limit) : 1;
+     return {
+      status:'success',
+      code:200,
+      modifiedStudentInfo,
+      totalNumberOfStudents,
+      currentPage,
+      totalPages
+     };
+      }catch(err)
+      {
+        throw err;
+      }
   }
   async searchStudentsByNameOrEmail(
     searchTerm: string | bigint,
