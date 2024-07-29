@@ -1063,21 +1063,21 @@ export class TrackingService {
       })
 
          
-const chapterIds = [];
+      const chapterIds = [];
 
-data.forEach(item => {
-  item['bootcamp']['bootcampModules'].forEach(module => {
-    if (module['moduleTracking'].length > 0) {
-      module['moduleTracking'].forEach(tracking => {
-        if (tracking['chapterDetailss'].length > 0) {
+      data.forEach(item => {
+       item['bootcamp']['bootcampModules'].forEach(module => {
+         if (module['moduleTracking'].length > 0) {
+         module['moduleTracking'].forEach(tracking => {
+         if (tracking['chapterDetailss'].length > 0) {
           tracking['chapterDetailss'].forEach(chapter => {
             chapterIds.push(chapter.id);
+               });
+             }
           });
-        }
+          }
+        });
       });
-    }
-  });
-});
       const completedChapterIds = await db.select({ id: zuvyChapterTracking.chapterId })
        .from(zuvyChapterTracking)
         .where( and( inArray(zuvyChapterTracking.chapterId, chapterIds), eq(zuvyChapterTracking.userId, BigInt(userId)) ) );
