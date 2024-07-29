@@ -19,7 +19,9 @@ import {
   zuvyRecentBootcamp,
   zuvyAssessmentSubmission,
   zuvyPracticeCode,
-  zuvyCodingQuestions
+  zuvyCodingQuestions,
+  zuvyFormTracking,
+  zuvyModuleForm
 } from 'drizzle/schema';
 import { throwError } from 'rxjs';
 import {
@@ -32,6 +34,7 @@ import { UpdateProjectDto } from './dto/project.dto';
 
 import { quizBatchDto } from '../content/dto/content.dto';
 import { BootcampController } from '../bootcamp/bootcamp.controller';
+import { SubmitFormBodyDto } from './dto/form.dto';
 
 const { ZUVY_CONTENT_URL, ZUVY_CONTENTS_API_URL } = process.env; // INPORTING env VALUSE ZUVY_CONTENT
 
@@ -858,6 +861,9 @@ export class TrackingService {
           articlesCount: module.moduleChapterData.filter(
             (chapter) => chapter.topicId === 2,
           ).length,
+          formCount: module.moduleChapterData.filter(
+            (chapter) => chapter.topicId === 7,
+          ).length,
         };
       });
 
@@ -902,12 +908,11 @@ export class TrackingService {
         ) : [];
       const allChapters = moduleIds.length > 0 ? totalLength : [];
       let initialProgress = 0;
-        if(allChapters != 0 || projectModules.length !=0)
-          {
-           initialProgress = Math.ceil(
-              (allChapterTracking.length + completedProjectForAUser.length) / (allChapters + projectModules.length) * 100,
-            )
-          }
+      if (allChapters != 0 || projectModules.length != 0) {
+        initialProgress = Math.ceil(
+          (allChapterTracking.length + completedProjectForAUser.length) / (allChapters + projectModules.length) * 100,
+        )
+      }
       const userBootcampTracking = await db
         .select()
         .from(zuvyBootcampTracking)
@@ -956,15 +961,14 @@ export class TrackingService {
           }
         },
       });
-         let instructorDetails = {}
-       if(batchDetails['batchInfo'] != null)
-        {
+      let instructorDetails = {}
+      if (batchDetails['batchInfo'] != null) {
         instructorDetails = {
-        instructorId: Number(batchDetails['batchInfo']['instructorDetails']['id']),
-        instructorName: batchDetails['batchInfo']['instructorDetails']['name'],
-        instructorProfilePicture: batchDetails['batchInfo']['instructorDetails']['profilePicture']
+          instructorId: Number(batchDetails['batchInfo']['instructorDetails']['id']),
+          instructorName: batchDetails['batchInfo']['instructorDetails']['name'],
+          instructorProfilePicture: batchDetails['batchInfo']['instructorDetails']['profilePicture']
+        }
       }
-    }
       return {
         status: 'success',
         message: 'Bootcamp progress fetched successfully',
@@ -1191,7 +1195,7 @@ export class TrackingService {
         .from(zuvyPracticeCode)
         .where(sql`${zuvyPracticeCode.userId} = ${userId}`);
 
-      if(chapterDetails.length > 0){
+      if (chapterDetails.length > 0) {
         if (chapterDetails[0].topicId == 4) {
           if (chapterDetails[0].quizQuestions !== null) {
             if (QuizTracking.length == 0) {
@@ -1209,41 +1213,41 @@ export class TrackingService {
                 QuizTracking.length != 0
                   ? 'Completed'
                   : 'Pending';
-  
+
               return [{
                 questions
               }]
-  
+
             }
             else {
               const trackedData = await db.query.zuvyModuleQuiz.findMany({
                 where: (moduleQuiz, { sql }) => sql`${inArray(moduleQuiz.id, Object.values(chapterDetails[0].quizQuestions))}`,
                 with: {
-                  
-                  quizTrackingData: {  
+
+                  quizTrackingData: {
                     columns: {
                       chosenOption: true,
                       status: true
                     },
                     where: (quizTracking, { sql }) => sql`${quizTracking.userId} = ${userId} and ${quizTracking.chapterId} = ${chapterId} and ${quizTracking.moduleId} = ${moduleId}`,
-                    }
+                  }
                 }
               });
-  
-              trackedData['status'] =
-              QuizTracking.length != 0
-                ? 'Completed'
-                : 'Pending';
 
-                return{
-                  status:"success",
-                  code:200,
-                  trackedData
-                }
+              trackedData['status'] =
+                QuizTracking.length != 0
+                  ? 'Completed'
+                  : 'Pending';
+
+              return {
+                status: "success",
+                code: 200,
+                trackedData
+              }
             }
           }
         }
-  
+
         else if (chapterDetails[0].topicId == 5) {
           if (AssignmentTracking.length != 0) {
             return [{
@@ -1274,7 +1278,7 @@ export class TrackingService {
                 codingQuestionTracking.length != 0
                   ? 'Completed'
                   : 'Pending';
-  
+
               return [{
                 codingProblemDetails,
               }]
@@ -1293,12 +1297,12 @@ export class TrackingService {
                 codingQuestionTracking.length != 0
                   ? 'Completed'
                   : 'Pending';
-  
+
               return [{
                 codingProblemSubmitted,
               }]
             }
-  
+
           } else {
             return 'No coding Problem found';
           }
@@ -1315,7 +1319,7 @@ export class TrackingService {
           return content;
         }
       }
-      else{
+      else {
         return 'No Chapter found';
       }
     } catch (err) {
@@ -1642,7 +1646,7 @@ export class TrackingService {
     let needCodingScore = 0;
 
     data.PracticeCode.forEach(question => {
-      let existingEntry = codingSubmission.find(entry => entry.id === question.questionId);      
+      let existingEntry = codingSubmission.find(entry => entry.id === question.questionId);
       if (existingEntry) {
         if (!existingEntry.submissions) {
           existingEntry.submissions = [];
@@ -1675,8 +1679,8 @@ export class TrackingService {
         question.submissions = [];
       }
     })
-    const totalScore =  totalQuizScore + totalCodingScore;
-    const needScore =  needCodingScore + quizScore
+    const totalScore = totalQuizScore + totalCodingScore;
+    const needScore = needCodingScore + quizScore
 
     // Calculate percentage
     const percentageScore = (needScore / totalScore) * 100;
@@ -1714,7 +1718,7 @@ export class TrackingService {
               id: true,
               assessmentOutsourseId: true,
               bootcampId: true
-              
+
             },
             with: {
               CodingQuestion: true
@@ -1758,7 +1762,7 @@ export class TrackingService {
         submission = await db.insert(zuvyAssessmentSubmission).values({ userId: id, assessmentOutsourseId, startedAt }).returning();
       }
       let formatedData = await this.formatedChapterDetails(assessment[0]);
-      return { ...formatedData, submission: submission[0], codingQuestions:  assessment[0].CodingQuestions };
+      return { ...formatedData, submission: submission[0], codingQuestions: assessment[0].CodingQuestions };
     } catch (err) {
       throw err;
     }
@@ -1772,8 +1776,8 @@ export class TrackingService {
         with: {
           user: {
             columns: {
-              email:true,
-              name:true
+              email: true,
+              name: true
 
             }
           },
@@ -1843,17 +1847,173 @@ export class TrackingService {
           message: 'Assessment not submitted yet',
         });
       }
-      let {codingQuestions, ...assessment_data} =  await this.assessmentOutsourseData(data.assessmentOutsourseId, {user: [{id: userId}]});
-      const { totalMCQPoints, totalOpenPoints, totalCodingPoints, totalPoints } =  await this.calculateTotalPoints(assessment_data);  
-      let total = {totalMCQPoints, totalOpenPoints, totalCodingPoints, totalPoints}
-      let {OpenEndedQuestions, Quizzes, CodingQuestions} = assessment_data;
-      let calData =  await this.calculateAssessmentResults(data, totalOpenPoints,totalMCQPoints, totalCodingPoints,codingQuestions);
-      
-      return {...calData, totalOpenEndedQuestions: OpenEndedQuestions.length,totalQuizzes:Quizzes.length, totalCodingQuestions: CodingQuestions.length};
+      let { codingQuestions, ...assessment_data } = await this.assessmentOutsourseData(data.assessmentOutsourseId, { user: [{ id: userId }] });
+      const { totalMCQPoints, totalOpenPoints, totalCodingPoints, totalPoints } = await this.calculateTotalPoints(assessment_data);
+      let total = { totalMCQPoints, totalOpenPoints, totalCodingPoints, totalPoints }
+      let { OpenEndedQuestions, Quizzes, CodingQuestions } = assessment_data;
+      let calData = await this.calculateAssessmentResults(data, totalOpenPoints, totalMCQPoints, totalCodingPoints, codingQuestions);
+
+      return { ...calData, totalOpenEndedQuestions: OpenEndedQuestions.length, totalQuizzes: Quizzes.length, totalCodingQuestions: CodingQuestions.length };
     }
     catch (err) {
-      throw err;
-    }
-  }
+      throw err;
+    }
+  }
+
+
+  async getAllFormsWithStatus(
+    userId: number,
+    moduleId: number,
+    chapterId: number,
+  ) {
+    try {
+      const chapterDetails = await db
+        .select()
+        .from(zuvyModuleChapter)
+        .where(eq(zuvyModuleChapter.id, chapterId));
+
+      const FormTracking = await db
+        .select()
+        .from(zuvyFormTracking)
+        .where(sql`${zuvyFormTracking.userId} = ${userId} and ${zuvyFormTracking.chapterId} = ${chapterId} and ${zuvyFormTracking.moduleId} = ${moduleId}`);
+
+      const ChapterTracking = await db
+        .select()
+        .from(zuvyChapterTracking)
+        .where(sql`${zuvyChapterTracking.userId} = ${userId} and ${zuvyChapterTracking.chapterId} = ${chapterId} and ${zuvyChapterTracking.moduleId} = ${moduleId}`);
+
+
+
+      if (chapterDetails.length > 0) {
+        if (chapterDetails[0].topicId == 7) {
+          if (chapterDetails[0].formQuestions !== null) {
+            if (FormTracking.length == 0) {
+              const questions = await db
+                .select({
+                  id: zuvyModuleForm.id,
+                  question: zuvyModuleForm.question,
+                  options: zuvyModuleForm.options,
+                  typeId: zuvyModuleForm.typeId,
+                  isRequired: zuvyModuleForm.isRequired
+                })
+                .from(zuvyModuleForm)
+                .where(
+                  sql`${inArray(zuvyModuleForm.id, Object.values(chapterDetails[0].formQuestions))}`,
+                );
+              questions['status'] =
+                ChapterTracking.length != 0
+                  ? 'Completed'
+                  : 'Pending';
+
+              return [{
+                status: "Pending",
+                code: 200,
+                questions
+              }]
+
+            }
+            else {
+              const trackedData = await db.query.zuvyModuleForm.findMany({
+                where: (moduleForm, { sql }) => sql`${inArray(moduleForm.id, Object.values(chapterDetails[0].formQuestions))}`,
+                with: {
+
+                  formTrackingData: {
+                    columns: {
+                      chosenOptions: true,
+                      answer: true,
+                      status: true
+                    },
+                    where: (formTracking, { sql }) => sql`${formTracking.userId} = ${userId} and ${formTracking.chapterId} = ${chapterId} and ${formTracking.moduleId} = ${moduleId}`,
+                  }
+                }
+              });
+
+              trackedData['status'] =
+                ChapterTracking.length != 0
+                  ? 'Completed'
+                  : 'Pending';
+
+              return {
+                status: "Completed",
+                code: 200,
+                trackedData
+              }
+            }
+          }
+        }
+        else {
+          let content = [
+            {
+              title: chapterDetails[0].title,
+              description: chapterDetails[0].description,
+              links: chapterDetails[0].links,
+              file: chapterDetails[0].file,
+              content: chapterDetails[0].articleContent,
+            },
+          ];
+          return content;
+        }
+      }
+      else {
+        return 'No Chapter found';
+      }
+    } catch (err) {
+      throw err;
+    }
+  }
+
+
+  async updateFormStatus(
+    userId: number,
+    moduleId: number,
+    chapterId: number,
+    bootcampId: number,
+    submitFormBody: SubmitFormBodyDto,
+  ): Promise<any> {
+    try {
+      let result;
+      if (submitFormBody.submitForm !== undefined) {
+        submitFormBody.submitForm.sort((a, b) => a.questionId - b.questionId);
+        const questionIdArray = submitFormBody.submitForm.map((obj) => obj.questionId);
+        const formQuestions = await db
+          .select()
+          .from(zuvyModuleForm)
+          .where(sql`${inArray(zuvyModuleForm.id, questionIdArray)}`)
+          .orderBy(zuvyModuleForm.id);
+
+        let updatedFormBody = [];
+        for (let i = 0; i < formQuestions.length; i++) {
+
+          const chosenOptions = Array.isArray(submitFormBody.submitForm[i].chosenOptions) ? submitFormBody.submitForm[i].chosenOptions : [];
+          const answer = submitFormBody.submitForm[i].answer || null;
+
+          let status = 'pending';
+          if (chosenOptions !== null || answer !== null)
+            status = 'completed';
+
+          updatedFormBody[i] = {
+            userId,
+            moduleId,
+            chapterId,
+            chosenOptions: chosenOptions,
+            answer: answer,
+            questionId: submitFormBody.submitForm[i].questionId,
+            attemptCount: 1,
+            updatedAt: sql`Now()`,
+            status
+          };
+        }
+
+        result = await db
+          .insert(zuvyFormTracking)
+          .values(updatedFormBody)
+          .returning();
+      }
+      return result;
+    } catch (err) {
+      throw err;
+    }
+  }
+
 }
 

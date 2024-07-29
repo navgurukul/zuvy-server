@@ -33,6 +33,7 @@ import { CreateArticleDto } from './dto/article.dto';
 import { UpdateProjectDto } from './dto/project.dto';
 import { CreateQuizDto, McqCreateDto, PutQuizDto } from './dto/quiz.dto';
 import { quizBatchDto } from '../content/dto/content.dto';
+import { SubmitFormBodyDto } from './dto/form.dto';
 
 @Controller('tracking')
 @ApiTags('tracking')
@@ -533,4 +534,42 @@ export class TrackingController {
     const res = await this.TrackingService.getAssessmentSubmission(submissionId, userId);
     return res;
   }   
+  
+  @Post('updateFormStatus/:bootcampId/:moduleId')
+  @ApiOperation({ summary: 'Update Chapter status' })
+  @ApiBody({ type: SubmitFormBodyDto, required: false })
+  @ApiBearerAuth()
+  async updateFormStatus(
+    @Param('bootcampId') bootcampId: number,
+    @Req() req,
+    @Param('moduleId') moduleId: number,
+    @Query('chapterId') chapterId: number,
+    @Body() submitFormBody: SubmitFormBodyDto,
+  ) {
+    const res = await this.TrackingService.updateFormStatus(
+      req.user[0].id,
+      moduleId,
+      chapterId,
+      bootcampId,
+      submitFormBody,
+    );
+    return res;
+  }
+  
+  @Get('getAllFormsWithStatus/:moduleId')
+  @ApiOperation({ summary: 'get All Form Questions With Status' })
+  @ApiBearerAuth()
+  async getAllFormsWithStatus(
+    @Req() req,
+    @Param('moduleId') moduleId: number,
+    @Query('chapterId') chapterId: number,
+  ) {
+    const res = await this.TrackingService.getAllFormsWithStatus(
+      req.user[0].id,
+      moduleId,
+      chapterId,
+    );
+    return res;
+  }
+
 }
