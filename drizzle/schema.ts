@@ -2485,6 +2485,7 @@ export const batchesRelations = relations(zuvyBootcamps, ({ one, many }) => ({
     references: [zuvyBatches.bootcampId],
   }),
   batches: many(zuvyBatches),
+  moduleTrackedForBootcamp: many(zuvyModuleTracking)
 }));
 
 export const bootcampEnrollmentsRelations = relations(
@@ -2820,6 +2821,8 @@ export const zuvyModuleTracking = main.table("zuvy_module_tracking", {
   updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
 });
 
+
+
 export const zuvyModuleChapter = main.table('zuvy_module_chapter', {
   id: serial('id').primaryKey().notNull(),
   title: varchar('title'),
@@ -2847,6 +2850,10 @@ export const postsRelations = relations(zuvyModuleChapter, ({ one, many }) => ({
     fields: [zuvyModuleChapter.moduleId],
     references: [zuvyCourseModules.id],
   }),
+  moduleTracked: one(zuvyModuleTracking, {
+    fields: [zuvyModuleChapter.moduleId],
+    references: [zuvyModuleTracking.moduleId],
+  }),
   chapterTrackingDetails: many(zuvyChapterTracking),
   codingQuestionDetails: one(zuvyCodingQuestions, {
     fields: [zuvyModuleChapter.codingQuestions],
@@ -2872,7 +2879,7 @@ export const moduleChapterRelations = relations(
   ({many }) => ({
     moduleChapterData: many(zuvyModuleChapter),
     chapterTrackingData: many(zuvyChapterTracking),
-    moduleTracking: many(zuvyModuleTracking),
+    moduleTrackingData: many(zuvyModuleTracking),
     projectData: many(zuvyCourseProjects)
   }),
 );
@@ -2896,11 +2903,16 @@ export const BootcampTrackingRelation = relations(
 
 export const moduleTrackingRelationOfUsers = relations(
   zuvyModuleTracking,
-  ({one}) => ({
+  ({one,many}) => ({
      trackOfModuleForUser: one(zuvyCourseModules, {
       fields:[zuvyModuleTracking.moduleId],
       references: [zuvyCourseModules.id]
-     })
+     }),
+     bootcampInfo: one(zuvyBootcamps, {
+      fields:[zuvyModuleTracking.bootcampId],
+      references: [zuvyBootcamps.id]
+     }),
+      chapterDetailss: many(zuvyModuleChapter)
   })
 )
 
@@ -3016,7 +3028,6 @@ export const assessmentData = relations(zuvyCourseModules,({one, many})=>({
   //   references: [zuvyModuleAssessment.moduleId],
   // }),
   moduleAssessments: many(zuvyModuleAssessment),
-  moduleChapterData: many(zuvyModuleChapter),
   chapterTrackingData: many(zuvyChapterTracking),
 })) 
 
