@@ -2879,7 +2879,7 @@ export const moduleChapterRelations = relations(
   ({many }) => ({
     moduleChapterData: many(zuvyModuleChapter),
     chapterTrackingData: many(zuvyChapterTracking),
-    moduleTrackingData: many(zuvyModuleTracking),
+   // moduleTrackingData: many(zuvyModuleTracking),
     projectData: many(zuvyCourseProjects)
   }),
 );
@@ -2904,10 +2904,6 @@ export const BootcampTrackingRelation = relations(
 export const moduleTrackingRelationOfUsers = relations(
   zuvyModuleTracking,
   ({one,many}) => ({
-     trackOfModuleForUser: one(zuvyCourseModules, {
-      fields:[zuvyModuleTracking.moduleId],
-      references: [zuvyCourseModules.id]
-     }),
      bootcampInfo: one(zuvyBootcamps, {
       fields:[zuvyModuleTracking.bootcampId],
       references: [zuvyBootcamps.id]
