@@ -825,14 +825,6 @@ export class CreateChapterDto {
   @IsOptional()
   @IsNumber()
   topicId: number;
-
-  @ApiProperty({
-    type: Number,
-    example: 4,
-  })
-  @IsOptional()
-  @IsNumber()
-  order: number;
 }
 
 export class CreateTypeDto{

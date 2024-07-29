@@ -221,7 +221,7 @@ export class ContentController {
   async createChapter(
     @Body() chapterData: CreateChapterDto,
   ) {
-    return this.contentService.createChapterForModule(chapterData.moduleId, chapterData.topicId, chapterData.order, chapterData.bootcampId);
+    return this.contentService.createChapterForModule(chapterData.moduleId, chapterData.topicId, chapterData.bootcampId);
   }
 
   @Post('/quiz')

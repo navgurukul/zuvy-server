@@ -269,7 +269,8 @@ export class ContentService {
         .where(eq(zuvyCourseModules.bootcampId, bootcampId));
       let projectId = null;
       if (typeId == 2) {
-        const newProject = await db.insert(zuvyCourseProjects).values({}).returning();
+        const newProject = await db.insert(zuvyCourseProjects).values({title:module.name}).returning();
+        console.log(newProject)
         projectId = newProject.length > 0 ? newProject[0].id : null;
       }
       var moduleWithBootcamp = {
@@ -423,10 +424,15 @@ export class ContentService {
     }
   }
 
-  async createChapterForModule(moduleId: number, topicId: number, order: number, bootcampId: number,) {
+  async createChapterForModule(moduleId: number, topicId: number, bootcampId: number,) {
     try {
       let newAssessment;
       let chapterData;
+      const noOfChaptersOfAModule = await db
+        .select({ count: count(zuvyModuleChapter.id) })
+        .from(zuvyModuleChapter)
+        .where(eq(zuvyModuleChapter.moduleId, moduleId));
+      const order = noOfChaptersOfAModule[0].count + 1  
       if (topicId == 6) {
         newAssessment = await this.createAssessment(moduleId);
         chapterData = {
@@ -520,7 +526,7 @@ export class ContentService {
       let modules = data.map((module: any) => {
         return {
           id: module.id,
-          name: module['projectData'].length > 0 ? module['projectData'][0]['title'] : module.name,
+          name: module.name,
           description: module.description,
           typeId: module.typeId,
           order: module.order,
