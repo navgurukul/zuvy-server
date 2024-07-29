@@ -33,17 +33,51 @@ export class SubmitCodeDto {
   sourceCode: string;
 }
 
-export class testCaseDto {
+
+class Parameter {
+  @ApiProperty({
+    type: 'string',
+    example: 'str',
+  })
+  @IsString()
+  parameterType: string;
+
+  @ApiProperty({
+    type: 'any',
+    example: '"example input"',
+  })
+  @IsAny()
+  parameterValue: any;
+}
+
+export class TestCaseDto {
   @ApiProperty({
     type: 'object',
     example: {
-      input: [2, 3],
-      output: [5],
+      key1: {
+        parameterType: 'str',
+        parameterValue: '"example input 1"',
+      },
+      key2: {
+        parameterType: 'str',
+        parameterValue: '"example input 2"',
+      },
     },
     required: true,
   })
   @IsObject()
-  inputs: object;
+  inputs: { [key: string]: Parameter };
+
+  @ApiProperty({
+    type: 'object',
+    example: {
+      expectedOutputType: 'str',
+      expectedOutputValue: '"expected output"',
+    },
+    required: true,
+  })
+  @IsObject()
+  expected_output: Parameter;
 }
 
 export class CreateProblemDto {
@@ -66,7 +100,7 @@ export class CreateProblemDto {
   description: string;
 
   @ApiProperty({
-    type: difficulty,
+    type: String,
     example: 'Easy',
     required: true,
   })
@@ -83,7 +117,7 @@ export class CreateProblemDto {
 
   @ApiProperty({
     type: String,
-    example: ' 10 <number < 1000',
+    example: '10 < number < 1000',
     required: true,
   })
   @IsNotEmpty()
@@ -98,12 +132,18 @@ export class CreateProblemDto {
   authorId: number;
 
   @ApiProperty({
-    type: [testCaseDto],
+    type: [TestCaseDto],
     example: [
       {
-        inputs: {
-          input: [2, 3],
-          output: [5],
+        inputs: [
+          {
+            type: 'string',
+            value: 'example input',
+          },
+        ],
+        expected_output: {
+          type: 'string',
+          value: 'expected output',
         },
       },
     ],
@@ -112,40 +152,8 @@ export class CreateProblemDto {
   @IsArray()
   @ArrayNotEmpty()
   @ValidateNested({ each: true })
-  @Type(() => testCaseDto)
-  examples: testCaseDto[];
-
-  @ApiProperty({
-    type: [testCaseDto],
-    example: [
-      {
-        inputs: {
-          input: [2, 3],
-          output: [5],
-        },
-      },
-      {
-        inputs: {
-          input: [5, 6],
-          output: [11],
-        },
-      },
-    ],
-    required: true,
-  })
-  @IsArray()
-  @ArrayNotEmpty()
-  @ValidateNested({ each: true })
-  @Type(() => testCaseDto)
-  testCases: testCaseDto[];
-
-  @ApiProperty({
-    type: [Number, String],
-    examples: [5, 'hello', 11],
-  })
-  @IsArray()
-  @ArrayNotEmpty()
-  expectedOutput: any[];
+  @Type(() => TestCaseDto)
+  testCases: TestCaseDto[];
 
   @ApiProperty({
     type: String,
@@ -173,13 +181,8 @@ export class CreateProblemDto {
   @IsString()
   @IsOptional()
   updatedAt: string;
-
-  @ApiProperty({
-    type: [Number],
-    example: [1, 2],
-  })
-  @IsArray()
-  @IsOptional()
-  codingQuestionIds: number[];
+}
+function IsAny(): (target: Parameter, propertyKey: "parameterValue") => void {
+  throw new Error('Function not implemented.');
 }
 

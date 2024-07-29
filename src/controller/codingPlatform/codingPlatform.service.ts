@@ -8,9 +8,11 @@ import * as _ from 'lodash';
 import { error, log } from 'console';
 import {
   zuvyCodingQuestions,
-  zuvyPracticeCode
+  zuvyPracticeCode,
+  zuvyLanguages,
+  zuvyTestCases
 } from '../../../drizzle/schema';
-import { relativeTimeRounding } from 'moment-timezone';
+import { typeMappings} from '../../config/index';
 
 const { ZUVY_CONTENT_URL,RAPID_BASE_URL, RAPID_API_KEY, RAPID_HOST } = process.env; // INPORTING env VALUSE ZUVY_CONTENT
 
@@ -197,24 +199,24 @@ export class CodingPlatformService {
   }
 
 
-  async getLanguagesById() {
+  // async getLanguagesById() {
 
-    const options = {
-      method: 'GET',
-      url: `${RAPID_BASE_URL}/languages`,
-      headers: {
-        'X-RapidAPI-Key': RAPID_API_KEY,
-        'X-RapidAPI-Host': RAPID_HOST
-      }
-    };
+  //   const options = {
+  //     method: 'GET',
+  //     url: `${RAPID_BASE_URL}/languages`,
+  //     headers: {
+  //       'X-RapidAPI-Key': RAPID_API_KEY,
+  //       'X-RapidAPI-Host': RAPID_HOST
+  //     }
+  //   };
 
-    try {
-      const response = await axios.request(options);
-      return response.data;
-    } catch (error) {
-      throw error;
-    }
-  }
+  //   try {
+  //     const response = await axios.request(options);
+  //     return response.data;
+  //   } catch (error) {
+  //     throw error;
+  //   }
+  // }
 
   async getQuestionsWithStatus(userId: number, difficulty: string, page: number, limit: number) {
     try {
@@ -332,6 +334,191 @@ export class CodingPlatformService {
       return {...results[0], questionInfo: data[0], shapecode}
     } catch (error){
       throw error
-    }
-  }
+    }
+  }
+
+  async getLanguagesById(languageId: string) {
+    try {
+      const language = await db.select().from(zuvyLanguages).where(sql`${zuvyLanguages.id} = ${languageId}`);
+      return language;
+    } catch (error) {
+      throw new Error(error.message);
+    }
+  }
+
+  async createCodingQuestion(createCodingQuestionDto: any) {
+    const { testCases, ...questionData } = createCodingQuestionDto;
+    try {
+      const question:any = await db.insert(zuvyCodingQuestions).values(questionData).returning();
+      let testCaseAndExpectedOutput = [];
+      for (let i = 0; i < testCases.length; i++) {
+        testCaseAndExpectedOutput.push({ questionId: question[0].id, ...testCases[i] });
+      }
+      await db.insert(zuvyTestCases).values(testCaseAndExpectedOutput);
+      return question;
+    } catch (error) {
+      throw new Error(error.message);
+    }
+  }
+
+  async updateCodingQuestion(id: number, updateCodingQuestionDto: any) {
+    const { testCases, expectedOutputs, ...questionData } = updateCodingQuestionDto;
+    try {
+      const question = await db.update(zuvyCodingQuestions).set(questionData).where(sql`${zuvyCodingQuestions.id} = ${id}`).returning();
+      if (testCases && expectedOutputs) {
+        await db.update(zuvyTestCases).set({ testCases, expectedOutputs }).where(sql`${zuvyTestCases.questionId} = ${id}`);
+      }
+      return question;
+    } catch (error) {
+      throw new Error(error.message);
+    }
+  }
+
+  async deleteCodingQuestion(id: number) {
+    try {
+      await db.delete(zuvyCodingQuestions).where(sql`${zuvyCodingQuestions.id} = ${id}`);
+      return { message: 'Coding question deleted successfully' };
+    } catch (error) {
+      throw new Error(error.message);
+    }
+  }
+
+  async createLanguage(createLanguageDto: any) {
+    try {
+      const language = await db.insert(zuvyLanguages).values(createLanguageDto);
+      return language;
+    } catch (error) {
+      throw new Error(error.message);
+    }
+  }
+
+  async getCodingQuestion(id: number) {
+    try {
+      const question = await db.select().from(zuvyCodingQuestions).where(sql`${zuvyCodingQuestions.id} = ${id}`);
+      const testCases = await db.select().from(zuvyTestCases).where(sql`${zuvyTestCases.questionId} = ${id}`);
+      let templates = await this.generateTemplates(question[0].title, testCases[0]);
+      return { question, testCases, templates };
+    } catch (error) {
+      throw new Error(error.message);
+    }
+  }
+
+  async generateTemplates(functionName, parameters) {
+    const templates = {};
+  
+    // Generate Python template
+    templates['python'] = `
+      from typing import List, Dict
+  
+      def ${functionName}(${parameters.map(p => `${p.parameterName}: ${typeMappings['python'][p.parameterType]} = ${p.defaultValue}`).join(', ')}):
+        # Add your code here
+        return
+  
+      # Example usage
+      ${parameters.map(p => `${p.parameterName} = ${p.defaultValue}`).join('\n')}
+      result = ${functionName}(${parameters.map(p => p.parameterName).join(', ')})
+      print(result)
+    `;
+  
+    // Generate C template
+    templates['c'] = `
+      #include <stdio.h>
+      #include <stdbool.h>
+      #include <string.h>
+  
+      // Function to ${functionName}
+      ${parameters.map(p => `${typeMappings['c'][p.parameterType]} ${p.parameterName} = ${p.defaultValue};`).join('\n')}
+      char* ${functionName}(${parameters.map(p => `${typeMappings['c'][p.parameterType]} ${p.parameterName}`).join(', ')}) {
+        // Add your code here
+        return NULL;
+      }
+  
+      int main() {
+        ${parameters.map(p => `char ${p.parameterName}[1024] = "${p.defaultValue}";`).join('\n')}
+        char* result = ${functionName}(${parameters.map(p => p.parameterName).join(', ')});
+        printf(result);
+        return 0;
+      }
+    `;
+  
+    // Generate C++ template
+    templates['cpp'] = `
+      #include <iostream>
+      #include <string>
+      #include <vector>
+      using namespace std;
+  
+      // Function to ${functionName}
+      ${parameters.map(p => `using ${typeMappings['cpp'][p.parameterType]} = ${typeMappings['cpp'][p.parameterType]};`).join('\n')}
+      ${typeMappings['cpp']['object']} ${functionName}(${parameters.map(p => `${typeMappings['cpp'][p.parameterType]} ${p.parameterName} = ${p.defaultValue}`).join(', ')}) {
+        // Add your code here
+        return ${typeMappings['cpp']['object']}();
+      }
+  
+      int main() {
+        ${parameters.map(p => `${typeMappings['cpp'][p.parameterType]} ${p.parameterName} = ${p.defaultValue};`).join('\n')}
+        ${typeMappings['cpp']['object']} result = ${functionName}(${parameters.map(p => p.parameterName).join(', ')});
+        cout << result << endl;
+        return 0;
+      }
+    `;
+  
+    // Generate Java template
+    templates['java'] = `
+      public class Main {
+          // Function to ${functionName}
+          public static Result ${functionName}(${parameters.map(p => `${typeMappings['java'][p.parameterType]} ${p.parameterName}`).join(', ')}) {
+              // Add your code here
+              ${typeMappings['java']['str']} concatenatedString = ${parameters.map(p => `${p.parameterName}`).join(' + ')};
+              return new Result(concatenatedString);
+          }
+  
+          public static void main(String[] args) {
+              // Initialize parameters with default values
+              ${parameters.map(p => {
+                  if (p.parameterType === 'float') {
+                      return `${typeMappings['java'][p.parameterType]} ${p.parameterName} = (float) ${p.defaultValue};`;
+                  } else {
+                      return `${typeMappings['java'][p.parameterType]} ${p.parameterName} = ${p.defaultValue};`;
+                  }
+              }).join('\n')}
+              Result result = ${functionName}(${parameters.map(p => p.parameterName).join(', ')});
+              System.out.println("Result is: " + result.getResult());
+          }
+      }
+  
+      class Result {
+          private ${typeMappings['java']['str']} result;
+  
+          public Result(${typeMappings['java']['str']} result) {
+              this.result = result;
+          }
+  
+          public ${typeMappings['java']['str']} getResult() {
+              return result;
+          }
+  
+          @Override
+          public String toString() {
+              return result;
+          }
+      }
+    `;
+  
+    // Generate JavaScript (Node.js) template
+    templates['javascript'] = `
+      function ${functionName}(${parameters.map(p => `${p.parameterName} = ${p.defaultValue}`).join(', ')}) {
+        // Add your code here
+        return;
+      }
+  
+      // Example usage
+      const ${parameters.map(p => `${p.parameterName} = ${p.defaultValue}`).join(', ')}
+      const result = ${functionName}(${parameters.map(p => p.parameterName).join(', ')});
+      console.log(result);
+    `;
+  
+    return templates;
+  }
+
 }

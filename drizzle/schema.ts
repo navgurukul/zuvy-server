@@ -24,6 +24,7 @@ import {
   customType,
 } from 'drizzle-orm/pg-core';
 import { integrations } from 'googleapis/build/src/apis/integrations';
+import { language } from 'googleapis/build/src/apis/language';
 // import { users } from './users'; // Import the 'users' module
 
 export const courseEnrolmentsCourseStatus = pgEnum(
@@ -2485,7 +2486,6 @@ export const batchesRelations = relations(zuvyBootcamps, ({ one, many }) => ({
     references: [zuvyBatches.bootcampId],
   }),
   batches: many(zuvyBatches),
-  moduleTrackedForBootcamp: many(zuvyModuleTracking)
 }));
 
 export const bootcampEnrollmentsRelations = relations(
@@ -2821,8 +2821,6 @@ export const zuvyModuleTracking = main.table("zuvy_module_tracking", {
   updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
 });
 
-
-
 export const zuvyModuleChapter = main.table('zuvy_module_chapter', {
   id: serial('id').primaryKey().notNull(),
   title: varchar('title'),
@@ -2850,10 +2848,6 @@ export const postsRelations = relations(zuvyModuleChapter, ({ one, many }) => ({
     fields: [zuvyModuleChapter.moduleId],
     references: [zuvyCourseModules.id],
   }),
-  moduleTracked: one(zuvyModuleTracking, {
-    fields: [zuvyModuleChapter.moduleId],
-    references: [zuvyModuleTracking.moduleId],
-  }),
   chapterTrackingDetails: many(zuvyChapterTracking),
   codingQuestionDetails: one(zuvyCodingQuestions, {
     fields: [zuvyModuleChapter.codingQuestions],
@@ -2879,7 +2873,7 @@ export const moduleChapterRelations = relations(
   ({many }) => ({
     moduleChapterData: many(zuvyModuleChapter),
     chapterTrackingData: many(zuvyChapterTracking),
-    moduleTrackingData: many(zuvyModuleTracking),
+    moduleTracking: many(zuvyModuleTracking),
     projectData: many(zuvyCourseProjects)
   }),
 );
@@ -2903,16 +2897,11 @@ export const BootcampTrackingRelation = relations(
 
 export const moduleTrackingRelationOfUsers = relations(
   zuvyModuleTracking,
-  ({one,many}) => ({
+  ({one}) => ({
      trackOfModuleForUser: one(zuvyCourseModules, {
       fields:[zuvyModuleTracking.moduleId],
       references: [zuvyCourseModules.id]
-     }),
-     bootcampInfo: one(zuvyBootcamps, {
-      fields:[zuvyModuleTracking.bootcampId],
-      references: [zuvyBootcamps.id]
-     }),
-      chapterDetailss: many(zuvyModuleChapter)
+     })
   })
 )
 
@@ -3028,6 +3017,7 @@ export const assessmentData = relations(zuvyCourseModules,({one, many})=>({
   //   references: [zuvyModuleAssessment.moduleId],
   // }),
   moduleAssessments: many(zuvyModuleAssessment),
+  moduleChapterData: many(zuvyModuleChapter),
   chapterTrackingData: many(zuvyChapterTracking),
 })) 
 
@@ -3159,27 +3149,14 @@ export const trackingPostsRelations = relations(
     }),
   }),
 );
-export const zuvyCodingQuestions = main.table("zuvy_coding_questions", {
-  id: serial("id").primaryKey().notNull(),
-  title: varchar("title", { length: 255 }).notNull(),
-  description: text("description").notNull(),
-  difficulty: difficulty("difficulty"),
-  tags: integer("tag_id").references(() => zuvyTags.id),
-  constraints: text("constraints"),
-  authorId: integer("author_id").notNull(),
-  inputBase64: text("input_base64"),
-  examples: jsonb("examples"),
-  testCases: jsonb("test_cases"),
-  expectedOutput: jsonb("expected_output"),
-  solution: text("solution"),
-  createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }),
-  updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }),
-  usage: integer("usage").default(0)
-})
 
-export const codingQuestionRelations = relations(zuvyCodingQuestions, ({one, many}) => ({
-  submissions: many(zuvyPracticeCode),
-}))
+
+// Define the CP_template table
+export const zuvyCqTemplate = main.table("zuvy_cq_template", {
+  id: serial("id").primaryKey().notNull(),
+  languageId: integer("language_id"),
+  template: jsonb("template").notNull(),
+});
 
 export const zuvyOutsourseAssessments = main.table('zuvy_outsourse_assessments', {
   id: serial('id').primaryKey().notNull(),
@@ -3496,12 +3473,17 @@ export const zuvyFormTracking = main.table("zuvy_form_tracking", {
   id: serial("id").primaryKey().notNull(),
   userId: integer("user_id").references(() => users.id),
   moduleId: integer("module_id"),
-  chapterId: integer("chapter_id"),
   questionId: integer("question_id"),
-  chosenOptions: integer("chosen_options").array(),
-  answer: text("answer"),
-  updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+  chapterId: integer("chapter_id"),
   status: varchar("status", { length: 255 }),
+  // assessmentSubmissionId: integer("assessment_submission_id").references(() => zuvyAssessmentSubmission.id, {
+  //   onDelete: 'cascade',
+  //   onUpdate: 'cascade',
+  // }),
+  chosenOptions: text("chosen_options").array(),
+  answer: text("answer"),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
 });
 
 // export const zuvyFormTrackingRelations = relations(zuvyFormTracking, ({ one }) => ({
@@ -3542,30 +3524,51 @@ export const formTrackingRelation = relations(
   })
 );
 
-export const zuvyFormModuleRelations = relations(
-  zuvyModuleTracking,
-  ({ one }) => ({
-    user: one(users, {
-      fields: [zuvyModuleTracking.userId],
-      references: [users.id],
-    }),
-    module: one(zuvyCourseModules, {
-      fields: [zuvyModuleTracking.moduleId],
-      references: [zuvyCourseModules.id],
-    }),
-  }),
-);
+export const zuvyCodingQuestions = main.table("zuvy_coding_questions", {
+  id: serial("id").primaryKey().notNull(),
+  title: varchar("title", { length: 255 }).notNull(),
+  description: text("description").notNull(),
+  difficulty: varchar("difficulty", { length: 50 }),
+  tagId: integer("tag_id"),
+  constraints: text("constraints"),
+  authorId: integer("author_id"),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+  usage: integer("usage"),
+  tags: integer("tag_id").references(() => zuvyTags.id),
+  inputBase64: text("input_base64"),
+  examples: jsonb("examples"),
+  testCases: jsonb("test_cases"),
+  expectedOutput: jsonb("expected_output"),
+  solution: text("solution"),
+})
 
-export const zuvyFormBatchRelations = relations(
-  zuvyBatchEnrollments,
-  ({ one }) => ({
-    user: one(users, {
-      fields: [zuvyBatchEnrollments.userId],
-      references: [users.id],
-    }),
-    bootcamp: one(zuvyBootcamps, {
-      fields: [zuvyBatchEnrollments.bootcampId],
-      references: [zuvyBootcamps.id],
-    }),
+export const codingQuestionRelations = relations(zuvyCodingQuestions, ({one, many}) => ({
+  submissions: many(zuvyPracticeCode),
+  testCases: many(zuvyTestCases),
+}))
+
+
+export const zuvyTestCases = main.table("zuvy_test_cases", {
+  id: serial("id").primaryKey().notNull(),
+  questionId: integer("question_id").references(() => zuvyCodingQuestions.id, {
+    onDelete: 'cascade',
+    onUpdate: 'cascade',
   }),
-);
+  testCases: jsonb("test_cases").notNull(),
+  expectedOutputs: jsonb("expected_outputs").notNull(),
+});
+
+export const zuvyPracticeCodeRelation = relations(zuvyPracticeCode, ({one, many}) => ({
+  codingQuestion: one(zuvyCodingQuestions, {
+    fields: [zuvyPracticeCode.questionId],
+    references: [zuvyCodingQuestions.id],
+  }),
+}))
+
+export const zuvyLanguages = main.table("zuvy_languages", {
+  id: serial("id").primaryKey().notNull(),
+  name: varchar("name", { length: 255 }).notNull(),
+  languageId: varchar("language_id", { length: 50 }).notNull(),
+  defaultCodingTemplate: text("default_coding_template").notNull()
+});
