@@ -22,7 +22,6 @@ import {
   zuvyQuestionTypes,
 } from '../../../drizzle/schema';
 
-import axios from 'axios';
 import { error, log } from 'console';
 import {
   SQL,
@@ -61,9 +60,7 @@ import {
   CreateAndEditFormBody,
   formDto
 } from './dto/content.dto';
-import { CreateProblemDto } from '../codingPlatform/dto/codingPlatform.dto';
-import { PatchBootcampSettingDto } from '../bootcamp/dto/bootcamp.dto';
-import { isNullOrUndefined } from 'util';
+;
 // import Strapi from "strapi-sdk-js"
 
 const { ZUVY_CONTENT_URL, ZUVY_CONTENTS_API_URL } = process.env; // INPORTING env VALUSE ZUVY_CONTENT
@@ -686,7 +683,7 @@ export class ContentService {
                     title: true,
                     description: true,
                     difficulty: true,
-                    tags: true
+                    tagId: true
                   },
                 }
               }
@@ -1361,13 +1358,13 @@ export class ContentService {
     try {
       let queryString;
       if (!Number.isNaN(tagId) && difficulty == undefined) {
-        queryString = sql`${zuvyCodingQuestions.tags} = ${tagId}`;
+        queryString = sql`${zuvyCodingQuestions.tagId} = ${tagId}`;
       } else if (Number.isNaN(tagId) && difficulty != undefined) {
         queryString = sql`${zuvyCodingQuestions.difficulty} = ${difficulty}`;
       } else if (!Number.isNaN(tagId) && difficulty != undefined) {
         queryString = and(
           eq(zuvyCodingQuestions.difficulty, difficulty),
-          eq(zuvyCodingQuestions.tags, tagId),
+          eq(zuvyCodingQuestions.tagId, tagId),
         );
       }
       const result = await db

@@ -13,11 +13,8 @@ import { db } from '../../db/index';
 import { eq, sql, count, inArray, isNull, desc } from 'drizzle-orm';
 import { google, calendar_v3 } from 'googleapis';
 import { v4 as uuid } from 'uuid';
-import { createReadStream } from 'fs';
 import * as _ from 'lodash';
-import Axios from 'axios';
 import { S3 } from 'aws-sdk';
-import { Cron } from '@nestjs/schedule';
 import { Console } from 'console';
 const moment = require('moment-timezone');
 
@@ -276,7 +273,7 @@ export class ClassesService {
           }
 
           // Function to get the next class date
-          const getNextClassDate = (startDate: moment.Moment, day: string, occurrence: number) => {
+          const getNextClassDate = (startDate: any, day: string, occurrence: number) => {
               const dayIndex = dayToMomentDay[day];
               let nextDate = startDate.clone().day(dayIndex);
               if (nextDate.isBefore(startDate)) {

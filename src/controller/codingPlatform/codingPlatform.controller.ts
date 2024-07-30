@@ -37,13 +37,13 @@ export class CodingPlatformController {
   constructor(private codingPlatformService: CodingPlatformService) { }
 
 
-  @Get('languageId')
-  @ApiOperation({ summary: 'Get language with Id' })
-  @ApiBearerAuth()
-  async getLanguages() {
-    const res = await this.codingPlatformService.getLanguagesById();
-    return res;
-  }
+  // @Get('languageId')
+  // @ApiOperation({ summary: 'Get language with Id' })
+  // @ApiBearerAuth()
+  // async getLanguages() {
+  //   const res = await this.codingPlatformService.getLanguagesById();
+  //   return res;
+  // }
 
 
   @Get('allQuestions')
@@ -80,23 +80,23 @@ export class CodingPlatformController {
     return res;
   }
 
-  @Post('createCodingQuestion')
-  @ApiOperation({ summary: 'Create coding question' })
-  @ApiBearerAuth()
-  async createCodingProblems(@Body() createCodingQuestion: CreateProblemDto) {
-    let examples = [];
-    let testCases = [];
-    for (let i = 0; i < createCodingQuestion.examples.length; i++) {
-      examples.push(createCodingQuestion.examples[i].inputs);
-    }
-    createCodingQuestion.examples = examples;
-    for (let j = 0; j < createCodingQuestion.testCases.length; j++) {
-      testCases.push(createCodingQuestion.testCases[j].inputs)
-    }
-    createCodingQuestion.testCases = testCases
-    const res = await this.codingPlatformService.createCodingProblem(createCodingQuestion);
-    return res;
-  }
+  // @Post('createCodingQuestion')
+  // @ApiOperation({ summary: 'Create coding question' })
+  // @ApiBearerAuth()
+  // async createCodingProblems(@Body() createCodingQuestion: CreateProblemDto) {
+  //   let examples = [];
+  //   let testCases = [];
+  //   for (let i = 0; i < createCodingQuestion.examples.length; i++) {
+  //     examples.push(createCodingQuestion.examples[i].inputs);
+  //   }
+  //   createCodingQuestion.examples = examples;
+  //   for (let j = 0; j < createCodingQuestion.testCases.length; j++) {
+  //     testCases.push(createCodingQuestion.testCases[j].inputs)
+  //   }
+  //   createCodingQuestion.testCases = testCases
+  //   const res = await this.codingPlatformService.createCodingProblem(createCodingQuestion);
+  //   return res;
+  // }
 
   @Post('/practicecode/questionId=:questionId')
   @ApiOperation({ summary: 'Submiting the coding question' })
@@ -150,5 +150,66 @@ export class CodingPlatformController {
   @ApiBearerAuth()
   async codingSubmission(@Req() req, @Query('studentId') studentId: number, @Query('codingOutsourseId') codingOutsourseId: number) {
     return this.codingPlatformService.codingSubmission(studentId, codingOutsourseId);
-  }
+  }
+
+
+  @Get(':languageId')
+  @ApiOperation({ summary: 'Get language with Id' })
+  @ApiBearerAuth()
+  async getLanguages(@Param('languageId') languageId: number) {
+    const res = await this.codingPlatformService.getLanguagesById(languageId);
+    return res;
+  }
+
+  @Post('create-question')
+  @ApiOperation({ summary: 'Create coding question with test cases' })
+  @ApiBearerAuth()
+  async createCodingQuestion(@Body() createCodingQuestionDto: CreateProblemDto) {
+    const res = await this.codingPlatformService.createCodingQuestion(createCodingQuestionDto);
+    return res;
+  }
+
+  @Delete('delete-test-case/:id/:questionId')
+  @ApiOperation({ summary: 'Delete test case and expected output' })
+  @ApiBearerAuth()
+  @ApiQuery({
+    name: 'questionId',
+    required: false,
+    type: Number,
+    description: 'The question id where the test case and expected output are related',
+  })
+  @ApiQuery({
+    name: 'questionId',
+    required: false,
+    type: Number,
+    description: 'The question id where the test case and expected output are related',
+  })
+  async deleteTestCaseAndExpectedOutput(@Query('id') id: number, @Query('questionId') questionId: number) {
+    return await this.codingPlatformService.deleteTestCaseAndExpectedOutput(id, questionId);
+  }
+
+
+  @Put('update-question/:id')
+  @ApiOperation({ summary: 'Update coding question' })
+  @ApiBearerAuth()
+  async updateCodingQuestion(@Param('id') id: number, @Body() updateCodingQuestionDto: CreateProblemDto) {
+    const res = await this.codingPlatformService.updateCodingQuestion(id, updateCodingQuestionDto);
+    return res;
+  }
+
+  @Delete('delete-question/:id')
+  @ApiOperation({ summary: 'Delete coding question' })
+  @ApiBearerAuth()
+  async deleteCodingQuestion(@Param('id') id: number) {
+    const res = await this.codingPlatformService.deleteCodingQuestion(id);
+    return res;
+  }
+
+  // get coding question by id
+  @Get('get-coding-question/:id')
+  @ApiOperation({ summary: 'Get coding question' })
+  @ApiBearerAuth()
+  async getCodingQuestion(@Param('id') Id: number) {
+    return this.codingPlatformService.getCodingQuestion(Id);
+  }
 }

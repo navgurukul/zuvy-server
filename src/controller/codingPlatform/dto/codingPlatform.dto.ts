@@ -1,18 +1,6 @@
-import { ApiProperty, ApiResponseProperty } from '@nestjs/swagger';
-import {
-  IsString,
-  IsNotEmpty,
-  IsOptional,
-  ValidateNested,
-  IsNumber,
-  IsEmail,
-  isString,
-  IsObject,
-  IsArray,
-  ArrayNotEmpty,
-} from 'class-validator';
+import { ApiProperty } from '@nestjs/swagger';
+import { IsString, IsNotEmpty, IsNumber, IsArray, ArrayNotEmpty, ValidateNested, IsObject } from 'class-validator';
 import { Type } from 'class-transformer';
-import { difficulty } from 'drizzle/schema';
 export class SubmitCodeDto {
   @ApiProperty({
     type: Number,
@@ -33,78 +21,72 @@ export class SubmitCodeDto {
   sourceCode: string;
 }
 
-export class testCaseDto {
+
+class Parameter {
+  @ApiProperty({ type: 'string', example: 'str' })
+  @IsString()
+  parameterType: string;
+
+  @ApiProperty({ type: 'any', example: '"example input"' })
+  parameterValue: any;
+}
+
+export class TestCaseDto {
   @ApiProperty({
     type: 'object',
     example: {
-      input: [2, 3],
-      output: [5],
+      key1: { parameterType: 'str', parameterValue: '"example input 1"' },
+      key2: { parameterType: 'str', parameterValue: '"example input 2"' },
     },
     required: true,
   })
+  @IsArray()
+  inputs: { [key: string]: Parameter };
+
+  @ApiProperty({
+    type: 'object',
+    example: { expectedOutputType: 'str', expectedOutputValue: '"expected output"' },
+    required: true,
+  })
   @IsObject()
-  inputs: object;
+  expected_output: Parameter;
 }
 
 export class CreateProblemDto {
-  @ApiProperty({
-    type: String,
-    example: 'Add two numbers',
-    required: true,
-  })
+  @ApiProperty({ type: String, example: 'Add two numbers', required: true })
   @IsNotEmpty()
   @IsString()
   title: string;
 
-  @ApiProperty({
-    type: String,
-    example: 'Write a program to add two float values',
-    required: true,
-  })
+  @ApiProperty({ type: String, example: 'Write a program to add two float values', required: true })
   @IsNotEmpty()
   @IsString()
   description: string;
 
-  @ApiProperty({
-    type: difficulty,
-    example: 'Easy',
-    required: true,
-  })
+  @ApiProperty({ type: String, example: 'Easy', required: true })
   @IsNotEmpty()
   @IsString()
   difficulty: 'Easy' | 'Medium' | 'Hard';
 
-  @ApiProperty({
-    type: Number,
-    example: 2,
-  })
+  @ApiProperty({ type: Number, example: 2 })
   @IsNumber()
-  tags: number;
+  tagId: number;
+
+  // @ApiProperty({ type: String, example: '10 < number < 1000', required: true })
+  // @IsNotEmpty()
+  // @IsString()
+  // constraints: string;
+
+  // @ApiProperty({ type: Number, example: 45499 })
+  // @IsNumber()
+  // authorId: number;
 
   @ApiProperty({
-    type: String,
-    example: ' 10 <number < 1000',
-    required: true,
-  })
-  @IsNotEmpty()
-  @IsString()
-  constraints: string;
-
-  @ApiProperty({
-    type: Number,
-    example: 45499,
-  })
-  @IsNumber()
-  authorId: number;
-
-  @ApiProperty({
-    type: [testCaseDto],
+    type: [TestCaseDto],
     example: [
       {
-        inputs: {
-          input: [2, 3],
-          output: [5],
-        },
+        inputs: [{ parameterType: 'int', parameterValue: 5 , parameterName: 'a'},{ parameterType: 'int', parameterValue: 5 , parameterName: 'b'}],
+        expected_output: { parameterType: 'int', parameterValue: 10 },
       },
     ],
     required: true,
@@ -112,74 +94,19 @@ export class CreateProblemDto {
   @IsArray()
   @ArrayNotEmpty()
   @ValidateNested({ each: true })
-  @Type(() => testCaseDto)
-  examples: testCaseDto[];
+  @Type(() => TestCaseDto)
+  testCases: TestCaseDto[];
 
-  @ApiProperty({
-    type: [testCaseDto],
-    example: [
-      {
-        inputs: {
-          input: [2, 3],
-          output: [5],
-        },
-      },
-      {
-        inputs: {
-          input: [5, 6],
-          output: [11],
-        },
-      },
-    ],
-    required: true,
-  })
-  @IsArray()
-  @ArrayNotEmpty()
-  @ValidateNested({ each: true })
-  @Type(() => testCaseDto)
-  testCases: testCaseDto[];
+  // @ApiProperty({ type: String, example: 'solution of the coding question', required: true })
+  // @IsNotEmpty()
+  // @IsString()
+  // solution: string;
 
-  @ApiProperty({
-    type: [Number, String],
-    examples: [5, 'hello', 11],
-  })
-  @IsArray()
-  @ArrayNotEmpty()
-  expectedOutput: any[];
-
-  @ApiProperty({
-    type: String,
-    example: 'solution of the coding question',
-    required: true,
-  })
-  @IsNotEmpty()
+  @ApiProperty({ type: String, example: '2024-03-01T00:00:00Z', required: true })
   @IsString()
-  solution: string;
-
-  @ApiProperty({
-    type: String,
-    example: '2023-03-01T00:00:00Z',
-    required: true,
-  })
-  @IsString()
-  @IsOptional()
   createdAt: string;
 
-  @ApiProperty({
-    type: String,
-    example: '2023-03-01T00:00:00Z',
-    required: true,
-  })
+  @ApiProperty({ type: String, example: '2024-03-01T00:00:00Z', required: true })
   @IsString()
-  @IsOptional()
-  updatedAt: string;
-
-  @ApiProperty({
-    type: [Number],
-    example: [1, 2],
-  })
-  @IsArray()
-  @IsOptional()
-  codingQuestionIds: number[];
+  updatedAt: string;
 }
-
