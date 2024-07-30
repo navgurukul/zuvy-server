@@ -534,7 +534,7 @@ export class BootcampService {
                 } = ${BigInt(userInfo[0].id)} AND ${zuvyBatchEnrollments.bootcampId
                 } = ${bootcampId}`,
             );
-          if (userEnrolled.length > 0 && !isNaN(batchId) && userEnrolled[0].batchId == null) {
+          if (userEnrolled.length > 0 && !isNaN(batchId) && (userEnrolled[0].batchId == null || userEnrolled[0].batchId != batchId)) {
             let updateEnrol = await db
               .update(zuvyBatchEnrollments)
               .set({ batchId })
@@ -606,11 +606,11 @@ export class BootcampService {
        }
 
        if (b > 0) {
-        messageParts.push(`${b} has been already enrolled`);
+        messageParts.push(`${b} students has been already enrolled`);
        }  
 
        if (a > 0) {
-        messageParts.push(`${a} has been assigned to the batch`);
+        messageParts.push(`${a} students has been assigned to the batch`);
          }
        if(d > 0)
         {
