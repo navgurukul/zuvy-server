@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { db } from '../../db/index';
-import { eq, sql, count, inArray, or, and, like } from 'drizzle-orm';
+import { eq, sql, count, inArray, or, and, like,desc } from 'drizzle-orm';
 // import { BatchesService } from '../batches/batch.service';
 import axios from 'axios';
 import * as _ from 'lodash';
@@ -625,7 +625,7 @@ export class BootcampService {
         searchTerm && searchTerm.constructor === String ? sql`(LOWER(${users.name}) LIKE ${searchTerm.toLowerCase()} || '%' OR LOWER(${users.email}) LIKE ${searchTerm.toLowerCase()} || '%')` : undefined
       ))
       .orderBy(users.name);
-
+     const classes = await db.select().from(zuvySessions).where(sql`${zuvySessions.batchId} = ${batchId} AND ${zuvySessions.status} = 'completed'`).orderBy(desc(zuvySessions.startTime));
      const mapData = await query;
      const totalNumberOfStudents = mapData.length;
      const studentsInfo = !isNaN(limit) && !isNaN(offset) ? mapData.slice(offset, offset + limit) : mapData;
@@ -633,7 +633,7 @@ export class BootcampService {
       return {
         ...item,
         userId: Number(item.userId),
-        attendance: item.attendance != null ? item.attendance : 0,
+        attendance: item.attendance != null ? (item.attendance/classes.length)*100 : 0,
         progress: item.progress !=null ? item.progress: 0
       };
     });
