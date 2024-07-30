@@ -590,6 +590,85 @@ export class editQuizDto {
   difficulty: 'Easy' | 'Medium' | 'Hard';
 }
 
+export class videoDto {
+  @ApiProperty({
+    description: 'Binary file data',
+    type: 'string',
+    format: 'binary',
+  })
+  @IsOptional()
+  file?: string | null;
+
+  @ApiProperty({
+    type: [String],
+    example: ['https://www.google.com'],
+  })
+  @IsArray()
+  @IsOptional()
+  links?: string[] | null;
+}
+
+export class articleDto {
+  @ApiProperty({
+    type : [Object],
+    example: [
+      {
+          "blocks": [
+              {
+                  "key": "fbh77",
+                  "text": "asdfasddfasdf",
+                  "type": "unstyled",
+                  "depth": 0,
+                  "inlineStyleRanges": [],
+                  "entityRanges": [],
+                  "data": {}
+              }
+          ],
+          "entityMap": {}
+      }
+  ]
+  })
+  @IsArray()
+  @IsOptional()
+
+  articleContent: [object];
+}
+
+export class assignmentDto{
+  @ApiProperty({
+    type: String,
+    example: 'Any thing like assignment',
+    required: true,
+  })
+  @IsString()
+  title: string;
+
+  @ApiProperty({
+    type: String,
+    example: 'Any description to the chapter',
+  })
+  @IsString()
+  description: string;
+}
+export class updateChapterDto {
+  @ApiProperty({ type: videoDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => videoDto)
+  videoDto: videoDto;
+
+  @ApiProperty({ type: articleDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => articleDto)
+  articleDto: articleDto;
+
+  @ApiProperty({ type: assignmentDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => assignmentDto)
+  assignmentDto: assignmentDto;
+}
 export class editQuizBatchDto {
   @ApiProperty({
     type: [editQuizDto],

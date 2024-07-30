@@ -17,6 +17,9 @@ import {
   zuvyOutsourseOpenEndedQuestions,
   zuvyOutsourseQuizzes,
   zuvyAssessmentSubmission,
+  zuvyModuleVideo,
+  zuvyModuleAssignment,
+  zuvyModuleArticle
 } from '../../../drizzle/schema';
 
 import axios from 'axios';
@@ -51,7 +54,8 @@ import {
   deleteQuestionDto,
   UpdateOpenEndedDto,
   CreateTagDto,
-  projectDto
+  projectDto,
+  updateChapterDto
 } from './dto/content.dto';
 import { CreateProblemDto } from '../codingPlatform/dto/codingPlatform.dto';
 import { PatchBootcampSettingDto } from '../bootcamp/dto/bootcamp.dto';
@@ -62,6 +66,7 @@ const { ZUVY_CONTENT_URL, ZUVY_CONTENTS_API_URL } = process.env; // INPORTING en
 // const strapi = new Strapi({url: ZUVY_CONTENTS_API_URL})
 @Injectable()
 export class ContentService {
+  db: any;
   async lockContent(modules__, module_id = null) {
     let index = 0;
     while (index < modules__.length) {
@@ -436,9 +441,21 @@ export class ContentService {
         .insert(zuvyModuleChapter)
         .values(chapterData)
         .returning();
-
+      console.log(chapter[0].topicId, "***")
       if (topicId == 6) {
         await db.insert(zuvyOutsourseAssessments).values({ assessmentId: newAssessment[0].id, moduleId, bootcampId, chapterId: chapter[0].id, order }).returning();
+      }
+
+      if (topicId === 1) {
+        await db.insert(zuvyModuleVideo).values({moduleId, chapterId: chapter[0].id}). returning();
+      }
+
+      if (topicId === 2) {
+        await db.insert(zuvyModuleArticle).values({moduleId, chapterId: chapter[0].id}). returning();
+      }
+
+      if (topicId === 5) {
+        await db.insert(zuvyModuleAssignment).values({moduleId, chapterId: chapter[0].id}). returning();
       }
 
       return {
@@ -447,6 +464,78 @@ export class ContentService {
         code: 200,
         module: chapter,
       };
+    } catch (err) {
+      throw err;
+    }
+  }
+
+  async updateChapter(chapterId: number, updateChapterDto: updateChapterDto) {
+    try {
+      if (updateChapterDto.videoDto) {
+        await db.update(zuvyModuleVideo)
+          .set(updateChapterDto.videoDto)
+          .where(eq(zuvyModuleVideo.chapterId, chapterId))
+          .returning();
+      }
+
+      if (updateChapterDto.articleDto) {
+        await db.update(zuvyModuleArticle)
+          .set(updateChapterDto.articleDto)
+          .where(eq(zuvyModuleArticle.chapterId, chapterId))
+          .returning();
+      }
+
+      if (updateChapterDto.assignmentDto) {
+        await db.update(zuvyModuleAssignment)
+          .set(updateChapterDto.assignmentDto)
+          .where(eq(zuvyModuleAssignment.chapterId, chapterId))
+          .returning();
+      }
+
+      return { message: 'Updated successfully' };
+    } catch (err) {
+      throw err;
+    }
+  }
+  
+  async getChapterDetailsByChapterId(chapterId: number) {
+    try {
+      const data = await db.query.zuvyModuleChapter.findFirst({
+        where: (chapter, { eq }) => eq(chapter.id, chapterId),
+        columns: {
+          id: true,
+          title: true,
+          description: true,
+          topicId: true,
+          moduleId: true,
+          order: true,
+        },
+        with: {
+          moduleVideoData: true,
+          moduleArticile: true,
+          moduleAssignment: true,
+        },
+      });
+  
+      if (!data) {
+        return { message: 'Chapter is not Found' };
+      }
+  
+      return data;
+    } catch (err) {
+      throw err;    
+    }
+  }
+  
+  async deleteChapterByChapterId(chapterId: number) {
+    try {
+      const deleteResult = await db.delete(zuvyModuleChapter).where(eq(zuvyModuleChapter.id, chapterId));
+
+      if (deleteResult.rowCount === 0) {
+        return { message: `No content found for Chapter ID ${chapterId}.` };
+      }
+
+      return { message: `Content related to Chapter ID ${chapterId} has been deleted.` };
     } catch (err) {
       throw err;
     }
