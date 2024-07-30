@@ -1107,7 +1107,8 @@ export class TrackingService {
                         moduleName: module.name,
                         moduleId: module.id,
                         chapterId: chapter.id,
-                        chapterTitle: chapter.title
+                        chapterTitle: chapter.title,
+                        chapterDeadline: chapter.completionDate
                       };
                       if (completionDateISOString > todayISOString) {
                         upcomingAssignments.push(chapterInfo);

@@ -2897,11 +2897,12 @@ export const BootcampTrackingRelation = relations(
 
 export const moduleTrackingRelationOfUsers = relations(
   zuvyModuleTracking,
-  ({one}) => ({
-     trackOfModuleForUser: one(zuvyCourseModules, {
-      fields:[zuvyModuleTracking.moduleId],
-      references: [zuvyCourseModules.id]
-     })
+  ({one,many}) => ({
+     bootcampInfo: one(zuvyBootcamps, {
+      fields:[zuvyModuleTracking.bootcampId],
+      references: [zuvyBootcamps.id]
+     }),
+      chapterDetailss: many(zuvyModuleChapter)
   })
 )
 

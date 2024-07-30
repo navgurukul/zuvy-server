@@ -285,22 +285,18 @@ export class BootcampController {
     @Query('limit') limit: number,
     @Query('searchTerm') searchTerm: string,
     @Query('offset') offset: number,
-  ): Promise<object> {
+  )  {
     const searchTermAsNumber = !isNaN(Number(searchTerm))
       ? BigInt(searchTerm)
       : searchTerm;
-    const [err, res] = await this.bootcampService.getStudentsByBootcampOrBatch(
+    const res =  await this.bootcampService.getStudentsInABootcamp(
       bootcamp_id,
       batch_id,
       searchTermAsNumber,
       limit,
       offset,
     );
-    if (err) {
-      throw new BadRequestException(err);
-    }
     return res;
-
   }
 
   @Get('/:user_id/progress')
