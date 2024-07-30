@@ -606,6 +606,7 @@ export class BootcampService {
        name: users.name,
        email:users.email,
        profilePicture:users.profilePicture,
+       bootcampId:zuvyBatchEnrollments.bootcampId,
        attendance: zuvyBatchEnrollments.attendance,
        batchName:zuvyBatches.name,
        batchId:zuvyBatches.id,
@@ -631,7 +632,9 @@ export class BootcampService {
      const modifiedStudentInfo = studentsInfo.map(item => {
       return {
         ...item,
-        userId: Number(item.userId)
+        userId: Number(item.userId),
+        attendance: item.attendance != null ? item.attendance : 0,
+        progress: item.progress !=null ? item.progress: 0
       };
     });
      const currentPage =!isNaN(limit) && !isNaN(offset) ? offset/limit + 1 : 1;
