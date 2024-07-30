@@ -150,12 +150,13 @@ export class CodingPlatformController {
   @ApiBearerAuth()
   async codingSubmission(@Req() req, @Query('studentId') studentId: number, @Query('codingOutsourseId') codingOutsourseId: number) {
     return this.codingPlatformService.codingSubmission(studentId, codingOutsourseId);
-  }
+  }
+
 
   @Get(':languageId')
   @ApiOperation({ summary: 'Get language with Id' })
   @ApiBearerAuth()
-  async getLanguages(@Param('languageId') languageId: string) {
+  async getLanguages(@Param('languageId') languageId: number) {
     const res = await this.codingPlatformService.getLanguagesById(languageId);
     return res;
   }
@@ -167,6 +168,26 @@ export class CodingPlatformController {
     const res = await this.codingPlatformService.createCodingQuestion(createCodingQuestionDto);
     return res;
   }
+
+  @Delete('delete-test-case/:id/:questionId')
+  @ApiOperation({ summary: 'Delete test case and expected output' })
+  @ApiBearerAuth()
+  @ApiQuery({
+    name: 'questionId',
+    required: false,
+    type: Number,
+    description: 'The question id where the test case and expected output are related',
+  })
+  @ApiQuery({
+    name: 'questionId',
+    required: false,
+    type: Number,
+    description: 'The question id where the test case and expected output are related',
+  })
+  async deleteTestCaseAndExpectedOutput(@Query('id') id: number, @Query('questionId') questionId: number) {
+    return await this.codingPlatformService.deleteTestCaseAndExpectedOutput(id, questionId);
+  }
+
 
   @Put('update-question/:id')
   @ApiOperation({ summary: 'Update coding question' })
@@ -185,19 +206,10 @@ export class CodingPlatformController {
   }
 
   // get coding question by id
-  @Get('get-coding-question')
+  @Get('get-coding-question/:id')
   @ApiOperation({ summary: 'Get coding question' })
   @ApiBearerAuth()
-  async getCodingQuestion(@Query('id') id: number) {
-    const res = await this.codingPlatformService.getCodingQuestion(id);
-    return res;
+  async getCodingQuestion(@Param('id') Id: number) {
+    return this.codingPlatformService.getCodingQuestion(Id);
   }
-
-  // @Post('create-language')
-  // @ApiOperation({ summary: 'Create a new language' })
-  // @ApiBearerAuth()
-  // async createLanguage(@Body() createLanguageDto: CreateLanguageDto) {
-  //   const res = await this.codingPlatformService.createLanguage(createLanguageDto);
-  //   return res;
-  // }
 }

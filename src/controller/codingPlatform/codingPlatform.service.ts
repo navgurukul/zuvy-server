@@ -336,8 +336,7 @@ export class CodingPlatformService {
       throw error
     }
   }
-
-  async getLanguagesById(languageId: string) {
+  async getLanguagesById(languageId: number) {
     try {
       const language = await db.select().from(zuvyLanguages).where(sql`${zuvyLanguages.id} = ${languageId}`);
       return language;
@@ -352,23 +351,35 @@ export class CodingPlatformService {
       const question:any = await db.insert(zuvyCodingQuestions).values(questionData).returning();
       let testCaseAndExpectedOutput = [];
       for (let i = 0; i < testCases.length; i++) {
-        testCaseAndExpectedOutput.push({ questionId: question[0].id, ...testCases[i] });
+        testCaseAndExpectedOutput.push({ questionId: question[0].id,inputs: testCases[i].inputs, expectedOutput: testCases[i].expected_output});
       }
-      await db.insert(zuvyTestCases).values(testCaseAndExpectedOutput);
-      return question;
+      let TestCases = await db.insert(zuvyTestCases).values(testCaseAndExpectedOutput).returning();
+      return {...question, TestCases};
+    } catch (error) {
+      throw new Error(error.message);
+    }
+  }
+
+  async deleteTestCaseAndExpectedOutput(id: number, questionId: number){
+    try {
+      if (!id && !questionId) throw new Error('id or questionId in both one value is must be provided!!');
+      
+      await db.delete(zuvyTestCases).where(sql`${zuvyTestCases.questionId} = ${id} or ${questionId} = ${id}`);
+      return { message: 'Test cases and expected output deleted successfully' };
     } catch (error) {
       throw new Error(error.message);
     }
   }
 
   async updateCodingQuestion(id: number, updateCodingQuestionDto: any) {
-    const { testCases, expectedOutputs, ...questionData } = updateCodingQuestionDto;
+    let { testCases, ...questionData } = updateCodingQuestionDto;
     try {
-      const question = await db.update(zuvyCodingQuestions).set(questionData).where(sql`${zuvyCodingQuestions.id} = ${id}`).returning();
-      if (testCases && expectedOutputs) {
-        await db.update(zuvyTestCases).set({ testCases, expectedOutputs }).where(sql`${zuvyTestCases.questionId} = ${id}`);
-      }
-      return question;
+      // const question = await db.update(zuvyCodingQuestions).set(questionData).where(sql`${zuvyCodingQuestions.id} = ${id}`).returning();
+      // if (testCases) {
+      //   await db.update(zuvyTestCases).set({ testCase }).where(sql`${zuvyTestCases.questionId} = ${id}`);
+      // }
+      // return question;
+      return { message: 'Coding question updated successfully' };
     } catch (error) {
       throw new Error(error.message);
     }
@@ -396,129 +407,156 @@ export class CodingPlatformService {
     try {
       const question = await db.select().from(zuvyCodingQuestions).where(sql`${zuvyCodingQuestions.id} = ${id}`);
       const testCases = await db.select().from(zuvyTestCases).where(sql`${zuvyTestCases.questionId} = ${id}`);
-      let templates = await this.generateTemplates(question[0].title, testCases[0]);
-      return { question, testCases, templates };
+
+      let templates = await this.generateTemplates(question[0].title, testCases[0].inputs);
+
+      return { ...question[0], testCases, templates };
     } catch (error) {
+      console.error('Error fetching coding question:', error);
       throw new Error(error.message);
     }
   }
 
   async generateTemplates(functionName, parameters) {
+    functionName = functionName.replace(/ /g, '_').toLowerCase();
     const templates = {};
   
     // Generate Python template
     templates['python'] = `
-      from typing import List, Dict
+from typing import List, Dict
   
-      def ${functionName}(${parameters.map(p => `${p.parameterName}: ${typeMappings['python'][p.parameterType]} = ${p.defaultValue}`).join(', ')}):
-        # Add your code here
-        return
-  
-      # Example usage
-      ${parameters.map(p => `${p.parameterName} = ${p.defaultValue}`).join('\n')}
-      result = ${functionName}(${parameters.map(p => p.parameterName).join(', ')})
-      print(result)
-    `;
+def ${functionName}(${parameters.map(p => `${p.parameterName}: ${typeMappings['python'][p.parameterType]} = ${p.parameterValue}`).join(', ')}):
+  # Add your code here
+  return
+
+# Example usage
+${parameters.map(p => `${p.parameterName} = ${p.parameterType === 'array' ? 'list(map(int, input().split()))' : `${typeMappings['python'][p.parameterType]}(input())`}`).join('\n')}
+result = ${functionName}(${parameters.map(p => p.parameterName).join(', ')})
+print(result)
+  `;
   
     // Generate C template
     templates['c'] = `
-      #include <stdio.h>
-      #include <stdbool.h>
-      #include <string.h>
-  
-      // Function to ${functionName}
-      ${parameters.map(p => `${typeMappings['c'][p.parameterType]} ${p.parameterName} = ${p.defaultValue};`).join('\n')}
-      char* ${functionName}(${parameters.map(p => `${typeMappings['c'][p.parameterType]} ${p.parameterName}`).join(', ')}) {
-        // Add your code here
-        return NULL;
-      }
-  
-      int main() {
-        ${parameters.map(p => `char ${p.parameterName}[1024] = "${p.defaultValue}";`).join('\n')}
-        char* result = ${functionName}(${parameters.map(p => p.parameterName).join(', ')});
-        printf(result);
-        return 0;
-      }
-    `;
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+// Function to ${functionName}
+${parameters.map(p => `${typeMappings['c'][p.parameterType]} ${p.parameterName};`).join('\n')}
+${typeMappings['c']['returnType']} ${functionName}(${parameters.map(p => `${typeMappings['c'][p.parameterType]} ${p.parameterName}`).join(', ')}) {
+    // Add your code here
+    return ${typeMappings['c']['defaultReturnValue']}; // Replace with actual return value
+}
+
+int main() {
+    // Input data
+    ${parameters.map(p => {
+        if (p.parameterType === 'array') {
+            return `${typeMappings['c'][p.elementType]} ${p.parameterName}[100]; // Adjust size as needed\nint ${p.parameterName}_size = 0;\nwhile (scanf("%d", &${p.parameterName}[${p.parameterName}_size]) == 1) { ${p.parameterName}_size++; }`;
+        } else {
+            return `scanf("%${typeMappings['c'][p.parameterType]}", &${p.parameterName});`;
+        }
+    }).join('\n')}
+
+    // Call function and print result
+    ${typeMappings['c']['returnType']} result = ${functionName}(${parameters.map(p => p.parameterName).join(', ')});
+    printf("%d\n", result); // Adjust format specifier as needed
+
+    return 0;
+}
+`;
   
     // Generate C++ template
     templates['cpp'] = `
-      #include <iostream>
-      #include <string>
-      #include <vector>
-      using namespace std;
-  
-      // Function to ${functionName}
-      ${parameters.map(p => `using ${typeMappings['cpp'][p.parameterType]} = ${typeMappings['cpp'][p.parameterType]};`).join('\n')}
-      ${typeMappings['cpp']['object']} ${functionName}(${parameters.map(p => `${typeMappings['cpp'][p.parameterType]} ${p.parameterName} = ${p.defaultValue}`).join(', ')}) {
-        // Add your code here
-        return ${typeMappings['cpp']['object']}();
-      }
-  
-      int main() {
-        ${parameters.map(p => `${typeMappings['cpp'][p.parameterType]} ${p.parameterName} = ${p.defaultValue};`).join('\n')}
-        ${typeMappings['cpp']['object']} result = ${functionName}(${parameters.map(p => p.parameterName).join(', ')});
-        cout << result << endl;
-        return 0;
-      }
-    `;
+#include <iostream>
+#include <vector>
+#include <sstream>
+
+using namespace std;
+
+// Function to ${functionName}
+${typeMappings['cpp']['returnType']} ${functionName}(${parameters.map(p => `${typeMappings['cpp'][p.parameterType]} ${p.parameterName}`).join(', ')}) {
+    // Add your code here
+    return ${typeMappings['cpp']['defaultReturnValue']}; // Replace with actual return value
+}
+
+int main() {
+    // Input data
+    ${parameters.map(p => {
+        if (p.parameterType === 'array') {
+            return `${typeMappings['cpp'][p.elementType]} ${p.parameterName}[100]; // Adjust size as needed\nint ${p.parameterName}_size = 0;\nwhile (cin >> ${p.parameterName}[${p.parameterName}_size]) { ${p.parameterName}_size++; }`;
+        } else {
+            return `cin >> ${p.parameterName};`;
+        }
+    }).join('\n')}
+
+    // Call function and print result
+    ${typeMappings['cpp']['returnType']} result = ${functionName}(${parameters.map(p => p.parameterName).join(', ')});
+    cout << result << endl;
+
+    return 0;
+}
+`;
   
     // Generate Java template
     templates['java'] = `
-      public class Main {
-          // Function to ${functionName}
-          public static Result ${functionName}(${parameters.map(p => `${typeMappings['java'][p.parameterType]} ${p.parameterName}`).join(', ')}) {
-              // Add your code here
-              ${typeMappings['java']['str']} concatenatedString = ${parameters.map(p => `${p.parameterName}`).join(' + ')};
-              return new Result(concatenatedString);
-          }
-  
-          public static void main(String[] args) {
-              // Initialize parameters with default values
-              ${parameters.map(p => {
-                  if (p.parameterType === 'float') {
-                      return `${typeMappings['java'][p.parameterType]} ${p.parameterName} = (float) ${p.defaultValue};`;
-                  } else {
-                      return `${typeMappings['java'][p.parameterType]} ${p.parameterName} = ${p.defaultValue};`;
-                  }
-              }).join('\n')}
-              Result result = ${functionName}(${parameters.map(p => p.parameterName).join(', ')});
-              System.out.println("Result is: " + result.getResult());
-          }
-      }
-  
-      class Result {
-          private ${typeMappings['java']['str']} result;
-  
-          public Result(${typeMappings['java']['str']} result) {
-              this.result = result;
-          }
-  
-          public ${typeMappings['java']['str']} getResult() {
-              return result;
-          }
-  
-          @Override
-          public String toString() {
-              return result;
-          }
-      }
-    `;
+import java.util.List;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Scanner;
+
+public class Main {
+
+    // Function to ${functionName}
+    public static ${typeMappings['java']['returnType']} ${functionName}(${parameters.map(p => `${typeMappings['java'][p.parameterType]} ${p.parameterName}`).join(', ')}) {
+        // Add your code here
+        return ${typeMappings['java']['defaultReturnValue']}; // Replace with actual return value
+    }
+
+    public static void main(String[] args) {
+        Scanner scanner = new Scanner(System.in);
+
+        // Input data
+        ${parameters.map(p => {
+            if (p.parameterType === 'array') {
+                return `${typeMappings['java'][p.elementType]}[] ${p.parameterName} = Arrays.stream(scanner.nextLine().split(" ")).mapToInt(Integer::parseInt).toArray();`;
+            } else {
+                return `${typeMappings['java'][p.parameterType]} ${p.parameterName} = scanner.next${typeMappings['java'][p.parameterType].toUpperCase().replace(' ', '')}();`;
+            }
+        }).join('\n')}
+        
+        // Call function and print result
+        ${typeMappings['java']['returnType']} result = ${functionName}(${parameters.map(p => p.parameterName).join(', ')});
+        System.out.println(result);
+    }
+}`;
   
     // Generate JavaScript (Node.js) template
     templates['javascript'] = `
-      function ${functionName}(${parameters.map(p => `${p.parameterName} = ${p.defaultValue}`).join(', ')}) {
-        // Add your code here
-        return;
-      }
-  
-      // Example usage
-      const ${parameters.map(p => `${p.parameterName} = ${p.defaultValue}`).join(', ')}
-      const result = ${functionName}(${parameters.map(p => p.parameterName).join(', ')});
-      console.log(result);
-    `;
-  
+function ${functionName}(${parameters.map(p => `${p.parameterName}`).join(', ')}) {
+    // Add your code here
+    return ${typeMappings['javascript']['defaultReturnValue']}; // Replace with actual return value
+}
+
+// Example usage
+const readline = require('readline');
+const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout
+});
+
+const inputs = [];
+rl.on('line', (line) => {
+    inputs.push(line);
+});
+
+rl.on('close', () => {
+    const ${parameters.map(p => `${p.parameterName} = ${p.parameterType === 'array' ? 'inputs.shift().split(" ").map(Number)' : 'inputs.shift()'}`).join(',\n    ')}
+    
+    const result = ${functionName}(${parameters.map(p => p.parameterName).join(', ')});
+    console.log(result);
+});`;
+    
     return templates;
   }
-
 }

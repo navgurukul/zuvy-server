@@ -3524,24 +3524,16 @@ export const formTrackingRelation = relations(
     }),
   })
 );
-
 export const zuvyCodingQuestions = main.table("zuvy_coding_questions", {
   id: serial("id").primaryKey().notNull(),
   title: varchar("title", { length: 255 }).notNull(),
   description: text("description").notNull(),
   difficulty: varchar("difficulty", { length: 50 }),
-  tagId: integer("tag_id"),
-  constraints: text("constraints"),
-  authorId: integer("author_id"),
+  content: jsonb("content"),
+  usage: integer("usage"),
+  tagId: integer("tag_id").references(() => zuvyTags.id),
   createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
-  usage: integer("usage"),
-  tags: integer("tag_id").references(() => zuvyTags.id),
-  inputBase64: text("input_base64"),
-  examples: jsonb("examples"),
-  testCases: jsonb("test_cases"),
-  expectedOutput: jsonb("expected_output"),
-  solution: text("solution"),
 })
 
 export const codingQuestionRelations = relations(zuvyCodingQuestions, ({one, many}) => ({
@@ -3556,8 +3548,8 @@ export const zuvyTestCases = main.table("zuvy_test_cases", {
     onDelete: 'cascade',
     onUpdate: 'cascade',
   }),
-  testCases: jsonb("test_cases").notNull(),
-  expectedOutputs: jsonb("expected_outputs").notNull(),
+  inputs: jsonb("inputs").notNull(),
+  expectedOutput: jsonb("expected_output").notNull(),
 });
 
 export const zuvyPracticeCodeRelation = relations(zuvyPracticeCode, ({one, many}) => ({
