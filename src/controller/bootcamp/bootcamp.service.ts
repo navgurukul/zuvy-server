@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { db } from '../../db/index';
-import { eq, sql, count, inArray, or, and, like } from 'drizzle-orm';
+import { eq, sql, count, inArray, or, and, like,desc } from 'drizzle-orm';
 // import { BatchesService } from '../batches/batch.service';
 import axios from 'axios';
 import * as _ from 'lodash';
@@ -606,10 +606,16 @@ export class BootcampService {
        name: users.name,
        email:users.email,
        profilePicture:users.profilePicture,
+       bootcampId:zuvyBatchEnrollments.bootcampId,
        attendance: zuvyBatchEnrollments.attendance,
        batchName:zuvyBatches.name,
        batchId:zuvyBatches.id,
        progress:zuvyBootcampTracking.progress,
+       totalClasses: sql<number>`(
+        SELECT COUNT(*) FROM zuvy_sessions 
+        WHERE zuvy_sessions.bootcamp_id = ${zuvyBatchEnrollments.bootcampId}
+        AND (${zuvyBatchEnrollments.batchId} IS NULL OR zuvy_sessions.batch_id = ${zuvyBatchEnrollments.batchId})
+      )`
       })
      .from(zuvyBatchEnrollments)
      .leftJoin(users, eq(zuvyBatchEnrollments.userId, users.id))
@@ -624,14 +630,22 @@ export class BootcampService {
         searchTerm && searchTerm.constructor === String ? sql`(LOWER(${users.name}) LIKE ${searchTerm.toLowerCase()} || '%' OR LOWER(${users.email}) LIKE ${searchTerm.toLowerCase()} || '%')` : undefined
       ))
       .orderBy(users.name);
-
      const mapData = await query;
      const totalNumberOfStudents = mapData.length;
      const studentsInfo = !isNaN(limit) && !isNaN(offset) ? mapData.slice(offset, offset + limit) : mapData;
      const modifiedStudentInfo = studentsInfo.map(item => {
+      const attendancePercentage = 
+        item.batchId !== null && 
+        item.attendance !== null && 
+        item.totalClasses > 0 
+          ? Math.ceil((item.attendance / item.totalClasses) * 100) 
+          : 0;
+    
       return {
         ...item,
-        userId: Number(item.userId)
+        userId: Number(item.userId),
+        attendance: attendancePercentage,
+        progress: item.progress != null ? item.progress : 0,
       };
     });
      const currentPage =!isNaN(limit) && !isNaN(offset) ? offset/limit + 1 : 1;
