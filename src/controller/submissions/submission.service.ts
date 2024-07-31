@@ -766,9 +766,9 @@ export class SubmissionService {
 
 
   async getFormDetailsById(
-    userId: number,
     moduleId: number,
     chapterId: number,
+    userId: number
   ) {
     try {
       const chapterDetails = await db
@@ -809,11 +809,11 @@ export class SubmissionService {
                   ? 'Completed'
                   : 'Pending';
 
-              return [{
+              return {
                 status: "Pending",
                 code: 200,
                 questions
-              }]
+              }
 
             }
             else {
@@ -825,7 +825,8 @@ export class SubmissionService {
                     columns: {
                       chosenOptions: true,
                       answer: true,
-                      status: true
+                      status: true,
+                      updatedAt: true,
                     },
                     where: (formTracking, { sql }) => sql`${formTracking.userId} = ${userId} and ${formTracking.chapterId} = ${chapterId} and ${formTracking.moduleId} = ${moduleId}`,
                   }

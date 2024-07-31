@@ -3476,14 +3476,9 @@ export const zuvyFormTracking = main.table("zuvy_form_tracking", {
   moduleId: integer("module_id"),
   questionId: integer("question_id"),
   chapterId: integer("chapter_id"),
-  status: varchar("status", { length: 255 }),
-  // assessmentSubmissionId: integer("assessment_submission_id").references(() => zuvyAssessmentSubmission.id, {
-  //   onDelete: 'cascade',
-  //   onUpdate: 'cascade',
-  // }),
-  chosenOptions: text("chosen_options").array(),
+  chosenOptions: integer("chosen_options").array(),
   answer: text("answer"),
-  createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+  status: varchar("status", { length: 255 }),
   updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
 });
 
@@ -3524,6 +3519,35 @@ export const formTrackingRelation = relations(
     }),
   })
 );
+
+export const zuvyFormModuleRelations = relations(
+  zuvyModuleTracking,
+  ({ one }) => ({
+    user: one(users, {
+      fields: [zuvyModuleTracking.userId],
+      references: [users.id],
+    }),
+    module: one(zuvyCourseModules, {
+      fields: [zuvyModuleTracking.moduleId],
+      references: [zuvyCourseModules.id],
+    }),
+  }),
+);
+
+export const zuvyFormBatchRelations = relations(
+  zuvyBatchEnrollments,
+  ({ one }) => ({
+    user: one(users, {
+      fields: [zuvyBatchEnrollments.userId],
+      references: [users.id],
+    }),
+    bootcamp: one(zuvyBootcamps, {
+      fields: [zuvyBatchEnrollments.bootcampId],
+      references: [zuvyBootcamps.id],
+    }),
+  }),
+);
+
 export const zuvyCodingQuestions = main.table("zuvy_coding_questions", {
   id: serial("id").primaryKey().notNull(),
   title: varchar("title", { length: 255 }).notNull(),

@@ -1905,11 +1905,11 @@ export class TrackingService {
                   ? 'Completed'
                   : 'Pending';
 
-              return [{
+              return {
                 status: "Pending",
                 code: 200,
                 questions
-              }]
+              }
 
             }
             else {
