@@ -9,9 +9,63 @@ export const ConfigIndex = {
 };
 
 export  const typeMappings = {
-  c: { int: 'int', float: 'float', str: 'char*', bool: 'bool', array: 'int*', object: 'void*', long: 'long', double: 'double', char: 'char' },
-  cpp: { int: 'int', float: 'float', str: 'std::string', bool: 'bool', array: 'std::vector<int>', object: 'Result', long: 'long', double: 'double', char: 'char' },
-  java: { int: 'int', float: 'float', str: 'String', bool: 'boolean', array: 'int[]', object: 'Result', long: 'long', double: 'double', char: 'char' },
-  python: { int: 'int', float: 'float', str: 'str', bool: 'bool', array: 'List[int]', object: 'dict', long: 'int', double: 'float', char: 'str' },
-  javascript: { int: 'number', float: 'number', str: 'string', bool: 'boolean', array: 'number[]', object: 'object', long: 'number', double: 'number', char: 'string' }
+  java: {
+      int: 'int',
+      float: 'float',
+      double: 'double',
+      str: 'String',
+      array: 'int[]', // This is an example; it can be modified based on the array type
+      returnType: 'int', // Default return type, modify as needed
+      defaultReturnValue: '0', // Default return value, modify as needed
+      inputType: (parameterType) => {
+          switch(parameterType) {
+              case 'int': return 'Int';
+              case 'float': return 'Float';
+              case 'double': return 'Double';
+              case 'str': return 'Line'; // For reading a whole line of string input
+              default: return 'Int'; // Default input type, modify as needed
+          }
+      }
+  },
+  python: {
+      int: 'int',
+      float: 'float',
+      str: 'str',
+      array: 'List[int]', // This is an example; it can be modified based on the array type
+      input: (parameterType) => {
+          switch(parameterType) {
+              case 'int': return 'int(input())';
+              case 'float': return 'float(input())';
+              case 'str': return 'input()';
+              default: return 'int(input())'; // Default input type, modify as needed
+          }
+      }
+  },
+  c: {
+      int: 'int',
+      float: 'float',
+      double: 'double',
+      str: 'char*',
+      array: 'int[]', // This is an example; it can be modified based on the array type
+      returnType: 'int', // Default return type, modify as needed
+      defaultReturnValue: '0', // Default return value, modify as needed
+  },
+  cpp: {
+      int: 'int',
+      float: 'float',
+      double: 'double',
+      str: 'string',
+      array: 'vector<int>', // This is an example; it can be modified based on the array type
+      returnType: 'int', // Default return type, modify as needed
+      defaultReturnValue: '0', // Default return value, modify as needed
+  },
+  javascript: {
+      int: 'number',
+      float: 'number',
+      double: 'number',
+      str: 'string',
+      array: 'number[]', // This is an example; it can be modified based on the array type
+      returnType: 'number', // Default return type, modify as needed
+      defaultReturnValue: '0', // Default return value, modify as needed
+  }
 };
