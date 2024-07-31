@@ -12,26 +12,28 @@ import {
 } from '../../../drizzle/schema';
 import { relativeTimeRounding } from 'moment-timezone';
 
-const { ZUVY_CONTENT_URL, RAPID_API_KEY, RAPID_HOST } = process.env; // INPORTING env VALUSE ZUVY_CONTENT
+const { ZUVY_CONTENT_URL,RAPID_BASE_URL, RAPID_API_KEY, RAPID_HOST } = process.env; // INPORTING env VALUSE ZUVY_CONTENT
 
 @Injectable()
 export class CodingPlatformService {
-  async submitPracticeCode(questionId, sourceCode, action, userId, codingOutsourseId) {
+  async submitPracticeCode(questionId, sourceCode, action, userId, submissionId, codingOutsourseId) {
     try {
       if (!['run', 'submit'].includes(action.toLowerCase())) {
         return { statusCode: 400, message: 'Invalid action' };
       }
-      let response: any = await this.submitCode(sourceCode, questionId, action);
-      const token = response.token;
-      let submissionInfo: any = await this.getCodeInfo(token);
-      const status = submissionInfo.status.description;
-
-      let insertValues = { token, status, action, userId, questionId };
+      let {submissionInfo, token, status }= await this.submitCode(sourceCode, questionId, action);
+  
+      if (status !== 'Accepted') {
+        return { statusCode: 407, message: status, data: submissionInfo};
+      }
+      
+      let insertValues:any = { token, status, action, userId, questionId };
       let getSubmitQuery;
 
-      if (!Number.isNaN(codingOutsourseId)) {
-        getSubmitQuery = sql`${zuvyPracticeCode.userId} = ${userId} AND ${zuvyPracticeCode.codingOutsourseId} = ${codingOutsourseId}`;
-        insertValues["codingOutsourseId"] = codingOutsourseId;
+      if (!Number.isNaN(submissionId)) {
+        getSubmitQuery = sql`${zuvyPracticeCode.userId} = ${userId} AND ${zuvyPracticeCode.submissionId} = ${submissionId} AND ${zuvyPracticeCode.codingOutsourseId} = ${codingOutsourseId}`;
+        insertValues["submissionId"] = submissionId;
+        insertValues["codingOutsourseId"] = codingOutsourseId
       } else {
         getSubmitQuery = sql`${zuvyPracticeCode.userId} = ${userId} AND ${zuvyPracticeCode.questionId} = ${questionId}`;
       }
@@ -44,9 +46,9 @@ export class CodingPlatformService {
         .limit(1);
 
       let newSubmission;
-      let updateValues = { token, status, action };
+      let updateValues:any = { token, status, action };
 
-      if (getSubmissionsRun.length === 0) {
+      if (getSubmissionsRun.length === 0 ) {
         // Insert if no previous submission exists
         newSubmission = await db.insert(zuvyPracticeCode).values(insertValues).returning();
       } else {
@@ -63,7 +65,7 @@ export class CodingPlatformService {
       }
 
       if (newSubmission.length !== 0) {
-        return { statusCode: 200, message: 'Submission successful' };
+        return { statusCode: 200, message: 'Submission successful', data: submissionInfo  };
       } else {
         return { statusCode: 500, message: 'Error in submitting code' };
       }
@@ -73,15 +75,22 @@ export class CodingPlatformService {
   }
   
 
-  async getPracticeCode(questionId, userId) {
+  async getPracticeCode(questionId, userId, submissionId, codingOutsourseId) {
     try {
+      let queryString;
+      if (isNaN(submissionId)) {
+        queryString = sql`${zuvyPracticeCode.questionId} = ${questionId} AND ${zuvyPracticeCode.userId} = ${userId}`
+      } else {
+        queryString = sql`${zuvyPracticeCode.questionId} = ${questionId} AND ${zuvyPracticeCode.userId} = ${userId} AND ${zuvyPracticeCode.submissionId} = ${submissionId} AND ${zuvyPracticeCode.codingOutsourseId} = ${codingOutsourseId}`
+      }
       let response = await db.query.zuvyPracticeCode.findMany({
-        where: (zuvyPracticeCode, { sql }) => sql`${zuvyPracticeCode.questionId} = ${questionId} AND ${zuvyPracticeCode.userId} = ${userId}`,
+        where: (zuvyPracticeCode, { sql }) => queryString,        
         columns: {
           token: true,
           status: true,
           action: true,
-          questionId: true
+          questionId: true,
+          submissionId: true
         }
       })
       if (response.length === 0) {
@@ -90,17 +99,17 @@ export class CodingPlatformService {
         let questionInfo = await this.getQuestionById(questionId);
         const submissionsInfoPromises = response.map( async (submission: any) => {
           const token = submission.token;
-          let data = await this.getCodeInfo(token)
+          let data = await this.getCodeInfo(token)          
           return data;
-        });
-        const submissionsInfo = await Promise.all(submissionsInfoPromises);
-        return { ...questionInfo[0], submissions: submissionsInfo };
+        });        
+        const submissions = await Promise.all(submissionsInfoPromises);
+        return { ...questionInfo[0], submissions };
       }
     } catch (error) {
       console.error('Error getting practice code:', error);
       throw error;
-    }
-  }
+    }
+  }
 
   async submitCode(sourceCode: SubmitCodeDto, codingOutsourseId: number, action: string) {
 
@@ -130,7 +139,7 @@ export class CodingPlatformService {
     const encodedStdOutput = Buffer.from(stdoutput).toString('base64');
     const options = {
       method: 'POST',
-      url: 'https://judge0-ce.p.rapidapi.com/submissions',
+      url: `${RAPID_BASE_URL}/submissions`,
       params: {
         base64_encoded: 'true',
         fields: '*'
@@ -150,8 +159,16 @@ export class CodingPlatformService {
     };
 
     try {
-      const response = await axios.request(options);
-      return response.data;
+      let status_code = 0;
+      let response, token, submissionInfo
+      response = await axios.request(options);
+      token = response.data.token;
+      while (status_code < 3) {
+        submissionInfo = await this.getCodeInfo(token);
+        status_code = submissionInfo.status_id
+      }
+      let status = submissionInfo.status.description
+      return {submissionInfo, token, status };
     } catch (error) {
       throw error;
     }
@@ -160,7 +177,7 @@ export class CodingPlatformService {
   async getCodeInfo(token: string) {
     const options = {
       method: 'GET',
-      url: `https://judge0-ce.p.rapidapi.com/submissions/${token}`,
+      url: `${RAPID_BASE_URL}/submissions/${token}`,
       params: {
         base64_encoded: 'true',
         fields: '*'
@@ -184,7 +201,7 @@ export class CodingPlatformService {
 
     const options = {
       method: 'GET',
-      url: 'https://judge0-ce.p.rapidapi.com/languages',
+      url: `${RAPID_BASE_URL}/languages`,
       headers: {
         'X-RapidAPI-Key': RAPID_API_KEY,
         'X-RapidAPI-Host': RAPID_HOST
@@ -198,69 +215,6 @@ export class CodingPlatformService {
       throw error;
     }
   }
-
-  // async findSubmissionByQuestionId(questionId: number, id: number) {
-  //   try {
-  //     const submissions = await db.select().from(zuvyPracticeCode)
-  //       .where(sql`${zuvyPracticeCode.questionId} = ${questionId}AND ${zuvyPracticeCode.userId} = ${id}`)
-
-  //     const questionSolved = submissions[0]?.questionSolved;
-  //     var submissionTokens = { token: [] };
-  //     if (questionSolved) {
-  //       submissionTokens.token = questionSolved[questionId.toString()].token;
-  //     }
-  //     var respond = [];
-
-  //     if (submissionTokens.token.length !== 0) {
-  //       const getInfoPromises = submissionTokens.token.map(async token => {
-  //         const getInfo = await this.getCodeInfo(token);
-  //         return getInfo;
-  //       });
-
-
-  //       const getInfoResults = await Promise.all(getInfoPromises);
-
-
-  //       respond.push(...getInfoResults);
-  //     }
-
-  //     return { code: 200, respond };
-  //   } catch (err) {
-  //     throw err;
-  //   }
-  // }
-
-  // async updateSubmissionWithToken(userId: number, codingOutsourseId: number, token: string, status: string, assessmentSubmissionId: number) {
-  //   try {
-  //     const existingSubmission: any = await db.select()
-  //       .from(zuvyPracticeCode)
-  //       .where(sql`${zuvyPracticeCode.userId} = ${userId} AND ${zuvyPracticeCode.codingOutsourseId} = ${codingOutsourseId}`)
-
-  //     let updatedStatus;
-  //     if (status !== 'Accepted') {
-  //       status = 'Not Accepted';
-  //     }
-  //     if (existingSubmission.length === 0) {
-  //       let questionObj = 
-  //       await db.insert(zuvyPracticeCode)
-  //         .values({
-  //           userId: BigInt(userId),
-  //           token,
-  //           codingOutsourseId,
-  //           status
-  //         })
-  //         .returning();
-
-  //     } else {
-  //       await db.update(zuvyPracticeCode)
-  //         .set({ token, status: updatedStatus })
-  //         .where(sql`${zuvyPracticeCode.userId} = ${userId} AND ${zuvyPracticeCode.codingOutsourseId} = ${codingOutsourseId}`)
-  //     }
-  //   } catch (error) {
-  //     console.error('Error updating submission:', error);
-  //     throw error;
-  //   }
-  // }
 
   async getQuestionsWithStatus(userId: number, difficulty: string, page: number, limit: number) {
     try {
@@ -349,4 +303,35 @@ export class CodingPlatformService {
       throw err;
     }
   }
+
+  async codingSubmission(userId:number , codingOutsourseId:number){
+    try{
+      let results = await db.select({
+        id: zuvyPracticeCode.id,
+        token: zuvyPracticeCode.token,
+        status: zuvyPracticeCode.status,
+        action: zuvyPracticeCode.action,
+        questionId: zuvyPracticeCode.questionId,
+        codingOutsourseId: zuvyPracticeCode.codingOutsourseId,
+        submissionId: zuvyPracticeCode.submissionId,
+        createdAt: zuvyPracticeCode.createdAt,
+      }).from(zuvyPracticeCode).where(sql`
+        ${zuvyPracticeCode.codingOutsourseId} = ${codingOutsourseId}
+        AND ${zuvyPracticeCode.userId} = ${userId}
+        AND ${zuvyPracticeCode.status} = 'Accepted'
+        AND ${zuvyPracticeCode.action} = 'submit'
+      `).limit(1).orderBy(desc(zuvyPracticeCode.id));
+
+      let data;
+      if (results?.length === 0) {
+        return { status: 'error', code: 400, message: "Submission or not Accepted or not submitted yet" };
+      } else {
+        data = await db.select().from(zuvyCodingQuestions).where(sql`${zuvyCodingQuestions.id} = ${results[0].questionId}`)
+      }
+      let shapecode = await this.getCodeInfo(results[0].token)
+      return {...results[0], questionInfo: data[0], shapecode}
+    } catch (error){
+      throw error
+    }
+  }
 }

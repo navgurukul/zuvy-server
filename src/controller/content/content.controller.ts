@@ -40,10 +40,12 @@ import {
   CreateTagDto,
   projectDto,
   CreateChapterDto,
-  updateChapterDto,
+  CreateTypeDto,
+  formBatchDto,
+  updateChapterDto
 } from './dto/content.dto';
 import { CreateProblemDto } from '../codingPlatform/dto/codingPlatform.dto';
-import { difficulty } from 'drizzle/schema';
+import { difficulty, questionType } from 'drizzle/schema';
 
 @Controller('Content')
 @ApiTags('Content')
@@ -218,7 +220,7 @@ export class ContentController {
   async createChapter(
     @Body() chapterData: CreateChapterDto,
   ) {
-    return this.contentService.createChapterForModule(chapterData.moduleId, chapterData.topicId, chapterData.order, chapterData.bootcampId);
+    return this.contentService.createChapterForModule(chapterData.moduleId, chapterData.topicId, chapterData.bootcampId);
   }
 
   @Post('/quiz')
@@ -570,17 +572,66 @@ export class ContentController {
 
   @Get('/assessmentDetailsOfQuiz/:assessmentOutsourseId')
   @ApiOperation({ summary: 'Get the assessment details of the Quiz' })
+  @ApiQuery({
+    name: 'studentId',
+    required: false,
+    type: Number,
+    description: 'studentId of the assessment',
+  })
   @ApiBearerAuth()
-  async getAssessmentDetailsOfQuiz(@Param('assessmentOutsourseId') assessmentOutsourseId: number, @Req() req){
-    return this.contentService.getAssessmentDetailsOfQuiz(assessmentOutsourseId, req.user[0].id);
+  async getAssessmentDetailsOfQuiz(@Param('assessmentOutsourseId') assessmentOutsourseId: number, @Req() req, @Query('studentId') userId:number ){
+    if (!userId) {
+      userId = req.user[0].id;
+    }
+    return this.contentService.getAssessmentDetailsOfQuiz(assessmentOutsourseId, userId);
   }
 
   // openended questions
   @Get('/assessmentDetailsOfOpenEnded/:assessmentOutsourseId')
   @ApiOperation({ summary: 'Get the assessment details of the open Ended questions' })
   @ApiBearerAuth()
-  async getAssessmentDetailsOfOpenEnded(@Param('assessmentOutsourseId') assessmentOutsourseId: number, @Req() req){
-    return this.contentService.getAssessmentDetailsOfOpenEnded(assessmentOutsourseId, req.user[0].id);
+  @ApiQuery({
+    name: 'studentId',
+    required: false,
+    type: Number,
+    description: 'studentId of the assessment',
+  })
+  async getAssessmentDetailsOfOpenEnded(@Param('assessmentOutsourseId') assessmentOutsourseId: number, @Req() req, @Query('studentId') userId:number){
+    if (!userId) {
+      userId = req.user[0].id;
+    }
+    return this.contentService.getAssessmentDetailsOfOpenEnded(assessmentOutsourseId, userId);
+  }
+
+  
+  @Post('/createQuestionType')
+  @ApiOperation({ summary: 'Create a Question Type for the form' })
+  @ApiBearerAuth()
+  async createQuestionType(@Body() questionType: CreateTypeDto) {
+    const res = await this.contentService.createQuestionType(questionType);
+    return res;
+  }
+
+  @Get('/allQuestionType')
+  @ApiOperation({ summary: 'Get all the available Question Types' })
+  @ApiBearerAuth()
+  async getAllQuestionTypes() {
+    const res = await this.contentService.getAllQuestionTypes();
+    return res;
+  }
+  
+  @Post('/form')
+  @ApiOperation({ summary: 'Create a form' })
+  @ApiBearerAuth()
+  async createFormForModule (
+    @Query('chapterId') chapterId: number,
+    @Body() formQuestion: formBatchDto
+  ){
+    const res = await this.contentService.createFormForModule(
+      chapterId,
+      formQuestion
+    );
+    return res;
   }
 
   @Patch('/editChapterContent/:chapterId')
@@ -608,5 +659,4 @@ export class ContentController {
   ) {
     return this.contentService.deleteChapterByChapterId(chapterId);
   }
-
-  }
+}

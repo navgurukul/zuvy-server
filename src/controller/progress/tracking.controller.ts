@@ -33,6 +33,7 @@ import { CreateArticleDto } from './dto/article.dto';
 import { UpdateProjectDto } from './dto/project.dto';
 import { CreateQuizDto, McqCreateDto, PutQuizDto } from './dto/quiz.dto';
 import { quizBatchDto } from '../content/dto/content.dto';
+import { SubmitFormBodyDto } from './dto/form.dto';
 
 @Controller('tracking')
 @ApiTags('tracking')
@@ -387,6 +388,25 @@ export class TrackingController {
     return res;
   }
 
+  @Get('/allupcomingSubmission')
+  @ApiOperation({ summary: 'Get all upcoming assignment submission' })
+  @ApiBearerAuth()
+  @ApiQuery({
+    name: 'bootcampId',
+    type: Number,
+    description: 'bootcampId',
+    required:false
+  })
+  async getAllUpcomingAssignment(
+    @Req() req,
+    @Query('bootcampId') bootcampId: number,
+  ) {
+    const res = await this.TrackingService.getAllUpcomingSubmission(
+      req.user[0].id,bootcampId
+    );
+    return res;
+  }
+
   @Get('/getChapterDetailsWithStatus/:chapterId')
   @ApiOperation({
     summary: 'Get chapter details for a user along with status',
@@ -500,10 +520,56 @@ export class TrackingController {
   @Get('assessment/submissionId=:submissionId')
   @ApiOperation({ summary: 'Get assessment submission by submissionId' })
   @ApiBearerAuth()
+  @ApiQuery({
+    name: 'studentId',
+    required: false,
+    type: Number,
+    description: 'studentId of the assessment',
+  })
   async getAssessmentSubmission(
-    @Param('submissionId') submissionId: number, @Req() req
-  ) {
-    const res = await this.TrackingService.getAssessmentSubmission(submissionId, req.user[0].id);
+    @Param('submissionId') submissionId: number, @Req() req, @Query('studentId') userId:number ) {
+    if (!userId) {
+        userId = req.user[0].id;
+    }
+    const res = await this.TrackingService.getAssessmentSubmission(submissionId, userId);
     return res;
   }   
+  
+  @Post('updateFormStatus/:bootcampId/:moduleId')
+  @ApiOperation({ summary: 'Update Chapter status' })
+  @ApiBody({ type: SubmitFormBodyDto, required: false })
+  @ApiBearerAuth()
+  async updateFormStatus(
+    @Param('bootcampId') bootcampId: number,
+    @Req() req,
+    @Param('moduleId') moduleId: number,
+    @Query('chapterId') chapterId: number,
+    @Body() submitFormBody: SubmitFormBodyDto,
+  ) {
+    const res = await this.TrackingService.updateFormStatus(
+      req.user[0].id,
+      moduleId,
+      chapterId,
+      bootcampId,
+      submitFormBody,
+    );
+    return res;
+  }
+  
+  @Get('getAllFormsWithStatus/:moduleId')
+  @ApiOperation({ summary: 'get All Form Questions With Status' })
+  @ApiBearerAuth()
+  async getAllFormsWithStatus(
+    @Req() req,
+    @Param('moduleId') moduleId: number,
+    @Query('chapterId') chapterId: number,
+  ) {
+    const res = await this.TrackingService.getAllFormsWithStatus(
+      req.user[0].id,
+      moduleId,
+      chapterId,
+    );
+    return res;
+  }
+
 }

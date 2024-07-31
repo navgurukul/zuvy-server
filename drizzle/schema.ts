@@ -63,6 +63,13 @@ export const userRolesRoles = pgEnum('user_roles_roles', [
 ]);
 export const usersCenter = pgEnum('users_center', ['dharamshala', 'bangalore']);
 export const action = pgEnum('action', ['submit', 'run']);
+export const questionType = pgEnum('questionType', [
+  'Multiple Choice' , 
+  'Checkboxes' , 
+  'Long Text Answer', 
+  'Date' , 
+  'Time',
+]);
 
 export const main = pgSchema('main');
 
@@ -2478,6 +2485,7 @@ export const batchesRelations = relations(zuvyBootcamps, ({ one, many }) => ({
     references: [zuvyBatches.bootcampId],
   }),
   batches: many(zuvyBatches),
+  moduleTrackedForBootcamp: many(zuvyModuleTracking)
 }));
 
 export const bootcampEnrollmentsRelations = relations(
@@ -2506,6 +2514,13 @@ export const zuvyBatches = main.table('zuvy_batches', {
     .defaultNow()
     .notNull(),
 });
+export const zuvyBatchesRelations = relations(
+  zuvyBatches,
+  ({ one, many }) => ({
+
+    students: many(zuvyBatchEnrollments),
+  }),
+);
 
 export const bootcampsEnrollmentsRelations = relations(
   zuvyBootcamps,
@@ -2515,6 +2530,7 @@ export const bootcampsEnrollmentsRelations = relations(
       references: [zuvyBatches.bootcampId],
     }),
     bootcamps: many(zuvyBootcamps),
+    students: many(zuvyBatchEnrollments),
   }),
 );
 
@@ -2539,7 +2555,7 @@ export const zuvyBatchEnrollments = main.table('zuvy_batch_enrollments', {
     onUpdate: 'cascade'
   }),
   batchId: integer('batch_id').references(() => zuvyBatches.id, {
-    onDelete: 'cascade',
+    onDelete: 'set null',
     onUpdate: 'cascade'
   }),
   attendance: integer('attendance'),
@@ -2559,10 +2575,9 @@ export const classesInTheBatch = relations(
       fields: [zuvyBatchEnrollments.bootcampId],
       references: [zuvyBootcampTracking.bootcampId],
     }),
-    
-    batch: one(zuvyBatches, {
-      fields: [zuvyBatchEnrollments.batchId],
-      references: [zuvyBatches.id],
+    userTracking: one(zuvyBootcampTracking, {
+      fields: [zuvyBatchEnrollments.userId],
+      references: [zuvyBootcampTracking.userId],
     }),
 
     classInfo: one(zuvySessions, {
@@ -2575,12 +2590,6 @@ export const classesInTheBatch = relations(
       fields: [zuvyBatchEnrollments.bootcampId],
       references: [zuvyBootcamps.id],
     }),
-    })
-);
-
-export const zuvyBatchEnrollmentsRelations = relations(
-  zuvyBatchEnrollments,
-  ({ one, many }) => ({
     userInfo: one(users, {
       fields: [zuvyBatchEnrollments.userId],
       references: [users.id],
@@ -2589,8 +2598,9 @@ export const zuvyBatchEnrollmentsRelations = relations(
       fields: [zuvyBatchEnrollments.batchId],
       references: [zuvyBatches.id],
     }),
-  }),
+    })
 );
+
 
 export const zuvyBatchInstructorRelation = relations(
   zuvyBatches,({one}) => ({
@@ -2680,6 +2690,7 @@ export const zuvyPracticeCode = main.table("zuvy_practice_code", {
   action: action("action").notNull(),
   questionId: integer("question_id").references(() => zuvyCodingQuestions.id),
   codingOutsourseId: integer("coding_outsourse_id").references(() => zuvyOutsourseCodingQuestions.id),
+  submissionId: integer("submission_id").references(() => zuvyAssessmentSubmission.id),
   createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
 })
 
@@ -2692,22 +2703,12 @@ export const zuvyPracticeCodeRelations = relations(zuvyPracticeCode, ({ one }) =
     fields: [zuvyPracticeCode.questionId],
     references: [zuvyCodingQuestions.id],
   }),
+  submission: one(zuvyAssessmentSubmission, {
+    fields: [zuvyPracticeCode.submissionId],
+    references: [zuvyAssessmentSubmission.id],
+  })
+  
 }))
-
-// export const zuvyPracticeCodeRelations = relations(zuvyPracticeCode, ({ one }) => ({
-//   codeStatus: one(users, {
-//     fields: [zuvyPracticeCode.userId],
-//     references: [users.id],
-//   }),
-//   questionDetails: one(zuvyOutsourseCodingQuestions, {
-//     fields: [zuvyPracticeCode.codingOutsourseId],
-//     references: [zuvyOutsourseCodingQuestions.id],
-//   }),
-//   // submission: one(zuvyAssessmentSubmission, {
-//   //   fields: [zuvyPracticeCode.assessmentSubmissionId],
-//   //   references: [zuvyAssessmentSubmission.id],
-//   // }),
-// }))
 
 export const zuvyAssignmentSubmission = main.table("zuvy_assignment_submission", {
   id: serial("id").primaryKey().notNull(),
@@ -2820,6 +2821,8 @@ export const zuvyModuleTracking = main.table("zuvy_module_tracking", {
   updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
 });
 
+
+
 export const zuvyModuleChapter = main.table('zuvy_module_chapter', {
   id: serial('id').primaryKey().notNull(),
   title: varchar('title'),
@@ -2834,6 +2837,7 @@ export const zuvyModuleChapter = main.table('zuvy_module_chapter', {
   articleContent: jsonb('article_content'),
   quizQuestions: jsonb('quiz_questions'),
   codingQuestions: integer('coding_questions'),
+  formQuestions: jsonb('form_questions'),
   assessmentId: integer('assessment_id'),
   completionDate: timestamp('completion_date', {
     withTimezone: true,
@@ -2846,12 +2850,17 @@ export const postsRelations = relations(zuvyModuleChapter, ({ one, many }) => ({
     fields: [zuvyModuleChapter.moduleId],
     references: [zuvyCourseModules.id],
   }),
+  moduleTracked: one(zuvyModuleTracking, {
+    fields: [zuvyModuleChapter.moduleId],
+    references: [zuvyModuleTracking.moduleId],
+  }),
   chapterTrackingDetails: many(zuvyChapterTracking),
   codingQuestionDetails: one(zuvyCodingQuestions, {
     fields: [zuvyModuleChapter.codingQuestions],
     references: [zuvyCodingQuestions.id],
   }),
   quizTrackingDetails: many(zuvyQuizTracking),
+  formTrackingDetails: many(zuvyFormTracking),
   OutsourseAssessments: many(zuvyOutsourseAssessments),
   ModuleAssessment: many(zuvyModuleAssessment)
 }));
@@ -2870,7 +2879,7 @@ export const moduleChapterRelations = relations(
   ({many }) => ({
     moduleChapterData: many(zuvyModuleChapter),
     chapterTrackingData: many(zuvyChapterTracking),
-    moduleTracking: many(zuvyModuleTracking),
+   // moduleTrackingData: many(zuvyModuleTracking),
     projectData: many(zuvyCourseProjects)
   }),
 );
@@ -2894,11 +2903,12 @@ export const BootcampTrackingRelation = relations(
 
 export const moduleTrackingRelationOfUsers = relations(
   zuvyModuleTracking,
-  ({one}) => ({
-     trackOfModuleForUser: one(zuvyCourseModules, {
-      fields:[zuvyModuleTracking.moduleId],
-      references: [zuvyCourseModules.id]
-     })
+  ({one,many}) => ({
+     bootcampInfo: one(zuvyBootcamps, {
+      fields:[zuvyModuleTracking.bootcampId],
+      references: [zuvyBootcamps.id]
+     }),
+      chapterDetailss: many(zuvyModuleChapter)
   })
 )
 
@@ -2959,7 +2969,8 @@ export const zuvyAssessmentSubmissionRelation = relations(zuvyAssessmentSubmissi
   }),
   openEndedSubmission: many(zuvyOpenEndedQuestionSubmission),
   quizSubmission: many(zuvyQuizTracking),
-  codingSubmission: many(zuvyPracticeCode),
+  formSubmission: many(zuvyFormTracking),
+  PracticeCode: many(zuvyPracticeCode),
 }))
 
 
@@ -3013,7 +3024,6 @@ export const assessmentData = relations(zuvyCourseModules,({one, many})=>({
   //   references: [zuvyModuleAssessment.moduleId],
   // }),
   moduleAssessments: many(zuvyModuleAssessment),
-  moduleChapterData: many(zuvyModuleChapter),
   chapterTrackingData: many(zuvyChapterTracking),
 })) 
 
@@ -3548,3 +3558,98 @@ export const moduleChapterRelation =  relations(zuvyModuleChapter, ({one}) => ({
     references: [zuvyModuleAssignment.chapterId],
   })
 }))
+
+export const zuvyModuleForm = main.table('zuvy_module_form', {
+  id: serial('id').primaryKey().notNull(),
+  chapterId: integer('chapter_id').references(() => zuvyModuleChapter.id).notNull(),
+  question: text('question'),
+  options: jsonb('options'),
+  typeId: integer('type_id').references(() => zuvyQuestionTypes.id),
+  isRequired: boolean('is_required').notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }),
+  updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }),
+  usage: integer('usage').default(0),
+});
+
+export const zuvyQuestionTypes = main.table('zuvy_question_type', {
+  id: serial('id').primaryKey().notNull(),
+  questionType: varchar('question_type'),
+});
+
+export const zuvyFormTracking = main.table("zuvy_form_tracking", {
+  id: serial("id").primaryKey().notNull(),
+  userId: integer("user_id").references(() => users.id),
+  moduleId: integer("module_id"),
+  chapterId: integer("chapter_id"),
+  questionId: integer("question_id"),
+  chosenOptions: integer("chosen_options").array(),
+  answer: text("answer"),
+  updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+  status: varchar("status", { length: 255 }),
+});
+
+// export const zuvyFormTrackingRelations = relations(zuvyFormTracking, ({ one }) => ({
+
+//   formSubmissions: one(zuvyAssessmentSubmission, {
+//     fields: [zuvyFormTracking.assessmentSubmissionId],
+//     references: [zuvyAssessmentSubmission.id]
+//   })
+
+// }))
+
+// export const formChapterRelations = relations(
+//   zuvyCourseModules,
+//   ({many, one }) => ({
+//     moduleChapterData: many(zuvyModuleChapter),
+//     chapterTrackingData: many(zuvyChapterTracking),
+//     moduleTracking: many(zuvyModuleTracking),
+//     formTrackingData: many(zuvyFormTracking),
+//     moduleFormData: many (zuvyModuleForm)
+//   }),
+// );
+
+export const formModuleRelation= relations(
+  zuvyModuleForm,
+  ({many})=>({
+    formTrackingData: many(zuvyFormTracking)
+  })
+
+);
+
+export const formTrackingRelation = relations(
+  zuvyFormTracking,
+  ({ one }) => ({
+    formQuestion: one(zuvyModuleForm, {
+      fields: [zuvyFormTracking.questionId],
+      references: [zuvyModuleForm.id],
+    }),
+  })
+);
+
+export const zuvyFormModuleRelations = relations(
+  zuvyModuleTracking,
+  ({ one }) => ({
+    user: one(users, {
+      fields: [zuvyModuleTracking.userId],
+      references: [users.id],
+    }),
+    module: one(zuvyCourseModules, {
+      fields: [zuvyModuleTracking.moduleId],
+      references: [zuvyCourseModules.id],
+    }),
+  }),
+);
+
+export const zuvyFormBatchRelations = relations(
+  zuvyBatchEnrollments,
+  ({ one }) => ({
+    user: one(users, {
+      fields: [zuvyBatchEnrollments.userId],
+      references: [users.id],
+    }),
+    bootcamp: one(zuvyBootcamps, {
+      fields: [zuvyBatchEnrollments.bootcampId],
+      references: [zuvyBootcamps.id],
+    }),
+  }),
+);

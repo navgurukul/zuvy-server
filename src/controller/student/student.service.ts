@@ -5,7 +5,8 @@ import {
   zuvyBootcampTracking,
   zuvyBootcamps,
   zuvyBootcampType,
-  zuvySessions
+  zuvySessions,
+  users
 } from '../../../drizzle/schema';
 import { db } from '../../db/index';
 import { eq, sql, desc, count } from 'drizzle-orm';
@@ -33,19 +34,21 @@ export class StudentService {
               bootcampTopic: true
             },
           },
-          batch: true,
-          tracking: true
+          batchInfo: true,
+          tracking: {
+            where: (bootcampTracking, { sql }) =>
+              sql`${bootcampTracking.userId} = ${userId}`,
+          }
         }
       })
-
       let totalData = enrolled.map((e: any) => {
-        const { batch, tracking, bootcamp } = e;
+        const { batchInfo, tracking, bootcamp } = e;
 
         return {
           ...bootcamp,
-          batchId: batch?.id,
-          progress: tracking?.progress || 0,
-          ...batch?.bootcamp,
+          batchId: batchInfo?.id,
+          batchName: batchInfo?.name,
+          progress: tracking?.progress || 0
         };
       });
 
@@ -230,5 +233,73 @@ export class StudentService {
       throw err;
     }
 
+  }
+
+  
+  //This function returns the rank of a particular course based on avg of attendance and course progress
+  //The query has a hierarchy from:-
+  //zuvyBootcamp->zuvyBatchEnrollments(It has all the students of that particular bootcamp along with attendance)
+  //ZuvyBatchEnrollments has a relation with userInfo and bootcamp Tracking table(contains course Progress)
+  async getLeaderBoardDetailByBootcamp(bootcampId:number,limit:number,offset:number)
+  {
+    try {
+      const data = await db.query.zuvyBootcamps.findMany({
+        where: (bootcamp, { eq }) => eq(bootcamp.id, bootcampId),
+        with: {
+          students: {
+            columns: { attendance: true },
+            with: {
+              userInfo: {
+                columns: { id:true, name: true ,email:true},
+              },
+              userTracking: {
+                columns: { progress: true, updatedAt: true },
+                where: (track, { eq }) => eq(track.bootcampId, bootcampId)
+              },
+            }
+          },
+        },
+      });
+      const processedData = data.map(bootcamp => {
+        const studentsWithAvg = bootcamp['students'].map(student => {
+          if (student['userTracking'] == null) {
+            student['userTracking'] = {};
+        }
+          student['userTracking']['progress'] = student['userTracking']['progress'] != null ? student['userTracking']['progress'] : 0;
+          const progress =student['userTracking']['progress'];
+          student['userTracking']['updatedAt'] = student['userTracking']['updatedAt'] != null ? student['userTracking']['updatedAt'] : new Date().toISOString();
+          const attendance = student['attendance'] != null ?student['attendance']: 0;
+          const averageScore = (attendance + progress) / 2;
+          student['attendance'] = attendance;
+          return {
+            ...student,
+            userInfo: {
+              id:Number(student.userInfo.id),
+              name:student.userInfo.name,
+              email:student.userInfo.email,
+              averageScore,
+            },
+          };
+        }).sort((a, b) => {
+          if (b.userInfo.averageScore === a.userInfo.averageScore) {
+            return new Date(a.userTracking['updatedAt']).getTime() - new Date(b.userTracking.updatedAt).getTime();
+          }
+          return b.userInfo.averageScore - a.userInfo.averageScore;
+        });
+        const totalStudents = studentsWithAvg.length;
+        const totalPages =!isNaN(limit) ? Math.ceil(totalStudents / limit) : 1;
+        return {
+          ...bootcamp,
+          students: !isNaN(limit) && !isNaN(offset) ? studentsWithAvg.slice(offset, limit+offset) : studentsWithAvg,
+          totalStudents,
+          totalPages
+        };
+      });
+      return processedData;
+    }
+    catch(err)
+    {
+         throw err;
+    }
   }
 }
