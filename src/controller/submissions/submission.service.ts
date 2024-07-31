@@ -761,6 +761,8 @@ export class SubmissionService {
       return {
         status: "Success",
         code: 200, 
+        moduleId,
+        chapterId,
         combinedData, 
         totalPages, 
         totalStudentsCount };
@@ -815,9 +817,9 @@ export class SubmissionService {
               //     : 'Pending';
 
               return {
-                status: "Pending",
-                code: 404,
-                message:"Form not Submitted"
+                status: "success",
+                code: 200,
+                message:"Form not submitted by student"
               }
 
             }
@@ -844,8 +846,9 @@ export class SubmissionService {
                   : 'Pending';
 
               return {
-                status: "Completed",
+                status: "success",
                 code: 200,
+                message:"Form submitted by student",
                 trackedData
               }
             }
