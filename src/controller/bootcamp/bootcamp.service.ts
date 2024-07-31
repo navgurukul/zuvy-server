@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger,HttpStatus  } from '@nestjs/common';
 import { db } from '../../db/index';
 import { eq, sql, count, inArray, or, and, like,desc } from 'drizzle-orm';
 // import { BatchesService } from '../batches/batch.service';
@@ -409,7 +409,7 @@ export class BootcampService {
   async addStudentToBootcamp(
     bootcampId: number,
     batchId: number,
-    users_data: any,
+    users_data: any[],
   ) {
     try {
       var a=0,b=0,c=0,d=0;
@@ -454,6 +454,14 @@ export class BootcampService {
         }
       }
 
+      if (!Array.isArray(users_data) || users_data.length === 0) {
+        return [{
+          status: 'error',
+          code: 400,
+          message: 'The student list is empty. Add student to enroll in the course',
+        }];
+      }
+      
       if (users_data.length == 1) {
         let userData = await db
           .select()
