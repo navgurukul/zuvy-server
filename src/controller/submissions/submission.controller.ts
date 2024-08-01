@@ -261,14 +261,14 @@ export class SubmissionController {
   @ApiOperation({ summary: 'get Form details by Id' })
   @ApiBearerAuth()
   async getFormDetailsById(
-    @Req() req,
     @Param('moduleId') moduleId: number,
     @Query('chapterId') chapterId: number,
+    @Query('userId') userId: number,
   ) {
     const res = await this.submissionService.getFormDetailsById(
-      req.user[0].id,
       moduleId,
       chapterId,
+      userId
     );
     return res;
   }
