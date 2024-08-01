@@ -8,11 +8,11 @@ import {
 import { db } from '../../db/index';
 import { eq, sql } from 'drizzle-orm';
 import { log } from 'console';
-import { PatchBatchDto } from './dto/batch.dto';
+import { PatchBatchDto,BatchDto } from './dto/batch.dto';
 
 @Injectable()
 export class BatchesService {
-  async createBatch(batch) {
+  async createBatch(batch:BatchDto) {
     try {
       const usersData = await db
       .select()
@@ -21,6 +21,16 @@ export class BatchesService {
           sql`${zuvyBatchEnrollments.bootcampId} = ${batch.bootcampId} AND ${zuvyBatchEnrollments.batchId} IS NULL`,
         )
         .limit(batch.capEnrollment);
+      const instructorRoles = await db.select({role:sansaarUserRoles.role}).from(sansaarUserRoles).where(eq(sansaarUserRoles.userId,batch.instructorId)) 
+      const hasInstructorRole = instructorRoles.some(role => role.role === 'instructor');
+      if(!hasInstructorRole)
+        {
+          return [{
+            status: 'error',
+            code: 400,
+            message: 'Assign a proper instructor to this batch'
+          },null]
+        }
       if (usersData.length > 0) {
         const newData = await db.insert(zuvyBatches).values(batch).returning();
         let userids = usersData.map((u) => u.userId);
