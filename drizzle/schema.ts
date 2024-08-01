@@ -2856,7 +2856,11 @@ export const postsRelations = relations(zuvyModuleChapter, ({ one, many }) => ({
   quizTrackingDetails: many(zuvyQuizTracking),
   formTrackingDetails: many(zuvyFormTracking),
   OutsourseAssessments: many(zuvyOutsourseAssessments),
-  ModuleAssessment: many(zuvyModuleAssessment)
+  ModuleAssessment: many(zuvyModuleAssessment),
+  moduleTracked: one(zuvyModuleTracking, {
+    fields: [zuvyModuleChapter.moduleId],
+    references: [zuvyModuleTracking.moduleId],
+  })
 }));
 
 
@@ -2902,7 +2906,11 @@ export const moduleTrackingRelationOfUsers = relations(
       fields:[zuvyModuleTracking.bootcampId],
       references: [zuvyBootcamps.id]
      }),
-      chapterDetailss: many(zuvyModuleChapter)
+      chapterDetailss: many(zuvyModuleChapter),
+      trackingOfModuleForUser: one(zuvyCourseModules, {
+        fields:[zuvyModuleTracking.moduleId],
+        references: [zuvyCourseModules.id]
+       })
   })
 )
 
