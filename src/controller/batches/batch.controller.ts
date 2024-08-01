@@ -17,7 +17,6 @@ import {
   ApiTags,
   ApiBody,
   ApiOperation,
-  ApiCookieAuth,
   ApiBearerAuth,
   ApiForbiddenResponse,
   ApiQuery,

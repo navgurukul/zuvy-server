@@ -20,7 +20,6 @@ import {
   ApiTags,
   ApiBody,
   ApiOperation,
-  ApiCookieAuth,
   ApiQuery,
 } from '@nestjs/swagger';
 import { ApiBearerAuth } from '@nestjs/swagger';
@@ -50,7 +49,6 @@ import { RolesGuard } from 'src/guards/roles.guard';
 
 @Controller('Content')
 @ApiTags('Content')
-@ApiCookieAuth()
 @UsePipes(
   new ValidationPipe({
     whitelist: true,

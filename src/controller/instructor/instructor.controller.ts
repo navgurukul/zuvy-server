@@ -19,7 +19,6 @@ import {
     ApiTags,
     ApiBody,
     ApiOperation,
-    ApiCookieAuth,
     ApiQuery,
   } from '@nestjs/swagger';
   import { ApiBearerAuth } from '@nestjs/swagger';
@@ -28,7 +27,6 @@ import {
   
   @Controller('instructor')
   @ApiTags('instructor')
-  @ApiCookieAuth()
   @UsePipes(
     new ValidationPipe({
       whitelist: true,

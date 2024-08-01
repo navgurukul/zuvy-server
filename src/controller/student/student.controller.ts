@@ -1,6 +1,6 @@
 import { Controller, Get, Post, Put, Delete, Patch, Body, Param, ValidationPipe, UsePipes, BadRequestException, Query, Req } from '@nestjs/common';
 import { StudentService } from './student.service';
-import { ApiTags, ApiBody, ApiOperation, ApiCookieAuth, ApiQuery, ApiBearerAuth } from '@nestjs/swagger';
+import { ApiTags, ApiBody, ApiOperation, ApiQuery, ApiBearerAuth } from '@nestjs/swagger';
 import { get } from 'http';
 // import { CreateDto, ScheduleDto, CreateLiveBroadcastDto } from './dto/Student.dto';
 // import { AuthGuard } from '@nestjs/passport'; // Assuming JWT authentication
@@ -8,7 +8,6 @@ import { get } from 'http';
 
 @Controller('student')
 @ApiTags('student')
-@ApiCookieAuth()
 @UsePipes(
   new ValidationPipe({
     whitelist: true,
