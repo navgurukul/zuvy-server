@@ -33,5 +33,14 @@ const { ZUVY_CONTENT_URL, ZUVY_CONTENTS_API_URL } = process.env; // INPORTING en
 
 @Injectable()
 export class InstructorService {
+   async allCourses(userId : number)
+   {
+    try {
+        
+    }
+    catch(err)
+    {
 
+    }
+   }
 }
