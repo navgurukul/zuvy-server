@@ -12,7 +12,8 @@ import {
   Optional,
   Query,
   BadRequestException,
-  Req
+  Req,
+  UseGuards
 } from '@nestjs/common';
 import { ContentService } from './content.service';
 import {
@@ -45,8 +46,7 @@ import {
   CreateTypeDto,
   CreateAndEditFormBody
 } from './dto/content.dto';
-import { CreateProblemDto } from '../codingPlatform/dto/codingPlatform.dto';
-import { difficulty, questionType } from 'drizzle/schema';
+import { RolesGuard } from 'src/guards/roles.guard';
 
 @Controller('Content')
 @ApiTags('Content')
@@ -117,6 +117,7 @@ export class ContentController {
     description: 'type id',
   })
   @ApiBearerAuth()
+  @UseGuards(RolesGuard)
   async createModule(
     @Body() moduleData: moduleDto,
     @Param('bootcampId') bootcampId: number,
@@ -139,6 +140,7 @@ export class ContentController {
     description: 'type id',
   })
   @ApiBearerAuth()
+  @UseGuards(RolesGuard)
   async createProject(
     @Body() projectData: projectDto,
     @Param('bootcampId') bootcampId: number,
@@ -175,6 +177,7 @@ export class ContentController {
   @Patch('/updateProjects/:projectId')
   @ApiOperation({ summary: 'Update the project' })
   @ApiBearerAuth()
+  @UseGuards(RolesGuard)
   async updateProject(
     @Body() projectData: projectDto,
     @Param('projectId') projectId: number,
@@ -201,6 +204,7 @@ export class ContentController {
     description: 'module id',
   })
   @ApiBearerAuth()
+  @UseGuards(RolesGuard)
   async deleteProject(
     @Param('projectId') projectId: number,
     @Query('bootcampId') bootcampId: number,
@@ -218,6 +222,7 @@ export class ContentController {
   @Post('/chapter')
   @ApiOperation({ summary: 'Create a chapter for this module' })
   @ApiBearerAuth()
+  @UseGuards(RolesGuard)
   async createChapter(
     @Body() chapterData: CreateChapterDto,
   ) {
@@ -227,6 +232,7 @@ export class ContentController {
   @Post('/quiz')
   @ApiOperation({ summary: 'Create a quiz' })
   @ApiBearerAuth()
+  @UseGuards(RolesGuard)
   async createQuizForModule(
     @Body() quizQuestions: quizBatchDto
   ) {
@@ -239,6 +245,7 @@ export class ContentController {
   @Put('/editAssessment/:assessmentOutsourseId')
   @ApiOperation({ summary: 'Edit the assessment for this module' })
   @ApiBearerAuth()
+  @UseGuards(RolesGuard)
   async editAssessment(
     @Body() assessmentBody: CreateAssessmentBody,
     @Param('assessmentOutsourseId') assessmentOutsourseId: number
@@ -283,6 +290,7 @@ export class ContentController {
     description: 'module Id',
   })
   @ApiBearerAuth()
+  @UseGuards(RolesGuard)
   async reOrderModules(
     @Body() reOrder: ReOrderModuleBody,
     @Param('bootcampId') bootcampId: number,
@@ -305,6 +313,7 @@ export class ContentController {
     description: 'module Id',
   })
   @ApiBearerAuth()
+  @UseGuards(RolesGuard)
   async deleteModule(
     @Param('bootcampId') bootcampId: number,
     @Query('moduleId') moduleId: number,
@@ -322,6 +331,7 @@ export class ContentController {
     description: 'chapter id',
   })
   @ApiBearerAuth()
+  @UseGuards(RolesGuard)
   async editChapter(
     @Body() reOrder: EditChapterDto,
     @Param('moduleId') moduleId: number,
@@ -344,6 +354,7 @@ export class ContentController {
     description: 'chapter Id',
   })
   @ApiBearerAuth()
+  @UseGuards(RolesGuard)
   async deleteChapter(
     @Param('moduleId') moduleId: number,
     @Query('chapterId') chapterId: number,
@@ -388,6 +399,7 @@ export class ContentController {
   @Patch('/updateCodingQuestion/:questionId')
   @ApiOperation({ summary: 'Update the coding question for this module' })
   @ApiBearerAuth()
+  @UseGuards(RolesGuard)
   async updateCodingQuestionForModule(
     @Body() codingQuestions: UpdateProblemDto,
     @Param('questionId') questionId: number,
@@ -436,6 +448,7 @@ export class ContentController {
   @Delete('/deleteCodingQuestion')
   @ApiOperation({ summary: 'Delete coding question' })
   @ApiBearerAuth()
+  @UseGuards(RolesGuard)
   async deleteCodingQuestion(@Body() questionIds: deleteQuestionDto) {
     const res = await this.contentService.deleteCodingProblem(questionIds);
     return res;
@@ -444,6 +457,7 @@ export class ContentController {
   @Post('/editquiz')
   @ApiOperation({ summary: 'Create a quiz' })
   @ApiBearerAuth()
+  @UseGuards(RolesGuard)
   async editQuizForModule(@Body() quizQuestions: editQuizBatchDto) {
     const res = await this.contentService.editQuizQuestions(quizQuestions);
     return res;
@@ -454,6 +468,7 @@ export class ContentController {
   @Delete('/deleteQuizQuestion')
   @ApiOperation({ summary: 'Delete quiz question' })
   @ApiBearerAuth()
+  @UseGuards(RolesGuard)
   async deleteQuizQuestion(@Body() questionIds: deleteQuestionDto) {
     const res = await this.contentService.deleteQuiz(questionIds);
     return res;
@@ -531,6 +546,7 @@ export class ContentController {
   @Patch('/updateOpenEndedQuestion/:questionId')
   @ApiOperation({ summary: 'Update the open ended question for this module' })
   @ApiBearerAuth()
+  @UseGuards(RolesGuard)
   async updateOpenEndedQuestionForModule(
     @Body() openEndedQuestions: UpdateOpenEndedDto,
     @Param('questionId') questionId: number,
@@ -545,6 +561,7 @@ export class ContentController {
   @Post('/createOpenEndedQuestion')
   @ApiOperation({ summary: 'Create a open ended question' })
   @ApiBearerAuth()
+  @UseGuards(RolesGuard)
   async createOpenEndedQuestion(@Body() oEndedQuestions: openEndedDto) {
     return this.contentService.createOpenEndedQuestions(oEndedQuestions);
   }
@@ -552,6 +569,7 @@ export class ContentController {
   @Delete('/deleteOpenEndedQuestion')
   @ApiOperation({ summary: 'Delete openended question' })
   @ApiBearerAuth()
+  @UseGuards(RolesGuard)
   async deleteOpenEndedQuestion(@Body() questionIds: deleteQuestionDto) {
     return this.contentService.deleteOpenEndedQuestion(questionIds);
   }
@@ -624,6 +642,7 @@ export class ContentController {
   @Post('/form')
   @ApiOperation({ summary: 'Create a form' })
   @ApiBearerAuth()
+  @UseGuards(RolesGuard)
   async createFormForModule (
     @Query('chapterId') chapterId: number,
     @Body() formQuestion: formBatchDto
@@ -666,6 +685,7 @@ export class ContentController {
   @Post('/editform')
   @ApiOperation({ summary: 'Create a form' })
   @ApiBearerAuth()
+  @UseGuards(RolesGuard)
   async editFormForModule(
     @Query('chapterId') chapterId: number,
     @Body() formQuestions: editFormBatchDto) {
@@ -680,6 +700,7 @@ export class ContentController {
   @Post('/createAndEditForm/:chapterId')
   @ApiOperation({ summary: 'Create a form' })
   @ApiBearerAuth()
+  @UseGuards(RolesGuard)
   async createAndEditForm(
     @Param('chapterId') chapterId: number,
     @Body() formQuestions: CreateAndEditFormBody) {
