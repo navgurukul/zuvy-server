@@ -26,8 +26,8 @@ import {
   import { difficulty, questionType } from 'drizzle/schema';
   import { ClassesService } from '../classes/classes.service';
   
-  @Controller('Instructor')
-  @ApiTags('Instructor')
+  @Controller('instructor')
+  @ApiTags('instructor')
   @ApiCookieAuth()
   @UsePipes(
     new ValidationPipe({
@@ -36,9 +36,14 @@ import {
       forbidNonWhitelisted: true,
     }),
   )
-  // @UseGuards(AuthGuard('cookie'))
   export class InstructorController {
     constructor(private instructorService: InstructorService) { }
 
-
+    @Get('/allCourses')
+    @ApiOperation({ summary: 'Get all courses of a particular instructor' })
+    @ApiBearerAuth()
+    async getAllCoursesOfInstructor(@Req() req) {
+      const res = await this.instructorService.allCourses(req.user[0].id);
+      return res;
+    }
   }
