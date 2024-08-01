@@ -24,6 +24,7 @@ import {
   } from '@nestjs/swagger';
   import { ApiBearerAuth } from '@nestjs/swagger';
   import { difficulty, questionType } from 'drizzle/schema';
+  import { ClassesService } from '../classes/classes.service';
   
   @Controller('Instructor')
   @ApiTags('Instructor')
