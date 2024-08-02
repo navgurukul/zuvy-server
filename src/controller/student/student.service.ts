@@ -9,7 +9,7 @@ import {
   users
 } from '../../../drizzle/schema';
 import { db } from '../../db/index';
-import { eq, sql, desc, count } from 'drizzle-orm';
+import { eq, sql, desc, count,asc } from 'drizzle-orm';
 import { ClassesService } from '../classes/classes.service'
 import { query } from 'express';
 
@@ -186,7 +186,7 @@ export class StudentService {
         .where(
           sql`${zuvySessions.bootcampId} IN ${bootcampIds} AND ${zuvySessions.status} != 'completed'`,
         )
-        .orderBy(desc(zuvySessions.startTime))
+        .orderBy(asc(zuvySessions.startTime))
 
       let filterClasses = upcomingClasses.reduce((acc, e) => {
         if (e.status == 'upcoming') {
