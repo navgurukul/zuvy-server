@@ -9,6 +9,7 @@ import { JwtService } from '@nestjs/jwt';
 import { db } from '../db/index';
 import { eq, sql, count } from 'drizzle-orm';
 import { users, sansaarUserRoles } from '../../drizzle/schema';
+import { helperVariable } from 'src/constants/helper';
 
 @Injectable()
 export class JwtMiddleware implements NestMiddleware {
@@ -62,8 +63,8 @@ export class JwtMiddleware implements NestMiddleware {
       // Restrict access to instructor-side routes
       if (
         req._parsedUrl.pathname.startsWith('/instructor') &&
-        !user[0].roles.includes('admin') &&
-        !user[0].roles.includes('instructor')
+        !user[0].roles.includes(helperVariable.admin) &&
+        !user[0].roles.includes(helperVariable.instructor)
       ) {
         throw new ForbiddenException('Access restricted to admins and instructors');
       }

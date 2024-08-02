@@ -9,6 +9,7 @@ import { db } from '../../db/index';
 import { eq, sql } from 'drizzle-orm';
 import { log } from 'console';
 import { PatchBatchDto,BatchDto } from './dto/batch.dto';
+import { helperVariable } from 'src/constants/helper';
 
 @Injectable()
 export class BatchesService {
@@ -30,12 +31,12 @@ export class BatchesService {
         if(user.length>0)
           {
              const instructorRoles = await db.select({role:sansaarUserRoles.role}).from(sansaarUserRoles).where(eq(sansaarUserRoles.userId,Number(user[0].id))) 
-             const hasInstructorRole = instructorRoles.some(role => role.role === 'instructor');
+             const hasInstructorRole = instructorRoles.some(role => role.role === helperVariable.instructor);
              if(!hasInstructorRole)
               {
                 const newlyAssignedInstructor = await db
                  .insert(sansaarUserRoles)
-                   .values({ userId : Number(user[0].id),role: 'instructor',createdAt:new Date().toISOString()}).returning();
+                   .values({ userId : Number(user[0].id),role: helperVariable.instructor,createdAt:new Date().toISOString()}).returning();
                 if(newlyAssignedInstructor.length > 0)
                   {
                     batchValue = {
@@ -68,7 +69,7 @@ export class BatchesService {
           return [
             null,
             {
-              status: 'success',
+              status: helperVariable.success,
               message: 'Batch created successfully',
               code: 200,
               batch: newData[0],
@@ -77,7 +78,7 @@ export class BatchesService {
       } else {
         // return error if no user found
         return [
-          { status: 'error', message: 'No students found to enroll in this Batch', code: 400 },
+          { status: helperVariable.error, message: 'No students found to enroll in this Batch', code: 400 },
           null,
         ];
       }

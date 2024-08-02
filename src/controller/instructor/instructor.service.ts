@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { db } from '../../db/index';
+import { helperVariable } from 'src/constants/helper';
 import { eq, sql, inArray, and, desc, arrayContains, notInArray } from 'drizzle-orm';
 import axios from 'axios';
 import { error, log } from 'console';
@@ -14,7 +15,7 @@ export class InstructorService {
     try {
         const data = await db.query.zuvyBatches.findMany({
           where: (batches, { eq }) =>
-            eq(batches.instructorId, 61418),
+            eq(batches.instructorId, Number(userId)),
           columns: {
             id:true,
             name:true
@@ -31,7 +32,7 @@ export class InstructorService {
 
 
         return {
-          status:'success',
+          status:helperVariable.success,
           code: 200,
           message: data.length > 0 ? 'These are the courses' : 'No course found',
           courseList : data
