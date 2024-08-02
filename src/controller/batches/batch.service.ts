@@ -21,18 +21,42 @@ export class BatchesService {
           sql`${zuvyBatchEnrollments.bootcampId} = ${batch.bootcampId} AND ${zuvyBatchEnrollments.batchId} IS NULL`,
         )
         .limit(batch.capEnrollment);
-      const instructorRoles = await db.select({role:sansaarUserRoles.role}).from(sansaarUserRoles).where(eq(sansaarUserRoles.userId,batch.instructorId)) 
-      const hasInstructorRole = instructorRoles.some(role => role.role === 'instructor');
-      if(!hasInstructorRole)
-        {
-          return [{
-            status: 'error',
-            code: 400,
-            message: 'Assign a proper instructor to this batch'
-          },null]
-        }
+        var batchValue;
+        var user = await db.select().from(users).where(eq(users.email,batch.instructorEmail));
+        if(user.length == 0)
+          {
+            user = await db.insert(users).values({email:batch.instructorEmail,name : batch.instructorEmail.split("@")[0]}).returning();
+          }
+        if(user.length>0)
+          {
+             const instructorRoles = await db.select({role:sansaarUserRoles.role}).from(sansaarUserRoles).where(eq(sansaarUserRoles.userId,Number(user[0].id))) 
+             const hasInstructorRole = instructorRoles.some(role => role.role === 'instructor');
+             if(!hasInstructorRole)
+              {
+                const newlyAssignedInstructor = await db
+                 .insert(sansaarUserRoles)
+                   .values({ userId : Number(user[0].id),role: 'instructor',createdAt:new Date().toISOString()}).returning();
+                if(newlyAssignedInstructor.length > 0)
+                  {
+                    batchValue = {
+                      name:batch.name,
+                      bootcampId: batch.bootcampId,
+                      instructorId: Number(user[0].id),
+                      capEnrollment: batch.capEnrollment
+                    }
+                  }
+              }
+              else {
+                batchValue = {
+                  name:batch.name,
+                  bootcampId: batch.bootcampId,
+                  instructorId: Number(user[0].id),
+                  capEnrollment: batch.capEnrollment
+                }
+              }
+          }
       if (usersData.length > 0) {
-        const newData = await db.insert(zuvyBatches).values(batch).returning();
+        const newData = await db.insert(zuvyBatches).values(batchValue).returning();
         let userids = usersData.map((u) => u.userId);
         
         await db
@@ -120,9 +144,41 @@ export class BatchesService {
       }
 
       batch['updatedAt'] = new Date();
+      var batchValue;
+      var user = await db.select().from(users).where(eq(users.email,batch.instructorEmail));
+      if(user.length == 0)
+        {
+          user = await db.insert(users).values({email:batch.instructorEmail,name : batch.instructorEmail.split("@")[0]}).returning();
+        }
+      if(user.length>0)
+        {
+           const instructorRoles = await db.select({role:sansaarUserRoles.role}).from(sansaarUserRoles).where(eq(sansaarUserRoles.userId,Number(user[0].id))) 
+           const hasInstructorRole = instructorRoles.some(role => role.role === 'instructor');
+           if(!hasInstructorRole)
+            {
+              const newlyAssignedInstructor = await db
+               .insert(sansaarUserRoles)
+                 .values({ userId : Number(user[0].id),role: 'instructor',createdAt:new Date().toISOString()}).returning();
+              if(newlyAssignedInstructor.length > 0)
+                {
+                  batchValue = {
+                    name:batch.name,
+                    instructorId: Number(user[0].id),
+                    capEnrollment: batch.capEnrollment
+                  }
+                }
+            }
+            else {
+              batchValue = {
+                name:batch.name,
+                instructorId: Number(user[0].id),
+                capEnrollment: batch.capEnrollment
+              }
+            }
+        }
       let updateData = await db
         .update(zuvyBatches)
-        .set(batch)
+        .set(batchValue)
         .where(eq(zuvyBatches.id, id))
         .returning();
       if (updateData.length === 0) {

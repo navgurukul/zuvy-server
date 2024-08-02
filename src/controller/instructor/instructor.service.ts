@@ -14,7 +14,7 @@ export class InstructorService {
     try {
         const data = await db.query.zuvyBatches.findMany({
           where: (batches, { eq }) =>
-            eq(batches.instructorId, userId),
+            eq(batches.instructorId, 61418),
           columns: {
             id:true,
             name:true
@@ -29,16 +29,18 @@ export class InstructorService {
           },
         })
 
+
         return {
           status:'success',
           code: 200,
-          message: data.length > 0 ? 'These are the courses' : 'You have no courses to teach',
+          message: data.length > 0 ? 'These are the courses' : 'No course found',
           courseList : data
         };
     }
     catch(err)
     {
-       throw err;
+      Logger.log(`error: ${err.message}`);
+      throw err;
     }
    }
 }

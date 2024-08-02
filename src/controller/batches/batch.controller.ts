@@ -64,7 +64,7 @@ export class BatchesController {
   @Put('/:id')
   @ApiOperation({ summary: 'Put the batch by id' })
   @ApiBearerAuth()
-  async updateBatch(@Param('id') id: string, @Body() batchData: BatchDto) {
+  async updateBatch(@Param('id') id: string, @Body() batchData: PatchBatchDto) {
     const [err, res] = await this.batchService.updateBatch(
       parseInt(id),
       batchData,
