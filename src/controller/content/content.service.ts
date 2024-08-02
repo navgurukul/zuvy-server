@@ -267,7 +267,6 @@ export class ContentService {
       let projectId = null;
       if (typeId == 2) {
         const newProject = await db.insert(zuvyCourseProjects).values({title:module.name}).returning();
-        console.log(newProject)
         projectId = newProject.length > 0 ? newProject[0].id : null;
       }
       var moduleWithBootcamp = {
@@ -946,9 +945,6 @@ export class ContentService {
           .where(eq(zuvyModuleChapter.id, chapterId));
 
         if (editData.quizQuestions) {
-          if (editData.quizQuestions.length == 0) {
-            editData.quizQuestions = null;
-          }
           const earlierQuizIds =
             chapter[0].quizQuestions != null
               ? Object.values(chapter[0].quizQuestions)
@@ -976,6 +972,9 @@ export class ContentService {
               .update(zuvyModuleQuiz)
               .set({ usage: sql`${zuvyModuleQuiz.usage}::numeric + 1` })
               .where(sql`${inArray(zuvyModuleQuiz.id, toUpdateIds)}`);
+          }
+          if (editData.quizQuestions.length == 0) {
+            editData.quizQuestions = null;
           }
         } else if (
           editData.codingQuestions ||
