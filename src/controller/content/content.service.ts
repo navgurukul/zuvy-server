@@ -995,9 +995,6 @@ export class ContentService {
               .where(eq(zuvyCodingQuestions.id, editData.codingQuestions));
           }
         } else if (editData.formQuestions) {
-          if (editData.formQuestions.length == 0) {
-            editData.formQuestions = null;
-          }
           const earlierFormIds =
             chapter[0].formQuestions != null
               ? Object.values(chapter[0].formQuestions)
@@ -1025,6 +1022,9 @@ export class ContentService {
               .update(zuvyModuleForm)
               .set({ usage: sql`${zuvyModuleForm.usage}::numeric + 1` })
               .where(sql`${inArray(zuvyModuleForm.id, toUpdateIds)}`);
+          }
+          if (editData.formQuestions.length == 0) {
+            editData.formQuestions = null;
           }
         }
         await db
