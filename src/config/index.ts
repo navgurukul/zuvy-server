@@ -14,7 +14,8 @@ export  const typeMappings = {
       float: 'float',
       double: 'double',
       str: 'String',
-      array: 'int[]', // This is an example; it can be modified based on the array type
+      arrayOfnum: 'int[]', // This is an example; it can be modified based on the array type
+      arrayOfStr: 'String[]', // This is an example; it can be modified based on the array type
       returnType: 'int', // Default return type, modify as needed
       defaultReturnValue: '0', // Default return value, modify as needed
       inputType: (parameterType) => {
@@ -31,7 +32,8 @@ export  const typeMappings = {
       int: 'int',
       float: 'float',
       str: 'str',
-      array: 'List[int]', // This is an example; it can be modified based on the array type
+      arrayOfnum: 'List[int]', // This is an example; it can be modified based on the arrayOfnum type
+      arrayOfStr: 'List[str]', // This is an example; it can be modified based on the arrayOfStr type
       input: (parameterType) => {
           switch(parameterType) {
               case 'int': return 'int(input())';
@@ -46,7 +48,8 @@ export  const typeMappings = {
       float: 'float',
       double: 'double',
       str: 'char*',
-      array: 'int[]', // This is an example; it can be modified based on the array type
+      arrayOfnum: 'int[]', // This is an example; it can be modified based on the arrayOfnum type
+      arrayOfStr: 'char**', // This is an example; it can be modified based on the arrayOfStr type
       returnType: 'int', // Default return type, modify as needed
       defaultReturnValue: '0', // Default return value, modify as needed
   },
@@ -55,7 +58,8 @@ export  const typeMappings = {
       float: 'float',
       double: 'double',
       str: 'string',
-      array: 'vector<int>', // This is an example; it can be modified based on the array type
+      arrayOfnum: 'vector<int>', // This is an example; it can be modified based on the arrayOfnum type
+      arrayOfStr: 'vector<string>', // This is an example; it can be modified based on the arrayOfStr type
       returnType: 'int', // Default return type, modify as needed
       defaultReturnValue: '0', // Default return value, modify as needed
   },
@@ -64,7 +68,8 @@ export  const typeMappings = {
       float: 'number',
       double: 'number',
       str: 'string',
-      array: 'number[]', // This is an example; it can be modified based on the array type
+      arrayOfnum: 'number[]', // This is an example; it can be modified based on the arrayOfnum type
+      arrayOfStr: 'string[]', // This is an example; it can be modified based on the arrayOfStr type
       returnType: 'number', // Default return type, modify as needed
       defaultReturnValue: '0', // Default return value, modify as needed
   }
