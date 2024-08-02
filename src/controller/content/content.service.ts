@@ -544,49 +544,39 @@ export class ContentService {
   }
   async deleteChapterByChapterId(chapterId: number) {
     try {
-      const chapters = await db
-        .select({
-          order: zuvyModuleChapter.order,
-        })
-        .from(zuvyModuleChapter)
-        .where(eq(zuvyModuleChapter.id, chapterId));
+        const chapters = await db
+            .select({
+                order: zuvyModuleChapter.order,
+            })
+            .from(zuvyModuleChapter)
+            .where(eq(zuvyModuleChapter.id, chapterId));
 
-      if (chapters.length === 0) {
-        return { message: `No content found for Chapter ID ${chapterId}.` };
-      }
+        if (chapters.length === 0) {
+            return { message: `No content found for Chapter ID ${chapterId}.` };
+        }
 
-      const chapterOrder = chapters[0].order;
+        const chapterOrder = chapters[0].order;
 
-      const deleteResult = await db
-        .delete(zuvyModuleChapter)
-        .where(eq(zuvyModuleChapter.id, chapterId));
+        const deleteResult = await db
+            .delete(zuvyModuleChapter)
+            .where(eq(zuvyModuleChapter.id, chapterId));
 
-      if (deleteResult.rowCount === 0) {
-        return { message: `No content found for Chapter ID ${chapterId}.` };
-      }
+        if (deleteResult.rowCount === 0) {
+            return { message: `No content found for Chapter ID ${chapterId}.` };
+        }
 
-      const chaptersToUpdate = await db
-        .select({
-          id: zuvyModuleChapter.id,
-          order: zuvyModuleChapter.order,
-        })
-        .from(zuvyModuleChapter)
-        .where(sql`${zuvyModuleChapter.order} > ${chapterOrder}`); 
-
-      for (const chapter of chaptersToUpdate) {
         await db
-          .update(zuvyModuleChapter)
-          .set({ order: chapter.order - 1 })
-          .where(eq(zuvyModuleChapter.id, chapter.id));
-      }
+            .update(zuvyModuleChapter)
+            .set({
+                order: sql`${zuvyModuleChapter.order} - 1`
+            })
+            .where(sql`${zuvyModuleChapter.order} > ${chapterOrder}`);
 
-      return { message: `Content related to Chapter ID ${chapterId} has been deleted and order has been updated.` };
+        return { message: `Content related to Chapter ID ${chapterId} has been deleted and order has been updated.` };
     } catch (err) {
       throw err;
-    }
+    } 
   }
-
-
 
   async createQuizForModule(quiz: quizBatchDto) {
     try {
