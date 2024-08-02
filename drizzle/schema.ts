@@ -2481,23 +2481,9 @@ export const zuvyBootcampType = main.table('zuvy_bootcamp_type', {
 });
 
 export const batchesRelations = relations(zuvyBootcamps, ({ one, many }) => ({
-  bootcamp: one(zuvyBatches, {
-    fields: [zuvyBootcamps.id],
-    references: [zuvyBatches.bootcampId],
-  }),
   batches: many(zuvyBatches),
 }));
 
-export const bootcampEnrollmentsRelations = relations(
-  zuvyBootcamps,
-  ({ one, many }) => ({
-    bootcamp: one(zuvyBatches, {
-      fields: [zuvyBootcamps.id],
-      references: [zuvyBatches.bootcampId],
-    }),
-    bootcampEnrollments: many(zuvyBatches),
-  }),
-);
 
 export const zuvyBatches = main.table('zuvy_batches', {
   id: serial('id').primaryKey().notNull(),
@@ -2517,19 +2503,21 @@ export const zuvyBatches = main.table('zuvy_batches', {
 export const zuvyBatchesRelations = relations(
   zuvyBatches,
   ({ one, many }) => ({
-
+    instructorDetails: one(users,{
+      fields: [zuvyBatches.instructorId],
+      references: [users.id]
+    }),
     students: many(zuvyBatchEnrollments),
-  }),
+    bootcampDetail : one(zuvyBootcamps,{
+      fields: [zuvyBatches.bootcampId],
+      references: [zuvyBootcamps.id]
+    })
+  })
 );
 
 export const bootcampsEnrollmentsRelations = relations(
   zuvyBootcamps,
   ({ one, many }) => ({
-    batches: one(zuvyBatches, {
-      fields: [zuvyBootcamps.id],
-      references: [zuvyBatches.bootcampId],
-    }),
-    bootcamps: many(zuvyBootcamps),
     students: many(zuvyBatchEnrollments),
   }),
 );
@@ -2602,14 +2590,7 @@ export const classesInTheBatch = relations(
 );
 
 
-export const zuvyBatchInstructorRelation = relations(
-  zuvyBatches,({one}) => ({
-    instructorDetails: one(users,{
-      fields: [zuvyBatches.instructorId],
-      references: [users.id]
-    })
-  })
-)
+
 
 export const zuvyTags = main.table('zuvy_tags', {
   id: serial('id').primaryKey().notNull(),
@@ -3436,7 +3417,6 @@ export const quizChapterRelations = relations(
   ({many, one }) => ({
     moduleChapterData: many(zuvyModuleChapter),
     chapterTrackingData: many(zuvyChapterTracking),
-    moduleTracking: many(zuvyModuleTracking),
     quizTrackingData: many(zuvyQuizTracking),
     moduleQuizData: many (zuvyModuleQuiz)
   }),
@@ -3534,11 +3514,7 @@ export const zuvyFormModuleRelations = relations(
     user: one(users, {
       fields: [zuvyModuleTracking.userId],
       references: [users.id],
-    }),
-    module: one(zuvyCourseModules, {
-      fields: [zuvyModuleTracking.moduleId],
-      references: [zuvyCourseModules.id],
-    }),
+    })
   }),
 );
 

@@ -1065,10 +1065,11 @@ export class TrackingService {
           }
         }
       })
-
-         
       const chapterIds = [];
-
+      var upcomingAssignments = [];
+      var lateAssignments = [];
+      if(data.length > 0)
+        {
       data.forEach(item => {
        item['bootcamp']['bootcampModules'].forEach(module => {
          if (module['moduleTracking'].length > 0) {
@@ -1089,10 +1090,6 @@ export class TrackingService {
         const completedChapterIdsSet = new Set(completedChapterIds.map(chapter => chapter.id));
 
         const todayISOString = Date.now();
-        
-        const upcomingAssignments = [];
-        const lateAssignments = [];
-        
         data.forEach(item => {
           item['bootcamp']['bootcampModules'].forEach(module => {
             if (module['moduleTracking'].length > 0) {
@@ -1122,6 +1119,8 @@ export class TrackingService {
             }
           });
         });
+      }
+      
 
       return {
         status:'success',
