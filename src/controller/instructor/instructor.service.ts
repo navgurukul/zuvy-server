@@ -85,7 +85,7 @@ export class InstructorService {
         const currentTime = new Date();
          const classDetails = await db.query.zuvySessions.findMany({
           where: (session, { sql }) =>
-            sql`${session.batchId} = ${batch.id}`,
+            sql`${session.batchId} = ${batch.id} AND (${session.status} = ${helperVariable.upcoming} OR ${session.status} = ${helperVariable.ongoing})`,
           with : {
             bootcampDetail : {
               columns : {
@@ -100,16 +100,13 @@ export class InstructorService {
           (classObj) => new Date(classObj.startTime),
           'asc',
         );
-        const completedClasses = [];
         const ongoingClasses = [];
         const upcomingClasses = [];
   
         for (const classObj of sortedClasses) {
           const startTime = new Date(classObj.startTime);
           const endTime = new Date(classObj.endTime);
-          if (currentTime > endTime) {
-            completedClasses.push(classObj);
-          } else if (currentTime >= startTime && currentTime <= endTime) {
+          if (currentTime >= startTime && currentTime <= endTime) {
             const {status,...rest} = classObj;
             ongoingClasses.push({...rest,status:helperVariable.ongoing});
           } else {
