@@ -9,9 +9,10 @@ import {
   users
 } from '../../../drizzle/schema';
 import { db } from '../../db/index';
-import { eq, sql, desc, count } from 'drizzle-orm';
+import { eq, sql, desc, count,asc } from 'drizzle-orm';
 import { ClassesService } from '../classes/classes.service'
 import { query } from 'express';
+import { helperVariable } from 'src/constants/helper';
 
 @Injectable()
 export class StudentService {
@@ -172,7 +173,7 @@ export class StudentService {
       let enrolled = await db.select().from(zuvyBatchEnrollments).where(queryString);
 
       if (enrolled.length == 0) {
-        return { status: 'error', message: 'not enrolled in any course.', code: 404 };
+        return { status: helperVariable.error, message: 'not enrolled in any course.', code: 404 };
       }
 
       let bootcampIds = await Promise.all(enrolled.map(async (e) => {
@@ -186,7 +187,7 @@ export class StudentService {
         .where(
           sql`${zuvySessions.bootcampId} IN ${bootcampIds} AND ${zuvySessions.status} != 'completed'`,
         )
-        .orderBy(desc(zuvySessions.startTime))
+        .orderBy(asc(zuvySessions.startTime))
 
       let filterClasses = upcomingClasses.reduce((acc, e) => {
         if (e.status == 'upcoming') {

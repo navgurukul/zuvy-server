@@ -19,7 +19,6 @@ import {
   ApiTags,
   ApiBody,
   ApiOperation,
-  ApiCookieAuth,
   ApiQuery,
 } from '@nestjs/swagger';
 import { SubmitCodeDto, CreateProblemDto, updateProblemDto, TestCaseDto} from './dto/codingPlatform.dto';

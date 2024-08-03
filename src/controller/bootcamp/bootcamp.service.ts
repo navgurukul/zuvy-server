@@ -711,6 +711,7 @@ export class BootcampService {
         ...item,
         userId: Number(item.userId),
         attendance: attendancePercentage,
+        batchName: item.batchId != null ? item.batchName : 'unassigned',
         progress: item.progress != null ? item.progress : 0,
       };
     });
