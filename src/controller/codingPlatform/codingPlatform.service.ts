@@ -346,7 +346,7 @@ export class CodingPlatformService {
     }
   }
 
-  async createCodingQuestion(createCodingQuestionDto: any) {
+  async createCodingQuestion(createCodingQuestionDto: any): Promise<any> {
     const { testCases, ...questionData } = createCodingQuestionDto;
     try {
       const question:any = await db.insert(zuvyCodingQuestions).values(questionData).returning();
@@ -361,7 +361,7 @@ export class CodingPlatformService {
     }
   }
 
-  async updateCodingQuestion(id: number, updateCodingQuestionDto: any) {
+  async updateCodingQuestion(id: number, updateCodingQuestionDto: any): Promise<any> {
     let { testCases, ...questionData } = updateCodingQuestionDto;
     try {
       const question = await db.update(zuvyCodingQuestions).set(questionData).where(sql`${zuvyCodingQuestions.id} = ${id}`).returning();
@@ -372,7 +372,7 @@ export class CodingPlatformService {
     }
   }
 
-  async deleteCodingQuestion(id: number) {
+  async deleteCodingQuestion(id: number): Promise<any> {
     try {
       await db.delete(zuvyCodingQuestions).where(sql`${zuvyCodingQuestions.id} = ${id}`);
       return { message: 'Coding question deleted successfully' };
@@ -381,7 +381,7 @@ export class CodingPlatformService {
     }
   }
 
-  async createLanguage(createLanguageDto: any) {
+  async createLanguage(createLanguageDto: any): Promise<any> {
     try {
       const language = await db.insert(zuvyLanguages).values(createLanguageDto);
       return language;
@@ -390,7 +390,7 @@ export class CodingPlatformService {
     }
   }
 
-  async getCodingQuestion(id: number) {
+  async getCodingQuestion(id: number): Promise<any> {
     try {
       const question = await db.query.zuvyCodingQuestions.findMany({
         where: (zuvyCodingQuestions, { sql }) => sql`${zuvyCodingQuestions.id} = ${id}`,
@@ -414,15 +414,15 @@ export class CodingPlatformService {
       if (question.length === 0) {
         return { status: 'error', code: 400, message: "No question available for the given question Id" };
       }
-      let templates = await generateTemplates(question[0].title_, question[0].testCases[0].inputs);
+      let templates = await generateTemplates(question[0].title, question[0].testCases[0].inputs);
       
-      return { ...question[0], templates};
+      return [null,{ ...question[0], templates}];
     } catch (error) {
-      return new ErrorResponse(error.message, STATUS_CODES.BAD_REQUEST, false);
+      return [new ErrorResponse(error.message, STATUS_CODES.BAD_REQUEST, false)];
     }
   }
   // i want to update the test case and expected output for the coding question
-  async updateTestCaseAndExpectedOutput(testcases: any) {
+  async updateTestCaseAndExpectedOutput(testcases: any): Promise<any> {
     try {
       testcases.forEach(async (testCase) => {
         const { inputs, expectedOutput } = testCase;
@@ -435,7 +435,7 @@ export class CodingPlatformService {
   }
 
 
-  async deleteCodingTestcase(id: number) {
+  async deleteCodingTestcase(id: number) : Promise<any> {
     try {
       await db.delete(zuvyTestCases).where(sql`${zuvyTestCases.id} = ${id}`);
       return { message: 'Test case deleted successfully' };
@@ -444,7 +444,7 @@ export class CodingPlatformService {
     }
   }
 
-  async addTestCase(questionId, updateTestCaseDto) {
+  async addTestCase(questionId, updateTestCaseDto): Promise<any> {
     try {
       const { inputs, expectedOutput } = updateTestCaseDto
       const testCase = await db.insert(zuvyTestCases).values({ questionId, inputs, expectedOutput }).returning();
