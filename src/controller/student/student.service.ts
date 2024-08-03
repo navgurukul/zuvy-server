@@ -162,7 +162,7 @@ export class StudentService {
     }
   }
 
-  async getUpcomingClass(student_id: number, batchID: number) {
+  async getUpcomingClass(student_id: number, batchID: number,limit:number,offset:number) {
     try {
       let queryString
       if (batchID) {
@@ -175,21 +175,42 @@ export class StudentService {
       if (enrolled.length == 0) {
         return { status: helperVariable.error, message: 'not enrolled in any course.', code: 404 };
       }
+      let bootcampAndbatchIds = await Promise.all(
+        enrolled
+          .filter(e => e.batchId !== null) 
+          .map(async e => {
+            await this.ClassesService.updatingStatusOfClass(e.bootcampId, e.batchId);
+            return {bootcampId:e.bootcampId,batchId: e.batchId};
+          })
+      );
+      let upcomingClasses = await db.query.zuvySessions.findMany({
+        where: (session, { or, and, eq ,ne}) =>
+          and(
+            or(...bootcampAndbatchIds.map(({ bootcampId, batchId }) => 
+              and(
+                eq(session.bootcampId, bootcampId),
+                eq(session.batchId, batchId)
+              )
+            )),
+            ne(session.status, 'completed')
 
-      let bootcampIds = await Promise.all(enrolled.map(async (e) => {
-        await this.ClassesService.updatingStatusOfClass(e.bootcampId)
-        return e.bootcampId;
-      }));
-
-      let upcomingClasses = await db
-        .select()
-        .from(zuvySessions)
-        .where(
-          sql`${zuvySessions.bootcampId} IN ${bootcampIds} AND ${zuvySessions.status} != 'completed'`,
-        )
-        .orderBy(asc(zuvySessions.startTime))
-
+          ),
+        orderBy: (session, { asc }) => asc(session.startTime),
+        with : {
+          bootcampDetail : {
+            columns : {
+              id:true,
+              name:true
+            }
+          }
+        },
+        limit,
+        offset
+       })
       let filterClasses = upcomingClasses.reduce((acc, e) => {
+          e['bootcampName'] = e['bootcampDetail'].name;
+          e['bootcampId'] = e['bootcampDetail'].id;
+          delete  e['bootcampDetail']
         if (e.status == 'upcoming') {
           acc.upcoming.push(e);
         } else {
