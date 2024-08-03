@@ -74,21 +74,10 @@ import {
     @Query('batchId') batchId:number,
     @Req() req
   ): Promise<object> {
-    const parsedLimit = parseInt(limit as any, 10);
-    const parsedOffset = parseInt(offset as any, 10);
-
-    if (isNaN(parsedLimit) || parsedLimit <= 0) {
-      throw new BadRequestException('Invalid limit value');
-    }
-
-    if (isNaN(parsedOffset) || parsedOffset < 0) {
-      throw new BadRequestException('Invalid offset value');
-    }
-
     return this.instructorService.getAllUpcomingClasses(
       req.user[0].id,
-      parsedLimit,
-      parsedOffset,
+      limit,
+      offset,
       timeFrame || 'all',
       batchId
     );
