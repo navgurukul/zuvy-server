@@ -351,7 +351,7 @@ export class CodingPlatformService {
       const question:any = await db.insert(zuvyCodingQuestions).values(questionData).returning();
       let testCaseAndExpectedOutput = [];
       for (let i = 0; i < testCases.length; i++) {
-        testCaseAndExpectedOutput.push({ questionId: question[0].id,inputs: testCases[i].inputs, expectedOutput: testCases[i].expected_output});
+        testCaseAndExpectedOutput.push({ questionId: question[0].id,inputs: testCases[i].inputs, expectedOutput: testCases[i].expectedOutput});
       }
       let TestCases = await db.insert(zuvyTestCases).values(testCaseAndExpectedOutput).returning();
       return {...question, TestCases};
@@ -360,26 +360,12 @@ export class CodingPlatformService {
     }
   }
 
-  async deleteTestCaseAndExpectedOutput(id: number, questionId: number){
-    try {
-      if (!id && !questionId) throw new Error('id or questionId in both one value is must be provided!!');
-      
-      await db.delete(zuvyTestCases).where(sql`${zuvyTestCases.questionId} = ${id} or ${questionId} = ${id}`);
-      return { message: 'Test cases and expected output deleted successfully' };
-    } catch (error) {
-      throw new Error(error.message);
-    }
-  }
-
   async updateCodingQuestion(id: number, updateCodingQuestionDto: any) {
     let { testCases, ...questionData } = updateCodingQuestionDto;
     try {
-      // const question = await db.update(zuvyCodingQuestions).set(questionData).where(sql`${zuvyCodingQuestions.id} = ${id}`).returning();
-      // if (testCases) {
-      //   await db.update(zuvyTestCases).set({ testCase }).where(sql`${zuvyTestCases.questionId} = ${id}`);
-      // }
-      // return question;
-      return { message: 'Coding question updated successfully' };
+      const question = await db.update(zuvyCodingQuestions).set(questionData).where(sql`${zuvyCodingQuestions.id} = ${id}`).returning();
+      await this.updateTestCaseAndExpectedOutput(testCases);
+      return { message: 'Coding question updated successfully', question };
     } catch (error) {
       throw new Error(error.message);
     }
@@ -416,6 +402,38 @@ export class CodingPlatformService {
       throw new Error(error.message);
     }
   }
+  // i want to update the test case and expected output for the coding question
+  async updateTestCaseAndExpectedOutput(testcases: any) {
+    try {
+      testcases.forEach(async (testCase) => {
+        const { inputs, expectedOutput } = testCase;
+        await db.update(zuvyTestCases).set({ inputs, expectedOutput }).where(sql`${zuvyTestCases.id} = ${testCase.id}`);
+      })
+      return { message: 'Test case and expected output updated successfully' };
+    } catch (error) {
+      throw new Error(error.message);
+    }
+  }
+
+
+  async deleteCodingTestcase(id: number) {
+    try {
+      await db.delete(zuvyTestCases).where(sql`${zuvyTestCases.id} = ${id}`);
+      return { message: 'Test case deleted successfully' };
+    } catch (error) {
+      throw new Error(error.message);
+    }
+  }
+
+  async addTestCase(questionId, updateTestCaseDto) {
+    try {
+      const { inputs, expectedOutput } = updateTestCaseDto
+      const testCase = await db.insert(zuvyTestCases).values({ questionId, inputs, expectedOutput }).returning();
+      return testCase[0];
+    } catch (error) {
+      throw new Error(error.message);
+    }
+  }
 
   async generateTemplates(functionName, parameters) {
     functionName = functionName.replace(/ /g, '_').toLowerCase();
@@ -425,15 +443,15 @@ export class CodingPlatformService {
     templates['python'] = `
 from typing import List, Dict
   
-def ${functionName}(${parameters.map(p => `${p.parameterName}: ${typeMappings['python'][p.parameterType]} = ${p.parameterValue}`).join(', ')}):
-  # Add your code here
-  return
+def ${functionName}(${parameters.map(p => `_${p.parameterName}_: ${typeMappings['python'][p.parameterType]}`).join(', ')}):
+    # Add your code here
+    return
 
 # Example usage
-${parameters.map(p => `${p.parameterName} = ${p.parameterType === 'array' ? 'list(map(int, input().split()))' : `${typeMappings['python'][p.parameterType]}(input())`}`).join('\n')}
-result = ${functionName}(${parameters.map(p => p.parameterName).join(', ')})
+${parameters.map(p => `_${p.parameterName}_ = ${p.parameterType === 'array' ? 'list(map(int, input().split()))' : `${typeMappings['python'][p.parameterType]}(input())`}`).join('\n')}
+result = ${functionName}(${parameters.map(p => `_${p.parameterName}_`).join(', ')})
 print(result)
-  `;
+    `;
   
     // Generate C template
     templates['c'] = `
@@ -442,8 +460,8 @@ print(result)
 #include <string.h>
 
 // Function to ${functionName}
-${parameters.map(p => `${typeMappings['c'][p.parameterType]} ${p.parameterName};`).join('\n')}
-${typeMappings['c']['returnType']} ${functionName}(${parameters.map(p => `${typeMappings['c'][p.parameterType]} ${p.parameterName}`).join(', ')}) {
+${parameters.map(p => `${typeMappings['c'][p.parameterType]} _${p.parameterName}_;`).join('\n')}
+${typeMappings['c']['returnType']} ${functionName}(${parameters.map(p => `${typeMappings['c'][p.parameterType]} _${p.parameterName}_`).join(', ')}) {
     // Add your code here
     return ${typeMappings['c']['defaultReturnValue']}; // Replace with actual return value
 }
@@ -452,15 +470,15 @@ int main() {
     // Input data
     ${parameters.map(p => {
         if (p.parameterType === 'array') {
-            return `${typeMappings['c'][p.elementType]} ${p.parameterName}[100]; // Adjust size as needed\nint ${p.parameterName}_size = 0;\nwhile (scanf("%d", &${p.parameterName}[${p.parameterName}_size]) == 1) { ${p.parameterName}_size++; }`;
+            return `${typeMappings['c'][p.elementType]} _${p.parameterName}_[100]; // Adjust size as needed\nint _${p.parameterName}_size = 0;\nwhile (scanf("%d", &_${p.parameterName}_[_${p.parameterName}_size]) == 1) { _${p.parameterName}_size++; }`;
         } else {
-            return `scanf("%${typeMappings['c'][p.parameterType]}", &${p.parameterName});`;
+            return `scanf("%${typeMappings['c'][p.parameterType]}", &_${p.parameterName}_);`;
         }
     }).join('\n')}
 
     // Call function and print result
-    ${typeMappings['c']['returnType']} result = ${functionName}(${parameters.map(p => p.parameterName).join(', ')});
-    printf("%d\n", result); // Adjust format specifier as needed
+    ${typeMappings['c']['returnType']} result = ${functionName}(${parameters.map(p => `_${p.parameterName}_`).join(', ')});
+    printf("%d\\n", result); // Adjust format specifier as needed
 
     return 0;
 }
@@ -475,23 +493,17 @@ int main() {
 using namespace std;
 
 // Function to ${functionName}
-${typeMappings['cpp']['returnType']} ${functionName}(${parameters.map(p => `${typeMappings['cpp'][p.parameterType]} ${p.parameterName}`).join(', ')}) {
+${typeMappings['cpp']['returnType']} ${functionName}(${parameters.map(p => `${typeMappings['cpp'][p.parameterType]} _${p.parameterName}_`).join(', ')}) {
     // Add your code here
     return ${typeMappings['cpp']['defaultReturnValue']}; // Replace with actual return value
 }
 
 int main() {
     // Input data
-    ${parameters.map(p => {
-        if (p.parameterType === 'array') {
-            return `${typeMappings['cpp'][p.elementType]} ${p.parameterName}[100]; // Adjust size as needed\nint ${p.parameterName}_size = 0;\nwhile (cin >> ${p.parameterName}[${p.parameterName}_size]) { ${p.parameterName}_size++; }`;
-        } else {
-            return `cin >> ${p.parameterName};`;
-        }
-    }).join('\n')}
+    ${parameters.map(p => `int _${p.parameterName}_;\ncin >> _${p.parameterName}_;`).join('\n')}
 
     // Call function and print result
-    ${typeMappings['cpp']['returnType']} result = ${functionName}(${parameters.map(p => p.parameterName).join(', ')});
+    ${typeMappings['cpp']['returnType']} result = ${functionName}(${parameters.map(p => `_${p.parameterName}_`).join(', ')});
     cout << result << endl;
 
     return 0;
@@ -500,15 +512,12 @@ int main() {
   
     // Generate Java template
     templates['java'] = `
-import java.util.List;
-import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Scanner;
 
 public class Main {
 
     // Function to ${functionName}
-    public static ${typeMappings['java']['returnType']} ${functionName}(${parameters.map(p => `${typeMappings['java'][p.parameterType]} ${p.parameterName}`).join(', ')}) {
+    public static ${typeMappings['java']['returnType']} ${functionName}(${parameters.map(p => `${typeMappings['java'][p.parameterType]} _${p.parameterName}_`).join(', ')}) {
         // Add your code here
         return ${typeMappings['java']['defaultReturnValue']}; // Replace with actual return value
     }
@@ -517,23 +526,18 @@ public class Main {
         Scanner scanner = new Scanner(System.in);
 
         // Input data
-        ${parameters.map(p => {
-            if (p.parameterType === 'array') {
-                return `${typeMappings['java'][p.elementType]}[] ${p.parameterName} = Arrays.stream(scanner.nextLine().split(" ")).mapToInt(Integer::parseInt).toArray();`;
-            } else {
-                return `${typeMappings['java'][p.parameterType]} ${p.parameterName} = scanner.next${typeMappings['java'][p.parameterType].toUpperCase().replace(' ', '')}();`;
-            }
-        }).join('\n')}
-        
+        ${parameters.map(p => `${typeMappings['java'][p.parameterType]} _${p.parameterName}_ = scanner.next${typeMappings['java']['inputType'](p.parameterType)}();`).join('\n')}
+
         // Call function and print result
-        ${typeMappings['java']['returnType']} result = ${functionName}(${parameters.map(p => p.parameterName).join(', ')});
+        ${typeMappings['java']['returnType']} result = ${functionName}(${parameters.map(p => `_${p.parameterName}_`).join(', ')});
         System.out.println(result);
     }
-}`;
+}
+`;
   
     // Generate JavaScript (Node.js) template
     templates['javascript'] = `
-function ${functionName}(${parameters.map(p => `${p.parameterName}`).join(', ')}) {
+function ${functionName}(${parameters.map(p => `_${p.parameterName}_`).join(', ')}) {
     // Add your code here
     return ${typeMappings['javascript']['defaultReturnValue']}; // Replace with actual return value
 }
@@ -551,12 +555,13 @@ rl.on('line', (line) => {
 });
 
 rl.on('close', () => {
-    const ${parameters.map(p => `${p.parameterName} = ${p.parameterType === 'array' ? 'inputs.shift().split(" ").map(Number)' : 'inputs.shift()'}`).join(',\n    ')}
+    const ${parameters.map(p => `_${p.parameterName}_ = ${p.parameterType === 'array' ? 'inputs.shift().split(" ").map(Number)' : 'inputs.shift()'}`).join(',\n    ')}
     
-    const result = ${functionName}(${parameters.map(p => p.parameterName).join(', ')});
+    const result = ${functionName}(${parameters.map(p => `_${p.parameterName}_`).join(', ')});
     console.log(result);
 });`;
     
     return templates;
-  }
+}
+
 }
