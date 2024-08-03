@@ -5,14 +5,15 @@ import { eq, sql, count, lte, desc } from 'drizzle-orm';
 import axios from 'axios';
 import { SubmitCodeDto, CreateProblemDto } from './dto/codingPlatform.dto';
 import * as _ from 'lodash';
-import { error, log } from 'console';
 import {
   zuvyCodingQuestions,
   zuvyPracticeCode,
   zuvyLanguages,
   zuvyTestCases
 } from '../../../drizzle/schema';
-import { typeMappings} from '../../config/index';
+import { generateTemplates } from '../../helpers/index'
+import  ErrorResponse  from '../../errorHandler/handler';
+import { STATUS_CODES } from "../../helpers/index";
 
 const { ZUVY_CONTENT_URL,RAPID_BASE_URL, RAPID_API_KEY, RAPID_HOST } = process.env; // INPORTING env VALUSE ZUVY_CONTENT
 
@@ -292,7 +293,7 @@ export class CodingPlatformService {
       return processedQuestion;
 
     } catch (err) {
-      throw err;
+      return new ErrorResponse(err.message, STATUS_CODES.BAD_REQUEST, false);
     }
   }
 
@@ -302,7 +303,7 @@ export class CodingPlatformService {
       const newQuestionCreated = await db.insert(zuvyCodingQuestions).values(codingProblem).returning();
       return newQuestionCreated;
     } catch (err) {
-      throw err;
+      return new ErrorResponse(err.message, STATUS_CODES.BAD_REQUEST, false);
     }
   }
 
@@ -333,7 +334,7 @@ export class CodingPlatformService {
       let shapecode = await this.getCodeInfo(results[0].token)
       return {...results[0], questionInfo: data[0], shapecode}
     } catch (error){
-      throw error
+      return new ErrorResponse(error.message, STATUS_CODES.BAD_REQUEST, false);
     }
   }
   async getLanguagesById(languageId: number) {
@@ -341,7 +342,7 @@ export class CodingPlatformService {
       const language = await db.select().from(zuvyLanguages).where(sql`${zuvyLanguages.id} = ${languageId}`);
       return language;
     } catch (error) {
-      throw new Error(error.message);
+      return new ErrorResponse(error.message, STATUS_CODES.BAD_REQUEST, false);
     }
   }
 
@@ -356,7 +357,7 @@ export class CodingPlatformService {
       let TestCases = await db.insert(zuvyTestCases).values(testCaseAndExpectedOutput).returning();
       return {...question, TestCases};
     } catch (error) {
-      throw new Error(error.message);
+      return new ErrorResponse(error.message, STATUS_CODES.BAD_REQUEST, false);
     }
   }
 
@@ -367,7 +368,7 @@ export class CodingPlatformService {
       await this.updateTestCaseAndExpectedOutput(testCases);
       return { message: 'Coding question updated successfully', question };
     } catch (error) {
-      throw new Error(error.message);
+      return new ErrorResponse(error.message, STATUS_CODES.BAD_REQUEST, false);
     }
   }
 
@@ -376,7 +377,7 @@ export class CodingPlatformService {
       await db.delete(zuvyCodingQuestions).where(sql`${zuvyCodingQuestions.id} = ${id}`);
       return { message: 'Coding question deleted successfully' };
     } catch (error) {
-      throw new Error(error.message);
+      return new ErrorResponse(error.message, STATUS_CODES.BAD_REQUEST, false);
     }
   }
 
@@ -385,21 +386,39 @@ export class CodingPlatformService {
       const language = await db.insert(zuvyLanguages).values(createLanguageDto);
       return language;
     } catch (error) {
-      throw new Error(error.message);
+      return new ErrorResponse(error.message, STATUS_CODES.BAD_REQUEST, false);
     }
   }
 
   async getCodingQuestion(id: number) {
     try {
-      const question = await db.select().from(zuvyCodingQuestions).where(sql`${zuvyCodingQuestions.id} = ${id}`);
-      const testCases = await db.select().from(zuvyTestCases).where(sql`${zuvyTestCases.questionId} = ${id}`);
+      const question = await db.query.zuvyCodingQuestions.findMany({
+        where: (zuvyCodingQuestions, { sql }) => sql`${zuvyCodingQuestions.id} = ${id}`,
+        columns: {
+          id: true,
+          title: true,
+          description: true,
+          difficulty: true,
+        },
+        with: {
+          testCases: {
+            columns: {
+              id: true,
+              inputs: true,
+              expectedOutput: true,
+            }
+          }
+        }
+      }) 
 
-      let templates = await this.generateTemplates(question[0].title, testCases[0].inputs);
-
-      return { ...question[0], testCases, templates };
+      if (question.length === 0) {
+        return { status: 'error', code: 400, message: "No question available for the given question Id" };
+      }
+      let templates = await generateTemplates(question[0].title_, question[0].testCases[0].inputs);
+      
+      return { ...question[0], templates};
     } catch (error) {
-      console.error('Error fetching coding question:', error);
-      throw new Error(error.message);
+      return new ErrorResponse(error.message, STATUS_CODES.BAD_REQUEST, false);
     }
   }
   // i want to update the test case and expected output for the coding question
@@ -411,7 +430,7 @@ export class CodingPlatformService {
       })
       return { message: 'Test case and expected output updated successfully' };
     } catch (error) {
-      throw new Error(error.message);
+      return new ErrorResponse(error.message, STATUS_CODES.BAD_REQUEST, false);
     }
   }
 
@@ -421,7 +440,7 @@ export class CodingPlatformService {
       await db.delete(zuvyTestCases).where(sql`${zuvyTestCases.id} = ${id}`);
       return { message: 'Test case deleted successfully' };
     } catch (error) {
-      throw new Error(error.message);
+      return new ErrorResponse(error.message, STATUS_CODES.BAD_REQUEST, false);
     }
   }
 
@@ -431,137 +450,8 @@ export class CodingPlatformService {
       const testCase = await db.insert(zuvyTestCases).values({ questionId, inputs, expectedOutput }).returning();
       return testCase[0];
     } catch (error) {
-      throw new Error(error.message);
+      return new ErrorResponse(error.message, STATUS_CODES.BAD_REQUEST, false);
     }
   }
-
-  async generateTemplates(functionName, parameters) {
-    functionName = functionName.replace(/ /g, '_').toLowerCase();
-    const templates = {};
-  
-    // Generate Python template
-    templates['python'] = `
-from typing import List, Dict
-  
-def ${functionName}(${parameters.map(p => `_${p.parameterName}_: ${typeMappings['python'][p.parameterType]}`).join(', ')}):
-    # Add your code here
-    return
-
-# Example usage
-${parameters.map(p => `_${p.parameterName}_ = ${p.parameterType === 'array' ? 'list(map(int, input().split()))' : `${typeMappings['python'][p.parameterType]}(input())`}`).join('\n')}
-result = ${functionName}(${parameters.map(p => `_${p.parameterName}_`).join(', ')})
-print(result)
-    `;
-  
-    // Generate C template
-    templates['c'] = `
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-
-// Function to ${functionName}
-${parameters.map(p => `${typeMappings['c'][p.parameterType]} _${p.parameterName}_;`).join('\n')}
-${typeMappings['c']['returnType']} ${functionName}(${parameters.map(p => `${typeMappings['c'][p.parameterType]} _${p.parameterName}_`).join(', ')}) {
-    // Add your code here
-    return ${typeMappings['c']['defaultReturnValue']}; // Replace with actual return value
-}
-
-int main() {
-    // Input data
-    ${parameters.map(p => {
-        if (p.parameterType === 'array') {
-            return `${typeMappings['c'][p.elementType]} _${p.parameterName}_[100]; // Adjust size as needed\nint _${p.parameterName}_size = 0;\nwhile (scanf("%d", &_${p.parameterName}_[_${p.parameterName}_size]) == 1) { _${p.parameterName}_size++; }`;
-        } else {
-            return `scanf("%${typeMappings['c'][p.parameterType]}", &_${p.parameterName}_);`;
-        }
-    }).join('\n')}
-
-    // Call function and print result
-    ${typeMappings['c']['returnType']} result = ${functionName}(${parameters.map(p => `_${p.parameterName}_`).join(', ')});
-    printf("%d\\n", result); // Adjust format specifier as needed
-
-    return 0;
-}
-`;
-  
-    // Generate C++ template
-    templates['cpp'] = `
-#include <iostream>
-#include <vector>
-#include <sstream>
-
-using namespace std;
-
-// Function to ${functionName}
-${typeMappings['cpp']['returnType']} ${functionName}(${parameters.map(p => `${typeMappings['cpp'][p.parameterType]} _${p.parameterName}_`).join(', ')}) {
-    // Add your code here
-    return ${typeMappings['cpp']['defaultReturnValue']}; // Replace with actual return value
-}
-
-int main() {
-    // Input data
-    ${parameters.map(p => `int _${p.parameterName}_;\ncin >> _${p.parameterName}_;`).join('\n')}
-
-    // Call function and print result
-    ${typeMappings['cpp']['returnType']} result = ${functionName}(${parameters.map(p => `_${p.parameterName}_`).join(', ')});
-    cout << result << endl;
-
-    return 0;
-}
-`;
-  
-    // Generate Java template
-    templates['java'] = `
-import java.util.Scanner;
-
-public class Main {
-
-    // Function to ${functionName}
-    public static ${typeMappings['java']['returnType']} ${functionName}(${parameters.map(p => `${typeMappings['java'][p.parameterType]} _${p.parameterName}_`).join(', ')}) {
-        // Add your code here
-        return ${typeMappings['java']['defaultReturnValue']}; // Replace with actual return value
-    }
-
-    public static void main(String[] args) {
-        Scanner scanner = new Scanner(System.in);
-
-        // Input data
-        ${parameters.map(p => `${typeMappings['java'][p.parameterType]} _${p.parameterName}_ = scanner.next${typeMappings['java']['inputType'](p.parameterType)}();`).join('\n')}
-
-        // Call function and print result
-        ${typeMappings['java']['returnType']} result = ${functionName}(${parameters.map(p => `_${p.parameterName}_`).join(', ')});
-        System.out.println(result);
-    }
-}
-`;
-  
-    // Generate JavaScript (Node.js) template
-    templates['javascript'] = `
-function ${functionName}(${parameters.map(p => `_${p.parameterName}_`).join(', ')}) {
-    // Add your code here
-    return ${typeMappings['javascript']['defaultReturnValue']}; // Replace with actual return value
-}
-
-// Example usage
-const readline = require('readline');
-const rl = readline.createInterface({
-    input: process.stdin,
-    output: process.stdout
-});
-
-const inputs = [];
-rl.on('line', (line) => {
-    inputs.push(line);
-});
-
-rl.on('close', () => {
-    const ${parameters.map(p => `_${p.parameterName}_ = ${p.parameterType === 'array' ? 'inputs.shift().split(" ").map(Number)' : 'inputs.shift()'}`).join(',\n    ')}
-    
-    const result = ${functionName}(${parameters.map(p => `_${p.parameterName}_`).join(', ')});
-    console.log(result);
-});`;
-    
-    return templates;
-}
 
 }

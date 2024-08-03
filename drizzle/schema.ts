@@ -3559,6 +3559,12 @@ export const zuvyTestCases = main.table("zuvy_test_cases", {
   inputs: jsonb("inputs").notNull(),
   expectedOutput: jsonb("expected_output").notNull(),
 });
+export const zuvyCodingQuestionsRelation = relations(zuvyTestCases, ({one, many}) => ({
+  codingQuestion: one(zuvyCodingQuestions, {
+    fields: [zuvyTestCases.questionId],
+    references: [zuvyCodingQuestions.id],
+  }),
+}))
 
 export const zuvyPracticeCodeRelation = relations(zuvyPracticeCode, ({one, many}) => ({
   codingQuestion: one(zuvyCodingQuestions, {

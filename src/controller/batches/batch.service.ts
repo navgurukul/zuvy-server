@@ -205,12 +205,12 @@ export class BatchesService {
 
   async deleteBatch(id: number) {
     try {
-      let data = await db.delete(zuvyBatches).where(eq(zuvyBatches.id, id)).returning();
       await db
         .update(zuvyBatchEnrollments)
         .set({ batchId: null })
         .where(eq(zuvyBatchEnrollments.batchId, id))
         .returning();
+      let data = await db.delete(zuvyBatches).where(eq(zuvyBatches.id, id)).returning();
       if (data.length === 0) {
         return [
           { status: 'error', message: 'Batch not found', code: 404 },
