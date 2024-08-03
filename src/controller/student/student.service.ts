@@ -211,7 +211,7 @@ export class StudentService {
           e['bootcampName'] = e['bootcampDetail'].name;
           e['bootcampId'] = e['bootcampDetail'].id;
           delete  e['bootcampDetail']
-        if (e.status == 'upcoming') {
+        if (e.status == helperVariable.upcoming) {
           acc.upcoming.push(e);
         } else {
           acc.ongoing.push(e);

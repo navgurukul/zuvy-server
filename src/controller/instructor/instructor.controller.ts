@@ -78,7 +78,7 @@ import {
       req.user[0].id,
       limit,
       offset,
-      timeFrame || 'all',
+      timeFrame,
       batchId
     );
   }
