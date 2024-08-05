@@ -70,30 +70,6 @@ export class CodingPlatformController {
     return this.codingPlatformService.getQuestionsWithStatus(req.user[0].id, difficulty, page, limit);
   }
 
-  @Get('questionById/:questionId')
-  @ApiOperation({ summary: 'Get the questions by Id' })
-  @ApiBearerAuth()
-  async getQuestionById(@Param('questionId') questionId: number) {
-    return this.codingPlatformService.getQuestionById(questionId);
-  }
-
-  // @Post('createCodingQuestion')
-  // @ApiOperation({ summary: 'Create coding question' })
-  // @ApiBearerAuth()
-  // async createCodingProblems(@Body() createCodingQuestion: CreateProblemDto) {
-  //   let examples = [];
-  //   let testCases = [];
-  //   for (let i = 0; i < createCodingQuestion.examples.length; i++) {
-  //     examples.push(createCodingQuestion.examples[i].inputs);
-  //   }
-  //   createCodingQuestion.examples = examples;
-  //   for (let j = 0; j < createCodingQuestion.testCases.length; j++) {
-  //     testCases.push(createCodingQuestion.testCases[j].inputs)
-  //   }
-  //   createCodingQuestion.testCases = testCases
-  //   return this.codingPlatformService.createCodingProblem(createCodingQuestion);
-  //
-  // }
 
   @Post('/practicecode/questionId=:questionId')
   @ApiOperation({ summary: 'Submiting the coding question' })

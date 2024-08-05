@@ -192,6 +192,11 @@ rl.on('close', () => {
   const result = ${functionName}(${parameters.map(p => `_${p.parameterName}_`).join(', ')});
   console.log(result);
 });`;
+  for (const key in templates) {
+    if (templates.hasOwnProperty(key)) {
+      templates[key] = Buffer.from(templates[key]).toString('base64');
+    }
+  }
   
   return templates;
 }

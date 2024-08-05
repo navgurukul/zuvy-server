@@ -99,7 +99,7 @@ export class CodingPlatformService {
       if (response.length === 0) {
         return { status: 'error', code: 400, message: "No practice code available for the given question Id" };
       } else {
-        let questionInfo = await this.getQuestionById(questionId);
+        let questionInfo = await this.getCodingQuestion(questionId, false);
         const submissionsInfoPromises = response.map( async (submission: any) => {
           const token = submission.token;
           let data = await this.getCodeInfo(token)          
@@ -118,7 +118,7 @@ export class CodingPlatformService {
 
     var input = [];
     var output = [];
-    const question = await this.getQuestionById(codingOutsourseId);
+    const question = await this.getCodingQuestion(codingOutsourseId, false);
     const testCases = question[0].testCases;
     let testCasesCount;
     if (action == 'submit') {
@@ -199,26 +199,6 @@ export class CodingPlatformService {
     }
   }
 
-
-  // async getLanguagesById() {
-
-  //   const options = {
-  //     method: 'GET',
-  //     url: `${RAPID_BASE_URL}/languages`,
-  //     headers: {
-  //       'X-RapidAPI-Key': RAPID_API_KEY,
-  //       'X-RapidAPI-Host': RAPID_HOST
-  //     }
-  //   };
-
-  //   try {
-  //     const response = await axios.request(options);
-  //     return response.data;
-  //   } catch (error) {
-  //     throw error;
-  //   }
-  // }
-
   async getQuestionsWithStatus(userId: number, difficulty: string, page: number, limit: number) {
     try {
 
@@ -279,24 +259,6 @@ export class CodingPlatformService {
     }
   }
 
-  async getQuestionById(questionId: number) {
-    try {
-      const question = await db.select().from(zuvyCodingQuestions).where(sql`${zuvyCodingQuestions.id} = ${Number(questionId)}`)
-      if (question.length === 0) {
-        return { status: 'error', code: 400, message: "No question available for the given question Id" };
-      }
-      const processedQuestion = question.map(q => ({
-        ...q,
-        id: Number(q.id)
-      }));
-
-      return processedQuestion;
-
-    } catch (err) {
-      return new ErrorResponse(err.message, STATUS_CODES.BAD_REQUEST, false);
-    }
-  }
-
 
   async createCodingProblem(codingProblem: CreateProblemDto) {
     try {
@@ -347,6 +309,7 @@ export class CodingPlatformService {
   }
 
   async createCodingQuestion(createCodingQuestionDto: any): Promise<any> {
+    console.log({createCodingQuestionDto});
     const { testCases, ...questionData } = createCodingQuestionDto;
     try {
       const question:any = await db.insert(zuvyCodingQuestions).values(questionData).returning();
@@ -355,9 +318,9 @@ export class CodingPlatformService {
         testCaseAndExpectedOutput.push({ questionId: question[0].id,inputs: testCases[i].inputs, expectedOutput: testCases[i].expectedOutput});
       }
       let TestCases = await db.insert(zuvyTestCases).values(testCaseAndExpectedOutput).returning();
-      return {...question, TestCases};
+      return [null,{...question[0], TestCases}];
     } catch (error) {
-      return new ErrorResponse(error.message, STATUS_CODES.BAD_REQUEST, false);
+      return [new ErrorResponse(error.message, STATUS_CODES.BAD_REQUEST, false)];
     }
   }
 
@@ -366,18 +329,21 @@ export class CodingPlatformService {
     try {
       const question = await db.update(zuvyCodingQuestions).set(questionData).where(sql`${zuvyCodingQuestions.id} = ${id}`).returning();
       await this.updateTestCaseAndExpectedOutput(testCases);
-      return { message: 'Coding question updated successfully', question };
+      return [null, { message: 'Coding question updated successfully', question }];
     } catch (error) {
-      return new ErrorResponse(error.message, STATUS_CODES.BAD_REQUEST, false);
+      return [new ErrorResponse(error.message, STATUS_CODES.BAD_REQUEST, false)];
     }
   }
 
   async deleteCodingQuestion(id: number): Promise<any> {
     try {
-      await db.delete(zuvyCodingQuestions).where(sql`${zuvyCodingQuestions.id} = ${id}`);
-      return { message: 'Coding question deleted successfully' };
+      let data = await db.delete(zuvyCodingQuestions).where(sql`${zuvyCodingQuestions.id} = ${id}`).returning();
+      if (data.length === 0) {
+        return [new ErrorResponse('Not found', STATUS_CODES.NOT_FOUND, false)];
+      }
+      return [null, { message: 'Coding question deleted successfully' }];
     } catch (error) {
-      return new ErrorResponse(error.message, STATUS_CODES.BAD_REQUEST, false);
+      return [new ErrorResponse(error.message, STATUS_CODES.BAD_REQUEST, false)];
     }
   }
 
@@ -390,7 +356,7 @@ export class CodingPlatformService {
     }
   }
 
-  async getCodingQuestion(id: number): Promise<any> {
+  async getCodingQuestion(id: number, withTemplate:boolean = true): Promise<any> {
     try {
       const question = await db.query.zuvyCodingQuestions.findMany({
         where: (zuvyCodingQuestions, { sql }) => sql`${zuvyCodingQuestions.id} = ${id}`,
@@ -406,7 +372,8 @@ export class CodingPlatformService {
               id: true,
               inputs: true,
               expectedOutput: true,
-            }
+            },
+            limit: 3
           }
         }
       }) 
@@ -414,9 +381,12 @@ export class CodingPlatformService {
       if (question.length === 0) {
         return { status: 'error', code: 400, message: "No question available for the given question Id" };
       }
-      let templates = await generateTemplates(question[0].title, question[0].testCases[0].inputs);
+
+      if (withTemplate) {
+        question[0]["templates"] = await generateTemplates(question[0].title, question[0].testCases[0].inputs);
+      }
       
-      return [null,{ ...question[0], templates}];
+      return [null, question[0]];
     } catch (error) {
       return [new ErrorResponse(error.message, STATUS_CODES.BAD_REQUEST, false)];
     }
@@ -428,19 +398,22 @@ export class CodingPlatformService {
         const { inputs, expectedOutput } = testCase;
         await db.update(zuvyTestCases).set({ inputs, expectedOutput }).where(sql`${zuvyTestCases.id} = ${testCase.id}`);
       })
-      return { message: 'Test case and expected output updated successfully' };
+      return [null, { message: 'Test case and expected output updated successfully' }];
     } catch (error) {
-      return new ErrorResponse(error.message, STATUS_CODES.BAD_REQUEST, false);
+      return [new ErrorResponse(error.message, STATUS_CODES.BAD_REQUEST, false)];
     }
   }
 
 
   async deleteCodingTestcase(id: number) : Promise<any> {
     try {
-      await db.delete(zuvyTestCases).where(sql`${zuvyTestCases.id} = ${id}`);
-      return { message: 'Test case deleted successfully' };
+      let data = await db.delete(zuvyTestCases).where(sql`${zuvyTestCases.id} = ${id}`).returning();
+      if (data.length === 0) {
+        return [new ErrorResponse('Not found', STATUS_CODES.NOT_FOUND, false)];
+      }
+      return [null, { message: 'Test case deleted successfully' }];
     } catch (error) {
-      return new ErrorResponse(error.message, STATUS_CODES.BAD_REQUEST, false);
+      return [new ErrorResponse(error.message, STATUS_CODES.BAD_REQUEST, false)];
     }
   }
 
@@ -448,10 +421,9 @@ export class CodingPlatformService {
     try {
       const { inputs, expectedOutput } = updateTestCaseDto
       const testCase = await db.insert(zuvyTestCases).values({ questionId, inputs, expectedOutput }).returning();
-      return testCase[0];
+      return [null, { message: "added the test case" , data:testCase[0]}];
     } catch (error) {
-      return new ErrorResponse(error.message, STATUS_CODES.BAD_REQUEST, false);
+      return [new ErrorResponse(error.message, STATUS_CODES.BAD_REQUEST, false)];
     }
   }
-
 }

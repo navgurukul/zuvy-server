@@ -3538,6 +3538,7 @@ export const zuvyCodingQuestions = main.table("zuvy_coding_questions", {
   description: text("description").notNull(),
   difficulty: varchar("difficulty", { length: 50 }),
   content: jsonb("content"),
+  constraints: text("constraints"),
   usage: integer("usage"),
   tagId: integer("tag_id").references(() => zuvyTags.id),
   createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
