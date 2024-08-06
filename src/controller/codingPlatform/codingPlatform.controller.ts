@@ -97,7 +97,11 @@ export class CodingPlatformController {
       return {statusCode: 404, massage: "Either submissionId or codingOutsourseId should be provided"}
     }
 
-      return this.codingPlatformService.submitPracticeCode(questionId, sourceCode, action, req.user[0].id, submissionId, codingOutsourseId);
+      let [err, data] = await this.codingPlatformService.submitPracticeCode(questionId, sourceCode, action, req.user[0].id, submissionId, codingOutsourseId);
+      if (err) {
+        throw new BadRequestException(err);
+      }
+      return data;
   }
 
   @Get('/practicecode/questionId=:questionId')

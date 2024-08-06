@@ -2677,7 +2677,6 @@ export const zuvyModuleTopics = main.table("zuvy_module_topics", {
 export const zuvyPracticeCode = main.table("zuvy_practice_code", {
   id: serial("id").primaryKey().notNull(),
   userId: bigserial("user_id", { mode: "bigint" }).notNull().references(() => users.id),
-  token: varchar("token",{ length: 1000 }).notNull(),
   status: varchar("status", { length: 255 }).notNull(),
   action: action("action").notNull(),
   questionId: integer("question_id").references(() => zuvyCodingQuestions.id),
@@ -2686,7 +2685,7 @@ export const zuvyPracticeCode = main.table("zuvy_practice_code", {
   createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
 })
 
-export const zuvyPracticeCodeRelations = relations(zuvyPracticeCode, ({ one }) => ({
+export const zuvyPracticeCodeRelations = relations(zuvyPracticeCode, ({ one, many }) => ({
   codeStatus: one(users, {
     fields: [zuvyPracticeCode.userId],
     references: [users.id],
@@ -2698,9 +2697,15 @@ export const zuvyPracticeCodeRelations = relations(zuvyPracticeCode, ({ one }) =
   submission: one(zuvyAssessmentSubmission, {
     fields: [zuvyPracticeCode.submissionId],
     references: [zuvyAssessmentSubmission.id],
-  })
+  }),
+  codingQuestion: one(zuvyCodingQuestions, {
+    fields: [zuvyPracticeCode.questionId],
+    references: [zuvyCodingQuestions.id],
+  }),
+  testcasesSubmission: many(zuvyTestCasesSubmission),
   
 }))
+
 
 export const zuvyAssignmentSubmission = main.table("zuvy_assignment_submission", {
   id: serial("id").primaryKey().notNull(),
@@ -3488,25 +3493,6 @@ export const zuvyFormTracking = main.table("zuvy_form_tracking", {
   updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
 });
 
-// export const zuvyFormTrackingRelations = relations(zuvyFormTracking, ({ one }) => ({
-
-//   formSubmissions: one(zuvyAssessmentSubmission, {
-//     fields: [zuvyFormTracking.assessmentSubmissionId],
-//     references: [zuvyAssessmentSubmission.id]
-//   })
-
-// }))
-
-// export const formChapterRelations = relations(
-//   zuvyCourseModules,
-//   ({many, one }) => ({
-//     moduleChapterData: many(zuvyModuleChapter),
-//     chapterTrackingData: many(zuvyChapterTracking),
-//     moduleTracking: many(zuvyModuleTracking),
-//     formTrackingData: many(zuvyFormTracking),
-//     moduleFormData: many (zuvyModuleForm)
-//   }),
-// );
 
 export const formModuleRelation= relations(
   zuvyModuleForm,
@@ -3578,6 +3564,7 @@ export const zuvyTestCases = main.table("zuvy_test_cases", {
   inputs: jsonb("inputs").notNull(),
   expectedOutput: jsonb("expected_output").notNull(),
 });
+
 export const zuvyCodingQuestionsRelation = relations(zuvyTestCases, ({one, many}) => ({
   codingQuestion: one(zuvyCodingQuestions, {
     fields: [zuvyTestCases.questionId],
@@ -3585,12 +3572,33 @@ export const zuvyCodingQuestionsRelation = relations(zuvyTestCases, ({one, many}
   }),
 }))
 
-export const zuvyPracticeCodeRelation = relations(zuvyPracticeCode, ({one, many}) => ({
-  codingQuestion: one(zuvyCodingQuestions, {
-    fields: [zuvyPracticeCode.questionId],
-    references: [zuvyCodingQuestions.id],
+export const zuvyTestCasesSubmission = main.table("zuvy_test_cases_submission", {
+  id: serial("id").primaryKey().notNull(),
+  testcastId: integer("testcast_id").references(() => zuvyTestCases.id, {
+    onDelete: 'cascade',
+    onUpdate: 'cascade',
+  }),
+  status: varchar("status", { length: 255 }),
+  token: varchar("token", { length: 255 }),
+  action: varchar("action", { length: 255 }),
+  submissionId: integer("submission_id").references(() => zuvyPracticeCode.id, {
+    onDelete: 'cascade',
+    onUpdate: 'cascade',
+  }),
+});
+
+export const zuvyTestCasesSubmissionRelation = relations(zuvyTestCasesSubmission, ({one, many}) => ({
+  testCases: one(zuvyTestCases, {
+    fields: [zuvyTestCasesSubmission.testcastId],
+    references: [zuvyTestCases.id],
+  }),
+  submission: one(zuvyPracticeCode, {
+    fields: [zuvyTestCasesSubmission.submissionId],
+    references: [zuvyPracticeCode.id],
   }),
 }))
+
+
 
 export const zuvyLanguages = main.table("zuvy_languages", {
   id: serial("id").primaryKey().notNull(),
