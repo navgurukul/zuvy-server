@@ -7,6 +7,8 @@ import {
   zuvyBatches,
   zuvySessions
 } from 'drizzle/schema';
+import ErrorResponse from 'src/errorHandler/handler';
+import { STATUS_CODES } from 'src/helpers';
 
 
 const { ZUVY_CONTENT_URL, ZUVY_CONTENTS_API_URL } = process.env; // INPORTING env VALUSE ZUVY_CONTENT
@@ -81,6 +83,8 @@ export class InstructorService {
           message: 'No batches found for the given instructorId',
         };
       }
+      var upcomingCount = 0;
+      var ongoingCount = 0;
       for (const batch of batches) {
         const currentTime = new Date();
          const classDetails = await db.query.zuvySessions.findMany({
@@ -102,7 +106,6 @@ export class InstructorService {
         );
         const ongoingClasses = [];
         const upcomingClasses = [];
-  
         for (const classObj of sortedClasses) {
           const startTime = new Date(classObj.startTime);
           const endTime = new Date(classObj.endTime);
@@ -113,6 +116,8 @@ export class InstructorService {
             upcomingClasses.push(classObj);
           }
         }
+        upcomingCount = upcomingCount + upcomingClasses.length;
+        ongoingCount = ongoingCount + ongoingClasses.length;
         const paginatedUpcomingClasses = upcomingClasses.slice(
           offset,limit+offset
         );
@@ -169,10 +174,13 @@ export class InstructorService {
         status: helperVariable.success,
         message: 'Upcoming classes fetched successfully',
         data: responses,
+        totalUpcomingClasses : upcomingCount,
+        totalUpcomingPages : upcomingCount>0 ?  Math.ceil(upcomingCount/limit) : 1,
+        totalOngoingClasses : ongoingCount,
+        totalOngoingPages : ongoingCount>0 ?  Math.ceil(ongoingCount/limit) : 1
       };
     } catch (error) {
-        Logger.log(`error: ${error.message}`)
-        throw error;
+      return [new ErrorResponse(error.message, STATUS_CODES.BAD_REQUEST, false)]
     }
   }
 
