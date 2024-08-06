@@ -110,6 +110,16 @@ export class CreateProblemDto {
   @ApiProperty({ type: String, example: '2024-03-01T00:00:00Z', required: true })
   @IsString()
   updatedAt: string;
+
+  @ApiProperty({ type: String, example: `2 <= nums.length <= 104
+-109 <= nums[i] <= 109
+-109 <= target <= 109`, required: true })
+  @IsString()
+  constraints: string;
+
+  @ApiProperty({ type: Object, example: {"data":"about question"}, required: false })
+  @IsObject()
+  content: object
 }
 
 
@@ -187,4 +197,14 @@ export class updateProblemDto {
   @ApiProperty({ type: String, example: '2024-03-01T00:00:00Z', required: true })
   @IsString()
   updatedAt: string;
+
+  @ApiProperty({ type: String, example: `2 <= nums.length <= 104
+    -109 <= nums[i] <= 109
+    -109 <= target <= 109`, required: false })
+  @IsString()
+  constraints: string;
+
+  @ApiProperty({ type: Object, example: 'python', required: false })
+  @IsObject()
+  content: object
 }

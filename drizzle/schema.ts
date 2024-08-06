@@ -3556,6 +3556,7 @@ export const zuvyCodingQuestions = main.table("zuvy_coding_questions", {
   description: text("description").notNull(),
   difficulty: varchar("difficulty", { length: 50 }),
   content: jsonb("content"),
+  constraints: text("constraints"),
   usage: integer("usage"),
   tagId: integer("tag_id").references(() => zuvyTags.id),
   createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
@@ -3577,6 +3578,12 @@ export const zuvyTestCases = main.table("zuvy_test_cases", {
   inputs: jsonb("inputs").notNull(),
   expectedOutput: jsonb("expected_output").notNull(),
 });
+export const zuvyCodingQuestionsRelation = relations(zuvyTestCases, ({one, many}) => ({
+  codingQuestion: one(zuvyCodingQuestions, {
+    fields: [zuvyTestCases.questionId],
+    references: [zuvyCodingQuestions.id],
+  }),
+}))
 
 export const zuvyPracticeCodeRelation = relations(zuvyPracticeCode, ({one, many}) => ({
   codingQuestion: one(zuvyCodingQuestions, {
