@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { db } from '../../db/index';
 import { helperVariable } from 'src/constants/helper';
-import { eq, sql, inArray, and, desc, arrayContains, notInArray } from 'drizzle-orm';
+import { eq, sql, inArray, and, desc, arrayContains, notInArray, gt } from 'drizzle-orm';
 import * as _ from 'lodash';
 import {
   zuvyBatches,
@@ -57,7 +57,7 @@ export class InstructorService {
     limit: number,
     offset: number,
     timeFrame: string,
-    batchId:number
+    batchId:number[]
   ) {
     try {
       const responses = {
@@ -65,9 +65,9 @@ export class InstructorService {
         ongoing: [],
       };
       let queryString;
-      if(!isNaN(batchId))
+      if(batchId.length > 0)
         {
-          queryString = sql`${zuvyBatches.instructorId} = ${instructorId} AND ${zuvyBatches.id}= ${batchId}`
+          queryString = sql`${zuvyBatches.instructorId} = ${instructorId} AND ${inArray(zuvyBatches.id, batchId)}`
         }
         else {
           queryString = sql`${zuvyBatches.instructorId} = ${instructorId}`
@@ -76,12 +76,8 @@ export class InstructorService {
         .select()
         .from(zuvyBatches)
         .where(queryString);
-
       if (batches.length === 0) {
-        return {
-          status: helperVariable.error,
-          message: 'No batches found for the given instructorId',
-        };
+        return [new ErrorResponse('Not found', STATUS_CODES.NO_CONTENT, false)]
       }
       var upcomingCount = 0;
       var ongoingCount = 0;
@@ -89,7 +85,8 @@ export class InstructorService {
         const currentTime = new Date();
          const classDetails = await db.query.zuvySessions.findMany({
           where: (session, { sql }) =>
-            sql`${session.batchId} = ${batch.id} AND (${session.status} = ${helperVariable.upcoming} OR ${session.status} = ${helperVariable.ongoing})`,
+            sql`${session.batchId} = ${batch.id} 
+             AND (${session.status} = ${helperVariable.upcoming} OR ${session.status} = ${helperVariable.ongoing})`,
           with : {
             bootcampDetail : {
               columns : {
@@ -112,7 +109,7 @@ export class InstructorService {
           if (currentTime >= startTime && currentTime <= endTime) {
             const {status,...rest} = classObj;
             ongoingClasses.push({...rest,status:helperVariable.ongoing});
-          } else {
+          } else if(currentTime < startTime){
             upcomingClasses.push(classObj);
           }
         }

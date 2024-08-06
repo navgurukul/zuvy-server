@@ -12,7 +12,8 @@ import {
     Optional,
     Query,
     BadRequestException,
-    Req
+    Req,
+    ParseArrayPipe
   } from '@nestjs/common';
   import { InstructorService } from './instructor.service';
   import {
@@ -63,15 +64,16 @@ import {
   @ApiQuery({
     name: 'batchId',
     required: false,
-    type: Number,
-    description: 'batchId',
+    type: [Number],
+    isArray: true,
+    description: 'Array of batchIds',
   })
   @ApiBearerAuth()
   getAllUpcomingClasses(
     @Query('limit') limit: number,
     @Query('offset') offset: number,
     @Query('timeFrame') timeFrame: string,
-    @Query('batchId') batchId:number,
+    @Query('batchId', new ParseArrayPipe({ items: Number, optional: true })) batchId: number[] = [],
     @Req() req
   ): Promise<object> {
     return this.instructorService.getAllUpcomingClasses(
