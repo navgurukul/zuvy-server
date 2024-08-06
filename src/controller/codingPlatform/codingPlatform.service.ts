@@ -12,7 +12,7 @@ import {
   zuvyTestCases
 } from '../../../drizzle/schema';
 import { generateTemplates } from '../../helpers/index'
-import  ErrorResponse  from '../../errorHandler/handler';
+import { ErrorResponse } from '../../errorHandler/handler';
 import { STATUS_CODES } from "../../helpers/index";
 
 const { ZUVY_CONTENT_URL,RAPID_BASE_URL, RAPID_API_KEY, RAPID_HOST } = process.env; // INPORTING env VALUSE ZUVY_CONTENT

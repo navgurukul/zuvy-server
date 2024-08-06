@@ -9,7 +9,7 @@ import { zuvyBatchEnrollments, zuvyAssessmentSubmission, users, zuvyModuleAssess
 import { InstructorFeedbackDto, PatchOpenendedQuestionDto, CreateOpenendedQuestionDto } from './dto/submission.dto';
 import { truncate } from 'fs/promises';
 import { helperVariable } from 'src/constants/helper';
-import ErrorResponse from 'src/errorHandler/handler';
+import {ErrorResponse, SuccessResponse} from 'src/errorHandler/handler';
 import { STATUS_CODES } from 'src/helpers';
 
 const { ZUVY_CONTENT_URL } = process.env;
@@ -917,13 +917,8 @@ export class SubmissionService {
           delete chapterTracking['chapterTrackingDetails'];
         });
       });
-
-      return {
-        status: helperVariable.success,
-        code: STATUS_CODES.OK,
-        trackingData,
-        totalStudents: zuvyBatchEnrollmentsCount[0]?.count,
-      };
+      
+      return new SuccessResponse('Submission of assignment for courses has been fetched',STATUS_CODES.OK,{trackingData,totalStudents: zuvyBatchEnrollmentsCount[0]?.count})
     } catch (error) {
       return [new ErrorResponse(error.message, STATUS_CODES.BAD_REQUEST, false)]
     }
@@ -978,8 +973,7 @@ export class SubmissionService {
      });
 
      const currentPage =!isNaN(limit) && !isNaN(offset) ? offset/limit + 1 : 1;
-
-      return {status: helperVariable.success,code: STATUS_CODES.OK, data, totalPages, totalStudentsCount,currentPage };
+      return new SuccessResponse('Assignment Status of the students has been fetched',STATUS_CODES.OK, {data,totalPages,totalStudentsCount,currentPage})
     } catch (error) {
       return [new ErrorResponse(error.message, STATUS_CODES.BAD_REQUEST, false)]
     }
@@ -1032,11 +1026,7 @@ export class SubmissionService {
         }
          assignmentDetails['chapterTrackingDetails'][0]['user']['id'] = Number( assignmentDetails['chapterTrackingDetails'][0]['user']['id'] ) 
          assignmentDetails['chapterTrackingDetails'][0]['status'] = isSubmittedOnTime == true ? 'Submitted on time' : 'Submitted late';
-        return {
-          status:helperVariable.success,
-          code:STATUS_CODES.OK,
-          assignmentDetails
-        };
+        return new SuccessResponse('Assignment submission detail of the user has been fetched',STATUS_CODES.OK,{assignmentDetails})
     }
     catch(error) {
       return [new ErrorResponse(error.message, STATUS_CODES.BAD_REQUEST, false)]

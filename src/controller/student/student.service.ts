@@ -14,7 +14,7 @@ import { ClassesService } from '../classes/classes.service'
 import { query } from 'express';
 import { helperVariable } from 'src/constants/helper';
 import { STATUS_CODES } from 'http';
-import ErrorResponse from 'src/errorHandler/handler';
+import {ErrorResponse} from 'src/errorHandler/handler';
 
 @Injectable()
 export class StudentService {

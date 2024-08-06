@@ -7,7 +7,7 @@ import {
   zuvyBatches,
   zuvySessions
 } from 'drizzle/schema';
-import ErrorResponse from 'src/errorHandler/handler';
+import {ErrorResponse, SuccessResponse} from 'src/errorHandler/handler';
 import { STATUS_CODES } from 'src/helpers';
 
 
@@ -170,15 +170,11 @@ export class InstructorService {
       responses.upcoming.sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
       responses.ongoing.sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
 
-      return {
-        status: helperVariable.success,
-        message: 'Upcoming classes fetched successfully',
-        data: responses,
+      return new SuccessResponse('Upcoming and ongoing classes has been fetched for the instructor',STATUS_CODES.OK,{responses,
         totalUpcomingClasses : upcomingCount,
         totalUpcomingPages : upcomingCount>0 ?  Math.ceil(upcomingCount/limit) : 1,
         totalOngoingClasses : ongoingCount,
-        totalOngoingPages : ongoingCount>0 ?  Math.ceil(ongoingCount/limit) : 1
-      };
+        totalOngoingPages : ongoingCount>0 ?  Math.ceil(ongoingCount/limit) : 1})
     } catch (error) {
       return [new ErrorResponse(error.message, STATUS_CODES.BAD_REQUEST, false)]
     }
