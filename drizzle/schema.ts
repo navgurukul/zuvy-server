@@ -2519,8 +2519,19 @@ export const bootcampsEnrollmentsRelations = relations(
   zuvyBootcamps,
   ({ one, many }) => ({
     students: many(zuvyBatchEnrollments),
+    sessions: many(zuvySessions)
   }),
 );
+
+export const sessionBootcampRelations = relations(
+  zuvySessions,
+  ({one}) => ({
+    bootcampDetail:one(zuvyBootcamps,{
+      fields: [zuvySessions.bootcampId],
+      references: [zuvyBootcamps.id]
+    })
+  })
+)
 
 // export const batchEnrollmentsRelations = relations(batches, ({one, many}) => ({
 //         // enrolles: many(batchEnrollments, {

@@ -705,6 +705,7 @@ export class ContentService {
         moduleId: number;
         topicId: number;
         order: number;
+        completionDate: string;
         quizQuestionDetails?: any[];
         codingQuestionDetails?: any[];
         formQuestionDetails?: any[];
@@ -716,6 +717,7 @@ export class ContentService {
         moduleId: chapterDetails[0].moduleId,
         topicId: chapterDetails[0].topicId,
         order: chapterDetails[0].order,
+        completionDate:chapterDetails[0].completionDate
       };
       if (chapterDetails.length > 0) {
         if (chapterDetails[0].topicId == 4) {
@@ -761,7 +763,7 @@ export class ContentService {
               description: chapterDetails[0].description,
               links: chapterDetails[0].links,
               file: chapterDetails[0].file,
-              content: chapterDetails[0].articleContent,
+              content: chapterDetails[0].articleContent
             },
           ];
           modifiedChapterDetails.contentDetails = content;

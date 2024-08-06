@@ -379,7 +379,7 @@ export class ClassesService {
               return { success: 'not success', message: 'Class creation failed' };
           }
       } catch (error) {
-          console.log('Error creating class', error);
+        Logger.log(`error: ${error.message}`)
           return {
               status: 'not success',
               message: 'error creating class',
@@ -858,14 +858,14 @@ export class ClassesService {
     }
   }
 
-  async updatingStatusOfClass(bootcamp_id:number){
+  async updatingStatusOfClass(bootcamp_id:number,batch_id:number){
     try {
       const currentTime = new Date();
       // Fetch all classes
       let classes = await db
         .select()
         .from(zuvySessions)
-        .where(sql`${zuvySessions.bootcampId} = ${bootcamp_id}`);
+        .where(sql`${zuvySessions.bootcampId} = ${bootcamp_id} AND ${zuvySessions.batchId} = ${batch_id}`);
 
       // Update the status of each class in the database
       for (let classObj of classes) {
@@ -890,7 +890,7 @@ export class ClassesService {
         }
       }
     } catch (error) {
-      console.log('Error fetching class Links', error);
+      Logger.log(`error: ${error.message}`)
       return {
         success: 'not success',
         message: 'Error fetching class Links',
@@ -914,7 +914,7 @@ export class ClassesService {
   async getClassesBy(bootcamp_id: number, user, batch_id: number, limit: number, offset: number, search_term: string, status: string) {
     try {
       // update the status of the classes in the database
-      await this.updatingStatusOfClass(bootcamp_id);
+      await this.updatingStatusOfClass(bootcamp_id,batch_id);
       
       if (user?.roles?.includes('admin')) {
       } else if (bootcamp_id && user.id) {
@@ -1016,7 +1016,7 @@ export class ClassesService {
         code: 200,
       };
     } catch (error) {
-      console.log('Error deleting class', error);
+      Logger.log(`error: ${error.message}`)
       return {
         status: 'error',
         message: 'Error deleting class',
