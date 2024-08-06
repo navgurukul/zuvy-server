@@ -930,9 +930,11 @@ export class SubmissionService {
     offset: number
   ) {
     try {
-      const chapterDeadline = await db.select({deadline : zuvyModuleChapter.completionDate})
+      const chapterDeadline = await db.select()
       .from(zuvyModuleChapter)
       .where(eq(zuvyModuleChapter.id,chapterId));
+      if(chapterDeadline.length > 0)
+        {
       const statusOfStudentCode = await db.query.zuvyChapterTracking.findMany({
         where: (chapterTracking, { sql }) =>
           sql`${chapterTracking.chapterId} = ${chapterId}`,
@@ -942,6 +944,13 @@ export class SubmissionService {
               id: true,
               name: true,
               email: true,
+            },
+            with: {
+              studentAssignmentStatus : {
+                columns : {
+                  bootcampId:true
+                }
+              }
             }
           },
         },
@@ -951,7 +960,7 @@ export class SubmissionService {
       const totalStudents = await db.select().from(zuvyChapterTracking).where(sql`${zuvyChapterTracking.chapterId} = ${chapterId}`);
       const totalStudentsCount = totalStudents.length;
       const totalPages = Math.ceil(totalStudentsCount / limit);
-      const deadlineDate = new Date(chapterDeadline[0].deadline).getTime();
+      const deadlineDate = new Date(chapterDeadline[0].completionDate).getTime();
 
       const data = statusOfStudentCode.map((statusCode) => {
       const studentAssignmentStatus = statusCode;
@@ -969,11 +978,15 @@ export class SubmissionService {
         name: statusCode['user']['name'],
         emailId: statusCode['user']['email'],
          status: isLate ? 'Late Submission' : 'On Time',
+        bootcampId:statusCode['user']['studentAssignmentStatus']['bootcampId']
         };
      });
-
      const currentPage =!isNaN(limit) && !isNaN(offset) ? offset/limit + 1 : 1;
-      return new SuccessResponse('Assignment Status of the students has been fetched',STATUS_CODES.OK, {data,totalPages,totalStudentsCount,currentPage})
+      return new SuccessResponse('Assignment Status of the students has been fetched',STATUS_CODES.OK, {data,chapterId :chapterDeadline[0].id,chapterName:chapterDeadline[0].title, totalPages,totalStudentsCount,currentPage})
+    }
+    else {
+      return new ErrorResponse('No chapter found',STATUS_CODES.NO_CONTENT,false)
+    }
     } catch (error) {
       return [new ErrorResponse(error.message, STATUS_CODES.BAD_REQUEST, false)]
     }
