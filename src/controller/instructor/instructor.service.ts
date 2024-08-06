@@ -36,18 +36,18 @@ export class InstructorService {
           },
         })
 
-
-        return {
-          status:helperVariable.success,
-          code: 200,
-          message: data.length > 0 ? 'These are the courses' : 'No course found',
-          courseList : data
-        };
+        if(data.length > 0)
+          {
+        return new SuccessResponse('Batches of the instructor has been fetched successfully',STATUS_CODES.OK,data)
+          }
+          else {
+            return new ErrorResponse('Not found',STATUS_CODES.NO_CONTENT,false)
+          }
     }
     catch(err)
     {
       Logger.log(`error: ${err.message}`);
-      throw err;
+      return new ErrorResponse(err.message,STATUS_CODES.NO_CONTENT,false)
     }
    }
 
