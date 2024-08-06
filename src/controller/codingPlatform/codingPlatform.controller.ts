@@ -70,30 +70,6 @@ export class CodingPlatformController {
     return this.codingPlatformService.getQuestionsWithStatus(req.user[0].id, difficulty, page, limit);
   }
 
-  @Get('questionById/:questionId')
-  @ApiOperation({ summary: 'Get the questions by Id' })
-  @ApiBearerAuth()
-  async getQuestionById(@Param('questionId') questionId: number) {
-    return this.codingPlatformService.getQuestionById(questionId);
-  }
-
-  // @Post('createCodingQuestion')
-  // @ApiOperation({ summary: 'Create coding question' })
-  // @ApiBearerAuth()
-  // async createCodingProblems(@Body() createCodingQuestion: CreateProblemDto) {
-  //   let examples = [];
-  //   let testCases = [];
-  //   for (let i = 0; i < createCodingQuestion.examples.length; i++) {
-  //     examples.push(createCodingQuestion.examples[i].inputs);
-  //   }
-  //   createCodingQuestion.examples = examples;
-  //   for (let j = 0; j < createCodingQuestion.testCases.length; j++) {
-  //     testCases.push(createCodingQuestion.testCases[j].inputs)
-  //   }
-  //   createCodingQuestion.testCases = testCases
-  //   return this.codingPlatformService.createCodingProblem(createCodingQuestion);
-  //
-  // }
 
   @Post('/practicecode/questionId=:questionId')
   @ApiOperation({ summary: 'Submiting the coding question' })
@@ -160,45 +136,69 @@ export class CodingPlatformController {
   @Post('create-question')
   @ApiOperation({ summary: 'Create coding question with test cases' })
   @ApiBearerAuth()
-  async createCodingQuestion(@Body() createCodingQuestionDto: CreateProblemDto) {
-    return this.codingPlatformService.createCodingQuestion(createCodingQuestionDto);
+  async createCodingQuestion(@Body() createCodingQuestionDto: CreateProblemDto) : Promise<any>{
+    let [err, data] = await this.codingPlatformService.createCodingQuestion(createCodingQuestionDto);
+    if (err) {
+      throw new BadRequestException(err);
+    }
+    return data;
   }
 
   @Put('update-question/:id')
   @ApiOperation({ summary: 'Update coding question' })
   @ApiBearerAuth()
   async updateCodingQuestion(@Param('id') id: number, @Body() updateCodingQuestionDto: updateProblemDto) {
-    return this.codingPlatformService.updateCodingQuestion(id, updateCodingQuestionDto);
+    let [err, data] = await  this.codingPlatformService.updateCodingQuestion(id, updateCodingQuestionDto);
+    if (err) {
+      throw new BadRequestException(err);
+    }
+    return data;
   }
 
   @Delete('delete-question/:id')
   @ApiOperation({ summary: 'Delete coding question' })
   @ApiBearerAuth()
-  async deleteCodingQuestion(@Param('id') id: number) {
-    return this.codingPlatformService.deleteCodingQuestion(id);
+  async deleteCodingQuestion(@Param('id') id: number): Promise<any> {
+    let [err, data] = await  this.codingPlatformService.deleteCodingQuestion(id);
+    if (err) {
+      throw new BadRequestException(err);
+    }
+    return data;
   }
 
   @Delete('delete-testcase/:id')
   @ApiOperation({ summary: 'Delete coding Testcase' })
   @ApiBearerAuth()
-  async deleteCodingTestcase(@Param('id') id: number) {
-    return this.codingPlatformService.deleteCodingTestcase(id);
+  async deleteCodingTestcase(@Param('id') id: number): Promise<any> {
+    let [err, data] = await  this.codingPlatformService.deleteCodingTestcase(id);
+    if (err) {
+      throw new BadRequestException(err);
+    }
+    return data;
   }
 
   // get coding question by id
   @Get('get-coding-question/:id')
   @ApiOperation({ summary: 'Get coding question' })
   @ApiBearerAuth()
-  async getCodingQuestion(@Param('id') Id: number) {
-    return this.codingPlatformService.getCodingQuestion(Id);
+  async getCodingQuestion(@Param('id') Id: number): Promise<any> {
+    let [err, data] = await this.codingPlatformService.getCodingQuestion(Id);
+    if (err) {
+      throw new BadRequestException(err);
+    }
+    return data;
   }
 
   // adding the test case by question id
   @Post('add-test-case/:question_id')
   @ApiOperation({ summary: 'Add test case to coding question' })
   @ApiBearerAuth()
-  async addTestCase(@Param('question_id') question_id: number, @Body() updateTestCaseDto: TestCaseDto) {
-    return this.codingPlatformService.addTestCase(question_id, updateTestCaseDto);
+  async addTestCase(@Param('question_id') question_id: number, @Body() updateTestCaseDto: TestCaseDto): Promise<any> {
+    let [err, data] = await  this.codingPlatformService.addTestCase(question_id, updateTestCaseDto);
+    if (err) {
+      throw new BadRequestException(err);
+    }
+    return data;
   }
 
 }
