@@ -26,7 +26,7 @@ export class ErrorHandler implements ExceptionFilter {
   }
 }
 
-class ErrorResponse {
+export class ErrorResponse {
   message: string;
   code: number;
   isSuccess: boolean;
@@ -37,4 +37,17 @@ class ErrorResponse {
   }
 }
 
-export default ErrorResponse;
+
+export class SuccessResponse {
+  message: string;
+  code: number;
+  isSuccess: boolean;
+  data: any;
+
+  constructor(message: string, statusCode: number, data: any) {
+    this.message = message;
+    this.code = statusCode;
+    this.isSuccess = true;
+    this.data = data;
+  }
+}

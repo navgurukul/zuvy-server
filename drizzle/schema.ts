@@ -3123,8 +3123,15 @@ export const userCodeRelationsTracking = relations(
 
 export const userCodeRelations = relations(users, ({ one }) => ({
   studentCodeDetails: one(zuvyPracticeCode),
+  studentAssignmentStatus: one(zuvyAssignmentSubmission, {
+    fields: [users.id],
+    references: [zuvyAssignmentSubmission.userId],
+  }),
 }));
 
+export const userAssignmentSubmissionRelations = relations(zuvyAssignmentSubmission, ({ many }) => ({
+  assignmentSubmission : many(users)
+}));
 export const zuvyChapterRelations = relations(
   zuvyChapterTracking,
   ({ one }) => ({

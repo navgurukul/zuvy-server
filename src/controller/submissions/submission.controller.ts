@@ -272,4 +272,56 @@ export class SubmissionController {
     );
     return res;
   }
+
+  @Get('/submissionsOfAssignment/:bootcampId')
+  @ApiOperation({ summary: 'Get the submission of assignment by bootcampId' })
+  @ApiBearerAuth()
+  async getAssignmentSubmission(@Param('bootcampId') bootcampId: number) {
+    return this.submissionService.getSubmissionOfAssignment(bootcampId);
+  }
+
+  @Get('/assignmentStatus')
+  @ApiOperation({ summary: 'Get the status of assignment' })
+  @ApiQuery({
+    name: 'chapterId',
+    required: true,
+    type: Number,
+    description: 'chapter id',
+  })
+  @ApiQuery({
+    name: 'limit',
+    type: Number,
+    description: 'limit',
+  })
+  @ApiQuery({
+    name: 'offset',
+    type: Number,
+    description: 'offset',
+  })
+  @ApiBearerAuth()
+  async getStatusOfAssignment(
+    @Query('chapterId') chapterId: number,
+    @Query('limit') limit: number,
+    @Query('offset') offset: number
+  ) {
+    return this.submissionService.assignmentStatusOfStudents(
+      chapterId,
+      limit,
+      offset
+    );
+  }
+
+  @Get('getAssignmentDetailForAUser')
+  @ApiOperation({ summary: 'get assignment detail of a student' })
+  @ApiBearerAuth()
+  async getAssignmentDetailForAUser(
+    @Query('chapterId') chapterId: number,
+    @Query('userId') userId: number,
+  ) {
+    const res = await this.submissionService.getAssignmentSubmissionDetailForUser(
+      chapterId,
+      userId
+    );
+    return res;
+  }
 }

@@ -7,6 +7,8 @@ import {
   zuvyBatches,
   zuvySessions
 } from 'drizzle/schema';
+import {ErrorResponse, SuccessResponse} from 'src/errorHandler/handler';
+import { STATUS_CODES } from 'src/helpers';
 
 
 const { ZUVY_CONTENT_URL, ZUVY_CONTENTS_API_URL } = process.env; // INPORTING env VALUSE ZUVY_CONTENT
@@ -34,18 +36,18 @@ export class InstructorService {
           },
         })
 
-
-        return {
-          status:helperVariable.success,
-          code: 200,
-          message: data.length > 0 ? 'These are the courses' : 'No course found',
-          courseList : data
-        };
+        if(data.length > 0)
+          {
+        return new SuccessResponse('Batches of the instructor has been fetched successfully',STATUS_CODES.OK,data)
+          }
+          else {
+            return new ErrorResponse('Not found',STATUS_CODES.NO_CONTENT,false)
+          }
     }
     catch(err)
     {
       Logger.log(`error: ${err.message}`);
-      throw err;
+      return new ErrorResponse(err.message,STATUS_CODES.NO_CONTENT,false)
     }
    }
 
@@ -81,6 +83,8 @@ export class InstructorService {
           message: 'No batches found for the given instructorId',
         };
       }
+      var upcomingCount = 0;
+      var ongoingCount = 0;
       for (const batch of batches) {
         const currentTime = new Date();
          const classDetails = await db.query.zuvySessions.findMany({
@@ -102,7 +106,6 @@ export class InstructorService {
         );
         const ongoingClasses = [];
         const upcomingClasses = [];
-  
         for (const classObj of sortedClasses) {
           const startTime = new Date(classObj.startTime);
           const endTime = new Date(classObj.endTime);
@@ -113,6 +116,8 @@ export class InstructorService {
             upcomingClasses.push(classObj);
           }
         }
+        upcomingCount = upcomingCount + upcomingClasses.length;
+        ongoingCount = ongoingCount + ongoingClasses.length;
         const paginatedUpcomingClasses = upcomingClasses.slice(
           offset,limit+offset
         );
@@ -165,14 +170,13 @@ export class InstructorService {
       responses.upcoming.sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
       responses.ongoing.sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
 
-      return {
-        status: helperVariable.success,
-        message: 'Upcoming classes fetched successfully',
-        data: responses,
-      };
+      return new SuccessResponse('Upcoming and ongoing classes has been fetched for the instructor',STATUS_CODES.OK,{responses,
+        totalUpcomingClasses : upcomingCount,
+        totalUpcomingPages : upcomingCount>0 ?  Math.ceil(upcomingCount/limit) : 1,
+        totalOngoingClasses : ongoingCount,
+        totalOngoingPages : ongoingCount>0 ?  Math.ceil(ongoingCount/limit) : 1})
     } catch (error) {
-        Logger.log(`error: ${error.message}`)
-        throw error;
+      return [new ErrorResponse(error.message, STATUS_CODES.BAD_REQUEST, false)]
     }
   }
 
@@ -183,23 +187,16 @@ export class InstructorService {
 
       if(batchDetails.length > 0)
         {
-          return {
-            status: helperVariable.success,
-            code:200,
-            batchDetails
-          }
+          return new SuccessResponse('Batches of the instructor has been fetched successfully',STATUS_CODES.OK,batchDetails)
         }
         else {
-          return {
-            status: helperVariable.error,
-            code:201,
-            message: 'You are not assigned as an instructor to any batch'
-          }
+          return new ErrorResponse('No batches found',STATUS_CODES.NO_CONTENT,false)
         }
     }
     catch(error)
     {
       Logger.log(`error: ${error.message}`)
+      return [new ErrorResponse(error.message, STATUS_CODES.BAD_REQUEST, false)]
     }
   }
 

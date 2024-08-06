@@ -13,6 +13,8 @@ import { eq, sql, desc, count,asc } from 'drizzle-orm';
 import { ClassesService } from '../classes/classes.service'
 import { query } from 'express';
 import { helperVariable } from 'src/constants/helper';
+import { STATUS_CODES } from 'http';
+import {ErrorResponse} from 'src/errorHandler/handler';
 
 @Injectable()
 export class StudentService {
@@ -204,24 +206,29 @@ export class StudentService {
             }
           }
         },
+        extras: {
+          totalCount: sql<number>`count(*) over()`.as('total_count')
+        },
         limit,
         offset
        })
+       const totalClasses = upcomingClasses[0]['totalCount'];
       let filterClasses = upcomingClasses.reduce((acc, e) => {
           e['bootcampName'] = e['bootcampDetail'].name;
           e['bootcampId'] = e['bootcampDetail'].id;
-          delete  e['bootcampDetail']
+          delete  e['bootcampDetail'];
+          delete e['totalCount']
         if (e.status == helperVariable.upcoming) {
           acc.upcoming.push(e);
         } else {
           acc.ongoing.push(e);
         }
         return acc;
-      }, { upcoming: [], ongoing: [] });
+      }, {upcoming: [], ongoing: [] });
 
-      return filterClasses;
-    } catch (err) {
-      throw err;
+      return {status:helperVariable.success,code: STATUS_CODES.OK,filterClasses,totalClasses,totalPages : !isNaN(limit) ? Math.ceil(totalClasses/limit) : 1};
+    } catch (error) {
+      return [new ErrorResponse(error.message, STATUS_CODES.BAD_REQUEST, false)]
     }
   }
 
