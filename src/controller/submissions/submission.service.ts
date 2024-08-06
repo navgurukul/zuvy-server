@@ -1026,7 +1026,7 @@ export class SubmissionService {
         }
          assignmentDetails['chapterTrackingDetails'][0]['user']['id'] = Number( assignmentDetails['chapterTrackingDetails'][0]['user']['id'] ) 
          assignmentDetails['chapterTrackingDetails'][0]['status'] = isSubmittedOnTime == true ? 'Submitted on time' : 'Submitted late';
-        return new SuccessResponse('Assignment submission detail of the user has been fetched',STATUS_CODES.OK,{assignmentDetails})
+        return new SuccessResponse('Assignment submission detail of the user has been fetched',STATUS_CODES.OK,assignmentDetails)
     }
     catch(error) {
       return [new ErrorResponse(error.message, STATUS_CODES.BAD_REQUEST, false)]
