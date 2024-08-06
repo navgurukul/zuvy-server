@@ -187,23 +187,16 @@ export class InstructorService {
 
       if(batchDetails.length > 0)
         {
-          return {
-            status: helperVariable.success,
-            code:200,
-            batchDetails
-          }
+          return new SuccessResponse('Batches of the instructor has been fetched successfully',STATUS_CODES.OK,batchDetails)
         }
         else {
-          return {
-            status: helperVariable.error,
-            code:201,
-            message: 'You are not assigned as an instructor to any batch'
-          }
+          return new ErrorResponse('No batches found',STATUS_CODES.NO_CONTENT,false)
         }
     }
     catch(error)
     {
       Logger.log(`error: ${error.message}`)
+      return [new ErrorResponse(error.message, STATUS_CODES.BAD_REQUEST, false)]
     }
   }
 
