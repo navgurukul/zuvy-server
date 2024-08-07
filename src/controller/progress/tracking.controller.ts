@@ -34,6 +34,7 @@ import { UpdateProjectDto } from './dto/project.dto';
 import { CreateQuizDto, McqCreateDto, PutQuizDto } from './dto/quiz.dto';
 import { quizBatchDto } from '../content/dto/content.dto';
 import { SubmitFormBodyDto } from './dto/form.dto';
+import { ErrorResponse, SuccessResponse } from 'src/errorHandler/handler';
 
 @Controller('tracking')
 @ApiTags('tracking')
@@ -401,10 +402,14 @@ export class TrackingController {
     @Req() req,
     @Query('bootcampId') bootcampId: number,
   ) {
-    const res = await this.TrackingService.getAllUpcomingSubmission(
+    const [err,res] = await this.TrackingService.getAllUpcomingSubmission(
       req.user[0].id,bootcampId
     );
-    return res;
+    if(err)
+      {
+        return new ErrorResponse(err.message,err['statusCode'],false)
+      }
+      return new SuccessResponse(res.message,res['statusCode'],res['result'])
   }
 
   @Get('/getChapterDetailsWithStatus/:chapterId')

@@ -1126,18 +1126,18 @@ export class TrackingService {
         });
        }
        else {
-        return new ErrorResponse('No content found', STATUS_CODES.NO_CONTENT, false)
+        return [{message:'No content found', statusCode: STATUS_CODES.NO_CONTENT},null]
        }
       }
       else {
-        return new ErrorResponse('No content found', STATUS_CODES.NO_CONTENT, false)
+        return [{message:'No content found', statusCode: STATUS_CODES.NO_CONTENT},null]
       }
       
-      return new SuccessResponse('Upcoming submission fetched successfully',STATUS_CODES.OK,{upcomingAssignments,lateAssignments})
+      return [null,{message:'Upcoming submission fetched successfully',statusCode: STATUS_CODES.OK,result:{upcomingAssignments,lateAssignments}}]
     }
     catch(error)
     {
-      return new ErrorResponse(error.message, STATUS_CODES.BAD_REQUEST, false)
+      return [new ErrorResponse(error.message, STATUS_CODES.BAD_REQUEST, false),null]
     }
   }
 

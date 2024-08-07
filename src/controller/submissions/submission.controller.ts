@@ -24,6 +24,7 @@ import {
 } from '@nestjs/swagger';
 import { ApiBearerAuth } from '@nestjs/swagger';
 import { InstructorFeedbackDto, PatchOpenendedQuestionDto, CreateOpenendedQuestionDto, SubmissionassessmentDto, StartAssessmentDto, OpenEndedQuestionSubmissionDtoList, QuizSubmissionDtoList } from './dto/submission.dto';
+import { ErrorResponse, SuccessResponse } from 'src/errorHandler/handler';
 
 @Controller('submission')
 @ApiTags('submission')
@@ -277,7 +278,12 @@ export class SubmissionController {
   @ApiOperation({ summary: 'Get the submission of assignment by bootcampId' })
   @ApiBearerAuth()
   async getAssignmentSubmission(@Param('bootcampId') bootcampId: number) {
-    return this.submissionService.getSubmissionOfAssignment(bootcampId);
+    const [err,res] = await this.submissionService.getSubmissionOfAssignment(bootcampId)
+    if(err)
+      {
+        return new ErrorResponse(err.message,err['statusCode'],false)
+      }
+      return new SuccessResponse(res.message,res['statusCode'],res['result'])
   }
 
   @Get('/assignmentStatus')
@@ -304,11 +310,16 @@ export class SubmissionController {
     @Query('limit') limit: number,
     @Query('offset') offset: number
   ) {
-    return this.submissionService.assignmentStatusOfStudents(
+    const [err,res] = await this.submissionService.assignmentStatusOfStudents(
       chapterId,
       limit,
       offset
     );
+    if(err)
+      {
+        return new ErrorResponse(err.message,err['statusCode'],false)
+      }
+      return new SuccessResponse(res.message,res['statusCode'],res['result'])
   }
 
   @Get('getAssignmentDetailForAUser')
@@ -318,10 +329,14 @@ export class SubmissionController {
     @Query('chapterId') chapterId: number,
     @Query('userId') userId: number,
   ) {
-    const res = await this.submissionService.getAssignmentSubmissionDetailForUser(
+    const [err,res] = await this.submissionService.getAssignmentSubmissionDetailForUser(
       chapterId,
       userId
     );
-    return res;
+    if(err)
+      {
+        return new ErrorResponse(err.message,err['statusCode'],false)
+      }
+      return new SuccessResponse(res.message,res['statusCode'],res['result'])
   }
 }

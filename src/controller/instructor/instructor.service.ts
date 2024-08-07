@@ -77,7 +77,7 @@ export class InstructorService {
         .from(zuvyBatches)
         .where(queryString);
       if (batches.length === 0) {
-        return [new ErrorResponse('Not found', STATUS_CODES.NO_CONTENT, false)]
+        return [{message:'Not found', statusCode: STATUS_CODES.NO_CONTENT},null]
       }
       var upcomingCount = 0;
       var ongoingCount = 0;
@@ -167,13 +167,13 @@ export class InstructorService {
       responses.upcoming.sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
       responses.ongoing.sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
 
-      return new SuccessResponse('Upcoming and ongoing classes has been fetched for the instructor',STATUS_CODES.OK,{responses,
+      return [null,{message: 'Upcoming and ongoing classes has been fetched for the instructor',statusCode:STATUS_CODES.OK,result:{responses,
         totalUpcomingClasses : upcomingCount,
         totalUpcomingPages : upcomingCount>0 ?  Math.ceil(upcomingCount/limit) : 1,
         totalOngoingClasses : ongoingCount,
-        totalOngoingPages : ongoingCount>0 ?  Math.ceil(ongoingCount/limit) : 1})
+        totalOngoingPages : ongoingCount>0 ?  Math.ceil(ongoingCount/limit) : 1}}]
     } catch (error) {
-      return [new ErrorResponse(error.message, STATUS_CODES.BAD_REQUEST, false)]
+      return  [{message:error.message, statusCode: STATUS_CODES.BAD_REQUEST},null]
     }
   }
 

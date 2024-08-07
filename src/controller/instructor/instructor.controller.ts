@@ -25,6 +25,7 @@ import {
   import { ApiBearerAuth } from '@nestjs/swagger';
   import { difficulty, questionType } from 'drizzle/schema';
   import { ClassesService } from '../classes/classes.service';
+import { ErrorResponse, SuccessResponse } from 'src/errorHandler/handler';
   
   @Controller('instructor')
   @ApiTags('instructor')
@@ -69,20 +70,25 @@ import {
     description: 'Array of batchIds',
   })
   @ApiBearerAuth()
-  getAllUpcomingClasses(
+  async getAllUpcomingClasses(
     @Query('limit') limit: number,
     @Query('offset') offset: number,
     @Query('timeFrame') timeFrame: string,
     @Query('batchId', new ParseArrayPipe({ items: Number, optional: true })) batchId: number[] = [],
     @Req() req
-  ): Promise<object> {
-    return this.instructorService.getAllUpcomingClasses(
+  ){
+    const [err,res] = await this.instructorService.getAllUpcomingClasses(
       req.user[0].id,
       limit,
       offset,
       timeFrame,
       batchId
     );
+    if(err)
+      {
+        return new ErrorResponse(err.message,err['statusCode'],false)
+      }
+      return new SuccessResponse(res.message,res['statusCode'],res['result'])
   }
     @Get('/batchOfInstructor')
     @ApiOperation({ summary: 'Get all batches of a particular instructor' })

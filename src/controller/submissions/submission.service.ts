@@ -918,9 +918,9 @@ export class SubmissionService {
         });
       });
       
-      return new SuccessResponse('Submission of assignment for courses has been fetched',STATUS_CODES.OK,{trackingData,totalStudents: zuvyBatchEnrollmentsCount[0]?.count})
+      return [null,{message:'Submission of assignment for courses has been fetched',statusCode:STATUS_CODES.OK,result:{trackingData,totalStudents: zuvyBatchEnrollmentsCount[0]?.count}}]
     } catch (error) {
-      return [new ErrorResponse(error.message, STATUS_CODES.BAD_REQUEST, false)]
+      return [{message:error.message, statusCode: STATUS_CODES.BAD_REQUEST},null]
     }
   }
   
@@ -982,13 +982,13 @@ export class SubmissionService {
         };
      });
      const currentPage =!isNaN(limit) && !isNaN(offset) ? offset/limit + 1 : 1;
-      return new SuccessResponse('Assignment Status of the students has been fetched',STATUS_CODES.OK, {data,chapterId :chapterDeadline[0].id,chapterName:chapterDeadline[0].title, totalPages,totalStudentsCount,currentPage})
+      return [null,{message:'Assignment Status of the students has been fetched',statusCode: STATUS_CODES.OK, result:{data,chapterId :chapterDeadline[0].id,chapterName:chapterDeadline[0].title, totalPages,totalStudentsCount,currentPage}}]
     }
     else {
-      return new ErrorResponse('No chapter found',STATUS_CODES.NO_CONTENT,false)
+      return   [{message:'NO CONTENT FOUND', statusCode: STATUS_CODES.NO_CONTENT},null]
     }
     } catch (error) {
-      return [new ErrorResponse(error.message, STATUS_CODES.BAD_REQUEST, false)]
+      return  [{message:error.message, statusCode: STATUS_CODES.BAD_REQUEST},null]
     }
   }
    
@@ -1039,10 +1039,10 @@ export class SubmissionService {
         }
          assignmentDetails['chapterTrackingDetails'][0]['user']['id'] = Number( assignmentDetails['chapterTrackingDetails'][0]['user']['id'] ) 
          assignmentDetails['chapterTrackingDetails'][0]['status'] = isSubmittedOnTime == true ? 'Submitted on time' : 'Submitted late';
-        return new SuccessResponse('Assignment submission detail of the user has been fetched',STATUS_CODES.OK,assignmentDetails)
+        return [null,{message: 'Assignment submission detail of the user has been fetched',statusCode:STATUS_CODES.OK,result:assignmentDetails}]
     }
     catch(error) {
-      return [new ErrorResponse(error.message, STATUS_CODES.BAD_REQUEST, false)]
+      return  [{message:error.message, statusCode: STATUS_CODES.BAD_REQUEST},null]
     }
    }
 }
