@@ -164,14 +164,13 @@ export class InstructorService {
         responses.upcoming.push(...batchUpcomingClasses);
         responses.ongoing.push(...batchOngoingClasses);
       }
+      const totalClasses = upcomingCount + ongoingCount
       responses.upcoming.sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
       responses.ongoing.sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
 
       return [null,{message: 'Upcoming and ongoing classes has been fetched for the instructor',statusCode:STATUS_CODES.OK,result:{responses,
-        totalUpcomingClasses : upcomingCount,
-        totalUpcomingPages : upcomingCount>0 ?  Math.ceil(upcomingCount/limit) : 1,
-        totalOngoingClasses : ongoingCount,
-        totalOngoingPages : ongoingCount>0 ?  Math.ceil(ongoingCount/limit) : 1}}]
+        totalUpcomingClasses : totalClasses,
+        totalUpcomingPages : totalClasses > 0 ?  Math.ceil(totalClasses/limit) : 1}}]
     } catch (error) {
       return  [{message:error.message, statusCode: STATUS_CODES.BAD_REQUEST},null]
     }
