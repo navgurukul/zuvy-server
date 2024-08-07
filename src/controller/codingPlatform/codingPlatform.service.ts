@@ -89,9 +89,11 @@ export class CodingPlatformService {
           testcastId: testCase?.id,
           status: submissionInfo.data.submissions[index].status?.description,
           token: submissionInfo.data.submissions[index]?.token,
+          stdOut: submissionInfo.data.submissions[index]?.stdout,
+          input: testCase?.inputs,
+          output: testCase?.expectedOutput
         }
       })
-      console.log({ testSubmission });
       return [null, { statusCode: STATUS_CODES.OK, message: 'Code submitted successfully', data: testSubmission }];
     } catch (error) {
       return [{ statusCode: STATUS_CODES.BAD_REQUEST, message: error.message }];
@@ -108,8 +110,9 @@ export class CodingPlatformService {
         return [err];
       }
       if (action === 'run') {
-        return [null, testcasesSubmission.data];
+        return [null, testcasesSubmission];
       }
+
       let insertValues: any = { status: 'Accepted' };
       for (let testSub of testcasesSubmission) {
         if (testSub.status !== 'Accepted') {

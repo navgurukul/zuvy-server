@@ -5,6 +5,7 @@ export  const typeMappings = {
       float: 'float',
       double: 'double',
       str: 'String',
+      bool: 'boolean',
       arrayOfnum: 'int[]', // This is an example; it can be modified based on the array type
       arrayOfStr: 'String[]', // This is an example; it can be modified based on the array type
       returnType: 'int', // Default return type, modify as needed
@@ -23,6 +24,7 @@ export  const typeMappings = {
       int: 'int',
       float: 'float',
       str: 'str',
+      bool: 'bool',
       arrayOfnum: 'List[int]', // This is an example; it can be modified based on the arrayOfnum type
       arrayOfStr: 'List[str]', // This is an example; it can be modified based on the arrayOfStr type
       input: (parameterType) => {
@@ -39,6 +41,7 @@ export  const typeMappings = {
       float: 'float',
       double: 'double',
       str: 'char*',
+      bool: 'bool',
       arrayOfnum: 'int[]', // This is an example; it can be modified based on the arrayOfnum type
       arrayOfStr: 'char**', // This is an example; it can be modified based on the arrayOfStr type
       returnType: 'int', // Default return type, modify as needed
@@ -48,6 +51,7 @@ export  const typeMappings = {
       int: 'int',
       float: 'float',
       double: 'double',
+      bool: 'bool',
       str: 'string',
       arrayOfnum: 'vector<int>', // This is an example; it can be modified based on the arrayOfnum type
       arrayOfStr: 'vector<string>', // This is an example; it can be modified based on the arrayOfStr type
@@ -59,6 +63,7 @@ export  const typeMappings = {
       float: 'number',
       double: 'number',
       str: 'string',
+      bool: 'boolean',
       arrayOfnum: 'number[]', // This is an example; it can be modified based on the arrayOfnum type
       arrayOfStr: 'string[]', // This is an example; it can be modified based on the arrayOfStr type
       returnType: 'number', // Default return type, modify as needed

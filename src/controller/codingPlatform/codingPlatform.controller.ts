@@ -67,7 +67,7 @@ export class CodingPlatformController {
       if (err) {
         return ErrorResponse.BadRequestException(err.message).send(res);
       }
-      return new SuccessResponse(success.message, success.statusCode, success).send(res);
+      return new SuccessResponse(success.message, success.statusCode, success.data).send(res);
     } catch (error) {
       return ErrorResponse.BadRequestException(error.message).send(res);
     }
