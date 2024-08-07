@@ -1,10 +1,9 @@
-import { Controller, Get, Post, Put, Delete, Patch, Body, Param, ValidationPipe, UsePipes, BadRequestException, Query, Req } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Patch, Body, Param, ValidationPipe, UsePipes, BadRequestException, Query, Req, Res } from '@nestjs/common';
 import { StudentService } from './student.service';
 import { ApiTags, ApiBody, ApiOperation, ApiQuery, ApiBearerAuth } from '@nestjs/swagger';
 import { get } from 'http';
-// import { CreateDto, ScheduleDto, CreateLiveBroadcastDto } from './dto/Student.dto';
-// import { AuthGuard } from '@nestjs/passport'; // Assuming JWT authentication
-
+import { Response } from 'express';
+import { ErrorResponse, SuccessResponse } from 'src/errorHandler/handler';
 
 @Controller('student')
 @ApiTags('student')
@@ -104,10 +103,18 @@ export class StudentController {
     description: 'batch_id',
   })
   async getUpcomingClass(@Req() req, @Query('batch_id')batchID: number,@Query('limit') limit: number,
-  @Query('offset') offset : number
-  ) {
-    return await this.studentService.getUpcomingClass(req.user[0].id, batchID,limit,offset);
+  @Query('offset') offset : number, @Res() res: Response
+) {
+  try {
+    const [err, result] = await this.studentService.getUpcomingClass(req.user[0].id, batchID, limit, offset);
+    if (err) {
+      return ErrorResponse.BadRequestException(err.message).send(res);
+    }
+    return new SuccessResponse('Upcoming classes retrieved successfully', 200, result).send(res);
+  } catch (error) {
+    return ErrorResponse.BadRequestException(error.message).send(res);
   }
+}
 
   @Get('/Dashboard/attendance')
   @ApiOperation({ summary: 'Get dashboard Attendance.' })

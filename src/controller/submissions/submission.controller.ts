@@ -281,7 +281,7 @@ export class SubmissionController {
     const [err,res] = await this.submissionService.getSubmissionOfAssignment(bootcampId)
     if(err)
       {
-        return new ErrorResponse(err.message,err['statusCode'],false)
+        return new ErrorResponse(err.message,err['statusCode'])
       }
       return new SuccessResponse(res.message,res['statusCode'],res['result'])
   }
@@ -317,7 +317,7 @@ export class SubmissionController {
     );
     if(err)
       {
-        return new ErrorResponse(err.message,err['statusCode'],false)
+        return new ErrorResponse(err.message,err['statusCode'])
       }
       return new SuccessResponse(res.message,res['statusCode'],res['result'])
   }
@@ -335,7 +335,7 @@ export class SubmissionController {
     );
     if(err)
       {
-        return new ErrorResponse(err.message,err['statusCode'],false)
+        return new ErrorResponse(err.message,err['statusCode'])
       }
       return new SuccessResponse(res.message,res['statusCode'],res['result'])
   }

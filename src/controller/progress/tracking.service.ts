@@ -1137,7 +1137,7 @@ export class TrackingService {
     }
     catch(error)
     {
-      return [new ErrorResponse(error.message, STATUS_CODES.BAD_REQUEST, false),null]
+      return [new ErrorResponse(error.message, STATUS_CODES.BAD_REQUEST),null]
     }
   }
 

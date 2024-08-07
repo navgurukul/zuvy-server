@@ -41,13 +41,13 @@ export class InstructorService {
         return new SuccessResponse('Batches of the instructor has been fetched successfully',STATUS_CODES.OK,data)
           }
           else {
-            return new ErrorResponse('Not found',STATUS_CODES.NO_CONTENT,false)
+            return new ErrorResponse('Not found',STATUS_CODES.NO_CONTENT)
           }
     }
     catch(err)
     {
       Logger.log(`error: ${err.message}`);
-      return new ErrorResponse(err.message,STATUS_CODES.NO_CONTENT,false)
+      return new ErrorResponse(err.message,STATUS_CODES.NO_CONTENT)
     }
    }
 
@@ -172,7 +172,7 @@ export class InstructorService {
         totalUpcomingClasses : totalClasses,
         totalUpcomingPages : totalClasses > 0 ?  Math.ceil(totalClasses/limit) : 1}}]
     } catch (error) {
-      return  [{message:error.message, statusCode: STATUS_CODES.BAD_REQUEST},null]
+      return [new ErrorResponse(error.message, STATUS_CODES.BAD_REQUEST)]
     }
   }
 
@@ -186,13 +186,13 @@ export class InstructorService {
           return new SuccessResponse('Batches of the instructor has been fetched successfully',STATUS_CODES.OK,batchDetails)
         }
         else {
-          return new ErrorResponse('No batches found',STATUS_CODES.NO_CONTENT,false)
+          return new ErrorResponse('No batches found',STATUS_CODES.NO_CONTENT)
         }
     }
     catch(error)
     {
       Logger.log(`error: ${error.message}`)
-      return [new ErrorResponse(error.message, STATUS_CODES.BAD_REQUEST, false)]
+      return [new ErrorResponse(error.message, STATUS_CODES.BAD_REQUEST)]
     }
   }
 

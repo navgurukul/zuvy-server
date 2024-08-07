@@ -920,7 +920,8 @@ export class SubmissionService {
       
       return [null,{message:'Submission of assignment for courses has been fetched',statusCode:STATUS_CODES.OK,result:{trackingData,totalStudents: zuvyBatchEnrollmentsCount[0]?.count}}]
     } catch (error) {
-      return [{message:error.message, statusCode: STATUS_CODES.BAD_REQUEST},null]
+      return [new ErrorResponse(error.message, STATUS_CODES.BAD_REQUEST)]
+
     }
   }
   
@@ -988,7 +989,8 @@ export class SubmissionService {
       return   [{message:'NO CONTENT FOUND', statusCode: STATUS_CODES.NO_CONTENT},null]
     }
     } catch (error) {
-      return  [{message:error.message, statusCode: STATUS_CODES.BAD_REQUEST},null]
+
+      return [new ErrorResponse(error.message, STATUS_CODES.BAD_REQUEST)]
     }
   }
    
@@ -1042,7 +1044,7 @@ export class SubmissionService {
         return [null,{message: 'Assignment submission detail of the user has been fetched',statusCode:STATUS_CODES.OK,result:assignmentDetails}]
     }
     catch(error) {
-      return  [{message:error.message, statusCode: STATUS_CODES.BAD_REQUEST},null]
+      return [new ErrorResponse(error.message, STATUS_CODES.BAD_REQUEST)]
     }
    }
 }

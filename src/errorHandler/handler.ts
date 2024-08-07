@@ -1,42 +1,30 @@
-import { Catch, ExceptionFilter, ArgumentsHost, HttpException, Logger } from '@nestjs/common';
-
-@Catch()
-export class ErrorHandler implements ExceptionFilter {
-  private readonly logger = new Logger(ErrorHandler.name);
-
-  catch(exception: unknown, host: ArgumentsHost) {
-    const ctx = host.switchToHttp();
-    const response = ctx.getResponse();
-    const request = ctx.getRequest();
-    const status = exception instanceof HttpException ? exception.getStatus() : 500;
-
-    const errorResponse = {
-      statusCode: status,
-      timestamp: new Date().toISOString(),
-      path: request.url,
-      message: (exception instanceof HttpException) ? exception.getResponse() : 'Internal server error',
-    };
-
-    this.logger.error(
-      `HTTP Status: ${status} Error Message: ${JSON.stringify(errorResponse)}`,
-      exception instanceof Error ? exception.stack : '',
-    );
-
-    response.status(status).json(errorResponse);
-  }
-}
+import { Response } from 'express';
+import { Injectable, Logger } from '@nestjs/common';
+import { STATUS_CODES } from '../helpers/index';
 
 export class ErrorResponse {
+  static handle(error: any) {
+    throw new Error('Method not implemented.');
+  }
   message: string;
   code: number;
   isSuccess: boolean;
-  constructor(message, statusCode, isSuccess) {
-      this.message = message;
-      this.code = statusCode;
-      this.isSuccess = isSuccess;
+
+  constructor(message: string, code: number) {
+    this.message = message || 'Server Error';
+    this.code = code || STATUS_CODES.INTERNAL_SERVER_ERROR
+    this.isSuccess = false;
+  }
+
+  static BadRequestException(message: string, code?: number) {
+    Logger.log(`error: ${message}`);
+    return new ErrorResponse(message, code || STATUS_CODES.BAD_REQUEST);
+  }
+
+  send(res: Response) {
+    return res.status(this.code).json(this);
   }
 }
-
 
 export class SuccessResponse {
   message: string;
@@ -44,10 +32,14 @@ export class SuccessResponse {
   isSuccess: boolean;
   data: any;
 
-  constructor(message: string, statusCode: number, data: any) {
-    this.message = message;
-    this.code = statusCode;
+  constructor(message: string, code: number, data: any) {
+    this.message = message || 'Success';
+    this.code = code|| STATUS_CODES.OK;
     this.isSuccess = true;
     this.data = data;
+  }
+
+  send(res: Response) {
+    return res.status(this.code).json(this);
   }
 }

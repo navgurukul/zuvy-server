@@ -407,7 +407,7 @@ export class TrackingController {
     );
     if(err)
       {
-        return new ErrorResponse(err.message,err['statusCode'],false)
+        return new ErrorResponse(err.message,err['statusCode'])
       }
       return new SuccessResponse(res.message,res['statusCode'],res['result'])
   }
