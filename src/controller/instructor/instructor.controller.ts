@@ -13,6 +13,7 @@ import {
     Query,
     BadRequestException,
     Req,
+    Res,
     ParseArrayPipe
   } from '@nestjs/common';
   import { InstructorService } from './instructor.service';
@@ -42,9 +43,16 @@ import { ErrorResponse, SuccessResponse } from 'src/errorHandler/handler';
     @Get('/allCourses')
     @ApiOperation({ summary: 'Get all courses of a particular instructor' })
     @ApiBearerAuth()
-    async getAllCoursesOfInstructor(@Req() req) {
-      const res = await this.instructorService.allCourses(req.user[0].id);
-      return res;
+    async getAllCoursesOfInstructor(@Req() req,@Res() res) {
+      try {
+        let [err, success] =await this.instructorService.allCourses(req.user[0].id);
+        if (err) {
+          return ErrorResponse.BadRequestException(err.message, err.statusCode).send(res)
+        }
+        return new SuccessResponse(success.message, success.statusCode, success.data).send(res);
+      } catch (error) {
+        return ErrorResponse.BadRequestException(error.message).send(res);
+      }    
     }
 
 
@@ -75,26 +83,37 @@ import { ErrorResponse, SuccessResponse } from 'src/errorHandler/handler';
     @Query('offset') offset: number,
     @Query('timeFrame') timeFrame: string,
     @Query('batchId', new ParseArrayPipe({ items: Number, optional: true })) batchId: number[] = [],
-    @Req() req
+    @Req() req,
+    @Res() res
   ){
-    const [err,res] = await this.instructorService.getAllUpcomingClasses(
-      req.user[0].id,
-      limit,
-      offset,
-      timeFrame,
-      batchId
-    );
-    if(err)
-      {
-        return new ErrorResponse(err.message,err['statusCode'])
-      }
-      return new SuccessResponse(res.message,res['statusCode'],res['result'])
+      try {
+        let [err, success] =await this.instructorService.getAllUpcomingClasses(
+          req.user[0].id,
+          limit,
+          offset,
+          timeFrame,
+          batchId
+        );
+        if (err) {
+          return ErrorResponse.BadRequestException(err.message, err.statusCode).send(res)
+        }
+        return new SuccessResponse(success.message, success.statusCode, success.data).send(res);
+      } catch (error) {
+        return ErrorResponse.BadRequestException(error.message).send(res);
+      }    
   }
     @Get('/batchOfInstructor')
     @ApiOperation({ summary: 'Get all batches of a particular instructor' })
     @ApiBearerAuth()
-    async getBatchOfInstructor(@Req() req) {
-    const res = await this.instructorService.getBatchOfInstructor(req.user[0].id);
-    return res;
+    async getBatchOfInstructor(@Req() req,@Res() res) {
+    try {
+      let [err, success] =await this.instructorService.getBatchOfInstructor(req.user[0].id);
+      if (err) {
+        return ErrorResponse.BadRequestException(err.message, err.statusCode).send(res)
+      }
+      return new SuccessResponse(success.message, success.statusCode, success.data).send(res);
+    } catch (error) {
+      return ErrorResponse.BadRequestException(error.message).send(res);
+    }  
     }
   }

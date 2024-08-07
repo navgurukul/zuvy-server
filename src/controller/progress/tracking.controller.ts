@@ -9,7 +9,8 @@ import {
   Param,
   BadRequestException,
   Query,
-  Req
+  Req,
+  Res
 } from '@nestjs/common';
 import { TrackingService } from './tracking.service';
 import {
@@ -401,15 +402,19 @@ export class TrackingController {
   async getAllUpcomingAssignment(
     @Req() req,
     @Query('bootcampId') bootcampId: number,
+    @Res() res
   ) {
-    const [err,res] = await this.TrackingService.getAllUpcomingSubmission(
-      req.user[0].id,bootcampId
-    );
-    if(err)
-      {
-        return new ErrorResponse(err.message,err['statusCode'])
-      }
-      return new SuccessResponse(res.message,res['statusCode'],res['result'])
+      try {
+        let [err, success] =await this.TrackingService.getAllUpcomingSubmission(
+            req.user[0].id,bootcampId
+          );
+        if (err) {
+          return ErrorResponse.BadRequestException(err.message, err.statusCode).send(res)
+        }
+        return new SuccessResponse(success.message, success.statusCode, success.data).send(res);
+      } catch (error) {
+        return ErrorResponse.BadRequestException(error.message).send(res);
+      }  
   }
 
   @Get('/getChapterDetailsWithStatus/:chapterId')

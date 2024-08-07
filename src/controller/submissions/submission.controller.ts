@@ -13,6 +13,7 @@ import {
   Query,
   BadRequestException,
   Req,
+  Res,
 } from '@nestjs/common';
 import { SubmissionService } from './submission.service';
 import {
@@ -277,13 +278,16 @@ export class SubmissionController {
   @Get('/submissionsOfAssignment/:bootcampId')
   @ApiOperation({ summary: 'Get the submission of assignment by bootcampId' })
   @ApiBearerAuth()
-  async getAssignmentSubmission(@Param('bootcampId') bootcampId: number) {
-    const [err,res] = await this.submissionService.getSubmissionOfAssignment(bootcampId)
-    if(err)
-      {
-        return new ErrorResponse(err.message,err['statusCode'])
-      }
-      return new SuccessResponse(res.message,res['statusCode'],res['result'])
+  async getAssignmentSubmission(@Param('bootcampId') bootcampId: number,@Res() res) {
+      try {
+        let [err, success] =await this.submissionService.getSubmissionOfAssignment(bootcampId)
+        if (err) {
+          return ErrorResponse.BadRequestException(err.message, err.statusCode).send(res)
+        }
+        return new SuccessResponse(success.message, success.statusCode, success.data).send(res);
+      } catch (error) {
+        return ErrorResponse.BadRequestException(error.message).send(res);
+      }  
   }
 
   @Get('/assignmentStatus')
@@ -308,18 +312,22 @@ export class SubmissionController {
   async getStatusOfAssignment(
     @Query('chapterId') chapterId: number,
     @Query('limit') limit: number,
-    @Query('offset') offset: number
+    @Query('offset') offset: number,
+    @Res() res
   ) {
-    const [err,res] = await this.submissionService.assignmentStatusOfStudents(
-      chapterId,
-      limit,
-      offset
-    );
-    if(err)
-      {
-        return new ErrorResponse(err.message,err['statusCode'])
-      }
-      return new SuccessResponse(res.message,res['statusCode'],res['result'])
+      try {
+        let [err, success] =await this.submissionService.assignmentStatusOfStudents(
+          chapterId,
+          limit,
+          offset
+        );
+        if (err) {
+          return ErrorResponse.BadRequestException(err.message, err.statusCode).send(res)
+        }
+        return new SuccessResponse(success.message, success.statusCode, success.data).send(res);
+      } catch (error) {
+        return ErrorResponse.BadRequestException(error.message).send(res);
+      }    
   }
 
   @Get('getAssignmentDetailForAUser')
@@ -328,15 +336,19 @@ export class SubmissionController {
   async getAssignmentDetailForAUser(
     @Query('chapterId') chapterId: number,
     @Query('userId') userId: number,
+    @Res() res
   ) {
-    const [err,res] = await this.submissionService.getAssignmentSubmissionDetailForUser(
-      chapterId,
-      userId
-    );
-    if(err)
-      {
-        return new ErrorResponse(err.message,err['statusCode'])
-      }
-      return new SuccessResponse(res.message,res['statusCode'],res['result'])
+      try {
+        let [err, success] =await this.submissionService.getAssignmentSubmissionDetailForUser(
+          chapterId,
+          userId
+        );
+        if (err) {
+          return ErrorResponse.BadRequestException(err.message, err.statusCode).send(res)
+        }
+        return new SuccessResponse(success.message, success.statusCode, success.data).send(res);
+      } catch (error) {
+        return ErrorResponse.BadRequestException(error.message).send(res);
+      }    
   }
 }

@@ -1019,7 +1019,7 @@ export class TrackingService {
     }
   }
 
-  async getAllUpcomingSubmission(userId: number,bootcampId:number)
+  async getAllUpcomingSubmission(userId: number,bootcampId:number):Promise<any>
   {
     try {
       const data = await db.query.zuvyBatchEnrollments.findMany({
@@ -1133,11 +1133,11 @@ export class TrackingService {
         return [{message:'No content found', statusCode: STATUS_CODES.NO_CONTENT},null]
       }
       
-      return [null,{message:'Upcoming submission fetched successfully',statusCode: STATUS_CODES.OK,result:{upcomingAssignments,lateAssignments}}]
+      return [null,{message:'Upcoming submission fetched successfully',statusCode: STATUS_CODES.OK,data:{upcomingAssignments,lateAssignments}}]
     }
     catch(error)
     {
-      return [new ErrorResponse(error.message, STATUS_CODES.BAD_REQUEST),null]
+      return [{message:error.message, statusCode: STATUS_CODES.BAD_REQUEST},null]
     }
   }
 

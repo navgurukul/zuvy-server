@@ -878,7 +878,7 @@ export class SubmissionService {
     }
   }
 
-  async getSubmissionOfAssignment(bootcampId: number) {
+  async getSubmissionOfAssignment(bootcampId: number):Promise<any> {
     try {
       const topicId = 5;
       const trackingData = await db.query.zuvyCourseModules.findMany({
@@ -918,9 +918,9 @@ export class SubmissionService {
         });
       });
       
-      return [null,{message:'Submission of assignment for courses has been fetched',statusCode:STATUS_CODES.OK,result:{trackingData,totalStudents: zuvyBatchEnrollmentsCount[0]?.count}}]
+      return [null,{message:'Submission of assignment for courses has been fetched',statusCode:STATUS_CODES.OK,data:{trackingData,totalStudents: zuvyBatchEnrollmentsCount[0]?.count}}]
     } catch (error) {
-      return [new ErrorResponse(error.message, STATUS_CODES.BAD_REQUEST)]
+      return [{message:error.message, statusCode: STATUS_CODES.BAD_REQUEST},null]
 
     }
   }
@@ -929,7 +929,7 @@ export class SubmissionService {
     chapterId: number,
     limit: number,
     offset: number
-  ) {
+  ):Promise<any> {
     try {
       const chapterDeadline = await db.select()
       .from(zuvyModuleChapter)
@@ -983,19 +983,19 @@ export class SubmissionService {
         };
      });
      const currentPage =!isNaN(limit) && !isNaN(offset) ? offset/limit + 1 : 1;
-      return [null,{message:'Assignment Status of the students has been fetched',statusCode: STATUS_CODES.OK, result:{data,chapterId :chapterDeadline[0].id,chapterName:chapterDeadline[0].title, totalPages,totalStudentsCount,currentPage}}]
+      return [null,{message:'Assignment Status of the students has been fetched',statusCode: STATUS_CODES.OK, data:{data,chapterId :chapterDeadline[0].id,chapterName:chapterDeadline[0].title, totalPages,totalStudentsCount,currentPage}}]
     }
     else {
       return   [{message:'NO CONTENT FOUND', statusCode: STATUS_CODES.NO_CONTENT},null]
     }
     } catch (error) {
 
-      return [new ErrorResponse(error.message, STATUS_CODES.BAD_REQUEST)]
+      return [{message:error.message, statusCode: STATUS_CODES.BAD_REQUEST},null]
     }
   }
    
 
-   async getAssignmentSubmissionDetailForUser(chapterId:number,userId:number)
+   async getAssignmentSubmissionDetailForUser(chapterId:number,userId:number):Promise<any>
    {
     try{
       const assignmentDetails = await db.query.zuvyModuleChapter.findFirst({
@@ -1041,10 +1041,10 @@ export class SubmissionService {
         }
          assignmentDetails['chapterTrackingDetails'][0]['user']['id'] = Number( assignmentDetails['chapterTrackingDetails'][0]['user']['id'] ) 
          assignmentDetails['chapterTrackingDetails'][0]['status'] = isSubmittedOnTime == true ? 'Submitted on time' : 'Submitted late';
-        return [null,{message: 'Assignment submission detail of the user has been fetched',statusCode:STATUS_CODES.OK,result:assignmentDetails}]
+        return [null,{message: 'Assignment submission detail of the user has been fetched',statusCode:STATUS_CODES.OK,data:assignmentDetails}]
     }
     catch(error) {
-      return [new ErrorResponse(error.message, STATUS_CODES.BAD_REQUEST)]
+      return [{message:error.message, statusCode: STATUS_CODES.BAD_REQUEST},null]
     }
    }
 }

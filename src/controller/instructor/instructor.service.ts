@@ -16,7 +16,7 @@ const { ZUVY_CONTENT_URL, ZUVY_CONTENTS_API_URL } = process.env; // INPORTING en
 @Injectable()
 export class InstructorService {
 
-   async allCourses(userId : number)
+   async allCourses(userId : number):Promise<any>
    {
     try {
         const data = await db.query.zuvyBatches.findMany({
@@ -38,16 +38,15 @@ export class InstructorService {
 
         if(data.length > 0)
           {
-        return new SuccessResponse('Batches of the instructor has been fetched successfully',STATUS_CODES.OK,data)
+        return [null,{message:'Batches of the instructor has been fetched successfully',statusCode: STATUS_CODES.OK,data}]
           }
           else {
-            return new ErrorResponse('Not found',STATUS_CODES.NO_CONTENT)
+            return [{message:'No course or batch found', statusCode: STATUS_CODES.NO_CONTENT},null]
           }
     }
-    catch(err)
+    catch(error)
     {
-      Logger.log(`error: ${err.message}`);
-      return new ErrorResponse(err.message,STATUS_CODES.NO_CONTENT)
+      return [{message:error.message, statusCode: STATUS_CODES.BAD_REQUEST},null]
     }
    }
 
@@ -58,7 +57,7 @@ export class InstructorService {
     offset: number,
     timeFrame: string,
     batchId:number[]
-  ) {
+  ):Promise<any> {
     try {
       const responses = {
         upcoming: [],
@@ -168,31 +167,31 @@ export class InstructorService {
       responses.upcoming.sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
       responses.ongoing.sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
 
-      return [null,{message: 'Upcoming and ongoing classes has been fetched for the instructor',statusCode:STATUS_CODES.OK,result:{responses,
+      return [null,{message: 'Upcoming and ongoing classes has been fetched for the instructor',statusCode:STATUS_CODES.OK,data:{responses,
         totalUpcomingClasses : totalClasses,
         totalUpcomingPages : totalClasses > 0 ?  Math.ceil(totalClasses/limit) : 1}}]
     } catch (error) {
-      return [new ErrorResponse(error.message, STATUS_CODES.BAD_REQUEST)]
+      return [{message:error.message, statusCode: STATUS_CODES.BAD_REQUEST},null]
     }
   }
 
-  async getBatchOfInstructor(instructorId:number)
+  async getBatchOfInstructor(instructorId:number):Promise<any>
   {
     try {
       const batchDetails = await db.select({batchId:zuvyBatches.id,batchName: zuvyBatches.name}).from(zuvyBatches).where(eq(zuvyBatches.instructorId,instructorId));
 
       if(batchDetails.length > 0)
         {
-          return new SuccessResponse('Batches of the instructor has been fetched successfully',STATUS_CODES.OK,batchDetails)
+          return [null,{message:'Batches of the instructor has been fetched successfully',statusCode: STATUS_CODES.OK,data:batchDetails}]
         }
         else {
-          return new ErrorResponse('No batches found',STATUS_CODES.NO_CONTENT)
+          return [{message:'No batch found', statusCode: STATUS_CODES.NO_CONTENT},null]
         }
     }
     catch(error)
     {
       Logger.log(`error: ${error.message}`)
-      return [new ErrorResponse(error.message, STATUS_CODES.BAD_REQUEST)]
+      return [{message:error.message, statusCode: STATUS_CODES.BAD_REQUEST},null]
     }
   }
 
