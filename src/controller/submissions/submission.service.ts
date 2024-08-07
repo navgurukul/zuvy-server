@@ -920,7 +920,7 @@ export class SubmissionService {
       
       return new SuccessResponse('Submission of assignment for courses has been fetched',STATUS_CODES.OK,{trackingData,totalStudents: zuvyBatchEnrollmentsCount[0]?.count})
     } catch (error) {
-      return [new ErrorResponse(error.message, STATUS_CODES.BAD_REQUEST, false)]
+      return [new ErrorResponse(error.message, STATUS_CODES.BAD_REQUEST)]
     }
   }
   
@@ -975,7 +975,7 @@ export class SubmissionService {
      const currentPage =!isNaN(limit) && !isNaN(offset) ? offset/limit + 1 : 1;
       return new SuccessResponse('Assignment Status of the students has been fetched',STATUS_CODES.OK, {data,totalPages,totalStudentsCount,currentPage})
     } catch (error) {
-      return [new ErrorResponse(error.message, STATUS_CODES.BAD_REQUEST, false)]
+      return [new ErrorResponse(error.message, STATUS_CODES.BAD_REQUEST)]
     }
   }
    
@@ -1029,7 +1029,7 @@ export class SubmissionService {
         return new SuccessResponse('Assignment submission detail of the user has been fetched',STATUS_CODES.OK,assignmentDetails)
     }
     catch(error) {
-      return [new ErrorResponse(error.message, STATUS_CODES.BAD_REQUEST, false)]
+      return [new ErrorResponse(error.message, STATUS_CODES.BAD_REQUEST)]
     }
    }
 }
