@@ -12,109 +12,26 @@ import {
   zuvyTestCases,
   zuvyTestCasesSubmission
 } from '../../../drizzle/schema';
-import { generateTemplates } from '../../helpers/index'
-import { ErrorResponse } from '../../errorHandler/handler';
+import { generateTemplates } from '../../helpers/index';
 import { STATUS_CODES } from "../../helpers/index";
 
-const { ZUVY_CONTENT_URL,RAPID_BASE_URL, RAPID_API_KEY, RAPID_HOST } = process.env; // INPORTING env VALUSE ZUVY_CONTENT
+const { ZUVY_CONTENT_URL, RAPID_BASE_URL, RAPID_API_KEY, RAPID_HOST } = process.env; // INPORTING env VALUSE ZUVY_CONTENT
 
 @Injectable()
 export class CodingPlatformService {
-  async submitPracticeCode(questionId, sourceCode, action, userId, submissionId, codingOutsourseId): Promise<any> {
-    try {
-      if (!['run', 'submit'].includes(action.toLowerCase())) {
-        return { statusCode: 400, message: 'Invalid action' };
-      }
-      let [err, testcasesSubmission] = await this.submitCodeBatch(sourceCode, questionId, action);
-      if (err) {
-        return [err];
-      }
-      if (action === 'run') {
-
-        return [null, { statusCode: 200, message: 'Code run successful', testcasesSubmission }];
-      }
-      let insertValues:any = { status: 'Accepted' };
-      for (let testSub of testcasesSubmission) {
-        if (testSub.status !== 'Accepted') {
-          insertValues["status"] = testSub.status;
-          break;
-        }
-      }
-
-      insertValues["userId"] = userId;
-      insertValues["questionId"] = questionId;
-      insertValues["action"] = action;
-      if (submissionId) {
-        insertValues["submissionId"] = submissionId;
-      }
-      if (codingOutsourseId) {
-        insertValues["codingOutsourseId"] = codingOutsourseId;
-      }
-      let practiceSubmission =  await db.insert(zuvyPracticeCode).values(insertValues).returning();
-      
-      let testcasesSubmissionInsert = testcasesSubmission.map((testcase) => {
-        return {
-          submissionId: practiceSubmission[0].id,
-          testcastId: testcase.testcastId,
-          status: testcase.status,
-          token: testcase.token,
-        }
-      })
-
-      await db.insert(zuvyTestCasesSubmission).values(testcasesSubmissionInsert).returning();
-
-      if (testcasesSubmission.length !== 0) {
-        return [null, { statusCode: STATUS_CODES.OK, message: 'Submission successful', testcasesSubmission  }];
-      } else {
-        return [{ statusCode: STATUS_CODES.BAD_REQUEST, message: 'Error in submitting code' }];
-      }
-    } catch (error) {
-      return [{ statusCode: STATUS_CODES.BAD_REQUEST, message: error.message }];
-    }
-  }
-  
-
-  async getPracticeCode(questionId, userId, submissionId, codingOutsourseId): Promise<any> {
-    try {
-      let queryString;
-      if (isNaN(submissionId)) {
-        queryString = sql`${zuvyPracticeCode.questionId} = ${questionId} AND ${zuvyPracticeCode.userId} = ${userId}`
-      } else {
-        queryString = sql`${zuvyPracticeCode.questionId} = ${questionId} AND ${zuvyPracticeCode.userId} = ${userId} AND ${zuvyPracticeCode.submissionId} = ${submissionId} AND ${zuvyPracticeCode.codingOutsourseId} = ${codingOutsourseId}`
-      }
-      let response = await db.query.zuvyPracticeCode.findMany({
-        where: (zuvyPracticeCode, { sql }) => queryString,        
-        columns: {
-          status: true,
-          action: true,
-          questionId: true,
-          submissionId: true
-        }
-      })
-      if (response.length === 0) {
-        return { status: 'error', code: 400, message: "No practice code available for the given question Id" };
-      } else {
-        let questionInfo = await this.getCodingQuestion(questionId, false);
-        const submissionsInfoPromises = response.map( async (submission: any) => {
-          const token = submission.token;
-          let data = await this.getCodeInfo(token)          
-          return data;
-        });        
-        const submissions = await Promise.all(submissionsInfoPromises);
-        return { ...questionInfo[0], submissions };
-      }
-    } catch (error) {
-      console.error('Error getting practice code:', error);
-      throw error;
-    }
-  }
-
   async submitCodeBatch(sourceCode: SubmitCodeDto, codingOutsourseId: number, action: string): Promise<any> {
-    const [error, question] = await this.getCodingQuestion(codingOutsourseId, false);
-    if(error){
+    let testCase;
+    if ('run' === action) {
+      testCase = 3;
+    } else {
+      testCase = 0;
+    }
+    const [error, question] = await this.getCodingQuestion(codingOutsourseId, false, testCase)
+    if (error) {
       return [error];
     }
-    const preparedSubmissions = question.testCases.map((testCase) => {
+    let testCasesArray = question.data.testCases;
+    const preparedSubmissions = testCasesArray.map((testCase) => {
       var input = [];
       var output = [];
       if (action == 'submit') {
@@ -136,7 +53,6 @@ export class CodingPlatformService {
         expected_output: encodedStdOutput
       }
     });
-
     const options = {
       method: 'POST',
       url: `${RAPID_BASE_URL}/submissions/batch`,
@@ -154,29 +70,145 @@ export class CodingPlatformService {
         submissions: preparedSubmissions
       }
     };
-  
+
     try {
       const response = await axios.request(options);
-      const tokens = response.data.map(submission => submission.token);
-      let submissionInfo;
+      const tokens = response.data?.map(submission => submission.token);
+      let submissionInfo, err;
 
       await new Promise<void>(resolve => setTimeout(async () => {
-        submissionInfo = await this.getCodeInfo(tokens);
+        [err, submissionInfo] = await this.getCodeInfo(tokens);
         resolve();
-      }, 900));
-    
-      let testSubmission = question.testCases?.map((testCase, index) => {
+      }, 1090));
+
+      if (err) {
+        return [err];
+      }
+      let testSubmission = testCasesArray?.map((testCase, index) => {
         return {
           testcastId: testCase?.id,
-          status: submissionInfo.submissions[index].status?.description,
-          token: submissionInfo.submissions[index]?.token,
+          status: submissionInfo.data.submissions[index].status?.description,
+          token: submissionInfo.data.submissions[index]?.token,
         }
       })
-      return [null, testSubmission];
+      console.log({ testSubmission });
+      return [null, { statusCode: STATUS_CODES.OK, message: 'Code submitted successfully', data: testSubmission }];
     } catch (error) {
       return [{ statusCode: STATUS_CODES.BAD_REQUEST, message: error.message }];
     }
   }
+
+  async submitPracticeCode(questionId, sourceCode, action, userId, submissionId, codingOutsourseId): Promise<any> {
+    try {
+      if (!['run', 'submit'].includes(action.toLowerCase())) {
+        return [{ statusCode: STATUS_CODES.BAD_REQUEST, message: 'Invalid action' }];
+      }
+      let [err, testcasesSubmission] = await this.submitCodeBatch(sourceCode, questionId, action);
+      if (err) {
+        return [err];
+      }
+      if (action === 'run') {
+        return [null, testcasesSubmission.data];
+      }
+      let insertValues: any = { status: 'Accepted' };
+      for (let testSub of testcasesSubmission) {
+        if (testSub.status !== 'Accepted') {
+          insertValues["status"] = testSub.status;
+          break;
+        }
+      }
+
+      insertValues["userId"] = userId;
+      insertValues["questionId"] = questionId;
+      insertValues["action"] = action;
+      if (submissionId) {
+        insertValues["submissionId"] = submissionId;
+      }
+      if (codingOutsourseId) {
+        insertValues["codingOutsourseId"] = codingOutsourseId;
+      }
+      let practiceSubmission = await db.insert(zuvyPracticeCode).values(insertValues).returning();
+
+      let testcasesSubmissionInsert = testcasesSubmission.map((testcase) => {
+        return {
+          submissionId: practiceSubmission[0].id,
+          testcastId: testcase.testcastId,
+          status: testcase.status,
+          token: testcase.token,
+        }
+      })
+
+      await db.insert(zuvyTestCasesSubmission).values(testcasesSubmissionInsert).returning();
+
+      if (testcasesSubmission.length !== 0) {
+        return [null, { statusCode: STATUS_CODES.OK, message: 'Submission successful', testcasesSubmission }];
+      } else {
+        return [{ statusCode: STATUS_CODES.BAD_REQUEST, message: 'Error in submitting code' }];
+      }
+    } catch (error) {
+      return [{ statusCode: STATUS_CODES.BAD_REQUEST, message: error.message }];
+    }
+  }
+
+
+  async getPracticeCode(questionId, userId, submissionId, codingOutsourseId): Promise<any> {
+    try {
+      let queryString;
+      if (isNaN(submissionId)) {
+        queryString = sql`${zuvyPracticeCode.questionId} = ${questionId} AND ${zuvyPracticeCode.userId} = ${userId}`
+      } else {
+        queryString = sql`${zuvyPracticeCode.questionId} = ${questionId} AND ${zuvyPracticeCode.userId} = ${userId} AND ${zuvyPracticeCode.submissionId} = ${submissionId} AND ${zuvyPracticeCode.codingOutsourseId} = ${codingOutsourseId}`
+      }
+      let response = await db.query.zuvyPracticeCode.findMany({
+        where: (zuvyPracticeCode, { sql }) => queryString,
+        columns: {
+          status: true,
+          action: true,
+          questionId: true,
+          submissionId: true,
+        },
+      });
+      if (response.length === 0) {
+        return [{ statusCode: STATUS_CODES.NOT_FOUND, message: 'No practice code available for the given question' }];
+      } else {
+        let questionInfo = await this.getCodingQuestion(questionId, false);
+        const submissionsInfoPromises = response.map(async (submission: any) => {
+          const token = submission.token;
+          let data = await this.getCodeInfo(token)
+          return data;
+        });
+        const submissions = await Promise.all(submissionsInfoPromises);
+        return [null, { statusCode: STATUS_CODES.OK, message: 'Practice code fetched successfully', questionInfo, submissions }];
+      }
+    } catch (error) {
+      return [{ statusCode: STATUS_CODES.BAD_REQUEST, message: error.message }];
+    }
+  }
+
+  async getSubmissionByQuestionId(questionId: number): Promise<any> {
+    try {
+      const submissions = await db.query.zuvyPracticeCode.findMany({
+        where: (zuvyPracticeCode, { sql }) => sql`${zuvyPracticeCode.questionId} = ${questionId}`,
+        columns: {
+          id: true,
+          status: true,
+          action: true,
+          questionId: true,
+          submissionId: true,
+          codingOutsourseId: true,
+          createdAt: true,
+        },
+      });
+      if (submissions.length === 0) {
+        return [{ message: 'No submission available for the given question', statusCode: STATUS_CODES.NOT_FOUND }];
+      }
+      return [null, { message: 'All submission by question id', data: submissions, statusCode: STATUS_CODES.OK }];
+    } catch (error) {
+      return [{ message: error.message, statusCode: STATUS_CODES.BAD_REQUEST }];
+    }
+  }
+
+
 
   async getCodeInfo(tokens) {
     const options = {
@@ -194,132 +226,34 @@ export class CodingPlatformService {
 
     try {
       const response = await axios.request(options);
-      return response.data;
+      return [null, { statusCode: STATUS_CODES.OK, message: 'Code submitted successfully', data: response.data }];
     } catch (error) {
-      throw error;
+      return [{ message: error.message, statusCode: STATUS_CODES.BAD_REQUEST }];
     }
   }
 
-  async getQuestionsWithStatus(userId: number, difficulty: string, page: number, limit: number) {
-    try {
-
-      let queryString 
-      if (difficulty !== undefined) {
-        if (!['easy', 'medium', 'hard'].includes(difficulty.toLowerCase())) {
-          return { status: 'error', code: 400, message: 'Invalid difficulty level' };
-        }
-        queryString = sql`${zuvyCodingQuestions.difficulty} = ${difficulty}`;
-      } else {
-        if (difficulty !== undefined) {
-          queryString = sql`${zuvyCodingQuestions.difficulty} = ${difficulty}`;
-        } else {
-          queryString = sql`${zuvyCodingQuestions.id} > 0`;
-        }
-      }
-      const toatalQuestionsWithSubmisionStatus = await db.query.zuvyCodingQuestions.findMany({
-        where : queryString,
-        limit: limit,
-        offset: (page - 1) * limit,
-        orderBy: desc(zuvyCodingQuestions.id),
-        columns: {
-          id: true,
-          difficulty: true,
-          title: true,
-        },
-        with: {
-          submissions: {
-            where: (zuvyPracticeCode, { sql }) => sql`${zuvyPracticeCode.userId} = ${userId} `,
-            columns: {
-              status: true,
-              createdAt: true,
-              questionId:true,
-            }
-          }
-        },
-      })
-      const toatalQuestions = await db.query.zuvyCodingQuestions.findMany({columns: {id: true,}, where: queryString})
-
-      const response = toatalQuestionsWithSubmisionStatus.map((question: any) => {
-        const acceptedSubmission = question.submissions.find(submission => submission.status === 'Accepted');
-        if (acceptedSubmission) {
-          question.SolutionStatus = 'Accepted';
-        }
-        if (!question.hasOwnProperty('SolutionStatus')) {
-          question.SolutionStatus = question.submissions.length > 0 ? question.submissions[question.submissions.length - 1].status : 'No Submission';
-        }
-        delete question.submissions
-        return {
-          ...question
-        }
-      })
-      return {toatalQuestionsWithSubmisionStatus, totalQuestions: toatalQuestions.length};
-    } catch (error) {
-      console.error('Error fetching questions with status:', error);
-      throw error;
-    }
-  }
-
-
-  async createCodingProblem(codingProblem: CreateProblemDto) {
+  async createCodingProblem(codingProblem: CreateProblemDto): Promise<any> {
     try {
       const newQuestionCreated = await db.insert(zuvyCodingQuestions).values(codingProblem).returning();
-      return newQuestionCreated;
+      return [null, { message: 'Coding problem created successfully', data: newQuestionCreated, statusCode: STATUS_CODES.CREATED }];
     } catch (err) {
-      return new ErrorResponse(err.message, STATUS_CODES.BAD_REQUEST, false);
-    }
-  }
-
-  async codingSubmission(userId:number , codingOutsourseId:number){
-    try{
-      let results = await db.select({
-        id: zuvyPracticeCode.id,
-        status: zuvyPracticeCode.status,
-        action: zuvyPracticeCode.action,
-        questionId: zuvyPracticeCode.questionId,
-        codingOutsourseId: zuvyPracticeCode.codingOutsourseId,
-        submissionId: zuvyPracticeCode.submissionId,
-        createdAt: zuvyPracticeCode.createdAt,
-      }).from(zuvyPracticeCode).where(sql`
-        ${zuvyPracticeCode.codingOutsourseId} = ${codingOutsourseId}
-        AND ${zuvyPracticeCode.userId} = ${userId}
-        AND ${zuvyPracticeCode.status} = 'Accepted'
-        AND ${zuvyPracticeCode.action} = 'submit'
-      `).limit(1).orderBy(desc(zuvyPracticeCode.id));
-
-      let data;
-      if (results?.length === 0) {
-        return { status: 'error', code: 400, message: "Submission or not Accepted or not submitted yet" };
-      } else {
-        data = await db.select().from(zuvyCodingQuestions).where(sql`${zuvyCodingQuestions.id} = ${results[0].questionId}`)
-      }
-      let shapecode = await this.getCodeInfo(results[0])
-      return {...results[0], questionInfo: data[0], shapecode}
-    } catch (error){
-      return new ErrorResponse(error.message, STATUS_CODES.BAD_REQUEST, false);
-    }
-  }
-  async getLanguagesById(languageId: number) {
-    try {
-      const language = await db.select().from(zuvyLanguages).where(sql`${zuvyLanguages.id} = ${languageId}`);
-      return language;
-    } catch (error) {
-      return new ErrorResponse(error.message, STATUS_CODES.BAD_REQUEST, false);
+      return [{ message: err.message, statusCode: STATUS_CODES.BAD_REQUEST }];
     }
   }
 
   async createCodingQuestion(createCodingQuestionDto: any): Promise<any> {
-    console.log({createCodingQuestionDto});
     const { testCases, ...questionData } = createCodingQuestionDto;
     try {
-      const question:any = await db.insert(zuvyCodingQuestions).values(questionData).returning();
+      const question: any = await db.insert(zuvyCodingQuestions).values(questionData).returning();
       let testCaseAndExpectedOutput = [];
       for (let i = 0; i < testCases.length; i++) {
-        testCaseAndExpectedOutput.push({ questionId: question[0].id,inputs: testCases[i].inputs, expectedOutput: testCases[i].expectedOutput});
+        testCaseAndExpectedOutput.push({ questionId: question[0].id, inputs: testCases[i].inputs, expectedOutput: testCases[i].expectedOutput });
       }
       let TestCases = await db.insert(zuvyTestCases).values(testCaseAndExpectedOutput).returning();
-      return [null,{...question[0], TestCases}];
+      // return [null,{...question[0], TestCases}];
+      return [null, { message: 'Coding question created successfully', data: { ...question[0], TestCases }, statusCode: STATUS_CODES.CREATED }];
     } catch (error) {
-      return [new ErrorResponse(error.message, STATUS_CODES.BAD_REQUEST, false)];
+      return [[{ message: error.message, statusCode: STATUS_CODES.BAD_REQUEST }]];
     }
   }
 
@@ -328,9 +262,9 @@ export class CodingPlatformService {
     try {
       const question = await db.update(zuvyCodingQuestions).set(questionData).where(sql`${zuvyCodingQuestions.id} = ${id}`).returning();
       await this.updateTestCaseAndExpectedOutput(testCases);
-      return [null, { message: 'Coding question updated successfully', question }];
+      return [null, { message: 'Coding question updated successfully', data: question, statusCode: STATUS_CODES.OK }];
     } catch (error) {
-      return [new ErrorResponse(error.message, STATUS_CODES.BAD_REQUEST, false)];
+      return [[{ message: error.message, statusCode: STATUS_CODES.BAD_REQUEST }]];
     }
   }
 
@@ -338,24 +272,15 @@ export class CodingPlatformService {
     try {
       let data = await db.delete(zuvyCodingQuestions).where(sql`${zuvyCodingQuestions.id} = ${id}`).returning();
       if (data.length === 0) {
-        return [new ErrorResponse('Not found', STATUS_CODES.NOT_FOUND, false)];
+        return [{ message: 'Not found', statusCode: STATUS_CODES.NOT_FOUND }];
       }
-      return [null, { message: 'Coding question deleted successfully' }];
+      return [null, { message: 'Coding question deleted successfully', statusCode: STATUS_CODES.OK }];
     } catch (error) {
-      return [new ErrorResponse(error.message, STATUS_CODES.BAD_REQUEST, false)];
+      return [[{ message: error.message, statusCode: STATUS_CODES.BAD_REQUEST }]];
     }
   }
 
-  async createLanguage(createLanguageDto: any): Promise<any> {
-    try {
-      const language = await db.insert(zuvyLanguages).values(createLanguageDto);
-      return language;
-    } catch (error) {
-      return new ErrorResponse(error.message, STATUS_CODES.BAD_REQUEST, false);
-    }
-  }
-
-  async getCodingQuestion(id: number, withTemplate:boolean = true): Promise<any> {
+  async getCodingQuestion(id: number, withTemplate: boolean = true, totalCasses = 0): Promise<any> {
     try {
       const question = await db.query.zuvyCodingQuestions.findMany({
         where: (zuvyCodingQuestions, { sql }) => sql`${zuvyCodingQuestions.id} = ${id}`,
@@ -372,22 +297,20 @@ export class CodingPlatformService {
               inputs: true,
               expectedOutput: true,
             },
-            limit: 3
+            limit: totalCasses == 3 ? totalCasses : undefined,
           }
         }
-      }) 
-
+      })
       if (question.length === 0) {
-        return { status: 'error', code: 400, message: "No question available for the given question Id" };
+        return [{ message: 'Not found', statusCode: STATUS_CODES.NOT_FOUND }];
       }
 
       if (withTemplate) {
         question[0]["templates"] = await generateTemplates(question[0].title, question[0].testCases[0].inputs);
       }
-      
-      return [null, question[0]];
+      return [null, { message: 'Coding question fetched successfully', data: question[0], statusCode: STATUS_CODES.OK }];
     } catch (error) {
-      return [new ErrorResponse(error.message, STATUS_CODES.BAD_REQUEST, false)];
+      return [[{ message: error.message, statusCode: STATUS_CODES.BAD_REQUEST }]];
     }
   }
   // i want to update the test case and expected output for the coding question
@@ -397,22 +320,22 @@ export class CodingPlatformService {
         const { inputs, expectedOutput } = testCase;
         await db.update(zuvyTestCases).set({ inputs, expectedOutput }).where(sql`${zuvyTestCases.id} = ${testCase.id}`);
       })
-      return [null, { message: 'Test case and expected output updated successfully' }];
+      return [null, { message: 'Test case and expected output updated successfully', statusCode: STATUS_CODES.OK }];
     } catch (error) {
-      return [new ErrorResponse(error.message, STATUS_CODES.BAD_REQUEST, false)];
+      return [[{ message: error.message, statusCode: STATUS_CODES.BAD_REQUEST }]];
     }
   }
 
 
-  async deleteCodingTestcase(id: number) : Promise<any> {
+  async deleteCodingTestcase(id: number): Promise<any> {
     try {
       let data = await db.delete(zuvyTestCases).where(sql`${zuvyTestCases.id} = ${id}`).returning();
       if (data.length === 0) {
-        return [new ErrorResponse('Not found', STATUS_CODES.NOT_FOUND, false)];
+        return [{ message: 'Not found', statusCode: STATUS_CODES.NOT_FOUND }];
       }
-      return [null, { message: 'Test case deleted successfully' }];
+      return [null, { message: 'Test case deleted successfully', statusCode: STATUS_CODES.OK }];
     } catch (error) {
-      return [new ErrorResponse(error.message, STATUS_CODES.BAD_REQUEST, false)];
+      return [[{ message: error.message, statusCode: STATUS_CODES.BAD_REQUEST }]];
     }
   }
 
@@ -420,9 +343,9 @@ export class CodingPlatformService {
     try {
       const { inputs, expectedOutput } = updateTestCaseDto
       const testCase = await db.insert(zuvyTestCases).values({ questionId, inputs, expectedOutput }).returning();
-      return [null, { message: "added the test case" , data:testCase[0]}];
+      return [null, { message: "added the test case", data: testCase[0] }, STATUS_CODES.CREATED];
     } catch (error) {
-      return [new ErrorResponse(error.message, STATUS_CODES.BAD_REQUEST, false)];
+      return [[{ message: error.message, statusCode: STATUS_CODES.BAD_REQUEST }]];
     }
   }
 }

@@ -175,7 +175,7 @@ export class StudentService {
       let enrolled = await db.select().from(zuvyBatchEnrollments).where(queryString);
 
       if (enrolled.length == 0) {
-        return { status: helperVariable.error, message: 'not enrolled in any course.', code: 404 };
+        return [{ status: helperVariable.error, message: 'not enrolled in any course.', code: 404 }];
       }
       let bootcampAndbatchIds = await Promise.all(
         enrolled
@@ -226,9 +226,9 @@ export class StudentService {
         return acc;
       }, {upcoming: [], ongoing: [] });
 
-      return {status:helperVariable.success,code: STATUS_CODES.OK,filterClasses,totalClasses,totalPages : !isNaN(limit) ? Math.ceil(totalClasses/limit) : 1};
+      return [null, {status:helperVariable.success,code: STATUS_CODES.OK,filterClasses,totalClasses,totalPages : !isNaN(limit) ? Math.ceil(totalClasses/limit) : 1, message: 'Upcoming classes retrieved successfully'}];
     } catch (error) {
-      return [new ErrorResponse(error.message, STATUS_CODES.BAD_REQUEST, false)]
+      return [{message: error.message, statusCode: STATUS_CODES.BAD_REQUEST}];
     }
   }
 

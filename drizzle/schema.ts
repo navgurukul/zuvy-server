@@ -427,29 +427,6 @@ export const partnerGroupUser = main.table('partner_group_user', {
   email: varchar('email', { length: 255 }),
 });
 
-// export const merakihackthon = main.table(
-//   'merakihackthon',
-//   {
-//     id: serial('id').primaryKey().notNull(),
-//     userId: integer('user_id')
-//       .notNull()
-//       .references(() => users.id),
-//     email: varchar('email', { length: 255 }).notNull(),
-//     durations: integer('durations').notNull(),
-//     createdAt: timestamp('created_at', {
-//       withTimezone: true,
-//       mode: 'string',
-//     }).notNull(),
-//   },
-//   (table) => {
-//     return {
-//       mainMerakihackthonUserIdUnique: unique(
-//         'main_merakihackthon_user_id_unique',
-//       ).on(table.userId),
-//     };
-//   },
-// );
-
 export const mergedClasses = main.table('merged_classes', {
   id: serial('id').primaryKey().notNull(),
   classId: integer('class_id').references(() => classes.id),
@@ -473,6 +450,11 @@ export const partnerGroup = main.table(
     };
   },
 );
+
+export const ghar_users = main.table('ghar_users', {
+  id: serial('id').primaryKey().notNull(),
+  email: varchar('email', { length: 255 }).notNull(),
+});
 
 export const partnerGroupRelationship = main.table(
   'partner_group_relationship',
@@ -2702,8 +2684,7 @@ export const zuvyPracticeCodeRelations = relations(zuvyPracticeCode, ({ one, man
     fields: [zuvyPracticeCode.questionId],
     references: [zuvyCodingQuestions.id],
   }),
-  testcasesSubmission: many(zuvyTestCasesSubmission),
-  
+  TestCasesSubmission: many(zuvyTestCasesSubmission),
 }))
 
 
@@ -3164,13 +3145,6 @@ export const trackingPostsRelations = relations(
 );
 
 
-// Define the CP_template table
-export const zuvyCqTemplate = main.table("zuvy_cq_template", {
-  id: serial("id").primaryKey().notNull(),
-  languageId: integer("language_id"),
-  template: jsonb("template").notNull(),
-});
-
 export const zuvyOutsourseAssessments = main.table('zuvy_outsourse_assessments', {
   id: serial('id').primaryKey().notNull(),
   assessmentId: integer('assessment_id').references(() => zuvyModuleAssessment.id, {
@@ -3394,15 +3368,6 @@ export const OutsourseQuizzesRelations = relations(zuvyOutsourseQuizzes, ({ one,
 
 }))
 
-
-
-
-export const codeUserRelations = relations(zuvyPracticeCode, ({ one }) => ({
-  codeStatus: one(users, {
-    fields: [zuvyPracticeCode.userId],
-    references: [users.id],
-  }),
-}));
 
 export const zuvyChapterTrackingRelations = relations(
   zuvyChapterTracking,

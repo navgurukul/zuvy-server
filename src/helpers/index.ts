@@ -66,13 +66,16 @@ export  const typeMappings = {
   }
 };
 
-
 export async function generateTemplates(functionName, parameters) {
+  // Normalize the function name
   functionName = functionName.replace(/ /g, '_').toLowerCase();
   const templates = {};
 
   // Generate Python template
-  templates['python'] = `
+  templates['python'] = {
+    id: 71,
+    name: 'Python',
+    template: Buffer.from(`
 from typing import List, Dict
 
 def ${functionName}(${parameters.map(p => `_${p.parameterName}_: ${typeMappings['python'][p.parameterType]}`).join(', ')}):
@@ -83,10 +86,14 @@ def ${functionName}(${parameters.map(p => `_${p.parameterName}_: ${typeMappings[
 ${parameters.map(p => `_${p.parameterName}_ = ${p.parameterType === 'array' ? 'list(map(int, input().split()))' : `${typeMappings['python'][p.parameterType]}(input())`}`).join('\n')}
 result = ${functionName}(${parameters.map(p => `_${p.parameterName}_`).join(', ')})
 print(result)
-  `;
+    `).toString('base64')
+  };
 
   // Generate C template
-  templates['c'] = `
+  templates['c'] = {
+    id: 50,
+    name: 'C',
+    template: Buffer.from(`
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -114,10 +121,14 @@ int main() {
 
   return 0;
 }
-`;
+    `).toString('base64')
+  };
 
   // Generate C++ template
-  templates['cpp'] = `
+  templates['cpp'] = {
+    id: 54,
+    name: 'C++',
+    template: Buffer.from(`
 #include <iostream>
 #include <vector>
 #include <sstream>
@@ -140,10 +151,14 @@ int main() {
 
   return 0;
 }
-`;
+    `).toString('base64')
+  };
 
   // Generate Java template
-  templates['java'] = `
+  templates['java'] = {
+    id: 62,
+    name: 'Java',
+    template: Buffer.from(`
 import java.util.Scanner;
 
 public class Main {
@@ -165,10 +180,14 @@ public class Main {
       System.out.println(result);
   }
 }
-`;
+    `).toString('base64')
+  };
 
   // Generate JavaScript (Node.js) template
-  templates['javascript'] = `
+  templates['javascript'] = {
+    id: 63,
+    name: 'JavaScript',
+    template: Buffer.from(`
 function ${functionName}(${parameters.map(p => `_${p.parameterName}_`).join(', ')}) {
   // Add your code here
   return ${typeMappings['javascript']['defaultReturnValue']}; // Replace with actual return value
@@ -191,15 +210,13 @@ rl.on('close', () => {
   
   const result = ${functionName}(${parameters.map(p => `_${p.parameterName}_`).join(', ')});
   console.log(result);
-});`;
-  for (const key in templates) {
-    if (templates.hasOwnProperty(key)) {
-      templates[key] = Buffer.from(templates[key]).toString('base64');
-    }
-  }
-  
+});
+    `).toString('base64')
+  };
+
   return templates;
 }
+
 
 // Common status codes
 export const STATUS_CODES = {
