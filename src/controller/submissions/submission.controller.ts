@@ -314,14 +314,16 @@ export class SubmissionController {
     @Query('limit') limit: number,
     @Query('offset') offset: number,
     @Res() res
-  ) {
+  ){
       try {
         let [err, success] =await this.submissionService.assignmentStatusOfStudents(
           chapterId,
           limit,
           offset
         );
+        
         if (err) {
+          console.log("err",err)
           return ErrorResponse.BadRequestException(err.message, err.statusCode).send(res)
         }
         return new SuccessResponse(success.message, success.statusCode, success.data).send(res);

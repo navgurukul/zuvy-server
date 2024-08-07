@@ -986,7 +986,7 @@ export class SubmissionService {
       return [null,{message:'Assignment Status of the students has been fetched',statusCode: STATUS_CODES.OK, data:{data,chapterId :chapterDeadline[0].id,chapterName:chapterDeadline[0].title, totalPages,totalStudentsCount,currentPage}}]
     }
     else {
-      return   [{message:'NO CONTENT FOUND', statusCode: STATUS_CODES.NO_CONTENT},null]
+      return   [null,{message:'NO CONTENT FOUND', statusCode: STATUS_CODES.OK}]
     }
     } catch (error) {
 
