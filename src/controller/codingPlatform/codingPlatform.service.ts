@@ -351,4 +351,32 @@ export class CodingPlatformService {
       return [[{ message: error.message, statusCode: STATUS_CODES.BAD_REQUEST }]];
     }
   }
+
+  // getPracticeCodeBySubmissionId
+  async getPracticeCodeBySubmissionId(submissionId: number): Promise<any> {
+    try {
+      const submission = await db.query.zuvyPracticeCode.findMany({
+        where: (zuvyPracticeCode, { sql }) => sql`${zuvyPracticeCode.id} = ${submissionId}`,
+        columns: {
+          id: true,
+          status: true,
+          action: true,
+          questionId: true,
+          submissionId: true,
+          codingOutsourseId: true,
+          createdAt: true,
+        },
+        with: {
+          questionDetail: true,
+          TestCasesSubmission: true
+        }
+      });
+      if (submission.length === 0) {
+        return [{ message: 'No submission available for the given submissionId', statusCode: STATUS_CODES.NOT_FOUND }];
+      }
+      return [null, { message: 'All submission by submission id', data: submission, statusCode: STATUS_CODES.OK }];
+    } catch (error) {
+      return [{ message: error.message, statusCode: STATUS_CODES.BAD_REQUEST }];
+    }
+  }
 }
