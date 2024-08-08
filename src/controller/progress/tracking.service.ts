@@ -1480,7 +1480,7 @@ export class TrackingService {
     }
   }
 
-  async getLatestUpdatedCourseForStudents(userId: number) {
+  async getLatestUpdatedCourseForStudents(userId: number):Promise<any> {
     try {
       const latestTracking = await db.select().from(zuvyRecentBootcamp)
         .where(eq(zuvyRecentBootcamp.userId, BigInt(userId)));  
@@ -1488,11 +1488,7 @@ export class TrackingService {
         const ifEnrolled = await db.select().from(zuvyBatchEnrollments).where(sql`${zuvyBatchEnrollments.bootcampId} = ${latestTracking[0].bootcampId} AND ${zuvyBatchEnrollments.userId} = ${BigInt(userId)}`);
         if(ifEnrolled.length == 0)
           {
-            return {
-              status: helperVariable.success,
-              code: 200,
-              message: 'You have been removed from the recent course that you are studying.Please ask your instructor about this!!'
-            }
+            return [null,{message:'You have been removed from the recent course that you are studying.Please ask your instructor about this!!',statusCode: STATUS_CODES.OK,data:[]}]
           }
         if (latestTracking[0].progress < 100) {
           const data = await db.query.zuvyCourseModules.findFirst({
@@ -1511,19 +1507,12 @@ export class TrackingService {
           });
           const index = data['moduleChapterData'].findIndex(obj => obj.id === latestTracking[0].chapterId)
           const newChapter = data['moduleChapterData'][index + 1];
-      
-          return {
-            status: helperVariable.success,
-            code:200,
-            latestCourse: {
-            moduleId: data.id,
+          return [null,{message:'Your latest updated course',statusCode: STATUS_CODES.OK,data:{moduleId: data.id,
             moduleName: data.name,
             typeId: data.typeId,
             bootcampId: data.bootcampId,
             bootcampName: data['moduleData'].name,
-            newChapter
-            }
-          }
+            newChapter}}]
         }
         else {
           const moduleInfo = await db.select().from(zuvyCourseModules).where(eq(zuvyCourseModules.id, latestTracking[0].moduleId))
@@ -1555,39 +1544,31 @@ export class TrackingService {
             },
           });
           if (data) {
-            return {
-              status: helperVariable.success,
-              code:200,
-              latestCourse : {
-              moduleId: data.id,
+            return [null,{message:'Your latest updated course',statusCode: STATUS_CODES.OK,data:{ moduleId: data.id,
               moduleName: data.name,
               typeId: data.typeId,
               bootcampId: data['moduleData'].id,
               bootcampName: data['moduleData'].name,
-              newChapter: data.typeId == 1 ? (data['moduleChapterData'].length > 0 ? data['moduleChapterData'][0] : 'There is no chapter in the module') : data['projectData'][0]
-              }
-            };
+              newChapter: data.typeId == 1 ? (data['moduleChapterData'].length > 0 ? data['moduleChapterData'][0] : 'There is no chapter in the module') : data['projectData'][0]}}]
+            
           }
           else {
             return {
               status: helperVariable.error,
-              code: 404,
+              code: 200,
               message: 'Start a course'
             }
+            
 
           }
         }
       }
       else {
-        return {
-          status: helperVariable.error,
-          code: 404,
-          message: 'You have not yet started any course module'
-        }
+        return [null,{message:'You have not yet started any course module',statusCode: STATUS_CODES.OK,data:[]}]
       }
     }
     catch (err) {
-      throw err;
+      return [{message:err.message,statusCode: STATUS_CODES.BAD_REQUEST}]
     }
   }
 

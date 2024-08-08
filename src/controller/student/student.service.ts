@@ -207,12 +207,14 @@ export class StudentService {
           }
         },
         extras: {
-          totalCount: sql<number>`count(*) over()`.as('total_count')
+          totalCount: sql<number>`coalesce(count(*) over(), 0)`.as('total_count')
         },
         limit,
         offset
        })
-       const totalClasses = upcomingClasses[0]['totalCount'];
+      const totalCount = upcomingClasses.length > 0 ? upcomingClasses[0]['totalCount'] : 0;
+        
+       const totalClasses =totalCount;
       let filterClasses = upcomingClasses.reduce((acc, e) => {
           e['bootcampName'] = e['bootcampDetail'].name;
           e['bootcampId'] = e['bootcampDetail'].id;
@@ -226,7 +228,7 @@ export class StudentService {
         return acc;
       }, {upcoming: [], ongoing: [] });
 
-      return [null, {status:helperVariable.success,code: STATUS_CODES.OK,filterClasses,totalClasses,totalPages : !isNaN(limit) ? Math.ceil(totalClasses/limit) : 1, message: 'Upcoming classes retrieved successfully'}];
+      return [null, {status:helperVariable.success,code: STATUS_CODES.OK,filterClasses,totalClasses:Number(totalClasses),totalPages : !isNaN(limit) ? Math.ceil(totalClasses/limit) : 1, message: 'Upcoming classes retrieved successfully'}];
     } catch (error) {
       return [{message: error.message, statusCode: STATUS_CODES.BAD_REQUEST}];
     }
