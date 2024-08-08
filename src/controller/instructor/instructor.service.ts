@@ -1,13 +1,12 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { db } from '../../db/index';
 import { helperVariable } from 'src/constants/helper';
-import { eq, sql, inArray, and, desc, arrayContains, notInArray } from 'drizzle-orm';
+import { eq, sql, inArray} from 'drizzle-orm';
 import * as _ from 'lodash';
 import {
   zuvyBatches,
   zuvySessions
 } from 'drizzle/schema';
-import {ErrorResponse, SuccessResponse} from 'src/errorHandler/handler';
 import { STATUS_CODES } from 'src/helpers';
 
 
@@ -16,7 +15,7 @@ const { ZUVY_CONTENT_URL, ZUVY_CONTENTS_API_URL } = process.env; // INPORTING en
 @Injectable()
 export class InstructorService {
 
-   async allCourses(userId : number)
+   async allCourses(userId : number):Promise<any>
    {
     try {
         const data = await db.query.zuvyBatches.findMany({
@@ -38,16 +37,15 @@ export class InstructorService {
 
         if(data.length > 0)
           {
-        return new SuccessResponse('Batches of the instructor has been fetched successfully',STATUS_CODES.OK,data)
+        return [null,{message:'Batches of the instructor has been fetched successfully',statusCode: STATUS_CODES.OK,data}]
           }
           else {
-            return new ErrorResponse('Not found',STATUS_CODES.NO_CONTENT)
+            return [{message:'No course or batch found', statusCode: STATUS_CODES.NO_CONTENT},null]
           }
     }
-    catch(err)
+    catch(error)
     {
-      Logger.log(`error: ${err.message}`);
-      return new ErrorResponse(err.message,STATUS_CODES.NO_CONTENT)
+      return [{message:error.message, statusCode: STATUS_CODES.BAD_REQUEST},null]
     }
    }
 
@@ -57,17 +55,17 @@ export class InstructorService {
     limit: number,
     offset: number,
     timeFrame: string,
-    batchId:number
-  ) {
+    batchId:number[]
+  ):Promise<any> {
     try {
       const responses = {
         upcoming: [],
         ongoing: [],
       };
       let queryString;
-      if(!isNaN(batchId))
+      if(batchId.length > 0)
         {
-          queryString = sql`${zuvyBatches.instructorId} = ${instructorId} AND ${zuvyBatches.id}= ${batchId}`
+          queryString = sql`${zuvyBatches.instructorId} = ${instructorId} AND ${inArray(zuvyBatches.id, batchId)}`
         }
         else {
           queryString = sql`${zuvyBatches.instructorId} = ${instructorId}`
@@ -76,12 +74,8 @@ export class InstructorService {
         .select()
         .from(zuvyBatches)
         .where(queryString);
-
       if (batches.length === 0) {
-        return {
-          status: helperVariable.error,
-          message: 'No batches found for the given instructorId',
-        };
+        return [{message:'Not found', statusCode: STATUS_CODES.NO_CONTENT},null]
       }
       var upcomingCount = 0;
       var ongoingCount = 0;
@@ -89,7 +83,8 @@ export class InstructorService {
         const currentTime = new Date();
          const classDetails = await db.query.zuvySessions.findMany({
           where: (session, { sql }) =>
-            sql`${session.batchId} = ${batch.id} AND (${session.status} = ${helperVariable.upcoming} OR ${session.status} = ${helperVariable.ongoing})`,
+            sql`${session.batchId} = ${batch.id} 
+             AND (${session.status} = ${helperVariable.upcoming} OR ${session.status} = ${helperVariable.ongoing})`,
           with : {
             bootcampDetail : {
               columns : {
@@ -112,7 +107,7 @@ export class InstructorService {
           if (currentTime >= startTime && currentTime <= endTime) {
             const {status,...rest} = classObj;
             ongoingClasses.push({...rest,status:helperVariable.ongoing});
-          } else {
+          } else if(currentTime < startTime){
             upcomingClasses.push(classObj);
           }
         }
@@ -167,36 +162,35 @@ export class InstructorService {
         responses.upcoming.push(...batchUpcomingClasses);
         responses.ongoing.push(...batchOngoingClasses);
       }
+      const totalClasses = upcomingCount + ongoingCount
       responses.upcoming.sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
       responses.ongoing.sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
 
-      return new SuccessResponse('Upcoming and ongoing classes has been fetched for the instructor',STATUS_CODES.OK,{responses,
-        totalUpcomingClasses : upcomingCount,
-        totalUpcomingPages : upcomingCount>0 ?  Math.ceil(upcomingCount/limit) : 1,
-        totalOngoingClasses : ongoingCount,
-        totalOngoingPages : ongoingCount>0 ?  Math.ceil(ongoingCount/limit) : 1})
+      return [null,{message: 'Upcoming and ongoing classes has been fetched for the instructor',statusCode:STATUS_CODES.OK,data:{responses,
+        totalUpcomingClasses : totalClasses,
+        totalUpcomingPages : totalClasses > 0 ?  Math.ceil(totalClasses/limit) : 1}}]
     } catch (error) {
-      return [new ErrorResponse(error.message, STATUS_CODES.BAD_REQUEST)]
+      return [{message:error.message, statusCode: STATUS_CODES.BAD_REQUEST},null]
     }
   }
 
-  async getBatchOfInstructor(instructorId:number)
+  async getBatchOfInstructor(instructorId:number):Promise<any>
   {
     try {
       const batchDetails = await db.select({batchId:zuvyBatches.id,batchName: zuvyBatches.name}).from(zuvyBatches).where(eq(zuvyBatches.instructorId,instructorId));
 
       if(batchDetails.length > 0)
         {
-          return new SuccessResponse('Batches of the instructor has been fetched successfully',STATUS_CODES.OK,batchDetails)
+          return [null,{message:'Batches of the instructor has been fetched successfully',statusCode: STATUS_CODES.OK,data:batchDetails}]
         }
         else {
-          return new ErrorResponse('No batches found',STATUS_CODES.NO_CONTENT)
+          return [{message:'No batch found', statusCode: STATUS_CODES.NO_CONTENT},null]
         }
     }
     catch(error)
     {
       Logger.log(`error: ${error.message}`)
-      return [new ErrorResponse(error.message, STATUS_CODES.BAD_REQUEST)]
+      return [{message:error.message, statusCode: STATUS_CODES.BAD_REQUEST},null]
     }
   }
 

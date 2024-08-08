@@ -9,7 +9,8 @@ import {
   Param,
   BadRequestException,
   Query,
-  Req
+  Req,
+  Res
 } from '@nestjs/common';
 import { TrackingService } from './tracking.service';
 import {
@@ -34,6 +35,7 @@ import { UpdateProjectDto } from './dto/project.dto';
 import { CreateQuizDto, McqCreateDto, PutQuizDto } from './dto/quiz.dto';
 import { quizBatchDto } from '../content/dto/content.dto';
 import { SubmitFormBodyDto } from './dto/form.dto';
+import { ErrorResponse, SuccessResponse } from 'src/errorHandler/handler';
 
 @Controller('tracking')
 @ApiTags('tracking')
@@ -400,11 +402,19 @@ export class TrackingController {
   async getAllUpcomingAssignment(
     @Req() req,
     @Query('bootcampId') bootcampId: number,
+    @Res() res
   ) {
-    const res = await this.TrackingService.getAllUpcomingSubmission(
-      req.user[0].id,bootcampId
-    );
-    return res;
+      try {
+        let [err, success] =await this.TrackingService.getAllUpcomingSubmission(
+            req.user[0].id,bootcampId
+          );
+        if (err) {
+          return ErrorResponse.BadRequestException(err.message, err.statusCode).send(res)
+        }
+        return new SuccessResponse(success.message, success.statusCode, success.data).send(res);
+      } catch (error) {
+        return ErrorResponse.BadRequestException(error.message).send(res);
+      }  
   }
 
   @Get('/getChapterDetailsWithStatus/:chapterId')
@@ -510,11 +520,19 @@ export class TrackingController {
   @ApiBearerAuth()
   async getLatestUpdatedCourseForStudent(
     @Req() req,
+    @Res() res
   ) {
-    const res = await this.TrackingService.getLatestUpdatedCourseForStudents(
-      req.user[0].id
-    );
-    return res;
+    try {
+      let [err, success] = await this.TrackingService.getLatestUpdatedCourseForStudents(
+        req.user[0].id
+      );
+      if (err) {
+        return ErrorResponse.BadRequestException(err.message, err.statusCode).send(res)
+      }
+      return new SuccessResponse(success.message, success.statusCode, success.data).send(res);
+    } catch (error) {
+      return ErrorResponse.BadRequestException(error.message).send(res);
+    }  
   }
 
   @Get('assessment/submissionId=:submissionId')

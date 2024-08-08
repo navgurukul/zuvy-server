@@ -106,11 +106,11 @@ export class StudentController {
   @Query('offset') offset : number, @Res() res: Response
 ) {
   try {
-    const [err, result] = await this.studentService.getUpcomingClass(req.user[0].id, batchID, limit, offset);
+    const [err, success] = await this.studentService.getUpcomingClass(req.user[0].id, batchID, limit, offset);
     if (err) {
       return ErrorResponse.BadRequestException(err.message).send(res);
     }
-    return new SuccessResponse('Upcoming classes retrieved successfully', 200, result).send(res);
+    return new SuccessResponse(success.message, success.statusCode, success.data).send(res);
   } catch (error) {
     return ErrorResponse.BadRequestException(error.message).send(res);
   }
