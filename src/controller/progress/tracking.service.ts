@@ -1553,12 +1553,7 @@ export class TrackingService {
             
           }
           else {
-            return {
-              status: helperVariable.error,
-              code: 200,
-              message: 'Start a course'
-            }
-            
+            return [null,{message:'Start a course',statusCode: STATUS_CODES.OK,data:[]}]  
 
           }
         }
