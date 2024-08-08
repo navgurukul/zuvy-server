@@ -73,7 +73,7 @@ export class CodingPlatformController {
     }
   }
 
-  @Get('/practicecode/questionId=:questionId')
+  @Get('/submissions/questionId=:questionId')
   @ApiOperation({ summary: 'Get the question AND submissions by question id ' })
   @ApiBearerAuth()
   @ApiQuery({
@@ -90,34 +90,16 @@ export class CodingPlatformController {
   })
   async getPracticeCodeById(@Param('questionId') questionId: number, @Req() req, @Query('assessmentSubmissionId') submissionId: number, @Query('codingOutsourseId') codingOutsourseId: number, @Res() res: Response) {
     try {
+
       let [err, success] = await this.codingPlatformService.getPracticeCode(questionId, req.user[0].id, submissionId, codingOutsourseId);
       if (err) {
-        return ErrorResponse.BadRequestException(err.message, err.statusCode)
-      }
-      return new SuccessResponse(success.message, success.statusCode, success).send(res);
-    } catch (error) {
-      return ErrorResponse.BadRequestException(error.message).send(res);
-    }
-  }
-
-  @Get('submission/:questionId')
-  @ApiOperation({ summary: 'Get all submission by question id' })
-  @ApiBearerAuth()
-  async getSubmissionByQuestionId(@Param('questionId') questionId: number, @Res() res: Response) {
-    try {
-      let [err, success] = await this.codingPlatformService.getSubmissionByQuestionId(questionId);
-      console.log(err, success);
-      if (err) {
-        return ErrorResponse.BadRequestException(err.message).send(res);
-
+        return ErrorResponse.BadRequestException(err.message, err.statusCode).send(res);
       }
       return new SuccessResponse(success.message, success.statusCode, success.data).send(res);
     } catch (error) {
       return ErrorResponse.BadRequestException(error.message).send(res);
     }
   }
-
-
 
   @Post('create-question')
   @ApiOperation({ summary: 'Create coding question with test cases' })
@@ -200,6 +182,22 @@ export class CodingPlatformController {
   async addTestCase(@Param('question_id') question_id: number, @Body() updateTestCaseDto: TestCaseDto, @Res() res: Response): Promise<any> {
     try {
       const [err, success] = await this.codingPlatformService.addTestCase(question_id, updateTestCaseDto);
+      if (err) {
+        return ErrorResponse.BadRequestException(err.message).send(res);
+      }
+      return new SuccessResponse(success.message, success.statusCode, success.data).send(res);
+    } catch (error) {
+      return ErrorResponse.BadRequestException(error.message).send(res);
+    }
+  }
+
+  // get submission test cases id
+  @Get('submissions/:questionId')
+  @ApiOperation({ summary: 'Get all submissions of the question.' })
+  @ApiBearerAuth()
+  async getSubmissionsId(@Param('questionId') questionId: number, @Res() res: Response): Promise<any> {
+    try {
+      const [err, success] = await this.codingPlatformService.getSubmissionsId(questionId);
       if (err) {
         return ErrorResponse.BadRequestException(err.message).send(res);
       }
