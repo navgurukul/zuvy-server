@@ -164,7 +164,7 @@ export class StudentService {
     }
   }
 
-  async getUpcomingClass(student_id: number, batchID: number,limit:number,offset:number) {
+  async getUpcomingClass(student_id: number, batchID: number,limit:number,offset:number):Promise<any> {
     try {
       let queryString
       if (batchID) {
@@ -175,7 +175,7 @@ export class StudentService {
       let enrolled = await db.select().from(zuvyBatchEnrollments).where(queryString);
 
       if (enrolled.length == 0) {
-        return [{ status: helperVariable.error, message: 'not enrolled in any course.', code: 404 }];
+        return [null,{message:'not enrolled in any course.',statusCode: STATUS_CODES.OK,data:[]}]
       }
       let bootcampAndbatchIds = await Promise.all(
         enrolled
@@ -229,11 +229,12 @@ export class StudentService {
       }, {upcoming: [], ongoing: [] });
       if(Number(totalClasses) == 0)
         {
-          return [null, {status:helperVariable.success,code: STATUS_CODES.OK,message: 'No upcoming classes'}];
-        }      
-      return [null, {status:helperVariable.success,code: STATUS_CODES.OK,filterClasses,totalClasses:Number(totalClasses),totalPages : !isNaN(limit) ? Math.ceil(totalClasses/limit) : 1, message: 'Upcoming classes retrieved successfully'}];
+        return [null,{message:'No upcoming classes',statusCode: STATUS_CODES.OK,data:[]}]
+          
+        }
+      return [null,{message:'Upcoming classes fetched successfully',statusCode: STATUS_CODES.OK,data:{filterClasses,totalClasses:Number(totalClasses),totalPages : !isNaN(limit) ? Math.ceil(totalClasses/limit) : 1}}]
     } catch (error) {
-      return [{message: error.message, statusCode: STATUS_CODES.BAD_REQUEST}];
+      return [{message:error.message,statusCode: STATUS_CODES.BAD_REQUEST}]
     }
   }
 
