@@ -12,7 +12,9 @@ import {
     Optional,
     Query,
     BadRequestException,
-    Req
+    Req,
+    Res,
+    ParseArrayPipe
   } from '@nestjs/common';
   import { InstructorService } from './instructor.service';
   import {
@@ -24,6 +26,7 @@ import {
   import { ApiBearerAuth } from '@nestjs/swagger';
   import { difficulty, questionType } from 'drizzle/schema';
   import { ClassesService } from '../classes/classes.service';
+import { ErrorResponse, SuccessResponse } from 'src/errorHandler/handler';
   
   @Controller('instructor')
   @ApiTags('instructor')
@@ -40,9 +43,16 @@ import {
     @Get('/allCourses')
     @ApiOperation({ summary: 'Get all courses of a particular instructor' })
     @ApiBearerAuth()
-    async getAllCoursesOfInstructor(@Req() req) {
-      const res = await this.instructorService.allCourses(req.user[0].id);
-      return res;
+    async getAllCoursesOfInstructor(@Req() req,@Res() res) {
+      try {
+        let [err, success] =await this.instructorService.allCourses(req.user[0].id);
+        if (err) {
+          return ErrorResponse.BadRequestException(err.message, err.statusCode).send(res)
+        }
+        return new SuccessResponse(success.message, success.statusCode, success.data).send(res);
+      } catch (error) {
+        return ErrorResponse.BadRequestException(error.message).send(res);
+      }    
     }
 
 
@@ -63,30 +73,47 @@ import {
   @ApiQuery({
     name: 'batchId',
     required: false,
-    type: Number,
-    description: 'batchId',
+    type: [Number],
+    isArray: true,
+    description: 'Array of batchIds',
   })
   @ApiBearerAuth()
-  getAllUpcomingClasses(
+  async getAllUpcomingClasses(
     @Query('limit') limit: number,
     @Query('offset') offset: number,
     @Query('timeFrame') timeFrame: string,
-    @Query('batchId') batchId:number,
-    @Req() req
-  ): Promise<object> {
-    return this.instructorService.getAllUpcomingClasses(
-      req.user[0].id,
-      limit,
-      offset,
-      timeFrame,
-      batchId
-    );
+    @Query('batchId', new ParseArrayPipe({ items: Number, optional: true })) batchId: number[] = [],
+    @Req() req,
+    @Res() res
+  ){
+      try {
+        let [err, success] =await this.instructorService.getAllUpcomingClasses(
+          req.user[0].id,
+          limit,
+          offset,
+          timeFrame,
+          batchId
+        );
+        if (err) {
+          return ErrorResponse.BadRequestException(err.message, err.statusCode).send(res)
+        }
+        return new SuccessResponse(success.message, success.statusCode, success.data).send(res);
+      } catch (error) {
+        return ErrorResponse.BadRequestException(error.message).send(res);
+      }    
   }
     @Get('/batchOfInstructor')
     @ApiOperation({ summary: 'Get all batches of a particular instructor' })
     @ApiBearerAuth()
-    async getBatchOfInstructor(@Req() req) {
-    const res = await this.instructorService.getBatchOfInstructor(req.user[0].id);
-    return res;
+    async getBatchOfInstructor(@Req() req,@Res() res) {
+    try {
+      let [err, success] =await this.instructorService.getBatchOfInstructor(req.user[0].id);
+      if (err) {
+        return ErrorResponse.BadRequestException(err.message, err.statusCode).send(res)
+      }
+      return new SuccessResponse(success.message, success.statusCode, success.data).send(res);
+    } catch (error) {
+      return ErrorResponse.BadRequestException(error.message).send(res);
+    }  
     }
   }

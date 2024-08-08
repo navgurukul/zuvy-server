@@ -36,6 +36,8 @@ import { quizBatchDto } from '../content/dto/content.dto';
 import { BootcampController } from '../bootcamp/bootcamp.controller';
 import { SubmitFormBodyDto } from './dto/form.dto';
 import { helperVariable } from 'src/constants/helper';
+import { ErrorResponse, SuccessResponse } from 'src/errorHandler/handler';
+import { STATUS_CODES } from 'src/helpers';
 
 const { ZUVY_CONTENT_URL, ZUVY_CONTENTS_API_URL } = process.env; // INPORTING env VALUSE ZUVY_CONTENT
 
@@ -1017,7 +1019,7 @@ export class TrackingService {
     }
   }
 
-  async getAllUpcomingSubmission(userId: number,bootcampId:number)
+  async getAllUpcomingSubmission(userId: number,bootcampId:number):Promise<any>
   {
     try {
       const data = await db.query.zuvyBatchEnrollments.findMany({
@@ -1084,6 +1086,8 @@ export class TrackingService {
           }
         });
       });
+      if(chapterIds.length > 0)
+        {
       const completedChapterIds = await db.select({ id: zuvyChapterTracking.chapterId })
        .from(zuvyChapterTracking)
         .where( and( inArray(zuvyChapterTracking.chapterId, chapterIds), eq(zuvyChapterTracking.userId, BigInt(userId)) ) );
@@ -1120,19 +1124,20 @@ export class TrackingService {
             }
           });
         });
+       }
+       else {
+        return [{message:'No content found', statusCode: STATUS_CODES.NO_CONTENT},null]
+       }
+      }
+      else {
+        return [{message:'No content found', statusCode: STATUS_CODES.NO_CONTENT},null]
       }
       
-
-      return {
-        status:'success',
-        code:200,
-        upcomingAssignments,
-        lateAssignments
-      };
+      return [null,{message:'Upcoming submission fetched successfully',statusCode: STATUS_CODES.OK,data:{upcomingAssignments,lateAssignments}}]
     }
-    catch(err)
+    catch(error)
     {
-        throw err;
+      return [{message:error.message, statusCode: STATUS_CODES.BAD_REQUEST},null]
     }
   }
 
