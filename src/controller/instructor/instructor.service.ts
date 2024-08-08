@@ -1,13 +1,12 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { db } from '../../db/index';
 import { helperVariable } from 'src/constants/helper';
-import { eq, sql, inArray, and, desc, arrayContains, notInArray, gt } from 'drizzle-orm';
+import { eq, sql, inArray} from 'drizzle-orm';
 import * as _ from 'lodash';
 import {
   zuvyBatches,
   zuvySessions
 } from 'drizzle/schema';
-import {ErrorResponse, SuccessResponse} from 'src/errorHandler/handler';
 import { STATUS_CODES } from 'src/helpers';
 
 
