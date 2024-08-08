@@ -1004,6 +1004,7 @@ export class SubmissionService {
         columns: {
           id:true,
           topicId:true,
+          title:true,
           articleContent:true,
           completionDate:true
         },

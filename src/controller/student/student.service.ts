@@ -227,7 +227,10 @@ export class StudentService {
         }
         return acc;
       }, {upcoming: [], ongoing: [] });
-
+      if(Number(totalClasses) == 0)
+        {
+          return [null, {status:helperVariable.success,code: STATUS_CODES.OK,message: 'No upcoming classes'}];
+        }      
       return [null, {status:helperVariable.success,code: STATUS_CODES.OK,filterClasses,totalClasses:Number(totalClasses),totalPages : !isNaN(limit) ? Math.ceil(totalClasses/limit) : 1, message: 'Upcoming classes retrieved successfully'}];
     } catch (error) {
       return [{message: error.message, statusCode: STATUS_CODES.BAD_REQUEST}];
