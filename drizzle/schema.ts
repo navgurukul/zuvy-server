@@ -2668,6 +2668,7 @@ export const zuvyPracticeCode = main.table("zuvy_practice_code", {
 })
 
 export const zuvyPracticeCodeRelations = relations(zuvyPracticeCode, ({ one, many }) => ({
+  TestCasesSubmission: many(zuvyTestCasesSubmission),
   codeStatus: one(users, {
     fields: [zuvyPracticeCode.userId],
     references: [users.id],
@@ -2680,11 +2681,6 @@ export const zuvyPracticeCodeRelations = relations(zuvyPracticeCode, ({ one, man
     fields: [zuvyPracticeCode.submissionId],
     references: [zuvyAssessmentSubmission.id],
   }),
-  codingQuestion: one(zuvyCodingQuestions, {
-    fields: [zuvyPracticeCode.questionId],
-    references: [zuvyCodingQuestions.id],
-  }),
-  TestCasesSubmission: many(zuvyTestCasesSubmission),
 }))
 
 
