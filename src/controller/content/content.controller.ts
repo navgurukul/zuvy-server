@@ -42,7 +42,6 @@ import {
   CreateChapterDto,
   CreateTypeDto,
   formBatchDto,
-  updateChapterDto
 } from './dto/content.dto';
 import { CreateProblemDto } from '../codingPlatform/dto/codingPlatform.dto';
 import { difficulty, questionType } from 'drizzle/schema';
@@ -632,23 +631,6 @@ export class ContentController {
       formQuestion
     );
     return res;
-  }
-
-  @Patch('/editChapterContent/:chapterId')
-  @ApiOperation({ summary: 'Edit video, article and assignment for this chapter' })
-  @ApiBearerAuth()
-  async editVideo(
-    @Param('chapterId') chapterId: number,
-    @Body() updateChapterDto: updateChapterDto
-  ) {
-    return this.contentService.updateChapter(chapterId, updateChapterDto);
-  }
-
-  @Get('/getChapterDetailsByChapterId/:chapterId')
-  @ApiOperation({ summary: 'Get chapter details by chapterId' })
-  @ApiBearerAuth()
-  async getChapterDetailsByChapterId(@Param('chapterId') chapterId: number){
-    return this.contentService.getChapterDetailsByChapterId(chapterId);
   }
 
   @Delete('/deleteChapterContentByChapterId/:chapterId')

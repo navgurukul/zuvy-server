@@ -741,7 +741,7 @@ export class SubmissionService {
           id: Number(statusForm['user']['id']),
           name: statusForm['user']['name'],
           emailId: statusForm['user']['email'],
-          status: ['Submitted'],
+          status: 'Submitted',
         };
       });
       
@@ -752,13 +752,20 @@ export class SubmissionService {
             id: Number(statusForm['user']['id']),
             name: statusForm['user']['name'],
             emailId: statusForm['user']['email'],
-            status: ['Not Submitted'],
+            status: 'Not Submitted',
           };
         })
         .filter(statusForm => !completedIds.has(statusForm.id));
+      const combinedData = [...data1, ...data2];
 
-
-      return { data1, data2, totalPages, totalStudentsCount };
+      return {
+        status: "Success",
+        code: 200, 
+        moduleId,
+        chapterId,
+        combinedData, 
+        totalPages, 
+        totalStudentsCount };
     } catch (err) {
       throw err;
     }
@@ -766,9 +773,9 @@ export class SubmissionService {
 
 
   async getFormDetailsById(
-    userId: number,
     moduleId: number,
     chapterId: number,
+    userId: number
   ) {
     try {
       const chapterDetails = await db
@@ -792,28 +799,28 @@ export class SubmissionService {
         if (chapterDetails[0].topicId == 7) {
           if (chapterDetails[0].formQuestions !== null) {
             if (FormTracking.length == 0) {
-              const questions = await db
-                .select({
-                  id: zuvyModuleForm.id,
-                  question: zuvyModuleForm.question,
-                  options: zuvyModuleForm.options,
-                  typeId: zuvyModuleForm.typeId,
-                  isRequired: zuvyModuleForm.isRequired
-                })
-                .from(zuvyModuleForm)
-                .where(
-                  sql`${inArray(zuvyModuleForm.id, Object.values(chapterDetails[0].formQuestions))}`,
-                );
-              questions['status'] =
-                ChapterTracking.length != 0
-                  ? 'Completed'
-                  : 'Pending';
+              // const questions = await db
+              //   .select({
+              //     id: zuvyModuleForm.id,
+              //     question: zuvyModuleForm.question,
+              //     options: zuvyModuleForm.options,
+              //     typeId: zuvyModuleForm.typeId,
+              //     isRequired: zuvyModuleForm.isRequired
+              //   })
+              //   .from(zuvyModuleForm)
+              //   .where(
+              //     sql`${inArray(zuvyModuleForm.id, Object.values(chapterDetails[0].formQuestions))}`,
+              //   );
+              // questions['status'] =
+              //   ChapterTracking.length != 0
+              //     ? 'Completed'
+              //     : 'Pending';
 
-              return [{
-                status: "Pending",
+              return {
+                status: "success",
                 code: 200,
-                questions
-              }]
+                message:"Form not submitted by student"
+              }
 
             }
             else {
@@ -825,7 +832,8 @@ export class SubmissionService {
                     columns: {
                       chosenOptions: true,
                       answer: true,
-                      status: true
+                      status: true,
+                      updatedAt: true,
                     },
                     where: (formTracking, { sql }) => sql`${formTracking.userId} = ${userId} and ${formTracking.chapterId} = ${chapterId} and ${formTracking.moduleId} = ${moduleId}`,
                   }
@@ -838,8 +846,9 @@ export class SubmissionService {
                   : 'Pending';
 
               return {
-                status: "Completed",
+                status: "success",
                 code: 200,
+                message:"Form submitted by student",
                 trackedData
               }
             }

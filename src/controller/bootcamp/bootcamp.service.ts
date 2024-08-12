@@ -1,6 +1,6 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger,HttpStatus  } from '@nestjs/common';
 import { db } from '../../db/index';
-import { eq, sql, count, inArray, or, and, like } from 'drizzle-orm';
+import { eq, sql, count, inArray, or, and, like,desc } from 'drizzle-orm';
 // import { BatchesService } from '../batches/batch.service';
 import axios from 'axios';
 import * as _ from 'lodash';
@@ -14,6 +14,7 @@ import {
   zuvyBootcampTracking,
   zuvyBootcampType,
 } from '../../../drizzle/schema';
+import { batch } from 'googleapis/build/src/apis/batch';
 
 const { ZUVY_CONTENT_URL } = process.env; // INPORTING env VALUSE ZUVY_CONTENT
 
@@ -408,9 +409,10 @@ export class BootcampService {
   async addStudentToBootcamp(
     bootcampId: number,
     batchId: number,
-    users_data: any,
+    users_data: any[],
   ) {
     try {
+      var a=0,b=0,c=0,d=0;
       let enrollments = [];
       let bootcampData = await db
         .select()
@@ -422,11 +424,12 @@ export class BootcampService {
           null,
         ];
       }
+      var batch;
       if (batchId) {
-        let batch = await db
+        batch = await db
           .select()
           .from(zuvyBatches)
-          .where(sql`${zuvyBatches.id} = ${batchId}`);
+          .where(sql`${zuvyBatches.id} = ${batchId} AND ${zuvyBatches.bootcampId} = ${bootcampId}`);
         if (batch.length === 0) {
           return [
             { status: 'error', message: 'Batch not found', code: 404 },
@@ -451,6 +454,14 @@ export class BootcampService {
         }
       }
 
+      if (!Array.isArray(users_data) || users_data.length === 0) {
+        return [{
+          status: 'error',
+          code: 400,
+          message: 'The student list is empty. Add student to enroll in the course',
+        }];
+      }
+      
       if (users_data.length == 1) {
         let userData = await db
           .select()
@@ -498,54 +509,88 @@ export class BootcampService {
       for (let i = 0; i < users_data.length; i++) {
         let newUser = {};
         newUser['bootcamp_id'] = bootcampId;
+
+        if(!isNaN(batchId))
+          {
         newUser['batch_id'] = batchId;
+          }
         newUser['email'] = users_data[i]['email'];
         newUser['name'] = users_data[i]['name'];
-
+        let enroling;
         let userInfo = await db
           .select()
           .from(users)
           .where(sql`${users.email} = ${users_data[i]['email']}`);
         if (userInfo.length === 0) {
           userInfo = await db.insert(users).values(newUser).returning();
+          c+=1;
+              enroling = { userId: userInfo[0].id, bootcampId };
+              if (batchId) {
+                enroling['batchId'] = batchId;
+              }
+              userReport.push({
+                email: userInfo[0].email,
+                message: `enrolled successfully`,
+              });
+              enrollments.push(enroling);
         } else if (userInfo.length > 0) {
           let userEnrolled = await db
             .select()
             .from(zuvyBatchEnrollments)
             .where(
               sql`${zuvyBatchEnrollments.userId
-                } = ${userInfo[0].id.toString()} AND ${zuvyBatchEnrollments.bootcampId
+                } = ${BigInt(userInfo[0].id)} AND ${zuvyBatchEnrollments.bootcampId
                 } = ${bootcampId}`,
             );
-          if (userEnrolled.length > 0) {
+          if (userEnrolled.length > 0 && !isNaN(batchId) && (userEnrolled[0].batchId == null || userEnrolled[0].batchId != batchId)) {
             let updateEnrol = await db
               .update(zuvyBatchEnrollments)
               .set({ batchId })
               .where(
                 sql`${zuvyBatchEnrollments.userId
-                  } = ${userInfo[0].id.toString()} AND ${zuvyBatchEnrollments.bootcampId
+                  } = ${BigInt(userInfo[0].id)} AND ${zuvyBatchEnrollments.bootcampId
                   } = ${bootcampId}`,
               )
               .returning();
             if (updateEnrol.length !== 0) {
+              a+=1;
               userReport.push({
                 email: userInfo[0].email,
-                message: `Update to the anodher batch`,
+                message: `The student has been assigned to ${batch[0].name}`,
               });
               continue;
             }
             continue;
           }
+          else if(userEnrolled.length > 0 && !isNaN(batchId) && userEnrolled[0].batchId == batchId)
+            {
+              d+=1;
+              userReport.push({
+                email: userInfo[0].email,
+                message: `The student has been already assigned to ${batch[0].name}`,
+              });
+            }
+          else if(userEnrolled.length > 0 && isNaN(batchId))
+            {  b+=1;
+              userReport.push({
+                email: userInfo[0].email,
+                message: `The students have been already enrolled!!!`,
+              });
+            }
+           else if(userEnrolled.length == 0)
+            {
+              c+=1;
+              enroling = { userId: userInfo[0].id, bootcampId };
+              if (batchId) {
+                enroling['batchId'] = batchId;
+              }
+              userReport.push({
+                email: userInfo[0].email,
+                message: `enrolled successfully`,
+              });
+              enrollments.push(enroling);
+            } 
         }
-        let enroling = { userId: userInfo[0].id, bootcampId };
-        if (batchId) {
-          enroling['batchId'] = batchId;
-        }
-        userReport.push({
-          email: userInfo[0].email,
-          message: `enrolled successfully`,
-        });
-        enrollments.push(enroling);
       }
 
       let students_enrolled;
@@ -562,13 +607,32 @@ export class BootcampService {
         }
       }
 
+      let messageParts = [];
+
+      if (c > 0) {
+       messageParts.push(`${c} students successfully enrolled`);
+       }
+
+       if (b > 0) {
+        messageParts.push(`${b} students has been already enrolled`);
+       }  
+
+       if (a > 0) {
+        messageParts.push(`${a} students has been assigned to the batch`);
+         }
+       if(d > 0)
+        {
+          messageParts.push(`${d} students has been already enrolled in this particular batch`)
+        }  
+
+       let message = messageParts.join(' & ');
+
       return [
         null,
         {
-          status: true,
+          status: 'success',
           code: 200,
-          message: `${enrollments.length} students successfully enrolled!`,
-          report: report,
+          message: message,
           students_enrolled: userReport,
         },
       ];
@@ -577,6 +641,8 @@ export class BootcampService {
       return [{ status: 'error', message: e.message, code: 500 }, null];
     }
   }
+
+  
   async BootcampOrBatchEnrollments(batch_id: number, bootcamp_id: number, user_id = null) {
     let queryString;
 
@@ -606,10 +672,16 @@ export class BootcampService {
        name: users.name,
        email:users.email,
        profilePicture:users.profilePicture,
+       bootcampId:zuvyBatchEnrollments.bootcampId,
        attendance: zuvyBatchEnrollments.attendance,
        batchName:zuvyBatches.name,
        batchId:zuvyBatches.id,
        progress:zuvyBootcampTracking.progress,
+       totalClasses: sql<number>`(
+        SELECT COUNT(*) FROM zuvy_sessions 
+        WHERE zuvy_sessions.bootcamp_id = ${zuvyBatchEnrollments.bootcampId}
+        AND (${zuvyBatchEnrollments.batchId} IS NULL OR zuvy_sessions.batch_id = ${zuvyBatchEnrollments.batchId})
+      )`
       })
      .from(zuvyBatchEnrollments)
      .leftJoin(users, eq(zuvyBatchEnrollments.userId, users.id))
@@ -624,14 +696,22 @@ export class BootcampService {
         searchTerm && searchTerm.constructor === String ? sql`(LOWER(${users.name}) LIKE ${searchTerm.toLowerCase()} || '%' OR LOWER(${users.email}) LIKE ${searchTerm.toLowerCase()} || '%')` : undefined
       ))
       .orderBy(users.name);
-
      const mapData = await query;
      const totalNumberOfStudents = mapData.length;
      const studentsInfo = !isNaN(limit) && !isNaN(offset) ? mapData.slice(offset, offset + limit) : mapData;
      const modifiedStudentInfo = studentsInfo.map(item => {
+      const attendancePercentage = 
+        item.batchId !== null && 
+        item.attendance !== null && 
+        item.totalClasses > 0 
+          ? Math.ceil((item.attendance / item.totalClasses) * 100) 
+          : 0;
+    
       return {
         ...item,
-        userId: Number(item.userId)
+        userId: Number(item.userId),
+        attendance: attendancePercentage,
+        progress: item.progress != null ? item.progress : 0,
       };
     });
      const currentPage =!isNaN(limit) && !isNaN(offset) ? offset/limit + 1 : 1;

@@ -15,6 +15,20 @@
       "when": 1722490851433,
       "tag": "0001_glamorous_millenium_guard",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "5",
+      "when": 1722611221975,
+      "tag": "0002_cold_silk_fever",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "5",
+      "when": 1722611713427,
+      "tag": "0003_closed_blindfold",
+      "breakpoints": true
     }
   ]
 }
