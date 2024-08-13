@@ -1413,7 +1413,7 @@ export class TrackingService {
     } catch (err) { }
   }
 
-  async getProjectDetailsWithStatus(projectId: number, moduleId: number, userId: number) {
+  async getProjectDetailsWithStatus(projectId: number, moduleId: number, userId: number):Promise<any> {
     try {
       const data = await db.query.zuvyCourseModules.findFirst({
         where: (courseModules, { eq }) =>
@@ -1422,6 +1422,16 @@ export class TrackingService {
           projectData: {
             where: (projectDetails, { eq }) =>
               eq(projectDetails.id, projectId),
+            with: {
+              projectTrackingData: {
+                columns: {
+                  projectLink:true,
+                  isChecked:true,
+                  grades:true
+                },
+                where: (projectTrack, { eq }) => eq(projectTrack.userId, userId)
+              }
+            }
           },
           moduleTracking: {
             columns: {
@@ -1438,13 +1448,9 @@ export class TrackingService {
         projectData: data['projectData'],
         status: data['moduleTracking'].length > 0 ? 'Completed' : 'Pending'
       }
-      return {
-        status: 'success',
-        code: 200,
-        projectDetails
-      }
+      return [null,{message:'Project details successfully fetched',statusCode: STATUS_CODES.OK,data:projectDetails}]
     } catch (err) {
-      throw err;
+      return [{message:err.message,statusCode: STATUS_CODES.BAD_REQUEST}]
     }
   }
 
