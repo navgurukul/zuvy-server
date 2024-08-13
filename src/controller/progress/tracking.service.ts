@@ -1332,6 +1332,69 @@ export class TrackingService {
     }
   }
 
+  async getQuizAndAssignmentWithStatus(
+    userId: number,
+    chapterId: number,
+  ):Promise<any>
+   {
+    try {
+       const chapter = await db.select().from(zuvyModuleChapter).where(eq(zuvyModuleChapter.id,chapterId));
+       if(chapter.length > 0)
+        {
+          if(chapter[0].topicId == 4)
+            {
+              if(chapter[0].quizQuestions !== null)
+                {
+                  const trackedData = await db.query.zuvyModuleQuiz.findMany({
+                    where: (moduleQuiz, { sql }) => sql`${inArray(moduleQuiz.id, Object.values(chapter[0].quizQuestions))}`,
+                    orderBy: (moduleQuiz, { asc }) => asc(moduleQuiz.id),
+                    with: {
+    
+                      quizTrackingData: {
+                        columns: {
+                          chosenOption: true,
+                          status: true
+                        },
+                        where: (quizTracking, { sql }) => sql`${quizTracking.userId} = ${userId} and ${quizTracking.chapterId} = ${chapterId}`,
+                      }
+                    }
+                  });
+                  const quizQuestionsLength = Object.values(chapter[0].quizQuestions).length;
+                  const quizQuestionsWithTrackingData = trackedData.filter(quiz => quiz['quizTrackingData'].length > 0).length;
+
+                  const allQuestionsHaveTrackingData = quizQuestionsLength === quizQuestionsWithTrackingData;
+                  const status = allQuestionsHaveTrackingData ? 'Completed' : 'Pending';
+                  return [null,{message:'Chapter details fetched successfully',statusCode: STATUS_CODES.OK,data:{chapterTitle:chapter[0].title,chapterId:chapter[0].id,chapterOrder:chapter[0].order,quizDetails:trackedData,status}}]
+                }
+              else {
+                return [null,{message:'No quiz questions found in this quiz chapter',statusCode: STATUS_CODES.OK,data:{chapterTitle:chapter[0].title,chapterId:chapter[0].id,chapterOrder:chapter[0].order,quizDetails: [],status:'Pending'}}]
+              }  
+            }
+            else if(chapter[0].topicId == 5)
+              {
+                const assignmentTracking = await db
+               .select()
+               .from(zuvyAssignmentSubmission)
+               .where(sql`${zuvyAssignmentSubmission.userId} = ${userId}
+                AND ${zuvyAssignmentSubmission.chapterId} = ${chapterId}`);
+
+                const status = assignmentTracking.length > 0 ? 'Completed' : 'Pending';
+
+                return [null,{message:'Assignment chapter fetched succesfully',statusCode: STATUS_CODES.OK,data:{chapterDetails:chapter[0],assignmentTracking,status}}]
+              }
+              else {
+                return [null,{message:'It is not a quiz or assignment chapter',statusCode: STATUS_CODES.OK,data:null}]
+              }
+        }
+        else {
+          return [null,{message:'No chapter found',statusCode: STATUS_CODES.OK,data:null}]
+        }
+    }catch(error)
+    {
+
+    }
+  }
+
   async submitProjectForAUser(
     userId: number,
     bootcampId: number,
