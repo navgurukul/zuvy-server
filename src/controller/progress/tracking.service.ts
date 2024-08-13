@@ -1490,7 +1490,8 @@ export class TrackingService {
                 columns: {
                   projectLink:true,
                   isChecked:true,
-                  grades:true
+                  grades:true,
+                  createdAt:true
                 },
                 where: (projectTrack, { eq }) => eq(projectTrack.userId, userId)
               }
