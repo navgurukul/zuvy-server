@@ -921,7 +921,6 @@ export class TrackingService {
         sqlChunks.push(sql`when ${zuvyModuleTracking.id} = ${input.id} then ${sql.raw(`CAST(${input.progress} AS INTEGER)`)}`);
         ids.push(input.id);
        }
-       console.log(ids)
        
        sqlChunks.push(sql`end)`);
        
