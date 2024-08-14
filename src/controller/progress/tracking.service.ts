@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { db } from '../../db/index';
-import { eq, sql, inArray, and, desc, arrayContains, notInArray } from 'drizzle-orm';
+import { eq, sql, inArray, and, desc, arrayContains, notInArray, SQL } from 'drizzle-orm';
 import axios from 'axios';
 import { error, log } from 'console';
 import {
@@ -825,17 +825,60 @@ export class TrackingService {
           eq(courseModules.bootcampId, bootcampId),
         orderBy: (courseModules, { asc }) => asc(courseModules.order),
         with: {
-          moduleChapterData: true,
+          moduleChapterData: {
+            columns: {
+              topicId:true,
+              order:true
+            },
+            orderBy: (courseChapters, { asc }) => asc(courseChapters.order),
+              with: {
+                chapterTrackingDetails: {
+                  columns: {
+                    id: true,
+                  },
+                  where: (chapterTracking, { eq }) =>
+                    eq(chapterTracking.userId, BigInt(userId)),
+                },
+              }
+          },
           projectData: true,
           moduleTracking: {
             columns: {
+              id:true,
               progress: true,
             },
             where: (moduleTrack, { eq }) => eq(moduleTrack.userId, userId),
           },
         },
       });
+      
+      const result = data.map((module: any) => {
+        if (module.typeId == 2) {
+          return null;
+        }
+        const totalChapters = module['moduleChapterData'].length;
+        const completedChapters = module.moduleChapterData.filter(chapter => chapter['chapterTrackingDetails'].length > 0).length;
+        const calculatedProgress = Math.ceil((completedChapters / totalChapters) * 100);
+        if (module.moduleTracking.length > 0 && calculatedProgress !== module.moduleTracking[0].progress) {
+          return {
+            id: module.moduleTracking[0].id,
+            progress: calculatedProgress,
+            moduleId:module.id
+          };
+        }
+        return null;
+      })
+      .filter(module => module !== null);
       let modules = data.map((module: any) => {
+        const moduleFound = result.find(obj => obj.moduleId === module.id);
+        let updatedProgress = module['moduleTracking'].length != 0
+        ? module['moduleTracking'][0]['progress']
+        : 0;
+        if(moduleFound)
+          {
+            updatedProgress = moduleFound.progress
+            delete moduleFound.moduleId;
+          }
         return {
           id: module.id,
           name:
@@ -848,10 +891,7 @@ export class TrackingService {
           projectId: module.projectId,
           isLock: module.isLock,
           timeAlloted: module.timeAlloted,
-          progress:
-            module['moduleTracking'].length != 0
-              ? module['moduleTracking'][0]['progress']
-              : 0,
+          progress:updatedProgress,
           quizCount: module.moduleChapterData.filter(
             (chapter) => chapter.topicId === 4,
           ).length,
@@ -870,11 +910,37 @@ export class TrackingService {
         };
       });
 
+      if (result.length === 0) {
+        return;
+       }
+       
+       const sqlChunks: SQL[] = [];
+       const ids: number[] = [];
+       
+       sqlChunks.push(sql`(case`);
+       
+       for (const input of result) {
+        sqlChunks.push(sql`when ${zuvyModuleTracking.id} = ${input.id} then ${sql.raw(`CAST(${input.progress} AS INTEGER)`)}`);
+        ids.push(input.id);
+       }
+       console.log(ids)
+       
+       sqlChunks.push(sql`end)`);
+       
+       const finalSql: SQL = sql.join(sqlChunks, sql.raw(' '));
+
+       await db.update(zuvyModuleTracking).set({ progress: finalSql })
+         .where(sql`${inArray(zuvyModuleTracking.id, ids)} AND ${zuvyModuleTracking.userId} = ${BigInt(userId)}`);
       if (modules.length > 0) {
         for (let i = 1; i < modules.length; i++) {
           if (modules[i - 1].progress == 100 && modules[i].isLock == false) {
             modules[i].isLock = false;
-          } else {
+          }
+          else if(modules[i-1].progress < 100 && modules[i-1].progress > 0 && modules[i].progress > 0)
+            {
+              modules[i].isLock = false;
+            } 
+          else {
             modules[i].isLock = true;
           }
         }
@@ -1560,7 +1626,6 @@ export class TrackingService {
           {
             return [null,{message:'You have been removed from the recent course that you are studying.Please ask your instructor about this!!',statusCode: STATUS_CODES.OK,data:[]}]
           }
-        if (latestTracking[0].progress < 100) {
           const data = await db.query.zuvyCourseModules.findFirst({
             where: (courseModules, { sql }) =>
               sql`${courseModules.id} = ${latestTracking[0].moduleId} and ${courseModules.bootcampId} = ${latestTracking[0].bootcampId}`,
@@ -1571,12 +1636,47 @@ export class TrackingService {
                   id: true,
                   title: true,
                   topicId: true
+                },
+                with: {
+                  chapterTrackingDetails: {
+                    columns: {
+                      id: true,
+                    },
+                    where: (chapterTracking, { eq }) =>
+                      eq(chapterTracking.userId, BigInt(userId)),
+                  },
                 }
               },
             },
-          });
-          const index = data['moduleChapterData'].findIndex(obj => obj.id === latestTracking[0].chapterId)
-          const newChapter = data['moduleChapterData'][index + 1];
+          });  
+          
+          const chapters = data['moduleChapterData'];
+          let progress = latestTracking[0].progress;
+          const incompleteChaptersCount = chapters.filter(chapter => chapter['chapterTrackingDetails'].length === 0).length;
+          const chaptersCompleted = chapters.length - incompleteChaptersCount;
+          if(progress == 100 && incompleteChaptersCount > 0)
+            {
+              progress = Math.ceil((chaptersCompleted/chapters.length)*100) 
+              const updatedRecentCourse = await db.update(zuvyRecentBootcamp)
+               .set({ progress: progress})
+               .where(eq(zuvyRecentBootcamp.userId, BigInt(userId))).returning(); 
+              if(updatedRecentCourse.length == 0)
+                {
+                  return [null,{message:'There was some error',statusCode: STATUS_CODES.OK,data:[]}] 
+                }
+            }
+        if (progress < 100) {
+          const currentIndex = chapters.findIndex(obj => obj.id === latestTracking[0].chapterId)
+          let newChapter = null;
+          for (let i = currentIndex + 1; i < chapters.length; i++) {
+            if (chapters[i]['chapterTrackingDetails'].length === 0) {
+                newChapter = chapters[i];
+                break;
+                }
+             }
+           if (!newChapter) {
+               newChapter = chapters.find(chapter => chapter['chapterTrackingDetails'].length === 0);
+              } 
           return [null,{message:'Your latest updated course',statusCode: STATUS_CODES.OK,data:{moduleId: data.id,
             moduleName: data.name,
             typeId: data.typeId,
