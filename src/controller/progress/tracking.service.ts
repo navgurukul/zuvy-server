@@ -910,9 +910,7 @@ export class TrackingService {
         };
       });
 
-      if (result.length === 0) {
-        return;
-       }
+      if (result.length > 0) {
        
        const sqlChunks: SQL[] = [];
        const ids: number[] = [];
@@ -931,6 +929,7 @@ export class TrackingService {
 
        await db.update(zuvyModuleTracking).set({ progress: finalSql })
          .where(sql`${inArray(zuvyModuleTracking.id, ids)}`);
+      } 
       if (modules.length > 0) {
         for (let i = 1; i < modules.length; i++) {
           if (modules[i - 1].progress == 100 && modules[i].isLock == false) {
