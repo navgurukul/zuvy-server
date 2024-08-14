@@ -930,7 +930,7 @@ export class TrackingService {
        const finalSql: SQL = sql.join(sqlChunks, sql.raw(' '));
 
        await db.update(zuvyModuleTracking).set({ progress: finalSql })
-         .where(sql`${inArray(zuvyModuleTracking.id, ids)} AND ${zuvyModuleTracking.userId} = ${BigInt(userId)}`);
+         .where(sql`${inArray(zuvyModuleTracking.id, ids)}`);
       if (modules.length > 0) {
         for (let i = 1; i < modules.length; i++) {
           if (modules[i - 1].progress == 100 && modules[i].isLock == false) {
