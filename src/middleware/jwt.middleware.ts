@@ -2,13 +2,14 @@ import {
   Injectable,
   NestMiddleware,
   UnauthorizedException,
+  ForbiddenException
 } from '@nestjs/common';
 import { Request, Response, NextFunction } from 'express';
 import { JwtService } from '@nestjs/jwt';
 import { db } from '../db/index';
 import { eq, sql, count } from 'drizzle-orm';
 import { users, sansaarUserRoles } from '../../drizzle/schema';
-
+import { helperVariable } from 'src/constants/helper';
 
 @Injectable()
 export class JwtMiddleware implements NestMiddleware {
@@ -16,40 +17,69 @@ export class JwtMiddleware implements NestMiddleware {
 
   async use(req, res: Response, next: NextFunction) {
 
-    if (req._parsedUrl.pathname === '/classes' && req.method === 'GET') {
+    const unrestrictedRoutes = [
+      { path: '/classes', method: 'GET' },
+      { path: '/classes/redirect/', method: 'GET' },
+      { path: '/classes/getAllAttendance/:batchId', method: 'GET' },
+      { path: '/classes/getAllAttendance/:batchId/', method: 'GET' },
+    ];
+
+    const unrestricted = unrestrictedRoutes.some(
+      route => req._parsedUrl.pathname === route.path && req.method === route.method
+    );
+
+    if (unrestricted) {
       next();
       return;
     }
-    if (req._parsedUrl.pathname === '/classes/redirect/' && req.method === 'GET') {
-      next();
-      return;
-    } if (req._parsedUrl.pathname === '/classes/getAllAttendance/:batchId' && req.method === 'GET') {
-      next();
-      return;
-    }
-    if (req._parsedUrl.pathname === '/classes/getAllAttendance/:batchId/' && req.method === 'GET') {
-      next();
-      return;
-    }
+
     const token = req.headers.authorization?.replace('Bearer ', '');
-    let user;
     if (!token) {
       throw new UnauthorizedException('Token not found');
     }
+
     try {
-      const decoded = await this.jwtService.decode(token);
-      if (decoded != null) {
-        user = await db.select().from(users).where(sql`${users.id} = ${decoded.id} AND ${users.email} = ${decoded.email}`);
-        let rolesArray = await db.select().from(sansaarUserRoles).where(sql`${sansaarUserRoles.userId} = ${user[0].id}`);
-        user[0].roles = rolesArray.map((role) => role.role);
-        req.user = user;
-        if (user.length == 0) {
-          throw new UnauthorizedException('User is not authorized');
-        }
+      const decoded: any = await this.jwtService.decode(token);
+      console.log('user', token);
+      if (!decoded) {
+        throw new UnauthorizedException('Invalid token');
       }
+
+      const user: any[] = await db
+        .select()
+        .from(users)
+        .where(sql`${users.id} = ${decoded.id} AND ${users.email} = ${decoded.email}`);
+
+      
+       
+      if (user.length === 0) {
+        throw new UnauthorizedException('User is not authorized');
+      }
+      
+      const rolesArray = await db
+        .select()
+        .from(sansaarUserRoles)
+        .where(sql`${sansaarUserRoles.userId} = ${user[0].id}`);
+      user[0].roles = rolesArray.map(role => role.role);
+
+      req.user = user;
+
+      // Restrict access to instructor-side routes
+      if (
+        req._parsedUrl.pathname.startsWith('/instructor') &&
+        !user[0].roles.includes(helperVariable.admin) &&
+        !user[0].roles.includes(helperVariable.instructor)
+      ) {
+        throw new ForbiddenException('Access restricted to admins and instructors');
+      }
+
       next();
     } catch (error) {
-      throw new UnauthorizedException('Invalid token');
+      if (error instanceof UnauthorizedException || error instanceof ForbiddenException) {
+        throw error;
+      } else {
+        throw new UnauthorizedException('Invalid token');
+      }
     }
   }
 }

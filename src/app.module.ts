@@ -14,6 +14,7 @@ import { CodingPlatformModule } from './controller/codingPlatform/codingPlatform
 import { SubmissionModule } from './controller/submissions/submission.module';
 import { AdminAssessmentModule } from './controller/adminAssessment/adminAssessment.module';
 import { ScheduleService } from './schedule/schedule.service';
+import { InstructorModule } from './controller/instructor/instructor.module';
 // C:\Users\ADMIN\Desktop\zuvy-server\src\app.module.ts
 
 @Module({
@@ -34,6 +35,7 @@ import { ScheduleService } from './schedule/schedule.service';
     StudentModule,
     SubmissionModule,
     TrackingModule,
+    InstructorModule,
   ],
   providers: [
     ScheduleService,

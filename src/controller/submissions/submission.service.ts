@@ -8,6 +8,9 @@ import { error, log } from 'console';
 import { zuvyBatchEnrollments, zuvyAssessmentSubmission, users, zuvyModuleAssessment, zuvyCourseModules, zuvyChapterTracking, zuvyBootcamps, zuvyOpenEndedQuestionSubmission, zuvyProjectTracking, zuvyQuizTracking, zuvyModuleTracking, zuvyModuleChapter, zuvyFormTracking, zuvyModuleForm } from '../../../drizzle/schema';
 import { InstructorFeedbackDto, PatchOpenendedQuestionDto, CreateOpenendedQuestionDto } from './dto/submission.dto';
 import { truncate } from 'fs/promises';
+import { helperVariable } from 'src/constants/helper';
+import {ErrorResponse, SuccessResponse} from 'src/errorHandler/handler';
+import { STATUS_CODES } from 'src/helpers';
 
 const { ZUVY_CONTENT_URL } = process.env;
 
@@ -875,4 +878,174 @@ export class SubmissionService {
     }
   }
 
+  async getSubmissionOfAssignment(bootcampId: number):Promise<any> {
+    try {
+      const topicId = 5;
+      const trackingData = await db.query.zuvyCourseModules.findMany({
+        where: (courseModules, { eq }) =>
+          eq(courseModules.bootcampId, bootcampId),
+        orderBy: (courseModules, { asc }) => asc(courseModules.order),
+        with: {
+          moduleChapterData: {
+            columns: {
+              id: true,
+              title:true,
+            },
+            where: (moduleChapter, { eq }) =>
+              eq(moduleChapter.topicId, topicId),
+            with: {
+              chapterTrackingDetails: {
+                columns: {
+                  userId: true,
+                },
+              }
+            },
+          },
+        }
+      });
+
+      const zuvyBatchEnrollmentsCount = await db
+        .select({
+          count: sql<number>`cast(count(${zuvyBatchEnrollments.id}) as int)`,
+        })
+        .from(zuvyBatchEnrollments)
+        .where(sql`(${zuvyBatchEnrollments.bootcampId} = ${bootcampId} AND ${zuvyBatchEnrollments.batchId} IS NOT NULL)`);
+      trackingData.forEach((course: any) => {
+        course.moduleChapterData.forEach((chapterTracking) => {
+          chapterTracking['submitStudents'] =
+            chapterTracking['chapterTrackingDetails'].length;
+          delete chapterTracking['chapterTrackingDetails'];
+        });
+      });
+      
+      return [null,{message:'Submission of assignment for courses has been fetched',statusCode:STATUS_CODES.OK,data:{trackingData,totalStudents: zuvyBatchEnrollmentsCount[0]?.count}}]
+    } catch (error) {
+      return [{message:error.message, statusCode: STATUS_CODES.BAD_REQUEST},null]
+
+    }
+  }
+  
+  async assignmentStatusOfStudents(
+    chapterId: number,
+    limit: number,
+    offset: number
+  ):Promise<any> {
+    try {
+      const chapterDeadline = await db.select()
+      .from(zuvyModuleChapter)
+      .where(eq(zuvyModuleChapter.id,chapterId));
+      if(chapterDeadline.length > 0)
+        {
+      const statusOfStudentCode = await db.query.zuvyChapterTracking.findMany({
+        where: (chapterTracking, { sql }) =>
+          sql`${chapterTracking.chapterId} = ${chapterId}`,
+        with: {
+          user: {
+            columns: {
+              id: true,
+              name: true,
+              email: true,
+            },
+            with: {
+              studentAssignmentStatus : {
+                columns : {
+                  bootcampId:true
+                }
+              }
+            }
+          },
+        },
+        limit: limit,
+        offset: offset
+      });
+      const totalStudents = await db.select().from(zuvyChapterTracking).where(sql`${zuvyChapterTracking.chapterId} = ${chapterId}`);
+      const totalStudentsCount = totalStudents.length;
+      const totalPages = Math.ceil(totalStudentsCount / limit);
+      const deadlineDate = new Date(chapterDeadline[0].completionDate).getTime();
+
+      const data = statusOfStudentCode.map((statusCode) => {
+      const studentAssignmentStatus = statusCode;
+      let isLate = false;
+
+     if (studentAssignmentStatus && studentAssignmentStatus['completedAt']) {
+         const createdAtDate = new Date(studentAssignmentStatus['completedAt']).getTime();
+     if (createdAtDate > deadlineDate) {
+        isLate = true;
+       }
+     }
+
+      return {
+        id: Number(statusCode['user']['id']),
+        name: statusCode['user']['name'],
+        emailId: statusCode['user']['email'],
+         status: isLate ? 'Late Submission' : 'On Time',
+        bootcampId:statusCode['user']['studentAssignmentStatus']['bootcampId']
+        };
+     });
+     const currentPage =!isNaN(limit) && !isNaN(offset) ? offset/limit + 1 : 1;
+      return [null,{message:'Assignment Status of the students has been fetched',statusCode: STATUS_CODES.OK, data:{data,chapterId :chapterDeadline[0].id,chapterName:chapterDeadline[0].title, totalPages,totalStudentsCount,currentPage}}]
+    }
+    else {
+      return   [null,{message:'NO CONTENT FOUND', statusCode: STATUS_CODES.OK}]
+    }
+    } catch (error) {
+
+      return [{message:error.message, statusCode: STATUS_CODES.BAD_REQUEST},null]
+    }
+  }
+   
+
+   async getAssignmentSubmissionDetailForUser(chapterId:number,userId:number):Promise<any>
+   {
+    try{
+      const assignmentDetails = await db.query.zuvyModuleChapter.findFirst({
+        where: (moduleChapter, { eq }) =>
+          eq(moduleChapter.id, chapterId),
+        columns: {
+          id:true,
+          topicId:true,
+          title:true,
+          articleContent:true,
+          completionDate:true
+        },
+        with: {
+          chapterTrackingDetails: {
+            columns: {
+              completedAt:true
+            },
+            where : (chapterTracking,{eq}) =>
+              eq(chapterTracking.userId,BigInt(userId)),
+            with: {
+              user: {
+                columns: {
+                  id: true,
+                  name: true,
+                  email: true,
+                },
+                with: {
+                  studentAssignmentStatus : {
+                    columns : {
+                      projectUrl:true
+                    }
+                  }
+                }
+              },
+            },
+          }
+        },
+      })
+
+      let isSubmittedOnTime = true;
+       if(new Date(assignmentDetails['completionDate']).getTime() < new Date(assignmentDetails['chapterTrackingDetails'][0]['completedAt']).getTime())
+         {
+           isSubmittedOnTime = false;
+        }
+         assignmentDetails['chapterTrackingDetails'][0]['user']['id'] = Number( assignmentDetails['chapterTrackingDetails'][0]['user']['id'] ) 
+         assignmentDetails['chapterTrackingDetails'][0]['status'] = isSubmittedOnTime == true ? 'Submitted on time' : 'Submitted late';
+        return [null,{message: 'Assignment submission detail of the user has been fetched',statusCode:STATUS_CODES.OK,data:assignmentDetails}]
+    }
+    catch(error) {
+      return [{message:error.message, statusCode: STATUS_CODES.BAD_REQUEST},null]
+    }
+   }
 }

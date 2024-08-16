@@ -272,8 +272,7 @@ export class ContentService {
         .where(eq(zuvyCourseModules.bootcampId, bootcampId));
       let projectId = null;
       if (typeId == 2) {
-        const newProject = await db.insert(zuvyCourseProjects).values({ title: module.name }).returning();
-        console.log(newProject)
+        const newProject = await db.insert(zuvyCourseProjects).values({title:module.name}).returning();
         projectId = newProject.length > 0 ? newProject[0].id : null;
       }
       var moduleWithBootcamp = {
@@ -762,6 +761,7 @@ export class ContentService {
         moduleId: number;
         topicId: number;
         order: number;
+        completionDate: string;
         quizQuestionDetails?: any[];
         codingQuestionDetails?: any[];
         formQuestionDetails?: any[];
@@ -776,6 +776,7 @@ export class ContentService {
         moduleId: chapterDetails[0].moduleId,
         topicId: chapterDetails[0].topicId,
         order: chapterDetails[0].order,
+        completionDate:chapterDetails[0].completionDate
       };
       if (chapterDetails.length > 0) {
         if (chapterDetails[0].topicId == 4) {
@@ -849,7 +850,7 @@ export class ContentService {
               description: chapterDetails[0].description,
               links: chapterDetails[0].links,
               file: chapterDetails[0].file,
-              content: chapterDetails[0].articleContent,
+              content: chapterDetails[0].articleContent
             },
           ];
           modifiedChapterDetails.contentDetails = content;
@@ -1034,9 +1035,6 @@ export class ContentService {
           .where(eq(zuvyModuleChapter.id, chapterId));
 
         if (editData.quizQuestions) {
-          if (editData.quizQuestions.length == 0) {
-            editData.quizQuestions = null;
-          }
           const earlierQuizIds =
             chapter[0].quizQuestions != null
               ? Object.values(chapter[0].quizQuestions)
@@ -1065,6 +1063,9 @@ export class ContentService {
               .set({ usage: sql`${zuvyModuleQuiz.usage}::numeric + 1` })
               .where(sql`${inArray(zuvyModuleQuiz.id, toUpdateIds)}`);
           }
+          if (editData.quizQuestions.length == 0) {
+            editData.quizQuestions = null;
+          }
         } else if (
           editData.codingQuestions ||
           (editData.codingQuestions == null &&
@@ -1084,9 +1085,6 @@ export class ContentService {
               .where(eq(zuvyCodingQuestions.id, editData.codingQuestions));
           }
         } else if (editData.formQuestions) {
-          if (editData.formQuestions.length == 0) {
-            editData.formQuestions = null;
-          }
           const earlierFormIds =
             chapter[0].formQuestions != null
               ? Object.values(chapter[0].formQuestions)
@@ -1114,6 +1112,9 @@ export class ContentService {
               .update(zuvyModuleForm)
               .set({ usage: sql`${zuvyModuleForm.usage}::numeric + 1` })
               .where(sql`${inArray(zuvyModuleForm.id, toUpdateIds)}`);
+          }
+          if (editData.formQuestions.length == 0) {
+            editData.formQuestions = null;
           }
         }
 
@@ -1148,7 +1149,7 @@ export class ContentService {
           links: editData.links,
           articleContent: editData.articleContent,
         };
-
+        
         await db
           .update(zuvyModuleChapter)
           .set(updateModuleChapter)
@@ -1309,72 +1310,6 @@ export class ContentService {
           CodingQuestions: true
         },
       })
-      // const assessment = await db
-      //   .select()
-      //   .from(zuvyModuleAssessment)
-      //   .where(eq(zuvyModuleAssessment.id, assessmentId));
-
-      // if (assessment.length > 0) {
-      //   let ab = [];
-      //   ab =
-      //     assessment[0].codingProblems != null
-      //       ? Object.values(assessment[0].codingProblems)
-      //       : null;
-      //   const codingQuesIds =
-      //     ab != null
-      //       ? ab.reduce((acc, obj) => {
-      //         const key = Object.keys(obj)[0];
-      //         const numericKey = Number(key);
-      //         if (!isNaN(numericKey)) {
-      //           acc.push(numericKey);
-      //         }
-      //         return acc;
-      //       }, [])
-      //       : null;
-      //   const mcqIds =
-      //     assessment[0].mcq != null ? Object.values(assessment[0].mcq) : null;
-      //   const openEndedQuesIds =
-      //     assessment[0].openEndedQuestions != null
-      //       ? Object.values(assessment[0].openEndedQuestions)
-      //       : null;
-      //   const mcqDetails =
-      //     mcqIds != null
-      //       ? await db
-      //         .select()
-      //         .from(zuvyModuleQuiz)
-      //         .where(sql`${inArray(zuvyModuleQuiz.id, mcqIds)}`)
-      //       : [];
-      //   const openEndedQuesDetails =
-      //     openEndedQuesIds != null
-      //       ? await db
-      //         .select()
-      //         .from(zuvyOpenEndedQuestions)
-      //         .where(
-      //           sql`${inArray(zuvyOpenEndedQuestions.id, openEndedQuesIds)}`,
-      //         )
-      //       : [];
-      //   const codingProblems =
-      //     codingQuesIds != null
-      //       ? await db
-      //         .select()
-      //         .from(zuvyCodingQuestions)
-      //         .where(sql`${inArray(zuvyCodingQuestions.id, codingQuesIds)}`)
-      //       : [];
-      //   let codingQuesDetails = [];
-      //   for (let i = 0; i < codingProblems.length; i++) {
-      //     codingQuesDetails.push({
-      //       ...codingProblems[i],
-      //       marks: Object.values(ab[i])[0],
-      //     });
-      //   }
-
-      //   return {
-      //     assessment,
-      //     mcqDetails,
-      //     openEndedQuesDetails,
-      //     codingQuesDetails,
-      //   };
-      // }
       return assessment;
     } catch (err) {
       throw err;

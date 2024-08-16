@@ -13,17 +13,20 @@ import {
   Query,
   BadRequestException,
   Req,
+  Res
 } from '@nestjs/common';
 import { CodingPlatformService } from './codingPlatform.service';
 import {
   ApiTags,
   ApiBody,
   ApiOperation,
-  ApiCookieAuth,
   ApiQuery,
 } from '@nestjs/swagger';
-import { SubmitCodeDto, CreateProblemDto } from './dto/codingPlatform.dto';
+import { SubmitCodeDto, CreateProblemDto, updateProblemDto, TestCaseDto } from './dto/codingPlatform.dto';
 import { ApiBearerAuth } from '@nestjs/swagger';
+import { ErrorResponse, SuccessResponse } from 'src/errorHandler/handler';
+import { Response } from 'express';
+
 @Controller('codingPlatform')
 @ApiTags('codingPlatform')
 @UsePipes(
@@ -35,68 +38,6 @@ import { ApiBearerAuth } from '@nestjs/swagger';
 )
 export class CodingPlatformController {
   constructor(private codingPlatformService: CodingPlatformService) { }
-
-
-  // @Get('languageId')
-  // @ApiOperation({ summary: 'Get language with Id' })
-  // @ApiBearerAuth()
-  // async getLanguages() {
-  //   const res = await this.codingPlatformService.getLanguagesById();
-  //   return res;
-  // }
-
-
-  @Get('allQuestions')
-  @ApiOperation({ summary: 'Get all the questions with status.' })
-  @ApiQuery({
-    name: 'difficulty',
-    required: false,
-    type: String,
-    description: 'difficulty of the question',
-  })
-  @ApiQuery({
-    name: 'page',
-    required: false,
-    type: Number,
-    description: 'page number',
-  })
-  @ApiQuery({
-    name: 'limit',
-    required: false,
-    type: Number,
-    description: 'limit',
-  })
-  @ApiBearerAuth()
-  async getAllQuestionByUserId(@Req() req, @Query('difficulty') difficulty: string, @Query('page') page: number, @Query('limit') limit: number) {
-    const res = await this.codingPlatformService.getQuestionsWithStatus(req.user[0].id, difficulty, page, limit);
-    return res;
-  }
-
-  @Get('questionById/:questionId')
-  @ApiOperation({ summary: 'Get the questions by Id' })
-  @ApiBearerAuth()
-  async getQuestionById(@Param('questionId') questionId: number) {
-    const res = await this.codingPlatformService.getQuestionById(questionId);
-    return res;
-  }
-
-  // @Post('createCodingQuestion')
-  // @ApiOperation({ summary: 'Create coding question' })
-  // @ApiBearerAuth()
-  // async createCodingProblems(@Body() createCodingQuestion: CreateProblemDto) {
-  //   let examples = [];
-  //   let testCases = [];
-  //   for (let i = 0; i < createCodingQuestion.examples.length; i++) {
-  //     examples.push(createCodingQuestion.examples[i].inputs);
-  //   }
-  //   createCodingQuestion.examples = examples;
-  //   for (let j = 0; j < createCodingQuestion.testCases.length; j++) {
-  //     testCases.push(createCodingQuestion.testCases[j].inputs)
-  //   }
-  //   createCodingQuestion.testCases = testCases
-  //   const res = await this.codingPlatformService.createCodingProblem(createCodingQuestion);
-  //   return res;
-  // }
 
   @Post('/practicecode/questionId=:questionId')
   @ApiOperation({ summary: 'Submiting the coding question' })
@@ -113,103 +54,172 @@ export class CodingPlatformController {
     type: Number,
     description: 'if you give the codingOutsourseId it for assessment code submission',
   })
-  async getPracticeCode(@Param('questionId') questionId: number, 
+  async getPracticeCode(@Param('questionId') questionId: number,
     @Body() sourceCode: SubmitCodeDto,
     @Query('action') action: string,
     @Query('submissionId') submissionId: number,
     @Query('codingOutsourseId') codingOutsourseId: number,
     @Req() req,
+    @Res() res: Response
   ) {
-    if (Number.isNaN(submissionId) && !Number.isNaN(codingOutsourseId) || !Number.isNaN(submissionId) && Number.isNaN(codingOutsourseId)){
-      return {statusCode: 404, massage: "Either submissionId or codingOutsourseId should be provided"}
+    try {
+      let [err, success] = await this.codingPlatformService.submitPracticeCode(questionId, sourceCode, action, req.user[0].id, submissionId, codingOutsourseId);
+      if (err) {
+        return ErrorResponse.BadRequestException(err.message).send(res);
+      }
+      return new SuccessResponse(success.message, success.statusCode, success.data).send(res);
+    } catch (error) {
+      return ErrorResponse.BadRequestException(error.message).send(res);
     }
-
-      return this.codingPlatformService.submitPracticeCode(questionId, sourceCode, action, req.user[0].id, submissionId, codingOutsourseId);
   }
 
-  @Get('/practicecode/questionId=:questionId')
+  @Get('/submissions/questionId=:questionId')
   @ApiOperation({ summary: 'Get the question AND submissions by question id ' })
   @ApiBearerAuth()
   @ApiQuery({
-    name: 'assessmentSubmissionId', 
+    name: 'assessmentSubmissionId',
     required: false,
     type: Number,
     description: 'if you give the assessmentSubmissionId it for assessment code submission ',
   })
   @ApiQuery({
-    name: 'codingOutsourseId', 
+    name: 'codingOutsourseId',
     required: false,
     type: Number,
     description: 'if you give the codingOutsourseId it for assessment code submission ',
   })
-  async getPracticeCodeById(@Param('questionId') questionId: number, @Req() req, @Query('assessmentSubmissionId') submissionId: number, @Query('codingOutsourseId') codingOutsourseId:number){
-    return this.codingPlatformService.getPracticeCode(questionId, req.user[0].id, submissionId, codingOutsourseId);
-  }
-  @Get('PracticeCode')
-  @ApiOperation({ summary: 'Get the codingOutsourse by userId and codingOutsourseId' })
-  @ApiBearerAuth()
-  async codingSubmission(@Req() req, @Query('studentId') studentId: number, @Query('codingOutsourseId') codingOutsourseId: number) {
-    return this.codingPlatformService.codingSubmission(studentId, codingOutsourseId);
-  }
+  async getPracticeCodeById(@Param('questionId') questionId: number, @Req() req, @Query('assessmentSubmissionId') submissionId: number, @Query('codingOutsourseId') codingOutsourseId: number, @Res() res: Response) {
+    try {
 
-
-  @Get(':languageId')
-  @ApiOperation({ summary: 'Get language with Id' })
-  @ApiBearerAuth()
-  async getLanguages(@Param('languageId') languageId: number) {
-    const res = await this.codingPlatformService.getLanguagesById(languageId);
-    return res;
+      let [err, success] = await this.codingPlatformService.getPracticeCode(questionId, req.user[0].id, submissionId, codingOutsourseId);
+      if (err) {
+        return ErrorResponse.BadRequestException(err.message, err.statusCode).send(res);
+      }
+      return new SuccessResponse(success.message, success.statusCode, success.data).send(res);
+    } catch (error) {
+      return ErrorResponse.BadRequestException(error.message).send(res);
+    }
   }
 
   @Post('create-question')
   @ApiOperation({ summary: 'Create coding question with test cases' })
   @ApiBearerAuth()
-  async createCodingQuestion(@Body() createCodingQuestionDto: CreateProblemDto) {
-    const res = await this.codingPlatformService.createCodingQuestion(createCodingQuestionDto);
-    return res;
+  async createCodingQuestion(@Body() createCodingQuestionDto: CreateProblemDto, @Res() res: Response): Promise<any> {
+    try {
+      const [err, success] = await this.codingPlatformService.createCodingQuestion(createCodingQuestionDto);
+      if (err) {
+        return ErrorResponse.BadRequestException(err.message).send(res);
+      }
+      return new SuccessResponse(success.message, success.statusCode, success.data).send(res);
+    } catch (error) {
+      return ErrorResponse.BadRequestException(error.message).send(res);
+    }
   }
-
-  @Delete('delete-test-case/:id/:questionId')
-  @ApiOperation({ summary: 'Delete test case and expected output' })
-  @ApiBearerAuth()
-  @ApiQuery({
-    name: 'questionId',
-    required: false,
-    type: Number,
-    description: 'The question id where the test case and expected output are related',
-  })
-  @ApiQuery({
-    name: 'questionId',
-    required: false,
-    type: Number,
-    description: 'The question id where the test case and expected output are related',
-  })
-  async deleteTestCaseAndExpectedOutput(@Query('id') id: number, @Query('questionId') questionId: number) {
-    return await this.codingPlatformService.deleteTestCaseAndExpectedOutput(id, questionId);
-  }
-
 
   @Put('update-question/:id')
   @ApiOperation({ summary: 'Update coding question' })
   @ApiBearerAuth()
-  async updateCodingQuestion(@Param('id') id: number, @Body() updateCodingQuestionDto: CreateProblemDto) {
-    const res = await this.codingPlatformService.updateCodingQuestion(id, updateCodingQuestionDto);
-    return res;
+  async updateCodingQuestion(@Param('id') id: number, @Body() updateCodingQuestionDto: updateProblemDto, @Res() res: Response) {
+    try {
+      const [err, success] = await this.codingPlatformService.updateCodingQuestion(id, updateCodingQuestionDto);
+      if (err) {
+        return ErrorResponse.BadRequestException(err.message).send(res);
+      }
+      return new SuccessResponse(success.message, success.statusCode, success.data).send(res);
+    } catch (error) {
+      return ErrorResponse.BadRequestException(error.message).send(res);
+    }
   }
 
   @Delete('delete-question/:id')
   @ApiOperation({ summary: 'Delete coding question' })
   @ApiBearerAuth()
-  async deleteCodingQuestion(@Param('id') id: number) {
-    const res = await this.codingPlatformService.deleteCodingQuestion(id);
-    return res;
+  async deleteCodingQuestion(@Param('id') id: number, @Res() res: Response): Promise<any> {
+    try {
+      const [err, success] = await this.codingPlatformService.deleteCodingQuestion(id);
+      if (err) {
+        return ErrorResponse.BadRequestException(err.message).send(res);
+      }
+      return new SuccessResponse(success.message, success.statusCode, success).send(res);
+    } catch (error) {
+      return ErrorResponse.BadRequestException(error.message).send(res);
+    }
   }
 
-  // get coding question by id
+  @Delete('delete-testcase/:id')
+  @ApiOperation({ summary: 'Delete coding Testcase' })
+  @ApiBearerAuth()
+  async deleteCodingTestcase(@Param('id') id: number, @Res() res: Response): Promise<any> {
+    try {
+      const [err, success] = await this.codingPlatformService.deleteCodingTestcase(id);
+      if (err) {
+        return ErrorResponse.BadRequestException(err.message).send(res);
+      }
+      return new SuccessResponse(success.message, success.statusCode, success).send(res);
+    } catch (error) {
+      return ErrorResponse.BadRequestException(error.message).send(res);
+    }
+  }
+
   @Get('get-coding-question/:id')
   @ApiOperation({ summary: 'Get coding question' })
   @ApiBearerAuth()
-  async getCodingQuestion(@Param('id') Id: number) {
-    return this.codingPlatformService.getCodingQuestion(Id);
+  async getCodingQuestion(@Param('id') id: number, @Res() res: Response): Promise<any> {
+    try {
+      const [err, success] = await this.codingPlatformService.getCodingQuestion(id);
+      if (err) {
+        return ErrorResponse.BadRequestException(err.message).send(res);
+      }
+      return new SuccessResponse(success.message, success.statusCode, success.data).send(res);
+    } catch (error) {
+      return ErrorResponse.BadRequestException(error.message).send(res);
+    }
+  }
+
+  @Post('add-test-case/:question_id')
+  @ApiOperation({ summary: 'Add test case to coding question' })
+  @ApiBearerAuth()
+  async addTestCase(@Param('question_id') question_id: number, @Body() updateTestCaseDto: TestCaseDto, @Res() res: Response): Promise<any> {
+    try {
+      const [err, success] = await this.codingPlatformService.addTestCase(question_id, updateTestCaseDto);
+      if (err) {
+        return ErrorResponse.BadRequestException(err.message).send(res);
+      }
+      return new SuccessResponse(success.message, success.statusCode, success.data).send(res);
+    } catch (error) {
+      return ErrorResponse.BadRequestException(error.message).send(res);
+    }
+  }
+
+  // get submission test cases id
+  @Get('submissions/:questionId')
+  @ApiOperation({ summary: 'Get all submissions of the question.' })
+  @ApiBearerAuth()
+  async getSubmissionsId(@Param('questionId') questionId: number, @Res() res: Response): Promise<any> {
+    try {
+      const [err, success] = await this.codingPlatformService.getSubmissionsId(questionId);
+      if (err) {
+        return ErrorResponse.BadRequestException(err.message).send(res);
+      }
+      return new SuccessResponse(success.message, success.statusCode, success.data).send(res);
+    } catch (error) {
+      return ErrorResponse.BadRequestException(error.message).send(res);
+    }
+  }
+
+  // get api practice code id bye submission test cases id
+  @Get('get-practice-code/:practiceSubmissionId')
+  @ApiOperation({ summary: 'Get practice code by submission id' })
+  @ApiBearerAuth()
+  async getPracticeCodeBySubmissionId(@Param('practiceSubmissionId') practiceSubmissionId: number, @Res() res: Response): Promise<any> {
+    try {
+      const [err, success] = await this.codingPlatformService.getPracticeCodeBySubmissionId(practiceSubmissionId);
+      if (err) {
+        return ErrorResponse.BadRequestException(err.message).send(res);
+      }
+      return new SuccessResponse(success.message, success.statusCode, success.data).send(res);
+    } catch (error) {
+      return ErrorResponse.BadRequestException(error.message).send(res);
+    }
   }
 }
