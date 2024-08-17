@@ -8,6 +8,7 @@ import {
   zuvySessions
 } from 'drizzle/schema';
 import { STATUS_CODES } from 'src/helpers';
+import { LexRuntimeV2 } from 'aws-sdk';
 
 
 const { ZUVY_CONTENT_URL, ZUVY_CONTENTS_API_URL } = process.env; // INPORTING env VALUSE ZUVY_CONTENT
@@ -202,6 +203,21 @@ export class InstructorService {
     {
       try {
         const currentDate = new Date().toISOString();
+        let weeks =0;
+        let startDate: string | undefined;
+        if(timeFrame === "1 week")
+          {
+            weeks = 1;
+          }
+          else if(timeFrame === "2 weeks")
+            {
+              weeks = 2;
+            }
+       if (weeks > 0) {
+        const startDateObj = new Date();
+        startDateObj.setDate(startDateObj.getDate() - (weeks * 7));
+        startDate = startDateObj.toISOString();
+         }
         const classesInfo = await db.query.zuvyBatches.findMany({
           where: (batch, { eq }) =>
             and(
@@ -215,16 +231,16 @@ export class InstructorService {
                   name:true
                 }
               },
-              sessions: {
-                where: (sessions, { lt }) => lt(sessions.endTime, currentDate)
-              }
+              sessions: { where: (sessions, { lt, gte }) =>and( lt(sessions.endTime, currentDate), startDate ? gte(sessions.endTime, startDate) : undefined ),
+            orderBy:(sessions, { asc }) => asc(sessions.startTime)}
             }
         })
+          
         if(classesInfo.length == 0)
           {
             return [null,{message:'No batches found',statusCode: STATUS_CODES.NOT_FOUND,data:null}]
           }
-        const allSessions = [];
+        let allSessions = [];
         classesInfo.forEach(batch => {
           batch.sessions.forEach(session => {
             session['bootcampName'] = batch.bootcampDetail.name,
@@ -234,42 +250,17 @@ export class InstructorService {
             });
           });
         });
-        
         allSessions.sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
-        
-        let filteredClasses = [];
         if(allSessions.length == 0)
           {
             return [null,{message:'No classes found',statusCode: STATUS_CODES.NOT_FOUND,data:null}]
           }
-        switch (timeFrame) {
-          case '1 week':
-          filteredClasses = allSessions.filter(classObj => {
-          const endTime = new Date(classObj.endTime).getTime();
-          const oneWeekAgo = new Date().getTime() - 7 * 24 * 60 * 60 * 1000;
-          return endTime >= oneWeekAgo && endTime <= new Date().getTime();
-        });
-          break;
-          case '2 weeks':
-          filteredClasses = allSessions.filter(classObj => {
-          const endTime = new Date(classObj.endTime).getTime();
-          const twoWeeksAgo = new Date().getTime() - 14 * 24 * 60 * 60 * 1000;
-          return endTime >= twoWeeksAgo && endTime <= new Date().getTime();
-          });
-          break;
-        default:
-          filteredClasses = allSessions;
-        }
-        const totalCompletedClass = filteredClasses.length > 0 ? filteredClasses.length : 0;
+        const totalCompletedClass = allSessions.length > 0 ? allSessions.length : 0;
         const totalPages = Math.ceil(totalCompletedClass/limit);
-        if(filteredClasses.length == 0)
-          {
-            return [null,{message:'No classes found in this duration',statusCode: STATUS_CODES.NOT_FOUND,data:null}]
-          }
-        filteredClasses = filteredClasses.slice(
+        allSessions = allSessions.slice(
           offset,limit+offset
         );
-        return [null,{message:'Completed classes fetched successfully',statusCode: STATUS_CODES.OK,data:{filteredClasses,totalPages,totalCompletedClass}}]
+        return [null,{message:'Completed classes fetched successfully',statusCode: STATUS_CODES.OK,data:{allSessions,totalPages,totalCompletedClass}}]
 
       }catch(error)
       {
