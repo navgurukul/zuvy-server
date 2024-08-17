@@ -132,6 +132,12 @@ import { ErrorResponse, SuccessResponse } from 'src/errorHandler/handler';
     description: 'Offset for pagination (min value 1)',
   })
   @ApiQuery({
+    name: 'weeks',
+    required: true,
+    type: Number,
+    description: 'no of weeks',
+  })
+  @ApiQuery({
     name: 'batchId',
     required: false,
     type: [Number],
@@ -142,7 +148,7 @@ import { ErrorResponse, SuccessResponse } from 'src/errorHandler/handler';
   async getAllCompletedClasses(
     @Query('limit') limit: number,
     @Query('offset') offset: number,
-    @Query('timeFrame') timeFrame: string,
+    @Query('weeks') weeks: number,
     @Query('batchId', new ParseArrayPipe({ items: Number, optional: true })) batchId: number[] = [],
     @Req() req,
     @Res() res
@@ -152,7 +158,7 @@ import { ErrorResponse, SuccessResponse } from 'src/errorHandler/handler';
           req.user[0].id,
           limit,
           offset,
-          timeFrame,
+          weeks,
           batchId
         );
         if (err) {

@@ -197,21 +197,12 @@ export class InstructorService {
   async getAllCompletedClasses(instructorId: number,
     limit: number,
     offset: number,
-    timeFrame: string,
+    weeks: number,
     batchId:number[]):Promise<any>
     {
       try {
         const currentDate = new Date().toISOString();
-        let weeks =0;
         let startDate: string | undefined;
-        if(timeFrame === "1 week")
-          {
-            weeks = 1;
-          }
-          else if(timeFrame === "2 weeks")
-            {
-              weeks = 2;
-            }
        if (weeks > 0) {
         const startDateObj = new Date();
         startDateObj.setDate(startDateObj.getDate() - (weeks * 7));
@@ -230,8 +221,7 @@ export class InstructorService {
                   name:true
                 }
               },
-              sessions: { where: (sessions, { lt, gte }) =>and( lt(sessions.endTime, currentDate), startDate ? gte(sessions.endTime, startDate) : undefined ),
-            orderBy:(sessions, { asc }) => asc(sessions.startTime)}
+              sessions: { where: (sessions, { lt, gte }) =>and( lt(sessions.endTime, currentDate), startDate ? gte(sessions.endTime, startDate) : undefined )}
             }
         })
           
