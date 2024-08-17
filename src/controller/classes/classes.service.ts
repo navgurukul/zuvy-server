@@ -898,13 +898,12 @@ export class ClassesService {
   }
   async BootcampOrBatchEnrollments(batch_id: number, bootcamp_id: number, user_id = null) {
     let queryString;
-
-    if (user_id && batch_id && bootcamp_id) { 
+    if (user_id && !isNaN(batch_id) && bootcamp_id) { 
       queryString = sql`${zuvyBatchEnrollments.bootcampId} = ${bootcamp_id} and ${zuvyBatchEnrollments.batchId} = ${batch_id} and ${zuvyBatchEnrollments.userId} = ${user_id}`;
-    } else if (bootcamp_id && batch_id) {
+    } else if (bootcamp_id && !isNaN(batch_id)) {
       queryString = sql`${zuvyBatchEnrollments.bootcampId} = ${bootcamp_id} and ${zuvyBatchEnrollments.batchId} = ${batch_id}`;
     } else {
-      queryString = sql`${zuvyBatchEnrollments.bootcampId} = ${bootcamp_id}`;
+      queryString = sql`${zuvyBatchEnrollments.bootcampId} = ${bootcamp_id} and ${zuvyBatchEnrollments.userId} = ${user_id}`;
     }
     return queryString
   }
@@ -914,7 +913,7 @@ export class ClassesService {
       if (user?.roles?.includes('admin')) {
         await this.updatingStatusOfClass(bootcamp_id,batch_id);
       } else if (bootcamp_id && user.id) {
-          let queryString = await this.BootcampOrBatchEnrollments(batch_id, bootcamp_id, user.id);
+          let queryString = await this.BootcampOrBatchEnrollments(batch_id, bootcamp_id,user.id);
           let zuvyBatchEnrollmentsData = await db
             .select()
             .from(zuvyBatchEnrollments)
