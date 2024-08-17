@@ -8,7 +8,6 @@ import {
   zuvySessions
 } from 'drizzle/schema';
 import { STATUS_CODES } from 'src/helpers';
-import { LexRuntimeV2 } from 'aws-sdk';
 
 
 const { ZUVY_CONTENT_URL, ZUVY_CONTENTS_API_URL } = process.env; // INPORTING env VALUSE ZUVY_CONTENT
