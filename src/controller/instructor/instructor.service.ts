@@ -203,53 +203,52 @@ export class InstructorService {
       try {
         const currentDate = new Date().toISOString();
         let startDate: string | undefined;
-       if (weeks > 0) {
+        if (weeks > 0) {
         const startDateObj = new Date();
         startDateObj.setDate(startDateObj.getDate() - (weeks * 7));
         startDate = startDateObj.toISOString();
          }
-        const classesInfo = await db.query.zuvyBatches.findMany({
-          where: (batch, { eq }) =>
-            and(
-              eq(batch.instructorId, instructorId),
-              batchId.length > 0 ? inArray(batch.id, batchId) : undefined
-            ),
-            with: {
-              bootcampDetail: {
-                columns: {
-                  id:true,
-                  name:true
-                }
-              },
-              sessions: { where: (sessions, { lt, gte }) =>and( lt(sessions.endTime, currentDate), startDate ? gte(sessions.endTime, startDate) : undefined )}
-            }
-        })
-          
-        if(classesInfo.length == 0)
+         let batches = batchId;
+         if(batches.length == 0)
           {
-            return [null,{message:'No batches found',statusCode: STATUS_CODES.NOT_FOUND,data:null}]
+             const instructorBatch = await db.select({batchId:zuvyBatches.id}).from(zuvyBatches).where(eq(zuvyBatches.instructorId,instructorId));
+             batches = instructorBatch.map(batch => batch.batchId);
+             if(batches.length == 0)
+              {
+                return [null,{message:'No batches found',statusCode: STATUS_CODES.NOT_FOUND,data:null}]
+              }
           }
-        let allSessions = [];
-        classesInfo.forEach(batch => {
-          batch.sessions.forEach(session => {
-            session['bootcampName'] = batch.bootcampDetail.name,
-            session['batchName'] = batch.name
-            allSessions.push({
-              ...session
-            });
-          });
-        });
-        allSessions.sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
-        if(allSessions.length == 0)
+          
+        const classDetails = await db.query.zuvySessions.findMany({
+          where: (sessions, { lt, gte }) =>and( lt(sessions.endTime, currentDate), startDate ? gte(sessions.endTime, startDate) : undefined,inArray(sessions.batchId,batches) ),
+          orderBy: (sessions, { asc }) => asc(sessions.startTime),
+          with : {
+            bootcampDetail : {
+              columns : {
+                id:true,
+                name:true
+              }
+            },
+            batches: {
+              columns: {
+                id:true,
+                name:true
+              }
+            }
+          },
+          extras: {
+            totalCount: sql<number>`coalesce(count(*) over(), 0)`.as('total_count')
+          },
+          limit,
+          offset
+         })
+        if(classDetails.length == 0)
           {
             return [null,{message:'No classes found',statusCode: STATUS_CODES.NOT_FOUND,data:null}]
           }
-        const totalCompletedClass = allSessions.length > 0 ? allSessions.length : 0;
+        const totalCompletedClass =  classDetails.length > 0 ? Number(classDetails[0]['totalCount']) : 0;
         const totalPages = Math.ceil(totalCompletedClass/limit);
-        allSessions = allSessions.slice(
-          offset,limit+offset
-        );
-        return [null,{message:'Completed classes fetched successfully',statusCode: STATUS_CODES.OK,data:{allSessions,totalPages,totalCompletedClass}}]
+        return [null,{message:'Completed classes fetched successfully',statusCode: STATUS_CODES.OK,data:{classDetails,totalPages,currentPage : (offset/limit)+1, totalCompletedClass}}]
 
       }catch(error)
       {
