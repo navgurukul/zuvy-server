@@ -10,7 +10,7 @@ import {
   // ZuvyClassesGoogleMeetLink
 } from '../../../drizzle/schema';
 import { db } from '../../db/index';
-import { eq, sql, count, inArray, isNull, desc } from 'drizzle-orm';
+import { eq, sql, count, inArray, isNull, desc, and, ilike } from 'drizzle-orm';
 import { google, calendar_v3 } from 'googleapis';
 import { v4 as uuid } from 'uuid';
 import * as _ from 'lodash';
@@ -861,18 +861,16 @@ export class ClassesService {
   async updatingStatusOfClass(bootcamp_id:number,batch_id:number){
     try {
       const currentTime = new Date();
-      // Fetch all classes
       let classes = await db
-        .select()
-        .from(zuvySessions)
-        .where(sql`${zuvySessions.bootcampId} = ${bootcamp_id} AND ${zuvySessions.batchId} = ${batch_id}`);
+      .select()
+      .from(zuvySessions)
+      .where(sql`${zuvySessions.bootcampId} = ${bootcamp_id} 
+       ${!isNaN(batch_id) ? sql`AND ${zuvySessions.batchId} = ${batch_id}` : sql``}`);
 
-      // Update the status of each class in the database
       for (let classObj of classes) {
         const startTime = new Date(classObj.startTime);
         const endTime = new Date(classObj.endTime);
         let newStatus;
-
         if (currentTime > endTime) {
           newStatus = 'completed';
         } else if (currentTime >= startTime && currentTime <= endTime) {
@@ -913,18 +911,25 @@ export class ClassesService {
 
   async getClassesBy(bootcamp_id: number, user, batch_id: number, limit: number, offset: number, search_term: string, status: string) {
     try {
-      // update the status of the classes in the database
-      await this.updatingStatusOfClass(bootcamp_id,batch_id);
-      
       if (user?.roles?.includes('admin')) {
+        await this.updatingStatusOfClass(bootcamp_id,batch_id);
       } else if (bootcamp_id && user.id) {
           let queryString = await this.BootcampOrBatchEnrollments(batch_id, bootcamp_id, user.id);
-      
           let zuvyBatchEnrollmentsData = await db
             .select()
             .from(zuvyBatchEnrollments)
             .where(queryString);
-      
+            batch_id = zuvyBatchEnrollmentsData[0].batchId;
+            if(batch_id == null)
+              {
+                return {
+                  status: 'error',
+                  message:
+                    'You are not assigned to any batch in this course',
+                  code: 404,
+                };
+              }
+          await this.updatingStatusOfClass(bootcamp_id,zuvyBatchEnrollmentsData[0].batchId);
           if (zuvyBatchEnrollmentsData.length === 0) {
             return {
               status: 'error',
@@ -940,55 +945,30 @@ export class ClassesService {
             code: 401,
           };
         }
-    
+      const query = db
+     .select({
+       sessions:zuvySessions,
+       totalCount: sql<number>`count(*) over()`.as('total_count')})
+      .from(zuvySessions)
+     .$dynamic()
+     .where(and(
+      bootcamp_id ? eq(zuvySessions.bootcampId, bootcamp_id) : undefined,
+      batch_id ? eq(zuvySessions.batchId, batch_id) : undefined,
+      status.toLowerCase() !== 'all'  ? eq(zuvySessions.status, status) :undefined,   
+      search_term ? ilike(zuvySessions.title, `%${search_term}%`) : undefined
+      ))
+     .orderBy(zuvySessions.startTime)
+     .offset(offset)
+     .limit(limit);
       
-        let zuvy_sessions_query;
-        if (search_term && status && bootcamp_id && !batch_id) {
-          if (status.toLowerCase() == 'all') {
-            zuvy_sessions_query = sql`${zuvySessions.bootcampId} = ${bootcamp_id} AND ${zuvySessions.status} IN ('completed', 'ongoing', 'upcoming') AND ${zuvySessions.title} LIKE '%' ||${search_term} || '%'`;
-          } else {
-            zuvy_sessions_query = sql`${zuvySessions.bootcampId} = ${bootcamp_id} AND ${zuvySessions.status} = ${status} AND ${zuvySessions.title} LIKE '%' ||${search_term} || '%'`;
-          }
-        }else if (search_term && status && bootcamp_id && batch_id) {
-          zuvy_sessions_query = sql`${zuvySessions.bootcampId} = ${bootcamp_id} AND ${zuvySessions.batchId} = ${batch_id} AND ${zuvySessions.status} = ${status} AND ${zuvySessions.title} LIKE '%' ||${search_term} || '%'`;
-        } else if (search_term && status && bootcamp_id) {
-          zuvy_sessions_query = sql`${zuvySessions.bootcampId} = ${bootcamp_id} AND ${zuvySessions.status} = ${status} AND ${zuvySessions.title} LIKE '%' ||${search_term} || '%'`;
-        } else if (search_term && bootcamp_id && batch_id) {
-          zuvy_sessions_query = sql`${zuvySessions.bootcampId} = ${bootcamp_id} AND ${zuvySessions.batchId} = ${batch_id} AND ${zuvySessions.title} LIKE '%' || ${search_term} || '%'`;
-        } else if (bootcamp_id && batch_id && status.toLowerCase() == 'all') {
-          zuvy_sessions_query = sql`${zuvySessions.bootcampId} = ${bootcamp_id} AND ${zuvySessions.status} IN ('completed', 'ongoing', 'upcoming') AND ${zuvySessions.batchId} = ${batch_id}`;
-        } else if (bootcamp_id && batch_id && status) {
-          zuvy_sessions_query = sql`${zuvySessions.bootcampId} = ${bootcamp_id} AND ${zuvySessions.batchId} = ${batch_id} AND ${zuvySessions.status} = ${status}`;
-        } else if (bootcamp_id && !batch_id && status.toLowerCase() == 'all') {
-          zuvy_sessions_query = sql`${zuvySessions.bootcampId} = ${bootcamp_id} AND ${zuvySessions.status} IN ('completed', 'ongoing', 'upcoming')`;
-        } else if (bootcamp_id && !batch_id && status) {
-          zuvy_sessions_query = sql`${zuvySessions.bootcampId} = ${bootcamp_id} AND ${zuvySessions.status} = ${status}`;
-        } else if (bootcamp_id && !batch_id && !status) {
-          zuvy_sessions_query = sql`${zuvySessions.bootcampId} = ${bootcamp_id} AND ${zuvySessions.status} IN ('completed', 'ongoing', 'upcoming')`;
-        } else {
-          zuvy_sessions_query = sql`${zuvySessions.bootcampId} = ${bootcamp_id}`;
-        }
-      // Fetch the classes again  
-      
-      let classes = await db
-        .select()
-        .from(zuvySessions)
-        .orderBy(desc(zuvySessions.id))
-        .where(() => zuvy_sessions_query)
-        .offset(offset)
-        .limit(limit);
-
-      let total_zuvy_sessions = await db
-        .select({ count: count(zuvySessions.id) })
-        .from(zuvySessions)
-        .where(() => zuvy_sessions_query);
-
-
+     const classes = await query;
+     const sessionsArray = classes.map(classObj => classObj.sessions);
+     const totalClasses = classes.length > 0 ?  Number(classes[0].totalCount) : 0
       return {
         status: 'success',
         message: 'Classes fetched successfully by batchId',
         code: 200,
-        classes, total_items: total_zuvy_sessions[0].count, total_pages: (Math.ceil(total_zuvy_sessions[0].count / limit) || 0)
+        sessionsArray, total_items: totalClasses, total_pages: (Math.ceil(totalClasses / limit) || 1)
       };
     } catch (err) {
       return { status: 'error', message: err.message, code: 500 }
