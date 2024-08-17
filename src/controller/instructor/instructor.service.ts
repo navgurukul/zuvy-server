@@ -222,7 +222,7 @@ export class InstructorService {
         })
         if(classesInfo.length == 0)
           {
-            return [null,{message:'No batches found',statusCode: STATUS_CODES.OK,data:null}]
+            return [null,{message:'No batches found',statusCode: STATUS_CODES.NOT_FOUND,data:null}]
           }
         const allSessions = [];
         classesInfo.forEach(batch => {
@@ -240,7 +240,7 @@ export class InstructorService {
         let filteredClasses = [];
         if(allSessions.length == 0)
           {
-            return [null,{message:'No classes found',statusCode: STATUS_CODES.OK,data:null}]
+            return [null,{message:'No classes found',statusCode: STATUS_CODES.NOT_FOUND,data:null}]
           }
         switch (timeFrame) {
           case '1 week':
@@ -264,7 +264,7 @@ export class InstructorService {
         const totalPages = Math.ceil(totalCompletedClass/limit);
         if(filteredClasses.length == 0)
           {
-            return [null,{message:'No classes found in this duration',statusCode: STATUS_CODES.OK,data:null}]
+            return [null,{message:'No classes found in this duration',statusCode: STATUS_CODES.NOT_FOUND,data:null}]
           }
         filteredClasses = filteredClasses.slice(
           offset,limit+offset
