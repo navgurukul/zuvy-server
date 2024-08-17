@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { db } from '../../db/index';
 import { helperVariable } from 'src/constants/helper';
-import { eq, sql, inArray} from 'drizzle-orm';
+import { eq, sql, inArray, and} from 'drizzle-orm';
 import * as _ from 'lodash';
 import {
   zuvyBatches,
@@ -75,7 +75,7 @@ export class InstructorService {
         .from(zuvyBatches)
         .where(queryString);
       if (batches.length === 0) {
-        return [{message:'Not found', statusCode: STATUS_CODES.NO_CONTENT},null]
+        return [{message:'Not found', statusCode: STATUS_CODES.NOT_FOUND},null]
       }
       var upcomingCount = 0;
       var ongoingCount = 0;
@@ -193,5 +193,87 @@ export class InstructorService {
       return [{message:error.message, statusCode: STATUS_CODES.BAD_REQUEST},null]
     }
   }
+  
+  async getAllCompletedClasses(instructorId: number,
+    limit: number,
+    offset: number,
+    timeFrame: string,
+    batchId:number[]):Promise<any>
+    {
+      try {
+        const currentDate = new Date().toISOString();
+        const classesInfo = await db.query.zuvyBatches.findMany({
+          where: (batch, { eq }) =>
+            and(
+              eq(batch.instructorId, instructorId),
+              batchId.length > 0 ? inArray(batch.id, batchId) : undefined
+            ),
+            with: {
+              bootcampDetail: {
+                columns: {
+                  id:true,
+                  name:true
+                }
+              },
+              sessions: {
+                where: (sessions, { lt }) => lt(sessions.endTime, currentDate)
+              }
+            }
+        })
+        if(classesInfo.length == 0)
+          {
+            return [null,{message:'No batches found',statusCode: STATUS_CODES.OK,data:null}]
+          }
+        const allSessions = [];
+        classesInfo.forEach(batch => {
+          batch.sessions.forEach(session => {
+            session['bootcampName'] = batch.bootcampDetail.name,
+            session['batchName'] = batch.name
+            allSessions.push({
+              ...session
+            });
+          });
+        });
+        
+        allSessions.sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
+        
+        let filteredClasses = [];
+        if(allSessions.length == 0)
+          {
+            return [null,{message:'No classes found',statusCode: STATUS_CODES.OK,data:null}]
+          }
+        switch (timeFrame) {
+          case '1 week':
+          filteredClasses = allSessions.filter(classObj => {
+          const endTime = new Date(classObj.endTime).getTime();
+          const oneWeekAgo = new Date().getTime() - 7 * 24 * 60 * 60 * 1000;
+          return endTime >= oneWeekAgo && endTime <= new Date().getTime();
+        });
+          break;
+          case '2 weeks':
+          filteredClasses = allSessions.filter(classObj => {
+          const endTime = new Date(classObj.endTime).getTime();
+          const twoWeeksAgo = new Date().getTime() - 14 * 24 * 60 * 60 * 1000;
+          return endTime >= twoWeeksAgo && endTime <= new Date().getTime();
+          });
+          break;
+        default:
+          filteredClasses = allSessions;
+        }
+        const totalCompletedClass = filteredClasses.length > 0 ? filteredClasses.length : 0;
+        const totalPages = Math.ceil(totalCompletedClass/limit);
+        if(filteredClasses.length == 0)
+          {
+            return [null,{message:'No classes found in this duration',statusCode: STATUS_CODES.OK,data:null}]
+          }
+        filteredClasses = filteredClasses.slice(
+          offset,limit+offset
+        );
+        return [null,{message:'Completed classes fetched successfully',statusCode: STATUS_CODES.OK,data:{filteredClasses,totalPages,totalCompletedClass}}]
 
+      }catch(error)
+      {
+        return [{message:error.message, statusCode: STATUS_CODES.BAD_REQUEST},null]
+      }
+    }
 }
