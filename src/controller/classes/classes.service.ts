@@ -956,7 +956,11 @@ export class ClassesService {
       status.toLowerCase() !== 'all'  ? eq(zuvySessions.status, status) :undefined,   
       search_term ? ilike(zuvySessions.title, `%${search_term}%`) : undefined
       ))
-     .orderBy(zuvySessions.startTime)
+      .orderBy(
+        status.toLowerCase() === 'completed' || status.toLowerCase() === 'all'
+          ? desc(zuvySessions.startTime)
+          : (zuvySessions.startTime)
+      )
      .offset(offset)
      .limit(limit);
       
