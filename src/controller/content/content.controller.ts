@@ -653,7 +653,7 @@ export class ContentController {
   }
 
   @Delete('/deleteChapterContentByChapterId/:chapterId')
-  @ApiOperation({ summary: 'Delete video, article, and assignment for this chapter' })
+  @ApiOperation({ summary: 'Delete the chapter by ID' })
   @ApiBearerAuth() 
   async deleteChapterByChapterId(
     @Param('chapterId') chapterId: number

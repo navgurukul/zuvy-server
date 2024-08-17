@@ -448,6 +448,28 @@ export class TrackingController {
     );
     return res;
   }
+  
+  @Get('getQuizAndAssignmentWithStatus')
+  @ApiOperation({ summary: 'get Quiz And Assignment With Status' })
+  @ApiBearerAuth()
+  async getQuizAndAssignmentWithStatus(
+    @Req() req,
+    @Query('chapterId') chapterId: number,
+    @Res() res
+  ) {
+    try {
+      let [err, success] = await this.TrackingService.getQuizAndAssignmentWithStatus(
+        req.user[0].id,
+        chapterId,
+      );
+      if (err) {
+        return ErrorResponse.BadRequestException(err.message, err.statusCode).send(res)
+      }
+      return new SuccessResponse(success.message, success.statusCode, success.data).send(res);
+    } catch (error) {
+      return ErrorResponse.BadRequestException(error.message).send(res);
+    }
+  }
 
   @Post('updateProject/:projectId')
   @ApiOperation({ summary: 'Update project for a user' })
@@ -490,13 +512,21 @@ export class TrackingController {
     @Param('projectId') projectId: number,
     @Param('moduleId') moduleId: number,
     @Req() req,
+    @Res() res
   ) {
-    const res = await this.TrackingService.getProjectDetailsWithStatus(
-      projectId,
-      moduleId,
-      req.user[0].id
-    );
-    return res;
+    try {
+      let [err, success] = await this.TrackingService.getProjectDetailsWithStatus(
+          projectId,
+          moduleId,
+          req.user[0].id
+        );
+      if (err) {
+        return ErrorResponse.BadRequestException(err.message, err.statusCode).send(res)
+      }
+      return new SuccessResponse(success.message, success.statusCode, success.data).send(res);
+    } catch (error) {
+      return ErrorResponse.BadRequestException(error.message).send(res);
+    }  
   }
 
   @Get('/allBootcampProgress')
