@@ -2493,7 +2493,8 @@ export const zuvyBatchesRelations = relations(
     bootcampDetail : one(zuvyBootcamps,{
       fields: [zuvyBatches.bootcampId],
       references: [zuvyBootcamps.id]
-    })
+    }),
+    sessions: many(zuvySessions)
   })
 );
 
@@ -2511,6 +2512,10 @@ export const sessionBootcampRelations = relations(
     bootcampDetail:one(zuvyBootcamps,{
       fields: [zuvySessions.bootcampId],
       references: [zuvyBootcamps.id]
+    }),
+    batches: one(zuvyBatches,{
+      fields: [zuvySessions.batchId],
+      references: [zuvyBatches.id]
     })
   })
 )
