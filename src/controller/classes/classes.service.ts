@@ -991,14 +991,14 @@ export class ClassesService {
      .offset(offset)
      .limit(limit);
       
-     const classes = await query;
-     const sessionsArray = classes.map(classObj => classObj.sessions);
-     const totalClasses = classes.length > 0 ?  Number(classes[0].totalCount) : 0
+     const allClasses = await query;
+     const classes = allClasses.map(classObj => classObj.sessions);
+     const totalClasses = allClasses.length > 0 ?  Number(allClasses[0].totalCount) : 0
       return {
         status: 'success',
         message: 'Classes fetched successfully by batchId',
         code: 200,
-        sessionsArray, total_items: totalClasses, total_pages: (Math.ceil(totalClasses / limit) || 1)
+        classes, total_items: totalClasses, total_pages: (Math.ceil(totalClasses / limit) || 1)
       };
     } catch (err) {
       return { status: 'error', message: err.message, code: 500 }
