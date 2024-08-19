@@ -17,6 +17,9 @@ import {
   zuvyOutsourseOpenEndedQuestions,
   zuvyOutsourseQuizzes,
   zuvyAssessmentSubmission,
+  zuvyModuleVideo,
+  zuvyModuleAssignment,
+  zuvyModuleArticle,
   zuvyModuleForm,
   questionType,
   zuvyQuestionTypes,
@@ -27,6 +30,7 @@ import {
   SQL,
   sql,
   eq,
+  gt,
   count,
   inArray,
   and,
@@ -54,6 +58,7 @@ import {
   UpdateOpenEndedDto,
   CreateTagDto,
   projectDto,
+  // updateChapterDto,
   formBatchDto,
   editFormBatchDto,
   CreateTypeDto,
@@ -68,6 +73,7 @@ const { ZUVY_CONTENT_URL, ZUVY_CONTENTS_API_URL } = process.env; // INPORTING en
 // const strapi = new Strapi({url: ZUVY_CONTENTS_API_URL})
 @Injectable()
 export class ContentService {
+  db: any;
   async lockContent(modules__, module_id = null) {
     let index = 0;
     while (index < modules__.length) {
@@ -428,7 +434,7 @@ export class ContentService {
         .select({ count: count(zuvyModuleChapter.id) })
         .from(zuvyModuleChapter)
         .where(eq(zuvyModuleChapter.moduleId, moduleId));
-      const order = noOfChaptersOfAModule[0].count + 1  
+      const order = noOfChaptersOfAModule[0].count + 1
       if (topicId == 6) {
         newAssessment = await this.createAssessment(moduleId);
         chapterData = {
@@ -452,12 +458,62 @@ export class ContentService {
         await db.insert(zuvyOutsourseAssessments).values({ assessmentId: newAssessment[0].id, moduleId, bootcampId, chapterId: chapter[0].id, order }).returning();
       }
 
+      if (topicId === 1) {
+        await db.insert(zuvyModuleVideo).values({ chapterId: chapter[0].id }).returning();
+      }
+
+      if (topicId === 2) {
+        await db.insert(zuvyModuleArticle).values({ chapterId: chapter[0].id }).returning();
+      }
+
+      if (topicId === 5) {
+        await db.insert(zuvyModuleAssignment).values({ chapterId: chapter[0].id }).returning();
+      }
+
       return {
         status: 'success',
         message: 'Chapter created successfully for this module',
         code: 200,
         module: chapter,
       };
+    } catch (err) {
+      throw err;
+    }
+  }
+
+  async deleteChapterByChapterId(chapterId: number) {
+    try {
+      const chapters = await db
+        .select({
+          order: zuvyModuleChapter.order,
+          moduleId: zuvyModuleChapter.moduleId,
+        })
+        .from(zuvyModuleChapter)
+        .where(eq(zuvyModuleChapter.id, chapterId));
+
+      if (chapters.length === 0) {
+        return { message: `No content found for Chapter ID ${chapterId}.` };
+      }
+
+      const chapterOrder = chapters[0].order;
+      const moduleId = chapters[0].moduleId;
+
+      const deleteResult = await db
+        .delete(zuvyModuleChapter)
+        .where(eq(zuvyModuleChapter.id, chapterId));
+
+      if (deleteResult.rowCount === 0) {
+        return { message: `No content found for Chapter ID ${chapterId}.` };
+      }
+
+      await db
+        .update(zuvyModuleChapter)
+        .set({
+          order: sql`${zuvyModuleChapter.order} - 1`
+        })
+        .where(sql`${zuvyModuleChapter.order} > ${chapterOrder} AND ${zuvyModuleChapter.moduleId} = ${moduleId}`);
+
+      return { message: `Content related to Chapter ID ${chapterId} has been deleted and order has been updated.` };
     } catch (err) {
       throw err;
     }
@@ -625,7 +681,7 @@ export class ContentService {
         delete CodingQuestions.CodingQuestion
         return { ...CodingQuestions, ...codingDetails }
       })
-      
+
       return chapterDetails
     } catch (err) {
       throw err;
@@ -710,6 +766,9 @@ export class ContentService {
         codingQuestionDetails?: any[];
         formQuestionDetails?: any[];
         contentDetails?: any[];
+        videoDetails?: any[];
+        articleDetails?: any[];
+        assignmentDetails?: any[];
       } = {
         id: chapterDetails[0].id,
         title: chapterDetails[0].title,
@@ -756,6 +815,34 @@ export class ContentService {
                 )
               : [];
           modifiedChapterDetails.formQuestionDetails = formDetails;
+        } else if (
+          chapterDetails[0].topicId === 1 ||
+          chapterDetails[0].topicId === 2 ||
+          chapterDetails[0].topicId === 5
+        ) {
+          const chapterData = await db.query.zuvyModuleChapter.findFirst({
+            where: (chapter, { eq }) => eq(chapter.id, chapterId),
+            with: {
+              moduleVideoData: true,
+              moduleArticle: true,
+              moduleAssignment: true,
+            },
+          }) as any;
+
+          if (chapterDetails[0].topicId === 1) {
+            modifiedChapterDetails.videoDetails = chapterData?.moduleVideoData
+              ? [chapterData.moduleVideoData]
+              : [];
+          } else if (chapterDetails[0].topicId === 2) {
+            modifiedChapterDetails.articleDetails = chapterData?.moduleArticle
+              ? [chapterData.moduleArticle]
+              : [];
+          } else if (chapterDetails[0].topicId === 5) {
+            modifiedChapterDetails.assignmentDetails = chapterData?.moduleAssignment
+              ? [chapterData.moduleAssignment]
+              : [];
+          }
+
         } else {
           let content = [
             {
@@ -791,6 +878,7 @@ export class ContentService {
       throw err;
     }
   }
+
 
   async updateOrderOfModules(
     reorderData: ReOrderModuleBody,
@@ -1029,15 +1117,50 @@ export class ContentService {
             editData.formQuestions = null;
           }
         }
+
+        if (editData.videoDto) {
+          await db.update(zuvyModuleVideo)
+            .set(editData.videoDto)
+            .where(eq(zuvyModuleVideo.chapterId, chapterId))
+            .returning();
+        }
+
+        else if (editData.articleDto) {
+          await db.update(zuvyModuleArticle)
+            .set(editData.articleDto)
+            .where(eq(zuvyModuleArticle.chapterId, chapterId))
+            .returning();
+        }
+
+        else if (editData.assignmentDto) {
+          await db.update(zuvyModuleAssignment)
+            .set(editData.assignmentDto)
+            .where(eq(zuvyModuleAssignment.chapterId, chapterId))
+            .returning();
+        }
+
+        const updateModuleChapter = {
+          title: editData.title,
+          description: editData.description,
+          completionDate: editData.completionDate,
+          quizQuestions: editData.quizQuestions,
+          formQuestions: editData.formQuestions,
+          codingQuestions: editData.codingQuestions,
+          links: editData.links,
+          articleContent: editData.articleContent,
+        };
+        
         await db
           .update(zuvyModuleChapter)
-          .set(editData)
+          .set(updateModuleChapter)
           .where(eq(zuvyModuleChapter.id, chapterId));
+       
       }
       return {
         message: 'Modified successfully',
       };
     } catch (err) {
+      console.log("prr", err)
       throw err;
     }
   }
@@ -2182,7 +2305,7 @@ export class ContentService {
 
         await this.editFormQuestions(chapterId, form.editFormQuestionDto);
         await this.createFormForModule(chapterId, form.formQuestionDto);
-      }else{
+      } else {
         return {
           status: "error",
           code: 400,

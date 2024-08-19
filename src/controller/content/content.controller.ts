@@ -40,10 +40,10 @@ import {
   CreateTagDto,
   projectDto,
   CreateChapterDto,
+  CreateTypeDto,
   formBatchDto,
   editFormBatchDto,
-  CreateTypeDto,
-  CreateAndEditFormBody
+  CreateAndEditFormBody,
 } from './dto/content.dto';
 import { RolesGuard } from 'src/guards/roles.guard';
 
@@ -652,32 +652,13 @@ export class ContentController {
     return res;
   }
 
-  @Get('/allFormQuestions/:chapterId')
-  @ApiOperation({ summary: 'Get all form Questions' })
-  @ApiQuery({
-    name: 'typeId',
-    required: false,
-    type: Number,
-    description: 'typeId',
-  })
-  @ApiQuery({
-    name: 'searchTerm',
-    required: false,
-    type: String,
-    description: 'Search by name or email',
-  })
-  @ApiBearerAuth()
-  async getAllFormQuestions(
-  @Param('chapterId') chapterId: number,
-  @Query('typeId') typeId: number,
-  @Query('searchTerm') searchTerm: string,
-  ): Promise<object> {
-    const res = await this.contentService.getAllFormQuestions(
-    chapterId,
-    typeId,
-	  searchTerm,
-    );
-    return res;
+  @Delete('/deleteChapterContentByChapterId/:chapterId')
+  @ApiOperation({ summary: 'Delete the chapter by ID' })
+  @ApiBearerAuth() 
+  async deleteChapterByChapterId(
+    @Param('chapterId') chapterId: number
+  ) {
+    return this.contentService.deleteChapterByChapterId(chapterId);
   }
 
   @Post('/editform')
@@ -718,6 +699,3 @@ export class ContentController {
   // }
 
 }
-
-
-

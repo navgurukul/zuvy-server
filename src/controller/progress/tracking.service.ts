@@ -1218,10 +1218,16 @@ export class TrackingService {
               id: true,
             },
             where: (chapterTracking, { eq }) =>
-              eq(chapterTracking.userId, BigInt(userId)),
+              eq(chapterTracking.userId, BigInt(userId)), 
           },
+
+          moduleVideoData: true,
+          
+          moduleArticle: true,
+
+          moduleAssignment: true,
         },
-      });
+      });  
 
       trackingData['status'] =
         trackingData['chapterTrackingDetails'].length > 0

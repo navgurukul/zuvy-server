@@ -1,6 +1,6 @@
 {
-  "id": "8448f9d4-4547-405c-8749-3dd90de86b6f",
-  "prevId": "00000000-0000-0000-0000-000000000000",
+  "id": "9ac41bdf-699c-4d32-990f-256ca769d353",
+  "prevId": "ed044caa-7dd2-4d8b-a3d1-ee6ae4b1e5a6",
   "version": "5",
   "dialect": "pg",
   "tables": {
@@ -10025,7 +10025,7 @@
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
+          "onDelete": "set null",
           "onUpdate": "cascade"
         }
       },
@@ -10415,7 +10415,19 @@
         },
         "difficulty": {
           "name": "difficulty",
-          "type": "difficulty",
+          "type": "varchar(50)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "content": {
+          "name": "content",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "usage": {
+          "name": "usage",
+          "type": "integer",
           "primaryKey": false,
           "notNull": false
         },
@@ -10425,66 +10437,19 @@
           "primaryKey": false,
           "notNull": false
         },
-        "constraints": {
-          "name": "constraints",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "author_id": {
-          "name": "author_id",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "input_base64": {
-          "name": "input_base64",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "examples": {
-          "name": "examples",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "test_cases": {
-          "name": "test_cases",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "expected_output": {
-          "name": "expected_output",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "solution": {
-          "name": "solution",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
           "primaryKey": false,
-          "notNull": false
+          "notNull": false,
+          "default": "now()"
         },
         "updated_at": {
           "name": "updated_at",
           "type": "timestamp with time zone",
           "primaryKey": false,
-          "notNull": false
-        },
-        "usage": {
-          "name": "usage",
-          "type": "integer",
-          "primaryKey": false,
           "notNull": false,
-          "default": 0
+          "default": "now()"
         }
       },
       "indexes": {},
@@ -10636,6 +10601,148 @@
           "primaryKey": false,
           "notNull": false,
           "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {}
+    },
+    "zuvy_cq_template": {
+      "name": "zuvy_cq_template",
+      "schema": "main",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "language_id": {
+          "name": "language_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "template": {
+          "name": "template",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {}
+    },
+    "zuvy_form_tracking": {
+      "name": "zuvy_form_tracking",
+      "schema": "main",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "module_id": {
+          "name": "module_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "question_id": {
+          "name": "question_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "chapter_id": {
+          "name": "chapter_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "chosen_options": {
+          "name": "chosen_options",
+          "type": "integer[]",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "answer": {
+          "name": "answer",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "status": {
+          "name": "status",
+          "type": "varchar(255)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "zuvy_form_tracking_user_id_users_id_fk": {
+          "name": "zuvy_form_tracking_user_id_users_id_fk",
+          "tableFrom": "zuvy_form_tracking",
+          "tableTo": "users",
+          "schemaTo": "main",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {}
+    },
+    "zuvy_languages": {
+      "name": "zuvy_languages",
+      "schema": "main",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "varchar(255)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "language_id": {
+          "name": "language_id",
+          "type": "varchar(50)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "default_coding_template": {
+          "name": "default_coding_template",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
         }
       },
       "indexes": {},
@@ -10867,6 +10974,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "form_questions": {
+          "name": "form_questions",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
         "assessment_id": {
           "name": "assessment_id",
           "type": "integer",
@@ -10915,6 +11028,100 @@
           ],
           "onDelete": "cascade",
           "onUpdate": "cascade"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {}
+    },
+    "zuvy_module_form": {
+      "name": "zuvy_module_form",
+      "schema": "main",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "chapter_id": {
+          "name": "chapter_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "question": {
+          "name": "question",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "options": {
+          "name": "options",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "type_id": {
+          "name": "type_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "is_required": {
+          "name": "is_required",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "usage": {
+          "name": "usage",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "default": 0
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "zuvy_module_form_chapter_id_zuvy_module_chapter_id_fk": {
+          "name": "zuvy_module_form_chapter_id_zuvy_module_chapter_id_fk",
+          "tableFrom": "zuvy_module_form",
+          "tableTo": "zuvy_module_chapter",
+          "schemaTo": "main",
+          "columnsFrom": [
+            "chapter_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "zuvy_module_form_type_id_zuvy_question_type_id_fk": {
+          "name": "zuvy_module_form_type_id_zuvy_question_type_id_fk",
+          "tableFrom": "zuvy_module_form",
+          "tableTo": "zuvy_question_type",
+          "schemaTo": "main",
+          "columnsFrom": [
+            "type_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -11876,6 +12083,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "submission_id": {
+          "name": "submission_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -11921,6 +12134,20 @@
           "schemaTo": "main",
           "columnsFrom": [
             "coding_outsourse_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "zuvy_practice_code_submission_id_zuvy_assessment_submission_id_fk": {
+          "name": "zuvy_practice_code_submission_id_zuvy_assessment_submission_id_fk",
+          "tableFrom": "zuvy_practice_code",
+          "tableTo": "zuvy_assessment_submission",
+          "schemaTo": "main",
+          "columnsFrom": [
+            "submission_id"
           ],
           "columnsTo": [
             "id"
@@ -12059,6 +12286,28 @@
           "onUpdate": "cascade"
         }
       },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {}
+    },
+    "zuvy_question_type": {
+      "name": "zuvy_question_type",
+      "schema": "main",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "question_type": {
+          "name": "question_type",
+          "type": "varchar",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {}
     },
@@ -12502,6 +12751,55 @@
       "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {}
+    },
+    "zuvy_test_cases": {
+      "name": "zuvy_test_cases",
+      "schema": "main",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "question_id": {
+          "name": "question_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "inputs": {
+          "name": "inputs",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "expected_output": {
+          "name": "expected_output",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "zuvy_test_cases_question_id_zuvy_coding_questions_id_fk": {
+          "name": "zuvy_test_cases_question_id_zuvy_coding_questions_id_fk",
+          "tableFrom": "zuvy_test_cases",
+          "tableTo": "zuvy_coding_questions",
+          "schemaTo": "main",
+          "columnsFrom": [
+            "question_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "cascade"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {}
     }
   },
   "enums": {
@@ -12553,6 +12851,16 @@
         "text_large": "text_large",
         "attachments": "attachments",
         "url": "url"
+      }
+    },
+    "questionType": {
+      "name": "questionType",
+      "values": {
+        "Multiple Choice": "Multiple Choice",
+        "Checkboxes": "Checkboxes",
+        "Long Text Answer": "Long Text Answer",
+        "Date": "Date",
+        "Time": "Time"
       }
     },
     "submissions_state": {

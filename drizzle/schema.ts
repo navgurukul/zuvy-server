@@ -3434,7 +3434,6 @@ export const quizTrackingRelation = relations(
   })
 );
 
-
 export const zuvyModuleForm = main.table('zuvy_module_form', {
   id: serial('id').primaryKey().notNull(),
   chapterId: integer('chapter_id').references(() => zuvyModuleChapter.id).notNull(),
@@ -3506,6 +3505,75 @@ export const zuvyFormBatchRelations = relations(
     }),
   }),
 );
+
+export const zuvyModuleVideo = main.table('zuvy_module_video', {
+  id: serial('id').primaryKey().notNull(),
+  chapterId: integer('chapter_id').references(() => zuvyModuleChapter.id, {
+    onDelete: 'cascade',
+    onUpdate: 'cascade',
+  }),
+  file: bytea('file'),
+  links: text('links').array()
+});
+
+export const videoChapterRelation =  relations(zuvyModuleVideo, ({one}) => ({
+  video: one(zuvyModuleChapter, {
+    fields: [zuvyModuleVideo.chapterId],
+    references: [zuvyModuleChapter.id],
+  }),
+
+}));
+
+export const zuvyModuleArticle = main.table('zuvy_module_artcile', {
+  id: serial('id').primaryKey().notNull(),
+  chapterId: integer('chapter_id').references(() => zuvyModuleChapter.id, {
+    onDelete: 'cascade',
+    onUpdate: 'cascade',
+  }),
+  articleContent: jsonb('article_content'),
+});
+
+export const articleChapterRelation =  relations(zuvyModuleArticle, ({one}) => ({
+  artcile: one(zuvyModuleChapter, {
+    fields: [zuvyModuleArticle.chapterId],
+    references: [zuvyModuleChapter.id],
+  }),
+
+}));
+
+export const zuvyModuleAssignment = main.table('zuvy_module_assignment', {
+  id: serial('id').primaryKey().notNull(),
+  chapterId: integer('chapter_id').references(() => zuvyModuleChapter.id, {
+    onDelete: 'cascade',
+    onUpdate: 'cascade',
+  }),
+  title: varchar('title'),
+  description: text('description'),
+});
+
+export const assignmentChapterRelation =  relations(zuvyModuleAssignment, ({one,}) => ({
+  assignment: one(zuvyModuleChapter, {
+    fields: [zuvyModuleAssignment.chapterId],
+    references: [zuvyModuleChapter.id],
+  }),
+}));
+
+export const moduleChapterRelation =  relations(zuvyModuleChapter, ({one}) => ({
+  moduleVideoData: one(zuvyModuleVideo, {
+    fields: [zuvyModuleChapter.id],
+    references: [zuvyModuleVideo.chapterId],
+  }),
+
+  moduleArticle: one(zuvyModuleArticle, {
+    fields: [zuvyModuleChapter.id],
+    references: [zuvyModuleArticle.chapterId],
+  }), 
+
+  moduleAssignment: one(zuvyModuleAssignment, {
+    fields: [zuvyModuleChapter.id],
+    references: [zuvyModuleAssignment.chapterId],
+  })
+}));
 
 export const zuvyCodingQuestions = main.table("zuvy_coding_questions", {
   id: serial("id").primaryKey().notNull(),

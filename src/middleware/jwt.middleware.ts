@@ -40,6 +40,7 @@ export class JwtMiddleware implements NestMiddleware {
 
     try {
       const decoded: any = await this.jwtService.decode(token);
+      console.log('user', token);
       if (!decoded) {
         throw new UnauthorizedException('Invalid token');
       }
@@ -48,10 +49,13 @@ export class JwtMiddleware implements NestMiddleware {
         .select()
         .from(users)
         .where(sql`${users.id} = ${decoded.id} AND ${users.email} = ${decoded.email}`);
+
+      
+       
       if (user.length === 0) {
         throw new UnauthorizedException('User is not authorized');
       }
-
+      
       const rolesArray = await db
         .select()
         .from(sansaarUserRoles)
