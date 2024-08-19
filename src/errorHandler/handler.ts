@@ -17,7 +17,7 @@ export class ErrorResponse {
   }
 
   static BadRequestException(message: string, code?: number) {
-    Logger.log(`error: ${message}`);
+    Logger.error(`error: ${message}`);
     return new ErrorResponse(message, code || STATUS_CODES.BAD_REQUEST);
   }
 

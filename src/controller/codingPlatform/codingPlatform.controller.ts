@@ -208,12 +208,12 @@ export class CodingPlatformController {
   }
 
   // get api practice code id bye submission test cases id
-  @Get('get-practice-code/:practiceSubmissionId')
-  @ApiOperation({ summary: 'Get practice code by submission id' })
+  @Get('testcases/submission/:practiceSubmissionId')
+  @ApiOperation({ summary: 'Get practice code Test cases Submission By submission id' })
   @ApiBearerAuth()
   async getPracticeCodeBySubmissionId(@Param('practiceSubmissionId') practiceSubmissionId: number, @Res() res: Response): Promise<any> {
     try {
-      const [err, success] = await this.codingPlatformService.getPracticeCodeBySubmissionId(practiceSubmissionId);
+      const [err, success] = await this.codingPlatformService.getTestcasesSubmissionBySubmissionId(practiceSubmissionId);
       if (err) {
         return ErrorResponse.BadRequestException(err.message).send(res);
       }

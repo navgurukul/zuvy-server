@@ -2665,6 +2665,7 @@ export const zuvyPracticeCode = main.table("zuvy_practice_code", {
   codingOutsourseId: integer("coding_outsourse_id").references(() => zuvyOutsourseCodingQuestions.id),
   submissionId: integer("submission_id").references(() => zuvyAssessmentSubmission.id),
   createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+  sourceCode: text("source_code"),
 })
 
 export const zuvyPracticeCodeRelations = relations(zuvyPracticeCode, ({ one, many }) => ({
@@ -3542,10 +3543,16 @@ export const zuvyTestCasesSubmission = main.table("zuvy_test_cases_submission", 
   status: varchar("status", { length: 255 }),
   token: varchar("token", { length: 255 }),
   action: varchar("action", { length: 255 }),
+  languageId: integer("language_id").references(() => zuvyLanguages.id),
+  stdout: text("stdout"),
   submissionId: integer("submission_id").references(() => zuvyPracticeCode.id, {
     onDelete: 'cascade',
     onUpdate: 'cascade',
   }),
+  memory: integer("memory"),
+  time: integer("time"),
+  stderr: text("stderr"),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
 });
 
 export const zuvyTestCasesSubmissionRelation = relations(zuvyTestCasesSubmission, ({one, many}) => ({

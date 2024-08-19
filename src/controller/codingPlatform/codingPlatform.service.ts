@@ -14,6 +14,7 @@ import {
 } from '../../../drizzle/schema';
 import { generateTemplates } from '../../helpers/index';
 import { STATUS_CODES } from "../../helpers/index";
+import { language } from 'googleapis/build/src/apis/language';
 
 const { ZUVY_CONTENT_URL, RAPID_BASE_URL, RAPID_API_KEY, RAPID_HOST } = process.env; // INPORTING env VALUSE ZUVY_CONTENT
 
@@ -100,7 +101,7 @@ export class CodingPlatformService {
     }
   }
 
-  async submitPracticeCode(questionId, sourceCode, action, userId, submissionId, codingOutsourseId): Promise<any> {
+  async submitPracticeCode(questionId:number, sourceCode, action, userId, submissionId, codingOutsourseId): Promise<any> {
     try {
       if (!['run', 'submit'].includes(action.toLowerCase())) {
         return [{ statusCode: STATUS_CODES.BAD_REQUEST, message: 'Invalid action' }];
@@ -109,16 +110,41 @@ export class CodingPlatformService {
       if (err) {
         return [err];
       }
-      if (action === 'run') {
-        return [null, testcasesSubmission];
-      }
-
-      let insertValues: any = { status: 'Accepted' };
+      let insertValues: any = { status: 'Accepted', sourceCode: sourceCode.sourceCode };
       for (let testSub of testcasesSubmission.data) {
         if (testSub.status !== 'Accepted') {
           insertValues["status"] = testSub.status;
           break;
         }
+      }
+      if (action === 'run') {
+        // i want to update the last submission sourceCode where last submission sourceCode 
+        let queryString = sql`${zuvyPracticeCode.questionId} = ${questionId} AND ${zuvyPracticeCode.userId} = ${userId} AND ${zuvyPracticeCode.action} = ${action}`
+        if (submissionId){
+          queryString = sql`${queryString} AND ${zuvyPracticeCode.submissionId} = ${submissionId} AND ${zuvyPracticeCode.codingOutsourseId} = ${codingOutsourseId}`;
+        }
+        let response = await db.query.zuvyPracticeCode.findMany({
+          where: (zuvyPracticeCode, { sql }) => queryString,
+          columns: {
+            id: true,
+            status: true
+          }
+        });
+        if (response.length === 0) {
+          insertValues["userId"] = userId;
+          insertValues["questionId"] = questionId;
+          insertValues["action"] = action;
+          if (submissionId) {
+            insertValues["submissionId"] = submissionId;
+          }
+          if (codingOutsourseId) {
+            insertValues["codingOutsourseId"] = codingOutsourseId;
+          }
+          await db.insert(zuvyPracticeCode).values(insertValues).returning();
+        } else {
+          await db.update(zuvyPracticeCode).set(insertValues).where(sql`${zuvyPracticeCode.id} = ${response[0].id}`).returning();
+        }
+        return [null, testcasesSubmission.data];
       }
       insertValues["userId"] = userId;
       insertValues["questionId"] = questionId;
@@ -132,22 +158,30 @@ export class CodingPlatformService {
       let practiceSubmission = await db.insert(zuvyPracticeCode).values(insertValues).returning();
 
       let testcasesSubmissionInsert = testcasesSubmission.data.map((testcase) => {
+        console.log({testcase});
         return {
           submissionId: practiceSubmission[0].id,
           testcastId: testcase.testcastId,
           status: testcase.status,
           token: testcase.token,
+          stdOut: testcase.stdOut,
+          input: testcase.input,
+          output: testcase.output,
+          memory: testcase.memory,
+          time: testcase.time,
+          // languageId: sourceCode.languageId
         }
       })
-
-      await db.insert(zuvyTestCasesSubmission).values(testcasesSubmissionInsert).returning();
-
+      console.log({testcasesSubmissionInsert});
+      let test_Submission = await db.insert(zuvyTestCasesSubmission).values(testcasesSubmissionInsert).returning();
+      console.log({test_Submission});
       if (testcasesSubmission.length !== 0) {
         return [null, testcasesSubmission];
       } else {
         return [{ statusCode: STATUS_CODES.BAD_REQUEST, message: 'Error in submitting code' }];
       }
     } catch (error) {
+      Logger.error({error});
       return [{ statusCode: STATUS_CODES.BAD_REQUEST, message: error.message }];
     }
   }
@@ -170,7 +204,9 @@ export class CodingPlatformService {
           questionId: true,
           submissionId: true,
           codingOutsourseId: true,
-          createdAt: true
+          createdAt: true,
+          sourceCode: true
+
         },
         with:{
           TestCasesSubmission: true
@@ -200,7 +236,7 @@ export class CodingPlatformService {
       const submissionsInfoPromises = TestCasesSubmission.map(async (submission: any) => {
         const options = {
           method: 'GET',
-          url: `${RAPID_BASE_URL}/submissions/${submission.token}?base64_encoded=true`,
+          url: `${RAPID_BASE_URL}/submissions/${submission.token}&base64_encoded=false&fields=token,stdout,stderr,status_id,language_id,source_code`,
           headers: {
             'X-RapidAPI-Key': RAPID_API_KEY,
             'X-RapidAPI-Host': RAPID_HOST
@@ -226,11 +262,8 @@ export class CodingPlatformService {
   async getCodeInfo(tokens) {
     const options = {
       method: 'GET',
-      url: `${RAPID_BASE_URL}/submissions/batch?tokens=${tokens.join(',')}&base64_encoded=true`,
-      params: {
-        base64_encoded: 'true',
-        fields: '*'
-      },
+      url: `${RAPID_BASE_URL}/submissions/batch?tokens=${tokens.join(',')}&base64_encoded=false&fields=token,stdout,stderr,status_id,language_id,source_code`,
+
       headers: {
         'X-RapidAPI-Key': RAPID_API_KEY,
         'X-RapidAPI-Host': RAPID_HOST
@@ -239,11 +272,32 @@ export class CodingPlatformService {
 
     try {
       const response = await axios.request(options);
+      console.log(response.data);
       return [null, { statusCode: STATUS_CODES.OK, message: 'Code submitted successfully', data: response.data }];
     } catch (error) {
       return [{ message: error.message, statusCode: STATUS_CODES.BAD_REQUEST }];
     }
   }
+
+  // token test case sourse code
+  async getSourceCodeByToken(token: string): Promise<any> {
+    try {
+      const options = {
+        method: 'GET',
+        url: `${RAPID_BASE_URL}/submissions/${token}?base64_encoded=true&fields=source_code,stdout,stderr,status_id,language_id,created_at,finished_at,`,
+        headers: {
+          'X-RapidAPI-Key': RAPID_API_KEY,
+          'X-RapidAPI-Host': RAPID_HOST
+        }
+      };
+      const response = await axios.request(options);
+      console.log(response.data);
+      return [null, { message: 'Code fetched successfully', data: response.data, statusCode: STATUS_CODES.OK }];
+    } catch (error) {
+      return [{ message: error.message, statusCode: STATUS_CODES.BAD_REQUEST }];
+    }
+  }
+
 
   async createCodingProblem(codingProblem: CreateProblemDto): Promise<any> {
     try {
@@ -305,7 +359,7 @@ export class CodingPlatformService {
           constraints: true,
           content: true,
           tagId: true,
-          createdAt: true
+          createdAt: true,
         },
         with: {
           testCases: {
@@ -367,8 +421,8 @@ export class CodingPlatformService {
     }
   }
 
-  // getPracticeCodeBySubmissionId
-  async getPracticeCodeBySubmissionId(submissionId: number): Promise<any> {
+  // getTestcasesSubmissionBySubmissionId
+  async getTestcasesSubmissionBySubmissionId(submissionId: number): Promise<any> {
     try {
       const submission = await db.query.zuvyPracticeCode.findMany({
         where: (zuvyPracticeCode, { sql }) => sql`${zuvyPracticeCode.id} = ${submissionId}`,
@@ -380,20 +434,44 @@ export class CodingPlatformService {
           submissionId: true,
           codingOutsourseId: true,
           createdAt: true,
+          sourceCode: true
         },
         with: {
-          questionDetail: true,
+          questionDetail: {
+            columns: {
+              id: true,
+              title: true,
+              description: true,
+              difficulty: true,
+            },
+            with: {
+              testCases: {
+                columns: {
+                  id: true,
+                  inputs: true,
+                  expectedOutput: true,
+                },
+              },
+            }
+          },
           TestCasesSubmission: true
         }
       });
       if (submission.length === 0) {
         return [{ message: 'No submission available for the given submissionId', statusCode: STATUS_CODES.NOT_FOUND }];
       }
-      const [error, submissions] = await this.getTestCasesSubmission(submission[0].TestCasesSubmission);
-      if (error) {
-        return [error];
-      }
-      submission[0].TestCasesSubmission = submissions.data;
+      // const [error, submissions] = await this.getTestCasesSubmission(submission[0].TestCasesSubmission);
+      // if (error) {
+      //   return [error];
+      // }
+      // //  token 
+      // let token = submissions.data[0].token;
+      // let [err, sourceCode] = await this.getSourceCodeByToken(token);
+      // if (err) {
+      //   return [err];
+      // }
+      // submission[0].TestCasesSubmission = submissions.data;
+      // submission[0]["sourceCode"] = sourceCode.data.source_code;
       return [null, { message: 'All submission by submission id', data: submission[0], statusCode: STATUS_CODES.OK }];
     } catch (error) {
       return [{ message: error.message, statusCode: STATUS_CODES.BAD_REQUEST }];
@@ -402,7 +480,7 @@ export class CodingPlatformService {
   async getSubmissionsId(questionId: number): Promise<any> {
     try {
       const submissions = await db.query.zuvyPracticeCode.findMany({
-        where: (zuvyPracticeCode, { sql }) => sql`${zuvyPracticeCode.questionId} = ${questionId}`,
+        where: (zuvyPracticeCode, { sql }) => sql`${zuvyPracticeCode.questionId} = ${questionId} AND ${zuvyPracticeCode.action} = 'submit'`,
         columns: {
           id: true,
           status: true,
@@ -410,7 +488,8 @@ export class CodingPlatformService {
           questionId: true,
           submissionId: true,
           codingOutsourseId: true,
-          createdAt: true
+          createdAt: true,
+          sourceCode: true
         },
         with: {
           questionDetail: true

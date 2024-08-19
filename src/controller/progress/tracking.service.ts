@@ -1824,6 +1824,7 @@ export class TrackingService {
               token: true,
               createdAt: true,
               codingOutsourseId: true,
+              sourceCode: true
             },
             with: {
               questionDetail: true
