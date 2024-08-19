@@ -22,7 +22,7 @@ export class StudentService {
   async enrollData(userId: number) {
     try {
       let enrolled = await db.query.zuvyBatchEnrollments.findMany({
-        where: (zuvyBatchEnrollments, { sql }) => sql`${zuvyBatchEnrollments.userId} = ${userId}`,
+        where: (zuvyBatchEnrollments, { sql }) => sql`${zuvyBatchEnrollments.userId} = ${userId} AND ${zuvyBatchEnrollments.batchId} IS NOT NULL`,
         columns: {
           id: true
         },

@@ -186,8 +186,7 @@ export class CodingPlatformService {
     }
   }
 
-
-  async getPracticeCode(questionId, userId, submissionId, codingOutsourseId): Promise<any> {
+    async getPracticeCode(questionId, userId, submissionId, codingOutsourseId): Promise<any> {
     try {
       let queryString;
       if (isNaN(submissionId)) {
@@ -215,6 +214,7 @@ export class CodingPlatformService {
         orderBy: (zuvyPracticeCode, { sql }) => sql`${zuvyPracticeCode.id} DESC`,
 
       });
+
       if (response.length === 0) {
         return [{ statusCode: STATUS_CODES.NOT_FOUND, message: 'No practice code available for the given question' }];
       } else {
@@ -222,9 +222,22 @@ export class CodingPlatformService {
         if (err) {
           return [err];
         }
-        const submissions = await this.getTestCasesSubmission(response[0].TestCasesSubmission);
-        return [null, { statusCode: STATUS_CODES.OK, message: 'Practice code fetched successfully', data:{...questionInfo.data, submissions} }];
+        const [erroSubmissions, submissions ] = await this.getTestCasesSubmission(response[0].TestCasesSubmission);
+        if (erroSubmissions){
+          return [erroSubmissions]
+        }
+      let status = "Accepted";
+
+      let testcasesSubmission = submissions.data
+      for (let testSub of testcasesSubmission) {
+        if (testSub.status !== 'Accepted') {
+          status = testSub.status;
+          break;
+        }
       }
+      questionInfo.data.status = status;
+      return [null, { statusCode: STATUS_CODES.OK, message: 'Practice code fetched successfully', data:{...questionInfo.data, testcasesSubmission} }];
+    }
     } catch (error) {
       console.log({error});
       return [{ statusCode: STATUS_CODES.BAD_REQUEST, message: error.message }];
@@ -323,6 +336,7 @@ export class CodingPlatformService {
       return [[{ message: error.message, statusCode: STATUS_CODES.BAD_REQUEST }]];
     }
   }
+
 
   async updateCodingQuestion(id: number, updateCodingQuestionDto: any): Promise<any> {
     let { testCases, ...questionData } = updateCodingQuestionDto;

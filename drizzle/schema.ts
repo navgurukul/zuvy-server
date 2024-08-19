@@ -2493,7 +2493,8 @@ export const zuvyBatchesRelations = relations(
     bootcampDetail : one(zuvyBootcamps,{
       fields: [zuvyBatches.bootcampId],
       references: [zuvyBootcamps.id]
-    })
+    }),
+    sessions: many(zuvySessions)
   })
 );
 
@@ -2511,6 +2512,10 @@ export const sessionBootcampRelations = relations(
     bootcampDetail:one(zuvyBootcamps,{
       fields: [zuvySessions.bootcampId],
       references: [zuvyBootcamps.id]
+    }),
+    batches: one(zuvyBatches,{
+      fields: [zuvySessions.batchId],
+      references: [zuvyBatches.id]
     })
   })
 )
@@ -2832,6 +2837,7 @@ export const postsRelations = relations(zuvyModuleChapter, ({ one, many }) => ({
   formTrackingDetails: many(zuvyFormTracking),
   OutsourseAssessments: many(zuvyOutsourseAssessments),
   ModuleAssessment: many(zuvyModuleAssessment),
+  assignmentTrackingDetails: many(zuvyAssignmentSubmission),
   moduleTracked: one(zuvyModuleTracking, {
     fields: [zuvyModuleChapter.moduleId],
     references: [zuvyModuleTracking.moduleId],
@@ -3112,8 +3118,12 @@ export const userCodeRelations = relations(users, ({ one }) => ({
   }),
 }));
 
-export const userAssignmentSubmissionRelations = relations(zuvyAssignmentSubmission, ({ many }) => ({
-  assignmentSubmission : many(users)
+export const userAssignmentSubmissionRelations = relations(zuvyAssignmentSubmission, ({one, many }) => ({
+  assignmentSubmission : many(users),
+  chapterDetails:one(zuvyModuleChapter, {
+    fields: [zuvyAssignmentSubmission.chapterId],
+    references: [zuvyModuleChapter.id],
+  }),
 }));
 export const zuvyChapterRelations = relations(
   zuvyChapterTracking,
