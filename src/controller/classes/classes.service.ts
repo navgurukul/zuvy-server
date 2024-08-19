@@ -6,7 +6,8 @@ import {
   zuvyBatchEnrollments,
   zuvyStudentAttendance,
   zuvySessions,
-  zuvyBatches
+  zuvyBatches,
+  zuvyBootcamps
   // ZuvyClassesGoogleMeetLink
 } from '../../../drizzle/schema';
 import { db } from '../../db/index';
@@ -910,7 +911,24 @@ export class ClassesService {
 
   async getClassesBy(bootcamp_id: number, user, batch_id: number, limit: number, offset: number, search_term: string, status: string) {
     try {
-      if (user?.roles?.includes('admin')) {
+      if (user?.roles?.includes('admin')) { 
+        let desiredCourse = [];
+        if(isNaN(batch_id))
+          {
+            desiredCourse= await db.select().from(zuvyBootcamps).where(eq(zuvyBootcamps.id,bootcamp_id));
+          }
+         else {
+          desiredCourse = await db.select().from(zuvyBatches).where(sql`${zuvyBatches.id}=${batch_id} AND ${zuvyBatches.bootcampId} = ${bootcamp_id}`)
+         } 
+         if(desiredCourse.length == 0)
+          {
+            return {
+              status: 'error',
+              message:
+                'There is no such course or batch.',
+              code: 404,
+            };
+          }     
         await this.updatingStatusOfClass(bootcamp_id,batch_id);
       } else if (bootcamp_id && user.id) {
           let queryString = await this.BootcampOrBatchEnrollments(batch_id, bootcamp_id,user.id);
@@ -918,6 +936,15 @@ export class ClassesService {
             .select()
             .from(zuvyBatchEnrollments)
             .where(queryString);
+          if(zuvyBatchEnrollmentsData.length == 0)
+            {
+              return {
+                status: 'error',
+                message:
+                  'You are not enrolled in this course or batch',
+                code: 404,
+              };
+            }  
             batch_id = zuvyBatchEnrollmentsData[0].batchId;
             if(batch_id == null)
               {
