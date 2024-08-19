@@ -116,4 +116,57 @@ import { ErrorResponse, SuccessResponse } from 'src/errorHandler/handler';
       return ErrorResponse.BadRequestException(error.message).send(res);
     }  
     }
+
+    @Get('/getAllCompletedClasses')
+  @ApiOperation({ summary: 'Get all completed classes by instructorId' })
+  @ApiQuery({
+    name: 'limit',
+    required: true,
+    type: Number,
+    description: 'Number of classes per page',
+  })
+  @ApiQuery({
+    name: 'offset',
+    required: true,
+    type: Number,
+    description: 'Offset for pagination (min value 1)',
+  })
+  @ApiQuery({
+    name: 'weeks',
+    required: true,
+    type: Number,
+    description: 'no of weeks',
+  })
+  @ApiQuery({
+    name: 'batchId',
+    required: false,
+    type: [Number],
+    isArray: true,
+    description: 'Array of batchIds',
+  })
+  @ApiBearerAuth()
+  async getAllCompletedClasses(
+    @Query('limit') limit: number,
+    @Query('offset') offset: number,
+    @Query('weeks') weeks: number,
+    @Query('batchId', new ParseArrayPipe({ items: Number, optional: true })) batchId: number[] = [],
+    @Req() req,
+    @Res() res
+  ){
+      try {
+        let [err, success] =await this.instructorService.getAllCompletedClasses(
+          req.user[0].id,
+          limit,
+          offset,
+          weeks,
+          batchId
+        );
+        if (err) {
+          return ErrorResponse.BadRequestException(err.message, err.statusCode).send(res)
+        }
+        return new SuccessResponse(success.message, success.statusCode, success.data).send(res);
+      } catch (error) {
+         return ErrorResponse.BadRequestException(error.message).send(res);
+      }    
+  }
   }
