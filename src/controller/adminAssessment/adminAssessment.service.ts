@@ -141,8 +141,7 @@ export class AdminAssessmentService {
   async getUserAssessmentSubmission(req, submissionAssessmentID, userID) {
     try {
       const assessment:any = await db.query.zuvyAssessmentSubmission.findMany({
-        where: (zuvyAssessmentSubmission, { eq }) =>
-          eq(zuvyAssessmentSubmission.id, submissionAssessmentID),
+        where: (zuvyAssessmentSubmission, { eq, and, isNotNull, sql}) => sql`${zuvyAssessmentSubmission.id}= ${submissionAssessmentID} AND ${zuvyAssessmentSubmission.submitedAt} IS NOT NULL`,
         columns: {
           id: true,
           userId: true,
@@ -201,9 +200,10 @@ export class AdminAssessmentService {
               action: true,
               status: true,  
               createdAt: true,
+              sourceCode: true,
             },
-            where: (zuvyPracticeCode, { sql }) =>
-              sql`${zuvyPracticeCode.status} = 'Accepted' AND ${zuvyPracticeCode.action} = 'submit'`,
+            where: (PracticeCode, { sql }) =>
+              sql`${PracticeCode.status} = 'Accepted' AND ${PracticeCode.action} = 'submit'`,
             distinct: ['questionId'],
             with: {
               questionDetail: true

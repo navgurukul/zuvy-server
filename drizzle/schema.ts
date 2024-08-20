@@ -2493,7 +2493,8 @@ export const zuvyBatchesRelations = relations(
     bootcampDetail : one(zuvyBootcamps,{
       fields: [zuvyBatches.bootcampId],
       references: [zuvyBootcamps.id]
-    })
+    }),
+    sessions: many(zuvySessions)
   })
 );
 
@@ -2511,6 +2512,10 @@ export const sessionBootcampRelations = relations(
     bootcampDetail:one(zuvyBootcamps,{
       fields: [zuvySessions.bootcampId],
       references: [zuvyBootcamps.id]
+    }),
+    batches: one(zuvyBatches,{
+      fields: [zuvySessions.batchId],
+      references: [zuvyBatches.id]
     })
   })
 )
@@ -2665,6 +2670,7 @@ export const zuvyPracticeCode = main.table("zuvy_practice_code", {
   codingOutsourseId: integer("coding_outsourse_id").references(() => zuvyOutsourseCodingQuestions.id),
   submissionId: integer("submission_id").references(() => zuvyAssessmentSubmission.id),
   createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+  sourceCode: text("source_code"),
 })
 
 export const zuvyPracticeCodeRelations = relations(zuvyPracticeCode, ({ one, many }) => ({
@@ -2929,6 +2935,20 @@ export const zuvyAssessmentSubmission = main.table("zuvy_assessment_submission",
     withTimezone: true,
     mode: 'string',
   }),
+  codingQuestionCount: integer('coding_question_count'),
+  mcqQuestionCount: integer('mcq_question_count'),
+  openEndedQuestionCount: integer('open_ended_question_count'),
+  attemptedCodingQuestions: integer('attempted_coding_questions'),
+  attemptedMCQQuestions: integer('attempted_mcq_questions'),
+  attemptedOpenEndedQuestions: integer('attempted_open_ended_questions'),
+  codingScore: integer('coding_score'),
+  openEndedScore: integer('open_ended_score'),
+  mcqScore: integer('mcq_score'),
+  requiredCodingScore: integer('required_coding_score'),
+  requiredOpenEndedScore: integer('required_open_ended_score'),
+  requiredMCQScore: integer('required_mcq_score'),
+  percentage: doublePrecision('percentage'),
+  typeOfsubmission: varchar('type_of_submission', { length: 255 }),
 });
 
 export const zuvyAssessmentSubmissionRelation = relations(zuvyAssessmentSubmission, ({one, many})=> ({
@@ -3615,10 +3635,16 @@ export const zuvyTestCasesSubmission = main.table("zuvy_test_cases_submission", 
   status: varchar("status", { length: 255 }),
   token: varchar("token", { length: 255 }),
   action: varchar("action", { length: 255 }),
+  languageId: integer("language_id").references(() => zuvyLanguages.id),
+  stdout: text("stdout"),
   submissionId: integer("submission_id").references(() => zuvyPracticeCode.id, {
     onDelete: 'cascade',
     onUpdate: 'cascade',
   }),
+  memory: integer("memory"),
+  time: integer("time"),
+  stderr: text("stderr"),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
 });
 
 export const zuvyTestCasesSubmissionRelation = relations(zuvyTestCasesSubmission, ({one, many}) => ({

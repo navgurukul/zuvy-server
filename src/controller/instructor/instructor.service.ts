@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { db } from '../../db/index';
 import { helperVariable } from 'src/constants/helper';
-import { eq, sql, inArray} from 'drizzle-orm';
+import { eq, sql, inArray, and} from 'drizzle-orm';
 import * as _ from 'lodash';
 import {
   zuvyBatches,
@@ -75,7 +75,7 @@ export class InstructorService {
         .from(zuvyBatches)
         .where(queryString);
       if (batches.length === 0) {
-        return [{message:'Not found', statusCode: STATUS_CODES.NO_CONTENT},null]
+        return [{message:'Not found', statusCode: STATUS_CODES.NOT_FOUND},null]
       }
       var upcomingCount = 0;
       var ongoingCount = 0;
@@ -193,5 +193,66 @@ export class InstructorService {
       return [{message:error.message, statusCode: STATUS_CODES.BAD_REQUEST},null]
     }
   }
+  
+  async getAllCompletedClasses(instructorId: number,
+    limit: number,
+    offset: number,
+    weeks: number,
+    batchId:number[]):Promise<any>
+    {
+      try {
+        const currentDate = new Date().toISOString();
+        let startDate: string | undefined;
+        if (weeks > 0) {
+        const startDateObj = new Date();
+        startDateObj.setDate(startDateObj.getDate() - (weeks * 7));
+        startDate = startDateObj.toISOString();
+         }
+         let batches = batchId;
+         if(batches.length == 0)
+          {
+             const instructorBatch = await db.select({batchId:zuvyBatches.id}).from(zuvyBatches).where(eq(zuvyBatches.instructorId,instructorId));
+             batches = instructorBatch.map(batch => batch.batchId);
+             if(batches.length == 0)
+              {
+                return [null,{message:'No batches found',statusCode: STATUS_CODES.NOT_FOUND,data:null}]
+              }
+          }
+          
+        const classDetails = await db.query.zuvySessions.findMany({
+          where: (sessions, { lt, gte }) =>and( lt(sessions.endTime, currentDate), startDate ? gte(sessions.endTime, startDate) : undefined,inArray(sessions.batchId,batches) ),
+          orderBy: (sessions, { asc }) => asc(sessions.startTime),
+          with : {
+            bootcampDetail : {
+              columns : {
+                id:true,
+                name:true
+              }
+            },
+            batches: {
+              columns: {
+                id:true,
+                name:true
+              }
+            }
+          },
+          extras: {
+            totalCount: sql<number>`coalesce(count(*) over(), 0)`.as('total_count')
+          },
+          limit,
+          offset
+         })
+        if(classDetails.length == 0)
+          {
+            return [null,{message:'No classes found',statusCode: STATUS_CODES.NOT_FOUND,data:null}]
+          }
+        const totalCompletedClass =  classDetails.length > 0 ? Number(classDetails[0]['totalCount']) : 0;
+        const totalPages = Math.ceil(totalCompletedClass/limit);
+        return [null,{message:'Completed classes fetched successfully',statusCode: STATUS_CODES.OK,data:{classDetails,totalPages,currentPage : (offset/limit)+1, totalCompletedClass}}]
 
+      }catch(error)
+      {
+        return [{message:error.message, statusCode: STATUS_CODES.BAD_REQUEST},null]
+      }
+    }
 }
