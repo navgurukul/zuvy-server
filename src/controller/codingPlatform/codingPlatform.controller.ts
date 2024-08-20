@@ -90,7 +90,6 @@ export class CodingPlatformController {
   })
   async getPracticeCodeById(@Param('questionId') questionId: number, @Req() req, @Query('assessmentSubmissionId') submissionId: number, @Query('codingOutsourseId') codingOutsourseId: number, @Res() res: Response) {
     try {
-
       let [err, success] = await this.codingPlatformService.getPracticeCode(questionId, req.user[0].id, submissionId, codingOutsourseId);
       if (err) {
         return ErrorResponse.BadRequestException(err.message, err.statusCode).send(res);
