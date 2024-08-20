@@ -491,7 +491,7 @@ export class SubmissionService {
 
   async assessmentSubmission(data, id: number, userId: number) {
     try {
-      let submitData =  await this.getAssessmentSubmission(id, 45497);
+      let submitData =  await this.getAssessmentSubmission(id, userId);
       data['submitedAt'] = new Date().toISOString();
       data = {
       ...data,
