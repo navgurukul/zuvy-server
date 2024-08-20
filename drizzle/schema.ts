@@ -22,6 +22,7 @@ import {
   uniqueIndex,
   doublePrecision,
   customType,
+  numeric,
 } from 'drizzle-orm/pg-core';
 import { integrations } from 'googleapis/build/src/apis/integrations';
 import { language } from 'googleapis/build/src/apis/language';
@@ -2947,7 +2948,9 @@ export const zuvyAssessmentSubmission = main.table("zuvy_assessment_submission",
   requiredCodingScore: integer('required_coding_score'),
   requiredOpenEndedScore: integer('required_open_ended_score'),
   requiredMCQScore: integer('required_mcq_score'),
-  percentage: doublePrecision('percentage'),
+  // double precision
+  isPassed: boolean('is_passed'),
+  percentage: numeric('percentage'),
   typeOfsubmission: varchar('type_of_submission', { length: 255 }),
 });
 
