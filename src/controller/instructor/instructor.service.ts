@@ -201,12 +201,13 @@ export class InstructorService {
     batchId:number[]):Promise<any>
     {
       try {
-        const currentDate = new Date().toISOString();
+        const currentDate = new Date();
+        let currentISOTime = new Date(currentDate.getTime() - currentDate.getTimezoneOffset() * 60000).toISOString().slice(0, -1) + '+05:30';
         let startDate: string | undefined;
         if (weeks > 0) {
         const startDateObj = new Date();
         startDateObj.setDate(startDateObj.getDate() - (weeks * 7));
-        startDate = startDateObj.toISOString();
+        startDate = new Date(startDateObj.getTime() - startDateObj.getTimezoneOffset() * 60000).toISOString().slice(0, -1) + '+05:30';
          }
          let batches = batchId;
          if(batches.length == 0)
@@ -218,10 +219,9 @@ export class InstructorService {
                 return [null,{message:'No batches found',statusCode: STATUS_CODES.NOT_FOUND,data:null}]
               }
           }
-          
         const classDetails = await db.query.zuvySessions.findMany({
-          where: (sessions, { lt, gte }) =>and( lt(sessions.endTime, currentDate), startDate ? gte(sessions.endTime, startDate) : undefined,inArray(sessions.batchId,batches) ),
-          orderBy: (sessions, { asc }) => asc(sessions.startTime),
+          where: (sessions, { lt, gte }) =>and( lt(sessions.endTime, currentISOTime), startDate ? gte(sessions.endTime, startDate) : undefined,inArray(sessions.batchId,batches) ),
+          orderBy: (sessions, { desc }) => desc(sessions.startTime),
           with : {
             bootcampDetail : {
               columns : {
