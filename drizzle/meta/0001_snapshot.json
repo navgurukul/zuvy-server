@@ -1,6 +1,6 @@
 {
-  "id": "f78ffdd7-fc41-4d70-a34d-6d2f12afba29",
-  "prevId": "00000000-0000-0000-0000-000000000000",
+  "id": "663b2171-4b5d-4702-bf63-aefc8ca62413",
+  "prevId": "f78ffdd7-fc41-4d70-a34d-6d2f12afba29",
   "version": "5",
   "dialect": "pg",
   "tables": {
@@ -3909,6 +3909,28 @@
           "onUpdate": "no action"
         }
       },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {}
+    },
+    "ghar_users": {
+      "name": "ghar_users",
+      "schema": "main",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "email": {
+          "name": "email",
+          "type": "varchar(255)",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {}
     },
@@ -10614,34 +10636,6 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {}
     },
-    "zuvy_cq_template": {
-      "name": "zuvy_cq_template",
-      "schema": "main",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "serial",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "language_id": {
-          "name": "language_id",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "template": {
-          "name": "template",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {}
-    },
     "zuvy_form_tracking": {
       "name": "zuvy_form_tracking",
       "schema": "main",
@@ -11894,6 +11888,12 @@
           "primaryKey": false,
           "notNull": false,
           "default": "now()"
+        },
+        "source_code": {
+          "name": "source_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
         }
       },
       "indexes": {},
@@ -12634,11 +12634,48 @@
           "primaryKey": false,
           "notNull": false
         },
+        "language_id": {
+          "name": "language_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "stdout": {
+          "name": "stdout",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "submission_id": {
           "name": "submission_id",
           "type": "integer",
           "primaryKey": false,
           "notNull": false
+        },
+        "memory": {
+          "name": "memory",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "time": {
+          "name": "time",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "stderr": {
+          "name": "stderr",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "now()"
         }
       },
       "indexes": {},
@@ -12656,6 +12693,20 @@
           ],
           "onDelete": "cascade",
           "onUpdate": "cascade"
+        },
+        "zuvy_test_cases_submission_language_id_zuvy_languages_id_fk": {
+          "name": "zuvy_test_cases_submission_language_id_zuvy_languages_id_fk",
+          "tableFrom": "zuvy_test_cases_submission",
+          "tableTo": "zuvy_languages",
+          "schemaTo": "main",
+          "columnsFrom": [
+            "language_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
         },
         "zuvy_test_cases_submission_submission_id_zuvy_practice_code_id_fk": {
           "name": "zuvy_test_cases_submission_submission_id_zuvy_practice_code_id_fk",

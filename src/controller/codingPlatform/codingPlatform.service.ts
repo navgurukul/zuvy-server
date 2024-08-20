@@ -158,7 +158,6 @@ export class CodingPlatformService {
       let practiceSubmission = await db.insert(zuvyPracticeCode).values(insertValues).returning();
 
       let testcasesSubmissionInsert = testcasesSubmission.data.map((testcase) => {
-        console.log({testcase});
         return {
           submissionId: practiceSubmission[0].id,
           testcastId: testcase.testcastId,
@@ -169,12 +168,9 @@ export class CodingPlatformService {
           output: testcase.output,
           memory: testcase.memory,
           time: testcase.time,
-          // languageId: sourceCode.languageId
         }
       })
-      console.log({testcasesSubmissionInsert});
       let test_Submission = await db.insert(zuvyTestCasesSubmission).values(testcasesSubmissionInsert).returning();
-      console.log({test_Submission});
       if (testcasesSubmission.length !== 0) {
         return [null, testcasesSubmission];
       } else {
@@ -285,7 +281,6 @@ export class CodingPlatformService {
 
     try {
       const response = await axios.request(options);
-      console.log(response.data);
       return [null, { statusCode: STATUS_CODES.OK, message: 'Code submitted successfully', data: response.data }];
     } catch (error) {
       return [{ message: error.message, statusCode: STATUS_CODES.BAD_REQUEST }];
@@ -304,7 +299,6 @@ export class CodingPlatformService {
         }
       };
       const response = await axios.request(options);
-      console.log(response.data);
       return [null, { message: 'Code fetched successfully', data: response.data, statusCode: STATUS_CODES.OK }];
     } catch (error) {
       return [{ message: error.message, statusCode: STATUS_CODES.BAD_REQUEST }];

@@ -5,29 +5,22 @@
     {
       "idx": 0,
       "version": "5",
-      "when": 1704538637501,
-      "tag": "0000_sturdy_blade",
+      "when": 1723006182080,
+      "tag": "0000_freezing_squadron_sinister",
       "breakpoints": true
     },
     {
       "idx": 1,
       "version": "5",
-      "when": 1711610659230,
-      "tag": "0001_daffy_rockslide",
+      "when": 1724010989368,
+      "tag": "0001_special_kid_colt",
       "breakpoints": true
     },
     {
       "idx": 2,
       "version": "5",
-      "when": 1711612305615,
-      "tag": "0002_large_groot",
-      "breakpoints": true
-    },
-    {
-      "idx": 3,
-      "version": "5",
-      "when": 1711617057844,
-      "tag": "0003_fixed_loa",
+      "when": 1724078193481,
+      "tag": "0002_short_tarantula",
       "breakpoints": true
     }
   ]
