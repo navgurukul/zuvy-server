@@ -267,8 +267,6 @@ export class SubmissionService {
   }
 
   async calculateAssessmentResults(data, codingSubmission, totalPoints) {
-    console.log({totalPoints})
-    console.log({codingSubmission})
     let quizTotalAttemted = 0;
     let quizCorrect = 0;
     let quizScore = 0;
@@ -323,13 +321,9 @@ export class SubmissionService {
       } 
     });
 
-    console.log({quizScore})
-    console.log({codingScore})
     const totalScore = quizScore + codingScore;
-    console.log({totalScore,totalPoints})
     let percentage = totalScore === 0 ? 0 : parseInt(((totalScore / totalPoints) * 100).toString());
 
-    console.log({percentage})
     // Assessment pass status
     const passStatus = percentage >= data.submitedOutsourseAssessment?.passPercentage;
 
@@ -345,6 +339,7 @@ export class SubmissionService {
       codingTotalAttemted,
       codingScore
     }
+    data.marks = totalScore;
     return { ...data, passStatus, percentage, passPercentage: data?.submitedOutsourseAssessment?.passPercentage, codingSubmission };
   }
 
@@ -494,23 +489,32 @@ export class SubmissionService {
       let submitData =  await this.getAssessmentSubmission(id, userId);
       data['submitedAt'] = new Date().toISOString();
       data = {
-      ...data,
-      isPassed: submitData.passStatus,
-      percentage: submitData.percentage,
-      codingQuestionCount: submitData.codingQuestionCount,
-      mcqQuestionCount: submitData.mcqQuestionCount,
-      openEndedQuestionCount: submitData.openEndedQuestionCount,
-      attemptedCodingQuestions: submitData.PracticeCode.codingTotalAttemted,
-      attemptedMCQQuestions: submitData.quizSubmission.quizTotalAttemted,
-      attemptedOpenEndedQuestions: submitData.openEndedSubmission.openTotalAttemted,
-      codingScore: submitData.PracticeCode.codingScore,
-      openEndedScore: 0, // Assuming no data provided
-      mcqScore: submitData.quizSubmission.quizScore,
-      requiredCodingScore: submitData.totalCodingPoints,
-      requiredOpenEndedScore: submitData.totalOpenPoints, // Assuming no data provided
-      requiredMCQScore: submitData.totalMCQPoints
-    };
-    return await db.update(zuvyAssessmentSubmission).set(data).where(eq(zuvyAssessmentSubmission.id, id)).returning();
+        ...data,
+        marks: submitData.marks,
+        isPassed: submitData.passStatus,
+        percentage: submitData.percentage,
+        codingQuestionCount: submitData.codingQuestionCount,
+        mcqQuestionCount: submitData.mcqQuestionCount,
+        openEndedQuestionCount: submitData.openEndedQuestionCount,
+        attemptedCodingQuestions: submitData.PracticeCode.codingTotalAttemted,
+        attemptedMCQQuestions: submitData.quizSubmission.quizTotalAttemted,
+        attemptedOpenEndedQuestions: submitData.openEndedSubmission.openTotalAttemted,
+        codingScore: submitData.PracticeCode.codingScore,
+        openEndedScore: 0, // Assuming no data provided
+        mcqScore: submitData.quizSubmission.quizScore,
+        requiredCodingScore: submitData.totalCodingPoints,
+        requiredOpenEndedScore: submitData.totalOpenPoints, // Assuming no data provided
+        requiredMCQScore: submitData.totalMCQPoints
+      };
+      let assessment =  await db.update(zuvyAssessmentSubmission).set(data).where(eq(zuvyAssessmentSubmission.id, id)).returning();
+      if (assessment == undefined || assessment.length == 0) {
+        throw ({
+          status: 'error',
+          statusCode: 404,
+          message: 'Assessment not found',
+        });
+      }
+      return assessment[0];
     } catch (err) {
       console.error('Error in assessmentSubmission:', err);
       throw err;

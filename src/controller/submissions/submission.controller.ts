@@ -158,7 +158,7 @@ export class SubmissionController {
   @Patch('/assessment/submit')
   @ApiBearerAuth()
   async assessmentSubmission(@Body() data: SubmissionassessmentDto, @Query('assessmentSubmissionId') assessmentSubmissionId: number, @Req() req) {
-    return this.submissionService.assessmentSubmission(data, assessmentSubmissionId, req.user[0].id);
+    return this.submissionService.assessmentSubmission(data, assessmentSubmissionId, 39077);
   }
 
   @Get('/submissionsOfProjects/:bootcampId')
@@ -317,7 +317,6 @@ export class SubmissionController {
         );
         
         if (err) {
-          console.log("err",err)
           return ErrorResponse.BadRequestException(err.message, err.statusCode).send(res)
         }
         return new SuccessResponse(success.message, success.statusCode, success.data).send(res);
