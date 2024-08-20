@@ -201,8 +201,6 @@ export class InstructorService {
     batchId:number[]):Promise<any>
     {
       try {
-        const currentDate = new Date();
-        let currentISOTime = new Date(currentDate.getTime() - currentDate.getTimezoneOffset() * 60000).toISOString().slice(0, -1) + '+05:30';
         let startDate: string | undefined;
         if (weeks > 0) {
         const startDateObj = new Date();
@@ -220,7 +218,7 @@ export class InstructorService {
               }
           }
         const classDetails = await db.query.zuvySessions.findMany({
-          where: (sessions, { lt, gte }) =>and( lt(sessions.endTime, currentISOTime), startDate ? gte(sessions.endTime, startDate) : undefined,inArray(sessions.batchId,batches) ),
+          where: (sessions, { lt, gte }) =>and( lt(sessions.endTime, helperVariable.currentISOTime), startDate ? gte(sessions.endTime, startDate) : undefined,inArray(sessions.batchId,batches) ),
           orderBy: (sessions, { desc }) => desc(sessions.startTime),
           with : {
             bootcampDetail : {
