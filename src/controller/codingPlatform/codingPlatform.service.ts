@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { db } from '../../db/index';
-import { eq, sql, count, lte, desc } from 'drizzle-orm';
+import { sql } from 'drizzle-orm';
 // import { BatchesService } from '../batches/batch.service';
 import axios from 'axios';
 import { SubmitCodeDto, CreateProblemDto } from './dto/codingPlatform.dto';
@@ -8,13 +8,11 @@ import * as _ from 'lodash';
 import {
   zuvyCodingQuestions,
   zuvyPracticeCode,
-  zuvyLanguages,
   zuvyTestCases,
   zuvyTestCasesSubmission
 } from '../../../drizzle/schema';
 import { generateTemplates } from '../../helpers/index';
 import { STATUS_CODES } from "../../helpers/index";
-import { language } from 'googleapis/build/src/apis/language';
 
 const { ZUVY_CONTENT_URL, RAPID_BASE_URL, RAPID_API_KEY, RAPID_HOST } = process.env; // INPORTING env VALUSE ZUVY_CONTENT
 
@@ -56,16 +54,11 @@ export class CodingPlatformService {
     });
     const options = {
       method: 'POST',
-      url: `${RAPID_BASE_URL}/submissions/batch`,
-      params: {
-        base64_encoded: 'true',
-        fields: '*'
-      },
+      url: `${RAPID_BASE_URL}/submissions/batch?base64_encoded=true&wait=true`,
       headers: {
         'content-type': 'application/json',
-        'Content-Type': 'application/json',
         'X-RapidAPI-Key': RAPID_API_KEY,
-        'X-RapidAPI-Host': 'judge0-ce.p.rapidapi.com'
+        'X-RapidAPI-Host': RAPID_HOST
       },
       data: {
         submissions: preparedSubmissions
@@ -80,17 +73,18 @@ export class CodingPlatformService {
       await new Promise<void>(resolve => setTimeout(async () => {
         [err, submissionInfo] = await this.getCodeInfo(tokens);
         resolve();
-      }, 1090));
+      }, 1590));
 
       if (err) {
         return [err];
       }
-      let testSubmission = testCasesArray?.map((testCase, index) => {
+      let testSubmission = testCasesArray?.map((testCase, index) => {        
         return {
           testcastId: testCase?.id,
           status: submissionInfo.data.submissions[index].status?.description,
           token: submissionInfo.data.submissions[index]?.token,
           stdOut: submissionInfo.data.submissions[index]?.stdout,
+          stderr: submissionInfo.data.submissions[index]?.stderr,
           input: testCase?.inputs,
           output: testCase?.expectedOutput
         }
@@ -110,7 +104,10 @@ export class CodingPlatformService {
       if (err) {
         return [err];
       }
-      let insertValues: any = { status: 'Accepted', sourceCode: sourceCode.sourceCode };
+      let insertValues: any = { status: 'error', sourceCode: sourceCode.sourceCode };
+      if (testcasesSubmission.data[0].stderr && action != "submit"){
+        return [null,{ statusCode: STATUS_CODES.CONFLICT, message:  `${action} ${testcasesSubmission.data[0].status}`, data: [testcasesSubmission.data[0]]}];
+      }
       for (let testSub of testcasesSubmission.data) {
         if (testSub.status !== 'Accepted') {
           insertValues["status"] = testSub.status;
@@ -144,7 +141,8 @@ export class CodingPlatformService {
         } else {
           await db.update(zuvyPracticeCode).set(insertValues).where(sql`${zuvyPracticeCode.id} = ${response[0].id}`).returning();
         }
-        return [null, testcasesSubmission.data];
+        return [null,{ statusCode: STATUS_CODES.OK, message: `${action} ${testcasesSubmission.data[0].status}`, data: testcasesSubmission.data}];
+
       }
       insertValues["userId"] = userId;
       insertValues["questionId"] = questionId;
@@ -172,7 +170,7 @@ export class CodingPlatformService {
       })
       let test_Submission = await db.insert(zuvyTestCasesSubmission).values(testcasesSubmissionInsert).returning();
       if (testcasesSubmission.length !== 0) {
-        return [null, testcasesSubmission];
+        return [null,{ statusCode: STATUS_CODES.OK, message: `${action} ${testcasesSubmission.data[0].status}`, data: testcasesSubmission.data}];
       } else {
         return [{ statusCode: STATUS_CODES.BAD_REQUEST, message: 'Error in submitting code' }];
       }
@@ -245,7 +243,7 @@ export class CodingPlatformService {
       const submissionsInfoPromises = TestCasesSubmission.map(async (submission: any) => {
         const options = {
           method: 'GET',
-          url: `${RAPID_BASE_URL}/submissions/${submission.token}&base64_encoded=false&fields=token,stdout,stderr,status_id,language_id,source_code`,
+          url: `${RAPID_BASE_URL}/submissions/${submission.token}&base64_encoded=true&fields=token,stdout,stderr,status_id,language_id,source_code`,
           headers: {
             'X-RapidAPI-Key': RAPID_API_KEY,
             'X-RapidAPI-Host': RAPID_HOST
@@ -271,7 +269,7 @@ export class CodingPlatformService {
   async getCodeInfo(tokens) {
     const options = {
       method: 'GET',
-      url: `${RAPID_BASE_URL}/submissions/batch?tokens=${tokens.join(',')}&base64_encoded=false&fields=token,stdout,stderr,status_id,language_id,source_code`,
+      url: `${RAPID_BASE_URL}/submissions/batch?tokens=${tokens.join(',')}&base64_encoded=false&fields=token,stdout,stderr,status_id,language_id,source_code,status`,
 
       headers: {
         'X-RapidAPI-Key': RAPID_API_KEY,
