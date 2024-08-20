@@ -198,6 +198,7 @@ export class InstructorService {
     limit: number,
     offset: number,
     weeks: number,
+    sortBy: string,
     batchId:number[]):Promise<any>
     {
       try {
@@ -219,7 +220,8 @@ export class InstructorService {
           }
         const classDetails = await db.query.zuvySessions.findMany({
           where: (sessions, { lt, gte }) =>and( lt(sessions.endTime, helperVariable.currentISOTime), startDate ? gte(sessions.endTime, startDate) : undefined,inArray(sessions.batchId,batches) ),
-          orderBy: (sessions, { desc }) => desc(sessions.startTime),
+          orderBy: (sessions, { asc, desc }) => 
+            sortBy === 'asc' ? asc(sessions.startTime) : desc(sessions.startTime),
           with : {
             bootcampDetail : {
               columns : {
