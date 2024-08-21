@@ -3,22 +3,18 @@ import {
   Get,
   Post,
   Put,
-  Patch,
   Delete,
   Body,
   Param,
   ValidationPipe,
   UsePipes,
-  Optional,
   Query,
-  BadRequestException,
   Req,
   Res
 } from '@nestjs/common';
 import { CodingPlatformService } from './codingPlatform.service';
 import {
   ApiTags,
-  ApiBody,
   ApiOperation,
   ApiQuery,
 } from '@nestjs/swagger';
@@ -102,7 +98,7 @@ export class CodingPlatformController {
       } else {
         student_id = req.user[0].id;
       }
-      let [err, success] = await this.codingPlatformService.getPracticeCode(questionId, req.user[0].id, submissionId, codingOutsourseId);
+      let [err, success] = await this.codingPlatformService.getPracticeCode(questionId, student_id, submissionId, codingOutsourseId);
       if (err) {
         return ErrorResponse.BadRequestException(err.message, err.statusCode).send(res);
       }
