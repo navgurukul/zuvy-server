@@ -158,7 +158,7 @@ export class SubmissionController {
   @Patch('/assessment/submit')
   @ApiBearerAuth()
   async assessmentSubmission(@Body() data: SubmissionassessmentDto, @Query('assessmentSubmissionId') assessmentSubmissionId: number, @Req() req) {
-    return this.submissionService.assessmentSubmission(data, assessmentSubmissionId, 39077);
+    return this.submissionService.assessmentSubmission(data, assessmentSubmissionId, req.user[0].id);
   }
 
   @Get('/submissionsOfProjects/:bootcampId')
