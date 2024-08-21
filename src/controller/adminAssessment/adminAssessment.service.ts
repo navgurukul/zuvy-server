@@ -19,12 +19,17 @@ export class AdminAssessmentService {
     assessments.forEach(assessment => {
       const moduleName = assessment.Module.name;
       const { Module, ModuleAssessment, CodingQuestions, OpenEndedQuestions,Quizzes, submitedOutsourseAssessments,  ...assessmentInfo } = assessment;
+      let qualifiedStudents = 0
+      submitedOutsourseAssessments.map((student)=>{
+        console.log({student})
+        if (student.isPassed){
+          qualifiedStudents += 1
+        }
+      })
       if (!result[moduleName]) {
-        result[moduleName] = [{...assessmentInfo, ...ModuleAssessment, totalCodingQuestions: CodingQuestions.length, totalOpenEndedQuestions: OpenEndedQuestions.length, totalQuizzes: Quizzes.length, totalSubmitedAssessments: submitedOutsourseAssessments.length}];
+        result[moduleName] = [{...assessmentInfo, ...ModuleAssessment, totalCodingQuestions: CodingQuestions.length, totalOpenEndedQuestions: OpenEndedQuestions.length, totalQuizzes: Quizzes.length, totalSubmitedAssessments: submitedOutsourseAssessments.length, qualifiedStudents}];
       } else {
-        result[moduleName].push({...assessmentInfo, ...ModuleAssessment, totalCodingQuestions: CodingQuestions.length, totalOpenEndedQuestions: OpenEndedQuestions.length, totalQuizzes: Quizzes.length, totalSubmitedAssessments: submitedOutsourseAssessments.length
-
-        });
+        result[moduleName].push({...assessmentInfo, ...ModuleAssessment, totalCodingQuestions: CodingQuestions.length, totalOpenEndedQuestions: OpenEndedQuestions.length, totalQuizzes: Quizzes.length, totalSubmitedAssessments: submitedOutsourseAssessments.length, qualifiedStudents});
       }
     });
     return result;
@@ -68,10 +73,10 @@ export class AdminAssessmentService {
       if (assessment == undefined || assessment.length == 0) { 
         return []
       }
+      // assessment 
       let studentsEnrolled = await this.getTotalStudentsEnrolled(bootcampID);
       let result = await this.transformAssessments(assessment)
       result['totalStudents'] = studentsEnrolled.length;
-
       return result;
     } catch (error) {
       throw error;
@@ -91,13 +96,6 @@ export class AdminAssessmentService {
 
         with: {
           submitedOutsourseAssessments: {
-            columns: {
-              id: true,
-              userId: true,
-              marks: true,
-              startedAt: true,
-              submitedAt: true,
-            },
             where: (submitedOutsourseAssessments, { sql }) => sql`${submitedOutsourseAssessments.submitedAt} IS NOT NULL`,
             with: {
               user: {
@@ -116,6 +114,7 @@ export class AdminAssessmentService {
           },  
         }
       });
+      
       let studentsEnrolled = await this.getTotalStudentsEnrolled(assessment[0].bootcampId);
       assessment[0].ModuleAssessment["totalStudents"] = studentsEnrolled.length;
       assessment[0].ModuleAssessment["totalSubmitedStudents"] = assessment[0].submitedOutsourseAssessments.length || 0;
