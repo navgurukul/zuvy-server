@@ -1,12 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { db } from '../../db/index';
-import { eq, sql, count, inArray, or, and } from 'drizzle-orm';
-import axios from 'axios';
+import { sql } from 'drizzle-orm';
 import * as _ from 'lodash';
-import { error, log } from 'console';
 import {
   zuvyBatchEnrollments,
-  zuvyOutsourseAssessments
 } from '../../../drizzle/schema';
 
 const { ZUVY_CONTENT_URL } = process.env; // INPORTING env VALUSE ZUVY_CONTENT
@@ -96,6 +93,15 @@ export class AdminAssessmentService {
 
         with: {
           submitedOutsourseAssessments: {
+            columns: {
+              id: true,
+              userId: true,
+              marks: true,
+              startedAt: true,
+              submitedAt: true,
+              isPassed: true,
+              percentage: true
+            },
             where: (submitedOutsourseAssessments, { sql }) => sql`${submitedOutsourseAssessments.submitedAt} IS NOT NULL`,
             with: {
               user: {
@@ -126,6 +132,8 @@ export class AdminAssessmentService {
           marks: submission.marks,
           startedAt: submission.startedAt,
           submitedAt: submission.submitedAt,
+          isPassed: submission.isPassed,
+          percentage: submission.percentage,
           ...submission.user
         }
       })
@@ -202,7 +210,7 @@ export class AdminAssessmentService {
               sourceCode: true,
             },
             where: (PracticeCode, { sql }) =>
-              sql`${PracticeCode.status} = 'Accepted' AND ${PracticeCode.action} = 'submit'`,
+              sql`${PracticeCode.status} = he AND ${PracticeCode.action} = 'submit'`,
             distinct: ['questionId'],
             with: {
               questionDetail: true
