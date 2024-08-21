@@ -104,13 +104,20 @@ export class CodingPlatformService {
       if (err) {
         return [err];
       }
-      let insertValues: any = { status: 'error', sourceCode: sourceCode.sourceCode };
       if (testcasesSubmission.data[0].stderr && action != "submit"){
         return [null,{ statusCode: STATUS_CODES.CONFLICT, message:  `${action} ${testcasesSubmission.data[0].status}`, data: [testcasesSubmission.data[0]]}];
       }
+      let insertValues
+      if (testcasesSubmission.data.length >= 0) {
+        insertValues = { status: 'Accepted', sourceCode: sourceCode.sourceCode };
+      } else {
+        insertValues = { status: 'Error', sourceCode: sourceCode.sourceCode };
+      }
+      
       for (let testSub of testcasesSubmission.data) {
+        console.log({testSub})
         if (testSub.status !== 'Accepted') {
-          insertValues["status"] = testSub.status;
+          insertValues["status"] = testSub.status
           break;
         }
       }
