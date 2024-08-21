@@ -73,7 +73,7 @@ export class CodingPlatformController {
     }
   }
 
-  @Get('/submissions/questionId=:questionId')
+ @Get('/submissions/questionId=:questionId')
   @ApiOperation({ summary: 'Get the question AND submissions by question id ' })
   @ApiBearerAuth()
   @ApiQuery({
@@ -88,8 +88,20 @@ export class CodingPlatformController {
     type: Number,
     description: 'if you give the codingOutsourseId it for assessment code submission ',
   })
-  async getPracticeCodeById(@Param('questionId') questionId: number, @Req() req, @Query('assessmentSubmissionId') submissionId: number, @Query('codingOutsourseId') codingOutsourseId: number, @Res() res: Response) {
+  @ApiQuery({
+    name: 'studentId',
+    required: false,
+    type: Number,
+    description: 'studentId',
+  })
+  async getPracticeCodeById(@Param('questionId') questionId: number, @Req() req, @Query('assessmentSubmissionId') submissionId: number, @Query('studentId') studentId: number, @Query('codingOutsourseId') codingOutsourseId: number, @Res() res: Response) {
     try {
+      let student_id;
+      if (!isNaN(studentId)){
+        student_id = studentId;
+      } else {
+        student_id = req.user[0].id;
+      }
       let [err, success] = await this.codingPlatformService.getPracticeCode(questionId, req.user[0].id, submissionId, codingOutsourseId);
       if (err) {
         return ErrorResponse.BadRequestException(err.message, err.statusCode).send(res);
