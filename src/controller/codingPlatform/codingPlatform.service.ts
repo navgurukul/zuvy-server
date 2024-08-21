@@ -80,7 +80,7 @@ export class CodingPlatformService {
       if (err) {
         return [err];
       }
-      let testSubmission = testCasesArray?.map((testCase, index) => {        
+      let testSubmission = testCasesArray?.map((testCase, index) => { 
         return {
           testcastId: testCase?.id,
           status: submissionInfo.data.submissions[index].status?.description,
@@ -117,7 +117,6 @@ export class CodingPlatformService {
       }
       
       for (let testSub of testcasesSubmission.data) {
-        console.log({testSub})
         if (testSub.status !== ACCEPTED) {
           insertValues["status"] = testSub.status
           break;
@@ -170,9 +169,7 @@ export class CodingPlatformService {
           testcastId: testcase.testcastId,
           status: testcase.status,
           token: testcase.token,
-          stdOut: testcase.stdOut,
-          input: testcase.input,
-          output: testcase.output,
+          stdout: testcase.stdOut,
           memory: testcase.memory,
           time: testcase.time,
         }
@@ -256,7 +253,7 @@ export class CodingPlatformService {
   async getCodeInfo(tokens) {
     const options = {
       method: 'GET',
-      url: `${RAPID_BASE_URL}/submissions/batch?tokens=${tokens.join(',')}&base64_encoded=false&fields=token,stdout,stderr,status_id,language_id,source_code,status`,
+      url: `${RAPID_BASE_URL}/submissions/batch?tokens=${tokens.join(',')}&base64_encoded=false&fields=token,stdout,stderr,status_id,language_id,source_code,status,memory,time,`,
 
       headers: {
         'X-RapidAPI-Key': RAPID_API_KEY,
