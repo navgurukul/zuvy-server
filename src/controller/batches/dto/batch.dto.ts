@@ -12,13 +12,13 @@ export class BatchDto {
   name: string;
 
   @ApiProperty({
-    type: Number,
+    type: String,
     example: 20230,
     required: true,
   })
   @IsNotEmpty()
-  @IsNumber()
-  instructorId: number;
+  @IsString()
+  instructorEmail: string;
 
   @ApiProperty({
     type: Number,
@@ -49,12 +49,12 @@ export class PatchBatchDto {
   name: string;
 
   @ApiProperty({
-    type: Number,
-    example: 20230,
+    type: String,
+    example: 'giribabu@gmail.com',
   })
   @IsOptional()
-  @IsNumber()
-  instructorId: number;
+  @IsString()
+  instructorEmail: string;
 
   @ApiProperty({
     type: Number,

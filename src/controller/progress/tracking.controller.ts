@@ -9,7 +9,8 @@ import {
   Param,
   BadRequestException,
   Query,
-  Req
+  Req,
+  Res
 } from '@nestjs/common';
 import { TrackingService } from './tracking.service';
 import {
@@ -33,262 +34,13 @@ import { CreateArticleDto } from './dto/article.dto';
 import { UpdateProjectDto } from './dto/project.dto';
 import { CreateQuizDto, McqCreateDto, PutQuizDto } from './dto/quiz.dto';
 import { quizBatchDto } from '../content/dto/content.dto';
+import { SubmitFormBodyDto } from './dto/form.dto';
+import { ErrorResponse, SuccessResponse } from 'src/errorHandler/handler';
 
 @Controller('tracking')
 @ApiTags('tracking')
-// @ApiCookieAuth()
-// @UsePipes(new ValidationPipe({
-//     whitelist: true,
-//     transform: true,
-//     forbidNonWhitelisted: true,
-// }))
-// @ApiOAuth2(['pets:write'])
-
-// @UseGuards(AuthGuard('cookie'))
 export class TrackingController {
   constructor(private TrackingService: TrackingService) {}
-
-  // @Get('/:user_id/:module_id')
-  // @ApiOperation({ summary: 'Get the progress by user_id' })
-  // @ApiBearerAuth()
-  // async getTracking(
-  //   @Param('userID') userID: number,
-  //   @Param('moduleID') moduleID: number,
-  //   @Param('bootcampID') bootcampID: number,
-  // ): Promise<object> {
-  //   const [err, res] = await this.TrackingService.getProgress(
-  //     userID,
-  //     moduleID,
-  //     bootcampID,
-  //   );
-  //   if (err) {
-  //     throw new BadRequestException(err);
-  //   }
-  //   return res;
-  // }
-
-  // @Post('/assignment/timeline')
-  // @ApiOperation({ summary: 'Create assignment Time Line' })
-  // @ApiBearerAuth()
-  // async assignmentTimeLine(
-  //   @Body() data: TimeLineAssignmentDto,
-  // ): Promise<object> {
-  //   const [err, res] = await this.TrackingService.assignmentTimeLine(data);
-  //   if (err) {
-  //     throw new BadRequestException(err);
-  //   }
-  //   return res;
-  // }
-
-  // @Post('/assignment')
-  // @ApiOperation({ summary: 'Create assignment submission' })
-  // @ApiBearerAuth()
-  // async assignmentSubmission(
-  //   @Body() data: CreateAssignmentDto,
-  //   @Query('bootcamp_id') bootcampId: number,
-  //   @Query('assignment_id') assignmentId: number,
-  //   @Query('user_id') userId: number,
-  // ): Promise<object> {
-  //   const [err, res] = await this.TrackingService.submissionAssignment(
-  //     data,
-  //     bootcampId,
-  //     assignmentId,
-  //     userId,
-  //   );
-
-  //   if (err) {
-  //     throw new BadRequestException(err);
-  //   }
-  //   return res;
-  // }
-
-  // @Get('/assignment/upcomming/:user_id')
-  // @ApiOperation({
-  //   summary: 'Get assignment upcomming by user_id and bootcamp_id',
-  // })
-  // @ApiBearerAuth()
-  // async getAssignmentUpcomming(
-  //   @Param('user_id') user_id: number,
-  //   @Query('bootcamp_id') bootcamp_id: number,
-  // ): Promise<object> {
-  //   const [err, res] = await this.TrackingService.getAssignmentUpcomming(
-  //     user_id,
-  //     bootcamp_id,
-  //   );
-  //   if (err) {
-  //     throw new BadRequestException(err);
-  //   }
-  //   return res;
-  // }
-
-  // @Get('/assignment/:assignmentId/:userId')
-  // @ApiOperation({ summary: 'Update assignment submission by id' })
-  // @ApiBearerAuth()
-  // async getAssignmentSubmissionBy(
-  //   @Param('assignmentId') assignmentId: number,
-  //   @Param('userId') userId: number,
-  // ): Promise<object> {
-  //   const [err, res] = await this.TrackingService.assignmentSubmissionBy(
-  //     userId,
-  //     assignmentId,
-  //   );
-  //   if (err) {
-  //     throw new BadRequestException(err);
-  //   }
-  //   return res;
-  // }
-
-  // @Patch('/assignment/:id')
-  // @ApiOperation({ summary: 'Update assignment submission by id' })
-  // @ApiBearerAuth()
-  // async updateAssignmentSubmission(
-  //   @Param('id') id: number,
-  //   @Body() data: PatchAssignmentDto,
-  // ): Promise<object> {
-  //   const [err, res] = await this.TrackingService.updateAssignmentSubmission(
-  //     id,
-  //     data,
-  //   );
-  //   if (err) {
-  //     throw new BadRequestException(err);
-  //   }
-  //   return res;
-  // }
-
-  // @Post('/article')
-  // @ApiOperation({ summary: 'Create article submission' })
-  // @ApiBearerAuth()
-  // async articleTracking(
-  //   @Body() data: CreateArticleDto,
-  //   @Query('bootcampId') bootcampId: number,
-  // ): Promise<object> {
-  //   const [err, res] = await this.TrackingService.createArticleTracking(
-  //     data,
-  //     bootcampId,
-  //   );
-  //   if (err) {
-  //     throw new BadRequestException(err);
-  //   }
-  //   return res;
-  // }
-
-  // @Get('/article/:user_id')
-  // @ApiOperation({ summary: 'Get article submission by user_id' })
-  // @ApiBearerAuth()
-  // async getarticleSubmission(
-  //   @Param('user_id') user_id: number,
-  // ): Promise<object> {
-  //   const [err, res] = await this.TrackingService.getArticleTracking(user_id);
-  //   if (err) {
-  //     throw new BadRequestException(err);
-  //   }
-  //   return res;
-  // }
-
-  // @Get('/article/:articleId/:userId')
-  // @ApiOperation({ summary: 'Update article submission by id' })
-  // @ApiBearerAuth()
-  // async getArticleSubmission(
-  //   @Param('articleId') articleId: number,
-  //   @Param('userId') userId: number,
-  // ): Promise<object> {
-  //   const [err, res] = await this.TrackingService.articleTrackingBy(
-  //     articleId,
-  //     userId,
-  //   );
-  //   if (err) {
-  //     throw new BadRequestException(err);
-  //   }
-  //   return res;
-  // }
-
-  // @Post('/quiz')
-  // @ApiOperation({ summary: 'Create quiz submission' })
-  // @ApiBearerAuth()
-  // async quizTracking(@Body() data: CreateQuizDto): Promise<object> {
-  //   data.quiz.filter((q) => {
-  //     q['userId'] = data.userId;
-  //     q['moduleId'] = data.moduleId;
-  //     q['quizId'] = data.quizId;
-  //   });
-  //   const [err, res] = await this.TrackingService.createQuizTracking(
-  //     data.quiz,
-  //     data.bootcampId,
-  //   );
-  //   if (err) {
-  //     throw new BadRequestException(err);
-  //   }
-  //   return res;
-  // }
-
-  // @Get('/quiz/:user_id')
-  // @ApiOperation({ summary: 'Get quiz submission by user_id' })
-  // @ApiBearerAuth()
-  // async getQuizSubmission(@Param('user_id') user_id: number): Promise<object> {
-  //   const [err, res] = await this.TrackingService.getQuizTracking(user_id);
-  //   if (err) {
-  //     throw new BadRequestException(err);
-  //   }
-  //   return res;
-  // }
-
-  // @Get('/quiz/:quizId/:userId')
-  // @ApiOperation({ summary: 'Update quiz submission by id' })
-  // @ApiBearerAuth()
-  // async quizSubmission(
-  //   @Param('quizId') quizId: number,
-  //   @Param('userId') userId: number,
-  // ): Promise<object> {
-  //   const [err, res] = await this.TrackingService.quizTrackBy(quizId, userId);
-  //   if (err) {
-  //     throw new BadRequestException(err);
-  //   }
-  //   return res;
-  // }
-
-  // @Put('/quiz/:id')
-  // @ApiOperation({ summary: 'Update quiz submission by id' })
-  // @ApiBearerAuth()
-  // async updateQuizSubmission(
-  //   @Param('id') id: number,
-  //   @Body() data: PutQuizDto,
-  // ): Promise<object> {
-  //   const [err, res] = await this.TrackingService.updateQuizTracking(id, data);
-  //   if (err) {
-  //     throw new BadRequestException(err);
-  //   }
-  //   return res;
-  // }
-
-  // @Put('/update/:userId/:bootcampId')
-  // @ApiOperation({ summary: 'Update progress submission by user_id' })
-  // @ApiBearerAuth()
-  // async updateProgress(
-  //   @Param('userId') userId: number,
-  //   @Param('bootcampId') bootcampId: number,
-  // ): Promise<object> {
-  //   const [err, res] = await this.TrackingService.updateBootcampProgress(
-  //     userId,
-  //     bootcampId,
-  //   );
-  //   if (err) {
-  //     throw new BadRequestException(err);
-  //   }
-  //   return res;
-  // }
-
-  // @Get('/latest/learning/:userId')
-  // @ApiOperation({ summary: 'Get latest learning progress by user_id' })
-  // @ApiBearerAuth()
-  // async latestLearningProgress(
-  //   @Param('userId') userId: number,
-  // ): Promise<object> {
-  //   const [err, res] = await this.TrackingService.getLatestIds(userId);
-  //   if (err) {
-  //     throw new BadRequestException(err);
-  //   }
-  //   return res;
-  // }
 
   @Post('updateChapterStatus/:bootcampId/:moduleId')
   @ApiOperation({ summary: 'Update Chapter status' })
@@ -387,6 +139,33 @@ export class TrackingController {
     return res;
   }
 
+  @Get('/allupcomingSubmission')
+  @ApiOperation({ summary: 'Get all upcoming assignment submission' })
+  @ApiBearerAuth()
+  @ApiQuery({
+    name: 'bootcampId',
+    type: Number,
+    description: 'bootcampId',
+    required:false
+  })
+  async getAllUpcomingAssignment(
+    @Req() req,
+    @Query('bootcampId') bootcampId: number,
+    @Res() res
+  ) {
+      try {
+        let [err, success] =await this.TrackingService.getAllUpcomingSubmission(
+            req.user[0].id,bootcampId
+          );
+        if (err) {
+          return ErrorResponse.BadRequestException(err.message, err.statusCode).send(res)
+        }
+        return new SuccessResponse(success.message, success.statusCode, success.data).send(res);
+      } catch (error) {
+        return ErrorResponse.BadRequestException(error.message).send(res);
+      }  
+  }
+
   @Get('/getChapterDetailsWithStatus/:chapterId')
   @ApiOperation({
     summary: 'Get chapter details for a user along with status',
@@ -417,6 +196,28 @@ export class TrackingController {
       chapterId,
     );
     return res;
+  }
+  
+  @Get('getQuizAndAssignmentWithStatus')
+  @ApiOperation({ summary: 'get Quiz And Assignment With Status' })
+  @ApiBearerAuth()
+  async getQuizAndAssignmentWithStatus(
+    @Req() req,
+    @Query('chapterId') chapterId: number,
+    @Res() res
+  ) {
+    try {
+      let [err, success] = await this.TrackingService.getQuizAndAssignmentWithStatus(
+        req.user[0].id,
+        chapterId,
+      );
+      if (err) {
+        return ErrorResponse.BadRequestException(err.message, err.statusCode).send(res)
+      }
+      return new SuccessResponse(success.message, success.statusCode, success.data).send(res);
+    } catch (error) {
+      return ErrorResponse.BadRequestException(error.message).send(res);
+    }
   }
 
   @Post('updateProject/:projectId')
@@ -460,13 +261,21 @@ export class TrackingController {
     @Param('projectId') projectId: number,
     @Param('moduleId') moduleId: number,
     @Req() req,
+    @Res() res
   ) {
-    const res = await this.TrackingService.getProjectDetailsWithStatus(
-      projectId,
-      moduleId,
-      req.user[0].id
-    );
-    return res;
+    try {
+      let [err, success] = await this.TrackingService.getProjectDetailsWithStatus(
+          projectId,
+          moduleId,
+          req.user[0].id
+        );
+      if (err) {
+        return ErrorResponse.BadRequestException(err.message, err.statusCode).send(res)
+      }
+      return new SuccessResponse(success.message, success.statusCode, success.data).send(res);
+    } catch (error) {
+      return ErrorResponse.BadRequestException(error.message).send(res);
+    }  
   }
 
   @Get('/allBootcampProgress')
@@ -490,20 +299,74 @@ export class TrackingController {
   @ApiBearerAuth()
   async getLatestUpdatedCourseForStudent(
     @Req() req,
+    @Res() res
   ) {
-    const res = await this.TrackingService.getLatestUpdatedCourseForStudents(
-      req.user[0].id
-    );
-    return res;
+    try {
+      let [err, success] = await this.TrackingService.getLatestUpdatedCourseForStudents(
+        req.user[0].id
+      );
+      if (err) {
+        return ErrorResponse.BadRequestException(err.message, err.statusCode).send(res)
+      }
+      return new SuccessResponse(success.message, success.statusCode, success.data).send(res);
+    } catch (error) {
+      return ErrorResponse.BadRequestException(error.message).send(res);
+    }  
   }
 
   @Get('assessment/submissionId=:submissionId')
   @ApiOperation({ summary: 'Get assessment submission by submissionId' })
   @ApiBearerAuth()
+  @ApiQuery({
+    name: 'studentId',
+    required: false,
+    type: Number,
+    description: 'studentId of the assessment',
+  })
   async getAssessmentSubmission(
-    @Param('submissionId') submissionId: number, @Req() req
-  ) {
-    const res = await this.TrackingService.getAssessmentSubmission(submissionId, req.user[0].id);
+    @Param('submissionId') submissionId: number, @Req() req, @Query('studentId') userId:number ) {
+    if (!userId) {
+        userId = req.user[0].id;
+    }
+    const res = await this.TrackingService.getAssessmentSubmission(submissionId, userId);
     return res;
   }   
+  
+  @Post('updateFormStatus/:bootcampId/:moduleId')
+  @ApiOperation({ summary: 'Update Chapter status' })
+  @ApiBody({ type: SubmitFormBodyDto, required: false })
+  @ApiBearerAuth()
+  async updateFormStatus(
+    @Param('bootcampId') bootcampId: number,
+    @Req() req,
+    @Param('moduleId') moduleId: number,
+    @Query('chapterId') chapterId: number,
+    @Body() submitFormBody: SubmitFormBodyDto,
+  ) {
+    const res = await this.TrackingService.updateFormStatus(
+      req.user[0].id,
+      moduleId,
+      chapterId,
+      bootcampId,
+      submitFormBody,
+    );
+    return res;
+  }
+
+  @Get('getAllFormsWithStatus/:moduleId')
+  @ApiOperation({ summary: 'get All Form Questions With Status' })
+  @ApiBearerAuth()
+  async getAllFormsWithStatus(
+    @Req() req,
+    @Param('moduleId') moduleId: number,
+    @Query('chapterId') chapterId: number,
+  ) {
+    const res = await this.TrackingService.getAllFormsWithStatus(
+      req.user[0].id,
+      moduleId,
+      chapterId,
+    );
+    return res;
+  }
+
 }
