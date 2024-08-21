@@ -166,11 +166,11 @@ export class StudentService {
 
   async getUpcomingClass(student_id: number, batchID: number,limit:number,offset:number):Promise<any> {
     try {
-      let queryString
+      let queryString;
       if (batchID) {
         queryString = sql`${zuvyBatchEnrollments.userId} = ${student_id} AND ${zuvyBatchEnrollments.batchId} = ${batchID}`
       } else {
-        queryString = sql`${zuvyBatchEnrollments.userId} = ${student_id}`
+        queryString = sql`${zuvyBatchEnrollments.userId} = ${student_id} AND ${zuvyBatchEnrollments.batchId} IS NOT NULL`
       }
       let enrolled = await db.select().from(zuvyBatchEnrollments).where(queryString);
 
@@ -186,7 +186,7 @@ export class StudentService {
           })
       );
       let upcomingClasses = await db.query.zuvySessions.findMany({
-        where: (session, { or, and, eq ,ne}) =>
+        where: (session, { and, or, eq, ne }) =>
           and(
             or(...bootcampAndbatchIds.map(({ bootcampId, batchId }) => 
               and(
@@ -194,15 +194,14 @@ export class StudentService {
                 eq(session.batchId, batchId)
               )
             )),
-            ne(session.status, 'completed')
-
+            ne(session.status, helperVariable.completed)
           ),
         orderBy: (session, { asc }) => asc(session.startTime),
-        with : {
-          bootcampDetail : {
-            columns : {
-              id:true,
-              name:true
+        with: {
+          bootcampDetail: {
+            columns: {
+              id: true,
+              name: true
             }
           }
         },
@@ -211,7 +210,7 @@ export class StudentService {
         },
         limit,
         offset
-       })
+      })
       const totalCount = upcomingClasses.length > 0 ? upcomingClasses[0]['totalCount'] : 0;
         
        const totalClasses =totalCount;
