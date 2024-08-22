@@ -110,7 +110,9 @@ export class BatchesService {
         .where(eq(users.id, BigInt(data[0].instructorId)));
       const instructorName =
         batchInstructor.length > 0 ? batchInstructor[0].name : null;
+      const instructorEmail = batchInstructor.length > 0 ? batchInstructor[0].email : null;
       data[0]['instructorName'] = instructorName;
+      data[0]['instructorEmail'] = instructorEmail;
       // data[0]['students'] = respObj;
       return [
         null,
