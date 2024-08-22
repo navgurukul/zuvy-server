@@ -207,6 +207,7 @@ export class CodingPlatformService {
           sourceCode: true
         },
         with:{
+          questionDetail:true,
           TestCasesSubmission: {
             with: {
               testCases: true,
