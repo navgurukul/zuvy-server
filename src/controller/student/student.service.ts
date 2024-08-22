@@ -200,8 +200,8 @@ export class StudentService {
         with : {
           bootcampDetail : {
             columns : {
-              id: true,
-              name: true
+              id:true,
+              name:true
             }
           }
         },
@@ -210,7 +210,7 @@ export class StudentService {
         },
         limit,
         offset
-      })
+       })
       const totalCount = upcomingClasses.length > 0 ? upcomingClasses[0]['totalCount'] : 0;
         
        const totalClasses =totalCount;
