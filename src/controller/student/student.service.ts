@@ -197,9 +197,9 @@ export class StudentService {
             ne(session.status, helperVariable.completed)
           ),
         orderBy: (session, { asc }) => asc(session.startTime),
-        with: {
-          bootcampDetail: {
-            columns: {
+        with : {
+          bootcampDetail : {
+            columns : {
               id: true,
               name: true
             }
