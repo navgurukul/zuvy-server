@@ -207,7 +207,11 @@ export class CodingPlatformService {
           sourceCode: true
         },
         with:{
-          TestCasesSubmission: true
+          TestCasesSubmission: {
+            with: {
+              testCases: true,
+            }
+          }
         },
         limit: 1,
         orderBy: (zuvyPracticeCode, { sql }) => sql`${zuvyPracticeCode.id} DESC`,
