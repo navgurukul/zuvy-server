@@ -475,7 +475,7 @@ export class ContentService {
         module: chapter,
       };
     } catch (err) {
-      logger.error({err})
+      Logger.error({err})
       throw err;
     }
   }
