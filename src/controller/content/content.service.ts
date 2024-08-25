@@ -443,14 +443,29 @@ export class ContentService {
       } else {
         chapterData = { title: `Chapter ${order}`, moduleId, topicId, order };
       }
-
       const chapter = await db
         .insert(zuvyModuleChapter)
         .values(chapterData)
         .returning();
-
+      if (chapter.length == 0) {
+        return {
+          status: 'error',
+          code: 400,
+          message: 'Not able to create chapter for this module',
+          module: chapter,
+        };
+      }
       if (topicId == 6) {
-        await db.insert(zuvyOutsourseAssessments).values([{ assessmentId: newAssessment[0].id }]).returning();
+        let insertedAssessmentOutsourse:any = { assessmentId: newAssessment[0].id, moduleId, bootcampId, chapterId: chapter[0].id, order }
+        let outsourseAssessmentData = await db.insert(zuvyOutsourseAssessments).values(insertedAssessmentOutsourse).returning();
+        if (outsourseAssessmentData.length == 0) {
+          return {
+            status: 'error',
+            code: 400,
+            message: 'Not able to create outsourse assessment for this chapter',
+            module: chapter,
+          };
+        }
       }
 
       return {
@@ -460,6 +475,7 @@ export class ContentService {
         module: chapter,
       };
     } catch (err) {
+      logger.error({err})
       throw err;
     }
   }
@@ -636,6 +652,7 @@ export class ContentService {
   async getChapterDetailsById(chapterId: number, bootcampId: number, moduleId: number, topicId: number) {
     try {
       if (topicId == 6) {
+        console.log({ chapterId, bootcampId, moduleId, topicId })
         const chapterDetails = await db.query.zuvyOutsourseAssessments.findMany({
           where: (zuvyOutsourseAssessments, { eq }) => eq(zuvyOutsourseAssessments.chapterId, chapterId),
           with: {
@@ -653,7 +670,7 @@ export class ContentService {
                 assessmentOutsourseId: true,
                 bootcampId: true
               },
-              where: (zuvyOutsourseQuizzes, { sql }) => sql`${zuvyOutsourseQuizzes.bootcampId} = ${bootcampId} AND ${zuvyOutsourseQuizzes.chapterId} = ${chapterId}`,
+              where: (Quizzes, { sql }) => sql`${Quizzes.bootcampId} = ${bootcampId} AND ${Quizzes.chapterId} = ${chapterId}`,
               with: {
                 Quiz: true
               }
@@ -664,7 +681,7 @@ export class ContentService {
                 assessmentOutsourseId: true,
                 bootcampId: true
               },
-              where: (zuvyOutsourseOpenEndedQuestions, { sql }) => sql`${zuvyOutsourseOpenEndedQuestions.bootcampId} = ${bootcampId} AND ${zuvyOutsourseOpenEndedQuestions.chapterId} = ${chapterId} AND ${zuvyOutsourseOpenEndedQuestions.moduleId} = ${moduleId}`,
+              where: (OpenEndedQuestions, { sql }) => sql`${OpenEndedQuestions.bootcampId} = ${bootcampId} AND ${OpenEndedQuestions.chapterId} = ${chapterId} AND ${OpenEndedQuestions.moduleId} = ${moduleId}`,
               with: {
                 OpenEndedQuestion: true
               }
@@ -675,7 +692,7 @@ export class ContentService {
                 assessmentOutsourseId: true,
                 bootcampId: true
               },
-              where: (zuvyOutsourseCodingQuestions, { sql }) => sql`${zuvyOutsourseCodingQuestions.bootcampId} = ${bootcampId} AND ${zuvyOutsourseCodingQuestions.chapterId} = ${chapterId}`,
+              where: (CodingQuestions, { sql }) => sql`${CodingQuestions.bootcampId} = ${bootcampId} AND ${CodingQuestions.chapterId} = ${chapterId}`,
               with: {
                 CodingQuestion: {
                   columns: {
@@ -690,6 +707,7 @@ export class ContentService {
             }
           },
         });
+        console.log({ chapterDetails })
         chapterDetails[0]["assessmentOutsourseId"] = chapterDetails[0].id
         let formatedData = this.formatedChapterDetails(chapterDetails[0])
         return formatedData;
@@ -1053,6 +1071,7 @@ export class ContentService {
 
       return newAssessment;
     } catch (err) {
+      console.error({err});
       throw err;
     }
   }
