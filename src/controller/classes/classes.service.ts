@@ -1051,16 +1051,10 @@ export class ClassesService {
           description: updatedEventDetails.description,
           start: {
             dateTime: moment(updatedEventDetails.startDateTime),
-              // .subtract(5, 'hours')
-              // .subtract(30, 'minutes')
-              // .format(),
             timeZone: updatedEventDetails.timeZone,
           },
           end: {
             dateTime: moment(updatedEventDetails.endDateTime),
-              // .subtract(5, 'hours')
-              // .subtract(30, 'minutes')
-              // .format(),
             timeZone: updatedEventDetails.timeZone,
           },
         },

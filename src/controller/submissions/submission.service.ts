@@ -1,10 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { db } from '../../db/index';
-import { eq, sql, count, lte, inArray } from 'drizzle-orm';
-// import { BatchesService } from '../batches/batch.service';
+import { eq, sql, inArray } from 'drizzle-orm';
 import * as _ from 'lodash';
 import { zuvyBatchEnrollments, zuvyAssessmentSubmission, zuvyChapterTracking, zuvyBootcamps, zuvyOpenEndedQuestionSubmission, zuvyProjectTracking, zuvyQuizTracking, zuvyModuleTracking, zuvyModuleChapter, zuvyFormTracking, zuvyModuleForm, zuvyPracticeCode } from '../../../drizzle/schema';
-import { InstructorFeedbackDto, PatchOpenendedQuestionDto, CreateOpenendedQuestionDto } from './dto/submission.dto';
+import { CreateOpenendedQuestionDto } from './dto/submission.dto';
 import { STATUS_CODES } from 'src/helpers';
 import { helperVariable } from 'src/constants/helper';
 
@@ -119,55 +118,6 @@ export class SubmissionService {
       throw err;
     }
   }
-
-  // async assessmentStudentsInfoBy(assessment_id: number, limit: number, offset: number, bootcamp_id: number) {
-  //   try {
-  //     const assessmentSubmissionData = await db.query.zuvyModuleAssessment.findMany({
-  //       where: (zuvyModuleAssessment, { sql }) => sql`${zuvyModuleAssessment.id} = ${assessment_id}`,
-  //       columns: {
-  //         id:true,
-  //         title:true,
-  //         passPercentage:true,
-  //         timeLimit:true,
-  //       },
-  //       with: {
-  //         assessmentSubmissions: {
-  //           where: (zuvyAssessmentSubmission, { eq }) => eq(zuvyAssessmentSubmission.bootcampId, bootcamp_id),
-  //           columns: {
-  //             id:true,
-  //             userId: true,
-  //             assessmentId: true,
-  //             bootcampId: true,
-  //             marks:true,
-  //             startedAt:true,
-  //             submitedAt:true,
-  //           },
-  //           with: {
-  //             user: {
-  //               columns: {
-  //                 name: true,
-  //                 email: true,
-  //               },
-  //             },
-  //           },
-  //         }
-
-  //       },
-  //       limit: limit,
-  //       offset: offset,
-  //     });
-
-  //     let bootcampStudents = await db
-  //       .select()
-  //       .from(zuvyBatchEnrollments)
-  //       .where(sql`${zuvyBatchEnrollments.bootcampId} = ${bootcamp_id} AND ${zuvyBatchEnrollments.batchId} IS NOT NULL`);
-
-
-  //     return assessmentSubmissionData;
-  //   } catch (err) {
-  //     throw err;
-  //   }
-  // }
 
   async getAssessmentInfoBy(bootcamp_id, limit: number, offset: number) {
     try {
@@ -546,71 +496,6 @@ export class SubmissionService {
       throw err;
     }
   }
-
-  // async getAssessmentSubmission(assessment_id, studentId){
-  //   try{
-  //     const res = await db.query.zuvyAssessmentSubmission.findMany({
-  //       where: (zuvyAssessmentSubmission, {eq, and}) => and(eq(zuvyAssessmentSubmission.assessmentId, assessment_id), eq(zuvyAssessmentSubmission.userId, studentId)),
-  //       with: {
-  //         user: {
-  //           columns: {
-  //             name: true,
-  //             email: true,
-  //           },
-  //         },
-  //         assessment: {
-  //           columns: {
-  //             id: true,
-  //             title: true,
-  //             passPercentage: true,
-  //             timeLimit: true,
-  //           },
-  //         },
-  //         openEndedSubmission: {
-  //           columns: {
-  //             id: true,
-  //             question_id: true,
-  //             answer: true,
-  //             marks: true,
-  //             feedback: true,
-  //             submitAt: true,
-  //             assessmentId: true,
-  //           },
-  //           with: {
-  //             openEnded: {
-  //               columns: {
-  //                 id: true,
-  //                 question: true,
-  //                 difficulty: true,
-  //               },
-  //             },
-
-  //           },
-  //         },
-  //         codingSubmission: {
-  //           columns: {
-  //             id: true,
-  //             questionSolved: true,
-  //             assessmentId: true,
-  //           },
-  //         },
-  //         quizSubmission: {
-  //           columns: {
-  //             id: true,
-  //             mcqId: true,
-  //             status: true,
-  //             chosenOption: true,
-  //             attempt: true,
-  //             assessmentId: true,
-  //           },
-  //         },
-  //       }
-  //     })
-  //     return res;
-  //   } catch (err){
-  //     throw err;
-  //   }
-  // }
 
   async getAllProjectSubmissions(bootcampId: number) {
     try {
@@ -1067,23 +952,6 @@ export class SubmissionService {
         if (chapterDetails[0].topicId == 7) {
           if (chapterDetails[0].formQuestions !== null) {
             if (FormTracking.length == 0) {
-              // const questions = await db
-              //   .select({
-              //     id: zuvyModuleForm.id,
-              //     question: zuvyModuleForm.question,
-              //     options: zuvyModuleForm.options,
-              //     typeId: zuvyModuleForm.typeId,
-              //     isRequired: zuvyModuleForm.isRequired
-              //   })
-              //   .from(zuvyModuleForm)
-              //   .where(
-              //     sql`${inArray(zuvyModuleForm.id, Object.values(chapterDetails[0].formQuestions))}`,
-              //   );
-              // questions['status'] =
-              //   ChapterTracking.length != 0
-              //     ? 'Completed'
-              //     : 'Pending';
-
               return {
                 status: "success",
                 code: 200,
