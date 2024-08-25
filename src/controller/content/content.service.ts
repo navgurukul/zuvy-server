@@ -1139,12 +1139,25 @@ export class ContentService {
         // Update assessment data
         let UpdateOutsourseAssessmentData:any = { ...OutsourseAssessmentData__ };
         let updatedOutsourseAssessment = await db.update(zuvyOutsourseAssessments).set(UpdateOutsourseAssessmentData).where(eq(zuvyOutsourseAssessments.id, assessmentOutsourseId)).returning();
-
+        if (updatedOutsourseAssessment.length == 0) {
+          throw ({
+            status: 'error',
+            statusCode: 404,
+            message: 'Assessment not found',
+          });
+        }
         let updatedAssessment = await db
           .update(zuvyModuleAssessment)
           .set(assessmentData)
           .where(eq(zuvyModuleAssessment.id, assessment_id))
           .returning();
+        if (updatedAssessment.length == 0) {
+          throw ({
+            status: 'error',
+            statusCode: 404,
+            message: 'Assessment not found',
+          });
+        }
 
         // Insert new data
         let mcqArray = quizIdsToAdd.map(id => ({ quiz_id: id, bootcampId, chapterId, assessmentOutsourseId }));
@@ -1155,7 +1168,7 @@ export class ContentService {
           let createZOMQ = await db.insert(zuvyOutsourseQuizzes).values(mcqArray).returning();
           if (createZOMQ.length > 0) {
             const toUpdateIds = createZOMQ.filter((c) => c.quiz_id).map((c) => c.quiz_id);
-            await db
+            let modelsData = await db
               .update(zuvyModuleQuiz)
               .set({ usage: sql`${zuvyModuleQuiz.usage}::numeric + 1` })
               .where(sql`${inArray(zuvyModuleQuiz.id, toUpdateIds)}`);
