@@ -1147,8 +1147,9 @@ export class ContentService {
           let createZOOQ = await db.insert(zuvyOutsourseOpenEndedQuestions).values(openEndedQuestionsArray).returning();
           if (createZOOQ.length > 0) {
             const toUpdateIds = createZOOQ.filter((c) => c.openEndedQuestionId).map((c) => c.openEndedQuestionId);
-            await db
-              .set({ usage: sql`${zuvyOpenEndedQuestions.usage}::numeric + 1` })
+            let updateOpendEndedQuestions:any = { usage: sql`${zuvyOpenEndedQuestions.usage}::numeric + 1` }
+            await db.update(zuvyOpenEndedQuestions)
+              .set(updateOpendEndedQuestions)
               .where(sql`${inArray(zuvyOpenEndedQuestions.id, toUpdateIds)}`);
           }
         }
@@ -1157,9 +1158,10 @@ export class ContentService {
           let createZOCQ = await db.insert(zuvyOutsourseCodingQuestions).values(codingProblemsArray).returning();
           if (createZOCQ.length > 0) {
             const toUpdateIds = createZOCQ.filter((c) => c.codingQuestionId).map((c) => c.codingQuestionId);
+            let updateCodingQuestions:any = { usage: sql`${zuvyCodingQuestions.usage}::numeric + 1` }
             await db
               .update(zuvyCodingQuestions)
-              .set({ usage: sql`${zuvyCodingQuestions.usage}::numeric + 1` })
+              .set(updateCodingQuestions)
               .where(sql`${inArray(zuvyCodingQuestions.id, toUpdateIds)}`);
           }
         }

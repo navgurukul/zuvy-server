@@ -56,14 +56,15 @@ export class TrackingService {
       if (chapterExistsInModuleChapter.length != 0) {
         if (chapterExistsInChapterTracking.length == 0) {
           let chapterTracked;
+          let insertChapterTracking:any = {
+            userId: BigInt(userId),
+            chapterId,
+            moduleId,
+            completedAt: sql`NOW()`,
+          }
           chapterTracked = await db
             .insert(zuvyChapterTracking)
-            .values({
-              userId: BigInt(userId),
-              chapterId,
-              moduleId,
-              completedAt: sql`NOW()`,
-            })
+            .values(insertChapterTracking)
             .returning();
 
           const moduleTracking = await db
@@ -86,49 +87,53 @@ export class TrackingService {
           let completedChapter = completedModuleChapter.length;
           let returnedTrackingData;
           if (moduleTracking.length == 0) {
+            let InsertZuvyModuleTracking:any = {
+              userId: BigInt(userId),
+              bootcampId,
+              moduleId,
+              progress: Math.ceil((completedChapter / totalChapter) * 100),
+              updatedAt: sql`NOW()`,
+            }
             returnedTrackingData = await db
               .insert(zuvyModuleTracking)
-              .values({
-                userId,
-                moduleId,
-                progress: Math.ceil((completedChapter / totalChapter) * 100),
-                bootcampId,
-                updatedAt: sql`NOW()`,
-              })
+              .values(InsertZuvyModuleTracking)
               .returning();
           } else {
+            let UpdateZuvyModuleTracking:any = {
+              progress: Math.ceil((completedChapter / totalChapter) * 100),
+              updatedAt: sql`NOW()`,
+            }
             returnedTrackingData = await db
               .update(zuvyModuleTracking)
-              .set({
-                progress: Math.ceil((completedChapter / totalChapter) * 100),
-                updatedAt: sql`NOW()`,
-              })
+              .set(UpdateZuvyModuleTracking)
               .where(eq(zuvyModuleTracking.id, moduleTracking[0].id))
               .returning();
           }
           const recentBootcampForUser = await db.select().from(zuvyRecentBootcamp).where(eq(zuvyRecentBootcamp.userId, BigInt(userId)));
           if (recentBootcampForUser.length == 0) {
+            let insertRecentBootcamp:any = {
+              userId: BigInt(userId),
+              moduleId,
+              progress: Math.ceil((completedChapter / totalChapter) * 100),
+              bootcampId,
+              chapterId: chapterTracked[0].chapterId,
+              updatedAt: sql`NOW()`,
+            }
             const updatedRecentBootcamp = await db
               .insert(zuvyRecentBootcamp)
-              .values({
-                userId: BigInt(userId),
-                moduleId,
-                progress: Math.ceil((completedChapter / totalChapter) * 100),
-                bootcampId,
-                chapterId: chapterTracked[0].chapterId,
-                updatedAt: sql`NOW()`,
-              })
+              .values(insertRecentBootcamp)
           }
           else {
-            const updatedRecentBootcamp = await db
+            let updatedRecentBootcamp:any = {
+              moduleId,
+              progress: Math.ceil((completedChapter / totalChapter) * 100),
+              bootcampId,
+              chapterId: chapterTracked[0].chapterId,
+              updatedAt: sql`NOW()`,
+            }
+            await db
               .update(zuvyRecentBootcamp)
-              .set({
-                moduleId,
-                progress: Math.ceil((completedChapter / totalChapter) * 100),
-                bootcampId,
-                chapterId: chapterTracked[0].chapterId,
-                updatedAt: sql`NOW()`,
-              })
+              .set(updatedRecentBootcamp)
               .where(eq(zuvyRecentBootcamp.userId, BigInt(userId)))
           }
           const totalModules = await db
@@ -267,16 +272,17 @@ export class TrackingService {
     try {
       let result;
       if (SubmitBody.submitAssignment != undefined) {
+        let updatedAssignmentBody:any = {
+          userId,
+          moduleId,
+          chapterId,
+          bootcampId,
+          ...SubmitBody.submitAssignment,
+          updatedAt: sql`Now()`,
+        }
         result = await db
           .insert(zuvyAssignmentSubmission)
-          .values({
-            userId,
-            moduleId,
-            chapterId,
-            bootcampId,
-            ...SubmitBody.submitAssignment,
-            updatedAt: sql`Now()`,
-          })
+          .values(updatedAssignmentBody)
           .returning();
       } else if (SubmitBody.submitQuiz != undefined) {
         SubmitBody.submitQuiz.sort((a, b) => a.mcqId - b.mcqId);
@@ -424,8 +430,8 @@ export class TrackingService {
        sqlChunks.push(sql`end)`);
        
        const finalSql: SQL = sql.join(sqlChunks, sql.raw(' '));
-
-       await db.update(zuvyModuleTracking).set({ progress: finalSql })
+       let updateModuleTrack:any = { progress: finalSql }
+       await db.update(zuvyModuleTracking).set(updateModuleTrack)
          .where(sql`${inArray(zuvyModuleTracking.id, ids)}`);
       } 
       if (modules.length > 0) {
@@ -997,26 +1003,28 @@ export class TrackingService {
         const projectTracked = await db.insert(zuvyProjectTracking).values(updatedBody).returning();
         const moduleTracked = await db.insert(zuvyModuleTracking).values(moduleTrackingBody).returning();
         if (recentBootcampForUser.length == 0) {
-          const updatedRecentBootcamp = await db
+          let updatedRecentBootcamp:any = {
+            userId: BigInt(userId),
+            moduleId,
+            progress: 100,
+            bootcampId,
+            updatedAt: sql`NOW()`,
+          }
+          await db
             .insert(zuvyRecentBootcamp)
-            .values({
-              userId: BigInt(userId),
-              moduleId,
-              progress: 100,
-              bootcampId,
-              updatedAt: sql`NOW()`,
-            })
+            .values(updatedRecentBootcamp)
         }
         else {
+          let UpdatedRecentBootcamp:any = {
+            moduleId,
+            progress: 100,
+            bootcampId,
+            chapterId: null,
+            updatedAt: sql`NOW()`,
+          }
           const updatedRecentBootcamp = await db
             .update(zuvyRecentBootcamp)
-            .set({
-              moduleId,
-              progress: 100,
-              bootcampId,
-              chapterId: null,
-              updatedAt: sql`NOW()`,
-            })
+            .set(UpdatedRecentBootcamp)
             .where(eq(zuvyRecentBootcamp.userId, BigInt(userId)))
         }
         if (projectTracked.length > 0 && moduleTracked.length > 0) {
@@ -1152,9 +1160,9 @@ export class TrackingService {
           const chaptersCompleted = chapters.length - incompleteChaptersCount;
           if(progress == 100 && incompleteChaptersCount > 0)
             {
-              progress = Math.ceil((chaptersCompleted/chapters.length)*100) 
+              let updatedBootcampProgress:any = {progress: Math.ceil((chaptersCompleted/chapters.length)*100) }
               const updatedRecentCourse = await db.update(zuvyRecentBootcamp)
-               .set({ progress: progress})
+               .set(updatedBootcampProgress)
                .where(eq(zuvyRecentBootcamp.userId, BigInt(userId))).returning(); 
               if(updatedRecentCourse.length == 0)
                 {

@@ -1,15 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { db } from '../../db/index';
-import { eq, sql, count, lte } from 'drizzle-orm';
-// import { BatchesService } from '../batches/batch.service';
-import axios from 'axios';
+import { db } from '../db/index';
+import { eq, sql } from 'drizzle-orm';
 import * as _ from 'lodash';
-import { error, log } from 'console';
-import { zuvyBatchEnrollments, zuvyAssessmentSubmission, users, zuvyModuleAssessment, zuvyCourseModules, zuvyChapterTracking, zuvyBootcamps, zuvyOpenEndedQuestionSubmission, zuvyProjectTracking, zuvyQuizTracking } from '../../../drizzle/schema';
-import { InstructorFeedbackDto, PatchOpenendedQuestionDto, CreateOpenendedQuestionDto } from './dto/submission.dto';
-import { truncate } from 'fs/promises';
+import { zuvyBatchEnrollments, zuvyAssessmentSubmission, zuvyChapterTracking, zuvyOpenEndedQuestionSubmission, zuvyProjectTracking, zuvyQuizTracking } from '../../drizzle/schema';
 
-const { ZUVY_CONTENT_URL } = process.env;
 
 @Injectable()
 export class SubmissionService {
@@ -119,54 +113,6 @@ export class SubmissionService {
     }
   }
 
-  // async assessmentStudentsInfoBy(assessment_id: number, limit: number, offset: number, bootcamp_id: number) {
-  //   try {
-  //     const assessmentSubmissionData = await db.query.zuvyModuleAssessment.findMany({
-  //       where: (zuvyModuleAssessment, { sql }) => sql`${zuvyModuleAssessment.id} = ${assessment_id}`,
-  //       columns: {
-  //         id:true,
-  //         title:true,
-  //         passPercentage:true,
-  //         timeLimit:true,
-  //       },
-  //       with: {
-  //         assessmentSubmissions: {
-  //           where: (zuvyAssessmentSubmission, { eq }) => eq(zuvyAssessmentSubmission.bootcampId, bootcamp_id),
-  //           columns: {
-  //             id:true,
-  //             userId: true,
-  //             assessmentId: true,
-  //             bootcampId: true,
-  //             marks:true,
-  //             startedAt:true,
-  //             submitedAt:true,
-  //           },
-  //           with: {
-  //             user: {
-  //               columns: {
-  //                 name: true,
-  //                 email: true,
-  //               },
-  //             },
-  //           },
-  //         }
-
-  //       },
-  //       limit: limit,
-  //       offset: offset,
-  //     });
-
-  //     let bootcampStudents = await db
-  //       .select()
-  //       .from(zuvyBatchEnrollments)
-  //       .where(sql`${zuvyBatchEnrollments.bootcampId} = ${bootcamp_id} AND ${zuvyBatchEnrollments.batchId} IS NOT NULL`);
-
-
-  //     return assessmentSubmissionData;
-  //   } catch (err) {
-  //     throw err;
-  //   }
-  // }
 
   async getAssessmentInfoBy(bootcamp_id, limit: number, offset: number) {
     try {
@@ -203,7 +149,7 @@ export class SubmissionService {
 
       return { data: statusOfStudentCode, totalstudents: bootcampStudents.length };
     } catch (error) {
-      console.error('Error fetching assessment info:', error);
+      Logger.error('Error fetching assessment info:', error);
       throw error;
     }
   }
@@ -226,7 +172,7 @@ export class SubmissionService {
     }
   }
 
-  async submissionOpenended(OpenendedQuestionData: CreateOpenendedQuestionDto, userId: number) {
+  async submissionOpenended(OpenendedQuestionData: any, userId: number) {
     try {
       const OpenendedQuestionSubmission = await db.insert(zuvyOpenEndedQuestionSubmission).values({ ...OpenendedQuestionData, userId }).returning();
       return OpenendedQuestionSubmission;
@@ -235,7 +181,7 @@ export class SubmissionService {
     }
   }
 
-  async patchOpenendedQuestion(data: PatchOpenendedQuestionDto, id: number) {
+  async patchOpenendedQuestion(data: any, id: number) {
     try {
       const res = await db.update(zuvyOpenEndedQuestionSubmission).set(data).where(eq(zuvyOpenEndedQuestionSubmission.id, id)).returning();
       return res;
@@ -244,7 +190,7 @@ export class SubmissionService {
     }
   }
 
-  async instructorFeedback(data: InstructorFeedbackDto, id: number) {
+  async instructorFeedback(data: any, id: number) {
     try {
       const res = await db.update(zuvyOpenEndedQuestionSubmission).set(data).where(eq(zuvyOpenEndedQuestionSubmission.id, id)).returning();
       return res;
