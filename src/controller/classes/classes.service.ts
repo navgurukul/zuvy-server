@@ -639,9 +639,10 @@ export class ClassesService {
 
   async updateMeetingById(id: number, classData: any): Promise<object> {
     try {
+      let newStatus = 'upcoming';
       let updatedMeeting = await db
         .update(zuvySessions)
-        .set({ ...classData })
+        .set({ ...classData, status: newStatus })
         .where(eq(zuvySessions.id, id))
         .returning();
       return {
@@ -871,7 +872,7 @@ export class ClassesService {
       for (let classObj of classes) {
         const startTime = new Date(classObj.startTime);
         const endTime = new Date(classObj.endTime);
-        let newStatus;
+        let newStatus:string;
         if (currentTime > endTime) {
           newStatus = 'completed';
         } else if (currentTime >= startTime && currentTime <= endTime) {
@@ -882,7 +883,8 @@ export class ClassesService {
         // Update the status in the database
         try {
           if (newStatus !== classObj.status) {
-            let newObj = await db.update(zuvySessions).set({ status: newStatus }).where(eq(zuvySessions.id, classObj.id)).returning();
+            let updatedClass:any = { status: newStatus }
+            await db.update(zuvySessions).set(updatedClass).where(eq(zuvySessions.id, classObj.id)).returning();
             Logger.log(`Status of class with id ${classObj.id} updated to ${newStatus}`);
           }
         } catch (error) {

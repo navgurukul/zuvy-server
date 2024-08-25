@@ -20,6 +20,7 @@ import {
   zuvyModuleForm,
   questionType,
   zuvyQuestionTypes,
+  zuvyOpenEndedQuestions as zuvyOpenEndedQuestionsType
 } from '../../../drizzle/schema';
 
 import { error, log } from 'console';
@@ -449,7 +450,7 @@ export class ContentService {
         .returning();
 
       if (topicId == 6) {
-        await db.insert(zuvyOutsourseAssessments).values({ assessmentId: newAssessment[0].id, moduleId, bootcampId, chapterId: chapter[0].id, order }).returning();
+        await db.insert(zuvyOutsourseAssessments).values([{ assessmentId: newAssessment[0].id }]).returning();
       }
 
       return {
@@ -853,12 +854,12 @@ export class ContentService {
 
   async updateCodingProblemForModule(
     questionId: number,
-    codingProblem: UpdateProblemDto,
+    codingProblem: UpdateProblemDto & { usage?: string },
   ) {
     try {
       let examples = [];
       let testCases = [];
-
+  
       if (codingProblem.examples) {
         for (let i = 0; i < codingProblem.examples.length; i++) {
           examples.push(codingProblem.examples[i].inputs);
@@ -873,7 +874,7 @@ export class ContentService {
       }
       const updatedQuestion = await db
         .update(zuvyCodingQuestions)
-        .set(codingProblem)
+        .set({ usage: sql`${zuvyCodingQuestions.usage}::numeric - 1`, ...codingProblem })
         .where(eq(zuvyCodingQuestions.id, questionId))
         .returning();
       if (updatedQuestion.length > 0) {
@@ -986,14 +987,10 @@ export class ContentService {
           const earlierCodingId = chapter[0].codingQuestions;
 
           if (earlierCodingId !== editData.codingQuestions) {
+            let updatedCodingQuestion:any = { usage: sql`${zuvyCodingQuestions.usage}::numeric - 1` }
             await db
               .update(zuvyCodingQuestions)
-              .set({ usage: sql`${zuvyCodingQuestions.usage}::numeric - 1` })
-              .where(eq(zuvyCodingQuestions.id, earlierCodingId));
-
-            await db
-              .update(zuvyCodingQuestions)
-              .set({ usage: sql`${zuvyCodingQuestions.usage}::numeric + 1` })
+              .set(updatedCodingQuestion)
               .where(eq(zuvyCodingQuestions.id, editData.codingQuestions));
           }
         } else if (editData.formQuestions) {
@@ -1014,15 +1011,17 @@ export class ContentService {
               )
               : editData.formQuestions;
           if (remainingFormIds.length > 0) {
+            let updatedFormQuestion:any = { usage: sql`${zuvyModuleForm.usage}::numeric - 1` }
             await db
               .update(zuvyModuleForm)
-              .set({ usage: sql`${zuvyModuleForm.usage}::numeric - 1` })
+              .set(updatedFormQuestion)
               .where(sql`${inArray(zuvyModuleForm.id, remainingFormIds)}`);
           }
           if (toUpdateIds.length > 0) {
+            let updatedFormQuestion:any = { usage: sql`${zuvyModuleForm.usage}::numeric + 1` }
             await db
               .update(zuvyModuleForm)
-              .set({ usage: sql`${zuvyModuleForm.usage}::numeric + 1` })
+              .set(updatedFormQuestion)
               .where(sql`${inArray(zuvyModuleForm.id, toUpdateIds)}`);
           }
           if (editData.formQuestions.length == 0) {
@@ -1119,7 +1118,8 @@ export class ContentService {
         }
 
         // Update assessment data
-        let updatedOutsourseAssessment = await db.update(zuvyOutsourseAssessments).set(OutsourseAssessmentData__).where(eq(zuvyOutsourseAssessments.id, assessmentOutsourseId)).returning();
+        let UpdateOutsourseAssessmentData:any = { ...OutsourseAssessmentData__ };
+        let updatedOutsourseAssessment = await db.update(zuvyOutsourseAssessments).set(UpdateOutsourseAssessmentData).where(eq(zuvyOutsourseAssessments.id, assessmentOutsourseId)).returning();
 
         let updatedAssessment = await db
           .update(zuvyModuleAssessment)
@@ -1148,7 +1148,6 @@ export class ContentService {
           if (createZOOQ.length > 0) {
             const toUpdateIds = createZOOQ.filter((c) => c.openEndedQuestionId).map((c) => c.openEndedQuestionId);
             await db
-              .update(zuvyOpenEndedQuestions)
               .set({ usage: sql`${zuvyOpenEndedQuestions.usage}::numeric + 1` })
               .where(sql`${inArray(zuvyOpenEndedQuestions.id, toUpdateIds)}`);
           }
@@ -1760,7 +1759,8 @@ export class ContentService {
       let submission;
       submission = await db.select().from(zuvyAssessmentSubmission).where(sql`${zuvyAssessmentSubmission.userId} = ${id} AND ${zuvyAssessmentSubmission.assessmentOutsourseId} = ${assessmentOutsourseId} AND ${zuvyAssessmentSubmission.submitedAt} IS NULL`);
       if (submission.length == 0) {
-        submission = await db.insert(zuvyAssessmentSubmission).values({ userId: id, assessmentOutsourseId, startedAt }).returning();
+        let insertSubmission:any = { userId: id, assessmentOutsourseId, startedAt };
+        submission = await db.insert(zuvyAssessmentSubmission).values(insertSubmission).returning();
       }
 
       let formatedData = await this.formatedChapterDetails(assessment[0]);
@@ -2045,15 +2045,16 @@ export class ContentService {
             .where(eq(zuvyModuleForm.id, formQuestion.id))
 
           if (existingRecord) {
+            let updatedRecord:any = {
+              chapterId: formQuestion.chapterId,
+              question: formQuestion.question,
+              options: formQuestion.options,
+              typeId: formQuestion.typeId,
+              isRequired: formQuestion.isRequired,
+            }
             const result = await db
               .update(zuvyModuleForm)
-              .set({
-                chapterId: formQuestion.chapterId,
-                question: formQuestion.question,
-                options: formQuestion.options,
-                typeId: formQuestion.typeId,
-                isRequired: formQuestion.isRequired,
-              })
+              .set(updatedRecord)
               .where(eq(zuvyModuleForm.id, formQuestion.id))
               .returning();
             results.push(result);

@@ -34,9 +34,10 @@ export class BatchesService {
              const hasInstructorRole = instructorRoles.some(role => role.role === helperVariable.instructor);
              if(!hasInstructorRole)
               {
+                let InsertSansaarUserRoles:any = { userId : Number(user[0].id),role: helperVariable.instructor,createdAt:new Date().toISOString()}
                 const newlyAssignedInstructor = await db
                  .insert(sansaarUserRoles)
-                   .values({ userId : Number(user[0].id),role: helperVariable.instructor,createdAt:new Date().toISOString()}).returning();
+                   .values(InsertSansaarUserRoles).returning();
                 if(newlyAssignedInstructor.length > 0)
                   {
                     batchValue = {
@@ -157,9 +158,10 @@ export class BatchesService {
            const hasInstructorRole = instructorRoles.some(role => role.role === 'instructor');
            if(!hasInstructorRole)
             {
+              let InsertSansaarUserRoles:any = { userId : Number(user[0].id),role: 'instructor',createdAt:new Date().toISOString()}
               const newlyAssignedInstructor = await db
                .insert(sansaarUserRoles)
-                 .values({ userId : Number(user[0].id),role: 'instructor',createdAt:new Date().toISOString()}).returning();
+                 .values(InsertSansaarUserRoles).returning();
               if(newlyAssignedInstructor.length > 0)
                 {
                   batchValue = {

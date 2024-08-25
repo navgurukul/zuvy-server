@@ -6,7 +6,7 @@ import * as _ from 'lodash';
 import {
   zuvyBatches,
   zuvySessions
-} from 'drizzle/schema';
+} from '../../../drizzle/schema';
 import { STATUS_CODES } from 'src/helpers';
 
 

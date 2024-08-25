@@ -503,7 +503,7 @@ export class SubmissionService {
     }
   }
 
-  async patchOpenendedQuestion(data: PatchOpenendedQuestionDto, id: number) {
+  async patchOpenendedQuestion(data: any, id: number) {
     try {
       const res = await db.update(zuvyOpenEndedQuestionSubmission).set(data).where(eq(zuvyOpenEndedQuestionSubmission.id, id)).returning();
       return res;
@@ -512,7 +512,7 @@ export class SubmissionService {
     }
   }
 
-  async instructorFeedback(data: InstructorFeedbackDto, id: number) {
+  async instructorFeedback(data: any, id: number) {
     try {
       const res = await db.update(zuvyOpenEndedQuestionSubmission).set(data).where(eq(zuvyOpenEndedQuestionSubmission.id, id)).returning();
       return res;

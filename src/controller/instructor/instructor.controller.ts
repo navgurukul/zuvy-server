@@ -1,17 +1,9 @@
 import {
     Controller,
     Get,
-    Post,
-    Put,
-    Patch,
-    Delete,
-    Body,
-    Param,
     ValidationPipe,
     UsePipes,
-    Optional,
     Query,
-    BadRequestException,
     Req,
     Res,
     ParseArrayPipe
@@ -19,13 +11,10 @@ import {
   import { InstructorService } from './instructor.service';
   import {
     ApiTags,
-    ApiBody,
     ApiOperation,
     ApiQuery,
   } from '@nestjs/swagger';
   import { ApiBearerAuth } from '@nestjs/swagger';
-  import { difficulty, questionType } from 'drizzle/schema';
-  import { ClassesService } from '../classes/classes.service';
 import { ErrorResponse, SuccessResponse } from 'src/errorHandler/handler';
   
   @Controller('instructor')

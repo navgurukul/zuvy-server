@@ -18,7 +18,7 @@ import {
   zuvyCodingQuestions,
   zuvyFormTracking,
   zuvyModuleForm
-} from 'drizzle/schema';
+} from '../../../drizzle/schema';
 import {
   SubmitBodyDto,
 } from './dto/assignment.dto';

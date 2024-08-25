@@ -1,13 +1,3 @@
-// // Import schemas
-// import * as schema from './tables';
-
-// // Import schema and relations
-// import * as relations from './relations';
-
-// // Export the consolidated schema and relations
-// export { schema, relations };
-
-
 import { Many, relations } from 'drizzle-orm';
 import { binary } from 'drizzle-orm/mysql-core';
 import {
