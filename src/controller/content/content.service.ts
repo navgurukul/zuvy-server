@@ -1061,8 +1061,21 @@ export class ContentService {
   async editAssessment(
     assessmentOutsourseId: number,
     assessmentBody: CreateAssessmentBody,
+    chapterId:number
   ) {
     try {
+      if(assessmentBody.title)
+        {
+          const updatedChapterName = await db.update(zuvyModuleChapter).set({title:assessmentBody.title}).where(eq(zuvyModuleChapter.id,chapterId)).returning();
+          if(updatedChapterName.length == 0)
+            {
+              throw ({
+                status: 'error',
+                statusCode: 404,
+                message: 'Chapter title not updated properly.Please try again',
+              });
+            }
+        }
       const assessment = await db.query.zuvyOutsourseAssessments.findMany({
         where: (zuvyOutsourseAssessments, { eq }) =>
           eq(zuvyOutsourseAssessments.id, assessmentOutsourseId),
