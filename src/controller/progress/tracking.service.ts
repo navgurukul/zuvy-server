@@ -1141,7 +1141,8 @@ export class TrackingService {
                     where: (chapterTracking, { eq }) =>
                       eq(chapterTracking.userId, BigInt(userId)),
                   },
-                }
+                },
+                orderBy: (moduleChapter, { asc }) => asc(moduleChapter.order)
               },
             },
           });  
