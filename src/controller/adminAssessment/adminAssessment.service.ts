@@ -89,6 +89,7 @@ export class AdminAssessmentService {
         columns: {
           id: true,
           bootcampId: true,
+          passPercentage:true,
         },
 
         with: {
