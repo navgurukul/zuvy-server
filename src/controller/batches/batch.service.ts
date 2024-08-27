@@ -20,8 +20,8 @@ export class BatchesService {
         .from(zuvyBatchEnrollments)
         .where(
           sql`${zuvyBatchEnrollments.bootcampId} = ${batch.bootcampId} AND ${zuvyBatchEnrollments.batchId} IS NULL`,
-        )
-        .limit(batch.capEnrollment);
+        ).orderBy(zuvyBatchEnrollments.id)
+         .limit(batch.capEnrollment);
         var batchValue;
         var user = await db.select().from(users).where(eq(users.email,batch.instructorEmail));
         if(user.length == 0)

@@ -1149,7 +1149,8 @@ export class TrackingService {
                     where: (chapterTracking, { eq }) =>
                       eq(chapterTracking.userId, BigInt(userId)),
                   },
-                }
+                },
+                orderBy: (moduleChapter, { asc }) => asc(moduleChapter.order)
               },
             },
           });  
@@ -1219,12 +1220,11 @@ export class TrackingService {
           });
           if (data) {
             return [null,{message:'Your latest updated course',statusCode: STATUS_CODES.OK,data:{ moduleId: data.id,
-              moduleName: data.name,
+              moduleName: data['projectData'].length == 0 ? data.name : data['projectData'][0]['title'],
               typeId: data.typeId,
               bootcampId: data['moduleData'].id,
               bootcampName: data['moduleData'].name,
-              newChapter: data.typeId == 1 ? (data['moduleChapterData'].length > 0 ? data['moduleChapterData'][0] : 'There is no chapter in the module') : data['projectData'][0]}}]
-            
+              newChapter: data.typeId == 1 ? (data['moduleChapterData'].length > 0 ? data['moduleChapterData'][0] : 'There is no chapter in the module') : data['projectData'][0]}}] 
           }
           else {
             return [null,{message:'Start a course',statusCode: STATUS_CODES.OK,data:[]}]  

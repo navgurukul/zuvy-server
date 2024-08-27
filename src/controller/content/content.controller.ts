@@ -193,17 +193,19 @@ export class ContentController {
     return res;
   }
 
-  @Put('/editAssessment/:assessmentOutsourseId')
+  @Put('/editAssessment/:assessmentOutsourseId/:chapterId')
   @ApiOperation({ summary: 'Edit the assessment for this module' })
   @ApiBearerAuth()
   @UseGuards(RolesGuard)
   async editAssessment(
     @Body() assessmentBody: CreateAssessmentBody,
-    @Param('assessmentOutsourseId') assessmentOutsourseId: number
+    @Param('assessmentOutsourseId') assessmentOutsourseId: number,
+    @Param('chapterId') chapterId: number
   ) {
     const res = await this.contentService.editAssessment(
       assessmentOutsourseId,
       assessmentBody,
+      chapterId
     );
     return res;
   }
