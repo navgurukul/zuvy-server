@@ -1,132 +1,275 @@
+import { Injectable } from '@nestjs/common';
 import {
-  Controller,
-  Get,
-  Post,
-  Put,
-  Patch,
-  Delete,
-  Body,
-  Param,
-  ValidationPipe,
-  UsePipes,
-  BadRequestException,
-  Query,
-} from '@nestjs/common';
-import { BatchesService } from './batch.service';
-import {
-  ApiTags,
-  ApiOperation,
-  ApiBearerAuth,
-  ApiQuery,
-} from '@nestjs/swagger';
-import { BatchDto, PatchBatchDto } from './dto/batch.dto';
+  zuvyBatches,
+  users,
+  sansaarUserRoles,
+  zuvyBatchEnrollments,
+} from '../../../drizzle/schema';
+import { db } from '../../db/index';
+import { eq, sql } from 'drizzle-orm';
+import { log } from 'console';
+import { PatchBatchDto, BatchDto } from './dto/batch.dto';
+import { helperVariable } from 'src/constants/helper';
 
-// swagger body schema for batch
-@Controller('batch')
-@ApiTags('batch')
-@ApiBearerAuth()
-@UsePipes(
-  new ValidationPipe({
-    whitelist: true,
-    transform: true,
-    forbidNonWhitelisted: true,
-  }),
-)
-export class BatchesController {
-  constructor(private batchService: BatchesService) {}
-  @Get('/:id')
-  @ApiOperation({ summary: 'Get the batch by id' })
-  @ApiBearerAuth()
-  // @ApiQuery({ name: 'students', required: false, type: Boolean, description: 'Optional content flag' })
-  async getBatchById(@Param('id') id: number): Promise<object> {
-    const [err, res] = await this.batchService.getBatchById(id);
-    if (err) {
-      throw new BadRequestException(err);
+@Injectable()
+export class BatchesService {
+  async createBatch(batch: BatchDto) {
+    try {
+      const usersData = await db
+        .select()
+        .from(zuvyBatchEnrollments)
+        .where(
+          sql`${zuvyBatchEnrollments.bootcampId} = ${batch.bootcampId} AND ${zuvyBatchEnrollments.batchId} IS NULL`,
+        ).orderBy(zuvyBatchEnrollments.id)
+        .limit(batch.capEnrollment);
+      var batchValue;
+      var user = await db.select().from(users).where(eq(users.email, batch.instructorEmail));
+      if (user.length == 0) {
+        user = await db.insert(users).values({ email: batch.instructorEmail, name: batch.instructorEmail.split("@")[0] }).returning();
+      }
+      if (user.length > 0) {
+        const instructorRoles = await db.select({ role: sansaarUserRoles.role }).from(sansaarUserRoles).where(eq(sansaarUserRoles.userId, Number(user[0].id)))
+        const hasInstructorRole = instructorRoles.some(role => role.role === helperVariable.instructor);
+        if (!hasInstructorRole) {
+          let insertRole: any = { userId: Number(user[0].id), role: helperVariable.instructor, createdAt: new Date().toISOString() }
+          const newlyAssignedInstructor = await db
+            .insert(sansaarUserRoles)
+            .values(insertRole).returning();
+          if (newlyAssignedInstructor.length > 0) {
+            batchValue = {
+              name: batch.name,
+              bootcampId: batch.bootcampId,
+              instructorId: Number(user[0].id),
+              capEnrollment: batch.capEnrollment
+            }
+          }
+        }
+        else {
+          batchValue = {
+            name: batch.name,
+            bootcampId: batch.bootcampId,
+            instructorId: Number(user[0].id),
+            capEnrollment: batch.capEnrollment
+          }
+        }
+      }
+      if (usersData.length > 0) {
+        const newData = await db.insert(zuvyBatches).values(batchValue).returning();
+        let userids = usersData.map((u) => u.userId);
+
+        await db
+          .update(zuvyBatchEnrollments)
+          .set({ batchId: newData[0].id })
+          .where(
+            sql`bootcamp_id = ${batch.bootcampId} AND user_id IN ${userids}`,
+          );
+        return [
+          null,
+          {
+            status: helperVariable.success,
+            message: 'Batch created successfully',
+            code: 200,
+            batch: newData[0],
+          },
+        ];
+      } else {
+        // return error if no user found
+        return [
+          { status: helperVariable.error, message: 'No students found to enroll in this Batch', code: 400 },
+          null,
+        ];
+      }
+    } catch (e) {
+      log(`error: ${e.message}`);
+      return [{ status: 'error', message: e.message, code: 500 }, null];
     }
-    return res;
   }
 
-  @Post('/')
-  @ApiOperation({ summary: 'Create the new batch' })
-  @ApiBearerAuth()
-  async createBatch(@Body() batchData: BatchDto) {
-    const [err, res] = await this.batchService.createBatch(batchData);
-    if (err) {
-      throw new BadRequestException(err);
+  async getBatchById(id: number) {
+    try {
+      let data = await db
+        .select()
+        .from(zuvyBatches)
+        .where(eq(zuvyBatches.id, id));
+      if (data.length === 0) {
+        return [
+          { status: 'error', message: 'Batch not found', code: 404 },
+          null,
+        ];
+      }
+      let enrollStudents = await db
+        .select()
+        .from(zuvyBatchEnrollments)
+        .where(eq(zuvyBatchEnrollments.batchId, id));
+
+      const batchInstructor = await db
+        .select()
+        .from(users)
+        .where(eq(users.id, BigInt(data[0].instructorId)));
+      const instructorName =
+        batchInstructor.length > 0 ? batchInstructor[0].name : null;
+      const instructorEmail = batchInstructor.length > 0 ? batchInstructor[0].email : null;
+      data[0]['instructorName'] = instructorName;
+      data[0]['instructorEmail'] = instructorEmail;
+      // data[0]['students'] = respObj;
+      return [
+        null,
+        {
+          status: 'success',
+          message: 'Batch fetched successfully',
+          code: 200,
+          batch: data[0],
+        },
+      ];
+    } catch (e) {
+      log(`error: ${e.message}`);
+      return [{ status: 'error', message: e.message, code: 500 }, null];
     }
-    return res;
   }
 
-  @Put('/:id')
-  @ApiOperation({ summary: 'Put the batch by id' })
-  @ApiBearerAuth()
-  async updateBatch(@Param('id') id: string, @Body() batchData: PatchBatchDto) {
-    const [err, res] = await this.batchService.updateBatch(
-      parseInt(id),
-      batchData,
-    );
-    if (err) {
-      throw new BadRequestException(err);
+  async updateBatch(id: number, batch: PatchBatchDto) {
+    try {
+      let batchOld: any = await db.query.zuvyBatches.findMany({
+        where: sql`${zuvyBatches.id} = ${id}`,
+        with: {
+          students: true
+        }
+      });
+      if (!batchOld.length) {
+        return [{ status: 'error', message: 'Batch not found', code: 404 }, null];
+      }
+      if (batchOld[0].students.length > batch.capEnrollment) {
+        return [{ status: 'error', message: 'Students are enrolled in more than this capEnrollment.', code: 400 }, null];
+      }
+
+      batch['updatedAt'] = new Date();
+      var batchValue;
+      var user = await db.select().from(users).where(eq(users.email, batch.instructorEmail));
+      if (user.length == 0) {
+        user = await db.insert(users).values({ email: batch.instructorEmail, name: batch.instructorEmail.split("@")[0] }).returning();
+      }
+      if (user.length > 0) {
+        const instructorRoles = await db.select({ role: sansaarUserRoles.role }).from(sansaarUserRoles).where(eq(sansaarUserRoles.userId, Number(user[0].id)))
+        const hasInstructorRole = instructorRoles.some(role => role.role === helperVariable.instructor);
+        if (!hasInstructorRole) {
+          let insertRole: any = { userId: Number(user[0].id), role: helperVariable.instructor, createdAt: new Date().toISOString() }
+          const newlyAssignedInstructor = await db
+            .insert(sansaarUserRoles)
+            .values(insertRole).returning();
+          if (newlyAssignedInstructor.length > 0) {
+            batchValue = {
+              name: batch.name,
+              instructorId: Number(user[0].id),
+              capEnrollment: batch.capEnrollment
+            }
+          }
+        }
+        else {
+          batchValue = {
+            name: batch.name,
+            instructorId: Number(user[0].id),
+            capEnrollment: batch.capEnrollment
+          }
+        }
+      }
+      let updateData = await db
+        .update(zuvyBatches)
+        .set(batchValue)
+        .where(eq(zuvyBatches.id, id))
+        .returning();
+      if (updateData.length === 0) {
+        return [
+          { status: 'error', message: 'Batch not found', code: 404 },
+          null,
+        ];
+      }
+      return [
+        null,
+        {
+          status: 'success',
+          message: 'Batch updated successfully',
+          code: 200,
+          batch: updateData[0],
+        },
+      ];
+    } catch (e) {
+      log(`error: ${e.message}`);
+      return [{ status: 'error', message: e.message, code: 500 }, null];
     }
-    return res;
   }
 
-  @Delete('/:id')
-  @ApiOperation({ summary: 'Delete the batch by id' })
-  @ApiBearerAuth()
-  async deleteBatch(@Param('id') id: string) {
-    const [err, res] = await this.batchService.deleteBatch(parseInt(id));
-    if (err) {
-      throw new BadRequestException(err);
+  async deleteBatch(id: number) {
+    try {
+      await db
+        .update(zuvyBatchEnrollments)
+        .set({ batchId: null })
+        .where(eq(zuvyBatchEnrollments.batchId, id))
+        .returning();
+      let data = await db.delete(zuvyBatches).where(eq(zuvyBatches.id, id)).returning();
+
+      if (data.length === 0) {
+        return [
+          { status: 'error', message: 'Batch not found', code: 404 },
+          null,
+        ];
+      }
+      return [
+        null,
+        { status: 'success', message: 'Batch deleted successfully', code: 200 },
+      ];
+    } catch (e) {
+      log(`error: ${e.message}`);
+      return [{ status: 'error', message: e.message, code: 500 }, null];
     }
-    return res;
   }
 
-  @Patch('/:id')
-  @ApiOperation({ summary: 'Update the Batch partially' })
-  @ApiBearerAuth()
-  async updatePartialBatch(
-    @Param('id') id: string,
-    @Body() patchBatchDto: PatchBatchDto,
-  ) {
-    const [err, res] = await this.batchService.updateBatch(
-      parseInt(id),
-      patchBatchDto,
-    );
-    if (err) {
-      throw new BadRequestException(err);
-    }
-    return res;
-  }
-
-  @Patch('reassign/student_id=:student_id/new_batch_id=:new_batch_id')
-  @ApiQuery({
-    name: 'old_batch_id',
-    required: false,
-    type: Number,
-  })
-  @ApiQuery({
-    name: 'bootcamp_id',
-    required: false,
-    type: Number,
-  })
-  @ApiOperation({ summary: 'reassign Batch' })
-  @ApiBearerAuth()
   async reassignBatch(
-    @Param('student_id') studentID: string,
-    @Param('new_batch_id') newBatchID: number,
-    @Query('old_batch_id') oldBatchID: number,
-    @Query('bootcamp_id') bootcampID: number,
+    studentID,
+    newBatchID: number,
+    oldBatchID: any,
+    bootcampID: any,
   ) {
-    const [err, res] = await this.batchService.reassignBatch(
-      studentID,
-      newBatchID,
-      oldBatchID,
-      bootcampID,
-    );
-    if (err) {
-      throw new BadRequestException(err);
+    try {
+      let querySQL;
+      if (isNaN(oldBatchID)) {
+        if (isNaN(bootcampID)) {
+          return [
+            {
+              status: 'error',
+              message: 'Either Bootcamp ID or old batch ID is required.',
+              code: 400,
+            },
+            null,
+          ];
+        }
+        querySQL = sql`${zuvyBatchEnrollments.userId} = ${BigInt(studentID)} AND ${zuvyBatchEnrollments.bootcampId} = ${bootcampID}`;
+      } else {
+        querySQL = sql`${zuvyBatchEnrollments.userId} = ${BigInt(studentID)} AND ${zuvyBatchEnrollments.batchId} = ${oldBatchID}`;
+      }
+
+
+      const res = await db
+        .update(zuvyBatchEnrollments)
+        .set({ batchId: newBatchID })
+        .where(querySQL)
+        .returning();
+
+      if (res.length) {
+        return [
+          null,
+          {
+            status: 'success',
+            message: 'Batch reassign successfully',
+            code: 200,
+          },
+        ];
+      }
+      return [
+        { code: 401, status: 'error', message: 'error in reassigning batch' },
+      ];
+    } catch (e) {
+      log(`error: ${e}`);
+      return [{ status: 'error', message: e.message, code: 500 }, null];
     }
-    return res;
   }
 }
