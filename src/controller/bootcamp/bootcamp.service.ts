@@ -1,7 +1,6 @@
 import { Injectable, Logger,HttpStatus  } from '@nestjs/common';
 import { db } from '../../db/index';
 import { eq, sql, count, inArray, or, and, like,desc } from 'drizzle-orm';
-// import { BatchesService } from '../batches/batch.service';
 import axios from 'axios';
 import * as _ from 'lodash';
 import { error, log } from 'console';
