@@ -10,7 +10,6 @@ import {
   zuvyBatches,
   users,
   zuvyBatchEnrollments,
-  zuvySessions,
   zuvyBootcampTracking,
   zuvyBootcampType,
 } from '../../../drizzle/schema';
@@ -20,7 +19,6 @@ const { ZUVY_CONTENT_URL } = process.env; // INPORTING env VALUSE ZUVY_CONTENT
 
 @Injectable()
 export class BootcampService {
-  // constructor(private batchesService:BatchesService) { }
   async enrollData(bootcampId: number) {
     try {
       let enrolled = await db
@@ -56,31 +54,52 @@ export class BootcampService {
     }
   }
 
-  async getAllBootcamps(limit: number, offset: number, searchTerm?: string | number): Promise<any> {
+  async getAllBootcamps(
+    limit: number,
+    offset: number,
+    searchTerm?: string | number,
+  ): Promise<any> {
     try {
       let query;
       let countQuery;
       if (searchTerm) {
         if (typeof searchTerm === 'string') {
           const searchCondition = sql`LOWER(${zuvyBootcamps.name}) LIKE ${searchTerm.toLowerCase()} || '%'`;
-          query = db.select().from(zuvyBootcamps).where(searchCondition).limit(limit).offset(offset);
-          countQuery = db.select({ count: count(zuvyBootcamps.id) }).from(zuvyBootcamps).where(searchCondition);
+          query = db
+            .select()
+            .from(zuvyBootcamps)
+            .where(searchCondition)
+            .limit(limit)
+            .offset(offset);
+          countQuery = db
+            .select({ count: count(zuvyBootcamps.id) })
+            .from(zuvyBootcamps)
+            .where(searchCondition);
         } else {
           const searchCondition = sql`${zuvyBootcamps.id} = ${searchTerm}`;
-          query = db.select().from(zuvyBootcamps).where(searchCondition).limit(limit).offset(offset);
-          countQuery = db.select({ count: count(zuvyBootcamps.id) }).from(zuvyBootcamps).where(searchCondition);
+          query = db
+            .select()
+            .from(zuvyBootcamps)
+            .where(searchCondition)
+            .limit(limit)
+            .offset(offset);
+          countQuery = db
+            .select({ count: count(zuvyBootcamps.id) })
+            .from(zuvyBootcamps)
+            .where(searchCondition);
         }
-      }
-      else {
+      } else {
         query = db.select().from(zuvyBootcamps).limit(limit).offset(offset);
-        countQuery = db.select({ count: count(zuvyBootcamps.id) }).from(zuvyBootcamps);      
+        countQuery = db
+          .select({ count: count(zuvyBootcamps.id) })
+          .from(zuvyBootcamps);
       }
-      
+
       const getBootcamps = await query;
-  
+
       const totalCountQuery = await countQuery;
       const totalCount = totalCountQuery[0].count;
-  
+
       const totalPages = Math.ceil(totalCount / limit);
 
       const data = await Promise.all(
@@ -92,17 +111,13 @@ export class BootcampService {
           return { ...bootcamp, ...res };
         }),
       );
-  
-      return [
-        null,
-        { data, totalBootcamps: totalCount, totalPages },
-      ];
+
+      return [null, { data, totalBootcamps: totalCount, totalPages }];
     } catch (e) {
       log(`error: ${e.message}`);
       return [{ status: 'error', message: e.message, code: 500 }, null];
     }
   }
-
 
   async getBootcampById(id: number, isContent: boolean): Promise<any> {
     try {
@@ -122,7 +137,7 @@ export class BootcampService {
         try {
           let respo = await axios.get(
             ZUVY_CONTENT_URL +
-            `/${id}?populate=zuvy_modules&populate=zuvy_modules.zuvy_articles&populate=zuvy_modules.zuvy_mcqs.quiz.qz`,
+              `/${id}?populate=zuvy_modules&populate=zuvy_modules.zuvy_articles&populate=zuvy_modules.zuvy_mcqs.quiz.qz`,
           );
           bootcamp[0]['content'] = respo.data;
         } catch (error) {
@@ -653,7 +668,7 @@ export class BootcampService {
     } else {
       queryString = sql`${zuvyBatchEnrollments.bootcampId} = ${bootcamp_id}`;
     }
-    return queryString
+    return queryString;
   }
 
  

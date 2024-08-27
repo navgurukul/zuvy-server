@@ -1,9 +1,14 @@
 {
-  "version": "5",
-  "dialect": "pg",
+  "version": "7",
+  "dialect": "postgresql",
   "entries": [
     {
       "idx": 0,
+<<<<<<< HEAD
+      "version": "7",
+      "when": 1724433374954,
+      "tag": "0000_mean_vapor",
+=======
       "version": "5",
       "when": 1723006182080,
       "tag": "0000_freezing_squadron_sinister",
@@ -21,6 +26,7 @@
       "version": "5",
       "when": 1724078193481,
       "tag": "0002_short_tarantula",
+>>>>>>> 142bc9f78ca270935e5ed39c3a496b33e66239f8
       "breakpoints": true
     }
   ]

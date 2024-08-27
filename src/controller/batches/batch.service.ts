@@ -90,15 +90,16 @@ export class BatchesService {
 
   async getBatchById(id: number) {
     try {
-      let data = await db.select().from(zuvyBatches).where(eq(zuvyBatches.id, id));
+      let data = await db
+        .select()
+        .from(zuvyBatches)
+        .where(eq(zuvyBatches.id, id));
       if (data.length === 0) {
         return [
           { status: 'error', message: 'Batch not found', code: 404 },
           null,
         ];
       }
-      let respObj = [];
-      // if (students){
       let enrollStudents = await db
         .select()
         .from(zuvyBatchEnrollments)
@@ -123,8 +124,6 @@ export class BatchesService {
           batch: data[0],
         },
       ];
-      // }
-      // return [null, {status: 'success', message: 'Batch fetched successfully', code: 200, batch: data[0]}];
     } catch (e) {
       log(`error: ${e.message}`);
       return [{ status: 'error', message: e.message, code: 500 }, null];
@@ -230,25 +229,24 @@ export class BatchesService {
     }
   }
 
-  async reassignBatch(studentID, newBatchID: number, oldBatchID: any, bootcampID: any) {
+  async reassignBatch(
+    studentID,
+    newBatchID: number,
+    oldBatchID: any,
+    bootcampID: any,
+  ) {
     try {
       let querySQL ;
-      let batch:any = await db.query.zuvyBatches.findMany({ 
-          where: sql`${zuvyBatches.id} = ${newBatchID}`,
-          with : {
-            students: true
-          }
-      });
-      if (!batch.length) {
-        return [{ status: 'error', message: 'Reassign Batch not found', code: 404 }, null];
-      }
-      if (batch[0].students.length >= batch[0].capEnrollment) {
-        return [{ status: 'error', message: 'Batch is full', code: 400 }, null];
-      }
-
       if (isNaN(oldBatchID)) {
         if (isNaN(bootcampID)) {
-          return [{ status: 'error', message: 'Either Bootcamp ID or old batch ID is required.', code: 400 }, null];
+          return [
+            {
+              status: 'error',
+              message: 'Either Bootcamp ID or old batch ID is required.',
+              code: 400,
+            },
+            null,
+          ];
         }
         querySQL = sql`${zuvyBatchEnrollments.userId} = ${BigInt(studentID)} AND ${zuvyBatchEnrollments.bootcampId} = ${bootcampID}`;
       } else {
@@ -262,17 +260,19 @@ export class BatchesService {
         .where(querySQL)
         .returning();
 
-    if (res.length){
+      if (res.length) {
         return [
-            null,
-            {
-                status: 'success',
-                message: 'Batch reassign successfully',
-                code: 200,
-            },
+          null,
+          {
+            status: 'success',
+            message: 'Batch reassign successfully',
+            code: 200,
+          },
         ];
-    }
-    return [{code: 401, status: 'error', message : 'error in reassigning batch'}];
+      }
+      return [
+        { code: 401, status: 'error', message: 'error in reassigning batch' },
+      ];
     } catch (e) {
       log(`error: ${e}`);
       return [{ status: 'error', message: e.message, code: 500 }, null];
