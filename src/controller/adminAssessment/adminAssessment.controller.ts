@@ -15,7 +15,6 @@ import { query } from 'express';
     forbidNonWhitelisted: true,
   }),
 )
-// @UseGuards(AuthGuard('cookie'))
 export class AdminAssessmentController {
   constructor(private adminAssessmentService: AdminAssessmentService) { }
   @Get('bootcampAssessment/bootcamp_id:bootcamp_id')
