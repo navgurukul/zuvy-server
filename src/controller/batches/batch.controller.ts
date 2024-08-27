@@ -15,16 +15,11 @@ import {
 import { BatchesService } from './batch.service';
 import {
   ApiTags,
-  ApiBody,
   ApiOperation,
-  ApiCookieAuth,
   ApiBearerAuth,
-  ApiForbiddenResponse,
   ApiQuery,
 } from '@nestjs/swagger';
-import { AuthGuard } from '@nestjs/passport'; // Assuming JWT authentication
 import { BatchDto, PatchBatchDto } from './dto/batch.dto';
-import { bigint } from 'drizzle-orm/mysql-core';
 
 // swagger body schema for batch
 @Controller('batch')
@@ -65,7 +60,7 @@ export class BatchesController {
   @Put('/:id')
   @ApiOperation({ summary: 'Put the batch by id' })
   @ApiBearerAuth()
-  async updateBatch(@Param('id') id: string, @Body() batchData: BatchDto) {
+  async updateBatch(@Param('id') id: string, @Body() batchData: PatchBatchDto) {
     const [err, res] = await this.batchService.updateBatch(
       parseInt(id),
       batchData,
@@ -104,10 +99,7 @@ export class BatchesController {
     return res;
   }
 
-
-  @Patch(
-    'reassign/student_id=:student_id/new_batch_id=:new_batch_id',
-  )
+  @Patch('reassign/student_id=:student_id/new_batch_id=:new_batch_id')
   @ApiQuery({
     name: 'old_batch_id',
     required: false,
@@ -130,7 +122,7 @@ export class BatchesController {
       studentID,
       newBatchID,
       oldBatchID,
-      bootcampID
+      bootcampID,
     );
     if (err) {
       throw new BadRequestException(err);

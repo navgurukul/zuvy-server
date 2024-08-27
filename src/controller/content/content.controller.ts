@@ -12,14 +12,14 @@ import {
   Optional,
   Query,
   BadRequestException,
-  Req
+  Req,
+  UseGuards
 } from '@nestjs/common';
 import { ContentService } from './content.service';
 import {
   ApiTags,
   ApiBody,
   ApiOperation,
-  ApiCookieAuth,
   ApiQuery,
 } from '@nestjs/swagger';
 import { ApiBearerAuth } from '@nestjs/swagger';
@@ -39,14 +39,16 @@ import {
   UpdateOpenEndedDto,
   CreateTagDto,
   projectDto,
-  CreateChapterDto
+  CreateChapterDto,
+  formBatchDto,
+  editFormBatchDto,
+  CreateTypeDto,
+  CreateAndEditFormBody
 } from './dto/content.dto';
-import { CreateProblemDto } from '../codingPlatform/dto/codingPlatform.dto';
-import { difficulty } from 'drizzle/schema';
+import { RolesGuard } from 'src/guards/roles.guard';
 
 @Controller('Content')
 @ApiTags('Content')
-@ApiCookieAuth()
 @UsePipes(
   new ValidationPipe({
     whitelist: true,
@@ -54,55 +56,8 @@ import { difficulty } from 'drizzle/schema';
     forbidNonWhitelisted: true,
   }),
 )
-// @UseGuards(AuthGuard('cookie'))
 export class ContentController {
   constructor(private contentService: ContentService) { }
-
-  // @Get('/modules/:bootcamp_id/')
-  // @ApiOperation({
-  //   summary:
-  //     'Get the modules of bootcamp, if user_id is provided then it will return the progress of user in the bootcamp',
-  // })
-  // @ApiQuery({
-  //   name: 'user_id',
-  //   required: false,
-  //   type: Number,
-  //   description: 'user id',
-  // })
-  // @ApiBearerAuth()
-  // async getModules(
-  //   @Param('bootcamp_id') bootcamp_id: number,
-  //   @Query('user_id') user_id: number,
-  // ): Promise<object> {
-  //   const [err, res] = await this.contentService.getModules(
-  //     bootcamp_id,
-  //     user_id,
-  //   );
-  //   if (err) {
-  //     throw new BadRequestException(err);
-  //   }
-  //   return res;
-  // }
-
-  // @Get('/chapter/:module_id')
-  // @ApiOperation({ summary: 'Get the chapter by module_id ' })
-  // @ApiQuery({
-  //   name: 'user_id',
-  //   required: false,
-  //   type: Number,
-  //   description: 'user id',
-  // })
-  // @ApiBearerAuth()
-  // async getChapter(
-  //   @Param('module_id') module_id: number,
-  //   @Query('user_id') user_id: number,
-  // ): Promise<object> {
-  //   const [err, res] = await this.contentService.getChapter(module_id, user_id);
-  //   if (err) {
-  //     throw new BadRequestException(err);
-  //   }
-  //   return res;
-  // }
 
   @Post('/modules/:bootcampId')
   @ApiOperation({ summary: 'Create the module of a particular bootcamp' })
@@ -113,6 +68,7 @@ export class ContentController {
     description: 'type id',
   })
   @ApiBearerAuth()
+  @UseGuards(RolesGuard)
   async createModule(
     @Body() moduleData: moduleDto,
     @Param('bootcampId') bootcampId: number,
@@ -135,6 +91,7 @@ export class ContentController {
     description: 'type id',
   })
   @ApiBearerAuth()
+  @UseGuards(RolesGuard)
   async createProject(
     @Body() projectData: projectDto,
     @Param('bootcampId') bootcampId: number,
@@ -171,6 +128,7 @@ export class ContentController {
   @Patch('/updateProjects/:projectId')
   @ApiOperation({ summary: 'Update the project' })
   @ApiBearerAuth()
+  @UseGuards(RolesGuard)
   async updateProject(
     @Body() projectData: projectDto,
     @Param('projectId') projectId: number,
@@ -197,6 +155,7 @@ export class ContentController {
     description: 'module id',
   })
   @ApiBearerAuth()
+  @UseGuards(RolesGuard)
   async deleteProject(
     @Param('projectId') projectId: number,
     @Query('bootcampId') bootcampId: number,
@@ -214,15 +173,17 @@ export class ContentController {
   @Post('/chapter')
   @ApiOperation({ summary: 'Create a chapter for this module' })
   @ApiBearerAuth()
+  @UseGuards(RolesGuard)
   async createChapter(
     @Body() chapterData: CreateChapterDto,
   ) {
-    return this.contentService.createChapterForModule(chapterData.moduleId, chapterData.topicId, chapterData.order, chapterData.bootcampId);
+    return this.contentService.createChapterForModule(chapterData.moduleId, chapterData.topicId, chapterData.bootcampId);
   }
 
   @Post('/quiz')
   @ApiOperation({ summary: 'Create a quiz' })
   @ApiBearerAuth()
+  @UseGuards(RolesGuard)
   async createQuizForModule(
     @Body() quizQuestions: quizBatchDto
   ) {
@@ -232,16 +193,19 @@ export class ContentController {
     return res;
   }
 
-  @Put('/editAssessment/:assessmentOutsourseId')
+  @Put('/editAssessment/:assessmentOutsourseId/:chapterId')
   @ApiOperation({ summary: 'Edit the assessment for this module' })
   @ApiBearerAuth()
+  @UseGuards(RolesGuard)
   async editAssessment(
     @Body() assessmentBody: CreateAssessmentBody,
-    @Param('assessmentOutsourseId') assessmentOutsourseId: number
+    @Param('assessmentOutsourseId') assessmentOutsourseId: number,
+    @Param('chapterId') chapterId: number
   ) {
     const res = await this.contentService.editAssessment(
       assessmentOutsourseId,
       assessmentBody,
+      chapterId
     );
     return res;
   }
@@ -279,6 +243,7 @@ export class ContentController {
     description: 'module Id',
   })
   @ApiBearerAuth()
+  @UseGuards(RolesGuard)
   async reOrderModules(
     @Body() reOrder: ReOrderModuleBody,
     @Param('bootcampId') bootcampId: number,
@@ -301,6 +266,7 @@ export class ContentController {
     description: 'module Id',
   })
   @ApiBearerAuth()
+  @UseGuards(RolesGuard)
   async deleteModule(
     @Param('bootcampId') bootcampId: number,
     @Query('moduleId') moduleId: number,
@@ -318,6 +284,7 @@ export class ContentController {
     description: 'chapter id',
   })
   @ApiBearerAuth()
+  @UseGuards(RolesGuard)
   async editChapter(
     @Body() reOrder: EditChapterDto,
     @Param('moduleId') moduleId: number,
@@ -340,6 +307,7 @@ export class ContentController {
     description: 'chapter Id',
   })
   @ApiBearerAuth()
+  @UseGuards(RolesGuard)
   async deleteChapter(
     @Param('moduleId') moduleId: number,
     @Query('chapterId') chapterId: number,
@@ -384,6 +352,7 @@ export class ContentController {
   @Patch('/updateCodingQuestion/:questionId')
   @ApiOperation({ summary: 'Update the coding question for this module' })
   @ApiBearerAuth()
+  @UseGuards(RolesGuard)
   async updateCodingQuestionForModule(
     @Body() codingQuestions: UpdateProblemDto,
     @Param('questionId') questionId: number,
@@ -432,6 +401,7 @@ export class ContentController {
   @Delete('/deleteCodingQuestion')
   @ApiOperation({ summary: 'Delete coding question' })
   @ApiBearerAuth()
+  @UseGuards(RolesGuard)
   async deleteCodingQuestion(@Body() questionIds: deleteQuestionDto) {
     const res = await this.contentService.deleteCodingProblem(questionIds);
     return res;
@@ -440,6 +410,7 @@ export class ContentController {
   @Post('/editquiz')
   @ApiOperation({ summary: 'Create a quiz' })
   @ApiBearerAuth()
+  @UseGuards(RolesGuard)
   async editQuizForModule(@Body() quizQuestions: editQuizBatchDto) {
     const res = await this.contentService.editQuizQuestions(quizQuestions);
     return res;
@@ -450,6 +421,7 @@ export class ContentController {
   @Delete('/deleteQuizQuestion')
   @ApiOperation({ summary: 'Delete quiz question' })
   @ApiBearerAuth()
+  @UseGuards(RolesGuard)
   async deleteQuizQuestion(@Body() questionIds: deleteQuestionDto) {
     const res = await this.contentService.deleteQuiz(questionIds);
     return res;
@@ -527,6 +499,7 @@ export class ContentController {
   @Patch('/updateOpenEndedQuestion/:questionId')
   @ApiOperation({ summary: 'Update the open ended question for this module' })
   @ApiBearerAuth()
+  @UseGuards(RolesGuard)
   async updateOpenEndedQuestionForModule(
     @Body() openEndedQuestions: UpdateOpenEndedDto,
     @Param('questionId') questionId: number,
@@ -541,6 +514,7 @@ export class ContentController {
   @Post('/createOpenEndedQuestion')
   @ApiOperation({ summary: 'Create a open ended question' })
   @ApiBearerAuth()
+  @UseGuards(RolesGuard)
   async createOpenEndedQuestion(@Body() oEndedQuestions: openEndedDto) {
     return this.contentService.createOpenEndedQuestions(oEndedQuestions);
   }
@@ -548,6 +522,7 @@ export class ContentController {
   @Delete('/deleteOpenEndedQuestion')
   @ApiOperation({ summary: 'Delete openended question' })
   @ApiBearerAuth()
+  @UseGuards(RolesGuard)
   async deleteOpenEndedQuestion(@Body() questionIds: deleteQuestionDto) {
     return this.contentService.deleteOpenEndedQuestion(questionIds);
   }
@@ -569,16 +544,127 @@ export class ContentController {
 
   @Get('/assessmentDetailsOfQuiz/:assessmentOutsourseId')
   @ApiOperation({ summary: 'Get the assessment details of the Quiz' })
+  @ApiQuery({
+    name: 'studentId',
+    required: false,
+    type: Number,
+    description: 'studentId of the assessment',
+  })
   @ApiBearerAuth()
-  async getAssessmentDetailsOfQuiz(@Param('assessmentOutsourseId') assessmentOutsourseId: number, @Req() req){
-    return this.contentService.getAssessmentDetailsOfQuiz(assessmentOutsourseId, req.user[0].id);
+  async getAssessmentDetailsOfQuiz(@Param('assessmentOutsourseId') assessmentOutsourseId: number, @Req() req, @Query('studentId') userId:number ){
+    if (!userId) {
+      userId = req.user[0].id;
+    }
+    return this.contentService.getAssessmentDetailsOfQuiz(assessmentOutsourseId, userId);
   }
 
   // openended questions
   @Get('/assessmentDetailsOfOpenEnded/:assessmentOutsourseId')
   @ApiOperation({ summary: 'Get the assessment details of the open Ended questions' })
   @ApiBearerAuth()
-  async getAssessmentDetailsOfOpenEnded(@Param('assessmentOutsourseId') assessmentOutsourseId: number, @Req() req){
-    return this.contentService.getAssessmentDetailsOfOpenEnded(assessmentOutsourseId, req.user[0].id);
+  @ApiQuery({
+    name: 'studentId',
+    required: false,
+    type: Number,
+    description: 'studentId of the assessment',
+  })
+  async getAssessmentDetailsOfOpenEnded(@Param('assessmentOutsourseId') assessmentOutsourseId: number, @Req() req, @Query('studentId') userId:number){
+    if (!userId) {
+      userId = req.user[0].id;
+    }
+    return this.contentService.getAssessmentDetailsOfOpenEnded(assessmentOutsourseId, userId);
   }
+
+  
+  @Post('/createQuestionType')
+  @ApiOperation({ summary: 'Create a Question Type for the form' })
+  @ApiBearerAuth()
+  async createQuestionType(@Body() questionType: CreateTypeDto) {
+    const res = await this.contentService.createQuestionType(questionType);
+    return res;
+  }
+
+  @Get('/allQuestionType')
+  @ApiOperation({ summary: 'Get all the available Question Types' })
+  @ApiBearerAuth()
+  async getAllQuestionTypes() {
+    const res = await this.contentService.getAllQuestionTypes();
+    return res;
+  }
+  
+  @Post('/form')
+  @ApiOperation({ summary: 'Create a form' })
+  @ApiBearerAuth()
+  @UseGuards(RolesGuard)
+  async createFormForModule (
+    @Query('chapterId') chapterId: number,
+    @Body() formQuestion: formBatchDto
+  ){
+    const res = await this.contentService.createFormForModule(
+      chapterId,
+      formQuestion
+    );
+    return res;
+  }
+
+  @Get('/allFormQuestions/:chapterId')
+  @ApiOperation({ summary: 'Get all form Questions' })
+  @ApiQuery({
+    name: 'typeId',
+    required: false,
+    type: Number,
+    description: 'typeId',
+  })
+  @ApiQuery({
+    name: 'searchTerm',
+    required: false,
+    type: String,
+    description: 'Search by name or email',
+  })
+  @ApiBearerAuth()
+  async getAllFormQuestions(
+  @Param('chapterId') chapterId: number,
+  @Query('typeId') typeId: number,
+  @Query('searchTerm') searchTerm: string,
+  ): Promise<object> {
+    const res = await this.contentService.getAllFormQuestions(
+    chapterId,
+    typeId,
+	  searchTerm,
+    );
+    return res;
+  }
+
+  @Post('/editform')
+  @ApiOperation({ summary: 'Create a form' })
+  @ApiBearerAuth()
+  @UseGuards(RolesGuard)
+  async editFormForModule(
+    @Query('chapterId') chapterId: number,
+    @Body() formQuestions: editFormBatchDto) {
+    const res = await this.contentService.editFormQuestions(
+      chapterId,
+      formQuestions
+    );
+    return res;
+  }
+
+  
+  @Post('/createAndEditForm/:chapterId')
+  @ApiOperation({ summary: 'Create a form' })
+  @ApiBearerAuth()
+  @UseGuards(RolesGuard)
+  async createAndEditForm(
+    @Param('chapterId') chapterId: number,
+    @Body() formQuestions: CreateAndEditFormBody) {
+    const res = await this.contentService.createAndEditFormQuestions(
+      chapterId,
+      formQuestions
+    );
+    return res;
+  }
+
 }
+
+
+
