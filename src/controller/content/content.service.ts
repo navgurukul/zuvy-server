@@ -20,7 +20,6 @@ import {
   zuvyModuleForm,
   questionType,
   zuvyQuestionTypes,
-  zuvyOpenEndedQuestions as zuvyOpenEndedQuestionsType
 } from '../../../drizzle/schema';
 
 import { error, log } from 'console';
@@ -406,6 +405,14 @@ export class ContentService {
         .from(zuvyCourseModules)
         .where(eq(zuvyCourseModules.id, moduleId));
 
+      // const assessment = await db.query.zuvyOutsourseAssessments.findMany({
+      //   where: (outsourseAssessments, { eq }) =>
+      //     eq(outsourseAssessments.moduleId, module[0].id),
+      //   with: {
+      //     ModuleAssessment: true
+      //   },
+      // })
+
       const chapterNameWithId = await db
         .select({
           chapterId: zuvyModuleChapter.id,
@@ -491,7 +498,7 @@ export class ContentService {
                 assessmentOutsourseId: true,
                 bootcampId: true
               },
-              where: (Quizzes, { sql }) => sql`${Quizzes.bootcampId} = ${bootcampId} AND ${Quizzes.chapterId} = ${chapterId}`,
+              where: (zuvyOutsourseQuizzes, { sql }) => sql`${zuvyOutsourseQuizzes.bootcampId} = ${bootcampId} AND ${zuvyOutsourseQuizzes.chapterId} = ${chapterId}`,
               with: {
                 Quiz: true
               }
@@ -502,7 +509,7 @@ export class ContentService {
                 assessmentOutsourseId: true,
                 bootcampId: true
               },
-              where: (OpenEndedQuestions, { sql }) => sql`${OpenEndedQuestions.bootcampId} = ${bootcampId} AND ${OpenEndedQuestions.chapterId} = ${chapterId} AND ${OpenEndedQuestions.moduleId} = ${moduleId}`,
+              where: (zuvyOutsourseOpenEndedQuestions, { sql }) => sql`${zuvyOutsourseOpenEndedQuestions.bootcampId} = ${bootcampId} AND ${zuvyOutsourseOpenEndedQuestions.chapterId} = ${chapterId} AND ${zuvyOutsourseOpenEndedQuestions.moduleId} = ${moduleId}`,
               with: {
                 OpenEndedQuestion: true
               }
@@ -513,7 +520,7 @@ export class ContentService {
                 assessmentOutsourseId: true,
                 bootcampId: true
               },
-              where: (CodingQuestions, { sql }) => sql`${CodingQuestions.bootcampId} = ${bootcampId} AND ${CodingQuestions.chapterId} = ${chapterId}`,
+              where: (zuvyOutsourseCodingQuestions, { sql }) => sql`${zuvyOutsourseCodingQuestions.bootcampId} = ${bootcampId} AND ${zuvyOutsourseCodingQuestions.chapterId} = ${chapterId}`,
               with: {
                 CodingQuestion: {
                   columns: {
@@ -850,17 +857,15 @@ export class ContentService {
               )
               : editData.formQuestions;
           if (remainingFormIds.length > 0) {
-            let updatedFormQuestion:any = { usage: sql`${zuvyModuleForm.usage}::numeric - 1` }
             await db
               .update(zuvyModuleForm)
-              .set(updatedFormQuestion)
+              .set({ usage: sql`${zuvyModuleForm.usage}::numeric - 1` })
               .where(sql`${inArray(zuvyModuleForm.id, remainingFormIds)}`);
           }
           if (toUpdateIds.length > 0) {
-            let updatedFormQuestion:any = { usage: sql`${zuvyModuleForm.usage}::numeric + 1` }
             await db
               .update(zuvyModuleForm)
-              .set(updatedFormQuestion)
+              .set({ usage: sql`${zuvyModuleForm.usage}::numeric + 1` })
               .where(sql`${inArray(zuvyModuleForm.id, toUpdateIds)}`);
           }
           if (editData.formQuestions.length == 0) {
@@ -958,27 +963,13 @@ export class ContentService {
         }
 
         // Update assessment data
-        let UpdateOutsourseAssessmentData:any = { ...OutsourseAssessmentData__ };
-        let updatedOutsourseAssessment = await db.update(zuvyOutsourseAssessments).set(UpdateOutsourseAssessmentData).where(eq(zuvyOutsourseAssessments.id, assessmentOutsourseId)).returning();
-        if (updatedOutsourseAssessment.length == 0) {
-          throw ({
-            status: 'error',
-            statusCode: 404,
-            message: 'Assessment not found',
-          });
-        }
+        let updatedOutsourseAssessment = await db.update(zuvyOutsourseAssessments).set(OutsourseAssessmentData__).where(eq(zuvyOutsourseAssessments.id, assessmentOutsourseId)).returning();
+
         let updatedAssessment = await db
           .update(zuvyModuleAssessment)
           .set(assessmentData)
           .where(eq(zuvyModuleAssessment.id, assessment_id))
           .returning();
-        if (updatedAssessment.length == 0) {
-          throw ({
-            status: 'error',
-            statusCode: 404,
-            message: 'Assessment not found',
-          });
-        }
 
         // Insert new data
         let mcqArray = quizIdsToAdd.map(id => ({ quiz_id: id, bootcampId, chapterId, assessmentOutsourseId }));
@@ -1614,8 +1605,7 @@ export class ContentService {
       let submission;
       submission = await db.select().from(zuvyAssessmentSubmission).where(sql`${zuvyAssessmentSubmission.userId} = ${id} AND ${zuvyAssessmentSubmission.assessmentOutsourseId} = ${assessmentOutsourseId} AND ${zuvyAssessmentSubmission.submitedAt} IS NULL`);
       if (submission.length == 0) {
-        let insertSubmission:any = { userId: id, assessmentOutsourseId, startedAt };
-        submission = await db.insert(zuvyAssessmentSubmission).values(insertSubmission).returning();
+        submission = await db.insert(zuvyAssessmentSubmission).values({ userId: id, assessmentOutsourseId, startedAt }).returning();
       }
 
       let formatedData = await this.formatedChapterDetails(assessment[0]);
@@ -1900,16 +1890,15 @@ export class ContentService {
             .where(eq(zuvyModuleForm.id, formQuestion.id))
 
           if (existingRecord) {
-            let updatedRecord:any = {
-              chapterId: formQuestion.chapterId,
-              question: formQuestion.question,
-              options: formQuestion.options,
-              typeId: formQuestion.typeId,
-              isRequired: formQuestion.isRequired,
-            }
             const result = await db
               .update(zuvyModuleForm)
-              .set(updatedRecord)
+              .set({
+                chapterId: formQuestion.chapterId,
+                question: formQuestion.question,
+                options: formQuestion.options,
+                typeId: formQuestion.typeId,
+                isRequired: formQuestion.isRequired,
+              })
               .where(eq(zuvyModuleForm.id, formQuestion.id))
               .returning();
             results.push(result);
@@ -1952,6 +1941,67 @@ export class ContentService {
     }
   }
 
+
+  // async deleteForm(id: deleteQuestionDto) {
+  //   try {
+  //     const usedForm = await db
+  //       .select()
+  //       .from(zuvyModuleForm)
+  //       .where(
+  //         sql`${inArray(zuvyModuleForm.id, id.questionIds)} and ${zuvyModuleForm.usage} > 0`,
+  //       );
+  //     let deletedQuestions;
+  //     if (usedForm.length > 0) {
+  //       const usedIds = usedForm.map((form) => form.id);
+  //       const remainingIds = id.questionIds.filter(
+  //         (questionId) => !usedIds.includes(questionId),
+  //       );
+  //       deletedQuestions =
+  //         remainingIds.length > 0
+  //           ? await db
+  //             .delete(zuvyModuleForm)
+  //             .where(sql`${inArray(zuvyModuleForm.id, remainingIds)}`)
+  //             .returning()
+  //           : [];
+  //       if (deletedQuestions.length > 0) {
+  //         return {
+  //           status: 'success',
+  //           code: 200,
+  //           message: `Form questions which is used in other places like chapters and assessment cannot be deleted`,
+  //         };
+  //       } else {
+  //         return {
+  //           status: 'error',
+  //           code: 400,
+  //           message: `Questions cannot be deleted`,
+  //         };
+  //       }
+  //     }
+  //     deletedQuestions = await db
+  //       .delete(zuvyModuleForm)
+  //       .where(sql`${inArray(zuvyModuleForm.id, id.questionIds)}`)
+  //       .returning();
+  //     if (deletedQuestions.length > 0) {
+  //       return {
+  //         status: 'success',
+  //         code: 200,
+  //         message: 'The form questions has been deleted successfully',
+  //       };
+  //     } else {
+  //       return {
+  //         status: 'error',
+  //         code: 400,
+  //         message: `Questions cannot be deleted`,
+  //       };
+  //     }
+  //   } catch (err) {
+  //     throw err;
+  //   }
+  // }
+
+
+
+
   async createAndEditFormQuestions(chapterId: number, form: CreateAndEditFormBody) {
     try {
 
@@ -1962,6 +2012,9 @@ export class ContentService {
           message: "Invalid chapterId. Please provide a valid number."
         };
       }
+
+
+
 
       if (form.formQuestionDto && !(form.editFormQuestionDto)) {
         await this.createFormForModule(chapterId, form.formQuestionDto);
@@ -2000,6 +2053,7 @@ export class ContentService {
         res1,
         res2,
       };
+
     } catch (err) {
       throw err;
     }

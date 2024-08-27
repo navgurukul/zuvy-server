@@ -295,11 +295,11 @@ export class BootcampController {
     @Query('limit') limit: number,
     @Query('searchTerm') searchTerm: string,
     @Query('offset') offset: number,
-  ) {
+  )  {
     const searchTermAsNumber = !isNaN(Number(searchTerm))
       ? BigInt(searchTerm)
       : searchTerm;
-    const res = await this.bootcampService.getStudentsInABootcamp(
+    const res =  await this.bootcampService.getStudentsInABootcamp(
       bootcamp_id,
       batch_id,
       searchTermAsNumber,

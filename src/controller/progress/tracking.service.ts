@@ -18,7 +18,7 @@ import {
   zuvyCodingQuestions,
   zuvyFormTracking,
   zuvyModuleForm
-} from '../../../drizzle/schema';
+} from 'drizzle/schema';
 import {
   SubmitBodyDto,
 } from './dto/assignment.dto';
@@ -430,8 +430,8 @@ export class TrackingService {
        sqlChunks.push(sql`end)`);
        
        const finalSql: SQL = sql.join(sqlChunks, sql.raw(' '));
-       let updateModuleTrack:any = { progress: finalSql }
-       await db.update(zuvyModuleTracking).set(updateModuleTrack)
+
+       await db.update(zuvyModuleTracking).set({ progress: finalSql })
          .where(sql`${inArray(zuvyModuleTracking.id, ids)}`);
       } 
       if (modules.length > 0) {
@@ -1160,9 +1160,9 @@ export class TrackingService {
           const chaptersCompleted = chapters.length - incompleteChaptersCount;
           if(progress == 100 && incompleteChaptersCount > 0)
             {
-              let updatedBootcampProgress:any = {progress: Math.ceil((chaptersCompleted/chapters.length)*100) }
+              progress = Math.ceil((chaptersCompleted/chapters.length)*100) 
               const updatedRecentCourse = await db.update(zuvyRecentBootcamp)
-               .set(updatedBootcampProgress)
+               .set({ progress: progress})
                .where(eq(zuvyRecentBootcamp.userId, BigInt(userId))).returning(); 
               if(updatedRecentCourse.length == 0)
                 {

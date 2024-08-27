@@ -1,9 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { db } from '../../db/index';
-import { eq, sql, inArray } from 'drizzle-orm';
+import { eq, sql, count, lte, inArray } from 'drizzle-orm';
+// import { BatchesService } from '../batches/batch.service';
 import * as _ from 'lodash';
 import { zuvyBatchEnrollments, zuvyAssessmentSubmission, zuvyChapterTracking, zuvyBootcamps, zuvyOpenEndedQuestionSubmission, zuvyProjectTracking, zuvyQuizTracking, zuvyModuleTracking, zuvyModuleChapter, zuvyFormTracking, zuvyModuleForm, zuvyPracticeCode } from '../../../drizzle/schema';
-import { CreateOpenendedQuestionDto } from './dto/submission.dto';
+import { InstructorFeedbackDto, PatchOpenendedQuestionDto, CreateOpenendedQuestionDto } from './dto/submission.dto';
 import { STATUS_CODES } from 'src/helpers';
 import { helperVariable } from 'src/constants/helper';
 
@@ -952,6 +953,23 @@ export class SubmissionService {
         if (chapterDetails[0].topicId == 7) {
           if (chapterDetails[0].formQuestions !== null) {
             if (FormTracking.length == 0) {
+              // const questions = await db
+              //   .select({
+              //     id: zuvyModuleForm.id,
+              //     question: zuvyModuleForm.question,
+              //     options: zuvyModuleForm.options,
+              //     typeId: zuvyModuleForm.typeId,
+              //     isRequired: zuvyModuleForm.isRequired
+              //   })
+              //   .from(zuvyModuleForm)
+              //   .where(
+              //     sql`${inArray(zuvyModuleForm.id, Object.values(chapterDetails[0].formQuestions))}`,
+              //   );
+              // questions['status'] =
+              //   ChapterTracking.length != 0
+              //     ? 'Completed'
+              //     : 'Pending';
+
               return {
                 status: "success",
                 code: 200,

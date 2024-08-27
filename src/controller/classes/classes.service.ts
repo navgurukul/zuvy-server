@@ -872,7 +872,7 @@ export class ClassesService {
       for (let classObj of classes) {
         const startTime = new Date(classObj.startTime);
         const endTime = new Date(classObj.endTime);
-        let newStatus:string;
+        let newStatus;
         if (currentTime > endTime) {
           newStatus = 'completed';
         } else if (currentTime >= startTime && currentTime <= endTime) {
@@ -1051,10 +1051,16 @@ export class ClassesService {
           description: updatedEventDetails.description,
           start: {
             dateTime: moment(updatedEventDetails.startDateTime),
+              // .subtract(5, 'hours')
+              // .subtract(30, 'minutes')
+              // .format(),
             timeZone: updatedEventDetails.timeZone,
           },
           end: {
             dateTime: moment(updatedEventDetails.endDateTime),
+              // .subtract(5, 'hours')
+              // .subtract(30, 'minutes')
+              // .format(),
             timeZone: updatedEventDetails.timeZone,
           },
         },

@@ -23,6 +23,9 @@ import {
   customType,
   numeric,
 } from 'drizzle-orm/pg-core';
+import { integrations } from 'googleapis/build/src/apis/integrations';
+import { language } from 'googleapis/build/src/apis/language';
+// import { users } from './users'; // Import the 'users' module
 
 export const courseEnrolmentsCourseStatus = pgEnum(
   'course_enrolments_course_status',
@@ -2307,6 +2310,14 @@ export const sessionBootcampRelations = relations(
   })
 )
 
+// export const batchEnrollmentsRelations = relations(batches, ({one, many}) => ({
+//         // enrolles: many(batchEnrollments, {
+//         //         relationName: bootcampsEnrollmentsRelations,
+//         //         references: [batchEnrollments.batchId]
+//         // }),
+//         batchEnrollments: many(batches)
+// }))
+
 export const zuvyBatchEnrollments = main.table('zuvy_batch_enrollments', {
   id: serial('id').primaryKey().notNull(),
   userId: bigserial('user_id', { mode: 'bigint' })
@@ -2434,18 +2445,9 @@ export const zuvyPracticeCode = main.table("zuvy_practice_code", {
   userId: bigserial("user_id", { mode: "bigint" }).notNull().references(() => users.id),
   status: varchar("status", { length: 255 }).notNull(),
   action: action("action").notNull(),
-  questionId: integer("question_id").references(() => zuvyCodingQuestions.id, {
-    onDelete: 'cascade',
-    onUpdate: 'cascade',
-  }),
-  codingOutsourseId: integer("coding_outsourse_id").references(() => zuvyOutsourseCodingQuestions.id, {
-    onDelete: 'cascade',
-    onUpdate: 'cascade',
-  }),
-  submissionId: integer("submission_id").references(() => zuvyAssessmentSubmission.id, {
-    onDelete: 'cascade',
-    onUpdate: 'cascade',
-  }),
+  questionId: integer("question_id").references(() => zuvyCodingQuestions.id),
+  codingOutsourseId: integer("coding_outsourse_id").references(() => zuvyOutsourseCodingQuestions.id),
+  submissionId: integer("submission_id").references(() => zuvyAssessmentSubmission.id),
   createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
   sourceCode: text("source_code"),
 })
@@ -2710,6 +2712,7 @@ export const zuvyAssessmentSubmission = main.table("zuvy_assessment_submission",
   requiredCodingScore: integer('required_coding_score'),
   requiredOpenEndedScore: integer('required_open_ended_score'),
   requiredMCQScore: integer('required_mcq_score'),
+  // double precision
   isPassed: boolean('is_passed'),
   percentage: numeric('percentage'),
   typeOfsubmission: varchar('type_of_submission', { length: 255 }),
@@ -2879,6 +2882,7 @@ export const trackingPostsRelations = relations(
     }),
   }),
 );
+
 
 export const zuvyOutsourseAssessments = main.table('zuvy_outsourse_assessments', {
   id: serial('id').primaryKey().notNull(),
@@ -3258,6 +3262,7 @@ export const zuvyTestCasesSubmission = main.table("zuvy_test_cases_submission", 
   }),
   status: varchar("status", { length: 255 }),
   token: varchar("token", { length: 255 }),
+  languageId: integer("language_id").references(() => zuvyLanguages.id),
   stdout: text("stdout"),
   submissionId: integer("submission_id").references(() => zuvyPracticeCode.id, {
     onDelete: 'cascade',
@@ -3279,3 +3284,12 @@ export const zuvyTestCasesSubmissionRelation = relations(zuvyTestCasesSubmission
     references: [zuvyPracticeCode.id],
   }),
 }))
+
+
+
+export const zuvyLanguages = main.table("zuvy_languages", {
+  id: serial("id").primaryKey().notNull(),
+  name: varchar("name", { length: 255 }).notNull(),
+  languageId: varchar("language_id", { length: 50 }).notNull(),
+  defaultCodingTemplate: text("default_coding_template").notNull()
+});
