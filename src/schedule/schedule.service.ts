@@ -6,7 +6,7 @@ import { zuvyBatchEnrollments, zuvyAssessmentSubmission, zuvyChapterTracking, zu
 
 
 @Injectable()
-export class SubmissionService {
+export class ScheduleService {
   async getSubmissionOfPractiseProblem(bootcampId: number) {
     try {
       const topicId = 3;
@@ -224,71 +224,6 @@ export class SubmissionService {
       throw err;
     }
   }
-
-  // async getAssessmentSubmission(assessment_id, studentId){
-  //   try{
-  //     const res = await db.query.zuvyAssessmentSubmission.findMany({
-  //       where: (zuvyAssessmentSubmission, {eq, and}) => and(eq(zuvyAssessmentSubmission.assessmentId, assessment_id), eq(zuvyAssessmentSubmission.userId, studentId)),
-  //       with: {
-  //         user: {
-  //           columns: {
-  //             name: true,
-  //             email: true,
-  //           },
-  //         },
-  //         assessment: {
-  //           columns: {
-  //             id: true,
-  //             title: true,
-  //             passPercentage: true,
-  //             timeLimit: true,
-  //           },
-  //         },
-  //         openEndedSubmission: {
-  //           columns: {
-  //             id: true,
-  //             question_id: true,
-  //             answer: true,
-  //             marks: true,
-  //             feedback: true,
-  //             submitAt: true,
-  //             assessmentId: true,
-  //           },
-  //           with: {
-  //             openEnded: {
-  //               columns: {
-  //                 id: true,
-  //                 question: true,
-  //                 difficulty: true,
-  //               },
-  //             },
-
-  //           },
-  //         },
-  //         codingSubmission: {
-  //           columns: {
-  //             id: true,
-  //             questionSolved: true,
-  //             assessmentId: true,
-  //           },
-  //         },
-  //         quizSubmission: {
-  //           columns: {
-  //             id: true,
-  //             mcqId: true,
-  //             status: true,
-  //             chosenOption: true,
-  //             attempt: true,
-  //             assessmentId: true,
-  //           },
-  //         },
-  //       }
-  //     })
-  //     return res;
-  //   } catch (err){
-  //     throw err;
-  //   }
-  // }
 
   async getAllProjectSubmissions(bootcampId: number) {
     try {
@@ -552,7 +487,6 @@ export class SubmissionService {
     }
   }
   
-
   async getSubmissionOpenEnded(assessmentSubmissionId, userId: number) {
     try {
       const submissionOpenEnded = await db.select().from(zuvyOpenEndedQuestionSubmission).where(sql`${zuvyOpenEndedQuestionSubmission.assessmentSubmissionId} = ${assessmentSubmissionId} and ${zuvyOpenEndedQuestionSubmission.userId} = ${userId}`);
