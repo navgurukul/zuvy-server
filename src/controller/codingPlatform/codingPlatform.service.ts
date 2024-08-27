@@ -207,7 +207,12 @@ export class CodingPlatformService {
           sourceCode: true
         },
         with:{
-          TestCasesSubmission: true
+          questionDetail:true,
+          TestCasesSubmission: {
+            with: {
+              testCases: true,
+            }
+          }
         },
         limit: 1,
         orderBy: (zuvyPracticeCode, { sql }) => sql`${zuvyPracticeCode.id} DESC`,
@@ -404,7 +409,8 @@ export class CodingPlatformService {
   async addTestCase(questionId, updateTestCaseDto): Promise<any> {
     try {
       const { inputs, expectedOutput } = updateTestCaseDto
-      const testCase = await db.insert(zuvyTestCases).values({ questionId, inputs, expectedOutput }).returning();
+      let insertTestcase:any = { questionId, inputs, expectedOutput };
+      const testCase = await db.insert(zuvyTestCases).values(insertTestcase).returning();
       return [null, { message: "added the test case", data: testCase[0] }, STATUS_CODES.CREATED];
     } catch (error) {
       return [[{ message: error.message, statusCode: STATUS_CODES.BAD_REQUEST }]];

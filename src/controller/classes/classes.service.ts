@@ -872,7 +872,7 @@ export class ClassesService {
       for (let classObj of classes) {
         const startTime = new Date(classObj.startTime);
         const endTime = new Date(classObj.endTime);
-        let newStatus:string;
+        let newStatus;
         if (currentTime > endTime) {
           newStatus = 'completed';
         } else if (currentTime >= startTime && currentTime <= endTime) {
