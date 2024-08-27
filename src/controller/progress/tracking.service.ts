@@ -1142,6 +1142,7 @@ export class TrackingService {
                   title: true,
                   topicId: true
                 },
+                orderBy: (moduleChapter, { asc }) => asc(moduleChapter.order),
                 with: {
                   chapterTrackingDetails: {
                     columns: {
@@ -1149,7 +1150,7 @@ export class TrackingService {
                     },
                     where: (chapterTracking, { eq }) =>
                       eq(chapterTracking.userId, BigInt(userId)),
-                  },
+                  }
                 }
               },
             },
@@ -1220,7 +1221,7 @@ export class TrackingService {
           });
           if (data) {
             return [null,{message:'Your latest updated course',statusCode: STATUS_CODES.OK,data:{ moduleId: data.id,
-              moduleName: data.name,
+              moduleName:  data['projectData'].length == 0 ? data.name : data['projectData'][0]['title'],
               typeId: data.typeId,
               bootcampId: data['moduleData'].id,
               bootcampName: data['moduleData'].name,
