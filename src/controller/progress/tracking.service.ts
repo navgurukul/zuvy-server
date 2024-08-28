@@ -1285,8 +1285,6 @@ export class TrackingService {
           submitedOutsourseAssessment: true,
           PracticeCode: {
             where: (zuvyPracticeCode, { eq,and, or, ne}) =>  and(
-              or(eq(zuvyPracticeCode.status, ACCEPTED), ne(zuvyPracticeCode.status, ACCEPTED)),
-              eq(zuvyPracticeCode.action, SUBMIT),
               eq(zuvyPracticeCode.userId, userId),
             ),
             columns: {
