@@ -255,7 +255,8 @@ export class StudentService {
 
       let totalAttendance = await Promise.all(enrolled.map(async (e: any) => {
         let classes = await db.select().from(zuvySessions).where(sql`${zuvySessions.batchId} = ${e.batchId} AND ${zuvySessions.status} = 'completed'`).orderBy(desc(zuvySessions.startTime));
-        e.attendance = (e.attendance / classes.length) * 100 || 0;
+        e.attendance = Math.ceil((e.attendance / classes.length) * 100) || 0;
+        e.attendedClass = e.attendance || 0;
         e.totalClasses = classes.length;
         e.attendedClasses = e.attendance;
         delete e.userId;
