@@ -10,8 +10,7 @@ const { ZUVY_CONTENT_URL } = process.env; // INPORTING env VALUSE ZUVY_CONTENT
 
 @Injectable()
 export class AdminAssessmentService {
-
-  async transformAssessments(assessments){
+async transformAssessments(assessments){
     const result = {};
     assessments.forEach(assessment => {
       const moduleName = assessment.Module.name;
