@@ -1285,8 +1285,6 @@ export class TrackingService {
           submitedOutsourseAssessment: true,
           PracticeCode: {
             where: (zuvyPracticeCode, { eq,and, or, ne}) =>  and(
-              or(eq(zuvyPracticeCode.status, ACCEPTED), ne(zuvyPracticeCode.status, ACCEPTED)),
-              eq(zuvyPracticeCode.action, SUBMIT),
               eq(zuvyPracticeCode.userId, userId),
             ),
             columns: {
@@ -1321,6 +1319,22 @@ export class TrackingService {
           message: 'Assessment not submitted yet',
         });
       }
+      const filteredData = data.PracticeCode.reduce((acc, curr) => {
+        const existing = acc.find(item => item.questionId === curr.questionId);
+        
+        if (!existing) {
+          acc.push(curr);
+        } else if (curr.status === "Accepted") {
+          acc = acc.filter(item => item.questionId !== curr.questionId);
+          acc.push(curr);
+        } else if (existing.status !== "Accepted" && curr.createdAt > existing.createdAt) {
+          acc = acc.filter(item => item.questionId !== curr.questionId);
+          acc.push(curr);
+        }
+        
+        return acc;
+      }, []);
+      data.PracticeCode = filteredData
       return data;
     }
     catch (err) {

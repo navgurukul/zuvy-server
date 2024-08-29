@@ -10,6 +10,7 @@ import { eq, sql } from 'drizzle-orm';
 import { log } from 'console';
 import { PatchBatchDto, BatchDto } from './dto/batch.dto';
 import { helperVariable } from 'src/constants/helper';
+import { STATUS_CODES } from 'http';
 
 @Injectable()
 export class BatchesService {
@@ -246,7 +247,19 @@ export class BatchesService {
       } else {
         querySQL = sql`${zuvyBatchEnrollments.userId} = ${BigInt(studentID)} AND ${zuvyBatchEnrollments.batchId} = ${oldBatchID}`;
       }
-
+      let batchAssigned: any = await db.query.zuvyBatches.findMany({
+        where: sql`${zuvyBatches.id} = ${newBatchID}`,
+        with: {
+          students: true
+        }
+      });
+      if(batchAssigned.length == 0)
+        {
+          return [{ status: 'error', message: 'No batch found', code: 404 }, null];
+        }
+      if (batchAssigned[0].students.length == batchAssigned[0].capEnrollment) {
+        return [{ status: 'error', message: 'Batch is full', code: 400 }, null];
+      }
 
       const res = await db
         .update(zuvyBatchEnrollments)
