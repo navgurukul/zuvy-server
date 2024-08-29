@@ -17,10 +17,13 @@ export class AdminAssessmentService {
       const moduleName = assessment.Module.name;
       const { Module, ModuleAssessment, CodingQuestions, OpenEndedQuestions,Quizzes, submitedOutsourseAssessments,  ...assessmentInfo } = assessment;
       let qualifiedStudents = 0
+      let questions_list = []
       submitedOutsourseAssessments.map((student)=>{
-        console.log({student})
-        if (student.isPassed){
-          qualifiedStudents += 1
+        if (!questions_list.includes(student.question_id)){
+          if (student.isPassed){
+            qualifiedStudents += 1
+            questions_list.push(student.question_id)
+          }
         }
       })
       if (!result[moduleName]) {
