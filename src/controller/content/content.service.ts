@@ -1149,15 +1149,6 @@ export class ContentService {
           eq(zuvyCodingQuestions.tagId, tagId),
         );
       }
-      // const result = await db
-      //   .select()
-      //   .from(zuvyCodingQuestions)
-      //   .where(
-      //     and(
-      //       queryString,
-      //       sql`((LOWER(${zuvyCodingQuestions.title}) LIKE '%' || ${searchTerm.toLowerCase()} || '%'))`,
-      //     ),
-      //   );
         const question = await db.query.zuvyCodingQuestions.findMany({
           where: (zuvyCodingQuestions, { sql }) =>and(
             queryString,
