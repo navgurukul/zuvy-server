@@ -154,15 +154,6 @@ export class ScheduleService {
     }
   }
 
-  // assessment submission api 
-  async assessmentStart(assessmentData, studentId: number) {
-    try {
-      return await db.insert(zuvyAssessmentSubmission).values({ ...assessmentData, userId: studentId }).returning();
-    } catch (err) {
-      throw err;
-    }
-  }
-
   async assessmentSubmission(data, id: number) {
     try {
       data['submitedAt'] = new Date().toISOString();
