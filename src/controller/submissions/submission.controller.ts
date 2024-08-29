@@ -86,9 +86,6 @@ export class SubmissionController {
     );
   }
 
-  // @Post('/assessment')
-  // getAssessmentInfoBy
-
   @Get('/assessmentInfoBy')
   @ApiBearerAuth()
   @ApiQuery({
@@ -108,27 +105,6 @@ export class SubmissionController {
   ) {
     return this.submissionService.getAssessmentInfoBy(bootcampId, limit, offset);
   }
-
-  // @Get('/assessment/students')
-  // @ApiBearerAuth()
-  // @ApiQuery({
-  //   name: 'limit',
-  //   required: false,
-  //   type: Number,
-  // })
-  // @ApiQuery({
-  //   name: 'offset',
-  //   required: false,
-  //   type: Number,
-  // })
-  // async assessmentStudentsInfoBy(
-  //   @Query('assessmentId') assessmentId: number,
-  //   @Query('bootcampId') bootcampId: number,
-  //   @Query('limit') limit: number,
-  //   @Query('offset') offset : number
-  // ){
-  //   return this.submissionService.assessmentStudentsInfoBy(assessmentId, limit, offset,bootcampId);
-  // }
 
 
   @Post('/openended/questions')
@@ -158,7 +134,7 @@ export class SubmissionController {
   @Patch('/assessment/submit')
   @ApiBearerAuth()
   async assessmentSubmission(@Body() data: SubmissionassessmentDto, @Query('assessmentSubmissionId') assessmentSubmissionId: number, @Req() req) {
-    return this.submissionService.assessmentSubmission(data, assessmentSubmissionId, req.user[0].id);
+    return this.submissionService.assessmentSubmission(data, assessmentSubmissionId, 61418);
   }
 
   @Get('/submissionsOfProjects/:bootcampId')
@@ -272,16 +248,16 @@ export class SubmissionController {
   @Get('/submissionsOfAssignment/:bootcampId')
   @ApiOperation({ summary: 'Get the submission of assignment by bootcampId' })
   @ApiBearerAuth()
-  async getAssignmentSubmission(@Param('bootcampId') bootcampId: number,@Res() res) {
-      try {
-        let [err, success] =await this.submissionService.getSubmissionOfAssignment(bootcampId)
-        if (err) {
-          return ErrorResponse.BadRequestException(err.message, err.statusCode).send(res)
-        }
-        return new SuccessResponse(success.message, success.statusCode, success.data).send(res);
-      } catch (error) {
-        return ErrorResponse.BadRequestException(error.message).send(res);
-      }  
+  async getAssignmentSubmission(@Param('bootcampId') bootcampId: number, @Res() res) {
+    try {
+      let [err, success] = await this.submissionService.getSubmissionOfAssignment(bootcampId)
+      if (err) {
+        return ErrorResponse.BadRequestException(err.message, err.statusCode).send(res)
+      }
+      return new SuccessResponse(success.message, success.statusCode, success.data).send(res);
+    } catch (error) {
+      return ErrorResponse.BadRequestException(error.message).send(res);
+    }
   }
 
   @Get('/assignmentStatus')
@@ -308,21 +284,21 @@ export class SubmissionController {
     @Query('limit') limit: number,
     @Query('offset') offset: number,
     @Res() res
-  ){
-      try {
-        let [err, success] =await this.submissionService.assignmentStatusOfStudents(
-          chapterId,
-          limit,
-          offset
-        );
-        
-        if (err) {
-          return ErrorResponse.BadRequestException(err.message, err.statusCode).send(res)
-        }
-        return new SuccessResponse(success.message, success.statusCode, success.data).send(res);
-      } catch (error) {
-        return ErrorResponse.BadRequestException(error.message).send(res);
-      }    
+  ) {
+    try {
+      let [err, success] = await this.submissionService.assignmentStatusOfStudents(
+        chapterId,
+        limit,
+        offset
+      );
+
+      if (err) {
+        return ErrorResponse.BadRequestException(err.message, err.statusCode).send(res)
+      }
+      return new SuccessResponse(success.message, success.statusCode, success.data).send(res);
+    } catch (error) {
+      return ErrorResponse.BadRequestException(error.message).send(res);
+    }
   }
 
   @Get('getAssignmentDetailForAUser')
@@ -333,17 +309,17 @@ export class SubmissionController {
     @Query('userId') userId: number,
     @Res() res
   ) {
-      try {
-        let [err, success] =await this.submissionService.getAssignmentSubmissionDetailForUser(
-          chapterId,
-          userId
-        );
-        if (err) {
-          return ErrorResponse.BadRequestException(err.message, err.statusCode).send(res)
-        }
-        return new SuccessResponse(success.message, success.statusCode, success.data).send(res);
-      } catch (error) {
-        return ErrorResponse.BadRequestException(error.message).send(res);
-      }    
+    try {
+      let [err, success] = await this.submissionService.getAssignmentSubmissionDetailForUser(
+        chapterId,
+        userId
+      );
+      if (err) {
+        return ErrorResponse.BadRequestException(err.message, err.statusCode).send(res)
+      }
+      return new SuccessResponse(success.message, success.statusCode, success.data).send(res);
+    } catch (error) {
+      return ErrorResponse.BadRequestException(error.message).send(res);
+    }
   }
 }

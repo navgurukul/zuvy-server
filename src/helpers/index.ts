@@ -193,6 +193,7 @@ public class Main {
     id: 63,
     name: 'JavaScript',
     template: Buffer.from(`
+//Please ensure that this parameter can only be a string.
 function ${functionName}(${parameters.map(p => `_${p.parameterName}_`).join(', ')}) {
   // Add your code here
   return ${typeMappings['javascript']['defaultReturnValue']}; // Replace with actual return value

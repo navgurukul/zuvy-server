@@ -1,7 +1,6 @@
 import { Injectable, Logger,HttpStatus  } from '@nestjs/common';
 import { db } from '../../db/index';
 import { eq, sql, count, inArray, or, and, like,desc } from 'drizzle-orm';
-// import { BatchesService } from '../batches/batch.service';
 import axios from 'axios';
 import * as _ from 'lodash';
 import { error, log } from 'console';
@@ -693,9 +692,9 @@ export class BootcampService {
        batchId:zuvyBatches.id,
        progress:zuvyBootcampTracking.progress,
        totalClasses: sql<number>`(
-        SELECT COUNT(*) FROM zuvy_sessions 
-        WHERE zuvy_sessions.bootcamp_id = ${zuvyBatchEnrollments.bootcampId}
-        AND (${zuvyBatchEnrollments.batchId} IS NULL OR zuvy_sessions.batch_id = ${zuvyBatchEnrollments.batchId})
+        SELECT COUNT(*) FROM main.zuvy_sessions 
+        WHERE main.zuvy_sessions.bootcamp_id = ${zuvyBatchEnrollments.bootcampId}
+        AND (${zuvyBatchEnrollments.batchId} IS NULL OR main.zuvy_sessions.batch_id = ${zuvyBatchEnrollments.batchId})
       )`
       })
      .from(zuvyBatchEnrollments)

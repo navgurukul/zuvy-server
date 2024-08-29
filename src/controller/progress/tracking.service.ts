@@ -430,8 +430,9 @@ export class TrackingService {
        sqlChunks.push(sql`end)`);
        
        const finalSql: SQL = sql.join(sqlChunks, sql.raw(' '));
+       let updateProgress:any = { progress: finalSql}
 
-       await db.update(zuvyModuleTracking).set({ progress: finalSql })
+       await db.update(zuvyModuleTracking).set(updateProgress)
          .where(sql`${inArray(zuvyModuleTracking.id, ids)}`);
       } 
       if (modules.length > 0) {
@@ -1141,6 +1142,7 @@ export class TrackingService {
                   title: true,
                   topicId: true
                 },
+                orderBy: (moduleChapter, { asc }) => asc(moduleChapter.order),
                 with: {
                   chapterTrackingDetails: {
                     columns: {
@@ -1148,9 +1150,8 @@ export class TrackingService {
                     },
                     where: (chapterTracking, { eq }) =>
                       eq(chapterTracking.userId, BigInt(userId)),
-                  },
-                },
-                orderBy: (moduleChapter, { asc }) => asc(moduleChapter.order)
+                  }
+                }
               },
             },
           });  
@@ -1161,9 +1162,9 @@ export class TrackingService {
           const chaptersCompleted = chapters.length - incompleteChaptersCount;
           if(progress == 100 && incompleteChaptersCount > 0)
             {
-              progress = Math.ceil((chaptersCompleted/chapters.length)*100) 
+              let UpdateProgress:any = { progress: Math.ceil((chaptersCompleted/chapters.length)*100) }
               const updatedRecentCourse = await db.update(zuvyRecentBootcamp)
-               .set({ progress: progress})
+               .set(UpdateProgress)
                .where(eq(zuvyRecentBootcamp.userId, BigInt(userId))).returning(); 
               if(updatedRecentCourse.length == 0)
                 {
@@ -1220,11 +1221,12 @@ export class TrackingService {
           });
           if (data) {
             return [null,{message:'Your latest updated course',statusCode: STATUS_CODES.OK,data:{ moduleId: data.id,
-              moduleName: data['projectData'].length == 0 ? data.name : data['projectData'][0]['title'],
+              moduleName:  data['projectData'].length == 0 ? data.name : data['projectData'][0]['title'],
               typeId: data.typeId,
               bootcampId: data['moduleData'].id,
               bootcampName: data['moduleData'].name,
-              newChapter: data.typeId == 1 ? (data['moduleChapterData'].length > 0 ? data['moduleChapterData'][0] : 'There is no chapter in the module') : data['projectData'][0]}}] 
+              newChapter: data.typeId == 1 ? (data['moduleChapterData'].length > 0 ? data['moduleChapterData'][0] : 'There is no chapter in the module') : data['projectData'][0]}}]
+            
           }
           else {
             return [null,{message:'Start a course',statusCode: STATUS_CODES.OK,data:[]}]  
@@ -1282,9 +1284,7 @@ export class TrackingService {
           },
           submitedOutsourseAssessment: true,
           PracticeCode: {
-            where: (zuvyPracticeCode, { eq,and }) =>  and(
-              eq(zuvyPracticeCode.status, ACCEPTED),
-              eq(zuvyPracticeCode.action, SUBMIT),
+            where: (zuvyPracticeCode, { eq,and, or, ne}) =>  and(
               eq(zuvyPracticeCode.userId, userId),
             ),
             columns: {
@@ -1319,6 +1319,22 @@ export class TrackingService {
           message: 'Assessment not submitted yet',
         });
       }
+      const filteredData = data.PracticeCode.reduce((acc, curr) => {
+        const existing = acc.find(item => item.questionId === curr.questionId);
+        
+        if (!existing) {
+          acc.push(curr);
+        } else if (curr.status === "Accepted") {
+          acc = acc.filter(item => item.questionId !== curr.questionId);
+          acc.push(curr);
+        } else if (existing.status !== "Accepted" && curr.createdAt > existing.createdAt) {
+          acc = acc.filter(item => item.questionId !== curr.questionId);
+          acc.push(curr);
+        }
+        
+        return acc;
+      }, []);
+      data.PracticeCode = filteredData
       return data;
     }
     catch (err) {
