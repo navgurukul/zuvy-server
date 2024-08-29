@@ -1149,16 +1149,41 @@ export class ContentService {
           eq(zuvyCodingQuestions.tagId, tagId),
         );
       }
-      const result = await db
-        .select()
-        .from(zuvyCodingQuestions)
-        .where(
-          and(
+      // const result = await db
+      //   .select()
+      //   .from(zuvyCodingQuestions)
+      //   .where(
+      //     and(
+      //       queryString,
+      //       sql`((LOWER(${zuvyCodingQuestions.title}) LIKE '%' || ${searchTerm.toLowerCase()} || '%'))`,
+      //     ),
+      //   );
+        const question = await db.query.zuvyCodingQuestions.findMany({
+          where: (zuvyCodingQuestions, { sql }) =>and(
             queryString,
             sql`((LOWER(${zuvyCodingQuestions.title}) LIKE '%' || ${searchTerm.toLowerCase()} || '%'))`,
           ),
-        );
-      return result;
+          columns: {
+            id: true,
+            title: true,
+            description: true,
+            difficulty: true,
+            constraints: true,
+            content: true,
+            tagId: true,
+            createdAt: true,
+          },
+          with: {
+            testCases: {
+              columns: {
+                id: true,
+                inputs: true,
+                expectedOutput: true,
+              }
+            }
+          }
+        })  
+      return question;
     } catch (err) {
       throw err;
     }
