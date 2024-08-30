@@ -188,13 +188,13 @@ public class Main {
     `).toString('base64')
   };
 
-  // Generate JavaScript (Node.js) template
-  templates['javascript'] = {
-    id: 63,
-    name: 'JavaScript',
-    template: Buffer.from(`
+   // Generate JavaScript (Node.js) template
+templates['javascript'] = {
+  id: 63,
+  name: 'JavaScript',
+  template: Buffer.from(`
 //Please ensure that this parameter can only be a string.
-function ${functionName}(${parameters.map(p => `_${p.parameterName}_`).join(', ')}) {
+function ${functionName.split(' ').slice(0, 2).join('')}(${parameters.map(p => `_${p.parameterName}_`).join(', ')}) {
   // Add your code here
   return ${typeMappings['javascript']['defaultReturnValue']}; // Replace with actual return value
 }
@@ -212,13 +212,21 @@ rl.on('line', (line) => {
 });
 
 rl.on('close', () => {
-  const ${parameters.map(p => `_${p.parameterName}_ = ${p.parameterType === 'array' ? 'inputs.shift().split(" ").map(Number)' : 'inputs.shift()'}`).join(',\n    ')}
-  
-  const result = ${functionName}(${parameters.map(p => `_${p.parameterName}_`).join(', ')});
+  ${parameters.map(p => {
+    if (p.parameterType === 'arrayOfnum') {
+      return `const _${p.parameterName}_ = inputs.shift().split(' ').map(Number);`;
+    } else if (p.parameterType === 'arrayOfStr') {
+      return `const _${p.parameterName}_ = inputs.shift().split(' ');`;
+    } else {
+      return `const _${p.parameterName}_ = ${p.parameterType === 'number' ? 'Number(inputs.shift())' : 'inputs.shift()'};`;
+    }
+  }).join('\n  ')}
+
+  const result = ${functionName.split(' ').slice(0, 2).join('')}(${parameters.map(p => `_${p.parameterName}_`).join(', ')});
   console.log(result);
 });
-    `).toString('base64')
-  };
+  `).toString('base64')
+};
 
   return templates;
 }
