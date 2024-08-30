@@ -958,9 +958,7 @@ export class TrackingService {
                    .from(zuvyChapterTracking)
                    .where(sql`${zuvyChapterTracking.userId} = ${userId} and ${zuvyChapterTracking.chapterId} = ${chapterId}`);
                    const status = ChapterTracking.length > 0 ? 'Completed' : 'Pending';
-                  if(chapter[0].codingQuestions != null)
-                    {
-                      const codingProblem = await db
+                   const codingProblem = await db
                       .select()
                       .from(zuvyCodingQuestions)
                       .where(
@@ -969,6 +967,8 @@ export class TrackingService {
                           chapter[0].codingQuestions,
                         ),
                       )
+                  if(chapter[0].codingQuestions != null && codingProblem.length > 0)
+                    {
                       return [null,{message:'Coding chapter fetched succesfully',statusCode: STATUS_CODES.OK,data:{chapterDetails:chapter[0],codingProblem,status}}]
                     } 
                     else {
