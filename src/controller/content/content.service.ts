@@ -1106,26 +1106,39 @@ export class ContentService {
     searchTerm: string = '',
   ) {
     try {
-      let queryString;
-      if (!Number.isNaN(tagId) && difficulty == undefined) {
-        queryString = sql`${zuvyModuleQuiz.tagId} = ${tagId}`;
-      } else if (Number.isNaN(tagId) && difficulty != undefined) {
-        queryString = sql`${zuvyModuleQuiz.difficulty} = ${difficulty}`;
-      } else if (!Number.isNaN(tagId) && difficulty != undefined) {
-        queryString = and(
-          eq(zuvyModuleQuiz.difficulty, difficulty),
-          eq(zuvyModuleQuiz.tagId, tagId),
-        );
-      }
-      const result = await db
-        .select()
-        .from(zuvyModuleQuiz)
-        .where(
-          and(
-            queryString,
-            sql`((LOWER(${zuvyModuleQuiz.question}) LIKE '%' || ${searchTerm.toLowerCase()} || '%'))`,
-          ),
-        );
+      let conditions = [];
+
+if (!Number.isNaN(tagId)) {
+  conditions.push(eq(zuvyModuleQuiz.tagId, tagId));
+}
+
+if (difficulty !== undefined) {
+  conditions.push(eq(zuvyModuleQuiz.difficulty, difficulty));
+}
+
+if (searchTerm) {
+  conditions.push(
+    or(
+      sql`LOWER(${zuvyModuleQuiz.question}) LIKE ${sql.raw(`'${searchTerm.toLowerCase()}%'`)}`,
+      sql`LOWER(${zuvyModuleQuiz.question}) LIKE ${sql.raw(`'% ${searchTerm.toLowerCase()}%'`)}`
+    )
+  );
+}
+
+const result = await db
+  .select({
+    ...getTableColumns(zuvyModuleQuiz),
+    matchPosition: sql<number>`
+      CASE 
+        WHEN LOWER(${zuvyModuleQuiz.question}) LIKE ${sql.raw(`'${searchTerm.toLowerCase()}%'`)} THEN 1
+        WHEN LOWER(${zuvyModuleQuiz.question}) LIKE ${sql.raw(`'% ${searchTerm.toLowerCase()}%'`)} THEN 2
+        ELSE 3
+      END
+    `.as('match_position')
+  })
+  .from(zuvyModuleQuiz)
+  .where(and(...conditions))
+  .orderBy(sql`match_position`);
       return result;
     } catch (err) {
       throw err;
@@ -1138,43 +1151,57 @@ export class ContentService {
     searchTerm: string = '',
   ) {
     try {
-      let queryString;
-      if (!Number.isNaN(tagId) && difficulty == undefined) {
-        queryString = sql`${zuvyCodingQuestions.tagId} = ${tagId}`;
-      } else if (Number.isNaN(tagId) && difficulty != undefined) {
-        queryString = sql`${zuvyCodingQuestions.difficulty} = ${difficulty}`;
-      } else if (!Number.isNaN(tagId) && difficulty != undefined) {
-        queryString = and(
-          eq(zuvyCodingQuestions.difficulty, difficulty),
-          eq(zuvyCodingQuestions.tagId, tagId),
-        );
+      let conditions = [];
+
+    if (!Number.isNaN(tagId)) {
+     conditions.push(eq(zuvyCodingQuestions.tagId, tagId));
+    }
+
+    if (difficulty !== undefined) {
+     conditions.push(eq(zuvyCodingQuestions.difficulty, difficulty));
+     }
+
+    if (searchTerm) {
+       conditions.push(
+        or(
+      sql`LOWER(${zuvyCodingQuestions.title}) LIKE ${sql.raw(`'${searchTerm.toLowerCase()}%'`)}`,
+      sql`LOWER(${zuvyCodingQuestions.title}) LIKE ${sql.raw(`'% ${searchTerm.toLowerCase()}%'`)}`
+      )
+      );
+     }
+
+      const question = await db.query.zuvyCodingQuestions.findMany({
+      where: and(...conditions),
+       columns: {
+       id: true,
+       title: true,
+       description: true,
+       difficulty: true,
+       constraints: true,
+       content: true,
+       tagId: true,
+       createdAt: true,
+      },
+      with: {
+        testCases: {
+         columns: {
+        id: true,
+        inputs: true,
+        expectedOutput: true,
       }
-        const question = await db.query.zuvyCodingQuestions.findMany({
-          where: (zuvyCodingQuestions, { sql }) =>and(
-            queryString,
-            sql`((LOWER(${zuvyCodingQuestions.title}) LIKE '%' || ${searchTerm.toLowerCase()} || '%'))`,
-          ),
-          columns: {
-            id: true,
-            title: true,
-            description: true,
-            difficulty: true,
-            constraints: true,
-            content: true,
-            tagId: true,
-            createdAt: true,
-          },
-          with: {
-            testCases: {
-              columns: {
-                id: true,
-                inputs: true,
-                expectedOutput: true,
-              }
-            }
-          }
-        })  
-      return question;
+    }
+   },
+  orderBy: (zuvyCodingQuestions, { sql }) => [
+    sql`
+      CASE 
+        WHEN LOWER(${zuvyCodingQuestions.title}) LIKE ${sql.raw(`'${searchTerm.toLowerCase()}%'`)} THEN 1
+        WHEN LOWER(${zuvyCodingQuestions.title}) LIKE ${sql.raw(`'% ${searchTerm.toLowerCase()}%'`)} THEN 2
+        ELSE 3
+      END
+    `
+       ],
+      })
+      return question
     } catch (err) {
       throw err;
     }
@@ -1459,42 +1486,54 @@ export class ContentService {
     limit_: number
   ) {
     try {
-      let queryString;
-      if (!Number.isNaN(tagId) && difficulty == undefined) {
-        queryString = sql`${zuvyOpenEndedQuestions.tagId} = ${tagId}`;
-      } else if (Number.isNaN(tagId) && difficulty != undefined) {
-        queryString = sql`${zuvyOpenEndedQuestions.difficulty} = ${difficulty}`;
-      } else if (!Number.isNaN(tagId) && difficulty != undefined) {
-        queryString = and(
-          eq(zuvyOpenEndedQuestions.difficulty, difficulty),
-          eq(zuvyOpenEndedQuestions.tagId, tagId),
-        );
-      }
-      const totalRows = await db
-        .select()
-        .from(zuvyOpenEndedQuestions)
-        .where(
-          and(
-            queryString,
-            sql`((LOWER(${zuvyOpenEndedQuestions.question}) LIKE '%' || ${searchTerm.toLowerCase()} || '%'))`,
-          ),
-        )
-        .execute();
+    let conditions = [];
 
-      const result = await db
-        .select()
-        .from(zuvyOpenEndedQuestions)
-        .where(
-          and(
-            queryString,
-            sql`((LOWER(${zuvyOpenEndedQuestions.question}) LIKE '%' || ${searchTerm.toLowerCase()} || '%'))`,
-          ),
-        ).offset(pageNo).limit(limit_);
-      return { data: result, totalRows: totalRows.length, totalPages: Math.ceil(totalRows.length / limit_) };
+    if (!Number.isNaN(tagId)) {
+      conditions.push(eq(zuvyOpenEndedQuestions.tagId, tagId));
+    }
+    
+    if (difficulty !== undefined) {
+      conditions.push(eq(zuvyOpenEndedQuestions.difficulty, difficulty));
+    }
+    
+    if (searchTerm) {
+      conditions.push(
+        or(
+          sql`LOWER(${zuvyOpenEndedQuestions.question}) LIKE ${sql.raw(`'${searchTerm.toLowerCase()}%'`)}`,
+          sql`LOWER(${zuvyOpenEndedQuestions.question}) LIKE ${sql.raw(`'% ${searchTerm.toLowerCase()}%'`)}`
+        )
+      );
+    }
+    
+    const totalRows = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(zuvyOpenEndedQuestions)
+      .where(and(...conditions))
+      .execute();
+    
+    const result = await db
+      .select()
+      .from(zuvyOpenEndedQuestions)
+      .where(and(...conditions))
+      .orderBy(sql`
+        CASE 
+          WHEN LOWER(${zuvyOpenEndedQuestions.question}) LIKE ${sql.raw(`'${searchTerm.toLowerCase()}%'`)} THEN 1
+          WHEN LOWER(${zuvyOpenEndedQuestions.question}) LIKE ${sql.raw(`'% ${searchTerm.toLowerCase()}%'`)} THEN 2
+          ELSE 3
+        END
+      `)
+      .limit(limit_)
+      .offset((pageNo - 1) * limit_);
+    return { 
+      data: result, 
+      totalRows:Number(totalRows[0].count), 
+      totalPages: !Number.isNaN(limit_) ? Math.ceil(totalRows[0].count / limit_) : 1
+    };
     } catch (err) {
       throw err;
     }
   }
+
   async getStudentsOfAssessment(assessmentId: number, chapterId: number, moduleId: number, bootcampId: number, req) {
     try {
       let { id } = req.user[0];
