@@ -257,7 +257,7 @@ export class StudentService {
         let classes = await db.select().from(zuvySessions).where(sql`${zuvySessions.batchId} = ${e.batchId} AND ${zuvySessions.status} = 'completed'`).orderBy(desc(zuvySessions.startTime));
         e.attendance = e.attendance != null ? e.attendance : 0;
         e.totalClasses = classes.length;
-        e.attendedClasses = classes.length > 0 ? ((e.attendance / classes.length) * 100).toFixed(2): 0;
+        e.attendedClasses = classes.length > 0 && e.attendance > 0 ? ((e.attendance / classes.length) * 100).toFixed(2): 0;
         delete e.userId;
         delete e.bootcamp
         return e;
