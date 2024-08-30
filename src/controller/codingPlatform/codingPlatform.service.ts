@@ -373,10 +373,12 @@ export class CodingPlatformService {
       }
 
       if (withTemplate) {
-        question[0]["templates"] = await generateTemplates(question[0].title, question[0].testCases[0].inputs);
+        let [errorGenerateTemplate, templates] = await generateTemplates(question[0].title, question[0].testCases[0].inputs);
+        question[0]["templates"] = templates;
       }
       return [null, { message: 'Coding question fetched successfully', data: question[0], statusCode: STATUS_CODES.OK }];
     } catch (error) {
+      console.log(error);
       return [[{ message: error.message, statusCode: STATUS_CODES.BAD_REQUEST }]];
     }
   }

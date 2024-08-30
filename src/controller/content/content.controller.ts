@@ -534,7 +534,6 @@ export class ContentController {
     return this.contentService.getStudentsOfAssessment(assessmentId, chapterId, moduleId, bootcampId, req);
   }
 
-  // startAssessmentForStudent
   @Get('/startAssessmentForStudent/assessmentOutsourseId=:assessmentOutsourseId')
   @ApiOperation({ summary: 'Start the assessment for a student' })
   @ApiBearerAuth()
@@ -558,7 +557,6 @@ export class ContentController {
     return this.contentService.getAssessmentDetailsOfQuiz(assessmentOutsourseId, userId);
   }
 
-  // openended questions
   @Get('/assessmentDetailsOfOpenEnded/:assessmentOutsourseId')
   @ApiOperation({ summary: 'Get the assessment details of the open Ended questions' })
   @ApiBearerAuth()
