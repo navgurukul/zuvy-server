@@ -1107,37 +1107,38 @@ export class ContentService {
     try {
       let conditions = [];
 
-if (!Number.isNaN(tagId)) {
-  conditions.push(eq(zuvyModuleQuiz.tagId, tagId));
-}
+    if (!Number.isNaN(tagId)) {
+     conditions.push(eq(zuvyModuleQuiz.tagId, tagId));
+     }
 
-if (difficulty !== undefined) {
-  conditions.push(eq(zuvyModuleQuiz.difficulty, difficulty));
-}
+    if (difficulty !== undefined) {
+     conditions.push(eq(zuvyModuleQuiz.difficulty, difficulty));
+      }
 
-if (searchTerm) {
-  conditions.push(
-    or(
-      sql`LOWER(${zuvyModuleQuiz.question}) LIKE ${sql.raw(`'${searchTerm.toLowerCase()}%'`)}`,
-      sql`LOWER(${zuvyModuleQuiz.question}) LIKE ${sql.raw(`'% ${searchTerm.toLowerCase()}%'`)}`
-    )
-  );
-}
+      if (searchTerm) {
+        conditions.push(
+    sql`LOWER(${zuvyModuleQuiz.question}) ~ ${sql.raw(`'\\m${searchTerm.toLowerCase()}'`)}`
+      );
+     }
 
-const result = await db
-  .select({
-    ...getTableColumns(zuvyModuleQuiz),
-    matchPosition: sql<number>`
-      CASE 
-        WHEN LOWER(${zuvyModuleQuiz.question}) LIKE ${sql.raw(`'${searchTerm.toLowerCase()}%'`)} THEN 1
-        WHEN LOWER(${zuvyModuleQuiz.question}) LIKE ${sql.raw(`'% ${searchTerm.toLowerCase()}%'`)} THEN 2
-        ELSE 3
-      END
-    `.as('match_position')
-  })
-  .from(zuvyModuleQuiz)
-  .where(and(...conditions))
-  .orderBy(sql`match_position`);
+       const result = await db
+       .select({
+         ...getTableColumns(zuvyModuleQuiz),
+           matchPosition: sql<number>`
+             CASE
+             WHEN LOWER(${zuvyModuleQuiz.question}) LIKE ${sql.raw(`'${searchTerm.toLowerCase()}%'`)} THEN 0
+             WHEN LOWER(${zuvyModuleQuiz.question}) ~ ${sql.raw(`'\\m${searchTerm.toLowerCase()}'`)} THEN 
+             POSITION(
+              ${sql.raw(`'${searchTerm.toLowerCase()}'`)} IN LOWER(${zuvyModuleQuiz.question})
+             ) - 1
+             ELSE 9999 -- Use a large number for non-matching cases to push them to the end
+             END
+          `.as('match_position')
+        })
+        .from(zuvyModuleQuiz)
+        .where(and(...conditions))
+        .orderBy(sql`match_position`);
+
       return result;
     } catch (err) {
       throw err;
@@ -1152,55 +1153,55 @@ const result = await db
     try {
       let conditions = [];
 
-    if (!Number.isNaN(tagId)) {
-     conditions.push(eq(zuvyCodingQuestions.tagId, tagId));
-    }
-
-    if (difficulty !== undefined) {
-     conditions.push(eq(zuvyCodingQuestions.difficulty, difficulty));
-     }
-
-    if (searchTerm) {
-       conditions.push(
-        or(
-      sql`LOWER(${zuvyCodingQuestions.title}) LIKE ${sql.raw(`'${searchTerm.toLowerCase()}%'`)}`,
-      sql`LOWER(${zuvyCodingQuestions.title}) LIKE ${sql.raw(`'% ${searchTerm.toLowerCase()}%'`)}`
-      )
-      );
-     }
-
-      const question = await db.query.zuvyCodingQuestions.findMany({
-      where: and(...conditions),
-       columns: {
-       id: true,
-       title: true,
-       description: true,
-       difficulty: true,
-       constraints: true,
-       content: true,
-       tagId: true,
-       createdAt: true,
-      },
-      with: {
-        testCases: {
-         columns: {
-        id: true,
-        inputs: true,
-        expectedOutput: true,
+      if (!Number.isNaN(tagId)) {
+        conditions.push(eq(zuvyCodingQuestions.tagId, tagId));
       }
-    }
-   },
-  orderBy: (zuvyCodingQuestions, { sql }) => [
-    sql`
-      CASE 
-        WHEN LOWER(${zuvyCodingQuestions.title}) LIKE ${sql.raw(`'${searchTerm.toLowerCase()}%'`)} THEN 1
-        WHEN LOWER(${zuvyCodingQuestions.title}) LIKE ${sql.raw(`'% ${searchTerm.toLowerCase()}%'`)} THEN 2
-        ELSE 3
-      END
-    `
-       ],
-      })
-      return question
+      
+      if (difficulty !== undefined) {
+        conditions.push(eq(zuvyCodingQuestions.difficulty, difficulty));
+      }
+      
+      if (searchTerm) {
+        conditions.push(
+          sql`LOWER(${zuvyCodingQuestions.title}) ~ ${sql.raw(`'\\m${searchTerm.toLowerCase()}'`)}`
+        );
+      }
+      
+      const question = await db.query.zuvyCodingQuestions.findMany({
+        where: and(...conditions),
+        columns: {
+          id: true,
+          title: true,
+          description: true,
+          difficulty: true,
+          constraints: true,
+          content: true,
+          tagId: true,
+          createdAt: true,
+        },
+        with: {
+          testCases: {
+            columns: {
+              id: true,
+              inputs: true,
+              expectedOutput: true,
+            }
+          }
+        },
+        orderBy: (zuvyCodingQuestions, { sql }) => [
+          sql`
+            CASE 
+              WHEN LOWER(${zuvyCodingQuestions.title}) LIKE ${sql.raw(`'${searchTerm.toLowerCase()}%'`)} THEN 1
+              WHEN LOWER(${zuvyCodingQuestions.title}) ~ ${sql.raw(`'\\m${searchTerm.toLowerCase()}'`)} THEN 
+                POSITION(${sql.raw(`'${searchTerm.toLowerCase()}'`)} IN LOWER(${zuvyCodingQuestions.title})) + 1
+              ELSE 9999
+            END
+          `
+        ],
+      });
+      
+      return question;
+      
     } catch (err) {
       throw err;
     }
@@ -1485,49 +1486,49 @@ const result = await db
     limit_: number
   ) {
     try {
-    let conditions = [];
+      let conditions = [];
 
-    if (!Number.isNaN(tagId)) {
-      conditions.push(eq(zuvyOpenEndedQuestions.tagId, tagId));
-    }
-    
-    if (difficulty !== undefined) {
-      conditions.push(eq(zuvyOpenEndedQuestions.difficulty, difficulty));
-    }
-    
-    if (searchTerm) {
-      conditions.push(
-        or(
-          sql`LOWER(${zuvyOpenEndedQuestions.question}) LIKE ${sql.raw(`'${searchTerm.toLowerCase()}%'`)}`,
-          sql`LOWER(${zuvyOpenEndedQuestions.question}) LIKE ${sql.raw(`'% ${searchTerm.toLowerCase()}%'`)}`
-        )
-      );
-    }
-    
-    const totalRows = await db
-      .select({ count: sql<number>`count(*)` })
-      .from(zuvyOpenEndedQuestions)
-      .where(and(...conditions))
-      .execute();
-    
-    const result = await db
-      .select()
-      .from(zuvyOpenEndedQuestions)
-      .where(and(...conditions))
-      .orderBy(sql`
-        CASE 
-          WHEN LOWER(${zuvyOpenEndedQuestions.question}) LIKE ${sql.raw(`'${searchTerm.toLowerCase()}%'`)} THEN 1
-          WHEN LOWER(${zuvyOpenEndedQuestions.question}) LIKE ${sql.raw(`'% ${searchTerm.toLowerCase()}%'`)} THEN 2
-          ELSE 3
-        END
-      `)
-      .limit(limit_)
-      .offset((pageNo - 1) * limit_);
-    return { 
-      data: result, 
-      totalRows:Number(totalRows[0].count), 
-      totalPages: !Number.isNaN(limit_) ? Math.ceil(totalRows[0].count / limit_) : 1
-    };
+      if (!Number.isNaN(tagId)) {
+        conditions.push(eq(zuvyOpenEndedQuestions.tagId, tagId));
+      }
+      
+      if (difficulty !== undefined) {
+        conditions.push(eq(zuvyOpenEndedQuestions.difficulty, difficulty));
+      }
+      if (searchTerm) {
+        conditions.push(
+          sql`LOWER(${zuvyOpenEndedQuestions.question}) ~ ${sql.raw(`'\\m${searchTerm.toLowerCase()}'`)}`
+        );
+      }
+      
+      const totalRows = await db
+        .select({ count: sql<number>`count(*)` })
+        .from(zuvyOpenEndedQuestions)
+        .where(and(...conditions))
+        .execute();
+      
+
+      const result = await db
+        .select()
+        .from(zuvyOpenEndedQuestions)
+        .where(and(...conditions))
+        .orderBy(sql`
+          CASE 
+            WHEN LOWER(${zuvyOpenEndedQuestions.question}) LIKE ${sql.raw(`'${searchTerm.toLowerCase()}%'`)} THEN 1
+            WHEN LOWER(${zuvyOpenEndedQuestions.question}) ~ ${sql.raw(`'\\m${searchTerm.toLowerCase()}'`)} THEN 
+              POSITION(${sql.raw(`'${searchTerm.toLowerCase()}'`)} IN LOWER(${zuvyOpenEndedQuestions.question})) + 1
+            ELSE 9999
+          END
+        `)
+        .limit(limit_)
+        .offset((pageNo - 1) * limit_);
+      
+      return { 
+        data: result, 
+        totalRows: Number(totalRows[0].count), 
+        totalPages: !Number.isNaN(limit_) ? Math.ceil(totalRows[0].count / limit_) : 1
+      };
+      
     } catch (err) {
       throw err;
     }
