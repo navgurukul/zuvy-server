@@ -480,7 +480,6 @@ export class ContentService {
   async getChapterDetailsById(chapterId: number, bootcampId: number, moduleId: number, topicId: number) {
     try {
       if (topicId == 6) {
-        console.log({ chapterId, bootcampId, moduleId, topicId })
         const chapterDetails = await db.query.zuvyOutsourseAssessments.findMany({
           where: (zuvyOutsourseAssessments, { eq }) => eq(zuvyOutsourseAssessments.chapterId, chapterId),
           with: {
@@ -1659,12 +1658,11 @@ const result = await db
         });
       }
       let startedAt = new Date().toISOString();
-      let submission;
-      submission = await db.select().from(zuvyAssessmentSubmission).where(sql`${zuvyAssessmentSubmission.userId} = ${id} AND ${zuvyAssessmentSubmission.assessmentOutsourseId} = ${assessmentOutsourseId} AND ${zuvyAssessmentSubmission.submitedAt} IS NULL`);
+      let submission = await db.select().from(zuvyAssessmentSubmission).where(sql`${zuvyAssessmentSubmission.userId} = ${id} AND ${zuvyAssessmentSubmission.assessmentOutsourseId} = ${assessmentOutsourseId} AND ${zuvyAssessmentSubmission.submitedAt} IS NULL`);
       if (submission.length == 0) {
         let insertAssessmentSubmission:any = { userId: id, assessmentOutsourseId, startedAt }
         submission = await db.insert(zuvyAssessmentSubmission).values(insertAssessmentSubmission).returning();
-      }
+      } 
 
       let formatedData = await this.formatedChapterDetails(assessment[0]);
 
