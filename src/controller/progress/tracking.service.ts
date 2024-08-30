@@ -984,7 +984,7 @@ export class TrackingService {
         }
     }catch(error)
     {
-
+      return [{message:error.message,statusCode: STATUS_CODES.BAD_REQUEST}]
     }
   }
 
