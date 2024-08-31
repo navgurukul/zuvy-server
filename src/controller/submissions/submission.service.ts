@@ -50,7 +50,7 @@ export class SubmissionService {
           count: sql<number>`cast(count(${zuvyBatchEnrollments.id}) as int)`,
         })
         .from(zuvyBatchEnrollments)
-        .where(eq(zuvyBatchEnrollments.bootcampId, bootcampId));
+        .where(sql`${zuvyBatchEnrollments.bootcampId} = ${bootcampId} AND ${zuvyBatchEnrollments.batchId} IS NOT NULL`);
 
       trackingData.forEach((course: any) => {
         course.moduleChapterData.forEach((chapterTracking) => {
@@ -88,7 +88,10 @@ export class SubmissionService {
               email: true,
             },
             with: {
-              studentCodeDetails: true,
+              studentCodeDetails: {
+                where: (practiceCode,{sql}) =>
+                  sql`${practiceCode.action} = 'submit' AND ${practiceCode.submissionId} IS NULL`
+              },
             },
           },
         },
@@ -103,14 +106,9 @@ export class SubmissionService {
           id: Number(statusCode['user']['id']),
           name: statusCode['user']['name'],
           emailId: statusCode['user']['email'],
-          noOfAttempts:
-            statusCode['user']['studentCodeDetails']?.['questionSolved'][
-              `${questionId}`
-            ]?.['token'].length,
+          noOfAttempts : statusCode['user']['studentCodeDetails']?.length,
           status:
-            statusCode['user']['studentCodeDetails']?.['questionSolved'][
-            `${questionId}`
-            ]?.['status'],
+            statusCode['user']['studentCodeDetails']?.some(submission => submission.status === 'Accepted') ? 'Accepted' : 'Not Accepted'
         };
       });
 
