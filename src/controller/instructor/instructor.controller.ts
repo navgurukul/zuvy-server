@@ -144,11 +144,18 @@ import { ErrorResponse, SuccessResponse } from 'src/errorHandler/handler';
     isArray: true,
     description: 'Array of batchIds',
   })
+  @ApiQuery({
+    name: 'sortBy',
+    required: false,
+    type: String,
+    description: 'Sort the classes ascending or descending',
+  })
   @ApiBearerAuth()
   async getAllCompletedClasses(
     @Query('limit') limit: number,
     @Query('offset') offset: number,
     @Query('weeks') weeks: number,
+    @Query('sortBy') sortBy: string,
     @Query('batchId', new ParseArrayPipe({ items: Number, optional: true })) batchId: number[] = [],
     @Req() req,
     @Res() res
@@ -159,6 +166,7 @@ import { ErrorResponse, SuccessResponse } from 'src/errorHandler/handler';
           limit,
           offset,
           weeks,
+          sortBy,
           batchId
         );
         if (err) {

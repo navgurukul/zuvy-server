@@ -937,16 +937,6 @@ export class CreateTypeDto{
 }
 
 export class formDto {
-  
-  // @ApiProperty({
-  //   type: Number,
-  //   example: 34,
-  //   required: true
-  // })
-  // @IsNumber()
-  // @IsNotEmpty()
-  // chapterId: number;
-
   @ApiProperty({
     type: String,
     example: 'What is your opinion about the course?',
@@ -1051,16 +1041,7 @@ export class editFormDto {
   })
   @IsNumber()
   id: number;
-
-  // @ApiProperty({
-  //   type: Number,
-  //   example: 34,
-  //   required: true
-  // })
-  // @IsNumber()
-  // @IsNotEmpty()
-  // chapterId: number;
-
+  
   @ApiProperty({
     type: String,
     example: 'What is your opinion about the course?',

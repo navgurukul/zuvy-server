@@ -59,19 +59,41 @@ export  const typeMappings = {
       defaultReturnValue: '0', // Default return value, modify as needed
   },
   javascript: {
-      int: 'number',
-      float: 'number',
-      double: 'number',
-      str: 'string',
-      bool: 'boolean',
-      arrayOfnum: 'number[]', // This is an example; it can be modified based on the arrayOfnum type
-      arrayOfStr: 'string[]', // This is an example; it can be modified based on the arrayOfStr type
-      returnType: 'number', // Default return type, modify as needed
-      defaultReturnValue: '0', // Default return value, modify as needed
-  }
+    int: 'number',
+    float: 'number',
+    double: 'number',
+    str: 'string',
+    bool: 'boolean',
+    arrayOfnum: 'number[]',
+    arrayOfStr: 'string[]',
+    returnType: 'number',
+    defaultReturnValue: '0',
+    object: 'object', // Added object data type
+    inputType: (type) => {
+      switch (type) {
+        case 'int':
+        case 'float':
+        case 'double':
+          return 'Number';
+        case 'str':
+          return 'String';
+        case 'bool':
+          return 'Boolean';
+        case 'arrayOfnum':
+          return 'Array(Number)';
+        case 'arrayOfStr':
+          return 'Array(String)';
+        case 'object':
+          return 'Object'; // Added case for object
+        default:
+          return 'String';
+      }
+    }
+  },
 };
 
 export async function generateTemplates(functionName, parameters) {
+  try {
   // Normalize the function name
   functionName = functionName.replace(/ /g, '_').toLowerCase();
   const templates = {};
@@ -193,33 +215,51 @@ public class Main {
     id: 63,
     name: 'JavaScript',
     template: Buffer.from(`
-function ${functionName}(${parameters.map(p => `_${p.parameterName}_`).join(', ')}) {
-  // Add your code here
-  return ${typeMappings['javascript']['defaultReturnValue']}; // Replace with actual return value
-}
-
-// Example usage
-const readline = require('readline');
-const rl = readline.createInterface({
-  input: process.stdin,
-  output: process.stdout
-});
-
-const inputs = [];
-rl.on('line', (line) => {
-  inputs.push(line);
-});
-
-rl.on('close', () => {
-  const ${parameters.map(p => `_${p.parameterName}_ = ${p.parameterType === 'array' ? 'inputs.shift().split(" ").map(Number)' : 'inputs.shift()'}`).join(',\n    ')}
+  function ${functionName}(${parameters.slice(0,2).map(p => `_${p.parameterName}_`).join(', ')}) {
+    // Add your code here
+    return ${typeMappings['javascript']['defaultReturnValue']}; // Replace with actual return value
+  }
   
-  const result = ${functionName}(${parameters.map(p => `_${p.parameterName}_`).join(', ')});
-  console.log(result);
-});
+  // Example usage
+  const readline = require('readline');
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout
+  });
+  
+  const inputs = [];
+  rl.on('line', (line) => {
+    inputs.push(line);
+  });
+  
+  rl.on('close', () => {
+    ${parameters.map(p => {
+      const inputType = typeMappings['javascript']['inputType'](p.parameterType);
+      if (inputType.startsWith('Array')) {
+        return `const _${p.parameterName}_ = inputs.shift().split(",").map(${inputType.slice(6, -1)});`;
+      } else if (p.parameterType === 'object') {
+        return `const _${p.parameterName}_ = JSON.parse(inputs.shift());`;
+      } else {
+        return `const _${p.parameterName}_ = ${inputType}(inputs.shift());`;
+      }
+    }).join('\n  ')}
+  
+    let result = ${functionName}(${parameters.slice(0,2).map(p => `_${p.parameterName}_`).join(', ')});
+    if (Array.isArray(result)) {
+      result = JSON.stringify(result);
+      const slicedResult = result.slice(1, -1);
+      console.log(slicedResult);
+    } else {
+      console.log(result);
+    }
+  });
     `).toString('base64')
   };
-
-  return templates;
+  return [null, templates];
+} catch (error) {
+  console.error(error);
+  return [error, null];
+}
 }
 
 

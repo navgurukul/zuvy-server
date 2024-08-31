@@ -1,28 +1,28 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { db } from '../../db/index';
-import { eq, sql, count, lte, desc } from 'drizzle-orm';
-// import { BatchesService } from '../batches/batch.service';
+import { sql } from 'drizzle-orm';
 import axios from 'axios';
 import { SubmitCodeDto, CreateProblemDto } from './dto/codingPlatform.dto';
 import * as _ from 'lodash';
 import {
   zuvyCodingQuestions,
   zuvyPracticeCode,
-  zuvyLanguages,
   zuvyTestCases,
   zuvyTestCasesSubmission
 } from '../../../drizzle/schema';
 import { generateTemplates } from '../../helpers/index';
 import { STATUS_CODES } from "../../helpers/index";
-import { language } from 'googleapis/build/src/apis/language';
+import { helperVariable } from 'src/constants/helper';
 
-const { ZUVY_CONTENT_URL, RAPID_BASE_URL, RAPID_API_KEY, RAPID_HOST } = process.env; // INPORTING env VALUSE ZUVY_CONTENT
+// Difficulty Points Mapping
+let { ACCEPTED, SUBMIT, RUN, WAIT_API_RESPONSE } = helperVariable;
+const { RAPID_BASE_URL, RAPID_API_KEY, RAPID_HOST } = process.env; // INPORTING env VALUSE ZUVY_CONTENT
 
 @Injectable()
 export class CodingPlatformService {
   async submitCodeBatch(sourceCode: SubmitCodeDto, codingOutsourseId: number, action: string): Promise<any> {
     let testCase;
-    if ('run' === action) {
+    if (RUN === action) {
       testCase = 3;
     } else {
       testCase = 0;
@@ -35,11 +35,11 @@ export class CodingPlatformService {
     const preparedSubmissions = testCasesArray.map((testCase) => {
       var input = [];
       var output = [];
-      if (action == 'submit') {
+      if (action == SUBMIT) {
         input.push(...testCase.inputs.map(input => input.parameterValue));
         output.push(testCase.expectedOutput.parameterValue);
       }
-      else if (action == 'run') {
+      else if (action == RUN) {
         input.push(...testCase.inputs.map(input => input.parameterValue));
         output.push(testCase.expectedOutput.parameterValue);
       }
@@ -56,16 +56,11 @@ export class CodingPlatformService {
     });
     const options = {
       method: 'POST',
-      url: `${RAPID_BASE_URL}/submissions/batch`,
-      params: {
-        base64_encoded: 'true',
-        fields: '*'
-      },
+      url: `${RAPID_BASE_URL}/submissions/batch?base64_encoded=true&wait=true`,
       headers: {
         'content-type': 'application/json',
-        'Content-Type': 'application/json',
         'X-RapidAPI-Key': RAPID_API_KEY,
-        'X-RapidAPI-Host': 'judge0-ce.p.rapidapi.com'
+        'X-RapidAPI-Host': RAPID_HOST
       },
       data: {
         submissions: preparedSubmissions
@@ -80,19 +75,20 @@ export class CodingPlatformService {
       await new Promise<void>(resolve => setTimeout(async () => {
         [err, submissionInfo] = await this.getCodeInfo(tokens);
         resolve();
-      }, 1090));
+      }, WAIT_API_RESPONSE));
 
       if (err) {
         return [err];
       }
-      let testSubmission = testCasesArray?.map((testCase, index) => {
+      let testSubmission = testCasesArray?.map((testCase, index) => { 
         return {
           testcastId: testCase?.id,
           status: submissionInfo.data.submissions[index].status?.description,
           token: submissionInfo.data.submissions[index]?.token,
           stdOut: submissionInfo.data.submissions[index]?.stdout,
-          input: testCase?.inputs,
-          output: testCase?.expectedOutput
+          stderr: submissionInfo.data.submissions[index]?.stderr,
+          memory: submissionInfo.data.submissions[index]?.memory,
+          time: submissionInfo.data.submissions[index]?.time,
         }
       })
       return [null, { statusCode: STATUS_CODES.OK, message: 'Code submitted successfully', data: testSubmission }];
@@ -103,28 +99,37 @@ export class CodingPlatformService {
 
   async submitPracticeCode(questionId:number, sourceCode, action, userId, submissionId, codingOutsourseId): Promise<any> {
     try {
-      if (!['run', 'submit'].includes(action.toLowerCase())) {
+      if (![RUN, SUBMIT].includes(action.toLowerCase())) {
         return [{ statusCode: STATUS_CODES.BAD_REQUEST, message: 'Invalid action' }];
       }
       let [err, testcasesSubmission] = await this.submitCodeBatch(sourceCode, questionId, action);
       if (err) {
         return [err];
       }
-      let insertValues: any = { status: 'Accepted', sourceCode: sourceCode.sourceCode };
+      if (testcasesSubmission.data[0].stderr && action != SUBMIT) {
+        return [null,{ statusCode: STATUS_CODES.CONFLICT, message:  `${action} ${testcasesSubmission.data[0].status}`, data: [testcasesSubmission.data[0]]}];
+      }
+      let insertValues
+      if (testcasesSubmission.data.length >= 0) {
+        insertValues = { status: ACCEPTED, sourceCode: sourceCode.sourceCode };
+      } else {
+        insertValues = { status: 'Error', sourceCode: sourceCode.sourceCode };
+      }
+      
       for (let testSub of testcasesSubmission.data) {
-        if (testSub.status !== 'Accepted') {
-          insertValues["status"] = testSub.status;
+        if (testSub.status !== ACCEPTED) {
+          insertValues["status"] = testSub.status
           break;
         }
       }
-      if (action === 'run') {
+      if (action === RUN) {
         // i want to update the last submission sourceCode where last submission sourceCode 
         let queryString = sql`${zuvyPracticeCode.questionId} = ${questionId} AND ${zuvyPracticeCode.userId} = ${userId} AND ${zuvyPracticeCode.action} = ${action}`
         if (submissionId){
           queryString = sql`${queryString} AND ${zuvyPracticeCode.submissionId} = ${submissionId} AND ${zuvyPracticeCode.codingOutsourseId} = ${codingOutsourseId}`;
         }
         let response = await db.query.zuvyPracticeCode.findMany({
-          where: (zuvyPracticeCode, { sql }) => queryString,
+          where: queryString,
           columns: {
             id: true,
             status: true
@@ -144,7 +149,8 @@ export class CodingPlatformService {
         } else {
           await db.update(zuvyPracticeCode).set(insertValues).where(sql`${zuvyPracticeCode.id} = ${response[0].id}`).returning();
         }
-        return [null, testcasesSubmission.data];
+        return [null,{ statusCode: STATUS_CODES.OK, message: `${action} ${testcasesSubmission.data[0].status}`, data: testcasesSubmission.data}];
+
       }
       insertValues["userId"] = userId;
       insertValues["questionId"] = questionId;
@@ -163,16 +169,14 @@ export class CodingPlatformService {
           testcastId: testcase.testcastId,
           status: testcase.status,
           token: testcase.token,
-          stdOut: testcase.stdOut,
-          input: testcase.input,
-          output: testcase.output,
+          stdout: testcase.stdOut,
           memory: testcase.memory,
           time: testcase.time,
         }
       })
       let test_Submission = await db.insert(zuvyTestCasesSubmission).values(testcasesSubmissionInsert).returning();
-      if (testcasesSubmission.length !== 0) {
-        return [null, testcasesSubmission];
+      if (test_Submission.length !== 0) {
+        return [null,{ statusCode: STATUS_CODES.OK, message: `${action} ${testcasesSubmission.data[0].status}`, data: test_Submission}];
       } else {
         return [{ statusCode: STATUS_CODES.BAD_REQUEST, message: 'Error in submitting code' }];
       }
@@ -186,12 +190,12 @@ export class CodingPlatformService {
     try {
       let queryString;
       if (isNaN(submissionId)) {
-        queryString = sql`${zuvyPracticeCode.questionId} = ${questionId} AND ${zuvyPracticeCode.userId} = ${userId}`
+        queryString = sql`${zuvyPracticeCode.questionId} = ${questionId} AND ${zuvyPracticeCode.userId} = ${userId} AND ${zuvyPracticeCode.submissionId} IS NULL`
       } else {
         queryString = sql`${zuvyPracticeCode.questionId} = ${questionId} AND ${zuvyPracticeCode.userId} = ${userId} AND ${zuvyPracticeCode.submissionId} = ${submissionId} AND ${zuvyPracticeCode.codingOutsourseId} = ${codingOutsourseId}`
       }
       let response = await db.query.zuvyPracticeCode.findMany({
-        where: (zuvyPracticeCode, { sql }) => queryString,
+        where: queryString,
         columns: {
           id: true,
           status: true,
@@ -201,41 +205,24 @@ export class CodingPlatformService {
           codingOutsourseId: true,
           createdAt: true,
           sourceCode: true
-
         },
         with:{
-          TestCasesSubmission: true
+          questionDetail:true,
+          TestCasesSubmission: {
+            with: {
+              testCases: true,
+            }
+          }
         },
         limit: 1,
         orderBy: (zuvyPracticeCode, { sql }) => sql`${zuvyPracticeCode.id} DESC`,
-
       });
-
       if (response.length === 0) {
         return [{ statusCode: STATUS_CODES.NOT_FOUND, message: 'No practice code available for the given question' }];
       } else {
-        let [err, questionInfo] = await this.getCodingQuestion(questionId, false);
-        if (err) {
-          return [err];
-        }
-        const [erroSubmissions, submissions ] = await this.getTestCasesSubmission(response[0].TestCasesSubmission);
-        if (erroSubmissions){
-          return [erroSubmissions]
-        }
-      let status = "Accepted";
-
-      let testcasesSubmission = submissions.data
-      for (let testSub of testcasesSubmission) {
-        if (testSub.status !== 'Accepted') {
-          status = testSub.status;
-          break;
-        }
+        return [null, { statusCode: STATUS_CODES.OK, message: 'Practice code fetched successfully', data:{...response[0]} }];
       }
-      questionInfo.data.status = status;
-      return [null, { statusCode: STATUS_CODES.OK, message: 'Practice code fetched successfully', data:{...questionInfo.data, testcasesSubmission} }];
-    }
     } catch (error) {
-      console.log({error});
       return [{ statusCode: STATUS_CODES.BAD_REQUEST, message: error.message }];
     }
   }
@@ -245,7 +232,7 @@ export class CodingPlatformService {
       const submissionsInfoPromises = TestCasesSubmission.map(async (submission: any) => {
         const options = {
           method: 'GET',
-          url: `${RAPID_BASE_URL}/submissions/${submission.token}&base64_encoded=false&fields=token,stdout,stderr,status_id,language_id,source_code`,
+          url: `${RAPID_BASE_URL}/submissions/${submission.token}?base64_encoded=true&fields=*`,
           headers: {
             'X-RapidAPI-Key': RAPID_API_KEY,
             'X-RapidAPI-Host': RAPID_HOST
@@ -271,7 +258,7 @@ export class CodingPlatformService {
   async getCodeInfo(tokens) {
     const options = {
       method: 'GET',
-      url: `${RAPID_BASE_URL}/submissions/batch?tokens=${tokens.join(',')}&base64_encoded=false&fields=token,stdout,stderr,status_id,language_id,source_code`,
+      url: `${RAPID_BASE_URL}/submissions/batch?tokens=${tokens.join(',')}&base64_encoded=false&fields=token,stdout,stderr,status_id,language_id,source_code,status,memory,time,`,
 
       headers: {
         'X-RapidAPI-Key': RAPID_API_KEY,
@@ -386,7 +373,8 @@ export class CodingPlatformService {
       }
 
       if (withTemplate) {
-        question[0]["templates"] = await generateTemplates(question[0].title, question[0].testCases[0].inputs);
+        let [errorGenerateTemplate, templates] = await generateTemplates(question[0].title, question[0].testCases[0].inputs);
+        question[0]["templates"] = templates;
       }
       return [null, { message: 'Coding question fetched successfully', data: question[0], statusCode: STATUS_CODES.OK }];
     } catch (error) {
@@ -422,7 +410,8 @@ export class CodingPlatformService {
   async addTestCase(questionId, updateTestCaseDto): Promise<any> {
     try {
       const { inputs, expectedOutput } = updateTestCaseDto
-      const testCase = await db.insert(zuvyTestCases).values({ questionId, inputs, expectedOutput }).returning();
+      let insertTestcase:any = { questionId, inputs, expectedOutput };
+      const testCase = await db.insert(zuvyTestCases).values(insertTestcase).returning();
       return [null, { message: "added the test case", data: testCase[0] }, STATUS_CODES.CREATED];
     } catch (error) {
       return [[{ message: error.message, statusCode: STATUS_CODES.BAD_REQUEST }]];
@@ -468,18 +457,6 @@ export class CodingPlatformService {
       if (submission.length === 0) {
         return [{ message: 'No submission available for the given submissionId', statusCode: STATUS_CODES.NOT_FOUND }];
       }
-      // const [error, submissions] = await this.getTestCasesSubmission(submission[0].TestCasesSubmission);
-      // if (error) {
-      //   return [error];
-      // }
-      // //  token 
-      // let token = submissions.data[0].token;
-      // let [err, sourceCode] = await this.getSourceCodeByToken(token);
-      // if (err) {
-      //   return [err];
-      // }
-      // submission[0].TestCasesSubmission = submissions.data;
-      // submission[0]["sourceCode"] = sourceCode.data.source_code;
       return [null, { message: 'All submission by submission id', data: submission[0], statusCode: STATUS_CODES.OK }];
     } catch (error) {
       return [{ message: error.message, statusCode: STATUS_CODES.BAD_REQUEST }];
@@ -488,7 +465,7 @@ export class CodingPlatformService {
   async getSubmissionsId(questionId: number): Promise<any> {
     try {
       const submissions = await db.query.zuvyPracticeCode.findMany({
-        where: (zuvyPracticeCode, { sql }) => sql`${zuvyPracticeCode.questionId} = ${questionId} AND ${zuvyPracticeCode.action} = 'submit'`,
+        where: (zuvyPracticeCode, { sql }) => sql`${zuvyPracticeCode.questionId} = ${questionId} AND ${zuvyPracticeCode.action} = ${SUBMIT}`,
         columns: {
           id: true,
           status: true,

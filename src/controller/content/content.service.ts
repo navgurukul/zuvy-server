@@ -93,177 +93,6 @@ export class ContentService {
     return modules__;
   }
 
-  // async getModules(bootcamp_id, user_id) {
-  //   try {
-  //     let respo = await axios.get(
-  //       ZUVY_CONTENT_URL + `/${bootcamp_id}?populate=zuvy_modules`,
-  //     );
-  //     let modules = respo.data.data.attributes.zuvy_modules.data;
-
-  //     // if (user_id){
-  //     let modulePromises = modules.map(async (m) => {
-  //       if (user_id) {
-  //         let getModuleTracking = await db
-  //           .select()
-  //           .from(moduleTracking)
-  //           .where(
-  //             sql`${moduleTracking.userId} = ${user_id} and ${moduleTracking.moduleId} = ${m.id}`,
-  //           );
-  //         if (getModuleTracking.length == 0) {
-  //           m.attributes['progress'] = 0;
-  //         } else {
-  //           m.attributes['progress'] = getModuleTracking[0].progress || 0;
-  //         }
-  //       }
-  //       return {
-  //         id: m.id,
-  //         ...m.attributes,
-  //       };
-  //     });
-
-  //     modules = await Promise.all(modulePromises);
-  //     modules = await this.lockContent(modules);
-  //     // }
-  //     return [null, modules];
-  //   } catch (err) {
-  //     error(`Error posting data: ${err.message}`);
-  //     return [{ status: 'error', message: err.message, code: 500 }, null];
-  //   }
-  // }
-  // async getChapter(module_id: number, user_id: number) {
-  //   try {
-  //     const response = await axios.get(
-  //       `${ZUVY_CONTENTS_API_URL}/zuvy-modules/${module_id}?populate=zuvy_articles&populate=zuvy_mcqs.quiz.qz&populate=zuvy_contents`,
-  //     );
-  //     const zuvy_articles = response.data.data.attributes.zuvy_articles.data;
-  //     const zuvy_mcqs = response.data.data.attributes.zuvy_mcqs;
-  //     const zuvy_contents = response.data.data.attributes.zuvy_contents.data[0];
-  //     delete response.data.data.attributes.zuvy_contents;
-
-  //     interface QuizItem {
-  //       id: number;
-  //       question: string;
-  //       qz: {
-  //         number: number;
-  //         value: { children: { text: string }[] }[];
-  //         correct: boolean;
-  //       }[];
-  //     }
-
-  //     interface McqItem {
-  //       attributes: any;
-  //       id: number;
-  //       label: string;
-  //       quiz: QuizItem[];
-  //     }
-  //     const formattedData = zuvy_mcqs.data.map((item: McqItem) => {
-  //       const questions = item.attributes.quiz.map((quizItem: QuizItem) => {
-  //         const options = quizItem.qz.map((q) => ({
-  //           text: q.value[0].children[0].text,
-  //           correct: q.correct,
-  //           number: q.number,
-  //         }));
-  //         return { id: quizItem.id, question: quizItem.question, options };
-  //       });
-  //       return {
-  //         id: item.id,
-  //         label: item.attributes.label,
-  //         index: item.attributes.index,
-  //         questions,
-  //       };
-  //     });
-  //     const formattedArticles = zuvy_articles.map((article: any) => ({
-  //       id: article.id,
-  //       ...article.attributes,
-  //     }));
-
-  //     let chapter = [...formattedArticles, ...formattedData];
-
-  //     if (user_id) {
-  //       let [error, bootcampLock] = await this.getModules(
-  //         zuvy_contents.id,
-  //         user_id,
-  //       );
-  //       if (error) {
-  //         return [error, null];
-  //       }
-  //       let hasUnlockedModule = bootcampLock.some(
-  //         (b) => b.id == module_id && b.lock == false,
-  //       );
-
-  //       if (hasUnlockedModule) {
-  //         return [
-  //           {
-  //             status: 'error',
-  //             message:
-  //               "you can't open this module because you haven't completed the last module",
-  //             code: 402,
-  //           },
-  //         ];
-  //       }
-  //       const getModuleTracking = await db
-  //         .select()
-  //         .from(moduleTracking)
-  //         .where(
-  //           sql`${moduleTracking.userId} = ${user_id} and ${moduleTracking.moduleId} = ${module_id}`,
-  //         );
-  //       if (getModuleTracking.length == 0) {
-  //         chapter['progress'] = 0;
-  //       } else {
-  //         chapter['progress'] = getModuleTracking[0].progress || 0;
-  //       }
-
-  //       let promises = chapter.map(async (c) => {
-  //         if (c.label == 'article') {
-  //           let getArticleTracking = await db
-  //             .select()
-  //             .from(articleTracking)
-  //             .where(
-  //               sql`${articleTracking.userId} = ${user_id} and ${articleTracking.moduleId} = ${module_id} and ${articleTracking.articleId} = ${c.id}`,
-  //             );
-  //           if (getArticleTracking.length == 0) {
-  //             c['completed'] = false;
-  //           } else {
-  //             c['completed'] = true;
-  //           }
-  //         } else if (c.label == 'assignment') {
-  //           let getAssignmentSubmission = await db
-  //             .select()
-  //             .from(assignmentSubmission)
-  //             .where(
-  //               sql`${assignmentSubmission.userId} = ${user_id} and ${assignmentSubmission.moduleId} =  ${module_id} and ${assignmentSubmission.assignmentId} = ${c.id}`,
-  //             );
-  //           if (getAssignmentSubmission.length == 0) {
-  //             c['completed'] = false;
-  //           } else {
-  //             c['completed'] = true;
-  //           }
-  //         } else if (c.label == 'quiz') {
-  //           let getQuizSubmission = await db
-  //             .select()
-  //             .from(quizTracking)
-  //             .where(
-  //               sql`${quizTracking.userId} = ${user_id} and ${quizTracking.moduleId} = ${module_id} and ${quizTracking.quizId} = ${c.id}`,
-  //             );
-  //           if (getQuizSubmission.length == 0) {
-  //             c['completed'] = false;
-  //           } else {
-  //             c['completed'] = true;
-  //           }
-  //         }
-  //         return c;
-  //       });
-
-  //       chapter = await Promise.all(promises);
-  //     }
-
-  //     return [null, chapter];
-  //   } catch (err) {
-  //     error(`Error posting data: ${err.message}`);
-  //     return [{ status: 'error', message: err.message, code: 500 }, null];
-  //   }
-  // }
-
   async createModuleForCourse(bootcampId: number, module: moduleDto, typeId: number) {
     try {
       const noOfModuleOfBootcamp = await db
@@ -448,14 +277,29 @@ export class ContentService {
       } else {
         chapterData = { title: `Chapter ${order}`, moduleId, topicId, order };
       }
-
       const chapter = await db
         .insert(zuvyModuleChapter)
         .values(chapterData)
         .returning();
-
+      if (chapter.length == 0) {
+        return {
+          status: 'error',
+          code: 400,
+          message: 'Not able to create chapter for this module',
+          module: chapter,
+        };
+      }
       if (topicId == 6) {
-        await db.insert(zuvyOutsourseAssessments).values({ assessmentId: newAssessment[0].id, moduleId, bootcampId, chapterId: chapter[0].id, order }).returning();
+        let insertedAssessmentOutsourse:any = { assessmentId: newAssessment[0].id, moduleId, bootcampId, chapterId: chapter[0].id, order }
+        let outsourseAssessmentData = await db.insert(zuvyOutsourseAssessments).values(insertedAssessmentOutsourse).returning();
+        if (outsourseAssessmentData.length == 0) {
+          return {
+            status: 'error',
+            code: 400,
+            message: 'Not able to create outsourse assessment for this chapter',
+            module: chapter,
+          };
+        }
       }
 
       if (topicId === 1) {
@@ -477,6 +321,7 @@ export class ContentService {
         module: chapter,
       };
     } catch (err) {
+      Logger.error({err})
       throw err;
     }
   }
@@ -578,7 +423,7 @@ export class ContentService {
       let modules = data.map((module: any) => {
         return {
           id: module.id,
-          name: module.name,
+          name: module['projectData'].length == 0 ? module.name :  module['projectData'][0]['title'],
           description: module.description,
           typeId: module.typeId,
           order: module.order,
@@ -745,6 +590,7 @@ export class ContentService {
             }
           },
         });
+        console.log({ chapterDetails })
         chapterDetails[0]["assessmentOutsourseId"] = chapterDetails[0].id
         let formatedData = this.formatedChapterDetails(chapterDetails[0])
         return formatedData;
@@ -859,21 +705,6 @@ export class ContentService {
       } else {
         return 'No Chapter found';
       }
-      // const chapterDetails = await db.query.zuvyModuleChapter.findMany({
-      //   where: (moduleChapter, { eq }) => eq(moduleChapter.id, chapterId),
-      //   with: {
-      //     quizTrackingDetails: {
-      //       where: (moduleQuiz, { eq }) => eq(moduleQuiz.bootcampId, bootcampId),
-      //     },
-      //     OpenEndedQuestion: {
-      //       where: (openEndedQuestion, { eq }) => eq(openEndedQuestion.bootcampId, bootcampId),
-      //     },
-      //     CodingQuestion: {
-      //       where: (codingQuestion, { eq }) => eq(codingQuestion.bootcampId, bootcampId),
-      //     },
-      //   },
-      // });
-      // return chapterDetails
     } catch (err) {
       throw err;
     }
@@ -941,12 +772,12 @@ export class ContentService {
 
   async updateCodingProblemForModule(
     questionId: number,
-    codingProblem: UpdateProblemDto,
+    codingProblem: UpdateProblemDto & { usage?: string },
   ) {
     try {
       let examples = [];
       let testCases = [];
-
+  
       if (codingProblem.examples) {
         for (let i = 0; i < codingProblem.examples.length; i++) {
           examples.push(codingProblem.examples[i].inputs);
@@ -961,7 +792,7 @@ export class ContentService {
       }
       const updatedQuestion = await db
         .update(zuvyCodingQuestions)
-        .set(codingProblem)
+        .set({ usage: sql`${zuvyCodingQuestions.usage}::numeric - 1`, ...codingProblem })
         .where(eq(zuvyCodingQuestions.id, questionId))
         .returning();
       if (updatedQuestion.length > 0) {
@@ -1074,14 +905,10 @@ export class ContentService {
           const earlierCodingId = chapter[0].codingQuestions;
 
           if (earlierCodingId !== editData.codingQuestions) {
+            let updatedCodingQuestion:any = { usage: sql`${zuvyCodingQuestions.usage}::numeric - 1` }
             await db
               .update(zuvyCodingQuestions)
-              .set({ usage: sql`${zuvyCodingQuestions.usage}::numeric - 1` })
-              .where(eq(zuvyCodingQuestions.id, earlierCodingId));
-
-            await db
-              .update(zuvyCodingQuestions)
-              .set({ usage: sql`${zuvyCodingQuestions.usage}::numeric + 1` })
+              .set(updatedCodingQuestion)
               .where(eq(zuvyCodingQuestions.id, editData.codingQuestions));
           }
         } else if (editData.formQuestions) {
@@ -1102,15 +929,18 @@ export class ContentService {
               )
               : editData.formQuestions;
           if (remainingFormIds.length > 0) {
+            let updateModuleForm:any = { usage: sql`${zuvyModuleForm.usage}::numeric - 1` }
+
             await db
               .update(zuvyModuleForm)
-              .set({ usage: sql`${zuvyModuleForm.usage}::numeric - 1` })
+              .set(updateModuleForm)
               .where(sql`${inArray(zuvyModuleForm.id, remainingFormIds)}`);
           }
           if (toUpdateIds.length > 0) {
+            let updateModuleForm:any = { usage: sql`${zuvyModuleForm.usage}::numeric + 1` }
             await db
               .update(zuvyModuleForm)
-              .set({ usage: sql`${zuvyModuleForm.usage}::numeric + 1` })
+              .set(updateModuleForm)
               .where(sql`${inArray(zuvyModuleForm.id, toUpdateIds)}`);
           }
           if (editData.formQuestions.length == 0) {
@@ -1177,6 +1007,7 @@ export class ContentService {
 
       return newAssessment;
     } catch (err) {
+      console.error({err});
       throw err;
     }
   }
@@ -1184,8 +1015,21 @@ export class ContentService {
   async editAssessment(
     assessmentOutsourseId: number,
     assessmentBody: CreateAssessmentBody,
+    chapterId:number
   ) {
     try {
+      if(assessmentBody.title)
+        {
+          const updatedChapterName = await db.update(zuvyModuleChapter).set({title:assessmentBody.title}).where(eq(zuvyModuleChapter.id,chapterId)).returning();
+          if(updatedChapterName.length == 0)
+            {
+              throw ({
+                status: 'error',
+                statusCode: 404,
+                message: 'Chapter title not updated properly.Please try again',
+              });
+            }
+        }
       const assessment = await db.query.zuvyOutsourseAssessments.findMany({
         where: (zuvyOutsourseAssessments, { eq }) =>
           eq(zuvyOutsourseAssessments.id, assessmentOutsourseId),
@@ -1242,7 +1086,8 @@ export class ContentService {
         }
 
         // Update assessment data
-        let updatedOutsourseAssessment = await db.update(zuvyOutsourseAssessments).set(OutsourseAssessmentData__).where(eq(zuvyOutsourseAssessments.id, assessmentOutsourseId)).returning();
+        let updatedOutsourse:any = {...OutsourseAssessmentData__}
+        let updatedOutsourseAssessment = await db.update(zuvyOutsourseAssessments).set(updatedOutsourse).where(eq(zuvyOutsourseAssessments.id, assessmentOutsourseId)).returning();
 
         let updatedAssessment = await db
           .update(zuvyModuleAssessment)
@@ -1259,7 +1104,7 @@ export class ContentService {
           let createZOMQ = await db.insert(zuvyOutsourseQuizzes).values(mcqArray).returning();
           if (createZOMQ.length > 0) {
             const toUpdateIds = createZOMQ.filter((c) => c.quiz_id).map((c) => c.quiz_id);
-            await db
+            let modelsData = await db
               .update(zuvyModuleQuiz)
               .set({ usage: sql`${zuvyModuleQuiz.usage}::numeric + 1` })
               .where(sql`${inArray(zuvyModuleQuiz.id, toUpdateIds)}`);
@@ -1270,9 +1115,9 @@ export class ContentService {
           let createZOOQ = await db.insert(zuvyOutsourseOpenEndedQuestions).values(openEndedQuestionsArray).returning();
           if (createZOOQ.length > 0) {
             const toUpdateIds = createZOOQ.filter((c) => c.openEndedQuestionId).map((c) => c.openEndedQuestionId);
-            await db
-              .update(zuvyOpenEndedQuestions)
-              .set({ usage: sql`${zuvyOpenEndedQuestions.usage}::numeric + 1` })
+            let updateOpendEndedQuestions:any = { usage: sql`${zuvyOpenEndedQuestions.usage}::numeric + 1` }
+            await db.update(zuvyOpenEndedQuestions)
+              .set(updateOpendEndedQuestions)
               .where(sql`${inArray(zuvyOpenEndedQuestions.id, toUpdateIds)}`);
           }
         }
@@ -1281,9 +1126,10 @@ export class ContentService {
           let createZOCQ = await db.insert(zuvyOutsourseCodingQuestions).values(codingProblemsArray).returning();
           if (createZOCQ.length > 0) {
             const toUpdateIds = createZOCQ.filter((c) => c.codingQuestionId).map((c) => c.codingQuestionId);
+            let updateCodingQuestions:any = { usage: sql`${zuvyCodingQuestions.usage}::numeric + 1` }
             await db
               .update(zuvyCodingQuestions)
-              .set({ usage: sql`${zuvyCodingQuestions.usage}::numeric + 1` })
+              .set(updateCodingQuestions)
               .where(sql`${inArray(zuvyCodingQuestions.id, toUpdateIds)}`);
           }
         }
@@ -1382,26 +1228,40 @@ export class ContentService {
     searchTerm: string = '',
   ) {
     try {
-      let queryString;
-      if (!Number.isNaN(tagId) && difficulty == undefined) {
-        queryString = sql`${zuvyModuleQuiz.tagId} = ${tagId}`;
-      } else if (Number.isNaN(tagId) && difficulty != undefined) {
-        queryString = sql`${zuvyModuleQuiz.difficulty} = ${difficulty}`;
-      } else if (!Number.isNaN(tagId) && difficulty != undefined) {
-        queryString = and(
-          eq(zuvyModuleQuiz.difficulty, difficulty),
-          eq(zuvyModuleQuiz.tagId, tagId),
-        );
+      let conditions = [];
+
+    if (!Number.isNaN(tagId)) {
+     conditions.push(eq(zuvyModuleQuiz.tagId, tagId));
+     }
+
+    if (difficulty !== undefined) {
+     conditions.push(eq(zuvyModuleQuiz.difficulty, difficulty));
       }
-      const result = await db
-        .select()
+
+      if (searchTerm) {
+        conditions.push(
+    sql`LOWER(${zuvyModuleQuiz.question}) ~ ${sql.raw(`'\\m${searchTerm.toLowerCase()}'`)}`
+      );
+     }
+
+       const result = await db
+       .select({
+         ...getTableColumns(zuvyModuleQuiz),
+           matchPosition: sql<number>`
+             CASE
+             WHEN LOWER(${zuvyModuleQuiz.question}) LIKE ${sql.raw(`'${searchTerm.toLowerCase()}%'`)} THEN 0
+             WHEN LOWER(${zuvyModuleQuiz.question}) ~ ${sql.raw(`'\\m${searchTerm.toLowerCase()}'`)} THEN 
+             POSITION(
+              ${sql.raw(`'${searchTerm.toLowerCase()}'`)} IN LOWER(${zuvyModuleQuiz.question})
+             ) - 1
+             ELSE 9999 -- Use a large number for non-matching cases to push them to the end
+             END
+          `.as('match_position')
+        })
         .from(zuvyModuleQuiz)
-        .where(
-          and(
-            queryString,
-            sql`((LOWER(${zuvyModuleQuiz.question}) LIKE '%' || ${searchTerm.toLowerCase()} || '%'))`,
-          ),
-        );
+        .where(and(...conditions))
+        .orderBy(sql`match_position`);
+
       return result;
     } catch (err) {
       throw err;
@@ -1414,27 +1274,57 @@ export class ContentService {
     searchTerm: string = '',
   ) {
     try {
-      let queryString;
-      if (!Number.isNaN(tagId) && difficulty == undefined) {
-        queryString = sql`${zuvyCodingQuestions.tagId} = ${tagId}`;
-      } else if (Number.isNaN(tagId) && difficulty != undefined) {
-        queryString = sql`${zuvyCodingQuestions.difficulty} = ${difficulty}`;
-      } else if (!Number.isNaN(tagId) && difficulty != undefined) {
-        queryString = and(
-          eq(zuvyCodingQuestions.difficulty, difficulty),
-          eq(zuvyCodingQuestions.tagId, tagId),
+      let conditions = [];
+
+      if (!Number.isNaN(tagId)) {
+        conditions.push(eq(zuvyCodingQuestions.tagId, tagId));
+      }
+      
+      if (difficulty !== undefined) {
+        conditions.push(eq(zuvyCodingQuestions.difficulty, difficulty));
+      }
+      
+      if (searchTerm) {
+        conditions.push(
+          sql`LOWER(${zuvyCodingQuestions.title}) ~ ${sql.raw(`'\\m${searchTerm.toLowerCase()}'`)}`
         );
       }
-      const result = await db
-        .select()
-        .from(zuvyCodingQuestions)
-        .where(
-          and(
-            queryString,
-            sql`((LOWER(${zuvyCodingQuestions.title}) LIKE '%' || ${searchTerm.toLowerCase()} || '%'))`,
-          ),
-        );
-      return result;
+      
+      const question = await db.query.zuvyCodingQuestions.findMany({
+        where: and(...conditions),
+        columns: {
+          id: true,
+          title: true,
+          description: true,
+          difficulty: true,
+          constraints: true,
+          content: true,
+          tagId: true,
+          createdAt: true,
+        },
+        with: {
+          testCases: {
+            columns: {
+              id: true,
+              inputs: true,
+              expectedOutput: true,
+            }
+          }
+        },
+        orderBy: (zuvyCodingQuestions, { sql }) => [
+          sql`
+            CASE 
+              WHEN LOWER(${zuvyCodingQuestions.title}) LIKE ${sql.raw(`'${searchTerm.toLowerCase()}%'`)} THEN 1
+              WHEN LOWER(${zuvyCodingQuestions.title}) ~ ${sql.raw(`'\\m${searchTerm.toLowerCase()}'`)} THEN 
+                POSITION(${sql.raw(`'${searchTerm.toLowerCase()}'`)} IN LOWER(${zuvyCodingQuestions.title})) + 1
+              ELSE 9999
+            END
+          `
+        ],
+      });
+      
+      return question;
+      
     } catch (err) {
       throw err;
     }
@@ -1719,42 +1609,54 @@ export class ContentService {
     limit_: number
   ) {
     try {
-      let queryString;
-      if (!Number.isNaN(tagId) && difficulty == undefined) {
-        queryString = sql`${zuvyOpenEndedQuestions.tagId} = ${tagId}`;
-      } else if (Number.isNaN(tagId) && difficulty != undefined) {
-        queryString = sql`${zuvyOpenEndedQuestions.difficulty} = ${difficulty}`;
-      } else if (!Number.isNaN(tagId) && difficulty != undefined) {
-        queryString = and(
-          eq(zuvyOpenEndedQuestions.difficulty, difficulty),
-          eq(zuvyOpenEndedQuestions.tagId, tagId),
+      let conditions = [];
+
+      if (!Number.isNaN(tagId)) {
+        conditions.push(eq(zuvyOpenEndedQuestions.tagId, tagId));
+      }
+      
+      if (difficulty !== undefined) {
+        conditions.push(eq(zuvyOpenEndedQuestions.difficulty, difficulty));
+      }
+      if (searchTerm) {
+        conditions.push(
+          sql`LOWER(${zuvyOpenEndedQuestions.question}) ~ ${sql.raw(`'\\m${searchTerm.toLowerCase()}'`)}`
         );
       }
+      
       const totalRows = await db
-        .select()
+        .select({ count: sql<number>`count(*)` })
         .from(zuvyOpenEndedQuestions)
-        .where(
-          and(
-            queryString,
-            sql`((LOWER(${zuvyOpenEndedQuestions.question}) LIKE '%' || ${searchTerm.toLowerCase()} || '%'))`,
-          ),
-        )
+        .where(and(...conditions))
         .execute();
+      
 
       const result = await db
         .select()
         .from(zuvyOpenEndedQuestions)
-        .where(
-          and(
-            queryString,
-            sql`((LOWER(${zuvyOpenEndedQuestions.question}) LIKE '%' || ${searchTerm.toLowerCase()} || '%'))`,
-          ),
-        ).offset(pageNo).limit(limit_);
-      return { data: result, totalRows: totalRows.length, totalPages: Math.ceil(totalRows.length / limit_) };
+        .where(and(...conditions))
+        .orderBy(sql`
+          CASE 
+            WHEN LOWER(${zuvyOpenEndedQuestions.question}) LIKE ${sql.raw(`'${searchTerm.toLowerCase()}%'`)} THEN 1
+            WHEN LOWER(${zuvyOpenEndedQuestions.question}) ~ ${sql.raw(`'\\m${searchTerm.toLowerCase()}'`)} THEN 
+              POSITION(${sql.raw(`'${searchTerm.toLowerCase()}'`)} IN LOWER(${zuvyOpenEndedQuestions.question})) + 1
+            ELSE 9999
+          END
+        `)
+        .limit(limit_)
+        .offset((pageNo - 1) * limit_);
+      
+      return { 
+        data: result, 
+        totalRows: Number(totalRows[0].count), 
+        totalPages: !Number.isNaN(limit_) ? Math.ceil(totalRows[0].count / limit_) : 1
+      };
+      
     } catch (err) {
       throw err;
     }
   }
+
   async getStudentsOfAssessment(assessmentId: number, chapterId: number, moduleId: number, bootcampId: number, req) {
     try {
       let { id } = req.user[0];
@@ -1880,11 +1782,11 @@ export class ContentService {
         });
       }
       let startedAt = new Date().toISOString();
-      let submission;
-      submission = await db.select().from(zuvyAssessmentSubmission).where(sql`${zuvyAssessmentSubmission.userId} = ${id} AND ${zuvyAssessmentSubmission.assessmentOutsourseId} = ${assessmentOutsourseId} AND ${zuvyAssessmentSubmission.submitedAt} IS NULL`);
+      let submission = await db.select().from(zuvyAssessmentSubmission).where(sql`${zuvyAssessmentSubmission.userId} = ${id} AND ${zuvyAssessmentSubmission.assessmentOutsourseId} = ${assessmentOutsourseId} AND ${zuvyAssessmentSubmission.submitedAt} IS NULL`);
       if (submission.length == 0) {
-        submission = await db.insert(zuvyAssessmentSubmission).values({ userId: id, assessmentOutsourseId, startedAt }).returning();
-      }
+        let insertAssessmentSubmission:any = { userId: id, assessmentOutsourseId, startedAt }
+        submission = await db.insert(zuvyAssessmentSubmission).values(insertAssessmentSubmission).returning();
+      } 
 
       let formatedData = await this.formatedChapterDetails(assessment[0]);
 
@@ -2168,15 +2070,16 @@ export class ContentService {
             .where(eq(zuvyModuleForm.id, formQuestion.id))
 
           if (existingRecord) {
+            let updateModuleForm:any = {
+              chapterId: formQuestion.chapterId,
+              question: formQuestion.question,
+              options: formQuestion.options,
+              typeId: formQuestion.typeId,
+              isRequired: formQuestion.isRequired,
+            }
             const result = await db
               .update(zuvyModuleForm)
-              .set({
-                chapterId: formQuestion.chapterId,
-                question: formQuestion.question,
-                options: formQuestion.options,
-                typeId: formQuestion.typeId,
-                isRequired: formQuestion.isRequired,
-              })
+              .set(updateModuleForm)
               .where(eq(zuvyModuleForm.id, formQuestion.id))
               .returning();
             results.push(result);
