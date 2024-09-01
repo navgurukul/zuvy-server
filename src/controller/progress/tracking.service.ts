@@ -754,7 +754,6 @@ export class TrackingService {
         .select()
         .from(zuvyModuleChapter)
         .where(eq(zuvyModuleChapter.id, chapterId));
-
       const AssignmentTracking = await db
         .select()
         .from(zuvyAssignmentSubmission)
@@ -952,6 +951,42 @@ export class TrackingService {
 
                 return [null,{message:'Assignment chapter fetched succesfully',statusCode: STATUS_CODES.OK,data:{chapterDetails:chapter[0],assignmentTracking,status}}]
               }
+              else if(chapter[0].topicId == 3)
+                {
+                  const submittedCode = await db.select().from(zuvyPracticeCode).where(sql`${zuvyPracticeCode.questionId} = ${chapter[0].codingQuestions} AND ${zuvyPracticeCode.userId} = ${userId} AND ${zuvyPracticeCode.submissionId} IS NULL`);
+                  
+                  const ChapterTracking = await db
+                   .select()
+                   .from(zuvyChapterTracking)
+                   .where(sql`${zuvyChapterTracking.userId} = ${userId} and ${zuvyChapterTracking.chapterId} = ${chapterId}`);
+                  let statusCount =  ChapterTracking.length > 0 ? 1 : 0;
+                   if(submittedCode.length > 0 && ChapterTracking.length == 0)
+                    {
+                      const moduleDetail = await db.select().from(zuvyCourseModules).where(eq(zuvyCourseModules.id,chapter[0].moduleId));
+                      const chapterUpdated = await this.updateChapterStatus(moduleDetail[0].bootcampId,userId,chapter[0].moduleId,chapter[0].id)
+                      if(chapterUpdated.status == 'success')
+                        {
+                          statusCount = 1;
+                        }
+                    }
+                   const status = statusCount > 0 ? 'Completed' : 'Pending';
+                   const codingProblem = await db
+                      .select()
+                      .from(zuvyCodingQuestions)
+                      .where(
+                        eq(
+                          zuvyCodingQuestions.id,
+                          chapter[0].codingQuestions,
+                        ),
+                      )
+                  if(chapter[0].codingQuestions != null && codingProblem.length > 0)
+                    {
+                      return [null,{message:'Coding chapter fetched succesfully',statusCode: STATUS_CODES.OK,data:{chapterDetails:chapter[0],codingProblem,status}}]
+                    } 
+                    else {
+                      return [null,{message:'There is no coding question in this chapter',statusCode: STATUS_CODES.OK,data:null}]
+                    }
+                }
               else {
                 return [null,{message:'It is not a quiz or assignment chapter',statusCode: STATUS_CODES.OK,data:null}]
               }
@@ -961,7 +996,7 @@ export class TrackingService {
         }
     }catch(error)
     {
-
+      return [{message:error.message,statusCode: STATUS_CODES.BAD_REQUEST}]
     }
   }
 

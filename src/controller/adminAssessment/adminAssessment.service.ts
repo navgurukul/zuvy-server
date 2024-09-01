@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { db } from '../../db/index';
 import { sql } from 'drizzle-orm';
 import * as _ from 'lodash';
-import { zuvyBatchEnrollments } from '../../../drizzle/schema';
+import { zuvyBatchEnrollments, zuvyOutsourseAssessments } from '../../../drizzle/schema';
 
 const { ZUVY_CONTENT_URL } = process.env; // INPORTING env VALUSE ZUVY_CONTENT
 
@@ -22,14 +22,10 @@ export class AdminAssessmentService {
         ...assessmentInfo
       } = assessment;
       let qualifiedStudents = 0;
-      let questions_list = [];
       submitedOutsourseAssessments.map((student) => {
-        if (!questions_list.includes(student.question_id)) {
           if (student.isPassed) {
             qualifiedStudents += 1;
-            questions_list.push(student.question_id);
           }
-        }
       });
       if (!result[moduleName]) {
         result[moduleName] = [
@@ -97,9 +93,32 @@ export class AdminAssessmentService {
           CodingQuestions: true,
           submitedOutsourseAssessments: {
             where: (zuvyAssessmentSubmission, { sql }) =>
-              sql`${zuvyAssessmentSubmission.submitedAt} IS NOT NULL AND ${zuvyAssessmentSubmission.isPassed} is not null`,
+              sql`
+            ${zuvyAssessmentSubmission.submitedAt} IS NOT NULL 
+            AND ${zuvyAssessmentSubmission.isPassed} IS NOT NULL
+            AND EXISTS (
+              SELECT 1
+              FROM main.zuvy_batch_enrollments
+              WHERE main.zuvy_batch_enrollments.user_id = ${zuvyAssessmentSubmission.userId}
+              AND main.zuvy_batch_enrollments.bootcamp_id = ${bootcampID}
+              AND main.zuvy_batch_enrollments.batch_id IS NOT NULL
+            )
+          `,
           },
         },
+      });
+      assessment.forEach(item => {
+        const uniqueSubmissions = [];
+        const userIds = new Set();
+      
+        item.submitedOutsourseAssessments.forEach(submission => {
+          if (!userIds.has(submission.userId)) {
+            userIds.add(submission.userId);
+            uniqueSubmissions.push(submission);
+          }
+        });
+      
+        item.submitedOutsourseAssessments = uniqueSubmissions;
       });
       if (assessment == undefined || assessment.length == 0) {
         return [];
@@ -116,6 +135,10 @@ export class AdminAssessmentService {
 
   async getAssessmentStudents(req, assessmentID) {
     try {
+      const assessmentInfo = await db.select().from(zuvyOutsourseAssessments).where(sql`${zuvyOutsourseAssessments.id} = ${assessmentID}`);
+
+      if(assessmentInfo.length > 0)
+        {
       const assessment = await db.query.zuvyOutsourseAssessments.findMany({
         where: (zuvyOutsourseAssessments, { eq }) =>
           eq(zuvyOutsourseAssessments.id, assessmentID),
@@ -136,8 +159,16 @@ export class AdminAssessmentService {
               isPassed: true,
               percentage: true,
             },
-            where: (submitedOutsourseAssessments, { sql }) =>
-              sql`${submitedOutsourseAssessments.submitedAt} IS NOT NULL`,
+            where: (submitedOutsourseAssessments, { sql, eq }) => sql`
+            ${submitedOutsourseAssessments.submitedAt} IS NOT NULL
+            AND EXISTS (
+              SELECT 1
+              FROM main.zuvy_batch_enrollments
+              WHERE main.zuvy_batch_enrollments.user_id = ${submitedOutsourseAssessments.userId}
+              AND main.zuvy_batch_enrollments.bootcamp_id = ${assessmentInfo[0].bootcampId}
+              AND main.zuvy_batch_enrollments.batch_id IS NOT NULL
+            )
+          `,
             with: {
               user: {
                 columns: {
@@ -155,7 +186,19 @@ export class AdminAssessmentService {
           },
         },
       });
-
+      assessment.forEach(item => {
+        const uniqueSubmissions = [];
+        const userIds = new Set();
+      
+        item.submitedOutsourseAssessments.forEach(submission => {
+          if (!userIds.has(submission.userId)) {
+            userIds.add(submission.userId);
+            uniqueSubmissions.push(submission);
+          }
+        });
+      
+        item.submitedOutsourseAssessments = uniqueSubmissions;
+      });
       let studentsEnrolled = await this.getTotalStudentsEnrolled(
         assessment[0].bootcampId,
       );
@@ -178,6 +221,7 @@ export class AdminAssessmentService {
         });
 
       return assessment[0];
+        }
     } catch (error) {
       throw error;
     }
