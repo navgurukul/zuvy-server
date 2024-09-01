@@ -953,11 +953,23 @@ export class TrackingService {
               }
               else if(chapter[0].topicId == 3)
                 {
+                  const submittedCode = await db.select().from(zuvyPracticeCode).where(sql`${zuvyPracticeCode.questionId} = ${chapter[0].codingQuestions} AND ${zuvyPracticeCode.userId} = ${userId} AND ${zuvyPracticeCode.submissionId} IS NULL`);
+                  
                   const ChapterTracking = await db
                    .select()
                    .from(zuvyChapterTracking)
                    .where(sql`${zuvyChapterTracking.userId} = ${userId} and ${zuvyChapterTracking.chapterId} = ${chapterId}`);
-                   const status = ChapterTracking.length > 0 ? 'Completed' : 'Pending';
+                  let statusCount =  ChapterTracking.length > 0 ? 1 : 0;
+                   if(submittedCode.length > 0 && ChapterTracking.length == 0)
+                    {
+                      const moduleDetail = await db.select().from(zuvyCourseModules).where(eq(zuvyCourseModules.id,chapter[0].moduleId));
+                      const chapterUpdated = await this.updateChapterStatus(moduleDetail[0].bootcampId,userId,chapter[0].moduleId,chapter[0].id)
+                      if(chapterUpdated.status == 'success')
+                        {
+                          statusCount = 1;
+                        }
+                    }
+                   const status = statusCount > 0 ? 'Completed' : 'Pending';
                    const codingProblem = await db
                       .select()
                       .from(zuvyCodingQuestions)
