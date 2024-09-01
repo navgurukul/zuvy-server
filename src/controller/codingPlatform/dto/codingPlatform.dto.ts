@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsString, IsNotEmpty, IsNumber, IsArray, ArrayNotEmpty, ValidateNested, IsObject } from 'class-validator';
+import { IsString, IsNotEmpty, IsNumber, IsArray, ArrayNotEmpty, ValidateNested, IsObject, IsOptional } from 'class-validator';
 import { Type } from 'class-transformer';
 export class SubmitCodeDto {
   @ApiProperty({
@@ -128,6 +128,7 @@ export class CreateProblemDto {
 export class updateTestCaseDto {
   @ApiProperty({ type: Number, example: 2 })
   @IsNumber()
+  @IsOptional()
   id: number;
 
   @ApiProperty({
@@ -192,10 +193,6 @@ export class updateProblemDto {
 
   @ApiProperty({ type: String, example: '2024-03-01T00:00:00Z', required: true })
   @IsString()
-  createdAt: string;
-
-  @ApiProperty({ type: String, example: '2024-03-01T00:00:00Z', required: true })
-  @IsString()
   updatedAt: string;
 
   @ApiProperty({ type: String, example: `2 <= nums.length <= 104
@@ -206,5 +203,6 @@ export class updateProblemDto {
 
   @ApiProperty({ type: Object, example: 'python', required: false })
   @IsObject()
+  @IsOptional()
   content: object
 }
