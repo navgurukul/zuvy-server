@@ -33,6 +33,7 @@ import {
   or,
   isNull,
   getTableColumns,
+  asc,
 } from 'drizzle-orm';
 import { db } from '../../db/index';
 import { PgTable } from 'drizzle-orm/pg-core';
@@ -1192,7 +1193,8 @@ export class ContentService {
               id: true,
               inputs: true,
               expectedOutput: true,
-            }
+            },
+            orderBy: (testCase, { asc }) => asc(testCase.id),
           }
         },
         orderBy: (zuvyCodingQuestions, { sql }) => {
