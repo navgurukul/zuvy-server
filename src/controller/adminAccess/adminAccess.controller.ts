@@ -17,8 +17,9 @@ import { query } from 'express';
 export class AdminAccessController {
   constructor(private adminAccessService: AdminAccessService) { }
 
-  @Get('users-with-batches')
+  @Get('/getAllUsersWithBatches')
   @ApiOperation({ summary: 'Fetch all users assigned to batches' })
+  @ApiBearerAuth()
   async getUsersWithBatches() {
     try {
       const usersWithBatches = await this.adminAccessService.getUsersWithBatches();
