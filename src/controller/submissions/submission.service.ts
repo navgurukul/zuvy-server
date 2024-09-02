@@ -406,13 +406,19 @@ export class SubmissionService {
           statusCode: 404,
           message: 'Assessment not found',
         });
-      } else if (submitData.submitedAt != null) {
+      } else if (submitData.userId != userId) {
+        throw ({
+          status: 'error',
+          statusCode: 400,
+          message: 'Unauthorized assessment submission',
+        });
+      }  else if (submitData.submitedAt != null) {
         throw ({
           status: 'error',
           statusCode: 400,
           message: 'Assessment already submitted',
         });
-      }
+      } 
       data['submitedAt'] = new Date().toISOString();
       data = {
         ...data,

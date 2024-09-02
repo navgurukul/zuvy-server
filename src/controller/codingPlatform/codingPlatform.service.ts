@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { db } from '../../db/index';
-import { sql } from 'drizzle-orm';
+import { notInArray, sql } from 'drizzle-orm';
 import axios from 'axios';
 import { SubmitCodeDto, CreateProblemDto } from './dto/codingPlatform.dto';
 import * as _ from 'lodash';
@@ -304,6 +304,7 @@ export class CodingPlatformService {
 
   async createCodingQuestion(createCodingQuestionDto: any): Promise<any> {
     const { testCases, ...questionData } = createCodingQuestionDto;
+    questionData['usage'] = 0;
     try {
       const question: any = await db.insert(zuvyCodingQuestions).values(questionData).returning();
       let testCaseAndExpectedOutput = [];
@@ -323,7 +324,32 @@ export class CodingPlatformService {
     let { testCases, ...questionData } = updateCodingQuestionDto;
     try {
       const question = await db.update(zuvyCodingQuestions).set(questionData).where(sql`${zuvyCodingQuestions.id} = ${id}`).returning();
-      await this.updateTestCaseAndExpectedOutput(testCases);
+      let missingIdElements = [];
+      let validTestCases = [];
+      if(testCases.length < 2)
+        {
+          return [[{ message: "Test case should be minimum 2", statusCode: STATUS_CODES.BAD_REQUEST }]];
+        }
+      if (Array.isArray(testCases) && testCases.length > 0) {
+        missingIdElements = testCases.filter(element => !element.hasOwnProperty('id'));
+        validTestCases = testCases.filter(element => element.hasOwnProperty('id'));
+
+        missingIdElements = missingIdElements.map(element => ({
+          ...element,
+          questionId: id
+      }));
+      }
+      testCases = validTestCases;
+
+      await db.delete(zuvyTestCases)
+      .where(
+        sql`${zuvyTestCases.questionId} = ${id} AND ${notInArray(zuvyTestCases.id, testCases.map(tc => tc.id))}`
+      );
+      const newAddedTestCases:any[] =missingIdElements.length > 0 ?  await db.insert(zuvyTestCases).values(missingIdElements).returning() : [];
+      if(newAddedTestCases.length > 0 && missingIdElements.length > 0)
+        {
+           await this.updateTestCaseAndExpectedOutput(testCases);
+        }
       return [null, { message: 'Coding question updated successfully', data: question, statusCode: STATUS_CODES.OK }];
     } catch (error) {
       return [[{ message: error.message, statusCode: STATUS_CODES.BAD_REQUEST }]];
