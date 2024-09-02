@@ -534,7 +534,6 @@ export class ContentService {
             }
           },
         });
-        console.log({ chapterDetails })
         chapterDetails[0]["assessmentOutsourseId"] = chapterDetails[0].id
         let formatedData = this.formatedChapterDetails(chapterDetails[0])
         return formatedData;
@@ -818,10 +817,18 @@ export class ContentService {
 
           if (earlierCodingId !== editData.codingQuestions) {
             let updatedCodingQuestion:any = { usage: sql`${zuvyCodingQuestions.usage}::numeric - 1` }
-            await db
+            const updatedquestion = await db
               .update(zuvyCodingQuestions)
               .set(updatedCodingQuestion)
-              .where(eq(zuvyCodingQuestions.id, editData.codingQuestions));
+              .where(eq(zuvyCodingQuestions.id, earlierCodingId)).returning();
+             if(editData.codingQuestions) 
+              {
+                updatedCodingQuestion = { usage: sql`${zuvyCodingQuestions.usage}::numeric + 1` }
+               await db
+              .update(zuvyCodingQuestions)
+              .set(updatedCodingQuestion)
+              .where(eq(zuvyCodingQuestions.id, editData.codingQuestions)).returning();
+              }
           }
         } else if (editData.formQuestions) {
           const earlierFormIds =
@@ -1137,7 +1144,7 @@ export class ContentService {
         })
         .from(zuvyModuleQuiz)
         .where(and(...conditions))
-        .orderBy(sql`match_position`);
+        .orderBy(searchTerm ? sql`match_position` : sql`${zuvyModuleQuiz.id} DESC`);
 
       return result;
     } catch (err) {
@@ -1166,7 +1173,6 @@ export class ContentService {
           sql`LOWER(${zuvyCodingQuestions.title}) ~ ${sql.raw(`'\\m${searchTerm.toLowerCase()}'`)}`
         );
       }
-      
       const question = await db.query.zuvyCodingQuestions.findMany({
         where: and(...conditions),
         columns: {
@@ -1178,6 +1184,7 @@ export class ContentService {
           content: true,
           tagId: true,
           createdAt: true,
+          usage: true
         },
         with: {
           testCases: {
@@ -1188,16 +1195,24 @@ export class ContentService {
             }
           }
         },
-        orderBy: (zuvyCodingQuestions, { sql }) => [
-          sql`
-            CASE 
-              WHEN LOWER(${zuvyCodingQuestions.title}) LIKE ${sql.raw(`'${searchTerm.toLowerCase()}%'`)} THEN 1
-              WHEN LOWER(${zuvyCodingQuestions.title}) ~ ${sql.raw(`'\\m${searchTerm.toLowerCase()}'`)} THEN 
-                POSITION(${sql.raw(`'${searchTerm.toLowerCase()}'`)} IN LOWER(${zuvyCodingQuestions.title})) + 1
-              ELSE 9999
-            END
-          `
-        ],
+        orderBy: (zuvyCodingQuestions, { sql }) => {
+          if (searchTerm) {
+            return [
+              sql`
+                CASE 
+                  WHEN LOWER(${zuvyCodingQuestions.title}) LIKE ${sql.raw(`'${searchTerm.toLowerCase()}%'`)} THEN 1
+                  WHEN LOWER(${zuvyCodingQuestions.title}) ~ ${sql.raw(`'\\m${searchTerm.toLowerCase()}'`)} THEN 
+                    POSITION(${sql.raw(`'${searchTerm.toLowerCase()}'`)} IN LOWER(${zuvyCodingQuestions.title})) + 1
+                  ELSE 9999
+                END
+              `
+            ];
+          } else {
+            return [
+              sql`${zuvyCodingQuestions.id} DESC`
+            ];
+          }
+        }
       });
       
       return question;
@@ -1512,14 +1527,18 @@ export class ContentService {
         .select()
         .from(zuvyOpenEndedQuestions)
         .where(and(...conditions))
-        .orderBy(sql`
-          CASE 
-            WHEN LOWER(${zuvyOpenEndedQuestions.question}) LIKE ${sql.raw(`'${searchTerm.toLowerCase()}%'`)} THEN 1
-            WHEN LOWER(${zuvyOpenEndedQuestions.question}) ~ ${sql.raw(`'\\m${searchTerm.toLowerCase()}'`)} THEN 
-              POSITION(${sql.raw(`'${searchTerm.toLowerCase()}'`)} IN LOWER(${zuvyOpenEndedQuestions.question})) + 1
-            ELSE 9999
-          END
-        `)
+        .orderBy(searchTerm ? 
+          sql`
+            CASE 
+              WHEN LOWER(${zuvyOpenEndedQuestions.question}) LIKE ${sql.raw(`'${searchTerm.toLowerCase()}%'`)} THEN 1
+              WHEN LOWER(${zuvyOpenEndedQuestions.question}) ~ ${sql.raw(`'\\m${searchTerm.toLowerCase()}'`)} THEN 
+                POSITION(${sql.raw(`'${searchTerm.toLowerCase()}'`)} IN LOWER(${zuvyOpenEndedQuestions.question})) + 1
+              ELSE 9999 -- Push non-matching to end
+            END
+          ` 
+          : 
+          sql`${zuvyOpenEndedQuestions.id} DESC`
+        )
         .limit(limit_)
         .offset((pageNo - 1) * limit_);
       
