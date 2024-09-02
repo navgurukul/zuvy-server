@@ -941,30 +941,44 @@ export class ContentService {
         let assessmentData = { title, description };
 
         // filter out the ids that are not in the assessment
-        let existingQuizIds = OutsourseQuizzes.map((q) => q.quiz_id).filter(id => id !== null);
-        let existingOpenEndedQuestionIds = OutsourseOpenEndedQuestions.map((q) => q.openEndedQuestionId).filter(id => id !== null);
-        let existingCodingQuestionIds = OutsourseCodingQuestions.map((q) => q.codingQuestionId).filter(id => id !== null);
+        let existingQuizIds = OutsourseQuizzes.length > 0 ? OutsourseQuizzes.map((q) => q.quiz_id).filter(id => id !== null) : [];
+        let existingOpenEndedQuestionIds =OutsourseOpenEndedQuestions.length > 0 ? OutsourseOpenEndedQuestions.map((q) => q.openEndedQuestionId).filter(id => id !== null) : [];
+        let existingCodingQuestionIds =OutsourseCodingQuestions.length > 0 ? OutsourseCodingQuestions.map((q) => q.codingQuestionId).filter(id => id !== null) : [];
 
-        let quizIdsToDelete = existingQuizIds.filter((id) => !mcqIds.includes(id));
+        let quizIdsToDelete =  existingQuizIds.filter((id) => !mcqIds.includes(id));
         let openEndedQuestionIdsToDelete = existingOpenEndedQuestionIds.filter((id) => !openEndedQuestionIds.includes(id));
         let codingQuestionIdsToDelete = existingCodingQuestionIds.filter((id) => !codingProblemIds.includes(id));
 
         let quizIdsToAdd = mcqIds.filter((id) => !existingQuizIds.includes(id));
         let openEndedQuestionIdsToAdd = openEndedQuestionIds.filter((id) => !existingOpenEndedQuestionIds.includes(id));
         let codingQuestionIdsToAdd = codingProblemIds.filter((id) => !existingCodingQuestionIds.includes(id));
-
         // Delete operations
         if (quizIdsToDelete.length > 0) {
+          let updatedMcqQuestions:any =  { usage: sql`${zuvyModuleQuiz.usage}::numeric - 1` }
+          await db
+            .update(zuvyModuleQuiz)
+            .set(updatedMcqQuestions)
+            .where(inArray(zuvyModuleQuiz.id, quizIdsToDelete));
           await db
             .delete(zuvyOutsourseQuizzes)
             .where(sql`${zuvyOutsourseQuizzes.assessmentOutsourseId} = ${assessmentOutsourseId} AND ${inArray(zuvyOutsourseQuizzes.quiz_id, quizIdsToDelete)}`);
         }
         if (openEndedQuestionIdsToDelete.length > 0) {
+          let updatedOpenEndedQuestions:any = {usage: sql`${zuvyOpenEndedQuestions.usage}::numeric - 1` }
+          await db
+            .update(zuvyOpenEndedQuestions)
+            .set(updatedOpenEndedQuestions)
+            .where(inArray(zuvyOpenEndedQuestions.id, openEndedQuestionIdsToDelete));
           await db
             .delete(zuvyOutsourseOpenEndedQuestions)
             .where(sql`${zuvyOutsourseOpenEndedQuestions.assessmentOutsourseId} = ${assessmentOutsourseId} AND ${inArray(zuvyOutsourseOpenEndedQuestions.openEndedQuestionId, openEndedQuestionIdsToDelete)}`);
         }
         if (codingQuestionIdsToDelete.length > 0) {
+          let updatedCodingQuestion:any = { usage: sql`${zuvyCodingQuestions.usage}::numeric - 1` }
+          await db
+            .update(zuvyCodingQuestions)
+            .set(updatedCodingQuestion)
+            .where(inArray(zuvyCodingQuestions.id, codingQuestionIdsToDelete));
           await db
             .delete(zuvyOutsourseCodingQuestions)
             .where(sql`${zuvyOutsourseCodingQuestions.assessmentOutsourseId} = ${assessmentOutsourseId} AND ${inArray(zuvyOutsourseCodingQuestions.codingQuestionId, codingQuestionIdsToDelete)}`);
@@ -989,7 +1003,7 @@ export class ContentService {
           let createZOMQ = await db.insert(zuvyOutsourseQuizzes).values(mcqArray).returning();
           if (createZOMQ.length > 0) {
             const toUpdateIds = createZOMQ.filter((c) => c.quiz_id).map((c) => c.quiz_id);
-            let modelsData = await db
+            await db
               .update(zuvyModuleQuiz)
               .set({ usage: sql`${zuvyModuleQuiz.usage}::numeric + 1` })
               .where(sql`${inArray(zuvyModuleQuiz.id, toUpdateIds)}`);
