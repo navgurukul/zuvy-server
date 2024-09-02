@@ -304,6 +304,7 @@ export class CodingPlatformService {
 
   async createCodingQuestion(createCodingQuestionDto: any): Promise<any> {
     const { testCases, ...questionData } = createCodingQuestionDto;
+    questionData['usage'] = 0;
     try {
       const question: any = await db.insert(zuvyCodingQuestions).values(questionData).returning();
       let testCaseAndExpectedOutput = [];
@@ -339,7 +340,7 @@ export class CodingPlatformService {
       }));
       }
       testCases = validTestCases;
-      
+
       await db.delete(zuvyTestCases)
       .where(
         sql`${zuvyTestCases.questionId} = ${id} AND ${notInArray(zuvyTestCases.id, testCases.map(tc => tc.id))}`

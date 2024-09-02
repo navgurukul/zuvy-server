@@ -817,10 +817,18 @@ export class ContentService {
 
           if (earlierCodingId !== editData.codingQuestions) {
             let updatedCodingQuestion:any = { usage: sql`${zuvyCodingQuestions.usage}::numeric - 1` }
-            await db
+            const updatedquestion = await db
               .update(zuvyCodingQuestions)
               .set(updatedCodingQuestion)
-              .where(eq(zuvyCodingQuestions.id, editData.codingQuestions));
+              .where(eq(zuvyCodingQuestions.id, earlierCodingId)).returning();
+             if(editData.codingQuestions) 
+              {
+                updatedCodingQuestion = { usage: sql`${zuvyCodingQuestions.usage}::numeric + 1` }
+               await db
+              .update(zuvyCodingQuestions)
+              .set(updatedCodingQuestion)
+              .where(eq(zuvyCodingQuestions.id, editData.codingQuestions)).returning();
+              }
           }
         } else if (editData.formQuestions) {
           const earlierFormIds =
@@ -1176,6 +1184,7 @@ export class ContentService {
           content: true,
           tagId: true,
           createdAt: true,
+          usage: true
         },
         with: {
           testCases: {
