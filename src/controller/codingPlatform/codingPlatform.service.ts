@@ -389,6 +389,7 @@ export class CodingPlatformService {
               inputs: true,
               expectedOutput: true,
             },
+            orderBy: (testCase, { asc }) => asc(testCase.id),
             limit: totalCasses == 3 ? totalCasses : undefined,
           }
         }
