@@ -9,7 +9,7 @@ import { JwtMiddleware } from 'src/middleware/jwt.middleware';
     controllers: [BootcampController],
     providers: [BootcampService,JwtService],
     // imports: [BatchesModule],
-    // exports: [BootcampService]
+    exports: [BootcampService]
 })
 export class BootcampModule implements NestModule {
        configure(consumer: MiddlewareConsumer) {

@@ -3293,27 +3293,3 @@ export const zuvyLanguages = main.table("zuvy_languages", {
   languageId: varchar("language_id", { length: 50 }).notNull(),
   defaultCodingTemplate: text("default_coding_template").notNull()
 });
-
-
-// export const userBatchRelations = relations(users, ({ many }) => ({
-//   batchEnrollments: many(zuvyBatchEnrollments, {
-//     fields: [users.id],
-//     references: [zuvyBatchEnrollments.userId],
-//   }),
-// }));
-
-// export const batchUserRelations = relations(zuvyBatches, ({ many }) => ({
-//   userEnrollments: many(zuvyBatchEnrollments, {
-//     fields: [zuvyBatches.id],
-//     references: [zuvyBatchEnrollments.batchId],
-//   }),
-// }));
-
-
-export const userBatchRelations = relations(users, ({ many }) => ({
-  batchEnrollments: many(zuvyBatchEnrollments),
-}));
-
-export const batchUserRelations = relations(zuvyBatches, ({ many }) => ({
-  userEnrollments: many(zuvyBatchEnrollments),
-}));

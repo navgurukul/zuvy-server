@@ -4,10 +4,13 @@ import { AdminAccessService } from './adminAccess.service';
 import { BatchesModule } from '../batches/batch.module';
 import { JwtModule,JwtService } from '@nestjs/jwt';
 import { JwtMiddleware } from 'src/middleware/jwt.middleware';
+import { BootcampModule } from '../bootcamp/bootcamp.module';
 
 @Module({
     controllers: [AdminAccessController],
     providers: [AdminAccessService, JwtService],
+    imports: [BootcampModule],
+    // exports:[AdminAccessService]
 })
 export class AdminAccessModule implements NestModule {
     configure(consumer: MiddlewareConsumer) {
