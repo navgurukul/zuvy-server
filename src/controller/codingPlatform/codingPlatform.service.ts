@@ -336,7 +336,10 @@ export class CodingPlatformService {
           questionId: id
         }));
       }
-
+      await db.delete(zuvyTestCases)
+      .where(
+        sql`${zuvyTestCases.questionId} = ${id} AND ${notInArray(zuvyTestCases.id, testCases.map(tc => tc.id))}`
+      );
       const newAddedTestCases: any[] = missingIdElements.length > 0 ? await db.insert(zuvyTestCases).values(missingIdElements).returning() : [];
       await this.updateTestCaseAndExpectedOutput(testCases);
       return [null, { message: 'Coding question updated successfully', data: { question, "testCases": [...testCases, ...newAddedTestCases] }, statusCode: STATUS_CODES.OK }];
