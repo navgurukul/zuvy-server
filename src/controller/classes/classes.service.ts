@@ -769,12 +769,13 @@ export class ClassesService {
             students.forEach(async (student) => {
               let old_attendance = await db.select()
                 .from(zuvyBatchEnrollments)
-                .where(sql`${zuvyBatchEnrollments.userId} = ${student.id.toString()}`);
+                .where(sql`${zuvyBatchEnrollments.userId} = ${student.id.toString()} AND ${zuvyBatchEnrollments.batchId} = ${classInfo[0]?.batchId} AND ${zuvyBatchEnrollments.bootcampId} = ${classInfo[0]?.bootcampId}`);              
               let new_attendance = old_attendance[0]?.attendance ? old_attendance[0].attendance + 1 : 1;
               let zuvyBatchEnrollmentsDetailsUpdated = await db
-                .update(zuvyBatchEnrollments)
-                .set({ attendance: new_attendance })
-                .where(sql`${zuvyBatchEnrollments.userId} = ${student.id.toString()}`).returning();
+              .update(zuvyBatchEnrollments)
+              .set({ attendance: new_attendance })
+              .where(sql`${zuvyBatchEnrollments.userId} = ${student.id.toString()} AND ${zuvyBatchEnrollments.batchId} = ${classInfo[0]?.batchId} AND ${zuvyBatchEnrollments.bootcampId} = ${classInfo[0]?.bootcampId}`).returning();           
+              Logger.log(`Attendance updated for new classes ${new_attendance}`);
             });
           }
           return [null, {
@@ -788,7 +789,6 @@ export class ClassesService {
       return [{ status: 'error', message: error.message, code: 402 }];
     }
   }
-
   async getClassesByBatchId(batchId: string, limit: number, offset: number) {
     try {
       const currentTime = new Date();

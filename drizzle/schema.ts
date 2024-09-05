@@ -2549,7 +2549,7 @@ export const zuvyQuizTracking = main.table("zuvy_quiz_tracking", {
     onDelete: 'cascade',
     onUpdate: 'cascade',
   }),
-  questionId: integer("question_id").notNull().references(() => zuvyOutsourseQuizzes.id),
+  questionId: integer("question_id").references(() => zuvyOutsourseQuizzes.id),
   chosenOption: integer("chosen_option"),
   createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
