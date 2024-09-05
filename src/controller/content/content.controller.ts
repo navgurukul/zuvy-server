@@ -13,7 +13,8 @@ import {
   Query,
   BadRequestException,
   Req,
-  UseGuards
+  UseGuards,
+  Res
 } from '@nestjs/common';
 import { ContentService } from './content.service';
 import {
@@ -46,6 +47,7 @@ import {
   CreateAndEditFormBody
 } from './dto/content.dto';
 import { RolesGuard } from 'src/guards/roles.guard';
+import { ErrorResponse, SuccessResponse } from 'src/errorHandler/handler';
 
 @Controller('Content')
 @ApiTags('Content')
@@ -662,7 +664,57 @@ export class ContentController {
     return res;
   }
 
+  @Get('/GetOpenendedQuestionById/:id')
+  @ApiOperation({ summary: 'Get the openended question by id' })
+  @ApiBearerAuth()
+  async getOpenendedQuestionDetails(
+    @Param('id') id: number,
+    @Res() res
+  ) {
+    try {
+      let [err, success] = await this.contentService.getOpenendedQuestionDetails(id);
+      if (err) {
+        return ErrorResponse.BadRequestException(err.message).send(res);
+      }
+      return new SuccessResponse(success.message, success.statusCode, success.data).send(res);
+    } catch (error) {
+      return ErrorResponse.BadRequestException(error.message).send(res);
+    }
+  }
+
+  @Get('/GetCodingQuestionById/:id')
+  @ApiOperation({ summary: 'Get the openended question by id' })
+  @ApiBearerAuth()
+  async getCodingQuestionDetails(
+    @Param('id') id: number,
+    @Res() res
+  ) {
+    try {
+      let [err, success] = await this.contentService.getCodingQuestionDetails(id);
+      if (err) {
+        return ErrorResponse.BadRequestException(err.message).send(res);
+      }
+      return new SuccessResponse(success.message, success.statusCode, success.data).send(res);
+    } catch (error) {
+      return ErrorResponse.BadRequestException(error.message).send(res);
+    }
+  }
+
+  @Get('/GetQuizQuestionById/:id')
+  @ApiOperation({ summary: 'Get the openended question by id' })
+  @ApiBearerAuth()
+  async getQuizQuestionDetails(
+    @Param('id') id: number,
+    @Res() res
+  ) {
+    try {
+      let [err, success] = await this.contentService.getQuizQuestionDetails(id);
+      if (err) {
+        return ErrorResponse.BadRequestException(err.message).send(res);
+      }
+      return new SuccessResponse(success.message, success.statusCode, success.data).send(res);
+    } catch (error) {
+      return ErrorResponse.BadRequestException(error.message).send(res);
+    }
+  }
 }
-
-
-
