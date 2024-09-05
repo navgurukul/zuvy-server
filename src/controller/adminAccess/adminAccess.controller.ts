@@ -17,17 +17,6 @@ import { query } from 'express';
 export class AdminAccessController {
   constructor(private adminAccessService: AdminAccessService) { }
 
-  @Get('/getAllUsersWithBatches')
-  @ApiOperation({ summary: 'Fetch all users assigned to batches' })
-  @ApiBearerAuth()
-  async getUsersWithBatches() {
-    try {
-      const usersWithBatches = await this.adminAccessService.getUsersWithBatches();
-      return usersWithBatches;
-    } catch (error) {
-      throw new BadRequestException('Failed to fetch users with batches');
-    }
-  }
 
   @Get('/getAllUsersWithBatchesAndBootcamps')
   @ApiOperation({ summary: 'Fetch all users assigned to batches along with bootcamp IDs' })
@@ -62,7 +51,7 @@ export class AdminAccessController {
     description: 'Filter students by their joining date relative to the current date',
   })
   @ApiBearerAuth()
-  async getUsersWithBatchesAndBootcamps(
+  async getAllUsersWithBatchesAndBootcamps(
     @Query('batch_id') batch_id: number,
     @Query('searchTerm') searchTerm: string,
     @Query('dateFilter') dateFilter: string = '0',
@@ -77,7 +66,7 @@ export class AdminAccessController {
         throw new BadRequestException('Invalid dateFilter value');
       }
 
-      const result = await this.adminAccessService.getUsersWithBatchesAndBootcamps(
+      const result = await this.adminAccessService.getAllUsersWithBatchesAndBootcamps(
         batch_id,
         searchTerm,
         dateFilterNumber,
@@ -89,4 +78,39 @@ export class AdminAccessController {
       throw new BadRequestException('Failed to fetch users with batches and bootcamps');
     }
   }
+
+  @Delete('/getAllUsersWithBatchesAndBootcamps/deleteStudent')
+  @ApiOperation({ summary: 'Removing student from bootcamp' })
+  @ApiBearerAuth()
+  async removeStudentInfo(
+    @Query('userId') userId: number,
+    @Query('batchId') batchId: number,
+    @Query('bootcampId') bootcampId: number,
+  ): Promise<object> {
+    const [err, res] = await this.adminAccessService.removeStudentInfo(
+      userId,
+      batchId,
+      bootcampId,
+    );
+    if (err) {
+      throw new BadRequestException(err);
+    }
+    return res;
+  }
+
+  @Get('/getUserInfo/:userId')
+  @ApiOperation({ summary: 'Fetch User Info By userId' })
+  @ApiBearerAuth()
+  async getUserInfoById(
+    @Param('userId') userId: number,) {
+
+    try {
+      const result = await this.adminAccessService.getUserInfoById(userId);
+      return result;
+    } catch (error) {
+      throw new BadRequestException('Failed to fetch users info by Id');
+    }
+  }
+
+
 }

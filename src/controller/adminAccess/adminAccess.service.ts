@@ -33,7 +33,7 @@ export class AdminAccessService {
 
   constructor(private readonly bootcampService: BootcampService) { }
 
-  async getUsersWithBatchesAndBootcamps(
+  async getAllUsersWithBatchesAndBootcamps(
     batchId,
     searchTerm: string,
     dateFilter: number | null,
@@ -45,11 +45,13 @@ export class AdminAccessService {
       const [err, bootcampsResponse] = await this.bootcampService.getAllBootcamps(null, null, null);
 
       if (err) {
+        this.logger.error('Failed to fetch bootcamps', err);
         throw new BadRequestException('Failed to fetch bootcamps');
       }
 
       // Check if the bootcampsResponse has the expected structure
       if (!bootcampsResponse || !Array.isArray(bootcampsResponse.data)) {
+        this.logger.error('Invalid response structure from BootcampService');
         throw new BadRequestException('Invalid response structure from BootcampService');
       }
 
@@ -270,8 +272,37 @@ export class AdminAccessService {
         return studentsWithCreatedAt;
       }
 
-      const currentPage = !isNaN(limit) && !isNaN(offset) ? offset / limit + 1 : 1;
-      const totalPages = !isNaN(limit) ? Math.ceil(dateFilteredStudents.length / limit) : 1;
+      limit = Number(limit);
+      offset = Number(offset);
+      // this.logger.log(`Limit value: ${limit}, Offset value: ${offset}`);
+      // Check if limit or offset is provided and valid, otherwise return all students
+      if (isNaN(limit)) {
+        this.logger.log(`No pagination applied, returning all filtered students.`);
+
+        return {
+          filteredStudents: dateFilteredStudents,
+          currentPage: 1, // Set current page to 1 since there's no pagination
+          totalPages: 1,  // Set total pages to 1 since there's no pagination
+        };
+      }
+
+      // Ensure default values for limit and offset if they are provided but invalid
+      limit = limit > 0 ? limit : 10; // Default to 10 if limit is not valid
+      offset = offset >= 0 ? offset : 0; // Default to 0 if offset is not valid
+
+      // Slice the data for pagination
+      const paginatedStudents = dateFilteredStudents.slice(offset, offset + limit);
+
+      // Calculate total pages based on limit
+      const totalPages = Math.ceil(dateFilteredStudents.length / limit);
+
+      // Calculate the current page based on offset and limit
+      const currentPage = Math.floor(offset / limit) + 1;
+
+      // Log the paginated students for debugging
+      this.logger.log(`Paginated Students:`, paginatedStudents);
+
+
       return {
         // bootcampsWithBatches,
         // students: uniqueStudents,
@@ -282,7 +313,8 @@ export class AdminAccessService {
         // allStudents: uniqueStudents,
         // filterdStudents: uniqueFilteredStudents,
         // filteredStudents: studentsWithCreatedAt,
-        filteredStudents: dateFilteredStudents,
+        // filteredStudents: dateFilteredStudents,
+        filteredStudents: paginatedStudents,
         currentPage,
         totalPages
       };
@@ -295,26 +327,59 @@ export class AdminAccessService {
 
 
 
-
-
-  async getUsersWithBatches() {
-    // try {
-    //   const enrollments = await db.query.zuvyBatchEnrollments.findMany({
-    //     with: {
-    //       userEnrollment: true,
-    //     },
-    //   });
-
-    //   // Explicitly type the enrollments to include userEnrollment
-    //   type EnrollmentWithUser = typeof enrollments[0] & { userEnrollment: typeof users };
-
-    //   // Type assertion to help TypeScript understand the shape
-    //   return (enrollments as EnrollmentWithUser[]).map(enrollment => enrollment.userEnrollment);
-    // } catch (error) {
-    //   this.logger.error('Failed to fetch students of the batch', error);
-    //   throw new BadRequestException('Failed to fetch students of the batch');
-    // }
+  async removeStudentInfo(user_id: number, bootcamp_id: number, batch_id: number) {
+    try {
+      let enrolled = await db
+        .delete(zuvyBatchEnrollments)
+        .where(
+          sql`${zuvyBatchEnrollments.userId} = ${user_id} AND ${zuvyBatchEnrollments.batchId} = ${batch_id} AND ${zuvyBatchEnrollments.bootcampId} = ${bootcamp_id} `,
+        )
+        .returning();
+      if (enrolled.length == 0) {
+        return [{ status: 'error', message: 'id not found', code: 404 }, null];
+      }
+      return [
+        null,
+        {
+          status: 'true',
+          message: 'Student removed for the bootcamp',
+          code: 200,
+        },
+      ];
+    } catch (e) {
+      return [{ status: 'error', message: e.message, code: 500 }, null];
+    }
   }
 
+
+  async getUserInfoById(userId: number) {
+    try {
+      // Fetch all users with batches and bootcamps
+      const result = await this.getAllUsersWithBatchesAndBootcamps(null, '', null, 10000, 0);
+  
+      // Handle both cases: if result is an array or an object with filteredStudents
+      let filteredStudents: any[] = [];
+  
+      if (Array.isArray(result)) {
+        // If result is an array, assign it directly
+        filteredStudents = result;
+      } else if (result && result.filteredStudents) {
+        // If result is an object, extract filteredStudents
+        filteredStudents = result.filteredStudents;
+      }
+  
+      // Filter the result to find the student with the provided userId
+      const user = filteredStudents.find(student => student.userId === userId);
+  
+      if (!user) {
+        throw new BadRequestException('User not found');
+      }
+  
+      return user;
+    } catch (error) {
+      throw new BadRequestException('Failed to fetch user info by Id');
+    }
+  }
+  
 
 }
