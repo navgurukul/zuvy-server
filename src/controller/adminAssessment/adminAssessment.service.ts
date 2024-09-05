@@ -64,11 +64,27 @@ export class AdminAssessmentService {
     return studentsEnrolled;
   }
 
-  async getBootcampAssessment(bootcampID) {
+  async getBootcampAssessment(bootcampID:number,searchAssessment:string) {
     try {
       const assessment = await db.query.zuvyOutsourseAssessments.findMany({
-        where: (zuvyOutsourseAssessments, { eq }) =>
-          eq(zuvyOutsourseAssessments.bootcampId, bootcampID),
+        where: (zuvyOutsourseAssessments, { eq ,and}) =>
+          {
+            const conditions = [
+                eq(zuvyOutsourseAssessments.bootcampId, bootcampID)
+            ];
+            if (searchAssessment) {
+                conditions.push(sql`
+                    EXISTS (
+                        SELECT 1
+                        FROM main.zuvy_module_assessment AS ma
+                        WHERE ma.id = ${zuvyOutsourseAssessments.id}
+                        AND ma.title LIKE ${searchAssessment + '%'}
+                    )
+                `);
+            }
+    
+            return and(...conditions);
+        },
         columns: {
           id: true,
           order: true,
@@ -78,7 +94,7 @@ export class AdminAssessmentService {
             columns: {
               title: true,
               description: true,
-            },
+            }
           },
           Module: {
             columns: {
@@ -133,10 +149,10 @@ export class AdminAssessmentService {
     }
   }
 
-  async getAssessmentStudents(req, assessmentID) {
+  async getAssessmentStudents(req, assessmentID:number,searchStudent:string) {
     try {
       const assessmentInfo = await db.select().from(zuvyOutsourseAssessments).where(sql`${zuvyOutsourseAssessments.id} = ${assessmentID}`);
-
+     
       if(assessmentInfo.length > 0)
         {
       const assessment = await db.query.zuvyOutsourseAssessments.findMany({
@@ -168,13 +184,24 @@ export class AdminAssessmentService {
               AND main.zuvy_batch_enrollments.bootcamp_id = ${assessmentInfo[0].bootcampId}
               AND main.zuvy_batch_enrollments.batch_id IS NOT NULL
             )
+            ${searchStudent ? sql`
+              AND EXISTS (
+                SELECT 1
+                FROM main.users
+                WHERE main.users.id = ${submitedOutsourseAssessments.userId}
+                AND (
+                  main.users.name LIKE ${searchStudent + '%'}
+                  OR main.users.email LIKE ${searchStudent + '%'}
+                )
+              )
+            ` : sql``}
           `,
             with: {
               user: {
                 columns: {
                   name: true,
                   email: true,
-                },
+                }
               },
             },
           },

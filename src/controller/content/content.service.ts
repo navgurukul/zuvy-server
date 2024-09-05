@@ -33,6 +33,7 @@ import {
   or,
   isNull,
   getTableColumns,
+  asc,
 } from 'drizzle-orm';
 import { db } from '../../db/index';
 import { PgTable } from 'drizzle-orm/pg-core';
@@ -535,7 +536,6 @@ export class ContentService {
             }
           },
         });
-        console.log({ chapterDetails })
         chapterDetails[0]["assessmentOutsourseId"] = chapterDetails[0].id
         let formatedData = this.formatedChapterDetails(chapterDetails[0])
         return formatedData;
@@ -819,10 +819,18 @@ export class ContentService {
 
           if (earlierCodingId !== editData.codingQuestions) {
             let updatedCodingQuestion:any = { usage: sql`${zuvyCodingQuestions.usage}::numeric - 1` }
-            await db
+            const updatedquestion = await db
               .update(zuvyCodingQuestions)
               .set(updatedCodingQuestion)
-              .where(eq(zuvyCodingQuestions.id, editData.codingQuestions));
+              .where(eq(zuvyCodingQuestions.id, earlierCodingId)).returning();
+             if(editData.codingQuestions) 
+              {
+                updatedCodingQuestion = { usage: sql`${zuvyCodingQuestions.usage}::numeric + 1` }
+               await db
+              .update(zuvyCodingQuestions)
+              .set(updatedCodingQuestion)
+              .where(eq(zuvyCodingQuestions.id, editData.codingQuestions)).returning();
+              }
           }
         } else if (editData.formQuestions) {
           const earlierFormIds =
@@ -934,30 +942,44 @@ export class ContentService {
         let assessmentData = { title, description };
 
         // filter out the ids that are not in the assessment
-        let existingQuizIds = OutsourseQuizzes.map((q) => q.quiz_id).filter(id => id !== null);
-        let existingOpenEndedQuestionIds = OutsourseOpenEndedQuestions.map((q) => q.openEndedQuestionId).filter(id => id !== null);
-        let existingCodingQuestionIds = OutsourseCodingQuestions.map((q) => q.codingQuestionId).filter(id => id !== null);
+        let existingQuizIds = OutsourseQuizzes.length > 0 ? OutsourseQuizzes.map((q) => q.quiz_id).filter(id => id !== null) : [];
+        let existingOpenEndedQuestionIds =OutsourseOpenEndedQuestions.length > 0 ? OutsourseOpenEndedQuestions.map((q) => q.openEndedQuestionId).filter(id => id !== null) : [];
+        let existingCodingQuestionIds =OutsourseCodingQuestions.length > 0 ? OutsourseCodingQuestions.map((q) => q.codingQuestionId).filter(id => id !== null) : [];
 
-        let quizIdsToDelete = existingQuizIds.filter((id) => !mcqIds.includes(id));
+        let quizIdsToDelete =  existingQuizIds.filter((id) => !mcqIds.includes(id));
         let openEndedQuestionIdsToDelete = existingOpenEndedQuestionIds.filter((id) => !openEndedQuestionIds.includes(id));
         let codingQuestionIdsToDelete = existingCodingQuestionIds.filter((id) => !codingProblemIds.includes(id));
 
         let quizIdsToAdd = mcqIds.filter((id) => !existingQuizIds.includes(id));
         let openEndedQuestionIdsToAdd = openEndedQuestionIds.filter((id) => !existingOpenEndedQuestionIds.includes(id));
         let codingQuestionIdsToAdd = codingProblemIds.filter((id) => !existingCodingQuestionIds.includes(id));
-
         // Delete operations
         if (quizIdsToDelete.length > 0) {
+          let updatedMcqQuestions:any =  { usage: sql`${zuvyModuleQuiz.usage}::numeric - 1` }
+          await db
+            .update(zuvyModuleQuiz)
+            .set(updatedMcqQuestions)
+            .where(inArray(zuvyModuleQuiz.id, quizIdsToDelete));
           await db
             .delete(zuvyOutsourseQuizzes)
             .where(sql`${zuvyOutsourseQuizzes.assessmentOutsourseId} = ${assessmentOutsourseId} AND ${inArray(zuvyOutsourseQuizzes.quiz_id, quizIdsToDelete)}`);
         }
         if (openEndedQuestionIdsToDelete.length > 0) {
+          let updatedOpenEndedQuestions:any = {usage: sql`${zuvyOpenEndedQuestions.usage}::numeric - 1` }
+          await db
+            .update(zuvyOpenEndedQuestions)
+            .set(updatedOpenEndedQuestions)
+            .where(inArray(zuvyOpenEndedQuestions.id, openEndedQuestionIdsToDelete));
           await db
             .delete(zuvyOutsourseOpenEndedQuestions)
             .where(sql`${zuvyOutsourseOpenEndedQuestions.assessmentOutsourseId} = ${assessmentOutsourseId} AND ${inArray(zuvyOutsourseOpenEndedQuestions.openEndedQuestionId, openEndedQuestionIdsToDelete)}`);
         }
         if (codingQuestionIdsToDelete.length > 0) {
+          let updatedCodingQuestion:any = { usage: sql`${zuvyCodingQuestions.usage}::numeric - 1` }
+          await db
+            .update(zuvyCodingQuestions)
+            .set(updatedCodingQuestion)
+            .where(inArray(zuvyCodingQuestions.id, codingQuestionIdsToDelete));
           await db
             .delete(zuvyOutsourseCodingQuestions)
             .where(sql`${zuvyOutsourseCodingQuestions.assessmentOutsourseId} = ${assessmentOutsourseId} AND ${inArray(zuvyOutsourseCodingQuestions.codingQuestionId, codingQuestionIdsToDelete)}`);
@@ -982,7 +1004,7 @@ export class ContentService {
           let createZOMQ = await db.insert(zuvyOutsourseQuizzes).values(mcqArray).returning();
           if (createZOMQ.length > 0) {
             const toUpdateIds = createZOMQ.filter((c) => c.quiz_id).map((c) => c.quiz_id);
-            let modelsData = await db
+            await db
               .update(zuvyModuleQuiz)
               .set({ usage: sql`${zuvyModuleQuiz.usage}::numeric + 1` })
               .where(sql`${inArray(zuvyModuleQuiz.id, toUpdateIds)}`);
@@ -1138,7 +1160,7 @@ export class ContentService {
         })
         .from(zuvyModuleQuiz)
         .where(and(...conditions))
-        .orderBy(sql`match_position`);
+        .orderBy(searchTerm ? sql`match_position` : sql`${zuvyModuleQuiz.id} DESC`);
 
       return result;
     } catch (err) {
@@ -1167,7 +1189,6 @@ export class ContentService {
           sql`LOWER(${zuvyCodingQuestions.title}) ~ ${sql.raw(`'\\m${searchTerm.toLowerCase()}'`)}`
         );
       }
-      
       const question = await db.query.zuvyCodingQuestions.findMany({
         where: and(...conditions),
         columns: {
@@ -1179,6 +1200,7 @@ export class ContentService {
           content: true,
           tagId: true,
           createdAt: true,
+          usage: true
         },
         with: {
           testCases: {
@@ -1186,19 +1208,28 @@ export class ContentService {
               id: true,
               inputs: true,
               expectedOutput: true,
-            }
+            },
+            orderBy: (testCase, { asc }) => asc(testCase.id),
           }
         },
-        orderBy: (zuvyCodingQuestions, { sql }) => [
-          sql`
-            CASE 
-              WHEN LOWER(${zuvyCodingQuestions.title}) LIKE ${sql.raw(`'${searchTerm.toLowerCase()}%'`)} THEN 1
-              WHEN LOWER(${zuvyCodingQuestions.title}) ~ ${sql.raw(`'\\m${searchTerm.toLowerCase()}'`)} THEN 
-                POSITION(${sql.raw(`'${searchTerm.toLowerCase()}'`)} IN LOWER(${zuvyCodingQuestions.title})) + 1
-              ELSE 9999
-            END
-          `
-        ],
+        orderBy: (zuvyCodingQuestions, { sql }) => {
+          if (searchTerm) {
+            return [
+              sql`
+                CASE 
+                  WHEN LOWER(${zuvyCodingQuestions.title}) LIKE ${sql.raw(`'${searchTerm.toLowerCase()}%'`)} THEN 1
+                  WHEN LOWER(${zuvyCodingQuestions.title}) ~ ${sql.raw(`'\\m${searchTerm.toLowerCase()}'`)} THEN 
+                    POSITION(${sql.raw(`'${searchTerm.toLowerCase()}'`)} IN LOWER(${zuvyCodingQuestions.title})) + 1
+                  ELSE 9999
+                END
+              `
+            ];
+          } else {
+            return [
+              sql`${zuvyCodingQuestions.id} DESC`
+            ];
+          }
+        }
       });
       
       return question;
@@ -1513,14 +1544,18 @@ export class ContentService {
         .select()
         .from(zuvyOpenEndedQuestions)
         .where(and(...conditions))
-        .orderBy(sql`
-          CASE 
-            WHEN LOWER(${zuvyOpenEndedQuestions.question}) LIKE ${sql.raw(`'${searchTerm.toLowerCase()}%'`)} THEN 1
-            WHEN LOWER(${zuvyOpenEndedQuestions.question}) ~ ${sql.raw(`'\\m${searchTerm.toLowerCase()}'`)} THEN 
-              POSITION(${sql.raw(`'${searchTerm.toLowerCase()}'`)} IN LOWER(${zuvyOpenEndedQuestions.question})) + 1
-            ELSE 9999
-          END
-        `)
+        .orderBy(searchTerm ? 
+          sql`
+            CASE 
+              WHEN LOWER(${zuvyOpenEndedQuestions.question}) LIKE ${sql.raw(`'${searchTerm.toLowerCase()}%'`)} THEN 1
+              WHEN LOWER(${zuvyOpenEndedQuestions.question}) ~ ${sql.raw(`'\\m${searchTerm.toLowerCase()}'`)} THEN 
+                POSITION(${sql.raw(`'${searchTerm.toLowerCase()}'`)} IN LOWER(${zuvyOpenEndedQuestions.question})) + 1
+              ELSE 9999 -- Push non-matching to end
+            END
+          ` 
+          : 
+          sql`${zuvyOpenEndedQuestions.id} DESC`
+        )
         .limit(limit_)
         .offset((pageNo - 1) * limit_);
       
