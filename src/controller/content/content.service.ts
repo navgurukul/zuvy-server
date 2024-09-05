@@ -61,6 +61,7 @@ import {
   CreateAndEditFormBody,
   formDto
 } from './dto/content.dto';
+import { STATUS_CODES } from 'src/helpers';
 ;
 // import Strapi from "strapi-sdk-js"
 
@@ -2152,4 +2153,43 @@ export class ContentService {
     }
   }
 
+  async getOpenendedQuestionDetails(id: number): Promise<any>{
+    try{
+      const openEnded = await db.select().from(zuvyOpenEndedQuestions).where(eq(zuvyOpenEndedQuestions.id, id));
+      if (openEnded.length>0){
+        return [null, {data : openEnded}]
+      }
+      return [{ statusCode: STATUS_CODES.NOT_FOUND, message: 'The openended question is not found' }];
+    }
+    catch (err) {
+      return [{message: err.message}]
+    }
+  }
+
+  async getCodingQuestionDetails(id: number): Promise<any>{
+    try{
+      const codingQuestion = await db.select().from(zuvyCodingQuestions).where(eq(zuvyCodingQuestions.id, id));
+      if (codingQuestion.length>0){
+        return [null, {data : codingQuestion}]
+      }
+      return [{ statusCode: STATUS_CODES.NOT_FOUND, message: 'The coding question is not found' }];
+    }
+    catch (err) {
+      return [{message: err.message}]
+    }
+  }
+
+  async getQuizQuestionDetails(id: number): Promise<any>{
+    try{
+      const quizQuestion = await db.select().from(zuvyModuleQuiz).where(eq(zuvyModuleQuiz.id, id));
+      if (quizQuestion.length>0){
+        return [null, {data : quizQuestion}]
+      }
+      return [{ statusCode: STATUS_CODES.NOT_FOUND, message: 'The quiz question is not found' }];
+    }
+    catch (err) {
+      return [{message: err.message}]
+    }
+  }
 }
+
