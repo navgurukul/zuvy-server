@@ -80,7 +80,7 @@ export class CodingPlatformService {
       if (err) {
         return [err];
       }
-      let testSubmission = testCasesArray?.map((testCase, index) => { 
+      let testSubmission = testCasesArray?.map((testCase, index) => {
         return {
           testcastId: testCase?.id,
           status: submissionInfo.data.submissions[index].status?.description,
@@ -97,7 +97,7 @@ export class CodingPlatformService {
     }
   }
 
-  async submitPracticeCode(questionId:number, sourceCode, action, userId, submissionId, codingOutsourseId): Promise<any> {
+  async submitPracticeCode(questionId: number, sourceCode, action, userId, submissionId, codingOutsourseId): Promise<any> {
     try {
       if (![RUN, SUBMIT].includes(action.toLowerCase())) {
         return [{ statusCode: STATUS_CODES.BAD_REQUEST, message: 'Invalid action' }];
@@ -107,7 +107,7 @@ export class CodingPlatformService {
         return [err];
       }
       if (testcasesSubmission.data[0].stderr && action != SUBMIT) {
-        return [null,{ statusCode: STATUS_CODES.CONFLICT, message:  `${action} ${testcasesSubmission.data[0].status}`, data: [testcasesSubmission.data[0]]}];
+        return [null, { statusCode: STATUS_CODES.CONFLICT, message: `${action} ${testcasesSubmission.data[0].status}`, data: [testcasesSubmission.data[0]] }];
       }
       let insertValues
       if (testcasesSubmission.data.length >= 0) {
@@ -115,7 +115,7 @@ export class CodingPlatformService {
       } else {
         insertValues = { status: 'Error', sourceCode: sourceCode.sourceCode };
       }
-      
+
       for (let testSub of testcasesSubmission.data) {
         if (testSub.status !== ACCEPTED) {
           insertValues["status"] = testSub.status
@@ -125,7 +125,7 @@ export class CodingPlatformService {
       if (action === RUN) {
         // i want to update the last submission sourceCode where last submission sourceCode 
         let queryString = sql`${zuvyPracticeCode.questionId} = ${questionId} AND ${zuvyPracticeCode.userId} = ${userId} AND ${zuvyPracticeCode.action} = ${action}`
-        if (submissionId){
+        if (submissionId) {
           queryString = sql`${queryString} AND ${zuvyPracticeCode.submissionId} = ${submissionId} AND ${zuvyPracticeCode.codingOutsourseId} = ${codingOutsourseId}`;
         }
         let response = await db.query.zuvyPracticeCode.findMany({
@@ -149,7 +149,7 @@ export class CodingPlatformService {
         } else {
           await db.update(zuvyPracticeCode).set(insertValues).where(sql`${zuvyPracticeCode.id} = ${response[0].id}`).returning();
         }
-        return [null,{ statusCode: STATUS_CODES.OK, message: `${action} ${testcasesSubmission.data[0].status}`, data: testcasesSubmission.data}];
+        return [null, { statusCode: STATUS_CODES.OK, message: `${action} ${testcasesSubmission.data[0].status}`, data: testcasesSubmission.data }];
 
       }
       insertValues["userId"] = userId;
@@ -176,17 +176,17 @@ export class CodingPlatformService {
       })
       let test_Submission = await db.insert(zuvyTestCasesSubmission).values(testcasesSubmissionInsert).returning();
       if (test_Submission.length !== 0) {
-        return [null,{ statusCode: STATUS_CODES.OK, message: `${action} ${testcasesSubmission.data[0].status}`, data: test_Submission}];
+        return [null, { statusCode: STATUS_CODES.OK, message: `${action} ${testcasesSubmission.data[0].status}`, data: test_Submission }];
       } else {
         return [{ statusCode: STATUS_CODES.BAD_REQUEST, message: 'Error in submitting code' }];
       }
     } catch (error) {
-      Logger.error({error});
+      Logger.error({ error });
       return [{ statusCode: STATUS_CODES.BAD_REQUEST, message: error.message }];
     }
   }
 
-    async getPracticeCode(questionId, userId, submissionId, codingOutsourseId): Promise<any> {
+  async getPracticeCode(questionId, userId, submissionId, codingOutsourseId): Promise<any> {
     try {
       let queryString;
       if (isNaN(submissionId)) {
@@ -206,8 +206,8 @@ export class CodingPlatformService {
           createdAt: true,
           sourceCode: true
         },
-        with:{
-          questionDetail:true,
+        with: {
+          questionDetail: true,
           TestCasesSubmission: {
             with: {
               testCases: true,
@@ -220,14 +220,14 @@ export class CodingPlatformService {
       if (response.length === 0) {
         return [{ statusCode: STATUS_CODES.NOT_FOUND, message: 'No practice code available for the given question' }];
       } else {
-        return [null, { statusCode: STATUS_CODES.OK, message: 'Practice code fetched successfully', data:{...response[0]} }];
+        return [null, { statusCode: STATUS_CODES.OK, message: 'Practice code fetched successfully', data: { ...response[0] } }];
       }
     } catch (error) {
       return [{ statusCode: STATUS_CODES.BAD_REQUEST, message: error.message }];
     }
   }
 
-  async getTestCasesSubmission(TestCasesSubmission:any): Promise<any> {
+  async getTestCasesSubmission(TestCasesSubmission: any): Promise<any> {
     try {
       const submissionsInfoPromises = TestCasesSubmission.map(async (submission: any) => {
         const options = {
@@ -240,7 +240,7 @@ export class CodingPlatformService {
         };
         const response = await axios.request(options);
         let status = response.data.status?.description;
-        return {...submission, ...response.data, status};
+        return { ...submission, ...response.data, status };
       });
       const submission = await Promise.all(submissionsInfoPromises);
       if (submission.length === 0) {
@@ -325,33 +325,26 @@ export class CodingPlatformService {
     try {
       const question = await db.update(zuvyCodingQuestions).set(questionData).where(sql`${zuvyCodingQuestions.id} = ${id}`).returning();
       let missingIdElements = [];
-      let validTestCases = [];
-      if(testCases.length < 2)
-        {
-          return [[{ message: "Test case should be minimum 2", statusCode: STATUS_CODES.BAD_REQUEST }]];
-        }
+      if (testCases.length < 2) {
+        return [{ message: "Test case should be minimum 2", statusCode: STATUS_CODES.BAD_REQUEST }];
+      }
       if (Array.isArray(testCases) && testCases.length > 0) {
         missingIdElements = testCases.filter(element => !element.hasOwnProperty('id'));
-        validTestCases = testCases.filter(element => element.hasOwnProperty('id'));
-
+        testCases = testCases.filter(element => element.hasOwnProperty('id'));
         missingIdElements = missingIdElements.map(element => ({
           ...element,
           questionId: id
-      }));
+        }));
       }
-      testCases = validTestCases;
-
       await db.delete(zuvyTestCases)
       .where(
         sql`${zuvyTestCases.questionId} = ${id} AND ${notInArray(zuvyTestCases.id, testCases.map(tc => tc.id))}`
       );
-      const newAddedTestCases:any[] =missingIdElements.length > 0 ?  await db.insert(zuvyTestCases).values(missingIdElements).returning() : [];
-      if(newAddedTestCases.length > 0 && missingIdElements.length > 0)
-        {
-           await this.updateTestCaseAndExpectedOutput(testCases);
-        }
-      return [null, { message: 'Coding question updated successfully', data: question, statusCode: STATUS_CODES.OK }];
+      const newAddedTestCases: any[] = missingIdElements.length > 0 ? await db.insert(zuvyTestCases).values(missingIdElements).returning() : [];
+      await this.updateTestCaseAndExpectedOutput(testCases);
+      return [null, { message: 'Coding question updated successfully', data: { question, "testCases": [...testCases, ...newAddedTestCases] }, statusCode: STATUS_CODES.OK }];
     } catch (error) {
+      Logger.error(JSON.stringify(error));
       return [[{ message: error.message, statusCode: STATUS_CODES.BAD_REQUEST }]];
     }
   }
@@ -389,6 +382,7 @@ export class CodingPlatformService {
               inputs: true,
               expectedOutput: true,
             },
+            orderBy: (testCase, { asc }) => asc(testCase.id),
             limit: totalCasses == 3 ? totalCasses : undefined,
           }
         }
@@ -416,6 +410,7 @@ export class CodingPlatformService {
       })
       return [null, { message: 'Test case and expected output updated successfully', statusCode: STATUS_CODES.OK }];
     } catch (error) {
+      Logger.error(JSON.stringify(error));
       return [[{ message: error.message, statusCode: STATUS_CODES.BAD_REQUEST }]];
     }
   }
@@ -436,7 +431,7 @@ export class CodingPlatformService {
   async addTestCase(questionId, updateTestCaseDto): Promise<any> {
     try {
       const { inputs, expectedOutput } = updateTestCaseDto
-      let insertTestcase:any = { questionId, inputs, expectedOutput };
+      let insertTestcase: any = { questionId, inputs, expectedOutput };
       const testCase = await db.insert(zuvyTestCases).values(insertTestcase).returning();
       return [null, { message: "added the test case", data: testCase[0] }, STATUS_CODES.CREATED];
     } catch (error) {

@@ -19,16 +19,28 @@ export class AdminAssessmentController {
   constructor(private adminAssessmentService: AdminAssessmentService) { }
   @Get('bootcampAssessment/bootcamp_id:bootcamp_id')
   @ApiOperation({ summary: 'Get the assessment of bootcamp' })
+  @ApiQuery({
+    name: 'searchAssessment',
+    required: false,
+    type: String,
+    description: 'Search by assessment name',
+  })
   @ApiBearerAuth()
-  async BootcampAssessment(@Req() req: Request, @Param('bootcamp_id') bootcampID: number) {
-    return this.adminAssessmentService.getBootcampAssessment(bootcampID);
+  async BootcampAssessment(@Req() req: Request, @Param('bootcamp_id') bootcampID: number,@Query('searchAssessment') searchAssessment: string) {
+    return this.adminAssessmentService.getBootcampAssessment(bootcampID,searchAssessment);
   }
 
   @Get('assessment/students/assessment_id:assessment_id')
   @ApiOperation({ summary: 'Get the students of assessment' })
+  @ApiQuery({
+    name: 'searchStudent',
+    required: false,
+    type: String,
+    description: 'Search by name or email',
+  })
   @ApiBearerAuth()
-  async AssessmentStudents(@Req() req: Request, @Param('assessment_id') assessmentID: number) {
-    return this.adminAssessmentService.getAssessmentStudents(req, assessmentID);
+  async AssessmentStudents(@Req() req: Request, @Param('assessment_id') assessmentID: number,@Query('searchStudent') searchStudent: string) {
+    return this.adminAssessmentService.getAssessmentStudents(req, assessmentID,searchStudent);
   }
   // get assessment submission by student
   @Get('assessment/submission/user_id:user_id')
