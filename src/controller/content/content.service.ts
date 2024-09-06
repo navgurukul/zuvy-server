@@ -2168,7 +2168,29 @@ export class ContentService {
 
   async getCodingQuestionDetails(id: number): Promise<any>{
     try{
-      const codingQuestion = await db.select().from(zuvyCodingQuestions).where(eq(zuvyCodingQuestions.id, id));
+      const codingQuestion = await db.query.zuvyCodingQuestions.findMany({
+        where: (zuvyCodingQuestions, { sql }) => sql`${zuvyCodingQuestions.id} = ${id}`,
+        columns: {
+          id: true,
+          title: true,
+          description: true,
+          difficulty: true,
+          constraints: true,
+          content: true,
+          tagId: true,
+          createdAt: true,
+        },
+        with: {
+          testCases: {
+            columns: {
+              id: true,
+              inputs: true,
+              expectedOutput: true,
+            },
+            orderBy: (testCase, { asc }) => asc(testCase.id),
+          }
+        }
+      });
       if (codingQuestion.length>0){
         return [null, {data : codingQuestion}]
       }
