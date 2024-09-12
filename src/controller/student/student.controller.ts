@@ -1,14 +1,12 @@
-import { Controller, Get, Post, Put, Delete, Patch, Body, Param, ValidationPipe, UsePipes, BadRequestException, Query, Req } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Patch, Body, Param, ValidationPipe, UsePipes, BadRequestException, Query, Req, Res } from '@nestjs/common';
 import { StudentService } from './student.service';
-import { ApiTags, ApiBody, ApiOperation, ApiCookieAuth, ApiQuery, ApiBearerAuth } from '@nestjs/swagger';
+import { ApiTags, ApiBody, ApiOperation, ApiQuery, ApiBearerAuth } from '@nestjs/swagger';
 import { get } from 'http';
-// import { CreateDto, ScheduleDto, CreateLiveBroadcastDto } from './dto/Student.dto';
-// import { AuthGuard } from '@nestjs/passport'; // Assuming JWT authentication
-
+import { Response } from 'express';
+import { ErrorResponse, SuccessResponse } from 'src/errorHandler/handler';
 
 @Controller('student')
 @ApiTags('student')
-@ApiCookieAuth()
 @UsePipes(
   new ValidationPipe({
     whitelist: true,
@@ -87,15 +85,36 @@ export class StudentController {
   @ApiOperation({ summary: 'Get dashboard upcoming class' })
   @ApiBearerAuth()
   @ApiQuery({
+    name: 'limit',
+    type: Number,
+    description: 'limit',
+    required:false
+  })
+  @ApiQuery({
+    name: 'offset',
+    type: Number,
+    description: 'offset',
+    required:false
+  })
+  @ApiQuery({
     name: 'batch_id',
     required: false,
     type: String,
     description: 'batch_id',
   })
-  async getUpcomingClass(@Req() req, @Query('batch_id') batchID: number
-  ) {
-    return await this.studentService.getUpcomingClass(req.user[0].id, batchID);
+  async getUpcomingClass(@Req() req, @Query('batch_id')batchID: number,@Query('limit') limit: number,
+  @Query('offset') offset : number, @Res() res: Response
+) {
+  try {
+    const [err, success] = await this.studentService.getUpcomingClass(req.user[0].id, batchID, limit, offset);
+    if (err) {
+      return ErrorResponse.BadRequestException(err.message).send(res);
+    }
+    return new SuccessResponse(success.message, success.statusCode, success.data).send(res);
+  } catch (error) {
+    return ErrorResponse.BadRequestException(error.message).send(res);
   }
+}
 
   @Get('/Dashboard/attendance')
   @ApiOperation({ summary: 'Get dashboard Attendance.' })
@@ -103,5 +122,32 @@ export class StudentController {
   async getAttendanceClass(@Req() req
   ) {
     return await this.studentService.getAttendanceClass(req.user[0].id);
+  }
+
+
+  @Get('/leaderboard/:bootcampId')
+  @ApiOperation({ summary: 'Get the leaderboard of a course' })
+  @ApiQuery({
+    name: 'limit',
+    type: Number,
+    description: 'limit',
+    required:false
+  })
+  @ApiQuery({
+    name: 'offset',
+    type: Number,
+    description: 'offset',
+    required:false
+  })
+  @ApiBearerAuth()
+  async getleaderboardDetails(
+    @Param('bootcampId') bootcampId: number,
+    @Query('limit') limit: number,
+    @Query('offset') offset : number
+  ): Promise<object> {
+    const res = await this.studentService.getLeaderBoardDetailByBootcamp(
+      bootcampId,limit,offset
+    );
+    return res;
   }
 }

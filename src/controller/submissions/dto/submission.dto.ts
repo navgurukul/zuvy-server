@@ -120,6 +120,16 @@ export class SubmissionassessmentDto{
     })
     @IsNotEmpty()
     embeddedGoogleSearch: number;
+
+     // typeOfsubmission
+    @ApiProperty({
+        type: String,
+        example: 'typeOfsubmission',
+        required: false,
+    })
+    @IsOptional()
+    @IsString()
+    typeOfsubmission: string;
 }
 export class QuizSubmissionDto {
     @ApiProperty({
