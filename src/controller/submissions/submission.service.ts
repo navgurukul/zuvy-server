@@ -367,7 +367,6 @@ export class SubmissionService {
           },
           PracticeCode: {
             where: (zuvyPracticeCode, { eq, and }) => and(
-              eq(zuvyPracticeCode.status, ACCEPTED),
               eq(zuvyPracticeCode.action, SUBMIT),
               eq(zuvyPracticeCode.userId, userId),
             ),

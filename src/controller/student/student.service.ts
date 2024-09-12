@@ -282,6 +282,7 @@ export class StudentService {
         with: {
           students: {
             columns: { attendance: true },
+            where: (batchEnrolled,{sql}) => sql `${batchEnrolled.batchId} IS NOT NULL`,
             with: {
               userInfo: {
                 columns: { id:true, name: true ,email:true},
