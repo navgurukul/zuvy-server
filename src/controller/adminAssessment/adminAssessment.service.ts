@@ -79,9 +79,8 @@ export class AdminAssessmentService {
                         SELECT 1
                         FROM main.zuvy_module_assessment AS ma
                         WHERE ma.id = ${zuvyOutsourseAssessments.id}
-                        AND ma.title LIKE ${searchAssessment + '%'}
-                    )
-                `);
+                        AND lower(ma.title) LIKE lower(${searchAssessment + '%'})
+                )`);
             }
     
             return and(...conditions);
@@ -191,8 +190,8 @@ export class AdminAssessmentService {
                 FROM main.users
                 WHERE main.users.id = ${submitedOutsourseAssessments.userId}
                 AND (
-                  main.users.name LIKE ${searchStudent + '%'}
-                  OR main.users.email LIKE ${searchStudent + '%'}
+                  lower(main.users.name) LIKE lower(${searchStudent + '%'})
+                  OR lower(main.users.email) LIKE lower(${searchStudent + '%'})
                 )
               )
             ` : sql``}
