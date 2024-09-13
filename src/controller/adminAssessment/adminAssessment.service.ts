@@ -3,6 +3,7 @@ import { db } from '../../db/index';
 import { sql } from 'drizzle-orm';
 import * as _ from 'lodash';
 import { zuvyBatchEnrollments, zuvyOutsourseAssessments } from '../../../drizzle/schema';
+import { STATUS_CODES } from 'src/helpers';
 
 const { ZUVY_CONTENT_URL } = process.env; // INPORTING env VALUSE ZUVY_CONTENT
 
@@ -64,11 +65,26 @@ export class AdminAssessmentService {
     return studentsEnrolled;
   }
 
-  async getBootcampAssessment(bootcampID) {
+  async getBootcampAssessment(bootcampID:number,searchAssessment:string) {
     try {
       const assessment = await db.query.zuvyOutsourseAssessments.findMany({
-        where: (zuvyOutsourseAssessments, { eq }) =>
-          eq(zuvyOutsourseAssessments.bootcampId, bootcampID),
+        where: (zuvyOutsourseAssessments, { eq ,and}) =>
+          {
+            const conditions = [
+                eq(zuvyOutsourseAssessments.bootcampId, bootcampID)
+            ];
+            if (searchAssessment) {
+                conditions.push(sql`
+                    EXISTS (
+                        SELECT 1
+                        FROM main.zuvy_module_assessment AS ma
+                        WHERE ma.id = ${zuvyOutsourseAssessments.id}
+                        AND lower(ma.title) LIKE lower(${searchAssessment + '%'})
+                )`);
+            }
+    
+            return and(...conditions);
+        },
         columns: {
           id: true,
           order: true,
@@ -78,7 +94,7 @@ export class AdminAssessmentService {
             columns: {
               title: true,
               description: true,
-            },
+            }
           },
           Module: {
             columns: {
@@ -133,10 +149,10 @@ export class AdminAssessmentService {
     }
   }
 
-  async getAssessmentStudents(req, assessmentID) {
+  async getAssessmentStudents(req, assessmentID:number,searchStudent:string) {
     try {
       const assessmentInfo = await db.select().from(zuvyOutsourseAssessments).where(sql`${zuvyOutsourseAssessments.id} = ${assessmentID}`);
-
+     
       if(assessmentInfo.length > 0)
         {
       const assessment = await db.query.zuvyOutsourseAssessments.findMany({
@@ -168,13 +184,24 @@ export class AdminAssessmentService {
               AND main.zuvy_batch_enrollments.bootcamp_id = ${assessmentInfo[0].bootcampId}
               AND main.zuvy_batch_enrollments.batch_id IS NOT NULL
             )
+            ${searchStudent ? sql`
+              AND EXISTS (
+                SELECT 1
+                FROM main.users
+                WHERE main.users.id = ${submitedOutsourseAssessments.userId}
+                AND (
+                  lower(main.users.name) LIKE lower(${searchStudent + '%'})
+                  OR lower(main.users.email) LIKE lower(${searchStudent + '%'})
+                )
+              )
+            ` : sql``}
           `,
             with: {
               user: {
                 columns: {
                   name: true,
                   email: true,
-                },
+                }
               },
             },
           },
@@ -331,6 +358,118 @@ export class AdminAssessmentService {
       return assessment[0];
     } catch (error) {
       throw error;
+    }
+  }
+
+  async getAssessmentsAndStudents(bootcampID: number): Promise<any> {
+    try {  
+      const assessments = await db.query.zuvyOutsourseAssessments.findMany({
+        where: (zuvyOutsourseAssessments, { eq }) =>
+          eq(zuvyOutsourseAssessments.bootcampId, bootcampID),
+        columns: {
+          id: true,
+          bootcampId: true,
+          passPercentage: true,
+          order: true,
+        },
+        with: {
+          submitedOutsourseAssessments: {
+            columns: {
+              id: true,
+              userId: true,
+              marks: true,
+              startedAt: true,
+              submitedAt: true,
+              isPassed: true,
+              percentage: true,
+            },
+            where: (submitedOutsourseAssessments, { sql }) => sql`
+              ${submitedOutsourseAssessments.submitedAt} IS NOT NULL
+              AND EXISTS (
+                SELECT 1
+                FROM main.zuvy_batch_enrollments
+                WHERE main.zuvy_batch_enrollments.user_id = ${submitedOutsourseAssessments.userId}
+                AND main.zuvy_batch_enrollments.bootcamp_id = ${bootcampID}
+                AND main.zuvy_batch_enrollments.batch_id IS NOT NULL
+              )
+            `,
+            with: {
+              user: {
+                columns: {
+                  name: true,
+                  email: true,
+                },
+              },
+            },
+          },
+          ModuleAssessment: {
+            columns: {
+              title: true,
+              description: true,
+            },
+          },
+          Module: {
+            columns: {
+              name: true,  
+              description: true,
+              timeAlloted: true,
+              order: true,
+            },
+          },
+          Quizzes: true,
+          OpenEndedQuestions: true,
+          CodingQuestions: true,
+        },
+      });
+  
+      if (!assessments || assessments.length === 0) {
+        return [{ statusCode: STATUS_CODES.NOT_FOUND, message: 'No assessments found.' }];
+      }
+  
+      const assessmentsByModule = assessments.reduce((acc, assessment) => {
+        const moduleName = assessment.Module?.name;
+        
+        const assessmentData = {
+          id: assessment.id,
+          order: assessment.order || 0,
+          title: assessment.ModuleAssessment?.title || null,
+          description: assessment.ModuleAssessment?.description || null,
+          totalCodingQuestions: assessment.CodingQuestions?.length || 0,
+          totalOpenEndedQuestions: assessment.OpenEndedQuestions?.length || 0,
+          totalQuizzes: assessment.Quizzes?.length || 0,
+          totalSubmitedAssessments: assessment.submitedOutsourseAssessments?.length || 0,
+          qualifiedStudents: assessment.submitedOutsourseAssessments?.filter(sub => sub.isPassed).length || 0,
+          passPercentage: assessment.passPercentage,
+          submitedOutsourseAssessments: assessment.submitedOutsourseAssessments.map(submission => ({
+            id: submission.id,
+            userId: submission.userId,
+            marks: submission.marks,
+            startedAt: submission.startedAt,
+            submitedAt: submission.submitedAt,
+            isPassed: submission.isPassed,
+            percentage: submission.percentage,
+            name: submission['user'].name || null,
+            email: submission['user'].email || null,
+          })),
+        };
+  
+        if (!acc[moduleName]) {
+          acc[moduleName] = [];
+        }
+        acc[moduleName].push(assessmentData);
+  
+        return acc;
+      }, {});
+  
+      const studentsEnrolled = await this.getTotalStudentsEnrolled(bootcampID);
+  
+      return {
+        statusCode: STATUS_CODES.OK,
+        ...assessmentsByModule,
+        totalStudents: studentsEnrolled.length, 
+      };
+    } catch (err) {
+      return [{message: err.message}]
     }
   }
 }

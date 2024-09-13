@@ -40,7 +40,6 @@ export class JwtMiddleware implements NestMiddleware {
 
     try {
       const decoded: any = await this.jwtService.decode(token);
-      console.log('user', token);
       if (!decoded) {
         throw new UnauthorizedException('Invalid token');
       }
