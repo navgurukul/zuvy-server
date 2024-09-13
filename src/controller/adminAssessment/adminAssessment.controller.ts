@@ -71,5 +71,4 @@ export class AdminAssessmentController {
       return ErrorResponse.BadRequestException(error.message).send(res);
     }
   }
-
 }

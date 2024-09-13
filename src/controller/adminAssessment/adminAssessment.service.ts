@@ -452,7 +452,6 @@ export class AdminAssessmentService {
             email: submission['user'].email || null,
           })),
         };
-
         if (!acc[moduleName]) {
           acc[moduleName] = [];
         }
