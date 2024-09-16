@@ -90,7 +90,7 @@ export class SubmissionService {
             with: {
               studentCodeDetails: {
                 where: (practiceCode,{sql}) =>
-                  sql`${practiceCode.action} = 'submit' AND ${practiceCode.submissionId} IS NULL`
+                  sql`${practiceCode.action} = 'submit' AND ${practiceCode.questionId} = ${questionId} AND ${practiceCode.submissionId} IS NULL`
               },
             },
           },
