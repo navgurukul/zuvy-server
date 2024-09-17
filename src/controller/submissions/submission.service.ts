@@ -90,7 +90,7 @@ export class SubmissionService {
             with: {
               studentCodeDetails: {
                 where: (practiceCode,{sql}) =>
-                  sql`${practiceCode.action} = 'submit' AND ${practiceCode.submissionId} IS NULL`
+                  sql`${practiceCode.action} = 'submit' AND ${practiceCode.questionId} = ${questionId} AND ${practiceCode.submissionId} IS NULL`
               },
             },
           },
@@ -217,8 +217,18 @@ export class SubmissionService {
     data.openEndedSubmission.forEach(question => {
       openTotalAttemted += 1;
     });
+    // I WANT TO FILTER THE CODING SUBMISSIONS TO GET THE UNIQUE SUBMISSIONS BYE QUESTION ID
+    const uniqueSubmissionsMap = new Map();
 
+    codingSubmission.forEach(submission => {
+      const existingSubmission = uniqueSubmissionsMap.get(submission.questionId);
+      if (!existingSubmission || new Date(submission.timestamp) > new Date(existingSubmission.timestamp)) {
+        uniqueSubmissionsMap.set(submission.questionId, submission);
+      }
+    });
 
+    codingSubmission = Array.from(uniqueSubmissionsMap.values());
+    
     data.PracticeCode.forEach(question => {
       let existingEntry = codingSubmission.find(entry => entry.id === question.questionId);
       if (existingEntry) {
@@ -367,6 +377,7 @@ export class SubmissionService {
           },
           PracticeCode: {
             where: (zuvyPracticeCode, { eq, and }) => and(
+              eq(zuvyPracticeCode.status, ACCEPTED),
               eq(zuvyPracticeCode.action, SUBMIT),
               eq(zuvyPracticeCode.userId, userId),
             ),
