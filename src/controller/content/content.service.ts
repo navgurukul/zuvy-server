@@ -995,20 +995,10 @@ export class ContentService {
           .where(eq(zuvyModuleAssessment.id, assessment_id))
           .returning();
 
-        // Function to remove duplicates from an array
-        function removeDuplicates(array: number[]): number[] {
-          return Array.from(new Set(array));
-        }
-
-        // Remove duplicates from each array
-        const uniqueQuizIdsToAdd = removeDuplicates(quizIdsToAdd);
-        const uniqueOpenEndedQuestionIdsToAdd = removeDuplicates(openEndedQuestionIdsToAdd);
-        const uniqueCodingQuestionIdsToAdd = removeDuplicates(codingQuestionIdsToAdd);
-
         // Insert new data
-        let mcqArray = uniqueQuizIdsToAdd.map(id => ({ quiz_id: id, bootcampId, chapterId, assessmentOutsourseId }));
-        let openEndedQuestionsArray = uniqueOpenEndedQuestionIdsToAdd.map(id => ({ openEndedQuestionId: id, bootcampId, moduleId, chapterId, assessmentOutsourseId }));
-        let codingProblemsArray = uniqueCodingQuestionIdsToAdd.map(id => ({ codingQuestionId: id, bootcampId, moduleId, chapterId, assessmentOutsourseId }));
+        let mcqArray = quizIdsToAdd.map(id => ({ quiz_id: id, bootcampId, chapterId, assessmentOutsourseId }));
+        let openEndedQuestionsArray = openEndedQuestionIdsToAdd.map(id => ({ openEndedQuestionId: id, bootcampId, moduleId, chapterId, assessmentOutsourseId }));
+        let codingProblemsArray = codingQuestionIdsToAdd.map(id => ({ codingQuestionId: id, bootcampId, moduleId, chapterId, assessmentOutsourseId }));
 
         if (mcqArray.length > 0) {
           let createZOMQ = await db.insert(zuvyOutsourseQuizzes).values(mcqArray).returning();
@@ -1044,7 +1034,6 @@ export class ContentService {
           }
         }
       }
-
       return {
         status: 'success',
         code: 200,
@@ -2179,29 +2168,7 @@ export class ContentService {
 
   async getCodingQuestionDetails(id: number): Promise<any>{
     try{
-      const codingQuestion = await db.query.zuvyCodingQuestions.findMany({
-        where: (zuvyCodingQuestions, { sql }) => sql`${zuvyCodingQuestions.id} = ${id}`,
-        columns: {
-          id: true,
-          title: true,
-          description: true,
-          difficulty: true,
-          constraints: true,
-          content: true,
-          tagId: true,
-          createdAt: true,
-        },
-        with: {
-          testCases: {
-            columns: {
-              id: true,
-              inputs: true,
-              expectedOutput: true,
-            },
-            orderBy: (testCase, { asc }) => asc(testCase.id),
-          }
-        }
-      });
+      const codingQuestion = await db.select().from(zuvyCodingQuestions).where(eq(zuvyCodingQuestions.id, id));
       if (codingQuestion.length>0){
         return [null, {data : codingQuestion}]
       }

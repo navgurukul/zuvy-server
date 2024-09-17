@@ -696,11 +696,11 @@ export class TrackingService {
         });
        }
        else {
-        return [null,{message:'No content found', statusCode: STATUS_CODES.OK}]
+        return [{message:'No content found', statusCode: STATUS_CODES.NO_CONTENT},null]
        }
       }
       else {
-        return [null,{message:'No content found', statusCode: STATUS_CODES.OK}]
+        return [{message:'No content found', statusCode: STATUS_CODES.NO_CONTENT},null]
       }
       
       return [null,{message:'Upcoming submission fetched successfully',statusCode: STATUS_CODES.OK,data:{upcomingAssignments,lateAssignments}}]
