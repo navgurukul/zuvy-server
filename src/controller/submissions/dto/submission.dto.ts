@@ -125,9 +125,9 @@ export class SubmissionassessmentDto{
     @ApiProperty({
         type: String,
         example: 'typeOfsubmission',
-        required: true,
+        required: false,
     })
-    @IsNotEmpty()
+    @IsOptional()
     @IsString()
     typeOfsubmission: string;
 }

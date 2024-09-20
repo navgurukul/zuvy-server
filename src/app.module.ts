@@ -15,7 +15,6 @@ import { SubmissionModule } from './controller/submissions/submission.module';
 import { AdminAssessmentModule } from './controller/adminAssessment/adminAssessment.module';
 import { ScheduleService } from './schedule/schedule.service';
 import { InstructorModule } from './controller/instructor/instructor.module';
-// C:\Users\ADMIN\Desktop\zuvy-server\src\app.module.ts
 
 @Module({
   imports: [

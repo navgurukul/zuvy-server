@@ -15,6 +15,7 @@ async function bootstrap() {
     credentials: true,
   };
   const app = await NestFactory.create(AppModule);
+  // Enable CORS
   app.enableCors(corsOptions);
   const config = new DocumentBuilder()
     .setTitle('NG zuvy API Docs')

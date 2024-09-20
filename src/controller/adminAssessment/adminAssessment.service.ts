@@ -1,29 +1,54 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { db } from '../../db/index';
-import { eq, sql, count, inArray, or, and } from 'drizzle-orm';
-import axios from 'axios';
+import { sql } from 'drizzle-orm';
 import * as _ from 'lodash';
-import { error, log } from 'console';
-import {
-  zuvyBatchEnrollments,
-  zuvyOutsourseAssessments
-} from '../../../drizzle/schema';
+import { zuvyBatchEnrollments, zuvyOutsourseAssessments } from '../../../drizzle/schema';
+import { STATUS_CODES } from 'src/helpers';
 
 const { ZUVY_CONTENT_URL } = process.env; // INPORTING env VALUSE ZUVY_CONTENT
 
 @Injectable()
 export class AdminAssessmentService {
-
-  async transformAssessments(assessments){
+  async transformAssessments(assessments) {
     const result = {};
-    assessments.forEach(assessment => {
+    assessments.forEach((assessment) => {
       const moduleName = assessment.Module.name;
-      const { Module, ModuleAssessment, CodingQuestions, OpenEndedQuestions,Quizzes, submitedOutsourseAssessments,  ...assessmentInfo } = assessment;
+      const {
+        Module,
+        ModuleAssessment,
+        CodingQuestions,
+        OpenEndedQuestions,
+        Quizzes,
+        submitedOutsourseAssessments,
+        ...assessmentInfo
+      } = assessment;
+      let qualifiedStudents = 0;
+      submitedOutsourseAssessments.map((student) => {
+          if (student.isPassed) {
+            qualifiedStudents += 1;
+          }
+      });
       if (!result[moduleName]) {
-        result[moduleName] = [{...assessmentInfo, ...ModuleAssessment, totalCodingQuestions: CodingQuestions.length, totalOpenEndedQuestions: OpenEndedQuestions.length, totalQuizzes: Quizzes.length, totalSubmitedAssessments: submitedOutsourseAssessments.length}];
+        result[moduleName] = [
+          {
+            ...assessmentInfo,
+            ...ModuleAssessment,
+            totalCodingQuestions: CodingQuestions.length,
+            totalOpenEndedQuestions: OpenEndedQuestions.length,
+            totalQuizzes: Quizzes.length,
+            totalSubmitedAssessments: submitedOutsourseAssessments.length,
+            qualifiedStudents,
+          },
+        ];
       } else {
-        result[moduleName].push({...assessmentInfo, ...ModuleAssessment, totalCodingQuestions: CodingQuestions.length, totalOpenEndedQuestions: OpenEndedQuestions.length, totalQuizzes: Quizzes.length, totalSubmitedAssessments: submitedOutsourseAssessments.length
-
+        result[moduleName].push({
+          ...assessmentInfo,
+          ...ModuleAssessment,
+          totalCodingQuestions: CodingQuestions.length,
+          totalOpenEndedQuestions: OpenEndedQuestions.length,
+          totalQuizzes: Quizzes.length,
+          totalSubmitedAssessments: submitedOutsourseAssessments.length,
+          qualifiedStudents,
         });
       }
     });
@@ -31,62 +56,112 @@ export class AdminAssessmentService {
   }
 
   async getTotalStudentsEnrolled(bootcampID) {
-    let studentsEnrolled = await db.select().from(zuvyBatchEnrollments).where(sql`${zuvyBatchEnrollments.bootcampId} = ${bootcampID} AND ${zuvyBatchEnrollments.batchId} IS NOT NULL`);
+    let studentsEnrolled = await db
+      .select()
+      .from(zuvyBatchEnrollments)
+      .where(
+        sql`${zuvyBatchEnrollments.bootcampId} = ${bootcampID} AND ${zuvyBatchEnrollments.batchId} IS NOT NULL`,
+      );
     return studentsEnrolled;
   }
 
-  async getBootcampAssessment(bootcampID) {
-    try{
+  async getBootcampAssessment(bootcampID:number,searchAssessment:string) {
+    try {
       const assessment = await db.query.zuvyOutsourseAssessments.findMany({
-        where: (zuvyOutsourseAssessments, { eq }) =>
-          eq(zuvyOutsourseAssessments.bootcampId, bootcampID),
+        where: (zuvyOutsourseAssessments, { eq ,and}) =>
+          {
+            const conditions = [
+                eq(zuvyOutsourseAssessments.bootcampId, bootcampID)
+            ];
+            if (searchAssessment) {
+                conditions.push(sql`
+                    EXISTS (
+                        SELECT 1
+                        FROM main.zuvy_module_assessment AS ma
+                        WHERE ma.id = ${zuvyOutsourseAssessments.id}
+                        AND lower(ma.title) LIKE lower(${searchAssessment + '%'})
+                )`);
+            }
+    
+            return and(...conditions);
+        },
         columns: {
           id: true,
           order: true,
         },
         with: {
-          ModuleAssessment:{
+          ModuleAssessment: {
             columns: {
-              title:true,
-              description:true,
+              title: true,
+              description: true,
             }
           },
-          Module:{
+          Module: {
             columns: {
-              name:true,
-              description:true,
-              timeAlloted:true,
-              order:true,
-            }
+              name: true,
+              description: true,
+              timeAlloted: true,
+              order: true,
+            },
           },
-          Quizzes:true,
-          OpenEndedQuestions:true,
-          CodingQuestions:true,
-          submitedOutsourseAssessments:true
-        }
-      })
-      if (assessment == undefined || assessment.length == 0) { 
-        return []
+          Quizzes: true,
+          OpenEndedQuestions: true,
+          CodingQuestions: true,
+          submitedOutsourseAssessments: {
+            where: (zuvyAssessmentSubmission, { sql }) =>
+              sql`
+            ${zuvyAssessmentSubmission.submitedAt} IS NOT NULL 
+            AND ${zuvyAssessmentSubmission.isPassed} IS NOT NULL
+            AND EXISTS (
+              SELECT 1
+              FROM main.zuvy_batch_enrollments
+              WHERE main.zuvy_batch_enrollments.user_id = ${zuvyAssessmentSubmission.userId}
+              AND main.zuvy_batch_enrollments.bootcamp_id = ${bootcampID}
+              AND main.zuvy_batch_enrollments.batch_id IS NOT NULL
+            )
+          `,
+          },
+        },
+      });
+      assessment.forEach(item => {
+        const uniqueSubmissions = [];
+        const userIds = new Set();
+      
+        item.submitedOutsourseAssessments.forEach(submission => {
+          if (!userIds.has(submission.userId)) {
+            userIds.add(submission.userId);
+            uniqueSubmissions.push(submission);
+          }
+        });
+      
+        item.submitedOutsourseAssessments = uniqueSubmissions;
+      });
+      if (assessment == undefined || assessment.length == 0) {
+        return [];
       }
+      // assessment
       let studentsEnrolled = await this.getTotalStudentsEnrolled(bootcampID);
-      let result = await this.transformAssessments(assessment)
+      let result = await this.transformAssessments(assessment);
       result['totalStudents'] = studentsEnrolled.length;
-
       return result;
     } catch (error) {
       throw error;
     }
   }
 
-
-  async getAssessmentStudents(req, assessmentID) {
+  async getAssessmentStudents(req, assessmentID:number,searchStudent:string) {
     try {
+      const assessmentInfo = await db.select().from(zuvyOutsourseAssessments).where(sql`${zuvyOutsourseAssessments.id} = ${assessmentID}`);
+     
+      if(assessmentInfo.length > 0)
+        {
       const assessment = await db.query.zuvyOutsourseAssessments.findMany({
         where: (zuvyOutsourseAssessments, { eq }) =>
           eq(zuvyOutsourseAssessments.id, assessmentID),
         columns: {
           id: true,
           bootcampId: true,
+          passPercentage: true,
         },
 
         with: {
@@ -97,41 +172,83 @@ export class AdminAssessmentService {
               marks: true,
               startedAt: true,
               submitedAt: true,
+              isPassed: true,
+              percentage: true,
             },
-            where: (submitedOutsourseAssessments, { sql }) => sql`${submitedOutsourseAssessments.submitedAt} IS NOT NULL`,
+            where: (submitedOutsourseAssessments, { sql, eq }) => sql`
+            ${submitedOutsourseAssessments.submitedAt} IS NOT NULL
+            AND EXISTS (
+              SELECT 1
+              FROM main.zuvy_batch_enrollments
+              WHERE main.zuvy_batch_enrollments.user_id = ${submitedOutsourseAssessments.userId}
+              AND main.zuvy_batch_enrollments.bootcamp_id = ${assessmentInfo[0].bootcampId}
+              AND main.zuvy_batch_enrollments.batch_id IS NOT NULL
+            )
+            ${searchStudent ? sql`
+              AND EXISTS (
+                SELECT 1
+                FROM main.users
+                WHERE main.users.id = ${submitedOutsourseAssessments.userId}
+                AND (
+                  lower(main.users.name) LIKE lower(${searchStudent + '%'})
+                  OR lower(main.users.email) LIKE lower(${searchStudent + '%'})
+                )
+              )
+            ` : sql``}
+          `,
             with: {
               user: {
                 columns: {
                   name: true,
                   email: true,
                 }
-              }
-            }
+              },
+            },
           },
           ModuleAssessment: {
             columns: {
               title: true,
               description: true,
-            }
-          },  
-        }
+            },
+          },
+        },
       });
-      let studentsEnrolled = await this.getTotalStudentsEnrolled(assessment[0].bootcampId);
-      assessment[0].ModuleAssessment["totalStudents"] = studentsEnrolled.length;
-      assessment[0].ModuleAssessment["totalSubmitedStudents"] = assessment[0].submitedOutsourseAssessments.length || 0;
+      assessment.forEach(item => {
+        const uniqueSubmissions = [];
+        const userIds = new Set();
+      
+        item.submitedOutsourseAssessments.forEach(submission => {
+          if (!userIds.has(submission.userId)) {
+            userIds.add(submission.userId);
+            uniqueSubmissions.push(submission);
+          }
+        });
+      
+        item.submitedOutsourseAssessments = uniqueSubmissions;
+      });
+      let studentsEnrolled = await this.getTotalStudentsEnrolled(
+        assessment[0].bootcampId,
+      );
+      assessment[0].ModuleAssessment['totalStudents'] = studentsEnrolled.length;
+      assessment[0].ModuleAssessment['totalSubmitedStudents'] =
+        assessment[0].submitedOutsourseAssessments.length || 0;
 
-      assessment[0].submitedOutsourseAssessments = assessment[0].submitedOutsourseAssessments.map((submission: any) => {
-        return {
-          id: submission.id,
-          userId: submission.userId,
-          marks: submission.marks,
-          startedAt: submission.startedAt,
-          submitedAt: submission.submitedAt,
-          ...submission.user
-        }
-      })
+      assessment[0].submitedOutsourseAssessments =
+        assessment[0].submitedOutsourseAssessments.map((submission: any) => {
+          return {
+            id: submission.id,
+            userId: submission.userId,
+            marks: submission.marks,
+            startedAt: submission.startedAt,
+            submitedAt: submission.submitedAt,
+            isPassed: submission.isPassed,
+            percentage: submission.percentage,
+            ...submission.user,
+          };
+        });
 
       return assessment[0];
+        }
     } catch (error) {
       throw error;
     }
@@ -140,8 +257,9 @@ export class AdminAssessmentService {
   // user submission details of the assessment
   async getUserAssessmentSubmission(req, submissionAssessmentID, userID) {
     try {
-      const assessment:any = await db.query.zuvyAssessmentSubmission.findMany({
-        where: (zuvyAssessmentSubmission, { eq, and, isNotNull, sql}) => sql`${zuvyAssessmentSubmission.id}= ${submissionAssessmentID} AND ${zuvyAssessmentSubmission.submitedAt} IS NOT NULL`,
+      const assessment: any = await db.query.zuvyAssessmentSubmission.findMany({
+        where: (zuvyAssessmentSubmission, { eq, and, isNotNull, sql }) =>
+          sql`${zuvyAssessmentSubmission.id}= ${submissionAssessmentID} AND ${zuvyAssessmentSubmission.submitedAt} IS NOT NULL`,
         columns: {
           id: true,
           userId: true,
@@ -151,14 +269,14 @@ export class AdminAssessmentService {
           tabChange: true,
           copyPaste: true,
           embeddedGoogleSearch: true,
-          assessmentOutsourseId: true
+          assessmentOutsourseId: true,
         },
         with: {
           user: {
             columns: {
               name: true,
               email: true,
-            }
+            },
           },
           openEndedSubmission: {
             columns: {
@@ -166,18 +284,17 @@ export class AdminAssessmentService {
               answer: true,
               questionId: true,
               feedback: true,
-              marks: true
+              marks: true,
             },
             with: {
               submissionData: {
                 with: {
-                  OpenEndedQuestion: true
-                }
+                  OpenEndedQuestion: true,
+                },
               },
-              
-            }
+            },
           },
-          quizSubmission:{
+          quizSubmission: {
             columns: {
               id: true,
               chosenOption: true,
@@ -187,10 +304,10 @@ export class AdminAssessmentService {
             with: {
               submissionData: {
                 with: {
-                  Quiz: true
-                }
-              }
-            }
+                  Quiz: true,
+                },
+              },
+            },
           },
           PracticeCode: {
             columns: {
@@ -198,44 +315,160 @@ export class AdminAssessmentService {
               questionSolved: true,
               questionId: true,
               action: true,
-              status: true,  
+              status: true,
               createdAt: true,
               sourceCode: true,
             },
             where: (PracticeCode, { sql }) =>
-              sql`${PracticeCode.status} = 'Accepted' AND ${PracticeCode.action} = 'submit'`,
+              sql`${PracticeCode.status} = he AND ${PracticeCode.action} = 'submit'`,
             distinct: ['questionId'],
             with: {
-              questionDetail: true
-            }
-          }
+              questionDetail: true,
+            },
+          },
         },
       });
       if (assessment.length == 0) {
-        throw {statusCode: 404, massage: 'error not'}
+        throw { statusCode: 404, massage: 'error not' };
       }
-      const outsourseAssessment = await db.query.zuvyOutsourseAssessments.findMany({
-        where: (zuvyOutsourseAssessments, { eq }) =>
-          eq(zuvyOutsourseAssessments.id, assessment[0].assessmentOutsourseId),
-        columns: {
-          id: true,
-          order: true,
-        },
-        with: {
-          Quizzes:true,
-          OpenEndedQuestions:true,
-          CodingQuestions:true,
-        }
-      });
+      const outsourseAssessment =
+        await db.query.zuvyOutsourseAssessments.findMany({
+          where: (zuvyOutsourseAssessments, { eq }) =>
+            eq(
+              zuvyOutsourseAssessments.id,
+              assessment[0].assessmentOutsourseId,
+            ),
+          columns: {
+            id: true,
+            order: true,
+          },
+          with: {
+            Quizzes: true,
+            OpenEndedQuestions: true,
+            CodingQuestions: true,
+          },
+        });
 
       assessment[0].totalQuizzes = outsourseAssessment[0].Quizzes.length;
-      assessment[0].totalOpenEndedQuestions = outsourseAssessment[0].OpenEndedQuestions.length;
-      assessment[0].totalCodingQuestions = outsourseAssessment[0].CodingQuestions.length;
-      
+      assessment[0].totalOpenEndedQuestions =
+        outsourseAssessment[0].OpenEndedQuestions.length;
+      assessment[0].totalCodingQuestions =
+        outsourseAssessment[0].CodingQuestions.length;
+
       return assessment[0];
     } catch (error) {
       throw error;
     }
   }
 
+  async getAssessmentsAndStudents(bootcampID: number): Promise<any> {
+    try {  
+      const assessments = await db.query.zuvyOutsourseAssessments.findMany({
+        where: (zuvyOutsourseAssessments, { eq }) =>
+          eq(zuvyOutsourseAssessments.bootcampId, bootcampID),
+        columns: {
+          id: true,
+          bootcampId: true,
+          passPercentage: true,
+          order: true,
+        },
+        with: {
+          submitedOutsourseAssessments: {
+            columns: {
+              id: true,
+              userId: true,
+              marks: true,
+              startedAt: true,
+              submitedAt: true,
+              isPassed: true,
+              percentage: true,
+            },
+            where: (submitedOutsourseAssessments, { sql }) => sql`
+              ${submitedOutsourseAssessments.submitedAt} IS NOT NULL
+              AND EXISTS (
+                SELECT 1
+                FROM main.zuvy_batch_enrollments
+                WHERE main.zuvy_batch_enrollments.user_id = ${submitedOutsourseAssessments.userId}
+                AND main.zuvy_batch_enrollments.bootcamp_id = ${bootcampID}
+                AND main.zuvy_batch_enrollments.batch_id IS NOT NULL
+              )
+            `,
+            with: {
+              user: {
+                columns: {
+                  name: true,
+                  email: true,
+                },
+              },
+            },
+          },
+          ModuleAssessment: {
+            columns: {
+              title: true,
+              description: true,
+            },
+          },
+          Module: {
+            columns: {
+              name: true,  
+              description: true,
+              timeAlloted: true,
+              order: true,
+            },
+          },
+          Quizzes: true,
+          OpenEndedQuestions: true,
+          CodingQuestions: true,
+        },
+      });
+
+      if (!assessments || assessments.length === 0) {
+        return [{ statusCode: STATUS_CODES.NOT_FOUND, message: 'No assessments found.' }];
+      }
+
+      const assessmentsByModule = assessments.reduce((acc, assessment) => {
+        const moduleName = assessment.Module?.name;
+
+        const assessmentData = {
+          id: assessment.id,
+          order: assessment.order || 0,
+          title: assessment.ModuleAssessment?.title || null,
+          description: assessment.ModuleAssessment?.description || null,
+          totalCodingQuestions: assessment.CodingQuestions?.length || 0,
+          totalOpenEndedQuestions: assessment.OpenEndedQuestions?.length || 0,
+          totalQuizzes: assessment.Quizzes?.length || 0,
+          totalSubmitedAssessments: assessment.submitedOutsourseAssessments?.length || 0,
+          qualifiedStudents: assessment.submitedOutsourseAssessments?.filter(sub => sub.isPassed).length || 0,
+          passPercentage: assessment.passPercentage,
+          submitedOutsourseAssessments: assessment.submitedOutsourseAssessments.map(submission => ({
+            id: submission.id,
+            userId: submission.userId,
+            marks: submission.marks,
+            startedAt: submission.startedAt,
+            submitedAt: submission.submitedAt,
+            isPassed: submission.isPassed,
+            percentage: submission.percentage,
+            name: submission['user'].name || null,
+            email: submission['user'].email || null,
+          })),
+        };
+        if (!acc[moduleName]) {
+          acc[moduleName] = [];
+        }
+        acc[moduleName].push(assessmentData);
+
+        return acc;
+      }, {});
+
+      const studentsEnrolled = await this.getTotalStudentsEnrolled(bootcampID);
+
+      return {
+        statusCode: STATUS_CODES.OK,
+        ...assessmentsByModule,
+        totalStudents: studentsEnrolled.length, 
+      };
+    } catch (err) {
+      return [{message: err.message}]
+    }
+  }
 }

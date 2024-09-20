@@ -1,14 +1,28 @@
-import { Controller, Get, Post, Put, Patch, Delete, Body, Param, ValidationPipe, UsePipes, Optional, Query, BadRequestException, Req } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Put,
+  Patch,
+  Delete,
+  Body,
+  Param,
+  ValidationPipe,
+  UsePipes,
+  Query,
+  BadRequestException,
+  Req,
+} from '@nestjs/common';
 import { BootcampService } from './bootcamp.service';
-import { ApiTags, ApiBody, ApiOperation, ApiCookieAuth, ApiQuery } from '@nestjs/swagger';
-import { CreateBootcampDto, EditBootcampDto, PatchBootcampDto, studentDataDto, PatchBootcampSettingDto } from './dto/bootcamp.dto';
+import { ApiTags, ApiOperation, ApiQuery } from '@nestjs/swagger';
+import {
+  CreateBootcampDto,
+  EditBootcampDto,
+  PatchBootcampDto,
+  studentDataDto,
+  PatchBootcampSettingDto,
+} from './dto/bootcamp.dto';
 import { ApiBearerAuth } from '@nestjs/swagger';
-import { Request } from '@nestjs/common';
-import { query } from 'express';
-
-// import { EditBootcampDto } from './dto/editBootcamp.dto';
-// import { AuthGuard } from '@nestjs/passport'; // Assuming JWT authentication
-
 
 @Controller('bootcamp')
 @ApiTags('bootcamp')
@@ -19,9 +33,8 @@ import { query } from 'express';
     forbidNonWhitelisted: true,
   }),
 )
-// @UseGuards(AuthGuard('cookie'))
 export class BootcampController {
-  constructor(private bootcampService: BootcampService) { }
+  constructor(private bootcampService: BootcampService) {}
   @Get('/')
   @ApiOperation({ summary: 'Get all bootcamps' })
   @ApiQuery({
@@ -46,13 +59,15 @@ export class BootcampController {
   async getAllBootcamps(
     @Query('limit') limit: number,
     @Query('offset') offset: number,
-    @Query('searchTerm') searchTerm: string
+    @Query('searchTerm') searchTerm: string,
   ): Promise<object> {
-    const searchTermAsNumber = !isNaN(Number(searchTerm)) ? Number(searchTerm) : searchTerm
+    const searchTermAsNumber = !isNaN(Number(searchTerm))
+      ? Number(searchTerm)
+      : searchTerm;
     const [err, res] = await this.bootcampService.getAllBootcamps(
       limit,
       offset,
-      searchTermAsNumber
+      searchTermAsNumber,
     );
 
     if (err) {
@@ -60,7 +75,6 @@ export class BootcampController {
     }
     return res;
   }
-
 
   @Get('/:id')
   @ApiOperation({ summary: 'Get the bootcamp by id' })
@@ -117,12 +131,8 @@ export class BootcampController {
   @Get('bootcampSetting/:id')
   @ApiOperation({ summary: 'Get the bootcamp setting by id' })
   @ApiBearerAuth()
-  async getBootcampSettingById(
-    @Param('id') id: number
-  ): Promise<object> {
-    const [err, res] = await this.bootcampService.getBootcampSettingById(
-      id
-    );
+  async getBootcampSettingById(@Param('id') id: number): Promise<object> {
+    const [err, res] = await this.bootcampService.getBootcampSettingById(id);
     if (err) {
       throw new BadRequestException(err);
     }
