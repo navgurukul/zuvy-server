@@ -1,11 +1,11 @@
 
-import { NestFactory } from '@nestjs/core';
-import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
-import { AppModule } from './app.module';
 import { CorsOptions } from '@nestjs/common/interfaces/external/cors-options.interface';
+import { NestFactory } from '@nestjs/core';
+import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { log } from 'console';
+import { AppModule } from './app.module';
 
-// INPORTING env VALUSE 
+// INPORTING env VALUSE
 const { PORT, BASE_URL } = process.env;
 
 async function bootstrap() {
