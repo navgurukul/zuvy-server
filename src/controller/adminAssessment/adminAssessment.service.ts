@@ -3,6 +3,7 @@ import { db } from '../../db/index';
 import { sql } from 'drizzle-orm';
 import * as _ from 'lodash';
 import { zuvyBatchEnrollments, zuvyOutsourseAssessments } from '../../../drizzle/schema';
+import { STATUS_CODES } from 'src/helpers';
 
 const { ZUVY_CONTENT_URL } = process.env; // INPORTING env VALUSE ZUVY_CONTENT
 
@@ -358,6 +359,117 @@ export class AdminAssessmentService {
       return assessment[0];
     } catch (error) {
       throw error;
+    }
+  }
+
+  async getAssessmentsAndStudents(bootcampID: number): Promise<any> {
+    try {  
+      const assessments = await db.query.zuvyOutsourseAssessments.findMany({
+        where: (zuvyOutsourseAssessments, { eq }) =>
+          eq(zuvyOutsourseAssessments.bootcampId, bootcampID),
+        columns: {
+          id: true,
+          bootcampId: true,
+          passPercentage: true,
+          order: true,
+        },
+        with: {
+          submitedOutsourseAssessments: {
+            columns: {
+              id: true,
+              userId: true,
+              marks: true,
+              startedAt: true,
+              submitedAt: true,
+              isPassed: true,
+              percentage: true,
+            },
+            where: (submitedOutsourseAssessments, { sql }) => sql`
+              ${submitedOutsourseAssessments.submitedAt} IS NOT NULL
+              AND EXISTS (
+                SELECT 1
+                FROM main.zuvy_batch_enrollments
+                WHERE main.zuvy_batch_enrollments.user_id = ${submitedOutsourseAssessments.userId}
+                AND main.zuvy_batch_enrollments.bootcamp_id = ${bootcampID}
+                AND main.zuvy_batch_enrollments.batch_id IS NOT NULL
+              )
+            `,
+            with: {
+              user: {
+                columns: {
+                  name: true,
+                  email: true,
+                },
+              },
+            },
+          },
+          ModuleAssessment: {
+            columns: {
+              title: true,
+              description: true,
+            },
+          },
+          Module: {
+            columns: {
+              name: true,  
+              description: true,
+              timeAlloted: true,
+              order: true,
+            },
+          },
+          Quizzes: true,
+          OpenEndedQuestions: true,
+          CodingQuestions: true,
+        },
+      });
+
+      if (!assessments || assessments.length === 0) {
+        return [{ statusCode: STATUS_CODES.NOT_FOUND, message: 'No assessments found.' }];
+      }
+
+      const assessmentsByModule = assessments.reduce((acc, assessment) => {
+        const moduleName = assessment.Module?.name;
+
+        const assessmentData = {
+          id: assessment.id,
+          order: assessment.order || 0,
+          title: assessment.ModuleAssessment?.title || null,
+          description: assessment.ModuleAssessment?.description || null,
+          totalCodingQuestions: assessment.CodingQuestions?.length || 0,
+          totalOpenEndedQuestions: assessment.OpenEndedQuestions?.length || 0,
+          totalQuizzes: assessment.Quizzes?.length || 0,
+          totalSubmitedAssessments: assessment.submitedOutsourseAssessments?.length || 0,
+          qualifiedStudents: assessment.submitedOutsourseAssessments?.filter(sub => sub.isPassed).length || 0,
+          passPercentage: assessment.passPercentage,
+          submitedOutsourseAssessments: assessment.submitedOutsourseAssessments.map(submission => ({
+            id: submission.id,
+            userId: submission.userId,
+            marks: submission.marks,
+            startedAt: submission.startedAt,
+            submitedAt: submission.submitedAt,
+            isPassed: submission.isPassed,
+            percentage: submission.percentage,
+            name: submission['user'].name || null,
+            email: submission['user'].email || null,
+          })),
+        };
+        if (!acc[moduleName]) {
+          acc[moduleName] = [];
+        }
+        acc[moduleName].push(assessmentData);
+
+        return acc;
+      }, {});
+
+      const studentsEnrolled = await this.getTotalStudentsEnrolled(bootcampID);
+
+      return {
+        statusCode: STATUS_CODES.OK,
+        ...assessmentsByModule,
+        totalStudents: studentsEnrolled.length, 
+      };
+    } catch (err) {
+      return [{message: err.message}]
     }
   }
 }
