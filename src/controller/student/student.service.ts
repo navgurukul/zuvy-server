@@ -269,7 +269,6 @@ export class StudentService {
 
   }
 
-  
   //This function returns the rank of a particular course based on avg of attendance and course progress
   //The query has a hierarchy from:-
   //zuvyBootcamp->zuvyBatchEnrollments(It has all the students of that particular bootcamp along with attendance)
@@ -334,7 +333,7 @@ export class StudentService {
     }
     catch(err)
     {
-    throw err;
+      throw err;
     }
   }
 }
