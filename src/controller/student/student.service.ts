@@ -18,7 +18,7 @@ import { google } from 'googleapis';
 import { OAuth2Client } from 'google-auth-library';
 import * as fs from 'fs';
 import * as readline from 'readline';
-const { GOOGLE_SHEETS_SERVICE_ACCOUNT, GOOGLE_SHEETS_PRIVATE_KEY, SPREADSHEET_ID, ZUVY_REDIRECT_URL, GOOGLE_SECRET, GOOGLE_CLIENT_ID } = process.env;
+const { GOOGLE_SHEETS_SERVICE_ACCOUNT, GOOGLE_SHEETS_PRIVATE_KEY, SPREADSHEET_ID, ZUVY_REDIRECT_URL, GOOGLE_SECRET, GOOGLE_CLIENT_ID, NODE_MAILER_PASSWORD, NODE_MAILER_EMAIL,REFRESH_TOKEN } = process.env;
 const nodemailer = require('nodemailer');
 
 // Set up OAuth2 client for authentication
@@ -29,18 +29,15 @@ const oAuth2Client = new google.auth.OAuth2(
 );
 
 oAuth2Client.setCredentials({
-  refresh_token: '1//0g2mx1Bg6F86SCgYIARAAGBASNwF-L9IrNITfDfwEF-Y00IX4KbMVmpIZ2roC3WhM8yyxsr1qHWXBG7F-q8kW8uHHuc3PzIUVMUQ',
+  refresh_token: REFRESH_TOKEN,
 });
 @Injectable()
 export class StudentService {
   constructor(private ClassesService: ClassesService) { }
   private SCOPES = ['https://www.googleapis.com/auth/spreadsheets'];
-  private CREDENTIALS_PATH = 'credentials.json';
 
   // Authorize using service account credentials
   private async authorize(): Promise<any> {
-    const credentials = JSON.parse(fs.readFileSync(this.CREDENTIALS_PATH, 'utf8'));
-
     // Create a JWT client for authorization
     const auth = new google.auth.JWT(
       GOOGLE_SHEETS_SERVICE_ACCOUNT,
@@ -121,9 +118,9 @@ async generateEmailContent(applicantName, teamName, email, contactNumber){
     For any questions, please write to ${email}.
 
     Best regards,
-    Team ${teamName} - AFE Bootcamp 2024
+    Team ${teamName}
     www.zuvy.org
-    (Whatsapp icon) ${contactNumber}
+    ${"https://img.icons8.com/?size=100&id=DUEq8l5qTqBE&format=png&color=000000"} ${contactNumber}
   `;
 };
 
@@ -131,7 +128,7 @@ async generateEmailContent(applicantName, teamName, email, contactNumber){
 async sendMail(applicantName, recipientEmail) {
   try {
     // Generate email body
-    const emailContent = await this.generateEmailContent(applicantName, "Zuvy", "join-zuvy@navgurukul.org", "+91 894961908");
+    const emailContent = await this.generateEmailContent(applicantName, ORG_NAME, NODE_MAILER_EMAIL, PHONE_NO);
 
     // Create OAuth2 client
     const accessToken = await oAuth2Client.getAccessToken();
@@ -142,8 +139,8 @@ async sendMail(applicantName, recipientEmail) {
       host: 'smtp.gmail.com',
       port: 465,
       auth:{
-        user: 'Giribabu22@navgurukul.org',
-        pass: 'cztdmboucujhjwfv'
+        user: NODE_MAILER_EMAIL,
+        pass: NODE_MAILER_PASSWORD
       }
     });
 
