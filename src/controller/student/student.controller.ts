@@ -4,7 +4,7 @@ import { ApiTags, ApiBody, ApiOperation, ApiQuery, ApiBearerAuth } from '@nestjs
 import { get } from 'http';
 import { Response } from 'express';
 import { ErrorResponse, SuccessResponse } from 'src/errorHandler/handler';
-
+import { ApplyFormData } from './dto/student.dto';
 @Controller('student')
 @ApiTags('student')
 @UsePipes(
@@ -149,5 +149,20 @@ export class StudentController {
       bootcampId,limit,offset
     );
     return res;
+  }
+
+  @Post('student/onboard')
+  @ApiOperation({ summary: 'student can apply for the course' })
+  @ApiBearerAuth()
+  async getCodingQuestion(@Res() res: Response, @Body() applyFormData: ApplyFormData): Promise<any> {
+    try {
+      const [err, success] = await this.studentService.updateSpreadsheet(applyFormData);
+      if (err) {
+        return ErrorResponse.BadRequestException(err.message).send(res);
+      }
+      return new SuccessResponse(success.message, success.statusCode, success.data).send(res);
+    } catch (error) {
+      return ErrorResponse.BadRequestException(error.message).send(res);
+    }
   }
 }

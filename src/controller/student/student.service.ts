@@ -6,19 +6,163 @@ import {
   zuvyBootcamps,
   zuvyBootcampType,
   zuvySessions,
-  users
+  users,
+  zuvyStudentApplicationRecord
 } from '../../../drizzle/schema';
 import { db } from '../../db/index';
-import { eq, sql, desc, count, asc } from 'drizzle-orm';
+import { eq, sql, desc, count,asc, or} from 'drizzle-orm';
 import { ClassesService } from '../classes/classes.service'
-import { query } from 'express';
 import { helperVariable } from 'src/constants/helper';
-import { STATUS_CODES } from 'http';
-import { ErrorResponse } from 'src/errorHandler/handler';
+import { STATUS_CODES } from "../../helpers/index";
+import { google } from 'googleapis';
+import { OAuth2Client } from 'google-auth-library';
+import * as fs from 'fs';
+import * as readline from 'readline';
+const { GOOGLE_SHEETS_SERVICE_ACCOUNT, GOOGLE_SHEETS_PRIVATE_KEY, SPREADSHEET_ID, ZUVY_REDIRECT_URL, GOOGLE_SECRET, GOOGLE_CLIENT_ID } = process.env;
+const nodemailer = require('nodemailer');
 
+// Set up OAuth2 client for authentication
+const oAuth2Client = new google.auth.OAuth2(
+  GOOGLE_CLIENT_ID,
+  GOOGLE_SECRET,
+  ZUVY_REDIRECT_URL
+);
+
+oAuth2Client.setCredentials({
+  refresh_token: '1//0g2mx1Bg6F86SCgYIARAAGBASNwF-L9IrNITfDfwEF-Y00IX4KbMVmpIZ2roC3WhM8yyxsr1qHWXBG7F-q8kW8uHHuc3PzIUVMUQ',
+});
 @Injectable()
 export class StudentService {
   constructor(private ClassesService: ClassesService) { }
+  private SCOPES = ['https://www.googleapis.com/auth/spreadsheets'];
+  private CREDENTIALS_PATH = 'credentials.json';
+
+  // Authorize using service account credentials
+  private async authorize(): Promise<any> {
+    const credentials = JSON.parse(fs.readFileSync(this.CREDENTIALS_PATH, 'utf8'));
+
+    // Create a JWT client for authorization
+    const auth = new google.auth.JWT(
+      GOOGLE_SHEETS_SERVICE_ACCOUNT,
+      null,
+      GOOGLE_SHEETS_PRIVATE_KEY,
+      this.SCOPES
+    );
+
+    // Return authorized client
+    return auth;
+  }
+
+  // Method to append student details to the Google Spreadsheet
+  public async updateSpreadsheet(studentDetails: { name: string, email: string, phoneNo: number, year:number, familyIncomeUnder3Lakhs:boolean }): Promise<any> {
+    
+    try {
+      const existingRecord = await db
+      .select()
+      .from(zuvyStudentApplicationRecord)
+      .where(
+        or(
+          eq(zuvyStudentApplicationRecord.email, studentDetails.email),
+          eq(zuvyStudentApplicationRecord.phoneNo, studentDetails.phoneNo),
+        ),
+      )
+      .limit(1);
+    // If a record already exists, throw an error
+    if (existingRecord.length > 0) {
+      return [{message: 'Email or Phone Number already exists.'}];
+    }
+
+      const auth = await this.authorize();
+      const sheets = google.sheets({ version: 'v4', auth });
+          
+      // Define the sheet and range to update (A to C columns)
+      const range = 'Sheet1!A:C';
+      
+      // Define the input option (RAW means as entered)
+      const valueInputOption = 'RAW';
+      
+      // Define the values to append
+      const values = [
+        [studentDetails.name, studentDetails.email, studentDetails.phoneNo, studentDetails.year, studentDetails.familyIncomeUnder3Lakhs],
+      ];
+      const resource = {
+        values,
+      };
+      // Append the values to the spreadsheet
+      await sheets.spreadsheets.values.append({
+        spreadsheetId:SPREADSHEET_ID,
+        range,
+        valueInputOption,
+        requestBody: resource,
+      });
+      let red = await this.sendMail(studentDetails.name, studentDetails.email);
+      // Insert the new record into the database
+    const insertedRecord = await db
+    .insert(zuvyStudentApplicationRecord)
+    .values(studentDetails)
+    .returning();
+      return [null, {message: 'Student details appended successfully', statusCode: STATUS_CODES.OK}];
+    } catch (err) {
+      return [{ message: err.message, statusCode: STATUS_CODES.BAD_REQUEST }];
+    }
+  }
+  // Function to generate dynamic email content
+async generateEmailContent(applicantName, teamName, email, contactNumber){
+  return `
+    Dear ${applicantName},
+
+    Thank you for applying to the Amazon Future Engineer Bootcamp 2024!
+    
+    We’re excited to see your interest in the amazing Bootcamp for female engineers. 
+    We have received your application, further updates will be shared during the review process.
+
+    In the meantime, feel free to explore more about the Bootcamp at www.zuvy.org.
+
+    For any questions, please write to ${email}.
+
+    Best regards,
+    Team ${teamName} - AFE Bootcamp 2024
+    www.zuvy.org
+    (Whatsapp icon) ${contactNumber}
+  `;
+};
+
+// Function to send email using Gmail API
+async sendMail(applicantName, recipientEmail) {
+  try {
+    // Generate email body
+    const emailContent = await this.generateEmailContent(applicantName, "Zuvy", "join-zuvy@navgurukul.org", "+91 894961908");
+
+    // Create OAuth2 client
+    const accessToken = await oAuth2Client.getAccessToken();
+
+    // Create a transporter using nodemailer and Gmail
+    const transporter = nodemailer.createTransport({
+      secure: true,
+      host: 'smtp.gmail.com',
+      port: 465,
+      auth:{
+        user: 'Giribabu22@navgurukul.org',
+        pass: 'cztdmboucujhjwfv'
+      }
+    });
+
+    // Define email options
+    const mailOptions = {
+      from: 'Giribabu22@navgurukul.org',
+      to: recipientEmail,
+      subject: 'Amazon Future Engineer Bootcamp 2024 - Application Received',
+      text: emailContent,
+    };
+    console.log({mailOptions});
+    // Send email
+    const result = await transporter.sendMail(mailOptions);
+    console.log('Email sent:', result);
+  } catch (error) {
+    console.error('Error sending email:', error);
+  }
+}
+
   async enrollData(userId: number) {
     try {
       let enrolled = await db.query.zuvyBatchEnrollments.findMany({
