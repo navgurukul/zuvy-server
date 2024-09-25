@@ -18,147 +18,139 @@ import { google } from 'googleapis';
 import { OAuth2Client } from 'google-auth-library';
 import * as fs from 'fs';
 import * as readline from 'readline';
-const { GOOGLE_SHEETS_SERVICE_ACCOUNT, GOOGLE_SHEETS_PRIVATE_KEY, SPREADSHEET_ID, ZUVY_REDIRECT_URL, GOOGLE_SECRET, GOOGLE_CLIENT_ID, NODE_MAILER_PASSWORD, NODE_MAILER_EMAIL,REFRESH_TOKEN } = process.env;
+const { GOOGLE_SHEETS_SERVICE_ACCOUNT, GOOGLE_SHEETS_PRIVATE_KEY, SPREADSHEET_ID, ZUVY_REDIRECT_URL, GOOGLE_SECRET, GOOGLE_CLIENT_ID, NODE_MAILER_PASSWORD, NODE_MAILER_EMAIL,REFRESH_TOKEN, ORG_NAME,PHONE_NO,EMAIL_SUBJECT } = process.env;
 const nodemailer = require('nodemailer');
 
-// Set up OAuth2 client for authentication
-const oAuth2Client = new google.auth.OAuth2(
-  GOOGLE_CLIENT_ID,
-  GOOGLE_SECRET,
-  ZUVY_REDIRECT_URL
-);
+// // Set up OAuth2 client for authentication
+// const oAuth2Client = new google.auth.OAuth2(
+//   GOOGLE_CLIENT_ID,
+//   GOOGLE_SECRET,
+//   ZUVY_REDIRECT_URL
+// );
 
-oAuth2Client.setCredentials({
-  refresh_token: REFRESH_TOKEN,
-});
+// oAuth2Client.setCredentials({
+//   refresh_token: REFRESH_TOKEN,
+// });
 @Injectable()
 export class StudentService {
   constructor(private ClassesService: ClassesService) { }
   private SCOPES = ['https://www.googleapis.com/auth/spreadsheets'];
 
-  // Authorize using service account credentials
+  // Authenticate and return the JWT client to interact with Google Sheets API
   private async authorize(): Promise<any> {
-    // Create a JWT client for authorization
     const auth = new google.auth.JWT(
       GOOGLE_SHEETS_SERVICE_ACCOUNT,
       null,
       GOOGLE_SHEETS_PRIVATE_KEY,
       this.SCOPES
     );
-
-    // Return authorized client
-    return auth;
+    return auth; // Returns authorized client for API calls
   }
 
-  // Method to append student details to the Google Spreadsheet
-  public async updateSpreadsheet(studentDetails: { name: string, email: string, phoneNo: number, year:number, familyIncomeUnder3Lakhs:boolean }): Promise<any> {
-    
+  // Append student details to Google Spreadsheet
+  public async updateSpreadsheet(studentDetails: { name: string, email: string, phoneNo: number, year: number, familyIncomeUnder3Lakhs: boolean }): Promise<any> {
     try {
+      // Check if a student with the same email or phone already exists in DB
       const existingRecord = await db
-      .select()
-      .from(zuvyStudentApplicationRecord)
-      .where(
-        or(
-          eq(zuvyStudentApplicationRecord.email, studentDetails.email),
-          eq(zuvyStudentApplicationRecord.phoneNo, studentDetails.phoneNo),
-        ),
-      )
-      .limit(1);
-    // If a record already exists, throw an error
-    if (existingRecord.length > 0) {
-      return [{message: 'Email or Phone Number already exists.'}];
-    }
+        .select()
+        .from(zuvyStudentApplicationRecord)
+        .where(
+          or(
+            eq(zuvyStudentApplicationRecord.email, studentDetails.email),
+            eq(zuvyStudentApplicationRecord.phoneNo, studentDetails.phoneNo),
+          ),
+        )
+        .limit(1);
 
+      // If student exists, return a message
+      if (existingRecord.length > 0) {
+        return [{ message: 'Email or Phone Number already exists.' }];
+      }
+
+      // Authorize to interact with Google Sheets
       const auth = await this.authorize();
       const sheets = google.sheets({ version: 'v4', auth });
-          
-      // Define the sheet and range to update (A to C columns)
+
+      // Specify range in the sheet and append the data
       const range = 'Sheet1!A:C';
-      
-      // Define the input option (RAW means as entered)
-      const valueInputOption = 'RAW';
-      
-      // Define the values to append
       const values = [
         [studentDetails.name, studentDetails.email, studentDetails.phoneNo, studentDetails.year, studentDetails.familyIncomeUnder3Lakhs],
       ];
-      const resource = {
-        values,
-      };
-      // Append the values to the spreadsheet
+      const resource = { values };
+
+      // Append new data to Google Sheet
       await sheets.spreadsheets.values.append({
-        spreadsheetId:SPREADSHEET_ID,
+        spreadsheetId: SPREADSHEET_ID,
         range,
-        valueInputOption,
+        valueInputOption: 'RAW', // RAW: values entered as-is
         requestBody: resource,
       });
-      let red = await this.sendMail(studentDetails.name, studentDetails.email);
-      // Insert the new record into the database
-    const insertedRecord = await db
-    .insert(zuvyStudentApplicationRecord)
-    .values(studentDetails)
-    .returning();
-      return [null, {message: 'Student details appended successfully', statusCode: STATUS_CODES.OK}];
+
+      // Send an email to the student
+      await this.sendMail(studentDetails.name, studentDetails.email);
+
+      // Insert student record into the DB
+      await db.insert(zuvyStudentApplicationRecord).values(studentDetails).returning();
+
+      return [null, { message: 'Student details appended successfully', statusCode: STATUS_CODES.OK }];
     } catch (err) {
+      // Handle errors and return a bad request message
       return [{ message: err.message, statusCode: STATUS_CODES.BAD_REQUEST }];
     }
   }
-  // Function to generate dynamic email content
-async generateEmailContent(applicantName, teamName, email, contactNumber){
-  return `
-    Dear ${applicantName},
 
-    Thank you for applying to the Amazon Future Engineer Bootcamp 2024!
-    
-    We’re excited to see your interest in the amazing Bootcamp for female engineers. 
-    We have received your application, further updates will be shared during the review process.
+  // Generate dynamic email content for the student
+  async generateEmailContent(applicantName, teamName, email, contactNumber, email_subject) {
+    return `
+      Dear ${applicantName},
 
-    In the meantime, feel free to explore more about the Bootcamp at www.zuvy.org.
+      Thank you for applying to ${email_subject}.
+      
+      We’re excited to see your interest in the amazing Bootcamp for female engineers.
+      We have received your application, and further updates will be shared during the review process.
 
-    For any questions, please write to ${email}.
+      In the meantime, feel free to explore more about the Bootcamp at www.zuvy.org.
 
-    Best regards,
-    Team ${teamName}
-    www.zuvy.org
-    ${"https://img.icons8.com/?size=100&id=DUEq8l5qTqBE&format=png&color=000000"} ${contactNumber}
-  `;
-};
+      For any questions, please write to ${email}.
 
-// Function to send email using Gmail API
-async sendMail(applicantName, recipientEmail) {
-  try {
-    // Generate email body
-    const emailContent = await this.generateEmailContent(applicantName, ORG_NAME, NODE_MAILER_EMAIL, PHONE_NO);
-
-    // Create OAuth2 client
-    const accessToken = await oAuth2Client.getAccessToken();
-
-    // Create a transporter using nodemailer and Gmail
-    const transporter = nodemailer.createTransport({
-      secure: true,
-      host: 'smtp.gmail.com',
-      port: 465,
-      auth:{
-        user: NODE_MAILER_EMAIL,
-        pass: NODE_MAILER_PASSWORD
-      }
-    });
-
-    // Define email options
-    const mailOptions = {
-      from: 'Giribabu22@navgurukul.org',
-      to: recipientEmail,
-      subject: 'Amazon Future Engineer Bootcamp 2024 - Application Received',
-      text: emailContent,
-    };
-    console.log({mailOptions});
-    // Send email
-    const result = await transporter.sendMail(mailOptions);
-    console.log('Email sent:', result);
-  } catch (error) {
-    console.error('Error sending email:', error);
+      Best regards,
+      Team ${teamName}
+      www.zuvy.org
+      Contact: ${contactNumber}
+    `;
   }
-}
+
+  // Send email using Nodemailer and Gmail SMTP
+  async sendMail(applicantName, recipientEmail) {
+    try {
+      // Generate email content dynamically
+      const emailContent = await this.generateEmailContent(applicantName, ORG_NAME, NODE_MAILER_EMAIL, PHONE_NO, EMAIL_SUBJECT);
+
+      // Create a mail transporter with Gmail credentials
+      const transporter = nodemailer.createTransport({
+        secure: true,
+        host: 'smtp.gmail.com',
+        port: 465,
+        auth: {
+          user: NODE_MAILER_EMAIL,
+          pass: NODE_MAILER_PASSWORD,
+        },
+      });
+
+      // Define mail options including recipient and email content
+      const mailOptions = {
+        from: NODE_MAILER_EMAIL,
+        to: recipientEmail,
+        subject: `${EMAIL_SUBJECT} - Application Received`,
+        text: emailContent,
+      };
+
+      // Send the email
+      await transporter.sendMail(mailOptions);
+    } catch (error) {
+      console.error('Error sending email:', error);
+    }
+  }
 
   async enrollData(userId: number) {
     try {
