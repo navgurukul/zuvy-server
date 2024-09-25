@@ -47,7 +47,6 @@ const scopes = [
 
 @Injectable()
 export class ClassesService {
-  GoogleCalendarService: any;
 
   async accessOfCalendar(creatorInfo) {
     const userId = Number(creatorInfo.id)
