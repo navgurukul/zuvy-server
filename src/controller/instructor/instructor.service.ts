@@ -18,22 +18,33 @@ export class InstructorService {
    async allCourses(userId : number):Promise<any>
    {
     try {
-        const data = await db.query.zuvyBatches.findMany({
-          where: (batches, { eq }) =>
-            eq(batches.instructorId, Number(userId)),
-          columns: {
-            id:true,
-            name:true
-          },
-          with: {
-            bootcampDetail:{
-              columns: {
-                id:true,
-                name:true
-              }
-            }
-          },
-        })
+      const data = await db.query.zuvyBootcamps.findMany({
+        columns: {
+          id: true,
+          name: true
+        },
+        with: {
+          batches: {
+            columns: {
+              id: true,
+              name: true,
+              instructorId: true
+            },
+            where: (batches, { eq }) => eq(batches.instructorId, userId)
+          }
+        },
+        where: (bootcamps, { exists, and, eq }) => 
+          exists(
+            db.select()
+              .from(zuvyBatches)
+              .where(
+                and(
+                  eq(zuvyBatches.instructorId, userId),
+                  eq(zuvyBatches.bootcampId, bootcamps.id)
+                )
+              )
+          )
+      })
 
         if(data.length > 0)
           {
