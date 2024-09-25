@@ -22,15 +22,15 @@ const { GOOGLE_SHEETS_SERVICE_ACCOUNT, GOOGLE_SHEETS_PRIVATE_KEY, SPREADSHEET_ID
 const nodemailer = require('nodemailer');
 
 // // Set up OAuth2 client for authentication
-// const oAuth2Client = new google.auth.OAuth2(
-//   GOOGLE_CLIENT_ID,
-//   GOOGLE_SECRET,
-//   ZUVY_REDIRECT_URL
-// );
+const oAuth2Client = new google.auth.OAuth2(
+   GOOGLE_CLIENT_ID,
+   GOOGLE_SECRET,
+   ZUVY_REDIRECT_URL
+);
 
-// oAuth2Client.setCredentials({
-//   refresh_token: REFRESH_TOKEN,
-// });
+oAuth2Client.setCredentials({
+   refresh_token: REFRESH_TOKEN,
+});
 @Injectable()
 export class StudentService {
   constructor(private ClassesService: ClassesService) { }
