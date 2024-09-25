@@ -9,12 +9,12 @@ import {
   users
 } from '../../../drizzle/schema';
 import { db } from '../../db/index';
-import { eq, sql, desc, count,asc } from 'drizzle-orm';
+import { eq, sql, desc, count, asc } from 'drizzle-orm';
 import { ClassesService } from '../classes/classes.service'
 import { query } from 'express';
 import { helperVariable } from 'src/constants/helper';
 import { STATUS_CODES } from 'http';
-import {ErrorResponse} from 'src/errorHandler/handler';
+import { ErrorResponse } from 'src/errorHandler/handler';
 
 @Injectable()
 export class StudentService {
@@ -164,7 +164,7 @@ export class StudentService {
     }
   }
 
-  async getUpcomingClass(student_id: number, batchID: number,limit:number,offset:number):Promise<any> {
+  async getUpcomingClass(student_id: number, batchID: number, limit: number, offset: number): Promise<any> {
     try {
       let queryString;
       if (batchID) {
@@ -175,20 +175,20 @@ export class StudentService {
       let enrolled = await db.select().from(zuvyBatchEnrollments).where(queryString);
 
       if (enrolled.length == 0) {
-        return [null,{message:'not enrolled in any course.',statusCode: STATUS_CODES.OK,data:[]}]
+        return [null, { message: 'not enrolled in any course.', statusCode: STATUS_CODES.OK, data: [] }]
       }
       let bootcampAndbatchIds = await Promise.all(
         enrolled
-          .filter(e => e.batchId !== null) 
+          .filter(e => e.batchId !== null)
           .map(async e => {
             await this.ClassesService.updatingStatusOfClass(e.bootcampId, e.batchId);
-            return {bootcampId:e.bootcampId,batchId: e.batchId};
+            return { bootcampId: e.bootcampId, batchId: e.batchId };
           })
       );
       let upcomingClasses = await db.query.zuvySessions.findMany({
         where: (session, { and, or, eq, ne }) =>
           and(
-            or(...bootcampAndbatchIds.map(({ bootcampId, batchId }) => 
+            or(...bootcampAndbatchIds.map(({ bootcampId, batchId }) =>
               and(
                 eq(session.bootcampId, bootcampId),
                 eq(session.batchId, batchId)
@@ -197,11 +197,11 @@ export class StudentService {
             ne(session.status, helperVariable.completed)
           ),
         orderBy: (session, { asc }) => asc(session.startTime),
-        with : {
-          bootcampDetail : {
-            columns : {
-              id:true,
-              name:true
+        with: {
+          bootcampDetail: {
+            columns: {
+              id: true,
+              name: true
             }
           }
         },
@@ -210,30 +210,29 @@ export class StudentService {
         },
         limit,
         offset
-       })
+      })
       const totalCount = upcomingClasses.length > 0 ? upcomingClasses[0]['totalCount'] : 0;
-        
-       const totalClasses =totalCount;
+
+      const totalClasses = totalCount;
       let filterClasses = upcomingClasses.reduce((acc, e) => {
-          e['bootcampName'] = e['bootcampDetail'].name;
-          e['bootcampId'] = e['bootcampDetail'].id;
-          delete  e['bootcampDetail'];
-          delete e['totalCount']
+        e['bootcampName'] = e['bootcampDetail'].name;
+        e['bootcampId'] = e['bootcampDetail'].id;
+        delete e['bootcampDetail'];
+        delete e['totalCount']
         if (e.status == helperVariable.upcoming) {
           acc.upcoming.push(e);
         } else {
           acc.ongoing.push(e);
         }
         return acc;
-      }, {upcoming: [], ongoing: [] });
-      if(Number(totalClasses) == 0)
-        {
-        return [null,{message:'No upcoming classes',statusCode: STATUS_CODES.OK,data:[]}]
-          
-        }
-      return [null,{message:'Upcoming classes fetched successfully',statusCode: STATUS_CODES.OK,data:{filterClasses,totalClasses:Number(totalClasses),totalPages : !isNaN(limit) ? Math.ceil(totalClasses/limit) : 1}}]
+      }, { upcoming: [], ongoing: [] });
+      if (Number(totalClasses) == 0) {
+        return [null, { message: 'No upcoming classes', statusCode: STATUS_CODES.OK, data: [] }]
+
+      }
+      return [null, { message: 'Upcoming classes fetched successfully', statusCode: STATUS_CODES.OK, data: { filterClasses, totalClasses: Number(totalClasses), totalPages: !isNaN(limit) ? Math.ceil(totalClasses / limit) : 1 } }]
     } catch (error) {
-      return [{message:error.message,statusCode: STATUS_CODES.BAD_REQUEST}]
+      return [{ message: error.message, statusCode: STATUS_CODES.BAD_REQUEST }]
     }
   }
 
@@ -257,7 +256,7 @@ export class StudentService {
         let classes = await db.select().from(zuvySessions).where(sql`${zuvySessions.batchId} = ${e.batchId} AND ${zuvySessions.status} = 'completed'`).orderBy(desc(zuvySessions.startTime));
         e.attendance = e.attendance != null ? e.attendance : 0;
         e.totalClasses = classes.length;
-        e.attendedClasses = classes.length > 0 && e.attendance > 0 ? ((e.attendance / classes.length) * 100).toFixed(2): 0;
+        e.attendedClasses = classes.length > 0 && e.attendance > 0 ? ((e.attendance / classes.length) * 100).toFixed(2) : 0;
         delete e.userId;
         delete e.bootcamp
         return e;
@@ -266,26 +265,23 @@ export class StudentService {
     } catch (err) {
       throw err;
     }
-
   }
 
-  
   //This function returns the rank of a particular course based on avg of attendance and course progress
   //The query has a hierarchy from:-
   //zuvyBootcamp->zuvyBatchEnrollments(It has all the students of that particular bootcamp along with attendance)
   //ZuvyBatchEnrollments has a relation with userInfo and bootcamp Tracking table(contains course Progress)
-  async getLeaderBoardDetailByBootcamp(bootcampId:number,limit:number,offset:number)
-  {
+  async getLeaderBoardDetailByBootcamp(bootcampId: number, limit: number, offset: number) {
     try {
       const data = await db.query.zuvyBootcamps.findMany({
         where: (bootcamp, { eq }) => eq(bootcamp.id, bootcampId),
         with: {
           students: {
             columns: { attendance: true },
-            where: (batchEnrolled,{sql}) => sql `${batchEnrolled.batchId} IS NOT NULL`,
+            where: (batchEnrolled, { sql }) => sql`${batchEnrolled.batchId} IS NOT NULL`,
             with: {
               userInfo: {
-                columns: { id:true, name: true ,email:true},
+                columns: { id: true, name: true, email: true },
               },
               userTracking: {
                 columns: { progress: true, updatedAt: true },
@@ -299,19 +295,19 @@ export class StudentService {
         const studentsWithAvg = bootcamp['students'].map(student => {
           if (student['userTracking'] == null) {
             student['userTracking'] = {};
-        }
+          }
           student['userTracking']['progress'] = student['userTracking']['progress'] != null ? student['userTracking']['progress'] : 0;
-          const progress =student['userTracking']['progress'];
+          const progress = student['userTracking']['progress'];
           student['userTracking']['updatedAt'] = student['userTracking']['updatedAt'] != null ? student['userTracking']['updatedAt'] : new Date().toISOString();
-          const attendance = student['attendance'] != null ?student['attendance']: 0;
+          const attendance = student['attendance'] != null ? student['attendance'] : 0;
           const averageScore = (attendance + progress) / 2;
           student['attendance'] = attendance;
           return {
             ...student,
             userInfo: {
-              id:Number(student.userInfo.id),
-              name:student.userInfo.name,
-              email:student.userInfo.email,
+              id: Number(student.userInfo.id),
+              name: student.userInfo.name,
+              email: student.userInfo.email,
               averageScore,
             },
           };
@@ -322,19 +318,18 @@ export class StudentService {
           return b.userInfo.averageScore - a.userInfo.averageScore;
         });
         const totalStudents = studentsWithAvg.length;
-        const totalPages =!isNaN(limit) ? Math.ceil(totalStudents / limit) : 1;
+        const totalPages = !isNaN(limit) ? Math.ceil(totalStudents / limit) : 1;
         return {
           ...bootcamp,
-          students: !isNaN(limit) && !isNaN(offset) ? studentsWithAvg.slice(offset, limit+offset) : studentsWithAvg,
+          students: !isNaN(limit) && !isNaN(offset) ? studentsWithAvg.slice(offset, limit + offset) : studentsWithAvg,
           totalStudents,
           totalPages
         };
       });
       return processedData;
     }
-    catch(err)
-    {
-         throw err;
+    catch (err) {
+      throw err;
     }
   }
 }
