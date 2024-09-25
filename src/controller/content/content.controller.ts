@@ -388,7 +388,7 @@ export class ContentController {
   })
   @ApiBearerAuth()
   async getAllCodingQuestions(
-    @Query('tagId') tagId: number,
+    @Query('tagId') tagId: number, // 2 [1,2,3]
     @Query('difficulty') difficulty: 'Easy' | 'Medium' | 'Hard',
     @Query('searchTerm') searchTerm: string,
   ): Promise<object> {
@@ -718,3 +718,10 @@ export class ContentController {
     }
   }
 }
+
+
+
+
+
+
+//sdk ek script

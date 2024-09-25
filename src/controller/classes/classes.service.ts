@@ -11,7 +11,7 @@ import {
   // ZuvyClassesGoogleMeetLink
 } from '../../../drizzle/schema';
 import { db } from '../../db/index';
-import { eq, sql, count, inArray, isNull, desc, and, ilike } from 'drizzle-orm';
+import { eq, sql, count, inArray, isNull, desc, and, ilike, or } from 'drizzle-orm';
 import { google, calendar_v3 } from 'googleapis';
 import { v4 as uuid } from 'uuid';
 import * as _ from 'lodash';
@@ -47,6 +47,7 @@ const scopes = [
 
 @Injectable()
 export class ClassesService {
+  GoogleCalendarService: any;
 
   async accessOfCalendar(creatorInfo) {
     const userId = Number(creatorInfo.id)
@@ -68,13 +69,12 @@ export class ClassesService {
         };
       }
 
-      if (!creatorInfo.roles.includes('admin')) {
+      if (!creatorInfo.roles?.includes('admin')) {
         return {
           status: 'error',
           message: 'You should be an admin to create a class.',
         };
       }
-
       const calendar = google.calendar({ version: 'v3', auth: auth2Client });
       return calendar;
   }
@@ -868,8 +868,27 @@ export class ClassesService {
       .from(zuvySessions)
       .where(sql`${zuvySessions.bootcampId} = ${bootcamp_id} 
        ${!isNaN(batch_id) ? sql`AND ${zuvySessions.batchId} = ${batch_id}` : sql``}`);
+       const user = await db.select().from(users).where(eq(users.email,'team@zuvy.org'))
+       let adminUser = {...user[0],roles:'admin'}
+       let calendar:any = await this.accessOfCalendar(adminUser);
 
       for (let classObj of classes) {
+        
+        const event = await calendar.events.get({
+          calendarId: 'primary',
+          eventId: classObj.meetingId,
+        });
+        
+        const { start, end ,status } = event.data;
+        if(status=='cancelled')
+        {
+          await db
+           .delete(zuvySessions)
+             .where(eq(zuvySessions.meetingId, classObj.meetingId));
+        }
+        const apiStartTime = start?.dateTime || start?.date;
+        const apiEndTime = end?.dateTime || end?.date;
+    
         const startTime = new Date(classObj.startTime);
         const endTime = new Date(classObj.endTime);
         let newStatus;
@@ -882,11 +901,19 @@ export class ClassesService {
         }
         // Update the status in the database
         try {
-          if (newStatus !== classObj.status) {
-            let updatedClass:any = { status: newStatus }
-            await db.update(zuvySessions).set(updatedClass).where(eq(zuvySessions.id, classObj.id)).returning();
-            Logger.log(`Status of class with id ${classObj.id} updated to ${newStatus}`);
-          }
+          if (apiStartTime !== classObj.startTime || apiEndTime !== classObj.endTime || newStatus !== classObj.status) {
+            // Update times in your database if they have changed
+            let updatedClass:any = {startTime: apiStartTime,
+              endTime: apiEndTime, status: newStatus }
+            await db.update(zuvySessions)
+              .set(updatedClass)
+              .where(eq(zuvySessions.id, classObj.id));
+           }
+          // if (newStatus !== classObj.status) {
+          //   let updatedClass:any = { status: newStatus }
+          //   await db.update(zuvySessions).set(updatedClass).where(eq(zuvySessions.id, classObj.id)).returning();
+          //   Logger.log(`Status of class with id ${classObj.id} updated to ${newStatus}`);
+          // }
         } catch (error) {
         }
       }
@@ -973,6 +1000,16 @@ export class ClassesService {
             code: 401,
           };
         }
+
+      if(status=='upcoming' || status=='ongoing')
+        {
+          const upcomingOrOngoingClasses = await db.select().from(zuvySessions)
+          .where(and(
+            eq(zuvySessions.bootcampId, bootcamp_id),
+           isNaN(batch_id)?undefined : eq(zuvySessions.batchId, batch_id),
+            or(eq(zuvySessions.status, 'upcoming'), eq(zuvySessions.status, 'ongoing'))
+          ));
+        }  
       const query = db
      .select({
        sessions:zuvySessions,
