@@ -718,10 +718,3 @@ export class ContentController {
     }
   }
 }
-
-
-
-
-
-
-//sdk ek script
