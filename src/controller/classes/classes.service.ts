@@ -999,16 +999,6 @@ export class ClassesService {
             message: 'Unauthorized access',
             code: 401,
           };
-        }
-
-      if(status=='upcoming' || status=='ongoing')
-        {
-          const upcomingOrOngoingClasses = await db.select().from(zuvySessions)
-          .where(and(
-            eq(zuvySessions.bootcampId, bootcamp_id),
-           isNaN(batch_id)?undefined : eq(zuvySessions.batchId, batch_id),
-            or(eq(zuvySessions.status, 'upcoming'), eq(zuvySessions.status, 'ongoing'))
-          ));
         }  
       const query = db
      .select({
