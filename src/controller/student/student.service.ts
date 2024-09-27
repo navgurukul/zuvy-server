@@ -81,7 +81,7 @@ export class StudentService {
       // Insert student record into the DB
       await db.insert(zuvyStudentApplicationRecord).values(studentDetails).returning();
 
-      return [null, { message: 'Student details appended successfully', statusCode: STATUS_CODES.OK }];
+      return [null, { message: "Thank you for applying! We’re reviewing your application and will notify you soon.", statusCode: STATUS_CODES.OK }];
     } catch (err) {
       // Handle errors and return a bad request message
       return [{ message: err.message, statusCode: STATUS_CODES.BAD_REQUEST }];
