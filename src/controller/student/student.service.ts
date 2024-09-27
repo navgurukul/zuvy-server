@@ -21,16 +21,6 @@ import * as readline from 'readline';
 const { GOOGLE_SHEETS_SERVICE_ACCOUNT, GOOGLE_SHEETS_PRIVATE_KEY, SPREADSHEET_ID, ZUVY_REDIRECT_URL, GOOGLE_SECRET, GOOGLE_CLIENT_ID, NODE_MAILER_PASSWORD, NODE_MAILER_EMAIL,REFRESH_TOKEN, ORG_NAME,PHONE_NO,EMAIL_SUBJECT } = process.env;
 const AWS = require('aws-sdk');
 
-// Set up OAuth2 client for authentication
-// const oAuth2Client = new google.auth.OAuth2(
-//   GOOGLE_CLIENT_ID,
-//   GOOGLE_SECRET,
-//   ZUVY_REDIRECT_URL
-// );
-
-// oAuth2Client.setCredentials({
-//   refresh_token: REFRESH_TOKEN,
-// });
 @Injectable()
 export class StudentService {
   constructor(private ClassesService: ClassesService) { }
