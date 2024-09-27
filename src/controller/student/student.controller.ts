@@ -151,9 +151,8 @@ export class StudentController {
     return res;
   }
 
-  @Post('student/onboard')
+  @Post('/apply')
   @ApiOperation({ summary: 'student can apply for the course' })
-  @ApiBearerAuth()
   async getCodingQuestion(@Res() res: Response, @Body() applyFormData: ApplyFormData): Promise<any> {
     try {
       const [err, success] = await this.studentService.updateSpreadsheet(applyFormData);

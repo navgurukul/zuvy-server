@@ -19,9 +19,9 @@ import { OAuth2Client } from 'google-auth-library';
 import * as fs from 'fs';
 import * as readline from 'readline';
 const { GOOGLE_SHEETS_SERVICE_ACCOUNT, GOOGLE_SHEETS_PRIVATE_KEY, SPREADSHEET_ID, ZUVY_REDIRECT_URL, GOOGLE_SECRET, GOOGLE_CLIENT_ID, NODE_MAILER_PASSWORD, NODE_MAILER_EMAIL,REFRESH_TOKEN, ORG_NAME,PHONE_NO,EMAIL_SUBJECT } = process.env;
-const nodemailer = require('nodemailer');
+const AWS = require('aws-sdk');
 
-// // Set up OAuth2 client for authentication
+// Set up OAuth2 client for authentication
 // const oAuth2Client = new google.auth.OAuth2(
 //   GOOGLE_CLIENT_ID,
 //   GOOGLE_SECRET,
@@ -120,33 +120,43 @@ export class StudentService {
     `;
   }
 
-  // Send email using Nodemailer and Gmail SMTP
+  // Send email using AWS SES
   async sendMail(applicantName, recipientEmail) {
     try {
       // Generate email content dynamically
       const emailContent = await this.generateEmailContent(applicantName, ORG_NAME, NODE_MAILER_EMAIL, PHONE_NO, EMAIL_SUBJECT);
 
-      // Create a mail transporter with Gmail credentials
-      const transporter = nodemailer.createTransport({
-        secure: true,
-        host: 'smtp.gmail.com',
-        port: 465,
-        auth: {
-          user: NODE_MAILER_EMAIL,
-          pass: NODE_MAILER_PASSWORD,
-        },
+      // Configure AWS SDK for SES
+      AWS.config.update({
+        region: 'us-east-1', // e.g. 'us-east-1'
       });
 
-      // Define mail options including recipient and email content
-      const mailOptions = {
-        from: NODE_MAILER_EMAIL,
-        to: recipientEmail,
-        subject: `${EMAIL_SUBJECT} - Application Received`,
-        text: emailContent,
+      // Create an instance of SES
+      const ses = new AWS.SES();
+
+      // Define email parameters for SES
+      const emailParams = {
+        Source: NODE_MAILER_EMAIL, // This must be a verified email address in SES
+        Destination: {
+          ToAddresses: [recipientEmail], // Recipient email address
+        },
+        Message: {
+          Subject: {
+            Charset: 'UTF-8',
+            Data: `${EMAIL_SUBJECT} - Application Received`,
+          },
+          Body: {
+            Text: {
+              Charset: 'UTF-8',
+              Data: emailContent,
+            },
+          },
+        },
       };
 
-      // Send the email
-      await transporter.sendMail(mailOptions);
+      // Send the email using SES
+      const result = await ses.sendEmail(emailParams).promise();
+      console.log('Email sent successfully:', result);
     } catch (error) {
       console.error('Error sending email:', error);
     }
