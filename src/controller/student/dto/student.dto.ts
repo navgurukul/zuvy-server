@@ -39,17 +39,17 @@ export class ApplyFormData {
   email: string;
 
   @ApiProperty({
-    type: Number,
+    type: String,
     example: '2022',
     required: true,
   })
   @IsNotEmpty()
-  @IsNumber()
-  year: number;
+  @IsString()
+  year: string;
 
   @ApiProperty({
     type: Boolean,
-    example: 'TRUE',
+    example: true,
     required: true,
   })
   @IsNotEmpty()

@@ -3297,14 +3297,14 @@ export const zuvyStudentApplicationRecord = main.table('zuvy_student_application
   name: text('name').notNull(),
   email: text('email').notNull(),
   phoneNo: integer('phone_no').notNull(),
-  year: integer('year').notNull(),
+  year: text('year').notNull(),
   familyIncomeUnder3Lakhs: boolean('family_income_under_3lakhs').notNull(),
   createdAt: timestamp('created_at', {
     withTimezone: true,
     mode: 'string',
   }).defaultNow(),
   updatedAt: timestamp('updated_at', {
-    withTimezone: true,
+    withTimezone: true,   
     mode: 'string',
   }).defaultNow(),
 });

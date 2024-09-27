@@ -152,6 +152,7 @@ export class StudentController {
   }
 
   @Post('/apply')
+  @ApiBearerAuth()
   @ApiOperation({ summary: 'student can apply for the course' })
   async getCodingQuestion(@Res() res: Response, @Body() applyFormData: ApplyFormData): Promise<any> {
     try {

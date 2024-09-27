@@ -38,7 +38,7 @@ export class StudentService {
   }
 
   // Append student details to Google Spreadsheet
-  public async updateSpreadsheet(studentDetails: { name: string, email: string, phoneNo: number, year: number, familyIncomeUnder3Lakhs: boolean }): Promise<any> {
+  public async updateSpreadsheet(studentDetails: { name: string, email: string, phoneNo: number, year: string, familyIncomeUnder3Lakhs: boolean }): Promise<any> {
     try {
       // Check if a student with the same email or phone already exists in DB
       const existingRecord = await db
@@ -51,7 +51,6 @@ export class StudentService {
           ),
         )
         .limit(1);
-
       // If student exists, return a message
       if (existingRecord.length > 0) {
         return [{ message: 'Email or Phone Number already exists.' }];
@@ -106,7 +105,7 @@ export class StudentService {
       Best regards,
       Team ${teamName}
       www.zuvy.org
-      Contact: ${contactNumber}
+      Whatsapp us: ${contactNumber}
     `;
   }
 
