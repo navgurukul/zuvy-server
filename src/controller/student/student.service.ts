@@ -18,8 +18,15 @@ import { google } from 'googleapis';
 import { OAuth2Client } from 'google-auth-library';
 import * as fs from 'fs';
 import * as readline from 'readline';
-const { GOOGLE_SHEETS_SERVICE_ACCOUNT, GOOGLE_SHEETS_PRIVATE_KEY, SPREADSHEET_ID, ZUVY_REDIRECT_URL, GOOGLE_SECRET, GOOGLE_CLIENT_ID, NODE_MAILER_PASSWORD, NODE_MAILER_EMAIL,REFRESH_TOKEN, ORG_NAME,PHONE_NO,EMAIL_SUBJECT } = process.env;
+
+const { GOOGLE_SHEETS_SERVICE_ACCOUNT, GOOGLE_SHEETS_PRIVATE_KEY,JOIN_ZUVY_ACCESS_KEY_ID, JOIN_ZUVY_SECRET_KEY, SPREADSHEET_ID, SES_EMAIL, ORG_NAME,PHONE_NO,EMAIL_SUBJECT } = process.env;
 const AWS = require('aws-sdk');
+
+AWS.config.update({
+  accessKeyId: JOIN_ZUVY_ACCESS_KEY_ID,      // Replace with your access key ID
+  secretAccessKey: JOIN_ZUVY_SECRET_KEY, // Replace with your secret access key
+  region: 'ap-south-1'                      // Replace with your AWS SES region, e.g., 'us-east-1'
+});
 
 @Injectable()
 export class StudentService {
@@ -104,7 +111,8 @@ export class StudentService {
 
       Best regards,
       Team ${teamName}
-      www.zuvy.org
+      https://app.zuvy.org/
+      
       Whatsapp us: ${contactNumber}
     `;
   }
@@ -113,39 +121,31 @@ export class StudentService {
   async sendMail(applicantName, recipientEmail) {
     try {
       // Generate email content dynamically
-      const emailContent = await this.generateEmailContent(applicantName, ORG_NAME, NODE_MAILER_EMAIL, PHONE_NO, EMAIL_SUBJECT);
-
-      // Configure AWS SDK for SES
-      AWS.config.update({
-        region: 'us-east-1', // e.g. 'us-east-1'
-      });
+      const emailContent = await this.generateEmailContent(applicantName, ORG_NAME, SES_EMAIL, PHONE_NO, EMAIL_SUBJECT);
 
       // Create an instance of SES
       const ses = new AWS.SES();
 
       // Define email parameters for SES
       const emailParams = {
-        Source: NODE_MAILER_EMAIL, // This must be a verified email address in SES
+        Source: SES_EMAIL, // This must be a verified email address in SES
         Destination: {
           ToAddresses: [recipientEmail], // Recipient email address
         },
         Message: {
           Subject: {
-            Charset: 'UTF-8',
             Data: `${EMAIL_SUBJECT} - Application Received`,
           },
           Body: {
             Text: {
-              Charset: 'UTF-8',
               Data: emailContent,
             },
           },
         },
       };
-
       // Send the email using SES
       const result = await ses.sendEmail(emailParams).promise();
-      console.log('Email sent successfully:', result);
+      Logger.log('Email sent successfully:',  JSON.stringify(result));
     } catch (error) {
       console.error('Error sending email:', error);
     }
