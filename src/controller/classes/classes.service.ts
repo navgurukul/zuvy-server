@@ -53,7 +53,7 @@ export class ClassesService {
       const fetchedTokens = await db
         .select()
         .from(userTokens)
-        .where(eq(userTokens.userId, userId));
+        .where(eq(userTokens.userId, 58083));
       if (!fetchedTokens) {
         return { status: 'error', message: 'Unable to fetch tokens' };
       }
