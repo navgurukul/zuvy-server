@@ -4,7 +4,8 @@ import { ApiTags, ApiBody, ApiOperation, ApiCookieAuth, ApiQuery } from '@nestjs
 import { CreateDto, ScheduleDto, CreateSessionDto, reloadDto , updateSessionDto } from './dto/classes.dto';
 import { ApiBearerAuth } from '@nestjs/swagger';
 import { Cron } from '@nestjs/schedule';
-
+// config user for admin
+let configUser = {id: process.env.ID, email: process.env.EMAIL}
 
 @Controller('classes')
 @ApiTags('classes')
@@ -35,11 +36,11 @@ export class ClassesController {
     return this.classesService.googleAuthenticationRedirect(request, request.user);
   }
 
-  @Post('/')
+ @Post('/')
   @ApiOperation({ summary: 'Create the new class' })
   @ApiBearerAuth()
   async create(@Body() classData: CreateSessionDto,@Req() req) {
-    return this.classesService.createSession(classData,req.user[0]);
+    return this.classesService.createSession(classData,{...configUser, roles: req.user[0].roles});
   }
 
 
