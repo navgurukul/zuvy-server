@@ -1123,45 +1123,44 @@ export class ContentService {
   }
 
   async getAllQuizQuestions(
-    tagId: number,
+    tagId: number | number[],
     difficulty: 'Easy' | 'Medium' | 'Hard',
     searchTerm: string = '',
-  ) {
+  ): Promise<object> {
     try {
       let conditions = [];
-
-    if (!Number.isNaN(tagId)) {
-     conditions.push(eq(zuvyModuleQuiz.tagId, tagId));
-     }
-
-    if (difficulty !== undefined) {
-     conditions.push(eq(zuvyModuleQuiz.difficulty, difficulty));
+  
+      // Normalize tagId to an array if it's a single number
+      const tagIds = Array.isArray(tagId) ? tagId : [tagId];
+  
+      if (tagIds && tagIds.length > 0) {
+        conditions.push(inArray(zuvyModuleQuiz.tagId, tagIds)); 
       }
-
+  
+      if (difficulty) {
+        conditions.push(eq(zuvyModuleQuiz.difficulty, difficulty));
+      }
+  
       if (searchTerm) {
-        conditions.push(
-    sql`LOWER(${zuvyModuleQuiz.question}) ~ ${sql.raw(`'\\m${searchTerm.toLowerCase()}'`)}`
-      );
-     }
-
-       const result = await db
-       .select({
-         ...getTableColumns(zuvyModuleQuiz),
-           matchPosition: sql<number>`
-             CASE
-             WHEN LOWER(${zuvyModuleQuiz.question}) LIKE ${sql.raw(`'${searchTerm.toLowerCase()}%'`)} THEN 0
-             WHEN LOWER(${zuvyModuleQuiz.question}) ~ ${sql.raw(`'\\m${searchTerm.toLowerCase()}'`)} THEN 
-             POSITION(
-              ${sql.raw(`'${searchTerm.toLowerCase()}'`)} IN LOWER(${zuvyModuleQuiz.question})
-             ) - 1
-             ELSE 9999 -- Use a large number for non-matching cases to push them to the end
-             END
-          `.as('match_position')
+        conditions.push(sql`LOWER(${zuvyModuleQuiz.question}) ~ ${sql.raw(`'\\m${searchTerm.toLowerCase()}'`)}`);
+      }
+  
+      const result = await db
+        .select({
+          ...getTableColumns(zuvyModuleQuiz),
+          matchPosition: sql<number>`
+            CASE
+            WHEN LOWER(${zuvyModuleQuiz.question}) LIKE ${sql.raw(`'${searchTerm.toLowerCase()}%'`)} THEN 0
+            WHEN LOWER(${zuvyModuleQuiz.question}) ~ ${sql.raw(`'\\m${searchTerm.toLowerCase()}'`)} THEN 
+            POSITION(${sql.raw(`'${searchTerm.toLowerCase()}'`)} IN LOWER(${zuvyModuleQuiz.question})) - 1
+            ELSE 9999 -- Use a large number for non-matching cases to push them to the end
+            END
+          `.as('match_position'),
         })
         .from(zuvyModuleQuiz)
         .where(and(...conditions))
         .orderBy(searchTerm ? sql`match_position` : sql`${zuvyModuleQuiz.id} DESC`);
-
+  
       return result;
     } catch (err) {
       throw err;
@@ -1169,27 +1168,32 @@ export class ContentService {
   }
 
   async getAllCodingQuestions(
-    tagId: number,
+    tagId: number | number[],  
     difficulty: 'Easy' | 'Medium' | 'Hard',
     searchTerm: string = '',
   ) {
     try {
       let conditions = [];
 
-      if (!Number.isNaN(tagId)) {
-        conditions.push(eq(zuvyCodingQuestions.tagId, tagId));
+      const tagIds = Array.isArray(tagId) ? tagId : [tagId];
+
+      // Add tagId condition if we have tagIds
+      if (tagIds && tagIds.length > 0) {
+        conditions.push(inArray(zuvyCodingQuestions.tagId, tagIds)); 
       }
-      
-      if (difficulty !== undefined) {
+
+      if (difficulty) {
         conditions.push(eq(zuvyCodingQuestions.difficulty, difficulty));
       }
-      
+
       if (searchTerm) {
         conditions.push(
           sql`LOWER(${zuvyCodingQuestions.title}) ~ ${sql.raw(`'\\m${searchTerm.toLowerCase()}'`)}`
         );
       }
-      const question = await db.query.zuvyCodingQuestions.findMany({
+
+      // Query the database
+      const questions = await db.query.zuvyCodingQuestions.findMany({
         where: and(...conditions),
         columns: {
           id: true,
@@ -1200,7 +1204,7 @@ export class ContentService {
           content: true,
           tagId: true,
           createdAt: true,
-          usage: true
+          usage: true,
         },
         with: {
           testCases: {
@@ -1210,7 +1214,7 @@ export class ContentService {
               expectedOutput: true,
             },
             orderBy: (testCase, { asc }) => asc(testCase.id),
-          }
+          },
         },
         orderBy: (zuvyCodingQuestions, { sql }) => {
           if (searchTerm) {
@@ -1222,18 +1226,15 @@ export class ContentService {
                     POSITION(${sql.raw(`'${searchTerm.toLowerCase()}'`)} IN LOWER(${zuvyCodingQuestions.title})) + 1
                   ELSE 9999
                 END
-              `
+              `,
             ];
           } else {
-            return [
-              sql`${zuvyCodingQuestions.id} DESC`
-            ];
+            return [sql`${zuvyCodingQuestions.id} DESC`];
           }
-        }
+        },
       });
-      
-      return question;
-      
+
+      return questions;
     } catch (err) {
       throw err;
     }
@@ -1511,7 +1512,7 @@ export class ContentService {
   }
 
   async getAllOpenEndedQuestions(
-    tagId: number,
+    tagIds: number[],  
     difficulty: 'Easy' | 'Medium' | 'Hard',
     searchTerm: string = '',
     pageNo: number,
@@ -1519,11 +1520,11 @@ export class ContentService {
   ) {
     try {
       let conditions = [];
-
-      if (!Number.isNaN(tagId)) {
-        conditions.push(eq(zuvyOpenEndedQuestions.tagId, tagId));
+  
+      if (tagIds.length > 0) {
+        conditions.push(inArray(zuvyOpenEndedQuestions.tagId, tagIds));
       }
-      
+  
       if (difficulty !== undefined) {
         conditions.push(eq(zuvyOpenEndedQuestions.difficulty, difficulty));
       }
@@ -1532,14 +1533,13 @@ export class ContentService {
           sql`LOWER(${zuvyOpenEndedQuestions.question}) ~ ${sql.raw(`'\\m${searchTerm.toLowerCase()}'`)}`
         );
       }
-      
+  
       const totalRows = await db
         .select({ count: sql<number>`count(*)` })
         .from(zuvyOpenEndedQuestions)
         .where(and(...conditions))
         .execute();
-      
-
+  
       const result = await db
         .select()
         .from(zuvyOpenEndedQuestions)
@@ -1558,18 +1558,18 @@ export class ContentService {
         )
         .limit(limit_)
         .offset((pageNo - 1) * limit_);
-      
+  
       return { 
         data: result, 
         totalRows: Number(totalRows[0].count), 
         totalPages: !Number.isNaN(limit_) ? Math.ceil(totalRows[0].count / limit_) : 1
       };
-      
+  
     } catch (err) {
       throw err;
     }
   }
-
+  
   async getStudentsOfAssessment(assessmentId: number, chapterId: number, moduleId: number, bootcampId: number, req) {
     try {
       let { id } = req.user[0];

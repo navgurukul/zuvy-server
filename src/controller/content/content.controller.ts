@@ -323,7 +323,7 @@ export class ContentController {
   @ApiQuery({
     name: 'tagId',
     required: false,
-    type: Number,
+    type: [Number], 
     description: 'tagId',
   })
   @ApiQuery({
@@ -340,17 +340,13 @@ export class ContentController {
   })
   @ApiBearerAuth()
   async getAllQuizQuestions(
-    @Query('tagId') tagId: number,
+    @Query('tagId') tagId: number[],  
     @Query('difficulty') difficulty: 'Easy' | 'Medium' | 'Hard',
     @Query('searchTerm') searchTerm: string,
   ): Promise<object> {
-    const res = await this.contentService.getAllQuizQuestions(
-      tagId,
-      difficulty,
-      searchTerm,
-    );
-    return res;
+    return this.contentService.getAllQuizQuestions(tagId, difficulty, searchTerm);  
   }
+
   @Patch('/updateCodingQuestion/:questionId')
   @ApiOperation({ summary: 'Update the coding question for this module' })
   @ApiBearerAuth()
@@ -371,7 +367,7 @@ export class ContentController {
   @ApiQuery({
     name: 'tagId',
     required: false,
-    type: Number,
+    type: [Number],  
     description: 'tagId',
   })
   @ApiQuery({
@@ -388,7 +384,7 @@ export class ContentController {
   })
   @ApiBearerAuth()
   async getAllCodingQuestions(
-    @Query('tagId') tagId: number,
+    @Query('tagId') tagId: number[], 
     @Query('difficulty') difficulty: 'Easy' | 'Medium' | 'Hard',
     @Query('searchTerm') searchTerm: string,
   ): Promise<object> {
@@ -453,7 +449,7 @@ export class ContentController {
   @ApiQuery({
     name: 'tagId',
     required: false,
-    type: Number,
+    type: [Number],
     description: 'tagId',
   })
   @ApiQuery({
@@ -482,14 +478,17 @@ export class ContentController {
   })
   @ApiBearerAuth()
   async getAllOpenEndedQuestions(
-    @Query('tagId') tagId: number,
+    @Query('tagId') tagId: number | number[],
     @Query('difficulty') difficulty: 'Easy' | 'Medium' | 'Hard',
     @Query('searchTerm') searchTerm: string,
     @Query('pageNo') pageNo: number,
     @Query('limit_') limit_: number,
   ): Promise<object> {
+
+    const tagIdsArray: number[] = Array.isArray(tagId) ? tagId : [tagId];
+
     const res = await this.contentService.getAllOpenEndedQuestions(
-      tagId,
+      tagIdsArray,
       difficulty,
       searchTerm,
       pageNo,
