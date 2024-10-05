@@ -1121,7 +1121,7 @@ export class ContentService {
 
   async getAllQuizQuestions(
     tagId: number | number[],
-    difficulty: 'Easy' | 'Medium' | 'Hard',
+    difficulty: ('Easy' | 'Medium' | 'Hard') | ('Easy' | 'Medium' | 'Hard')[],
     searchTerm: string = '',
   ) {
     try {
@@ -1133,8 +1133,10 @@ export class ContentService {
         conditions.push(inArray(zuvyModuleQuiz.tagId, tagIds));
       }
 
-      if (difficulty !== undefined) {
-        conditions.push(eq(zuvyModuleQuiz.difficulty, difficulty));
+      const difficultyArray = Array.isArray(difficulty) ? difficulty : [difficulty];
+
+      if (difficultyArray.length > 0) {
+        conditions.push(inArray(zuvyModuleQuiz.difficulty, difficultyArray));
       }
 
       if (searchTerm) {
@@ -1169,7 +1171,7 @@ export class ContentService {
 
   async getAllCodingQuestions(
     tagId: number | number[],
-    difficulty: 'Easy' | 'Medium' | 'Hard',
+    difficulty: ('Easy' | 'Medium' | 'Hard') | ('Easy' | 'Medium' | 'Hard')[],
     searchTerm: string = '',
   ) {
     try {
@@ -1178,11 +1180,13 @@ export class ContentService {
       const tagIds = Array.isArray(tagId) ? tagId : [tagId];
 
       if (tagIds && tagIds.length > 0) {
-        conditions.push(inArray(zuvyCodingQuestions.tagId, tagIds)); 
+        conditions.push(inArray(zuvyCodingQuestions.tagId, tagIds));
       }
 
-      if (difficulty !== undefined) {
-        conditions.push(eq(zuvyCodingQuestions.difficulty, difficulty));
+      const difficultyArray = Array.isArray(difficulty) ? difficulty : [difficulty];
+
+      if (difficultyArray.length > 0) {
+        conditions.push(inArray(zuvyCodingQuestions.difficulty, difficultyArray));
       }
 
       if (searchTerm) {
@@ -1513,7 +1517,7 @@ export class ContentService {
 
   async getAllOpenEndedQuestions(
     tagIds: number[],
-    difficulty: 'Easy' | 'Medium' | 'Hard',
+    difficulty: ('Easy' | 'Medium' | 'Hard') | ('Easy' | 'Medium' | 'Hard')[],
     searchTerm: string = '',
     pageNo: number,
     limit_: number
@@ -1525,8 +1529,10 @@ export class ContentService {
         conditions.push(inArray(zuvyOpenEndedQuestions.tagId, tagIds));
       }
 
-      if (difficulty !== undefined) {
-        conditions.push(eq(zuvyOpenEndedQuestions.difficulty, difficulty));
+      const difficultyArray = Array.isArray(difficulty) ? difficulty : [difficulty];
+
+      if (difficultyArray.length > 0) {
+        conditions.push(inArray(zuvyOpenEndedQuestions.difficulty, difficultyArray));
       }
       if (searchTerm) {
         conditions.push(

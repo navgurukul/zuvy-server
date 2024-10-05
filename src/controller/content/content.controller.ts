@@ -329,7 +329,7 @@ export class ContentController {
   @ApiQuery({
     name: 'difficulty',
     required: false,
-    type: String,
+    type: [String], 
     description: 'difficulty',
   })
   @ApiQuery({
@@ -341,7 +341,7 @@ export class ContentController {
   @ApiBearerAuth()
   async getAllQuizQuestions(
     @Query('tagId') tagId: number[],
-    @Query('difficulty') difficulty: 'Easy' | 'Medium' | 'Hard',
+    @Query('difficulty') difficulty: ('Easy' | 'Medium' | 'Hard') | ('Easy' | 'Medium' | 'Hard')[],
     @Query('searchTerm') searchTerm: string,
   ): Promise<object> {
     const res = await this.contentService.getAllQuizQuestions(
@@ -351,6 +351,7 @@ export class ContentController {
     );
     return res;
   }
+
   @Patch('/updateCodingQuestion/:questionId')
   @ApiOperation({ summary: 'Update the coding question for this module' })
   @ApiBearerAuth()
@@ -377,7 +378,7 @@ export class ContentController {
   @ApiQuery({
     name: 'difficulty',
     required: false,
-    type: String,
+    type: [String],
     description: 'difficulty',
   })
   @ApiQuery({
@@ -389,7 +390,7 @@ export class ContentController {
   @ApiBearerAuth()
   async getAllCodingQuestions(
     @Query('tagId') tagId: number[], 
-    @Query('difficulty') difficulty: 'Easy' | 'Medium' | 'Hard',
+    @Query('difficulty') difficulty: ('Easy' | 'Medium' | 'Hard') | ('Easy' | 'Medium' | 'Hard')[],
     @Query('searchTerm') searchTerm: string,
   ): Promise<object> {
     const res = await this.contentService.getAllCodingQuestions(
@@ -459,7 +460,7 @@ export class ContentController {
   @ApiQuery({
     name: 'difficulty',
     required: false,
-    type: String,
+    type: [String],
     description: 'difficulty',
   })
   @ApiQuery({
@@ -483,7 +484,7 @@ export class ContentController {
   @ApiBearerAuth()
   async getAllOpenEndedQuestions(
     @Query('tagId') tagId: number | number[],
-    @Query('difficulty') difficulty: 'Easy' | 'Medium' | 'Hard',
+    @Query('difficulty') difficulty: ('Easy' | 'Medium' | 'Hard') | ('Easy' | 'Medium' | 'Hard')[],
     @Query('searchTerm') searchTerm: string,
     @Query('pageNo') pageNo: number,
     @Query('limit_') limit_: number,
