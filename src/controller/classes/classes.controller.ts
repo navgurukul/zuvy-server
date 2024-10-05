@@ -5,7 +5,7 @@ import { CreateDto, ScheduleDto, CreateSessionDto, reloadDto , updateSessionDto 
 import { ApiBearerAuth } from '@nestjs/swagger';
 import { Cron } from '@nestjs/schedule';
 // config user for admin
-let configUser = {id: process.env.ID, email: process.env.EMAIL}
+let configUser = {id: process.env.ID, email: process.env.EMAIL};
 
 @Controller('classes')
 @ApiTags('classes')
