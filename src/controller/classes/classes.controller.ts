@@ -50,7 +50,7 @@ export class ClassesController {
   @ApiOperation({ summary: "Get the google class attendance by meetingId" })
   async extractMeetAttendance(@Req() req, @Param('meetingId') meetingId: string): Promise<object> {
 
-    const [err, values] = await this.classesService.getAttendance(meetingId, req.user[0]);
+    const [err, values] = await this.classesService.getAttendance(meetingId, {...configUser, roles: req.user[0].roles});
     if (err) {
       throw new BadRequestException(err);
     }
@@ -62,14 +62,14 @@ export class ClassesController {
   @ApiOperation({ summary: "Get the google all classes attendance by batchID" })
   extractMeetAttendanceByBatch(@Req() req, @Param('batchId') batchId: string): Promise<object> {
 
-    return this.classesService.getAttendanceByBatchId(batchId, req.user);
+    return this.classesService.getAttendanceByBatchId(batchId, {...configUser, roles: req.user[0].roles});
   }
 
   @Get('/analytics/:meetingId')
   @ApiBearerAuth()
   @ApiOperation({ summary: "meeting attendance analytics with meeting link" })
   async meetingAttendanceAnalytics(@Req() req, @Param('meetingId') meetingId: string) {
-    const [err, values] = await this.classesService.meetingAttendanceAnalytics(meetingId, req.user[0]);
+    const [err, values] = await this.classesService.meetingAttendanceAnalytics(meetingId, {...configUser, roles: req.user[0].roles});
     if (err) {
       throw new BadRequestException(err);
     }
@@ -83,7 +83,7 @@ export class ClassesController {
     let meetingIds: Array<any> = reloadData?.meetingIds;
 
     let attachment = meetingIds.map( async(meetId) => {
-      const [err, values] = await this.classesService.getAttendance(meetId, req.user[0]);
+      const [err, values] = await this.classesService.getAttendance(meetId, {...configUser, roles: req.user[0].roles});
     });
     return { message: 'Data Refreshed', status: 200, };
   }
@@ -183,13 +183,13 @@ export class ClassesController {
   @ApiOperation({ summary: 'Delete the google class by meetingId' })
   @ApiBearerAuth()
   deleteClassByMeetingId(@Param('meetingId') meetingId: string, @Req() req): Promise<object> {
-    return this.classesService.deleteSession(meetingId, req.user[0]);
+    return this.classesService.deleteSession(meetingId, {...configUser, roles: req.user[0].roles});
   }
 
   @Patch('/update/:meetingId')
   @ApiOperation({ summary: 'Update the google class by meetingId' })
   @ApiBearerAuth()
   updateClassByMeetingId(@Param('meetingId') meetingId: string, @Body() classData: updateSessionDto, @Req() req): Promise<object> {
-    return this.classesService.updateSession(meetingId, classData, req.user[0]);
+    return this.classesService.updateSession(meetingId, classData, {...configUser, roles: req.user[0].roles});
   }
 }
