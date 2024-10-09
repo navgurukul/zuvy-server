@@ -21,7 +21,8 @@ export class InstructorService {
       const data = await db.query.zuvyBootcamps.findMany({
         columns: {
           id: true,
-          name: true
+          name: true,
+          coverImage: true
         },
         with: {
           batches: {
@@ -210,7 +211,9 @@ export class InstructorService {
     offset: number,
     weeks: number,
     sortBy: string,
-    batchId:number[]):Promise<any>
+    batchId:number[],
+    searchTitle: string,
+  ):Promise<any>
     {
       try {
         let startDate: string | undefined;
@@ -230,7 +233,11 @@ export class InstructorService {
               }
           }
         const classDetails = await db.query.zuvySessions.findMany({
-          where: (sessions, { lt, gte }) =>and( lt(sessions.endTime, helperVariable.currentISOTime), startDate ? gte(sessions.endTime, startDate) : undefined,inArray(sessions.batchId,batches) ),
+          where: (sessions, { lt, gte }) =>and( lt(sessions.endTime, helperVariable.currentISOTime), startDate ? gte(sessions.endTime, startDate) : undefined,inArray(sessions.batchId,batches),
+          searchTitle 
+            ? sql`LOWER(${sessions.title}) LIKE LOWER(${sql.raw(`'${searchTitle}%'`)})`
+            : undefined
+         ),
           orderBy: (sessions, { asc, desc }) => 
             sortBy === 'asc' ? asc(sessions.startTime) : desc(sessions.startTime),
           with : {
