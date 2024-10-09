@@ -1127,15 +1127,17 @@ export class ContentService {
     try {
       let conditions = [];
 
-      const tagIds = Array.isArray(tagId) ? tagId : [tagId];
+      let tagIds;
 
-      if (tagIds && tagIds.length > 0) {
+      if (tagId) {
+        tagIds = Array.isArray(tagId) ? tagId : [tagId];
         conditions.push(inArray(zuvyModuleQuiz.tagId, tagIds));
       }
 
-      const difficultyArray = Array.isArray(difficulty) ? difficulty : [difficulty];
+      let difficultyArray;
 
-      if (difficultyArray.length > 0) {
+      if (difficulty) {
+        difficultyArray = Array.isArray(difficulty) ? difficulty : [difficulty];
         conditions.push(inArray(zuvyModuleQuiz.difficulty, difficultyArray));
       }
 
@@ -1177,15 +1179,17 @@ export class ContentService {
     try {
       let conditions = [];
 
-      const tagIds = Array.isArray(tagId) ? tagId : [tagId];
+      let tagIds;
 
-      if (tagIds && tagIds.length > 0) {
+      if (tagId) {
+        tagIds = Array.isArray(tagId) ? tagId : [tagId];
         conditions.push(inArray(zuvyCodingQuestions.tagId, tagIds));
       }
 
-      const difficultyArray = Array.isArray(difficulty) ? difficulty : [difficulty];
+      let difficultyArray;
 
-      if (difficultyArray.length > 0) {
+      if (difficulty) {
+        difficultyArray = Array.isArray(difficulty) ? difficulty : [difficulty]
         conditions.push(inArray(zuvyCodingQuestions.difficulty, difficultyArray));
       }
 
@@ -1516,7 +1520,7 @@ export class ContentService {
   }
 
   async getAllOpenEndedQuestions(
-    tagIds: number[],
+    tagId: number | number[],
     difficulty: ('Easy' | 'Medium' | 'Hard') | ('Easy' | 'Medium' | 'Hard')[],
     searchTerm: string = '',
     pageNo: number,
@@ -1525,13 +1529,17 @@ export class ContentService {
     try {
       let conditions = [];
 
-      if (tagIds.length > 0) {
-        conditions.push(inArray(zuvyOpenEndedQuestions.tagId, tagIds));
+      let tagIdsArray;
+
+      if (tagId) {
+        tagIdsArray = Array.isArray(tagId) ? tagId : [tagId];
+        conditions.push(inArray(zuvyOpenEndedQuestions.tagId, tagIdsArray));
       }
 
-      const difficultyArray = Array.isArray(difficulty) ? difficulty : [difficulty];
+      let difficultyArray;
 
-      if (difficultyArray.length > 0) {
+      if (difficulty) {
+        difficultyArray = Array.isArray(difficulty) ? difficulty : [difficulty];
         conditions.push(inArray(zuvyOpenEndedQuestions.difficulty, difficultyArray));
       }
       if (searchTerm) {
