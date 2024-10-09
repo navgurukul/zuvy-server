@@ -6,19 +6,151 @@ import {
   zuvyBootcamps,
   zuvyBootcampType,
   zuvySessions,
-  users
+  users,
+  zuvyStudentApplicationRecord
 } from '../../../drizzle/schema';
 import { db } from '../../db/index';
-import { eq, sql, desc, count, asc } from 'drizzle-orm';
+import { eq, sql, desc, count,asc, or} from 'drizzle-orm';
 import { ClassesService } from '../classes/classes.service'
-import { query } from 'express';
 import { helperVariable } from 'src/constants/helper';
-import { STATUS_CODES } from 'http';
-import { ErrorResponse } from 'src/errorHandler/handler';
+import { STATUS_CODES } from "../../helpers/index";
+import { google } from 'googleapis';
+import { OAuth2Client } from 'google-auth-library';
+import * as fs from 'fs';
+import * as readline from 'readline';
+
+const { GOOGLE_SHEETS_SERVICE_ACCOUNT, GOOGLE_SHEETS_PRIVATE_KEY,JOIN_ZUVY_ACCESS_KEY_ID, JOIN_ZUVY_SECRET_KEY, SPREADSHEET_ID, SES_EMAIL, ORG_NAME,PHONE_NO,EMAIL_SUBJECT } = process.env;
+const AWS = require('aws-sdk');
+
+AWS.config.update({
+  accessKeyId: JOIN_ZUVY_ACCESS_KEY_ID,      // Replace with your access key ID
+  secretAccessKey: JOIN_ZUVY_SECRET_KEY, // Replace with your secret access key
+  region: 'ap-south-1'                      // Replace with your AWS SES region, e.g., 'us-east-1'
+});
 
 @Injectable()
 export class StudentService {
   constructor(private ClassesService: ClassesService) { }
+  private SCOPES = ['https://www.googleapis.com/auth/spreadsheets'];
+
+  // Authenticate and return the JWT client to interact with Google Sheets API
+  private async authorize(): Promise<any> {
+    const auth = new google.auth.JWT(
+      GOOGLE_SHEETS_SERVICE_ACCOUNT,
+      null,
+      GOOGLE_SHEETS_PRIVATE_KEY,
+      this.SCOPES
+    );
+    return auth; // Returns authorized client for API calls
+  }
+
+  // Append student details to Google Spreadsheet
+  public async updateSpreadsheet(studentDetails: { name: string, email: string, phoneNo: number, year: string, familyIncomeUnder3Lakhs: boolean }): Promise<any> {
+    try {
+      // Check if a student with the same email or phone already exists in DB
+      const existingRecord = await db
+        .select()
+        .from(zuvyStudentApplicationRecord)
+        .where(
+          or(
+            eq(zuvyStudentApplicationRecord.email, studentDetails.email),
+            eq(zuvyStudentApplicationRecord.phoneNo, studentDetails.phoneNo),
+          ),
+        )
+        .limit(1);
+      // If student exists, return a message
+      if (existingRecord.length > 0) {
+        return [{ message: 'Email or Phone Number already exists.' }];
+      }
+
+      // Authorize to interact with Google Sheets
+      const auth = await this.authorize();
+      const sheets = google.sheets({ version: 'v4', auth });
+
+      // Specify range in the sheet and append the data
+      const range = 'Sheet1!A:C';
+      const values = [
+        [studentDetails.name, studentDetails.email, studentDetails.phoneNo, studentDetails.year, studentDetails.familyIncomeUnder3Lakhs],
+      ];
+      const resource = { values };
+
+      // Append new data to Google Sheet
+      await sheets.spreadsheets.values.append({
+        spreadsheetId: SPREADSHEET_ID,
+        range,
+        valueInputOption: 'RAW', // RAW: values entered as-is
+        requestBody: resource,
+      });
+
+      // Send an email to the student
+      await this.sendMail(studentDetails.name, studentDetails.email);
+
+      // Insert student record into the DB
+      await db.insert(zuvyStudentApplicationRecord).values(studentDetails).returning();
+
+      return [null, { message: "Thank you for applying! We’re reviewing your application and will notify you soon.", statusCode: STATUS_CODES.OK }];
+    } catch (err) {
+      // Handle errors and return a bad request message
+      return [{ message: err.message, statusCode: STATUS_CODES.BAD_REQUEST }];
+    }
+  }
+
+  // Generate dynamic email content for the student
+  async generateEmailContent(applicantName, teamName, email, contactNumber, email_subject) {
+    return `
+      Dear ${applicantName},
+
+      Thank you for applying to ${email_subject}.
+      
+      We’re excited to see your interest in the amazing Bootcamp for female engineers.
+      We have received your application, and further updates will be shared during the review process.
+
+      In the meantime, feel free to explore more about the Bootcamp at www.zuvy.org.
+
+      For any questions, please write to ${email}.
+
+      Best regards,
+      Team ${teamName}
+      https://app.zuvy.org/
+      
+      Whatsapp us: ${contactNumber}
+    `;
+  }
+
+  // Send email using AWS SES
+  async sendMail(applicantName, recipientEmail) {
+    try {
+      // Generate email content dynamically
+      const emailContent = await this.generateEmailContent(applicantName, ORG_NAME, SES_EMAIL, PHONE_NO, EMAIL_SUBJECT);
+
+      // Create an instance of SES
+      const ses = new AWS.SES();
+
+      // Define email parameters for SES
+      const emailParams = {
+        Source: SES_EMAIL, // This must be a verified email address in SES
+        Destination: {
+          ToAddresses: [recipientEmail], // Recipient email address
+        },
+        Message: {
+          Subject: {
+            Data: `${EMAIL_SUBJECT} - Application Received`,
+          },
+          Body: {
+            Text: {
+              Data: emailContent,
+            },
+          },
+        },
+      };
+      // Send the email using SES
+      const result = await ses.sendEmail(emailParams).promise();
+      Logger.log('Email sent successfully:',  JSON.stringify(result));
+    } catch (error) {
+      console.error('Error sending email:', error);
+    }
+  }
+
   async enrollData(userId: number) {
     try {
       let enrolled = await db.query.zuvyBatchEnrollments.findMany({

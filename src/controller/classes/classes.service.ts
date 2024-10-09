@@ -859,72 +859,94 @@ export class ClassesService {
     }
   }
 
-  async updatingStatusOfClass(bootcamp_id:number,batch_id:number){
+ async updatingStatusOfClass(bootcamp_id: number, batch_id: number) {
     try {
-      const currentTime = new Date();
-      let classes = await db
-      .select()
-      .from(zuvySessions)
-      .where(sql`${zuvySessions.bootcampId} = ${bootcamp_id} 
-       ${!isNaN(batch_id) ? sql`AND ${zuvySessions.batchId} = ${batch_id}` : sql``}`);
-       const user = await db.select().from(users).where(eq(users.email,'team@zuvy.org'))
-       let adminUser = {...user[0],roles:'admin'}
-       let calendar:any = await this.accessOfCalendar(adminUser);
+        const currentTime = new Date();
 
-      for (let classObj of classes) {
-        
-        const event = await calendar.events.get({
-          calendarId: 'primary',
-          eventId: classObj.meetingId,
-        });
-        
-        const { start, end ,status } = event.data;
-        if(status=='cancelled')
-        {
-          await db
-           .delete(zuvySessions)
-             .where(eq(zuvySessions.meetingId, classObj.meetingId));
+        // Fetch classes based on bootcamp_id and batch_id
+        let classes = await db
+            .select()
+            .from(zuvySessions)
+            .where(sql`${zuvySessions.bootcampId} = ${bootcamp_id} AND ${zuvySessions.status} not in ('completed')
+                ${!isNaN(batch_id) ? sql`AND ${zuvySessions.batchId} = ${batch_id}` : sql``}`);
+
+        // Fetch admin user details
+        const user = await db.select().from(users).where(eq(users.email, process.env.EMAIL));
+        let adminUser = { ...user[0], roles: 'admin' };
+
+        // Get access to the calendar
+        let calendar: any = await this.accessOfCalendar(adminUser);
+
+        // Array to hold classes that need updating
+        let classesToUpdate = [];
+        let deleteClassIds:any = []
+        // Process each class
+        for (let classObj of classes) {
+            // Fetch calendar event
+            const event = await calendar.events.get({
+                calendarId: 'primary',
+                eventId: classObj.meetingId,
+            });
+            const { start, end, status } = event.data;
+
+            // If the event was canceled, delete the class
+            if (status === 'cancelled') {
+              deleteClassIds.push(classObj.meetingId)
+              continue;
+            }
+            
+            const apiStartTime = start?.dateTime || start?.date;
+            const apiEndTime = end?.dateTime || end?.date;
+            const startTime = new Date(classObj.startTime);
+            const endTime = new Date(classObj.endTime);
+
+            // Determine new status
+            let newStatus;
+            if (currentTime > endTime) {
+                newStatus = 'completed';
+            } else if (currentTime >= startTime && currentTime <= endTime) {
+                newStatus = 'ongoing';
+              } else {
+                newStatus = 'upcoming';
+              }
+              
+              // Check if an update is needed
+              if (apiStartTime !== classObj.startTime || apiEndTime !== classObj.endTime || newStatus !== classObj.status) {
+                // Prepare the update object
+                let updatedClass = {
+                    startTime: apiStartTime,
+                    endTime: apiEndTime,
+                    status: newStatus,
+                };
+
+                // Add the class to the batch update list
+                classesToUpdate.push({ id: classObj.id, updatedClass });
+            }
         }
-        const apiStartTime = start?.dateTime || start?.date;
-        const apiEndTime = end?.dateTime || end?.date;
-    
-        const startTime = new Date(classObj.startTime);
-        const endTime = new Date(classObj.endTime);
-        let newStatus;
-        if (currentTime > endTime) {
-          newStatus = 'completed';
-        } else if (currentTime >= startTime && currentTime <= endTime) {
-          newStatus = 'ongoing';
-        } else if (currentTime < startTime) {
-          newStatus = 'upcoming';
+
+        await db.delete(zuvySessions).where( inArray(zuvySessions.meetingId, deleteClassIds));
+
+        // Batch update all classes that need updates
+        if (classesToUpdate.length > 0) {
+          for (let classUpdate of classesToUpdate) {
+              await db
+                .update(zuvySessions)
+                .set(classUpdate.updatedClass)
+                .where(eq(zuvySessions.id, classUpdate.id));
+          }
         }
-        // Update the status in the database
-        try {
-          if (apiStartTime !== classObj.startTime || apiEndTime !== classObj.endTime || newStatus !== classObj.status) {
-            // Update times in your database if they have changed
-            let updatedClass:any = {startTime: apiStartTime,
-              endTime: apiEndTime, status: newStatus }
-            await db.update(zuvySessions)
-              .set(updatedClass)
-              .where(eq(zuvySessions.id, classObj.id));
-           }
-          // if (newStatus !== classObj.status) {
-          //   let updatedClass:any = { status: newStatus }
-          //   await db.update(zuvySessions).set(updatedClass).where(eq(zuvySessions.id, classObj.id)).returning();
-          //   Logger.log(`Status of class with id ${classObj.id} updated to ${newStatus}`);
-          // }
-        } catch (error) {
-        }
-      }
+
+        Logger.log(`${classesToUpdate.length} class statuses updated successfully.`);
     } catch (error) {
-      Logger.log(`error: ${error.message}`)
-      return {
-        success: 'not success',
-        message: 'Error fetching class Links',
-        error: error,
-      };
+        Logger.log(`Error: ${error.message}`);
+        return {
+            success: 'not success',
+            message: 'Error updating class statuses',
+            error: error,
+        };
     }
   }
+
   async BootcampOrBatchEnrollments(batch_id: number, bootcamp_id: number, user_id = null) {
     let queryString;
     if (user_id && !isNaN(batch_id) && bootcamp_id) { 
