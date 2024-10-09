@@ -483,17 +483,15 @@ export class ContentController {
   })
   @ApiBearerAuth()
   async getAllOpenEndedQuestions(
-    @Query('tagId') tagId: number | number[],
+    @Query('tagId') tagId: number[],
     @Query('difficulty') difficulty: ('Easy' | 'Medium' | 'Hard') | ('Easy' | 'Medium' | 'Hard')[],
     @Query('searchTerm') searchTerm: string,
     @Query('pageNo') pageNo: number,
     @Query('limit_') limit_: number,
   ): Promise<object> {
 
-    const tagIdsArray: number[] = Array.isArray(tagId) ? tagId : [tagId];
-
     const res = await this.contentService.getAllOpenEndedQuestions(
-      tagIdsArray,
+      tagId,
       difficulty,
       searchTerm,
       pageNo,
