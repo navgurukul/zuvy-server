@@ -150,6 +150,12 @@ import { ErrorResponse, SuccessResponse } from 'src/errorHandler/handler';
     type: String,
     description: 'Sort the classes ascending or descending',
   })
+  @ApiQuery({
+    name: 'searchTitle',
+    required: false,
+    type: String,
+    description: 'Search by title',
+  })
   @ApiBearerAuth()
   async getAllCompletedClasses(
     @Query('limit') limit: number,
@@ -157,6 +163,7 @@ import { ErrorResponse, SuccessResponse } from 'src/errorHandler/handler';
     @Query('weeks') weeks: number,
     @Query('sortBy') sortBy: string,
     @Query('batchId', new ParseArrayPipe({ items: Number, optional: true })) batchId: number[] = [],
+    @Query('searchTitle') searchTitle: string,
     @Req() req,
     @Res() res
   ){
@@ -167,7 +174,8 @@ import { ErrorResponse, SuccessResponse } from 'src/errorHandler/handler';
           offset,
           weeks,
           sortBy,
-          batchId
+          batchId,
+          searchTitle
         );
         if (err) {
           return ErrorResponse.BadRequestException(err.message, err.statusCode).send(res)
