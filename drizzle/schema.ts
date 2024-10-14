@@ -3285,6 +3285,22 @@ export const zuvyTestCasesSubmissionRelation = relations(zuvyTestCasesSubmission
   }),
 }))
 
+export const zuvyStudentApplicationRecord = main.table('zuvy_student_application_record', {
+  id: serial('id').primaryKey().notNull(),
+  name: text('name').notNull(),
+  email: text('email').notNull(),
+  phoneNo: integer('phone_no').notNull(),
+  year: text('year').notNull(),
+  familyIncomeUnder3Lakhs: boolean('family_income_under_3lakhs').notNull(),
+  createdAt: timestamp('created_at', {
+    withTimezone: true,
+    mode: 'string',
+  }).defaultNow(),
+  updatedAt: timestamp('updated_at', {
+    withTimezone: true,   
+    mode: 'string',
+  }).defaultNow(),
+});
 
 
 export const zuvyLanguages = main.table("zuvy_languages", {
