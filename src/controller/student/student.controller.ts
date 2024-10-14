@@ -4,6 +4,7 @@ import { ApiTags, ApiBody, ApiOperation, ApiQuery, ApiBearerAuth } from '@nestjs
 import { get } from 'http';
 import { Response } from 'express';
 import { ErrorResponse, SuccessResponse } from 'src/errorHandler/handler';
+import { ApplyFormData } from './dto/student.dto'
 
 @Controller('student')
 @ApiTags('student')
