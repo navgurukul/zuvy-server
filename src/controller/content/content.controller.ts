@@ -331,13 +331,13 @@ export class ContentController {
   @ApiQuery({
     name: 'tagId',
     required: false,
-    type: Number,
+    type: [Number],
     description: 'tagId',
   })
   @ApiQuery({
     name: 'difficulty',
     required: false,
-    type: String,
+    type: [String], 
     description: 'difficulty',
   })
   @ApiQuery({
@@ -348,24 +348,23 @@ export class ContentController {
   })
   @ApiBearerAuth()
   async getAllQuizQuestions(
-    @Query('tagId') tagId: number,
-    @Query('difficulty') difficulty: 'Easy' | 'Medium' | 'Hard',
+    @Query('tagId') tagId: number[],
+    @Query('difficulty') difficulty: ('Easy' | 'Medium' | 'Hard') | ('Easy' | 'Medium' | 'Hard')[],
     @Query('searchTerm') searchTerm: string,
     @Res() res
   ): Promise<object> {
     try {
-      const result = await this.contentService.getAllQuizQuestions(tagId, difficulty, searchTerm);
+      let [err, success] = await this.contentService.getAllQuizQuestions(tagId, difficulty, searchTerm);
 
-      if (result.status === 'error') {
-        return ErrorResponse.BadRequestException(result.message).send(res);
+      if (err) {
+        return ErrorResponse.BadRequestException(success.message).send(res);
       }
 
-      return new SuccessResponse(result.message || 'Quizzes retrieved successfully', result.code, result.data).send(res);
+      return new SuccessResponse(success.message || 'Quizzes retrieved successfully', success.statusCode, success['data']).send(res);
     } catch (error) {
       return ErrorResponse.BadRequestException(error.message).send(res);
     }
   }
-
 
   @Patch('/updateCodingQuestion/:questionId')
   @ApiOperation({ summary: 'Update the coding question for this module' })
@@ -387,13 +386,13 @@ export class ContentController {
   @ApiQuery({
     name: 'tagId',
     required: false,
-    type: Number,
+    type: [Number],
     description: 'tagId',
   })
   @ApiQuery({
     name: 'difficulty',
     required: false,
-    type: String,
+    type: [String],
     description: 'difficulty',
   })
   @ApiQuery({
@@ -404,8 +403,8 @@ export class ContentController {
   })
   @ApiBearerAuth()
   async getAllCodingQuestions(
-    @Query('tagId') tagId: number, // 2 [1,2,3]
-    @Query('difficulty') difficulty: 'Easy' | 'Medium' | 'Hard',
+    @Query('tagId') tagId: number[], 
+    @Query('difficulty') difficulty: ('Easy' | 'Medium' | 'Hard') | ('Easy' | 'Medium' | 'Hard')[],
     @Query('searchTerm') searchTerm: string,
   ): Promise<object> {
     const res = await this.contentService.getAllCodingQuestions(
@@ -480,13 +479,13 @@ export class ContentController {
   @ApiQuery({
     name: 'tagId',
     required: false,
-    type: Number,
+    type: [Number],
     description: 'tagId',
   })
   @ApiQuery({
     name: 'difficulty',
     required: false,
-    type: String,
+    type: [String],
     description: 'difficulty',
   })
   @ApiQuery({
@@ -509,12 +508,13 @@ export class ContentController {
   })
   @ApiBearerAuth()
   async getAllOpenEndedQuestions(
-    @Query('tagId') tagId: number,
-    @Query('difficulty') difficulty: 'Easy' | 'Medium' | 'Hard',
+    @Query('tagId') tagId: number[],
+    @Query('difficulty') difficulty: ('Easy' | 'Medium' | 'Hard') | ('Easy' | 'Medium' | 'Hard')[],
     @Query('searchTerm') searchTerm: string,
     @Query('pageNo') pageNo: number,
     @Query('limit_') limit_: number,
   ): Promise<object> {
+
     const res = await this.contentService.getAllOpenEndedQuestions(
       tagId,
       difficulty,

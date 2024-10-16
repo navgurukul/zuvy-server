@@ -1168,19 +1168,25 @@ export class ContentService {
   }
 
   async getAllQuizQuestions(
-    tagId: number,
-    difficulty: 'Easy' | 'Medium' | 'Hard',
-    searchTerm: string = ''
-  ): Promise<any> {
+    tagId: number | number[],
+    difficulty: ('Easy' | 'Medium' | 'Hard') | ('Easy' | 'Medium' | 'Hard')[],
+    searchTerm: string = '',
+  ) {
     try {
       let conditions = [];
 
-      if (!Number.isNaN(tagId)) {
-        conditions.push(eq(zuvyModuleQuiz.tagId, tagId));
+      let tagIds;
+
+      if (tagId) {
+        tagIds = Array.isArray(tagId) ? tagId : [tagId];
+        conditions.push(inArray(zuvyModuleQuiz.tagId, tagIds));
       }
 
-      if (difficulty !== undefined) {
-        conditions.push(eq(zuvyModuleQuiz.difficulty, difficulty));
+      let difficultyArray;
+
+      if (difficulty) {
+        difficultyArray = Array.isArray(difficulty) ? difficulty : [difficulty];
+        conditions.push(inArray(zuvyModuleQuiz.difficulty, difficultyArray));
       }
 
       if (searchTerm) {
@@ -1214,31 +1220,37 @@ export class ContentService {
         return quiz;
       }));
 
-      return {
-        status: 'success',
-        code: 200,
+      return [null,{
+        message: 'success',
+        statusCode: STATUS_CODES.OK,
         data: quizWithVariants,
-      };
+      }];
     } catch (err) {
-      return [{ message: err.message }]
+      return [{ message: err.message, statusCode: STATUS_CODES.BAD_REQUEST }, null];
     }
   }
 
 
   async getAllCodingQuestions(
-    tagId: number,
-    difficulty: 'Easy' | 'Medium' | 'Hard',
+    tagId: number | number[],
+    difficulty: ('Easy' | 'Medium' | 'Hard') | ('Easy' | 'Medium' | 'Hard')[],
     searchTerm: string = '',
   ) {
     try {
       let conditions = [];
 
-      if (!Number.isNaN(tagId)) {
-        conditions.push(eq(zuvyCodingQuestions.tagId, tagId));
+      let tagIds;
+
+      if (tagId) {
+        tagIds = Array.isArray(tagId) ? tagId : [tagId];
+        conditions.push(inArray(zuvyCodingQuestions.tagId, tagIds));
       }
 
-      if (difficulty !== undefined) {
-        conditions.push(eq(zuvyCodingQuestions.difficulty, difficulty));
+      let difficultyArray;
+
+      if (difficulty) {
+        difficultyArray = Array.isArray(difficulty) ? difficulty : [difficulty]
+        conditions.push(inArray(zuvyCodingQuestions.difficulty, difficultyArray));
       }
 
       if (searchTerm) {
@@ -1590,8 +1602,8 @@ export class ContentService {
   }
 
   async getAllOpenEndedQuestions(
-    tagId: number,
-    difficulty: 'Easy' | 'Medium' | 'Hard',
+    tagId: number | number[],
+    difficulty: ('Easy' | 'Medium' | 'Hard') | ('Easy' | 'Medium' | 'Hard')[],
     searchTerm: string = '',
     pageNo: number,
     limit_: number
@@ -1599,12 +1611,18 @@ export class ContentService {
     try {
       let conditions = [];
 
-      if (!Number.isNaN(tagId)) {
-        conditions.push(eq(zuvyOpenEndedQuestions.tagId, tagId));
+      let tagIdsArray;
+
+      if (tagId) {
+        tagIdsArray = Array.isArray(tagId) ? tagId : [tagId];
+        conditions.push(inArray(zuvyOpenEndedQuestions.tagId, tagIdsArray));
       }
 
-      if (difficulty !== undefined) {
-        conditions.push(eq(zuvyOpenEndedQuestions.difficulty, difficulty));
+      let difficultyArray;
+
+      if (difficulty) {
+        difficultyArray = Array.isArray(difficulty) ? difficulty : [difficulty];
+        conditions.push(inArray(zuvyOpenEndedQuestions.difficulty, difficultyArray));
       }
       if (searchTerm) {
         conditions.push(

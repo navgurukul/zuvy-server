@@ -3294,11 +3294,26 @@ export const zuvyTestCasesSubmissionRelation = relations(zuvyTestCasesSubmission
   }),
 }))
 
-
-
 export const zuvyLanguages = main.table("zuvy_languages", {
   id: serial("id").primaryKey().notNull(),
   name: varchar("name", { length: 255 }).notNull(),
   languageId: varchar("language_id", { length: 50 }).notNull(),
   defaultCodingTemplate: text("default_coding_template").notNull()
+});
+
+export const zuvyStudentApplicationRecord = main.table('zuvy_student_application_record', {
+  id: serial('id').primaryKey().notNull(),
+  name: text('name').notNull(),
+  email: text('email').notNull(),
+  phoneNo: integer('phone_no').notNull(),
+  year: text('year').notNull(),
+  familyIncomeUnder3Lakhs: boolean('family_income_under_3lakhs').notNull(),
+  createdAt: timestamp('created_at', {
+    withTimezone: true,
+    mode: 'string',
+  }).defaultNow(),
+  updatedAt: timestamp('updated_at', {
+    withTimezone: true,   
+    mode: 'string',
+  }).defaultNow(),
 });
