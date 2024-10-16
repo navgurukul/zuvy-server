@@ -197,7 +197,7 @@ export class ContentController {
       if (err) {
         return ErrorResponse.BadRequestException(err.message).send(res);
       }
-      return new SuccessResponse('sucess', success.statusCode, success.message).send(res);
+      return new SuccessResponse( success.message, success.statusCode, []).send(res);
     } catch (error) {
       return ErrorResponse.BadRequestException(error.message).send(res);
     }
@@ -438,7 +438,7 @@ export class ContentController {
       if (err) {
         return ErrorResponse.BadRequestException(err.message).send(res);
       }
-      return new SuccessResponse('sucess', success.statusCode, success.message).send(res);
+      return new SuccessResponse(success.message, success.statusCode, []).send(res);
     } catch (error) {
       return ErrorResponse.BadRequestException(error.message).send(res);
     }
@@ -789,7 +789,7 @@ export class ContentController {
       if (err) {
         return ErrorResponse.BadRequestException(err.message).send(res);
       }
-      return new SuccessResponse('sucess', success.statusCode, success.message).send(res);
+      return new SuccessResponse(success.message, success.statusCode, []).send(res);
     } catch (error) {
       return ErrorResponse.BadRequestException(error.message).send(res);
     }

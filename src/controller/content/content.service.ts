@@ -334,8 +334,8 @@ export class ContentService {
           if (existingQuiz.length === 0) {
             results.push({
               status: 'error',
-              code: 404,
-              message: 'Quiz not found. Cannot add variants to a non-existing quiz.',
+              statusCode: STATUS_CODES.NOT_FOUND,
+              message: 'MCQ not found. Variants cannot be added to a non-existing MCQ.',
             });
             continue;
           }
@@ -381,10 +381,11 @@ export class ContentService {
 
         // Add success message only once per quizItem
         results.push({
-          message: 'Quiz and variants have been created/updated successfully.',
+          message: 'MCQ and variants have been created successfully.',
+          statusCode: STATUS_CODES.OK
         });
       }
-      return [null, { message: results, statusCode: STATUS_CODES.OK }];
+      return [null, { message: results[0].message, statusCode: results[0].statusCode }];
 
     } catch (err) {
       return [{ message: err.message, statusCode: STATUS_CODES.BAD_REQUEST }, null]
@@ -1221,7 +1222,7 @@ export class ContentService {
       }));
 
       return [null,{
-        message: 'success',
+        message: 'All MCQs has been fetched successfully',
         statusCode: STATUS_CODES.OK,
         data: quizWithVariants,
       }];
@@ -1349,7 +1350,7 @@ export class ContentService {
       }
 
       return [null, {
-        message: 'Quiz and its variants have been updated successfully',
+        message: 'The MCQ and its variants have been updated successfully.',
         statusCode: STATUS_CODES.OK
       }];
     } catch (err) {
@@ -2299,7 +2300,7 @@ export class ContentService {
       if (quiz.length === 0) {
         return [{
           status: 'error',
-          message: 'Quiz not found',
+          message: 'MCQ was not found',
           statusCode: STATUS_CODES.NOT_FOUND
         }, null];
       }
@@ -2322,7 +2323,7 @@ export class ContentService {
         quiz[0]['variants'] = variants;
       }
 
-      return [null, { message: 'Quiz along with its variants has been fetched successfully', statusCode: STATUS_CODES.OK, data: quiz[0] }]
+      return [null, { message: 'MCQ along with its variants has been fetched successfully.', statusCode: STATUS_CODES.OK, data: quiz[0] }]
 
     } catch (err) {
       return [{ message: err.message, statusCode: STATUS_CODES.BAD_REQUEST }, null]
@@ -2342,7 +2343,7 @@ export class ContentService {
       if (mainQuiz[0]?.usage > 0) {
         return [null, {
           status: 'error',
-          message: 'Main quiz cannot be deleted as it is used in other places',
+          message: 'The main MCQ cannot be deleted because it is used elsewhere',
           statusCode: STATUS_CODES.BAD_REQUEST
         }];
       }
@@ -2385,7 +2386,7 @@ export class ContentService {
         await db.delete(zuvyModuleQuiz).where(eq(zuvyModuleQuiz.id, quizId));
   
         return [null, {
-          message: 'Main quiz and its variants have been deleted successfully',
+          message: 'The main MCQ and its variants have been deleted successfully.',
           statusCode: STATUS_CODES.OK
         }];
       }
