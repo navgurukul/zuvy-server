@@ -20,6 +20,7 @@ import {
   zuvyModuleForm,
   questionType,
   zuvyQuestionTypes,
+  zuvyModuleQuizVariants,
 } from '../../../drizzle/schema';
 
 import { error, log } from 'console';
@@ -310,39 +311,87 @@ export class ContentService {
     }
   }
 
-  async createQuizForModule(quiz: quizBatchDto) {
+  async createQuizForModule(quiz: quizBatchDto): Promise<any> {
     try {
-      const quizQuestions = quiz.questions.map((q) => ({
-        question: q.question,
-        options: q.options,
-        correctOption: q.correctOption,
-        marks: q.mark,
-        difficulty: q.difficulty,
-        tagId: q.tagId,
-      }));
+      const quizzes = quiz.questions;
+      let results = [];
 
-      const result = await db
-        .insert(zuvyModuleQuiz)
-        .values(quizQuestions)
-        .returning();
-      if (result.length > 0) {
-        return {
-          status: "success",
-          code: 200,
-          result
+      for (const quizItem of quizzes) {
+        let quizId = quizItem.id;
+        let existingQuiz = null;
+
+        if (quizId) {
+          // Check if it's an existing quiz
+          existingQuiz = await db
+            .select({
+              id: zuvyModuleQuiz.id,
+              hasVariants: zuvyModuleQuiz.hasVariants,
+            })
+            .from(zuvyModuleQuiz)
+            .where(eq(zuvyModuleQuiz.id, quizId))
+            .limit(1);
+
+          if (existingQuiz.length === 0) {
+            results.push({
+              status: 'error',
+              statusCode: STATUS_CODES.NOT_FOUND,
+              message: 'MCQ not found. Variants cannot be added to a non-existing MCQ.',
+            });
+            continue;
+          }
+        } else {
+          // Create a new quiz
+          const result = await db
+            .insert(zuvyModuleQuiz)
+            .values({
+              question: quizItem.question,
+              options: quizItem.options,
+              correctOption: quizItem.correctOption,
+              difficulty: quizItem.difficulty,
+              tagId: quizItem.tagId,
+            })
+            .returning();
+
+          quizId = result[0].id;
         }
-      }
-      else {
-        return {
-          status: "error",
-          code: 404,
-          message: "Quiz questions did not create successfully.Please try again"
+
+        // Add variants if provided
+        if (quizItem.variants && quizItem.variants.length > 0) {
+          const existingVariants = await db
+            .select()
+            .from(zuvyModuleQuizVariants)
+            .where(eq(zuvyModuleQuizVariants.quizId, quizId));
+
+          const variantEntries = quizItem.variants.map((v, index) => ({
+            quizId: quizId,
+            variantNumber: existingVariants.length + index + 1,
+            ...v,
+          }));
+
+          await db.insert(zuvyModuleQuizVariants).values(variantEntries);
+
+          // Update the main quiz to set hasVariants = true, if not already set
+          if (existingQuiz && !existingQuiz[0]?.hasVariants) {
+            await db
+              .update(zuvyModuleQuiz)
+              .set({ hasVariants: true })
+              .where(eq(zuvyModuleQuiz.id, quizId));
+          }
         }
+
+        // Add success message only once per quizItem
+        results.push({
+          message: 'MCQ and variants have been created successfully.',
+          statusCode: STATUS_CODES.OK
+        });
       }
+      return [null, { message: results[0].message, statusCode: results[0].statusCode }];
+
     } catch (err) {
-      throw err;
+      return [{ message: err.message, statusCode: STATUS_CODES.BAD_REQUEST }, null]
     }
   }
+
 
   async createOpenEndedQuestions(questions: openEndedDto) {
     try {
@@ -1143,7 +1192,7 @@ export class ContentService {
 
       if (searchTerm) {
         conditions.push(
-          sql`LOWER(${zuvyModuleQuiz.question}) ~ ${sql.raw(`'\\m${searchTerm.toLowerCase()}'`)}`
+          sql`${zuvyModuleQuiz.question}->0->'blocks'->0->>'text' ILIKE ${`%${searchTerm.toLowerCase()}%`}`
         );
       }
 
@@ -1151,25 +1200,37 @@ export class ContentService {
         .select({
           ...getTableColumns(zuvyModuleQuiz),
           matchPosition: sql<number>`
-             CASE
-             WHEN LOWER(${zuvyModuleQuiz.question}) LIKE ${sql.raw(`'${searchTerm.toLowerCase()}%'`)} THEN 0
-             WHEN LOWER(${zuvyModuleQuiz.question}) ~ ${sql.raw(`'\\m${searchTerm.toLowerCase()}'`)} THEN 
-             POSITION(
-              ${sql.raw(`'${searchTerm.toLowerCase()}'`)} IN LOWER(${zuvyModuleQuiz.question})
-             ) - 1
-             ELSE 9999 -- Use a large number for non-matching cases to push them to the end
-             END
-          `.as('match_position')
+            CASE
+            WHEN ${zuvyModuleQuiz.question}->0->'blocks'->0->>'text' ILIKE ${`${searchTerm.toLowerCase()}%`} THEN 0
+            WHEN ${zuvyModuleQuiz.question}->0->'blocks'->0->>'text' ILIKE ${`%${searchTerm.toLowerCase()}%`} THEN
+              POSITION(${sql.raw(`'${searchTerm.toLowerCase()}'`)} IN LOWER(${zuvyModuleQuiz.question}->0->'blocks'->0->>'text'))
+            ELSE 9999
+            END`.as('match_position')
         })
         .from(zuvyModuleQuiz)
         .where(and(...conditions))
         .orderBy(searchTerm ? sql`match_position` : sql`${zuvyModuleQuiz.id} DESC`);
 
-      return result;
+      // Fetch variants if the main quiz has them
+      const quizWithVariants = await Promise.all(result.map(async (quiz) => {
+        if (quiz.hasVariants) {
+          const variants = await db.select().from(zuvyModuleQuizVariants).where(eq(zuvyModuleQuizVariants.quizId, quiz.id))
+            .orderBy(zuvyModuleQuizVariants.variantNumber);
+          quiz["variants"] = variants;
+        }
+        return quiz;
+      }));
+
+      return [null,{
+        message: 'All MCQs has been fetched successfully',
+        statusCode: STATUS_CODES.OK,
+        data: quizWithVariants,
+      }];
     } catch (err) {
-      throw err;
+      return [{ message: err.message, statusCode: STATUS_CODES.BAD_REQUEST }, null];
     }
   }
+
 
   async getAllCodingQuestions(
     tagId: number | number[],
@@ -1248,30 +1309,52 @@ export class ContentService {
     }
   }
 
-  async editQuizQuestions(editQuesDetails: editQuizBatchDto) {
+  async editQuizQuestions(editQuesDetails: editQuizBatchDto): Promise<any> {
     try {
-      await db
-        .insert(zuvyModuleQuiz)
-        .values(editQuesDetails.questions)
-        .onConflictDoUpdate({
-          target: zuvyModuleQuiz.id,
-          set: {
-            question: sql`excluded.question`,
-            options: sql`excluded.options`,
-            difficulty: sql`excluded.difficulty`,
-            tagId: sql`excluded.tag_id`,
-            marks: sql`excluded.marks`,
-            correctOption: sql`excluded.correct_option`,
-          },
-        });
+      for (const questionDetails of editQuesDetails.questions) {
+        const { id, question, options, correctOption, tagId, difficulty, variantNumber } = questionDetails;
 
-      return {
-        status: 'success',
-        code: 200,
-        message: 'Quiz questions are updated successfully',
-      };
-    } catch (error) {
-      throw error;
+        if (!variantNumber) {
+          // Update the main quiz (variantNumber is not present)
+          await db
+            .insert(zuvyModuleQuiz)
+            .values({
+              id,  // Keep track of the main quiz ID
+              question,
+              options,
+              correctOption,
+              tagId,
+              difficulty,
+            })
+            .onConflictDoUpdate({
+              target: [zuvyModuleQuiz.id],
+              set: {
+                question: sql`excluded.question`,
+                options: sql`excluded.options`,
+                difficulty: sql`excluded.difficulty`,
+                tagId: sql`excluded.tag_id`,
+                correctOption: sql`excluded.correct_option`,
+              },
+            });
+        } else {
+          const updateBody = { question, options, correctOption, variantNumber }
+          // Update or insert into the variants table (variantNumber > 1)
+          await db
+            .update(zuvyModuleQuizVariants)
+            .set(
+              updateBody
+            ).where(
+              eq(zuvyModuleQuizVariants.id, id),
+            );
+        }
+      }
+
+      return [null, {
+        message: 'The MCQ and its variants have been updated successfully.',
+        statusCode: STATUS_CODES.OK
+      }];
+    } catch (err) {
+      return [{ message: err.message, statusCode: STATUS_CODES.BAD_REQUEST }, null]
     }
   }
 
@@ -1750,7 +1833,6 @@ export class ContentService {
               options: true,
               difficulty: true,
               correctOption: true,
-              marks: true,
             }
           },
         }
@@ -2206,5 +2288,112 @@ export class ContentService {
       return [{ message: err.message }]
     }
   }
+
+  async getQuizWithVariants(quizId: number): Promise<any> {
+    try {
+      // Fetch the main quiz by ID
+      let quiz = await db
+        .select()
+        .from(zuvyModuleQuiz)
+        .where(eq(zuvyModuleQuiz.id, quizId))
+
+      if (quiz.length === 0) {
+        return [{
+          status: 'error',
+          message: 'MCQ was not found',
+          statusCode: STATUS_CODES.NOT_FOUND
+        }, null];
+      }
+
+      // Check if the quiz has variants
+      if (quiz[0].hasVariants) {
+        const variants = await db
+          .select({
+            variantId: zuvyModuleQuizVariants.id,
+            variantNumber: zuvyModuleQuizVariants.variantNumber,
+            question: zuvyModuleQuizVariants.question,
+            options: zuvyModuleQuizVariants.options,
+            correctOption: zuvyModuleQuizVariants.correctOption,
+          })
+          .from(zuvyModuleQuizVariants)
+          .where(eq(zuvyModuleQuizVariants.quizId, quizId))
+          .orderBy(zuvyModuleQuizVariants.variantNumber);
+
+        // Attach variants to the main quiz object
+        quiz[0]['variants'] = variants;
+      }
+
+      return [null, { message: 'MCQ along with its variants has been fetched successfully.', statusCode: STATUS_CODES.OK, data: quiz[0] }]
+
+    } catch (err) {
+      return [{ message: err.message, statusCode: STATUS_CODES.BAD_REQUEST }, null]
+    }
+  }
+
+  async deleteQuizOrVariant(quizId: number, variantNumber: number): Promise<any> {
+    try {
+      // Fetch the main quiz to check its usage value
+      const mainQuiz = await db
+        .select({ usage: zuvyModuleQuiz.usage })
+        .from(zuvyModuleQuiz)
+        .where(eq(zuvyModuleQuiz.id, quizId))
+        .limit(1);
+  
+      // If main quiz usage > 0, prevent deletion of both the quiz and its variants
+      if (mainQuiz[0]?.usage > 0) {
+        return [null, {
+          status: 'error',
+          message: 'The main MCQ cannot be deleted because it is used elsewhere',
+          statusCode: STATUS_CODES.BAD_REQUEST
+        }];
+      }
+  
+      // If variantNumber is provided, delete a specific variant
+      if (variantNumber) {
+        // Check if the variant exists and delete it
+        const deletedVariant = await db
+          .delete(zuvyModuleQuizVariants)
+          .where(
+            and(
+              eq(zuvyModuleQuizVariants.quizId, quizId),
+              eq(zuvyModuleQuizVariants.variantNumber, variantNumber) // Correctly using variantNumber here
+            )
+          )
+          .returning();
+  
+        if (deletedVariant.length > 0) {
+          // Decrement the variantNumber of the remaining variants with a higher variantNumber
+          await db
+            .update(zuvyModuleQuizVariants)
+            .set({ variantNumber: sql`${zuvyModuleQuizVariants.variantNumber} - 1` })
+            .where(
+              and(
+                eq(zuvyModuleQuizVariants.quizId, quizId),
+                sql`${zuvyModuleQuizVariants.variantNumber} > ${variantNumber}` // Correctly update variant numbers greater than the deleted one
+              )
+            );
+  
+          return [null, {
+            message: `Variant ${variantNumber} has been deleted successfully and subsequent variants have been updated.`,
+            statusCode: STATUS_CODES.OK 
+          }];
+        } else {
+          return [{ status: 'error', message: `Variant ${variantNumber} not found`, statusCode: STATUS_CODES.NOT_FOUND }, null];
+        }
+      } else {
+        // Delete the entire quiz and all its variants
+        await db.delete(zuvyModuleQuizVariants).where(eq(zuvyModuleQuizVariants.quizId, quizId));
+        await db.delete(zuvyModuleQuiz).where(eq(zuvyModuleQuiz.id, quizId));
+  
+        return [null, {
+          message: 'The main MCQ and its variants have been deleted successfully.',
+          statusCode: STATUS_CODES.OK
+        }];
+      }
+    } catch (err) {
+      return [{ message: err.message, statusCode: STATUS_CODES.BAD_REQUEST }, null];
+    }
+  }
+  
 }
 

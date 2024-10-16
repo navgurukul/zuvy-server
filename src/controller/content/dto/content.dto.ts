@@ -166,14 +166,74 @@ export class chapterDto {
 
 }
 
-export class quizDto {
+export class quizVariantDto {
   @ApiProperty({
-    type: String,
-    example: 'What is the national animal of India',
+    type : [Object],
+    example: [
+      {
+          "blocks": [
+              {
+                  "key": "fbh77",
+                  "text": "What is Python",
+                  "type": "unstyled",
+                  "depth": 0,
+                  "inlineStyleRanges": [],
+                  "entityRanges": [],
+                  "data": {}
+              }
+          ],
+          "entityMap": {}
+      }
+  ]
+  })
+  @IsArray()
+  @IsOptional()
+
+  question: [object];
+  
+  @ApiProperty({
+    type: 'object',
+    example: {
+      1: 'Option 1',
+      2: 'Option 2',
+      3: 'Option 3',
+    },
     required: true,
   })
-  @IsString()
-  question: string;
+  @IsObject()
+  options: object;
+  @ApiProperty({
+    type: Number,
+    example: 2,
+    required: true,
+  })
+  @IsNumber()
+  correctOption: number;
+}
+export class quizDto {
+  @ApiProperty({
+    type : [Object],
+    example: [
+      {
+          "blocks": [
+              {
+                  "key": "fbh77",
+                  "text": "What is Python",
+                  "type": "unstyled",
+                  "depth": 0,
+                  "inlineStyleRanges": [],
+                  "entityRanges": [],
+                  "data": {}
+              }
+          ],
+          "entityMap": {}
+      }
+  ]
+  })
+  @IsArray()
+  @IsOptional()
+
+  question: [object];
 
   @ApiProperty({
     type: 'object',
@@ -186,6 +246,7 @@ export class quizDto {
     required: true,
   })
   @IsObject()
+  @IsOptional()
   options: object;
 
   @ApiProperty({
@@ -194,15 +255,8 @@ export class quizDto {
     required: true,
   })
   @IsNumber()
-  correctOption: number;
-
-  @ApiProperty({
-    type: Number,
-    example: 1,
-  })
-  @IsNumber()
   @IsOptional()
-  mark: number;
+  correctOption: number;
 
   @ApiProperty({
     type: Number,
@@ -213,6 +267,14 @@ export class quizDto {
   tagId: number;
 
   @ApiProperty({
+    type: Number,
+    example: 2,
+  })
+  @IsNumber()
+  @IsOptional()
+  id: number;
+
+  @ApiProperty({
     type: difficulty,
     example: 'Easy',
     required: true,
@@ -220,6 +282,15 @@ export class quizDto {
   @IsString()
   @IsOptional()
   difficulty: 'Easy' | 'Medium' | 'Hard';
+  @ApiProperty({
+    type: [quizVariantDto], // New field for variants
+    required: false,
+  })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => quizVariantDto)
+  variants: quizVariantDto[];
 }
 
 export class  quizBatchDto {
@@ -227,7 +298,22 @@ export class  quizBatchDto {
     type: [quizDto],
     example: [
       {
-        question: 'What is the national animal of India?',
+        question:[
+          {
+              "blocks": [
+                  {
+                      "key": "fbh77",
+                      "text": "What is Python",
+                      "type": "unstyled",
+                      "depth": 0,
+                      "inlineStyleRanges": [],
+                      "entityRanges": [],
+                      "data": {}
+                  }
+              ],
+              "entityMap": {}
+          }
+      ],
         options: {
           1: 'Option 1',
           2: 'Option 2',
@@ -235,12 +321,52 @@ export class  quizBatchDto {
           4: 'Option 4',
         },
         correctOption: 2,
-        mark: 1,
         tagId: 2,
         difficulty: 'Easy',
+        variants: [
+          {
+            question: [
+              {
+                "blocks": [
+                  {
+                    "key": "fbh77",
+                    "text": "What is Python",
+                    "type": "unstyled",
+                    "depth": 0,
+                    "inlineStyleRanges": [],
+                    "entityRanges": [],
+                    "data": {}
+                  }
+                ],
+                "entityMap": {}
+              }
+            ],
+            options : {
+              "1": "Option 1",
+              "2": "Option 2",
+              "3": "Option 3"
+            },
+            "correctOption": 2
+          }
+        ]
       },
       {
-        question: 'What is the capital of France?',
+        question: [
+          {
+              "blocks": [
+                  {
+                      "key": "fbh77",
+                      "text": "What is Python",
+                      "type": "unstyled",
+                      "depth": 0,
+                      "inlineStyleRanges": [],
+                      "entityRanges": [],
+                      "data": {}
+                  }
+              ],
+              "entityMap": {}
+          }
+      ],
         options: {
           1: 'Paris',
           2: 'London',
@@ -248,7 +374,6 @@ export class  quizBatchDto {
           4: 'Rome',
         },
         correctOption: 3,
-        mark: 1,
         tagId: 2,
         difficulty: 'Easy',
       },
@@ -545,12 +670,28 @@ export class editQuizDto {
   id: number;
 
   @ApiProperty({
-    type: String,
-    example: 'What is the national animal of India',
+    type : [Object],
+    example: [
+      {
+          "blocks": [
+              {
+                  "key": "fbh77",
+                  "text": "What is Python",
+                  "type": "unstyled",
+                  "depth": 0,
+                  "inlineStyleRanges": [],
+                  "entityRanges": [],
+                  "data": {}
+              }
+          ],
+          "entityMap": {}
+      }
+  ]
   })
-  @IsString()
+  @IsArray()
   @IsOptional()
-  question: string;
+
+  question: [object];
 
   @ApiProperty({
     type: 'object',
@@ -575,14 +716,6 @@ export class editQuizDto {
 
   @ApiProperty({
     type: Number,
-    example: 1,
-  })
-  @IsNumber()
-  @IsOptional()
-  marks: number;
-
-  @ApiProperty({
-    type: Number,
     example: 2,
   })
   @IsNumber()
@@ -596,6 +729,16 @@ export class editQuizDto {
   @IsString()
   @IsOptional()
   difficulty: 'Easy' | 'Medium' | 'Hard';
+
+  @ApiProperty({
+    type: Number,
+    example: 1,
+    description: 'Variant number, 1 for the main quiz, and 2, 3, etc., for different variants.',
+  })
+  @IsNumber()
+  @IsOptional()
+  variantNumber: number;
+
 }
 
 export class editQuizBatchDto {
@@ -604,7 +747,22 @@ export class editQuizBatchDto {
     example: [
       {
         id: 1,
-        question: 'What is the national animal of India?',
+        question: [
+          {
+              "blocks": [
+                  {
+                      "key": "fbh77",
+                      "text": "What is Python",
+                      "type": "unstyled",
+                      "depth": 0,
+                      "inlineStyleRanges": [],
+                      "entityRanges": [],
+                      "data": {}
+                  }
+              ],
+              "entityMap": {}
+          }
+      ],
         options: {
           1: 'Option 1',
           2: 'Option 2',
@@ -612,12 +770,26 @@ export class editQuizBatchDto {
           4: 'Option 4',
         },
         correctOption: 2,
-        marks: 1,
         tagId: 2,
         difficulty: 'Easy',
       },
       {
-        question: 'What is the capital of France?',
+        question: [
+          {
+              "blocks": [
+                  {
+                      "key": "fbh77",
+                      "text": "What is Python",
+                      "type": "unstyled",
+                      "depth": 0,
+                      "inlineStyleRanges": [],
+                      "entityRanges": [],
+                      "data": {}
+                  }
+              ],
+              "entityMap": {}
+          }
+      ],
         options: {
           1: 'Paris',
           2: 'London',
@@ -625,9 +797,9 @@ export class editQuizBatchDto {
           4: 'Rome',
         },
         correctOption: 3,
-        marks: 1,
         tagId: 2,
         difficulty: 'Easy',
+        variantNumber: 2, 
       },
     ],
     required: true,

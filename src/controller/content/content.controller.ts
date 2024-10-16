@@ -187,12 +187,20 @@ export class ContentController {
   @ApiBearerAuth()
   @UseGuards(RolesGuard)
   async createQuizForModule(
-    @Body() quizQuestions: quizBatchDto
-  ) {
-    const res = await this.contentService.createQuizForModule(
-      quizQuestions
-    );
-    return res;
+    @Body() quizQuestions: quizBatchDto,
+    @Res() res
+  ): Promise<object> {
+    try {
+      let [err, success] = await this.contentService.createQuizForModule(
+        quizQuestions
+      );
+      if (err) {
+        return ErrorResponse.BadRequestException(err.message).send(res);
+      }
+      return new SuccessResponse( success.message, success.statusCode, []).send(res);
+    } catch (error) {
+      return ErrorResponse.BadRequestException(error.message).send(res);
+    }
   }
 
   @Put('/editAssessment/:assessmentOutsourseId/:chapterId')
@@ -232,7 +240,7 @@ export class ContentController {
   @Get('/chapterDetailsById/:chapterId')
   @ApiOperation({ summary: 'Get chapter details by id' })
   @ApiBearerAuth()
-  async getChapterDetailsById(@Param('chapterId') chapterId: number, @Query('bootcampId') bootcampId: number, @Query('moduleId') moduleId: number, @Query('topicId') topicId: number){
+  async getChapterDetailsById(@Param('chapterId') chapterId: number, @Query('bootcampId') bootcampId: number, @Query('moduleId') moduleId: number, @Query('topicId') topicId: number) {
     return this.contentService.getChapterDetailsById(chapterId, bootcampId, moduleId, topicId);
   }
 
@@ -343,13 +351,19 @@ export class ContentController {
     @Query('tagId') tagId: number[],
     @Query('difficulty') difficulty: ('Easy' | 'Medium' | 'Hard') | ('Easy' | 'Medium' | 'Hard')[],
     @Query('searchTerm') searchTerm: string,
+    @Res() res
   ): Promise<object> {
-    const res = await this.contentService.getAllQuizQuestions(
-      tagId,
-      difficulty,
-      searchTerm,
-    );
-    return res;
+    try {
+      let [err, success] = await this.contentService.getAllQuizQuestions(tagId, difficulty, searchTerm);
+
+      if (err) {
+        return ErrorResponse.BadRequestException(success.message).send(res);
+      }
+
+      return new SuccessResponse(success.message || 'Quizzes retrieved successfully', success.statusCode, success['data']).send(res);
+    } catch (error) {
+      return ErrorResponse.BadRequestException(error.message).send(res);
+    }
   }
 
   @Patch('/updateCodingQuestion/:questionId')
@@ -411,12 +425,23 @@ export class ContentController {
   }
 
   @Post('/editquiz')
-  @ApiOperation({ summary: 'Create a quiz' })
+  @ApiOperation({ summary: 'Edit quiz or its variants' })
   @ApiBearerAuth()
   @UseGuards(RolesGuard)
-  async editQuizForModule(@Body() quizQuestions: editQuizBatchDto) {
-    const res = await this.contentService.editQuizQuestions(quizQuestions);
-    return res;
+  async editQuizForModule(@Body() quizQuestions: editQuizBatchDto, @Res() res
+  ): Promise<object> {
+    
+    try {
+      let [err, success] = await this.contentService.editQuizQuestions(
+        quizQuestions
+      );
+      if (err) {
+        return ErrorResponse.BadRequestException(err.message).send(res);
+      }
+      return new SuccessResponse(success.message, success.statusCode, []).send(res);
+    } catch (error) {
+      return ErrorResponse.BadRequestException(error.message).send(res);
+    }
   }
 
 
@@ -534,15 +559,15 @@ export class ContentController {
   @Get('/students/assessmentId=:assessmentId')
   @ApiOperation({ summary: 'Get the student of a particular assessment' })
   @ApiBearerAuth()
-  async getStudentsOfAssessment(@Param('assessmentId') assessmentId: number , @Query('moduleId') moduleId:number , @Query('bootcampId') bootcampId:number, @Query('chapterId') chapterId:number, @Req() req) {
+  async getStudentsOfAssessment(@Param('assessmentId') assessmentId: number, @Query('moduleId') moduleId: number, @Query('bootcampId') bootcampId: number, @Query('chapterId') chapterId: number, @Req() req) {
     return this.contentService.getStudentsOfAssessment(assessmentId, chapterId, moduleId, bootcampId, req);
   }
 
   @Get('/startAssessmentForStudent/assessmentOutsourseId=:assessmentOutsourseId')
   @ApiOperation({ summary: 'Start the assessment for a student' })
   @ApiBearerAuth()
-  async startAssessmentForStudent(@Req() req, @Param('assessmentOutsourseId') assessmentOutsourseId: number){
-    return this.contentService.startAssessmentForStudent(assessmentOutsourseId,req);
+  async startAssessmentForStudent(@Req() req, @Param('assessmentOutsourseId') assessmentOutsourseId: number) {
+    return this.contentService.startAssessmentForStudent(assessmentOutsourseId, req);
   }
 
   @Get('/assessmentDetailsOfQuiz/:assessmentOutsourseId')
@@ -554,7 +579,7 @@ export class ContentController {
     description: 'studentId of the assessment',
   })
   @ApiBearerAuth()
-  async getAssessmentDetailsOfQuiz(@Param('assessmentOutsourseId') assessmentOutsourseId: number, @Req() req, @Query('studentId') userId:number ){
+  async getAssessmentDetailsOfQuiz(@Param('assessmentOutsourseId') assessmentOutsourseId: number, @Req() req, @Query('studentId') userId: number) {
     if (!userId) {
       userId = req.user[0].id;
     }
@@ -570,14 +595,14 @@ export class ContentController {
     type: Number,
     description: 'studentId of the assessment',
   })
-  async getAssessmentDetailsOfOpenEnded(@Param('assessmentOutsourseId') assessmentOutsourseId: number, @Req() req, @Query('studentId') userId:number){
+  async getAssessmentDetailsOfOpenEnded(@Param('assessmentOutsourseId') assessmentOutsourseId: number, @Req() req, @Query('studentId') userId: number) {
     if (!userId) {
       userId = req.user[0].id;
     }
     return this.contentService.getAssessmentDetailsOfOpenEnded(assessmentOutsourseId, userId);
   }
 
-  
+
   @Post('/createQuestionType')
   @ApiOperation({ summary: 'Create a Question Type for the form' })
   @ApiBearerAuth()
@@ -593,15 +618,15 @@ export class ContentController {
     const res = await this.contentService.getAllQuestionTypes();
     return res;
   }
-  
+
   @Post('/form')
   @ApiOperation({ summary: 'Create a form' })
   @ApiBearerAuth()
   @UseGuards(RolesGuard)
-  async createFormForModule (
+  async createFormForModule(
     @Query('chapterId') chapterId: number,
     @Body() formQuestion: formBatchDto
-  ){
+  ) {
     const res = await this.contentService.createFormForModule(
       chapterId,
       formQuestion
@@ -625,14 +650,14 @@ export class ContentController {
   })
   @ApiBearerAuth()
   async getAllFormQuestions(
-  @Param('chapterId') chapterId: number,
-  @Query('typeId') typeId: number,
-  @Query('searchTerm') searchTerm: string,
+    @Param('chapterId') chapterId: number,
+    @Query('typeId') typeId: number,
+    @Query('searchTerm') searchTerm: string,
   ): Promise<object> {
     const res = await this.contentService.getAllFormQuestions(
-    chapterId,
-    typeId,
-	  searchTerm,
+      chapterId,
+      typeId,
+      searchTerm,
     );
     return res;
   }
@@ -651,7 +676,7 @@ export class ContentController {
     return res;
   }
 
-  
+
   @Post('/createAndEditForm/:chapterId')
   @ApiOperation({ summary: 'Create a form' })
   @ApiBearerAuth()
@@ -719,4 +744,55 @@ export class ContentController {
       return ErrorResponse.BadRequestException(error.message).send(res);
     }
   }
+
+  @Get('/quiz/:id')
+  @ApiOperation({ summary: 'Get a single quiz with all its variants by mcqId' })
+  @ApiBearerAuth()
+  @UseGuards(RolesGuard)
+  async getQuizWithVariants(@Param('id') id: number, @Res() res): Promise<object> {
+    try {
+      let [err, success] = await this.contentService.getQuizWithVariants(id);
+      if (err) {
+        return ErrorResponse.BadRequestException(err.message).send(res);
+      }
+      return new SuccessResponse(success.message, success.statusCode, success.data).send(res);
+    } catch (error) {
+      return ErrorResponse.BadRequestException(error.message).send(res);
+    }
+  }
+
+  @Delete('/deleteQuiz')
+  @ApiOperation({ summary: 'Delete a quiz or a specific variant' })
+  @ApiQuery({
+    name: 'quizId',
+    required: true,
+    type: Number,
+    description: 'delete quiz by id',
+  })
+  @ApiQuery({
+    name: 'variantNumber',
+    required: false,
+    type: Number,
+    description: 'delete specific variant of the quiz',
+  })
+  @ApiBearerAuth()
+  @UseGuards(RolesGuard)
+  async deleteQuizOrVariant(
+    @Query('quizId') quizId: number,
+    @Query('variantNumber') variantNumber: number,
+    @Res() res
+  ) {
+    // Call the service method to delete quiz or variant
+
+    try {
+      let [err, success] = await this.contentService.deleteQuizOrVariant(quizId, variantNumber);
+      if (err) {
+        return ErrorResponse.BadRequestException(err.message).send(res);
+      }
+      return new SuccessResponse(success.message, success.statusCode, []).send(res);
+    } catch (error) {
+      return ErrorResponse.BadRequestException(error.message).send(res);
+    }
+  }
+
 }
