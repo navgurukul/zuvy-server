@@ -2387,13 +2387,22 @@ export const zuvyTags = main.table('zuvy_tags', {
 
 export const zuvyModuleQuiz = main.table('zuvy_module_quiz', {
   id: serial('id').primaryKey().notNull(),
-  question: text('question'),
+  question: jsonb('question'),
   options: jsonb('options'),
   correctOption: integer('correct_option'),
-  marks: integer('marks'),
   difficulty: difficulty('difficulty'),
   tagId: integer('tag_id').references(() => zuvyTags.id),
   usage: integer('usage').default(0),
+  hasVariants: boolean('has_variants').default(false),
+});
+
+export const zuvyModuleQuizVariants = main.table('zuvy_module_quiz_variants', {
+  id: serial('id').primaryKey().notNull(),
+  quizId: integer('quiz_id').references(() => zuvyModuleQuiz.id), // Foreign key to main quiz
+  variantNumber: integer('variant_number').notNull(), // The variant number
+  question: jsonb('question'),
+  options: jsonb('options'),
+  correctOption: integer('correct_option')
 });
 
 export const zuvyCourseModules = main.table("zuvy_course_modules", {
