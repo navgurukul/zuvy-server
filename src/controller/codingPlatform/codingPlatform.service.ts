@@ -340,9 +340,10 @@ export class CodingPlatformService {
       .where(
         sql`${zuvyTestCases.questionId} = ${id} AND ${notInArray(zuvyTestCases.id, testCases.map(tc => tc.id))}`
       );
-      const newAddedTestCases: any[] = missingIdElements.length > 0 ? await db.insert(zuvyTestCases).values(missingIdElements).returning() : [];
+      const newAddedTestCases:any[] =missingIdElements.length > 0 ?  await db.insert(zuvyTestCases).values(missingIdElements).returning() : [];
       await this.updateTestCaseAndExpectedOutput(testCases);
-      return [null, { message: 'Coding question updated successfully', data: { question, "testCases": [...testCases, ...newAddedTestCases] }, statusCode: STATUS_CODES.OK }];
+      
+      return [null, { message: 'Coding question updated successfully', data: question, statusCode: STATUS_CODES.OK }];
     } catch (error) {
       Logger.error(JSON.stringify(error));
       return [[{ message: error.message, statusCode: STATUS_CODES.BAD_REQUEST }]];
