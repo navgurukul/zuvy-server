@@ -229,7 +229,7 @@ export class InstructorService {
              batches = instructorBatch.map(batch => batch.batchId);
              if(batches.length == 0)
               {
-                return [null,{message:'No batches found',statusCode: STATUS_CODES.NOT_FOUND,data:null}]
+                return [null,{message:'No batches found',statusCode: STATUS_CODES.NOT_FOUND,data:[]}]
               }
           }
         const classDetails = await db.query.zuvySessions.findMany({
@@ -262,7 +262,7 @@ export class InstructorService {
          })
         if(classDetails.length == 0)
           {
-            return [null,{message:'No classes found',statusCode: STATUS_CODES.NOT_FOUND,data:null}]
+            return [null,{message:'No classes found',statusCode: STATUS_CODES.OK,data:[]}]
           }
         const totalCompletedClass =  classDetails.length > 0 ? Number(classDetails[0]['totalCount']) : 0;
         const totalPages = Math.ceil(totalCompletedClass/limit);
@@ -272,5 +272,5 @@ export class InstructorService {
       {
         return [{message:error.message, statusCode: STATUS_CODES.BAD_REQUEST},null]
       }
-    }
+  }
 }
