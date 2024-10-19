@@ -532,6 +532,150 @@ export class CreateAssessmentBody {
   @IsOptional()
   @IsBoolean()
   webCamera: boolean;
+
+  @ApiProperty({
+    type: [Number],
+    example: [1, 2],
+  })
+  @IsArray()
+  @IsOptional()
+  codingQuestionTagId: number[];
+
+  @ApiProperty({
+    type: [Number],
+    example: [1, 2],
+  })
+  @IsArray()
+  @IsOptional()
+  mcqTagId: number[];
+
+  @ApiProperty({
+    type: Number,
+    example: 3,
+  })
+  @IsNumber()
+  @IsOptional()
+  easyCodingQuestions: number;
+
+  @ApiProperty({
+    type: Number,
+    example: 4,
+  })
+  @IsNumber()
+  @IsOptional()
+  mediumCodingQuestions: number;
+
+  @ApiProperty({
+    type: Number,
+    example: 2,
+  })
+  @IsNumber()
+  @IsOptional()
+  hardCodingQuestions: number;
+
+  @ApiProperty({
+    type: Number,
+    example: 9,
+  })
+  @IsNumber()
+  @IsOptional()
+  totalCodingQuestions: number;
+
+  @ApiProperty({
+    type: Number,
+    example: 5,
+  })
+  @IsNumber()
+  @IsOptional()
+  totalMcqQuestions: number;
+
+  @ApiProperty({
+    type: Number,
+    example: 2,
+  })
+  @IsNumber()
+  @IsOptional()
+  easyMcqQuestions: number;
+
+  @ApiProperty({
+    type: Number,
+    example: 2,
+  })
+  @IsNumber()
+  @IsOptional()
+  mediumMcqQuestions: number;
+
+  @ApiProperty({
+    type: Number,
+    example: 1,
+  })
+  @IsNumber()
+  @IsOptional()
+  hardMcqQuestions: number;
+
+  @ApiProperty({
+    type: Number,
+    example: 40,
+  })
+  @IsNumber()
+  @IsOptional()
+  weightageCodingQuestions: number;
+
+  @ApiProperty({
+    type: Number,
+    example: 60,
+  })
+  @IsNumber()
+  @IsOptional()
+  weightageMcqQuestions: number;
+
+  @ApiProperty({
+    type: Number,
+    example: 1.5,
+  })
+  @IsNumber()
+  @IsOptional()
+  easyCodingMark: number;
+
+  @ApiProperty({
+    type: Number,
+    example: 2.0,
+  })
+  @IsNumber()
+  @IsOptional()
+  mediumCodingMark: number;
+
+  @ApiProperty({
+    type: Number,
+    example: 2.5,
+  })
+  @IsNumber()
+  @IsOptional()
+  hardCodingMark: number;
+
+  @ApiProperty({
+    type: Number,
+    example: 1.0,
+  })
+  @IsNumber()
+  @IsOptional()
+  easyMcqMark: number;
+
+  @ApiProperty({
+    type: Number,
+    example: 1.5,
+  })
+  @IsNumber()
+  @IsOptional()
+  mediumMcqMark: number;
+
+  @ApiProperty({
+    type: Number,
+    example: 2.0,
+  })
+  @IsNumber()
+  @IsOptional()
+  hardMcqMark: number;
 }
 
 export class editQuizDto {

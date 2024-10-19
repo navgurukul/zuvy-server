@@ -897,6 +897,65 @@ export class ContentService {
     }
   }
 
+  async calculateAssessmentWeightage({
+    easyCodingQuestions,
+    easyCodingMarksPerQuestion,
+    mediumCodingQuestions,
+    mediumCodingMarksPerQuestion,
+    hardCodingQuestions,
+    hardCodingMarksPerQuestion,
+    easyMcqQuestions,
+    easyMcqMarksPerQuestion,
+    mediumMcqQuestions,
+    mediumMcqMarksPerQuestion,
+    hardMcqQuestions,
+    hardMcqMarksPerQuestion,
+    totalCodingWeightage = 50, // Overall weightage for coding questions (default 50%)
+    totalMcqWeightage = 50,    // Overall weightage for MCQ questions (default 50%)
+  }) {
+    // Calculate total marks for each coding question type
+    const totalEasyCodingMarks = easyCodingQuestions * easyCodingMarksPerQuestion;
+    const totalMediumCodingMarks = mediumCodingQuestions * mediumCodingMarksPerQuestion;
+    const totalHardCodingMarks = hardCodingQuestions * hardCodingMarksPerQuestion;
+    const totalCodingMarks = totalEasyCodingMarks + totalMediumCodingMarks + totalHardCodingMarks;
+  
+    // Calculate weightage for each coding type
+    const easyCodingWeightage = (totalEasyCodingMarks / totalCodingMarks) * totalCodingWeightage;
+    const mediumCodingWeightage = (totalMediumCodingMarks / totalCodingMarks) * totalCodingWeightage;
+    const hardCodingWeightage = (totalHardCodingMarks / totalCodingMarks) * totalCodingWeightage;
+  
+    // Calculate total marks for each MCQ type
+    const totalEasyMcqMarks = easyMcqQuestions * easyMcqMarksPerQuestion;
+    const totalMediumMcqMarks = mediumMcqQuestions * mediumMcqMarksPerQuestion;
+    const totalHardMcqMarks = hardMcqQuestions * hardMcqMarksPerQuestion;
+    const totalMcqMarks = totalEasyMcqMarks + totalMediumMcqMarks + totalHardMcqMarks;
+  
+    // Calculate weightage for each MCQ type
+    const easyMcqWeightage = (totalEasyMcqMarks / totalMcqMarks) * totalMcqWeightage;
+    const mediumMcqWeightage = (totalMediumMcqMarks / totalMcqMarks) * totalMcqWeightage;
+    const hardMcqWeightage = (totalHardMcqMarks / totalMcqMarks) * totalMcqWeightage;
+  
+    // Calculate the total marks of the entire assessment
+    const totalAssessmentMarks = totalCodingMarks + totalMcqMarks;
+  
+    // Return the calculated values
+    return {
+      totalAssessmentMarks,
+      coding: {
+        totalMarks: totalCodingMarks,
+        easyWeightage: easyCodingWeightage.toFixed(2),
+        mediumWeightage: mediumCodingWeightage.toFixed(2),
+        hardWeightage: hardCodingWeightage.toFixed(2),
+      },
+      mcq: {
+        totalMarks: totalMcqMarks,
+        easyWeightage: easyMcqWeightage.toFixed(2),
+        mediumWeightage: mediumMcqWeightage.toFixed(2),
+        hardWeightage: hardMcqWeightage.toFixed(2),
+      },
+    };
+  }
+
   async editAssessment(
     assessmentOutsourseId: number,
     assessmentBody: CreateAssessmentBody,
@@ -983,15 +1042,15 @@ export class ContentService {
         }
 
         // Update assessment data
-        let updatedOutsourse: any = { ...OutsourseAssessmentData__ }
+        const marks = (OutsourseAssessmentData__.easyCodingQuestions * OutsourseAssessmentData__.easyCodingMark) + (OutsourseAssessmentData__.mediumCodingQuestions * OutsourseAssessmentData__.mediumCodingMark) + (OutsourseAssessmentData__.hardCodingQuestions * OutsourseAssessmentData__.hardCodingMark) + (OutsourseAssessmentData__.easyMcqQuestions * OutsourseAssessmentData__.easyMcqMark) + (OutsourseAssessmentData__.mediumMcqQuestions * OutsourseAssessmentData__.mediumMcqMark) + (OutsourseAssessmentData__.hardMcqQuestions * OutsourseAssessmentData__.hardMcqMark);
+        let updatedOutsourse: any = { ...OutsourseAssessmentData__ ,marks}
         let updatedOutsourseAssessment = await db.update(zuvyOutsourseAssessments).set(updatedOutsourse).where(eq(zuvyOutsourseAssessments.id, assessmentOutsourseId)).returning();
-
+        
         let updatedAssessment = await db
           .update(zuvyModuleAssessment)
           .set(assessmentData)
           .where(eq(zuvyModuleAssessment.id, assessment_id))
           .returning();
-
         // Insert new data
         let mcqArray = quizIdsToAdd.map(id => ({ quiz_id: id, bootcampId, chapterId, assessmentOutsourseId }));
         let openEndedQuestionsArray = openEndedQuestionIdsToAdd.map(id => ({ openEndedQuestionId: id, bootcampId, moduleId, chapterId, assessmentOutsourseId }));
