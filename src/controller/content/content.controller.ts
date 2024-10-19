@@ -338,16 +338,32 @@ export class ContentController {
     type: String,
     description: 'Search by name or email',
   })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    type: Number,
+    description: 'limit',
+  })
+  @ApiQuery({
+    name: 'offset',
+    required: false,
+    type: Number,
+    description: 'offset',
+  })
   @ApiBearerAuth()
   async getAllQuizQuestions(
     @Query('tagId') tagId: number[],
     @Query('difficulty') difficulty: ('Easy' | 'Medium' | 'Hard') | ('Easy' | 'Medium' | 'Hard')[],
     @Query('searchTerm') searchTerm: string,
+    @Query('limit') limit: number,
+    @Query('offset') offSet: number,
   ): Promise<object> {
     const res = await this.contentService.getAllQuizQuestions(
       tagId,
       difficulty,
       searchTerm,
+      limit, 
+      offSet
     );
     return res;
   }
@@ -387,16 +403,32 @@ export class ContentController {
     type: String,
     description: 'Search by name or email',
   })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    type: Number,
+    description: 'limit',
+  })
+  @ApiQuery({
+    name: 'offset',
+    required: false,
+    type: Number,
+    description: 'offset',
+  })
   @ApiBearerAuth()
   async getAllCodingQuestions(
     @Query('tagId') tagId: number[], 
     @Query('difficulty') difficulty: ('Easy' | 'Medium' | 'Hard') | ('Easy' | 'Medium' | 'Hard')[],
     @Query('searchTerm') searchTerm: string,
+    @Query('limit') limit: number,
+    @Query('offset') offSet: number,
   ): Promise<object> {
     const res = await this.contentService.getAllCodingQuestions(
       tagId,
       difficulty,
       searchTerm,
+      limit,
+      offSet
     );
     return res;
   }
