@@ -23,6 +23,7 @@ import {
   customType,
   numeric,
 } from 'drizzle-orm/pg-core';
+import { content } from 'googleapis/build/src/apis/content';
 import { integrations } from 'googleapis/build/src/apis/integrations';
 import { language } from 'googleapis/build/src/apis/language';
 // import { users } from './users'; // Import the 'users' module
@@ -2391,9 +2392,25 @@ export const zuvyModuleQuiz = main.table('zuvy_module_quiz', {
   options: jsonb('options'),
   correctOption: integer('correct_option'),
   marks: integer('marks'),
+  title: text('title'),
   difficulty: difficulty('difficulty'),
   tagId: integer('tag_id').references(() => zuvyTags.id),
   usage: integer('usage').default(0),
+  content: text('content'),
+  isRandom: boolean('is_random').default(false),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+});
+
+export const zuvyModuleQuizVariants = main.table('zuvy_module_quiz_variants', {
+  id: serial('id').primaryKey().notNull(),
+  quizId: integer('quiz_id').references(() => zuvyModuleQuiz.id), // Foreign key to main quiz
+  question: text('question'),
+  options: jsonb('options'),
+  correctOption: integer('correct_option'),
+  variantNumber: integer('variant_number').notNull(), // The variant number
+  createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
 });
 
 export const zuvyCourseModules = main.table("zuvy_course_modules", {

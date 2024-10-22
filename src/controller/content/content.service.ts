@@ -20,6 +20,7 @@ import {
   zuvyModuleForm,
   questionType,
   zuvyQuestionTypes,
+  zuvyModuleQuizVariants,
 } from '../../../drizzle/schema';
 
 import { error, log } from 'console';
@@ -42,7 +43,6 @@ import { promises } from 'dns';
 import {
   moduleDto,
   chapterDto,
-  quizDto,
   quizBatchDto,
   ReOrderModuleBody,
   reOrderDto,
@@ -310,39 +310,55 @@ export class ContentService {
     }
   }
 
-  async createQuizForModule(quiz: quizBatchDto) {
+  async createQuizForModule(quiz: quizBatchDto): Promise<any> {
     try {
-      const quizQuestions = quiz.questions.map((q) => ({
-        question: q.question,
-        options: q.options,
-        correctOption: q.correctOption,
-        marks: q.mark,
-        difficulty: q.difficulty,
-        tagId: q.tagId,
-      }));
-
-      const result = await db
+      // Insert quiz data first
+      const newQuiz = await db
         .insert(zuvyModuleQuiz)
-        .values(quizQuestions)
+        .values({
+          title: quiz.title,
+          difficulty: quiz.difficulty,
+          tagId: quiz.tagId,
+          content: quiz.content,
+          isRandom: quiz.isRandomOptions,
+        })
         .returning();
-      if (result.length > 0) {
-        return {
-          status: "success",
-          code: 200,
-          result
+  
+      if (newQuiz.length > 0) {
+        const quizId = newQuiz[0].id;
+  
+        // Insert quiz variants
+        const variants = quiz.variantMCQs.map((variant, index) => ({
+          quizId,
+          question: variant.question,
+          options: variant.options,
+          correctOption: variant.correctOption,
+          variantNumber: index + 1, // Set variant number as index + 1
+        }));
+  
+        const variantResult = await db
+          .insert(zuvyModuleQuizVariants)
+          .values(variants)
+          .returning();
+  
+        if (variantResult.length > 0) {
+          return[ null, {
+            message: 'MCQ and variants have been created successfully.',
+            statusCode: STATUS_CODES.CREATED
+          }];
         }
       }
-      else {
-        return {
-          status: "error",
-          code: 404,
-          message: "Quiz questions did not create successfully.Please try again"
-        }
-      }
+  
+      return [{
+        status: 'error',
+        statusCode: STATUS_CODES.NOT_FOUND,
+        message: 'MCQ and variants could not be created. Please try again',
+      }];
     } catch (err) {
-      throw err;
+      return [{ message: err.message, statusCode: STATUS_CODES.BAD_REQUEST }, null]
     }
   }
+  
 
   async createOpenEndedQuestions(questions: openEndedDto) {
     try {
