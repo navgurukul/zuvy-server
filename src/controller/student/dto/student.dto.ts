@@ -21,13 +21,13 @@ export class ApplyFormData {
   name: string;
 
   @ApiProperty({
-    type: Number,
+    type: String,
     example: '6301424989',
     required: true,
   })
   @IsNotEmpty()
-  @IsNumber()
-  phoneNo: number;
+  @IsString()
+  phoneNo: string;
 
   @ApiProperty({
     type: String,

@@ -3289,7 +3289,7 @@ export const zuvyStudentApplicationRecord = main.table('zuvy_student_application
   id: serial('id').primaryKey().notNull(),
   name: text('name').notNull(),
   email: text('email').notNull(),
-  phoneNo: integer('phone_no').notNull(),
+  phoneNo: text('phone_no').notNull(),
   year: text('year').notNull(),
   familyIncomeUnder3Lakhs: boolean('family_income_under_3lakhs').notNull(),
   createdAt: timestamp('created_at', {

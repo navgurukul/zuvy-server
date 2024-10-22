@@ -41,7 +41,7 @@ export class StudentService {
   }
 
   // Append student details to Google Spreadsheet
-  public async updateSpreadsheet(studentDetails: { name: string, email: string, phoneNo: number, year: string, familyIncomeUnder3Lakhs: boolean }): Promise<any> {
+  public async updateSpreadsheet(studentDetails: { name: string, email: string, phoneNo: string, year: string, familyIncomeUnder3Lakhs: boolean }): Promise<any> {
     try {
       // Check if a student with the same email or phone already exists in DB
       const existingRecord = await db
