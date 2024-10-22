@@ -368,5 +368,18 @@ export class TrackingController {
     );
     return res;
   }
-
+  
+  @Get('/assessment/properting/:assessment_submission_id')
+  @ApiBearerAuth()
+  async getProperting(@Param('assessment_submission_id') assessmentSubmissionId: number, @Res() res) {
+    try {
+      let [err, success] = await this.TrackingService.getProperting(assessmentSubmissionId);
+      if (err) {
+        return ErrorResponse.BadRequestException(err.message, err.statusCode).send(res)
+      }
+      return new SuccessResponse(success.message, success.statusCode, success.data).send(res);
+    } catch (error) {
+      return ErrorResponse.BadRequestException(error.message).send(res);
+    }
+  }
 }
