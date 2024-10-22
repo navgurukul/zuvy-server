@@ -532,6 +532,14 @@ export class CreateAssessmentBody {
   @IsOptional()
   @IsBoolean()
   webCamera: boolean;
+  
+  @ApiProperty({
+    type: Boolean,
+    example: true
+  })
+  @IsOptional()
+  @IsBoolean()
+  canEyeTrack: boolean;
 }
 
 export class editQuizDto {
@@ -1059,3 +1067,4 @@ export class CreateAndEditFormBody {
   editFormQuestionDto: editFormBatchDto;
   //questions: any;
 }
+

@@ -24,7 +24,7 @@ import {
   ApiQuery,
 } from '@nestjs/swagger';
 import { ApiBearerAuth } from '@nestjs/swagger';
-import { InstructorFeedbackDto, PatchOpenendedQuestionDto, CreateOpenendedQuestionDto, SubmissionassessmentDto, StartAssessmentDto, OpenEndedQuestionSubmissionDtoList, QuizSubmissionDtoList } from './dto/submission.dto';
+import { InstructorFeedbackDto, PatchOpenendedQuestionDto, CreateOpenendedQuestionDto, SubmissionassessmentDto, StartAssessmentDto, OpenEndedQuestionSubmissionDtoList, QuizSubmissionDtoList, PropertingPutBody } from './dto/submission.dto';
 import { ErrorResponse, SuccessResponse } from 'src/errorHandler/handler';
 
 @Controller('submission')
@@ -355,6 +355,22 @@ export class SubmissionController {
         chapterId,
         userId
       );
+      if (err) {
+        return ErrorResponse.BadRequestException(err.message, err.statusCode).send(res)
+      }
+      return new SuccessResponse(success.message, success.statusCode, success.data).send(res);
+    } catch (error) {
+      return ErrorResponse.BadRequestException(error.message).send(res);
+    }
+  }
+
+  // put api endpoint: assessment/properting
+  @Patch("/assessment/properting")
+  @ApiOperation({ summary: 'Updating the assignment properting data' })
+  @ApiBearerAuth()
+  async submitProperting(@Body() propertingPutBody: PropertingPutBody, @Query('assessment_submission_id') assessmentSubmissionId: number, @Res() res) {
+    try {
+      let [err, success] = await this.submissionService.submitProperting(assessmentSubmissionId, propertingPutBody);
       if (err) {
         return ErrorResponse.BadRequestException(err.message, err.statusCode).send(res)
       }
