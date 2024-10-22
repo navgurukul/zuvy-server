@@ -28,7 +28,7 @@ import {
   moduleDto,
   chapterDto,
   quizBatchDto,
-  quizDto,
+  // quizDto,
   reOrderDto,
   ReOrderModuleBody,
   EditChapterDto,
@@ -187,12 +187,20 @@ export class ContentController {
   @ApiBearerAuth()
   @UseGuards(RolesGuard)
   async createQuizForModule(
-    @Body() quizQuestions: quizBatchDto
-  ) {
-    const res = await this.contentService.createQuizForModule(
-      quizQuestions
-    );
-    return res;
+    @Body() quizQuestions: quizBatchDto,
+    @Res() res
+  ): Promise<object> {
+    try {
+      let [err, success] = await this.contentService.createQuizForModule(
+        quizQuestions
+      );
+      if (err) {
+        return ErrorResponse.BadRequestException(err.message).send(res);
+      }
+      return new SuccessResponse( success.message, success.statusCode, []).send(res);
+    } catch (error) {
+      return ErrorResponse.BadRequestException(error.message).send(res);
+    }  
   }
 
   @Put('/editAssessment/:assessmentOutsourseId/:chapterId')

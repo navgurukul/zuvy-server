@@ -165,11 +165,10 @@ export class chapterDto {
 
 
 }
-
-export class quizDto {
+export class QuizVariantDto {
   @ApiProperty({
     type: String,
-    example: 'What is the national animal of India',
+    example: "What is Schrödinger's cat?",
     required: true,
   })
   @IsString()
@@ -178,10 +177,10 @@ export class quizDto {
   @ApiProperty({
     type: 'object',
     example: {
-      1: 'Option 1',
-      2: 'Option 2',
-      3: 'Option 3',
-      4: 'Option 4',
+      1: "A theoretical cat",
+      2: "A type of experiment",
+      3: "Both alive and dead",
+      4: "None of the above",
     },
     required: true,
   })
@@ -190,27 +189,21 @@ export class quizDto {
 
   @ApiProperty({
     type: Number,
-    example: 2,
+    example: 3,
     required: true,
   })
   @IsNumber()
   correctOption: number;
+}
 
+export class  quizBatchDto {
   @ApiProperty({
-    type: Number,
-    example: 1,
+    type: String,
+    example: 'Introduction to Quantum Physics',
+    required: true,
   })
-  @IsNumber()
-  @IsOptional()
-  mark: number;
-
-  @ApiProperty({
-    type: Number,
-    example: 2,
-  })
-  @IsNumber()
-  @IsOptional()
-  tagId: number;
+  @IsString()
+  title: string;
 
   @ApiProperty({
     type: difficulty,
@@ -220,37 +213,53 @@ export class quizDto {
   @IsString()
   @IsOptional()
   difficulty: 'Easy' | 'Medium' | 'Hard';
-}
 
-export class  quizBatchDto {
   @ApiProperty({
-    type: [quizDto],
+    type: Number,
+    example: 4,
+    required: true,
+  })
+  @IsNumber()
+  tagId: number;
+
+  @ApiProperty({
+    type: String,
+    example: 'Detailed content explaining quantum theories and experiments.',
+    required: true,
+  })
+  @IsString()
+  content: string;
+
+  @ApiProperty({
+    type: Boolean,
+    example: false,
+    required: true,
+  })
+  @IsBoolean()
+  isRandomOptions: boolean;
+
+  @ApiProperty({
+    type: [QuizVariantDto],
     example: [
       {
-        question: 'What is the national animal of India?',
+        question: "What is Schrödinger's cat?",
         options: {
-          1: 'Option 1',
-          2: 'Option 2',
-          3: 'Option 3',
-          4: 'Option 4',
-        },
-        correctOption: 2,
-        mark: 1,
-        tagId: 2,
-        difficulty: 'Easy',
-      },
-      {
-        question: 'What is the capital of France?',
-        options: {
-          1: 'Paris',
-          2: 'London',
-          3: 'Berlin',
-          4: 'Rome',
+          1: "A theoretical cat",
+          2: "A type of experiment",
+          3: "Both alive and dead",
+          4: "None of the above",
         },
         correctOption: 3,
-        mark: 1,
-        tagId: 2,
-        difficulty: 'Easy',
+      },
+      {
+        question: "What is the Heisenberg Uncertainty Principle?",
+        options: {
+          1: "A rule about uncertainty",
+          2: "A principle in quantum mechanics",
+          3: "Both 1 and 2",
+          4: "None of the above",
+        },
+        correctOption: 3,
       },
     ],
     required: true,
@@ -258,8 +267,8 @@ export class  quizBatchDto {
   @IsArray()
   @ArrayNotEmpty()
   @ValidateNested({ each: true })
-  @Type(() => quizDto)
-  questions: quizDto[];
+  @Type(() => QuizVariantDto)
+  variantMCQs: QuizVariantDto[];
 
 }
 
