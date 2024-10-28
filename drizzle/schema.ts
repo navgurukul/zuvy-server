@@ -2711,7 +2711,7 @@ export const zuvyAssessmentSubmission = main.table("zuvy_assessment_submission",
     mode: 'string',
   }).defaultNow(),
   copyPaste: integer('copy_paste'),
-  embeddedGoogleSearch: integer('embedded_google_search'),
+  fullScreenExit: integer('full_screen_exit'),
   tabChange: integer('tab_change'),
   eyeMomentCount: integer('eye_moment_count'),
   submitedAt: timestamp('submited_at', {

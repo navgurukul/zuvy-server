@@ -1348,7 +1348,7 @@ export class SubmissionService {
   
   async submitProperting(assessmentSubmissionId, propertingPutBody:any): Promise<any> {
     try{
-      let updatedSubmissionAssessment = await db.update(zuvyAssessmentSubmission).set(propertingPutBody).where(eq(zuvyAssessmentSubmission.id, assessmentSubmissionId)).returning({eyeMomentCount:zuvyAssessmentSubmission.eyeMomentCount,embeddedGoogleSearch:zuvyAssessmentSubmission.embeddedGoogleSearch,copyPaste:zuvyAssessmentSubmission.copyPaste,tabChange: zuvyAssessmentSubmission.tabChange});
+      let updatedSubmissionAssessment = await db.update(zuvyAssessmentSubmission).set(propertingPutBody).where(eq(zuvyAssessmentSubmission.id, assessmentSubmissionId)).returning({eyeMomentCount:zuvyAssessmentSubmission.eyeMomentCount,fullScreenExit:zuvyAssessmentSubmission.fullScreenExit,copyPaste:zuvyAssessmentSubmission.copyPaste,tabChange: zuvyAssessmentSubmission.tabChange});
       if (updatedSubmissionAssessment.length == 0){
         return [null, { message: "Assessment properting not found", statusCode: STATUS_CODES.NOT_FOUND, data:{} }]
       }

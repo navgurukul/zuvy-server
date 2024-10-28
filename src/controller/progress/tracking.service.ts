@@ -1537,7 +1537,7 @@ export class TrackingService {
   
   async getProperting(assessmentSubmissionId): Promise<any>{
     try{
-      let assessmentProperting = await db.select({eyeMomentCount:zuvyAssessmentSubmission.eyeMomentCount,embeddedGoogleSearch:zuvyAssessmentSubmission.embeddedGoogleSearch,copyPaste:zuvyAssessmentSubmission.copyPaste,tabChange: zuvyAssessmentSubmission.tabChange}).from(zuvyAssessmentSubmission).where(eq(zuvyAssessmentSubmission.id, assessmentSubmissionId));
+      let assessmentProperting = await db.select({eyeMomentCount:zuvyAssessmentSubmission.eyeMomentCount,fullScreenExit:zuvyAssessmentSubmission.fullScreenExit,copyPaste:zuvyAssessmentSubmission.copyPaste,tabChange: zuvyAssessmentSubmission.tabChange}).from(zuvyAssessmentSubmission).where(eq(zuvyAssessmentSubmission.id, assessmentSubmissionId));
       if (assessmentProperting.length == 0){
         return [null, { message: "Assessment properting not found", statusCode: STATUS_CODES.NOT_FOUND, data:{} }]
       }
