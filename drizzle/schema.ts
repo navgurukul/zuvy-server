@@ -23,6 +23,7 @@ import {
   customType,
   numeric,
 } from 'drizzle-orm/pg-core';
+import { content } from 'googleapis/build/src/apis/content';
 import { integrations } from 'googleapis/build/src/apis/integrations';
 import { language } from 'googleapis/build/src/apis/language';
 // import { users } from './users'; // Import the 'users' module
@@ -2391,9 +2392,25 @@ export const zuvyModuleQuiz = main.table('zuvy_module_quiz', {
   options: jsonb('options'),
   correctOption: integer('correct_option'),
   marks: integer('marks'),
+  title: text('title'),
   difficulty: difficulty('difficulty'),
   tagId: integer('tag_id').references(() => zuvyTags.id),
   usage: integer('usage').default(0),
+  content: text('content'),
+  isRandom: boolean('is_random').default(false),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+});
+
+export const zuvyModuleQuizVariants = main.table('zuvy_module_quiz_variants', {
+  id: serial('id').primaryKey().notNull(),
+  quizId: integer('quiz_id').references(() => zuvyModuleQuiz.id), // Foreign key to main quiz
+  question: text('question'),
+  options: jsonb('options'),
+  correctOption: integer('correct_option'),
+  variantNumber: integer('variant_number').notNull(), // The variant number
+  createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
 });
 
 export const zuvyCourseModules = main.table("zuvy_course_modules", {
@@ -2696,6 +2713,7 @@ export const zuvyAssessmentSubmission = main.table("zuvy_assessment_submission",
   copyPaste: integer('copy_paste'),
   embeddedGoogleSearch: integer('embedded_google_search'),
   tabChange: integer('tab_change'),
+  eyeMomentCount: integer('eye_moment_count'),
   submitedAt: timestamp('submited_at', {
     withTimezone: true,
     mode: 'string',
@@ -2712,7 +2730,6 @@ export const zuvyAssessmentSubmission = main.table("zuvy_assessment_submission",
   requiredCodingScore: integer('required_coding_score'),
   requiredOpenEndedScore: integer('required_open_ended_score'),
   requiredMCQScore: integer('required_mcq_score'),
-  // double precision
   isPassed: boolean('is_passed'),
   percentage: numeric('percentage'),
   typeOfsubmission: varchar('type_of_submission', { length: 255 }),
@@ -2923,7 +2940,9 @@ export const zuvyOutsourseAssessments = main.table('zuvy_outsourse_assessments',
   webCamera: boolean('web_camera'),
   passPercentage: integer('pass_percentage'),
   screenRecord: boolean('screen_record'),
-  deadline: text('deadline'),
+  embeddedGoogleSearch: boolean('embedded_google_search'),
+  canEyeTrack: boolean('can_eye_track'),
+  deadline:  text('deadline'),
   timeLimit: bigint('time_limit', { mode: 'number' }),
   marks: integer('marks'),
   copyPaste: boolean('copy_paste'),

@@ -28,7 +28,7 @@ import {
   moduleDto,
   chapterDto,
   quizBatchDto,
-  quizDto,
+  // quizDto,
   reOrderDto,
   ReOrderModuleBody,
   EditChapterDto,
@@ -187,12 +187,20 @@ export class ContentController {
   @ApiBearerAuth()
   @UseGuards(RolesGuard)
   async createQuizForModule(
-    @Body() quizQuestions: quizBatchDto
-  ) {
-    const res = await this.contentService.createQuizForModule(
-      quizQuestions
-    );
-    return res;
+    @Body() quizQuestions: quizBatchDto,
+    @Res() res
+  ): Promise<object> {
+    try {
+      let [err, success] = await this.contentService.createQuizForModule(
+        quizQuestions
+      );
+      if (err) {
+        return ErrorResponse.BadRequestException(err.message).send(res);
+      }
+      return new SuccessResponse( success.message, success.statusCode, []).send(res);
+    } catch (error) {
+      return ErrorResponse.BadRequestException(error.message).send(res);
+    }  
   }
 
   @Put('/editAssessment/:assessmentOutsourseId/:chapterId')
@@ -338,16 +346,32 @@ export class ContentController {
     type: String,
     description: 'Search by name or email',
   })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    type: Number,
+    description: 'limit',
+  })
+  @ApiQuery({
+    name: 'offset',
+    required: false,
+    type: Number,
+    description: 'offset',
+  })
   @ApiBearerAuth()
   async getAllQuizQuestions(
     @Query('tagId') tagId: number[],
     @Query('difficulty') difficulty: ('Easy' | 'Medium' | 'Hard') | ('Easy' | 'Medium' | 'Hard')[],
     @Query('searchTerm') searchTerm: string,
+    @Query('limit') limit: number,
+    @Query('offset') offSet: number,
   ): Promise<object> {
     const res = await this.contentService.getAllQuizQuestions(
       tagId,
       difficulty,
       searchTerm,
+      limit, 
+      offSet
     );
     return res;
   }
@@ -387,16 +411,32 @@ export class ContentController {
     type: String,
     description: 'Search by name or email',
   })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    type: Number,
+    description: 'limit',
+  })
+  @ApiQuery({
+    name: 'offset',
+    required: false,
+    type: Number,
+    description: 'offset',
+  })
   @ApiBearerAuth()
   async getAllCodingQuestions(
     @Query('tagId') tagId: number[], 
     @Query('difficulty') difficulty: ('Easy' | 'Medium' | 'Hard') | ('Easy' | 'Medium' | 'Hard')[],
     @Query('searchTerm') searchTerm: string,
+    @Query('limit') limit: number,
+    @Query('offset') offSet: number,
   ): Promise<object> {
     const res = await this.contentService.getAllCodingQuestions(
       tagId,
       difficulty,
       searchTerm,
+      limit,
+      offSet
     );
     return res;
   }

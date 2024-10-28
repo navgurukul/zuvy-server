@@ -17,7 +17,8 @@ import {
   zuvyPracticeCode,
   zuvyCodingQuestions,
   zuvyFormTracking,
-  zuvyModuleForm
+  zuvyModuleForm,
+  zuvyAssessmentSubmission
 } from 'drizzle/schema';
 import {
   SubmitBodyDto,
@@ -1533,6 +1534,17 @@ export class TrackingService {
       throw err;
     }
   }
-
+  
+  async getProperting(assessmentSubmissionId): Promise<any>{
+    try{
+      let assessmentProperting = await db.select({eyeMomentCount:zuvyAssessmentSubmission.eyeMomentCount,embeddedGoogleSearch:zuvyAssessmentSubmission.embeddedGoogleSearch,copyPaste:zuvyAssessmentSubmission.copyPaste,tabChange: zuvyAssessmentSubmission.tabChange}).from(zuvyAssessmentSubmission).where(eq(zuvyAssessmentSubmission.id, assessmentSubmissionId));
+      if (assessmentProperting.length == 0){
+        return [null, { message: "Assessment properting not found", statusCode: STATUS_CODES.NOT_FOUND, data:{} }]
+      }
+      return [null, { message: 'Get Assignment properting', statusCode: STATUS_CODES.OK, data: assessmentProperting[0] }]
+    } catch (error){
+      return [{ message: error.message, statusCode: STATUS_CODES.BAD_REQUEST }, null]
+    }
+  }
 }
 

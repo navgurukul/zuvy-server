@@ -20,6 +20,7 @@ import {
   zuvyModuleForm,
   questionType,
   zuvyQuestionTypes,
+  zuvyModuleQuizVariants,
 } from '../../../drizzle/schema';
 
 import { error, log } from 'console';
@@ -42,7 +43,6 @@ import { promises } from 'dns';
 import {
   moduleDto,
   chapterDto,
-  quizDto,
   quizBatchDto,
   ReOrderModuleBody,
   reOrderDto,
@@ -311,39 +311,55 @@ export class ContentService {
     }
   }
 
-  async createQuizForModule(quiz: quizBatchDto) {
+  async createQuizForModule(quiz: quizBatchDto): Promise<any> {
     try {
-      const quizQuestions = quiz.questions.map((q) => ({
-        question: q.question,
-        options: q.options,
-        correctOption: q.correctOption,
-        marks: q.mark,
-        difficulty: q.difficulty,
-        tagId: q.tagId,
-      }));
-
-      const result = await db
+      // Insert quiz data first
+      const newQuiz = await db
         .insert(zuvyModuleQuiz)
-        .values(quizQuestions)
+        .values({
+          title: quiz.title,
+          difficulty: quiz.difficulty,
+          tagId: quiz.tagId,
+          content: quiz.content,
+          isRandom: quiz.isRandomOptions,
+        })
         .returning();
-      if (result.length > 0) {
-        return {
-          status: "success",
-          code: 200,
-          result
+  
+      if (newQuiz.length > 0) {
+        const quizId = newQuiz[0].id;
+  
+        // Insert quiz variants
+        const variants = quiz.variantMCQs.map((variant, index) => ({
+          quizId,
+          question: variant.question,
+          options: variant.options,
+          correctOption: variant.correctOption,
+          variantNumber: index + 1, // Set variant number as index + 1
+        }));
+  
+        const variantResult = await db
+          .insert(zuvyModuleQuizVariants)
+          .values(variants)
+          .returning();
+  
+        if (variantResult.length > 0) {
+          return[ null, {
+            message: 'MCQ and variants have been created successfully.',
+            statusCode: STATUS_CODES.CREATED
+          }];
         }
       }
-      else {
-        return {
-          status: "error",
-          code: 404,
-          message: "Quiz questions did not create successfully.Please try again"
-        }
-      }
+  
+      return [{
+        status: 'error',
+        statusCode: STATUS_CODES.NOT_FOUND,
+        message: 'MCQ and variants could not be created. Please try again',
+      }];
     } catch (err) {
-      throw err;
+      return [{ message: err.message, statusCode: STATUS_CODES.BAD_REQUEST }, null]
     }
   }
+  
 
   async createOpenEndedQuestions(questions: openEndedDto) {
     try {
@@ -1234,81 +1250,111 @@ export class ContentService {
     tagId: number | number[],
     difficulty: ('Easy' | 'Medium' | 'Hard') | ('Easy' | 'Medium' | 'Hard')[],
     searchTerm: string = '',
+    limit: number,
+    offSet: number,
   ) {
     try {
       let conditions = [];
-
+  
       let tagIds;
-
+  
       if (tagId) {
         tagIds = Array.isArray(tagId) ? tagId : [tagId];
         conditions.push(inArray(zuvyModuleQuiz.tagId, tagIds));
       }
-
+  
       let difficultyArray;
-
+  
       if (difficulty) {
         difficultyArray = Array.isArray(difficulty) ? difficulty : [difficulty];
         conditions.push(inArray(zuvyModuleQuiz.difficulty, difficultyArray));
       }
-
+  
       if (searchTerm) {
         conditions.push(
           sql`LOWER(${zuvyModuleQuiz.question}) ~ ${sql.raw(`'\\m${searchTerm.toLowerCase()}'`)}`
         );
       }
-
+  
+      // Get total row count for pagination
+      const totalRows = await db
+        .select({ count: sql<number>`count(*)` })
+        .from(zuvyModuleQuiz)
+        .where(and(...conditions))
+        .execute();
+  
       const result = await db
         .select({
           ...getTableColumns(zuvyModuleQuiz),
           matchPosition: sql<number>`
-             CASE
-             WHEN LOWER(${zuvyModuleQuiz.question}) LIKE ${sql.raw(`'${searchTerm.toLowerCase()}%'`)} THEN 0
-             WHEN LOWER(${zuvyModuleQuiz.question}) ~ ${sql.raw(`'\\m${searchTerm.toLowerCase()}'`)} THEN 
-             POSITION(
-              ${sql.raw(`'${searchTerm.toLowerCase()}'`)} IN LOWER(${zuvyModuleQuiz.question})
-             ) - 1
-             ELSE 9999 -- Use a large number for non-matching cases to push them to the end
-             END
+            CASE
+              WHEN LOWER(${zuvyModuleQuiz.question}) LIKE ${sql.raw(`'${searchTerm.toLowerCase()}%'`)} THEN 0
+              WHEN LOWER(${zuvyModuleQuiz.question}) ~ ${sql.raw(`'\\m${searchTerm.toLowerCase()}'`)} THEN 
+                POSITION(${sql.raw(`'${searchTerm.toLowerCase()}'`)} IN LOWER(${zuvyModuleQuiz.question})) - 1
+              ELSE 9999 -- Push non-matching to the end
+            END
           `.as('match_position')
         })
         .from(zuvyModuleQuiz)
         .where(and(...conditions))
-        .orderBy(searchTerm ? sql`match_position` : sql`${zuvyModuleQuiz.id} DESC`);
-
-      return result;
+        .orderBy(searchTerm ? sql`match_position` : sql`${zuvyModuleQuiz.id} DESC`)
+        .limit(limit)
+        .offset(offSet);
+  
+      return {
+        data: result,
+        totalRows: Number(totalRows[0].count),
+        totalPages: !Number.isNaN(limit) ? Math.ceil(totalRows[0].count / limit) : 1
+      };
+  
     } catch (err) {
       throw err;
     }
-  }
+  }  
 
   async getAllCodingQuestions(
     tagId: number | number[],
     difficulty: ('Easy' | 'Medium' | 'Hard') | ('Easy' | 'Medium' | 'Hard')[],
     searchTerm: string = '',
+    limit: number,
+    offSet: number,
   ) {
     try {
       let conditions = [];
-
+  
       let tagIds;
-
+  
       if (tagId) {
         tagIds = Array.isArray(tagId) ? tagId : [tagId];
         conditions.push(inArray(zuvyCodingQuestions.tagId, tagIds));
       }
-
+  
       let difficultyArray;
-
+  
       if (difficulty) {
-        difficultyArray = Array.isArray(difficulty) ? difficulty : [difficulty]
+        difficultyArray = Array.isArray(difficulty) ? difficulty : [difficulty];
         conditions.push(inArray(zuvyCodingQuestions.difficulty, difficultyArray));
       }
-
+  
       if (searchTerm) {
         conditions.push(
           sql`LOWER(${zuvyCodingQuestions.title}) ~ ${sql.raw(`'\\m${searchTerm.toLowerCase()}'`)}`
         );
       }
+  
+      // Query for total number of rows that match the conditions
+      const totalRowsResult = await db
+        .select({ count: sql<number>`count(*)` })
+        .from(zuvyCodingQuestions)
+        .where(and(...conditions))
+        .execute();
+  
+      const totalRows = Number(totalRowsResult[0].count);
+  
+      // Calculate totalPages based on totalRows and limit
+      const totalPages = !Number.isNaN(limit) ? Math.ceil(totalRows / limit) : 1;
+  
+      
       const question = await db.query.zuvyCodingQuestions.findMany({
         where: and(...conditions),
         columns: {
@@ -1320,7 +1366,7 @@ export class ContentService {
           content: true,
           tagId: true,
           createdAt: true,
-          usage: true
+          usage: true,
         },
         with: {
           testCases: {
@@ -1330,7 +1376,7 @@ export class ContentService {
               expectedOutput: true,
             },
             orderBy: (testCase, { asc }) => asc(testCase.id),
-          }
+          },
         },
         orderBy: (zuvyCodingQuestions, { sql }) => {
           if (searchTerm) {
@@ -1345,20 +1391,24 @@ export class ContentService {
               `
             ];
           } else {
-            return [
-              sql`${zuvyCodingQuestions.id} DESC`
-            ];
+            return [sql`${zuvyCodingQuestions.id} DESC`];
           }
-        }
+        },
+        limit, // Apply limit as a number
+        offset: offSet, // Apply offset
       });
-
-      return question;
-
+  
+      // Return the results along with totalRows and totalPages
+      return {
+        data: question,
+        totalRows,
+        totalPages,
+      };
     } catch (err) {
       throw err;
     }
   }
-
+  
   async editQuizQuestions(editQuesDetails: editQuizBatchDto) {
     try {
       await db
