@@ -62,8 +62,11 @@ import {
   formDto
 } from './dto/content.dto';
 import { STATUS_CODES } from '../../helpers';
-import { helperVariable } from '../../constants/helper.js'
-// import Strapi from "strapi-sdk-js"
+let helperVariable = {
+  MCQ_POINTS: { "Easy": 4, "Medium": 8, "Hard": 12 },
+  CODING_POINTS: { "Easy": 10, "Medium": 15, "Hard": 20 },
+  OPEN_ENDED_POINTS: { "Easy": 3, "Medium": 6, "Hard": 9 }
+}
 const { ZUVY_CONTENT_URL, ZUVY_CONTENTS_API_URL } = process.env; // INPORTING env VALUSE ZUVY_CONTENT
 
 @Injectable()
