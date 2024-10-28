@@ -61,13 +61,11 @@ import {
   CreateAndEditFormBody,
   formDto
 } from './dto/content.dto';
-import { STATUS_CODES } from 'src/helpers';
-;
+import { STATUS_CODES } from '../../helpers';
+import { helperVariable } from '../../constants/helper.js'
 // import Strapi from "strapi-sdk-js"
-
 const { ZUVY_CONTENT_URL, ZUVY_CONTENTS_API_URL } = process.env; // INPORTING env VALUSE ZUVY_CONTENT
 
-// const strapi = new Strapi({url: ZUVY_CONTENTS_API_URL})
 @Injectable()
 export class ContentService {
   async lockContent(modules__, module_id = null) {
@@ -955,6 +953,24 @@ export class ContentService {
       },
     };
   }
+  // Helper function to calculate the score for each question based on the weightage and counts
+  async calculateQuestionScores(totalScore, weightage, questionCounts, type = 'MCQ') {
+    const sectionScore = (totalScore * (weightage / 100));
+    const { easy, medium, hard } = questionCounts;
+    
+    // Use the appropriate points for the type of questions (MCQ or Coding)
+    const points = type === 'MCQ' ? helperVariable.MCQ_POINTS : helperVariable.CODING_POINTS;
+  
+    const totalWeight = (easy * points.Easy) + (medium * points.Medium) + (hard * points.Hard);
+  
+    const scores = {
+      easy: (points.Easy / totalWeight) * sectionScore,
+      medium: (points.Medium / totalWeight) * sectionScore,
+      hard: (points.Hard / totalWeight) * sectionScore,
+    };
+  
+    return scores;
+  }
 
   async editAssessment(
     assessmentOutsourseId: number,
@@ -1041,11 +1057,44 @@ export class ContentService {
             .where(sql`${zuvyOutsourseCodingQuestions.assessmentOutsourseId} = ${assessmentOutsourseId} AND ${inArray(zuvyOutsourseCodingQuestions.codingQuestionId, codingQuestionIdsToDelete)}`);
         }
 
-        // Update assessment data
-        const marks = (OutsourseAssessmentData__.easyCodingQuestions * OutsourseAssessmentData__.easyCodingMark) + (OutsourseAssessmentData__.mediumCodingQuestions * OutsourseAssessmentData__.mediumCodingMark) + (OutsourseAssessmentData__.hardCodingQuestions * OutsourseAssessmentData__.hardCodingMark) + (OutsourseAssessmentData__.easyMcqQuestions * OutsourseAssessmentData__.easyMcqMark) + (OutsourseAssessmentData__.mediumMcqQuestions * OutsourseAssessmentData__.mediumMcqMark) + (OutsourseAssessmentData__.hardMcqQuestions * OutsourseAssessmentData__.hardMcqMark);
-        let updatedOutsourse: any = { ...OutsourseAssessmentData__ ,marks}
-        let updatedOutsourseAssessment = await db.update(zuvyOutsourseAssessments).set(updatedOutsourse).where(eq(zuvyOutsourseAssessments.id, assessmentOutsourseId)).returning();
+         // Extract counts for each question type and difficulty
+        const codingQuestionsCount = {
+          easy: OutsourseAssessmentData__.easyCodingQuestions || 0,
+          medium: OutsourseAssessmentData__.mediumCodingQuestions || 0,
+          hard: OutsourseAssessmentData__.hardCodingQuestions || 0,
+        };
+
+        const mcqQuestionsCount = {
+          easy: OutsourseAssessmentData__.easyMcqQuestions || 0,
+          medium: OutsourseAssessmentData__.mediumMcqQuestions || 0,
+          hard: OutsourseAssessmentData__.hardMcqQuestions || 0,
+        };
+        let totalScore = 100;
         
+        // Calculate the scores for each type
+        console.log({totalScore,weightageCodingQuestions: OutsourseAssessmentData__.weightageCodingQuestions,totalCodingQuestions: OutsourseAssessmentData__.totalCodingQuestions})
+        const codingScores:any = this.calculateQuestionScores(totalScore, OutsourseAssessmentData__.weightageCodingQuestions, OutsourseAssessmentData__.totalCodingQuestions, 'Coding');
+        console.log({codingScores})
+        const mcqScores:any = this.calculateQuestionScores(totalScore, OutsourseAssessmentData__.weightageMcqQuestions, OutsourseAssessmentData__.totalMcqQuestions);
+        console.log({mcqScores})
+        // Update marks in the assessment
+        let marks = {
+          easyCodingMark:codingScores.easy,
+          mediumCodingMark:codingScores.medium,
+          hardCodingMark:codingScores.hard,
+          easyMcqMark:mcqScores.easy,
+          mediumMcqMark:mcqScores.medium,
+          hardMcqMark:mcqScores.hard,
+        }
+
+        let updatedOutsourse:any = { ...OutsourseAssessmentData__, ...marks };
+        console.log({updatedOutsourse})
+        let updatedOutsourseAssessment = await db
+          .update(zuvyOutsourseAssessments)
+          .set(updatedOutsourse)
+          .where(eq(zuvyOutsourseAssessments.id, assessmentOutsourseId))
+          .returning();
+
         let updatedAssessment = await db
           .update(zuvyModuleAssessment)
           .set(assessmentData)

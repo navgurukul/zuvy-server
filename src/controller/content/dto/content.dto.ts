@@ -628,54 +628,6 @@ export class CreateAssessmentBody {
   @IsNumber()
   @IsOptional()
   weightageMcqQuestions: number;
-
-  @ApiProperty({
-    type: Number,
-    example: 1.5,
-  })
-  @IsNumber()
-  @IsOptional()
-  easyCodingMark: number;
-
-  @ApiProperty({
-    type: Number,
-    example: 2.0,
-  })
-  @IsNumber()
-  @IsOptional()
-  mediumCodingMark: number;
-
-  @ApiProperty({
-    type: Number,
-    example: 2.5,
-  })
-  @IsNumber()
-  @IsOptional()
-  hardCodingMark: number;
-
-  @ApiProperty({
-    type: Number,
-    example: 1.0,
-  })
-  @IsNumber()
-  @IsOptional()
-  easyMcqMark: number;
-
-  @ApiProperty({
-    type: Number,
-    example: 1.5,
-  })
-  @IsNumber()
-  @IsOptional()
-  mediumMcqMark: number;
-
-  @ApiProperty({
-    type: Number,
-    example: 2.0,
-  })
-  @IsNumber()
-  @IsOptional()
-  hardMcqMark: number;
 }
 
 export class editQuizDto {
