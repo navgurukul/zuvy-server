@@ -10,6 +10,7 @@ export  const typeMappings = {
       arrayOfStr: 'String[]', // This is an example; it can be modified based on the array type
       returnType: 'int', // Default return type, modify as needed
       defaultReturnValue: '0', // Default return value, modify as needed
+      
       inputType: (parameterType) => {
           switch(parameterType) {
               case 'int': return 'Int';

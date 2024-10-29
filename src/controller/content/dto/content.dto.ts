@@ -501,46 +501,6 @@ export class CreateAssessmentBody {
   @IsNumber()
   @IsDefined()
   timeLimit: number;
-
-  @ApiProperty({
-    type: Boolean,
-    example: true
-  })
-  @IsOptional()
-  @IsBoolean()
-  copyPaste: boolean;
-
-  @ApiProperty({
-    type: Boolean,
-    example: true
-  })
-  @IsOptional()
-  @IsBoolean()
-  embeddedGoogleSearch: boolean;
-
-  @ApiProperty({
-    type: Boolean,
-    example: false
-  })
-  @IsOptional()
-  @IsBoolean()
-  tabChange: boolean;
-
-  @ApiProperty({
-    type: Boolean,
-    example: true
-  })
-  @IsOptional()
-  @IsBoolean()
-  screenRecord: boolean;
-
-  @ApiProperty({
-    type: Boolean,
-    example: true
-  })
-  @IsOptional()
-  @IsBoolean()
-  webCamera: boolean;
   
   @ApiProperty({
     type: Boolean,
@@ -549,6 +509,127 @@ export class CreateAssessmentBody {
   @IsOptional()
   @IsBoolean()
   canEyeTrack: boolean;
+
+  @ApiProperty({
+    type: Boolean,
+    example: false
+  })
+  @IsOptional()
+  @IsBoolean()
+  canTabChange: boolean;
+  
+  @ApiProperty({
+    type: Boolean,
+    example: true
+  })
+  @IsOptional()
+  @IsBoolean()
+  canScreenExit: boolean;
+  
+  @ApiProperty({
+    type: Boolean,
+    example: true
+  })
+  @IsOptional()
+  @IsBoolean()
+  canCopyPaste: boolean;
+
+  @ApiProperty({
+    type: [Number],
+    example: [1, 2],
+  })
+  @IsArray()
+  @IsOptional()
+  codingQuestionTagId: number[];
+
+  @ApiProperty({
+    type: [Number],
+    example: [1, 2],
+  })
+  @IsArray()
+  @IsOptional()
+  mcqTagId: number[];
+
+  @ApiProperty({
+    type: Number,
+    example: 3,
+  })
+  @IsNumber()
+  @IsOptional()
+  easyCodingQuestions: number;
+
+  @ApiProperty({
+    type: Number,
+    example: 4,
+  })
+  @IsNumber()
+  @IsOptional()
+  mediumCodingQuestions: number;
+
+  @ApiProperty({
+    type: Number,
+    example: 2,
+  })
+  @IsNumber()
+  @IsOptional()
+  hardCodingQuestions: number;
+
+  @ApiProperty({
+    type: Number,
+    example: 9,
+  })
+  @IsNumber()
+  @IsOptional()
+  totalCodingQuestions: number;
+
+  @ApiProperty({
+    type: Number,
+    example: 5,
+  })
+  @IsNumber()
+  @IsOptional()
+  totalMcqQuestions: number;
+
+  @ApiProperty({
+    type: Number,
+    example: 2,
+  })
+  @IsNumber()
+  @IsOptional()
+  easyMcqQuestions: number;
+
+  @ApiProperty({
+    type: Number,
+    example: 2,
+  })
+  @IsNumber()
+  @IsOptional()
+  mediumMcqQuestions: number;
+
+  @ApiProperty({
+    type: Number,
+    example: 1,
+  })
+  @IsNumber()
+  @IsOptional()
+  hardMcqQuestions: number;
+
+  @ApiProperty({
+    type: Number,
+    example: 40,
+  })
+  @IsNumber()
+  @IsOptional()
+  weightageCodingQuestions: number;
+
+  @ApiProperty({
+    type: Number,
+    example: 60,
+  })
+  @IsNumber()
+  @IsOptional()
+  weightageMcqQuestions: number;
+  
 }
 
 export class editQuizDto {
