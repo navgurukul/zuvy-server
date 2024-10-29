@@ -227,7 +227,7 @@ export class PropertingPutBody{
         required: true,
     })
     @IsOptional()
-    embeddedGoogleSearch: number;
+    fullScreenExit: number;
 
     @ApiProperty({
         type: Number,

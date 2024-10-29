@@ -268,6 +268,7 @@ export class AdminAssessmentService {
           submitedAt: true,
           tabChange: true,
           copyPaste: true,
+          fullScreenExit: true,
           assessmentOutsourseId: true,
         },
         with: {
