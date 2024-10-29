@@ -532,7 +532,7 @@ export class CreateAssessmentBody {
   })
   @IsOptional()
   @IsBoolean()
-  CanCopyPaste: boolean;
+  canCopyPaste: boolean;
 
   @ApiProperty({
     type: [Number],

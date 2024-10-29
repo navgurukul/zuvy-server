@@ -997,6 +997,21 @@ export class ContentService {
     chapterId: number
   ) {
     try {
+
+      if (assessmentBody.weightageCodingQuestions + assessmentBody.weightageMcqQuestions != 100){
+        throw ({
+          status: 'error',
+          statusCode: 404,
+          message: 'The total weightage must equal 100.',
+        });
+      }
+      if (assessmentBody.passPercentage > 100){
+        throw({
+          status: 'error',
+          statusCode: 404,
+          message: 'Pass percentage cannot be greater than 100.',
+        })
+      }
       if (assessmentBody.title) {
         const updatedChapterName = await db.update(zuvyModuleChapter).set({ title: assessmentBody.title }).where(eq(zuvyModuleChapter.id, chapterId)).returning();
         if (updatedChapterName.length == 0) {
@@ -1091,11 +1106,8 @@ export class ContentService {
         let totalScore = 100;
         
         // Calculate the scores for each type
-        console.log({totalScore,weightageCodingQuestions: OutsourseAssessmentData__.weightageCodingQuestions,totalCodingQuestions: OutsourseAssessmentData__.totalCodingQuestions})
-        const codingScores:any = this.calculateQuestionScores(totalScore, OutsourseAssessmentData__.weightageCodingQuestions, OutsourseAssessmentData__.totalCodingQuestions, 'Coding');
-        console.log({codingScores})
-        const mcqScores:any = this.calculateQuestionScores(totalScore, OutsourseAssessmentData__.weightageMcqQuestions, OutsourseAssessmentData__.totalMcqQuestions);
-        console.log({mcqScores})
+        const codingScores:any = await this.calculateQuestionScores(totalScore, OutsourseAssessmentData__.weightageCodingQuestions, codingQuestionsCount, 'Coding');
+        const mcqScores:any = await this.calculateQuestionScores(totalScore, OutsourseAssessmentData__.weightageMcqQuestions, mcqQuestionsCount);
         // Update marks in the assessment
         let marks = {
           easyCodingMark:codingScores.easy,
@@ -1107,7 +1119,6 @@ export class ContentService {
         }
 
         let updatedOutsourse:any = { ...OutsourseAssessmentData__, ...marks };
-        console.log({updatedOutsourse})
         let updatedOutsourseAssessment = await db
           .update(zuvyOutsourseAssessments)
           .set(updatedOutsourse)
@@ -1120,6 +1131,7 @@ export class ContentService {
           .where(eq(zuvyModuleAssessment.id, assessment_id))
           .returning();
         // Insert new data
+
         let mcqArray = quizIdsToAdd.map(id => ({ quiz_id: id, bootcampId, chapterId, assessmentOutsourseId }));
         let openEndedQuestionsArray = openEndedQuestionIdsToAdd.map(id => ({ openEndedQuestionId: id, bootcampId, moduleId, chapterId, assessmentOutsourseId }));
         let codingProblemsArray = codingQuestionIdsToAdd.map(id => ({ codingQuestionId: id, bootcampId, moduleId, chapterId, assessmentOutsourseId }));
