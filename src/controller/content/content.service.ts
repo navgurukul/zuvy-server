@@ -926,7 +926,7 @@ export class ContentService {
   ) {
     try {
 
-      if (assessmentBody.weightageCodingQuestions + assessmentBody.weighageMcqQuestions != 100){
+      if (assessmentBody.weightageCodingQuestions + assessmentBody.weightageMcqQuestions != 100){
         throw ({
           status: 'error',
           statusCode: 404,
@@ -1035,7 +1035,7 @@ export class ContentService {
         
         // Calculate the scores for each type
         const codingScores:any = await this.calculateQuestionScores(helperVariable.TOTAL_SCORE, OutsourseAssessmentData__.weightageCodingQuestions, codingQuestionsCount, 'Coding');
-        const mcqScores:any = await this.calculateQuestionScores(helperVariable.TOTAL_SCORE, OutsourseAssessmentData__.weighageMcqQuestions, mcqQuestionsCount);
+        const mcqScores:any = await this.calculateQuestionScores(helperVariable.TOTAL_SCORE, OutsourseAssessmentData__.weightageMcqQuestions, mcqQuestionsCount);
         // Update marks in the assessment
         let marks = {
           easyCodingMark:codingScores.easy,
