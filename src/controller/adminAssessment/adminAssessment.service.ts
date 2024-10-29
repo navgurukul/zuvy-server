@@ -268,7 +268,6 @@ export class AdminAssessmentService {
           submitedAt: true,
           tabChange: true,
           copyPaste: true,
-          embeddedGoogleSearch: true,
           assessmentOutsourseId: true,
         },
         with: {

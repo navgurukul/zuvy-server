@@ -501,22 +501,14 @@ export class CreateAssessmentBody {
   @IsNumber()
   @IsDefined()
   timeLimit: number;
-
+  
   @ApiProperty({
     type: Boolean,
     example: true
   })
   @IsOptional()
   @IsBoolean()
-  copyPaste: boolean;
-
-  @ApiProperty({
-    type: Boolean,
-    example: true
-  })
-  @IsOptional()
-  @IsBoolean()
-  embeddedGoogleSearch: boolean;
+  canEyeTrack: boolean;
 
   @ApiProperty({
     type: Boolean,
@@ -524,24 +516,24 @@ export class CreateAssessmentBody {
   })
   @IsOptional()
   @IsBoolean()
-  tabChange: boolean;
-
-  @ApiProperty({
-    type: Boolean,
-    example: true
-  })
-  @IsOptional()
-  @IsBoolean()
-  screenRecord: boolean;
-
-  @ApiProperty({
-    type: Boolean,
-    example: true
-  })
-  @IsOptional()
-  @IsBoolean()
-  webCamera: boolean;
+  canTabChange: boolean;
   
+  @ApiProperty({
+    type: Boolean,
+    example: true
+  })
+  @IsOptional()
+  @IsBoolean()
+  canScreenExit: boolean;
+  
+  @ApiProperty({
+    type: Boolean,
+    example: true
+  })
+  @IsOptional()
+  @IsBoolean()
+  CanCopyPaste: boolean;
+
   @ApiProperty({
     type: [Number],
     example: [1, 2],
@@ -638,13 +630,6 @@ export class CreateAssessmentBody {
   @IsOptional()
   weightageMcqQuestions: number;
   
-  @ApiProperty({
-    type: Boolean,
-    example: true
-  })
-  @IsOptional()
-  @IsBoolean()
-  canEyeTrack: boolean;
 }
 
 export class editQuizDto {
