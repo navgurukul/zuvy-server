@@ -25,27 +25,18 @@ import {
 
 import { error, log } from 'console';
 import {
-  SQL,
   sql,
   eq,
   count,
   inArray,
   and,
-  or,
-  isNull,
   getTableColumns,
-  asc,
 } from 'drizzle-orm';
 import { db } from '../../db/index';
-import { PgTable } from 'drizzle-orm/pg-core';
-import { SQLiteTable } from 'drizzle-orm/sqlite-core';
-import { promises } from 'dns';
 import {
   moduleDto,
-  chapterDto,
   quizBatchDto,
   ReOrderModuleBody,
-  reOrderDto,
   EditChapterDto,
   openEndedDto,
   CreateAssessmentBody,
@@ -62,12 +53,7 @@ import {
   formDto
 } from './dto/content.dto';
 import { STATUS_CODES } from '../../helpers';
-let helperVariable = {
-  MCQ_POINTS: { "Easy": 4, "Medium": 8, "Hard": 12 },
-  CODING_POINTS: { "Easy": 10, "Medium": 15, "Hard": 20 },
-  OPEN_ENDED_POINTS: { "Easy": 3, "Medium": 6, "Hard": 9 }
-}
-const { ZUVY_CONTENT_URL, ZUVY_CONTENTS_API_URL } = process.env; // INPORTING env VALUSE ZUVY_CONTENT
+import { helperVariable } from '../../constants/helper'
 
 @Injectable()
 export class ContentService {
@@ -914,64 +900,6 @@ export class ContentService {
     }
   }
 
-  async calculateAssessmentWeightage({
-    easyCodingQuestions,
-    easyCodingMarksPerQuestion,
-    mediumCodingQuestions,
-    mediumCodingMarksPerQuestion,
-    hardCodingQuestions,
-    hardCodingMarksPerQuestion,
-    easyMcqQuestions,
-    easyMcqMarksPerQuestion,
-    mediumMcqQuestions,
-    mediumMcqMarksPerQuestion,
-    hardMcqQuestions,
-    hardMcqMarksPerQuestion,
-    totalCodingWeightage = 50, // Overall weightage for coding questions (default 50%)
-    totalMcqWeightage = 50,    // Overall weightage for MCQ questions (default 50%)
-  }) {
-    // Calculate total marks for each coding question type
-    const totalEasyCodingMarks = easyCodingQuestions * easyCodingMarksPerQuestion;
-    const totalMediumCodingMarks = mediumCodingQuestions * mediumCodingMarksPerQuestion;
-    const totalHardCodingMarks = hardCodingQuestions * hardCodingMarksPerQuestion;
-    const totalCodingMarks = totalEasyCodingMarks + totalMediumCodingMarks + totalHardCodingMarks;
-  
-    // Calculate weightage for each coding type
-    const easyCodingWeightage = (totalEasyCodingMarks / totalCodingMarks) * totalCodingWeightage;
-    const mediumCodingWeightage = (totalMediumCodingMarks / totalCodingMarks) * totalCodingWeightage;
-    const hardCodingWeightage = (totalHardCodingMarks / totalCodingMarks) * totalCodingWeightage;
-  
-    // Calculate total marks for each MCQ type
-    const totalEasyMcqMarks = easyMcqQuestions * easyMcqMarksPerQuestion;
-    const totalMediumMcqMarks = mediumMcqQuestions * mediumMcqMarksPerQuestion;
-    const totalHardMcqMarks = hardMcqQuestions * hardMcqMarksPerQuestion;
-    const totalMcqMarks = totalEasyMcqMarks + totalMediumMcqMarks + totalHardMcqMarks;
-  
-    // Calculate weightage for each MCQ type
-    const easyMcqWeightage = (totalEasyMcqMarks / totalMcqMarks) * totalMcqWeightage;
-    const mediumMcqWeightage = (totalMediumMcqMarks / totalMcqMarks) * totalMcqWeightage;
-    const hardMcqWeightage = (totalHardMcqMarks / totalMcqMarks) * totalMcqWeightage;
-  
-    // Calculate the total marks of the entire assessment
-    const totalAssessmentMarks = totalCodingMarks + totalMcqMarks;
-  
-    // Return the calculated values
-    return {
-      totalAssessmentMarks,
-      coding: {
-        totalMarks: totalCodingMarks,
-        easyWeightage: easyCodingWeightage.toFixed(2),
-        mediumWeightage: mediumCodingWeightage.toFixed(2),
-        hardWeightage: hardCodingWeightage.toFixed(2),
-      },
-      mcq: {
-        totalMarks: totalMcqMarks,
-        easyWeightage: easyMcqWeightage.toFixed(2),
-        mediumWeightage: mediumMcqWeightage.toFixed(2),
-        hardWeightage: hardMcqWeightage.toFixed(2),
-      },
-    };
-  }
   // Helper function to calculate the score for each question based on the weightage and counts
   async calculateQuestionScores(totalScore, weightage, questionCounts, type = 'MCQ') {
     const sectionScore = (totalScore * (weightage / 100));
@@ -998,7 +926,7 @@ export class ContentService {
   ) {
     try {
 
-      if (assessmentBody.weightageCodingQuestions + assessmentBody.weightageMcqQuestions != 100){
+      if (assessmentBody.weightageCodingQuestions + assessmentBody.weighageMcqQuestions != 100){
         throw ({
           status: 'error',
           statusCode: 404,
@@ -1103,11 +1031,11 @@ export class ContentService {
           medium: OutsourseAssessmentData__.mediumMcqQuestions || 0,
           hard: OutsourseAssessmentData__.hardMcqQuestions || 0,
         };
-        let totalScore = 100;
+        // let TOTAL_SCORE = 100;
         
         // Calculate the scores for each type
-        const codingScores:any = await this.calculateQuestionScores(totalScore, OutsourseAssessmentData__.weightageCodingQuestions, codingQuestionsCount, 'Coding');
-        const mcqScores:any = await this.calculateQuestionScores(totalScore, OutsourseAssessmentData__.weightageMcqQuestions, mcqQuestionsCount);
+        const codingScores:any = await this.calculateQuestionScores(helperVariable.TOTAL_SCORE, OutsourseAssessmentData__.weightageCodingQuestions, codingQuestionsCount, 'Coding');
+        const mcqScores:any = await this.calculateQuestionScores(helperVariable.TOTAL_SCORE, OutsourseAssessmentData__.weighageMcqQuestions, mcqQuestionsCount);
         // Update marks in the assessment
         let marks = {
           easyCodingMark:codingScores.easy,

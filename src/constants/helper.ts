@@ -14,4 +14,5 @@ export const helperVariable= {
     CODING_POINTS: { "Easy": 10, "Medium": 15, "Hard": 20 },
     OPEN_ENDED_POINTS: { "Easy": 3, "Medium": 6, "Hard": 9 },
     WAIT_API_RESPONSE: 1590,
+    TOTAL_SCORE: 100,
   };
