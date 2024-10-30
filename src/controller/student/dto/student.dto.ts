@@ -9,8 +9,6 @@ import {
 
 
 export class ApplyFormData {
-  // name: string, email: string, phone: string, year:string, familyIncomeUnder3Lakhs: string 
-
   @ApiProperty({
     type: String,
     example: 'prem',

@@ -25,28 +25,20 @@ import {
 
 import { error, log } from 'console';
 import {
-  SQL,
   sql,
   eq,
   count,
   inArray,
   and,
-  or,
-  isNull,
   getTableColumns,
   asc,
   ne,
 } from 'drizzle-orm';
 import { db } from '../../db/index';
-import { PgTable } from 'drizzle-orm/pg-core';
-import { SQLiteTable } from 'drizzle-orm/sqlite-core';
-import { promises } from 'dns';
 import {
   moduleDto,
-  chapterDto,
   quizBatchDto,
   ReOrderModuleBody,
-  reOrderDto,
   EditChapterDto,
   openEndedDto,
   CreateAssessmentBody,
@@ -63,13 +55,9 @@ import {
   formDto,
   CreateQuizzesDto
 } from './dto/content.dto';
-import { STATUS_CODES } from 'src/helpers';
-;
-// import Strapi from "strapi-sdk-js"
+import { STATUS_CODES } from '../../helpers';
+import { helperVariable } from '../../constants/helper'
 
-const { ZUVY_CONTENT_URL, ZUVY_CONTENTS_API_URL } = process.env; // INPORTING env VALUSE ZUVY_CONTENT
-
-// const strapi = new Strapi({url: ZUVY_CONTENTS_API_URL})
 @Injectable()
 export class ContentService {
   async lockContent(modules__, module_id = null) {
@@ -911,12 +899,46 @@ export class ContentService {
     }
   }
 
+  // Helper function to calculate the score for each question based on the weightage and counts
+  async calculateQuestionScores(totalScore, weightage, questionCounts, type = 'MCQ') {
+    const sectionScore = (totalScore * (weightage / 100));
+    const { easy, medium, hard } = questionCounts;
+    
+    // Use the appropriate points for the type of questions (MCQ or Coding)
+    const points = type === 'MCQ' ? helperVariable.MCQ_POINTS : helperVariable.CODING_POINTS;
+  
+    const totalWeight = (easy * points.Easy) + (medium * points.Medium) + (hard * points.Hard);
+  
+    const scores = {
+      easy: (points.Easy / totalWeight) * sectionScore,
+      medium: (points.Medium / totalWeight) * sectionScore,
+      hard: (points.Hard / totalWeight) * sectionScore,
+    };
+  
+    return scores;
+  }
+
   async editAssessment(
     assessmentOutsourseId: number,
     assessmentBody: CreateAssessmentBody,
     chapterId: number
   ) {
     try {
+
+      if (assessmentBody.weightageCodingQuestions + assessmentBody.weightageMcqQuestions != 100){
+        throw ({
+          status: 'error',
+          statusCode: 404,
+          message: 'The total weightage must equal 100.',
+        });
+      }
+      if (assessmentBody.passPercentage > 100){
+        throw({
+          status: 'error',
+          statusCode: 404,
+          message: 'Pass percentage cannot be greater than 100.',
+        })
+      }
       if (assessmentBody.title) {
         const updatedChapterName = await db.update(zuvyModuleChapter).set({ title: assessmentBody.title }).where(eq(zuvyModuleChapter.id, chapterId)).returning();
         if (updatedChapterName.length == 0) {
@@ -996,17 +1018,47 @@ export class ContentService {
             .where(sql`${zuvyOutsourseCodingQuestions.assessmentOutsourseId} = ${assessmentOutsourseId} AND ${inArray(zuvyOutsourseCodingQuestions.codingQuestionId, codingQuestionIdsToDelete)}`);
         }
 
-        // Update assessment data
-        let updatedOutsourse: any = { ...OutsourseAssessmentData__ }
-        let updatedOutsourseAssessment = await db.update(zuvyOutsourseAssessments).set(updatedOutsourse).where(eq(zuvyOutsourseAssessments.id, assessmentOutsourseId)).returning();
+         // Extract counts for each question type and difficulty
+        const codingQuestionsCount = {
+          easy: OutsourseAssessmentData__.easyCodingQuestions || 0,
+          medium: OutsourseAssessmentData__.mediumCodingQuestions || 0,
+          hard: OutsourseAssessmentData__.hardCodingQuestions || 0,
+        };
+
+        const mcqQuestionsCount = {
+          easy: OutsourseAssessmentData__.easyMcqQuestions || 0,
+          medium: OutsourseAssessmentData__.mediumMcqQuestions || 0,
+          hard: OutsourseAssessmentData__.hardMcqQuestions || 0,
+        };
+        // let TOTAL_SCORE = 100;
+        
+        // Calculate the scores for each type
+        const codingScores:any = await this.calculateQuestionScores(helperVariable.TOTAL_SCORE, OutsourseAssessmentData__.weightageCodingQuestions, codingQuestionsCount, 'Coding');
+        const mcqScores:any = await this.calculateQuestionScores(helperVariable.TOTAL_SCORE, OutsourseAssessmentData__.weightageMcqQuestions, mcqQuestionsCount);
+        // Update marks in the assessment
+        let marks = {
+          easyCodingMark:codingScores.easy,
+          mediumCodingMark:codingScores.medium,
+          hardCodingMark:codingScores.hard,
+          easyMcqMark:mcqScores.easy,
+          mediumMcqMark:mcqScores.medium,
+          hardMcqMark:mcqScores.hard,
+        }
+
+        let updatedOutsourse:any = { ...OutsourseAssessmentData__, ...marks };
+        let updatedOutsourseAssessment = await db
+          .update(zuvyOutsourseAssessments)
+          .set(updatedOutsourse)
+          .where(eq(zuvyOutsourseAssessments.id, assessmentOutsourseId))
+          .returning();
 
         let updatedAssessment = await db
           .update(zuvyModuleAssessment)
           .set(assessmentData)
           .where(eq(zuvyModuleAssessment.id, assessment_id))
           .returning();
-
         // Insert new data
+
         let mcqArray = quizIdsToAdd.map(id => ({ quiz_id: id, bootcampId, chapterId, assessmentOutsourseId }));
         let openEndedQuestionsArray = openEndedQuestionIdsToAdd.map(id => ({ openEndedQuestionId: id, bootcampId, moduleId, chapterId, assessmentOutsourseId }));
         let codingProblemsArray = codingQuestionIdsToAdd.map(id => ({ codingQuestionId: id, bootcampId, moduleId, chapterId, assessmentOutsourseId }));

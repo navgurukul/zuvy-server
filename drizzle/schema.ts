@@ -2718,8 +2718,9 @@ export const zuvyAssessmentSubmission = main.table("zuvy_assessment_submission",
     mode: 'string',
   }).defaultNow(),
   copyPaste: integer('copy_paste'),
-  embeddedGoogleSearch: integer('embedded_google_search'),
+  fullScreenExit: integer('full_screen_exit'),
   tabChange: integer('tab_change'),
+  eyeMomentCount: integer('eye_moment_count'),
   submitedAt: timestamp('submited_at', {
     withTimezone: true,
     mode: 'string',
@@ -2736,7 +2737,6 @@ export const zuvyAssessmentSubmission = main.table("zuvy_assessment_submission",
   requiredCodingScore: integer('required_coding_score'),
   requiredOpenEndedScore: integer('required_open_ended_score'),
   requiredMCQScore: integer('required_mcq_score'),
-  // double precision
   isPassed: boolean('is_passed'),
   percentage: numeric('percentage'),
   typeOfsubmission: varchar('type_of_submission', { length: 255 }),
@@ -2907,14 +2907,13 @@ export const trackingPostsRelations = relations(
   }),
 );
 
-
 export const zuvyOutsourseAssessments = main.table('zuvy_outsourse_assessments', {
   id: serial('id').primaryKey().notNull(),
   assessmentId: integer('assessment_id').references(() => zuvyModuleAssessment.id, {
     onDelete: 'cascade',
     onUpdate: 'cascade',
   }).notNull(),
-  bootcampId: integer("bootcamp_id").references(() => zuvyBootcamps.id, {
+  bootcampId: integer('bootcamp_id').references(() => zuvyBootcamps.id, {
     onDelete: 'cascade',
     onUpdate: 'cascade',
   }),
@@ -2926,6 +2925,24 @@ export const zuvyOutsourseAssessments = main.table('zuvy_outsourse_assessments',
     onDelete: 'cascade',
     onUpdate: 'cascade',
   }),
+  codingQuestionTagId: integer('coding_question_tag_id').array(),  // New field
+  mcqTagId: integer('mcq_tag_id').array(),  // New field
+  easyCodingQuestions: integer('easy_coding_questions'),  // New field
+  mediumCodingQuestions: integer('medium_coding_questions'),  // New field
+  hardCodingQuestions: integer('hard_coding_questions'),  // New field
+  totalCodingQuestions: integer('total_coding_questions'),  // New field
+  totalMcqQuestions: integer('total_mcq_questions'),  // New field
+  easyMcqQuestions: integer('easy_mcq_questions'),  // New field
+  mediumMcqQuestions: integer('medium_mcq_questions'),  // New field
+  hardMcqQuestions: integer('hard_mcq_questions'),  // New field
+  weightageCodingQuestions: integer('weightage_coding_questions'),  // New field
+  weightageMcqQuestions: integer('weightage_mcq_questions'),  // New field
+  easyCodingMark: doublePrecision('easy_coding_mark'),  // New field
+  mediumCodingMark: doublePrecision('medium_coding_mark'),  // New field
+  hardCodingMark: doublePrecision('hard_coding_mark'),  // New field
+  easyMcqMark: doublePrecision('easy_mcq_mark'),  // New field
+  mediumMcqMark: doublePrecision('medium_mcq_mark'),  // New field
+  hardMcqMark: doublePrecision('hard_mcq_mark'),  // New field
   tabChange: boolean('tab_change'),
   webCamera: boolean('web_camera'),
   passPercentage: integer('pass_percentage'),
@@ -2936,6 +2953,10 @@ export const zuvyOutsourseAssessments = main.table('zuvy_outsourse_assessments',
   marks: integer('marks'),
   copyPaste: boolean('copy_paste'),
   order: integer('order'),
+  canEyeTrack: boolean('can_eye_track'),
+  canTabChange: boolean('can_tab_change'),
+  canScreenExit: boolean('can_screen_exit'),
+  CanCopyPaste: boolean('can_copy_paste'),
   createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow(),
 });
 

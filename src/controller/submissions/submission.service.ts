@@ -1345,4 +1345,17 @@ export class SubmissionService {
       return [{ message: error.message, statusCode: STATUS_CODES.BAD_REQUEST }, null]
     }
   }
+  
+  async submitProperting(assessmentSubmissionId, propertingPutBody:any): Promise<any> {
+    try{
+      let updatedSubmissionAssessment = await db.update(zuvyAssessmentSubmission).set(propertingPutBody).where(eq(zuvyAssessmentSubmission.id, assessmentSubmissionId)).returning({eyeMomentCount:zuvyAssessmentSubmission.eyeMomentCount,fullScreenExit:zuvyAssessmentSubmission.fullScreenExit,copyPaste:zuvyAssessmentSubmission.copyPaste,tabChange: zuvyAssessmentSubmission.tabChange});
+      if (updatedSubmissionAssessment.length == 0){
+        return [null, { message: "Assessment properting not found", statusCode: STATUS_CODES.NOT_FOUND, data:{} }]
+      }
+      return [null, { message: 'Assignment properting data updated', statusCode: STATUS_CODES.OK, data: updatedSubmissionAssessment[0] }]
+    } catch (error){
+      console.log({error})
+      return [{ message: error.message, statusCode: STATUS_CODES.BAD_REQUEST }, null]
+    }
+  }
 }

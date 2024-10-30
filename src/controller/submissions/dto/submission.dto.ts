@@ -106,6 +106,7 @@ export class SubmissionassessmentDto{
     })
     @IsNotEmpty()
     tabChange: number;
+
     @ApiProperty({
         type: Number,
         example: 2,
@@ -113,6 +114,7 @@ export class SubmissionassessmentDto{
     })
     @IsNotEmpty()
     copyPaste: number;
+
     @ApiProperty({
         type: Number,
         example: 44002,
@@ -191,16 +193,48 @@ export class OpenEndedQuestionSubmissionDto{
     answer: string;
 }
 
-  export class OpenEndedQuestionSubmissionDtoList {
-    @ApiProperty({
-      type: [OpenEndedQuestionSubmissionDto],
-      required: true,
-    })
-    @IsNotEmpty()
-    @ValidateNested({ each: true })
-    @Type(() => OpenEndedQuestionSubmissionDto)
-    openEndedQuestionSubmissionDto: OpenEndedQuestionSubmissionDto[];
-  }
-// list of QuizSubmissionDto
+export class OpenEndedQuestionSubmissionDtoList {
+@ApiProperty({
+    type: [OpenEndedQuestionSubmissionDto],
+    required: true,
+})
+@IsNotEmpty()
+@ValidateNested({ each: true })
+@Type(() => OpenEndedQuestionSubmissionDto)
+openEndedQuestionSubmissionDto: OpenEndedQuestionSubmissionDto[];
+}
 
+export class PropertingPutBody{
+    @ApiProperty({
+        type: Number,
+        example: 2,
+        required: true,
+    })
+    @IsOptional()
+    tabChange: number;
+    
+    @ApiProperty({
+        type: Number,
+        example: 2,
+        required: true,
+    })
+    @IsOptional()
+    copyPaste: number;
+
+    @ApiProperty({
+        type: Number,
+        example: 2,
+        required: true,
+    })
+    @IsOptional()
+    fullScreenExit: number;
+
+    @ApiProperty({
+        type: Number,
+        example: 4,
+        required: true,
+    })
+    @IsOptional()
+    eyeMomentCount: number;
+}
 
