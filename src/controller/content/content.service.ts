@@ -35,6 +35,7 @@ import {
   isNull,
   getTableColumns,
   asc,
+  ne,
 } from 'drizzle-orm';
 import { db } from '../../db/index';
 import { PgTable } from 'drizzle-orm/pg-core';
@@ -59,7 +60,8 @@ import {
   editFormBatchDto,
   CreateTypeDto,
   CreateAndEditFormBody,
-  formDto
+  formDto,
+  CreateQuizzesDto
 } from './dto/content.dto';
 import { STATUS_CODES } from 'src/helpers';
 ;
@@ -310,55 +312,51 @@ export class ContentService {
     }
   }
 
-  async createQuizForModule(quiz: quizBatchDto): Promise<any> {
+  async createQuizForModule(quizData: CreateQuizzesDto): Promise<any> {
     try {
-      // Insert quiz data first
-      const newQuiz = await db
-        .insert(zuvyModuleQuiz)
-        .values({
-          title: quiz.title,
-          difficulty: quiz.difficulty,
-          tagId: quiz.tagId,
-          content: quiz.content,
-          isRandom: quiz.isRandomOptions,
-        })
-        .returning();
-  
-      if (newQuiz.length > 0) {
-        const quizId = newQuiz[0].id;
-  
-        // Insert quiz variants
-        const variants = quiz.variantMCQs.map((variant, index) => ({
-          quizId,
-          question: variant.question,
-          options: variant.options,
-          correctOption: variant.correctOption,
-          variantNumber: index + 1, // Set variant number as index + 1
-        }));
-  
-        const variantResult = await db
-          .insert(zuvyModuleQuizVariants)
-          .values(variants)
+      // Ensure quizzes is an array and each quiz is treated as quizBatchDto
+      const quizzes = Array.isArray(quizData.quizzes) ? quizData.quizzes : [quizData.quizzes];
+
+      for (const quiz of quizzes as quizBatchDto[]) { 
+        const newQuiz = await db
+          .insert(zuvyModuleQuiz)
+          .values({
+            title: quiz.title,
+            difficulty: quiz.difficulty,
+            tagId: quiz.tagId,
+            content: quiz.content,
+            isRandom: quiz.isRandomOptions,
+          })
           .returning();
-  
-        if (variantResult.length > 0) {
-          return[ null, {
-            message: 'MCQ and variants have been created successfully.',
-            statusCode: STATUS_CODES.CREATED
-          }];
+
+        if (newQuiz.length > 0) {
+          const quizId = newQuiz[0].id;
+
+          // Insert quiz variants
+          const variants = quiz.variantMCQs.map((variant, index) => ({
+            quizId,
+            question: variant.question,
+            options: variant.options,
+            correctOption: variant.correctOption,
+            variantNumber: index + 1,
+          }));
+
+          await db.insert(zuvyModuleQuizVariants).values(variants).returning();
         }
       }
-  
-      return [{
-        status: 'error',
-        statusCode: STATUS_CODES.NOT_FOUND,
-        message: 'MCQ and variants could not be created. Please try again',
+
+      return [null, {
+        message: 'MCQ and variants have been created successfully.',
+        statusCode: STATUS_CODES.CREATED,
       }];
     } catch (err) {
-      return [{ message: err.message, statusCode: STATUS_CODES.BAD_REQUEST }, null]
+      return [{ message: err.message, statusCode: STATUS_CODES.BAD_REQUEST }, null];
     }
   }
   
+  
+
+
 
   async createOpenEndedQuestions(questions: openEndedDto) {
     try {
@@ -1159,9 +1157,12 @@ export class ContentService {
         conditions.push(inArray(zuvyModuleQuiz.difficulty, difficultyArray));
       }
   
+      // Add condition to only select quiz variants where variant_number is 1
+      conditions.push(sql`${zuvyModuleQuizVariants.variantNumber} = 1`);
+  
       if (searchTerm) {
         conditions.push(
-          sql`LOWER(${zuvyModuleQuiz.question}) ~ ${sql.raw(`'\\m${searchTerm.toLowerCase()}'`)}`
+          sql`LOWER(${zuvyModuleQuizVariants.question}) ~ ${sql.raw(`'\\m${searchTerm.toLowerCase()}'`)}`
         );
       }
   
@@ -1169,22 +1170,27 @@ export class ContentService {
       const totalRows = await db
         .select({ count: sql<number>`count(*)` })
         .from(zuvyModuleQuiz)
+        .innerJoin(zuvyModuleQuizVariants, eq(zuvyModuleQuiz.id, zuvyModuleQuizVariants.quizId)) // Joining with quiz variants
         .where(and(...conditions))
         .execute();
   
       const result = await db
         .select({
           ...getTableColumns(zuvyModuleQuiz),
+          question: zuvyModuleQuizVariants.question,  // Access question from quiz variants
+          options: zuvyModuleQuizVariants.options,    // Access options from quiz variants
+          correctOption: zuvyModuleQuizVariants.correctOption,  // Access correct option from quiz variants
           matchPosition: sql<number>`
             CASE
-              WHEN LOWER(${zuvyModuleQuiz.question}) LIKE ${sql.raw(`'${searchTerm.toLowerCase()}%'`)} THEN 0
-              WHEN LOWER(${zuvyModuleQuiz.question}) ~ ${sql.raw(`'\\m${searchTerm.toLowerCase()}'`)} THEN 
-                POSITION(${sql.raw(`'${searchTerm.toLowerCase()}'`)} IN LOWER(${zuvyModuleQuiz.question})) - 1
+              WHEN LOWER(${zuvyModuleQuizVariants.question}) LIKE ${sql.raw(`'${searchTerm.toLowerCase()}%'`)} THEN 0
+              WHEN LOWER(${zuvyModuleQuizVariants.question}) ~ ${sql.raw(`'\\m${searchTerm.toLowerCase()}'`)} THEN 
+                POSITION(${sql.raw(`'${searchTerm.toLowerCase()}'`)} IN LOWER(${zuvyModuleQuizVariants.question})) - 1
               ELSE 9999 -- Push non-matching to the end
             END
           `.as('match_position')
         })
         .from(zuvyModuleQuiz)
+        .innerJoin(zuvyModuleQuizVariants, eq(zuvyModuleQuiz.id, zuvyModuleQuizVariants.quizId)) // Join with quiz variants
         .where(and(...conditions))
         .orderBy(searchTerm ? sql`match_position` : sql`${zuvyModuleQuiz.id} DESC`)
         .limit(limit)
@@ -1777,7 +1783,7 @@ export class ContentService {
     }
   }
 
-  async getAssessmentDetailsOfQuiz(assessment_outsourse_id: number, userId) {
+  async getAssessmentDetailsOfQuiz(assessment_outsourse_id: number, userId: number) {
     try {
       const assessment = await db.query.zuvyOutsourseQuizzes.findMany({
         where: (zuvyOutsourseQuizzes, { eq }) =>
@@ -1793,26 +1799,36 @@ export class ContentService {
               attemptCount: true,
             }
           },
-          Quiz: {
+          Quiz: { // Using "Quiz" instead of "quiz"
             columns: {
-              id: true,
-              question: true,
-              options: true,
+              id: true, // Main quiz ID
+              title: true,
               difficulty: true,
-              correctOption: true,
-              marks: true,
+              content: true,
+              isRandomOptions: true,
+            },
+            with: {
+              quizVariants: {
+                where: (zuvyModuleQuizVariants, { eq }) => eq(zuvyModuleQuizVariants.variantNumber, 1),
+                columns: {
+                  question: true,
+                  options: true,
+                  correctOption: true,
+                }
+              }
             }
-          },
+          }
         }
-      })
-      if (assessment.length == 0) {
+      });
+  
+      if (assessment.length === 0) {
         return [];
       }
       return assessment;
     } catch (err) {
       throw err;
     }
-  }
+  }    
 
   async getAssessmentDetailsOfOpenEnded(assessment_outsourse_id: number, userId) {
     try {
@@ -2256,5 +2272,67 @@ export class ContentService {
       return [{ message: err.message }]
     }
   }
+
+  async getAllQuizVariants(quizId: number): Promise<any> {
+    try {
+      const result = await db
+        .select({
+          ...getTableColumns(zuvyModuleQuiz),
+          question: zuvyModuleQuizVariants.question,
+          options: zuvyModuleQuizVariants.options,
+          correctOption: zuvyModuleQuizVariants.correctOption,
+          variantNumber: zuvyModuleQuizVariants.variantNumber,
+          createdAt: zuvyModuleQuizVariants.createdAt,
+          updatedAt: zuvyModuleQuizVariants.updatedAt,
+        })
+        .from(zuvyModuleQuiz)
+        .innerJoin(zuvyModuleQuizVariants, eq(zuvyModuleQuiz.id, zuvyModuleQuizVariants.quizId))
+        .where(eq(zuvyModuleQuiz.id, quizId))
+        .execute();
+  
+      if (result.length === 0) {
+        return [
+          null,
+          {
+            message: 'No variants found for the provided quiz ID',
+            statusCode: STATUS_CODES.NOT_FOUND,
+            data: []
+          }
+        ];
+      }
+  
+      const quizData = {
+        id: result[0].id,
+        title: result[0].title,
+        difficulty: result[0].difficulty,
+        tagId: result[0].tagId,
+        usage: result[0].usage,
+        content: result[0].content,
+        isRandomOptions: result[0].isRandomOptions,
+        createdAt: result[0].createdAt,
+        updatedAt: result[0].updatedAt,
+        variantMCQs: result.map((item) => ({
+          question: item.question,
+          options: item.options,
+          correctOption: item.correctOption,
+          variantNumber: item.variantNumber,
+          createdAt: item.createdAt,
+          updatedAt: item.updatedAt
+        }))
+      };
+  
+      return [
+        null,
+        {
+          message: 'Variants retrieved successfully',
+          statusCode: STATUS_CODES.OK,
+          data: [quizData]
+        }
+      ];
+    } catch (err) {
+      return [{ message: err.message, statusCode: STATUS_CODES.BAD_REQUEST }, null];
+    }
+  }    
+       
 }
 

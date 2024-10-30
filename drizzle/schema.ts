@@ -2388,19 +2388,19 @@ export const zuvyTags = main.table('zuvy_tags', {
 
 export const zuvyModuleQuiz = main.table('zuvy_module_quiz', {
   id: serial('id').primaryKey().notNull(),
-  question: text('question'),
-  options: jsonb('options'),
-  correctOption: integer('correct_option'),
-  marks: integer('marks'),
   title: text('title'),
   difficulty: difficulty('difficulty'),
   tagId: integer('tag_id').references(() => zuvyTags.id),
   usage: integer('usage').default(0),
   content: text('content'),
-  isRandom: boolean('is_random').default(false),
+  isRandomOptions: boolean('is_random').default(false),
   createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
 });
+
+export const zuvyModuleQuizRelations = relations(zuvyModuleQuiz, ({ one, many }) => ({
+  quizVariants: many(zuvyModuleQuizVariants), // One quiz can have many variants
+}));
 
 export const zuvyModuleQuizVariants = main.table('zuvy_module_quiz_variants', {
   id: serial('id').primaryKey().notNull(),
@@ -2412,6 +2412,13 @@ export const zuvyModuleQuizVariants = main.table('zuvy_module_quiz_variants', {
   createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
 });
+
+export const zuvyModuleQuizVariantsRelations = relations(zuvyModuleQuizVariants, ({ one }) => ({
+  quiz: one(zuvyModuleQuiz, {
+    fields: [zuvyModuleQuizVariants.quizId], 
+    references: [zuvyModuleQuiz.id], 
+  }),
+}));
 
 export const zuvyCourseModules = main.table("zuvy_course_modules", {
   id: serial("id").primaryKey().notNull(),

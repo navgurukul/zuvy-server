@@ -44,7 +44,8 @@ import {
   formBatchDto,
   editFormBatchDto,
   CreateTypeDto,
-  CreateAndEditFormBody
+  CreateAndEditFormBody,
+  CreateQuizzesDto
 } from './dto/content.dto';
 import { RolesGuard } from 'src/guards/roles.guard';
 import { ErrorResponse, SuccessResponse } from 'src/errorHandler/handler';
@@ -187,7 +188,7 @@ export class ContentController {
   @ApiBearerAuth()
   @UseGuards(RolesGuard)
   async createQuizForModule(
-    @Body() quizQuestions: quizBatchDto,
+    @Body() quizQuestions: CreateQuizzesDto,
     @Res() res
   ): Promise<object> {
     try {
@@ -759,4 +760,21 @@ export class ContentController {
       return ErrorResponse.BadRequestException(error.message).send(res);
     }
   }
+
+  @Get('/quiz/:quizId')
+  @ApiOperation({ summary: 'Get all variants by quizId' })
+  @ApiBearerAuth()
+  @UseGuards(RolesGuard)
+  async getAllQuizVariants(@Param('quizId') quizId: number, @Res() res) {
+    try {
+      const [err, success] = await this.contentService.getAllQuizVariants(quizId);
+      if (err) {
+        return ErrorResponse.BadRequestException(err.message).send(res);
+      }
+      return new SuccessResponse(success.message, success.statusCode, success.data).send(res);
+    } catch (error) {
+      return ErrorResponse.BadRequestException(error.message).send(res);
+    }
+  }
+  
 }

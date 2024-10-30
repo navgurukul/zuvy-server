@@ -272,6 +272,17 @@ export class  quizBatchDto {
 
 }
 
+export class CreateQuizzesDto {
+  @ApiProperty({
+    type: [quizBatchDto],
+    required: true,
+  })
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => quizBatchDto)
+  quizzes: quizBatchDto[];
+}
+
 export class reOrderDto {
   @ApiProperty({
     type: Number,
