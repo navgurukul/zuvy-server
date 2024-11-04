@@ -1757,6 +1757,20 @@ export class ContentService {
     }
   }
 
+  async getCodingQuestionsByDifficulty(difficulty, assessmentOutsourseId, limit, tagIds) {
+    return await db.query.zuvyOutsourseCodingQuestions.findMany({
+      where: (zuvyOutsourseCodingQuestions, { eq }) => 
+        eq(zuvyOutsourseCodingQuestions.assessmentOutsourseId, assessmentOutsourseId),
+      with: {
+        CodingQuestion: {
+          columns: { id: true, title: true, description: true, difficulty: true, content: true, constraints: true, usage: true, tagId: true, createdAt: true, updatedAt: true, },
+          where: (CodingQuestion, { eq }) => eq(CodingQuestion.difficulty, difficulty),
+        }
+      },
+      orderBy: sql`RANDOM()`, // Random order
+      limit: limit, // Limit the number of results
+    });
+  }
   /**
  * Initiates an assessment for a student.
  * This function might set up necessary variables, database entries, or other prerequisites 
@@ -1765,64 +1779,54 @@ export class ContentService {
   async startAssessmentForStudent(assessmentOutsourseId: number, req) {
     try {
       let { id } = req.user[0];
-      const assessment = await db.query.zuvyOutsourseAssessments.findMany({
+      let { DIFFICULTY } = helperVariable
+      const assessmentOutsourseData = await db.query.zuvyOutsourseAssessments.findFirst({
         where: (zuvyOutsourseAssessments, { eq }) =>
           eq(zuvyOutsourseAssessments.id, assessmentOutsourseId),
         with: {
-          ModuleAssessment: true,
-          CodingQuestions: {
-            columns: {
-              id: true,
-              assessmentOutsourseId: true,
-              bootcampId: true
-            },
-            with: {
-              CodingQuestion: true
-            }
-          },
-          Quizzes: {
-            columns: {
-              id: true,
-              assessmentOutsourseId: true,
-              bootcampId: true
-            },
-            with: {
-              Quiz: true,
-            }
-          },
-          OpenEndedQuestions: {
-            columns: {
-              id: true,
-              assessmentOutsourseId: true,
-              bootcampId: true
-            },
-            with: {
-              OpenEndedQuestion: true
-            }
-          }
+          ModuleAssessment: true
         },
       })
+      console.log({assessmentOutsourseData})
+      let easyCodingQuestions = await this.getCodingQuestionsByDifficulty(
+        DIFFICULTY.EASY, 
+        assessmentOutsourseId, 
+        assessmentOutsourseData.easyCodingQuestions,
+        assessmentOutsourseData.codingQuestionTagId
+      );
 
-      if (assessment == undefined || assessment.length == 0) {
-        throw ({
-          status: 'error',
-          statusCode: 404,
-          message: 'Assessment not found',
-        });
-      }
+      console.log({easyCodingQuestions})
+      let mediumCodingQuestions = await this.getCodingQuestionsByDifficulty(
+        DIFFICULTY.MEDIUM, 
+        assessmentOutsourseId, 
+        assessmentOutsourseData.mediumCodingQuestions,
+        assessmentOutsourseData.codingQuestionTagId
+      );
+  
+      let hardCodingQuestions = await this.getCodingQuestionsByDifficulty(
+        DIFFICULTY.HARD, 
+        assessmentOutsourseId, 
+        assessmentOutsourseData.hardCodingQuestions,
+        assessmentOutsourseData.codingQuestionTagId
+      );
+      
       let startedAt = new Date().toISOString();
       let submission = await db.select().from(zuvyAssessmentSubmission).where(sql`${zuvyAssessmentSubmission.userId} = ${id} AND ${zuvyAssessmentSubmission.assessmentOutsourseId} = ${assessmentOutsourseId} AND ${zuvyAssessmentSubmission.submitedAt} IS NULL`);
       if (submission.length == 0) {
         let insertAssessmentSubmission: any = { userId: id, assessmentOutsourseId, startedAt }
         submission = await db.insert(zuvyAssessmentSubmission).values(insertAssessmentSubmission).returning();
       }
-
-      let formatedData = await this.formatedChapterDetails(assessment[0]);
-
-      formatedData.Quizzes = formatedData.Quizzes.length
-      formatedData.OpenEndedQuestions = formatedData.OpenEndedQuestions.length
-
-      return { ...formatedData, submission: submission[0] };
+      
+      let assessment = {
+        ...assessmentOutsourseData,
+        codingQuestions:{
+          easyCodingQuestions,
+          mediumCodingQuestions,
+          hardCodingQuestions
+        },
+        submission: submission[0]
+      }
+      return assessment;
     } catch (err) {
       throw err;
     }
