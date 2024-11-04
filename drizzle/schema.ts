@@ -2393,7 +2393,7 @@ export const zuvyModuleQuiz = main.table('zuvy_module_quiz', {
   tagId: integer('tag_id').references(() => zuvyTags.id),
   usage: integer('usage').default(0),
   content: text('content'),
-  isRandomOptions: boolean('is_random').default(false),
+  isRandomOptions: boolean('is_random_options').default(false),
   createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
 });
