@@ -1843,12 +1843,12 @@ export class ContentService {
     }
   }
 
-  async getCodingQuestionsByDifficulty(difficultyLevel, assessmentOutsourseId, limit, selectedTagIds) {
+  async getCodingQuestionsByDifficulty(difficultyLevel, assessmentOutsourseId, limit, selectedTagIds, id) {
     let ZOSCQ  = await db
     .select()
     .from(zuvyOutsourseCodingQuestions)
     .where(eq(zuvyOutsourseCodingQuestions.assessmentOutsourseId, assessmentOutsourseId))
-    .orderBy(sql`md5(id::text || '987000')`) // Use the desired seed here
+    .orderBy(sql`md5(id::text || ${parseInt(id)})`) // Use the desired seed here
     .limit(limit);
 
     let questions = []
@@ -1870,7 +1870,7 @@ export class ContentService {
     return questions;
   }
 
-  async getCodingQuestionsByAllDifficulties(assessmentOutsourseId, assessmentOutsourseData) {
+  async getCodingQuestionsByAllDifficulties(assessmentOutsourseId, assessmentOutsourseData, id) {
     const difficulties = [DIFFICULTY.EASY, DIFFICULTY.MEDIUM, DIFFICULTY.HARD];
     const questionsByDifficulty = {};
   
@@ -1879,7 +1879,8 @@ export class ContentService {
         difficulty, 
         assessmentOutsourseId, 
         assessmentOutsourseData[`${difficulty.toLowerCase()}CodingQuestions`],
-        assessmentOutsourseData.codingQuestionTagId
+        assessmentOutsourseData.codingQuestionTagId,
+        id
       );
     }
   
@@ -1902,7 +1903,7 @@ export class ContentService {
     });
 
     // Fetching all coding questions at once
-    const codingQuestions = await this.getCodingQuestionsByAllDifficulties(assessmentOutsourseId, assessmentOutsourseData);
+    const codingQuestions = await this.getCodingQuestionsByAllDifficulties(assessmentOutsourseId, assessmentOutsourseData, id);
     
     // Accessing the questions for each difficulty level
     const easyCodingQuestions = codingQuestions[DIFFICULTY.EASY];
