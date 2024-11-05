@@ -53,7 +53,8 @@ import {
   formDto
 } from './dto/content.dto';
 import { STATUS_CODES } from '../../helpers';
-import { helperVariable } from '../../constants/helper'
+import { helperVariable } from '../../constants/helper';
+let {DIFFICULTY} = helperVariable;
 
 @Injectable()
 export class ContentService {
@@ -1757,19 +1758,47 @@ export class ContentService {
     }
   }
 
-  async getCodingQuestionsByDifficulty(difficulty, assessmentOutsourseId, limit, tagIds) {
-    return await db.query.zuvyOutsourseCodingQuestions.findMany({
-      where: (zuvyOutsourseCodingQuestions, { eq }) => 
-        eq(zuvyOutsourseCodingQuestions.assessmentOutsourseId, assessmentOutsourseId),
-      with: {
-        CodingQuestion: {
-          columns: { id: true, title: true, description: true, difficulty: true, content: true, constraints: true, usage: true, tagId: true, createdAt: true, updatedAt: true, },
-          where: (CodingQuestion, { eq }) => eq(CodingQuestion.difficulty, difficulty),
-        }
-      },
-      orderBy: sql`RANDOM()`, // Random order
-      limit: limit, // Limit the number of results
-    });
+  async getCodingQuestionsByDifficulty(difficultyLevel, assessmentOutsourseId, limit, selectedTagIds) {
+    let ZOSCQ  = await db
+    .select()
+    .from(zuvyOutsourseCodingQuestions)
+    .where(eq(zuvyOutsourseCodingQuestions.assessmentOutsourseId, assessmentOutsourseId))
+    .orderBy(sql`md5(id::text || '987000')`) // Use the desired seed here
+    .limit(limit);
+
+    let questions = []
+    for (const questionItem of ZOSCQ) {
+      const questionData = await db
+        .select()
+        .from(zuvyCodingQuestions)
+        .where(
+          and(
+            eq(zuvyCodingQuestions.difficulty, difficultyLevel),
+            eq(zuvyCodingQuestions.id, questionItem.codingQuestionId),
+            inArray(zuvyCodingQuestions.tagId, selectedTagIds)
+          )
+        );
+      if (questionData.length > 0) {
+        questions.push({...questionData[0],...questionItem}); // Push the first result if it's not empty
+      }
+    }    
+    return questions;
+  }
+
+  async getCodingQuestionsByAllDifficulties(assessmentOutsourseId, assessmentOutsourseData) {
+    const difficulties = [DIFFICULTY.EASY, DIFFICULTY.MEDIUM, DIFFICULTY.HARD];
+    const questionsByDifficulty = {};
+  
+    for (const difficulty of difficulties) {
+      questionsByDifficulty[difficulty] = await this.getCodingQuestionsByDifficulty(
+        difficulty, 
+        assessmentOutsourseId, 
+        assessmentOutsourseData[`${difficulty.toLowerCase()}CodingQuestions`],
+        assessmentOutsourseData.codingQuestionTagId
+      );
+    }
+  
+    return questionsByDifficulty;
   }
   /**
  * Initiates an assessment for a student.
@@ -1779,36 +1808,21 @@ export class ContentService {
   async startAssessmentForStudent(assessmentOutsourseId: number, req) {
     try {
       let { id } = req.user[0];
-      let { DIFFICULTY } = helperVariable
-      const assessmentOutsourseData = await db.query.zuvyOutsourseAssessments.findFirst({
-        where: (zuvyOutsourseAssessments, { eq }) =>
-          eq(zuvyOutsourseAssessments.id, assessmentOutsourseId),
-        with: {
-          ModuleAssessment: true
-        },
-      })
-      console.log({assessmentOutsourseData})
-      let easyCodingQuestions = await this.getCodingQuestionsByDifficulty(
-        DIFFICULTY.EASY, 
-        assessmentOutsourseId, 
-        assessmentOutsourseData.easyCodingQuestions,
-        assessmentOutsourseData.codingQuestionTagId
-      );
+    const assessmentOutsourseData = await db.query.zuvyOutsourseAssessments.findFirst({
+      where: (zuvyOutsourseAssessments, { eq }) =>
+        eq(zuvyOutsourseAssessments.id, assessmentOutsourseId),
+      with: {
+        ModuleAssessment: true
+      },
+    });
 
-      console.log({easyCodingQuestions})
-      let mediumCodingQuestions = await this.getCodingQuestionsByDifficulty(
-        DIFFICULTY.MEDIUM, 
-        assessmentOutsourseId, 
-        assessmentOutsourseData.mediumCodingQuestions,
-        assessmentOutsourseData.codingQuestionTagId
-      );
-  
-      let hardCodingQuestions = await this.getCodingQuestionsByDifficulty(
-        DIFFICULTY.HARD, 
-        assessmentOutsourseId, 
-        assessmentOutsourseData.hardCodingQuestions,
-        assessmentOutsourseData.codingQuestionTagId
-      );
+    // Fetching all coding questions at once
+    const codingQuestions = await this.getCodingQuestionsByAllDifficulties(assessmentOutsourseId, assessmentOutsourseData);
+    
+    // Accessing the questions for each difficulty level
+    const easyCodingQuestions = codingQuestions[DIFFICULTY.EASY];
+    const mediumCodingQuestions = codingQuestions[DIFFICULTY.MEDIUM];
+    const hardCodingQuestions = codingQuestions[DIFFICULTY.HARD];
       
       let startedAt = new Date().toISOString();
       let submission = await db.select().from(zuvyAssessmentSubmission).where(sql`${zuvyAssessmentSubmission.userId} = ${id} AND ${zuvyAssessmentSubmission.assessmentOutsourseId} = ${assessmentOutsourseId} AND ${zuvyAssessmentSubmission.submitedAt} IS NULL`);
@@ -1819,11 +1833,11 @@ export class ContentService {
       
       let assessment = {
         ...assessmentOutsourseData,
-        codingQuestions:{
-          easyCodingQuestions,
-          mediumCodingQuestions,
-          hardCodingQuestions
-        },
+        codingQuestions:[
+          ...easyCodingQuestions,
+          ...mediumCodingQuestions,
+          ...hardCodingQuestions
+        ],
         submission: submission[0]
       }
       return assessment;

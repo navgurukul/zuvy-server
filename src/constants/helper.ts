@@ -16,8 +16,8 @@ export const helperVariable= {
     WAIT_API_RESPONSE: 1590,
     TOTAL_SCORE: 100,
     DIFFICULTY: {
-      EASY: 'easy',
-      MEDIUM: 'medium',
-      HARD: 'hard',
+      EASY: 'Easy',
+      MEDIUM: 'Medium',
+      HARD: 'Hard',
     },
   };
