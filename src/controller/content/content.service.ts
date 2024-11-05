@@ -31,6 +31,9 @@ import {
   inArray,
   and,
   getTableColumns,
+  asc,
+  ne,
+  SQL,
 } from 'drizzle-orm';
 import { db } from '../../db/index';
 import {
@@ -40,7 +43,7 @@ import {
   EditChapterDto,
   openEndedDto,
   CreateAssessmentBody,
-  editQuizBatchDto,
+  EditQuizBatchDto,
   UpdateProblemDto,
   deleteQuestionDto,
   UpdateOpenEndedDto,
@@ -50,7 +53,11 @@ import {
   editFormBatchDto,
   CreateTypeDto,
   CreateAndEditFormBody,
-  formDto
+  formDto,
+  CreateQuizzesDto,
+  EditQuizVariantDto,
+  CreateQuizVariantDto,
+  AddQuizVariantsDto
 } from './dto/content.dto';
 import { STATUS_CODES } from '../../helpers';
 import { helperVariable } from '../../constants/helper';
@@ -298,55 +305,82 @@ export class ContentService {
     }
   }
 
-  async createQuizForModule(quiz: quizBatchDto): Promise<any> {
+  async createQuizForModule(quizData: CreateQuizzesDto): Promise<any> {
     try {
-      // Insert quiz data first
-      const newQuiz = await db
-        .insert(zuvyModuleQuiz)
-        .values({
-          title: quiz.title,
-          difficulty: quiz.difficulty,
-          tagId: quiz.tagId,
-          content: quiz.content,
-          isRandom: quiz.isRandomOptions,
-        })
-        .returning();
+      // Ensure quizzes is an array
+      const quizzes = Array.isArray(quizData.quizzes) ? quizData.quizzes : [quizData.quizzes];
+      const quizUploadResults = [];
+      let validationErrors = [];
+      
+      // Validate required fields for each quiz and its variants
+      for (const quiz of quizzes) {
+        if (!quiz.difficulty || !quiz.tagId) {
+          validationErrors.push('All fields are required');
+        }
   
-      if (newQuiz.length > 0) {
-        const quizId = newQuiz[0].id;
-  
-        // Insert quiz variants
-        const variants = quiz.variantMCQs.map((variant, index) => ({
-          quizId,
-          question: variant.question,
-          options: variant.options,
-          correctOption: variant.correctOption,
-          variantNumber: index + 1, // Set variant number as index + 1
-        }));
-  
-        const variantResult = await db
-          .insert(zuvyModuleQuizVariants)
-          .values(variants)
-          .returning();
-  
-        if (variantResult.length > 0) {
-          return[ null, {
-            message: 'MCQ and variants have been created successfully.',
-            statusCode: STATUS_CODES.CREATED
-          }];
+        // Validate variants if they exist
+        if (quiz.variantMCQs) {
+          for (const variant of quiz.variantMCQs) {
+            if (!variant.question || typeof variant.options !== 'object' || Object.keys(variant.options).length === 0 || variant.correctOption === undefined) {
+              validationErrors.push('All fields are required.');            }
+          }
         }
       }
-  
-      return [{
-        status: 'error',
-        statusCode: STATUS_CODES.NOT_FOUND,
-        message: 'MCQ and variants could not be created. Please try again',
-      }];
+
+      if (validationErrors.length === 0) {
+        const quizzesData = quizzes.map((quiz) => ({
+          title: quiz.title, // Optional
+          difficulty: quiz.difficulty,
+          tagId: quiz.tagId,
+          content: quiz.content, // Optional
+          isRandom: quiz.isRandomOptions, // Optional
+        }));
+    
+        // Insert quizzes into the database
+        const insertedQuizzes = await db
+          .insert(zuvyModuleQuiz)
+          .values(quizzesData)
+          .returning();
+    
+        // Prepare all variants in one array, associating each with its quiz ID
+        const allVariantsData = [];
+        insertedQuizzes.forEach((insertedQuiz, quizIndex) => {
+          const quizId = insertedQuiz.id;
+          const variants = quizzes[quizIndex].variantMCQs?.map((variant, index) => ({
+            quizId,
+            question: variant.question,
+            options: variant.options,
+            correctOption: variant.correctOption,
+            variantNumber: index + 1,
+          }));
+    
+          // Push quiz data along with variants into the result array
+          quizUploadResults.push({
+            difficulty: insertedQuiz.difficulty,
+            tagId: insertedQuiz.tagId,
+            content: insertedQuiz.content,
+            isRandom: insertedQuiz.isRandomOptions,
+            variantMCQs: variants,
+          });
+    
+          allVariantsData.push(...variants);
+        });
+    
+        // Insert all variants in batch
+        await db.insert(zuvyModuleQuizVariants).values(allVariantsData).returning();
+    
+        return [null, {
+          message: 'MCQ and variants have been created successfully.',
+          statusCode: STATUS_CODES.CREATED,
+          data: quizUploadResults,
+        }];
+      } else {
+        return[{message: validationErrors[0], statusCode: STATUS_CODES.BAD_REQUEST}, null]
+      }  
     } catch (err) {
-      return [{ message: err.message, statusCode: STATUS_CODES.BAD_REQUEST }, null]
+      return [{ message: err.message, statusCode: STATUS_CODES.BAD_REQUEST }, null];
     }
   }
-  
 
   async createOpenEndedQuestions(questions: openEndedDto) {
     try {
@@ -905,18 +939,18 @@ export class ContentService {
   async calculateQuestionScores(totalScore, weightage, questionCounts, type = 'MCQ') {
     const sectionScore = (totalScore * (weightage / 100));
     const { easy, medium, hard } = questionCounts;
-    
+
     // Use the appropriate points for the type of questions (MCQ or Coding)
     const points = type === 'MCQ' ? helperVariable.MCQ_POINTS : helperVariable.CODING_POINTS;
-  
+
     const totalWeight = (easy * points.Easy) + (medium * points.Medium) + (hard * points.Hard);
-  
+
     const scores = {
       easy: (points.Easy / totalWeight) * sectionScore,
       medium: (points.Medium / totalWeight) * sectionScore,
       hard: (points.Hard / totalWeight) * sectionScore,
     };
-  
+
     return scores;
   }
 
@@ -927,15 +961,15 @@ export class ContentService {
   ) {
     try {
 
-      if (assessmentBody.weightageCodingQuestions + assessmentBody.weightageMcqQuestions != 100){
+      if (assessmentBody.weightageCodingQuestions + assessmentBody.weightageMcqQuestions != 100) {
         throw ({
           status: 'error',
           statusCode: 404,
           message: 'The total weightage must equal 100.',
         });
       }
-      if (assessmentBody.passPercentage > 100){
-        throw({
+      if (assessmentBody.passPercentage > 100) {
+        throw ({
           status: 'error',
           statusCode: 404,
           message: 'Pass percentage cannot be greater than 100.',
@@ -1020,7 +1054,7 @@ export class ContentService {
             .where(sql`${zuvyOutsourseCodingQuestions.assessmentOutsourseId} = ${assessmentOutsourseId} AND ${inArray(zuvyOutsourseCodingQuestions.codingQuestionId, codingQuestionIdsToDelete)}`);
         }
 
-         // Extract counts for each question type and difficulty
+        // Extract counts for each question type and difficulty
         const codingQuestionsCount = {
           easy: OutsourseAssessmentData__.easyCodingQuestions || 0,
           medium: OutsourseAssessmentData__.mediumCodingQuestions || 0,
@@ -1033,21 +1067,21 @@ export class ContentService {
           hard: OutsourseAssessmentData__.hardMcqQuestions || 0,
         };
         // let TOTAL_SCORE = 100;
-        
+
         // Calculate the scores for each type
-        const codingScores:any = await this.calculateQuestionScores(helperVariable.TOTAL_SCORE, OutsourseAssessmentData__.weightageCodingQuestions, codingQuestionsCount, 'Coding');
-        const mcqScores:any = await this.calculateQuestionScores(helperVariable.TOTAL_SCORE, OutsourseAssessmentData__.weightageMcqQuestions, mcqQuestionsCount);
+        const codingScores: any = await this.calculateQuestionScores(helperVariable.TOTAL_SCORE, OutsourseAssessmentData__.weightageCodingQuestions, codingQuestionsCount, 'Coding');
+        const mcqScores: any = await this.calculateQuestionScores(helperVariable.TOTAL_SCORE, OutsourseAssessmentData__.weightageMcqQuestions, mcqQuestionsCount);
         // Update marks in the assessment
         let marks = {
-          easyCodingMark:codingScores.easy,
-          mediumCodingMark:codingScores.medium,
-          hardCodingMark:codingScores.hard,
-          easyMcqMark:mcqScores.easy,
-          mediumMcqMark:mcqScores.medium,
-          hardMcqMark:mcqScores.hard,
+          easyCodingMark: codingScores.easy,
+          mediumCodingMark: codingScores.medium,
+          hardCodingMark: codingScores.hard,
+          easyMcqMark: mcqScores.easy,
+          mediumMcqMark: mcqScores.medium,
+          hardMcqMark: mcqScores.hard,
         }
 
-        let updatedOutsourse:any = { ...OutsourseAssessmentData__, ...marks };
+        let updatedOutsourse: any = { ...OutsourseAssessmentData__, ...marks };
         let updatedOutsourseAssessment = await db
           .update(zuvyOutsourseAssessments)
           .set(updatedOutsourse)
@@ -1195,63 +1229,81 @@ export class ContentService {
     offSet: number,
   ) {
     try {
-      let conditions = [];
-  
+      const where: SQL[] = [];
+
       let tagIds;
-  
       if (tagId) {
         tagIds = Array.isArray(tagId) ? tagId : [tagId];
-        conditions.push(inArray(zuvyModuleQuiz.tagId, tagIds));
+        where.push(inArray(zuvyModuleQuiz.tagId, tagIds));
       }
-  
+
       let difficultyArray;
-  
       if (difficulty) {
         difficultyArray = Array.isArray(difficulty) ? difficulty : [difficulty];
-        conditions.push(inArray(zuvyModuleQuiz.difficulty, difficultyArray));
+        where.push(inArray(zuvyModuleQuiz.difficulty, difficultyArray));
       }
-  
-      if (searchTerm) {
-        conditions.push(
-          sql`LOWER(${zuvyModuleQuiz.question}) ~ ${sql.raw(`'\\m${searchTerm.toLowerCase()}'`)}`
-        );
+
+      // First get the quiz IDs that match the search term
+      const matchingQuizIds = searchTerm
+        ? await db.query.zuvyModuleQuizVariants.findMany({
+          columns: {
+            quizId: true
+          },
+          where: (variants, { and, eq }) =>
+            and(
+              eq(variants.variantNumber, 1),
+              sql`LOWER(${variants.question}) ~ ${sql.raw(`'\\m${searchTerm.toLowerCase()}'`)}`
+            )
+        }).then(results => results.map(r => r.quizId))
+        : null;
+
+      // Add the quiz ID condition if we have search results
+      if (searchTerm && matchingQuizIds) {
+        where.push(inArray(zuvyModuleQuiz.id, matchingQuizIds));
       }
-  
-      // Get total row count for pagination
-      const totalRows = await db
-        .select({ count: sql<number>`count(*)` })
-        .from(zuvyModuleQuiz)
-        .where(and(...conditions))
-        .execute();
-  
-      const result = await db
-        .select({
-          ...getTableColumns(zuvyModuleQuiz),
-          matchPosition: sql<number>`
-            CASE
-              WHEN LOWER(${zuvyModuleQuiz.question}) LIKE ${sql.raw(`'${searchTerm.toLowerCase()}%'`)} THEN 0
-              WHEN LOWER(${zuvyModuleQuiz.question}) ~ ${sql.raw(`'\\m${searchTerm.toLowerCase()}'`)} THEN 
-                POSITION(${sql.raw(`'${searchTerm.toLowerCase()}'`)} IN LOWER(${zuvyModuleQuiz.question})) - 1
-              ELSE 9999 -- Push non-matching to the end
-            END
-          `.as('match_position')
-        })
-        .from(zuvyModuleQuiz)
-        .where(and(...conditions))
-        .orderBy(searchTerm ? sql`match_position` : sql`${zuvyModuleQuiz.id} DESC`)
-        .limit(limit)
-        .offset(offSet);
-  
+
+      // Get total count
+      const totalCount = await db.query.zuvyModuleQuiz.findMany({
+        where: and(...where)
+      });
+
+      // Get paginated results
+      const result = await db.query.zuvyModuleQuiz.findMany({
+        with: {
+          quizVariants: {
+            where: (variants, { eq }) => eq(variants.variantNumber, 1),
+            orderBy: (quizVariants, { sql }) => {
+              if (searchTerm) {
+                return [
+                  sql`CASE 
+                                  WHEN LOWER(${quizVariants.question}) LIKE ${sql.raw(`'${searchTerm.toLowerCase()}%'`)} THEN 0
+                                  WHEN LOWER(${quizVariants.question}) ~ ${sql.raw(`'\\m${searchTerm.toLowerCase()}'`)} THEN 
+                                      POSITION(${sql.raw(`'${searchTerm.toLowerCase()}'`)} IN LOWER(${quizVariants.question})) - 1
+                                  ELSE 9999
+                              END`
+                ];
+              } else {
+                return [sql`${quizVariants.id} ASC`];
+              }
+            }
+          }
+        },
+        where: and(...where),
+        orderBy: (quiz, { desc }) => desc(quiz.id),
+        limit: limit,
+        offset: offSet
+      });
+
       return {
         data: result,
-        totalRows: Number(totalRows[0].count),
-        totalPages: !Number.isNaN(limit) ? Math.ceil(totalRows[0].count / limit) : 1
+        totalRows: totalCount.length,
+        totalPages: !Number.isNaN(limit) ? Math.ceil(totalCount.length / limit) : 1
       };
-  
+
     } catch (err) {
       throw err;
     }
-  }  
+  }
 
   async getAllCodingQuestions(
     tagId: number | number[],
@@ -1262,40 +1314,40 @@ export class ContentService {
   ) {
     try {
       let conditions = [];
-  
+
       let tagIds;
-  
+
       if (tagId) {
         tagIds = Array.isArray(tagId) ? tagId : [tagId];
         conditions.push(inArray(zuvyCodingQuestions.tagId, tagIds));
       }
-  
+
       let difficultyArray;
-  
+
       if (difficulty) {
         difficultyArray = Array.isArray(difficulty) ? difficulty : [difficulty];
         conditions.push(inArray(zuvyCodingQuestions.difficulty, difficultyArray));
       }
-  
+
       if (searchTerm) {
         conditions.push(
           sql`LOWER(${zuvyCodingQuestions.title}) ~ ${sql.raw(`'\\m${searchTerm.toLowerCase()}'`)}`
         );
       }
-  
+
       // Query for total number of rows that match the conditions
       const totalRowsResult = await db
         .select({ count: sql<number>`count(*)` })
         .from(zuvyCodingQuestions)
         .where(and(...conditions))
         .execute();
-  
+
       const totalRows = Number(totalRowsResult[0].count);
-  
+
       // Calculate totalPages based on totalRows and limit
       const totalPages = !Number.isNaN(limit) ? Math.ceil(totalRows / limit) : 1;
-  
-      
+
+
       const question = await db.query.zuvyCodingQuestions.findMany({
         where: and(...conditions),
         columns: {
@@ -1338,7 +1390,7 @@ export class ContentService {
         limit, // Apply limit as a number
         offset: offSet, // Apply offset
       });
-  
+
       // Return the results along with totalRows and totalPages
       return {
         data: question,
@@ -1349,31 +1401,64 @@ export class ContentService {
       throw err;
     }
   }
-  
-  async editQuizQuestions(editQuesDetails: editQuizBatchDto) {
-    try {
-      await db
-        .insert(zuvyModuleQuiz)
-        .values(editQuesDetails.questions)
-        .onConflictDoUpdate({
-          target: zuvyModuleQuiz.id,
-          set: {
-            question: sql`excluded.question`,
-            options: sql`excluded.options`,
-            difficulty: sql`excluded.difficulty`,
-            tagId: sql`excluded.tag_id`,
-            marks: sql`excluded.marks`,
-            correctOption: sql`excluded.correct_option`,
-          },
-        });
 
-      return {
-        status: 'success',
-        code: 200,
-        message: 'Quiz questions are updated successfully',
+  async editQuizQuestion(quizUpdates: EditQuizBatchDto): Promise<any> {
+    try {
+      // Prepare an object to store updated data to return in response
+      const resultData: any = {
+        quizDetails: null,
+        variantMCQs: [],
       };
-    } catch (error) {
-      throw error;
+
+      // Prepare update object for quiz details
+      const updateData: any = {};
+      if (quizUpdates.title !== undefined) updateData.title = quizUpdates.title;
+      if (quizUpdates.difficulty !== undefined) updateData.difficulty = quizUpdates.difficulty;
+      if (quizUpdates.tagId !== undefined) updateData.tagId = quizUpdates.tagId;
+      if (quizUpdates.content !== undefined) updateData.content = quizUpdates.content;
+      if (quizUpdates.isRandomOptions !== undefined) updateData.isRandomOptions = quizUpdates.isRandomOptions;
+
+      // Update the main quiz details only if there's something to update
+      if (Object.keys(updateData).length > 0) {
+        await db.update(zuvyModuleQuiz)
+          .set(updateData)
+          .where(eq(zuvyModuleQuiz.id, quizUpdates.id));
+        resultData.quizDetails = updateData;  // Store updated quiz details
+      }
+
+      // Update specific quiz variants only if variantMCQs is provided
+      if (quizUpdates.variantMCQs) {
+        // Use forEach to ensure sequential execution
+        await Promise.all(quizUpdates.variantMCQs.map(async (variant) => {
+          const variantData: EditQuizVariantDto = {
+            question: variant.question,
+            options: variant.options,
+            correctOption: variant.correctOption,
+            variantNumber: variant.variantNumber,
+          };
+
+          await db.update(zuvyModuleQuizVariants)
+            .set(variantData)
+            .where(
+              and(
+                eq(zuvyModuleQuizVariants.quizId, quizUpdates.id),
+                eq(zuvyModuleQuizVariants.variantNumber, variant.variantNumber)
+              )
+            );
+
+          // Add each updated variant data to resultData array
+          resultData.variantMCQs.push(variantData);
+        }));
+      }
+
+      return [null, {
+        message: 'Quiz and variants have been updated successfully.',
+        statusCode: STATUS_CODES.OK,
+        data: resultData,
+      }];
+
+    } catch (err) {
+      return [{ message: err.message, statusCode: STATUS_CODES.BAD_REQUEST }, null];
     }
   }
 
@@ -1846,7 +1931,7 @@ export class ContentService {
     }
   }
 
-  async getAssessmentDetailsOfQuiz(assessment_outsourse_id: number, userId) {
+  async getAssessmentDetailsOfQuiz(assessment_outsourse_id: number, userId: number) {
     try {
       const assessment = await db.query.zuvyOutsourseQuizzes.findMany({
         where: (zuvyOutsourseQuizzes, { eq }) =>
@@ -1862,19 +1947,29 @@ export class ContentService {
               attemptCount: true,
             }
           },
-          Quiz: {
+          Quiz: { // Using "Quiz" instead of "quiz"
             columns: {
-              id: true,
-              question: true,
-              options: true,
+              id: true, // Main quiz ID
+              title: true,
               difficulty: true,
-              correctOption: true,
-              marks: true,
+              content: true,
+              isRandomOptions: true,
+            },
+            with: {
+              quizVariants: {
+                where: (zuvyModuleQuizVariants, { eq }) => eq(zuvyModuleQuizVariants.variantNumber, 1),
+                columns: {
+                  question: true,
+                  options: true,
+                  correctOption: true,
+                }
+              }
             }
-          },
+          }
         }
-      })
-      if (assessment.length == 0) {
+      });
+
+      if (assessment.length === 0) {
         return [];
       }
       return assessment;
@@ -2325,5 +2420,194 @@ export class ContentService {
       return [{ message: err.message }]
     }
   }
+
+  async getAllQuizVariants(quizId: number): Promise<any> {
+    try {
+      const result = await db.query.zuvyModuleQuiz.findMany({
+        where: (zuvyModuleQuiz, { eq }) =>
+          eq(zuvyModuleQuiz.id, quizId),
+        with: {
+          quizVariants: {
+            where: (zuvyModuleQuizVariants, { eq }) =>
+              eq(zuvyModuleQuizVariants.quizId, quizId),
+            orderBy: (quizVariants, { asc }) => asc(quizVariants.id),
+          },
+        }
+      })
+        .execute();
+
+      if (result.length === 0) {
+        return [
+          null,
+          {
+            message: 'No variants found for the provided quiz ID',
+            statusCode: STATUS_CODES.NOT_FOUND,
+            data: []
+          }
+        ];
+      }
+
+      return [
+        null,
+        {
+          message: 'Variants retrieved successfully',
+          statusCode: STATUS_CODES.OK,
+          data: result
+        }
+      ];
+    } catch (err) {
+      return [{ message: err.message, statusCode: STATUS_CODES.BAD_REQUEST }, null];
+    }
+  }
+
+  async addQuizVariants(addQuizVariantsDto: AddQuizVariantsDto): Promise<any> {
+    const { quizId, variantMCQs } = addQuizVariantsDto;
+
+    try {
+      // Check if quizId exists in the main quiz table
+      const mainQuizExists = await db
+        .select({ id: zuvyModuleQuiz.id })
+        .from(zuvyModuleQuiz)
+        .where(eq(zuvyModuleQuiz.id, quizId));
+
+      if (mainQuizExists.length === 0) {
+        return [
+          { message: `Quiz ID ${quizId} does not exist in the main quiz table.`, statusCode: STATUS_CODES.NOT_FOUND },
+          null,
+        ];
+      }
+
+      // Fetch all variants for this quiz and find the current highest variant number
+      const existingVariants = await db
+        .select({ variantNumber: zuvyModuleQuizVariants.variantNumber })
+        .from(zuvyModuleQuizVariants)
+        .where(eq(zuvyModuleQuizVariants.quizId, quizId));
+
+      const maxVariantNumber = existingVariants.reduce((max, variant) => Math.max(max, variant.variantNumber), 0);
+      let nextVariantNumber = maxVariantNumber + 1;
+
+      // Prepare new variant data with incremented variant numbers
+      const variantData = variantMCQs.map((variant: CreateQuizVariantDto) => ({
+        quizId,
+        variantNumber: nextVariantNumber++,
+        question: variant.question,
+        options: variant.options,
+        correctOption: variant.correctOption,
+      }));
+
+      // Insert new variants into the variants table
+      await db.insert(zuvyModuleQuizVariants).values(variantData);
+
+      return [null, {
+        message: 'Variants added successfully.',
+        statusCode: STATUS_CODES.CREATED,
+        data: variantData
+      }];
+    } catch (err) {
+      return [{ message: err.message, statusCode: STATUS_CODES.BAD_REQUEST }, null];
+    }
+  }
+
+  async deleteQuizOrVariant(quizId: number | number[], variantNumber?: number): Promise<any> {
+    try {
+      const quizIds = Array.isArray(quizId) ? quizId : [quizId];
+
+      // Fetch usage values for each quiz ID
+      const quizzes = await db
+        .select({ id: zuvyModuleQuiz.id, usage: zuvyModuleQuiz.usage })
+        .from(zuvyModuleQuiz)
+        .where(inArray(zuvyModuleQuiz.id, quizIds))
+        .execute();
+
+      // Separate quizzes into deletable and non-deletable based on usage
+      const deletableQuizIds = quizzes.filter(quiz => quiz.usage === 0).map(quiz => quiz.id);
+      const nonDeletableQuizIds = quizzes.filter(quiz => quiz.usage > 0).map(quiz => quiz.id);
+
+      // If there are non-deletable quizzes, include a message in the response
+      if (variantNumber && deletableQuizIds.length === 1 && nonDeletableQuizIds.length === 0) {
+        // Single quiz deletion with variantNumber specified
+        const quizId = deletableQuizIds[0];
+
+        // Check variant count to ensure at least one variant remains
+        const variantCountResult = await db
+          .select({ count: sql`COUNT(*)` })
+          .from(zuvyModuleQuizVariants)
+          .where(
+            and(
+              eq(zuvyModuleQuizVariants.quizId, quizId),
+              sql`${zuvyModuleQuizVariants.variantNumber} > 1`
+            )
+          )
+          .execute();
+
+        const variantCount = Number(variantCountResult[0]?.count) || 0;
+
+        // Disallow deletion if only one variant would remain
+        if (variantCount == 0) {
+          return [{
+            message: 'The main MCQ cannot be deleted because it must have at least one variant.',
+            statusCode: STATUS_CODES.BAD_REQUEST
+          }, null];
+        }
+
+        // Proceed to delete the specific variant
+        const deletedVariant = await db
+          .delete(zuvyModuleQuizVariants)
+          .where(
+            and(
+              eq(zuvyModuleQuizVariants.quizId, quizId),
+              eq(zuvyModuleQuizVariants.variantNumber, variantNumber)
+            )
+          )
+          .returning();
+
+        // Update remaining variants' numbers if a variant is successfully deleted
+        if (deletedVariant.length > 0) {
+          await db
+            .update(zuvyModuleQuizVariants)
+            .set({ variantNumber: sql`${zuvyModuleQuizVariants.variantNumber} - 1` })
+            .where(
+              and(
+                eq(zuvyModuleQuizVariants.quizId, quizId),
+                sql`${zuvyModuleQuizVariants.variantNumber} > ${variantNumber}`
+              )
+            );
+
+          return [null, {
+            message: `Variant ${variantNumber} has been deleted successfully and subsequent variants have been updated.`,
+            statusCode: STATUS_CODES.OK
+          }];
+        } else {
+          return [{
+            message: `Variant ${variantNumber} not found`,
+            statusCode: STATUS_CODES.NOT_FOUND
+          }, null];
+        }
+      } else {
+        // Bulk deletion of quizzes and all their variants
+        if (deletableQuizIds.length > 0) {
+          await db.delete(zuvyModuleQuiz).where(inArray(zuvyModuleQuiz.id, deletableQuizIds));
+          await db.delete(zuvyModuleQuizVariants).where(inArray(zuvyModuleQuizVariants.quizId, deletableQuizIds));
+        }
+
+        // Prepare success and failure messages based on deletable/non-deletable lists
+        const deletedMessage = deletableQuizIds.length > 0
+          ? `Quiz id(s) ${deletableQuizIds.join(', ')} have been deleted successfully.`
+          : '';
+
+        const notDeletedMessage = nonDeletableQuizIds.length > 0
+          ? `Quiz id(s) ${nonDeletableQuizIds.join(', ')} cannot be deleted as they are used elsewhere.`
+          : '';
+
+        return [null, {
+          message: [deletedMessage, notDeletedMessage].filter(Boolean).join(' '),
+          statusCode: STATUS_CODES.OK
+        }];
+      }
+    } catch (err) {
+      return [{ message: err.message, statusCode: STATUS_CODES.BAD_REQUEST }, null];
+    }
+  }
+
 }
 
