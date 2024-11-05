@@ -18,6 +18,7 @@ import {
   zuvyCodingQuestions,
   zuvyFormTracking,
   zuvyModuleForm,
+  zuvyModuleQuizVariants,
   zuvyAssessmentSubmission
 } from 'drizzle/schema';
 import {
@@ -291,11 +292,14 @@ export class TrackingService {
         const choosenOptions = SubmitBody.submitQuiz.map(
           (obj) => obj.chossenOption,
         );
+  
+        // Fetch correct options from the `zuvyModuleQuizVariants` table
         const questions = await db
-          .select({ correctOption: zuvyModuleQuiz.correctOption })
-          .from(zuvyModuleQuiz)
-          .where(sql`${inArray(zuvyModuleQuiz.id, mcqIdArray)}`)
-          .orderBy(zuvyModuleQuiz.id);
+          .select({ correctOption: zuvyModuleQuizVariants.correctOption })
+          .from(zuvyModuleQuizVariants)
+          .where(sql`${inArray(zuvyModuleQuizVariants.quizId, mcqIdArray)}`)
+          .orderBy(zuvyModuleQuizVariants.quizId);
+  
         let updatedQuizBody = [];
         for (let i = 0; i < questions.length; i++) {
           let status = 'fail';
@@ -777,13 +781,15 @@ export class TrackingService {
               const questions = await db
                 .select({
                   id: zuvyModuleQuiz.id,
-                  question: zuvyModuleQuiz.question,
-                  options: zuvyModuleQuiz.options,
+                  question: zuvyModuleQuizVariants.question,  // Use zuvyModuleQuizVariants
+                  options: zuvyModuleQuizVariants.options,    // Use zuvyModuleQuizVariants
                 })
                 .from(zuvyModuleQuiz)
+                .innerJoin(zuvyModuleQuizVariants, eq(zuvyModuleQuiz.id, zuvyModuleQuizVariants.quizId)) // Join to get the variants
                 .where(
                   sql`${inArray(zuvyModuleQuiz.id, Object.values(chapterDetails[0].quizQuestions))}`,
                 );
+
               questions['status'] =
                 QuizTracking.length != 0
                   ? 'Completed'
@@ -796,9 +802,15 @@ export class TrackingService {
             }
             else {
               const trackedData = await db.query.zuvyModuleQuiz.findMany({
-                where: (moduleQuiz, { sql }) => sql`${inArray(moduleQuiz.id, Object.values(chapterDetails[0].quizQuestions))}`,
+                where: (moduleQuiz, { sql }) =>
+                  sql`${inArray(moduleQuiz.id, Object.values(chapterDetails[0].quizQuestions))}`,
                 with: {
-
+                  quizVariants: {
+                    columns: {
+                      question: true, 
+                      options: true, 
+                    },
+                  },
                   quizTrackingData: {
                     columns: {
                       chosenOption: true,
