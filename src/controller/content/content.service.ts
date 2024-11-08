@@ -1870,28 +1870,33 @@ export class ContentService {
     return questions;
   }
 
-  async getCodingQuestionsByAllDifficulties(assessmentOutsourseId, assessmentOutsourseData, id) {
-    const difficulties = [DIFFICULTY.EASY, DIFFICULTY.MEDIUM, DIFFICULTY.HARD];
-    const questionsByDifficulty = {};
-  
-    for (const difficulty of difficulties) {
-      questionsByDifficulty[difficulty] = await this.getCodingQuestionsByDifficulty(
-        difficulty, 
-        assessmentOutsourseId, 
-        assessmentOutsourseData[`${difficulty.toLowerCase()}CodingQuestions`],
-        assessmentOutsourseData.codingQuestionTagId,
-        id
-      );
+  async getCodingQuestionsByAllDifficulties(assessmentOutsourseId, assessmentOutsourseData, id): Promise<any> {
+    try{
+      const difficulties = [DIFFICULTY.EASY, DIFFICULTY.MEDIUM, DIFFICULTY.HARD];
+      const questionsByDifficulty = {};
+    
+      for (const difficulty of difficulties) {
+        questionsByDifficulty[difficulty] = await this.getCodingQuestionsByDifficulty(
+          difficulty, 
+          assessmentOutsourseId, 
+          assessmentOutsourseData[`${difficulty.toLowerCase()}CodingQuestions`],
+          assessmentOutsourseData.codingQuestionTagId,
+          id
+        );
+      }
+    
+      return [null, questionsByDifficulty];
+    } catch (err){
+      Logger.error(JSON.stringify(err));
+      return [{ message: err.message, statusCode: STATUS_CODES.BAD_REQUEST }];
     }
-  
-    return questionsByDifficulty;
   }
   /**
  * Initiates an assessment for a student.
  * This function might set up necessary variables, database entries, or other prerequisites 
  * for a student to begin taking an assessment.
  */
-  async startAssessmentForStudent(assessmentOutsourseId: number, req) {
+  async startAssessmentForStudent(assessmentOutsourseId: number, req): Promise<any> {
     try {
       let { id } = req.user[0];
     const assessmentOutsourseData = await db.query.zuvyOutsourseAssessments.findFirst({
@@ -1903,7 +1908,11 @@ export class ContentService {
     });
 
     // Fetching all coding questions at once
-    const codingQuestions = await this.getCodingQuestionsByAllDifficulties(assessmentOutsourseId, assessmentOutsourseData, id);
+    const [err, codingQuestions] = await this.getCodingQuestionsByAllDifficulties(assessmentOutsourseId, assessmentOutsourseData, id);
+    if (err){
+      Logger.error(JSON.stringify(err));
+      return [{ message: err.message, statusCode: STATUS_CODES.BAD_REQUEST }];
+    }
     
     // Accessing the questions for each difficulty level
     const easyCodingQuestions = codingQuestions[DIFFICULTY.EASY];
@@ -1926,58 +1935,102 @@ export class ContentService {
         ],
         submission: submission[0]
       }
-      return assessment;
+      // return [null, assessment];
+      return [null, { message: 'Coding question fetched successfully', data: assessment, statusCode: STATUS_CODES.OK }];
+
     } catch (err) {
-      throw err;
+      Logger.error(JSON.stringify(err));
+      return [{ message: err.message, statusCode: STATUS_CODES.BAD_REQUEST }]; 
     }
   }
 
-  async getAssessmentDetailsOfQuiz(assessment_outsourse_id: number, userId: number) {
-    try {
-      const assessment = await db.query.zuvyOutsourseQuizzes.findMany({
+  async getQuizQuestionsByDifficulty(difficultyLevel, assessmentOutsourseId, limit, selectedTagIds, userId): Promise<any> {
+    try{
+      // Fetch the main quiz items
+      const quizItems = await db.query.zuvyOutsourseQuizzes.findMany({
         where: (zuvyOutsourseQuizzes, { eq }) =>
-          eq(zuvyOutsourseQuizzes.assessmentOutsourseId, assessment_outsourse_id),
-        with: {
-          submissionsData: {
-            where: (zuvyQuizTracking, { eq }) => eq(zuvyQuizTracking.userId, userId),
-            columns: {
-              id: true,
-              userId: true,
-              chosenOption: true,
-              questionId: true,
-              attemptCount: true,
-            }
-          },
-          Quiz: { // Using "Quiz" instead of "quiz"
-            columns: {
-              id: true, // Main quiz ID
-              title: true,
-              difficulty: true,
-              content: true,
-              isRandomOptions: true,
-            },
-            with: {
-              quizVariants: {
-                where: (zuvyModuleQuizVariants, { eq }) => eq(zuvyModuleQuizVariants.variantNumber, 1),
-                columns: {
-                  question: true,
-                  options: true,
-                  correctOption: true,
-                }
-              }
-            }
-          }
-        }
+          eq(zuvyOutsourseQuizzes.assessmentOutsourseId, assessmentOutsourseId),
+        orderBy: sql`md5(CAST(id AS text) || ${userId}::text)`, // Randomized ordering for main query
       });
 
-      if (assessment.length === 0) {
-        return [];
+      // For each quiz item, fetch a limited and randomized set of quiz variants
+      for (let quiz of quizItems) {
+        console.log({quiz})
+        let variants = await db
+        .select()
+        .from(zuvyModuleQuizVariants)
+        .innerJoin(zuvyModuleQuiz, eq(zuvyModuleQuiz.id, zuvyModuleQuizVariants.quizId))
+        .where(
+          and(
+            eq(zuvyModuleQuizVariants.quizId, quiz.quiz_id),
+            sql`${zuvyModuleQuiz.tagId} = ANY(${selectedTagIds})`, // Check if selectedTagId exists in selectedTagIds array
+            eq(zuvyModuleQuiz.difficulty, difficultyLevel) // Filter by difficulty
+          )
+        )
+        .orderBy(sql`random()`) // Randomize ordering
+        .limit(1);
+
+        quizItems['quizVariants'] = variants;
       }
-      return assessment;
-    } catch (err) {
-      throw err;
+      return  quizItems;
+    } catch (err){
+      console.log(err)
+      Logger.error(JSON.stringify(err));
+      return { message: err.message, statusCode: STATUS_CODES.BAD_REQUEST };   
     }
+  }  
+  
+  
+  async getQuizQuestionsByAllDifficulties(assessmentOutsourseId, quizConfig, userId): Promise<any> {
+    const difficulties = ['easy', 'medium', 'hard'];
+    const questionsByDifficulty = {};
+    for (const difficulty of difficulties) {
+      let valueDef = difficulty.slice(0, 1).toUpperCase() + difficulty.slice(1, difficulty.length);
+      questionsByDifficulty[difficulty] = await this.getQuizQuestionsByDifficulty(
+        valueDef,
+        assessmentOutsourseId,
+        quizConfig[`${difficulty}McqQuestions`],
+        quizConfig.mcqTagId,
+        userId
+      );
+    }
+  
+    return [null, questionsByDifficulty];
   }
+  
+
+  async getAssessmentDetailsOfQuiz(assessmentOutsourseId: number, userId: number): Promise<any> {
+    try {
+      const assessmentOutsourseData = await db.query.zuvyOutsourseAssessments.findFirst({
+        where: (zuvyOutsourseAssessments, { eq }) =>
+          eq(zuvyOutsourseAssessments.id, assessmentOutsourseId),
+        with: {
+          ModuleAssessment: true
+        },
+      });  
+      // Fetching all quiz questions at once
+      const [err, quizQuestions] = await this.getQuizQuestionsByAllDifficulties(assessmentOutsourseId, assessmentOutsourseData, userId);
+      if (err){
+        Logger.error(JSON.stringify(err));
+        return [null, { message: err.message, statusCode: STATUS_CODES.BAD_REQUEST }];      }
+      
+      // Accessing the questions for each difficulty level
+      const easyQuizQuestions = quizQuestions[DIFFICULTY.EASY];
+      const mediumQuizQuestions = quizQuestions[DIFFICULTY.MEDIUM];
+      const hardQuizQuestions = quizQuestions[DIFFICULTY.HARD];
+  
+      // Do something with the fetched quiz questions
+      return [null, { message: 'quiz question fetched successfully', data: {
+        ...easyQuizQuestions,
+        ...mediumQuizQuestions,
+        ...hardQuizQuestions,
+      }, statusCode: STATUS_CODES.OK }];
+    } catch (err) {
+      Logger.error(JSON.stringify(err));
+      return [null, { message: err.message, statusCode: STATUS_CODES.BAD_REQUEST }];    }
+  }
+  
+  
 
   async getAssessmentDetailsOfOpenEnded(assessment_outsourse_id: number, userId) {
     try {
@@ -2264,67 +2317,6 @@ export class ContentService {
       throw error;
     }
   }
-
-
-  // async deleteForm(id: deleteQuestionDto) {
-  //   try {
-  //     const usedForm = await db
-  //       .select()
-  //       .from(zuvyModuleForm)
-  //       .where(
-  //         sql`${inArray(zuvyModuleForm.id, id.questionIds)} and ${zuvyModuleForm.usage} > 0`,
-  //       );
-  //     let deletedQuestions;
-  //     if (usedForm.length > 0) {
-  //       const usedIds = usedForm.map((form) => form.id);
-  //       const remainingIds = id.questionIds.filter(
-  //         (questionId) => !usedIds.includes(questionId),
-  //       );
-  //       deletedQuestions =
-  //         remainingIds.length > 0
-  //           ? await db
-  //             .delete(zuvyModuleForm)
-  //             .where(sql`${inArray(zuvyModuleForm.id, remainingIds)}`)
-  //             .returning()
-  //           : [];
-  //       if (deletedQuestions.length > 0) {
-  //         return {
-  //           status: 'success',
-  //           code: 200,
-  //           message: `Form questions which is used in other places like chapters and assessment cannot be deleted`,
-  //         };
-  //       } else {
-  //         return {
-  //           status: 'error',
-  //           code: 400,
-  //           message: `Questions cannot be deleted`,
-  //         };
-  //       }
-  //     }
-  //     deletedQuestions = await db
-  //       .delete(zuvyModuleForm)
-  //       .where(sql`${inArray(zuvyModuleForm.id, id.questionIds)}`)
-  //       .returning();
-  //     if (deletedQuestions.length > 0) {
-  //       return {
-  //         status: 'success',
-  //         code: 200,
-  //         message: 'The form questions has been deleted successfully',
-  //       };
-  //     } else {
-  //       return {
-  //         status: 'error',
-  //         code: 400,
-  //         message: `Questions cannot be deleted`,
-  //       };
-  //     }
-  //   } catch (err) {
-  //     throw err;
-  //   }
-  // }
-
-
-
 
   async createAndEditFormQuestions(chapterId: number, form: CreateAndEditFormBody) {
     try {

@@ -50,6 +50,7 @@ import {
 } from './dto/content.dto';
 import { RolesGuard } from 'src/guards/roles.guard';
 import { ErrorResponse, SuccessResponse } from 'src/errorHandler/handler';
+import { Response } from 'express';
 
 @Controller('Content')
 @ApiTags('Content')
@@ -595,8 +596,16 @@ export class ContentController {
   @Get('/startAssessmentForStudent/assessmentOutsourseId=:assessmentOutsourseId')
   @ApiOperation({ summary: 'Start the assessment for a student' })
   @ApiBearerAuth()
-  async startAssessmentForStudent(@Req() req, @Param('assessmentOutsourseId') assessmentOutsourseId: number) {
-    return this.contentService.startAssessmentForStudent(assessmentOutsourseId, req);
+  async startAssessmentForStudent(@Req() req, @Param('assessmentOutsourseId') assessmentOutsourseId: number, @Res() res: Response): Promise<any> {
+    try{
+      let [err, success] = await this.contentService.startAssessmentForStudent(assessmentOutsourseId, req);
+      if (err) {
+        return ErrorResponse.BadRequestException(err.message).send(res);
+      }
+      return new SuccessResponse(success.message, success.statusCode, success.data).send(res);
+    } catch (error) {
+      return ErrorResponse.BadRequestException(error.message).send(res);
+    }
   }
 
   @Get('/assessmentDetailsOfQuiz/:assessmentOutsourseId')
@@ -608,11 +617,24 @@ export class ContentController {
     description: 'studentId of the assessment',
   })
   @ApiBearerAuth()
-  async getAssessmentDetailsOfQuiz(@Param('assessmentOutsourseId') assessmentOutsourseId: number, @Req() req, @Query('studentId') userId: number) {
-    if (!userId) {
-      userId = req.user[0].id;
+  async getAssessmentDetailsOfQuiz(
+    @Param('assessmentOutsourseId') assessmentOutsourseId: number,
+    @Req() req,
+    @Query('studentId') studentId: number,
+    @Res() res: Response
+  ): Promise<any> {
+    try {
+    const userId = studentId || req.user[0].id;
+
+    // Create the `quizConfig` object from the query parameters
+    let [err, success] = await this.contentService.getAssessmentDetailsOfQuiz(assessmentOutsourseId, userId);
+    if (err) {
+      return ErrorResponse.BadRequestException(err.message).send(res);
     }
-    return this.contentService.getAssessmentDetailsOfQuiz(assessmentOutsourseId, userId);
+    return new SuccessResponse(success.message, success.statusCode, success.data).send(res);
+    } catch (error) {
+      return ErrorResponse.BadRequestException(error.message).send(res);
+    }
   }
 
   @Get('/assessmentDetailsOfOpenEnded/:assessmentOutsourseId')
@@ -810,6 +832,7 @@ export class ContentController {
       return ErrorResponse.BadRequestException(error.message).send(res);
     }
   }
+
 
   @Delete('/deleteQuiz')
   @ApiOperation({ summary: 'Delete a quiz or a specific variant' })
