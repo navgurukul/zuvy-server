@@ -46,7 +46,8 @@ import {
   CreateAndEditFormBody,
   CreateQuizzesDto,
   EditQuizBatchDto,
-  AddQuizVariantsDto
+  AddQuizVariantsDto,
+  deleteQuestionOrVariantDto
 } from './dto/content.dto';
 import { RolesGuard } from 'src/guards/roles.guard';
 import { ErrorResponse, SuccessResponse } from 'src/errorHandler/handler';
@@ -811,36 +812,19 @@ export class ContentController {
     }
   }
 
-  @Delete('/deleteQuiz')
-  @ApiOperation({ summary: 'Delete a quiz or a specific variant' })
-  @ApiQuery({
-      name: 'quizId',
-      required: true,
-      type: [Number],
-      description: 'delete quiz by id',
-  })
-  @ApiQuery({
-      name: 'variantNumber',
-      required: false,
-      type: Number,
-      description: 'delete specific variant of the quiz',
-  })
+  @Delete('/deleteMainQuizOrVariant')
+  @ApiOperation({ summary: 'Delete main quiz or variant' })
   @ApiBearerAuth()
   @UseGuards(RolesGuard)
-  async deleteQuizOrVariant(
-      @Query('quizId') quizId: number[],
-      @Query('variantNumber') variantNumber: number,
-      @Res() res
+  async deleteMainQuizOrVariant(
+    @Body() deleteDto: deleteQuestionOrVariantDto,
+    @Res() res,
   ) {
-      try {
-          const [err, success] = await this.contentService.deleteQuizOrVariant(quizId, variantNumber);
-          if (err) {
-              return ErrorResponse.BadRequestException(err.message).send(res);
-          }
-          return new SuccessResponse(success.message, success.statusCode, []).send(res);
-      } catch (error) {
-          return ErrorResponse.BadRequestException(error.message).send(res);
-      }
-  }  
+    const [err, success] = await this.contentService.deleteQuizOrVariant(deleteDto);
+    if (err) {
+      return ErrorResponse.BadRequestException(err.message, err.statusCode).send(res);
+    }
+    return new SuccessResponse(success.message, success.statusCode,null).send(res);
+  }
 
 }
