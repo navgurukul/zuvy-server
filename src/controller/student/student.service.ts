@@ -94,6 +94,7 @@ export class StudentService {
 
   // Generate dynamic email content for the student
   async generateEmailContent(applicantName) {
+    let name = applicantName.slice(0,1).toUpperCase() + applicantName.slice(1, applicantName.length).toLowerCase();
     return `
     <html>
       <head>
@@ -104,14 +105,14 @@ export class StudentService {
         </style>
       </head>
       <body>
-        <p>Dear ${applicantName},</p>
+        <p>Dear ${name},</p>
 
         <p>Thank you for applying to <strong>${helperVariable.PROGRAM_DETAILS.NAME}</strong>!</p>
 
         <p>We’re excited to see your interest in the amazing Bootcamp for female engineers.
         We have received your application. As the next step, we invite you to complete a short questionnaire that will help us better understand your background and interest in the program.</p>
 
-        <p><a href="https://docs.google.com/forms/d/e/1FAIpQLSenaTJ6YjGT9CEG1K4_buySMEtqc9MnEEz_zmmpjWfKx_LHtA/viewform">Question naire Link</a></p>
+        <p><a href="https://docs.google.com/forms/d/e/1FAIpQLSenaTJ6YjGT9CEG1K4_buySMEtqc9MnEEz_zmmpjWfKx_LHtA/viewform">Questionnaire Link</a></p>
 
         <p><strong>Important Details:</strong></p>
         <ul>
