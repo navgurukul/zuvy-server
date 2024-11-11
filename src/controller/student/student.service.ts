@@ -15,8 +15,9 @@ import { helperVariable } from 'src/constants/helper';
 import { STATUS_CODES } from "../../helpers/index";
 import { google } from 'googleapis';
 
-const { GOOGLE_SHEETS_SERVICE_ACCOUNT, GOOGLE_SHEETS_PRIVATE_KEY,JOIN_ZUVY_ACCESS_KEY_ID, JOIN_ZUVY_SECRET_KEY, SPREADSHEET_ID, SES_EMAIL, ORG_NAME,PHONE_NO,EMAIL_SUBJECT } = process.env;
+const { GOOGLE_SHEETS_SERVICE_ACCOUNT, GOOGLE_SHEETS_PRIVATE_KEY,JOIN_ZUVY_ACCESS_KEY_ID, JOIN_ZUVY_SECRET_KEY, SPREADSHEET_ID, SES_EMAIL, EMAIL_SUBJECT } = process.env;
 const AWS = require('aws-sdk');
+
 
 AWS.config.update({
   accessKeyId: JOIN_ZUVY_ACCESS_KEY_ID,      // Replace with your access key ID
@@ -92,32 +93,59 @@ export class StudentService {
   }
 
   // Generate dynamic email content for the student
-  async generateEmailContent(applicantName, teamName, email, contactNumber, email_subject) {
+  async generateEmailContent(applicantName) {
     return `
-      Dear ${applicantName},
+    <html>
+      <head>
+        <style>
+          /* Optional CSS styling for emails */
+          p { font-family: Arial, sans-serif; }
+          ul { font-family: Arial, sans-serif; }
+        </style>
+      </head>
+      <body>
+        <p>Dear ${applicantName},</p>
 
-      Thank you for applying to ${email_subject}.
-      
-      We’re excited to see your interest in the amazing Bootcamp for female engineers.
-      We have received your application, and further updates will be shared during the review process.
+        <p>Thank you for applying to <strong>${helperVariable.PROGRAM_DETAILS.NAME}</strong>!</p>
 
-      In the meantime, feel free to explore more about the Bootcamp at www.zuvy.org.
+        <p>We’re excited to see your interest in the amazing Bootcamp for female engineers.
+        We have received your application. As the next step, we invite you to complete a short questionnaire that will help us better understand your background and interest in the program.</p>
 
-      For any questions, please write to ${email}.
+        <p><a href="https://docs.google.com/forms/d/e/1FAIpQLSenaTJ6YjGT9CEG1K4_buySMEtqc9MnEEz_zmmpjWfKx_LHtA/viewform">Question naire Link</a></p>
 
-      Best regards,
-      Team ${teamName}
-      https://app.zuvy.org/
-      
-      Whatsapp us: ${contactNumber}
-    `;
-  }
+        <p><strong>Important Details:</strong></p>
+        <ul>
+          <li><strong>Deadline:</strong> Please complete the questionnaire ${helperVariable.QUESTIONNAIRE.DEADLINE}. Early submission may benefit your application in the selection process, so we encourage you to complete it as soon as possible.</li>
+          <li><strong>Questionnaire Duration:</strong> The questionnaire will take ${helperVariable.QUESTIONNAIRE.DURATION} to complete.</li>
+          <li><strong>Required Documents:</strong> To ensure a smooth evaluation, please have the following documents ready to upload:
+            <ul>
+              <li>${helperVariable.REQUIRED_DOCUMENTS.join('</li><li>')}</li>
+            </ul>
+          </li>
+        </ul>
+
+        <p><strong>Note:</strong> Please join our <a href="https://chat.whatsapp.com/CT64nknHf5cDcNd6NzxAoC">WhatsApp Community</a> for further communication.</p>
+
+        <p>If you encounter any issues with the questionnaire or need assistance, please reach out to us at:</p>
+        <ul>
+          <li><strong>Email:</strong> ${helperVariable.CONTACT_DETAILS.EMAIL}</li>
+          <li><strong>WhatsApp:</strong> ${helperVariable.CONTACT_DETAILS.WHATSAPP_NUMBER}</li>
+        </ul>
+
+        <p>Best regards,<br>
+        ${helperVariable.PROGRAM_DETAILS.ORGANIZATION_NAME}<br>
+        ${helperVariable.PROGRAM_DETAILS.NAME} - <a href="${helperVariable.PROGRAM_DETAILS.APPLICATION_LINK}">${helperVariable.PROGRAM_DETAILS.APPLICATION_LINK}</a><br>
+        WhatsApp/Call: ${helperVariable.CONTACT_DETAILS.WHATSAPP_NUMBER}</p>
+      </body>
+    </html>
+  `;
+}
 
   // Send email using AWS SES
   async sendMail(applicantName, recipientEmail) {
     try {
       // Generate email content dynamically
-      const emailContent = await this.generateEmailContent(applicantName, ORG_NAME, SES_EMAIL, PHONE_NO, EMAIL_SUBJECT);
+      const emailContent = await this.generateEmailContent(applicantName);
 
       // Create an instance of SES
       const ses = new AWS.SES();
@@ -130,10 +158,11 @@ export class StudentService {
         },
         Message: {
           Subject: {
-            Data: `${EMAIL_SUBJECT} - Application Received`,
+            Data: `${helperVariable.PROGRAM_DETAILS.NAME} - Application Received`,
           },
           Body: {
-            Text: {
+            Html: {
+              Charset: "UTF-8",
               Data: emailContent,
             },
           },
