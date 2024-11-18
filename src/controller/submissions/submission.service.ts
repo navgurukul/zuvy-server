@@ -8,7 +8,7 @@ import { STATUS_CODES } from 'src/helpers';
 import { helperVariable } from 'src/constants/helper';
 
 // Difficulty Points Mapping
-let { MCQ_POINTS, CODING_POINTS, OPEN_ENDED_POINTS, ACCEPTED, SUBMIT } = helperVariable;
+let { ACCEPTED, SUBMIT } = helperVariable;
 
 @Injectable()
 export class SubmissionService {
@@ -232,6 +232,9 @@ export class SubmissionService {
   }
 
   async calculateTotalPoints(data: any) {
+    let {hardMcqMark,easyMcqMark, mediumMcqMark, hardCodingMark, mediumCodingMark, easyCodingMark} = data
+    const MCQ_POINTS = { easy: easyMcqMark, medium: mediumMcqMark, hard: hardMcqMark };
+    const CODING_POINTS = { easy: easyCodingMark, medium: mediumCodingMark, hard: hardCodingMark };
     const totalMCQPoints = data.Quizzes.reduce((sum, q) => sum + MCQ_POINTS[q.difficulty], 0);
     // const totalOpenPoints = data.OpenEndedQuestions.reduce((sum, q) => sum + pointsMapping.OPEN_ENDED_POINTS[q.difficulty], 0);
     const totalCodingPoints = data.CodingQuestions.reduce((sum, q) => sum + CODING_POINTS[q.difficulty], 0);
@@ -251,7 +254,9 @@ export class SubmissionService {
     let openTotalAttemted = 0;
     let codingTotalAttemted = 0;
     let codingScore = 0;
-
+    let {hardMcqMark,easyMcqMark, mediumMcqMark, hardCodingMark, mediumCodingMark, easyCodingMark} = data
+    const MCQ_POINTS = { easy: easyMcqMark, medium: mediumMcqMark, hard: hardMcqMark };
+    const CODING_POINTS = { easy: easyCodingMark, medium: mediumCodingMark, hard: hardCodingMark };
     // Processing Quizzes
     data.quizSubmission.forEach(quiz => {
       quizTotalAttemted += 1;
