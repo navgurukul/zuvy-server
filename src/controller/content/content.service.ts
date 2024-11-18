@@ -1851,7 +1851,6 @@ export class ContentService {
     .where(eq(zuvyOutsourseCodingQuestions.assessmentOutsourseId, assessmentOutsourseId))
     .orderBy(sql`md5(id::text || ${parseInt(id)})`) // Use the desired seed here
     .limit(limit);
-
     let questions = []
     for (const questionItem of ZOSCQ) {
       const questionData = await db
@@ -1875,7 +1874,7 @@ export class ContentService {
     try{
       const difficulties = [DIFFICULTY.EASY, DIFFICULTY.MEDIUM, DIFFICULTY.HARD];
       const questionsByDifficulty = {};
-    
+  
       for (const difficulty of difficulties) {
         questionsByDifficulty[difficulty] = await this.getCodingQuestionsByDifficulty(
           difficulty, 
@@ -1907,7 +1906,6 @@ export class ContentService {
         ModuleAssessment: true
       },
     });
-
     // Fetching all coding questions at once
     const [err, codingQuestions] = await this.getCodingQuestionsByAllDifficulties(assessmentOutsourseId, assessmentOutsourseData, id);
     if (err){
@@ -1953,29 +1951,39 @@ export class ContentService {
           eq(zuvyOutsourseQuizzes.assessmentOutsourseId, assessmentOutsourseId),
         orderBy: sql`md5(CAST(id AS text) || ${userId}::text)`, // Randomized ordering for main query
       });
-
+      let quizzes = []
       // For each quiz item, fetch a limited and randomized set of quiz variants
       for (let quiz of quizItems) {
-        console.log({quiz})
         let variants = await db
-        .select()
-        .from(zuvyModuleQuizVariants)
-        .innerJoin(zuvyModuleQuiz, eq(zuvyModuleQuiz.id, zuvyModuleQuizVariants.quizId))
-        .where(
-          and(
-            eq(zuvyModuleQuizVariants.quizId, quiz.quiz_id),
-            sql`${zuvyModuleQuiz.tagId} = ANY(${selectedTagIds})`, // Check if selectedTagId exists in selectedTagIds array
-            eq(zuvyModuleQuiz.difficulty, difficultyLevel) // Filter by difficulty
+          .select()
+          .from(zuvyModuleQuizVariants)
+          .innerJoin(zuvyModuleQuiz, eq(zuvyModuleQuiz.id, zuvyModuleQuizVariants.quizId))
+          .where(
+            and(
+              eq(zuvyModuleQuizVariants.quizId, quiz.quiz_id),
+              // sql`${zuvyModuleQuiz.tagId} = ANY(${selectedTagIds})`, // Check if selectedTagId exists in selectedTagIds array
+              eq(zuvyModuleQuiz.difficulty, difficultyLevel)
+            )
           )
-        )
-        .orderBy(sql`random()`) // Randomize ordering
-        .limit(1);
+          .orderBy(sql`random()`)
+          .limit(1);
 
-        quizItems['quizVariants'] = variants;
+          if (variants.length > 0) {
+            let variant = variants[0]
+            if (variant.zuvy_module_quiz_variants && variant.zuvy_module_quiz) {
+              let v = {
+                zuvy_module_quiz_variants: variant.zuvy_module_quiz_variants,
+                zuvy_module_quiz: variant.zuvy_module_quiz,
+              };
+              quizzes.push({ ...v.zuvy_module_quiz_variants, ...v.zuvy_module_quiz, ...quiz });
+            }
+          }
+        // let v = {zuvy_module_quiz_variants: variants[0].zuvy_module_quiz_variants, zuvy_module_quiz: variants[0].zuvy_module_quiz};
+        // quizzes.push({...v.zuvy_module_quiz_variants, ...v.zuvy_module_quiz, ...quiz});
+        
       }
-      return  quizItems;
+      return  quizzes;
     } catch (err){
-      console.log(err)
       Logger.error(JSON.stringify(err));
       return { message: err.message, statusCode: STATUS_CODES.BAD_REQUEST };   
     }
@@ -2013,19 +2021,20 @@ export class ContentService {
       const [err, quizQuestions] = await this.getQuizQuestionsByAllDifficulties(assessmentOutsourseId, assessmentOutsourseData, userId);
       if (err){
         Logger.error(JSON.stringify(err));
-        return [null, { message: err.message, statusCode: STATUS_CODES.BAD_REQUEST }];      }
-      
+        return [null, { message: err.message, statusCode: STATUS_CODES.BAD_REQUEST }];      
+      }
       // Accessing the questions for each difficulty level
-      const easyQuizQuestions = quizQuestions[DIFFICULTY.EASY];
-      const mediumQuizQuestions = quizQuestions[DIFFICULTY.MEDIUM];
-      const hardQuizQuestions = quizQuestions[DIFFICULTY.HARD];
+      const easyQuizQuestions = quizQuestions['easy'] || [];
+      const mediumQuizQuestions = quizQuestions['medium'] || [];
+      const hardQuizQuestions = quizQuestions['hard'] || [];
   
       // Do something with the fetched quiz questions
       return [null, { message: 'quiz question fetched successfully', data: {
+        mcqs: [
         ...easyQuizQuestions,
         ...mediumQuizQuestions,
         ...hardQuizQuestions,
-      }, statusCode: STATUS_CODES.OK }];
+      ]}, statusCode: STATUS_CODES.OK }];
     } catch (err) {
       Logger.error(JSON.stringify(err));
       return [null, { message: err.message, statusCode: STATUS_CODES.BAD_REQUEST }];    }
