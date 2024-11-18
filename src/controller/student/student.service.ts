@@ -19,8 +19,9 @@ import { OAuth2Client } from 'google-auth-library';
 import * as fs from 'fs';
 import * as readline from 'readline';
 
-const { GOOGLE_SHEETS_SERVICE_ACCOUNT, GOOGLE_SHEETS_PRIVATE_KEY,JOIN_ZUVY_ACCESS_KEY_ID, JOIN_ZUVY_SECRET_KEY, SPREADSHEET_ID, SES_EMAIL, ORG_NAME,PHONE_NO,EMAIL_SUBJECT } = process.env;
+const { GOOGLE_SHEETS_SERVICE_ACCOUNT, GOOGLE_SHEETS_PRIVATE_KEY,JOIN_ZUVY_ACCESS_KEY_ID, JOIN_ZUVY_SECRET_KEY, SPREADSHEET_ID, SES_EMAIL, EMAIL_SUBJECT } = process.env;
 const AWS = require('aws-sdk');
+
 
 AWS.config.update({
   accessKeyId: JOIN_ZUVY_ACCESS_KEY_ID,      // Replace with your access key ID
@@ -96,32 +97,42 @@ export class StudentService {
   }
 
   // Generate dynamic email content for the student
-  async generateEmailContent(applicantName, teamName, email, contactNumber, email_subject) {
+  async generateEmailContent(applicantName) {
     return `
-      Dear ${applicantName},
+    Dear ${applicantName},
 
-      Thank you for applying to ${email_subject}.
-      
-      We’re excited to see your interest in the amazing Bootcamp for female engineers.
-      We have received your application, and further updates will be shared during the review process.
+    Thank you for applying to ${helperVariable.PROGRAM_DETAILS.NAME}!
+    
+    We’re excited to see your interest in the amazing Bootcamp for female engineers.
+    We have received your application. As the next step, we invite you to complete a short questionnaire that will help us better understand your background and interest in the program.
 
-      In the meantime, feel free to explore more about the Bootcamp at www.zuvy.org.
+    **Questionnaire Link**
 
-      For any questions, please write to ${email}.
+    **Important Details:**
+    - **Deadline:** Please complete the questionnaire ${helperVariable.QUESTIONNAIRE.DEADLINE}. Early submission may benefit your application in the selection process, so we encourage you to complete it as soon as possible.
+    - **Questionnaire Duration:** The questionnaire will take ${helperVariable.QUESTIONNAIRE.DURATION} to complete.
+    - **Required Documents:** To ensure a smooth evaluation, please have the following documents ready to upload:
+      - ${helperVariable.REQUIRED_DOCUMENTS.join('\n        - ')}
 
-      Best regards,
-      Team ${teamName}
-      https://app.zuvy.org/
-      
-      Whatsapp us: ${contactNumber}
-    `;
+    **Note:** Please join our WhatsApp Community for further communication.
+
+    If you encounter any issues with the questionnaire or need assistance, please reach out to us at:
+    - **Email:** ${helperVariable.CONTACT_DETAILS.EMAIL}
+    - **WhatsApp:** ${helperVariable.CONTACT_DETAILS.WHATSAPP_NUMBER}
+
+    Best regards,
+    ${helperVariable.PROGRAM_DETAILS.ORGANIZATION_NAME}
+    ${helperVariable.PROGRAM_DETAILS.NAME} - ${helperVariable.PROGRAM_DETAILS.APPLICATION_LINK}
+
+    WhatsApp/Call: ${helperVariable.CONTACT_DETAILS.WHATSAPP_NUMBER} 
+  `;
   }
 
   // Send email using AWS SES
   async sendMail(applicantName, recipientEmail) {
     try {
       // Generate email content dynamically
-      const emailContent = await this.generateEmailContent(applicantName, ORG_NAME, SES_EMAIL, PHONE_NO, EMAIL_SUBJECT);
+      const emailContent = await this.generateEmailContent(applicantName);
 
       // Create an instance of SES
       const ses = new AWS.SES();
@@ -134,7 +145,7 @@ export class StudentService {
         },
         Message: {
           Subject: {
-            Data: `${EMAIL_SUBJECT} - Application Received`,
+            Data: `${helperVariable.PROGRAM_DETAILS.NAME} - Application Received`,
           },
           Body: {
             Text: {

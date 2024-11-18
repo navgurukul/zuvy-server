@@ -20,4 +20,23 @@ export const helperVariable= {
       MEDIUM: 'Medium',
       HARD: 'Hard',
     },
+    PROGRAM_DETAILS: {
+      NAME: "Amazon Future Engineer Bootcamp 2024",
+      APPLICATION_LINK: "www.zuvy.org/apply",
+      ORGANIZATION_NAME: "Zuvy Team",
+    },
+    CONTACT_DETAILS: {
+        WHATSAPP_NUMBER: "+918949619081",
+        EMAIL: "join-zuvy@navgurukul.org",
+    },
+    QUESTIONNAIRE: {
+        DEADLINE: "within the next 2 days",
+        DURATION: "approximately 10 to 15 minutes",
+    },
+    REQUIRED_DOCUMENTS: [
+        "Aadhaar Card",
+        "College ID",
+        "B.Tech Entrance Exam Rank Certificate",
+        "Income Certificate"
+    ]
   };

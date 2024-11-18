@@ -1228,3 +1228,36 @@ export class CreateAndEditFormBody {
   //questions: any;
 }
 
+export class QuestionIdDto {
+  @ApiProperty({
+    example: 1,
+    description: 'The ID of the main quiz or quiz variant to delete.',
+    required:true
+  })
+  @IsNumber()
+  id: number;
+
+  @ApiProperty({
+    example: 'main',
+    description: 'Type of the item to delete: "main" for main quiz, "variant" for quiz variant.',
+    required:true
+  })
+  @IsString()
+  type: 'main' | 'variant';
+}
+
+export class deleteQuestionOrVariantDto {
+  @ApiProperty({
+    type: [QuestionIdDto],
+    examples: [
+      { id: 1, type: 'main' },
+      { id: 2, type: 'variant' },
+    ],
+    required: true,
+  })
+  @IsArray()
+  @ArrayNotEmpty()
+  @ValidateNested({ each: true })
+  @Type(() => QuestionIdDto)
+  questionIds: QuestionIdDto[];
+}

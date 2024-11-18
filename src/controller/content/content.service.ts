@@ -57,7 +57,8 @@ import {
   CreateQuizzesDto,
   EditQuizVariantDto,
   CreateQuizVariantDto,
-  AddQuizVariantsDto
+  AddQuizVariantsDto,
+  deleteQuestionOrVariantDto
 } from './dto/content.dto';
 import { STATUS_CODES } from '../../helpers';
 import { helperVariable } from '../../constants/helper';
@@ -2501,106 +2502,122 @@ export class ContentService {
     }
   }
 
-  async deleteQuizOrVariant(quizId: number | number[], variantNumber?: number): Promise<any> {
+  async deleteQuizOrVariant(deleteDto: deleteQuestionOrVariantDto): Promise<any> {
     try {
-      const quizIds = Array.isArray(quizId) ? quizId : [quizId];
-
-      // Fetch usage values for each quiz ID
-      const quizzes = await db
-        .select({ id: zuvyModuleQuiz.id, usage: zuvyModuleQuiz.usage })
-        .from(zuvyModuleQuiz)
-        .where(inArray(zuvyModuleQuiz.id, quizIds))
-        .execute();
-
-      // Separate quizzes into deletable and non-deletable based on usage
-      const deletableQuizIds = quizzes.filter(quiz => quiz.usage === 0).map(quiz => quiz.id);
-      const nonDeletableQuizIds = quizzes.filter(quiz => quiz.usage > 0).map(quiz => quiz.id);
-
-      // If there are non-deletable quizzes, include a message in the response
-      if (variantNumber && deletableQuizIds.length === 1 && nonDeletableQuizIds.length === 0) {
-        // Single quiz deletion with variantNumber specified
-        const quizId = deletableQuizIds[0];
-
-        // Check variant count to ensure at least one variant remains
-        const variantCountResult = await db
-          .select({ count: sql`COUNT(*)` })
-          .from(zuvyModuleQuizVariants)
-          .where(
-            and(
-              eq(zuvyModuleQuizVariants.quizId, quizId),
-              sql`${zuvyModuleQuizVariants.variantNumber} > 1`
-            )
-          )
-          .execute();
-
-        const variantCount = Number(variantCountResult[0]?.count) || 0;
-
-        // Disallow deletion if only one variant would remain
-        if (variantCount == 0) {
-          return [{
-            message: 'The main MCQ cannot be deleted because it must have at least one variant.',
-            statusCode: STATUS_CODES.BAD_REQUEST
-          }, null];
+      let mainQuizIds: number[] = [];
+      let variantDeletions: { id: number; quizId: number }[] = [];
+  
+      // Process deleteDto based on its type
+      for (const item of deleteDto.questionIds) {
+        if (item.type === 'main') {
+          mainQuizIds.push(item.id);
+        } else if (item.type === 'variant') {
+          const variant = await db
+            .select({ quizId: zuvyModuleQuizVariants.quizId })
+            .from(zuvyModuleQuizVariants)
+            .where(sql`${zuvyModuleQuizVariants.id} = ${item.id}`)
+            .limit(1);
+  
+          if (variant.length) {
+            variantDeletions.push({ id: item.id, quizId: variant[0].quizId });
+          }
         }
-
-        // Proceed to delete the specific variant
-        const deletedVariant = await db
-          .delete(zuvyModuleQuizVariants)
-          .where(
-            and(
-              eq(zuvyModuleQuizVariants.quizId, quizId),
-              eq(zuvyModuleQuizVariants.variantNumber, variantNumber)
-            )
-          )
-          .returning();
-
-        // Update remaining variants' numbers if a variant is successfully deleted
-        if (deletedVariant.length > 0) {
-          await db
-            .update(zuvyModuleQuizVariants)
-            .set({ variantNumber: sql`${zuvyModuleQuizVariants.variantNumber} - 1` })
-            .where(
-              and(
-                eq(zuvyModuleQuizVariants.quizId, quizId),
-                sql`${zuvyModuleQuizVariants.variantNumber} > ${variantNumber}`
-              )
-            );
-
-          return [null, {
-            message: `Variant ${variantNumber} has been deleted successfully and subsequent variants have been updated.`,
-            statusCode: STATUS_CODES.OK
-          }];
-        } else {
-          return [{
-            message: `Variant ${variantNumber} not found`,
-            statusCode: STATUS_CODES.NOT_FOUND
-          }, null];
-        }
-      } else {
-        // Bulk deletion of quizzes and all their variants
-        if (deletableQuizIds.length > 0) {
-          await db.delete(zuvyModuleQuiz).where(inArray(zuvyModuleQuiz.id, deletableQuizIds));
-          await db.delete(zuvyModuleQuizVariants).where(inArray(zuvyModuleQuizVariants.quizId, deletableQuizIds));
-        }
-
-        // Prepare success and failure messages based on deletable/non-deletable lists
-        const deletedMessage = deletableQuizIds.length > 0
-          ? `Quiz id(s) ${deletableQuizIds.join(', ')} have been deleted successfully.`
-          : '';
-
-        const notDeletedMessage = nonDeletableQuizIds.length > 0
-          ? `Quiz id(s) ${nonDeletableQuizIds.join(', ')} cannot be deleted as they are used elsewhere.`
-          : '';
-
-        return [null, {
-          message: [deletedMessage, notDeletedMessage].filter(Boolean).join(' '),
-          statusCode: STATUS_CODES.OK
-        }];
       }
-    } catch (err) {
-      return [{ message: err.message, statusCode: STATUS_CODES.BAD_REQUEST }, null];
+  
+      // Deletion logic for main quizzes
+      if (mainQuizIds.length > 0) {
+        const usedQuizzes = await db
+          .select()
+          .from(zuvyModuleQuiz)
+          .where(sql`${inArray(zuvyModuleQuiz.id, mainQuizIds)} AND ${zuvyModuleQuiz.usage} > 0`);
+  
+        const usedQuizIds = usedQuizzes.map(quiz => quiz.id);
+        const deletableQuizIds = mainQuizIds.filter(id => !usedQuizIds.includes(id));
+  
+        if (deletableQuizIds.length > 0) {
+          await db
+            .delete(zuvyModuleQuizVariants)
+            .where(sql`${inArray(zuvyModuleQuizVariants.quizId, deletableQuizIds)}`);
+          await db
+            .delete(zuvyModuleQuiz)
+            .where(sql`${inArray(zuvyModuleQuiz.id, deletableQuizIds)}`)
+            .returning();
+        }
+  
+        if (usedQuizIds.length > 0) {
+          return [{
+            message: `Quizzes with IDs ${usedQuizIds.join(', ')} cannot be deleted as they are in use.`,
+            statusCode: STATUS_CODES.BAD_REQUEST,
+          }, null];
+        }
+      }
+  
+      // Deletion logic for quiz variants
+      for (const { id: variantId, quizId } of variantDeletions) {
+        const variantCount = await db
+          .select()
+          .from(zuvyModuleQuizVariants)
+          .where(sql`${zuvyModuleQuizVariants.quizId} = ${quizId}`);
+  
+        if (variantCount.length <= 1) {
+          return [{
+            message: `Quiz with ID ${quizId} cannot delete its last remaining variant.`,
+            statusCode: STATUS_CODES.BAD_REQUEST,
+          }, null];
+        }
+  
+        // Check if the main quiz of this variant has `usage` > 0
+        const mainQuizUsage = await db
+          .select({ usage: zuvyModuleQuiz.usage })
+          .from(zuvyModuleQuiz)
+          .where(sql`${zuvyModuleQuiz.id} = ${quizId}`)
+          .limit(1);
+  
+        if (mainQuizUsage.length && mainQuizUsage[0].usage > 0) {
+          return [{
+            message: `Variant with ID ${variantId} cannot be deleted as its main quiz with ID ${quizId} is in use.`,
+            statusCode: STATUS_CODES.BAD_REQUEST,
+          }, null];
+        }
+  
+        const variantToDelete = await db
+          .select({ variantNumber: zuvyModuleQuizVariants.variantNumber })
+          .from(zuvyModuleQuizVariants)
+          .where(sql`${zuvyModuleQuizVariants.id} = ${variantId}`);
+        
+        if (!variantToDelete.length) {
+          return [{
+            message: `Variant with ID ${variantId} not found.`,
+            statusCode: STATUS_CODES.NOT_FOUND,
+          }, null];
+        }
+  
+        const { variantNumber } = variantToDelete[0];
+        await db
+          .delete(zuvyModuleQuizVariants)
+          .where(sql`${zuvyModuleQuizVariants.id} = ${variantId}`)
+          .returning();
+  
+        // Update the variant numbers for remaining variants
+        await db
+          .update(zuvyModuleQuizVariants)
+          .set({ variantNumber: sql`${zuvyModuleQuizVariants.variantNumber} - 1` })
+          .where(sql`${zuvyModuleQuizVariants.variantNumber} > ${variantNumber} AND ${zuvyModuleQuizVariants.quizId} = ${quizId}`)
+          .returning();
+      }
+  
+      return [null, {
+        message: 'Selected quizzes and/or variants have been deleted and renumbered successfully where applicable.',
+        statusCode: STATUS_CODES.OK,
+      }];
+    } catch (error) {
+      Logger.log(`Error in deleteQuizOrVariant: ${error.message}`);
+      return [{
+        message: error.message,
+        statusCode: STATUS_CODES.BAD_REQUEST,
+      }, null];
     }
   }
-
+  
 }
 
