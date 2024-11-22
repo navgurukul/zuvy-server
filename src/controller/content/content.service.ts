@@ -609,12 +609,15 @@ export class ContentService {
         if (chapterDetails[0].topicId == 4) {
           const quizDetails =
             chapterDetails[0].quizQuestions !== null
-              ? await db
-                .select()
-                .from(zuvyModuleQuiz)
-                .where(
-                  sql`${inArray(zuvyModuleQuiz.id, Object.values(chapterDetails[0].quizQuestions))}`,
-                )
+              ? await db.query.zuvyModuleQuiz.findMany({
+                where: (quiz, { inArray }) =>
+                  inArray(quiz.id, Object.values(chapterDetails[0].quizQuestions)),
+                with: {
+                  quizVariants: {
+                    where: (variants, { eq }) => eq(variants.variantNumber, 1), // Filter for variantNumber = 1
+                  },
+                },
+              })
               : [];
           modifiedChapterDetails.quizQuestionDetails = quizDetails;
         } else if (chapterDetails[0].topicId == 3) {

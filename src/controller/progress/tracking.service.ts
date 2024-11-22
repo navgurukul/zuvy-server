@@ -58,7 +58,7 @@ export class TrackingService {
       if (chapterExistsInModuleChapter.length != 0) {
         if (chapterExistsInChapterTracking.length == 0) {
           let chapterTracked;
-          let insertChapterTracking:any = {
+          let insertChapterTracking: any = {
             userId: BigInt(userId),
             chapterId,
             moduleId,
@@ -89,7 +89,7 @@ export class TrackingService {
           let completedChapter = completedModuleChapter.length;
           let returnedTrackingData;
           if (moduleTracking.length == 0) {
-            let InsertZuvyModuleTracking:any = {
+            let InsertZuvyModuleTracking: any = {
               userId: BigInt(userId),
               bootcampId,
               moduleId,
@@ -101,7 +101,7 @@ export class TrackingService {
               .values(InsertZuvyModuleTracking)
               .returning();
           } else {
-            let UpdateZuvyModuleTracking:any = {
+            let UpdateZuvyModuleTracking: any = {
               progress: Math.ceil((completedChapter / totalChapter) * 100),
               updatedAt: sql`NOW()`,
             }
@@ -113,7 +113,7 @@ export class TrackingService {
           }
           const recentBootcampForUser = await db.select().from(zuvyRecentBootcamp).where(eq(zuvyRecentBootcamp.userId, BigInt(userId)));
           if (recentBootcampForUser.length == 0) {
-            let insertRecentBootcamp:any = {
+            let insertRecentBootcamp: any = {
               userId: BigInt(userId),
               moduleId,
               progress: Math.ceil((completedChapter / totalChapter) * 100),
@@ -126,7 +126,7 @@ export class TrackingService {
               .values(insertRecentBootcamp)
           }
           else {
-            let updatedRecentBootcamp:any = {
+            let updatedRecentBootcamp: any = {
               moduleId,
               progress: Math.ceil((completedChapter / totalChapter) * 100),
               bootcampId,
@@ -274,7 +274,7 @@ export class TrackingService {
     try {
       let result;
       if (SubmitBody.submitAssignment != undefined) {
-        let updatedAssignmentBody:any = {
+        let updatedAssignmentBody: any = {
           userId,
           moduleId,
           chapterId,
@@ -289,37 +289,61 @@ export class TrackingService {
       } else if (SubmitBody.submitQuiz != undefined) {
         SubmitBody.submitQuiz.sort((a, b) => a.mcqId - b.mcqId);
         const mcqIdArray = SubmitBody.submitQuiz.map((obj) => obj.mcqId);
-        const choosenOptions = SubmitBody.submitQuiz.map(
-          (obj) => obj.chossenOption,
+        const chosenOptions = SubmitBody.submitQuiz.map(
+          (obj) => obj.chossenOption
         );
-  
-        // Fetch correct options from the `zuvyModuleQuizVariants` table
+
+        // Fetch correct options from zuvyModuleQuizVariants table
         const questions = await db
-          .select({ correctOption: zuvyModuleQuizVariants.correctOption })
+          .select({
+            id: zuvyModuleQuizVariants.id,
+            correctOption: zuvyModuleQuizVariants.correctOption,
+          })
           .from(zuvyModuleQuizVariants)
-          .where(sql`${inArray(zuvyModuleQuizVariants.quizId, mcqIdArray)}`)
+          .where(sql`${inArray(zuvyModuleQuizVariants.id, mcqIdArray)}`)
           .orderBy(zuvyModuleQuizVariants.quizId);
-  
-        let updatedQuizBody = [];
+
+        const sqlChunks: SQL[] = [];
+        const ids: number[] = [];
+
+        sqlChunks.push(sql`(case`);
+
         for (let i = 0; i < questions.length; i++) {
-          let status = 'fail';
-          if (choosenOptions[i] == questions[i].correctOption) {
-            status = 'pass';
-          }
-          updatedQuizBody[i] = {
-            userId,
-            moduleId,
-            chapterId,
-            status,
-            chosenOption:choosenOptions[i],
-            ...SubmitBody.submitQuiz[i],
-            attemptCount: 1,
-            updatedAt: sql`Now()`,
-          };
+          const status = chosenOptions[i] === questions[i].correctOption ? "pass" : "fail";
+          sqlChunks.push(sql`when ${zuvyQuizTracking.mcqId} = ${SubmitBody.submitQuiz[i].mcqId} then ${status}`);
+          ids.push(SubmitBody.submitQuiz[i].mcqId);
         }
-        result = await db
-          .insert(zuvyQuizTracking)
-          .values(updatedQuizBody)
+
+        sqlChunks.push(sql`end)`);
+
+        const statusSql: SQL = sql.join(sqlChunks, sql.raw(' '));
+
+        const chosenOptionChunks: SQL[] = [];
+        chosenOptionChunks.push(sql`(case`);
+        
+        for (let i = 0; i < questions.length; i++) {
+          chosenOptionChunks.push(sql`when ${zuvyQuizTracking.mcqId} = ${SubmitBody.submitQuiz[i].mcqId} then cast(${chosenOptions[i]} as integer)`);
+        }
+        
+        chosenOptionChunks.push(sql`end)`);
+
+        const chosenOptionSql: SQL = sql.join(chosenOptionChunks, sql.raw(' '));
+
+        result = await db.update(zuvyQuizTracking)
+          .set({
+            status: statusSql,
+            chosenOption: chosenOptionSql,
+            updatedAt: sql`NOW()`,
+            attemptCount: sql`${zuvyQuizTracking.attemptCount} + 1`
+          })
+          .where(
+            and(
+              inArray(zuvyQuizTracking.mcqId, ids),
+              eq(zuvyQuizTracking.userId, userId),
+              eq(zuvyQuizTracking.moduleId, moduleId),
+              eq(zuvyQuizTracking.chapterId, chapterId)
+            )
+          )
           .returning();
       }
       return result;
@@ -337,31 +361,31 @@ export class TrackingService {
         with: {
           moduleChapterData: {
             columns: {
-              topicId:true,
-              order:true
+              topicId: true,
+              order: true
             },
             orderBy: (courseChapters, { asc }) => asc(courseChapters.order),
-              with: {
-                chapterTrackingDetails: {
-                  columns: {
-                    id: true,
-                  },
-                  where: (chapterTracking, { eq }) =>
-                    eq(chapterTracking.userId, BigInt(userId)),
+            with: {
+              chapterTrackingDetails: {
+                columns: {
+                  id: true,
                 },
-              }
+                where: (chapterTracking, { eq }) =>
+                  eq(chapterTracking.userId, BigInt(userId)),
+              },
+            }
           },
           projectData: true,
           moduleTracking: {
             columns: {
-              id:true,
+              id: true,
               progress: true,
             },
             where: (moduleTrack, { eq }) => eq(moduleTrack.userId, userId),
           },
         },
       });
-      
+
       const result = data.map((module: any) => {
         if (module.typeId == 2) {
           return null;
@@ -373,22 +397,21 @@ export class TrackingService {
           return {
             id: module.moduleTracking[0].id,
             progress: calculatedProgress,
-            moduleId:module.id
+            moduleId: module.id
           };
         }
         return null;
       })
-      .filter(module => module !== null);
+        .filter(module => module !== null);
       let modules = data.map((module: any) => {
         const moduleFound = result.find(obj => obj.moduleId === module.id);
         let updatedProgress = module['moduleTracking'].length != 0
-        ? module['moduleTracking'][0]['progress']
-        : 0;
-        if(moduleFound)
-          {
-            updatedProgress = moduleFound.progress
-            delete moduleFound.moduleId;
-          }
+          ? module['moduleTracking'][0]['progress']
+          : 0;
+        if (moduleFound) {
+          updatedProgress = moduleFound.progress
+          delete moduleFound.moduleId;
+        }
         return {
           id: module.id,
           name:
@@ -401,7 +424,7 @@ export class TrackingService {
           projectId: module.projectId,
           isLock: module.isLock,
           timeAlloted: module.timeAlloted,
-          progress:updatedProgress,
+          progress: updatedProgress,
           quizCount: module.moduleChapterData.filter(
             (chapter) => chapter.topicId === 4,
           ).length,
@@ -421,34 +444,33 @@ export class TrackingService {
       });
 
       if (result.length > 0) {
-       
-       const sqlChunks: SQL[] = [];
-       const ids: number[] = [];
-       
-       sqlChunks.push(sql`(case`);
-       
-       for (const input of result) {
-        sqlChunks.push(sql`when ${zuvyModuleTracking.id} = ${input.id} then ${sql.raw(`CAST(${input.progress} AS INTEGER)`)}`);
-        ids.push(input.id);
-       }
-       
-       sqlChunks.push(sql`end)`);
-       
-       const finalSql: SQL = sql.join(sqlChunks, sql.raw(' '));
-       let updateProgress:any = { progress: finalSql}
 
-       await db.update(zuvyModuleTracking).set(updateProgress)
-         .where(sql`${inArray(zuvyModuleTracking.id, ids)}`);
-      } 
+        const sqlChunks: SQL[] = [];
+        const ids: number[] = [];
+
+        sqlChunks.push(sql`(case`);
+
+        for (const input of result) {
+          sqlChunks.push(sql`when ${zuvyModuleTracking.id} = ${input.id} then ${sql.raw(`CAST(${input.progress} AS INTEGER)`)}`);
+          ids.push(input.id);
+        }
+
+        sqlChunks.push(sql`end)`);
+
+        const finalSql: SQL = sql.join(sqlChunks, sql.raw(' '));
+        let updateProgress: any = { progress: finalSql }
+
+        await db.update(zuvyModuleTracking).set(updateProgress)
+          .where(sql`${inArray(zuvyModuleTracking.id, ids)}`);
+      }
       if (modules.length > 0) {
         for (let i = 1; i < modules.length; i++) {
           if (modules[i - 1].progress == 100 && modules[i].isLock == false) {
             modules[i].isLock = false;
           }
-          else if(modules[i-1].progress < 100 && modules[i-1].progress > 0 && modules[i].progress > 0)
-            {
-              modules[i].isLock = false;
-            } 
+          else if (modules[i - 1].progress < 100 && modules[i - 1].progress > 0 && modules[i].progress > 0) {
+            modules[i].isLock = false;
+          }
           else {
             modules[i].isLock = true;
           }
@@ -594,8 +616,7 @@ export class TrackingService {
     }
   }
 
-  async getAllUpcomingSubmission(userId: number,bootcampId:number):Promise<any>
-  {
+  async getAllUpcomingSubmission(userId: number, bootcampId: number): Promise<any> {
     try {
       const data = await db.query.zuvyBatchEnrollments.findMany({
         where: (zuvybatchenrollment, { eq, and }) => {
@@ -606,113 +627,110 @@ export class TrackingService {
           return and(...conditions);
         },
         with: {
-          bootcamp : {
-            columns : {
-              id:true,
-              name:true
+          bootcamp: {
+            columns: {
+              id: true,
+              name: true
             },
-            with : {
-              bootcampModules : {
-                columns : {
-                  id:true,
+            with: {
+              bootcampModules: {
+                columns: {
+                  id: true,
                   name: true
                 },
-                with : {
-                  moduleTracking : {
+                with: {
+                  moduleTracking: {
                     where: (moduleTracked, { sql }) =>
                       sql`${moduleTracked.userId} = ${userId} and ${moduleTracked.progress} < 100`,
-                    columns : {
+                    columns: {
                       id: true,
-                      progress:true
+                      progress: true
                     },
-                    with : {
-                      chapterDetailss : {
-                        columns:{
-                          id:true,
-                          title:true,
-                          completionDate:true
+                    with: {
+                      chapterDetailss: {
+                        columns: {
+                          id: true,
+                          title: true,
+                          completionDate: true
                         },
                         where: (moduleChapter, { eq }) =>
-                          eq(moduleChapter.topicId,5)
-                     } 
+                          eq(moduleChapter.topicId, 5)
+                      }
                     }
-                   }
-                 }
-               }
-             }
+                  }
+                }
+              }
+            }
           }
         }
       })
       const chapterIds = [];
       var upcomingAssignments = [];
       var lateAssignments = [];
-      if(data.length > 0)
-        {
-      data.forEach(item => {
-       item['bootcamp']['bootcampModules'].forEach(module => {
-         if (module['moduleTracking'].length > 0) {
-         module['moduleTracking'].forEach(tracking => {
-         if (tracking['chapterDetailss'].length > 0) {
-          tracking['chapterDetailss'].forEach(chapter => {
-            chapterIds.push(chapter.id);
-               });
-             }
-          });
-          }
-        });
-      });
-      if(chapterIds.length > 0)
-        {
-      const completedChapterIds = await db.select({ id: zuvyChapterTracking.chapterId })
-       .from(zuvyChapterTracking)
-        .where( and( inArray(zuvyChapterTracking.chapterId, chapterIds), eq(zuvyChapterTracking.userId, BigInt(userId)) ) );
- 
-        const completedChapterIdsSet = new Set(completedChapterIds.map(chapter => chapter.id));
-
-        const todayISOString = Date.now();
+      if (data.length > 0) {
         data.forEach(item => {
           item['bootcamp']['bootcampModules'].forEach(module => {
             if (module['moduleTracking'].length > 0) {
               module['moduleTracking'].forEach(tracking => {
                 if (tracking['chapterDetailss'].length > 0) {
                   tracking['chapterDetailss'].forEach(chapter => {
-                    if (!completedChapterIdsSet.has(chapter.id)) {
-                      const completionDateISOString = new Date(chapter.completionDate).getTime();
-                      const chapterInfo = {
-                        bootcampName: item['bootcamp'].name,
-                        bootcampId: item['bootcamp'].id,
-                        moduleName: module.name,
-                        moduleId: module.id,
-                        chapterId: chapter.id,
-                        chapterTitle: chapter.title,
-                        chapterDeadline: chapter.completionDate
-                      };
-                      if (completionDateISOString > todayISOString) {
-                        upcomingAssignments.push(chapterInfo);
-                      } else {
-                        lateAssignments.push(chapterInfo);
-                      }
-                    }
+                    chapterIds.push(chapter.id);
                   });
                 }
               });
             }
           });
         });
-       }
-       else {
-        return [{message:'No content found', statusCode: STATUS_CODES.NO_CONTENT},null]
-       }
+        if (chapterIds.length > 0) {
+          const completedChapterIds = await db.select({ id: zuvyChapterTracking.chapterId })
+            .from(zuvyChapterTracking)
+            .where(and(inArray(zuvyChapterTracking.chapterId, chapterIds), eq(zuvyChapterTracking.userId, BigInt(userId))));
+
+          const completedChapterIdsSet = new Set(completedChapterIds.map(chapter => chapter.id));
+
+          const todayISOString = Date.now();
+          data.forEach(item => {
+            item['bootcamp']['bootcampModules'].forEach(module => {
+              if (module['moduleTracking'].length > 0) {
+                module['moduleTracking'].forEach(tracking => {
+                  if (tracking['chapterDetailss'].length > 0) {
+                    tracking['chapterDetailss'].forEach(chapter => {
+                      if (!completedChapterIdsSet.has(chapter.id)) {
+                        const completionDateISOString = new Date(chapter.completionDate).getTime();
+                        const chapterInfo = {
+                          bootcampName: item['bootcamp'].name,
+                          bootcampId: item['bootcamp'].id,
+                          moduleName: module.name,
+                          moduleId: module.id,
+                          chapterId: chapter.id,
+                          chapterTitle: chapter.title,
+                          chapterDeadline: chapter.completionDate
+                        };
+                        if (completionDateISOString > todayISOString) {
+                          upcomingAssignments.push(chapterInfo);
+                        } else {
+                          lateAssignments.push(chapterInfo);
+                        }
+                      }
+                    });
+                  }
+                });
+              }
+            });
+          });
+        }
+        else {
+          return [{ message: 'No content found', statusCode: STATUS_CODES.NO_CONTENT }, null]
+        }
       }
       else {
-        return [{message:'No content found', statusCode: STATUS_CODES.NO_CONTENT},null]
+        return [{ message: 'No content found', statusCode: STATUS_CODES.NO_CONTENT }, null]
       }
-      
-      return [null,{message:'Upcoming submission fetched successfully',statusCode: STATUS_CODES.OK,data:{upcomingAssignments,lateAssignments}}]
+
+      return [null, { message: 'Upcoming submission fetched successfully', statusCode: STATUS_CODES.OK, data: { upcomingAssignments, lateAssignments } }]
     }
-    catch(error)
-    {
-      return [{message:error.message, statusCode: STATUS_CODES.BAD_REQUEST},null]
+    catch (error) {
+      return [{ message: error.message, statusCode: STATUS_CODES.BAD_REQUEST }, null]
     }
   }
 
@@ -801,14 +819,14 @@ export class TrackingService {
 
             }
             else {
-              const trackedData = await db.query.zuvyModuleQuiz.findMany({
+              const trackedData = await db.query.zuvyModuleQuizVariants.findMany({
                 where: (moduleQuiz, { sql }) =>
-                  sql`${inArray(moduleQuiz.id, Object.values(chapterDetails[0].quizQuestions))}`,
+                  sql`${inArray(moduleQuiz.quizId, Object.values(chapterDetails[0].quizQuestions))}`,
                 with: {
                   quizVariants: {
                     columns: {
-                      question: true, 
-                      options: true, 
+                      question: true,
+                      options: true,
                     },
                   },
                   quizTrackingData: {
@@ -917,99 +935,215 @@ export class TrackingService {
   async getQuizAndAssignmentWithStatus(
     userId: number,
     chapterId: number,
-  ):Promise<any>
-   {
+  ): Promise<any> {
     try {
-       const chapter = await db.select().from(zuvyModuleChapter).where(eq(zuvyModuleChapter.id,chapterId));
-       if(chapter.length > 0)
-        {
-          if(chapter[0].topicId == 4)
-            {
-              if(chapter[0].quizQuestions !== null)
-                {
-                  const trackedData = await db.query.zuvyModuleQuiz.findMany({
-                    where: (moduleQuiz, { sql }) => sql`${inArray(moduleQuiz.id, Object.values(chapter[0].quizQuestions))}`,
-                    orderBy: (moduleQuiz, { asc }) => asc(moduleQuiz.id),
-                    with: {
-    
-                      quizTrackingData: {
-                        columns: {
-                          chosenOption: true,
-                          status: true
-                        },
-                        where: (quizTracking, { sql }) => sql`${quizTracking.userId} = ${userId} and ${quizTracking.chapterId} = ${chapterId}`,
-                      }
-                    }
-                  });
-                  const quizQuestionsLength = Object.values(chapter[0].quizQuestions).length;
-                  const quizQuestionsWithTrackingData = trackedData.filter(quiz => quiz['quizTrackingData'].length > 0).length;
+      const chapter = await db.select().from(zuvyModuleChapter).where(eq(zuvyModuleChapter.id, chapterId));
+      if (chapter.length > 0) {
+        if (chapter[0].topicId == 4) {
+          if (chapter[0].quizQuestions !== null) {
+            const quizQuestionIds = Object.values(chapter[0].quizQuestions);
+            quizQuestionIds.sort((a, b) => a - b);
 
-                  const allQuestionsHaveTrackingData = quizQuestionsLength === quizQuestionsWithTrackingData;
-                  const status = allQuestionsHaveTrackingData ? 'Completed' : 'Pending';
-                  return [null,{message:'Chapter details fetched successfully',statusCode: STATUS_CODES.OK,data:{chapterTitle:chapter[0].title,chapterId:chapter[0].id,chapterOrder:chapter[0].order,quizDetails:trackedData,status}}]
-                }
-              else {
-                return [null,{message:'No quiz questions found in this quiz chapter',statusCode: STATUS_CODES.OK,data:{chapterTitle:chapter[0].title,chapterId:chapter[0].id,chapterOrder:chapter[0].order,quizDetails: [],status:'Pending'}}]
-              }  
+            const quizTrack = await db
+              .select()
+              .from(zuvyQuizTracking)
+              .where(
+                sql`${zuvyQuizTracking.userId} = ${userId} AND ${zuvyQuizTracking.chapterId} = ${chapterId} AND ${zuvyQuizTracking.chosenOption} IS NOT NULL`
+              );
+
+            if (quizTrack.length === quizQuestionIds.length) {
+              const mcqIds = quizTrack.map((item) => item.mcqId);
+              // Fetch tracking data for the user's quiz progress
+              const trackedData = await db.query.zuvyModuleQuizVariants.findMany({
+                where: (moduleQuiz, { sql }) => sql`${inArray(moduleQuiz.id, mcqIds)}`,
+                orderBy: (moduleQuiz, { asc }) => asc(moduleQuiz.quizId),
+                with: {
+                  quizTrackingData: {
+                    columns: {
+                      chosenOption: true,
+                      status: true,
+                    },
+                    where: (quizTracking, { sql }) =>
+                      sql`${quizTracking.userId} = ${userId} AND ${quizTracking.chapterId} = ${chapterId}`,
+                  },
+                },
+              });
+
+              const status = 'Completed';
+              return [
+                null,
+                {
+                  message: 'Chapter details fetched successfully',
+                  statusCode: STATUS_CODES.OK,
+                  data: {
+                    chapterTitle: chapter[0].title,
+                    chapterId: chapter[0].id,
+                    chapterOrder: chapter[0].order,
+                    quizDetails: trackedData,
+                    status,
+                  },
+                },
+              ];
+            } else {
+              const quizTrackingEntries = await db
+                .select()
+                .from(zuvyQuizTracking)
+                .where(
+                  sql`${zuvyQuizTracking.userId} = ${userId} AND ${zuvyQuizTracking.chapterId} = ${chapterId}`
+                );
+
+              if (quizTrackingEntries.length > 0 && quizTrackingEntries.every((entry) => entry.chosenOption === null)) {
+                // Scenario 1: All entries have `chosenOption` as null
+                const mcqIds = quizTrackingEntries.map((entry) => entry.mcqId);
+                const trackedData = await db.query.zuvyModuleQuizVariants.findMany({
+                  where: (moduleQuiz, { sql }) => sql`${inArray(moduleQuiz.id, mcqIds)}`,
+                  orderBy: (moduleQuiz, { asc }) => asc(moduleQuiz.id),
+                });
+
+                return [
+                  null,
+                  {
+                    message:
+                      'No quiz options selected yet. Returning pending questions with options.',
+                    statusCode: STATUS_CODES.OK,
+                    data: {
+                      chapterTitle: chapter[0].title,
+                      chapterId: chapter[0].id,
+                      chapterOrder: chapter[0].order,
+                      quizDetails: trackedData.map((quiz) => ({
+                        id: quiz.id,
+                        quizId: quiz.quizId,
+                        question: quiz.question,
+                        options: quiz.options,
+                        variantNumber: quiz.variantNumber
+                      })),
+                      status: 'Pending',
+                    },
+                  },
+                ];
+              } else if (quizTrackingEntries.length === 0) {
+                // Scenario 2: First-time attempt
+                const randomVariants = await Promise.all(
+                  quizQuestionIds.map(async (quizId) => {
+                    // Fetch all variants for the current quizId
+                    const allVariants = await db.query.zuvyModuleQuizVariants.findMany({
+                      where: (moduleQuiz) => eq(moduleQuiz.quizId, quizId),
+                    });
+
+                    // Select a random variant from the available ones
+                    const randomIndex = Math.floor(Math.random() * allVariants.length);
+                    return allVariants[randomIndex];
+                  })
+                );
+
+                // Store selected variants in the tracking table
+                await Promise.all(
+                  randomVariants.map((variant) =>
+                    db.insert(zuvyQuizTracking).values({
+                      userId,
+                      chapterId,
+                      moduleId: chapter[0].moduleId,
+                      mcqId: variant.id,
+                      chosenOption: null,
+                      status: null,
+                    })
+                  )
+                );
+
+                return [
+                  null,
+                  {
+                    message:
+                      'Random quiz variants selected and initialized for the first attempt.',
+                    statusCode: STATUS_CODES.OK,
+                    data: {
+                      chapterTitle: chapter[0].title,
+                      chapterId: chapter[0].id,
+                      chapterOrder: chapter[0].order,
+                      quizDetails: randomVariants.map((variant) => ({
+                        id: variant.id,
+                        quizId: variant.quizId,
+                        question: variant.question,
+                        options: variant.options,
+                        variantNumber: variant.variantNumber
+                      })),
+                      status: 'Pending',
+                    },
+                  },
+                ];
+              }
             }
-            else if(chapter[0].topicId == 5)
+          }
+          else {
+            // No quiz questions found in the chapter
+            return [
+              null,
               {
-                const assignmentTracking = await db
-               .select()
-               .from(zuvyAssignmentSubmission)
-               .where(sql`${zuvyAssignmentSubmission.userId} = ${userId}
+                message: 'No quiz questions found in this quiz chapter',
+                statusCode: STATUS_CODES.OK,
+                data: {
+                  chapterTitle: chapter[0].title,
+                  chapterId: chapter[0].id,
+                  chapterOrder: chapter[0].order,
+                  quizDetails: [],
+                  status: 'Pending',
+                },
+              },
+            ];
+          }
+        }
+        else if (chapter[0].topicId == 5) {
+          const assignmentTracking = await db
+            .select()
+            .from(zuvyAssignmentSubmission)
+            .where(sql`${zuvyAssignmentSubmission.userId} = ${userId}
                 AND ${zuvyAssignmentSubmission.chapterId} = ${chapterId}`);
 
-                const status = assignmentTracking.length > 0 ? 'Completed' : 'Pending';
+          const status = assignmentTracking.length > 0 ? 'Completed' : 'Pending';
 
-                return [null,{message:'Assignment chapter fetched succesfully',statusCode: STATUS_CODES.OK,data:{chapterDetails:chapter[0],assignmentTracking,status}}]
-              }
-              else if(chapter[0].topicId == 3)
-                {
-                  const submittedCode = await db.select().from(zuvyPracticeCode).where(sql`${zuvyPracticeCode.questionId} = ${chapter[0].codingQuestions} AND ${zuvyPracticeCode.userId} = ${userId} AND ${zuvyPracticeCode.submissionId} IS NULL`);
-                  
-                  const ChapterTracking = await db
-                   .select()
-                   .from(zuvyChapterTracking)
-                   .where(sql`${zuvyChapterTracking.userId} = ${userId} and ${zuvyChapterTracking.chapterId} = ${chapterId}`);
-                  let statusCount =  ChapterTracking.length > 0 ? 1 : 0;
-                   if(submittedCode.length > 0 && ChapterTracking.length == 0)
-                    {
-                      const moduleDetail = await db.select().from(zuvyCourseModules).where(eq(zuvyCourseModules.id,chapter[0].moduleId));
-                      const chapterUpdated = await this.updateChapterStatus(moduleDetail[0].bootcampId,userId,chapter[0].moduleId,chapter[0].id)
-                      if(chapterUpdated.status == 'success')
-                        {
-                          statusCount = 1;
-                        }
-                    }
-                   const status = statusCount > 0 ? 'Completed' : 'Pending';
-                   const codingProblem = await db
-                      .select()
-                      .from(zuvyCodingQuestions)
-                      .where(
-                        eq(
-                          zuvyCodingQuestions.id,
-                          chapter[0].codingQuestions,
-                        ),
-                      )
-                  if(chapter[0].codingQuestions != null && codingProblem.length > 0)
-                    {
-                      return [null,{message:'Coding chapter fetched succesfully',statusCode: STATUS_CODES.OK,data:{chapterDetails:chapter[0],codingProblem,status}}]
-                    } 
-                    else {
-                      return [null,{message:'There is no coding question in this chapter',statusCode: STATUS_CODES.OK,data:null}]
-                    }
-                }
-              else {
-                return [null,{message:'It is not a quiz or assignment chapter',statusCode: STATUS_CODES.OK,data:null}]
-              }
+          return [null, { message: 'Assignment chapter fetched succesfully', statusCode: STATUS_CODES.OK, data: { chapterDetails: chapter[0], assignmentTracking, status } }]
+        }
+        else if (chapter[0].topicId == 3) {
+          const submittedCode = await db.select().from(zuvyPracticeCode).where(sql`${zuvyPracticeCode.questionId} = ${chapter[0].codingQuestions} AND ${zuvyPracticeCode.userId} = ${userId} AND ${zuvyPracticeCode.submissionId} IS NULL`);
+
+          const ChapterTracking = await db
+            .select()
+            .from(zuvyChapterTracking)
+            .where(sql`${zuvyChapterTracking.userId} = ${userId} and ${zuvyChapterTracking.chapterId} = ${chapterId}`);
+          let statusCount = ChapterTracking.length > 0 ? 1 : 0;
+          if (submittedCode.length > 0 && ChapterTracking.length == 0) {
+            const moduleDetail = await db.select().from(zuvyCourseModules).where(eq(zuvyCourseModules.id, chapter[0].moduleId));
+            const chapterUpdated = await this.updateChapterStatus(moduleDetail[0].bootcampId, userId, chapter[0].moduleId, chapter[0].id)
+            if (chapterUpdated.status == 'success') {
+              statusCount = 1;
+            }
+          }
+          const status = statusCount > 0 ? 'Completed' : 'Pending';
+          const codingProblem = await db
+            .select()
+            .from(zuvyCodingQuestions)
+            .where(
+              eq(
+                zuvyCodingQuestions.id,
+                chapter[0].codingQuestions,
+              ),
+            )
+          if (chapter[0].codingQuestions != null && codingProblem.length > 0) {
+            return [null, { message: 'Coding chapter fetched succesfully', statusCode: STATUS_CODES.OK, data: { chapterDetails: chapter[0], codingProblem, status } }]
+          }
+          else {
+            return [null, { message: 'There is no coding question in this chapter', statusCode: STATUS_CODES.OK, data: null }]
+          }
         }
         else {
-          return [null,{message:'No chapter found',statusCode: STATUS_CODES.OK,data:null}]
+          return [null, { message: 'It is not a quiz or assignment chapter', statusCode: STATUS_CODES.OK, data: null }]
         }
-    }catch(error)
-    {
-      return [{message:error.message,statusCode: STATUS_CODES.BAD_REQUEST}]
+      }
+      else {
+        return [null, { message: 'No chapter found', statusCode: STATUS_CODES.OK, data: null }]
+      }
+    } catch (error) {
+      return [{ message: error.message, statusCode: STATUS_CODES.BAD_REQUEST }]
     }
   }
 
@@ -1052,7 +1186,7 @@ export class TrackingService {
         const projectTracked = await db.insert(zuvyProjectTracking).values(updatedBody).returning();
         const moduleTracked = await db.insert(zuvyModuleTracking).values(moduleTrackingBody).returning();
         if (recentBootcampForUser.length == 0) {
-          let updatedRecentBootcamp:any = {
+          let updatedRecentBootcamp: any = {
             userId: BigInt(userId),
             moduleId,
             progress: 100,
@@ -1064,7 +1198,7 @@ export class TrackingService {
             .values(updatedRecentBootcamp)
         }
         else {
-          let UpdatedRecentBootcamp:any = {
+          let UpdatedRecentBootcamp: any = {
             moduleId,
             progress: 100,
             bootcampId,
@@ -1095,7 +1229,7 @@ export class TrackingService {
     } catch (err) { }
   }
 
-  async getProjectDetailsWithStatus(projectId: number, moduleId: number, userId: number):Promise<any> {
+  async getProjectDetailsWithStatus(projectId: number, moduleId: number, userId: number): Promise<any> {
     try {
       const data = await db.query.zuvyCourseModules.findFirst({
         where: (courseModules, { eq }) =>
@@ -1107,10 +1241,10 @@ export class TrackingService {
             with: {
               projectTrackingData: {
                 columns: {
-                  projectLink:true,
-                  isChecked:true,
-                  grades:true,
-                  updatedAt:true
+                  projectLink: true,
+                  isChecked: true,
+                  grades: true,
+                  updatedAt: true
                 },
                 where: (projectTrack, { eq }) => eq(projectTrack.userId, userId)
               }
@@ -1131,9 +1265,9 @@ export class TrackingService {
         projectData: data['projectData'],
         status: data['moduleTracking'].length > 0 ? 'Completed' : 'Pending'
       }
-      return [null,{message:'Project details successfully fetched',statusCode: STATUS_CODES.OK,data:projectDetails}]
+      return [null, { message: 'Project details successfully fetched', statusCode: STATUS_CODES.OK, data: projectDetails }]
     } catch (err) {
-      return [{message:err.message,statusCode: STATUS_CODES.BAD_REQUEST}]
+      return [{ message: err.message, statusCode: STATUS_CODES.BAD_REQUEST }]
     }
   }
 
@@ -1169,74 +1303,75 @@ export class TrackingService {
     }
   }
 
-  async getLatestUpdatedCourseForStudents(userId: number):Promise<any> {
+  async getLatestUpdatedCourseForStudents(userId: number): Promise<any> {
     try {
       const latestTracking = await db.select().from(zuvyRecentBootcamp)
-        .where(eq(zuvyRecentBootcamp.userId, BigInt(userId)));  
+        .where(eq(zuvyRecentBootcamp.userId, BigInt(userId)));
       if (latestTracking.length > 0) {
         const ifEnrolled = await db.select().from(zuvyBatchEnrollments).where(sql`${zuvyBatchEnrollments.bootcampId} = ${latestTracking[0].bootcampId} AND ${zuvyBatchEnrollments.userId} = ${BigInt(userId)}`);
-        if(ifEnrolled.length == 0)
-          {
-            return [null,{message:'You have been removed from the recent course that you are studying.Please ask your instructor about this!!',statusCode: STATUS_CODES.OK,data:[]}]
-          }
-          const data = await db.query.zuvyCourseModules.findFirst({
-            where: (courseModules, { sql }) =>
-              sql`${courseModules.id} = ${latestTracking[0].moduleId} and ${courseModules.bootcampId} = ${latestTracking[0].bootcampId}`,
-            with: {
-              moduleData: true,
-              moduleChapterData: {
-                columns: {
-                  id: true,
-                  title: true,
-                  topicId: true
-                },
-                orderBy: (moduleChapter, { asc }) => asc(moduleChapter.order),
-                with: {
-                  chapterTrackingDetails: {
-                    columns: {
-                      id: true,
-                    },
-                    where: (chapterTracking, { eq }) =>
-                      eq(chapterTracking.userId, BigInt(userId)),
-                  }
-                }
+        if (ifEnrolled.length == 0) {
+          return [null, { message: 'You have been removed from the recent course that you are studying.Please ask your instructor about this!!', statusCode: STATUS_CODES.OK, data: [] }]
+        }
+        const data = await db.query.zuvyCourseModules.findFirst({
+          where: (courseModules, { sql }) =>
+            sql`${courseModules.id} = ${latestTracking[0].moduleId} and ${courseModules.bootcampId} = ${latestTracking[0].bootcampId}`,
+          with: {
+            moduleData: true,
+            moduleChapterData: {
+              columns: {
+                id: true,
+                title: true,
+                topicId: true
               },
-            },
-          });  
-          
-          const chapters = data['moduleChapterData'];
-          let progress = latestTracking[0].progress;
-          const incompleteChaptersCount = chapters.filter(chapter => chapter['chapterTrackingDetails'].length === 0).length;
-          const chaptersCompleted = chapters.length - incompleteChaptersCount;
-          if(progress == 100 && incompleteChaptersCount > 0)
-            {
-              let UpdateProgress:any = { progress: Math.ceil((chaptersCompleted/chapters.length)*100) }
-              const updatedRecentCourse = await db.update(zuvyRecentBootcamp)
-               .set(UpdateProgress)
-               .where(eq(zuvyRecentBootcamp.userId, BigInt(userId))).returning(); 
-              if(updatedRecentCourse.length == 0)
-                {
-                  return [null,{message:'There was some error',statusCode: STATUS_CODES.OK,data:[]}] 
+              orderBy: (moduleChapter, { asc }) => asc(moduleChapter.order),
+              with: {
+                chapterTrackingDetails: {
+                  columns: {
+                    id: true,
+                  },
+                  where: (chapterTracking, { eq }) =>
+                    eq(chapterTracking.userId, BigInt(userId)),
                 }
-            }
+              }
+            },
+          },
+        });
+
+        const chapters = data['moduleChapterData'];
+        let progress = latestTracking[0].progress;
+        const incompleteChaptersCount = chapters.filter(chapter => chapter['chapterTrackingDetails'].length === 0).length;
+        const chaptersCompleted = chapters.length - incompleteChaptersCount;
+        if (progress == 100 && incompleteChaptersCount > 0) {
+          let UpdateProgress: any = { progress: Math.ceil((chaptersCompleted / chapters.length) * 100) }
+          const updatedRecentCourse = await db.update(zuvyRecentBootcamp)
+            .set(UpdateProgress)
+            .where(eq(zuvyRecentBootcamp.userId, BigInt(userId))).returning();
+          if (updatedRecentCourse.length == 0) {
+            return [null, { message: 'There was some error', statusCode: STATUS_CODES.OK, data: [] }]
+          }
+        }
         if (progress < 100) {
           const currentIndex = chapters.findIndex(obj => obj.id === latestTracking[0].chapterId)
           let newChapter = null;
           for (let i = currentIndex + 1; i < chapters.length; i++) {
             if (chapters[i]['chapterTrackingDetails'].length === 0) {
-                newChapter = chapters[i];
-                break;
-                }
-             }
-           if (!newChapter) {
-               newChapter = chapters.find(chapter => chapter['chapterTrackingDetails'].length === 0);
-              } 
-          return [null,{message:'Your latest updated course',statusCode: STATUS_CODES.OK,data:{moduleId: data.id,
-            moduleName: data.name,
-            typeId: data.typeId,
-            bootcampId: data.bootcampId,
-            bootcampName: data['moduleData'].name,
-            newChapter}}]
+              newChapter = chapters[i];
+              break;
+            }
+          }
+          if (!newChapter) {
+            newChapter = chapters.find(chapter => chapter['chapterTrackingDetails'].length === 0);
+          }
+          return [null, {
+            message: 'Your latest updated course', statusCode: STATUS_CODES.OK, data: {
+              moduleId: data.id,
+              moduleName: data.name,
+              typeId: data.typeId,
+              bootcampId: data.bootcampId,
+              bootcampName: data['moduleData'].name,
+              newChapter
+            }
+          }]
         }
         else {
           const moduleInfo = await db.select().from(zuvyCourseModules).where(eq(zuvyCourseModules.id, latestTracking[0].moduleId))
@@ -1268,26 +1403,30 @@ export class TrackingService {
             },
           });
           if (data) {
-            return [null,{message:'Your latest updated course',statusCode: STATUS_CODES.OK,data:{ moduleId: data.id,
-              moduleName:  data['projectData'].length == 0 ? data.name : data['projectData'][0]['title'],
-              typeId: data.typeId,
-              bootcampId: data['moduleData'].id,
-              bootcampName: data['moduleData'].name,
-              newChapter: data.typeId == 1 ? (data['moduleChapterData'].length > 0 ? data['moduleChapterData'][0] : 'There is no chapter in the module') : data['projectData'][0]}}]
-            
+            return [null, {
+              message: 'Your latest updated course', statusCode: STATUS_CODES.OK, data: {
+                moduleId: data.id,
+                moduleName: data['projectData'].length == 0 ? data.name : data['projectData'][0]['title'],
+                typeId: data.typeId,
+                bootcampId: data['moduleData'].id,
+                bootcampName: data['moduleData'].name,
+                newChapter: data.typeId == 1 ? (data['moduleChapterData'].length > 0 ? data['moduleChapterData'][0] : 'There is no chapter in the module') : data['projectData'][0]
+              }
+            }]
+
           }
           else {
-            return [null,{message:'Start a course',statusCode: STATUS_CODES.OK,data:[]}]  
+            return [null, { message: 'Start a course', statusCode: STATUS_CODES.OK, data: [] }]
 
           }
         }
       }
       else {
-        return [null,{message:'You have not yet started any course module',statusCode: STATUS_CODES.OK,data:[]}]
+        return [null, { message: 'You have not yet started any course module', statusCode: STATUS_CODES.OK, data: [] }]
       }
     }
     catch (err) {
-      return [{message:err.message,statusCode: STATUS_CODES.BAD_REQUEST}]
+      return [{ message: err.message, statusCode: STATUS_CODES.BAD_REQUEST }]
     }
   }
 
@@ -1332,7 +1471,7 @@ export class TrackingService {
           },
           submitedOutsourseAssessment: true,
           PracticeCode: {
-            where: (zuvyPracticeCode, { eq,and, or, ne}) =>  and(
+            where: (zuvyPracticeCode, { eq, and, or, ne }) => and(
               eq(zuvyPracticeCode.userId, userId),
             ),
             columns: {
@@ -1369,7 +1508,7 @@ export class TrackingService {
       }
       const filteredData = data.PracticeCode.reduce((acc, curr) => {
         const existing = acc.find(item => item.questionId === curr.questionId);
-        
+
         if (!existing) {
           acc.push(curr);
         } else if (curr.status === "Accepted") {
@@ -1379,7 +1518,7 @@ export class TrackingService {
           acc = acc.filter(item => item.questionId !== curr.questionId);
           acc.push(curr);
         }
-        
+
         return acc;
       }, []);
       data.PracticeCode = filteredData
@@ -1438,7 +1577,7 @@ export class TrackingService {
               return {
                 status: "success",
                 code: 200,
-                message:"Form not submitted by student",
+                message: "Form not submitted by student",
                 questions
               }
 
@@ -1467,7 +1606,7 @@ export class TrackingService {
               return {
                 status: "success",
                 code: 200,
-                message:"Form submitted by student",
+                message: "Form submitted by student",
                 trackedData
               }
             }
@@ -1546,15 +1685,15 @@ export class TrackingService {
       throw err;
     }
   }
-  
-  async getProperting(assessmentSubmissionId): Promise<any>{
-    try{
-      let assessmentProperting = await db.select({eyeMomentCount:zuvyAssessmentSubmission.eyeMomentCount,fullScreenExit:zuvyAssessmentSubmission.fullScreenExit,copyPaste:zuvyAssessmentSubmission.copyPaste,tabChange: zuvyAssessmentSubmission.tabChange}).from(zuvyAssessmentSubmission).where(eq(zuvyAssessmentSubmission.id, assessmentSubmissionId));
-      if (assessmentProperting.length == 0){
-        return [null, { message: "Assessment properting not found", statusCode: STATUS_CODES.NOT_FOUND, data:{} }]
+
+  async getProperting(assessmentSubmissionId): Promise<any> {
+    try {
+      let assessmentProperting = await db.select({ eyeMomentCount: zuvyAssessmentSubmission.eyeMomentCount, fullScreenExit: zuvyAssessmentSubmission.fullScreenExit, copyPaste: zuvyAssessmentSubmission.copyPaste, tabChange: zuvyAssessmentSubmission.tabChange }).from(zuvyAssessmentSubmission).where(eq(zuvyAssessmentSubmission.id, assessmentSubmissionId));
+      if (assessmentProperting.length == 0) {
+        return [null, { message: "Assessment properting not found", statusCode: STATUS_CODES.NOT_FOUND, data: {} }]
       }
       return [null, { message: 'Get Assignment properting', statusCode: STATUS_CODES.OK, data: assessmentProperting[0] }]
-    } catch (error){
+    } catch (error) {
       return [{ message: error.message, statusCode: STATUS_CODES.BAD_REQUEST }, null]
     }
   }
