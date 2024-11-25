@@ -1875,7 +1875,6 @@ export class ContentService {
         .orderBy(sql`md5(${zuvyOutsourseCodingQuestions.id}::text || ${parseInt(id)})`) // Using seed for randomization
         .limit(limit);
   
-      console.log("Questions fetched: ", questions);
   
       return questions;
     } catch (error) {
@@ -1899,15 +1898,12 @@ export class ContentService {
           assessmentOutsourseData.codingQuestionTagId,
           id
         ).then(result => {
-          console.log(assessmentOutsourseData[`${difficulty.toLowerCase()}CodingQuestions`],difficulty,assessmentOutsourseData.codingQuestionTagId,  1886);
-          console.log({ difficulty: result, name: difficulty });
           return { difficulty, result };
         })
       );
   
       const results = await Promise.all(promises);
 
-      console.log(results)
       const questionsByDifficulty = results.reduce((acc, curr) => {
         acc[curr.difficulty] = curr.result;
         return acc;
