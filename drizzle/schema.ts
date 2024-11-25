@@ -3168,12 +3168,12 @@ export const quizChapterRelations = relations(
     moduleChapterData: many(zuvyModuleChapter),
     chapterTrackingData: many(zuvyChapterTracking),
     quizTrackingData: many(zuvyQuizTracking),
-    moduleQuizData: many (zuvyModuleQuiz)
+    moduleQuizData: many (zuvyModuleQuizVariants)
   }),
 );
 
 export const quizModuleRelation= relations(
-  zuvyModuleQuiz,
+  zuvyModuleQuizVariants,
   ({many})=>({
     quizTrackingData: many(zuvyQuizTracking)
   })
@@ -3183,9 +3183,9 @@ export const quizModuleRelation= relations(
 export const quizTrackingRelation = relations(
   zuvyQuizTracking,
   ({ one }) => ({
-    quizQuestion: one(zuvyModuleQuiz, {
+    quizQuestion: one(zuvyModuleQuizVariants, {
       fields: [zuvyQuizTracking.mcqId],
-      references: [zuvyModuleQuiz.id],
+      references: [zuvyModuleQuizVariants.id],
     }),
   })
 );
