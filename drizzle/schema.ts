@@ -2956,7 +2956,7 @@ export const zuvyOutsourseAssessments = main.table('zuvy_outsourse_assessments',
   canEyeTrack: boolean('can_eye_track'),
   canTabChange: boolean('can_tab_change'),
   canScreenExit: boolean('can_screen_exit'),
-  CanCopyPaste: boolean('can_copy_paste'),
+  canCopyPaste: boolean('can_copy_paste'),
   createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow(),
 });
 

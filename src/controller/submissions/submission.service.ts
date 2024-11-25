@@ -16,7 +16,7 @@ export class SubmissionService {
   async getSubmissionOfPractiseProblem(bootcampId: number, searchProblem: string) {
     try {
       const topicId = 3;
-  
+
       // Query to fetch module and chapter details along with coding question details
       const trackingData = await db.query.zuvyCourseModules.findMany({
         where: (courseModules, { eq, and }) =>
@@ -57,7 +57,7 @@ export class SubmissionService {
           },
         },
       });
-  
+
       // Query to get the count of total students enrolled in the bootcamp
       const zuvyBatchEnrollmentsCount = await db
         .select({
@@ -65,7 +65,7 @@ export class SubmissionService {
         })
         .from(zuvyBatchEnrollments)
         .where(sql`${zuvyBatchEnrollments.bootcampId} = ${bootcampId} AND ${zuvyBatchEnrollments.batchId} IS NOT NULL`);
-  
+
       // Processing tracking data to add `submitStudents` field
       trackingData.forEach((course: any) => {
         course.moduleChapterData.forEach((chapterTracking) => {
@@ -73,24 +73,24 @@ export class SubmissionService {
           delete chapterTracking['chapterTrackingDetails'];
         });
       });
-  
+
       // Check if data exists and return result
       if (!trackingData || trackingData.length === 0) {
         return [];
       }
-  
+
       const totalStudents = zuvyBatchEnrollmentsCount[0]?.count || 0;
-  
+
       return {
         trackingData: trackingData.filter((course: any) => course.moduleChapterData.length > 0),
         totalStudents: totalStudents,
       };
-  
+
     } catch (err) {
       throw err;
     }
   }
-  
+
   async practiseProblemStatusOfStudents(
     questionId: number,
     chapterId: number,
@@ -125,7 +125,7 @@ export class SubmissionService {
         limit: limit,
         offset: offset,
       });
-  
+
       // Get the total number of students matching the chapter and module criteria
       const totalStudents = await db
         .select()
@@ -133,14 +133,14 @@ export class SubmissionService {
         .where(
           sql`${zuvyChapterTracking.moduleId} = ${moduleId} and ${zuvyChapterTracking.chapterId} = ${chapterId}`
         );
-  
+
       const totalStudentsCount = totalStudents.length;
       const totalPages = Math.ceil(totalStudentsCount / limit);
-  
+
       // Prepare the result with data about each student's attempts and submission status
       const data = statusOfStudentCode.map((statusCode) => {
         const user = statusCode['user'];
-  
+
         // Check if user exists before accessing properties
         if (user) {
           return {
@@ -155,10 +155,10 @@ export class SubmissionService {
               : 'Not Accepted',
           };
         } else {
-          return null; 
+          return null;
         }
       }).filter((item) => item !== null);
-  
+
       return { data, totalPages, totalStudentsCount };
     } catch (err) {
       throw err;
@@ -232,7 +232,7 @@ export class SubmissionService {
   }
 
   async calculateTotalPoints(data: any) {
-    let {hardMcqMark,easyMcqMark, mediumMcqMark, hardCodingMark, mediumCodingMark, easyCodingMark} = data
+    let { hardMcqMark, easyMcqMark, mediumMcqMark, hardCodingMark, mediumCodingMark, easyCodingMark } = data
     const MCQ_POINTS = { easy: easyMcqMark, medium: mediumMcqMark, hard: hardMcqMark };
     const CODING_POINTS = { easy: easyCodingMark, medium: mediumCodingMark, hard: hardCodingMark };
     const totalMCQPoints = data.Quizzes.reduce((sum, q) => sum + MCQ_POINTS[q.difficulty], 0);
@@ -254,7 +254,7 @@ export class SubmissionService {
     let openTotalAttemted = 0;
     let codingTotalAttemted = 0;
     let codingScore = 0;
-    let {hardMcqMark,easyMcqMark, mediumMcqMark, hardCodingMark, mediumCodingMark, easyCodingMark} = data
+    let { hardMcqMark, easyMcqMark, mediumMcqMark, hardCodingMark, mediumCodingMark, easyCodingMark } = data
     const MCQ_POINTS = { easy: easyMcqMark, medium: mediumMcqMark, hard: hardMcqMark };
     const CODING_POINTS = { easy: easyCodingMark, medium: mediumCodingMark, hard: hardCodingMark };
     // Processing Quizzes
@@ -464,13 +464,13 @@ export class SubmissionService {
           statusCode: 400,
           message: 'Unauthorized assessment submission',
         });
-      }  else if (submitData.submitedAt != null) {
+      } else if (submitData.submitedAt != null) {
         throw ({
           status: 'error',
           statusCode: 400,
           message: 'Assessment already submitted',
         });
-      } 
+      }
       data['submitedAt'] = new Date().toISOString();
       data = {
         ...data,
@@ -592,14 +592,14 @@ export class SubmissionService {
           },
         },
       });
-  
+
       const zuvyBatchEnrollmentsCount = await db
         .select({
           count: sql<number>`cast(count(${zuvyBatchEnrollments.id}) as int)`,
         })
         .from(zuvyBatchEnrollments)
         .where(eq(zuvyBatchEnrollments.bootcampId, bootcampId));
-  
+
       // Filter and process project data
       data['bootcampModules'].forEach((module: any) => {
         module.projectData.forEach((project: any) => {
@@ -607,12 +607,12 @@ export class SubmissionService {
           delete project['projectTrackingData'];
         });
       });
-  
+
       // Filter out modules where projectData is empty
       data['bootcampModules'] = data['bootcampModules'].filter(
         (module: any) => module.projectData.length > 0
       );
-  
+
       // Check if there are any modules left and return response
       if (data['bootcampModules'].length > 0) {
         return {
@@ -679,7 +679,7 @@ export class SubmissionService {
           },
         },
       });
-  
+
       // Get total count of students for pagination
       const totalStudentsCount = await db
         .select()
@@ -687,9 +687,9 @@ export class SubmissionService {
         .where(
           sql`${zuvyProjectTracking.projectId} = ${projectId} and ${zuvyProjectTracking.bootcampId} = ${bootcampId}`
         );
-  
+
       const totalPages = Math.ceil(totalStudentsCount.length / limit);
-  
+
       // Process the project submission data
       if (projectSubmissionData['projectTrackingData'].length > 0) {
         projectSubmissionData['projectTrackingData'].forEach((project: any) => {
@@ -697,7 +697,7 @@ export class SubmissionService {
           project['userEmail'] = project['userDetails']['email'];
           delete project['userDetails'];
         });
-  
+
         return {
           status: 'success',
           code: 200,
@@ -715,7 +715,7 @@ export class SubmissionService {
     } catch (err) {
       throw err;
     }
-  } 
+  }
 
   async getProjectDetailsForAUser(projectId: number, userId: number, bootcampId: number) {
     try {
@@ -1124,7 +1124,7 @@ export class SubmissionService {
   ): Promise<any> {
     try {
       const topicId = 5;
-  
+
       // Fetch all tracking data (either filtered by assignment name or not)
       const trackingData = await db.query.zuvyCourseModules.findMany({
         where: (courseModules, { eq }) =>
@@ -1154,7 +1154,7 @@ export class SubmissionService {
           },
         },
       });
-  
+
       // Fetch the total student count for the bootcamp
       const zuvyBatchEnrollmentsCount = await db
         .select({
@@ -1164,29 +1164,29 @@ export class SubmissionService {
         .where(
           sql`(${zuvyBatchEnrollments.bootcampId} = ${bootcampId} AND ${zuvyBatchEnrollments.batchId} IS NOT NULL)`
         );
-  
+
       // Process tracking data, count submitted students, and filter out empty moduleChapterData
       const filteredTrackingData = trackingData.map((course: any) => {
         course.moduleChapterData = course.moduleChapterData.map((chapterTracking) => {
           chapterTracking['submitStudents'] = chapterTracking['chapterTrackingDetails'].length;
-          delete chapterTracking['chapterTrackingDetails']; 
-  
+          delete chapterTracking['chapterTrackingDetails'];
+
           return chapterTracking;
-        }).filter(chapterTracking => chapterTracking['submitStudents'] > 0); 
-  
+        }).filter(chapterTracking => chapterTracking['submitStudents'] > 0);
+
         return course;
-      }).filter((course: any) => course.moduleChapterData.length > 0); 
-  
+      }).filter((course: any) => course.moduleChapterData.length > 0);
+
       // If no assignment name is provided, return all courses regardless of submissions
       const finalTrackingData = assignmentName ? filteredTrackingData : trackingData;
-  
+
       return [
         null,
         {
           message: 'Submission of assignment for courses has been fetched',
           statusCode: STATUS_CODES.OK,
           data: {
-            trackingData: finalTrackingData, 
+            trackingData: finalTrackingData,
             totalStudents: zuvyBatchEnrollmentsCount[0]?.count,
           },
         },
@@ -1194,20 +1194,20 @@ export class SubmissionService {
     } catch (error) {
       return [{ message: error.message, statusCode: STATUS_CODES.BAD_REQUEST }, null];
     }
-  } 
+  }
 
   async assignmentStatusOfStudents(
     chapterId: number,
     limit: number,
     offset: number,
-    searchStudent: string 
+    searchStudent: string
   ): Promise<any> {
     try {
       // Get chapter details
       const chapterDeadline = await db.select()
         .from(zuvyModuleChapter)
         .where(eq(zuvyModuleChapter.id, chapterId));
-  
+
       if (chapterDeadline.length > 0) {
         // Query the chapter tracking
         const statusOfStudentCode = await db.query.zuvyChapterTracking.findMany({
@@ -1223,9 +1223,9 @@ export class SubmissionService {
               where: (user, { sql, or }) =>
                 searchStudent
                   ? or(
-                      sql`${user.name} ILIKE ${searchStudent + '%'}`,
-                      sql`${user.email} ILIKE ${searchStudent + '%'}`
-                    )
+                    sql`${user.name} ILIKE ${searchStudent + '%'}`,
+                    sql`${user.email} ILIKE ${searchStudent + '%'}`
+                  )
                   : sql`TRUE`,
               with: {
                 studentAssignmentStatus: {
@@ -1239,7 +1239,7 @@ export class SubmissionService {
           limit: limit,
           offset: offset,
         });
-  
+
         // Get the total student count for pagination
         const totalStudents = await db.select()
           .from(zuvyChapterTracking)
@@ -1247,21 +1247,21 @@ export class SubmissionService {
         const totalStudentsCount = totalStudents.length;
         const totalPages = Math.ceil(totalStudentsCount / limit);
         const deadlineDate = new Date(chapterDeadline[0].completionDate).getTime();
-  
+
         // Process the result data with filtering out entries without a valid user
         const data = statusOfStudentCode
-          .filter(statusCode => statusCode["user"]) 
+          .filter(statusCode => statusCode["user"])
           .map((statusCode) => {
             const studentAssignmentStatus = statusCode;
             let isLate = false;
-  
+
             if (studentAssignmentStatus && studentAssignmentStatus['completedAt']) {
               const createdAtDate = new Date(studentAssignmentStatus['completedAt']).getTime();
               if (createdAtDate > deadlineDate) {
                 isLate = true;
               }
             }
-  
+
             // Return properties without null or unknown
             return {
               id: Number(statusCode["user"]["id"]),
@@ -1271,10 +1271,10 @@ export class SubmissionService {
               bootcampId: statusCode["user"].studentAssignmentStatus?.bootcampId,
             };
           });
-  
+
         // Calculate the current page based on limit and offset
         const currentPage = !isNaN(limit) && !isNaN(offset) ? offset / limit + 1 : 1;
-  
+
         // Return the response with student data
         return [
           null,
@@ -1350,16 +1350,15 @@ export class SubmissionService {
       return [{ message: error.message, statusCode: STATUS_CODES.BAD_REQUEST }, null]
     }
   }
-  
-  async submitProperting(assessmentSubmissionId, propertingPutBody:any): Promise<any> {
-    try{
-      let updatedSubmissionAssessment = await db.update(zuvyAssessmentSubmission).set(propertingPutBody).where(eq(zuvyAssessmentSubmission.id, assessmentSubmissionId)).returning({eyeMomentCount:zuvyAssessmentSubmission.eyeMomentCount,fullScreenExit:zuvyAssessmentSubmission.fullScreenExit,copyPaste:zuvyAssessmentSubmission.copyPaste,tabChange: zuvyAssessmentSubmission.tabChange});
-      if (updatedSubmissionAssessment.length == 0){
-        return [null, { message: "Assessment properting not found", statusCode: STATUS_CODES.NOT_FOUND, data:{} }]
+
+  async submitProperting(assessmentSubmissionId, propertingPutBody: any): Promise<any> {
+    try {
+      let updatedSubmissionAssessment = await db.update(zuvyAssessmentSubmission).set(propertingPutBody).where(eq(zuvyAssessmentSubmission.id, assessmentSubmissionId)).returning({ eyeMomentCount: zuvyAssessmentSubmission.eyeMomentCount, fullScreenExit: zuvyAssessmentSubmission.fullScreenExit, copyPaste: zuvyAssessmentSubmission.copyPaste, tabChange: zuvyAssessmentSubmission.tabChange });
+      if (updatedSubmissionAssessment.length == 0) {
+        return [null, { message: "Assessment properting not found", statusCode: STATUS_CODES.NOT_FOUND, data: {} }]
       }
       return [null, { message: 'Assignment properting data updated', statusCode: STATUS_CODES.OK, data: updatedSubmissionAssessment[0] }]
-    } catch (error){
-      console.log({error})
+    } catch (error) {
       return [{ message: error.message, statusCode: STATUS_CODES.BAD_REQUEST }, null]
     }
   }

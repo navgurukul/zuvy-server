@@ -599,7 +599,7 @@ export class ContentController {
   @ApiBearerAuth()
   async startAssessmentForStudent(@Req() req, @Param('assessmentOutsourseId') assessmentOutsourseId: number, @Res() res: Response): Promise<any> {
     try{
-      let [err, success] = await this.contentService.startAssessmentForStudent(assessmentOutsourseId, req);
+      let [err, success] = await this.contentService.startAssessmentForStudent(assessmentOutsourseId, req.user[0]);
       if (err) {
         return ErrorResponse.BadRequestException(err.message).send(res);
       }
@@ -628,7 +628,7 @@ export class ContentController {
     const userId = studentId || req.user[0].id;
 
     // Create the `quizConfig` object from the query parameters
-    let [err, success] = await this.contentService.getAssessmentDetailsOfQuiz(assessmentOutsourseId, userId);
+    let [err, success] = await this.contentService.getAssessmentDetailsOfQuiz(assessmentOutsourseId,req.user[0], userId);
     if (err) {
       return ErrorResponse.BadRequestException(err.message).send(res);
     }
