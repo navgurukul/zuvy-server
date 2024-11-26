@@ -540,7 +540,12 @@ export class ContentService {
               },
               where: (zuvyOutsourseQuizzes, { sql }) => sql`${zuvyOutsourseQuizzes.bootcampId} = ${bootcampId} AND ${zuvyOutsourseQuizzes.chapterId} = ${chapterId}`,
               with: {
-                Quiz: true
+                Quiz: {
+                  with: {
+                    quizVariants: true
+                  }
+                }
+
               }
             },
             OpenEndedQuestions: {
@@ -1785,24 +1790,19 @@ export class ContentService {
         with: {
           submitedOutsourseAssessments: {
             where: (zuvyAssessmentSubmission, { eq }) => eq(zuvyAssessmentSubmission.userId, id),
-            columns: {
-              id: true,
-              marks: true,
-              userId: true,
-              assessmentOutsourseId: true,
-              startedAt: true,
-              submitedAt: true,
-            },
           },
           ModuleAssessment: true,
           Quizzes: {
             columns: {
-              // id: true,
               assessmentOutsourseId: true,
               bootcampId: true
             },
             with: {
-              Quiz: true,
+              Quiz: {
+                with: {
+                  quizVariants: true
+                }
+              },
             }
           },
           OpenEndedQuestions: {

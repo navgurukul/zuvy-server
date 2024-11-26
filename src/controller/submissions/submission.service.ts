@@ -340,7 +340,11 @@ export class SubmissionService {
               bootcampId: true
             },
             with: {
-              Quiz: true,
+              Quiz: {
+                with: {
+                  quizVariants: true
+                }
+              },
             }
           },
           OpenEndedQuestions: {
@@ -412,7 +416,11 @@ export class SubmissionService {
             with: {
               submissionData: {
                 with: {
-                  Quiz: true
+                  Quiz: {
+                    with: {
+                      quizVariants: true
+                    }
+                  }
                 }
               }
             }
