@@ -293,60 +293,87 @@ export class TrackingService {
           (obj) => obj.chossenOption
         );
 
-        // Fetch correct options from zuvyModuleQuizVariants table
-        const questions = await db
-          .select({
-            id: zuvyModuleQuizVariants.id,
-            correctOption: zuvyModuleQuizVariants.correctOption,
-          })
-          .from(zuvyModuleQuizVariants)
-          .where(sql`${inArray(zuvyModuleQuizVariants.id, mcqIdArray)}`)
-          .orderBy(zuvyModuleQuizVariants.quizId);
-
-        const sqlChunks: SQL[] = [];
-        const ids: number[] = [];
-
-        sqlChunks.push(sql`(case`);
-
-        for (let i = 0; i < questions.length; i++) {
-          const status = chosenOptions[i] === questions[i].correctOption ? "pass" : "fail";
-          sqlChunks.push(sql`when ${zuvyQuizTracking.mcqId} = ${SubmitBody.submitQuiz[i].mcqId} then ${status}`);
-          ids.push(SubmitBody.submitQuiz[i].mcqId);
-        }
-
-        sqlChunks.push(sql`end)`);
-
-        const statusSql: SQL = sql.join(sqlChunks, sql.raw(' '));
-
-        const chosenOptionChunks: SQL[] = [];
-        chosenOptionChunks.push(sql`(case`);
-        
-        for (let i = 0; i < questions.length; i++) {
-          chosenOptionChunks.push(sql`when ${zuvyQuizTracking.mcqId} = ${SubmitBody.submitQuiz[i].mcqId} then cast(${chosenOptions[i]} as integer)`);
-        }
-        
-        chosenOptionChunks.push(sql`end)`);
-
-        const chosenOptionSql: SQL = sql.join(chosenOptionChunks, sql.raw(' '));
-
-        result = await db.update(zuvyQuizTracking)
-          .set({
-            status: statusSql,
-            chosenOption: chosenOptionSql,
-            updatedAt: sql`NOW()`,
-            attemptCount: sql`${zuvyQuizTracking.attemptCount} + 1`
-          })
-          .where(
-            and(
-              inArray(zuvyQuizTracking.mcqId, ids),
-              eq(zuvyQuizTracking.userId, userId),
-              eq(zuvyQuizTracking.moduleId, moduleId),
-              eq(zuvyQuizTracking.chapterId, chapterId)
-            )
+        const totalQuestions = await db
+        .select({
+          count: sql`count(${zuvyQuizTracking.mcqId})`,
+        })
+        .from(zuvyQuizTracking)
+        .where(
+          and(
+            eq(zuvyQuizTracking.userId, userId),
+            eq(zuvyQuizTracking.moduleId, moduleId),
+            eq(zuvyQuizTracking.chapterId, chapterId)
           )
-          .returning();
+        )
+        .then((result) => result[0]?.count || 0);
+
+        console.log("@@@", totalQuestions, chosenOptions.length);
+        if (chosenOptions.length != totalQuestions) {
+          return {
+            status: 'error', 
+            code: STATUS_CODES.BAD_REQUEST, 
+            message: "You must attempt all the questions." 
+          }
+        } else {
+          const questions = await db
+            .select({
+              id: zuvyModuleQuizVariants.id,
+              correctOption: zuvyModuleQuizVariants.correctOption,
+            })
+            .from(zuvyModuleQuizVariants)
+            .where(sql`${inArray(zuvyModuleQuizVariants.id, mcqIdArray)}`)
+            .orderBy(zuvyModuleQuizVariants.quizId);
+
+          const sqlChunks: SQL[] = [];
+          const ids: number[] = [];
+
+          sqlChunks.push(sql`(case`);
+
+          for (let i = 0; i < questions.length; i++) {
+            const status = chosenOptions[i] === questions[i].correctOption ? "pass" : "fail";
+            sqlChunks.push(sql`when ${zuvyQuizTracking.mcqId} = ${SubmitBody.submitQuiz[i].mcqId} then ${status}`);
+            ids.push(SubmitBody.submitQuiz[i].mcqId);
+          }
+
+          sqlChunks.push(sql`end)`);
+
+          const statusSql: SQL = sql.join(sqlChunks, sql.raw(' '));
+
+          const chosenOptionChunks: SQL[] = [];
+          chosenOptionChunks.push(sql`(case`);
+
+          for (let i = 0; i < questions.length; i++) {
+            chosenOptionChunks.push(sql`when ${zuvyQuizTracking.mcqId} = ${SubmitBody.submitQuiz[i].mcqId} then cast(${chosenOptions[i]} as integer)`);
+          }
+
+          chosenOptionChunks.push(sql`end)`);
+
+          const chosenOptionSql: SQL = sql.join(chosenOptionChunks, sql.raw(' '));
+
+          result = await db.update(zuvyQuizTracking)
+            .set({
+              status: statusSql,
+              chosenOption: chosenOptionSql,
+              updatedAt: sql`NOW()`,
+              attemptCount: sql`${zuvyQuizTracking.attemptCount} + 1`
+            })
+            .where(
+              and(
+                inArray(zuvyQuizTracking.mcqId, ids),
+                eq(zuvyQuizTracking.userId, userId),
+                eq(zuvyQuizTracking.moduleId, moduleId),
+                eq(zuvyQuizTracking.chapterId, chapterId)
+              )
+            )
+            .returning();
+        }
       }
-      return result;
+      return { 
+        status: "success",
+        message: "Quiz submitted successfully.",
+        code: STATUS_CODES.OK,
+        result
+      };
     } catch (err) {
       throw err;
     }
