@@ -1847,7 +1847,7 @@ export class ContentService {
     }
   }
 
-  async getCodingQuestionsByDifficulty(difficultyLevel, assessmentOutsourseId, limit, selectedTagIds, id) {
+  async getCodingQuestionsByDifficulty(difficultyLevel, assessmentOutsourseId, limit, selectedTagIds,userId, assessmentSubmissionId) {
     try {
       // Fetching the combined results with a join
       const questions = await db
@@ -1872,7 +1872,7 @@ export class ContentService {
           )
         )
         .where(eq(zuvyOutsourseCodingQuestions.assessmentOutsourseId, assessmentOutsourseId))
-        .orderBy(sql`md5(${zuvyOutsourseCodingQuestions.id}::text || ${parseInt(id)})`) // Using seed for randomization
+        .orderBy(sql`md5(${zuvyOutsourseCodingQuestions.id}::text || ${parseInt(userId)})`) // Using seed for randomization
         .limit(limit);
   
   
@@ -1886,7 +1886,7 @@ export class ContentService {
   
   
 
-  async getCodingQuestionsByAllDifficulties(assessmentOutsourseId, assessmentOutsourseData, id): Promise<any> {
+  async getCodingQuestionsByAllDifficulties(assessmentOutsourseId, assessmentOutsourseData,userId, assessmentSubmissionId): Promise<any> {
     try {
       const difficulties = [DIFFICULTY.EASY, DIFFICULTY.MEDIUM, DIFFICULTY.HARD];
   
@@ -1896,7 +1896,7 @@ export class ContentService {
           assessmentOutsourseId, 
           assessmentOutsourseData[`${difficulty.toLowerCase()}CodingQuestions`],
           assessmentOutsourseData.codingQuestionTagId,
-          id
+          userId, assessmentSubmissionId
         ).then(result => {
           return { difficulty, result };
         })
@@ -1928,14 +1928,22 @@ export class ContentService {
       where: (zuvyOutsourseAssessments, { eq }) =>
         eq(zuvyOutsourseAssessments.id, assessmentOutsourseId),
       with: {
-        ModuleAssessment: true
+        ModuleAssessment: true,
+        submitedOutsourseAssessments:true,
       },
     });
     if ( roles.includes('admin') ){
       id = Math.floor(Math.random() * (99999 - 1000 + 1)) + 1000;
     }
+    let assessmentSubmissionId
+    // Fetching all quiz questions at once
+    if (!assessmentOutsourseData.submitedOutsourseAssessments[0].id){
+      return [{ message: 'assessment Submission is not available'}]
+    } else {
+      assessmentSubmissionId = assessmentOutsourseData.submitedOutsourseAssessments[0].id
+    }
     // Fetching all coding questions at once
-    const [err, codingQuestions] = await this.getCodingQuestionsByAllDifficulties(assessmentOutsourseId, assessmentOutsourseData, id);
+    const [err, codingQuestions] = await this.getCodingQuestionsByAllDifficulties(assessmentOutsourseId, assessmentOutsourseData, id, assessmentSubmissionId);
     if (err){
       Logger.error(JSON.stringify(err));
       return [{ message: err.message, statusCode: STATUS_CODES.BAD_REQUEST }];
@@ -1952,9 +1960,11 @@ export class ContentService {
         let insertAssessmentSubmission: any = { userId: id, assessmentOutsourseId, startedAt }
         submission = await db.insert(zuvyAssessmentSubmission).values(insertAssessmentSubmission).returning();
       }
-      
+      let quizzes = await db.select().from(zuvyQuizTracking).where(sql`${zuvyQuizTracking.assessmentSubmissionId} = ${submission[0].id}`)
+      console.log({quizzes});
       let assessment = {
         ...assessmentOutsourseData,
+        IsQuizzSubmission: quizzes.length > 0? true : false,
         codingQuestions:[
           ...easyCodingQuestions,
           ...mediumCodingQuestions,
@@ -2019,7 +2029,7 @@ export class ContentService {
             options: zuvyModuleQuizVariants.options, // Options for the variant question
             correctOption: zuvyModuleQuizVariants.correctOption, // Correct option of the variant
             variantNumber: zuvyModuleQuizVariants.variantNumber, // Variant number
-            assessmentId: zuvyOutsourseQuizzes.assessmentOutsourseId, // Associated assessment ID
+            outsourseQuizzesId: zuvyOutsourseQuizzes.id, // Associated assessment ID
             submissionsData: {   
               id: zuvyQuizTracking.id, // ID from zuvyQuizTracking
               userId: zuvyQuizTracking.userId, // User ID from zuvyQuizTracking
