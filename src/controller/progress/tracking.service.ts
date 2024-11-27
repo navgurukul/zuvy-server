@@ -307,7 +307,6 @@ export class TrackingService {
         )
         .then((result) => result[0]?.count || 0);
 
-        console.log("@@@", totalQuestions, chosenOptions.length);
         if (chosenOptions.length != totalQuestions) {
           return {
             status: 'error', 
