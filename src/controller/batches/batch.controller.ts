@@ -33,7 +33,7 @@ import { BatchDto, PatchBatchDto } from './dto/batch.dto';
   }),
 )
 export class BatchesController {
-  constructor(private batchService: BatchesService) {}
+  constructor(private batchService: BatchesService) { }
   @Get('/:id')
   @ApiOperation({ summary: 'Get the batch by id' })
   @ApiBearerAuth()
@@ -129,4 +129,22 @@ export class BatchesController {
     }
     return res;
   }
+
+  @Get('/allUnassignStudent/:bootcampId')
+  @ApiOperation({ summary: 'Get students not enrolled in any batch for a specific bootcamp' })
+  @ApiQuery({
+    name: 'searchTerm',
+    required: false,
+    type: String,
+    description: 'Search by name or email',
+  })
+  @ApiBearerAuth()
+  async getNotEnrolledStudents(@Param('bootcampId') bootcampId: number, @Query('searchTerm') searchTerm: string): Promise<object> {
+    const [err, res] = await this.batchService.getNotEnrolledStudents(bootcampId, searchTerm);
+    if (err) {
+      throw new BadRequestException(err);
+    }
+    return { status: res.status, message: res.message, StatusCode: res.statusCode, data: res.data };
+  }
+
 }
