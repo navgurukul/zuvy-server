@@ -304,7 +304,11 @@ export class AdminAssessmentService {
             with: {
               submissionData: {
                 with: {
-                  Quiz: true,
+                  Quiz: {
+                    with: {
+                      quizVariants: true
+                    }
+                  },
                 },
               },
             },

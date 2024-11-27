@@ -87,7 +87,6 @@ export class ScheduleService {
       }
       Logger.log(`Cron job executed successfully update meeting link, ${classesWithNullS3Link.length} classes updated`);
     } catch (error) {
-      console.log('Error in cron job', error);
       Logger.error(error.message);
     }
   }

@@ -104,25 +104,33 @@ export class SubmissionassessmentDto{
         example: 2,
         required: true,
     })
-    @IsNotEmpty()
+    @IsOptional()
     tabChange: number;
+    
+    @ApiProperty({
+        type: Number,
+        example: 2,
+        required: true,
+    })
+    @IsOptional()
+    copyPaste: number;
 
     @ApiProperty({
         type: Number,
         example: 2,
         required: true,
     })
-    @IsNotEmpty()
-    copyPaste: number;
+    @IsOptional()
+    fullScreenExit: number;
 
     @ApiProperty({
         type: Number,
-        example: 44002,
+        example: 4,
         required: true,
     })
-    @IsNotEmpty()
-    embeddedGoogleSearch: number;
-
+    @IsOptional()
+    eyeMomentCount: number;
+    
      // typeOfsubmission
     @ApiProperty({
         type: String,
