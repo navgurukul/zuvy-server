@@ -1976,10 +1976,13 @@ export class ContentService {
     assessmentOutsourseId,
     limit,
     selectedTagIds,
-    userId
+    userId,
+    assessmentSubmissionId
   ): Promise<any> {
     try {
-      const quizzes = await db
+      let quizzes;
+      if (!assessmentSubmissionId){
+        quizzes = await db
         .select({
           quizId: zuvyModuleQuiz.id, // ID of the main quiz
           quizTitle: zuvyModuleQuiz.title, // Title of the main quiz
@@ -2004,9 +2007,55 @@ export class ContentService {
             inArray(zuvyModuleQuiz.tagId, selectedTagIds) // Filtering by tag IDs
           )
         )
-        .where(eq(zuvyOutsourseQuizzes.assessmentOutsourseId, assessmentOutsourseId)) // Filtering by assessment ID
-        .orderBy(sql`md5(CAST(${zuvyOutsourseQuizzes.id} AS text) || ${userId}::text)`) // Randomized order by user ID
         .limit(limit);
+      } else {
+        quizzes = await db
+          .select({
+            quizId: zuvyModuleQuiz.id, // ID of the main quiz
+            quizTitle: zuvyModuleQuiz.title, // Title of the main quiz
+            difficulty: zuvyModuleQuiz.difficulty, // Difficulty level of the main quiz
+            variantId: zuvyModuleQuizVariants.id, // ID of the variant
+            question: zuvyModuleQuizVariants.question, // Question text of the variant
+            options: zuvyModuleQuizVariants.options, // Options for the variant question
+            correctOption: zuvyModuleQuizVariants.correctOption, // Correct option of the variant
+            variantNumber: zuvyModuleQuizVariants.variantNumber, // Variant number
+            assessmentId: zuvyOutsourseQuizzes.assessmentOutsourseId, // Associated assessment ID
+            submissionsData: {   
+              id: zuvyQuizTracking.id, // ID from zuvyQuizTracking
+              userId: zuvyQuizTracking.userId, // User ID from zuvyQuizTracking
+              attemptCount: zuvyQuizTracking.attemptCount, // Attempt count from zuvyQuizTracking
+              chosenOption: zuvyQuizTracking.chosenOption, // Chosen option from zuvyQuizTracking
+              status: zuvyQuizTracking.status, // Status from zuvyQuizTracking
+              createdAt: zuvyQuizTracking.createdAt, 
+            }
+          })
+          .from(zuvyOutsourseQuizzes)
+          .innerJoin(
+            zuvyModuleQuizVariants,
+            eq(zuvyOutsourseQuizzes.quiz_id, zuvyModuleQuizVariants.quizId) // Joining with quiz variants
+          )
+          .innerJoin(
+            zuvyModuleQuiz,
+            and(
+              eq(zuvyModuleQuiz.id, zuvyModuleQuizVariants.quizId), // Joining with the main quiz
+              eq(zuvyModuleQuiz.difficulty, difficultyLevel), // Filtering by difficulty level
+              inArray(zuvyModuleQuiz.tagId, selectedTagIds) // Filtering by tag IDs
+            )
+          )
+          .leftJoin(
+            zuvyQuizTracking,
+            and(
+              eq(zuvyQuizTracking.mcqId, zuvyModuleQuizVariants.id),
+              eq(zuvyQuizTracking.assessmentSubmissionId, assessmentSubmissionId),
+              eq(zuvyQuizTracking.userId, userId),
+            )
+          )
+          .where(eq(zuvyOutsourseQuizzes.assessmentOutsourseId, assessmentOutsourseId)) // Filtering by assessment ID
+          .orderBy(
+            sql`md5(CAST(${zuvyOutsourseQuizzes.id} AS text) || ${userId}::text)` // Randomized order by user ID
+          )
+          .limit(limit);
+      }    
   
       return quizzes;
     } catch (err) {
@@ -2018,7 +2067,8 @@ export class ContentService {
   async getQuizQuestionsByAllDifficulties(
     assessmentOutsourseId,
     quizConfig,
-    userId
+    userId,
+    assessmentSubmissionId
   ): Promise<[null | Error, { [key: string]: any[] }]> {
     try {
       const difficulties = ['easy', 'medium', 'hard'];
@@ -2034,7 +2084,8 @@ export class ContentService {
             assessmentOutsourseId,
             quizConfig[`${difficulty}McqQuestions`],
             quizConfig.mcqTagId,
-            userId
+            userId,
+            assessmentSubmissionId
           );
         })
       );
@@ -2053,14 +2104,21 @@ export class ContentService {
         where: (zuvyOutsourseAssessments, { eq }) =>
           eq(zuvyOutsourseAssessments.id, assessmentOutsourseId),
         with: {
-          ModuleAssessment: true
+          ModuleAssessment: true,
+          submitedOutsourseAssessments: true
         },
       });  
       if (user.roles.includes('admin') ){
         userId = Math.floor(Math.random() * (99999 - 1000 + 1)) + 1000;
       }
+      let assessmentSubmissionId
       // Fetching all quiz questions at once
-      const [err, quizQuestions] = await this.getQuizQuestionsByAllDifficulties(assessmentOutsourseId, assessmentOutsourseData, userId);
+      if (!assessmentOutsourseData.submitedOutsourseAssessments[0].id){
+        return [{ message: 'assessment Submission is not available'}]
+      } else {
+        assessmentSubmissionId = assessmentOutsourseData.submitedOutsourseAssessments[0].id
+      }
+      const [err, quizQuestions] = await this.getQuizQuestionsByAllDifficulties(assessmentOutsourseId, assessmentOutsourseData, userId, assessmentSubmissionId);
       if (err){
         Logger.error(JSON.stringify(err));
         return [null, { message: err.message, statusCode: STATUS_CODES.BAD_REQUEST }];      
