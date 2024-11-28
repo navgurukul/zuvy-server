@@ -1719,8 +1719,8 @@ export class ContentService {
     tagId: number | number[],
     difficulty: ('Easy' | 'Medium' | 'Hard') | ('Easy' | 'Medium' | 'Hard')[],
     searchTerm: string = '',
-    pageNo: number,
-    limit_: number
+    limit: number,
+    offset: number
   ) {
     try {
       let conditions = [];
@@ -1767,13 +1767,13 @@ export class ContentService {
           :
           sql`${zuvyOpenEndedQuestions.id} DESC`
         )
-        .limit(limit_)
-        .offset((pageNo - 1) * limit_);
+        .limit(limit)
+        .offset(offset);
 
       return {
         data: result,
         totalRows: Number(totalRows[0].count),
-        totalPages: !Number.isNaN(limit_) ? Math.ceil(totalRows[0].count / limit_) : 1
+        totalPages: !Number.isNaN(limit) ? Math.ceil(totalRows[0].count / limit) : 1
       };
 
     } catch (err) {

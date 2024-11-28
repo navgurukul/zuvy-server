@@ -13,6 +13,7 @@ import {
   zuvyBootcampType,
 } from '../../../drizzle/schema';
 import { batch } from 'googleapis/build/src/apis/batch';
+import { STATUS_CODES } from 'src/helpers';
 
 const { ZUVY_CONTENT_URL } = process.env; // INPORTING env VALUSE ZUVY_CONTENT
 
@@ -161,6 +162,23 @@ export class BootcampService {
 
   async createBootcamp(bootcampData): Promise<any> {
     try {
+
+      const existingBootcamp = await db
+        .select()
+        .from(zuvyBootcamps)
+        .where(eq(zuvyBootcamps.name, bootcampData.name));
+
+      if (existingBootcamp.length > 0) {
+        return [
+          {
+            status: 'error',
+            message: 'Course name already exists.',
+            code: STATUS_CODES.BAD_REQUEST,
+          },
+          null,
+        ];
+      }
+
       let newBootcamp = await db
         .insert(zuvyBootcamps)
         .values(bootcampData)
@@ -191,7 +209,7 @@ export class BootcampService {
         }
       } catch (error) {
         log(`Error posting data: ${error.message}`);
-        return [{ status: 'Error', message: error.message, code: 404 }, null];
+        return [{ status: 'Error', message: error.message, code: STATUS_CODES.NOT_FOUND }, null];
       }
       log(`Bootcamp created successfully`);
       return [
@@ -199,7 +217,7 @@ export class BootcampService {
         {
           status: 'success',
           message: 'Bootcamp created successfully',
-          code: 200,
+          code: STATUS_CODES.OK,
           bootcamp: newBootcamp[0],
         },
       ];
