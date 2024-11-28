@@ -754,7 +754,7 @@ export class SubmissionService {
   }
 
   // submission of the quizzez , and open ended questions, And  two different functons
-  async submitQuiz(answers, userId: number, assessmentSubmissionId: number) {
+  async submitQuiz(answers, userId: number, assessmentSubmissionId: number): Promise<any>  {
     try {
       let submissionData = await this.getSubmissionQuiz(assessmentSubmissionId, userId);
       let InsertData = []; // Initialize InsertData as an array
@@ -793,9 +793,10 @@ export class SubmissionService {
         InsertData = await db.insert(zuvyQuizTracking).values(InsertData).returning();
       }
       // Since updateData is not directly returned from db.update, it's not included in the return statement
-      return { message: 'Successfully save the Quiz.', data: [...InsertData, ...updateData] }; // Adjusted return value
+      return [null, { message: 'Successfully save the Quiz.', data: [...InsertData, ...updateData] }]; // Adjusted return value
     } catch (err) {
-      throw err;
+      console.log({err});
+      return [{message: err.message}];
     }
   }
 

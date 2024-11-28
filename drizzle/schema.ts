@@ -2311,14 +2311,6 @@ export const sessionBootcampRelations = relations(
   })
 )
 
-// export const batchEnrollmentsRelations = relations(batches, ({one, many}) => ({
-//         // enrolles: many(batchEnrollments, {
-//         //         relationName: bootcampsEnrollmentsRelations,
-//         //         references: [batchEnrollments.batchId]
-//         // }),
-//         batchEnrollments: many(batches)
-// }))
-
 export const zuvyBatchEnrollments = main.table('zuvy_batch_enrollments', {
   id: serial('id').primaryKey().notNull(),
   userId: bigserial('user_id', { mode: 'bigint' })

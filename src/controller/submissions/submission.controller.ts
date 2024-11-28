@@ -26,7 +26,7 @@ import {
 import { ApiBearerAuth } from '@nestjs/swagger';
 import { InstructorFeedbackDto, PatchOpenendedQuestionDto, CreateOpenendedQuestionDto, SubmissionassessmentDto, StartAssessmentDto, OpenEndedQuestionSubmissionDtoList, QuizSubmissionDtoList, PropertingPutBody } from './dto/submission.dto';
 import { ErrorResponse, SuccessResponse } from 'src/errorHandler/handler';
-
+import { Response } from 'express';
 @Controller('submission')
 @ApiTags('submission')
 @UsePipes(
@@ -204,8 +204,21 @@ export class SubmissionController {
 
   @Patch('/quiz/assessmentSubmissionId=:assessmentSubmissionId')
   @ApiBearerAuth()
-  async submitQuiz(@Body() QuizSubmission: QuizSubmissionDtoList, @Param('assessmentSubmissionId') assessmentSubmissionId: number, @Req() req) {
-    return this.submissionService.submitQuiz(QuizSubmission.quizSubmissionDto, req.user[0].id, assessmentSubmissionId);
+  async submitQuiz(
+    @Body() QuizSubmission: QuizSubmissionDtoList, 
+    @Param('assessmentSubmissionId') assessmentSubmissionId: number, 
+    @Req() req,
+    @Res() res: Response
+  ) {
+    try {
+      let [err, success] = await this.submissionService.submitQuiz(QuizSubmission.quizSubmissionDto, req.user[0].id, assessmentSubmissionId);
+      if (err) {
+        return ErrorResponse.BadRequestException(err.message).send(res);
+      }
+      return new SuccessResponse(success.message, success.statusCode, success.data).send(res);
+    } catch (error) {
+      return ErrorResponse.BadRequestException(error.message).send(res);
+    }
   }
 
   @Patch("/openended/assessmentSubmissionId=:assessmentSubmissionId")
