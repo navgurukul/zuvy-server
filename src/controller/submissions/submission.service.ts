@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { db } from '../../db/index';
 import { eq, sql, count, lte, inArray } from 'drizzle-orm';
 import * as _ from 'lodash';
-import { zuvyBatchEnrollments, zuvyAssessmentSubmission, zuvyChapterTracking, zuvyBootcamps, zuvyOpenEndedQuestionSubmission, zuvyProjectTracking, zuvyQuizTracking, zuvyModuleTracking, zuvyModuleChapter, zuvyFormTracking, zuvyModuleForm, zuvyPracticeCode } from '../../../drizzle/schema';
+import { zuvyBatchEnrollments, zuvyAssessmentSubmission, zuvyChapterTracking, zuvyBootcamps, zuvyOpenEndedQuestionSubmission, zuvyProjectTracking, zuvyQuizTracking, zuvyModuleTracking, zuvyModuleChapter, zuvyFormTracking, zuvyModuleForm, zuvyPracticeCode,zuvyOutsourseQuizzes, zuvyModuleQuizVariants, zuvyModuleQuiz } from '../../../drizzle/schema';
 import { InstructorFeedbackDto, PatchOpenendedQuestionDto, CreateOpenendedQuestionDto } from './dto/submission.dto';
 import { STATUS_CODES } from 'src/helpers';
 import { helperVariable } from 'src/constants/helper';
@@ -678,6 +678,7 @@ export class SubmissionService {
                 },
                 where: (userDetails, { sql }) =>
                   searchStudent
+
                     ? sql`${userDetails.name} ILIKE ${searchStudent + '%'} OR ${userDetails.email} ILIKE ${searchStudent + '%'}`
                     : sql`TRUE`, // If no search string is provided, return all records
               },
@@ -760,7 +761,6 @@ export class SubmissionService {
       let InsertData = []; // Initialize InsertData as an array
       let updateData = []; // Initialize updateData as an array
       let updatePromises = []; // Use an array to collect update promises
-      let insertPromises = []; // Use an array to collect insert promises
 
       // if submission already exists then update the submission
       if (submissionData.length > 0) {

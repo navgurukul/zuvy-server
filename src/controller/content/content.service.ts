@@ -21,6 +21,7 @@ import {
   questionType,
   zuvyQuestionTypes,
   zuvyModuleQuizVariants,
+  zuvyPracticeCode
 } from '../../../drizzle/schema';
 
 import { error, log } from 'console';
@@ -1148,6 +1149,7 @@ export class ContentService {
         message: 'Updated successfully',
       };
     } catch (err) {
+      console.log(err)
       throw err;
     }
   }
@@ -1861,6 +1863,11 @@ export class ContentService {
           constraints: zuvyCodingQuestions.constraints,
           difficulty: zuvyCodingQuestions.difficulty,
           content: zuvyCodingQuestions.content,
+          submissionData:{
+            status: zuvyPracticeCode.status,
+            sourceCode: zuvyPracticeCode.sourceCode,
+            createdAt: zuvyPracticeCode.createdAt
+          }
         })
         .from(zuvyOutsourseCodingQuestions)
         .innerJoin(
@@ -1869,6 +1876,14 @@ export class ContentService {
             eq(zuvyCodingQuestions.id, zuvyOutsourseCodingQuestions.codingQuestionId),
             eq(zuvyCodingQuestions.difficulty, difficultyLevel),
             inArray(zuvyCodingQuestions.tagId, selectedTagIds)
+          )
+        )
+        .leftJoin(
+          zuvyPracticeCode,
+          and(
+            eq(zuvyPracticeCode.questionId, zuvyCodingQuestions.id),
+            eq(zuvyPracticeCode.submissionId, assessmentSubmissionId),
+            eq(zuvyPracticeCode.userId, userId),
           )
         )
         .where(eq(zuvyOutsourseCodingQuestions.assessmentOutsourseId, assessmentOutsourseId))
@@ -1936,12 +1951,11 @@ export class ContentService {
       id = Math.floor(Math.random() * (99999 - 1000 + 1)) + 1000;
     }
     let assessmentSubmissionId
-    // Fetching all quiz questions at once
-    if (!assessmentOutsourseData.submitedOutsourseAssessments[0].id){
-      return [{ message: 'assessment Submission is not available'}]
-    } else {
-      assessmentSubmissionId = assessmentOutsourseData.submitedOutsourseAssessments[0].id
-    }
+    if (assessmentOutsourseData.hasOwnProperty('submitedOutsourseAssessments')){
+      if (assessmentOutsourseData.submitedOutsourseAssessments.length > 0){
+        assessmentSubmissionId = assessmentOutsourseData.submitedOutsourseAssessments[0].id
+      }
+    } 
     // Fetching all coding questions at once
     const [err, codingQuestions] = await this.getCodingQuestionsByAllDifficulties(assessmentOutsourseId, assessmentOutsourseData, id, assessmentSubmissionId);
     if (err){
@@ -1976,6 +1990,7 @@ export class ContentService {
       return [null, { message: 'Coding question fetched successfully', data: assessment, statusCode: STATUS_CODES.OK }];
 
     } catch (err) {
+      console.log({err})
       Logger.error(JSON.stringify(err));
       return [{ message: err.message, statusCode: STATUS_CODES.BAD_REQUEST }]; 
     }
@@ -2016,6 +2031,8 @@ export class ContentService {
             eq(zuvyModuleQuiz.difficulty, difficultyLevel), // Filtering by difficulty level
             inArray(zuvyModuleQuiz.tagId, selectedTagIds) // Filtering by tag IDs
           )
+        ).orderBy(
+          sql`md5(CAST(${zuvyOutsourseQuizzes.id} AS text) || ${userId}::text)` // Randomized order by user ID
         )
         .limit(limit);
       } else {
