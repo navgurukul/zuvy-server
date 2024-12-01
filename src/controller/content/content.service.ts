@@ -2005,12 +2005,6 @@ export class ContentService {
     assessmentSubmissionId
   ): Promise<any> {
     try {
-      console.log({difficultyLevel,
-        assessmentOutsourseId,
-        limit,
-        selectedTagIds,
-        userId,
-        assessmentSubmissionId})
       let quizzes;
       if (!assessmentSubmissionId){
         quizzes = await db
@@ -2133,7 +2127,6 @@ export class ContentService {
 
   async getAssessmentDetailsOfQuiz(assessmentOutsourseId: number, user, userId): Promise<any> {
     try {
-      console.log({userId})
       const assessmentOutsourseData = await db.query.zuvyOutsourseAssessments.findFirst({
         where: (zuvyOutsourseAssessments, { eq }) =>
           eq(zuvyOutsourseAssessments.id, assessmentOutsourseId),
@@ -2142,14 +2135,12 @@ export class ContentService {
           submitedOutsourseAssessments: true
         },
       });  
-      // if (user.roles.includes('admin') ){
-      //   userId = Math.floor(Math.random() * (99999 - 1000 + 1)) + 1000;
-      // }
-
+      if (user.roles.includes('admin') ){
+        userId = Math.floor(Math.random() * (99999 - 1000 + 1)) + 1000;
+      }
       let assessmentSubmissionId = null
       // Fetching all quiz questions at once
     if (assessmentOutsourseData.hasOwnProperty('submitedOutsourseAssessments')){
-      console.log(assessmentOutsourseData.submitedOutsourseAssessments);
       if (assessmentOutsourseData.submitedOutsourseAssessments.length > 0){
         assessmentSubmissionId = assessmentOutsourseData.submitedOutsourseAssessments[0].id
       }
