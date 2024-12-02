@@ -232,16 +232,16 @@ export class SubmissionService {
   }
 
   async calculateTotalPoints(data: any) {
-    let { hardMcqMark, easyMcqMark, mediumMcqMark, hardCodingMark, mediumCodingMark, easyCodingMark } = data
-    const MCQ_POINTS = { easy: easyMcqMark, medium: mediumMcqMark, hard: hardMcqMark };
+    let {hardCodingMark, mediumCodingMark, easyCodingMark } = data
     const CODING_POINTS = { easy: easyCodingMark, medium: mediumCodingMark, hard: hardCodingMark };
-    const totalMCQPoints = data.Quizzes.reduce((sum, q) => sum + MCQ_POINTS[q.difficulty], 0);
     // const totalOpenPoints = data.OpenEndedQuestions.reduce((sum, q) => sum + pointsMapping.OPEN_ENDED_POINTS[q.difficulty], 0);
     const totalCodingPoints = data.CodingQuestions.reduce((sum, q) => sum + CODING_POINTS[q.difficulty], 0);
 
     let codingQuestionCount = data.CodingQuestions.length;
     let mcqQuestionCount = data.Quizzes.length;
     let openEndedQuestionCount = data.OpenEndedQuestions.length;
+    let {hardMcqMark, mediumMcqMark, easyMcqMark, hardMcqQuestions, mediumMcqQuestions, easyMcqQuestions} = data;
+    let totalMCQPoints = (hardMcqMark * hardMcqQuestions ) + (mediumMcqMark * mediumMcqQuestions) + (easyMcqMark * easyMcqQuestions);
     const totalPoints = totalMCQPoints + totalCodingPoints;
 
     return { totalMCQPoints, totalCodingPoints, totalPoints, codingQuestionCount, mcqQuestionCount, openEndedQuestionCount };
@@ -249,22 +249,11 @@ export class SubmissionService {
 
   async calculateAssessmentResults(data, codingSubmission, totalPoints) {
     let quizTotalAttemted = 0;
-    let quizCorrect = 0;
-    let quizScore = 0;
     let openTotalAttemted = 0;
     let codingTotalAttemted = 0;
     let codingScore = 0;
-    let { hardMcqMark, easyMcqMark, mediumMcqMark, hardCodingMark, mediumCodingMark, easyCodingMark } = data
-    const MCQ_POINTS = { easy: easyMcqMark, medium: mediumMcqMark, hard: hardMcqMark };
+    let { hardCodingMark, mediumCodingMark, easyCodingMark } = data
     const CODING_POINTS = { easy: easyCodingMark, medium: mediumCodingMark, hard: hardCodingMark };
-    // Processing Quizzes
-    data.quizSubmission.forEach(quiz => {
-      quizTotalAttemted += 1;
-      if (quiz.chosenOption == quiz.submissionData?.Quiz.correctOption) {
-        quizCorrect += 1;
-        quizScore += MCQ_POINTS[quiz.submissionData?.Quiz.difficulty];
-      }
-    });
 
     data.openEndedSubmission.forEach(question => {
       openTotalAttemted += 1;
@@ -286,14 +275,13 @@ export class SubmissionService {
           submissionId: question.submissionId,
           questionId: question.questionId,
           SourceCode: question.sourceCode,
-          // ...question
         }
         codingTotalAttemted += 1;
         codingScore += CODING_POINTS[question.questionDetail.difficulty];
       }
     });
 
-    const totalScore = quizScore + codingScore;
+    const totalScore = data.mcqScore + codingScore;
     let percentage = totalScore === 0 ? 0 : (totalScore / totalPoints) * 100;
 
     // Assessment pass status
@@ -303,9 +291,7 @@ export class SubmissionService {
       openTotalAttemted,
     }
     data.quizSubmission = {
-      quizTotalAttemted,
-      quizCorrect,
-      quizScore,
+      quizTotalAttemted
     }
     data.PracticeCode = {
       codingTotalAttemted,
@@ -316,7 +302,7 @@ export class SubmissionService {
   }
 
 
-  async assessmentOutsourseData(assessmentOutsourseId: number) {
+  async  assessmentOutsourseData(assessmentOutsourseId: number) {
     try {
       const assessment = await db.query.zuvyOutsourseAssessments.findMany({
         where: (zuvyOutsourseAssessments, { eq }) =>
@@ -406,25 +392,6 @@ export class SubmissionService {
 
             }
           },
-          quizSubmission: {
-            columns: {
-              id: true,
-              chosenOption: true,
-              questionId: true,
-              attemptCount: true,
-            },
-            with: {
-              submissionData: {
-                with: {
-                  Quiz: {
-                    with: {
-                      quizVariants: true
-                    }
-                  }
-                }
-              }
-            }
-          },
           PracticeCode: {
             where: (zuvyPracticeCode, { eq, and }) => and(
               eq(zuvyPracticeCode.status, ACCEPTED),
@@ -446,10 +413,10 @@ export class SubmissionService {
         });
       }
       let { codingQuestions, ...assessment_data } = await this.assessmentOutsourseData(data.assessmentOutsourseId);
-      const { totalMCQPoints, totalCodingPoints, totalPoints, codingQuestionCount, mcqQuestionCount, openEndedQuestionCount } = await this.calculateTotalPoints(assessment_data);
+      const { totalMCQPoints, totalCodingPoints, totalPoints, codingQuestionCount, openEndedQuestionCount } = await this.calculateTotalPoints(assessment_data);
       let calData = await this.calculateAssessmentResults(data, codingQuestions, totalPoints);
 
-      return { ...calData, totalMCQPoints, totalCodingPoints, codingQuestionCount, mcqQuestionCount, openEndedQuestionCount };
+      return { ...calData, totalMCQPoints, totalCodingPoints, codingQuestionCount, openEndedQuestionCount };
     }
     catch (err) {
       throw err;
