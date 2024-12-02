@@ -357,7 +357,7 @@ export class StudentService {
       const totalCount = upcomingClasses.length > 0 ? upcomingClasses[0]['totalCount'] : 0;
 
       const totalClasses = totalCount;
-      let filterClasses = upcomingClasses.reduce((acc, e:any) => {
+      let filterClasses = upcomingClasses.reduce((acc, e) => {
         e['bootcampName'] = e['bootcampDetail'].name;
         e['bootcampId'] = e['bootcampDetail'].id;
         delete e['bootcampDetail'];

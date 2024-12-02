@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { db } from '../../db/index';
 import { eq, sql, count, lte, inArray } from 'drizzle-orm';
 import * as _ from 'lodash';
-import { zuvyBatchEnrollments, zuvyAssessmentSubmission, zuvyChapterTracking, zuvyOpenEndedQuestionSubmission, zuvyProjectTracking, zuvyQuizTracking, zuvyModuleChapter, zuvyFormTracking, zuvyPracticeCode,zuvyOutsourseQuizzes, zuvyModuleQuizVariants, zuvyOutsourseAssessments } from '../../../drizzle/schema';
+import { zuvyBatchEnrollments, zuvyAssessmentSubmission, zuvyChapterTracking, zuvyBootcamps, zuvyOpenEndedQuestionSubmission, zuvyProjectTracking, zuvyQuizTracking, zuvyModuleTracking, zuvyModuleChapter, zuvyFormTracking, zuvyModuleForm, zuvyPracticeCode,zuvyOutsourseQuizzes, zuvyModuleQuizVariants, zuvyModuleQuiz } from '../../../drizzle/schema';
 import { InstructorFeedbackDto, PatchOpenendedQuestionDto, CreateOpenendedQuestionDto } from './dto/submission.dto';
 import { STATUS_CODES } from 'src/helpers';
 import { helperVariable } from 'src/constants/helper';
@@ -493,8 +493,10 @@ export class SubmissionService {
         attemptedOpenEndedQuestions: submitData.openEndedSubmission.openTotalAttemted,
         codingScore: submitData.PracticeCode.codingScore,
         openEndedScore: 0, // Assuming no data provided
+        mcqScore: submitData.quizSubmission.quizScore,
         requiredCodingScore: submitData.totalCodingPoints,
         requiredOpenEndedScore: 0, // Assuming no data provided
+        requiredMCQScore: submitData.totalMCQPoints
       };
       let assessment = await db.update(zuvyAssessmentSubmission).set(data).where(eq(zuvyAssessmentSubmission.id, id)).returning();
       if (assessment == undefined || assessment.length == 0) {
@@ -753,45 +755,19 @@ export class SubmissionService {
   }
 
   // submission of the quizzez , and open ended questions, And  two different functons
-  async submitQuiz(answers, userId: number, assessmentSubmissionId: number, assessmentOutsourseId): Promise<any> {
+  async submitQuiz(answers, userId: number, assessmentSubmissionId: number) {
     try {
       let submissionData = await this.getSubmissionQuiz(assessmentSubmissionId, userId);
-      let InsertData:any = []; // Initialize InsertData as an array
+      let InsertData = []; // Initialize InsertData as an array
       let updateData = []; // Initialize updateData as an array
       let updatePromises = []; // Use an array to collect update promises
-      // if submission already exists then update the submission
-      let Assessments_master_data = await db.select().from(zuvyOutsourseAssessments).where(eq(zuvyOutsourseAssessments.id ,assessmentOutsourseId))
 
-      let mcq_marks = {
-        Easy: Assessments_master_data[0].easyMcqMark,
-        Medium: Assessments_master_data[0].mediumMcqMark,
-        Hard: Assessments_master_data[0].hardMcqMark,
-      }
-      let filterQuestionId = submissionData.map((answer) => answer.variantId);
-      let mcq_score = 0
-      let quiz_master_data = await db.query.zuvyModuleQuizVariants.findMany({
-        where: (zuvyModuleQuizVariants, { sql }) => sql`${zuvyModuleQuizVariants.id} in ${filterQuestionId}`, 
-        with: {
-          quiz:{
-            columns: {
-              difficulty:true,
-              id:true
-            }
-          }
-        },
-      });
-      let requiredMCQScore = 0;
-      quiz_master_data.map((data:any) => {
-        requiredMCQScore += mcq_marks[data.quiz.difficulty]
-      })
+      // if submission already exists then update the submission
       if (submissionData.length > 0) {
+        let filterQuestionId = submissionData.map((answer) => answer.questionId);
+
         answers.forEach((answer) => {
-          quiz_master_data.find((mcq:any)=> {
-            if (mcq.id === answer.variantId && answer.chosenOption == mcq.correctOption){
-              mcq_score += mcq_marks[mcq.quiz.difficulty]
-            }
-          })
-          if (filterQuestionId.includes(answer.variantId)) {
+          if (filterQuestionId.includes(answer.questionId)) {
             // Collect update promises
             updatePromises.push(db.update(zuvyQuizTracking).set({ ...answer }).where(sql`${zuvyQuizTracking.questionId} = ${answer.questionId} and ${zuvyQuizTracking.assessmentSubmissionId} = ${assessmentSubmissionId} and ${zuvyQuizTracking.userId} = ${userId}`).returning());
           } else {
@@ -799,6 +775,7 @@ export class SubmissionService {
             InsertData.push({ ...answer, userId, assessmentSubmissionId });
           }
         });
+
         // Execute all update operations
         if (updatePromises.length > 0) {
           let updateResults = await Promise.all(updatePromises);
@@ -815,13 +792,10 @@ export class SubmissionService {
       if (InsertData.length > 0) {
         InsertData = await db.insert(zuvyQuizTracking).values(InsertData).returning();
       }
-      let updateAssessmentMcqInfo:any = {mcqScore: mcq_score, requiredMCQScore, attemptedMCQQuestions:answers.length};
-      await db.update(zuvyAssessmentSubmission).set(updateAssessmentMcqInfo).where(sql`${zuvyAssessmentSubmission.id} = ${assessmentSubmissionId}`).returning()
       // Since updateData is not directly returned from db.update, it's not included in the return statement
-      return [null,{ message: 'Successfully save the Quiz.', data: [...InsertData, ...updateData] }]; // Adjusted return value
+      return { message: 'Successfully save the Quiz.', data: [...InsertData, ...updateData] }; // Adjusted return value
     } catch (err) {
-      console.log({err})
-      return [{message: err.message}]
+      throw err;
     }
   }
 
