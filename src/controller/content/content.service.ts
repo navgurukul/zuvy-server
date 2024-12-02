@@ -995,7 +995,7 @@ export class ContentService {
           });
         }
       }
-      const assessment = await db.query.zuvyOutsourseAssessments.findMany({
+      const assessment:any = await db.query.zuvyOutsourseAssessments.findMany({
         where: (zuvyOutsourseAssessments, { eq }) =>
           eq(zuvyOutsourseAssessments.id, assessmentOutsourseId),
         with: {
