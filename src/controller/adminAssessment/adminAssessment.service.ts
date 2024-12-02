@@ -430,7 +430,7 @@ export class AdminAssessmentService {
         return [{ statusCode: STATUS_CODES.NOT_FOUND, message: 'No assessments found.' }];
       }
 
-      const assessmentsByModule = assessments.reduce((acc, assessment:any) => {
+      const assessmentsByModule = assessments.reduce((acc, assessment) => {
         const moduleName = assessment.Module?.name;
 
         const assessmentData = {
