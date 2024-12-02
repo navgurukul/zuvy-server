@@ -204,9 +204,22 @@ export class SubmissionController {
 
   @Patch('/quiz/assessmentSubmissionId=:assessmentSubmissionId')
   @ApiBearerAuth()
-  async submitQuiz(@Body() QuizSubmission: QuizSubmissionDtoList, @Param('assessmentSubmissionId') assessmentSubmissionId: number, @Req() req) {
-    return this.submissionService.submitQuiz(QuizSubmission.quizSubmissionDto, req.user[0].id, assessmentSubmissionId);
+  async submitQuiz(@Body() QuizSubmission: QuizSubmissionDtoList, 
+  @Param('assessmentSubmissionId') assessmentSubmissionId: number, 
+  @Query('assessmentOutsourseId') assessmentOutsourseId: number, 
+  @Req() req,  
+  @Res() res
+) {
+  try {
+    let [err, success] = await this.submissionService.submitQuiz(QuizSubmission.quizSubmissionDto, req.user[0].id, assessmentSubmissionId, assessmentOutsourseId);
+    if (err) {
+      return ErrorResponse.BadRequestException(err.message, err.statusCode).send(res)
+    }
+    return new SuccessResponse(success.message, success.statusCode, success.data).send(res);
+  } catch (error) {
+    return ErrorResponse.BadRequestException(error.message).send(res);
   }
+}
 
   @Patch("/openended/assessmentSubmissionId=:assessmentSubmissionId")
   @ApiBearerAuth()
