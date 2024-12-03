@@ -247,116 +247,53 @@ export class SubmissionService {
     return { totalMCQPoints, totalCodingPoints, totalPoints, codingQuestionCount, mcqQuestionCount, openEndedQuestionCount };
   }
 
-  async calculateAssessmentResults(data, codingSubmission, totalPoints) {
-    let quizTotalAttemted = 0;
-    let openTotalAttemted = 0;
-    let codingTotalAttemted = 0;
-    let codingScore = 0;
-    let { hardCodingMark, mediumCodingMark, easyCodingMark } = data
-    const CODING_POINTS = { easy: easyCodingMark, medium: mediumCodingMark, hard: hardCodingMark };
 
-    data.openEndedSubmission.forEach(question => {
-      openTotalAttemted += 1;
-    });
-
-
-    data.PracticeCode.forEach(question => {
-      let existingEntry = codingSubmission.find(entry => entry.id === question.questionId);
-      if (existingEntry) {
-        if (!existingEntry.submissions) {
-          existingEntry.submissions = {};
-        }
-        existingEntry.submissions = {
-          id: question.id,
-          status: question.status,
-          action: question.action,
-          createdAt: question.createdAt,
-          codingOutsourseId: question.codingOutsourseId,
-          submissionId: question.submissionId,
-          questionId: question.questionId,
-          SourceCode: question.sourceCode,
-        }
-        codingTotalAttemted += 1;
-        codingScore += CODING_POINTS[question.questionDetail.difficulty];
-      }
-    });
-
-    const totalScore = data.mcqScore + codingScore;
-    let percentage = totalScore === 0 ? 0 : (totalScore / totalPoints) * 100;
-
-    // Assessment pass status
-    const passStatus = percentage >= data.submitedOutsourseAssessment?.passPercentage;
-
-    data.openEndedSubmission = {
-      openTotalAttemted,
-    }
-    data.quizSubmission = {
-      quizTotalAttemted
-    }
-    data.PracticeCode = {
-      codingTotalAttemted,
-      codingScore
-    }
-    data.marks = totalScore;
-    return { ...data, passStatus, percentage, passPercentage: data?.submitedOutsourseAssessment?.passPercentage, codingSubmission };
-  }
-
-
-  async  assessmentOutsourseData(assessmentOutsourseId: number) {
+  async calculateAssessmentResults(assessmentOutsourseId: number, practiceCodeData, mcqScore) {
     try {
-      const assessment = await db.query.zuvyOutsourseAssessments.findMany({
-        where: (zuvyOutsourseAssessments, { eq }) =>
-          eq(zuvyOutsourseAssessments.id, assessmentOutsourseId),
-        with: {
-          CodingQuestions: {
-            columns: {
-              id: true,
-              assessmentOutsourseId: true,
-              bootcampId: true
-            },
-            with: {
-              CodingQuestion: true
-            }
-          },
-          ModuleAssessment: true,
-          Quizzes: {
-            columns: {
-              id: true,
-              assessmentOutsourseId: true,
-              bootcampId: true
-            },
-            with: {
-              Quiz: {
-                with: {
-                  quizVariants: true
-                }
-              },
-            }
-          },
-          OpenEndedQuestions: {
-            columns: {
-              id: true,
-              assessmentOutsourseId: true,
-              bootcampId: true
-            },
-            with: {
-              OpenEndedQuestion: true
-            }
-          }
-        },
-      })
+      let assessment:any = (await db.select().from(zuvyOutsourseAssessments).where(eq(zuvyOutsourseAssessments.id, assessmentOutsourseId)))
 
       if (assessment == undefined || assessment.length == 0) {
-        throw ({
+        return [{
           status: 'error',
           statusCode: 404,
           message: 'Assessment not found',
-        });
+        }];
       }
-      let formatedData = await this.formatedChapterDetails(assessment[0]);
-      return { ...formatedData, codingQuestions: assessment[0].CodingQuestions };
+      assessment = assessment[0];
+      let codingMarks = {
+        Easy: assessment.easyCodingMark,
+        Medium: assessment.mediumCodingMark,
+        Hard: assessment.hardCodingMark,
+      }
+      let codingScore = 0;
+      practiceCodeData.map((codingQuestionSubmission) => {
+        codingScore += codingMarks[codingQuestionSubmission.questionDetail.difficulty]
+      })
+      const totalCodingMarks = 
+        (assessment.easyCodingQuestions * assessment.easyCodingMark) +
+        (assessment.mediumCodingQuestions * assessment.mediumCodingMark) +
+        (assessment.hardCodingQuestions * assessment.hardCodingMark);
+
+      // Calculate total possible score for MCQs
+      const totalMcqMarks = 
+          (assessment.easyMcqQuestions * assessment.easyMcqMark) +
+          (assessment.mediumMcqQuestions * assessment.mediumMcqMark) +
+          (assessment.hardMcqQuestions * assessment.hardMcqMark);
+      // Total assessment score
+      let totalStudentScore = codingScore + mcqScore
+      const totalAssessmentMarks = totalCodingMarks + totalMcqMarks;
+      let percentage = (totalStudentScore / totalAssessmentMarks ) * 100
+      let isPassed = (assessment.passPercentage <= percentage) ? true: false
+      let updateAssessmentSubmission = {
+        attemptedCodingQuestions: practiceCodeData.length,
+        codingScore: codingScore.toFixed(2),
+        marks:parseFloat(totalStudentScore.toFixed(2)),
+        isPassed,
+        percentage:parseFloat(percentage.toFixed(2))
+      }
+      return [null, updateAssessmentSubmission];
     } catch (err) {
-      throw err;
+      return [{message: err.message}]
     }
   }
 
@@ -369,29 +306,11 @@ export class SubmissionService {
           user: {
             columns: {
               email: true,
-              name: true
+              name: true,
+              id: true
             }
           },
           submitedOutsourseAssessment: true,
-          openEndedSubmission: {
-            columns: {
-              id: true,
-              answer: true,
-              questionId: true,
-              feedback: true,
-              marks: true,
-              startAt: true,
-              submitedAt: true,
-            },
-            with: {
-              submissionData: {
-                with: {
-                  OpenEndedQuestion: true
-                }
-              },
-
-            }
-          },
           PracticeCode: {
             where: (zuvyPracticeCode, { eq, and }) => and(
               eq(zuvyPracticeCode.status, ACCEPTED),
@@ -406,75 +325,76 @@ export class SubmissionService {
         }
       });
       if (data == undefined || data.length == 0) {
-        throw ({
+        return[{
           status: 'error',
           statusCode: 404,
           message: 'Assessment not found',
-        });
+        }];
       }
-      let { codingQuestions, ...assessment_data } = await this.assessmentOutsourseData(data.assessmentOutsourseId);
-      const { totalMCQPoints, totalCodingPoints, totalPoints, codingQuestionCount, openEndedQuestionCount } = await this.calculateTotalPoints(assessment_data);
-      let calData = await this.calculateAssessmentResults(data, codingQuestions, totalPoints);
-
-      return { ...calData, totalMCQPoints, totalCodingPoints, codingQuestionCount, openEndedQuestionCount };
+      let [errUPdate, updateAssessmentSubmission] = await this.calculateAssessmentResults(data.assessmentOutsourseId, data.PracticeCode, data.mcqScore);
+      if (errUPdate){
+        return [errUPdate]
+      }
+      updateAssessmentSubmission['userId'] = data.user.id;
+      updateAssessmentSubmission['submitedAt'] = data.submitedAt
+      return [null, updateAssessmentSubmission];
     }
     catch (err) {
-      throw err;
+      return [{message: err.message}]
     }
   }
 
 
-  async assessmentSubmission(data, id: number, userId: number) {
+  async assessmentSubmission(data, id: number, userId: number): Promise<any> {
     try {
-      let submitData = await this.getAssessmentSubmission(id, userId);
+      let errSubmit: any, submitData: any = {}; 
+      // Use an intermediate variable to store the result of the await
+      const result = await this.getAssessmentSubmission(id, userId);
+
+      // Destructure the result after the await
+      [errSubmit, submitData] = result;
+      if (errSubmit){
+        return [errSubmit]
+      }
+
       if (submitData == undefined || submitData == null) {
-        throw ({
+        return [{
           status: 'error',
           statusCode: 404,
           message: 'Assessment not found',
-        });
+        }];
       } else if (submitData.userId != userId) {
-        throw ({
+        return [{
           status: 'error',
           statusCode: 400,
           message: 'Unauthorized assessment submission',
-        });
+        }]
       } else if (submitData.submitedAt != null) {
-        throw ({
+        return [{
           status: 'error',
           statusCode: 400,
           message: 'Assessment already submitted',
-        });
+        }];
       }
       data['submitedAt'] = new Date().toISOString();
       data = {
         ...data,
-        marks: submitData.marks,
-        isPassed: submitData.passStatus,
-        percentage: submitData.percentage,
-        codingQuestionCount: submitData.codingQuestionCount,
-        mcqQuestionCount: submitData.mcqQuestionCount,
-        openEndedQuestionCount: submitData.openEndedQuestionCount,
-        attemptedCodingQuestions: submitData.PracticeCode.codingTotalAttemted,
-        attemptedMCQQuestions: submitData.quizSubmission.quizTotalAttemted,
-        attemptedOpenEndedQuestions: submitData.openEndedSubmission.openTotalAttemted,
-        codingScore: submitData.PracticeCode.codingScore,
+        ...submitData,
         openEndedScore: 0, // Assuming no data provided
-        requiredCodingScore: submitData.totalCodingPoints,
         requiredOpenEndedScore: 0, // Assuming no data provided
       };
       let assessment = await db.update(zuvyAssessmentSubmission).set(data).where(eq(zuvyAssessmentSubmission.id, id)).returning();
       if (assessment == undefined || assessment.length == 0) {
-        throw ({
+        return [{
           status: 'error',
           statusCode: 404,
           message: 'Assessment not found',
-        });
+        }]
       }
-      return assessment[0];
+      return [null, assessment[0]];
     } catch (err) {
       console.error('Error in assessmentSubmission:', err);
-      throw err;
+      return [{message: err.message}]
     }
   }
 

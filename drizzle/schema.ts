@@ -2713,7 +2713,7 @@ export const zuvyAssessmentSubmission = main.table("zuvy_assessment_submission",
     onUpdate: 'cascade',
   }).notNull(),
   userId: integer("user_id").references(() => users.id).notNull(),
-  marks: integer('marks'),
+  marks: doublePrecision('marks'),
   startedAt:timestamp('started_at', {
     withTimezone: true,
     mode: 'string',
@@ -2739,7 +2739,7 @@ export const zuvyAssessmentSubmission = main.table("zuvy_assessment_submission",
   requiredOpenEndedScore: doublePrecision('required_open_ended_score'),
   requiredMCQScore: doublePrecision('required_mcq_score'),
   isPassed: boolean('is_passed'),
-  percentage: numeric('percentage'),
+  percentage: doublePrecision('percentage'),
   typeOfsubmission: varchar('type_of_submission', { length: 255 }),
 });
 

@@ -147,9 +147,19 @@ export class SubmissionController {
 
   @Patch('/assessment/submit')
   @ApiBearerAuth()
-  async assessmentSubmission(@Body() data: SubmissionassessmentDto, @Query('assessmentSubmissionId') assessmentSubmissionId: number, @Req() req) {
-    return this.submissionService.assessmentSubmission(data, assessmentSubmissionId, req.user[0].id);
+  async assessmentSubmission(@Body() data: SubmissionassessmentDto, @Query('assessmentSubmissionId') assessmentSubmissionId: number, @Req() req,  
+  @Res() res
+) {
+  try {
+    let [err, success] = await this.submissionService.assessmentSubmission(data, assessmentSubmissionId, req.user[0].id);
+    if (err) {
+      return ErrorResponse.BadRequestException(err.message, err.statusCode).send(res)
+    }
+    return new SuccessResponse(success.message, success.statusCode, success.data).send(res);
+  } catch (error) {
+    return ErrorResponse.BadRequestException(error.message).send(res);
   }
+}
 
   @Get('/submissionsOfProjects/:bootcampId')
   @ApiOperation({ summary: 'Get the submission of projects by bootcampId' })
