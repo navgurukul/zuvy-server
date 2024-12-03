@@ -6,7 +6,7 @@ import {
   zuvyBatchEnrollments,
 } from '../../../drizzle/schema';
 import { db } from '../../db/index';
-import { eq, sql } from 'drizzle-orm';
+import { eq, ilike, inArray, or, sql, and } from 'drizzle-orm';
 import { log } from 'console';
 import { PatchBatchDto, BatchDto } from './dto/batch.dto';
 import { helperVariable } from 'src/constants/helper';
@@ -16,13 +16,16 @@ import { STATUS_CODES } from 'http';
 export class BatchesService {
   async createBatch(batch: BatchDto) {
     try {
-      const usersData = await db
-        .select()
-        .from(zuvyBatchEnrollments)
-        .where(
-          sql`${zuvyBatchEnrollments.bootcampId} = ${batch.bootcampId} AND ${zuvyBatchEnrollments.batchId} IS NULL`,
-        ).orderBy(zuvyBatchEnrollments.id)
-        .limit(batch.capEnrollment);
+      let usersData;
+      if (batch.assignAll) {
+        usersData = await db
+          .select()
+          .from(zuvyBatchEnrollments)
+          .where(
+            sql`${zuvyBatchEnrollments.bootcampId} = ${batch.bootcampId} AND ${zuvyBatchEnrollments.batchId} IS NULL`,
+          ).orderBy(zuvyBatchEnrollments.id)
+          .limit(batch.capEnrollment);
+      }
       var batchValue;
       var user = await db.select().from(users).where(eq(users.email, batch.instructorEmail));
       if (user.length == 0) {
@@ -54,16 +57,56 @@ export class BatchesService {
           }
         }
       }
-      if (usersData.length > 0) {
+
+      if (!batch.assignAll) {
+
+        const userIds = batch.studentIds.map((u) => BigInt(u));
+        // Validate student IDs and cap enrollment
+        if (userIds.length > batch.capEnrollment) {
+          return [
+            {
+              status: helperVariable.error,
+              message: `Invalid number of students. Must be between 1 and ${batch.capEnrollment}.`,
+              code: 400,
+            },
+            null,
+          ];
+        }
+
+        // Create a new batch
         const newData = await db.insert(zuvyBatches).values(batchValue).returning();
-        let userids = usersData.map((u) => u.userId);
+
+        // Assign specified students to the batch
+        await db
+          .update(zuvyBatchEnrollments)
+          .set({ batchId: newData[0].id })
+          .where(
+            sql`bootcamp_id = ${batch.bootcampId} AND ${inArray(zuvyBatchEnrollments.userId, userIds)}`,
+          );
+
+        return [
+          null,
+          {
+            status: helperVariable.success,
+            message: 'Batch created successfully',
+            code: 200,
+            batch: newData[0],
+          },
+        ];
+      }
+
+      // Handle assigning all unassigned students if assignAll is true
+      if (usersData && usersData.length > 0) {
+        const newData = await db.insert(zuvyBatches).values(batchValue).returning();
+        const userIds = usersData.map((u) => u.userId);
 
         await db
           .update(zuvyBatchEnrollments)
           .set({ batchId: newData[0].id })
           .where(
-            sql`bootcamp_id = ${batch.bootcampId} AND user_id IN ${userids}`,
+            sql`bootcamp_id = ${batch.bootcampId} AND ${inArray(zuvyBatchEnrollments.userId, userIds)}`,
           );
+
         return [
           null,
           {
@@ -253,10 +296,9 @@ export class BatchesService {
           students: true
         }
       });
-      if(batchAssigned.length == 0)
-        {
-          return [{ status: 'error', message: 'No batch found', code: 404 }, null];
-        }
+      if (batchAssigned.length == 0) {
+        return [{ status: 'error', message: 'No batch found', code: 404 }, null];
+      }
       if (batchAssigned[0].students.length == batchAssigned[0].capEnrollment) {
         return [{ status: 'error', message: 'Batch is full', code: 400 }, null];
       }
@@ -285,4 +327,46 @@ export class BatchesService {
       return [{ status: 'error', message: e.message, code: 500 }, null];
     }
   }
+
+  async getNotEnrolledStudents(bootcampId: number, searchTerm: string): Promise<any> {
+    try {
+      const unenrolledUserIds = await db
+        .select()
+        .from(zuvyBatchEnrollments)
+        .where(
+          sql`${zuvyBatchEnrollments.bootcampId} = ${bootcampId} AND ${zuvyBatchEnrollments.batchId} IS NULL`,
+        ).orderBy(zuvyBatchEnrollments.id)
+
+      const userIds = unenrolledUserIds.map((enrollment) => BigInt(enrollment.userId));
+
+      if (userIds.length === 0) {
+        return [null, []];
+      }
+
+      const usersData = await db
+        .select({
+          id: sql`CAST(${users.id} AS BIGINT)`.as('id'), 
+          name: users.name,
+          email: users.email,
+        })
+        .from(users)
+        .where(
+          and(
+            inArray(sql`CAST(${users.id} AS BIGINT)`, userIds), 
+            searchTerm
+              ? or(
+                ilike(users.name, `${searchTerm}%`),
+                ilike(users.email, `${searchTerm}%`)
+              )
+              : undefined 
+          )
+        );
+
+      return [{ status: 'success', message: 'Students not enrolled in any batch', statusCode: 200, data: usersData }, null];
+    } catch (err) {
+      return [{ status: 'error', message: err.message, code: 400}, null];
+    }
+  }
+
+
 }
