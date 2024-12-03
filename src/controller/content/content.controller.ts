@@ -526,32 +526,32 @@ export class ContentController {
     description: 'Search by name or email',
   })
   @ApiQuery({
-    name: 'pageNo',
-    required: false,
-    type: Number,
-    description: 'page number',
-  })
-  @ApiQuery({
-    name: 'limit_',
+    name: 'limit',
     required: false,
     type: Number,
     description: 'limit',
+  })
+  @ApiQuery({
+    name: 'offset',
+    required: false,
+    type: Number,
+    description: 'offset',
   })
   @ApiBearerAuth()
   async getAllOpenEndedQuestions(
     @Query('tagId') tagId: number[],
     @Query('difficulty') difficulty: ('Easy' | 'Medium' | 'Hard') | ('Easy' | 'Medium' | 'Hard')[],
     @Query('searchTerm') searchTerm: string,
-    @Query('pageNo') pageNo: number,
-    @Query('limit_') limit_: number,
+    @Query('limit') limit: number,
+    @Query('offset') offset: number,
   ): Promise<object> {
 
     const res = await this.contentService.getAllOpenEndedQuestions(
       tagId,
       difficulty,
       searchTerm,
-      pageNo,
-      limit_
+      limit,
+      offset
     );
     return res;
   }
