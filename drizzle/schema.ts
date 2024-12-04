@@ -2775,6 +2775,35 @@ export const zuvyOpenEndedQuestionSubmission = main.table("zuvy_open_ended_quest
   updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
 });
 
+export const samaClients = pgTable("sama_clients", {
+  id: serial("id").primaryKey(),
+  name: varchar("name").notNull(),
+  macAddress: varchar("mac_address", { length: 17 }).notNull(),
+  softwareInstalled: boolean("software_installed").default(false),
+  wallpaperChanged: boolean("wallpaper_changed").default(false),
+  createdAt: timestamp("created_at", { withTimezone: false }).notNull().defaultNow(),
+}, (table) => {
+  return {
+    macAddressKey: uniqueIndex("sama_clients_mac_address_key").on(table.macAddress),
+  };
+});
+
+export const samaSystemTracking = pgTable("sama_system_tracking", {
+  id: serial("id").primaryKey(),
+  macAddress: varchar("mac_address", { length: 17 }).notNull(),
+  activeTime: integer("active_time").default(0),
+  date: timestamp("date", { withTimezone: false }).defaultNow(),
+  location: text("location"),
+  createdAt: timestamp("created_at", { withTimezone: false }).notNull().defaultNow(),
+}, (table) => {
+  return {
+    macAddressForeignKey: foreignKey({
+      columns: [table.macAddress],
+      foreignColumns: [samaClients.macAddress],
+    }),
+  };
+});
+
 export const zuvyOpenEndedQuestionSubmissionRelation = relations(zuvyOpenEndedQuestionSubmission, ({one, many})=> ({
   user: one(users, {
     fields: [zuvyOpenEndedQuestionSubmission.userId],
