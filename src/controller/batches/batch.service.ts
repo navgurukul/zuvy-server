@@ -360,7 +360,8 @@ export class BatchesService {
               )
               : undefined 
           )
-        );
+        )
+        .orderBy(users.id);
 
       return [null, { status: 'success', message: 'Students not enrolled in any batch', statusCode: 200, data: usersData }];
     } catch (err) {
