@@ -362,11 +362,10 @@ export class BatchesService {
           )
         );
 
-      return [{ status: 'success', message: 'Students not enrolled in any batch', statusCode: 200, data: usersData }, null];
+      return [null, { status: 'success', message: 'Students not enrolled in any batch', statusCode: 200, data: usersData }];
     } catch (err) {
       return [{ status: 'error', message: err.message, code: 400}, null];
     }
   }
-
 
 }
