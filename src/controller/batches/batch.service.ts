@@ -345,14 +345,14 @@ export class BatchesService {
 
       const usersData = await db
         .select({
-          id: sql`CAST(${users.id} AS BIGINT)`.as('id'), 
+          id: sql`CAST(${users.id} AS INTEGER)`.as('id'), 
           name: users.name,
           email: users.email,
         })
         .from(users)
         .where(
           and(
-            inArray(sql`CAST(${users.id} AS BIGINT)`, userIds), 
+            inArray(sql`CAST(${users.id} AS INTEGER)`, userIds), 
             searchTerm
               ? or(
                 ilike(users.name, `${searchTerm}%`),
