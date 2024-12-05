@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { db } from '../../db/index';
 import { eq, sql, count, lte, inArray } from 'drizzle-orm';
 import * as _ from 'lodash';
-import { zuvyBatchEnrollments, zuvyAssessmentSubmission, zuvyChapterTracking, zuvyBootcamps, zuvyOpenEndedQuestionSubmission, zuvyProjectTracking, zuvyQuizTracking, zuvyModuleTracking, zuvyModuleChapter, zuvyFormTracking, zuvyModuleForm, zuvyPracticeCode } from '../../../drizzle/schema';
+import { zuvyBatchEnrollments, zuvyAssessmentSubmission, zuvyChapterTracking, zuvyOpenEndedQuestionSubmission, zuvyProjectTracking, zuvyQuizTracking, zuvyModuleChapter, zuvyFormTracking, zuvyPracticeCode,zuvyOutsourseQuizzes, zuvyModuleQuizVariants, zuvyOutsourseAssessments } from '../../../drizzle/schema';
 import { InstructorFeedbackDto, PatchOpenendedQuestionDto, CreateOpenendedQuestionDto } from './dto/submission.dto';
 import { STATUS_CODES } from 'src/helpers';
 import { helperVariable } from 'src/constants/helper';
@@ -232,145 +232,68 @@ export class SubmissionService {
   }
 
   async calculateTotalPoints(data: any) {
-    let { hardMcqMark, easyMcqMark, mediumMcqMark, hardCodingMark, mediumCodingMark, easyCodingMark } = data
-    const MCQ_POINTS = { easy: easyMcqMark, medium: mediumMcqMark, hard: hardMcqMark };
+    let {hardCodingMark, mediumCodingMark, easyCodingMark } = data
     const CODING_POINTS = { easy: easyCodingMark, medium: mediumCodingMark, hard: hardCodingMark };
-    const totalMCQPoints = data.Quizzes.reduce((sum, q) => sum + MCQ_POINTS[q.difficulty], 0);
     // const totalOpenPoints = data.OpenEndedQuestions.reduce((sum, q) => sum + pointsMapping.OPEN_ENDED_POINTS[q.difficulty], 0);
     const totalCodingPoints = data.CodingQuestions.reduce((sum, q) => sum + CODING_POINTS[q.difficulty], 0);
 
     let codingQuestionCount = data.CodingQuestions.length;
     let mcqQuestionCount = data.Quizzes.length;
     let openEndedQuestionCount = data.OpenEndedQuestions.length;
+    let {hardMcqMark, mediumMcqMark, easyMcqMark, hardMcqQuestions, mediumMcqQuestions, easyMcqQuestions} = data;
+    let totalMCQPoints = (hardMcqMark * hardMcqQuestions ) + (mediumMcqMark * mediumMcqQuestions) + (easyMcqMark * easyMcqQuestions);
     const totalPoints = totalMCQPoints + totalCodingPoints;
 
     return { totalMCQPoints, totalCodingPoints, totalPoints, codingQuestionCount, mcqQuestionCount, openEndedQuestionCount };
   }
 
-  async calculateAssessmentResults(data, codingSubmission, totalPoints) {
-    let quizTotalAttemted = 0;
-    let quizCorrect = 0;
-    let quizScore = 0;
-    let openTotalAttemted = 0;
-    let codingTotalAttemted = 0;
-    let codingScore = 0;
-    let { hardMcqMark, easyMcqMark, mediumMcqMark, hardCodingMark, mediumCodingMark, easyCodingMark } = data
-    const MCQ_POINTS = { easy: easyMcqMark, medium: mediumMcqMark, hard: hardMcqMark };
-    const CODING_POINTS = { easy: easyCodingMark, medium: mediumCodingMark, hard: hardCodingMark };
-    // Processing Quizzes
-    data.quizSubmission.forEach(quiz => {
-      quizTotalAttemted += 1;
-      if (quiz.chosenOption == quiz.submissionData?.Quiz.correctOption) {
-        quizCorrect += 1;
-        quizScore += MCQ_POINTS[quiz.submissionData?.Quiz.difficulty];
-      }
-    });
 
-    data.openEndedSubmission.forEach(question => {
-      openTotalAttemted += 1;
-    });
-
-
-    data.PracticeCode.forEach(question => {
-      let existingEntry = codingSubmission.find(entry => entry.id === question.questionId);
-      if (existingEntry) {
-        if (!existingEntry.submissions) {
-          existingEntry.submissions = {};
-        }
-        existingEntry.submissions = {
-          id: question.id,
-          status: question.status,
-          action: question.action,
-          createdAt: question.createdAt,
-          codingOutsourseId: question.codingOutsourseId,
-          submissionId: question.submissionId,
-          questionId: question.questionId,
-          SourceCode: question.sourceCode,
-          // ...question
-        }
-        codingTotalAttemted += 1;
-        codingScore += CODING_POINTS[question.questionDetail.difficulty];
-      }
-    });
-
-    const totalScore = quizScore + codingScore;
-    let percentage = totalScore === 0 ? 0 : (totalScore / totalPoints) * 100;
-
-    // Assessment pass status
-    const passStatus = percentage >= data.submitedOutsourseAssessment?.passPercentage;
-
-    data.openEndedSubmission = {
-      openTotalAttemted,
-    }
-    data.quizSubmission = {
-      quizTotalAttemted,
-      quizCorrect,
-      quizScore,
-    }
-    data.PracticeCode = {
-      codingTotalAttemted,
-      codingScore
-    }
-    data.marks = totalScore;
-    return { ...data, passStatus, percentage, passPercentage: data?.submitedOutsourseAssessment?.passPercentage, codingSubmission };
-  }
-
-
-  async assessmentOutsourseData(assessmentOutsourseId: number) {
+  async calculateAssessmentResults(assessmentOutsourseId: number, practiceCodeData, mcqScore) {
     try {
-      const assessment = await db.query.zuvyOutsourseAssessments.findMany({
-        where: (zuvyOutsourseAssessments, { eq }) =>
-          eq(zuvyOutsourseAssessments.id, assessmentOutsourseId),
-        with: {
-          CodingQuestions: {
-            columns: {
-              id: true,
-              assessmentOutsourseId: true,
-              bootcampId: true
-            },
-            with: {
-              CodingQuestion: true
-            }
-          },
-          ModuleAssessment: true,
-          Quizzes: {
-            columns: {
-              id: true,
-              assessmentOutsourseId: true,
-              bootcampId: true
-            },
-            with: {
-              Quiz: {
-                with: {
-                  quizVariants: true
-                }
-              },
-            }
-          },
-          OpenEndedQuestions: {
-            columns: {
-              id: true,
-              assessmentOutsourseId: true,
-              bootcampId: true
-            },
-            with: {
-              OpenEndedQuestion: true
-            }
-          }
-        },
-      })
+      let assessment:any = (await db.select().from(zuvyOutsourseAssessments).where(eq(zuvyOutsourseAssessments.id, assessmentOutsourseId)))
 
       if (assessment == undefined || assessment.length == 0) {
-        throw ({
+        return [{
           status: 'error',
           statusCode: 404,
           message: 'Assessment not found',
-        });
+        }];
       }
-      let formatedData = await this.formatedChapterDetails(assessment[0]);
-      return { ...formatedData, codingQuestions: assessment[0].CodingQuestions };
+      assessment = assessment[0];
+      let codingMarks = {
+        Easy: assessment.easyCodingMark,
+        Medium: assessment.mediumCodingMark,
+        Hard: assessment.hardCodingMark,
+      }
+      let codingScore = 0;
+      practiceCodeData.map((codingQuestionSubmission) => {
+        codingScore += codingMarks[codingQuestionSubmission.questionDetail.difficulty]
+      })
+      const totalCodingMarks = 
+        (assessment.easyCodingQuestions * assessment.easyCodingMark) +
+        (assessment.mediumCodingQuestions * assessment.mediumCodingMark) +
+        (assessment.hardCodingQuestions * assessment.hardCodingMark);
+
+      // Calculate total possible score for MCQs
+      const totalMcqMarks = 
+          (assessment.easyMcqQuestions * assessment.easyMcqMark) +
+          (assessment.mediumMcqQuestions * assessment.mediumMcqMark) +
+          (assessment.hardMcqQuestions * assessment.hardMcqMark);
+      // Total assessment score
+      let totalStudentScore = codingScore + mcqScore
+      const totalAssessmentMarks = totalCodingMarks + totalMcqMarks;
+      let percentage = (totalStudentScore / totalAssessmentMarks ) * 100
+      let isPassed = (assessment.passPercentage <= percentage) ? true: false
+      let updateAssessmentSubmission = {
+        attemptedCodingQuestions: practiceCodeData.length,
+        codingScore: codingScore.toFixed(2),
+        marks:parseFloat(totalStudentScore.toFixed(2)),
+        isPassed,
+        percentage:parseFloat(percentage.toFixed(2))
+      }
+      return [null, updateAssessmentSubmission];
     } catch (err) {
-      throw err;
+      return [{message: err.message}]
     }
   }
 
@@ -383,48 +306,11 @@ export class SubmissionService {
           user: {
             columns: {
               email: true,
-              name: true
+              name: true,
+              id: true
             }
           },
           submitedOutsourseAssessment: true,
-          openEndedSubmission: {
-            columns: {
-              id: true,
-              answer: true,
-              questionId: true,
-              feedback: true,
-              marks: true,
-              startAt: true,
-              submitedAt: true,
-            },
-            with: {
-              submissionData: {
-                with: {
-                  OpenEndedQuestion: true
-                }
-              },
-
-            }
-          },
-          quizSubmission: {
-            columns: {
-              id: true,
-              chosenOption: true,
-              questionId: true,
-              attemptCount: true,
-            },
-            with: {
-              submissionData: {
-                with: {
-                  Quiz: {
-                    with: {
-                      quizVariants: true
-                    }
-                  }
-                }
-              }
-            }
-          },
           PracticeCode: {
             where: (zuvyPracticeCode, { eq, and }) => and(
               eq(zuvyPracticeCode.status, ACCEPTED),
@@ -439,77 +325,76 @@ export class SubmissionService {
         }
       });
       if (data == undefined || data.length == 0) {
-        throw ({
+        return[{
           status: 'error',
           statusCode: 404,
           message: 'Assessment not found',
-        });
+        }];
       }
-      let { codingQuestions, ...assessment_data } = await this.assessmentOutsourseData(data.assessmentOutsourseId);
-      const { totalMCQPoints, totalCodingPoints, totalPoints, codingQuestionCount, mcqQuestionCount, openEndedQuestionCount } = await this.calculateTotalPoints(assessment_data);
-      let calData = await this.calculateAssessmentResults(data, codingQuestions, totalPoints);
-
-      return { ...calData, totalMCQPoints, totalCodingPoints, codingQuestionCount, mcqQuestionCount, openEndedQuestionCount };
+      let [errUPdate, updateAssessmentSubmission] = await this.calculateAssessmentResults(data.assessmentOutsourseId, data.PracticeCode, data.mcqScore);
+      if (errUPdate){
+        return [errUPdate]
+      }
+      updateAssessmentSubmission['userId'] = data.user.id;
+      updateAssessmentSubmission['submitedAt'] = data.submitedAt
+      return [null, updateAssessmentSubmission];
     }
     catch (err) {
-      throw err;
+      return [{message: err.message}]
     }
   }
 
 
-  async assessmentSubmission(data, id: number, userId: number) {
+  async assessmentSubmission(data, id: number, userId: number): Promise<any> {
     try {
-      let submitData = await this.getAssessmentSubmission(id, userId);
+      let errSubmit: any, submitData: any = {}; 
+      // Use an intermediate variable to store the result of the await
+      const result = await this.getAssessmentSubmission(id, userId);
+
+      // Destructure the result after the await
+      [errSubmit, submitData] = result;
+      if (errSubmit){
+        return [errSubmit]
+      }
+
       if (submitData == undefined || submitData == null) {
-        throw ({
+        return [{
           status: 'error',
           statusCode: 404,
           message: 'Assessment not found',
-        });
+        }];
       } else if (submitData.userId != userId) {
-        throw ({
+        return [{
           status: 'error',
           statusCode: 400,
           message: 'Unauthorized assessment submission',
-        });
+        }]
       } else if (submitData.submitedAt != null) {
-        throw ({
+        return [{
           status: 'error',
           statusCode: 400,
           message: 'Assessment already submitted',
-        });
+        }];
       }
       data['submitedAt'] = new Date().toISOString();
       data = {
         ...data,
-        marks: submitData.marks,
-        isPassed: submitData.passStatus,
-        percentage: submitData.percentage,
-        codingQuestionCount: submitData.codingQuestionCount,
-        mcqQuestionCount: submitData.mcqQuestionCount,
-        openEndedQuestionCount: submitData.openEndedQuestionCount,
-        attemptedCodingQuestions: submitData.PracticeCode.codingTotalAttemted,
-        attemptedMCQQuestions: submitData.quizSubmission.quizTotalAttemted,
-        attemptedOpenEndedQuestions: submitData.openEndedSubmission.openTotalAttemted,
-        codingScore: submitData.PracticeCode.codingScore,
+        ...submitData,
         openEndedScore: 0, // Assuming no data provided
-        mcqScore: submitData.quizSubmission.quizScore,
-        requiredCodingScore: submitData.totalCodingPoints,
         requiredOpenEndedScore: 0, // Assuming no data provided
-        requiredMCQScore: submitData.totalMCQPoints
       };
       let assessment = await db.update(zuvyAssessmentSubmission).set(data).where(eq(zuvyAssessmentSubmission.id, id)).returning();
       if (assessment == undefined || assessment.length == 0) {
-        throw ({
+        return [{
           status: 'error',
           statusCode: 404,
           message: 'Assessment not found',
-        });
+        }]
       }
-      return assessment[0];
+      return [null, assessment[0]];
     } catch (err) {
       console.error('Error in assessmentSubmission:', err);
-      throw err;
+      return [{message: err.message}]
     }
   }
 
@@ -678,6 +563,7 @@ export class SubmissionService {
                 },
                 where: (userDetails, { sql }) =>
                   searchStudent
+
                     ? sql`${userDetails.name} ILIKE ${searchStudent + '%'} OR ${userDetails.email} ILIKE ${searchStudent + '%'}`
                     : sql`TRUE`, // If no search string is provided, return all records
               },
@@ -754,20 +640,45 @@ export class SubmissionService {
   }
 
   // submission of the quizzez , and open ended questions, And  two different functons
-  async submitQuiz(answers, userId: number, assessmentSubmissionId: number) {
+  async submitQuiz(answers, userId: number, assessmentSubmissionId: number, assessmentOutsourseId): Promise<any> {
     try {
       let submissionData = await this.getSubmissionQuiz(assessmentSubmissionId, userId);
-      let InsertData = []; // Initialize InsertData as an array
+      let InsertData:any = []; // Initialize InsertData as an array
       let updateData = []; // Initialize updateData as an array
       let updatePromises = []; // Use an array to collect update promises
-      let insertPromises = []; // Use an array to collect insert promises
-
       // if submission already exists then update the submission
-      if (submissionData.length > 0) {
-        let filterQuestionId = submissionData.map((answer) => answer.questionId);
+      let Assessments_master_data = await db.select().from(zuvyOutsourseAssessments).where(eq(zuvyOutsourseAssessments.id ,assessmentOutsourseId))
 
+      let mcq_marks = {
+        Easy: Assessments_master_data[0].easyMcqMark,
+        Medium: Assessments_master_data[0].mediumMcqMark,
+        Hard: Assessments_master_data[0].hardMcqMark,
+      }
+      let filterQuestionId = submissionData.map((answer) => answer.variantId);
+      let mcq_score = 0
+      let quiz_master_data = await db.query.zuvyModuleQuizVariants.findMany({
+        where: (zuvyModuleQuizVariants, { sql }) => sql`${zuvyModuleQuizVariants.id} in ${filterQuestionId}`, 
+        with: {
+          quiz:{
+            columns: {
+              difficulty:true,
+              id:true
+            }
+          }
+        },
+      });
+      let requiredMCQScore = 0;
+      quiz_master_data.map((data:any) => {
+        requiredMCQScore += mcq_marks[data.quiz.difficulty]
+      })
+      if (submissionData.length > 0) {
         answers.forEach((answer) => {
-          if (filterQuestionId.includes(answer.questionId)) {
+          quiz_master_data.find((mcq:any)=> {
+            if (mcq.id === answer.variantId && answer.chosenOption == mcq.correctOption){
+              mcq_score += mcq_marks[mcq.quiz.difficulty]
+            }
+          })
+          if (filterQuestionId.includes(answer.variantId)) {
             // Collect update promises
             updatePromises.push(db.update(zuvyQuizTracking).set({ ...answer }).where(sql`${zuvyQuizTracking.questionId} = ${answer.questionId} and ${zuvyQuizTracking.assessmentSubmissionId} = ${assessmentSubmissionId} and ${zuvyQuizTracking.userId} = ${userId}`).returning());
           } else {
@@ -775,7 +686,6 @@ export class SubmissionService {
             InsertData.push({ ...answer, userId, assessmentSubmissionId });
           }
         });
-
         // Execute all update operations
         if (updatePromises.length > 0) {
           let updateResults = await Promise.all(updatePromises);
@@ -792,10 +702,13 @@ export class SubmissionService {
       if (InsertData.length > 0) {
         InsertData = await db.insert(zuvyQuizTracking).values(InsertData).returning();
       }
+      let updateAssessmentMcqInfo:any = {mcqScore: mcq_score, requiredMCQScore, attemptedMCQQuestions:answers.length};
+      await db.update(zuvyAssessmentSubmission).set(updateAssessmentMcqInfo).where(sql`${zuvyAssessmentSubmission.id} = ${assessmentSubmissionId}`).returning()
       // Since updateData is not directly returned from db.update, it's not included in the return statement
-      return { message: 'Successfully save the Quiz.', data: [...InsertData, ...updateData] }; // Adjusted return value
+      return [null,{ message: 'Successfully save the Quiz.', data: [...InsertData, ...updateData] }]; // Adjusted return value
     } catch (err) {
-      throw err;
+      console.log({err})
+      return [{message: err.message}]
     }
   }
 
