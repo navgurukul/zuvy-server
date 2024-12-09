@@ -2574,7 +2574,7 @@ export const zuvyQuizTracking = main.table("zuvy_quiz_tracking", {
     onUpdate: 'cascade',
   }),
   questionId: integer("question_id").references(() => zuvyOutsourseQuizzes.id),
-  variantId: integer("variant_id").references(() => zuvyQuizTracking.id),
+  variantId: integer("variant_id"),
   chosenOption: integer("chosen_option"),
   createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),

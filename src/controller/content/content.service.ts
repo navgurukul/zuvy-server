@@ -2000,7 +2000,6 @@ export class ContentService {
 
       
       
-      console.log({ quizzes });
       let assessment = {
         ...assessmentOutsourseData,
         IsQuizzSubmission: quizzes!.length > 0 ? true : false,
@@ -2097,7 +2096,7 @@ export class ContentService {
           .leftJoin(
             zuvyQuizTracking,
             and(
-              eq(zuvyQuizTracking.mcqId, zuvyModuleQuizVariants.id),
+              eq(zuvyQuizTracking.variantId, zuvyModuleQuizVariants.id),
               eq(zuvyQuizTracking.assessmentSubmissionId, assessmentSubmissionId),
               eq(zuvyQuizTracking.userId, userId),
             )

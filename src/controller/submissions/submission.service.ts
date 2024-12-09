@@ -648,7 +648,9 @@ export class SubmissionService {
       let updatePromises = []; // Use an array to collect update promises
       // if submission already exists then update the submission
       let Assessments_master_data = await db.select().from(zuvyOutsourseAssessments).where(eq(zuvyOutsourseAssessments.id ,assessmentOutsourseId))
-
+      if (!Assessments_master_data.length){
+        return [{message: 'Outsourse assessment not found'}]
+      }
       let mcq_marks = {
         Easy: Assessments_master_data[0].easyMcqMark,
         Medium: Assessments_master_data[0].mediumMcqMark,
@@ -656,26 +658,33 @@ export class SubmissionService {
       }
       let filterQuestionId = submissionData.map((answer) => answer.variantId);
       let mcq_score = 0
-      let quiz_master_data = await db.query.zuvyModuleQuizVariants.findMany({
-        where: (zuvyModuleQuizVariants, { sql }) => sql`${zuvyModuleQuizVariants.id} in ${filterQuestionId}`, 
-        with: {
-          quiz:{
-            columns: {
-              difficulty:true,
-              id:true
+      let quiz_master_data = []
+      if (filterQuestionId.length){
+        quiz_master_data = await db.query.zuvyModuleQuizVariants.findMany({
+          where: (zuvyModuleQuizVariants, { sql }) => sql`${zuvyModuleQuizVariants.id} in ${filterQuestionId}`, 
+          with: {
+            quiz:{
+              columns: {
+                difficulty:true,
+                id:true
+              }
             }
-          }
-        },
-      });
+          },
+        });
+      }
       let requiredMCQScore = 0;
       quiz_master_data.map((data:any) => {
         requiredMCQScore += mcq_marks[data.quiz.difficulty]
       })
       if (submissionData.length > 0) {
         answers.forEach((answer) => {
+          answer.status =  'failed'
+          answer.assessmentSubmissionId = assessmentSubmissionId;
+
           quiz_master_data.find((mcq:any)=> {
             if (mcq.id === answer.variantId && answer.chosenOption == mcq.correctOption){
               mcq_score += mcq_marks[mcq.quiz.difficulty]
+              answer.status = 'passed'
             }
           })
           if (filterQuestionId.includes(answer.variantId)) {
@@ -697,7 +706,6 @@ export class SubmissionService {
         // Prepare data for insertion if no submission data exists
         InsertData = answers.map((answer) => ({ ...answer, userId, assessmentSubmissionId }));
       }
-
       // Execute insert operation if there's data to insert
       if (InsertData.length > 0) {
         InsertData = await db.insert(zuvyQuizTracking).values(InsertData).returning();
@@ -707,7 +715,6 @@ export class SubmissionService {
       // Since updateData is not directly returned from db.update, it's not included in the return statement
       return [null,{ message: 'Successfully save the Quiz.', data: [...InsertData, ...updateData] }]; // Adjusted return value
     } catch (err) {
-      console.log({err})
       return [{message: err.message}]
     }
   }
