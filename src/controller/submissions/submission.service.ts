@@ -283,6 +283,7 @@ export class SubmissionService {
       let totalStudentScore = codingScore + mcqScore
       const totalAssessmentMarks = totalCodingMarks + totalMcqMarks;
       let percentage = (totalStudentScore / totalAssessmentMarks ) * 100
+      percentage = percentage ? percentage : 0;
       let isPassed = (assessment.passPercentage <= percentage) ? true: false
       let updateAssessmentSubmission = {
         attemptedCodingQuestions: practiceCodeData.length,
@@ -376,11 +377,11 @@ export class SubmissionService {
           message: 'Assessment already submitted',
         }];
       }
-      data['submitedAt'] = new Date().toISOString();
       data = {
         ...data,
         ...submitData,
         openEndedScore: 0, // Assuming no data provided
+        submitedAt: new Date().toISOString(),
         requiredOpenEndedScore: 0, // Assuming no data provided
       };
       let assessment = await db.update(zuvyAssessmentSubmission).set(data).where(eq(zuvyAssessmentSubmission.id, id)).returning();
