@@ -28,6 +28,7 @@ import { UpdateProjectDto } from './dto/project.dto';
 import { SubmitFormBodyDto } from './dto/form.dto';
 import { STATUS_CODES } from 'src/helpers';
 import { helperVariable } from 'src/constants/helper';
+import * as crypto from 'crypto';
 
 // Difficulty Points Mapping
 let { ACCEPTED, SUBMIT } = helperVariable;
@@ -287,92 +288,58 @@ export class TrackingService {
           .values(updatedAssignmentBody)
           .returning();
       } else if (SubmitBody.submitQuiz != undefined) {
+        const chapterStatus = await db
+        .select()
+        .from(zuvyChapterTracking)
+        .where(sql`${zuvyChapterTracking.userId } = ${userId} AND ${zuvyChapterTracking.chapterId } = ${chapterId}`);
+      if (chapterStatus.length > 0) {
+        return {
+          status: "success",
+          message: "Already submitted.",
+          code: STATUS_CODES.OK,
+        };
+      }
         SubmitBody.submitQuiz.sort((a, b) => a.mcqId - b.mcqId);
         const mcqIdArray = SubmitBody.submitQuiz.map((obj) => obj.mcqId);
-        const chosenOptions = SubmitBody.submitQuiz.map(
-          (obj) => obj.chossenOption
-        );
+        const chosenOptions = SubmitBody.submitQuiz.map((obj) => obj.chossenOption);
 
-        const totalQuestions = await db
-        .select({
-          count: sql`count(${zuvyQuizTracking.mcqId})`,
-        })
-        .from(zuvyQuizTracking)
-        .where(
-          and(
-            eq(zuvyQuizTracking.userId, userId),
-            eq(zuvyQuizTracking.moduleId, moduleId),
-            eq(zuvyQuizTracking.chapterId, chapterId)
-          )
-        )
-        .then((result) => result[0]?.count || 0);
+        // Fetch the correct answers for the submitted questions
+        const questions = await db
+          .select({
+            id: zuvyModuleQuizVariants.id,
+            correctOption: zuvyModuleQuizVariants.correctOption,
+          })
+          .from(zuvyModuleQuizVariants)
+          .where(sql`${inArray(zuvyModuleQuizVariants.id, mcqIdArray)}`);
 
-        if (chosenOptions.length != totalQuestions) {
+        // Prepare the data for insertion
+        const insertData = questions.map((question, index) => {
+          const chosenOption = chosenOptions[index];
+          const status = chosenOption === question.correctOption ? "pass" : "fail";
+
           return {
-            status: 'error', 
-            code: STATUS_CODES.BAD_REQUEST, 
-            message: "You must attempt all the questions." 
-          }
-        } else {
-          const questions = await db
-            .select({
-              id: zuvyModuleQuizVariants.id,
-              correctOption: zuvyModuleQuizVariants.correctOption,
-            })
-            .from(zuvyModuleQuizVariants)
-            .where(sql`${inArray(zuvyModuleQuizVariants.id, mcqIdArray)}`)
-            .orderBy(zuvyModuleQuizVariants.quizId);
+            mcqId: question.id,
+            chosenOption,
+            status,
+            userId,
+            chapterId,
+            moduleId,
+            createdAt: sql`NOW()`,
+            updatedAt: sql`NOW()`,
+          };
+        });
 
-          const sqlChunks: SQL[] = [];
-          const ids: number[] = [];
+        // Insert data into the quiz tracking table
+        await db
+          .insert(zuvyQuizTracking)
+          .values(insertData);
 
-          sqlChunks.push(sql`(case`);
-
-          for (let i = 0; i < questions.length; i++) {
-            const status = chosenOptions[i] === questions[i].correctOption ? "pass" : "fail";
-            sqlChunks.push(sql`when ${zuvyQuizTracking.mcqId} = ${SubmitBody.submitQuiz[i].mcqId} then ${status}`);
-            ids.push(SubmitBody.submitQuiz[i].mcqId);
-          }
-
-          sqlChunks.push(sql`end)`);
-
-          const statusSql: SQL = sql.join(sqlChunks, sql.raw(' '));
-
-          const chosenOptionChunks: SQL[] = [];
-          chosenOptionChunks.push(sql`(case`);
-
-          for (let i = 0; i < questions.length; i++) {
-            chosenOptionChunks.push(sql`when ${zuvyQuizTracking.mcqId} = ${SubmitBody.submitQuiz[i].mcqId} then cast(${chosenOptions[i]} as integer)`);
-          }
-
-          chosenOptionChunks.push(sql`end)`);
-
-          const chosenOptionSql: SQL = sql.join(chosenOptionChunks, sql.raw(' '));
-
-          result = await db.update(zuvyQuizTracking)
-            .set({
-              status: statusSql,
-              chosenOption: chosenOptionSql,
-              updatedAt: sql`NOW()`,
-              attemptCount: sql`${zuvyQuizTracking.attemptCount} + 1`
-            })
-            .where(
-              and(
-                inArray(zuvyQuizTracking.mcqId, ids),
-                eq(zuvyQuizTracking.userId, userId),
-                eq(zuvyQuizTracking.moduleId, moduleId),
-                eq(zuvyQuizTracking.chapterId, chapterId)
-              )
-            )
-            .returning();
-        }
+        return {
+          status: "success",
+          message: "Quiz submitted successfully.",
+          code: STATUS_CODES.OK,
+        };
       }
-      return { 
-        status: "success",
-        message: "Quiz submitted successfully.",
-        code: STATUS_CODES.OK,
-        result
-      };
     } catch (err) {
       throw err;
     }
@@ -970,137 +937,106 @@ export class TrackingService {
             const quizQuestionIds = Object.values(chapter[0].quizQuestions);
             quizQuestionIds.sort((a, b) => a - b);
 
-            const quizTrack = await db
+            // Determine chapter status from zuvyChapterTracking
+            const chapterTracking = await db
               .select()
-              .from(zuvyQuizTracking)
+              .from(zuvyChapterTracking)
               .where(
-                sql`${zuvyQuizTracking.userId} = ${userId} AND ${zuvyQuizTracking.chapterId} = ${chapterId} AND ${zuvyQuizTracking.chosenOption} IS NOT NULL`
-              );
+                sql`${zuvyChapterTracking.userId} = ${userId} AND ${zuvyChapterTracking.chapterId} = ${chapterId}`
+              )
+              .limit(1);
 
-            if (quizTrack.length === quizQuestionIds.length) {
-              const mcqIds = quizTrack.map((item) => item.mcqId);
-              // Fetch tracking data for the user's quiz progress
-              const trackedData = await db.query.zuvyModuleQuizVariants.findMany({
-                where: (moduleQuiz, { sql }) => sql`${inArray(moduleQuiz.id, mcqIds)}`,
-                orderBy: (moduleQuiz, { asc }) => asc(moduleQuiz.quizId),
-                with: {
-                  quizTrackingData: {
-                    columns: {
-                      chosenOption: true,
-                      status: true,
-                    },
-                    where: (quizTracking, { sql }) =>
-                      sql`${quizTracking.userId} = ${userId} AND ${quizTracking.chapterId} = ${chapterId}`,
-                  },
-                },
-              });
+            const chapterStatus = chapterTracking.length > 0 ? 'Completed' : 'Pending';
 
-              const status = 'Completed';
-              return [
-                null,
-                {
-                  message: 'Chapter details fetched successfully',
-                  statusCode: STATUS_CODES.OK,
-                  data: {
-                    chapterTitle: chapter[0].title,
-                    chapterId: chapter[0].id,
-                    chapterOrder: chapter[0].order,
-                    quizDetails: trackedData,
-                    status,
-                  },
-                },
-              ];
-            } else {
-              const quizTrackingEntries = await db
+            if (chapterStatus === 'Completed') {
+              const quizTrack = await db
                 .select()
                 .from(zuvyQuizTracking)
                 .where(
-                  sql`${zuvyQuizTracking.userId} = ${userId} AND ${zuvyQuizTracking.chapterId} = ${chapterId}`
+                  sql`${zuvyQuizTracking.userId} = ${userId} AND ${zuvyQuizTracking.chapterId} = ${chapterId} AND ${zuvyQuizTracking.chosenOption} IS NOT NULL`
                 );
 
-              if (quizTrackingEntries.length > 0 && quizTrackingEntries.every((entry) => entry.chosenOption === null)) {
-                // Scenario 1: All entries have `chosenOption` as null
-                const mcqIds = quizTrackingEntries.map((entry) => entry.mcqId);
+              if (quizTrack.length === quizQuestionIds.length) {
+                const mcqIds = quizTrack.map((item) => item.mcqId);
+
+                // Fetch tracked data for the user
                 const trackedData = await db.query.zuvyModuleQuizVariants.findMany({
                   where: (moduleQuiz, { sql }) => sql`${inArray(moduleQuiz.id, mcqIds)}`,
-                  orderBy: (moduleQuiz, { asc }) => asc(moduleQuiz.id),
+                  orderBy: (moduleQuiz, { asc }) => asc(moduleQuiz.quizId),
+                  with: {
+                    quizTrackingData: {
+                      columns: {
+                        chosenOption: true,
+                        status: true,
+                      },
+                      where: (quizTracking, { sql }) =>
+                        sql`${quizTracking.userId} = ${userId} AND ${quizTracking.chapterId} = ${chapterId}`,
+                    },
+                  },
                 });
 
                 return [
                   null,
                   {
-                    message:
-                      'No quiz options selected yet. Returning pending questions with options.',
+                    message: 'Chapter details fetched successfully',
                     statusCode: STATUS_CODES.OK,
                     data: {
                       chapterTitle: chapter[0].title,
                       chapterId: chapter[0].id,
                       chapterOrder: chapter[0].order,
-                      quizDetails: trackedData.map((quiz) => ({
-                        id: quiz.id,
-                        quizId: quiz.quizId,
-                        question: quiz.question,
-                        options: quiz.options,
-                        variantNumber: quiz.variantNumber
-                      })),
-                      status: 'Pending',
-                    },
-                  },
-                ];
-              } else if (quizTrackingEntries.length === 0) {
-                // Scenario 2: First-time attempt
-                const randomVariants = await Promise.all(
-                  quizQuestionIds.map(async (quizId) => {
-                    // Fetch all variants for the current quizId
-                    const allVariants = await db.query.zuvyModuleQuizVariants.findMany({
-                      where: (moduleQuiz) => eq(moduleQuiz.quizId, quizId),
-                    });
-
-                    // Select a random variant from the available ones
-                    const randomIndex = Math.floor(Math.random() * allVariants.length);
-                    return allVariants[randomIndex];
-                  })
-                );
-
-                // Store selected variants in the tracking table
-                await Promise.all(
-                  randomVariants.map((variant) =>
-                    db.insert(zuvyQuizTracking).values({
-                      userId,
-                      chapterId,
-                      moduleId: chapter[0].moduleId,
-                      mcqId: variant.id,
-                      chosenOption: null,
-                      status: null,
-                    })
-                  )
-                );
-
-                return [
-                  null,
-                  {
-                    message:
-                      'Random quiz variants selected and initialized for the first attempt.',
-                    statusCode: STATUS_CODES.OK,
-                    data: {
-                      chapterTitle: chapter[0].title,
-                      chapterId: chapter[0].id,
-                      chapterOrder: chapter[0].order,
-                      quizDetails: randomVariants.map((variant) => ({
-                        id: variant.id,
-                        quizId: variant.quizId,
-                        question: variant.question,
-                        options: variant.options,
-                        variantNumber: variant.variantNumber
-                      })),
-                      status: 'Pending',
+                      quizDetails: trackedData,
+                      status: chapterStatus,
                     },
                   },
                 ];
               }
             }
-          }
-          else {
+
+            // Deterministically pick a variant for each quiz
+            const randomVariants = await Promise.all(
+              quizQuestionIds.map(async (quizId) => {
+                // Fetch all variants for the current quizId
+                const allVariants = await db.query.zuvyModuleQuizVariants.findMany({
+                  where: (moduleQuiz) => eq(moduleQuiz.quizId, quizId),
+                });
+
+                if (allVariants.length === 0) {
+                  throw new Error(`No variants found for quizId: ${quizId}`);
+                }
+
+                // Deterministically pick a variant based on userId and quizId
+                const hash = crypto.createHash('sha256')
+                  .update(`${userId}-${quizId}`)
+                  .digest('hex');
+                console.log(hash)
+                const hashValue = parseInt(hash.substring(0, 8), 16);
+                const selectedVariantIndex = hashValue % allVariants.length;
+
+                return allVariants[selectedVariantIndex];
+              })
+            )
+
+            return [
+              null,
+              {
+                message: 'Random quiz variants fetched for the first attempt.',
+                statusCode: STATUS_CODES.OK,
+                data: {
+                  chapterTitle: chapter[0].title,
+                  chapterId: chapter[0].id,
+                  chapterOrder: chapter[0].order,
+                  quizDetails: randomVariants.map((variant) => ({
+                    id: variant.id,
+                    quizId: variant.quizId,
+                    question: variant.question,
+                    options: variant.options,
+                    variantNumber: variant.variantNumber,
+                  })),
+                  status: chapterStatus,
+                },
+              },
+            ];
+          } else {
             // No quiz questions found in the chapter
             return [
               null,
