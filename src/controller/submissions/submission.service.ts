@@ -641,84 +641,113 @@ export class SubmissionService {
   }
 
   // submission of the quizzez , and open ended questions, And  two different functons
-  async submitQuiz(answers, userId: number, assessmentSubmissionId: number, assessmentOutsourseId): Promise<any> {
+  async submitQuiz(answers, userId, assessmentSubmissionId, assessmentOutsourseId): Promise<any> {
     try {
-      let submissionData = await this.getSubmissionQuiz(assessmentSubmissionId, userId);
-      let InsertData:any = []; // Initialize InsertData as an array
-      let updateData = []; // Initialize updateData as an array
-      let updatePromises = []; // Use an array to collect update promises
-      // if submission already exists then update the submission
-      let Assessments_master_data = await db.select().from(zuvyOutsourseAssessments).where(eq(zuvyOutsourseAssessments.id ,assessmentOutsourseId))
-      if (!Assessments_master_data.length){
-        return [{message: 'Outsourse assessment not found'}]
+      // Fetch required data
+      const [submissionData, AssessmentsMasterData] = await Promise.all([
+        this.getSubmissionQuiz(assessmentSubmissionId, userId),
+        db.select().from(zuvyOutsourseAssessments).where(eq(zuvyOutsourseAssessments.id, assessmentOutsourseId))
+      ]);
+  
+      if (!AssessmentsMasterData.length) {
+        return [{ message: 'Outsourse assessment not found' }];
       }
-      let mcq_marks = {
-        Easy: Assessments_master_data[0].easyMcqMark,
-        Medium: Assessments_master_data[0].mediumMcqMark,
-        Hard: Assessments_master_data[0].hardMcqMark,
-      }
-      let filterQuestionId = submissionData.map((answer) => answer.variantId);
-      let mcq_score = 0
-      let quiz_master_data = []
-      if (filterQuestionId.length){
-        quiz_master_data = await db.query.zuvyModuleQuizVariants.findMany({
-          where: (zuvyModuleQuizVariants, { sql }) => sql`${zuvyModuleQuizVariants.id} in ${filterQuestionId}`, 
-          with: {
-            quiz:{
-              columns: {
-                difficulty:true,
-                id:true
+  
+      const mcqMarks = {
+        Easy: AssessmentsMasterData[0].easyMcqMark,
+        Medium: AssessmentsMasterData[0].mediumMcqMark,
+        Hard: AssessmentsMasterData[0].hardMcqMark
+      };
+  
+      const filterQuestionIds = submissionData.map((answer) => answer.variantId);
+      let mcqScore = 0;
+      let requiredMCQScore = 0;
+  
+      // Fetch quiz master data if applicable
+      const quizMasterData = filterQuestionIds.length
+        ? await db.query.zuvyModuleQuizVariants.findMany({
+            where: (zuvyModuleQuizVariants, { sql }) => sql`${zuvyModuleQuizVariants.id} in ${filterQuestionIds}`,
+            with: {
+              quiz: {
+                columns: { difficulty: true, id: true }
               }
             }
-          },
-        });
-      }
-      let requiredMCQScore = 0;
-      quiz_master_data.map((data:any) => {
-        requiredMCQScore += mcq_marks[data.quiz.difficulty]
-      })
-      if (submissionData.length > 0) {
-        answers.forEach((answer) => {
-          answer.status =  'failed'
-          answer.assessmentSubmissionId = assessmentSubmissionId;
-
-          quiz_master_data.find((mcq:any)=> {
-            if (mcq.id === answer.variantId && answer.chosenOption == mcq.correctOption){
-              mcq_score += mcq_marks[mcq.quiz.difficulty]
-              answer.status = 'passed'
-            }
           })
-          if (filterQuestionId.includes(answer.variantId)) {
-            // Collect update promises
-            updatePromises.push(db.update(zuvyQuizTracking).set({ ...answer }).where(sql`${zuvyQuizTracking.questionId} = ${answer.questionId} and ${zuvyQuizTracking.assessmentSubmissionId} = ${assessmentSubmissionId} and ${zuvyQuizTracking.userId} = ${userId}`).returning());
-          } else {
-            // Prepare data for insertion
-            InsertData.push({ ...answer, userId, assessmentSubmissionId });
-          }
-        });
-        // Execute all update operations
-        if (updatePromises.length > 0) {
-          let updateResults = await Promise.all(updatePromises);
-          updateResults.forEach(result => {
-            updateData.push(result[0]);
-          });
+        : [];
+  
+      quizMasterData.forEach((data:any) => {
+        requiredMCQScore += mcqMarks[data.quiz.difficulty];
+      });
+  
+      const insertData = [];
+      const updatePromises = [];
+  
+      answers.forEach((answer) => {
+        answer.status = 'failed';
+        answer.assessmentSubmissionId = assessmentSubmissionId;
+  
+        const matchingQuiz:any = quizMasterData.find(
+          (mcq) => mcq.id === answer.variantId && answer.chosenOption === mcq.correctOption
+        );
+  
+        if (matchingQuiz) {
+          mcqScore += mcqMarks[matchingQuiz.quiz.difficulty];
+          answer.status = 'passed';
         }
-      } else {
-        // Prepare data for insertion if no submission data exists
-        InsertData = answers.map((answer) => ({ ...answer, userId, assessmentSubmissionId }));
-      }
-      // Execute insert operation if there's data to insert
-      if (InsertData.length > 0) {
-        InsertData = await db.insert(zuvyQuizTracking).values(InsertData).returning();
-      }
-      let updateAssessmentMcqInfo:any = {mcqScore: mcq_score, requiredMCQScore, attemptedMCQQuestions:answers.length};
-      await db.update(zuvyAssessmentSubmission).set(updateAssessmentMcqInfo).where(sql`${zuvyAssessmentSubmission.id} = ${assessmentSubmissionId}`).returning()
-      // Since updateData is not directly returned from db.update, it's not included in the return statement
-      return [null,{ message: 'Successfully save the Quiz.', data: [...InsertData, ...updateData] }]; // Adjusted return value
+  
+        if (filterQuestionIds.includes(answer.variantId)) {
+          // Collect update promises
+          updatePromises.push(
+            db
+              .update(zuvyQuizTracking)
+              .set({ ...answer })
+              .where(
+                sql`${zuvyQuizTracking.questionId} = ${answer.questionId} 
+                AND ${zuvyQuizTracking.assessmentSubmissionId} = ${assessmentSubmissionId} 
+                AND ${zuvyQuizTracking.userId} = ${userId}`
+              )
+              .returning()
+          );
+        } else {
+          // Collect insert data
+          insertData.push({ ...answer, userId, assessmentSubmissionId });
+        }
+      });
+  
+      // Execute updates in parallel
+      const updateResults = updatePromises.length > 0 ? await Promise.all(updatePromises) : [];
+  
+      // Insert new data if available
+      const insertedData = insertData.length > 0
+        ? await db.insert(zuvyQuizTracking).values(insertData).returning()
+        : [];
+  
+      // Update assessment MCQ info
+      const updateAssessmentMcqInfo:any = {
+        mcqScore,
+        requiredMCQScore,
+        attemptedMCQQuestions: answers.length
+      };
+  
+      await db
+        .update(zuvyAssessmentSubmission)
+        .set(updateAssessmentMcqInfo)
+        .where(sql`${zuvyAssessmentSubmission.id} = ${assessmentSubmissionId}`)
+        .returning();
+  
+      // Return combined data
+      return [
+        null,
+        {
+          message: 'Successfully saved the Quiz.',
+          data: [...insertedData, ...updateResults.flat()]
+        }
+      ];
     } catch (err) {
-      return [{message: err.message}]
+      return [{ message: err.message }];
     }
   }
+  
 
   async getSubmissionQuiz(assessmentSubmissionId, userId: number) {
     try {

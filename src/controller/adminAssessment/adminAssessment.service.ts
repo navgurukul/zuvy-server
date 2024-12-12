@@ -33,9 +33,6 @@ export class AdminAssessmentService {
           {
             ...assessmentInfo,
             ...ModuleAssessment,
-            totalCodingQuestions: CodingQuestions.length,
-            totalOpenEndedQuestions: OpenEndedQuestions.length,
-            totalQuizzes: Quizzes.length,
             totalSubmitedAssessments: submitedOutsourseAssessments.length,
             qualifiedStudents,
           },
@@ -44,9 +41,6 @@ export class AdminAssessmentService {
         result[moduleName].push({
           ...assessmentInfo,
           ...ModuleAssessment,
-          totalCodingQuestions: CodingQuestions.length,
-          totalOpenEndedQuestions: OpenEndedQuestions.length,
-          totalQuizzes: Quizzes.length,
           totalSubmitedAssessments: submitedOutsourseAssessments.length,
           qualifiedStudents,
         });
@@ -88,6 +82,8 @@ export class AdminAssessmentService {
         columns: {
           id: true,
           order: true,
+          totalCodingQuestions: true,
+          totalMcqQuestions: true,
         },
         with: {
           ModuleAssessment: {
@@ -152,7 +148,7 @@ export class AdminAssessmentService {
   async getAssessmentStudents(req, assessmentID:number,searchStudent:string) {
     try {
       const assessmentInfo = await db.select().from(zuvyOutsourseAssessments).where(sql`${zuvyOutsourseAssessments.id} = ${assessmentID}`);
-     
+
       if(assessmentInfo.length > 0)
         {
       const assessment = await db.query.zuvyOutsourseAssessments.findMany({
@@ -163,7 +159,6 @@ export class AdminAssessmentService {
           bootcampId: true,
           passPercentage: true,
         },
-
         with: {
           submitedOutsourseAssessments: {
             columns: {

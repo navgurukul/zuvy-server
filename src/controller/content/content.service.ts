@@ -1077,12 +1077,13 @@ export class ContentService {
           medium: OutsourseAssessmentData__.mediumMcqQuestions || 0,
           hard: OutsourseAssessmentData__.hardMcqQuestions || 0,
         };
-        // let TOTAL_SCORE = 100;
-
+        
         // Calculate the scores for each type
         const codingScores: any = await this.calculateQuestionScores(helperVariable.TOTAL_SCORE, OutsourseAssessmentData__.weightageCodingQuestions, codingQuestionsCount, 'Coding');
         const mcqScores: any = await this.calculateQuestionScores(helperVariable.TOTAL_SCORE, OutsourseAssessmentData__.weightageMcqQuestions, mcqQuestionsCount);
         // Update marks in the assessment
+        OutsourseAssessmentData__.totalCodingQuestions = codingQuestionsCount.easy + codingQuestionsCount.medium +  codingQuestionsCount.hard;
+        OutsourseAssessmentData__.totalMcqQuestions = mcqQuestionsCount.easy + mcqQuestionsCount.medium +  mcqQuestionsCount.hard;
         let marks = {
           easyCodingMark: codingScores.easy,
           mediumCodingMark: codingScores.medium,
@@ -2149,7 +2150,7 @@ export class ContentService {
   }
 
 
-  async getAssessmentDetailsOfQuiz(assessmentOutsourseId: number, user, userId): Promise<any> {
+  async getAssessmentDetailsOfQuiz(assessmentOutsourseId: number, user, userId, IsAdmin): Promise<any> {
     try {
       const assessmentOutsourseData = await db.query.zuvyOutsourseAssessments.findFirst({
         where: (zuvyOutsourseAssessments, { eq }) =>
@@ -2159,7 +2160,8 @@ export class ContentService {
           submitedOutsourseAssessments: true
         },
       });
-      if (user.roles.includes('admin')) {
+      console.log({userId}, !IsAdmin && user.roles.includes('admin'), IsAdmin)
+      if (!IsAdmin && user.roles.includes('admin')) {
         userId = Math.floor(Math.random() * (99999 - 1000 + 1)) + 1000;
       }
       let assessmentSubmissionId = null

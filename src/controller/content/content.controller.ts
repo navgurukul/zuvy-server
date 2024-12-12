@@ -625,10 +625,11 @@ export class ContentController {
     @Res() res: Response
   ): Promise<any> {
     try {
+    let IsAdmin = !studentId ? false : true;
     const userId = studentId || req.user[0].id;
 
     // Create the `quizConfig` object from the query parameters
-    let [err, success] = await this.contentService.getAssessmentDetailsOfQuiz(assessmentOutsourseId,req.user[0], userId);
+    let [err, success] = await this.contentService.getAssessmentDetailsOfQuiz(assessmentOutsourseId,req.user[0], userId, IsAdmin);
     if (err) {
       return ErrorResponse.BadRequestException(err.message).send(res);
     }
