@@ -660,32 +660,31 @@ export class SubmissionService {
       };
   
       const filterQuestionIds = submissionData.map((answer) => answer.variantId);
+      const filterAnswersQuestionIds = answers.map((answer) => answer.variantId);
       let mcqScore = 0;
       let requiredMCQScore = 0;
   
       // Fetch quiz master data if applicable
-      const quizMasterData = filterQuestionIds.length
-        ? await db.query.zuvyModuleQuizVariants.findMany({
-            where: (zuvyModuleQuizVariants, { sql }) => sql`${zuvyModuleQuizVariants.id} in ${filterQuestionIds}`,
+      const quizMasterData = await db.query.zuvyModuleQuizVariants.findMany({
+            where: (zuvyModuleQuizVariants, { sql }) => sql`${zuvyModuleQuizVariants.id} in ${[...filterQuestionIds,...filterAnswersQuestionIds]}`,
             with: {
               quiz: {
                 columns: { difficulty: true, id: true }
               }
             }
           })
-        : [];
   
       quizMasterData.forEach((data:any) => {
         requiredMCQScore += mcqMarks[data.quiz.difficulty];
       });
-  
+
       const insertData = [];
       const updatePromises = [];
   
       answers.forEach((answer) => {
         answer.status = 'failed';
         answer.assessmentSubmissionId = assessmentSubmissionId;
-  
+
         const matchingQuiz:any = quizMasterData.find(
           (mcq) => mcq.id === answer.variantId && answer.chosenOption === mcq.correctOption
         );
@@ -694,7 +693,6 @@ export class SubmissionService {
           mcqScore += mcqMarks[matchingQuiz.quiz.difficulty];
           answer.status = 'passed';
         }
-  
         if (filterQuestionIds.includes(answer.variantId)) {
           // Collect update promises
           updatePromises.push(

@@ -953,13 +953,13 @@ export class ContentService {
 
     // Use the appropriate points for the type of questions (MCQ or Coding)
     const points = type === 'MCQ' ? helperVariable.MCQ_POINTS : helperVariable.CODING_POINTS;
-
+    
     const totalWeight = (easy * points.Easy) + (medium * points.Medium) + (hard * points.Hard);
 
     const scores = {
-      easy: (points.Easy / totalWeight) * sectionScore,
-      medium: (points.Medium / totalWeight) * sectionScore,
-      hard: (points.Hard / totalWeight) * sectionScore,
+      easy: easy ? (points.Easy / totalWeight) * sectionScore: 0,
+      medium: medium ? (points.Medium / totalWeight) * sectionScore: 0,
+      hard: hard ? (points.Hard / totalWeight) * sectionScore: 0,
     };
 
     return scores;
