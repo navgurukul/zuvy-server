@@ -52,6 +52,7 @@ import {
 import { RolesGuard } from 'src/guards/roles.guard';
 import { ErrorResponse, SuccessResponse } from 'src/errorHandler/handler';
 import { Response } from 'express';
+import { complairDateTyeps } from 'src/helpers/index';
 
 @Controller('Content')
 @ApiTags('Content')
@@ -849,6 +850,20 @@ export class ContentController {
       return ErrorResponse.BadRequestException(err.message, err.statusCode).send(res);
     }
     return new SuccessResponse(success.message, success.statusCode,null).send(res);
+  }
+
+  // get complairDateTyeps  
+  @Get('/getCompilerTypes')
+  @ApiOperation({ summary: 'Get all compiler types' })
+  @ApiBearerAuth()
+  async getCompilerTypes(
+    @Res() res
+  ) {
+    try {
+      return await new SuccessResponse('Compiler types fetched successfully', 200, complairDateTyeps ).send(res);      
+    } catch (error) {
+      return ErrorResponse.BadRequestException(error.message).send(res);
+    }
   }
 
 }
