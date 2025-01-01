@@ -1859,7 +1859,6 @@ export class ContentService {
       if (assessmentSubmissionId != undefined) {
         questions = await db
           .select({
-            id: zuvyOutsourseCodingQuestions.codingQuestionId,
             codingQuestionId: zuvyCodingQuestions.id,
             codingOutsourseId: zuvyOutsourseCodingQuestions.id,
             assessmentOutsourseId: zuvyOutsourseCodingQuestions.assessmentOutsourseId,
@@ -1897,7 +1896,6 @@ export class ContentService {
       } else {
         questions = await db
           .select({
-            id: zuvyOutsourseCodingQuestions.codingQuestionId,
             codingQuestionId: zuvyCodingQuestions.id,
             codingOutsourseId: zuvyOutsourseCodingQuestions.id,
             assessmentOutsourseId: zuvyOutsourseCodingQuestions.assessmentOutsourseId,
