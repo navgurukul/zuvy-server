@@ -91,7 +91,10 @@ export class CreateProblemDto {
     type: [TestCaseDto],
     example: [
       {
-        inputs: [{ parameterType: 'int', parameterValue: 5 , parameterName: 'a'},{ parameterType: 'int', parameterValue: 5 , parameterName: 'b'}],
+        inputs:  [
+          { parameterType: 'jsonType', parameterValue: [{"name":"prem", age:45}], parameterName: 'studentInfo' },
+          { parameterType: 'int', parameterValue: 45, parameterName: 'age' },
+        ],
         expectedOutput: { parameterType: 'int', parameterValue: 10 },
       },
     ],
