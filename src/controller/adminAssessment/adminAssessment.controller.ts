@@ -71,4 +71,36 @@ export class AdminAssessmentController {
       return ErrorResponse.BadRequestException(error.message).send(res);
     }
   }
+
+  @Get('bootcampModuleCompletion/bootcamp_id:bootcamp_id')
+  @ApiOperation({ summary: 'Get module completion data of a bootcamp' })
+  @ApiQuery({
+    name: 'searchVideos',
+    required: false,
+    type: String,
+    description: 'Search by video name',
+  })
+  @ApiBearerAuth()
+  async BootcampModuleCompletion(
+    @Param('bootcamp_id') bootcampID: number,
+    @Query('searchVideos') searchVideos: string
+  ) {
+    return this.adminAssessmentService.getBootcampModuleCompletion(bootcampID, searchVideos);
+  }
+
+  @Get('moduleChapter/students/chapter_id:chapter_id')
+  @ApiOperation({ summary: 'Get students of a module chapter' })
+  @ApiQuery({
+    name: 'searchStudent',
+    required: false,
+    type: String,
+    description: 'Search by name or email',
+  })
+  @ApiBearerAuth()
+  async ModuleChapterStudents(
+    @Param('chapter_id') chapterID: number,
+    @Query('searchStudent') searchStudent: string
+  ) {
+    return this.adminAssessmentService.getModuleChapterStudents(chapterID, searchStudent);
+  }
 }
