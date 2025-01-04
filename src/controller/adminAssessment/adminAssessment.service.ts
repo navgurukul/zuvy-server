@@ -1,8 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { db } from '../../db/index';
-import { sql } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import * as _ from 'lodash';
-import { zuvyBatchEnrollments, zuvyOutsourseAssessments } from '../../../drizzle/schema';
+import { zuvyBatchEnrollments, zuvyChapterTracking, zuvyModuleChapter, zuvyOutsourseAssessments } from '../../../drizzle/schema';
 import { STATUS_CODES } from 'src/helpers';
 
 const { ZUVY_CONTENT_URL } = process.env; // INPORTING env VALUSE ZUVY_CONTENT
@@ -470,4 +470,204 @@ export class AdminAssessmentService {
       return [{message: err.message}]
     }
   }
+
+  async getBootcampModuleCompletion(bootcampID: number, searchVideos?: string) {
+    try {
+      // Get total enrolled students
+      const studentsEnrolled = await db
+        .select()
+        .from(zuvyBatchEnrollments)
+        .where(
+          sql`${zuvyBatchEnrollments.bootcampId} = ${bootcampID} AND ${zuvyBatchEnrollments.batchId} IS NOT NULL`
+        );
+  
+      const totalStudents = studentsEnrolled.length;
+  
+      // Prepare the query to fetch course modules with an optional video search filter
+      const courseModules = await db.query.zuvyCourseModules.findMany({
+        where: (zuvyCourseModules, { eq }) => eq(zuvyCourseModules.bootcampId, bootcampID),
+        columns: {
+          id: true,
+          name: true,
+        },
+        with: {
+          moduleChapterData: {
+            columns: {
+              id: true,
+              title: true,
+              description: true,
+              order: true,
+            },
+            where: (zuvyModuleChapter, { eq }) => eq(zuvyModuleChapter.topicId, 1), // Filter by topicId = 1
+            with: {
+              chapterTrackingDetails: {
+                columns: { userId: true },
+                where: (zuvyChapterTracking, { sql }) =>
+                  sql`${zuvyChapterTracking.completedAt} IS NOT NULL AND ${zuvyChapterTracking.moduleId} = ${zuvyModuleChapter.moduleId}`,
+              },
+            },
+          },
+        },
+      }) as Array<{
+        id: number;
+        name: string;
+        moduleChapterData: Array<{
+          id: number;
+          title: string;
+          description: string;
+          order: number;
+          chapterTrackingDetails: Array<{ userId: number }>;
+        }>;
+      }>;
+  
+      // Check if no course modules found
+      if (courseModules.length === 0) {
+        return { message: "No videos found" };
+      }
+  
+      // Transform data into the required format
+      let moduleData = courseModules.reduce((acc, module) => {
+        const { name, moduleChapterData } = module;
+  
+        // Filter chapters by video title if searchVideos is provided
+        const filteredChapters = searchVideos
+          ? moduleChapterData.filter((chapter) =>
+              chapter.title.toLowerCase().includes(searchVideos.toLowerCase())
+            )
+          : moduleChapterData;
+  
+        // Add chapters and the number of completed students
+        const chaptersWithCompletion = filteredChapters.map((chapter) => ({
+          id: chapter.id,
+          title: chapter.title,
+          description: chapter.description,
+          order: chapter.order,
+          completedStudents: chapter.chapterTrackingDetails?.length || 0,
+        }));
+  
+        if (chaptersWithCompletion.length > 0) {
+          acc[name] = chaptersWithCompletion;
+        }
+  
+        return acc;
+      }, {} as Record<string, Array<{ id: number; title: string; description: string; order: number; completedStudents: number }>>);
+  
+      // Ensure only non-empty module data is included
+      moduleData = Object.fromEntries(
+        Object.entries(moduleData).filter(([_, chapters]) => chapters.length > 0)
+      );
+  
+      // If no chapters match the search, return a message
+      if (Object.keys(moduleData).length === 0) {
+        return { message: "No matching videos found" };
+      }
+  
+      // Add total students to the final response
+      return {
+        ...moduleData,
+        totalStudents,
+      };
+    } catch (error) {
+      // Return the error message
+      throw error;
+    }
+  }
+    
+  
+  
+  async getModuleChapterStudents(chapterID: number, searchStudent: string) {
+    try {
+      
+      // Fetch bootcampId using chapterId
+      const chapterDetails = await db.query.zuvyModuleChapter.findFirst({
+        where: (zuvyModuleChapter, { eq }) => eq(zuvyModuleChapter.id, chapterID),
+        columns: {
+          id: true,
+          title: true,
+          description: true,
+        },
+        with: {
+          courseModulesData: {
+            columns: {
+              bootcampId: true,
+            },
+          },
+        },
+      });  
+  
+      const bootcampId = Number(chapterDetails.courseModulesData.bootcampId);
+  
+      // Fetch total students
+      const totalStudentsResult = await db
+        .select({ count: sql<number>`count(*)` })
+        .from(zuvyBatchEnrollments)
+        .where(eq(zuvyBatchEnrollments.bootcampId, bootcampId))
+        .execute();
+      const totalStudents = Number(totalStudentsResult[0]?.count || 0);
+  
+      // Fetch total submitted students
+      const totalSubmittedStudentsResult = await db
+        .select({ count: sql<number>`count(*)` })
+        .from(zuvyChapterTracking)
+        .where(eq(zuvyChapterTracking.chapterId, chapterID))
+        .execute();
+      const totalSubmittedStudents = Number(totalSubmittedStudentsResult[0]?.count || 0);
+  
+      // Fetch chapter tracking details with students
+      const chapterTrackingDetails = await db.query.zuvyChapterTracking.findMany({
+        where: (zuvyChapterTracking, { eq, sql }) => sql`
+          ${zuvyChapterTracking.chapterId} = ${chapterID}
+          ${searchStudent ? sql`
+            AND EXISTS (
+              SELECT 1
+              FROM main.users
+              WHERE main.users.id = ${zuvyChapterTracking.userId}
+              AND (
+                lower(main.users.name) LIKE lower(${searchStudent + '%'})
+                OR lower(main.users.email) LIKE lower(${searchStudent + '%'})
+              )
+            )
+          ` : sql``}
+        `,
+        columns: {
+          userId: true,
+          completedAt: true,
+        },
+        with: {
+          user: {
+            columns: {
+              id: true,
+              name: true,
+              email: true,
+            },
+          },
+        },
+      });
+  
+      const submittedStudents = chapterTrackingDetails.map((tracking) => ({
+        id: Number(tracking['user'].id), // Convert user ID to number
+        name: tracking['user'].name,
+        email: tracking['user'].email,
+        completedAt: tracking.completedAt,
+      }));
+  
+      // Response format
+      const response = {
+        id: Number(chapterDetails.id), // Convert chapter ID to number
+        bootcampId,
+        submittedStudents ,
+        moduleVideochapter: {
+          title: chapterDetails.title,
+          description: chapterDetails.description,
+          totalStudents,
+          totalSubmittedStudents,
+        },
+      };
+  
+      return response;
+    } catch (error) {
+      throw error;
+    }
+  }
+  
 }
