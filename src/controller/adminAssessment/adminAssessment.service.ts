@@ -471,7 +471,7 @@ export class AdminAssessmentService {
     }
   }
 
-  async getBootcampModuleCompletion(bootcampID: number, searchVideos?: string) {
+  async getBootcampModuleCompletion(bootcampID: number, searchVideos?: string, limit?: number, offSet?: number) {
     try {
       // Get total enrolled students
       const studentsEnrolled = await db
@@ -508,6 +508,7 @@ export class AdminAssessmentService {
             },
           },
         },
+        orderBy: (zuvyCourseModules, { asc }) => asc(zuvyCourseModules.id),
       }) as Array<{
         id: number;
         name: string;
@@ -557,27 +558,44 @@ export class AdminAssessmentService {
         Object.entries(moduleData).filter(([_, chapters]) => chapters.length > 0)
       );
   
+      // Convert moduleData to an array for pagination
+      const moduleDataArray = Object.entries(moduleData);
+  
+      // Apply pagination (limit and offset)
+      const paginatedModuleDataArray = moduleDataArray.slice(offSet || 0, (offSet || 0) + (limit || moduleDataArray.length));
+  
+      // Convert the paginated array back to an object
+      const paginatedModuleData = Object.fromEntries(paginatedModuleDataArray);
+  
+      // Calculate total rows and total pages
+      const totalRows = moduleDataArray.length; // Total number of modules
+      const totalPages = limit ? Math.ceil(totalRows / limit) : 1;
+  
       // If no chapters match the search, return a message
-      if (Object.keys(moduleData).length === 0) {
+      if (Object.keys(paginatedModuleData).length === 0) {
         return { message: "No matching videos found" };
       }
   
-      // Add total students to the final response
       return {
-        ...moduleData,
+        ...paginatedModuleData,
         totalStudents,
+        totalRows,
+        totalPages,
       };
     } catch (error) {
-      // Return the error message
       throw error;
     }
   }
     
   
   
-  async getModuleChapterStudents(chapterID: number, searchStudent: string) {
+  async getModuleChapterStudents(
+    chapterID: number,
+    searchStudent: string,
+    limit?: number,
+    offSet?: number
+  ) {
     try {
-      
       // Fetch bootcampId using chapterId
       const chapterDetails = await db.query.zuvyModuleChapter.findFirst({
         where: (zuvyModuleChapter, { eq }) => eq(zuvyModuleChapter.id, chapterID),
@@ -593,7 +611,7 @@ export class AdminAssessmentService {
             },
           },
         },
-      });  
+      });
   
       const bootcampId = Number(chapterDetails.courseModulesData.bootcampId);
   
@@ -642,6 +660,7 @@ export class AdminAssessmentService {
             },
           },
         },
+        orderBy: (zuvyChapterTracking, { asc }) => asc(zuvyChapterTracking.id),
       });
   
       const submittedStudents = chapterTrackingDetails.map((tracking) => ({
@@ -651,23 +670,33 @@ export class AdminAssessmentService {
         completedAt: tracking.completedAt,
       }));
   
+      // Apply pagination to submitted students
+      const totalRows = submittedStudents.length; // Total rows before pagination
+      const totalPages = limit ? Math.ceil(totalRows / limit) : 1;
+      const paginatedStudents = submittedStudents.slice(
+        offSet || 0,
+        (offSet || 0) + (limit || totalRows)
+      );
+  
       // Response format
       const response = {
-        id: Number(chapterDetails.id), // Convert chapter ID to number
+        id: Number(chapterDetails.id), 
         bootcampId,
-        submittedStudents ,
+        submittedStudents: paginatedStudents,
         moduleVideochapter: {
           title: chapterDetails.title,
           description: chapterDetails.description,
           totalStudents,
           totalSubmittedStudents,
         },
+        totalRows, 
+        totalPages, 
       };
   
       return response;
     } catch (error) {
       throw error;
     }
-  }
+  } 
     
 }

@@ -80,12 +80,26 @@ export class AdminAssessmentController {
     type: String,
     description: 'Search by video name',
   })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    type: Number,
+    description: 'limit',
+  })
+  @ApiQuery({
+    name: 'offset',
+    required: false,
+    type: Number,
+    description: 'offset',
+  })
   @ApiBearerAuth()
   async BootcampModuleCompletion(
     @Param('bootcamp_id') bootcampID: number,
-    @Query('searchVideos') searchVideos: string
+    @Query('searchVideos') searchVideos: string,
+    @Query('limit') limit: number,
+    @Query('offset') offSet: number,
   ) {
-    return this.adminAssessmentService.getBootcampModuleCompletion(bootcampID, searchVideos);
+    return this.adminAssessmentService.getBootcampModuleCompletion(bootcampID, searchVideos, limit, offSet);
   }
 
   @Get('moduleChapter/students/chapter_id:chapter_id')
@@ -96,11 +110,25 @@ export class AdminAssessmentController {
     type: String,
     description: 'Search by name or email',
   })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    type: Number,
+    description: 'limit',
+  })
+  @ApiQuery({
+    name: 'offset',
+    required: false,
+    type: Number,
+    description: 'offset',
+  })
   @ApiBearerAuth()
   async ModuleChapterStudents(
     @Param('chapter_id') chapterID: number,
-    @Query('searchStudent') searchStudent: string
+    @Query('searchStudent') searchStudent: string,
+    @Query('limit') limit: number,
+    @Query('offset') offSet: number,
   ) {
-    return this.adminAssessmentService.getModuleChapterStudents(chapterID, searchStudent);
+    return this.adminAssessmentService.getModuleChapterStudents(chapterID, searchStudent, limit, offSet);
   }
 }
