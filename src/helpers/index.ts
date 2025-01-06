@@ -103,6 +103,9 @@ export const typeMappings = {
 const generateParameterMappings = (parameters, language) => {
   return parameters.map((p) => {
     const paramType = typeMappings[language][p.parameterType] || 'Object';
+    if (language == 'python' || language == 'javascript') {
+      return `${p.parameterName}`;
+    }
     return `${paramType} _${p.parameterName}_`;
   }).join(', ');
 };
