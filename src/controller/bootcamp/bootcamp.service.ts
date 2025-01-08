@@ -12,6 +12,7 @@ import {
   zuvyBootcampTracking,
   zuvyBootcampType,
 } from '../../../drizzle/schema';
+import { editUserDetailsDto } from './dto/bootcamp.dto'
 import { batch } from 'googleapis/build/src/apis/batch';
 import { STATUS_CODES } from 'src/helpers';
 
@@ -821,6 +822,62 @@ export class BootcampService {
       ];
     } catch (e) {
       return [{ status: 'error', message: e.message, code: 500 }, null];
+    }
+  }
+
+  async updateUserDetails(
+    userId: number,
+    editUserDetailsDto: editUserDetailsDto,
+  ): Promise<[string | null, any]> {
+    try {  
+      // Validate user existence in the users table
+      const userExists = await db
+        .select({ id: users.id })
+        .from(users)
+        .where(eq(users.id, BigInt(userId)))
+        .limit(1);
+  
+      if (!userExists.length) {
+        return ['User not found', null];
+      }
+  
+      // Prepare update data based on provided fields
+      const updateData: Partial<{ name: string; email: string }> = {};
+      if (editUserDetailsDto.name) {
+        updateData.name = editUserDetailsDto.name;
+      }
+      if (editUserDetailsDto.email) {
+        updateData.email = editUserDetailsDto.email;
+      }
+  
+      if (Object.keys(updateData).length === 0) {
+        return ['No fields to update', null];
+      }
+  
+      // Update user details in the users table
+      const updatedUser = await db
+        .update(users)
+        .set(updateData)
+        .where(eq(users.id, BigInt(userId)))
+        .returning({
+          id: users.id,
+          name: users.name,
+          email: users.email,
+        });
+  
+      if (!updatedUser.length) {
+        return ['Failed to update user details', null];
+      }
+  
+      // Convert BigInt to number
+      const userData = {
+        ...updatedUser[0],
+        id: Number(updatedUser[0].id),
+      };
+  
+      return [null, {message: "User details updated successfully", statusCode: STATUS_CODES.OK, data: userData}];
+    } catch (err) {
+      return [null, { message: err.message, statusCode: STATUS_CODES.BAD_REQUEST }];
     }
   }
 }

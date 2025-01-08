@@ -21,6 +21,7 @@ import {
   PatchBootcampDto,
   studentDataDto,
   PatchBootcampSettingDto,
+  editUserDetailsDto,
 } from './dto/bootcamp.dto';
 import { ApiBearerAuth } from '@nestjs/swagger';
 
@@ -325,6 +326,21 @@ export class BootcampController {
     const [err, res] = await this.bootcampService.getStudentProgressBy(
       user_id,
       bootcamp_id,
+    );
+    if (err) {
+      throw new BadRequestException(err);
+    }
+    return res;
+  }
+
+  @Patch('updateUserDetails/:userId')
+  @ApiOperation({ summary: 'Update user name and mail Id by userId' })
+  @ApiBearerAuth()
+  async updateUserDetails(@Param('userId') userId: number, @Body() editUserDetailsDto: editUserDetailsDto): Promise<any> {
+    console.log("@@", userId)
+    const [err, res] = await this.bootcampService.updateUserDetails(
+      userId,
+      editUserDetailsDto,
     );
     if (err) {
       throw new BadRequestException(err);
