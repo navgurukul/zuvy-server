@@ -110,7 +110,7 @@ export async function generateTemplates(functionName, parameters) {
       name: 'Python',
       template: `
 from typing import List, Dict
-
+# Note: Please remove the print statements before submitting the code
 def ${functionName}(${generateParameterMappings(parameters, 'python')}):
   # Add your code here
   return
@@ -130,7 +130,7 @@ print(result)
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
+// Note: Please remove the printf statements before submitting the code.
 // Function to ${functionName}
 ${parameters.map(p => `${typeMappings['c'][p.parameterType]} _${p.parameterName}_;`).join('\n')}
 ${typeMappings['c']['returnType']} ${functionName}(${generateParameterMappings(parameters, 'c')}) {
@@ -167,7 +167,7 @@ int main() {
     #include <sstream>
     
     using namespace std;
-    
+    // Note: Please remove the cout statements before submitting the code.
     ${typeMappings['cpp']['returnType']} ${functionName}(${generateParameterMappings(parameters, 'cpp')}) {
       // Add your code here
       return ${typeMappings['cpp']['defaultReturnValue']};
@@ -195,6 +195,7 @@ int main() {
       template: `
 import java.util.Scanner;
 
+// Note: Please remove the System.out.println statements before submitting the code.
 public class Main {
 
     public static ${typeMappings['java']['returnType']} ${functionName}(${generateParameterMappings(parameters, 'java')}) {
@@ -228,6 +229,7 @@ public class Main {
       id: 102,
       name: 'JavaScript',
       template: `
+//Note: Please remove the console.log statements before submitting the code.
 function ${functionName}(${generateParameterMappings(parameters, 'javascript')}) {
   // Add your code here
   return ${typeMappings['javascript']['defaultReturnValue']};
