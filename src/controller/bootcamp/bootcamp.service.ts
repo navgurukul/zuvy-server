@@ -829,7 +829,7 @@ export class BootcampService {
     userId: number,
     editUserDetailsDto: editUserDetailsDto,
   ): Promise<[string | null, any]> {
-    try {  
+    try {
       // Validate user existence in the users table
       const userExists = await db
         .select({ id: users.id })
@@ -838,20 +838,22 @@ export class BootcampService {
         .limit(1);
   
       if (!userExists.length) {
-        return ['User not found', null];
+        return [ null, { message: 'User not found', statusCode: STATUS_CODES.NOT_FOUND}];
       }
   
-      // Prepare update data based on provided fields
-      const updateData: Partial<{ name: string; email: string }> = {};
+      // Check if no fields are provided to update
+      if (!editUserDetailsDto.name && !editUserDetailsDto.email) {
+        return [ null, {message: 'No fields to update', statusCode: STATUS_CODES.BAD_REQUEST}];
+      }
+  
+      // Prepare update data
+      const updateData: { name?: string; email?: string } = {};
+  
       if (editUserDetailsDto.name) {
         updateData.name = editUserDetailsDto.name;
       }
       if (editUserDetailsDto.email) {
         updateData.email = editUserDetailsDto.email;
-      }
-  
-      if (Object.keys(updateData).length === 0) {
-        return ['No fields to update', null];
       }
   
       // Update user details in the users table
@@ -866,7 +868,7 @@ export class BootcampService {
         });
   
       if (!updatedUser.length) {
-        return ['Failed to update user details', null];
+        return [null, {message: 'Failed to update user details', statusCode: STATUS_CODES.INTERNAL_SERVER_ERROR}];
       }
   
       // Convert BigInt to number
@@ -875,9 +877,17 @@ export class BootcampService {
         id: Number(updatedUser[0].id),
       };
   
-      return [null, {message: "User details updated successfully", statusCode: STATUS_CODES.OK, data: userData}];
+      return [
+        null,
+        {
+          message: 'User details updated successfully',
+          statusCode: STATUS_CODES.OK,
+          data: userData,
+        },
+      ];
     } catch (err) {
       return [null, { message: err.message, statusCode: STATUS_CODES.BAD_REQUEST }];
     }
   }
+  
 }
