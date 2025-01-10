@@ -12,6 +12,7 @@ import {
   zuvyBootcampTracking,
   zuvyBootcampType,
 } from '../../../drizzle/schema';
+import { editUserDetailsDto } from './dto/bootcamp.dto'
 import { batch } from 'googleapis/build/src/apis/batch';
 import { STATUS_CODES } from 'src/helpers';
 
@@ -823,4 +824,70 @@ export class BootcampService {
       return [{ status: 'error', message: e.message, code: 500 }, null];
     }
   }
+
+  async updateUserDetails(
+    userId: number,
+    editUserDetailsDto: editUserDetailsDto,
+  ): Promise<[string | null, any]> {
+    try {
+      // Validate user existence in the users table
+      const userExists = await db
+        .select({ id: users.id })
+        .from(users)
+        .where(eq(users.id, BigInt(userId)))
+        .limit(1);
+  
+      if (!userExists.length) {
+        return [ null, { message: 'User not found', statusCode: STATUS_CODES.NOT_FOUND}];
+      }
+  
+      // Check if no fields are provided to update
+      if (!editUserDetailsDto.name && !editUserDetailsDto.email) {
+        return [ null, {message: 'No fields to update', statusCode: STATUS_CODES.BAD_REQUEST}];
+      }
+  
+      // Prepare update data
+      const updateData: { name?: string; email?: string } = {};
+  
+      if (editUserDetailsDto.name) {
+        updateData.name = editUserDetailsDto.name;
+      }
+      if (editUserDetailsDto.email) {
+        updateData.email = editUserDetailsDto.email;
+      }
+  
+      // Update user details in the users table
+      const updatedUser = await db
+        .update(users)
+        .set(updateData)
+        .where(eq(users.id, BigInt(userId)))
+        .returning({
+          id: users.id,
+          name: users.name,
+          email: users.email,
+        });
+  
+      if (!updatedUser.length) {
+        return [null, {message: 'Failed to update user details', statusCode: STATUS_CODES.INTERNAL_SERVER_ERROR}];
+      }
+  
+      // Convert BigInt to number
+      const userData = {
+        ...updatedUser[0],
+        id: Number(updatedUser[0].id),
+      };
+  
+      return [
+        null,
+        {
+          message: 'User details updated successfully',
+          statusCode: STATUS_CODES.OK,
+          data: userData,
+        },
+      ];
+    } catch (err) {
+      return [null, { message: err.message, statusCode: STATUS_CODES.BAD_REQUEST }];
+    }
+  }
+  
 }

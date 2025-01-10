@@ -161,3 +161,23 @@ export class studentDataDto {
   @Type(() => studentEmail)
   students: studentEmail[];
 }
+
+export class editUserDetailsDto {
+  @ApiProperty({
+    type: String,
+    example: 'example@gmail.com',
+    required: false,
+  })
+  @IsOptional() // Marks the field as optional
+  @IsEmail({}, { message: 'Invalid email format' }) // Ensures email is valid if provided
+  email?: string;
+
+  @ApiProperty({
+    type: String,
+    example: 'example',
+    required: false,
+  })
+  @IsOptional() // Marks the field as optional
+  @IsString({ message: 'Name must be a string' }) // Ensures name is a string if provided
+  name?: string;
+}
