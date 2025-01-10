@@ -227,30 +227,11 @@ export class AdminAssessmentService {
 
       assessment[0].submitedOutsourseAssessments =
         assessment[0].submitedOutsourseAssessments.map((submission: any) => {
+          let userData = submission.user
+          delete submission.user;
           return {
-            id: submission.id,
-            userId: submission.userId,
-            marks: submission.marks,
-            startedAt: submission.startedAt,
-            submitedAt: submission.submitedAt,
-            isPassed: submission.isPassed,
-            percentage: submission.percentage,
-            codingQuestionCount: submission.codingQuestionCount,
-            quizQuestionCount: submission.quizQuestionCount,
-            openEndedQuestionCount: submission.openEndedQuestionCount,
-            attemptedCodingQuestions: submission.attemptedCodingQuestions,
-            attemptedQuizQuestions: submission.attemptedQuizQuestions,
-            codingScore: submission.codingScore,
-            mcqScore: submission.mcqScore,
-            quizScore: submission.quizScore,
-            openEndedScore: submission.openEndedScore,
-            requiredCodingScore: submission.requiredCodingScore,
-            requiredQuizScore: submission.requiredQuizScore,
-            requiredOpenEndedScore: submission.requiredOpenEndedScore,
-            typeOfsubmission: submission.typeOfsubmission,
-            copyPaste: submission.copyPaste,
-            tabChange: submission.tabChange,
-            ...submission.user,
+            ...submission,
+            ...userData,
           };
         });
 
