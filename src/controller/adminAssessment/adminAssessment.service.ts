@@ -153,7 +153,7 @@ export class AdminAssessmentService {
   async getAssessmentStudents(req, assessmentID:number,searchStudent:string) {
     try {
       const assessmentInfo = await db.select().from(zuvyOutsourseAssessments).where(sql`${zuvyOutsourseAssessments.id} = ${assessmentID}`);
-     
+      
       if(assessmentInfo.length > 0)
         {
       const assessment = await db.query.zuvyOutsourseAssessments.findMany({
@@ -167,15 +167,6 @@ export class AdminAssessmentService {
 
         with: {
           submitedOutsourseAssessments: {
-            columns: {
-              id: true,
-              userId: true,
-              marks: true,
-              startedAt: true,
-              submitedAt: true,
-              isPassed: true,
-              percentage: true,
-            },
             where: (submitedOutsourseAssessments, { sql, eq }) => sql`
             ${submitedOutsourseAssessments.submitedAt} IS NOT NULL
             AND EXISTS (
@@ -244,6 +235,20 @@ export class AdminAssessmentService {
             submitedAt: submission.submitedAt,
             isPassed: submission.isPassed,
             percentage: submission.percentage,
+            codingQuestionCount: submission.codingQuestionCount,
+            quizQuestionCount: submission.quizQuestionCount,
+            openEndedQuestionCount: submission.openEndedQuestionCount,
+            attemptedCodingQuestions: submission.attemptedCodingQuestions,
+            attemptedQuizQuestions: submission.attemptedQuizQuestions,
+            codingScore: submission.codingScore,
+            quizScore: submission.quizScore,
+            openEndedScore: submission.openEndedScore,
+            requiredCodingScore: submission.requiredCodingScore,
+            requiredQuizScore: submission.requiredQuizScore,
+            requiredOpenEndedScore: submission.requiredOpenEndedScore,
+            typeOfsubmission: submission.typeOfsubmission,
+            copyPaste: submission.copyPaste,
+            tabChange: submission.tabChange,
             ...submission.user,
           };
         });
