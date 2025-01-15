@@ -73,7 +73,11 @@ export const typeMappings = {
     arrayOfStr: 'string[]',
     jsonType: 'any',
     returnType: 'any',
-    defaultReturnValue: 'null',
+    defaultReturnValue: {
+      int: 'number',
+      float: 'number',
+      double: 'number',
+    },
     object: 'object',
     inputType: (type) => {
       const mapping = {
@@ -172,19 +176,23 @@ int main() {
       // Add your code here
       return ${typeMappings['cpp']['defaultReturnValue']};
     }
-    
+
     int main() {
-      ${parameters.map(p => `${typeMappings['cpp'][p.parameterType] || 'auto'} _${p.parameterName}_;`).join('\n')}
-      // Input data
-      ${parameters.map(p => `cin >> _${p.parameterName}_;`).join('\n')}
-    
+      ${parameters.map(p => {
+          if (p.parameterType.startsWith('arrayOf')) {
+              return `${typeMappings['cpp'][p.parameterType]} _${p.parameterName}_;\n      int n_${p.parameterName};\n      cin >> n_${p.parameterName};\n      for (int i = 0; i < n_${p.parameterName}; i++) {\n          ${typeMappings['cpp'][p.parameterType].replace('vector<', '').replace('>', '')} value;\n          cin >> value;\n          _${p.parameterName}_.push_back(value);\n      }`;
+          } else {
+              return `${typeMappings['cpp'][p.parameterType] || 'auto'} _${p.parameterName}_;\n      cin >> _${p.parameterName}_;`;
+          }
+      }).join('\n\n')}
+
       // Call function and print result
       ${typeMappings['cpp']['returnType']} result = ${functionName}(${parameters.map(p => `_${p.parameterName}_`).join(', ')});
       cout << result << endl;
-    
+
       return 0;
     }
-          `
+  `
     };
 
 
@@ -194,6 +202,7 @@ int main() {
       name: 'Java',
       template: `
 import java.util.Scanner;
+import java.util.ArrayList;
 
 // Note: Please remove the System.out.println statements before submitting the code.
 public class Main {
@@ -207,12 +216,21 @@ public class Main {
         Scanner scanner = new Scanner(System.in);
 
         ${parameters
-          .map(
-            (p) =>
-              `${typeMappings['java'][p.parameterType]} _${p.parameterName}_ = scanner.next${typeMappings['java']['inputType'](
-                p.parameterType
-              )}();`
-          )
+          .map((p) => {
+            if (p.parameterType.startsWith('arrayOf')) {
+              // Handle array input
+              const elementType = p.parameterType.replace('arrayOf', '').toLowerCase();
+              return `
+                int n_${p.parameterName} = scanner.nextInt();
+                ${typeMappings['java'][elementType]}[] _${p.parameterName}_ = new ${typeMappings['java'][elementType]}[n_${p.parameterName}];
+                for (int i = 0; i < n_${p.parameterName}; i++) {
+                    _${p.parameterName}_[i] = scanner.next${typeMappings['java']['inputType'](elementType)}();
+                }`;
+            } else {
+              // Handle non-array input
+              return `${typeMappings['java'][p.parameterType]} _${p.parameterName}_ = scanner.next${typeMappings['java']['inputType'](p.parameterType)}();`;
+            }
+          })
           .join('\n')}
 
         ${typeMappings['java']['returnType']} result = ${functionName}(${parameters
@@ -221,7 +239,7 @@ public class Main {
         System.out.println(result);
     }
 }
-      `,
+  `,
     };
 
     // Generate JavaScript (Node.js) template
