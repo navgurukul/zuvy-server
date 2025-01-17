@@ -36,13 +36,23 @@ export class CodingPlatformService {
       var input = [];
       var output = [];
       if (action == SUBMIT) {
-        input.push(...testCase.inputs.map(input => input.parameterValue));
+        input.push(...testCase.inputs.map((input: { parameterValue: any; }) => input.parameterValue));
         output.push(testCase.expectedOutput.parameterValue);
       }
       else if (action == RUN) {
-        input.push(...testCase.inputs.map(input => input.parameterValue));
-        output.push(testCase.expectedOutput.parameterValue);
+        if (testCase.inputs.some((input: { parameterType: string; }) => input.parameterType === 'arrayOfnum' || input.parameterType === 'arrayOfstr')) {
+          input.push(testCase.inputs.map((input: { parameterValue: any; }) => input.parameterValue));
+        } else {
+          input.push(...testCase.inputs.map(input => input.parameterValue));
       }
+        if (testCase.expectedOutput.parameterType === 'arrayOfnum' || testCase.expectedOutput.parameterType === 'arrayOfstr') {
+          output.push(testCase.expectedOutput.parameterValue.map(outData => outData.parameterValue) );
+        } else {
+          output.push(testCase.expectedOutput.parameterValue);
+        }
+      }
+      console.log('input', input);
+      console.log('output', output);
       const stdinput = input.map(item => item.toString()).join('\n');
       const encodedStdInput = Buffer.from(stdinput).toString('base64')
       const stdoutput = output.map(item => item.toString()).join('\n');
