@@ -13,6 +13,9 @@ import {
 import { generateTemplates } from '../../helpers/index';
 import { STATUS_CODES } from "../../helpers/index";
 import { helperVariable } from 'src/constants/helper';
+import {hardCodeTemplates} from './dto/test';
+
+let questionIds = [69, 70, 71, 72, 73, 74, 75, 76];
 
 // Difficulty Points Mapping
 let { ACCEPTED, SUBMIT, RUN, WAIT_API_RESPONSE } = helperVariable;
@@ -47,12 +50,13 @@ export class CodingPlatformService {
       const encodedStdInput = Buffer.from(stdinput).toString('base64')
       const stdoutput = output.map(item => item.toString()).join('\n');
       const encodedStdOutput = Buffer.from(stdoutput).toString('base64');
+
       return {
-        language_id: sourceCode.languageId,
-        source_code: sourceCode.sourceCode,
-        stdin: encodedStdInput,
-        expected_output: encodedStdOutput
-      }
+        language_id: sourceCode.languageId, // Programming language ID
+        source_code: sourceCode.sourceCode, // User's source code
+        stdin: encodedStdInput, // Encoded input
+        expected_output: encodedStdOutput // Encoded expected output
+      };
     });
     const options = {
       method: 'POST',
@@ -391,10 +395,13 @@ export class CodingPlatformService {
       if (question.length === 0) {
         return [{ message: 'Not found', statusCode: STATUS_CODES.NOT_FOUND }];
       }
-
-      if (withTemplate) {
-        let [errorGenerateTemplate, templates] = await generateTemplates(question[0].title, question[0].testCases[0].inputs);
-        question[0]["templates"] = templates;
+      if (questionIds.includes(id)){
+        question[0]["templates"] = await hardCodeTemplates(id);
+      } else {
+        if (withTemplate) {
+          let [errorGenerateTemplate, templates] = await generateTemplates(question[0].title, question[0].testCases[0].inputs);
+          question[0]["templates"] = templates;
+        }
       }
       return [null, { message: 'Coding question fetched successfully', data: question[0], statusCode: STATUS_CODES.OK }];
     } catch (error) {
