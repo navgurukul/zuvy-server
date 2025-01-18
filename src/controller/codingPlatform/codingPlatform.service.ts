@@ -15,7 +15,7 @@ import { STATUS_CODES } from "../../helpers/index";
 import { helperVariable } from 'src/constants/helper';
 import {hardCodeTemplates} from './dto/test';
 
-let questionIds = [69, 70, 71, 72, 73, 74, 75, 76];
+let questionIds = [69, 70, 71, 72, 73, 57, 74, 75, 76];
 
 // Difficulty Points Mapping
 let { ACCEPTED, SUBMIT, RUN, WAIT_API_RESPONSE } = helperVariable;
