@@ -37,8 +37,10 @@
     "@nestjs/jwt": "^10.2.0",
     "@nestjs/passport": "^10.0.3",
     "@nestjs/platform-express": "^10.3.3",
+    "@nestjs/platform-socket.io": "^10.4.15",
     "@nestjs/schedule": "^4.0.1",
     "@nestjs/swagger": "^7.1.17",
+    "@nestjs/websockets": "^10.4.15",
     "aws-sdk": "^2.1567.0",
     "axios": "^1.6.7",
     "chalk": "^4.1.2",
@@ -57,7 +59,10 @@
     "postgres": "^3.4.3",
     "reflect-metadata": "^0.1.13",
     "rxjs": "^7.8.1",
-    "uuid": "^9.0.1"
+    "socket.io": "^4.8.1",
+    "uuid": "^9.0.1",
+    "websocket": "^1.0.35",
+    "websockets": "^0.2.0"
   },
   "devDependencies": {
     "@nestjs/cli": "^10.0.0",
