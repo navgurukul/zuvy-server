@@ -37,7 +37,7 @@ export class NotificationsController {
   constructor(private readonly notificationsService: NotificationsService) {}
 
   @Get(':userId')
-  getNotifications(@Param('userId') userId: string) {
+  getNotifications(@Param('userId') userId: number) {
     return this.notificationsService.getUserNotifications(userId);
   }
 
@@ -47,7 +47,7 @@ export class NotificationsController {
   }
 
   @Patch(':id/read')
-  markAsRead(@Param('id') id: string) {
+  markAsRead(@Param('id') id: number) {
     return this.notificationsService.markNotificationAsRead(id);
   }
 }

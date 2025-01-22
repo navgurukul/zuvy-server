@@ -3383,3 +3383,15 @@ export const zuvyStudentApplicationRecord = main.table('zuvy_student_application
     mode: 'string',
   }).defaultNow(),
 });
+
+export const NotificationSchema = main.table('notifications', {
+  id: serial('id').primaryKey().notNull(),
+  userId: integer("user_id").references(() => users.id),
+  message: text('message').notNull(),
+  type: text('type').notNull(),
+  isRead: boolean('is_read').default(false).notNull(),
+  createdAt: timestamp('created_at', {
+    withTimezone: true,
+    mode: 'string',
+  }).defaultNow(),
+});
