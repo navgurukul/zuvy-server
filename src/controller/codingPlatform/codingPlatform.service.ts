@@ -363,7 +363,7 @@ export class CodingPlatformService {
 
   async getCodingQuestion(id: number, withTemplate: boolean = true, totalCasses = 0): Promise<any> {
     try {
-      const question = await db.query.zuvyCodingQuestions.findMany({
+      const question:any = await db.query.zuvyCodingQuestions.findMany({
         where: (zuvyCodingQuestions, { sql }) => sql`${zuvyCodingQuestions.id} = ${id}`,
         columns: {
           id: true,
@@ -393,7 +393,10 @@ export class CodingPlatformService {
       }
 
       if (withTemplate) {
-        let [errorGenerateTemplate, templates] = await generateTemplates(question[0].title, question[0].testCases[0].inputs);
+        let [errorGenerateTemplate, templates] = await generateTemplates(question[0].title, question[0].testCases[0].inputs, question[0].testCases[0].expectedOutput?.parameterType);
+        if (errorGenerateTemplate) {
+          return [errorGenerateTemplate];
+        }
         question[0]["templates"] = templates;
       }
       return [null, { message: 'Coding question fetched successfully', data: question[0], statusCode: STATUS_CODES.OK }];
