@@ -138,10 +138,10 @@ export async function generateTemplates(functionName, parameters, returnType) {
     if (errorCppTemplate) {
       return [errorCppTemplate, null];
     }
-    let [errorJavaTemplate, javaTemplate] = await generateJavaTemplates(functionName, parameters, returnType);
-    if (errorJavaTemplate) {
-      return [errorJavaTemplate, null];
-    }
+    // let [errorJavaTemplate, javaTemplate] = await generateJavaTemplates(functionName, parameters, returnType);
+    // if (errorJavaTemplate) {
+    //   return [errorJavaTemplate, null];
+    // }
     const templates = {};
     // Generate C template
     templates['c'] = {
