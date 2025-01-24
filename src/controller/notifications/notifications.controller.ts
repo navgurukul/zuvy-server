@@ -1,32 +1,29 @@
 import {
-    Controller,
-    Get,
-    Post,
-    Put,
-    Patch,
-    Delete,
-    Body,
-    Param,
-    ValidationPipe,
-    UsePipes,
-    Optional,
-    Query,
-    BadRequestException,
-    Req,
-    Res,
-    ParseArrayPipe
-  } from '@nestjs/common';
-  import {
-    ApiTags,
-    ApiBody,
-    ApiOperation,
-    ApiQuery,
-  } from '@nestjs/swagger';
-  import { ApiBearerAuth } from '@nestjs/swagger';
-  import { difficulty, questionType } from 'drizzle/schema';
-  import { ClassesService } from '../classes/classes.service';
+  Controller,
+  Get,
+  Post,
+  Put,
+  Patch,
+  Delete,
+  Body,
+  Param,
+  ValidationPipe,
+  UsePipes,
+  Optional,
+  Query,
+  BadRequestException,
+  Req,
+  Res,
+  ParseArrayPipe
+} from '@nestjs/common';
+import {
+  ApiTags,
+  ApiBody,
+  ApiOperation,
+  ApiQuery,
+} from '@nestjs/swagger';
+import { ApiBearerAuth } from '@nestjs/swagger';
 import { ErrorResponse, SuccessResponse } from 'src/errorHandler/handler';
-// notifications.controller.ts
 import { NotificationsService } from './notifications.service';
 import { CreateNotificationDto } from './dto/notifications.dto';
 import { WebSocketGateway, WebSocketServer, SubscribeMessage, MessageBody } from '@nestjs/websockets';
@@ -34,21 +31,64 @@ import { Server } from 'socket.io';
 
 @Controller('notifications')
 export class NotificationsController {
-  constructor(private readonly notificationsService: NotificationsService) {}
+  constructor(private readonly notificationsService: NotificationsService) { }
 
   @Get(':userId')
-  getNotifications(@Param('userId') userId: number) {
-    return this.notificationsService.getUserNotifications(userId);
+  @ApiOperation({ summary: 'Get notifications for a specific user' })
+  @ApiQuery({
+    name: 'userId',
+    required: true,
+    type: Number,
+    description: 'ID of the user to fetch notifications for',
+  })
+  @ApiBearerAuth()
+  async getNotifications(@Param('userId') userId: number, @Req() req, @Res() res) {
+    try {
+      const [err, success] = await this.notificationsService.getUserNotifications(userId);
+      if (err) {
+        return ErrorResponse.BadRequestException(err.message, err.statusCode).send(res);
+      }
+      return new SuccessResponse(success.message, success.statusCode, success.data).send(res);
+    } catch (error) {
+      return ErrorResponse.BadRequestException(error.message).send(res);
+    }
   }
 
   @Post()
-  createNotification(@Body() createNotificationDto: CreateNotificationDto) {
-    return this.notificationsService.createNotification(createNotificationDto);
+  @ApiOperation({ summary: 'Create a new notification' })
+  @ApiBody({ type: CreateNotificationDto })
+  @ApiBearerAuth()
+  async createNotification(@Body() createNotificationDto: CreateNotificationDto, @Res() res) {
+    try {
+      const [err, success] = await this.notificationsService.createNotification(createNotificationDto);
+      if (err) {
+        return ErrorResponse.BadRequestException(err.message, err.statusCode).send(res);
+      }
+      return new SuccessResponse(success.message, success.statusCode, success.data).send(res);
+    } catch (error) {
+      return ErrorResponse.BadRequestException(error.message).send(res);
+    }
   }
 
   @Patch(':id/read')
-  markAsRead(@Param('id') id: number) {
-    return this.notificationsService.markNotificationAsRead(id);
+  @ApiOperation({ summary: 'Mark a notification as read' })
+  @ApiQuery({
+    name: 'id',
+    required: true,
+    type: Number,
+    description: 'ID of the notification to mark as read',
+  })
+  @ApiBearerAuth()
+  async markAsRead(@Param('id') id: number, @Res() res) {
+    try {
+      const [err, success] = await this.notificationsService.markNotificationAsRead(id);
+      if (err) {
+        return ErrorResponse.BadRequestException(err.message, err.statusCode).send(res);
+      }
+      return new SuccessResponse(success.message, success.statusCode, success.data).send(res);
+    } catch (error) {
+      return ErrorResponse.BadRequestException(error.message).send(res);
+    }
   }
 }
 
