@@ -15,6 +15,7 @@ import { SubmissionModule } from './controller/submissions/submission.module';
 import { AdminAssessmentModule } from './controller/adminAssessment/adminAssessment.module';
 import { ScheduleService } from './schedule/schedule.service';
 import { InstructorModule } from './controller/instructor/instructor.module';
+import { NotificationsModule } from './controller/notifications/notifications.module';
 
 @Module({
   imports: [
@@ -35,6 +36,7 @@ import { InstructorModule } from './controller/instructor/instructor.module';
     SubmissionModule,
     TrackingModule,
     InstructorModule,
+    NotificationsModule,
   ],
   providers: [
     ScheduleService,
