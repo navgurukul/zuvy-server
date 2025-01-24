@@ -25,13 +25,23 @@ import {
 import { ApiBearerAuth } from '@nestjs/swagger';
 import { ErrorResponse, SuccessResponse } from 'src/errorHandler/handler';
 import { NotificationsService } from './notifications.service';
-import { CreateNotificationDto } from './dto/notifications.dto';
+import { CreateNotificationDto, UpdateNotificationDto } from './dto/notifications.dto';
 import { WebSocketGateway, WebSocketServer, SubscribeMessage, MessageBody } from '@nestjs/websockets';
 import { Server } from 'socket.io';
 
+
+
 @Controller('notifications')
+@ApiTags('notifications')
+@UsePipes(
+  new ValidationPipe({
+    whitelist: true,
+    transform: true,
+    forbidNonWhitelisted: true,
+  }),
+)
 export class NotificationsController {
-  constructor(private readonly notificationsService: NotificationsService) { }
+  constructor(private readonly notificationsService: NotificationsService) {}
 
   @Get(':userId')
   @ApiOperation({ summary: 'Get notifications for a specific user' })
@@ -42,7 +52,7 @@ export class NotificationsController {
     description: 'ID of the user to fetch notifications for',
   })
   @ApiBearerAuth()
-  async getNotifications(@Param('userId') userId: number, @Req() req, @Res() res) {
+  async getNotifications(@Param('userId') userId: number, @Res() res) {
     try {
       const [err, success] = await this.notificationsService.getUserNotifications(userId);
       if (err) {
@@ -56,11 +66,43 @@ export class NotificationsController {
 
   @Post()
   @ApiOperation({ summary: 'Create a new notification' })
-  @ApiBody({ type: CreateNotificationDto })
+  @ApiBody({
+    description: 'Payload for creating a notification',
+    type: CreateNotificationDto,
+  })
   @ApiBearerAuth()
   async createNotification(@Body() createNotificationDto: CreateNotificationDto, @Res() res) {
     try {
       const [err, success] = await this.notificationsService.createNotification(createNotificationDto);
+      if (err) {
+        return ErrorResponse.BadRequestException(err.message, err.statusCode).send(res);
+      }
+      return new SuccessResponse(success.message, success.statusCode, success.data).send(res);
+    } catch (error) {
+      return ErrorResponse.BadRequestException(error.message).send(res);
+    }
+  }
+
+  @Patch(':id')
+  @ApiOperation({ summary: 'Update a notification' })
+  @ApiBody({
+    description: 'Payload for updating a notification',
+    type: UpdateNotificationDto,
+  })
+  @ApiQuery({
+    name: 'id',
+    required: true,
+    type: Number,
+    description: 'ID of the notification to update',
+  })
+  @ApiBearerAuth()
+  async updateNotification(
+    @Param('id') id: number,
+    @Body() updateNotificationDto: UpdateNotificationDto,
+    @Res() res,
+  ) {
+    try {
+      const [err, success] = await this.notificationsService.updateNotification(id, updateNotificationDto);
       if (err) {
         return ErrorResponse.BadRequestException(err.message, err.statusCode).send(res);
       }

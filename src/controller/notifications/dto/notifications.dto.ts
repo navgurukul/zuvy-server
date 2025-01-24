@@ -1,6 +1,76 @@
-// notifications.dto.ts
+import { ApiProperty } from '@nestjs/swagger';
+import { IsString, IsNotEmpty, IsNumber, IsBoolean, IsOptional } from 'class-validator';
+
 export class CreateNotificationDto {
-    userId: string;
-    message: string;
-    type: string; // e.g., 'info', 'success', 'error'
-  }
+  @ApiProperty({
+    type: Number,
+    example: 1,
+    description: 'ID of the user to whom the notification belongs',
+    required: true,
+  })
+  @IsNotEmpty()
+  @IsNumber()
+  userId: number;
+
+  @ApiProperty({
+    type: String,
+    example: 'Your task has been completed successfully.',
+    description: 'The message content of the notification',
+    required: true,
+  })
+  @IsNotEmpty()
+  @IsString()
+  message: string;
+
+  @ApiProperty({
+    type: String,
+    example: 'info',
+    description: 'The type of notification (e.g., info, success, error)',
+    required: true,
+  })
+  @IsNotEmpty()
+  @IsString()
+  type: string;
+
+  @ApiProperty({
+    type: Boolean,
+    example: false,
+    description: 'Whether the notification has been read or not',
+    required: false,
+  })
+  @IsOptional()
+  @IsBoolean()
+  isRead?: boolean;
+}
+
+export class UpdateNotificationDto {
+  @ApiProperty({
+    type: String,
+    example: 'Updated notification message.',
+    description: 'The updated message content of the notification',
+    required: false,
+  })
+  @IsOptional()
+  @IsString()
+  message?: string;
+
+  @ApiProperty({
+    type: String,
+    example: 'success',
+    description: 'The updated type of notification (e.g., info, success, error)',
+    required: false,
+  })
+  @IsOptional()
+  @IsString()
+  type?: string;
+
+  @ApiProperty({
+    type: Boolean,
+    example: true,
+    description: 'Whether the notification has been read or not',
+    required: false,
+  })
+  @IsOptional()
+  @IsBoolean()
+  isRead?: boolean;
+}

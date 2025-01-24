@@ -1,19 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { db } from '../../db/index';
-import { helperVariable } from 'src/constants/helper';
-import { eq, sql, inArray, and, desc} from 'drizzle-orm';
-import * as _ from 'lodash';
-import {
-  zuvyBatches,
-  zuvySessions,
-  NotificationSchema
-} from 'drizzle/schema';
+import { eq, sql, desc } from 'drizzle-orm';
+import { NotificationSchema } from 'drizzle/schema';
 import { STATUS_CODES } from 'src/helpers';
-
-
-const { ZUVY_CONTENT_URL, ZUVY_CONTENTS_API_URL } = process.env; // INPORTING env VALUSE ZUVY_CONTENT
-
-
+import { CreateNotificationDto, UpdateNotificationDto } from './dto/notifications.dto';
 
 @Injectable()
 export class NotificationsService {
@@ -49,7 +39,7 @@ export class NotificationsService {
     }
   }
 
-  async createNotification(createNotificationDto: any): Promise<any> {
+  async createNotification(createNotificationDto: CreateNotificationDto): Promise<any> {
     try {
       const newNotification = {
         userId: createNotificationDto.userId,
@@ -80,24 +70,59 @@ export class NotificationsService {
     }
   }
 
+  async updateNotification(id: number, updateNotificationDto: UpdateNotificationDto): Promise<any> {
+    try {
+      const result = await db
+        .update(NotificationSchema)
+        .set({
+          ...(updateNotificationDto.message && { message: updateNotificationDto.message }),
+          ...(updateNotificationDto.type && { type: updateNotificationDto.type }),
+          ...(updateNotificationDto.isRead !== undefined && { isRead: updateNotificationDto.isRead }),
+        })
+        .where(eq(NotificationSchema.id, id))
+        .returning();
+
+      if (result.length > 0) {
+        return [
+          null,
+          {
+            message: 'Notification updated successfully.',
+            statusCode: STATUS_CODES.OK,
+            data: result[0],
+          },
+        ];
+      } else {
+        return [
+          { message: 'Notification not found.', statusCode: STATUS_CODES.NOT_FOUND },
+          null,
+        ];
+      }
+    } catch (error) {
+      Logger.error(`Error updating notification: ${error.message}`);
+      return [
+        { message: error.message, statusCode: STATUS_CODES.BAD_REQUEST },
+        null,
+      ];
+    }
+  }
+
   async markNotificationAsRead(id: number): Promise<any> {
     try {
       const result = await db
         .update(NotificationSchema)
         .set({
-          [NotificationSchema.isRead.name]: true, 
+          [NotificationSchema.isRead.name]: true,
         })
         .where(eq(NotificationSchema.id, id))
-        .returning({
-          id: NotificationSchema.id, 
-        });
-  
+        .returning();
+
       if (result.length > 0) {
         return [
           null,
           {
             message: 'Notification marked as read.',
             statusCode: STATUS_CODES.OK,
+            data: result[0],
           },
         ];
       } else {
@@ -114,6 +139,6 @@ export class NotificationsService {
       ];
     }
   }
-  
-  
 }
+
+
