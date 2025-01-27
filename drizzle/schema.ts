@@ -3386,7 +3386,7 @@ export const zuvyStudentApplicationRecord = main.table('zuvy_student_application
 
 export const NotificationSchema = main.table('zuvy_notifications', {
   id: serial('id').primaryKey().notNull(),
-  userId: integer("user_id").references(() => users.id),
+  userId: integer('user_id').references(() => users.id),
   message: text('message').notNull(),
   type: text('type').notNull(),
   isRead: boolean('is_read').default(false).notNull(),

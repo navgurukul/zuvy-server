@@ -83,34 +83,34 @@ export class NotificationsController {
     }
   }
 
-  @Patch(':id')
-  @ApiOperation({ summary: 'Update a notification' })
-  @ApiBody({
-    description: 'Payload for updating a notification',
-    type: UpdateNotificationDto,
-  })
-  @ApiQuery({
-    name: 'id',
-    required: true,
-    type: Number,
-    description: 'ID of the notification to update',
-  })
-  @ApiBearerAuth()
-  async updateNotification(
-    @Param('id') id: number,
-    @Body() updateNotificationDto: UpdateNotificationDto,
-    @Res() res,
-  ) {
-    try {
-      const [err, success] = await this.notificationsService.updateNotification(id, updateNotificationDto);
-      if (err) {
-        return ErrorResponse.BadRequestException(err.message, err.statusCode).send(res);
-      }
-      return new SuccessResponse(success.message, success.statusCode, success.data).send(res);
-    } catch (error) {
-      return ErrorResponse.BadRequestException(error.message).send(res);
-    }
-  }
+  // @Patch(':id')
+  // @ApiOperation({ summary: 'Update a notification' })
+  // @ApiBody({
+  //   description: 'Payload for updating a notification',
+  //   type: UpdateNotificationDto,
+  // })
+  // @ApiQuery({
+  //   name: 'id',
+  //   required: true,
+  //   type: Number,
+  //   description: 'ID of the notification to update',
+  // })
+  // @ApiBearerAuth()
+  // async updateNotification(
+  //   @Param('id') id: number,
+  //   @Body() updateNotificationDto: UpdateNotificationDto,
+  //   @Res() res,
+  // ) {
+  //   try {
+  //     const [err, success] = await this.notificationsService.updateNotification(id, updateNotificationDto);
+  //     if (err) {
+  //       return ErrorResponse.BadRequestException(err.message, err.statusCode).send(res);
+  //     }
+  //     return new SuccessResponse(success.message, success.statusCode, success.data).send(res);
+  //   } catch (error) {
+  //     return ErrorResponse.BadRequestException(error.message).send(res);
+  //   }
+  // }
 
   @Patch(':id/read')
   @ApiOperation({ summary: 'Mark a notification as read' })

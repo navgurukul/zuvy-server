@@ -7,6 +7,17 @@ import { CreateNotificationDto, UpdateNotificationDto } from './dto/notification
 
 @Injectable()
 export class NotificationsService {
+
+  private formatTime(createdAt: Date): string {
+    const now = new Date();
+    const diff = Math.floor((now.getTime() - new Date(createdAt).getTime()) / 1000);
+
+    if (diff < 60) return `${diff} secs ago`;
+    if (diff < 3600) return `${Math.floor(diff / 60)} mins ago`;
+    if (diff < 86400) return `${Math.floor(diff / 3600)} hrs ago`;
+    return `${Math.floor(diff / 86400)} days ago`;
+  }
+
   async getUserNotifications(userId: number): Promise<any> {
     try {
       const notifications = await db
@@ -14,6 +25,13 @@ export class NotificationsService {
         .from(NotificationSchema)
         .where(eq(NotificationSchema.userId, userId))
         .orderBy(desc(NotificationSchema.createdAt));
+
+        const formattedNotifications = notifications.map((n) => ({
+          id: n.id,
+          message: n.message,
+          time: this.formatTime(new Date(n.createdAt)),
+          read: n.isRead,
+        }));
 
       if (notifications.length > 0) {
         return [
@@ -70,41 +88,41 @@ export class NotificationsService {
     }
   }
 
-  async updateNotification(id: number, updateNotificationDto: UpdateNotificationDto): Promise<any> {
-    try {
-      const result = await db
-        .update(NotificationSchema)
-        .set({
-          ...(updateNotificationDto.message && { message: updateNotificationDto.message }),
-          ...(updateNotificationDto.type && { type: updateNotificationDto.type }),
-          ...(updateNotificationDto.isRead !== undefined && { isRead: updateNotificationDto.isRead }),
-        })
-        .where(eq(NotificationSchema.id, id))
-        .returning();
+  // async updateNotification(id: number, updateNotificationDto: UpdateNotificationDto): Promise<any> {
+  //   try {
+  //     const result = await db
+  //       .update(NotificationSchema)
+  //       .set({
+  //         ...(updateNotificationDto.message && { message: updateNotificationDto.message }),
+  //         ...(updateNotificationDto.type && { type: updateNotificationDto.type }),
+  //         ...(updateNotificationDto.isRead !== undefined && { isRead: updateNotificationDto.isRead }),
+  //       })
+  //       .where(eq(NotificationSchema.id, id))
+  //       .returning();
 
-      if (result.length > 0) {
-        return [
-          null,
-          {
-            message: 'Notification updated successfully.',
-            statusCode: STATUS_CODES.OK,
-            data: result[0],
-          },
-        ];
-      } else {
-        return [
-          { message: 'Notification not found.', statusCode: STATUS_CODES.NOT_FOUND },
-          null,
-        ];
-      }
-    } catch (error) {
-      Logger.error(`Error updating notification: ${error.message}`);
-      return [
-        { message: error.message, statusCode: STATUS_CODES.BAD_REQUEST },
-        null,
-      ];
-    }
-  }
+  //     if (result.length > 0) {
+  //       return [
+  //         null,
+  //         {
+  //           message: 'Notification updated successfully.',
+  //           statusCode: STATUS_CODES.OK,
+  //           data: result[0],
+  //         },
+  //       ];
+  //     } else {
+  //       return [
+  //         { message: 'Notification not found.', statusCode: STATUS_CODES.NOT_FOUND },
+  //         null,
+  //       ];
+  //     }
+  //   } catch (error) {
+  //     Logger.error(`Error updating notification: ${error.message}`);
+  //     return [
+  //       { message: error.message, statusCode: STATUS_CODES.BAD_REQUEST },
+  //       null,
+  //     ];
+  //   }
+  // }
 
   async markNotificationAsRead(id: number): Promise<any> {
     try {
