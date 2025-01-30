@@ -11,6 +11,26 @@ export const complairDateTyeps = [
 ];
 
 export const typeMappings = {
+  java: {
+    int: 'int',
+    float: 'float',
+    double: 'double',
+    str: 'String',
+    bool: 'boolean',
+    arrayOfnum: 'int[]',
+    arrayOfStr: 'String[]',
+    void: 'void',
+    defaultReturnValue: {
+      int: '0',
+      float: '0.0f',
+      double: '0.0',
+      str: '""',
+      bool: 'false',
+      arrayOfnum: 'new int[0]',
+      arrayOfStr: 'new String[0]',
+      void: '',
+    },
+  },
   c: {
     int: 'int',
     float: 'float',
@@ -48,26 +68,6 @@ export const typeMappings = {
       bool: 'false',
       arrayOfnum: '{}',
       arrayOfStr: '{}',
-      void: '',
-    },
-  },
-  java: {
-    int: 'int',
-    float: 'float',
-    double: 'double',
-    str: 'String',
-    bool: 'boolean',
-    arrayOfnum: 'int[]',
-    arrayOfStr: 'String[]',
-    void: 'void',
-    defaultReturnValue: {
-      int: '0',
-      float: '0.0f',
-      double: '0.0',
-      str: '""',
-      bool: 'false',
-      arrayOfnum: 'new int[0]',
-      arrayOfStr: 'new String[0]',
       void: '',
     },
   },
@@ -138,10 +138,10 @@ export async function generateTemplates(functionName, parameters, returnType) {
     if (errorCppTemplate) {
       return [errorCppTemplate, null];
     }
-    // let [errorJavaTemplate, javaTemplate] = await generateJavaTemplates(functionName, parameters, returnType);
-    // if (errorJavaTemplate) {
-    //   return [errorJavaTemplate, null];
-    // }
+    let [errorJavaTemplate, javaTemplate] = await generateJavaTemplates(functionName, parameters, returnType);
+    if (errorJavaTemplate) {
+      return [errorJavaTemplate, null];
+    }
     const templates = {};
     // Generate C template
     templates['c'] = {
@@ -162,7 +162,7 @@ export async function generateTemplates(functionName, parameters, returnType) {
     templates['java'] = {
       id: 96,
       name: 'Java',
-      template: 'java Template is not available',
+      template: javaTemplate,
     };
 
     // Generate Python template
@@ -235,70 +235,67 @@ if (Array.isArray(result)) {
   }
 };
 
+// Function to generate Java template for the given function name and parameters
+async function generateJavaTemplates(functionName, parameters, returnType) {
+  try {
+    // Get return type and default value
+    const returnTypeMapped = typeMappings['java'][returnType] || typeMappings['java']['void'];
+    const defaultReturnValue =
+      typeMappings['java'].defaultReturnValue[returnType] || typeMappings['java'].defaultReturnValue['void'];
 
-// // generate java template for the given function name and parameters
-// async function generateJavaTemplates(functionName, parameters, returnType) {
-//   try {
-//     // Get return type and default value
-//     const returnTypeMapped = typeMappings['java'][returnType] || typeMappings['java']['returnType'];
-//     const defaultReturnValue =
-//       typeMappings['java'].defaultReturnValue[returnType] || typeMappings['java'].defaultReturnValue['void'];
+    // Generate Java template
+    const javaTemplate = `
+import java.util.*;
+import java.util.stream.*;
 
-//       console.log({returnTypeMapped, defaultReturnValue});
-//     // Generate Java template
-//     const javaTemplate = `
-// import java.util.*;
+class Main {
 
-// public class Solution {
+    // Function to ${functionName}
+    public static ${returnTypeMapped} ${functionName}(${parameters
+      .map((p) => `${typeMappings['java'][p.parameterType]} ${p.parameterName}`)
+      .join(', ')}) {
+        // Add logic here based on the problem
+        return ${defaultReturnValue}; // Placeholder return
+    }
 
-//     // Function to ${functionName}
-//     public static ${returnTypeMapped} ${functionName}(${parameters
-//       .map((p) => `${typeMappings['java'][p.parameterType]} ${p.parameterName}`)
-//       .join(', ')}) {
-//         return {defaultReturnValue}; // Return default value
-//     }
+    public static void main(String[] args) {
+        Scanner scanner = new Scanner(System.in);
 
-//     public static void main(String[] args) {
-//         Scanner scanner = new Scanner(System.in);
+        // Input data
+        ${parameters
+          .map((p) => {
+            if (p.parameterType === 'arrayOfnum') {
+              return `        String[] input = scanner.nextLine().split(","); // Read input as a comma-separated string
+        int[] ${p.parameterName} = Arrays.stream(input).mapToInt(Integer::parseInt).toArray(); // Convert to int array`;
+            } else if (p.parameterType === 'arrayOfStr') {
+              return `        String[] ${p.parameterName} = scanner.nextLine().split(","); // Read input as a comma-separated array of strings`;
+            } else if (p.parameterType === 'str') {
+              return `        String ${p.parameterName} = scanner.nextLine(); // Read input as a string`;
+            } else {
+              return `        ${typeMappings['java'][p.parameterType]} ${p.parameterName} = scanner.next${
+                p.parameterType === 'float' ? 'Float' : p.parameterType.charAt(0).toUpperCase() + p.parameterType.slice(1)
+              }(); // Read input`;
+            }
+          })
+          .join('\n')}
 
-//         // Input data
-//         ${parameters
-//           .map((p) => {
-//             if (p.parameterType === 'arrayOfnum') {
-//               return `
-//         List<Integer> list = new ArrayList<>();
-//         while (scanner.hasNextInt()) {
-//             list.add(scanner.nextInt());
-//         }
-//         int[] ${p.parameterName} = list.stream().mapToInt(i -> i).toArray();`;
-//             } else if (p.parameterType === 'str') {
-//               return `
-//         String ${p.parameterName} = scanner.nextLine();`;
-//             } else {
-//               return `
-//         ${typeMappings['java'][p.parameterType]} ${p.parameterName} = scanner.next${
-//                 p.parameterType === 'float' ? 'Float' : p.parameterType.charAt(0).toUpperCase() + p.parameterType.slice(1)
-//               }();`;
-//             }
-//           })
-//           .join('\n')}
+        // Call function and print result
+        ${returnTypeMapped} result = ${functionName}(${parameters.map((p) => `${p.parameterName}`).join(', ')});
+        System.out.println(result); // Print result
 
-//         // Call function and print result
-//         ${returnTypeMapped} result = ${functionName}(${parameters.map((p) => `${p.parameterName}`).join(', ')});
-//         if (result != ${defaultReturnValue}) {
-//             System.out.println(result);
-//         }
+        scanner.close();
+    }
+}
+`;
 
-//         scanner.close();
-//     }
-// }
-// `;
-//     return [null, javaTemplate]
-//   } catch (error) {
-//     console.error('Error generating template:', error);
-//     return [error, null];
-//   }
-// }
+    return [null, javaTemplate];
+  } catch (error) {
+    console.error('Error generating template:', error);
+    return [error, null];
+  }
+}
+
+
 
 // generate c template for the given function name and parameters
 async function generateCTemplates(functionName, parameters, returnType) {
