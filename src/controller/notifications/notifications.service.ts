@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { db } from '../../db/index';
 import { eq, sql, desc } from 'drizzle-orm';
-import { NotificationSchema } from 'drizzle/schema';
+import { zuvyNotifications } from 'drizzle/schema';
 import { STATUS_CODES } from 'src/helpers';
 import { CreateNotificationDto, UpdateNotificationDto } from './dto/notifications.dto';
 
@@ -22,9 +22,9 @@ export class NotificationsService {
     try {
       const notifications = await db
         .select()
-        .from(NotificationSchema)
-        .where(eq(NotificationSchema.userId, userId))
-        .orderBy(desc(NotificationSchema.createdAt));
+        .from(zuvyNotifications)
+        .where(eq(zuvyNotifications.userId, userId))
+        .orderBy(desc(zuvyNotifications.createdAt));
 
         const formattedNotifications = notifications.map((n) => ({
           id: n.id,
@@ -67,7 +67,7 @@ export class NotificationsService {
         createdAt: new Date(),
       };
       const result = await db
-        .insert(NotificationSchema)
+        .insert(zuvyNotifications)
         .values(newNotification)
         .returning();
 
@@ -91,13 +91,13 @@ export class NotificationsService {
   // async updateNotification(id: number, updateNotificationDto: UpdateNotificationDto): Promise<any> {
   //   try {
   //     const result = await db
-  //       .update(NotificationSchema)
+  //       .update(zuvyNotifications)
   //       .set({
   //         ...(updateNotificationDto.message && { message: updateNotificationDto.message }),
   //         ...(updateNotificationDto.type && { type: updateNotificationDto.type }),
   //         ...(updateNotificationDto.isRead !== undefined && { isRead: updateNotificationDto.isRead }),
   //       })
-  //       .where(eq(NotificationSchema.id, id))
+  //       .where(eq(zuvyNotifications.id, id))
   //       .returning();
 
   //     if (result.length > 0) {
@@ -127,11 +127,11 @@ export class NotificationsService {
   async markNotificationAsRead(id: number): Promise<any> {
     try {
       const result = await db
-        .update(NotificationSchema)
+        .update(zuvyNotifications)
         .set({
-          [NotificationSchema.isRead.name]: true,
+          [zuvyNotifications.isRead.name]: true,
         })
-        .where(eq(NotificationSchema.id, id))
+        .where(eq(zuvyNotifications.id, id))
         .returning();
 
       if (result.length > 0) {
