@@ -241,7 +241,7 @@ export class AdminAssessmentService {
             attemptedCodingQuestions: submission.attemptedCodingQuestions,
             attemptedQuizQuestions: submission.attemptedQuizQuestions,
             codingScore: submission.codingScore,
-            quizScore: submission.mcqScore,
+            mcqScore: submission.mcqScore,
             openEndedScore: submission.openEndedScore,
             requiredCodingScore: submission.requiredCodingScore,
             requiredQuizScore: submission.requiredMCQScore,
