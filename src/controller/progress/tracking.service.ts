@@ -418,6 +418,7 @@ export class TrackingService {
           isLock: module.isLock,
           timeAlloted: module.timeAlloted,
           progress: updatedProgress,
+          ChapterId: module.moduleChapterData.find((chapter) => chapter.order === 1)?.id || null,
           quizCount: module.moduleChapterData.filter(
             (chapter) => chapter.topicId === 4,
           ).length,
@@ -782,8 +783,8 @@ export class TrackingService {
 
       const codingQuestionTracking = await db
         .select()
-        .from(zuvyPracticeCode)
-        .where(sql`${zuvyPracticeCode.userId} = ${userId}`);
+        .from(zuvyChapterTracking)
+        .where(sql`${zuvyChapterTracking.userId} = ${userId} and ${zuvyChapterTracking.chapterId} = ${chapterId}`);
 
       if (chapterDetails.length > 0) {
         if (chapterDetails[0].topicId == 4) {
@@ -1066,20 +1067,13 @@ export class TrackingService {
           return [null, { message: 'Assignment chapter fetched succesfully', statusCode: STATUS_CODES.OK, data: { chapterDetails: chapter[0], assignmentTracking, status } }]
         }
         else if (chapter[0].topicId == 3) {
-          const submittedCode = await db.select().from(zuvyPracticeCode).where(sql`${zuvyPracticeCode.questionId} = ${chapter[0].codingQuestions} AND ${zuvyPracticeCode.userId} = ${userId} AND ${zuvyPracticeCode.submissionId} IS NULL`);
 
           const ChapterTracking = await db
             .select()
             .from(zuvyChapterTracking)
             .where(sql`${zuvyChapterTracking.userId} = ${userId} and ${zuvyChapterTracking.chapterId} = ${chapterId}`);
           let statusCount = ChapterTracking.length > 0 ? 1 : 0;
-          if (submittedCode.length > 0 && ChapterTracking.length == 0) {
-            const moduleDetail = await db.select().from(zuvyCourseModules).where(eq(zuvyCourseModules.id, chapter[0].moduleId));
-            const chapterUpdated = await this.updateChapterStatus(moduleDetail[0].bootcampId, userId, chapter[0].moduleId, chapter[0].id)
-            if (chapterUpdated.status == 'success') {
-              statusCount = 1;
-            }
-          }
+          
           const status = statusCount > 0 ? 'Completed' : 'Pending';
           const codingProblem = await db
             .select()
@@ -1272,7 +1266,7 @@ export class TrackingService {
       if (latestTracking.length > 0) {
         const ifEnrolled = await db.select().from(zuvyBatchEnrollments).where(sql`${zuvyBatchEnrollments.bootcampId} = ${latestTracking[0].bootcampId} AND ${zuvyBatchEnrollments.userId} = ${BigInt(userId)}`);
         if (ifEnrolled.length == 0) {
-          return [null, { message: 'You have been removed from the recent course that you are studying.Please ask your instructor about this!!', statusCode: STATUS_CODES.OK, data: [] }]
+          return [null, { message: 'You have been removed from the recent course that you are studying. Please ask your instructor about this!!', statusCode: STATUS_CODES.OK, data: [] }]
         }
         const data = await db.query.zuvyCourseModules.findFirst({
           where: (courseModules, { sql }) =>
