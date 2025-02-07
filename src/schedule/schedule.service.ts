@@ -23,7 +23,7 @@ export class ScheduleService {
   private lastProcessedTime: Date = new Date(0);
   private processingActive = false;
 
-  @Cron('0 */1 * * *')  
+  @Cron('*/15 * * * *')  
   async handleDynamicScheduling() {
     this.logger.log('Running dynamic scheduling');
     if (this.processingActive) {
@@ -107,7 +107,7 @@ export class ScheduleService {
       try {
         await this.processSingleSession(session);
       } catch (error) {
-        this.logger.error(`Error processing session ${session.id}: ${error.message}`);
+        this.logger.error(`Error processing session : ${error}`);
       }
 
       setTimeout(processNext, 1000); // Delay of 1 second between each session
@@ -118,6 +118,11 @@ export class ScheduleService {
 
   private async processSingleSession(session: any) {
     try {
+      console.log({session});
+      if (!session) {
+        this.logger.warn(`No creator found for session: ${session.id}`);
+        return
+      }
       const userTokenData = await this.getUserTokens(session.creator);
       if (!userTokenData) {
         this.logger.warn(`No tokens found for creator: ${session.creator}`);
@@ -136,7 +141,7 @@ export class ScheduleService {
         await this.getAttendanceByBatchId(session.batchId, session.creator);
       }
     } catch (error) {
-      this.logger.error(`Session ${session.id} error: ${error.message}`);
+      this.logger.error(`Session  error: ${error}`);
     }
   }
 
