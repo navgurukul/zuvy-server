@@ -416,6 +416,7 @@ export class ContentService {
           order: module.order,
           projectId: module.projectId,
           timeAlloted: module.timeAlloted,
+          ChapterId: module.moduleChapterData.find((chapter) => chapter.order === 1)?.id || null,
           quizCount: module.moduleChapterData.filter(
             (chapter) => chapter.topicId === 4,
           ).length,
@@ -679,6 +680,20 @@ export class ContentService {
     moduleId: number,
   ) {
     try {
+
+      // Count how many students have started the module
+      const studentCountResult = await db
+        .select({ count: sql<number>`count(*)` })
+        .from(zuvyModuleTracking)
+        .where(eq(zuvyModuleTracking.moduleId, moduleId));
+
+      const studentCount = studentCountResult[0]?.count || 0;
+
+      // If any student has started the module, throw an error
+      if (studentCount > 0) {
+        return [{ message:`Module cannot be reordered or updated as it has been started by ${studentCount} student(s).`}, null];
+      }
+
       if (reorderData.moduleDto == undefined) {
         const { newOrder } = reorderData.reOrderDto;
 
@@ -953,13 +968,13 @@ export class ContentService {
 
     // Use the appropriate points for the type of questions (MCQ or Coding)
     const points = type === 'MCQ' ? helperVariable.MCQ_POINTS : helperVariable.CODING_POINTS;
-    
+
     const totalWeight = (easy * points.Easy) + (medium * points.Medium) + (hard * points.Hard);
 
     const scores = {
-      easy: easy ? (points.Easy / totalWeight) * sectionScore: 0,
-      medium: medium ? (points.Medium / totalWeight) * sectionScore: 0,
-      hard: hard ? (points.Hard / totalWeight) * sectionScore: 0,
+      easy: easy ? (points.Easy / totalWeight) * sectionScore : 0,
+      medium: medium ? (points.Medium / totalWeight) * sectionScore : 0,
+      hard: hard ? (points.Hard / totalWeight) * sectionScore : 0,
     };
 
     return scores;
@@ -1077,13 +1092,13 @@ export class ContentService {
           medium: OutsourseAssessmentData__.mediumMcqQuestions || 0,
           hard: OutsourseAssessmentData__.hardMcqQuestions || 0,
         };
-        
+
         // Calculate the scores for each type
         const codingScores: any = await this.calculateQuestionScores(helperVariable.TOTAL_SCORE, OutsourseAssessmentData__.weightageCodingQuestions, codingQuestionsCount, 'Coding');
         const mcqScores: any = await this.calculateQuestionScores(helperVariable.TOTAL_SCORE, OutsourseAssessmentData__.weightageMcqQuestions, mcqQuestionsCount);
         // Update marks in the assessment
-        OutsourseAssessmentData__.totalCodingQuestions = codingQuestionsCount.easy + codingQuestionsCount.medium +  codingQuestionsCount.hard;
-        OutsourseAssessmentData__.totalMcqQuestions = mcqQuestionsCount.easy + mcqQuestionsCount.medium +  mcqQuestionsCount.hard;
+        OutsourseAssessmentData__.totalCodingQuestions = codingQuestionsCount.easy + codingQuestionsCount.medium + codingQuestionsCount.hard;
+        OutsourseAssessmentData__.totalMcqQuestions = mcqQuestionsCount.easy + mcqQuestionsCount.medium + mcqQuestionsCount.hard;
         let marks = {
           easyCodingMark: codingScores.easy,
           mediumCodingMark: codingScores.medium,
@@ -1997,8 +2012,8 @@ export class ContentService {
       const mediumCodingQuestions = codingQuestions[DIFFICULTY.MEDIUM];
       const hardCodingQuestions = codingQuestions[DIFFICULTY.HARD];
 
-      
-      
+
+
       let assessment = {
         ...assessmentOutsourseData,
         IsQuizzSubmission: quizzes!.length > 0 ? true : false,
@@ -2158,7 +2173,7 @@ export class ContentService {
           submitedOutsourseAssessments: true
         },
       });
-      console.log({userId}, !IsAdmin && user.roles.includes('admin'), IsAdmin)
+      console.log({ userId }, !IsAdmin && user.roles.includes('admin'), IsAdmin)
       if (!IsAdmin && user.roles.includes('admin')) {
         userId = Math.floor(Math.random() * (99999 - 1000 + 1)) + 1000;
       }

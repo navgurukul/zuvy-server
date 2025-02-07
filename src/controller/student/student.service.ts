@@ -10,7 +10,7 @@ import {
   zuvyStudentApplicationRecord
 } from '../../../drizzle/schema';
 import { db } from '../../db/index';
-import { eq, sql, desc, count,asc, or} from 'drizzle-orm';
+import { eq, sql, desc, count, asc, or, and, inArray } from 'drizzle-orm';
 import { ClassesService } from '../classes/classes.service'
 import { helperVariable } from 'src/constants/helper';
 import { STATUS_CODES } from "../../helpers/index";
@@ -283,29 +283,53 @@ export class StudentService {
     }
   }
 
-  async removingStudent(user_id: number, bootcamp_id) {
+  async removingStudent(user_id: number | number[], bootcamp_id: number) {
     try {
+      const userIdsArray = Array.isArray(user_id) ? user_id : [user_id];
+  
       let enrolled = await db
         .delete(zuvyBatchEnrollments)
         .where(
-          sql`${zuvyBatchEnrollments.userId} = ${user_id} AND ${zuvyBatchEnrollments.bootcampId} = ${bootcamp_id} `,
+          and(
+            inArray(zuvyBatchEnrollments.userId,  userIdsArray.map(BigInt)),
+            eq(zuvyBatchEnrollments.bootcampId, bootcamp_id)
+          )
         )
         .returning();
-      if (enrolled.length == 0) {
-        return [{ status: 'error', message: 'id not found', code: 404 }, null];
+  
+      if (enrolled.length === 0) {
+        return [{ status: 'error', message: 'ID not found', code: 404 }, null];
       }
+  
+      // Delete progress from zuvyBootcampTracking
+      let trackingDeleted = await db
+        .delete(zuvyBootcampTracking)
+        .where(
+          and(
+            inArray(zuvyBootcampTracking.userId,  userIdsArray.map(Number)),
+            eq(zuvyBootcampTracking.bootcampId, Number(bootcamp_id))
+          )
+        )
+        .returning();
+  
+      const deletedCount = enrolled.length;
+  
       return [
         null,
         {
           status: 'true',
-          message: 'Student removed for the bootcamp',
+          message: deletedCount === 1
+            ? 'Student removed from the bootcamp'
+            : `${deletedCount} students removed from the bootcamp`,
           code: 200,
         },
       ];
+  
     } catch (e) {
       return [{ status: 'error', message: e.message, code: 500 }, null];
     }
   }
+  
 
   async getUpcomingClass(student_id: number, batchID: number, limit: number, offset: number): Promise<any> {
     try {
