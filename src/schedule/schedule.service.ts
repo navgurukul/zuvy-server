@@ -23,7 +23,7 @@ export class ScheduleService {
   private lastProcessedTime: Date = new Date(0);
   private processingActive = false;
 
-  @Cron('0 */6 * * *')  
+  @Cron('0 */1 * * *')  
   async handleDynamicScheduling() {
     this.logger.log('Running dynamic scheduling');
     if (this.processingActive) {
