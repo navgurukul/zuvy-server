@@ -84,9 +84,9 @@ export class ScheduleService {
     const timeSinceLastRun = now.getTime() - this.lastProcessedTime.getTime();
 
     if (sessionCount === 1) return timeSinceLastRun >= 50 * 60 * 1000;
-    if (sessionCount >= 2 && sessionCount <= 6) return timeSinceLastRun >= 30 * 60 * 1000;
-    if (sessionCount >= 7 && sessionCount <= 13) return timeSinceLastRun >= 20 * 60 * 1000;
-    if (sessionCount >= 14 && sessionCount <= 19) return timeSinceLastRun >= 15 * 60 * 1000;
+    if (sessionCount >= 2 && sessionCount <= 3) return timeSinceLastRun >= 30 * 60 * 1000;
+    if (sessionCount >= 4 && sessionCount <= 6) return timeSinceLastRun >= 20 * 60 * 1000;
+    if (sessionCount >= 7 && sessionCount <= 8) return timeSinceLastRun >= 15 * 60 * 1000;
     if (sessionCount >= 20 && sessionCount <= 25) return timeSinceLastRun >= 10 * 60 * 1000;
     if (sessionCount >= 26 && sessionCount <= 31) return timeSinceLastRun >= 4 * 60 * 1000;
     return timeSinceLastRun >= 2 * 60 * 1000;
@@ -244,6 +244,7 @@ export class ScheduleService {
         if (!attendance[email]) attendance[email] = {};
         attendance[email][`meeting_${meeting.title}_duration_seconds`] = duration;
         attendance[email][`meeting_${meeting.title}_attendance`] = status;
+        console.log({email: attendance[email]})
       });
 
       Object.entries(attendance).forEach(([email, record]) => {
