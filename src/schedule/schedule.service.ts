@@ -4,7 +4,8 @@ import {
   userTokens,
   zuvySessions,
   zuvyBatchEnrollments,
-  users
+  users,
+  zuvyStudentAttendance
 } from '../../drizzle/schema';
 import { db } from '../db/index';
 import { eq, sql, isNull, and, gte, lt } from 'drizzle-orm';
@@ -22,10 +23,17 @@ export class ScheduleService {
   private readonly logger = new Logger(ScheduleService.name);
   private lastProcessedTime: Date = new Date(0);
   private processingActive = false;
+  private currentInterval: number;
+  private timeoutId: NodeJS.Timeout;
 
-  @Cron('0 */6 * * *')
+  constructor() {
+    // Initialize the interval when the service starts
+    this.handleDynamicScheduling();
+  }
+
+  @Cron('*/20 * * * *') // Runs every 6 hours
   async handleDynamicScheduling() {
-    this.logger.log('Running dynamic scheduling');
+    this.logger.log('Running main function to determine interval');
     if (this.processingActive) {
       this.logger.log('Skipping: Previous job still running');
       return;
@@ -33,23 +41,32 @@ export class ScheduleService {
 
     this.processingActive = true;
     try {
-      const now = new Date();
+      const now = new Date('2025-02-11T01:18:00+05:30');
       const [startOfDay, endOfDay] = this.getDayBounds(now);
-
       const sessions = await this.fetchSessions(startOfDay, endOfDay);
-      sessions.length = 40;
+      this.logger.log(`Fetched ${sessions.length} sessions`);
+      sessions.length = 50;
       const shouldProcess = this.shouldProcessSessions(sessions.length, now);
-      console.log({shouldProcess});
+
       if (!shouldProcess) {
         this.logger.log(
-          `Skipping processing - Session count: ${sessions.length }, Last run: ${Math.floor(
+          `Skipping processing - Session count: ${sessions.length}, Last run: ${Math.floor(
             (now.getTime() - this.lastProcessedTime.getTime()) / 60000
           )} mins ago`
         );
         return;
       }
 
-      await this.processSessions(sessions);
+      // Determine the interval based on session count
+      this.currentInterval = this.getIntervalBasedOnSessionCount(sessions.length);
+      this.logger.log(`Setting interval to ${this.currentInterval / 60000} minutes`);
+
+      // Clear any existing timeout
+      this.resetTimeout();
+
+      // Start the recursive timeout
+      this.startRecursiveTimeout(sessions);
+
       this.lastProcessedTime = now;
     } catch (error) {
       this.logger.error(`Scheduling error: ${error.message}`);
@@ -63,8 +80,7 @@ export class ScheduleService {
     startOfDay.setHours(0, 0, 0, 0);
 
     const endOfDay = new Date(date);
-    endOfDay.setHours(23, 59, 59, 999);
-
+    endOfDay.setHours(84, 59, 59, 999);
     return [startOfDay, endOfDay];
   }
 
@@ -73,7 +89,8 @@ export class ScheduleService {
       .from(zuvySessions)
       .where(
         and(
-          isNull(zuvySessions.s3link),
+          // isNull(zuvySessions.s3link),
+          eq(zuvySessions.status, 'completed'),
           gte(zuvySessions.startTime, startOfDay.toISOString()),
           lt(zuvySessions.startTime, endOfDay.toISOString()),
         )
@@ -83,13 +100,41 @@ export class ScheduleService {
   private shouldProcessSessions(sessionCount: number, now: Date): boolean {
     const timeSinceLastRun = now.getTime() - this.lastProcessedTime.getTime();
 
-    if (sessionCount === 1) return timeSinceLastRun >= 50 * 60 * 1000;
-    if (sessionCount >= 2 && sessionCount <= 3) return timeSinceLastRun >= 30 * 60 * 1000;
-    if (sessionCount >= 4 && sessionCount <= 6) return timeSinceLastRun >= 20 * 60 * 1000;
-    if (sessionCount >= 7 && sessionCount <= 8) return timeSinceLastRun >= 15 * 60 * 1000;
-    if (sessionCount >= 20 && sessionCount <= 25) return timeSinceLastRun >= 10 * 60 * 1000;
-    if (sessionCount >= 26 && sessionCount <= 31) return timeSinceLastRun >= 4 * 60 * 1000;
-    return timeSinceLastRun >= 2 * 60 * 1000;
+    if (sessionCount === 1) return timeSinceLastRun >= 200 * 60 * 1000;
+    if (sessionCount >= 2 && sessionCount <= 3) return timeSinceLastRun >= 100 * 60 * 1000;
+    if (sessionCount >= 4 && sessionCount <= 6) return timeSinceLastRun >= 60 * 60 * 1000;
+    if (sessionCount >= 7 && sessionCount <= 8) return timeSinceLastRun >= 30 * 60 * 1000;
+    if (sessionCount >= 20 && sessionCount <= 25) return timeSinceLastRun >= 20 * 60 * 1000;
+    if (sessionCount >= 26 && sessionCount <= 31) return timeSinceLastRun >= 10 * 60 * 1000;
+    return timeSinceLastRun >= 1 * 60 * 1000;
+  }
+
+  private getIntervalBasedOnSessionCount(sessionCount: number): number {
+    if (sessionCount === 1) return 200 * 60 * 1000; // 200 minutes
+    if (sessionCount >= 2 && sessionCount <= 3) return 100 * 60 * 1000; // 100 minutes
+    if (sessionCount >= 4 && sessionCount <= 6) return 60 * 60 * 1000; // 60 minutes
+    if (sessionCount >= 7 && sessionCount <= 8) return 30 * 60 * 1000; // 30 minutes
+    if (sessionCount >= 20 && sessionCount <= 25) return 20 * 60 * 1000; // 20 minutes
+    if (sessionCount >= 26 && sessionCount <= 31) return 10 * 60 * 1000; // 10 minutes
+    return 1 * 60 * 1000; // 5 minutes
+  }
+
+  private resetTimeout() {
+    if (this.timeoutId) {
+      clearTimeout(this.timeoutId);
+      this.logger.log('Previous timeout cleared');
+    }
+  }
+
+  private startRecursiveTimeout(sessions: any[]) {
+    this.timeoutId = setTimeout(async () => {
+      try {
+        await this.processSessions(sessions);
+      } catch (error) {
+        this.logger.error(`Error processing sessions: ${error}`);
+      }
+      this.startRecursiveTimeout(sessions); // Recursively call itself
+    }, this.currentInterval);
   }
 
   private async processSessions(sessions: any[]) {
@@ -107,7 +152,7 @@ export class ScheduleService {
       try {
         await this.processSingleSession(session);
       } catch (error) {
-        this.logger.error(`Error processing session : ${error}`);
+        this.logger.error(`Error processing session: ${error}`);
       }
 
       setTimeout(processNext, 1000); // Delay of 1 second between each session
@@ -118,10 +163,8 @@ export class ScheduleService {
 
   private async processSingleSession(session: any) {
     try {
-      console.log({session});
       if (!session) {
-        this.logger.warn(`No creator found for session: ${session.id}`);
-        return
+        return;
       }
       const userTokenData = await this.getUserTokens(session.creator);
       if (!userTokenData) {
@@ -138,10 +181,18 @@ export class ScheduleService {
       if (session.meetingId && session.status === 'completed') {
         await this.updateSessionLink(calendar, session);
         await this.handleOldSessions(session);
-        await this.getAttendanceByBatchId(session.batchId, session.creator);
+        let oldAttendance = await db.select().from(zuvyStudentAttendance).where(eq(zuvyStudentAttendance.meetingId, session.meetingId));
+        if (oldAttendance.length > 0) {
+          let [errAtten, dataAttendance] = await this.getAttendanceByBatchId(session.batchId, session.creator);
+          if (errAtten) {
+            this.logger.error(`Attendance error: ${errAtten}`);
+          } 
+          this.logger.log(`Attendance: ${JSON.stringify(dataAttendance?.data)}`);
+          await db.insert(zuvyStudentAttendance).values({attendance: dataAttendance?.data,meetingId:session.meetingId,batchId: session.batchId, bootcampId: session.bootcampId }).execute();
+        }
       }
     } catch (error) {
-      this.logger.error(`Session  error: ${error}`);
+      this.logger.error(`Session error: ${error}`);
     }
   }
 
@@ -158,13 +209,11 @@ export class ScheduleService {
       calendarId: 'primary',
       eventId: session.meetingId,
     });
-
     const videoAttachment = eventDetails.data.attachments?.find(
       (a: any) => a.mimeType === 'video/mp4'
     );
-    console.log({videoAttachment});
     if (videoAttachment) {
-      let updateData:any = { s3link: videoAttachment.fileUrl }
+      let updateData: any = { s3link: videoAttachment.fileUrl };
       await db.update(zuvySessions)
         .set(updateData)
         .where(eq(zuvySessions.id, session.id));
@@ -173,7 +222,7 @@ export class ScheduleService {
 
   private async handleOldSessions(session: any) {
     if (new Date(session.startTime) < new Date(Date.now() - 3 * 24 * 60 * 60 * 1000)) {
-      let updateData:any =  { s3link: 'not found' }
+      let updateData: any = { s3link: 'not found' };
       await db.update(zuvySessions)
         .set(updateData)
         .where(eq(zuvySessions.id, session.id));
@@ -190,7 +239,7 @@ export class ScheduleService {
       const userData = await db.select().from(users).where(eq(users.email, creatorEmail));
       if (!userData.length) {
         this.logger.warn(`No user found for email: ${creatorEmail}`);
-        return;
+        return[{ status: 'error', message: 'User not found' }];
       }
 
       const tokens = await db
@@ -198,7 +247,7 @@ export class ScheduleService {
         .from(userTokens)
         .where(eq(userTokens.userId, Number(userData[0].id)));
 
-      if (!tokens.length) return { status: 'error', message: 'Unable to fetch tokens' };
+      if (!tokens.length) return [{ status: 'error', message: 'Unable to fetch tokens' }];
 
       auth2Client.setCredentials({
         access_token: tokens[0].accessToken,
@@ -209,10 +258,11 @@ export class ScheduleService {
       const meetings = await db
         .select()
         .from(zuvySessions)
-        .where(eq(zuvySessions.batchId, Number(batchId)));
+        .where(and(eq(zuvySessions.batchId, Number(batchId)), eq(zuvySessions.status, 'completed')));
 
-      const attendance = await this.calculateAttendance(client, meetings, students);
-      return { attendanceByTitle: Object.values(attendance), status: 'success' };
+      const [errorAttendance, attendance] = await this.calculateAttendance(client, meetings, students);
+      if (errorAttendance) return [errorAttendance];
+      return [null,{ data: attendance, status: 'success' }];
     } catch (error) {
       throw new Error(`Error fetching attendance: ${error.message}`);
     }
@@ -239,25 +289,40 @@ export class ScheduleService {
 
         attendance[user[0].email] = { email: user[0].email };
       }
+      let adminData;
+      response.data.items.forEach((item: any) => {
+        const event = item.events[0];
+        const email = event.parameters.find((param: any) => param.name === 'identifier')?.value || '';
+        const duration = event.parameters.find((param: any) => param.name === 'duration_seconds')?.intValue || '';
+        if (email.includes('@zuvy.org')){
+          adminData = {email, duration};
+        }
+      });
+      if (!adminData) return;
 
       response.data.items.forEach((item: any) => {
         const event = item.events[0];
         const email = event.parameters.find((param: any) => param.name === 'identifier')?.value || '';
         const duration = event.parameters.find((param: any) => param.name === 'duration_seconds')?.intValue || '';
-        const status = duration ? 'present' : 'absent';
-
+        const status = (duration >= 0.75 * adminData.duration) ? 'present' : 'absent';        
         if (!attendance[email]) attendance[email] = {};
-        attendance[email][`meeting_${meeting.title}_duration_seconds`] = duration;
-        attendance[email][`meeting_${meeting.title}_attendance`] = status;
-        console.log({email: attendance[email]})
+        attendance[email][`duration`] = duration;
+        attendance[email][`attendance`] = status;
       });
+
 
       Object.entries(attendance).forEach(([email, record]) => {
         if (!attendanceByTitle[email]) attendanceByTitle[email] = {};
         Object.assign(attendanceByTitle[email], record);
       });
+    
     }
-
-    return attendanceByTitle;
+    let attendanceOfStudents = [];
+    for (let student in attendanceByTitle){
+      if (student.length > 0){
+        attendanceOfStudents.push({...attendanceByTitle[student], email: student });
+      }
+    }
+    return [null, attendanceOfStudents];
   }
 }
