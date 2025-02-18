@@ -19,7 +19,28 @@ export const typeMappings = {
     bool: 'boolean',
     arrayOfnum: 'int[]',
     arrayOfStr: 'String[]',
-    void: 'void',
+    jsonType: 'Object',
+    object: 'Object',
+    returnType: 'Object',
+    input: (parameterType) => {
+      const mapping = {
+        int: 'Integer.parseInt(scanner.nextLine().trim())',
+        float: 'Float.parseFloat(scanner.nextLine().trim())',
+        double: 'Double.parseDouble(scanner.nextLine().trim())',
+        str: 'scanner.nextLine().trim()',
+        bool: 'Boolean.parseBoolean(scanner.nextLine().trim())',
+        arrayOfnum: `Arrays.stream(scanner.nextLine()
+              .replaceAll("\\\\[|\\\\]|\\\\s", "")
+              .split(","))
+              .mapToInt(Integer::parseInt)
+              .toArray()`,
+        arrayOfStr: `scanner.nextLine()
+              .replaceAll("\\\\[|\\\\]|\\\\s", "")
+              .split(",")`,
+        object: 'scanner.nextLine().trim()'
+      };
+      return mapping[parameterType] || 'scanner.nextLine().trim()';
+    },
     defaultReturnValue: {
       int: '0',
       float: '0.0f',
@@ -28,6 +49,7 @@ export const typeMappings = {
       bool: 'false',
       arrayOfnum: 'new int[0]',
       arrayOfStr: 'new String[0]',
+      object: 'null',
       void: '',
     },
   },
@@ -39,7 +61,7 @@ export const typeMappings = {
     bool: 'int',
     arrayOfnum: 'int*',
     arrayOfStr: 'char**',
-    void: 'void',
+    jsonType: 'void',
     defaultReturnValue: {
       int: '0',
       float: '0.0f',
@@ -59,7 +81,7 @@ export const typeMappings = {
     bool: 'bool',
     arrayOfnum: 'std::vector<int>',
     arrayOfStr: 'std::vector<std::string>',
-    void: 'void',
+    jsonType: 'void',
     defaultReturnValue: {
       int: '0',
       float: '0.0f',
@@ -85,6 +107,10 @@ export const typeMappings = {
         'int': 'int(input())',
         'float': 'float(input())',
         'str': 'input()',
+        'bool': 'bool(input())',
+        'arrayOfnum': 'json.loads(input())',
+        'arrayOfStr': 'json.loads(input())',
+        'jsonType': 'json.loads(input())',
       };
       return mapping[parameterType] || 'input()';
     },
@@ -103,45 +129,128 @@ export const typeMappings = {
     object: 'object',
     inputType: (type) => {
       const mapping = {
-        'int': 'Number',
-        'float': 'Number',
-        'double': 'Number',
-        'str': 'String',
-        'bool': 'Boolean',
-        'any': 'Object',
+        int: 'Number',
+        float: 'Number',
+        double: 'Number',
+        str: 'String',
+        bool: 'Boolean',
+        any: 'Object',
       };
       return mapping[type] || 'String';
+    },
+    input: (parameterType) => {
+      const mapping = {
+        int: 'Number(input)',
+        float: 'Number(input)',
+        double: 'Number(input)',
+        str: 'input',
+        bool: 'Boolean(input)',
+        arrayOfnum: 'JSON.parse(input)',
+        arrayOfStr: 'JSON.parse(input)',
+        jsonType: 'JSON.parse(input)',
+        object: 'JSON.parse(input)',
+      };
+      return mapping[parameterType] || 'input';
     },
   },
 };
 
-const generateParameterMappings = (parameters, language) => {
-  return parameters.map((p) => {
-    const paramType = typeMappings[language][p.parameterType] || 'Object';
-    if (language == 'python' || language == 'javascript') {
-      return `${p.parameterName}`;
-    }
-    return `${paramType} _${p.parameterName}_`;
-  }).join(', ');
-};
+
 
 
 export async function generateTemplates(functionName, parameters, returnType) {
   try {
     functionName = functionName.replace(/ /g, '_').toLowerCase();
+    /**
+     * Get parameter mappings for function definition
+     */
+    const getParameterMappings = (parameters) => {
+      return parameters
+        .map(p => {
+          const type = typeMappings.javascript[p.parameterType] || 'any';
+          return `${p.parameterName}: ${type}`;
+        })
+        .join(', ');
+    };
+
+    /**
+     * Get input handling logic for parameters
+     */
+    const getInputHandling = (parameters) => {
+      return parameters
+        .map(p => {
+          const inputLogic = typeMappings.javascript.input(p.parameterType);
+          return `const _${p.parameterName}_ = ${inputLogic};`;
+        })
+        .join('\n');
+    };
+  
+/**
+ * Generate JavaScript function template
+ */
+const generateJavaScriptTemplate = (functionName, parameters, returnType) => {
+  // Map parameter names
+  const parameterMappings = parameters.map(p => p.parameterName).join(', ');
+
+  return [null, `
+const readline = require('readline');
+
+// Create readline interface
+const rl = readline.createInterface({
+  input: process.stdin,
+  output: process.stdout
+});
+
+// Function definition
+// Before submitting the code, please remove the console.log statement.
+function ${functionName}(${parameterMappings}) {
+    // Add your code here
+  return ${typeMappings.javascript.defaultReturnValue};
+}
+
+// Read all required inputs
+const inputLines = [];
+rl.on('line', (line) => {
+  inputLines.push(line);
+  if (inputLines.length === ${parameters.length}) { // Assuming ${parameters.length} inputs needed
+  rl.close();
+  }
+});
+
+rl.on('close', () => {
+  // Process inputs
+  ${parameters
+  .map(
+      (p, index) => `const _${p.parameterName}_ = ${typeMappings.javascript.input(p.parameterType).replace('input', `inputLines[${index}]`)};`
+  ).join('\n  ')}
+  const result = ${functionName}(${parameters.map(p => `_${p.parameterName}_`).join(', ')});
+  console.log(JSON.stringify(result));
+});
+  `];
+};
     let [errorCtemplate, cTemplate] = await generateCTemplates(functionName, parameters, returnType);
     if (errorCtemplate) {
       return [errorCtemplate, null];
     }
-    console.log({ cTemplate });
     let [errorCppTemplate, cppTemplate] = generateCppTemplates(functionName, parameters, returnType);
     if (errorCppTemplate) {
       return [errorCppTemplate, null];
     }
-    let [errorJavaTemplate, javaTemplate] = await generateJavaTemplates(functionName, parameters, returnType);
+    let [errorJavaTemplate, javaTemplate] = await generateJavaTemplate(functionName, parameters, returnType);
     if (errorJavaTemplate) {
       return [errorJavaTemplate, null];
     }
+    // python template generator
+    let [errorPythonTemplate, pythonTemplate] = await generatePythonTemplate(functionName, parameters, returnType);
+    if (errorPythonTemplate) {
+      return [errorPythonTemplate, null];
+    }
+    // javascript template generator
+    let [errorJavascriptTemplate, javascriptTemplate] = await generateJavaScriptTemplate(functionName, parameters, returnType);
+    if (errorJavascriptTemplate) {
+      return [errorJavascriptTemplate, null];
+    }
+   
     const templates = {};
     // Generate C template
     templates['c'] = {
@@ -169,59 +278,14 @@ export async function generateTemplates(functionName, parameters, returnType) {
     templates['python'] = {
       id: 100,
       name: 'Python',
-      template: `
-from typing import List, Dict
-
-def ${functionName}(${generateParameterMappings(parameters, 'python')}):
-  # Add your code here
-  return
-
-# Example usage
-${parameters.map(p => `_${p.parameterName}_ = ${typeMappings['python'][p.parameterType]}(input())`).join('\n')}
-result = ${functionName}(${parameters.map(p => `_${p.parameterName}_`).join(', ')})
-print(result)
-      `
+      template: pythonTemplate,
     };
 
     // Generate JavaScript (Node.js) template
     templates['javascript'] = {
       id: 102,
       name: 'JavaScript',
-      template: `
-function ${functionName}(${generateParameterMappings(parameters, 'javascript')}) {
-// Add your code here
-return ${typeMappings['javascript']['defaultReturnValue']};
-}
-
-const readline = require('readline');
-const rl = readline.createInterface({
-input: process.stdin,
-output: process.stdout
-});
-
-const inputs = [];
-rl.on('line', (line) => { inputs.push(line); });
-
-rl.on('close', () => {
-${parameters.map(p => {
-        const inputType = typeMappings['javascript']['inputType'](p.parameterType);
-        if (inputType.startsWith('Array')) {
-          return `const _${p.parameterName}_ = inputs.shift().split(",").map(${inputType.slice(6, -1)});`;
-        } else if (p.parameterType === 'object') {
-          return `const _${p.parameterName}_ = JSON.parse(inputs.shift());`;
-        } else {
-          return `const _${p.parameterName}_ = ${inputType}(inputs.shift());`;
-        }
-      }).join('\n  ')}
-
-let result = ${functionName}(${parameters.map(p => `_${p.parameterName}_`).join(', ')});
-if (Array.isArray(result)) {
-  result = JSON.stringify(result);
-  console.log(result.slice(1, -1));
-} else {
-  console.log(result);
-}
-});`
+      template: javascriptTemplate,
     };
 
     for (const language in templates) {
@@ -235,60 +299,71 @@ if (Array.isArray(result)) {
   }
 };
 
-// Function to generate Java template for the given function name and parameters
-async function generateJavaTemplates(functionName, parameters, returnType) {
+async function generateJavaTemplate(functionName, parameters, returnType = 'object') {
   try {
-    // Get return type and default value
-    const returnTypeMapped = typeMappings['java'][returnType] || typeMappings['java']['void'];
-    const defaultReturnValue =
-      typeMappings['java'].defaultReturnValue[returnType] || typeMappings['java'].defaultReturnValue['void'];
+    const returnTypeMapped = typeMappings.java[returnType] || 'Object';
+    const defaultReturn = typeMappings.java.defaultReturnValue[returnType] || 'null';
 
-    // Generate Java template
-    const javaTemplate = `
+    // Generate parameter list with types
+    const parameterList = parameters.map(p => 
+      `${typeMappings.java[p.parameterType] || 'Object'} ${p.parameterName}`
+    ).join(', ');
+
+    // Generate input handling
+    const inputHandling = parameters.map(p => {
+      const inputLogic = typeMappings.java.input(p.parameterType);
+      return `        ${typeMappings.java[p.parameterType]} ${p.parameterName} = ${inputLogic};`;
+    }).join('\n');
+
+    // Generate print statements for debugging
+    const debugPrints = parameters.map(p => {
+      if (p.parameterType === 'arrayOfnum') {
+        return `System.out.println(Arrays.toString(${p.parameterName}));`;
+      } else if (p.parameterType === 'arrayOfStr') {
+        return `System.out.println(Arrays.toString(${p.parameterName}));`;
+      }
+      return `System.out.println(${p.parameterName});`;
+    }).join('\n        ');
+
+    const template = `
 import java.util.*;
 import java.util.stream.*;
 
-class Main {
+public class Main {
 
-    // Function to ${functionName}
-    public static ${returnTypeMapped} ${functionName}(${parameters
-      .map((p) => `${typeMappings['java'][p.parameterType]} ${p.parameterName}`)
-      .join(', ')}) {
-        // Add logic here based on the problem
-        return ${defaultReturnValue}; // Placeholder return
+    public static ${returnTypeMapped} ${functionName}(${parameterList}) {
+        // Debug input prints
+        ${debugPrints}
+
+        // Add your logic here
+        return ${defaultReturn}; // Default return
     }
 
     public static void main(String[] args) {
         Scanner scanner = new Scanner(System.in);
 
-        // Input data
-        ${parameters
-          .map((p) => {
-            if (p.parameterType === 'arrayOfnum') {
-              return `        String[] input = scanner.nextLine().split(","); // Read input as a comma-separated string
-        int[] ${p.parameterName} = Arrays.stream(input).mapToInt(Integer::parseInt).toArray(); // Convert to int array`;
-            } else if (p.parameterType === 'arrayOfStr') {
-              return `        String[] ${p.parameterName} = scanner.nextLine().split(","); // Read input as a comma-separated array of strings`;
-            } else if (p.parameterType === 'str') {
-              return `        String ${p.parameterName} = scanner.nextLine(); // Read input as a string`;
-            } else {
-              return `        ${typeMappings['java'][p.parameterType]} ${p.parameterName} = scanner.next${
-                p.parameterType === 'float' ? 'Float' : p.parameterType.charAt(0).toUpperCase() + p.parameterType.slice(1)
-              }(); // Read input`;
-            }
-          })
-          .join('\n')}
+        // Input parsing
+${inputHandling}
 
-        // Call function and print result
-        ${returnTypeMapped} result = ${functionName}(${parameters.map((p) => `${p.parameterName}`).join(', ')});
-        System.out.println(result); // Print result
+        // Execute function
+        Object result = ${functionName}(${parameters.map(p => p.parameterName).join(', ')});
+
+        // Result formatting
+        if (result instanceof int[]) {
+            System.out.println(Arrays.toString((int[]) result));
+        } else if (result instanceof String[]) {
+            System.out.println(Arrays.toString((String[]) result));
+        } else if (result instanceof Object[]) {
+            System.out.println(Arrays.deepToString((Object[]) result));
+        } else {
+            System.out.println(result);
+        }
 
         scanner.close();
     }
 }
-`;
-
-    return [null, javaTemplate];
+    `;
+    return [null, template];
   } catch (error) {
     console.error('Error generating template:', error);
     return [error, null];
@@ -368,6 +443,47 @@ int main() {
   }
 }
 
+// Separate function to generate a Python template
+async function generatePythonTemplate(functionName, parameters, returnType) {
+  try {
+    // Create function parameter mappings with type hints
+    const parameterMappings = parameters
+        .map(p => {
+            const type = typeMappings.python[p.parameterType] || 'Any';
+            return `${p.parameterName}: ${type}`;
+        })
+        .join(', ');
+
+    // Generate input handling code for each parameter
+    const inputHandling = parameters
+        .map(p => {
+            const inputLogic = typeMappings.python.input(p.parameterType);
+            return `_${p.parameterName}_ = ${inputLogic}`;
+        })
+        .join('\n');
+
+    // Return the complete Python template as a string
+    return [null, `
+import sys
+import json
+from typing import List, Dict, Any
+
+# Before submitting the code, please remove the print statement.
+def ${functionName}(${parameterMappings}) -> ${typeMappings.python[returnType]}:
+    # Add your code here
+    return
+
+# Example usage
+${inputHandling}
+result = ${functionName}(${parameters.map(p => `_${p.parameterName}_`).join(', ')})
+print(json.dumps(result))
+    `];
+      
+  } catch (error) {
+    console.error('Error generating template:', error);
+    return [error, null];
+  }
+}
 // generate c++ template for the given function name and parameters
 function generateCppTemplates(functionName, parameters, returnType) {
   try {
