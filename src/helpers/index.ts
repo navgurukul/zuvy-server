@@ -19,7 +19,28 @@ export const typeMappings = {
     bool: 'boolean',
     arrayOfnum: 'int[]',
     arrayOfStr: 'String[]',
-    jsonType: 'void',
+    jsonType: 'Object',
+    object: 'Object',
+    returnType: 'Object',
+    input: (parameterType) => {
+      const mapping = {
+        int: 'Integer.parseInt(scanner.nextLine().trim())',
+        float: 'Float.parseFloat(scanner.nextLine().trim())',
+        double: 'Double.parseDouble(scanner.nextLine().trim())',
+        str: 'scanner.nextLine().trim()',
+        bool: 'Boolean.parseBoolean(scanner.nextLine().trim())',
+        arrayOfnum: `Arrays.stream(scanner.nextLine()
+              .replaceAll("\\\\[|\\\\]|\\\\s", "")
+              .split(","))
+              .mapToInt(Integer::parseInt)
+              .toArray()`,
+        arrayOfStr: `scanner.nextLine()
+              .replaceAll("\\\\[|\\\\]|\\\\s", "")
+              .split(",")`,
+        object: 'scanner.nextLine().trim()'
+      };
+      return mapping[parameterType] || 'scanner.nextLine().trim()';
+    },
     defaultReturnValue: {
       int: '0',
       float: '0.0f',
@@ -28,6 +49,7 @@ export const typeMappings = {
       bool: 'false',
       arrayOfnum: 'new int[0]',
       arrayOfStr: 'new String[0]',
+      object: 'null',
       void: '',
     },
   },
@@ -214,7 +236,7 @@ rl.on('close', () => {
     if (errorCppTemplate) {
       return [errorCppTemplate, null];
     }
-    let [errorJavaTemplate, javaTemplate] = await generateJavaTemplates(functionName, parameters, returnType);
+    let [errorJavaTemplate, javaTemplate] = await generateJavaTemplate(functionName, parameters, returnType);
     if (errorJavaTemplate) {
       return [errorJavaTemplate, null];
     }
@@ -277,60 +299,71 @@ rl.on('close', () => {
   }
 };
 
-// Function to generate Java template for the given function name and parameters
-async function generateJavaTemplates(functionName, parameters, returnType) {
+async function generateJavaTemplate(functionName, parameters, returnType = 'object') {
   try {
-    // Get return type and default value
-    const returnTypeMapped = typeMappings['java'][returnType] || typeMappings['java']['void'];
-    const defaultReturnValue =
-      typeMappings['java'].defaultReturnValue[returnType] || typeMappings['java'].defaultReturnValue['void'];
+    const returnTypeMapped = typeMappings.java[returnType] || 'Object';
+    const defaultReturn = typeMappings.java.defaultReturnValue[returnType] || 'null';
 
-    // Generate Java template
-    const javaTemplate = `
+    // Generate parameter list with types
+    const parameterList = parameters.map(p => 
+      `${typeMappings.java[p.parameterType] || 'Object'} ${p.parameterName}`
+    ).join(', ');
+
+    // Generate input handling
+    const inputHandling = parameters.map(p => {
+      const inputLogic = typeMappings.java.input(p.parameterType);
+      return `        ${typeMappings.java[p.parameterType]} ${p.parameterName} = ${inputLogic};`;
+    }).join('\n');
+
+    // Generate print statements for debugging
+    const debugPrints = parameters.map(p => {
+      if (p.parameterType === 'arrayOfnum') {
+        return `System.out.println(Arrays.toString(${p.parameterName}));`;
+      } else if (p.parameterType === 'arrayOfStr') {
+        return `System.out.println(Arrays.toString(${p.parameterName}));`;
+      }
+      return `System.out.println(${p.parameterName});`;
+    }).join('\n        ');
+
+    const template = `
 import java.util.*;
 import java.util.stream.*;
 
-class Main {
+public class Main {
 
-    // Function to ${functionName}
-    public static ${returnTypeMapped} ${functionName}(${parameters
-      .map((p) => `${typeMappings['java'][p.parameterType]} ${p.parameterName}`)
-      .join(', ')}) {
-        // Add logic here based on the problem
-        return ${defaultReturnValue}; // Placeholder return
+    public static ${returnTypeMapped} ${functionName}(${parameterList}) {
+        // Debug input prints
+        ${debugPrints}
+
+        // Add your logic here
+        return ${defaultReturn}; // Default return
     }
 
     public static void main(String[] args) {
         Scanner scanner = new Scanner(System.in);
 
-        // Input data
-        ${parameters
-          .map((p) => {
-            if (p.parameterType === 'arrayOfnum') {
-              return `        String[] input = scanner.nextLine().split(","); // Read input as a comma-separated string
-        int[] ${p.parameterName} = Arrays.stream(input).mapToInt(Integer::parseInt).toArray(); // Convert to int array`;
-            } else if (p.parameterType === 'arrayOfStr') {
-              return `        String[] ${p.parameterName} = scanner.nextLine().split(","); // Read input as a comma-separated array of strings`;
-            } else if (p.parameterType === 'str') {
-              return `        String ${p.parameterName} = scanner.nextLine(); // Read input as a string`;
-            } else {
-              return `        ${typeMappings['java'][p.parameterType]} ${p.parameterName} = scanner.next${
-                p.parameterType === 'float' ? 'Float' : p.parameterType.charAt(0).toUpperCase() + p.parameterType.slice(1)
-              }(); // Read input`;
-            }
-          })
-          .join('\n')}
+        // Input parsing
+${inputHandling}
 
-        // Call function and print result
-        ${returnTypeMapped} result = ${functionName}(${parameters.map((p) => `${p.parameterName}`).join(', ')});
-        System.out.println(result); // Print result
+        // Execute function
+        Object result = ${functionName}(${parameters.map(p => p.parameterName).join(', ')});
+
+        // Result formatting
+        if (result instanceof int[]) {
+            System.out.println(Arrays.toString((int[]) result));
+        } else if (result instanceof String[]) {
+            System.out.println(Arrays.toString((String[]) result));
+        } else if (result instanceof Object[]) {
+            System.out.println(Arrays.deepToString((Object[]) result));
+        } else {
+            System.out.println(result);
+        }
 
         scanner.close();
     }
 }
-`;
-
-    return [null, javaTemplate];
+    `;
+    return [null, template];
   } catch (error) {
     console.error('Error generating template:', error);
     return [error, null];
