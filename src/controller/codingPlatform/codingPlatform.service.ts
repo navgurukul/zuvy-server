@@ -23,7 +23,7 @@ export class CodingPlatformService {
   async submitCodeBatch(sourceCode: SubmitCodeDto, codingOutsourseId: number, action: string): Promise<any> {
     let testCase;
     if (RUN === action) {
-        testCase = 3;
+        testCase = 2;
     } else {
         testCase = 0;
     }
@@ -416,7 +416,7 @@ export class CodingPlatformService {
               expectedOutput: true,
             },
             orderBy: (testCase, { asc }) => asc(testCase.id),
-            limit: totalCasses == 3 ? totalCasses : undefined,
+            limit: totalCasses == 2 ? totalCasses : undefined,
           }
         }
       })
