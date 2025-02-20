@@ -81,7 +81,38 @@ export const typeMappings = {
     bool: 'bool',
     arrayOfnum: 'std::vector<int>',
     arrayOfStr: 'std::vector<std::string>',
-    jsonType: 'void',
+    jsonType: 'std::string',
+    object: 'std::string',
+    returnType: 'void',
+    input: (parameterType, paramName) => {
+      const mapping = {
+        int: `[]() { return std::stoi(input${paramName}); }()`,
+        float: `[]() { return std::stof(input${paramName}); }()`,
+        double: `[]() { return std::stod(input${paramName}); }()`,
+        str: `input${paramName}`,
+        bool: `[]() { return input${paramName} == "true"; }()`,
+        arrayOfnum: `[&input${paramName}]() {
+            std::vector<int> arr;
+            std::string token;
+            std::istringstream stream(input${paramName});
+            while (std::getline(stream, token, ',')) {
+                arr.push_back(std::stoi(token));
+            }
+            return arr;
+        }()`,
+        arrayOfStr: `[&input${paramName}]() {
+            std::vector<std::string> arr;
+            std::string token;
+            std::istringstream stream(input${paramName});
+            while (std::getline(stream, token, ',')) {
+                arr.push_back(token);
+            }
+            return arr;
+        }()`,
+        object: `input${paramName}`
+      };
+      return mapping[parameterType] || `input${paramName}`;
+    },
     defaultReturnValue: {
       int: '0',
       float: '0.0f',
@@ -90,8 +121,10 @@ export const typeMappings = {
       bool: 'false',
       arrayOfnum: '{}',
       arrayOfStr: '{}',
-      void: '',
-    },
+      jsonType: '""',
+      object: '""',
+      void: ''
+    }
   },
   python: {
     int: 'int',
@@ -224,15 +257,15 @@ rl.on('close', () => {
       (p, index) => `const _${p.parameterName}_ = ${typeMappings.javascript.input(p.parameterType).replace('input', `inputLines[${index}]`)};`
   ).join('\n  ')}
   const result = ${functionName}(${parameters.map(p => `_${p.parameterName}_`).join(', ')});
-  console.log(JSON.stringify(result));
-});
+  ${ !["arrayOfnum","arrayOfStr", "jsonType","object"].includes(returnType)? 'console.log(result);' : 'console.log(JSON.stringify(result));'}
+  });
   `];
 };
     let [errorCtemplate, cTemplate] = await generateCTemplates(functionName, parameters, returnType);
     if (errorCtemplate) {
       return [errorCtemplate, null];
     }
-    let [errorCppTemplate, cppTemplate] = generateCppTemplates(functionName, parameters, returnType);
+    let [errorCppTemplate, cppTemplate] = await generateCppTemplate(functionName, parameters, returnType);
     if (errorCppTemplate) {
       return [errorCppTemplate, null];
     }
@@ -476,7 +509,9 @@ def ${functionName}(${parameterMappings}) -> ${typeMappings.python[returnType]}:
 # Example usage
 ${inputHandling}
 result = ${functionName}(${parameters.map(p => `_${p.parameterName}_`).join(', ')})
-print(json.dumps(result))
+  ${ !["arrayOfnum","arrayOfStr", "jsonType","object"].includes(returnType)? 'print(result);' : 'print(json.dumps(result));'}
+
+
     `];
       
   } catch (error) {
@@ -485,68 +520,85 @@ print(json.dumps(result))
   }
 }
 // generate c++ template for the given function name and parameters
-function generateCppTemplates(functionName, parameters, returnType) {
+
+async function generateCppTemplate(functionName, parameters, returnType = 'void') {
   try {
-    // Get return type and default value
-    const returnTypeMapped = typeMappings['cpp'][returnType] || typeMappings['cpp']['returnType'];
-    const defaultReturnValue =
-      typeMappings['cpp'].defaultReturnValue[returnType] || typeMappings['cpp'].defaultReturnValue['void'];
+    const returnTypeMapped = typeMappings.cpp[returnType] || 'void';
+    const defaultReturn = typeMappings.cpp.defaultReturnValue[returnType] || '';
 
-    // Generate C++ template
-    const cppTemplate = `
-#include <iostream>
+    const parameterList = parameters.map(p => 
+      `${typeMappings.cpp[p.parameterType]} ${p.parameterName}`
+    ).join(', ');
+
+    const inputHandling = parameters.map(p => {
+      const inputVar = `input${p.parameterName}`;
+      return `
+    std::string ${inputVar};
+    std::getline(std::cin, ${inputVar});
+    ${typeMappings.cpp[p.parameterType]} ${p.parameterName} = ${typeMappings.cpp.input(p.parameterType, p.parameterName)};`;
+    }).join('\n');
+
+    const debugPrints = parameters.map(p => {
+      if (p.parameterType === 'arrayOfnum') {
+        return `    std::cout << "Debug ${p.parameterName}: ";
+    for (int num : ${p.parameterName}) { std::cout << num << " "; }
+    std::cout << "\\n";`;
+      } else if (p.parameterType === 'arrayOfStr') {
+        return `    std::cout << "Debug ${p.parameterName}: ";
+    for (const auto& word : ${p.parameterName}) { std::cout << word << " "; }
+    std::cout << "\\n";`;
+      }
+      return `    std::cout << "Debug ${p.parameterName}: " << ${p.parameterName} << "\\n";`;
+    }).join('\n');
+
+    const template = `#include <iostream>
 #include <vector>
+#include <sstream>
 #include <string>
-#include <map>
-#include <limits>
+#include <type_traits>
 
-using namespace std;
-
-// Function to ${functionName}
-${returnTypeMapped} ${functionName}(${parameters
-        .map((p) => `${typeMappings['cpp'][p.parameterType]} ${p.parameterName}`)
-        .join(', ')}) {
+${returnTypeMapped} ${functionName}(${parameterList}) {
+${debugPrints}
     
-    return ${defaultReturnValue}; // Return default value
+    // Add your logic here
+    // Example starter code:
+    int sum = 0;
+    for (int num : numbers) sum += num;
+    
+    std::string concatenated;
+    for (const auto& word : words) concatenated += word + " ";
+    
+    return ${defaultReturn};
 }
 
-int main() {
-    // Input data
-    ${parameters
-        .map((p) => {
-          if (p.parameterType === 'arrayOfnum') {
-            return `
-    vector<int> ${p.parameterName};
-    int temp;
-    while (cin >> temp) {
-        ${p.parameterName}.push_back(temp);
-    }
-    cin.clear(); // Clear error state
-    cin.ignore(numeric_limits<streamsize>::max(), '\\n');`;
-          } else if (p.parameterType === 'str') {
-            return `
-    string ${p.parameterName};
-    getline(cin, ${p.parameterName});`;
-          } else {
-            return `
-    ${typeMappings['cpp'][p.parameterType]} ${p.parameterName};
-    cin >> ${p.parameterName};
-    cin.ignore(); // Clear buffer for next input`;
-          }
-        })
-        .join('\n')}
+int main() {${inputHandling}
 
-    // Call function and print result
-    ${returnTypeMapped} result = ${functionName}(${parameters.map((p) => `${p.parameterName}`).join(', ')});
-    if (result != ${defaultReturnValue}) {
-        cout << result << endl;
+    auto result = ${functionName}(${parameters.map(p => p.parameterName).join(', ')});
+    
+    // C++11 compatible output handling
+    if (!std::is_same<decltype(result), void>::value) {
+        if (std::is_same<decltype(result), std::vector<int>>::value) {
+            std::cout << "[";
+            for (size_t i = 0; i < result.size(); ++i) {
+                std::cout << result[i] << (i < result.size()-1 ? "," : "");
+            }
+            std::cout << "]";
+        } else if (std::is_same<decltype(result), std::vector<std::string>>::value) {
+            std::cout << "[";
+            for (size_t i = 0; i < result.size(); ++i) {
+                std::cout << "\\"" << result[i] << "\\"" << (i < result.size()-1 ? "," : "");
+            }
+            std::cout << "]";
+        } else {
+            std::cout << result;
+        }
     }
-
+    
     return 0;
-}
-`;
+}`;
+console.log(template);
 
-    return [null, cppTemplate]
+    return [null, template];
   } catch (error) {
     return [error, null];
   }
