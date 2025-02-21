@@ -131,4 +131,42 @@ export class AdminAssessmentController {
   ) {
     return this.adminAssessmentService.getModuleChapterStudents(chapterID, searchStudent, limit, offSet);
   }
+
+  @Get('/leaderBoard/bootcampId:bootcampId')
+  @ApiOperation({ summary: 'Get the leaderboard' })
+  @ApiQuery({
+    name: 'criteria',
+    required: false,
+    type: String,
+    description: 'criteria',
+  })
+  @ApiQuery({
+    name: 'assessmentOutsourseId',
+    required: false,
+    type: [Number],
+    description: 'assessmentOutsourseId',
+    
+  })
+  @ApiQuery({
+    name: 'limit',
+    type: Number,
+    description: 'limit',
+    required: false
+  })
+  @ApiQuery({
+    name: 'offset',
+    type: Number,
+    description: 'offset',
+    required: false
+  })
+  @ApiBearerAuth()
+  async getAdminLeaderboard(
+    @Param('bootcampId') bootcampId: number,
+    @Query('criteria') criteria: 'attendance' | 'bootcampProgress' | 'assessmentScore',
+    @Query('assessmentOutsourseId') assessmentOutsourseId: number | number[],
+    @Query('limit') limit: number,
+    @Query('offset') offset: number
+  ) {
+    return this.adminAssessmentService.getLeaderboardByCriteria(bootcampId, criteria, assessmentOutsourseId, limit, offset);
+  }
 }

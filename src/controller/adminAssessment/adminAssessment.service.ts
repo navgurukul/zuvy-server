@@ -697,6 +697,118 @@ export class AdminAssessmentService {
     } catch (error) {
       throw error;
     }
-  } 
-    
+  }
+
+  async getLeaderboardByCriteria(
+    bootcampId: number,
+    criteria: 'attendance' | 'bootcampProgress' | 'assessmentScore',
+    assessmentOutsourseId: number | number[],
+    limit: number,
+    offset: number
+  ) {
+    try {
+      const bootcampData = await db.query.zuvyBootcamps.findMany({
+        where: (bootcamp, { eq }) => eq(bootcamp.id, bootcampId),
+        with: {
+          students: {
+            columns: { attendance: true },
+            where: (batchEnrolled, { sql }) => sql`${batchEnrolled.batchId} IS NOT NULL`,
+            with: {
+              userInfo: {
+                columns: { id: true, name: true, email: true },
+              },
+              userTracking: {
+                columns: { progress: true, updatedAt: true },
+                where: (track, { eq }) => eq(track.bootcampId, bootcampId),
+              },
+            },
+          },
+        },
+      });
+
+      // fetch Bootcamp assessments
+      // Fetch Bootcamp assessments with optional filtering by assessmentOutsourseId
+      const bootcampAssessments = await db.query.zuvyOutsourseAssessments.findMany({
+        where: (assessment, { eq, and, inArray }) => {
+          const conditions = [eq(assessment.bootcampId, bootcampId)];
+
+          if (assessmentOutsourseId) {
+            const assessmentIds = Array.isArray(assessmentOutsourseId) ? assessmentOutsourseId : [assessmentOutsourseId];
+            conditions.push(inArray(assessment.id, assessmentIds));
+          }
+
+          return and(...conditions);
+        },
+        columns: { id: true },
+        with: {
+          submitedOutsourseAssessments: {
+            columns: { userId: true, marks: true },
+          },
+        },
+      });
+
+      console.log("bootcampAssessments", bootcampAssessments)
+      // Students average assessment score calculate
+      const studentScores: Record<number, number> = {};
+
+      bootcampAssessments.forEach((assessment) => {
+        assessment.submitedOutsourseAssessments.forEach((submission) => {
+          if (!studentScores[submission.userId]) {
+            studentScores[submission.userId] = 0;
+          }
+          studentScores[submission.userId] += submission.marks || 0;
+        });
+      });
+
+      const totalAssessments = bootcampAssessments.length;
+      for (const userId in studentScores) {
+        studentScores[userId] = totalAssessments > 0 ? studentScores[userId] / totalAssessments : 0;
+      }
+
+      const leaderboardData = bootcampData.map((bootcamp) => {
+        const studentsWithScores = bootcamp['students'].map((student) => {
+          const attendance = student.attendance || 0;
+          const progress = student.userTracking?.progress || 0;
+          const assessmentScore = studentScores[student.userInfo.id] || 0;
+
+          return {
+            ...student,
+            userInfo: {
+              id: Number(student.userInfo.id),
+              name: student.userInfo.name,
+              email: student.userInfo.email,
+            },
+            attendance,
+            progress,
+            assessmentScore,
+          };
+        });
+
+        const totalStudents = studentsWithScores.length;
+        const totalPages = !isNaN(limit) ? Math.ceil(totalStudents / limit) : 1;
+
+        // Sorting based on criteria
+        if (criteria === 'attendance') {
+          studentsWithScores.sort((a, b) => b.attendance - a.attendance);
+        } else if (criteria === 'bootcampProgress') {
+          studentsWithScores.sort((a, b) => b.progress - a.progress);
+        } else if (assessmentOutsourseId || criteria === 'assessmentScore') {
+          studentsWithScores.sort((a, b) => b.assessmentScore - a.assessmentScore);
+        }
+
+        // Return sorted students with pagination
+        return {
+          ...bootcamp,
+          students: !isNaN(limit) && !isNaN(offset) ? studentsWithScores.slice(offset, limit + offset) : studentsWithScores,
+          totalStudents,
+          totalPages,
+        };
+      });
+
+      return leaderboardData;
+    } catch (err) {
+      throw err;
+    }
+  }
+
 }
