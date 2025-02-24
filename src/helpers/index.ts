@@ -1,3 +1,5 @@
+import { json } from "stream/consumers";
+
 export const complairDateTyeps = [
   'int',
   'float',
@@ -30,14 +32,13 @@ export const typeMappings = {
         str: 'scanner.nextLine().trim()',
         bool: 'Boolean.parseBoolean(scanner.nextLine().trim())',
         arrayOfnum: `Arrays.stream(scanner.nextLine()
-              .replaceAll("\\\\[|\\\\]|\\\\s", "")
               .split(","))
               .mapToInt(Integer::parseInt)
               .toArray()`,
         arrayOfStr: `scanner.nextLine()
-              .replaceAll("\\\\[|\\\\]|\\\\s", "")
               .split(",")`,
-        object: 'scanner.nextLine().trim()'
+        object: 'scanner.nextLine().trim()',
+        jsonType: 'new Gson().fromJson(scanner.nextLine().trim(), Object.class)',
       };
       return mapping[parameterType] || 'scanner.nextLine().trim()';
     },
@@ -193,6 +194,8 @@ export async function generateTemplates(functionName, parameters, returnType) {
     /**
      * Generate JavaScript function template
      */
+    functionName = functionName.replace(/ /g, '_');
+    console.log('functionName:', functionName);
     const generateJavaScriptTemplate = (functionName, parameters, returnType) => {
       // Map parameter names
       const parameterMappings = parameters.map(p => p.parameterName).join(', ');
@@ -309,7 +312,7 @@ async function generateJavaTemplate(functionName, parameters, returnType = 'obje
     const returnTypeMapped = typeMappings.java[returnType] || 'Object';
     const defaultReturn = typeMappings.java.defaultReturnValue[returnType] || 'null';
 
-    // Generate parameter list with types
+    // Generate parameter list with types for the function
     const parameterList = parameters.map(p =>
       `${typeMappings.java[p.parameterType] || 'Object'} ${p.parameterName}`
     ).join(', ');
