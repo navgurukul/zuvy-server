@@ -188,44 +188,16 @@ export const typeMappings = {
   },
 };
 
-
-
-
 export async function generateTemplates(functionName, parameters, returnType) {
   try {
-    functionName = functionName.replace(/ /g, '_').toLowerCase();
     /**
-     * Get parameter mappings for function definition
+     * Generate JavaScript function template
      */
-    const getParameterMappings = (parameters) => {
-      return parameters
-        .map(p => {
-          const type = typeMappings.javascript[p.parameterType] || 'any';
-          return `${p.parameterName}: ${type}`;
-        })
-        .join(', ');
-    };
+    const generateJavaScriptTemplate = (functionName, parameters, returnType) => {
+      // Map parameter names
+      const parameterMappings = parameters.map(p => p.parameterName).join(', ');
 
-    /**
-     * Get input handling logic for parameters
-     */
-    const getInputHandling = (parameters) => {
-      return parameters
-        .map(p => {
-          const inputLogic = typeMappings.javascript.input(p.parameterType);
-          return `const _${p.parameterName}_ = ${inputLogic};`;
-        })
-        .join('\n');
-    };
-  
-/**
- * Generate JavaScript function template
- */
-const generateJavaScriptTemplate = (functionName, parameters, returnType) => {
-  // Map parameter names
-  const parameterMappings = parameters.map(p => p.parameterName).join(', ');
-
-  return [null, `
+      return [null, `
 const readline = require('readline');
 
 // Create readline interface
@@ -253,14 +225,14 @@ rl.on('line', (line) => {
 rl.on('close', () => {
   // Process inputs
   ${parameters
-  .map(
-      (p, index) => `const _${p.parameterName}_ = ${typeMappings.javascript.input(p.parameterType).replace('input', `inputLines[${index}]`)};`
-  ).join('\n  ')}
+          .map(
+            (p, index) => `const _${p.parameterName}_ = ${typeMappings.javascript.input(p.parameterType).replace('input', `inputLines[${index}]`)};`
+          ).join('\n  ')}
   const result = ${functionName}(${parameters.map(p => `_${p.parameterName}_`).join(', ')});
-  ${ !["arrayOfnum","arrayOfStr", "jsonType","object"].includes(returnType)? 'console.log(result);' : 'console.log(JSON.stringify(result));'}
+  ${!["arrayOfnum", "arrayOfStr", "jsonType", "object"].includes(returnType) ? 'console.log(result);' : 'console.log(JSON.stringify(result));'}
   });
   `];
-};
+    };
     let [errorCtemplate, cTemplate] = await generateCTemplates(functionName, parameters, returnType);
     if (errorCtemplate) {
       return [errorCtemplate, null];
@@ -283,7 +255,7 @@ rl.on('close', () => {
     if (errorJavascriptTemplate) {
       return [errorJavascriptTemplate, null];
     }
-   
+
     const templates = {};
     // Generate C template
     templates['c'] = {
@@ -338,7 +310,7 @@ async function generateJavaTemplate(functionName, parameters, returnType = 'obje
     const defaultReturn = typeMappings.java.defaultReturnValue[returnType] || 'null';
 
     // Generate parameter list with types
-    const parameterList = parameters.map(p => 
+    const parameterList = parameters.map(p =>
       `${typeMappings.java[p.parameterType] || 'Object'} ${p.parameterName}`
     ).join(', ');
 
@@ -347,16 +319,22 @@ async function generateJavaTemplate(functionName, parameters, returnType = 'obje
       const inputLogic = typeMappings.java.input(p.parameterType);
       return `        ${typeMappings.java[p.parameterType]} ${p.parameterName} = ${inputLogic};`;
     }).join('\n');
+    // Dynamically generate printResult logic based on returnType
+    let printLogic = '';
+    if (returnType === 'int' || returnType === 'float' || returnType === 'double' || returnType === 'bool') {
+      printLogic = `System.out.println(result);`;
+    } else if (returnType === 'str') {
+      printLogic = `System.out.println((String) result);`;
+    } else if (returnType === 'arrayOfnum') {
+      printLogic = `System.out.println(Arrays.toString((int[]) result));`;
+    } else if (returnType === 'arrayOfStr') {
+      printLogic = `System.out.println(Arrays.toString((String[]) result));`;
+    } else if (returnType === 'object' || returnType === 'jsonType') {
+      printLogic = `System.out.println(result.toString());`;
+    } else {
+      printLogic = `System.out.println(result.getClass().getSimpleName());`;
+    }
 
-    // Generate print statements for debugging
-    const debugPrints = parameters.map(p => {
-      if (p.parameterType === 'arrayOfnum') {
-        return `System.out.println(Arrays.toString(${p.parameterName}));`;
-      } else if (p.parameterType === 'arrayOfStr') {
-        return `System.out.println(Arrays.toString(${p.parameterName}));`;
-      }
-      return `System.out.println(${p.parameterName});`;
-    }).join('\n        ');
 
     const template = `
 import java.util.*;
@@ -365,8 +343,6 @@ import java.util.stream.*;
 public class Main {
 
     public static ${returnTypeMapped} ${functionName}(${parameterList}) {
-        // Debug input prints
-        ${debugPrints}
 
         // Add your logic here
         return ${defaultReturn}; // Default return
@@ -380,18 +356,7 @@ ${inputHandling}
 
         // Execute function
         Object result = ${functionName}(${parameters.map(p => p.parameterName).join(', ')});
-
-        // Result formatting
-        if (result instanceof int[]) {
-            System.out.println(Arrays.toString((int[]) result));
-        } else if (result instanceof String[]) {
-            System.out.println(Arrays.toString((String[]) result));
-        } else if (result instanceof Object[]) {
-            System.out.println(Arrays.deepToString((Object[]) result));
-        } else {
-            System.out.println(result);
-        }
-
+        ${printLogic}
         scanner.close();
     }
 }
@@ -481,19 +446,19 @@ async function generatePythonTemplate(functionName, parameters, returnType) {
   try {
     // Create function parameter mappings with type hints
     const parameterMappings = parameters
-        .map(p => {
-            const type = typeMappings.python[p.parameterType] || 'Any';
-            return `${p.parameterName}: ${type}`;
-        })
-        .join(', ');
+      .map(p => {
+        const type = typeMappings.python[p.parameterType] || 'Any';
+        return `${p.parameterName}: ${type}`;
+      })
+      .join(', ');
 
     // Generate input handling code for each parameter
     const inputHandling = parameters
-        .map(p => {
-            const inputLogic = typeMappings.python.input(p.parameterType);
-            return `_${p.parameterName}_ = ${inputLogic}`;
-        })
-        .join('\n');
+      .map(p => {
+        const inputLogic = typeMappings.python.input(p.parameterType);
+        return `_${p.parameterName}_ = ${inputLogic}`;
+      })
+      .join('\n');
 
     // Return the complete Python template as a string
     return [null, `
@@ -509,11 +474,9 @@ def ${functionName}(${parameterMappings}) -> ${typeMappings.python[returnType]}:
 # Example usage
 ${inputHandling}
 result = ${functionName}(${parameters.map(p => `_${p.parameterName}_`).join(', ')})
-  ${ !["arrayOfnum","arrayOfStr", "jsonType","object"].includes(returnType)? 'print(result);' : 'print(json.dumps(result));'}
+${!["arrayOfnum", "arrayOfStr", "jsonType", "object"].includes(returnType) ? 'print(result);' : "print(json.dumps(result, separators=(',', ':')));"}
+`];
 
-
-    `];
-      
   } catch (error) {
     console.error('Error generating template:', error);
     return [error, null];
@@ -526,7 +489,7 @@ async function generateCppTemplate(functionName, parameters, returnType = 'void'
     const returnTypeMapped = typeMappings.cpp[returnType] || 'void';
     const defaultReturn = typeMappings.cpp.defaultReturnValue[returnType] || '';
 
-    const parameterList = parameters.map(p => 
+    const parameterList = parameters.map(p =>
       `${typeMappings.cpp[p.parameterType]} ${p.parameterName}`
     ).join(', ');
 
@@ -596,7 +559,6 @@ int main() {${inputHandling}
     
     return 0;
 }`;
-console.log(template);
 
     return [null, template];
   } catch (error) {
