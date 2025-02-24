@@ -20,132 +20,115 @@ const { RAPID_BASE_URL, RAPID_API_KEY, RAPID_HOST } = process.env; // INPORTING 
 
 @Injectable()
 export class CodingPlatformService {
-
-  async formatForJavaStrict(jsData) {
-    if (Array.isArray(jsData)) {
-      return `Array: {${jsData.map(item => this.formatForJavaStrict(item)).join(', ')}}`;
-    } else
-      if (typeof jsData === 'object' && jsData !== null) {
-        if (Object.keys(jsData).length === 0) return `Object: {}`;
-        return `Object: ${Object.entries(jsData)
-          .map(([key, value]) => `${key} = ${this.formatForJavaStrict(value)}`)
-          .join(', ')}`;
-      } else if (typeof jsData === 'string') {
-        return `"${jsData}"`;
-      } else {
-        return jsData;
-      }
-  }
-
   async submitCodeBatch(sourceCode: SubmitCodeDto, codingOutsourseId: number, action: string): Promise<any> {
     let testCase;
     if (RUN === action) {
-      testCase = 2;
+        testCase = 2;
     } else {
-      testCase = 0;
+        testCase = 0;
     }
     const [error, question] = await this.getCodingQuestion(codingOutsourseId, false, testCase);
     if (error) {
-      return [error];
+        return [error];
     }
     let testCasesArray = question.data.testCases;
 
     const preparedSubmissions = testCasesArray.map((testCase) => {
-      // Process inputs based on their data types
-      const input = testCase.inputs.map(input => {
-        switch (input.parameterType) {
-          case 'int':
-          case 'float':
-          case 'str':
-          case 'bool':
-            return input.parameterValue.toString(); // Convert to string
-          case 'arrayOfnum':
-          case 'arrayOfStr':
-          case 'object':
-          case 'jsonType':
-            return JSON.stringify(input.parameterValue); // Serialize arrays/objects to JSON
-          default:
-            throw new Error(`Unsupported input type: ${input.parameterType}`);
-        }
-      });
+        // Process inputs based on their data types
+        const input = testCase.inputs.map(input => {
+            switch (input.parameterType) {
+                case 'int':
+                case 'float':
+                case 'str':
+                case 'bool':
+                    return input.parameterValue.toString(); // Convert to string
+                case 'arrayOfnum':
+                case 'arrayOfStr':
+                case 'object':
+                case 'jsonType':
+                    return JSON.stringify(input.parameterValue); // Serialize arrays/objects to JSON
+                default:
+                    throw new Error(`Unsupported input type: ${input.parameterType}`);
+            }
+        });
 
-      // Process expected output based on its data type
-      const output = (() => {
-        switch (testCase.expectedOutput.parameterType) {
-          case 'int':
-          case 'float':
-          case 'str':
-          case 'bool':
-            return testCase.expectedOutput.parameterValue.toString(); // Convert to string
-          case 'arrayOfnum':
-          case 'arrayOfStr':
-          case 'jsonType':
-            return (sourceCode.languageId == 96) ? this.formatForJavaStrict(testCase.expectedOutput.parameterValue) : JSON.stringify(testCase.expectedOutput.parameterValue);
-          default:
-            throw new Error(`Unsupported output type: ${testCase.expectedOutput.parameterType}`);
-        }
-      })();
+        // Process expected output based on its data type
+        const output = (() => {
+            switch (testCase.expectedOutput.parameterType) {
+                case 'int':
+                case 'float':
+                case 'str':
+                case 'bool':
+                    return testCase.expectedOutput.parameterValue.toString(); // Convert to string
+                case 'arrayOfnum':
+                case 'arrayOfStr':
+                case 'jsonType':
+                    return JSON.stringify(testCase.expectedOutput.parameterValue); // Serialize to JSON
+                default:
+                    throw new Error(`Unsupported output type: ${testCase.expectedOutput.parameterType}`);
+            }
+        })();
 
-      // Join inputs with newlines and encode in base64
-      const stdinput = input.join('\n');
-      const encodedStdInput = Buffer.from(stdinput).toString('base64');
+        // Join inputs with newlines and encode in base64
+        const stdinput = input.join('\n');
+        const encodedStdInput = Buffer.from(stdinput).toString('base64');
 
-      // Encode expected output in base64
-      const encodedStdOutput = Buffer.from(output).toString('base64');
+        // Encode expected output in base64
+        const encodedStdOutput = Buffer.from(output).toString('base64');
 
-      return {
-        language_id: sourceCode.languageId,
-        source_code: sourceCode.sourceCode,
-        stdin: encodedStdInput,
-        expected_output: encodedStdOutput,
-      };
+        return {
+            language_id: sourceCode.languageId,
+            source_code: sourceCode.sourceCode,
+            stdin: encodedStdInput,
+            expected_output: encodedStdOutput,
+        };
     });
 
     const options = {
-      method: 'POST',
-      url: `${RAPID_BASE_URL}/submissions/batch?base64_encoded=true&wait=true`,
-      headers: {
-        'content-type': 'application/json',
-        'X-RapidAPI-Key': RAPID_API_KEY,
-        'X-RapidAPI-Host': RAPID_HOST,
-      },
-      data: {
-        submissions: preparedSubmissions,
-      },
+        method: 'POST',
+        url: `${RAPID_BASE_URL}/submissions/batch?base64_encoded=true&wait=true`,
+        headers: {
+            'content-type': 'application/json',
+            'X-RapidAPI-Key': RAPID_API_KEY,
+            'X-RapidAPI-Host': RAPID_HOST,
+        },
+        data: {
+            submissions: preparedSubmissions,
+        },
     };
 
     try {
-      const response = await axios.request(options);
-      const tokens = response.data?.map(submission => submission.token);
-      let submissionInfo, err;
+        const response = await axios.request(options);
+        const tokens = response.data?.map(submission => submission.token);
+        let submissionInfo, err;
 
-      await new Promise<void>(resolve => setTimeout(async () => {
-        [err, submissionInfo] = await this.getCodeInfo(tokens);
-        resolve();
-      }, WAIT_API_RESPONSE));
+        await new Promise<void>(resolve => setTimeout(async () => {
+            [err, submissionInfo] = await this.getCodeInfo(tokens);
+            resolve();
+        }, WAIT_API_RESPONSE));
 
-      if (err) {
-        return [err];
-      }
+        if (err) {
+            return [err];
+        }
 
-      // Map submission results to test cases
-      let testSubmission = testCasesArray?.map((testCase, index) => {
-        return {
-          testcastId: testCase?.id,
-          status: submissionInfo.data.submissions[index].status?.description,
-          token: submissionInfo.data.submissions[index]?.token,
-          stdOut: submissionInfo.data.submissions[index]?.stdout,
-          stderr: submissionInfo.data.submissions[index]?.stderr,
-          memory: submissionInfo.data.submissions[index]?.memory,
-          time: submissionInfo.data.submissions[index]?.time,
-        };
-      });
+        // Map submission results to test cases
+        let testSubmission = testCasesArray?.map((testCase, index) => {
+            return {
+                testcastId: testCase?.id,
+                status: submissionInfo.data.submissions[index].status?.description,
+                token: submissionInfo.data.submissions[index]?.token,
+                stdOut: submissionInfo.data.submissions[index]?.stdout,
+                stderr: submissionInfo.data.submissions[index]?.stderr,
+                memory: submissionInfo.data.submissions[index]?.memory,
+                time: submissionInfo.data.submissions[index]?.time,
+            };
+        });
 
-      return [null, { statusCode: STATUS_CODES.OK, message: 'Code submitted successfully', data: testSubmission }];
+        return [null, { statusCode: STATUS_CODES.OK, message: 'Code submitted successfully', data: testSubmission }];
     } catch (error) {
-      return [{ statusCode: STATUS_CODES.BAD_REQUEST, message: error.message }];
+        return [{ statusCode: STATUS_CODES.BAD_REQUEST, message: error.message }];
     }
-  }
+}
 
   async submitPracticeCode(questionId: number, sourceCode, action, userId, submissionId, codingOutsourseId): Promise<any> {
     try {
@@ -387,9 +370,9 @@ export class CodingPlatformService {
         }));
       }
       await db.delete(zuvyTestCases)
-        .where(
-          sql`${zuvyTestCases.questionId} = ${id} AND ${notInArray(zuvyTestCases.id, testCases.map(tc => tc.id))}`
-        );
+      .where(
+        sql`${zuvyTestCases.questionId} = ${id} AND ${notInArray(zuvyTestCases.id, testCases.map(tc => tc.id))}`
+      );
       const newAddedTestCases: any[] = missingIdElements.length > 0 ? await db.insert(zuvyTestCases).values(missingIdElements).returning() : [];
       await this.updateTestCaseAndExpectedOutput(testCases);
       return [null, { message: 'Coding question updated successfully', data: { question, "testCases": [...testCases, ...newAddedTestCases] }, statusCode: STATUS_CODES.OK }];
@@ -413,7 +396,7 @@ export class CodingPlatformService {
 
   async getCodingQuestion(id: number, withTemplate: boolean = true, totalCasses = 0): Promise<any> {
     try {
-      const question: any = await db.query.zuvyCodingQuestions.findMany({
+      const question:any = await db.query.zuvyCodingQuestions.findMany({
         where: (zuvyCodingQuestions, { sql }) => sql`${zuvyCodingQuestions.id} = ${id}`,
         columns: {
           id: true,
