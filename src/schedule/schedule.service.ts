@@ -25,13 +25,21 @@ export class ScheduleService {
   private processingActive = false;
   private currentInterval: number;
   private timeoutId: NodeJS.Timeout;
+  private conditions:any = [
+    { min: 1, max: 1, interval: 200 * 60 * 1000 }, // 200 minutes
+    { min: 2, max: 5, interval: 100 * 60 * 1000 }, // 100 minutes
+    { min: 6, max: 9, interval: 60 * 60 * 1000 },  // 60 minutes
+    { min: 10, max: 19, interval: 30 * 60 * 1000 },  // 30 minutes
+    { min: 20, max: 25, interval: 20 * 60 * 1000 }, // 20 minutes
+    { min: 26, max: 31, interval: 10 * 60 * 1000 }, // 10 minutes
+  ];
 
   constructor() {
     // Initialize the interval when the service starts
     this.handleDynamicScheduling();
   }
 
-  @Cron('*/20 * * * *') // Runs every 6 hours
+  @Cron('0 */6 * * *') // Runs every 6 hours
   async handleDynamicScheduling() {
     this.logger.log('Running main function to determine interval');
     if (this.processingActive) {
@@ -99,24 +107,24 @@ export class ScheduleService {
 
   private shouldProcessSessions(sessionCount: number, now: Date): boolean {
     const timeSinceLastRun = now.getTime() - this.lastProcessedTime.getTime();
+    for (const condition of this.conditions) {
+        if (sessionCount >= condition.min && sessionCount <= condition.max) {
+            return timeSinceLastRun >= condition.interval;
+        }
+    }
 
-    if (sessionCount === 1) return timeSinceLastRun >= 200 * 60 * 1000;
-    if (sessionCount >= 2 && sessionCount <= 3) return timeSinceLastRun >= 100 * 60 * 1000;
-    if (sessionCount >= 4 && sessionCount <= 6) return timeSinceLastRun >= 60 * 60 * 1000;
-    if (sessionCount >= 7 && sessionCount <= 8) return timeSinceLastRun >= 30 * 60 * 1000;
-    if (sessionCount >= 20 && sessionCount <= 25) return timeSinceLastRun >= 20 * 60 * 1000;
-    if (sessionCount >= 26 && sessionCount <= 31) return timeSinceLastRun >= 10 * 60 * 1000;
-    return timeSinceLastRun >= 1 * 60 * 1000;
+    // Default case if no conditions match
+    return timeSinceLastRun >= 1 * 60 * 1000; // 1 minute
   }
 
   private getIntervalBasedOnSessionCount(sessionCount: number): number {
-    if (sessionCount === 1) return 200 * 60 * 1000; // 200 minutes
-    if (sessionCount >= 2 && sessionCount <= 3) return 100 * 60 * 1000; // 100 minutes
-    if (sessionCount >= 4 && sessionCount <= 6) return 60 * 60 * 1000; // 60 minutes
-    if (sessionCount >= 7 && sessionCount <= 8) return 30 * 60 * 1000; // 30 minutes
-    if (sessionCount >= 20 && sessionCount <= 25) return 20 * 60 * 1000; // 20 minutes
-    if (sessionCount >= 26 && sessionCount <= 31) return 10 * 60 * 1000; // 10 minutes
-    return 1 * 60 * 1000; // 5 minutes
+    for (const condition of this.conditions) {
+        if (sessionCount >= condition.min && sessionCount <= condition.max) {
+            return condition.interval;
+        }
+    }
+    // Default case if no conditions match
+    return 1 * 60 * 1000; // 1 minute
   }
 
   private resetTimeout() {
@@ -150,6 +158,7 @@ export class ScheduleService {
       const session = sessions[index];
       index++;
       try {
+        console.log({session});
         await this.processSingleSession(session);
       } catch (error) {
         this.logger.error(`Error processing session: ${error}`);
