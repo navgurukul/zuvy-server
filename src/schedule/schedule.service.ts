@@ -187,8 +187,12 @@ export class ScheduleService {
           if (errAtten) {
             this.logger.error(`Attendance error: ${errAtten}`);
           } 
-          this.logger.log(`Attendance: ${JSON.stringify(dataAttendance?.data)}`);
-          await db.insert(zuvyStudentAttendance).values({attendance: dataAttendance?.data,meetingId:session.meetingId,batchId: session.batchId, bootcampId: session.bootcampId }).execute();
+          this.logger.log(`Attendance: ${JSON.stringify(dataAttendance)}`);
+          if (Array.isArray(dataAttendance)) {
+            this.logger.error(`Attendance error: ${dataAttendance}`);
+          } else if ('data' in dataAttendance) {
+            await db.insert(zuvyStudentAttendance).values({attendance: dataAttendance.data, meetingId: session.meetingId, batchId: session.batchId, bootcampId: session.bootcampId }).execute();
+          }
         }
       }
     } catch (error) {
