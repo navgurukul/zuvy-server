@@ -53,9 +53,7 @@ export class ScheduleService {
       const [startOfDay, endOfDay] = this.getDayBounds(now);
       const sessions = await this.fetchSessions(startOfDay, endOfDay);
       this.logger.log(`Fetched ${sessions.length} sessions`);
-      sessions.length = 50;
       const shouldProcess = this.shouldProcessSessions(sessions.length, now);
-
       if (!shouldProcess) {
         this.logger.log(
           `Skipping processing - Session count: ${sessions.length}, Last run: ${Math.floor(
@@ -71,7 +69,6 @@ export class ScheduleService {
 
       // Clear any existing timeout
       this.resetTimeout();
-
       // Start the recursive timeout
       this.startRecursiveTimeout(sessions);
 
@@ -93,7 +90,7 @@ export class ScheduleService {
   }
 
   private async fetchSessions(startOfDay: Date, endOfDay: Date) {
-    return db.select()
+    let red = await db.select()
       .from(zuvySessions)
       .where(
         and(
@@ -103,6 +100,7 @@ export class ScheduleService {
           lt(zuvySessions.startTime, endOfDay.toISOString()),
         )
       );
+    return red;
   }
 
   private shouldProcessSessions(sessionCount: number, now: Date): boolean {
@@ -154,11 +152,9 @@ export class ScheduleService {
         this.logger.log("All sessions processed");
         return;
       }
-
       const session = sessions[index];
       index++;
       try {
-        console.log({session});
         await this.processSingleSession(session);
       } catch (error) {
         this.logger.error(`Error processing session: ${error}`);
