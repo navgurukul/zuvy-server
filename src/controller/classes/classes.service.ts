@@ -1,4 +1,4 @@
-import { Injectable, Req, Res, HttpStatus, Redirect,Logger } from '@nestjs/common';
+import { Injectable, Req, Res, HttpStatus, Redirect, Logger } from '@nestjs/common';
 import {
   userTokens,
   sansaarUserRoles,
@@ -50,34 +50,34 @@ export class ClassesService {
 
   async accessOfCalendar(creatorInfo) {
     const userId = Number(creatorInfo.id)
-      const fetchedTokens = await db
-        .select()
-        .from(userTokens)
-        .where(eq(userTokens.userId, userId));
-      if (!fetchedTokens) {
-        return { status: 'error', message: 'Unable to fetch tokens' };
-      }
-      auth2Client.setCredentials({
-        access_token: fetchedTokens[0].accessToken,
-        refresh_token: fetchedTokens[0].refreshToken,
-      });
-      if (!creatorInfo.email.endsWith('@zuvy.org')) {
-        return {
-          status: 'error',
-          message: 'Unauthorized email id.'
-        };
-      }
+    const fetchedTokens = await db
+      .select()
+      .from(userTokens)
+      .where(eq(userTokens.userId, userId));
+    if (!fetchedTokens) {
+      return { status: 'error', message: 'Unable to fetch tokens' };
+    }
+    auth2Client.setCredentials({
+      access_token: fetchedTokens[0].accessToken,
+      refresh_token: fetchedTokens[0].refreshToken,
+    });
+    if (!creatorInfo.email.endsWith('@zuvy.org')) {
+      return {
+        status: 'error',
+        message: 'Unauthorized email id.'
+      };
+    }
 
-      if (!creatorInfo.roles?.includes('admin')) {
-        return {
-          status: 'error',
-          message: 'You should be an admin to create a class.',
-        };
-      }
-      const calendar = google.calendar({ version: 'v3', auth: auth2Client });
-      return calendar;
+    if (!creatorInfo.roles?.includes('admin')) {
+      return {
+        status: 'error',
+        message: 'You should be an admin to create a class.',
+      };
+    }
+    const calendar = google.calendar({ version: 'v3', auth: auth2Client });
+    return calendar;
   }
-  
+
   async googleAuthentication(@Res() res, userEmail: string, userId: number) {
     let url = auth2Client.generateAuthUrl({
       access_type: 'offline',
@@ -176,216 +176,216 @@ export class ClassesService {
     daysOfWeek: string[]; // New field: array of days (e.g., ['Monday', 'Wednesday', 'Friday'])
     totalClasses: number; // New field: total number of classes
   }, creatorInfo: any) {
-      try {
-          // Mapping days of the week to moment.js day indices
-          const dayToMomentDay: { [key: string]: number } = {
-              'Sunday': 0,
-              'Monday': 1,
-              'Tuesday': 2,
-              'Wednesday': 3,
-              'Thursday': 4,
-              'Friday': 5,
-              'Saturday': 6
-          };
+    try {
+      // Mapping days of the week to moment.js day indices
+      const dayToMomentDay: { [key: string]: number } = {
+        'Sunday': 0,
+        'Monday': 1,
+        'Tuesday': 2,
+        'Wednesday': 3,
+        'Thursday': 4,
+        'Friday': 5,
+        'Saturday': 6
+      };
 
-          // Validate totalClasses
-          if (eventDetails?.totalClasses <= 0) {
-              return {
-                  status: 'error',
-                  message: 'Total classes should be greater than 0',
-              };
-          }
-
-          const startDateTime__ = new Date(eventDetails.startDateTime);
-          const presentTime = new Date();
-
-          // Validate start and end date times
-          if (startDateTime__ >= new Date(eventDetails.endDateTime)) {
-              return {
-                  status: 'error',
-                  message: 'Start date and time should be less than end date and time',
-              };
-          }
-
-          if (startDateTime__ <= presentTime) {
-              return {
-                  status: 'error',
-                  message: 'Start date and time should be greater than the present time',
-              };
-          }
-
-          // Validate daysOfWeek and totalClasses
-          if (eventDetails?.daysOfWeek.length > 0) {
-              const startDay = new Date(eventDetails.startDateTime).getDay();
-              const daysOfWeek = eventDetails.daysOfWeek.map(day => dayToMomentDay[day]);
-
-              if (!daysOfWeek.includes(startDay)) {
-                  return {
-                      status: 'error',
-                      message: 'Start date should be one of the specified days of the week',
-                  };
-              }
-
-              if (eventDetails?.totalClasses < eventDetails?.daysOfWeek.length) {
-                  return {
-                      status: 'error',
-                      message: 'Total classes should be greater than the number of days of the week',
-                  };
-              }
-          }
-
-          // Fetch batch information
-          let batchInfo = await db.select().from(zuvyBatches).where(eq(zuvyBatches.id, eventDetails.batchId));
-          if (batchInfo.length === 0) {
-              return {
-                  status: 'error',
-                  message: 'Batch not found',
-                  code: 404,
-              };
-          }
-          let bootcampId = batchInfo[0].bootcampId;
-
-          // Access calendar
-          let calendar: any = await this.accessOfCalendar(creatorInfo);
-
-          // Fetch students' emails in the batch
-          const studentsInTheBatchEmails = await db
-              .select()
-              .from(zuvyBatchEnrollments)
-              .where(eq(zuvyBatchEnrollments.batchId, eventDetails.batchId));
-
-          const studentsEmails = [];
-          for (const studentEmail of studentsInTheBatchEmails) {
-              try {
-                  const emailFetched = await db
-                      .select()
-                      .from(users)
-                      .where(eq(users.id, studentEmail.userId));
-                  if (emailFetched && emailFetched.length > 0) {
-                      studentsEmails.push({ email: emailFetched[0].email });
-                  }
-              } catch (error) {
-                  return [
-                      { status: 'error', message: 'Fetching emails failed', code: 500 },
-                      null,
-                  ];
-              }
-          }
-
-          // Function to get the next class date
-          const getNextClassDate = (startDate: any, day: string, occurrence: number) => {
-              const dayIndex = dayToMomentDay[day];
-              let nextDate = startDate.clone().day(dayIndex);
-              if (nextDate.isBefore(startDate)) {
-                  nextDate.add(1, 'week');
-              }
-              nextDate.add(occurrence, 'week');
-              return nextDate;
-          };
-
-          const startDateTime = moment(eventDetails.startDateTime);
-          const endDateTime = moment(eventDetails.endDateTime);
-
-          const classes = [];
-          let classCount = 0;
-          let occurrence = 0;
-
-          // Generate class dates
-          while (classCount < eventDetails.totalClasses) {
-              for (const day of eventDetails.daysOfWeek) {
-                  if (classCount >= eventDetails.totalClasses) break;
-                  const classStartDateTime = getNextClassDate(startDateTime, day, occurrence);
-                  const classEndDateTime = classStartDateTime.clone()
-                      .add(endDateTime.diff(startDateTime));
-
-                  classes.push({
-                      startDateTime: classStartDateTime.format(),
-                      endDateTime: classEndDateTime.format()
-                  });
-
-                  classCount++;
-              }
-              occurrence++;
-          }
-
-          // Create the initial event with recurrence rules
-          const firstEvent = classes[0];
-          const recurrenceRule = `RRULE:FREQ=WEEKLY;COUNT=${eventDetails.totalClasses};BYDAY=${eventDetails.daysOfWeek.map(day => day.slice(0, 2).toUpperCase()).join(',')}`;
-          const eventData = {
-              calendarId: 'primary',
-              conferenceDataVersion: 1,
-              requestBody: {
-                  summary: eventDetails.title,
-                  description: eventDetails.description,
-                  start: {
-                      dateTime: moment(firstEvent.startDateTime).subtract(5, 'hours').subtract(30, 'minutes').format(),
-                      timeZone: eventDetails.timeZone,
-                  },
-                  end: {
-                      dateTime: moment(firstEvent.endDateTime).subtract(5, 'hours').subtract(30, 'minutes').format(),
-                      timeZone: eventDetails.timeZone,
-                  },
-                  attendees: studentsEmails,
-                  conferenceData: {
-                      createRequest: {
-                          conferenceSolutionKey: {
-                              type: 'hangoutsMeet',
-                          },
-                          requestId: uuid(),
-                      },
-                  },
-                  recurrence: [recurrenceRule],
-              },
-          };
-
-          const createdEvent = await calendar.events.insert(eventData);
-
-          // Fetch instances of the recurring event
-          const instances = await calendar.events.instances({
-              calendarId: 'primary',
-              eventId: createdEvent.data.id
-          });
-
-          let totalClasses = [];
-
-          // Map instances to class details
-          instances.data.items.map((instance) => {
-              totalClasses.push({
-                  hangoutLink: instance.hangoutLink,
-                  creator: instance.creator.email,
-                  startTime: instance.start.dateTime,
-                  endTime: instance.end.dateTime,
-                  batchId: eventDetails.batchId,
-                  bootcampId,
-                  title: instance.summary,
-                  meetingId: instance.id,
-              });
-          });
-
-          // Save class details to the database
-          const savedClassDetail = await db
-              .insert(zuvySessions)
-              .values(totalClasses)
-              .returning();
-
-          if (savedClassDetail.length > 0) {
-              return {
-                  status: 'success',
-                  message: 'Created Classes successfully',
-                  code: 200,
-                  savedClassDetail: savedClassDetail,
-              };
-          } else {
-              return { success: 'not success', message: 'Class creation failed' };
-          }
-      } catch (error) {
-        Logger.log(`error: ${error.message}`)
-          return {
-              status: 'not success',
-              message: 'error creating class',
-              error: error,
-          };
+      // Validate totalClasses
+      if (eventDetails?.totalClasses <= 0) {
+        return {
+          status: 'error',
+          message: 'Total classes should be greater than 0',
+        };
       }
+
+      const startDateTime__ = new Date(eventDetails.startDateTime);
+      const presentTime = new Date();
+
+      // Validate start and end date times
+      if (startDateTime__ >= new Date(eventDetails.endDateTime)) {
+        return {
+          status: 'error',
+          message: 'Start date and time should be less than end date and time',
+        };
+      }
+
+      if (startDateTime__ <= presentTime) {
+        return {
+          status: 'error',
+          message: 'Start date and time should be greater than the present time',
+        };
+      }
+
+      // Validate daysOfWeek and totalClasses
+      if (eventDetails?.daysOfWeek.length > 0) {
+        const startDay = new Date(eventDetails.startDateTime).getDay();
+        const daysOfWeek = eventDetails.daysOfWeek.map(day => dayToMomentDay[day]);
+
+        if (!daysOfWeek.includes(startDay)) {
+          return {
+            status: 'error',
+            message: 'Start date should be one of the specified days of the week',
+          };
+        }
+
+        if (eventDetails?.totalClasses < eventDetails?.daysOfWeek.length) {
+          return {
+            status: 'error',
+            message: 'Total classes should be greater than the number of days of the week',
+          };
+        }
+      }
+
+      // Fetch batch information
+      let batchInfo = await db.select().from(zuvyBatches).where(eq(zuvyBatches.id, eventDetails.batchId));
+      if (batchInfo.length === 0) {
+        return {
+          status: 'error',
+          message: 'Batch not found',
+          code: 404,
+        };
+      }
+      let bootcampId = batchInfo[0].bootcampId;
+
+      // Access calendar
+      let calendar: any = await this.accessOfCalendar(creatorInfo);
+
+      // Fetch students' emails in the batch
+      const studentsInTheBatchEmails = await db
+        .select()
+        .from(zuvyBatchEnrollments)
+        .where(eq(zuvyBatchEnrollments.batchId, eventDetails.batchId));
+
+      const studentsEmails = [];
+      for (const studentEmail of studentsInTheBatchEmails) {
+        try {
+          const emailFetched = await db
+            .select()
+            .from(users)
+            .where(eq(users.id, studentEmail.userId));
+          if (emailFetched && emailFetched.length > 0) {
+            studentsEmails.push({ email: emailFetched[0].email });
+          }
+        } catch (error) {
+          return [
+            { status: 'error', message: 'Fetching emails failed', code: 500 },
+            null,
+          ];
+        }
+      }
+
+      // Function to get the next class date
+      const getNextClassDate = (startDate: any, day: string, occurrence: number) => {
+        const dayIndex = dayToMomentDay[day];
+        let nextDate = startDate.clone().day(dayIndex);
+        if (nextDate.isBefore(startDate)) {
+          nextDate.add(1, 'week');
+        }
+        nextDate.add(occurrence, 'week');
+        return nextDate;
+      };
+
+      const startDateTime = moment(eventDetails.startDateTime);
+      const endDateTime = moment(eventDetails.endDateTime);
+
+      const classes = [];
+      let classCount = 0;
+      let occurrence = 0;
+
+      // Generate class dates
+      while (classCount < eventDetails.totalClasses) {
+        for (const day of eventDetails.daysOfWeek) {
+          if (classCount >= eventDetails.totalClasses) break;
+          const classStartDateTime = getNextClassDate(startDateTime, day, occurrence);
+          const classEndDateTime = classStartDateTime.clone()
+            .add(endDateTime.diff(startDateTime));
+
+          classes.push({
+            startDateTime: classStartDateTime.format(),
+            endDateTime: classEndDateTime.format()
+          });
+
+          classCount++;
+        }
+        occurrence++;
+      }
+
+      // Create the initial event with recurrence rules
+      const firstEvent = classes[0];
+      const recurrenceRule = `RRULE:FREQ=WEEKLY;COUNT=${eventDetails.totalClasses};BYDAY=${eventDetails.daysOfWeek.map(day => day.slice(0, 2).toUpperCase()).join(',')}`;
+      const eventData = {
+        calendarId: 'primary',
+        conferenceDataVersion: 1,
+        requestBody: {
+          summary: eventDetails.title,
+          description: eventDetails.description,
+          start: {
+            dateTime: moment(firstEvent.startDateTime).subtract(5, 'hours').subtract(30, 'minutes').format(),
+            timeZone: eventDetails.timeZone,
+          },
+          end: {
+            dateTime: moment(firstEvent.endDateTime).subtract(5, 'hours').subtract(30, 'minutes').format(),
+            timeZone: eventDetails.timeZone,
+          },
+          attendees: studentsEmails,
+          conferenceData: {
+            createRequest: {
+              conferenceSolutionKey: {
+                type: 'hangoutsMeet',
+              },
+              requestId: uuid(),
+            },
+          },
+          recurrence: [recurrenceRule],
+        },
+      };
+
+      const createdEvent = await calendar.events.insert(eventData);
+
+      // Fetch instances of the recurring event
+      const instances = await calendar.events.instances({
+        calendarId: 'primary',
+        eventId: createdEvent.data.id
+      });
+
+      let totalClasses = [];
+
+      // Map instances to class details
+      instances.data.items.map((instance) => {
+        totalClasses.push({
+          hangoutLink: instance.hangoutLink,
+          creator: instance.creator.email,
+          startTime: instance.start.dateTime,
+          endTime: instance.end.dateTime,
+          batchId: eventDetails.batchId,
+          bootcampId,
+          title: instance.summary,
+          meetingId: instance.id,
+        });
+      });
+
+      // Save class details to the database
+      const savedClassDetail = await db
+        .insert(zuvySessions)
+        .values(totalClasses)
+        .returning();
+
+      if (savedClassDetail.length > 0) {
+        return {
+          status: 'success',
+          message: 'Created Classes successfully',
+          code: 200,
+          savedClassDetail: savedClassDetail,
+        };
+      } else {
+        return { success: 'not success', message: 'Class creation failed' };
+      }
+    } catch (error) {
+      Logger.log(`error: ${error.message}`)
+      return {
+        status: 'not success',
+        message: 'error creating class',
+        error: error,
+      };
+    }
   }
 
   async getAttendanceByBatchId(batchId: any, userData) {
@@ -436,6 +436,16 @@ export class ClassesService {
             email: emailFetched[0].email,
           };
         }
+        let adminData;
+        response.data.items.forEach((item: any) => {
+          const event = item.events[0];
+          const email = event.parameters.find((param: any) => param.name === 'identifier')?.value || '';
+          const duration = event.parameters.find((param: any) => param.name === 'duration_seconds')?.intValue || '';
+          if (email.includes('@zuvy.org')) {
+            adminData = { email, duration };
+          }
+        });
+        if (!adminData) return;
 
         const extractedData = response.data.items.map((item) => {
           const event = item.events[0];
@@ -445,23 +455,24 @@ export class ClassesService {
           const email =
             event.parameters.find((param) => param.name === 'identifier')
               ?.value || '';
-          const attendanceStatus = durationSeconds ? 'present' : 'absent';
-          if (!meetingAttendance[email]) {
-            meetingAttendance[email] = {};
+          if (email.length > 0) {
+            const attendanceStatus = (Number(durationSeconds) >= 0.75 * Number(adminData.duration)) ? 'present' : 'absent';
+            if (!meetingAttendance[email]) {
+              meetingAttendance[email] = {};
+            }
+
+            meetingAttendance[email][
+              `meeting_${singleMeeting.title}_duration_seconds`
+            ] = durationSeconds;
+            meetingAttendance[email][
+              `meeting_${singleMeeting.title}_attendance`
+            ] = attendanceStatus;
+            return {
+              email,
+              duration: durationSeconds,
+              attendance: attendanceStatus,
+            };
           }
-
-          meetingAttendance[email][
-            `meeting_${singleMeeting.title}_duration_seconds`
-          ] = durationSeconds;
-          meetingAttendance[email][
-            `meeting_${singleMeeting.title}_attendance`
-          ] = attendanceStatus;
-
-          return {
-            email,
-            duration: durationSeconds,
-            attendance: attendanceStatus,
-          };
         });
 
         Object.values(meetingAttendance).forEach((student) => {
@@ -756,7 +767,7 @@ export class ClassesService {
         if (attendanceSheetData.length > 0) {
           const zuvy_student_attendance = await db
             .insert(zuvyStudentAttendance)
-            .values({ meetingId, attendance: attendanceSheetData, batchId:classInfo[0]?.batchId, bootcampId: classInfo[0]?.bootcampId }).returning();
+            .values({ meetingId, attendance: attendanceSheetData, batchId: classInfo[0]?.batchId, bootcampId: classInfo[0]?.bootcampId }).returning();
           if (zuvy_student_attendance.length > 0) {
             let batchStudets = attendanceSheetData
               .filter((student: any) => student.attendance === 'present')
@@ -768,12 +779,12 @@ export class ClassesService {
             students.forEach(async (student) => {
               let old_attendance = await db.select()
                 .from(zuvyBatchEnrollments)
-                .where(sql`${zuvyBatchEnrollments.userId} = ${student.id.toString()} AND ${zuvyBatchEnrollments.batchId} = ${classInfo[0]?.batchId} AND ${zuvyBatchEnrollments.bootcampId} = ${classInfo[0]?.bootcampId}`);              
+                .where(sql`${zuvyBatchEnrollments.userId} = ${student.id.toString()} AND ${zuvyBatchEnrollments.batchId} = ${classInfo[0]?.batchId} AND ${zuvyBatchEnrollments.bootcampId} = ${classInfo[0]?.bootcampId}`);
               let new_attendance = old_attendance[0]?.attendance ? old_attendance[0].attendance + 1 : 1;
               let zuvyBatchEnrollmentsDetailsUpdated = await db
-              .update(zuvyBatchEnrollments)
-              .set({ attendance: new_attendance })
-              .where(sql`${zuvyBatchEnrollments.userId} = ${student.id.toString()} AND ${zuvyBatchEnrollments.batchId} = ${classInfo[0]?.batchId} AND ${zuvyBatchEnrollments.bootcampId} = ${classInfo[0]?.bootcampId}`).returning();           
+                .update(zuvyBatchEnrollments)
+                .set({ attendance: new_attendance })
+                .where(sql`${zuvyBatchEnrollments.userId} = ${student.id.toString()} AND ${zuvyBatchEnrollments.batchId} = ${classInfo[0]?.batchId} AND ${zuvyBatchEnrollments.bootcampId} = ${classInfo[0]?.bootcampId}`).returning();
               Logger.log(`Attendance updated for new classes ${new_attendance}`);
             });
           }
@@ -859,97 +870,97 @@ export class ClassesService {
     }
   }
 
- async updatingStatusOfClass(bootcamp_id: number, batch_id: number) {
+  async updatingStatusOfClass(bootcamp_id: number, batch_id: number) {
     try {
-        const currentTime = new Date();
+      const currentTime = new Date();
 
-        // Fetch classes based on bootcamp_id and batch_id
-        let classes = await db
-            .select()
-            .from(zuvySessions)
-            .where(sql`${zuvySessions.bootcampId} = ${bootcamp_id} AND ${zuvySessions.status} not in ('completed')
+      // Fetch classes based on bootcamp_id and batch_id
+      let classes = await db
+        .select()
+        .from(zuvySessions)
+        .where(sql`${zuvySessions.bootcampId} = ${bootcamp_id} AND ${zuvySessions.status} not in ('completed')
                 ${!isNaN(batch_id) ? sql`AND ${zuvySessions.batchId} = ${batch_id}` : sql``}`);
 
-        // Fetch admin user details
-        const user = await db.select().from(users).where(eq(users.email, process.env.EMAIL));
-        let adminUser = { ...user[0], roles: 'admin' };
+      // Fetch admin user details
+      const user = await db.select().from(users).where(eq(users.email, process.env.EMAIL));
+      let adminUser = { ...user[0], roles: 'admin' };
 
-        // Get access to the calendar
-        let calendar: any = await this.accessOfCalendar(adminUser);
+      // Get access to the calendar
+      let calendar: any = await this.accessOfCalendar(adminUser);
 
-        // Array to hold classes that need updating
-        let classesToUpdate = [];
-        let deleteClassIds:any = []
-        // Process each class
-        for (let classObj of classes) {
-            // Fetch calendar event
-            const event = await calendar.events.get({
-                calendarId: 'primary',
-                eventId: classObj.meetingId,
-            });
-            const { start, end, status } = event.data;
+      // Array to hold classes that need updating
+      let classesToUpdate = [];
+      let deleteClassIds: any = []
+      // Process each class
+      for (let classObj of classes) {
+        // Fetch calendar event
+        const event = await calendar.events.get({
+          calendarId: 'primary',
+          eventId: classObj.meetingId,
+        });
+        const { start, end, status } = event.data;
 
-            // If the event was canceled, delete the class
-            if (status === 'cancelled') {
-              deleteClassIds.push(classObj.meetingId)
-              continue;
-            }
-            
-            const apiStartTime = start?.dateTime || start?.date;
-            const apiEndTime = end?.dateTime || end?.date;
-            const startTime = new Date(classObj.startTime);
-            const endTime = new Date(classObj.endTime);
-
-            // Determine new status
-            let newStatus;
-            if (currentTime > endTime) {
-                newStatus = 'completed';
-            } else if (currentTime >= startTime && currentTime <= endTime) {
-                newStatus = 'ongoing';
-              } else {
-                newStatus = 'upcoming';
-              }
-              
-              // Check if an update is needed
-              if (apiStartTime !== classObj.startTime || apiEndTime !== classObj.endTime || newStatus !== classObj.status) {
-                // Prepare the update object
-                let updatedClass = {
-                    startTime: apiStartTime,
-                    endTime: apiEndTime,
-                    status: newStatus,
-                };
-
-                // Add the class to the batch update list
-                classesToUpdate.push({ id: classObj.id, updatedClass });
-            }
+        // If the event was canceled, delete the class
+        if (status === 'cancelled') {
+          deleteClassIds.push(classObj.meetingId)
+          continue;
         }
 
-        await db.delete(zuvySessions).where( inArray(zuvySessions.meetingId, deleteClassIds));
+        const apiStartTime = start?.dateTime || start?.date;
+        const apiEndTime = end?.dateTime || end?.date;
+        const startTime = new Date(classObj.startTime);
+        const endTime = new Date(classObj.endTime);
 
-        // Batch update all classes that need updates
-        if (classesToUpdate.length > 0) {
-          for (let classUpdate of classesToUpdate) {
-              await db
-                .update(zuvySessions)
-                .set(classUpdate.updatedClass)
-                .where(eq(zuvySessions.id, classUpdate.id));
-          }
+        // Determine new status
+        let newStatus;
+        if (currentTime > endTime) {
+          newStatus = 'completed';
+        } else if (currentTime >= startTime && currentTime <= endTime) {
+          newStatus = 'ongoing';
+        } else {
+          newStatus = 'upcoming';
         }
 
-        Logger.log(`${classesToUpdate.length} class statuses updated successfully.`);
+        // Check if an update is needed
+        if (apiStartTime !== classObj.startTime || apiEndTime !== classObj.endTime || newStatus !== classObj.status) {
+          // Prepare the update object
+          let updatedClass = {
+            startTime: apiStartTime,
+            endTime: apiEndTime,
+            status: newStatus,
+          };
+
+          // Add the class to the batch update list
+          classesToUpdate.push({ id: classObj.id, updatedClass });
+        }
+      }
+
+      await db.delete(zuvySessions).where(inArray(zuvySessions.meetingId, deleteClassIds));
+
+      // Batch update all classes that need updates
+      if (classesToUpdate.length > 0) {
+        for (let classUpdate of classesToUpdate) {
+          await db
+            .update(zuvySessions)
+            .set(classUpdate.updatedClass)
+            .where(eq(zuvySessions.id, classUpdate.id));
+        }
+      }
+
+      Logger.log(`${classesToUpdate.length} class statuses updated successfully.`);
     } catch (error) {
-        Logger.log(`Error: ${error.message}`);
-        return {
-            success: 'not success',
-            message: 'Error updating class statuses',
-            error: error,
-        };
+      Logger.log(`Error: ${error.message}`);
+      return {
+        success: 'not success',
+        message: 'Error updating class statuses',
+        error: error,
+      };
     }
   }
 
   async BootcampOrBatchEnrollments(batch_id: number, bootcamp_id: number, user_id = null) {
     let queryString;
-    if (user_id && !isNaN(batch_id) && bootcamp_id) { 
+    if (user_id && !isNaN(batch_id) && bootcamp_id) {
       queryString = sql`${zuvyBatchEnrollments.bootcampId} = ${bootcamp_id} and ${zuvyBatchEnrollments.batchId} = ${batch_id} and ${zuvyBatchEnrollments.userId} = ${user_id}`;
     } else if (bootcamp_id && !isNaN(batch_id)) {
       queryString = sql`${zuvyBatchEnrollments.bootcampId} = ${bootcamp_id} and ${zuvyBatchEnrollments.batchId} = ${batch_id}`;
@@ -961,89 +972,86 @@ export class ClassesService {
 
   async getClassesBy(bootcamp_id: number, user, batch_id: number, limit: number, offset: number, search_term: string, status: string) {
     try {
-      if (user?.roles?.includes('admin')) { 
+      if (user?.roles?.includes('admin')) {
         let desiredCourse = [];
-        if(isNaN(batch_id))
-          {
-            desiredCourse= await db.select().from(zuvyBootcamps).where(eq(zuvyBootcamps.id,bootcamp_id));
-          }
-         else {
+        if (isNaN(batch_id)) {
+          desiredCourse = await db.select().from(zuvyBootcamps).where(eq(zuvyBootcamps.id, bootcamp_id));
+        }
+        else {
           desiredCourse = await db.select().from(zuvyBatches).where(sql`${zuvyBatches.id}=${batch_id} AND ${zuvyBatches.bootcampId} = ${bootcamp_id}`)
-         } 
-         if(desiredCourse.length == 0)
-          {
-            return {
-              status: 'error',
-              message:
-                'There is no such course or batch.',
-              code: 404,
-            };
-          }     
-        await this.updatingStatusOfClass(bootcamp_id,batch_id);
-      } else if (bootcamp_id && user.id) {
-          let queryString = await this.BootcampOrBatchEnrollments(batch_id, bootcamp_id,user.id);
-          let zuvyBatchEnrollmentsData = await db
-            .select()
-            .from(zuvyBatchEnrollments)
-            .where(queryString);
-          if(zuvyBatchEnrollmentsData.length == 0)
-            {
-              return {
-                status: 'error',
-                message:
-                  'You are not enrolled in this course or batch',
-                code: 404,
-              };
-            }  
-            batch_id = zuvyBatchEnrollmentsData[0].batchId;
-            if(batch_id == null)
-              {
-                return {
-                  status: 'error',
-                  message:
-                    'You are not assigned to any batch in this course',
-                  code: 404,
-                };
-              }
-          await this.updatingStatusOfClass(bootcamp_id,zuvyBatchEnrollmentsData[0].batchId);
-          if (zuvyBatchEnrollmentsData.length === 0) {
-            return {
-              status: 'error',
-              message:
-                'No matching batch enrollments found for the provided bootcampId and userId',
-              code: 404,
-            };
-          } 
-        } else {
+        }
+        if (desiredCourse.length == 0) {
           return {
             status: 'error',
-            message: 'Unauthorized access',
-            code: 401,
+            message:
+              'There is no such course or batch.',
+            code: 404,
           };
-        }  
+        }
+        await this.updatingStatusOfClass(bootcamp_id, batch_id);
+      } else if (bootcamp_id && user.id) {
+        let queryString = await this.BootcampOrBatchEnrollments(batch_id, bootcamp_id, user.id);
+        let zuvyBatchEnrollmentsData = await db
+          .select()
+          .from(zuvyBatchEnrollments)
+          .where(queryString);
+        if (zuvyBatchEnrollmentsData.length == 0) {
+          return {
+            status: 'error',
+            message:
+              'You are not enrolled in this course or batch',
+            code: 404,
+          };
+        }
+        batch_id = zuvyBatchEnrollmentsData[0].batchId;
+        if (batch_id == null) {
+          return {
+            status: 'error',
+            message:
+              'You are not assigned to any batch in this course',
+            code: 404,
+          };
+        }
+        await this.updatingStatusOfClass(bootcamp_id, zuvyBatchEnrollmentsData[0].batchId);
+        if (zuvyBatchEnrollmentsData.length === 0) {
+          return {
+            status: 'error',
+            message:
+              'No matching batch enrollments found for the provided bootcampId and userId',
+            code: 404,
+          };
+        }
+      } else {
+        return {
+          status: 'error',
+          message: 'Unauthorized access',
+          code: 401,
+        };
+      }
       const query = db
-     .select({
-       sessions:zuvySessions,
-       totalCount: sql<number>`count(*) over()`.as('total_count')})
-      .from(zuvySessions)
-     .$dynamic()
-     .where(and(
-      bootcamp_id ? eq(zuvySessions.bootcampId, bootcamp_id) : undefined,
-      batch_id ? eq(zuvySessions.batchId, batch_id) : undefined,
-      status.toLowerCase() !== 'all'  ? eq(zuvySessions.status, status) :undefined,   
-      search_term ? ilike(zuvySessions.title, `%${search_term}%`) : undefined
-      ))
-      .orderBy(
-        status.toLowerCase() === 'completed' || status.toLowerCase() === 'all'
-          ? desc(zuvySessions.startTime)
-          : (zuvySessions.startTime)
-      )
-     .offset(offset)
-     .limit(limit);
-      
-     const allClasses = await query;
-     const classes = allClasses.map(classObj => classObj.sessions);
-     const totalClasses = allClasses.length > 0 ?  Number(allClasses[0].totalCount) : 0
+        .select({
+          sessions: zuvySessions,
+          totalCount: sql<number>`count(*) over()`.as('total_count')
+        })
+        .from(zuvySessions)
+        .$dynamic()
+        .where(and(
+          bootcamp_id ? eq(zuvySessions.bootcampId, bootcamp_id) : undefined,
+          batch_id ? eq(zuvySessions.batchId, batch_id) : undefined,
+          status.toLowerCase() !== 'all' ? eq(zuvySessions.status, status) : undefined,
+          search_term ? ilike(zuvySessions.title, `%${search_term}%`) : undefined
+        ))
+        .orderBy(
+          status.toLowerCase() === 'completed' || status.toLowerCase() === 'all'
+            ? desc(zuvySessions.startTime)
+            : (zuvySessions.startTime)
+        )
+        .offset(offset)
+        .limit(limit);
+
+      const allClasses = await query;
+      const classes = allClasses.map(classObj => classObj.sessions);
+      const totalClasses = allClasses.length > 0 ? Number(allClasses[0].totalCount) : 0
       return {
         status: 'success',
         message: 'Classes fetched successfully by batchId',
@@ -1057,19 +1065,19 @@ export class ClassesService {
 
   async deleteSession(eventId, creatorInfo) {
     try {
-      
-      let calendar:any = await this.accessOfCalendar(creatorInfo);
+
+      let calendar: any = await this.accessOfCalendar(creatorInfo);
       // Delete event from Google Calendar
       await calendar.events.delete({
         calendarId: 'primary',
         eventId: eventId,
       });
-  
+
       // Delete class details from the database
       await db
         .delete(zuvySessions)
         .where(eq(zuvySessions.meetingId, eventId));
-  
+
       return {
         status: 'success',
         message: 'Deleted Class successfully',
@@ -1084,12 +1092,12 @@ export class ClassesService {
       };
     }
   }
-  
 
-  async updateSession(eventId, updatedEventDetails,creatorInfo) {
+
+  async updateSession(eventId, updatedEventDetails, creatorInfo) {
     try {
-      let calendar:any = await this.accessOfCalendar(creatorInfo);
-  
+      let calendar: any = await this.accessOfCalendar(creatorInfo);
+
       // Update event in Google Calendar
       const eventUpdateData = {
         calendarId: 'primary',
@@ -1099,23 +1107,23 @@ export class ClassesService {
           description: updatedEventDetails.description,
           start: {
             dateTime: moment(updatedEventDetails.startDateTime),
-              // .subtract(5, 'hours')
-              // .subtract(30, 'minutes')
-              // .format(),
+            // .subtract(5, 'hours')
+            // .subtract(30, 'minutes')
+            // .format(),
             timeZone: updatedEventDetails.timeZone,
           },
           end: {
             dateTime: moment(updatedEventDetails.endDateTime),
-              // .subtract(5, 'hours')
-              // .subtract(30, 'minutes')
-              // .format(),
+            // .subtract(5, 'hours')
+            // .subtract(30, 'minutes')
+            // .format(),
             timeZone: updatedEventDetails.timeZone,
           },
         },
       };
-  
+
       const updatedEvent = await calendar.events.update(eventUpdateData);
-  
+
       // Update class details in the database
       const updatedClassDetails = await db
         .update(zuvySessions)
@@ -1126,7 +1134,7 @@ export class ClassesService {
         })
         .where(eq(zuvySessions.meetingId, eventId))
         .returning();
-  
+
       return {
         status: 'success',
         message: 'Updated Class successfully',
@@ -1138,9 +1146,9 @@ export class ClassesService {
         status: 'error',
         message: 'Error updating class',
         error: error,
-      };
-    }
-  }
+      };
+    }
+  }
 }
 
 
