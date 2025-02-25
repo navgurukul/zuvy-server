@@ -26,7 +26,7 @@ export class ScheduleService {
   private currentInterval: number;
   private timeoutId: NodeJS.Timeout;
   private conditions:any = [
-    { min: 1, max: 1, interval: 200 * 60 * 1000 }, // 200 minutes
+    { min: 0, max: 1, interval: 200 * 60 * 1000 }, // 200 minutes
     { min: 2, max: 5, interval: 100 * 60 * 1000 }, // 100 minutes
     { min: 6, max: 9, interval: 60 * 60 * 1000 },  // 60 minutes
     { min: 10, max: 19, interval: 30 * 60 * 1000 },  // 30 minutes
@@ -117,12 +117,12 @@ export class ScheduleService {
 
   private getIntervalBasedOnSessionCount(sessionCount: number): number {
     for (const condition of this.conditions) {
-        if (sessionCount >= condition.min && sessionCount <= condition.max) {
+      if (sessionCount >= condition.min && sessionCount <= condition.max) {
             return condition.interval;
         }
     }
     // Default case if no conditions match
-    return 1 * 60 * 1000; // 1 minute
+    return 2 * 60 * 1000; // 1 minute
   }
 
   private resetTimeout() {
