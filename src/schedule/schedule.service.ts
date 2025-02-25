@@ -41,7 +41,7 @@ export class ScheduleService {
 
     this.processingActive = true;
     try {
-      const now = new Date('2025-02-11T01:18:00+05:30');
+      const now = new Date();
       const [startOfDay, endOfDay] = this.getDayBounds(now);
       const sessions = await this.fetchSessions(startOfDay, endOfDay);
       this.logger.log(`Fetched ${sessions.length} sessions`);
@@ -80,7 +80,7 @@ export class ScheduleService {
     startOfDay.setHours(0, 0, 0, 0);
 
     const endOfDay = new Date(date);
-    endOfDay.setHours(84, 59, 59, 999);
+    endOfDay.setHours(24, 59, 59, 999);
     return [startOfDay, endOfDay];
   }
 
@@ -89,7 +89,7 @@ export class ScheduleService {
       .from(zuvySessions)
       .where(
         and(
-          // isNull(zuvySessions.s3link),
+          isNull(zuvySessions.s3link),
           eq(zuvySessions.status, 'completed'),
           gte(zuvySessions.startTime, startOfDay.toISOString()),
           lt(zuvySessions.startTime, endOfDay.toISOString()),
@@ -294,7 +294,7 @@ export class ScheduleService {
         attendance[user[0].email] = { email: user[0].email };
       }
       let adminData;
-      response.data.items.forEach((item: any) => {
+      response.data.items?.forEach((item: any) => {
         const event = item.events[0];
         const email = event.parameters.find((param: any) => param.name === 'identifier')?.value || '';
         const duration = event.parameters.find((param: any) => param.name === 'duration_seconds')?.intValue || '';
@@ -304,7 +304,7 @@ export class ScheduleService {
       });
       if (!adminData) return;
 
-      response.data.items.forEach((item: any) => {
+      response.data.items?.forEach((item: any) => {
         const event = item.events[0];
         const email = event.parameters.find((param: any) => param.name === 'identifier')?.value || '';
         const duration = event.parameters.find((param: any) => param.name === 'duration_seconds')?.intValue || '';
@@ -315,7 +315,7 @@ export class ScheduleService {
       });
 
 
-      Object.entries(attendance).forEach(([email, record]) => {
+      Object.entries(attendance)?.forEach(([email, record]) => {
         if (!attendanceByTitle[email]) attendanceByTitle[email] = {};
         Object.assign(attendanceByTitle[email], record);
       });
