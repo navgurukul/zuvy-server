@@ -20,6 +20,22 @@ const { RAPID_BASE_URL, RAPID_API_KEY, RAPID_HOST } = process.env; // INPORTING 
 
 @Injectable()
 export class CodingPlatformService {
+  async formatForJavaStrict(jsData) {
+    if (Array.isArray(jsData)) {
+      return `Array: {${jsData.map(item => this.formatForJavaStrict(item)).join(', ')}}`;
+    } else
+      if (typeof jsData === 'object' && jsData !== null) {
+        if (Object.keys(jsData).length === 0) return `Object: {}`;
+        return `Object: ${Object.entries(jsData)
+          .map(([key, value]) => `${key} = ${this.formatForJavaStrict(value)}`)
+          .join(', ')}`;
+      } else if (typeof jsData === 'string') {
+        return `"${jsData}"`;
+      } else {
+        return jsData;
+      }
+  }
+
   async submitCodeBatch(sourceCode: SubmitCodeDto, codingOutsourseId: number, action: string): Promise<any> {
     let testCase;
     if (RUN === action) {
@@ -50,24 +66,26 @@ export class CodingPlatformService {
                 default:
                     throw new Error(`Unsupported input type: ${input.parameterType}`);
             }
-        });
+          }
+        );
 
         // Process expected output based on its data type
         const output = (() => {
-            switch (testCase.expectedOutput.parameterType) {
-                case 'int':
-                case 'float':
-                case 'str':
-                case 'bool':
-                    return testCase.expectedOutput.parameterValue.toString(); // Convert to string
-                case 'arrayOfnum':
-                case 'arrayOfStr':
-                case 'jsonType':
-                    return JSON.stringify(testCase.expectedOutput.parameterValue); // Serialize to JSON
-                default:
-                    throw new Error(`Unsupported output type: ${testCase.expectedOutput.parameterType}`);
-            }
-        })();
+          switch (testCase.expectedOutput.parameterType) {
+            case 'int':
+            case 'float':
+            case 'str':
+            case 'bool':
+              return testCase.expectedOutput.parameterValue.toString(); // Convert to string
+            case 'arrayOfnum':
+            case 'arrayOfStr':
+            case 'jsonType':
+              return (sourceCode.languageId == 96) ?  this.formatForJavaStrict(testCase.expectedOutput.parameterValue) : JSON.stringify(testCase.expectedOutput.parameterValue);
+            default:
+              throw new Error(`Unsupported output type: ${testCase.expectedOutput.parameterType}`);
+          }
+        }
+      )();
 
         // Join inputs with newlines and encode in base64
         const stdinput = input.join('\n');
