@@ -337,15 +337,21 @@ public class Main {
       // Call function correctly
       ${returnTypeMapped} returnData = ${functionName}(${parameters.map(p => p.parameterName).join(', ')});
 
-      // Print the parsed data
-      System.out.println("Processed Data: " + returnData);
-
+      // Result formatting
+      if (returnData instanceof int[]) {
+          System.out.println(Arrays.toString((int[]) returnData));
+      } else if (returnData instanceof String[]) {
+          System.out.println(Arrays.toString((String[]) returnData));
+      } else if (returnData instanceof Object[]) {
+          System.out.println(Arrays.deepToString((Object[]) returnData));
+      } else {
+          System.out.println(returnData);
+      }
       scanner.close();
   }
 
   // Function with specified return type and parameters
   public static ${returnTypeMapped} ${functionName}(${parameterList}) {
-      System.out.println("Inside ${functionName}: " + ${parameters.length > 0 ? parameters[0].parameterName : 'null'});
       return ${defaultReturn}; // Default return value
   }
 
@@ -358,14 +364,14 @@ public class Main {
   // json code // don't change
   public static <T> T parseJson(String json, Class<T> classOfT) {
       if (classOfT == int[].class) {
-          String[] parts = json.replaceAll("[\\[\\]\\s]", "").split(",");
+          String[] parts = json.replaceAll("[\\\\[\\\\]\\\\s]", "").split(",");
           int[] result = new int[parts.length];
           for (int i = 0; i < parts.length; i++) {
               result[i] = Integer.parseInt(parts[i]);
           }
           return classOfT.cast(result);
       } else if (classOfT == String[].class) {
-          String[] parts = json.replaceAll("[\\[\\]\\s]", "").split(",");
+          String[] parts = json.replaceAll("[\\\\[\\\\]\\\\s]", "").split(",");
           return classOfT.cast(parts);
       } else if (classOfT == Object.class) {
           return classOfT.cast(parseJsonObject(json));
@@ -382,7 +388,7 @@ public class Main {
           String[] parts = json.split(",(?=(?:[^\\\"]*\\\"[^\\\"]*\\\")*[^\\\"]*$)");
           for (String part : parts) {
               String[] keyValue = part.split(":", 2);
-              String key = keyValue[0].trim().replaceAll("^\\"|\\"$", "");
+              String key = keyValue[0].trim().replaceAll("^\\\"|\\\"$", "");
               String value = keyValue[1].trim();
               map.put(key, parseJsonValue(value));
           }
@@ -395,8 +401,8 @@ public class Main {
               list.add(parseJsonValue(part.trim()));
           }
           return list;
-      } else if (json.startsWith("\\"")) {
-          return json.replaceAll("^\\"|\\"$", "");
+      } else if (json.startsWith("\\\"")) {
+          return json.replaceAll("^\\\"|\\\"$", "");
       } else if (json.equals("true") || json.equals("false")) {
           return Boolean.parseBoolean(json);
       } else {
@@ -416,8 +422,8 @@ public class Main {
       value = value.trim();
       if (value.startsWith("{") || value.startsWith("[")) {
           return parseJsonObject(value);
-      } else if (value.startsWith("\\"")) {
-          return value.replaceAll("^\\"|\\"$", "");
+      } else if (value.startsWith("\\\"")) {
+          return value.replaceAll("^\\\"|\\\"$", "");
       } else if (value.equals("true") || value.equals("false")) {
           return Boolean.parseBoolean(value);
       } else {
@@ -433,6 +439,7 @@ public class Main {
       }
   }
 }`.trim();
+      console.log('JAVA template: \n', template);
       return [null, template];
   } catch (error) {
   console.error('Error generating template:', error);

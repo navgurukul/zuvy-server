@@ -20,7 +20,7 @@ const { RAPID_BASE_URL, RAPID_API_KEY, RAPID_HOST } = process.env; // INPORTING 
 
 @Injectable()
 export class CodingPlatformService {
-  async formatForJavaStrict(jsData) {
+  formatForJavaStrict(jsData) {
     if (Array.isArray(jsData)) {
       return `Array: {${jsData.map(item => this.formatForJavaStrict(item)).join(', ')}}`;
     } else
@@ -37,6 +37,7 @@ export class CodingPlatformService {
   }
 
   async submitCodeBatch(sourceCode: SubmitCodeDto, codingOutsourseId: number, action: string): Promise<any> {
+    console.log('sourceCode', sourceCode);
     let testCase;
     if (RUN === action) {
         testCase = 2;
@@ -86,7 +87,7 @@ export class CodingPlatformService {
           }
         }
       )();
-
+      console.log({output});
         // Join inputs with newlines and encode in base64
         const stdinput = input.join('\n');
         const encodedStdInput = Buffer.from(stdinput).toString('base64');
