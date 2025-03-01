@@ -18,39 +18,95 @@ export const typeMappings = {
     str: 'String',
     bool: 'boolean',
     arrayOfnum: 'int[]',
-    arrayOfStr: 'String[]',
+    arrayOfStr: 'String[]',  // Matches your input type
     jsonType: 'Object',
     object: 'Object',
-    returnType: 'Object',
+    void: 'void',
+    input: (parameterType) => {
+        const mapping = {
+            int: 'Integer.parseInt(scanner.nextLine().trim())',
+            float: 'Float.parseFloat(scanner.nextLine().trim())',
+            double: 'Double.parseDouble(scanner.nextLine().trim())',
+            str: 'scanner.nextLine().trim()',
+            bool: 'Boolean.parseBoolean(scanner.nextLine().trim())',
+            arrayOfnum: `parseJson(scanner.nextLine().trim(), int[].class)`,
+            arrayOfStr: `parseJson(scanner.nextLine().trim(), String[].class)`,  // Updated to match your splitting logic
+            object: 'parseJson(scanner.nextLine().trim(), Object.class)',
+            jsonType: 'parseJson(scanner.nextLine().trim(), Object.class)',  // Simplified since we're not using Gson
+        };
+        return mapping[parameterType] || 'scanner.nextLine().trim()';
+    },
+
+    defaultReturnValue: {
+        int: '0',
+        float: '0.0f',
+        double: '0.0',
+        str: '""',  // Matches your return type
+        bool: 'false',
+        arrayOfnum: 'new int[0]',
+        arrayOfStr: 'new String[0]',
+        object: 'null',
+        void: '',
+    },
+  },
+  python: {
+    int: 'int',
+    float: 'float',
+    str: 'str',
+    bool: 'bool',
+    arrayOfnum: 'List[int]',
+    arrayOfStr: 'List[str]',
+    jsonType: 'Any',
+    returnType: 'Any',
     input: (parameterType) => {
       const mapping = {
-        int: 'Integer.parseInt(scanner.nextLine().trim())',
-        float: 'Float.parseFloat(scanner.nextLine().trim())',
-        double: 'Double.parseDouble(scanner.nextLine().trim())',
-        str: 'scanner.nextLine().trim()',
-        bool: 'Boolean.parseBoolean(scanner.nextLine().trim())',
-        arrayOfnum: `Arrays.stream(scanner.nextLine()
-              .replaceAll("\\\\[|\\\\]|\\\\s", "")
-              .split(","))
-              .mapToInt(Integer::parseInt)
-              .toArray()`,
-        arrayOfStr: `scanner.nextLine()
-              .replaceAll("\\\\[|\\\\]|\\\\s", "")
-              .split(",")`,
-        object: 'scanner.nextLine().trim()'
+        'int': 'int(input())',
+        'float': 'float(input())',
+        'str': 'input()',
+        'bool': 'bool(input())',
+        'arrayOfnum': 'json.loads(input())',
+        'arrayOfStr': 'json.loads(input())',
+        'jsonType': 'json.loads(input())',
       };
-      return mapping[parameterType] || 'scanner.nextLine().trim()';
+      return mapping[parameterType] || 'input()';
     },
-    defaultReturnValue: {
-      int: '0',
-      float: '0.0f',
-      double: '0.0',
-      str: '""',
-      bool: 'false',
-      arrayOfnum: 'new int[0]',
-      arrayOfStr: 'new String[0]',
-      object: 'null',
-      void: '',
+  },
+  javascript: {
+    int: 'number',
+    float: 'number',
+    double: 'number',
+    str: 'string',
+    bool: 'boolean',
+    arrayOfnum: 'number[]',
+    arrayOfStr: 'string[]',
+    jsonType: 'any',
+    returnType: 'any',
+    defaultReturnValue: 'null',
+    object: 'object',
+    inputType: (type) => {
+      const mapping = {
+        int: 'Number',
+        float: 'Number',
+        double: 'Number',
+        str: 'String',
+        bool: 'Boolean',
+        any: 'Object',
+      };
+      return mapping[type] || 'String';
+    },
+    input: (parameterType) => {
+      const mapping = {
+        int: 'Number(input)',
+        float: 'Number(input)',
+        double: 'Number(input)',
+        str: 'input',
+        bool: 'Boolean(input)',
+        arrayOfnum: 'JSON.parse(input)',
+        arrayOfStr: 'JSON.parse(input)',
+        jsonType: 'JSON.parse(input)',
+        object: 'JSON.parse(input)',
+      };
+      return mapping[parameterType] || 'input';
     },
   },
   c: {
@@ -125,67 +181,7 @@ export const typeMappings = {
       object: '""',
       void: ''
     }
-  },
-  python: {
-    int: 'int',
-    float: 'float',
-    str: 'str',
-    bool: 'bool',
-    arrayOfnum: 'List[int]',
-    arrayOfStr: 'List[str]',
-    jsonType: 'Any',
-    returnType: 'Any',
-    input: (parameterType) => {
-      const mapping = {
-        'int': 'int(input())',
-        'float': 'float(input())',
-        'str': 'input()',
-        'bool': 'bool(input())',
-        'arrayOfnum': 'json.loads(input())',
-        'arrayOfStr': 'json.loads(input())',
-        'jsonType': 'json.loads(input())',
-      };
-      return mapping[parameterType] || 'input()';
-    },
-  },
-  javascript: {
-    int: 'number',
-    float: 'number',
-    double: 'number',
-    str: 'string',
-    bool: 'boolean',
-    arrayOfnum: 'number[]',
-    arrayOfStr: 'string[]',
-    jsonType: 'any',
-    returnType: 'any',
-    defaultReturnValue: 'null',
-    object: 'object',
-    inputType: (type) => {
-      const mapping = {
-        int: 'Number',
-        float: 'Number',
-        double: 'Number',
-        str: 'String',
-        bool: 'Boolean',
-        any: 'Object',
-      };
-      return mapping[type] || 'String';
-    },
-    input: (parameterType) => {
-      const mapping = {
-        int: 'Number(input)',
-        float: 'Number(input)',
-        double: 'Number(input)',
-        str: 'input',
-        bool: 'Boolean(input)',
-        arrayOfnum: 'JSON.parse(input)',
-        arrayOfStr: 'JSON.parse(input)',
-        jsonType: 'JSON.parse(input)',
-        object: 'JSON.parse(input)',
-      };
-      return mapping[parameterType] || 'input';
-    },
-  },
+  }
 };
 
 
@@ -194,30 +190,6 @@ export const typeMappings = {
 export async function generateTemplates(functionName, parameters, returnType) {
   try {
     functionName = functionName.replace(/ /g, '_').toLowerCase();
-    /**
-     * Get parameter mappings for function definition
-     */
-    const getParameterMappings = (parameters) => {
-      return parameters
-        .map(p => {
-          const type = typeMappings.javascript[p.parameterType] || 'any';
-          return `${p.parameterName}: ${type}`;
-        })
-        .join(', ');
-    };
-
-    /**
-     * Get input handling logic for parameters
-     */
-    const getInputHandling = (parameters) => {
-      return parameters
-        .map(p => {
-          const inputLogic = typeMappings.javascript.input(p.parameterType);
-          return `const _${p.parameterName}_ = ${inputLogic};`;
-        })
-        .join('\n');
-    };
-  
 /**
  * Generate JavaScript function template
  */
@@ -332,77 +304,148 @@ rl.on('close', () => {
   }
 };
 
+
 async function generateJavaTemplate(functionName, parameters, returnType = 'object') {
   try {
     const returnTypeMapped = typeMappings.java[returnType] || 'Object';
     const defaultReturn = typeMappings.java.defaultReturnValue[returnType] || 'null';
 
-    // Generate parameter list with types
     const parameterList = parameters.map(p => 
       `${typeMappings.java[p.parameterType] || 'Object'} ${p.parameterName}`
     ).join(', ');
 
-    // Generate input handling
     const inputHandling = parameters.map(p => {
       const inputLogic = typeMappings.java.input(p.parameterType);
       return `        ${typeMappings.java[p.parameterType]} ${p.parameterName} = ${inputLogic};`;
     }).join('\n');
 
-    // Generate print statements for debugging
-    const debugPrints = parameters.map(p => {
-      if (p.parameterType === 'arrayOfnum') {
-        return `System.out.println(Arrays.toString(${p.parameterName}));`;
-      } else if (p.parameterType === 'arrayOfStr') {
-        return `System.out.println(Arrays.toString(${p.parameterName}));`;
-      }
-      return `System.out.println(${p.parameterName});`;
-    }).join('\n        ');
-
     const template = `
-import java.util.*;
-import java.util.stream.*;
+import java.util.Scanner;
+import java.util.Arrays;
+import java.util.Map;
+import java.util.List;
+import java.util.HashMap;
+import java.util.ArrayList;
 
 public class Main {
+  public static void main(String[] args) {
+      Scanner scanner = new Scanner(System.in);
 
-    public static ${returnTypeMapped} ${functionName}(${parameterList}) {
-        // Debug input prints
-        ${debugPrints}
+      // Input parsing
+      ${inputHandling}
 
-        // Add your logic here
-        return ${defaultReturn}; // Default return
-    }
+      // Call function correctly
+      ${returnTypeMapped} returnData = ${functionName}(${parameters.map(p => p.parameterName).join(', ')});
 
-    public static void main(String[] args) {
-        Scanner scanner = new Scanner(System.in);
+      // Result formatting
+      if (returnData instanceof int[]) {
+          System.out.println(Arrays.toString((int[]) returnData));
+      } else if (returnData instanceof String[]) {
+          System.out.println(Arrays.toString((String[]) returnData));
+      } else if (returnData instanceof Object[]) {
+          System.out.println(Arrays.deepToString((Object[]) returnData));
+      } else {
+          System.out.println(returnData);
+      }
+      scanner.close();
+  }
 
-        // Input parsing
-${inputHandling}
+  // Function with specified return type and parameters
+  public static ${returnTypeMapped} ${functionName}(${parameterList}) {
+      return ${defaultReturn}; // Default return value
+  }
 
-        // Execute function
-        Object result = ${functionName}(${parameters.map(p => p.parameterName).join(', ')});
 
-        // Result formatting
-        if (result instanceof int[]) {
-            System.out.println(Arrays.toString((int[]) result));
-        } else if (result instanceof String[]) {
-            System.out.println(Arrays.toString((String[]) result));
-        } else if (result instanceof Object[]) {
-            System.out.println(Arrays.deepToString((Object[]) result));
-        } else {
-            System.out.println(result);
-        }
 
-        scanner.close();
-    }
-}
-    `;
-    return [null, template];
+
+
+
+
+  // json code // don't change
+  public static <T> T parseJson(String json, Class<T> classOfT) {
+      if (classOfT == int[].class) {
+          String[] parts = json.replaceAll("[\\\\[\\\\]\\\\s]", "").split(",");
+          int[] result = new int[parts.length];
+          for (int i = 0; i < parts.length; i++) {
+              result[i] = Integer.parseInt(parts[i]);
+          }
+          return classOfT.cast(result);
+      } else if (classOfT == String[].class) {
+          String[] parts = json.replaceAll("[\\\\[\\\\]\\\\s]", "").split(",");
+          return classOfT.cast(parts);
+      } else if (classOfT == Object.class) {
+          return classOfT.cast(parseJsonObject(json));
+      }
+      throw new UnsupportedOperationException("Unsupported class: " + classOfT.getName());
+  }
+
+
+  private static Object parseJsonObject(String json) {
+      json = json.trim();
+      if (json.startsWith("{")) {
+          Map<String, Object> map = new HashMap<>();
+          json = json.substring(1, json.length() - 1).trim();
+          String[] parts = json.split(",(?=(?:[^\\\"]*\\\"[^\\\"]*\\\")*[^\\\"]*$)");
+          for (String part : parts) {
+              String[] keyValue = part.split(":", 2);
+              String key = keyValue[0].trim().replaceAll("^\\\"|\\\"$", "");
+              String value = keyValue[1].trim();
+              map.put(key, parseJsonValue(value));
+          }
+          return map;
+      } else if (json.startsWith("[")) {
+          List<Object> list = new ArrayList<>();
+          json = json.substring(1, json.length() - 1).trim();
+          String[] parts = json.split(",(?=(?:[^\\\"]*\\\"[^\\\"]*\\\")*[^\\\"]*$)");
+          for (String part : parts) {
+              list.add(parseJsonValue(part.trim()));
+          }
+          return list;
+      } else if (json.startsWith("\\\"")) {
+          return json.replaceAll("^\\\"|\\\"$", "");
+      } else if (json.equals("true") || json.equals("false")) {
+          return Boolean.parseBoolean(json);
+      } else {
+          try {
+              if (json.contains(".")) {
+                  return Double.parseDouble(json);
+              } else {
+                  return Integer.parseInt(json);
+              }
+          } catch (NumberFormatException e) {
+              return json;
+          }
+      }
+  }
+
+  private static Object parseJsonValue(String value) {
+      value = value.trim();
+      if (value.startsWith("{") || value.startsWith("[")) {
+          return parseJsonObject(value);
+      } else if (value.startsWith("\\\"")) {
+          return value.replaceAll("^\\\"|\\\"$", "");
+      } else if (value.equals("true") || value.equals("false")) {
+          return Boolean.parseBoolean(value);
+      } else {
+          try {
+              if (value.contains(".")) {
+                  return Double.parseDouble(value);
+              } else {
+                  return Integer.parseInt(value);
+              }
+          } catch (NumberFormatException e) {
+              return value;
+          }
+      }
+  }
+}`.trim();
+      console.log('JAVA template: \n', template);
+      return [null, template];
   } catch (error) {
-    console.error('Error generating template:', error);
-    return [error, null];
+  console.error('Error generating template:', error);
+  return [error, null];
   }
 }
-
 
 
 // generate c template for the given function name and parameters
@@ -519,8 +562,8 @@ result = ${functionName}(${parameters.map(p => `_${p.parameterName}_`).join(', '
     return [error, null];
   }
 }
-// generate c++ template for the given function name and parameters
 
+// generate c++ template for the given function name and parameters
 async function generateCppTemplate(functionName, parameters, returnType = 'void') {
   try {
     const returnTypeMapped = typeMappings.cpp[returnType] || 'void';
@@ -596,8 +639,6 @@ int main() {${inputHandling}
     
     return 0;
 }`;
-console.log(template);
-
     return [null, template];
   } catch (error) {
     return [error, null];
