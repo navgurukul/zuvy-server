@@ -313,7 +313,17 @@ async function generateJavaTemplate(functionName, parameters, returnType = 'obje
     const parameterList = parameters.map(p => 
       `${typeMappings.java[p.parameterType] || 'Object'} ${p.parameterName}`
     ).join(', ');
-
+    let returnLogs
+    if (returnType == 'arrayOfnum') { 
+      returnLogs = 'System.out.println(Arrays.toString((int[]) returnData));'
+    } else if (returnType == 'arrayOfStr'){ 
+      returnLogs = 'System.out.println(Arrays.toString((String[]) returnData));'
+    } else if (returnType == 'object' || returnType == 'jsonType'){ 
+      returnLogs = 'System.out.println(Arrays.deepToString((Object[]) returnData));'
+    } else {
+      returnLogs = 'System.out.println(returnData)'
+    }
+  
     const inputHandling = parameters.map(p => {
       const inputLogic = typeMappings.java.input(p.parameterType);
       return `        ${typeMappings.java[p.parameterType]} ${p.parameterName} = ${inputLogic};`;
@@ -328,6 +338,14 @@ import java.util.HashMap;
 import java.util.ArrayList;
 
 public class Main {
+  // Function with specified return type and parameters
+  public static ${returnTypeMapped} ${functionName}(${parameterList}) {
+      //  Write your code here
+      
+      return ${defaultReturn}; // Default return value
+  }
+
+
   public static void main(String[] args) {
       Scanner scanner = new Scanner(System.in);
 
@@ -338,22 +356,11 @@ public class Main {
       ${returnTypeMapped} returnData = ${functionName}(${parameters.map(p => p.parameterName).join(', ')});
 
       // Result formatting
-      if (returnData instanceof int[]) {
-          System.out.println(Arrays.toString((int[]) returnData));
-      } else if (returnData instanceof String[]) {
-          System.out.println(Arrays.toString((String[]) returnData));
-      } else if (returnData instanceof Object[]) {
-          System.out.println(Arrays.deepToString((Object[]) returnData));
-      } else {
-          System.out.println(returnData);
-      }
+
+      ${returnLogs }
       scanner.close();
   }
 
-  // Function with specified return type and parameters
-  public static ${returnTypeMapped} ${functionName}(${parameterList}) {
-      return ${defaultReturn}; // Default return value
-  }
 
 
 
