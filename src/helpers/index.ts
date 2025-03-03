@@ -321,7 +321,7 @@ async function generateJavaTemplate(functionName, parameters, returnType = 'obje
     } else if (returnType == 'object' || returnType == 'jsonType'){ 
       returnLogs = 'System.out.println(Arrays.deepToString((Object[]) returnData));'
     } else {
-      returnLogs = 'System.out.println(returnData)'
+      returnLogs = 'System.out.println(returnData);'
     }
   
     const inputHandling = parameters.map(p => {
