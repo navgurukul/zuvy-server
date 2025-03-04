@@ -22,22 +22,20 @@ const { RAPID_BASE_URL, RAPID_API_KEY, RAPID_HOST } = process.env; // INPORTING 
 export class CodingPlatformService {
   formatForJavaStrict(jsData) {
     if (Array.isArray(jsData)) {
-      return `Array: {${jsData.map(item => this.formatForJavaStrict(item)).join(', ')}}`;
-    } else
-      if (typeof jsData === 'object' && jsData !== null) {
-        if (Object.keys(jsData).length === 0) return `Object: {}`;
-        return `Object: ${Object.entries(jsData)
-          .map(([key, value]) => `${key} = ${this.formatForJavaStrict(value)}`)
-          .join(', ')}`;
-      } else if (typeof jsData === 'string') {
+        return `[${jsData.map(item => this.formatForJavaStrict(item)).join(', ')}]`;
+    } else if (typeof jsData === 'object' && jsData !== null) {
+        if (Object.keys(jsData).length === 0) return `{}`;
+        return `{${Object.entries(jsData)
+            .map(([key, value]) => `"${key}" = ${this.formatForJavaStrict(value)}`)
+            .join(', ')}}`;
+    } else if (typeof jsData === 'string') {
         return `"${jsData}"`;
-      } else {
+    } else {
         return jsData;
-      }
+    }
   }
 
   async submitCodeBatch(sourceCode: SubmitCodeDto, codingOutsourseId: number, action: string): Promise<any> {
-    console.log('sourceCode', sourceCode);
     let testCase;
     if (RUN === action) {
         testCase = 2;
@@ -63,9 +61,9 @@ export class CodingPlatformService {
                 case 'arrayOfStr':
                 case 'object':
                 case 'jsonType':
-                    return JSON.stringify(input.parameterValue); // Serialize arrays/objects to JSON
+                  return (sourceCode.languageId == 96) ?  this.formatForJavaStrict([{"RED":"color"}, {prem: 444}]) : JSON.stringify(input.parameterValue);
                 default:
-                    throw new Error(`Unsupported input type: ${input.parameterType}`);
+                  throw new Error(`Unsupported input type: ${input.parameterType}`);
             }
           }
         );
@@ -81,13 +79,13 @@ export class CodingPlatformService {
             case 'arrayOfnum':
             case 'arrayOfStr':
             case 'jsonType':
+            case 'object':
               return (sourceCode.languageId == 96) ?  this.formatForJavaStrict(testCase.expectedOutput.parameterValue) : JSON.stringify(testCase.expectedOutput.parameterValue);
             default:
               throw new Error(`Unsupported output type: ${testCase.expectedOutput.parameterType}`);
           }
         }
       )();
-      console.log({output});
         // Join inputs with newlines and encode in base64
         const stdinput = input.join('\n');
         const encodedStdInput = Buffer.from(stdinput).toString('base64');
@@ -139,6 +137,7 @@ export class CodingPlatformService {
                 stdOut: submissionInfo.data.submissions[index]?.stdout,
                 stderr: submissionInfo.data.submissions[index]?.stderr,
                 memory: submissionInfo.data.submissions[index]?.memory,
+                compileOutput: submissionInfo.data.submissions[index]?.compile_output,
                 time: submissionInfo.data.submissions[index]?.time,
             };
         });
@@ -310,7 +309,7 @@ export class CodingPlatformService {
   async getCodeInfo(tokens) {
     const options = {
       method: 'GET',
-      url: `${RAPID_BASE_URL}/submissions/batch?tokens=${tokens.join(',')}&base64_encoded=false&fields=token,stdout,stderr,status_id,language_id,source_code,status,memory,time,`,
+      url: `${RAPID_BASE_URL}/submissions/batch?tokens=${tokens.join(',')}&base64_encoded=false&fields=token,stdout,stderr,status_id,language_id,source_code,status,memory,time,compile_output`,
 
       headers: {
         'X-RapidAPI-Key': RAPID_API_KEY,
@@ -331,7 +330,7 @@ export class CodingPlatformService {
     try {
       const options = {
         method: 'GET',
-        url: `${RAPID_BASE_URL}/submissions/${token}?base64_encoded=true&fields=source_code,stdout,stderr,status_id,language_id,created_at,finished_at,`,
+        url: `${RAPID_BASE_URL}/submissions/${token}?base64_encoded=true&fields=source_code,stdout,stderr,status_id,language_id,created_at,finished_at,compile_output`,
         headers: {
           'X-RapidAPI-Key': RAPID_API_KEY,
           'X-RapidAPI-Host': RAPID_HOST
