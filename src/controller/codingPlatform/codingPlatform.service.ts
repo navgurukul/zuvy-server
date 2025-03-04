@@ -61,7 +61,7 @@ export class CodingPlatformService {
                 case 'arrayOfStr':
                 case 'object':
                 case 'jsonType':
-                  return (sourceCode.languageId == 96) ?  this.formatForJavaStrict([{"RED":"color"}, {prem: 444}]) : JSON.stringify(input.parameterValue);
+                  return (sourceCode.languageId == 96) ?  this.formatForJavaStrict(input.parameterValue) : JSON.stringify(input.parameterValue);
                 default:
                   throw new Error(`Unsupported input type: ${input.parameterType}`);
             }
