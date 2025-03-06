@@ -2227,6 +2227,12 @@ export const zuvySessions = main.table('zuvy_sessions', {
   status: text('status').default('upcoming'),
 });
 
+export const zuvySessionsRelations = relations(zuvySessions, ({ one, many }) => ({
+  studentData: many(users),
+  views: many(zuvySessionRecordViews)
+}));
+
+
 export const zuvyBootcamps = main.table('zuvy_bootcamps', {
   id: serial('id').primaryKey().notNull(),
   name: text('name').notNull(),
@@ -2849,6 +2855,28 @@ export const zuvyStudentAttendance = main.table('zuvy_student_attendance', {
   batchId: integer('batch_id').references(() => zuvyBatches.id),
   bootcampId: integer('bootcamp_id').references(() => zuvyBootcamps.id),
 });
+
+export const zuvySessionRecordViews = main.table('zuvy_session_record_views', {
+  id: serial('id').primaryKey().notNull(),
+  userId: integer('user_id').references(() => users.id).notNull(),
+  sessionId: integer('session_id').references(() => zuvySessions.id).notNull(),
+  viewedAt: timestamp('viewed_at', {
+    withTimezone: true,
+    mode: 'string',
+  }).defaultNow(),
+})
+
+// relations 
+export const zuvySessionRecordViewsRelations = relations(zuvySessionRecordViews, ({ one }) => ({
+  user: one(users, {
+    fields: [zuvySessionRecordViews.userId],
+    references: [users.id],
+  }),
+  session: one(zuvySessions, {
+    fields: [zuvySessionRecordViews.sessionId],
+    references: [zuvySessions.id],
+  }),
+}));
 
 export const zuvyChapterTracking = main.table('zuvy_chapter_tracking', {
   id: serial('id').primaryKey().notNull(),
