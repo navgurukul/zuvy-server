@@ -13,6 +13,7 @@ import {
 import { generateTemplates } from '../../helpers/index';
 import { STATUS_CODES } from "../../helpers/index";
 import { helperVariable } from 'src/constants/helper';
+import { language } from 'googleapis/build/src/apis/language';
 
 // Difficulty Points Mapping
 let { ACCEPTED, SUBMIT, RUN, WAIT_API_RESPONSE } = helperVariable;
@@ -144,6 +145,10 @@ export class CodingPlatformService {
                 memory: submissionInfo.data.submissions[index]?.memory,
                 compileOutput: submissionInfo.data.submissions[index]?.compile_output,
                 time: submissionInfo.data.submissions[index]?.time,
+                stdin: submissionInfo.data.submissions[index]?.stdin,
+                languageId: submissionInfo.data.submissions[index]?.language_id,
+                expectedOutput: submissionInfo.data.submissions[index]?.expected_output
+
             };
         });
 
@@ -230,6 +235,9 @@ export class CodingPlatformService {
           stdout: testcase.stdOut,
           memory: testcase.memory,
           time: testcase.time,
+          compileOutput: testcase.compileOutput,
+          stdin: testcase.stdin,
+          languageId: testcase.languageId,
         }
       })
       let test_Submission = await db.insert(zuvyTestCasesSubmission).values(testcasesSubmissionInsert).returning();
@@ -290,7 +298,7 @@ export class CodingPlatformService {
       const submissionsInfoPromises = TestCasesSubmission.map(async (submission: any) => {
         const options = {
           method: 'GET',
-          url: `${RAPID_BASE_URL}/submissions/${submission.token}?base64_encoded=true&fields=*`,
+          url: `${RAPID_BASE_URL}/submissions/${submission.token}?base64_encoded=false&fields=*`,
           headers: {
             'X-RapidAPI-Key': RAPID_API_KEY,
             'X-RapidAPI-Host': RAPID_HOST
@@ -316,7 +324,7 @@ export class CodingPlatformService {
   async getCodeInfo(tokens) {
     const options = {
       method: 'GET',
-      url: `${RAPID_BASE_URL}/submissions/batch?tokens=${tokens.join(',')}&base64_encoded=true&fields=token,stdout,stderr,status_id,language_id,source_code,status,memory,time,compile_output`,
+      url: `${RAPID_BASE_URL}/submissions/batch?tokens=${tokens.join(',')}&base64_encoded=false&fields=token,stdout,stderr,status_id,language_id,source_code,status,memory,time,compile_output,expected_output,language_id,stdin`,
 
       headers: {
         'X-RapidAPI-Key': RAPID_API_KEY,
@@ -337,7 +345,7 @@ export class CodingPlatformService {
     try {
       const options = {
         method: 'GET',
-        url: `${RAPID_BASE_URL}/submissions/${token}?base64_encoded=true&fields=source_code,stdout,stderr,status_id,language_id,created_at,finished_at,compile_output`,
+        url: `${RAPID_BASE_URL}/submissions/${token}?base64_encoded=true&fields=source_code,stdout,stderr,status_id,language_id,created_at,finished_at,compile_output,`,
         headers: {
           'X-RapidAPI-Key': RAPID_API_KEY,
           'X-RapidAPI-Host': RAPID_HOST
