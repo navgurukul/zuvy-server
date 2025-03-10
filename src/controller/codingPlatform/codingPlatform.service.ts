@@ -21,6 +21,7 @@ const { RAPID_BASE_URL, RAPID_API_KEY, RAPID_HOST } = process.env; // INPORTING 
 @Injectable()
 export class CodingPlatformService {
   formatForJavaStrict(jsData) {
+    console.log({jsData})
     if (Array.isArray(jsData)) {
         return `[${jsData.map(item => this.formatForJavaStrict(item)).join(', ')}]`;
     } else if (typeof jsData === 'object' && jsData !== null) {
@@ -67,7 +68,7 @@ export class CodingPlatformService {
             }
           }
         );
-
+        
         // Process expected output based on its data type
         const output = (() => {
           switch (testCase.expectedOutput.parameterType) {
@@ -86,6 +87,7 @@ export class CodingPlatformService {
           }
         }
       )();
+      console.log({output, input})
         // Join inputs with newlines and encode in base64
         const stdinput = input.join('\n');
         const encodedStdInput = Buffer.from(stdinput).toString('base64');
@@ -116,13 +118,16 @@ export class CodingPlatformService {
 
     try {
         const response = await axios.request(options);
+        console.log({data:response.data});
         const tokens = response.data?.map(submission => submission.token);
         let submissionInfo, err;
-
+        console.log({tokens});
         await new Promise<void>(resolve => setTimeout(async () => {
             [err, submissionInfo] = await this.getCodeInfo(tokens);
+            console.log({err, submissionInfo})
             resolve();
         }, WAIT_API_RESPONSE));
+        console.log({err, submissionInfo})
 
         if (err) {
             return [err];
@@ -144,7 +149,8 @@ export class CodingPlatformService {
 
         return [null, { statusCode: STATUS_CODES.OK, message: 'Code submitted successfully', data: testSubmission }];
     } catch (error) {
-        return [{ statusCode: STATUS_CODES.BAD_REQUEST, message: error.message }];
+      console.log({error});
+      return [{ statusCode: STATUS_CODES.BAD_REQUEST, message: error.message }];
     }
 }
 
@@ -154,6 +160,7 @@ export class CodingPlatformService {
         return [{ statusCode: STATUS_CODES.BAD_REQUEST, message: 'Invalid action' }];
       }
       let [err, testcasesSubmission] = await this.submitCodeBatch(sourceCode, questionId, action);
+      console.log({err, testcasesSubmission })
       if (err) {
         return [err];
       }
@@ -309,7 +316,7 @@ export class CodingPlatformService {
   async getCodeInfo(tokens) {
     const options = {
       method: 'GET',
-      url: `${RAPID_BASE_URL}/submissions/batch?tokens=${tokens.join(',')}&base64_encoded=false&fields=token,stdout,stderr,status_id,language_id,source_code,status,memory,time,compile_output`,
+      url: `${RAPID_BASE_URL}/submissions/batch?tokens=${tokens.join(',')}&base64_encoded=true&fields=token,stdout,stderr,status_id,language_id,source_code,status,memory,time,compile_output`,
 
       headers: {
         'X-RapidAPI-Key': RAPID_API_KEY,
