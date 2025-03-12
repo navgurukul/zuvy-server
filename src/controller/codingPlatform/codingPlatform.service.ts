@@ -284,7 +284,7 @@ export class CodingPlatformService {
         orderBy: (zuvyPracticeCode, { sql }) => sql`${zuvyPracticeCode.id} DESC`,
       });
       if (response.length === 0) {
-        return [{ statusCode: STATUS_CODES.NOT_FOUND, message: 'No practice code available for the given question' }];
+        return [{ statusCode: STATUS_CODES.OK, message: 'No practice code available for the given question' }];
       } else {
         return [null, { statusCode: STATUS_CODES.OK, message: 'Practice code fetched successfully', data: { ...response[0] } }];
       }
