@@ -303,32 +303,36 @@ rl.on('close', () => {
   }
 };
 
-
 async function generateJavaTemplate(functionName, parameters, returnType = 'object') {
   try {
-      const returnTypeMapped = typeMappings.java[returnType] || 'Object';
-      console.log("Return type:", returnTypeMapped);
-      const defaultReturn = typeMappings.java.defaultReturnValue[returnType] || 'null';
+    // Map return type to Java type
+    console.log({ functionName, parameters, returnType });
+    const returnTypeMapped = typeMappings.java[returnType] || 'Object';
+    const defaultReturn = typeMappings.java.defaultReturnValue[returnType] || 'null';
 
-      const parameterList = parameters.map(p => 
-          `${typeMappings.java[p.parameterType] || 'Object'} ${p.parameterName}`
-      ).join(', ');
+    // Generate parameter list for the function
+    const parameterList = parameters.map(p =>
+      `${typeMappings.java[p.parameterType] || 'Object'} ${p.parameterName}`
+    ).join(', ');
 
-      let returnLogs;
-      if (['arrayOfnum', 'arrayOfStr'].includes(returnType)) {
-          returnLogs = 'System.out.println(formatArray(returnData));';
-      } else if (['object', 'jsonType'].includes(returnType)) {
-          returnLogs = 'System.out.println(Arrays.deepToString((Object[]) returnData));';
-      } else {
-          returnLogs = 'System.out.println(returnData);';
-      }
-  
-      const inputHandling = parameters.map(p => {
-          const inputLogic = typeMappings.java.input(p.parameterType);
-          return `${typeMappings.java[p.parameterType]} ${p.parameterName} = (${typeMappings.java[p.parameterType]}) ${inputLogic};`;
-      }).join('\n');
-  
-      const template = `
+    // Generate input handling logic
+    const inputHandling = parameters.map(p => {
+      return `Object ${p.parameterName} = parseJavaStrictFormat(scanner.nextLine().trim());`;
+    }).join('\n      ');
+    console.log({ inputHandling });
+
+    // Generate return logging logic
+    let returnLogs;
+    if (['arrayOfnum', 'arrayOfStr', 'arrayOfObj'].includes(returnType)) {
+      returnLogs = 'System.out.println(formatArray(returnData));';
+    } else if (['object', 'jsonType'].includes(returnType)) {
+      returnLogs = 'System.out.println(formatArray(returnData));';
+    } else {
+      returnLogs = 'System.out.println(returnData);';
+    }
+
+    // Construct the Java template as a string
+    const template = `
 import java.util.Scanner;
 import java.util.Arrays;
 import java.util.List;
@@ -341,7 +345,7 @@ public class Main {
   // Function with specified return type and parameters
   public static ${returnTypeMapped} ${functionName}(${parameterList}) {
       // Write your code here
-      return ${defaultReturn}; // Default return value
+      return ${defaultReturn};
   }
 
   public static void main(String[] args) {
@@ -371,87 +375,61 @@ public class Main {
               formattedList.add(formatArray(obj));
           }
           return "[" + String.join(",", formattedList) + "]";
+      } else if (data instanceof Map) {
+          Map<?, ?> map = (Map<?, ?>) data;
+          StringBuilder sb = new StringBuilder("{");
+          for (Map.Entry<?, ?> entry : map.entrySet()) {
+              sb.append("\\"").append(entry.getKey()).append("\\":").append(formatArray(entry.getValue())).append(",");
+          }
+          if (!map.isEmpty()) sb.setLength(sb.length() - 1); // Remove the last comma
+          sb.append("}");
+          return sb.toString();
       }
       return String.valueOf(data);
   }
 
+  // Updated parser with colon handling
   public static Object parseJavaStrictFormat(String input) {
-    input = input.trim();
-    if (input.startsWith("[") && input.endsWith("]")) {
-        String content = input.substring(1, input.length() - 1).trim();
-        if (content.isEmpty()) return new Object[0];
-        String[] parts = splitTopLevel(content);
-        if (!content.contains("=")) {
-            List<Object> result = new ArrayList<>();
-            for (String part : parts) {
-                result.add(parseValue(part.trim()));
-            }
-            // If all elements are integers, convert to int[]
-            boolean allIntegers = true;
-            for (Object obj : result) {
-                if (!(obj instanceof Integer)) {
-                    allIntegers = false;
-                    break;
-                }
-            }
-            if (allIntegers) {
-                int[] arr = new int[result.size()];
-                for (int i = 0; i < result.size(); i++) {
-                    arr[i] = ((Integer) result.get(i)).intValue();
-                }
-                return arr;
-            }
-            // If all elements are strings, convert to String[]
-            boolean allStrings = true;
-            for (Object obj : result) {
-                if (!(obj instanceof String)) {
-                    allStrings = false;
-                    break;
-                }
-            }
-            if (allStrings) {
-                return result.toArray(new String[0]);
-            }
-            return result.toArray();
-        } else {
-            // When "=" is found, parse as an array of objects (Map[])
-            @SuppressWarnings("unchecked")
-            Map<String, Object>[] result = new Map[parts.length];
-            for (int i = 0; i < parts.length; i++) {
-                String part = parts[i].trim();
-                // Remove curly braces if present
-                if (part.startsWith("{") && part.endsWith("}")) {
-                    part = part.substring(1, part.length() - 1).trim();
-                }
-                result[i] = (Map<String, Object>) parseJavaStrictFormat(part);
-            }
-            return result;
-        }
-    }
-    // Fallback: if input is not an array, try to parse it as a single value (or as a Map if it contains '=')
-    if (input.contains("=")) {
-        String[] parts = splitTopLevel(input);
-        Map<String, Object> resultMap = new HashMap<>();
-        for (String part : parts) {
-            String[] keyValue = part.split("=", 2);
-            if (keyValue.length != 2) {
-                throw new IllegalArgumentException("Invalid key-value pair: " + part);
-            }
-            String key = keyValue[0].trim();
-            String value = keyValue[1].trim();
-            resultMap.put(key, parseValue(value));
-        }
-        return resultMap;
-    }
-    return parseValue(input);
-}
+      input = input.trim();
+      if (input.startsWith("[") && input.endsWith("]")) {
+          String content = input.substring(1, input.length() - 1).trim();
+          if (content.isEmpty()) return new Object[0];
+          String[] parts = splitTopLevel(content);
+          Map<String, Object>[] result = new Map[parts.length];
+          for (int i = 0; i < parts.length; i++) {
+              String part = parts[i].trim();
+              if (part.startsWith("{") && part.endsWith("}")) {
+                  part = part.substring(1, part.length() - 1).trim();
+              }
+              result[i] = parseMap(part);
+          }
+          return result;
+      }
+      if (input.startsWith("{") && input.endsWith("}")) {
+          return parseMap(input.substring(1, input.length() - 1).trim());
+      }
+      return parseValue(input);
+  }
 
+  // New map parser with colon support
+  private static Map<String, Object> parseMap(String input) {
+      Map<String, Object> map = new HashMap<>();
+      String[] pairs = splitTopLevel(input);
+      for (String pair : pairs) {
+          String[] keyValue = pair.split(":", 2);
+          if (keyValue.length != 2) continue;
+          String key = keyValue[0].trim().replaceAll("^['\\"]|['\\"]$", "");
+          String value = keyValue[1].trim();
+          map.put(key, parseValue(value));
+      }
+      return map;
+  }
 
+  // Helper method to split top-level elements
   private static String[] splitTopLevel(String input) {
       List<String> parts = new ArrayList<>();
       StringBuilder current = new StringBuilder();
       int bracketCount = 0;
-
       for (char c : input.toCharArray()) {
           if (c == '[') bracketCount++;
           else if (c == ']') bracketCount--;
@@ -468,9 +446,10 @@ public class Main {
       return parts.toArray(new String[0]);
   }
 
+  // Helper method to parse values
   private static Object parseValue(String value) {
       value = value.trim();
-      if (value.startsWith("\\'") && value.endsWith("\\'")) {
+      if ((value.startsWith("\\"") && value.endsWith("\\"")) || (value.startsWith("'") && value.endsWith("'"))) {
           return value.substring(1, value.length() - 1);
       } else {
           try {
@@ -481,15 +460,14 @@ public class Main {
       }
   }
 }`;
-    console.log("java template:",template);
 
-      return [null, template];
+    console.log("Java template:", template);
+    return [null, template];
   } catch (error) {
-      console.error("Error generating Java template:", error);
-      return [error]
+    console.error("Error generating Java template:", error);
+    return [error];
   }
 }
-
 
 // generate c template for the given function name and parameters
 async function generateCTemplates(functionName, parameters, returnType) {
