@@ -84,7 +84,6 @@ export class CodingPlatformService {
           }
         }
       )();
-      console.log({output, input})
         // Join inputs with newlines and encode in base64
         const stdinput = input.join('\n');
         const encodedStdInput = Buffer.from(stdinput).toString('base64');
@@ -115,16 +114,12 @@ export class CodingPlatformService {
 
     try {
         const response = await axios.request(options);
-        console.log({data:response.data});
         const tokens = response.data?.map(submission => submission.token);
         let submissionInfo, err;
-        console.log({tokens});
         await new Promise<void>(resolve => setTimeout(async () => {
             [err, submissionInfo] = await this.getCodeInfo(tokens);
-            console.log({err, submissionInfo})
             resolve();
         }, WAIT_API_RESPONSE));
-        console.log({err, submissionInfo})
 
         if (err) {
             return [err];
@@ -137,11 +132,11 @@ export class CodingPlatformService {
                 status: submissionInfo.data.submissions[index].status?.description,
                 token: submissionInfo.data.submissions[index]?.token,
                 stdOut: submissionInfo.data.submissions[index]?.stdout,
-                stderr: submissionInfo.data.submissions[index]?.stderr,
+                stdErr: submissionInfo.data.submissions[index]?.stderr,
                 memory: submissionInfo.data.submissions[index]?.memory,
                 compileOutput: submissionInfo.data.submissions[index]?.compile_output,
                 time: submissionInfo.data.submissions[index]?.time,
-                stdin: submissionInfo.data.submissions[index]?.stdin,
+                stdIn: submissionInfo.data.submissions[index]?.stdin,
                 languageId: submissionInfo.data.submissions[index]?.language_id,
                 expectedOutput: submissionInfo.data.submissions[index]?.expected_output
 
@@ -150,7 +145,6 @@ export class CodingPlatformService {
 
         return [null, { statusCode: STATUS_CODES.OK, message: 'Code submitted successfully', data: testSubmission }];
     } catch (error) {
-      console.log({error});
       return [{ statusCode: STATUS_CODES.BAD_REQUEST, message: error.message }];
     }
 }
@@ -161,7 +155,6 @@ export class CodingPlatformService {
         return [{ statusCode: STATUS_CODES.BAD_REQUEST, message: 'Invalid action' }];
       }
       let [err, testcasesSubmission] = await this.submitCodeBatch(sourceCode, questionId, action);
-      console.log({err, testcasesSubmission })
       if (err) {
         return [err];
       }
@@ -228,34 +221,40 @@ export class CodingPlatformService {
           testcastId: testcase.testcastId,
           status: testcase.status,
           token: testcase.token,
-          stdout: testcase.stdOut,
+          stdOut: testcase.stdOut,
           memory: testcase.memory,
           time: testcase.time,
           compileOutput: testcase.compileOutput,
-          stdin: testcase.stdin,
+          stdIn: testcase.stdIn,
+          expectedOutput: testcase.expectedOutput,
           languageId: testcase.languageId,
         }
       })
       let test_Submission = await db.insert(zuvyTestCasesSubmission).values(testcasesSubmissionInsert).returning();
       if (test_Submission.length !== 0) {
-        return [null, { statusCode: STATUS_CODES.OK, message: `${action} ${testcasesSubmission.data[0].status}`, data: test_Submission }];
+        return [null, { statusCode: STATUS_CODES.OK, message: `${action} ${testcasesSubmission.data[0].status}`, data: testcasesSubmissionInsert }];
       } else {
         return [{ statusCode: STATUS_CODES.BAD_REQUEST, message: 'Error in submitting code' }];
       }
     } catch (error) {
-      Logger.error({ error });
       return [{ statusCode: STATUS_CODES.BAD_REQUEST, message: error.message }];
     }
   }
-
-  async getPracticeCode(questionId, userId, submissionId, codingOutsourseId): Promise<any> {
+ 
+  async getPracticeCode(
+    questionId,
+    userId,
+    submissionId,
+    codingOutsourseId
+  ): Promise<any> {
     try {
       let queryString;
       if (isNaN(submissionId)) {
-        queryString = sql`${zuvyPracticeCode.questionId} = ${questionId} AND ${zuvyPracticeCode.userId} = ${userId} AND ${zuvyPracticeCode.submissionId} IS NULL`
+        queryString = sql`${zuvyPracticeCode.questionId} = ${questionId} AND ${zuvyPracticeCode.userId} = ${userId} AND ${zuvyPracticeCode.submissionId} IS NULL`;
       } else {
-        queryString = sql`${zuvyPracticeCode.questionId} = ${questionId} AND ${zuvyPracticeCode.userId} = ${userId} AND ${zuvyPracticeCode.submissionId} = ${submissionId} AND ${zuvyPracticeCode.codingOutsourseId} = ${codingOutsourseId}`
+        queryString = sql`${zuvyPracticeCode.questionId} = ${questionId} AND ${zuvyPracticeCode.userId} = ${userId} AND ${zuvyPracticeCode.submissionId} = ${submissionId} AND ${zuvyPracticeCode.codingOutsourseId} = ${codingOutsourseId}`;
       }
+  
       let response = await db.query.zuvyPracticeCode.findMany({
         where: queryString,
         columns: {
@@ -266,28 +265,69 @@ export class CodingPlatformService {
           submissionId: true,
           codingOutsourseId: true,
           createdAt: true,
-          sourceCode: true
+          sourceCode: true,
         },
         with: {
           questionDetail: true,
           TestCasesSubmission: {
             with: {
               testCases: true,
-            }
-          }
+            },
+          },
         },
         limit: 1,
         orderBy: (zuvyPracticeCode, { sql }) => sql`${zuvyPracticeCode.id} DESC`,
       });
+  
       if (response.length === 0) {
-        return [{ statusCode: STATUS_CODES.OK, message: 'No practice code available for the given question' }];
+        return [
+          {
+            statusCode: STATUS_CODES.OK,
+            message: "No practice code available for the given question",
+          },
+        ];
       } else {
-        return [null, { statusCode: STATUS_CODES.OK, message: 'Practice code fetched successfully', data: { ...response[0] } }];
+        const practiceCode = response[0];
+  
+        // Extract languageId from TestCasesSubmission if available
+        const languageId =
+          practiceCode.TestCasesSubmission?.length > 0
+            ? practiceCode.TestCasesSubmission[0]?.languageId ?? undefined
+            : undefined;
+  
+        // Construct response data with languageId after sourceCode
+        const responseData = {
+          id: practiceCode.id,
+          status: practiceCode.status,
+          action: practiceCode.action,
+          questionId: practiceCode.questionId,
+          submissionId: practiceCode.submissionId,
+          codingOutsourseId: practiceCode.codingOutsourseId,
+          createdAt: practiceCode.createdAt,
+          sourceCode: practiceCode.sourceCode,
+          languageId, // Placed directly after sourceCode
+          questionDetail: practiceCode.questionDetail,
+          TestCasesSubmission: practiceCode.TestCasesSubmission?.map(({ languageId, ...rest }) => rest), // Removing languageId from TestCasesSubmission
+        };
+  
+        return [
+          null,
+          {
+            statusCode: STATUS_CODES.OK,
+            message: "Practice code fetched successfully",
+            data: responseData,
+          },
+        ];
       }
     } catch (error) {
-      return [{ statusCode: STATUS_CODES.BAD_REQUEST, message: error.message }];
+      return [
+        {
+          statusCode: STATUS_CODES.BAD_REQUEST,
+          message: error.message,
+        },
+      ];
     }
-  }
+  }  
 
   async getTestCasesSubmission(TestCasesSubmission: any): Promise<any> {
     try {
