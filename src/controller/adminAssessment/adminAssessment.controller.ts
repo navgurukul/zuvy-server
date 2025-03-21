@@ -71,4 +71,102 @@ export class AdminAssessmentController {
       return ErrorResponse.BadRequestException(error.message).send(res);
     }
   }
+
+  @Get('bootcampModuleCompletion/bootcamp_id:bootcamp_id')
+  @ApiOperation({ summary: 'Get module completion data of a bootcamp' })
+  @ApiQuery({
+    name: 'searchVideos',
+    required: false,
+    type: String,
+    description: 'Search by video name',
+  })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    type: Number,
+    description: 'limit',
+  })
+  @ApiQuery({
+    name: 'offset',
+    required: false,
+    type: Number,
+    description: 'offset',
+  })
+  @ApiBearerAuth()
+  async BootcampModuleCompletion(
+    @Param('bootcamp_id') bootcampID: number,
+    @Query('searchVideos') searchVideos: string,
+    @Query('limit') limit: number,
+    @Query('offset') offSet: number,
+  ) {
+    return this.adminAssessmentService.getBootcampModuleCompletion(bootcampID, searchVideos, limit, offSet);
+  }
+
+  @Get('moduleChapter/students/chapter_id:chapter_id')
+  @ApiOperation({ summary: 'Get students of a module chapter' })
+  @ApiQuery({
+    name: 'searchStudent',
+    required: false,
+    type: String,
+    description: 'Search by name or email',
+  })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    type: Number,
+    description: 'limit',
+  })
+  @ApiQuery({
+    name: 'offset',
+    required: false,
+    type: Number,
+    description: 'offset',
+  })
+  @ApiBearerAuth()
+  async ModuleChapterStudents(
+    @Param('chapter_id') chapterID: number,
+    @Query('searchStudent') searchStudent: string,
+    @Query('limit') limit: number,
+    @Query('offset') offSet: number,
+  ) {
+    return this.adminAssessmentService.getModuleChapterStudents(chapterID, searchStudent, limit, offSet);
+  }
+
+  @Get('/leaderBoard/bootcampId:bootcampId')
+  @ApiOperation({ summary: 'Get the leaderboard' })
+  @ApiQuery({
+    name: 'criteria',
+    required: false,
+    type: String,
+    description: 'criteria',
+  })
+  @ApiQuery({
+    name: 'assessmentOutsourseId',
+    required: false,
+    type: [Number],
+    description: 'assessmentOutsourseId',
+
+  })
+  @ApiQuery({
+    name: 'limit',
+    type: Number,
+    description: 'limit',
+    required: false
+  })
+  @ApiQuery({
+    name: 'offset',
+    type: Number,
+    description: 'offset',
+    required: false
+  })
+  @ApiBearerAuth()
+  async getAdminLeaderboard(
+    @Param('bootcampId') bootcampId: number,
+    @Query('criteria') criteria: 'attendance' | 'bootcampProgress' | 'assessmentScore',
+    @Query('assessmentOutsourseId') assessmentOutsourseId: number | number[],
+    @Query('limit') limit: number,
+    @Query('offset') offset: number
+  ) {
+    return this.adminAssessmentService.getLeaderboardByCriteria(bootcampId, criteria, assessmentOutsourseId, limit, offset);
+  }
 }

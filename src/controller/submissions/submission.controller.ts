@@ -24,7 +24,7 @@ import {
   ApiQuery,
 } from '@nestjs/swagger';
 import { ApiBearerAuth } from '@nestjs/swagger';
-import { InstructorFeedbackDto, PatchOpenendedQuestionDto, CreateOpenendedQuestionDto, SubmissionassessmentDto, StartAssessmentDto, OpenEndedQuestionSubmissionDtoList, QuizSubmissionDtoList } from './dto/submission.dto';
+import { InstructorFeedbackDto, PatchOpenendedQuestionDto, CreateOpenendedQuestionDto, SubmissionassessmentDto, StartAssessmentDto, OpenEndedQuestionSubmissionDtoList, QuizSubmissionDtoList, PropertingPutBody } from './dto/submission.dto';
 import { ErrorResponse, SuccessResponse } from 'src/errorHandler/handler';
 
 @Controller('submission')
@@ -40,9 +40,15 @@ export class SubmissionController {
   constructor(private submissionService: SubmissionService) { }
   @Get('/submissionsOfPractiseProblems/:bootcampId')
   @ApiOperation({ summary: 'Get the submission by bootcampId' })
+  @ApiQuery({
+    name: 'searchPractiseProblem',
+    required: false,
+    type: String,
+    description: 'Search by practise problem name',
+  })
   @ApiBearerAuth()
-  async getChapterTracking(@Param('bootcampId') bootcampId: number) {
-    return this.submissionService.getSubmissionOfPractiseProblem(bootcampId);
+  async getChapterTracking(@Param('bootcampId') bootcampId: number, @Query('searchPractiseProblem') searchProblem: string) {
+    return this.submissionService.getSubmissionOfPractiseProblem(bootcampId, searchProblem);
   }
 
   @Get('/practiseProblemStatus/:moduleId')
@@ -69,20 +75,28 @@ export class SubmissionController {
     type: Number,
     description: 'offset',
   })
+  @ApiQuery({
+    name: 'searchStudent',
+    required: false,
+    type: String,
+    description: 'Search by name or email',
+  })
   @ApiBearerAuth()
   async getStatusOfPractiseProblem(
     @Param('moduleId') moduleId: number,
     @Query('chapterId') chapterId: number,
     @Query('questionId') questionId: number,
     @Query('limit') limit: number,
-    @Query('offset') offset: number
+    @Query('offset') offset: number,
+    @Query('searchStudent') searchStudent: string
   ) {
     return this.submissionService.practiseProblemStatusOfStudents(
       questionId,
       chapterId,
       moduleId,
       limit,
-      offset
+      offset,
+      searchStudent
     );
   }
 
@@ -133,15 +147,31 @@ export class SubmissionController {
 
   @Patch('/assessment/submit')
   @ApiBearerAuth()
-  async assessmentSubmission(@Body() data: SubmissionassessmentDto, @Query('assessmentSubmissionId') assessmentSubmissionId: number, @Req() req) {
-    return this.submissionService.assessmentSubmission(data, assessmentSubmissionId, req.user[0].id);
+  async assessmentSubmission(@Body() data: SubmissionassessmentDto, @Query('assessmentSubmissionId') assessmentSubmissionId: number, @Req() req,  
+  @Res() res
+) {
+  try {
+    let [err, success] = await this.submissionService.assessmentSubmission(data, assessmentSubmissionId, req.user[0].id);
+    if (err) {
+      return ErrorResponse.BadRequestException(err.message, err.statusCode).send(res)
+    }
+    return new SuccessResponse(success.message, success.statusCode, success.data).send(res);
+  } catch (error) {
+    return ErrorResponse.BadRequestException(error.message).send(res);
   }
+}
 
   @Get('/submissionsOfProjects/:bootcampId')
   @ApiOperation({ summary: 'Get the submission of projects by bootcampId' })
+  @ApiQuery({
+    name: 'searchProject',
+    required: false,
+    type: String,
+    description: 'Search by project name',
+  })
   @ApiBearerAuth()
-  async getProjectSubmissions(@Param('bootcampId') bootcampId: number) {
-    return this.submissionService.getAllProjectSubmissions(bootcampId);
+  async getProjectSubmissions(@Param('bootcampId') bootcampId: number, @Query('searchProject') projectName: string) {
+    return this.submissionService.getAllProjectSubmissions(bootcampId, projectName);
   }
 
   @Get('/projects/students')
@@ -156,13 +186,20 @@ export class SubmissionController {
     required: false,
     type: Number,
   })
+  @ApiQuery({
+    name: 'searchStudent',
+    required: false,
+    type: String,
+    description: 'Search by name or email',
+  })
   async projectStudentsInfoBy(
     @Query('projectId') projectId: number,
     @Query('bootcampId') bootcampId: number,
     @Query('limit') limit: number,
-    @Query('offset') offset: number
+    @Query('offset') offset: number,
+    @Query('searchStudent') searchStudent: string
   ) {
-    return this.submissionService.getUserDetailsForProject(projectId, bootcampId, limit, offset);
+    return this.submissionService.getUserDetailsForProject(projectId, bootcampId, limit, offset, searchStudent);
   }
 
   @Get('/projectDetail/:userId')
@@ -177,9 +214,22 @@ export class SubmissionController {
 
   @Patch('/quiz/assessmentSubmissionId=:assessmentSubmissionId')
   @ApiBearerAuth()
-  async submitQuiz(@Body() QuizSubmission: QuizSubmissionDtoList, @Param('assessmentSubmissionId') assessmentSubmissionId: number, @Req() req) {
-    return this.submissionService.submitQuiz(QuizSubmission.quizSubmissionDto, req.user[0].id, assessmentSubmissionId);
+  async submitQuiz(@Body() QuizSubmission: QuizSubmissionDtoList, 
+  @Param('assessmentSubmissionId') assessmentSubmissionId: number, 
+  @Query('assessmentOutsourseId') assessmentOutsourseId: number, 
+  @Req() req,  
+  @Res() res
+) {
+  try {
+    let [err, success] = await this.submissionService.submitQuiz(QuizSubmission.quizSubmissionDto, req.user[0].id, assessmentSubmissionId, assessmentOutsourseId);
+    if (err) {
+      return ErrorResponse.BadRequestException(err.message, err.statusCode).send(res)
+    }
+    return new SuccessResponse(success.message, success.statusCode, success.data).send(res);
+  } catch (error) {
+    return ErrorResponse.BadRequestException(error.message).send(res);
   }
+}
 
   @Patch("/openended/assessmentSubmissionId=:assessmentSubmissionId")
   @ApiBearerAuth()
@@ -247,10 +297,16 @@ export class SubmissionController {
 
   @Get('/submissionsOfAssignment/:bootcampId')
   @ApiOperation({ summary: 'Get the submission of assignment by bootcampId' })
+  @ApiQuery({
+    name: 'searchAssignment',
+    required: false,
+    type: String,
+    description: 'Search by assignment name',
+  })
   @ApiBearerAuth()
-  async getAssignmentSubmission(@Param('bootcampId') bootcampId: number, @Res() res) {
+  async getAssignmentSubmission(@Param('bootcampId') bootcampId: number, @Query('searchAssignment') assignmentName: string, @Res() res) {
     try {
-      let [err, success] = await this.submissionService.getSubmissionOfAssignment(bootcampId)
+      let [err, success] = await this.submissionService.getSubmissionOfAssignment(bootcampId, assignmentName)
       if (err) {
         return ErrorResponse.BadRequestException(err.message, err.statusCode).send(res)
       }
@@ -278,18 +334,26 @@ export class SubmissionController {
     type: Number,
     description: 'offset',
   })
+  @ApiQuery({
+    name: 'searchStudent',
+    required: false,
+    type: String,
+    description: 'Search by name or email',
+  })
   @ApiBearerAuth()
   async getStatusOfAssignment(
     @Query('chapterId') chapterId: number,
     @Query('limit') limit: number,
     @Query('offset') offset: number,
+    @Query('searchStudent') searchStudent: string,
     @Res() res
   ) {
     try {
       let [err, success] = await this.submissionService.assignmentStatusOfStudents(
         chapterId,
         limit,
-        offset
+        offset,
+        searchStudent
       );
 
       if (err) {
@@ -314,6 +378,22 @@ export class SubmissionController {
         chapterId,
         userId
       );
+      if (err) {
+        return ErrorResponse.BadRequestException(err.message, err.statusCode).send(res)
+      }
+      return new SuccessResponse(success.message, success.statusCode, success.data).send(res);
+    } catch (error) {
+      return ErrorResponse.BadRequestException(error.message).send(res);
+    }
+  }
+
+  // put api endpoint: assessment/properting
+  @Patch("/assessment/properting")
+  @ApiOperation({ summary: 'Updating the assignment properting data' })
+  @ApiBearerAuth()
+  async submitProperting(@Body() propertingPutBody: PropertingPutBody, @Query('assessment_submission_id') assessmentSubmissionId: number, @Res() res) {
+    try {
+      let [err, success] = await this.submissionService.submitProperting(assessmentSubmissionId, propertingPutBody);
       if (err) {
         return ErrorResponse.BadRequestException(err.message, err.statusCode).send(res)
       }

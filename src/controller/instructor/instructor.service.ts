@@ -18,22 +18,34 @@ export class InstructorService {
    async allCourses(userId : number):Promise<any>
    {
     try {
-        const data = await db.query.zuvyBatches.findMany({
-          where: (batches, { eq }) =>
-            eq(batches.instructorId, Number(userId)),
-          columns: {
-            id:true,
-            name:true
-          },
-          with: {
-            bootcampDetail:{
-              columns: {
-                id:true,
-                name:true
-              }
-            }
-          },
-        })
+      const data = await db.query.zuvyBootcamps.findMany({
+        columns: {
+          id: true,
+          name: true,
+          coverImage: true
+        },
+        with: {
+          batches: {
+            columns: {
+              id: true,
+              name: true,
+              instructorId: true
+            },
+            where: (batches, { eq }) => eq(batches.instructorId, userId)
+          }
+        },
+        where: (bootcamps, { exists, and, eq }) => 
+          exists(
+            db.select()
+              .from(zuvyBatches)
+              .where(
+                and(
+                  eq(zuvyBatches.instructorId, userId),
+                  eq(zuvyBatches.bootcampId, bootcamps.id)
+                )
+              )
+          )
+      })
 
         if(data.length > 0)
           {
@@ -199,7 +211,9 @@ export class InstructorService {
     offset: number,
     weeks: number,
     sortBy: string,
-    batchId:number[]):Promise<any>
+    batchId:number[],
+    searchTitle: string,
+  ):Promise<any>
     {
       try {
         let startDate: string | undefined;
@@ -215,11 +229,15 @@ export class InstructorService {
              batches = instructorBatch.map(batch => batch.batchId);
              if(batches.length == 0)
               {
-                return [null,{message:'No batches found',statusCode: STATUS_CODES.NOT_FOUND,data:null}]
+                return [null,{message:'No batches found',statusCode: STATUS_CODES.NOT_FOUND,data:[]}]
               }
           }
         const classDetails = await db.query.zuvySessions.findMany({
-          where: (sessions, { lt, gte }) =>and( lt(sessions.endTime, helperVariable.currentISOTime), startDate ? gte(sessions.endTime, startDate) : undefined,inArray(sessions.batchId,batches) ),
+          where: (sessions, { lt, gte }) =>and( lt(sessions.endTime, helperVariable.currentISOTime), startDate ? gte(sessions.endTime, startDate) : undefined,inArray(sessions.batchId,batches),
+          searchTitle 
+            ? sql`LOWER(${sessions.title}) LIKE LOWER(${sql.raw(`'${searchTitle}%'`)})`
+            : undefined
+         ),
           orderBy: (sessions, { asc, desc }) => 
             sortBy === 'asc' ? asc(sessions.startTime) : desc(sessions.startTime),
           with : {
@@ -244,7 +262,7 @@ export class InstructorService {
          })
         if(classDetails.length == 0)
           {
-            return [null,{message:'No classes found',statusCode: STATUS_CODES.NOT_FOUND,data:null}]
+            return [null,{message:'No classes found',statusCode: STATUS_CODES.OK,data:[]}]
           }
         const totalCompletedClass =  classDetails.length > 0 ? Number(classDetails[0]['totalCount']) : 0;
         const totalPages = Math.ceil(totalCompletedClass/limit);
@@ -254,5 +272,5 @@ export class InstructorService {
       {
         return [{message:error.message, statusCode: STATUS_CODES.BAD_REQUEST},null]
       }
-    }
+  }
 }

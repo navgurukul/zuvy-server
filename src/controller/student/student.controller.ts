@@ -1,6 +1,6 @@
 import { Controller, Get, Post, Put, Delete, Patch, Body, Param, ValidationPipe, UsePipes, BadRequestException, Query, Req, Res } from '@nestjs/common';
 import { StudentService } from './student.service';
-import { ApiTags, ApiBody, ApiOperation, ApiQuery, ApiBearerAuth } from '@nestjs/swagger';
+import { ApiTags, ApiBody, ApiOperation, ApiQuery, ApiBearerAuth, ApiParam } from '@nestjs/swagger';
 import { get } from 'http';
 import { Response } from 'express';
 import { ErrorResponse, SuccessResponse } from 'src/errorHandler/handler';
@@ -67,12 +67,20 @@ export class StudentController {
   @Delete('/:userId/:bootcampId')
   @ApiOperation({ summary: 'Removing student from bootcamp' })
   @ApiBearerAuth()
+  @ApiQuery({
+    name: 'userId',
+    required: true,
+    type: [Number],
+    description: 'userId',
+  }) 
   async removingStudents(
-    @Param('userId') userId: number,
+    @Query('userId') userId: number | number[],
     @Param('bootcampId') bootcampId: number,
   ): Promise<object> {
+    const userIds = Array.isArray(userId) ? userId : [userId]; // Ensure userIds is always an array of numbers
+    console.log("###", userIds, bootcampId)
     const [err, res] = await this.studentService.removingStudent(
-      userId,
+      userIds,
       bootcampId,
     );
     if (err) {
@@ -89,13 +97,13 @@ export class StudentController {
     name: 'limit',
     type: Number,
     description: 'limit',
-    required:false
+    required: false
   })
   @ApiQuery({
     name: 'offset',
     type: Number,
     description: 'offset',
-    required:false
+    required: false
   })
   @ApiQuery({
     name: 'batch_id',
@@ -103,19 +111,19 @@ export class StudentController {
     type: String,
     description: 'batch_id',
   })
-  async getUpcomingClass(@Req() req, @Query('batch_id')batchID: number,@Query('limit') limit: number,
-  @Query('offset') offset : number, @Res() res: Response
-) {
-  try {
-    const [err, success] = await this.studentService.getUpcomingClass(req.user[0].id, batchID, limit, offset);
-    if (err) {
-      return ErrorResponse.BadRequestException(err.message).send(res);
+  async getUpcomingClass(@Req() req, @Query('batch_id') batchID: number, @Query('limit') limit: number,
+    @Query('offset') offset: number, @Res() res: Response
+  ) {
+    try {
+      const [err, success] = await this.studentService.getUpcomingClass(req.user[0].id, batchID, limit, offset);
+      if (err) {
+        return ErrorResponse.BadRequestException(err.message).send(res);
+      }
+      return new SuccessResponse(success.message, success.statusCode, success.data).send(res);
+    } catch (error) {
+      return ErrorResponse.BadRequestException(error.message).send(res);
     }
-    return new SuccessResponse(success.message, success.statusCode, success.data).send(res);
-  } catch (error) {
-    return ErrorResponse.BadRequestException(error.message).send(res);
   }
-}
 
   @Get('/Dashboard/attendance')
   @ApiOperation({ summary: 'Get dashboard Attendance.' })
@@ -132,22 +140,22 @@ export class StudentController {
     name: 'limit',
     type: Number,
     description: 'limit',
-    required:false
+    required: false
   })
   @ApiQuery({
     name: 'offset',
     type: Number,
     description: 'offset',
-    required:false
+    required: false
   })
   @ApiBearerAuth()
   async getleaderboardDetails(
     @Param('bootcampId') bootcampId: number,
     @Query('limit') limit: number,
-    @Query('offset') offset : number
+    @Query('offset') offset: number
   ): Promise<object> {
     const res = await this.studentService.getLeaderBoardDetailByBootcamp(
-      bootcampId,limit,offset
+      bootcampId, limit, offset
     );
     return res;
   }
