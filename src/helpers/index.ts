@@ -7,7 +7,7 @@ export const complairDateTyeps = [
   'arrayOfnum',
   'arrayOfStr',
   'object',
-  'jsonType',
+  "jsonType"
 ];
 
 export const typeMappings = {
@@ -361,31 +361,35 @@ public class Main {
       ${returnLogs}
       scanner.close();
   }
-
+  // ############## don't change the code below ##############
   // Strict formatting for arrays and objects
   public static String formatArray(Object data) {
-      if (data instanceof int[]) {
-          return Arrays.toString((int[]) data);
-      } else if (data instanceof String[]) {
-          return Arrays.toString((String[]) data);
-      } else if (data instanceof Object[]) {
-          Object[] array = (Object[]) data;
-          List<String> formattedList = new ArrayList<>();
-          for (Object obj : array) {
-              formattedList.add(formatArray(obj));
-          }
-          return "[" + String.join(",", formattedList) + "]";
-      } else if (data instanceof Map) {
-          Map<?, ?> map = (Map<?, ?>) data;
-          StringBuilder sb = new StringBuilder("{");
-          for (Map.Entry<?, ?> entry : map.entrySet()) {
-              sb.append("\\"").append(entry.getKey()).append("\\":").append(formatArray(entry.getValue())).append(",");
-          }
-          if (!map.isEmpty()) sb.setLength(sb.length() - 1); // Remove the last comma
-          sb.append("}");
-          return sb.toString();
+    if (data instanceof int[]) {
+        return Arrays.toString((int[]) data);
+    } else if (data instanceof String[]) {
+        return Arrays.toString((String[]) data);
+    } else if (data instanceof Object[]) {
+        Object[] array = (Object[]) data;
+        List<String> formattedList = new ArrayList<>();
+        for (Object obj : array) {
+            formattedList.add(formatArray(obj));
+        }
+        return "[" + String.join(",", formattedList) + "]";
+    } else if (data instanceof Map) {
+      Map<?, ?> map = (Map<?, ?>) data;
+      StringBuilder sb = new StringBuilder("${returnTypeMapped == "Object"?"{":""}");
+      for (Map.Entry<?, ?> entry : map.entrySet()) {
+          sb.append(entry.getKey()).append("\\":").append(formatArray(entry.getValue())).append(",");
       }
-      return String.valueOf(data);
+      if (!map.isEmpty()) sb.setLength(sb.length() - 1); // Remove the last comma
+      ${returnTypeMapped == "Object" ? 'sb.append("}");' : ""}        
+      String str = (String) sb.toString();
+      if (!str.startsWith("\\"") && !str.contains("{") && !str.contains("[")) {
+        str = "\\"" + str;
+      }
+      return str;
+    }
+    return String.valueOf(data);
   }
 
   // Updated parser with colon handling
@@ -573,11 +577,7 @@ def ${functionName}(${parameterMappings}) -> ${typeMappings.python[returnType]}:
 # Example usage
 ${inputHandling}
 result = ${functionName}(${parameters.map(p => `_${p.parameterName}_`).join(', ')})
-  ${ !["arrayOfnum","arrayOfStr", "jsonType","object"].includes(returnType)? 'print(result);' : 'print(json.dumps(result));'}
-
-
-    `];
-      
+${ !["arrayOfnum","arrayOfStr", "jsonType","object"].includes(returnType)? 'print(result);' : 'print(json.dumps(result));'}`];
   } catch (error) {
     console.error('Error generating template:', error);
     return [error, null];

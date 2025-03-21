@@ -13,7 +13,6 @@ import {
 import { generateTemplates } from '../../helpers/index';
 import { STATUS_CODES } from "../../helpers/index";
 import { helperVariable } from 'src/constants/helper';
-import { language } from 'googleapis/build/src/apis/language';
 
 // Difficulty Points Mapping
 let { ACCEPTED, SUBMIT, RUN, WAIT_API_RESPONSE } = helperVariable;
@@ -22,16 +21,13 @@ const { RAPID_BASE_URL, RAPID_API_KEY, RAPID_HOST } = process.env; // INPORTING 
 @Injectable()
 export class CodingPlatformService {
   formatForJavaStrict(jsData) {
-    console.log({jsData})
     if (Array.isArray(jsData)) {
-        return `[${jsData.map(item => this.formatForJavaStrict(item)).join(', ')}]`;
+        return `[${jsData.map(item => this.formatForJavaStrict(item)).join(',')}]`;
     } else if (typeof jsData === 'object' && jsData !== null) {
         if (Object.keys(jsData).length === 0) return `{}`;
-        return `{${Object.entries(jsData)
-            .map(([key, value]) => `"${key}" = ${this.formatForJavaStrict(value)}`)
-            .join(', ')}}`;
-    } else if (typeof jsData === 'string') {
-        return `"${jsData}"`;
+        return `${Object.entries(jsData)
+            .map(([key, value]) => `"${key}":${this.formatForJavaStrict(value)}`)
+            .join(',')}`;
     } else {
         return jsData;
     }
