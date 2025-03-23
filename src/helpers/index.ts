@@ -341,6 +341,7 @@ import java.util.HashMap;
 import java.util.ArrayList;
 import java.util.Collections;
 
+// Note: Please remove the System.out.println statements before submitting the code.
 public class Main {
   // Function with specified return type and parameters
   public static ${returnTypeMapped} ${functionName}(${parameterList}) {

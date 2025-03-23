@@ -2,12 +2,12 @@ import { Injectable, Logger } from '@nestjs/common';
 import { error, log } from 'console';
 import {
   zuvyBatchEnrollments,
-  zuvyBootcampTracking,
   zuvyBootcamps,
   zuvyBootcampType,
   zuvySessions,
   users,
-  zuvyStudentApplicationRecord
+  zuvyStudentApplicationRecord,
+  zuvyBootcampTracking
 } from '../../../drizzle/schema';
 import { db } from '../../db/index';
 import { eq, sql, desc, count, asc, or, and, inArray } from 'drizzle-orm';
