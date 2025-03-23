@@ -23,29 +23,29 @@ export const typeMappings = {
     object: 'Object',
     void: 'void',
     input: (parameterType) => {
-        const mapping = {
-            int: 'Integer.parseInt(scanner.nextLine().trim())',
-            float: 'Float.parseFloat(scanner.nextLine().trim())',
-            double: 'Double.parseDouble(scanner.nextLine().trim())',
-            str: 'scanner.nextLine().trim()',
-            bool: 'Boolean.parseBoolean(scanner.nextLine().trim())',
-            arrayOfnum: 'parseJavaStrictFormat(scanner.nextLine().trim())',
-            arrayOfStr: 'parseJavaStrictFormat(scanner.nextLine().trim())',
-            object: 'parseJavaStrictFormat(scanner.nextLine().trim())',
-            jsonType: 'parseJavaStrictFormat(scanner.nextLine().trim())',
-        };
-        return mapping[parameterType] || 'scanner.nextLine().trim()';
+      const mapping = {
+        int: 'Integer.parseInt(scanner.nextLine().trim())',
+        float: 'Float.parseFloat(scanner.nextLine().trim())',
+        double: 'Double.parseDouble(scanner.nextLine().trim())',
+        str: 'scanner.nextLine().trim()',
+        bool: 'Boolean.parseBoolean(scanner.nextLine().trim())',
+        arrayOfnum: 'parseJavaStrictFormat(scanner.nextLine().trim())',
+        arrayOfStr: 'parseJavaStrictFormat(scanner.nextLine().trim())',
+        object: 'parseJavaStrictFormat(scanner.nextLine().trim())',
+        jsonType: 'parseJavaStrictFormat(scanner.nextLine().trim())',
+      };
+      return mapping[parameterType] || 'scanner.nextLine().trim()';
     },
     defaultReturnValue: {
-        int: '0',
-        float: '0.0f',
-        double: '0.0',
-        str: '""',
-        bool: 'false',
-        arrayOfnum: 'new int[0]',
-        arrayOfStr: 'new String[0]',
-        object: 'null',
-        void: '',
+      int: '0',
+      float: '0.0f',
+      double: '0.0',
+      str: '""',
+      bool: 'false',
+      arrayOfnum: 'new int[0]',
+      arrayOfStr: 'new String[0]',
+      object: 'null',
+      void: '',
     },
   },
   python: {
@@ -305,33 +305,48 @@ rl.on('close', () => {
 
 async function generateJavaTemplate(functionName, parameters, returnType = 'object') {
   try {
-    // Map return type to Java type
-    console.log({ functionName, parameters, returnType });
     const returnTypeMapped = typeMappings.java[returnType] || 'Object';
     const defaultReturn = typeMappings.java.defaultReturnValue[returnType] || 'null';
 
-    // Generate parameter list for the function
-    const parameterList = parameters.map(p =>
-      `${typeMappings.java[p.parameterType] || 'Object'} ${p.parameterName}`
-    ).join(', ');
+    const parameterList = parameters
+      .map(p => `${typeMappings.java[p.parameterType] || 'Object'} ${p.parameterName}`)
+      .join(', ');
 
-    // Generate input handling logic
-    const inputHandling = parameters.map(p => {
-      return `Object ${p.parameterName} = parseJavaStrictFormat(scanner.nextLine().trim());`;
-    }).join('\n      ');
-    console.log({ inputHandling });
+    const inputHandling = parameters
+      .map(p => {
+        const javaType = typeMappings.java[p.parameterType] || 'Object';
+        if (javaType === 'int[]') {
+          return `
+        Object parsed_${p.parameterName} = parseJavaStrictFormat(scanner.nextLine().trim());
+        int[] ${p.parameterName} = new int[0];
+        if (parsed_${p.parameterName} instanceof Object[]) {
+            Object[] arrObj = (Object[]) parsed_${p.parameterName};
+            ${p.parameterName} = new int[arrObj.length];
+            for (int i = 0; i < arrObj.length; i++) {
+                ${p.parameterName}[i] = Integer.parseInt(arrObj[i].toString());
+            }
+        }`;
+        } else if (javaType === 'String[]') {
+          return `
+        Object parsed_${p.parameterName} = parseJavaStrictFormat(scanner.nextLine().trim());
+        String[] ${p.parameterName} = new String[0];
+        if (parsed_${p.parameterName} instanceof Object[]) {
+            Object[] arrObj = (Object[]) parsed_${p.parameterName};
+            ${p.parameterName} = new String[arrObj.length];
+            for (int i = 0; i < arrObj.length; i++) {
+                ${p.parameterName}[i] = arrObj[i].toString();
+            }
+        }`;
+        } else {
+          return `${javaType} ${p.parameterName} = ${typeMappings.java.input(p.parameterType)};`;
+        }
+      })
+      .join('\n');
 
-    // Generate return logging logic
-    let returnLogs;
-    if (['arrayOfnum', 'arrayOfStr', 'arrayOfObj'].includes(returnType)) {
-      returnLogs = 'System.out.println(formatArray(returnData));';
-    } else if (['object', 'jsonType'].includes(returnType)) {
-      returnLogs = 'System.out.println(formatArray(returnData));';
-    } else {
-      returnLogs = 'System.out.println(returnData);';
-    }
+    const returnLogs = ['arrayOfnum', 'arrayOfStr', 'arrayOfObj', 'object', 'jsonType'].includes(returnType)
+      ? 'System.out.println(formatArrayNoSpaces(returnData));'
+      : 'System.out.println(returnData);';
 
-    // Construct the Java template as a string
     const template = `
 import java.util.Scanner;
 import java.util.Arrays;
@@ -339,7 +354,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.HashMap;
 import java.util.ArrayList;
-import java.util.Collections;
 
 // Note: Please remove the System.out.println statements before submitting the code.
 public class Main {
@@ -362,117 +376,156 @@ public class Main {
       ${returnLogs}
       scanner.close();
   }
+
   // ############## don't change the code below ##############
-  // Strict formatting for arrays and objects
-  public static String formatArray(Object data) {
+  // Strict formatting for arrays and objects with no spaces between elements
+  public static String formatArrayNoSpaces(Object data) {
     if (data instanceof int[]) {
-        return Arrays.toString((int[]) data);
+      int[] arr = (int[]) data;
+      StringBuilder sb = new StringBuilder();
+      sb.append("[");
+      for (int i = 0; i < arr.length; i++) {
+          sb.append(arr[i]);
+          if (i != arr.length - 1) {
+              sb.append(",");
+          }
+      }
+      sb.append("]");
+      return sb.toString();
     } else if (data instanceof String[]) {
-        return Arrays.toString((String[]) data);
+      String[] arr = (String[]) data;
+      StringBuilder sb = new StringBuilder();
+      sb.append("[");
+      for (int i = 0; i < arr.length; i++) {
+          sb.append("\\"").append(arr[i]).append("\\"");
+          if (i != arr.length - 1) {
+              sb.append(",");
+          }
+      }
+      sb.append("]");
+      return sb.toString();
     } else if (data instanceof Object[]) {
-        Object[] array = (Object[]) data;
-        List<String> formattedList = new ArrayList<>();
-        for (Object obj : array) {
-            formattedList.add(formatArray(obj));
-        }
-        return "[" + String.join(",", formattedList) + "]";
+      Object[] arr = (Object[]) data;
+      StringBuilder sb = new StringBuilder();
+      sb.append("[");
+      for (int i = 0; i < arr.length; i++) {
+          sb.append(formatArrayNoSpaces(arr[i]));
+          if (i != arr.length - 1) {
+              sb.append(",");
+          }
+      }
+      sb.append("]");
+      return sb.toString();
     } else if (data instanceof Map) {
       Map<?, ?> map = (Map<?, ?>) data;
-      StringBuilder sb = new StringBuilder("${returnTypeMapped == "Object"?"{":""}");
+      StringBuilder sb = new StringBuilder();
+      sb.append("{");
+      int count = 0;
       for (Map.Entry<?, ?> entry : map.entrySet()) {
-          sb.append(entry.getKey()).append("\\":").append(formatArray(entry.getValue())).append(",");
+          if (count > 0) sb.append(",");
+          sb.append("\\"").append(entry.getKey()).append("\\":");
+          sb.append(formatArrayNoSpaces(entry.getValue()));
+          count++;
       }
-      if (!map.isEmpty()) sb.setLength(sb.length() - 1); // Remove the last comma
-      ${returnTypeMapped == "Object" ? 'sb.append("}");' : ""}        
-      String str = (String) sb.toString();
-      if (!str.startsWith("\\"") && !str.contains("{") && !str.contains("[")) {
-        str = "\\"" + str;
-      }
-      return str;
+      sb.append("}");
+      return sb.toString();
     }
     return String.valueOf(data);
   }
 
-  // Updated parser with colon handling
+  // Updated parser with colon handling and support for simple arrays
   public static Object parseJavaStrictFormat(String input) {
-      input = input.trim();
-      if (input.startsWith("[") && input.endsWith("]")) {
-          String content = input.substring(1, input.length() - 1).trim();
-          if (content.isEmpty()) return new Object[0];
-          String[] parts = splitTopLevel(content);
-          Map<String, Object>[] result = new Map[parts.length];
-          for (int i = 0; i < parts.length; i++) {
-              String part = parts[i].trim();
-              if (part.startsWith("{") && part.endsWith("}")) {
-                  part = part.substring(1, part.length() - 1).trim();
-              }
-              result[i] = parseMap(part);
+    input = input.trim();
+    if (input.startsWith("[") && input.endsWith("]")) {
+      String content = input.substring(1, input.length() - 1).trim();
+      if (content.isEmpty()) return new Object[0];
+      if (!content.startsWith("{")) {
+        String[] parts = splitTopLevel(content);
+        Object[] result = new Object[parts.length];
+        for (int i = 0; i < parts.length; i++) {
+          result[i] = parseValue(parts[i].trim());
+        }
+        return result;
+      } else {
+        String[] parts = splitTopLevel(content);
+        @SuppressWarnings("unchecked")
+        Map<String, Object>[] result = new Map[parts.length];
+        for (int i = 0; i < parts.length; i++) {
+          String part = parts[i].trim();
+          if (part.startsWith("{") && part.endsWith("}")) {
+            part = part.substring(1, part.length() - 1).trim();
           }
-          return result;
+          result[i] = parseMap(part);
+        }
+        return result;
       }
-      if (input.startsWith("{") && input.endsWith("}")) {
-          return parseMap(input.substring(1, input.length() - 1).trim());
-      }
-      return parseValue(input);
+    }
+    if (input.startsWith("{") && input.endsWith("}")) {
+      return parseMap(input.substring(1, input.length() - 1).trim());
+    }
+    return parseValue(input);
   }
 
   // New map parser with colon support
   private static Map<String, Object> parseMap(String input) {
-      Map<String, Object> map = new HashMap<>();
-      String[] pairs = splitTopLevel(input);
-      for (String pair : pairs) {
-          String[] keyValue = pair.split(":", 2);
-          if (keyValue.length != 2) continue;
-          String key = keyValue[0].trim().replaceAll("^['\\"]|['\\"]$", "");
-          String value = keyValue[1].trim();
-          map.put(key, parseValue(value));
-      }
-      return map;
+    Map<String, Object> map = new HashMap<>();
+    if (input.isEmpty()) return map;
+    String[] pairs = splitTopLevel(input);
+    for (String pair : pairs) {
+      String[] keyValue = pair.split(":", 2);
+      if (keyValue.length != 2) continue;
+      String key = keyValue[0].trim().replaceAll("^['\\"]|['\\"]$", "");
+      String value = keyValue[1].trim();
+      map.put(key, parseValue(value));
+    }
+    return map;
   }
 
   // Helper method to split top-level elements
   private static String[] splitTopLevel(String input) {
-      List<String> parts = new ArrayList<>();
-      StringBuilder current = new StringBuilder();
-      int bracketCount = 0;
-      for (char c : input.toCharArray()) {
-          if (c == '[') bracketCount++;
-          else if (c == ']') bracketCount--;
-          else if (c == ',' && bracketCount == 0) {
-              parts.add(current.toString().trim());
-              current.setLength(0);
-              continue;
-          }
-          current.append(c);
+    List<String> parts = new ArrayList<>();
+    StringBuilder current = new StringBuilder();
+    int bracketCount = 0;
+    for (char c : input.toCharArray()) {
+      if (c == '[' || c == '{') bracketCount++;
+      else if (c == ']' || c == '}') bracketCount--;
+      else if (c == ',' && bracketCount == 0) {
+        parts.add(current.toString().trim());
+        current.setLength(0);
+        continue;
       }
-      if (current.length() > 0) {
-          parts.add(current.toString().trim());
-      }
-      return parts.toArray(new String[0]);
+      current.append(c);
+    }
+    if (current.length() > 0) {
+      parts.add(current.toString().trim());
+    }
+    return parts.toArray(new String[0]);
   }
 
   // Helper method to parse values
   private static Object parseValue(String value) {
-      value = value.trim();
-      if ((value.startsWith("\\"") && value.endsWith("\\"")) || (value.startsWith("'") && value.endsWith("'"))) {
-          return value.substring(1, value.length() - 1);
-      } else {
-          try {
-              return Integer.parseInt(value);
-          } catch (NumberFormatException e) {
-              return value;
-          }
+    value = value.trim();
+    if ((value.startsWith("\\"") && value.endsWith("\\"")) ||
+        (value.startsWith("'") && value.endsWith("'"))) {
+      return value.substring(1, value.length() - 1);
+    } else {
+      try {
+        return Integer.parseInt(value);
+      } catch (NumberFormatException e) {
+        return value;
       }
+    }
   }
-}`;
+}
+`;
 
-    console.log("Java template:", template);
     return [null, template];
   } catch (error) {
     console.error("Error generating Java template:", error);
     return [error];
   }
 }
+
 
 // generate c template for the given function name and parameters
 async function generateCTemplates(functionName, parameters, returnType) {
