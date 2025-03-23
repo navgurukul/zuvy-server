@@ -532,7 +532,6 @@ export class ContentService {
                 id: true,
                 title: true,
                 description: true,
-
               }
             },
             Quizzes: {
@@ -548,7 +547,6 @@ export class ContentService {
                     quizVariants: true
                   }
                 }
-
               }
             },
             OpenEndedQuestions: {
@@ -576,17 +574,29 @@ export class ContentService {
                     title: true,
                     description: true,
                     difficulty: true,
-                    tagId: true
+                    tagId: true,
+                    constraints: true, // Include constraints here
                   },
+                  with: {
+                    testCases: {
+                      columns: {
+                        id: true,
+                        inputs: true,
+                        expectedOutput: true,
+                      },
+                      orderBy: (testCase, { asc }) => asc(testCase.id),
+                    }
+                  }
                 }
               }
             }
           },
         });
-        chapterDetails[0]["assessmentOutsourseId"] = chapterDetails[0].id
-        let formatedData = this.formatedChapterDetails(chapterDetails[0])
+        chapterDetails[0]["assessmentOutsourseId"] = chapterDetails[0].id;
+        let formatedData = this.formatedChapterDetails(chapterDetails[0]);
         return formatedData;
       }
+
       const chapterDetails = await db
         .select()
         .from(zuvyModuleChapter)
@@ -613,6 +623,7 @@ export class ContentService {
         order: chapterDetails[0].order,
         completionDate: chapterDetails[0].completionDate
       };
+
       if (chapterDetails.length > 0) {
         if (chapterDetails[0].topicId == 4) {
           const quizDetails =
@@ -629,17 +640,31 @@ export class ContentService {
               : [];
           modifiedChapterDetails.quizQuestionDetails = quizDetails;
         } else if (chapterDetails[0].topicId == 3) {
+          // Fetch coding questions and their test cases
           const codingProblemDetails =
             chapterDetails[0].codingQuestions !== null
-              ? await db
-                .select()
-                .from(zuvyCodingQuestions)
-                .where(
-                  eq(
-                    zuvyCodingQuestions.id,
-                    chapterDetails[0].codingQuestions,
-                  ),
-                )
+              ? await db.query.zuvyCodingQuestions.findMany({
+                where: (codingQuestion, { eq }) =>
+                  eq(codingQuestion.id, chapterDetails[0].codingQuestions),
+                columns: {
+                  id: true,
+                  title: true,
+                  description: true,
+                  difficulty: true,
+                  tagId: true,
+                  constraints: true, // Include constraints here
+                },
+                with: {
+                  testCases: {
+                    columns: {
+                      id: true,
+                      inputs: true,
+                      expectedOutput: true,
+                    },
+                    orderBy: (testCase, { asc }) => asc(testCase.id),
+                  }
+                }
+              })
               : [];
           modifiedChapterDetails.codingQuestionDetails = codingProblemDetails;
         } else if (chapterDetails[0].topicId == 7) {
