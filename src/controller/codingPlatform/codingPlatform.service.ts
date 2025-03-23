@@ -266,6 +266,7 @@ export class CodingPlatformService {
           codingOutsourseId: true,
           createdAt: true,
           sourceCode: true,
+          programLangId: true,
         },
         with: {
           questionDetail: true,
@@ -289,12 +290,6 @@ export class CodingPlatformService {
       } else {
         const practiceCode = response[0];
   
-        // Extract languageId from TestCasesSubmission if available
-        const languageId =
-          practiceCode.TestCasesSubmission?.length > 0
-            ? practiceCode.TestCasesSubmission[0]?.languageId ?? undefined
-            : undefined;
-  
         // Construct response data with languageId after sourceCode
         const responseData = {
           id: practiceCode.id,
@@ -305,7 +300,7 @@ export class CodingPlatformService {
           codingOutsourseId: practiceCode.codingOutsourseId,
           createdAt: practiceCode.createdAt,
           sourceCode: practiceCode.sourceCode,
-          languageId, // Placed directly after sourceCode
+          ...(practiceCode.action === "run" && { languageId: Number(practiceCode.programLangId) }),
           questionDetail: practiceCode.questionDetail,
           TestCasesSubmission: practiceCode.TestCasesSubmission?.map(({ languageId, ...rest }) => rest), // Removing languageId from TestCasesSubmission
         };
