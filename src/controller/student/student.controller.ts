@@ -4,7 +4,8 @@ import { ApiTags, ApiBody, ApiOperation, ApiQuery, ApiBearerAuth, ApiParam } fro
 import { get } from 'http';
 import { Response } from 'express';
 import { ErrorResponse, SuccessResponse } from 'src/errorHandler/handler';
-import { ApplyFormData } from './dto/student.dto';
+import { ApplyFormData } from './dto/student.dto'
+
 @Controller('student')
 @ApiTags('student')
 @UsePipes(
@@ -158,7 +159,7 @@ export class StudentController {
     );
     return res;
   }
-
+  
   @Post('/apply')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'student can apply for the course' })
