@@ -13,7 +13,7 @@ export const helperVariable= {
     MCQ_POINTS: { "Easy": 4, "Medium": 8, "Hard": 12 },
     CODING_POINTS: { "Easy": 10, "Medium": 15, "Hard": 20 },
     OPEN_ENDED_POINTS: { "Easy": 3, "Medium": 6, "Hard": 9 },
-    WAIT_API_RESPONSE: 1590,
+    WAIT_API_RESPONSE: 2990,
     TOTAL_SCORE: 100,
     DIFFICULTY: {
       EASY: 'Easy',
