@@ -73,7 +73,7 @@ export class CodingPlatformService {
             case 'float':
             case 'str':
             case 'bool':
-              return testCase.expectedOutput.parameterValue.toString(); // Convert to string
+              return testCase.expectedOutput.parameterValue.toString();
             case 'arrayOfnum':
             case 'arrayOfStr':
             case 'jsonType':
@@ -105,7 +105,7 @@ export class CodingPlatformService {
         headers: {
             'content-type': 'application/json',
             'X-RapidAPI-Key': RAPID_API_KEY,
-            'X-RapidAPI-Host': RAPID_HOST,
+            'X-RapidAPI-Host': RAPID_HOST
         },
         data: {
             submissions: preparedSubmissions,
@@ -124,7 +124,8 @@ export class CodingPlatformService {
         if (err) {
             return [err];
         }
-
+        // testCasesArray
+        console.log({testCasesArray});
         // Map submission results to test cases
         let testSubmission = testCasesArray?.map((testCase, index) => {
             return {
@@ -139,7 +140,6 @@ export class CodingPlatformService {
                 stdIn: submissionInfo.data.submissions[index]?.stdin,
                 languageId: submissionInfo.data.submissions[index]?.language_id,
                 expectedOutput: submissionInfo.data.submissions[index]?.expected_output
-
             };
         });
 
@@ -147,7 +147,7 @@ export class CodingPlatformService {
     } catch (error) {
       return [{ statusCode: STATUS_CODES.BAD_REQUEST, message: error.message }];
     }
-}
+  }
 
   async submitPracticeCode(questionId: number, sourceCode, action, userId, submissionId, codingOutsourseId): Promise<any> {
     try {
@@ -214,6 +214,7 @@ export class CodingPlatformService {
         insertValues["codingOutsourseId"] = codingOutsourseId;
       }
       let practiceSubmission = await db.insert(zuvyPracticeCode).values(insertValues).returning();
+      console.log('testcasesSubmission', testcasesSubmission.data);
 
       let testcasesSubmissionInsert = testcasesSubmission.data.map((testcase) => {
         return {
