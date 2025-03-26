@@ -265,8 +265,8 @@ export class CodingPlatformService {
           submissionId: true,
           codingOutsourseId: true,
           createdAt: true,
-          sourceCode: true,
           programLangId: true,
+          sourceCode: true,
         },
         with: {
           questionDetail: true,
@@ -299,6 +299,7 @@ export class CodingPlatformService {
           submissionId: practiceCode.submissionId,
           codingOutsourseId: practiceCode.codingOutsourseId,
           createdAt: practiceCode.createdAt,
+          programLangId: practiceCode.programLangId,
           sourceCode: practiceCode.sourceCode,
           ...(practiceCode.action === "run" && { languageId: Number(practiceCode.programLangId) }),
           questionDetail: practiceCode.questionDetail,
@@ -552,6 +553,7 @@ export class CodingPlatformService {
           submissionId: true,
           codingOutsourseId: true,
           createdAt: true,
+          programLangId:true,
           sourceCode: true
         },
         with: {
@@ -595,6 +597,7 @@ export class CodingPlatformService {
           submissionId: true,
           codingOutsourseId: true,
           createdAt: true,
+          programLangId:true,
           sourceCode: true
         },
         with: {
