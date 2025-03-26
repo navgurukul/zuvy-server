@@ -161,9 +161,9 @@ export class CodingPlatformService {
       if (testcasesSubmission.data[0].stderr && action != SUBMIT) {
         return [null, { statusCode: STATUS_CODES.CONFLICT, message: `${action} ${testcasesSubmission.data[0].status}`, data: [testcasesSubmission.data[0]] }];
       }
-      let insertValues
+      let insertValues;
       if (testcasesSubmission.data.length >= 0) {
-        insertValues = { status: ACCEPTED, sourceCode: sourceCode.sourceCode };
+        insertValues = { status: ACCEPTED, sourceCode: sourceCode.sourceCode, programLangId: sourceCode.languageId };
       } else {
         insertValues = { status: 'Error', sourceCode: sourceCode.sourceCode };
       }
@@ -214,7 +214,6 @@ export class CodingPlatformService {
         insertValues["codingOutsourseId"] = codingOutsourseId;
       }
       let practiceSubmission = await db.insert(zuvyPracticeCode).values(insertValues).returning();
-      console.log('testcasesSubmission', testcasesSubmission.data);
 
       let testcasesSubmissionInsert = testcasesSubmission.data.map((testcase) => {
         return {
