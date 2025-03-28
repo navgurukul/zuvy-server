@@ -165,11 +165,10 @@ export class chapterDto {
 
 
 }
-
-export class quizDto {
+export class QuizVariantDto {
   @ApiProperty({
     type: String,
-    example: 'What is the national animal of India',
+    example: "What is Schrödinger's cat?",
     required: true,
   })
   @IsString()
@@ -178,10 +177,10 @@ export class quizDto {
   @ApiProperty({
     type: 'object',
     example: {
-      1: 'Option 1',
-      2: 'Option 2',
-      3: 'Option 3',
-      4: 'Option 4',
+      1: "A theoretical cat",
+      2: "A type of experiment",
+      3: "Both alive and dead",
+      4: "None of the above",
     },
     required: true,
   })
@@ -190,77 +189,98 @@ export class quizDto {
 
   @ApiProperty({
     type: Number,
-    example: 2,
+    example: 3,
     required: true,
   })
   @IsNumber()
   correctOption: number;
+}
 
+export class quizBatchDto {
   @ApiProperty({
-    type: Number,
-    example: 1,
+    type: String,
+    example: 'Introduction to Quantum Physics',
+    required: false, 
   })
-  @IsNumber()
-  @IsOptional()
-  mark: number;
+  @IsString()
+  @IsOptional() 
+  title?: string;
 
   @ApiProperty({
-    type: Number,
-    example: 2,
-  })
-  @IsNumber()
-  @IsOptional()
-  tagId: number;
-
-  @ApiProperty({
-    type: difficulty,
+    type: String,
     example: 'Easy',
     required: true,
   })
   @IsString()
-  @IsOptional()
   difficulty: 'Easy' | 'Medium' | 'Hard';
-}
 
-export class  quizBatchDto {
   @ApiProperty({
-    type: [quizDto],
+    type: Number,
+    example: 4,
+    required: true,
+  })
+  @IsNumber()
+  tagId: number;
+
+  @ApiProperty({
+    type: String,
+    example: 'Detailed content explaining quantum theories and experiments.',
+    required: false, 
+  })
+  @IsString()
+  @IsOptional() 
+  content?: string;
+
+  @ApiProperty({
+    type: Boolean,
+    example: false,
+    required: false,
+  })
+  @IsBoolean()
+  @IsOptional() 
+  isRandomOptions?: boolean;
+
+  @ApiProperty({
+    type: [QuizVariantDto],
     example: [
       {
-        question: 'What is the national animal of India?',
+        question: "What is Schrödinger's cat?",
         options: {
-          1: 'Option 1',
-          2: 'Option 2',
-          3: 'Option 3',
-          4: 'Option 4',
-        },
-        correctOption: 2,
-        mark: 1,
-        tagId: 2,
-        difficulty: 'Easy',
-      },
-      {
-        question: 'What is the capital of France?',
-        options: {
-          1: 'Paris',
-          2: 'London',
-          3: 'Berlin',
-          4: 'Rome',
+          1: "A theoretical cat",
+          2: "A type of experiment",
+          3: "Both alive and dead",
+          4: "None of the above",
         },
         correctOption: 3,
-        mark: 1,
-        tagId: 2,
-        difficulty: 'Easy',
+      },
+      {
+        question: "What is the Heisenberg Uncertainty Principle?",
+        options: {
+          1: "A rule about uncertainty",
+          2: "A principle in quantum mechanics",
+          3: "Both 1 and 2",
+          4: "None of the above",
+        },
+        correctOption: 3,
       },
     ],
     required: true,
   })
   @IsArray()
-  @ArrayNotEmpty()
   @ValidateNested({ each: true })
-  @Type(() => quizDto)
-  questions: quizDto[];
+  @Type(() => QuizVariantDto)
+  variantMCQs: QuizVariantDto[];
+}
 
+export class CreateQuizzesDto {
+  @ApiProperty({
+    type: [quizBatchDto],
+    required: true,
+  })
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => quizBatchDto)
+  quizzes: quizBatchDto[];
 }
 
 export class reOrderDto {
@@ -492,22 +512,14 @@ export class CreateAssessmentBody {
   @IsNumber()
   @IsDefined()
   timeLimit: number;
-
+  
   @ApiProperty({
     type: Boolean,
     example: true
   })
   @IsOptional()
   @IsBoolean()
-  copyPaste: boolean;
-
-  @ApiProperty({
-    type: Boolean,
-    example: true
-  })
-  @IsOptional()
-  @IsBoolean()
-  embeddedGoogleSearch: boolean;
+  canEyeTrack: boolean;
 
   @ApiProperty({
     type: Boolean,
@@ -515,71 +527,55 @@ export class CreateAssessmentBody {
   })
   @IsOptional()
   @IsBoolean()
-  tabChange: boolean;
-
-  @ApiProperty({
-    type: Boolean,
-    example: true
-  })
-  @IsOptional()
-  @IsBoolean()
-  screenRecord: boolean;
-
-  @ApiProperty({
-    type: Boolean,
-    example: true
-  })
-  @IsOptional()
-  @IsBoolean()
-  webCamera: boolean;
-}
-
-export class editQuizDto {
+  canTabChange: boolean;
   
   @ApiProperty({
-    type: Number,
-    example: 1,
-    required: true
+    type: Boolean,
+    example: true
   })
-  @IsNumber()
-  id: number;
+  @IsOptional()
+  @IsBoolean()
+  canScreenExit: boolean;
+  
+  @ApiProperty({
+    type: Boolean,
+    example: true
+  })
+  @IsOptional()
+  @IsBoolean()
+  canCopyPaste: boolean;
 
   @ApiProperty({
-    type: String,
-    example: 'What is the national animal of India',
+    type: [Number],
+    example: [1, 2],
   })
-  @IsString()
+  @IsArray()
   @IsOptional()
-  question: string;
+  codingQuestionTagId: number[];
 
   @ApiProperty({
-    type: 'object',
-    example: {
-      1: 'Option 1',
-      2: 'Option 2',
-      3: 'Option 3',
-      4: 'Option 4',
-    }
+    type: [Number],
+    example: [1, 2],
   })
-  @IsObject()
+  @IsArray()
   @IsOptional()
-  options: object;
-
-  @ApiProperty({
-    type: Number,
-    example: 2
-  })
-  @IsNumber()
-  @IsOptional()
-  correctOption: number;
+  mcqTagId: number[];
 
   @ApiProperty({
     type: Number,
-    example: 1,
+    example: 3,
   })
   @IsNumber()
   @IsOptional()
-  marks: number;
+  easyCodingQuestions: number;
+
+  @ApiProperty({
+    type: Number,
+    example: 4,
+  })
+  @IsNumber()
+  @IsOptional()
+  mediumCodingQuestions: number;
 
   @ApiProperty({
     type: Number,
@@ -587,47 +583,183 @@ export class editQuizDto {
   })
   @IsNumber()
   @IsOptional()
-  tagId: number;
+  hardCodingQuestions: number;
 
   @ApiProperty({
-    type: difficulty,
-    example: 'Easy'
+    type: Number,
+    example: 9,
   })
-  @IsString()
+  @IsNumber()
   @IsOptional()
-  difficulty: 'Easy' | 'Medium' | 'Hard';
+  totalCodingQuestions: number;
+
+  @ApiProperty({
+    type: Number,
+    example: 5,
+  })
+  @IsNumber()
+  @IsOptional()
+  totalMcqQuestions: number;
+
+  @ApiProperty({
+    type: Number,
+    example: 2,
+  })
+  @IsNumber()
+  @IsOptional()
+  easyMcqQuestions: number;
+
+  @ApiProperty({
+    type: Number,
+    example: 2,
+  })
+  @IsNumber()
+  @IsOptional()
+  mediumMcqQuestions: number;
+
+  @ApiProperty({
+    type: Number,
+    example: 1,
+  })
+  @IsNumber()
+  @IsOptional()
+  hardMcqQuestions: number;
+
+  @ApiProperty({
+    type: Number,
+    example: 40,
+  })
+  @IsNumber()
+  @IsOptional()
+  weightageCodingQuestions: number;
+
+  @ApiProperty({
+    type: Number,
+    example: 60,
+  })
+  @IsNumber()
+  @IsOptional()
+  weightageMcqQuestions: number;
+  
 }
 
-export class editQuizBatchDto {
+export class EditQuizVariantDto {
   @ApiProperty({
-    type: [editQuizDto],
+    type: Number,
+    example: 1,
+    required: true,
+  })
+  @IsNumber()
+  variantNumber: number;
+
+  @ApiProperty({
+    type: String,
+    example: "What is Schrödinger's cat?",
+    required: true,
+  })
+  @IsString()
+  question: string;
+
+  @ApiProperty({
+    type: 'object',
+    example: {
+      1: "A theoretical cat",
+      2: "A type of experiment",
+      3: "Both alive and dead",
+      4: "None of the above",
+    },
+    required: true,
+  })
+  @IsObject()
+  options: object;
+
+  @ApiProperty({
+    type: Number,
+    example: 3,
+    required: true,
+  })
+  @IsNumber()
+  correctOption: number;
+}
+
+export class EditQuizBatchDto {
+  @ApiProperty({
+    type: Number,
+    example: 1,
+    required: true,
+  })
+  @IsNumber()
+  id: number;
+
+  @ApiProperty({
+    type: String,
+    example: "Quantum Mechanics Quiz",
+    required: false, // Change to false
+  })
+  @IsString()
+  @IsOptional() // Mark as optional
+  title?: string;
+
+  @ApiProperty({
+    type: String,
+    example: "medium",
+    required: false, // Change to false
+  })
+  @IsString()
+  @IsOptional() // Mark as optional
+  difficulty?: string;
+
+  @ApiProperty({
+    type: Number,
+    example: 5,
+    required: false, // Change to false
+  })
+  @IsNumber()
+  @IsOptional() // Mark as optional
+  tagId?: number;
+
+  @ApiProperty({
+    type: String,
+    example: "This quiz covers basic concepts of quantum mechanics.",
+    required: false, // Change to false
+  })
+  @IsString()
+  @IsOptional() // Mark as optional
+  content?: string;
+
+  @ApiProperty({
+    type: Boolean,
+    example: false,
+    required: true, // Change to false
+  })
+  @IsBoolean()
+  @IsOptional() // Mark as optional
+  isRandomOptions?: boolean;
+
+  @ApiProperty({
+    type: [EditQuizVariantDto],
     example: [
       {
-        id: 1,
-        question: 'What is the national animal of India?',
+        variantNumber: 1,
+        question: "What is Schrödinger's cat?",
         options: {
-          1: 'Option 1',
-          2: 'Option 2',
-          3: 'Option 3',
-          4: 'Option 4',
+          1: "A theoretical cat",
+          2: "A type of experiment",
+          3: "Both alive and dead",
+          4: "None of the above"
         },
-        correctOption: 2,
-        marks: 1,
-        tagId: 2,
-        difficulty: 'Easy',
+        correctOption: 3
       },
       {
-        question: 'What is the capital of France?',
+        variantNumber: 3,
+        question: "What is the Heisenberg Uncertainty Principle?",
         options: {
-          1: 'Paris',
-          2: 'London',
-          3: 'Berlin',
-          4: 'Rome',
+          1: "A rule about uncertainty",
+          2: "A principle in quantum mechanics",
+          3: "Both 1 and 2",
+          4: "None of the above"
         },
-        correctOption: 3,
-        marks: 1,
-        tagId: 2,
-        difficulty: 'Easy',
+        correctOption: 3
       },
     ],
     required: true,
@@ -635,8 +767,44 @@ export class editQuizBatchDto {
   @IsArray()
   @ArrayNotEmpty()
   @ValidateNested({ each: true })
-  @Type(() => editQuizDto)
-  questions: editQuizDto[];
+  @Type(() => EditQuizVariantDto)
+  @IsOptional()
+  variantMCQs?: EditQuizVariantDto[];
+}
+
+export class CreateQuizVariantDto {
+  @ApiProperty({ type: String, example: "What is Schrödinger's cat?", required: true })
+  @IsString()
+  question: string;
+
+  @ApiProperty({
+    type: 'object',
+    example: {
+      1: "A theoretical cat",
+      2: "A type of experiment",
+      3: "Both alive and dead",
+      4: "None of the above",
+    },
+    required: true,
+  })
+  @IsObject()
+  options: object;
+
+  @ApiProperty({ type: Number, example: 3, required: true })
+  @IsNumber()
+  correctOption: number;
+}
+
+export class AddQuizVariantsDto {
+  @ApiProperty({ type: Number, example: 101, required: true })
+  @IsNumber()
+  quizId: number;
+
+  @ApiProperty({ type: [CreateQuizVariantDto], required: true })
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => CreateQuizVariantDto)
+  variantMCQs: CreateQuizVariantDto[];
 }
 
 export class testCaseDto {
@@ -1058,4 +1226,38 @@ export class CreateAndEditFormBody {
   @Type(() => editFormBatchDto)
   editFormQuestionDto: editFormBatchDto;
   //questions: any;
+}
+
+export class QuestionIdDto {
+  @ApiProperty({
+    example: 1,
+    description: 'The ID of the main quiz or quiz variant to delete.',
+    required:true
+  })
+  @IsNumber()
+  id: number;
+
+  @ApiProperty({
+    example: 'main',
+    description: 'Type of the item to delete: "main" for main quiz, "variant" for quiz variant.',
+    required:true
+  })
+  @IsString()
+  type: 'main' | 'variant';
+}
+
+export class deleteQuestionOrVariantDto {
+  @ApiProperty({
+    type: [QuestionIdDto],
+    examples: [
+      { id: 1, type: 'main' },
+      { id: 2, type: 'variant' },
+    ],
+    required: true,
+  })
+  @IsArray()
+  @ArrayNotEmpty()
+  @ValidateNested({ each: true })
+  @Type(() => QuestionIdDto)
+  questionIds: QuestionIdDto[];
 }

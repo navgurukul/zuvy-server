@@ -20,82 +20,134 @@ const { RAPID_BASE_URL, RAPID_API_KEY, RAPID_HOST } = process.env; // INPORTING 
 
 @Injectable()
 export class CodingPlatformService {
+  formatForJavaStrict(jsData) {
+    if (Array.isArray(jsData)) {
+        return `[${jsData.map(item => this.formatForJavaStrict(item)).join(',')}]`;
+    } else if (typeof jsData === 'object' && jsData !== null) {
+        if (Object.keys(jsData).length === 0) return `{}`;
+        return `${Object.entries(jsData)
+            .map(([key, value]) => `"${key}":${this.formatForJavaStrict(value)}`)
+            .join(',')}`;
+    } else {
+        return jsData;
+    }
+  }
+
   async submitCodeBatch(sourceCode: SubmitCodeDto, codingOutsourseId: number, action: string): Promise<any> {
     let testCase;
     if (RUN === action) {
-      testCase = 3;
+        testCase = 2;
     } else {
-      testCase = 0;
+        testCase = 0;
     }
-    const [error, question] = await this.getCodingQuestion(codingOutsourseId, false, testCase)
+    const [error, question] = await this.getCodingQuestion(codingOutsourseId, false, testCase);
     if (error) {
-      return [error];
+        return [error];
     }
     let testCasesArray = question.data.testCases;
+
     const preparedSubmissions = testCasesArray.map((testCase) => {
-      var input = [];
-      var output = [];
-      if (action == SUBMIT) {
-        input.push(...testCase.inputs.map(input => input.parameterValue));
-        output.push(testCase.expectedOutput.parameterValue);
-      }
-      else if (action == RUN) {
-        input.push(...testCase.inputs.map(input => input.parameterValue));
-        output.push(testCase.expectedOutput.parameterValue);
-      }
-      const stdinput = input.map(item => item.toString()).join('\n');
-      const encodedStdInput = Buffer.from(stdinput).toString('base64')
-      const stdoutput = output.map(item => item.toString()).join('\n');
-      const encodedStdOutput = Buffer.from(stdoutput).toString('base64');
-      return {
-        language_id: sourceCode.languageId,
-        source_code: sourceCode.sourceCode,
-        stdin: encodedStdInput,
-        expected_output: encodedStdOutput
-      }
+        // Process inputs based on their data types
+        const input = testCase.inputs.map(input => {
+            switch (input.parameterType) {
+                case 'int':
+                case 'float':
+                case 'str':
+                case 'bool':
+                    return input.parameterValue.toString(); // Convert to string
+                case 'arrayOfnum':
+                case 'arrayOfStr':
+                case 'object':
+                case 'jsonType':
+                  return (sourceCode.languageId == 96) ?  this.formatForJavaStrict(input.parameterValue) : JSON.stringify(input.parameterValue);
+                default:
+                  throw new Error(`Unsupported input type: ${input.parameterType}`);
+            }
+          }
+        );
+        
+        // Process expected output based on its data type
+        const output = (() => {
+          switch (testCase.expectedOutput.parameterType) {
+            case 'int':
+            case 'float':
+            case 'str':
+            case 'bool':
+              return testCase.expectedOutput.parameterValue.toString(); // Convert to string
+            case 'arrayOfnum':
+            case 'arrayOfStr':
+            case 'jsonType':
+            case 'object':
+              return (sourceCode.languageId == 96) ?  this.formatForJavaStrict(testCase.expectedOutput.parameterValue) : JSON.stringify(testCase.expectedOutput.parameterValue);
+            default:
+              throw new Error(`Unsupported output type: ${testCase.expectedOutput.parameterType}`);
+          }
+        }
+      )();
+        // Join inputs with newlines and encode in base64
+        const stdinput = input.join('\n');
+        const encodedStdInput = Buffer.from(stdinput).toString('base64');
+
+        // Encode expected output in base64
+        const encodedStdOutput = Buffer.from(output).toString('base64');
+
+        return {
+            language_id: sourceCode.languageId,
+            source_code: sourceCode.sourceCode,
+            stdin: encodedStdInput,
+            expected_output: encodedStdOutput,
+        };
     });
+
     const options = {
-      method: 'POST',
-      url: `${RAPID_BASE_URL}/submissions/batch?base64_encoded=true&wait=true`,
-      headers: {
-        'content-type': 'application/json',
-        'X-RapidAPI-Key': RAPID_API_KEY,
-        'X-RapidAPI-Host': RAPID_HOST
-      },
-      data: {
-        submissions: preparedSubmissions
-      }
+        method: 'POST',
+        url: `${RAPID_BASE_URL}/submissions/batch?base64_encoded=true&wait=true`,
+        headers: {
+            'content-type': 'application/json',
+            'X-RapidAPI-Key': RAPID_API_KEY,
+            'X-RapidAPI-Host': RAPID_HOST,
+        },
+        data: {
+            submissions: preparedSubmissions,
+        },
     };
 
     try {
-      const response = await axios.request(options);
-      const tokens = response.data?.map(submission => submission.token);
-      let submissionInfo, err;
+        const response = await axios.request(options);
+        const tokens = response.data?.map(submission => submission.token);
+        let submissionInfo, err;
+        await new Promise<void>(resolve => setTimeout(async () => {
+            [err, submissionInfo] = await this.getCodeInfo(tokens);
+            resolve();
+        }, WAIT_API_RESPONSE));
 
-      await new Promise<void>(resolve => setTimeout(async () => {
-        [err, submissionInfo] = await this.getCodeInfo(tokens);
-        resolve();
-      }, WAIT_API_RESPONSE));
-
-      if (err) {
-        return [err];
-      }
-      let testSubmission = testCasesArray?.map((testCase, index) => {
-        return {
-          testcastId: testCase?.id,
-          status: submissionInfo.data.submissions[index].status?.description,
-          token: submissionInfo.data.submissions[index]?.token,
-          stdOut: submissionInfo.data.submissions[index]?.stdout,
-          stderr: submissionInfo.data.submissions[index]?.stderr,
-          memory: submissionInfo.data.submissions[index]?.memory,
-          time: submissionInfo.data.submissions[index]?.time,
+        if (err) {
+            return [err];
         }
-      })
-      return [null, { statusCode: STATUS_CODES.OK, message: 'Code submitted successfully', data: testSubmission }];
+
+        // Map submission results to test cases
+        let testSubmission = testCasesArray?.map((testCase, index) => {
+            return {
+                testcastId: testCase?.id,
+                status: submissionInfo.data.submissions[index].status?.description,
+                token: submissionInfo.data.submissions[index]?.token,
+                stdOut: submissionInfo.data.submissions[index]?.stdout,
+                stdErr: submissionInfo.data.submissions[index]?.stderr,
+                memory: submissionInfo.data.submissions[index]?.memory,
+                compileOutput: submissionInfo.data.submissions[index]?.compile_output,
+                time: submissionInfo.data.submissions[index]?.time,
+                stdIn: submissionInfo.data.submissions[index]?.stdin,
+                languageId: submissionInfo.data.submissions[index]?.language_id,
+                expectedOutput: submissionInfo.data.submissions[index]?.expected_output
+
+            };
+        });
+
+        return [null, { statusCode: STATUS_CODES.OK, message: 'Code submitted successfully', data: testSubmission }];
     } catch (error) {
       return [{ statusCode: STATUS_CODES.BAD_REQUEST, message: error.message }];
     }
-  }
+}
 
   async submitPracticeCode(questionId: number, sourceCode, action, userId, submissionId, codingOutsourseId): Promise<any> {
     try {
@@ -169,31 +221,40 @@ export class CodingPlatformService {
           testcastId: testcase.testcastId,
           status: testcase.status,
           token: testcase.token,
-          stdout: testcase.stdOut,
+          stdOut: testcase.stdOut,
           memory: testcase.memory,
           time: testcase.time,
+          compileOutput: testcase.compileOutput,
+          stdIn: testcase.stdIn,
+          expectedOutput: testcase.expectedOutput,
+          languageId: testcase.languageId,
         }
       })
       let test_Submission = await db.insert(zuvyTestCasesSubmission).values(testcasesSubmissionInsert).returning();
       if (test_Submission.length !== 0) {
-        return [null, { statusCode: STATUS_CODES.OK, message: `${action} ${testcasesSubmission.data[0].status}`, data: test_Submission }];
+        return [null, { statusCode: STATUS_CODES.OK, message: `${action} ${testcasesSubmission.data[0].status}`, data: testcasesSubmissionInsert }];
       } else {
         return [{ statusCode: STATUS_CODES.BAD_REQUEST, message: 'Error in submitting code' }];
       }
     } catch (error) {
-      Logger.error({ error });
       return [{ statusCode: STATUS_CODES.BAD_REQUEST, message: error.message }];
     }
   }
-
-  async getPracticeCode(questionId, userId, submissionId, codingOutsourseId): Promise<any> {
+ 
+  async getPracticeCode(
+    questionId,
+    userId,
+    submissionId,
+    codingOutsourseId
+  ): Promise<any> {
     try {
       let queryString;
       if (isNaN(submissionId)) {
-        queryString = sql`${zuvyPracticeCode.questionId} = ${questionId} AND ${zuvyPracticeCode.userId} = ${userId} AND ${zuvyPracticeCode.submissionId} IS NULL`
+        queryString = sql`${zuvyPracticeCode.questionId} = ${questionId} AND ${zuvyPracticeCode.userId} = ${userId} AND ${zuvyPracticeCode.submissionId} IS NULL`;
       } else {
-        queryString = sql`${zuvyPracticeCode.questionId} = ${questionId} AND ${zuvyPracticeCode.userId} = ${userId} AND ${zuvyPracticeCode.submissionId} = ${submissionId} AND ${zuvyPracticeCode.codingOutsourseId} = ${codingOutsourseId}`
+        queryString = sql`${zuvyPracticeCode.questionId} = ${questionId} AND ${zuvyPracticeCode.userId} = ${userId} AND ${zuvyPracticeCode.submissionId} = ${submissionId} AND ${zuvyPracticeCode.codingOutsourseId} = ${codingOutsourseId}`;
       }
+  
       let response = await db.query.zuvyPracticeCode.findMany({
         where: queryString,
         columns: {
@@ -204,35 +265,71 @@ export class CodingPlatformService {
           submissionId: true,
           codingOutsourseId: true,
           createdAt: true,
-          sourceCode: true
+          sourceCode: true,
+          programLangId: true,
         },
         with: {
           questionDetail: true,
           TestCasesSubmission: {
             with: {
               testCases: true,
-            }
-          }
+            },
+          },
         },
         limit: 1,
         orderBy: (zuvyPracticeCode, { sql }) => sql`${zuvyPracticeCode.id} DESC`,
       });
+  
       if (response.length === 0) {
-        return [{ statusCode: STATUS_CODES.NOT_FOUND, message: 'No practice code available for the given question' }];
+        return [
+          {
+            statusCode: STATUS_CODES.OK,
+            message: "No practice code available for the given question",
+          },
+        ];
       } else {
-        return [null, { statusCode: STATUS_CODES.OK, message: 'Practice code fetched successfully', data: { ...response[0] } }];
+        const practiceCode = response[0];
+  
+        // Construct response data with languageId after sourceCode
+        const responseData = {
+          id: practiceCode.id,
+          status: practiceCode.status,
+          action: practiceCode.action,
+          questionId: practiceCode.questionId,
+          submissionId: practiceCode.submissionId,
+          codingOutsourseId: practiceCode.codingOutsourseId,
+          createdAt: practiceCode.createdAt,
+          sourceCode: practiceCode.sourceCode,
+          ...(practiceCode.action === "run" && { languageId: Number(practiceCode.programLangId) }),
+          questionDetail: practiceCode.questionDetail,
+          TestCasesSubmission: practiceCode.TestCasesSubmission?.map(({ languageId, ...rest }) => rest), // Removing languageId from TestCasesSubmission
+        };
+  
+        return [
+          null,
+          {
+            statusCode: STATUS_CODES.OK,
+            message: "Practice code fetched successfully",
+            data: responseData,
+          },
+        ];
       }
     } catch (error) {
-      return [{ statusCode: STATUS_CODES.BAD_REQUEST, message: error.message }];
+      return [
+        {
+          statusCode: STATUS_CODES.BAD_REQUEST,
+          message: error.message,
+        },
+      ];
     }
-  }
+  }  
 
   async getTestCasesSubmission(TestCasesSubmission: any): Promise<any> {
     try {
       const submissionsInfoPromises = TestCasesSubmission.map(async (submission: any) => {
         const options = {
           method: 'GET',
-          url: `${RAPID_BASE_URL}/submissions/${submission.token}?base64_encoded=true&fields=*`,
+          url: `${RAPID_BASE_URL}/submissions/${submission.token}?base64_encoded=false&fields=*`,
           headers: {
             'X-RapidAPI-Key': RAPID_API_KEY,
             'X-RapidAPI-Host': RAPID_HOST
@@ -258,7 +355,7 @@ export class CodingPlatformService {
   async getCodeInfo(tokens) {
     const options = {
       method: 'GET',
-      url: `${RAPID_BASE_URL}/submissions/batch?tokens=${tokens.join(',')}&base64_encoded=false&fields=token,stdout,stderr,status_id,language_id,source_code,status,memory,time,`,
+      url: `${RAPID_BASE_URL}/submissions/batch?tokens=${tokens.join(',')}&base64_encoded=false&fields=token,stdout,stderr,status_id,language_id,source_code,status,memory,time,compile_output,expected_output,language_id,stdin`,
 
       headers: {
         'X-RapidAPI-Key': RAPID_API_KEY,
@@ -279,7 +376,7 @@ export class CodingPlatformService {
     try {
       const options = {
         method: 'GET',
-        url: `${RAPID_BASE_URL}/submissions/${token}?base64_encoded=true&fields=source_code,stdout,stderr,status_id,language_id,created_at,finished_at,`,
+        url: `${RAPID_BASE_URL}/submissions/${token}?base64_encoded=true&fields=source_code,stdout,stderr,status_id,language_id,created_at,finished_at,compile_output,`,
         headers: {
           'X-RapidAPI-Key': RAPID_API_KEY,
           'X-RapidAPI-Host': RAPID_HOST
@@ -363,7 +460,7 @@ export class CodingPlatformService {
 
   async getCodingQuestion(id: number, withTemplate: boolean = true, totalCasses = 0): Promise<any> {
     try {
-      const question = await db.query.zuvyCodingQuestions.findMany({
+      const question:any = await db.query.zuvyCodingQuestions.findMany({
         where: (zuvyCodingQuestions, { sql }) => sql`${zuvyCodingQuestions.id} = ${id}`,
         columns: {
           id: true,
@@ -383,7 +480,7 @@ export class CodingPlatformService {
               expectedOutput: true,
             },
             orderBy: (testCase, { asc }) => asc(testCase.id),
-            limit: totalCasses == 3 ? totalCasses : undefined,
+            limit: totalCasses == 2 ? totalCasses : undefined,
           }
         }
       })
@@ -393,7 +490,10 @@ export class CodingPlatformService {
       }
 
       if (withTemplate) {
-        let [errorGenerateTemplate, templates] = await generateTemplates(question[0].title, question[0].testCases[0].inputs);
+        let [errorGenerateTemplate, templates] = await generateTemplates(question[0].title, question[0].testCases[0].inputs, question[0].testCases[0].expectedOutput?.parameterType);
+        if (errorGenerateTemplate) {
+          return [errorGenerateTemplate];
+        }
         question[0]["templates"] = templates;
       }
       return [null, { message: 'Coding question fetched successfully', data: question[0], statusCode: STATUS_CODES.OK }];
