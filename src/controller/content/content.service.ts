@@ -2210,13 +2210,8 @@ export class ContentService {
           assessmentSubmissionId = assessmentOutsourseData.submitedOutsourseAssessments[0].id
         }
       }
-
-      const [err, quizQuestions] = await this.getQuizQuestionsByAllDifficulties(
-        assessmentOutsourseId, 
-        assessmentOutsourseData, 
-        userId, 
-        assessmentSubmissionId
-      );
+ 
+      const [err, quizQuestions] = await this.getQuizQuestionsByAllDifficulties(assessmentOutsourseId, assessmentOutsourseData, userId, assessmentSubmissionId);
 
       if (err) {
         Logger.error(JSON.stringify(err));
