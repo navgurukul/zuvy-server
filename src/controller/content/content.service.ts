@@ -2232,7 +2232,7 @@ export class ContentService {
 
       // Process all questions with their respective marks
       const mcqs = Object.entries(quizQuestions).flatMap(([difficulty, questions]) => {
-        const mark = difficultyMarks[difficulty.toLowerCase()] || 0;
+        const mark = Math.floor(Number(difficultyMarks[difficulty.toLowerCase()])) || 0;
         
         return (questions || []).map(question => ({
           quizId: question.quizId,
