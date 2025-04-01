@@ -1058,7 +1058,7 @@ export class ContentService {
         let { mcqIds, openEndedQuestionIds, codingProblemIds, title, description, ...OutsourseAssessmentData__ } = assessmentBody;
 
         let assessment_id = ModuleAssessment.id;
-
+        
         let assessmentData = { title, description };
 
         // filter out the ids that are not in the assessment
@@ -1146,6 +1146,19 @@ export class ContentService {
           .where(eq(zuvyModuleAssessment.id, assessment_id))
           .returning();
         // Insert new data
+
+         
+        // Update chapter title when assessment title changes
+        if (title) {
+          const updatedChapterName = await db.update(zuvyModuleChapter).set({ title }).where(eq(zuvyModuleChapter.id, chapterId)).returning();
+          if (updatedChapterName.length == 0) {
+            throw ({
+              status: 'error',
+              statusCode: 404,
+              message: 'Chapter title not updated properly. Please try again',
+            });
+          }
+        }
 
         let mcqArray = quizIdsToAdd.map(id => ({ quiz_id: id, bootcampId, chapterId, assessmentOutsourseId }));
         let openEndedQuestionsArray = openEndedQuestionIdsToAdd.map(id => ({ openEndedQuestionId: id, bootcampId, moduleId, chapterId, assessmentOutsourseId }));
