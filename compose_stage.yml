@@ -1,0 +1,12 @@
+version: "3.7"
+services:
+  zuvy_stage:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image : zuvy_stage
+    container_name: zuvy_container_stage
+    ports:
+      - "4778:5000"
+    env_file:
+      - .env
