@@ -73,7 +73,7 @@ export class CodingPlatformService {
             case 'float':
             case 'str':
             case 'bool':
-              return testCase.expectedOutput.parameterValue.toString(); // Convert to string
+              return testCase.expectedOutput.parameterValue.toString();
             case 'arrayOfnum':
             case 'arrayOfStr':
             case 'jsonType':
@@ -105,7 +105,7 @@ export class CodingPlatformService {
         headers: {
             'content-type': 'application/json',
             'X-RapidAPI-Key': RAPID_API_KEY,
-            'X-RapidAPI-Host': RAPID_HOST,
+            'X-RapidAPI-Host': RAPID_HOST
         },
         data: {
             submissions: preparedSubmissions,
@@ -124,7 +124,8 @@ export class CodingPlatformService {
         if (err) {
             return [err];
         }
-
+        // testCasesArray
+        console.log({testCasesArray});
         // Map submission results to test cases
         let testSubmission = testCasesArray?.map((testCase, index) => {
             return {
@@ -139,7 +140,6 @@ export class CodingPlatformService {
                 stdIn: submissionInfo.data.submissions[index]?.stdin,
                 languageId: submissionInfo.data.submissions[index]?.language_id,
                 expectedOutput: submissionInfo.data.submissions[index]?.expected_output
-
             };
         });
 
@@ -147,7 +147,7 @@ export class CodingPlatformService {
     } catch (error) {
       return [{ statusCode: STATUS_CODES.BAD_REQUEST, message: error.message }];
     }
-}
+  }
 
   async submitPracticeCode(questionId: number, sourceCode, action, userId, submissionId, codingOutsourseId): Promise<any> {
     try {
@@ -161,9 +161,9 @@ export class CodingPlatformService {
       if (testcasesSubmission.data[0].stderr && action != SUBMIT) {
         return [null, { statusCode: STATUS_CODES.CONFLICT, message: `${action} ${testcasesSubmission.data[0].status}`, data: [testcasesSubmission.data[0]] }];
       }
-      let insertValues
+      let insertValues;
       if (testcasesSubmission.data.length >= 0) {
-        insertValues = { status: ACCEPTED, sourceCode: sourceCode.sourceCode };
+        insertValues = { status: ACCEPTED, sourceCode: sourceCode.sourceCode, programLangId: sourceCode.languageId };
       } else {
         insertValues = { status: 'Error', sourceCode: sourceCode.sourceCode };
       }
@@ -265,8 +265,8 @@ export class CodingPlatformService {
           submissionId: true,
           codingOutsourseId: true,
           createdAt: true,
-          sourceCode: true,
           programLangId: true,
+          sourceCode: true,
         },
         with: {
           questionDetail: true,
@@ -299,6 +299,7 @@ export class CodingPlatformService {
           submissionId: practiceCode.submissionId,
           codingOutsourseId: practiceCode.codingOutsourseId,
           createdAt: practiceCode.createdAt,
+          programLangId: practiceCode.programLangId,
           sourceCode: practiceCode.sourceCode,
           ...(practiceCode.action === "run" && { languageId: Number(practiceCode.programLangId) }),
           questionDetail: practiceCode.questionDetail,
@@ -552,6 +553,7 @@ export class CodingPlatformService {
           submissionId: true,
           codingOutsourseId: true,
           createdAt: true,
+          programLangId:true,
           sourceCode: true
         },
         with: {
@@ -595,6 +597,7 @@ export class CodingPlatformService {
           submissionId: true,
           codingOutsourseId: true,
           createdAt: true,
+          programLangId:true,
           sourceCode: true
         },
         with: {

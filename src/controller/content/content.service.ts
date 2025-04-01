@@ -2198,10 +2198,11 @@ export class ContentService {
           submitedOutsourseAssessments: true
         },
       });
-      console.log({ userId }, !IsAdmin && user.roles.includes('admin'), IsAdmin)
+
       if (!IsAdmin && user.roles.includes('admin')) {
         userId = Math.floor(Math.random() * (99999 - 1000 + 1)) + 1000;
       }
+
       let assessmentSubmissionId = null
       // Fetching all quiz questions at once
       if (assessmentOutsourseData.hasOwnProperty('submitedOutsourseAssessments')) {
@@ -2209,33 +2210,50 @@ export class ContentService {
           assessmentSubmissionId = assessmentOutsourseData.submitedOutsourseAssessments[0].id
         }
       }
+ 
       const [err, quizQuestions] = await this.getQuizQuestionsByAllDifficulties(assessmentOutsourseId, assessmentOutsourseData, userId, assessmentSubmissionId);
+
       if (err) {
         Logger.error(JSON.stringify(err));
         return [null, { message: err.message, statusCode: STATUS_CODES.BAD_REQUEST }];
       }
-      // Accessing the questions for each difficulty level
-      const easyQuizQuestions = quizQuestions['easy'] || [];
-      const mediumQuizQuestions = quizQuestions['medium'] || [];
-      const hardQuizQuestions = quizQuestions['hard'] || [];
 
-      // Do something with the fetched quiz questions
+      // Get marks for each difficulty level
+      const difficultyMarks = {
+        easy: assessmentOutsourseData.easyMcqMark || 0,
+        medium: assessmentOutsourseData.mediumMcqMark || 0,
+        hard: assessmentOutsourseData.hardMcqMark || 0
+      };
+
+      // Process all questions with their respective marks
+      const mcqs = Object.entries(quizQuestions).flatMap(([difficulty, questions]) => {
+        const mark = Math.floor(Number(difficultyMarks[difficulty.toLowerCase()])) || 0;
+        
+        return (questions || []).map(question => ({
+          quizId: question.quizId,
+          quizTitle: question.quizTitle,
+          difficulty: difficulty.charAt(0).toUpperCase() + difficulty.slice(1),
+          mark: mark,
+          variantId: question.variantId,
+          question: question.question,
+          options: question.options, 
+          correctOption: question.correctOption,
+          variantNumber: question.variantNumber,
+          outsourseQuizzesId: question.outsourseQuizzesId || question.assessmentId,
+          submissionsData: question.submissionsData || null
+        }));
+      });
+
       return [null, {
-        message: 'quiz question fetched successfully', data: {
-          mcqs: [
-            ...easyQuizQuestions,
-            ...mediumQuizQuestions,
-            ...hardQuizQuestions,
-          ]
-        }, statusCode: STATUS_CODES.OK
+        message: 'Quiz questions fetched successfully',
+        data: { mcqs },
+        statusCode: STATUS_CODES.OK
       }];
     } catch (err) {
       Logger.error(JSON.stringify(err));
       return [null, { message: err.message, statusCode: STATUS_CODES.BAD_REQUEST }];
     }
   }
-
-
 
   async getAssessmentDetailsOfOpenEnded(assessment_outsourse_id: number, userId) {
     try {
