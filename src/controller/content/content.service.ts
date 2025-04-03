@@ -1146,7 +1146,6 @@ export class ContentService {
           .where(eq(zuvyModuleAssessment.id, assessment_id))
           .returning();
         // Insert new data
-
          
         // Update chapter title when assessment title changes
         if (title) {
