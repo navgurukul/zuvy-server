@@ -23,6 +23,7 @@ export const typeMappings = {
     object: 'Object',
     void: 'void',
     input: (parameterType) => {
+      
       const mapping = {
         int: 'Integer.parseInt(scanner.nextLine().trim())',
         float: 'Float.parseFloat(scanner.nextLine().trim())',
@@ -197,6 +198,26 @@ const generateJavaScriptTemplate = (functionName, parameters, returnType) => {
   // Map parameter names
   const parameterMappings = parameters.map(p => p.parameterName).join(', ');
 
+  // Helper function for consistent output formatting
+  const formatOutput = `
+// Helper function to format output consistently
+function formatOutput(obj) {
+  if (obj === null || obj === undefined) return 'null';
+  if (typeof obj === 'boolean') return obj.toString().toLowerCase();
+  if (Array.isArray(obj)) {
+    return '[' + obj.map(item => formatOutput(item)).join(',') + ']';
+  }
+  if (typeof obj === 'object') {
+    const entries = Object.entries(obj);
+    if (entries.length === 0) return '{}';
+    return '{' + entries.map(function(entry) {
+      return '"' + entry[0] + '":' + formatOutput(entry[1]);
+    }).join(',') + '}';
+  }
+  if (typeof obj === 'string') return '"' + obj + '"';
+  return obj.toString();
+}`;
+
   return [null, `
 const readline = require('readline');
 
@@ -206,8 +227,11 @@ const rl = readline.createInterface({
   output: process.stdout
 });
 
+${formatOutput}
+
 // Function definition
-// Before submitting the code, please remove the console.log statement.
+// Note: The console.log statement at the end is required for the code to work.
+// Do not remove it as it's used to output the result to the system.
 function ${functionName}(${parameterMappings}) {
     // Add your code here
   return ${typeMappings.javascript.defaultReturnValue};
@@ -226,10 +250,15 @@ rl.on('close', () => {
   // Process inputs
   ${parameters
   .map(
-      (p, index) => `const _${p.parameterName}_ = ${typeMappings.javascript.input(p.parameterType).replace('input', `inputLines[${index}]`)};`
+      (p, index) => {
+        if (p.parameterType === 'bool') {
+          return `const _${p.parameterName}_ = ${typeMappings.javascript.input(p.parameterType).replace('input', `inputLines[${index}]`).toLowerCase()} === 'true';`;
+        }
+        return `const _${p.parameterName}_ = ${typeMappings.javascript.input(p.parameterType).replace('input', `inputLines[${index}]`)};`;
+      }
   ).join('\n  ')}
   const result = ${functionName}(${parameters.map(p => `_${p.parameterName}_`).join(', ')});
-  ${ !["arrayOfnum","arrayOfStr", "jsonType","object"].includes(returnType)? 'console.log(result);' : 'console.log(JSON.stringify(result));'}
+  console.log(formatOutput(result));
   });
   `];
 };
@@ -348,16 +377,19 @@ async function generateJavaTemplate(functionName, parameters, returnType = 'obje
         } else if (javaType === 'Object') { // Handle jsonType
           return `
         Object ${p.parameterName} = parseJavaStrictFormat(scanner.nextLine().trim());`;
+        } else if (javaType === 'boolean') {
+          return `
+        boolean ${p.parameterName} = Boolean.parseBoolean(scanner.nextLine().trim().toLowerCase());`;
         } else {
           return `${javaType} ${p.parameterName} = ${typeMappings.java.input(p.parameterType)};`;
         }
       })
       .join('\n');
 
-    const returnLogs = ['arrayOfnum', 'arrayOfStr', 'arrayOfObj', 'object', 'jsonType'].includes(returnType)
-      ? 'System.out.println(formatArrayNoSpaces(returnData));'
-      : 'System.out.println(returnData);';
+    // Consistent output formatting with no spaces
+    const returnLogs = 'System.out.println(formatArrayNoSpaces(returnData));';
 
+    // Construct the Java template as a string
     const template = `
 import java.util.Scanner;
 import java.util.Arrays;
@@ -366,7 +398,8 @@ import java.util.Map;
 import java.util.HashMap;
 import java.util.ArrayList;
 
-// Note: Please remove the System.out.println statements before submitting the code.
+// Note: The System.out.println statement at the end is required for the code to work.
+// Do not remove it as it's used to output the result to the system.
 public class Main {
   // Function with specified return type and parameters
   public static ${returnTypeMapped} ${functionName}(${parameterList}) {
@@ -383,7 +416,7 @@ public class Main {
       // Call function correctly
       ${returnTypeMapped} returnData = ${functionName}(${parameters.map(p => p.parameterName).join(', ')});
 
-      // Result formatting
+      // Result formatting with no spaces between array elements
       ${returnLogs}
       scanner.close();
   }
@@ -440,6 +473,8 @@ public class Main {
       }
       sb.append("}");
       return sb.toString();
+    } else if (data instanceof Boolean) {
+      return ((Boolean) data).toString().toLowerCase();
     }
     return String.valueOf(data);
   }
@@ -450,14 +485,14 @@ public class Main {
     if (input.startsWith("[") && input.endsWith("]")) {
       String content = input.substring(1, input.length() - 1).trim();
       if (content.isEmpty()) return new Object[0];
-      if (!content.startsWith("{")) {
+      if (!content.startsWith("{")) { // Handle simple arrays
         String[] parts = splitTopLevel(content);
         Object[] result = new Object[parts.length];
         for (int i = 0; i < parts.length; i++) {
           result[i] = parseValue(parts[i].trim());
         }
         return result;
-      } else {
+      } else { // Handle array of maps
         String[] parts = splitTopLevel(content);
         @SuppressWarnings("unchecked")
         Map<String, Object>[] result = new Map[parts.length];
@@ -516,9 +551,12 @@ public class Main {
   // Helper method to parse values
   private static Object parseValue(String value) {
     value = value.trim();
-    if ((value.startsWith("\\"") && value.endsWith("\\"")) ||
-        (value.startsWith("'") && value.endsWith("'"))) {
+    if ((value.startsWith("\\"") && value.endsWith("\\"")) || (value.startsWith("'") && value.endsWith("'"))) {
       return value.substring(1, value.length() - 1);
+    } else if (value.equalsIgnoreCase("true")) {
+      return true;
+    } else if (value.equalsIgnoreCase("false")) {
+      return false;
     } else {
       try {
         return Integer.parseInt(value);
@@ -569,6 +607,15 @@ async function generateCTemplates(functionName, parameters, returnType) {
           return `
     char ${p.parameterName}[100];
     scanf("%s", ${p.parameterName});`;
+        } else if (p.parameterType === 'bool') {
+          return `
+    char bool_str[10];
+    scanf("%s", bool_str);
+    // Convert to lowercase for consistent boolean handling
+    for(int i = 0; bool_str[i]; i++) {
+        bool_str[i] = tolower(bool_str[i]);
+    }
+    int ${p.parameterName} = (strcmp(bool_str, "true") == 0);`;
         } else {
           return `
     ${typeMappings['c'][p.parameterType]} ${p.parameterName};
@@ -577,11 +624,47 @@ async function generateCTemplates(functionName, parameters, returnType) {
       })
       .join('\n');
 
+    // Helper function for consistent output formatting
+    const formatOutput = `
+// Helper function to format output consistently
+void formatOutput(const void* data, int type) {
+    if (type == 0) { // int
+        printf("%d", *(const int*)data);
+    } else if (type == 1) { // float
+        printf("%f", *(const float*)data);
+    } else if (type == 2) { // char* (string)
+        printf("%s", (const char*)data);
+    } else if (type == 3) { // bool
+        printf("%s", *(const int*)data ? "true" : "false");
+    } else if (type == 4) { // int array
+        const int* arr = (const int*)data;
+        int size = arr[0]; // First element is size
+        printf("[");
+        for (int i = 1; i <= size; i++) {
+            printf("%d", arr[i]);
+            if (i < size) printf(",");
+        }
+        printf("]");
+    } else if (type == 5) { // char* array (string array)
+        const char** arr = (const char**)data;
+        int size = (int)(size_t)arr[0]; // First element is size
+        printf("[");
+        for (int i = 1; i <= size; i++) {
+            printf("\\"%s\\"", arr[i]);
+            if (i < size) printf(",");
+        }
+        printf("]");
+    }
+}`;
+
     // Generate the C template
     const cTemplate = `
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <ctype.h>
+
+${formatOutput}
 
 // Function to ${functionName}
 ${returnTypeMapped} ${functionName}(${parameterList}) {
@@ -598,7 +681,15 @@ int main() {
         .join(', ')});
 
     // Output result
-    printf("${returnType === 'int' ? '%d' : returnType === 'float' ? '%f' : '%s'}", result);
+    // Note: The printf statement at the end is required for the code to work.
+    // Do not remove it as it's used to output the result to the system.
+    ${returnType === 'int' ? 'printf("%d", result);' : 
+      returnType === 'float' ? 'printf("%f", result);' : 
+      returnType === 'str' ? 'printf("%s", result);' : 
+      returnType === 'bool' ? 'printf("%s", result ? "true" : "false");' : 
+      returnType === 'arrayOfnum' ? 'printf("[%d", result[1]); for(int i = 2; i <= result[0]; i++) printf(",%d", result[i]); printf("]");' : 
+      returnType === 'arrayOfStr' ? 'printf("[\\"%s\\"", (const char**)result[1]); for(int i = 2; i <= (int)(size_t)result[0]; i++) printf(",\\"%s\\"", (const char**)result[i]); printf("]");' : 
+      'printf("%s", result);'}
 
     return 0;
 }`;
@@ -612,7 +703,6 @@ int main() {
 // Separate function to generate a Python template
 async function generatePythonTemplate(functionName, parameters, returnType) {
   try {
-    // Create function parameter mappings with type hints
     const parameterMappings = parameters
         .map(p => {
             const type = typeMappings.python[p.parameterType] || 'Any';
@@ -620,21 +710,37 @@ async function generatePythonTemplate(functionName, parameters, returnType) {
         })
         .join(', ');
 
-    // Generate input handling code for each parameter
     const inputHandling = parameters
         .map(p => {
             const inputLogic = typeMappings.python.input(p.parameterType);
+            // Handle boolean input consistently
+            if (p.parameterType === 'bool') {
+                return `_${p.parameterName}_ = str(${inputLogic}).lower() == 'true'`;
+            }
             return `_${p.parameterName}_ = ${inputLogic}`;
         })
         .join('\n');
 
-    // Return the complete Python template as a string
+    // Helper function for consistent output formatting
+    const formatOutput = `
+def format_output(obj):
+    if isinstance(obj, bool):
+        return str(obj).lower()
+    if isinstance(obj, (list, tuple)):
+        return '[' + ','.join(format_output(item) for item in obj) + ']'
+    if isinstance(obj, dict):
+        return '{' + ','.join(f'"{k}":{format_output(v)}' for k, v in obj.items()) + '}'
+    return str(obj)`;
+
     return [null, `
 import sys
 import json
 from typing import List, Dict, Any
 
-# Before submitting the code, please remove the print statement.
+${formatOutput}
+
+# Note: The print statement at the end is required for the code to work.
+# Do not remove it as it's used to output the result to the system.
 def ${functionName}(${parameterMappings}) -> ${typeMappings.python[returnType]}:
     # Add your code here
     return
@@ -642,7 +748,7 @@ def ${functionName}(${parameterMappings}) -> ${typeMappings.python[returnType]}:
 # Example usage
 ${inputHandling}
 result = ${functionName}(${parameters.map(p => `_${p.parameterName}_`).join(', ')})
-${ !["arrayOfnum","arrayOfStr", "jsonType","object"].includes(returnType)? 'print(result);' : 'print(json.dumps(result));'}`];
+${ !["arrayOfnum","arrayOfStr", "jsonType","object"].includes(returnType)? 'print(format_output(result))' : 'print(format_output(result))'}`];
   } catch (error) {
     console.error('Error generating template:', error);
     return [error, null];
@@ -661,67 +767,76 @@ async function generateCppTemplate(functionName, parameters, returnType = 'void'
 
     const inputHandling = parameters.map(p => {
       const inputVar = `input${p.parameterName}`;
-      return `
+      if (p.parameterType === 'bool') {
+        return `
+    std::string ${inputVar};
+    std::getline(std::cin, ${inputVar});
+    // Convert to lowercase for consistent boolean handling
+    std::transform(${inputVar}.begin(), ${inputVar}.end(), ${inputVar}.begin(), ::tolower);
+    ${typeMappings.cpp[p.parameterType]} ${p.parameterName} = ${inputVar} == "true";`;
+      } else {
+        return `
     std::string ${inputVar};
     std::getline(std::cin, ${inputVar});
     ${typeMappings.cpp[p.parameterType]} ${p.parameterName} = ${typeMappings.cpp.input(p.parameterType, p.parameterName)};`;
+      }
     }).join('\n');
 
-    const debugPrints = parameters.map(p => {
-      if (p.parameterType === 'arrayOfnum') {
-        return `    std::cout << "Debug ${p.parameterName}: ";
-    for (int num : ${p.parameterName}) { std::cout << num << " "; }
-    std::cout << "\\n";`;
-      } else if (p.parameterType === 'arrayOfStr') {
-        return `    std::cout << "Debug ${p.parameterName}: ";
-    for (const auto& word : ${p.parameterName}) { std::cout << word << " "; }
-    std::cout << "\\n";`;
-      }
-      return `    std::cout << "Debug ${p.parameterName}: " << ${p.parameterName} << "\\n";`;
-    }).join('\n');
+    // Helper function for consistent output formatting
+    const formatOutput = `
+// Helper function to format output consistently
+std::string formatOutput(const auto& obj) {
+    if constexpr (std::is_same_v<decltype(obj), bool>) {
+        return obj ? "true" : "false";
+    }
+    else if constexpr (std::is_same_v<decltype(obj), std::vector<int>>) {
+        std::string result = "[";
+        for (size_t i = 0; i < obj.size(); ++i) {
+            result += std::to_string(obj[i]);
+            if (i < obj.size() - 1) result += ",";
+        }
+        result += "]";
+        return result;
+    }
+    else if constexpr (std::is_same_v<decltype(obj), std::vector<std::string>>) {
+        std::string result = "[";
+        for (size_t i = 0; i < obj.size(); ++i) {
+            result += "\\"" + obj[i] + "\\"";
+            if (i < obj.size() - 1) result += ",";
+        }
+        result += "]";
+        return result;
+    }
+    else if constexpr (std::is_same_v<decltype(obj), std::string>) {
+        return obj;
+    }
+    else {
+        return std::to_string(obj);
+    }
+}`;
 
     const template = `#include <iostream>
 #include <vector>
 #include <sstream>
 #include <string>
+#include <algorithm>
 #include <type_traits>
 
+${formatOutput}
+
 ${returnTypeMapped} ${functionName}(${parameterList}) {
-${debugPrints}
-    
     // Add your logic here
-    // Example starter code:
-    int sum = 0;
-    for (int num : numbers) sum += num;
-    
-    std::string concatenated;
-    for (const auto& word : words) concatenated += word + " ";
-    
     return ${defaultReturn};
 }
 
-int main() {${inputHandling}
+int main() {
+${inputHandling}
 
     auto result = ${functionName}(${parameters.map(p => p.parameterName).join(', ')});
     
-    // C++11 compatible output handling
-    if (!std::is_same<decltype(result), void>::value) {
-        if (std::is_same<decltype(result), std::vector<int>>::value) {
-            std::cout << "[";
-            for (size_t i = 0; i < result.size(); ++i) {
-                std::cout << result[i] << (i < result.size()-1 ? "," : "");
-            }
-            std::cout << "]";
-        } else if (std::is_same<decltype(result), std::vector<std::string>>::value) {
-            std::cout << "[";
-            for (size_t i = 0; i < result.size(); ++i) {
-                std::cout << "\\"" << result[i] << "\\"" << (i < result.size()-1 ? "," : "");
-            }
-            std::cout << "]";
-        } else {
-            std::cout << result;
-        }
-    }
+    // Note: The cout statement at the end is required for the code to work.
+    // Do not remove it as it's used to output the result to the system.
+    std::cout << formatOutput(result);
     
     return 0;
 }`;
