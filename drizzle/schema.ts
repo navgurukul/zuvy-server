@@ -2490,7 +2490,11 @@ export const zuvyPracticeCode = main.table("zuvy_practice_code", {
   createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
   sourceCode: text("source_code"),
   version: varchar('version', { length: 10 }),
-  programLangId: varchar('program_lang_id', { length: 255 }),              
+  programLangId: varchar('program_lang_id', { length: 255 }),   
+  chapterId: integer('chapter_id').references(() => zuvyModuleChapter.id, {
+    onDelete: 'cascade',
+    onUpdate: 'cascade',
+  }),          
 })
 
 export const zuvyPracticeCodeRelations = relations(zuvyPracticeCode, ({ one, many }) => ({

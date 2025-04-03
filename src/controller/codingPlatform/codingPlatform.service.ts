@@ -149,7 +149,7 @@ export class CodingPlatformService {
     }
   }
 
-  async submitPracticeCode(questionId: number, sourceCode, action, userId, submissionId, codingOutsourseId): Promise<any> {
+  async submitPracticeCode(questionId: number, sourceCode, action, userId, submissionId, codingOutsourseId, chapterId): Promise<any> {
     try {
       if (![RUN, SUBMIT].includes(action.toLowerCase())) {
         return [{ statusCode: STATUS_CODES.BAD_REQUEST, message: 'Invalid action' }];
@@ -197,6 +197,9 @@ export class CodingPlatformService {
           if (codingOutsourseId) {
             insertValues["codingOutsourseId"] = codingOutsourseId;
           }
+          if (chapterId) {
+            insertValues["chapterId"] = chapterId;
+          }
           await db.insert(zuvyPracticeCode).values(insertValues).returning();
         } else {
           await db.update(zuvyPracticeCode).set(insertValues).where(sql`${zuvyPracticeCode.id} = ${response[0].id}`).returning();
@@ -212,6 +215,9 @@ export class CodingPlatformService {
       }
       if (codingOutsourseId) {
         insertValues["codingOutsourseId"] = codingOutsourseId;
+      }
+      if (chapterId) {
+        insertValues["chapterId"] = chapterId;
       }
       let practiceSubmission = await db.insert(zuvyPracticeCode).values(insertValues).returning();
 
@@ -245,14 +251,25 @@ export class CodingPlatformService {
     questionId,
     userId,
     submissionId,
-    codingOutsourseId
+    codingOutsourseId,
+    chapterId
   ): Promise<any> {
     try {
       let queryString;
       if (isNaN(submissionId)) {
         queryString = sql`${zuvyPracticeCode.questionId} = ${questionId} AND ${zuvyPracticeCode.userId} = ${userId} AND ${zuvyPracticeCode.submissionId} IS NULL`;
+        
+        // Add chapterId filter if provided
+        if (chapterId) {
+          queryString = sql`${queryString} AND ${zuvyPracticeCode.chapterId} = ${chapterId}`;
+        }
       } else {
         queryString = sql`${zuvyPracticeCode.questionId} = ${questionId} AND ${zuvyPracticeCode.userId} = ${userId} AND ${zuvyPracticeCode.submissionId} = ${submissionId} AND ${zuvyPracticeCode.codingOutsourseId} = ${codingOutsourseId}`;
+        
+        // Add chapterId filter if provided
+        if (chapterId) {
+          queryString = sql`${queryString} AND ${zuvyPracticeCode.chapterId} = ${chapterId}`;
+        }
       }
   
       let response = await db.query.zuvyPracticeCode.findMany({
@@ -264,6 +281,7 @@ export class CodingPlatformService {
           questionId: true,
           submissionId: true,
           codingOutsourseId: true,
+          chapterId: true,
           createdAt: true,
           programLangId: true,
           sourceCode: true,
@@ -298,6 +316,7 @@ export class CodingPlatformService {
           questionId: practiceCode.questionId,
           submissionId: practiceCode.submissionId,
           codingOutsourseId: practiceCode.codingOutsourseId,
+          chapterId: practiceCode.chapterId,
           createdAt: practiceCode.createdAt,
           programLangId: practiceCode.programLangId,
           sourceCode: practiceCode.sourceCode,
@@ -596,6 +615,7 @@ export class CodingPlatformService {
           questionId: true,
           submissionId: true,
           codingOutsourseId: true,
+          chapterId: true,
           createdAt: true,
           programLangId:true,
           sourceCode: true
