@@ -10,6 +10,8 @@ import {
 import { db } from '../db/index';
 import { eq, sql, isNull, and, gte, lt } from 'drizzle-orm';
 import { google } from 'googleapis';
+import { zuvyAssessmentSubmission } from '../../drizzle/schema';
+import { SubmissionService } from '../controller/submissions/submission.service';
 
 const { OAuth2 } = google.auth;
 const auth2Client = new OAuth2(
@@ -26,13 +28,14 @@ export class ScheduleService {
   private currentInterval: number;
   private timeoutId: NodeJS.Timeout;
   private conditions:any = [
-    { min: 0, max: 1, interval: 200 * 60 * 1000 }, // 200 minutes
-    { min: 2, max: 5, interval: 100 * 60 * 1000 }, // 100 minutes
-    { min: 6, max: 9, interval: 60 * 60 * 1000 },  // 60 minutes
-    { min: 10, max: 19, interval: 30 * 60 * 1000 },  // 30 minutes
-    { min: 20, max: 25, interval: 20 * 60 * 1000 }, // 20 minutes
-    { min: 26, max: 31, interval: 10 * 60 * 1000 }, // 10 minutes
+    { min: 0, max: 1, interval: 100 * 60 * 1000 }, // 200 minutes
+    { min: 2, max: 3, interval: 70 * 60 * 1000 }, // 100 minutes
+    { min: 4, max: 6, interval: 40 * 60 * 1000 },  // 60 minutes
+    { min: 7, max: 10, interval: 30 * 60 * 1000 }, // 30 minutes
+    { min: 11, max: 13, interval: 20 * 60 * 1000 }, // 20 minutes
+    { min: 14, max: 15, interval: 10 * 60 * 1000 }  // 10 minutes
   ];
+  private readonly submissionService: SubmissionService = new SubmissionService();
 
   constructor() {
     // Initialize the interval when the service starts
@@ -333,5 +336,56 @@ export class ScheduleService {
       }
     }
     return [null, attendanceOfStudents];
+  }
+
+  
+  @Cron('0 */59 * * * *') // Runs every 59 minutes
+  async processPendingAssessmentSubmissions() {
+    this.logger.log('Starting to process pending assessment submissions');
+    
+    try {
+      // Fetch all assessment submissions where submitedAt is null
+      const pendingSubmissions = await db
+        .select()
+        .from(zuvyAssessmentSubmission)
+        .where(isNull(zuvyAssessmentSubmission.submitedAt));
+      
+      this.logger.log(`Found ${pendingSubmissions.length} pending assessment submissions`);
+      
+      // Process each submission
+      for (const submission of pendingSubmissions) {
+        try {
+          // Get the assessment submission details
+          const [err, submissionData] = await this.submissionService.getAssessmentSubmission(
+            submission.id, 
+            submission.userId
+          );
+          if (err) {
+            this.logger.error(`Error processing submission ${submission.id}: ${err}`);
+            continue;
+          }
+          
+          // Submit the assessment
+          const [submitErr, submitResult] = await this.submissionService.assessmentSubmission(
+            {typeOfsubmission: 'auto-submit by cron'}, // Empty data object as we're auto-submitting
+            submission.id,
+            submission.userId
+          );
+          
+          if (submitErr) {
+            this.logger.error(`Error submitting assessment ${submission.id}: ${submitErr.message}`);
+            continue;
+          }
+          
+          this.logger.log(`Successfully processed assessment submission ${submission.id}`);
+        } catch (error) {
+          this.logger.error(`Error processing submission ${submission.id}: ${error.message}`);
+        }
+      }
+      
+      this.logger.log('Completed processing pending assessment submissions');
+    } catch (error) {
+      this.logger.error(`Error in processPendingAssessmentSubmissions: ${error.message}`);
+    }
   }
 }

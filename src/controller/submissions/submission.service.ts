@@ -1318,4 +1318,51 @@ export class SubmissionService {
       return [{ message: error.message, statusCode: STATUS_CODES.BAD_REQUEST }, null]
     }
   }
+
+  async deleteAssessmentSubmission(assessmentSubmissionId: number): Promise<any> {
+    try {
+      // First, check if the assessment submission exists
+      const submission = await db.query.zuvyAssessmentSubmission.findFirst({
+        where: (zuvyAssessmentSubmission, { eq }) => eq(zuvyAssessmentSubmission.id, assessmentSubmissionId),
+      });
+
+      if (!submission) {
+        return [{
+          status: 'error',
+          statusCode: 404,
+          message: 'Assessment submission not found',
+        }];
+      }
+
+      // Delete all related records in a transaction
+      await db.transaction(async (tx) => {
+        // Delete practice codes
+        await tx.delete(zuvyPracticeCode)
+          .where(eq(zuvyPracticeCode.submissionId, assessmentSubmissionId));
+
+        // Delete quiz tracking records
+        await tx.delete(zuvyQuizTracking)
+          .where(eq(zuvyQuizTracking.assessmentSubmissionId, assessmentSubmissionId));
+
+        // Delete open-ended question submissions
+        await tx.delete(zuvyOpenEndedQuestionSubmission)
+          .where(eq(zuvyOpenEndedQuestionSubmission.assessmentSubmissionId, assessmentSubmissionId));
+        // Finally, delete the assessment submission itself
+        await tx.delete(zuvyAssessmentSubmission)
+          .where(eq(zuvyAssessmentSubmission.id, assessmentSubmissionId));
+      });
+
+      return [null, {
+        status: 'success',
+        statusCode: 200,
+        message: 'Assessment submission and all related records deleted successfully',
+      }];
+    } catch (err) {
+      return [{
+        status: 'error',
+        statusCode: 500,
+        message: err.message,
+      }];
+    }
+  }
 }
