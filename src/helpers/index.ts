@@ -19,7 +19,7 @@ export const typeMappings = {
     bool: 'boolean',
     arrayOfnum: 'int[]',
     arrayOfStr: 'String[]',
-    jsonType: 'Object',
+    jsonType: 'Object', // Generic type for JSON-like structures
     object: 'Object',
     void: 'void',
     input: (parameterType) => {
@@ -32,7 +32,7 @@ export const typeMappings = {
         arrayOfnum: 'parseJavaStrictFormat(scanner.nextLine().trim())',
         arrayOfStr: 'parseJavaStrictFormat(scanner.nextLine().trim())',
         object: 'parseJavaStrictFormat(scanner.nextLine().trim())',
-        jsonType: 'parseJavaStrictFormat(scanner.nextLine().trim())',
+        jsonType: 'parseJavaStrictFormat(scanner.nextLine().trim())', // Handle JSON-like input
       };
       return mapping[parameterType] || 'scanner.nextLine().trim()';
     },
@@ -45,6 +45,7 @@ export const typeMappings = {
       arrayOfnum: 'new int[0]',
       arrayOfStr: 'new String[0]',
       object: 'null',
+      jsonType: 'null', // Default for JSON-like structures
       void: '',
     },
   },
@@ -337,6 +338,16 @@ async function generateJavaTemplate(functionName, parameters, returnType = 'obje
                 ${p.parameterName}[i] = arrObj[i].toString();
             }
         }`;
+        } else if (javaType === 'Object[]') {
+          return `
+        Object parsed_${p.parameterName} = parseJavaStrictFormat(scanner.nextLine().trim());
+        Object[] ${p.parameterName} = new Object[0];
+        if (parsed_${p.parameterName} instanceof Object[]) {
+            ${p.parameterName} = (Object[]) parsed_${p.parameterName};
+        }`;
+        } else if (javaType === 'Object') { // Handle jsonType
+          return `
+        Object ${p.parameterName} = parseJavaStrictFormat(scanner.nextLine().trim());`;
         } else {
           return `${javaType} ${p.parameterName} = ${typeMappings.java.input(p.parameterType)};`;
         }
