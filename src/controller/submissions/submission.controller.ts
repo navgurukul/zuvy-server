@@ -402,4 +402,22 @@ export class SubmissionController {
       return ErrorResponse.BadRequestException(error.message).send(res);
     }
   }
+
+  @Delete('/assessment/:assessmentSubmissionId')
+  @ApiOperation({ summary: 'Delete an assessment submission and all related records' })
+  @ApiBearerAuth()
+  async deleteAssessmentSubmission(
+    @Param('assessmentSubmissionId') assessmentSubmissionId: number,
+    @Res() res
+  ) {
+    try {
+      const [err, success] = await this.submissionService.deleteAssessmentSubmission(assessmentSubmissionId);
+      if (err) {
+        return ErrorResponse.BadRequestException(err.message, err.statusCode).send(res);
+      }
+      return new SuccessResponse(success.message, success.statusCode, success.data).send(res);
+    } catch (error) {
+      return ErrorResponse.BadRequestException(error.message).send(res);
+    }
+  }
 }
