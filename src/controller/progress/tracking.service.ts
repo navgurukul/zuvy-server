@@ -1415,6 +1415,7 @@ export class TrackingService {
 
   async getAssessmentSubmission(assessmentSubmissionId: number, userId: number) {
     try {
+      // First get the submission with assessment data
       const data: any = await db.query.zuvyAssessmentSubmission.findFirst({
         where: (zuvyAssessmentSubmission, { eq }) =>
           eq(zuvyAssessmentSubmission.id, assessmentSubmissionId),
@@ -1462,6 +1463,23 @@ export class TrackingService {
           message: 'Assessment not submitted yet',
         });
       }
+
+      // Now get the chapter separately using the chapterId from the assessment
+      if (data.submitedOutsourseAssessment?.chapterId) {
+        const chapter = await db.query.zuvyModuleChapter.findFirst({
+          where: (zuvyModuleChapter, { eq }) => 
+            eq(zuvyModuleChapter.id, data.submitedOutsourseAssessment.chapterId),
+          columns: {
+            id: true,
+            title: true
+          }
+        });
+
+        if (chapter) {
+          data.submitedOutsourseAssessment.chapterName = chapter.title;
+        }
+      }
+
       const filteredData = data.PracticeCode.reduce((acc, curr) => {
         const existing = acc.find(item => item.questionId === curr.questionId);
 
@@ -1477,13 +1495,15 @@ export class TrackingService {
 
         return acc;
       }, []);
-      data.PracticeCode = filteredData
+      
+      data.PracticeCode = filteredData;
+
       return data;
     }
     catch (err) {
       throw err;
     }
-  }
+ }
 
 
   async getAllFormsWithStatus(
