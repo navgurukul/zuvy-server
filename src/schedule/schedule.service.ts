@@ -5,7 +5,8 @@ import {
   zuvySessions,
   zuvyBatchEnrollments,
   users,
-  zuvyStudentAttendance
+  zuvyStudentAttendance,
+  zuvyOutsourseAssessments
 } from '../../drizzle/schema';
 import { db } from '../db/index';
 import { eq, sql, isNull, and, gte, lt } from 'drizzle-orm';
@@ -339,49 +340,59 @@ export class ScheduleService {
   }
 
   
-  @Cron('0 */59 * * * *') // Runs every 59 minutes
+  @Cron('0 30 2 * * *') // Runs every 59 minutes
   async processPendingAssessmentSubmissions() {
     this.logger.log('Starting to process pending assessment submissions');
     
     try {
       // Fetch all assessment submissions where submitedAt is null
-      const pendingSubmissions = await db
-        .select()
-        .from(zuvyAssessmentSubmission)
-        .where(isNull(zuvyAssessmentSubmission.submitedAt));
-      
+      const pendingSubmissions:any = await db.query.zuvyAssessmentSubmission.findMany({
+        where: isNull(zuvyAssessmentSubmission.submitedAt),
+        with: {
+          submitedOutsourseAssessment: true,
+        }
+      });
+      console.log(pendingSubmissions);
+
+      console.log('Pending Submissions:', pendingSubmissions[0]);
+
       this.logger.log(`Found ${pendingSubmissions.length} pending assessment submissions`);
       
       // Process each submission
-      for (const submission of pendingSubmissions) {
-        try {
-          // Get the assessment submission details
-          const [err, submissionData] = await this.submissionService.getAssessmentSubmission(
-            submission.id, 
-            submission.userId
-          );
-          if (err) {
-            this.logger.error(`Error processing submission ${submission.id}: ${err}`);
-            continue;
+      // Process each submission as a promise
+      await Promise.all(
+        pendingSubmissions.map(async (submission) => {
+          try {
+            let startedAt = new Date(submission.startedAt);
+
+            let timeLimit = submission?.submitedOutsourseAssessment?.timeLimit;
+
+            let submitTime = new Date(startedAt.getTime() + timeLimit * 60 * 1000);
+            let nowDateTime = new Date();
+
+            // Check if the submission time has passed
+            if (submitTime < nowDateTime) {
+
+              // Submit the assessment
+              const [submitErr, submitResult] = await this.submissionService.assessmentSubmission(
+                { typeOfsubmission: 'auto-submit by cron' }, // Empty data object as we're auto-submitting
+                submission.id,
+                submission.userId
+              );
+              console.log({ submitErr, submitResult });
+
+              // Log success or handle errors
+              if (submitErr) {
+                this.logger.error(`Error submitting assessment ${submission.id}: ${submitErr.message}`);
+              } else {
+                this.logger.log(`Successfully processed assessment submission ${submission.id}`);
+              }
+            }
+          } catch (error) {
+            this.logger.error(`Error processing submission ${submission.id}: ${error.message}`);
           }
-          
-          // Submit the assessment
-          const [submitErr, submitResult] = await this.submissionService.assessmentSubmission(
-            {typeOfsubmission: 'auto-submit by cron'}, // Empty data object as we're auto-submitting
-            submission.id,
-            submission.userId
-          );
-          
-          if (submitErr) {
-            this.logger.error(`Error submitting assessment ${submission.id}: ${submitErr.message}`);
-            continue;
-          }
-          
-          this.logger.log(`Successfully processed assessment submission ${submission.id}`);
-        } catch (error) {
-          this.logger.error(`Error processing submission ${submission.id}: ${error.message}`);
-        }
-      }
+        })
+      );
       
       this.logger.log('Completed processing pending assessment submissions');
     } catch (error) {
