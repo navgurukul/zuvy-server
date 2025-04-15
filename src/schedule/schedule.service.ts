@@ -341,63 +341,63 @@ export class ScheduleService {
   }
 
   
-  @Cron('0 30 2 * * *') // Runs every 59 minutes
-  async processPendingAssessmentSubmissions() {
-    this.logger.log('Starting to process pending assessment submissions');
+  // @Cron('0 30 2 * * *') // Runs every 59 minutes
+  // async processPendingAssessmentSubmissions() {
+  //   this.logger.log('Starting to process pending assessment submissions');
     
-    try {
-      // Fetch all assessment submissions where submitedAt is null
-      const pendingSubmissions:any = await db.query.zuvyAssessmentSubmission.findMany({
-        where: isNull(zuvyAssessmentSubmission.submitedAt),
-        with: {
-          submitedOutsourseAssessment: true,
-        }
-      });
-      console.log(pendingSubmissions);
+  //   try {
+  //     // Fetch all assessment submissions where submitedAt is null
+  //     const pendingSubmissions:any = await db.query.zuvyAssessmentSubmission.findMany({
+  //       where: isNull(zuvyAssessmentSubmission.submitedAt),
+  //       with: {
+  //         submitedOutsourseAssessment: true,
+  //       }
+  //     });
+  //     console.log(pendingSubmissions);
 
-      console.log('Pending Submissions:', pendingSubmissions[0]);
+  //     console.log('Pending Submissions:', pendingSubmissions[0]);
 
-      this.logger.log(`Found ${pendingSubmissions.length} pending assessment submissions`);
+  //     this.logger.log(`Found ${pendingSubmissions.length} pending assessment submissions`);
       
-      // Process each submission
-      // Process each submission as a promise
-      await Promise.all(
-        pendingSubmissions.map(async (submission) => {
-          try {
-            let startedAt = new Date(submission.startedAt);
+  //     // Process each submission
+  //     // Process each submission as a promise
+  //     await Promise.all(
+  //       pendingSubmissions.map(async (submission) => {
+  //         try {
+  //           let startedAt = new Date(submission.startedAt);
 
-            let timeLimit = submission?.submitedOutsourseAssessment?.timeLimit;
+  //           let timeLimit = submission?.submitedOutsourseAssessment?.timeLimit;
 
-            let submitTime = new Date(startedAt.getTime() + timeLimit * 60 * 1000);
-            let nowDateTime = new Date();
+  //           let submitTime = new Date(startedAt.getTime() + timeLimit * 60 * 1000);
+  //           let nowDateTime = new Date();
 
-            // Check if the submission time has passed
-            if (submitTime < nowDateTime) {
+  //           // Check if the submission time has passed
+  //           if (submitTime < nowDateTime) {
 
-              // Submit the assessment
-              const [submitErr, submitResult] = await this.submissionService.assessmentSubmission(
-                { typeOfsubmission: 'auto-submit by cron' }, // Empty data object as we're auto-submitting
-                submission.id,
-                submission.userId
-              );
-              console.log({ submitErr, submitResult });
+  //             // Submit the assessment
+  //             const [submitErr, submitResult] = await this.submissionService.assessmentSubmission(
+  //               { typeOfsubmission: 'auto-submit by cron' }, // Empty data object as we're auto-submitting
+  //               submission.id,
+  //               submission.userId
+  //             );
+  //             console.log({ submitErr, submitResult });
 
-              // Log success or handle errors
-              if (submitErr) {
-                this.logger.error(`Error submitting assessment ${submission.id}: ${submitErr.message}`);
-              } else {
-                this.logger.log(`Successfully processed assessment submission ${submission.id}`);
-              }
-            }
-          } catch (error) {
-            this.logger.error(`Error processing submission ${submission.id}: ${error.message}`);
-          }
-        })
-      );
+  //             // Log success or handle errors
+  //             if (submitErr) {
+  //               this.logger.error(`Error submitting assessment ${submission.id}: ${submitErr.message}`);
+  //             } else {
+  //               this.logger.log(`Successfully processed assessment submission ${submission.id}`);
+  //             }
+  //           }
+  //         } catch (error) {
+  //           this.logger.error(`Error processing submission ${submission.id}: ${error.message}`);
+  //         }
+  //       })
+  //     );
       
-      this.logger.log('Completed processing pending assessment submissions');
-    } catch (error) {
-      this.logger.error(`Error in processPendingAssessmentSubmissions: ${error.message}`);
-    }
-  }
+  //     this.logger.log('Completed processing pending assessment submissions');
+  //   } catch (error) {
+  //     this.logger.error(`Error in processPendingAssessmentSubmissions: ${error.message}`);
+  //   }
+  // }
 }
