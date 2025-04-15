@@ -779,8 +779,8 @@ export class ClassesService {
           att.fileUrl?.includes('meet') ||
           (att.title && att.title.toLowerCase().includes('recording'))
       );
-
-      const newS3Link = recording ? recording.fileUrl : 'not found';
+      this.logger.log(`recording: ${JSON.stringify(recording)}`);
+      const newS3Link = recording ? recording.fileUrl : null;
       let updateData: any = { s3link: newS3Link }
       // Update the session record in zuvySessions with the recording link.
       await db.update(zuvySessions)
