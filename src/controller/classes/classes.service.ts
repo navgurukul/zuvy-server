@@ -78,6 +78,8 @@ const scopes = [
 
 @Injectable()
 export class ClassesService {
+  private readonly logger = new Logger(ClassesService.name);
+
   async accessOfCalendar(creatorInfo) {
     const userId = Number(creatorInfo.id);
     const fetchedTokens = await db
@@ -733,6 +735,181 @@ export class ClassesService {
     }
   }
 
+  // Get OAuth tokens for the designated account.
+  private async getUserTokens(email: string) {
+    const result = await db
+      .select()
+      .from(userTokens)
+      .where(eq(userTokens.userEmail, email));
+    return result.length ? result[0] : null;
+  }
+
+  /**
+   * Fetches the meeting recording using the Google Calendar API and updates the session record.
+   * @param meetingId - The Google Calendar meeting/event ID.
+   */
+  async fetchRecordingForMeeting(meetingId: string) {
+    // Retrieve tokens for the designated account.
+    const userTokenData = await this.getUserTokens('team@zuvy.org');
+    if (!userTokenData) {
+      this.logger.warn('No tokens found for team@zuvy.org');
+      return;
+    }
+
+    // Set credentials for OAuth2 client.
+    auth2Client.setCredentials({
+      access_token: userTokenData.accessToken,
+      refresh_token: userTokenData.refreshToken,
+    });
+
+    // Initialize the Calendar client.
+    const calendar = google.calendar({ version: 'v3', auth: auth2Client });
+
+    try {
+      // Fetch the Calendar event.
+      const eventResponse = await calendar.events.get({
+        calendarId: 'primary', // Use appropriate calendar ID if needed.
+        eventId: meetingId,
+      });
+
+      // Find the recording attachment (typically video/mp4 or title including 'recording').
+      const recording = eventResponse.data.attachments?.find(
+        (att) =>
+          att.mimeType === 'video/mp4' ||
+          att.fileUrl?.includes('meet') ||
+          (att.title && att.title.toLowerCase().includes('recording'))
+      );
+      this.logger.log(`recording: ${JSON.stringify(recording)}`);
+      const newS3Link = recording ? recording.fileUrl : null;
+      let updateData: any = { s3link: newS3Link }
+      // Update the session record in zuvySessions with the recording link.
+      await db.update(zuvySessions)
+        .set(updateData)
+        .where(eq(zuvySessions.meetingId, meetingId))
+        .execute();
+
+      this.logger.log(
+        `Meeting ${meetingId} updated with recording link: ${newS3Link}`
+      );
+
+      return newS3Link;
+    } catch (err) {
+      this.logger.error(`Error fetching recording for meeting ${meetingId}: ${err.message}`);
+      return null;
+    }
+  }
+
+  /**
+   * Fetches attendance data for a meeting from the Admin Reports API.
+   * Checks if there is an existing attendance record in zuvyStudentAttendance.
+   * If found, updates the record; otherwise, inserts a new attendance record.
+   * @param meetingId - The Google Calendar meeting/event ID.
+   */
+  async fetchAttendanceForMeeting(meetingId: string, students, batchId, bootcampId) {
+    // Retrieve tokens for the designated account.
+    const userTokenData = await this.getUserTokens('team@zuvy.org');
+    if (!userTokenData) {
+      this.logger.warn('No tokens found for team@zuvy.org');
+      return;
+    }
+
+    // Set credentials for OAuth2 client.
+    auth2Client.setCredentials({
+      access_token: userTokenData.accessToken,
+      refresh_token: userTokenData.refreshToken,
+    });
+
+    // Initialize the Admin Reports API client.
+    const adminClient = google.admin({ version: 'reports_v1', auth: auth2Client });
+
+    try {
+      // Fetch attendance details using the Admin Reports API.
+      const attendanceResponse = await adminClient.activities.list({
+        userKey: 'all',
+        applicationName: 'meet',
+        eventName: 'call_ended',
+        maxResults: 1000,
+        filters: `calendar_event_id==${meetingId}`,  // Note the backticks for a string template.
+      });
+
+      // Prepare an attendance record.
+      // We'll use an admin record (e.g. with '@zuvy.org') as a benchmark.
+      const attendance: Record<string, any> = {};
+      let adminData: { email: string; duration: number } | null = null;
+
+      // Identify the benchmark admin data.
+      attendanceResponse.data.items?.forEach((item: any) => {
+        const eventDetails = item.events[0];
+        const email = eventDetails.parameters.find((param: any) => param.name === 'identifier')?.value || '';
+        const duration = eventDetails.parameters.find((param: any) => param.name === 'duration_seconds')?.intValue || 0;
+        if (email.includes('@zuvy.org')) {
+          adminData = { email, duration };
+        }
+      });
+
+      if (!adminData) {
+        this.logger.warn(`No admin attendance data found for meeting ${meetingId}`);
+      }
+
+      // Process each attendance record, comparing duration to adminData.
+      attendanceResponse.data.items?.forEach((item: any) => {
+        const eventDetails = item.events[0];
+        const email = eventDetails.parameters.find((param: any) => param.name === 'identifier')?.value || '';
+        const duration = eventDetails.parameters.find((param: any) => param.name === 'duration_seconds')?.intValue || 0;
+        // Mark present if duration reaches at least 75% of the admin's duration.
+        const status = adminData && (duration >= 0.75 * adminData.duration) ? 'present' : 'absent';
+        attendance[email] = { duration, attendance: status };
+      });
+
+      // Check if an attendance record already exists for this meeting.
+      const existingRecord = await db
+        .select()
+        .from(zuvyStudentAttendance)
+        .where(eq(zuvyStudentAttendance.meetingId, meetingId));
+
+      let arrayOfAttendanceStudents = [];
+      this.logger.log(`existingRecord: ${JSON.stringify(attendance)}`);
+      for (const student in attendance) {
+        if (student.length > 0 && !student.includes('@zuvy.org')) {
+          arrayOfAttendanceStudents.push({email: student, ...attendance[student]});
+        }
+      }
+      students.forEach((enrollStudent)=>{
+        let presenStudent = arrayOfAttendanceStudents.find((student)=> student.email == enrollStudent.user.email);
+        if (!presenStudent){
+          arrayOfAttendanceStudents.push({email: enrollStudent.user.email, attendance: 'absent'});
+        }
+      })
+      if (existingRecord.length) {
+        // Update the existing attendance record.
+        await db.update(zuvyStudentAttendance)
+          .set({ attendance: arrayOfAttendanceStudents })
+          .where(eq(zuvyStudentAttendance.meetingId, meetingId))
+          .execute();
+        this.logger.log(`Attendance updated for meeting ${meetingId}: ${JSON.stringify(arrayOfAttendanceStudents)}`);
+      } else {
+         // Prepare the attendance data object.
+      const attendanceData = {
+        attendance: arrayOfAttendanceStudents,
+        meetingId,
+        batchId,
+        bootcampId
+        // Optionally include other fields (such as batchId or bootcampId) if needed.
+      };
+        // Insert a new attendance record.
+          await db.insert(zuvyStudentAttendance)
+            .values(attendanceData)
+            .execute();
+          this.logger.log(`Attendance inserted for meeting ${meetingId}: ${JSON.stringify(arrayOfAttendanceStudents)}`);
+      }
+
+      return arrayOfAttendanceStudents;
+    } catch (err) {
+      this.logger.error(`Error fetching attendance for meeting ${meetingId}: ${err.message}`);
+      return null;
+    }
+  }
+
   async meetingAttendanceAnalytics(meeting_id: number, user) {
     try {
       await this.getAttendance(meeting_id, user);
@@ -752,25 +929,45 @@ export class ClassesService {
         }
       });
       if (classInfo.length > 0) {
-        let { batchId, s3link, views, meetingId } = classInfo[0]
+        let { batchId, s3link, views, meetingId, bootcampId} = classInfo[0]
         const Meeting = await db
           .select()
           .from(zuvyStudentAttendance)
           .where(sql`${zuvyStudentAttendance.meetingId}=${meetingId}`);
-          let students = await db
-          .select()
-          .from(zuvyBatchEnrollments)
-          .where(sql`${zuvyBatchEnrollments.batchId}=${batchId}`);
+
+          let students = await db.query.zuvyBatchEnrollments.findMany({
+            where: (zuvyBatchEnrollments, { eq }) =>
+              eq(zuvyBatchEnrollments.batchId, batchId),
+            with: {
+              user: {
+                columns: {
+                  email: true,
+                  name: true,
+                },
+              },
+            },
+          })
+
 
         let attendance: Array<any> =
           (Meeting[0]?.attendance as Array<any>) || [];
+
         let no_of_students =
           students.length > attendance.length
             ? students.length
             : attendance.length;
+
+        if (s3link == null || s3link == undefined ) {
+          s3link = await this.fetchRecordingForMeeting(meetingId);
+        }
+        if (attendance.length == 0) {
+          attendance = await this.fetchAttendanceForMeeting(meetingId, students, batchId, bootcampId);
+        }
+        
         let present = attendance.filter(
           (student) => student?.attendance === 'present',
         ).length;
+
         return [
           null,
           {
@@ -780,7 +977,7 @@ export class ClassesService {
               total_students: no_of_students,
               present: present,
               s3link: s3link,
-              attendance:Meeting[0]?.attendance||[],
+              attendance: attendance,
               views
             },
           },

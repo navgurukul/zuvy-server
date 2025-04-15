@@ -73,7 +73,7 @@ export class CodingPlatformService {
             case 'float':
             case 'str':
             case 'bool':
-              return testCase.expectedOutput.parameterValue.toString(); // Convert to string
+              return testCase.expectedOutput.parameterValue.toString();
             case 'arrayOfnum':
             case 'arrayOfStr':
             case 'jsonType':
@@ -105,7 +105,7 @@ export class CodingPlatformService {
         headers: {
             'content-type': 'application/json',
             'X-RapidAPI-Key': RAPID_API_KEY,
-            'X-RapidAPI-Host': RAPID_HOST,
+            'X-RapidAPI-Host': RAPID_HOST
         },
         data: {
             submissions: preparedSubmissions,
@@ -124,7 +124,8 @@ export class CodingPlatformService {
         if (err) {
             return [err];
         }
-
+        // testCasesArray
+        console.log({testCasesArray});
         // Map submission results to test cases
         let testSubmission = testCasesArray?.map((testCase, index) => {
             return {
@@ -139,7 +140,6 @@ export class CodingPlatformService {
                 stdIn: submissionInfo.data.submissions[index]?.stdin,
                 languageId: submissionInfo.data.submissions[index]?.language_id,
                 expectedOutput: submissionInfo.data.submissions[index]?.expected_output
-
             };
         });
 
@@ -147,9 +147,9 @@ export class CodingPlatformService {
     } catch (error) {
       return [{ statusCode: STATUS_CODES.BAD_REQUEST, message: error.message }];
     }
-}
+  }
 
-  async submitPracticeCode(questionId: number, sourceCode, action, userId, submissionId, codingOutsourseId): Promise<any> {
+  async submitPracticeCode(questionId: number, sourceCode, action, userId, submissionId, codingOutsourseId, chapterId): Promise<any> {
     try {
       if (![RUN, SUBMIT].includes(action.toLowerCase())) {
         return [{ statusCode: STATUS_CODES.BAD_REQUEST, message: 'Invalid action' }];
@@ -161,9 +161,9 @@ export class CodingPlatformService {
       if (testcasesSubmission.data[0].stderr && action != SUBMIT) {
         return [null, { statusCode: STATUS_CODES.CONFLICT, message: `${action} ${testcasesSubmission.data[0].status}`, data: [testcasesSubmission.data[0]] }];
       }
-      let insertValues
+      let insertValues;
       if (testcasesSubmission.data.length >= 0) {
-        insertValues = { status: ACCEPTED, sourceCode: sourceCode.sourceCode };
+        insertValues = { status: ACCEPTED, sourceCode: sourceCode.sourceCode, programLangId: sourceCode.languageId };
       } else {
         insertValues = { status: 'Error', sourceCode: sourceCode.sourceCode };
       }
@@ -197,6 +197,9 @@ export class CodingPlatformService {
           if (codingOutsourseId) {
             insertValues["codingOutsourseId"] = codingOutsourseId;
           }
+          if (chapterId) {
+            insertValues["chapterId"] = chapterId;
+          }
           await db.insert(zuvyPracticeCode).values(insertValues).returning();
         } else {
           await db.update(zuvyPracticeCode).set(insertValues).where(sql`${zuvyPracticeCode.id} = ${response[0].id}`).returning();
@@ -212,6 +215,9 @@ export class CodingPlatformService {
       }
       if (codingOutsourseId) {
         insertValues["codingOutsourseId"] = codingOutsourseId;
+      }
+      if (chapterId) {
+        insertValues["chapterId"] = chapterId;
       }
       let practiceSubmission = await db.insert(zuvyPracticeCode).values(insertValues).returning();
 
@@ -245,14 +251,25 @@ export class CodingPlatformService {
     questionId,
     userId,
     submissionId,
-    codingOutsourseId
+    codingOutsourseId,
+    chapterId
   ): Promise<any> {
     try {
       let queryString;
       if (isNaN(submissionId)) {
         queryString = sql`${zuvyPracticeCode.questionId} = ${questionId} AND ${zuvyPracticeCode.userId} = ${userId} AND ${zuvyPracticeCode.submissionId} IS NULL`;
+        
+        // Add chapterId filter if provided
+        if (chapterId) {
+          queryString = sql`${queryString} AND ${zuvyPracticeCode.chapterId} = ${chapterId}`;
+        }
       } else {
         queryString = sql`${zuvyPracticeCode.questionId} = ${questionId} AND ${zuvyPracticeCode.userId} = ${userId} AND ${zuvyPracticeCode.submissionId} = ${submissionId} AND ${zuvyPracticeCode.codingOutsourseId} = ${codingOutsourseId}`;
+        
+        // Add chapterId filter if provided
+        if (chapterId) {
+          queryString = sql`${queryString} AND ${zuvyPracticeCode.chapterId} = ${chapterId}`;
+        }
       }
   
       let response = await db.query.zuvyPracticeCode.findMany({
@@ -264,9 +281,10 @@ export class CodingPlatformService {
           questionId: true,
           submissionId: true,
           codingOutsourseId: true,
+          chapterId: true,
           createdAt: true,
-          sourceCode: true,
           programLangId: true,
+          sourceCode: true,
         },
         with: {
           questionDetail: true,
@@ -298,7 +316,9 @@ export class CodingPlatformService {
           questionId: practiceCode.questionId,
           submissionId: practiceCode.submissionId,
           codingOutsourseId: practiceCode.codingOutsourseId,
+          chapterId: practiceCode.chapterId,
           createdAt: practiceCode.createdAt,
+          programLangId: practiceCode.programLangId,
           sourceCode: practiceCode.sourceCode,
           ...(practiceCode.action === "run" && { languageId: Number(practiceCode.programLangId) }),
           questionDetail: practiceCode.questionDetail,
@@ -552,6 +572,7 @@ export class CodingPlatformService {
           submissionId: true,
           codingOutsourseId: true,
           createdAt: true,
+          programLangId:true,
           sourceCode: true
         },
         with: {
@@ -594,7 +615,9 @@ export class CodingPlatformService {
           questionId: true,
           submissionId: true,
           codingOutsourseId: true,
+          chapterId: true,
           createdAt: true,
+          programLangId:true,
           sourceCode: true
         },
         with: {
