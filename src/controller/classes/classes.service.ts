@@ -805,7 +805,7 @@ export class ClassesService {
    * If found, updates the record; otherwise, inserts a new attendance record.
    * @param meetingId - The Google Calendar meeting/event ID.
    */
-  async fetchAttendanceForMeeting(meetingId: string, students) {
+  async fetchAttendanceForMeeting(meetingId: string, students, batchId, bootcampId) {
     // Retrieve tokens for the designated account.
     const userTokenData = await this.getUserTokens('team@zuvy.org');
     if (!userTokenData) {
@@ -861,8 +861,6 @@ export class ClassesService {
         attendance[email] = { duration, attendance: status };
       });
 
-     
-
       // Check if an attendance record already exists for this meeting.
       const existingRecord = await db
         .select()
@@ -870,15 +868,14 @@ export class ClassesService {
         .where(eq(zuvyStudentAttendance.meetingId, meetingId));
 
       let arrayOfAttendanceStudents = [];
+      this.logger.log(`existingRecord: ${JSON.stringify(attendance)}`);
       for (const student in attendance) {
-        if (student.length > 0 && student.includes('@zuvy.org')) {
+        if (student.length > 0 && !student.includes('@zuvy.org')) {
           arrayOfAttendanceStudents.push({email: student, ...attendance[student]});
         }
       }
       students.forEach((enrollStudent)=>{
-        console.log("enroll: ", enrollStudent.user)
         let presenStudent = arrayOfAttendanceStudents.find((student)=> student.email == enrollStudent.user.email);
-        console.log({presenStudent});
         if (!presenStudent){
           arrayOfAttendanceStudents.push({email: enrollStudent.user.email, attendance: 'absent'});
         }
@@ -894,14 +891,16 @@ export class ClassesService {
          // Prepare the attendance data object.
       const attendanceData = {
         attendance: arrayOfAttendanceStudents,
-        meetingId
+        meetingId,
+        batchId,
+        bootcampId
         // Optionally include other fields (such as batchId or bootcampId) if needed.
       };
         // Insert a new attendance record.
-        await db.insert(zuvyStudentAttendance)
-          .values(attendanceData)
-          .execute();
-        this.logger.log(`Attendance inserted for meeting ${meetingId}: ${JSON.stringify(arrayOfAttendanceStudents)}`);
+          await db.insert(zuvyStudentAttendance)
+            .values(attendanceData)
+            .execute();
+          this.logger.log(`Attendance inserted for meeting ${meetingId}: ${JSON.stringify(arrayOfAttendanceStudents)}`);
       }
 
       return arrayOfAttendanceStudents;
@@ -930,7 +929,7 @@ export class ClassesService {
         }
       });
       if (classInfo.length > 0) {
-        let { batchId, s3link, views, meetingId, studentData} = classInfo[0]
+        let { batchId, s3link, views, meetingId, bootcampId} = classInfo[0]
         const Meeting = await db
           .select()
           .from(zuvyStudentAttendance)
@@ -961,9 +960,9 @@ export class ClassesService {
         if (s3link == null || s3link == undefined ) {
           s3link = await this.fetchRecordingForMeeting(meetingId);
         }
-        // if (attendance.length == 0) {
-        //   attendance = await this.fetchAttendanceForMeeting(meetingId, students);
-        // }
+        if (attendance.length == 0) {
+          attendance = await this.fetchAttendanceForMeeting(meetingId, students, batchId, bootcampId);
+        }
         
         let present = attendance.filter(
           (student) => student?.attendance === 'present',
