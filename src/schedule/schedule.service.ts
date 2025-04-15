@@ -187,6 +187,7 @@ export class ScheduleService {
       });
 
       const calendar = google.calendar({ version: 'v3', auth: auth2Client });
+
       if (session.meetingId && session.status === 'completed') {
         await this.updateSessionLink(calendar, session);
         await this.handleOldSessions(session);
@@ -242,7 +243,7 @@ export class ScheduleService {
     }
   }
 
-  private async getAttendanceByBatchId(batchId: string, creatorEmail: string) {
+  private async getAttendanceByBatchId(batchId, creatorEmail: string) {
     try {
       const students = await db
         .select()
