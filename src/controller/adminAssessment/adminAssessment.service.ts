@@ -162,8 +162,7 @@ export class AdminAssessmentService {
         with: {
           submitedOutsourseAssessments: {
             where: (submitedOutsourseAssessments, { sql, eq }) => sql`
-            ${submitedOutsourseAssessments.submitedAt} IS NOT NULL
-            AND EXISTS (
+            EXISTS (
               SELECT 1
               FROM main.zuvy_batch_enrollments
               WHERE main.zuvy_batch_enrollments.user_id = ${submitedOutsourseAssessments.userId}
@@ -224,11 +223,11 @@ export class AdminAssessmentService {
           return {
             id: submission.id,
             userId: submission.userId,
-            marks: submission.marks,
+            marks: submission.marks || 0,
             startedAt: submission.startedAt,
-            submitedAt: submission.submitedAt,
-            isPassed: submission.isPassed,
-            percentage: submission.percentage,
+            submitedAt: submission.submitedAt || null,
+            isPassed: submission.isPassed || false,
+            percentage: submission.percentage || 0,
             codingQuestionCount: submission.codingQuestionCount,
             quizQuestionCount: submission.quizQuestionCount,
             openEndedQuestionCount: submission.openEndedQuestionCount,
@@ -240,7 +239,7 @@ export class AdminAssessmentService {
             requiredCodingScore: submission.requiredCodingScore,
             requiredQuizScore: submission.requiredQuizScore,
             requiredOpenEndedScore: submission.requiredOpenEndedScore,
-            typeOfsubmission: submission.typeOfsubmission,
+            typeOfsubmission: submission.typeOfsubmission || 'not submitted',
             copyPaste: submission.copyPaste,
             tabChange: submission.tabChange,
             ...submission.user,
