@@ -29,6 +29,7 @@ const jwtClient = new google.auth.JWT({
   ],
   subject: 'team@zuvy.org'
 });
+
 @Injectable()
 export class ScheduleService {
   private readonly logger = new Logger(ScheduleService.name);
@@ -401,10 +402,10 @@ export class ScheduleService {
     }
   }
 
+  // 7️⃣ Flatten for return
   const attendanceOfStudents = Object.values(attendanceByTitle);
   return [ null, attendanceOfStudents ];
   }
-
 
   
   @Cron('0 30 2 * * *') // Runs every 59 minutes
@@ -419,9 +420,9 @@ export class ScheduleService {
           submitedOutsourseAssessment: true,
         }
       });
-      console.log(pendingSubmissions);
+      // console.log(pendingSubmissions);
 
-      console.log('Pending Submissions:', pendingSubmissions[0]);
+      // console.log('Pending Submissions:', pendingSubmissions[0]);
 
       this.logger.log(`Found ${pendingSubmissions.length} pending assessment submissions`);
       
@@ -446,7 +447,7 @@ export class ScheduleService {
                 submission.id,
                 submission.userId
               );
-              console.log({ submitErr, submitResult });
+             // console.log({ submitErr, submitResult });
 
               // Log success or handle errors
               if (submitErr) {
