@@ -20,15 +20,6 @@ const auth2Client = new OAuth2(
   process.env.GOOGLE_SECRET,
   process.env.GOOGLE_REDIRECT
 );
-const jwtClient = new google.auth.JWT({
-  email:   client_email,
-  key:     private_key,
-  scopes: [
-    'https://www.googleapis.com/auth/drive.metadata.readonly',
-    'https://www.googleapis.com/auth/calendar.events.readonly',
-  ],
-  subject: 'team@zuvy.org'
-});
 
 @Injectable()
 export class ScheduleService {
@@ -292,22 +283,37 @@ export class ScheduleService {
 
   private async calculateAttendance(client: any, meetings: any[], students: any[]) {
     const attendanceByTitle: Record<string, any> = {};
-    const drive    = google.drive({ version: 'v3', auth: jwtClient });
-    const calendar = google.calendar({ version: 'v3', auth: jwtClient });
     for (const meeting of meetings) {
       const response = await client.activities.list({
-        userKey: 'all',
+        userKey:         'all',
         applicationName: 'meet',
-        eventName: 'call_ended',
-        maxResults: 1000,
-        filters: `calendar_event_id==${meeting.meetingId}`,
+        eventName:       'call_ended',
+        maxResults:      1000,
+        filters:         `calendar_event_id==${meeting.meetingId}`,
       });
-      const eventDetails = await calendar.events.get({
+      const items = response.data.items || [];
+  
+      // 2️⃣ Extract the host’s email from the first log entry
+      const organizerParam = items[0].events?.[0].parameters?.find(p => p.name === 'organizer_email');
+      const hostEmail = organizerParam?.value;
+      const jwtClient = new google.auth.JWT({
+        email:   client_email,
+        key:     private_key,
+        scopes: [
+          'https://www.googleapis.com/auth/drive.metadata.readonly',
+          'https://www.googleapis.com/auth/calendar.events.readonly',
+        ],
+        subject: hostEmail
+      })
+      await jwtClient.authorize();
+      const calendar = google.calendar({ version: 'v3', auth: jwtClient });
+      const drive    = google.drive({ version: 'v3', auth: jwtClient });
+      const { data: event } = await calendar.events.get({
         calendarId: 'primary',
-        eventId: meeting.meetingId,
-        fields: 'attachments(fileId,mimeType)'
+        eventId:    meeting.meetingId,
+        fields:     'attachments(fileId,mimeType)',
       });
-      const videoAttach = eventDetails.data.attachments?.find(
+      const videoAttach = event.attachments?.find(
         (a: any) => a.mimeType === 'video/mp4'
       );
       if (!videoAttach) {
@@ -325,7 +331,6 @@ export class ScheduleService {
       const durationMillis = Number(durationMillisStr) || 0;
 
       const totalSeconds = durationMillis / 1000;
-
     const cutoff       = totalSeconds * 0.75;
     const attendance: Record<string, { email: string; duration: number; attendance: string }> = {};
     for (const student of students) {
@@ -346,11 +351,12 @@ export class ScheduleService {
       const email  = e.parameters.find((p: any) => p.name === 'identifier')?.value;
       const secs   = e.parameters.find((p: any) => p.name === 'duration_seconds')?.intValue || 0;
       if (email && attendance[email]) {
-        attendance[email].duration   = secs;
-        attendance[email].attendance = secs >= cutoff ? 'present' : 'absent';
+        attendance[email].duration += Number(secs);
       }
     });
-
+    for (const rec of Object.values(attendance)) {
+      rec.attendance = rec.duration >= cutoff ? 'present' : 'absent';
+    }
     for (const [email, rec] of Object.entries(attendance)) {
       attendanceByTitle[email] = {
         ...(attendanceByTitle[email] || {}),
