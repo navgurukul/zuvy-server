@@ -325,50 +325,7 @@ export class ScheduleService {
       const durationMillis = Number(durationMillisStr) || 0;
 
       const totalSeconds = durationMillis / 1000;
-    //   const attendance = {};
-    //   for (const student of students) {
-    //     const user = await db
-    //       .select()
-    //       .from(users)
-    //       .where(sql`${users.id} = ${student.userId}`);
 
-    //     attendance[user[0].email] = { email: user[0].email };
-    //   }
-    //   let adminData;
-    //   response.data.items?.forEach((item: any) => {
-    //     const event = item.events[0];
-    //     const email = event.parameters.find((param: any) => param.name === 'identifier')?.value || '';
-    //     const duration = event.parameters.find((param: any) => param.name === 'duration_seconds')?.intValue || '';
-    //     if (email.includes('@zuvy.org')){
-    //       adminData = {email, duration};
-    //     }
-    //   });
-    //   if (!adminData) return;
-
-    //   response.data.items?.forEach((item: any) => {
-    //     const event = item.events[0];
-    //     const email = event.parameters.find((param: any) => param.name === 'identifier')?.value || '';
-    //     const duration = event.parameters.find((param: any) => param.name === 'duration_seconds')?.intValue || '';
-    //     const status = (duration >= 0.75 * adminData.duration) ? 'present' : 'absent';        
-    //     if (!attendance[email]) attendance[email] = {};
-    //     attendance[email][`duration`] = duration;
-    //     attendance[email][`attendance`] = status;
-    //   });
-
-
-    //   Object.entries(attendance)?.forEach(([email, record]) => {
-    //     if (!attendanceByTitle[email]) attendanceByTitle[email] = {};
-    //     Object.assign(attendanceByTitle[email], record);
-    //   });
-    
-    // }
-    // let attendanceOfStudents = [];
-    // for (let student in attendanceByTitle){
-    //   if (student.length > 0){
-    //     attendanceOfStudents.push({...attendanceByTitle[student], email: student });
-    //   }
-    // }
-    // return [null, attendanceOfStudents];
     const cutoff       = totalSeconds * 0.75;
     const attendance: Record<string, { email: string; duration: number; attendance: string }> = {};
     for (const student of students) {
