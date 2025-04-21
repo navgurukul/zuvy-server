@@ -13,14 +13,22 @@ import { eq, sql, isNull, and, gte, lt } from 'drizzle-orm';
 import { google } from 'googleapis';
 import { zuvyAssessmentSubmission } from '../../drizzle/schema';
 import { SubmissionService } from '../controller/submissions/submission.service';
-
+import {client_email,private_key} from '../service-account.json'
 const { OAuth2 } = google.auth;
 const auth2Client = new OAuth2(
   process.env.GOOGLE_CLIENT_ID,
   process.env.GOOGLE_SECRET,
   process.env.GOOGLE_REDIRECT
 );
-
+const jwtClient = new google.auth.JWT({
+  email:   client_email,
+  key:     private_key,
+  scopes: [
+    'https://www.googleapis.com/auth/drive.metadata.readonly',
+    'https://www.googleapis.com/auth/calendar.events.readonly',
+  ],
+  subject: 'team@zuvy.org'
+});
 @Injectable()
 export class ScheduleService {
   private readonly logger = new Logger(ScheduleService.name);
@@ -283,7 +291,8 @@ export class ScheduleService {
 
   private async calculateAttendance(client: any, meetings: any[], students: any[]) {
     const attendanceByTitle: Record<string, any> = {};
-
+    const drive    = google.drive({ version: 'v3', auth: jwtClient });
+    const calendar = google.calendar({ version: 'v3', auth: jwtClient });
     for (const meeting of meetings) {
       const response = await client.activities.list({
         userKey: 'all',
@@ -292,52 +301,110 @@ export class ScheduleService {
         maxResults: 1000,
         filters: `calendar_event_id==${meeting.meetingId}`,
       });
+      const eventDetails = await calendar.events.get({
+        calendarId: 'primary',
+        eventId: meeting.meetingId,
+        fields: 'attachments(fileId,mimeType)'
+      });
+      const videoAttach = eventDetails.data.attachments?.find(
+        (a: any) => a.mimeType === 'video/mp4'
+      );
+      if (!videoAttach) {
+        console.warn(`No recording for ${meeting.meetingId}, skipping.`);
+        continue;
+      }
+  
+      // 3️⃣ Fetch the recording’s duration from Drive metadata
+      const { data: fileMeta } = await drive.files.get({
+        fileId: videoAttach.fileId,
+        fields: 'videoMediaMetadata(durationMillis)'
+      });
+      const durationMillisStr = fileMeta.videoMediaMetadata?.durationMillis;
 
-      const attendance = {};
-      for (const student of students) {
-        const user = await db
+      const durationMillis = Number(durationMillisStr) || 0;
+
+      const totalSeconds = durationMillis / 1000;
+    //   const attendance = {};
+    //   for (const student of students) {
+    //     const user = await db
+    //       .select()
+    //       .from(users)
+    //       .where(sql`${users.id} = ${student.userId}`);
+
+    //     attendance[user[0].email] = { email: user[0].email };
+    //   }
+    //   let adminData;
+    //   response.data.items?.forEach((item: any) => {
+    //     const event = item.events[0];
+    //     const email = event.parameters.find((param: any) => param.name === 'identifier')?.value || '';
+    //     const duration = event.parameters.find((param: any) => param.name === 'duration_seconds')?.intValue || '';
+    //     if (email.includes('@zuvy.org')){
+    //       adminData = {email, duration};
+    //     }
+    //   });
+    //   if (!adminData) return;
+
+    //   response.data.items?.forEach((item: any) => {
+    //     const event = item.events[0];
+    //     const email = event.parameters.find((param: any) => param.name === 'identifier')?.value || '';
+    //     const duration = event.parameters.find((param: any) => param.name === 'duration_seconds')?.intValue || '';
+    //     const status = (duration >= 0.75 * adminData.duration) ? 'present' : 'absent';        
+    //     if (!attendance[email]) attendance[email] = {};
+    //     attendance[email][`duration`] = duration;
+    //     attendance[email][`attendance`] = status;
+    //   });
+
+
+    //   Object.entries(attendance)?.forEach(([email, record]) => {
+    //     if (!attendanceByTitle[email]) attendanceByTitle[email] = {};
+    //     Object.assign(attendanceByTitle[email], record);
+    //   });
+    
+    // }
+    // let attendanceOfStudents = [];
+    // for (let student in attendanceByTitle){
+    //   if (student.length > 0){
+    //     attendanceOfStudents.push({...attendanceByTitle[student], email: student });
+    //   }
+    // }
+    // return [null, attendanceOfStudents];
+    const cutoff       = totalSeconds * 0.75;
+    const attendance: Record<string, { email: string; duration: number; attendance: string }> = {};
+    for (const student of students) {
+      const user = await db
           .select()
           .from(users)
-          .where(sql`${users.id} = ${student.userId}`);
+          .where(sql`${users.id} = ${BigInt(student.userId)}`);
 
-        attendance[user[0].email] = { email: user[0].email };
-      }
-      let adminData;
-      response.data.items?.forEach((item: any) => {
-        const event = item.events[0];
-        const email = event.parameters.find((param: any) => param.name === 'identifier')?.value || '';
-        const duration = event.parameters.find((param: any) => param.name === 'duration_seconds')?.intValue || '';
-        if (email.includes('@zuvy.org')){
-          adminData = {email, duration};
-        }
-      });
-      if (!adminData) return;
-
-      response.data.items?.forEach((item: any) => {
-        const event = item.events[0];
-        const email = event.parameters.find((param: any) => param.name === 'identifier')?.value || '';
-        const duration = event.parameters.find((param: any) => param.name === 'duration_seconds')?.intValue || '';
-        const status = (duration >= 0.75 * adminData.duration) ? 'present' : 'absent';        
-        if (!attendance[email]) attendance[email] = {};
-        attendance[email][`duration`] = duration;
-        attendance[email][`attendance`] = status;
-      });
-
-
-      Object.entries(attendance)?.forEach(([email, record]) => {
-        if (!attendanceByTitle[email]) attendanceByTitle[email] = {};
-        Object.assign(attendanceByTitle[email], record);
-      });
-    
+        attendance[user[0].email] = {
+          email:      user[0].email,
+          duration:   0,
+          attendance: 'absent'
+        };
     }
-    let attendanceOfStudents = [];
-    for (let student in attendanceByTitle){
-      if (student.length > 0){
-        attendanceOfStudents.push({...attendanceByTitle[student], email: student });
+
+    response.data.items?.forEach((item: any) => {
+      const e      = item.events[0];
+      const email  = e.parameters.find((p: any) => p.name === 'identifier')?.value;
+      const secs   = e.parameters.find((p: any) => p.name === 'duration_seconds')?.intValue || 0;
+      if (email && attendance[email]) {
+        attendance[email].duration   = secs;
+        attendance[email].attendance = secs >= cutoff ? 'present' : 'absent';
       }
+    });
+
+    for (const [email, rec] of Object.entries(attendance)) {
+      attendanceByTitle[email] = {
+        ...(attendanceByTitle[email] || {}),
+        ...rec
+      };
     }
-    return [null, attendanceOfStudents];
   }
+
+  const attendanceOfStudents = Object.values(attendanceByTitle);
+  return [ null, attendanceOfStudents ];
+  }
+
 
   
   @Cron('0 30 2 * * *') // Runs every 59 minutes
