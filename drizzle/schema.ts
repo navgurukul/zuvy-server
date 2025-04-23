@@ -72,8 +72,15 @@ export const questionType = pgEnum('questionType', [
   'Date' , 
   'Time',
 ]);
+import { helperVariable } from 'src/constants/helper';
+let schName ;
+if (process.env.ENV_NOTE == helperVariable.schemaName) {
+  schName = helperVariable.schemaName;
+} else {
+  schName = 'main';
+}
 
-export const main = pgSchema('main');
+export const main = pgSchema(schName);
 
 export const engArticles = main.table('eng_articles', {
   id: serial('id').primaryKey().notNull(),
