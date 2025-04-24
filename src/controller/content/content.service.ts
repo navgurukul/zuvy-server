@@ -2207,20 +2207,21 @@ export class ContentService {
           eq(zuvyOutsourseAssessments.id, assessmentOutsourseId),
         with: {
           ModuleAssessment: true,
-          submitedOutsourseAssessments: true
+          submitedOutsourseAssessments: true 
         },
       });
 
       if (!IsAdmin && user.roles.includes('admin')) {
         userId = Math.floor(Math.random() * (99999 - 1000 + 1)) + 1000;
       }
-
-      let assessmentSubmissionId = null
-      // Fetching all quiz questions at once
-      if (assessmentOutsourseData.hasOwnProperty('submitedOutsourseAssessments')) {
-        if (assessmentOutsourseData.submitedOutsourseAssessments.length > 0) {
-          assessmentSubmissionId = assessmentOutsourseData.submitedOutsourseAssessments[0].id
-        }
+  
+      let assessmentSubmissionId = null;
+  
+      if (assessmentOutsourseData?.submitedOutsourseAssessments?.length > 0) {
+        const userSubmission = assessmentOutsourseData.submitedOutsourseAssessments.find(
+          sub => String(sub.userId) === String(userId) // Compare as strings to avoid type issues
+        );
+        assessmentSubmissionId = userSubmission?.id ?? null;
       }
  
       const [err, quizQuestions] = await this.getQuizQuestionsByAllDifficulties(assessmentOutsourseId, assessmentOutsourseData, userId, assessmentSubmissionId);
@@ -2237,7 +2238,6 @@ export class ContentService {
         hard: assessmentOutsourseData.hardMcqMark || 0
       };
 
-      // Process all questions with their respective marks
       const mcqs = Object.entries(quizQuestions).flatMap(([difficulty, questions]) => {
         const mark = Math.floor(Number(difficultyMarks[difficulty.toLowerCase()])) || 0;
         
