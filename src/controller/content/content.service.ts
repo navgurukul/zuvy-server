@@ -2207,7 +2207,11 @@ export class ContentService {
           eq(zuvyOutsourseAssessments.id, assessmentOutsourseId),
         with: {
           ModuleAssessment: true,
-          submitedOutsourseAssessments: true 
+          submitedOutsourseAssessments: {
+            where: (submissions, { eq }) => eq(submissions.userId, userId),
+            columns: { id: true }, 
+            limit: 1 
+          }
         },
       });
 
@@ -2215,14 +2219,7 @@ export class ContentService {
         userId = Math.floor(Math.random() * (99999 - 1000 + 1)) + 1000;
       }
   
-      let assessmentSubmissionId = null;
-  
-      if (assessmentOutsourseData?.submitedOutsourseAssessments?.length > 0) {
-        const userSubmission = assessmentOutsourseData.submitedOutsourseAssessments.find(
-          sub => String(sub.userId) === String(userId) // Compare as strings to avoid type issues
-        );
-        assessmentSubmissionId = userSubmission?.id ?? null;
-      }
+      const assessmentSubmissionId = assessmentOutsourseData?.submitedOutsourseAssessments?.[0]?.id ?? null;
  
       const [err, quizQuestions] = await this.getQuizQuestionsByAllDifficulties(assessmentOutsourseId, assessmentOutsourseData, userId, assessmentSubmissionId);
 
