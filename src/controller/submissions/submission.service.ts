@@ -1319,7 +1319,7 @@ export class SubmissionService {
     }
   }
 
-  async deleteAssessmentSubmission(assessmentSubmissionId: number): Promise<any> {
+  async deactivateAssessmentSubmission(assessmentSubmissionId: number): Promise<any> {
     try {
       // First, check if the assessment submission exists
       const submission = await db.query.zuvyAssessmentSubmission.findFirst({
@@ -1334,28 +1334,25 @@ export class SubmissionService {
         }];
       }
 
-      // Delete all related records in a transaction
-      await db.transaction(async (tx) => {
-        // Delete practice codes
-        await tx.delete(zuvyPracticeCode)
-          .where(eq(zuvyPracticeCode.submissionId, assessmentSubmissionId));
+      // Update the active attribute to false instead of deleting
+      let updateActiveData:any = { active: false }
+      const updated = await db.update(zuvyAssessmentSubmission)
+        .set(updateActiveData)
+        .where(eq(zuvyAssessmentSubmission.id, assessmentSubmissionId))
+        .returning();
 
-        // Delete quiz tracking records
-        await tx.delete(zuvyQuizTracking)
-          .where(eq(zuvyQuizTracking.assessmentSubmissionId, assessmentSubmissionId));
-
-        // Delete open-ended question submissions
-        await tx.delete(zuvyOpenEndedQuestionSubmission)
-          .where(eq(zuvyOpenEndedQuestionSubmission.assessmentSubmissionId, assessmentSubmissionId));
-        // Finally, delete the assessment submission itself
-        await tx.delete(zuvyAssessmentSubmission)
-          .where(eq(zuvyAssessmentSubmission.id, assessmentSubmissionId));
-      });
+      if (!updated || updated.length === 0) {
+        return [{
+          status: 'error',
+          statusCode: 500,
+          message: 'Failed to deactivate assessment submission',
+        }];
+      }
 
       return [null, {
         status: 'success',
         statusCode: 200,
-        message: 'Assessment submission and all related records deleted successfully',
+        message: 'Assessment submission deactivated successfully',
       }];
     } catch (err) {
       return [{

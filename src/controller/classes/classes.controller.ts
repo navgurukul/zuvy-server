@@ -35,7 +35,7 @@ import { Response } from 'express';
 import { ErrorResponse, SuccessResponse } from 'src/errorHandler/handler';
 
 // config user for admin
-let configUser = { id: process.env.ID, email: process.env.EMAIL };
+let configUser = { id: process.env.ID, email: process.env.TEAM_EMAIL };
 
 @Controller('classes')
 @ApiTags('classes')
