@@ -1139,7 +1139,7 @@ export class ClassesService {
       const user = await db
         .select()
         .from(users)
-        .where(eq(users.email, process.env.EMAIL));
+        .where(eq(users.email, process.env.TEAM_EMAIL));
       let adminUser = { ...user[0], roles: 'admin' };
 
       // Get access to the calendar
