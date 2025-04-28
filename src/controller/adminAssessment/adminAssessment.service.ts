@@ -56,7 +56,6 @@ export class AdminAssessmentService {
   // Method to approve re-attempt by admin
   async approveReattempt(assessmentSubmissionId: number): Promise<any> {
     try {
-      console.log({assessmentSubmissionId});
       // Check if submission exists
       const submission:any = await db.query.zuvyAssessmentSubmission.findFirst({
         where: (zuvyAssessmentSubmission, { eq }) =>
@@ -97,7 +96,6 @@ export class AdminAssessmentService {
           }
         }
       });
-      console.log(submission);
   
       if (!submission) {
         return [{
