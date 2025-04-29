@@ -480,7 +480,8 @@ export class AdminAssessmentService {
         with: {
           submitedOutsourseAssessments: {
             where: (submitedOutsourseAssessments, { sql, eq }) => sql`
-            EXISTS (
+            ${submitedOutsourseAssessments.active} = true
+            AND EXISTS (
               SELECT 1
               FROM main.zuvy_batch_enrollments
               WHERE main.zuvy_batch_enrollments.user_id = ${submitedOutsourseAssessments.userId}
@@ -695,6 +696,7 @@ export class AdminAssessmentService {
         },
         with: {
           submitedOutsourseAssessments: {
+            where: (submitedOutsourseAssessments,{sql}) => sql`${submitedOutsourseAssessments.active} = true`,
             columns: {
               id: true,
               userId: true,
@@ -1066,6 +1068,7 @@ export class AdminAssessmentService {
         columns: { id: true },
         with: {
           submitedOutsourseAssessments: {
+            where: (submitedOutsourseAssessments,{sql}) => sql`${submitedOutsourseAssessments.active} = true`,
             columns: { userId: true, marks: true },
           },
         },
