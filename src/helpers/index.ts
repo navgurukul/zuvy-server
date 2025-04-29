@@ -642,7 +642,7 @@ def ${functionName}(${parameterMappings}) -> ${typeMappings.python[returnType]}:
 # Example usage
 ${inputHandling}
 result = ${functionName}(${parameters.map(p => `_${p.parameterName}_`).join(', ')})
-${ !["arrayOfnum","arrayOfStr", "jsonType","object"].includes(returnType)? 'print(result);' : 'print(json.dumps(result));'}`];
+${ !["arrayOfnum","arrayOfStr", "jsonType","object"].includes(returnType)? 'print(result);' : 'print(json.dumps(result, separators=(",", ":")));'}`];
   } catch (error) {
     console.error('Error generating template:', error);
     return [error, null];
