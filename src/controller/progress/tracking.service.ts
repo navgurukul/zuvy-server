@@ -1432,6 +1432,7 @@ export class TrackingService {
           PracticeCode: {
             where: (zuvyPracticeCode, { eq, and, or, ne }) => and(
               eq(zuvyPracticeCode.userId, userId),
+              eq(zuvyPracticeCode.action,helperVariable.SUBMIT)
             ),
             columns: {
               id: true,
