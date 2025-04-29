@@ -696,7 +696,6 @@ export class AdminAssessmentService {
         },
         with: {
           submitedOutsourseAssessments: {
-            where: (submitedOutsourseAssessments,{sql}) => sql`${submitedOutsourseAssessments.active} = true`,
             columns: {
               id: true,
               userId: true,
@@ -708,7 +707,7 @@ export class AdminAssessmentService {
               active: true,
             },
             where: (submitedOutsourseAssessments, { sql }) => sql`
-              ${submitedOutsourseAssessments.submitedAt} IS NOT NULL
+              ${submitedOutsourseAssessments.submitedAt} IS NOT NULL AND ${submitedOutsourseAssessments.active} = true,
               AND EXISTS (
                 SELECT 1
                 FROM main.zuvy_batch_enrollments
