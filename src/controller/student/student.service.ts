@@ -16,14 +16,13 @@ import { eq, sql, desc, count, asc, or, and, inArray } from 'drizzle-orm';
 import { ClassesService } from '../classes/classes.service'
 import { helperVariable } from 'src/constants/helper';
 import { STATUS_CODES } from "../../helpers/index";
-const { PENDING, ACCEPTED, REJECTED} = helperVariable.REATTMEPT_STATUS; // Importing helper variables
+const { PENDING } = helperVariable.REATTMEPT_STATUS; // Importing helper variables
 
 import { google } from 'googleapis';
 import { OAuth2Client } from 'google-auth-library';
-import * as fs from 'fs';
-import * as readline from 'readline';
 
-const { GOOGLE_SHEETS_SERVICE_ACCOUNT, GOOGLE_SHEETS_PRIVATE_KEY,JOIN_ZUVY_ACCESS_KEY_ID, JOIN_ZUVY_SECRET_KEY, SPREADSHEET_ID, SES_EMAIL, EMAIL_SUBJECT, SUPPORT_EMAIL, TEAM_EMAIL, AWS_SUPPORT_ACCESS_SECRET_KEY, AWS_SUPPORT_ACCESS_KEY_ID, ZUVY_BASH_URL } = process.env;
+
+const { GOOGLE_SHEETS_SERVICE_ACCOUNT, GOOGLE_SHEETS_PRIVATE_KEY,JOIN_ZUVY_ACCESS_KEY_ID, JOIN_ZUVY_SECRET_KEY, SPREADSHEET_ID, SES_EMAIL, SUPPORT_EMAIL, QUERY_EMAIL, AWS_QUERY_ACCESS_SECRET_KEY, AWS_QUERY_ACCESS_KEY_ID } = process.env;
 const AWS = require('aws-sdk');
 
 
@@ -36,6 +35,7 @@ AWS.config.update({
 @Injectable()
 export class StudentService {
   constructor(private ClassesService: ClassesService) { }
+  private logger = new Logger(StudentService.name);
   private SCOPES = ['https://www.googleapis.com/auth/spreadsheets'];
 
   // Authenticate and return the JWT client to interact with Google Sheets API
@@ -504,60 +504,60 @@ export class StudentService {
     }
   }
   // Helper method to send email to admin using AWS SES
-  //   private async sendEmailToAdmin(submission: any): Promise<any> {
-  //     try {
-  //       let ses = new AWS.SES();
+    private async sendEmailToAdmin(submission: any): Promise<any> {
+      try {
+        let ses = new AWS.SES();
   
-  //       AWS.config.update({
-  //         accessKeyId: AWS_SUPPORT_ACCESS_KEY_ID,      // Replace with your access key ID
-  //         secretAccessKey: AWS_SUPPORT_ACCESS_SECRET_KEY, // Replace with your secret access key
-  //         region: 'ap-south-1'                      // Replace with your AWS SES region, e.g., 'us-east-1'
-  //       });
+        AWS.config.update({
+          accessKeyId: AWS_QUERY_ACCESS_KEY_ID,      // Replace with your access key ID
+          secretAccessKey: AWS_QUERY_ACCESS_SECRET_KEY, // Replace with your secret access key
+          region: 'ap-south-1'                      // Replace with your AWS SES region, e.g., 'us-east-1'
+        });
         
-  //       const emailContent = await this.generateAdminEmailContent(submission);
-  //       const emailParams = {
-  //         Source: SUPPORT_EMAIL,
-  //         Destination: {
-  //           ToAddresses: [TEAM_EMAIL],
-  //         },
-  //         Message: {
-  //           Subject: {
-  //             Data: 'Re-attempt Request for Assessment Submission',
-  //           },
-  //           Body: {
-  //             Text: {
-  //               Data: emailContent,
-  //             },
-  //           },
-  //         },
-  //       };
+        const emailContent = await this.generateAdminEmailContent(submission);
+        const emailParams = {
+          Source: QUERY_EMAIL,
+          Destination: {
+            ToAddresses: [SUPPORT_EMAIL], // Admin email address
+          },
+          Message: {
+            Subject: {
+              Data: 'Re-attempt Request for Assessment Submission',
+            },
+            Body: {
+              Text: {
+                Data: emailContent,
+              },
+            },
+          },
+        };
   
-  //       const result = await ses.sendEmail(emailParams).promise();
-  //       this.logger.log('Email sent to admin for re-attempt request: ' + JSON.stringify(result));
-  //       return [null, result];
-  //     } catch (error) {
-  //       this.logger.error('Failed to send email to admin', error);
-  //       return [error, null];
-  //     }
-  //   }
-  //  // Generate email content dynamically for admin notification
-  //  private async generateAdminEmailContent(submission: any): Promise<string> {
-  //   return `
-  //     Re-attempt Request Notification
+        const result = await ses.sendEmail(emailParams).promise();
+        this.logger.log('Email sent to admin for re-attempt request: ' + JSON.stringify(result));
+        return [null, result];
+      } catch (error) {
+        this.logger.error('Failed to send email to admin', error);
+        return [error, null];
+      }
+    }
+   // Generate email content dynamically for admin notification
+   private async generateAdminEmailContent(submission: any): Promise<string> {
+    return `
+      Re-attempt Request Notification
 
-  //     Student ID: ${submission.userId}
-  //     Assessment Submission ID: ${submission.id}
-  //     Course: ${submission.courseName || 'N/A'}
-  //     Batch: ${submission.batchName || 'N/A'}
-  //     Assessment Title: ${submission.title || 'N/A'}
-  //     Original Attempt Date: ${submission.submitedAt || 'N/A'}
-  //     Re-attempt Requested At: ${new Date().toISOString()}
+      Student ID: ${submission.userId}
+      Assessment Submission ID: ${submission.id}
+      Course: ${submission.courseName || 'N/A'}
+      Batch: ${submission.batchName || 'N/A'}
+      Assessment Title: ${submission.title || 'N/A'}
+      Original Attempt Date: ${submission.submitedAt || 'N/A'}
+      Re-attempt Requested At: ${new Date().toISOString()}
 
-  //     Please review and approve the re-attempt request.
+      Please review and approve the re-attempt request.
 
-  //   Regards,
-  //   The Team Zuvy`;
-  // }
+    Regards,
+    The Team Zuvy`;
+  }
 
   async requestReattempt(assessmentSubmissionId: number, userId: number): Promise<any> {
     try {
@@ -626,26 +626,26 @@ export class StudentService {
           message: 'Unauthorized request',
         }];
       }
-      // let submitedOutsourseAssessment = submission.submitedOutsourseAssessment
-      // let ModuleAssessment = submission.submitedOutsourseAssessment.ModuleAssessment
-      // let user = submission.user
+      let submitedOutsourseAssessment = submission.submitedOutsourseAssessment
+      let ModuleAssessment = submission.submitedOutsourseAssessment.ModuleAssessment
+      let user = submission.user
 
-      // let batch:any = await db.query.zuvyBatchEnrollments.findFirst({
-      //   where: (zuvyBatchEnrollments, { sql }) =>
-      //     sql`${zuvyBatchEnrollments.userId} = ${userId} AND ${zuvyBatchEnrollments.bootcampId} = ${submitedOutsourseAssessment.bootcampId}`,
-      //   with: {
-      //     batchInfo: {
-      //       columns: {
-      //         name: true,
-      //       },
-      //     },
-      //     bootcamp: {
-      //       columns: {
-      //         name: true,
-      //       },
-      //     },
-      //   },
-      // });
+      let batch:any = await db.query.zuvyBatchEnrollments.findFirst({
+        where: (zuvyBatchEnrollments, { sql }) =>
+          sql`${zuvyBatchEnrollments.userId} = ${userId} AND ${zuvyBatchEnrollments.bootcampId} = ${submitedOutsourseAssessment.bootcampId}`,
+        with: {
+          batchInfo: {
+            columns: {
+              name: true,
+            },
+          },
+          bootcamp: {
+            columns: {
+              name: true,
+            },
+          },
+        },
+      });
       // Update submission to mark reattempt requested
       let updateReattmpt:any = { reattemptRequested: true };
       
