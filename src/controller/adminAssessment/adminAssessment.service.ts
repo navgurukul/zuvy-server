@@ -21,22 +21,19 @@ export class AdminAssessmentService {
     return `
       Hello ${user.name},
 
-      Your request for re-attempt of the assessment "${submission.title || 'N/A'}" has been approved.
-
-      You can start your re-attempt by clicking the link below:
-      ${assessmentDeepLink}
+      Good news! Your request to retake the assessment "${submission.title || 'N/A'}" has been approved.
+      When you’re ready, click the button below. It will take you straight to the test: 
+      [Start Assessment]: ${assessmentDeepLink}
 
       Test Duration: ${submission.timeLimit || 'N/A'} minutes
-      Total Marks: ${submission.marks || 'N/A'}
+      Total Marks: 100
 
-      Tips for a successful attempt:
-      - Ensure stable internet connection
-      - Do not close the assessment tab during the test
+      Tips for a smooth attempt
+      1. Use a stable internet connection.
+      2. Keep your browser tab open until you submit.
 
-      Best of luck!
-
-      Regards,
-      The Team Zuvy
+      All the best!
+      Team Zuvy
     `;
   }
   // reject of the student reattempt request mail
@@ -121,21 +118,21 @@ export class AdminAssessmentService {
         reattemptApproved: true,
         active: false,
       }
+      // Send email to student notifying approval
+      // let [errorSendEmail, emailSent] = await this.sendEmailToStudent({...submission, ...ModuleAssessment, ...outsourseAssessment});
+      // if (errorSendEmail) {
+      //   return [{
+      //     status: 'error',
+      //     statusCode: 500,
+      //     message: errorSendEmail,
+      //   }];
+      // }
       // Update submission to mark reattempt approved and reset submission status
       let red = await db.update(zuvyAssessmentSubmission)
         .set(updatingAssessment)
         .where(eq(zuvyAssessmentSubmission.id, assessmentSubmissionId)).returning();
       let green = await db.update(zuvyAssessmentReattempt)
         .set({ status: ACCEPTED }).where(eq(zuvyAssessmentReattempt.id, reattemptId)).returning();
-      // Send email to student notifying approval
-      let [errorSendEmail, emailSent] = await this.sendEmailToStudent({...submission, ...ModuleAssessment, ...outsourseAssessment});
-      if (errorSendEmail) {
-        return [{
-          status: 'error',
-          statusCode: 500,
-          message: errorSendEmail,
-        }];
-      }
 
       return [null, {
         status: 'success',
@@ -479,8 +476,9 @@ export class AdminAssessmentService {
         },
         with: {
           submitedOutsourseAssessments: {
-            where: (submitedOutsourseAssessments, { sql, eq }) => sql`
-            EXISTS (
+            where: (submitedOutsourseAssessments, { sql }) => sql`
+            ${submitedOutsourseAssessments.active} = true
+            AND EXISTS (
               SELECT 1
               FROM main.zuvy_batch_enrollments
               WHERE main.zuvy_batch_enrollments.user_id = ${submitedOutsourseAssessments.userId}
@@ -497,6 +495,7 @@ export class AdminAssessmentService {
                   OR lower(main.users.email) LIKE lower(${searchStudent + '%'})
                 )
               )
+            order by ${submitedOutsourseAssessments.startedAt} desc limit 1
             ` : sql``}
           `,
             with: {
@@ -559,6 +558,10 @@ export class AdminAssessmentService {
             requiredOpenEndedScore: submission.requiredOpenEndedScore,
             typeOfsubmission: submission.typeOfsubmission || 'not submitted',
             copyPaste: submission.copyPaste,
+            active: submission.active,
+            reattemptRequested: submission.reattemptRequested,
+            reattemptApproved: submission.reattemptApproved,
+            reattemptCount: 0,
             tabChange: submission.tabChange,
             ...submission.user,
           };
@@ -705,8 +708,7 @@ export class AdminAssessmentService {
               percentage: true,
               active: true,
             },
-            where: (submitedOutsourseAssessments, { sql }) => sql`
-              ${submitedOutsourseAssessments.submitedAt} IS NOT NULL
+            where: (submitedOutsourseAssessments, { sql }) => sql`${submitedOutsourseAssessments.submitedAt} IS NOT NULL AND ${submitedOutsourseAssessments.active} = true           
               AND EXISTS (
                 SELECT 1
                 FROM main.zuvy_batch_enrollments
@@ -714,6 +716,7 @@ export class AdminAssessmentService {
                 AND main.zuvy_batch_enrollments.bootcamp_id = ${bootcampID}
                 AND main.zuvy_batch_enrollments.batch_id IS NOT NULL
               )
+              order by ${submitedOutsourseAssessments.startedAt} desc limit 1 
             `,
             with: {
               user: {
@@ -1066,6 +1069,7 @@ export class AdminAssessmentService {
         columns: { id: true },
         with: {
           submitedOutsourseAssessments: {
+            where: (submitedOutsourseAssessments,{sql}) => sql`${submitedOutsourseAssessments.active} = true order by ${submitedOutsourseAssessments.startedAt} desc limit 1`,
             columns: { userId: true, marks: true },
           },
         },

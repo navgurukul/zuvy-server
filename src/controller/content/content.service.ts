@@ -35,6 +35,7 @@ import {
   asc,
   ne,
   SQL,
+  desc
 } from 'drizzle-orm';
 import { db } from '../../db/index';
 import {
@@ -1846,6 +1847,8 @@ export class ContentService {
         with: {
           submitedOutsourseAssessments: {
             where: (zuvyAssessmentSubmission, { eq }) => eq(zuvyAssessmentSubmission.userId, id),
+            orderBy: [desc(zuvyAssessmentSubmission.startedAt)],
+            limit: 1
           },
           ModuleAssessment: true,
           Quizzes: {
