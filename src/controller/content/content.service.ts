@@ -2029,7 +2029,7 @@ export class ContentService {
         id = Math.floor(Math.random() * (99999 - 1000 + 1)) + 1000;
       } else {
         let startedAt = new Date().toISOString();
-        submission = await db.select().from(zuvyAssessmentSubmission).where(sql`${zuvyAssessmentSubmission.userId} = ${id} AND ${zuvyAssessmentSubmission.assessmentOutsourseId} = ${assessmentOutsourseId} AND ${zuvyAssessmentSubmission.submitedAt} IS NULL`);
+        submission = await db.select().from(zuvyAssessmentSubmission).where(sql`${zuvyAssessmentSubmission.userId} = ${id} AND ${zuvyAssessmentSubmission.assessmentOutsourseId} = ${assessmentOutsourseId}`);
         if (submission.length == 0) {
           let insertAssessmentSubmission: any = { userId: id, assessmentOutsourseId, startedAt }
           submission = await db.insert(zuvyAssessmentSubmission).values(insertAssessmentSubmission).returning();
