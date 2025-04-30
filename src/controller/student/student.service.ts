@@ -655,14 +655,14 @@ export class StudentService {
       let reattemptData:any = { assessmentSubmissionId, userId, requestedAt: new Date(), status: PENDING}
       await db.insert(zuvyAssessmentReattempt).values(reattemptData)
       // // Send email to admin notifying reattempt request
-      let [errorAdmin, admin200] = await this.sendEmailToAdmin({...submission, ...submitedOutsourseAssessment, ...user, ...ModuleAssessment, batchName: batch.batchInfo.name, courseName: batch.bootcamp.name});
-      if (errorAdmin) {
-        return [{
-          status: 'error',
-          statusCode: 500,
-          message: errorAdmin,
-        }];
-      }
+      // let [errorAdmin, admin200] = await this.sendEmailToAdmin({...submission, ...submitedOutsourseAssessment, ...user, ...ModuleAssessment, batchName: batch.batchInfo.name, courseName: batch.bootcamp.name});
+      // if (errorAdmin) {
+      //   return [{
+      //     status: 'error',
+      //     statusCode: 500,
+      //     message: errorAdmin,
+      //   }];
+      // }
       return [null,{
         status: 'success',
         statusCode: 200,

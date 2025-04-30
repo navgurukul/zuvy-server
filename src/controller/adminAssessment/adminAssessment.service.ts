@@ -118,21 +118,21 @@ export class AdminAssessmentService {
         reattemptApproved: true,
         active: false,
       }
+      // Send email to student notifying approval
+      // let [errorSendEmail, emailSent] = await this.sendEmailToStudent({...submission, ...ModuleAssessment, ...outsourseAssessment});
+      // if (errorSendEmail) {
+      //   return [{
+      //     status: 'error',
+      //     statusCode: 500,
+      //     message: errorSendEmail,
+      //   }];
+      // }
       // Update submission to mark reattempt approved and reset submission status
       let red = await db.update(zuvyAssessmentSubmission)
         .set(updatingAssessment)
         .where(eq(zuvyAssessmentSubmission.id, assessmentSubmissionId)).returning();
       let green = await db.update(zuvyAssessmentReattempt)
         .set({ status: ACCEPTED }).where(eq(zuvyAssessmentReattempt.id, reattemptId)).returning();
-      // Send email to student notifying approval
-      let [errorSendEmail, emailSent] = await this.sendEmailToStudent({...submission, ...ModuleAssessment, ...outsourseAssessment});
-      if (errorSendEmail) {
-        return [{
-          status: 'error',
-          statusCode: 500,
-          message: errorSendEmail,
-        }];
-      }
 
       return [null, {
         status: 'success',
