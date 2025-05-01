@@ -118,15 +118,6 @@ export class AdminAssessmentService {
         reattemptApproved: true,
         active: false,
       }
-      // Send email to student notifying approval
-      let [errorSendEmail, emailSent] = await this.sendEmailToStudent({...submission, ...ModuleAssessment, ...outsourseAssessment});
-      if (errorSendEmail) {
-        return [{
-          status: 'error',
-          statusCode: 500,
-          message: errorSendEmail,
-        }];
-      }
       // Update submission to mark reattempt approved and reset submission status
       await db.update(zuvyAssessmentSubmission)
         .set(updatingAssessment)
@@ -134,6 +125,16 @@ export class AdminAssessmentService {
       await db.update(zuvyAssessmentReattempt)
         .set({ status: ACCEPTED }).where(eq(zuvyAssessmentReattempt.id, reattemptId)).returning();
 
+      // Send email to student notifying approval
+      let [errorSendEmail, emailSent] = await this.sendEmailToStudent({...submission, ...ModuleAssessment, ...outsourseAssessment});
+      if (errorSendEmail) {
+        this.logger.error(`error in sending email to student: ${errorSendEmail}`)
+        return [{
+          status: 'success',
+          statusCode: 200,
+          message: 'Re-attempt approved and Not able to notified',
+        }];
+      }
       return [null, {
         status: 'success',
         statusCode: 200,
@@ -152,14 +153,14 @@ export class AdminAssessmentService {
   // Helper method to send email to student using AWS SES
   private async sendEmailToStudent(submission: any): Promise<any> {
     try {
-      // Fetch student email and name
-      let ses = new AWS.SES();
 
       AWS.config.update({
         accessKeyId: AWS_SUPPORT_ACCESS_KEY_ID,      // Replace with your access key ID
         secretAccessKey: AWS_SUPPORT_ACCESS_SECRET_KEY, // Replace with your secret access key
         region: 'ap-south-1'                      // Replace with your AWS SES region, e.g., 'us-east-1'
       });
+      // Fetch student email and name
+      let ses = new AWS.SES();
       
       const user = await db.query.users.findFirst({
         where: (zuvyUser, { eq }) => eq(zuvyUser.id, submission.userId),
