@@ -543,21 +543,30 @@ export class StudentService {
    // Generate email content dynamically for admin notification
    private async generateAdminEmailContent(submission: any): Promise<string> {
     return `
-      Re-attempt Request Notification
+Hi Admin,
 
-      Student ID: ${submission.userId}
-      Assessment Submission ID: ${submission.id}
-      Course: ${submission.courseName || 'N/A'}
-      Batch: ${submission.batchName || 'N/A'}
-      Assessment Title: ${submission.title || 'N/A'}
-      Original Attempt Date: ${submission.submitedAt || 'N/A'}
-      Re-attempt Requested At: ${new Date().toISOString()}
+${submission.name} (${submission.email}) from **${submission.courseName || 'N/A'}** – **${submission.batchName || 'N/A'}** has requested a re‑attempt for the assessment **“${submission.title || 'N/A'}”**.
 
-      Please review and approve the re-attempt request.
+Request details
 
-    Regards,
-    The Team Zuvy`;
+• Student ID: ${submission.userId}  
+• Course: ${submission.courseName || 'N/A'}  
+• Batch: ${submission.batchName || 'N/A'}  
+• Assessment: ${submission.title || 'N/A'}  
+• Original attempt date: ${submission.startedAt || 'N/A'}  
+• Request time: ${new Date().toISOString()}
+
+Next steps
+1. Review the request in the Zuvy admin panel.  
+2. Approve or decline the re‑attempt.  
+3. The student will be notified automatically of your decision.
+
+Need help? Reach out to the Ed‑Ops team on Slack or email [${SUPPORT_EMAIL}](mailto:${SUPPORT_EMAIL}).
+
+Thanks,  
+Team Zuvy`;
   }
+  
 
   async requestReattempt(assessmentSubmissionId: number, userId: number): Promise<any> {
     try {
@@ -654,21 +663,22 @@ export class StudentService {
         .where(eq(zuvyAssessmentSubmission.id, assessmentSubmissionId));
       let reattemptData:any = { assessmentSubmissionId, userId, requestedAt: new Date(), status: PENDING}
       await db.insert(zuvyAssessmentReattempt).values(reattemptData)
-      // // Send email to admin notifying reattempt request
-      // let [errorAdmin, admin200] = await this.sendEmailToAdmin({...submission, ...submitedOutsourseAssessment, ...user, ...ModuleAssessment, batchName: batch.batchInfo.name, courseName: batch.bootcamp.name});
-      // if (errorAdmin) {
-      //   return [{
-      //     status: 'error',
-      //     statusCode: 500,
-      //     message: errorAdmin,
-      //   }];
-      // }
+      // Send email to admin notifying reattempt request
+      let [errorAdmin, admin200] = await this.sendEmailToAdmin({...submission, ...submitedOutsourseAssessment, ...user, ...ModuleAssessment, batchName: batch.batchInfo.name, courseName: batch.bootcamp.name});
+      if (errorAdmin) {
+        return [{
+          status: 'error',
+          statusCode: 500,
+          message: errorAdmin,
+        }];
+      }
       return [null,{
         status: 'success',
         statusCode: 200,
         message: 'Re-attempt request sent to admin',
       }];
     } catch (error) {
+      this.logger.error('Error in requestReattempt:', error);
       return [{
         status: 'error',
         statusCode: 500,
