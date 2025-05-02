@@ -39,5 +39,14 @@ export const helperVariable= {
         "College ID",
         "B.Tech Entrance Exam Rank Certificate",
         "Income Certificate"
-    ]
+    ],
+    REATTMEPT_STATUS:{
+        "NOT_ATTEMPTED": "Not Attempted",
+        "ATTEMPTED": "Attempted",
+        "REATTEMPTED": "Reattempted",
+        "REJECTED": "Rejected",
+        "ACCEPTED": "Accepted",
+        "PENDING": "Pending",
+        "SUBMITTED": "Submitted",
+    }
   };

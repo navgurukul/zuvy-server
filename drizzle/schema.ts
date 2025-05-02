@@ -2776,7 +2776,10 @@ export const zuvyAssessmentSubmission = main.table("zuvy_assessment_submission",
   isPassed: boolean('is_passed'),
   percentage: doublePrecision('percentage'),
   typeOfsubmission: varchar('type_of_submission', { length: 255 }),
-  version: varchar('version', { length: 10 })
+  version: varchar('version', { length: 10 }),
+  active: boolean('active').default(true).notNull(),
+  reattemptApproved: boolean('reattempt_approved').default(false).notNull(),
+  reattemptRequested: boolean('reattempt_requested').default(false).notNull(),
 });
 
 export const zuvyAssessmentSubmissionRelation = relations(zuvyAssessmentSubmission, ({one, many})=> ({
@@ -2792,9 +2795,33 @@ export const zuvyAssessmentSubmissionRelation = relations(zuvyAssessmentSubmissi
   quizSubmission: many(zuvyQuizTracking),
   formSubmission: many(zuvyFormTracking),
   PracticeCode: many(zuvyPracticeCode),
+  reattempt: many(zuvyAssessmentReattempt),
 }))
 
+export const zuvyAssessmentReattempt = main.table("zuvy_assessment_reattempt", {
+  id: serial("id").primaryKey().notNull(),
+  assessmentSubmissionId: integer("assessment_submission_id").references(() => zuvyAssessmentSubmission.id, {
+    onDelete: 'cascade',
+    onUpdate: 'cascade',
+  }).notNull(),
+  userId: integer("user_id").references(() => users.id).notNull(),
+  remarks: text("remarks"),
+  status: varchar("status", { length: 255 }).notNull(),
+  requestedAt: timestamp("requested_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+  approvedAt: timestamp("approved_at", { withTimezone: true, mode: 'string' }),
+})
 
+
+export const zuvyAssessmentReattemptRelation = relations(zuvyAssessmentReattempt, ({one})=> ({
+  assessmentSubmission: one(zuvyAssessmentSubmission, {
+    fields: [zuvyAssessmentReattempt.assessmentSubmissionId],
+    references: [zuvyAssessmentSubmission.id],
+  }),
+  user: one(users, {
+    fields: [zuvyAssessmentReattempt.userId],
+    references: [users.id],
+  })
+}))
 
 export const zuvyOpenEndedQuestionSubmission = main.table("zuvy_open_ended_question_submission", {
   id: serial("id").primaryKey().notNull(),
