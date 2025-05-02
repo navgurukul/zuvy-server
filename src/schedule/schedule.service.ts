@@ -11,9 +11,7 @@ import {
 import { db } from '../db/index';
 import { eq, sql, isNull, and, gte, lt } from 'drizzle-orm';
 import { google } from 'googleapis';
-import { zuvyAssessmentSubmission } from '../../drizzle/schema';
 import { SubmissionService } from '../controller/submissions/submission.service';
-import {client_email,private_key} from '../service-account.json'
 const { OAuth2 } = google.auth;
 const auth2Client = new OAuth2(
   process.env.GOOGLE_CLIENT_ID,
@@ -23,10 +21,10 @@ const auth2Client = new OAuth2(
 
 @Injectable()
 export class ScheduleService {
-  private readonly logger = new Logger(ScheduleService.name);
+  private readonly logger = new Logger(ScheduleService.name); 
   private lastProcessedTime: Date = new Date(0);
   private processingActive = false;
-  private currentInterval: number;
+  private currentInterval: number; 
   private timeoutId: NodeJS.Timeout;
   private conditions:any = [
     { min: 0, max: 1, interval: 100 * 60 * 1000 }, // 200 minutes
@@ -283,6 +281,8 @@ export class ScheduleService {
   }
 
   private async calculateAttendance(client: any, meetings: any[], students: any[]) {
+    let {PRIVATE_KEY, CLIENT_EMAIL} = process.env
+
     const attendanceByTitle: Record<string, any> = {};
     for (const meeting of meetings) {
       const response = await client.activities.list({
@@ -298,8 +298,8 @@ export class ScheduleService {
       const organizerParam = items[0].events?.[0].parameters?.find(p => p.name === 'organizer_email');
       const hostEmail = organizerParam?.value;
       const jwtClient = new google.auth.JWT({
-        email:   client_email,
-        key:     private_key,
+        email:   CLIENT_EMAIL,
+        key:     PRIVATE_KEY,
         scopes: [
           'https://www.googleapis.com/auth/drive.metadata.readonly',
           'https://www.googleapis.com/auth/calendar.events.readonly',
