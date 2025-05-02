@@ -64,6 +64,7 @@ import {
 } from './dto/content.dto';
 import { STATUS_CODES } from '../../helpers';
 import { helperVariable } from '../../constants/helper';
+import e from 'express';
 let { DIFFICULTY } = helperVariable;
 
 @Injectable()
@@ -2016,7 +2017,7 @@ export class ContentService {
  * This function might set up necessary variables, database entries, or other prerequisites 
  * for a student to begin taking an assessment.
  */
-  async startAssessmentForStudent(assessmentOutsourseId: number, user): Promise<any> {
+  async startAssessmentForStudent(assessmentOutsourseId: number,newStart: boolean, user): Promise<any> {
     try {
       let { id, roles } = user;
       const assessmentOutsourseData = await db.query.zuvyOutsourseAssessments.findFirst({
@@ -2031,9 +2032,18 @@ export class ContentService {
       if (roles.includes('admin')) {
         id = Math.floor(Math.random() * (99999 - 1000 + 1)) + 1000;
       } else {
+        if(newStart)
+        {
         let startedAt = new Date().toISOString();
           let insertAssessmentSubmission: any = { userId: id, assessmentOutsourseId, startedAt }
           submission = await db.insert(zuvyAssessmentSubmission).values(insertAssessmentSubmission).returning();
+        }
+        else{
+          submission = await db.select().from(zuvyAssessmentSubmission)
+          .where(sql`${zuvyAssessmentSubmission.active} = true AND ${zuvyAssessmentSubmission.assessmentOutsourseId} = ${assessmentOutsourseId}`)
+          .orderBy(desc(zuvyAssessmentSubmission.id))
+          .limit(1)
+        }
         quizzes = await db.select().from(zuvyQuizTracking).where(sql`${zuvyQuizTracking.assessmentSubmissionId} = ${submission[0].id}`)
       }
       let assessmentSubmissionId
