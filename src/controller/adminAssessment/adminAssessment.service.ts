@@ -8,7 +8,7 @@ import { STATUS_CODES } from 'src/helpers';
 import { helperVariable } from 'src/constants/helper'
 
 const { PENDING, ACCEPTED, REJECTED} = helperVariable.REATTMEPT_STATUS; // Importing helper variables
-const { SUPPORT_EMAIL, TEAM_EMAIL, AWS_SUPPORT_ACCESS_SECRET_KEY, AWS_SUPPORT_ACCESS_KEY_ID, ZUVY_BASH_URL} = process.env; // Importing env values
+const { SUPPORT_EMAIL, AWS_SUPPORT_ACCESS_SECRET_KEY, AWS_SUPPORT_ACCESS_KEY_ID, ZUVY_BASH_URL} = process.env; // Importing env values
 
 @Injectable()
 export class AdminAssessmentService {
@@ -18,24 +18,40 @@ export class AdminAssessmentService {
   // Generate email content dynamically for student notification
   private async generateStudentEmailContent(user: any, submission: any): Promise<string> {
     const assessmentDeepLink = `${ZUVY_BASH_URL}/student/courses/${submission.bootcampId}/modules/${submission.moduleId}/chapters/${submission.chapterId}`;
+    
+    // Format duration to display hours if applicable
+    let durationText = 'N/A';
+    if (submission.timeLimit) {
+      // Convert seconds to minutes first
+      const timeLimitInMinutes = Math.floor(parseInt(submission.timeLimit) / 60);
+      
+      if (timeLimitInMinutes >= 60) {
+        const hours = Math.floor(timeLimitInMinutes / 60);
+        const minutes = timeLimitInMinutes % 60;
+        durationText = `${hours} hour${hours > 1 ? 's' : ''}${minutes > 0 ? ` ${minutes} minute${minutes > 1 ? 's' : ''}` : ''}`;
+      } else {
+        durationText = `${timeLimitInMinutes} minute${timeLimitInMinutes > 1 ? 's' : ''}`;
+      }
+    }
+    
     return `
-      Hello ${user.name},
+Hello ${user.name},
 
-      Good news! Your request to retake the assessment "${submission.title || 'N/A'}" has been approved.
-      When you’re ready, click the button below. It will take you straight to the test: 
-      [Start Assessment]: ${assessmentDeepLink}
+Good news! Your request to retake the assessment "${submission.title || 'N/A'}" has been approved.
+When you're ready, click the button below. It will take you straight to the test: 
+[Start Assessment]: ${assessmentDeepLink}
 
-      Test Duration: ${submission.timeLimit || 'N/A'} minutes
-      Total Marks: 100
+Test Duration: ${durationText}
+Total Marks: 100
 
-      Tips for a smooth attempt
-      1. Use a stable internet connection.
-      2. Keep your browser tab open until you submit.
+Tips for a smooth attempt
+1. Use a stable internet connection.
+2. Keep your browser tab open until you submit.
 
-      All the best!
-      Team Zuvy
-    `;
+All the best!
+Team Zuvy`;
   }
+
   // reject of the student reattempt request mail
   private async generateRejectEmailContent(user: any, submission: any): Promise<string> {
     return `
@@ -93,7 +109,7 @@ export class AdminAssessmentService {
           }
         }
       });
-  
+
       if (!submission) {
         return [{
           status: 'error',
@@ -118,22 +134,23 @@ export class AdminAssessmentService {
         reattemptApproved: true,
         active: false,
       }
-      // Send email to student notifying approval
-      // let [errorSendEmail, emailSent] = await this.sendEmailToStudent({...submission, ...ModuleAssessment, ...outsourseAssessment});
-      // if (errorSendEmail) {
-      //   return [{
-      //     status: 'error',
-      //     statusCode: 500,
-      //     message: errorSendEmail,
-      //   }];
-      // }
       // Update submission to mark reattempt approved and reset submission status
-      let red = await db.update(zuvyAssessmentSubmission)
+      await db.update(zuvyAssessmentSubmission)
         .set(updatingAssessment)
         .where(eq(zuvyAssessmentSubmission.id, assessmentSubmissionId)).returning();
-      let green = await db.update(zuvyAssessmentReattempt)
+      await db.update(zuvyAssessmentReattempt)
         .set({ status: ACCEPTED }).where(eq(zuvyAssessmentReattempt.id, reattemptId)).returning();
 
+      // Send email to student notifying approval
+      let [errorSendEmail, emailSent] = await this.sendEmailToStudent({...submission, ...ModuleAssessment, ...outsourseAssessment});
+      if (errorSendEmail) {
+        this.logger.error(`error in sending email to student: ${errorSendEmail}`)
+        return [{
+          status: 'success',
+          statusCode: 200,
+          message: 'Re-attempt approved and Not able to notified',
+        }];
+      }
       return [null, {
         status: 'success',
         statusCode: 200,
@@ -152,14 +169,14 @@ export class AdminAssessmentService {
   // Helper method to send email to student using AWS SES
   private async sendEmailToStudent(submission: any): Promise<any> {
     try {
-      // Fetch student email and name
-      let ses = new AWS.SES();
 
       AWS.config.update({
         accessKeyId: AWS_SUPPORT_ACCESS_KEY_ID,      // Replace with your access key ID
         secretAccessKey: AWS_SUPPORT_ACCESS_SECRET_KEY, // Replace with your secret access key
         region: 'ap-south-1'                      // Replace with your AWS SES region, e.g., 'us-east-1'
       });
+      // Fetch student email and name
+      let ses = new AWS.SES();
       
       const user = await db.query.users.findFirst({
         where: (zuvyUser, { eq }) => eq(zuvyUser.id, submission.userId),
@@ -218,8 +235,29 @@ export class AdminAssessmentService {
               email:true
             }
           },
+          submitedOutsourseAssessment:{
+            columns: {
+              id: true,
+              bootcampId: true,
+              moduleId: true,
+              chapterId: true,
+              timeLimit: true,
+              marks: true,              
+            },
+            with: {
+              ModuleAssessment:{
+                columns: {
+                  id: true,
+                  title: true,
+                  description: true,
+                  marks: true,
+                },
+              }
+            }
+          }
         }
       });
+
       if (!submission) {
         return [{
           status: 'error',

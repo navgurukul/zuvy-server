@@ -1,4 +1,5 @@
 export const helperVariable= {
+    schemaName: 'stage',
     admin: 'admin',
     instructor:'instructor',
     success: 'success',
