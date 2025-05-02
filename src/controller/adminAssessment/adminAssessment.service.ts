@@ -515,7 +515,7 @@ Team Zuvy`;
         with: {
           submitedOutsourseAssessments: {
             where: (submitedOutsourseAssessments, { sql }) => sql`
-            ${submitedOutsourseAssessments.active} = true
+            ${submitedOutsourseAssessments.active} = true AND ${submitedOutsourseAssessments.reattemptRequested} = true AND ${submitedOutsourseAssessments.reattemptApproved} = false
             AND EXISTS (
               SELECT 1
               FROM main.zuvy_batch_enrollments

@@ -595,12 +595,12 @@ export class ContentController {
     return this.contentService.getStudentsOfAssessment(assessmentId, chapterId, moduleId, bootcampId, req);
   }
 
-  @Get('/startAssessmentForStudent/assessmentOutsourseId=:assessmentOutsourseId')
+  @Get('/startAssessmentForStudent/assessmentOutsourseId=:assessmentOutsourseId/newStart=:newStart')
   @ApiOperation({ summary: 'Start the assessment for a student' })
   @ApiBearerAuth()
-  async startAssessmentForStudent(@Req() req, @Param('assessmentOutsourseId') assessmentOutsourseId: number, @Res() res: Response): Promise<any> {
+  async startAssessmentForStudent(@Req() req, @Param('assessmentOutsourseId') assessmentOutsourseId: number, @Param('newStart') newStart:boolean, @Res() res: Response): Promise<any> {
     try{
-      let [err, success] = await this.contentService.startAssessmentForStudent(assessmentOutsourseId, req.user[0]);
+      let [err, success] = await this.contentService.startAssessmentForStudent(assessmentOutsourseId, newStart, req.user[0]);
       if (err) {
         return ErrorResponse.BadRequestException(err.message).send(res);
       }
