@@ -368,7 +368,7 @@ export class ScheduleService {
 
   // 7️⃣ Flatten for return
   const attendanceOfStudents = Object.values(attendanceByTitle);
-  return [ null, attendanceByTitle ];
+  return [ null, attendanceOfStudents ];
   }
   // @Cron('0 30 2 * * *') // Runs every 59 minutes
   // async processPendingAssessmentSubmissions() {
