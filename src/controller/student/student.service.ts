@@ -541,12 +541,35 @@ export class StudentService {
         return [error, null];
       }
     }
+    
+    // Format date to "29 Apr 2025, 03:45 PM" format
+    private formatDate(dateString: string): string {
+      if (!dateString) return 'N/A';
+      
+      try {
+        const date = new Date(dateString);
+        if (isNaN(date.getTime())) return 'N/A';
+        
+        // Format: Day Month Year, Hours:Minutes AM/PM
+        return date.toLocaleString('en-GB', {
+          day: '2-digit',
+          month: 'short',
+          year: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit',
+          hour12: true
+        });
+      } catch (error) {
+        return 'N/A';
+      }
+    }
+
    // Generate email content dynamically for admin notification
    private async generateAdminEmailContent(submission: any): Promise<string> {
     return `
 Hi Admin,
 
-${submission.name} (${submission.email}) from **${submission.courseName || 'N/A'}** – **${submission.batchName || 'N/A'}** has requested a re‑attempt for the assessment **“${submission.title || 'N/A'}”**.
+${submission.name} (${submission.email}) from ${submission.courseName || 'N/A'} – ${submission.batchName || 'N/A'} has requested a re‑attempt for the assessment “${submission.title || 'N/A'}”.
 
 Request details
 
@@ -554,15 +577,15 @@ Request details
 • Course: ${submission.courseName || 'N/A'}  
 • Batch: ${submission.batchName || 'N/A'}  
 • Assessment: ${submission.title || 'N/A'}  
-• Original attempt date: ${submission.startedAt || 'N/A'}  
-• Request time: ${new Date().toISOString()}
+• Original attempt date: ${this.formatDate(submission.startedAt)}  
+• Request time: ${this.formatDate(new Date().toISOString())}
 
 Next steps
 1. Review the request in the Zuvy admin panel.  
 2. Approve or decline the re‑attempt.  
 3. The student will be notified automatically of your decision.
 
-Need help? Reach out to the Ed‑Ops team on Slack or email [${SUPPORT_EMAIL}](mailto:${SUPPORT_EMAIL}).
+Need help? Reach out to the Ed‑Ops team on Slack or email [${SUPPORT_EMAIL}].
 
 Thanks,  
 Team Zuvy`;
