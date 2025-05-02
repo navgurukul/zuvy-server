@@ -174,4 +174,25 @@ export class StudentController {
       return ErrorResponse.BadRequestException(error.message).send(res);
     }
   }
+
+  
+    @Post('assessment/request-reattempt')
+    @ApiOperation({ summary: 'Request re-attempt for an assessment submission' })
+    @ApiBearerAuth()
+    async requestReattempt(
+      @Query('assessmentSubmissionId') assessmentSubmissionId: number,
+      @Query('userId') userId: number,
+      @Req() req,
+      @Res() res: Response
+    ): Promise<any>  {
+      try {
+        let [err, success] = await this.studentService.requestReattempt(assessmentSubmissionId, userId);
+        if (err) {
+          return ErrorResponse.BadRequestException(err.message).send(res);
+        }
+        return new SuccessResponse(success.message, success.statusCode, success.data).send(res);
+      } catch (error) {
+        return ErrorResponse.BadRequestException(error.message).send(res);
+      }
+    }
 }

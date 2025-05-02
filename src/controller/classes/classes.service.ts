@@ -35,14 +35,24 @@ import { v4 as uuid } from 'uuid';
 import * as _ from 'lodash';
 import { S3 } from 'aws-sdk';
 import { Console } from 'console';
+//import {client_email,private_key} from '../../service-account.json'
 const moment = require('moment-timezone');
+
 
 const { OAuth2 } = google.auth;
 let { GOOGLE_CLIENT_ID, GOOGLE_SECRET, GOOGLE_REDIRECT, ZUVY_REDIRECT_URL } =
   process.env;
 
 let auth2Client = new OAuth2(GOOGLE_CLIENT_ID, GOOGLE_SECRET, GOOGLE_REDIRECT);
-
+// const jwtttt = new google.auth.JWT({
+//   email:   client_email,
+//   key:     private_key,
+//   scopes: [
+//     'https://www.googleapis.com/auth/drive.metadata.readonly',
+//     'https://www.googleapis.com/auth/calendar.events.readonly',
+//   ],
+//   subject: 'arunesh@navgurukul.org'
+// });
 enum ClassStatus {
   COMPLETED = 'completed',
   ONGOING = 'ongoing',
@@ -445,6 +455,102 @@ export class ClassesService {
       };
     }
   }
+
+  // async calculateAttendance(meetings: any[], students: any[]) {
+  //     const attendanceByTitle: Record<string, any> = {};
+      
+  //     const client = google.admin({ version: 'reports_v1', auth: auth2Client });
+      
+      
+  //     for (const meeting of meetings) {
+  //       const response = await client.activities.list({
+  //         userKey:         'all',
+  //         applicationName: 'meet',
+  //         eventName:       'call_ended',
+  //         maxResults:      1000,
+  //         filters:         `calendar_event_id==${meeting.meetingId}`,
+  //       });
+  //       const items = response.data.items || [];
+    
+  //       // 2️⃣ Extract the host’s email from the first log entry
+  //       const organizerParam = items[0].events?.[0].parameters?.find(p => p.name === 'organizer_email');
+  //       const hostEmail = organizerParam?.value; 
+  //       console.log("hostEmail",hostEmail)  
+  //       const jwtClient = new google.auth.JWT({
+  //         email:   client_email,
+  //         key:     private_key,
+  //         scopes: [
+  //           'https://www.googleapis.com/auth/drive.metadata.readonly',
+  //           'https://www.googleapis.com/auth/calendar.events.readonly',
+  //         ],
+  //         subject: hostEmail
+  //       })
+  //       await jwtClient.authorize();
+  //       const calendar = google.calendar({ version: 'v3', auth: jwtClient });
+  //       const drive    = google.drive({ version: 'v3', auth: jwtClient });
+  //       const { data: event } = await calendar.events.get({
+  //         calendarId: 'primary',
+  //         eventId:    meeting.meetingId,
+  //         fields:     'attachments(fileId,mimeType)',
+  //       });
+  //       console.log("eventlog",event.attachments)
+  //       const videoAttach = event.attachments?.find(
+  //         (a: any) => a.mimeType === 'video/mp4'
+  //       );
+  //       if (!videoAttach) {
+  //         console.warn(`No recording for ${meeting.meetingId}, skipping.`);
+  //         continue;
+  //       }
+    
+  //       // 3️⃣ Fetch the recording’s duration from Drive metadata
+  //       const { data: fileMeta } = await drive.files.get({
+  //         fileId: videoAttach.fileId,
+  //         fields: 'videoMediaMetadata(durationMillis)'
+  //       });
+  //       const durationMillisStr = fileMeta.videoMediaMetadata?.durationMillis;
+  
+  //       const durationMillis = Number(durationMillisStr) || 0;
+  
+  //       const totalSeconds = durationMillis / 1000;
+  //      console.log("totalSeconds",totalSeconds)
+  //     const cutoff       = totalSeconds * 0.75;
+  //     const attendance: Record<string, { email: string; duration: number; attendance: string }> = {};
+  //     for (const student of students) {
+  //       const user = await db
+  //           .select()
+  //           .from(users)
+  //           .where(sql`${users.id} = ${BigInt(student.userId)}`);
+  
+  //         attendance[user[0].email] = {
+  //           email:      user[0].email,
+  //           duration:   0,
+  //           attendance: 'absent'
+  //         };
+  //     }
+  
+  //     response.data.items?.forEach((item: any) => {
+  //       const e      = item.events[0];
+  //       const email  = e.parameters.find((p: any) => p.name === 'identifier')?.value;
+  //       const secs   = e.parameters.find((p: any) => p.name === 'duration_seconds')?.intValue || 0;
+  //       if (email && attendance[email]) {
+  //         attendance[email].duration += Number(secs);
+  //       }
+  //     });
+  //     for (const rec of Object.values(attendance)) {
+  //       rec.attendance = rec.duration >= cutoff ? 'present' : 'absent';
+  //     }
+  //     for (const [email, rec] of Object.entries(attendance)) {
+  //       attendanceByTitle[email] = {
+  //         ...(attendanceByTitle[email] || {}),
+  //         ...rec
+  //       };
+  //     }
+  //   }
+  
+  //   // 7️⃣ Flatten for return
+  //   const attendanceOfStudents = Object.values(attendanceByTitle);
+  //   return [ null, attendanceOfStudents ];
+  //   }
 
   async getAttendanceByBatchId(batchId: any, userData) {
     try {
@@ -1230,7 +1336,7 @@ export class ClassesService {
       const user = await db
         .select()
         .from(users)
-        .where(eq(users.email, process.env.EMAIL));
+        .where(eq(users.email, process.env.TEAM_EMAIL));
       let adminUser = { ...user[0], roles: 'admin' };
 
       // Get access to the calendar

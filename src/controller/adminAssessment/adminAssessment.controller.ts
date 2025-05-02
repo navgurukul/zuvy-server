@@ -6,6 +6,7 @@ import { Request } from '@nestjs/common';
 import { query } from 'express';
 import { STATUS_CODES } from 'src/helpers';
 import { ErrorResponse, SuccessResponse } from 'src/errorHandler/handler';
+import { Response } from 'express';
 
 
 @Controller('admin')
@@ -114,13 +115,13 @@ export class AdminAssessmentController {
     name: 'limit',
     required: false,
     type: Number,
-    description: 'limit',
+    description: 'limit'
   })
   @ApiQuery({
     name: 'offset',
     required: false,
     type: Number,
-    description: 'offset',
+    description: 'offset'
   })
   @ApiBearerAuth()
   async ModuleChapterStudents(
@@ -169,4 +170,44 @@ export class AdminAssessmentController {
   ) {
     return this.adminAssessmentService.getLeaderboardByCriteria(bootcampId, criteria, assessmentOutsourseId, limit, offset);
   }
+
+  @Post('assessment/approve-reattempt')
+  @ApiOperation({ summary: 'Approve re-attempt for an assessment submission' })
+  @ApiBearerAuth()
+  async approveReattempt(
+    @Query('assessmentSubmissionId') assessmentSubmissionId: number,
+    @Req() req,
+    @Res() res: Response
+  ): Promise<any>  {
+    try {
+      let [err, success] = await this.adminAssessmentService.approveReattempt(assessmentSubmissionId);
+      if (err) {
+        return ErrorResponse.BadRequestException(err.message).send(res);
+      }
+      return new SuccessResponse(success.message, success.statusCode, success.data).send(res);
+    } catch (error) {
+      return ErrorResponse.BadRequestException(error.message).send(res);
+    }
+  }
+
+  @Delete('assessment/reject-reattempt')
+  @ApiOperation({ summary: 'Reject re-attempt for an assessment submission' })
+  @ApiBearerAuth()
+  async rejectReattempt(
+    @Query('assessmentSubmissionId') assessmentSubmissionId: number,
+    @Req() req,
+    @Res() res: Response
+  ): Promise<any>  {
+    try {
+      let [err, success] = await this.adminAssessmentService.rejectReattempt(assessmentSubmissionId);
+      if (err) {
+        return ErrorResponse.BadRequestException(err.message).send(res);
+      }
+      return new SuccessResponse(success.message, success.statusCode, success.data).send(res);
+    } catch (error) {
+      return ErrorResponse.BadRequestException(error.message).send(res);
+    }
+  }
 }
+
+

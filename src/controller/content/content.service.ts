@@ -35,6 +35,7 @@ import {
   asc,
   ne,
   SQL,
+  desc
 } from 'drizzle-orm';
 import { db } from '../../db/index';
 import {
@@ -63,6 +64,7 @@ import {
 } from './dto/content.dto';
 import { STATUS_CODES } from '../../helpers';
 import { helperVariable } from '../../constants/helper';
+import e from 'express';
 let { DIFFICULTY } = helperVariable;
 
 @Injectable()
@@ -1846,6 +1848,8 @@ export class ContentService {
         with: {
           submitedOutsourseAssessments: {
             where: (zuvyAssessmentSubmission, { eq }) => eq(zuvyAssessmentSubmission.userId, id),
+            orderBy: [desc(zuvyAssessmentSubmission.startedAt)],
+            limit: 1
           },
           ModuleAssessment: true,
           Quizzes: {
@@ -2013,7 +2017,7 @@ export class ContentService {
  * This function might set up necessary variables, database entries, or other prerequisites 
  * for a student to begin taking an assessment.
  */
-  async startAssessmentForStudent(assessmentOutsourseId: number, user): Promise<any> {
+  async startAssessmentForStudent(assessmentOutsourseId: number,newStart: boolean, user): Promise<any> {
     try {
       let { id, roles } = user;
       const assessmentOutsourseData = await db.query.zuvyOutsourseAssessments.findFirst({
@@ -2028,11 +2032,20 @@ export class ContentService {
       if (roles.includes('admin')) {
         id = Math.floor(Math.random() * (99999 - 1000 + 1)) + 1000;
       } else {
+        if(newStart)
+        {
         let startedAt = new Date().toISOString();
-        submission = await db.select().from(zuvyAssessmentSubmission).where(sql`${zuvyAssessmentSubmission.userId} = ${id} AND ${zuvyAssessmentSubmission.assessmentOutsourseId} = ${assessmentOutsourseId} AND ${zuvyAssessmentSubmission.submitedAt} IS NULL`);
-        if (submission.length == 0) {
           let insertAssessmentSubmission: any = { userId: id, assessmentOutsourseId, startedAt }
           submission = await db.insert(zuvyAssessmentSubmission).values(insertAssessmentSubmission).returning();
+        }
+        else{
+          submission = await db.select().from(zuvyAssessmentSubmission)
+          .where(sql`${zuvyAssessmentSubmission.active} = true AND ${zuvyAssessmentSubmission.assessmentOutsourseId} = ${assessmentOutsourseId} AND ${zuvyAssessmentSubmission.userId} = ${id}`)
+          .orderBy(desc(zuvyAssessmentSubmission.id))
+          .limit(1)
+          if (!submission){
+            return [{error: 'not started the assessment or not get approvel'}]
+          }
         }
         quizzes = await db.select().from(zuvyQuizTracking).where(sql`${zuvyQuizTracking.assessmentSubmissionId} = ${submission[0].id}`)
       }
@@ -2207,21 +2220,19 @@ export class ContentService {
           eq(zuvyOutsourseAssessments.id, assessmentOutsourseId),
         with: {
           ModuleAssessment: true,
-          submitedOutsourseAssessments: true
+          submitedOutsourseAssessments: {
+            where: (submissions, { eq }) => eq(submissions.userId, userId),
+            columns: { id: true }, 
+            limit: 1 
+          }
         },
       });
 
       if (!IsAdmin && user.roles.includes('admin')) {
         userId = Math.floor(Math.random() * (99999 - 1000 + 1)) + 1000;
       }
-
-      let assessmentSubmissionId = null
-      // Fetching all quiz questions at once
-      if (assessmentOutsourseData.hasOwnProperty('submitedOutsourseAssessments')) {
-        if (assessmentOutsourseData.submitedOutsourseAssessments.length > 0) {
-          assessmentSubmissionId = assessmentOutsourseData.submitedOutsourseAssessments[0].id
-        }
-      }
+  
+      const assessmentSubmissionId = assessmentOutsourseData?.submitedOutsourseAssessments?.[0]?.id ?? null;
  
       const [err, quizQuestions] = await this.getQuizQuestionsByAllDifficulties(assessmentOutsourseId, assessmentOutsourseData, userId, assessmentSubmissionId);
 
@@ -2237,7 +2248,6 @@ export class ContentService {
         hard: assessmentOutsourseData.hardMcqMark || 0
       };
 
-      // Process all questions with their respective marks
       const mcqs = Object.entries(quizQuestions).flatMap(([difficulty, questions]) => {
         const mark = Math.floor(Number(difficultyMarks[difficulty.toLowerCase()])) || 0;
         

@@ -937,8 +937,8 @@ export class TrackingService {
           if (chapter[0].quizQuestions !== null) {
             const quizQuestionIds = Object.values(chapter[0].quizQuestions);
             quizQuestionIds.sort((a, b) => a - b);
-
-            // Determine chapter status from zuvyChapterTracking
+  
+            // Check if chapter was tracked
             const chapterTracking = await db
               .select()
               .from(zuvyChapterTracking)
@@ -946,77 +946,80 @@ export class TrackingService {
                 sql`${zuvyChapterTracking.userId} = ${userId} AND ${zuvyChapterTracking.chapterId} = ${chapterId}`
               )
               .limit(1);
-
-            const chapterStatus = chapterTracking.length > 0 ? 'Completed' : 'Pending';
-
-            if (chapterStatus === 'Completed') {
-              const quizTrack = await db
-                .select()
-                .from(zuvyQuizTracking)
-                .where(
-                  sql`${zuvyQuizTracking.userId} = ${userId} AND ${zuvyQuizTracking.chapterId} = ${chapterId} AND ${zuvyQuizTracking.chosenOption} IS NOT NULL`
-                );
-
-              if (quizTrack.length === quizQuestionIds.length) {
-                const mcqIds = quizTrack.map((item) => item.mcqId);
-
-                // Fetch tracked data for the user
-                const trackedData = await db.query.zuvyModuleQuizVariants.findMany({
-                  where: (moduleQuiz, { sql }) => sql`${inArray(moduleQuiz.id, mcqIds)}`,
-                  orderBy: (moduleQuiz, { asc }) => asc(moduleQuiz.quizId),
-                  with: {
-                    quizTrackingData: {
-                      columns: {
-                        chosenOption: true,
-                        status: true,
-                      },
-                      where: (quizTracking, { sql }) =>
-                        sql`${quizTracking.userId} = ${userId} AND ${quizTracking.chapterId} = ${chapterId}`,
+  
+            const quizTrack = await db
+              .select()
+              .from(zuvyQuizTracking)
+              .where(
+                sql`${zuvyQuizTracking.userId} = ${userId} AND ${zuvyQuizTracking.chapterId} = ${chapterId} AND ${zuvyQuizTracking.chosenOption} IS NOT NULL`
+              );
+  
+            const isAttempted = quizTrack.length > 0;
+            const status = isAttempted ? 'Completed' : 'Pending';
+  
+            if (isAttempted) {  
+              // Fetch all quiz variants for the chapter questions
+              const allVariants = await db.query.zuvyModuleQuizVariants.findMany({
+                where: (moduleQuiz, { sql }) => sql`${inArray(moduleQuiz.quizId, quizQuestionIds)}`,
+                orderBy: (moduleQuiz, { asc }) => asc(moduleQuiz.quizId),
+                with: {
+                  quizTrackingData: {
+                    columns: {
+                      chosenOption: true,
+                      status: true,
                     },
+                    where: (quizTracking, { sql }) =>
+                      sql`${quizTracking.userId} = ${userId} AND ${quizTracking.chapterId} = ${chapterId}`,
                   },
-                });
-
-                return [
-                  null,
-                  {
-                    message: 'Chapter details fetched successfully',
-                    statusCode: STATUS_CODES.OK,
-                    data: {
-                      chapterTitle: chapter[0].title,
-                      chapterId: chapter[0].id,
-                      chapterOrder: chapter[0].order,
-                      quizDetails: trackedData,
-                      status: chapterStatus,
-                    },
+                },
+              });
+  
+              // Add empty quizTrackingData for unattempted variants
+              const enrichedVariants = allVariants.map((variant) => ({
+                ...variant,
+                quizTrackingData: variant['quizTrackingData'].length > 0 ? variant['quizTrackingData'] : [],
+              }));
+  
+              return [
+                null,
+                {
+                  message: 'Chapter details fetched successfully',
+                  statusCode: STATUS_CODES.OK,
+                  data: {
+                    chapterTitle: chapter[0].title,
+                    chapterId: chapter[0].id,
+                    chapterOrder: chapter[0].order,
+                    quizDetails: enrichedVariants,
+                    status,
                   },
-                ];
-              }
+                },
+              ];
             }
-
-            // Deterministically pick a variant for each quiz
+  
+            // If not attempted yet, deterministically pick variants
             const randomVariants = await Promise.all(
               quizQuestionIds.map(async (quizId) => {
-                // Fetch all variants for the current quizId
                 const allVariants = await db.query.zuvyModuleQuizVariants.findMany({
                   where: (moduleQuiz) => eq(moduleQuiz.quizId, quizId),
                 });
-
+  
                 if (allVariants.length === 0) {
                   throw new Error(`No variants found for quizId: ${quizId}`);
                 }
-
-                // Deterministically pick a variant based on userId and quizId
+  
                 const hash = crypto.createHash('sha256')
                   .update(`${userId}-${quizId}`)
                   .digest('hex');
-                console.log(hash)
                 const hashValue = parseInt(hash.substring(0, 8), 16);
                 const selectedVariantIndex = hashValue % allVariants.length;
-
-                return allVariants[selectedVariantIndex];
+  
+                return {
+                  ...allVariants[selectedVariantIndex],
+                  quizTrackingData: [],
+                };
               })
-            )
-
+            );
+  
             return [
               null,
               {
@@ -1031,14 +1034,13 @@ export class TrackingService {
                     quizId: variant.quizId,
                     question: variant.question,
                     options: variant.options,
-                    variantNumber: variant.variantNumber,
+                    variantNumber: variant.variantNumber
                   })),
-                  status: chapterStatus,
+                  status,
                 },
               },
             ];
           } else {
-            // No quiz questions found in the chapter
             return [
               null,
               {
@@ -1415,6 +1417,7 @@ export class TrackingService {
 
   async getAssessmentSubmission(assessmentSubmissionId: number, userId: number) {
     try {
+      // First get the submission with assessment data
       const data: any = await db.query.zuvyAssessmentSubmission.findFirst({
         where: (zuvyAssessmentSubmission, { eq }) =>
           eq(zuvyAssessmentSubmission.id, assessmentSubmissionId),
@@ -1429,6 +1432,7 @@ export class TrackingService {
           PracticeCode: {
             where: (zuvyPracticeCode, { eq, and, or, ne }) => and(
               eq(zuvyPracticeCode.userId, userId),
+              eq(zuvyPracticeCode.action,helperVariable.SUBMIT)
             ),
             columns: {
               id: true,
@@ -1462,6 +1466,23 @@ export class TrackingService {
           message: 'Assessment not submitted yet',
         });
       }
+
+      // Now get the chapter separately using the chapterId from the assessment
+      if (data.submitedOutsourseAssessment?.chapterId) {
+        const chapter = await db.query.zuvyModuleChapter.findFirst({
+          where: (zuvyModuleChapter, { eq }) => 
+            eq(zuvyModuleChapter.id, data.submitedOutsourseAssessment.chapterId),
+          columns: {
+            id: true,
+            title: true
+          }
+        });
+
+        if (chapter) {
+          data.submitedOutsourseAssessment.chapterName = chapter.title;
+        }
+      }
+
       const filteredData = data.PracticeCode.reduce((acc, curr) => {
         const existing = acc.find(item => item.questionId === curr.questionId);
 
@@ -1477,13 +1498,15 @@ export class TrackingService {
 
         return acc;
       }, []);
-      data.PracticeCode = filteredData
+      
+      data.PracticeCode = filteredData;
+
       return data;
     }
     catch (err) {
       throw err;
     }
-  }
+ }
 
 
   async getAllFormsWithStatus(

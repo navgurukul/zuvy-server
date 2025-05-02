@@ -22,128 +22,143 @@ const { RAPID_BASE_URL, RAPID_API_KEY, RAPID_HOST } = process.env; // INPORTING 
 export class CodingPlatformService {
   formatForJavaStrict(jsData) {
     if (Array.isArray(jsData)) {
-        return `[${jsData.map(item => this.formatForJavaStrict(item)).join(',')}]`;
+      return `[${jsData.map(item => this.formatForJavaStrict(item)).join(',')}]`;
     } else if (typeof jsData === 'object' && jsData !== null) {
-        if (Object.keys(jsData).length === 0) return `{}`;
-        return `${Object.entries(jsData)
-            .map(([key, value]) => `"${key}":${this.formatForJavaStrict(value)}`)
-            .join(',')}`;
+      if (Object.keys(jsData).length === 0) return `{}`;
+      return `${Object.entries(jsData)
+        .map(([key, value]) => `"${key}":${this.formatForJavaStrict(value)}`)
+        .join(',')}`;
     } else {
-        return jsData;
+      return jsData;
     }
   }
 
   async submitCodeBatch(sourceCode: SubmitCodeDto, codingOutsourseId: number, action: string): Promise<any> {
     let testCase;
     if (RUN === action) {
-        testCase = 2;
+      testCase = 2;
     } else {
-        testCase = 0;
+      testCase = 0;
     }
     const [error, question] = await this.getCodingQuestion(codingOutsourseId, false, testCase);
     if (error) {
-        return [error];
+      return [error];
     }
     let testCasesArray = question.data.testCases;
 
     const preparedSubmissions = testCasesArray.map((testCase) => {
-        // Process inputs based on their data types
-        const input = testCase.inputs.map(input => {
-            switch (input.parameterType) {
-                case 'int':
-                case 'float':
-                case 'str':
-                case 'bool':
-                    return input.parameterValue.toString(); // Convert to string
-                case 'arrayOfnum':
-                case 'arrayOfStr':
-                case 'object':
-                case 'jsonType':
-                  return (sourceCode.languageId == 96) ?  this.formatForJavaStrict(input.parameterValue) : JSON.stringify(input.parameterValue);
-                default:
-                  throw new Error(`Unsupported input type: ${input.parameterType}`);
-            }
-          }
-        );
-        
-        // Process expected output based on its data type
-        const output = (() => {
-          switch (testCase.expectedOutput.parameterType) {
-            case 'int':
-            case 'float':
-            case 'str':
-            case 'bool':
-              return testCase.expectedOutput.parameterValue.toString();
-            case 'arrayOfnum':
-            case 'arrayOfStr':
-            case 'jsonType':
-            case 'object':
-              return (sourceCode.languageId == 96) ?  this.formatForJavaStrict(testCase.expectedOutput.parameterValue) : JSON.stringify(testCase.expectedOutput.parameterValue);
-            default:
-              throw new Error(`Unsupported output type: ${testCase.expectedOutput.parameterType}`);
-          }
+      // Process inputs based on their data types
+      const input = testCase.inputs.map(input => {
+        switch (input.parameterType) {
+          case 'int':
+          case 'float':
+          case 'str':
+          case 'bool':
+            return input.parameterValue.toString(); // Convert to string
+          case 'arrayOfnum':
+          case 'arrayOfStr':
+          case 'object':
+          case 'jsonType':
+            return (sourceCode.languageId == 96) ? this.formatForJavaStrict(input.parameterValue) : JSON.stringify(input.parameterValue);
+          default:
+            throw new Error(`Unsupported input type: ${input.parameterType}`);
         }
+      }
+      );
+
+      // Process expected output based on its data type
+      const output = (() => {
+        switch (testCase.expectedOutput.parameterType) {
+          case 'int':
+          case 'float':
+          case 'str':
+          case 'bool':
+            return testCase.expectedOutput.parameterValue.toString();
+          case 'arrayOfnum':
+          case 'arrayOfStr':
+          case 'jsonType':
+          case 'object':
+            return (sourceCode.languageId == 96) ? this.formatForJavaStrict(testCase.expectedOutput.parameterValue) : JSON.stringify(testCase.expectedOutput.parameterValue);
+          default:
+            throw new Error(`Unsupported output type: ${testCase.expectedOutput.parameterType}`);
+        }
+      }
       )();
-        // Join inputs with newlines and encode in base64
-        const stdinput = input.join('\n');
-        const encodedStdInput = Buffer.from(stdinput).toString('base64');
+      // Join inputs with newlines and encode in base64
+      const stdinput = input.join('\n');
+      const encodedStdInput = Buffer.from(stdinput).toString('base64');
 
-        // Encode expected output in base64
-        const encodedStdOutput = Buffer.from(output).toString('base64');
+      // Encode expected output in base64
+      const encodedStdOutput = Buffer.from(output).toString('base64');
 
-        return {
-            language_id: sourceCode.languageId,
-            source_code: sourceCode.sourceCode,
-            stdin: encodedStdInput,
-            expected_output: encodedStdOutput,
-        };
+      return {
+        language_id: sourceCode.languageId,
+        source_code: sourceCode.sourceCode,
+        stdin: encodedStdInput,
+        expected_output: encodedStdOutput,
+      };
     });
-
     const options = {
-        method: 'POST',
-        url: `${RAPID_BASE_URL}/submissions/batch?base64_encoded=true&wait=true`,
-        headers: {
-            'content-type': 'application/json',
-            'X-RapidAPI-Key': RAPID_API_KEY,
-            'X-RapidAPI-Host': RAPID_HOST
-        },
-        data: {
-            submissions: preparedSubmissions,
-        },
+      method: 'POST',
+      url: `${RAPID_BASE_URL}/submissions/batch?base64_encoded=true&wait=true`,
+
+      headers: {
+        'content-type': 'application/json',
+        'X-RapidAPI-Key': RAPID_API_KEY,
+        'X-RapidAPI-Host': RAPID_HOST
+      },
+      data: {
+        submissions: preparedSubmissions,
+      },
     };
 
     try {
-        const response = await axios.request(options);
-        const tokens = response.data?.map(submission => submission.token);
-        let submissionInfo, err;
-        await new Promise<void>(resolve => setTimeout(async () => {
-            [err, submissionInfo] = await this.getCodeInfo(tokens);
-            resolve();
-        }, WAIT_API_RESPONSE));
+      const response = await axios.request(options);
 
-        if (err) {
-            return [err];
-        }
-        // testCasesArray
-        console.log({testCasesArray});
-        // Map submission results to test cases
-        let testSubmission = testCasesArray?.map((testCase, index) => {
-            return {
-                testcastId: testCase?.id,
-                status: submissionInfo.data.submissions[index].status?.description,
-                token: submissionInfo.data.submissions[index]?.token,
-                stdOut: submissionInfo.data.submissions[index]?.stdout,
-                stdErr: submissionInfo.data.submissions[index]?.stderr,
-                memory: submissionInfo.data.submissions[index]?.memory,
-                compileOutput: submissionInfo.data.submissions[index]?.compile_output,
-                time: submissionInfo.data.submissions[index]?.time,
-                stdIn: submissionInfo.data.submissions[index]?.stdin,
-                languageId: submissionInfo.data.submissions[index]?.language_id,
-                expectedOutput: submissionInfo.data.submissions[index]?.expected_output
-            };
+      const tokens = response.data?.map(submission => submission.token);
+
+      let submissionInfo: any[] = [];
+      do {
+        const getRes = await axios.request({
+          method: 'GET',
+          url: `${RAPID_BASE_URL}/submissions/batch`,
+          params: {
+            tokens: tokens.join(','),
+            base64_encoded: false,
+            fields: [
+              'token', 'status_id', 'status', 'stdout', 'stderr',
+              'compile_output', 'time', 'memory', 'language_id',
+              'stdin', 'expected_output'
+            ].join(',')
+          },
+          headers: {
+            'X-RapidAPI-Key': RAPID_API_KEY,
+            'X-RapidAPI-Host': RAPID_HOST
+          }
         });
 
-        return [null, { statusCode: STATUS_CODES.OK, message: 'Code submitted successfully', data: testSubmission }];
+        submissionInfo = getRes.data.submissions ?? getRes.data;
+        if (submissionInfo.some(s => s.status_id < 3)) {
+          await new Promise(r => setTimeout(r, 500));
+        }
+      } while (submissionInfo.some(s => s.status_id < 3));
+      let testSubmission = testCasesArray?.map((testCase, index) => {
+        return {
+          testcastId: testCase?.id,
+          status: submissionInfo[index].status?.description,
+          token: submissionInfo[index]?.token,
+          stdout: submissionInfo[index]?.stdout,
+          stderr: submissionInfo[index]?.stderr,
+          memory: submissionInfo[index]?.memory,
+          compileOutput: submissionInfo[index]?.compile_output,
+          time: submissionInfo[index]?.time,
+          stdIn: submissionInfo[index]?.stdin,
+          languageId: submissionInfo[index]?.language_id,
+          expectedOutput: submissionInfo[index]?.expected_output
+        };
+      });
+
+      return [null, { statusCode: STATUS_CODES.OK, message: 'Code submitted successfully', data: testSubmission }];
     } catch (error) {
       return [{ statusCode: STATUS_CODES.BAD_REQUEST, message: error.message }];
     }
@@ -151,6 +166,7 @@ export class CodingPlatformService {
 
   async submitPracticeCode(questionId: number, sourceCode, action, userId, submissionId, codingOutsourseId, chapterId): Promise<any> {
     try {
+
       if (![RUN, SUBMIT].includes(action.toLowerCase())) {
         return [{ statusCode: STATUS_CODES.BAD_REQUEST, message: 'Invalid action' }];
       }
@@ -227,7 +243,8 @@ export class CodingPlatformService {
           testcastId: testcase.testcastId,
           status: testcase.status,
           token: testcase.token,
-          stdOut: testcase.stdOut,
+          stdout: testcase.stdout,
+          stderr: testcase.stderr,
           memory: testcase.memory,
           time: testcase.time,
           compileOutput: testcase.compileOutput,
@@ -246,7 +263,7 @@ export class CodingPlatformService {
       return [{ statusCode: STATUS_CODES.BAD_REQUEST, message: error.message }];
     }
   }
- 
+
   async getPracticeCode(
     questionId,
     userId,
@@ -258,20 +275,20 @@ export class CodingPlatformService {
       let queryString;
       if (isNaN(submissionId)) {
         queryString = sql`${zuvyPracticeCode.questionId} = ${questionId} AND ${zuvyPracticeCode.userId} = ${userId} AND ${zuvyPracticeCode.submissionId} IS NULL`;
-        
+
         // Add chapterId filter if provided
         if (chapterId) {
           queryString = sql`${queryString} AND ${zuvyPracticeCode.chapterId} = ${chapterId}`;
         }
       } else {
         queryString = sql`${zuvyPracticeCode.questionId} = ${questionId} AND ${zuvyPracticeCode.userId} = ${userId} AND ${zuvyPracticeCode.submissionId} = ${submissionId} AND ${zuvyPracticeCode.codingOutsourseId} = ${codingOutsourseId}`;
-        
+
         // Add chapterId filter if provided
         if (chapterId) {
           queryString = sql`${queryString} AND ${zuvyPracticeCode.chapterId} = ${chapterId}`;
         }
       }
-  
+
       let response = await db.query.zuvyPracticeCode.findMany({
         where: queryString,
         columns: {
@@ -297,7 +314,7 @@ export class CodingPlatformService {
         limit: 1,
         orderBy: (zuvyPracticeCode, { sql }) => sql`${zuvyPracticeCode.id} DESC`,
       });
-  
+
       if (response.length === 0) {
         return [
           {
@@ -307,7 +324,7 @@ export class CodingPlatformService {
         ];
       } else {
         const practiceCode = response[0];
-  
+
         // Construct response data with languageId after sourceCode
         const responseData = {
           id: practiceCode.id,
@@ -324,7 +341,7 @@ export class CodingPlatformService {
           questionDetail: practiceCode.questionDetail,
           TestCasesSubmission: practiceCode.TestCasesSubmission?.map(({ languageId, ...rest }) => rest), // Removing languageId from TestCasesSubmission
         };
-  
+
         return [
           null,
           {
@@ -342,7 +359,7 @@ export class CodingPlatformService {
         },
       ];
     }
-  }  
+  }
 
   async getTestCasesSubmission(TestCasesSubmission: any): Promise<any> {
     try {
@@ -454,9 +471,9 @@ export class CodingPlatformService {
         }));
       }
       await db.delete(zuvyTestCases)
-      .where(
-        sql`${zuvyTestCases.questionId} = ${id} AND ${notInArray(zuvyTestCases.id, testCases.map(tc => tc.id))}`
-      );
+        .where(
+          sql`${zuvyTestCases.questionId} = ${id} AND ${notInArray(zuvyTestCases.id, testCases.map(tc => tc.id))}`
+        );
       const newAddedTestCases: any[] = missingIdElements.length > 0 ? await db.insert(zuvyTestCases).values(missingIdElements).returning() : [];
       await this.updateTestCaseAndExpectedOutput(testCases);
       return [null, { message: 'Coding question updated successfully', data: { question, "testCases": [...testCases, ...newAddedTestCases] }, statusCode: STATUS_CODES.OK }];
@@ -480,7 +497,7 @@ export class CodingPlatformService {
 
   async getCodingQuestion(id: number, withTemplate: boolean = true, totalCasses = 0): Promise<any> {
     try {
-      const question:any = await db.query.zuvyCodingQuestions.findMany({
+      const question: any = await db.query.zuvyCodingQuestions.findMany({
         where: (zuvyCodingQuestions, { sql }) => sql`${zuvyCodingQuestions.id} = ${id}`,
         columns: {
           id: true,
@@ -572,7 +589,7 @@ export class CodingPlatformService {
           submissionId: true,
           codingOutsourseId: true,
           createdAt: true,
-          programLangId:true,
+          programLangId: true,
           sourceCode: true
         },
         with: {
@@ -617,7 +634,7 @@ export class CodingPlatformService {
           codingOutsourseId: true,
           chapterId: true,
           createdAt: true,
-          programLangId:true,
+          programLangId: true,
           sourceCode: true
         },
         with: {
