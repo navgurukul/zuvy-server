@@ -2040,9 +2040,12 @@ export class ContentService {
         }
         else{
           submission = await db.select().from(zuvyAssessmentSubmission)
-          .where(sql`${zuvyAssessmentSubmission.active} = true AND ${zuvyAssessmentSubmission.assessmentOutsourseId} = ${assessmentOutsourseId}`)
+          .where(sql`${zuvyAssessmentSubmission.active} = true AND ${zuvyAssessmentSubmission.assessmentOutsourseId} = ${assessmentOutsourseId} AND ${zuvyAssessmentSubmission.userId} = ${id}`)
           .orderBy(desc(zuvyAssessmentSubmission.id))
           .limit(1)
+          if (!submission){
+            return [{error: 'not started the assessment or not get approvel'}]
+          }
         }
         quizzes = await db.select().from(zuvyQuizTracking).where(sql`${zuvyQuizTracking.assessmentSubmissionId} = ${submission[0].id}`)
       }
