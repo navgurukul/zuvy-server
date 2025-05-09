@@ -299,7 +299,7 @@ export class ScheduleService {
       const hostEmail = organizerParam?.value;
       const jwtClient = new google.auth.JWT({
         email:   CLIENT_EMAIL,
-        key:     PRIVATE_KEY,
+        key:     PRIVATE_KEY.replace(/\\n/g, '\n').replace(/^"|"$/g, ''),
         scopes: [
           'https://www.googleapis.com/auth/drive.metadata.readonly',
           'https://www.googleapis.com/auth/calendar.events.readonly',
