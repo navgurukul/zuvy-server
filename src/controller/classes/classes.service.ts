@@ -457,11 +457,16 @@ export class ClassesService {
   }
 
   // async calculateAttendance(meetings: any[], students: any[]) {
+  //   console.log("hello dear")
+  //   const {CLIENT_EMAIL,PRIVATE_KEY} = process.env
   //     const attendanceByTitle: Record<string, any> = {};
-      
+  //     auth2Client.setCredentials({
+  //       access_token: 'team@zuvy.org_accessToken',
+  //       refresh_token: 'team@zuvy_refreshToken'
+  //     });
   //     const client = google.admin({ version: 'reports_v1', auth: auth2Client });
       
-      
+     
   //     for (const meeting of meetings) {
   //       const response = await client.activities.list({
   //         userKey:         'all',
@@ -471,22 +476,24 @@ export class ClassesService {
   //         filters:         `calendar_event_id==${meeting.meetingId}`,
   //       });
   //       const items = response.data.items || [];
-    
+  //       console.log("clientInfo",items)
   //       // 2️⃣ Extract the host’s email from the first log entry
   //       const organizerParam = items[0].events?.[0].parameters?.find(p => p.name === 'organizer_email');
   //       const hostEmail = organizerParam?.value; 
   //       console.log("hostEmail",hostEmail)  
   //       const jwtClient = new google.auth.JWT({
   //         email:   client_email,
-  //         key:     private_key,
+  //         key:     PRIVATE_KEY.replace(/\\n/g, '\n').replace(/^"|"$/g, ''),
   //         scopes: [
   //           'https://www.googleapis.com/auth/drive.metadata.readonly',
   //           'https://www.googleapis.com/auth/calendar.events.readonly',
   //         ],
   //         subject: hostEmail
   //       })
+  //       console.log("hello moto",jwtClient)
   //       await jwtClient.authorize();
   //       const calendar = google.calendar({ version: 'v3', auth: jwtClient });
+  //       console.log("calendar",calendar)
   //       const drive    = google.drive({ version: 'v3', auth: jwtClient });
   //       const { data: event } = await calendar.events.get({
   //         calendarId: 'primary',
