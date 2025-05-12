@@ -1371,15 +1371,17 @@ export class SubmissionService {
     }
   }
   
-  async ceilToOneDecimal(num) {
-    return Math.ceil(num * 10) / 10;
-    // return Math.ceil(num);
-  }
+  
 
   async recalcAndFixMCQForAssessment(
     assessmentOutsourseId: number
   ): Promise<any> {
     try {
+
+      function ceilToOneDecimal(num) {
+        return Math.ceil(num * 100) / 100;
+      }
+
       const submissions = await db
         .select({
           id: zuvyAssessmentSubmission.id,
@@ -1393,6 +1395,12 @@ export class SubmissionService {
         .from(zuvyAssessmentSubmission)
         .where(eq(zuvyAssessmentSubmission.assessmentOutsourseId, assessmentOutsourseId));
 
+      if (submissions.length === 0) {
+        return [null, {
+        statusCode: 202,
+        message: 'assessmet submission not found',
+      }];
+      }
       const assessmentMeta = await db
         .select({
           easy: zuvyOutsourseAssessments.easyMcqMark,
@@ -1404,6 +1412,12 @@ export class SubmissionService {
         .where(eq(zuvyOutsourseAssessments.id, assessmentOutsourseId))
         .then(r => r[0]!);
 
+      if (!assessmentMeta) {
+        return [null, {
+          statusCode: 202,
+          message: 'assessment not found',
+        }];
+      }
       let mcqMarks:any = {
         [DIFFICULTY.EASY]: assessmentMeta.easy || 0,
         [DIFFICULTY.MEDIUM]: assessmentMeta.medium || 0,
@@ -1450,7 +1464,6 @@ export class SubmissionService {
 
             const isCorrect = answer.chosenOption === matched.correctOption;
             if (isCorrect) mcqScore += weight;
-
             // Update quiz tracking status
             await db.update(zuvyQuizTracking)
               .set({ status: isCorrect ? 'passed' : 'failed' })
@@ -1464,10 +1477,6 @@ export class SubmissionService {
             ? parseFloat(((newMarks / totalPossible) * 100).toFixed(2))
             : 0;
           const isPassed = percentage >= (Number(assessmentMeta.pass) || 0);
-          
-          // mcqMarks = await this.ceilToOneDecimal(mcqScore);
-          // newMarks = await this.ceilToOneDecimal(newMarks);
-          // percentage = await this.ceilToOneDecimal(percentage);
 
           const hasChanged =
             mcqScore !== sub.mcqScore ||
@@ -1482,21 +1491,10 @@ export class SubmissionService {
               percentage,
               isPassed,
             };
-            console.log({hasChanged});
-            // console.log({ mcqScore, requiredMCQScore, newMarks, percentage, isPassed }, 
-            //   {
-            //     subId: sub.id,
-            //     newMarks,
-            //     percentage,
-            //     isPassed,
-            //     safeCodingScore,
-            //   }
-            // );
-            console.log({updatedSubmission});
             await db.update(zuvyAssessmentSubmission)
               .set(updatedSubmission)
               .where(eq(zuvyAssessmentSubmission.id, sub.id));
-            console.log('✅ Updated submission:', sub.id);
+            this.logger.log(`Updated submission ${sub.id} with new marks: ${newMarks}, percentage: ${percentage}, isPassed: ${isPassed} for userId: ${sub.userId}`);
             updatedUserIds.push(sub.userId);
 
             // ✉️ Send email after update
@@ -1509,7 +1507,7 @@ export class SubmissionService {
         }
       }
 
-      console.log('✅ MCQ recalculation + emails complete. Updated users:', updatedUserIds);
+      this.logger.log(`✅ MCQ recalculation + emails complete. Updated user ids:', ${JSON.stringify(updatedUserIds)}`);
       return [null, updatedUserIds];
     } catch (err) {
       console.error('❌ Fatal error during MCQ recalculation:', err);
