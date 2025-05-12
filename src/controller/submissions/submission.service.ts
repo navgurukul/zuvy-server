@@ -1425,7 +1425,10 @@ export class SubmissionService {
       };
 
       const updatedUserIds: number[] = [];
-
+      let correctOptions = {
+        119: [1, 3, 4],
+        132: [1, 3]
+      };
       for (const sub of submissions) {
         try {
           const quizAnswers = await db
@@ -1461,8 +1464,13 @@ export class SubmissionService {
             const difficulty = matched.quiz.difficulty;
             const weight = mcqMarks[difficulty] || 0;
             requiredMCQScore += weight;
-
-            const isCorrect = answer.chosenOption === matched.correctOption;
+            let isCorrect;
+            if (!correctOptions[matched.id]){
+              isCorrect = answer.chosenOption === matched.correctOption;
+            } else {
+              let Correct_options = correctOptions[matched.id]
+              isCorrect = Correct_options?.includes(answer.chosenOption)? true: false ;
+            }
             if (isCorrect) mcqScore += weight;
             // Update quiz tracking status
             await db.update(zuvyQuizTracking)
