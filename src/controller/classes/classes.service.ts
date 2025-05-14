@@ -1039,7 +1039,7 @@ export class ClassesService {
         refresh_token: tokens[0].refreshToken,
       });
       
-            const client = google.admin({ version: 'reports_v1', auth: auth2Client });
+      const client = google.admin({ version: 'reports_v1', auth: auth2Client });
       // 1. Fetch Google Meet activity logs for this session
       const response = await client.activities.list({
         userKey: 'all',
@@ -1056,9 +1056,10 @@ export class ClassesService {
 
       // 3. Create JWT client as host
       const { PRIVATE_KEY, CLIENT_EMAIL } = process.env;
+      const formattedPrivateKey = PRIVATE_KEY.replace(/\\n/g, '\n').replace(/^"|"$/g, '');
       const jwtClient = new google.auth.JWT({
         email: CLIENT_EMAIL,
-        key: PRIVATE_KEY,
+        key: formattedPrivateKey,
         scopes: [
           'https://www.googleapis.com/auth/drive.metadata.readonly',
           'https://www.googleapis.com/auth/calendar.events.readonly',
@@ -1076,6 +1077,11 @@ export class ClassesService {
       });
       const videoAttach = event.attachments?.find((a: any) => a.mimeType === 'video/mp4');
       const s3link = videoAttach?.fileUrl || null;
+      
+      // If no recording is available, return a proper message
+      if (!s3link) {
+        return [{ status: 'error', message: 'Recording not yet updated. You can download attendance once recording is available' }];
+      }
 
       // 5. Get video duration from Drive
       let totalSeconds = 0;
@@ -1157,12 +1163,10 @@ export class ClassesService {
               },
             },
           })
-
-
-
+          
         let attendance: Array<any> =
           (Meeting[0]?.attendance as Array<any>) || [];
-
+          
         let no_of_students =
           students.length > attendance.length
             ? students.length
@@ -1171,8 +1175,14 @@ export class ClassesService {
         if (s3link == null || s3link == undefined ) {
           let [errorSessionAttendanceAndS3Link, result] = await this.getSessionAttendanceAndS3Link(classInfo[0], students);
           if (errorSessionAttendanceAndS3Link) {
-            s3link = null;
-            attendance = null;
+            return [
+              {
+                status: 'error',
+                message: errorSessionAttendanceAndS3Link.message || 'Recording not yet updated. You can download attendance once recording is available',
+                code: 400
+              },
+              null
+            ];
           } else {
             s3link = result.s3link;
             attendance = result.attendance;
@@ -1768,6 +1778,23 @@ export class ClassesService {
     userId: number,
   ): Promise<any> {
     try {
+      // First check if the session has an s3link
+      const sessionData = await db
+        .select()
+        .from(zuvySessions)
+        .where(eq(zuvySessions.id, viewSessionData.sessionId));
+      
+      if (!sessionData.length || !sessionData[0].s3link) {
+        return [
+          {
+            status: 'error',
+            message: 'Recording not yet updated. You can download attendance once recording is available',
+            code: 400
+          },
+          null
+        ];
+      }
+      
       let [errorGetViews, viewsRecord] = await this.getSessionRecordViews(
         viewSessionData.sessionId,
         userId,
