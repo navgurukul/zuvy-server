@@ -1016,6 +1016,110 @@ export class ClassesService {
     }
   }
 
+  async getSessionAttendanceAndS3Link(
+    session: any,
+    students: any[],
+    ): Promise<any> {
+    try {
+      const userData = await db.select().from(users).where(eq(users.email, session.creatorEmail));
+      if (!userData.length) {
+        this.logger.warn(`No user found for email: ${session.creatorEmail}`);
+        return[{ status: 'error', message: 'User not found' }];
+      }
+
+      const tokens = await db
+        .select()
+        .from(userTokens)
+        .where(eq(userTokens.userId, Number(userData[0].id)));
+
+      if (!tokens.length) return [{ status: 'error', message: 'Unable to fetch tokens' }];
+
+      auth2Client.setCredentials({
+        access_token: tokens[0].accessToken,
+        refresh_token: tokens[0].refreshToken,
+      });
+      
+            const client = google.admin({ version: 'reports_v1', auth: auth2Client });
+      // 1. Fetch Google Meet activity logs for this session
+      const response = await client.activities.list({
+        userKey: 'all',
+        applicationName: 'meet',
+        eventName: 'call_ended',
+        maxResults: 1000,
+        filters: `calendar_event_id==${session.meetingId}`,
+      });
+      const items = response.data.items || [];
+
+      // 2. Extract host email
+      const organizerParam = items[0]?.events?.[0]?.parameters?.find(p => p.name === 'organizer_email');
+      const hostEmail = organizerParam?.value;
+
+      // 3. Create JWT client as host
+      const { PRIVATE_KEY, CLIENT_EMAIL } = process.env;
+      const jwtClient = new google.auth.JWT({
+        email: CLIENT_EMAIL,
+        key: PRIVATE_KEY,
+        scopes: [
+          'https://www.googleapis.com/auth/drive.metadata.readonly',
+          'https://www.googleapis.com/auth/calendar.events.readonly',
+        ],
+        subject: hostEmail,
+      });
+      await jwtClient.authorize();
+
+      // 4. Get event attachments (find video/mp4)
+      const calendar = google.calendar({ version: 'v3', auth: jwtClient });
+      const { data: event } = await calendar.events.get({
+        calendarId: 'primary',
+        eventId: session.meetingId,
+        fields: 'attachments(fileId,mimeType,fileUrl)',
+      });
+      const videoAttach = event.attachments?.find((a: any) => a.mimeType === 'video/mp4');
+      const s3link = videoAttach?.fileUrl || null;
+
+      // 5. Get video duration from Drive
+      let totalSeconds = 0;
+      if (videoAttach) {
+        const drive = google.drive({ version: 'v3', auth: jwtClient });
+        const { data: fileMeta } = await drive.files.get({
+          fileId: videoAttach.fileId,
+          fields: 'videoMediaMetadata(durationMillis)',
+        });
+        const durationMillis = Number(fileMeta.videoMediaMetadata?.durationMillis) || 0;
+        totalSeconds = durationMillis / 1000;
+      }
+
+      // 6. Calculate attendance for each student
+      const cutoff = totalSeconds * 0.75;
+      const attendance: Record<string, { email: string; duration: number; attendance: string }> = {};
+      for (const student of students) {
+        const user = student.user;
+        attendance[user[0].email] = {
+          email: user[0].email,
+          duration: 0,
+          attendance: 'absent',
+        };
+      }
+      response.data.items?.forEach((item: any) => {
+        const e = item.events[0];
+        const email = e.parameters.find((p: any) => p.name === 'identifier')?.value;
+        const secs = e.parameters.find((p: any) => p.name === 'duration_seconds')?.intValue || 0;
+        if (email && attendance[email]) {
+          attendance[email].duration += Number(secs);
+        }
+      });
+      for (const rec of Object.values(attendance)) {
+        rec.attendance = rec.duration >= cutoff ? 'present' : 'absent';
+      }
+
+      // 7. Return attendance and s3link
+      return [null, { s3link, attendance: Object.values(attendance) }];
+    } catch (error) {
+      console.error(error);
+      return [{ status: 'error', message: 'Error fetching session data' }];
+    }
+  }
+
   async meetingAttendanceAnalytics(meeting_id: number, user) {
     try {
       await this.getAttendance(meeting_id, user);
@@ -1055,6 +1159,7 @@ export class ClassesService {
           })
 
 
+
         let attendance: Array<any> =
           (Meeting[0]?.attendance as Array<any>) || [];
 
@@ -1064,10 +1169,28 @@ export class ClassesService {
             : attendance.length;
 
         if (s3link == null || s3link == undefined ) {
-          s3link = await this.fetchRecordingForMeeting(meetingId);
-        }
-        if (attendance.length == 0) {
-          attendance = await this.fetchAttendanceForMeeting(meetingId, students, batchId, bootcampId);
+          let [errorSessionAttendanceAndS3Link, result] = await this.getSessionAttendanceAndS3Link(classInfo[0], students);
+          if (errorSessionAttendanceAndS3Link) {
+            s3link = null;
+            attendance = null;
+          } else {
+            s3link = result.s3link;
+            attendance = result.attendance;
+            let classUpdateData:any = {
+              s3link: s3link
+            }
+            await db.update(zuvySessions)
+              .set(classUpdateData)
+              .where(eq(zuvySessions.meetingId, meetingId))
+            // insert the attendance data into the database
+            await db.insert(zuvyStudentAttendance)
+              .values({
+                attendance: attendance,
+                meetingId: meetingId,
+                batchId: batchId,
+                bootcampId: bootcampId
+              })
+          }
         }
         
         let present = attendance.filter(
