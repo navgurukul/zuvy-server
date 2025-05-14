@@ -1021,9 +1021,9 @@ export class ClassesService {
     students: any[],
     ): Promise<any> {
     try {
-      const userData = await db.select().from(users).where(eq(users.email, session.creatorEmail));
+      const userData = await db.select().from(users).where(eq(users.email, session.creator));
       if (!userData.length) {
-        this.logger.warn(`No user found for email: ${session.creatorEmail}`);
+        this.logger.warn(`No user found for email: ${session.creator}`);
         return[{ status: 'error', message: 'User not found' }];
       }
 
@@ -1100,8 +1100,8 @@ export class ClassesService {
       const attendance: Record<string, { email: string; duration: number; attendance: string }> = {};
       for (const student of students) {
         const user = student.user;
-        attendance[user[0].email] = {
-          email: user[0].email,
+        attendance[user.email] = {
+          email: user.email,
           duration: 0,
           attendance: 'absent',
         };
