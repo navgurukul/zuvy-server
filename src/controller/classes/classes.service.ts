@@ -1778,23 +1778,6 @@ export class ClassesService {
     userId: number,
   ): Promise<any> {
     try {
-      // First check if the session has an s3link
-      const sessionData = await db
-        .select()
-        .from(zuvySessions)
-        .where(eq(zuvySessions.id, viewSessionData.sessionId));
-      
-      if (!sessionData.length || !sessionData[0].s3link) {
-        return [
-          {
-            status: 'error',
-            message: 'Recording not yet updated. You can download attendance once recording is available',
-            code: 400
-          },
-          null
-        ];
-      }
-      
       let [errorGetViews, viewsRecord] = await this.getSessionRecordViews(
         viewSessionData.sessionId,
         userId,
