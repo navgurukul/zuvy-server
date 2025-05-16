@@ -1114,9 +1114,8 @@ export class ClassesService {
       for (const rec of Object.values(attendance)) {
         rec.attendance = rec.duration >= cutoff ? 'present' : 'absent';
       }
-
       // 7. Return attendance and s3link
-      return [null, { s3link, attendance: Object.values(attendance) }];
+      return [null, { s3link, attendance: Object.values(attendance), totalSeconds }];
     } catch (error) {
       console.error(error);
       return [{ status: 'error', message: 'Error fetching session data' }];
@@ -1148,18 +1147,18 @@ export class ClassesService {
           .from(zuvyStudentAttendance)
           .where(sql`${zuvyStudentAttendance.meetingId}=${meetingId}`);
 
-          let students = await db.query.zuvyBatchEnrollments.findMany({
-            where: (zuvyBatchEnrollments, { eq }) =>
-              eq(zuvyBatchEnrollments.batchId, batchId),
-            with: {
-              user: {
-                columns: {
-                  email: true,
-                  name: true,
-                },
+        let students = await db.query.zuvyBatchEnrollments.findMany({
+          where: (zuvyBatchEnrollments, { eq }) =>
+            eq(zuvyBatchEnrollments.batchId, batchId),
+          with: {
+            user: {
+              columns: {
+                email: true,
+                name: true,
               },
             },
-          })
+          },
+        })
           
         let attendance: Array<any> =
           (Meeting[0]?.attendance as Array<any>) || [];
@@ -1168,8 +1167,8 @@ export class ClassesService {
           students.length > attendance.length
             ? students.length
             : attendance.length;
-
-        if (s3link == null || s3link == undefined ) {
+        
+        if (!s3link || Meeting.length === 0) {
           let [errorSessionAttendanceAndS3Link, result] = await this.getSessionAttendanceAndS3Link(classInfo[0], students);
           if (errorSessionAttendanceAndS3Link) {
             return [
@@ -1203,7 +1202,11 @@ export class ClassesService {
         let present = attendance.filter(
           (student) => student?.attendance === 'present',
         ).length;
+        let absent = attendance.filter(
+          (student) => student?.attendance === 'absent',
+        ).length;
 
+        this.logger.log(`Present Students: ${present}, Total Students: ${no_of_students}, S3 Link: ${s3link}, absent: ${absent}`);
         return [
           null,
           {
@@ -1211,8 +1214,9 @@ export class ClassesService {
             message: 'Meetings fetched successfully',
             studentsInfo: {
               total_students: no_of_students,
-              present: present,
-              s3link: s3link,
+              present,
+              absent,
+              s3link,
               attendance: attendance,
               views
             },
