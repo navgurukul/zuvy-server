@@ -56,7 +56,7 @@ export class CodingPlatformController {
     type: Number,
     description: 'chapter_id for tracking which chapter this code belongs to',
   })
-  async getPracticeCode(@Param('questionId') questionId: number,
+  async submitCode(@Param('questionId') questionId: number,
     @Body() sourceCode: SubmitCodeDto,
     @Query('action') action: string,
     @Query('submissionId') submissionId: number,

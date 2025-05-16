@@ -38,6 +38,7 @@ import { ErrorResponse, SuccessResponse } from 'src/errorHandler/handler';
 )
 export class SubmissionController {
   constructor(private submissionService: SubmissionService) { }
+
   @Get('/submissionsOfPractiseProblems/:bootcampId')
   @ApiOperation({ summary: 'Get the submission by bootcampId' })
   @ApiQuery({
@@ -402,18 +403,15 @@ export class SubmissionController {
       return ErrorResponse.BadRequestException(error.message).send(res);
     }
   }
-
-  @Delete('/assessment/:assessmentSubmissionId')
-  @ApiOperation({ summary: 'Delete an assessment submission and all related records' })
+  //recalcOnlyMCQ
+  @Patch("/assessment/recalcOnlyMCQ")
+  @ApiOperation({ summary: 'Recalculating the MCQ score' })
   @ApiBearerAuth()
-  async deleteAssessmentSubmission(
-    @Param('assessmentSubmissionId') assessmentSubmissionId: number,
-    @Res() res
-  ) {
+  async recalcAndFixMCQForAssessment(@Query('assessment_outsourse_id') assessmentOutsourseId: number, @Res() res) {
     try {
-      const [err, success] = await this.submissionService.deleteAssessmentSubmission(assessmentSubmissionId);
+      let [err, success] = await this.submissionService.recalcAndFixMCQForAssessment(assessmentOutsourseId);
       if (err) {
-        return ErrorResponse.BadRequestException(err.message, err.statusCode).send(res);
+        return ErrorResponse.BadRequestException(err.message, err.statusCode).send(res)
       }
       return new SuccessResponse(success.message, success.statusCode, success.data).send(res);
     } catch (error) {

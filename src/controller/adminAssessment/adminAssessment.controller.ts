@@ -6,6 +6,7 @@ import { Request } from '@nestjs/common';
 import { query } from 'express';
 import { STATUS_CODES } from 'src/helpers';
 import { ErrorResponse, SuccessResponse } from 'src/errorHandler/handler';
+import { Response } from 'express';
 
 
 @Controller('admin')
@@ -32,7 +33,7 @@ export class AdminAssessmentController {
     return this.adminAssessmentService.getBootcampAssessment(bootcampID,searchAssessment);
   }
 
-  @Get('assessment/students/assessment_id:assessment_id')
+    @Get('assessment/students/assessment_id:assessment_id')
   @ApiOperation({ summary: 'Get the students of assessment' })
   @ApiQuery({
     name: 'searchStudent',
@@ -40,9 +41,27 @@ export class AdminAssessmentController {
     type: String,
     description: 'Search by name or email',
   })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    type: Number,
+    description: 'Limit the number of records',
+  })
+  @ApiQuery({
+    name: 'offset',
+    required: false,
+    type: Number,
+    description: 'Offset for pagination',
+  })
   @ApiBearerAuth()
-  async AssessmentStudents(@Req() req: Request, @Param('assessment_id') assessmentID: number,@Query('searchStudent') searchStudent: string) {
-    return this.adminAssessmentService.getAssessmentStudents(req, assessmentID,searchStudent);
+  async AssessmentStudents(
+    @Req() req: Request,
+    @Param('assessment_id') assessmentID: number,
+    @Query('searchStudent') searchStudent: string,
+    @Query('limit') limit: number,
+    @Query('offset') offset: number,
+  ) {
+    return this.adminAssessmentService.getAssessmentStudents(req, assessmentID, searchStudent, limit, offset);
   }
   // get assessment submission by student
   @Get('assessment/submission/user_id:user_id')
@@ -114,13 +133,13 @@ export class AdminAssessmentController {
     name: 'limit',
     required: false,
     type: Number,
-    description: 'limit',
+    description: 'limit'
   })
   @ApiQuery({
     name: 'offset',
     required: false,
     type: Number,
-    description: 'offset',
+    description: 'offset'
   })
   @ApiBearerAuth()
   async ModuleChapterStudents(
@@ -169,4 +188,44 @@ export class AdminAssessmentController {
   ) {
     return this.adminAssessmentService.getLeaderboardByCriteria(bootcampId, criteria, assessmentOutsourseId, limit, offset);
   }
+
+  @Post('assessment/approve-reattempt')
+  @ApiOperation({ summary: 'Approve re-attempt for an assessment submission' })
+  @ApiBearerAuth()
+  async approveReattempt(
+    @Query('assessmentSubmissionId') assessmentSubmissionId: number,
+    @Req() req,
+    @Res() res: Response
+  ): Promise<any>  {
+    try {
+      let [err, success] = await this.adminAssessmentService.approveReattempt(assessmentSubmissionId);
+      if (err) {
+        return ErrorResponse.BadRequestException(err.message).send(res);
+      }
+      return new SuccessResponse(success.message, success.statusCode, success.data).send(res);
+    } catch (error) {
+      return ErrorResponse.BadRequestException(error.message).send(res);
+    }
+  }
+
+  @Delete('assessment/reject-reattempt')
+  @ApiOperation({ summary: 'Reject re-attempt for an assessment submission' })
+  @ApiBearerAuth()
+  async rejectReattempt(
+    @Query('assessmentSubmissionId') assessmentSubmissionId: number,
+    @Req() req,
+    @Res() res: Response
+  ): Promise<any>  {
+    try {
+      let [err, success] = await this.adminAssessmentService.rejectReattempt(assessmentSubmissionId);
+      if (err) {
+        return ErrorResponse.BadRequestException(err.message).send(res);
+      }
+      return new SuccessResponse(success.message, success.statusCode, success.data).send(res);
+    } catch (error) {
+      return ErrorResponse.BadRequestException(error.message).send(res);
+    }
+  }
 }
+
+

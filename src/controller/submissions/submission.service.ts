@@ -1,17 +1,25 @@
 import { Injectable, Logger } from '@nestjs/common';
+const AWS = require('aws-sdk');
 import { db } from '../../db/index';
-import { eq, sql, count, lte, inArray } from 'drizzle-orm';
+import { eq, sql, count, lte, inArray, and } from 'drizzle-orm';
 import * as _ from 'lodash';
 import { zuvyBatchEnrollments, zuvyAssessmentSubmission, zuvyChapterTracking, zuvyOpenEndedQuestionSubmission, zuvyProjectTracking, zuvyQuizTracking, zuvyModuleChapter, zuvyFormTracking, zuvyPracticeCode,zuvyOutsourseQuizzes, zuvyModuleQuizVariants, zuvyOutsourseAssessments } from '../../../drizzle/schema';
 import { InstructorFeedbackDto, PatchOpenendedQuestionDto, CreateOpenendedQuestionDto } from './dto/submission.dto';
 import { STATUS_CODES } from 'src/helpers';
 import { helperVariable } from 'src/constants/helper';
-
+const DIFFICULTY = {
+  EASY: 'Easy',
+  MEDIUM: 'Medium',
+  HARD: 'Hard',
+};
 // Difficulty Points Mapping
 let { ACCEPTED, SUBMIT } = helperVariable;
+const { SUPPORT_EMAIL, AWS_SUPPORT_ACCESS_SECRET_KEY, AWS_SUPPORT_ACCESS_KEY_ID, ZUVY_BASH_URL} = process.env; // Importing env values
+
 
 @Injectable()
 export class SubmissionService {
+  private readonly logger = new Logger(SubmissionService.name);
 
   async getSubmissionOfPractiseProblem(bootcampId: number, searchProblem: string) {
     try {
@@ -639,7 +647,7 @@ export class SubmissionService {
       throw err;
     }
   }
-
+  
   // submission of the quizzez , and open ended questions, And  two different functons
   async submitQuiz(answers, userId, assessmentSubmissionId, assessmentOutsourseId): Promise<any> {
     try {
@@ -1319,7 +1327,7 @@ export class SubmissionService {
     }
   }
 
-  async deleteAssessmentSubmission(assessmentSubmissionId: number): Promise<any> {
+  async deactivateAssessmentSubmission(assessmentSubmissionId: number): Promise<any> {
     try {
       // First, check if the assessment submission exists
       const submission = await db.query.zuvyAssessmentSubmission.findFirst({
@@ -1334,28 +1342,25 @@ export class SubmissionService {
         }];
       }
 
-      // Delete all related records in a transaction
-      await db.transaction(async (tx) => {
-        // Delete practice codes
-        await tx.delete(zuvyPracticeCode)
-          .where(eq(zuvyPracticeCode.submissionId, assessmentSubmissionId));
+      // Update the active attribute to false instead of deleting
+      let updateActiveData:any = { active: false }
+      const updated = await db.update(zuvyAssessmentSubmission)
+        .set(updateActiveData)
+        .where(eq(zuvyAssessmentSubmission.id, assessmentSubmissionId))
+        .returning();
 
-        // Delete quiz tracking records
-        await tx.delete(zuvyQuizTracking)
-          .where(eq(zuvyQuizTracking.assessmentSubmissionId, assessmentSubmissionId));
-
-        // Delete open-ended question submissions
-        await tx.delete(zuvyOpenEndedQuestionSubmission)
-          .where(eq(zuvyOpenEndedQuestionSubmission.assessmentSubmissionId, assessmentSubmissionId));
-        // Finally, delete the assessment submission itself
-        await tx.delete(zuvyAssessmentSubmission)
-          .where(eq(zuvyAssessmentSubmission.id, assessmentSubmissionId));
-      });
+      if (!updated || updated.length === 0) {
+        return [{
+          status: 'error',
+          statusCode: 500,
+          message: 'Failed to deactivate assessment submission',
+        }];
+      }
 
       return [null, {
         status: 'success',
         statusCode: 200,
-        message: 'Assessment submission and all related records deleted successfully',
+        message: 'Assessment submission deactivated successfully',
       }];
     } catch (err) {
       return [{
@@ -1363,6 +1368,221 @@ export class SubmissionService {
         statusCode: 500,
         message: err.message,
       }];
+    }
+  }
+  
+  
+
+  async recalcAndFixMCQForAssessment(
+    assessmentOutsourseId: number
+  ): Promise<any> {
+    try {
+
+      function ceilToOneDecimal(num) {
+        return Math.ceil(num * 100) / 100;
+      }
+
+      const submissions = await db
+        .select({
+          id: zuvyAssessmentSubmission.id,
+          userId: zuvyAssessmentSubmission.userId,
+          codingScore: zuvyAssessmentSubmission.codingScore,
+          mcqScore: zuvyAssessmentSubmission.mcqScore,
+          marks: zuvyAssessmentSubmission.marks,
+          percentage: zuvyAssessmentSubmission.percentage,
+          isPassed: zuvyAssessmentSubmission.isPassed,
+        })
+        .from(zuvyAssessmentSubmission)
+        .where(eq(zuvyAssessmentSubmission.assessmentOutsourseId, assessmentOutsourseId));
+
+      if (submissions.length === 0) {
+        return [null, {
+        statusCode: 202,
+        message: 'assessmet submission not found',
+      }];
+      }
+      const assessmentMeta = await db
+        .select({
+          easy: zuvyOutsourseAssessments.easyMcqMark,
+          medium: zuvyOutsourseAssessments.mediumMcqMark,
+          hard: zuvyOutsourseAssessments.hardMcqMark,
+          pass: zuvyOutsourseAssessments.passPercentage,
+        })
+        .from(zuvyOutsourseAssessments)
+        .where(eq(zuvyOutsourseAssessments.id, assessmentOutsourseId))
+        .then(r => r[0]!);
+
+      if (!assessmentMeta) {
+        return [null, {
+          statusCode: 202,
+          message: 'assessment not found',
+        }];
+      }
+      let mcqMarks:any = {
+        [DIFFICULTY.EASY]: assessmentMeta.easy || 0,
+        [DIFFICULTY.MEDIUM]: assessmentMeta.medium || 0,
+        [DIFFICULTY.HARD]: assessmentMeta.hard || 0,
+      };
+
+      const updatedUserIds: number[] = [];
+      let correctOptions = {
+        119: [1, 3, 4],
+        132: [1, 3]
+      };
+      for (const sub of submissions) {
+        try {
+          const quizAnswers = await db
+            .select({
+              id: zuvyQuizTracking.id,
+              variantId: zuvyQuizTracking.variantId,
+              chosenOption: zuvyQuizTracking.chosenOption,
+            })
+            .from(zuvyQuizTracking)
+            .where(eq(zuvyQuizTracking.assessmentSubmissionId, sub.id));
+
+          const variantIds = quizAnswers.map(q => q.variantId);
+          const quizMasterData = await db.query.zuvyModuleQuizVariants.findMany({
+            where: (zuvyModuleQuizVariants, { sql }) =>
+              sql`${zuvyModuleQuizVariants.id} in ${variantIds}`,
+            with: {
+              quiz: {
+                columns: {
+                  difficulty: true,
+                },
+              },
+            },
+          });
+
+          let mcqScore = 0;
+          let requiredMCQScore = 0;
+          const attemptedMCQs = quizAnswers.length;
+
+          for (const answer of quizAnswers) {
+            const matched:any = quizMasterData.find(v => v.id === answer.variantId);
+            if (!matched) continue;
+
+            const difficulty = matched.quiz.difficulty;
+            const weight = mcqMarks[difficulty] || 0;
+            requiredMCQScore += weight;
+            let isCorrect;
+            if (!correctOptions[matched.id]){
+              isCorrect = answer.chosenOption === matched.correctOption;
+            } else {
+              let Correct_options = correctOptions[matched.id]
+              isCorrect = Correct_options?.includes(answer.chosenOption)? true: false ;
+            }
+            if (isCorrect) mcqScore += weight;
+            // Update quiz tracking status
+            await db.update(zuvyQuizTracking)
+              .set({ status: isCorrect ? 'passed' : 'failed' })
+              .where(eq(zuvyQuizTracking.id, answer.id));
+          }
+
+          const safeCodingScore = Number(sub.codingScore) || 0;
+          let newMarks = safeCodingScore + mcqScore;
+          const totalPossible = safeCodingScore + requiredMCQScore;
+          let percentage = totalPossible > 0
+            ? parseFloat(((newMarks / totalPossible) * 100).toFixed(2))
+            : 0;
+          const isPassed = percentage >= (Number(assessmentMeta.pass) || 0);
+
+          const hasChanged =
+            mcqScore !== sub.mcqScore ||
+            newMarks !== sub.marks ||
+            percentage !== sub.percentage ||
+            isPassed !== sub.isPassed;
+
+          if (hasChanged) {
+            const updatedSubmission:any = {
+              mcqScore,
+              marks: newMarks,
+              percentage,
+              isPassed,
+            };
+            await db.update(zuvyAssessmentSubmission)
+              .set(updatedSubmission)
+              .where(eq(zuvyAssessmentSubmission.id, sub.id));
+            this.logger.log(`Updated submission ${sub.id} with new marks: ${newMarks}, percentage: ${percentage}, isPassed: ${isPassed} for userId: ${sub.userId}`);
+            updatedUserIds.push(sub.userId);
+
+            // ✉️ Send email after update
+            await this.sendScoreUpdateEmailToStudent(sub.userId, percentage);
+          }
+
+        } catch (err) {
+          // console.log(err);
+          console.error(`❌ Error in submission ${sub.id}:`, err);
+        }
+      }
+
+      this.logger.log(`✅ MCQ recalculation + emails complete. Updated user ids:', ${JSON.stringify(updatedUserIds)}`);
+      return [null, updatedUserIds];
+    } catch (err) {
+      console.error('❌ Fatal error during MCQ recalculation:', err);
+      return [{
+        status: 'error',
+        statusCode: 500,
+        message: 'Fatal error recalculating MCQ',
+      }];
+    }
+  }
+
+
+  async sendScoreUpdateEmailToStudent(userId: any, updatedScore: number) {
+    AWS.config.update({
+      accessKeyId: AWS_SUPPORT_ACCESS_KEY_ID,
+      secretAccessKey: AWS_SUPPORT_ACCESS_SECRET_KEY,
+      region: 'ap-south-1'
+    });
+
+    const ses = new AWS.SES();
+
+    const user = await db.query.users.findFirst({
+      where: (zuvyUser, { eq }) => eq(zuvyUser.id, userId),
+    });
+
+    if (!user) {
+      console.warn(`⚠️ User not found for ID ${userId}`);
+      return;
+    }
+
+    const emailText = `
+Dear ${user.name || 'Student'},
+
+We would like to inform you that your score for the Final Assessment held on 3rd–4th May has been updated.
+
+Due to a discrepancy in a few multiple-choice questions where incorrect options were initially marked as correct, some students' scores were affected. This issue has now been resolved, and your score has been recalculated based on the option you originally selected.
+
+Your updated score is: ${updatedScore}%
+
+We sincerely apologize for the inconvenience caused.
+
+You can view your latest score by logging into your Zuvy LMS account—this has been reflected in the system.
+
+Thank you for your understanding.
+
+Best regards,  
+Zuvy LMS Team
+`;
+
+    const emailParams = {
+      Source: SUPPORT_EMAIL,
+      Destination: {
+        ToAddresses: [user.email],
+      },
+      Message: {
+        Subject: { Data: 'Updated Score for Final Assessment – 3rd–4th May' },
+        Body: {
+          Text: { Data: emailText },
+        },
+      },
+    };
+
+    try {
+      const result = await ses.sendEmail(emailParams).promise();
+      console.log(`📨 Email sent to ${user.email}`, result.MessageId);
+    } catch (err) {
+      console.error(`❌ Failed to send email to ${user.email}`, err);
     }
   }
 }

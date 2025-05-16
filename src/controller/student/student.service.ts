@@ -7,31 +7,31 @@ import {
   zuvySessions,
   users,
   zuvyStudentApplicationRecord,
-  zuvyBootcampTracking
+  zuvyBootcampTracking,
+  zuvyAssessmentReattempt,
+  zuvyAssessmentSubmission
 } from '../../../drizzle/schema';
 import { db } from '../../db/index';
 import { eq, sql, desc, count, asc, or, and, inArray } from 'drizzle-orm';
 import { ClassesService } from '../classes/classes.service'
 import { helperVariable } from 'src/constants/helper';
 import { STATUS_CODES } from "../../helpers/index";
+const { PENDING } = helperVariable.REATTMEPT_STATUS; // Importing helper variables
+
 import { google } from 'googleapis';
 import { OAuth2Client } from 'google-auth-library';
-import * as fs from 'fs';
-import * as readline from 'readline';
 
-const { GOOGLE_SHEETS_SERVICE_ACCOUNT, GOOGLE_SHEETS_PRIVATE_KEY,JOIN_ZUVY_ACCESS_KEY_ID, JOIN_ZUVY_SECRET_KEY, SPREADSHEET_ID, SES_EMAIL, EMAIL_SUBJECT } = process.env;
+
+const { GOOGLE_SHEETS_SERVICE_ACCOUNT, GOOGLE_SHEETS_PRIVATE_KEY,JOIN_ZUVY_ACCESS_KEY_ID, JOIN_ZUVY_SECRET_KEY, SPREADSHEET_ID, SES_EMAIL, SUPPORT_EMAIL, QUERY_EMAIL, AWS_QUERY_ACCESS_SECRET_KEY, AWS_QUERY_ACCESS_KEY_ID } = process.env;
 const AWS = require('aws-sdk');
 
 
-AWS.config.update({
-  accessKeyId: JOIN_ZUVY_ACCESS_KEY_ID,      // Replace with your access key ID
-  secretAccessKey: JOIN_ZUVY_SECRET_KEY, // Replace with your secret access key
-  region: 'ap-south-1'                      // Replace with your AWS SES region, e.g., 'us-east-1'
-});
+
 
 @Injectable()
 export class StudentService {
   constructor(private ClassesService: ClassesService) { }
+  private logger = new Logger(StudentService.name);
   private SCOPES = ['https://www.googleapis.com/auth/spreadsheets'];
 
   // Authenticate and return the JWT client to interact with Google Sheets API
@@ -132,8 +132,13 @@ export class StudentService {
   async sendMail(applicantName, recipientEmail) {
     try {
       // Generate email content dynamically
+      AWS.config.update({
+        accessKeyId: JOIN_ZUVY_ACCESS_KEY_ID,      // Replace with your access key ID
+        secretAccessKey: JOIN_ZUVY_SECRET_KEY, // Replace with your secret access key
+        region: 'ap-south-1'                      // Replace with your AWS SES region, e.g., 'us-east-1'
+      });
       const emailContent = await this.generateEmailContent(applicantName);
-
+      
       // Create an instance of SES
       const ses = new AWS.SES();
 
@@ -497,6 +502,214 @@ export class StudentService {
     }
     catch (err) {
       throw err;
+    }
+  }
+  // Helper method to send email to admin using AWS SES
+    private async sendEmailToAdmin(submission: any): Promise<any> {
+      try {
+        AWS.config.update({
+          accessKeyId: AWS_QUERY_ACCESS_KEY_ID,      // Replace with your access key ID
+          secretAccessKey: AWS_QUERY_ACCESS_SECRET_KEY, // Replace with your secret access key
+          region: 'ap-south-1'                      // Replace with your AWS SES region, e.g., 'us-east-1'
+        });
+  
+        const emailContent = await this.generateAdminEmailContent(submission);
+        
+        let ses = new AWS.SES({ region: 'ap-south-1' });
+        const emailParams = {
+          Source: QUERY_EMAIL,
+          Destination: {
+            ToAddresses: [SUPPORT_EMAIL], // Admin email address
+          },
+          Message: {
+            Subject: {
+              Data: 'Re-attempt Request for Assessment Submission',
+            },
+            Body: {
+              Text: {
+                Data: emailContent,
+              },
+            },
+          },
+        };
+  
+        const result = await ses.sendEmail(emailParams).promise();
+        this.logger.log('Email sent to admin for re-attempt request: ' + JSON.stringify(result));
+        return [null, result];
+      } catch (error) {
+        this.logger.error('Failed to send email to admin', error);
+        return [error, null];
+      }
+    }
+    
+    // Format date to "29 Apr 2025, 03:45 PM" format
+    private formatDate(dateString: string): string {
+      if (!dateString) return 'N/A';
+      
+      try {
+        const date = new Date(dateString);
+        if (isNaN(date.getTime())) return 'N/A';
+        
+        // Format: Day Month Year, Hours:Minutes AM/PM
+        return date.toLocaleString('en-GB', {
+          day: '2-digit',
+          month: 'short',
+          year: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit',
+          hour12: true
+        });
+      } catch (error) {
+        return 'N/A';
+      }
+    }
+
+   // Generate email content dynamically for admin notification
+   private async generateAdminEmailContent(submission: any): Promise<string> {
+    return `
+Hi Admin,
+
+${submission.name} (${submission.email}) from ${submission.courseName || 'N/A'} – ${submission.batchName || 'N/A'} has requested a re‑attempt for the assessment “${submission.title || 'N/A'}”.
+
+Request details
+
+• Student ID: ${submission.userId}  
+• Course: ${submission.courseName || 'N/A'}  
+• Batch: ${submission.batchName || 'N/A'}  
+• Assessment: ${submission.title || 'N/A'}  
+• Original attempt date: ${this.formatDate(submission.startedAt)}  
+• Request time: ${this.formatDate(new Date().toISOString())}
+
+Next steps
+1. Review the request in the Zuvy admin panel.  
+2. Approve or decline the re‑attempt.  
+3. The student will be notified automatically of your decision.
+
+Need help? Reach out to the Ed‑Ops team on Slack or email [${SUPPORT_EMAIL}].
+
+Thanks,  
+Team Zuvy`;
+  }
+  
+
+  async requestReattempt(assessmentSubmissionId: number, userId: number): Promise<any> {
+    try {
+      // Check if submission exists and belongs to user
+      const submission:any = await db.query.zuvyAssessmentSubmission.findFirst({
+        where: (zuvyAssessmentSubmission, { eq }) =>
+          eq(zuvyAssessmentSubmission.id, assessmentSubmissionId),
+        with: {
+          reattempt: {
+            where: (reattempt, { eq }) => eq(reattempt.status, PENDING),
+            columns: {
+              id: true,
+              status: true,
+            },
+          },
+          user:{
+            columns:{
+              name:true,
+              email:true
+            }
+          },
+          submitedOutsourseAssessment:{
+            columns: {
+              id: true,
+              bootcampId: true,
+              moduleId: true,
+              chapterId: true,
+              timeLimit: true,
+              marks: true,
+              title: true,
+              
+            },
+            with: {
+              ModuleAssessment:{
+                columns: {
+                  id: true,
+                  title: true,
+                  description: true,
+                  marks: true,
+
+                },
+              }
+            }
+          }
+        }
+      });
+
+      if (!submission) {
+        return [{
+          status: 'error',
+          statusCode: 404,
+          message: 'Assessment submission not found',
+        }];
+      }
+      if (submission.reattempt.length > 0) {
+        return [{
+          status: 'error',
+          statusCode: 400,
+          message: 'Re-attempt already requested',
+        }];
+      }
+      if (submission.userId !== userId) {
+        return [{
+          status: 'error',
+          statusCode: 403,
+          message: 'Unauthorized request',
+        }];
+      }
+      let submitedOutsourseAssessment = submission.submitedOutsourseAssessment
+      let ModuleAssessment = submission.submitedOutsourseAssessment.ModuleAssessment
+      let user = submission.user
+
+      let batch:any = await db.query.zuvyBatchEnrollments.findFirst({
+        where: (zuvyBatchEnrollments, { sql }) =>
+          sql`${zuvyBatchEnrollments.userId} = ${userId} AND ${zuvyBatchEnrollments.bootcampId} = ${submitedOutsourseAssessment.bootcampId}`,
+        with: {
+          batchInfo: {
+            columns: {
+              name: true,
+            },
+          },
+          bootcamp: {
+            columns: {
+              name: true,
+            },
+          },
+        },
+      });
+      // Update submission to mark reattempt requested
+      let updateReattmpt:any = { reattemptRequested: true };
+
+      
+      await db.update(zuvyAssessmentSubmission)
+      .set(updateReattmpt)
+      .where(eq(zuvyAssessmentSubmission.id, assessmentSubmissionId));
+      let reattemptData:any = { assessmentSubmissionId, userId, requestedAt: new Date(), status: PENDING}
+      await db.insert(zuvyAssessmentReattempt).values(reattemptData)
+      // Send email to admin notifying reattempt request
+      let [errorAdmin, admin200] = await this.sendEmailToAdmin({...submission, ...submitedOutsourseAssessment, ...user, ...ModuleAssessment, batchName: batch.batchInfo.name, courseName: batch.bootcamp.name});
+      if (errorAdmin) {
+        this.logger.error(`error in sending email to admin: ${errorAdmin}`)
+        return [{
+          status: 'success',
+          statusCode: 200,
+          message: 'Re-attempt approved and Not able to notified',
+        }];
+      }
+      return [null,{
+        status: 'success',
+        statusCode: 200,
+        message: 'Re-attempt request sent to admin',
+      }];
+    } catch (error) {
+      this.logger.error('Error in requestReattempt:', error);
+      return [{
+        status: 'error',
+        statusCode: 500,
+        message: error,
+      }];
     }
   }
 }

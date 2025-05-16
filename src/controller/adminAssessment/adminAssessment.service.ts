@@ -1,14 +1,366 @@
+const AWS = require('aws-sdk');
 import { Injectable, Logger } from '@nestjs/common';
 import { db } from '../../db/index';
-import { eq, sql } from 'drizzle-orm';
+import { eq, SQL, sql } from 'drizzle-orm';
 import * as _ from 'lodash';
-import { zuvyBatchEnrollments, zuvyChapterTracking, zuvyModuleChapter, zuvyOutsourseAssessments } from '../../../drizzle/schema';
+import { zuvyBatchEnrollments, zuvyChapterTracking, zuvyAssessmentReattempt, zuvyModuleChapter, zuvyOutsourseAssessments, zuvyAssessmentSubmission } from '../../../drizzle/schema';
 import { STATUS_CODES } from 'src/helpers';
+import { helperVariable } from 'src/constants/helper'
 
-const { ZUVY_CONTENT_URL } = process.env; // INPORTING env VALUSE ZUVY_CONTENT
+const { PENDING, ACCEPTED, REJECTED} = helperVariable.REATTMEPT_STATUS; // Importing helper variables
+const { SUPPORT_EMAIL, AWS_SUPPORT_ACCESS_SECRET_KEY, AWS_SUPPORT_ACCESS_KEY_ID, ZUVY_BASH_URL} = process.env; // Importing env values
 
 @Injectable()
 export class AdminAssessmentService {
+  private logger = new Logger(AdminAssessmentService.name);
+
+ 
+  // Generate email content dynamically for student notification
+  private async generateStudentEmailContent(user: any, submission: any): Promise<string> {
+    const assessmentDeepLink = `${ZUVY_BASH_URL}/student/courses/${submission.bootcampId}/modules/${submission.moduleId}/chapters/${submission.chapterId}`;
+    
+    // Format duration to display hours if applicable
+    let durationText = 'N/A';
+    if (submission.timeLimit) {
+      // Convert seconds to minutes first
+      const timeLimitInMinutes = Math.floor(parseInt(submission.timeLimit) / 60);
+      
+      if (timeLimitInMinutes >= 60) {
+        const hours = Math.floor(timeLimitInMinutes / 60);
+        const minutes = timeLimitInMinutes % 60;
+        durationText = `${hours} hour${hours > 1 ? 's' : ''}${minutes > 0 ? ` ${minutes} minute${minutes > 1 ? 's' : ''}` : ''}`;
+      } else {
+        durationText = `${timeLimitInMinutes} minute${timeLimitInMinutes > 1 ? 's' : ''}`;
+      }
+    }
+    
+    return `
+Hello ${user.name},
+
+Good news! Your request to retake the assessment "${submission.title || 'N/A'}" has been approved.
+When you're ready, click the button below. It will take you straight to the test: 
+[Start Assessment]: ${assessmentDeepLink}
+
+Test Duration: ${durationText}
+Total Marks: 100
+
+Tips for a smooth attempt
+1. Use a stable internet connection.
+2. Keep your browser tab open until you submit.
+
+All the best!
+Team Zuvy`;
+  }
+
+  // reject of the student reattempt request mail
+  private async generateRejectEmailContent(user: any, submission: any): Promise<string> {
+    return `
+      Hello ${user.name},
+
+      Your request for re-attempt of the assessment "${submission.title || 'N/A'}" has been rejected.
+
+      If you have any questions, please contact support.
+
+      Regards,
+      The Team Zuvy
+    `;
+  }
+
+  // Method to approve re-attempt by admin
+  async approveReattempt(assessmentSubmissionId: number): Promise<any> {
+    try {
+      // Check if submission exists
+      const submission:any = await db.query.zuvyAssessmentSubmission.findFirst({
+        where: (zuvyAssessmentSubmission, { eq }) =>
+          eq(zuvyAssessmentSubmission.id, assessmentSubmissionId),
+        with: {
+          reattempt: {
+            where: (reattempt, { eq }) => eq(reattempt.status, PENDING),
+            columns: {
+              id: true,
+              status: true,
+            },
+          },
+          user:{
+            columns:{
+              name:true,
+              email:true
+            }
+          },
+          submitedOutsourseAssessment:{
+            columns: {
+              id: true,
+              bootcampId: true,
+              moduleId: true,
+              chapterId: true,
+              timeLimit: true,
+              marks: true,              
+            },
+            with: {
+              ModuleAssessment:{
+                columns: {
+                  id: true,
+                  title: true,
+                  description: true,
+                  marks: true,
+                },
+              }
+            }
+          }
+        }
+      });
+
+      if (!submission) {
+        return [{
+          status: 'error',
+          statusCode: 404,
+          message: 'Assessment submission not found',
+        }];
+      }
+      if (submission.reattempt.length === 0) {
+        return [{
+          status: 'error',
+          statusCode: 400,
+          message: 'Re-attempt request already processed',
+        }];
+      }
+
+      let reattemptId = submission.reattempt[0].id;
+      let ModuleAssessment = submission.submitedOutsourseAssessment.ModuleAssessment
+      let outsourseAssessment = submission.submitedOutsourseAssessment
+      delete submission.submitedOutsourseAssessment
+
+      let updatingAssessment:any  = {
+        reattemptApproved: true,
+        active: false,
+      }
+      // Update submission to mark reattempt approved and reset submission status
+      await db.update(zuvyAssessmentSubmission)
+        .set(updatingAssessment)
+        .where(eq(zuvyAssessmentSubmission.id, assessmentSubmissionId)).returning();
+      await db.update(zuvyAssessmentReattempt)
+        .set({ status: ACCEPTED }).where(eq(zuvyAssessmentReattempt.id, reattemptId)).returning();
+
+      // Send email to student notifying approval
+      let [errorSendEmail, emailSent] = await this.sendEmailToStudent({...submission, ...ModuleAssessment, ...outsourseAssessment});
+      if (errorSendEmail) {
+        this.logger.error(`error in sending email to student: ${errorSendEmail}`)
+        return [{
+          status: 'success',
+          statusCode: 200,
+          message: 'Re-attempt approved and Not able to notified',
+        }];
+      }
+      return [null, {
+        status: 'success',
+        statusCode: 200,
+        message: 'Re-attempt approved and student notified',
+      }];
+    } catch (error) {
+      this.logger.error('Error in approveReattempt', error);
+      return [{
+        status: 'error',
+        statusCode: 500,
+        message: 'Internal server error',
+      }];
+    }
+  }
+
+  // Helper method to send email to student using AWS SES
+  private async sendEmailToStudent(submission: any): Promise<any> {
+    try {
+
+      AWS.config.update({
+        accessKeyId: AWS_SUPPORT_ACCESS_KEY_ID,      // Replace with your access key ID
+        secretAccessKey: AWS_SUPPORT_ACCESS_SECRET_KEY, // Replace with your secret access key
+        region: 'ap-south-1'                      // Replace with your AWS SES region, e.g., 'us-east-1'
+      });
+      // Fetch student email and name
+      let ses = new AWS.SES();
+      
+      const user = await db.query.users.findFirst({
+        where: (zuvyUser, { eq }) => eq(zuvyUser.id, submission.userId),
+      });
+
+      if (!user) {
+        this.logger.warn(`User with id ${submission.userId} not found for sending approval email`);
+        return;
+      }
+
+      const emailContent = await this.generateStudentEmailContent(user, submission);
+
+      const emailParams = {
+        Source: SUPPORT_EMAIL,
+        Destination: {
+          ToAddresses: [user.email],
+        },
+        Message: {
+          Subject: {
+            Data: 'Re-attempt Approved for Assessment Submission',
+          },
+          Body: {
+            Text: {
+              Data: emailContent,
+            },
+          },
+        },
+      };
+
+      const result = await ses.sendEmail(emailParams).promise();
+      this.logger.log(`Email sent to student ${user.email} for re-attempt approval: ` + JSON.stringify(result));
+      return [null, result]
+    } catch (error) {
+      this.logger.error('Failed to send email to student', error);
+      return [{message: error, Error: true}]
+    }
+  }
+
+  async rejectReattempt(assessmentSubmissionId: number): Promise<any> {
+    try {
+      // Check if submission exists
+      const submission:any = await db.query.zuvyAssessmentSubmission.findFirst({
+        where: (zuvyAssessmentSubmission, { eq }) =>
+          eq(zuvyAssessmentSubmission.id, assessmentSubmissionId),
+        with: {
+          reattempt: {
+            where: (reattempt, { eq }) => eq(reattempt.status, PENDING),
+            columns: {
+              id: true,
+              status: true,
+            },
+          },
+          user:{
+            columns:{
+              name:true,
+              email:true
+            }
+          },
+          submitedOutsourseAssessment:{
+            columns: {
+              id: true,
+              bootcampId: true,
+              moduleId: true,
+              chapterId: true,
+              timeLimit: true,
+              marks: true,              
+            },
+            with: {
+              ModuleAssessment:{
+                columns: {
+                  id: true,
+                  title: true,
+                  description: true,
+                  marks: true,
+                },
+              }
+            }
+          }
+        }
+      });
+
+      if (!submission) {
+        return [{
+          status: 'error',
+          statusCode: 404,
+          message: 'Assessment submission not found',
+        }];
+      }
+      if (submission.reattempt.length === 0) {
+        return [{
+          status: 'error',
+          statusCode: 400,
+          message: 'Re-attempt request already processed',
+        }];
+      }
+      let reattemptId = submission.reattempt[0].id;
+      let ModuleAssessment = submission.submitedOutsourseAssessment.ModuleAssessment
+      let user = submission.user
+      let outsourseAssessment = submission.submitedOutsourseAssessment
+      delete submission.submitedOutsourseAssessment
+
+      let updatingAssessment:any  = {
+        reattemptApproved: false,
+        active: true
+      }
+      // Update submission to mark reattempt approved and reset submission status
+      let red = await db.update(zuvyAssessmentSubmission)
+        .set(updatingAssessment)
+        .where(eq(zuvyAssessmentSubmission.id, assessmentSubmissionId)).returning();
+      let green = await db.update(zuvyAssessmentReattempt)
+        .set({ status: REJECTED }).where(eq(zuvyAssessmentReattempt.id, reattemptId)).returning();
+      // Send email to student notifying approval
+      let [errorSendEmail, emailSent] = await this.sendRejectEmailToStudent({...submission, ...ModuleAssessment, ...outsourseAssessment});
+      if (errorSendEmail) {
+        return [{
+          status: 'error',
+          statusCode: 500,
+          message: errorSendEmail,
+        }];
+      }
+    
+      return [null, {
+        status: 'success',
+        statusCode: 200,
+        message: 'Re-attempt rejected and student notified',
+      }];
+    } catch (error) {
+      this.logger.error('Error in rejectReattempt', error);
+      return [{
+        status: 'error',
+        statusCode: 500,
+        message: 'Internal server error',
+      }];
+    }
+  }
+
+  async sendRejectEmailToStudent(submission: any): Promise<any> {
+    try {
+      // Fetch student email and name
+      let ses = new AWS.SES();
+
+      AWS.config.update({
+        accessKeyId: AWS_SUPPORT_ACCESS_KEY_ID,      // Replace with your access key ID
+        secretAccessKey: AWS_SUPPORT_ACCESS_SECRET_KEY, // Replace with your secret access key
+        region: 'ap-south-1'                      // Replace with your AWS SES region, e.g., 'us-east-1'
+      });
+      
+      const user = await db.query.users.findFirst({
+        where: (zuvyUser, { eq }) => eq(zuvyUser.id, submission.userId),
+      });
+
+      if (!user) {
+        this.logger.warn(`User with id ${submission.userId} not found for sending approval email`);
+        return;
+      }
+
+      const emailContent = await this.generateRejectEmailContent(user, submission);
+
+      const emailParams = {
+        Source: SUPPORT_EMAIL,
+        Destination: {
+          ToAddresses: [user.email],
+        },
+        Message: {
+          Subject: {
+            Data: 'Re-attempt Approved for Assessment Submission',
+          },
+          Body: {
+            Text: {
+              Data: emailContent,
+            },
+          },
+        },
+      };
+
+      const result = await ses.sendEmail(emailParams).promise();
+      this.logger.log(`Email sent to student ${user.email} for re-attempt approval: ` + JSON.stringify(result));
+      return [null, result]
+    } catch (error) {
+      this.logger.error('Failed to send email to student', error);
+      return [{message: error, Error: true}]
+    }
+  }
+  
   async transformAssessments(assessments) {
     const result = {};
     assessments.forEach((assessment) => {
@@ -64,20 +416,20 @@ export class AdminAssessmentService {
       const assessment = await db.query.zuvyOutsourseAssessments.findMany({
         where: (zuvyOutsourseAssessments, { eq ,and}) =>
           {
-            const conditions = [
+          const conditions = [
                 eq(zuvyOutsourseAssessments.bootcampId, bootcampID)
-            ];
-            if (searchAssessment) {
-                conditions.push(sql`
-                    EXISTS (
-                        SELECT 1
-                        FROM main.zuvy_module_assessment AS ma
-                        WHERE ma.id = ${zuvyOutsourseAssessments.id}
-                        AND lower(ma.title) LIKE lower(${searchAssessment + '%'})
+          ];
+          if (searchAssessment) {
+            conditions.push(sql`
+              EXISTS (
+                SELECT 1
+                FROM main.zuvy_module_assessment AS ma
+                WHERE ma.id = ${zuvyOutsourseAssessments.id}
+                AND lower(ma.title) LIKE lower(${searchAssessment + '%'})
                 )`);
-            }
-    
-            return and(...conditions);
+          }
+      
+          return and(...conditions);
         },
         columns: {
           id: true,
@@ -107,15 +459,16 @@ export class AdminAssessmentService {
             where: (zuvyAssessmentSubmission, { sql }) =>
               sql`
             ${zuvyAssessmentSubmission.submitedAt} IS NOT NULL 
+            AND ${zuvyAssessmentSubmission.active} IS true
             AND ${zuvyAssessmentSubmission.isPassed} IS NOT NULL
             AND EXISTS (
-              SELECT 1
-              FROM main.zuvy_batch_enrollments
-              WHERE main.zuvy_batch_enrollments.user_id = ${zuvyAssessmentSubmission.userId}
-              AND main.zuvy_batch_enrollments.bootcamp_id = ${bootcampID}
-              AND main.zuvy_batch_enrollments.batch_id IS NOT NULL
-            )
-          `,
+                SELECT 1
+                FROM main.zuvy_batch_enrollments
+                WHERE main.zuvy_batch_enrollments.user_id = ${zuvyAssessmentSubmission.userId}
+                AND main.zuvy_batch_enrollments.bootcamp_id = ${bootcampID}
+                AND main.zuvy_batch_enrollments.batch_id IS NOT NULL
+              )
+            `,
           },
         },
       });
@@ -145,52 +498,155 @@ export class AdminAssessmentService {
     }
   }
 
-  async getAssessmentStudents(req, assessmentID:number,searchStudent:string) {
+  async getAssessmentStudents(req, assessmentID: number, searchStudent: string, limit?: number, offset?: number) {
     try {
-      const assessmentInfo = await db.select().from(zuvyOutsourseAssessments).where(sql`${zuvyOutsourseAssessments.id} = ${assessmentID}`);
+      // Fetch assessment details
+      const assessmentInfo = await db
+        .select()
+        .from(zuvyOutsourseAssessments)
+        .where(sql`${zuvyOutsourseAssessments.id} = ${assessmentID}`);
+  
+      if (assessmentInfo.length === 0) {
+        throw { statusCode: 404, message: 'Assessment not found' };
+      }
+  
+      const bootcampId = assessmentInfo[0].bootcampId;
+  
+      // Fetch all students enrolled in the bootcamp
+      const enrolledStudents = await db.query.zuvyBatchEnrollments.findMany({
+        where: (zuvyBatchEnrollments, { eq, sql }) => sql`
+          ${zuvyBatchEnrollments.bootcampId} = ${bootcampId}
+          AND ${zuvyBatchEnrollments.batchId} IS NOT NULL
+          ${searchStudent ? sql`
+            AND EXISTS (
+              SELECT 1
+              FROM main.users
+              WHERE main.users.id = ${zuvyBatchEnrollments.userId}
+              AND (
+                lower(main.users.name) LIKE lower(${searchStudent + '%'})
+                OR lower(main.users.email) LIKE lower(${searchStudent + '%'})
+              )
+            )
+          ` : sql``}
+        `,
+        columns: {
+          userId: true,
+        },
+        with: {
+          user: {
+            columns: {
+              name: true,
+              email: true,
+            },
+          },
+        },
+        limit: limit || 20,
+        offset: offset || 0,
+        orderBy: (zuvyBatchEnrollments, { asc }) => asc(zuvyBatchEnrollments.userId),
+      });
+  
+      // Fetch submitted assessments for the given assessmentID
+      const submitedOutsourseAssessments = await db.query.zuvyAssessmentSubmission.findMany({
+        where: (zuvyAssessmentSubmission, { sql }) => sql`
+          ${zuvyAssessmentSubmission.assessmentOutsourseId} = ${assessmentID}
+          AND EXISTS (
+            SELECT 1
+            FROM main.zuvy_batch_enrollments
+            WHERE main.zuvy_batch_enrollments.user_id = ${zuvyAssessmentSubmission.userId}
+            AND main.zuvy_batch_enrollments.bootcamp_id = ${bootcampId}
+            AND main.zuvy_batch_enrollments.batch_id IS NOT NULL
+          )
+        `,
+        columns: {
+          id: true,
+          userId: true,
+          marks: true,
+          startedAt: true,
+          submitedAt: true,
+          isPassed: true,
+          percentage: true,
+          active: true,
+          reattemptRequested: true,
+          reattemptApproved: true,
+          tabChange: true,
+          copyPaste: true,
+          typeOfsubmission: true,
+        },
+        with: {
+          user: {
+            columns: {
+              name: true,
+              email: true,
+            },
+          },
+        },
+        limit: limit || 20,
+        offset: offset || 0,
+        orderBy: (zuvyAssessmentSubmission, { asc }) => asc(zuvyAssessmentSubmission.userId),
+      });
+      const totalStudentsCount = await db
+      .select({
+        count: sql<number>`COUNT(*)`,
+      })
+      .from(zuvyBatchEnrollments)
+      .where(sql`
+        ${zuvyBatchEnrollments.bootcampId} = ${bootcampId}
+        AND ${zuvyBatchEnrollments.batchId} IS NOT NULL
+        `);
+
+
+      const userReattemptCounts = await db
+      .select({
+        userId: zuvyAssessmentSubmission.userId,
+        reattemptCount: sql<number>`COUNT(*)`,
+      })
+      .from(zuvyAssessmentSubmission)
+      .where(sql`${zuvyAssessmentSubmission.assessmentOutsourseId} = ${assessmentID}`)
+      .groupBy(zuvyAssessmentSubmission.userId)
+
+      const reattemptCountMap = new Map(
+        userReattemptCounts.map((entry) => [Number(entry.userId), entry.reattemptCount])
+      );
       
-      if(assessmentInfo.length > 0)
-        {
-      const assessment = await db.query.zuvyOutsourseAssessments.findMany({
+
+      
+      // Map submissions by userId for quick lookup
+      const submissionsMap = new Map(
+        submitedOutsourseAssessments.map((submission) => [Number(submission.userId), submission])
+      );
+
+      // Combine enrolled students with their submissions
+      const combinedData = enrolledStudents.map((student:any) => {
+        let userId = Number(student.userId);
+        const submission = submissionsMap.get(Number(userId));  
+        return {
+          id: submission?.id || null,
+          userId,
+          name: student.user.name,
+          email: student.user.email,
+          marks: submission?.marks || null,
+          startedAt: submission?.startedAt || null,
+          submitedAt: submission?.submitedAt || null,
+          isPassed: submission?.isPassed,
+          percentage: submission?.percentage || null,
+          typeOfsubmission: submission ? submission.typeOfsubmission : 'not attempted',
+          copyPaste: submission?.copyPaste || null,
+          active: submission?.active,
+          reattemptRequested: submission?.reattemptRequested,
+          reattemptApproved: submission?.reattemptApproved,
+          reattemptCount: (reattemptCountMap.get(userId) || 1) - 1,
+          tabChange: submission?.tabChange || null,
+        };
+      });
+  
+      // Fetch ModuleAssessment details
+      const moduleAssessment = await db.query.zuvyOutsourseAssessments.findFirst({
         where: (zuvyOutsourseAssessments, { eq }) =>
           eq(zuvyOutsourseAssessments.id, assessmentID),
         columns: {
           id: true,
-          bootcampId: true,
-          passPercentage: true,
         },
         with: {
-          submitedOutsourseAssessments: {
-            where: (submitedOutsourseAssessments, { sql, eq }) => sql`
-            ${submitedOutsourseAssessments.submitedAt} IS NOT NULL
-            AND EXISTS (
-              SELECT 1
-              FROM main.zuvy_batch_enrollments
-              WHERE main.zuvy_batch_enrollments.user_id = ${submitedOutsourseAssessments.userId}
-              AND main.zuvy_batch_enrollments.bootcamp_id = ${assessmentInfo[0].bootcampId}
-              AND main.zuvy_batch_enrollments.batch_id IS NOT NULL
-            )
-            ${searchStudent ? sql`
-              AND EXISTS (
-                SELECT 1
-                FROM main.users
-                WHERE main.users.id = ${submitedOutsourseAssessments.userId}
-                AND (
-                  lower(main.users.name) LIKE lower(${searchStudent + '%'})
-                  OR lower(main.users.email) LIKE lower(${searchStudent + '%'})
-                )
-              )
-            ` : sql``}
-          `,
-            with: {
-              user: {
-                columns: {
-                  name: true,
-                  email: true,
-                }
-              },
-            },
-          },
           ModuleAssessment: {
             columns: {
               title: true,
@@ -199,56 +655,19 @@ export class AdminAssessmentService {
           },
         },
       });
-      assessment.forEach(item => {
-        const uniqueSubmissions = [];
-        const userIds = new Set();
-      
-        item.submitedOutsourseAssessments.forEach(submission => {
-          if (!userIds.has(submission.userId)) {
-            userIds.add(submission.userId);
-            uniqueSubmissions.push(submission);
-          }
-        });
-      
-        item.submitedOutsourseAssessments = uniqueSubmissions;
-      });
-      let studentsEnrolled = await this.getTotalStudentsEnrolled(
-        assessment[0].bootcampId,
-      );
-      assessment[0].ModuleAssessment['totalStudents'] = studentsEnrolled.length;
-      assessment[0].ModuleAssessment['totalSubmitedStudents'] =
-        assessment[0].submitedOutsourseAssessments.length || 0;
-
-      assessment[0].submitedOutsourseAssessments =
-        assessment[0].submitedOutsourseAssessments.map((submission: any) => {
-          return {
-            id: submission.id,
-            userId: submission.userId,
-            marks: submission.marks,
-            startedAt: submission.startedAt,
-            submitedAt: submission.submitedAt,
-            isPassed: submission.isPassed,
-            percentage: submission.percentage,
-            codingQuestionCount: submission.codingQuestionCount,
-            quizQuestionCount: submission.quizQuestionCount,
-            openEndedQuestionCount: submission.openEndedQuestionCount,
-            attemptedCodingQuestions: submission.attemptedCodingQuestions,
-            attemptedQuizQuestions: submission.attemptedQuizQuestions,
-            codingScore: submission.codingScore,
-            quizScore: submission.quizScore,
-            openEndedScore: submission.openEndedScore,
-            requiredCodingScore: submission.requiredCodingScore,
-            requiredQuizScore: submission.requiredQuizScore,
-            requiredOpenEndedScore: submission.requiredOpenEndedScore,
-            typeOfsubmission: submission.typeOfsubmission,
-            copyPaste: submission.copyPaste,
-            tabChange: submission.tabChange,
-            ...submission.user,
-          };
-        });
-
-      return assessment[0];
-        }
+  
+      // Prepare the final response
+      const response = {
+        ModuleAssessment: {
+          title: moduleAssessment?.ModuleAssessment?.title || null,
+          description: moduleAssessment?.ModuleAssessment?.description || null,
+          totalStudents: Number(totalStudentsCount[0]?.count) || 0,
+          totalSubmitedStudents: userReattemptCounts.length,
+        },
+        submitedOutsourseAssessments: combinedData,
+      };
+  
+      return response;
     } catch (error) {
       throw error;
     }
@@ -368,8 +787,8 @@ export class AdminAssessmentService {
   async getAssessmentsAndStudents(bootcampID: number): Promise<any> {
     try {  
       const assessments = await db.query.zuvyOutsourseAssessments.findMany({
-        where: (zuvyOutsourseAssessments, { eq }) =>
-          eq(zuvyOutsourseAssessments.bootcampId, bootcampID),
+        where: (zuvyOutsourseAssessments, { sql }) =>
+          sql`${zuvyOutsourseAssessments.bootcampId} = ${bootcampID}`,
         columns: {
           id: true,
           bootcampId: true,
@@ -386,9 +805,9 @@ export class AdminAssessmentService {
               submitedAt: true,
               isPassed: true,
               percentage: true,
+              active: true,
             },
-            where: (submitedOutsourseAssessments, { sql }) => sql`
-              ${submitedOutsourseAssessments.submitedAt} IS NOT NULL
+            where: (submitedOutsourseAssessments, { sql }) => sql`${submitedOutsourseAssessments.submitedAt} IS NOT NULL AND ${submitedOutsourseAssessments.active} = true           
               AND EXISTS (
                 SELECT 1
                 FROM main.zuvy_batch_enrollments
@@ -396,6 +815,7 @@ export class AdminAssessmentService {
                 AND main.zuvy_batch_enrollments.bootcamp_id = ${bootcampID}
                 AND main.zuvy_batch_enrollments.batch_id IS NOT NULL
               )
+              order by ${submitedOutsourseAssessments.startedAt} desc limit 1 
             `,
             with: {
               user: {
@@ -432,7 +852,7 @@ export class AdminAssessmentService {
 
       const assessmentsByModule = assessments.reduce((acc, assessment:any) => {
         const moduleName = assessment.Module?.name;
-
+        
         const assessmentData = {
           id: assessment.id,
           order: assessment.order || 0,
@@ -444,6 +864,7 @@ export class AdminAssessmentService {
           totalSubmitedAssessments: assessment.submitedOutsourseAssessments?.length || 0,
           qualifiedStudents: assessment.submitedOutsourseAssessments?.filter(sub => sub.isPassed).length || 0,
           passPercentage: assessment.passPercentage,
+          attemptCount: assessment.submitedOutsourseAssessments?.length || 0,
           submitedOutsourseAssessments: assessment.submitedOutsourseAssessments.map(submission => ({
             id: submission.id,
             userId: submission.userId,
@@ -747,12 +1168,12 @@ export class AdminAssessmentService {
         columns: { id: true },
         with: {
           submitedOutsourseAssessments: {
+            where: (submitedOutsourseAssessments,{sql}) => sql`${submitedOutsourseAssessments.active} = true order by ${submitedOutsourseAssessments.startedAt} desc limit 1`,
             columns: { userId: true, marks: true },
           },
         },
       });
 
-      console.log("bootcampAssessments", bootcampAssessments)
       // Students average assessment score calculate
       const studentScores: Record<number, number> = {};
 
@@ -816,3 +1237,7 @@ export class AdminAssessmentService {
     }
   }
 }
+function and(arg0: SQL<unknown>, arg1: SQL<unknown>): import("drizzle-orm").SQL<unknown> {
+  throw new Error('Function not implemented.');
+}
+

@@ -34,6 +34,6 @@ async function bootstrap() {
     SwaggerModule.setup('apis', app, document);
   }
   await app.listen(PORT || 6000);
-  log(`Application is running on swagger: ${BASE_URL}/apis#/`);
+  log(`Application is running on swagger: localhost:${PORT}/`);
 }
 bootstrap();
