@@ -14,7 +14,12 @@ import {
   BadRequestException,
   Req,
   UseGuards,
-  Res
+  Res,
+  UseInterceptors,
+  ParseIntPipe,
+  UploadedFile,
+  InternalServerErrorException,
+  BadGatewayException
 } from '@nestjs/common';
 import { ContentService } from './content.service';
 import {
@@ -22,6 +27,7 @@ import {
   ApiBody,
   ApiOperation,
   ApiQuery,
+  ApiConsumes,
 } from '@nestjs/swagger';
 import { ApiBearerAuth } from '@nestjs/swagger';
 import {
@@ -53,6 +59,7 @@ import { RolesGuard } from 'src/guards/roles.guard';
 import { ErrorResponse, SuccessResponse } from 'src/errorHandler/handler';
 import { Response } from 'express';
 import { complairDateTyeps } from 'src/helpers/index';
+import { FileInterceptor } from '@nestjs/platform-express/multer';
 
 @Controller('Content')
 @ApiTags('Content')
@@ -865,5 +872,68 @@ export class ContentController {
       return ErrorResponse.BadRequestException(error.message).send(res);
     }
   }
+
+  @Post('curriculum/upload-pdf')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Upload a PDF and save its link to a chapter' })
+  @ApiQuery({
+    name: 'moduleId',
+    required: true,
+    type: Number,
+    description: 'moduleId',
+  })
+  @ApiQuery({
+    name: 'chapterId',
+    required: true,
+    type: Number,
+    description: 'chapterId',
+  })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        pdf: {
+          type: 'string',
+          format: 'binary',
+        },
+      },
+    },
+  })
+  @UseInterceptors(FileInterceptor('pdf'))
+  async uploadPdf(
+    @UploadedFile() file: Express.Multer.File,
+    @Query('moduleId') moduleId: number,
+    @Query('chapterId') chapterId: number
+  ) {
+    let url: string;
+
+    try {
+      url = await this.contentService.uploadPdfToS3(
+        file.buffer,
+        file.originalname,
+      );
+    } catch (err) {
+      if (err instanceof InternalServerErrorException) {
+        throw err;
+      }
+      throw new BadGatewayException(
+        'Failed to upload PDF to S3',
+        { cause: err as Error },
+      );
+    }
+    if (!url) {
+      throw new BadGatewayException('S3 returned an empty URL');
+    }
+    const editDto = new EditChapterDto();
+    editDto.links = [url]; 
+    const res = await this.contentService.editChapter(
+      editDto,
+      moduleId,
+      chapterId,
+    );
+    return res;
+  }
+
 
 }

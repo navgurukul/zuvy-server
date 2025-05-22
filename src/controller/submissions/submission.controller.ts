@@ -38,6 +38,7 @@ import { ErrorResponse, SuccessResponse } from 'src/errorHandler/handler';
 )
 export class SubmissionController {
   constructor(private submissionService: SubmissionService) { }
+
   @Get('/submissionsOfPractiseProblems/:bootcampId')
   @ApiOperation({ summary: 'Get the submission by bootcampId' })
   @ApiQuery({
@@ -394,6 +395,21 @@ export class SubmissionController {
   async submitProperting(@Body() propertingPutBody: PropertingPutBody, @Query('assessment_submission_id') assessmentSubmissionId: number, @Res() res) {
     try {
       let [err, success] = await this.submissionService.submitProperting(assessmentSubmissionId, propertingPutBody);
+      if (err) {
+        return ErrorResponse.BadRequestException(err.message, err.statusCode).send(res)
+      }
+      return new SuccessResponse(success.message, success.statusCode, success.data).send(res);
+    } catch (error) {
+      return ErrorResponse.BadRequestException(error.message).send(res);
+    }
+  }
+  //recalcOnlyMCQ
+  @Patch("/assessment/recalcOnlyMCQ")
+  @ApiOperation({ summary: 'Recalculating the MCQ score' })
+  @ApiBearerAuth()
+  async recalcAndFixMCQForAssessment(@Query('assessment_outsourse_id') assessmentOutsourseId: number, @Res() res) {
+    try {
+      let [err, success] = await this.submissionService.recalcAndFixMCQForAssessment(assessmentOutsourseId);
       if (err) {
         return ErrorResponse.BadRequestException(err.message, err.statusCode).send(res)
       }

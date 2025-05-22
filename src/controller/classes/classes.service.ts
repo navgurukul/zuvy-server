@@ -1015,7 +1015,6 @@ export class ClassesService {
       return null;
     }
   }
-
   async getSessionAttendanceAndS3Link(
     session: any,
     students: any[],
@@ -1026,7 +1025,7 @@ export class ClassesService {
         this.logger.warn(`No user found for email: ${session.creator}`);
         return[{ status: 'error', message: 'User not found' }];
       }
-
+      
       const tokens = await db
         .select()
         .from(userTokens)
@@ -1082,8 +1081,6 @@ export class ClassesService {
       if (!s3link) {
         return [{ status: 'error', message: 'Recording not yet updated. You can download attendance once recording is available' }];
       }
-
-      // 5. Get video duration from Drive
       let totalSeconds = 0;
       if (videoAttach) {
         const drive = google.drive({ version: 'v3', auth: jwtClient });
