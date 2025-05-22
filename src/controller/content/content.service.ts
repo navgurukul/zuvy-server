@@ -80,10 +80,11 @@ export class ContentService {
   private bucket :string;
   private region: string;
   constructor(private config: ConfigService) {
+    const region = 'ap-south-1';
     this.bucket = this.config.get('S3_BUCKET_NAME');
     this.region = this.config.get('S3_REGION');
     this.s3 = new S3Client({
-      region: this.region,
+      region,
       credentials: {
         accessKeyId: this.config.get('S3_ACCESS_KEY_ID'),
         secretAccessKey: this.config.get('S3_SECRET_KEY_ACCESS'),
