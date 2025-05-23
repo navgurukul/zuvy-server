@@ -19,7 +19,8 @@ import {
   ParseIntPipe,
   UploadedFile,
   InternalServerErrorException,
-  BadGatewayException
+  BadGatewayException,
+  UploadedFiles
 } from '@nestjs/common';
 import { ContentService } from './content.service';
 import {
@@ -59,7 +60,7 @@ import { RolesGuard } from 'src/guards/roles.guard';
 import { ErrorResponse, SuccessResponse } from 'src/errorHandler/handler';
 import { Response } from 'express';
 import { complairDateTyeps } from 'src/helpers/index';
-import { FileInterceptor } from '@nestjs/platform-express/multer';
+import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express/multer';
 
 @Controller('Content')
 @ApiTags('Content')
@@ -935,5 +936,39 @@ export class ContentController {
     return res;
   }
 
+   @Post('curriculum/upload-images')
+@ApiOperation({ summary: 'Upload one or more images to S3' })
+@ApiBearerAuth()
+@ApiConsumes('multipart/form-data')
+@ApiBody({
+  schema: {
+    type: 'object',
+    properties: {
+      images: {
+        type: 'array',
+        items: { type: 'string', format: 'binary' },
+      },
+    },
+  },
+})
+@UseInterceptors(FilesInterceptor('images', 10))
+async uploadImages(
+    @UploadedFiles() files: Express.Multer.File[],
+  ) {
+    if (!files || files.length === 0) {
+      throw new BadRequestException('No image files provided');
+    }
 
+    // 1) upload each buffer, collecting URLs
+    const urls = await Promise.all(
+      files.map((file) =>
+        this.contentService.uploadImageToS3(
+          file.buffer,
+          file.originalname
+        ),
+      ),
+    );
+
+    return { urls };
+  }
 }

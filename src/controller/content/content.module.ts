@@ -15,10 +15,12 @@ import { JwtService } from '@nestjs/jwt';
 
     MulterModule.register({
       storage: memoryStorage(),
+       limits: { fileSize: 20 * 1024 * 1024 },
       fileFilter: (_req, file, cb) => {
-        cb(null, file.mimetype === 'application/pdf');
+        const isImage = file.mimetype.startsWith('image/');
+        const isPdf   = file.mimetype === 'application/pdf';
+        cb(null, isImage || isPdf);
       },
-      limits: { fileSize: 20 * 1024 * 1024 }, // 20 MB
     }),
   ],
   controllers: [ContentController],

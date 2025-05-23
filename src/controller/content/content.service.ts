@@ -107,7 +107,21 @@ export class ContentService {
       throw new InternalServerErrorException('Error uploading PDF to S3');
     }
   }
-
+  
+  async uploadImageToS3(
+  buffer: Buffer,
+  filename: string): Promise<string> {
+  const key = `mcq_images/${Date.now()}_${filename}`;
+  await this.s3.send(
+        new PutObjectCommand({
+          Bucket: this.bucket,
+          Key: key,
+          Body: buffer,
+          ContentType: 'image/*',
+        }),
+      );
+  return `https://${this.bucket}.s3.${this.region}.amazonaws.com/${key}`;
+ }
 
   async lockContent(modules__, module_id = null) {
     let index = 0;
