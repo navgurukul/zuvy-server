@@ -60,7 +60,8 @@ import {
   EditQuizVariantDto,
   CreateQuizVariantDto,
   AddQuizVariantsDto,
-  deleteQuestionOrVariantDto
+  deleteQuestionOrVariantDto,
+  UpdateChapterDto
 } from './dto/content.dto';
 import { STATUS_CODES } from '../../helpers';
 import { helperVariable } from '../../constants/helper';
@@ -872,7 +873,7 @@ export class ContentService {
   }
 
   async editChapter(
-    editData: EditChapterDto,
+    editData: UpdateChapterDto,
     moduleId: number,
     chapterId: number,
   ) {
