@@ -29,6 +29,8 @@ import {
   ApiOperation,
   ApiQuery,
   ApiConsumes,
+  getSchemaPath,
+  ApiExtraModels,
 } from '@nestjs/swagger';
 import { ApiBearerAuth } from '@nestjs/swagger';
 import {
@@ -54,7 +56,8 @@ import {
   CreateQuizzesDto,
   EditQuizBatchDto,
   AddQuizVariantsDto,
-  deleteQuestionOrVariantDto
+  deleteQuestionOrVariantDto,
+  UpdateChapterDto
 } from './dto/content.dto';
 import { RolesGuard } from 'src/guards/roles.guard';
 import { ErrorResponse, SuccessResponse } from 'src/errorHandler/handler';
@@ -69,6 +72,7 @@ import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express/mult
     whitelist: true,
     transform: true,
     forbidNonWhitelisted: true,
+    skipMissingProperties: true
   }),
 )
 export class ContentController {
@@ -890,23 +894,17 @@ export class ContentController {
     description: 'chapterId',
   })
   @ApiConsumes('multipart/form-data')
-  @ApiBody({
-    schema: {
-      type: 'object',
-      properties: {
-        pdf: {
-          type: 'string',
-          format: 'binary',
-        },
-      },
-    },
-  })
+  @ApiBody({ type: UpdateChapterDto })
   @UseInterceptors(FileInterceptor('pdf'))
   async uploadPdf(
     @UploadedFile() file: Express.Multer.File,
     @Query('moduleId') moduleId: number,
-    @Query('chapterId') chapterId: number
+    @Query('chapterId') chapterId: number,
+    @Body() reOrder: UpdateChapterDto
   ) {
+    console.log("edit pdf",UpdateChapterDto)
+    if(file)
+    {
     let url: string;
 
     try {
@@ -926,10 +924,10 @@ export class ContentController {
     if (!url) {
       throw new BadGatewayException('S3 returned an empty URL');
     }
-    const editDto = new EditChapterDto();
-    editDto.links = [url]; 
+    reOrder.links = [url];
+  }
     const res = await this.contentService.editChapter(
-      editDto,
+      reOrder,
       moduleId,
       chapterId,
     );
