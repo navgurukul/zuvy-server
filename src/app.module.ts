@@ -15,6 +15,7 @@ import { SubmissionModule } from './controller/submissions/submission.module';
 import { AdminAssessmentModule } from './controller/adminAssessment/adminAssessment.module';
 import { ScheduleModule } from './schedule/schedule.module';
 import { InstructorModule } from './controller/instructor/instructor.module';
+import { AuthModule } from './auth/auth.module';
 
 @Module({
   imports: [
@@ -37,6 +38,7 @@ import { InstructorModule } from './controller/instructor/instructor.module';
     TrackingModule,
     InstructorModule,
     ScheduleModule,
+    AuthModule,
   ],
   providers: [
     {

@@ -1,25 +1,21 @@
-// // auth.module.ts
-// import { Module } from '@nestjs/common';
-// import { AuthService } from './auth.service';
-// import { AuthController } from './auth.controller';
-// import { UsersModule } from '../users/users.module';
-// import { PassportModule } from '@nestjs/passport';
-// import { JwtModule } from '@nestjs/jwt';
-// import { jwtConstants } from './constants';
-// import { JwtStrategy } from './jwt.strategy';
+import { Module } from '@nestjs/common';
+import { JwtModule } from '@nestjs/jwt';
+import { PassportModule } from '@nestjs/passport';
+import { AuthController } from './auth.controller';
+import { AuthService } from './auth.service';
+import { GoogleStrategy } from './stratergies/google.stratergy';
+import { JwtStrategy } from './stratergies/jwt.stratergy';
 
-// @Module({
-//   imports: [
-//     UsersModule,
-//     PassportModule,
-//     JwtModule.register({
-//       secret: jwtConstants.secret, // set the secret key for JWT
-//       signOptions: { expiresIn: '60s' }, // set the expiration time for JWT
-//     }),
-//   ],
-//   providers: [AuthService, JwtStrategy],
-//   controllers: [AuthController],
-//   exports: [AuthService],
-// })
-// export class AuthModule {}
-// // 
+@Module({
+  imports: [
+    PassportModule,
+    JwtModule.register({
+      secret: process.env.JWT_SECRET,
+      signOptions: { expiresIn: '7d' },
+    }),
+  ],
+  controllers: [AuthController],
+  providers: [AuthService, GoogleStrategy, JwtStrategy],
+  exports: [AuthService],
+})
+export class AuthModule {}

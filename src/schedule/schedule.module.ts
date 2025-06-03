@@ -7,4 +7,5 @@ import { SubmissionModule } from '../controller/submissions/submission.module';
   providers: [ScheduleService],
   exports: [ScheduleService]
 })
-export class ScheduleModule {} 
+
+export class ScheduleModule {}
