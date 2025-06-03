@@ -1,14 +1,21 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable,
+  NestMiddleware,
+  UnauthorizedException,
+  ForbiddenException, Logger} from '@nestjs/common';
 import { users } from '../../../drizzle/schema';
 import { db } from '../../db/index';
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import * as fs from 'fs';
 import * as path from 'path';
+import { JwtService } from '@nestjs/jwt';
+import { parseInt } from 'lodash';
+
 
 @Injectable()
 export class UsersService {
   private readonly logger = new Logger(UsersService.name);
   private readonly usersJsonPath = path.join(process.cwd(), 'users.json');
+  constructor(private readonly jwtService: JwtService) { }
 
   /**
    * Fetch all users from the database and store them in a JSON file
@@ -118,30 +125,37 @@ export class UsersService {
    * @param email Email of the user to check/create
    * @returns User information
    */
-  async verifyTokenAndManageUser(userData) {
+  async verifyTokenAndManageUser(token) {
     try {
-      // Check if user with this email already exists
-      const existingUsers = await db
+      const decoded: any = await this.jwtService.decode(token);
+      if (!decoded) {
+        throw new UnauthorizedException('Invalid token');
+      }
+
+      const user: any[] = await db
         .select()
         .from(users)
-        .where(eq(users.email, userData.email));
+        .where(sql`${users.id} = ${decoded.id} AND ${users.email} = ${decoded.email}`);
+      if (user.length > 0) {
+        user[0].id = parseInt(user[0].id) ; // Assign default role
 
-      if (existingUsers.length > 0) {
-        // User exists, return user info
         return {
           status: 'success',
-          message: 'User exists in the database',
-          user: existingUsers[0]
+          message: 'User already exists in the database',
+          user: user[0]
         };
       } else {
         // User doesn't exist, create new user
-        const newUser = await db
+        let userInset: any = {
+          id:  decoded.id,
+          email: decoded.email,
+          name: decoded.name || decoded.email.split('@')[0], // Use email as fallback for name
+        }
+        const newUser:any = await db
           .insert(users)
-          .values({
-            ...userData,
-          })
+          .values(userInset)
           .returning();
-
+        newUser[0].id = parseInt(newUser[0].id) ; // Assign default role
         return {
           status: 'success',
           message: 'New user created in the database',

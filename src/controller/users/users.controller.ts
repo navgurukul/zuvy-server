@@ -1,6 +1,7 @@
-import { Controller, Get, Post, HttpStatus, HttpException, Body, Res,
-  Req, } from '@nestjs/common';
+import { Controller, Get, Post, HttpStatus, HttpException, Body, Res, Query, Req, } from '@nestjs/common';
 import { UsersService } from './users.service';
+import { ApiTags, ApiBody, ApiOperation, ApiQuery, ApiBearerAuth, ApiParam } from '@nestjs/swagger';
+
 
 @Controller('users')
 export class UsersController {
@@ -52,9 +53,16 @@ export class UsersController {
    * @returns User information
    */
   @Post('verify-token')
-  async verifyToken(@Req() req) {
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Verify JWT token and manage user' })
+  @ApiQuery({
+    name: 'authToken',
+    type: String,
+    description: 'authToken of the user to verify',
+  })
+  async verifyToken(@Query('authToken') authToken: string) {
     try {
-      const result = await this.usersService.verifyTokenAndManageUser(req.user[0]);
+      const result = await this.usersService.verifyTokenAndManageUser(authToken);
       return result;
     } catch (error) {
       throw new HttpException(
