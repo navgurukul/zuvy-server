@@ -14,7 +14,11 @@ import {
   BadRequestException,
   Req,
   UseGuards,
-  Res
+  Res,
+  BadGatewayException,
+  UseInterceptors,
+  UploadedFile,
+  InternalServerErrorException
 } from '@nestjs/common';
 import { ContentService } from './content.service';
 import {
@@ -22,6 +26,7 @@ import {
   ApiBody,
   ApiOperation,
   ApiQuery,
+  ApiConsumes,
 } from '@nestjs/swagger';
 import { ApiBearerAuth } from '@nestjs/swagger';
 import {
@@ -55,6 +60,7 @@ import { ErrorResponse, SuccessResponse } from 'src/errorHandler/handler';
 import { Response } from 'express';
 import { complairDateTyeps } from 'src/helpers/index';
 import { FileInterceptor } from '@nestjs/platform-express/multer';
+import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 
 @Controller('content')
 @ApiTags('content')
@@ -606,7 +612,7 @@ export class ContentController {
   @ApiBearerAuth()
   async startAssessmentForStudent(@Req() req, @Param('assessmentOutsourseId') assessmentOutsourseId: number, @Param('newStart') newStart:boolean, @Res() res: Response): Promise<any> {
     try{
-      let [err, success] = await this.contentService.startAssessmentForStudent(assessmentOutsourseId, req.user[0]);
+      let [err, success] = await this.contentService.startAssessmentForStudent(assessmentOutsourseId,  newStart , req.user[0]);
       if (err) {
         return ErrorResponse.BadRequestException(err.message).send(res);
       }
