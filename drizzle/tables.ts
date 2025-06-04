@@ -471,7 +471,7 @@ export const exercisesHistory = main.table("exercises_history", {
 
 export const users = main.table("users", {
 	id: bigserial("id", { mode: "bigint" }).primaryKey().notNull(),
-	email: varchar("email", { length: 50 }),
+	email: varchar("email", { length: 50 }).unique(),  // Add .unique() here
 	name: varchar("name", { length: 250 }).default('').notNull(),
 	profilePicture: varchar("profile_picture", { length: 250 }),
 	googleUserId: varchar("google_user_id", { length: 250 }),

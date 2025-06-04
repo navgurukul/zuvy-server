@@ -1,4 +1,3 @@
-
 import { NestFactory } from '@nestjs/core';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { AppModule } from './app.module';
@@ -21,7 +20,7 @@ async function bootstrap() {
     .setTitle('NG zuvy API Docs')
     .setDescription(`[Base url: ${BASE_URL}]`)
     .setVersion('1.0')
-    .addBearerAuth()
+    // .addBearerAuth()
     .build();
   if (!BASE_URL.includes('main-api')) {
     const document = SwaggerModule.createDocument(app, config);
@@ -30,7 +29,7 @@ async function bootstrap() {
         bearerAuth: [], 
       },
     ];
-    
+
     SwaggerModule.setup('apis', app, document);
   }
   await app.listen(PORT || 6000);

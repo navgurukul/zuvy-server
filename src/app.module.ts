@@ -15,6 +15,7 @@ import { SubmissionModule } from './controller/submissions/submission.module';
 import { AdminAssessmentModule } from './controller/adminAssessment/adminAssessment.module';
 import { ScheduleModule } from './schedule/schedule.module';
 import { InstructorModule } from './controller/instructor/instructor.module';
+import { AuthModule } from './auth/auth.module';
 
 @Module({
   imports: [
@@ -25,6 +26,7 @@ import { InstructorModule } from './controller/instructor/instructor.module';
       secret: process.env.JWT_SECRET_KEY,
       signOptions: { expiresIn: '24h' },
     }),
+    ConfigModule.forRoot({ isGlobal: true }),
     AdminAssessmentModule,
     BootcampModule,
     BatchesModule,
@@ -36,6 +38,7 @@ import { InstructorModule } from './controller/instructor/instructor.module';
     TrackingModule,
     InstructorModule,
     ScheduleModule,
+    AuthModule,
   ],
   providers: [
     {

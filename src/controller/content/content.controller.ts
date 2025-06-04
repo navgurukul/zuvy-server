@@ -14,7 +14,13 @@ import {
   BadRequestException,
   Req,
   UseGuards,
-  Res
+  Res,
+  UseInterceptors,
+  ParseIntPipe,
+  UploadedFile,
+  InternalServerErrorException,
+  BadGatewayException,
+  UploadedFiles
 } from '@nestjs/common';
 import { ContentService } from './content.service';
 import {
@@ -22,6 +28,9 @@ import {
   ApiBody,
   ApiOperation,
   ApiQuery,
+  ApiConsumes,
+  getSchemaPath,
+  ApiExtraModels,
 } from '@nestjs/swagger';
 import { ApiBearerAuth } from '@nestjs/swagger';
 import {
@@ -47,12 +56,14 @@ import {
   CreateQuizzesDto,
   EditQuizBatchDto,
   AddQuizVariantsDto,
-  deleteQuestionOrVariantDto
+  deleteQuestionOrVariantDto,
+  UpdateChapterDto
 } from './dto/content.dto';
 import { RolesGuard } from 'src/guards/roles.guard';
 import { ErrorResponse, SuccessResponse } from 'src/errorHandler/handler';
 import { Response } from 'express';
 import { complairDateTyeps } from 'src/helpers/index';
+import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express/multer';
 
 @Controller('Content')
 @ApiTags('Content')
@@ -61,6 +72,7 @@ import { complairDateTyeps } from 'src/helpers/index';
     whitelist: true,
     transform: true,
     forbidNonWhitelisted: true,
+    skipMissingProperties: true
   }),
 )
 export class ContentController {
@@ -866,4 +878,95 @@ export class ContentController {
     }
   }
 
+  @Post('curriculum/upload-pdf')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Upload a PDF and save its link to a chapter' })
+  @ApiQuery({
+    name: 'moduleId',
+    required: true,
+    type: Number,
+    description: 'moduleId',
+  })
+  @ApiQuery({
+    name: 'chapterId',
+    required: true,
+    type: Number,
+    description: 'chapterId',
+  })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({ type: UpdateChapterDto })
+  @UseInterceptors(FileInterceptor('pdf'))
+  async uploadPdf(
+    @UploadedFile() file: Express.Multer.File,
+    @Query('moduleId') moduleId: number,
+    @Query('chapterId') chapterId: number,
+    @Body() reOrder: UpdateChapterDto
+  ) {
+    console.log("edit pdf",UpdateChapterDto)
+    if(file)
+    {
+    let url: string;
+
+    try {
+      url = await this.contentService.uploadPdfToS3(
+        file.buffer,
+        file.originalname,
+      );
+    } catch (err) {
+      if (err instanceof InternalServerErrorException) {
+        throw err;
+      }
+      throw new BadGatewayException(
+        'Failed to upload PDF to S3',
+        { cause: err as Error },
+      );
+    }
+    if (!url) {
+      throw new BadGatewayException('S3 returned an empty URL');
+    }
+    reOrder.links = [url];
+  }
+    const res = await this.contentService.editChapter(
+      reOrder,
+      moduleId,
+      chapterId,
+    );
+    return res;
+  }
+
+   @Post('curriculum/upload-images')
+@ApiOperation({ summary: 'Upload one or more images to S3' })
+@ApiBearerAuth()
+@ApiConsumes('multipart/form-data')
+@ApiBody({
+  schema: {
+    type: 'object',
+    properties: {
+      images: {
+        type: 'array',
+        items: { type: 'string', format: 'binary' },
+      },
+    },
+  },
+})
+@UseInterceptors(FilesInterceptor('images', 10))
+async uploadImages(
+    @UploadedFiles() files: Express.Multer.File[],
+  ) {
+    if (!files || files.length === 0) {
+      throw new BadRequestException('No image files provided');
+    }
+
+    // 1) upload each buffer, collecting URLs
+    const urls = await Promise.all(
+      files.map((file) =>
+        this.contentService.uploadImageToS3(
+          file.buffer,
+          file.originalname
+        ),
+      ),
+    );
+
+    return { urls };
+  }
 }
