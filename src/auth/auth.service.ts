@@ -1,6 +1,10 @@
 // auth/auth.service.ts
 import { Injectable } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
+import { db } from '../db/index';
+import { users } from '../../drizzle/schema';
+import { eq } from 'drizzle-orm';
+
 
 interface GoogleUser {
   email: string;
@@ -16,5 +20,19 @@ export class AuthService {
     return this.jwtService.sign(payload, {
       expiresIn: '7d',
     });
+  }
+
+  async isExistingUserEmail(email: string): boolean {
+    if (!email) {
+      return false;
+    }
+
+    const user = await db
+      .select()
+      .from(users)
+      .where(eq(users.email, email))
+      .limit(1);
+
+    return user.length == 1;
   }
 }
