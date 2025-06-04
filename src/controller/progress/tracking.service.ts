@@ -289,16 +289,16 @@ export class TrackingService {
           .returning();
       } else if (SubmitBody.submitQuiz != undefined) {
         const chapterStatus = await db
-        .select()
-        .from(zuvyChapterTracking)
-        .where(sql`${zuvyChapterTracking.userId } = ${userId} AND ${zuvyChapterTracking.chapterId } = ${chapterId}`);
-      if (chapterStatus.length > 0) {
-        return {
-          status: "success",
-          message: "Already submitted.",
-          code: STATUS_CODES.OK,
-        };
-      }
+          .select()
+          .from(zuvyChapterTracking)
+          .where(sql`${zuvyChapterTracking.userId} = ${userId} AND ${zuvyChapterTracking.chapterId} = ${chapterId}`);
+        if (chapterStatus.length > 0) {
+          return {
+            status: "success",
+            message: "Already submitted.",
+            code: STATUS_CODES.OK,
+          };
+        }
         SubmitBody.submitQuiz.sort((a, b) => a.mcqId - b.mcqId);
         const mcqIdArray = SubmitBody.submitQuiz.map((obj) => obj.mcqId);
         const chosenOptions = SubmitBody.submitQuiz.map((obj) => obj.chossenOption);
@@ -347,13 +347,19 @@ export class TrackingService {
 
   async getAllModuleByBootcampIdForStudent(bootcampId: number, userId: number) {
     try {
+      const bootcamp = await db.query.zuvyBootcampType.findFirst({
+        where: (bootcamp, { eq }) => eq(bootcamp.bootcampId, bootcampId),
+      });
+
+      const isCourseLocked = bootcamp?.isModuleLocked || false;
+
       const data = await db.query.zuvyCourseModules.findMany({
-        where: (courseModules, { eq }) =>
-          eq(courseModules.bootcampId, bootcampId),
+        where: (courseModules, { eq }) => eq(courseModules.bootcampId, bootcampId),
         orderBy: (courseModules, { asc }) => asc(courseModules.order),
         with: {
           moduleChapterData: {
             columns: {
+              id: true,
               topicId: true,
               order: true
             },
@@ -438,7 +444,6 @@ export class TrackingService {
       });
 
       if (result.length > 0) {
-
         const sqlChunks: SQL[] = [];
         const ids: number[] = [];
 
@@ -457,16 +462,46 @@ export class TrackingService {
         await db.update(zuvyModuleTracking).set(updateProgress)
           .where(sql`${inArray(zuvyModuleTracking.id, ids)}`);
       }
+
       if (modules.length > 0) {
-        for (let i = 1; i < modules.length; i++) {
-          if (modules[i - 1].progress == 100 && modules[i].isLock == false) {
-            modules[i].isLock = false;
+        if (!isCourseLocked) {
+          // Course is unlocked: All modules are accessible
+          modules = modules.map(module => ({ ...module, isLock: false }));
+        } else {
+          // Course is locked: restrict access based on last started/completed module
+          let lastStartedOrCompletedIndex = -1;
+
+          // Find the last module which was started (progress > 0)
+          for (let i = modules.length - 1; i >= 0; i--) {
+            if (modules[i].progress > 0) {
+              lastStartedOrCompletedIndex = i;
+              break;
+            }
           }
-          else if (modules[i - 1].progress < 100 && modules[i - 1].progress > 0 && modules[i].progress > 0) {
-            modules[i].isLock = false;
-          }
-          else {
-            modules[i].isLock = true;
+
+          // If none started, only first module is unlocked
+          if (lastStartedOrCompletedIndex === -1) {
+            modules = modules.map((module, index) => ({
+              ...module,
+              isLock: index !== 0,
+            }));
+          } else {
+            const isLastCompleted = modules[lastStartedOrCompletedIndex].progress === 100;
+
+            modules = modules.map((module, index) => {
+              if (index <= lastStartedOrCompletedIndex) {
+                // Unlock previously accessed modules
+                return { ...module, isLock: false };
+              }
+
+              if (isLastCompleted && index === lastStartedOrCompletedIndex + 1) {
+                // Unlock only the next module if last one is fully completed
+                return { ...module, isLock: false };
+              }
+
+              // Lock all others
+              return { ...module, isLock: true };
+            });
           }
         }
       }
@@ -937,7 +972,7 @@ export class TrackingService {
           if (chapter[0].quizQuestions !== null) {
             const quizQuestionIds = Object.values(chapter[0].quizQuestions);
             quizQuestionIds.sort((a, b) => a - b);
-  
+
             // Check if chapter was tracked
             const chapterTracking = await db
               .select()
@@ -946,18 +981,18 @@ export class TrackingService {
                 sql`${zuvyChapterTracking.userId} = ${userId} AND ${zuvyChapterTracking.chapterId} = ${chapterId}`
               )
               .limit(1);
-  
+
             const quizTrack = await db
               .select()
               .from(zuvyQuizTracking)
               .where(
                 sql`${zuvyQuizTracking.userId} = ${userId} AND ${zuvyQuizTracking.chapterId} = ${chapterId} AND ${zuvyQuizTracking.chosenOption} IS NOT NULL`
               );
-  
+
             const isAttempted = quizTrack.length > 0;
             const status = isAttempted ? 'Completed' : 'Pending';
-  
-            if (isAttempted) {  
+
+            if (isAttempted) {
               // Fetch all quiz variants for the chapter questions
               const allVariants = await db.query.zuvyModuleQuizVariants.findMany({
                 where: (moduleQuiz, { sql }) => sql`${inArray(moduleQuiz.quizId, quizQuestionIds)}`,
@@ -973,13 +1008,13 @@ export class TrackingService {
                   },
                 },
               });
-  
+
               // Add empty quizTrackingData for unattempted variants
               const enrichedVariants = allVariants.map((variant) => ({
                 ...variant,
                 quizTrackingData: variant['quizTrackingData'].length > 0 ? variant['quizTrackingData'] : [],
               }));
-  
+
               return [
                 null,
                 {
@@ -995,31 +1030,31 @@ export class TrackingService {
                 },
               ];
             }
-  
+
             // If not attempted yet, deterministically pick variants
             const randomVariants = await Promise.all(
               quizQuestionIds.map(async (quizId) => {
                 const allVariants = await db.query.zuvyModuleQuizVariants.findMany({
                   where: (moduleQuiz) => eq(moduleQuiz.quizId, quizId),
                 });
-  
+
                 if (allVariants.length === 0) {
                   throw new Error(`No variants found for quizId: ${quizId}`);
                 }
-  
+
                 const hash = crypto.createHash('sha256')
                   .update(`${userId}-${quizId}`)
                   .digest('hex');
                 const hashValue = parseInt(hash.substring(0, 8), 16);
                 const selectedVariantIndex = hashValue % allVariants.length;
-  
+
                 return {
                   ...allVariants[selectedVariantIndex],
                   quizTrackingData: [],
                 };
               })
             );
-  
+
             return [
               null,
               {
@@ -1075,7 +1110,7 @@ export class TrackingService {
             .from(zuvyChapterTracking)
             .where(sql`${zuvyChapterTracking.userId} = ${userId} and ${zuvyChapterTracking.chapterId} = ${chapterId}`);
           let statusCount = ChapterTracking.length > 0 ? 1 : 0;
-          
+
           const status = statusCount > 0 ? 'Completed' : 'Pending';
           const codingProblem = await db
             .select()
@@ -1432,7 +1467,7 @@ export class TrackingService {
           PracticeCode: {
             where: (zuvyPracticeCode, { eq, and, or, ne }) => and(
               eq(zuvyPracticeCode.userId, userId),
-              eq(zuvyPracticeCode.action,helperVariable.SUBMIT)
+              eq(zuvyPracticeCode.action, helperVariable.SUBMIT)
             ),
             columns: {
               id: true,
@@ -1470,7 +1505,7 @@ export class TrackingService {
       // Now get the chapter separately using the chapterId from the assessment
       if (data.submitedOutsourseAssessment?.chapterId) {
         const chapter = await db.query.zuvyModuleChapter.findFirst({
-          where: (zuvyModuleChapter, { eq }) => 
+          where: (zuvyModuleChapter, { eq }) =>
             eq(zuvyModuleChapter.id, data.submitedOutsourseAssessment.chapterId),
           columns: {
             id: true,
@@ -1498,7 +1533,7 @@ export class TrackingService {
 
         return acc;
       }, []);
-      
+
       data.PracticeCode = filteredData;
 
       return data;
@@ -1506,7 +1541,7 @@ export class TrackingService {
     catch (err) {
       throw err;
     }
- }
+  }
 
 
   async getAllFormsWithStatus(

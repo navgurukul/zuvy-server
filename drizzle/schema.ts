@@ -2268,6 +2268,15 @@ export const zuvyBootcampType = main.table('zuvy_bootcamp_type', {
     onDelete: 'cascade',
   }),
   type: text('type').notNull(), // Type of bootcamp (Public, Private, etc.)
+  isModuleLocked: boolean('is_module_locked').default(false),
+  createdAt: timestamp('created_at', {
+    withTimezone: true,
+    mode: 'string',
+  }).defaultNow(),
+  updatedAt: timestamp('updated_at', {
+    withTimezone: true,
+    mode: 'string',
+  }).defaultNow(),
 });
 
 export const batchesRelations = relations(zuvyBootcamps, ({ one, many }) => ({

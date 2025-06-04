@@ -14,12 +14,7 @@ import {
   BadRequestException,
   Req,
   UseGuards,
-  Res,
-  UseInterceptors,
-  ParseIntPipe,
-  UploadedFile,
-  InternalServerErrorException,
-  BadGatewayException
+  Res
 } from '@nestjs/common';
 import { ContentService } from './content.service';
 import {
@@ -27,7 +22,6 @@ import {
   ApiBody,
   ApiOperation,
   ApiQuery,
-  ApiConsumes,
 } from '@nestjs/swagger';
 import { ApiBearerAuth } from '@nestjs/swagger';
 import {
@@ -61,7 +55,6 @@ import { ErrorResponse, SuccessResponse } from 'src/errorHandler/handler';
 import { Response } from 'express';
 import { complairDateTyeps } from 'src/helpers/index';
 import { FileInterceptor } from '@nestjs/platform-express/multer';
-import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 
 @Controller('content')
 @ApiTags('content')
@@ -609,12 +602,11 @@ export class ContentController {
   }
 
   @Get('/startAssessmentForStudent/assessmentOutsourseId=:assessmentOutsourseId/newStart=:newStart')
-  @Roles('admin')
   @ApiOperation({ summary: 'Start the assessment for a student' })
-  @ApiBearerAuth('JWT-auth')
+  @ApiBearerAuth()
   async startAssessmentForStudent(@Req() req, @Param('assessmentOutsourseId') assessmentOutsourseId: number, @Param('newStart') newStart:boolean, @Res() res: Response): Promise<any> {
     try{
-      let [err, success] = await this.contentService.startAssessmentForStudent(assessmentOutsourseId, newStart, req.user[0]);
+      let [err, success] = await this.contentService.startAssessmentForStudent(assessmentOutsourseId, req.user[0]);
       if (err) {
         return ErrorResponse.BadRequestException(err.message).send(res);
       }
@@ -886,7 +878,7 @@ export class ContentController {
   }
 
   @Post('curriculum/upload-pdf')
-  @Roles('admin')
+  @ApiBearerAuth()
   @ApiOperation({ summary: 'Upload a PDF and save its link to a chapter' })
   @ApiQuery({
     name: 'moduleId',
@@ -913,7 +905,6 @@ export class ContentController {
     },
   })
   @UseInterceptors(FileInterceptor('pdf'))
-  @ApiBearerAuth('JWT-auth')
   async uploadPdf(
     @UploadedFile() file: Express.Multer.File,
     @Query('moduleId') moduleId: number,
@@ -947,4 +938,6 @@ export class ContentController {
     );
     return res;
   }
+
+
 }
