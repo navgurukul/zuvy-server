@@ -10,14 +10,20 @@ import { db } from '../db/index';
 import { eq, sql, count } from 'drizzle-orm';
 import { users, sansaarUserRoles } from '../../drizzle/schema';
 import { helperVariable } from 'src/constants/helper';
+import { AuthService } from '../auth/auth.service';
+let { GOOGLE_CLIENT_ID, GOOGLE_SECRET, GOOGLE_REDIRECT,JWT_SECRET_KEY } = process.env;
 
 @Injectable()
 export class JwtMiddleware implements NestMiddleware {
-  constructor(private readonly jwtService: JwtService) { }
+  constructor(
+    private readonly jwtService: JwtService,
+    private readonly authService: AuthService
+  ) {}
 
   async use(req, res: Response, next: NextFunction) {
-
     const unrestrictedRoutes = [
+      { path: '/auth/login', method: 'POST' },
+      { path: '/auth/refresh', method: 'POST' },
       { path: '/classes', method: 'GET' },
       { path: '/classes/redirect/', method: 'GET' },
       { path: '/classes/getAllAttendance/:batchId', method: 'GET' },
@@ -39,16 +45,30 @@ export class JwtMiddleware implements NestMiddleware {
     }
 
     try {
-      const decoded: any = await this.jwtService.decode(token);
+      // Check if token is blacklisted
+      await this.authService.validateToken(token);
+
+      console.log("Attempting to verify token:", token);
+      const decoded: any = await this.jwtService.verifyAsync(token, {
+        secret: JWT_SECRET_KEY
+      });
+      console.log("Token decoded successfully:", decoded);
+      
       if (!decoded) {
+        console.log("Decoded token is null or undefined");
         throw new UnauthorizedException('Invalid token');
       }
 
+      console.log("Looking up user with ID:", decoded.sub, "and email:", decoded.email);
       const user: any[] = await db
         .select()
         .from(users)
-        .where(sql`${users.id} = ${decoded.id} AND ${users.email} = ${decoded.email}`);
+        .where(sql`${users.id} = ${decoded.sub} AND ${users.email} = ${decoded.email}`);
+      
+      console.log("User lookup result:", user);
+      
       if (user.length === 0) {
+        console.log("No user found with the provided credentials");
         throw new UnauthorizedException('User is not authorized');
       }
 
@@ -71,6 +91,7 @@ export class JwtMiddleware implements NestMiddleware {
 
       next();
     } catch (error) {
+      console.error("Token verification error:", error);
       if (error instanceof UnauthorizedException || error instanceof ForbiddenException) {
         throw error;
       } else {

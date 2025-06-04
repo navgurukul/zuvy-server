@@ -13,6 +13,7 @@ import {
   Req,
   Query,
   BadRequestException,
+  UseGuards,
 } from '@nestjs/common';
 import { ClassesService } from './classes.service';
 import {
@@ -21,6 +22,7 @@ import {
   ApiOperation,
   ApiCookieAuth,
   ApiQuery,
+  ApiBearerAuth,
 } from '@nestjs/swagger';
 import {
   CreateDto,
@@ -30,16 +32,18 @@ import {
   updateSessionDto,
   DTOsessionRecordViews,
 } from './dto/classes.dto';
-import { ApiBearerAuth } from '@nestjs/swagger';
 import { Response } from 'express';
 import { ErrorResponse, SuccessResponse } from 'src/errorHandler/handler';
+import { Public } from '../../auth/decorators/public.decorator';
+import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 
 // config user for admin
 let configUser = { id: process.env.ID, email: process.env.TEAM_EMAIL };
 
 @Controller('classes')
 @ApiTags('classes')
-@ApiCookieAuth()
+@UseGuards(JwtAuthGuard)
+@ApiBearerAuth('JWT-auth')
 @UsePipes(
   new ValidationPipe({
     whitelist: true,
@@ -50,6 +54,7 @@ let configUser = { id: process.env.ID, email: process.env.TEAM_EMAIL };
 export class ClassesController {
   constructor(private classesService: ClassesService) {}
 
+  @Public()
   @Get('/')
   @ApiOperation({ summary: 'Google authenticate' })
   async googleAuth(
@@ -60,8 +65,9 @@ export class ClassesController {
     return this.classesService.googleAuthentication(res, email, userId);
   }
 
+  @Public()
   @Get('/redirect')
-  @ApiBearerAuth()
+  @ApiBearerAuth('JWT-auth')
   @ApiOperation({ summary: 'Google authentication redirect' })
   async googleAuthRedirect(@Req() request) {
     return this.classesService.googleAuthenticationRedirect(
@@ -72,7 +78,7 @@ export class ClassesController {
 
   @Post('/')
   @ApiOperation({ summary: 'Create the new class' })
-  @ApiBearerAuth()
+  @ApiBearerAuth('JWT-auth')
   async create(@Body() classData: CreateSessionDto, @Req() req) {
     return this.classesService.createSession(classData, {
       ...configUser,
@@ -81,7 +87,7 @@ export class ClassesController {
   }
 
   @Get('/getAttendance/:meetingId')
-  @ApiBearerAuth()
+  @ApiBearerAuth('JWT-auth')
   @ApiOperation({ summary: 'Get the google class attendance by meetingId' })
   async extractMeetAttendance(
     @Req() req,
@@ -97,8 +103,9 @@ export class ClassesController {
     return values;
   }
 
+  @Public()
   @Get('/getAllAttendance/:batchId')
-  @ApiBearerAuth()
+  @ApiBearerAuth('JWT-auth')
   @ApiOperation({ summary: 'Get the google all classes attendance by batchID' })
   extractMeetAttendanceByBatch(
     @Req() req,
@@ -131,7 +138,7 @@ export class ClassesController {
   // }
 
   @Get('/analytics/:sessionId')
-  @ApiBearerAuth()
+  @ApiBearerAuth('JWT-auth')
   @ApiOperation({ summary: 'meeting attendance analytics with meeting link' })
   async meetingAttendanceAnalytics(
     @Req() req,
@@ -148,7 +155,7 @@ export class ClassesController {
   }
 
   @Post('/analytics/reload')
-  @ApiBearerAuth()
+  @ApiBearerAuth('JWT-auth')
   @ApiOperation({ summary: 'meeting attendance analytics with meeting link' })
   async meetingAttendanceRefress(@Req() req, @Body() reloadData: reloadDto) {
     let meetingIds: Array<any> = reloadData?.meetingIds;
@@ -176,7 +183,7 @@ export class ClassesController {
     type: Number,
     description: 'Offset for pagination',
   })
-  @ApiBearerAuth()
+  @ApiBearerAuth('JWT-auth')
   getClassesByBatchId(
     @Query('limit') limit: number,
     @Query('offset') offset: number,
@@ -187,7 +194,7 @@ export class ClassesController {
 
   @Get('/getAttendeesByMeetingId/:id')
   @ApiOperation({ summary: 'Get the google class attendees by meetingId' })
-  @ApiBearerAuth()
+  @ApiBearerAuth('JWT-auth')
   getAttendeesByMeetingId(@Param('id') id: number): Promise<object> {
     return this.classesService.getAttendeesByMeetingId(id);
   }
@@ -224,7 +231,7 @@ export class ClassesController {
     type: String,
     description: 'completed, upcoming, ongoing or all',
   })
-  @ApiBearerAuth()
+  @ApiBearerAuth('JWT-auth')
   async getClassesBy(
     @Param('bootcampId') bootcampId: number,
     @Query('batchId') batchId: number,
@@ -247,7 +254,7 @@ export class ClassesController {
   }
   @Get('/meetings/:bootcampId')
   @ApiOperation({ summary: 'Get the google classes id by bootcampId' })
-  @ApiBearerAuth()
+  @ApiBearerAuth('JWT-auth')
   getClassesBybootcampId(
     @Query('bootcampId') bootcampId: string,
   ): Promise<object> {
@@ -256,7 +263,7 @@ export class ClassesController {
 
   @Delete('/delete/:meetingId')
   @ApiOperation({ summary: 'Delete the google class by meetingId' })
-  @ApiBearerAuth()
+  @ApiBearerAuth('JWT-auth')
   deleteClassByMeetingId(
     @Param('meetingId') meetingId: string,
     @Req() req,
@@ -269,7 +276,7 @@ export class ClassesController {
 
   @Patch('/update/:meetingId')
   @ApiOperation({ summary: 'Update the google class by meetingId' })
-  @ApiBearerAuth()
+  @ApiBearerAuth('JWT-auth')
   updateClassByMeetingId(
     @Param('meetingId') meetingId: string,
     @Body() classData: updateSessionDto,
@@ -283,7 +290,7 @@ export class ClassesController {
   
   @Get('/sessionRecordViews')
   @ApiOperation({ summary: 'Get the session record views with sessionID or userID with both' })
-  @ApiBearerAuth()
+  @ApiBearerAuth('JWT-auth')
   @ApiQuery({
     name: 'sessionId',
     required: false,
@@ -321,7 +328,7 @@ export class ClassesController {
 
   @Post('/sessionRecordViews')
   @ApiOperation({ summary: 'Create the session record views' })
-  @ApiBearerAuth()
+  @ApiBearerAuth('JWT-auth')
   async createSessionRecordViews(
     @Body() sessionRecordViews: DTOsessionRecordViews,
     @Req() req,
