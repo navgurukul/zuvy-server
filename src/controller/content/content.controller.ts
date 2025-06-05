@@ -609,7 +609,7 @@ export class ContentController {
 
   @Get('/startAssessmentForStudent/assessmentOutsourseId=:assessmentOutsourseId/newStart=:newStart')
   @ApiOperation({ summary: 'Start the assessment for a student' })
-  @ApiBearerAuth()
+  @ApiBearerAuth('JWT-auth')
   async startAssessmentForStudent(@Req() req, @Param('assessmentOutsourseId') assessmentOutsourseId: number, @Param('newStart') newStart:boolean, @Res() res: Response): Promise<any> {
     try{
       let [err, success] = await this.contentService.startAssessmentForStudent(assessmentOutsourseId,  newStart , req.user[0]);
@@ -884,7 +884,7 @@ export class ContentController {
   }
 
   @Post('curriculum/upload-pdf')
-  @ApiBearerAuth()
+  @ApiBearerAuth('JWT-auth')
   @ApiOperation({ summary: 'Upload a PDF and save its link to a chapter' })
   @ApiQuery({
     name: 'moduleId',
