@@ -1,0 +1,30 @@
+version: "3.7"
+
+services:
+  db:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: dev_clone
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: "1"
+    volumes:
+      - db-data:/var/lib/postgresql/data
+
+  zuvy:
+    image: arunesh700/zuvy-server:latest
+    ports:
+      - "5000:5000"
+    environment:
+      PORT: 5000                 # ← tell your app which port to use
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_USER: postgres
+      DB_PASS: "1"
+      DB_NAME: dev_clone
+      BASE_URL: "http://localhost:5000"
+    depends_on:
+      - db
+    restart: unless-stopped
+
+volumes:
+  db-data:

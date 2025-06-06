@@ -851,7 +851,10 @@ export class ContentService {
       }
       const updatedQuestion = await db
         .update(zuvyCodingQuestions)
-        .set({ usage: sql`${zuvyCodingQuestions.usage}::numeric - 1`, ...codingProblem })
+        .set({ 
+          ...codingProblem,
+          usage: sql`(${zuvyCodingQuestions.usage}::integer - 1)`
+        })
         .where(eq(zuvyCodingQuestions.id, questionId))
         .returning();
       if (updatedQuestion.length > 0) {
