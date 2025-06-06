@@ -26,6 +26,7 @@ import { UsersModule } from './controller/users/users.module';
       secret: process.env.JWT_SECRET_KEY,
       signOptions: { expiresIn: '24h' },
     }),
+    ConfigModule.forRoot({ isGlobal: true }),
     AdminAssessmentModule,
     BootcampModule,
     BatchesModule,
