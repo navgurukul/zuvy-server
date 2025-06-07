@@ -990,19 +990,4 @@ async uploadImages(
     }
     return this.sseService.connectToAssessment(assessmentId);
   }
-
-  @Sse('admin-assessment-notifications/:assessmentId')
-  @ApiOperation({ summary: 'Connect to assessment notifications via SSE (Admin)' })
-  @ApiBearerAuth()
-  @UseGuards(RolesGuard)
-  async adminAssessmentNotifications(
-    @Param('assessmentId') assessmentId: number,
-    @Req() req
-  ): Promise<Observable<any>> {
-    // Only allow admins to connect to notifications
-    if (!req.user[0].roles.includes('admin')) {
-      throw new UnauthorizedException('Only admins can connect to admin assessment notifications');
-    }
-    return this.sseService.connectToAssessment(assessmentId);
-  }
 }

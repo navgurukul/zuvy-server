@@ -1,15 +1,11 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { Cron, CronExpression } from '@nestjs/schedule';
 import { db } from '../db';
 import { zuvyOutsourseAssessments } from '../../drizzle/schema';
-import { eq, sql, and, lte } from 'drizzle-orm';
-import { SseService } from './sse.service';
+import { eq } from 'drizzle-orm';
 
 @Injectable()
 export class AssessmentStateService {
   private readonly logger = new Logger(AssessmentStateService.name);
-
-  constructor(private sseService: SseService) {}
 
   // Event-based update when assessment is created or modified
   async handleAssessmentUpdate(assessmentId: number) {
@@ -29,36 +25,8 @@ export class AssessmentStateService {
     }
   }
 
-  // Backup check every 5 minutes for any assessments that might need state updates
-  @Cron(CronExpression.EVERY_5_MINUTES)
-  async checkPendingStates() {
-    try {
-      const now = new Date();
-      
-      // Only get assessments that might need state updates
-      const assessments = await db.query.zuvyOutsourseAssessments.findMany({
-        where: sql`
-          ${zuvyOutsourseAssessments.publishDatetime} IS NOT NULL AND
-          (
-            ${zuvyOutsourseAssessments.publishDatetime} <= ${now.toISOString()} OR
-            ${zuvyOutsourseAssessments.startDatetime} <= ${now.toISOString()} OR
-            ${zuvyOutsourseAssessments.endDatetime} <= ${now.toISOString()}
-          )
-        `
-      });
-
-      this.logger.log(`Checking ${assessments.length} assessments for state updates`);
-
-      for (const assessment of assessments) {
-        await this.updateAssessmentState(assessment);
-      }
-    } catch (error) {
-      this.logger.error('Error checking pending states:', error);
-    }
-  }
-
   // Helper method to update assessment state
-  private async updateAssessmentState(assessment: any) {
+  async updateAssessmentState(assessment: any) {
     const now = new Date();
     const oldState = assessment.currentState;
     let newState = oldState;
@@ -90,7 +58,7 @@ export class AssessmentStateService {
       }
     }
 
-    // If state has changed, update it and notify clients
+    // If state has changed, update it
     if (newState !== oldState) {
       await db
         .update(zuvyOutsourseAssessments)
@@ -99,9 +67,6 @@ export class AssessmentStateService {
           updatedAt: now.toISOString()
         } as any)
         .where(eq(zuvyOutsourseAssessments.id, assessment.id));
-
-      // Notify connected clients about the state change
-      this.sseService.notifyAssessmentStateChange(assessment.id, newState);
       
       this.logger.log(`Assessment ${assessment.id} state changed from ${oldState} to ${newState}`);
     }
