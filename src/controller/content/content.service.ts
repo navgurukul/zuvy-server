@@ -72,6 +72,7 @@ import {
   PutObjectCommand,
 } from '@aws-sdk/client-s3';
 import { SseService } from '../../services/sse.service';
+import { AssessmentStateService } from '../../services/assessment-state.service';
 let { S3_ACCESS_KEY_ID, S3_BUCKET_NAME, S3_REGION, S3_SECRET_KEY_ACCESS } = process.env
 import e from 'express';
 let { DIFFICULTY } = helperVariable;
@@ -81,9 +82,11 @@ export class ContentService {
   private s3: S3Client;
   private bucket: string;
   private region: string;
+  logger: any;
   constructor(
     private config: ConfigService,
-    private sseService: SseService
+    private sseService: SseService,
+    private assessmentStateService: AssessmentStateService
   ) {
     this.bucket = this.config.get('S3_BUCKET_NAME');
     this.region = 'ap-south-1';
@@ -636,7 +639,7 @@ export class ContentService {
                     description: true,
                     difficulty: true,
                     tagId: true,
-                    constraints: true, // Include constraints here
+                    constraints: true,
                   },
                   with: {
                     testCases: {
@@ -658,6 +661,14 @@ export class ContentService {
           return 'No Chapter found';
         }
 
+        // Update assessment state using AssessmentStateService
+        await this.handleAssessmentUpdate(chapterDetails[0].id);
+
+        // Get the updated assessment to get the current state
+        const updatedAssessment = await db.query.zuvyOutsourseAssessments.findFirst({
+          where: eq(zuvyOutsourseAssessments.id, chapterDetails[0].id)
+        });
+
         const stateMap = {
           0: 'DRAFT',
           1: 'PUBLISHED',
@@ -671,7 +682,7 @@ export class ContentService {
         formatedData.publishDatetime = chapterDetails[0].publishDatetime;
         formatedData.startDatetime = chapterDetails[0].startDatetime;
         formatedData.endDatetime = chapterDetails[0].endDatetime;
-        formatedData.currentState = stateMap[Number(chapterDetails[0].currentState)] || 'UNKNOWN';
+        formatedData.currentState = stateMap[updatedAssessment.currentState] || stateMap[2] ;
 
         return formatedData;
       }
@@ -2067,6 +2078,18 @@ export class ContentService {
         });
       }
 
+      // Update assessment state using AssessmentStateService
+      await this.handleAssessmentUpdate(assessment[0].id);
+
+      // Get the updated assessment to get the current state
+      const updatedAssessment = await db.query.zuvyOutsourseAssessments.findFirst({
+        where: eq(zuvyOutsourseAssessments.id, assessment[0].id)
+      });
+      console.log('updatedAssessment', updatedAssessment);
+      if (updatedAssessment.currentState===null) {
+        updatedAssessment.currentState = 2; 
+      }
+
       assessment[0]["totalQuizzes"] = assessment[0]?.Quizzes.length || 0;
       assessment[0]["totalOpenEndedQuestions"] = assessment[0]?.OpenEndedQuestions.length || 0;
       assessment[0]["totalCodingQuestions"] = assessment[0]?.CodingQuestions.length || 0;
@@ -2075,8 +2098,7 @@ export class ContentService {
       delete assessment[0].OpenEndedQuestions;
       delete assessment[0].CodingQuestions;
       // Check currentState and enforce rules
-      const state = assessment[0].currentState;
-      if (state === 0) {
+      if (updatedAssessment.currentState === 0) {
         // DRAFT
         return {
           status: 'success',
@@ -2085,7 +2107,7 @@ export class ContentService {
           message: 'Assessment is not available yet.',
         };
       }
-      if (state === 1) {
+      if (updatedAssessment.currentState === 1) {
         // PUBLISHED
         const startTime = assessment[0].startDatetime
           ? new Date(assessment[0].startDatetime).toLocaleString('en-US', {
@@ -2109,7 +2131,7 @@ export class ContentService {
           }
         };
       }
-      if (state === 2) {
+      if (updatedAssessment.currentState === 2) {
         // ACTIVE
         return {
           status: 'success',
@@ -2119,7 +2141,7 @@ export class ContentService {
           ...assessment[0],
         };
       }
-      if (state === 3) {
+      if (updatedAssessment.currentState === 3) {
         // CLOSED
         return {
           status: 'success',
@@ -2138,6 +2160,70 @@ export class ContentService {
       };
     } catch (err) {
       throw err;
+    }
+  }
+
+  async handleAssessmentUpdate(assessmentId: number) {
+    try {
+      const assessment = await db.query.zuvyOutsourseAssessments.findFirst({
+        where: eq(zuvyOutsourseAssessments.id, assessmentId)
+      });
+
+      if (!assessment) {
+        this.logger.warn(`Assessment ${assessmentId} not found`);
+        return;
+      }
+
+      await this.updateAssessmentState(assessment);
+    } catch (error) {
+      this.logger.error(`Error handling assessment update for ${assessmentId}:`, error);
+    }
+  }
+
+  // Helper method to update assessment state
+  async updateAssessmentState(assessment: any) {
+    const now = new Date();
+    const oldState = assessment.currentState;
+    let newState = oldState;
+
+    // Calculate new state based on dates
+    if (assessment.publishDatetime) {
+      const publishDate = new Date(assessment.publishDatetime);
+
+      if (now < publishDate) {
+        newState = 0; // DRAFT
+      } else if (assessment.startDatetime) {
+        const startDate = new Date(assessment.startDatetime);
+
+        if (now >= publishDate && now < startDate) {
+          newState = 1; // PUBLISHED
+        } else if (assessment.endDatetime) {
+          const endDate = new Date(assessment.endDatetime);
+
+          if (now >= startDate && now < endDate) {
+            newState = 2; // ACTIVE
+          } else if (now >= endDate) {
+            newState = 3; // CLOSED
+          }
+        } else if (now >= startDate) {
+          newState = 2; // ACTIVE - no end date
+        }
+      } else if (now >= publishDate) {
+        newState = 1; // PUBLISHED - no start date
+      }
+    }
+
+    // If state has changed, update it
+    if (newState !== oldState) {
+      await db
+        .update(zuvyOutsourseAssessments)
+        .set({
+          currentState: newState,
+          updatedAt: now.toISOString()
+        } as any)
+        .where(eq(zuvyOutsourseAssessments.id, assessment.id));
+
+      this.logger.log(`Assessment ${assessment.id} state changed from ${oldState} to ${newState}`);
     }
   }
 
