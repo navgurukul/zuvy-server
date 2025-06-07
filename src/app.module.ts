@@ -15,6 +15,8 @@ import { SubmissionModule } from './controller/submissions/submission.module';
 import { AdminAssessmentModule } from './controller/adminAssessment/adminAssessment.module';
 import { ScheduleModule } from './schedule/schedule.module';
 import { InstructorModule } from './controller/instructor/instructor.module';
+import { SseService } from './services/sse.service';
+import { AssessmentStateService } from './services/assessment-state.service';
 
 @Module({
   imports: [
@@ -43,6 +45,8 @@ import { InstructorModule } from './controller/instructor/instructor.module';
       provide: APP_INTERCEPTOR,
       useClass: LoggingInterceptor,
     },
+    SseService,
+    AssessmentStateService,
   ]
 })
 export class AppModule { }

@@ -71,20 +71,24 @@ import {
   GetObjectCommand,
   PutObjectCommand,
 } from '@aws-sdk/client-s3';
-let {S3_ACCESS_KEY_ID,S3_BUCKET_NAME,S3_REGION,S3_SECRET_KEY_ACCESS} = process.env
+import { SseService } from '../../services/sse.service';
+let { S3_ACCESS_KEY_ID, S3_BUCKET_NAME, S3_REGION, S3_SECRET_KEY_ACCESS } = process.env
 import e from 'express';
 let { DIFFICULTY } = helperVariable;
 
 @Injectable()
 export class ContentService {
   private s3: S3Client;
-  private bucket :string;
+  private bucket: string;
   private region: string;
-  constructor(private config: ConfigService) {
+  constructor(
+    private config: ConfigService,
+    private sseService: SseService
+  ) {
     this.bucket = this.config.get('S3_BUCKET_NAME');
     this.region = 'ap-south-1';
     this.s3 = new S3Client({
-      region:this.region,
+      region: this.region,
       credentials: {
         accessKeyId: this.config.get('S3_ACCESS_KEY_ID'),
         secretAccessKey: this.config.get('S3_SECRET_KEY_ACCESS'),
@@ -108,21 +112,21 @@ export class ContentService {
       throw new InternalServerErrorException('Error uploading PDF to S3');
     }
   }
-  
+
   async uploadImageToS3(
-  buffer: Buffer,
-  filename: string): Promise<string> {
-  const key = `mcq_images/${Date.now()}_${filename}`;
-  await this.s3.send(
-        new PutObjectCommand({
-          Bucket: this.bucket,
-          Key: key,
-          Body: buffer,
-          ContentType: 'image/*',
-        }),
-      );
-  return `https://${this.bucket}.s3.${this.region}.amazonaws.com/${key}`;
- }
+    buffer: Buffer,
+    filename: string): Promise<string> {
+    const key = `mcq_images/${Date.now()}_${filename}`;
+    await this.s3.send(
+      new PutObjectCommand({
+        Bucket: this.bucket,
+        Key: key,
+        Body: buffer,
+        ContentType: 'image/*',
+      }),
+    );
+    return `https://${this.bucket}.s3.${this.region}.amazonaws.com/${key}`;
+  }
 
   async lockContent(modules__, module_id = null) {
     let index = 0;
@@ -649,8 +653,26 @@ export class ContentService {
             }
           },
         });
+
+        if (!chapterDetails || chapterDetails.length === 0) {
+          return 'No Chapter found';
+        }
+
+        const stateMap = {
+          0: 'DRAFT',
+          1: 'PUBLISHED',
+          2: 'ACTIVE',
+          3: 'CLOSED'
+        };
+
         chapterDetails[0]["assessmentOutsourseId"] = chapterDetails[0].id;
-        let formatedData = this.formatedChapterDetails(chapterDetails[0]);
+        let formatedData = await this.formatedChapterDetails(chapterDetails[0]);
+
+        formatedData.publishDatetime = chapterDetails[0].publishDatetime;
+        formatedData.startDatetime = chapterDetails[0].startDatetime;
+        formatedData.endDatetime = chapterDetails[0].endDatetime;
+        formatedData.currentState = stateMap[Number(chapterDetails[0].currentState)] || 'UNKNOWN';
+
         return formatedData;
       }
 
@@ -773,7 +795,7 @@ export class ContentService {
 
       // If any student has started the module, throw an error
       if (studentCount > 0) {
-        return [{ message:`Module cannot be reordered or updated as it has been started by ${studentCount} student(s).`}, null];
+        return [{ message: `Module cannot be reordered or updated as it has been started by ${studentCount} student(s).` }, null];
       }
 
       if (reorderData.moduleDto == undefined) {
@@ -1083,6 +1105,45 @@ export class ContentService {
           message: 'Pass percentage cannot be greater than 100.',
         })
       }
+      // New date validations
+      if (assessmentBody.publishDatetime && assessmentBody.startDatetime) {
+        const startDate = new Date(assessmentBody.startDatetime);
+        const publishDate = new Date(assessmentBody.publishDatetime);
+
+        if (startDate < publishDate) {
+          throw {
+            status: 'error',
+            statusCode: 400,
+            message: 'startDatetime must be greater than or equal to publishDatetime',
+          };
+        }
+      }
+
+      if (assessmentBody.endDatetime && assessmentBody.startDatetime) {
+        const endDate = new Date(assessmentBody.endDatetime);
+        const startDate = new Date(assessmentBody.startDatetime);
+
+        if (endDate <= startDate) {
+          throw {
+            status: 'error',
+            statusCode: 400,
+            message: 'endDatetime must be greater than startDatetime',
+          };
+        }
+      }
+
+      // Handle partial date inputs - default to Draft if any date is missing
+      if (
+        (assessmentBody.publishDatetime && !assessmentBody.startDatetime) ||
+        (assessmentBody.startDatetime && !assessmentBody.endDatetime) ||
+        (assessmentBody.endDatetime && !assessmentBody.startDatetime)
+      ) {
+        // Remove all date fields to default to Draft state
+        delete assessmentBody.publishDatetime;
+        delete assessmentBody.startDatetime;
+        delete assessmentBody.endDatetime;
+      }
+
       if (assessmentBody.title) {
         const updatedChapterName = await db.update(zuvyModuleChapter).set({ title: assessmentBody.title }).where(eq(zuvyModuleChapter.id, chapterId)).returning();
         if (updatedChapterName.length == 0) {
@@ -1115,8 +1176,38 @@ export class ContentService {
         let { mcqIds, openEndedQuestionIds, codingProblemIds, title, description, ...OutsourseAssessmentData__ } = assessmentBody;
 
         let assessment_id = ModuleAssessment.id;
-        
+
         let assessmentData = { title, description };
+
+        // Calculate current state based on dates
+        const now = new Date();
+        let currentState = 0; // 0: DRAFT, 1: PUBLISHED, 2: ACTIVE, 3: CLOSED
+
+        if (assessmentBody.publishDatetime) {
+          const publishDate = new Date(assessmentBody.publishDatetime);
+
+          if (now < publishDate) {
+            currentState = 0; // DRAFT
+          } else if (assessmentBody.startDatetime) {
+            const startDate = new Date(assessmentBody.startDatetime);
+
+            if (now >= publishDate && now < startDate) {
+              currentState = 1; // PUBLISHED - visible but not started
+            } else if (assessmentBody.endDatetime) {
+              const endDate = new Date(assessmentBody.endDatetime);
+
+              if (now >= startDate && now < endDate) {
+                currentState = 2; // ACTIVE - assessment is live
+              } else if (now >= endDate) {
+                currentState = 3; // CLOSED - assessment is over
+              }
+            } else if (now >= startDate) {
+              currentState = 2; // ACTIVE - no end date, assessment is live
+            }
+          } else if (now >= publishDate) {
+            currentState = 1; // PUBLISHED - no start date, just published
+          }
+        }
 
         // filter out the ids that are not in the assessment
         let existingQuizIds = OutsourseQuizzes.length > 0 ? OutsourseQuizzes.map((q) => q.quiz_id).filter(id => id !== null) : [];
@@ -1190,7 +1281,22 @@ export class ContentService {
           hardMcqMark: mcqScores.hard,
         }
 
-        let updatedOutsourse: any = { ...OutsourseAssessmentData__, ...marks };
+        let updatedOutsourse: any = {
+          ...OutsourseAssessmentData__,
+          ...marks,
+          currentState,
+          updatedAt: new Date().toISOString(),
+          ...(assessmentBody.publishDatetime && {
+            publishDatetime: new Date(assessmentBody.publishDatetime).toISOString()
+          }),
+          ...(assessmentBody.startDatetime && {
+            startDatetime: new Date(assessmentBody.startDatetime).toISOString()
+          }),
+          ...(assessmentBody.endDatetime && {
+            endDatetime: new Date(assessmentBody.endDatetime).toISOString()
+          }),
+        };
+        console.log('updatedOutsourse', updatedOutsourse);
         let updatedOutsourseAssessment = await db
           .update(zuvyOutsourseAssessments)
           .set(updatedOutsourse)
@@ -1203,7 +1309,7 @@ export class ContentService {
           .where(eq(zuvyModuleAssessment.id, assessment_id))
           .returning();
         // Insert new data
-         
+
         // Update chapter title when assessment title changes
         if (title) {
           const updatedChapterName = await db.update(zuvyModuleChapter).set({ title }).where(eq(zuvyModuleChapter.id, chapterId)).returning();
@@ -1314,6 +1420,11 @@ export class ContentService {
 
   async deleteChapter(chapterId: number, moduleId: number): Promise<any> {
     try {
+      // First check if this chapter has an assessment
+      const assessment = await db.query.zuvyOutsourseAssessments.findFirst({
+        where: (assessments, { eq }) => eq(assessments.chapterId, chapterId)
+      });
+
       let spyMan = await db
         .delete(zuvyModuleChapter)
         .where(eq(zuvyModuleChapter.id, chapterId))
@@ -1331,6 +1442,11 @@ export class ContentService {
         .where(
           sql`${zuvyModuleChapter.order} > ${spyMan[0].order} and ${zuvyModuleChapter.moduleId} = ${moduleId}`,
         );
+
+      // If there was an assessment, notify all connected students
+      if (assessment) {
+        this.sseService.notifyAssessmentDeletion(assessment.id);
+      }
 
       return {
         status: 'success',
@@ -1941,14 +2057,16 @@ export class ContentService {
             }
           },
         },
-      })
-      if (assessment == undefined || assessment.length == 0) {
+      });
+
+      if (!assessment || assessment.length === 0) {
         throw ({
           status: 'error',
           statusCode: 404,
           message: 'Assessment not found',
         });
       }
+
       assessment[0]["totalQuizzes"] = assessment[0]?.Quizzes.length || 0;
       assessment[0]["totalOpenEndedQuestions"] = assessment[0]?.OpenEndedQuestions.length || 0;
       assessment[0]["totalCodingQuestions"] = assessment[0]?.CodingQuestions.length || 0;
@@ -1956,7 +2074,68 @@ export class ContentService {
       delete assessment[0].Quizzes;
       delete assessment[0].OpenEndedQuestions;
       delete assessment[0].CodingQuestions;
-      return assessment[0];
+      // Check currentState and enforce rules
+      const state = assessment[0].currentState;
+      if (state === 0) {
+        // DRAFT
+        return {
+          status: 'success',
+          statusCode: 200,
+          assessmentState: 'DRAFT',
+          message: 'Assessment is not available yet.',
+        };
+      }
+      if (state === 1) {
+        // PUBLISHED
+        const startTime = assessment[0].startDatetime
+          ? new Date(assessment[0].startDatetime).toLocaleString('en-US', {
+            year: 'numeric',
+            month: 'numeric',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+            hour12: true
+          })
+          : 'Unknown';
+        return {
+          status: 'success',
+          statusCode: 200,
+          assessmentState: 'PUBLISHED',
+          message: `Assessment is published but not started yet. Assessment will start at ${startTime}`,
+          assessment: {
+            ...assessment[0],
+            startTime: assessment[0].startDatetime
+          }
+        };
+      }
+      if (state === 2) {
+        // ACTIVE
+        return {
+          status: 'success',
+          statusCode: 200,
+          message: 'The assessment is currently available. Kindly proceed to attempt it.',
+          assessmentState: 'ACTIVE',
+          ...assessment[0],
+        };
+      }
+      if (state === 3) {
+        // CLOSED
+        return {
+          status: 'success',
+          statusCode: 200,
+          assessmentState: 'CLOSED',
+          message: 'Assessment is closed. You cannot attempt it anymore.',
+          assessment: assessment[0]
+        };
+      }
+
+      // fallback
+      return {
+        status: 'error',
+        statusCode: 400,
+        message: 'Invalid assessment state.',
+      };
     } catch (err) {
       throw err;
     }
@@ -2072,7 +2251,7 @@ export class ContentService {
  * This function might set up necessary variables, database entries, or other prerequisites 
  * for a student to begin taking an assessment.
  */
-  async startAssessmentForStudent(assessmentOutsourseId: number,newStart: boolean, user): Promise<any> {
+  async startAssessmentForStudent(assessmentOutsourseId: number, newStart: boolean, user): Promise<any> {
     try {
       let { id, roles } = user;
       const assessmentOutsourseData = await db.query.zuvyOutsourseAssessments.findFirst({
@@ -2082,24 +2261,33 @@ export class ContentService {
           ModuleAssessment: true,
         },
       });
+
+      // Check if assessment exists
+      if (!assessmentOutsourseData) {
+        return [{
+          status: 'error',
+          statusCode: 404,
+          message: 'Assessment not found. It may have been deleted or is no longer available.'
+        }];
+      }
+
       let submission = []
       let quizzes = []
       if (roles.includes('admin')) {
         id = Math.floor(Math.random() * (99999 - 1000 + 1)) + 1000;
       } else {
-        if(newStart)
-        {
-        let startedAt = new Date().toISOString();
+        if (newStart) {
+          let startedAt = new Date().toISOString();
           let insertAssessmentSubmission: any = { userId: id, assessmentOutsourseId, startedAt }
           submission = await db.insert(zuvyAssessmentSubmission).values(insertAssessmentSubmission).returning();
         }
-        else{
+        else {
           submission = await db.select().from(zuvyAssessmentSubmission)
-          .where(sql`${zuvyAssessmentSubmission.active} = true AND ${zuvyAssessmentSubmission.assessmentOutsourseId} = ${assessmentOutsourseId} AND ${zuvyAssessmentSubmission.userId} = ${id}`)
-          .orderBy(desc(zuvyAssessmentSubmission.id))
-          .limit(1)
-          if (!submission){
-            return [{error: 'not started the assessment or not get approvel'}]
+            .where(sql`${zuvyAssessmentSubmission.active} = true AND ${zuvyAssessmentSubmission.assessmentOutsourseId} = ${assessmentOutsourseId} AND ${zuvyAssessmentSubmission.userId} = ${id}`)
+            .orderBy(desc(zuvyAssessmentSubmission.id))
+            .limit(1)
+          if (!submission) {
+            return [{ error: 'not started the assessment or not get approvel' }]
           }
         }
         quizzes = await db.select().from(zuvyQuizTracking).where(sql`${zuvyQuizTracking.assessmentSubmissionId} = ${submission[0].id}`)
@@ -2277,8 +2465,8 @@ export class ContentService {
           ModuleAssessment: true,
           submitedOutsourseAssessments: {
             where: (submissions, { eq }) => eq(submissions.userId, userId),
-            columns: { id: true }, 
-            limit: 1 
+            columns: { id: true },
+            limit: 1
           }
         },
       });
@@ -2286,9 +2474,9 @@ export class ContentService {
       if (!IsAdmin && user.roles.includes('admin')) {
         userId = Math.floor(Math.random() * (99999 - 1000 + 1)) + 1000;
       }
-  
+
       const assessmentSubmissionId = assessmentOutsourseData?.submitedOutsourseAssessments?.[0]?.id ?? null;
- 
+
       const [err, quizQuestions] = await this.getQuizQuestionsByAllDifficulties(assessmentOutsourseId, assessmentOutsourseData, userId, assessmentSubmissionId);
 
       if (err) {
@@ -2305,7 +2493,7 @@ export class ContentService {
 
       const mcqs = Object.entries(quizQuestions).flatMap(([difficulty, questions]) => {
         const mark = Math.floor(Number(difficultyMarks[difficulty.toLowerCase()])) || 0;
-        
+
         return (questions || []).map(question => ({
           quizId: question.quizId,
           quizTitle: question.quizTitle,
@@ -2313,7 +2501,7 @@ export class ContentService {
           mark: mark,
           variantId: question.variantId,
           question: question.question,
-          options: question.options, 
+          options: question.options,
           correctOption: question.correctOption,
           variantNumber: question.variantNumber,
           outsourseQuizzesId: question.outsourseQuizzesId || question.assessmentId,
