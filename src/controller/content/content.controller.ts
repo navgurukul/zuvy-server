@@ -20,9 +20,7 @@ import {
   UploadedFile,
   InternalServerErrorException,
   BadGatewayException,
-  UploadedFiles,
-  UnauthorizedException,
-  Sse
+  UploadedFiles
 } from '@nestjs/common';
 import { ContentService } from './content.service';
 import {
@@ -66,8 +64,6 @@ import { ErrorResponse, SuccessResponse } from 'src/errorHandler/handler';
 import { Response } from 'express';
 import { complairDateTyeps } from 'src/helpers/index';
 import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express/multer';
-import { SseService } from '../../services/sse.service';
-import { Observable } from 'rxjs';
 
 @Controller('Content')
 @ApiTags('Content')
@@ -80,10 +76,7 @@ import { Observable } from 'rxjs';
   }),
 )
 export class ContentController {
-  constructor(
-    private contentService: ContentService,
-    private sseService: SseService
-  ) { }
+  constructor(private contentService: ContentService) { }
 
   @Post('/modules/:bootcampId')
   @ApiOperation({ summary: 'Create the module of a particular bootcamp' })
@@ -975,19 +968,5 @@ async uploadImages(
     );
 
     return { urls };
-  }
-
-  @Sse('assessment-notifications/:assessmentId')
-  @ApiOperation({ summary: 'Connect to assessment notifications via SSE' })
-  @ApiBearerAuth()
-  async assessmentNotifications(
-    @Param('assessmentId') assessmentId: number,
-    @Req() req
-  ): Promise<Observable<any>> {
-    // Only allow students to connect to notifications
-    if (!req.user[0].roles.includes('student')) {
-      throw new UnauthorizedException('Only students can connect to assessment notifications');
-    }
-    return this.sseService.connectToAssessment(assessmentId);
   }
 }

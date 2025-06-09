@@ -363,13 +363,6 @@ Team Zuvy`;
   
   async transformAssessments(assessments) {
     const result = {};
-    const stateDescriptions = {
-      0: 'DRAFT',
-      1: 'PUBLISHED',
-      2: 'ACTIVE',
-      3: 'CLOSED'
-    };
-    
     assessments.forEach((assessment) => {
       const moduleName = assessment.Module.name;
       const {
@@ -392,10 +385,6 @@ Team Zuvy`;
           {
             ...assessmentInfo,
             ...ModuleAssessment,
-            publishDatetime: assessment.publishDatetime,
-            startDatetime: assessment.startDatetime,
-            endDatetime: assessment.endDatetime,
-            assessmentState: stateDescriptions[assessment.currentState] || null,
             totalSubmitedAssessments: submitedOutsourseAssessments.length,
             qualifiedStudents,
           },
@@ -404,10 +393,6 @@ Team Zuvy`;
         result[moduleName].push({
           ...assessmentInfo,
           ...ModuleAssessment,
-          publishDatetime: assessment.publishDatetime,
-          startDatetime: assessment.startDatetime,
-          endDatetime: assessment.endDatetime,
-          assessmentState: stateDescriptions[assessment.currentState] || null,
           totalSubmitedAssessments: submitedOutsourseAssessments.length,
           qualifiedStudents,
         });
@@ -451,10 +436,6 @@ Team Zuvy`;
           order: true,
           totalCodingQuestions: true,
           totalMcqQuestions: true,
-          publishDatetime: true,
-          startDatetime: true,
-          endDatetime: true,
-          currentState: true,
         },
         with: {
           ModuleAssessment: {
