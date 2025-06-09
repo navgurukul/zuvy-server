@@ -266,13 +266,14 @@ export class TrackingService {
 
         // Filter assessment chapters based on their state
         trackingData = trackingData.filter(chapter => {
-          if (chapter.topicId === 6) {
-            const state = assessmentStates[chapter.id];
-            // Show chapter if state is PUBLISHED (1), ACTIVE (2), or CLOSED (3)
-            return state === 1 || state === 2 || state === 3;
-          }
-          return true; // Show all non-assessment chapters
-        });
+  if (chapter.topicId === 6) {
+    const state = assessmentStates[chapter.id];
+    // include null/undefined plus any of [1,2,3]
+    return state == null || [1,2,3].includes(state);
+  }
+  return true;
+});
+
 
         trackingData.forEach((chapter) => {
           chapter['status'] =
