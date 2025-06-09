@@ -84,8 +84,7 @@ export class ContentService {
   logger: any;
   constructor(
     private config: ConfigService,
-    private sseService: SseService,
-    private assessmentStateService: AssessmentStateService
+    private sseService: SseService
   ) {
     this.bucket = this.config.get('S3_BUCKET_NAME');
     this.region = 'ap-south-1';
