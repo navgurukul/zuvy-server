@@ -215,9 +215,9 @@ export class ClassesService {
       startDateTime: string;
       endDateTime: string;
       timeZone: string;
-      batchId: number;
-      daysOfWeek: string[]; // New field: array of days (e.g., ['Monday', 'Wednesday', 'Friday'])
-      totalClasses: number; // New field: total number of classes
+      batchIds: number[];
+      daysOfWeek: string[]; // Array of days (e.g., ['Monday', 'Wednesday', 'Friday'])
+      totalClasses: number; // Total number of classes
     },
     creatorInfo: any,
   ) {
@@ -284,44 +284,84 @@ export class ClassesService {
         }
       }
 
-      // Fetch batch information
-      let batchInfo = await db
-        .select()
-        .from(zuvyBatches)
-        .where(eq(zuvyBatches.id, eventDetails.batchId));
-      if (batchInfo.length === 0) {
+      // Validate batch IDs
+      if (!eventDetails.batchIds || eventDetails.batchIds.length === 0) {
         return {
           status: 'error',
-          message: 'Batch not found',
-          code: 404,
+          message: 'At least one batch ID is required',
+          code: 400,
         };
       }
-      let bootcampId = batchInfo[0].bootcampId;
+
+      // Fetch batch information for all batches
+      const batchInfos = [];
+      let bootcampId = null;
+      
+      for (const batchId of eventDetails.batchIds) {
+        const batchInfo = await db
+          .select()
+          .from(zuvyBatches)
+          .where(eq(zuvyBatches.id, batchId));
+        
+        if (batchInfo.length === 0) {
+          return {
+            status: 'error',
+            message: `Batch with ID ${batchId} not found`,
+            code: 404,
+          };
+        }
+        
+        batchInfos.push(batchInfo[0]);
+        
+        // Set bootcampId if not set yet, or validate that all batches belong to the same bootcamp
+        if (bootcampId === null) {
+          bootcampId = batchInfo[0].bootcampId;
+        } else if (bootcampId !== batchInfo[0].bootcampId) {
+          return {
+            status: 'error',
+            message: 'All batches must belong to the same bootcamp',
+            code: 400,
+          };
+        }
+      }
 
       // Access calendar
       let calendar: any = await this.accessOfCalendar(creatorInfo);
 
-      // Fetch students' emails in the batch
-      const studentsInTheBatchEmails = await db
-        .select()
-        .from(zuvyBatchEnrollments)
-        .where(eq(zuvyBatchEnrollments.batchId, eventDetails.batchId));
-
+      // Fetch students' emails from all batches - combine all unique students for a single calendar event
       const studentsEmails = [];
-      for (const studentEmail of studentsInTheBatchEmails) {
-        try {
-          const emailFetched = await db
-            .select()
-            .from(users)
-            .where(eq(users.id, studentEmail.userId));
-          if (emailFetched && emailFetched.length > 0) {
-            studentsEmails.push({ email: emailFetched[0].email });
+      const processedStudentIds = new Set(); // To avoid duplicate students
+      
+      for (const batchId of eventDetails.batchIds) {
+        const studentsInTheBatchEmails = await db
+          .select()
+          .from(zuvyBatchEnrollments)
+          .where(eq(zuvyBatchEnrollments.batchId, batchId));
+
+        for (const studentEmail of studentsInTheBatchEmails) {
+          try {
+            // Avoid adding duplicate students
+            if (processedStudentIds.has(studentEmail.userId)) {
+              continue;
+            }
+            
+            processedStudentIds.add(studentEmail.userId);
+            
+            const emailFetched = await db
+              .select()
+              .from(users)
+              .where(eq(users.id, studentEmail.userId));
+              
+            if (emailFetched && emailFetched.length > 0) {
+              studentsEmails.push({ email: emailFetched[0].email });
+            }
+          } catch (error) {
+            return {
+              status: 'error',
+              message: 'Fetching emails failed',
+              code: 500,
+            };
           }
-        } catch (error) {
-          return [
-            { status: 'error', message: 'Fetching emails failed', code: 500 },
-            null,
-          ];
         }
       }
 
@@ -414,44 +454,88 @@ export class ClassesService {
         eventId: createdEvent.data.id,
       });
 
-      let totalClasses = [];
+      // Create separate database entries for each batch, organized by meeting instances
+      const batchSessionsMap = {}; // To track sessions created for each batch
+      
+      // First, create session records for each batch and instance
+      for (const instance of instances.data.items) {
+        // Create session records for each batch
+        const sessionRecords = [];
+        
+        for (const batchId of eventDetails.batchIds) {
+          const sessionData = {
+            hangoutLink: instance.hangoutLink,
+            creator: instance.creator.email,
+            startTime: instance.start.dateTime,
+            endTime: instance.end.dateTime,
+            batchId: batchId,
+            bootcampId,
+            title: instance.summary,
+            meetingId: instance.id,
+          };
+          
+          sessionRecords.push(sessionData);
+        }
+        
+        // Save all session records for this instance
+        const savedSessions = await db
+          .insert(zuvySessions)
+          .values(sessionRecords)
+          .returning();
+          
+        // Group the saved sessions by instance
+        if (savedSessions.length > 0) {
+          const sessionIds = savedSessions.map(session => session.id);
+          
+          // Update each session with related session IDs
+          for (const session of savedSessions) {
+            // Get related session IDs (excluding self)
+            const relatedIds = sessionIds.filter(id => id !== session.id);
+            
+            // If we have related sessions, update the record
+            if (relatedIds.length > 0) {
+              await db
+                .update(zuvySessions)
+                .set({ 
+                  relatedSessions: JSON.stringify(relatedIds) 
+                })
+                .where(eq(zuvySessions.id, session.id));
+            }
+          }
+          
+          // Store in map for the response
+          if (!batchSessionsMap[instance.id]) {
+            batchSessionsMap[instance.id] = [];
+          }
+          batchSessionsMap[instance.id].push(...savedSessions);
+        }
+      }
+      
+      // Flatten all sessions for the response
+      const allSavedSessions = Object.values(batchSessionsMap).flat();
 
-      // Map instances to class details
-      instances.data.items.map((instance) => {
-        totalClasses.push({
-          hangoutLink: instance.hangoutLink,
-          creator: instance.creator.email,
-          startTime: instance.start.dateTime,
-          endTime: instance.end.dateTime,
-          batchId: eventDetails.batchId,
-          bootcampId,
-          title: instance.summary,
-          meetingId: instance.id,
-        });
-      });
-
-      // Save class details to the database
-      const savedClassDetail = await db
-        .insert(zuvySessions)
-        .values(totalClasses)
-        .returning();
-
-      if (savedClassDetail.length > 0) {
+      if (allSavedSessions.length > 0) {
         return {
           status: 'success',
-          message: 'Created Classes successfully',
+          message: 'Created Classes successfully for all batches',
           code: 200,
-          savedClassDetail: savedClassDetail,
+          savedClassDetail: allSavedSessions,
+          sessionsByMeeting: batchSessionsMap
         };
       } else {
-        return { success: 'not success', message: 'Class creation failed' };
+        return { 
+          status: 'error',
+          message: 'Class creation failed',
+          code: 500
+        };
       }
     } catch (error) {
       Logger.log(`error: ${error.message}`);
       return {
-        status: 'not success',
-        message: 'error creating class',
+        status: 'error',
+        message: 'Error creating classes',
         error: error,
+        code: 500
       };
     }
   }

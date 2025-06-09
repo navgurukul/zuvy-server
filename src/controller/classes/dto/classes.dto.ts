@@ -10,6 +10,8 @@ import {
   IsEmail,
   IsNumber,
   IsDateString,
+  ArrayNotEmpty,
+  ArrayMinSize,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
@@ -80,16 +82,17 @@ export class CreateSessionDto {
   @IsNotEmpty()
   @IsString()
   title: string;
-
   @ApiProperty({
-    description: 'The batchId of the live  ',
-    type: Number,
-    example: 1,
+    description: 'The batchIds of the live sessions',
+    type: [Number],
+    example: [1, 2, 3],
     required: true,
   })
   @IsNotEmpty()
-  @IsNumber()
-  batchId: number;
+  @IsArray()
+  @ArrayNotEmpty({ message: "At least one batch ID is required" })
+  @IsNumber({}, { each: true })
+  batchIds: number[];
 
   @ApiProperty({
     description: 'The description of the live  event',

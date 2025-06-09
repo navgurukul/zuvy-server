@@ -68,10 +68,15 @@ export class ClassesController {
       request,
       request.user,
     );
-  }
-
-  @Post('/')
-  @ApiOperation({ summary: 'Create the new class' })
+  }  @Post('/')
+  @ApiOperation({ 
+    summary: 'Create new classes for multiple batches', 
+    description: 'Creates recurring Google Meet classes for one or more batches simultaneously. All specified batches must belong to the same bootcamp.'
+  })
+  @ApiBody({ 
+    type: CreateSessionDto,
+    description: 'Class details with array of batch IDs'
+  })
   @ApiBearerAuth()
   async create(@Body() classData: CreateSessionDto, @Req() req) {
     return this.classesService.createSession(classData, {

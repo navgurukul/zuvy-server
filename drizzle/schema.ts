@@ -2233,6 +2233,7 @@ export const zuvySessions = main.table('zuvy_sessions', {
   recurringId: integer('recurring_id'),
   status: text('status').default('upcoming'),
   version: varchar('version', { length: 10 }),
+  relatedSessions: json('related_sessions'),
 });
 
 export const zuvySessionsRelations = relations(zuvySessions, ({ one, many }) => ({
