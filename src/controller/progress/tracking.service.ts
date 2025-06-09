@@ -19,8 +19,7 @@ import {
   zuvyFormTracking,
   zuvyModuleForm,
   zuvyModuleQuizVariants,
-  zuvyAssessmentSubmission,
-  zuvyOutsourseAssessments
+  zuvyAssessmentSubmission
 } from 'drizzle/schema';
 import {
   SubmitBodyDto,
@@ -220,9 +219,8 @@ export class TrackingService {
         .select()
         .from(zuvyCourseModules)
         .where(eq(zuvyCourseModules.id, moduleId));
-
       if (moduleDetails.length > 0) {
-        let trackingData = await db.query.zuvyModuleChapter.findMany({
+        const trackingData = await db.query.zuvyModuleChapter.findMany({
           where: (moduleChapter, { eq }) =>
             eq(moduleChapter.moduleId, moduleId),
           orderBy: (moduleChapter, { asc }) => asc(moduleChapter.order),
@@ -240,38 +238,6 @@ export class TrackingService {
                 eq(chapterTracking.userId, BigInt(userId)),
             },
           },
-        });
-
-        // Fetch all assessment chapters' IDs
-        const assessmentChapterIds = trackingData
-          .filter(chapter => chapter.topicId === 6)
-          .map(chapter => chapter.id);
-
-        let assessmentStates: Record<number, number> = {};
-        if (assessmentChapterIds.length > 0) {
-          // Query zuvyOutsourseAssessments for these chapters
-          const assessments = await db
-            .select({
-              chapterId: zuvyOutsourseAssessments.chapterId,
-              currentState: zuvyOutsourseAssessments.currentState,
-            })
-            .from(zuvyOutsourseAssessments)
-            .where(inArray(zuvyOutsourseAssessments.chapterId, assessmentChapterIds));
-
-          // Map chapterId to currentState
-          assessmentStates = Object.fromEntries(
-            assessments.map(a => [a.chapterId, a.currentState])
-          );
-        }
-
-        // Filter assessment chapters based on their state
-        trackingData = trackingData.filter(chapter => {
-          if (chapter.topicId === 6) {
-            const state = assessmentStates[chapter.id];
-            // Show chapter if state is PUBLISHED (1), ACTIVE (2), or CLOSED (3)
-            return state === 1 || state === 2 || state === 3;
-          }
-          return true; // Show all non-assessment chapters
         });
 
         trackingData.forEach((chapter) => {

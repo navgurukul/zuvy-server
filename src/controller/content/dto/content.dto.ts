@@ -725,33 +725,6 @@ export class CreateAssessmentBody {
   @IsNumber()
   @IsOptional()
   weightageMcqQuestions: number;
-
-   @ApiProperty({
-    type: String,
-    example: '2025-05-20T08:00:00',
-    description: 'Optional. When the assessment becomes visible to students',
-  })
-  @IsOptional()
-  @IsISO8601()
-  publishDatetime?: string;
-
-  @ApiProperty({
-    type: String,
-    example: '2025-05-21T10:00:00',
-    description: 'Optional. When the assessment becomes active for taking',
-  })
-  @IsOptional()
-  @IsISO8601()
-  startDatetime?: string;
-
-  @ApiProperty({
-    type: String,
-    example: '2025-05-21T11:30:00',
-    description: 'Optional. When the assessment expires',
-  })
-  @IsOptional()
-  @IsISO8601()
-  endDatetime?: string;
   
 }
 
