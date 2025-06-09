@@ -11,6 +11,8 @@ import {
   zuvyBatchEnrollments,
   zuvyBootcampTracking,
   zuvyBootcampType,
+  zuvySessions,
+  zuvyStudentAttendance,
 } from '../../../drizzle/schema';
 import { editUserDetailsDto } from './dto/bootcamp.dto'
 import { batch } from 'googleapis/build/src/apis/batch';
@@ -889,5 +891,120 @@ export class BootcampService {
       return [null, { message: err.message, statusCode: STATUS_CODES.BAD_REQUEST }];
     }
   }
+  async processAttendanceRecords(bootcampId: number) {
+  try {
+    let totalSessionsProcessed = 0;
+    let totalSessionsWithAttendance = 0;
+    let totalPresentStudents = 0;
+    let totalEnrollmentsUpdated = 0;
 
+    // Step 1: Fetch all sessions for the bootcamp
+    const sessions = await db
+      .select({
+        id: zuvySessions.id,
+        name: zuvySessions.title,
+        meetingId: zuvySessions.meetingId
+      })
+      .from(zuvySessions)
+      .where(eq(zuvySessions.bootcampId, bootcampId));
+
+    totalSessionsProcessed = sessions.length;
+    Logger.log(`Found ${sessions.length} sessions for bootcamp_id = ${bootcampId}`);
+
+    // Step 2: Reset all attendance counts
+    await db.update(zuvyBatchEnrollments)
+      .set({ attendance: 0 })
+      .where(eq(zuvyBatchEnrollments.bootcampId, bootcampId));
+
+    const attendanceMap = new Map<number, number>(); // userId -> attendance count
+
+    // Step 3: Process each session
+    for (const session of sessions) {
+      const attendanceRecords = await db
+        .select({ attendance: zuvyStudentAttendance.attendance })
+        .from(zuvyStudentAttendance)
+        .where(eq(zuvyStudentAttendance.meetingId, session.meetingId));
+
+      if (!attendanceRecords.length) {
+        Logger.log(`No attendance records for session ID: ${session.id}, meeting ID: ${session.meetingId}`);
+        continue;
+      }
+
+      let sessionHasAttendance = false;
+
+      for (const record of attendanceRecords) {
+        let attendanceData;
+        if (typeof record.attendance === 'object') {
+          attendanceData = record.attendance;
+        } else {
+          try {
+            attendanceData = JSON.parse(record.attendance as any);
+          } catch (error) {
+            Logger.error('Error parsing attendance data:', error);
+            continue;
+          }
+        }
+
+        if (!Array.isArray(attendanceData)) continue;
+
+        for (const student of attendanceData) {
+          if (!student.email?.trim() || student.attendance !== 'present') continue;
+
+          sessionHasAttendance = true;
+          totalPresentStudents++;
+
+          const userRecords = await db
+            .select({ id: users.id })
+            .from(users)
+            .where(eq(users.email, student.email.trim().toLowerCase()));
+
+          if (!userRecords.length) {
+            Logger.log(`No user found with email: ${student.email}`);
+            continue;
+          }
+
+          const userId = Number(userRecords[0].id);
+
+          // Confirm enrollment exists
+          const enrollment = await db.select()
+            .from(zuvyBatchEnrollments)
+            .where(and(eq(zuvyBatchEnrollments.userId, BigInt(userId)), eq(zuvyBatchEnrollments.bootcampId, bootcampId)));
+
+          if (!enrollment.length) {
+            Logger.log(`No enrollment found for user ID: ${userId} in bootcamp ID: ${bootcampId}`);
+            continue;
+          }
+
+          // Count this attendance
+          attendanceMap.set(userId, (attendanceMap.get(userId) || 0) + 1);
+        }
+      }
+
+      if (sessionHasAttendance) {
+        totalSessionsWithAttendance++;
+      }
+    }
+
+    // Step 4: Apply batch updates per user
+    for (const [userId, count] of attendanceMap.entries()) {
+      await db.update(zuvyBatchEnrollments)
+        .set({ attendance: count })
+        .where(and(
+          eq(zuvyBatchEnrollments.userId, BigInt(userId)),
+          eq(zuvyBatchEnrollments.bootcampId, bootcampId)
+        ));
+      totalEnrollmentsUpdated++;
+    }
+
+    return [null, {
+      totalSessionsProcessed,
+      totalSessionsWithAttendance,
+      totalPresentStudents,
+      totalEnrollmentsUpdated,
+      message: 'Attendance processing completed successfully'
+    }];
+  } catch (err) {
+    return [err, null];
+  }
+}
 }
