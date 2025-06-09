@@ -16,7 +16,6 @@ import { AdminAssessmentModule } from './controller/adminAssessment/adminAssessm
 import { ScheduleModule } from './schedule/schedule.module';
 import { InstructorModule } from './controller/instructor/instructor.module';
 import { SseService } from './services/sse.service';
-import { AssessmentStateService } from './services/assessment-state.service';
 import { UsersModule } from './controller/users/users.module';
 
 @Module({
