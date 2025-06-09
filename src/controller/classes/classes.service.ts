@@ -1113,6 +1113,14 @@ export class ClassesService {
       });
       for (const rec of Object.values(attendance)) {
         rec.attendance = rec.duration >= cutoff ? 'present' : 'absent';
+        let user = students.find((student) => student.user.email === rec.email);
+        if (user && rec.attendance === 'present') {
+          let newData = await db.select().from(zuvyBatchEnrollments)
+            .where(sql`${zuvyBatchEnrollments.userId} = ${BigInt(user.userId)} AND ${zuvyBatchEnrollments.batchId} = ${session.batchId}`);
+          await db.update(zuvyBatchEnrollments).set({
+            attendance: newData[0].attendance ? newData[0].attendance + 1 : 1,
+          }). where(sql`${zuvyBatchEnrollments.userId} = ${BigInt(user.userId)} AND ${zuvyBatchEnrollments.batchId} = ${session.batchId}`);
+        } 
       }
       // 7. Return attendance and s3link
       return [null, { s3link, attendance: Object.values(attendance), totalSeconds }];
@@ -1167,8 +1175,7 @@ export class ClassesService {
           students.length > attendance.length
             ? students.length
             : attendance.length;
-        
-        if (!s3link || Meeting.length === 0) {
+        if (s3link == null || s3link == undefined ) {
           let [errorSessionAttendanceAndS3Link, result] = await this.getSessionAttendanceAndS3Link(classInfo[0], students);
           if (errorSessionAttendanceAndS3Link) {
             return [
@@ -1883,4 +1890,4 @@ export class ClassesService {
       ];
     }
   }
-}
+  }

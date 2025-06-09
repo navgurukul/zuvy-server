@@ -1,4 +1,4 @@
-import { ApiProperty, ApiResponseProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional, ApiResponseProperty, PartialType } from '@nestjs/swagger';
 import {
   IsString,
   IsNotEmpty,
@@ -16,9 +16,10 @@ import {
   isObject,
   IsBoolean,
   IsDefined,
+  IsISO8601,
 } from 'class-validator';
 import { truncateSync } from 'fs';
-import { Type } from 'class-transformer';
+import { Transform, TransformFnParams, Type } from 'class-transformer';
 import { difficulty, questionType } from 'drizzle/schema';
 
 export class moduleDto {
@@ -307,7 +308,7 @@ export class ReOrderModuleBody {
 }
 
 export class EditChapterDto {
-  @ApiProperty({
+  @ApiPropertyOptional({
     type: String,
     example: 'Any thing like article or video or quiz',
   })
@@ -315,7 +316,7 @@ export class EditChapterDto {
   @IsOptional()
   title: string;
 
-  @ApiProperty({
+  @ApiPropertyOptional({
     type: String,
     example: 'Any description to the chapter',
   })
@@ -323,7 +324,7 @@ export class EditChapterDto {
   @IsOptional()
   description: string;
 
-  @ApiProperty({
+  @ApiPropertyOptional({
     type: String,
     example: '2023-03-01T00:00:00Z',
   })
@@ -331,7 +332,7 @@ export class EditChapterDto {
   @IsOptional()
   completionDate: string;
 
-  @ApiProperty({
+  @ApiPropertyOptional({
     type: [Number],
     example: [1, 2],
   })
@@ -339,7 +340,7 @@ export class EditChapterDto {
   @IsOptional()
   quizQuestions: any[];
 
-  @ApiProperty({
+  @ApiPropertyOptional({
     type: [Number],
     example: [1, 2],
   })
@@ -347,7 +348,7 @@ export class EditChapterDto {
   @IsOptional()
   formQuestions: any[];
   
-  @ApiProperty({
+  @ApiPropertyOptional({
     type: Number,
     example: 10,
   })
@@ -355,7 +356,7 @@ export class EditChapterDto {
   @IsOptional()
   codingQuestions: number;
 
-  @ApiProperty({
+  @ApiPropertyOptional({
     type: Number,
     example: 2,
   })
@@ -363,7 +364,7 @@ export class EditChapterDto {
   @IsOptional()
   newOrder: number;
 
-  @ApiProperty({
+  @ApiPropertyOptional({
     type: [String],
     example: ['https://www.google.com'],
   })
@@ -371,7 +372,7 @@ export class EditChapterDto {
   @IsOptional()
   links: string[];
 
-  @ApiProperty({
+  @ApiPropertyOptional({
     type : [Object],
     example: [
       {
@@ -394,6 +395,90 @@ export class EditChapterDto {
   @IsOptional()
 
   articleContent: [object];
+
+  @ApiPropertyOptional(
+    { type: 'string', format: 'binary'})
+  @IsOptional()  
+  pdf?: any; 
+}
+
+export class UpdateChapterDto extends PartialType(EditChapterDto) {
+
+   @Transform(({ value }: TransformFnParams) => {
+    if (value === '') return undefined;
+    return value;
+  }, { toClassOnly: true })
+  @IsString()
+  @IsOptional()
+  title?: string;
+
+  @Transform(({ value }: TransformFnParams) => {
+    if (value === '') return undefined;
+    return value;
+  }, { toClassOnly: true })
+  @IsString()
+  @IsOptional()
+  description?: string;
+
+   @Transform(({ value }: TransformFnParams) => {
+    if (value === '') return undefined;
+    return value;
+  }, { toClassOnly: true })
+  @IsOptional()
+  completionDate?: string;
+
+  @Transform(({ value }: TransformFnParams) => {
+    if (value === '') return undefined;
+    if (Array.isArray(value)) return value;
+    try { return JSON.parse(value); } catch { return undefined; }
+  }, { toClassOnly: true })
+  @IsArray()
+  @IsOptional()
+  quizQuestions?: number[];
+
+  @Transform(({ value }: TransformFnParams) => {
+    if (value === '') return undefined;
+    if (Array.isArray(value)) return value;
+    try { return JSON.parse(value); } catch { return undefined; }
+  }, { toClassOnly: true })
+  @IsArray()
+  @IsOptional()
+  formQuestions?: number[];
+
+  @Transform(({ value }: TransformFnParams) => {
+    if (value === '') return undefined;
+    return Number(value);
+  }, { toClassOnly: true })
+  @IsNumber()
+  @IsOptional()
+  codingQuestions?: number;
+
+  @Transform(({ value }: TransformFnParams) => {
+    if (value === '') return undefined;
+    return Number(value);
+  }, { toClassOnly: true })
+  @IsNumber()
+  @IsOptional()
+  newOrder?: number;
+
+  @Transform(({ value }: TransformFnParams) => {
+    if (value === '') return undefined;
+    if (Array.isArray(value)) return value;
+    try { return JSON.parse(value); } catch { return undefined; }
+  }, { toClassOnly: true })
+  @IsArray()
+  @IsOptional()
+  links?: string[];
+
+
+  @Transform(({ value }: TransformFnParams) => {
+    if (value === '') return undefined;
+    if (Array.isArray(value)) return value;
+    try { return JSON.parse(value); } catch { return undefined; }
+  }, { toClassOnly: true })
+  @IsArray()
+  @IsOptional()
+  articleContent?: [object];
 }
 
 export class openEndedDto {
