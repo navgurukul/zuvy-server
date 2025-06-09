@@ -35,7 +35,8 @@ import {
   asc,
   ne,
   SQL,
-  desc
+  desc,
+  gt
 } from 'drizzle-orm';
 import { db } from '../../db/index';
 import {
@@ -72,7 +73,6 @@ import {
   PutObjectCommand,
 } from '@aws-sdk/client-s3';
 import { SseService } from '../../services/sse.service';
-import { AssessmentStateService } from '../../services/assessment-state.service';
 let { S3_ACCESS_KEY_ID, S3_BUCKET_NAME, S3_REGION, S3_SECRET_KEY_ACCESS } = process.env
 import e from 'express';
 let { DIFFICULTY } = helperVariable;
@@ -86,7 +86,6 @@ export class ContentService {
   constructor(
     private config: ConfigService,
     private sseService: SseService,
-    private assessmentStateService: AssessmentStateService
   ) {
     this.bucket = this.config.get('S3_BUCKET_NAME');
     this.region = 'ap-south-1';
@@ -795,20 +794,6 @@ export class ContentService {
     moduleId: number,
   ) {
     try {
-
-      // Count how many students have started the module
-      const studentCountResult = await db
-        .select({ count: sql<number>`count(*)` })
-        .from(zuvyModuleTracking)
-        .where(eq(zuvyModuleTracking.moduleId, moduleId));
-
-      const studentCount = studentCountResult[0]?.count || 0;
-
-      // If any student has started the module, throw an error
-      if (studentCount > 0) {
-        return [{ message: `Module cannot be reordered or updated as it has been started by ${studentCount} student(s).` }, null];
-      }
-
       if (reorderData.moduleDto == undefined) {
         const { newOrder } = reorderData.reOrderDto;
 
@@ -817,6 +802,53 @@ export class ContentService {
           .from(zuvyCourseModules)
           .where(eq(zuvyCourseModules.bootcampId, bootcampId))
           .orderBy(zuvyCourseModules.order);
+
+        // Find the module that is currently at the target position
+        const targetModule = modules[newOrder - 1];
+
+        // Check progress in both source and target modules
+        const [sourceProgress, targetProgress] = await Promise.all([
+          // Check progress in source module
+          db
+            .select({ 
+              count: sql<number>`cast(count(*) as integer)` 
+            })
+            .from(zuvyModuleTracking)
+            .where(
+              and(
+                eq(zuvyModuleTracking.moduleId, moduleId),
+                gt(zuvyModuleTracking.progress, 0)
+              )
+            ),
+          // Check progress in target module
+          db
+            .select({ 
+              count: sql<number>`cast(count(*) as integer)` 
+            })
+            .from(zuvyModuleTracking)
+            .where(
+              and(
+                eq(zuvyModuleTracking.moduleId, targetModule.id),
+                gt(zuvyModuleTracking.progress, 0)
+              )
+            )
+        ]);
+
+        const sourceStudentCount = Number(sourceProgress[0]?.count) || 0;
+        const targetStudentCount = Number(targetProgress[0]?.count) || 0;
+
+        // If either module has student progress, prevent reorder
+        if (sourceStudentCount > 0 || targetStudentCount > 0) {
+          let message = '';
+          if (sourceStudentCount > 0 && targetStudentCount > 0) {
+            message = `Cannot reorder as both modules have been started by students.`;
+          } else if (sourceStudentCount > 0) {
+            message = `Cannot reorder as the source module has been started by ${sourceStudentCount} student(s).`;
+          } else {
+            message = `Cannot reorder as the target module has been started by ${targetStudentCount} student(s).`;
+          }
+          return [{ message }, null];
+        }
 
         const draggedModuleIndex = modules.findIndex((m) => m.id === moduleId);
 
