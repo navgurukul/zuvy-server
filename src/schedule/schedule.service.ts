@@ -41,7 +41,6 @@ export class ScheduleService {
     this.handleDynamicScheduling();
   }
 
-  @Cron('0 */6 * * *') // Runs every 6 hours
   async handleDynamicScheduling() {
     this.logger.log('Running main function to determine interval');
     if (this.processingActive) {

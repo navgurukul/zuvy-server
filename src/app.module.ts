@@ -15,6 +15,8 @@ import { SubmissionModule } from './controller/submissions/submission.module';
 import { AdminAssessmentModule } from './controller/adminAssessment/adminAssessment.module';
 import { ScheduleModule } from './schedule/schedule.module';
 import { InstructorModule } from './controller/instructor/instructor.module';
+import { SseService } from './services/sse.service';
+import { UsersModule } from './controller/users/users.module';
 
 @Module({
   imports: [
@@ -25,6 +27,7 @@ import { InstructorModule } from './controller/instructor/instructor.module';
       secret: process.env.JWT_SECRET_KEY,
       signOptions: { expiresIn: '24h' },
     }),
+    ConfigModule.forRoot({ isGlobal: true }),
     AdminAssessmentModule,
     BootcampModule,
     BatchesModule,
@@ -36,12 +39,14 @@ import { InstructorModule } from './controller/instructor/instructor.module';
     TrackingModule,
     InstructorModule,
     ScheduleModule,
+    UsersModule 
   ],
   providers: [
     {
       provide: APP_INTERCEPTOR,
       useClass: LoggingInterceptor,
     },
+    SseService
   ]
 })
 export class AppModule { }
