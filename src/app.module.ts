@@ -46,8 +46,7 @@ import { UsersModule } from './controller/users/users.module';
       provide: APP_INTERCEPTOR,
       useClass: LoggingInterceptor,
     },
-    SseService,
-    AssessmentStateService,
+    SseService
   ]
 })
 export class AppModule { }
