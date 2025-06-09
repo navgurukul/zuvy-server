@@ -11,6 +11,8 @@ import {
   zuvyBatchEnrollments,
   zuvyBootcampTracking,
   zuvyBootcampType,
+  zuvySessions,
+  zuvyStudentAttendance,
 } from '../../../drizzle/schema';
 import { editUserDetailsDto } from './dto/bootcamp.dto'
 import { batch } from 'googleapis/build/src/apis/batch';
@@ -889,5 +891,122 @@ export class BootcampService {
       return [null, { message: err.message, statusCode: STATUS_CODES.BAD_REQUEST }];
     }
   }
-  
+
+  async processAttendanceRecords(bootcampId: number) {
+    try {
+      let totalSessionsProcessed = 0;
+      let totalPresentStudents = 0;
+      let totalEnrollmentsUpdated = 0;
+      
+      // Step 1: Fetch all sessions for the bootcamp
+      const sessions = await db
+        .select({
+          id: zuvySessions.id,
+          name: zuvySessions.title,
+          meetingId: zuvySessions.meetingId
+        })
+        .from(zuvySessions)
+        .where(eq(zuvySessions.bootcampId, bootcampId));
+      
+      totalSessionsProcessed = sessions.length;
+      Logger.log(`Found ${sessions.length} sessions for bootcamp_id = ${bootcampId}`);
+      
+      // Step 2: Process each session
+      for (const session of sessions) {
+        // Fetch attendance records for this session
+        const attendanceRecords = await db
+          .select({
+            attendance: zuvyStudentAttendance.attendance
+          })
+          .from(zuvyStudentAttendance)
+          .where(eq(zuvyStudentAttendance.meetingId, session.meetingId));
+        
+        if (!attendanceRecords.length) {
+          Logger.log(`No attendance records found for session ID: ${session.id}, meeting ID: ${session.meetingId}`);
+          continue;
+        }
+        
+        // Step 3: Process attendance data for each session
+        for (const record of attendanceRecords) {
+          if (!record.attendance) {
+            continue;
+          }
+          
+          let attendanceData;
+          // Parse attendance data if needed
+          if (typeof record.attendance === 'object') {
+            attendanceData = record.attendance;
+          } else {
+            try {
+              attendanceData = JSON.parse(record.attendance as any);
+            } catch (error) {
+              Logger.error('Error parsing attendance data:', error);
+              continue;
+            }
+          }
+          
+          if (!Array.isArray(attendanceData)) {
+            continue;
+          }
+        
+          await db.update(zuvyBatchEnrollments)
+            .set({
+              attendance: 0
+            }).where(eq(zuvyBatchEnrollments.bootcampId, bootcampId));   
+          // Step 4: Process each student's attendance
+          for (const student of attendanceData) {
+            // Skip if email is missing or empty
+            if (!student.email || student.email.trim() === '') {
+              continue;
+            }
+            
+            // Check if student is marked as present
+            if (student.attendance === 'present') {
+              totalPresentStudents++;
+              
+              // Find the user ID using the email
+              const userRecords = await db
+                .select({
+                  id: users.id
+                })
+                .from(users)
+                .where(eq(users.email, student.email.trim().toLowerCase()));
+              
+              if (!userRecords.length) {
+                Logger.log(`No user found with email: ${student.email}`);
+                continue;
+              }
+              
+              const userId = userRecords[0].id;
+              let getData = await db.select().from(zuvyBatchEnrollments).where(and(eq(zuvyBatchEnrollments.userId, userId), eq(zuvyBatchEnrollments.bootcampId, bootcampId)));
+              if (getData.length === 0) {
+                Logger.log(`No enrollment found for user ID: ${userId} in bootcamp ID: ${bootcampId}`);
+                continue;
+              } else {
+                await db.update(zuvyBatchEnrollments)
+                  .set({
+                    attendance: getData[0].attendance + 1 
+                  })
+                  .where(and(eq(zuvyBatchEnrollments.userId, userId), eq(zuvyBatchEnrollments.bootcampId, bootcampId)));
+              }
+              
+              totalEnrollmentsUpdated++;
+            }
+          }
+        }
+      }
+      
+      return [
+        null,
+        {
+          totalSessionsProcessed,
+          totalPresentStudents,
+          totalEnrollmentsUpdated,
+          message: 'Attendance processing completed successfully'
+        }
+      ];
+    } catch (err) {
+      return [err, null];
+    }
+  }
 }
