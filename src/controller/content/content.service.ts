@@ -345,7 +345,14 @@ export class ContentService {
         };
       }
       if (topicId == 6) {
-        let insertedAssessmentOutsourse: any = { assessmentId: newAssessment[0].id, moduleId, bootcampId, chapterId: chapter[0].id, order }
+        let insertedAssessmentOutsourse: any = { 
+          assessmentId: newAssessment[0].id, 
+          moduleId, 
+          bootcampId, 
+          chapterId: chapter[0].id, 
+          order,
+          currentState: 0 // Setting initial state to DRAFT
+        }
         let outsourseAssessmentData = await db.insert(zuvyOutsourseAssessments).values(insertedAssessmentOutsourse).returning();
         if (outsourseAssessmentData.length == 0) {
           return {
