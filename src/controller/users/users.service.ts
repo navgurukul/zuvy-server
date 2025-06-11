@@ -4,7 +4,7 @@ import { Injectable,
   ForbiddenException, Logger} from '@nestjs/common';
 import { users } from '../../../drizzle/schema';
 import { db } from '../../db/index';
-import { eq, sql } from 'drizzle-orm';
+import { eq, sql, not, and } from 'drizzle-orm';
 import * as fs from 'fs';
 import * as path from 'path';
 import { JwtService } from '@nestjs/jwt';
@@ -136,15 +136,19 @@ export class UsersService {
         .select()
         .from(users)
         .where(sql`${users.id} = ${decoded.id} AND ${users.email} = ${decoded.email}`);
+      // Log the decoded JWT and user from DB for debugging
+      this.logger.debug(`Decoded JWT: ${JSON.stringify(decoded)}`);
+      this.logger.debug(`User from DB: ${JSON.stringify(user)}`);
       if (user.length > 0) {
-        user[0].id = parseInt(user[0].id) ; // Assign default role
-
+        user[0].id = parseInt(user[0].id) ; 
+        await db.delete(users).where(and( eq(users.email, decoded.email), not(eq(users.id, decoded.id)))); 
         return {
           status: 'success',
           message: 'User already exists in the database',
           user: user[0]
         };
       } else {
+        await db.delete(users).where(eq(users.email, decoded.email)); 
         // User doesn't exist, create new user
         let userInset: any = {
           id:  decoded.id,
