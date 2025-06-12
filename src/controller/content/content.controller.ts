@@ -190,7 +190,7 @@ export class ContentController {
 
 
   @Post('/chapter')
-  @ApiOperation({ summary: 'Create a chapter for this module' })
+  @ApiOperation({ summary: 'Create a chapter for this cohort module' })
   @ApiBearerAuth()
   @UseGuards(RolesGuard)
   async createChapter(
