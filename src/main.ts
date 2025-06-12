@@ -3,6 +3,7 @@ import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 import { CorsOptions } from '@nestjs/common/interfaces/external/cors-options.interface';
 import { log } from 'console';
+import { WrapUserInArrayInterceptor } from './middleware/jwt.middleware';
 
 // IMPORTING env VALUES 
 const { PORT, BASE_URL } = process.env;
@@ -16,6 +17,7 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   // Enable CORS
   app.enableCors(corsOptions);
+  app.useGlobalInterceptors(new WrapUserInArrayInterceptor());
   const config = new DocumentBuilder()
     .setTitle('NG zuvy API Docs')
     .setDescription(`[Base url: ${BASE_URL}]

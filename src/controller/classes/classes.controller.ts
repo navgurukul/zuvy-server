@@ -36,6 +36,12 @@ import { Response } from 'express';
 import { ErrorResponse, SuccessResponse } from 'src/errorHandler/handler';
 import { Public } from '../../auth/decorators/public.decorator';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
+import { auth2Client } from '../../auth/google-auth';
+import { db } from '../../db/index';
+import {
+  userTokens
+} from '../../../drizzle/schema';
+import { userInfo } from 'os';
 
 // config user for admin
 let configUser = { id: process.env.ID, email: process.env.TEAM_EMAIL };
@@ -66,24 +72,55 @@ export class ClassesController {
   }
 
   @Public()
-  @Get('/redirect')
-  @ApiBearerAuth('JWT-auth')
-  @ApiOperation({ summary: 'Google authentication redirect' })
+  @Get('/google-auth/redirect')
+  @ApiOperation({ summary: 'Handle Google OAuth redirect' })
   async googleAuthRedirect(@Req() request) {
-    return this.classesService.googleAuthenticationRedirect(
-      request,
-      request.user,
-    );
+    try {
+      const { code, state } = request.query;
+      const { tokens } = await auth2Client.getToken(code);
+      
+      // Parse state to get user info
+      const userInfo = JSON.parse(state);
+      
+      // Store tokens in database
+      await db
+        .insert(userTokens)
+        .values({
+          userId: userInfo.id,
+          userEmail: userInfo.email,
+          accessToken: tokens.access_token,
+          refreshToken: tokens.refresh_token
+        })
+        .onConflictDoUpdate({
+          target: [userTokens.userId],
+          set: {
+            accessToken: tokens.access_token,
+            refreshToken: tokens.refresh_token
+          }
+        });
+
+      return {
+        status: 'success',
+        message: 'Calendar access granted successfully'
+      };
+    } catch (error) {
+      return {
+        status: 'error',
+        message: 'Failed to authenticate with Google Calendar'
+      };
+    }
   }
 
   @Post('/')
   @ApiOperation({ summary: 'Create the new class' })
   @ApiBearerAuth('JWT-auth')
   async create(@Body() classData: CreateSessionDto, @Req() req) {
-    return this.classesService.createSession(classData, {
-      ...configUser,
-      roles: req.user[0].roles,
-    });
+    const userInfo = {
+      id: Number(req.user[0].id),
+      email: req.user[0].email,
+      roles: req.user[0].roles || []
+    };
+    return this.classesService.createSession(classData, userInfo);
   }
 
   @Get('/getAttendance/:meetingId')
@@ -93,10 +130,12 @@ export class ClassesController {
     @Req() req,
     @Param('meetingId') meetingId: string,
   ): Promise<object> {
-    const [err, values] = await this.classesService.getAttendance(meetingId, {
-      ...configUser,
-      roles: req.user[0].roles,
-    });
+    const userInfo = {
+      id: Number(req.user[0].id),
+      email: req.user[0].email,
+      roles: req.user[0].roles || []
+    };
+    const [err, values] = await this.classesService.getAttendance(meetingId, userInfo);
     if (err) {
       throw new BadRequestException(err);
     }
@@ -111,10 +150,12 @@ export class ClassesController {
     @Req() req,
     @Param('batchId') batchId: string,
   ): Promise<object> {
-    return this.classesService.getAttendanceByBatchId(batchId, {
-      ...configUser,
-      roles: req.user[0].roles,
-    });
+    const userInfo = {
+      id: Number(req.user[0].id),
+      email: req.user[0].email,
+      roles: req.user[0].roles || []
+    };
+    return this.classesService.getAttendanceByBatchId(batchId, userInfo);
   }
   // @Get('/calculatelogic')
   // @ApiBearerAuth()
@@ -144,9 +185,13 @@ export class ClassesController {
     @Req() req,
     @Param('sessionId') sessionId: number,
   ) {
+    const userInfo = {
+      id: Number(req.user[0].id),
+      email: req.user[0].email,
+      roles: req.user[0].roles || []
+    };
     const [err, values] = await this.classesService.meetingAttendanceAnalytics(
-      sessionId,
-      { ...configUser, roles: req.user[0].roles }
+      sessionId,userInfo
     );
     if (err) {
       throw new BadRequestException(err);
@@ -161,10 +206,12 @@ export class ClassesController {
     let meetingIds: Array<any> = reloadData?.meetingIds;
 
     let attachment = meetingIds.map(async (meetId) => {
-      const [err, values] = await this.classesService.getAttendance(meetId, {
-        ...configUser,
-        roles: req.user[0].roles,
-      });
+      const userInfo = {
+      id: Number(req.user[0].id),
+      email: req.user[0].email,
+      roles: req.user[0].roles || []
+    };
+      const [err, values] = await this.classesService.getAttendance(meetId, userInfo);
     });
     return { message: 'Data Refreshed', status: 200 };
   }
@@ -268,10 +315,12 @@ export class ClassesController {
     @Param('meetingId') meetingId: string,
     @Req() req,
   ): Promise<object> {
-    return this.classesService.deleteSession(meetingId, {
-      ...configUser,
-      roles: req.user[0].roles,
-    });
+    const userInfo = {
+      id: Number(req.user[0].id),
+      email: req.user[0].email,
+      roles: req.user[0].roles || []
+    };
+    return this.classesService.deleteSession(meetingId, userInfo);
   }
 
   @Patch('/update/:meetingId')
@@ -282,10 +331,12 @@ export class ClassesController {
     @Body() classData: updateSessionDto,
     @Req() req,
   ): Promise<object> {
-    return this.classesService.updateSession(meetingId, classData, {
-      ...configUser,
-      roles: req.user[0].roles,
-    });
+    const userInfo = {
+      id: Number(req.user[0].id),
+      email: req.user[0].email,
+      roles: req.user[0].roles || []
+    };
+    return this.classesService.updateSession(meetingId, classData,userInfo);
   }
   
   @Get('/sessionRecordViews')
@@ -350,6 +401,38 @@ export class ClassesController {
       ).send(res);
     } catch (error) {
       return ErrorResponse.BadRequestException(error.message).send(res);
+    }
+  }
+
+  @Get('/check-calendar-access')
+  @ApiOperation({ summary: 'Check if admin has calendar access' })
+  @ApiBearerAuth('JWT-auth')
+  async checkCalendarAccess(@Req() req) {
+    try {
+      console.log("userInfo",req)
+      const userInfo = {
+        id: Number(req.user[0].id),
+        email: req.user[0].email,
+        roles: req.user[0].roles || []
+      };
+      
+      const calendar = await this.classesService.accessOfCalendar(userInfo);
+      if ('status' in calendar && calendar.status === 'error') {
+        return {
+          status: 'not success',
+          message: calendar.message
+        };
+      }
+      return {
+        status: 'success',
+        message: 'Calendar access verified'
+      };
+    } catch (error) {
+      return {
+        status: 'not success',
+        message: 'Failed to verify calendar access',
+        error: error.message
+      };
     }
   }
 }

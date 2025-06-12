@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import { AuthService } from '../auth.service';
@@ -7,6 +7,11 @@ import { db } from 'src/db';
 import { sansaarUserRoles } from '../../../drizzle/schema';
 import { eq } from 'drizzle-orm';
 let { GOOGLE_CLIENT_ID, GOOGLE_SECRET, GOOGLE_REDIRECT,JWT_SECRET_KEY } = process.env;
+
+// Extend Express Request type to include user property
+interface RequestWithUser extends Request {
+  user?: any[];
+}
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
@@ -19,20 +24,26 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     });
   }
 
-  async validate(req: Request, payload: any) {
-    // Get the token from the request
-    const token = req.headers.authorization?.replace('Bearer ', '');
-    
-    // Check if token is blacklisted
+  async validate(req: RequestWithUser, payload: any) {
+    const token = req.headers.authorization?.split(' ')[1];
+    if (!token) {
+      throw new UnauthorizedException('No token provided');
+    }
+
+    // Validate token against blacklist
     await this.authService.validateToken(token);
 
     // Get user roles
     const roles = await this.authService.getUserRoles(payload.sub);
-    
-    return {
+
+    // Create user data object
+    const userData = {
       id: payload.sub,
       email: payload.email,
-      roles: roles,
+      roles: roles
     };
+    const arr = [userData];
+req.user = arr;            // still fine to do, but optional now
+return arr;
   }
 } 

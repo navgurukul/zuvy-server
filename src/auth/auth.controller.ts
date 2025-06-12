@@ -83,7 +83,7 @@ export class AuthController {
     if (!token) {
       throw new UnauthorizedException('No token provided');
     }
-    return this.authService.logout(req.user.id, token);
+    return this.authService.logout(req.user[0].id, token);
   }
 
   @Public()

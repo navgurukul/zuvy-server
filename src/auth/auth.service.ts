@@ -63,9 +63,12 @@ export class AuthService {
 
       // 4. Find user in your DB
       const [user] = await db.select().from(users).where(eq(users.email, tokenEmail));
+      console.log(user)
       if (!user) {
         throw new UnauthorizedException('User not found');
       }
+      console.log(user.googleUserId, googleUserId)
+      console.log("crosscheck",googleUserId)
       if (user.googleUserId !== googleUserId) {
         throw new UnauthorizedException('Google user ID mismatch');
       }
@@ -119,6 +122,7 @@ export class AuthService {
     try {
       // Decode token to get expiration
       const decoded = this.jwtService.decode(token) as { exp: number };
+      console.log("logout",decoded)
       const expiresAt = new Date(decoded.exp * 1000).toISOString();
 
       // Add token to blacklist
