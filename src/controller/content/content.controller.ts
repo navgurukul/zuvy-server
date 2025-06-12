@@ -200,7 +200,7 @@ export class ContentController {
   }
 
   @Post('/quiz')
-  @ApiOperation({ summary: 'Create a quiz' })
+  @ApiOperation({ summary: 'Create a quiz for cohort test' })
   @ApiBearerAuth()
   @UseGuards(RolesGuard)
   async createQuizForModule(
