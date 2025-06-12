@@ -83,7 +83,7 @@ export class AuthService {
         email: user.email,
         googleUserId: user.googleUserId,
         role: user.mode,
-        roles: roles
+        rolesList: roles
       };
 
       const access_token = this.jwtService.sign(jwtPayload);
@@ -99,7 +99,7 @@ export class AuthService {
           profilePicture: user.profilePicture,
           role: user.mode,
           center: user.center,
-          roles: roles
+          rolesList: roles
         }
       };
     } catch (error) {
