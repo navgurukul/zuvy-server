@@ -15,10 +15,12 @@ import {
   Req,
   UseGuards,
   Res,
-  BadGatewayException,
   UseInterceptors,
+  ParseIntPipe,
   UploadedFile,
-  InternalServerErrorException
+  InternalServerErrorException,
+  BadGatewayException,
+  UploadedFiles
 } from '@nestjs/common';
 import { ContentService } from './content.service';
 import {
@@ -27,6 +29,8 @@ import {
   ApiOperation,
   ApiQuery,
   ApiConsumes,
+  getSchemaPath,
+  ApiExtraModels,
 } from '@nestjs/swagger';
 import { ApiBearerAuth } from '@nestjs/swagger';
 import {
@@ -59,8 +63,7 @@ import { Roles } from 'src/decorators/roles.decorator';
 import { ErrorResponse, SuccessResponse } from 'src/errorHandler/handler';
 import { Response } from 'express';
 import { complairDateTyeps } from 'src/helpers/index';
-import { FileInterceptor } from '@nestjs/platform-express/multer';
-import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
+import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express/multer';
 
 @Controller('content')
 @ApiTags('content')
@@ -607,12 +610,12 @@ export class ContentController {
     return this.contentService.getStudentsOfAssessment(assessmentId, chapterId, moduleId, bootcampId, req);
   }
 
-  @Get('/startAssessmentForStudent/assessmentOutsourseId=:assessmentOutsourseId/newStart=:newStart')
+  @Get('/startAssessmentForStudent/assessmentOutsourseId=:assessmentOutsourseId')
   @ApiOperation({ summary: 'Start the assessment for a student' })
-  @ApiBearerAuth('JWT-auth')
+  @ApiBearerAuth()
   async startAssessmentForStudent(@Req() req, @Param('assessmentOutsourseId') assessmentOutsourseId: number, @Param('newStart') newStart:boolean, @Res() res: Response): Promise<any> {
     try{
-      let [err, success] = await this.contentService.startAssessmentForStudent(assessmentOutsourseId,  newStart , req.user[0]);
+      let [err, success] = await this.contentService.startAssessmentForStudent(assessmentOutsourseId, newStart, req.user[0]);
       if (err) {
         return ErrorResponse.BadRequestException(err.message).send(res);
       }
@@ -884,7 +887,7 @@ export class ContentController {
   }
 
   @Post('curriculum/upload-pdf')
-  @ApiBearerAuth('JWT-auth')
+  @ApiBearerAuth()
   @ApiOperation({ summary: 'Upload a PDF and save its link to a chapter' })
   @ApiQuery({
     name: 'moduleId',
@@ -899,23 +902,17 @@ export class ContentController {
     description: 'chapterId',
   })
   @ApiConsumes('multipart/form-data')
-  @ApiBody({
-    schema: {
-      type: 'object',
-      properties: {
-        pdf: {
-          type: 'string',
-          format: 'binary',
-        },
-      },
-    },
-  })
+  @ApiBody({ type: UpdateChapterDto })
   @UseInterceptors(FileInterceptor('pdf'))
   async uploadPdf(
     @UploadedFile() file: Express.Multer.File,
     @Query('moduleId') moduleId: number,
-    @Query('chapterId') chapterId: number
+    @Query('chapterId') chapterId: number,
+    @Body() reOrder: UpdateChapterDto
   ) {
+    console.log("edit pdf",UpdateChapterDto)
+    if(file)
+    {
     let url: string;
 
     try {
@@ -935,15 +932,49 @@ export class ContentController {
     if (!url) {
       throw new BadGatewayException('S3 returned an empty URL');
     }
-    const editDto = new EditChapterDto();
-    editDto.links = [url]; 
+    reOrder.links = [url];
+  }
     const res = await this.contentService.editChapter(
-      editDto,
+      reOrder,
       moduleId,
       chapterId,
     );
     return res;
   }
 
+   @Post('curriculum/upload-images')
+@ApiOperation({ summary: 'Upload one or more images to S3' })
+@ApiBearerAuth()
+@ApiConsumes('multipart/form-data')
+@ApiBody({
+  schema: {
+    type: 'object',
+    properties: {
+      images: {
+        type: 'array',
+        items: { type: 'string', format: 'binary' },
+      },
+    },
+  },
+})
+@UseInterceptors(FilesInterceptor('images', 10))
+async uploadImages(
+    @UploadedFiles() files: Express.Multer.File[],
+  ) {
+    if (!files || files.length === 0) {
+      throw new BadRequestException('No image files provided');
+    }
 
+    // 1) upload each buffer, collecting URLs
+    const urls = await Promise.all(
+      files.map((file) =>
+        this.contentService.uploadImageToS3(
+          file.buffer,
+          file.originalname
+        ),
+      ),
+    );
+
+    return { urls };
+  }
 }

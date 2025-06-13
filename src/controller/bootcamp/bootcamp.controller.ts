@@ -367,4 +367,25 @@ export class BootcampController {
     }
     return res;
   }
+
+  @Post('/process-attendance')
+  @ApiOperation({ summary: 'Process attendance records and update attendance counts' })
+  @ApiQuery({
+    name: 'bootcampId',
+    required: true,
+    type: Number,
+    description: 'ID of the bootcamp to process attendance for',
+  })
+  @ApiBearerAuth()
+  async processAttendance(@Query('bootcampId') bootcampId: number): Promise<any> {
+    if (!bootcampId) {
+      throw new BadRequestException('bootcampId is required');
+    }
+    
+    const [err, res] = await this.bootcampService.processAttendanceRecords(bootcampId);
+    if (err) {
+      throw new BadRequestException(err);
+    }
+    return res;
+  }
 }

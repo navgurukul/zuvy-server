@@ -32,7 +32,7 @@ let { GOOGLE_CLIENT_ID, GOOGLE_SECRET, GOOGLE_REDIRECT,JWT_SECRET_KEY } = proces
       secret: JWT_SECRET_KEY,
       signOptions: { expiresIn: '24h' },
     }),
-    AuthModule,
+    ConfigModule.forRoot({ isGlobal: true }),
     AdminAssessmentModule,
     BootcampModule,
     BatchesModule,

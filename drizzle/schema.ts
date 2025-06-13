@@ -23,9 +23,6 @@ import {
   customType,
   numeric,
 } from 'drizzle-orm/pg-core';
-import { content } from 'googleapis/build/src/apis/content';
-import { integrations } from 'googleapis/build/src/apis/integrations';
-import { language } from 'googleapis/build/src/apis/language';
 // import { users } from './users'; // Import the 'users' module
 
 export const courseEnrolmentsCourseStatus = pgEnum(
@@ -34,6 +31,7 @@ export const courseEnrolmentsCourseStatus = pgEnum(
 );
 export const coursesType = pgEnum('courses_type', ['html', 'js', 'python']);
 export const difficulty = pgEnum('difficulty', ['Easy', 'Medium', 'Hard']);
+export const currentState = pgEnum('current_state', [ 'DRAFT', 'PUBLISHED', 'ACTIVE', 'CLOSED']);
 export const exercisesReviewType = pgEnum('exercises_review_type', [
   'manual',
   'peer',
@@ -3087,7 +3085,13 @@ export const zuvyOutsourseAssessments = main.table('zuvy_outsourse_assessments',
   canTabChange: boolean('can_tab_change'),
   canScreenExit: boolean('can_screen_exit'),
   canCopyPaste: boolean('can_copy_paste'),
+  publishDatetime: timestamp('publish_datetime', { withTimezone: true, mode: 'string' }),
+  startDatetime: timestamp('start_datetime', { withTimezone: true, mode: 'string' }),
+  endDatetime: timestamp('end_datetime', { withTimezone: true, mode: 'string' }),
+  unpublishDatetime: timestamp('unpublish_datetime', { withTimezone: true, mode: 'string' }),
+  currentState: integer('current_state').default(0),
   createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow(),
   version: varchar('version', { length: 10 })
 });
 

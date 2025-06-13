@@ -6,7 +6,6 @@ import { RolesGuard } from 'src/guards/roles.guard';
 import { Roles } from 'src/decorators/roles.decorator';
 import { STATUS_CODES } from 'src/helpers';
 import { ErrorResponse, SuccessResponse } from 'src/errorHandler/handler';
-import { Response } from 'express';
 
 @Controller('adminAssessment')
 @ApiTags('adminAssessment')
@@ -123,13 +122,13 @@ export class AdminAssessmentController {
     name: 'limit',
     required: false,
     type: Number,
-    description: 'limit'
+    description: 'limit',
   })
   @ApiQuery({
     name: 'offset',
     required: false,
     type: Number,
-    description: 'offset'
+    description: 'offset',
   })
   @ApiBearerAuth('JWT-auth')
   async ModuleChapterStudents(
@@ -180,9 +179,8 @@ export class AdminAssessmentController {
   }
 
   @Post('assessment/approve-reattempt')
-  @Roles('admin')
   @ApiOperation({ summary: 'Approve re-attempt for an assessment submission' })
-  @ApiBearerAuth('JWT-auth')
+  @ApiBearerAuth()
   async approveReattempt(
     @Query('assessmentSubmissionId') assessmentSubmissionId: number,
     @Req() req,
@@ -200,9 +198,8 @@ export class AdminAssessmentController {
   }
 
   @Delete('assessment/reject-reattempt')
-  @Roles('admin')
   @ApiOperation({ summary: 'Reject re-attempt for an assessment submission' })
-  @ApiBearerAuth('JWT-auth')
+  @ApiBearerAuth()
   async rejectReattempt(
     @Query('assessmentSubmissionId') assessmentSubmissionId: number,
     @Req() req,
