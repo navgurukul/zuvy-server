@@ -13,6 +13,7 @@ import {
   Req,
   Query,
   BadRequestException,
+  UseGuards,
 } from '@nestjs/common';
 import { ClassesService } from './classes.service';
 import {
@@ -21,6 +22,7 @@ import {
   ApiOperation,
   ApiCookieAuth,
   ApiQuery,
+  ApiBearerAuth,
 } from '@nestjs/swagger';
 import {
   CreateDto,
@@ -30,16 +32,24 @@ import {
   updateSessionDto,
   DTOsessionRecordViews,
 } from './dto/classes.dto';
-import { ApiBearerAuth } from '@nestjs/swagger';
 import { Response } from 'express';
 import { ErrorResponse, SuccessResponse } from 'src/errorHandler/handler';
+import { Public } from '../../auth/decorators/public.decorator';
+import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
+import { auth2Client } from '../../auth/google-auth';
+import { db } from '../../db/index';
+import {
+  userTokens
+} from '../../../drizzle/schema';
+import { userInfo } from 'os';
 
 // config user for admin
 let configUser = { id: process.env.ID, email: process.env.TEAM_EMAIL };
 
 @Controller('classes')
 @ApiTags('classes')
-@ApiCookieAuth()
+@UseGuards(JwtAuthGuard)
+@ApiBearerAuth('JWT-auth')
 @UsePipes(
   new ValidationPipe({
     whitelist: true,
@@ -50,6 +60,7 @@ let configUser = { id: process.env.ID, email: process.env.TEAM_EMAIL };
 export class ClassesController {
   constructor(private classesService: ClassesService) {}
 
+  @Public()
   @Get('/')
   @ApiOperation({ summary: 'Google authenticate' })
   async googleAuth(
@@ -60,54 +71,91 @@ export class ClassesController {
     return this.classesService.googleAuthentication(res, email, userId);
   }
 
-  @Get('/redirect')
-  @ApiBearerAuth()
-  @ApiOperation({ summary: 'Google authentication redirect' })
+  @Public()
+  @Get('/google-auth/redirect')
+  @ApiOperation({ summary: 'Handle Google OAuth redirect' })
   async googleAuthRedirect(@Req() request) {
-    return this.classesService.googleAuthenticationRedirect(
-      request,
-      request.user,
-    );
+    try {
+      const { code, state } = request.query;
+      const { tokens } = await auth2Client.getToken(code);
+      
+      // Parse state to get user info
+      const userInfo = JSON.parse(state);
+      
+      // Store tokens in database
+      await db
+        .insert(userTokens)
+        .values({
+          userId: userInfo.id,
+          userEmail: userInfo.email,
+          accessToken: tokens.access_token,
+          refreshToken: tokens.refresh_token
+        })
+        .onConflictDoUpdate({
+          target: [userTokens.userId],
+          set: {
+            accessToken: tokens.access_token,
+            refreshToken: tokens.refresh_token
+          }
+        });
+
+      return {
+        status: 'success',
+        message: 'Calendar access granted successfully'
+      };
+    } catch (error) {
+      return {
+        status: 'error',
+        message: 'Failed to authenticate with Google Calendar'
+      };
+    }
   }
 
   @Post('/')
   @ApiOperation({ summary: 'Create the new class' })
-  @ApiBearerAuth()
+  @ApiBearerAuth('JWT-auth')
   async create(@Body() classData: CreateSessionDto, @Req() req) {
-    return this.classesService.createSession(classData, {
-      ...configUser,
-      roles: req.user[0].roles,
-    });
+    const userInfo = {
+      id: Number(req.user[0].id),
+      email: req.user[0].email,
+      roles: req.user[0].roles || []
+    };
+    return this.classesService.createSession(classData, userInfo);
   }
 
   @Get('/getAttendance/:meetingId')
-  @ApiBearerAuth()
+  @ApiBearerAuth('JWT-auth')
   @ApiOperation({ summary: 'Get the google class attendance by meetingId' })
   async extractMeetAttendance(
     @Req() req,
     @Param('meetingId') meetingId: string,
   ): Promise<object> {
-    const [err, values] = await this.classesService.getAttendance(meetingId, {
-      ...configUser,
-      roles: req.user[0].roles,
-    });
+    const userInfo = {
+      id: Number(req.user[0].id),
+      email: req.user[0].email,
+      roles: req.user[0].roles || []
+    };
+    const [err, values] = await this.classesService.getAttendance(meetingId, userInfo);
     if (err) {
       throw new BadRequestException(err);
     }
     return values;
   }
 
+  @Public()
   @Get('/getAllAttendance/:batchId')
-  @ApiBearerAuth()
+  @ApiBearerAuth('JWT-auth')
   @ApiOperation({ summary: 'Get the google all classes attendance by batchID' })
   extractMeetAttendanceByBatch(
     @Req() req,
     @Param('batchId') batchId: string,
   ): Promise<object> {
-    return this.classesService.getAttendanceByBatchId(batchId, {
-      ...configUser,
-      roles: req.user[0].roles,
-    });
+    const userInfo = {
+      id: Number(req.user[0].id),
+      email: req.user[0].email,
+      roles: req.user[0].roles || []
+    };
+    return this.classesService.getAttendanceByBatchId(batchId, userInfo);
   }
   // @Get('/calculatelogic')
   // @ApiBearerAuth()
@@ -131,15 +179,19 @@ export class ClassesController {
   // }
 
   @Get('/analytics/:sessionId')
-  @ApiBearerAuth()
+  @ApiBearerAuth('JWT-auth')
   @ApiOperation({ summary: 'meeting attendance analytics with meeting link' })
   async meetingAttendanceAnalytics(
     @Req() req,
     @Param('sessionId') sessionId: number,
   ) {
+    const userInfo = {
+      id: Number(req.user[0].id),
+      email: req.user[0].email,
+      roles: req.user[0].roles || []
+    };
     const [err, values] = await this.classesService.meetingAttendanceAnalytics(
-      sessionId,
-      { ...configUser, roles: req.user[0].roles }
+      sessionId,userInfo
     );
     if (err) {
       throw new BadRequestException(err);
@@ -148,16 +200,18 @@ export class ClassesController {
   }
 
   @Post('/analytics/reload')
-  @ApiBearerAuth()
+  @ApiBearerAuth('JWT-auth')
   @ApiOperation({ summary: 'meeting attendance analytics with meeting link' })
   async meetingAttendanceRefress(@Req() req, @Body() reloadData: reloadDto) {
     let meetingIds: Array<any> = reloadData?.meetingIds;
 
     let attachment = meetingIds.map(async (meetId) => {
-      const [err, values] = await this.classesService.getAttendance(meetId, {
-        ...configUser,
-        roles: req.user[0].roles,
-      });
+      const userInfo = {
+      id: Number(req.user[0].id),
+      email: req.user[0].email,
+      roles: req.user[0].roles || []
+    };
+      const [err, values] = await this.classesService.getAttendance(meetId, userInfo);
     });
     return { message: 'Data Refreshed', status: 200 };
   }
@@ -176,7 +230,7 @@ export class ClassesController {
     type: Number,
     description: 'Offset for pagination',
   })
-  @ApiBearerAuth()
+  @ApiBearerAuth('JWT-auth')
   getClassesByBatchId(
     @Query('limit') limit: number,
     @Query('offset') offset: number,
@@ -187,7 +241,7 @@ export class ClassesController {
 
   @Get('/getAttendeesByMeetingId/:id')
   @ApiOperation({ summary: 'Get the google class attendees by meetingId' })
-  @ApiBearerAuth()
+  @ApiBearerAuth('JWT-auth')
   getAttendeesByMeetingId(@Param('id') id: number): Promise<object> {
     return this.classesService.getAttendeesByMeetingId(id);
   }
@@ -224,7 +278,7 @@ export class ClassesController {
     type: String,
     description: 'completed, upcoming, ongoing or all',
   })
-  @ApiBearerAuth()
+  @ApiBearerAuth('JWT-auth')
   async getClassesBy(
     @Param('bootcampId') bootcampId: number,
     @Query('batchId') batchId: number,
@@ -247,7 +301,7 @@ export class ClassesController {
   }
   @Get('/meetings/:bootcampId')
   @ApiOperation({ summary: 'Get the google classes id by bootcampId' })
-  @ApiBearerAuth()
+  @ApiBearerAuth('JWT-auth')
   getClassesBybootcampId(
     @Query('bootcampId') bootcampId: string,
   ): Promise<object> {
@@ -256,34 +310,38 @@ export class ClassesController {
 
   @Delete('/delete/:meetingId')
   @ApiOperation({ summary: 'Delete the google class by meetingId' })
-  @ApiBearerAuth()
+  @ApiBearerAuth('JWT-auth')
   deleteClassByMeetingId(
     @Param('meetingId') meetingId: string,
     @Req() req,
   ): Promise<object> {
-    return this.classesService.deleteSession(meetingId, {
-      ...configUser,
-      roles: req.user[0].roles,
-    });
+    const userInfo = {
+      id: Number(req.user[0].id),
+      email: req.user[0].email,
+      roles: req.user[0].roles || []
+    };
+    return this.classesService.deleteSession(meetingId, userInfo);
   }
 
   @Patch('/update/:meetingId')
   @ApiOperation({ summary: 'Update the google class by meetingId' })
-  @ApiBearerAuth()
+  @ApiBearerAuth('JWT-auth')
   updateClassByMeetingId(
     @Param('meetingId') meetingId: string,
     @Body() classData: updateSessionDto,
     @Req() req,
   ): Promise<object> {
-    return this.classesService.updateSession(meetingId, classData, {
-      ...configUser,
-      roles: req.user[0].roles,
-    });
+    const userInfo = {
+      id: Number(req.user[0].id),
+      email: req.user[0].email,
+      roles: req.user[0].roles || []
+    };
+    return this.classesService.updateSession(meetingId, classData,userInfo);
   }
   
   @Get('/sessionRecordViews')
   @ApiOperation({ summary: 'Get the session record views with sessionID or userID with both' })
-  @ApiBearerAuth()
+  @ApiBearerAuth('JWT-auth')
   @ApiQuery({
     name: 'sessionId',
     required: false,
@@ -321,7 +379,7 @@ export class ClassesController {
 
   @Post('/sessionRecordViews')
   @ApiOperation({ summary: 'Create the session record views' })
-  @ApiBearerAuth()
+  @ApiBearerAuth('JWT-auth')
   async createSessionRecordViews(
     @Body() sessionRecordViews: DTOsessionRecordViews,
     @Req() req,
@@ -343,6 +401,38 @@ export class ClassesController {
       ).send(res);
     } catch (error) {
       return ErrorResponse.BadRequestException(error.message).send(res);
+    }
+  }
+
+  @Get('/check-calendar-access')
+  @ApiOperation({ summary: 'Check if admin has calendar access' })
+  @ApiBearerAuth('JWT-auth')
+  async checkCalendarAccess(@Req() req) {
+    try {
+      console.log("userInfo",req)
+      const userInfo = {
+        id: Number(req.user[0].id),
+        email: req.user[0].email,
+        roles: req.user[0].roles || []
+      };
+      
+      const calendar = await this.classesService.accessOfCalendar(userInfo);
+      if ('status' in calendar && calendar.status === 'error') {
+        return {
+          status: 'not success',
+          message: calendar.message
+        };
+      }
+      return {
+        status: 'success',
+        message: 'Calendar access verified'
+      };
+    } catch (error) {
+      return {
+        status: 'not success',
+        message: 'Failed to verify calendar access',
+        error: error.message
+      };
     }
   }
 }

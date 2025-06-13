@@ -20,9 +20,7 @@ import {
   UploadedFile,
   InternalServerErrorException,
   BadGatewayException,
-  UploadedFiles,
-  UnauthorizedException,
-  Sse
+  UploadedFiles
 } from '@nestjs/common';
 import { ContentService } from './content.service';
 import {
@@ -58,34 +56,31 @@ import {
   CreateQuizzesDto,
   EditQuizBatchDto,
   AddQuizVariantsDto,
-  deleteQuestionOrVariantDto,
-  UpdateChapterDto
+  deleteQuestionOrVariantDto
 } from './dto/content.dto';
 import { RolesGuard } from 'src/guards/roles.guard';
+import { Roles } from 'src/decorators/roles.decorator';
 import { ErrorResponse, SuccessResponse } from 'src/errorHandler/handler';
 import { Response } from 'express';
 import { complairDateTyeps } from 'src/helpers/index';
 import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express/multer';
-import { SseService } from '../../services/sse.service';
-import { Observable } from 'rxjs';
 
-@Controller('Content')
-@ApiTags('Content')
+@Controller('content')
+@ApiTags('content')
 @UsePipes(
   new ValidationPipe({
     whitelist: true,
     transform: true,
     forbidNonWhitelisted: true,
-    skipMissingProperties: true
   }),
 )
+@UseGuards(JwtAuthGuard, RolesGuard)
+@ApiBearerAuth('JWT-auth')
 export class ContentController {
-  constructor(
-    private contentService: ContentService,
-    private sseService: SseService
-  ) { }
+  constructor(private contentService: ContentService) { }
 
   @Post('/modules/:bootcampId')
+  @Roles('admin')
   @ApiOperation({ summary: 'Create the module of a particular bootcamp' })
   @ApiQuery({
     name: 'typeId',
@@ -93,8 +88,7 @@ export class ContentController {
     type: Number,
     description: 'type id',
   })
-  @ApiBearerAuth()
-  @UseGuards(RolesGuard)
+  @ApiBearerAuth('JWT-auth')
   async createModule(
     @Body() moduleData: moduleDto,
     @Param('bootcampId') bootcampId: number,
@@ -109,6 +103,7 @@ export class ContentController {
   }
 
   @Post('/projects/:bootcampId')
+  @Roles('admin')
   @ApiOperation({ summary: 'Create a project of a particular bootcamp' })
   @ApiQuery({
     name: 'typeId',
@@ -116,8 +111,7 @@ export class ContentController {
     type: Number,
     description: 'type id',
   })
-  @ApiBearerAuth()
-  @UseGuards(RolesGuard)
+  @ApiBearerAuth('JWT-auth')
   async createProject(
     @Body() projectData: projectDto,
     @Param('bootcampId') bootcampId: number,
@@ -132,6 +126,7 @@ export class ContentController {
   }
 
   @Get('/project/:id')
+  @Roles('admin')
   @ApiOperation({ summary: 'Get the project details of a particular bootcamp' })
   @ApiQuery({
     name: 'bootcampId',
@@ -139,7 +134,7 @@ export class ContentController {
     type: Number,
     description: 'bootcamp id',
   })
-  @ApiBearerAuth()
+  @ApiBearerAuth('JWT-auth')
   async getProjectDetails(
     @Param('id') id: number,
     @Query('bootcampId') bootcampId: number,
@@ -152,9 +147,9 @@ export class ContentController {
   }
 
   @Patch('/updateProjects/:projectId')
+  @Roles('admin')
   @ApiOperation({ summary: 'Update the project' })
-  @ApiBearerAuth()
-  @UseGuards(RolesGuard)
+  @ApiBearerAuth('JWT-auth')
   async updateProject(
     @Body() projectData: projectDto,
     @Param('projectId') projectId: number,
@@ -167,6 +162,7 @@ export class ContentController {
   }
 
   @Delete('/deleteProject/:projectId')
+  @Roles('admin')
   @ApiOperation({ summary: 'Delete the project' })
   @ApiQuery({
     name: 'bootcampId',
@@ -180,8 +176,7 @@ export class ContentController {
     type: Number,
     description: 'module id',
   })
-  @ApiBearerAuth()
-  @UseGuards(RolesGuard)
+  @ApiBearerAuth('JWT-auth')
   async deleteProject(
     @Param('projectId') projectId: number,
     @Query('bootcampId') bootcampId: number,
@@ -195,11 +190,10 @@ export class ContentController {
     return res;
   }
 
-
   @Post('/chapter')
+  @Roles('admin')
   @ApiOperation({ summary: 'Create a chapter for this module' })
-  @ApiBearerAuth()
-  @UseGuards(RolesGuard)
+  @ApiBearerAuth('JWT-auth')
   async createChapter(
     @Body() chapterData: CreateChapterDto,
   ) {
@@ -207,9 +201,9 @@ export class ContentController {
   }
 
   @Post('/quiz')
+  @Roles('admin')
   @ApiOperation({ summary: 'Create a quiz' })
-  @ApiBearerAuth()
-  @UseGuards(RolesGuard)
+  @ApiBearerAuth('JWT-auth')
   async createQuizForModule(
     @Body() quizQuestions: CreateQuizzesDto,
     @Res() res
@@ -228,9 +222,9 @@ export class ContentController {
   }
 
   @Put('/editAssessment/:assessmentOutsourseId/:chapterId')
+  @Roles('admin')
   @ApiOperation({ summary: 'Edit the assessment for this module' })
-  @ApiBearerAuth()
-  @UseGuards(RolesGuard)
+  @ApiBearerAuth('JWT-auth')
   async editAssessment(
     @Body() assessmentBody: CreateAssessmentBody,
     @Param('assessmentOutsourseId') assessmentOutsourseId: number,
@@ -244,31 +238,34 @@ export class ContentController {
     return res;
   }
 
-
   @Get('/allModules/:bootcampId')
+  @Roles('admin')
   @ApiOperation({ summary: 'Get all modules of a course' })
-  @ApiBearerAuth()
+  @ApiBearerAuth('JWT-auth')
   async getAllModules(@Param('bootcampId') bootcampId: number) {
     const res = await this.contentService.getAllModuleByBootcampId(bootcampId);
     return res;
   }
 
   @Get('/allChaptersOfModule/:moduleId')
+  @Roles('admin')
   @ApiOperation({ summary: 'Get all the chapters of a module' })
-  @ApiBearerAuth()
+  @ApiBearerAuth('JWT-auth')
   async getChapterDetailsOfModule(@Param('moduleId') moduleId: number) {
     const res = await this.contentService.getAllChaptersOfModule(moduleId);
     return res;
   }
 
   @Get('/chapterDetailsById/:chapterId')
+  @Roles('admin')
   @ApiOperation({ summary: 'Get chapter details by id' })
-  @ApiBearerAuth()
+  @ApiBearerAuth('JWT-auth')
   async getChapterDetailsById(@Param('chapterId') chapterId: number, @Query('bootcampId') bootcampId: number, @Query('moduleId') moduleId: number, @Query('topicId') topicId: number) {
     return this.contentService.getChapterDetailsById(chapterId, bootcampId, moduleId, topicId);
   }
 
   @Put('/editModuleOfBootcamp/:bootcampId')
+  @Roles('admin')
   @ApiOperation({ summary: 'Drag and drop modules in a bootcamp' })
   @ApiQuery({
     name: 'moduleId',
@@ -276,8 +273,7 @@ export class ContentController {
     type: Number,
     description: 'module Id',
   })
-  @ApiBearerAuth()
-  @UseGuards(RolesGuard)
+  @ApiBearerAuth('JWT-auth')
   async reOrderModules(
     @Body() reOrder: ReOrderModuleBody,
     @Param('bootcampId') bootcampId: number,
@@ -292,6 +288,7 @@ export class ContentController {
   }
 
   @Delete('/deleteModule/:bootcampId')
+  @Roles('admin')
   @ApiOperation({ summary: 'Delete the module' })
   @ApiQuery({
     name: 'moduleId',
@@ -299,8 +296,7 @@ export class ContentController {
     type: Number,
     description: 'module Id',
   })
-  @ApiBearerAuth()
-  @UseGuards(RolesGuard)
+  @ApiBearerAuth('JWT-auth')
   async deleteModule(
     @Param('bootcampId') bootcampId: number,
     @Query('moduleId') moduleId: number,
@@ -310,6 +306,7 @@ export class ContentController {
   }
 
   @Put('/editChapterOfModule/:moduleId')
+  @Roles('admin')
   @ApiOperation({ summary: 'Drag and drop modules in a bootcamp' })
   @ApiQuery({
     name: 'chapterId',
@@ -317,8 +314,7 @@ export class ContentController {
     type: Number,
     description: 'chapter id',
   })
-  @ApiBearerAuth()
-  @UseGuards(RolesGuard)
+  @ApiBearerAuth('JWT-auth')
   async editChapter(
     @Body() reOrder: EditChapterDto,
     @Param('moduleId') moduleId: number,
@@ -333,6 +329,7 @@ export class ContentController {
   }
 
   @Delete('/deleteChapter/:moduleId')
+  @Roles('admin')
   @ApiOperation({ summary: 'Delete the chapter' })
   @ApiQuery({
     name: 'chapterId',
@@ -340,8 +337,7 @@ export class ContentController {
     type: Number,
     description: 'chapter Id',
   })
-  @ApiBearerAuth()
-  @UseGuards(RolesGuard)
+  @ApiBearerAuth('JWT-auth')
   async deleteChapter(
     @Param('moduleId') moduleId: number,
     @Query('chapterId') chapterId: number,
@@ -351,6 +347,7 @@ export class ContentController {
   }
 
   @Get('/allQuizQuestions')
+  @Roles('admin')
   @ApiOperation({ summary: 'Get all quiz Questions' })
   @ApiQuery({
     name: 'tagId',
@@ -382,7 +379,7 @@ export class ContentController {
     type: Number,
     description: 'offset',
   })
-  @ApiBearerAuth()
+  @ApiBearerAuth('JWT-auth')
   async getAllQuizQuestions(
     @Query('tagId') tagId: number[],
     @Query('difficulty') difficulty: ('Easy' | 'Medium' | 'Hard') | ('Easy' | 'Medium' | 'Hard')[],
@@ -401,9 +398,9 @@ export class ContentController {
   }
 
   @Patch('/updateCodingQuestion/:questionId')
+  @Roles('admin')
   @ApiOperation({ summary: 'Update the coding question for this module' })
-  @ApiBearerAuth()
-  @UseGuards(RolesGuard)
+  @ApiBearerAuth('JWT-auth')
   async updateCodingQuestionForModule(
     @Body() codingQuestions: UpdateProblemDto,
     @Param('questionId') questionId: number,
@@ -416,6 +413,7 @@ export class ContentController {
   }
 
   @Get('/allCodingQuestions')
+  @Roles('admin')
   @ApiOperation({ summary: 'Get all coding Questions' })
   @ApiQuery({
     name: 'tagId',
@@ -447,7 +445,7 @@ export class ContentController {
     type: Number,
     description: 'offset',
   })
-  @ApiBearerAuth()
+  @ApiBearerAuth('JWT-auth')
   async getAllCodingQuestions(
     @Query('tagId') tagId: number[],
     @Query('difficulty') difficulty: ('Easy' | 'Medium' | 'Hard') | ('Easy' | 'Medium' | 'Hard')[],
@@ -466,18 +464,18 @@ export class ContentController {
   }
 
   @Delete('/deleteCodingQuestion')
+  @Roles('admin')
   @ApiOperation({ summary: 'Delete coding question' })
-  @ApiBearerAuth()
-  @UseGuards(RolesGuard)
+  @ApiBearerAuth('JWT-auth')
   async deleteCodingQuestion(@Body() questionIds: deleteQuestionDto) {
     const res = await this.contentService.deleteCodingProblem(questionIds);
     return res;
   }
 
   @Post('/editquiz')
+  @Roles('admin')
   @ApiOperation({ summary: 'Edit a quiz' })
-  @ApiBearerAuth()
-  @UseGuards(RolesGuard)
+  @ApiBearerAuth('JWT-auth')
   async editQuizForModule(
     @Body() quizUpdates: EditQuizBatchDto,
     @Res() res
@@ -495,37 +493,35 @@ export class ContentController {
     }
   }
 
-
-
   @Delete('/deleteQuizQuestion')
+  @Roles('admin')
   @ApiOperation({ summary: 'Delete quiz question' })
-  @ApiBearerAuth()
-  @UseGuards(RolesGuard)
+  @ApiBearerAuth('JWT-auth')
   async deleteQuizQuestion(@Body() questionIds: deleteQuestionDto) {
     const res = await this.contentService.deleteQuiz(questionIds);
     return res;
   }
 
-
-
   @Post('/createTag')
+  @Roles('admin')
   @ApiOperation({ summary: 'Create a tag for the curriculum' })
-  @ApiBearerAuth()
+  @ApiBearerAuth('JWT-auth')
   async createTag(@Body() tag: CreateTagDto) {
     const res = await this.contentService.createTag(tag);
     return res;
   }
 
   @Get('/allTags')
+  @Roles('admin')
   @ApiOperation({ summary: 'Get all the available tags' })
-  @ApiBearerAuth()
+  @ApiBearerAuth('JWT-auth')
   async getAllTags() {
     const res = await this.contentService.getAllTags();
     return res;
   }
 
-
   @Get('/openEndedQuestions')
+  @Roles('admin')
   @ApiOperation({ summary: 'Get all open ended Questions' })
   @ApiQuery({
     name: 'tagId',
@@ -557,7 +553,7 @@ export class ContentController {
     type: Number,
     description: 'offset',
   })
-  @ApiBearerAuth()
+  @ApiBearerAuth('JWT-auth')
   async getAllOpenEndedQuestions(
     @Query('tagId') tagId: number[],
     @Query('difficulty') difficulty: ('Easy' | 'Medium' | 'Hard') | ('Easy' | 'Medium' | 'Hard')[],
@@ -565,7 +561,6 @@ export class ContentController {
     @Query('limit') limit: number,
     @Query('offset') offset: number,
   ): Promise<object> {
-
     const res = await this.contentService.getAllOpenEndedQuestions(
       tagId,
       difficulty,
@@ -577,9 +572,9 @@ export class ContentController {
   }
 
   @Patch('/updateOpenEndedQuestion/:questionId')
+  @Roles('admin')
   @ApiOperation({ summary: 'Update the open ended question for this module' })
-  @ApiBearerAuth()
-  @UseGuards(RolesGuard)
+  @ApiBearerAuth('JWT-auth')
   async updateOpenEndedQuestionForModule(
     @Body() openEndedQuestions: UpdateOpenEndedDto,
     @Param('questionId') questionId: number,
@@ -592,29 +587,30 @@ export class ContentController {
   }
 
   @Post('/createOpenEndedQuestion')
+  @Roles('admin')
   @ApiOperation({ summary: 'Create a open ended question' })
-  @ApiBearerAuth()
-  @UseGuards(RolesGuard)
+  @ApiBearerAuth('JWT-auth')
   async createOpenEndedQuestion(@Body() oEndedQuestions: openEndedDto) {
     return this.contentService.createOpenEndedQuestions(oEndedQuestions);
   }
 
   @Delete('/deleteOpenEndedQuestion')
+  @Roles('admin')
   @ApiOperation({ summary: 'Delete openended question' })
-  @ApiBearerAuth()
-  @UseGuards(RolesGuard)
+  @ApiBearerAuth('JWT-auth')
   async deleteOpenEndedQuestion(@Body() questionIds: deleteQuestionDto) {
     return this.contentService.deleteOpenEndedQuestion(questionIds);
   }
 
   @Get('/students/assessmentId=:assessmentId')
+  @Roles('admin')
   @ApiOperation({ summary: 'Get the student of a particular assessment' })
-  @ApiBearerAuth()
+  @ApiBearerAuth('JWT-auth')
   async getStudentsOfAssessment(@Param('assessmentId') assessmentId: number, @Query('moduleId') moduleId: number, @Query('bootcampId') bootcampId: number, @Query('chapterId') chapterId: number, @Req() req) {
     return this.contentService.getStudentsOfAssessment(assessmentId, chapterId, moduleId, bootcampId, req);
   }
 
-  @Get('/startAssessmentForStudent/assessmentOutsourseId=:assessmentOutsourseId/newStart=:newStart')
+  @Get('/startAssessmentForStudent/assessmentOutsourseId=:assessmentOutsourseId')
   @ApiOperation({ summary: 'Start the assessment for a student' })
   @ApiBearerAuth()
   async startAssessmentForStudent(@Req() req, @Param('assessmentOutsourseId') assessmentOutsourseId: number, @Param('newStart') newStart:boolean, @Res() res: Response): Promise<any> {
@@ -630,6 +626,7 @@ export class ContentController {
   }
 
   @Get('/assessmentDetailsOfQuiz/:assessmentOutsourseId')
+  @Roles('admin')
   @ApiOperation({ summary: 'Get the assessment details of the Quiz' })
   @ApiQuery({
     name: 'studentId',
@@ -637,7 +634,7 @@ export class ContentController {
     type: Number,
     description: 'studentId of the assessment',
   })
-  @ApiBearerAuth()
+  @ApiBearerAuth('JWT-auth')
   async getAssessmentDetailsOfQuiz(
     @Param('assessmentOutsourseId') assessmentOutsourseId: number,
     @Req() req,
@@ -660,14 +657,15 @@ export class ContentController {
   }
 
   @Get('/assessmentDetailsOfOpenEnded/:assessmentOutsourseId')
+  @Roles('admin')
   @ApiOperation({ summary: 'Get the assessment details of the open Ended questions' })
-  @ApiBearerAuth()
   @ApiQuery({
     name: 'studentId',
     required: false,
     type: Number,
     description: 'studentId of the assessment',
   })
+  @ApiBearerAuth('JWT-auth')
   async getAssessmentDetailsOfOpenEnded(@Param('assessmentOutsourseId') assessmentOutsourseId: number, @Req() req, @Query('studentId') userId: number) {
     if (!userId) {
       userId = req.user[0].id;
@@ -675,27 +673,28 @@ export class ContentController {
     return this.contentService.getAssessmentDetailsOfOpenEnded(assessmentOutsourseId, userId);
   }
 
-
   @Post('/createQuestionType')
+  @Roles('admin')
   @ApiOperation({ summary: 'Create a Question Type for the form' })
-  @ApiBearerAuth()
+  @ApiBearerAuth('JWT-auth')
   async createQuestionType(@Body() questionType: CreateTypeDto) {
     const res = await this.contentService.createQuestionType(questionType);
     return res;
   }
 
   @Get('/allQuestionType')
+  @Roles('admin')
   @ApiOperation({ summary: 'Get all the available Question Types' })
-  @ApiBearerAuth()
+  @ApiBearerAuth('JWT-auth')
   async getAllQuestionTypes() {
     const res = await this.contentService.getAllQuestionTypes();
     return res;
   }
 
   @Post('/form')
+  @Roles('admin')
   @ApiOperation({ summary: 'Create a form' })
-  @ApiBearerAuth()
-  @UseGuards(RolesGuard)
+  @ApiBearerAuth('JWT-auth')
   async createFormForModule(
     @Query('chapterId') chapterId: number,
     @Body() formQuestion: formBatchDto
@@ -708,6 +707,7 @@ export class ContentController {
   }
 
   @Get('/allFormQuestions/:chapterId')
+  @Roles('admin')
   @ApiOperation({ summary: 'Get all form Questions' })
   @ApiQuery({
     name: 'typeId',
@@ -721,7 +721,7 @@ export class ContentController {
     type: String,
     description: 'Search by name or email',
   })
-  @ApiBearerAuth()
+  @ApiBearerAuth('JWT-auth')
   async getAllFormQuestions(
     @Param('chapterId') chapterId: number,
     @Query('typeId') typeId: number,
@@ -736,9 +736,9 @@ export class ContentController {
   }
 
   @Post('/editform')
+  @Roles('admin')
   @ApiOperation({ summary: 'Create a form' })
-  @ApiBearerAuth()
-  @UseGuards(RolesGuard)
+  @ApiBearerAuth('JWT-auth')
   async editFormForModule(
     @Query('chapterId') chapterId: number,
     @Body() formQuestions: editFormBatchDto) {
@@ -749,11 +749,10 @@ export class ContentController {
     return res;
   }
 
-
   @Post('/createAndEditForm/:chapterId')
+  @Roles('admin')
   @ApiOperation({ summary: 'Create a form' })
-  @ApiBearerAuth()
-  @UseGuards(RolesGuard)
+  @ApiBearerAuth('JWT-auth')
   async createAndEditForm(
     @Param('chapterId') chapterId: number,
     @Body() formQuestions: CreateAndEditFormBody) {
@@ -765,8 +764,9 @@ export class ContentController {
   }
 
   @Get('/GetOpenendedQuestionById/:id')
+  @Roles('admin')
   @ApiOperation({ summary: 'Get the openended question by id' })
-  @ApiBearerAuth()
+  @ApiBearerAuth('JWT-auth')
   async getOpenendedQuestionDetails(
     @Param('id') id: number,
     @Res() res
@@ -783,8 +783,9 @@ export class ContentController {
   }
 
   @Get('/GetCodingQuestionById/:id')
+  @Roles('admin')
   @ApiOperation({ summary: 'Get the openended question by id' })
-  @ApiBearerAuth()
+  @ApiBearerAuth('JWT-auth')
   async getCodingQuestionDetails(
     @Param('id') id: number,
     @Res() res
@@ -801,8 +802,9 @@ export class ContentController {
   }
 
   @Get('/GetQuizQuestionById/:id')
+  @Roles('admin')
   @ApiOperation({ summary: 'Get the openended question by id' })
-  @ApiBearerAuth()
+  @ApiBearerAuth('JWT-auth')
   async getQuizQuestionDetails(
     @Param('id') id: number,
     @Res() res
@@ -819,9 +821,9 @@ export class ContentController {
   }
 
   @Get('/quiz/:quizId')
+  @Roles('admin')
   @ApiOperation({ summary: 'Get all variants by quizId' })
-  @ApiBearerAuth()
-  @UseGuards(RolesGuard)
+  @ApiBearerAuth('JWT-auth')
   async getAllQuizVariants(@Param('quizId') quizId: number, @Res() res) {
     try {
       const [err, success] = await this.contentService.getAllQuizVariants(quizId);
@@ -835,9 +837,9 @@ export class ContentController {
   }
 
   @Post('/quiz/add/variants')
+  @Roles('admin')
   @ApiOperation({ summary: 'Add variants to a quiz' })
-  @ApiBearerAuth()
-  @UseGuards(RolesGuard)
+  @ApiBearerAuth('JWT-auth')
   async addQuizVariants(
     @Body() addQuizVariantsDto: AddQuizVariantsDto,
     @Res() res
@@ -855,11 +857,10 @@ export class ContentController {
     }
   }
 
-
   @Delete('/deleteMainQuizOrVariant')
+  @Roles('admin')
   @ApiOperation({ summary: 'Delete main quiz or variant' })
-  @ApiBearerAuth()
-  @UseGuards(RolesGuard)
+  @ApiBearerAuth('JWT-auth')
   async deleteMainQuizOrVariant(
     @Body() deleteDto: deleteQuestionOrVariantDto,
     @Res() res,
@@ -871,10 +872,10 @@ export class ContentController {
     return new SuccessResponse(success.message, success.statusCode,null).send(res);
   }
 
-  // get complairDateTyeps  
   @Get('/getCompilerTypes')
+  @Roles('admin')
   @ApiOperation({ summary: 'Get all compiler types' })
-  @ApiBearerAuth()
+  @ApiBearerAuth('JWT-auth')
   async getCompilerTypes(
     @Res() res
   ) {
@@ -975,19 +976,5 @@ async uploadImages(
     );
 
     return { urls };
-  }
-
-  @Sse('assessment-notifications/:assessmentId')
-  @ApiOperation({ summary: 'Connect to assessment notifications via SSE' })
-  @ApiBearerAuth()
-  async assessmentNotifications(
-    @Param('assessmentId') assessmentId: number,
-    @Req() req
-  ): Promise<Observable<any>> {
-    // Only allow students to connect to notifications
-    if (!req.user[0].roles.includes('student')) {
-      throw new UnauthorizedException('Only students can connect to assessment notifications');
-    }
-    return this.sseService.connectToAssessment(assessmentId);
   }
 }

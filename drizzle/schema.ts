@@ -1807,6 +1807,8 @@ export const courseProductionVersions = main.table(
   },
 );
 
+
+
 export const dashboardFlags = main.table('dashboard_flags', {
   id: serial('id').primaryKey().notNull(),
   studentId: integer('student_id')
@@ -3497,4 +3499,11 @@ export const zuvyStudentApplicationRecord = main.table('zuvy_student_application
     mode: 'string',
   }).defaultNow(),
   version: varchar('version', { length: 10 })
+});
+export const blacklistedTokens = main.table('blacklisted_tokens', {
+  id: bigserial('id', { mode: 'bigint' }).primaryKey().notNull(),
+  token: varchar('token', { length: 500 }).notNull(),
+  userId: bigint('user_id', { mode: 'bigint' }).notNull().references(() => users.id),
+  expiresAt: timestamp('expires_at').notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
 });

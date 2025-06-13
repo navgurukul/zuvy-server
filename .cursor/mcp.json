@@ -1,0 +1,13 @@
+{
+    "mcpServers": {
+      "postgres": {
+        "command": "postgres-mcp",
+        "args": [
+          "--access-mode=unrestricted"
+        ],
+        "env": {
+          "DATABASE_URI": "postgresql://devmain:ms3Qa38uZ7Ae5M6NNnMZ@db-pg.cosodeda78lq.ap-south-1.rds.amazonaws.com:5432/dev"
+        }
+      }
+    }
+  }

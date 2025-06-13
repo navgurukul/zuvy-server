@@ -1,5 +1,5 @@
-import { Module } from '@nestjs/common';
-import { APP_INTERCEPTOR } from '@nestjs/core';
+import { Module, NestModule, MiddlewareConsumer } from '@nestjs/common';
+import { APP_INTERCEPTOR, APP_GUARD } from '@nestjs/core';
 import { JwtModule } from '@nestjs/jwt';
 import { LoggingInterceptor } from './loggerInterceptor/logger';
 import { ScheduleModule as NestScheduleModule } from '@nestjs/schedule';
@@ -15,16 +15,21 @@ import { SubmissionModule } from './controller/submissions/submission.module';
 import { AdminAssessmentModule } from './controller/adminAssessment/adminAssessment.module';
 import { ScheduleModule } from './schedule/schedule.module';
 import { InstructorModule } from './controller/instructor/instructor.module';
-import { SseService } from './services/sse.service';
-import { UsersModule } from './controller/users/users.module';
-
+import { AuthModule } from './auth/auth.module';
+import { JwtMiddleware } from './middleware/jwt.middleware';
+import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
+import { Reflector } from '@nestjs/core';
+import { AuthService } from './auth/auth.service';
+let { GOOGLE_CLIENT_ID, GOOGLE_SECRET, GOOGLE_REDIRECT,JWT_SECRET_KEY } = process.env;
 @Module({
   imports: [
+    ConfigModule.forRoot({
+      isGlobal: true,
+    }),
     NestScheduleModule.forRoot(),
-    ConfigModule.forRoot(),
     JwtModule.register({
       global: true,
-      secret: process.env.JWT_SECRET_KEY,
+      secret: JWT_SECRET_KEY,
       signOptions: { expiresIn: '24h' },
     }),
     ConfigModule.forRoot({ isGlobal: true }),
@@ -39,14 +44,25 @@ import { UsersModule } from './controller/users/users.module';
     TrackingModule,
     InstructorModule,
     ScheduleModule,
-    UsersModule 
   ],
   providers: [
     {
       provide: APP_INTERCEPTOR,
       useClass: LoggingInterceptor,
     },
-    SseService
+    {
+      provide: APP_GUARD,
+      useClass: JwtAuthGuard,
+    },
+    JwtMiddleware,
+    Reflector,
+    AuthService
   ]
 })
-export class AppModule { }
+export class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer) {
+    consumer
+      .apply(JwtMiddleware)
+      .forRoutes('*');
+  }
+}

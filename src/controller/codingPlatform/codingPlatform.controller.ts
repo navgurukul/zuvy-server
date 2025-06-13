@@ -10,18 +10,20 @@ import {
   UsePipes,
   Query,
   Req,
-  Res
+  Res,
+  UseGuards
 } from '@nestjs/common';
 import { CodingPlatformService } from './codingPlatform.service';
 import {
   ApiTags,
   ApiOperation,
   ApiQuery,
+  ApiBearerAuth
 } from '@nestjs/swagger';
 import { SubmitCodeDto, CreateProblemDto, updateProblemDto, TestCaseDto } from './dto/codingPlatform.dto';
-import { ApiBearerAuth } from '@nestjs/swagger';
 import { ErrorResponse, SuccessResponse } from 'src/errorHandler/handler';
 import { Response } from 'express';
+import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 
 @Controller('codingPlatform')
 @ApiTags('codingPlatform')
@@ -32,12 +34,14 @@ import { Response } from 'express';
     forbidNonWhitelisted: true,
   }),
 )
+@UseGuards(JwtAuthGuard)
+@ApiBearerAuth('JWT-auth')
 export class CodingPlatformController {
   constructor(private codingPlatformService: CodingPlatformService) { }
 
   @Post('/practicecode/questionId=:questionId')
   @ApiOperation({ summary: 'Submiting the coding question' })
-  @ApiBearerAuth()
+  @ApiBearerAuth('JWT-auth')
   @ApiQuery({
     name: 'submissionId',
     required: false,
@@ -78,7 +82,7 @@ export class CodingPlatformController {
 
  @Get('/submissions/questionId=:questionId')
   @ApiOperation({ summary: 'Get the question AND submissions by question id ' })
-  @ApiBearerAuth()
+  @ApiBearerAuth('JWT-auth')
   @ApiQuery({
     name: 'assessmentSubmissionId',
     required: false,
@@ -131,7 +135,7 @@ export class CodingPlatformController {
 
   @Post('create-question')
   @ApiOperation({ summary: 'Create coding question with test cases' })
-  @ApiBearerAuth()
+  @ApiBearerAuth('JWT-auth')
   async createCodingQuestion(@Body() createCodingQuestionDto: CreateProblemDto, @Res() res: Response): Promise<any> {
     try {
       const [err, success] = await this.codingPlatformService.createCodingQuestion(createCodingQuestionDto);
@@ -146,7 +150,7 @@ export class CodingPlatformController {
 
   @Put('update-question/:id')
   @ApiOperation({ summary: 'Update coding question' })
-  @ApiBearerAuth()
+  @ApiBearerAuth('JWT-auth')
   async updateCodingQuestion(@Param('id') id: number, @Body() updateCodingQuestionDto: updateProblemDto, @Res() res: Response) {
     try {
       const [err, success] = await this.codingPlatformService.updateCodingQuestion(id, updateCodingQuestionDto);
@@ -161,7 +165,7 @@ export class CodingPlatformController {
 
   @Delete('delete-question/:id')
   @ApiOperation({ summary: 'Delete coding question' })
-  @ApiBearerAuth()
+  @ApiBearerAuth('JWT-auth')
   async deleteCodingQuestion(@Param('id') id: number, @Res() res: Response): Promise<any> {
     try {
       const [err, success] = await this.codingPlatformService.deleteCodingQuestion(id);
@@ -176,7 +180,7 @@ export class CodingPlatformController {
 
   @Delete('delete-testcase/:id')
   @ApiOperation({ summary: 'Delete coding Testcase' })
-  @ApiBearerAuth()
+  @ApiBearerAuth('JWT-auth')
   async deleteCodingTestcase(@Param('id') id: number, @Res() res: Response): Promise<any> {
     try {
       const [err, success] = await this.codingPlatformService.deleteCodingTestcase(id);
@@ -191,7 +195,7 @@ export class CodingPlatformController {
 
   @Get('get-coding-question/:id')
   @ApiOperation({ summary: 'Get coding question' })
-  @ApiBearerAuth()
+  @ApiBearerAuth('JWT-auth')
   async getCodingQuestion(@Param('id') id: number, @Res() res: Response): Promise<any> {
     try {
       const [err, success] = await this.codingPlatformService.getCodingQuestion(id);
@@ -206,7 +210,7 @@ export class CodingPlatformController {
 
   @Post('add-test-case/:question_id')
   @ApiOperation({ summary: 'Add test case to coding question' })
-  @ApiBearerAuth()
+  @ApiBearerAuth('JWT-auth')
   async addTestCase(@Param('question_id') question_id: number, @Body() updateTestCaseDto: TestCaseDto, @Res() res: Response): Promise<any> {
     try {
       const [err, success] = await this.codingPlatformService.addTestCase(question_id, updateTestCaseDto);
@@ -222,7 +226,7 @@ export class CodingPlatformController {
   // get submission test cases id
   @Get('submissions/:questionId')
   @ApiOperation({ summary: 'Get all submissions of the question.' })
-  @ApiBearerAuth()
+  @ApiBearerAuth('JWT-auth')
   async getSubmissionsId(@Param('questionId') questionId: number, @Res() res: Response): Promise<any> {
     try {
       const [err, success] = await this.codingPlatformService.getSubmissionsId(questionId);
@@ -238,7 +242,7 @@ export class CodingPlatformController {
   // get api practice code id bye submission test cases id
   @Get('testcases/submission/:practiceSubmissionId')
   @ApiOperation({ summary: 'Get practice code Test cases Submission By submission id' })
-  @ApiBearerAuth()
+  @ApiBearerAuth('JWT-auth')
   async getPracticeCodeBySubmissionId(@Param('practiceSubmissionId') practiceSubmissionId: number, @Res() res: Response): Promise<any> {
     try {
       const [err, success] = await this.codingPlatformService.getTestcasesSubmissionBySubmissionId(practiceSubmissionId);

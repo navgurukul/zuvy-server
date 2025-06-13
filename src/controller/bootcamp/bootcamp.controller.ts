@@ -12,9 +12,10 @@ import {
   Query,
   BadRequestException,
   Req,
+  UseGuards,
 } from '@nestjs/common';
 import { BootcampService } from './bootcamp.service';
-import { ApiTags, ApiOperation, ApiQuery } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiQuery, ApiBearerAuth } from '@nestjs/swagger';
 import {
   CreateBootcampDto,
   EditBootcampDto,
@@ -23,7 +24,9 @@ import {
   PatchBootcampSettingDto,
   editUserDetailsDto,
 } from './dto/bootcamp.dto';
-import { ApiBearerAuth } from '@nestjs/swagger';
+import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
+import { RolesGuard } from 'src/guards/roles.guard';
+import { Roles } from 'src/decorators/roles.decorator';
 
 @Controller('bootcamp')
 @ApiTags('bootcamp')
@@ -34,9 +37,13 @@ import { ApiBearerAuth } from '@nestjs/swagger';
     forbidNonWhitelisted: true,
   }),
 )
+@UseGuards(JwtAuthGuard, RolesGuard)
+@ApiBearerAuth('JWT-auth')
 export class BootcampController {
   constructor(private bootcampService: BootcampService) {}
+
   @Get('/')
+  @Roles('admin')
   @ApiOperation({ summary: 'Get all bootcamps' })
   @ApiQuery({
     name: 'limit',
@@ -56,7 +63,7 @@ export class BootcampController {
     type: String,
     description: 'Search by name or id in bootcamps',
   })
-  @ApiBearerAuth()
+  @ApiBearerAuth('JWT-auth')
   async getAllBootcamps(
     @Query('limit') limit: number,
     @Query('offset') offset: number,
@@ -78,6 +85,7 @@ export class BootcampController {
   }
 
   @Get('/:id')
+  @Roles('admin')
   @ApiOperation({ summary: 'Get the bootcamp by id' })
   @ApiQuery({
     name: 'isContent',
@@ -85,7 +93,7 @@ export class BootcampController {
     type: Boolean,
     description: 'Optional content flag',
   })
-  @ApiBearerAuth()
+  @ApiBearerAuth('JWT-auth')
   async getBootcampById(
     @Param('id') id: number,
     @Query('isContent') isContent: boolean = false,
@@ -101,8 +109,9 @@ export class BootcampController {
   }
 
   @Post('/')
+  @Roles('admin')
   @ApiOperation({ summary: 'Create the new bootcamp' })
-  @ApiBearerAuth()
+  @ApiBearerAuth('JWT-auth')
   async create(@Body() bootcampsEntry: CreateBootcampDto) {
     const [err, res] =
       await this.bootcampService.createBootcamp(bootcampsEntry);
@@ -113,8 +122,9 @@ export class BootcampController {
   }
 
   @Put('/bootcampSetting/:bootcampId')
+  @Roles('admin')
   @ApiOperation({ summary: 'Update the bootcamp setting' })
-  @ApiBearerAuth()
+  @ApiBearerAuth('JWT-auth')
   async updateBootcampSetting(
     @Body() bootcampSetting: PatchBootcampSettingDto,
     @Param('bootcampId') bootcampId: number,
@@ -130,8 +140,9 @@ export class BootcampController {
   }
 
   @Get('bootcampSetting/:id')
+  @Roles('admin')
   @ApiOperation({ summary: 'Get the bootcamp setting by id' })
-  @ApiBearerAuth()
+  @ApiBearerAuth('JWT-auth')
   async getBootcampSettingById(@Param('id') id: number): Promise<object> {
     const [err, res] = await this.bootcampService.getBootcampSettingById(id);
     if (err) {
@@ -141,8 +152,9 @@ export class BootcampController {
   }
 
   @Put('/:id')
+  @Roles('admin')
   @ApiOperation({ summary: 'Update the bootcamp' })
-  @ApiBearerAuth()
+  @ApiBearerAuth('JWT-auth')
   async updateBootcamp(
     @Param('id') id: number,
     @Body() editBootcampDto: EditBootcampDto,
@@ -158,8 +170,9 @@ export class BootcampController {
   }
 
   @Delete('/:id')
+  @Roles('admin')
   @ApiOperation({ summary: 'Delete the bootcamp' })
-  @ApiBearerAuth()
+  @ApiBearerAuth('JWT-auth')
   async deleteBootcamp(@Param('id') id: number): Promise<object> {
     const [err, res] = await this.bootcampService.deleteBootcamp(id);
     if (err) {
@@ -169,6 +182,7 @@ export class BootcampController {
   }
 
   @Get('/batches/:bootcamp_id')
+  @Roles('admin')
   @ApiOperation({ summary: 'Get the batches by bootcamp_id' })
   @ApiQuery({
     name: 'limit',
@@ -182,7 +196,7 @@ export class BootcampController {
     type: Number,
     description: 'Offset for pagination',
   })
-  @ApiBearerAuth()
+  @ApiBearerAuth('JWT-auth')
   async getBatchByIdBootcamp(
     @Param('bootcamp_id') bootcamp_id: number,
     @Query('limit') limit: number,
@@ -200,6 +214,7 @@ export class BootcampController {
   }
 
   @Get('/searchBatch/:bootcamp_id')
+  @Roles('admin')
   @ApiOperation({ summary: 'Get the batches by name by bootcamp id' })
   @ApiQuery({
     name: 'searchTerm',
@@ -207,7 +222,7 @@ export class BootcampController {
     type: String,
     description: 'Search batches by name in bootcamp',
   })
-  @ApiBearerAuth()
+  @ApiBearerAuth('JWT-auth')
   async searchBatchesByName(
     @Param('bootcamp_id') bootcamp_id: number,
     @Query('searchTerm') searchTerm: string,
@@ -223,8 +238,9 @@ export class BootcampController {
   }
 
   @Patch('/:id')
+  @Roles('admin')
   @ApiOperation({ summary: 'Update the bootcamp partially' })
-  @ApiBearerAuth()
+  @ApiBearerAuth('JWT-auth')
   async updatePartialBootcamp(
     @Param('id') id: number,
     @Body() patchBootcampDto: PatchBootcampDto,
@@ -238,15 +254,17 @@ export class BootcampController {
     }
     return res;
   }
+
   @Post('/students/:bootcamp_id')
+  @Roles('admin')
   @ApiOperation({ summary: 'Add the student to the bootcamp' })
-  @ApiBearerAuth()
   @ApiQuery({
     name: 'batch_id',
     required: false,
     type: Number,
     description: 'batch id',
   })
+  @ApiBearerAuth('JWT-auth')
   async addStudentToBootcamp(
     @Param('bootcamp_id') bootcamp_id: number,
     @Query('batch_id') batch_id: number,
@@ -264,6 +282,7 @@ export class BootcampController {
   }
 
   @Get('/students/:bootcamp_id')
+  @Roles('admin')
   @ApiOperation({ summary: 'Get the students by bootcamp_id' })
   @ApiQuery({
     name: 'batch_id',
@@ -289,7 +308,7 @@ export class BootcampController {
     type: String,
     description: 'Search by name or email',
   })
-  @ApiBearerAuth()
+  @ApiBearerAuth('JWT-auth')
   async getStudentsByBootcamp(
     @Param('bootcamp_id') bootcamp_id: number,
     @Query('batch_id') batch_id: number,
@@ -311,6 +330,7 @@ export class BootcampController {
   }
 
   @Get('/:user_id/progress')
+  @Roles('admin')
   @ApiOperation({ summary: 'Get the progress of students in a bootcamp' })
   @ApiQuery({
     name: 'bootcamp_id',
@@ -318,7 +338,7 @@ export class BootcampController {
     type: Number,
     description: 'bootcamp_id',
   })
-  @ApiBearerAuth()
+  @ApiBearerAuth('JWT-auth')
   async getStudentProgressByBootcamp(
     @Param('user_id') user_id: number,
     @Query('bootcamp_id') bootcamp_id: number,
@@ -334,8 +354,9 @@ export class BootcampController {
   }
 
   @Patch('updateUserDetails/:userId')
+  @Roles('admin')
   @ApiOperation({ summary: 'Update user name and mail Id by userId' })
-  @ApiBearerAuth()
+  @ApiBearerAuth('JWT-auth')
   async updateUserDetails(@Param('userId') userId: number, @Body() editUserDetailsDto: editUserDetailsDto): Promise<any> {
     const [err, res] = await this.bootcampService.updateUserDetails(
       userId,

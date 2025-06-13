@@ -11,6 +11,8 @@ import {
   UsePipes,
   BadRequestException,
   Query,
+  Req,
+  UseGuards,
 } from '@nestjs/common';
 import { BatchesService } from './batch.service';
 import {
@@ -20,11 +22,13 @@ import {
   ApiQuery,
 } from '@nestjs/swagger';
 import { BatchDto, PatchBatchDto } from './dto/batch.dto';
+import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
+import { RolesGuard } from 'src/guards/roles.guard';
+import { Roles } from 'src/decorators/roles.decorator';
 
 // swagger body schema for batch
 @Controller('batch')
 @ApiTags('batch')
-@ApiBearerAuth()
 @UsePipes(
   new ValidationPipe({
     whitelist: true,
@@ -32,11 +36,16 @@ import { BatchDto, PatchBatchDto } from './dto/batch.dto';
     forbidNonWhitelisted: true,
   }),
 )
+@UseGuards(JwtAuthGuard, RolesGuard)
+@ApiBearerAuth('JWT-auth')
 export class BatchesController {
   constructor(private batchService: BatchesService) { }
+
+  
   @Get('/:id')
+  @Roles('admin')
   @ApiOperation({ summary: 'Get the batch by id' })
-  @ApiBearerAuth()
+  @ApiBearerAuth('JWT-auth')
   // @ApiQuery({ name: 'students', required: false, type: Boolean, description: 'Optional content flag' })
   async getBatchById(@Param('id') id: number): Promise<object> {
     const [err, res] = await this.batchService.getBatchById(id);
@@ -47,8 +56,9 @@ export class BatchesController {
   }
 
   @Post('/')
+  @Roles('admin')
   @ApiOperation({ summary: 'Create the new batch' })
-  @ApiBearerAuth()
+  @ApiBearerAuth('JWT-auth')
   async createBatch(@Body() batchData: BatchDto) {
     const [err, res] = await this.batchService.createBatch(batchData);
     if (err) {
@@ -58,8 +68,9 @@ export class BatchesController {
   }
 
   @Put('/:id')
+  @Roles('admin')
   @ApiOperation({ summary: 'Put the batch by id' })
-  @ApiBearerAuth()
+  @ApiBearerAuth('JWT-auth')
   async updateBatch(@Param('id') id: string, @Body() batchData: PatchBatchDto) {
     const [err, res] = await this.batchService.updateBatch(
       parseInt(id),
@@ -72,8 +83,9 @@ export class BatchesController {
   }
 
   @Delete('/:id')
+  @Roles('admin')
   @ApiOperation({ summary: 'Delete the batch by id' })
-  @ApiBearerAuth()
+  @ApiBearerAuth('JWT-auth')
   async deleteBatch(@Param('id') id: string) {
     const [err, res] = await this.batchService.deleteBatch(parseInt(id));
     if (err) {
@@ -83,8 +95,9 @@ export class BatchesController {
   }
 
   @Patch('/:id')
+  @Roles('admin')
   @ApiOperation({ summary: 'Update the Batch partially' })
-  @ApiBearerAuth()
+  @ApiBearerAuth('JWT-auth')
   async updatePartialBatch(
     @Param('id') id: string,
     @Body() patchBatchDto: PatchBatchDto,
@@ -100,6 +113,7 @@ export class BatchesController {
   }
 
   @Patch('reassign/student_id=:student_id/new_batch_id=:new_batch_id')
+  @Roles('admin')
   @ApiQuery({
     name: 'old_batch_id',
     required: false,
@@ -111,7 +125,7 @@ export class BatchesController {
     type: Number,
   })
   @ApiOperation({ summary: 'reassign Batch' })
-  @ApiBearerAuth()
+  @ApiBearerAuth('JWT-auth')
   async reassignBatch(
     @Param('student_id') studentID: string,
     @Param('new_batch_id') newBatchID: number,
@@ -131,6 +145,7 @@ export class BatchesController {
   }
 
   @Get('/allUnassignStudent/:bootcampId')
+  @Roles('admin')
   @ApiOperation({ summary: 'Get students not enrolled in any batch for a specific bootcamp' })
   @ApiQuery({
     name: 'searchTerm',
@@ -138,7 +153,7 @@ export class BatchesController {
     type: String,
     description: 'Search by name or email',
   })
-  @ApiBearerAuth()
+  @ApiBearerAuth('JWT-auth')
   async getNotEnrolledStudents(@Param('bootcampId') bootcampId: number, @Query('searchTerm') searchTerm: string): Promise<object> {
     const [err, res] = await this.batchService.getNotEnrolledStudents(bootcampId, searchTerm);
     if (err) {

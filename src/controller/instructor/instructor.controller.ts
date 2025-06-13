@@ -14,7 +14,8 @@ import {
     BadRequestException,
     Req,
     Res,
-    ParseArrayPipe
+    ParseArrayPipe,
+    UseGuards
   } from '@nestjs/common';
   import { InstructorService } from './instructor.service';
   import {
@@ -27,6 +28,7 @@ import {
   import { difficulty, questionType } from 'drizzle/schema';
   import { ClassesService } from '../classes/classes.service';
 import { ErrorResponse, SuccessResponse } from 'src/errorHandler/handler';
+import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
   
   @Controller('instructor')
   @ApiTags('instructor')
@@ -37,12 +39,14 @@ import { ErrorResponse, SuccessResponse } from 'src/errorHandler/handler';
       forbidNonWhitelisted: true,
     }),
   )
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('JWT-auth')
   export class InstructorController {
     constructor(private instructorService: InstructorService) { }
 
     @Get('/allCourses')
     @ApiOperation({ summary: 'Get all courses of a particular instructor' })
-    @ApiBearerAuth()
+    @ApiBearerAuth('JWT-auth')
     async getAllCoursesOfInstructor(@Req() req,@Res() res) {
       try {
         let [err, success] =await this.instructorService.allCourses(req.user[0].id);
@@ -77,7 +81,7 @@ import { ErrorResponse, SuccessResponse } from 'src/errorHandler/handler';
     isArray: true,
     description: 'Array of batchIds',
   })
-  @ApiBearerAuth()
+  @ApiBearerAuth('JWT-auth')
   async getAllUpcomingClasses(
     @Query('limit') limit: number,
     @Query('offset') offset: number,
@@ -104,7 +108,7 @@ import { ErrorResponse, SuccessResponse } from 'src/errorHandler/handler';
   }
     @Get('/batchOfInstructor')
     @ApiOperation({ summary: 'Get all batches of a particular instructor' })
-    @ApiBearerAuth()
+    @ApiBearerAuth('JWT-auth')
     async getBatchOfInstructor(@Req() req,@Res() res) {
     try {
       let [err, success] =await this.instructorService.getBatchOfInstructor(req.user[0].id);
@@ -156,7 +160,7 @@ import { ErrorResponse, SuccessResponse } from 'src/errorHandler/handler';
     type: String,
     description: 'Search by title',
   })
-  @ApiBearerAuth()
+  @ApiBearerAuth('JWT-auth')
   async getAllCompletedClasses(
     @Query('limit') limit: number,
     @Query('offset') offset: number,
