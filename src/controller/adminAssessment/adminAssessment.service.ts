@@ -655,38 +655,19 @@ Team Zuvy`;
           },
         },
       });
-      assessment.forEach(item => {
-        const uniqueSubmissions = [];
-        const userIds = new Set();
-      
-        item.submitedOutsourseAssessments.forEach(submission => {
-          if (!userIds.has(submission.userId)) {
-            userIds.add(submission.userId);
-            uniqueSubmissions.push(submission);
-          }
-        });
-      
-        item.submitedOutsourseAssessments = uniqueSubmissions;
-      });
-      let studentsEnrolled = await this.getTotalStudentsEnrolled(
-        assessment[0].bootcampId,
-      );
-      assessment[0].ModuleAssessment['totalStudents'] = studentsEnrolled.length;
-      assessment[0].ModuleAssessment['totalSubmitedStudents'] =
-        assessment[0].submitedOutsourseAssessments.length || 0;
-
-      assessment[0].submitedOutsourseAssessments =
-        assessment[0].submitedOutsourseAssessments.map((submission: any) => {
-          let userData = submission.user
-          delete submission.user;
-          return {
-            ...submission,
-            ...userData,
-          };
-        });
-
-      return assessment[0];
-        }
+  
+      // Prepare the final response
+      const response = {
+        ModuleAssessment: {
+          title: moduleAssessment?.ModuleAssessment?.title || null,
+          description: moduleAssessment?.ModuleAssessment?.description || null,
+          totalStudents: Number(totalStudentsCount[0]?.count) || 0,
+          totalSubmitedStudents: userReattemptCounts.length,
+        },
+        submitedOutsourseAssessments: combinedData,
+      };
+  
+      return response;
     } catch (error) {
       throw error;
     }
