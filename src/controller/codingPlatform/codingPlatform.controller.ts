@@ -50,16 +50,23 @@ export class CodingPlatformController {
     type: Number,
     description: 'if you give the codingOutsourseId it for assessment code submission',
   })
-  async getPracticeCode(@Param('questionId') questionId: number,
+  @ApiQuery({
+    name: 'chapter_id',
+    required: false,
+    type: Number,
+    description: 'chapter_id for tracking which chapter this code belongs to',
+  })
+  async submitCode(@Param('questionId') questionId: number,
     @Body() sourceCode: SubmitCodeDto,
     @Query('action') action: string,
     @Query('submissionId') submissionId: number,
     @Query('codingOutsourseId') codingOutsourseId: number,
+    @Query('chapter_id') chapterId: number,
     @Req() req,
     @Res() res: Response
   ) {
     try {
-      let [err, success] = await this.codingPlatformService.submitPracticeCode(questionId, sourceCode, action, req.user[0].id, submissionId, codingOutsourseId);
+      let [err, success] = await this.codingPlatformService.submitPracticeCode(questionId, sourceCode, action, req.user[0].id, submissionId, codingOutsourseId, chapterId);
       if (err) {
         return ErrorResponse.BadRequestException(err.message).send(res);
       }
@@ -90,7 +97,21 @@ export class CodingPlatformController {
     type: Number,
     description: 'studentId',
   })
-  async getPracticeCodeById(@Param('questionId') questionId: number, @Req() req, @Query('assessmentSubmissionId') submissionId: number, @Query('studentId') studentId: number, @Query('codingOutsourseId') codingOutsourseId: number, @Res() res: Response) {
+  @ApiQuery({
+    name: 'chapter_id',
+    required: false,
+    type: Number,
+    description: 'Filter submissions by chapter_id',
+  })
+  async getPracticeCodeById(
+    @Param('questionId') questionId: number, 
+    @Req() req, 
+    @Query('assessmentSubmissionId') submissionId: number, 
+    @Query('studentId') studentId: number, 
+    @Query('codingOutsourseId') codingOutsourseId: number,
+    @Query('chapter_id') chapterId: number, 
+    @Res() res: Response
+  ) {
     try {
       let student_id;
       if (!isNaN(studentId)){
@@ -98,7 +119,7 @@ export class CodingPlatformController {
       } else {
         student_id = req.user[0].id;
       }
-      let [err, success] = await this.codingPlatformService.getPracticeCode(questionId, student_id, submissionId, codingOutsourseId);
+      let [err, success] = await this.codingPlatformService.getPracticeCode(questionId, student_id, submissionId, codingOutsourseId, chapterId);
       if (err) {
         return ErrorResponse.BadRequestException(err.message, err.statusCode).send(res);
       }

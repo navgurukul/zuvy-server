@@ -9,8 +9,6 @@ import {
 
 
 export class ApplyFormData {
-  // name: string, email: string, phone: string, year:string, familyIncomeUnder3Lakhs: string 
-
   @ApiProperty({
     type: String,
     example: 'prem',
@@ -21,13 +19,13 @@ export class ApplyFormData {
   name: string;
 
   @ApiProperty({
-    type: String,
+    type: Number,
     example: '6301424989',
     required: true,
   })
   @IsNotEmpty()
-  @IsString()
-  phoneNo: string;
+  @IsNumber()
+  phoneNo: number;
 
   @ApiProperty({
     type: String,

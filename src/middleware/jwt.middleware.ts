@@ -21,8 +21,8 @@ export class JwtMiddleware implements NestMiddleware {
       { path: '/classes', method: 'GET' },
       { path: '/classes/redirect/', method: 'GET' },
       { path: '/classes/getAllAttendance/:batchId', method: 'GET' },
-      { path: '/classes/getAllAttendance/:batchId/', method: 'GET' },
       { path: "/student/apply", method: 'POST' },
+      { path: "/users/verify-token", method: 'POST' },
     ];
 
     const unrestricted = unrestrictedRoutes.some(

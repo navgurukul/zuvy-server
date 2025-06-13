@@ -1,5 +1,16 @@
 import { ApiProperty, ApiResponseProperty } from '@nestjs/swagger';
-import { IsString, IsNotEmpty,IsDate, IsArray,IsObject, ValidateNested,IsOptional, IsEmail, IsNumber,IsDateString } from 'class-validator';
+import {
+  IsString,
+  IsNotEmpty,
+  IsDate,
+  IsArray,
+  IsObject,
+  ValidateNested,
+  IsOptional,
+  IsEmail,
+  IsNumber,
+  IsDateString,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class CreateDto {
@@ -12,6 +23,18 @@ export class CreateDto {
   @IsNotEmpty()
   @IsString()
   name: string;
+}
+
+export class DTOsessionRecordViews {
+  @ApiProperty({
+    description: 'The session id',
+    type: Number,
+    example: 1,
+    required: true,
+  })
+  @IsNotEmpty()
+  @IsNumber()
+  sessionId: number;
 }
 
 export class ScheduleDto {
@@ -36,7 +59,7 @@ export class ScheduleDto {
   @IsNotEmpty()
   @IsString()
   endTime: String;
-  
+
   @ApiProperty({
     description: 'The schedule day',
     type: String,
@@ -113,7 +136,7 @@ export class CreateSessionDto {
   @ApiProperty({
     description: 'The days of the week for the live  event',
     type: Array,
-    example: ["Monday", "Wednesday", "Friday"],
+    example: ['Monday', 'Wednesday', 'Friday'],
     required: false,
   })
   @IsArray()

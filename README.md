@@ -1,99 +1,146 @@
-# zuvy-server
-npm install
+# MMS Learning Platform - Project Overview
 
-## Project Setup
+## Introduction
+MMS Learning is a comprehensive learning management system built with NestJS and PostgreSQL. The platform provides assessment capabilities, coding practice environments, and course management features for educational institutions.
 
-To set up the project, follow these steps:
+## System Architecture
 
-1. Clone the repository.
-2. Install the dependencies using the command `npm install`.
-3. Set up the database migration by running the following commands:
-  - `npm run migration:import`
-  - `npm run migration:generate`
-  - `npm run migration:push`
-4. Start the development server using the command `npm run dev`.
+### Servers
+1. **Application Server (NestJS)**
+   - Handles API requests and business logic
+   - Manages user authentication and authorization
+   - Processes assessment submissions and grading
+   - Runs on port 3000 by default
 
-## Migration
+2. **Database Server (PostgreSQL)**
+   - Stores all application data including users, courses, assessments
+   - Manages relationships between entities
+   - Handles transactions for data integrity
 
-To perform database migration, you can use the following commands:
+3. **Code Execution Server**
+   - Executes student code submissions in isolated environments
+   - Supports multiple programming languages
+   - Provides real-time feedback on code execution
 
-- `npm run migration:up`: Run the database migration.
-- `npm run migration:down` Revert the database migration.
-- `npm run migration:seed`: Seed the database with initial data.
+## Getting Started
 
-Please make sure to update the database configuration in the `drizzle.config.ts` file.
+### Prerequisites
+- Node.js (v14 or higher)
+- PostgreSQL (v12 or higher)
+- Docker (for code execution environment)
 
-Happy coding!
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="200" alt="Nest Logo" /></a>
-</p>
+### Installation Steps
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+1. **Clone the Repository**
+   ```bash
+   git clone https://github.com/your-org/mms-learning.git
+   cd mms-learning
+   ```
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://coveralls.io/github/nestjs/nest?branch=master" target="_blank"><img src="https://coveralls.io/repos/github/nestjs/nest/badge.svg?branch=master#9" alt="Coverage" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+2. **Install Dependencies**
+   ```bash
+   npm install
+   ```
 
-## Description
+3. **Set Up Environment Variables**
+   - Copy `.env.example` to `.env`
+   - Configure database connection details
+   - Set up authentication keys
+   - Configure code execution server URL
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+4. **Database Setup**
+   ```bash
+   npm run migration:import
+   npm run migration:generate
+   npm run migration:push
+   ```
 
-## Installation
+5. **Start the Application**
+   ```bash
+   npm run dev
+   ```
 
-```bash
-$ npm install
+## Project Structure
+
+```
+mms-learning/
+├── src/
+│   ├── controller/         # API endpoints and controllers
+│   ├── service/            # Business logic implementation
+│   ├── helpers/            # Utility functions
+│   ├── schedule/           # Scheduled tasks and cron jobs
+│   └── app.module.ts       # Main application module
+├── drizzle/                # Database schema and migrations
+├── test/                   # Test files
+└── package.json            # Project dependencies and scripts
 ```
 
-## Running the app
+## Key Features
 
+### 1. Assessment Management
+- Create and manage various types of assessments
+- Support for coding challenges, quizzes, and open-ended questions
+- Automated grading for coding questions
+- Tracking of student progress and performance
+
+### 2. Code Execution
+- Secure code execution environment using Docker
+- Support for multiple programming languages
+- Real-time feedback on code execution
+- Code plagiarism detection
+
+### 3. User Management
+- Student and instructor roles with different permissions
+- Progress tracking and analytics
+- User authentication and authorization
+
+### 4. Content Management
+- Course creation and organization
+- Module and chapter management
+- Resource sharing and distribution
+
+## API Documentation
+API documentation is available at `/api-docs` when the server is running. It provides detailed information about all available endpoints, request/response formats, and authentication requirements.
+
+## Development Workflow
+
+### Branch Management
+- Create feature branches from `develop`
+- Use pull requests for code review
+- Merge to `develop` after approval
+
+### Testing
 ```bash
-# development
-$ npm run start
-
-# watch mode
-$ npm run start:dev
-
-# production mode
-$ npm run start:prod
+npm run test          # Run unit tests
+npm run test:e2e      # Run end-to-end tests
+npm run test:cov      # Generate test coverage report
 ```
 
-## Test
+### Deployment
+- Automated deployment via CI/CD pipeline
+- Staging environment for testing
+- Production environment for live application
 
-```bash
-# unit tests
-$ npm run test
+## Troubleshooting
 
-# e2e tests
-$ npm run test:e2e
+### Common Issues
+1. **Database Connection Issues**
+   - Check database credentials in `.env`
+   - Verify PostgreSQL service is running
+   - Check network connectivity
 
-# test coverage
-$ npm run test:cov
-```
+2. **Code Execution Failures**
+   - Verify Docker is running
+   - Check code execution server logs
+   - Verify language support is enabled
+
+3. **Authentication Problems**
+   - Check JWT secret in environment variables
+   - Verify token expiration settings
+   - Check user permissions
 
 ## Support
-
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
-
-## Stay in touch
-
-- Author - [Kamil Myśliwiec](https://kamilmysliwiec.com)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
+For technical support or questions, please contact the development team or raise an issue in the repository.
 
 ## License
-
-Nest is [MIT licensed](LICENSE).
+This project is licensed under the MIT License - see the LICENSE file for details. 

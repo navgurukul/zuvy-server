@@ -1,5 +1,5 @@
 import { ApiProperty, ApiResponseProperty } from '@nestjs/swagger';
-import { IsString, IsNotEmpty, IsOptional, ValidateNested, IsNumber, IsEmail } from 'class-validator';
+import { IsString, IsNotEmpty, IsOptional, ValidateNested, IsNumber, IsEmail, IsBoolean, IsIn } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class CreateBootcampDto {
@@ -15,7 +15,7 @@ export class CreateBootcampDto {
 }
 
 
-export class EditBootcampDto{
+export class EditBootcampDto {
   @ApiProperty({
     type: String,
     example: 'The bootcamp cover image',
@@ -29,7 +29,7 @@ export class EditBootcampDto{
     example: 'The bootcamp name',
     required: true,
   })
-  @IsNotEmpty({message: 'name is required'})
+  @IsNotEmpty({ message: 'name is required' })
   @IsString()
   name: string;
 
@@ -52,7 +52,7 @@ export class EditBootcampDto{
   duration: string;
 
   @ApiProperty({
-    type: String, 
+    type: String,
     example: '2023-03-01T00:00:00Z',
     required: true,
   })
@@ -71,18 +71,30 @@ export class EditBootcampDto{
 
 }
 
-export class PatchBootcampSettingDto{
-   @ApiProperty({
+export class PatchBootcampSettingDto {
+  @ApiProperty({
     type: String,
     example: 'The bootcamp type',
-    required: true,
+    required: false,
   })
-  @IsNotEmpty({message: 'bootcamp type is required'})
+  @IsOptional()
   @IsString()
-  type: string;
+  @IsIn(['Public', 'Private'], {
+    message: 'type must be either "Public" or "Private"',
+  })
+  type?: string;
+  
+  @ApiProperty({
+    type: Boolean,
+    example: false,
+    required: false,
+  })
+  @IsOptional()
+  @IsBoolean()
+  isModuleLocked?: boolean;
 }
 
-export class PatchBootcampDto{
+export class PatchBootcampDto {
   @ApiProperty({
     type: String,
     example: 'https://example.com/image.jpg',
@@ -116,7 +128,7 @@ export class PatchBootcampDto{
   duration: string;
 
   @ApiProperty({
-    type: String, 
+    type: String,
     example: '2023-03-01T00:00:00Z',
     required: true,
   })
@@ -160,4 +172,24 @@ export class studentDataDto {
   @ValidateNested({ each: true })
   @Type(() => studentEmail)
   students: studentEmail[];
+}
+
+export class editUserDetailsDto {
+  @ApiProperty({
+    type: String,
+    example: 'example@gmail.com',
+    required: false,
+  })
+  @IsOptional() // Marks the field as optional
+  @IsEmail({}, { message: 'Invalid email format' }) // Ensures email is valid if provided
+  email?: string;
+
+  @ApiProperty({
+    type: String,
+    example: 'example',
+    required: false,
+  })
+  @IsOptional() // Marks the field as optional
+  @IsString({ message: 'Name must be a string' }) // Ensures name is a string if provided
+  name?: string;
 }

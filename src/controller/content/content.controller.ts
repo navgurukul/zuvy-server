@@ -14,7 +14,13 @@ import {
   BadRequestException,
   Req,
   UseGuards,
-  Res
+  Res,
+  UseInterceptors,
+  ParseIntPipe,
+  UploadedFile,
+  InternalServerErrorException,
+  BadGatewayException,
+  UploadedFiles
 } from '@nestjs/common';
 import { ContentService } from './content.service';
 import {
@@ -22,19 +28,21 @@ import {
   ApiBody,
   ApiOperation,
   ApiQuery,
+  ApiConsumes,
+  getSchemaPath,
+  ApiExtraModels,
 } from '@nestjs/swagger';
 import { ApiBearerAuth } from '@nestjs/swagger';
 import {
   moduleDto,
   chapterDto,
   quizBatchDto,
-  quizDto,
+  // quizDto,
   reOrderDto,
   ReOrderModuleBody,
   EditChapterDto,
   openEndedDto,
   CreateAssessmentBody,
-  editQuizBatchDto,
   UpdateProblemDto,
   deleteQuestionDto,
   UpdateOpenEndedDto,
@@ -44,10 +52,18 @@ import {
   formBatchDto,
   editFormBatchDto,
   CreateTypeDto,
-  CreateAndEditFormBody
+  CreateAndEditFormBody,
+  CreateQuizzesDto,
+  EditQuizBatchDto,
+  AddQuizVariantsDto,
+  deleteQuestionOrVariantDto,
+  UpdateChapterDto
 } from './dto/content.dto';
 import { RolesGuard } from 'src/guards/roles.guard';
 import { ErrorResponse, SuccessResponse } from 'src/errorHandler/handler';
+import { Response } from 'express';
+import { complairDateTyeps } from 'src/helpers/index';
+import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express/multer';
 
 @Controller('Content')
 @ApiTags('Content')
@@ -56,6 +72,7 @@ import { ErrorResponse, SuccessResponse } from 'src/errorHandler/handler';
     whitelist: true,
     transform: true,
     forbidNonWhitelisted: true,
+    skipMissingProperties: true
   }),
 )
 export class ContentController {
@@ -187,12 +204,20 @@ export class ContentController {
   @ApiBearerAuth()
   @UseGuards(RolesGuard)
   async createQuizForModule(
-    @Body() quizQuestions: quizBatchDto
-  ) {
-    const res = await this.contentService.createQuizForModule(
-      quizQuestions
-    );
-    return res;
+    @Body() quizQuestions: CreateQuizzesDto,
+    @Res() res
+  ): Promise<object> {
+    try {
+      let [err, success] = await this.contentService.createQuizForModule(
+        quizQuestions
+      );
+      if (err) {
+        return ErrorResponse.BadRequestException(err.message).send(res);
+      }
+      return new SuccessResponse(success.message, success.statusCode, success.data).send(res);
+    } catch (error) {
+      return ErrorResponse.BadRequestException(error.message).send(res);
+    }
   }
 
   @Put('/editAssessment/:assessmentOutsourseId/:chapterId')
@@ -232,7 +257,7 @@ export class ContentController {
   @Get('/chapterDetailsById/:chapterId')
   @ApiOperation({ summary: 'Get chapter details by id' })
   @ApiBearerAuth()
-  async getChapterDetailsById(@Param('chapterId') chapterId: number, @Query('bootcampId') bootcampId: number, @Query('moduleId') moduleId: number, @Query('topicId') topicId: number){
+  async getChapterDetailsById(@Param('chapterId') chapterId: number, @Query('bootcampId') bootcampId: number, @Query('moduleId') moduleId: number, @Query('topicId') topicId: number) {
     return this.contentService.getChapterDetailsById(chapterId, bootcampId, moduleId, topicId);
   }
 
@@ -323,13 +348,13 @@ export class ContentController {
   @ApiQuery({
     name: 'tagId',
     required: false,
-    type: Number,
+    type: [Number],
     description: 'tagId',
   })
   @ApiQuery({
     name: 'difficulty',
     required: false,
-    type: String,
+    type: [String],
     description: 'difficulty',
   })
   @ApiQuery({
@@ -338,19 +363,36 @@ export class ContentController {
     type: String,
     description: 'Search by name or email',
   })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    type: Number,
+    description: 'limit',
+  })
+  @ApiQuery({
+    name: 'offset',
+    required: false,
+    type: Number,
+    description: 'offset',
+  })
   @ApiBearerAuth()
   async getAllQuizQuestions(
-    @Query('tagId') tagId: number,
-    @Query('difficulty') difficulty: 'Easy' | 'Medium' | 'Hard',
+    @Query('tagId') tagId: number[],
+    @Query('difficulty') difficulty: ('Easy' | 'Medium' | 'Hard') | ('Easy' | 'Medium' | 'Hard')[],
     @Query('searchTerm') searchTerm: string,
+    @Query('limit') limit: number,
+    @Query('offset') offSet: number,
   ): Promise<object> {
     const res = await this.contentService.getAllQuizQuestions(
       tagId,
       difficulty,
       searchTerm,
+      limit,
+      offSet
     );
     return res;
   }
+
   @Patch('/updateCodingQuestion/:questionId')
   @ApiOperation({ summary: 'Update the coding question for this module' })
   @ApiBearerAuth()
@@ -371,13 +413,13 @@ export class ContentController {
   @ApiQuery({
     name: 'tagId',
     required: false,
-    type: Number,
+    type: [Number],
     description: 'tagId',
   })
   @ApiQuery({
     name: 'difficulty',
     required: false,
-    type: String,
+    type: [String],
     description: 'difficulty',
   })
   @ApiQuery({
@@ -386,16 +428,32 @@ export class ContentController {
     type: String,
     description: 'Search by name or email',
   })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    type: Number,
+    description: 'limit',
+  })
+  @ApiQuery({
+    name: 'offset',
+    required: false,
+    type: Number,
+    description: 'offset',
+  })
   @ApiBearerAuth()
   async getAllCodingQuestions(
-    @Query('tagId') tagId: number,
-    @Query('difficulty') difficulty: 'Easy' | 'Medium' | 'Hard',
+    @Query('tagId') tagId: number[],
+    @Query('difficulty') difficulty: ('Easy' | 'Medium' | 'Hard') | ('Easy' | 'Medium' | 'Hard')[],
     @Query('searchTerm') searchTerm: string,
+    @Query('limit') limit: number,
+    @Query('offset') offSet: number,
   ): Promise<object> {
     const res = await this.contentService.getAllCodingQuestions(
       tagId,
       difficulty,
       searchTerm,
+      limit,
+      offSet
     );
     return res;
   }
@@ -410,12 +468,24 @@ export class ContentController {
   }
 
   @Post('/editquiz')
-  @ApiOperation({ summary: 'Create a quiz' })
+  @ApiOperation({ summary: 'Edit a quiz' })
   @ApiBearerAuth()
   @UseGuards(RolesGuard)
-  async editQuizForModule(@Body() quizQuestions: editQuizBatchDto) {
-    const res = await this.contentService.editQuizQuestions(quizQuestions);
-    return res;
+  async editQuizForModule(
+    @Body() quizUpdates: EditQuizBatchDto,
+    @Res() res
+  ) {
+    try {
+      let [err, success] = await this.contentService.editQuizQuestion(
+        quizUpdates
+      );
+      if (err) {
+        return ErrorResponse.BadRequestException(err.message).send(res);
+      }
+      return new SuccessResponse(success.message, success.statusCode, success.data).send(res);
+    } catch (error) {
+      return ErrorResponse.BadRequestException(error.message).send(res);
+    }
   }
 
 
@@ -453,13 +523,13 @@ export class ContentController {
   @ApiQuery({
     name: 'tagId',
     required: false,
-    type: Number,
+    type: [Number],
     description: 'tagId',
   })
   @ApiQuery({
     name: 'difficulty',
     required: false,
-    type: String,
+    type: [String],
     description: 'difficulty',
   })
   @ApiQuery({
@@ -469,31 +539,32 @@ export class ContentController {
     description: 'Search by name or email',
   })
   @ApiQuery({
-    name: 'pageNo',
-    required: false,
-    type: Number,
-    description: 'page number',
-  })
-  @ApiQuery({
-    name: 'limit_',
+    name: 'limit',
     required: false,
     type: Number,
     description: 'limit',
   })
+  @ApiQuery({
+    name: 'offset',
+    required: false,
+    type: Number,
+    description: 'offset',
+  })
   @ApiBearerAuth()
   async getAllOpenEndedQuestions(
-    @Query('tagId') tagId: number,
-    @Query('difficulty') difficulty: 'Easy' | 'Medium' | 'Hard',
+    @Query('tagId') tagId: number[],
+    @Query('difficulty') difficulty: ('Easy' | 'Medium' | 'Hard') | ('Easy' | 'Medium' | 'Hard')[],
     @Query('searchTerm') searchTerm: string,
-    @Query('pageNo') pageNo: number,
-    @Query('limit_') limit_: number,
+    @Query('limit') limit: number,
+    @Query('offset') offset: number,
   ): Promise<object> {
+
     const res = await this.contentService.getAllOpenEndedQuestions(
       tagId,
       difficulty,
       searchTerm,
-      pageNo,
-      limit_
+      limit,
+      offset
     );
     return res;
   }
@@ -532,15 +603,23 @@ export class ContentController {
   @Get('/students/assessmentId=:assessmentId')
   @ApiOperation({ summary: 'Get the student of a particular assessment' })
   @ApiBearerAuth()
-  async getStudentsOfAssessment(@Param('assessmentId') assessmentId: number , @Query('moduleId') moduleId:number , @Query('bootcampId') bootcampId:number, @Query('chapterId') chapterId:number, @Req() req) {
+  async getStudentsOfAssessment(@Param('assessmentId') assessmentId: number, @Query('moduleId') moduleId: number, @Query('bootcampId') bootcampId: number, @Query('chapterId') chapterId: number, @Req() req) {
     return this.contentService.getStudentsOfAssessment(assessmentId, chapterId, moduleId, bootcampId, req);
   }
 
-  @Get('/startAssessmentForStudent/assessmentOutsourseId=:assessmentOutsourseId')
+  @Get('/startAssessmentForStudent/assessmentOutsourseId=:assessmentOutsourseId/newStart=:newStart')
   @ApiOperation({ summary: 'Start the assessment for a student' })
   @ApiBearerAuth()
-  async startAssessmentForStudent(@Req() req, @Param('assessmentOutsourseId') assessmentOutsourseId: number){
-    return this.contentService.startAssessmentForStudent(assessmentOutsourseId,req);
+  async startAssessmentForStudent(@Req() req, @Param('assessmentOutsourseId') assessmentOutsourseId: number, @Param('newStart') newStart:boolean, @Res() res: Response): Promise<any> {
+    try{
+      let [err, success] = await this.contentService.startAssessmentForStudent(assessmentOutsourseId, newStart, req.user[0]);
+      if (err) {
+        return ErrorResponse.BadRequestException(err.message).send(res);
+      }
+      return new SuccessResponse(success.message, success.statusCode, success.data).send(res);
+    } catch (error) {
+      return ErrorResponse.BadRequestException(error.message).send(res);
+    }
   }
 
   @Get('/assessmentDetailsOfQuiz/:assessmentOutsourseId')
@@ -552,11 +631,25 @@ export class ContentController {
     description: 'studentId of the assessment',
   })
   @ApiBearerAuth()
-  async getAssessmentDetailsOfQuiz(@Param('assessmentOutsourseId') assessmentOutsourseId: number, @Req() req, @Query('studentId') userId:number ){
-    if (!userId) {
-      userId = req.user[0].id;
+  async getAssessmentDetailsOfQuiz(
+    @Param('assessmentOutsourseId') assessmentOutsourseId: number,
+    @Req() req,
+    @Query('studentId') studentId: number,
+    @Res() res: Response
+  ): Promise<any> {
+    try {
+    let IsAdmin = !studentId ? false : true;
+    const userId = studentId || req.user[0].id;
+
+    // Create the `quizConfig` object from the query parameters
+    let [err, success] = await this.contentService.getAssessmentDetailsOfQuiz(assessmentOutsourseId,req.user[0], userId, IsAdmin);
+    if (err) {
+      return ErrorResponse.BadRequestException(err.message).send(res);
     }
-    return this.contentService.getAssessmentDetailsOfQuiz(assessmentOutsourseId, userId);
+    return new SuccessResponse(success.message, success.statusCode, success.data).send(res);
+    } catch (error) {
+      return ErrorResponse.BadRequestException(error.message).send(res);
+    }
   }
 
   @Get('/assessmentDetailsOfOpenEnded/:assessmentOutsourseId')
@@ -568,14 +661,14 @@ export class ContentController {
     type: Number,
     description: 'studentId of the assessment',
   })
-  async getAssessmentDetailsOfOpenEnded(@Param('assessmentOutsourseId') assessmentOutsourseId: number, @Req() req, @Query('studentId') userId:number){
+  async getAssessmentDetailsOfOpenEnded(@Param('assessmentOutsourseId') assessmentOutsourseId: number, @Req() req, @Query('studentId') userId: number) {
     if (!userId) {
       userId = req.user[0].id;
     }
     return this.contentService.getAssessmentDetailsOfOpenEnded(assessmentOutsourseId, userId);
   }
 
-  
+
   @Post('/createQuestionType')
   @ApiOperation({ summary: 'Create a Question Type for the form' })
   @ApiBearerAuth()
@@ -591,15 +684,15 @@ export class ContentController {
     const res = await this.contentService.getAllQuestionTypes();
     return res;
   }
-  
+
   @Post('/form')
   @ApiOperation({ summary: 'Create a form' })
   @ApiBearerAuth()
   @UseGuards(RolesGuard)
-  async createFormForModule (
+  async createFormForModule(
     @Query('chapterId') chapterId: number,
     @Body() formQuestion: formBatchDto
-  ){
+  ) {
     const res = await this.contentService.createFormForModule(
       chapterId,
       formQuestion
@@ -623,14 +716,14 @@ export class ContentController {
   })
   @ApiBearerAuth()
   async getAllFormQuestions(
-  @Param('chapterId') chapterId: number,
-  @Query('typeId') typeId: number,
-  @Query('searchTerm') searchTerm: string,
+    @Param('chapterId') chapterId: number,
+    @Query('typeId') typeId: number,
+    @Query('searchTerm') searchTerm: string,
   ): Promise<object> {
     const res = await this.contentService.getAllFormQuestions(
-    chapterId,
-    typeId,
-	  searchTerm,
+      chapterId,
+      typeId,
+      searchTerm,
     );
     return res;
   }
@@ -649,7 +742,7 @@ export class ContentController {
     return res;
   }
 
-  
+
   @Post('/createAndEditForm/:chapterId')
   @ApiOperation({ summary: 'Create a form' })
   @ApiBearerAuth()
@@ -716,5 +809,164 @@ export class ContentController {
     } catch (error) {
       return ErrorResponse.BadRequestException(error.message).send(res);
     }
+  }
+
+  @Get('/quiz/:quizId')
+  @ApiOperation({ summary: 'Get all variants by quizId' })
+  @ApiBearerAuth()
+  @UseGuards(RolesGuard)
+  async getAllQuizVariants(@Param('quizId') quizId: number, @Res() res) {
+    try {
+      const [err, success] = await this.contentService.getAllQuizVariants(quizId);
+      if (err) {
+        return ErrorResponse.BadRequestException(err.message).send(res);
+      }
+      return new SuccessResponse(success.message, success.statusCode, success.data).send(res);
+    } catch (error) {
+      return ErrorResponse.BadRequestException(error.message).send(res);
+    }
+  }
+
+  @Post('/quiz/add/variants')
+  @ApiOperation({ summary: 'Add variants to a quiz' })
+  @ApiBearerAuth()
+  @UseGuards(RolesGuard)
+  async addQuizVariants(
+    @Body() addQuizVariantsDto: AddQuizVariantsDto,
+    @Res() res
+  ) {
+    try {
+      const [err, success] = await this.contentService.addQuizVariants(addQuizVariantsDto);
+
+      if (err) {
+        return ErrorResponse.BadRequestException(err.message).send(res);
+      }
+
+      return new SuccessResponse(success.message, success.statusCode, success.data).send(res);
+    } catch (error) {
+      return ErrorResponse.BadRequestException(error.message).send(res);
+    }
+  }
+
+
+  @Delete('/deleteMainQuizOrVariant')
+  @ApiOperation({ summary: 'Delete main quiz or variant' })
+  @ApiBearerAuth()
+  @UseGuards(RolesGuard)
+  async deleteMainQuizOrVariant(
+    @Body() deleteDto: deleteQuestionOrVariantDto,
+    @Res() res,
+  ) {
+    const [err, success] = await this.contentService.deleteQuizOrVariant(deleteDto);
+    if (err) {
+      return ErrorResponse.BadRequestException(err.message, err.statusCode).send(res);
+    }
+    return new SuccessResponse(success.message, success.statusCode,null).send(res);
+  }
+
+  // get complairDateTyeps  
+  @Get('/getCompilerTypes')
+  @ApiOperation({ summary: 'Get all compiler types' })
+  @ApiBearerAuth()
+  async getCompilerTypes(
+    @Res() res
+  ) {
+    try {
+      return await new SuccessResponse('Compiler types fetched successfully', 200, complairDateTyeps ).send(res);      
+    } catch (error) {
+      return ErrorResponse.BadRequestException(error.message).send(res);
+    }
+  }
+
+  @Post('curriculum/upload-pdf')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Upload a PDF and save its link to a chapter' })
+  @ApiQuery({
+    name: 'moduleId',
+    required: true,
+    type: Number,
+    description: 'moduleId',
+  })
+  @ApiQuery({
+    name: 'chapterId',
+    required: true,
+    type: Number,
+    description: 'chapterId',
+  })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({ type: UpdateChapterDto })
+  @UseInterceptors(FileInterceptor('pdf'))
+  async uploadPdf(
+    @UploadedFile() file: Express.Multer.File,
+    @Query('moduleId') moduleId: number,
+    @Query('chapterId') chapterId: number,
+    @Body() reOrder: UpdateChapterDto
+  ) {
+    console.log("edit pdf",UpdateChapterDto)
+    if(file)
+    {
+    let url: string;
+
+    try {
+      url = await this.contentService.uploadPdfToS3(
+        file.buffer,
+        file.originalname,
+      );
+    } catch (err) {
+      if (err instanceof InternalServerErrorException) {
+        throw err;
+      }
+      throw new BadGatewayException(
+        'Failed to upload PDF to S3',
+        { cause: err as Error },
+      );
+    }
+    if (!url) {
+      throw new BadGatewayException('S3 returned an empty URL');
+    }
+    reOrder.links = [url];
+  }
+    const res = await this.contentService.editChapter(
+      reOrder,
+      moduleId,
+      chapterId,
+    );
+    return res;
+  }
+
+   @Post('curriculum/upload-images')
+@ApiOperation({ summary: 'Upload one or more images to S3' })
+@ApiBearerAuth()
+@ApiConsumes('multipart/form-data')
+@ApiBody({
+  schema: {
+    type: 'object',
+    properties: {
+      images: {
+        type: 'array',
+        items: { type: 'string', format: 'binary' },
+      },
+    },
+  },
+})
+@UseInterceptors(FilesInterceptor('images', 10))
+async uploadImages(
+    @UploadedFiles() files: Express.Multer.File[],
+  ) {
+    if (!files || files.length === 0) {
+      throw new BadRequestException('No image files provided');
+    }
+
+    // 1) upload each buffer, collecting URLs
+    const urls = await Promise.all(
+      files.map((file) =>
+        this.contentService.uploadImageToS3(
+          file.buffer,
+          file.originalname
+        ),
+      ),
+    );
+
+    return { urls };
   }
 }

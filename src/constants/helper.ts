@@ -1,4 +1,5 @@
 export const helperVariable= {
+    schemaName: 'stage',
     admin: 'admin',
     instructor:'instructor',
     success: 'success',
@@ -11,9 +12,9 @@ export const helperVariable= {
     SUBMIT: 'submit',
     RUN: 'run',
     MCQ_POINTS: { "Easy": 4, "Medium": 8, "Hard": 12 },
-    OPEN_ENDED_POINTS: { "Easy": 3, "Medium": 6, "Hard": 9 },
     CODING_POINTS: { "Easy": 10, "Medium": 15, "Hard": 20 },
-    WAIT_API_RESPONSE: 1590,
+    OPEN_ENDED_POINTS: { "Easy": 3, "Medium": 6, "Hard": 9 },
+    WAIT_API_RESPONSE: 2990,
     TOTAL_SCORE: 100,
     DIFFICULTY: {
       EASY: 'Easy',
@@ -38,5 +39,15 @@ export const helperVariable= {
         "College ID",
         "B.Tech Entrance Exam Rank Certificate",
         "Income Certificate"
-    ]
+
+    ],
+    REATTMEPT_STATUS:{
+        "NOT_ATTEMPTED": "Not Attempted",
+        "ATTEMPTED": "Attempted",
+        "REATTEMPTED": "Reattempted",
+        "REJECTED": "Rejected",
+        "ACCEPTED": "Accepted",
+        "PENDING": "Pending",
+        "SUBMITTED": "Submitted",
+    }
   };

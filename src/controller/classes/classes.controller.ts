@@ -1,10 +1,41 @@
-import { Controller, Get, Post, Put, Delete, Patch, Body, Param, ValidationPipe, UsePipes, Res, Req, Query, BadRequestException } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Put,
+  Delete,
+  Patch,
+  Body,
+  Param,
+  ValidationPipe,
+  UsePipes,
+  Res,
+  Req,
+  Query,
+  BadRequestException,
+} from '@nestjs/common';
 import { ClassesService } from './classes.service';
-import { ApiTags, ApiBody, ApiOperation, ApiCookieAuth, ApiQuery } from '@nestjs/swagger';
-import { CreateDto, ScheduleDto, CreateSessionDto, reloadDto , updateSessionDto } from './dto/classes.dto';
+import {
+  ApiTags,
+  ApiBody,
+  ApiOperation,
+  ApiCookieAuth,
+  ApiQuery,
+} from '@nestjs/swagger';
+import {
+  CreateDto,
+  ScheduleDto,
+  CreateSessionDto,
+  reloadDto,
+  updateSessionDto,
+  DTOsessionRecordViews,
+} from './dto/classes.dto';
 import { ApiBearerAuth } from '@nestjs/swagger';
-import { Cron } from '@nestjs/schedule';
+import { Response } from 'express';
+import { ErrorResponse, SuccessResponse } from 'src/errorHandler/handler';
 
+// config user for admin
+let configUser = { id: process.env.ID, email: process.env.TEAM_EMAIL };
 
 @Controller('classes')
 @ApiTags('classes')
@@ -17,39 +48,49 @@ import { Cron } from '@nestjs/schedule';
   }),
 )
 export class ClassesController {
-  constructor(private classesService: ClassesService) { }
+  constructor(private classesService: ClassesService) {}
 
   @Get('/')
   @ApiOperation({ summary: 'Google authenticate' })
-  async googleAuth(@Res() res,
+  async googleAuth(
+    @Res() res,
     @Query('userID') userId: number,
-    @Query('email') email: string) {
+    @Query('email') email: string,
+  ) {
     return this.classesService.googleAuthentication(res, email, userId);
   }
 
   @Get('/redirect')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Google authentication redirect' })
-  async googleAuthRedirect(@Req() request,
-  ) {
-    return this.classesService.googleAuthenticationRedirect(request, request.user);
+  async googleAuthRedirect(@Req() request) {
+    return this.classesService.googleAuthenticationRedirect(
+      request,
+      request.user,
+    );
   }
 
   @Post('/')
   @ApiOperation({ summary: 'Create the new class' })
   @ApiBearerAuth()
-  async create(@Body() classData: CreateSessionDto,@Req() req) {
-    return this.classesService.createSession(classData,req.user[0]);
+  async create(@Body() classData: CreateSessionDto, @Req() req) {
+    return this.classesService.createSession(classData, {
+      ...configUser,
+      roles: req.user[0].roles,
+    });
   }
-
-
 
   @Get('/getAttendance/:meetingId')
   @ApiBearerAuth()
-  @ApiOperation({ summary: "Get the google class attendance by meetingId" })
-  async extractMeetAttendance(@Req() req, @Param('meetingId') meetingId: string): Promise<object> {
-
-    const [err, values] = await this.classesService.getAttendance(meetingId, req.user[0]);
+  @ApiOperation({ summary: 'Get the google class attendance by meetingId' })
+  async extractMeetAttendance(
+    @Req() req,
+    @Param('meetingId') meetingId: string,
+  ): Promise<object> {
+    const [err, values] = await this.classesService.getAttendance(meetingId, {
+      ...configUser,
+      roles: req.user[0].roles,
+    });
     if (err) {
       throw new BadRequestException(err);
     }
@@ -58,17 +99,48 @@ export class ClassesController {
 
   @Get('/getAllAttendance/:batchId')
   @ApiBearerAuth()
-  @ApiOperation({ summary: "Get the google all classes attendance by batchID" })
-  extractMeetAttendanceByBatch(@Req() req, @Param('batchId') batchId: string): Promise<object> {
-
-    return this.classesService.getAttendanceByBatchId(batchId, req.user);
+  @ApiOperation({ summary: 'Get the google all classes attendance by batchID' })
+  extractMeetAttendanceByBatch(
+    @Req() req,
+    @Param('batchId') batchId: string,
+  ): Promise<object> {
+    return this.classesService.getAttendanceByBatchId(batchId, {
+      ...configUser,
+      roles: req.user[0].roles,
+    });
   }
+  // @Get('/calculatelogic')
+  // @ApiBearerAuth()
+  // @ApiOperation({ summary: 'calculate attendance logic' })
+  // calculateLogic(
+  //   @Req() req,
+  // ): Promise<object> {
+  //   return this.classesService.calculateAttendance([{meetingId:'73bdvrab8kj2tnhahhl57njsis_20250326T143000Z'}],[
+  //     { userId: 65521, email: "deepanshu_23se051@dtu.ac.in" },
+  //     { userId: 65529, email: "gauravjha_23se063@dtu.ac.in" },
+  //     { userId: 65548, email: "shivamsingh70546@gmail.com" },
+  //     { userId: 65569, email: "salonikumari_23cs368@dtu.ac.in" },
+  //     { userId: 65546, email: "shalvisingh_23it151@dtu.ac.in" },
+  //     { userId: 65545, email: "samayjain_23mc128@dtu.ac.in" },
+  //     { userId: 65539, email: "rishiraj_23cs343@dtu.ac.in" },
+  //     { userId: 65547, email: "shatrughanshukla_23cs391@dtu.ac.in" },
+  //     { userId: 65540, email: "rishusingh_23cs345@dtu.ac.in" },
+  //     { userId: 65527, email: "divyanshurangad@gmail.com" },
+  //     { userId: 65528, email: "faizanraza2308@gmail.com" }
+  //   ])
+  // }
 
-  @Get('/analytics/:meetingId')
+  @Get('/analytics/:sessionId')
   @ApiBearerAuth()
-  @ApiOperation({ summary: "meeting attendance analytics with meeting link" })
-  async meetingAttendanceAnalytics(@Req() req, @Param('meetingId') meetingId: string) {
-    const [err, values] = await this.classesService.meetingAttendanceAnalytics(meetingId, req.user[0]);
+  @ApiOperation({ summary: 'meeting attendance analytics with meeting link' })
+  async meetingAttendanceAnalytics(
+    @Req() req,
+    @Param('sessionId') sessionId: number,
+  ) {
+    const [err, values] = await this.classesService.meetingAttendanceAnalytics(
+      sessionId,
+      { ...configUser, roles: req.user[0].roles }
+    );
     if (err) {
       throw new BadRequestException(err);
     }
@@ -77,14 +149,17 @@ export class ClassesController {
 
   @Post('/analytics/reload')
   @ApiBearerAuth()
-  @ApiOperation({ summary: "meeting attendance analytics with meeting link" })
+  @ApiOperation({ summary: 'meeting attendance analytics with meeting link' })
   async meetingAttendanceRefress(@Req() req, @Body() reloadData: reloadDto) {
     let meetingIds: Array<any> = reloadData?.meetingIds;
 
-    let attachment = meetingIds.map( async(meetId) => {
-      const [err, values] = await this.classesService.getAttendance(meetId, req.user[0]);
+    let attachment = meetingIds.map(async (meetId) => {
+      const [err, values] = await this.classesService.getAttendance(meetId, {
+        ...configUser,
+        roles: req.user[0].roles,
+      });
     });
-    return { message: 'Data Refreshed', status: 200, };
+    return { message: 'Data Refreshed', status: 200 };
   }
 
   @Get('/getClassesByBatchId/:batchId')
@@ -105,7 +180,8 @@ export class ClassesController {
   getClassesByBatchId(
     @Query('limit') limit: number,
     @Query('offset') offset: number,
-    @Param('batchId') batchId: string): Promise<object> {
+    @Param('batchId') batchId: string,
+  ): Promise<object> {
     return this.classesService.getClassesByBatchId(batchId, limit, offset);
   }
 
@@ -115,7 +191,7 @@ export class ClassesController {
   getAttendeesByMeetingId(@Param('id') id: number): Promise<object> {
     return this.classesService.getAttendeesByMeetingId(id);
   }
-  
+
   @Get('/all/:bootcampId')
   @ApiOperation({ summary: 'Get the students classes by bootcamp and batch' })
   @ApiQuery({
@@ -158,7 +234,7 @@ export class ClassesController {
     @Query('searchTerm') searchTerm: string,
     @Req() req,
   ): Promise<object> {
-    const userId =  parseInt(req.user[0].id);
+    const userId = parseInt(req.user[0].id);
     return this.classesService.getClassesBy(
       bootcampId,
       req.user[0],
@@ -174,21 +250,99 @@ export class ClassesController {
   @ApiBearerAuth()
   getClassesBybootcampId(
     @Query('bootcampId') bootcampId: string,
-    ): Promise<object> {
+  ): Promise<object> {
     return this.classesService.unattendanceClassesByBootcampId(bootcampId);
   }
 
   @Delete('/delete/:meetingId')
   @ApiOperation({ summary: 'Delete the google class by meetingId' })
   @ApiBearerAuth()
-  deleteClassByMeetingId(@Param('meetingId') meetingId: string, @Req() req): Promise<object> {
-    return this.classesService.deleteSession(meetingId, req.user[0]);
+  deleteClassByMeetingId(
+    @Param('meetingId') meetingId: string,
+    @Req() req,
+  ): Promise<object> {
+    return this.classesService.deleteSession(meetingId, {
+      ...configUser,
+      roles: req.user[0].roles,
+    });
   }
 
   @Patch('/update/:meetingId')
   @ApiOperation({ summary: 'Update the google class by meetingId' })
   @ApiBearerAuth()
-  updateClassByMeetingId(@Param('meetingId') meetingId: string, @Body() classData: updateSessionDto, @Req() req): Promise<object> {
-    return this.classesService.updateSession(meetingId, classData, req.user[0]);
+  updateClassByMeetingId(
+    @Param('meetingId') meetingId: string,
+    @Body() classData: updateSessionDto,
+    @Req() req,
+  ): Promise<object> {
+    return this.classesService.updateSession(meetingId, classData, {
+      ...configUser,
+      roles: req.user[0].roles,
+    });
+  }
+  
+  @Get('/sessionRecordViews')
+  @ApiOperation({ summary: 'Get the session record views with sessionID or userID with both' })
+  @ApiBearerAuth()
+  @ApiQuery({
+    name: 'sessionId',
+    required: false,
+    type: Number,
+    description: 'Session Id is a number type, optional',
+  })
+  @ApiQuery({
+    name: 'userId',
+    required: false,
+    description: 'User Id is a number type, optional',
+    type: Number,
+  })
+  async getSessionRecordViews(
+    @Query('sessionId') sessionId,
+    @Query('userId') userId,
+    @Res() res: Response,
+  ): Promise<object> {
+    try {
+      let [err, success] = await this.classesService.getSessionRecordViews(
+        sessionId,
+        userId,
+      );
+      if (err) {
+        return ErrorResponse.BadRequestException(err.message).send(res);
+      }
+      return new SuccessResponse(
+        success.message,
+        success.statusCode,
+        success.data,
+      ).send(res);
+    } catch (error) {
+      return ErrorResponse.BadRequestException(error.message).send(res);
+    }
+  }
+
+  @Post('/sessionRecordViews')
+  @ApiOperation({ summary: 'Create the session record views' })
+  @ApiBearerAuth()
+  async createSessionRecordViews(
+    @Body() sessionRecordViews: DTOsessionRecordViews,
+    @Req() req,
+    @Res() res: Response,
+  ): Promise<object> {
+    try {
+      const userId = parseInt(req.user[0].id);
+      let [err, success] = await this.classesService.createSessionRecordViews(
+        sessionRecordViews,
+        userId
+      );
+      if (err) {
+        return ErrorResponse.BadRequestException(err.message).send(res);
+      }
+      return new SuccessResponse(
+        success.message,
+        success.statusCode,
+        success.data,
+      ).send(res);
+    } catch (error) {
+      return ErrorResponse.BadRequestException(error.message).send(res);
+    }
   }
 }

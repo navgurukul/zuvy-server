@@ -1,4 +1,4 @@
-import { IsString, IsNotEmpty,IsOptional,  IsArray, ValidateNested, IsEmail, IsNumber } from 'class-validator';
+import { IsString, IsNotEmpty,IsOptional,  IsArray, ValidateNested, IsEmail, IsNumber, IsBoolean, ArrayNotEmpty } from 'class-validator';
 import { ApiProperty, ApiResponseProperty,ApiResponse } from '@nestjs/swagger';
 
 export class BatchDto {
@@ -37,6 +37,25 @@ export class BatchDto {
   @IsNotEmpty({message: 'capEnrollment is required'})
   @IsNumber()
   capEnrollment: number;
+
+  @ApiProperty({
+    type: Boolean,
+    example: true,
+    required: true,
+  })
+  @IsNotEmpty({ message: 'assignAll is required' })
+  @IsBoolean()
+  assignAll: boolean;
+
+  @ApiProperty({
+    type: [Number],
+    example: [101, 102, 103],
+    required: false,
+  })
+  @IsOptional()
+  @IsArray()
+  @IsNumber({}, { each: true })
+  studentIds?: number[];
 }
 
 export class PatchBatchDto {

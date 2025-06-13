@@ -21,6 +21,7 @@ import {
   PatchBootcampDto,
   studentDataDto,
   PatchBootcampSettingDto,
+  editUserDetailsDto,
 } from './dto/bootcamp.dto';
 import { ApiBearerAuth } from '@nestjs/swagger';
 
@@ -326,6 +327,41 @@ export class BootcampController {
       user_id,
       bootcamp_id,
     );
+    if (err) {
+      throw new BadRequestException(err);
+    }
+    return res;
+  }
+
+  @Patch('updateUserDetails/:userId')
+  @ApiOperation({ summary: 'Update user name and mail Id by userId' })
+  @ApiBearerAuth()
+  async updateUserDetails(@Param('userId') userId: number, @Body() editUserDetailsDto: editUserDetailsDto): Promise<any> {
+    const [err, res] = await this.bootcampService.updateUserDetails(
+      userId,
+      editUserDetailsDto,
+    );
+    if (err) {
+      throw new BadRequestException(err);
+    }
+    return res;
+  }
+
+  @Post('/process-attendance')
+  @ApiOperation({ summary: 'Process attendance records and update attendance counts' })
+  @ApiQuery({
+    name: 'bootcampId',
+    required: true,
+    type: Number,
+    description: 'ID of the bootcamp to process attendance for',
+  })
+  @ApiBearerAuth()
+  async processAttendance(@Query('bootcampId') bootcampId: number): Promise<any> {
+    if (!bootcampId) {
+      throw new BadRequestException('bootcampId is required');
+    }
+    
+    const [err, res] = await this.bootcampService.processAttendanceRecords(bootcampId);
     if (err) {
       throw new BadRequestException(err);
     }
