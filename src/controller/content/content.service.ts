@@ -869,7 +869,7 @@ export class ContentService {
 
   async updateCodingProblemForModule(
     questionId: number,
-    codingProblem: UpdateProblemDto & { usage?: string },
+    codingProblem: UpdateProblemDto,
   ) {
     try {
       let examples = [];
@@ -1146,18 +1146,6 @@ export class ContentService {
             message: 'endDatetime must be greater than startDatetime',
           };
         }
-      }
-
-      // Handle partial date inputs - default to Draft if any date is missing
-      if (
-        (assessmentBody.publishDatetime && !assessmentBody.startDatetime) ||
-        (assessmentBody.startDatetime && !assessmentBody.endDatetime) ||
-        (assessmentBody.endDatetime && !assessmentBody.startDatetime)
-      ) {
-        // Remove all date fields to default to Draft state
-        delete assessmentBody.publishDatetime;
-        delete assessmentBody.startDatetime;
-        delete assessmentBody.endDatetime;
       }
 
       if (assessmentBody.title) {
