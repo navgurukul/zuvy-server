@@ -869,7 +869,7 @@ export class ContentService {
 
   async updateCodingProblemForModule(
     questionId: number,
-    codingProblem: UpdateProblemDto,usage?:any
+    codingProblem: UpdateProblemDto & {usage?:string}
   ) {
     try {
       let examples = [];
