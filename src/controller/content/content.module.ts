@@ -6,7 +6,6 @@ import { memoryStorage } from 'multer';
 import { ContentController } from './content.controller';
 import { ContentService } from './content.service';
 import { JwtService } from '@nestjs/jwt';
-import { SseService } from '../../services/sse.service';
 
 @Module({
   imports: [
@@ -25,7 +24,6 @@ import { SseService } from '../../services/sse.service';
     }),
   ],
   controllers: [ContentController],
-  providers: [ContentService, JwtService, SseService],
-  exports: [ContentService]
+  providers: [ContentService, JwtService],
 })
 export class ContentModule {}
