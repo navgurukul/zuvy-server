@@ -74,10 +74,12 @@ export class ClassesController {
   @ApiOperation({ summary: 'Create the new class' })
   @ApiBearerAuth()
   async create(@Body() classData: CreateSessionDto, @Req() req) {
-    return this.classesService.createSession(classData, {
-      ...configUser,
-      roles: req.user[0].roles,
-    });
+    const userInfo = {
+        id: Number(req.user[0].id),
+        email: req.user[0].email,
+        roles: req.user[0].roles || []
+      };
+    return this.classesService.createSession(classData, userInfo);
   }
 
   @Get('/getAttendance/:meetingId')

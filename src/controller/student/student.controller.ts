@@ -22,8 +22,24 @@ export class StudentController {
   @Get('/')
   @ApiOperation({ summary: 'Get all course enrolled by student' })
   @ApiBearerAuth()
-  async getAllStudents(@Req() req): Promise<object> {
-    const [err, res] = await this.studentService.enrollData(req.user[0].id);
+  @ApiQuery({
+    name: 'limit',
+    type: Number,
+    description: 'Number of items per page',
+    required: false
+  })
+  @ApiQuery({
+    name: 'offset',
+    type: Number,
+    description: 'Offset for pagination',
+    required: false
+  })
+  async getAllStudents(
+    @Req() req,
+    @Query('limit') limit?: number,
+    @Query('offset') offset?: number
+  ): Promise<object> {
+    const [err, res] = await this.studentService.enrollData(req.user[0].id, limit, offset);
     if (err) {
       throw new BadRequestException(err);
     }
@@ -116,6 +132,38 @@ export class StudentController {
   ) {
     try {
       const [err, success] = await this.studentService.getUpcomingClass(req.user[0].id, batchID, limit, offset);
+      if (err) {
+        return ErrorResponse.BadRequestException(err.message).send(res);
+      }
+      return new SuccessResponse(success.message, success.statusCode, success.data).send(res);
+    } catch (error) {
+      return ErrorResponse.BadRequestException(error.message).send(res);
+    }
+  }
+
+  @Get('/UpcomingEvents')
+  @ApiOperation({ summary: 'Get upcoming events  for next 7 days including classes and assessments' })
+  @ApiBearerAuth()
+  @ApiQuery({
+    name: 'limit',
+    type: Number,
+    description: 'Number of events per page',
+    required: false
+  })
+  @ApiQuery({
+    name: 'offset',
+    type: Number,
+    description: 'Offset for pagination',
+    required: false
+  })
+  async getUpcomingEvents(
+    @Req() req,
+    @Query('limit') limit: number,
+    @Query('offset') offset: number,
+    @Res() res: Response
+  ) {
+    try {
+      const [err, success] = await this.studentService.getUpcomingEvents(req.user[0].id, limit, offset);
       if (err) {
         return ErrorResponse.BadRequestException(err.message).send(res);
       }

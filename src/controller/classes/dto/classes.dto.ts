@@ -92,6 +92,16 @@ export class CreateSessionDto {
   batchId: number;
 
   @ApiProperty({
+    description: 'The module ID to associate with this session',
+    type: Number,
+    example: 1,
+    required: true,
+  })
+  @IsNotEmpty()
+  @IsNumber()
+  moduleId: number;
+
+  @ApiProperty({
     description: 'The description of the live  event',
     type: String,
     example: 'Description of the event',

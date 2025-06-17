@@ -16,6 +16,8 @@ import {
   zuvyBatches,
   zuvyBootcamps,
   zuvySessionRecordViews,
+  zuvyCourseModules,
+  zuvyModuleChapter,
   // ZuvyClassesGoogleMeetLink
 } from '../../../drizzle/schema';
 import { db } from '../../db/index';
@@ -216,6 +218,7 @@ export class ClassesService {
       endDateTime: string;
       timeZone: string;
       batchId: number;
+      moduleId: number;
       daysOfWeek: string[]; // New field: array of days (e.g., ['Monday', 'Wednesday', 'Friday'])
       totalClasses: number; // New field: total number of classes
     },
@@ -297,6 +300,47 @@ export class ClassesService {
         };
       }
       let bootcampId = batchInfo[0].bootcampId;
+
+      // Validate module
+      const moduleInfo = await db
+        .select()
+        .from(zuvyCourseModules)
+        .where(eq(zuvyCourseModules.id, eventDetails.moduleId));
+      
+      if (moduleInfo.length === 0) {
+        return {
+          status: 'error',
+          message: 'Module not found',
+          code: 404,
+        };
+      }
+
+      // Create a new chapter for live class (topicId = 8)
+      const noOfChaptersOfAModule = await db
+        .select({ count: count(zuvyModuleChapter.id) })
+        .from(zuvyModuleChapter)
+        .where(eq(zuvyModuleChapter.moduleId, eventDetails.moduleId));
+      
+      const order = noOfChaptersOfAModule[0].count + 1;
+      const chapterData = {
+        title: eventDetails.title,
+        moduleId: eventDetails.moduleId,
+        topicId: 8, // Live class topic ID
+        order,
+      };
+
+      const chapter = await db
+        .insert(zuvyModuleChapter)
+        .values(chapterData)
+        .returning();
+
+      if (chapter.length === 0) {
+        return {
+          status: 'error',
+          message: 'Failed to create chapter for live class',
+          code: 400,
+        };
+      }
 
       // Access calendar
       let calendar: any = await this.accessOfCalendar(creatorInfo);
@@ -425,6 +469,8 @@ export class ClassesService {
           endTime: instance.end.dateTime,
           batchId: eventDetails.batchId,
           bootcampId,
+          moduleId: eventDetails.moduleId,
+          chapterId: chapter[0].id, // Use the newly created chapter ID
           title: instance.summary,
           meetingId: instance.id,
         });
@@ -472,7 +518,7 @@ export class ClassesService {
   //       });
   //       const items = response.data.items || [];
     
-  //       // 2️⃣ Extract the host’s email from the first log entry
+  //       // 2️⃣ Extract the host's email from the first log entry
   //       const organizerParam = items[0].events?.[0].parameters?.find(p => p.name === 'organizer_email');
   //       const hostEmail = organizerParam?.value; 
   //       console.log("hostEmail",hostEmail)  
@@ -502,7 +548,7 @@ export class ClassesService {
   //         continue;
   //       }
     
-  //       // 3️⃣ Fetch the recording’s duration from Drive metadata
+  //       // 3️⃣ Fetch the recording's duration from Drive metadata
   //       const { data: fileMeta } = await drive.files.get({
   //         fileId: videoAttach.fileId,
   //         fields: 'videoMediaMetadata(durationMillis)'
@@ -1890,4 +1936,4 @@ export class ClassesService {
       ];
     }
   }
-  }
+}

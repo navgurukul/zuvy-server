@@ -9,7 +9,10 @@ import {
   zuvyStudentApplicationRecord,
   zuvyBootcampTracking,
   zuvyAssessmentReattempt,
-  zuvyAssessmentSubmission
+  zuvyAssessmentSubmission,
+  zuvyOutsourseAssessments,
+  zuvyModuleAssessment,
+  zuvyBatches
 } from '../../../drizzle/schema';
 import { db } from '../../db/index';
 import { eq, sql, desc, count, asc, or, and, inArray } from 'drizzle-orm';
@@ -22,11 +25,36 @@ import { google } from 'googleapis';
 import { OAuth2Client } from 'google-auth-library';
 
 
-const { GOOGLE_SHEETS_SERVICE_ACCOUNT, GOOGLE_SHEETS_PRIVATE_KEY,JOIN_ZUVY_ACCESS_KEY_ID, JOIN_ZUVY_SECRET_KEY, SPREADSHEET_ID, SES_EMAIL, SUPPORT_EMAIL, QUERY_EMAIL, AWS_QUERY_ACCESS_SECRET_KEY, AWS_QUERY_ACCESS_KEY_ID } = process.env;
+const { GOOGLE_SHEETS_SERVICE_ACCOUNT, GOOGLE_SHEETS_PRIVATE_KEY, JOIN_ZUVY_ACCESS_KEY_ID, JOIN_ZUVY_SECRET_KEY, SPREADSHEET_ID, SES_EMAIL, SUPPORT_EMAIL, QUERY_EMAIL, AWS_QUERY_ACCESS_SECRET_KEY, AWS_QUERY_ACCESS_KEY_ID } = process.env;
 const AWS = require('aws-sdk');
 
+// Add interfaces for event types
+interface BaseEvent {
+  type: 'class' | 'assessment';
+  id: number;
+  title: string;
+  bootcampId: number;
+  bootcampName: string;
+}
 
+interface ClassEvent extends BaseEvent {
+  type: 'class';
+  startTime: string;
+  endTime: string;
+  status: string;
+  batchId: number;
+}
 
+interface AssessmentEvent extends BaseEvent {
+  type: 'assessment';
+  dueDate: string;
+  timeLimit: number;
+  marks: number;
+  startDatetime: string;
+  endDatetime: string;
+}
+
+type Event = ClassEvent | AssessmentEvent;
 
 @Injectable()
 export class StudentService {
@@ -89,7 +117,7 @@ export class StudentService {
       // Insert student record into the DB
       await db.insert(zuvyStudentApplicationRecord).values(studentDetails).returning();
 
-      return [null, { message: "Thank you for applying! We’re reviewing your application and will notify you soon.", statusCode: STATUS_CODES.OK }];
+      return [null, { message: "Thank you for applying! We're reviewing your application and will notify you soon.", statusCode: STATUS_CODES.OK }];
     } catch (err) {
       // Handle errors and return a bad request message
       return [{ message: err.message, statusCode: STATUS_CODES.BAD_REQUEST }];
@@ -103,7 +131,7 @@ export class StudentService {
 
     Thank you for applying to ${helperVariable.PROGRAM_DETAILS.NAME}!
     
-    We’re excited to see your interest in the amazing Bootcamp for female engineers.
+    We're excited to see your interest in the amazing Bootcamp for female engineers.
     We have received your application. As the next step, we invite you to complete a short questionnaire that will help us better understand your background and interest in the program.
 
     **Questionnaire Link**
@@ -138,7 +166,7 @@ export class StudentService {
         region: 'ap-south-1'                      // Replace with your AWS SES region, e.g., 'us-east-1'
       });
       const emailContent = await this.generateEmailContent(applicantName);
-      
+
       // Create an instance of SES
       const ses = new AWS.SES();
 
@@ -161,16 +189,18 @@ export class StudentService {
       };
       // Send the email using SES
       const result = await ses.sendEmail(emailParams).promise();
-      Logger.log('Email sent successfully:',  JSON.stringify(result));
+      Logger.log('Email sent successfully:', JSON.stringify(result));
     } catch (error) {
       console.error('Error sending email:', error);
     }
   }
 
-  async enrollData(userId: number) {
+  async enrollData(userId: number, limit?: number, offset?: number) {
     try {
+      // Get enrolled bootcamps
       let enrolled = await db.query.zuvyBatchEnrollments.findMany({
-        where: (zuvyBatchEnrollments, { sql }) => sql`${zuvyBatchEnrollments.userId} = ${userId} AND ${zuvyBatchEnrollments.batchId} IS NOT NULL`,
+        where: (zuvyBatchEnrollments, { sql }) =>
+          sql`${zuvyBatchEnrollments.userId} = ${userId} AND ${zuvyBatchEnrollments.batchId} IS NOT NULL`,
         columns: {
           id: true
         },
@@ -182,30 +212,82 @@ export class StudentService {
               coverImage: true,
               duration: true,
               language: true,
-              bootcampTopic: true
+              bootcampTopic: true,
+              description: true
             },
           },
-          batchInfo: true,
+          batchInfo: {
+            columns: {
+              id: true,
+              name: true,
+              instructorId: true
+            },
+            with: {
+              instructorDetails: {
+                columns: {
+                  id: true,
+                  name: true,
+                  profilePicture: true
+                }
+              }
+            }
+          },
           tracking: {
             where: (bootcampTracking, { sql }) =>
               sql`${bootcampTracking.userId} = ${userId}`,
           }
         }
-      })
-      let totalData = enrolled.map((e: any) => {
+      });
+
+      // Process each enrollment to add upcoming events
+      let totalData = await Promise.all(enrolled.map(async (e: any) => {
         const { batchInfo, tracking, bootcamp } = e;
+        const progress = tracking?.progress || 0;
+
+        // Get upcoming events using existing method
+        const [err, eventsResponse] = await this.getUpcomingEvents(userId);
+        const upcomingEvents = err ? [] : eventsResponse.data.events.filter(
+          event => event.bootcampId === bootcamp.id
+        );
 
         return {
           ...bootcamp,
-          batchId: batchInfo?.id,
+          id: Number(bootcamp.id),
+          batchId: batchInfo?.id ? Number(batchInfo.id) : null,
           batchName: batchInfo?.name,
-          progress: tracking?.progress || 0
+          progress,
+          instructorDetails: batchInfo?.instructorDetails ? {
+            ...batchInfo.instructorDetails,
+            id: Number(batchInfo.instructorDetails.id)
+          } : { name: 'Not Assigned', profilePicture: null },
+          upcomingEvents: progress < 100 ? upcomingEvents.map(event => ({
+            ...event,
+            id: Number(event.id),
+            bootcampId: Number(event.bootcampId)
+          })) : [] // Only include events for incomplete bootcamps
         };
-      });
+      }));
 
+      // Split bootcamps by progress
+      const completedBootcamps = totalData.filter(bootcamp => bootcamp.progress === 100);
+      const inProgressBootcamps = totalData.filter(bootcamp => bootcamp.progress < 100);
 
+      // Apply pagination if limit and offset are provided
+      const paginateArray = (arr: any[], limit?: number, offset?: number) => {
+        if (!limit || !offset) return arr;
+        return arr.slice(offset, offset + limit);
+      };
 
-      return [null, totalData];
+      const paginatedCompletedBootcamps = paginateArray(completedBootcamps, limit, offset);
+      const paginatedInProgressBootcamps = paginateArray(inProgressBootcamps, limit, offset);
+
+      return [null, {
+        completedBootcamps: paginatedCompletedBootcamps,
+        inProgressBootcamps: paginatedInProgressBootcamps,
+        totalCompleted: completedBootcamps.length,
+        totalInProgress: inProgressBootcamps.length,
+        totalPages: limit ? Math.ceil(Math.max(completedBootcamps.length, inProgressBootcamps.length) / limit) : 1
+      }];
     } catch (err) {
       error(`error: ${err.message}`);
       return [{ status: 'error', message: err.message, code: 500 }, null];
@@ -291,34 +373,34 @@ export class StudentService {
   async removingStudent(user_id: number | number[], bootcamp_id: number) {
     try {
       const userIdsArray = Array.isArray(user_id) ? user_id : [user_id];
-  
+
       let enrolled = await db
         .delete(zuvyBatchEnrollments)
         .where(
           and(
-            inArray(zuvyBatchEnrollments.userId,  userIdsArray.map(BigInt)),
+            inArray(zuvyBatchEnrollments.userId, userIdsArray.map(BigInt)),
             eq(zuvyBatchEnrollments.bootcampId, bootcamp_id)
           )
         )
         .returning();
-  
+
       if (enrolled.length === 0) {
         return [{ status: 'error', message: 'ID not found', code: 404 }, null];
       }
-  
+
       // Delete progress from zuvyBootcampTracking
       let trackingDeleted = await db
         .delete(zuvyBootcampTracking)
         .where(
           and(
-            inArray(zuvyBootcampTracking.userId,  userIdsArray.map(Number)),
+            inArray(zuvyBootcampTracking.userId, userIdsArray.map(Number)),
             eq(zuvyBootcampTracking.bootcampId, Number(bootcamp_id))
           )
         )
         .returning();
-  
+
       const deletedCount = enrolled.length;
-  
+
       return [
         null,
         {
@@ -329,12 +411,12 @@ export class StudentService {
           code: 200,
         },
       ];
-  
+
     } catch (e) {
       return [{ status: 'error', message: e.message, code: 500 }, null];
     }
   }
-  
+
 
   async getUpcomingClass(student_id: number, batchID: number, limit: number, offset: number): Promise<any> {
     try {
@@ -386,7 +468,7 @@ export class StudentService {
       const totalCount = upcomingClasses.length > 0 ? upcomingClasses[0]['totalCount'] : 0;
 
       const totalClasses = totalCount;
-      let filterClasses = upcomingClasses.reduce((acc, e:any) => {
+      let filterClasses = upcomingClasses.reduce((acc, e: any) => {
         e['bootcampName'] = e['bootcampDetail'].name;
         e['bootcampId'] = e['bootcampDetail'].id;
         delete e['bootcampDetail'];
@@ -405,6 +487,128 @@ export class StudentService {
       return [null, { message: 'Upcoming classes fetched successfully', statusCode: STATUS_CODES.OK, data: { filterClasses, totalClasses: Number(totalClasses), totalPages: !isNaN(limit) ? Math.ceil(totalClasses / limit) : 1 } }]
     } catch (error) {
       return [{ message: error.message, statusCode: STATUS_CODES.BAD_REQUEST }]
+    }
+  }
+
+  async getUpcomingEvents(student_id: number, limit?: number, offset?: number): Promise<any> {
+    try {
+      // Get enrolled bootcamps
+      let enrolled = await db.select().from(zuvyBatchEnrollments).where(
+        sql`${zuvyBatchEnrollments.userId} = ${student_id} AND ${zuvyBatchEnrollments.batchId} IS NOT NULL`
+      );
+
+      if (enrolled.length === 0) {
+        return [null, {
+          message: 'Not enrolled in any course.',
+          statusCode: STATUS_CODES.OK,
+          data: []
+        }];
+      }
+
+      // Get bootcamp and batch IDs
+      let bootcampAndbatchIds = await Promise.all(
+        enrolled
+          .filter(e => e.batchId !== null)
+          .map(async e => {
+            await this.ClassesService.updatingStatusOfClass(e.bootcampId, e.batchId);
+            return { bootcampId: e.bootcampId, batchId: e.batchId };
+          })
+      );
+
+      // Calculate date range for next 7 days
+      const now = new Date();
+      const sevenDaysLater = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+
+      // Get upcoming classes
+      let upcomingClasses = await db.query.zuvySessions.findMany({
+        where: (session, { and, or, eq, ne, sql }) =>
+          and(
+            or(...bootcampAndbatchIds.map(({ bootcampId, batchId }) =>
+              and(
+                eq(session.bootcampId, bootcampId),
+                eq(session.batchId, batchId)
+              )
+            )),
+            ne(session.status, helperVariable.completed),
+            sql`${session.startTime}::timestamp >= ${now.toISOString()} AND ${session.startTime}::timestamp <= ${sevenDaysLater.toISOString()}`
+          ),
+        orderBy: (session, { asc }) => asc(session.startTime)
+      });
+
+      // Get bootcamp names for classes
+      const bootcampIds = [...new Set(upcomingClasses.map(c => c.bootcampId))];
+      const bootcamps = await db.select().from(zuvyBootcamps).where(inArray(zuvyBootcamps.id, bootcampIds));
+      const bootcampMap = new Map(bootcamps.map(b => [b.id, b.name]));
+
+      // Get upcoming assessments with their titles
+      let upcomingAssessments = await db
+        .select({
+          id: zuvyOutsourseAssessments.id,
+          startDatetime: zuvyOutsourseAssessments.startDatetime,
+          endDatetime: zuvyOutsourseAssessments.endDatetime,
+          bootcampId: zuvyOutsourseAssessments.bootcampId,
+          timeLimit: zuvyOutsourseAssessments.timeLimit,
+          marks: zuvyOutsourseAssessments.marks,
+          title: zuvyModuleAssessment.title
+        })
+        .from(zuvyOutsourseAssessments)
+        .innerJoin(
+          zuvyModuleAssessment,
+          eq(zuvyOutsourseAssessments.assessmentId, zuvyModuleAssessment.id)
+        )
+        .where(
+          and(
+            inArray(zuvyOutsourseAssessments.bootcampId, bootcampAndbatchIds.map(b => b.bootcampId)),
+            sql`${zuvyOutsourseAssessments.startDatetime}::timestamp >= ${now.toISOString()} AND ${zuvyOutsourseAssessments.startDatetime}::timestamp <= ${sevenDaysLater.toISOString()}`
+          )
+        )
+        .orderBy(asc(zuvyOutsourseAssessments.startDatetime));
+
+      // Format classes
+      const formattedClasses = upcomingClasses.map(c => ({
+        type: 'Live Class' as const,
+        id: Number(c.id),
+        title: c.title,
+        startTime: c.startTime,
+        endTime: c.endTime,
+        status: c.status,
+        bootcampId: Number(c.bootcampId),
+        bootcampName: bootcampMap.get(c.bootcampId) || 'Unknown Bootcamp',
+        batchId: Number(c.batchId),
+        eventDate: c.startTime
+      }));
+
+      // Format assessments
+      const formattedAssessments = upcomingAssessments.map(a => ({
+        type: 'Assessment' as const,
+        id: Number(a.id),
+        title: a.title || 'Assessment',
+        startDatetime: a.startDatetime,
+        endDatetime: a.endDatetime,
+        bootcampId: Number(a.bootcampId),
+        bootcampName: bootcampMap.get(a.bootcampId) || 'Unknown Bootcamp',
+        timeLimit: a.timeLimit,
+        marks: a.marks,
+        eventDate: a.startDatetime
+      }));
+
+      // Combine and sort all events by date
+      const allEvents = [...formattedClasses, ...formattedAssessments]
+        .sort((a, b) => {
+          return new Date(a.eventDate).getTime() - new Date(b.eventDate).getTime();
+        });
+
+      return [null, {
+        message: 'Upcoming events fetched successfully',
+        statusCode: STATUS_CODES.OK,
+        data: {
+          events: allEvents,
+          totalEvents: allEvents.length,
+          totalPages: 1
+        }
+      }];
+    } catch (error) {
+      return [{ message: error.message, statusCode: STATUS_CODES.BAD_REQUEST }];
     }
   }
 
@@ -505,71 +709,71 @@ export class StudentService {
     }
   }
   // Helper method to send email to admin using AWS SES
-    private async sendEmailToAdmin(submission: any): Promise<any> {
-      try {
-        AWS.config.update({
-          accessKeyId: AWS_QUERY_ACCESS_KEY_ID,      // Replace with your access key ID
-          secretAccessKey: AWS_QUERY_ACCESS_SECRET_KEY, // Replace with your secret access key
-          region: 'ap-south-1'                      // Replace with your AWS SES region, e.g., 'us-east-1'
-        });
-  
-        const emailContent = await this.generateAdminEmailContent(submission);
-        
-        let ses = new AWS.SES({ region: 'ap-south-1' });
-        const emailParams = {
-          Source: QUERY_EMAIL,
-          Destination: {
-            ToAddresses: [SUPPORT_EMAIL], // Admin email address
-          },
-          Message: {
-            Subject: {
-              Data: 'Re-attempt Request for Assessment Submission',
-            },
-            Body: {
-              Text: {
-                Data: emailContent,
-              },
-            },
-          },
-        };
-  
-        const result = await ses.sendEmail(emailParams).promise();
-        this.logger.log('Email sent to admin for re-attempt request: ' + JSON.stringify(result));
-        return [null, result];
-      } catch (error) {
-        this.logger.error('Failed to send email to admin', error);
-        return [error, null];
-      }
-    }
-    
-    // Format date to "29 Apr 2025, 03:45 PM" format
-    private formatDate(dateString: string): string {
-      if (!dateString) return 'N/A';
-      
-      try {
-        const date = new Date(dateString);
-        if (isNaN(date.getTime())) return 'N/A';
-        
-        // Format: Day Month Year, Hours:Minutes AM/PM
-        return date.toLocaleString('en-GB', {
-          day: '2-digit',
-          month: 'short',
-          year: 'numeric',
-          hour: '2-digit',
-          minute: '2-digit',
-          hour12: true
-        });
-      } catch (error) {
-        return 'N/A';
-      }
-    }
+  private async sendEmailToAdmin(submission: any): Promise<any> {
+    try {
+      AWS.config.update({
+        accessKeyId: AWS_QUERY_ACCESS_KEY_ID,      // Replace with your access key ID
+        secretAccessKey: AWS_QUERY_ACCESS_SECRET_KEY, // Replace with your secret access key
+        region: 'ap-south-1'                      // Replace with your AWS SES region, e.g., 'us-east-1'
+      });
 
-   // Generate email content dynamically for admin notification
-   private async generateAdminEmailContent(submission: any): Promise<string> {
+      const emailContent = await this.generateAdminEmailContent(submission);
+
+      let ses = new AWS.SES({ region: 'ap-south-1' });
+      const emailParams = {
+        Source: QUERY_EMAIL,
+        Destination: {
+          ToAddresses: [SUPPORT_EMAIL], // Admin email address
+        },
+        Message: {
+          Subject: {
+            Data: 'Re-attempt Request for Assessment Submission',
+          },
+          Body: {
+            Text: {
+              Data: emailContent,
+            },
+          },
+        },
+      };
+
+      const result = await ses.sendEmail(emailParams).promise();
+      this.logger.log('Email sent to admin for re-attempt request: ' + JSON.stringify(result));
+      return [null, result];
+    } catch (error) {
+      this.logger.error('Failed to send email to admin', error);
+      return [error, null];
+    }
+  }
+
+  // Format date to "29 Apr 2025, 03:45 PM" format
+  private formatDate(dateString: string): string {
+    if (!dateString) return 'N/A';
+
+    try {
+      const date = new Date(dateString);
+      if (isNaN(date.getTime())) return 'N/A';
+
+      // Format: Day Month Year, Hours:Minutes AM/PM
+      return date.toLocaleString('en-GB', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: true
+      });
+    } catch (error) {
+      return 'N/A';
+    }
+  }
+
+  // Generate email content dynamically for admin notification
+  private async generateAdminEmailContent(submission: any): Promise<string> {
     return `
 Hi Admin,
 
-${submission.name} (${submission.email}) from ${submission.courseName || 'N/A'} – ${submission.batchName || 'N/A'} has requested a re‑attempt for the assessment “${submission.title || 'N/A'}”.
+${submission.name} (${submission.email}) from ${submission.courseName || 'N/A'} – ${submission.batchName || 'N/A'} has requested a re‑attempt for the assessment " ${submission.title || 'N/A'}".
 
 Request details
 
@@ -590,12 +794,12 @@ Need help? Reach out to the Ed‑Ops team on Slack or email [${SUPPORT_EMAIL}].
 Thanks,  
 Team Zuvy`;
   }
-  
+
 
   async requestReattempt(assessmentSubmissionId: number, userId: number): Promise<any> {
     try {
       // Check if submission exists and belongs to user
-      const submission:any = await db.query.zuvyAssessmentSubmission.findFirst({
+      const submission: any = await db.query.zuvyAssessmentSubmission.findFirst({
         where: (zuvyAssessmentSubmission, { eq }) =>
           eq(zuvyAssessmentSubmission.id, assessmentSubmissionId),
         with: {
@@ -606,13 +810,13 @@ Team Zuvy`;
               status: true,
             },
           },
-          user:{
-            columns:{
-              name:true,
-              email:true
+          user: {
+            columns: {
+              name: true,
+              email: true
             }
           },
-          submitedOutsourseAssessment:{
+          submitedOutsourseAssessment: {
             columns: {
               id: true,
               bootcampId: true,
@@ -621,10 +825,10 @@ Team Zuvy`;
               timeLimit: true,
               marks: true,
               title: true,
-              
+
             },
             with: {
-              ModuleAssessment:{
+              ModuleAssessment: {
                 columns: {
                   id: true,
                   title: true,
@@ -663,7 +867,7 @@ Team Zuvy`;
       let ModuleAssessment = submission.submitedOutsourseAssessment.ModuleAssessment
       let user = submission.user
 
-      let batch:any = await db.query.zuvyBatchEnrollments.findFirst({
+      let batch: any = await db.query.zuvyBatchEnrollments.findFirst({
         where: (zuvyBatchEnrollments, { sql }) =>
           sql`${zuvyBatchEnrollments.userId} = ${userId} AND ${zuvyBatchEnrollments.bootcampId} = ${submitedOutsourseAssessment.bootcampId}`,
         with: {
@@ -680,16 +884,16 @@ Team Zuvy`;
         },
       });
       // Update submission to mark reattempt requested
-      let updateReattmpt:any = { reattemptRequested: true };
+      let updateReattmpt: any = { reattemptRequested: true };
 
-      
+
       await db.update(zuvyAssessmentSubmission)
-      .set(updateReattmpt)
-      .where(eq(zuvyAssessmentSubmission.id, assessmentSubmissionId));
-      let reattemptData:any = { assessmentSubmissionId, userId, requestedAt: new Date(), status: PENDING}
+        .set(updateReattmpt)
+        .where(eq(zuvyAssessmentSubmission.id, assessmentSubmissionId));
+      let reattemptData: any = { assessmentSubmissionId, userId, requestedAt: new Date(), status: PENDING }
       await db.insert(zuvyAssessmentReattempt).values(reattemptData)
       // Send email to admin notifying reattempt request
-      let [errorAdmin, admin200] = await this.sendEmailToAdmin({...submission, ...submitedOutsourseAssessment, ...user, ...ModuleAssessment, batchName: batch.batchInfo.name, courseName: batch.bootcamp.name});
+      let [errorAdmin, admin200] = await this.sendEmailToAdmin({ ...submission, ...submitedOutsourseAssessment, ...user, ...ModuleAssessment, batchName: batch.batchInfo.name, courseName: batch.bootcamp.name });
       if (errorAdmin) {
         this.logger.error(`error in sending email to admin: ${errorAdmin}`)
         return [{
@@ -698,7 +902,7 @@ Team Zuvy`;
           message: 'Re-attempt approved and Not able to notified',
         }];
       }
-      return [null,{
+      return [null, {
         status: 'success',
         statusCode: 200,
         message: 'Re-attempt request sent to admin',
