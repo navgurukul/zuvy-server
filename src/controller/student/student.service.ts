@@ -12,7 +12,8 @@ import {
   zuvyAssessmentSubmission,
   zuvyOutsourseAssessments,
   zuvyModuleAssessment,
-  zuvyBatches
+  zuvyBatches,
+  zuvyStudentAttendance
 } from '../../../drizzle/schema';
 import { db } from '../../db/index';
 import { eq, sql, desc, count, asc, or, and, inArray } from 'drizzle-orm';
@@ -640,6 +641,110 @@ export class StudentService {
       return totalAttendance;
     } catch (err) {
       throw err;
+    }
+  }
+
+  async getCompletedClassesWithAttendance(userId: number, bootcampId: number, limit = 10, offset = 0) {
+    try {
+      const userRecord = await db
+        .select({ email: users.email })
+        .from(users)
+        .where(eq(users.id, BigInt(userId)));
+      if (userRecord.length === 0) {
+        return [{ message: 'User not found', statusCode: STATUS_CODES.NOT_FOUND }];
+      }
+      const userEmail = userRecord[0].email.toLowerCase();
+
+      const classes = await db.query.zuvySessions.findMany({
+        where: (session, { and, eq }) =>
+          and(eq(session.bootcampId, bootcampId), eq(session.status, helperVariable.completed)),
+        with: {
+          batches: { columns: { id: true, name: true } },
+        },
+        extras: {
+          totalCount: sql<number>`coalesce(count(*) over(), 0)`.as('total_count'),
+        },
+        orderBy: (session, { desc }) => desc(session.startTime),
+        limit,
+        offset,
+      });
+
+      const totalClasses = classes.length > 0 ? Number(classes[0]['totalCount']) : 0;
+
+      // fetch all completed sessions for this bootcamp to calculate attendance stats
+      const allSessions = await db
+        .select({ meetingId: zuvySessions.meetingId })
+        .from(zuvySessions)
+        .where(and(eq(zuvySessions.bootcampId, bootcampId), eq(zuvySessions.status, helperVariable.completed)));
+      const allMeetingIds = allSessions.map((cls) => cls.meetingId);
+
+      const attendanceRecords = allMeetingIds.length
+        ? await db
+            .select({ meetingId: zuvyStudentAttendance.meetingId, attendance: zuvyStudentAttendance.attendance })
+            .from(zuvyStudentAttendance)
+            .where(inArray(zuvyStudentAttendance.meetingId, allMeetingIds))
+        : [];
+
+      const attendanceMap = new Map<string, any[]>();
+      attendanceRecords.forEach((record) => {
+        let data: any[] = [];
+        if (Array.isArray(record.attendance)) data = record.attendance as any[];
+        else if (record.attendance) {
+          try {
+            data = JSON.parse(record.attendance as any);
+          } catch {}
+        }
+        attendanceMap.set(record.meetingId, data);
+      });
+
+      const result = classes.map((cls) => {
+        const students = attendanceMap.get(cls.meetingId) || [];
+        const studentRecord = students.find((s: any) => s.email?.toLowerCase() === userEmail);
+        const status = studentRecord ? studentRecord.attendance : 'absent';
+        const { batches, ...rest } = cls as any;
+        return {
+          id: Number(rest.id),
+          title: rest.title,
+          startTime: rest.startTime,
+          endTime: rest.endTime,
+          batchId: Number(rest.batchId),
+          batchName: batches?.name || null,
+          attendanceStatus: status,
+        };
+      });
+
+      let presentCount = 0;
+      let absentCount = 0;
+      allMeetingIds.forEach((id) => {
+        const students = attendanceMap.get(id) || [];
+        const studentRecord = students.find((s: any) => s.email?.toLowerCase() === userEmail);
+        const isPresent = studentRecord && studentRecord.attendance === 'present';
+        if (isPresent) presentCount++; else absentCount++;
+      });
+
+      const attendancePercentage = allMeetingIds.length
+        ? Number(((presentCount / allMeetingIds.length) * 100).toFixed(2))
+        : 0;
+
+      return [
+        null,
+        {
+          message: 'Completed classes fetched successfully',
+          statusCode: STATUS_CODES.OK,
+          data: {
+            classes: result,
+            totalClasses,
+            totalPages: limit ? Math.ceil(totalClasses / limit) : 1,
+            attendanceStats: {
+              presentCount,
+              absentCount,
+              attendancePercentage,
+            },
+          },
+        },
+      ];
+    } catch (error) {
+      return [{ message: error.message, statusCode: STATUS_CODES.BAD_REQUEST }];
     }
   }
 
