@@ -500,6 +500,34 @@ Team Zuvy`;
 
   async getAssessmentStudents(req, assessmentID: number, searchStudent: string, limit?: number, offset?: number) {
     try {
+       /*
+        {
+            "id": 1121,
+            "userId": 63345,
+            "marks": 16.67,
+            "startedAt": "2025-04-25T08:15:36.439+00:00",
+            "submitedAt": "2025-04-25T08:16:53.376+00:00",
+            "isPassed": false,
+            "percentage": 16.67,
+            "codingQuestionCount": null,
+            "openEndedQuestionCount": null,
+            "attemptedCodingQuestions": 0,
+            "codingScore": 0,
+            "mcqScore": 16.666666666666664,
+            "openEndedScore": 0,
+            "requiredCodingScore": null,
+            "requiredOpenEndedScore": 0,
+            "typeOfsubmission": "studentSubmit",
+            "copyPaste": null,
+            "active": true,
+            "reattemptRequested": false,
+            "reattemptApproved": false,
+            "reattemptCount": 0,
+            "tabChange": null,
+            "name": "Mohanty Sukanya",
+            "email": "mohanty21@navgurukul.org"
+        }
+       */
       // Fetch assessment details
       const assessmentInfo = await db
         .select()
@@ -571,6 +599,15 @@ Team Zuvy`;
           tabChange: true,
           copyPaste: true,
           typeOfsubmission: true,
+          codingQuestionCount: true,
+          openEndedQuestionCount: true,
+          attemptedCodingQuestions: true,
+          codingScore: true,
+          mcqScore: true,
+          openEndedScore: true,
+          requiredCodingScore: true,
+          requiredOpenEndedScore: true,
+          assessmentOutsourseId: true,
         },
         with: {
           user: {
@@ -636,6 +673,14 @@ Team Zuvy`;
           reattemptApproved: submission?.reattemptApproved,
           reattemptCount: (reattemptCountMap.get(userId) || 1) - 1,
           tabChange: submission?.tabChange || null,
+          codingQuestionCount: submission?.codingQuestionCount || null,
+          openEndedQuestionCount: submission?.openEndedQuestionCount || null,
+          attemptedCodingQuestions: submission?.attemptedCodingQuestions || 0,
+          codingScore: submission?.codingScore || 0,
+          mcqScore: submission?.mcqScore || 0,
+          openEndedScore: submission?.openEndedScore || 0,
+          requiredCodingScore: submission?.requiredCodingScore || null,
+          requiredOpenEndedScore: submission?.requiredOpenEndedScore || 0,
         };
       });
   
@@ -663,6 +708,7 @@ Team Zuvy`;
           description: moduleAssessment?.ModuleAssessment?.description || null,
           totalStudents: Number(totalStudentsCount[0]?.count) || 0,
           totalSubmitedStudents: userReattemptCounts.length,
+          passPercentage: assessmentInfo[0].passPercentage || 0,
         },
         submitedOutsourseAssessments: combinedData,
       };
