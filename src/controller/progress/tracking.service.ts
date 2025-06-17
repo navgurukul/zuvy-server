@@ -608,11 +608,19 @@ export class TrackingService {
           bootcampTracking: true,
         },
       });
+
+      // Get batch details with proper typing
       const batchDetails = await db.query.zuvyBatchEnrollments.findFirst({
         where: (batchEnroll, { sql }) =>
           sql`${batchEnroll.userId} = ${BigInt(userId)} AND ${batchEnroll.bootcampId} = ${bootcampId}`,
         with: {
           batchInfo: {
+            columns: {
+              id: true,
+              name: true,
+              capEnrollment: true,
+              createdAt: true
+            },
             with: {
               instructorDetails: {
                 columns: {
@@ -625,6 +633,14 @@ export class TrackingService {
           }
         },
       });
+
+      // Get total enrolled students in the batch
+      const totalEnrolledStudents = batchDetails['batchInfo'].id ? await db
+        .select()
+        .from(zuvyBatchEnrollments)
+        .where(eq(zuvyBatchEnrollments.batchId, batchDetails['batchInfo'].id))
+        .then(results => results.length) : 0;
+
       let instructorDetails = {}
       if (batchDetails['batchInfo'] != null) {
         instructorDetails = {
@@ -633,11 +649,16 @@ export class TrackingService {
           instructorProfilePicture: batchDetails['batchInfo']['instructorDetails']['profilePicture']
         }
       }
+
       return {
         status: 'success',
         message: 'Bootcamp progress fetched successfully',
         data,
-        instructorDetails
+        instructorDetails,
+        batchInfo: batchDetails['batchInfo'] ? {
+          batchName: batchDetails['batchInfo'].name,
+          totalEnrolledStudents
+        } : null
       };
     } catch (err) {
       throw err;
