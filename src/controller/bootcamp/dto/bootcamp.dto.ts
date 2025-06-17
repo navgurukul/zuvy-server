@@ -14,21 +14,12 @@ export class CreateBootcampDto {
 
   @ApiProperty({
     type: String,
-    example: 'Collaboration Name',
+    example: 'Collaboration Name or https://example.com/logo.png',
     required: false,
   })
   @IsOptional()
   @IsString()
-  collaborationName?: string;
-
-  @ApiProperty({
-    type: String,
-    example: 'https://example.com/logo.png',
-    required: false,
-  })
-  @IsOptional()
-  @IsString()
-  collaborationLogo?: string;
+  collaborator?: string;
 }
 
 
