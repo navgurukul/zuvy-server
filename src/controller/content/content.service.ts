@@ -345,7 +345,14 @@ export class ContentService {
         };
       }
       if (topicId == 6) {
-        let insertedAssessmentOutsourse: any = { assessmentId: newAssessment[0].id, moduleId, bootcampId, chapterId: chapter[0].id, order }
+        let insertedAssessmentOutsourse: any = { 
+          assessmentId: newAssessment[0].id, 
+          moduleId, 
+          bootcampId, 
+          chapterId: chapter[0].id, 
+          order,
+          currentState: 0 // Setting initial state to DRAFT
+        }
         let outsourseAssessmentData = await db.insert(zuvyOutsourseAssessments).values(insertedAssessmentOutsourse).returning();
         if (outsourseAssessmentData.length == 0) {
           return {
@@ -862,7 +869,7 @@ export class ContentService {
 
   async updateCodingProblemForModule(
     questionId: number,
-    codingProblem: UpdateProblemDto & { usage?: string },
+    codingProblem: UpdateProblemDto & {usage?:number}
   ) {
     try {
       let examples = [];
@@ -1139,18 +1146,6 @@ export class ContentService {
             message: 'endDatetime must be greater than startDatetime',
           };
         }
-      }
-
-      // Handle partial date inputs - default to Draft if any date is missing
-      if (
-        (assessmentBody.publishDatetime && !assessmentBody.startDatetime) ||
-        (assessmentBody.startDatetime && !assessmentBody.endDatetime) ||
-        (assessmentBody.endDatetime && !assessmentBody.startDatetime)
-      ) {
-        // Remove all date fields to default to Draft state
-        delete assessmentBody.publishDatetime;
-        delete assessmentBody.startDatetime;
-        delete assessmentBody.endDatetime;
       }
 
       if (assessmentBody.title) {
