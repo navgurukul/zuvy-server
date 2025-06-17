@@ -2227,15 +2227,17 @@ export const zuvySessions = main.table('zuvy_sessions', {
       onUpdate: 'cascade',
     }),
   moduleId: integer('module_id')
-  .references(() => zuvyCourseModules.id, {
-    onDelete: 'cascade',
-    onUpdate: 'cascade',
-  }),
+    .notNull()
+    .references(() => zuvyCourseModules.id, {
+      onDelete: 'cascade',
+      onUpdate: 'cascade',
+    }),
   chapterId: integer('chapter_id')
-  .references(() => zuvyModuleChapter.id, {
-    onDelete: 'cascade',
-    onUpdate: 'cascade',
-  }),
+    .notNull()
+    .references(() => zuvyModuleChapter.id, {
+      onDelete: 'cascade',
+      onUpdate: 'cascade',
+    }),
   title: text('title').notNull(),
   s3link: text('s3link'),
   recurringId: integer('recurring_id'),

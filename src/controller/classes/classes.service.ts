@@ -263,7 +263,6 @@ export class ClassesService {
         };
       }
 
-      console.log("day", eventDetails?.daysOfWeek.length)
       // Validate daysOfWeek and totalClasses
       if (eventDetails?.daysOfWeek.length > 0) {
         const startDay = new Date(eventDetails.startDateTime).getDay();
@@ -344,10 +343,8 @@ export class ClassesService {
       }
 
       // Access calendar
-      console.log('creatorInfo', creatorInfo);
       let calendar: any = await this.accessOfCalendar(creatorInfo);
 
-      console.log('calendar', calendar);
       // Fetch students' emails in the batch
       const studentsInTheBatchEmails = await db
         .select()
@@ -454,14 +451,12 @@ export class ClassesService {
       };
 
       const createdEvent = await calendar.events.insert(eventData);
-      console.log('Calendar event created:', createdEvent);
 
       // Fetch instances of the recurring event
       const instances = await calendar.events.instances({
         calendarId: 'primary',
         eventId: createdEvent.data.id,
       });
-      console.log('Calendar instances fetched:', instances);
 
       let totalClasses = [];
 
@@ -481,13 +476,11 @@ export class ClassesService {
         });
       });
 
-      console.log('totalClasses to be saved:', totalClasses);
       // Save class details to the database
       const savedClassDetail = await db
         .insert(zuvySessions)
         .values(totalClasses)
         .returning();
-      console.log('Saved class details:', savedClassDetail);
 
       if (savedClassDetail.length > 0) {
         return {
