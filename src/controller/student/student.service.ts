@@ -650,39 +650,63 @@ export class StudentService {
         .select({ email: users.email })
         .from(users)
         .where(eq(users.id, BigInt(userId)));
+
       if (userRecord.length === 0) {
         return [{ message: 'User not found', statusCode: STATUS_CODES.NOT_FOUND }];
       }
+
       const userEmail = userRecord[0].email.toLowerCase();
 
-      const classes = await db.query.zuvySessions.findMany({
+      // find the batch the user is enrolled in for this bootcamp
+      const batchData = await db
+        .select({ batchId: zuvyBatchEnrollments.batchId })
+        .from(zuvyBatchEnrollments)
+        .where(
+          and(
+            eq(zuvyBatchEnrollments.userId, BigInt(userId)),
+            eq(zuvyBatchEnrollments.bootcampId, bootcampId)
+          )
+        );
+
+      if (batchData.length === 0 || !batchData[0].batchId) {
+        return [
+          {
+            message: 'Batch not found for student',
+            statusCode: STATUS_CODES.NOT_FOUND,
+          },
+        ];
+      }
+
+      const batchId = batchData[0].batchId as number;
+
+      // fetch all completed sessions once
+      const allSessions = await db.query.zuvySessions.findMany({
         where: (session, { and, eq }) =>
-          and(eq(session.bootcampId, bootcampId), eq(session.status, helperVariable.completed)),
+          and(
+            eq(session.bootcampId, bootcampId),
+            eq(session.batchId, batchId),
+            eq(session.status, helperVariable.completed)
+          ),
         with: {
           batches: { columns: { id: true, name: true } },
         },
-        extras: {
-          totalCount: sql<number>`coalesce(count(*) over(), 0)`.as('total_count'),
-        },
         orderBy: (session, { desc }) => desc(session.startTime),
-        limit,
-        offset,
       });
 
-      const totalClasses = classes.length > 0 ? Number(classes[0]['totalCount']) : 0;
-
-      // fetch all completed sessions for this bootcamp to calculate attendance stats
-      const allSessions = await db
-        .select({ meetingId: zuvySessions.meetingId })
-        .from(zuvySessions)
-        .where(and(eq(zuvySessions.bootcampId, bootcampId), eq(zuvySessions.status, helperVariable.completed)));
+      const totalClasses = allSessions.length;
+      const paginatedClasses = limit ? allSessions.slice(offset, offset + limit) : allSessions;
       const allMeetingIds = allSessions.map((cls) => cls.meetingId);
 
       const attendanceRecords = allMeetingIds.length
         ? await db
             .select({ meetingId: zuvyStudentAttendance.meetingId, attendance: zuvyStudentAttendance.attendance })
             .from(zuvyStudentAttendance)
-            .where(inArray(zuvyStudentAttendance.meetingId, allMeetingIds))
+            .where(
+              and(
+                inArray(zuvyStudentAttendance.meetingId, allMeetingIds),
+                eq(zuvyStudentAttendance.batchId, batchId)
+              )
+            )
         : [];
 
       const attendanceMap = new Map<string, any[]>();
@@ -697,7 +721,7 @@ export class StudentService {
         attendanceMap.set(record.meetingId, data);
       });
 
-      const result = classes.map((cls) => {
+      const result = paginatedClasses.map((cls) => {
         const students = attendanceMap.get(cls.meetingId) || [];
         const studentRecord = students.find((s: any) => s.email?.toLowerCase() === userEmail);
         const status = studentRecord ? studentRecord.attendance : 'absent';
