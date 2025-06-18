@@ -725,6 +725,7 @@ export class StudentService {
         const students = attendanceMap.get(cls.meetingId) || [];
         const studentRecord = students.find((s: any) => s.email?.toLowerCase() === userEmail);
         const status = studentRecord ? studentRecord.attendance : 'absent';
+        const duration = studentRecord?.duration ?? 0;
         const { batches, ...rest } = cls as any;
         return {
           id: Number(rest.id),
@@ -734,6 +735,7 @@ export class StudentService {
           batchId: Number(rest.batchId),
           batchName: batches?.name || null,
           attendanceStatus: status,
+          duration,
         };
       });
 
