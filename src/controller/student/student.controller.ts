@@ -181,6 +181,47 @@ export class StudentController {
     return await this.studentService.getAttendanceClass(req.user[0].id);
   }
 
+  @Get('/bootcamp/:bootcampId/completed-classes')
+  @ApiOperation({ summary: 'Get completed classes with attendance for a bootcamp' })
+  @ApiBearerAuth()
+  @ApiQuery({
+    name: 'limit',
+    type: Number,
+    description: 'Number of items per page',
+    required: false
+  })
+  @ApiQuery({
+    name: 'offset',
+    type: Number,
+    description: 'Offset for pagination',
+    required: false
+  })
+  async getCompletedClassesWithAttendance(
+    @Req() req,
+    @Param('bootcampId') bootcampId: number,
+    @Query('limit') limit: number,
+    @Query('offset') offset: number,
+    @Res() res: Response
+  ) {
+    try {
+      const parsedLimit = limit ? Number(limit) : 10;
+      const parsedOffset = offset ? Number(offset) : 0;
+      const [err, success] = await this.studentService.getCompletedClassesWithAttendance(
+        req.user[0].id,
+        bootcampId,
+        parsedLimit,
+        parsedOffset,
+      );
+      if (err) {
+        return ErrorResponse.BadRequestException(err.message).send(res);
+      }
+      const result: any = success;
+      return new SuccessResponse(result.message, result.statusCode, result.data).send(res);
+    } catch (error) {
+      return ErrorResponse.BadRequestException(error.message).send(res);
+    }
+  }
+
 
   @Get('/leaderboard/:bootcampId')
   @ApiOperation({ summary: 'Get the leaderboard of a course' })

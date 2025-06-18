@@ -41,6 +41,13 @@ export class ScheduleService {
     this.handleDynamicScheduling();
   }
 
+  // Trigger session processing periodically so it doesn't rely on a manual call
+  @Cron('0 */10 * * * *')
+  triggerSessionProcessing() {
+    this.logger.log('Cron job triggered to process completed sessions');
+    this.handleDynamicScheduling();
+  }
+
   async handleDynamicScheduling() {
     this.logger.log('Running main function to determine interval');
     if (this.processingActive) {
@@ -188,12 +195,15 @@ export class ScheduleService {
       if (session.meetingId && session.status === 'completed') {
         await this.updateSessionLink(calendar, session);
         await this.handleOldSessions(session);
-        let oldAttendance = await db.select().from(zuvyStudentAttendance).where(eq(zuvyStudentAttendance.meetingId, session.meetingId));
-        if (oldAttendance.length > 0) {
+        const existing = await db
+          .select()
+          .from(zuvyStudentAttendance)
+          .where(eq(zuvyStudentAttendance.meetingId, session.meetingId));
+        if (existing.length === 0) {
           let [errAtten, dataAttendance] = await this.getAttendanceByBatchId(session.batchId, session.creator);
           if (errAtten) {
             this.logger.error(`Attendance error: ${errAtten}`);
-          } 
+          }
           this.logger.log(`Attendance: ${JSON.stringify(dataAttendance)}`);
           if (Array.isArray(dataAttendance)) {
             this.logger.error(`Attendance error: ${dataAttendance}`);

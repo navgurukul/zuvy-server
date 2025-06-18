@@ -12,7 +12,8 @@ import {
   zuvyAssessmentSubmission,
   zuvyOutsourseAssessments,
   zuvyModuleAssessment,
-  zuvyBatches
+  zuvyBatches,
+  zuvyStudentAttendance
 } from '../../../drizzle/schema';
 import { db } from '../../db/index';
 import { eq, sql, desc, count, asc, or, and, inArray } from 'drizzle-orm';
@@ -640,6 +641,144 @@ export class StudentService {
       return totalAttendance;
     } catch (err) {
       throw err;
+    }
+  }
+
+  async getCompletedClassesWithAttendance(userId: number, bootcampId: number, limit = 10, offset = 0) {
+    try {
+      const userRecord = await db
+        .select({ email: users.email })
+        .from(users)
+        .where(eq(users.id, BigInt(userId)));
+
+      if (userRecord.length === 0) {
+        return [{ message: 'User not found', statusCode: STATUS_CODES.NOT_FOUND }];
+      }
+
+      const userEmail = userRecord[0].email.toLowerCase();
+
+      // find the batch the user is enrolled in for this bootcamp
+      const batchData = await db
+        .select({ batchId: zuvyBatchEnrollments.batchId })
+        .from(zuvyBatchEnrollments)
+        .where(
+          and(
+            eq(zuvyBatchEnrollments.userId, BigInt(userId)),
+            eq(zuvyBatchEnrollments.bootcampId, bootcampId)
+          )
+        );
+
+      if (batchData.length === 0 || !batchData[0].batchId) {
+        return [
+          {
+            message: 'Batch not found for student',
+            statusCode: STATUS_CODES.NOT_FOUND,
+          },
+        ];
+      }
+
+      const batchId = batchData[0].batchId as number;
+
+      // fetch all completed sessions once
+      const allSessions = await db.query.zuvySessions.findMany({
+        where: (session, { and, eq }) =>
+          and(
+            eq(session.bootcampId, bootcampId),
+            eq(session.batchId, batchId),
+            eq(session.status, helperVariable.completed)
+          ),
+        with: {
+          batches: { columns: { id: true, name: true } },
+        },
+        orderBy: (session, { desc }) => desc(session.startTime),
+      });
+
+      const totalClasses = allSessions.length;
+      const paginatedClasses = limit ? allSessions.slice(offset, offset + limit) : allSessions;
+      const allMeetingIds = allSessions.map((cls) => cls.meetingId);
+
+      const batchName = (allSessions[0] as any)?.batches?.name || null;
+
+      const attendanceRecords = allMeetingIds.length
+        ? await db
+            .select({ meetingId: zuvyStudentAttendance.meetingId, attendance: zuvyStudentAttendance.attendance })
+            .from(zuvyStudentAttendance)
+            .where(
+              and(
+                inArray(zuvyStudentAttendance.meetingId, allMeetingIds),
+                eq(zuvyStudentAttendance.batchId, batchId)
+              )
+            )
+        : [];
+
+      const attendanceMap = new Map<string, any[]>();
+      attendanceRecords.forEach((record) => {
+        let data: any[] = [];
+        if (Array.isArray(record.attendance)) data = record.attendance as any[];
+        else if (record.attendance) {
+          try {
+            data = JSON.parse(record.attendance as any);
+          } catch {}
+        }
+        attendanceMap.set(record.meetingId, data);
+      });
+
+      const result = paginatedClasses.map((cls) => {
+        const students = attendanceMap.get(cls.meetingId) || [];
+        const studentRecord = students.find((s: any) => s.email?.toLowerCase() === userEmail);
+        const status = studentRecord ? studentRecord.attendance : "absent";
+        const duration = studentRecord?.duration ?? 0;
+
+        const dt = new Date(cls.startTime);
+        const sessionDate = !isNaN(dt.getTime()) ? dt.toISOString().split("T")[0] : null;
+        const sessionTime = !isNaN(dt.getTime()) ? dt.toISOString().split("T")[1].slice(0,5) : null;
+
+        return {
+          id: Number(cls.id),
+          title: cls.title,
+          startTime: cls.startTime,
+          endTime: cls.endTime,
+          sessionDate,
+          sessionTime,
+          attendanceStatus: status,
+          duration,
+        };
+      });
+
+      let presentCount = 0;
+      let absentCount = 0;
+      allMeetingIds.forEach((id) => {
+        const students = attendanceMap.get(id) || [];
+        const studentRecord = students.find((s: any) => s.email?.toLowerCase() === userEmail);
+        const isPresent = studentRecord && studentRecord.attendance === 'present';
+        if (isPresent) presentCount++; else absentCount++;
+      });
+
+      const attendancePercentage = allMeetingIds.length
+        ? Number(((presentCount / allMeetingIds.length) * 100).toFixed(2))
+        : 0;
+
+      return [
+        null,
+        {
+          message: 'Completed classes fetched successfully',
+          statusCode: STATUS_CODES.OK,
+          data: {
+            batchId,
+            batchName,
+            classes: result,
+            totalClasses,
+            totalPages: limit ? Math.ceil(totalClasses / limit) : 1,
+            attendanceStats: {
+              presentCount,
+              absentCount,
+              attendancePercentage,
+            },
+          },
+        },
+      ];
+    } catch (error) {
+      return [{ message: error.message, statusCode: STATUS_CODES.BAD_REQUEST }];
     }
   }
 
