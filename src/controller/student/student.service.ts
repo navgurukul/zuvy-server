@@ -726,13 +726,20 @@ export class StudentService {
       const result = paginatedClasses.map((cls) => {
         const students = attendanceMap.get(cls.meetingId) || [];
         const studentRecord = students.find((s: any) => s.email?.toLowerCase() === userEmail);
-        const status = studentRecord ? studentRecord.attendance : 'absent';
+        const status = studentRecord ? studentRecord.attendance : "absent";
         const duration = studentRecord?.duration ?? 0;
+
+        const dt = new Date(cls.startTime);
+        const sessionDate = !isNaN(dt.getTime()) ? dt.toISOString().split("T")[0] : null;
+        const sessionTime = !isNaN(dt.getTime()) ? dt.toISOString().split("T")[1].slice(0,5) : null;
+
         return {
           id: Number(cls.id),
           title: cls.title,
           startTime: cls.startTime,
           endTime: cls.endTime,
+          sessionDate,
+          sessionTime,
           attendanceStatus: status,
           duration,
         };
