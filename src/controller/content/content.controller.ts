@@ -59,7 +59,8 @@ import {
   EditQuizBatchDto,
   AddQuizVariantsDto,
   deleteQuestionOrVariantDto,
-  UpdateChapterDto
+  UpdateChapterDto,
+  LiveClassChapterBatchDto
 } from './dto/content.dto';
 import { RolesGuard } from 'src/guards/roles.guard';
 import { ErrorResponse, SuccessResponse } from 'src/errorHandler/handler';
@@ -204,6 +205,16 @@ export class ContentController {
     @Body() chapterData: CreateChapterDto,
   ) {
     return this.contentService.createChapterForModule(chapterData.moduleId, chapterData.topicId, chapterData.bootcampId);
+  }
+
+  @Post('/live-class-chapter')
+  @ApiOperation({ summary: 'Create a live class chapter for multiple sessions' })
+  @ApiBearerAuth()
+  @UseGuards(RolesGuard)
+  async createLiveClassChapter(
+    @Body() data: LiveClassChapterBatchDto,
+  ) {
+    return this.contentService.createLiveClassChapterForSessions(data.moduleId, data.sessionIds);
   }
 
   @Post('/quiz')

@@ -21,7 +21,8 @@ import {
   questionType,
   zuvyQuestionTypes,
   zuvyModuleQuizVariants,
-  zuvyPracticeCode
+  zuvyPracticeCode,
+  zuvySessions
 } from '../../../drizzle/schema';
 
 import { error, log } from 'console';
@@ -372,6 +373,81 @@ export class ContentService {
       };
     } catch (err) {
       Logger.error({ err })
+      throw err;
+    }
+  }
+
+  async createLiveClassChapterForSessions(moduleId: number, sessionIds: number[]) {
+    try {
+      const moduleData = await db
+        .select()
+        .from(zuvyCourseModules)
+        .where(eq(zuvyCourseModules.id, moduleId));
+      if (moduleData.length === 0) {
+        return {
+          status: 'error',
+          code: 404,
+          message: 'Module not found',
+        };
+      }
+      const bootcampId = moduleData[0].bootcampId;
+
+      const sessions = await db
+        .select()
+        .from(zuvySessions)
+        .where(inArray(zuvySessions.id, sessionIds));
+
+      if (sessions.length !== sessionIds.length) {
+        return {
+          status: 'error',
+          code: 404,
+          message: 'One or more sessions not found',
+        };
+      }
+
+      const invalidSession = sessions.find((s) => s.bootcampId !== bootcampId);
+      if (invalidSession) {
+        return {
+          status: 'error',
+          code: 400,
+          message: 'Session bootcamp does not match module bootcamp',
+        };
+      }
+
+      const chapterCount = await db
+        .select({ count: count(zuvyModuleChapter.id) })
+        .from(zuvyModuleChapter)
+        .where(eq(zuvyModuleChapter.moduleId, moduleId));
+      const order = chapterCount[0].count + 1;
+
+      const chapter = await db
+        .insert(zuvyModuleChapter)
+        .values({ title: `Chapter ${order}`, moduleId, topicId: 8, order })
+        .returning();
+
+      if (chapter.length === 0) {
+        return {
+          status: 'error',
+          code: 400,
+          message: 'Failed to create live class chapter',
+        };
+      }
+
+      const updatedSessions = await db
+        .update(zuvySessions)
+        .set({ moduleId, chapterId: chapter[0].id })
+        .where(inArray(zuvySessions.id, sessionIds))
+        .returning();
+
+      return {
+        status: 'success',
+        message: 'Live class chapter created successfully',
+        code: 200,
+        chapter: chapter[0],
+        sessions: updatedSessions,
+      };
+    } catch (err) {
+      Logger.error({ err });
       throw err;
     }
   }

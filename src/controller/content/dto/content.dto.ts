@@ -1373,3 +1373,22 @@ export class deleteQuestionOrVariantDto {
   @Type(() => QuestionIdDto)
   questionIds: QuestionIdDto[];
 }
+
+export class LiveClassChapterBatchDto {
+  @ApiProperty({
+    type: Number,
+    example: 9,
+    required: true,
+  })
+  @IsNumber()
+  moduleId: number;
+
+  @ApiProperty({
+    type: [Number],
+    example: [1, 2],
+    required: true,
+  })
+  @IsArray()
+  @ArrayNotEmpty()
+  sessionIds: number[];
+}
