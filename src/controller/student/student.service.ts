@@ -697,6 +697,8 @@ export class StudentService {
       const paginatedClasses = limit ? allSessions.slice(offset, offset + limit) : allSessions;
       const allMeetingIds = allSessions.map((cls) => cls.meetingId);
 
+      const batchName = (allSessions[0] as any)?.batches?.name || null;
+
       const attendanceRecords = allMeetingIds.length
         ? await db
             .select({ meetingId: zuvyStudentAttendance.meetingId, attendance: zuvyStudentAttendance.attendance })
@@ -726,14 +728,11 @@ export class StudentService {
         const studentRecord = students.find((s: any) => s.email?.toLowerCase() === userEmail);
         const status = studentRecord ? studentRecord.attendance : 'absent';
         const duration = studentRecord?.duration ?? 0;
-        const { batches, ...rest } = cls as any;
         return {
-          id: Number(rest.id),
-          title: rest.title,
-          startTime: rest.startTime,
-          endTime: rest.endTime,
-          batchId: Number(rest.batchId),
-          batchName: batches?.name || null,
+          id: Number(cls.id),
+          title: cls.title,
+          startTime: cls.startTime,
+          endTime: cls.endTime,
           attendanceStatus: status,
           duration,
         };
@@ -758,6 +757,8 @@ export class StudentService {
           message: 'Completed classes fetched successfully',
           statusCode: STATUS_CODES.OK,
           data: {
+            batchId,
+            batchName,
             classes: result,
             totalClasses,
             totalPages: limit ? Math.ceil(totalClasses / limit) : 1,
