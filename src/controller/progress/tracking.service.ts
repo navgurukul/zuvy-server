@@ -20,7 +20,9 @@ import {
   zuvyModuleForm,
   zuvyModuleQuizVariants,
   zuvyAssessmentSubmission,
-  zuvyOutsourseAssessments
+  zuvyOutsourseAssessments,
+  zuvySessions,
+  zuvyStudentAttendance
 } from 'drizzle/schema';
 import {
   SubmitBodyDto,
@@ -821,21 +823,85 @@ export class TrackingService {
 
   async getChapterDetailsWithStatus(chapterId: number, userId: number) {
     try {
-
       const trackingData = await db.query.zuvyModuleChapter.findFirst({
         where: (moduleChapter, { eq }) => eq(moduleChapter.id, chapterId),
         orderBy: (moduleChapter, { asc }) => asc(moduleChapter.order),
         with: {
-
           chapterTrackingDetails: {
             columns: {
               id: true,
             },
             where: (chapterTracking, { eq }) =>
               eq(chapterTracking.userId, BigInt(userId)),
-          },
+          }
         },
       });
+
+      // Get user's email for attendance matching
+      const userDetails = await db.query.users.findFirst({
+        where: (users, { eq }) => eq(users.id, BigInt(userId)),
+        columns: {
+          email: true
+        }
+      });
+
+      // Get sessions separately
+      const sessions = await db.query.zuvySessions.findMany({
+        where: (sessions, { eq }) => eq(sessions.chapterId, chapterId),
+        columns: {
+          id: true,
+          meetingId: true,
+          hangoutLink: true,
+          startTime: true,
+          endTime: true,
+          title: true,
+          s3link: true,
+          status: true
+        }
+      });
+
+      // Get attendance data for all sessions
+      const meetingIds = sessions.map(s => s.meetingId);
+      const attendanceData = await db.query.zuvyStudentAttendance.findMany({
+        where: (attendance, { inArray }) => inArray(attendance.meetingId, meetingIds),
+        columns: {
+          meetingId: true,
+          attendance: true
+        }
+      });
+
+      // Map attendance data to sessions
+      if (sessions.length > 0) {
+        trackingData['sessions'] = sessions.map(session => {
+          // Set default attendance as absent
+          let attendanceStatus = 'absent';
+          let durationSeconds = '0';
+
+          // Find attendance data for this session
+          const sessionAttendance = attendanceData.find(a => a.meetingId === session.meetingId);
+          
+          if (sessionAttendance?.attendance) {
+            const attendanceArray = sessionAttendance.attendance as any[];
+            const studentAttendance = attendanceArray.find((record: any) => 
+              record.email === userDetails?.email || record.student === userDetails?.email
+            );
+            
+            if (studentAttendance) {
+              attendanceStatus = studentAttendance.status || 'absent';
+              durationSeconds = studentAttendance.duration_seconds || '0';
+            }
+          }
+
+          // Convert seconds to minutes
+          const durationMinutes = Math.floor(parseInt(durationSeconds) / 60);
+
+          return {
+            ...session,
+            attendance: attendanceStatus,
+            duration: durationMinutes
+          };
+        });
+      }
 
       trackingData['status'] =
         trackingData['chapterTrackingDetails'].length > 0

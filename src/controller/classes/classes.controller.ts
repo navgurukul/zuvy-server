@@ -351,7 +351,7 @@ export class ClassesController {
     }
   }
 
-  @Post('/add-as-chapters')
+  @Post('/addliveClassesAsChapters')
   @ApiOperation({ summary: 'Add existing live classes as chapters to a module' })
   @ApiBearerAuth()
   async addLiveClassesAsChapters(
@@ -411,7 +411,7 @@ export class ClassesController {
     );
   }
 
-  @Delete('live-session-chapter/:chapterId')
+  @Delete('delete-live-session-chapter/:chapterId')
   @ApiOperation({ summary: 'Delete a live session chapter' })
   @ApiBearerAuth()
   @ApiParam({ 

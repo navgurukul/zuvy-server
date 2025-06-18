@@ -324,6 +324,7 @@ export class ClassesService {
       const order = noOfChaptersOfAModule[0].count + 1;
       const chapterData = {
         title: eventDetails.title,
+        description: eventDetails.description,
         moduleId: eventDetails.moduleId,
         topicId: 8, // Live class topic ID
         order,
