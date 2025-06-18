@@ -1936,4 +1936,265 @@ export class ClassesService {
       ];
     }
   }
+
+  async addLiveClassesAsChapters(
+    sessionIds: number[],
+    moduleId: number,
+    user: any
+  ): Promise<any> {
+    try {
+      // Check if user has admin role
+      if (!user.roles?.includes('admin')) {
+        return [{
+          status: 'error',
+          message: 'Only admin can add live classes as chapters',
+          code: 403
+        }, null];
+      }
+
+      // Validate module exists
+      const moduleInfo = await db
+        .select()
+        .from(zuvyCourseModules)
+        .where(eq(zuvyCourseModules.id, moduleId));
+      
+      if (moduleInfo.length === 0) {
+        return [{
+          status: 'error',
+          message: 'Module not found',
+          code: 404
+        }, null];
+      }
+
+      // Get all sessions
+      const sessions = await db
+        .select()
+        .from(zuvySessions)
+        .where(inArray(zuvySessions.id, sessionIds))
+        .orderBy(zuvySessions.id);
+
+      if (sessions.length === 0) {
+        return [{
+          status: 'error',
+          message: 'No sessions found with the provided IDs',
+          code: 404
+        }, null];
+      }
+
+      // Get current chapter count for ordering
+      const noOfChaptersOfAModule = await db
+        .select({ count: count(zuvyModuleChapter.id) })
+        .from(zuvyModuleChapter)
+        .where(eq(zuvyModuleChapter.moduleId, moduleId));
+      
+      let order = noOfChaptersOfAModule[0].count + 1;
+
+      // Create chapters for each session
+      const chapters = [];
+      for (const session of sessions) {
+        const chapterData = {
+          title: session.title,
+          moduleId: moduleId,
+          topicId: 8, // Live class topic ID
+          order: order++,
+        };
+
+        const chapter = await db
+          .insert(zuvyModuleChapter)
+          .values(chapterData)
+          .returning();
+
+        if (chapter.length > 0) {
+          // Update session with module and chapter IDs
+          await db
+            .update(zuvySessions)
+            .set({
+              moduleId: moduleId,
+              chapterId: chapter[0].id
+            })
+            .where(eq(zuvySessions.id, session.id));
+
+          chapters.push(chapter[0]);
+        }
+      }
+
+      return [null, {
+        status: 'success',
+        message: 'Live classes added as chapters successfully',
+        code: 200,
+        data: {
+          chapters,
+          totalAdded: chapters.length
+        }
+      }];
+
+    } catch (error) {
+      return [{
+        status: 'error',
+        message: 'Error adding live classes as chapters: ' + error.message,
+        code: 500
+      }, null];
+    }
+  }
+
+  async getBootcampClassesWithDetails(
+    bootcampId: number,
+    limit?: number,
+    offset?: number
+  ) {
+    try {
+      // Validate bootcamp exists
+      const bootcamp = await db
+        .select()
+        .from(zuvyBootcamps)
+        .where(eq(zuvyBootcamps.id, bootcampId));
+
+      if (!bootcamp.length) {
+        return {
+          status: 'error',
+          message: 'Bootcamp not found',
+          code: 404
+        };
+      }
+
+      // Get total count for pagination
+      const totalCount = await db
+        .select({ count: count() })
+        .from(zuvySessions)
+        .where(eq(zuvySessions.bootcampId, bootcampId));
+
+      // Build the query with joins
+      const query = db
+        .select({
+          id: zuvySessions.id,
+          title: zuvySessions.title,
+          startTime: zuvySessions.startTime,
+          endTime: zuvySessions.endTime,
+          status: zuvySessions.status,
+          s3link: zuvySessions.s3link,
+          batchId: zuvySessions.batchId,
+          batchName: zuvyBatches.name,
+          moduleId: zuvySessions.moduleId,
+          moduleName: zuvyCourseModules.name,
+          chapterId: zuvySessions.chapterId,
+          chapterName: zuvyModuleChapter.title
+        })
+        .from(zuvySessions)
+        .leftJoin(zuvyBatches, eq(zuvySessions.batchId, zuvyBatches.id))
+        .leftJoin(zuvyCourseModules, eq(zuvySessions.moduleId, zuvyCourseModules.id))
+        .leftJoin(zuvyModuleChapter, eq(zuvySessions.chapterId, zuvyModuleChapter.id))
+        .where(eq(zuvySessions.bootcampId, bootcampId))
+        .orderBy(desc(zuvySessions.startTime));
+
+      // Apply pagination if provided
+      if (limit && offset) {
+        query.limit(limit).offset(offset);
+      }
+
+      const classes = await query;
+
+      return {
+        status: 'success',
+        message: 'Classes fetched successfully',
+        code: 200,
+        data: {
+          classes,
+          pagination: {
+            total: Number(totalCount[0].count),
+            limit: limit || totalCount[0].count,
+            offset: offset || 0,
+            totalPages: Math.ceil(Number(totalCount[0].count) / (limit || Number(totalCount[0].count)))
+          }
+        }
+      };
+    } catch (error) {
+      this.logger.error(`Error fetching bootcamp classes: ${error.message}`);
+      return {
+        status: 'error',
+        message: 'Error fetching classes',
+        error: error.message,
+        code: 400
+      };
+    }
+  }
+
+  async deleteLiveSessionChapter(chapterId: number, user: any) {
+    try {
+      // Check if user has permission (admin or instructor)
+      // if (!user?.roles?.includes('admin') && !user?.roles?.includes('instructor')) {
+      //   return {
+      //     status: 'error',
+      //     message: 'Unauthorized access',
+      //     code: 401
+      //   };
+      // }
+
+      // Find the chapter and verify it's a live session chapter
+      const chapter = await db
+        .select()
+        .from(zuvyModuleChapter)
+        .where(
+          and(
+            eq(zuvyModuleChapter.id, chapterId),
+            eq(zuvyModuleChapter.topicId, 8) // Live class topic ID
+          )
+        );
+
+      if (!chapter.length) {
+        return {
+          status: 'error',
+          message: 'Live session chapter not found',
+          code: 404
+        };
+      }
+
+      // Find the corresponding session
+      const session = await db
+        .select()
+        .from(zuvySessions)
+        .where(
+          and(
+            eq(zuvySessions.chapterId, chapterId),
+            eq(zuvySessions.moduleId, chapter[0].moduleId)
+          )
+        );
+
+      // Start a transaction to ensure both operations succeed or fail together
+      await db.transaction(async (tx) => {
+        // Update the session to remove chapter and module references
+        if (session.length > 0) {
+          await tx
+            .update(zuvySessions)
+            .set({
+              chapterId: null,
+              moduleId: null
+            })
+            .where(eq(zuvySessions.id, session[0].id));
+        }
+
+        // Delete the chapter
+        await tx
+          .delete(zuvyModuleChapter)
+          .where(eq(zuvyModuleChapter.id, chapterId));
+      });
+
+      return {
+        status: 'success',
+        message: 'Live session chapter deleted successfully',
+        code: 200,
+        data: {
+          deletedChapterId: chapterId,
+          updatedSessionId: session.length > 0 ? session[0].id : null
+        }
+      };
+    } catch (error) {
+      this.logger.error(`Error deleting live session chapter: ${error.message}`);
+      return {
+        status: 'error',
+        message: 'Error deleting live session chapter',
+        error: error.message,
+        code: 400
+      };
+    }
+  }
 }

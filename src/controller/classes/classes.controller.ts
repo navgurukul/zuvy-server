@@ -21,6 +21,8 @@ import {
   ApiOperation,
   ApiCookieAuth,
   ApiQuery,
+  ApiParam,
+  ApiResponse,
 } from '@nestjs/swagger';
 import {
   CreateDto,
@@ -29,6 +31,7 @@ import {
   reloadDto,
   updateSessionDto,
   DTOsessionRecordViews,
+  AddLiveClassesAsChaptersDto,
 } from './dto/classes.dto';
 import { ApiBearerAuth } from '@nestjs/swagger';
 import { Response } from 'express';
@@ -346,5 +349,81 @@ export class ClassesController {
     } catch (error) {
       return ErrorResponse.BadRequestException(error.message).send(res);
     }
+  }
+
+  @Post('/add-as-chapters')
+  @ApiOperation({ summary: 'Add existing live classes as chapters to a module' })
+  @ApiBearerAuth()
+  async addLiveClassesAsChapters(
+    @Body() data: AddLiveClassesAsChaptersDto,
+    @Req() req,
+    @Res() res: Response,
+  ): Promise<object> {
+    try {
+      const [err, success] = await this.classesService.addLiveClassesAsChapters(
+        data.sessionIds,
+        data.moduleId,
+        req.user[0]
+      );
+      if (err) {
+        return ErrorResponse.BadRequestException(err.message).send(res);
+      }
+      return new SuccessResponse(
+        success.message,
+        success.statusCode,
+        success.data,
+      ).send(res);
+    } catch (error) {
+      return ErrorResponse.BadRequestException(error.message).send(res);
+    }
+  }
+
+  @Get('bootcamp/:bootcampId/classes')
+  @ApiOperation({ summary: 'Get all classes of a bootcamp with batch, module and chapter details' })
+  @ApiBearerAuth()
+  @ApiParam({
+    name: 'bootcampId',
+    required: true,
+    type: Number,
+    description: 'ID of the bootcamp to get classes for',
+  })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    type: Number,
+    description: 'Number of records per page',
+  })
+  @ApiQuery({
+    name: 'offset',
+    required: false,
+    type: Number,
+    description: 'Number of records to skip',
+  })
+  async getBootcampClassesWithDetails(
+    @Param('bootcampId') bootcampId: number,
+    @Query('limit') limit?: number,
+    @Query('offset') offset?: number,
+  ) {
+    return this.classesService.getBootcampClassesWithDetails(
+      bootcampId,
+      limit ? Number(limit) : undefined,
+      offset ? Number(offset) : undefined
+    );
+  }
+
+  @Delete('live-session-chapter/:chapterId')
+  @ApiOperation({ summary: 'Delete a live session chapter' })
+  @ApiBearerAuth()
+  @ApiParam({ 
+    name: 'chapterId', 
+    required: true,
+    type: Number,
+    description: 'ID of the chapter to delete' 
+  })
+  async deleteLiveSessionChapter(
+    @Param('chapterId') chapterId: number,
+    @Req() req
+  ) {
+    return this.classesService.deleteLiveSessionChapter(chapterId, req.user);
   }
 }

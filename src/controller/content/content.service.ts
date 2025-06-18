@@ -21,7 +21,9 @@ import {
   questionType,
   zuvyQuestionTypes,
   zuvyModuleQuizVariants,
-  zuvyPracticeCode
+  zuvyPracticeCode,
+  zuvySessions,
+  zuvyStudentAttendance
 } from '../../../drizzle/schema';
 
 import { error, log } from 'console';
@@ -709,6 +711,7 @@ export class ContentService {
         codingQuestionDetails?: any[];
         formQuestionDetails?: any[];
         contentDetails?: any[];
+        sessionDetails?: any[];
       } = {
         id: chapterDetails[0].id,
         title: chapterDetails[0].title,
@@ -773,6 +776,45 @@ export class ContentService {
                 )
               : [];
           modifiedChapterDetails.formQuestionDetails = formDetails;
+        } else if (chapterDetails[0].topicId == 8) {
+          // Fetch session data
+          const sessionDetails = await db.query.zuvySessions.findMany({
+            where: (sessions, { and, eq }) => and(
+              eq(sessions.chapterId, chapterId),
+              eq(sessions.bootcampId, bootcampId),
+              eq(sessions.moduleId, moduleId)
+            ),
+            columns: {
+              id: true,
+              meetingId: true,
+              hangoutLink: true,
+              creator: true,
+              startTime: true,
+              endTime: true,
+              title: true,
+              s3link: true,
+              status: true
+            }
+          });
+
+          // Fetch attendance data for each session
+          const sessionDetailsWithAttendance = await Promise.all(
+            sessionDetails.map(async (session) => {
+              const attendanceData = await db.query.zuvyStudentAttendance.findFirst({
+                where: (attendance, { eq }) => eq(attendance.meetingId, session.meetingId),
+                columns: {
+                  attendance: true
+                }
+              });
+
+              return {
+                ...session,
+                attendance: attendanceData?.attendance || null
+              };
+            })
+          );
+
+          modifiedChapterDetails.sessionDetails = sessionDetailsWithAttendance;
         } else {
           let content = [
             {
