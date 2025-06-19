@@ -20,6 +20,15 @@ export class CreateBootcampDto {
   @IsOptional()
   @IsString()
   collaborator?: string;
+
+  @ApiProperty({
+    type: String,
+    example: 'Bootcamp description',
+    required: false,
+  })
+  @IsOptional()
+  @IsString()
+  description?: string;
 }
 
 
@@ -40,6 +49,24 @@ export class EditBootcampDto {
   @IsNotEmpty({ message: 'name is required' })
   @IsString()
   name: string;
+
+  @ApiProperty({
+    type: String,
+    example: 'Bootcamp description',
+    required: false,
+  })
+  @IsOptional()
+  @IsString()
+  description?: string;
+
+  @ApiProperty({
+    type: String,
+    example: 'Collaboration Name or https://example.com/logo.png',
+    required: false,
+  })
+  @IsOptional()
+  @IsString()
+  collaborator?: string;
 
   @ApiProperty({
     type: String,
@@ -117,6 +144,22 @@ export class PatchBootcampDto {
   @IsString()
   @IsOptional()
   name: string;
+
+  @ApiProperty({
+    type: String,
+    example: 'Bootcamp description',
+  })
+  @IsOptional()
+  @IsString()
+  description?: string;
+
+  @ApiProperty({
+    type: String,
+    example: 'Collaboration Name or https://example.com/logo.png',
+  })
+  @IsOptional()
+  @IsString()
+  collaborator?: string;
 
   @ApiProperty({
     type: String,
