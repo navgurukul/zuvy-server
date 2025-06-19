@@ -42,11 +42,11 @@ export class ScheduleService {
   }
 
   // Trigger session processing periodically so it doesn't rely on a manual call
-  @Cron('0 */10 * * * *')
-  triggerSessionProcessing() {
-    this.logger.log('Cron job triggered to process completed sessions');
-    this.handleDynamicScheduling();
-  }
+  // @Cron('0 */10 * * * *')
+  // triggerSessionProcessing() {
+  //   this.logger.log('Cron job triggered to process completed sessions');
+  //   this.handleDynamicScheduling();
+  // }
 
   async handleDynamicScheduling() {
     this.logger.log('Running main function to determine interval');
