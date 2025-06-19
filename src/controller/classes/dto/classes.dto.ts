@@ -219,3 +219,22 @@ export class updateSessionDto {
   @IsDateString()
   endDateTime: string;
 }
+
+export class AddLiveClassesAsChaptersDto {
+  @ApiProperty({
+    description: 'Array of session IDs to be added as chapters',
+    type: [Number],
+    example: [1, 2, 3]
+  })
+  @IsArray()
+  @IsNumber({}, { each: true })
+  sessionIds: number[];
+
+  @ApiProperty({
+    description: 'Module ID where the live classes will be added as chapters',
+    type: Number,
+    example: 1
+  })
+  @IsNumber()
+  moduleId: number;
+}
