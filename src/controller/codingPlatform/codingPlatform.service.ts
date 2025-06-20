@@ -11,7 +11,8 @@ import {
   zuvyTestCasesSubmission
 } from '../../../drizzle/schema';
 import { generateTemplates } from '../../helpers/index';
-import { STATUS_CODES } from "../../helpers/index";
+import { STATUS_CODES } from '../../helpers/index';
+import { generateEmbedding, cosineSimilarity } from '../../helpers/ai';
 import { helperVariable } from 'src/constants/helper';
 
 // Difficulty Points Mapping
@@ -436,10 +437,48 @@ export class CodingPlatformService {
     }
   }
 
+  private async isDuplicateQuestion(questionData: any): Promise<boolean> {
+    try {
+      const questions = await db.query.zuvyCodingQuestions.findMany({
+        columns: { title: true, description: true },
+      });
+
+      const text = `${questionData.title} ${questionData.description}`;
+      const newEmbedding = await generateEmbedding(text);
+
+      if (newEmbedding) {
+        for (const q of questions) {
+          const existingEmbedding = await generateEmbedding(`${q.title} ${q.description}`);
+          if (existingEmbedding) {
+            const score = cosineSimilarity(newEmbedding, existingEmbedding);
+            if (score > 0.9) return true;
+          } else if (q.title.toLowerCase() === questionData.title.toLowerCase()) {
+            return true;
+          }
+        }
+      } else {
+        for (const q of questions) {
+          if (q.title.toLowerCase() === questionData.title.toLowerCase()) {
+            return true;
+          }
+        }
+      }
+    } catch (err) {
+      console.error('Duplicate check failed', err?.message || err);
+    }
+    return false;
+  }
+
   async createCodingQuestion(createCodingQuestionDto: any): Promise<any> {
     const { testCases, ...questionData } = createCodingQuestionDto;
     questionData['usage'] = 0;
     try {
+      // check if a similar question already exists
+      const duplicate = await this.isDuplicateQuestion(questionData);
+      if (duplicate) {
+        return [{ message: 'Similar question already exists', statusCode: STATUS_CODES.CONFLICT }];
+      }
+
       const question: any = await db.insert(zuvyCodingQuestions).values(questionData).returning();
       let testCaseAndExpectedOutput = [];
       for (let i = 0; i < testCases.length; i++) {
