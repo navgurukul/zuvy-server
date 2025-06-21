@@ -4,10 +4,11 @@ import { TrackingService } from './tracking.service';
 import { BatchesModule } from '../batches/batch.module';
 import { JwtModule, JwtService } from '@nestjs/jwt';
 import { JwtMiddleware } from 'src/middleware/jwt.middleware';
+import { ContentModule } from '../content/content.module';
 @Module({
     controllers: [TrackingController],
     providers: [TrackingService,JwtService],
-    imports: [BatchesModule],
+    imports: [BatchesModule, ContentModule],
 })
 export class TrackingModule implements NestModule{
     configure(consumer: MiddlewareConsumer) {
