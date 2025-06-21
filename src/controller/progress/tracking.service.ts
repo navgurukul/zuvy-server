@@ -32,12 +32,14 @@ import { SubmitFormBodyDto } from './dto/form.dto';
 import { STATUS_CODES } from 'src/helpers';
 import { helperVariable } from 'src/constants/helper';
 import * as crypto from 'crypto';
+import { ContentService } from '../content/content.service';
 
 // Difficulty Points Mapping
 let { ACCEPTED, SUBMIT } = helperVariable;
 
 @Injectable()
 export class TrackingService {
+  constructor(private contentService: ContentService) { }
 
   async updateChapterStatus(
     bootcampId: number,
@@ -253,6 +255,14 @@ export class TrackingService {
         if (assessmentChapterIds.length > 0) {
           // Query zuvyOutsourseAssessments for these chapters
           const assessments = await db
+            .select()
+            .from(zuvyOutsourseAssessments)
+            .where(inArray(zuvyOutsourseAssessments.chapterId, assessmentChapterIds));
+
+          for (const assessment of assessments) {
+            await this.contentService.updateAssessmentState(assessment);
+          }
+          const updatedAssessments = await db
             .select({
               chapterId: zuvyOutsourseAssessments.chapterId,
               currentState: zuvyOutsourseAssessments.currentState,
@@ -262,7 +272,7 @@ export class TrackingService {
 
           // Map chapterId to currentState
           assessmentStates = Object.fromEntries(
-            assessments.map(a => [a.chapterId, a.currentState])
+            updatedAssessments.map(a => [a.chapterId, a.currentState])
           );
         }
 
