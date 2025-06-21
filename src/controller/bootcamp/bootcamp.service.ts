@@ -446,6 +446,131 @@ export class BootcampService {
     }
   }
 
+  /**
+   * Fetch all attendance for a bootcamp, grouping by meetingId.
+   * If a meetingId appears only once, store in 'unique';
+   * if it appears more than once, store all records in 'duplicates'.
+   */
+  async getGroupedAttendanceByBootcamp(bootcampId: number) {
+    try {
+      // 1. Fetch all attendance records for the bootcamp
+      const attendanceRecords = await db
+        .select()
+        .from(zuvyStudentAttendance)
+        .where(eq(zuvyStudentAttendance.bootcampId, bootcampId));
+
+      // 2. Group by meetingId
+      const groupedByMeetingId = _.groupBy(attendanceRecords, 'meetingId');
+
+      const uniqueAttendances = [];
+      const duplicateAnalysis = [];
+      const logger = new Logger(BootcampService.name);
+      const idsToDelete: number[] = [];
+
+      // 3. Merge duplicates and collect ids to delete
+      for (const meetingId in groupedByMeetingId) {
+        const records = groupedByMeetingId[meetingId];
+        if (records.length === 1) {
+          uniqueAttendances.push(records[0]);
+        } else {
+          // Merge duplicates
+          const mainRecord = _.cloneDeep(records[0]);
+          const originalStudents = Array.isArray(mainRecord.attendance) ? [...mainRecord.attendance] : [];
+          const newlyAddedStudents = [];
+          const mainRecordStudentEmails = new Set(originalStudents.map((a: any) => a.email));
+          for (let i = 1; i < records.length; i++) {
+            const duplicateRecord = records[i];
+            if (duplicateRecord.attendance && Array.isArray(duplicateRecord.attendance)) {
+              (duplicateRecord.attendance as any[]).forEach(student => {
+                if (student.email && !mainRecordStudentEmails.has(student.email)) {
+                  (mainRecord.attendance as any[]).push(student);
+                  mainRecordStudentEmails.add(student.email);
+                  newlyAddedStudents.push(student);
+                }
+              });
+            }
+            idsToDelete.push(duplicateRecord.id); // Mark for deletion
+          }
+          uniqueAttendances.push(mainRecord);
+          duplicateAnalysis.push({
+            meetingId: meetingId,
+            originalStudents: originalStudents,
+            newlyAddedStudents: newlyAddedStudents,
+            originalStudentCount: originalStudents.length,
+            newlyAddedStudentsCount: newlyAddedStudents.length,
+            finalStudentCount: (mainRecord.attendance as any[]).length,
+          });
+        }
+      }
+
+      // 4. Delete duplicate records
+      if (idsToDelete.length > 0) {
+        await db.delete(zuvyStudentAttendance).where(inArray(zuvyStudentAttendance.id, idsToDelete));
+      }
+
+      // 5. Update merged records in DB (optional, if you want to update the merged attendance)
+      //    This step is only needed if you want to update the main record with the merged attendance array
+      //    Uncomment if needed:
+      for (const record of uniqueAttendances) {
+        await db.update(zuvyStudentAttendance)
+          .set({ attendance: record.attendance })
+          .where(eq(zuvyStudentAttendance.id, record.id));
+      }
+
+      // 6. Reset all attendance counts for this bootcamp
+      await db.update(zuvyBatchEnrollments)
+        .set({ attendance: 0 })
+        .where(eq(zuvyBatchEnrollments.bootcampId, bootcampId));
+
+      // 7. Count attendance per student (by email)
+      const attendanceCountByEmail: Record<string, number> = {};
+      for (const record of uniqueAttendances) {
+        if (Array.isArray(record.attendance)) {
+          for (const student of record.attendance) {
+            if (student.email && student.attendance === 'present') {
+              const email = student.email.trim().toLowerCase();
+              attendanceCountByEmail[email] = (attendanceCountByEmail[email] || 0) + 1;
+            }
+          }
+        }
+      }
+
+      // 8. Update zuvyBatchEnrollments.attendance for each student
+      for (const email in attendanceCountByEmail) {
+        // Find user id by email
+        const userRecords = await db.select({ id: users.id })
+          .from(users)
+          .where(eq(users.email, email));
+        if (!userRecords.length) continue; // skip if user not found
+        const userId = userRecords[0].id;
+        await db.update(zuvyBatchEnrollments)
+          .set({ attendance: attendanceCountByEmail[email] })
+          .where(and(
+            eq(zuvyBatchEnrollments.userId, userId),
+            eq(zuvyBatchEnrollments.bootcampId, bootcampId)
+          ));
+      }
+
+      return {
+        status: 'success',
+        data: {
+          allAttendances: uniqueAttendances,
+          mergeAnalysis: duplicateAnalysis,
+          totalMeetings: uniqueAttendances.length,
+          mergedMeetingCount: duplicateAnalysis.length,
+          attendanceCountByEmail,
+        },
+      };
+    } catch (error) {
+      const logger = new Logger(BootcampService.name);
+      logger.error(`Error fetching grouped attendance: ${error.message}`);
+      return {
+        status: 'error',
+        message: 'Could not fetch grouped attendance data.',
+      };
+    }
+  }
+
   async addStudentToBootcamp(
     bootcampId: number,
     batchId: number,
