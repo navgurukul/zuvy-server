@@ -2253,8 +2253,6 @@ export class ContentService {
           updatedAt: now.toISOString()
         } as any)
         .where(eq(zuvyOutsourseAssessments.id, assessment.id));
-
-      this.logger.log(`Assessment ${assessment.id} state changed from ${oldState} to ${newState}`);
     }
   }
 
