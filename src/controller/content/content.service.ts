@@ -2124,7 +2124,6 @@ export class ContentService {
       const updatedAssessment = await db.query.zuvyOutsourseAssessments.findFirst({
         where: eq(zuvyOutsourseAssessments.id, assessment[0].id)
       });
-      console.log('updatedAssessment', updatedAssessment);
       if (updatedAssessment.currentState===null) {
         updatedAssessment.currentState = 2; 
       }
@@ -2164,10 +2163,7 @@ export class ContentService {
           statusCode: 200,
           assessmentState: 'PUBLISHED',
           message: `Assessment is published but not started yet. Assessment will start at ${startTime}`,
-          assessment: {
-            ...assessment[0],
-            startTime: assessment[0].startDatetime
-          }
+          ...assessment[0]
         };
       }
       if (updatedAssessment.currentState === 2) {
@@ -2187,7 +2183,7 @@ export class ContentService {
           statusCode: 200,
           assessmentState: 'CLOSED',
           message: 'Assessment is closed. You cannot attempt it anymore.',
-          assessment: assessment[0]
+          ...assessment[0]
         };
       }
 
