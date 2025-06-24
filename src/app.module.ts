@@ -16,6 +16,7 @@ import { AdminAssessmentModule } from './controller/adminAssessment/adminAssessm
 import { ScheduleModule } from './schedule/schedule.module';
 import { InstructorModule } from './controller/instructor/instructor.module';
 import { UsersModule } from './controller/users/users.module';
+import { AttendanceModule } from './controller/attendance/attendance.module';
 
 @Module({
   imports: [
@@ -28,6 +29,7 @@ import { UsersModule } from './controller/users/users.module';
     }),
     ConfigModule.forRoot({ isGlobal: true }),
     AdminAssessmentModule,
+    AttendanceModule,
     BootcampModule,
     BatchesModule,
     ClassesModule,
@@ -35,10 +37,10 @@ import { UsersModule } from './controller/users/users.module';
     ContentModule,
     StudentModule,
     SubmissionModule,
-    TrackingModule,
-    InstructorModule,
+    TrackingModule,    InstructorModule,
     ScheduleModule,
-    UsersModule 
+    UsersModule,
+    AttendanceModule
   ],
   providers: [
     {

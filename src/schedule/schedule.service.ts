@@ -12,12 +12,14 @@ import { db } from '../db/index';
 import { eq, sql, isNull, and, gte, lt } from 'drizzle-orm';
 import { google } from 'googleapis';
 import { SubmissionService } from '../controller/submissions/submission.service';
+import { AttendanceService } from '../controller/attendance/attendance.service';
 const { OAuth2 } = google.auth;
 const auth2Client = new OAuth2(
   process.env.GOOGLE_CLIENT_ID,
   process.env.GOOGLE_SECRET,
   process.env.GOOGLE_REDIRECT
 );
+
 
 @Injectable()
 export class ScheduleService {
@@ -36,11 +38,12 @@ export class ScheduleService {
   ];
   private readonly submissionService: SubmissionService = new SubmissionService();
 
-  constructor() {
+  constructor(private readonly attendanceService: AttendanceService) {
     // Initialize the interval when the service starts
     this.handleDynamicScheduling();
   }
 
+  @Cron('0 */6 * * *') // Runs every 6 hours
   async handleDynamicScheduling() {
     this.logger.log('Running main function to determine interval');
     if (this.processingActive) {
@@ -183,22 +186,26 @@ export class ScheduleService {
         refresh_token: userTokenData.refreshToken,
       });
 
+      
       const calendar = google.calendar({ version: 'v3', auth: auth2Client });
 
       if (session.meetingId && session.status === 'completed') {
         await this.updateSessionLink(calendar, session);
-        await this.handleOldSessions(session);
-        let oldAttendance = await db.select().from(zuvyStudentAttendance).where(eq(zuvyStudentAttendance.meetingId, session.meetingId));
-        if (oldAttendance.length > 0) {
-          let [errAtten, dataAttendance] = await this.getAttendanceByBatchId(session.batchId, session.creator);
-          if (errAtten) {
-            this.logger.error(`Attendance error: ${errAtten}`);
-          } 
+        await this.handleOldSessions(session);        let [errAtten, dataAttendance] = await this.getAttendanceByBatchId(session.batchId, session.creator);
+        if (errAtten) {
+          this.logger.error(`Attendance error: ${errAtten}`);
+        } 
+        else {
           this.logger.log(`Attendance: ${JSON.stringify(dataAttendance)}`);
           if (Array.isArray(dataAttendance)) {
             this.logger.error(`Attendance error: ${dataAttendance}`);
-          } else if ('data' in dataAttendance) {
-            await db.insert(zuvyStudentAttendance).values({attendance: dataAttendance.data, meetingId: session.meetingId, batchId: session.batchId, bootcampId: session.bootcampId }).execute();
+          } else if ('data' in dataAttendance) {            // Use shared AttendanceService to save attendance data
+            await this.attendanceService.saveAttendanceRecord({
+              attendance: dataAttendance.data, 
+              meetingId: session.meetingId, 
+              batchId: session.batchId, 
+              bootcampId: session.bootcampId 
+            });
           }
         }
       }
@@ -239,6 +246,7 @@ export class ScheduleService {
         .where(eq(zuvySessions.id, session.id));
     }
   }
+  // Removed duplicate saveAttendanceRecord - now using shared AttendanceService
 
   private async getAttendanceByBatchId(batchId, creatorEmail: string) {
     try {
