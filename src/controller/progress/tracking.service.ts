@@ -268,13 +268,13 @@ export class TrackingService {
 
         // Filter assessment chapters based on their state
         trackingData = trackingData.filter(chapter => {
-  if (chapter.topicId === 6) {
-    const state = assessmentStates[chapter.id];
-    // include null/undefined plus any of [1,2,3]
-    return state == null || [1,2,3].includes(state);
-  }
-  return true;
-});
+          if (chapter.topicId === 6) {
+            const state = assessmentStates[chapter.id];
+            // include null/undefined plus any of [1,2,3]
+            return state == null || [1, 2, 3].includes(state);
+          }
+          return true;
+        });
 
 
         trackingData.forEach((chapter) => {
@@ -879,13 +879,13 @@ export class TrackingService {
 
           // Find attendance data for this session
           const sessionAttendance = attendanceData.find(a => a.meetingId === session.meetingId);
-          
+
           if (sessionAttendance?.attendance) {
             const attendanceArray = sessionAttendance.attendance as any[];
-            const studentAttendance = attendanceArray.find((record: any) => 
+            const studentAttendance = attendanceArray.find((record: any) =>
               record.email === userDetails?.email || record.student === userDetails?.email
             );
-            
+
             if (studentAttendance) {
               attendanceStatus = studentAttendance.status || 'absent';
               durationSeconds = studentAttendance.duration_seconds || '0';

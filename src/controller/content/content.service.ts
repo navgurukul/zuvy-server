@@ -929,9 +929,13 @@ export class ContentService {
         }
         codingProblem.testCases = testCases;
       }
+      
       const updatedQuestion = await db
         .update(zuvyCodingQuestions)
-        .set({ usage: sql`${zuvyCodingQuestions.usage}::numeric - 1`, ...codingProblem })
+        .set({ 
+          ...codingProblem,
+          usage: sql`(${zuvyCodingQuestions.usage}::integer - 1)`
+        })
         .where(eq(zuvyCodingQuestions.id, questionId))
         .returning();
       if (updatedQuestion.length > 0) {
@@ -2257,8 +2261,6 @@ export class ContentService {
           updatedAt: now.toISOString()
         } as any)
         .where(eq(zuvyOutsourseAssessments.id, assessment.id));
-
-      this.logger.log(`Assessment ${assessment.id} state changed from ${oldState} to ${newState}`);
     }
   }
 

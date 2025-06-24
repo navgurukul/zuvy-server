@@ -1,16 +1,15 @@
-import { Controller, Get, Post, Put, Patch, Delete, Body, Param, ValidationPipe, UsePipes, Optional, Query, BadRequestException, Req, Res } from '@nestjs/common';
+import { Controller, Get, Post, Put, Patch, Delete, Body, Param, ValidationPipe, UsePipes, Optional, Query, BadRequestException, Req, Res, UseGuards } from '@nestjs/common';
+import { Request } from 'express';
 import { AdminAssessmentService } from './adminAssessment.service';
-import { ApiTags, ApiBody, ApiOperation, ApiCookieAuth, ApiQuery } from '@nestjs/swagger';
-import { ApiBearerAuth } from '@nestjs/swagger';
-import { Request } from '@nestjs/common';
-import { query } from 'express';
+import { ApiTags, ApiBody, ApiOperation, ApiCookieAuth, ApiQuery, ApiBearerAuth } from '@nestjs/swagger';
+import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
+import { RolesGuard } from 'src/guards/roles.guard';
+import { Roles } from 'src/decorators/roles.decorator';
 import { STATUS_CODES } from 'src/helpers';
 import { ErrorResponse, SuccessResponse } from 'src/errorHandler/handler';
-import { Response } from 'express';
 
-
-@Controller('admin')
-@ApiTags('admin')
+@Controller('adminAssessment')
+@ApiTags('adminAssessment')
 @UsePipes(
   new ValidationPipe({
     whitelist: true,
@@ -18,9 +17,13 @@ import { Response } from 'express';
     forbidNonWhitelisted: true,
   }),
 )
+@UseGuards(JwtAuthGuard, RolesGuard)
+@ApiBearerAuth('JWT-auth')
 export class AdminAssessmentController {
   constructor(private adminAssessmentService: AdminAssessmentService) { }
+
   @Get('bootcampAssessment/bootcamp_id:bootcamp_id')
+  @Roles('admin')
   @ApiOperation({ summary: 'Get the assessment of bootcamp' })
   @ApiQuery({
     name: 'searchAssessment',
@@ -28,12 +31,13 @@ export class AdminAssessmentController {
     type: String,
     description: 'Search by assessment name',
   })
-  @ApiBearerAuth()
+  @ApiBearerAuth('JWT-auth')
   async BootcampAssessment(@Req() req: Request, @Param('bootcamp_id') bootcampID: number,@Query('searchAssessment') searchAssessment: string) {
     return this.adminAssessmentService.getBootcampAssessment(bootcampID,searchAssessment);
   }
 
-    @Get('assessment/students/assessment_id:assessment_id')
+  @Get('assessment/students/assessment_id:assessment_id')
+  @Roles('admin')
   @ApiOperation({ summary: 'Get the students of assessment' })
   @ApiQuery({
     name: 'searchStudent',
@@ -41,39 +45,23 @@ export class AdminAssessmentController {
     type: String,
     description: 'Search by name or email',
   })
-  @ApiQuery({
-    name: 'limit',
-    required: false,
-    type: Number,
-    description: 'Limit the number of records',
-  })
-  @ApiQuery({
-    name: 'offset',
-    required: false,
-    type: Number,
-    description: 'Offset for pagination',
-  })
-  @ApiBearerAuth()
-  async AssessmentStudents(
-    @Req() req: Request,
-    @Param('assessment_id') assessmentID: number,
-    @Query('searchStudent') searchStudent: string,
-    @Query('limit') limit: number,
-    @Query('offset') offset: number,
-  ) {
-    return this.adminAssessmentService.getAssessmentStudents(req, assessmentID, searchStudent, limit, offset);
+  @ApiBearerAuth('JWT-auth')
+  async AssessmentStudents(@Req() req: Request, @Param('assessment_id') assessmentID: number,@Query('searchStudent') searchStudent: string) {
+    return this.adminAssessmentService.getAssessmentStudents(req, assessmentID,searchStudent);
   }
-  // get assessment submission by student
+
   @Get('assessment/submission/user_id:user_id')
+  @Roles('admin')
   @ApiOperation({ summary: 'Get the submission of student' })
-  @ApiBearerAuth()
+  @ApiBearerAuth('JWT-auth')
   async AssessmentSubmission(@Req() req: Request, @Param('user_id') userID: number, @Query('submission_id') submissionID: number) {
     return this.adminAssessmentService.getUserAssessmentSubmission(req,submissionID, userID);
   }
 
   @Get(':bootcamp_id/assessments')
+  @Roles('admin')
   @ApiOperation({ summary: 'Get all assessments for a bootcamp' })
-  @ApiBearerAuth()
+  @ApiBearerAuth('JWT-auth')
   async AssessmentsAndStudents(
     @Param('bootcamp_id') bootcampID: number,
     @Res() res
@@ -92,6 +80,7 @@ export class AdminAssessmentController {
   }
 
   @Get('bootcampModuleCompletion/bootcamp_id:bootcamp_id')
+  @Roles('admin')
   @ApiOperation({ summary: 'Get module completion data of a bootcamp' })
   @ApiQuery({
     name: 'searchVideos',
@@ -111,7 +100,7 @@ export class AdminAssessmentController {
     type: Number,
     description: 'offset',
   })
-  @ApiBearerAuth()
+  @ApiBearerAuth('JWT-auth')
   async BootcampModuleCompletion(
     @Param('bootcamp_id') bootcampID: number,
     @Query('searchVideos') searchVideos: string,
@@ -122,6 +111,7 @@ export class AdminAssessmentController {
   }
 
   @Get('moduleChapter/students/chapter_id:chapter_id')
+  @Roles('admin')
   @ApiOperation({ summary: 'Get students of a module chapter' })
   @ApiQuery({
     name: 'searchStudent',
@@ -133,15 +123,15 @@ export class AdminAssessmentController {
     name: 'limit',
     required: false,
     type: Number,
-    description: 'limit'
+    description: 'limit',
   })
   @ApiQuery({
     name: 'offset',
     required: false,
     type: Number,
-    description: 'offset'
+    description: 'offset',
   })
-  @ApiBearerAuth()
+  @ApiBearerAuth('JWT-auth')
   async ModuleChapterStudents(
     @Param('chapter_id') chapterID: number,
     @Query('searchStudent') searchStudent: string,
@@ -152,6 +142,7 @@ export class AdminAssessmentController {
   }
 
   @Get('/leaderBoard/bootcampId:bootcampId')
+  @Roles('admin')
   @ApiOperation({ summary: 'Get the leaderboard' })
   @ApiQuery({
     name: 'criteria',
@@ -164,7 +155,6 @@ export class AdminAssessmentController {
     required: false,
     type: [Number],
     description: 'assessmentOutsourseId',
-
   })
   @ApiQuery({
     name: 'limit',
@@ -178,7 +168,7 @@ export class AdminAssessmentController {
     description: 'offset',
     required: false
   })
-  @ApiBearerAuth()
+  @ApiBearerAuth('JWT-auth')
   async getAdminLeaderboard(
     @Param('bootcampId') bootcampId: number,
     @Query('criteria') criteria: 'attendance' | 'bootcampProgress' | 'assessmentScore',
@@ -190,12 +180,13 @@ export class AdminAssessmentController {
   }
 
   @Post('assessment/approve-reattempt')
+  @Roles('admin')
   @ApiOperation({ summary: 'Approve re-attempt for an assessment submission' })
-  @ApiBearerAuth()
+  @ApiBearerAuth('JWT-auth')
   async approveReattempt(
     @Query('assessmentSubmissionId') assessmentSubmissionId: number,
-    @Req() req,
-    @Res() res: Response
+    @Req() req: Request,
+    @Res() res
   ): Promise<any>  {
     try {
       let [err, success] = await this.adminAssessmentService.approveReattempt(assessmentSubmissionId);
@@ -209,12 +200,13 @@ export class AdminAssessmentController {
   }
 
   @Delete('assessment/reject-reattempt')
+  @Roles('admin')
   @ApiOperation({ summary: 'Reject re-attempt for an assessment submission' })
-  @ApiBearerAuth()
+  @ApiBearerAuth('JWT-auth')
   async rejectReattempt(
     @Query('assessmentSubmissionId') assessmentSubmissionId: number,
-    @Req() req,
-    @Res() res: Response
+    @Req() req: Request,
+    @Res() res
   ): Promise<any>  {
     try {
       let [err, success] = await this.adminAssessmentService.rejectReattempt(assessmentSubmissionId);

@@ -37,6 +37,7 @@ import { v4 as uuid } from 'uuid';
 import * as _ from 'lodash';
 import { S3 } from 'aws-sdk';
 import { Console } from 'console';
+import { OAuth2Client } from 'google-auth-library';
 //import {client_email,private_key} from '../../service-account.json'
 const moment = require('moment-timezone');
 
@@ -93,33 +94,106 @@ export class ClassesService {
   private readonly logger = new Logger(ClassesService.name);
 
   async accessOfCalendar(creatorInfo) {
-    const userId = Number(creatorInfo.id);
-    const fetchedTokens = await db
-      .select()
-      .from(userTokens)
-      .where(eq(userTokens.userId, userId));
-    if (!fetchedTokens) {
-      return { status: 'error', message: 'Unable to fetch tokens' };
-    }
-    auth2Client.setCredentials({
-      access_token: fetchedTokens[0].accessToken,
-      refresh_token: fetchedTokens[0].refreshToken,
-    });
-    if (!creatorInfo.email.endsWith('@zuvy.org')) {
-      return {
-        status: 'error',
-        message: 'Unauthorized email id.',
-      };
-    }
+    try {
+      const userId = Number(creatorInfo.id);
+      console.log('Checking calendar access for user:', creatorInfo.roles);
+      console.log('User info:', creatorInfo);
+      const fetchedTokens = await db
+        .select()
+        .from(userTokens)
+        .where(eq(userTokens.userId, userId));
 
-    if (!creatorInfo.roles?.includes('admin')) {
+      console.log('Fetched tokens:', fetchedTokens);
+
+      if (!fetchedTokens || fetchedTokens.length === 0) {
+        return {
+          status: 'error',
+          message: 'No calendar access tokens found. Please authenticate with Google Calendar.'
+        };
+      }
+
+      const tokens = fetchedTokens[0];
+      
+      // Initialize OAuth2Client with credentials
+      const oauth2Client = new OAuth2Client(
+        process.env.GOOGLE_CLIENT_ID,
+        process.env.GOOGLE_CLIENT_SECRET,
+        process.env.GOOGLE_REDIRECT_URI
+      );
+
+      oauth2Client.setCredentials({
+        access_token: tokens.accessToken,
+        refresh_token: tokens.refreshToken,
+      });
+
+      // Check if token is expired and refresh if needed
+      try {
+        const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
+        // Test the token with a simple API call
+        await calendar.calendarList.list({ maxResults: 1 });
+        
+        if (!creatorInfo.email.endsWith('@zuvy.org')) {
+          return {
+            status: 'error',
+            message: 'Unauthorized email id.',
+          };
+        }
+
+        if (!creatorInfo.roles?.includes('admin')) {
+          return {
+            status: 'error',
+            message: 'You should be an admin to create a class.',
+          };
+        }
+
+        return calendar;
+      } catch (error) {
+        console.error('Calendar API error:', error);
+        
+        // If token is expired, try to refresh it
+        if (error.response?.status === 401) {
+          try {
+            const { credentials } = await oauth2Client.refreshAccessToken();
+            const newTokens = credentials;
+            
+            // Update tokens in database
+            await db
+              .update(userTokens)
+              .set({
+                accessToken: newTokens.access_token,
+                refreshToken: newTokens.refresh_token || tokens.refreshToken
+              })
+              .where(eq(userTokens.userId, userId));
+
+            // Set new credentials
+            oauth2Client.setCredentials(newTokens);
+            
+            // Try the API call again
+            const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
+            await calendar.calendarList.list({ maxResults: 1 });
+            
+            return calendar;
+          } catch (refreshError) {
+            console.error('Token refresh error:', refreshError);
+            return {
+              status: 'error',
+              message: 'Failed to refresh calendar access. Please re-authenticate with Google Calendar.'
+            };
+          }
+        }
+        
+        return {
+          status: 'error',
+          message: 'Failed to access Google Calendar. Please try again.'
+        };
+      }
+    } catch (error) {
+      console.error('Access of calendar error:', error);
       return {
         status: 'error',
-        message: 'You should be an admin to create a class.',
+        message: 'Failed to verify calendar access.'
       };
     }
-    const calendar = google.calendar({ version: 'v3', auth: auth2Client });
-    return calendar;
   }
 
   async googleAuthentication(@Res() res, userEmail: string, userId: number) {
@@ -225,6 +299,7 @@ export class ClassesService {
     creatorInfo: any,
   ) {
     try {
+      console.log("create admin",creatorInfo)
       // Mapping days of the week to moment.js day indices
       const dayToMomentDay: { [key: string]: number } = {
         Sunday: 0,
@@ -609,22 +684,27 @@ export class ClassesService {
       const fetchedTokens = await db
         .select()
         .from(userTokens)
-        .where(eq(userTokens.userId, userData[0].id));
+        .where(eq(userTokens.userId, userData.id));
 
       if (!fetchedTokens || fetchedTokens.length === 0) {
         return { status: 'error', message: 'Unable to fetch tokens' };
       }
-      const auth2Client = new google.auth.OAuth2();
+      const auth2Client = new google.auth.OAuth2(
+           process.env.GOOGLE_CLIENT_ID!,
+           process.env.GOOGLE_CLIENT_SECRET!,
+        process.env.GOOGLE_REDIRECT
+        );
       auth2Client.setCredentials({
         access_token: fetchedTokens[0].accessToken,
         refresh_token: fetchedTokens[0].refreshToken,
       });
-
+      console.log("auth2Client",auth2Client)
       const client = google.admin({ version: 'reports_v1', auth: auth2Client });
       const allMeetings = await db
         .select()
         .from(zuvySessions)
         .where(eq(zuvySessions.batchId, batchId));
+        console.log("allMeetings",allMeetings)
       const attendanceByTitle = {};
 
       for (const singleMeeting of allMeetings) {
@@ -635,7 +715,7 @@ export class ClassesService {
           maxResults: 1000,
           filters: `calendar_event_id==${singleMeeting.meetingId}`,
         });
-
+         console.log("responseClass",response)
         const meetingAttendance = {};
 
         for (const student of fetchedStudents) {
@@ -1431,7 +1511,8 @@ export class ClassesService {
       const classes = await db
         .select()
         .from(zuvySessions)
-        .where(sql`${zuvySessions.batchId} = ${batchId}`);
+        .where(sql`${zuvySessions.batchId} = ${Number(batchId)}`);
+       console.log(classes) 
       const sortedClasses = _.orderBy(
         classes,
         (classObj) => new Date(classObj.startTime),
@@ -1453,17 +1534,20 @@ export class ClassesService {
           upcomingClasses.push(classObj);
         }
       }
+      const start = offset;
+      const end   = offset + limit;
       const paginatedCompletedClasses = completedClasses.slice(
-        (offset - 1) * limit,
-        (offset - 1) * limit + limit,
+        start,
+        end,
       );
+      console.log("paginatedCompletedClasses",paginatedCompletedClasses)
       const paginatedOngoingClasses = ongoingClasses.slice(
-        (offset - 1) * limit,
-        (offset - 1) * limit + limit,
+        start,
+        end,
       );
       const paginatedUpcomingClasses = upcomingClasses.slice(
-        (offset - 1) * limit,
-        (offset - 1) * limit + limit,
+        start,
+        end,
       );
       return {
         status: 'success',

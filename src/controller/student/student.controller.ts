@@ -5,6 +5,9 @@ import { get } from 'http';
 import { Response } from 'express';
 import { ErrorResponse, SuccessResponse } from 'src/errorHandler/handler';
 import { ApplyFormData } from './dto/student.dto'
+import { Public } from '../../auth/decorators/public.decorator';
+import { UseGuards } from '@nestjs/common';
+import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 
 @Controller('student')
 @ApiTags('student')
@@ -15,13 +18,14 @@ import { ApplyFormData } from './dto/student.dto'
     forbidNonWhitelisted: true,
   }),
 )
-// @UseGuards(AuthGuard('cookie'))
+@UseGuards(JwtAuthGuard)
+@ApiBearerAuth('JWT-auth')
 export class StudentController {
   constructor(private studentService: StudentService) { }
 
   @Get('/')
   @ApiOperation({ summary: 'Get all course enrolled by student' })
-  @ApiBearerAuth()
+  @ApiBearerAuth('JWT-auth')
   @ApiQuery({
     name: 'limit',
     type: Number,
@@ -48,7 +52,7 @@ export class StudentController {
 
   @Get('/bootcamp/search')
   @ApiOperation({ summary: 'Get Public bootcamp by searching' })
-  @ApiBearerAuth()
+  @ApiBearerAuth('JWT-auth')
   @ApiQuery({
     name: 'searchTerm',
     required: true,
@@ -68,7 +72,7 @@ export class StudentController {
 
   @Get('/bootcamp/public')
   @ApiOperation({ summary: 'Get all Public Bootcamp' })
-  @ApiBearerAuth()
+  @ApiBearerAuth('JWT-auth')
   async getPublicBootcamps(
   ): Promise<object> {
     const [err, res] =
@@ -82,7 +86,7 @@ export class StudentController {
 
   @Delete('/:userId/:bootcampId')
   @ApiOperation({ summary: 'Removing student from bootcamp' })
-  @ApiBearerAuth()
+  @ApiBearerAuth('JWT-auth')
   @ApiQuery({
     name: 'userId',
     required: true,
@@ -108,7 +112,7 @@ export class StudentController {
 
   @Get('/Dashboard/classes')
   @ApiOperation({ summary: 'Get dashboard upcoming class' })
-  @ApiBearerAuth()
+  @ApiBearerAuth('JWT-auth')
   @ApiQuery({
     name: 'limit',
     type: Number,
@@ -175,7 +179,7 @@ export class StudentController {
 
   @Get('/Dashboard/attendance')
   @ApiOperation({ summary: 'Get dashboard Attendance.' })
-  @ApiBearerAuth()
+  @ApiBearerAuth('JWT-auth')
   async getAttendanceClass(@Req() req
   ) {
     return await this.studentService.getAttendanceClass(req.user[0].id);
@@ -237,7 +241,7 @@ export class StudentController {
     description: 'offset',
     required: false
   })
-  @ApiBearerAuth()
+  @ApiBearerAuth('JWT-auth')
   async getleaderboardDetails(
     @Param('bootcampId') bootcampId: number,
     @Query('limit') limit: number,
@@ -249,8 +253,9 @@ export class StudentController {
     return res;
   }
   
+  @Public()
   @Post('/apply')
-  @ApiBearerAuth()
+  @ApiBearerAuth('JWT-auth')
   @ApiOperation({ summary: 'student can apply for the course' })
   async getCodingQuestion(@Res() res: Response, @Body() applyFormData: ApplyFormData): Promise<any> {
     try {
@@ -267,7 +272,7 @@ export class StudentController {
   
     @Post('assessment/request-reattempt')
     @ApiOperation({ summary: 'Request re-attempt for an assessment submission' })
-    @ApiBearerAuth()
+    @ApiBearerAuth('JWT-auth')
     async requestReattempt(
       @Query('assessmentSubmissionId') assessmentSubmissionId: number,
       @Query('userId') userId: number,

@@ -769,7 +769,7 @@ Team Zuvy`;
               sourceCode: true,
             },
             where: (PracticeCode, { sql }) =>
-              sql`${PracticeCode.status} = he AND ${PracticeCode.action} = 'submit'`,
+              sql`${PracticeCode.status} = ${helperVariable.ACCEPTED} AND ${PracticeCode.action} = 'submit'`,
             distinct: ['questionId'],
             with: {
               questionDetail: true,

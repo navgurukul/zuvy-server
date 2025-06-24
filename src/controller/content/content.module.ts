@@ -26,6 +26,6 @@ import { SseService } from '../../services/sse.service';
   ],
   controllers: [ContentController],
   providers: [ContentService, JwtService, SseService],
-  exports: [ContentService]
+  exports: [ContentService],
 })
 export class ContentModule {}
