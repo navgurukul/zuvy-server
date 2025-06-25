@@ -14,6 +14,7 @@ import {
   BadRequestException,
   Req,
   Res,
+  UseGuards,
 } from '@nestjs/common';
 import { SubmissionService } from './submission.service';
 import {
@@ -26,9 +27,10 @@ import {
 import { ApiBearerAuth } from '@nestjs/swagger';
 import { InstructorFeedbackDto, PatchOpenendedQuestionDto, CreateOpenendedQuestionDto, SubmissionassessmentDto, StartAssessmentDto, OpenEndedQuestionSubmissionDtoList, QuizSubmissionDtoList, PropertingPutBody } from './dto/submission.dto';
 import { ErrorResponse, SuccessResponse } from 'src/errorHandler/handler';
+import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 
-@Controller('submission')
-@ApiTags('submission')
+@Controller('submissions')
+@ApiTags('submissions')
 @UsePipes(
   new ValidationPipe({
     whitelist: true,
@@ -36,6 +38,8 @@ import { ErrorResponse, SuccessResponse } from 'src/errorHandler/handler';
     forbidNonWhitelisted: true,
   }),
 )
+@UseGuards(JwtAuthGuard)
+@ApiBearerAuth('JWT-auth')
 export class SubmissionController {
   constructor(private submissionService: SubmissionService) { }
 
@@ -47,7 +51,7 @@ export class SubmissionController {
     type: String,
     description: 'Search by practise problem name',
   })
-  @ApiBearerAuth()
+  @ApiBearerAuth('JWT-auth')
   async getChapterTracking(@Param('bootcampId') bootcampId: number, @Query('searchPractiseProblem') searchProblem: string) {
     return this.submissionService.getSubmissionOfPractiseProblem(bootcampId, searchProblem);
   }
@@ -82,7 +86,6 @@ export class SubmissionController {
     type: String,
     description: 'Search by name or email',
   })
-  @ApiBearerAuth()
   async getStatusOfPractiseProblem(
     @Param('moduleId') moduleId: number,
     @Query('chapterId') chapterId: number,
@@ -102,7 +105,6 @@ export class SubmissionController {
   }
 
   @Get('/assessmentInfoBy')
-  @ApiBearerAuth()
   @ApiQuery({
     name: 'limit',
     required: false,
@@ -123,31 +125,26 @@ export class SubmissionController {
 
 
   @Post('/openended/questions')
-  @ApiBearerAuth()
   async submissionOpenended(@Body() data: CreateOpenendedQuestionDto, @Req() req) {
     return this.submissionService.submissionOpenended(data, req.user[0].id);
   }
 
   @Patch('/openended/questions')
-  @ApiBearerAuth()
   async patchOpenendedQuestion(@Body() data: PatchOpenendedQuestionDto, @Query('id') id: number) {
     return this.submissionService.patchOpenendedQuestion(data, id);
   }
 
   @Post('/instructor/feedback')
-  @ApiBearerAuth()
   async instructorFeedback(@Body() data: InstructorFeedbackDto, @Query('id') id: number) {
     return this.submissionService.instructorFeedback(data, id);
   }
 
   @Get('/openended/questions')
-  @ApiBearerAuth()
   async getOpenendedQuestionSubmission(@Query('id') id: number) {
     return this.submissionService.getOpenendedQuestionSubmission(id);
   }
 
   @Patch('/assessment/submit')
-  @ApiBearerAuth()
   async assessmentSubmission(@Body() data: SubmissionassessmentDto, @Query('assessmentSubmissionId') assessmentSubmissionId: number, @Req() req,  
   @Res() res
 ) {
@@ -170,13 +167,11 @@ export class SubmissionController {
     type: String,
     description: 'Search by project name',
   })
-  @ApiBearerAuth()
   async getProjectSubmissions(@Param('bootcampId') bootcampId: number, @Query('searchProject') projectName: string) {
     return this.submissionService.getAllProjectSubmissions(bootcampId, projectName);
   }
 
   @Get('/projects/students')
-  @ApiBearerAuth()
   @ApiQuery({
     name: 'limit',
     required: false,
@@ -204,7 +199,6 @@ export class SubmissionController {
   }
 
   @Get('/projectDetail/:userId')
-  @ApiBearerAuth()
   async projectStudentsDetails(
     @Query('projectId') projectId: number,
     @Query('bootcampId') bootcampId: number,
@@ -214,7 +208,6 @@ export class SubmissionController {
   }
 
   @Patch('/quiz/assessmentSubmissionId=:assessmentSubmissionId')
-  @ApiBearerAuth()
   async submitQuiz(@Body() QuizSubmission: QuizSubmissionDtoList, 
   @Param('assessmentSubmissionId') assessmentSubmissionId: number, 
   @Query('assessmentOutsourseId') assessmentOutsourseId: number, 
@@ -233,14 +226,12 @@ export class SubmissionController {
 }
 
   @Patch("/openended/assessmentSubmissionId=:assessmentSubmissionId")
-  @ApiBearerAuth()
   async submitOpenended(@Body() OpenEndedQuestionSubmission: OpenEndedQuestionSubmissionDtoList, @Param('assessmentSubmissionId') assessmentSubmissionId: number, @Req() req) {
     return this.submissionService.submitOpenEndedQuestion(OpenEndedQuestionSubmission.openEndedQuestionSubmissionDto, req.user[0].id, assessmentSubmissionId);
   }
 
   @Get('/submissionsOfForms/:bootcampId')
   @ApiOperation({ summary: 'Get the submission by bootcampId' })
-  @ApiBearerAuth()
   async getSubmissionOfForms(@Param('bootcampId') bootcampId: number) {
     return this.submissionService.getSubmissionOfForms(bootcampId);
   }
@@ -263,7 +254,6 @@ export class SubmissionController {
     type: Number,
     description: 'offset',
   })
-  @ApiBearerAuth()
   async getStatusOfForms(
     @Param('bootcampId') bootcampId: number,
     @Param('moduleId') moduleId: number,
@@ -282,7 +272,6 @@ export class SubmissionController {
 
   @Get('getFormDetailsById/:moduleId')
   @ApiOperation({ summary: 'get Form details by Id' })
-  @ApiBearerAuth()
   async getFormDetailsById(
     @Param('moduleId') moduleId: number,
     @Query('chapterId') chapterId: number,
@@ -304,7 +293,6 @@ export class SubmissionController {
     type: String,
     description: 'Search by assignment name',
   })
-  @ApiBearerAuth()
   async getAssignmentSubmission(@Param('bootcampId') bootcampId: number, @Query('searchAssignment') assignmentName: string, @Res() res) {
     try {
       let [err, success] = await this.submissionService.getSubmissionOfAssignment(bootcampId, assignmentName)
@@ -341,7 +329,6 @@ export class SubmissionController {
     type: String,
     description: 'Search by name or email',
   })
-  @ApiBearerAuth()
   async getStatusOfAssignment(
     @Query('chapterId') chapterId: number,
     @Query('limit') limit: number,
@@ -368,7 +355,6 @@ export class SubmissionController {
 
   @Get('getAssignmentDetailForAUser')
   @ApiOperation({ summary: 'get assignment detail of a student' })
-  @ApiBearerAuth()
   async getAssignmentDetailForAUser(
     @Query('chapterId') chapterId: number,
     @Query('userId') userId: number,
@@ -391,7 +377,6 @@ export class SubmissionController {
   // put api endpoint: assessment/properting
   @Patch("/assessment/properting")
   @ApiOperation({ summary: 'Updating the assignment properting data' })
-  @ApiBearerAuth()
   async submitProperting(@Body() propertingPutBody: PropertingPutBody, @Query('assessment_submission_id') assessmentSubmissionId: number, @Res() res) {
     try {
       let [err, success] = await this.submissionService.submitProperting(assessmentSubmissionId, propertingPutBody);
@@ -406,7 +391,6 @@ export class SubmissionController {
   //recalcOnlyMCQ
   @Patch("/assessment/recalcOnlyMCQ")
   @ApiOperation({ summary: 'Recalculating the MCQ score' })
-  @ApiBearerAuth()
   async recalcAndFixMCQForAssessment(@Query('assessment_outsourse_id') assessmentOutsourseId: number, @Res() res) {
     try {
       let [err, success] = await this.submissionService.recalcAndFixMCQForAssessment(assessmentOutsourseId);
