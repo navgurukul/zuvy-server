@@ -8,8 +8,8 @@ import { Roles } from 'src/decorators/roles.decorator';
 import { STATUS_CODES } from 'src/helpers';
 import { ErrorResponse, SuccessResponse } from 'src/errorHandler/handler';
 
-@Controller('adminAssessment')
-@ApiTags('adminAssessment')
+@Controller('admin')
+@ApiTags('admin')
 @UsePipes(
   new ValidationPipe({
     whitelist: true,
