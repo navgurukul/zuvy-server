@@ -43,7 +43,6 @@ export class BatchesController {
 
   
   @Get('/:id')
-  @Roles('admin')
   @ApiOperation({ summary: 'Get the batch by id' })
   @ApiBearerAuth('JWT-auth')
   // @ApiQuery({ name: 'students', required: false, type: Boolean, description: 'Optional content flag' })

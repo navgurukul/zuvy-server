@@ -146,7 +146,7 @@ export class StudentController {
 
   @Get('/UpcomingEvents')
   @ApiOperation({ summary: 'Get upcoming events  for next 7 days including classes and assessments' })
-  @ApiBearerAuth()
+  @ApiBearerAuth('JWT-auth')
   @ApiQuery({
     name: 'limit',
     type: Number,
@@ -186,7 +186,7 @@ export class StudentController {
 
   @Get('/bootcamp/:bootcampId/completed-classes')
   @ApiOperation({ summary: 'Get completed classes with attendance for a bootcamp' })
-  @ApiBearerAuth()
+  @ApiBearerAuth('JWT-auth')
   @ApiQuery({
     name: 'limit',
     type: Number,

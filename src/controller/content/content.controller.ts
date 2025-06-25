@@ -605,7 +605,6 @@ export class ContentController {
   }
 
   @Get('/students/assessmentId=:assessmentId')
-  @Roles('admin')
   @ApiOperation({ summary: 'Get the student of a particular assessment' })
   @ApiBearerAuth('JWT-auth')
   async getStudentsOfAssessment(@Param('assessmentId') assessmentId: number, @Query('moduleId') moduleId: number, @Query('bootcampId') bootcampId: number, @Query('chapterId') chapterId: number, @Req() req) {
@@ -614,7 +613,7 @@ export class ContentController {
 
   @Get('/startAssessmentForStudent/assessmentOutsourseId=:assessmentOutsourseId')
   @ApiOperation({ summary: 'Start the assessment for a student' })
-  @ApiBearerAuth()
+  @ApiBearerAuth('JWT-auth')
   async startAssessmentForStudent(@Req() req, @Param('assessmentOutsourseId') assessmentOutsourseId: number, @Param('newStart') newStart:boolean, @Res() res: Response): Promise<any> {
     try{
       let [err, success] = await this.contentService.startAssessmentForStudent(assessmentOutsourseId, newStart, req.user[0]);
@@ -628,7 +627,6 @@ export class ContentController {
   }
 
   @Get('/assessmentDetailsOfQuiz/:assessmentOutsourseId')
-  @Roles('admin')
   @ApiOperation({ summary: 'Get the assessment details of the Quiz' })
   @ApiQuery({
     name: 'studentId',
@@ -659,7 +657,6 @@ export class ContentController {
   }
 
   @Get('/assessmentDetailsOfOpenEnded/:assessmentOutsourseId')
-  @Roles('admin')
   @ApiOperation({ summary: 'Get the assessment details of the open Ended questions' })
   @ApiQuery({
     name: 'studentId',
@@ -889,7 +886,7 @@ export class ContentController {
   }
 
   @Post('curriculum/upload-pdf')
-  @ApiBearerAuth()
+  @ApiBearerAuth('JWT-auth')
   @ApiOperation({ summary: 'Upload a PDF and save its link to a chapter' })
   @ApiQuery({
     name: 'moduleId',
@@ -945,7 +942,7 @@ export class ContentController {
 
    @Post('curriculum/upload-images')
 @ApiOperation({ summary: 'Upload one or more images to S3' })
-@ApiBearerAuth()
+@ApiBearerAuth('JWT-auth')
 @ApiConsumes('multipart/form-data')
 @ApiBody({
   schema: {

@@ -85,7 +85,6 @@ export class BootcampController {
   }
 
   @Get('/:id')
-  @Roles('admin')
   @ApiOperation({ summary: 'Get the bootcamp by id' })
   @ApiQuery({
     name: 'isContent',
@@ -214,7 +213,6 @@ export class BootcampController {
   }
 
   @Get('/searchBatch/:bootcamp_id')
-  @Roles('admin')
   @ApiOperation({ summary: 'Get the batches by name by bootcamp id' })
   @ApiQuery({
     name: 'searchTerm',
@@ -330,7 +328,6 @@ export class BootcampController {
   }
 
   @Get('/:user_id/progress')
-  @Roles('admin')
   @ApiOperation({ summary: 'Get the progress of students in a bootcamp' })
   @ApiQuery({
     name: 'bootcamp_id',
@@ -376,7 +373,7 @@ export class BootcampController {
     type: Number,
     description: 'ID of the bootcamp to process attendance for',
   })
-  @ApiBearerAuth()
+  @ApiBearerAuth('JWT-auth')
   async processAttendance(@Query('bootcampId') bootcampId: number): Promise<any> {
     if (!bootcampId) {
       throw new BadRequestException('bootcampId is required');
