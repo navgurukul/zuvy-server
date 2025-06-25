@@ -43,10 +43,10 @@ const moment = require('moment-timezone');
 
 
 const { OAuth2 } = google.auth;
-let { GOOGLE_CLIENT_ID, GOOGLE_SECRET, GOOGLE_REDIRECT, ZUVY_REDIRECT_URL } =
+let { GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REDIRECT, ZUVY_REDIRECT_URL } =
   process.env;
 
-let auth2Client = new OAuth2(GOOGLE_CLIENT_ID, GOOGLE_SECRET, GOOGLE_REDIRECT);
+let auth2Client = new OAuth2(GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REDIRECT);
 // const jwtttt = new google.auth.JWT({
 //   email:   client_email,
 //   key:     private_key,
