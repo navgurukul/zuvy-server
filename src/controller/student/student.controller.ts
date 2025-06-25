@@ -98,7 +98,6 @@ export class StudentController {
     @Param('bootcampId') bootcampId: number,
   ): Promise<object> {
     const userIds = Array.isArray(userId) ? userId : [userId]; // Ensure userIds is always an array of numbers
-    console.log("###", userIds, bootcampId)
     const [err, res] = await this.studentService.removingStudent(
       userIds,
       bootcampId,

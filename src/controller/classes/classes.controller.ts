@@ -487,7 +487,6 @@ export class ClassesController {
   @ApiBearerAuth('JWT-auth')
   async checkCalendarAccess(@Req() req) {
     try {
-      console.log("userInfo",req)
       const userInfo = {
         id: Number(req.user[0].id),
         email: req.user[0].email,

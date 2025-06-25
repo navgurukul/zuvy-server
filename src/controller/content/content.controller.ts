@@ -912,7 +912,6 @@ export class ContentController {
     @Query('chapterId') chapterId: number,
     @Body() reOrder: UpdateChapterDto
   ) {
-    console.log("edit pdf",UpdateChapterDto)
     if(file)
     {
     let url: string;

@@ -51,29 +51,21 @@ export class JwtMiddleware implements NestMiddleware {
 
     try {
       // Check if token is blacklisted
-      await this.authService.validateToken(token);
-
-      console.log("Attempting to verify token:", token);
       const decoded: any = await this.jwtService.verifyAsync(token, {
         secret: JWT_SECRET_KEY
       });
-      console.log("Token decoded successfully:", decoded);
       
       if (!decoded) {
-        console.log("Decoded token is null or undefined");
         throw new UnauthorizedException('Invalid token');
       }
-
-      console.log("Looking up user with ID:", decoded.sub, "and email:", decoded.email);
       const user: any[] = await db
         .select()
         .from(users)
         .where(sql`${users.id} = ${decoded.sub} AND ${users.email} = ${decoded.email}`);
       
-      console.log("User lookup result:", user);
+  
       
       if (user.length === 0) {
-        console.log("No user found with the provided credentials");
         throw new UnauthorizedException('User is not authorized');
       }
 
@@ -88,7 +80,6 @@ export class JwtMiddleware implements NestMiddleware {
         req.user = [];
       }
       req.user = user[0];
-      console.log("req.user",req.user)
       // Restrict access to instructor-side routes
       if (
         req._parsedUrl.pathname.startsWith('/instructor') &&

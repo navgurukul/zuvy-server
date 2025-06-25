@@ -1344,7 +1344,6 @@ export class ContentService {
             endDatetime: new Date(assessmentBody.endDatetime).toISOString()
           }),
         };
-        console.log('updatedOutsourse', updatedOutsourse);
         let updatedOutsourseAssessment = await db
           .update(zuvyOutsourseAssessments)
           .set(updatedOutsourse)
@@ -1414,7 +1413,6 @@ export class ContentService {
         message: 'Updated successfully',
       };
     } catch (err) {
-      console.log(err)
       throw err;
     }
   }
@@ -2438,7 +2436,6 @@ export class ContentService {
       return [null, { message: 'Coding question fetched successfully', data: assessment, statusCode: STATUS_CODES.OK }];
 
     } catch (err) {
-      console.log({ err })
       Logger.error(JSON.stringify(err));
       return [{ message: err.message, statusCode: STATUS_CODES.BAD_REQUEST }];
     }
