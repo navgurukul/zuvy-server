@@ -911,7 +911,7 @@ export class ContentService {
 
   async updateCodingProblemForModule(
     questionId: number,
-    codingProblem: UpdateProblemDto & {usage?:number}
+    codingProblem: UpdateProblemDto
   ) {
     try {
       let examples = [];
@@ -929,12 +929,10 @@ export class ContentService {
         }
         codingProblem.testCases = testCases;
       }
-      
       const updatedQuestion = await db
         .update(zuvyCodingQuestions)
         .set({ 
-          ...codingProblem,
-          usage: sql`(${zuvyCodingQuestions.usage}::integer - 1)`
+          ...codingProblem
         })
         .where(eq(zuvyCodingQuestions.id, questionId))
         .returning();
