@@ -611,7 +611,7 @@ export class ContentController {
     return this.contentService.getStudentsOfAssessment(assessmentId, chapterId, moduleId, bootcampId, req);
   }
 
-  @Get('/startAssessmentForStudent/assessmentOutsourseId=:assessmentOutsourseId')
+  @Get('/startAssessmentForStudent/assessmentOutsourseId=:assessmentOutsourseId/newStart=:newStart')
   @ApiOperation({ summary: 'Start the assessment for a student' })
   @ApiBearerAuth('JWT-auth')
   async startAssessmentForStudent(@Req() req, @Param('assessmentOutsourseId') assessmentOutsourseId: number, @Param('newStart') newStart:boolean, @Res() res: Response): Promise<any> {
