@@ -13,7 +13,9 @@ import {
   zuvyOutsourseAssessments,
   zuvyModuleAssessment,
   zuvyBatches,
-  zuvyStudentAttendance
+  zuvyStudentAttendance,
+  zuvyModuleChapter,
+  zuvyCourseModules
 } from '../../../drizzle/schema';
 import { db } from '../../db/index';
 import { eq, sql, desc, count, asc, or, and, inArray } from 'drizzle-orm';
@@ -565,6 +567,29 @@ export class StudentService {
         )
         .orderBy(asc(zuvyOutsourseAssessments.startDatetime));
 
+      let upcomingAssignments = await db
+        .select({
+          id: zuvyModuleChapter.id,
+          title: zuvyModuleChapter.title,
+          description: zuvyModuleChapter.description,
+          completionDate: zuvyModuleChapter.completionDate,
+          bootcampId: zuvyCourseModules.bootcampId
+        })
+        .from(zuvyModuleChapter)
+        .innerJoin(
+          zuvyCourseModules,
+          eq(zuvyModuleChapter.moduleId, zuvyCourseModules.id)
+        )
+        .where(
+          and(
+            eq(zuvyModuleChapter.topicId, 5), // topicId 5 = assignment
+            inArray(zuvyCourseModules.bootcampId, bootcampAndbatchIds.map(b => b.bootcampId)),
+            sql`${zuvyModuleChapter.completionDate}::timestamp >= ${now.toISOString()} AND ${zuvyModuleChapter.completionDate}::timestamp <= ${sevenDaysLater.toISOString()}`
+          )
+        )
+        .orderBy(asc(zuvyModuleChapter.completionDate));
+
+
       // Format classes
       const formattedClasses = upcomingClasses.map(c => ({
         type: 'Live Class' as const,
@@ -593,8 +618,20 @@ export class StudentService {
         eventDate: a.startDatetime
       }));
 
+      // Format assignments
+      const formattedAssignments = upcomingAssignments.map(a => ({
+        type: 'Assignment' as const,
+        id: Number(a.id),
+        title: a.title || 'Assignment',
+        description: a.description,
+        bootcampId: Number(a.bootcampId),
+        bootcampName: bootcampMap.get(a.bootcampId) || 'Unknown Bootcamp',
+        completionDate: a.completionDate,
+        eventDate: a.completionDate
+      }));
+
       // Combine and sort all events by date
-      const allEvents = [...formattedClasses, ...formattedAssessments]
+      const allEvents = [...formattedClasses, ...formattedAssessments, ...formattedAssignments]
         .sort((a, b) => {
           return new Date(a.eventDate).getTime() - new Date(b.eventDate).getTime();
         });
