@@ -367,4 +367,12 @@ export class BootcampController {
     }
     return res;
   }
+
+  @Get('/attendance/grouped/:bootcamp_id')
+  @ApiOperation({ summary: 'Get grouped attendance for a bootcamp (unique and duplicate meetingIds)' })
+  @ApiBearerAuth()
+  async getGroupedAttendanceByBootcamp(@Param('bootcamp_id') bootcamp_id: number) {
+    const res = await this.bootcampService.getGroupedAttendanceByBootcamp(bootcamp_id);
+    return res;
+  }
 }
