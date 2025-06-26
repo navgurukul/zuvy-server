@@ -46,8 +46,20 @@ export class AdminAssessmentController {
     description: 'Search by name or email',
   })
   @ApiBearerAuth('JWT-auth')
-  async AssessmentStudents(@Req() req: Request, @Param('assessment_id') assessmentID: number,@Query('searchStudent') searchStudent: string) {
-    return this.adminAssessmentService.getAssessmentStudents(req, assessmentID,searchStudent);
+  async AssessmentStudents(
+    @Req() req: Request,
+    @Param('assessment_id') assessmentID: number,
+    @Query('searchStudent') searchStudent: string,
+    @Query('limit') limit = '10',
+    @Query('offset') offset = '0',
+  ) {
+    return this.adminAssessmentService.getAssessmentStudents(
+      req,
+      assessmentID,
+      searchStudent,
+      Number(limit),
+      Number(offset),
+    );
   }
 
   @Get('assessment/submission/user_id:user_id')

@@ -517,7 +517,13 @@ Team Zuvy`;
     }
   }
 
-  async getAssessmentStudents(req, assessmentID: number, searchStudent: string, limit?: number, offset?: number) {
+  async getAssessmentStudents(
+    req,
+    assessmentID: number,
+    searchStudent: string,
+    limit = 10,
+    offset = 0,
+  ) {
     try {
       // Fetch assessment details
       const assessmentInfo = await db
@@ -565,13 +571,13 @@ Team Zuvy`;
             },
           },
         },
-        limit: limit || 20,
-        offset: offset || 0,
         orderBy: (zuvyBatchEnrollments, { asc }) => asc(zuvyBatchEnrollments.userId),
       });
   
       // Fetch submitted assessments for the given assessmentID
-      const submitedOutsourseAssessments = await db.query.zuvyAssessmentSubmission.findMany({
+      const submitedOutsourseAssessments = await db
+        .query
+        .zuvyAssessmentSubmission.findMany({
         where: (zuvyAssessmentSubmission, { sql }) => sql`
           ${zuvyAssessmentSubmission.assessmentOutsourseId} = ${assessmentID}
           AND EXISTS (
@@ -605,8 +611,6 @@ Team Zuvy`;
             },
           },
         },
-        limit: limit || 20,
-        offset: offset || 0,
         orderBy: (zuvyAssessmentSubmission, { asc }) => asc(zuvyAssessmentSubmission.userId),
       });
       const totalStudentsCount = await db
@@ -641,29 +645,37 @@ Team Zuvy`;
       );
 
       // Combine enrolled students with their submissions
-      const combinedData = enrolledStudents.map((student:any) => {
-        let userId = Number(student.userId);
-        const submission = submissionsMap.get(Number(userId));  
-        return {
-          id: submission?.id || null,
-          userId,
-          name: student.user.name,
-          email: student.user.email,
-          batchName: student.batchInfo?.name || null,
-          marks: submission?.marks || null,
-          startedAt: submission?.startedAt || null,
-          submitedAt: submission?.submitedAt || null,
-          isPassed: submission?.isPassed,
-          percentage: submission?.percentage || null,
-          typeOfsubmission: submission ? submission.typeOfsubmission : 'not attempted',
-          copyPaste: submission?.copyPaste || null,
-          active: submission?.active,
-          reattemptRequested: submission?.reattemptRequested,
-          reattemptApproved: submission?.reattemptApproved,
-          reattemptCount: (reattemptCountMap.get(userId) || 1) - 1,
-          tabChange: submission?.tabChange || null,
-        };
-      });
+      const combinedData = enrolledStudents
+        .map((student: any) => {
+          const userId = Number(student.userId);
+          const submission = submissionsMap.get(userId);
+          const started = submission?.startedAt;
+          const ended = submission?.submitedAt;
+          return {
+            id: submission?.id || null,
+            userId,
+            name: student.user?.name || 'Unknown',
+            email: student.user?.email || 'Unknown',
+            batchName: student.batchInfo?.name || null,
+            marks: submission?.marks || null,
+            startedAt: started || null,
+            submitedAt: ended || null,
+            isPassed: submission?.isPassed,
+            percentage: submission?.percentage || null,
+            typeOfsubmission: submission ? submission.typeOfsubmission : 'not attempted',
+            copyPaste: submission?.copyPaste || null,
+            active: submission?.active,
+            reattemptRequested: submission?.reattemptRequested,
+            reattemptApproved: submission?.reattemptApproved,
+            reattemptCount: (reattemptCountMap.get(userId) || 1) - 1,
+            tabChange: submission?.tabChange || null,
+            timeTaken:
+              started && ended
+                ? Math.floor((new Date(ended).getTime() - new Date(started).getTime()) / 1000)
+                : null,
+          };
+        })
+        .filter((data) => data.startedAt);
   
       // Fetch ModuleAssessment details
       const moduleAssessment = await db.query.zuvyOutsourseAssessments.findFirst({
@@ -683,14 +695,19 @@ Team Zuvy`;
       });
   
       // Prepare the final response
+      const paginatedData = combinedData.slice(offset, offset + limit);
+      const totalPages = Math.ceil(combinedData.length / limit);
+
       const response = {
         ModuleAssessment: {
           title: moduleAssessment?.ModuleAssessment?.title || null,
           description: moduleAssessment?.ModuleAssessment?.description || null,
+          passPercentage: assessmentInfo[0]?.passPercentage || null,
           totalStudents: Number(totalStudentsCount[0]?.count) || 0,
-          totalSubmitedStudents: userReattemptCounts.length,
+          totalSubmitedStudents: combinedData.length,
+          totalPages,
         },
-        submitedOutsourseAssessments: combinedData,
+        submitedOutsourseAssessments: paginatedData,
       };
   
       return response;
