@@ -242,16 +242,24 @@ export class StudentService {
         }
       });
 
-      // Process each enrollment to add upcoming events
-      let totalData = await Promise.all(enrolled.map(async (e: any) => {
+      // Fetch upcoming events once for all bootcamps
+      const [eventsErr, eventsResponse] = await this.getUpcomingEvents(userId);
+      const eventsByBootcamp = (eventsErr ? [] : eventsResponse.data.events)
+        .reduce((acc, event) => {
+          const bootId = Number(event.bootcampId);
+          if (!acc[bootId]) acc[bootId] = [];
+          acc[bootId].push({
+            ...event,
+            id: Number(event.id),
+            bootcampId: bootId
+          });
+          return acc;
+        }, {} as Record<number, any[]>);
+
+      // Process each enrollment and attach upcoming events
+      const totalData = await Promise.all(enrolled.map(async (e: any) => {
         const { batchInfo, tracking, bootcamp } = e;
         const progress = tracking?.progress || 0;
-
-        // Get upcoming events using existing method
-        const [err, eventsResponse] = await this.getUpcomingEvents(userId);
-        const upcomingEvents = err ? [] : eventsResponse.data.events.filter(
-          event => event.bootcampId === bootcamp.id
-        );
 
         return {
           ...bootcamp,
@@ -263,11 +271,7 @@ export class StudentService {
             ...batchInfo.instructorDetails,
             id: Number(batchInfo.instructorDetails.id)
           } : { name: 'Not Assigned', profilePicture: null },
-          upcomingEvents: progress < 100 ? upcomingEvents.map(event => ({
-            ...event,
-            id: Number(event.id),
-            bootcampId: Number(event.bootcampId)
-          })) : [] // Only include events for incomplete bootcamps
+          upcomingEvents: progress < 100 ? (eventsByBootcamp[Number(bootcamp.id)] || []) : []
         };
       }));
 
@@ -495,10 +499,10 @@ export class StudentService {
 
   async getUpcomingEvents(student_id: number, limit?: number, offset?: number): Promise<any> {
     try {
-      // Get enrolled bootcamps
-      let enrolled = await db.select().from(zuvyBatchEnrollments).where(
-        sql`${zuvyBatchEnrollments.userId} = ${student_id} AND ${zuvyBatchEnrollments.batchId} IS NOT NULL`
-      );
+      const enrolled = await db
+        .select({ bootcampId: zuvyBatchEnrollments.bootcampId, batchId: zuvyBatchEnrollments.batchId })
+        .from(zuvyBatchEnrollments)
+        .where(sql`${zuvyBatchEnrollments.userId} = ${student_id} AND ${zuvyBatchEnrollments.batchId} IS NOT NULL`);
 
       if (enrolled.length === 0) {
         return [null, {
@@ -508,71 +512,89 @@ export class StudentService {
         }];
       }
 
-      // Get bootcamp and batch IDs
-      let bootcampAndbatchIds = await Promise.all(
-        enrolled
-          .filter(e => e.batchId !== null)
-          .map(async e => {
-            await this.ClassesService.updatingStatusOfClass(e.bootcampId, e.batchId);
-            return { bootcampId: e.bootcampId, batchId: e.batchId };
-          })
+      const bootcampAndbatchIds = enrolled.map(e => ({ bootcampId: e.bootcampId, batchId: e.batchId }));
+
+      await Promise.all(
+        bootcampAndbatchIds.map(({ bootcampId, batchId }) =>
+          this.ClassesService.updatingStatusOfClass(bootcampId, batchId)
+        )
       );
 
-      // Calculate date range for next 7 days
       const now = new Date();
       const sevenDaysLater = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
 
-      // Get upcoming classes
-      let upcomingClasses = await db.query.zuvySessions.findMany({
+      const upcomingClassesPromise = db.query.zuvySessions.findMany({
         where: (session, { and, or, eq, ne, sql }) =>
           and(
-            or(...bootcampAndbatchIds.map(({ bootcampId, batchId }) =>
-              and(
-                eq(session.bootcampId, bootcampId),
-                eq(session.batchId, batchId)
+            or(
+              ...bootcampAndbatchIds.map(({ bootcampId, batchId }) =>
+                and(eq(session.bootcampId, bootcampId), eq(session.batchId, batchId))
               )
-            )),
+            ),
             ne(session.status, helperVariable.completed),
             sql`${session.startTime}::timestamp >= ${now.toISOString()} AND ${session.startTime}::timestamp <= ${sevenDaysLater.toISOString()}`
           ),
-        orderBy: (session, { asc }) => asc(session.startTime)
+        orderBy: (session, { asc }) => asc(session.startTime),
+        with: {
+          bootcampDetail: {
+            columns: {
+              id: true,
+              name: true
+            }
+          },
+          module: { // <-- Add this block
+            columns: {
+              id: true,
+              name: true
+            }
+          }
+        }
       });
 
-      // Get bootcamp names for classes
-      const bootcampIds = [...new Set(upcomingClasses.map(c => c.bootcampId))];
-      const bootcamps = await db.select().from(zuvyBootcamps).where(inArray(zuvyBootcamps.id, bootcampIds));
-      const bootcampMap = new Map(bootcamps.map(b => [b.id, b.name]));
-
-      // Get upcoming assessments with their titles
-      let upcomingAssessments = await db
+      const upcomingAssessmentsPromise = db
         .select({
           id: zuvyOutsourseAssessments.id,
           startDatetime: zuvyOutsourseAssessments.startDatetime,
           endDatetime: zuvyOutsourseAssessments.endDatetime,
           bootcampId: zuvyOutsourseAssessments.bootcampId,
           timeLimit: zuvyOutsourseAssessments.timeLimit,
-          marks: zuvyOutsourseAssessments.marks,
-          title: zuvyModuleAssessment.title
+          currentStatus: zuvyOutsourseAssessments.currentState,
+          moduleName: zuvyCourseModules.name,
+          moduleId: zuvyCourseModules.id,
+          title: zuvyModuleAssessment.title,
+          bootcampName: zuvyBootcamps.name
         })
         .from(zuvyOutsourseAssessments)
-        .innerJoin(
-          zuvyModuleAssessment,
-          eq(zuvyOutsourseAssessments.assessmentId, zuvyModuleAssessment.id)
-        )
+        .innerJoin(zuvyModuleAssessment, eq(zuvyOutsourseAssessments.assessmentId, zuvyModuleAssessment.id))
+        .innerJoin(zuvyBootcamps, eq(zuvyOutsourseAssessments.bootcampId, zuvyBootcamps.id))
+        .innerJoin(zuvyCourseModules, eq(zuvyOutsourseAssessments.moduleId, zuvyCourseModules.id))
         .where(
           and(
             inArray(zuvyOutsourseAssessments.bootcampId, bootcampAndbatchIds.map(b => b.bootcampId)),
-            sql`${zuvyOutsourseAssessments.startDatetime}::timestamp >= ${now.toISOString()} AND ${zuvyOutsourseAssessments.startDatetime}::timestamp <= ${sevenDaysLater.toISOString()}`
+            sql`
+                ${zuvyOutsourseAssessments.startDatetime}::timestamp >= ${now.toISOString()}
+                AND ${zuvyOutsourseAssessments.startDatetime}::timestamp <= ${sevenDaysLater.toISOString()}
+                AND ${zuvyOutsourseAssessments.currentState} IN (1, 2)
+                `
           )
         )
         .orderBy(asc(zuvyOutsourseAssessments.startDatetime));
 
+<<<<<<< HEAD
       let upcomingAssignments = await db
+=======
+        let upcomingAssignmentsPromise = db
+>>>>>>> 98aef462bc7abb5dc78104db8d14f1a8878d4915
         .select({
           id: zuvyModuleChapter.id,
           title: zuvyModuleChapter.title,
           description: zuvyModuleChapter.description,
           completionDate: zuvyModuleChapter.completionDate,
+<<<<<<< HEAD
+=======
+          moduleName: zuvyCourseModules.name,
+          moduleId: zuvyCourseModules.id,
+>>>>>>> 98aef462bc7abb5dc78104db8d14f1a8878d4915
           bootcampId: zuvyCourseModules.bootcampId
         })
         .from(zuvyModuleChapter)
@@ -588,23 +610,36 @@ export class StudentService {
           )
         )
         .orderBy(asc(zuvyModuleChapter.completionDate));
+<<<<<<< HEAD
 
 
       // Format classes
       const formattedClasses = upcomingClasses.map(c => ({
+=======
+       
+       
+      const [upcomingClasses, upcomingAssessments , upcomingAssignments] = await Promise.all([
+        upcomingClassesPromise,
+        upcomingAssessmentsPromise,
+        upcomingAssignmentsPromise
+
+      ]);
+      const formattedClasses = (upcomingClasses as any[]).map(c => ({
+>>>>>>> 98aef462bc7abb5dc78104db8d14f1a8878d4915
         type: 'Live Class' as const,
         id: Number(c.id),
         title: c.title,
         startTime: c.startTime,
         endTime: c.endTime,
         status: c.status,
+        moduleName: c.module?.name,
+        moduleId: c.module?.id,
         bootcampId: Number(c.bootcampId),
-        bootcampName: bootcampMap.get(c.bootcampId) || 'Unknown Bootcamp',
+        bootcampName: c.bootcampDetail?.name || 'Unknown Bootcamp',
         batchId: Number(c.batchId),
         eventDate: c.startTime
       }));
 
-      // Format assessments
       const formattedAssessments = upcomingAssessments.map(a => ({
         type: 'Assessment' as const,
         id: Number(a.id),
@@ -612,37 +647,58 @@ export class StudentService {
         startDatetime: a.startDatetime,
         endDatetime: a.endDatetime,
         bootcampId: Number(a.bootcampId),
-        bootcampName: bootcampMap.get(a.bootcampId) || 'Unknown Bootcamp',
+        bootcampName: a.bootcampName || 'Unknown Bootcamp',
+        moduleName: a.moduleName,
+        moduleId: a.moduleId,
         timeLimit: a.timeLimit,
-        marks: a.marks,
         eventDate: a.startDatetime
       }));
 
+<<<<<<< HEAD
       // Format assignments
       const formattedAssignments = upcomingAssignments.map(a => ({
+=======
+       const formattedAssignments = upcomingAssignments.map(a => ({
+>>>>>>> 98aef462bc7abb5dc78104db8d14f1a8878d4915
         type: 'Assignment' as const,
         id: Number(a.id),
         title: a.title || 'Assignment',
         description: a.description,
         bootcampId: Number(a.bootcampId),
+<<<<<<< HEAD
         bootcampName: bootcampMap.get(a.bootcampId) || 'Unknown Bootcamp',
+=======
+        moduleName: a.moduleName,
+        moduleId: a.moduleId,
+        bootcampName: a.bootcampId || 'Unknown Bootcamp',
+>>>>>>> 98aef462bc7abb5dc78104db8d14f1a8878d4915
         completionDate: a.completionDate,
         eventDate: a.completionDate
       }));
 
+<<<<<<< HEAD
       // Combine and sort all events by date
       const allEvents = [...formattedClasses, ...formattedAssessments, ...formattedAssignments]
         .sort((a, b) => {
           return new Date(a.eventDate).getTime() - new Date(b.eventDate).getTime();
         });
+=======
+      const allEvents = [...formattedClasses, ...formattedAssessments,...formattedAssignments].sort(
+        (a, b) => new Date(a.eventDate).getTime() - new Date(b.eventDate).getTime()
+      );
+
+      const totalEvents = allEvents.length;
+      const paginatedEvents = limit || offset ? allEvents.slice(offset || 0, (offset || 0) + (limit || totalEvents)) : allEvents;
+      const totalPages = limit ? Math.ceil(totalEvents / limit) : 1;
+>>>>>>> 98aef462bc7abb5dc78104db8d14f1a8878d4915
 
       return [null, {
         message: 'Upcoming events fetched successfully',
         statusCode: STATUS_CODES.OK,
         data: {
-          events: allEvents,
-          totalEvents: allEvents.length,
-          totalPages: 1
+          events: paginatedEvents,
+          totalEvents,
+          totalPages
         }
       }];
     } catch (error) {
