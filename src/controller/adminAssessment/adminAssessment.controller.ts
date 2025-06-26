@@ -8,8 +8,8 @@ import { Roles } from 'src/decorators/roles.decorator';
 import { STATUS_CODES } from 'src/helpers';
 import { ErrorResponse, SuccessResponse } from 'src/errorHandler/handler';
 
-@Controller('adminAssessment')
-@ApiTags('adminAssessment')
+@Controller('admin')
+@ApiTags('admin')
 @UsePipes(
   new ValidationPipe({
     whitelist: true,
@@ -45,9 +45,33 @@ export class AdminAssessmentController {
     type: String,
     description: 'Search by name or email',
   })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    type: Number,
+    description: 'total data fetched:',
+  })
+  @ApiQuery({
+    name: 'offset',
+    required: false,
+    type: Number,
+    description: 'skip data',
+  })
   @ApiBearerAuth('JWT-auth')
-  async AssessmentStudents(@Req() req: Request, @Param('assessment_id') assessmentID: number,@Query('searchStudent') searchStudent: string) {
-    return this.adminAssessmentService.getAssessmentStudents(req, assessmentID,searchStudent);
+  async AssessmentStudents(
+    @Req() req: Request,
+    @Param('assessment_id') assessmentID: number,
+    @Query('searchStudent') searchStudent: string,
+    @Query('limit') limit = '10',
+    @Query('offset') offset = '0',
+  ) {
+    return this.adminAssessmentService.getAssessmentStudents(
+      req,
+      assessmentID,
+      searchStudent,
+      Number(limit),
+      Number(offset),
+    );
   }
 
   @Get('assessment/submission/user_id:user_id')

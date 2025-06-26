@@ -61,6 +61,13 @@ export class AuthService {
       if (!user) {
         throw new UnauthorizedException('User not found');
       }
+      if (!user.googleUserId) {
+        await db.update(users)
+          .set({ googleUserId: googleUserId })
+          .where(eq(users.id, user.id));
+        // Optionally, update the user object in memory as well
+        user.googleUserId = googleUserId;
+      }
       if (user.googleUserId !== googleUserId) {
         throw new UnauthorizedException('Google user ID mismatch');
       }

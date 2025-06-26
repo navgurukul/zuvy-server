@@ -43,10 +43,10 @@ const moment = require('moment-timezone');
 
 
 const { OAuth2 } = google.auth;
-let { GOOGLE_CLIENT_ID, GOOGLE_SECRET, GOOGLE_REDIRECT, ZUVY_REDIRECT_URL } =
+let { GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REDIRECT, ZUVY_REDIRECT_URL } =
   process.env;
 
-let auth2Client = new OAuth2(GOOGLE_CLIENT_ID, GOOGLE_SECRET, GOOGLE_REDIRECT);
+let auth2Client = new OAuth2(GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REDIRECT);
 // const jwtttt = new google.auth.JWT({
 //   email:   client_email,
 //   key:     private_key,
@@ -96,14 +96,10 @@ export class ClassesService {
   async accessOfCalendar(creatorInfo) {
     try {
       const userId = Number(creatorInfo.id);
-      console.log('Checking calendar access for user:', creatorInfo.roles);
-      console.log('User info:', creatorInfo);
       const fetchedTokens = await db
         .select()
         .from(userTokens)
         .where(eq(userTokens.userId, userId));
-
-      console.log('Fetched tokens:', fetchedTokens);
 
       if (!fetchedTokens || fetchedTokens.length === 0) {
         return {
@@ -299,7 +295,6 @@ export class ClassesService {
     creatorInfo: any,
   ) {
     try {
-      console.log("create admin",creatorInfo)
       // Mapping days of the week to moment.js day indices
       const dayToMomentDay: { [key: string]: number } = {
         Sunday: 0,
@@ -698,13 +693,11 @@ export class ClassesService {
         access_token: fetchedTokens[0].accessToken,
         refresh_token: fetchedTokens[0].refreshToken,
       });
-      console.log("auth2Client",auth2Client)
       const client = google.admin({ version: 'reports_v1', auth: auth2Client });
       const allMeetings = await db
         .select()
         .from(zuvySessions)
         .where(eq(zuvySessions.batchId, batchId));
-        console.log("allMeetings",allMeetings)
       const attendanceByTitle = {};
 
       for (const singleMeeting of allMeetings) {
@@ -715,7 +708,6 @@ export class ClassesService {
           maxResults: 1000,
           filters: `calendar_event_id==${singleMeeting.meetingId}`,
         });
-         console.log("responseClass",response)
         const meetingAttendance = {};
 
         for (const student of fetchedStudents) {
@@ -1512,7 +1504,6 @@ export class ClassesService {
         .select()
         .from(zuvySessions)
         .where(sql`${zuvySessions.batchId} = ${Number(batchId)}`);
-       console.log(classes) 
       const sortedClasses = _.orderBy(
         classes,
         (classObj) => new Date(classObj.startTime),
@@ -1540,7 +1531,6 @@ export class ClassesService {
         start,
         end,
       );
-      console.log("paginatedCompletedClasses",paginatedCompletedClasses)
       const paginatedOngoingClasses = ongoingClasses.slice(
         start,
         end,

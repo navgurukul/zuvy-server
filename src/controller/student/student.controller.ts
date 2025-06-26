@@ -98,7 +98,6 @@ export class StudentController {
     @Param('bootcampId') bootcampId: number,
   ): Promise<object> {
     const userIds = Array.isArray(userId) ? userId : [userId]; // Ensure userIds is always an array of numbers
-    console.log("###", userIds, bootcampId)
     const [err, res] = await this.studentService.removingStudent(
       userIds,
       bootcampId,
@@ -147,7 +146,7 @@ export class StudentController {
 
   @Get('/UpcomingEvents')
   @ApiOperation({ summary: 'Get upcoming events  for next 7 days including classes and assessments' })
-  @ApiBearerAuth()
+  @ApiBearerAuth('JWT-auth')
   @ApiQuery({
     name: 'limit',
     type: Number,
@@ -187,7 +186,7 @@ export class StudentController {
 
   @Get('/bootcamp/:bootcampId/completed-classes')
   @ApiOperation({ summary: 'Get completed classes with attendance for a bootcamp' })
-  @ApiBearerAuth()
+  @ApiBearerAuth('JWT-auth')
   @ApiQuery({
     name: 'limit',
     type: Number,

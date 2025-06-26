@@ -409,7 +409,7 @@ export class ClassesController {
 
   @Post('/addliveClassesAsChapters')
   @ApiOperation({ summary: 'Add existing live classes as chapters to a module' })
-  @ApiBearerAuth()
+  @ApiBearerAuth('JWT-auth')
   async addLiveClassesAsChapters(
     @Body() data: AddLiveClassesAsChaptersDto,
     @Req() req,
@@ -436,7 +436,7 @@ export class ClassesController {
 
   @Get('bootcamp/:bootcampId/classes')
   @ApiOperation({ summary: 'Get all classes of a bootcamp with batch, module and chapter details' })
-  @ApiBearerAuth()
+  @ApiBearerAuth('JWT-auth')
   @ApiParam({
     name: 'bootcampId',
     required: true,
@@ -469,7 +469,7 @@ export class ClassesController {
 
   @Delete('delete-live-session-chapter/:chapterId')
   @ApiOperation({ summary: 'Delete a live session chapter' })
-  @ApiBearerAuth()
+  @ApiBearerAuth('JWT-auth')
   @ApiParam({ 
     name: 'chapterId', 
     required: true,
@@ -487,7 +487,6 @@ export class ClassesController {
   @ApiBearerAuth('JWT-auth')
   async checkCalendarAccess(@Req() req) {
     try {
-      console.log("userInfo",req)
       const userInfo = {
         id: Number(req.user[0].id),
         email: req.user[0].email,

@@ -29,7 +29,7 @@ import { InstructorFeedbackDto, PatchOpenendedQuestionDto, CreateOpenendedQuesti
 import { ErrorResponse, SuccessResponse } from 'src/errorHandler/handler';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 
-@Controller('submissions')
+@Controller('submission')
 @ApiTags('submissions')
 @UsePipes(
   new ValidationPipe({
