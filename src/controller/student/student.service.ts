@@ -13,7 +13,9 @@ import {
   zuvyOutsourseAssessments,
   zuvyModuleAssessment,
   zuvyBatches,
-  zuvyStudentAttendance
+  zuvyStudentAttendance,
+  zuvyModuleChapter,
+  zuvyCourseModules
 } from '../../../drizzle/schema';
 import { db } from '../../db/index';
 import { eq, sql, desc, count, asc, or, and, inArray } from 'drizzle-orm';
@@ -539,6 +541,12 @@ export class StudentService {
               id: true,
               name: true
             }
+          },
+          module: { // <-- Add this block
+            columns: {
+              id: true,
+              name: true
+            }
           }
         }
       });
@@ -550,26 +558,59 @@ export class StudentService {
           endDatetime: zuvyOutsourseAssessments.endDatetime,
           bootcampId: zuvyOutsourseAssessments.bootcampId,
           timeLimit: zuvyOutsourseAssessments.timeLimit,
-          marks: zuvyOutsourseAssessments.marks,
+          currentStatus: zuvyOutsourseAssessments.currentState,
+          moduleName: zuvyCourseModules.name,
+          moduleId: zuvyCourseModules.id,
           title: zuvyModuleAssessment.title,
           bootcampName: zuvyBootcamps.name
         })
         .from(zuvyOutsourseAssessments)
         .innerJoin(zuvyModuleAssessment, eq(zuvyOutsourseAssessments.assessmentId, zuvyModuleAssessment.id))
         .innerJoin(zuvyBootcamps, eq(zuvyOutsourseAssessments.bootcampId, zuvyBootcamps.id))
+        .innerJoin(zuvyCourseModules, eq(zuvyOutsourseAssessments.moduleId, zuvyCourseModules.id))
         .where(
           and(
             inArray(zuvyOutsourseAssessments.bootcampId, bootcampAndbatchIds.map(b => b.bootcampId)),
-            sql`${zuvyOutsourseAssessments.startDatetime}::timestamp >= ${now.toISOString()} AND ${zuvyOutsourseAssessments.startDatetime}::timestamp <= ${sevenDaysLater.toISOString()}`
+            sql`
+                ${zuvyOutsourseAssessments.startDatetime}::timestamp >= ${now.toISOString()}
+                AND ${zuvyOutsourseAssessments.startDatetime}::timestamp <= ${sevenDaysLater.toISOString()}
+                AND ${zuvyOutsourseAssessments.currentState} IN (1, 2)
+                `
           )
         )
         .orderBy(asc(zuvyOutsourseAssessments.startDatetime));
 
-      const [upcomingClasses, upcomingAssessments] = await Promise.all([
+        let upcomingAssignmentsPromise = db
+        .select({
+          id: zuvyModuleChapter.id,
+          title: zuvyModuleChapter.title,
+          description: zuvyModuleChapter.description,
+          completionDate: zuvyModuleChapter.completionDate,
+          moduleName: zuvyCourseModules.name,
+          moduleId: zuvyCourseModules.id,
+          bootcampId: zuvyCourseModules.bootcampId
+        })
+        .from(zuvyModuleChapter)
+        .innerJoin(
+          zuvyCourseModules,
+          eq(zuvyModuleChapter.moduleId, zuvyCourseModules.id)
+        )
+        .where(
+          and(
+            eq(zuvyModuleChapter.topicId, 5), // topicId 5 = assignment
+            inArray(zuvyCourseModules.bootcampId, bootcampAndbatchIds.map(b => b.bootcampId)),
+            sql`${zuvyModuleChapter.completionDate}::timestamp >= ${now.toISOString()} AND ${zuvyModuleChapter.completionDate}::timestamp <= ${sevenDaysLater.toISOString()}`
+          )
+        )
+        .orderBy(asc(zuvyModuleChapter.completionDate));
+       
+       
+      const [upcomingClasses, upcomingAssessments , upcomingAssignments] = await Promise.all([
         upcomingClassesPromise,
-        upcomingAssessmentsPromise
-      ]);
+        upcomingAssessmentsPromise,
+        upcomingAssignmentsPromise
 
+      ]);
       const formattedClasses = (upcomingClasses as any[]).map(c => ({
         type: 'Live Class' as const,
         id: Number(c.id),
@@ -577,6 +618,8 @@ export class StudentService {
         startTime: c.startTime,
         endTime: c.endTime,
         status: c.status,
+        moduleName: c.module?.name,
+        moduleId: c.module?.id,
         bootcampId: Number(c.bootcampId),
         bootcampName: c.bootcampDetail?.name || 'Unknown Bootcamp',
         batchId: Number(c.batchId),
@@ -591,12 +634,26 @@ export class StudentService {
         endDatetime: a.endDatetime,
         bootcampId: Number(a.bootcampId),
         bootcampName: a.bootcampName || 'Unknown Bootcamp',
+        moduleName: a.moduleName,
+        moduleId: a.moduleId,
         timeLimit: a.timeLimit,
-        marks: a.marks,
         eventDate: a.startDatetime
       }));
 
-      const allEvents = [...formattedClasses, ...formattedAssessments].sort(
+       const formattedAssignments = upcomingAssignments.map(a => ({
+        type: 'Assignment' as const,
+        id: Number(a.id),
+        title: a.title || 'Assignment',
+        description: a.description,
+        bootcampId: Number(a.bootcampId),
+        moduleName: a.moduleName,
+        moduleId: a.moduleId,
+        bootcampName: a.bootcampId || 'Unknown Bootcamp',
+        completionDate: a.completionDate,
+        eventDate: a.completionDate
+      }));
+
+      const allEvents = [...formattedClasses, ...formattedAssessments,...formattedAssignments].sort(
         (a, b) => new Date(a.eventDate).getTime() - new Date(b.eventDate).getTime()
       );
 

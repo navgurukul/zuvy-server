@@ -45,6 +45,18 @@ export class AdminAssessmentController {
     type: String,
     description: 'Search by name or email',
   })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    type: Number,
+    description: 'total data fetched:',
+  })
+  @ApiQuery({
+    name: 'offset',
+    required: false,
+    type: Number,
+    description: 'skip data',
+  })
   @ApiBearerAuth('JWT-auth')
   async AssessmentStudents(
     @Req() req: Request,
