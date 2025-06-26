@@ -580,21 +580,15 @@ export class StudentService {
         )
         .orderBy(asc(zuvyOutsourseAssessments.startDatetime));
 
-<<<<<<< HEAD
-      let upcomingAssignments = await db
-=======
+
         let upcomingAssignmentsPromise = db
->>>>>>> 98aef462bc7abb5dc78104db8d14f1a8878d4915
         .select({
           id: zuvyModuleChapter.id,
           title: zuvyModuleChapter.title,
           description: zuvyModuleChapter.description,
           completionDate: zuvyModuleChapter.completionDate,
-<<<<<<< HEAD
-=======
           moduleName: zuvyCourseModules.name,
           moduleId: zuvyCourseModules.id,
->>>>>>> 98aef462bc7abb5dc78104db8d14f1a8878d4915
           bootcampId: zuvyCourseModules.bootcampId
         })
         .from(zuvyModuleChapter)
@@ -610,22 +604,14 @@ export class StudentService {
           )
         )
         .orderBy(asc(zuvyModuleChapter.completionDate));
-<<<<<<< HEAD
-
-
-      // Format classes
-      const formattedClasses = upcomingClasses.map(c => ({
-=======
-       
        
       const [upcomingClasses, upcomingAssessments , upcomingAssignments] = await Promise.all([
         upcomingClassesPromise,
         upcomingAssessmentsPromise,
         upcomingAssignmentsPromise
+      ])
 
-      ]);
       const formattedClasses = (upcomingClasses as any[]).map(c => ({
->>>>>>> 98aef462bc7abb5dc78104db8d14f1a8878d4915
         type: 'Live Class' as const,
         id: Number(c.id),
         title: c.title,
@@ -654,35 +640,19 @@ export class StudentService {
         eventDate: a.startDatetime
       }));
 
-<<<<<<< HEAD
-      // Format assignments
-      const formattedAssignments = upcomingAssignments.map(a => ({
-=======
        const formattedAssignments = upcomingAssignments.map(a => ({
->>>>>>> 98aef462bc7abb5dc78104db8d14f1a8878d4915
         type: 'Assignment' as const,
         id: Number(a.id),
         title: a.title || 'Assignment',
         description: a.description,
         bootcampId: Number(a.bootcampId),
-<<<<<<< HEAD
-        bootcampName: bootcampMap.get(a.bootcampId) || 'Unknown Bootcamp',
-=======
         moduleName: a.moduleName,
         moduleId: a.moduleId,
         bootcampName: a.bootcampId || 'Unknown Bootcamp',
->>>>>>> 98aef462bc7abb5dc78104db8d14f1a8878d4915
         completionDate: a.completionDate,
         eventDate: a.completionDate
       }));
 
-<<<<<<< HEAD
-      // Combine and sort all events by date
-      const allEvents = [...formattedClasses, ...formattedAssessments, ...formattedAssignments]
-        .sort((a, b) => {
-          return new Date(a.eventDate).getTime() - new Date(b.eventDate).getTime();
-        });
-=======
       const allEvents = [...formattedClasses, ...formattedAssessments,...formattedAssignments].sort(
         (a, b) => new Date(a.eventDate).getTime() - new Date(b.eventDate).getTime()
       );
@@ -690,7 +660,6 @@ export class StudentService {
       const totalEvents = allEvents.length;
       const paginatedEvents = limit || offset ? allEvents.slice(offset || 0, (offset || 0) + (limit || totalEvents)) : allEvents;
       const totalPages = limit ? Math.ceil(totalEvents / limit) : 1;
->>>>>>> 98aef462bc7abb5dc78104db8d14f1a8878d4915
 
       return [null, {
         message: 'Upcoming events fetched successfully',
