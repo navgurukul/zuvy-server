@@ -536,6 +536,16 @@ export class StudentService {
             sql`${session.startTime}::timestamp >= ${now.toISOString()} AND ${session.startTime}::timestamp <= ${sevenDaysLater.toISOString()}`
           ),
         orderBy: (session, { asc }) => asc(session.startTime),
+        columns: {
+          id: true,
+          title: true,
+          startTime: true,
+          endTime: true,
+          status: true,
+          batchId: true,
+          bootcampId: true,
+          chapterId: true,
+        },
         with: {
           bootcampDetail: {
             columns: {
@@ -543,7 +553,7 @@ export class StudentService {
               name: true
             }
           },
-          module: { // <-- Add this block
+          module: {
             columns: {
               id: true,
               name: true
@@ -563,7 +573,8 @@ export class StudentService {
           moduleName: zuvyCourseModules.name,
           moduleId: zuvyCourseModules.id,
           title: zuvyModuleAssessment.title,
-          bootcampName: zuvyBootcamps.name
+          bootcampName: zuvyBootcamps.name,
+          chapterId: zuvyOutsourseAssessments.chapterId,
         })
         .from(zuvyOutsourseAssessments)
         .innerJoin(zuvyModuleAssessment, eq(zuvyOutsourseAssessments.assessmentId, zuvyModuleAssessment.id))
@@ -585,6 +596,7 @@ export class StudentService {
         let upcomingAssignmentsPromise = db
         .select({
           id: zuvyModuleChapter.id,
+          chapterId: zuvyModuleChapter.id,
           title: zuvyModuleChapter.title,
           description: zuvyModuleChapter.description,
           completionDate: zuvyModuleChapter.completionDate,
@@ -624,6 +636,7 @@ export class StudentService {
         bootcampId: Number(c.bootcampId),
         bootcampName: c.bootcampDetail?.name || 'Unknown Bootcamp',
         batchId: Number(c.batchId),
+        chapterId: Number(c.chapterId),
         eventDate: c.startTime
       }));
 
@@ -638,6 +651,7 @@ export class StudentService {
         moduleName: a.moduleName,
         moduleId: a.moduleId,
         timeLimit: a.timeLimit,
+        chapterId: a.chapterId,
         eventDate: a.startDatetime
       }));
 
@@ -651,6 +665,7 @@ export class StudentService {
         moduleId: a.moduleId,
         bootcampName: a.bootcampId || 'Unknown Bootcamp',
         completionDate: a.completionDate,
+        chapterId: a.chapterId,
         eventDate: a.completionDate
       }));
 
