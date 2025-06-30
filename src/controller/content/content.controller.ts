@@ -514,7 +514,6 @@ export class ContentController {
   }
 
   @Get('/allTags')
-  @Roles('admin')
   @ApiOperation({ summary: 'Get all the available tags' })
   @ApiBearerAuth('JWT-auth')
   async getAllTags() {
