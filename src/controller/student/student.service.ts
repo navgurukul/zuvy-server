@@ -545,6 +545,7 @@ export class StudentService {
           batchId: true,
           bootcampId: true,
           chapterId: true,
+          hangoutLink: true
         },
         with: {
           bootcampDetail: {
@@ -637,7 +638,8 @@ export class StudentService {
         bootcampName: c.bootcampDetail?.name || 'Unknown Bootcamp',
         batchId: Number(c.batchId),
         chapterId: Number(c.chapterId),
-        eventDate: c.startTime
+        eventDate: c.startTime,
+        hangoutLink: c.hangoutLink
       }));
 
       const formattedAssessments = upcomingAssessments.map(a => ({
