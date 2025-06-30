@@ -15,7 +15,8 @@ import {
   zuvyBatches,
   zuvyStudentAttendance,
   zuvyModuleChapter,
-  zuvyCourseModules
+  zuvyCourseModules,
+  zuvyModuleTopics
 } from '../../../drizzle/schema';
 import { db } from '../../db/index';
 import { eq, sql, desc, count, asc, or, and, inArray } from 'drizzle-orm';
@@ -535,6 +536,16 @@ export class StudentService {
             sql`${session.startTime}::timestamp >= ${now.toISOString()} AND ${session.startTime}::timestamp <= ${sevenDaysLater.toISOString()}`
           ),
         orderBy: (session, { asc }) => asc(session.startTime),
+        columns: {
+          id: true,
+          title: true,
+          startTime: true,
+          endTime: true,
+          status: true,
+          batchId: true,
+          bootcampId: true,
+          chapterId: true,
+        },
         with: {
           bootcampDetail: {
             columns: {
@@ -542,7 +553,7 @@ export class StudentService {
               name: true
             }
           },
-          module: { // <-- Add this block
+          module: {
             columns: {
               id: true,
               name: true
@@ -562,7 +573,8 @@ export class StudentService {
           moduleName: zuvyCourseModules.name,
           moduleId: zuvyCourseModules.id,
           title: zuvyModuleAssessment.title,
-          bootcampName: zuvyBootcamps.name
+          bootcampName: zuvyBootcamps.name,
+          chapterId: zuvyOutsourseAssessments.chapterId,
         })
         .from(zuvyOutsourseAssessments)
         .innerJoin(zuvyModuleAssessment, eq(zuvyOutsourseAssessments.assessmentId, zuvyModuleAssessment.id))
@@ -584,6 +596,7 @@ export class StudentService {
         let upcomingAssignmentsPromise = db
         .select({
           id: zuvyModuleChapter.id,
+          chapterId: zuvyModuleChapter.id,
           title: zuvyModuleChapter.title,
           description: zuvyModuleChapter.description,
           completionDate: zuvyModuleChapter.completionDate,
@@ -623,6 +636,7 @@ export class StudentService {
         bootcampId: Number(c.bootcampId),
         bootcampName: c.bootcampDetail?.name || 'Unknown Bootcamp',
         batchId: Number(c.batchId),
+        chapterId: Number(c.chapterId),
         eventDate: c.startTime
       }));
 
@@ -637,6 +651,7 @@ export class StudentService {
         moduleName: a.moduleName,
         moduleId: a.moduleId,
         timeLimit: a.timeLimit,
+        chapterId: a.chapterId,
         eventDate: a.startDatetime
       }));
 
@@ -650,6 +665,7 @@ export class StudentService {
         moduleId: a.moduleId,
         bootcampName: a.bootcampId || 'Unknown Bootcamp',
         completionDate: a.completionDate,
+        chapterId: a.chapterId,
         eventDate: a.completionDate
       }));
 
@@ -1108,6 +1124,208 @@ Team Zuvy`;
         status: 'error',
         statusCode: 500,
         message: error,
+      }];
+    }
+  }
+
+  async getCourseSyllabus(userId: number, bootcampId: number): Promise<any> {
+    try {
+      // Check if user is enrolled in this bootcamp
+      const enrollment = await db.query.zuvyBatchEnrollments.findFirst({
+        where: (zuvyBatchEnrollments, { and, eq }) =>
+          and(
+            eq(zuvyBatchEnrollments.userId, BigInt(userId)),
+            eq(zuvyBatchEnrollments.bootcampId, bootcampId)
+          ),
+        with: {
+          batchInfo: {
+            columns: {
+              id: true,
+              name: true,
+              instructorId: true
+            },
+            with: {
+              instructorDetails: {
+                columns: {
+                  id: true,
+                  name: true,
+                  profilePicture: true
+                }
+              }
+            }
+          },
+          bootcamp: {
+            columns: {
+              id: true,
+              name: true,
+              description: true,
+              collaborator: true,
+              duration: true
+            }
+          }
+        }
+      });
+
+      if (!enrollment) {
+        return [{
+          status: 'error',
+          statusCode: 404,
+          message: 'You are not enrolled in this bootcamp',
+        }];
+      }
+
+      // Get total students in this bootcamp
+      const totalStudents = await db
+        .select({ count: count() })
+        .from(zuvyBatchEnrollments)
+        .where(eq(zuvyBatchEnrollments.bootcampId, bootcampId));
+
+      // Get all modules for this bootcamp with their chapters
+      const modules = await db.query.zuvyCourseModules.findMany({
+        where: (zuvyCourseModules, { eq }) => eq(zuvyCourseModules.bootcampId, bootcampId),
+        columns: {
+          id: true,
+          name: true,
+          description: true,
+          order: true,
+          timeAlloted: true
+        },
+        with: {
+          moduleChapterData: {
+            columns: {
+              id: true,
+              title: true,
+              description: true,
+              topicId: true,
+              order: true,
+              completionDate: true
+            },
+            orderBy: (zuvyModuleChapter, { asc }) => asc(zuvyModuleChapter.order)
+          }
+        },
+        orderBy: (zuvyCourseModules, { asc }) => asc(zuvyCourseModules.order)
+      });
+
+      // Get topic types for chapters
+      const topicIds = modules.flatMap(module => 
+        (module as any).moduleChapterData?.map((chapter: any) => chapter.topicId) || []
+      ).filter((id: any) => id !== null);
+
+      const topicTypes = topicIds.length > 0 ? await db
+        .select({
+          id: zuvyModuleTopics.id,
+          name: zuvyModuleTopics.name
+        })
+        .from(zuvyModuleTopics)
+        .where(inArray(zuvyModuleTopics.id, topicIds)) : [];
+
+      const topicMap = new Map(topicTypes.map(topic => [topic.id, topic.name]));
+
+      // Get chapter IDs to fetch assessment durations
+      const chapterIds = modules.flatMap(module => 
+        (module as any).moduleChapterData?.map((chapter: any) => chapter.id) || []
+      );
+
+      // Define allowed assessment states
+      const allowedStates = [1, 2, 3]; // 1: PUBLISHED, 2: ACTIVE, 3: CLOSED
+
+      // Fetch assessment durations for chapters (only published/active/closed)
+      const chapterAssessments = chapterIds.length > 0 ? await db
+        .select({
+          chapterId: zuvyOutsourseAssessments.chapterId,
+          timeLimit: zuvyOutsourseAssessments.timeLimit,
+          currentState: zuvyOutsourseAssessments.currentState
+        })
+        .from(zuvyOutsourseAssessments)
+        .where(
+          and(
+            inArray(zuvyOutsourseAssessments.chapterId, chapterIds),
+            inArray(zuvyOutsourseAssessments.currentState, allowedStates)
+          )
+        ) : [];
+
+      // Fetch live class durations for chapters
+      const chapterSessions = chapterIds.length > 0 ? await db
+        .select({
+          chapterId: zuvySessions.chapterId,
+          startTime: zuvySessions.startTime,
+          endTime: zuvySessions.endTime
+        })
+        .from(zuvySessions)
+        .where(inArray(zuvySessions.chapterId, chapterIds)) : [];
+
+      const chapterDurationMap = new Map(
+        chapterAssessments.map(assessment => [assessment.chapterId, assessment.timeLimit ? Math.round(assessment.timeLimit / 60) : null])
+      );
+
+      // Calculate session durations and add to map
+      chapterSessions.forEach(session => {
+        if (session.startTime && session.endTime) {
+          const startTime = new Date(session.startTime);
+          const endTime = new Date(session.endTime);
+          const durationMinutes = Math.round((endTime.getTime() - startTime.getTime()) / (1000 * 60));
+          
+          // If assessment duration exists, keep it, otherwise use session duration
+          if (!chapterDurationMap.has(session.chapterId) && durationMinutes > 0) {
+            chapterDurationMap.set(session.chapterId, durationMinutes);
+          }
+        }
+      });
+
+      // Format the response
+      const formattedModules = modules.map(module => ({
+        moduleId: Number(module.id),
+        moduleName: module.name,
+        moduleDescription: module.description,
+        moduleDuration: module.timeAlloted ? `${Math.round(module.timeAlloted / 60)} min` : 'Not specified',
+        chapters: ((module as any).moduleChapterData || []).map((chapter: any) => {
+          const duration = chapterDurationMap.get(chapter.id);
+          let chapterDuration = 'Self-paced';
+          
+          if (duration) {
+            chapterDuration = `${duration} min`;
+          } else if (chapter.completionDate) {
+            chapterDuration = 'Timed';
+          }
+          
+          return {
+            chapterId: Number(chapter.id),
+            chapterName: chapter.title,
+            chapterDescription: chapter.description,
+            chapterType: chapter.topicId ? topicMap.get(chapter.topicId) || 'Unknown' : 'Unknown',
+            chapterDuration: chapterDuration,
+            chapterOrder: chapter.order
+          };
+        })
+      }));
+
+      const syllabus = {
+        bootcampId: Number((enrollment as any).bootcamp?.id || bootcampId),
+        bootcampName: (enrollment as any).bootcamp?.name || 'Unknown Bootcamp',
+        bootcampDescription: (enrollment as any).bootcamp?.description || '',
+        collaboratorName: (enrollment as any).bootcamp?.collaborator || '',
+        courseDuration: (enrollment as any).bootcamp?.duration || '',
+        totalStudentsInCourse: totalStudents[0]?.count || 0,
+        studentBatchId: (enrollment as any).batchInfo?.id ? Number((enrollment as any).batchInfo.id) : null,
+        studentBatchName: (enrollment as any).batchInfo?.name || 'Not Assigned',
+        instructorName: (enrollment as any).batchInfo?.instructorDetails?.name || 'Not Assigned',
+        instructorProfilePicture: (enrollment as any).batchInfo?.instructorDetails?.profilePicture,
+        modules: formattedModules
+      };
+
+      return [null, {
+        status: 'success',
+        statusCode: STATUS_CODES.OK,
+        message: 'Course syllabus fetched successfully',
+        data: syllabus
+      }];
+
+    } catch (error) {
+      this.logger.error('Error in getCourseSyllabus:', error);
+      return [{
+        status: 'error',
+        statusCode: STATUS_CODES.BAD_REQUEST,
+        message: error.message,
       }];
     }
   }

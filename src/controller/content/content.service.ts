@@ -74,6 +74,7 @@ import {
   PutObjectCommand,
 } from '@aws-sdk/client-s3';
 import { SseService } from '../../services/sse.service';
+import { ClassesService } from '../classes/classes.service';
 let { S3_ACCESS_KEY_ID, S3_BUCKET_NAME, S3_REGION, S3_SECRET_KEY_ACCESS } = process.env
 import e from 'express';
 let { DIFFICULTY } = helperVariable;
@@ -86,7 +87,8 @@ export class ContentService {
   logger: any;
   constructor(
     private config: ConfigService,
-    private sseService: SseService
+    private sseService: SseService,
+    private classesService: ClassesService
   ) {
     this.bucket = this.config.get('S3_BUCKET_NAME');
     this.region = 'ap-south-1';
@@ -594,6 +596,9 @@ export class ContentService {
 
   async getChapterDetailsById(chapterId: number, bootcampId: number, moduleId: number, topicId: number) {
     try {
+      if (topicId === 8) { // Assuming 8 is for sessions/live classes
+        await this.classesService.updatingStatusOfClass(bootcampId, undefined, chapterId);
+      }
       if (topicId == 6) {
         const chapterDetails = await db.query.zuvyOutsourseAssessments.findMany({
           where: (zuvyOutsourseAssessments, { eq }) => eq(zuvyOutsourseAssessments.chapterId, chapterId),
