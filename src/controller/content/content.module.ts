@@ -7,6 +7,7 @@ import { ContentController } from './content.controller';
 import { ContentService } from './content.service';
 import { JwtService } from '@nestjs/jwt';
 import { SseService } from '../../services/sse.service';
+import { ClassesModule } from '../classes/classes.module';
 
 @Module({
   imports: [
@@ -23,6 +24,7 @@ import { SseService } from '../../services/sse.service';
         cb(null, isImage || isPdf);
       },
     }),
+    ClassesModule
   ],
   controllers: [ContentController],
   providers: [ContentService, JwtService, SseService],

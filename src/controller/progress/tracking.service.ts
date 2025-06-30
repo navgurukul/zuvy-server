@@ -33,13 +33,14 @@ import { STATUS_CODES } from 'src/helpers';
 import { helperVariable } from 'src/constants/helper';
 import * as crypto from 'crypto';
 import { ContentService } from '../content/content.service';
+import { ClassesService } from '../classes/classes.service';
 
 // Difficulty Points Mapping
 let { ACCEPTED, SUBMIT } = helperVariable;
 
 @Injectable()
 export class TrackingService {
-  constructor(private contentService: ContentService) { }
+  constructor(private contentService: ContentService, private classesService: ClassesService) { }
 
   async updateChapterStatus(
     bootcampId: number,
@@ -833,6 +834,27 @@ export class TrackingService {
 
   async getChapterDetailsWithStatus(chapterId: number, userId: number) {
     try {
+      const chapter = await db.query.zuvyModuleChapter.findFirst({
+        where: (moduleChapter, { eq }) => eq(moduleChapter.id, chapterId),
+      });
+
+      if (chapter) {
+        const bootcamp = await db.query.zuvyCourseModules.findFirst({
+          where: (cm, { eq }) => eq(cm.id, chapter.moduleId),
+          columns: { bootcampId: true }
+        });
+        const enrollment = await db.query.zuvyBatchEnrollments.findFirst({
+          where: (be, { and, eq }) => and(
+            eq(be.userId, BigInt(userId)),
+            eq(be.bootcampId, bootcamp.bootcampId)
+          ),
+          columns: { batchId: true }
+        });
+        if (bootcamp && enrollment) {
+          await this.classesService.updatingStatusOfClass(bootcamp.bootcampId, enrollment.batchId, chapterId);
+        }
+      }
+
       const trackingData = await db.query.zuvyModuleChapter.findFirst({
         where: (moduleChapter, { eq }) => eq(moduleChapter.id, chapterId),
         orderBy: (moduleChapter, { asc }) => asc(moduleChapter.order),
