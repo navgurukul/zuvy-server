@@ -1163,6 +1163,7 @@ Team Zuvy`;
               name: true,
               description: true,
               collaborator: true,
+              coverImage:true,
               duration: true
             }
           }
@@ -1308,6 +1309,7 @@ Team Zuvy`;
         bootcampDescription: (enrollment as any).bootcamp?.description || '',
         collaboratorName: (enrollment as any).bootcamp?.collaborator || '',
         courseDuration: (enrollment as any).bootcamp?.duration || '',
+        coverImage: (enrollment as any).bootcamp?.coverImage || '',
         totalStudentsInCourse: totalStudents[0]?.count || 0,
         studentBatchId: (enrollment as any).batchInfo?.id ? Number((enrollment as any).batchInfo.id) : null,
         studentBatchName: (enrollment as any).batchInfo?.name || 'Not Assigned',
