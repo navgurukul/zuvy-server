@@ -901,7 +901,7 @@ export class TrackingService {
           attendance: true
         }
       });
-
+      
       // Map attendance data to sessions
       if (sessions.length > 0) {
         trackingData['sessions'] = sessions.map(session => {
@@ -917,10 +917,9 @@ export class TrackingService {
             const studentAttendance = attendanceArray.find((record: any) =>
               record.email === userDetails?.email || record.student === userDetails?.email
             );
-
             if (studentAttendance) {
-              attendanceStatus = studentAttendance.status || 'absent';
-              durationSeconds = studentAttendance.duration_seconds || '0';
+              attendanceStatus = studentAttendance.attendance || 'absent';
+              durationSeconds = studentAttendance.duration || '0';
             }
           }
 
