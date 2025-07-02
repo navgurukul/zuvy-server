@@ -1585,14 +1585,20 @@ export class ClassesService {
     }
   }
 
-  async updatingStatusOfClass(bootcamp_id: number, batch_id: number) {
+  async updatingStatusOfClass(bootcamp_id: number, batch_id: number, chapterId?: number) {
     try {
       const currentTime = new Date();
 
       // Fetch classes based on bootcamp_id and batch_id
-      let classes = await db.select().from(zuvySessions)
-        .where(sql`${zuvySessions.bootcampId} = ${bootcamp_id} AND ${zuvySessions.status} not in ('completed')
-                ${!isNaN(batch_id) ? sql`AND ${zuvySessions.batchId} = ${batch_id}` : sql``}`);
+      let classesQuery = db.select().from(zuvySessions)
+        .where(and(
+          eq(zuvySessions.bootcampId, bootcamp_id),
+          sql`${zuvySessions.status} not in ('completed')`,
+          !isNaN(batch_id) ? eq(zuvySessions.batchId, batch_id) : undefined,
+          chapterId ? eq(zuvySessions.chapterId, chapterId) : undefined
+        ));
+
+      let classes = await classesQuery;
 
       // Fetch admin user details
       const user = await db
@@ -1610,54 +1616,65 @@ export class ClassesService {
       // Process each class
       for (let classObj of classes) {
         // Fetch calendar event
-        const event = await calendar.events.get({
-          calendarId: 'primary',
-          eventId: classObj.meetingId,
-        });
-        const { start, end, status } = event.data;
+        try {
+          const event = await calendar.events.get({
+            calendarId: 'primary',
+            eventId: classObj.meetingId,
+          });
+          const { start, end, status } = event.data;
 
-        // If the event was canceled, delete the class
-        if (status === 'cancelled') {
-          deleteClassIds.push(classObj.meetingId);
-          continue;
-        }
+          // If the event was canceled, delete the class
+          if (status === 'cancelled') {
+            deleteClassIds.push(classObj.meetingId);
+            continue;
+          }
 
-        const apiStartTime = start?.dateTime || start?.date;
-        const apiEndTime = end?.dateTime || end?.date;
-        const startTime = new Date(classObj.startTime);
-        const endTime = new Date(classObj.endTime);
+          const apiStartTime = start?.dateTime || start?.date;
+          const apiEndTime = end?.dateTime || end?.date;
+          const startTime = new Date(classObj.startTime);
+          const endTime = new Date(classObj.endTime);
 
-        // Determine new status
-        let newStatus;
-        if (currentTime > endTime) {
-          newStatus = 'completed';
-        } else if (currentTime >= startTime && currentTime <= endTime) {
-          newStatus = 'ongoing';
-        } else {
-          newStatus = 'upcoming';
-        }
+          // Determine new status
+          let newStatus;
+          if (currentTime > endTime) {
+            newStatus = 'completed';
+          } else if (currentTime >= startTime && currentTime <= endTime) {
+            newStatus = 'ongoing';
+          } else {
+            newStatus = 'upcoming';
+          }
 
-        // Check if an update is needed
-        if (
-          apiStartTime !== classObj.startTime ||
-          apiEndTime !== classObj.endTime ||
-          newStatus !== classObj.status
-        ) {
-          // Prepare the update object
-          let updatedClass = {
-            startTime: apiStartTime,
-            endTime: apiEndTime,
-            status: newStatus,
-          };
+          // Check if an update is needed
+          if (
+            apiStartTime !== classObj.startTime ||
+            apiEndTime !== classObj.endTime ||
+            newStatus !== classObj.status
+          ) {
+            // Prepare the update object
+            let updatedClass = {
+              startTime: apiStartTime,
+              endTime: apiEndTime,
+              status: newStatus,
+            };
 
-          // Add the class to the batch update list
-          classesToUpdate.push({ id: classObj.id, updatedClass });
+            // Add the class to the batch update list
+            classesToUpdate.push({ id: classObj.id, updatedClass });
+          }
+        } catch (error) {
+          if (error.code === 404 || error.code === 410) { // Not Found or Gone
+            deleteClassIds.push(classObj.meetingId);
+            Logger.log(`Event ${classObj.meetingId} not found or deleted from calendar. Removing from DB.`);
+          } else {
+            throw error; // Re-throw other errors
+          }
         }
       }
 
-      await db
-        .delete(zuvySessions)
-        .where(inArray(zuvySessions.meetingId, deleteClassIds));
+      if (deleteClassIds.length > 0) {
+        await db
+          .delete(zuvySessions)
+          .where(inArray(zuvySessions.meetingId, deleteClassIds));
+      }
 
       // Batch update all classes that need updates
       if (classesToUpdate.length > 0) {
