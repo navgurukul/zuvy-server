@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { db } from '../../db/index';
-import { notInArray, sql } from 'drizzle-orm';
+import { notInArray, sql, or } from 'drizzle-orm';
 import axios from 'axios';
 import { SubmitCodeDto, CreateProblemDto } from './dto/codingPlatform.dto';
 import * as _ from 'lodash';
@@ -13,13 +13,63 @@ import {
 import { generateTemplates } from '../../helpers/index';
 import { STATUS_CODES } from "../../helpers/index";
 import { helperVariable } from 'src/constants/helper';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 
 // Difficulty Points Mapping
 let { ACCEPTED, SUBMIT, RUN, WAIT_API_RESPONSE } = helperVariable;
-const { RAPID_BASE_URL, RAPID_API_KEY, RAPID_HOST } = process.env; // INPORTING env VALUSE ZUVY_CONTENT
+const { RAPID_BASE_URL, RAPID_API_KEY, RAPID_HOST,GEMINI_API_KEY } = process.env; // INPORTING env VALUSE ZUVY_CONTENT
+const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
 
 @Injectable()
 export class CodingPlatformService {
+  private async getSimilarQuestion(title: string, description: string): Promise<any> {
+    try {
+      const titleKeywords = title.split(' ');
+      let similarQuestions = [];
+      if (titleKeywords.length > 0) {
+        const orConditions = titleKeywords.map(keyword => sql`LOWER(${zuvyCodingQuestions.title}) LIKE ${'%' + keyword.toLowerCase() + '%'}`);
+        similarQuestions = await db.select().from(zuvyCodingQuestions).where(or(...orConditions));
+      }
+
+      if (similarQuestions.length === 0) {
+        return { isDuplicate: false };
+      }
+
+      // Smarter pre-filtering using Jaccard similarity
+      const newTitleSet = new Set(title.toLowerCase().split(' '));
+      const candidateQuestions = similarQuestions.filter(q => {
+        const existingTitleSet = new Set(q.title.toLowerCase().split(' '));
+        const intersection = new Set([...newTitleSet].filter(x => existingTitleSet.has(x)));
+        const union = new Set([...newTitleSet, ...existingTitleSet]);
+        const jaccardSimilarity = intersection.size / union.size;
+        return jaccardSimilarity > 0.5; 
+      });
+
+      if (candidateQuestions.length === 0) {
+        return { isDuplicate: false };
+      }
+
+      const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash-latest' });
+
+      const prompt = `You are an expert in programming questions. Your task is to identify if a new question is a functional duplicate of an existing one.\n      New Question Title: "${title}"\n      New Question Description: "${description}"\n\n      Existing Questions:\n      ${candidateQuestions.map((q, index) => `${index + 1}. Title: "${q.title}", Description: "${q.description}"`).join('\n')}\n\n      Is the new question a duplicate of any of the existing questions? A question is a duplicate if it has the same goal and constraints. For example, "add 2 numbers" and "add 4 numbers" are NOT duplicates because the number of inputs is different. Please answer with "Yes" or "No". If "Yes", please provide the title of the most similar existing question.`;
+
+      const result = await model.generateContent(prompt);
+      const response = await result.response;
+      const text = await response.text();
+
+      if (text.startsWith('Yes')) {
+        const similarQuestionTitle = text.split('most similar existing question: "')[1]?.replace('"', '');
+        return { isDuplicate: true, similarQuestionTitle };
+      } else {
+        return { isDuplicate: false };
+      }
+    } catch (error) {
+      // Handle API errors or other issues
+      Logger.error('Error checking for similar questions:', error);
+      return { isDuplicate: false }; // Default to not a duplicate on error
+    }
+  }
+
   formatForJavaStrict(jsData) {
     if (Array.isArray(jsData)) {
       return `[${jsData.map(item => this.formatForJavaStrict(item)).join(',')}]`;
@@ -440,6 +490,13 @@ export class CodingPlatformService {
     const { testCases, ...questionData } = createCodingQuestionDto;
     questionData['usage'] = 0;
     try {
+      const similarQuestion = await this.getSimilarQuestion(questionData.title, questionData.description);
+      if (similarQuestion.isDuplicate) {
+        return [{
+          message: `A similar question already exists: "${similarQuestion.similarQuestionTitle}"`,
+          statusCode: STATUS_CODES.CONFLICT
+        }];
+      }
       const question: any = await db.insert(zuvyCodingQuestions).values(questionData).returning();
       let testCaseAndExpectedOutput = [];
       for (let i = 0; i < testCases.length; i++) {
