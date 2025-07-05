@@ -680,7 +680,7 @@ Team Zuvy`;
       });
   
       // Prepare the final response
-      const paginatedData = combinedData.slice(offset, offset + limit);
+      const paginatedData = (isNaN(limit) || isNaN(offset)) ? combinedData : combinedData.slice(offset, offset + limit);
       const totalPages = Math.ceil(combinedData.length / limit);
 
       const response = {
