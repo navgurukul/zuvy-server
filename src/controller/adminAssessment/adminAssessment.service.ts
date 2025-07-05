@@ -416,20 +416,20 @@ Team Zuvy`;
       const assessment = await db.query.zuvyOutsourseAssessments.findMany({
         where: (zuvyOutsourseAssessments, { eq ,and}) =>
           {
-          const conditions = [
+            const conditions = [
                 eq(zuvyOutsourseAssessments.bootcampId, bootcampID)
-          ];
-          if (searchAssessment) {
-            conditions.push(sql`
-              EXISTS (
-                SELECT 1
-                FROM main.zuvy_module_assessment AS ma
-                WHERE ma.id = ${zuvyOutsourseAssessments.id}
-                AND lower(ma.title) LIKE lower(${searchAssessment + '%'})
+            ];
+            if (searchAssessment) {
+                conditions.push(sql`
+                    EXISTS (
+                        SELECT 1
+                        FROM main.zuvy_module_assessment AS ma
+                        WHERE ma.id = ${zuvyOutsourseAssessments.id}
+                        AND lower(ma.title) LIKE lower(${searchAssessment + '%'})
                 )`);
-          }
-      
-          return and(...conditions);
+            }
+    
+            return and(...conditions);
         },
         columns: {
           id: true,
@@ -462,13 +462,13 @@ Team Zuvy`;
             AND ${zuvyAssessmentSubmission.active} IS true
             AND ${zuvyAssessmentSubmission.isPassed} IS NOT NULL
             AND EXISTS (
-                SELECT 1
-                FROM main.zuvy_batch_enrollments
-                WHERE main.zuvy_batch_enrollments.user_id = ${zuvyAssessmentSubmission.userId}
-                AND main.zuvy_batch_enrollments.bootcamp_id = ${bootcampID}
-                AND main.zuvy_batch_enrollments.batch_id IS NOT NULL
-              )
-            `,
+              SELECT 1
+              FROM main.zuvy_batch_enrollments
+              WHERE main.zuvy_batch_enrollments.user_id = ${zuvyAssessmentSubmission.userId}
+              AND main.zuvy_batch_enrollments.bootcamp_id = ${bootcampID}
+              AND main.zuvy_batch_enrollments.batch_id IS NOT NULL
+            )
+          `,
           },
         },
       });
@@ -498,36 +498,14 @@ Team Zuvy`;
     }
   }
 
-  async getAssessmentStudents(req, assessmentID: number, searchStudent: string, limit?: number, offset?: number) {
+  async getAssessmentStudents(
+    req,
+    assessmentID: number,
+    searchStudent: string,
+    limit = 10,
+    offset = 0,
+  ) {
     try {
-       /*
-        {
-            "id": 1121,
-            "userId": 63345,
-            "marks": 16.67,
-            "startedAt": "2025-04-25T08:15:36.439+00:00",
-            "submitedAt": "2025-04-25T08:16:53.376+00:00",
-            "isPassed": false,
-            "percentage": 16.67,
-            "codingQuestionCount": null,
-            "openEndedQuestionCount": null,
-            "attemptedCodingQuestions": 0,
-            "codingScore": 0,
-            "mcqScore": 16.666666666666664,
-            "openEndedScore": 0,
-            "requiredCodingScore": null,
-            "requiredOpenEndedScore": 0,
-            "typeOfsubmission": "studentSubmit",
-            "copyPaste": null,
-            "active": true,
-            "reattemptRequested": false,
-            "reattemptApproved": false,
-            "reattemptCount": 0,
-            "tabChange": null,
-            "name": "Mohanty Sukanya",
-            "email": "mohanty21@navgurukul.org"
-        }
-       */
       // Fetch assessment details
       const assessmentInfo = await db
         .select()
@@ -559,6 +537,7 @@ Team Zuvy`;
         `,
         columns: {
           userId: true,
+          batchId: true,
         },
         with: {
           user: {
@@ -567,14 +546,19 @@ Team Zuvy`;
               email: true,
             },
           },
+          batchInfo: {
+            columns: {
+              name: true,
+            },
+          },
         },
-        limit: limit || 20,
-        offset: offset || 0,
         orderBy: (zuvyBatchEnrollments, { asc }) => asc(zuvyBatchEnrollments.userId),
       });
   
       // Fetch submitted assessments for the given assessmentID
-      const submitedOutsourseAssessments = await db.query.zuvyAssessmentSubmission.findMany({
+      const submitedOutsourseAssessments = await db
+        .query
+        .zuvyAssessmentSubmission.findMany({
         where: (zuvyAssessmentSubmission, { sql }) => sql`
           ${zuvyAssessmentSubmission.assessmentOutsourseId} = ${assessmentID}
           AND EXISTS (
@@ -599,15 +583,6 @@ Team Zuvy`;
           tabChange: true,
           copyPaste: true,
           typeOfsubmission: true,
-          codingQuestionCount: true,
-          openEndedQuestionCount: true,
-          attemptedCodingQuestions: true,
-          codingScore: true,
-          mcqScore: true,
-          openEndedScore: true,
-          requiredCodingScore: true,
-          requiredOpenEndedScore: true,
-          assessmentOutsourseId: true,
         },
         with: {
           user: {
@@ -617,8 +592,6 @@ Team Zuvy`;
             },
           },
         },
-        limit: limit || 20,
-        offset: offset || 0,
         orderBy: (zuvyAssessmentSubmission, { asc }) => asc(zuvyAssessmentSubmission.userId),
       });
       const totalStudentsCount = await db
@@ -653,36 +626,37 @@ Team Zuvy`;
       );
 
       // Combine enrolled students with their submissions
-      const combinedData = enrolledStudents.map((student:any) => {
-        let userId = Number(student.userId);
-        const submission = submissionsMap.get(Number(userId));  
-        return {
-          id: submission?.id || null,
-          userId,
-          name: student.user.name,
-          email: student.user.email,
-          marks: submission?.marks || null,
-          startedAt: submission?.startedAt || null,
-          submitedAt: submission?.submitedAt || null,
-          isPassed: submission?.isPassed,
-          percentage: submission?.percentage || null,
-          typeOfsubmission: submission ? submission.typeOfsubmission : 'not attempted',
-          copyPaste: submission?.copyPaste || null,
-          active: submission?.active,
-          reattemptRequested: submission?.reattemptRequested,
-          reattemptApproved: submission?.reattemptApproved,
-          reattemptCount: (reattemptCountMap.get(userId) || 1) - 1,
-          tabChange: submission?.tabChange || null,
-          codingQuestionCount: submission?.codingQuestionCount || null,
-          openEndedQuestionCount: submission?.openEndedQuestionCount || null,
-          attemptedCodingQuestions: submission?.attemptedCodingQuestions || 0,
-          codingScore: submission?.codingScore || 0,
-          mcqScore: submission?.mcqScore || 0,
-          openEndedScore: submission?.openEndedScore || 0,
-          requiredCodingScore: submission?.requiredCodingScore || null,
-          requiredOpenEndedScore: submission?.requiredOpenEndedScore || 0,
-        };
-      });
+      const combinedData = enrolledStudents
+        .map((student: any) => {
+          const userId = Number(student.userId);
+          const submission = submissionsMap.get(userId);
+          const started = submission?.startedAt;
+          const ended = submission?.submitedAt;
+          return {
+            id: submission?.id || null,
+            userId,
+            name: student.user?.name || 'Unknown',
+            email: student.user?.email || 'Unknown',
+            batchName: student.batchInfo?.name || null,
+            marks: submission?.marks || null,
+            startedAt: started || null,
+            submitedAt: ended || null,
+            isPassed: submission?.isPassed,
+            percentage: submission?.percentage || null,
+            typeOfsubmission: submission ? submission.typeOfsubmission : 'not attempted',
+            copyPaste: submission?.copyPaste || null,
+            active: submission?.active,
+            reattemptRequested: submission?.reattemptRequested,
+            reattemptApproved: submission?.reattemptApproved,
+            reattemptCount: (reattemptCountMap.get(userId) || 1) - 1,
+            tabChange: submission?.tabChange || null,
+            timeTaken:
+              started && ended
+                ? Math.floor((new Date(ended).getTime() - new Date(started).getTime()) / 1000)
+                : null,
+          };
+        })
+        .filter((data) => data.startedAt);
   
       // Fetch ModuleAssessment details
       const moduleAssessment = await db.query.zuvyOutsourseAssessments.findFirst({
@@ -702,15 +676,19 @@ Team Zuvy`;
       });
   
       // Prepare the final response
+      const paginatedData = combinedData.slice(offset, offset + limit);
+      const totalPages = Math.ceil(combinedData.length / limit);
+
       const response = {
         ModuleAssessment: {
           title: moduleAssessment?.ModuleAssessment?.title || null,
           description: moduleAssessment?.ModuleAssessment?.description || null,
+          passPercentage: assessmentInfo[0]?.passPercentage || null,
           totalStudents: Number(totalStudentsCount[0]?.count) || 0,
-          totalSubmitedStudents: userReattemptCounts.length,
-          passPercentage: assessmentInfo[0].passPercentage || 0,
+          totalSubmitedStudents: combinedData.length,
+          totalPages,
         },
-        submitedOutsourseAssessments: combinedData,
+        submitedOutsourseAssessments: paginatedData,
       };
   
       return response;
