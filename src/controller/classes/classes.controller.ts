@@ -311,11 +311,12 @@ export class ClassesController {
     return this.classesService.unattendanceClassesByBootcampId(bootcampId);
   }
 
-  @Delete('/delete/:meetingId')
+ @Delete('/delete/:meetingId/:chapterId')
   @ApiOperation({ summary: 'Delete the google class by meetingId' })
   @ApiBearerAuth('JWT-auth')
   deleteClassByMeetingId(
     @Param('meetingId') meetingId: string,
+    @Param('chapterId') chapterId: string,
     @Req() req,
   ): Promise<object> {
     const userInfo = {
@@ -323,7 +324,7 @@ export class ClassesController {
       email: req.user[0].email,
       roles: req.user[0].roles || []
     };
-    return this.classesService.deleteSession(meetingId, userInfo);
+    return this.classesService.deleteSession(meetingId, chapterId, userInfo);
   }
 
   @Patch('/update/:meetingId')

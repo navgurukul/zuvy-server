@@ -73,7 +73,8 @@ export class BootcampService {
             .from(zuvyBootcamps)
             .where(searchCondition)
             .limit(limit)
-            .offset(offset);
+            .offset(offset)
+            .orderBy(desc(zuvyBootcamps.id));
           countQuery = db
             .select({ count: count(zuvyBootcamps.id) })
             .from(zuvyBootcamps)
@@ -85,14 +86,15 @@ export class BootcampService {
             .from(zuvyBootcamps)
             .where(searchCondition)
             .limit(limit)
-            .offset(offset);
+            .offset(offset)
+            .orderBy(desc(zuvyBootcamps.id));
           countQuery = db
             .select({ count: count(zuvyBootcamps.id) })
             .from(zuvyBootcamps)
             .where(searchCondition);
         }
       } else {
-        query = db.select().from(zuvyBootcamps).limit(limit).offset(offset);
+        query = db.select().from(zuvyBootcamps).limit(limit).offset(offset).orderBy(desc(zuvyBootcamps.id));
         countQuery = db
           .select({ count: count(zuvyBootcamps.id) })
           .from(zuvyBootcamps);
@@ -114,7 +116,6 @@ export class BootcampService {
           return { ...bootcamp, ...res };
         }),
       );
-
       return [null, { data, totalBootcamps: totalCount, totalPages }];
     } catch (e) {
       log(`error: ${e.message}`);

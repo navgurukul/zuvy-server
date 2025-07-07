@@ -571,6 +571,8 @@ Team Zuvy`;
             },
           },
         },
+        limit: limit,
+        offset: offset,
         orderBy: (zuvyBatchEnrollments, { asc }) => asc(zuvyBatchEnrollments.userId),
       });
   
@@ -611,6 +613,8 @@ Team Zuvy`;
             },
           },
         },
+        limit: limit,
+        offset: offset,
         orderBy: (zuvyAssessmentSubmission, { asc }) => asc(zuvyAssessmentSubmission.userId),
       });
       const totalStudentsCount = await db
