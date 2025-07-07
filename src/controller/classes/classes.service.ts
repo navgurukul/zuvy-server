@@ -1819,7 +1819,7 @@ export class ClassesService {
     }
   }
 
-  async deleteSession(eventId, creatorInfo) {
+  async deleteSession(eventId, chapterId, creatorInfo) {
     try {
       let calendar: any = await this.accessOfCalendar(creatorInfo);
       // Delete event from Google Calendar
@@ -1829,7 +1829,10 @@ export class ClassesService {
       });
 
       // Delete class details from the database
-      await db.delete(zuvySessions).where(eq(zuvySessions.meetingId, eventId));
+      await db.transaction(async (tx) => {
+        await tx.delete(zuvySessions).where(eq(zuvySessions.meetingId, eventId));
+        await tx.delete(zuvyModuleChapter).where(eq(zuvyModuleChapter.id, chapterId));
+      });
 
       return {
         status: 'success',
