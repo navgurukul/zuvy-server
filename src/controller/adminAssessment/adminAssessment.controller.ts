@@ -65,7 +65,7 @@ export class AdminAssessmentController {
     @Query('limit') limit = '10',
     @Query('offset') offset = '0',
   ) {
-    return this.adminAssessmentService.getAssessmentStudents(
+    return this.adminAssessmentService.getSubmissionsListOfAssessment(
       req,
       assessmentID,
       searchStudent,

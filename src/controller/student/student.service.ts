@@ -1080,7 +1080,6 @@ Team Zuvy`;
       let submitedOutsourseAssessment = submission.submitedOutsourseAssessment
       let ModuleAssessment = submission.submitedOutsourseAssessment.ModuleAssessment
       let user = submission.user
-
       let batch: any = await db.query.zuvyBatchEnrollments.findFirst({
         where: (zuvyBatchEnrollments, { sql }) =>
           sql`${zuvyBatchEnrollments.userId} = ${userId} AND ${zuvyBatchEnrollments.bootcampId} = ${submitedOutsourseAssessment.bootcampId}`,

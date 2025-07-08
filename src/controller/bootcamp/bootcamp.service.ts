@@ -13,15 +13,21 @@ import {
   zuvyBootcampType,
   zuvySessions,
   zuvyStudentAttendance,
+  zuvyCourseModules,
+  zuvyRecentBootcamp,
 } from '../../../drizzle/schema';
 import { editUserDetailsDto } from './dto/bootcamp.dto'
 import { batch } from 'googleapis/build/src/apis/batch';
 import { STATUS_CODES } from 'src/helpers';
+import { ContentService } from '../content/content.service';
 
 const { ZUVY_CONTENT_URL } = process.env; // INPORTING env VALUSE ZUVY_CONTENT
 
 @Injectable()
 export class BootcampService {
+  constructor(
+    private contentService: ContentService,
+  ) {}
   async enrollData(bootcampId: number) {
     try {
       let enrolled = await db
@@ -350,14 +356,24 @@ export class BootcampService {
 
   async deleteBootcamp(id: number): Promise<any> {
     try {
+      // Delete all modules for this bootcamp
+      const modules = await db.select().from(zuvyCourseModules).where(eq(zuvyCourseModules.bootcampId, id));
+      for (const module of modules) {
+        await this.contentService.deleteModule(module.id, id);
+      }
+      // Delete from bootcamp setting/type
+      await db.delete(zuvyBootcampType).where(eq(zuvyBootcampType.bootcampId, id));
+      // Delete from bootcamp tracking
+      await db.delete(zuvyBootcampTracking).where(eq(zuvyBootcampTracking.bootcampId, id));
+      // Delete from recent bootcamp
+      await db.delete(zuvyRecentBootcamp).where(eq(zuvyRecentBootcamp.bootcampId, id));
+      // Delete student attendance for this bootcamp
+      await db.delete(zuvyStudentAttendance).where(eq(zuvyStudentAttendance.bootcampId, id));
+      // Delete batches and enrollments
       await db.delete(zuvyBatches).where(eq(zuvyBatches.bootcampId, id));
-      await db
-        .delete(zuvyBatchEnrollments)
-        .where(eq(zuvyBatchEnrollments.bootcampId, id));
-      let data = await db
-        .delete(zuvyBootcamps)
-        .where(eq(zuvyBootcamps.id, id))
-        .returning();
+      await db.delete(zuvyBatchEnrollments).where(eq(zuvyBatchEnrollments.bootcampId, id));
+      // Finally, delete the bootcamp
+      let data = await db.delete(zuvyBootcamps).where(eq(zuvyBootcamps.id, id)).returning();
       if (data.length === 0) {
         return [
           { status: 'error', message: 'Bootcamp not found', code: 404 },
