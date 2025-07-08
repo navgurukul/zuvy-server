@@ -4,9 +4,10 @@ import { BootcampService } from './bootcamp.service';
 import { JwtModule, JwtService } from '@nestjs/jwt';
 import { JwtMiddleware } from 'src/middleware/jwt.middleware';
 import { AuthModule } from 'src/auth/auth.module';
+import { ContentModule } from '../content/content.module';
 
 @Module({
-    imports: [AuthModule],
+    imports: [AuthModule, ContentModule],
     controllers: [BootcampController],
     providers: [BootcampService, JwtService],
     exports: [BootcampService]

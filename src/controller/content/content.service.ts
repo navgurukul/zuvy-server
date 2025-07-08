@@ -23,7 +23,11 @@ import {
   zuvyModuleQuizVariants,
   zuvyPracticeCode,
   zuvySessions,
-  zuvyStudentAttendance
+  zuvyStudentAttendance,
+  zuvyProjectTracking,
+  zuvyFormTracking,
+  zuvyChapterTracking,
+  zuvyRecentBootcamp
 } from '../../../drizzle/schema';
 
 import { error, log } from 'console';
@@ -1441,42 +1445,116 @@ export class ContentService {
   }
 
   async deleteModule(moduleId: number, bootcampId: number): Promise<any> {
+    // 1. Find all chapters for this module
+    let chapterIds: number[] = [];
     try {
-      let data = await db
-        .delete(zuvyCourseModules)
+      const chapters = await db.select({ id: zuvyModuleChapter.id }).from(zuvyModuleChapter).where(eq(zuvyModuleChapter.moduleId, moduleId));
+      chapterIds = chapters.map(ch => ch.id);
+    } catch (err) {
+      return [{ status: 'error', message: `Failed to fetch chapters: ${err.message}`, code: 500 }, null];
+    }
+
+    // 2. Cascade delete all related records for each chapter
+    const cascadeChapterTables = [
+      { table: zuvyOutsourseQuizzes, column: zuvyOutsourseQuizzes.chapterId, name: 'zuvyOutsourseQuizzes' },
+      { table: zuvyOutsourseOpenEndedQuestions, column: zuvyOutsourseOpenEndedQuestions.chapterId, name: 'zuvyOutsourseOpenEndedQuestions' },
+      { table: zuvyOutsourseCodingQuestions, column: zuvyOutsourseCodingQuestions.chapterId, name: 'zuvyOutsourseCodingQuestions' },
+      { table: zuvySessions, column: zuvySessions.chapterId, name: 'zuvySessions' },
+      { table: zuvyModuleForm, column: zuvyModuleForm.chapterId, name: 'zuvyModuleForm' },
+      { table: zuvyFormTracking, column: zuvyFormTracking.chapterId, name: 'zuvyFormTracking' },
+      { table: zuvyAssignmentSubmission, column: zuvyAssignmentSubmission.chapterId, name: 'zuvyAssignmentSubmission' },
+      { table: zuvyChapterTracking, column: zuvyChapterTracking.chapterId, name: 'zuvyChapterTracking' },
+      { table: zuvyQuizTracking, column: zuvyQuizTracking.chapterId, name: 'zuvyQuizTracking' },
+      { table: zuvyPracticeCode, column: zuvyPracticeCode.chapterId, name: 'zuvyPracticeCode' },
+      { table: zuvyRecentBootcamp, column: zuvyRecentBootcamp.chapterId, name: 'zuvyRecentBootcamp' }
+    ];
+    for (const { table, column, name } of cascadeChapterTables) {
+      try {
+        if (chapterIds.length > 0) {
+          await db.delete(table).where(inArray(column, chapterIds));
+        }
+      } catch (err) {
+        return [{ status: 'error', message: `Failed to delete from ${name}: ${err.message}`, code: 500 }, null];
+      }
+    }
+    // 3. Delete chapters
+    try {
+      if (chapterIds.length > 0) {
+        await db.delete(zuvyModuleChapter).where(inArray(zuvyModuleChapter.id, chapterIds));
+      }
+    } catch (err) {
+      return [{ status: 'error', message: `Failed to delete chapters: ${err.message}`, code: 500 }, null];
+    }
+    // 4. Cascade delete all related records for the module itself
+    const cascadeModuleTables = [
+      { table: zuvyOutsourseAssessments, column: zuvyOutsourseAssessments.moduleId, name: 'zuvyOutsourseAssessments' },
+      { table: zuvyQuizTracking, column: zuvyQuizTracking.moduleId, name: 'zuvyQuizTracking' },
+      { table: zuvyProjectTracking, column: zuvyProjectTracking.moduleId, name: 'zuvyProjectTracking' },
+      { table: zuvyModuleTracking, column: zuvyModuleTracking.moduleId, name: 'zuvyModuleTracking' },
+      { table: zuvySessions, column: zuvySessions.moduleId, name: 'zuvySessions' }
+    ];
+    for (const { table, column, name } of cascadeModuleTables) {
+      try {
+        await db.delete(table).where(eq(column, moduleId));
+      } catch (err) {
+        return [{ status: 'error', message: `Failed to delete from ${name}: ${err.message}`, code: 500 }, null];
+      }
+    }
+    // 5. Delete the module itself
+    let deletedModuleOrder = null;
+    try {
+      const deleted = await db.delete(zuvyCourseModules)
         .where(eq(zuvyCourseModules.id, moduleId))
         .returning();
-      if (data.length === 0) {
-        return [
-          { status: 'error', message: 'Module not found', code: 404 },
-          null,
-        ];
+      if (!deleted.length) {
+        return [{ status: 'error', message: 'Module not found', code: 404 }, null];
       }
+      deletedModuleOrder = deleted[0].order;
+      // Update order of remaining modules in the bootcamp
       await db
         .update(zuvyCourseModules)
         .set({ order: sql`${zuvyCourseModules.order}::numeric - 1` })
         .where(
-          sql`${zuvyCourseModules.order} > ${data[0].order} and ${zuvyCourseModules.bootcampId} = ${bootcampId}`,
+          sql`${zuvyCourseModules.order} > ${deletedModuleOrder} and ${zuvyCourseModules.bootcampId} = ${bootcampId}`,
         );
       return {
         status: 'success',
-        message: 'Module deleted successfully',
+        message: 'Module and all related data deleted successfully',
         code: 200,
       };
     } catch (error) {
       log(`error: ${error.message}`);
-      return [{ status: 'error', message: error.message, code: 404 }, null];
+      return [{ status: 'error', message: error.message, code: 500 }, null];
     }
   }
 
   async deleteChapter(chapterId: number, moduleId: number): Promise<any> {
+    // Cascade delete all related records for this chapter
+    const cascadeChapterTables = [
+      { table: zuvyOutsourseQuizzes, column: zuvyOutsourseQuizzes.chapterId, name: 'zuvyOutsourseQuizzes' },
+      { table: zuvyOutsourseOpenEndedQuestions, column: zuvyOutsourseOpenEndedQuestions.chapterId, name: 'zuvyOutsourseOpenEndedQuestions' },
+      { table: zuvyOutsourseCodingQuestions, column: zuvyOutsourseCodingQuestions.chapterId, name: 'zuvyOutsourseCodingQuestions' },
+      { table: zuvyOutsourseAssessments, column: zuvyOutsourseAssessments.chapterId, name: 'zuvyOutsourseAssessments' },
+      { table: zuvySessions, column: zuvySessions.chapterId, name: 'zuvySessions' },
+      { table: zuvyModuleForm, column: zuvyModuleForm.chapterId, name: 'zuvyModuleForm' },
+      { table: zuvyFormTracking, column: zuvyFormTracking.chapterId, name: 'zuvyFormTracking' },
+      { table: zuvyAssignmentSubmission, column: zuvyAssignmentSubmission.chapterId, name: 'zuvyAssignmentSubmission' },
+      { table: zuvyChapterTracking, column: zuvyChapterTracking.chapterId, name: 'zuvyChapterTracking' },
+      { table: zuvyQuizTracking, column: zuvyQuizTracking.chapterId, name: 'zuvyQuizTracking' },
+      { table: zuvyPracticeCode, column: zuvyPracticeCode.chapterId, name: 'zuvyPracticeCode' },
+      { table: zuvyRecentBootcamp, column: zuvyRecentBootcamp.chapterId, name: 'zuvyRecentBootcamp' }
+    ];
+    for (const { table, column, name } of cascadeChapterTables) {
+      try {
+        await db.delete(table).where(eq(column, chapterId));
+      } catch (err) {
+        return [{ status: 'error', message: `Failed to delete from ${name}: ${err.message}`, code: 500 }, null];
+      }
+    }
+    // Now delete the chapter itself
+    let spyMan;
     try {
-      // First check if this chapter has an assessment
-      const assessment = await db.query.zuvyOutsourseAssessments.findFirst({
-        where: (assessments, { eq }) => eq(assessments.chapterId, chapterId)
-      });
-
-      let spyMan = await db
+      spyMan = await db
         .delete(zuvyModuleChapter)
         .where(eq(zuvyModuleChapter.id, chapterId))
         .returning();
@@ -1486,28 +1564,25 @@ export class ContentService {
           null,
         ];
       }
-
+    } catch (err) {
+      return [{ status: 'error', message: `Failed to delete chapter: ${err.message}`, code: 500 }, null];
+    }
+    // Update order of remaining chapters in the module
+    try {
       await db
         .update(zuvyModuleChapter)
         .set({ order: sql`${zuvyModuleChapter.order}::numeric - 1` })
         .where(
           sql`${zuvyModuleChapter.order} > ${spyMan[0].order} and ${zuvyModuleChapter.moduleId} = ${moduleId}`,
         );
-
-      // If there was an assessment, notify all connected students
-      if (assessment) {
-        this.sseService.notifyAssessmentDeletion(assessment.id);
-      }
-
-      return {
-        status: 'success',
-        message: 'Chapter deleted successfully',
-        code: 200,
-      };
-    } catch (error) {
-      log(`error: ${error.message}`);
-      return [{ status: 'error', message: error.message, code: 404 }, null];
+    } catch (err) {
+      return [{ status: 'error', message: `Failed to update chapter order: ${err.message}`, code: 500 }, null];
     }
+    return {
+      status: 'success',
+      message: 'Chapter and all related data deleted successfully',
+      code: 200,
+    };
   }
 
   async getAllQuizQuestions(
