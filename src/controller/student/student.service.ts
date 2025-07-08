@@ -1131,206 +1131,260 @@ Team Zuvy`;
   }
 
   async getCourseSyllabus(userId: number, bootcampId: number): Promise<any> {
-    try {
-      // Check if user is enrolled in this bootcamp
-      const enrollment = await db.query.zuvyBatchEnrollments.findFirst({
-        where: (zuvyBatchEnrollments, { and, eq }) =>
-          and(
-            eq(zuvyBatchEnrollments.userId, BigInt(userId)),
-            eq(zuvyBatchEnrollments.bootcampId, bootcampId)
-          ),
-        with: {
-          batchInfo: {
-            columns: {
-              id: true,
-              name: true,
-              instructorId: true
-            },
-            with: {
-              instructorDetails: {
-                columns: {
-                  id: true,
-                  name: true,
-                  profilePicture: true
-                }
+  try {
+    // 1. Check if user is enrolled
+    const enrollment = await db.query.zuvyBatchEnrollments.findFirst({
+      where: (zuvyBatchEnrollments, { and, eq }) =>
+        and(
+          eq(zuvyBatchEnrollments.userId, BigInt(userId)),
+          eq(zuvyBatchEnrollments.bootcampId, bootcampId)
+        ),
+      with: {
+        batchInfo: {
+          columns: {
+            id: true,
+            name: true,
+            instructorId: true
+          },
+          with: {
+            instructorDetails: {
+              columns: {
+                id: true,
+                name: true,
+                profilePicture: true
               }
             }
-          },
-          bootcamp: {
-            columns: {
-              id: true,
-              name: true,
-              description: true,
-              collaborator: true,
-              coverImage:true,
-              duration: true
-            }
+          }
+        },
+        bootcamp: {
+          columns: {
+            id: true,
+            name: true,
+            description: true,
+            collaborator: true,
+            coverImage: true,
+            duration: true
           }
         }
-      });
-
-      if (!enrollment) {
-        return [{
-          status: 'error',
-          statusCode: 404,
-          message: 'You are not enrolled in this bootcamp',
-        }];
       }
+    });
 
-      // Get total students in this bootcamp
-      const totalStudents = await db
-        .select({ count: count() })
-        .from(zuvyBatchEnrollments)
-        .where(eq(zuvyBatchEnrollments.bootcampId, bootcampId));
+    if (!enrollment) {
+      return [{
+        status: 'error',
+        statusCode: 404,
+        message: 'You are not enrolled in this bootcamp',
+      }];
+    }
 
-      // Get all modules for this bootcamp with their chapters
-      const modules = await db.query.zuvyCourseModules.findMany({
-        where: (zuvyCourseModules, { eq }) => eq(zuvyCourseModules.bootcampId, bootcampId),
-        columns: {
-          id: true,
-          name: true,
-          description: true,
-          order: true,
-          timeAlloted: true
-        },
-        with: {
-          moduleChapterData: {
-            columns: {
-              id: true,
-              title: true,
-              description: true,
-              topicId: true,
-              order: true,
-              completionDate: true
-            },
-            orderBy: (zuvyModuleChapter, { asc }) => asc(zuvyModuleChapter.order)
-          }
-        },
-        orderBy: (zuvyCourseModules, { asc }) => asc(zuvyCourseModules.order)
-      });
+    // 2. Fetch course lock status
+    const bootcampLockData = await db.query.zuvyBootcampType.findFirst({
+      where: (bootcamp, { eq }) => eq(bootcamp.bootcampId, bootcampId),
+    });
+    const isCourseLocked = bootcampLockData?.isModuleLocked || false;
 
-      // Get topic types for chapters
-      const topicIds = modules.flatMap(module => 
-        (module as any).moduleChapterData?.map((chapter: any) => chapter.topicId) || []
-      ).filter((id: any) => id !== null);
+    // 3. Total enrolled students
+    const totalStudents = await db
+      .select({ count: count() })
+      .from(zuvyBatchEnrollments)
+      .where(eq(zuvyBatchEnrollments.bootcampId, bootcampId));
 
-      const topicTypes = topicIds.length > 0 ? await db
-        .select({
-          id: zuvyModuleTopics.id,
-          name: zuvyModuleTopics.name
-        })
-        .from(zuvyModuleTopics)
-        .where(inArray(zuvyModuleTopics.id, topicIds)) : [];
-
-      const topicMap = new Map(topicTypes.map(topic => [topic.id, topic.name]));
-
-      // Get chapter IDs to fetch assessment durations
-      const chapterIds = modules.flatMap(module => 
-        (module as any).moduleChapterData?.map((chapter: any) => chapter.id) || []
-      );
-
-      // Define allowed assessment states
-      const allowedStates = [1, 2, 3]; // 1: PUBLISHED, 2: ACTIVE, 3: CLOSED
-
-      // Fetch assessment durations for chapters (only published/active/closed)
-      const chapterAssessments = chapterIds.length > 0 ? await db
-        .select({
-          chapterId: zuvyOutsourseAssessments.chapterId,
-          timeLimit: zuvyOutsourseAssessments.timeLimit,
-          currentState: zuvyOutsourseAssessments.currentState
-        })
-        .from(zuvyOutsourseAssessments)
-        .where(
-          and(
-            inArray(zuvyOutsourseAssessments.chapterId, chapterIds),
-            inArray(zuvyOutsourseAssessments.currentState, allowedStates)
-          )
-        ) : [];
-
-      // Fetch live class durations for chapters
-      const chapterSessions = chapterIds.length > 0 ? await db
-        .select({
-          chapterId: zuvySessions.chapterId,
-          startTime: zuvySessions.startTime,
-          endTime: zuvySessions.endTime
-        })
-        .from(zuvySessions)
-        .where(inArray(zuvySessions.chapterId, chapterIds)) : [];
-
-      const chapterDurationMap = new Map(
-        chapterAssessments.map(assessment => [assessment.chapterId, assessment.timeLimit ? Math.round(assessment.timeLimit / 60) : null])
-      );
-
-      // Calculate session durations and add to map
-      chapterSessions.forEach(session => {
-        if (session.startTime && session.endTime) {
-          const startTime = new Date(session.startTime);
-          const endTime = new Date(session.endTime);
-          const durationMinutes = Math.round((endTime.getTime() - startTime.getTime()) / (1000 * 60));
-          
-          // If assessment duration exists, keep it, otherwise use session duration
-          if (!chapterDurationMap.has(session.chapterId) && durationMinutes > 0) {
-            chapterDurationMap.set(session.chapterId, durationMinutes);
-          }
+    // 4. Fetch course modules and chapters
+    const modules = await db.query.zuvyCourseModules.findMany({
+      where: (zuvyCourseModules, { eq }) => eq(zuvyCourseModules.bootcampId, bootcampId),
+      columns: {
+        id: true,
+        name: true,
+        description: true,
+        order: true,
+        timeAlloted: true,
+        isLock: true
+      },
+      with: {
+        moduleChapterData: {
+          columns: {
+            id: true,
+            title: true,
+            description: true,
+            topicId: true,
+            order: true,
+            completionDate: true,
+          },
+          orderBy: (zuvyModuleChapter, { asc }) => asc(zuvyModuleChapter.order)
         }
-      });
+      },
+      orderBy: (zuvyCourseModules, { asc }) => asc(zuvyCourseModules.order)
+    });
 
-      // Format the response
-      const formattedModules = modules.map(module => ({
+    // 5. Fetch module tracking data
+    const moduleTrackingData = await db.query.zuvyModuleTracking.findMany({
+      where: (tracking, { eq }) => eq(tracking.userId, userId),
+      columns: {
+        moduleId: true,
+        progress: true
+      }
+    });
+    const moduleProgressMap = new Map(moduleTrackingData.map(tracking => [Number(tracking.moduleId), tracking.progress]));
+
+    // 6. Get topic types
+    const topicIds = modules.flatMap(module =>
+      (module as any).moduleChapterData?.map((chapter: any) => chapter.topicId) || []
+    ).filter((id: any) => id !== null);
+
+    const topicTypes = topicIds.length > 0 ? await db
+      .select({
+        id: zuvyModuleTopics.id,
+        name: zuvyModuleTopics.name
+      })
+      .from(zuvyModuleTopics)
+      .where(inArray(zuvyModuleTopics.id, topicIds)) : [];
+
+    const topicMap = new Map(topicTypes.map(topic => [topic.id, topic.name]));
+
+    // 7. Get durations for assessments and sessions
+    const chapterIds = modules.flatMap(module =>
+      (module as any).moduleChapterData?.map((chapter: any) => chapter.id) || []
+    );
+
+    const allowedStates = [1, 2, 3]; // PUBLISHED, ACTIVE, CLOSED
+
+    const chapterAssessments = chapterIds.length > 0 ? await db
+      .select({
+        chapterId: zuvyOutsourseAssessments.chapterId,
+        timeLimit: zuvyOutsourseAssessments.timeLimit,
+        currentState: zuvyOutsourseAssessments.currentState
+      })
+      .from(zuvyOutsourseAssessments)
+      .where(
+        and(
+          inArray(zuvyOutsourseAssessments.chapterId, chapterIds),
+          inArray(zuvyOutsourseAssessments.currentState, allowedStates)
+        )
+      ) : [];
+
+    const chapterSessions = chapterIds.length > 0 ? await db
+      .select({
+        chapterId: zuvySessions.chapterId,
+        startTime: zuvySessions.startTime,
+        endTime: zuvySessions.endTime
+      })
+      .from(zuvySessions)
+      .where(inArray(zuvySessions.chapterId, chapterIds)) : [];
+
+    const chapterDurationMap = new Map(
+      chapterAssessments.map(assessment => [
+        assessment.chapterId,
+        assessment.timeLimit ? Math.round(assessment.timeLimit / 60) : null
+      ])
+    );
+
+    chapterSessions.forEach(session => {
+      if (session.startTime && session.endTime) {
+        const startTime = new Date(session.startTime);
+        const endTime = new Date(session.endTime);
+        const durationMinutes = Math.round((endTime.getTime() - startTime.getTime()) / (1000 * 60));
+
+        if (!chapterDurationMap.has(session.chapterId) && durationMinutes > 0) {
+          chapterDurationMap.set(session.chapterId, durationMinutes);
+        }
+      }
+    });
+
+    // 8. Format modules with progress
+    let formattedModules = modules.map((module, index) => {
+      const progress = moduleProgressMap.get(module.id) || 0;
+
+      return {
         moduleId: Number(module.id),
         moduleName: module.name,
         moduleDescription: module.description,
+        isLock: module.isLock, // will override later
+        progress,
         moduleDuration: module.timeAlloted ? `${Math.round(module.timeAlloted / 60)} min` : 'Not specified',
         chapters: ((module as any).moduleChapterData || []).map((chapter: any) => {
           const duration = chapterDurationMap.get(chapter.id);
           let chapterDuration = 'Self-paced';
-          
+
           if (duration) {
             chapterDuration = `${duration} min`;
           } else if (chapter.completionDate) {
             chapterDuration = 'Timed';
           }
-          
+
           return {
             chapterId: Number(chapter.id),
             chapterName: chapter.title,
             chapterDescription: chapter.description,
             chapterType: chapter.topicId ? topicMap.get(chapter.topicId) || 'Unknown' : 'Unknown',
-            chapterDuration: chapterDuration,
+            chapterDuration,
             chapterOrder: chapter.order
           };
         })
-      }));
-
-      const syllabus = {
-        bootcampId: Number((enrollment as any).bootcamp?.id || bootcampId),
-        bootcampName: (enrollment as any).bootcamp?.name || 'Unknown Bootcamp',
-        bootcampDescription: (enrollment as any).bootcamp?.description || '',
-        collaboratorName: (enrollment as any).bootcamp?.collaborator || '',
-        courseDuration: (enrollment as any).bootcamp?.duration || '',
-        coverImage: (enrollment as any).bootcamp?.coverImage || '',
-        totalStudentsInCourse: totalStudents[0]?.count || 0,
-        studentBatchId: (enrollment as any).batchInfo?.id ? Number((enrollment as any).batchInfo.id) : null,
-        studentBatchName: (enrollment as any).batchInfo?.name || 'Not Assigned',
-        instructorName: (enrollment as any).batchInfo?.instructorDetails?.name || 'Not Assigned',
-        instructorProfilePicture: (enrollment as any).batchInfo?.instructorDetails?.profilePicture,
-        modules: formattedModules
       };
+    });
 
-      return [null, {
-        status: 'success',
-        statusCode: STATUS_CODES.OK,
-        message: 'Course syllabus fetched successfully',
-        data: syllabus
-      }];
+    // 9. Locking logic
+    if (!isCourseLocked) {
+      formattedModules = formattedModules.map(module => ({ ...module, isLock: false }));
+    } else {
+      let lastStartedOrCompletedIndex = -1;
 
-    } catch (error) {
-      this.logger.error('Error in getCourseSyllabus:', error);
-      return [{
-        status: 'error',
-        statusCode: STATUS_CODES.BAD_REQUEST,
-        message: error.message,
-      }];
+      for (let i = formattedModules.length - 1; i >= 0; i--) {
+        if (formattedModules[i].progress > 0) {
+          lastStartedOrCompletedIndex = i;
+          break;
+        }
+      }
+
+      if (lastStartedOrCompletedIndex === -1) {
+        formattedModules = formattedModules.map((module, index) => ({
+          ...module,
+          isLock: index !== 0,
+        }));
+      } else {
+        const isLastCompleted = formattedModules[lastStartedOrCompletedIndex].progress === 100;
+
+        formattedModules = formattedModules.map((module, index) => {
+          if (index <= lastStartedOrCompletedIndex) return { ...module, isLock: false };
+          if (isLastCompleted && index === lastStartedOrCompletedIndex + 1) return { ...module, isLock: false };
+          return { ...module, isLock: true };
+        });
+      }
     }
+
+    // 10. Final syllabus response
+    const syllabus = {
+      bootcampId: Number((enrollment as any).bootcamp?.id || bootcampId),
+      bootcampName: (enrollment as any).bootcamp?.name || 'Unknown Bootcamp',
+      bootcampDescription: (enrollment as any).bootcamp?.description || '',
+      collaboratorName: (enrollment as any).bootcamp?.collaborator || '',
+      courseDuration: (enrollment as any).bootcamp?.duration || '',
+      coverImage: (enrollment as any).bootcamp?.coverImage || '',
+      totalStudentsInCourse: totalStudents[0]?.count || 0,
+      studentBatchId: (enrollment as any).batchInfo?.id ? Number((enrollment as any).batchInfo.id) : null,
+      studentBatchName: (enrollment as any).batchInfo?.name || 'Not Assigned',
+      instructorName: (enrollment as any).batchInfo?.instructorDetails?.name || 'Not Assigned',
+      instructorProfilePicture: (enrollment as any).batchInfo?.instructorDetails?.profilePicture,
+      modules: formattedModules.map(({ progress, ...mod }) => mod) // remove progress before returning
+    };
+
+    return [null, {
+      status: 'success',
+      statusCode: STATUS_CODES.OK,
+      message: 'Course syllabus fetched successfully',
+      data: syllabus
+    }];
+
+  } catch (error) {
+    this.logger.error('Error in getCourseSyllabus:', error);
+    return [{
+      status: 'error',
+      statusCode: STATUS_CODES.BAD_REQUEST,
+      message: error.message,
+    }];
   }
+}
+
+
+
 }
