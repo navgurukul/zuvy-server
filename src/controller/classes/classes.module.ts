@@ -4,9 +4,10 @@ import { ClassesService } from './classes.service';
 import { JwtModule, JwtService } from '@nestjs/jwt';
 import { JwtMiddleware } from 'src/middleware/jwt.middleware';
 import { AuthModule } from 'src/auth/auth.module';
+import { ZoomModule } from '../../services/zoom/zoom.module';
 
 @Module({
-    imports: [AuthModule],
+    imports: [AuthModule, ZoomModule],
     controllers: [ClassesController],
     providers: [ClassesService, JwtService],
     exports: [ClassesService]
