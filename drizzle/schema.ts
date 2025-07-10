@@ -2245,6 +2245,11 @@ export const zuvySessions = main.table('zuvy_sessions', {
   recurringId: integer('recurring_id'),
   status: text('status').default('upcoming'),
   version: varchar('version', { length: 10 }),
+  // Meeting type and Zoom fields
+  isZoomMeet: boolean('is_zoom_meet').default(true), // true for Zoom, false for Google Meet
+  zoomStartUrl: text('zoom_start_url'), // Admin start URL for Zoom
+  zoomPassword: text('zoom_password'),
+  zoomMeetingId: text('zoom_meeting_id'), // Zoom meeting ID
 });
 
 export const zuvySessionsRelations = relations(zuvySessions, ({ one, many }) => ({
