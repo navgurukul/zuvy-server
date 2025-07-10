@@ -3437,7 +3437,8 @@ export const zuvyCodingQuestions = main.table("zuvy_coding_questions", {
   tagId: integer("tag_id").references(() => zuvyTags.id),
   createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
-  version: varchar('version', { length: 10 })
+  version: varchar('version', { length: 10 }),
+  embedding: jsonb("embedding").array(), // Embedding vector as array of floats
 })
 
 export const codingQuestionRelations = relations(zuvyCodingQuestions, ({ one, many }) => ({

@@ -12,63 +12,80 @@ import {
 } from '../../../drizzle/schema';
 import { generateTemplates } from '../../helpers/index';
 import { STATUS_CODES } from "../../helpers/index";
-import { helperVariable } from 'src/constants/helper';
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import OpenAI from 'openai';
 
 // Difficulty Points Mapping
-let { ACCEPTED, SUBMIT, RUN, WAIT_API_RESPONSE } = helperVariable;
-const { RAPID_BASE_URL, RAPID_API_KEY, RAPID_HOST,GEMINI_API_KEY } = process.env; // INPORTING env VALUSE ZUVY_CONTENT
-const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
+const { RAPID_BASE_URL, RAPID_API_KEY, RAPID_HOST } = process.env; // INPORTING env VALUSE ZUVY_CONTENT
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+async function getEmbedding(text: string): Promise<number[]> {
+  const response = await openai.embeddings.create({
+    model: 'text-embedding-ada-002',
+    input: text,
+  });
+  return response.data[0].embedding;
+}
+
+// More efficient cosine similarity implementation
+function cosineSimilarity(a: number[], b: number[]): number {
+  let dot = 0, magA = 0, magB = 0;
+  for (let i = 0; i < a.length; i++) {
+    dot   += a[i] * b[i];
+    magA  += a[i] * a[i];
+    magB  += b[i] * b[i];
+  }
+  return dot / (Math.sqrt(magA) * Math.sqrt(magB));
+}
+
+// Use function calling API for more reliable responses
+async function isFunctionallyDuplicateOpenAI(newTitle: string, newDesc: string, existingTitle: string, existingDesc: string): Promise<boolean> {
+  const completion = await openai.chat.completions.create({
+    model: 'gpt-3.5-turbo',
+    messages: [
+      {
+        role: 'system',
+        content: 'You are an expert in programming questions. Determine if two questions are functionally the same.'
+      },
+      {
+        role: 'user',
+        content: `New Question: "${newTitle}" - "${newDesc}"\nExisting Question: "${existingTitle}" - "${existingDesc}"\nAre these functionally the same?`
+      }
+    ],
+    functions: [
+      {
+        name: 'check_duplicate',
+        description: 'Check if two programming questions are functionally the same',
+        parameters: {
+          type: 'object',
+          properties: {
+            is_duplicate: {
+              type: 'boolean',
+              description: 'Whether the questions are functionally the same'
+            },
+            reason: {
+              type: 'string',
+              description: 'Brief explanation of why they are or are not duplicates'
+            }
+          },
+          required: ['is_duplicate']
+        }
+      }
+    ],
+    function_call: { name: 'check_duplicate' },
+    temperature: 0.0
+  });
+  
+  const functionCall = completion.choices[0].message?.function_call;
+  if (functionCall && functionCall.name === 'check_duplicate') {
+    const args = JSON.parse(functionCall.arguments);
+    return args.is_duplicate;
+  }
+  
+  return false; // Default to not duplicate if function call fails
+}
 
 @Injectable()
 export class CodingPlatformService {
-  private async getSimilarQuestion(title: string, description: string): Promise<any> {
-    try {
-      const titleKeywords = title.split(' ');
-      let similarQuestions = [];
-      if (titleKeywords.length > 0) {
-        const orConditions = titleKeywords.map(keyword => sql`LOWER(${zuvyCodingQuestions.title}) LIKE ${'%' + keyword.toLowerCase() + '%'}`);
-        similarQuestions = await db.select().from(zuvyCodingQuestions).where(or(...orConditions));
-      }
-
-      if (similarQuestions.length === 0) {
-        return { isDuplicate: false };
-      }
-
-      // Smarter pre-filtering using Jaccard similarity
-      const newTitleSet = new Set(title.toLowerCase().split(' '));
-      const candidateQuestions = similarQuestions.filter(q => {
-        const existingTitleSet = new Set(q.title.toLowerCase().split(' '));
-        const intersection = new Set([...newTitleSet].filter(x => existingTitleSet.has(x)));
-        const union = new Set([...newTitleSet, ...existingTitleSet]);
-        const jaccardSimilarity = intersection.size / union.size;
-        return jaccardSimilarity > 0.5; 
-      });
-
-      if (candidateQuestions.length === 0) {
-        return { isDuplicate: false };
-      }
-
-      const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash-latest' });
-
-      const prompt = `You are an expert in programming questions. Your task is to identify if a new question is a functional duplicate of an existing one.\n      New Question Title: "${title}"\n      New Question Description: "${description}"\n\n      Existing Questions:\n      ${candidateQuestions.map((q, index) => `${index + 1}. Title: "${q.title}", Description: "${q.description}"`).join('\n')}\n\n      Is the new question a duplicate of any of the existing questions? A question is a duplicate if it has the same goal and constraints. For example, "add 2 numbers" and "add 4 numbers" are NOT duplicates because the number of inputs is different. Please answer with "Yes" or "No". If "Yes", please provide the title of the most similar existing question.`;
-
-      const result = await model.generateContent(prompt);
-      const response = await result.response;
-      const text = await response.text();
-
-      if (text.startsWith('Yes')) {
-        const similarQuestionTitle = text.split('most similar existing question: "')[1]?.replace('"', '');
-        return { isDuplicate: true, similarQuestionTitle };
-      } else {
-        return { isDuplicate: false };
-      }
-    } catch (error) {
-      // Handle API errors or other issues
-      Logger.error('Error checking for similar questions:', error);
-      return { isDuplicate: false }; // Default to not a duplicate on error
-    }
-  }
 
   formatForJavaStrict(jsData) {
     if (Array.isArray(jsData)) {
@@ -85,7 +102,7 @@ export class CodingPlatformService {
 
   async submitCodeBatch(sourceCode: SubmitCodeDto, codingOutsourseId: number, action: string): Promise<any> {
     let testCase;
-    if (RUN === action) {
+    if (action === 'run') {
       testCase = 2;
     } else {
       testCase = 0;
@@ -217,30 +234,30 @@ export class CodingPlatformService {
   async submitPracticeCode(questionId: number, sourceCode, action, userId, submissionId, codingOutsourseId, chapterId): Promise<any> {
     try {
 
-      if (![RUN, SUBMIT].includes(action.toLowerCase())) {
+      if (!['run', 'submit'].includes(action.toLowerCase())) {
         return [{ statusCode: STATUS_CODES.BAD_REQUEST, message: 'Invalid action' }];
       }
       let [err, testcasesSubmission] = await this.submitCodeBatch(sourceCode, questionId, action);
       if (err) {
         return [err];
       }
-      if (testcasesSubmission.data[0].stderr && action != SUBMIT) {
+      if (testcasesSubmission.data[0].stderr && action != 'submit') {
         return [null, { statusCode: STATUS_CODES.CONFLICT, message: `${action} ${testcasesSubmission.data[0].status}`, data: [testcasesSubmission.data[0]] }];
       }
       let insertValues;
       if (testcasesSubmission.data.length >= 0) {
-        insertValues = { status: ACCEPTED, sourceCode: sourceCode.sourceCode, programLangId: sourceCode.languageId };
+        insertValues = { status: 'accepted', sourceCode: sourceCode.sourceCode, programLangId: sourceCode.languageId };
       } else {
         insertValues = { status: 'Error', sourceCode: sourceCode.sourceCode };
       }
 
       for (let testSub of testcasesSubmission.data) {
-        if (testSub.status !== ACCEPTED) {
+        if (testSub.status !== 'accepted') {
           insertValues["status"] = testSub.status
           break;
         }
       }
-      if (action === RUN) {
+      if (action === 'run') {
         // i want to update the last submission sourceCode where last submission sourceCode 
         let queryString = sql`${zuvyPracticeCode.questionId} = ${questionId} AND ${zuvyPracticeCode.userId} = ${userId} AND ${zuvyPracticeCode.action} = ${action}`
         if (submissionId) {
@@ -490,23 +507,66 @@ export class CodingPlatformService {
     const { testCases, ...questionData } = createCodingQuestionDto;
     questionData['usage'] = 0;
     try {
-      const similarQuestion = await this.getSimilarQuestion(questionData.title, questionData.description);
-      if (similarQuestion.isDuplicate) {
-        return [{
-          message: `A similar question already exists: "${similarQuestion.similarQuestionTitle}"`,
-          statusCode: STATUS_CODES.CONFLICT
-        }];
+      // Generate embedding for the new question
+      const embedding = await getEmbedding(`${questionData.title} ${questionData.description}`);
+      questionData.embedding = embedding;
+      
+      // Vector search: find top 10 similar questions by cosine similarity
+      const allQuestions = await db.select().from(zuvyCodingQuestions).where(sql`${zuvyCodingQuestions.embedding} IS NOT NULL`);
+      let topCandidates: any[] = [];
+      if (allQuestions.length > 0) {
+        const similarities = allQuestions.map(q => ({
+          ...q,
+          similarity: cosineSimilarity(embedding, q.embedding as number[])
+        }));
+        topCandidates = similarities.sort((a, b) => b.similarity - a.similarity).slice(0, 10);
       }
+      
+      // OpenAI LLM duplicate check on top candidates
+      for (const q of topCandidates) {
+        const isDup = await isFunctionallyDuplicateOpenAI(
+          questionData.title,
+          questionData.description,
+          q.title,
+          q.description
+        );
+        if (isDup) {
+          return [{
+            message: `A similar question already exists: "${q.title}"`,
+            statusCode: STATUS_CODES.CONFLICT
+          }, null];
+        }
+      }
+      
+      // Handle legacy questions with null embedding
+      const legacyQuestions = await db.select().from(zuvyCodingQuestions).where(sql`${zuvyCodingQuestions.embedding} IS NULL`);
+      for (const q of legacyQuestions) {
+        const isDup = await isFunctionallyDuplicateOpenAI(
+          questionData.title,
+          questionData.description,
+          q.title,
+          q.description
+        );
+        if (isDup) {
+          return [{
+            message: `A similar question already exists: "${q.title}" (legacy question)`,
+            statusCode: STATUS_CODES.CONFLICT
+          }, null];
+        }
+      }
+      
+      // If not duplicate, insert question
       const question: any = await db.insert(zuvyCodingQuestions).values(questionData).returning();
       let testCaseAndExpectedOutput = [];
       for (let i = 0; i < testCases.length; i++) {
         testCaseAndExpectedOutput.push({ questionId: question[0].id, inputs: testCases[i].inputs, expectedOutput: testCases[i].expectedOutput });
       }
       let TestCases = await db.insert(zuvyTestCases).values(testCaseAndExpectedOutput).returning();
-      // return [null,{...question[0], TestCases}];
+      
+      // Remove the legacy backfill IIFE - this should be handled by the separate script
       return [null, { message: 'Coding question created successfully', data: { ...question[0], TestCases }, statusCode: STATUS_CODES.CREATED }];
     } catch (error) {
-      return [[{ message: error.message, statusCode: STATUS_CODES.BAD_REQUEST }]];
+      return [{ message: error.message, statusCode: STATUS_CODES.BAD_REQUEST }, null];
     }
   }
 
@@ -535,7 +595,6 @@ export class CodingPlatformService {
       await this.updateTestCaseAndExpectedOutput(testCases);
       return [null, { message: 'Coding question updated successfully', data: { question, "testCases": [...testCases, ...newAddedTestCases] }, statusCode: STATUS_CODES.OK }];
     } catch (error) {
-      Logger.error(JSON.stringify(error));
       return [[{ message: error.message, statusCode: STATUS_CODES.BAD_REQUEST }]];
     }
   }
@@ -604,7 +663,6 @@ export class CodingPlatformService {
       })
       return [null, { message: 'Test case and expected output updated successfully', statusCode: STATUS_CODES.OK }];
     } catch (error) {
-      Logger.error(JSON.stringify(error));
       return [[{ message: error.message, statusCode: STATUS_CODES.BAD_REQUEST }]];
     }
   }
@@ -681,7 +739,7 @@ export class CodingPlatformService {
   async getSubmissionsId(questionId: number): Promise<any> {
     try {
       const submissions = await db.query.zuvyPracticeCode.findMany({
-        where: (zuvyPracticeCode, { sql }) => sql`${zuvyPracticeCode.questionId} = ${questionId} AND ${zuvyPracticeCode.action} = ${SUBMIT}`,
+        where: (zuvyPracticeCode, { sql }) => sql`${zuvyPracticeCode.questionId} = ${questionId} AND ${zuvyPracticeCode.action} = ${'submit'}`,
         columns: {
           id: true,
           status: true,
