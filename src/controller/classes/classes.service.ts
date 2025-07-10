@@ -1755,6 +1755,31 @@ export class ClassesService {
     try {
       let calendar: any = await this.accessOfCalendar(creatorInfo);
 
+      // Fetch students' emails in the batch (like in createSession)
+      const sessionDetails = await db.select().from(zuvySessions).where(eq(zuvySessions.meetingId, eventId));
+      const studentsInTheBatchEmails = await db
+        .select()
+        .from(zuvyBatchEnrollments)
+        .where(eq(zuvyBatchEnrollments.batchId, sessionDetails[0].batchId));
+      const studentsEmails = [];
+      for (const studentEmail of studentsInTheBatchEmails) {
+        try {
+          const emailFetched = await db
+            .select()
+            .from(users)
+            .where(eq(users.id, BigInt(studentEmail.userId)));
+          if (emailFetched && emailFetched.length > 0) {
+            studentsEmails.push({ email: emailFetched[0].email });
+          }
+        } catch (error) {
+          return {
+            status: 'error',
+            message: 'Fetching emails failed',
+            code: 500,
+          };
+        }
+      }
+
       // Update event in Google Calendar
       const eventUpdateData = {
         calendarId: 'primary',
@@ -1764,18 +1789,13 @@ export class ClassesService {
           description: updatedEventDetails.description,
           start: {
             dateTime: moment(updatedEventDetails.startDateTime),
-            // .subtract(5, 'hours')
-            // .subtract(30, 'minutes')
-            // .format(),
             timeZone: updatedEventDetails.timeZone,
           },
           end: {
             dateTime: moment(updatedEventDetails.endDateTime),
-            // .subtract(5, 'hours')
-            // .subtract(30, 'minutes')
-            // .format(),
             timeZone: updatedEventDetails.timeZone,
           },
+          attendees: studentsEmails, // <-- Add attendees here
         },
       };
 

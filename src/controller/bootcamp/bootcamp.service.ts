@@ -192,8 +192,6 @@ export class BootcampService {
         type: 'Private', // Assuming type is present in bootcampData
         isModuleLocked: false,
       };
-
-      console.log("Bootcamp data", bootcampTypeData)
       let insertedBootcampType = await db
         .insert(zuvyBootcampType)
         .values(bootcampTypeData)
@@ -827,22 +825,29 @@ export class BootcampService {
     offset: number,
   ) {
     try {
-
+      // Fetch all sessions for the batch in the bootcamp (only completed)
+      const sessions = await db.select().from(zuvySessions)
+        .where(and(
+          eq(zuvySessions.bootcampId, bootcampId),
+          batchId ? eq(zuvySessions.batchId, batchId) : undefined,
+          eq(zuvySessions.status, 'completed')
+        ));
+      const sessionMeetingIds = sessions.map(s => s.meetingId);
+      // Fetch all student attendance records for these sessions
+      const allAttendanceRecords = sessionMeetingIds.length > 0
+        ? await db.select().from(zuvyStudentAttendance)
+            .where(inArray(zuvyStudentAttendance.meetingId, sessionMeetingIds))
+        : [];
+      // Fetch students in the batch
       const query = db.select({
         userId: users.id,
         name: users.name,
         email: users.email,
         profilePicture: users.profilePicture,
         bootcampId: zuvyBatchEnrollments.bootcampId,
-        attendance: zuvyBatchEnrollments.attendance,
         batchName: zuvyBatches.name,
         batchId: zuvyBatches.id,
         progress: zuvyBootcampTracking.progress,
-        totalClasses: sql<number>`(
-        SELECT COUNT(*) FROM main.zuvy_sessions 
-        WHERE main.zuvy_sessions.bootcamp_id = ${zuvyBatchEnrollments.bootcampId}
-        AND (${zuvyBatchEnrollments.batchId} IS NULL OR main.zuvy_sessions.batch_id = ${zuvyBatchEnrollments.batchId})
-      )`
       })
         .from(zuvyBatchEnrollments)
         .leftJoin(users, eq(zuvyBatchEnrollments.userId, users.id))
@@ -860,20 +865,43 @@ export class BootcampService {
       const mapData = await query;
       const totalNumberOfStudents = mapData.length;
       const studentsInfo = !isNaN(limit) && !isNaN(offset) ? mapData.slice(offset, offset + limit) : mapData;
-      const modifiedStudentInfo = studentsInfo.map(item => {
-        const attendancePercentage =
-          item.batchId !== null &&
-            item.attendance !== null &&
-            item.totalClasses > 0
-            ? Math.ceil((item.attendance / item.totalClasses) * 100)
-            : 0;
-
+      // Build a map of meetingId to the zuvyStudentAttendance record with the highest id
+      const attendanceMap: Record<string, any> = {};
+      for (const record of allAttendanceRecords) {
+        if (!attendanceMap[record.meetingId] || record.id > attendanceMap[record.meetingId].id) {
+          attendanceMap[record.meetingId] = record;
+        }
+      }
+      const modifiedStudentInfo = studentsInfo.map((item, idx) => {
+        // Only consider sessions for the student's batch
+        const studentSessions = sessions.filter(s => s.batchId === item.batchId);
+        const totalClasses = studentSessions.length;
+        let attended = 0;
+        let debugLogs: any[] = [];
+        if (item.batchId != null && totalClasses > 0) {
+          // For each session, check if student was present
+          for (const session of studentSessions) {
+            const attendanceRecord = attendanceMap[session.meetingId];
+            if (attendanceRecord && Array.isArray(attendanceRecord.attendance)) {
+              const studentAttendance = attendanceRecord.attendance.find((a: any) => a.email === item.email);
+              if (studentAttendance && studentAttendance.attendance === 'present') attended++;
+              
+            }
+          }
+        }
+        let attendancePercentage = 0;
+        if (item.batchId != null && totalClasses > 0) {
+          const percent = (attended / totalClasses) * 100;
+          const decimal = percent - Math.floor(percent);
+          attendancePercentage = decimal < 0.5 ? Math.floor(percent) : Math.ceil(percent);
+        }
         return {
           ...item,
           userId: Number(item.userId),
           attendance: attendancePercentage,
           batchName: item.batchId != null ? item.batchName : 'unassigned',
           progress: item.progress != null ? item.progress : 0,
+          totalClasses: String(totalClasses),
         };
       });
       const currentPage = !isNaN(limit) && !isNaN(offset) ? offset / limit + 1 : 1;

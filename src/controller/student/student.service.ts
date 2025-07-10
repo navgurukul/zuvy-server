@@ -9,7 +9,8 @@ import {
   zuvyStudentApplicationRecord,
   zuvyBootcampTracking,
   zuvyAssessmentReattempt,
-  zuvyAssessmentSubmission
+  zuvyAssessmentSubmission,
+  zuvyStudentAttendance
 } from '../../../drizzle/schema';
 import { db } from '../../db/index';
 import { eq, sql, desc, count, asc, or, and, inArray } from 'drizzle-orm';
@@ -410,6 +411,11 @@ export class StudentService {
 
   async getAttendanceClass(student_id: number) {
     try {
+      const user = await db.select().from(users).where(eq(users.id, BigInt(student_id)));
+      if(user.length == 0){
+        return [{ status: 'error', message: 'user not found', code: 404 }, null];
+      }
+      const studentEmail = user[0].email;
       let enrolled = await db.query.zuvyBatchEnrollments.findMany({
         where: (zuvyBatchEnrollments, { sql }) => sql`${zuvyBatchEnrollments.userId} = ${student_id}`,
         with: {
@@ -425,17 +431,47 @@ export class StudentService {
       }
 
       let totalAttendance = await Promise.all(enrolled.map(async (e: any) => {
+        // Get all completed sessions for this batch
         let classes = await db.select().from(zuvySessions).where(sql`${zuvySessions.batchId} = ${e.batchId} AND ${zuvySessions.status} = 'completed'`).orderBy(desc(zuvySessions.startTime));
-        e.attendance = e.attendance != null ? e.attendance : 0;
-        e.totalClasses = classes.length;
-        e.attendedClasses = classes.length > 0 && e.attendance > 0 ? ((e.attendance / classes.length) * 100).toFixed(2) : 0;
+        const sessionMeetingIds = classes.map(s => s.meetingId);
+        // Get all attendance records for these sessions
+        const allAttendanceRecords = sessionMeetingIds.length > 0
+          ? await db.select().from(zuvyStudentAttendance)
+              .where(inArray(zuvyStudentAttendance.meetingId, sessionMeetingIds))
+          : [];
+        // Build a map of meetingId to the zuvyStudentAttendance record with the highest id
+        const attendanceMap: Record<string, any> = {};
+        for (const record of allAttendanceRecords) {
+          if (!attendanceMap[record.meetingId] || record.id > attendanceMap[record.meetingId].id) {
+            attendanceMap[record.meetingId] = record;
+          }
+        }
+        let attended = 0;
+        for (const session of classes) {
+          const attendanceRecord = attendanceMap[session.meetingId];
+          if (attendanceRecord && Array.isArray(attendanceRecord.attendance)) {
+            const studentAttendance = attendanceRecord.attendance.find((a: any) => a.email === studentEmail);
+            if (studentAttendance && studentAttendance.attendance === 'present') attended++;
+          }
+        }
+       
+        const totalClasses = classes.length;
+        let attendancePercentage = 0;
+        if (totalClasses > 0) {
+          const percent = (attended / totalClasses) * 100;
+          const decimal = percent - Math.floor(percent);
+          attendancePercentage = decimal < 0.5 ? Math.floor(percent) : Math.ceil(percent);
+        }
+        e.attendance = attendancePercentage;
+        e.totalClasses = Number(totalClasses);
+        e.attendedClasses = attended;
         delete e.userId;
-        delete e.bootcamp
+        delete e.bootcamp;
         return e;
       }));
       return totalAttendance;
     } catch (err) {
-      throw err;
+      return [{ message: err.message, code: 500 }, null];
     }
   }
 
