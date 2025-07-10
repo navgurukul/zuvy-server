@@ -462,9 +462,9 @@ export class StudentService {
           const decimal = percent - Math.floor(percent);
           attendancePercentage = decimal < 0.5 ? Math.floor(percent) : Math.ceil(percent);
         }
-        e.attendance = attendancePercentage;
+        e.attendance = attended;
         e.totalClasses = Number(totalClasses);
-        e.attendedClasses = attended;
+        e.attendedClasses = attendancePercentage;
         delete e.userId;
         delete e.bootcamp;
         return e;
