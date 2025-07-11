@@ -304,15 +304,18 @@ export class ScheduleService {
       // 2️⃣ Extract the host’s email from the first log entry
       const organizerParam = items[0].events?.[0].parameters?.find(p => p.name === 'organizer_email');
       const hostEmail = organizerParam?.value;
+      const formattedPrivateKey = PRIVATE_KEY.replace(/\\n/g, '\n').replace(/^"|"$/g, '');
+      
       const jwtClient = new google.auth.JWT({
         email:   CLIENT_EMAIL,
-        key:     PRIVATE_KEY,
+        key:     formattedPrivateKey,
         scopes: [
           'https://www.googleapis.com/auth/drive.metadata.readonly',
           'https://www.googleapis.com/auth/calendar.events.readonly',
         ],
         subject: hostEmail
-      })
+      });
+
       await jwtClient.authorize();
       const calendar = google.calendar({ version: 'v3', auth: jwtClient });
       const drive    = google.drive({ version: 'v3', auth: jwtClient });
@@ -377,63 +380,4 @@ export class ScheduleService {
   const attendanceOfStudents = Object.values(attendanceByTitle);
   return [ null, attendanceOfStudents ];
   }
-  // @Cron('0 30 2 * * *') // Runs every 59 minutes
-  // async processPendingAssessmentSubmissions() {
-  //   this.logger.log('Starting to process pending assessment submissions');
-    
-  //   try {
-  //     // Fetch all assessment submissions where submitedAt is null
-  //     const pendingSubmissions:any = await db.query.zuvyAssessmentSubmission.findMany({
-  //       where: isNull(zuvyAssessmentSubmission.submitedAt),
-  //       with: {
-  //         submitedOutsourseAssessment: true,
-  //       }
-  //     });
-  //     console.log(pendingSubmissions);
-
-  //     console.log('Pending Submissions:', pendingSubmissions[0]);
-
-  //     this.logger.log(`Found ${pendingSubmissions.length} pending assessment submissions`);
-      
-  //     // Process each submission
-  //     // Process each submission as a promise
-  //     await Promise.all(
-  //       pendingSubmissions.map(async (submission) => {
-  //         try {
-  //           let startedAt = new Date(submission.startedAt);
-
-  //           let timeLimit = submission?.submitedOutsourseAssessment?.timeLimit;
-
-  //           let submitTime = new Date(startedAt.getTime() + timeLimit * 60 * 1000);
-  //           let nowDateTime = new Date();
-
-  //           // Check if the submission time has passed
-  //           if (submitTime < nowDateTime) {
-
-  //             // Submit the assessment
-  //             const [submitErr, submitResult] = await this.submissionService.assessmentSubmission(
-  //               { typeOfsubmission: 'auto-submit by cron' }, // Empty data object as we're auto-submitting
-  //               submission.id,
-  //               submission.userId
-  //             );
-  //             console.log({ submitErr, submitResult });
-
-  //             // Log success or handle errors
-  //             if (submitErr) {
-  //               this.logger.error(`Error submitting assessment ${submission.id}: ${submitErr.message}`);
-  //             } else {
-  //               this.logger.log(`Successfully processed assessment submission ${submission.id}`);
-  //             }
-  //           }
-  //         } catch (error) {
-  //           this.logger.error(`Error processing submission ${submission.id}: ${error.message}`);
-  //         }
-  //       })
-  //     );
-      
-  //     this.logger.log('Completed processing pending assessment submissions');
-  //   } catch (error) {
-  //     this.logger.error(`Error in processPendingAssessmentSubmissions: ${error.message}`);
-  //   }
-  // }
 }
