@@ -1580,7 +1580,6 @@ Zuvy LMS Team
 
     try {
       const result = await ses.sendEmail(emailParams).promise();
-      console.log(`📨 Email sent to ${user.email}`, result.MessageId);
     } catch (err) {
       console.error(`❌ Failed to send email to ${user.email}`, err);
     }

@@ -1,6 +1,6 @@
 import { Injectable, Logger, HttpStatus } from '@nestjs/common';
 import { db } from '../../db/index';
-import { eq, sql, count, inArray, or, and, like, desc } from 'drizzle-orm';
+import { eq, sql, count, inArray, or, and, like, desc, ne } from 'drizzle-orm';
 import axios from 'axios';
 import * as _ from 'lodash';
 import { error, log } from 'console';
@@ -15,6 +15,7 @@ import {
   zuvyStudentAttendance,
   zuvyCourseModules,
   zuvyRecentBootcamp,
+  zuvyModuleTracking
 } from '../../../drizzle/schema';
 import { editUserDetailsDto } from './dto/bootcamp.dto'
 import { batch } from 'googleapis/build/src/apis/batch';
@@ -27,7 +28,7 @@ const { ZUVY_CONTENT_URL } = process.env; // INPORTING env VALUSE ZUVY_CONTENT
 export class BootcampService {
   constructor(
     private contentService: ContentService,
-  ) {}
+  ) { }
   async enrollData(bootcampId: number) {
     try {
       let enrolled = await db
@@ -142,18 +143,6 @@ export class BootcampService {
           null,
         ];
       }
-      if (isContent) {
-        try {
-          let respo = await axios.get(
-            ZUVY_CONTENT_URL +
-            `/${id}?populate=zuvy_modules&populate=zuvy_modules.zuvy_articles&populate=zuvy_modules.zuvy_mcqs.quiz.qz`,
-          );
-          bootcamp[0]['content'] = respo.data;
-        } catch (error) {
-          log(`Error posting data: ${error.message}`);
-        }
-      }
-
       return [
         null,
         {
@@ -199,7 +188,6 @@ export class BootcampService {
         isModuleLocked: false,
       };
 
-      console.log("Bootcamp data", bootcampTypeData)
       let insertedBootcampType = await db
         .insert(zuvyBootcampType)
         .values(bootcampTypeData)
@@ -369,6 +357,8 @@ export class BootcampService {
       await db.delete(zuvyRecentBootcamp).where(eq(zuvyRecentBootcamp.bootcampId, id));
       // Delete student attendance for this bootcamp
       await db.delete(zuvyStudentAttendance).where(eq(zuvyStudentAttendance.bootcampId, id));
+
+      await db.delete(zuvyModuleTracking).where(eq(zuvyModuleTracking.bootcampId, id));
       // Delete batches and enrollments
       await db.delete(zuvyBatches).where(eq(zuvyBatches.bootcampId, id));
       await db.delete(zuvyBatchEnrollments).where(eq(zuvyBatchEnrollments.bootcampId, id));
@@ -523,6 +513,15 @@ export class BootcampService {
           .select()
           .from(users)
           .where(sql`${users.email} = ${users_data[0].email}`);
+        if (userData.length >= 1) {
+          // Update name if different
+          if (userData[0].name !== users_data[0].name) {
+            await db
+              .update(users)
+              .set({ name: users_data[0].name })
+              .where(sql`${users.email} = ${users_data[0].email}`);
+          }
+        }
         if (userData.length >= 1 && batchId) {
           let enrollUser = await db
             .select()
@@ -576,6 +575,15 @@ export class BootcampService {
           .select()
           .from(users)
           .where(sql`${users.email} = ${users_data[i]['email']}`);
+        if (userInfo.length > 0) {
+          // Update name if different
+          if (userInfo[0].name !== users_data[i]['name']) {
+            await db
+              .update(users)
+              .set({ name: users_data[i]['name'] })
+              .where(sql`${users.email} = ${users_data[i]['email']}`);
+          }
+        }
         if (userInfo.length === 0) {
           userInfo = await db.insert(users).values(newUser).returning();
           c += 1;
@@ -864,6 +872,26 @@ export class BootcampService {
         return [null, { message: 'No fields to update', statusCode: STATUS_CODES.BAD_REQUEST }];
       }
 
+      // If updating email, check if it already exists for another user
+      if (editUserDetailsDto.email) {
+        const existingUserWithEmail = await db
+          .select({ id: users.id, name: users.name, email: users.email })
+          .from(users)
+          .where(
+            and(
+              eq(users.email, editUserDetailsDto.email),
+              ne(users.id, userExists[0].id)
+            )
+          )
+          .limit(1);
+        if (existingUserWithEmail.length > 0) {
+          return [
+            `User with name ${existingUserWithEmail[0].name} already exists with the email id you updated`,
+            null
+          ];
+        }
+      }
+
       // Prepare update data
       const updateData: { name?: string; email?: string } = {};
 
@@ -909,119 +937,119 @@ export class BootcampService {
   }
 
   async processAttendanceRecords(bootcampId: number) {
-  try {
-    let totalSessionsProcessed = 0;
-    let totalSessionsWithAttendance = 0;
-    let totalPresentStudents = 0;
-    let totalEnrollmentsUpdated = 0;
+    try {
+      let totalSessionsProcessed = 0;
+      let totalSessionsWithAttendance = 0;
+      let totalPresentStudents = 0;
+      let totalEnrollmentsUpdated = 0;
 
-    // Step 1: Fetch all sessions for the bootcamp
-    const sessions = await db
-      .select({
-        id: zuvySessions.id,
-        name: zuvySessions.title,
-        meetingId: zuvySessions.meetingId
-      })
-      .from(zuvySessions)
-      .where(eq(zuvySessions.bootcampId, bootcampId));
+      // Step 1: Fetch all sessions for the bootcamp
+      const sessions = await db
+        .select({
+          id: zuvySessions.id,
+          name: zuvySessions.title,
+          meetingId: zuvySessions.meetingId
+        })
+        .from(zuvySessions)
+        .where(eq(zuvySessions.bootcampId, bootcampId));
 
-    totalSessionsProcessed = sessions.length;
-    Logger.log(`Found ${sessions.length} sessions for bootcamp_id = ${bootcampId}`);
+      totalSessionsProcessed = sessions.length;
+      Logger.log(`Found ${sessions.length} sessions for bootcamp_id = ${bootcampId}`);
 
-    // Step 2: Reset all attendance counts
-    await db.update(zuvyBatchEnrollments)
-      .set({ attendance: 0 })
-      .where(eq(zuvyBatchEnrollments.bootcampId, bootcampId));
-
-    const attendanceMap = new Map<number, number>(); // userId -> attendance count
-
-    // Step 3: Process each session
-    for (const session of sessions) {
-      const attendanceRecords = await db
-        .select({ attendance: zuvyStudentAttendance.attendance })
-        .from(zuvyStudentAttendance)
-        .where(eq(zuvyStudentAttendance.meetingId, session.meetingId));
-
-      if (!attendanceRecords.length) {
-        Logger.log(`No attendance records for session ID: ${session.id}, meeting ID: ${session.meetingId}`);
-        continue;
-      }
-
-      let sessionHasAttendance = false;
-
-      for (const record of attendanceRecords) {
-        let attendanceData;
-        if (typeof record.attendance === 'object') {
-          attendanceData = record.attendance;
-        } else {
-          try {
-            attendanceData = JSON.parse(record.attendance as any);
-          } catch (error) {
-            Logger.error('Error parsing attendance data:', error);
-            continue;
-          }
-        }
-
-        if (!Array.isArray(attendanceData)) continue;
-
-        for (const student of attendanceData) {
-          if (!student.email?.trim() || student.attendance !== 'present') continue;
-
-          sessionHasAttendance = true;
-          totalPresentStudents++;
-
-          const userRecords = await db
-            .select({ id: users.id })
-            .from(users)
-            .where(eq(users.email, student.email.trim().toLowerCase()));
-
-          if (!userRecords.length) {
-            Logger.log(`No user found with email: ${student.email}`);
-            continue;
-          }
-
-          const userId = Number(userRecords[0].id);
-
-          // Confirm enrollment exists
-          const enrollment = await db.select()
-            .from(zuvyBatchEnrollments)
-            .where(and(eq(zuvyBatchEnrollments.userId, BigInt(userId)), eq(zuvyBatchEnrollments.bootcampId, bootcampId)));
-
-          if (!enrollment.length) {
-            Logger.log(`No enrollment found for user ID: ${userId} in bootcamp ID: ${bootcampId}`);
-            continue;
-          }
-
-          // Count this attendance
-          attendanceMap.set(userId, (attendanceMap.get(userId) || 0) + 1);
-        }
-      }
-
-      if (sessionHasAttendance) {
-        totalSessionsWithAttendance++;
-      }
-    }
-
-    // Step 4: Apply batch updates per user
-    for (const [userId, count] of attendanceMap.entries()) {
+      // Step 2: Reset all attendance counts
       await db.update(zuvyBatchEnrollments)
-        .set({ attendance: count })
-        .where(and(
-          eq(zuvyBatchEnrollments.userId, BigInt(userId)),
-          eq(zuvyBatchEnrollments.bootcampId, bootcampId)
-        ));
-      totalEnrollmentsUpdated++;
-    }
+        .set({ attendance: 0 })
+        .where(eq(zuvyBatchEnrollments.bootcampId, bootcampId));
 
-    return [null, {
-      totalSessionsProcessed,
-      totalSessionsWithAttendance,
-      totalPresentStudents,
-      totalEnrollmentsUpdated,
-      message: 'Attendance processing completed successfully'
-    }];
-  } catch (err) {
-    return [err, null];
+      const attendanceMap = new Map<number, number>(); // userId -> attendance count
+
+      // Step 3: Process each session
+      for (const session of sessions) {
+        const attendanceRecords = await db
+          .select({ attendance: zuvyStudentAttendance.attendance })
+          .from(zuvyStudentAttendance)
+          .where(eq(zuvyStudentAttendance.meetingId, session.meetingId));
+
+        if (!attendanceRecords.length) {
+          Logger.log(`No attendance records for session ID: ${session.id}, meeting ID: ${session.meetingId}`);
+          continue;
+        }
+
+        let sessionHasAttendance = false;
+
+        for (const record of attendanceRecords) {
+          let attendanceData;
+          if (typeof record.attendance === 'object') {
+            attendanceData = record.attendance;
+          } else {
+            try {
+              attendanceData = JSON.parse(record.attendance as any);
+            } catch (error) {
+              Logger.error('Error parsing attendance data:', error);
+              continue;
+            }
+          }
+
+          if (!Array.isArray(attendanceData)) continue;
+
+          for (const student of attendanceData) {
+            if (!student.email?.trim() || student.attendance !== 'present') continue;
+
+            sessionHasAttendance = true;
+            totalPresentStudents++;
+
+            const userRecords = await db
+              .select({ id: users.id })
+              .from(users)
+              .where(eq(users.email, student.email.trim().toLowerCase()));
+
+            if (!userRecords.length) {
+              Logger.log(`No user found with email: ${student.email}`);
+              continue;
+            }
+
+            const userId = Number(userRecords[0].id);
+
+            // Confirm enrollment exists
+            const enrollment = await db.select()
+              .from(zuvyBatchEnrollments)
+              .where(and(eq(zuvyBatchEnrollments.userId, BigInt(userId)), eq(zuvyBatchEnrollments.bootcampId, bootcampId)));
+
+            if (!enrollment.length) {
+              Logger.log(`No enrollment found for user ID: ${userId} in bootcamp ID: ${bootcampId}`);
+              continue;
+            }
+
+            // Count this attendance
+            attendanceMap.set(userId, (attendanceMap.get(userId) || 0) + 1);
+          }
+        }
+
+        if (sessionHasAttendance) {
+          totalSessionsWithAttendance++;
+        }
+      }
+
+      // Step 4: Apply batch updates per user
+      for (const [userId, count] of attendanceMap.entries()) {
+        await db.update(zuvyBatchEnrollments)
+          .set({ attendance: count })
+          .where(and(
+            eq(zuvyBatchEnrollments.userId, BigInt(userId)),
+            eq(zuvyBatchEnrollments.bootcampId, bootcampId)
+          ));
+        totalEnrollmentsUpdated++;
+      }
+
+      return [null, {
+        totalSessionsProcessed,
+        totalSessionsWithAttendance,
+        totalPresentStudents,
+        totalEnrollmentsUpdated,
+        message: 'Attendance processing completed successfully'
+      }];
+    } catch (err) {
+      return [err, null];
+    }
   }
-}
 }
