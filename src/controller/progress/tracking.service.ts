@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { db } from '../../db/index';
 import { eq, sql, inArray, and, SQL } from 'drizzle-orm';
 import { error, log } from 'console';
@@ -22,7 +22,8 @@ import {
   zuvyAssessmentSubmission,
   zuvyOutsourseAssessments,
   zuvySessions,
-  zuvyStudentAttendance
+  zuvyStudentAttendance,
+  zuvyBootcamps
 } from 'drizzle/schema';
 import {
   SubmitBodyDto,
@@ -49,6 +50,7 @@ export class TrackingService {
     chapterId: number,
   ): Promise<any> {
     try {
+      
       const chapterExistsInModuleChapter = await db
         .select()
         .from(zuvyModuleChapter)
@@ -302,11 +304,7 @@ export class TrackingService {
           moduleDetails,
         };
       } else {
-        return {
-          status: 'error',
-          code: 404,
-          message: 'No module found',
-        };
+        throw new NotFoundException('Module not found or deleted!');
       }
     } catch (err) {
       throw err;
@@ -398,7 +396,10 @@ export class TrackingService {
       const bootcamp = await db.query.zuvyBootcampType.findFirst({
         where: (bootcamp, { eq }) => eq(bootcamp.bootcampId, bootcampId),
       });
-
+      if(!bootcamp)
+      {
+        throw new NotFoundException('Bootcamp not found or deleted!');
+      }
       const isCourseLocked = bootcamp?.isModuleLocked || false;
 
       const data = await db.query.zuvyCourseModules.findMany({
@@ -563,6 +564,10 @@ export class TrackingService {
 
   async getBootcampTrackingForAUser(bootcampId: number, userId: number) {
     try {
+      const bootcampInfo = await db.select().from(zuvyBootcamps).where(eq(zuvyBootcamps.id, bootcampId))
+      if (bootcampInfo.length == 0) {
+        throw new NotFoundException('Bootcamp not found or deleted!');
+      }
       const moduleDetails = await db.query.zuvyCourseModules.findMany({
         where: (courseModules, { eq }) =>
           eq(courseModules.bootcampId, bootcampId),
@@ -854,6 +859,9 @@ export class TrackingService {
           await this.classesService.updatingStatusOfClass(bootcamp.bootcampId, enrollment.batchId, chapterId);
         }
       }
+      else {
+        throw new NotFoundException('Chapter not found or deleted by admin!');
+      }
 
       const trackingData = await db.query.zuvyModuleChapter.findFirst({
         where: (moduleChapter, { eq }) => eq(moduleChapter.id, chapterId),
@@ -901,7 +909,7 @@ export class TrackingService {
           attendance: true
         }
       });
-      
+
       // Map attendance data to sessions
       if (sessions.length > 0) {
         trackingData['sessions'] = sessions.map(session => {
