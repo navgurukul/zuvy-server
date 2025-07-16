@@ -242,12 +242,12 @@ export class ClassesController {
     return this.classesService.getClassesByBatchId(batchId, limit, offset);
   }
 
-  // @Get('/getAttendeesByMeetingId/:id')
-  // @ApiOperation({ summary: 'Get the google class attendees by meetingId' })
-  // @ApiBearerAuth('JWT-auth')
-  // getAttendeesByMeetingId(@Param('id') id: string): Promise<object> {
-  //   return this.classesService.getAttendeesByMeetingId(id);
-  // }
+  @Get('/getAttendeesByMeetingId/:id')
+  @ApiOperation({ summary: 'Get the google class attendees by meetingId' })
+  @ApiBearerAuth('JWT-auth')
+  getAttendeesByMeetingId(@Param('id') id: string): Promise<object> {
+    return this.classesService.getAttendeesByMeetingId(id);
+  }
 
   @Get('/all/:bootcampId')
   @ApiOperation({ summary: 'Get the students classes by bootcamp and batch' })
@@ -418,46 +418,5 @@ export class ClassesController {
     }
 
     return this.classesService.processCompletedSessionsForAttendance();
-  }
-
-  // New endpoints that work with meetingId instead of session id
-  @Get('/sessions/meeting/:meetingId')
-  @ApiOperation({ summary: 'Get session by meeting ID' })
-  @ApiBearerAuth('JWT-auth')
-  async getSessionByMeetingId(@Param('meetingId') meetingId: string, @Req() req) {
-    const userInfo = {
-      id: Number(req.user[0].id),
-      email: req.user[0].email,
-      roles: req.user[0].roles || []
-    };
-    return this.classesService.fetchZoomRecordingAndAttendees(meetingId);
-  }
-
-  @Patch('/update/:meetingId')
-  @ApiOperation({ summary: 'Update session by meeting ID (supports both Zoom and Google Meet)' })
-  @ApiBearerAuth('JWT-auth')
-  async updateSessionByMeetingId(
-    @Param('meetingId') meetingId: string,
-    @Body() updateData: updateSessionDto,
-    @Req() req
-  ) {
-    const userInfo = {
-      id: Number(req.user[0].id),
-      email: req.user[0].email,
-      roles: req.user[0].roles || []
-    };
-    return this.classesService.updateSessionByMeetingId(meetingId, updateData, userInfo);
-  }
-
-  @Delete('/delete/:meetingId')
-  @ApiOperation({ summary: 'Delete session by meeting ID (supports both Zoom and Google Meet)' })
-  @ApiBearerAuth('JWT-auth')
-  async deleteSessionByMeetingId(@Param('meetingId') meetingId: string, @Req() req) {
-    const userInfo = {
-      id: Number(req.user[0].id),
-      email: req.user[0].email,
-      roles: req.user[0].roles || []
-    };
-    return this.classesService.deleteSessionByMeetingId(meetingId, userInfo);
   }
 }

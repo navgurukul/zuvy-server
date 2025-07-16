@@ -11,6 +11,7 @@ import {
   IsNumber,
   IsDateString,
   IsBoolean,
+  IsBoolean,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
@@ -165,15 +166,26 @@ export class CreateSessionDto {
   totalClasses: number;
 
   @ApiProperty({
-    description: 'Whether this session uses Zoom meeting (true = Zoom, false = Google Meet)',
+    description: 'Whether to use Zoom instead of Google Meet for this session',
     type: Boolean,
-    example: true,
+    example: false,
     required: false,
-    default: true,
+    default: false,
   })
   @IsBoolean()
   @IsOptional()
-  isZoomMeet?: boolean = true;
+  useZoom?: boolean;
+
+  @ApiProperty({
+    description: 'Whether this session uses Zoom meeting (alias for useZoom for consistency with database schema)',
+    type: Boolean,
+    example: false,
+    required: false,
+    default: false,
+  })
+  @IsBoolean()
+  @IsOptional()
+  isZoomMeet?: boolean;
 }
 
 export class reloadDto {
@@ -236,7 +248,7 @@ export class AddLiveClassesAsChaptersDto {
   @ApiProperty({
     description: 'Array of session IDs to be added as chapters',
     type: [Number],
-    example: [1, 2, 3],
+    example: [1, 2, 3]
   })
   @IsArray()
   @IsNumber({}, { each: true })
@@ -245,7 +257,7 @@ export class AddLiveClassesAsChaptersDto {
   @ApiProperty({
     description: 'Module ID where the live classes will be added as chapters',
     type: Number,
-    example: 1,
+    example: 1
   })
   @IsNumber()
   moduleId: number;

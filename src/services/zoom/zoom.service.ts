@@ -89,83 +89,35 @@ export class ZoomService {
 
   constructor() {
     this.accessToken = process.env.ZOOM_ACCESS_TOKEN || '';
-    
-    if (!this.accessToken) {
-      this.logger.warn('ZOOM_ACCESS_TOKEN not found in environment variables. Zoom functionality will require dynamic token.');
-    }
   }
 
-  private getHeaders(accessToken?: string) {
-    const token = accessToken || this.accessToken;
+  private getHeaders() {
     return {
-      'Authorization': `Bearer ${token}`,
+      'Authorization': `Bearer ${this.accessToken}`,
       'Content-Type': 'application/json',
     };
-  }
-
-  private validateAccessToken(accessToken?: string): boolean {
-    const token = accessToken || this.accessToken;
-    if (!token || token.trim() === '') {
-      return false;
-    }
-    return true;
   }
 
   /**
    * Create a new Zoom meeting
    */
-  async createMeeting(meetingData: ZoomMeetingRequest, accessToken?: string): Promise<{ success: boolean; data?: ZoomMeetingResponse; error?: string }> {
+  async createMeeting(meetingData: ZoomMeetingRequest): Promise<{ success: boolean; data?: ZoomMeetingResponse; error?: string }> {
     try {
-      // Use provided token or fallback to instance token
-      const token = accessToken || this.accessToken;
-      
-      // Validate access token first
-      if (!this.validateAccessToken(token)) {
-        const errorMsg = 'Zoom access token is not configured or provided. Please add ZOOM_ACCESS_TOKEN to your environment variables or provide a token.';
-        this.logger.error(errorMsg);
-        return {
-          success: false,
-          error: errorMsg
-        };
-      }
-
       const url = `${this.baseUrl}/users/me/meetings`;
-      
-      this.logger.log('Creating Zoom meeting with data:', JSON.stringify(meetingData, null, 2));
       
       const response: AxiosResponse<ZoomMeetingResponse> = await axios.post(
         url,
         meetingData,
-        { headers: this.getHeaders(token) }
+        { headers: this.getHeaders() }
       );
 
       this.logger.log(`Zoom meeting created successfully: ${response.data.id}`);
       return { success: true, data: response.data };
     } catch (error) {
-      const errorDetails = error.response?.data || error.message;
-      this.logger.error(`Error creating Zoom meeting:`, errorDetails);
-      
-      let errorMessage = 'Failed to create Zoom meeting';
-      
-      if (error.response?.status === 401) {
-        errorMessage += ': Invalid or expired access token. Please check your Zoom credentials.';
-      } else if (error.response?.status === 403) {
-        if (error.response?.data?.message?.includes('scope') || error.response?.data?.message?.includes('permission')) {
-          errorMessage += ': Insufficient permissions. Your Zoom app may need updated granular scopes. Please add: meeting:write:meeting:admin, meeting:read:meeting:admin, user:read:user:admin, and regenerate your access token.';
-        } else {
-          errorMessage += ': Access forbidden. Please check your Zoom app permissions.';
-        }
-      } else if (error.response?.status === 429) {
-        errorMessage += ': Rate limit exceeded. Please try again later.';
-      } else if (error.response?.data?.message) {
-        errorMessage += `: ${error.response.data.message}`;
-      } else {
-        errorMessage += `: ${error.message}`;
-      }
-      
+      this.logger.error(`Error creating Zoom meeting: ${error.response?.data || error.message}`);
       return { 
         success: false, 
-        error: errorMessage
+        error: `Failed to create Zoom meeting: ${error.response?.data?.message || error.message}` 
       };
     }
   }
@@ -173,53 +125,45 @@ export class ZoomService {
   /**
    * Update an existing Zoom meeting
    */
-  async updateMeeting(meetingId: string, meetingData: Partial<ZoomMeetingRequest>, accessToken?: string): Promise<{ success: boolean; error?: string }> {
+  async updateMeeting(meetingId: string, meetingData: Partial<ZoomMeetingRequest>): Promise<void> {
     try {
       const url = `${this.baseUrl}/meetings/${meetingId}`;
       
-      await axios.patch(url, meetingData, { headers: this.getHeaders(accessToken) });
+      await axios.patch(url, meetingData, { headers: this.getHeaders() });
       
       this.logger.log(`Zoom meeting updated successfully: ${meetingId}`);
-      return { success: true };
     } catch (error) {
       this.logger.error(`Error updating Zoom meeting: ${error.response?.data || error.message}`);
-      return {
-        success: false,
-        error: error.response?.data?.message || error.message
-      };
+      throw new Error(`Failed to update Zoom meeting: ${error.response?.data?.message || error.message}`);
     }
   }
 
   /**
    * Delete a Zoom meeting
    */
-  async deleteMeeting(meetingId: string, accessToken?: string): Promise<{ success: boolean; error?: string }> {
+  async deleteMeeting(meetingId: string): Promise<void> {
     try {
       const url = `${this.baseUrl}/meetings/${meetingId}`;
       
-      await axios.delete(url, { headers: this.getHeaders(accessToken) });
+      await axios.delete(url, { headers: this.getHeaders() });
       
       this.logger.log(`Zoom meeting deleted successfully: ${meetingId}`);
-      return { success: true };
     } catch (error) {
       this.logger.error(`Error deleting Zoom meeting: ${error.response?.data || error.message}`);
-      return {
-        success: false,
-        error: error.response?.data?.message || error.message
-      };
+      throw new Error(`Failed to delete Zoom meeting: ${error.response?.data?.message || error.message}`);
     }
   }
 
   /**
    * Get meeting details
    */
-  async getMeeting(meetingId: string, accessToken?: string): Promise<{ success: boolean; data?: ZoomMeetingResponse; error?: string }> {
+  async getMeeting(meetingId: string): Promise<{ success: boolean; data?: ZoomMeetingResponse; error?: string }> {
     try {
       const url = `${this.baseUrl}/meetings/${meetingId}`;
       
       const response: AxiosResponse<ZoomMeetingResponse> = await axios.get(
         url,
-        { headers: this.getHeaders(accessToken) }
+        { headers: this.getHeaders() }
       );
 
       return { success: true, data: response.data };
@@ -235,7 +179,7 @@ export class ZoomService {
   /**
    * Get meeting participants/attendance
    */
-  async getMeetingParticipants(meetingUuid: string, accessToken?: string): Promise<ZoomAttendanceResponse> {
+  async getMeetingParticipants(meetingUuid: string): Promise<ZoomAttendanceResponse> {
     try {
       // URL encode the UUID as it might contain special characters
       const encodedUuid = encodeURIComponent(meetingUuid);
@@ -243,7 +187,7 @@ export class ZoomService {
       
       const response: AxiosResponse<ZoomAttendanceResponse> = await axios.get(
         url,
-        { headers: this.getHeaders(accessToken) }
+        { headers: this.getHeaders() }
       );
 
       return response.data;
@@ -256,13 +200,13 @@ export class ZoomService {
   /**
    * Get meeting recordings
    */
-  async getMeetingRecordings(meetingId: string, accessToken?: string): Promise<any> {
+  async getMeetingRecordings(meetingId: string): Promise<any> {
     try {
       const url = `${this.baseUrl}/meetings/${meetingId}/recordings`;
       
       const response: AxiosResponse<any> = await axios.get(
         url,
-        { headers: this.getHeaders(accessToken) }
+        { headers: this.getHeaders() }
       );
 
       return response.data;
@@ -278,8 +222,7 @@ export class ZoomService {
   async createRecurringMeetings(
     meetingData: ZoomMeetingRequest,
     daysOfWeek: string[],
-    totalClasses: number,
-    accessToken?: string
+    totalClasses: number
   ): Promise<ZoomMeetingResponse[]> {
     try {
       const meetings: ZoomMeetingResponse[] = [];
@@ -309,7 +252,7 @@ export class ZoomService {
         },
       };
 
-      const response = await this.createMeeting(recurringMeetingData, accessToken || this.accessToken);
+      const response = await this.createMeeting(recurringMeetingData);
       if (response.success && response.data) {
         meetings.push(response.data);
       } else {
