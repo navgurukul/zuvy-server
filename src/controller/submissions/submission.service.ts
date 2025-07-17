@@ -256,6 +256,7 @@ export class SubmissionService {
   }
 
 
+  
   async calculateAssessmentResults(assessmentOutsourseId: number, practiceCodeData, mcqScore) {
     try {
       let assessment:any = (await db.select().from(zuvyOutsourseAssessments).where(eq(zuvyOutsourseAssessments.id, assessmentOutsourseId)))
@@ -305,7 +306,7 @@ export class SubmissionService {
       let isPassed = (assessment.passPercentage <= percentage) ? true: false
       let updateAssessmentSubmission = {
         attemptedCodingQuestions: latestCodingSubmissions.length,
-        codingScore: codingScore.toFixed(2),
+        codingScore: parseFloat(codingScore.toFixed(2)),
         marks:parseFloat(totalStudentScore.toFixed(2)),
         isPassed,
         percentage:parseFloat(percentage.toFixed(2))
@@ -358,6 +359,9 @@ export class SubmissionService {
         assessmentOutsourseId: data.assessmentOutsourseId,
         PracticeCode: data.PracticeCode,
         mcqScore: data.mcqScore,
+        marks: data.marks,
+        isPassed: data.isPassed,
+        codingScore: data.codingScore,
         // Add any other fields needed by assessmentSubmission
       }];
     } catch (err) {
@@ -391,14 +395,14 @@ export class SubmissionService {
           message: 'Unauthorized assessment submission',
         }];
       }
-      // // Only check submitedAt if it exists on submitData
-      // if ('submitedAt' in submitData && submitData.submitedAt != null) {
-      //   return [{
-      //     status: 'error',
-      //     statusCode: 400,
-      //     message: 'Assessment already submitted',
-      //   }];
-      // }
+      // Only check submitedAt if it exists on submitData
+      if ('submitedAt' in submitData && submitData.submitedAt != null) {
+        return [{
+          status: 'error',
+          statusCode: 400,
+          message: 'Assessment already submitted',
+        }];
+      }
 
       // Step 3: Calculate assessment results before updating
       // Use the same logic as getAssessmentSubmission, but call directly here
@@ -415,18 +419,13 @@ export class SubmissionService {
       // Ensure all relevant fields from getAssessmentSubmission are included in the return
       const mergedData = {
         ...data,
-        ...submitData,
         ...calcResult,
         userId: submitData.userId,
-        submitedAt: submitData.submitedAt,
+        submitedAt: submitData.submitedAt || new Date(),
         assessmentOutsourseId: submitData.assessmentOutsourseId,
-        PracticeCode: submitData.PracticeCode,
-        mcqScore: submitData.mcqScore,
-        openEndedScore: 0, // Default value
-        requiredOpenEndedScore: 0, // Default value
+        mcqScore: Number(parseFloat(submitData.mcqScore).toFixed(2)),
+
       };
-      // Optional: log the merged data for debugging
-      console.log('data', mergedData);
 
       // Step 5: Update the assessment submission in the database
       const assessment = await db.update(zuvyAssessmentSubmission).set(mergedData).where(eq(zuvyAssessmentSubmission.id, id)).returning();
@@ -437,9 +436,8 @@ export class SubmissionService {
           message: 'Assessment not found',
         }];
       }
-      // Step 6: Return the updated assessment
-      console.log('Merged Data:', mergedData);
-      return [null, assessment[0]];
+
+      return [null, mergedData];
     } catch (err) {
       // Log and return error in case of failure
       console.error('Error in assessmentSubmission:', err);
