@@ -7,6 +7,8 @@ import { zuvyBatchEnrollments, zuvyAssessmentSubmission, zuvyChapterTracking, zu
 import { InstructorFeedbackDto, PatchOpenendedQuestionDto, CreateOpenendedQuestionDto } from './dto/submission.dto';
 import { STATUS_CODES } from 'src/helpers';
 import { helperVariable } from 'src/constants/helper';
+const fs = require('fs');
+const path = require('path');
 const DIFFICULTY = {
   EASY: 'Easy',
   MEDIUM: 'Medium',
@@ -20,6 +22,90 @@ const { SUPPORT_EMAIL, AWS_SUPPORT_ACCESS_SECRET_KEY, AWS_SUPPORT_ACCESS_KEY_ID,
 @Injectable()
 export class SubmissionService {
   private readonly logger = new Logger(SubmissionService.name);
+  /**
+   * Appends a score update record to the CSV log with a dynamic message.
+   */
+  private async addScoreUpdateToCsvLog({ userId, oldMarks, newMarks, submitData, mergedData, calcResult }) {
+    try {
+      const logFilePath = path.join(process.cwd(), 'updated_marks_log3.json');
+      this.logger.log(`[LOG DEBUG] Writing score update to: ${logFilePath}`);
+
+      // Fetch user details from DB
+      let userName = '';
+      let userEmail = '';
+      try {
+        const user = await db.query.users.findFirst({
+          where: (zuvyUser, { eq }) => eq(zuvyUser.id, userId),
+          columns: { name: true, email: true }
+        });
+        if (user) {
+          userName = user.name;
+          userEmail = user.email;
+        }
+      } catch (userErr) {
+        this.logger.error(`[LOG ERROR] Could not fetch user details for userId ${userId}:`, userErr);
+      }
+
+      // Determine what was corrected
+      let messageParts = [];
+      if (submitData.mcqScore !== undefined && mergedData.mcqScore !== undefined && submitData.mcqScore != mergedData.mcqScore) {
+        messageParts.push('MCQ correction: Some multiple-choice questions had incorrect options marked as correct.');
+      }
+      if (submitData.codingScore !== undefined && mergedData.codingScore !== undefined && submitData.codingScore != mergedData.codingScore) {
+        messageParts.push('Coding submission correction: Some coding submissions were re-evaluated or updated.');
+      }
+      let detailedMessage = '';
+      if (messageParts.length > 0) {
+        detailedMessage = 'Marks updated due to: ' + messageParts.join(' ');
+      } else {
+        detailedMessage = 'Marks updated due to assessment correction.';
+      }
+      detailedMessage += ' The score has been recalculated and updated as per the correct answers and latest submissions.';
+
+      const logEntry = {
+        userId,
+        userName,
+        userEmail,
+        oldMarks,
+        newMarks,
+        oldMcqScore: submitData.mcqScore ?? null,
+        oldCodingScore: submitData.codingScore ?? null,
+        mcqScore: mergedData.mcqScore,
+        codingScore: mergedData.codingScore,
+        message: detailedMessage,
+        timestamp: new Date().toISOString()
+      };
+
+      // Read existing log data (array of objects)
+      let logArray = [];
+      if (fs.existsSync(logFilePath)) {
+        try {
+          const fileContent = fs.readFileSync(logFilePath, 'utf8').trim();
+          if (fileContent) {
+            // Support both old line-delimited JSON and array format
+            if (fileContent.startsWith('[')) {
+              logArray = JSON.parse(fileContent);
+            } else {
+              logArray = fileContent.split('\n').filter(Boolean).map(line => JSON.parse(line));
+            }
+          }
+        } catch (readErr) {
+          this.logger.error(`[LOG ERROR] Failed to read log file at ${logFilePath}:`, readErr);
+        }
+      }
+      logArray.push(logEntry);
+      try {
+        fs.writeFileSync(logFilePath, JSON.stringify(logArray, null, 2), 'utf8');
+        this.logger.log(`Score update logged for user ${userId}: ${detailedMessage}`);
+      } catch (fileErr) {
+        this.logger.error(`[LOG ERROR] Failed to write to log file at ${logFilePath}:`, fileErr);
+        throw new Error('Failed to log score update to JSON');
+      }
+    } catch (error) {
+      this.logger.error('[LOG ERROR] Error in addScoreUpdateToCsvLog:', error);
+      throw new Error('Failed to log score update to JSON');
+    }
+  }
 
   async getSubmissionOfPractiseProblem(bootcampId: number, searchProblem: string) {
     try {
@@ -305,7 +391,7 @@ export class SubmissionService {
       let isPassed = (assessment.passPercentage <= percentage) ? true: false
       let updateAssessmentSubmission = {
         attemptedCodingQuestions: latestCodingSubmissions.length,
-        codingScore: codingScore.toFixed(2),
+        codingScore: parseFloat(codingScore.toFixed(2)),
         marks:parseFloat(totalStudentScore.toFixed(2)),
         isPassed,
         percentage:parseFloat(percentage.toFixed(2))
@@ -358,6 +444,9 @@ export class SubmissionService {
         assessmentOutsourseId: data.assessmentOutsourseId,
         PracticeCode: data.PracticeCode,
         mcqScore: data.mcqScore,
+        marks: data.marks,
+        isPassed: data.isPassed,
+        codingScore: data.codingScore,
         // Add any other fields needed by assessmentSubmission
       }];
     } catch (err) {
@@ -415,31 +504,41 @@ export class SubmissionService {
       // Ensure all relevant fields from getAssessmentSubmission are included in the return
       const mergedData = {
         ...data,
-        ...submitData,
         ...calcResult,
         userId: submitData.userId,
         submitedAt: submitData.submitedAt,
         assessmentOutsourseId: submitData.assessmentOutsourseId,
-        PracticeCode: submitData.PracticeCode,
-        mcqScore: submitData.mcqScore,
-        openEndedScore: 0, // Default value
-        requiredOpenEndedScore: 0, // Default value
+        mcqScore: Number(parseFloat(submitData.mcqScore).toFixed(2)),
       };
+      // Log to CSV if marks changed
+      if (submitData.marks != mergedData.marks) {
+        console.log("submitData.marks", submitData.marks, "\n mergedData.marks", mergedData.marks);
+        this.logger.log(`User ${userId} updated marks from ${submitData.marks} to ${mergedData.marks}`);
+        await this.addScoreUpdateToCsvLog({
+          userId,
+          oldMarks: submitData.marks,
+          newMarks: mergedData.marks,
+          submitData,
+          mergedData,
+          calcResult
+        });
+      }
+
       // Optional: log the merged data for debugging
-      console.log('data', mergedData);
+      // console.log('data', mergedData);
 
       // Step 5: Update the assessment submission in the database
-      const assessment = await db.update(zuvyAssessmentSubmission).set(mergedData).where(eq(zuvyAssessmentSubmission.id, id)).returning();
-      if (!assessment || assessment.length === 0) {
-        return [{
-          status: 'error',
-          statusCode: 404,
-          message: 'Assessment not found',
-        }];
-      }
-      // Step 6: Return the updated assessment
-      console.log('Merged Data:', mergedData);
-      return [null, assessment[0]];
+      // const assessment = await db.update(zuvyAssessmentSubmission).set(mergedData).where(eq(zuvyAssessmentSubmission.id, id)).returning();
+      // if (!assessment || assessment.length === 0) {
+      //   return [{
+      //     status: 'error',
+      //     statusCode: 404,
+      //     message: 'Assessment not found',
+      //   }];
+      // }
+      // // Step 6: Return the updated assessment
+      // console.log('Merged Data:', mergedData);
+      return [null, mergedData];
     } catch (err) {
       // Log and return error in case of failure
       console.error('Error in assessmentSubmission:', err);
@@ -1625,21 +1724,52 @@ Zuvy LMS Team
       console.error(`❌ Failed to send email to ${user.email}`, err);
     }
   }
+
     /**
-   * Run a raw SQL query to get submissions with marks > 100 for assessment_outsourse_id = 2129
-   * Returns the result as JSON
+   * Processes a single batch of assessment submissions for a given assessmentOutsourseId.
+   * Returns the processed results for the batch.
    */
-  async getRawAssessmentSubmissions() {
-    // const query = `SELECT * FROM zuvy_assessment_submission WHERE assessment_outsourse_id = 2129 AND marks > 100 LIMIT 100`;
-    try {
-      // Use db.execute if available, or db.queryRaw depending on your ORM/driver
-      // For Drizzle ORM, you may need to use db.execute or db.run
-      const result = await db.select().from(zuvyAssessmentSubmission).where(
-        sql`${zuvyAssessmentSubmission.assessmentOutsourseId} = ${2129} AND ${zuvyAssessmentSubmission.marks} > ${100}`
-      ).limit(100);
-      return { data: result };
-    } catch (err) {
-      return { error: err.message };
+  async batchProcessAssessmentSubmissions(assessmentOutsourseId: number, limit: number, offset: number) {
+    let results = [];
+    // Fetch a batch of submissions
+    const submissions = await db
+      .select({
+        id: zuvyAssessmentSubmission.id,
+        userId: zuvyAssessmentSubmission.userId,
+        tabChange: zuvyAssessmentSubmission.tabChange,
+        copyPaste: zuvyAssessmentSubmission.copyPaste,
+        fullScreenExit: zuvyAssessmentSubmission.fullScreenExit,
+        eyeMomentCount: zuvyAssessmentSubmission.eyeMomentCount,
+      })
+      .from(zuvyAssessmentSubmission)
+      .where(eq(zuvyAssessmentSubmission.assessmentOutsourseId, assessmentOutsourseId))
+      .limit(limit)
+      .offset(offset);
+
+    if (!submissions.length) {
+      return { totalProcessed: 0, results };
     }
+
+    for (const sub of submissions) {
+      const data = {
+        tabChange: sub.tabChange,
+        copyPaste: sub.copyPaste ?? null,
+        fullScreenExit: sub.fullScreenExit ?? null,
+        eyeMomentCount: sub.eyeMomentCount ?? null,
+        typeOfsubmission: 'studentSubmited',
+      };
+      // Call assessmentSubmission for each record
+      try {
+        const [err, result] = await this.assessmentSubmission(data, sub.id, sub.userId);
+        if (err) {
+          results.push({ id: sub.id, error: err });
+        } else {
+          results.push({ id: sub.id, status: 'updated' });
+        }
+      } catch (e) {
+        results.push({ id: sub.id, error: e.message });
+      }
+    }
+    return { totalProcessed: submissions.length, results };
   }
 }
