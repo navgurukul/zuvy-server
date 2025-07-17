@@ -1,17 +1,3 @@
-  @Post('/refresh-assessment-scores')
-  @ApiOperation({ summary: 'Refresh total assessment scores for all students for a given assessment_outsourse_id' })
-  @ApiBearerAuth()
-  async refreshAssessmentScores(@Query('assessment_outsourse_id') assessmentOutsourseId: number, @Res() res) {
-    try {
-      let [err, success] = await this.submissionService.recalcAndFixMCQForAssessment(assessmentOutsourseId);
-      if (err) {
-        return ErrorResponse.BadRequestException(err.message, err.statusCode).send(res)
-      }
-      return new SuccessResponse('Assessment scores refreshed', 200, success).send(res);
-    } catch (error) {
-      return ErrorResponse.BadRequestException(error.message).send(res);
-    }
-  }
 import {
   Controller,
   Get,
@@ -191,14 +177,6 @@ export class SubmissionController {
     return ErrorResponse.BadRequestException(error.message).send(res);
   }
 }
-  /**
-   * Get submissions with marks > 100 for a specific assessment_outsourse_id (raw query)
-   */
-  @Get('/raw/assessment-submissions')
-  @ApiOperation({ summary: 'Get submissions with marks > 100 for a specific assessment_outsourse_id (raw query)' })
-  async getRawAssessmentSubmissions() {
-    return this.submissionService.getRawAssessmentSubmissions();
-  }
 
   @Get('/submissionsOfProjects/:bootcampId')
   @ApiOperation({ summary: 'Get the submission of projects by bootcampId' })

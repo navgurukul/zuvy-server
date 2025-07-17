@@ -1623,21 +1623,4 @@ Zuvy LMS Team
       console.error(`❌ Failed to send email to ${user.email}`, err);
     }
   }
-    /**
-   * Run a raw SQL query to get submissions with marks > 100 for assessment_outsourse_id = 2129
-   * Returns the result as JSON
-   */
-  async getRawAssessmentSubmissions() {
-    // const query = `SELECT * FROM zuvy_assessment_submission WHERE assessment_outsourse_id = 2129 AND marks > 100 LIMIT 100`;
-    try {
-      // Use db.execute if available, or db.queryRaw depending on your ORM/driver
-      // For Drizzle ORM, you may need to use db.execute or db.run
-      const result = await db.select().from(zuvyAssessmentSubmission).where(
-        sql`${zuvyAssessmentSubmission.assessmentOutsourseId} = ${2129} AND ${zuvyAssessmentSubmission.marks} > ${100}`
-      ).limit(100);
-      return { data: result };
-    } catch (err) {
-      return { error: err.message };
-    }
-  }
 }
