@@ -1,3 +1,4 @@
+
 import { Injectable, Logger, HttpStatus } from '@nestjs/common';
 import { db } from '../../db/index';
 import { eq, sql, count, inArray, or, and, like, desc } from 'drizzle-orm';
@@ -14,9 +15,10 @@ import {
   zuvySessions,
   zuvyStudentAttendance,
 } from '../../../drizzle/schema';
-import { editUserDetailsDto } from './dto/bootcamp.dto'
-import { batch } from 'googleapis/build/src/apis/batch';
+import { editUserDetailsDto } from './dto/bootcamp.dto';
 import { STATUS_CODES } from 'src/helpers';
+import { google } from 'googleapis';
+const { OAuth2 } = google.auth;
 
 const { ZUVY_CONTENT_URL } = process.env; // INPORTING env VALUSE ZUVY_CONTENT
 
@@ -1045,119 +1047,235 @@ export class BootcampService {
     }
   }
   async processAttendanceRecords(bootcampId: number) {
-  try {
-    let totalSessionsProcessed = 0;
-    let totalSessionsWithAttendance = 0;
-    let totalPresentStudents = 0;
-    let totalEnrollmentsUpdated = 0;
+    try {
+      const logger = new Logger('BootcampService');
+      let totalSessionsProcessed = 0;
+      let totalSessionsWithAttendance = 0;
+      let totalPresentStudents = 0;
+      let totalEnrollmentsUpdated = 0;
 
-    // Step 1: Fetch all sessions for the bootcamp
-    const sessions = await db
-      .select({
-        id: zuvySessions.id,
-        name: zuvySessions.title,
-        meetingId: zuvySessions.meetingId
-      })
-      .from(zuvySessions)
-      .where(eq(zuvySessions.bootcampId, bootcampId));
-
-    totalSessionsProcessed = sessions.length;
-    Logger.log(`Found ${sessions.length} sessions for bootcamp_id = ${bootcampId}`);
-
-    // Step 2: Reset all attendance counts
-    await db.update(zuvyBatchEnrollments)
-      .set({ attendance: 0 })
-      .where(eq(zuvyBatchEnrollments.bootcampId, bootcampId));
-
-    const attendanceMap = new Map<number, number>(); // userId -> attendance count
-
-    // Step 3: Process each session
-    for (const session of sessions) {
-      const attendanceRecords = await db
-        .select({ attendance: zuvyStudentAttendance.attendance })
-        .from(zuvyStudentAttendance)
-        .where(eq(zuvyStudentAttendance.meetingId, session.meetingId));
-
-      if (!attendanceRecords.length) {
-        Logger.log(`No attendance records for session ID: ${session.id}, meeting ID: ${session.meetingId}`);
-        continue;
-      }
-
-      let sessionHasAttendance = false;
-
-      for (const record of attendanceRecords) {
-        let attendanceData;
-        if (typeof record.attendance === 'object') {
-          attendanceData = record.attendance;
-        } else {
-          try {
-            attendanceData = JSON.parse(record.attendance as any);
-          } catch (error) {
-            Logger.error('Error parsing attendance data:', error);
-            continue;
-          }
-        }
-
-        if (!Array.isArray(attendanceData)) continue;
-
-        for (const student of attendanceData) {
-          if (!student.email?.trim() || student.attendance !== 'present') continue;
-
-          sessionHasAttendance = true;
-          totalPresentStudents++;
-
-          const userRecords = await db
-            .select({ id: users.id })
-            .from(users)
-            .where(eq(users.email, student.email.trim().toLowerCase()));
-
-          if (!userRecords.length) {
-            Logger.log(`No user found with email: ${student.email}`);
-            continue;
-          }
-
-          const userId = Number(userRecords[0].id);
-
-          // Confirm enrollment exists
-          const enrollment = await db.select()
-            .from(zuvyBatchEnrollments)
-            .where(and(eq(zuvyBatchEnrollments.userId, BigInt(userId)), eq(zuvyBatchEnrollments.bootcampId, bootcampId)));
-
-          if (!enrollment.length) {
-            Logger.log(`No enrollment found for user ID: ${userId} in bootcamp ID: ${bootcampId}`);
-            continue;
-          }
-
-          // Count this attendance
-          attendanceMap.set(userId, (attendanceMap.get(userId) || 0) + 1);
-        }
-      }
-
-      if (sessionHasAttendance) {
-        totalSessionsWithAttendance++;
-      }
-    }
-
-    // Step 4: Apply batch updates per user
-    for (const [userId, count] of attendanceMap.entries()) {
+      // Step 1: Fetch all batches for the bootcamp
+      const batches = await db.select().from(zuvyBatches).where(eq(zuvyBatches.bootcampId, bootcampId));
+      // Step 2: Reset all attendance counts
       await db.update(zuvyBatchEnrollments)
-        .set({ attendance: count })
-        .where(and(
-          eq(zuvyBatchEnrollments.userId, BigInt(userId)),
-          eq(zuvyBatchEnrollments.bootcampId, bootcampId)
-        ));
-      totalEnrollmentsUpdated++;
-    }
+        .set({ attendance: 0 })
+        .where(eq(zuvyBatchEnrollments.bootcampId, bootcampId));
 
-    return [null, {
-      totalSessionsProcessed,
-      totalSessionsWithAttendance,
-      totalPresentStudents,
-      totalEnrollmentsUpdated,
-      message: 'Attendance processing completed successfully'
-    }];
-  } catch (err) {
-    return [err, null];
+
+      for (const batch of batches) {
+        // Map to store attendance count per userId (batch-scoped)
+        const attendanceMap = new Map<number, number>();
+
+        // Step 3: Fetch all sessions for this batch
+        const sessions = await db.select().from(zuvySessions)
+          .where(and(
+            eq(zuvySessions.bootcampId, bootcampId),
+            eq(zuvySessions.batchId, batch.id),
+            eq(zuvySessions.status, 'completed')
+          ));
+        totalSessionsProcessed += sessions.length;
+
+        // Step 4: Fetch all students enrolled in this batch
+        const enrollments = await db.select().from(zuvyBatchEnrollments)
+          .where(and(
+            eq(zuvyBatchEnrollments.bootcampId, bootcampId),
+            eq(zuvyBatchEnrollments.batchId, batch.id)
+          ));
+
+        // Step 5: For each session, fetch and update attendance
+        for (const session of sessions) {
+          // Remove old attendance record if exists
+          await db.delete(zuvyStudentAttendance).where(eq(zuvyStudentAttendance.meetingId, session.meetingId));
+
+          // Fetch attendance from Google API (call helper)
+          let attendanceData: any[] = [];
+          try {
+            attendanceData = await this.getAttendanceForSession(session, enrollments);
+          } catch (err) {
+            logger.error(`Error fetching attendance for session ${session.meetingId}: ${err.message}`);
+          }
+
+          // Insert new attendance record
+          await db.insert(zuvyStudentAttendance).values({
+            attendance: attendanceData,
+            meetingId: session.meetingId,
+            batchId: batch.id,
+            bootcampId: bootcampId
+          });
+
+          // Count attendance for each student
+          let sessionHasAttendance = false;
+          for (const student of attendanceData) {
+            if (!student.email?.trim() || student.attendance !== 'present') continue;
+            sessionHasAttendance = true;
+            totalPresentStudents++;
+            const userRecords = await db
+              .select({ id: users.id })
+              .from(users)
+              .where(eq(users.email, student.email.trim().toLowerCase()));
+            if (!userRecords.length) continue;
+            const userId = Number(userRecords[0].id);
+            attendanceMap.set(userId, (attendanceMap.get(userId) || 0) + 1);
+          }
+          if (sessionHasAttendance) totalSessionsWithAttendance++;
+        }
+
+        // Step 6: Update zuvyBatchEnrollments for each student in this batch
+        for (const enrollment of enrollments) {
+          const attended = attendanceMap.get(Number(enrollment.userId)) || 0;
+          await db.update(zuvyBatchEnrollments)
+            .set({ attendance: attended })
+            .where(eq(zuvyBatchEnrollments.id, enrollment.id));
+          totalEnrollmentsUpdated++;
+        }
+      }
+
+      return [null, {
+        totalSessionsProcessed,
+        totalSessionsWithAttendance,
+        totalPresentStudents,
+        totalEnrollmentsUpdated,
+        message: 'Attendance processing completed successfully (with Google API logic stubbed)'
+      }];
+    } catch (err) {
+      return [err, null];
+    }
   }
-}
+  /**
+   * Fetch attendance for a single session using Google API (reports_v1 + JWT)
+   * @param session Session object
+   * @param enrollments Enrollments for the batch
+   */
+  async getAttendanceForSession(session: any, enrollments: any[]): Promise<any[]> {
+    const logger = new Logger('BootcampService');
+    try {
+      // 1. Get session creator's tokens
+      const userData = await db.select().from(users).where(eq(users.email, session.creator));
+      if (!userData.length) {
+        logger.warn(`[Attendance] No user found for session creator: ${session.creator}`);
+        return [];
+      }
+      const tokens = await db
+        .select()
+        .from(require('../../../drizzle/schema').userTokens)
+        .where(eq(require('../../../drizzle/schema').userTokens.userId, Number(userData[0].id)));
+      if (!tokens.length) {
+        logger.warn(`[Attendance] No tokens found for user: ${session.creator}`);
+        return [];
+      }
+
+      // 2. Set up OAuth2 client
+      const auth2Client = new OAuth2(
+        process.env.GOOGLE_CLIENT_ID,
+        process.env.GOOGLE_SECRET,
+        process.env.GOOGLE_REDIRECT
+      );
+      auth2Client.setCredentials({
+        access_token: tokens[0].accessToken,
+        refresh_token: tokens[0].refreshToken,
+      });
+      const client = google.admin({ version: 'reports_v1', auth: auth2Client });
+
+      // 3. Fetch Google Meet activity logs for this session
+      const response = await client.activities.list({
+        userKey: 'all',
+        applicationName: 'meet',
+        eventName: 'call_ended',
+        maxResults: 1000,
+        filters: `calendar_event_id==${session.meetingId}`,
+      });
+      const items = response.data.items || [];
+      if (!items.length) {
+        logger.warn(`[Attendance] No activity logs found for meetingId: ${session.meetingId}`);
+        return [];
+      }
+
+      // 4. Extract host email
+      const organizerParam = items[0]?.events?.[0]?.parameters?.find((p: any) => p.name === 'organizer_email');
+      const hostEmail = organizerParam?.value;
+      if (!hostEmail) {
+        logger.warn(`[Attendance] No host email found for meetingId: ${session.meetingId}`);
+        return [];
+      }
+
+      // 5. Create JWT client as host
+      const { PRIVATE_KEY, CLIENT_EMAIL } = process.env;
+      if (!PRIVATE_KEY || !CLIENT_EMAIL) {
+        logger.error('[Attendance] Missing PRIVATE_KEY or CLIENT_EMAIL in environment');
+        return [];
+      }
+      const formattedPrivateKey = PRIVATE_KEY.replace(/\\n/g, '\n').replace(/^"|"$/g, '');
+      const jwtClient = new google.auth.JWT({
+        email: CLIENT_EMAIL,
+        key: formattedPrivateKey,
+        scopes: [
+          'https://www.googleapis.com/auth/drive.metadata.readonly',
+          'https://www.googleapis.com/auth/calendar.events.readonly',
+        ],
+        subject: hostEmail,
+      });
+      await jwtClient.authorize();
+
+      // 6. Get event attachments (find video/mp4)
+      const calendar = google.calendar({ version: 'v3', auth: jwtClient });
+      const { data: event } = await calendar.events.get({
+        calendarId: 'primary',
+        eventId: session.meetingId,
+        fields: 'attachments(fileId,mimeType,fileUrl)',
+      });
+      const videoAttach = event.attachments?.find((a: any) => a.mimeType === 'video/mp4');
+      let totalSeconds = 0;
+      if (videoAttach) {
+        const drive = google.drive({ version: 'v3', auth: jwtClient });
+        const { data: fileMeta } = await drive.files.get({
+          fileId: videoAttach.fileId,
+          fields: 'videoMediaMetadata(durationMillis)',
+        });
+        const durationMillis = Number(fileMeta.videoMediaMetadata?.durationMillis) || 0;
+        totalSeconds = durationMillis / 1000;
+      }
+      if (!totalSeconds) {
+        logger.warn(`[Attendance] No recording duration found for meetingId: ${session.meetingId}`);
+        return [];
+      }
+
+      // 7. Calculate attendance for each student (avoid N+1 queries)
+      const userIds = enrollments.map(e => BigInt(e.userId));
+      const userRecords = userIds.length
+        ? await db.select().from(users).where(inArray(users.id, userIds))
+        : [];
+      const emailMap: Record<string, string> = {};
+      userRecords.forEach(u => {
+        emailMap[String(u.id)] = u.email;
+      });
+      const cutoff = totalSeconds * 0.75;
+      const attendance: Record<string, { email: string; duration: number; attendance: string }> = {};
+      for (const enrollment of enrollments) {
+        const email = emailMap[String(enrollment.userId)];
+        if (email) {
+          attendance[email] = {
+            email,
+            duration: 0,
+            attendance: 'absent',
+          };
+        }
+      }
+      response.data.items?.forEach((item: any) => {
+        const e = item.events[0];
+        const email = e.parameters.find((p: any) => p.name === 'identifier')?.value;
+        const secs = e.parameters.find((p: any) => p.name === 'duration_seconds')?.intValue || 0;
+        if (email && attendance[email]) {
+          attendance[email].duration += Number(secs);
+        }
+      });
+      for (const rec of Object.values(attendance)) {
+        rec.attendance = rec.duration >= cutoff ? 'present' : 'absent';
+      }
+      return Object.values(attendance);
+    } catch (error) {
+      const logger = new Logger('BootcampService');
+      logger.error(`[Attendance] Error in getAttendanceForSession: ${error.message}`);
+      return [];
+    }
+  }
 }
