@@ -1,156 +1,99 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { Cron } from '@nestjs/schedule';
+import { Cron, CronExpression } from '@nestjs/schedule';
 import {
   userTokens,
   zuvySessions,
   zuvyBatchEnrollments,
   users,
-  zuvyStudentAttendance,
-  zuvyOutsourseAssessments
+  zuvyStudentAttendance
 } from '../../drizzle/schema';
 import { db } from '../db/index';
 import { eq, sql, isNull, and, gte, lt } from 'drizzle-orm';
 import { google } from 'googleapis';
-import { SubmissionService } from '../controller/submissions/submission.service';
 const { OAuth2 } = google.auth;
+
 const auth2Client = new OAuth2(
   process.env.GOOGLE_CLIENT_ID,
   process.env.GOOGLE_SECRET,
   process.env.GOOGLE_REDIRECT
 );
 
+/**
+ * ScheduleService - Automated session recording and attendance processing
+ * 
+ * This service automatically processes completed Zuvy sessions to:
+ * 1. Fetch video recording links from Google Calendar
+ * 2. Calculate student attendance based on Google Meet reports
+ * 3. Update database with s3links and attendance data
+ * 
+ * Processing Schedule:
+ * - Runs every 1 hour to process sessions
+ * - Processes all completed sessions without s3link
+ */
 @Injectable()
 export class ScheduleService {
+  // Core service properties
   private readonly logger = new Logger(ScheduleService.name); 
-  private lastProcessedTime: Date = new Date(0);
-  private processingActive = false;
-  private currentInterval: number; 
-  private timeoutId: NodeJS.Timeout;
-  private conditions:any = [
-    { min: 0, max: 1, interval: 100 * 60 * 1000 }, // 200 minutes
-    { min: 2, max: 3, interval: 70 * 60 * 1000 }, // 100 minutes
-    { min: 4, max: 6, interval: 40 * 60 * 1000 },  // 60 minutes
-    { min: 7, max: 10, interval: 30 * 60 * 1000 }, // 30 minutes
-    { min: 11, max: 13, interval: 20 * 60 * 1000 }, // 20 minutes
-    { min: 14, max: 15, interval: 10 * 60 * 1000 }  // 10 minutes
-  ];
-  private readonly submissionService: SubmissionService = new SubmissionService();
-
+  private processingActive = false; // Prevent concurrent processing
+  
   constructor() {
-    // Initialize the interval when the service starts
-    this.handleDynamicScheduling();
+    this.logger.log('ScheduleService initialized - will run every hour');
   }
 
-  // Trigger session processing periodically so it doesn't rely on a manual call
-  // @Cron('0 */10 * * * *')
-  // triggerSessionProcessing() {
-  //   this.logger.log('Cron job triggered to process completed sessions');
-  //   this.handleDynamicScheduling();
-  // }
-
-  async handleDynamicScheduling() {
-    this.logger.log('Running main function to determine interval');
+  /**
+   * Cron job that runs every hour to process sessions
+   * Pattern: 0 * * * * (every hour at minute 0)
+   */
+  @Cron('0 * * * *')
+  async processSessionsHourly() {
+    this.logger.log('Hourly cron triggered: Starting session processing');
+    
     if (this.processingActive) {
-      this.logger.log('Skipping: Previous job still running');
+      this.logger.log('Skipping: Previous processing still active');
       return;
     }
 
     this.processingActive = true;
     try {
-      const now = new Date();
-      const [startOfDay, endOfDay] = this.getDayBounds(now);
-      const sessions = await this.fetchSessions(startOfDay, endOfDay);
-      this.logger.log(`Fetched ${sessions.length} sessions`);
-      const shouldProcess = this.shouldProcessSessions(sessions.length, now);
-      if (!shouldProcess) {
-        this.logger.log(
-          `Skipping processing - Session count: ${sessions.length}, Last run: ${Math.floor(
-            (now.getTime() - this.lastProcessedTime.getTime()) / 60000
-          )} mins ago`
-        );
-        return;
+      // Fetch sessions that need processing
+      const sessions = await this.fetchSessions();
+      this.logger.log(`Found ${sessions.length} sessions to process`);
+      
+      if (sessions.length > 0) {
+        await this.processSessions(sessions);
+      } else {
+        this.logger.log('No sessions to process');
       }
-
-      // Determine the interval based on session count
-      this.currentInterval = this.getIntervalBasedOnSessionCount(sessions.length);
-      this.logger.log(`Setting interval to ${this.currentInterval / 60000} minutes`);
-
-      // Clear any existing timeout
-      this.resetTimeout();
-      // Start the recursive timeout
-      this.startRecursiveTimeout(sessions);
-
-      this.lastProcessedTime = now;
+      
     } catch (error) {
-      this.logger.error(`Scheduling error: ${error.message}`);
+      this.logger.error(`Error in hourly processing: ${error.message}`);
     } finally {
       this.processingActive = false;
     }
   }
 
-  private getDayBounds(date: Date): [Date, Date] {
-    const startOfDay = new Date(date);
-    startOfDay.setHours(0, 0, 0, 0);
-
-    const endOfDay = new Date(date);
-    endOfDay.setHours(24, 59, 59, 999);
-    return [startOfDay, endOfDay];
-  }
-
-  private async fetchSessions(startOfDay: Date, endOfDay: Date) {
-    let red = await db.select()
+  /**
+   * Fetches sessions that need processing from database
+   * Returns completed sessions without s3link (need video recording URL)
+   */
+  private async fetchSessions() {
+    this.logger.log('Fetching sessions from database');
+    let sessions = await db.select()
       .from(zuvySessions)
       .where(
         and(
           isNull(zuvySessions.s3link),
-          eq(zuvySessions.status, 'completed'),
-          gte(zuvySessions.startTime, startOfDay.toISOString()),
-          lt(zuvySessions.startTime, endOfDay.toISOString()),
+          eq(zuvySessions.status, 'completed')
         )
       );
-    return red;
+    this.logger.log(`Found ${sessions.length} sessions matching criteria`);
+    return sessions;
   }
 
-  private shouldProcessSessions(sessionCount: number, now: Date): boolean {
-    const timeSinceLastRun = now.getTime() - this.lastProcessedTime.getTime();
-    for (const condition of this.conditions) {
-        if (sessionCount >= condition.min && sessionCount <= condition.max) {
-            return timeSinceLastRun >= condition.interval;
-        }
-    }
-
-    // Default case if no conditions match
-    return timeSinceLastRun >= 1 * 60 * 1000; // 1 minute
-  }
-
-  private getIntervalBasedOnSessionCount(sessionCount: number): number {
-    for (const condition of this.conditions) {
-      if (sessionCount >= condition.min && sessionCount <= condition.max) {
-            return condition.interval;
-        }
-    }
-    // Default case if no conditions match
-    return 2 * 60 * 1000; // 1 minute
-  }
-
-  private resetTimeout() {
-    if (this.timeoutId) {
-      clearTimeout(this.timeoutId);
-      this.logger.log('Previous timeout cleared');
-    }
-  }
-
-  private startRecursiveTimeout(sessions: any[]) {
-    this.timeoutId = setTimeout(async () => {
-      try {
-        await this.processSessions(sessions);
-      } catch (error) {
-        this.logger.error(`Error processing sessions: ${error}`);
-      }
-      this.startRecursiveTimeout(sessions); // Recursively call itself
-    }, this.currentInterval);
-  }
-
+  /**
+   * Processes all sessions sequentially with 1-second delays
+   * Prevents API rate limiting and ensures stable processing
+   */
   private async processSessions(sessions: any[]) {
     this.logger.log(`Processing ${sessions.length} sessions with delayed execution`);
     let index = 0;
@@ -168,23 +111,30 @@ export class ScheduleService {
         this.logger.error(`Error processing session: ${error}`);
       }
 
-      setTimeout(processNext, 1000); // Delay of 1 second between each session
+      // 1-second delay between sessions to avoid API rate limits
+      setTimeout(processNext, 1000);
     };
 
     processNext();
   }
 
+  /**
+   * Processes a single session: updates s3link and calculates attendance
+   * Main workflow: fetch tokens → update recording link → calculate attendance
+   */
   private async processSingleSession(session: any) {
     try {
       if (!session) {
         return;
       }
+      // Get OAuth2 tokens for the session creator
       const userTokenData = await this.getUserTokens(session.creator);
       if (!userTokenData) {
         this.logger.warn(`No tokens found for creator: ${session.creator}`);
         return;
       }
 
+      // Set up Google API authentication
       auth2Client.setCredentials({
         access_token: userTokenData.accessToken,
         refresh_token: userTokenData.refreshToken,
@@ -193,8 +143,12 @@ export class ScheduleService {
       const calendar = google.calendar({ version: 'v3', auth: auth2Client });
 
       if (session.meetingId && session.status === 'completed') {
+        // Step 1: Update session with recording link
         await this.updateSessionLink(calendar, session);
+        // Step 2: Handle old sessions (mark as 'not found' if >3 days)
         await this.handleOldSessions(session);
+        
+        // Step 3: Calculate and store attendance if not already done
         const existing = await db
           .select()
           .from(zuvyStudentAttendance)
@@ -217,45 +171,153 @@ export class ScheduleService {
     }
   }
 
+  /**
+   * Retrieves OAuth2 tokens for a user by email
+   * Required for Google API authentication
+   */
   private async getUserTokens(email: string) {
+    this.logger.log(`Fetching user tokens for email: ${email}`);
     const result = await db
       .select()
       .from(userTokens)
       .where(eq(userTokens.userEmail, email));
+    
+    if (result.length) {
+      this.logger.log(`Successfully found tokens for user: ${email}`);
+    } else {
+      this.logger.warn(`No tokens found for user: ${email}`);
+    }
     return result.length ? result[0] : null;
   }
 
+  /**
+   * Updates session with video recording link from Google Calendar
+   * Uses dual approach: OAuth2 first, then JWT with domain delegation if needed
+   */
   private async updateSessionLink(calendar: any, session: any) {
-    const eventDetails = await calendar.events.get({
-      calendarId: 'primary',
-      eventId: session.meetingId,
-    });
-    const videoAttachment = eventDetails.data.attachments?.find(
-      (a: any) => a.mimeType === 'video/mp4'
-    );
-    if (videoAttachment) {
-      let updateData: any = { s3link: videoAttachment.fileUrl };
-      await db.update(zuvySessions)
-        .set(updateData)
-        .where(eq(zuvySessions.id, session.id));
+    this.logger.log(`Starting updateSessionLink for session: ${session.id}, meetingId: ${session.meetingId}`);
+    try {
+      // 1. First check for recording using the existing calendar client
+      this.logger.log(`Attempting to get calendar event details for meetingId: ${session.meetingId}`);
+      const eventDetails = await calendar.events.get({
+        calendarId: 'primary',
+        eventId: session.meetingId,
+      });
+      const videoAttachment = eventDetails.data.attachments?.find(
+        (a: any) => a.mimeType === 'video/mp4'
+      );
+      
+      if (videoAttachment) {
+        this.logger.log(`Found video attachment via OAuth2 method for session: ${session.id}`);
+        let updateData: any = { s3link: videoAttachment.fileUrl };
+        await db.update(zuvySessions)
+          .set(updateData)
+          .where(eq(zuvySessions.id, session.id));
+        this.logger.log(`Successfully updated s3link via OAuth2 for session: ${session.id}`);
+        return;
+      }
+
+      this.logger.log(`No video attachment found via OAuth2, trying JWT approach for session: ${session.id}`);
+      // 2. If no recording found, try the JWT approach
+      const userData = await db.select().from(users).where(eq(users.email, session.creator));
+      if (!userData.length) {
+        this.logger.warn(`No user found for email: ${session.creator}`);
+        return;
+      }
+
+      const tokens = await db
+        .select()
+        .from(userTokens)
+        .where(eq(userTokens.userId, Number(userData[0].id)));
+
+      if (!tokens.length) {
+        this.logger.warn('Unable to fetch tokens for JWT approach');
+        return;
+      }
+
+      this.logger.log(`Fetching admin activities for meetingId: ${session.meetingId}`);
+      const client = google.admin({ version: 'reports_v1', auth: auth2Client });
+      const response = await client.activities.list({
+        userKey: 'all',
+        applicationName: 'meet',
+        eventName: 'call_ended',
+        maxResults: 1000,
+        filters: `calendar_event_id==${session.meetingId}`,
+      });
+      const items = response.data.items || [];
+
+      // 3. Extract host email
+      const organizerParam = items[0]?.events?.[0]?.parameters?.find(p => p.name === 'organizer_email');
+      const hostEmail = organizerParam?.value;
+
+      if (!hostEmail) {
+        this.logger.warn(`No host email found for session: ${session.meetingId}`);
+        return;
+      }
+
+      this.logger.log(`Found host email: ${hostEmail}, creating JWT client`);
+      // 4. Create JWT client as host
+      const { PRIVATE_KEY, CLIENT_EMAIL } = process.env;
+      const formattedPrivateKey = PRIVATE_KEY.replace(/\\n/g, '\n').replace(/^"|"$/g, '');
+      const jwtClient = new google.auth.JWT({
+        email: CLIENT_EMAIL,
+        key: formattedPrivateKey,
+        scopes: [
+          'https://www.googleapis.com/auth/drive.metadata.readonly',
+          'https://www.googleapis.com/auth/calendar.events.readonly',
+        ],
+        subject: hostEmail,
+      });
+      await jwtClient.authorize();
+      this.logger.log(`JWT client authorized successfully for host: ${hostEmail}`);
+
+      // 5. Get event attachments with JWT client
+      const jwtCalendar = google.calendar({ version: 'v3', auth: jwtClient });
+      const { data: event } = await jwtCalendar.events.get({
+        calendarId: 'primary',
+        eventId: session.meetingId,
+        fields: 'attachments(fileId,mimeType,fileUrl)',
+      });
+      const videoAttach = event.attachments?.find((a: any) => a.mimeType === 'video/mp4');
+      
+      if (videoAttach) {
+        this.logger.log(`Found video attachment via JWT method for session: ${session.id}`);
+        let updateData: any = { s3link: videoAttach.fileUrl };
+        await db.update(zuvySessions)
+          .set(updateData)
+          .where(eq(zuvySessions.id, session.id));
+        this.logger.log(`Successfully updated s3link via JWT for session: ${session.id}`);
+      } else {
+        this.logger.warn(`No video recording found for session: ${session.meetingId}`);
+      }
+    } catch (error) {
+      this.logger.error(`Error updating session link for session ${session.id}: ${error.message}`);
     }
   }
 
   private async handleOldSessions(session: any) {
+    this.logger.log(`Checking if session is older than 3 days: ${session.id}`);
     if (new Date(session.startTime) < new Date(Date.now() - 3 * 24 * 60 * 60 * 1000)) {
+      this.logger.log(`Session ${session.id} is older than 3 days, marking as 'not found'`);
       let updateData: any = { s3link: 'not found' };
       await db.update(zuvySessions)
         .set(updateData)
         .where(eq(zuvySessions.id, session.id));
+      this.logger.log(`Updated old session ${session.id} with s3link: 'not found'`);
+    } else {
+      this.logger.log(`Session ${session.id} is within 3-day window, keeping as is`);
     }
   }
 
   private async getAttendanceByBatchId(batchId, creatorEmail: string) {
+    this.logger.log(`Starting getAttendanceByBatchId for batchId: ${batchId}, creator: ${creatorEmail}`);
     try {
       const students = await db
         .select()
         .from(zuvyBatchEnrollments)
         .where(eq(zuvyBatchEnrollments.batchId, Number(batchId)));
+      
+      this.logger.log(`Found ${students.length} students in batch ${batchId}`);
 
       const userData = await db.select().from(users).where(eq(users.email, creatorEmail));
       if (!userData.length) {
@@ -268,8 +330,12 @@ export class ScheduleService {
         .from(userTokens)
         .where(eq(userTokens.userId, Number(userData[0].id)));
 
-      if (!tokens.length) return [{ status: 'error', message: 'Unable to fetch tokens' }];
+      if (!tokens.length) {
+        this.logger.warn(`No tokens found for user: ${creatorEmail}`);
+        return [{ status: 'error', message: 'Unable to fetch tokens' }];
+      }
 
+      this.logger.log(`Setting up OAuth2 credentials for user: ${creatorEmail}`);
       auth2Client.setCredentials({
         access_token: tokens[0].accessToken,
         refresh_token: tokens[0].refreshToken,
@@ -281,19 +347,28 @@ export class ScheduleService {
         .from(zuvySessions)
         .where(and(eq(zuvySessions.batchId, Number(batchId)), eq(zuvySessions.status, 'completed')));
 
+      this.logger.log(`Found ${meetings.length} completed meetings for batch ${batchId}`);
+
       const [errorAttendance, attendance] = await this.calculateAttendance(client, meetings, students);
-      if (errorAttendance) return [errorAttendance];
+      if (errorAttendance) {
+        this.logger.error(`Error calculating attendance: ${JSON.stringify(errorAttendance)}`);
+        return [errorAttendance];
+      }
+      this.logger.log(`Successfully calculated attendance for batch ${batchId}`);
       return [null,{ data: attendance, status: 'success' }];
     } catch (error) {
+      this.logger.error(`Error in getAttendanceByBatchId: ${error.message}`);
       throw new Error(`Error fetching attendance: ${error.message}`);
     }
   }
 
   private async calculateAttendance(client: any, meetings: any[], students: any[]) {
+    this.logger.log(`Starting calculateAttendance for ${meetings.length} meetings and ${students.length} students`);
     let {PRIVATE_KEY, CLIENT_EMAIL} = process.env
 
     const attendanceByTitle: Record<string, any> = {};
     for (const meeting of meetings) {
+      this.logger.log(`Processing meeting: ${meeting.meetingId}`);
       const response = await client.activities.list({
         userKey:         'all',
         applicationName: 'meet',
@@ -306,9 +381,10 @@ export class ScheduleService {
       // 2️⃣ Extract the host’s email from the first log entry
       const organizerParam = items[0].events?.[0].parameters?.find(p => p.name === 'organizer_email');
       const hostEmail = organizerParam?.value;
+      const formattedPrivateKey = PRIVATE_KEY.replace(/\\n/g, '\n').replace(/^"|"$/g, '');
       const jwtClient = new google.auth.JWT({
         email:   CLIENT_EMAIL,
-        key:     PRIVATE_KEY,
+        key:     formattedPrivateKey,
         scopes: [
           'https://www.googleapis.com/auth/drive.metadata.readonly',
           'https://www.googleapis.com/auth/calendar.events.readonly',
@@ -379,63 +455,119 @@ export class ScheduleService {
   const attendanceOfStudents = Object.values(attendanceByTitle);
   return [ null, attendanceOfStudents ];
   }
-  // @Cron('0 30 2 * * *') // Runs every 59 minutes
-  // async processPendingAssessmentSubmissions() {
-  //   this.logger.log('Starting to process pending assessment submissions');
-    
-  //   try {
-  //     // Fetch all assessment submissions where submitedAt is null
-  //     const pendingSubmissions:any = await db.query.zuvyAssessmentSubmission.findMany({
-  //       where: isNull(zuvyAssessmentSubmission.submitedAt),
-  //       with: {
-  //         submitedOutsourseAssessment: true,
-  //       }
-  //     });
-  //     console.log(pendingSubmissions);
 
-  //     console.log('Pending Submissions:', pendingSubmissions[0]);
-
-  //     this.logger.log(`Found ${pendingSubmissions.length} pending assessment submissions`);
+  async getSessionAttendanceAndS3Link(
+    session: any,
+    students: any[],
+  ): Promise<any> {
+    try {
+      const userData = await db.select().from(users).where(eq(users.email, session.creator));
+      if (!userData.length) {
+        this.logger.warn(`No user found for email: ${session.creator}`);
+        return[{ status: 'error', message: 'User not found' }];
+      }
       
-  //     // Process each submission
-  //     // Process each submission as a promise
-  //     await Promise.all(
-  //       pendingSubmissions.map(async (submission) => {
-  //         try {
-  //           let startedAt = new Date(submission.startedAt);
+      const tokens = await db
+        .select()
+        .from(userTokens)
+        .where(eq(userTokens.userId, Number(userData[0].id)));
 
-  //           let timeLimit = submission?.submitedOutsourseAssessment?.timeLimit;
+      if (!tokens.length) return [{ status: 'error', message: 'Unable to fetch tokens' }];
 
-  //           let submitTime = new Date(startedAt.getTime() + timeLimit * 60 * 1000);
-  //           let nowDateTime = new Date();
-
-  //           // Check if the submission time has passed
-  //           if (submitTime < nowDateTime) {
-
-  //             // Submit the assessment
-  //             const [submitErr, submitResult] = await this.submissionService.assessmentSubmission(
-  //               { typeOfsubmission: 'auto-submit by cron' }, // Empty data object as we're auto-submitting
-  //               submission.id,
-  //               submission.userId
-  //             );
-  //             console.log({ submitErr, submitResult });
-
-  //             // Log success or handle errors
-  //             if (submitErr) {
-  //               this.logger.error(`Error submitting assessment ${submission.id}: ${submitErr.message}`);
-  //             } else {
-  //               this.logger.log(`Successfully processed assessment submission ${submission.id}`);
-  //             }
-  //           }
-  //         } catch (error) {
-  //           this.logger.error(`Error processing submission ${submission.id}: ${error.message}`);
-  //         }
-  //       })
-  //     );
+      auth2Client.setCredentials({
+        access_token: tokens[0].accessToken,
+        refresh_token: tokens[0].refreshToken,
+      });
       
-  //     this.logger.log('Completed processing pending assessment submissions');
-  //   } catch (error) {
-  //     this.logger.error(`Error in processPendingAssessmentSubmissions: ${error.message}`);
-  //   }
-  // }
+      const client = google.admin({ version: 'reports_v1', auth: auth2Client });
+      // 1. Fetch Google Meet activity logs for this session
+      const response = await client.activities.list({
+        userKey: 'all',
+        applicationName: 'meet',
+        eventName: 'call_ended',
+        maxResults: 1000,
+        filters: `calendar_event_id==${session.meetingId}`,
+      });
+      const items = response.data.items || [];
+
+      // 2. Extract host email
+      const organizerParam = items[0]?.events?.[0]?.parameters?.find(p => p.name === 'organizer_email');
+      const hostEmail = organizerParam?.value;
+
+      // 3. Create JWT client as host
+      const { PRIVATE_KEY, CLIENT_EMAIL } = process.env;
+      const formattedPrivateKey = PRIVATE_KEY.replace(/\\n/g, '\n').replace(/^"|"$/g, '');
+      const jwtClient = new google.auth.JWT({
+        email: CLIENT_EMAIL,
+        key: formattedPrivateKey,
+        scopes: [
+          'https://www.googleapis.com/auth/drive.metadata.readonly',
+          'https://www.googleapis.com/auth/calendar.events.readonly',
+        ],
+        subject: hostEmail,
+      });
+      await jwtClient.authorize();
+
+      // 4. Get event attachments (find video/mp4)
+      const calendar = google.calendar({ version: 'v3', auth: jwtClient });
+      const { data: event } = await calendar.events.get({
+        calendarId: 'primary',
+        eventId: session.meetingId,
+        fields: 'attachments(fileId,mimeType,fileUrl)',
+      });
+      const videoAttach = event.attachments?.find((a: any) => a.mimeType === 'video/mp4');
+      const s3link = videoAttach?.fileUrl || null;
+      
+      // If no recording is available, return a proper message
+      if (!s3link) {
+        return [{ status: 'error', message: 'Recording not yet updated. You can download attendance once recording is available' }];
+      }
+      let totalSeconds = 0;
+      if (videoAttach) {
+        const drive = google.drive({ version: 'v3', auth: jwtClient });
+        const { data: fileMeta } = await drive.files.get({
+          fileId: videoAttach.fileId,
+          fields: 'videoMediaMetadata(durationMillis)',
+        });
+        const durationMillis = Number(fileMeta.videoMediaMetadata?.durationMillis) || 0;
+        totalSeconds = durationMillis / 1000;
+      }
+
+      // 6. Calculate attendance for each student
+      const cutoff = totalSeconds * 0.75;
+      const attendance: Record<string, { email: string; duration: number; attendance: string }> = {};
+      for (const student of students) {
+        const user = student.user;
+        attendance[user.email] = {
+          email: user.email,
+          duration: 0,
+          attendance: 'absent',
+        };
+      }
+      response.data.items?.forEach((item: any) => {
+        const e = item.events[0];
+        const email = e.parameters.find((p: any) => p.name === 'identifier')?.value;
+        const secs = e.parameters.find((p: any) => p.name === 'duration_seconds')?.intValue || 0;
+        if (email && attendance[email]) {
+          attendance[email].duration += Number(secs);
+        }
+      });
+      for (const rec of Object.values(attendance)) {
+        rec.attendance = rec.duration >= cutoff ? 'present' : 'absent';
+        let user = students.find((student) => student.user.email === rec.email);
+        if (user && rec.attendance === 'present') {
+          let newData = await db.select().from(zuvyBatchEnrollments)
+            .where(sql`${zuvyBatchEnrollments.userId} = ${BigInt(user.userId)} AND ${zuvyBatchEnrollments.batchId} = ${session.batchId}`);
+          await db.update(zuvyBatchEnrollments).set({
+            attendance: newData[0].attendance ? newData[0].attendance + 1 : 1,
+          }). where(sql`${zuvyBatchEnrollments.userId} = ${BigInt(user.userId)} AND ${zuvyBatchEnrollments.batchId} = ${session.batchId}`);
+        } 
+      }
+      // 7. Return attendance and s3link
+      return [null, { s3link, attendance: Object.values(attendance), totalSeconds }];
+    } catch (error) {
+      console.error(error);
+      return [{ status: 'error', message: 'Error fetching session data' }];
+    }
+  }
 }
