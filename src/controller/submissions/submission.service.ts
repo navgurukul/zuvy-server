@@ -273,10 +273,20 @@ export class SubmissionService {
         Medium: assessment.mediumCodingMark,
         Hard: assessment.hardCodingMark,
       }
+      // Only count the latest submission per questionId
+      const latestCodingSubmissions = Object.values(
+        (practiceCodeData || []).reduce((acc, curr) => {
+          const qid = curr.questionId;
+          if (!acc[qid] || new Date(curr.createdAt || 0) > new Date(acc[qid]?.createdAt || 0)) {
+            acc[qid] = curr;
+          }
+          return acc;
+        }, {})
+      );
       let codingScore = 0;
-      practiceCodeData.map((codingQuestionSubmission) => {
-        codingScore += codingMarks[codingQuestionSubmission.questionDetail.difficulty]
-      })
+      latestCodingSubmissions.forEach((codingQuestionSubmission: any) => {
+        codingScore += codingMarks[codingQuestionSubmission.questionDetail.difficulty];
+      });
       const totalCodingMarks = 
         (assessment.easyCodingQuestions * assessment.easyCodingMark) +
         (assessment.mediumCodingQuestions * assessment.mediumCodingMark) +
@@ -294,7 +304,7 @@ export class SubmissionService {
       percentage = percentage ? percentage : 0;
       let isPassed = (assessment.passPercentage <= percentage) ? true: false
       let updateAssessmentSubmission = {
-        attemptedCodingQuestions: practiceCodeData.length,
+        attemptedCodingQuestions: latestCodingSubmissions.length,
         codingScore: codingScore.toFixed(2),
         marks:parseFloat(totalStudentScore.toFixed(2)),
         isPassed,
@@ -334,76 +344,106 @@ export class SubmissionService {
         }
       });
       if (data == undefined || data.length == 0) {
-        return[{
+        return [{
           status: 'error',
           statusCode: 404,
           message: 'Assessment not found',
         }];
       }
-      let [errUPdate, updateAssessmentSubmission] = await this.calculateAssessmentResults(data.assessmentOutsourseId, data.PracticeCode, data.mcqScore);
-      if (errUPdate){
-        return [errUPdate]
-      }
-      updateAssessmentSubmission['userId'] = data.user.id;
-      updateAssessmentSubmission['submitedAt'] = data.submitedAt
-      return [null, updateAssessmentSubmission];
-    }
-    catch (err) {
-      return [{message: err.message}]
+      // Only return the fetched data, do not calculate results here
+      // The calculation will be handled in assessmentSubmission
+      return [null, {
+        userId: data.user.id,
+        submitedAt: data.submitedAt,
+        assessmentOutsourseId: data.assessmentOutsourseId,
+        PracticeCode: data.PracticeCode,
+        mcqScore: data.mcqScore,
+        // Add any other fields needed by assessmentSubmission
+      }];
+    } catch (err) {
+      return [{ message: err.message }];
     }
   }
 
 
   async assessmentSubmission(data, id: number, userId: number): Promise<any> {
     try {
-      let errSubmit: any, submitData: any = {}; 
-      // Use an intermediate variable to store the result of the await
-      const result = await this.getAssessmentSubmission(id, userId);
-
-      // Destructure the result after the await
-      [errSubmit, submitData] = result;
-      if (errSubmit){
-        return [errSubmit]
+      let err: any, submitData:any;
+      // Step 1: Fetch assessment submission details for the user and submission id
+      [err, submitData] = await this.getAssessmentSubmission(id, userId);
+      if (err) {
+        // If there is an error in fetching, return immediately
+        return [err];
       }
 
-      if (submitData == undefined || submitData == null) {
+      // Step 2: Validate the fetched data
+      if (!submitData) {
         return [{
           status: 'error',
           statusCode: 404,
           message: 'Assessment not found',
         }];
-      } else if (submitData.userId != userId) {
+      }
+      if (submitData.userId != userId) {
         return [{
           status: 'error',
           statusCode: 400,
           message: 'Unauthorized assessment submission',
-        }]
-      } else if (submitData.submitedAt != null) {
-        return [{
-          status: 'error',
-          statusCode: 400,
-          message: 'Assessment already submitted',
         }];
       }
-      data = {
+      // // Only check submitedAt if it exists on submitData
+      // if ('submitedAt' in submitData && submitData.submitedAt != null) {
+      //   return [{
+      //     status: 'error',
+      //     statusCode: 400,
+      //     message: 'Assessment already submitted',
+      //   }];
+      // }
+
+      // Step 3: Calculate assessment results before updating
+      // Use the same logic as getAssessmentSubmission, but call directly here
+      const [errCalc, calcResult] = await this.calculateAssessmentResults(
+        submitData.assessmentOutsourseId,
+        submitData.PracticeCode,
+        submitData.mcqScore
+      );
+      if (errCalc) {
+        return [errCalc];
+      }
+
+      // Step 4: Merge input data, fetched submission data, and calculated results
+      // Ensure all relevant fields from getAssessmentSubmission are included in the return
+      const mergedData = {
         ...data,
         ...submitData,
-        openEndedScore: 0, // Assuming no data provided
-        submitedAt: new Date().toISOString(),
-        requiredOpenEndedScore: 0, // Assuming no data provided
+        ...calcResult,
+        userId: submitData.userId,
+        submitedAt: submitData.submitedAt,
+        assessmentOutsourseId: submitData.assessmentOutsourseId,
+        PracticeCode: submitData.PracticeCode,
+        mcqScore: submitData.mcqScore,
+        openEndedScore: 0, // Default value
+        requiredOpenEndedScore: 0, // Default value
       };
-      let assessment = await db.update(zuvyAssessmentSubmission).set(data).where(eq(zuvyAssessmentSubmission.id, id)).returning();
-      if (assessment == undefined || assessment.length == 0) {
+      // Optional: log the merged data for debugging
+      console.log('data', mergedData);
+
+      // Step 5: Update the assessment submission in the database
+      const assessment = await db.update(zuvyAssessmentSubmission).set(mergedData).where(eq(zuvyAssessmentSubmission.id, id)).returning();
+      if (!assessment || assessment.length === 0) {
         return [{
           status: 'error',
           statusCode: 404,
           message: 'Assessment not found',
-        }]
+        }];
       }
+      // Step 6: Return the updated assessment
+      console.log('Merged Data:', mergedData);
       return [null, assessment[0]];
     } catch (err) {
+      // Log and return error in case of failure
       console.error('Error in assessmentSubmission:', err);
-      return [{message: err.message}]
+      return [{ message: err.message }];
     }
   }
 
@@ -1583,6 +1623,23 @@ Zuvy LMS Team
       console.log(`📨 Email sent to ${user.email}`, result.MessageId);
     } catch (err) {
       console.error(`❌ Failed to send email to ${user.email}`, err);
+    }
+  }
+    /**
+   * Run a raw SQL query to get submissions with marks > 100 for assessment_outsourse_id = 2129
+   * Returns the result as JSON
+   */
+  async getRawAssessmentSubmissions() {
+    // const query = `SELECT * FROM zuvy_assessment_submission WHERE assessment_outsourse_id = 2129 AND marks > 100 LIMIT 100`;
+    try {
+      // Use db.execute if available, or db.queryRaw depending on your ORM/driver
+      // For Drizzle ORM, you may need to use db.execute or db.run
+      const result = await db.select().from(zuvyAssessmentSubmission).where(
+        sql`${zuvyAssessmentSubmission.assessmentOutsourseId} = ${2129} AND ${zuvyAssessmentSubmission.marks} > ${100}`
+      ).limit(100);
+      return { data: result };
+    } catch (err) {
+      return { error: err.message };
     }
   }
 }
