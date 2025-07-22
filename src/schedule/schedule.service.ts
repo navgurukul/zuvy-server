@@ -10,7 +10,29 @@ import {
 import { db } from '../db/index';
 import { eq, sql, isNull, and, gte, lt } from 'drizzle-orm';
 import { google } from 'googleapis';
+import { helperVariable } from '../constants/helper';
+import { OAuthErrorHandler } from './oauth-error-handler';
+
 const { OAuth2 } = google.auth;
+
+// Validate required environment variables
+const validateGoogleOAuthConfig = () => {
+  const missing = [];
+  if (!process.env.GOOGLE_CLIENT_ID) missing.push('GOOGLE_CLIENT_ID');
+  if (!process.env.GOOGLE_SECRET) missing.push('GOOGLE_SECRET');
+  if (!process.env.GOOGLE_REDIRECT) missing.push('GOOGLE_REDIRECT');
+  
+  if (missing.length > 0) {
+    throw new Error(`Missing required Google OAuth environment variables: ${missing.join(', ')}`);
+  }
+};
+
+// Validate configuration on startup
+try {
+  validateGoogleOAuthConfig();
+} catch (error) {
+  console.error('Google OAuth Configuration Error:', error.message);
+}
 
 const auth2Client = new OAuth2(
   process.env.GOOGLE_CLIENT_ID,
@@ -37,7 +59,18 @@ export class ScheduleService {
   private processingActive = false; // Prevent concurrent processing
   
   constructor() {
-    this.logger.log('ScheduleService initialized - will run every hour');
+    this.logger.log('ScheduleService initialized - will run every 2 minutes');
+    this.validateConfiguration();
+  }
+
+  // Validate all required configurations on service startup
+  private validateConfiguration() {
+    try {
+      validateGoogleOAuthConfig();
+      this.logger.log('Google API configuration validated successfully');
+    } catch (error) {
+      this.logger.error(`Configuration validation failed: ${error.message}`);
+    }
   }
 
   /**
@@ -133,11 +166,12 @@ export class ScheduleService {
         return;
       }
 
-      // Set up Google API authentication
-      auth2Client.setCredentials({
-        access_token: userTokenData.accessToken,
-        refresh_token: userTokenData.refreshToken,
-      });
+      // Validate and refresh tokens with proper error handling
+      const tokenValid = await this.refreshTokenWithErrorHandling([userTokenData]);
+      if (!tokenValid) {
+        this.logger.error(`Failed to refresh tokens for creator: ${session.creator}`);
+        return;
+      }
 
       const calendar = google.calendar({ version: 'v3', auth: auth2Client });
 
@@ -188,6 +222,93 @@ export class ScheduleService {
     }
     return result.length ? result[0] : null;
   }
+
+
+  private async getAttendanceByBatchId(batchId, creatorEmail: string) {
+    this.logger.log(`Starting getAttendanceByBatchId for batchId: ${batchId}, creator: ${creatorEmail}`);
+    try {
+      const students = await db
+        .select()
+        .from(zuvyBatchEnrollments)
+        .where(eq(zuvyBatchEnrollments.batchId, Number(batchId)));
+      
+      this.logger.log(`Found ${students.length} students in batch ${batchId}`);
+
+      const userData = await db.select().from(users).where(eq(users.email, creatorEmail));
+      if (!userData.length) {
+        this.logger.warn(`No user found for email: ${creatorEmail}`);
+        return[{ status: 'error', message: 'User not found' }];
+      }
+
+      const tokens = await db
+        .select()
+        .from(userTokens)
+        .where(eq(userTokens.userId, Number(userData[0].id)));
+
+      if (!tokens.length) {
+        this.logger.warn(`No tokens found for user: ${creatorEmail}`);
+        return [{ status: 'error', message: 'Unable to fetch tokens' }];
+      }
+
+      this.logger.log(`Setting up OAuth2 credentials for user: ${creatorEmail}`);
+      // Validate and refresh tokens with proper error handling
+      const tokenValid = await this.refreshTokenWithErrorHandling(tokens);
+      if (!tokenValid) {
+        this.logger.error(`Failed to refresh tokens for user: ${creatorEmail}`);
+        return [{ status: 'error', message: helperVariable.GOOGLE_OAUTH_ERRORS.TOKEN_REFRESH_FAILED }];
+      }
+
+      const client = google.admin({ version: 'reports_v1', auth: auth2Client });
+      const meetings = await db
+        .select()
+        .from(zuvySessions)
+        .where(and(eq(zuvySessions.batchId, Number(batchId)), eq(zuvySessions.status, 'completed')));
+
+      this.logger.log(`Found ${meetings.length} completed meetings for batch ${batchId}`);
+
+      const [errorAttendance, attendance] = await this.calculateAttendance(client, meetings, students);
+      if (errorAttendance) {
+        this.logger.error(`Error calculating attendance: ${JSON.stringify(errorAttendance)}`);
+        return [errorAttendance];
+      }
+      this.logger.log(`Successfully calculated attendance for batch ${batchId}`);
+      return [null,{ data: attendance, status: 'success' }];
+    } catch (error) {
+      this.logger.error(`Error in getAttendanceByBatchId: ${error.message}`);
+      throw new Error(`Error fetching attendance: ${error.message}`);
+    }
+  }
+  
+  // Helper method to handle OAuth token refresh
+  private async refreshTokenWithErrorHandling(tokens: any[]): Promise<boolean> {
+    try {
+      if (!process.env.GOOGLE_SECRET) {
+        this.logger.error(helperVariable.GOOGLE_OAUTH_ERRORS.CLIENT_SECRET_MISSING);
+        return false;
+      }
+
+      auth2Client.setCredentials({
+        access_token: tokens[0].accessToken,
+        refresh_token: tokens[0].refreshToken,
+      });
+
+      // Test the credentials by making a simple API call
+      await auth2Client.getAccessToken();
+      return true;
+    } catch (error) {
+      this.logger.error(`OAuth token refresh failed: ${error.message}`);
+      if (error.message?.includes('client_secret')) {
+        this.logger.error(helperVariable.GOOGLE_OAUTH_ERRORS.CLIENT_SECRET_MISSING);
+      } else if (error.message?.includes('invalid_request')) {
+        this.logger.error(helperVariable.GOOGLE_OAUTH_ERRORS.INVALID_CREDENTIALS);
+      } else {
+        this.logger.error(helperVariable.GOOGLE_OAUTH_ERRORS.TOKEN_REFRESH_FAILED);
+      }
+      return false;
+    }
+  }
+
+
 
   /**
    * Updates session with video recording link from Google Calendar
@@ -308,58 +429,6 @@ export class ScheduleService {
     }
   }
 
-  private async getAttendanceByBatchId(batchId, creatorEmail: string) {
-    this.logger.log(`Starting getAttendanceByBatchId for batchId: ${batchId}, creator: ${creatorEmail}`);
-    try {
-      const students = await db
-        .select()
-        .from(zuvyBatchEnrollments)
-        .where(eq(zuvyBatchEnrollments.batchId, Number(batchId)));
-      
-      this.logger.log(`Found ${students.length} students in batch ${batchId}`);
-
-      const userData = await db.select().from(users).where(eq(users.email, creatorEmail));
-      if (!userData.length) {
-        this.logger.warn(`No user found for email: ${creatorEmail}`);
-        return[{ status: 'error', message: 'User not found' }];
-      }
-
-      const tokens = await db
-        .select()
-        .from(userTokens)
-        .where(eq(userTokens.userId, Number(userData[0].id)));
-
-      if (!tokens.length) {
-        this.logger.warn(`No tokens found for user: ${creatorEmail}`);
-        return [{ status: 'error', message: 'Unable to fetch tokens' }];
-      }
-
-      this.logger.log(`Setting up OAuth2 credentials for user: ${creatorEmail}`);
-      auth2Client.setCredentials({
-        access_token: tokens[0].accessToken,
-        refresh_token: tokens[0].refreshToken,
-      });
-
-      const client = google.admin({ version: 'reports_v1', auth: auth2Client });
-      const meetings = await db
-        .select()
-        .from(zuvySessions)
-        .where(and(eq(zuvySessions.batchId, Number(batchId)), eq(zuvySessions.status, 'completed')));
-
-      this.logger.log(`Found ${meetings.length} completed meetings for batch ${batchId}`);
-
-      const [errorAttendance, attendance] = await this.calculateAttendance(client, meetings, students);
-      if (errorAttendance) {
-        this.logger.error(`Error calculating attendance: ${JSON.stringify(errorAttendance)}`);
-        return [errorAttendance];
-      }
-      this.logger.log(`Successfully calculated attendance for batch ${batchId}`);
-      return [null,{ data: attendance, status: 'success' }];
-    } catch (error) {
-      this.logger.error(`Error in getAttendanceByBatchId: ${error.message}`);
-      throw new Error(`Error fetching attendance: ${error.message}`);
-    }
-  }
 
   private async calculateAttendance(client: any, meetings: any[], students: any[]) {
     this.logger.log(`Starting calculateAttendance for ${meetings.length} meetings and ${students.length} students`);
@@ -473,10 +542,12 @@ export class ScheduleService {
 
       if (!tokens.length) return [{ status: 'error', message: 'Unable to fetch tokens' }];
 
-      auth2Client.setCredentials({
-        access_token: tokens[0].accessToken,
-        refresh_token: tokens[0].refreshToken,
-      });
+      // Validate and refresh tokens with proper error handling
+      const tokenValid = await this.refreshTokenWithErrorHandling(tokens);
+      if (!tokenValid) {
+        this.logger.error(`Failed to refresh tokens for session creator: ${session.creator}`);
+        return [{ status: 'error', message: helperVariable.GOOGLE_OAUTH_ERRORS.TOKEN_REFRESH_FAILED }];
+      }
       
       const client = google.admin({ version: 'reports_v1', auth: auth2Client });
       // 1. Fetch Google Meet activity logs for this session
@@ -567,6 +638,79 @@ export class ScheduleService {
     } catch (error) {
       console.error(error);
       return [{ status: 'error', message: 'Error fetching session data' }];
+    }
+  }
+
+  /**
+   * Get service health status
+   * Returns current processing state and configuration status
+   */
+  async getServiceStatus() {
+    try {
+      return {
+        status: 'healthy',
+        processing: this.processingActive,
+        configuration: 'validated',
+        lastRun: new Date().toISOString(),
+        message: 'ScheduleService is running and processing sessions every 2 minutes'
+      };
+    } catch (error) {
+      this.logger.error(`Error getting service status: ${error.message}`);
+      return {
+        status: 'error',
+        processing: this.processingActive,
+        configuration: 'invalid',
+        error: error.message
+      };
+    }
+  }
+
+  /**
+   * Manually trigger session processing
+   * Allows manual execution of the session processing workflow
+   */
+  async manualProcessSessions() {
+    this.logger.log('Manual session processing triggered');
+    
+    if (this.processingActive) {
+      return {
+        status: 'skipped',
+        message: 'Processing already in progress',
+        processingActive: true
+      };
+    }
+
+    try {
+      this.processingActive = true;
+      
+      // Fetch sessions that need processing
+      const sessions = await this.fetchSessions();
+      this.logger.log(`Manual trigger: Found ${sessions.length} sessions to process`);
+      
+      if (sessions.length > 0) {
+        await this.processSessions(sessions);
+        return {
+          status: 'success',
+          message: `Successfully processed ${sessions.length} sessions`,
+          sessionsProcessed: sessions.length
+        };
+      } else {
+        return {
+          status: 'success',
+          message: 'No sessions found that need processing',
+          sessionsProcessed: 0
+        };
+      }
+      
+    } catch (error) {
+      this.logger.error(`Error in manual processing: ${error.message}`);
+      return {
+        status: 'error',
+        message: `Manual processing failed: ${error.message}`,
+        error: error.message
+      };
+    } finally {
+      this.processingActive = false;
     }
   }
 }
