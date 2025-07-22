@@ -904,12 +904,12 @@ export class SubmissionService {
           count: sql<number>`cast(count(${zuvyBatchEnrollments.id}) as int)`,
         })
         .from(zuvyBatchEnrollments)
-        .where(eq(zuvyBatchEnrollments.bootcampId, bootcampId));
+        .where(sql`${zuvyBatchEnrollments.bootcampId} = ${bootcampId} AND ${zuvyBatchEnrollments.batchId} IS NOT NULL`);
       const totalStudentss = zuvyBatchEnrollmentsCount[0]?.count ?? 0;
 
       const statusOfIncompletedStudentForm = await db.query.zuvyBatchEnrollments.findMany({
         where: (batchEnrollments, { sql }) =>
-          sql`${batchEnrollments.bootcampId} = ${bootcampId}`,
+          sql`${batchEnrollments.bootcampId} = ${bootcampId} AND ${batchEnrollments.batchId} IS NOT NULL`,
         with: {
           user: {
             columns: {
@@ -922,7 +922,7 @@ export class SubmissionService {
         },
 
       });
-
+       // console.log(statusOfIncompletedStudentForm);
       const statusOfCompletedStudentForm = await db.query.zuvyChapterTracking.findMany({
         where: (chapterTracking, { sql }) =>
           sql`${chapterTracking.chapterId} = ${chapterId} AND ${chapterTracking.moduleId} = ${moduleId}`,
@@ -938,7 +938,6 @@ export class SubmissionService {
         },
 
       });
-
       const totalStudentsCount = totalStudentss;
       const totalPages = Math.ceil(totalStudentsCount / limit);
 
@@ -950,9 +949,10 @@ export class SubmissionService {
           status: 'Submitted',
         };
       });
-
+     
       const completedIds = new Set(data1.map(item => item.id));
       const data2 = statusOfIncompletedStudentForm
+        .filter(statusForm => statusForm['user'])
         .map((statusForm) => {
           return {
             id: Number(statusForm['user']['id']),
