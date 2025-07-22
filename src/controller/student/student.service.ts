@@ -19,7 +19,7 @@ import {
   zuvyModuleTopics
 } from '../../../drizzle/schema';
 import { db } from '../../db/index';
-import { eq, sql, desc, count, asc, or, and, inArray } from 'drizzle-orm';
+import { eq, sql, desc, count, asc, or, and, inArray, isNull } from 'drizzle-orm';
 import { ClassesService } from '../classes/classes.service'
 import { helperVariable } from 'src/constants/helper';
 import { STATUS_CODES } from "../../helpers/index";
@@ -1187,7 +1187,7 @@ Team Zuvy`;
     const totalStudents = await db
       .select({ count: count() })
       .from(zuvyBatchEnrollments)
-      .where(eq(zuvyBatchEnrollments.bootcampId, bootcampId));
+      .where(sql`${zuvyBatchEnrollments.bootcampId} = ${bootcampId} AND ${zuvyBatchEnrollments.batchId} IS NOT NULL`);
 
     // 4. Fetch course modules and chapters
     const modules = await db.query.zuvyCourseModules.findMany({
