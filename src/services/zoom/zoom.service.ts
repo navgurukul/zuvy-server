@@ -88,7 +88,36 @@ export class ZoomService {
   private accessToken: string;
 
   constructor() {
-    this.accessToken = process.env.ZOOM_ACCESS_TOKEN || '';
+    this.accessToken = '';
+    this.generateAccessToken();
+  }
+
+  private async generateAccessToken(): Promise<void> {
+    const tokenUrl = 'https://zoom.us/oauth/token';
+    const authHeader = Buffer.from(`${process.env.ZOOM_CLIENT_ID}:${process.env.ZOOM_CLIENT_SECRET}`).toString('base64');
+
+    try {
+      const response = await axios.post(
+        tokenUrl,
+        new URLSearchParams({
+          grant_type: 'account_credentials',
+          account_id: process.env.ZOOM_ACCOUNT_ID || '',
+        }),
+        {
+          headers: {
+            Authorization: `Basic ${authHeader}`,
+            'Content-Type': 'application/x-www-form-urlencoded',
+          },
+        }
+      );
+        
+      this.accessToken = response.data.access_token;
+      console.log('Zoom access token generated successfully:', this.accessToken);
+      this.logger.log('Zoom access token generated successfully.');
+    } catch (error) {
+      this.logger.error(`Error generating Zoom access token: ${error.response?.data || error.message}`);
+      throw new Error('Failed to generate Zoom access token.');
+    }
   }
 
   private getHeaders() {

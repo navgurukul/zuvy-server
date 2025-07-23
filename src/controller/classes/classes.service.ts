@@ -22,6 +22,9 @@ import { ZoomService } from '../../services/zoom/zoom.service';
 
 @Injectable()
 export class ClassesService {
+  updatingStatusOfClass(bootcampId: number, batchId: number): any {
+    throw new Error('Method not implemented.');
+  }
   private readonly logger = new Logger(ClassesService.name);
 
   constructor(private readonly zoomService: ZoomService) {}
@@ -166,10 +169,11 @@ export class ClassesService {
       endDateTime: string;
       timeZone: string;
       batchId: number;
+      bootcampId: number;
       moduleId: number;
       daysOfWeek: string[];
       totalClasses: number;
-      useZoom?: boolean;
+      isZoomMeet?: boolean;
     },
     creatorInfo: any,
   ) {
@@ -181,8 +185,9 @@ export class ClassesService {
           message: 'Only admins can create sessions',
         };
       }
-
-      if (eventDetails.useZoom) {
+      console.log('Creating session with details:', eventDetails);
+      
+      if (eventDetails.isZoomMeet) {
         this.logger.log('Creating Zoom session');
         return this.createZoomSession(eventDetails, creatorInfo);
       } else {
@@ -207,6 +212,7 @@ export class ClassesService {
       endDateTime: string;
       timeZone: string;
       batchId: number;
+      bootcampId: number;
       moduleId: number;
       daysOfWeek?: string[];
       totalClasses?: number;
@@ -214,8 +220,6 @@ export class ClassesService {
     creatorInfo: any,
   ) {
     try {
-      // Implementation for creating Zoom sessions
-      this.logger.log('Creating Zoom session:', eventDetails);
       
       const sessionsToCreate = [];
       const startDate = new Date(eventDetails.startDateTime);
@@ -255,6 +259,7 @@ export class ClassesService {
         startTime: eventDetails.startDateTime,
         endTime: eventDetails.endDateTime,
         batchId: eventDetails.batchId,
+        bootcampId: eventDetails.bootcampId,
         moduleId: eventDetails.moduleId,
         title: eventDetails.title,
         isZoomMeet: true,
@@ -262,20 +267,19 @@ export class ClassesService {
       };
 
       // Validate and create chapter
-      const chapterResult = await this.validateAndCreateChapter({
-        ...eventDetails,
-        bootcampId: null, // Will be set from batch validation
-      });
+      // const chapterResult = await this.validateAndCreateChapter({
+      //   ...eventDetails,
+      //   bootcampId: eventDetails.bootcampId, // Will be set from batch validation
+      // });
 
-      if (!chapterResult.success) {
-        throw new Error(chapterResult.message);
-      }
+      // if (!chapterResult.success) {
+      //   throw new Error(chapterResult.message);
+      // }
 
-      session['chapterId'] = chapterResult.chapter.id;
-      session['bootcampId'] = chapterResult.bootcampId;
+      // session['chapterId'] = chapterResult.chapter.id;
+      // session['bootcampId'] = chapterResult.bootcampId;
 
       sessionsToCreate.push(session);
-
       // Save sessions to database
       const saveResult = await this.saveSessionsToDatabase(sessionsToCreate);
       
@@ -306,6 +310,7 @@ export class ClassesService {
       endDateTime: string;
       timeZone: string;
       batchId: number;
+      bootcampId: number;
       moduleId: number;
       daysOfWeek: string[];
       totalClasses: number;
@@ -316,7 +321,7 @@ export class ClassesService {
       // Validate and create chapter first
       const chapterResult = await this.validateAndCreateChapter({
         ...eventDetails,
-        bootcampId: null, // Will be set from batch validation
+        bootcampId: eventDetails.bootcampId, // Will be set from batch validation
       });
 
       if (!chapterResult.success) {
@@ -590,34 +595,31 @@ export class ClassesService {
   // Helper method to save sessions to database
   private async saveSessionsToDatabase(sessions: any[]) {
     try {
-      const savedSessions = [];
+      const sessionData = sessions.map(session => ({
+        meetingId: session.meetingId,
+        hangoutLink: session.hangoutLink || session.zoomJoinUrl,
+        creator: session.creator,
+        startTime: session.startTime,
+        endTime: session.endTime,
+        batchId: session.batchId,
+        bootcampId: session.bootcampId,
+        moduleId: session.moduleId,
+        chapterId: session.chapterId,
+        title: session.title,
+        status: session.status || 'upcoming',
+        isZoomMeet: session.isZoomMeet || false,
+        zoomStartUrl: session.zoomStartUrl,
+        zoomPassword: session.zoomPassword,
+        zoomMeetingId: session.zoomMeetingId,
+      }));
 
-      for (const session of sessions) {
-        const sessionData = {
-          meetingId: session.meetingId,
-          hangoutLink: session.hangoutLink || session.zoomJoinUrl,
-          creator: session.creator,
-          startTime: session.startTime,
-          endTime: session.endTime,
-          batchId: session.batchId,
-          bootcampId: session.bootcampId,
-          moduleId: session.moduleId,
-          chapterId: session.chapterId,
-          title: session.title,
-          status: session.status || 'upcoming',
-          isZoomMeet: session.isZoomMeet || false,
-          zoomStartUrl: session.zoomStartUrl,
-          zoomPassword: session.zoomPassword,
-          zoomMeetingId: session.zoomMeetingId,
-        };
+      this.logger.log(`Saving ${sessionData.length} sessions to the database.`);
+      console.log('Session data:', sessionData);
 
-        const saved = await db
-          .insert(zuvySessions)
-          .values(sessionData)
-          .returning();
-
-        savedSessions.push(saved[0]);
-      }
+      const savedSessions = await db
+        .insert(zuvySessions)
+        .values(sessionData)
+        .returning();
 
       return {
         status: 'success',
