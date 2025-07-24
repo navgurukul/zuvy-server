@@ -70,7 +70,7 @@ export const questionType = pgEnum('questionType', [
   'Date',
   'Time',
 ]);
-import { helperVariable } from 'src/constants/helper';
+import { helperVariable } from '../src/constants/helper';
 let schName;
 if (process.env.ENV_NOTE == helperVariable.schemaName) {
   schName = helperVariable.schemaName;
@@ -1899,6 +1899,7 @@ export const interviewOwners = main.table(
   'interview_owners',
   {
     id: serial('id').primaryKey().notNull(),
+
     userId: integer('user_id')
       .notNull()
       .references(() => cUsers.id),
@@ -2951,6 +2952,20 @@ export const zuvyStudentAttendance = main.table('zuvy_student_attendance', {
   bootcampId: integer('bootcamp_id').references(() => zuvyBootcamps.id),
   version: varchar('version', { length: 10 })
 });
+export enum AttendanceStatus {
+  PRESENT = 'present',
+  ABSENT = 'absent'
+};
+// in the above table we are storing the a  ttendance of the students in a json format, where the key is the userId and the value is the status of the attendance (present/absent), but i want to create a new table for the attendance of the students in a more structured way, so that we can easily query the attendance of the students. can you name it differently
+export const zuvyStudentAttendanceRecords = main.table('zuvy_student_attendance_records', {
+  id: serial('id').primaryKey().notNull(),
+  userId: integer('user_id').references(() => users.id).notNull(),
+  batchId: integer('batch_id').references(() => zuvyBatches.id).notNull(),
+  bootcampId: integer('bootcamp_id').references(() => zuvyBootcamps.id).notNull(),
+  attendanceDate: date('attendance_date').notNull(),
+  status: varchar('status', { length: 10 }).notNull().default(AttendanceStatus.ABSENT),
+  version: varchar('version', { length: 10 })
+}); 
 
 export const zuvySessionRecordViews = main.table('zuvy_session_record_views', {
   id: serial('id').primaryKey().notNull(),
@@ -3500,7 +3515,6 @@ export const zuvyTestCasesSubmissionRelation = relations(zuvyTestCasesSubmission
     references: [zuvyPracticeCode.id],
   }),
 }))
-
 
 
 export const zuvyLanguages = main.table("zuvy_languages", {

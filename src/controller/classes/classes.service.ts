@@ -11,6 +11,7 @@ import {
   zuvyModuleChapter,
   zuvyBootcamps,
   userTokens,
+  zuvyStudentAttendanceRecords,
   users,
 } from '../../../drizzle/schema';
 import { eq, desc, and, sql, ilike } from 'drizzle-orm';
@@ -22,7 +23,7 @@ import { ZoomService } from '../../services/zoom/zoom.service';
 
 @Injectable()
 export class ClassesService {
-  updatingStatusOfClass(bootcampId: number, batchId: number): any {
+  updatingStatusOfClass(bootcampId: number, batchId: number) {
     throw new Error('Method not implemented.');
   }
   private readonly logger = new Logger(ClassesService.name);
@@ -173,7 +174,8 @@ export class ClassesService {
       moduleId: number;
       daysOfWeek: string[];
       totalClasses: number;
-      isZoomMeet?: boolean;
+      isZoomMeet: boolean;
+      // Removed useZoom
     },
     creatorInfo: any,
   ) {
@@ -185,9 +187,8 @@ export class ClassesService {
           message: 'Only admins can create sessions',
         };
       }
-      console.log('Creating session with details:', eventDetails);
-      
-      if (eventDetails.isZoomMeet) {
+
+      if (eventDetails.isZoomMeet) { // Replaced useZoom with isZoomMeet
         this.logger.log('Creating Zoom session');
         return this.createZoomSession(eventDetails, creatorInfo);
       } else {
@@ -452,6 +453,7 @@ export class ClassesService {
         };
       }
     } catch (error) {
+      console.log({error})
       this.logger.error(`Error creating Zoom meeting: ${error.message}`);
       return {
         success: false,
@@ -1561,25 +1563,25 @@ export class ClassesService {
   async fetchZoomAttendanceForSession(sessionId: number) {
     try {
       this.logger.log(`Fetching Zoom attendance for session: ${sessionId}`);
-      
+
       // Get session details
       const session = await db.select().from(zuvySessions)
         .where(eq(zuvySessions.id, sessionId));
-        
+
       if (!session.length) {
         return { success: false, message: 'Session not found' };
       }
-      
-      const sessionData = session[0];
-      
+
+      let sessionData:any = session[0];
+
       if (!sessionData.isZoomMeet) {
         return { success: false, message: 'This is not a Zoom session' };
       }
-      
+
       if (!sessionData.zoomMeetingId) {
         return { success: false, message: 'No Zoom meeting ID found for this session' };
       }
-      
+
       try {
         // Fetch Zoom meeting details to get UUID
         const meetingDetails = await this.zoomService.getMeeting(sessionData.zoomMeetingId);
@@ -1593,85 +1595,110 @@ export class ClassesService {
         
         // Fetch attendance using meeting UUID
         const zoomAttendanceResponse = await this.zoomService.getMeetingParticipants(meetingDetails.data.uuid);
-        
+
+        if (!zoomAttendanceResponse.success || !zoomAttendanceResponse.data) {
+          return { 
+            success: false, 
+            message: 'Failed to fetch attendance from Zoom',
+            error: zoomAttendanceResponse.error 
+          };
+        }
+
+        // Refresh sessionData from DB in case it was updated elsewhere
+        const sessionDataArr: any = await db.select().from(zuvySessions)
+          .where(eq(zuvySessions.id, sessionId));
+
+        if (!sessionDataArr.length) {
+          return { success: false, message: 'Session not found' };
+        }
+        // Use the refreshed sessionData
+        sessionData = sessionDataArr[0];
+        let { startTime, endTime, s3link } = sessionData;
+        if (!s3link){
+          // If no S3 link, upload recording if available
+          const recording = await this.zoomService.getMeetingRecordings(sessionData.zoomMeetingId);
+          if (recording.success && recording.data) {
+            const s3Link = await this.uploadVideoToS3(recording.data.fileBuffer, `session-${sessionId}.mp4`);
+            if (s3Link) {
+              s3link = s3Link;
+              let updateClass: any = { s3link: s3link };
+              // Update session with new S3 link
+              await db.update(zuvySessions)
+                .set(updateClass)
+                .where(eq(zuvySessions.id, sessionId));
+            }
+          }
+        }
         // Process and save attendance data
         const students = await db
           .select({
             id: users.id,
             email: users.email,
             name: users.name,
-            enrollmentId: zuvyBatchEnrollments.id,
+            enrollmentId: zuvyBatchEnrollments.id,  
           })
           .from(zuvyBatchEnrollments)
           .innerJoin(users, eq(zuvyBatchEnrollments.userId, users.id))
           .where(eq(zuvyBatchEnrollments.batchId, sessionData.batchId));
-        
+
         // Calculate attendance based on duration threshold
         const processedAttendance = this.zoomService.calculateAttendance(
           zoomAttendanceResponse.participants,
           0.75 // 75% threshold
         );
-        
-        // Save attendance to database
-        const attendanceRecords = [];
+
+        // Save attendance to `zuvyStudentAttendance` table (JSON format)
+        const attendanceJson = students.map(student => ({
+          userId: student.id,
+          status: processedAttendance.some(p => p.email === student.email) ? 'present' : 'absent',
+        }));
+
+        await db.insert(zuvyStudentAttendance).values({
+          meetingId: sessionData.zoomMeetingId,
+          attendance: attendanceJson,
+          batchId: sessionData.batchId,
+          bootcampId: sessionData.bootcampId,
+          version: '1.0',
+        });
+
+        // Save attendance to `zuvyStudentAttendanceRecords` table (structured format)
         for (const student of students) {
           const participantData = processedAttendance.find(
             p => p.email === student.email
           );
-          
+
           const attendanceRecord = {
             userId: Number(student.id),
-            email: student.email,
-            name: student.name,
-            isPresent: participantData ? participantData.attendance === 'present' : false,
-            duration: participantData ? participantData.duration : 0,
-            joinTime: null, // Could be extracted from Zoom data if needed
-            leaveTime: null,
-          };
-          
-          attendanceRecords.push(attendanceRecord);
-        }
-        
-        // Delete existing attendance records for this session
-        await db.delete(zuvyStudentAttendance)
-          .where(eq(zuvyStudentAttendance.meetingId, sessionData.meetingId));
-        
-        // Insert new attendance record with JSONB data
-        if (attendanceRecords.length > 0) {
-          await db.insert(zuvyStudentAttendance).values({
-            meetingId: sessionData.meetingId,
-            attendance: attendanceRecords,
             batchId: sessionData.batchId,
             bootcampId: sessionData.bootcampId,
-          });
+            attendanceDate: new Date(sessionData.startTime).toISOString().split('T')[0],
+            status: participantData ? 'present' : 'absent',
+          };
+
+          await db.insert(zuvyStudentAttendanceRecords).values(attendanceRecord);
         }
-        
+
         return {
           success: true,
-          data: { 
-            sessionId, 
-            attendance: attendanceRecords,
-            totalParticipants: zoomAttendanceResponse?.participants?.length || 0,
-            meetingDuration: zoomAttendanceResponse?.duration || 0
-          },
-          message: 'Zoom attendance fetched and saved successfully'
+          message: 'Zoom attendance and recording fetched and saved successfully',
+          data: { s3link },
         };
-        
+
       } catch (zoomError) {
         this.logger.error(`Error fetching from Zoom API: ${zoomError.message}`);
         return {
           success: false,
           error: zoomError.message,
-          message: 'Failed to fetch attendance from Zoom'
+          message: 'Failed to fetch attendance or recording from Zoom',
         };
       }
-      
+
     } catch (error) {
       this.logger.error(`Error fetching Zoom attendance for session ${sessionId}: ${error.message}`);
       return {
         success: false,
         error: error.message,
-        message: 'Failed to fetch Zoom attendance for session'
+        message: 'Failed to fetch Zoom attendance for session',
       };
     }
   }

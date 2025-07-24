@@ -1,85 +1,9 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import axios, { AxiosResponse } from 'axios';
-
-export interface ZoomMeetingRequest {
-  topic: string;
-  type: number; // 1 = instant, 2 = scheduled, 3 = recurring with no fixed time, 8 = recurring with fixed time
-  start_time: string; // ISO 8601 format
-  duration: number; // Duration in minutes
-  timezone: string;
-  password?: string;
-  agenda?: string;
-  recurrence?: {
-    type: number; // 1 = Daily, 2 = Weekly, 3 = Monthly
-    repeat_interval: number;
-    weekly_days?: string; // 1,2,3,4,5,6,7 (Sunday = 1, Monday = 2, etc.)
-    end_times?: number; // How many times to repeat
-  };
-  settings?: {
-    host_video?: boolean;
-    participant_video?: boolean;
-    cn_meeting?: boolean;
-    in_meeting?: boolean;
-    join_before_host?: boolean;
-    mute_upon_entry?: boolean;
-    watermark?: boolean;
-    use_pmi?: boolean;
-    approval_type?: number; // 0 = automatically approve, 1 = manually approve, 2 = no registration required
-    audio?: string; // both, telephony, voip
-    auto_recording?: string; // local, cloud, none
-    enforce_login?: boolean;
-    waiting_room?: boolean;
-  };
-}
-
-export interface ZoomMeetingResponse {
-  uuid: string;
-  id: number;
-  host_id: string;
-  host_email: string;
-  topic: string;
-  type: number;
-  status: string;
-  start_time: string;
-  duration: number;
-  timezone: string;
-  agenda: string;
-  created_at: string;
-  start_url: string;
-  join_url: string;
-  password: string;
-  h323_password: string;
-  pstn_password: string;
-  encrypted_password: string;
-  occurrences?: Array<{
-    occurrence_id: string;
-    start_time: string;
-    duration: number;
-    status: string;
-  }>;
-}
-
-export interface ZoomAttendanceResponse {
-  uuid: string;
-  id: number;
-  topic: string;
-  host: string;
-  email: string;
-  user_type: string;
-  start_time: string;
-  end_time: string;
-  duration: number;
-  participants: Array<{
-    id: string;
-    user_id: string;
-    name: string;
-    user_email: string;
-    join_time: string;
-    leave_time: string;
-    duration: number;
-    attentiveness_score: string;
-  }>;
-}
+import { google } from 'googleapis';
+import { zuvySessions, userTokens } from '../../../drizzle/schema';
+import { db } from '../../db/index';
+import { eq } from 'drizzle-orm';
 
 @Injectable()
 export class ZoomService {
@@ -110,9 +34,8 @@ export class ZoomService {
           },
         }
       );
-        
+
       this.accessToken = response.data.access_token;
-      console.log('Zoom access token generated successfully:', this.accessToken);
       this.logger.log('Zoom access token generated successfully.');
     } catch (error) {
       this.logger.error(`Error generating Zoom access token: ${error.response?.data || error.message}`);
@@ -122,44 +45,57 @@ export class ZoomService {
 
   private getHeaders() {
     return {
-      'Authorization': `Bearer ${this.accessToken}`,
+      Authorization: `Bearer ${this.accessToken}`,
       'Content-Type': 'application/json',
     };
   }
 
-  /**
-   * Create a new Zoom meeting
-   */
-  async createMeeting(meetingData: ZoomMeetingRequest): Promise<{ success: boolean; data?: ZoomMeetingResponse; error?: string }> {
-    try {
-      const url = `${this.baseUrl}/users/me/meetings`;
-      
-      const response: AxiosResponse<ZoomMeetingResponse> = await axios.post(
-        url,
-        meetingData,
-        { headers: this.getHeaders() }
-      );
+  async createMeeting(meetingData: any): Promise<any> {
+    const url = `${this.baseUrl}/users/me/meetings`;
 
-      this.logger.log(`Zoom meeting created successfully: ${response.data.id}`);
-      return { success: true, data: response.data };
+    try {
+      this.logger.log(`Sending request to Zoom API: ${url}`);
+      this.logger.log(`Request payload: ${JSON.stringify(meetingData)}`);
+
+      const response: AxiosResponse<any> = await axios.post(url, meetingData, {
+        headers: this.getHeaders(),
+      });
+
+      this.logger.log(`Zoom meeting created: ${response.data.id}`);
+      return response.data;
     } catch (error) {
-      this.logger.error(`Error creating Zoom meeting: ${error.response?.data || error.message}`);
-      return { 
-        success: false, 
-        error: `Failed to create Zoom meeting: ${error.response?.data?.message || error.message}` 
-      };
+      this.logger.error(`Create Zoom meeting failed: ${error.response?.data || error.message}`);
+      throw new Error(`Zoom meeting creation failed`);
     }
   }
 
-  /**
-   * Update an existing Zoom meeting
-   */
-  async updateMeeting(meetingId: string, meetingData: Partial<ZoomMeetingRequest>): Promise<void> {
+  async deleteMeeting(meetingId: string): Promise<void> {
+    const url = `${this.baseUrl}/meetings/${meetingId}`;
+    try {
+      await axios.delete(url, { headers: this.getHeaders() });
+      this.logger.log(`Zoom meeting deleted: ${meetingId}`);
+    } catch (error) {
+      this.logger.error(`Delete Zoom meeting failed: ${error.message}`);
+      throw error;
+    }
+  }
+
+  async getMeeting(meetingId: string): Promise<{ success: boolean; data?: any; error?: string }> {
     try {
       const url = `${this.baseUrl}/meetings/${meetingId}`;
-      
+      const response: AxiosResponse<any> = await axios.get(url, { headers: this.getHeaders() });
+      this.logger.log(`Zoom meeting fetched successfully: ${response.data.id}`);
+      return { success: true, data: response.data };
+    } catch (error) {
+      this.logger.error(`Error fetching Zoom meeting: ${error.response?.data || error.message}`);
+      return { success: false, error: error.response?.data?.message || error.message };
+    }
+  }
+
+  async updateMeeting(meetingId: string, meetingData: any): Promise<void> {
+    try {
+      const url = `${this.baseUrl}/meetings/${meetingId}`;
       await axios.patch(url, meetingData, { headers: this.getHeaders() });
-      
       this.logger.log(`Zoom meeting updated successfully: ${meetingId}`);
     } catch (error) {
       this.logger.error(`Error updating Zoom meeting: ${error.response?.data || error.message}`);
@@ -167,153 +103,139 @@ export class ZoomService {
     }
   }
 
-  /**
-   * Delete a Zoom meeting
-   */
-  async deleteMeeting(meetingId: string): Promise<void> {
+  async getMeetingParticipants(meetingUuid: string): Promise<{ success: boolean; data?: any; participants?: any; error?: string }> {
     try {
-      const url = `${this.baseUrl}/meetings/${meetingId}`;
-      
-      await axios.delete(url, { headers: this.getHeaders() });
-      
-      this.logger.log(`Zoom meeting deleted successfully: ${meetingId}`);
-    } catch (error) {
-      this.logger.error(`Error deleting Zoom meeting: ${error.response?.data || error.message}`);
-      throw new Error(`Failed to delete Zoom meeting: ${error.response?.data?.message || error.message}`);
-    }
-  }
-
-  /**
-   * Get meeting details
-   */
-  async getMeeting(meetingId: string): Promise<{ success: boolean; data?: ZoomMeetingResponse; error?: string }> {
-    try {
-      const url = `${this.baseUrl}/meetings/${meetingId}`;
-      
-      const response: AxiosResponse<ZoomMeetingResponse> = await axios.get(
-        url,
-        { headers: this.getHeaders() }
-      );
-
-      return { success: true, data: response.data };
-    } catch (error) {
-      this.logger.error(`Error fetching Zoom meeting: ${error.response?.data || error.message}`);
-      return {
-        success: false,
-        error: `Failed to fetch Zoom meeting: ${error.response?.data?.message || error.message}`
-      };
-    }
-  }
-
-  /**
-   * Get meeting participants/attendance
-   */
-  async getMeetingParticipants(meetingUuid: string): Promise<ZoomAttendanceResponse> {
-    try {
-      // URL encode the UUID as it might contain special characters
       const encodedUuid = encodeURIComponent(meetingUuid);
       const url = `${this.baseUrl}/report/meetings/${encodedUuid}/participants`;
-      
-      const response: AxiosResponse<ZoomAttendanceResponse> = await axios.get(
-        url,
-        { headers: this.getHeaders() }
-      );
-
-      return response.data;
+      const response: AxiosResponse<any> = await axios.get(url, { headers: this.getHeaders() });
+      this.logger.log(`Zoom meeting participants fetched successfully for UUID: ${meetingUuid}`);
+      return { success: true, data: response.data, participants: response.data.participants };
     } catch (error) {
       this.logger.error(`Error fetching Zoom meeting participants: ${error.response?.data || error.message}`);
-      throw new Error(`Failed to fetch Zoom meeting participants: ${error.response?.data?.message || error.message}`);
+      return { success: false, error: error.response?.data?.message || error.message };
     }
   }
 
-  /**
-   * Get meeting recordings
-   */
-  async getMeetingRecordings(meetingId: string): Promise<any> {
+  async getMeetingRecordings(meetingId: string): Promise<{ success: boolean; data?: any; error?: string }> {
     try {
       const url = `${this.baseUrl}/meetings/${meetingId}/recordings`;
-      
-      const response: AxiosResponse<any> = await axios.get(
-        url,
-        { headers: this.getHeaders() }
-      );
-
-      return response.data;
+      const response: AxiosResponse<any> = await axios.get(url, { headers: this.getHeaders() });
+      this.logger.log(`Zoom meeting recordings fetched successfully for meeting: ${meetingId}`);
+      return { success: true, data: response.data };
     } catch (error) {
       this.logger.error(`Error fetching Zoom meeting recordings: ${error.response?.data || error.message}`);
-      throw new Error(`Failed to fetch Zoom meeting recordings: ${error.response?.data?.message || error.message}`);
+      return { success: false, error: error.response?.data?.message || error.message };
     }
   }
 
-  /**
-   * Create recurring meetings based on days of week and total classes
-   */
-  async createRecurringMeetings(
-    meetingData: ZoomMeetingRequest,
-    daysOfWeek: string[],
-    totalClasses: number
-  ): Promise<ZoomMeetingResponse[]> {
-    try {
-      const meetings: ZoomMeetingResponse[] = [];
-      
-      // Convert day names to Zoom's day numbers (Sunday = 1, Monday = 2, etc.)
-      const dayToZoomDay: { [key: string]: number } = {
-        'Sunday': 1,
-        'Monday': 2,
-        'Tuesday': 3,
-        'Wednesday': 4,
-        'Thursday': 5,
-        'Friday': 6,
-        'Saturday': 7,
-      };
-
-      const zoomDays = daysOfWeek.map(day => dayToZoomDay[day]).join(',');
-      
-      // Create recurring meeting
-      const recurringMeetingData: ZoomMeetingRequest = {
-        ...meetingData,
-        type: 8, // Recurring with fixed time
-        recurrence: {
-          type: 2, // Weekly
-          repeat_interval: 1,
-          weekly_days: zoomDays,
-          end_times: totalClasses,
-        },
-      };
-
-      const response = await this.createMeeting(recurringMeetingData);
-      if (response.success && response.data) {
-        meetings.push(response.data);
-      } else {
-        throw new Error(response.error || 'Failed to create recurring meeting');
-      }
-
-      return meetings;
-    } catch (error) {
-      this.logger.error(`Error creating recurring Zoom meetings: ${error.message}`);
-      throw error;
-    }
-  }
-
-  /**
-   * Calculate attendance based on duration threshold
-   */
-  calculateAttendance(
-    participants: ZoomAttendanceResponse['participants'],
-    durationThreshold: number = 0.75
-  ): Array<{ email: string; duration: number; attendance: 'present' | 'absent' }> {
+  calculateAttendance(participants: any[], durationThreshold: number = 0.75): Array<{ email: string; duration: number; attendance: 'present' | 'absent' }> {
     if (!participants || participants.length === 0) {
       return [];
     }
 
-    // Find the longest duration (likely the host/instructor)
     const maxDuration = Math.max(...participants.map(p => p.duration));
     const attendanceThreshold = maxDuration * durationThreshold;
 
     return participants.map(participant => ({
       email: participant.user_email,
       duration: participant.duration,
-      attendance: participant.duration >= attendanceThreshold ? 'present' : 'absent'
+      attendance: participant.duration >= attendanceThreshold ? 'present' : 'absent',
     }));
+  }
+
+  async createAndStoreZoomMeeting(meetingData: any, eventDetails: any, creatorInfo: any): Promise<any> {
+    const zoomResponse = await this.createMeeting(meetingData);
+
+    // Synchronize with Google Calendar using user's tokens
+    try {
+      await this.createGoogleCalendarEvent(zoomResponse, creatorInfo.id);
+      this.logger.log(`Google Calendar event created for Zoom meeting: ${zoomResponse.id}`);
+    } catch (error) {
+      this.logger.error(`Failed to create Google Calendar event: ${error.message}`);
+      throw new Error(`Failed to synchronize with Google Calendar: ${error.message}`);
+    }
+
+    // Store in zuvySessions table
+    const session = {
+      meetingId: zoomResponse.id.toString(),
+      hangoutLink: zoomResponse.join_url, // Required field - using Zoom join URL
+      creator: creatorInfo.email,
+      startTime: eventDetails.startDateTime,
+      endTime: eventDetails.endDateTime,
+      batchId: eventDetails.batchId,
+      bootcampId: eventDetails.bootcampId,
+      moduleId: eventDetails.moduleId,
+      chapterId: eventDetails.chapterId || 1, // Use provided chapterId or default to 1
+      title: eventDetails.title,
+      isZoomMeet: true,
+      zoomStartUrl: zoomResponse.start_url,
+      zoomPassword: zoomResponse.password,
+      zoomMeetingId: zoomResponse.id.toString(),
+      status: 'upcoming',
+    };
+
+    try {
+      await db.insert(zuvySessions).values(session);
+      this.logger.log(`Zoom meeting stored successfully in zuvySessions: ${session.meetingId}`);
+      return { success: true, data: session };
+    } catch (error) {
+      this.logger.error(`Failed to store Zoom meeting in zuvySessions: ${error.message}`);
+      throw new Error(`Failed to store Zoom meeting in zuvySessions: ${error.message}`);
+    }
+  }
+
+  async createGoogleCalendarEvent(meeting: any, userId: number): Promise<void> {
+    try {
+      // Fetch user tokens from database
+      const userTokensRecord = await db.select().from(userTokens).where(eq(userTokens.userId, userId)).limit(1);
+      
+      if (!userTokensRecord || userTokensRecord.length === 0) {
+        throw new Error(`No Google tokens found for user ID: ${userId}`);
+      }
+
+      const { accessToken, refreshToken } = userTokensRecord[0];
+
+      const { OAuth2 } = google.auth;
+      const oauth2Client = new OAuth2(
+        process.env.GOOGLE_CLIENT_ID,
+        process.env.GOOGLE_CLIENT_SECRET,
+        process.env.GOOGLE_REDIRECT_URI
+      );
+
+      oauth2Client.setCredentials({ 
+        access_token: accessToken,
+        refresh_token: refreshToken 
+      });
+
+      const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
+
+      const event = {
+        summary: meeting.topic,
+        description: `Zoom Join URL: ${meeting.join_url}`,
+        start: {
+          dateTime: meeting.start_time,
+          timeZone: meeting.timezone,
+        },
+        end: {
+          dateTime: new Date(new Date(meeting.start_time).getTime() + meeting.duration * 60000).toISOString(),
+          timeZone: meeting.timezone,
+        },
+        attendees: [
+          { email: meeting.host_email },
+        ],
+      };
+
+      this.logger.log(`Sending request to Google Calendar API with payload: ${JSON.stringify(event)}`);
+
+      const response = await calendar.events.insert({
+        calendarId: 'primary',
+        requestBody: event,
+      });
+
+      this.logger.log(`Google Calendar event created: ${response.data.htmlLink}`);
+    } catch (error) {
+      this.logger.error(`Failed to create Google Calendar event: ${error.response?.data || error.message}`);
+      throw error;
+    }
   }
 }

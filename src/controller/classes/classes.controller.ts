@@ -45,7 +45,7 @@ import {
   userTokens,
   zuvyBatches
 } from '../../../drizzle/schema';
-import { eq, desc, and, sql, ilike } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 
 // config user for admin
 let configUser = { id: process.env.ID, email: process.env.TEAM_EMAIL };
@@ -120,7 +120,7 @@ export class ClassesController {
   // @ApiBearerAuth('JWT-auth')
   @Public()
   async create(@Body() classData: CreateSessionDto, @Req() req) {
-    const userInfo = {
+    const userInfo = {  
       id: 58083,
       email: "team@zuvy.org",
       roles: ["admin"]

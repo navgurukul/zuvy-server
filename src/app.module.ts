@@ -13,6 +13,7 @@ import { TrackingModule } from './controller/progress/tracking.module';
 import { CodingPlatformModule } from './controller/codingPlatform/codingPlatform.module';
 import { SubmissionModule } from './controller/submissions/submission.module';
 import { AdminAssessmentModule } from './controller/adminAssessment/adminAssessment.module';
+import { ZoomModule } from './services/zoom/zoom.module';
 import { ScheduleModule } from './schedule/schedule.module';
 import { InstructorModule } from './controller/instructor/instructor.module';
 import { AuthModule } from './auth/auth.module';
@@ -44,6 +45,7 @@ let { GOOGLE_CLIENT_ID, GOOGLE_SECRET, GOOGLE_REDIRECT,JWT_SECRET_KEY } = proces
     TrackingModule,
     InstructorModule,
     ScheduleModule,
+    ZoomModule,
   ],
   providers: [
     {

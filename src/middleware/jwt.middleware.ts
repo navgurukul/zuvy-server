@@ -37,6 +37,10 @@ export class JwtMiddleware implements NestMiddleware {
       { path: '/classes/test-endpoint', method: 'GET' },
       { path: "/student/apply", method: 'POST' },
       { path: "/users/verify-token", method: 'POST' },
+      { path: '/zoom/create', method: 'POST' },
+      { path: '/zoom/update/:meetingId', method: 'PUT' },
+      { path: '/zoom/delete/:meetingId', method: 'DELETE' },
+      { path: '/zoom/get/:meetingId', method: 'GET' },
       // Add more unrestricted routes here as needed
     ];
 
