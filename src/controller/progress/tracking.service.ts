@@ -1,6 +1,6 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { db } from '../../db/index';
-import { eq, sql, inArray, and, SQL } from 'drizzle-orm';
+import { eq, sql, inArray, and, SQL, desc } from 'drizzle-orm';
 import { error, log } from 'console';
 import {
   zuvyAssignmentSubmission,
@@ -23,7 +23,8 @@ import {
   zuvyOutsourseAssessments,
   zuvySessions,
   zuvyStudentAttendance,
-  zuvyBootcamps
+  zuvyBootcamps,
+  zuvyCourseProjects
 } from 'drizzle/schema';
 import {
   SubmitBodyDto,
@@ -35,6 +36,7 @@ import { helperVariable } from 'src/constants/helper';
 import * as crypto from 'crypto';
 import { ContentService } from '../content/content.service';
 import { ClassesService } from '../classes/classes.service';
+import { courseEnrolments } from 'drizzle/tables';
 
 // Difficulty Points Mapping
 let { ACCEPTED, SUBMIT } = helperVariable;
@@ -50,7 +52,7 @@ export class TrackingService {
     chapterId: number,
   ): Promise<any> {
     try {
-      
+
       const chapterExistsInModuleChapter = await db
         .select()
         .from(zuvyModuleChapter)
@@ -396,8 +398,7 @@ export class TrackingService {
       const bootcamp = await db.query.zuvyBootcampType.findFirst({
         where: (bootcamp, { eq }) => eq(bootcamp.bootcampId, bootcampId),
       });
-      if(!bootcamp)
-      {
+      if (!bootcamp) {
         throw new NotFoundException('Bootcamp not found or deleted!');
       }
       const isCourseLocked = bootcamp?.isModuleLocked || false;
@@ -1457,132 +1458,373 @@ export class TrackingService {
     }
   }
 
-  async getLatestUpdatedCourseForStudents(userId: number): Promise<any> {
-    try {
-      const latestTracking = await db.select().from(zuvyRecentBootcamp)
-        .where(eq(zuvyRecentBootcamp.userId, BigInt(userId)));
-      if (latestTracking.length > 0) {
-        const ifEnrolled = await db.select().from(zuvyBatchEnrollments).where(sql`${zuvyBatchEnrollments.bootcampId} = ${latestTracking[0].bootcampId} AND ${zuvyBatchEnrollments.userId} = ${BigInt(userId)}`);
-        if (ifEnrolled.length == 0) {
-          return [null, { message: 'You have been removed from the recent course that you are studying. Please ask your instructor about this!!', statusCode: STATUS_CODES.OK, data: [] }]
-        }
-        const data = await db.query.zuvyCourseModules.findFirst({
-          where: (courseModules, { sql }) =>
-            sql`${courseModules.id} = ${latestTracking[0].moduleId} and ${courseModules.bootcampId} = ${latestTracking[0].bootcampId}`,
-          with: {
-            moduleData: true,
-            moduleChapterData: {
-              columns: {
-                id: true,
-                title: true,
-                topicId: true
-              },
-              orderBy: (moduleChapter, { asc }) => asc(moduleChapter.order),
-              with: {
-                chapterTrackingDetails: {
-                  columns: {
-                    id: true,
-                  },
-                  where: (chapterTracking, { eq }) =>
-                    eq(chapterTracking.userId, BigInt(userId)),
-                }
-              }
-            },
-          },
-        });
+  async getLatestUpdatedCourseForStudents(userId: number, bootcampId: number): Promise<any> {
+  try {
+    // 1. Load modules in order (removed early bootcamp completion check)
+    const modules = await db.select().from(zuvyCourseModules)
+      .where(eq(zuvyCourseModules.bootcampId, bootcampId))
+      .orderBy(zuvyCourseModules.order);
+    
+    if (!modules.length) {
+      return [null, { message: 'No modules found for this bootcamp', statusCode: STATUS_CODES.OK, data: [] }];
+    }
 
-        const chapters = data['moduleChapterData'];
-        let progress = latestTracking[0].progress;
-        const incompleteChaptersCount = chapters.filter(chapter => chapter['chapterTrackingDetails'].length === 0).length;
-        const chaptersCompleted = chapters.length - incompleteChaptersCount;
-        if (progress == 100 && incompleteChaptersCount > 0) {
-          let UpdateProgress: any = { progress: Math.ceil((chaptersCompleted / chapters.length) * 100) }
-          const updatedRecentCourse = await db.update(zuvyRecentBootcamp)
-            .set(UpdateProgress)
-            .where(eq(zuvyRecentBootcamp.userId, BigInt(userId))).returning();
-          if (updatedRecentCourse.length == 0) {
-            return [null, { message: 'There was some error', statusCode: STATUS_CODES.OK, data: [] }]
+    const bootcamp = await db.select().from(zuvyBootcamps).where(eq(zuvyBootcamps.id, bootcampId));
+    const bootcampName = bootcamp.length ? bootcamp[0].name : '';
+
+    // 2. Fetch all tracking data
+    const moduleIds = modules.map(m => m.id);
+    
+    const [chapterRecsAll, projectRecsAll, moduleRecs] = await Promise.all([
+      db.select().from(zuvyChapterTracking)
+        .where(and(eq(zuvyChapterTracking.userId, BigInt(userId)), inArray(zuvyChapterTracking.moduleId, moduleIds))),
+      db.select().from(zuvyProjectTracking)
+        .where(and(eq(zuvyProjectTracking.userId, userId), inArray(zuvyProjectTracking.moduleId, moduleIds))),
+      db.select().from(zuvyModuleTracking)
+        .where(and(eq(zuvyModuleTracking.userId, userId), inArray(zuvyModuleTracking.moduleId, moduleIds)))
+    ]);
+
+    const trackedChapterIds = new Set(chapterRecsAll.map(r => Number(r.chapterId)));
+    const trackedProjMods = new Set(projectRecsAll.map(r => Number(r.moduleId)));
+    const moduleProgMap = new Map(moduleRecs.map(r => [Number(r.moduleId), Number(r.progress)]));
+
+    // 4. Helper function to calculate actual module progress based on current chapters vs tracking
+    const getActualModuleProgress = async (module: typeof modules[0]): Promise<{ progress: number, hasAvailableChapters: boolean }> => {
+      if (module.typeId === 2) { // Project module
+        return { 
+          progress: trackedProjMods.has(module.id) ? 100 : 0, 
+          hasAvailableChapters: true 
+        };
+      } else { // Chapter module
+        // Get current chapters for this module
+        const currentChapters = await db.select().from(zuvyModuleChapter)
+          .where(eq(zuvyModuleChapter.moduleId, module.id))
+          .orderBy(zuvyModuleChapter.order);
+        
+        if (!currentChapters.length) {
+          return { progress: 0, hasAvailableChapters: false }; // No chapters = 0% progress
+        }
+        
+        // Get assessment statuses for these chapters
+        const chapterIds = currentChapters.map(c => c.id);
+        const assessmentRecs = chapterIds.length > 0 
+          ? await db.select().from(zuvyOutsourseAssessments)
+              .where(inArray(zuvyOutsourseAssessments.chapterId, chapterIds))
+          : [];
+        const assessmentStatus = new Map<number, number>(
+          assessmentRecs.map(r => [Number(r.chapterId), r.currentState])
+        );
+        
+        // Count available (non-blocked) chapters
+        const availableChapters = currentChapters.filter(chapter => 
+          !(chapter.topicId === 6 && (assessmentStatus.get(chapter.id) ?? 0) !== 1 && (assessmentStatus.get(chapter.id) ?? 0) !== 2)
+        );
+        
+        if (!availableChapters.length) {
+          return { progress: 0, hasAvailableChapters: false }; // No available chapters
+        }
+        
+        // Count completed chapters from actual tracking
+        const completedChapters = availableChapters.filter(chapter => 
+          trackedChapterIds.has(chapter.id)
+        );
+        
+        // CRITICAL: Check if zuvyModuleTracking shows 100% but we have new chapters
+        const recordedModuleProgress = moduleProgMap.get(module.id);
+        const actualCompletionRate = completedChapters.length / availableChapters.length;
+        
+        if (recordedModuleProgress === 100 && actualCompletionRate < 1) {
+          // Module was marked complete but new chapters were added
+          // Return actual progress based on current chapters
+          return { 
+            progress: Math.round(actualCompletionRate * 100), 
+            hasAvailableChapters: true 
+          };
+        }
+        
+        if (completedChapters.length === 0) {
+          return { progress: 0, hasAvailableChapters: true }; // No chapters completed but has available ones
+        } else if (completedChapters.length === availableChapters.length) {
+          return { progress: 100, hasAvailableChapters: true }; // All available chapters completed = 100% progress
+        } else {
+          return { 
+            progress: Math.round(actualCompletionRate * 100), 
+            hasAvailableChapters: true 
+          }; // Partial progress
+        }
+      }
+    };
+
+    // 6. Categorize modules by completion status (using actual current progress)
+    const partialModules: Array<{ module: typeof modules[0], lastActivity: number }> = [];
+    const untouchedModules: typeof modules = [];
+    const blockedModules: typeof modules = []; // Modules with no available chapters
+    
+    for (const module of modules) {
+      const { progress, hasAvailableChapters } = await getActualModuleProgress(module);
+      
+      if (!hasAvailableChapters) {
+        // Module has no available chapters (all blocked by assessments)
+        blockedModules.push(module);
+        continue;
+      }
+      
+      if (progress === 100) {
+        // Skip completed modules
+        continue;
+      } else if (progress > 0) {
+        // Partial modules - find last activity timestamp
+        let lastActivity = 0;
+        
+        if (module.typeId === 2) {
+          // Project module - check project tracking dates
+          const projDates = projectRecsAll
+            .filter(r => Number(r.moduleId) === module.id && r.updatedAt)
+            .map(r => new Date(r.updatedAt).getTime());
+          lastActivity = Math.max(...projDates, 0);
+        } else {
+          // Chapter module - check chapter tracking dates
+          const chapDates = chapterRecsAll
+            .filter(r => Number(r.moduleId) === module.id && r.completedAt)
+            .map(r => new Date(r.completedAt).getTime());
+          lastActivity = Math.max(...chapDates, 0);
+        }
+        
+        // Important: If lastActivity is 0 but module has progress > 0,
+        // it means new content was added to a previously completed module
+        // In this case, use a recent timestamp to prioritize it
+        if (lastActivity === 0 && progress > 0) {
+          lastActivity = Date.now() - 1000; // 1 second ago to prioritize over truly untouched
+        }
+        
+        partialModules.push({ module, lastActivity });
+      } else {
+        // Untouched modules with available chapters
+        untouchedModules.push(module);
+      }
+    }
+
+    // 7. Determine current module: most recent partial, or first untouched with available chapters
+    let currentModule: typeof modules[0] | null = null;
+    
+    if (partialModules.length > 0) {
+      // Sort by most recent activity and take the most recent
+      partialModules.sort((a, b) => b.lastActivity - a.lastActivity);
+      currentModule = partialModules[0].module;
+    } else if (untouchedModules.length > 0) {
+      // Take first untouched module that has available chapters
+      currentModule = untouchedModules[0];
+    }
+
+    // 8. Check if bootcamp is actually complete (after analyzing all modules)
+    if (!currentModule) {
+      // Double-check: verify bootcamp completion by examining actual progress
+      let allModulesComplete = true;
+      for (const module of modules) {
+        const { progress, hasAvailableChapters } = await getActualModuleProgress(module);
+        if (hasAvailableChapters && progress < 100) {
+          allModulesComplete = false;
+          break;
+        }
+      }
+      
+      if (allModulesComplete) {
+        return [null, { message: 'You have completed this course. Well done!!', statusCode: STATUS_CODES.OK, data: [] }];
+      } else {
+        // This shouldn't happen, but as safety fallback
+        return [null, { message: 'No available content found', statusCode: STATUS_CODES.OK, data: [] }];
+      }
+    }
+
+    // 9. Handle project module
+    if (currentModule.typeId === 2) {
+      if (!trackedProjMods.has(currentModule.id)) {
+        const proj = await db.select().from(zuvyCourseProjects)
+          .where(eq(zuvyCourseProjects.id, currentModule.projectId));
+        
+        return [null, {
+          message: 'Your latest updated course',
+          statusCode: STATUS_CODES.OK,
+          data: {
+            moduleId: currentModule.id,
+            moduleName: currentModule.name,
+            typeId: 2,
+            bootcampId: currentModule.bootcampId,
+            bootcampName,
+            newProject: proj.length ? proj[0] : null
+          }
+        }];
+      }
+    }
+
+    // 10. Handle chapter module
+    let chapters = await db.select().from(zuvyModuleChapter)
+      .where(eq(zuvyModuleChapter.moduleId, currentModule.id))
+      .orderBy(zuvyModuleChapter.order);
+
+    if (!chapters.length) {
+      // Empty module - try to find next available module instead of returning error
+      console.log(`Module ${currentModule.id} is empty, searching for next available module...`);
+      
+      // Look for next untouched module with content
+      let foundAlternative = false;
+      
+      for (const module of untouchedModules) {
+        if (module.id === currentModule.id) continue; // Skip current empty module
+        
+        if (module.typeId === 2) {
+          // Project module - check if not tracked
+          if (!trackedProjMods.has(module.id)) {
+            const proj = await db.select().from(zuvyCourseProjects)
+              .where(eq(zuvyCourseProjects.id, module.projectId));
+            
+            return [null, {
+              message: 'Your latest updated course',
+              statusCode: STATUS_CODES.OK,
+              data: {
+                moduleId: module.id,
+                moduleName: module.name,
+                typeId: 2,
+                bootcampId: module.bootcampId,
+                bootcampName,
+                newProject: proj.length ? proj[0] : null
+              }
+            }];
+          }
+        } else {
+          // Chapter module - check if it has chapters
+          const moduleChapters = await db.select().from(zuvyModuleChapter)
+            .where(eq(zuvyModuleChapter.moduleId, module.id))
+            .orderBy(zuvyModuleChapter.order);
+          
+          if (moduleChapters.length > 0) {
+            // Found a module with content
+            currentModule = module;
+            chapters = moduleChapters;
+            foundAlternative = true;
+            break;
           }
         }
-        if (progress < 100) {
-          const currentIndex = chapters.findIndex(obj => obj.id === latestTracking[0].chapterId)
-          let newChapter = null;
-          for (let i = currentIndex + 1; i < chapters.length; i++) {
-            if (chapters[i]['chapterTrackingDetails'].length === 0) {
-              newChapter = chapters[i];
+      }
+      
+      // If still no chapters found after checking all modules
+      if (!foundAlternative) {
+        return [null, { message: 'No available content found in any module', statusCode: STATUS_CODES.OK, data: [] }];
+      }
+    }
+
+    // 11. Get assessment statuses for chapters (reuse from progress calculation if same module)
+    const chapterIds = chapters.map(r => r.id);
+    const assessmentRecs = chapterIds.length > 0 
+      ? await db.select().from(zuvyOutsourseAssessments)
+          .where(inArray(zuvyOutsourseAssessments.chapterId, chapterIds))
+      : [];
+    const assessmentStatus = new Map<number, number>(
+      assessmentRecs.map(r => [Number(r.chapterId), r.currentState])
+    );
+
+    // 12. Helper function to check if chapter is available
+    const isChapterAvailable = (chapter: typeof chapters[0]): boolean => {
+      return !trackedChapterIds.has(chapter.id) && 
+        !(chapter.topicId === 6 && (assessmentStatus.get(chapter.id) ?? 0) !== 1 && (assessmentStatus.get(chapter.id) ?? 0) !== 2);
+    };
+
+    // 13. Find next available chapter with improved logic for blocked assessments
+    let nextChapter = null;
+    const moduleChapterRecs = chapterRecsAll.filter(r => Number(r.moduleId) === currentModule.id);
+    
+    if (moduleChapterRecs.length > 0) {
+      // Find the most recently completed chapter in this module
+      moduleChapterRecs.sort((a, b) => new Date(b.completedAt).getTime() - new Date(a.completedAt).getTime());
+      const lastCompletedChapterId = Number(moduleChapterRecs[0].chapterId);
+      const lastCompletedIndex = chapters.findIndex(c => c.id === lastCompletedChapterId);
+      
+      // Look for next available chapter after the last completed one
+      if (lastCompletedIndex >= 0) {
+        for (let i = lastCompletedIndex + 1; i < chapters.length; i++) {
+          if (isChapterAvailable(chapters[i])) {
+            nextChapter = chapters[i];
+            break;
+          }
+        }
+      }
+    }
+
+    // 14. If no next chapter found after last completed, find first available chapter
+    // This handles the case where first chapter is blocked assessment
+    if (!nextChapter) {
+      for (const chapter of chapters) {
+        if (isChapterAvailable(chapter)) {
+          nextChapter = chapter;
+          break;
+        }
+      }
+    }
+
+    // 15. If no available chapters in current module, try next untouched module
+    if (!nextChapter) {
+      // Look for next untouched module with available chapters
+      for (const module of untouchedModules) {
+        if (module.id === currentModule.id) continue; // Skip current module
+        
+        const moduleChapters = await db.select().from(zuvyModuleChapter)
+          .where(eq(zuvyModuleChapter.moduleId, module.id))
+          .orderBy(zuvyModuleChapter.order);
+        
+        if (moduleChapters.length > 0) {
+          // Get assessment statuses for this module's chapters
+          const moduleChapterIds = moduleChapters.map(c => c.id);
+          const moduleAssessmentRecs = moduleChapterIds.length > 0 
+            ? await db.select().from(zuvyOutsourseAssessments)
+                .where(inArray(zuvyOutsourseAssessments.chapterId, moduleChapterIds))
+            : [];
+          const moduleAssessmentStatus = new Map<number, number>(
+            moduleAssessmentRecs.map(r => [Number(r.chapterId), r.currentState])
+          );
+          
+          // Find first available chapter in this module
+          for (const chapter of moduleChapters) {
+            const isAvailable = !trackedChapterIds.has(chapter.id) && 
+              !(chapter.topicId === 6 && (moduleAssessmentStatus.get(chapter.id) ?? 0) !== 1 && (moduleAssessmentStatus.get(chapter.id) ?? 0) !== 2);
+            
+            if (isAvailable) {
+              // Update current module to this one
+              currentModule = module;
+              nextChapter = chapter;
               break;
             }
           }
-          if (!newChapter) {
-            newChapter = chapters.find(chapter => chapter['chapterTrackingDetails'].length === 0);
-          }
-          return [null, {
-            message: 'Your latest updated course', statusCode: STATUS_CODES.OK, data: {
-              moduleId: data.id,
-              moduleName: data.name,
-              typeId: data.typeId,
-              bootcampId: data.bootcampId,
-              bootcampName: data['moduleData'].name,
-              newChapter
-            }
-          }]
-        }
-        else {
-          const moduleInfo = await db.select().from(zuvyCourseModules).where(eq(zuvyCourseModules.id, latestTracking[0].moduleId))
-          const data = await db.query.zuvyCourseModules.findFirst({
-            columns: {
-              id: true,
-              typeId: true,
-              name: true
-            },
-            where: (courseModules, { sql }) =>
-              sql`${courseModules.order} = ${moduleInfo[0].order + 1} and ${courseModules.bootcampId} = ${latestTracking[0].bootcampId}`,
-            with: {
-              moduleData: {
-                columns: {
-                  id: true,
-                  name: true
-                }
-              },
-              moduleChapterData: {
-                columns: {
-                  id: true,
-                  title: true,
-                  topicId: true
-                },
-                where: (chapterDetails, { sql }) =>
-                  sql`${chapterDetails.order} = 1`,
-              },
-              projectData: true,
-            },
-          });
-          if (data) {
-            return [null, {
-              message: 'Your latest updated course', statusCode: STATUS_CODES.OK, data: {
-                moduleId: data.id,
-                moduleName: data['projectData'].length == 0 ? data.name : data['projectData'][0]['title'],
-                typeId: data.typeId,
-                bootcampId: data['moduleData'].id,
-                bootcampName: data['moduleData'].name,
-                newChapter: data.typeId == 1 ? (data['moduleChapterData'].length > 0 ? data['moduleChapterData'][0] : 'There is no chapter in the module') : data['projectData'][0]
-              }
-            }]
-
-          }
-          else {
-            return [null, { message: 'Start a course', statusCode: STATUS_CODES.OK, data: [] }]
-
-          }
+          
+          if (nextChapter) break; // Found a chapter, exit module loop
         }
       }
-      else {
-        return [null, { message: 'You have not yet started any course module', statusCode: STATUS_CODES.OK, data: [] }]
-      }
     }
-    catch (err) {
-      return [{ message: err.message, statusCode: STATUS_CODES.BAD_REQUEST }]
+
+    // 16. Return result or handle completion
+    if (nextChapter) {
+      return [null, {
+        message: 'Your latest updated course',
+        statusCode: STATUS_CODES.OK,
+        data: {
+          moduleId: currentModule.id,
+          moduleName: currentModule.name,
+          typeId: 1,
+          bootcampId: currentModule.bootcampId,
+          bootcampName,
+          newChapter: nextChapter
+        }
+      }];
     }
+
+    // 17. Final fallback - no available chapters found in any module
+    return [null, { message: 'You have completed this course. Well done!!', statusCode: STATUS_CODES.OK, data: [] }];
+
+  } catch (err) {
+    return [{ message: err.message, statusCode: STATUS_CODES.BAD_REQUEST }];
   }
+}
+
+
 
   async formatedChapterDetails(chapterDetails: any) {
     try {

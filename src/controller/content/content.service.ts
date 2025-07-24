@@ -892,18 +892,6 @@ export class ContentService {
       if (moduleInfo.length == 0) {
         throw new NotFoundException('Module not found or deleted!');
       }
-      // Count how many students have started the module
-      const studentCountResult = await db
-        .select({ count: sql<number>`count(*)` })
-        .from(zuvyModuleTracking)
-        .where(eq(zuvyModuleTracking.moduleId, moduleId));
-
-      const studentCount = studentCountResult[0]?.count || 0;
-
-      // If any student has started the module, throw an error
-      if (studentCount > 0) {
-        return [{ message: `Module cannot be reordered or updated as it has been started by ${studentCount} student(s).` }, null];
-      }
 
       if (reorderData.moduleDto == undefined) {
         const { newOrder } = reorderData.reOrderDto;

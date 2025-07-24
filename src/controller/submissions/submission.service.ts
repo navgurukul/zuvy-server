@@ -892,90 +892,138 @@ export class SubmissionService {
     chapterId: number,
     moduleId: number,
     limit: number,
-    offset: number
+    offset: number,
+    searchStudent?: string
   ) {
-    try {
-      if (isNaN(bootcampId) || bootcampId <= 0) {
-        throw new Error('Invalid bootcampId');
-      }
+     try {
+    if (isNaN(bootcampId) || bootcampId <= 0) {
+      throw new Error('Invalid bootcampId');
+    }
 
-      const zuvyBatchEnrollmentsCount = await db
-        .select({
-          count: sql<number>`cast(count(${zuvyBatchEnrollments.id}) as int)`,
-        })
-        .from(zuvyBatchEnrollments)
-        .where(sql`${zuvyBatchEnrollments.bootcampId} = ${bootcampId} AND ${zuvyBatchEnrollments.batchId} IS NOT NULL`);
-      const totalStudentss = zuvyBatchEnrollmentsCount[0]?.count ?? 0;
+    // Prepare search term for filtering
+    const searchTerm = searchStudent ? searchStudent.toLowerCase().trim() : null;
 
-      const statusOfIncompletedStudentForm = await db.query.zuvyBatchEnrollments.findMany({
-        where: (batchEnrollments, { sql }) =>
-          sql`${batchEnrollments.bootcampId} = ${bootcampId} AND ${batchEnrollments.batchId} IS NOT NULL`,
-        with: {
-          user: {
-            columns: {
-              id: true,
-              name: true,
-              email: true,
-            },
+    const zuvyBatchEnrollmentsCount = await db
+      .select({
+        count: sql<number>`cast(count(${zuvyBatchEnrollments.id}) as int)`,
+      })
+      .from(zuvyBatchEnrollments)
+      .where(sql`${zuvyBatchEnrollments.bootcampId} = ${bootcampId} AND ${zuvyBatchEnrollments.batchId} IS NOT NULL`);
+    
+    const totalStudentss = zuvyBatchEnrollmentsCount[0]?.count ?? 0;
 
+    // Get all students in the bootcamp
+    const statusOfIncompletedStudentFormRaw = await db.query.zuvyBatchEnrollments.findMany({
+      where: (batchEnrollments, { sql }) =>
+        sql`${batchEnrollments.bootcampId} = ${bootcampId} AND ${batchEnrollments.batchId} IS NOT NULL`,
+      with: {
+        user: {
+          columns: {
+            id: true,
+            name: true,
+            email: true,
           },
         },
+      },
+    });
 
-      });
-       // console.log(statusOfIncompletedStudentForm);
-      const statusOfCompletedStudentForm = await db.query.zuvyChapterTracking.findMany({
-        where: (chapterTracking, { sql }) =>
-          sql`${chapterTracking.chapterId} = ${chapterId} AND ${chapterTracking.moduleId} = ${moduleId}`,
-        with: {
-          user: {
-            columns: {
-              id: true,
-              name: true,
-              email: true,
-            },
+    // Filter bootcamp students based on search criteria
+    const statusOfIncompletedStudentForm = statusOfIncompletedStudentFormRaw.filter(record => {
+      if (!record['user']) return false;
+      
+      if (!searchTerm) return true; // No search term, include all
+      
+      const userName = record['user']['name']?.toLowerCase() || '';
+      const userEmail = record['user']['email']?.toLowerCase() || '';
+      const search = searchStudent?.toLowerCase() || '';
+      
+      return userName.includes(search) || userEmail.includes(search);
+    });
 
+
+    // Get students who have completed the form with search filter
+    const statusOfCompletedStudentFormRaw = await db.query.zuvyChapterTracking.findMany({
+      where: (chapterTracking, { sql }) =>
+        sql`${chapterTracking.chapterId} = ${chapterId} AND ${chapterTracking.moduleId} = ${moduleId}`,
+      with: {
+        user: {
+          columns: {
+            id: true,
+            name: true,
+            email: true,
           },
         },
+      },
+    });
 
-      });
-      const totalStudentsCount = totalStudentss;
-      const totalPages = Math.ceil(totalStudentsCount / limit);
+    // Filter completed students based on search criteria
+    const statusOfCompletedStudentForm = statusOfCompletedStudentFormRaw.filter(record => {
+      if (!record['user']) return false;
+      
+      if (!searchTerm) return true; // No search term, include all
+      
+      const userName = record['user']['name']?.toLowerCase() || '';
+      const userEmail = record['user']['email']?.toLowerCase() || '';
+      const search = searchStudent?.toLowerCase() || '';
+      
+      return userName.includes(search) || userEmail.includes(search);
+    });
 
-      const data1 = statusOfCompletedStudentForm.map((statusForm) => {
+    // Process completed students
+    const data1 = statusOfCompletedStudentForm
+      .filter(statusForm => statusForm['user']) // Ensure user exists
+      .map((statusForm) => {
         return {
-          id: Number(statusForm['user']['id']),
+          id: typeof statusForm['user']['id'] === 'bigint' 
+            ? Number(statusForm['user']['id']) 
+            : statusForm['user']['id'],
           name: statusForm['user']['name'],
           emailId: statusForm['user']['email'],
           status: 'Submitted',
         };
       });
-     
-      const completedIds = new Set(data1.map(item => item.id));
-      const data2 = statusOfIncompletedStudentForm
-        .filter(statusForm => statusForm['user'])
-        .map((statusForm) => {
-          return {
-            id: Number(statusForm['user']['id']),
-            name: statusForm['user']['name'],
-            emailId: statusForm['user']['email'],
-            status: 'Not Submitted',
-          };
-        })
-        .filter(statusForm => !completedIds.has(statusForm.id));
-      const combinedData = [...data1, ...data2];
 
-      return {
-        status: "Success",
-        code: 200,
-        moduleId,
-        chapterId,
-        combinedData,
-        totalPages,
-        totalStudentsCount
-      };
-    } catch (err) {
-      throw err;
-    }
+    // Get completed student IDs for filtering
+    const completedIds = new Set(data1.map(item => item.id));
+
+    // Process incomplete students (exclude those who have already completed)
+    const data2 = statusOfIncompletedStudentForm
+      .filter(statusForm => statusForm['user']) // Ensure user exists
+      .map((statusForm) => {
+        return {
+          id: typeof statusForm['user']['id'] === 'bigint' 
+            ? Number(statusForm['user']['id']) 
+            : statusForm['user']['id'],
+          name: statusForm['user']['name'],
+          emailId: statusForm['user']['email'],
+          status: 'Not Submitted',
+        };
+      })
+      .filter(statusForm => !completedIds.has(statusForm.id));
+
+    // Combine the data
+    const combinedData = [...data1, ...data2];
+
+    // Apply pagination to the filtered results
+    const paginatedData = combinedData.slice(offset, offset + limit);
+    
+    // Calculate total count and pages based on filtered results
+    const filteredTotalCount = combinedData.length;
+    const totalPages = Math.ceil(filteredTotalCount / limit);
+
+    return {
+      status: "Success",
+      code: 200,
+      moduleId,
+      chapterId,
+      combinedData: paginatedData,
+      totalPages,
+      totalStudentsCount: filteredTotalCount, // Use filtered count instead of total
+      totalAllStudents: totalStudentss, // Optional: keep original total if needed
+    };
+  } catch (err) {
+    throw err;
+  }
   }
 
 
