@@ -303,11 +303,13 @@ export class TrackingController {
   @ApiBearerAuth('JWT-auth')
   async getLatestUpdatedCourseForStudent(
     @Req() req,
-    @Res() res
+    @Res() res,
+    @Query('bootcampId') bootcampId: number
   ) {
     try {
       let [err, success] = await this.TrackingService.getLatestUpdatedCourseForStudents(
-        req.user[0].id
+        req.user[0].id,
+        bootcampId
       );
       if (err) {
         return ErrorResponse.BadRequestException(err.message, err.statusCode).send(res)
