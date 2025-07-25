@@ -815,6 +815,8 @@ export class StudentService {
           startTime: cls.startTime,
           endTime: cls.endTime,
           s3Link: cls.s3link,
+          moduleId: cls.moduleId,
+          chapterId: cls.chapterId,
           attendanceStatus: status,
           duration,
         };

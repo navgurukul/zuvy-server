@@ -301,6 +301,12 @@ export class TrackingController {
     summary: 'Get all bootcamp progress for a particular student',
   })
   @ApiBearerAuth('JWT-auth')
+  @ApiQuery({
+    name: 'bootcampId',
+    required: true,
+    type: Number,
+    description: 'bootcampId',
+  })
   async getLatestUpdatedCourseForStudent(
     @Req() req,
     @Res() res,
