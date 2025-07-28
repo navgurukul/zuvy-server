@@ -1,18 +1,28 @@
-import { Module, NestModule, MiddlewareConsumer } from '@nestjs/common';
+import { Module, NestModule, MiddlewareConsumer, RequestMethod } from '@nestjs/common';
 import { ClassesController } from './classes.controller';
 import { ClassesService } from './classes.service';
+import { BatchesModule } from '../batches/batch.module';
 import { JwtModule, JwtService } from '@nestjs/jwt';
 import { JwtMiddleware } from 'src/middleware/jwt.middleware';
-import { AuthModule } from 'src/auth/auth.module';
+import { ZoomModule } from '../../services/zoom/zoom.module';
+import { AuthModule } from '../../auth/auth.module';
 
 @Module({
-    imports: [AuthModule],
-    controllers: [ClassesController],
-    providers: [ClassesService, JwtService],
-    exports: [ClassesService]
+  controllers: [ClassesController],
+  providers: [ClassesService, JwtService],
+  imports: [BatchesModule, ZoomModule, AuthModule],
+  exports: [ClassesService],
 })
 export class ClassesModule implements NestModule {
-    configure(consumer: MiddlewareConsumer) {
-        consumer.apply(JwtMiddleware).forRoutes('*');
-    }
+  configure(consumer: MiddlewareConsumer) {
+    consumer
+      .apply(JwtMiddleware)
+      .exclude(
+        { path: '/classes/', method: RequestMethod.GET },
+        { path: '/classes/redirect', method: RequestMethod.GET },
+        { path: '/classes/getAllAttendance/:batchId', method: RequestMethod.GET },
+        { path: '/classes/getAllAttendance/:batchId/', method: RequestMethod.GET },
+      )
+      .forRoutes('*');
+  }
 }

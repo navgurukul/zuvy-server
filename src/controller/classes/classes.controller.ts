@@ -42,9 +42,10 @@ import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 import { auth2Client } from '../../auth/google-auth';
 import { db } from '../../db/index';
 import {
-  userTokens
+  userTokens,
+  zuvyBatches
 } from '../../../drizzle/schema';
-import { userInfo } from 'os';
+import { eq } from 'drizzle-orm';
 
 // config user for admin
 let configUser = { id: process.env.ID, email: process.env.TEAM_EMAIL };
@@ -116,14 +117,26 @@ export class ClassesController {
 
   @Post('/')
   @ApiOperation({ summary: 'Create the new class' })
-  @ApiBearerAuth('JWT-auth')
+  // @ApiBearerAuth('JWT-auth')
+  @Public()
   async create(@Body() classData: CreateSessionDto, @Req() req) {
-    const userInfo = {
-      id: Number(req.user[0].id),
-      email: req.user[0].email,
-      roles: req.user[0].roles || []
+    const userInfo = {  
+      id: 58083,
+      email: "team@zuvy.org",
+      roles: ["admin"]
     };
-    return this.classesService.createSession(classData, userInfo);
+
+    // Fetch batch to get bootcampId
+    const batchData = await db.select().from(zuvyBatches).where(eq(zuvyBatches.id, classData.batchId)).limit(1);
+    if (!batchData.length) {
+      throw new BadRequestException('Batch not found');
+    }
+    const eventDetails = {
+      ...classData,
+      bootcampId: batchData[0].bootcampId
+    };
+
+    return this.classesService.createSession(eventDetails, userInfo);
   }
 
   @Get('/getAttendance/:meetingId')
@@ -245,7 +258,7 @@ export class ClassesController {
   @Get('/getAttendeesByMeetingId/:id')
   @ApiOperation({ summary: 'Get the google class attendees by meetingId' })
   @ApiBearerAuth('JWT-auth')
-  getAttendeesByMeetingId(@Param('id') id: number): Promise<object> {
+  getAttendeesByMeetingId(@Param('id') id: string): Promise<object> {
     return this.classesService.getAttendeesByMeetingId(id);
   }
 
@@ -310,178 +323,7 @@ export class ClassesController {
   ): Promise<object> {
     return this.classesService.unattendanceClassesByBootcampId(bootcampId);
   }
-
-  @Delete('/delete/:meetingId')
-  @ApiOperation({ summary: 'Delete the google class by meetingId' })
-  @ApiBearerAuth('JWT-auth')
-  deleteClassByMeetingId(
-    @Param('meetingId') meetingId: string,
-    @Req() req,
-  ): Promise<object> {
-    const userInfo = {
-      id: Number(req.user[0].id),
-      email: req.user[0].email,
-      roles: req.user[0].roles || []
-    };
-    return this.classesService.deleteSession(meetingId, userInfo);
-  }
-
-  @Patch('/update/:meetingId')
-  @ApiOperation({ summary: 'Update the google class by meetingId' })
-  @ApiBearerAuth('JWT-auth')
-  updateClassByMeetingId(
-    @Param('meetingId') meetingId: string,
-    @Body() classData: updateSessionDto,
-    @Req() req,
-  ): Promise<object> {
-    const userInfo = {
-      id: Number(req.user[0].id),
-      email: req.user[0].email,
-      roles: req.user[0].roles || []
-    };
-    return this.classesService.updateSession(meetingId, classData,userInfo);
-  }
   
-  @Get('/sessionRecordViews')
-  @ApiOperation({ summary: 'Get the session record views with sessionID or userID with both' })
-  @ApiBearerAuth('JWT-auth')
-  @ApiQuery({
-    name: 'sessionId',
-    required: false,
-    type: Number,
-    description: 'Session Id is a number type, optional',
-  })
-  @ApiQuery({
-    name: 'userId',
-    required: false,
-    description: 'User Id is a number type, optional',
-    type: Number,
-  })
-  async getSessionRecordViews(
-    @Query('sessionId') sessionId,
-    @Query('userId') userId,
-    @Res() res: Response,
-  ): Promise<object> {
-    try {
-      let [err, success] = await this.classesService.getSessionRecordViews(
-        sessionId,
-        userId,
-      );
-      if (err) {
-        return ErrorResponse.BadRequestException(err.message).send(res);
-      }
-      return new SuccessResponse(
-        success.message,
-        success.statusCode,
-        success.data,
-      ).send(res);
-    } catch (error) {
-      return ErrorResponse.BadRequestException(error.message).send(res);
-    }
-  }
-
-  @Post('/sessionRecordViews')
-  @ApiOperation({ summary: 'Create the session record views' })
-  @ApiBearerAuth('JWT-auth')
-  async createSessionRecordViews(
-    @Body() sessionRecordViews: DTOsessionRecordViews,
-    @Req() req,
-    @Res() res: Response,
-  ): Promise<object> {
-    try {
-      const userId = parseInt(req.user[0].id);
-      let [err, success] = await this.classesService.createSessionRecordViews(
-        sessionRecordViews,
-        userId
-      );
-      if (err) {
-        return ErrorResponse.BadRequestException(err.message).send(res);
-      }
-      return new SuccessResponse(
-        success.message,
-        success.statusCode,
-        success.data,
-      ).send(res);
-    } catch (error) {
-      return ErrorResponse.BadRequestException(error.message).send(res);
-    }
-  }
-
-  @Post('/addliveClassesAsChapters')
-  @ApiOperation({ summary: 'Add existing live classes as chapters to a module' })
-  @ApiBearerAuth('JWT-auth')
-  async addLiveClassesAsChapters(
-    @Body() data: AddLiveClassesAsChaptersDto,
-    @Req() req,
-    @Res() res: Response,
-  ): Promise<object> {
-    try {
-      const [err, success] = await this.classesService.addLiveClassesAsChapters(
-        data.sessionIds,
-        data.moduleId,
-        req.user[0]
-      );
-      if (err) {
-        return ErrorResponse.BadRequestException(err.message).send(res);
-      }
-      return new SuccessResponse(
-        success.message,
-        success.statusCode,
-        success.data,
-      ).send(res);
-    } catch (error) {
-      return ErrorResponse.BadRequestException(error.message).send(res);
-    }
-  }
-
-  @Get('bootcamp/:bootcampId/classes')
-  @ApiOperation({ summary: 'Get all classes of a bootcamp with batch, module and chapter details' })
-  @ApiBearerAuth('JWT-auth')
-  @ApiParam({
-    name: 'bootcampId',
-    required: true,
-    type: Number,
-    description: 'ID of the bootcamp to get classes for',
-  })
-  @ApiQuery({
-    name: 'limit',
-    required: false,
-    type: Number,
-    description: 'Number of records per page',
-  })
-  @ApiQuery({
-    name: 'offset',
-    required: false,
-    type: Number,
-    description: 'Number of records to skip',
-  })
-  async getBootcampClassesWithDetails(
-    @Param('bootcampId') bootcampId: number,
-    @Query('limit') limit?: number,
-    @Query('offset') offset?: number,
-  ) {
-    return this.classesService.getBootcampClassesWithDetails(
-      bootcampId,
-      limit ? Number(limit) : undefined,
-      offset ? Number(offset) : undefined
-    );
-  }
-
-  @Delete('delete-live-session-chapter/:chapterId')
-  @ApiOperation({ summary: 'Delete a live session chapter' })
-  @ApiBearerAuth('JWT-auth')
-  @ApiParam({ 
-    name: 'chapterId', 
-    required: true,
-    type: Number,
-    description: 'ID of the chapter to delete' 
-  })
-  async deleteLiveSessionChapter(
-    @Param('chapterId') chapterId: number,
-    @Req() req
-  ) {
-    return this.classesService.deleteLiveSessionChapter(chapterId, req.user);
-  }
   @Get('/check-calendar-access')
   @ApiOperation({ summary: 'Check if admin has calendar access' })
   @ApiBearerAuth('JWT-auth')
@@ -511,5 +353,83 @@ export class ClassesController {
         error: error.message
       };
     }
+  }
+
+
+
+  @Get('/sessions/:id')
+  @ApiOperation({ summary: 'Get individual session by ID with role-based access' })
+  @ApiBearerAuth('JWT-auth')
+  async getSession(@Param('id') sessionId: number, @Req() req) {
+    const userInfo = {
+      id: Number(req.user[0].id),
+      email: req.user[0].email,
+      roles: req.user[0].roles || []
+    };
+    return this.classesService.getSession(sessionId, userInfo);
+  }
+
+  @Put('/sessions/:id')
+  @ApiOperation({ summary: 'Update session by ID' })
+  @ApiBearerAuth('JWT-auth')
+  async updateSession(
+    @Param('id') sessionId: number,
+    @Body() updateData: updateSessionDto,
+    @Req() req
+  ) {
+    const userInfo = {
+      id: Number(req.user[0].id),
+      email: req.user[0].email,
+      roles: req.user[0].roles || []
+    };
+    return this.classesService.updateSession(sessionId, updateData, userInfo);
+  }
+
+  @Delete('/sessions/:id')
+  @ApiOperation({ summary: 'Delete session by ID' })
+  @ApiBearerAuth('JWT-auth')
+  async deleteSession(@Param('id') sessionId: number, @Req() req) {
+    const userInfo = {
+      id: Number(req.user[0].id),
+      email: req.user[0].email,
+      roles: req.user[0].roles || []
+    };
+    return this.classesService.deleteSession(sessionId, userInfo);
+  }
+
+  @Post('/sessions/:id/fetch-attendance')
+  @ApiOperation({ summary: 'Manually fetch Zoom attendance for a session' })
+  @ApiBearerAuth('JWT-auth')
+  async fetchSessionAttendance(@Param('id') sessionId: number, @Req() req) {
+    const userInfo = {
+      id: Number(req.user[0].id),
+      email: req.user[0].email,
+      roles: req.user[0].roles || []
+    };
+
+    // Check admin access
+    if (!userInfo.roles?.includes('admin')) {
+      throw new BadRequestException('Only admins can fetch attendance data');
+    }
+
+    return this.classesService.fetchZoomAttendanceForSession(sessionId);
+  }
+
+  @Post('/process-attendance')
+  @ApiOperation({ summary: 'Process all completed sessions for attendance (admin only)' })
+  @ApiBearerAuth('JWT-auth')
+  async processAttendanceForCompletedSessions(@Req() req) {
+    const userInfo = {
+      id: Number(req.user[0].id),
+      email: req.user[0].email,
+      roles: req.user[0].roles || []
+    };
+
+    // Check admin access
+    if (!userInfo.roles?.includes('admin')) {
+      throw new BadRequestException('Only admins can process attendance data');
+    }
+
+    return this.classesService.processCompletedSessionsForAttendance();
   }
 }

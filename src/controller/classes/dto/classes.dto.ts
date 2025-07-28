@@ -10,6 +10,7 @@ import {
   IsEmail,
   IsNumber,
   IsDateString,
+  IsBoolean,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
@@ -72,9 +73,9 @@ export class ScheduleDto {
 
 export class CreateSessionDto {
   @ApiProperty({
-    description: 'The summary of the live  event',
+    description: 'The summary of the live event',
     type: String,
-    example: 'Live  Event',
+    example: 'Live Event',
     required: true,
   })
   @IsNotEmpty()
@@ -82,7 +83,7 @@ export class CreateSessionDto {
   title: string;
 
   @ApiProperty({
-    description: 'The batchId of the live  ',
+    description: 'The batchId of the live event',
     type: Number,
     example: 1,
     required: true,
@@ -102,7 +103,7 @@ export class CreateSessionDto {
   moduleId: number;
 
   @ApiProperty({
-    description: 'The description of the live  event',
+    description: 'The description of the live event',
     type: String,
     example: 'Description of the event',
     required: false,
@@ -112,7 +113,7 @@ export class CreateSessionDto {
   description?: string;
 
   @ApiProperty({
-    description: 'The start time of the live  event',
+    description: 'The start time of the live event',
     type: String,
     format: 'date-time',
     example: '2024-07-21T00:00:00Z',
@@ -123,7 +124,7 @@ export class CreateSessionDto {
   startDateTime: string;
 
   @ApiProperty({
-    description: 'The end time of the live  event',
+    description: 'The end time of the live event',
     type: String,
     format: 'date-time',
     example: '2024-07-21T00:00:00Z',
@@ -134,7 +135,7 @@ export class CreateSessionDto {
   endDateTime: string;
 
   @ApiProperty({
-    description: 'The timezone for the live  event',
+    description: 'The timezone for the live event',
     type: String,
     example: 'Asia/Kolkata',
     required: true,
@@ -144,7 +145,7 @@ export class CreateSessionDto {
   timeZone: string;
 
   @ApiProperty({
-    description: 'The days of the week for the live  event',
+    description: 'The days of the week for the live event',
     type: Array,
     example: ['Monday', 'Wednesday', 'Friday'],
     required: false,
@@ -162,6 +163,16 @@ export class CreateSessionDto {
   @IsNumber()
   @IsOptional()
   totalClasses: number;
+
+  @ApiProperty({
+    description: 'Whether this session uses Zoom meeting',
+    type: Boolean,
+    example: false,
+    required: true,
+  })
+  @IsNotEmpty()
+  @IsBoolean()
+  isZoomMeet: boolean;
 }
 
 export class reloadDto {
@@ -224,7 +235,7 @@ export class AddLiveClassesAsChaptersDto {
   @ApiProperty({
     description: 'Array of session IDs to be added as chapters',
     type: [Number],
-    example: [1, 2, 3]
+    example: [1, 2, 3],
   })
   @IsArray()
   @IsNumber({}, { each: true })
@@ -233,7 +244,7 @@ export class AddLiveClassesAsChaptersDto {
   @ApiProperty({
     description: 'Module ID where the live classes will be added as chapters',
     type: Number,
-    example: 1
+    example: 1,
   })
   @IsNumber()
   moduleId: number;

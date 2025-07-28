@@ -70,7 +70,7 @@ export const questionType = pgEnum('questionType', [
   'Date',
   'Time',
 ]);
-import { helperVariable } from 'src/constants/helper';
+import { helperVariable } from '../src/constants/helper';
 let schName;
 if (process.env.ENV_NOTE == helperVariable.schemaName) {
   schName = helperVariable.schemaName;
@@ -1899,6 +1899,7 @@ export const interviewOwners = main.table(
   'interview_owners',
   {
     id: serial('id').primaryKey().notNull(),
+
     userId: integer('user_id')
       .notNull()
       .references(() => cUsers.id),
@@ -2245,6 +2246,11 @@ export const zuvySessions = main.table('zuvy_sessions', {
   recurringId: integer('recurring_id'),
   status: text('status').default('upcoming'),
   version: varchar('version', { length: 10 }),
+  // Meeting type and Zoom fields
+  isZoomMeet: boolean('is_zoom_meet').default(true), // true for Zoom, false for Google Meet
+  zoomStartUrl: text('zoom_start_url'), // Admin start URL for Zoom
+  zoomPassword: text('zoom_password'),
+  zoomMeetingId: text('zoom_meeting_id'), // Zoom meeting ID
 });
 
 export const zuvySessionsRelations = relations(zuvySessions, ({ one, many }) => ({
@@ -2357,14 +2363,6 @@ export const sessionBootcampRelations = relations(
     })
   })
 )
-
-// export const batchEnrollmentsRelations = relations(batches, ({one, many}) => ({
-//         // enrolles: many(batchEnrollments, {
-//         //         relationName: bootcampsEnrollmentsRelations,
-//         //         references: [batchEnrollments.batchId]
-//         // }),
-//         batchEnrollments: many(batches)
-// }))
 
 export const zuvyBatchEnrollments = main.table('zuvy_batch_enrollments', {
   id: serial('id').primaryKey().notNull(),
@@ -2946,6 +2944,68 @@ export const zuvyStudentAttendance = main.table('zuvy_student_attendance', {
   bootcampId: integer('bootcamp_id').references(() => zuvyBootcamps.id),
   version: varchar('version', { length: 10 })
 });
+export enum AttendanceStatus {
+  PRESENT = 'present',
+  ABSENT = 'absent'
+};
+
+export const zuvyStudentAttendanceRecords = main.table('zuvy_student_attendance_records', {
+  id: serial('id').primaryKey().notNull(),
+  userId: integer('user_id').references(() => users.id).notNull(),
+  batchId: integer('batch_id').references(() => zuvyBatches.id).notNull(),
+  bootcampId: integer('bootcamp_id').references(() => zuvyBootcamps.id).notNull(),
+  sessionId: integer('session_id').references(() => zuvySessions.id).notNull(),
+  attendanceDate: date('attendance_date').notNull(),
+  status: varchar('status', { length: 10 }).notNull().default(AttendanceStatus.ABSENT),
+  version: varchar('version', { length: 10 })
+}); 
+
+export const zuvySessionAttendanceRelations = relations(zuvyStudentAttendanceRecords, ({ one }) => ({
+  user: one(users, {
+    fields: [zuvyStudentAttendanceRecords.userId],
+    references: [users.id],
+  }),
+  batch: one(zuvyBatches, {
+    fields: [zuvyStudentAttendanceRecords.batchId],
+    references: [zuvyBatches.id],
+  }),
+  bootcamp: one(zuvyBootcamps, {
+    fields: [zuvyStudentAttendanceRecords.bootcampId],
+    references: [zuvyBootcamps.id],
+  }),
+}));
+
+export const zuvySessionVideoRecordings = main.table('zuvy_session_video_recordings', {
+  id: serial('id').primaryKey().notNull(),
+  recordingUrl: text('recording_url').notNull(),
+  recordingSize: integer('recording_size').notNull(),
+  recordingDuration: integer('recording_duration').notNull(),
+  sessionId: integer('session_id').references(() => zuvySessions.id).notNull(),
+  batchId: integer('batch_id').references(() => zuvyBatches.id),
+  bootcampId: integer('bootcamp_id').references(() => zuvyBootcamps.id),
+  userId: integer('user_id').references(() => users.id),
+  createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow(),
+});
+
+export const zuvySessionVideoRecordingsRelations = relations(zuvySessionVideoRecordings, ({ one }) => ({
+  session: one(zuvySessions, {
+    fields: [zuvySessionVideoRecordings.sessionId],
+    references: [zuvySessions.id],
+  }),
+  batch: one(zuvyBatches, {
+    fields: [zuvySessionVideoRecordings.batchId],
+    references: [zuvyBatches.id],
+  }),
+  bootcamp: one(zuvyBootcamps, {
+    fields: [zuvySessionVideoRecordings.bootcampId],
+    references: [zuvyBootcamps.id],
+  }),
+  user: one(users, {
+    fields: [zuvySessionVideoRecordings.userId],
+    references: [users.id],
+  }),
+}));
 
 export const zuvySessionRecordViews = main.table('zuvy_session_record_views', {
   id: serial('id').primaryKey().notNull(),
@@ -3495,7 +3555,6 @@ export const zuvyTestCasesSubmissionRelation = relations(zuvyTestCasesSubmission
     references: [zuvyPracticeCode.id],
   }),
 }))
-
 
 
 export const zuvyLanguages = main.table("zuvy_languages", {
