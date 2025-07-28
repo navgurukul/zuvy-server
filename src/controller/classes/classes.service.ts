@@ -18,6 +18,7 @@ import {
   zuvySessionRecordViews,
   // ZuvyClassesGoogleMeetLink
 } from '../../../drizzle/schema';
+
 import { db } from '../../db/index';
 import {
   eq,
@@ -89,6 +90,16 @@ const scopes = [
 @Injectable()
 export class ClassesService {
   private readonly logger = new Logger(ClassesService.name);
+
+  // Add this function to check if attendance record already exists
+  async checkAttendanceExists(meetingId: string): Promise<boolean> {
+    const existingRecord = await db
+      .select()
+      .from(zuvyStudentAttendance)
+      .where(eq(zuvyStudentAttendance.meetingId, meetingId));
+    
+    return existingRecord.length > 0;
+  }
 
   async accessOfCalendar(creatorInfo) {
     const userId = Number(creatorInfo.id);
@@ -551,7 +562,7 @@ export class ClassesService {
   //   const attendanceOfStudents = Object.values(attendanceByTitle);
   //   return [ null, attendanceOfStudents ];
   //   }
-
+  
   async getAttendanceByBatchId(batchId: any, userData) {
     try {
       const fetchedStudents = await db
@@ -1113,6 +1124,14 @@ export class ClassesService {
       });
       for (const rec of Object.values(attendance)) {
         rec.attendance = rec.duration >= cutoff ? 'present' : 'absent';
+        let user = students.find((student) => student.user.email === rec.email);
+        if (user && rec.attendance === 'present') {
+          let newData = await db.select().from(zuvyBatchEnrollments)
+            .where(sql`${zuvyBatchEnrollments.userId} = ${BigInt(user.userId)} AND ${zuvyBatchEnrollments.batchId} = ${session.batchId}`);
+          await db.update(zuvyBatchEnrollments).set({
+            attendance: newData[0].attendance ? newData[0].attendance + 1 : 1,
+          }). where(sql`${zuvyBatchEnrollments.userId} = ${BigInt(user.userId)} AND ${zuvyBatchEnrollments.batchId} = ${session.batchId}`);
+        } 
       }
       // 7. Return attendance and s3link
       return [null, { s3link, attendance: Object.values(attendance), totalSeconds }];
@@ -1167,8 +1186,7 @@ export class ClassesService {
           students.length > attendance.length
             ? students.length
             : attendance.length;
-        
-        if (!s3link || Meeting.length === 0) {
+        if (s3link == null || s3link == undefined ) {
           let [errorSessionAttendanceAndS3Link, result] = await this.getSessionAttendanceAndS3Link(classInfo[0], students);
           if (errorSessionAttendanceAndS3Link) {
             return [
@@ -1187,15 +1205,18 @@ export class ClassesService {
             }
             await db.update(zuvySessions)
               .set(classUpdateData)
-              .where(eq(zuvySessions.meetingId, meetingId))
-            // insert the attendance data into the database
-            await db.insert(zuvyStudentAttendance)
-              .values({
-                attendance: attendance,
-                meetingId: meetingId,
-                batchId: batchId,
-                bootcampId: bootcampId
-              })
+              .where(eq(zuvySessions.meetingId, meetingId))            // Check if attendance record already exists before inserting
+            const attendanceExists = await this.checkAttendanceExists(meetingId);
+            if (!attendanceExists) {
+              // Only insert if no record exists
+              await db.insert(zuvyStudentAttendance)
+                .values({
+                  attendance: attendance,
+                  meetingId: meetingId,
+                  batchId: batchId,
+                  bootcampId: bootcampId
+                })
+            }
           }
         }
         
@@ -1311,20 +1332,32 @@ export class ClassesService {
             attendance['attendance'] =
               Number(attendance.duration) >= threshold ? 'present' : 'absent';
           }
-        }
-        let attendanceSheetData = mergedAttendance.filter(
+        }        let attendanceSheetData = mergedAttendance.filter(
           (attendance) => attendance.email !== 'team@zuvy.org',
         );
         if (attendanceSheetData.length > 0) {
-          const zuvy_student_attendance = await db
-            .insert(zuvyStudentAttendance)
-            .values({
-              meetingId,
-              attendance: attendanceSheetData,
-              batchId: classInfo[0]?.batchId,
-              bootcampId: classInfo[0]?.bootcampId,
-            })
-            .returning();
+          // Check if attendance record already exists before inserting
+          const attendanceExists = await this.checkAttendanceExists(meetingId);
+          
+          let zuvy_student_attendance;
+          if (!attendanceExists) {
+            // Only insert if no record exists
+            zuvy_student_attendance = await db
+              .insert(zuvyStudentAttendance)
+              .values({
+                meetingId,
+                attendance: attendanceSheetData,
+                batchId: classInfo[0]?.batchId,
+                bootcampId: classInfo[0]?.bootcampId,
+              })
+              .returning();
+          } else {
+            // Get existing record if it already exists
+            zuvy_student_attendance = await db
+              .select()
+              .from(zuvyStudentAttendance)
+              .where(eq(zuvyStudentAttendance.meetingId, meetingId));
+          }
           if (zuvy_student_attendance.length > 0) {
             let batchStudets = attendanceSheetData
               .filter((student: any) => student.attendance === 'present')
@@ -1722,6 +1755,31 @@ export class ClassesService {
     try {
       let calendar: any = await this.accessOfCalendar(creatorInfo);
 
+      // Fetch students' emails in the batch (like in createSession)
+      const sessionDetails = await db.select().from(zuvySessions).where(eq(zuvySessions.meetingId, eventId));
+      const studentsInTheBatchEmails = await db
+        .select()
+        .from(zuvyBatchEnrollments)
+        .where(eq(zuvyBatchEnrollments.batchId, sessionDetails[0].batchId));
+      const studentsEmails = [];
+      for (const studentEmail of studentsInTheBatchEmails) {
+        try {
+          const emailFetched = await db
+            .select()
+            .from(users)
+            .where(eq(users.id, BigInt(studentEmail.userId)));
+          if (emailFetched && emailFetched.length > 0) {
+            studentsEmails.push({ email: emailFetched[0].email });
+          }
+        } catch (error) {
+          return {
+            status: 'error',
+            message: 'Fetching emails failed',
+            code: 500,
+          };
+        }
+      }
+
       // Update event in Google Calendar
       const eventUpdateData = {
         calendarId: 'primary',
@@ -1731,18 +1789,13 @@ export class ClassesService {
           description: updatedEventDetails.description,
           start: {
             dateTime: moment(updatedEventDetails.startDateTime),
-            // .subtract(5, 'hours')
-            // .subtract(30, 'minutes')
-            // .format(),
             timeZone: updatedEventDetails.timeZone,
           },
           end: {
             dateTime: moment(updatedEventDetails.endDateTime),
-            // .subtract(5, 'hours')
-            // .subtract(30, 'minutes')
-            // .format(),
             timeZone: updatedEventDetails.timeZone,
           },
+          attendees: studentsEmails, // <-- Add attendees here
         },
       };
 
@@ -1883,4 +1936,4 @@ export class ClassesService {
       ];
     }
   }
-}
+  }

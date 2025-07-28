@@ -346,4 +346,33 @@ export class BootcampController {
     }
     return res;
   }
+
+  @Post('/process-attendance')
+  @ApiOperation({ summary: 'Process attendance records and update attendance counts' })
+  @ApiQuery({
+    name: 'bootcampId',
+    required: true,
+    type: Number,
+    description: 'ID of the bootcamp to process attendance for',
+  })
+  @ApiBearerAuth()
+  async processAttendance(@Query('bootcampId') bootcampId: number): Promise<any> {
+    if (!bootcampId) {
+      throw new BadRequestException('bootcampId is required');
+    }
+    
+    const [err, res] = await this.bootcampService.processAttendanceRecords(bootcampId);
+    if (err) {
+      throw new BadRequestException(err);
+    }
+    return res;
+  }
+
+  @Get('/attendance/grouped/:bootcamp_id')
+  @ApiOperation({ summary: 'Get grouped attendance for a bootcamp (unique and duplicate meetingIds)' })
+  @ApiBearerAuth()
+  async getGroupedAttendanceByBootcamp(@Param('bootcamp_id') bootcamp_id: number) {
+    const res = await this.bootcampService.getGroupedAttendanceByBootcamp(bootcamp_id);
+    return res;
+  }
 }

@@ -1,4 +1,3 @@
-
 import { Module, NestModule, MiddlewareConsumer ,RequestMethod} from '@nestjs/common';
 
 import { ClassesController } from './classes.controller';
@@ -6,10 +5,12 @@ import { ClassesService } from './classes.service';
 import { BatchesModule } from '../batches/batch.module';
 import { JwtModule, JwtService } from '@nestjs/jwt';
 import { JwtMiddleware } from 'src/middleware/jwt.middleware';
+import { AttendanceModule } from '../attendance/attendance.module';
+
 @Module({
   controllers: [ClassesController],
   providers: [ClassesService, JwtService],
-  imports: [BatchesModule],
+  imports: [BatchesModule, AttendanceModule],
   exports: [ClassesService]
 })
 export class ClassesModule implements NestModule {

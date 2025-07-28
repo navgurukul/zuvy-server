@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, InternalServerErrorException, Logger } from '@nestjs/common';
 import {
   zuvyModuleTracking,
   zuvyAssignmentSubmission,
@@ -60,15 +60,70 @@ import {
   EditQuizVariantDto,
   CreateQuizVariantDto,
   AddQuizVariantsDto,
-  deleteQuestionOrVariantDto
+  deleteQuestionOrVariantDto,
+  UpdateChapterDto
 } from './dto/content.dto';
 import { STATUS_CODES } from '../../helpers';
 import { helperVariable } from '../../constants/helper';
+import { ConfigService } from '@nestjs/config';
+import {
+  S3Client,
+  GetObjectCommand,
+  PutObjectCommand,
+} from '@aws-sdk/client-s3';
+let {S3_ACCESS_KEY_ID,S3_BUCKET_NAME,S3_REGION,S3_SECRET_KEY_ACCESS} = process.env
 import e from 'express';
 let { DIFFICULTY } = helperVariable;
 
 @Injectable()
 export class ContentService {
+  private s3: S3Client;
+  private bucket :string;
+  private region: string;
+  constructor(private config: ConfigService) {
+    this.bucket = this.config.get('S3_BUCKET_NAME');
+    this.region = 'ap-south-1';
+    this.s3 = new S3Client({
+      region:this.region,
+      credentials: {
+        accessKeyId: this.config.get('S3_ACCESS_KEY_ID'),
+        secretAccessKey: this.config.get('S3_SECRET_KEY_ACCESS'),
+      },
+    });
+  }
+
+  async uploadPdfToS3(fileBuffer: Buffer, fileName: string): Promise<string> {
+    try {
+      const key = `zuvy_curriculum/${Date.now()}_${fileName}`;
+      await this.s3.send(
+        new PutObjectCommand({
+          Bucket: this.bucket,
+          Key: key,
+          Body: fileBuffer,
+          ContentType: 'application/pdf',
+        }),
+      );
+      return `https://${this.bucket}.s3.${this.region}.amazonaws.com/${key}`;
+    } catch (err) {
+      throw new InternalServerErrorException('Error uploading PDF to S3');
+    }
+  }
+  
+  async uploadImageToS3(
+  buffer: Buffer,
+  filename: string): Promise<string> {
+  const key = `mcq_images/${Date.now()}_${filename}`;
+  await this.s3.send(
+        new PutObjectCommand({
+          Bucket: this.bucket,
+          Key: key,
+          Body: buffer,
+          ContentType: 'image/*',
+        }),
+      );
+  return `https://${this.bucket}.s3.${this.region}.amazonaws.com/${key}`;
+ }
+
   async lockContent(modules__, module_id = null) {
     let index = 0;
     while (index < modules__.length) {
@@ -818,7 +873,7 @@ export class ContentService {
   }
 
   async editChapter(
-    editData: EditChapterDto,
+    editData: UpdateChapterDto,
     moduleId: number,
     chapterId: number,
   ) {
