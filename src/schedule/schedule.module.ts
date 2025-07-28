@@ -6,6 +6,6 @@ import { ClassesModule } from '../controller/classes/classes.module';
 @Module({
   imports: [SubmissionModule, ClassesModule],
   providers: [ScheduleService],
-  exports: [ScheduleService]
+  exports: [ScheduleService],
 })
-export class ScheduleModule {} 
+export class ScheduleModule {}

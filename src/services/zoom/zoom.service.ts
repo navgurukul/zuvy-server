@@ -1,9 +1,8 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import axios, { AxiosResponse } from 'axios';
 import { google } from 'googleapis';
-import { zuvySessions, userTokens } from '../../../drizzle/schema';
+import { zuvySessions } from '../../../drizzle/schema';
 import { db } from '../../db/index';
-import { eq } from 'drizzle-orm';
 
 @Injectable()
 export class ZoomService {
@@ -103,13 +102,13 @@ export class ZoomService {
     }
   }
 
-  async getMeetingParticipants(meetingUuid: string): Promise<{ success: boolean; data?: any; participants?: any; error?: string }> {
+  async getMeetingParticipants(meetingUuid: string): Promise<{ success: boolean; participants?: any; error?: string }> {
     try {
       const encodedUuid = encodeURIComponent(meetingUuid);
       const url = `${this.baseUrl}/report/meetings/${encodedUuid}/participants`;
       const response: AxiosResponse<any> = await axios.get(url, { headers: this.getHeaders() });
       this.logger.log(`Zoom meeting participants fetched successfully for UUID: ${meetingUuid}`);
-      return { success: true, data: response.data, participants: response.data.participants };
+      return { success: true, participants: response.data.participants };
     } catch (error) {
       this.logger.error(`Error fetching Zoom meeting participants: ${error.response?.data || error.message}`);
       return { success: false, error: error.response?.data?.message || error.message };
@@ -146,9 +145,9 @@ export class ZoomService {
   async createAndStoreZoomMeeting(meetingData: any, eventDetails: any, creatorInfo: any): Promise<any> {
     const zoomResponse = await this.createMeeting(meetingData);
 
-    // Synchronize with Google Calendar using user's tokens
+    // Synchronize with Google Calendar
     try {
-      await this.createGoogleCalendarEvent(zoomResponse, creatorInfo.id);
+      await this.createGoogleCalendarEvent(zoomResponse);
       this.logger.log(`Google Calendar event created for Zoom meeting: ${zoomResponse.id}`);
     } catch (error) {
       this.logger.error(`Failed to create Google Calendar event: ${error.message}`);
@@ -158,19 +157,18 @@ export class ZoomService {
     // Store in zuvySessions table
     const session = {
       meetingId: zoomResponse.id.toString(),
-      hangoutLink: zoomResponse.join_url, // Required field - using Zoom join URL
+      zoomJoinUrl: zoomResponse.join_url,
+      zoomStartUrl: zoomResponse.start_url,
+      zoomPassword: zoomResponse.password,
+      zoomMeetingId: zoomResponse.id.toString(),
       creator: creatorInfo.email,
       startTime: eventDetails.startDateTime,
       endTime: eventDetails.endDateTime,
       batchId: eventDetails.batchId,
       bootcampId: eventDetails.bootcampId,
       moduleId: eventDetails.moduleId,
-      chapterId: eventDetails.chapterId || 1, // Use provided chapterId or default to 1
       title: eventDetails.title,
       isZoomMeet: true,
-      zoomStartUrl: zoomResponse.start_url,
-      zoomPassword: zoomResponse.password,
-      zoomMeetingId: zoomResponse.id.toString(),
       status: 'upcoming',
     };
 
@@ -184,17 +182,8 @@ export class ZoomService {
     }
   }
 
-  async createGoogleCalendarEvent(meeting: any, userId: number): Promise<void> {
+  async createGoogleCalendarEvent(meeting: any): Promise<void> {
     try {
-      // Fetch user tokens from database
-      const userTokensRecord = await db.select().from(userTokens).where(eq(userTokens.userId, userId)).limit(1);
-      
-      if (!userTokensRecord || userTokensRecord.length === 0) {
-        throw new Error(`No Google tokens found for user ID: ${userId}`);
-      }
-
-      const { accessToken, refreshToken } = userTokensRecord[0];
-
       const { OAuth2 } = google.auth;
       const oauth2Client = new OAuth2(
         process.env.GOOGLE_CLIENT_ID,
@@ -202,11 +191,7 @@ export class ZoomService {
         process.env.GOOGLE_REDIRECT_URI
       );
 
-      oauth2Client.setCredentials({ 
-        access_token: accessToken,
-        refresh_token: refreshToken 
-      });
-
+      oauth2Client.setCredentials({ refresh_token: process.env.GOOGLE_REFRESH_TOKEN });
       const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
 
       const event = {

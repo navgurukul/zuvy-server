@@ -2,7 +2,24 @@ import { Controller, Post, Put, Delete, Get, Param, Body, Query, BadRequestExcep
 import { ZoomService } from './zoom.service';
 import { ApiTags, ApiOperation, ApiQuery } from '@nestjs/swagger';
 import { Public } from '../../auth/decorators/public.decorator';
-import { CreateAndStoreZoomMeetingDto, UpdateMeetingDto } from './dto/zoom.dto';
+
+export class CreateAndStoreZoomMeetingDto {
+  title: string;
+  batchId: number;
+  bootcampId: number;
+  moduleId: number;
+  description?: string;
+  startDateTime: string;
+  endDateTime: string;
+  timeZone: string;
+}
+
+export class UpdateMeetingDto {
+  topic?: string;
+  start_time?: string;
+  duration?: number;
+  timezone?: string;
+}
 
 @Controller('zoom')
 @ApiTags('Zoom')
