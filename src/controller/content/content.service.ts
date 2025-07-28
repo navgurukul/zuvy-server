@@ -2665,7 +2665,6 @@ export class ContentService {
           )
           .limit(limit);
       }
-
       return quizzes;
     } catch (err) {
       console.error("Error fetching quiz questions: ", err);
@@ -2715,8 +2714,9 @@ export class ContentService {
         with: {
           ModuleAssessment: true,
           submitedOutsourseAssessments: {
-            where: (submissions, { eq }) => eq(submissions.userId, userId),
+            where: (submissions, { sql }) => sql`${submissions.userId} = ${userId}`,
             columns: { id: true },
+            orderBy: (submissions, { desc }) => [desc(submissions.id)],
             limit: 1
           }
         },
