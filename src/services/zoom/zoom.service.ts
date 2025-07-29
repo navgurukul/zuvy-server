@@ -29,6 +29,45 @@ export interface ZoomMeetingRequest {
     auto_recording?: string; // local, cloud, none
     enforce_login?: boolean;
     waiting_room?: boolean;
+    // New attendance and meeting control settings
+    attendance_reporting?: boolean; // Enable attendance tracking
+    end_on_auto_off?: boolean; // End meeting when host leaves
+    alternative_hosts_email_notification?: boolean;
+    close_registration?: boolean;
+    enforce_login_domains?: string;
+    global_dial_in_countries?: string[];
+    jbh_time?: number;
+    meeting_authentication?: boolean;
+    registrants_confirmation_email?: boolean;
+    registrants_email_notification?: boolean;
+    registration_type?: number;
+    show_share_button?: boolean;
+    allow_multiple_devices?: boolean;
+    breakout_room?: {
+      enable: boolean;
+    };
+    contact_email?: string;
+    contact_name?: string;
+    encryption_type?: string;
+    focus_mode?: boolean;
+    meeting_invitees?: any[];
+    private_meeting?: boolean;
+    pstn_password_protected?: boolean;
+    request_permission_to_unmute_participants?: boolean;
+    host_save_video_order?: boolean;
+    // Google Calendar Integration Settings
+    calendar_type?: number; // 1 for Google Calendar, 2 for Outlook
+    auto_start_meeting_summary?: boolean;
+    auto_start_ai_companion_questions?: boolean;
+  };
+  // YouTube Live Stream Configuration
+  live_stream?: {
+    active: boolean; // Enable/disable live streaming
+    settings: {
+      page_url: string; // YouTube channel URL
+      stream_key: string; // YouTube stream key
+      stream_url: string; // YouTube RTMP URL
+    };
   };
 }
 

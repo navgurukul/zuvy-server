@@ -220,23 +220,74 @@ export class ClassesService {
       const sessionsToCreate = [];
       const startDate = new Date(eventDetails.startDateTime);
       const endDate = new Date(eventDetails.endDateTime);
-      const duration = Math.floor((endDate.getTime() - startDate.getTime()) / (1000 * 60)); // Duration in minutes
+      
+      // Create adjusted dates for Zoom meeting (subtract 30 minutes)
+      const zoomStartDate = new Date(startDate);
+      const zoomEndDate = new Date(endDate);
+      zoomStartDate.setHours(zoomStartDate.getHours() - 5);
+      zoomEndDate.setHours(zoomEndDate.getHours() - 5);
+      zoomStartDate.setMinutes(zoomStartDate.getMinutes() - 30);
+      zoomEndDate.setMinutes(zoomEndDate.getMinutes() - 30);
+      
+      const duration = Math.floor((zoomEndDate.getTime() - zoomStartDate.getTime()) / (1000 * 60)); // Duration in minutes
 
       // Create Zoom meeting
       const zoomMeetingData = {
         topic: eventDetails.title,
         type: 2, // Scheduled meeting
-        start_time: eventDetails.startDateTime,
+        start_time: zoomStartDate.toISOString(), // Use adjusted start time for Zoom
         duration: duration,
         timezone: eventDetails.timeZone || 'Asia/Kolkata',
+        agenda: eventDetails.description || 'Live class session',
         settings: {
           host_video: true,
           participant_video: true,
           join_before_host: false,
           mute_upon_entry: true,
           waiting_room: true,
-          auto_recording: 'cloud',
+          alternative_hosts_email_notification: true,
+          audio: 'both', // Both telephony and voip
+          close_registration: false,
+          cn_meeting: false,
+          enforce_login: false,
+          in_meeting: false,
+          jbh_time: 0,
+          meeting_authentication: false,
+          registrants_confirmation_email: true,
+          registrants_email_notification: true,
+          registration_type: 1,
+          show_share_button: true,
+          // Attendance and End Meeting Settings
+          attendance_reporting: true, // Enable attendance tracking
+          end_on_auto_off: true, // End meeting when host leaves
+          // Additional required attributes
+          allow_multiple_devices: true,
+          breakout_room: {
+            enable: false
+          },
+          focus_mode: false,
+          meeting_invitees: [
+            {
+              email: 'nishayadav22@navgurukul.org',
+              name: 'nisha yadav',
+            },
+            {
+              'email': 'giribabu@navgurukul.org',
+              name: 'giri babu',
+            }
+          ],
+          watermark: false,
+          calendar_type: 1, // Google Calendar
         },
+        // YouTube Live Stream Configuration
+        live_stream: {
+          active: false, // Set to true to enable YouTube live streaming
+          settings: {
+            page_url: '', // YouTube channel URL - to be configured
+            stream_key: '', // YouTube stream key - to be configured  
+            stream_url: 'rtmp://a.rtmp.youtube.com/live2/' // YouTube RTMP URL
+          }
+        }
       };
 
       const zoomResponse = await this.createZoomMeetingDirect(zoomMeetingData);
@@ -245,15 +296,48 @@ export class ClassesService {
         throw new Error(`Failed to create Zoom meeting: ${zoomResponse.error}`);
       }
 
+      // Create corresponding Google Calendar event for Zoom meeting
+      let calendarEventId = null;
+      try {
+        // Get student emails for the batch
+        const studentsResult = await this.getStudentsEmails(eventDetails.batchId);
+        
+        if (studentsResult.success) {
+          // Create Google Calendar event with Zoom meeting link
+          const eventData = {
+            title: `${eventDetails.title} (Zoom Meeting)`,
+            description: `${eventDetails.description || 'Live class session'}\n\nJoin Zoom Meeting: ${zoomResponse.data.join_url}\nMeeting ID: ${zoomResponse.data.id}\nPassword: ${zoomResponse.data.password}`,
+            startTime: zoomStartDate.toISOString(), // Use adjusted start time for calendar
+            endTime: zoomEndDate.toISOString(), // Use adjusted end time for calendar
+            timeZone: eventDetails.timeZone,
+            attendees: studentsResult.emails,
+            location: `Zoom Meeting - ${zoomResponse.data.join_url}`,
+          };
+
+          const calendarResult = await this.createGoogleCalendarEvent(eventData, creatorInfo);
+          
+          if (calendarResult.success) {
+            calendarEventId = calendarResult.data.id;
+            this.logger.log(`Google Calendar event created: ${calendarEventId}`);
+          } else {
+            this.logger.warn(`Failed to create Google Calendar event: ${calendarResult.error}`);
+          }
+        }
+      } catch (calendarError) {
+        this.logger.warn(`Google Calendar integration failed: ${calendarError.message}`);
+        // Continue without failing the entire process
+      }
+
       const session = {
-        meetingId: zoomResponse.data.id.toString(),
+        meetingId: calendarEventId,
         zoomJoinUrl: zoomResponse.data.join_url,
         zoomStartUrl: zoomResponse.data.start_url,
         zoomPassword: zoomResponse.data.password,
         zoomMeetingId: zoomResponse.data.id.toString(),
+        googleCalendarEventId: calendarEventId, // Store Google Calendar event ID
         creator: creatorInfo.email,
-        startTime: eventDetails.startDateTime,
-        endTime: eventDetails.endDateTime,
+        startTime: eventDetails.startDateTime, // Use original start time for database
+        endTime: eventDetails.endDateTime, // Use original end time for database
         batchId: eventDetails.batchId,
         bootcampId: eventDetails.bootcampId,
         moduleId: eventDetails.moduleId,
@@ -589,6 +673,7 @@ export class ClassesService {
         zoomStartUrl: session.zoomStartUrl,
         zoomPassword: session.zoomPassword,
         zoomMeetingId: session.zoomMeetingId,
+        googleCalendarEventId: session.googleCalendarEventId, // Add Google Calendar event ID
       }));
 
       this.logger.log(`Saving ${sessionData.length} sessions to the database.`);
@@ -1429,6 +1514,27 @@ export class ClassesService {
             
             await this.zoomService.updateMeeting(session.zoomMeetingId, zoomUpdateData);
             this.logger.log(`Zoom meeting ${session.zoomMeetingId} updated successfully`);
+            
+            // Also update corresponding Google Calendar event if it exists
+            if (session.meetingId) {
+              try {
+                const calendarUpdateData = {
+                  title: updateData.title ? `${updateData.title} (Zoom Meeting)` : undefined,
+                  startTime: updateData.startTime,
+                  endTime: updateData.endTime,
+                  timeZone: updateData.timeZone,
+                  description: updateData.description ? 
+                    `${updateData.description}\n\nJoin Zoom Meeting: ${session.hangoutLink}\nMeeting ID: ${session.zoomMeetingId}\nPassword: ${session.zoomPassword}` : 
+                    undefined
+                };
+
+                await this.updateGoogleCalendarEvent(session.meetingId, calendarUpdateData, userInfo);
+                this.logger.log(`Google Calendar event ${session.meetingId} updated successfully`);
+              } catch (calendarError) {
+                this.logger.warn(`Failed to update Google Calendar event: ${calendarError.message}`);
+                // Continue without failing the entire update
+              }
+            }
           } catch (error) {
             this.logger.error(`Failed to update Zoom meeting: ${error.message}`);
             // Could rollback DB changes or continue with warning
@@ -1500,6 +1606,17 @@ export class ClassesService {
           } catch (error) {
             this.logger.error(`Failed to delete Zoom meeting: ${error.message}`);
             // Continue with DB deletion even if Zoom deletion fails
+          }
+        }
+        
+        // Also delete corresponding Google Calendar event if it exists
+        if (sessionData.meetingId) {
+          try {
+            await this.deleteGoogleCalendarEvent(sessionData.meetingId, userInfo);
+            this.logger.log(`Google Calendar event ${sessionData.meetingId} deleted`);
+          } catch (error) {
+            this.logger.error(`Failed to delete Google Calendar event: ${error.message}`);
+            // Continue with deletion process
           }
         }
       } else {
