@@ -10,11 +10,21 @@ import {
   IsEmail,
   IsNumber,
   IsDateString,
-  IsBoolean,
-  IsBoolean,
+  IsBoolean
 } from 'class-validator';
 import { Type } from 'class-transformer';
-
+/*
+{
+  "title": "Live  Event test from backend",
+  "batchId": 327,
+  "moduleId": 602,
+  "description": "Description of the event",
+  "startDateTime": "2025-08-21T00:00:00Z",
+  "endDateTime": "2025-08-21T00:00:00Z",
+  "timeZone": "Asia/Kolkata",
+  "isZoomMeet": true
+}
+ */
 export class CreateDto {
   @ApiProperty({
     description: 'The name of the bootcamp',
@@ -76,7 +86,7 @@ export class CreateSessionDto {
   @ApiProperty({
     description: 'The summary of the live  event',
     type: String,
-    example: 'Live  Event',
+    example: 'Live  Event test from backend',
     required: true,
   })
   @IsNotEmpty()
@@ -86,7 +96,7 @@ export class CreateSessionDto {
   @ApiProperty({
     description: 'The batchId of the live  ',
     type: Number,
-    example: 1,
+    example: 327,
     required: true,
   })
   @IsNotEmpty()
@@ -96,7 +106,7 @@ export class CreateSessionDto {
   @ApiProperty({
     description: 'The module ID to associate with this session',
     type: Number,
-    example: 1,
+    example: 602,
     required: true,
   })
   @IsNotEmpty()
@@ -117,7 +127,7 @@ export class CreateSessionDto {
     description: 'The start time of the live  event',
     type: String,
     format: 'date-time',
-    example: '2024-07-21T00:00:00Z',
+    example: '2025-08-21T00:00:00Z',
     required: true,
   })
   @IsNotEmpty()
@@ -128,7 +138,7 @@ export class CreateSessionDto {
     description: 'The end time of the live  event',
     type: String,
     format: 'date-time',
-    example: '2024-07-21T00:00:00Z',
+    example: '2025-08-21T00:00:00Z',
     required: true,
   })
   @IsNotEmpty()
@@ -146,40 +156,9 @@ export class CreateSessionDto {
   timeZone: string;
 
   @ApiProperty({
-    description: 'The days of the week for the live  event',
-    type: Array,
-    example: ['Monday', 'Wednesday', 'Friday'],
-    required: false,
-  })
-  @IsArray()
-  @IsOptional()
-  daysOfWeek: string[];
-
-  @ApiProperty({
-    description: 'The total number of classes/sessions',
-    type: Number,
-    example: 10,
-    required: false,
-  })
-  @IsNumber()
-  @IsOptional()
-  totalClasses: number;
-
-  @ApiProperty({
-    description: 'Whether to use Zoom instead of Google Meet for this session',
-    type: Boolean,
-    example: false,
-    required: false,
-    default: false,
-  })
-  @IsBoolean()
-  @IsOptional()
-  useZoom?: boolean;
-
-  @ApiProperty({
     description: 'Whether this session uses Zoom meeting (alias for useZoom for consistency with database schema)',
     type: Boolean,
-    example: false,
+    example: true,
     required: false,
     default: false,
   })

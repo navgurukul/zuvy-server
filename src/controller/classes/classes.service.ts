@@ -171,8 +171,6 @@ export class ClassesService {
       batchId: number;
       bootcampId: number;
       moduleId: number;
-      daysOfWeek: string[];
-      totalClasses: number;
       isZoomMeet?: boolean;
     },
     creatorInfo: any,
@@ -214,8 +212,6 @@ export class ClassesService {
       batchId: number;
       bootcampId: number;
       moduleId: number;
-      daysOfWeek?: string[];
-      totalClasses?: number;
     },
     creatorInfo: any,
   ) {
@@ -267,17 +263,17 @@ export class ClassesService {
       };
 
       // Validate and create chapter
-      // const chapterResult = await this.validateAndCreateChapter({
-      //   ...eventDetails,
-      //   bootcampId: eventDetails.bootcampId, // Will be set from batch validation
-      // });
+      const chapterResult = await this.validateAndCreateChapter({
+        ...eventDetails,
+        bootcampId: eventDetails.bootcampId, // Will be set from batch validation
+      });
 
-      // if (!chapterResult.success) {
-      //   throw new Error(chapterResult.message);
-      // }
+      if (!chapterResult.success) {
+        throw new Error(chapterResult.message);
+      }
 
-      // session['chapterId'] = chapterResult.chapter.id;
-      // session['bootcampId'] = chapterResult.bootcampId;
+      session['chapterId'] = chapterResult.chapter.id;
+      session['bootcampId'] = chapterResult.bootcampId;
 
       sessionsToCreate.push(session);
       // Save sessions to database
@@ -312,8 +308,6 @@ export class ClassesService {
       batchId: number;
       bootcampId: number;
       moduleId: number;
-      daysOfWeek: string[];
-      totalClasses: number;
     },
     creatorInfo: any,
   ) {
@@ -334,55 +328,39 @@ export class ClassesService {
         throw new Error(studentsResult.message);
       }
 
-      const sessionsToCreate = [];
-      const startDate = new Date(eventDetails.startDateTime);
-      let classCount = 0;
+      // Create Google Calendar event
+      const eventData = {
+        title: eventDetails.title,
+        description: eventDetails.description,
+        startTime: eventDetails.startDateTime,
+        endTime: eventDetails.endDateTime,
+        timeZone: eventDetails.timeZone,
+        attendees: studentsResult.emails,
+      };
 
-      while (classCount < eventDetails.totalClasses) {
-        const currentDate = new Date(startDate);
-        currentDate.setDate(startDate.getDate() + (classCount * 7)); // Weekly sessions
-
-        const sessionStartTime = currentDate.toISOString();
-        const sessionEndTime = new Date(currentDate.getTime() + (new Date(eventDetails.endDateTime).getTime() - new Date(eventDetails.startDateTime).getTime())).toISOString();
-
-        // Create Google Calendar event
-        const eventData = {
-          title: `${eventDetails.title} - Class ${classCount + 1}`,
-          description: eventDetails.description,
-          startTime: sessionStartTime,
-          endTime: sessionEndTime,
-          timeZone: eventDetails.timeZone,
-          attendees: studentsResult.emails,
-        };
-
-        const calendarResult = await this.createGoogleCalendarEvent(eventData, creatorInfo);
-        
-        if (!calendarResult.success) {
-          this.logger.warn(`Failed to create calendar event for class ${classCount + 1}: ${calendarResult.error}`);
-          continue;
-        }
-
-        const session = {
-          meetingId: calendarResult.data.id,
-          hangoutLink: calendarResult.data.hangoutLink,
-          creator: creatorInfo.email,
-          startTime: sessionStartTime,
-          endTime: sessionEndTime,
-          batchId: eventDetails.batchId,
-          bootcampId: chapterResult.bootcampId,
-          moduleId: eventDetails.moduleId,
-          chapterId: chapterResult.chapter.id,
-          title: eventData.title,
-          status: 'upcoming',
-          isZoomMeet: false,
-        };
-
-        sessionsToCreate.push(session);
-        classCount++;
+      const calendarResult = await this.createGoogleCalendarEvent(eventData, creatorInfo);
+      
+      if (!calendarResult.success) {
+        throw new Error(`Failed to create calendar event: ${calendarResult.error}`);
       }
 
-      // Save sessions to database
-      const saveResult = await this.saveSessionsToDatabase(sessionsToCreate);
+      const session = {
+        meetingId: calendarResult.data.id,
+        hangoutLink: calendarResult.data.hangoutLink,
+        creator: creatorInfo.email,
+        startTime: eventDetails.startDateTime,
+        endTime: eventDetails.endDateTime,
+        batchId: eventDetails.batchId,
+        bootcampId: chapterResult.bootcampId,
+        moduleId: eventDetails.moduleId,
+        chapterId: chapterResult.chapter.id,
+        title: eventDetails.title,
+        status: 'upcoming',
+        isZoomMeet: false,
+      };
+
+      // Save session to database
+      const saveResult = await this.saveSessionsToDatabase([session]);
       
       if (saveResult.status === 'error') {
         throw new Error(saveResult.message);
@@ -390,14 +368,14 @@ export class ClassesService {
 
       return {
         status: 'success',
-        message: `${sessionsToCreate.length} Google Meet sessions created successfully`,
+        message: 'Google Meet session created successfully',
         data: saveResult.data,
       };
     } catch (error) {
-      this.logger.error(`Error creating Google Meet sessions: ${error.message}`);
+      this.logger.error(`Error creating Google Meet session: ${error.message}`);
       return {
         status: 'error',
-        message: 'Failed to create Google Meet sessions',
+        message: 'Failed to create Google Meet session',
         error: error.message,
       };
     }
