@@ -145,21 +145,21 @@ export class ClassesController {
     return values;
   }
 
-  @Public()
-  @Get('/getAllAttendance/:batchId')
-  @ApiBearerAuth('JWT-auth')
-  @ApiOperation({ summary: 'Get the google all classes attendance by batchID' })
-  extractMeetAttendanceByBatch(
-    @Req() req,
-    @Param('batchId') batchId: string,
-  ): Promise<object> {
-    const userInfo = {
-      id: Number(req.user[0].id),
-      email: req.user[0].email,
-      roles: req.user[0].roles || []
-    };
-    return this.classesService.getAttendanceByBatchId(batchId, userInfo);
-  }
+  // @Public()
+  // @Get('/getAllAttendance/:batchId')
+  // @ApiBearerAuth('JWT-auth')
+  // @ApiOperation({ summary: 'Get the google all classes attendance by batchID' })
+  // extractMeetAttendanceByBatch(
+  //   @Req() req,
+  //   @Param('batchId') batchId: string,
+  // ): Promise<object> {
+  //   const userInfo = {
+  //     id: Number(req.user[0].id),
+  //     email: req.user[0].email,
+  //     roles: req.user[0].roles || []
+  //   };
+  //   return this.classesService.getAttendanceByBatchId(batchId, userInfo);
+  // }
   // @Get('/calculatelogic')
   // @ApiBearerAuth()
   // @ApiOperation({ summary: 'calculate attendance logic' })
@@ -200,23 +200,6 @@ export class ClassesController {
       throw new BadRequestException(err);
     }
     return values;
-  }
-
-  @Post('/analytics/reload')
-  @ApiBearerAuth('JWT-auth')
-  @ApiOperation({ summary: 'meeting attendance analytics with meeting link' })
-  async meetingAttendanceRefress(@Req() req, @Body() reloadData: reloadDto) {
-    let meetingIds: Array<any> = reloadData?.meetingIds;
-
-    let attachment = meetingIds.map(async (meetId) => {
-      const userInfo = {
-      id: Number(req.user[0].id),
-      email: req.user[0].email,
-      roles: req.user[0].roles || []
-    };
-      const [err, values] = await this.classesService.getAttendance(meetId, userInfo);
-    });
-    return { message: 'Data Refreshed', status: 200 };
   }
 
   @Get('/getClassesByBatchId/:batchId')
