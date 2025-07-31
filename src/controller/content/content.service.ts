@@ -28,7 +28,8 @@ import {
   zuvyFormTracking,
   zuvyChapterTracking,
   zuvyRecentBootcamp,
-  zuvySessionRecordViews
+  zuvySessionRecordViews,
+  zuvyBootcamps
 } from '../../../drizzle/schema';
 
 import { error, log } from 'console';
@@ -82,7 +83,6 @@ import { SseService } from '../../services/sse.service';
 import { ClassesService } from '../classes/classes.service';
 let { S3_ACCESS_KEY_ID, S3_BUCKET_NAME, S3_REGION, S3_SECRET_KEY_ACCESS } = process.env
 import e from 'express';
-import { zuvyBootcamps } from 'drizzle/oldSchema';
 let { DIFFICULTY } = helperVariable;
 
 @Injectable()
