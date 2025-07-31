@@ -28,15 +28,34 @@ export class JwtMiddleware implements NestMiddleware {
     const unrestrictedRoutes = [
       { path: '/auth/login', method: 'POST' },
       { path: '/auth/refresh', method: 'POST' },
+      { path: '/auth/debug-token', method: 'POST' },
       { path: '/classes', method: 'GET' },
       { path: '/classes/redirect/', method: 'GET' },
+      { path: '/classes/google-auth/redirect', method: 'GET' },
+      { path: '/classes/create-session-public', method: 'POST' },
       { path: '/classes/getAllAttendance/:batchId', method: 'GET' },
+      { path: '/classes/test-endpoint', method: 'GET' },
       { path: "/student/apply", method: 'POST' },
       { path: "/users/verify-token", method: 'POST' },
+      // Add more unrestricted routes here as needed
     ];
 
     const unrestricted = unrestrictedRoutes.some(
-      route => req._parsedUrl.pathname === route.path && req.method === route.method
+      route => {
+        // Handle exact matches
+        if (route.path === req._parsedUrl.pathname && req.method === route.method) {
+          return true;
+        }
+        
+        // Handle routes with parameters (e.g., /classes/getAllAttendance/:batchId)
+        if (route.path.includes(':')) {
+          const routePattern = route.path.replace(/:[^/]+/g, '[^/]+');
+          const regex = new RegExp(`^${routePattern}$`);
+          return regex.test(req._parsedUrl.pathname) && req.method === route.method;
+        }
+        
+        return false;
+      }
     );
 
     if (unrestricted) {
