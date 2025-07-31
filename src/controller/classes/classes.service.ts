@@ -669,118 +669,118 @@ export class ClassesService {
   //   return [ null, attendanceOfStudents ];
   //   }
 
-  async getAttendanceByBatchId(batchId: any, userData) {
-    try {
-      const fetchedStudents = await db
-        .select()
-        .from(zuvyBatchEnrollments)
-        .where(eq(zuvyBatchEnrollments.batchId, batchId));
+  // async getAttendanceByBatchId(batchId: any, userData) {
+  //   try {
+  //     const fetchedStudents = await db
+  //       .select()
+  //       .from(zuvyBatchEnrollments)
+  //       .where(eq(zuvyBatchEnrollments.batchId, batchId));
 
-      const fetchedTokens = await db
-        .select()
-        .from(userTokens)
-        .where(eq(userTokens.userId, userData.id));
+  //     const fetchedTokens = await db
+  //       .select()
+  //       .from(userTokens)
+  //       .where(eq(userTokens.userId, userData.id));
 
-      if (!fetchedTokens || fetchedTokens.length === 0) {
-        return { status: 'error', message: 'Unable to fetch tokens' };
-      }
-      const auth2Client = new google.auth.OAuth2(
-           process.env.GOOGLE_CLIENT_ID!,
-           process.env.GOOGLE_CLIENT_SECRET!,
-        process.env.GOOGLE_REDIRECT
-        );
-      auth2Client.setCredentials({
-        access_token: fetchedTokens[0].accessToken,
-        refresh_token: fetchedTokens[0].refreshToken,
-      });
-      const client = google.admin({ version: 'reports_v1', auth: auth2Client });
-      const allMeetings = await db
-        .select()
-        .from(zuvySessions)
-        .where(eq(zuvySessions.batchId, batchId));
-      const attendanceByTitle = {};
+  //     if (!fetchedTokens || fetchedTokens.length === 0) {
+  //       return { status: 'error', message: 'Unable to fetch tokens' };
+  //     }
+  //     const auth2Client = new google.auth.OAuth2(
+  //          process.env.GOOGLE_CLIENT_ID!,
+  //          process.env.GOOGLE_CLIENT_SECRET!,
+  //       process.env.GOOGLE_REDIRECT
+  //       );
+  //     auth2Client.setCredentials({
+  //       access_token: fetchedTokens[0].accessToken,
+  //       refresh_token: fetchedTokens[0].refreshToken,
+  //     });
+  //     const client = google.admin({ version: 'reports_v1', auth: auth2Client });
+  //     const allMeetings = await db
+  //       .select()
+  //       .from(zuvySessions)
+  //       .where(eq(zuvySessions.batchId, batchId));
+  //     const attendanceByTitle = {};
 
-      for (const singleMeeting of allMeetings) {
-        const response = await client.activities.list({
-          userKey: 'all',
-          applicationName: 'meet',
-          eventName: 'call_ended',
-          maxResults: 1000,
-          filters: `calendar_event_id==${singleMeeting.meetingId}`,
-        });
-        const meetingAttendance = {};
+  //     for (const singleMeeting of allMeetings) {
+  //       const response = await client.activities.list({
+  //         userKey: 'all',
+  //         applicationName: 'meet',
+  //         eventName: 'call_ended',
+  //         maxResults: 1000,
+  //         filters: `calendar_event_id==${singleMeeting.meetingId}`,
+  //       });
+  //       const meetingAttendance = {};
 
-        for (const student of fetchedStudents) {
-          const emailFetched = await db
-            .select()
-            .from(users)
-            .where(sql`${users.id} = ${student.userId}`);
-          meetingAttendance[emailFetched[0].email] = {
-            email: emailFetched[0].email,
-          };
-        }
-        let adminData;
-        response.data.items.forEach((item: any) => {
-          const event = item.events[0];
-          const email =
-            event.parameters.find((param: any) => param.name === 'identifier')
-              ?.value || '';
-          const duration =
-            event.parameters.find(
-              (param: any) => param.name === 'duration_seconds',
-            )?.intValue || '';
-          if (email.includes('@zuvy.org')) {
-            adminData = { email, duration };
-          }
-        });
-        if (!adminData) return;
+  //       for (const student of fetchedStudents) {
+  //         const emailFetched = await db
+  //           .select()
+  //           .from(users)
+  //           .where(sql`${users.id} = ${student.userId}`);
+  //         meetingAttendance[emailFetched[0].email] = {
+  //           email: emailFetched[0].email,
+  //         };
+  //       }
+  //       let adminData;
+  //       response.data.items.forEach((item: any) => {
+  //         const event = item.events[0];
+  //         const email =
+  //           event.parameters.find((param: any) => param.name === 'identifier')
+  //             ?.value || '';
+  //         const duration =
+  //           event.parameters.find(
+  //             (param: any) => param.name === 'duration_seconds',
+  //           )?.intValue || '';
+  //         if (email.includes('@zuvy.org')) {
+  //           adminData = { email, duration };
+  //         }
+  //       });
+  //       if (!adminData) return;
 
-        const extractedData = response.data.items.map((item) => {
-          const event = item.events[0];
-          const durationSeconds =
-            event.parameters.find((param) => param.name === 'duration_seconds')
-              ?.intValue || '';
-          const email =
-            event.parameters.find((param) => param.name === 'identifier')
-              ?.value || '';
-          if (email.length > 0) {
-            const attendanceStatus =
-              Number(durationSeconds) >= 0.75 * Number(adminData.duration)
-                ? 'present'
-                : 'absent';
-            if (!meetingAttendance[email]) {
-              meetingAttendance[email] = {};
-            }
+  //       const extractedData = response.data.items.map((item) => {
+  //         const event = item.events[0];
+  //         const durationSeconds =
+  //           event.parameters.find((param) => param.name === 'duration_seconds')
+  //             ?.intValue || '';
+  //         const email =
+  //           event.parameters.find((param) => param.name === 'identifier')
+  //             ?.value || '';
+  //         if (email.length > 0) {
+  //           const attendanceStatus =
+  //             Number(durationSeconds) >= 0.75 * Number(adminData.duration)
+  //               ? 'present'
+  //               : 'absent';
+  //           if (!meetingAttendance[email]) {
+  //             meetingAttendance[email] = {};
+  //           }
 
-            meetingAttendance[email][
-              `meeting_${singleMeeting.title}_duration_seconds`
-            ] = durationSeconds;
-            meetingAttendance[email][
-              `meeting_${singleMeeting.title}_attendance`
-            ] = attendanceStatus;
-            return {
-              email,
-              duration: durationSeconds,
-              attendance: attendanceStatus,
-            };
-          }
-        });
+  //           meetingAttendance[email][
+  //             `meeting_${singleMeeting.title}_duration_seconds`
+  //           ] = durationSeconds;
+  //           meetingAttendance[email][
+  //             `meeting_${singleMeeting.title}_attendance`
+  //           ] = attendanceStatus;
+  //           return {
+  //             email,
+  //             duration: durationSeconds,
+  //             attendance: attendanceStatus,
+  //           };
+  //         }
+  //       });
 
-        Object.values(meetingAttendance).forEach((student) => {
-          const email = student['email'];
-          if (!attendanceByTitle[email]) {
-            attendanceByTitle[email] = {};
-          }
-          Object.assign(attendanceByTitle[email], student);
-        });
-      }
+  //       Object.values(meetingAttendance).forEach((student) => {
+  //         const email = student['email'];
+  //         if (!attendanceByTitle[email]) {
+  //           attendanceByTitle[email] = {};
+  //         }
+  //         Object.assign(attendanceByTitle[email], student);
+  //       });
+  //     }
 
-      const formattedAttendance = Object.values(attendanceByTitle);
-      return { attendanceByTitle: formattedAttendance, status: 'success' };
-    } catch (error) {
-      throw new Error(`Error executing request: ${error.message}`);
-    }
-  }
+  //     const formattedAttendance = Object.values(attendanceByTitle);
+  //     return { attendanceByTitle: formattedAttendance, status: 'success' };
+  //   } catch (error) {
+  //     throw new Error(`Error executing request: ${error.message}`);
+  //   }
+  // }
 
   async getAllClasses(): Promise<any> {
     try {
@@ -1251,7 +1251,6 @@ export class ClassesService {
 
   async meetingAttendanceAnalytics(meeting_id: number, user) {
     try {
-      await this.getAttendance(meeting_id, user);
       let classInfo:any = await   db.query.zuvySessions.findMany({
         where: (zuvySessions, { eq }) => eq(zuvySessions.id, meeting_id),
         with: {
@@ -1294,7 +1293,7 @@ export class ClassesService {
           students.length > attendance.length
             ? students.length
             : attendance.length;
-        if (s3link == null || s3link == undefined ) {
+        if (s3link == null || s3link == undefined || s3link == 'not found') {
           let [errorSessionAttendanceAndS3Link, result] = await this.getSessionAttendanceAndS3Link(classInfo[0], students);
           if (errorSessionAttendanceAndS3Link) {
             return [
@@ -1378,120 +1377,12 @@ export class ClassesService {
           },
         ];
       }
-      let classInfo = await db
-        .select()
-        .from(zuvySessions)
-        .where(sql`${zuvySessions.meetingId}=${meetingId}`);
-
-      if (classInfo.length == 0) {
-        return [{ status: 'error', message: 'Meeting not found', code: 404 }];
+      else {
+        return [
+          {status: 'error', message: 'No attendance found for this meeting',code:404}
+        ]
       }
-      const fetchedTokens = await db
-        .select()
-        .from(userTokens)
-        .where(eq(userTokens.userId, user.id));
-      if (!fetchedTokens || fetchedTokens.length === 0) {
-        return { status: 'error', message: 'Unable to fetch tokens' };
-      }
-
-      auth2Client.setCredentials({
-        access_token: fetchedTokens[0].accessToken,
-        refresh_token: fetchedTokens[0].refreshToken,
-      });
-      const client = google.admin({ version: 'reports_v1', auth: auth2Client });
-      const response = await client.activities
-        .list({
-          userKey: 'all',
-          applicationName: 'meet',
-          eventName: 'call_ended',
-          maxResults: 1000,
-          filters: `calendar_event_id==${meetingId}`,
-        })
-        .catch((error) => {
-          throw new Error(`Error executing request: ${error.message}`);
-        });
-      if (response.data.items) {
-        response.data.items.forEach((item) => {
-          const event = item.events[0];
-          const durationSeconds =
-            event.parameters.find((param) => param.name === 'duration_seconds')
-              ?.intValue || '';
-          const email =
-            event.parameters.find((param) => param.name === 'identifier')
-              ?.value || '';
-
-          if (email in attendanceSheet) {
-            attendanceSheet[email] += parseInt(durationSeconds) || 0;
-          } else {
-            attendanceSheet[email] = parseInt(durationSeconds) || 0;
-          }
-        });
-        const zuvyEmail = attendanceSheet['team@zuvy.org'];
-        const totalDuration = zuvyEmail || 0;
-        const threshold = 0.7 * totalDuration;
-        const mergedAttendance = Object.entries(attendanceSheet).map(
-          ([email, duration]) => ({ email, duration }),
-        );
-        for (const attendance of mergedAttendance) {
-          if (attendance.email !== 'team@zuvy.org') {
-            attendance['attendance'] =
-              Number(attendance.duration) >= threshold ? 'present' : 'absent';
-          }
-        }
-        let attendanceSheetData = mergedAttendance.filter(
-          (attendance) => attendance.email !== 'team@zuvy.org',
-        );
-        if (attendanceSheetData.length > 0) {
-          const zuvy_student_attendance = await db
-            .insert(zuvyStudentAttendance)
-            .values({
-              meetingId,
-              attendance: attendanceSheetData,
-              batchId: classInfo[0]?.batchId,
-              bootcampId: classInfo[0]?.bootcampId,
-            })
-            .returning();
-          if (zuvy_student_attendance.length > 0) {
-            let batchStudets = attendanceSheetData
-              .filter((student: any) => student.attendance === 'present')
-              .map((student) => student.email);
-            let students = await db
-              .select()
-              .from(users)
-              .where(inArray(users.email, [...batchStudets]));
-
-            students.forEach(async (student) => {
-              let old_attendance = await db
-                .select()
-                .from(zuvyBatchEnrollments)
-                .where(
-                  sql`${zuvyBatchEnrollments.userId} = ${student.id.toString()} AND ${zuvyBatchEnrollments.batchId} = ${classInfo[0]?.batchId} AND ${zuvyBatchEnrollments.bootcampId} = ${classInfo[0]?.bootcampId}`,
-                );
-              let new_attendance = old_attendance[0]?.attendance
-                ? old_attendance[0].attendance + 1
-                : 1;
-              let zuvyBatchEnrollmentsDetailsUpdated = await db
-                .update(zuvyBatchEnrollments)
-                .set({ attendance: new_attendance })
-                .where(
-                  sql`${zuvyBatchEnrollments.userId} = ${student.id.toString()} AND ${zuvyBatchEnrollments.batchId} = ${classInfo[0]?.batchId} AND ${zuvyBatchEnrollments.bootcampId} = ${classInfo[0]?.bootcampId}`,
-                )
-                .returning();
-              Logger.log(
-                `Attendance updated for new classes ${new_attendance}`,
-              );
-            });
-          }
-          return [
-            null,
-            {
-              attendanceSheetData,
-              status: 'success',
-            },
-          ];
-        }
-      }
-      return [{ status: 'error', message: 'No attendance found', code: 404 }];
+      
     } catch (error) {
       return [{ status: 'error', message: error.message, code: 402 }];
     }
