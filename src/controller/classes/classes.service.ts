@@ -5,6 +5,7 @@ import { db } from '../../db/index';
 import {
   zuvySessions,
   zuvyStudentAttendance,
+  zuvyStudentAttendanceRecords,
   zuvyBatches,
   zuvyBatchEnrollments,
   zuvyCourseModules,
@@ -12,6 +13,7 @@ import {
   zuvyBootcamps,
   userTokens,
   users,
+  zuvySessionMerge,
 } from '../../../drizzle/schema';
 import { eq, desc, and, sql, ilike } from 'drizzle-orm';
 import { Res, Req } from '@nestjs/common';
@@ -231,6 +233,26 @@ export class ClassesService {
       
       const duration = Math.floor((zoomEndDate.getTime() - zoomStartDate.getTime()) / (1000 * 60)); // Duration in minutes
 
+      // Get student emails for the batch to add as meeting invitees
+      const studentsResult = await this.getStudentsEmails(eventDetails.batchId);
+      
+      if (!studentsResult.success) {
+        throw new Error(`Failed to fetch students for batch: ${studentsResult.message}`);
+      }
+
+      // Prepare meeting invitees from batch students (including instructor)
+      const meetingInvitees = studentsResult.students.map(student => ({
+        email: student.email,
+        name: student.name || student.email.split('@')[0], // Use name or email prefix as fallback
+      }));
+
+      // Prepare alternative hosts (instructor if available)
+      let alternativeHosts = '';
+      if (studentsResult.instructor && studentsResult.instructor.email) {
+        alternativeHosts = studentsResult.instructor.email;
+        this.logger.log(`Adding instructor as alternative host: ${studentsResult.instructor.email}`);
+      }
+
       // Create Zoom meeting
       const zoomMeetingData = {
         topic: eventDetails.title,
@@ -266,18 +288,11 @@ export class ClassesService {
             enable: false
           },
           focus_mode: false,
-          meeting_invitees: [
-            {
-              email: 'nishayadav22@navgurukul.org',
-              name: 'nisha yadav',
-            },
-            {
-              'email': 'giribabu@navgurukul.org',
-              name: 'giri babu',
-            }
-          ],
+          meeting_invitees: meetingInvitees,
           watermark: false,
           calendar_type: 1, // Google Calendar
+          // Add instructor as alternative host
+          alternative_hosts: alternativeHosts
         },
         // YouTube Live Stream Configuration
         live_stream: {
@@ -299,29 +314,25 @@ export class ClassesService {
       // Create corresponding Google Calendar event for Zoom meeting
       let calendarEventId = null;
       try {
-        // Get student emails for the batch
-        const studentsResult = await this.getStudentsEmails(eventDetails.batchId);
-        
-        if (studentsResult.success) {
-          // Create Google Calendar event with Zoom meeting link
-          const eventData = {
-            title: `${eventDetails.title} (Zoom Meeting)`,
-            description: `${eventDetails.description || 'Live class session'}\n\nJoin Zoom Meeting: ${zoomResponse.data.join_url}\nMeeting ID: ${zoomResponse.data.id}\nPassword: ${zoomResponse.data.password}`,
-            startTime: zoomStartDate.toISOString(), // Use adjusted start time for calendar
-            endTime: zoomEndDate.toISOString(), // Use adjusted end time for calendar
-            timeZone: eventDetails.timeZone,
-            attendees: studentsResult.emails,
-            location: `Zoom Meeting - ${zoomResponse.data.join_url}`,
-          };
+        // Create Google Calendar event with Zoom meeting link
+        const eventData = {
+          title: `${eventDetails.title} (Zoom Meeting)`,
+          description: `${eventDetails.description || 'Live class session'}\n\nJoin Zoom Meeting: ${zoomResponse.data.join_url}\nMeeting ID: ${zoomResponse.data.id}\nPassword: ${zoomResponse.data.password}`,
+          startTime: zoomStartDate.toISOString(), // Use adjusted start time for calendar
+          endTime: zoomEndDate.toISOString(), // Use adjusted end time for calendar
+          timeZone: eventDetails.timeZone,
+          attendees: studentsResult.emails,
+          location: `Zoom Meeting - ${zoomResponse.data.join_url}`,
+        };
 
-          const calendarResult = await this.createGoogleCalendarEvent(eventData, creatorInfo);
-          
-          if (calendarResult.success) {
-            calendarEventId = calendarResult.data.id;
-            this.logger.log(`Google Calendar event created: ${calendarEventId}`);
-          } else {
-            this.logger.warn(`Failed to create Google Calendar event: ${calendarResult.error}`);
-          }
+        const calendarResult = await this.createGoogleCalendarEvent(eventData, creatorInfo);
+        
+        if (calendarResult.success) {
+          calendarEventId = calendarResult.data.id;
+          this.logger.log(`Google Calendar event created: ${calendarEventId}`);
+        } else {
+          this.logger.warn(`Failed to create Google Calendar event: ${calendarResult.error}`);
+
         }
       } catch (calendarError) {
         this.logger.warn(`Google Calendar integration failed: ${calendarError.message}`);
@@ -465,25 +476,106 @@ export class ClassesService {
     }
   }
 
+  // Helper method to get instructor details for a batch
+  private async getInstructorDetails(batchId: number) {
+    try {
+      const batchWithInstructor = await db
+        .select({
+          instructorId: zuvyBatches.instructorId,
+          instructorEmail: users.email,
+          instructorName: users.name,
+          batchName: zuvyBatches.name,
+        })
+        .from(zuvyBatches)
+        .leftJoin(users, eq(zuvyBatches.instructorId, users.id))
+        .where(eq(zuvyBatches.id, batchId))
+        .limit(1);
+
+      if (batchWithInstructor.length === 0) {
+        return {
+          success: false,
+          message: 'Batch not found',
+          instructor: null,
+        };
+      }
+
+      const batchInfo = batchWithInstructor[0];
+
+      if (!batchInfo.instructorId) {
+        return {
+          success: true,
+          message: 'No instructor assigned to this batch',
+          instructor: null,
+        };
+      }
+
+      const instructorDetails = {
+        id: batchInfo.instructorId,
+        email: batchInfo.instructorEmail,
+        name: batchInfo.instructorName,
+        isInstructor: true,
+        batchName: batchInfo.batchName,
+      };
+
+      return {
+        success: true,
+        message: 'Instructor details fetched successfully',
+        instructor: instructorDetails,
+      };
+    } catch (error) {
+      this.logger.error(`Error fetching instructor details for batch ${batchId}: ${error.message}`);
+      return {
+        success: false,
+        message: error.message,
+        instructor: null,
+      };
+    }
+  }
+
   // Helper method to get student emails for a batch
   private async getStudentsEmails(batchId: number) {
     try {
+      // Fetch students enrolled in the batch
       const students = await db
         .select({
           id: users.id,
           email: users.email,
           name: users.name,
-          enrollmentId: zuvyBatchEnrollments.id,
         })
         .from(zuvyBatchEnrollments)
         .innerJoin(users, eq(zuvyBatchEnrollments.userId, users.id))
         .where(eq(zuvyBatchEnrollments.batchId, batchId));
 
-      const emails = students.map(student => student.email || '');
+      // Fetch instructor details using the separate function
+      const instructorResult = await this.getInstructorDetails(batchId);
+      
+      let allParticipants = [...students];
+      let instructorDetails = null;
+
+      // Add instructor to the participants list if instructor exists
+      if (instructorResult.success && instructorResult.instructor) {
+        instructorDetails = instructorResult.instructor;
+
+        // Add instructor to participants if not already present (in case instructor is also enrolled)
+        const instructorAlreadyInList = students.find(student => 
+          student.id === instructorDetails.id
+        );
+        
+        if (!instructorAlreadyInList && instructorDetails.email) {
+          allParticipants.push({
+            id: instructorDetails.id,
+            email: instructorDetails.email,
+            name: instructorDetails.name,
+          });
+        }
+      }
+      
+      const emails = allParticipants.map(participant => participant.email || '');
       return {
         success: true,
         emails,
-        students,
+        students: allParticipants,
+        instructor: instructorDetails,
       };
     } catch (error) {
       this.logger.error(`Error fetching student emails: ${error.message}`);
@@ -492,6 +584,7 @@ export class ClassesService {
         message: error.message,
         emails: [],
         students: [],
+        instructor: null,
       };
     }
   }
@@ -882,7 +975,7 @@ export class ClassesService {
     }
   }
 
-  async getAttendance(meetingId: string, userInfo: any) {
+  async getAttendance(meetingId: string, userInfo: any, resetAttendanceData: boolean = false) {
     try {
       // Find the session by meetingId
       const session = await db
@@ -922,31 +1015,21 @@ export class ClassesService {
         .where(eq(zuvyStudentAttendance.meetingId, meetingId))
         .limit(1);
 
-      if (attendance.length === 0) {
+      if (attendance.length === 0 || resetAttendanceData) {
         // Try to fetch attendance from Google Meet or Zoom
         if (sessionData.isZoomMeet) {
-          const fetchResult = await this.fetchZoomAttendanceForSession(sessionData.id);
+          const fetchResult = await this.fetchZoomAttendanceForSession(sessionData.id, resetAttendanceData);
           if (fetchResult.success) {
             return [null, fetchResult];
           }
           return [{ status: 'error', message: 'No attendance data found and failed to fetch from Zoom', code: 404 }, null];
         } else {
-          const students = await db
-            .select({
-              id: users.id,
-              email: users.email,
-              name: users.name,
-              enrollmentId: zuvyBatchEnrollments.id,
-            })
-            .from(zuvyBatchEnrollments)
-            .innerJoin(users, eq(zuvyBatchEnrollments.userId, users.id))
-            .where(eq(zuvyBatchEnrollments.batchId, sessionData.batchId));
-
-          const [error, result] = await this.getSessionAttendanceAndS3Link(sessionData, students);
-          if (error) {
-            return [error, null];
+          // Handle Google Meet attendance with same reset logic
+          const fetchResult = await this.fetchGoogleMeetAttendanceForSession(sessionData.id, resetAttendanceData);
+          if (fetchResult.success) {
+            return [null, fetchResult];
           }
-          return [null, result];
+          return [{ status: 'error', message: 'No attendance data found and failed to fetch from Google Meet', code: 404 }, null];
         }
       }
 
@@ -1212,25 +1295,147 @@ export class ClassesService {
       const allClasses = await query;
       let classes = allClasses.map((classObj) => classObj.sessions);
       
-      // Apply role-based filtering for session data
-      if (user?.roles?.includes('admin')) {
-        // Admin gets full access including zoomStartUrl
-        classes = classes.map(session => ({
-          ...session,
-          zoomStartUrl: session.zoomStartUrl,
-          hangoutLink: session.hangoutLink,
-        }));
-      } else {
-        // Regular users only get hangoutLink, zoomStartUrl is filtered out
-        classes = classes.map(session => {
-          const { zoomStartUrl, ...sessionWithoutAdminFields } = session;
+      // Process merged sessions and apply role-based filtering
+      const processedClasses = await Promise.all(classes.map(async (session) => {
+        let processedSession = { ...session };
+        
+        // Handle merged sessions
+        if (session.hasBeenMerged) {
+          // Check if this is a child session (merged into parent)
+          const childMergeRecord = await db
+            .select({
+              parentSessionId: zuvySessionMerge.parentSessionId,
+              redirectMeetingUrl: zuvySessionMerge.redirectMeetingUrl,
+              isActive: zuvySessionMerge.isActive,
+              parentSession: {
+                id: zuvySessions.id,
+                title: zuvySessions.title,
+                hangoutLink: zuvySessions.hangoutLink,
+                zoomStartUrl: zuvySessions.zoomStartUrl,
+                isZoomMeet: zuvySessions.isZoomMeet,
+              }
+            })
+            .from(zuvySessionMerge)
+            .innerJoin(zuvySessions, eq(zuvySessionMerge.parentSessionId, zuvySessions.id))
+            .where(
+              and(
+                eq(zuvySessionMerge.childSessionId, session.id),
+                eq(zuvySessionMerge.isActive, true)
+              )
+            )
+            .limit(1);
+
+          if (childMergeRecord.length > 0) {
+            // This is a child session - redirect to parent
+            const merge = childMergeRecord[0];
+            processedSession = {
+              ...processedSession,
+              // Keep original session info for reference
+              originalTitle: session.title,
+              originalStatus: session.status,
+              // Override with parent session info
+              title: `${session.title} (Merged with: ${merge.parentSession.title})`,
+              hangoutLink: merge.redirectMeetingUrl || merge.parentSession.hangoutLink,
+              zoomStartUrl: merge.parentSession.zoomStartUrl, // Will be filtered for non-admins
+              isZoomMeet: merge.parentSession.isZoomMeet,
+              status: 'merged',
+              mergeInfo: {
+                isMerged: true,
+                isChildSession: true,
+                parentSessionId: merge.parentSessionId,
+                parentTitle: merge.parentSession.title,
+                redirectUrl: merge.redirectMeetingUrl || merge.parentSession.hangoutLink,
+              }
+            } as any;
+          } else {
+            // Check if this is a parent session (has children merged into it)
+            const parentMergeRecords = await db
+              .select({
+                childSessionId: zuvySessionMerge.childSessionId,
+                childSession: {
+                  id: zuvySessions.id,
+                  title: zuvySessions.title,
+                  batchId: zuvySessions.batchId,
+                }
+              })
+              .from(zuvySessionMerge)
+              .innerJoin(zuvySessions, eq(zuvySessionMerge.childSessionId, zuvySessions.id))
+              .where(
+                and(
+                  eq(zuvySessionMerge.parentSessionId, session.id),
+                  eq(zuvySessionMerge.isActive, true)
+                )
+              );
+
+            if (parentMergeRecords.length > 0) {
+              // This is a parent session with merged children
+              (processedSession as any).mergeInfo = {
+                isMerged: true,
+                isParentSession: true,
+                childSessions: parentMergeRecords.map(record => record.childSession),
+                mergedChildrenCount: parentMergeRecords.length,
+              };
+            }
+          }
+        }
+
+        // Apply role-based filtering and clean up response
+        if (user?.roles?.includes('admin')) {
+          // Admin gets full access including zoomStartUrl for Zoom meetings
+          const sessionWithAny = processedSession as any;
           return {
-            ...sessionWithoutAdminFields,
-            hangoutLink: session.hangoutLink,
-            zoomStartUrl: null,
+            id: sessionWithAny.id,
+            meetingId: sessionWithAny.meetingId,
+            hangoutLink: sessionWithAny.isZoomMeet ? sessionWithAny.zoomStartUrl : sessionWithAny.hangoutLink, // Join URL for both Google Meet and Zoom
+            creator: sessionWithAny.creator,
+            startTime: sessionWithAny.startTime,
+            endTime: sessionWithAny.endTime,
+            batchId: sessionWithAny.batchId,
+            bootcampId: sessionWithAny.bootcampId,
+            moduleId: sessionWithAny.moduleId,
+            chapterId: sessionWithAny.chapterId,
+            title: sessionWithAny.title,
+            s3link: sessionWithAny.s3link,
+            recurringId: sessionWithAny.recurringId,
+            status: sessionWithAny.status,
+            isZoomMeet: sessionWithAny.isZoomMeet,
+            // Admin-only fields
+            zoomStartUrl: sessionWithAny.isZoomMeet ? sessionWithAny.zoomStartUrl : null,
+            zoomPassword: sessionWithAny.isZoomMeet ? sessionWithAny.zoomPassword : null,
+            zoomMeetingId: sessionWithAny.isZoomMeet ? sessionWithAny.zoomMeetingId : null,
+            hasBeenMerged: sessionWithAny.hasBeenMerged,
+            // Merge information if available
+            ...(sessionWithAny.mergeInfo && { mergeInfo: sessionWithAny.mergeInfo }),
+            ...(sessionWithAny.originalTitle && { originalTitle: sessionWithAny.originalTitle }),
+            ...(sessionWithAny.originalStatus && { originalStatus: sessionWithAny.originalStatus }),
           };
-        });
-      }
+        } else {
+          // Regular users get simplified response
+          const sessionWithAny = processedSession as any;
+          return {
+            id: sessionWithAny.id,
+            meetingId: sessionWithAny.meetingId,
+            hangoutLink: sessionWithAny.hangoutLink, // Join URL for both Google Meet and Zoom
+            creator: sessionWithAny.creator,
+            startTime: sessionWithAny.startTime,
+            endTime: sessionWithAny.endTime,
+            batchId: sessionWithAny.batchId,
+            bootcampId: sessionWithAny.bootcampId,
+            moduleId: sessionWithAny.moduleId,
+            chapterId: sessionWithAny.chapterId,
+            title: sessionWithAny.title,
+            s3link: sessionWithAny.s3link,
+            recurringId: sessionWithAny.recurringId,
+            status: sessionWithAny.status,
+            isZoomMeet: sessionWithAny.isZoomMeet,
+            hasBeenMerged: sessionWithAny.hasBeenMerged,
+            // Merge information if available
+            ...(sessionWithAny.mergeInfo && { mergeInfo: sessionWithAny.mergeInfo }),
+            ...(sessionWithAny.originalTitle && { originalTitle: sessionWithAny.originalTitle }),
+            ...(sessionWithAny.originalStatus && { originalStatus: sessionWithAny.originalStatus }),
+          };
+        }
+      }));
       
       const totalClasses =
         allClasses.length > 0 ? Number(allClasses[0].totalCount) : 0;
@@ -1238,7 +1443,7 @@ export class ClassesService {
         status: 'success',
         message: 'Classes fetched successfully by batchId',
         code: 200,
-        classes,
+        classes: processedClasses,
         total_items: totalClasses,
         total_pages: Math.ceil(totalClasses / limit) || 1,
       };
@@ -1385,11 +1590,11 @@ export class ClassesService {
     }
   }
 
-  async getSession(sessionId: number, userInfo: any) {
+  async getSessionForStudent(sessionId: number, userInfo: any) {
     try {
-      this.logger.log(`Fetching session: ${sessionId}`);
+      this.logger.log(`Fetching session for student: ${sessionId}, userId: ${userInfo.id}`);
       
-      // Get session from DB
+      // Get the original session
       const session = await db.select().from(zuvySessions)
         .where(eq(zuvySessions.id, sessionId));
         
@@ -1399,64 +1604,195 @@ export class ClassesService {
       
       const sessionData = session[0];
       
-      // Check permissions (admin, session creator, or enrolled student)
-      if (!userInfo.roles?.includes('admin') && sessionData.creator !== userInfo.email) {
-        // Check if user is enrolled in the batch
-        const enrollment = await db
-          .select()
-          .from(zuvyBatchEnrollments)
+      // Check if this is a merged child session
+      if (sessionData.hasBeenMerged) {
+        // Check if this session is a child session in a merge
+        const mergeRecord = await db
+          .select({
+            parentSessionId: zuvySessionMerge.parentSessionId,
+            redirectMeetingUrl: zuvySessionMerge.redirectMeetingUrl,
+            isActive: zuvySessionMerge.isActive,
+            parentSession: {
+              id: zuvySessions.id,
+              title: zuvySessions.title,
+              hangoutLink: zuvySessions.hangoutLink,
+              startTime: zuvySessions.startTime,
+              endTime: zuvySessions.endTime,
+              isZoomMeet: zuvySessions.isZoomMeet,
+              status: zuvySessions.status,
+            }
+          })
+          .from(zuvySessionMerge)
+          .innerJoin(zuvySessions, eq(zuvySessionMerge.parentSessionId, zuvySessions.id))
           .where(
             and(
-              eq(zuvyBatchEnrollments.userId, BigInt(userInfo.id)),
-              eq(zuvyBatchEnrollments.batchId, sessionData.batchId),
-              eq(zuvyBatchEnrollments.bootcampId, sessionData.bootcampId)
+              eq(zuvySessionMerge.childSessionId, sessionId),
+              eq(zuvySessionMerge.isActive, true)
             )
-          );
+          )
+          .limit(1);
 
-        if (enrollment.length === 0) {
-          return { success: false, message: 'Unauthorized to access this session' };
+        if (mergeRecord.length > 0) {
+          // This is a child session, return parent session details
+          const merge = mergeRecord[0];
+          
+          return {
+            success: true,
+            data: {
+              originalSession: {
+                id: sessionData.id,
+                title: sessionData.title,
+                status: 'merged'
+              },
+              activeSession: merge.parentSession,
+              mergeInfo: {
+                isMerged: true,
+                isChildSession: true,
+                redirectUrl: merge.redirectMeetingUrl || merge.parentSession.hangoutLink,
+                message: `This class has been merged with "${merge.parentSession.title}". Please join using the link below.`
+              },
+              // For students, always show the parent session meeting link
+              joinUrl: merge.redirectMeetingUrl || merge.parentSession.hangoutLink,
+              platform: merge.parentSession.isZoomMeet ? 'zoom' : 'google_meet'
+            },
+            message: 'Child session merged with parent - redirecting to parent session'
+          };
         }
       }
       
-      // Enrich session data based on platform
-      let enrichedSession: any = { ...sessionData };
-      
-      if (sessionData.isZoomMeet) {
-        // Enrich with Zoom-specific data
-        try {
-          if (sessionData.zoomMeetingId) {
-            const zoomMeeting = await this.zoomService.getMeeting(sessionData.zoomMeetingId);
-            if (zoomMeeting.success) {
-              enrichedSession = {
-                ...enrichedSession,
-                zoomDetails: zoomMeeting.data,
-                joinUrl: sessionData.hangoutLink, // Zoom join URL stored in hangoutLink
-                startUrl: sessionData.zoomStartUrl,
-                platform: 'zoom'
-              };
-            }
-          }
-        } catch (error) {
-          this.logger.warn(`Could not fetch Zoom meeting details: ${error.message}`);
-          // Continue with basic session data
-          enrichedSession.platform = 'zoom';
-        }
-      } else {
-        // Google Meet session
-        enrichedSession = {
-          ...enrichedSession,
-          joinUrl: sessionData.hangoutLink,
-          platform: 'google_meet'
-        };
+      // Check if user is enrolled in this session's batch
+      const enrollment = await db
+        .select()
+        .from(zuvyBatchEnrollments)
+        .where(
+          and(
+            eq(zuvyBatchEnrollments.userId, BigInt(userInfo.id)),
+            eq(zuvyBatchEnrollments.batchId, sessionData.batchId),
+            eq(zuvyBatchEnrollments.bootcampId, sessionData.bootcampId)
+          )
+        );
+
+      if (enrollment.length === 0) {
+        return { success: false, message: 'You are not enrolled in this session' };
       }
       
+      // Regular session or parent session - return normally
       return {
         success: true,
-        data: enrichedSession,
+        data: {
+          id: sessionData.id,
+          meetingId: sessionData.meetingId,
+          hangoutLink: sessionData.hangoutLink, // Join URL for both Google Meet and Zoom
+          creator: sessionData.creator,
+          startTime: sessionData.startTime,
+          endTime: sessionData.endTime,
+          batchId: sessionData.batchId,
+          bootcampId: sessionData.bootcampId,
+          moduleId: sessionData.moduleId,
+          chapterId: sessionData.chapterId,
+          title: sessionData.title,
+          s3link: sessionData.s3link,
+          status: sessionData.status,
+          isZoomMeet: sessionData.isZoomMeet,
+          hasBeenMerged: sessionData.hasBeenMerged,
+          mergeInfo: {
+            isMerged: sessionData.hasBeenMerged,
+            isChildSession: false,
+            isParentSession: sessionData.hasBeenMerged // If merged, this could be a parent
+          },
+          joinUrl: sessionData.hangoutLink, // Alias for hangoutLink
+          platform: sessionData.isZoomMeet ? 'zoom' : 'google_meet'
+        },
         message: 'Session fetched successfully'
       };
+      
     } catch (error) {
-      this.logger.error(`Error fetching session ${sessionId}: ${error.message}`);
+      this.logger.error(`Error fetching session for student ${sessionId}: ${error.message}`);
+      return {
+        success: false,
+        error: error.message,
+        message: 'Failed to fetch session'
+      };
+    }
+  }
+
+  async getSessionForAdmin(sessionId: number, userInfo: any) {
+    try {
+      this.logger.log(`Fetching session for admin: ${sessionId}`);
+      
+      // Get the session
+      const session = await db.select().from(zuvySessions)
+        .where(eq(zuvySessions.id, sessionId));
+        
+      if (!session.length) {
+        return { success: false, message: 'Session not found' };
+      }
+      
+      const sessionData = session[0];
+      
+      // Get merge information if exists
+      const mergeInfo = await db
+        .select({
+          id: zuvySessionMerge.id,
+          childSessionId: zuvySessionMerge.childSessionId,
+          parentSessionId: zuvySessionMerge.parentSessionId,
+          isActive: zuvySessionMerge.isActive,
+          childSession: {
+            id: zuvySessions.id,
+            title: zuvySessions.title,
+            batchId: zuvySessions.batchId,
+            status: zuvySessions.status,
+          }
+        })
+        .from(zuvySessionMerge)
+        .leftJoin(zuvySessions, eq(zuvySessionMerge.childSessionId, zuvySessions.id))
+        .where(
+          and(
+            eq(zuvySessionMerge.parentSessionId, sessionId),
+            eq(zuvySessionMerge.isActive, true)
+          )
+        );
+      
+      // Admin response - include session details and merge info
+      const response = {
+        id: sessionData.id,
+        meetingId: sessionData.meetingId,
+        hangoutLink: sessionData.hangoutLink, // Join URL for both Google Meet and Zoom
+        creator: sessionData.creator,
+        startTime: sessionData.startTime,
+        endTime: sessionData.endTime,
+        batchId: sessionData.batchId,
+        bootcampId: sessionData.bootcampId,
+        moduleId: sessionData.moduleId,
+        chapterId: sessionData.chapterId,
+        title: sessionData.title,
+        s3link: sessionData.s3link,
+        status: sessionData.status,
+        isZoomMeet: sessionData.isZoomMeet,
+        hasBeenMerged: sessionData.hasBeenMerged,
+        mergeInfo: {
+          isMerged: sessionData.hasBeenMerged,
+          isParentSession: mergeInfo.length > 0,
+          childSessions: mergeInfo.map(merge => merge.childSession).filter(Boolean),
+          mergedStudentsCount: mergeInfo.length // Could be enhanced to show actual student count
+        },
+        joinUrl: sessionData.hangoutLink,
+        platform: sessionData.isZoomMeet ? 'zoom' : 'google_meet'
+      };
+
+      // Add zoomStartUrl for admin if it's a Zoom meeting
+      if (sessionData.isZoomMeet && sessionData.zoomStartUrl) {
+        response['zoomStartUrl'] = sessionData.zoomStartUrl;
+      }
+
+      return {
+        success: true,
+        data: response,
+        message: 'Session fetched successfully for admin'
+      };
+      
+    } catch (error) {
+      this.logger.error(`Error fetching session for admin ${sessionId}: ${error.message}`);
       return {
         success: false,
         error: error.message,
@@ -1653,9 +1989,9 @@ export class ClassesService {
     }
   }
 
-  async fetchZoomAttendanceForSession(sessionId: number) {
+  async fetchZoomAttendanceForSession(sessionId: number, resetAttendanceData: boolean = false) {
     try {
-      this.logger.log(`Fetching Zoom attendance for session: ${sessionId}`);
+      this.logger.log(`Fetching Zoom attendance for session: ${sessionId}, resetAttendanceData: ${resetAttendanceData}`);
       
       // Get session details
       const session = await db.select().from(zuvySessions)
@@ -1675,6 +2011,73 @@ export class ClassesService {
         return { success: false, message: 'No Zoom meeting ID found for this session' };
       }
       
+      // Check if attendance data already exists (if not resetting)
+      if (!resetAttendanceData) {
+        // Check in zuvyStudentAttendance first
+        const existingAttendance = await db
+          .select()
+          .from(zuvyStudentAttendance)
+          .where(eq(zuvyStudentAttendance.meetingId, sessionData.meetingId))
+          .limit(1);
+          
+        if (existingAttendance.length > 0) {
+          this.logger.log(`Found existing attendance data in zuvyStudentAttendance for session ${sessionId}`);
+          return {
+            success: true,
+            data: {
+              sessionId,
+              attendance: existingAttendance[0].attendance,
+              message: 'Existing attendance data found in zuvyStudentAttendance',
+              source: 'existing_aggregate'
+            },
+            message: 'Attendance data retrieved from existing records'
+          };
+        }
+        
+        // Check in zuvyStudentAttendanceRecords
+        const existingIndividualRecords = await db
+          .select({
+            userId: zuvyStudentAttendanceRecords.userId,
+            status: zuvyStudentAttendanceRecords.status,
+            attendanceDate: zuvyStudentAttendanceRecords.attendanceDate,
+            email: users.email,
+          })
+          .from(zuvyStudentAttendanceRecords)
+          .innerJoin(users, eq(zuvyStudentAttendanceRecords.userId, users.id))
+          .where(eq(zuvyStudentAttendanceRecords.sessionId, sessionData.id));
+          
+        if (existingIndividualRecords.length > 0) {
+          this.logger.log(`Found existing attendance data in zuvyStudentAttendanceRecords for session ${sessionId}`);
+          
+          // Convert individual records to the expected format
+          const formattedAttendance = existingIndividualRecords.map(record => ({
+            email: record.email,
+            duration: 0, // Duration not stored in individual records, set to 0
+            attendance: record.status.toLowerCase()
+          }));
+          
+          return {
+            success: true,
+            data: {
+              sessionId,
+              attendance: formattedAttendance,
+              totalParticipants: formattedAttendance.length,
+              meetingDuration: 0, // Not available from individual records
+              meetingDurationInMinutes: 0,
+              hostTotalDuration: 0,
+              attendanceThreshold: 0,
+              message: 'Existing attendance data found in zuvyStudentAttendanceRecords',
+              source: 'existing_individual'
+            },
+            message: 'Attendance data retrieved from existing individual records'
+          };
+        }
+        
+        this.logger.log(`No existing attendance data found for session ${sessionId}, fetching from Zoom`);
+      } else {
+        this.logger.log(`resetAttendanceData is true, will delete existing data and fetch fresh from Zoom`);
+      }
+      
       try {
         // Fetch Zoom meeting details to get UUID
         const meetingDetails = await this.zoomService.getMeeting(sessionData.zoomMeetingId);
@@ -1686,8 +2089,28 @@ export class ClassesService {
           };
         }
         
-        // Fetch attendance using meeting UUID
-        const zoomAttendanceResponse = await this.zoomService.getMeetingParticipants(meetingDetails.data.uuid);
+        // Fetch attendance using meeting UUID4
+        console.log(`Fetching participants for Zoom meeting ID: ${sessionData.zoomMeetingId}`);
+        const zoomAttendanceResponse = await this.zoomService.getMeetingParticipants(sessionData.zoomMeetingId);
+        console.log(`Zoom attendance response: ${JSON.stringify(zoomAttendanceResponse)}`);
+        
+        // Calculate total meeting duration based on host's presence
+        let totalMeetingDuration = 0;
+        const hostEmail = 'team@zuvy.org';
+        
+        if (zoomAttendanceResponse.participants && zoomAttendanceResponse.participants.length > 0) {
+          // Filter host entries and sum their durations
+          const hostEntries = zoomAttendanceResponse.participants.filter(
+            participant => participant.user_email === hostEmail
+          );
+          
+          totalMeetingDuration = hostEntries.reduce((total, entry) => {
+            return total + (entry.duration || 0);
+          }, 0);
+          
+          console.log(`Host entries: ${JSON.stringify(hostEntries)}`);
+          console.log(`Total meeting duration based on host presence: ${totalMeetingDuration} seconds`);
+        }
         
         // Process and save attendance data
         const students = await db
@@ -1695,41 +2118,50 @@ export class ClassesService {
             id: users.id,
             email: users.email,
             name: users.name,
-            enrollmentId: zuvyBatchEnrollments.id,
           })
           .from(zuvyBatchEnrollments)
           .innerJoin(users, eq(zuvyBatchEnrollments.userId, users.id))
           .where(eq(zuvyBatchEnrollments.batchId, sessionData.batchId));
         
-        // Calculate attendance based on duration threshold
-        const processedAttendance = this.zoomService.calculateAttendance(
-          zoomAttendanceResponse.participants,
-          0.75 // 75% threshold
-        );
+        // Calculate attendance based on duration threshold (75% of host's total time)
+        const attendanceThreshold = totalMeetingDuration * 0.75;
+        console.log(`Attendance threshold (75% of ${totalMeetingDuration}s): ${attendanceThreshold}s`);
         
         // Save attendance to database
         const attendanceRecords = [];
         for (const student of students) {
-          const participantData = processedAttendance.find(
-            p => p.email === student.email
-          );
+          // Sum up all durations for this student across multiple join/leave cycles
+          const studentEntries = zoomAttendanceResponse.participants?.filter(
+            participant => participant.user_email === student.email
+          ) || [];
           
+          const totalStudentDuration = studentEntries.reduce((total, entry) => {
+            return total + (entry.duration || 0);
+          }, 0);
+          
+          const isPresent = totalStudentDuration >= attendanceThreshold;
+          
+          // Format to match requested structure: [{"email": "", "duration": 1700, "attendance": "present"}]
           const attendanceRecord = {
-            userId: Number(student.id),
             email: student.email,
-            name: student.name,
-            isPresent: participantData ? participantData.attendance === 'present' : false,
-            duration: participantData ? participantData.duration : 0,
-            joinTime: null, // Could be extracted from Zoom data if needed
-            leaveTime: null,
+            duration: totalStudentDuration,
+            attendance: isPresent ? 'present' : 'absent',
           };
           
           attendanceRecords.push(attendanceRecord);
+          console.log(`Student: ${student.email}, Total Duration: ${totalStudentDuration}s, Status: ${isPresent ? 'present' : 'absent'}`);
         }
         
-        // Delete existing attendance records for this session
-        await db.delete(zuvyStudentAttendance)
-          .where(eq(zuvyStudentAttendance.meetingId, sessionData.meetingId));
+        // Delete existing attendance records only if resetAttendanceData is true
+        if (resetAttendanceData) {
+          await db.delete(zuvyStudentAttendance)
+            .where(eq(zuvyStudentAttendance.meetingId, sessionData.meetingId));
+          
+          await db.delete(zuvyStudentAttendanceRecords)
+            .where(eq(zuvyStudentAttendanceRecords.sessionId, sessionData.id));
+            
+          this.logger.log(`Deleted existing attendance records for session ${sessionId}`);
+        }
         
         // Insert new attendance record with JSONB data
         if (attendanceRecords.length > 0) {
@@ -1739,6 +2171,30 @@ export class ClassesService {
             batchId: sessionData.batchId,
             bootcampId: sessionData.bootcampId,
           });
+          
+          // Insert individual attendance records for each student
+          const individualRecords = [];
+          const attendanceDate = new Date(sessionData.startTime).toISOString().split('T')[0]; // Format as YYYY-MM-DD
+          
+          for (const student of students) {
+            const attendanceRecord = attendanceRecords.find(record => record.email === student.email);
+            const status = attendanceRecord ? attendanceRecord.attendance : 'absent';
+            
+            individualRecords.push({
+              userId: Number(student.id),
+              batchId: sessionData.batchId,
+              bootcampId: sessionData.bootcampId,
+              sessionId: sessionData.id,
+              attendanceDate: attendanceDate,
+              status: status.toUpperCase(), // Convert to uppercase to match enum (PRESENT/ABSENT)
+              version: 'v1', // You can modify this version as needed
+            });
+          }
+          
+          if (individualRecords.length > 0) {
+            await db.insert(zuvyStudentAttendanceRecords).values(individualRecords);
+            console.log(`Inserted ${individualRecords.length} individual attendance records`);
+          }
         }
         
         return {
@@ -1747,7 +2203,10 @@ export class ClassesService {
             sessionId, 
             attendance: attendanceRecords,
             totalParticipants: zoomAttendanceResponse?.participants?.length || 0,
-            meetingDuration: zoomAttendanceResponse?.duration || 0
+            meetingDuration: totalMeetingDuration, // Use calculated host duration
+            meetingDurationInMinutes: Math.round(totalMeetingDuration / 60),
+            hostTotalDuration: totalMeetingDuration,
+            attendanceThreshold: attendanceThreshold
           },
           message: 'Zoom attendance fetched and saved successfully'
         };
@@ -1767,6 +2226,194 @@ export class ClassesService {
         success: false,
         error: error.message,
         message: 'Failed to fetch Zoom attendance for session'
+      };
+    }
+  }
+
+  async fetchGoogleMeetAttendanceForSession(sessionId: number, resetAttendanceData: boolean = false) {
+    try {
+      this.logger.log(`Fetching Google Meet attendance for session: ${sessionId}, resetAttendanceData: ${resetAttendanceData}`);
+      
+      // Get session details
+      const session = await db.select().from(zuvySessions)
+        .where(eq(zuvySessions.id, sessionId));
+        
+      if (!session.length) {
+        return { success: false, message: 'Session not found' };
+      }
+      
+      const sessionData = session[0];
+      
+      if (sessionData.isZoomMeet) {
+        return { success: false, message: 'This is not a Google Meet session' };
+      }
+      
+      if (!sessionData.meetingId) {
+        return { success: false, message: 'No Google Meet meeting ID found for this session' };
+      }
+      
+      // Check if attendance data already exists (if not resetting)
+      if (!resetAttendanceData) {
+        // Check in zuvyStudentAttendance first
+        const existingAttendance = await db
+          .select()
+          .from(zuvyStudentAttendance)
+          .where(eq(zuvyStudentAttendance.meetingId, sessionData.meetingId))
+          .limit(1);
+          
+        if (existingAttendance.length > 0) {
+          this.logger.log(`Found existing attendance data in zuvyStudentAttendance for session ${sessionId}`);
+          return {
+            success: true,
+            data: {
+              sessionId,
+              attendance: existingAttendance[0].attendance,
+              message: 'Existing attendance data found in zuvyStudentAttendance',
+              source: 'existing_aggregate'
+            },
+            message: 'Attendance data retrieved from existing records'
+          };
+        }
+        
+        // Check in zuvyStudentAttendanceRecords
+        const existingIndividualRecords = await db
+          .select({
+            userId: zuvyStudentAttendanceRecords.userId,
+            status: zuvyStudentAttendanceRecords.status,
+            attendanceDate: zuvyStudentAttendanceRecords.attendanceDate,
+            email: users.email,
+          })
+          .from(zuvyStudentAttendanceRecords)
+          .innerJoin(users, eq(zuvyStudentAttendanceRecords.userId, users.id))
+          .where(eq(zuvyStudentAttendanceRecords.sessionId, sessionData.id));
+          
+        if (existingIndividualRecords.length > 0) {
+          this.logger.log(`Found existing attendance data in zuvyStudentAttendanceRecords for session ${sessionId}`);
+          
+          // Convert individual records to the expected format
+          const formattedAttendance = existingIndividualRecords.map(record => ({
+            email: record.email,
+            duration: 0, // Duration not stored in individual records, set to 0
+            attendance: record.status.toLowerCase()
+          }));
+          
+          return {
+            success: true,
+            data: {
+              sessionId,
+              attendance: formattedAttendance,
+              totalParticipants: formattedAttendance.length,
+              meetingDuration: 0, // Not available from individual records
+              meetingDurationInMinutes: 0,
+              hostTotalDuration: 0,
+              attendanceThreshold: 0,
+              message: 'Existing attendance data found in zuvyStudentAttendanceRecords',
+              source: 'existing_individual'
+            },
+            message: 'Attendance data retrieved from existing individual records'
+          };
+        }
+        
+        this.logger.log(`No existing attendance data found for session ${sessionId}, fetching from Google Meet`);
+      } else {
+        this.logger.log(`resetAttendanceData is true, will delete existing data and fetch fresh from Google Meet`);
+      }
+      
+      try {
+        // Get student emails for the batch first
+        const students = await db
+          .select({
+            id: users.id,
+            email: users.email,
+            name: users.name,
+          })
+          .from(zuvyBatchEnrollments)
+          .innerJoin(users, eq(zuvyBatchEnrollments.userId, users.id))
+          .where(eq(zuvyBatchEnrollments.batchId, sessionData.batchId));
+        
+        // Use the existing Google Meet attendance fetching logic
+        const googleMeetAttendance = await this.fetchAttendanceForMeeting(
+          sessionData.meetingId, 
+          students, 
+          sessionData.batchId, 
+          sessionData.bootcampId
+        );
+        
+        if (!googleMeetAttendance) {
+          return {
+            success: false,
+            message: 'Failed to fetch attendance from Google Meet API'
+          };
+        }
+        
+        // Delete existing attendance records only if resetAttendanceData is true
+        if (resetAttendanceData) {
+          await db.delete(zuvyStudentAttendance)
+            .where(eq(zuvyStudentAttendance.meetingId, sessionData.meetingId));
+          
+          await db.delete(zuvyStudentAttendanceRecords)
+            .where(eq(zuvyStudentAttendanceRecords.sessionId, sessionData.id));
+            
+          this.logger.log(`Deleted existing attendance records for session ${sessionId}`);
+        }
+        
+        // Insert individual attendance records for each student
+        if (googleMeetAttendance.length > 0) {
+          const individualRecords = [];
+          const attendanceDate = new Date(sessionData.startTime).toISOString().split('T')[0]; // Format as YYYY-MM-DD
+          
+          for (const student of students) {
+            const attendanceRecord = googleMeetAttendance.find(record => record.email === student.email);
+            const status = attendanceRecord ? attendanceRecord.attendance : 'absent';
+            
+            individualRecords.push({
+              userId: Number(student.id),
+              batchId: sessionData.batchId,
+              bootcampId: sessionData.bootcampId,
+              sessionId: sessionData.id,
+              attendanceDate: attendanceDate,
+              status: status.toUpperCase(), // Convert to uppercase to match enum (PRESENT/ABSENT)
+              version: 'v1', // You can modify this version as needed
+            });
+          }
+          
+          if (individualRecords.length > 0) {
+            await db.insert(zuvyStudentAttendanceRecords).values(individualRecords);
+            console.log(`Inserted ${individualRecords.length} individual Google Meet attendance records`);
+          }
+        }
+        
+        return {
+          success: true,
+          data: { 
+            sessionId, 
+            attendance: googleMeetAttendance,
+            totalParticipants: googleMeetAttendance?.length || 0,
+            meetingDuration: 0, // Not available from Google Meet API in this format
+            meetingDurationInMinutes: 0,
+            hostTotalDuration: 0,
+            attendanceThreshold: 0,
+            message: 'Google Meet attendance fetched and saved successfully',
+            source: 'google_meet_api'
+          },
+          message: 'Google Meet attendance fetched and saved successfully'
+        };
+        
+      } catch (googleMeetError) {
+        this.logger.error(`Error fetching from Google Meet API: ${googleMeetError.message}`);
+        return {
+          success: false,
+          error: googleMeetError.message,
+          message: 'Failed to fetch attendance from Google Meet'
+        };
+      }
+      
+    } catch (error) {
+      this.logger.error(`Error fetching Google Meet attendance for session ${sessionId}: ${error.message}`);
+      return {
+        success: false,
+        error: error.message,
+        message: 'Failed to fetch Google Meet attendance for session'
       };
     }
   }
@@ -1803,21 +2450,257 @@ export class ClassesService {
     }
   }
 
-  async getAttendeesByMeetingId(meetingId: string) {
+  async mergeClasses(childSessionId: number, parentSessionId: number, userInfo: any) {
     try {
-      this.logger.log(`Fetching attendees for meeting: ${meetingId}`);
+      this.logger.log(`Merging classes: childSessionId=${childSessionId}, parentSessionId=${parentSessionId}`);
+      // Get both sessions
+      const [childSession, parentSession] = await Promise.all([
+        db.select().from(zuvySessions).where(eq(zuvySessions.id, childSessionId)),
+        db.select().from(zuvySessions).where(eq(zuvySessions.id, parentSessionId))
+      ]);
+
+      if (!childSession.length) {
+        return {
+          success: false,
+          message: 'Child session not found',
+          code: 404,
+        };
+      }
+
+      if (!parentSession.length) {
+        return {
+          success: false,
+          message: 'Parent session not found',
+          code: 404,
+        };
+      }
+
+      const childSessionData = childSession[0];
+      const parentSessionData = parentSession[0];
+
+      // Get students from CHILD session's batch only
+      const childBatchStudents = await db
+        .select({
+          id: users.id,
+          email: users.email,
+          name: users.name
+        })
+        .from(zuvyBatchEnrollments)
+        .innerJoin(users, eq(zuvyBatchEnrollments.userId, users.id))
+        .where(eq(zuvyBatchEnrollments.batchId, childSessionData.batchId));
+
+      if (childBatchStudents.length === 0) {
+        return {
+          success: false,
+          message: 'No students found in child session batch',
+          code: 404,
+        };
+      }
+
+      this.logger.log(`Found ${childBatchStudents.length} students in child batch to add to parent session`);
+
+      // Prepare student details for invites
+      const studentEmails = childBatchStudents.map(student => student.email);
+      const studentDetails = childBatchStudents.map(student => ({
+        email: student.email,
+        name: student.name || student.email.split('@')[0],
+      }));
+
+      // Update PARENT session with child session students
+      // Update Google Calendar if parent session has Google Calendar event
+      if (parentSessionData.meetingId && !parentSessionData.isZoomMeet) {
+        try {
+          await this.addAttendeesToGoogleCalendar(
+            parentSessionData.meetingId,
+            studentEmails,
+            userInfo
+          );
+          this.logger.log('Successfully added child session students to parent session Google Calendar event');
+        } catch (calendarError) {
+          this.logger.error(`Failed to update Google Calendar: ${calendarError.message}`);
+          // Continue with the process even if calendar update fails
+        }
+      }
+
+      // Update Zoom meeting if parent session is a Zoom meeting
+      if (parentSessionData.isZoomMeet && parentSessionData.zoomMeetingId) {
+        try {
+          await this.updateZoomMeetingInvitees(
+            parentSessionData.zoomMeetingId,
+            studentDetails
+          );
+          this.logger.log('Successfully updated parent session Zoom meeting with child session students');
+        } catch (zoomError) {
+          this.logger.error(`Failed to update Zoom meeting: ${zoomError.message}`);
+          // Continue with the process even if Zoom update fails
+        }
+      }
+
+      // Create redirect meeting URL (use parent session's meeting link)
+      const redirectMeetingUrl = parentSessionData.isZoomMeet 
+        ? parentSessionData.hangoutLink  // Zoom join URL stored in hangoutLink
+        : parentSessionData.hangoutLink; // Google Meet link
+
+      // Insert record in zuvySessionMerge table
+      const mergeRecord = await db
+        .insert(zuvySessionMerge)
+        .values({
+          childSessionId: childSessionId,
+          parentSessionId: parentSessionId,
+          redirectMeetingUrl: redirectMeetingUrl,
+          mergedJustification: `Merged ${childBatchStudents.length} students from child session batch into parent session`,
+          mergedBy: userInfo.id,
+          isActive: true,
+        } as any)
+        .returning();
+
+      // Mark BOTH sessions as merged and set parent/child flags
+      await Promise.all([
+        db.update(zuvySessions)
+          .set({ 
+            hasBeenMerged: true,
+            isChildSession: true,
+            isParentSession: false,
+            status: 'merged'
+          } as any)
+          .where(eq(zuvySessions.id, childSessionId)),
+        
+        db.update(zuvySessions)
+          .set({ 
+            hasBeenMerged: true,
+            isParentSession: true,
+            isChildSession: false
+          } as any)
+          .where(eq(zuvySessions.id, parentSessionId))
+      ]);
+
       return {
         success: true,
-        data: { meetingId, attendees: [] },
-        message: 'Attendees fetched successfully'
+        message: 'Classes merged successfully',
+        code: 200,
+        data: {
+          mergeRecord: mergeRecord[0],
+          studentsAdded: childBatchStudents.length,
+          parentSession: {
+            id: parentSessionData.id,
+            title: parentSessionData.title,
+            platform: parentSessionData.isZoomMeet ? 'zoom' : 'google_meet',
+            status: 'active', // Parent session becomes/remains the main session
+          },
+          childSession: {
+            id: childSessionData.id,
+            title: childSessionData.title,
+            batchId: childSessionData.batchId,
+            status: 'merged', // Child session is marked as merged
+          },
+          redirectUrl: redirectMeetingUrl,
+        },
       };
+
     } catch (error) {
-      this.logger.error(`Error fetching attendees for meeting ${meetingId}: ${error.message}`);
+      this.logger.error(`Error merging classes: ${error.message}`);
       return {
         success: false,
+        message: 'Failed to merge classes',
+        code: 500,
         error: error.message,
-        message: 'Failed to fetch attendees'
       };
+    }
+  }
+
+  private async addAttendeesToGoogleCalendar(eventId: string, emails: string[], userInfo: any) {
+    try {
+      // Get user tokens for Google Calendar access
+      const userTokenData = await this.getUserTokens(userInfo.email);
+      if (!userTokenData) {
+        throw new Error('No Google Calendar access tokens found');
+      }
+
+      // Set up Google Calendar API
+      auth2Client.setCredentials({
+        access_token: userTokenData.accessToken,
+        refresh_token: userTokenData.refreshToken,
+      });
+
+      const calendar = google.calendar({ version: 'v3', auth: auth2Client });
+
+      // Get current event
+      const currentEvent = await calendar.events.get({
+        calendarId: 'primary',
+        eventId: eventId,
+      });
+
+      // Get existing attendees
+      const existingAttendees = currentEvent.data.attendees || [];
+      const existingEmails = new Set(existingAttendees.map(attendee => attendee.email));
+
+      // Add new attendees (avoid duplicates)
+      const newAttendees = emails
+        .filter(email => !existingEmails.has(email))
+        .map(email => ({ email }));
+
+      if (newAttendees.length === 0) {
+        this.logger.log('No new attendees to add to Google Calendar event');
+        return;
+      }
+
+      // Update event with new attendees
+      await calendar.events.update({
+        calendarId: 'primary',
+        eventId: eventId,
+        requestBody: {
+          ...currentEvent.data,
+          attendees: [...existingAttendees, ...newAttendees],
+        },
+      });
+
+      this.logger.log(`Added ${newAttendees.length} new attendees to Google Calendar event ${eventId}`);
+    } catch (error) {
+      this.logger.error(`Error adding attendees to Google Calendar: ${error.message}`);
+      throw error;
+    }
+  }
+
+  private async updateZoomMeetingInvitees(zoomMeetingId: string, studentDetails: { email: string; name: string }[]) {
+    try {
+      // Get current meeting details
+      const currentMeeting = await this.zoomService.getMeeting(zoomMeetingId);
+      if (!currentMeeting.success) {
+        throw new Error(`Failed to get current Zoom meeting: ${currentMeeting.error}`);
+      }
+
+      // Prepare invitees data
+      const newInvitees = studentDetails.map(student => ({
+        email: student.email,
+        name: student.name,
+      }));
+
+      // Prepare update data with new invitees
+      const updateData = {
+        settings: {
+          meeting_invitees: newInvitees,
+          // Add other settings that should be preserved
+          host_video: true,
+          participant_video: true,
+          join_before_host: false,
+          mute_upon_entry: true,
+          waiting_room: true,
+          attendance_reporting: true,
+        },
+      };
+
+      // Update Zoom meeting
+      try {
+        await this.zoomService.updateMeeting(zoomMeetingId, updateData);
+        this.logger.log(`Added ${newInvitees.length} invitees to Zoom meeting ${zoomMeetingId}`);
+      } catch (updateError) {
+        this.logger.error(`Failed to update Zoom meeting invitees: ${updateError.message}`);
+        throw updateError;
+      }
+
+    } catch (error) {
+      this.logger.error(`Error updating Zoom meeting invitees: ${error.message}`);
+      throw error;
     }
   }
 }

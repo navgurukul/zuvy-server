@@ -241,3 +241,25 @@ export class AddLiveClassesAsChaptersDto {
   @IsNumber()
   moduleId: number;
 }
+
+export class MergeClassesDto {
+  @ApiProperty({
+    description: 'The child session ID (session to be merged into parent)',
+    type: Number,
+    example: 123,
+    required: true,
+  })
+  @IsNotEmpty()
+  @IsNumber()
+  childSessionId: number;
+
+  @ApiProperty({
+    description: 'The parent session ID (main session that will receive all students)',
+    type: Number,
+    example: 456,
+    required: true,
+  })
+  @IsNotEmpty()
+  @IsNumber()
+  parentSessionId: number;
+}

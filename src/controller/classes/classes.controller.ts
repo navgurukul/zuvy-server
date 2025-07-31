@@ -34,6 +34,7 @@ import {
   updateSessionDto,
   DTOsessionRecordViews,
   AddLiveClassesAsChaptersDto,
+  MergeClassesDto,
 } from './dto/classes.dto';
 import { Response } from 'express';
 import { ErrorResponse, SuccessResponse } from 'src/errorHandler/handler';
@@ -214,13 +215,6 @@ export class ClassesController {
     return this.classesService.getClassesByBatchId(batchId, limit, offset);
   }
 
-  @Get('/getAttendeesByMeetingId/:id')
-  @ApiOperation({ summary: 'Get the google class attendees by meetingId' })
-  @ApiBearerAuth('JWT-auth')
-  getAttendeesByMeetingId(@Param('id') id: string): Promise<object> {
-    return this.classesService.getAttendeesByMeetingId(id);
-  }
-
   @Get('/all/:bootcampId')
   @ApiOperation({ summary: 'Get the students classes by bootcamp and batch' })
   @ApiQuery({
@@ -274,6 +268,61 @@ export class ClassesController {
       status,
     );
   }
+
+  @Get('/bootcamp/:bootcampId/classes')
+  @ApiOperation({ summary: 'Get the students classes by bootcamp and batch (alternative route)' })
+  @ApiQuery({
+    name: 'offset',
+    required: false,
+    type: Number,
+    description: 'Offset for pagination',
+  })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    type: Number,
+    description: 'Number of classes limit per page',
+  })
+  @ApiQuery({
+    name: 'batchId',
+    required: false,
+    type: Number,
+    description: 'batch id',
+  })
+  @ApiQuery({
+    name: 'searchTerm',
+    required: false,
+    type: String,
+    description: 'Search by class title',
+  })
+  @ApiQuery({
+    name: 'status',
+    required: false,
+    type: String,
+    description: 'completed, upcoming, ongoing or all (defaults to all)',
+  })
+  @ApiBearerAuth('JWT-auth')
+  async getClassesByBootcamp(
+    @Param('bootcampId') bootcampId: number,
+    @Query('batchId') batchId: number,
+    @Query('status') status: string = 'all',
+    @Query('limit') limit: number = 10,
+    @Query('offset') offset: number = 0,
+    @Query('searchTerm') searchTerm: string,
+    @Req() req,
+  ): Promise<object> {
+    const userId = parseInt(req.user[0].id);
+    return this.classesService.getClassesBy(
+      bootcampId,
+      req.user[0],
+      batchId,
+      limit,
+      offset,
+      searchTerm,
+      status,
+    );
+  }
+
   @Get('/meetings/:bootcampId')
   @ApiOperation({ summary: 'Get the google classes id by bootcampId' })
   @ApiBearerAuth('JWT-auth')
@@ -317,7 +366,7 @@ export class ClassesController {
 
 
   @Get('/sessions/:id')
-  @ApiOperation({ summary: 'Get individual session by ID with role-based access' })
+  @ApiOperation({ summary: 'Get individual session by ID with role-based access and merge handling' })
   @ApiBearerAuth('JWT-auth')
   async getSession(@Param('id') sessionId: number, @Req() req) {
     const userInfo = {
@@ -325,7 +374,13 @@ export class ClassesController {
       email: req.user[0].email,
       roles: req.user[0].roles || []
     };
-    return this.classesService.getSession(sessionId, userInfo);
+    
+    // Route to appropriate service method based on user role
+    if (userInfo.roles?.includes('admin')) {
+      return this.classesService.getSessionForAdmin(sessionId, userInfo);
+    } else {
+      return this.classesService.getSessionForStudent(sessionId, userInfo);
+    }
   }
 
   @Put('/sessions/:id')
@@ -390,5 +445,37 @@ export class ClassesController {
     }
 
     return this.classesService.processCompletedSessionsForAttendance();
+  }
+
+  @Post('/merge')
+  @ApiOperation({ 
+    summary: 'Merge two classes - combines students from both sessions into parent session',
+    description: 'Merges classes by adding students from both child and parent session batches to the parent session (which becomes the main session). Updates Google Calendar and Zoom meeting invitees. Sets hasBeenMerged=true for both sessions.'
+  })
+  @ApiBody({ type: MergeClassesDto })
+  @ApiBearerAuth('JWT-auth')
+  async mergeClasses(@Body() mergeData: MergeClassesDto, @Req() req) {
+    const userInfo = {
+      id: Number(req.user[0].id),
+      email: req.user[0].email,
+      roles: req.user[0].roles || []
+    };
+
+    // Check admin access
+    if (!userInfo.roles?.includes('admin')) {
+      throw new BadRequestException('Only admins can merge classes');
+    }
+
+    const result = await this.classesService.mergeClasses(
+      mergeData.childSessionId,
+      mergeData.parentSessionId,
+      userInfo
+    );
+
+    if (result.success) {
+      return new SuccessResponse('Classes merged successfully', 200, result.data);
+    } else {
+      throw new BadRequestException(result.message);
+    }
   }
 }
