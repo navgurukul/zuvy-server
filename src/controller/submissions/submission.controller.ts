@@ -164,11 +164,11 @@ export class SubmissionController {
 
   @Patch('/assessment/submit')
   @ApiBearerAuth()
-  async assessmentSubmission(@Body() data: SubmissionassessmentDto, @Query('assessmentSubmissionId') assessmentSubmissionId: number, @Query('userId') userId: number, @Req() req,  
+  async assessmentSubmission(@Body() data: SubmissionassessmentDto, @Query('assessmentSubmissionId') assessmentSubmissionId: number, @Req() req,  
   @Res() res
 ) {
   try {
-    let [err, success] = await this.submissionService.assessmentSubmission(data, assessmentSubmissionId, userId);
+    let [err, success] = await this.submissionService.assessmentSubmission(data, assessmentSubmissionId, req.user[0].id);
     if (err) {
       return ErrorResponse.BadRequestException(err.message, err.statusCode).send(res)
     }
