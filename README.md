@@ -1,7 +1,7 @@
-# MMS Learning Platform - Project Overview
+# Learning Platform - Project Overview
 
 ## Introduction
-MMS Learning is a comprehensive learning management system built with NestJS and PostgreSQL. The platform provides assessment capabilities, coding practice environments, and course management features for educational institutions.
+ Learning is a comprehensive learning management system built with NestJS and PostgreSQL. The platform provides assessment capabilities, coding practice environments, and course management features for educational institutions.
 
 ## System Architecture
 
