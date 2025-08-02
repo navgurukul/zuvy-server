@@ -567,7 +567,12 @@ Team Zuvy`;
             WHERE main.zuvy_batch_enrollments.user_id = ${zuvyAssessmentSubmission.userId}
             AND main.zuvy_batch_enrollments.bootcamp_id = ${bootcampId}
             AND main.zuvy_batch_enrollments.batch_id IS NOT NULL
-          )
+          )AND ${zuvyAssessmentSubmission.id} = (
+        SELECT MAX(sub2.id)
+        FROM main.zuvy_assessment_submission sub2
+        WHERE sub2.assessment_outsourse_id = ${assessmentID}
+          AND sub2.user_id = ${zuvyAssessmentSubmission.userId}
+      )
         `,
         columns: {
           id: true,

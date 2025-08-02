@@ -147,20 +147,20 @@ export class ClassesController {
     return values;
   }
 
-  @Post('/analytics/reload')
-  @ApiBearerAuth()
-  @ApiOperation({ summary: 'meeting attendance analytics with meeting link' })
-  async meetingAttendanceRefress(@Req() req, @Body() reloadData: reloadDto) {
-    let meetingIds: Array<any> = reloadData?.meetingIds;
+  // @Post('/analytics/reload')
+  // @ApiBearerAuth()
+  // @ApiOperation({ summary: 'meeting attendance analytics with meeting link' })
+  // async meetingAttendanceRefress(@Req() req, @Body() reloadData: reloadDto) {
+  //   let meetingIds: Array<any> = reloadData?.meetingIds;
 
-    let attachment = meetingIds.map(async (meetId) => {
-      const [err, values] = await this.classesService.getAttendance(meetId, {
-        ...configUser,
-        roles: req.user[0].roles,
-      });
-    });
-    return { message: 'Data Refreshed', status: 200 };
-  }
+  //   let attachment = meetingIds.map(async (meetId) => {
+  //     const [err, values] = await this.classesService.getAttendance(meetId, {
+  //       ...configUser,
+  //       roles: req.user[0].roles,
+  //     });
+  //   });
+  //   return { message: 'Data Refreshed', status: 200 };
+  // }
 
   @Get('/getClassesByBatchId/:batchId')
   @ApiOperation({ summary: 'Get the google classes by batchId' })
