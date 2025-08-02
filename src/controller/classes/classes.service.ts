@@ -1143,7 +1143,6 @@ export class ClassesService {
 
   async meetingAttendanceAnalytics(meeting_id: number, user) {
     try {
-      await this.getAttendance(meeting_id, user);
       let classInfo:any = await   db.query.zuvySessions.findMany({
         where: (zuvySessions, { eq }) => eq(zuvySessions.id, meeting_id),
         with: {
@@ -1273,132 +1272,12 @@ export class ClassesService {
           },
         ];
       }
-      let classInfo = await db
-        .select()
-        .from(zuvySessions)
-        .where(sql`${zuvySessions.meetingId}=${meetingId}`);
-
-      if (classInfo.length == 0) {
-        return [{ status: 'error', message: 'Meeting not found', code: 404 }];
+      else {
+        return [
+          {status: 'error',message: 'No attendance found for this session',code:404}
+        ]
       }
-      const fetchedTokens = await db
-        .select()
-        .from(userTokens)
-        .where(eq(userTokens.userId, user.id));
-      if (!fetchedTokens || fetchedTokens.length === 0) {
-        return { status: 'error', message: 'Unable to fetch tokens' };
-      }
-
-      auth2Client.setCredentials({
-        access_token: fetchedTokens[0].accessToken,
-        refresh_token: fetchedTokens[0].refreshToken,
-      });
-      const client = google.admin({ version: 'reports_v1', auth: auth2Client });
-      const response = await client.activities
-        .list({
-          userKey: 'all',
-          applicationName: 'meet',
-          eventName: 'call_ended',
-          maxResults: 1000,
-          filters: `calendar_event_id==${meetingId}`,
-        })
-        .catch((error) => {
-          throw new Error(`Error executing request: ${error.message}`);
-        });
-      if (response.data.items) {
-        response.data.items.forEach((item) => {
-          const event = item.events[0];
-          const durationSeconds =
-            event.parameters.find((param) => param.name === 'duration_seconds')
-              ?.intValue || '';
-          const email =
-            event.parameters.find((param) => param.name === 'identifier')
-              ?.value || '';
-
-          if (email in attendanceSheet) {
-            attendanceSheet[email] += parseInt(durationSeconds) || 0;
-          } else {
-            attendanceSheet[email] = parseInt(durationSeconds) || 0;
-          }
-        });
-        const zuvyEmail = attendanceSheet['team@zuvy.org'];
-        const totalDuration = zuvyEmail || 0;
-        const threshold = 0.7 * totalDuration;
-        const mergedAttendance = Object.entries(attendanceSheet).map(
-          ([email, duration]) => ({ email, duration }),
-        );
-        for (const attendance of mergedAttendance) {
-          if (attendance.email !== 'team@zuvy.org') {
-            attendance['attendance'] =
-              Number(attendance.duration) >= threshold ? 'present' : 'absent';
-          }
-        }        let attendanceSheetData = mergedAttendance.filter(
-          (attendance) => attendance.email !== 'team@zuvy.org',
-        );
-        if (attendanceSheetData.length > 0) {
-          // Check if attendance record already exists before inserting
-          const attendanceExists = await this.checkAttendanceExists(meetingId);
-          
-          let zuvy_student_attendance;
-          if (!attendanceExists) {
-            // Only insert if no record exists
-            zuvy_student_attendance = await db
-              .insert(zuvyStudentAttendance)
-              .values({
-                meetingId,
-                attendance: attendanceSheetData,
-                batchId: classInfo[0]?.batchId,
-                bootcampId: classInfo[0]?.bootcampId,
-              })
-              .returning();
-          } else {
-            // Get existing record if it already exists
-            zuvy_student_attendance = await db
-              .select()
-              .from(zuvyStudentAttendance)
-              .where(eq(zuvyStudentAttendance.meetingId, meetingId));
-          }
-          if (zuvy_student_attendance.length > 0) {
-            let batchStudets = attendanceSheetData
-              .filter((student: any) => student.attendance === 'present')
-              .map((student) => student.email);
-            let students = await db
-              .select()
-              .from(users)
-              .where(inArray(users.email, [...batchStudets]));
-
-            students.forEach(async (student) => {
-              let old_attendance = await db
-                .select()
-                .from(zuvyBatchEnrollments)
-                .where(
-                  sql`${zuvyBatchEnrollments.userId} = ${student.id.toString()} AND ${zuvyBatchEnrollments.batchId} = ${classInfo[0]?.batchId} AND ${zuvyBatchEnrollments.bootcampId} = ${classInfo[0]?.bootcampId}`,
-                );
-              let new_attendance = old_attendance[0]?.attendance
-                ? old_attendance[0].attendance + 1
-                : 1;
-              let zuvyBatchEnrollmentsDetailsUpdated = await db
-                .update(zuvyBatchEnrollments)
-                .set({ attendance: new_attendance })
-                .where(
-                  sql`${zuvyBatchEnrollments.userId} = ${student.id.toString()} AND ${zuvyBatchEnrollments.batchId} = ${classInfo[0]?.batchId} AND ${zuvyBatchEnrollments.bootcampId} = ${classInfo[0]?.bootcampId}`,
-                )
-                .returning();
-              Logger.log(
-                `Attendance updated for new classes ${new_attendance}`,
-              );
-            });
-          }
-          return [
-            null,
-            {
-              attendanceSheetData,
-              status: 'success',
-            },
-          ];
-        }
-      }
-      return [{ status: 'error', message: 'No attendance found', code: 404 }];
+      
     } catch (error) {
       return [{ status: 'error', message: error.message, code: 402 }];
     }
