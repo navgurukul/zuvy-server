@@ -2278,6 +2278,7 @@ export class ContentService {
           submitedOutsourseAssessments: {
             where: (submissions, { eq }) => eq(submissions.userId, userId),
             columns: { id: true }, 
+            orderBy: (submissions, { desc }) => desc(submissions.id),
             limit: 1 
           }
         },
