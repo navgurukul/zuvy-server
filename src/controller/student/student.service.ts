@@ -244,18 +244,6 @@ export class StudentService {
       });
 
       // Fetch upcoming events once for all bootcamps
-      const [eventsErr, eventsResponse] = await this.getUpcomingEvents(userId);
-      const eventsByBootcamp = (eventsErr ? [] : eventsResponse.data.events)
-        .reduce((acc, event) => {
-          const bootId = Number(event.bootcampId);
-          if (!acc[bootId]) acc[bootId] = [];
-          acc[bootId].push({
-            ...event,
-            id: Number(event.id),
-            bootcampId: bootId
-          });
-          return acc;
-        }, {} as Record<number, any[]>);
 
       // Process each enrollment and attach upcoming events
       const totalData = await Promise.all(enrolled.map(async (e: any) => {
@@ -271,8 +259,7 @@ export class StudentService {
           instructorDetails: batchInfo?.instructorDetails ? {
             ...batchInfo.instructorDetails,
             id: Number(batchInfo.instructorDetails.id)
-          } : { name: 'Not Assigned', profilePicture: null },
-          upcomingEvents: progress < 100 ? (eventsByBootcamp[Number(bootcamp.id)] || []) : []
+          } : { name: 'Not Assigned', profilePicture: null }
         };
       }));
 
@@ -498,12 +485,20 @@ export class StudentService {
     }
   }
 
-  async getUpcomingEvents(student_id: number, limit?: number, offset?: number): Promise<any> {
+  async getUpcomingEvents(student_id: number, limit?: number, offset?: number, bootcampId?:number): Promise<any> {
     try {
+      let query;
+      if(bootcampId)
+      {
+        query = sql`${zuvyBatchEnrollments.userId} = ${student_id} AND ${zuvyBatchEnrollments.bootcampId} = ${bootcampId} AND ${zuvyBatchEnrollments.batchId} IS NOT NULL`;
+      }
+      else {
+        query = sql`${zuvyBatchEnrollments.userId} = ${student_id} AND ${zuvyBatchEnrollments.batchId} IS NOT NULL`;
+      }
       const enrolled = await db
         .select({ bootcampId: zuvyBatchEnrollments.bootcampId, batchId: zuvyBatchEnrollments.batchId })
         .from(zuvyBatchEnrollments)
-        .where(sql`${zuvyBatchEnrollments.userId} = ${student_id} AND ${zuvyBatchEnrollments.batchId} IS NOT NULL`);
+        .where(query);
 
       if (enrolled.length === 0) {
         return [null, {
