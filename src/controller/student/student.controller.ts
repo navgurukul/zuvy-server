@@ -159,14 +159,21 @@ export class StudentController {
     description: 'Offset for pagination',
     required: false
   })
+  @ApiQuery({
+    name: 'bootcampId',
+    type: Number,
+    description: 'upcoming events of a particular bootcamp',
+    required: false
+  })
   async getUpcomingEvents(
     @Req() req,
     @Query('limit') limit: number,
     @Query('offset') offset: number,
+    @Query('bootcampId') bootcampId: number,
     @Res() res: Response
   ) {
     try {
-      const [err, success] = await this.studentService.getUpcomingEvents(req.user[0].id, limit, offset);
+      const [err, success] = await this.studentService.getUpcomingEvents(req.user[0].id, limit, offset,bootcampId);
       if (err) {
         return ErrorResponse.BadRequestException(err.message).send(res);
       }
