@@ -858,7 +858,7 @@ export class BootcampService {
     try {
       // Validate user existence in the users table
       const userExists = await db
-        .select({ id: users.id })
+        .select({ id: users.id,email: users.email })
         .from(users)
         .where(eq(users.id, BigInt(userId)))
         .limit(1);
@@ -893,13 +893,17 @@ export class BootcampService {
       }
 
       // Prepare update data
-      const updateData: { name?: string; email?: string } = {};
+      const updateData: { name?: string; email?: string; googleUserId?: string } = {};
 
       if (editUserDetailsDto.name) {
         updateData.name = editUserDetailsDto.name;
       }
       if (editUserDetailsDto.email) {
         updateData.email = editUserDetailsDto.email;
+        if(editUserDetailsDto.email !== userExists[0].email)
+        {
+          updateData.googleUserId = null
+        }
       }
 
       // Update user details in the users table
