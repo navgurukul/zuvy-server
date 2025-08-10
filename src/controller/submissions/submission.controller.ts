@@ -145,6 +145,7 @@ export class SubmissionController {
   }
 
   @Patch('/assessment/submit')
+  @ApiBearerAuth()
   async assessmentSubmission(@Body() data: SubmissionassessmentDto, @Query('assessmentSubmissionId') assessmentSubmissionId: number, @Req() req,  
   @Res() res
 ) {
