@@ -51,7 +51,7 @@ export class SubmissionController {
     type: String,
     description: 'Search by practise problem name',
   })
-  @ApiBearerAuth('JWT-auth')
+
   async getChapterTracking(@Param('bootcampId') bootcampId: number, @Query('searchPractiseProblem') searchProblem: string) {
     return this.submissionService.getSubmissionOfPractiseProblem(bootcampId, searchProblem);
   }
@@ -145,7 +145,7 @@ export class SubmissionController {
   }
 
   @Patch('/assessment/submit')
-  @ApiBearerAuth()
+
   async assessmentSubmission(@Body() data: SubmissionassessmentDto, @Query('assessmentSubmissionId') assessmentSubmissionId: number, @Req() req,  
   @Res() res
 ) {
