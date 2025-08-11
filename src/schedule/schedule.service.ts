@@ -12,6 +12,8 @@ import { db } from '../db/index';
 import { eq, sql, isNull, and, gte, lt } from 'drizzle-orm';
 import { google } from 'googleapis';
 import { SubmissionService } from '../controller/submissions/submission.service';
+import { ClassesService } from '../controller/classes/classes.service';
+
 const { OAuth2 } = google.auth;
 const auth2Client = new OAuth2(
   process.env.GOOGLE_CLIENT_ID,
@@ -36,7 +38,7 @@ export class ScheduleService {
   ];
   private readonly submissionService: SubmissionService = new SubmissionService();
 
-  constructor() {
+  constructor(private readonly classesService: ClassesService) {
     // Initialize the interval when the service starts
     this.handleDynamicScheduling();
   }
@@ -379,6 +381,18 @@ export class ScheduleService {
   const attendanceOfStudents = Object.values(attendanceByTitle);
   return [ null, attendanceOfStudents ];
   }
+  // Process Zoom attendance for completed sessions every 30 minutes
+  @Cron('0 */30 * * * *')
+  async processZoomAttendance() {
+    this.logger.log('Cron job triggered to process Zoom attendance');
+    try {
+      await this.classesService.processCompletedSessionsForAttendance();
+      this.logger.log('Zoom attendance processing completed');
+    } catch (error) {
+      this.logger.error(`Error processing Zoom attendance: ${error.message}`);
+    }
+  }
+
   // @Cron('0 30 2 * * *') // Runs every 59 minutes
   // async processPendingAssessmentSubmissions() {
   //   this.logger.log('Starting to process pending assessment submissions');
