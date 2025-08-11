@@ -15,7 +15,7 @@ import {
   users,
   zuvySessionMerge,
 } from '../../../drizzle/schema';
-import { eq, desc, and, sql, ilike } from 'drizzle-orm';
+import { eq, desc, and, or, sql, ilike } from 'drizzle-orm';
 import { Res, Req } from '@nestjs/common';
 import { Response } from 'express';
 import { S3 } from 'aws-sdk';
@@ -340,7 +340,7 @@ export class ClassesService {
       }
 
       const session = {
-        meetingId: calendarEventId,
+        meetingId: calendarEventId || zoomResponse.data.id.toString(), // Use Zoom meeting ID if Google Calendar fails
         zoomJoinUrl: zoomResponse.data.join_url,
         zoomStartUrl: zoomResponse.data.start_url,
         zoomPassword: zoomResponse.data.password,
@@ -1720,9 +1720,31 @@ export class ClassesService {
     try {
       this.logger.log(`Fetching session for admin: ${sessionId}`);
       
-      // Get the session
+      // First, check if this session is a child session (merged with another session)
+      const childSessionCheck = await db
+        .select({
+          parentSessionId: zuvySessionMerge.parentSessionId,
+          isActive: zuvySessionMerge.isActive
+        })
+        .from(zuvySessionMerge)
+        .where(
+          and(
+            eq(zuvySessionMerge.childSessionId, sessionId),
+            eq(zuvySessionMerge.isActive, true)
+          )
+        );
+      
+      let actualSessionId = sessionId;
+      
+      // If this is a child session, redirect to parent session
+      if (childSessionCheck.length > 0) {
+        actualSessionId = childSessionCheck[0].parentSessionId;
+        this.logger.log(`Session ${sessionId} is a child session, redirecting to parent session ${actualSessionId}`);
+      }
+      
+      // Get the session (either original or parent)
       const session = await db.select().from(zuvySessions)
-        .where(eq(zuvySessions.id, sessionId));
+        .where(eq(zuvySessions.id, actualSessionId));
         
       if (!session.length) {
         return { success: false, message: 'Session not found' };
@@ -1730,7 +1752,7 @@ export class ClassesService {
       
       const sessionData = session[0];
       
-      // Get merge information if exists
+      // Get merge information if exists (for parent sessions)
       const mergeInfo = await db
         .select({
           id: zuvySessionMerge.id,
@@ -1748,7 +1770,7 @@ export class ClassesService {
         .leftJoin(zuvySessions, eq(zuvySessionMerge.childSessionId, zuvySessions.id))
         .where(
           and(
-            eq(zuvySessionMerge.parentSessionId, sessionId),
+            eq(zuvySessionMerge.parentSessionId, actualSessionId),
             eq(zuvySessionMerge.isActive, true)
           )
         );
@@ -2453,6 +2475,45 @@ export class ClassesService {
   async mergeClasses(childSessionId: number, parentSessionId: number, userInfo: any) {
     try {
       this.logger.log(`Merging classes: childSessionId=${childSessionId}, parentSessionId=${parentSessionId}`);
+      
+      // Check if either session is already involved in a merge
+      const existingMerges = await db
+        .select({
+          id: zuvySessionMerge.id,
+          childSessionId: zuvySessionMerge.childSessionId,
+          parentSessionId: zuvySessionMerge.parentSessionId,
+          isActive: zuvySessionMerge.isActive
+        })
+        .from(zuvySessionMerge)
+        .where(
+          and(
+            or(
+              eq(zuvySessionMerge.childSessionId, childSessionId),
+              eq(zuvySessionMerge.parentSessionId, childSessionId),
+              eq(zuvySessionMerge.childSessionId, parentSessionId),
+              eq(zuvySessionMerge.parentSessionId, parentSessionId)
+            ),
+            eq(zuvySessionMerge.isActive, true)
+          )
+        );
+      
+      if (existingMerges.length > 0) {
+        const merge = existingMerges[0];
+        let errorMessage = '';
+        
+        if (merge.childSessionId === childSessionId || merge.parentSessionId === childSessionId) {
+          errorMessage = `Session ${childSessionId} is already involved in a merge and cannot be merged again`;
+        } else if (merge.childSessionId === parentSessionId || merge.parentSessionId === parentSessionId) {
+          errorMessage = `Session ${parentSessionId} is already involved in a merge and cannot be merged again`;
+        }
+        
+        return {
+          success: false,
+          message: errorMessage,
+          code: 400,
+        };
+      }
+      
       // Get both sessions
       const [childSession, parentSession] = await Promise.all([
         db.select().from(zuvySessions).where(eq(zuvySessions.id, childSessionId)),
