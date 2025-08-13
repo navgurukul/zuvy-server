@@ -74,6 +74,17 @@ export class ClassesController {
     return this.classesService.googleAuthentication(res, email, userId);
   }
 
+
+  @Get('/redirect')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Google authentication redirect' })
+  async googleAuthRedirectOld(@Req() request) {
+    return this.classesService.googleAuthenticationRedirect(
+      request,
+      request.user,
+    );
+  }
+
   @Public()
   @Get('/google-auth/redirect')
   @ApiOperation({ summary: 'Handle Google OAuth redirect' })
