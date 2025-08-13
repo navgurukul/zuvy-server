@@ -5,11 +5,12 @@ import { JwtModule, JwtService } from '@nestjs/jwt';
 import { JwtMiddleware } from 'src/middleware/jwt.middleware';
 import { AuthModule } from 'src/auth/auth.module';
 import { ZoomModule } from '../../services/zoom/zoom.module';
+import { YoutubeService } from '../../services/youtube.service';
 
 @Module({
     imports: [AuthModule, ZoomModule],
     controllers: [ClassesController],
-    providers: [ClassesService, JwtService],
+    providers: [ClassesService, JwtService, YoutubeService],
     exports: [ClassesService]
 })
 export class ClassesModule implements NestModule {

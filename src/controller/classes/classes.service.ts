@@ -21,6 +21,14 @@ import { Response } from 'express';
 import { S3 } from 'aws-sdk';
 import { v4 as uuid } from 'uuid';
 import { ZoomService } from '../../services/zoom/zoom.service';
+import { YoutubeService } from '../../services/youtube.service';
+
+const scopes = [
+  'https://www.googleapis.com/auth/calendar',
+  'https://www.googleapis.com/auth/admin.reports.audit.readonly',
+  'https://www.googleapis.com/auth/youtube.upload',
+  'https://www.googleapis.com/auth/youtube',
+];
 
 @Injectable()
 export class ClassesService {
@@ -29,21 +37,88 @@ export class ClassesService {
   }
   private readonly logger = new Logger(ClassesService.name);
 
-  constructor(private readonly zoomService: ZoomService) {}
+  constructor(
+    private readonly zoomService: ZoomService,
+    private readonly youtubeService: YoutubeService
+  ) {}
+
+  /**
+   * Batch fetch Zoom recordings, upload to YouTube, and update zuvySessions with YouTube link
+   */
+  async batchZoomToYoutube(dto: { meetingIds: string[]; title: string; description: string }) {
+    const results = [];
+    for (const meetingId of dto.meetingIds) {
+      try {
+        // 1. Fetch Zoom recording download URL
+        const recordingData = await this.zoomService.getMeetingRecordings(meetingId);
+        const recordingFile = recordingData?.recording_files?.find(
+          (f) => f.file_type === 'MP4' && f.download_url
+        );
+        if (!recordingFile) {
+          results.push({ meetingId, error: 'No MP4 recording found' });
+          continue;
+        }
+
+        // 2. Download the recording to a temp file
+        const axios = require('axios');
+        const fs = require('fs');
+        const tmpPath = `/tmp/${meetingId}.mp4`;
+        const writer = fs.createWriteStream(tmpPath);
+        const response = await axios({
+          url: recordingFile.download_url,
+          method: 'GET',
+          responseType: 'stream',
+          headers: { Authorization: `Bearer ${this.zoomService['accessToken']}` },
+        });
+        await new Promise((resolve, reject) => {
+          response.data.pipe(writer);
+          writer.on('finish', resolve);
+          writer.on('error', reject);
+        });
+
+        // 3. Fetch system account token to upload into a single YouTube channel
+        const systemEmail = process.env.YT_SYSTEM_EMAIL || 'team@zuvy.org';
+        const userTokenData = await this.getUserTokens(systemEmail);
+        if (!userTokenData || !userTokenData.refreshToken) {
+          results.push({ meetingId, error: `No refresh token found for system email: ${systemEmail}` });
+          fs.unlinkSync(tmpPath);
+          continue;
+        }
+
+        // 4. Upload to YouTube with system account refresh token
+        const youtubeLink = await this.youtubeService.uploadVideo(
+          tmpPath,
+          dto.title,
+          dto.description,
+          userTokenData.refreshToken
+        );
+
+        // 5. Update zuvySessions with S3 link (assume meetingId is unique)
+        await db.update(zuvySessions)
+          .set({ s3link : youtubeLink } as any)
+          .where(eq(zuvySessions.zoomMeetingId, meetingId));
+
+        // 6. Cleanup temp file
+        fs.unlinkSync(tmpPath);
+
+        results.push({ meetingId, youtubeLink });
+      } catch (err) {
+        results.push({ meetingId, error: err.message });
+      }
+    }
+    return { results };
+  }
 
   async accessOfCalendar(creatorInfo) {
     try {
       const userTokenData = await this.getUserTokens(creatorInfo.email);
       if (!userTokenData) {
-        // Generate OAuth URL for calendar access
-        const scopes = [
-          'https://www.googleapis.com/auth/calendar',
-          'https://www.googleapis.com/auth/admin.reports.audit.readonly',
-        ];
-
         const authUrl = auth2Client.generateAuthUrl({
           access_type: 'offline',
           scope: scopes,
+          prompt: 'consent',
+          include_granted_scopes: true,
+          login_hint: creatorInfo.email,
           state: JSON.stringify({
             id: creatorInfo.id,
             email: creatorInfo.email,
@@ -82,14 +157,12 @@ export class ClassesService {
 
   async googleAuthentication(@Res() res, userEmail: string, userId: number) {
     try {
-      const scopes = [
-        'https://www.googleapis.com/auth/calendar',
-        'https://www.googleapis.com/auth/admin.reports.audit.readonly',
-      ];
-
       const authUrl = auth2Client.generateAuthUrl({
         access_type: 'offline',
         scope: scopes,
+        prompt: 'consent',
+        include_granted_scopes: true,
+        login_hint: userEmail,
         state: JSON.stringify({ id: userId, email: userEmail }),
       });
 

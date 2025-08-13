@@ -1,3 +1,5 @@
+import { BatchZoomToYoutubeDto } from './dto/batch-zoom-to-youtube.dto';
+import { YoutubeService } from '../../services/youtube.service';
 import {
   Controller,
   Get,
@@ -63,7 +65,15 @@ let configUser = { id: process.env.ID, email: process.env.TEAM_EMAIL };
   }),
 )
 export class ClassesController {
-  constructor(private classesService: ClassesService) {}
+  constructor(
+    private classesService: ClassesService,
+    private youtubeService: YoutubeService
+  ) {}
+  @Post('/zoom-to-youtube')
+  @ApiOperation({ summary: 'Batch upload Zoom recordings to YouTube and update sessions' })
+  async batchZoomToYoutube(@Body() dto: BatchZoomToYoutubeDto) {
+    return this.classesService.batchZoomToYoutube(dto);
+  }
 
   @Public()
   @Get('/')

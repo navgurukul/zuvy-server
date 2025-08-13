@@ -28,7 +28,9 @@
     "migration:drop": "drizzle-kit drop --config=./src/drizzle.config.ts",
     "migration:down": "drizzle-kit down --config=./src/drizzle.config.ts",
     "migration:seed": "drizzle-kit seed --config=./src/drizzle.config.ts",
-    "migration": "npm run migration:generate && npm run migration:push"
+  "migration": "npm run migration:generate && npm run migration:push",
+  "test:zoom-youtube": "ts-node src/scripts/zoom-to-youtube.ts",
+  "test:youtube-upload": "ts-node src/scripts/upload-youtube.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.812.0",
