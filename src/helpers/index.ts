@@ -207,8 +207,8 @@ const rl = readline.createInterface({
 });
 
 // Function definition
-// Before submitting the code, please remove the console.log statement.
 function ${functionName}(${parameterMappings}) {
+  // Before submitting the code, please remove the console.log statement from this function.
     // Add your code here
   return ${typeMappings.javascript.defaultReturnValue};
 }
@@ -366,11 +366,11 @@ import java.util.Map;
 import java.util.HashMap;
 import java.util.ArrayList;
 
-// Note: Please remove the System.out.println statements before submitting the code.
 public class Main {
   // Function with specified return type and parameters
   public static ${returnTypeMapped} ${functionName}(${parameterList}) {
-      // Write your code here
+    // Note: Please remove the System.out.println statements from this function before submitting the code.
+    // Write your code here
       return ${defaultReturn};
   }
 
@@ -634,8 +634,8 @@ import sys
 import json
 from typing import List, Dict, Any
 
-# Before submitting the code, please remove the print statement.
 def ${functionName}(${parameterMappings}) -> ${typeMappings.python[returnType]}:
+    # Before submitting the code, please remove the print statement from this function.
     # Add your code here
     return
 
