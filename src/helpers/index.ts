@@ -635,7 +635,7 @@ import json
 from typing import List, Dict, Any
 
 def ${functionName}(${parameterMappings}) -> ${typeMappings.python[returnType]}:
-# Before submitting the code, please remove the print statement from this function.
+    # Before submitting the code, please remove the print statement from this function.
     # Add your code here
     return
 
