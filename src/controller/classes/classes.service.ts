@@ -202,7 +202,7 @@ export class ClassesService {
         'https://www.googleapis.com/auth/admin.reports.audit.readonly',
       ],
       prompt: 'consent',
-      state: `redirect_uri=https://dev.api.zuvy.org/classes/redirect/+user_id=${userId}+user_email=${userEmail}`,
+      state: `redirect_uri=https://dev.api.zuvy.org/classes/google-auth/redirect/+user_id=${userId}+user_email=${userEmail}`,
     });
     return res.send({ url });
   }
