@@ -168,6 +168,7 @@ export class ClassesService {
       endDateTime: string;
       timeZone: string;
       batchId: number;
+      secondBatchId?: number;
       bootcampId: number;
       moduleId: number;
       isZoomMeet?: boolean;
@@ -184,12 +185,30 @@ export class ClassesService {
       }
       console.log('Creating session with details:', eventDetails);
       
+      const primaryBatchId = eventDetails.batchId;
+      const secondaryBatchId = eventDetails.secondBatchId;
+
+      // Collect invited students from one or two batches
+      let invitedStudents: { userId: number; email: string }[] = [];
+      const primaryRes = await this.getStudentsEmails(primaryBatchId);
+      if (!primaryRes.success) throw new Error(primaryRes.message);
+      invitedStudents.push(...primaryRes.students.map(s => ({ userId: s.id, email: s.email })));
+      if (secondaryBatchId) {
+        const secondaryRes = await this.getStudentsEmails(secondaryBatchId);
+        if (!secondaryRes.success) throw new Error(secondaryRes.message);
+        secondaryRes.students.forEach(s => {
+          if (!invitedStudents.find(ex => ex.userId === s.id)) {
+            invitedStudents.push({ userId: s.id, email: s.email });
+          }
+        });
+      }
+
       if (eventDetails.isZoomMeet) {
-        this.logger.log('Creating Zoom session');
-        return this.createZoomSession(eventDetails, creatorInfo);
+        this.logger.log('Creating Zoom session (multi-batch aware)');
+        return this.createZoomSession({ ...eventDetails, invitedStudents }, creatorInfo);
       } else {
-        this.logger.log('Creating Google Meet session');
-        return this.createGoogleMeetSession(eventDetails, creatorInfo);
+        this.logger.log('Creating Google Meet session (multi-batch aware)');
+        return this.createGoogleMeetSession({ ...eventDetails, invitedStudents }, creatorInfo);
       }
     } catch (error) {
       this.logger.error(`Error creating session: ${error.message}`);
@@ -209,8 +228,10 @@ export class ClassesService {
       endDateTime: string;
       timeZone: string;
       batchId: number;
+      secondBatchId?: number;
       bootcampId: number;
       moduleId: number;
+      invitedStudents?: { userId: number; email: string }[];
     },
     creatorInfo: any,
   ) {
@@ -230,17 +251,18 @@ export class ClassesService {
       
       const duration = Math.floor((zoomEndDate.getTime() - zoomStartDate.getTime()) / (1000 * 60)); // Duration in minutes
 
-      // Get student emails for the batch to add as meeting invitees
+      // Get student emails for the primary batch to add as meeting invitees (legacy fallback)
       const studentsResult = await this.getStudentsEmails(eventDetails.batchId);
-      
       if (!studentsResult.success) {
         throw new Error(`Failed to fetch students for batch: ${studentsResult.message}`);
       }
+      // Use provided invitedStudents snapshot if available (multi-batch)
+      const invitedStudents = eventDetails.invitedStudents || studentsResult.students.map(s => ({ userId: s.id, email: s.email }));
 
       // Prepare meeting invitees from batch students (including instructor)
-      const meetingInvitees = studentsResult.students.map(student => ({
+      const meetingInvitees = invitedStudents.map(student => ({
         email: student.email,
-        name: student.name || student.email.split('@')[0], // Use name or email prefix as fallback
+        name: student.email.split('@')[0],
       }));
 
       // Prepare alternative hosts (instructor if available)
@@ -318,7 +340,7 @@ export class ClassesService {
           startTime: zoomStartDate.toISOString(), // Use adjusted start time for calendar
           endTime: zoomEndDate.toISOString(), // Use adjusted end time for calendar
           timeZone: eventDetails.timeZone,
-          attendees: studentsResult.emails,
+          attendees: meetingInvitees.map(m => m.email),
           location: `Zoom Meeting - ${zoomResponse.data.join_url}`,
         };
 
@@ -347,11 +369,13 @@ export class ClassesService {
         startTime: eventDetails.startDateTime, // Use original start time for database
         endTime: eventDetails.endDateTime, // Use original end time for database
         batchId: eventDetails.batchId,
+        secondBatchId: eventDetails.secondBatchId,
         bootcampId: eventDetails.bootcampId,
         moduleId: eventDetails.moduleId,
         title: eventDetails.title,
         isZoomMeet: true,
         status: 'upcoming',
+        invitedStudents: invitedStudents,
       };
 
       // Validate and create chapter
@@ -369,7 +393,7 @@ export class ClassesService {
 
       sessionsToCreate.push(session);
       // Save sessions to database
-      const saveResult = await this.saveSessionsToDatabase(sessionsToCreate);
+  const saveResult = await this.saveSessionsToDatabase(sessionsToCreate);
       
       if (saveResult.status === 'error') {
         throw new Error(saveResult.message);
@@ -398,8 +422,10 @@ export class ClassesService {
       endDateTime: string;
       timeZone: string;
       batchId: number;
+      secondBatchId?: number;
       bootcampId: number;
       moduleId: number;
+      invitedStudents?: { userId: number; email: string }[];
     },
     creatorInfo: any,
   ) {
@@ -414,11 +440,12 @@ export class ClassesService {
         throw new Error(chapterResult.message);
       }
 
-      // Get student emails for the batch
+      // Get student emails for the batch (legacy) then override with invitedStudents if provided
       const studentsResult = await this.getStudentsEmails(eventDetails.batchId);
       if (!studentsResult.success) {
         throw new Error(studentsResult.message);
       }
+      const invitedStudents = eventDetails.invitedStudents || studentsResult.students.map(s => ({ userId: s.id, email: s.email }));
 
       // Create Google Calendar event
       const eventData = {
@@ -427,7 +454,7 @@ export class ClassesService {
         startTime: eventDetails.startDateTime,
         endTime: eventDetails.endDateTime,
         timeZone: eventDetails.timeZone,
-        attendees: studentsResult.emails,
+        attendees: invitedStudents.map(s => s.email),
       };
 
       const calendarResult = await this.createGoogleCalendarEvent(eventData, creatorInfo);
@@ -443,12 +470,14 @@ export class ClassesService {
         startTime: eventDetails.startDateTime,
         endTime: eventDetails.endDateTime,
         batchId: eventDetails.batchId,
+        secondBatchId: eventDetails.secondBatchId,
         bootcampId: chapterResult.bootcampId,
         moduleId: eventDetails.moduleId,
         chapterId: chapterResult.chapter.id,
         title: eventDetails.title,
         status: 'upcoming',
         isZoomMeet: false,
+        invitedStudents: invitedStudents,
       };
 
       // Save session to database
@@ -754,6 +783,7 @@ export class ClassesService {
         startTime: session.startTime,
         endTime: session.endTime,
         batchId: session.batchId,
+  secondBatchId: session.secondBatchId,
         bootcampId: session.bootcampId,
         moduleId: session.moduleId,
         chapterId: session.chapterId,
@@ -764,6 +794,7 @@ export class ClassesService {
         zoomPassword: session.zoomPassword,
         zoomMeetingId: session.zoomMeetingId,
         googleCalendarEventId: session.googleCalendarEventId, // Add Google Calendar event ID
+  invitedStudents: session.invitedStudents || [],
       }));
 
       this.logger.log(`Saving ${sessionData.length} sessions to the database.`);

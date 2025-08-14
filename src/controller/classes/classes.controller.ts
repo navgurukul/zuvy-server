@@ -129,26 +129,17 @@ export class ClassesController {
 
   @Post('/')
   @ApiOperation({ summary: 'Create the new class' })
-  // @ApiBearerAuth('JWT-auth')
+  @ApiBearerAuth('JWT-auth')
   @Public()
   async create(@Body() classData: CreateSessionDto, @Req() req) {
     const userInfo = {
-      id: 58083,
-      email: "team@zuvy.org",
-      roles: ["admin"]
+      id: Number(req.user[0].id),
+      email: req.user[0].email,
+      roles: req.user[0].roles || []
     };
-
-    // Fetch batch to get bootcampId
-    const batchData = await db.select().from(zuvyBatches).where(eq(zuvyBatches.id, classData.batchId)).limit(1);
-    if (!batchData.length) {
-      throw new BadRequestException('Batch not found');
-    }
-    const eventDetails = {
-      ...classData,
-      bootcampId: batchData[0].bootcampId
-    };
-
-    return this.classesService.createSession(eventDetails, userInfo);
+  // Delegate all validation & batch combination logic to service
+  const result = await this.classesService.createSession(classData as any, userInfo);
+    return result;
   }
 
   @Get('/getAttendance/:meetingId')
@@ -169,42 +160,6 @@ export class ClassesController {
     }
     return values;
   }
-
-  // @Public()
-  // @Get('/getAllAttendance/:batchId')
-  // @ApiBearerAuth('JWT-auth')
-  // @ApiOperation({ summary: 'Get the google all classes attendance by batchID' })
-  // extractMeetAttendanceByBatch(
-  //   @Req() req,
-  //   @Param('batchId') batchId: string,
-  // ): Promise<object> {
-  //   const userInfo = {
-  //     id: Number(req.user[0].id),
-  //     email: req.user[0].email,
-  //     roles: req.user[0].roles || []
-  //   };
-  //   return this.classesService.getAttendanceByBatchId(batchId, userInfo);
-  // }
-  // @Get('/calculatelogic')
-  // @ApiBearerAuth()
-  // @ApiOperation({ summary: 'calculate attendance logic' })
-  // calculateLogic(
-  //   @Req() req,
-  // ): Promise<object> {
-  //   return this.classesService.calculateAttendance([{meetingId:'73bdvrab8kj2tnhahhl57njsis_20250326T143000Z'}],[
-  //     { userId: 65521, email: "deepanshu_23se051@dtu.ac.in" },
-  //     { userId: 65529, email: "gauravjha_23se063@dtu.ac.in" },
-  //     { userId: 65548, email: "shivamsingh70546@gmail.com" },
-  //     { userId: 65569, email: "salonikumari_23cs368@dtu.ac.in" },
-  //     { userId: 65546, email: "shalvisingh_23it151@dtu.ac.in" },
-  //     { userId: 65545, email: "samayjain_23mc128@dtu.ac.in" },
-  //     { userId: 65539, email: "rishiraj_23cs343@dtu.ac.in" },
-  //     { userId: 65547, email: "shatrughanshukla_23cs391@dtu.ac.in" },
-  //     { userId: 65540, email: "rishusingh_23cs345@dtu.ac.in" },
-  //     { userId: 65527, email: "divyanshurangad@gmail.com" },
-  //     { userId: 65528, email: "faizanraza2308@gmail.com" }
-  //   ])
-  // }
 
   @Get('/analytics/:sessionId')
   @ApiBearerAuth('JWT-auth')

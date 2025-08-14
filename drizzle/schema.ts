@@ -2224,6 +2224,10 @@ export const zuvySessions = main.table('zuvy_sessions', {
       onDelete: 'cascade',
       onUpdate: 'cascade',
     }),
+  secondBatchId: integer('second_batch_id').references(() => zuvyBatches.id, {
+    onDelete: 'cascade',
+    onUpdate: 'cascade',
+  }),
   bootcampId: integer('bootcamp_id')
     .notNull()
     .references(() => zuvyBootcamps.id, {
@@ -2256,6 +2260,8 @@ export const zuvySessions = main.table('zuvy_sessions', {
   hasBeenMerged: boolean('has_been_merged').default(false),
   isParentSession: boolean('is_parent_session').default(false),
   isChildSession: boolean('is_child_session').default(false),
+  // multi-batch invited students snapshot
+  invitedStudents: jsonb('invited_students').$type<{userId:number; email:string}[]>().default([]).notNull(),
 });
 
 export const zuvySessionMerge = main.table('zuvy_session_merge', {
