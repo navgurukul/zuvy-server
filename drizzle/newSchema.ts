@@ -14,7 +14,7 @@ export const userRolesRoles = main.enum("user_roles_roles", ['admin', 'alumni', 
 export const usersCenter = main.enum("users_center", ['dharamshala', 'bangalore'])
 
 
-const bytea = customType<{ data: string; notNull: false; default: false }>({
+const batey = customType<{ data: string; notNull: false; default: false }>({
   dataType() {
 	return 'bytea';
   },
@@ -34,6 +34,9 @@ const bytea = customType<{ data: string; notNull: false; default: false }>({
 export const userSession = main.table("user_session", {
 	id: varchar("id", { length: 255 }).primaryKey().notNull(),
 });
+
+
+
 
 export const newStudentsTemp = main.table("new_students_temp", {
 	id: serial("id").primaryKey().notNull(),
@@ -656,6 +659,7 @@ export const zuvySessions = main.table("zuvy_sessions", {
 	startTime: text("start_time").notNull(),
 	endTime: text("end_time").notNull(),
 	batchId: integer("batch_id").notNull(),
+	secondBatchId: integer("second_batch_id"),
 	bootcampId: integer("bootcamp_id").notNull(),
 	title: text("title").notNull(),
 	s3Link: text("s3link"),
@@ -668,6 +672,11 @@ export const zuvySessions = main.table("zuvy_sessions", {
 	zoomStartUrl: text("zoom_start_url"),
 	zoomPassword: text("zoom_password"),
 	zoomMeetingId: text("zoom_meeting_id"),
+	// merge tracking flags & invited students snapshot
+	hasBeenMerged: boolean('has_been_merged').default(false),
+	isParentSession: boolean('is_parent_session').default(false),
+	isChildSession: boolean('is_child_session').default(false),
+	invitedStudents: jsonb('invited_students').default([]).notNull(),
 },
 (table) => {
 	return {
@@ -676,11 +685,118 @@ export const zuvySessions = main.table("zuvy_sessions", {
 			foreignColumns: [zuvyBatches.id],
 			name: "zuvy_sessions_batch_id_zuvy_batches_id_fk"
 		}).onUpdate("cascade").onDelete("cascade"),
+		zuvySessionsSecondBatchIdZuvyBatchesIdFk: foreignKey({
+			columns: [table.secondBatchId],
+			foreignColumns: [zuvyBatches.id],
+			name: "zuvy_sessions_second_batch_id_zuvy_batches_id_fk"
+		}).onUpdate("cascade").onDelete("cascade"),
 		zuvySessionsBootcampIdZuvyBootcampsIdFk: foreignKey({
 			columns: [table.bootcampId],
 			foreignColumns: [zuvyBootcamps.id],
 			name: "zuvy_sessions_bootcamp_id_zuvy_bootcamps_id_fk"
 		}).onUpdate("cascade").onDelete("cascade"),
+	}
+});
+
+// session merge table
+export const zuvySessionMerge = main.table('zuvy_session_merge', {
+	id: serial('id').primaryKey().notNull(),
+	childSessionId: integer('child_session_id').notNull(),
+	parentSessionId: integer('parent_session_id').notNull(),
+	redirectMeetingUrl: text('redirect_meeting_url'),
+	mergedJustification: text('merged_justification'),
+	isActive: boolean('is_active').default(true),
+	createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow(),
+	updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow()
+}, (table) => {
+	return {
+		zuvySessionMergeChildSessionIdFkey: foreignKey({
+			columns: [table.childSessionId],
+			foreignColumns: [zuvySessions.id],
+			name: 'zuvy_session_merge_child_session_id_fkey'
+		}).onUpdate('cascade').onDelete('cascade'),
+		zuvySessionMergeParentSessionIdFkey: foreignKey({
+			columns: [table.parentSessionId],
+			foreignColumns: [zuvySessions.id],
+			name: 'zuvy_session_merge_parent_session_id_fkey'
+		}).onUpdate('cascade').onDelete('cascade'),
+	}
+});
+
+// video recordings table
+export const zuvySessionVideoRecordings = main.table('zuvy_session_video_recordings', {
+	id: serial('id').primaryKey().notNull(),
+	recordingUrl: text('recording_url').notNull(),
+	recordingSize: integer('recording_size').notNull(),
+	recordingDuration: integer('recording_duration').notNull(),
+	sessionId: integer('session_id').notNull(),
+	batchId: integer('batch_id'),
+	bootcampId: integer('bootcamp_id'),
+	userId: integer('user_id'),
+	createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow(),
+	updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow(),
+}, (table) => {
+	return {
+		zuvySessionVideoRecordingsSessionIdFkey: foreignKey({
+			columns: [table.sessionId],
+			foreignColumns: [zuvySessions.id],
+			name: 'zuvy_session_video_recordings_session_id_fkey'
+		}),
+		zuvySessionVideoRecordingsBatchIdFkey: foreignKey({
+			columns: [table.batchId],
+			foreignColumns: [zuvyBatches.id],
+			name: 'zuvy_session_video_recordings_batch_id_fkey'
+		}),
+		zuvySessionVideoRecordingsBootcampIdFkey: foreignKey({
+			columns: [table.bootcampId],
+			foreignColumns: [zuvyBootcamps.id],
+			name: 'zuvy_session_video_recordings_bootcamp_id_fkey'
+		}),
+		zuvySessionVideoRecordingsUserIdFkey: foreignKey({
+			columns: [table.userId],
+			foreignColumns: [users.id],
+			name: 'zuvy_session_video_recordings_user_id_fkey'
+		}),
+	}
+});
+
+// attendance records table
+export enum AttendanceStatus {
+	PRESENT = 'present',
+	ABSENT = 'absent'
+};
+
+export const zuvyStudentAttendanceRecords = main.table('zuvy_student_attendance_records', {
+	id: serial('id').primaryKey().notNull(),
+	userId: integer('user_id').notNull(),
+	batchId: integer('batch_id').notNull(),
+	bootcampId: integer('bootcamp_id').notNull(),
+	sessionId: integer('session_id').notNull(),
+	attendanceDate: date('attendance_date').notNull(),
+	status: varchar('status', { length: 10 }).notNull().default(AttendanceStatus.ABSENT),
+	version: varchar('version', { length: 10 })
+}, (table) => {
+	return {
+		zuvyStudentAttendanceRecordsUserIdFkey: foreignKey({
+			columns: [table.userId],
+			foreignColumns: [users.id],
+			name: 'zuvy_student_attendance_records_user_id_fkey'
+		}),
+		zuvyStudentAttendanceRecordsBatchIdFkey: foreignKey({
+			columns: [table.batchId],
+			foreignColumns: [zuvyBatches.id],
+			name: 'zuvy_student_attendance_records_batch_id_fkey'
+		}),
+		zuvyStudentAttendanceRecordsBootcampIdFkey: foreignKey({
+			columns: [table.bootcampId],
+			foreignColumns: [zuvyBootcamps.id],
+			name: 'zuvy_student_attendance_records_bootcamp_id_fkey'
+		}),
+		zuvyStudentAttendanceRecordsSessionIdFkey: foreignKey({
+			columns: [table.sessionId],
+			foreignColumns: [zuvySessions.id],
+			name: 'zuvy_student_attendance_records_session_id_fkey'
+		}),
 	}
 });
 
@@ -4072,6 +4188,9 @@ export const usersRelations = relations(users, ({one, many}) => ({
 
 export const zuvySessionsRelations = relations(zuvySessions, ({one, many}) => ({
 	zuvySessionRecordViewss: many(zuvySessionRecordViews),
+	childMerges: many(zuvySessionMerge, { relationName: 'childSession' }),
+	parentMerges: many(zuvySessionMerge, { relationName: 'parentSession' }),
+	videoRecordings: many(zuvySessionVideoRecordings),
 	zuvyBatches: one(zuvyBatches, {
 		fields: [zuvySessions.batchId],
 		references: [zuvyBatches.id]
@@ -4079,6 +4198,57 @@ export const zuvySessionsRelations = relations(zuvySessions, ({one, many}) => ({
 	zuvyBootcamps: one(zuvyBootcamps, {
 		fields: [zuvySessions.bootcampId],
 		references: [zuvyBootcamps.id]
+	}),
+	module: one(zuvyCourseModules, {
+		fields: [zuvySessions.moduleId],
+		references: [zuvyCourseModules.id]
+	}),
+}));
+
+export const zuvySessionMergeRelations = relations(zuvySessionMerge, ({ one }) => ({
+	childSession: one(zuvySessions, {
+		fields: [zuvySessionMerge.childSessionId],
+		references: [zuvySessions.id],
+		relationName: 'childSession'
+	}),
+	parentSession: one(zuvySessions, {
+		fields: [zuvySessionMerge.parentSessionId],
+		references: [zuvySessions.id],
+		relationName: 'parentSession'
+	}),
+}));
+
+export const zuvySessionVideoRecordingsRelations = relations(zuvySessionVideoRecordings, ({ one }) => ({
+	session: one(zuvySessions, {
+		fields: [zuvySessionVideoRecordings.sessionId],
+		references: [zuvySessions.id],
+	}),
+	batch: one(zuvyBatches, {
+		fields: [zuvySessionVideoRecordings.batchId],
+		references: [zuvyBatches.id],
+	}),
+	bootcamp: one(zuvyBootcamps, {
+		fields: [zuvySessionVideoRecordings.bootcampId],
+		references: [zuvyBootcamps.id],
+	}),
+	user: one(users, {
+		fields: [zuvySessionVideoRecordings.userId],
+		references: [users.id],
+	}),
+}));
+
+export const zuvySessionAttendanceRelations = relations(zuvyStudentAttendanceRecords, ({ one }) => ({
+	user: one(users, {
+		fields: [zuvyStudentAttendanceRecords.userId],
+		references: [users.id],
+	}),
+	batch: one(zuvyBatches, {
+		fields: [zuvyStudentAttendanceRecords.batchId],
+		references: [zuvyBatches.id],
+	}),
+	bootcamp: one(zuvyBootcamps, {
+		fields: [zuvyStudentAttendanceRecords.bootcampId],
+		references: [zuvyBootcamps.id],
 	}),
 }));
 
@@ -4143,11 +4313,6 @@ export const zuvyOpenEndedQuestionsRelations = relations(zuvyOpenEndedQuestions,
 	}),
 	zuvyOutsourseOpenEndedQuestionss_openEndedQuestionId: many(zuvyOutsourseOpenEndedQuestions, {
 		relationName: "zuvyOutsourseOpenEndedQuestions_openEndedQuestionId_zuvyOpenEndedQuestions_id"
-	}),
-	zuvyTags_tagId: one(zuvyTags, {
-		fields: [zuvyOpenEndedQuestions.tagId],
-		references: [zuvyTags.id],
-		relationName: "zuvyOpenEndedQuestions_tagId_zuvyTags_id"
 	}),
 }));
 
