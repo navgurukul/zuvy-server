@@ -280,8 +280,15 @@ export class ContentController {
     description: 'topic Id',
   })
   @ApiBearerAuth('JWT-auth')
-  async getChapterDetailsById(@Param('chapterId') chapterId: number, @Query('bootcampId') bootcampId: number, @Query('moduleId') moduleId: number, @Query('topicId') topicId: number) {
-    return this.contentService.getChapterDetailsById(chapterId, bootcampId, moduleId, topicId);
+  async getChapterDetailsById(
+    @Param('chapterId') chapterId: number, 
+    @Query('bootcampId') bootcampId: number, 
+    @Query('moduleId') moduleId: number, 
+    @Query('topicId') topicId: number,
+    @Req() req
+  ) {
+    const userRole = req.user[0]?.role || 'student';
+    return this.contentService.getChapterDetailsById(chapterId, bootcampId, moduleId, topicId, userRole);
   }
 
   @Put('/editModuleOfBootcamp/:bootcampId')

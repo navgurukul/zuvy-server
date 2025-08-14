@@ -617,7 +617,7 @@ export class ContentService {
     }
   }
 
-  async getChapterDetailsById(chapterId: number, bootcampId: number, moduleId: number, topicId: number) {
+  async getChapterDetailsById(chapterId: number, bootcampId: number, moduleId: number, topicId: number, userRole?: string) {
     try {
       const bootcampInfo = await db.select().from(zuvyBootcamps).where(eq(zuvyBootcamps.id, bootcampId));
       const chapterInfo = await db.select().from(zuvyModuleChapter).where(eq(zuvyModuleChapter.id, chapterId));
@@ -818,7 +818,7 @@ export class ContentService {
               : [];
           modifiedChapterDetails.formQuestionDetails = formDetails;
         } else if (chapterDetails[0].topicId == 8) {
-          // Fetch session data
+          // Fetch session data for live classes with Zoom integration
           const sessionDetails = await db.query.zuvySessions.findMany({
             where: (sessions, { and, eq }) => and(
               eq(sessions.chapterId, chapterId),
@@ -829,29 +829,83 @@ export class ContentService {
               id: true,
               meetingId: true,
               hangoutLink: true,
+              zoomStartUrl: true,
+              isZoomMeet: true,
               creator: true,
               startTime: true,
               endTime: true,
               title: true,
               s3link: true,
-              status: true
+              status: true,
+              hasBeenMerged: true
             }
           });
 
-          // Fetch attendance data for each session
+          // Fetch attendance data and format response for each session
           const sessionDetailsWithAttendance = await Promise.all(
             sessionDetails.map(async (session) => {
-              const attendanceData = await db.query.zuvyStudentAttendance.findFirst({
-                where: (attendance, { eq }) => eq(attendance.meetingId, session.meetingId),
-                columns: {
-                  attendance: true
+
+              // Fetch merge information separately
+              const mergeInfoAsParent = await db.query.zuvySessionMerge.findMany({
+                where: (merge, { eq }) => eq(merge.parentSessionId, session.id),
+                with: {
+                  childSession: {
+                    columns: {
+                      id: true,
+                      title: true,
+                      startTime: true,
+                      endTime: true
+                    }
+                  }
                 }
               });
 
-              return {
-                ...session,
-                attendance: attendanceData?.attendance || null
+              const mergeInfoAsChild = await db.query.zuvySessionMerge.findFirst({
+                where: (merge, { eq }) => eq(merge.childSessionId, session.id),
+                with: {
+                  parentSession: {
+                    columns: {
+                      id: true,
+                      title: true,
+                      hangoutLink: true,
+                      zoomStartUrl: true,
+                      isZoomMeet: true
+                    }
+                  }
+                }
+              });
+
+              // Format session data with role-based response and merge information
+              const formattedSession = {
+                id: session.id,
+                meetingId: session.meetingId,
+                hangoutLink: mergeInfoAsChild 
+                  ? mergeInfoAsChild.parentSession.hangoutLink 
+                  : (session.isZoomMeet ? session.zoomStartUrl : session.hangoutLink), // If child session, use parent's hangoutLink; otherwise use session's hangoutLink/zoomStartUrl
+                creator: session.creator,
+                startTime: session.startTime,
+                endTime: session.endTime,
+                title: session.title,
+                s3link: session.s3link,
+                status: session.status,
+                isZoomMeet: session.isZoomMeet,
+                hasBeenMerged: session.hasBeenMerged,
+                platform: session.isZoomMeet ? 'zoom' : 'google_meet',
+                mergeInfo: {
+                  isMerged: session.hasBeenMerged,
+                  isParentSession: mergeInfoAsParent.length > 0,
+                  isChildSession: !!mergeInfoAsChild,
+                  childSessions: mergeInfoAsParent.map(merge => merge.childSession),
+                  parentSession: mergeInfoAsChild?.parentSession || null
+                }
               };
+
+              // Add zoomStartUrl for admin users if it's a Zoom meeting
+              if (session.isZoomMeet && session.zoomStartUrl && userRole !== 'admin') {
+                formattedSession['hangoutLink'] = session.hangoutLink;
+              }
+
+              return formattedSession;
             })
           );
 
