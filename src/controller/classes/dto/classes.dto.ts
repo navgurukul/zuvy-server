@@ -104,17 +104,6 @@ export class CreateSessionDto {
   batchId?: number;
 
   @ApiProperty({
-    description: 'Array of batch IDs if the session should be created for multiple batches. Either batchId or batchIds is required.',
-    type: [Number],
-    example: [327, 328],
-    required: false,
-  })
-  @IsOptional()
-  @IsArray()
-  @IsNumber({}, { each: true })
-  batchIds?: number[];
-
-  @ApiProperty({
     description: 'Optional second batch id (legacy support for exactly two batches). Prefer using batchIds array for >2.',
     type: Number,
     required: false,
