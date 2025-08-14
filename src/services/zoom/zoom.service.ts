@@ -126,12 +126,7 @@ export class ZoomService {
   private readonly baseUrl = 'https://api.zoom.us/v2';
   private accessToken: string;
 
-  constructor() {
-    this.accessToken = '';
-    this.generateAccessToken();
-  }
-
-  private async generateAccessToken(): Promise<void> {
+  private async generateAccessToken(): Promise<{ accessToken: string }> {
     const tokenUrl = 'https://zoom.us/oauth/token';
     const authHeader = Buffer.from(`${process.env.ZOOM_CLIENT_ID}:${process.env.ZOOM_CLIENT_SECRET}`).toString('base64');
 
@@ -150,18 +145,20 @@ export class ZoomService {
         }
       );
         
-      this.accessToken = response.data.access_token;
-      console.log('Zoom access token generated successfully:', this.accessToken);
+      let accessToken = response.data.access_token;
+      console.log('Zoom access token generated successfully:',accessToken);
       this.logger.log('Zoom access token generated successfully.');
+      return { accessToken };
     } catch (error) {
       this.logger.error(`Error generating Zoom access token: ${error.response?.data || error.message}`);
       throw new Error('Failed to generate Zoom access token.');
     }
   }
 
-  private getHeaders() {
+  private async getHeaders() {
+    let { accessToken } = await this.generateAccessToken();
     return {
-      'Authorization': `Bearer ${this.accessToken}`,
+      'Authorization': `Bearer ${accessToken}`,
       'Content-Type': 'application/json',
     };
   }
@@ -176,7 +173,7 @@ export class ZoomService {
       const response: AxiosResponse<ZoomMeetingResponse> = await axios.post(
         url,
         meetingData,
-        { headers: this.getHeaders() }
+        { headers: await this.getHeaders() }
       );
 
       this.logger.log(`Zoom meeting created successfully: ${response.data.id}`);
@@ -197,7 +194,7 @@ export class ZoomService {
     try {
       const url = `${this.baseUrl}/meetings/${meetingId}`;
       
-      await axios.patch(url, meetingData, { headers: this.getHeaders() });
+      await axios.patch(url, meetingData, { headers: await this.getHeaders() });
       
       this.logger.log(`Zoom meeting updated successfully: ${meetingId}`);
     } catch (error) {
@@ -213,7 +210,7 @@ export class ZoomService {
     try {
       const url = `${this.baseUrl}/meetings/${meetingId}`;
       
-      await axios.delete(url, { headers: this.getHeaders() });
+      await axios.delete(url, { headers: await this.getHeaders() });
       
       this.logger.log(`Zoom meeting deleted successfully: ${meetingId}`);
     } catch (error) {
@@ -231,7 +228,7 @@ export class ZoomService {
       
       const response: AxiosResponse<ZoomMeetingResponse> = await axios.get(
         url,
-        { headers: this.getHeaders() }
+        { headers: await this.getHeaders() }
       );
 
       return { success: true, data: response.data };
@@ -255,7 +252,7 @@ export class ZoomService {
       
       const response: AxiosResponse<ZoomAttendanceResponse> = await axios.get(
         url,
-        { headers: this.getHeaders() }
+        { headers: await this.getHeaders() }
       );
 
       return response.data;
@@ -274,7 +271,7 @@ export class ZoomService {
       
       const response: AxiosResponse<any> = await axios.get(
         url,
-        { headers: this.getHeaders() }
+        { headers: await this.getHeaders() }
       );
 
       return response.data;
