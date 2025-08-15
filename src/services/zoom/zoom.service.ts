@@ -1,5 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 import axios, { AxiosResponse } from 'axios';
+import { db } from '../../db';
+import { zuvySessions, AttendanceStatus } from '../../../drizzle/schema';
+import { eq } from 'drizzle-orm';
 
 export interface ZoomMeetingRequest {
   topic: string;
@@ -124,9 +127,11 @@ export interface ZoomAttendanceResponse {
 export class ZoomService {
   private readonly logger = new Logger(ZoomService.name);
   private readonly baseUrl = 'https://api.zoom.us/v2';
-  private accessToken: string;
+  // Simple in-memory token cache (process lifetime). Avoids generating a new token for every request.
+  private tokenCache: { accessToken: string; expiresAt: number } | null = null;
+  private tokenRefreshPromise: Promise<string> | null = null;
 
-  private async generateAccessToken(): Promise<{ accessToken: string }> {
+  private async generateAccessToken(): Promise<{ accessToken: string; expiresIn: number }> {
     const tokenUrl = 'https://zoom.us/oauth/token';
     const authHeader = Buffer.from(`${process.env.ZOOM_CLIENT_ID}:${process.env.ZOOM_CLIENT_SECRET}`).toString('base64');
 
@@ -144,11 +149,12 @@ export class ZoomService {
           },
         }
       );
-        
-      let accessToken = response.data.access_token;
-      console.log('Zoom access token generated successfully:',accessToken);
-      this.logger.log('Zoom access token generated successfully.');
-      return { accessToken };
+      const accessToken = response.data.access_token;
+      const expiresIn: number = Number(response.data.expires_in) || 3500; // seconds
+      const expiresAt = Date.now() + (expiresIn * 1000);
+      this.tokenCache = { accessToken, expiresAt };
+      this.logger.log(`Zoom access token generated successfully (expires in ${expiresIn}s).`);
+      return { accessToken, expiresIn };
     } catch (error) {
       this.logger.error(`Error generating Zoom access token: ${error.response?.data || error.message}`);
       throw new Error('Failed to generate Zoom access token.');
@@ -156,11 +162,29 @@ export class ZoomService {
   }
 
   private async getHeaders() {
-    let { accessToken } = await this.generateAccessToken();
-    return {
-      'Authorization': `Bearer ${accessToken}`,
-      'Content-Type': 'application/json',
-    };
+    try {
+      // Reuse valid token if not near expiry (60s buffer)
+      if (this.tokenCache && Date.now() < this.tokenCache.expiresAt - 60_000) {
+        return {
+          Authorization: `Bearer ${this.tokenCache.accessToken}`,
+          'Content-Type': 'application/json',
+        };
+      }
+      // Prevent thundering herd: reuse in-flight refresh promise
+      if (!this.tokenRefreshPromise) {
+        this.tokenRefreshPromise = this.generateAccessToken()
+          .then(r => r.accessToken)
+          .finally(() => { this.tokenRefreshPromise = null; });
+      }
+      const newToken = await this.tokenRefreshPromise;
+      return {
+        Authorization: `Bearer ${newToken}`,
+        'Content-Type': 'application/json',
+      };
+    } catch (e) {
+      this.logger.error(`Failed to obtain Zoom headers: ${e.message}`);
+      throw e;
+    }
   }
 
   /**
@@ -184,6 +208,124 @@ export class ZoomService {
         success: false, 
         error: `Failed to create Zoom meeting: ${error.response?.data?.message || error.message}` 
       };
+    }
+  }
+
+  // Re-added helper: create meeting for specific user (email or userId)
+  async createMeetingForUser(userEmailOrId: string, meetingData: ZoomMeetingRequest): Promise<{ success: boolean; data?: ZoomMeetingResponse; error?: string }> {
+    try {
+      const url = `${this.baseUrl}/users/${encodeURIComponent(userEmailOrId)}/meetings`;
+      const response: AxiosResponse<ZoomMeetingResponse> = await axios.post(url, meetingData, { headers: await this.getHeaders() });
+      this.logger.log(`Zoom meeting (host=${userEmailOrId}) created: ${response.data.id}`);
+      return { success: true, data: response.data };
+    } catch (error: any) {
+      this.logger.error(`Error creating Zoom meeting for ${userEmailOrId}: ${error.response?.data || error.message}`);
+      return { success: false, error: error.response?.data?.message || error.message };
+    }
+  }
+
+  // Public so controller can fetch directly
+  async getUser(email: string) {
+    try {
+      const url = `${this.baseUrl}/users/${encodeURIComponent(email)}`;
+      const res = await axios.get(url, { headers: await this.getHeaders() });
+      return { success: true, data: res.data };
+    } catch (e: any) {
+      return { success: false, error: e.response?.data?.message || e.message };
+    }
+  }
+
+  async createUser(email: string, firstName = '', lastName = '') {
+    try {
+      const url = `${this.baseUrl}/users`;
+      const payload = { action: 'create', user_info: { email, type: 1, first_name: firstName, last_name: lastName } };
+      const res = await axios.post(url, payload, { headers: await this.getHeaders() });
+      return { success: true, data: res.data };
+    } catch (e: any) {
+      return { success: false, error: e.response?.data?.message || e.message };
+    }
+  }
+
+  async setUserLicense(email: string, type: 1|2|3) {
+    try {
+      const url = `${this.baseUrl}/users/${encodeURIComponent(email)}`;
+      await axios.patch(url, { type }, { headers: await this.getHeaders() });
+      return { success: true };
+    } catch (e: any) {
+      return { success: false, error: e.response?.data?.message || e.message };
+    }
+  }
+
+  /**
+   * Ensure a user exists and is licensed. Returns detailed status so caller can decide
+   * whether to include as alternative host (Zoom requires Licensed + Active user).
+   */
+  async ensureLicensedUser(email: string, firstName = '', lastName = ''): Promise<{
+    success: boolean;
+    step?: string;
+    error?: string;
+    userType?: number;
+    userStatus?: string;
+    licensed?: boolean;
+  }> {
+    const user = await this.getUser(email);
+    if (!user.success) {
+      const created = await this.createUser(email, firstName, lastName);
+      if (!created.success) return { success: false, step: 'create', error: created.error };
+      // After creation, fetch again to inspect status
+    }
+    const afterCreate = await this.getUser(email);
+    if (!afterCreate.success) return { success: false, step: 'fetch', error: afterCreate.error };
+
+    // Attempt to license if not already licensed (type 2)
+    if (afterCreate.data.type !== 2) {
+      const licensed = await this.setUserLicense(email, 2);
+      if (!licensed.success) return { success: false, step: 'license', error: licensed.error, userType: afterCreate.data.type };
+    }
+
+    // Final verification
+    const finalUser = await this.getUser(email);
+    if (!finalUser.success) return { success: false, step: 'verify', error: finalUser.error };
+    const userType = finalUser.data.type;
+    const userStatus = finalUser.data.status; // expect 'active'
+    const licensed = userType === 2 && userStatus === 'active';
+    return { success: true, userType, userStatus, licensed };
+  }
+
+  /** Downgrade a user to Basic (type=1) */
+  async downgradeUser(email: string) {
+    const res = await this.setUserLicense(email, 1);
+    if (!res.success) return { success: false, error: res.error };
+    return { success: true };
+  }
+
+  /** Update user profile / license */
+  async updateUser(update: { email: string; firstName?: string; lastName?: string; displayName?: string; phoneNumber?: string; timezone?: string; type?: 1|2|3 }) {
+    try {
+      const url = `${this.baseUrl}/users/${encodeURIComponent(update.email)}`;
+      const body: any = {};
+      if (update.firstName) body.first_name = update.firstName;
+      if (update.lastName) body.last_name = update.lastName;
+      if (update.timezone) body.timezone = update.timezone;
+      if (update.type) body.type = update.type;
+      // displayName / phoneNumber not always supported; include if provided
+      if (update.displayName) body.display_name = update.displayName;
+      if (update.phoneNumber) body.phone_number = update.phoneNumber;
+      await axios.patch(url, body, { headers: await this.getHeaders() });
+      return { success: true };
+    } catch (e: any) {
+      return { success: false, error: e.response?.data?.message || e.message };
+    }
+  }
+
+  /** List meetings for the authenticated (team) user */
+  async listUserMeetings(type: string = 'upcoming') {
+    try {
+      const url = `${this.baseUrl}/users/me/meetings?type=${encodeURIComponent(type)}`;
+      const res = await axios.get(url, { headers: await this.getHeaders() });
+      return { success: true, data: res.data };
+    } catch (e: any) {
+      return { success: false, error: e.response?.data?.message || e.message };
     }
   }
 
@@ -273,11 +415,80 @@ export class ZoomService {
         url,
         { headers: await this.getHeaders() }
       );
-
-      return response.data;
+      return response.data.share_url;
     } catch (error) {
       this.logger.error(`Error fetching Zoom meeting recordings: ${error.response?.data || error.message}`);
       throw new Error(`Failed to fetch Zoom meeting recordings: ${error.response?.data?.message || error.message}`);
+    }
+  }
+
+  /**
+   * Compute attendance & recordings at a 70% threshold of host duration.
+   * This method only queries Zoom APIs; persistence is handled by caller.
+   */
+  async computeAttendanceAndRecordings70(meetingId: string | string[], hostEmail = 'team@zuvy.org') {
+    // Support array input without breaking existing callers expecting single object
+    if (Array.isArray(meetingId)) {
+      const results = [] as any[];
+      for (const id of meetingId) {
+        const single = await this.computeAttendanceAndRecordings70(id, hostEmail);
+        results.push({ meetingId: id, ...single });
+      }
+      return { success: true, data: results };
+    }
+    const singleMeetingId = meetingId; // alias for clarity
+    try {
+      const participantsResp = await this.getMeetingParticipants(singleMeetingId);
+      const hostDuration = (participantsResp.participants || [])
+        .filter(p => p.user_email === hostEmail)
+        .reduce((a, b) => a + (b.duration || 0), 0);
+      const thresholdRatio = 0.70;
+      const threshold = hostDuration * thresholdRatio;
+      // Build a map of user -> total duration
+      const durationMap: Record<string, number> = {};
+      for (const p of participantsResp.participants || []) {
+        if (!p.user_email) continue;
+        durationMap[p.user_email] = (durationMap[p.user_email] || 0) + (p.duration || 0);
+      }
+      // Base attendance from participants
+      const attendanceMap: Record<string, { email: string; duration: number; attendance: AttendanceStatus }> = {};
+      for (const [email, dur] of Object.entries(durationMap)) {
+        attendanceMap[email] = {
+          email,
+          duration: dur,
+          attendance: dur >= threshold ? AttendanceStatus.PRESENT : AttendanceStatus.ABSENT
+        };
+      }
+      // Fetch invitedStudents snapshot for the session (if any) to mark absent ones
+      try {
+        const sessionRows = await db
+          .select({ invitedStudents: zuvySessions.invitedStudents })
+          .from(zuvySessions)
+          .where(eq(zuvySessions.zoomMeetingId, singleMeetingId))
+          .limit(1);
+        if (sessionRows.length) {
+          const invited = sessionRows[0].invitedStudents || [];
+          for (const student of invited) {
+            if (!student.email) continue;
+            if (!attendanceMap[student.email]) {
+              attendanceMap[student.email] = {
+                email: student.email,
+                duration: 0,
+                attendance: AttendanceStatus.ABSENT
+              };
+            }
+          }
+        }
+      } catch (subErr: any) {
+        this.logger.warn(`Failed to enrich attendance with invitedStudents for meeting ${singleMeetingId}: ${subErr.message}`);
+      }
+      const attendance = Object.values(attendanceMap);
+      const recordings = await this.getMeetingRecordings(singleMeetingId).catch(() => null);
+      console.log(recordings);
+      return { success: true, data: { meetingId: singleMeetingId, thresholdRatio, hostDuration, threshold, attendance, recordings } };
+    } catch (e:any) {
+      this.logger.error(`computeAttendanceAndRecordings70 failed: ${e.message}`);
+      return { success: false, error: e.message };
     }
   }
 
