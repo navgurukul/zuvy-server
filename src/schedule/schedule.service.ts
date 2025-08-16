@@ -6,13 +6,15 @@ import {
   zuvyBatchEnrollments,
   users,
   zuvyStudentAttendance,
+  zuvyStudentAttendanceRecords,
   zuvyOutsourseAssessments
 } from '../../drizzle/schema';
 import { db } from '../db/index';
-import { eq, sql, isNull, and, gte, lt } from 'drizzle-orm';
+import { eq, sql, isNull, and, gte, lt, inArray } from 'drizzle-orm';
 import { google } from 'googleapis';
 import { SubmissionService } from '../controller/submissions/submission.service';
 import { ClassesService } from '../controller/classes/classes.service';
+import { ZoomService } from '../services/zoom/zoom.service';
 
 const { OAuth2 } = google.auth;
 const auth2Client = new OAuth2(
@@ -38,7 +40,7 @@ export class ScheduleService {
   ];
   private readonly submissionService: SubmissionService = new SubmissionService();
 
-  constructor(private readonly classesService: ClassesService) {
+  constructor(private readonly classesService: ClassesService, private readonly zoomService: ZoomService) {
     // Initialize the interval when the service starts
     this.handleDynamicScheduling();
   }
@@ -390,6 +392,157 @@ export class ScheduleService {
       this.logger.log('Zoom attendance processing completed');
     } catch (error) {
       this.logger.error(`Error processing Zoom attendance: ${error.message}`);
+    }
+  }
+
+  // Daily midnight job (server timezone) to backfill attendance from invited_students snapshot.
+  // Runs at 00:00:05 to avoid exact midnight race with other processes.
+  @Cron('5 0 0 * * *')
+  async backfillInvitedStudentsAttendanceMidnight() {
+    this.logger.log('Midnight cron: Backfilling attendance from invited_students');
+    try {
+      // 1. Find completed Zoom sessions that have invitedStudents snapshot and no attendance stored
+      const completedZoomSessions = await db
+        .select({ id: zuvySessions.id, meetingId: zuvySessions.meetingId, zoomMeetingId: zuvySessions.zoomMeetingId, batchId: zuvySessions.batchId, bootcampId: zuvySessions.bootcampId, invitedStudents: zuvySessions.invitedStudents, isZoomMeet: zuvySessions.isZoomMeet, startTime: zuvySessions.startTime })
+        .from(zuvySessions)
+        .where(and(eq(zuvySessions.status, 'completed'), eq(zuvySessions.isZoomMeet, true)));
+
+      if (!completedZoomSessions.length) {
+        this.logger.log('No completed Zoom sessions found for backfill');
+        return;
+      }
+
+      // Filter out those already having attendance
+      const meetingIds = completedZoomSessions.map(s => s.meetingId).filter(Boolean);
+      if (!meetingIds.length) {
+        this.logger.log('No meetingIds present on completed sessions');
+        return;
+      }
+      const existingAttendance = await db
+        .select({ meetingId: zuvyStudentAttendance.meetingId })
+        .from(zuvyStudentAttendance)
+        .where(inArray(zuvyStudentAttendance.meetingId, meetingIds));
+      const existingSet = new Set(existingAttendance.map(e => e.meetingId));
+      const sessionsNeedingBackfill = completedZoomSessions.filter(s => !existingSet.has(s.meetingId));
+
+      if (!sessionsNeedingBackfill.length) {
+        this.logger.log('All completed zoom sessions already have attendance');
+        return;
+      }
+
+      // Collect zoomMeetingIds (needed for Zoom API) ensuring they exist
+      const zoomIds = sessionsNeedingBackfill
+        .map(s => s.zoomMeetingId)
+        .filter(id => !!id);
+      if (!zoomIds.length) {
+        this.logger.log('No zoomMeetingIds to backfill');
+        return;
+      }
+
+      this.logger.log(`Backfilling attendance for ${zoomIds.length} Zoom meetings`);
+      const compute = await this.zoomService.computeAttendanceAndRecordings75(zoomIds as any);
+      const computeAny: any = compute; // normalize to any for flexible shape handling
+      if (!computeAny.success) {
+        this.logger.error(`computeAttendanceAndRecordings75 failed (batch): ${computeAny.error}`);
+        return;
+      }
+
+      // Normalise compute response: it can be {success:true,data:{meetingId,..}} or {success:true,data:[...]}
+      let resultsArray: any[] = [];
+      if (Array.isArray(computeAny.data)) {
+        resultsArray = computeAny.data;
+      } else if (computeAny.data && Array.isArray((computeAny.data as any).data)) {
+        resultsArray = (computeAny.data as any).data;
+      } else if (computeAny.data) {
+        resultsArray = [computeAny.data];
+      }
+  let inserted = 0;
+  const perStudentRecords: any[] = [];
+      for (const result of resultsArray) {
+        const meetingIdMatch = sessionsNeedingBackfill.find(s => s.zoomMeetingId === result.meetingId);
+        if (!meetingIdMatch) continue;
+        try {
+          // Insert aggregated attendance JSON if not already (double-check to avoid race)
+          const existingAgg = await db.select({ id: zuvyStudentAttendance.id })
+            .from(zuvyStudentAttendance)
+            .where(eq(zuvyStudentAttendance.meetingId, meetingIdMatch.meetingId))
+            .limit(1);
+
+          if (!existingAgg.length) {
+            await db.insert(zuvyStudentAttendance).values({
+              meetingId: meetingIdMatch.meetingId,
+              attendance: result.attendance,
+              batchId: meetingIdMatch.batchId,
+              bootcampId: meetingIdMatch.bootcampId
+            });
+          }
+
+          // Update session recording link if we got one
+          if (result.recordings) {
+            try {
+              const currentSession = await db.select({ s3link: zuvySessions.s3link })
+                .from(zuvySessions)
+                .where(eq(zuvySessions.id, meetingIdMatch.id))
+                .limit(1);
+              const existingLink = currentSession[0]?.s3link;
+              if (!existingLink || existingLink === 'not found') {
+                const updateData: any = { s3link: result.recordings };
+                await (db as any).update(zuvySessions)
+                  .set(updateData)
+                  .where(eq(zuvySessions.id, meetingIdMatch.id));
+              }
+            } catch (recErr:any) {
+              this.logger.warn(`Failed updating recording link for session ${meetingIdMatch.id}: ${recErr.message}`);
+            }
+          }
+
+          // Build per-student attendance records using invitedStudents snapshot as authoritative list
+            const invited = Array.isArray(meetingIdMatch.invitedStudents) ? meetingIdMatch.invitedStudents : [];
+            const invitedByEmail = new Map(invited.map(i => [i.email, i]));
+            const attendanceArray = Array.isArray(result.attendance) ? result.attendance : [];
+            const sessionDate = meetingIdMatch.startTime ? new Date(meetingIdMatch.startTime) : new Date();
+
+            // Fetch existing records for this session to prevent duplicates
+            const existingRecords = await db.select({ userId: zuvyStudentAttendanceRecords.userId })
+              .from(zuvyStudentAttendanceRecords)
+              .where(eq(zuvyStudentAttendanceRecords.sessionId, meetingIdMatch.id));
+            const existingUserSet = new Set(existingRecords.map(r => r.userId));
+
+            for (const att of attendanceArray) {
+              const invitedInfo: any = invitedByEmail.get(att.email);
+              if (!invitedInfo || !invitedInfo.userId) continue; // Only record for invited snapshot users
+              if (existingUserSet.has(invitedInfo.userId)) continue; // Skip duplicates
+              perStudentRecords.push({
+                userId: invitedInfo.userId,
+                batchId: meetingIdMatch.batchId,
+                bootcampId: meetingIdMatch.bootcampId,
+                sessionId: meetingIdMatch.id,
+                attendanceDate: sessionDate,
+                status: att.attendance === 'present' ? 'present' : 'absent',
+                duration: att.duration || 0
+              });
+            }
+          inserted++;
+        } catch (innerErr:any) {
+          this.logger.warn(`Failed to insert attendance for meeting ${result.meetingId}: ${innerErr.message}`);
+        }
+      }
+      // Batch insert per-student records once (chunk if large)
+      if (perStudentRecords.length) {
+        const CHUNK_SIZE = 1000;
+        for (let i = 0; i < perStudentRecords.length; i += CHUNK_SIZE) {
+          const slice = perStudentRecords.slice(i, i + CHUNK_SIZE);
+          try {
+            await db.insert(zuvyStudentAttendanceRecords).values(slice);
+          } catch (bulkErr:any) {
+            this.logger.error(`Bulk insert failure for records ${i}-${i+slice.length-1}: ${bulkErr.message}`);
+          }
+        }
+        this.logger.log(`Inserted ${perStudentRecords.length} per-student attendance records in ${Math.ceil(perStudentRecords.length/1000)} batch(es).`);
+      }
+      this.logger.log(`Backfill complete. Inserted attendance for ${inserted} meetings.`);
+    } catch (error) {
+      this.logger.error(`Unexpected error in backfillInvitedStudentsAttendanceMidnight: ${error.message}`);
     }
   }
 

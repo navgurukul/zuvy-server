@@ -837,10 +837,13 @@ export class ContentService {
               title: true,
               s3link: true,
               status: true,
-              hasBeenMerged: true
+              hasBeenMerged: true,
+              batchId: true,
+              secondBatchId: true
             }
           });
-
+          
+          
           // Fetch attendance data and format response for each session
           const sessionDetailsWithAttendance = await Promise.all(
             sessionDetails.map(async (session) => {
@@ -874,14 +877,19 @@ export class ContentService {
                   }
                 }
               });
-
+              
+              let userJoinLink =  mergeInfoAsChild 
+                  ? mergeInfoAsChild.parentSession.hangoutLink
+                  : (session.isZoomMeet ? session.zoomStartUrl : session.hangoutLink);
+              if (userRole.include('admin') || userRole.include('instructor')) {
+                // If the user is an admin or instructor, use the session's zoomStartUrl or hangoutLink
+                userJoinLink = session.isZoomMeet ? session.zoomStartUrl : session.hangoutLink;
+              }
               // Format session data with role-based response and merge information
               const formattedSession = {
                 id: session.id,
                 meetingId: session.meetingId,
-                hangoutLink: mergeInfoAsChild 
-                  ? mergeInfoAsChild.parentSession.hangoutLink 
-                  : (session.isZoomMeet ? session.zoomStartUrl : session.hangoutLink), // If child session, use parent's hangoutLink; otherwise use session's hangoutLink/zoomStartUrl
+                hangoutLink: userJoinLink, // If child session, use parent's hangoutLink; otherwise use session's hangoutLink/zoomStartUrl
                 creator: session.creator,
                 startTime: session.startTime,
                 endTime: session.endTime,
@@ -899,11 +907,6 @@ export class ContentService {
                   parentSession: mergeInfoAsChild?.parentSession || null
                 }
               };
-
-              // Add zoomStartUrl for admin users if it's a Zoom meeting
-              if (session.isZoomMeet && session.zoomStartUrl && userRole !== 'admin') {
-                formattedSession['hangoutLink'] = session.hangoutLink;
-              }
 
               return formattedSession;
             })
