@@ -1281,6 +1281,7 @@ export class ClassesService {
           eq(zuvySessions.bootcampId, bootcamp_id),
           sql`${zuvySessions.status} not in ('completed')`,
           !isNaN(batch_id) ? eq(zuvySessions.batchId, batch_id) : undefined,
+          !isNaN(batch_id) ? eq(zuvySessions.secondBatchId, batch_id) : undefined,
           chapterId ? eq(zuvySessions.chapterId, chapterId) : undefined
         ));
 
