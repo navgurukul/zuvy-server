@@ -838,56 +838,53 @@ export class TrackingService {
     }
   }
 
-  async getChapterDetailsWithStatus(chapterId: number, userId: number) {
+ async getChapterDetailsWithStatus(chapterId: number, userId: number) {
     try {
+      // This initial block to update class status can remain the same
       const chapter = await db.query.zuvyModuleChapter.findFirst({
         where: (moduleChapter, { eq }) => eq(moduleChapter.id, chapterId),
       });
 
       if (chapter) {
-        const bootcamp = await db.query.zuvyCourseModules.findFirst({
+        const courseModule = await db.query.zuvyCourseModules.findFirst({
           where: (cm, { eq }) => eq(cm.id, chapter.moduleId),
           columns: { bootcampId: true }
         });
-        const enrollment = await db.query.zuvyBatchEnrollments.findFirst({
-          where: (be, { and, eq }) => and(
-            eq(be.userId, BigInt(userId)),
-            eq(be.bootcampId, bootcamp.bootcampId)
-          ),
-          columns: { batchId: true }
-        });
-        if (bootcamp && enrollment) {
-          await this.classesService.updatingStatusOfClass(bootcamp.bootcampId, enrollment.batchId, chapterId);
+        if (courseModule?.bootcampId) {
+          const enrollment = await db.query.zuvyBatchEnrollments.findFirst({
+            where: (be, { and, eq }) => and(
+              eq(be.userId, BigInt(userId)),
+              eq(be.bootcampId, courseModule.bootcampId)
+            ),
+            columns: { batchId: true }
+          });
+          if (enrollment?.batchId) {
+            await this.classesService.updatingStatusOfClass(courseModule.bootcampId, enrollment.batchId, chapterId);
+          }
         }
-      }
-      else {
+      } else {
         throw new NotFoundException('Chapter not found or deleted by admin!');
       }
 
+      // Fetch the chapter details along with user-specific tracking info
       const trackingData = await db.query.zuvyModuleChapter.findFirst({
         where: (moduleChapter, { eq }) => eq(moduleChapter.id, chapterId),
-        orderBy: (moduleChapter, { asc }) => asc(moduleChapter.order),
         with: {
           chapterTrackingDetails: {
-            columns: {
-              id: true,
-            },
+            columns: { id: true },
             where: (chapterTracking, { eq }) =>
               eq(chapterTracking.userId, BigInt(userId)),
           }
         },
       });
 
-      // Get user's email for attendance matching
-      const userDetails = await db.query.users.findFirst({
-        where: (users, { eq }) => eq(users.id, BigInt(userId)),
-        columns: {
-          email: true
-        }
-      });
-
-      // Get sessions separately
-      const sessions = await db.query.zuvySessions.findMany({
+      if (!trackingData) {
+        // This case should be handled as the chapter was confirmed to exist above
+        throw new NotFoundException('Chapter details could not be fetched.');
+      }
+      
+      // Fetch the single session linked to this chapter
+      const session = await db.query.zuvySessions.findFirst({
         where: (sessions, { eq }) => eq(sessions.chapterId, chapterId),
         columns: {
           id: true,
@@ -897,66 +894,102 @@ export class TrackingService {
           endTime: true,
           title: true,
           s3link: true,
-          status: true
+          status: true,
+          isZoomMeet: true,
+          batchId:true,
+          bootcampId:true // Fetch the new flag
         }
       });
+      
+      // If a session exists, fetch its attendance conditionally
+      if (session) {
+        let attendanceStatus = 'absent';
+        let durationSeconds = 0;
 
-      // Get attendance data for all sessions
-      const meetingIds = sessions.map(s => s.meetingId);
-      const attendanceData = await db.query.zuvyStudentAttendance.findMany({
-        where: (attendance, { inArray }) => inArray(attendance.meetingId, meetingIds),
-        columns: {
-          meetingId: true,
-          attendance: true
-        }
-      });
+        // ✅ --- NEW CONDITIONAL LOGIC ---
+        if (session.isZoomMeet === true) {
+          // --- Zoom Path: Fetch from zuvy_student_attendance_records ---
+          const zoomAttendance = await db.query.zuvyStudentAttendanceRecords.findFirst({
+              where: (rec, { and, eq }) => and(
+                  eq(rec.sessionId, session.id),
+                  eq(rec.userId, userId)
+              ),
+              columns: { status: true, duration: true }
+          });
 
-      // Map attendance data to sessions
-      if (sessions.length > 0) {
-        trackingData['sessions'] = sessions.map(session => {
-          // Set default attendance as absent
-          let attendanceStatus = 'absent';
-          let durationSeconds = '0';
+          if (zoomAttendance) {
+              attendanceStatus = zoomAttendance.status;
+              durationSeconds = zoomAttendance.duration ?? 0;
+          }
+        } else {
+          // --- Google Meet Path (Original Logic): Fetch from zuvy_student_attendance ---
+          const userDetails = await db.query.users.findFirst({
+            where: (users, { eq }) => eq(users.id, BigInt(userId)),
+            columns: { email: true }
+          });
+          
+          const sessionAttendance = await db.query.zuvyStudentAttendance.findFirst({
+              where: (att, { eq }) => eq(att.meetingId, session.meetingId),
+              columns: { attendance: true }
+          });
 
-          // Find attendance data for this session
-          const sessionAttendance = attendanceData.find(a => a.meetingId === session.meetingId);
-
-          if (sessionAttendance?.attendance) {
-            const attendanceArray = sessionAttendance.attendance as any[];
-            const studentAttendance = attendanceArray.find((record: any) =>
-              record.email === userDetails?.email || record.student === userDetails?.email
+          if (sessionAttendance?.attendance && userDetails?.email) {
+            const attendanceArray = Array.isArray(sessionAttendance.attendance) ? sessionAttendance.attendance as any[] : [];
+            const studentAttendance = attendanceArray.find((record: any) => 
+                (record.email || record.student)?.toLowerCase() === userDetails.email.toLowerCase()
             );
+
             if (studentAttendance) {
               attendanceStatus = studentAttendance.attendance || 'absent';
-              durationSeconds = studentAttendance.duration || '0';
+              // Ensure duration is treated as a number
+              durationSeconds = Number(studentAttendance.duration) || 0;
             }
           }
+        }
+        // ✅ --- END OF CONDITIONAL LOGIC ---
 
-          // Convert seconds to minutes
-          const durationMinutes = Math.floor(parseInt(durationSeconds) / 60);
+        const durationMinutes = Math.round(durationSeconds / 60);
 
-          return {
-            ...session,
-            attendance: attendanceStatus,
-            duration: durationMinutes
-          };
-        });
+        // Attach the session with attendance details to the response
+        trackingData['sessions'] = [{
+          ...session,
+          attendance: attendanceStatus,
+          duration: durationMinutes
+        }];
+      } else {
+        trackingData['sessions'] = []; // Ensure sessions is an empty array if none found
       }
-
       trackingData['status'] =
-        trackingData['chapterTrackingDetails'].length > 0
+        trackingData.chapterTrackingDetails.length > 0
           ? 'Completed'
           : 'Pending';
-
+      if(trackingData['sessions'].length > 0 && trackingData['sessions'][0].status === 'completed') {
+        if(trackingData['sessions'][0].attendance === 'present') {
+           await this.updateChapterStatus(trackingData['sessions'][0].bootcampId, userId, trackingData['moduleId'], chapterId);
+           trackingData['status'] = 'Completed';
+           const newLiveChapterStatusId = await db.select({id:zuvyChapterTracking.id}).from(zuvyChapterTracking).where(
+             sql`${zuvyChapterTracking.userId} = ${userId} AND ${zuvyChapterTracking.chapterId} = ${chapterId}`
+           )
+            if (newLiveChapterStatusId.length > 0) {
+              trackingData['chapterTrackingDetails'] = newLiveChapterStatusId;
+            } else {
+              trackingData['chapterTrackingDetails'] = [];
+            }
+        }
+      }
+      
+      
       return {
         status: 'success',
         code: 200,
         trackingData,
       };
     } catch (err) {
+      // Re-throw the error to be handled by NestJS's global exception filter
       throw err;
     }
   }
+
 
   async getAllQuizAndAssignmentWithStatus(
     userId: number,
