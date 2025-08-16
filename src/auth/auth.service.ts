@@ -172,7 +172,7 @@ export class AuthService {
 
       // Generate new tokens
       const newPayload = {
-        sub: user.id,
+        sub: user.id.toString(),
         email: user.email,
         googleUserId: user.googleUserId,
         role: user.mode
@@ -180,7 +180,6 @@ export class AuthService {
 
       const newAccessToken = this.jwtService.sign(newPayload);
       const newRefreshToken = this.jwtService.sign(newPayload, { expiresIn: '7d' });
-
       // Blacklist the old refresh token
       const decoded = this.jwtService.decode(refreshToken) as { exp: number };
       const expiresAt = new Date(decoded.exp * 1000).toISOString();
