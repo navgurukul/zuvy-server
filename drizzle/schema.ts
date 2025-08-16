@@ -2306,6 +2306,7 @@ export const zuvyStudentAttendanceRecords = main.table('zuvy_student_attendance_
   status: varchar('status', { length: 10 }).notNull().default(AttendanceStatus.ABSENT),
   version: varchar('version', { length: 10 }),
   duration: integer('duration').default(0), // Duration in seconds
+  createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
 }); 
 
 export const zuvySessionAttendanceRelations = relations(zuvyStudentAttendanceRecords, ({ one }) => ({

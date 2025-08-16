@@ -287,9 +287,7 @@ export class ContentController {
     @Query('topicId') topicId: number,
     @Req() req
   ) {
-    console.log('user: ', req.user[0])
     const userRole = req.user[0]?.roles;
-
     return this.contentService.getChapterDetailsById(chapterId, bootcampId, moduleId, topicId, userRole);
   }
 
