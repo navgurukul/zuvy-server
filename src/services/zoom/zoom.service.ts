@@ -423,15 +423,15 @@ export class ZoomService {
   }
 
   /**
-   * Compute attendance & recordings at a 70% threshold of host duration.
+   * Compute attendance & recordings at a 75% threshold of host duration.
    * This method only queries Zoom APIs; persistence is handled by caller.
    */
-  async computeAttendanceAndRecordings70(meetingId: string | string[], hostEmail = 'team@zuvy.org') {
+  async computeAttendanceAndRecordings75(meetingId: string | string[], hostEmail = 'team@zuvy.org') {
     // Support array input without breaking existing callers expecting single object
     if (Array.isArray(meetingId)) {
       const results = [] as any[];
       for (const id of meetingId) {
-        const single = await this.computeAttendanceAndRecordings70(id, hostEmail);
+        const single = await this.computeAttendanceAndRecordings75(id, hostEmail);
         results.push({ meetingId: id, ...single });
       }
       return { success: true, data: results };
@@ -442,7 +442,7 @@ export class ZoomService {
       const hostDuration = (participantsResp.participants || [])
         .filter(p => p.user_email === hostEmail)
         .reduce((a, b) => a + (b.duration || 0), 0);
-      const thresholdRatio = 0.70;
+      const thresholdRatio = 0.75;
       const threshold = hostDuration * thresholdRatio;
       // Build a map of user -> total duration
       const durationMap: Record<string, number> = {};
@@ -487,7 +487,7 @@ export class ZoomService {
       console.log(recordings);
       return { success: true, data: { meetingId: singleMeetingId, thresholdRatio, hostDuration, threshold, attendance, recordings } };
     } catch (e:any) {
-      this.logger.error(`computeAttendanceAndRecordings70 failed: ${e.message}`);
+      this.logger.error(`computeAttendanceAndRecordings75 failed: ${e.message}`);
       return { success: false, error: e.message };
     }
   }

@@ -125,14 +125,14 @@ export class ZoomController {
     return { success: true };
   }
 
-  @Get('meetings/:id/attendance-70')
+  @Get('meetings/:id/attendance-75')
   @Roles('admin')
   @ApiBearerAuth('JWT-auth')
-  @ApiOperation({ summary: 'Compute attendance (70% rule) & recordings for one or multiple Zoom meetings (comma-separated IDs, no DB write)' })
-  async attendance70(@Param('id') meetingIdParam: string) {
+  @ApiOperation({ summary: 'Compute attendance (75% rule) & recordings for one or multiple Zoom meetings (comma-separated IDs, no DB write)' })
+  async attendance75(@Param('id') meetingIdParam: string) {
     const ids = meetingIdParam.includes(',')
       ? meetingIdParam.split(',').map(s => s.trim()).filter(Boolean)
       : meetingIdParam;
-    return this.zoomService.computeAttendanceAndRecordings70(ids as any);
+    return this.zoomService.computeAttendanceAndRecordings75(ids as any);
   }
 }

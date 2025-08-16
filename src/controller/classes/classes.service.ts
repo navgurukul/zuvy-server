@@ -436,6 +436,7 @@ export class ClassesService {
         batchId: eventDetails.batchId,
         secondBatchId: eventDetails.secondBatchId,
         bootcampId: eventDetails.bootcampId,
+        moduleId: eventDetails.moduleId, // ensure moduleId is persisted (was missing vs Google Meet path)
         title: eventDetails.title,
         isZoomMeet: true,
         status: 'upcoming',
@@ -454,6 +455,9 @@ export class ClassesService {
 
       session['chapterId'] = chapterResult.chapter.id;
       session['bootcampId'] = chapterResult.bootcampId;
+      // Redundant safety: if moduleId somehow absent, copy from chapter
+      session['moduleId'] = chapterResult.chapter.moduleId;
+      
 
       sessionsToCreate.push(session);
       // Save sessions to database

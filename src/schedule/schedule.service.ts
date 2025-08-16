@@ -440,10 +440,10 @@ export class ScheduleService {
       }
 
       this.logger.log(`Backfilling attendance for ${zoomIds.length} Zoom meetings`);
-      const compute = await this.zoomService.computeAttendanceAndRecordings70(zoomIds as any);
+      const compute = await this.zoomService.computeAttendanceAndRecordings75(zoomIds as any);
       const computeAny: any = compute; // normalize to any for flexible shape handling
       if (!computeAny.success) {
-        this.logger.error(`computeAttendanceAndRecordings70 failed (batch): ${computeAny.error}`);
+        this.logger.error(`computeAttendanceAndRecordings75 failed (batch): ${computeAny.error}`);
         return;
       }
 
