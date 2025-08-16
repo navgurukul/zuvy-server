@@ -94,14 +94,23 @@ export class CreateSessionDto {
   title: string;
 
   @ApiProperty({
-    description: 'The batchId of the live  ',
+    description: 'The batchId of the live class (use when targeting a single batch). Either batchId or batchIds is required.',
     type: Number,
     example: 327,
-    required: true,
+    required: false,
   })
-  @IsNotEmpty()
+  @IsOptional()
   @IsNumber()
-  batchId: number;
+  batchId?: number;
+
+  @ApiProperty({
+    description: 'Optional second batch id (legacy support for exactly two batches). Prefer using batchIds array for >2.',
+    type: Number,
+    required: false,
+  })
+  @IsOptional()
+  @IsNumber()
+  secondBatchId?: number;
 
   @ApiProperty({
     description: 'The module ID to associate with this session',

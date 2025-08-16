@@ -51,7 +51,7 @@ export class SubmissionController {
     type: String,
     description: 'Search by practise problem name',
   })
-  @ApiBearerAuth('JWT-auth')
+
   async getChapterTracking(@Param('bootcampId') bootcampId: number, @Query('searchPractiseProblem') searchProblem: string) {
     return this.submissionService.getSubmissionOfPractiseProblem(bootcampId, searchProblem);
   }
@@ -145,6 +145,7 @@ export class SubmissionController {
   }
 
   @Patch('/assessment/submit')
+
   async assessmentSubmission(@Body() data: SubmissionassessmentDto, @Query('assessmentSubmissionId') assessmentSubmissionId: number, @Req() req,  
   @Res() res
 ) {
@@ -254,19 +255,27 @@ export class SubmissionController {
     type: Number,
     description: 'offset',
   })
+  @ApiQuery({
+    name: 'searchStudent',
+    type: String,
+    required: false,
+    description: 'Search by student name or email',
+  })
   async getStatusOfForms(
     @Param('bootcampId') bootcampId: number,
     @Param('moduleId') moduleId: number,
     @Query('chapterId') chapterId: number,
     @Query('limit') limit: number,
-    @Query('offset') offset: number
+    @Query('offset') offset: number,
+    @Query('searchStudent') searchStudent?: string
   ) {
     return this.submissionService.formsStatusOfStudents(
       bootcampId,
       chapterId,
       moduleId,
       limit,
-      offset
+      offset,
+      searchStudent
     );
   }
 

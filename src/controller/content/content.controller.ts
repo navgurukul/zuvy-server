@@ -261,6 +261,24 @@ export class ContentController {
   @Get('/chapterDetailsById/:chapterId')
   @Roles('admin')
   @ApiOperation({ summary: 'Get chapter details by id' })
+  @ApiQuery({
+    name: 'moduleId',
+    required: true,
+    type: Number,
+    description: 'module Id',
+  })
+  @ApiQuery({
+    name: 'bootcampId',
+    required: true,
+    type: Number,
+    description: 'bootcamp Id',
+  })
+  @ApiQuery({
+    name: 'topicId',
+    required: true,
+    type: Number,
+    description: 'topic Id',
+  })
   @ApiBearerAuth('JWT-auth')
   async getChapterDetailsById(
     @Param('chapterId') chapterId: number, 
@@ -269,7 +287,9 @@ export class ContentController {
     @Query('topicId') topicId: number,
     @Req() req
   ) {
-    const userRole = req.user[0]?.role || 'student';
+    console.log('user: ', req.user[0])
+    const userRole = req.user[0]?.roles;
+
     return this.contentService.getChapterDetailsById(chapterId, bootcampId, moduleId, topicId, userRole);
   }
 
@@ -521,7 +541,6 @@ export class ContentController {
   }
 
   @Get('/allTags')
-  @Roles('admin')
   @ApiOperation({ summary: 'Get all the available tags' })
   @ApiBearerAuth('JWT-auth')
   async getAllTags() {

@@ -76,6 +76,17 @@ export class ClassesController {
     return this.classesService.googleAuthentication(res, email, userId);
   }
 
+
+  @Public()
+  @Get('/redirect')
+  @ApiOperation({ summary: 'Google authentication redirect' })
+  async googleAuthRedirectOld(@Req() request) {
+    return this.classesService.googleAuthenticationRedirect(
+      request,
+      request.user,
+    );
+  }
+
   @Public()
   @Get('/google-auth/redirect')
   @ApiOperation({ summary: 'Handle Google OAuth redirect' })
@@ -118,26 +129,17 @@ export class ClassesController {
 
   @Post('/')
   @ApiOperation({ summary: 'Create the new class' })
-  // @ApiBearerAuth('JWT-auth')
+  @ApiBearerAuth('JWT-auth')
   @Public()
   async create(@Body() classData: CreateSessionDto, @Req() req) {
     const userInfo = {
-      id: 58083,
-      email: "team@zuvy.org",
-      roles: ["admin"]
+      id: Number(req.user[0].id),
+      email: req.user[0].email,
+      roles: req.user[0].roles || []
     };
-
-    // Fetch batch to get bootcampId
-    const batchData = await db.select().from(zuvyBatches).where(eq(zuvyBatches.id, classData.batchId)).limit(1);
-    if (!batchData.length) {
-      throw new BadRequestException('Batch not found');
-    }
-    const eventDetails = {
-      ...classData,
-      bootcampId: batchData[0].bootcampId
-    };
-
-    return this.classesService.createSession(eventDetails, userInfo);
+  // Delegate all validation & batch combination logic to service
+  const result = await this.classesService.createSession(classData as any, userInfo);
+    return result;
   }
 
   @Get('/getAttendance/:meetingId')
@@ -159,37 +161,25 @@ export class ClassesController {
     return values;
   }
 
-  @Public()
-  @Get('/getAllAttendance/:batchId')
+  @Get('/analytics/:sessionId')
   @ApiBearerAuth('JWT-auth')
-  @ApiOperation({ summary: 'Get the google all classes attendance by batchID' })
-  extractMeetAttendanceByBatch(
+  @ApiOperation({ summary: 'meeting attendance analytics with meeting link' })
+  async meetingAttendanceAnalytics(
     @Req() req,
-    @Param('batchId') batchId: string,
-  ): Promise<object> {
+    @Param('sessionId') sessionId: number,
+  ) {
     const userInfo = {
       id: Number(req.user[0].id),
       email: req.user[0].email,
       roles: req.user[0].roles || []
     };
-    return this.classesService.getAttendanceByBatchId(batchId, userInfo);
-  }
-
-  @Post('/analytics/reload')
-  @ApiBearerAuth('JWT-auth')
-  @ApiOperation({ summary: 'meeting attendance analytics with meeting link' })
-  async meetingAttendanceRefress(@Req() req, @Body() reloadData: reloadDto) {
-    let meetingIds: Array<any> = reloadData?.meetingIds;
-
-    let attachment = meetingIds.map(async (meetId) => {
-      const userInfo = {
-      id: Number(req.user[0].id),
-      email: req.user[0].email,
-      roles: req.user[0].roles || []
-    };
-      const [err, values] = await this.classesService.getAttendance(meetId, userInfo);
-    });
-    return { message: 'Data Refreshed', status: 200 };
+    const [err, values] = await this.classesService.meetingAttendanceAnalytics(
+      sessionId,userInfo
+    );
+    if (err) {
+      throw new BadRequestException(err);
+    }
+    return values;
   }
 
   @Get('/getClassesByBatchId/:batchId')

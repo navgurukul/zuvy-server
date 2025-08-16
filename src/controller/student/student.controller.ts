@@ -159,14 +159,21 @@ export class StudentController {
     description: 'Offset for pagination',
     required: false
   })
+  @ApiQuery({
+    name: 'bootcampId',
+    type: Number,
+    description: 'upcoming events of a particular bootcamp',
+    required: false
+  })
   async getUpcomingEvents(
     @Req() req,
     @Query('limit') limit: number,
     @Query('offset') offset: number,
+    @Query('bootcampId') bootcampId: number,
     @Res() res: Response
   ) {
     try {
-      const [err, success] = await this.studentService.getUpcomingEvents(req.user[0].id, limit, offset);
+      const [err, success] = await this.studentService.getUpcomingEvents(req.user[0].id, limit, offset,bootcampId);
       if (err) {
         return ErrorResponse.BadRequestException(err.message).send(res);
       }
@@ -288,4 +295,29 @@ export class StudentController {
         return ErrorResponse.BadRequestException(error.message).send(res);
       }
     }
+
+     @Get('/syllabus/:bootcampId')
+    @ApiOperation({ summary: 'Get course syllabus with modules and chapters' })
+    @ApiBearerAuth('JWT-auth')
+    @ApiParam({
+    name: 'bootcampId',
+    type: Number,
+    description: 'Bootcamp ID',
+    required: true
+  })
+  async getCourseSyllabus(
+    @Req() req,
+    @Param('bootcampId') bootcampId: number,
+    @Res() res: Response
+  ): Promise<any> {
+    try {
+      const [err, success] = await this.studentService.getCourseSyllabus(req.user[0].id, bootcampId);
+      if (err) {
+        return ErrorResponse.BadRequestException(err.message).send(res);
+      }
+      return new SuccessResponse(success.message, success.statusCode, success.data).send(res);
+    } catch (error) {
+      return ErrorResponse.BadRequestException(error.message).send(res);
+    }
+  }
 }

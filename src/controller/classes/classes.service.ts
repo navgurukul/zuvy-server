@@ -15,18 +15,16 @@ import {
   users,
   zuvySessionMerge,
 } from '../../../drizzle/schema';
-import { eq, desc, and, or, sql, ilike } from 'drizzle-orm';
+import { eq, desc, and, or, sql, ilike, inArray, gte, lt } from 'drizzle-orm';
 import { Res, Req } from '@nestjs/common';
 import { Response } from 'express';
 import { S3 } from 'aws-sdk';
 import { v4 as uuid } from 'uuid';
 import { ZoomService } from '../../services/zoom/zoom.service';
+import { Console } from 'console';
 
 @Injectable()
 export class ClassesService {
-  updatingStatusOfClass(bootcampId: number, batchId: number): any {
-    throw new Error('Method not implemented.');
-  }
   private readonly logger = new Logger(ClassesService.name);
 
   constructor(private readonly zoomService: ZoomService) {}
@@ -107,59 +105,26 @@ export class ClassesService {
   async googleAuthenticationRedirect(@Req() req, @Res() res) {
     try {
       const { code, state } = req.query;
-      const { tokens } = await auth2Client.getToken(code);
-      const userInfo = JSON.parse(state);
+      if (!code || !state) {
+        return res.status(400).json({ status: 'error', message: 'Missing code or state in redirect' });
+      }
+      const parsedState = JSON.parse(state as string);
+      const { tokens } = await auth2Client.getToken(code as string);
+      auth2Client.setCredentials(tokens);
+      if (!tokens.access_token) throw new Error('No access token returned');
 
-      await this.saveTokensToDatabase(tokens, userInfo);
-
-      return {
-        status: 'success',
-        message: 'Authentication successful',
-      };
-    } catch (error) {
-      this.logger.error(`Error in authentication redirect: ${error.message}`);
-      return {
-        status: 'error',
-        message: 'Authentication failed',
-        error: error.message,
-      };
-    }
-  }
-
-  private async getUserData(auth2Client) {
-    // Implementation for getting user data
-    return {};
-  }
-
-  async saveTokensToDatabase(tokens, userData) {
-    try {
-      await db
-        .insert(userTokens)
-        .values({
-          userId: userData.id,
-          userEmail: userData.email,
-          accessToken: tokens.access_token,
-          refreshToken: tokens.refresh_token,
-        })
-        .onConflictDoUpdate({
-          target: [userTokens.userId],
-          set: {
-            accessToken: tokens.access_token,
-            refreshToken: tokens.refresh_token,
-          },
-        });
-
-      return {
-        status: 'success',
-        message: 'Tokens saved successfully',
-      };
+      // Delete existing tokens for user then insert new (simpler than upsert for clarity)
+      await db.delete(userTokens).where(eq(userTokens.userId, Number(parsedState.id)));
+      await db.insert(userTokens).values({
+        userId: Number(parsedState.id),
+        userEmail: parsedState.email,
+        accessToken: tokens.access_token,
+        refreshToken: tokens.refresh_token || '',
+      });
+      return res.json({ status: 'success', message: 'Tokens saved successfully' });
     } catch (error) {
       this.logger.error(`Error saving tokens: ${error.message}`);
-      return {
-        status: 'error',
-        message: 'Failed to save tokens',
-        error: error.message,
-      };
+      return res.status(500).json({ status: 'error', message: 'Failed to save tokens', error: (error as any).message });
     }
   }
 
@@ -171,9 +136,11 @@ export class ClassesService {
       endDateTime: string;
       timeZone: string;
       batchId: number;
+      secondBatchId?: number;
       bootcampId: number;
       moduleId: number;
       isZoomMeet?: boolean;
+  coHostEmails?: string[]; // Optional additional co-hosts who should see meeting in their Zoom client
     },
     creatorInfo: any,
   ) {
@@ -185,14 +152,103 @@ export class ClassesService {
           message: 'Only admins can create sessions',
         };
       }
-      console.log('Creating session with details:', eventDetails);
+      // Prevent creating sessions in the past
+      const parsedStart = new Date(eventDetails.startDateTime);
+      if (isNaN(parsedStart.getTime())) {
+        return { status: 'error', message: 'Invalid startDateTime', code: 400 };
+      }
+      console.log({ startDate: parsedStart.getTime(), now: Date.now() });
+      if (parsedStart.getTime() < Date.now()) {
+        return { status: 'error', message: 'Cannot create a session in the past', code: 400 };
+      }
+      
+      const primaryBatchId = eventDetails.batchId;
+      const secondaryBatchId = eventDetails.secondBatchId;
+      if (!primaryBatchId) {
+        return {
+          status: 'error',
+          message: 'Primary batch ID is required',
+        };
+      }
+
+      // Fetch primary batch (await the query; previously we logged the query builder itself)
+      const primaryBatchRows = await db
+        .select({
+          id: zuvyBatches.id,
+          name: zuvyBatches.name,
+          bootcampId: zuvyBatches.bootcampId,
+          instructorId: users.id,
+          instructorName: users.name,
+          instructorEmail: users.email,
+        })
+        .from(zuvyBatches)
+        .where(eq(zuvyBatches.id, primaryBatchId))
+        .innerJoin(users, eq(zuvyBatches.instructorId, users.id));
+
+      if (!primaryBatchRows.length) {
+        return {
+          status: 'error',
+          message: 'Primary batch not found',
+        };
+      }
+      const primaryBatchInfo = primaryBatchRows[0];
+      this.logger.log(`Primary batch fetched: ${primaryBatchInfo.id} / bootcamp ${primaryBatchInfo.bootcampId}`);
+
+      // If a secondary batch is provided, fetch & validate it
+      if (secondaryBatchId) {
+        const secondaryBatchRows = await db
+          .select({
+            id: zuvyBatches.id,
+            name: zuvyBatches.name,
+            bootcampId: zuvyBatches.bootcampId,
+            instructorId: users.id,
+            instructorName: users.name,
+            instructorEmail: users.email,
+          })
+          .from(zuvyBatches)
+          .where(eq(zuvyBatches.id, secondaryBatchId))
+          .innerJoin(users, eq(zuvyBatches.instructorId, users.id));
+        if (!secondaryBatchRows.length) {
+          return {
+            status: 'error',
+            message: 'Secondary batch not found',
+          };
+        }
+        const secondaryBatchInfo = secondaryBatchRows[0];
+        this.logger.log(`Secondary batch fetched: ${secondaryBatchInfo.id} / bootcamp ${secondaryBatchInfo.bootcampId}`);
+
+        if (secondaryBatchInfo.bootcampId !== primaryBatchInfo.bootcampId) {
+          return {
+            status: 'error',
+            message: 'Batches do not belong to the same bootcamp',
+          };
+        }
+      }
+
+      // Collect invited students from one or two batches
+      let invitedStudents: { userId: number; email: string }[] = [];
+      const primaryRes = await this.getStudentsEmails(primaryBatchId);
+
+      if (!primaryRes.success) throw new Error(primaryRes.message);
+      invitedStudents.push(...primaryRes.students.map(s => ({ userId: Number(s.id), email: s.email })));
+      if (secondaryBatchId) {
+        const secondaryRes = await this.getStudentsEmails(secondaryBatchId);
+        if (!secondaryRes.success) throw new Error(secondaryRes.message);
+        
+        secondaryRes.students.forEach(s => {
+          if (!invitedStudents.find(ex => ex.userId === s.id)) {
+            invitedStudents.push({ userId: Number(s.id), email: s.email });
+          }
+        });
+      }
+      let eventData = { ...eventDetails, invitedStudents, bootcampId: primaryBatchInfo.bootcampId };
       
       if (eventDetails.isZoomMeet) {
-        this.logger.log('Creating Zoom session');
-        return this.createZoomSession(eventDetails, creatorInfo);
+        this.logger.log('Creating Zoom session (multi-batch aware)');
+        return this.createZoomSession( eventData, creatorInfo);
       } else {
-        this.logger.log('Creating Google Meet session');
-        return this.createGoogleMeetSession(eventDetails, creatorInfo);
+        this.logger.log('Creating Google Meet session (multi-batch aware)');
+        return this.createGoogleMeetSession(eventData, creatorInfo);
       }
     } catch (error) {
       this.logger.error(`Error creating session: ${error.message}`);
@@ -212,12 +268,16 @@ export class ClassesService {
       endDateTime: string;
       timeZone: string;
       batchId: number;
+      secondBatchId?: number;
       bootcampId: number;
       moduleId: number;
+      invitedStudents?: { userId: number; email: string }[];
+      coHostEmails?: string[];
     },
     creatorInfo: any,
   ) {
     try {
+      // Guard again in case this method is called directly
       
       const sessionsToCreate = [];
       const startDate = new Date(eventDetails.startDateTime);
@@ -226,34 +286,61 @@ export class ClassesService {
       // Create adjusted dates for Zoom meeting (subtract 30 minutes)
       const zoomStartDate = new Date(startDate);
       const zoomEndDate = new Date(endDate);
-      zoomStartDate.setHours(zoomStartDate.getHours() - 5);
-      zoomEndDate.setHours(zoomEndDate.getHours() - 5);
-      zoomStartDate.setMinutes(zoomStartDate.getMinutes() - 30);
-      zoomEndDate.setMinutes(zoomEndDate.getMinutes() - 30);
-      
+
       const duration = Math.floor((zoomEndDate.getTime() - zoomStartDate.getTime()) / (1000 * 60)); // Duration in minutes
 
-      // Get student emails for the batch to add as meeting invitees
+      // Get student emails for the primary batch to add as meeting invitees (legacy fallback)
       const studentsResult = await this.getStudentsEmails(eventDetails.batchId);
-      
       if (!studentsResult.success) {
         throw new Error(`Failed to fetch students for batch: ${studentsResult.message}`);
       }
-
+      // Use provided invitedStudents snapshot if available (multi-batch)
+      const invitedStudents = eventDetails.invitedStudents || studentsResult.students.map(s => ({ userId: s.id, email: s.email })).filter(s => s.email);
+      
       // Prepare meeting invitees from batch students (including instructor)
-      const meetingInvitees = studentsResult.students.map(student => ({
+      const meetingInvitees = invitedStudents.map(student => ({
         email: student.email,
-        name: student.name || student.email.split('@')[0], // Use name or email prefix as fallback
+        name: student.email.split('@')[0],
       }));
 
-      // Prepare alternative hosts (instructor if available)
-      let alternativeHosts = '';
-      if (studentsResult.instructor && studentsResult.instructor.email) {
-        alternativeHosts = studentsResult.instructor.email;
-        this.logger.log(`Adding instructor as alternative host: ${studentsResult.instructor.email}`);
-      }
-
       // Create Zoom meeting
+      // Always host under the team account so recordings live centrally there; instructor & others become alternative hosts.
+      const teamAccountEmail = process.env.TEAM_EMAIL || 'team@zuvy.org';
+      const hostEmail = teamAccountEmail;
+      try {
+        // Ensure team account is licensed (host must be able to cloud record)
+        await this.zoomService.ensureLicensedUser(hostEmail, 'Team', '');
+      } catch (e) {
+        this.logger.warn(`Could not ensure license for team host ${hostEmail}: ${e.message}`);
+      }
+      const candidateAltHosts: string[] = [];
+      const verifiedAltHosts: string[] = [];
+      if (studentsResult.instructor?.email && studentsResult.instructor.email !== hostEmail) {
+        candidateAltHosts.push(studentsResult.instructor.email);
+      }
+      if (creatorInfo?.email && creatorInfo.email !== hostEmail) {
+        candidateAltHosts.push(creatorInfo.email);
+      }
+      if (Array.isArray(eventDetails.coHostEmails)) {
+        for (const email of eventDetails.coHostEmails) {
+          if (email && email !== hostEmail && !candidateAltHosts.includes(email)) candidateAltHosts.push(email);
+        }
+      }
+  // Verify candidate alternative hosts are licensed & active; only then include
+  for (const email of candidateAltHosts) {
+        try {
+          const res = await this.zoomService.ensureLicensedUser(email, '', '');
+          if (res.success && res.licensed) {
+            verifiedAltHosts.push(email);
+          } else {
+            this.logger.warn(`Skipping alternative host ${email} (not licensed or inactive)`);
+          }
+        } catch (e) {
+          this.logger.warn(`Failed licensing alt host ${email}: ${e.message}`);
+        }
+      }
+      const alternativeHosts = verifiedAltHosts.join(',');
+
       const zoomMeetingData = {
         topic: eventDetails.title,
         type: 2, // Scheduled meeting
@@ -264,16 +351,19 @@ export class ClassesService {
         settings: {
           host_video: true,
           participant_video: true,
-          join_before_host: false,
+          join_before_host: true,
           mute_upon_entry: true,
-          waiting_room: true,
+          // Disable waiting room so invited participants can join without manual admit
+          waiting_room: false,
           alternative_hosts_email_notification: true,
           audio: 'both', // Both telephony and voip
-          close_registration: false,
+          close_registration: true,
           cn_meeting: false,
+          // Allow external students without Zoom org SSO requirement
           enforce_login: false,
           in_meeting: false,
           jbh_time: 0,
+          // Do not require authenticated Zoom profile (some students might be guests)
           meeting_authentication: false,
           registrants_confirmation_email: true,
           registrants_email_notification: true,
@@ -285,46 +375,40 @@ export class ClassesService {
           // Additional required attributes
           allow_multiple_devices: true,
           breakout_room: {
-            enable: false
+            enable: true
           },
           focus_mode: false,
           meeting_invitees: meetingInvitees,
           watermark: false,
           calendar_type: 1, // Google Calendar
-          // Add instructor as alternative host
-          alternative_hosts: alternativeHosts
-        },
-        // YouTube Live Stream Configuration
-        live_stream: {
-          active: false, // Set to true to enable YouTube live streaming
-          settings: {
-            page_url: '', // YouTube channel URL - to be configured
-            stream_key: '', // YouTube stream key - to be configured  
-            stream_url: 'rtmp://a.rtmp.youtube.com/live2/' // YouTube RTMP URL
-          }
+          alternative_hosts: alternativeHosts,
+          auto_recording: 'cloud',
         }
       };
-
-      const zoomResponse = await this.createZoomMeetingDirect(zoomMeetingData);
-      
+      let zoomResponse = await this.zoomService.createMeetingForUser(hostEmail, zoomMeetingData as any);
+      // Fallback: if alternative host error occurs, retry without them
+      if (!zoomResponse.success && zoomResponse.error && /alternative host/i.test(zoomResponse.error)) {
+        this.logger.warn('Retrying Zoom meeting creation without alternative hosts due to Zoom error.');
+        const cloneNoAlt = { ...zoomMeetingData, settings: { ...zoomMeetingData.settings } };
+        delete (cloneNoAlt.settings as any).alternative_hosts;
+        delete (cloneNoAlt.settings as any).alternative_hosts_email_notification;
+        zoomResponse = await this.zoomService.createMeetingForUser(hostEmail, cloneNoAlt as any);
+      }
       if (!zoomResponse.success) {
         throw new Error(`Failed to create Zoom meeting: ${zoomResponse.error}`);
       }
-
       // Create corresponding Google Calendar event for Zoom meeting
       let calendarEventId = null;
       try {
-        // Create Google Calendar event with Zoom meeting link
         const eventData = {
           title: `${eventDetails.title} (Zoom Meeting)`,
           description: `${eventDetails.description || 'Live class session'}\n\nJoin Zoom Meeting: ${zoomResponse.data.join_url}\nMeeting ID: ${zoomResponse.data.id}\nPassword: ${zoomResponse.data.password}`,
-          startTime: zoomStartDate.toISOString(), // Use adjusted start time for calendar
-          endTime: zoomEndDate.toISOString(), // Use adjusted end time for calendar
+          startTime: zoomStartDate.toISOString(),
+          endTime: zoomEndDate.toISOString(),
           timeZone: eventDetails.timeZone,
-          attendees: studentsResult.emails,
+          attendees: meetingInvitees.map(m => m.email),
           location: `Zoom Meeting - ${zoomResponse.data.join_url}`,
         };
-
         const calendarResult = await this.createGoogleCalendarEvent(eventData, creatorInfo);
         
         if (calendarResult.success) {
@@ -339,7 +423,7 @@ export class ClassesService {
         // Continue without failing the entire process
       }
 
-      const session = {
+  const session = {
         meetingId: calendarEventId || zoomResponse.data.id.toString(), // Use Zoom meeting ID if Google Calendar fails
         zoomJoinUrl: zoomResponse.data.join_url,
         zoomStartUrl: zoomResponse.data.start_url,
@@ -350,11 +434,13 @@ export class ClassesService {
         startTime: eventDetails.startDateTime, // Use original start time for database
         endTime: eventDetails.endDateTime, // Use original end time for database
         batchId: eventDetails.batchId,
+        secondBatchId: eventDetails.secondBatchId,
         bootcampId: eventDetails.bootcampId,
-        moduleId: eventDetails.moduleId,
+        moduleId: eventDetails.moduleId, // ensure moduleId is persisted (was missing vs Google Meet path)
         title: eventDetails.title,
         isZoomMeet: true,
         status: 'upcoming',
+        invitedStudents: invitedStudents,
       };
 
       // Validate and create chapter
@@ -369,10 +455,13 @@ export class ClassesService {
 
       session['chapterId'] = chapterResult.chapter.id;
       session['bootcampId'] = chapterResult.bootcampId;
+      // Redundant safety: if moduleId somehow absent, copy from chapter
+      session['moduleId'] = chapterResult.chapter.moduleId;
+      
 
       sessionsToCreate.push(session);
       // Save sessions to database
-      const saveResult = await this.saveSessionsToDatabase(sessionsToCreate);
+  const saveResult = await this.saveSessionsToDatabase(sessionsToCreate);
       
       if (saveResult.status === 'error') {
         throw new Error(saveResult.message);
@@ -401,8 +490,10 @@ export class ClassesService {
       endDateTime: string;
       timeZone: string;
       batchId: number;
+      secondBatchId?: number;
       bootcampId: number;
       moduleId: number;
+      invitedStudents?: { userId: number; email: string }[];
     },
     creatorInfo: any,
   ) {
@@ -417,11 +508,12 @@ export class ClassesService {
         throw new Error(chapterResult.message);
       }
 
-      // Get student emails for the batch
+      // Get student emails for the batch (legacy) then override with invitedStudents if provided
       const studentsResult = await this.getStudentsEmails(eventDetails.batchId);
       if (!studentsResult.success) {
         throw new Error(studentsResult.message);
       }
+      const invitedStudents = eventDetails.invitedStudents || studentsResult.students.map(s => ({ userId: s.id, email: s.email }));
 
       // Create Google Calendar event
       const eventData = {
@@ -430,7 +522,7 @@ export class ClassesService {
         startTime: eventDetails.startDateTime,
         endTime: eventDetails.endDateTime,
         timeZone: eventDetails.timeZone,
-        attendees: studentsResult.emails,
+        attendees: invitedStudents.map(s => s.email),
       };
 
       const calendarResult = await this.createGoogleCalendarEvent(eventData, creatorInfo);
@@ -446,12 +538,14 @@ export class ClassesService {
         startTime: eventDetails.startDateTime,
         endTime: eventDetails.endDateTime,
         batchId: eventDetails.batchId,
+        secondBatchId: eventDetails.secondBatchId,
         bootcampId: chapterResult.bootcampId,
         moduleId: eventDetails.moduleId,
         chapterId: chapterResult.chapter.id,
         title: eventDetails.title,
         status: 'upcoming',
         isZoomMeet: false,
+        invitedStudents: invitedStudents,
       };
 
       // Save session to database
@@ -601,10 +695,21 @@ export class ClassesService {
           data: result.data,
         };
       } else {
-        return {
-          success: false,
-          error: result.error,
-        };
+        // Fallback: if alternative host assignment caused failure, retry without alternative_hosts
+        if (result.error && typeof result.error === 'string' && result.error.toLowerCase().includes('alternative host')) {
+          this.logger.warn('Retrying Zoom meeting creation without alternative_hosts due to Zoom restriction.');
+          const cloned = { ...meetingData };
+          if (cloned.settings) {
+            delete cloned.settings.alternative_hosts;
+            delete cloned.settings.alternative_hosts_email_notification;
+          }
+          const retry = await this.zoomService.createMeeting(cloned);
+          if (retry.success) {
+            return { success: true, data: retry.data, note: 'Created without alternative host (fallback)' };
+          }
+          return { success: false, error: retry.error || result.error };
+        }
+        return { success: false, error: result.error };
       }
     } catch (error) {
       this.logger.error(`Error creating Zoom meeting: ${error.message}`);
@@ -757,6 +862,7 @@ export class ClassesService {
         startTime: session.startTime,
         endTime: session.endTime,
         batchId: session.batchId,
+  secondBatchId: session.secondBatchId,
         bootcampId: session.bootcampId,
         moduleId: session.moduleId,
         chapterId: session.chapterId,
@@ -767,10 +873,10 @@ export class ClassesService {
         zoomPassword: session.zoomPassword,
         zoomMeetingId: session.zoomMeetingId,
         googleCalendarEventId: session.googleCalendarEventId, // Add Google Calendar event ID
+  invitedStudents: session.invitedStudents || [],
       }));
 
       this.logger.log(`Saving ${sessionData.length} sessions to the database.`);
-      console.log('Session data:', sessionData);
 
       const savedSessions = await db
         .insert(zuvySessions)
@@ -1169,6 +1275,127 @@ export class ClassesService {
     }
   }
 
+  async updatingStatusOfClass(bootcamp_id: number, batch_id: number, chapterId?: number) {
+    try {
+      const currentTime = new Date();
+
+      // Fetch classes based on bootcamp_id and batch_id
+      let classesQuery = db.select().from(zuvySessions)
+        .where(and(
+          eq(zuvySessions.bootcampId, bootcamp_id),
+          sql`${zuvySessions.status} not in ('completed')`,
+          !isNaN(batch_id) ? eq(zuvySessions.batchId, batch_id) : undefined,
+          !isNaN(batch_id) ? eq(zuvySessions.secondBatchId, batch_id) : undefined,
+          chapterId ? eq(zuvySessions.chapterId, chapterId) : undefined
+        ));
+
+      let classes = await classesQuery;
+
+      // Fetch admin user details
+      const user = await db
+        .select()
+        .from(users)
+        .where(eq(users.email, process.env.TEAM_EMAIL));
+      let adminUser = { ...user[0], roles: 'admin' };
+
+      // Get access to the calendar
+      let calendar: any = await this.accessOfCalendar(adminUser);
+
+      // Array to hold classes that need updating
+      let classesToUpdate = [];
+      let deleteClassIds: any = [];
+      // Process each class
+      for (let classObj of classes) {
+        // Fetch calendar event
+        try {
+          const event = await calendar.events.get({
+            calendarId: 'primary',
+            eventId: classObj.meetingId,
+          });
+          const { start, end, status } = event.data;
+
+          // If the event was canceled, delete the class
+          if (status === 'cancelled') {
+            deleteClassIds.push(classObj.meetingId);
+            continue;
+          }
+
+          const apiStartTime = start?.dateTime || start?.date;
+          const apiEndTime = end?.dateTime || end?.date;
+          const startTime = new Date(classObj.startTime);
+          const endTime = new Date(classObj.endTime);
+
+          // Determine new status
+          let newStatus;
+          if (currentTime > endTime) {
+            newStatus = 'completed';
+          } else if (currentTime >= startTime && currentTime <= endTime) {
+            newStatus = 'ongoing';
+          } else {
+            newStatus = 'upcoming';
+          }
+
+          // Check if an update is needed
+          if (
+            apiStartTime !== classObj.startTime ||
+            apiEndTime !== classObj.endTime ||
+            newStatus !== classObj.status
+          ) {
+            // Prepare the update object
+            let updatedClass = {
+              startTime: apiStartTime,
+              endTime: apiEndTime,
+              status: newStatus,
+            };
+
+            // Add the class to the batch update list
+            classesToUpdate.push({ id: classObj.id, updatedClass });
+          }
+        } catch (error) {
+          if (error.code === 404 || error.code === 410) { // Not Found or Gone
+            deleteClassIds.push(classObj.meetingId);
+            Logger.log(`Event ${classObj.meetingId} not found or deleted from calendar. Removing from DB.`);
+          } else {
+            throw error; // Re-throw other errors
+          }
+        }
+      }
+
+      if (deleteClassIds.length > 0) {
+        await db
+          .delete(zuvySessions)
+          .where(inArray(zuvySessions.meetingId, deleteClassIds));
+      }
+
+      // Batch update all classes that need updates
+      if (classesToUpdate.length > 0) {
+        for (let classUpdate of classesToUpdate) {
+          await db
+            .update(zuvySessions)
+            .set(classUpdate.updatedClass)
+            .where(eq(zuvySessions.id, classUpdate.id));
+        }
+      }
+
+      Logger.log(
+        `${classesToUpdate.length} class statuses updated successfully.`,
+      );
+    } catch (error) {
+      Logger.log(`Error: ${error.message}`);
+      return {
+        success: 'not success',
+        message: 'Error updating class statuses',
+        error: error,
+      };
+    }
+  }
+
+  /**
+   * Uploads a video file to S3 and returns the S3 URL.
+   * @param fileBuffer - The video file buffer.
+   * @param fileName - The name of the file to be uploaded.
+   */
+      
   private async uploadVideoToS3(
     fileBuffer: Buffer,
     fileName: string,
@@ -1424,7 +1651,7 @@ export class ClassesService {
             moduleId: sessionWithAny.moduleId,
             chapterId: sessionWithAny.chapterId,
             title: sessionWithAny.title,
-            s3link: sessionWithAny.s3link,
+            s3link: (sessionWithAny as any).s3Link,
             recurringId: sessionWithAny.recurringId,
             status: sessionWithAny.status,
             isZoomMeet: sessionWithAny.isZoomMeet,
@@ -1484,15 +1711,13 @@ export class ClassesService {
         .where(eq(zuvySessions.batchId, batchIdNum))
         .orderBy(desc(zuvySessions.startTime));
 
-      // Get attendance data for all sessions
-      const attendanceData = [];
+      const attendanceData: any[] = [];
       for (const session of sessions) {
         const attendance = await db
           .select()
           .from(zuvyStudentAttendance)
           .where(eq(zuvyStudentAttendance.meetingId, session.meetingId))
           .limit(1);
-
         attendanceData.push({
           session: {
             id: session.id,
@@ -1500,29 +1725,21 @@ export class ClassesService {
             startTime: session.startTime,
             endTime: session.endTime,
             status: session.status,
+            meetingId: session.meetingId,
+            isZoomMeet: session.isZoomMeet,
           },
           attendance: attendance.length > 0 ? attendance[0].attendance : null,
         });
       }
-
       return {
         status: 'success',
         message: 'Batch attendance fetched successfully',
         code: 200,
-        data: {
-          batchId: batchIdNum,
-          sessions: attendanceData,
-          total_sessions: sessions.length,
-        },
+        data: { batchId: batchIdNum, sessions: attendanceData, total_sessions: sessions.length },
       };
     } catch (error) {
       this.logger.error(`Error fetching batch attendance: ${error.message}`);
-      return {
-        status: 'error',
-        message: 'Failed to fetch batch attendance',
-        code: 500,
-        error: error.message,
-      };
+      return { status: 'error', message: 'Failed to fetch batch attendance', error: error.message };
     }
   }
 
@@ -1691,7 +1908,7 @@ export class ClassesService {
           moduleId: sessionData.moduleId,
           chapterId: sessionData.chapterId,
           title: sessionData.title,
-          s3link: sessionData.s3link,
+          s3Link: (sessionData as any).s3Link || (sessionData as any).s3link,
           status: sessionData.status,
           isZoomMeet: sessionData.isZoomMeet,
           hasBeenMerged: sessionData.hasBeenMerged,
@@ -1788,7 +2005,7 @@ export class ClassesService {
         moduleId: sessionData.moduleId,
         chapterId: sessionData.chapterId,
         title: sessionData.title,
-        s3link: sessionData.s3link,
+  s3Link: (sessionData as any).s3Link || (sessionData as any).s3link,
         status: sessionData.status,
         isZoomMeet: sessionData.isZoomMeet,
         hasBeenMerged: sessionData.hasBeenMerged,
@@ -2112,9 +2329,7 @@ export class ClassesService {
         }
         
         // Fetch attendance using meeting UUID4
-        console.log(`Fetching participants for Zoom meeting ID: ${sessionData.zoomMeetingId}`);
         const zoomAttendanceResponse = await this.zoomService.getMeetingParticipants(sessionData.zoomMeetingId);
-        console.log(`Zoom attendance response: ${JSON.stringify(zoomAttendanceResponse)}`);
         
         // Calculate total meeting duration based on host's presence
         let totalMeetingDuration = 0;
@@ -2130,8 +2345,6 @@ export class ClassesService {
             return total + (entry.duration || 0);
           }, 0);
           
-          console.log(`Host entries: ${JSON.stringify(hostEntries)}`);
-          console.log(`Total meeting duration based on host presence: ${totalMeetingDuration} seconds`);
         }
         
         // Process and save attendance data
@@ -2145,9 +2358,10 @@ export class ClassesService {
           .innerJoin(users, eq(zuvyBatchEnrollments.userId, users.id))
           .where(eq(zuvyBatchEnrollments.batchId, sessionData.batchId));
         
-        // Calculate attendance based on duration threshold (75% of host's total time)
-        const attendanceThreshold = totalMeetingDuration * 0.75;
-        console.log(`Attendance threshold (75% of ${totalMeetingDuration}s): ${attendanceThreshold}s`);
+  // Calculate attendance based on duration threshold (configurable: default 75%)
+  const defaultThresholdRatio = 0.75;
+  const attendanceThreshold = totalMeetingDuration * defaultThresholdRatio;
+  console.log(`Attendance threshold (${defaultThresholdRatio * 100}% of ${totalMeetingDuration}s): ${attendanceThreshold}s`);
         
         // Save attendance to database
         const attendanceRecords = [];
@@ -2249,6 +2463,17 @@ export class ClassesService {
         error: error.message,
         message: 'Failed to fetch Zoom attendance for session'
       };
+    }
+  }
+
+  private async safeFetchZoomRecordings(meetingId: string) {
+    try {
+      const rec = await this.zoomService.getMeetingRecordings(meetingId);
+      if (!rec || !rec.recording_files) return [];
+      return rec.recording_files.map(f => ({ id: f.id, file_type: f.file_type, play_url: f.play_url, recording_start: f.recording_start, recording_end: f.recording_end }));
+    } catch (e) {
+      this.logger.warn(`Recording fetch failed for ${meetingId}: ${e.message}`);
+      return [];
     }
   }
 
@@ -2469,6 +2694,148 @@ export class ClassesService {
     } catch (error) {
       this.logger.error(`Error processing meeting attendance analytics: ${error.message}`);
       return [error, null];
+    }
+  }
+
+  /**
+   * Backfill attendance records based on the snapshot stored in zuvy_sessions.invited_students.
+   * Runs daily at midnight via a cron in ScheduleService. For each completed session that ended
+   * yesterday (local server time) and has no existing attendance records, we:
+   *  - Create ABSENT records for every invited student (default baseline).
+   *  - Also insert an aggregate row in zuvy_student_attendance with duration=0 & attendance=absent.
+   * We DO NOT modify sessions which already have any attendance (aggregate or individual) to respect
+   * the requirement: "don't do any changes once identify the changes in the attendance".
+  */
+  async backfillAttendanceFromInvitedStudentsDaily() {
+    try {
+      const now = new Date();
+      const startOfToday = new Date(now); startOfToday.setHours(0,0,0,0);
+      const startOfYesterday = new Date(startOfToday); startOfYesterday.setDate(startOfToday.getDate() - 1);
+
+      this.logger.log(`Backfilling (Zoom-derived) attendance for sessions ended between ${startOfYesterday.toISOString()} and ${startOfToday.toISOString()}`);
+
+      // Fetch completed Zoom sessions for yesterday (include meeting + zoom IDs & invited snapshot)
+      const sessions:any = await db.select({
+        id: zuvySessions.id,
+        batchId: zuvySessions.batchId,
+        secondBatchId: zuvySessions.secondBatchId,
+        bootcampId: zuvySessions.bootcampId,
+        startTime: zuvySessions.startTime,
+        endTime: zuvySessions.endTime,
+        invitedStudents: zuvySessions.invitedStudents,
+        meetingId: zuvySessions.meetingId,
+        zoomMeetingId: zuvySessions.zoomMeetingId,
+        isZoomMeet: zuvySessions.isZoomMeet,
+        status: zuvySessions.status
+      }).from(zuvySessions)
+        .where(and(
+          eq(zuvySessions.status, 'completed'),
+          // endTime >= startOfYesterday AND endTime < startOfToday
+          gte(zuvySessions.endTime, startOfYesterday.toISOString()),
+          lt(zuvySessions.endTime, startOfToday.toISOString()),
+          eq(zuvySessions.isZoomMeet, true)
+        ));
+
+      let processedSessions = 0;
+      let createdRecords = 0;
+
+      for (const session of sessions) {
+        // Must have invited snapshot & zoom meeting id
+        if (!Array.isArray(session.invitedStudents) || session.invitedStudents.length === 0) continue;
+        if (!session.zoomMeetingId) continue;
+
+        // Skip if any existing individual attendance
+        const existingInd = await db.select({ id: zuvyStudentAttendanceRecords.id })
+          .from(zuvyStudentAttendanceRecords)
+          .where(eq(zuvyStudentAttendanceRecords.sessionId, session.id))
+          .limit(1);
+        if (existingInd.length) continue;
+
+        // Skip if aggregate already exists
+        const existingAgg = await db.select({ id: zuvyStudentAttendance.id })
+          .from(zuvyStudentAttendance)
+          .where(eq(zuvyStudentAttendance.meetingId, session.meetingId))
+          .limit(1);
+        if (existingAgg.length) continue;
+
+        // Fetch Zoom participants (using existing Zoom service)
+        let zoomParticipants: any[] = [];
+        try {
+          const zoomResp = await this.zoomService.getMeetingParticipants(session.zoomMeetingId);
+            zoomParticipants = zoomResp?.participants || [];
+        } catch (err) {
+          this.logger.warn(`Zoom participants fetch failed for session ${session.id}: ${err.message}`);
+          // If Zoom failed, we still create ABSENT baseline (no modification rule still satisfied since none existed)
+        }
+
+        // Aggregate durations per email from Zoom data
+        const durationByEmail: Record<string, number> = {};
+        for (const p of zoomParticipants) {
+          console.log({p})
+          const email = (p.user_email || '').toLowerCase();
+          if (!email) continue;
+          durationByEmail[email] = (durationByEmail[email] || 0) + (p.duration || 0);
+        }
+
+        const invited = session.invitedStudents as {userId:number; email:string}[];
+        const invitedByEmail: Record<string, {userId:number; email:string}> = {};
+        for (const inv of invited) {
+          if (inv?.email) invitedByEmail[inv.email.toLowerCase()] = inv;
+        }
+
+        const individualRecords:any[] = [];
+        const aggregateAttendance:any[] = [];
+        const attendanceDate = new Date(session.startTime).toISOString().split('T')[0];
+
+        for (const inv of invited) {
+          if (!inv?.userId || !inv?.email) continue;
+          const emailKey = inv.email.toLowerCase();
+          const totalDuration = durationByEmail[emailKey] || 0;
+          const present = totalDuration > 0; // Mark present if appeared at all
+          console.log({ emailKey, totalDuration, present, inv });
+
+          // Resolve correct batch (primary vs second) if user enrolled in secondBatchId
+          let effectiveBatchId = session.batchId;
+          // if (session.secondBatchId) {
+          //   const enrollment = await db.select({ batchId: zuvyBatchEnrollments.batchId })
+          //     .from(zuvyBatchEnrollments)
+          //     .where(and(
+          //       eq(zuvyBatchEnrollments.userId, inv.userId as any),
+          //       inArray(zuvyBatchEnrollments.batchId, [session.batchId, session.secondBatchId])
+          //     ))
+          //     .limit(1);
+          //   if (enrollment.length) effectiveBatchId = enrollment[0].batchId;
+          // }
+
+          individualRecords.push({
+            userId: Number(inv.userId),
+            batchId: effectiveBatchId,
+            bootcampId: session.bootcampId,
+            sessionId: session.id,
+            attendanceDate,
+            status: present ? 'PRESENT' : 'ABSENT',
+            version: 'v1'
+          });
+          aggregateAttendance.push({ email: inv.email, duration: totalDuration, attendance: present ? 'present' : 'absent' });
+        }
+
+        if (!individualRecords.length) continue;
+        await db.insert(zuvyStudentAttendanceRecords).values(individualRecords);
+        await db.insert(zuvyStudentAttendance).values({
+          meetingId: session.meetingId,
+          attendance: aggregateAttendance,
+          batchId: session.batchId,
+          bootcampId: session.bootcampId,
+        });
+        processedSessions++;
+        createdRecords += individualRecords.length;
+      } // end for sessions
+
+      this.logger.log(`Zoom-derived backfill complete. Sessions processed: ${processedSessions}, records created: ${createdRecords}`);
+      return { success: true, message: 'Backfill complete', data: { processedSessions, createdRecords } };
+    } catch (error) {
+      this.logger.error(`Error in backfillAttendanceFromInvitedStudentsDaily: ${error.message}`);
+      return { success: false, message: 'Backfill failed', error: error.message };
     }
   }
 
