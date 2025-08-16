@@ -10,9 +10,21 @@ import {
   IsEmail,
   IsNumber,
   IsDateString,
+  IsBoolean
 } from 'class-validator';
 import { Type } from 'class-transformer';
-
+/*
+{
+  "title": "Live  Event test from backend",
+  "batchId": 327,
+  "moduleId": 602,
+  "description": "Description of the event",
+  "startDateTime": "2025-08-21T00:00:00Z",
+  "endDateTime": "2025-08-21T00:00:00Z",
+  "timeZone": "Asia/Kolkata",
+  "isZoomMeet": true
+}
+ */
 export class CreateDto {
   @ApiProperty({
     description: 'The name of the bootcamp',
@@ -74,7 +86,7 @@ export class CreateSessionDto {
   @ApiProperty({
     description: 'The summary of the live  event',
     type: String,
-    example: 'Live  Event',
+    example: 'Live  Event test from backend',
     required: true,
   })
   @IsNotEmpty()
@@ -82,19 +94,28 @@ export class CreateSessionDto {
   title: string;
 
   @ApiProperty({
-    description: 'The batchId of the live  ',
+    description: 'The batchId of the live class (use when targeting a single batch). Either batchId or batchIds is required.',
     type: Number,
-    example: 1,
-    required: true,
+    example: 327,
+    required: false,
   })
-  @IsNotEmpty()
+  @IsOptional()
   @IsNumber()
-  batchId: number;
+  batchId?: number;
+
+  @ApiProperty({
+    description: 'Optional second batch id (legacy support for exactly two batches). Prefer using batchIds array for >2.',
+    type: Number,
+    required: false,
+  })
+  @IsOptional()
+  @IsNumber()
+  secondBatchId?: number;
 
   @ApiProperty({
     description: 'The module ID to associate with this session',
     type: Number,
-    example: 1,
+    example: 602,
     required: true,
   })
   @IsNotEmpty()
@@ -115,7 +136,7 @@ export class CreateSessionDto {
     description: 'The start time of the live  event',
     type: String,
     format: 'date-time',
-    example: '2024-07-21T00:00:00Z',
+    example: '2025-08-21T00:00:00Z',
     required: true,
   })
   @IsNotEmpty()
@@ -126,7 +147,7 @@ export class CreateSessionDto {
     description: 'The end time of the live  event',
     type: String,
     format: 'date-time',
-    example: '2024-07-21T00:00:00Z',
+    example: '2025-08-21T00:00:00Z',
     required: true,
   })
   @IsNotEmpty()
@@ -144,24 +165,15 @@ export class CreateSessionDto {
   timeZone: string;
 
   @ApiProperty({
-    description: 'The days of the week for the live  event',
-    type: Array,
-    example: ['Monday', 'Wednesday', 'Friday'],
+    description: 'Whether this session uses Zoom meeting (alias for useZoom for consistency with database schema)',
+    type: Boolean,
+    example: true,
     required: false,
+    default: false,
   })
-  @IsArray()
+  @IsBoolean()
   @IsOptional()
-  daysOfWeek: string[];
-
-  @ApiProperty({
-    description: 'The total number of classes/sessions',
-    type: Number,
-    example: 10,
-    required: false,
-  })
-  @IsNumber()
-  @IsOptional()
-  totalClasses: number;
+  isZoomMeet?: boolean;
 }
 
 export class reloadDto {
@@ -237,4 +249,26 @@ export class AddLiveClassesAsChaptersDto {
   })
   @IsNumber()
   moduleId: number;
+}
+
+export class MergeClassesDto {
+  @ApiProperty({
+    description: 'The child session ID (session to be merged into parent)',
+    type: Number,
+    example: 123,
+    required: true,
+  })
+  @IsNotEmpty()
+  @IsNumber()
+  childSessionId: number;
+
+  @ApiProperty({
+    description: 'The parent session ID (main session that will receive all students)',
+    type: Number,
+    example: 456,
+    required: true,
+  })
+  @IsNotEmpty()
+  @IsNumber()
+  parentSessionId: number;
 }
