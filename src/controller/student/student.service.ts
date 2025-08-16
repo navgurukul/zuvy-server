@@ -524,7 +524,7 @@ export class StudentService {
           and(
             or(
               ...bootcampAndbatchIds.map(({ bootcampId, batchId }) =>
-                and(eq(session.bootcampId, bootcampId), eq(session.batchId, batchId))
+                and(eq(session.bootcampId, bootcampId), or(eq(session.batchId, batchId) , eq(session.secondBatchId, batchId)))
               )
             ),
             ne(session.status, helperVariable.completed),
