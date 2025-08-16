@@ -383,17 +383,6 @@ export class ScheduleService {
   const attendanceOfStudents = Object.values(attendanceByTitle);
   return [ null, attendanceOfStudents ];
   }
-  // Process Zoom attendance for completed sessions every 30 minutes
-  @Cron('0 */30 * * * *')
-  async processZoomAttendance() {
-    this.logger.log('Cron job triggered to process Zoom attendance');
-    try {
-      await this.classesService.processCompletedSessionsForAttendance();
-      this.logger.log('Zoom attendance processing completed');
-    } catch (error) {
-      this.logger.error(`Error processing Zoom attendance: ${error.message}`);
-    }
-  }
 
   // Daily midnight job (server timezone) to backfill attendance from invited_students snapshot.
   // Runs at 00:00:05 to avoid exact midnight race with other processes.

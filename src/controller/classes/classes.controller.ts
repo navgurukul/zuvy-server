@@ -419,24 +419,6 @@ export class ClassesController {
     return this.classesService.fetchZoomAttendanceForSession(sessionId);
   }
 
-  @Post('/process-attendance')
-  @ApiOperation({ summary: 'Process all completed sessions for attendance (admin only)' })
-  @ApiBearerAuth('JWT-auth')
-  async processAttendanceForCompletedSessions(@Req() req) {
-    const userInfo = {
-      id: Number(req.user[0].id),
-      email: req.user[0].email,
-      roles: req.user[0].roles || []
-    };
-
-    // Check admin access
-    if (!userInfo.roles?.includes('admin')) {
-      throw new BadRequestException('Only admins can process attendance data');
-    }
-
-    return this.classesService.processCompletedSessionsForAttendance();
-  }
-
   @Post('/merge')
   @ApiOperation({ 
     summary: 'Merge two classes - combines students from both sessions into parent session',

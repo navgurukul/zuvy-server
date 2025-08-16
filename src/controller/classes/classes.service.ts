@@ -2665,32 +2665,21 @@ export class ClassesService {
     }
   }
 
-  async processCompletedSessionsForAttendance() {
-    try {
-      this.logger.log('Processing completed sessions for attendance');
-      return {
-        success: true,
-        data: { processedSessions: 0 },
-        message: 'Completed sessions processed successfully'
-      };
-    } catch (error) {
-      this.logger.error(`Error processing completed sessions: ${error.message}`);
-      return {
-        success: false,
-        error: error.message,
-        message: 'Failed to process completed sessions'
-      };
-    }
-  }
-
   async meetingAttendanceAnalytics(sessionId: number, userInfo: any) {
     try {
-      this.logger.log(`Processing meeting attendance analytics for session: ${sessionId}`);
-      return [null, {
-        success: true,
-        data: { sessionId, analytics: {} },
-        message: 'Meeting attendance analytics processed successfully'
-      }];
+      // i want to fetch the zuvySessions and zuvyStudentAttendanceRecords relation name studentAttendanceRecords with relations
+        let sessionInfo = await db.query.zuvySessions.findMany({
+          where:(zs, {eq}) => eq(zuvySessions.id, sessionId),
+          with:{
+            studentAttendanceRecords: true
+          }
+        })
+      if (!sessionInfo.length) {
+        this.logger.warn(`No session found for ID: ${sessionId}`);
+        return [null, { success: false, message: 'Session not found' }];
+      }
+      // Process sessionInfo to extract relevant analytics
+      return [null, { success: true, data: { sessionInfo }, message: 'Meeting attendance analytics processed successfully' }];
     } catch (error) {
       this.logger.error(`Error processing meeting attendance analytics: ${error.message}`);
       return [error, null];

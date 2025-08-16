@@ -843,7 +843,6 @@ export class ContentService {
             }
           });
           
-          
           // Fetch attendance data and format response for each session
           const sessionDetailsWithAttendance = await Promise.all(
             sessionDetails.map(async (session) => {
@@ -881,7 +880,7 @@ export class ContentService {
               let userJoinLink =  mergeInfoAsChild 
                   ? mergeInfoAsChild.parentSession.hangoutLink
                   : (session.isZoomMeet ? session.zoomStartUrl : session.hangoutLink);
-              if (userRole.include('admin') || userRole.include('instructor')) {
+              if (userRole.includes('admin') || userRole.includes('instructor')) {
                 // If the user is an admin or instructor, use the session's zoomStartUrl or hangoutLink
                 userJoinLink = session.isZoomMeet ? session.zoomStartUrl : session.hangoutLink;
               }
@@ -930,6 +929,7 @@ export class ContentService {
         return 'No Chapter found';
       }
     } catch (err) {
+      console.log(err);
       throw err;
     }
   }
