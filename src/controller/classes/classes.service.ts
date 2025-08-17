@@ -1291,73 +1291,75 @@ export class ClassesService {
 
       let classes = await classesQuery;
 
-      // Fetch admin user details
-      const user = await db
-        .select()
-        .from(users)
-        .where(eq(users.email, process.env.TEAM_EMAIL));
-      let adminUser = { ...user[0], roles: 'admin' };
+      // Partition classes by platform
+      const zoomClasses = classes.filter(c => c.isZoomMeet === true);
+      const meetClasses = classes.filter(c => !c.isZoomMeet);
 
-      // Get access to the calendar
-      let calendar: any = await this.accessOfCalendar(adminUser);
+      // Fetch admin user & calendar ONLY if there are Google Meet sessions to sync
+      let calendar: any = null;
+      if (meetClasses.length > 0) {
+        const user = await db
+          .select()
+          .from(users)
+          .where(eq(users.email, process.env.TEAM_EMAIL));
+        let adminUser = { ...user[0], roles: 'admin' };
+        calendar = await this.accessOfCalendar(adminUser);
+      }
 
-      // Array to hold classes that need updating
-      let classesToUpdate = [];
-      let deleteClassIds: any = [];
-      // Process each class
-      for (let classObj of classes) {
-        // Fetch calendar event
+      // Arrays to hold updates & deletions
+      let classesToUpdate: { id: number; updatedClass: any }[] = [];
+      let deleteClassIds: any[] = [];
+
+      // Process Google Meet classes via Calendar API
+      for (let classObj of meetClasses) {
         try {
           const event = await calendar.events.get({
             calendarId: 'primary',
             eventId: classObj.meetingId,
           });
           const { start, end, status } = event.data;
-
-          // If the event was canceled, delete the class
           if (status === 'cancelled') {
             deleteClassIds.push(classObj.meetingId);
             continue;
           }
-
           const apiStartTime = start?.dateTime || start?.date;
-          const apiEndTime = end?.dateTime || end?.date;
-          const startTime = new Date(classObj.startTime);
-          const endTime = new Date(classObj.endTime);
-
-          // Determine new status
-          let newStatus;
-          if (currentTime > endTime) {
-            newStatus = 'completed';
-          } else if (currentTime >= startTime && currentTime <= endTime) {
-            newStatus = 'ongoing';
-          } else {
-            newStatus = 'upcoming';
-          }
-
-          // Check if an update is needed
-          if (
-            apiStartTime !== classObj.startTime ||
-            apiEndTime !== classObj.endTime ||
-            newStatus !== classObj.status
-          ) {
-            // Prepare the update object
-            let updatedClass = {
-              startTime: apiStartTime,
-              endTime: apiEndTime,
-              status: newStatus,
-            };
-
-            // Add the class to the batch update list
-            classesToUpdate.push({ id: classObj.id, updatedClass });
-          }
+            const apiEndTime = end?.dateTime || end?.date;
+            const startTime = new Date(classObj.startTime);
+            const endTime = new Date(classObj.endTime);
+            let newStatus;
+            if (currentTime > endTime) newStatus = 'completed';
+            else if (currentTime >= startTime && currentTime <= endTime) newStatus = 'ongoing';
+            else newStatus = 'upcoming';
+            if (
+              apiStartTime !== classObj.startTime ||
+              apiEndTime !== classObj.endTime ||
+              newStatus !== classObj.status
+            ) {
+              classesToUpdate.push({
+                id: classObj.id,
+                updatedClass: { startTime: apiStartTime, endTime: apiEndTime, status: newStatus }
+              });
+            }
         } catch (error) {
-          if (error.code === 404 || error.code === 410) { // Not Found or Gone
+          if (error.code === 404 || error.code === 410) {
             deleteClassIds.push(classObj.meetingId);
             Logger.log(`Event ${classObj.meetingId} not found or deleted from calendar. Removing from DB.`);
           } else {
-            throw error; // Re-throw other errors
+            throw error;
           }
+        }
+      }
+
+      // Process Zoom classes WITHOUT calling Calendar API (derive status from stored times only)
+      for (let classObj of zoomClasses) {
+        const startTime = new Date(classObj.startTime);
+        const endTime = new Date(classObj.endTime);
+        let newStatus;
+        if (currentTime > endTime) newStatus = 'completed';
+        else if (currentTime >= startTime && currentTime <= endTime) newStatus = 'ongoing';
+        else newStatus = 'upcoming';
+        if (newStatus !== classObj.status) {
+          classesToUpdate.push({ id: classObj.id, updatedClass: { status: newStatus } });
         }
       }
 
