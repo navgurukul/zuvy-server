@@ -2394,7 +2394,7 @@ export const zuvySessionsRelations = relations(zuvySessions, ({ one, many }) => 
     fields: [zuvySessions.moduleId],
     references: [zuvyCourseModules.id],
   }),
-  studentAttendanceRecords: one(zuvyStudentAttendanceRecords),
+  studentAttendanceRecords: many(zuvyStudentAttendanceRecords),
   // Relations for merged sessions
   childMerges: many(zuvySessionMerge, { relationName: "childSession" }),
   parentMerges: many(zuvySessionMerge, { relationName: "parentSession" })

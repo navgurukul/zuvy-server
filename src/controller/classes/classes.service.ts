@@ -2770,18 +2770,40 @@ export class ClassesService {
     try {
       // i want to fetch the zuvySessions and zuvyStudentAttendanceRecords relation name studentAttendanceRecords with relations
         let sessionInfo = await db.query.zuvySessions.findMany({
-          where:(zs, {eq}) => eq(zuvySessions.id, sessionId),
+          where:(zs, {eq}) => eq(zs.id, sessionId),
           with:{
             studentAttendanceRecords: true
           }
         })
+      console.log(sessionInfo)
       if (!sessionInfo.length) {
         this.logger.warn(`No session found for ID: ${sessionId}`);
         return [null, { success: false, message: 'Session not found' }];
       }
-      // Process sessionInfo to extract relevant analytics
-      return [null, { success: true, data: { sessionInfo }, message: 'Meeting attendance analytics processed successfully' }];
+      const session = sessionInfo[0] as any;
+      const invitedStudents = Array.isArray(session.invitedStudents) ? session.invitedStudents : [];
+      const attendanceRecords = Array.isArray(session.studentAttendanceRecords) ? session.studentAttendanceRecords : [];
+
+      // Counts (case-insensitive comparison of status)
+      const presentCount = attendanceRecords.filter(r => (r.status || '').toString().toLowerCase() === 'present').length;
+      const absentCount = attendanceRecords.filter(r => (r.status || '').toString().toLowerCase() === 'absent').length;
+      const totalStudents = invitedStudents.length;
+      // Optionally infer missing records (students without any attendance record)
+      const recordedStudents = new Set(attendanceRecords.map(r => Number(r.userId))); // userId numeric
+      const missingRecords = totalStudents - attendanceRecords.length;
+
+      const analytics = {
+        totalStudents,
+        present: presentCount,
+        absent: absentCount,
+        // Provide additional derived info if helpful
+        recordedAttendanceEntries: attendanceRecords.length,
+        missingAttendanceEntries: missingRecords < 0 ? 0 : missingRecords,
+      };
+
+      return [null, { success: true, data: { session, analytics }, message: 'Meeting attendance analytics processed successfully' }];
     } catch (error) {
+      console.log(error)
       this.logger.error(`Error processing meeting attendance analytics: ${error.message}`);
       return [error, null];
     }
