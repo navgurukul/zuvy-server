@@ -16,7 +16,8 @@ import {
   zuvyStudentAttendance,
   zuvyModuleChapter,
   zuvyCourseModules,
-  zuvyModuleTopics
+  zuvyModuleTopics,
+  zuvyStudentAttendanceRecords
 } from '../../../drizzle/schema';
 import { db } from '../../db/index';
 import { eq, sql, desc, count, asc, or, and, inArray, isNull } from 'drizzle-orm';
@@ -56,6 +57,11 @@ interface AssessmentEvent extends BaseEvent {
   marks: number;
   startDatetime: string;
   endDatetime: string;
+}
+
+interface UserAttendanceRecord {
+  status: string;
+  duration: number;
 }
 
 type Event = ClassEvent | AssessmentEvent;
@@ -719,140 +725,199 @@ export class StudentService {
     }
   }
 
-  async getCompletedClassesWithAttendance(userId: number, bootcampId: number, limit = 10, offset = 0) {
-    try {
-      const userRecord = await db
-        .select({ email: users.email })
-        .from(users)
-        .where(eq(users.id, BigInt(userId)));
+  async getCompletedClassesWithAttendance(userId: number, bootcampId: number, limit = 10, offset = 0) 
+  {
+  try {
+    const userRecord = await db
+      .select({ email: users.email })
+      .from(users)
+      .where(eq(users.id, BigInt(userId)));
 
-      if (userRecord.length === 0) {
-        return [{ message: 'User not found', statusCode: STATUS_CODES.NOT_FOUND }];
-      }
+    if (userRecord.length === 0) {
+      return [{ message: 'User not found', statusCode: STATUS_CODES.NOT_FOUND }];
+    }
 
-      const userEmail = userRecord[0].email.toLowerCase();
+    const userEmail = userRecord[0].email.toLowerCase();
 
-      // find the batch the user is enrolled in for this bootcamp
-      const batchData = await db
-        .select({ batchId: zuvyBatchEnrollments.batchId })
-        .from(zuvyBatchEnrollments)
+    // Find the batch the user is enrolled in for this bootcamp
+    const batchData = await db
+      .select({ batchId: zuvyBatchEnrollments.batchId })
+      .from(zuvyBatchEnrollments)
+      .where(
+        and(
+          eq(zuvyBatchEnrollments.userId, BigInt(userId)),
+          eq(zuvyBatchEnrollments.bootcampId, bootcampId)
+        )
+      );
+
+    if (batchData.length === 0 || !batchData[0].batchId) {
+      return [
+        {
+          message: 'Batch not found for student',
+          statusCode: STATUS_CODES.NOT_FOUND,
+        },
+      ];
+    }
+
+    const batchId = batchData[0].batchId as number;
+
+    // 1. Fetch all completed sessions for the batch
+    const allSessions = await db.query.zuvySessions.findMany({
+      where: (session, { and, eq }) =>
+        and(
+          eq(session.bootcampId, bootcampId),
+          eq(session.batchId, batchId),
+          eq(session.status, helperVariable.completed)
+        ),
+      with: {
+        batches: { columns: { id: true, name: true } },
+      },
+      orderBy: (session, { desc }) => desc(session.id),
+    });
+
+    const totalClasses = allSessions.length;
+    if (totalClasses === 0) {
+        return [
+            null,
+            {
+                message: 'No completed classes found',
+                statusCode: STATUS_CODES.OK,
+                data: {
+                    batchId,
+                    batchName: null,
+                    classes: [],
+                    totalClasses: 0,
+                    totalPages: 0,
+                    attendanceStats: { presentCount: 0, absentCount: 0, attendancePercentage: 0 },
+                },
+            },
+        ];
+    }
+    
+    const paginatedClasses = limit ? allSessions.slice(offset, offset + limit) : allSessions;
+    const batchName = (allSessions[0] as any)?.batches?.name || null;
+
+    // 2. Partition sessions into Zoom and Google Meet categories
+    const zoomSessions = allSessions.filter(session => session.isZoomMeet === true);
+    const googleMeetSessions = allSessions.filter(session => !session.isZoomMeet);
+
+    const zoomSessionIds = zoomSessions.map(session => session.id);
+    const googleMeetMeetingIds = googleMeetSessions.map(session => session.meetingId);
+    
+    // 3. Create a unified map to store attendance for the specific user
+    const unifiedAttendanceMap = new Map<number, UserAttendanceRecord>();
+
+    // 4. Fetch attendance for Zoom sessions from the new table
+    if (zoomSessionIds.length > 0) {
+      const zoomAttendanceRecords = await db
+        .select({
+          sessionId: zuvyStudentAttendanceRecords.sessionId,
+          status: zuvyStudentAttendanceRecords.status,
+          duration: zuvyStudentAttendanceRecords.duration,
+        })
+        .from(zuvyStudentAttendanceRecords)
         .where(
           and(
-            eq(zuvyBatchEnrollments.userId, BigInt(userId)),
-            eq(zuvyBatchEnrollments.bootcampId, bootcampId)
+            eq(zuvyStudentAttendanceRecords.userId, userId),
+            inArray(zuvyStudentAttendanceRecords.sessionId, zoomSessionIds)
           )
         );
 
-      if (batchData.length === 0 || !batchData[0].batchId) {
-        return [
-          {
-            message: 'Batch not found for student',
-            statusCode: STATUS_CODES.NOT_FOUND,
-          },
-        ];
-      }
-
-      const batchId = batchData[0].batchId as number;
-
-      // fetch all completed sessions once
-      const allSessions = await db.query.zuvySessions.findMany({
-        where: (session, { and, eq }) =>
-          and(
-            eq(session.bootcampId, bootcampId),
-            eq(session.batchId, batchId),
-            eq(session.status, helperVariable.completed)
-          ),
-        with: {
-          batches: { columns: { id: true, name: true } },
-        },
-        orderBy: (session, { desc }) => desc(session.startTime),
+      zoomAttendanceRecords.forEach(record => {
+        unifiedAttendanceMap.set(record.sessionId, {
+          status: record.status,
+          duration: record.duration ?? 0,
+        });
       });
-
-      const totalClasses = allSessions.length;
-      const paginatedClasses = limit ? allSessions.slice(offset, offset + limit) : allSessions;
-      const allMeetingIds = allSessions.map((cls) => cls.meetingId);
-
-      const batchName = (allSessions[0] as any)?.batches?.name || null;
-
-      const attendanceRecords = allMeetingIds.length
-        ? await db
-            .select({ meetingId: zuvyStudentAttendance.meetingId, attendance: zuvyStudentAttendance.attendance })
-            .from(zuvyStudentAttendance)
-            .where(
-              and(
-                inArray(zuvyStudentAttendance.meetingId, allMeetingIds),
-                eq(zuvyStudentAttendance.batchId, batchId)
-              )
-            )
-        : [];
-
-      const attendanceMap = new Map<string, any[]>();
-      attendanceRecords.forEach((record) => {
-        let data: any[] = [];
-        if (Array.isArray(record.attendance)) data = record.attendance as any[];
-        else if (record.attendance) {
-          try {
-            data = JSON.parse(record.attendance as any);
-          } catch {}
-        }
-        attendanceMap.set(record.meetingId, data);
-      });
-
-      const result = paginatedClasses.map((cls) => {
-        const students = attendanceMap.get(cls.meetingId) || [];
-        const studentRecord = students.find((s: any) => s.email?.toLowerCase() === userEmail);
-        const status = studentRecord ? studentRecord.attendance : "absent";
-        const duration = studentRecord?.duration ?? 0;
-
-        return {
-          id: Number(cls.id),
-          title: cls.title,
-          startTime: cls.startTime,
-          endTime: cls.endTime,
-          s3Link: cls.s3link,
-          moduleId: cls.moduleId,
-          chapterId: cls.chapterId,
-          attendanceStatus: status,
-          duration,
-        };
-      });
-
-      let presentCount = 0;
-      let absentCount = 0;
-      allMeetingIds.forEach((id) => {
-        const students = attendanceMap.get(id) || [];
-        const studentRecord = students.find((s: any) => s.email?.toLowerCase() === userEmail);
-        const isPresent = studentRecord && studentRecord.attendance === 'present';
-        if (isPresent) presentCount++; else absentCount++;
-      });
-
-      const attendancePercentage = allMeetingIds.length
-        ? Number(((presentCount / allMeetingIds.length) * 100).toFixed(2))
-        : 0;
-
-      return [
-        null,
-        {
-          message: 'Completed classes fetched successfully',
-          statusCode: STATUS_CODES.OK,
-          data: {
-            batchId,
-            batchName,
-            classes: result,
-            totalClasses,
-            totalPages: limit ? Math.ceil(totalClasses / limit) : 1,
-            attendanceStats: {
-              presentCount,
-              absentCount,
-              attendancePercentage,
-            },
-          },
-        },
-      ];
-    } catch (error) {
-      return [{ message: error.message, statusCode: STATUS_CODES.BAD_REQUEST }];
     }
+
+    // 5. Fetch attendance for Google Meet sessions from the old table
+    if (googleMeetMeetingIds.length > 0) {
+      const googleMeetAttendanceRecords = await db
+        .select({ meetingId: zuvyStudentAttendance.meetingId, attendance: zuvyStudentAttendance.attendance })
+        .from(zuvyStudentAttendance)
+        .where(inArray(zuvyStudentAttendance.meetingId, googleMeetMeetingIds));
+
+      const meetingIdToSessionIdMap = new Map(googleMeetSessions.map(s => [s.meetingId, s.id]));
+
+      googleMeetAttendanceRecords.forEach(record => {
+        let students: any[] = [];
+        if (Array.isArray(record.attendance)) {
+            students = record.attendance as any[];
+        } else if (typeof record.attendance === 'string') {
+            try { students = JSON.parse(record.attendance); } catch {}
+        }
+
+        const studentRecord = students.find((s: any) => s.email?.toLowerCase() === userEmail);
+        const sessionId = meetingIdToSessionIdMap.get(record.meetingId);
+
+        if (studentRecord && sessionId) {
+          unifiedAttendanceMap.set(sessionId, {
+            status: studentRecord.attendance || 'absent',
+            duration: studentRecord.duration ?? 0,
+          });
+        }
+      });
+    }
+
+    // 6. Map paginated classes to the final result structure using the unified map
+    const result = paginatedClasses.map((cls) => {
+      const userAttendance = unifiedAttendanceMap.get(cls.id);
+      const status = userAttendance?.status || 'absent';
+      const duration = userAttendance?.duration || 0;
+
+      return {
+        id: Number(cls.id),
+        title: cls.title,
+        startTime: cls.startTime,
+        endTime: cls.endTime,
+        s3Link: cls.s3link,
+        moduleId: cls.moduleId,
+        chapterId: cls.chapterId,
+        attendanceStatus: status,
+        duration,
+      };
+    });
+
+    // 7. Calculate overall attendance statistics using all sessions
+    let presentCount = 0;
+    allSessions.forEach((session) => {
+      const userAttendance = unifiedAttendanceMap.get(session.id);
+      if (userAttendance && userAttendance.status === 'present') {
+        presentCount++;
+      }
+    });
+
+    const absentCount = totalClasses - presentCount;
+    const attendancePercentage = totalClasses > 0
+      ? Number(((presentCount / totalClasses) * 100).toFixed(2))
+      : 0;
+
+    // 8. Return the final, consistently structured response
+    return [
+      null,
+      {
+        message: 'Completed classes fetched successfully',
+        statusCode: STATUS_CODES.OK,
+        data: {
+          batchId,
+          batchName,
+          classes: result,
+          totalClasses,
+          totalPages: limit ? Math.ceil(totalClasses / limit) : 1,
+          attendanceStats: {
+            presentCount,
+            absentCount,
+            attendancePercentage,
+          },
+        },
+      },
+    ];
+  } catch (error) {
+    // console.error("Error fetching completed classes:", error); // Recommended for debugging
+    return [{ message: error.message, statusCode: STATUS_CODES.BAD_REQUEST }];
   }
+}
 
   //This function returns the rank of a particular course based on avg of attendance and course progress
   //The query has a hierarchy from:-
