@@ -2059,13 +2059,20 @@ export class ClassesService {
         return { success: false, message: 'Unauthorized to update this session' };
       }
       
-      // Update database record first
+      // Normalise incoming DTO fields
+      const normalizedStart = updateData.startTime || updateData.startDateTime;
+      const normalizedEnd = updateData.endTime || updateData.endDateTime;
+
+      // Prevent platform toggle via update
+      if (updateData.isZoomMeet !== undefined && updateData.isZoomMeet !== session.isZoomMeet) {
+        this.logger.warn('Attempt to change isZoomMeet ignored');
+      }
+
       await db.update(zuvySessions)
         .set({
           title: updateData.title || session.title,
-          startTime: updateData.startTime || session.startTime,
-          endTime: updateData.endTime || session.endTime,
-          // Add other fields as needed
+          startTime: normalizedStart || session.startTime,
+          endTime: normalizedEnd || session.endTime,
         })
         .where(eq(zuvySessions.id, sessionId));
       
@@ -2076,15 +2083,15 @@ export class ClassesService {
           try {
             // Calculate duration if start/end times are provided
             let duration;
-            const startTime = updateData.startTime || session.startTime;
-            const endTime = updateData.endTime || session.endTime;
+            const startTime = normalizedStart || session.startTime;
+            const endTime = normalizedEnd || session.endTime;
             if (startTime && endTime) {
               duration = Math.floor((new Date(endTime).getTime() - new Date(startTime).getTime()) / (1000 * 60));
             }
             
             const zoomUpdateData: any = {};
             if (updateData.title) zoomUpdateData.topic = updateData.title;
-            if (updateData.startTime) zoomUpdateData.start_time = updateData.startTime;
+            if (normalizedStart) zoomUpdateData.start_time = normalizedStart;
             if (duration) zoomUpdateData.duration = duration;
             
             await this.zoomService.updateMeeting(session.zoomMeetingId, zoomUpdateData);
@@ -2095,8 +2102,8 @@ export class ClassesService {
               try {
                 const calendarUpdateData = {
                   title: updateData.title ? `${updateData.title} (Zoom Meeting)` : undefined,
-                  startTime: updateData.startTime,
-                  endTime: updateData.endTime,
+                  startTime: normalizedStart,
+                  endTime: normalizedEnd,
                   timeZone: updateData.timeZone,
                   description: updateData.description ? 
                     `${updateData.description}\n\nJoin Zoom Meeting: ${session.hangoutLink}\nMeeting ID: ${session.zoomMeetingId}\nPassword: ${session.zoomPassword}` : 
@@ -2124,7 +2131,12 @@ export class ClassesService {
         // Update Google Calendar event
         if (session.meetingId && session.meetingId !== session.zoomMeetingId) {
           try {
-            await this.updateGoogleCalendarEvent(session.meetingId, updateData, userInfo);
+            await this.updateGoogleCalendarEvent(session.meetingId, {
+              title: updateData.title,
+              startTime: normalizedStart,
+              endTime: normalizedEnd,
+              description: updateData.description,
+            }, userInfo);
             this.logger.log(`Google Calendar event ${session.meetingId} updated successfully`);
           } catch (error) {
             this.logger.error(`Failed to update Google Calendar: ${error.message}`);
@@ -2139,7 +2151,7 @@ export class ClassesService {
       
       return {
         success: true,
-        data: { sessionId, ...updateData },
+  data: { sessionId, ...updateData, startTime: normalizedStart || session.startTime, endTime: normalizedEnd || session.endTime },
         message: 'Session updated successfully'
       };
     } catch (error) {
@@ -2225,6 +2237,93 @@ export class ClassesService {
         error: error.message,
         message: 'Failed to delete session'
       };
+    }
+  }
+
+  /**
+   * Helper: fetch a session by a provided meeting identifier which could be either
+   * the stored Google meetingId OR the Zoom meeting id. Returns first match.
+   */
+  private async getSessionByAnyMeetingId(meetingIdentifier: string) {
+    if (!meetingIdentifier) return null;
+    const rows = await db
+      .select()
+      .from(zuvySessions)
+      .where(or(
+        eq(zuvySessions.meetingId, meetingIdentifier),
+        eq(zuvySessions.zoomMeetingId, meetingIdentifier)
+      ))
+      .limit(1);
+    return rows.length ? rows[0] : null;
+  }
+
+  /**
+   * Update a session using meeting id (Google) or zoomMeetingId (Zoom)
+   * Performs platform pre-checks before delegating to updateSession.
+   */
+  async updateSessionByMeetingId(meetingIdentifier: string, updateData: any, userInfo: any) {
+    try {
+      const session = await this.getSessionByAnyMeetingId(meetingIdentifier);
+      if (!session) {
+        return { success: false, message: 'Session not found for given meeting identifier' };
+      }
+      console.log({ session });
+      // Platform consistency checks
+      if (session.isZoomMeet) {
+        if (!session.zoomMeetingId) {
+          return { success: false, message: 'Zoom meeting not linked for this session' };
+        }
+        // Meeting identifier provided should match either zoomMeetingId or meetingId (calendar event)
+        if (meetingIdentifier !== session.zoomMeetingId && meetingIdentifier !== session.meetingId) {
+          return { success: false, message: 'Provided identifier does not match this Zoom session' };
+        }
+      } else { // Google Meet
+        if (!session.meetingId) {
+          return { success: false, message: 'Google meeting not linked for this session' };
+        }
+        if (meetingIdentifier !== session.meetingId) {
+          return { success: false, message: 'Provided identifier does not match this Google session' };
+        }
+      }
+
+      return this.updateSession(session.id, updateData, userInfo);
+    } catch (error) {
+      this.logger.error(`Error updating session by meeting identifier ${meetingIdentifier}: ${error.message}`);
+      return { success: false, message: 'Failed to update session', error: error.message };
+    }
+  }
+
+  /**
+   * Delete a session using meeting id (Google) or zoomMeetingId (Zoom)
+   * Performs platform pre-checks before delegating to deleteSession.
+   */
+  async deleteSessionByMeetingId(meetingIdentifier: string, userInfo: any) {
+    try {
+      const session = await this.getSessionByAnyMeetingId(meetingIdentifier);
+      if (!session) {
+        return { success: false, message: 'Session not found for given meeting identifier' };
+      }
+
+      if (session.isZoomMeet) {
+        if (!session.zoomMeetingId) {
+          return { success: false, message: 'Zoom meeting not linked for this session' };
+        }
+        if (meetingIdentifier !== session.zoomMeetingId && meetingIdentifier !== session.meetingId) {
+          return { success: false, message: 'Provided identifier does not match this Zoom session' };
+        }
+      } else {
+        if (!session.meetingId) {
+          return { success: false, message: 'Google meeting not linked for this session' };
+        }
+        if (meetingIdentifier !== session.meetingId) {
+          return { success: false, message: 'Provided identifier does not match this Google session' };
+        }
+      }
+
+      return this.deleteSession(session.id, userInfo);
+    } catch (error) {
+      this.logger.error(`Error deleting session by meeting identifier ${meetingIdentifier}: ${error.message}`);
+      return { success: false, message: 'Failed to delete session', error: error.message };
     }
   }
 

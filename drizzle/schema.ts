@@ -2322,6 +2322,10 @@ export const zuvySessionAttendanceRelations = relations(zuvyStudentAttendanceRec
     fields: [zuvyStudentAttendanceRecords.bootcampId],
     references: [zuvyBootcamps.id],
   }),
+  session: one(zuvySessions, {
+    fields: [zuvyStudentAttendanceRecords.sessionId],
+    references: [zuvySessions.id],
+  }),
 }));
 
 export const zuvySessionVideoRecordings = main.table('zuvy_session_video_recordings', {
@@ -2390,6 +2394,7 @@ export const zuvySessionsRelations = relations(zuvySessions, ({ one, many }) => 
     fields: [zuvySessions.moduleId],
     references: [zuvyCourseModules.id],
   }),
+  studentAttendanceRecords: one(zuvyStudentAttendanceRecords),
   // Relations for merged sessions
   childMerges: many(zuvySessionMerge, { relationName: "childSession" }),
   parentMerges: many(zuvySessionMerge, { relationName: "parentSession" })
