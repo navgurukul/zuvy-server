@@ -3580,6 +3580,14 @@ export const zuvyTestCasesSubmission = main.table("zuvy_test_cases_submission", 
   }
 });
 
+export const blacklistedTokens = main.table('blacklisted_tokens', {
+  id: bigserial('id', { mode: 'bigint' }).primaryKey().notNull(),
+  token: varchar('token', { length: 500 }).notNull(),
+  userId: bigint('user_id', { mode: 'bigint' }).notNull().references(() => users.id),
+  expiresAt: timestamp('expires_at').notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
 export const zuvyAssessmentSubmission = main.table("zuvy_assessment_submission", {
   id: serial("id").primaryKey().notNull(),
   userId: integer("user_id").notNull(),
