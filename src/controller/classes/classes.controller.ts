@@ -142,24 +142,24 @@ export class ClassesController {
     return result;
   }
 
-  @Get('/getAttendance/:meetingId')
-  @ApiBearerAuth('JWT-auth')
-  @ApiOperation({ summary: 'Get the google class attendance by meetingId' })
-  async extractMeetAttendance(
-    @Req() req,
-    @Param('meetingId') meetingId: string,
-  ): Promise<object> {
-    const userInfo = {
-      id: Number(req.user[0].id),
-      email: req.user[0].email,
-      roles: req.user[0].roles || []
-    };
-    const [err, values] = await this.classesService.getAttendance(meetingId, userInfo);
-    if (err) {
-      throw new BadRequestException(err);
-    }
-    return values;
-  }
+  // @Get('/getAttendance/:meetingId')
+  // @ApiBearerAuth('JWT-auth')
+  // @ApiOperation({ summary: 'Get the google class attendance by meetingId' })
+  // async extractMeetAttendance(
+  //   @Req() req,
+  //   @Param('meetingId') meetingId: string,
+  // ): Promise<object> {
+  //   const userInfo = {
+  //     id: Number(req.user[0].id),
+  //     email: req.user[0].email,
+  //     roles: req.user[0].roles || []
+  //   };
+  //   const [err, values] = await this.classesService.getAttendance(meetingId, userInfo);
+  //   if (err) {
+  //     throw new BadRequestException(err);
+  //   }
+  //   return values;
+  // }
 
   @Get('/analytics/:sessionId')
   @ApiBearerAuth('JWT-auth')
@@ -443,23 +443,23 @@ export class ClassesController {
     return result;
   }
 
-  @Post('/sessions/:id/fetch-attendance')
-  @ApiOperation({ summary: 'Manually fetch Zoom attendance for a session' })
-  @ApiBearerAuth('JWT-auth')
-  async fetchSessionAttendance(@Param('id') sessionId: number, @Req() req) {
-    const userInfo = {
-      id: Number(req.user[0].id),
-      email: req.user[0].email,
-      roles: req.user[0].roles || []
-    };
+  // @Post('/sessions/:id/fetch-attendance')
+  // @ApiOperation({ summary: 'Manually fetch Zoom attendance for a session' })
+  // @ApiBearerAuth('JWT-auth')
+  // async fetchSessionAttendance(@Param('id') sessionId: number, @Req() req) {
+  //   const userInfo = {
+  //     id: Number(req.user[0].id),
+  //     email: req.user[0].email,
+  //     roles: req.user[0].roles || []
+  //   };
 
-    // Check admin access
-    if (!userInfo.roles?.includes('admin')) {
-      throw new BadRequestException('Only admins can fetch attendance data');
-    }
+  //   // Check admin access
+  //   if (!userInfo.roles?.includes('admin')) {
+  //     throw new BadRequestException('Only admins can fetch attendance data');
+  //   }
 
-    return this.classesService.fetchZoomAttendanceForSession(sessionId);
-  }
+  //   return this.classesService.fetchZoomAttendanceForSession(sessionId);
+  // }
 
   @Post('/merge')
   @ApiOperation({
