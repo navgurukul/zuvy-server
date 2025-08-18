@@ -130,7 +130,7 @@ export class ScheduleService {
           if (result.recordings) {
             try {
               await db.update(zuvySessions)
-                .set({ s3link: result.recordings })
+                .set({ s3link: result.recordings } as any)
                 .where(and(eq(zuvySessions.id, meetingIdMatch.id), or(isNull(zuvySessions.s3link), eq(zuvySessions.s3link, 'not found'))));
             } catch (recErr:any) {
               this.logger.warn(`Failed updating recording link for session ${meetingIdMatch.id}: ${recErr?.message ?? recErr}`);
@@ -189,7 +189,6 @@ export class ScheduleService {
           this.logger.warn(`Failed to recompute attendance percentages after backfill: ${recErr.message}`);
         }
       }
-      this.logger.log(`Backfill complete. Inserted attendance for ${inserted} meetings.`);
     } catch (error) {
       this.logger.error(`Unexpected error in backfillInvitedStudentsAttendanceMidnight: ${error.message}`);
     }

@@ -54,6 +54,7 @@ export class TrackingService {
    */
   async recomputeBatchAttendancePercentages(batchId: number) {
     try {
+      
       // ensure we have a logger
       if (!this.logger) this.logger = console;
 
@@ -63,7 +64,7 @@ export class TrackingService {
         .where(sql`${zuvySessions.batchId} = ${batchId} OR ${zuvySessions.secondBatchId} = ${batchId}`);
 
       const sessionIds = sessions.map(s => s.id);
-
+      console.log("Session IDs for batch:", sessions);
       // If there are no sessions, set attendance to 0 for enrolled students and return
       if (sessionIds.length === 0) {
         await db.update(zuvyBatchEnrollments)
@@ -76,7 +77,7 @@ export class TrackingService {
       const enrollments = await db.select({ id: zuvyBatchEnrollments.id, userId: zuvyBatchEnrollments.userId })
         .from(zuvyBatchEnrollments)
         .where(eq(zuvyBatchEnrollments.batchId, batchId));
-
+      console.log("Enrollments for batch:", enrollments);
       if (!enrollments || enrollments.length === 0) {
         return { success: true, updated: 0, reason: 'no_enrollments' };
       }
@@ -86,6 +87,7 @@ export class TrackingService {
         .from(zuvyStudentAttendanceRecords)
         .where(sql`${inArray(zuvyStudentAttendanceRecords.sessionId, sessionIds)} AND lower(${zuvyStudentAttendanceRecords.status}) = ${'present'}`)
         .groupBy(zuvyStudentAttendanceRecords.userId);
+
 
       // map userId -> presentCount (string keys to support BigInt)
       const presentMap = new Map<string, number>();

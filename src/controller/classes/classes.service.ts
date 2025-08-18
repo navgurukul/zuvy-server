@@ -302,9 +302,9 @@ export class ClassesService {
         email: student.email,
         name: student.email.split('@')[0],
       }));
-      
-      const batch = await db.select({instructorId: zuvyBatches.instructorId}).from(zuvyBatches).where(eq(zuvyBatches.id, eventDetails.batchId)).limit(1);
-      const instructorEmail = batch[0]?.instructorId ? await db.select({email: users.email}).from(users).where(eq(users.id, BigInt(batch[0].instructorId))).limit(1) : null;
+
+      const batch = await db.select({ instructorId: zuvyBatches.instructorId }).from(zuvyBatches).where(eq(zuvyBatches.id, eventDetails.batchId)).limit(1);
+      const instructorEmail = batch[0]?.instructorId ? await db.select({ email: users.email }).from(users).where(eq(users.id, BigInt(batch[0].instructorId))).limit(1) : null;
       // Create Zoom meeting
       // Always host under the team account so recordings live centrally there; instructor & others become alternative hosts.
       const teamAccountEmail = instructorEmail ? instructorEmail[0].email : creatorInfo.email;
@@ -1277,7 +1277,7 @@ export class ClassesService {
 
   async updatingStatusOfClass(bootcamp_id: number, batch_id: number, chapterId?: number) {
     try {
-      const currentTime = new Date();
+      let currentTime = new Date();
 
       // Fetch classes based on bootcamp_id and batch_id
       let classesQuery = db.select().from(zuvySessions)
@@ -1287,9 +1287,9 @@ export class ClassesService {
           !isNaN(batch_id) ? or(eq(zuvySessions.batchId, batch_id), eq(zuvySessions.secondBatchId, batch_id)) : undefined,
           chapterId ? eq(zuvySessions.chapterId, chapterId) : undefined
         ));
-      
+
       let classes = await classesQuery;
-       console.log("Executing classes query:", classes);
+      console.log("Executing classes query:", classes);
       // Partition classes by platform
       const zoomClasses = classes.filter(c => c.isZoomMeet === true);
       const meetClasses = classes.filter(c => !c.isZoomMeet);
@@ -1351,8 +1351,11 @@ export class ClassesService {
 
       // Process Zoom classes WITHOUT calling Calendar API (derive status from stored times only)
       for (let classObj of zoomClasses) {
+
         const startTime = new Date(classObj.startTime);
         const endTime = new Date(classObj.endTime);
+        currentTime.setHours(currentTime.getHours() + 5); // Adjust for IST
+        currentTime.setMinutes(currentTime.getMinutes() + 30); // Adjust for IST
         let newStatus;
         if (currentTime > endTime) newStatus = 'completed';
         else if (currentTime >= startTime && currentTime <= endTime) newStatus = 'ongoing';
@@ -3275,121 +3278,121 @@ export class ClassesService {
 
 
   async migrateCompletedAttendancesByBootcamp(bootcampId: number): Promise<void> {
-  console.log(`🚀 Starting migration for completed sessions in bootcampId: ${bootcampId}...`);
+    console.log(`🚀 Starting migration for completed sessions in bootcampId: ${bootcampId}...`);
 
-  // 1. Fetch all 'completed' sessions for the specified bootcamp
-  const completedSessions = await db
-    .select({ meetingId: zuvySessions.meetingId })
-    .from(zuvySessions)
-    .where(and(
-      eq(zuvySessions.status, 'completed'),
-      eq(zuvySessions.bootcampId, bootcampId)
-    ));
+    // 1. Fetch all 'completed' sessions for the specified bootcamp
+    const completedSessions = await db
+      .select({ meetingId: zuvySessions.meetingId })
+      .from(zuvySessions)
+      .where(and(
+        eq(zuvySessions.status, 'completed'),
+        eq(zuvySessions.bootcampId, bootcampId)
+      ));
 
-  if (!completedSessions || completedSessions.length === 0) {
-    console.log(`No completed sessions found to migrate for bootcampId: ${bootcampId}. Exiting.`);
-    return;
-  }
-
-  console.log(`Found ${completedSessions.length} completed sessions to process for bootcampId: ${bootcampId}.`);
-
-  // 2. Loop through each completed session and call the migration function
-  for (const session of completedSessions) {
-    if (session.meetingId) {
-      await this.migrateAttendanceByMeetingId(session.meetingId);
-    }
-  }
-
-  console.log(`✅ All completed sessions for bootcampId: ${bootcampId} have been processed.`);
-}
-
-
-// ================================================================= //
-// == WORKER: Function to migrate a single session (Unchanged)     == //
-// ================================================================= //
-
-/**
- * Migrates attendance data for a single session from the old JSON format
- * to the new normalized table structure.
- 
- */
-async migrateAttendanceByMeetingId(meetingId: string): Promise<void> {
-  console.log(`\n---\nStarting migration for meetingId: ${meetingId}...`);
-
-  try {
-    const session = await db.query.zuvySessions.findFirst({
-      where: eq(zuvySessions.meetingId, meetingId),
-      columns: { id: true, bootcampId: true, batchId: true, startTime: true },
-    });
-
-    if (!session) {
-      console.error(`Error: Session with meetingId "${meetingId}" not found.`);
-      return;
-    }
-    
-    // This part handles your condition to ignore sessions without an attendance entry
-    const oldAttendanceRecord = await db.query.zuvyStudentAttendance.findFirst({
-      where: eq(zuvyStudentAttendance.meetingId, meetingId),
-      columns: { attendance: true },
-    });
-
-    const attendanceArray = oldAttendanceRecord?.attendance as any[];
-    if (!attendanceArray || attendanceArray.length === 0) {
-      console.log(`No attendance data found in 'zuvy_student_attendance' for meetingId "${meetingId}". Skipping.`);
+    if (!completedSessions || completedSessions.length === 0) {
+      console.log(`No completed sessions found to migrate for bootcampId: ${bootcampId}. Exiting.`);
       return;
     }
 
-    const emails = attendanceArray
-      .map((record) => record.email)
-      .filter((email) => email && typeof email === 'string');
+    console.log(`Found ${completedSessions.length} completed sessions to process for bootcampId: ${bootcampId}.`);
 
-    if (emails.length === 0) {
+    // 2. Loop through each completed session and call the migration function
+    for (const session of completedSessions) {
+      if (session.meetingId) {
+        await this.migrateAttendanceByMeetingId(session.meetingId);
+      }
+    }
+
+    console.log(`✅ All completed sessions for bootcampId: ${bootcampId} have been processed.`);
+  }
+
+
+  // ================================================================= //
+  // == WORKER: Function to migrate a single session (Unchanged)     == //
+  // ================================================================= //
+
+  /**
+   * Migrates attendance data for a single session from the old JSON format
+   * to the new normalized table structure.
+   
+   */
+  async migrateAttendanceByMeetingId(meetingId: string): Promise<void> {
+    console.log(`\n---\nStarting migration for meetingId: ${meetingId}...`);
+
+    try {
+      const session = await db.query.zuvySessions.findFirst({
+        where: eq(zuvySessions.meetingId, meetingId),
+        columns: { id: true, bootcampId: true, batchId: true, startTime: true },
+      });
+
+      if (!session) {
+        console.error(`Error: Session with meetingId "${meetingId}" not found.`);
+        return;
+      }
+
+      // This part handles your condition to ignore sessions without an attendance entry
+      const oldAttendanceRecord = await db.query.zuvyStudentAttendance.findFirst({
+        where: eq(zuvyStudentAttendance.meetingId, meetingId),
+        columns: { attendance: true },
+      });
+
+      const attendanceArray = oldAttendanceRecord?.attendance as any[];
+      if (!attendanceArray || attendanceArray.length === 0) {
+        console.log(`No attendance data found in 'zuvy_student_attendance' for meetingId "${meetingId}". Skipping.`);
+        return;
+      }
+
+      const emails = attendanceArray
+        .map((record) => record.email)
+        .filter((email) => email && typeof email === 'string');
+
+      if (emails.length === 0) {
         console.log(`No valid emails found in the attendance data for meetingId "${meetingId}".`);
         return;
+      }
+
+      const userRecords = await db
+        .select({ id: users.id, email: users.email })
+        .from(users)
+        .where(inArray(users.email, emails));
+
+      const emailToUserIdMap = new Map(userRecords.map((user) => [user.email.toLowerCase(), Number(user.id)]));
+
+      // This part handles your condition to only insert records for valid users
+      const recordsToInsert = attendanceArray
+        .map((record) => {
+          const email = record.email?.toLowerCase();
+          const userId = emailToUserIdMap.get(email);
+
+          // If no userId is found for the email, skip this record
+          if (!userId) {
+            console.warn(`- User with email "${record.email}" not found in users table. Skipping.`);
+            return null;
+          }
+
+          return {
+            userId: userId,
+            sessionId: session.id,
+            batchId: session.batchId,
+            bootcampId: session.bootcampId,
+            attendanceDate: new Date(session.startTime).toISOString().split('T')[0],
+            status: record.attendance || 'absent',
+            duration: record.duration || 0,
+          };
+        })
+        .filter(Boolean); // This removes any null entries from the array
+
+      if (recordsToInsert.length === 0) {
+        console.log(`No valid user records could be prepared for insertion for meetingId "${meetingId}".`);
+        return;
+      }
+
+      await db.insert(zuvyStudentAttendanceRecords).values(recordsToInsert);
+
+      console.log(`✅ Successfully migrated ${recordsToInsert.length} attendance records for meetingId: ${meetingId}.`);
+
+    } catch (error) {
+      console.error(`Failed to migrate attendance for meetingId "${meetingId}". Error:`, error);
     }
-
-    const userRecords = await db
-      .select({ id: users.id, email: users.email })
-      .from(users)
-      .where(inArray(users.email, emails));
-
-    const emailToUserIdMap = new Map(userRecords.map((user) => [user.email.toLowerCase(), Number(user.id)]));
-    
-    // This part handles your condition to only insert records for valid users
-    const recordsToInsert = attendanceArray
-      .map((record) => {
-        const email = record.email?.toLowerCase();
-        const userId = emailToUserIdMap.get(email);
-        
-        // If no userId is found for the email, skip this record
-        if (!userId) {
-          console.warn(`- User with email "${record.email}" not found in users table. Skipping.`);
-          return null;
-        }
-
-        return {
-          userId: userId,
-          sessionId: session.id,
-          batchId: session.batchId,
-          bootcampId: session.bootcampId,
-          attendanceDate: new Date(session.startTime).toISOString().split('T')[0],
-          status: record.attendance || 'absent',
-          duration: record.duration || 0,
-        };
-      })
-      .filter(Boolean); // This removes any null entries from the array
-
-    if (recordsToInsert.length === 0) {
-      console.log(`No valid user records could be prepared for insertion for meetingId "${meetingId}".`);
-      return;
-    }
-    
-    await db.insert(zuvyStudentAttendanceRecords).values(recordsToInsert);
-
-    console.log(`✅ Successfully migrated ${recordsToInsert.length} attendance records for meetingId: ${meetingId}.`);
-
-  } catch (error) {
-    console.error(`Failed to migrate attendance for meetingId "${meetingId}". Error:`, error);
   }
-}
 }
