@@ -13,7 +13,7 @@ import {
   zuvyBootcamps,
   userTokens,
   users,
-  zuvySessionMerge,
+  zuvySessionMerge
 } from '../../../drizzle/schema';
 import { eq, desc, and, or, sql, ilike, inArray, gte, lt } from 'drizzle-orm';
 import { Res, Req } from '@nestjs/common';
@@ -1780,6 +1780,8 @@ export class ClassesService {
         };
       }
 
+      const allChapters = await db.select().from(zuvyModuleChapter).where(eq(zuvyModuleChapter.moduleId, eventDetails.moduleId));
+      const order = allChapters.length + 1;
       // Create chapter for live class
       const chapterData = {
         title: eventDetails.title,
@@ -1790,6 +1792,7 @@ export class ClassesService {
           type: 'live_session',
           content: eventDetails.title,
         }),
+        order: order
       };
 
       const chapter = await db
