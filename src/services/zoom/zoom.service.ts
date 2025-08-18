@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import axios, { AxiosResponse } from 'axios';
 import { db } from '../../db';
-import { zuvySessions, AttendanceStatus } from '../../../drizzle/schema';
+import { zuvySessions, AttendanceStatus,zuvyBatches,users } from '../../../drizzle/schema';
 import { eq } from 'drizzle-orm';
 
 export interface ZoomMeetingRequest {
@@ -426,19 +426,35 @@ export class ZoomService {
    * Compute attendance & recordings at a 75% threshold of host duration.
    * This method only queries Zoom APIs; persistence is handled by caller.
    */
-  async computeAttendanceAndRecordings75(meetingId: string | string[], hostEmail = 'team@zuvy.org') {
+  async computeAttendanceAndRecordings75(meetingId: string | string[]) {
+    
     // Support array input without breaking existing callers expecting single object
     if (Array.isArray(meetingId)) {
       const results = [] as any[];
       for (const id of meetingId) {
-        const single = await this.computeAttendanceAndRecordings75(id, hostEmail);
+        const single = await this.computeAttendanceAndRecordings75(id);
         results.push({ meetingId: id, ...single });
       }
       return { success: true, data: results };
     }
     const singleMeetingId = meetingId; // alias for clarity
+    const session = await db.select().from(zuvySessions).where(eq(zuvySessions.zoomMeetingId, singleMeetingId)).limit(1);
+    if (!session.length) {
+      return { success: false, error: `No session found for meeting ID ${meetingId}` };
+    }
+    const batchId = session[0].batchId;
+    const batchInfo = await db.select().from(zuvyBatches).where(eq(zuvyBatches.id, batchId)).limit(1);
+    if (!batchInfo.length) {
+      return { success: false, error: `No batch found for ID ${batchId}` };
+    }
+    const hostInfo = await db.select().from(users).where(eq(users.id, BigInt(batchInfo[0].instructorId))).limit(1);
+    if (!hostInfo.length) {
+      return { success: false, error: `No host found for instructor ID ${batchInfo[0].instructorId}` };
+    }
+    const hostEmail = hostInfo[0].email;
     try {
       const participantsResp = await this.getMeetingParticipants(singleMeetingId);
+      console.log(`Participants for meeting ${singleMeetingId}:`, participantsResp);
       const hostDuration = (participantsResp.participants || [])
         .filter(p => p.user_email === hostEmail)
         .reduce((a, b) => a + (b.duration || 0), 0);

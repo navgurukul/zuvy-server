@@ -302,10 +302,12 @@ export class ClassesService {
         email: student.email,
         name: student.email.split('@')[0],
       }));
-
+      
+      const batch = await db.select({instructorId: zuvyBatches.instructorId}).from(zuvyBatches).where(eq(zuvyBatches.id, eventDetails.batchId)).limit(1);
+      const instructorEmail = batch[0]?.instructorId ? await db.select({email: users.email}).from(users).where(eq(users.id, BigInt(batch[0].instructorId))).limit(1) : null;
       // Create Zoom meeting
       // Always host under the team account so recordings live centrally there; instructor & others become alternative hosts.
-      const teamAccountEmail = process.env.TEAM_EMAIL || 'team@zuvy.org';
+      const teamAccountEmail = instructorEmail ? instructorEmail[0].email : creatorInfo.email;
       const hostEmail = teamAccountEmail;
       try {
         // Ensure team account is licensed (host must be able to cloud record)
@@ -340,7 +342,6 @@ export class ClassesService {
         }
       }
       const alternativeHosts = verifiedAltHosts.join(',');
-
       const zoomMeetingData = {
         topic: eventDetails.title,
         type: 2, // Scheduled meeting
@@ -381,7 +382,6 @@ export class ClassesService {
           meeting_invitees: meetingInvitees,
           watermark: false,
           calendar_type: 1, // Google Calendar
-          alternative_hosts: alternativeHosts,
           auto_recording: 'cloud',
         }
       };
@@ -1081,74 +1081,74 @@ export class ClassesService {
     }
   }
 
-  async getAttendance(meetingId: string, userInfo: any, resetAttendanceData: boolean = false) {
-    try {
-      // Find the session by meetingId
-      const session = await db
-        .select()
-        .from(zuvySessions)
-        .where(eq(zuvySessions.meetingId, meetingId))
-        .limit(1);
+  // async getAttendance(meetingId: string, userInfo: any, resetAttendanceData: boolean = false) {
+  //   try {
+  //     // Find the session by meetingId
+  //     const session = await db
+  //       .select()
+  //       .from(zuvySessions)
+  //       .where(eq(zuvySessions.meetingId, meetingId))
+  //       .limit(1);
 
-      if (session.length === 0) {
-        return [{ status: 'error', message: 'Session not found', code: 404 }, null];
-      }
+  //     if (session.length === 0) {
+  //       return [{ status: 'error', message: 'Session not found', code: 404 }, null];
+  //     }
 
-      const sessionData = session[0];
+  //     const sessionData = session[0];
 
-      // Check if user has access to this session
-      if (!userInfo.roles?.includes('admin')) {
-        const enrollment = await db
-          .select()
-          .from(zuvyBatchEnrollments)
-          .where(
-            and(
-              eq(zuvyBatchEnrollments.userId, BigInt(userInfo.id)),
-              eq(zuvyBatchEnrollments.batchId, sessionData.batchId),
-              eq(zuvyBatchEnrollments.bootcampId, sessionData.bootcampId)
-            )
-          );
+  //     // Check if user has access to this session
+  //     if (!userInfo.roles?.includes('admin')) {
+  //       const enrollment = await db
+  //         .select()
+  //         .from(zuvyBatchEnrollments)
+  //         .where(
+  //           and(
+  //             eq(zuvyBatchEnrollments.userId, BigInt(userInfo.id)),
+  //             eq(zuvyBatchEnrollments.batchId, sessionData.batchId),
+  //             eq(zuvyBatchEnrollments.bootcampId, sessionData.bootcampId)
+  //           )
+  //         );
 
-        if (enrollment.length === 0) {
-          return [{ status: 'error', message: 'You are not enrolled in this session', code: 403 }, null];
-        }
-      }
+  //       if (enrollment.length === 0) {
+  //         return [{ status: 'error', message: 'You are not enrolled in this session', code: 403 }, null];
+  //       }
+  //     }
 
-      // Get attendance data
-      const attendance = await db
-        .select()
-        .from(zuvyStudentAttendance)
-        .where(eq(zuvyStudentAttendance.meetingId, meetingId))
-        .limit(1);
+  //     // Get attendance data
+  //     const attendance = await db
+  //       .select()
+  //       .from(zuvyStudentAttendance)
+  //       .where(eq(zuvyStudentAttendance.meetingId, meetingId))
+  //       .limit(1);
 
-      if (attendance.length === 0 || resetAttendanceData) {
-        // Try to fetch attendance from Google Meet or Zoom
-        if (sessionData.isZoomMeet) {
-          const fetchResult = await this.fetchZoomAttendanceForSession(sessionData.id, resetAttendanceData);
-          if (fetchResult.success) {
-            return [null, fetchResult];
-          }
-          return [{ status: 'error', message: 'No attendance data found and failed to fetch from Zoom', code: 404 }, null];
-        } else {
-          // Handle Google Meet attendance with same reset logic
-          const fetchResult = await this.fetchGoogleMeetAttendanceForSession(sessionData.id, resetAttendanceData);
-          if (fetchResult.success) {
-            return [null, fetchResult];
-          }
-          return [{ status: 'error', message: 'No attendance data found and failed to fetch from Google Meet', code: 404 }, null];
-        }
-      }
+  //     if (attendance.length === 0 || resetAttendanceData) {
+  //       // Try to fetch attendance from Google Meet or Zoom
+  //       if (sessionData.isZoomMeet) {
+  //         const fetchResult = await this.fetchZoomAttendanceForSession(sessionData.id, resetAttendanceData);
+  //         if (fetchResult.success) {
+  //           return [null, fetchResult];
+  //         }
+  //         return [{ status: 'error', message: 'No attendance data found and failed to fetch from Zoom', code: 404 }, null];
+  //       } else {
+  //         // Handle Google Meet attendance with same reset logic
+  //         const fetchResult = await this.fetchGoogleMeetAttendanceForSession(sessionData.id, resetAttendanceData);
+  //         if (fetchResult.success) {
+  //           return [null, fetchResult];
+  //         }
+  //         return [{ status: 'error', message: 'No attendance data found and failed to fetch from Google Meet', code: 404 }, null];
+  //       }
+  //     }
 
-      return [null, {
-        status: 'success',
-        message: 'Attendance fetched successfully',
-        data: attendance[0],
-      }];
-    } catch (error) {
-      this.logger.error(`Error fetching attendance: ${error.message}`);
-      return [{ status: 'error', message: 'Failed to fetch attendance', code: 500 }, null];
-    }
-  }
+  //     return [null, {
+  //       status: 'success',
+  //       message: 'Attendance fetched successfully',
+  //       data: attendance[0],
+  //     }];
+  //   } catch (error) {
+  //     this.logger.error(`Error fetching attendance: ${error.message}`);
+  //     return [{ status: 'error', message: 'Failed to fetch attendance', code: 500 }, null];
+  //   }
+  // }
 
   async getSessionAttendanceAndS3Link(sessionData: any, students: any[]) {
     try {
@@ -1287,9 +1287,9 @@ export class ClassesService {
           !isNaN(batch_id) ? or(eq(zuvySessions.batchId, batch_id), eq(zuvySessions.secondBatchId, batch_id)) : undefined,
           chapterId ? eq(zuvySessions.chapterId, chapterId) : undefined
         ));
-
+      
       let classes = await classesQuery;
-
+       console.log("Executing classes query:", classes);
       // Partition classes by platform
       const zoomClasses = classes.filter(c => c.isZoomMeet === true);
       const meetClasses = classes.filter(c => !c.isZoomMeet);
@@ -2328,243 +2328,252 @@ export class ClassesService {
     }
   }
 
-  async fetchZoomAttendanceForSession(sessionId: number, resetAttendanceData: boolean = false) {
-    try {
-      this.logger.log(`Fetching Zoom attendance for session: ${sessionId}, resetAttendanceData: ${resetAttendanceData}`);
+  // async fetchZoomAttendanceForSession(sessionId: number, resetAttendanceData: boolean = false) {
+  //   try {
+  //     this.logger.log(`Fetching Zoom attendance for session: ${sessionId}, resetAttendanceData: ${resetAttendanceData}`);
 
-      // Get session details
-      const session = await db.select().from(zuvySessions)
-        .where(eq(zuvySessions.id, sessionId));
+  //     // Get session details
+  //     const session = await db.select().from(zuvySessions)
+  //       .where(eq(zuvySessions.id, sessionId));
 
-      if (!session.length) {
-        return { success: false, message: 'Session not found' };
-      }
+  //     if (!session.length) {
+  //       return { success: false, message: 'Session not found' };
+  //     }
 
-      const sessionData = session[0];
+  //     const sessionData = session[0];
 
-      if (!sessionData.isZoomMeet) {
-        return { success: false, message: 'This is not a Zoom session' };
-      }
+  //     if (!sessionData.isZoomMeet) {
+  //       return { success: false, message: 'This is not a Zoom session' };
+  //     }
 
-      if (!sessionData.zoomMeetingId) {
-        return { success: false, message: 'No Zoom meeting ID found for this session' };
-      }
+  //     if (!sessionData.zoomMeetingId) {
+  //       return { success: false, message: 'No Zoom meeting ID found for this session' };
+  //     }
 
-      // Check if attendance data already exists (if not resetting)
-      if (!resetAttendanceData) {
-        // Check in zuvyStudentAttendance first
-        const existingAttendance = await db
-          .select()
-          .from(zuvyStudentAttendance)
-          .where(eq(zuvyStudentAttendance.meetingId, sessionData.meetingId))
-          .limit(1);
+  //         const batchId = session[0].batchId;
+  //         const batchInfo = await db.select().from(zuvyBatches).where(eq(zuvyBatches.id, batchId)).limit(1);
+  //         if (!batchInfo.length) {
+  //           return { success: false, error: `No batch found for ID ${batchId}` };
+  //         }
+  //         const hostInfo = await db.select().from(users).where(eq(users.id, BigInt(batchInfo[0].instructorId))).limit(1);
+  //         if (!hostInfo.length) {
+  //           return { success: false, error: `No host found for instructor ID ${batchInfo[0].instructorId}` };
+  //         }
+  //         const hostEmail = hostInfo[0].email;
+  //     // Check if attendance data already exists (if not resetting)
+  //     if (!resetAttendanceData) {
+  //       // Check in zuvyStudentAttendance first
+  //       const existingAttendance = await db
+  //         .select()
+  //         .from(zuvyStudentAttendance)
+  //         .where(eq(zuvyStudentAttendance.meetingId, sessionData.meetingId))
+  //         .limit(1);
 
-        if (existingAttendance.length > 0) {
-          this.logger.log(`Found existing attendance data in zuvyStudentAttendance for session ${sessionId}`);
-          return {
-            success: true,
-            data: {
-              sessionId,
-              attendance: existingAttendance[0].attendance,
-              message: 'Existing attendance data found in zuvyStudentAttendance',
-              source: 'existing_aggregate'
-            },
-            message: 'Attendance data retrieved from existing records'
-          };
-        }
+  //       if (existingAttendance.length > 0) {
+  //         this.logger.log(`Found existing attendance data in zuvyStudentAttendance for session ${sessionId}`);
+  //         return {
+  //           success: true,
+  //           data: {
+  //             sessionId,
+  //             attendance: existingAttendance[0].attendance,
+  //             message: 'Existing attendance data found in zuvyStudentAttendance',
+  //             source: 'existing_aggregate'
+  //           },
+  //           message: 'Attendance data retrieved from existing records'
+  //         };
+  //       }
 
-        // Check in zuvyStudentAttendanceRecords
-        const existingIndividualRecords = await db
-          .select({
-            userId: zuvyStudentAttendanceRecords.userId,
-            status: zuvyStudentAttendanceRecords.status,
-            attendanceDate: zuvyStudentAttendanceRecords.attendanceDate,
-            email: users.email,
-          })
-          .from(zuvyStudentAttendanceRecords)
-          .innerJoin(users, eq(zuvyStudentAttendanceRecords.userId, users.id))
-          .where(eq(zuvyStudentAttendanceRecords.sessionId, sessionData.id));
+  //       // Check in zuvyStudentAttendanceRecords
+  //       const existingIndividualRecords = await db
+  //         .select({
+  //           userId: zuvyStudentAttendanceRecords.userId,
+  //           status: zuvyStudentAttendanceRecords.status,
+  //           attendanceDate: zuvyStudentAttendanceRecords.attendanceDate,
+  //           email: users.email,
+  //         })
+  //         .from(zuvyStudentAttendanceRecords)
+  //         .innerJoin(users, eq(zuvyStudentAttendanceRecords.userId, users.id))
+  //         .where(eq(zuvyStudentAttendanceRecords.sessionId, sessionData.id));
 
-        if (existingIndividualRecords.length > 0) {
-          this.logger.log(`Found existing attendance data in zuvyStudentAttendanceRecords for session ${sessionId}`);
+  //       if (existingIndividualRecords.length > 0) {
+  //         this.logger.log(`Found existing attendance data in zuvyStudentAttendanceRecords for session ${sessionId}`);
 
-          // Convert individual records to the expected format
-          const formattedAttendance = existingIndividualRecords.map(record => ({
-            email: record.email,
-            duration: 0, // Duration not stored in individual records, set to 0
-            attendance: record.status.toLowerCase()
-          }));
+  //         // Convert individual records to the expected format
+  //         const formattedAttendance = existingIndividualRecords.map(record => ({
+  //           email: record.email,
+  //           duration: 0, // Duration not stored in individual records, set to 0
+  //           attendance: record.status.toLowerCase()
+  //         }));
 
-          return {
-            success: true,
-            data: {
-              sessionId,
-              attendance: formattedAttendance,
-              totalParticipants: formattedAttendance.length,
-              meetingDuration: 0, // Not available from individual records
-              meetingDurationInMinutes: 0,
-              hostTotalDuration: 0,
-              attendanceThreshold: 0,
-              message: 'Existing attendance data found in zuvyStudentAttendanceRecords',
-              source: 'existing_individual'
-            },
-            message: 'Attendance data retrieved from existing individual records'
-          };
-        }
+  //         return {
+  //           success: true,
+  //           data: {
+  //             sessionId,
+  //             attendance: formattedAttendance,
+  //             totalParticipants: formattedAttendance.length,
+  //             meetingDuration: 0, // Not available from individual records
+  //             meetingDurationInMinutes: 0,
+  //             hostTotalDuration: 0,
+  //             attendanceThreshold: 0,
+  //             message: 'Existing attendance data found in zuvyStudentAttendanceRecords',
+  //             source: 'existing_individual'
+  //           },
+  //           message: 'Attendance data retrieved from existing individual records'
+  //         };
+  //       }
 
-        this.logger.log(`No existing attendance data found for session ${sessionId}, fetching from Zoom`);
-      } else {
-        this.logger.log(`resetAttendanceData is true, will delete existing data and fetch fresh from Zoom`);
-      }
+  //       this.logger.log(`No existing attendance data found for session ${sessionId}, fetching from Zoom`);
+  //     } else {
+  //       this.logger.log(`resetAttendanceData is true, will delete existing data and fetch fresh from Zoom`);
+  //     }
 
-      try {
-        // Fetch Zoom meeting details to get UUID
-        const meetingDetails = await this.zoomService.getMeeting(sessionData.zoomMeetingId);
-        if (!meetingDetails.success || !meetingDetails.data) {
-          return {
-            success: false,
-            message: 'Failed to fetch meeting details from Zoom',
-            error: meetingDetails.error
-          };
-        }
+  //     try {
+  //       // Fetch Zoom meeting details to get UUID
+  //       const meetingDetails = await this.zoomService.getMeeting(sessionData.zoomMeetingId);
+  //       if (!meetingDetails.success || !meetingDetails.data) {
+  //         return {
+  //           success: false,
+  //           message: 'Failed to fetch meeting details from Zoom',
+  //           error: meetingDetails.error
+  //         };
+  //       }
 
-        // Fetch attendance using meeting UUID4
-        const zoomAttendanceResponse = await this.zoomService.getMeetingParticipants(sessionData.zoomMeetingId);
+  //       // Fetch attendance using meeting UUID4
+  //       const zoomAttendanceResponse = await this.zoomService.getMeetingParticipants(sessionData.zoomMeetingId);
 
-        // Calculate total meeting duration based on host's presence
-        let totalMeetingDuration = 0;
-        const hostEmail = 'team@zuvy.org';
+  //       // Calculate total meeting duration based on host's presence
+  //       let totalMeetingDuration = 0;
 
-        if (zoomAttendanceResponse.participants && zoomAttendanceResponse.participants.length > 0) {
-          // Filter host entries and sum their durations
-          const hostEntries = zoomAttendanceResponse.participants.filter(
-            participant => participant.user_email === hostEmail
-          );
+  //       if (zoomAttendanceResponse.participants && zoomAttendanceResponse.participants.length > 0) {
+  //         // Filter host entries and sum their durations
+  //         const hostEntries = zoomAttendanceResponse.participants.filter(
+  //           participant => participant.user_email === hostEmail
+  //         );
 
-          totalMeetingDuration = hostEntries.reduce((total, entry) => {
-            return total + (entry.duration || 0);
-          }, 0);
+  //         totalMeetingDuration = hostEntries.reduce((total, entry) => {
+  //           return total + (entry.duration || 0);
+  //         }, 0);
 
-        }
+  //       }
 
-        // Process and save attendance data
-        const students = await db
-          .select({
-            id: users.id,
-            email: users.email,
-            name: users.name,
-          })
-          .from(zuvyBatchEnrollments)
-          .innerJoin(users, eq(zuvyBatchEnrollments.userId, users.id))
-          .where(eq(zuvyBatchEnrollments.batchId, sessionData.batchId));
+  //       // Process and save attendance data
+  //       const students = await db
+  //         .select({
+  //           id: users.id,
+  //           email: users.email,
+  //           name: users.name,
+  //         })
+  //         .from(zuvyBatchEnrollments)
+  //         .innerJoin(users, eq(zuvyBatchEnrollments.userId, users.id))
+  //         .where(eq(zuvyBatchEnrollments.batchId, sessionData.batchId));
 
-        // Calculate attendance based on duration threshold (configurable: default 75%)
-        const defaultThresholdRatio = 0.75;
-        const attendanceThreshold = totalMeetingDuration * defaultThresholdRatio;
-        console.log(`Attendance threshold (${defaultThresholdRatio * 100}% of ${totalMeetingDuration}s): ${attendanceThreshold}s`);
+  //       // Calculate attendance based on duration threshold (configurable: default 75%)
+  //       const defaultThresholdRatio = 0.75;
+  //       const attendanceThreshold = totalMeetingDuration * defaultThresholdRatio;
+  //       console.log(`Attendance threshold (${defaultThresholdRatio * 100}% of ${totalMeetingDuration}s): ${attendanceThreshold}s`);
 
-        // Save attendance to database
-        const attendanceRecords = [];
-        for (const student of students) {
-          // Sum up all durations for this student across multiple join/leave cycles
-          const studentEntries = zoomAttendanceResponse.participants?.filter(
-            participant => participant.user_email === student.email
-          ) || [];
+  //       // Save attendance to database
+  //       const attendanceRecords = [];
+  //       for (const student of students) {
+  //         // Sum up all durations for this student across multiple join/leave cycles
+  //         const studentEntries = zoomAttendanceResponse.participants?.filter(
+  //           participant => participant.user_email === student.email
+  //         ) || [];
 
-          const totalStudentDuration = studentEntries.reduce((total, entry) => {
-            return total + (entry.duration || 0);
-          }, 0);
+  //         const totalStudentDuration = studentEntries.reduce((total, entry) => {
+  //           return total + (entry.duration || 0);
+  //         }, 0);
 
-          const isPresent = totalStudentDuration >= attendanceThreshold;
+  //         const isPresent = totalStudentDuration >= attendanceThreshold;
 
-          // Format to match requested structure: [{"email": "", "duration": 1700, "attendance": "present"}]
-          const attendanceRecord = {
-            email: student.email,
-            duration: totalStudentDuration,
-            attendance: isPresent ? 'present' : 'absent',
-          };
+  //         // Format to match requested structure: [{"email": "", "duration": 1700, "attendance": "present"}]
+  //         const attendanceRecord = {
+  //           email: student.email,
+  //           duration: totalStudentDuration,
+  //           attendance: isPresent ? 'present' : 'absent',
+  //         };
 
-          attendanceRecords.push(attendanceRecord);
-          console.log(`Student: ${student.email}, Total Duration: ${totalStudentDuration}s, Status: ${isPresent ? 'present' : 'absent'}`);
-        }
+  //         attendanceRecords.push(attendanceRecord);
+  //         console.log(`Student: ${student.email}, Total Duration: ${totalStudentDuration}s, Status: ${isPresent ? 'present' : 'absent'}`);
+  //       }
 
-        // Delete existing attendance records only if resetAttendanceData is true
-        if (resetAttendanceData) {
-          await db.delete(zuvyStudentAttendance)
-            .where(eq(zuvyStudentAttendance.meetingId, sessionData.meetingId));
+  //       // Delete existing attendance records only if resetAttendanceData is true
+  //       if (resetAttendanceData) {
+  //         await db.delete(zuvyStudentAttendance)
+  //           .where(eq(zuvyStudentAttendance.meetingId, sessionData.meetingId));
 
-          await db.delete(zuvyStudentAttendanceRecords)
-            .where(eq(zuvyStudentAttendanceRecords.sessionId, sessionData.id));
+  //         await db.delete(zuvyStudentAttendanceRecords)
+  //           .where(eq(zuvyStudentAttendanceRecords.sessionId, sessionData.id));
 
-          this.logger.log(`Deleted existing attendance records for session ${sessionId}`);
-        }
+  //         this.logger.log(`Deleted existing attendance records for session ${sessionId}`);
+  //       }
 
-        // Insert new attendance record with JSONB data
-        if (attendanceRecords.length > 0) {
-          await db.insert(zuvyStudentAttendance).values({
-            meetingId: sessionData.meetingId,
-            attendance: attendanceRecords,
-            batchId: sessionData.batchId,
-            bootcampId: sessionData.bootcampId,
-          });
+  //       // Insert new attendance record with JSONB data
+  //       if (attendanceRecords.length > 0) {
+  //         await db.insert(zuvyStudentAttendance).values({
+  //           meetingId: sessionData.meetingId,
+  //           attendance: attendanceRecords,
+  //           batchId: sessionData.batchId,
+  //           bootcampId: sessionData.bootcampId,
+  //         });
 
-          // Insert individual attendance records for each student
-          const individualRecords = [];
-          const attendanceDate = new Date(sessionData.startTime).toISOString().split('T')[0]; // Format as YYYY-MM-DD
+  //         // Insert individual attendance records for each student
+  //         const individualRecords = [];
+  //         const attendanceDate = new Date(sessionData.startTime).toISOString().split('T')[0]; // Format as YYYY-MM-DD
 
-          for (const student of students) {
-            const attendanceRecord = attendanceRecords.find(record => record.email === student.email);
-            const status = attendanceRecord ? attendanceRecord.attendance : 'absent';
+  //         for (const student of students) {
+  //           const attendanceRecord = attendanceRecords.find(record => record.email === student.email);
+  //           const status = attendanceRecord ? attendanceRecord.attendance : 'absent';
 
-            individualRecords.push({
-              userId: Number(student.id),
-              batchId: sessionData.batchId,
-              bootcampId: sessionData.bootcampId,
-              sessionId: sessionData.id,
-              attendanceDate: attendanceDate,
-              status: status.toUpperCase(), // Convert to uppercase to match enum (PRESENT/ABSENT)
-              version: 'v1', // You can modify this version as needed
-            });
-          }
+  //           individualRecords.push({
+  //             userId: Number(student.id),
+  //             batchId: sessionData.batchId,
+  //             bootcampId: sessionData.bootcampId,
+  //             sessionId: sessionData.id,
+  //             attendanceDate: attendanceDate,
+  //             status: status.toUpperCase(), // Convert to uppercase to match enum (PRESENT/ABSENT)
+  //             version: 'v1', // You can modify this version as needed
+  //           });
+  //         }
 
-          if (individualRecords.length > 0) {
-            await db.insert(zuvyStudentAttendanceRecords).values(individualRecords);
-            console.log(`Inserted ${individualRecords.length} individual attendance records`);
-          }
-        }
+  //         if (individualRecords.length > 0) {
+  //           await db.insert(zuvyStudentAttendanceRecords).values(individualRecords);
+  //           console.log(`Inserted ${individualRecords.length} individual attendance records`);
+  //         }
+  //       }
 
-        return {
-          success: true,
-          data: {
-            sessionId,
-            attendance: attendanceRecords,
-            totalParticipants: zoomAttendanceResponse?.participants?.length || 0,
-            meetingDuration: totalMeetingDuration, // Use calculated host duration
-            meetingDurationInMinutes: Math.round(totalMeetingDuration / 60),
-            hostTotalDuration: totalMeetingDuration,
-            attendanceThreshold: attendanceThreshold
-          },
-          message: 'Zoom attendance fetched and saved successfully'
-        };
+  //       return {
+  //         success: true,
+  //         data: {
+  //           sessionId,
+  //           attendance: attendanceRecords,
+  //           totalParticipants: zoomAttendanceResponse?.participants?.length || 0,
+  //           meetingDuration: totalMeetingDuration, // Use calculated host duration
+  //           meetingDurationInMinutes: Math.round(totalMeetingDuration / 60),
+  //           hostTotalDuration: totalMeetingDuration,
+  //           attendanceThreshold: attendanceThreshold
+  //         },
+  //         message: 'Zoom attendance fetched and saved successfully'
+  //       };
 
-      } catch (zoomError) {
-        this.logger.error(`Error fetching from Zoom API: ${zoomError.message}`);
-        return {
-          success: false,
-          error: zoomError.message,
-          message: 'Failed to fetch attendance from Zoom'
-        };
-      }
+  //     } catch (zoomError) {
+  //       this.logger.error(`Error fetching from Zoom API: ${zoomError.message}`);
+  //       return {
+  //         success: false,
+  //         error: zoomError.message,
+  //         message: 'Failed to fetch attendance from Zoom'
+  //       };
+  //     }
 
-    } catch (error) {
-      this.logger.error(`Error fetching Zoom attendance for session ${sessionId}: ${error.message}`);
-      return {
-        success: false,
-        error: error.message,
-        message: 'Failed to fetch Zoom attendance for session'
-      };
-    }
-  }
+  //   } catch (error) {
+  //     this.logger.error(`Error fetching Zoom attendance for session ${sessionId}: ${error.message}`);
+  //     return {
+  //       success: false,
+  //       error: error.message,
+  //       message: 'Failed to fetch Zoom attendance for session'
+  //     };
+  //   }
+  // }
 
   private async safeFetchZoomRecordings(meetingId: string) {
     try {
