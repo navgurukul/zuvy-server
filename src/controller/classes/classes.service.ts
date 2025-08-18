@@ -423,16 +423,22 @@ export class ClassesService {
         // Continue without failing the entire process
       }
 
+      zoomStartDate.setHours(zoomStartDate.getHours() - 5);
+      zoomStartDate.setMinutes(zoomStartDate.getMinutes() - 30);
+
+      zoomEndDate.setHours(zoomEndDate.getHours() - 5);
+      zoomEndDate.setMinutes(zoomEndDate.getMinutes() - 30);
+
       const session = {
-        meetingId: calendarEventId || zoomResponse.data.id.toString(), // Use Zoom meeting ID if Google Calendar fails
+        meetingId: zoomResponse.data.id.toString(), // Use Zoom meeting ID if Google Calendar fails
         zoomJoinUrl: zoomResponse.data.join_url,
         zoomStartUrl: zoomResponse.data.start_url,
         zoomPassword: zoomResponse.data.password,
         zoomMeetingId: zoomResponse.data.id.toString(),
         googleCalendarEventId: calendarEventId, // Store Google Calendar event ID
         creator: creatorInfo.email,
-        startTime: eventDetails.startDateTime, // Use original start time for database
-        endTime: eventDetails.endDateTime, // Use original end time for database
+        startTime: zoomStartDate.toISOString(), // Use original start time for database
+        endTime: zoomEndDate.toISOString(), // Use original end time for database
         batchId: eventDetails.batchId,
         secondBatchId: eventDetails.secondBatchId,
         bootcampId: eventDetails.bootcampId,
@@ -460,6 +466,7 @@ export class ClassesService {
 
 
       sessionsToCreate.push(session);
+
       // Save sessions to database
       const saveResult = await this.saveSessionsToDatabase(sessionsToCreate);
 
@@ -1745,7 +1752,7 @@ export class ClassesService {
     }
   }
 
-  private async validateAndCreateChapter(eventDetails: any) {
+  private async   validateAndCreateChapter(eventDetails: any) {
     try {
       // Validate bootcamp and batch exist
       const batch = await db
