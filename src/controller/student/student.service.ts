@@ -534,7 +534,7 @@ export class StudentService {
               )
             ),
             ne(session.status, helperVariable.completed),
-            sql`${session.startTime}::timestamp >= ${now.toISOString()} AND ${session.startTime}::timestamp <= ${sevenDaysLater.toISOString()}`
+            sql`${session.startTime}::timestamp < ${sevenDaysLater.toISOString()}`
           ),
         orderBy: (session, { asc }) => asc(session.startTime),
         columns: {
