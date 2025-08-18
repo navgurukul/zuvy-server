@@ -1354,8 +1354,6 @@ export class ClassesService {
 
         const startTime = new Date(classObj.startTime);
         const endTime = new Date(classObj.endTime);
-        currentTime.setHours(currentTime.getHours() + 5); // Adjust for IST
-        currentTime.setMinutes(currentTime.getMinutes() + 30); // Adjust for IST
         let newStatus;
         if (currentTime > endTime) newStatus = 'completed';
         else if (currentTime >= startTime && currentTime <= endTime) newStatus = 'ongoing';
