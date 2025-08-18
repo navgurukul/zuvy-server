@@ -401,6 +401,48 @@ export class ClassesController {
     return this.classesService.deleteSession(sessionId, userInfo);
   }
 
+  // New endpoints operating via meeting identifier (Google or Zoom meeting id)
+  @Patch('/update/:meetingId')
+  @ApiOperation({ summary: 'Update session by meeting identifier (Google meetingId or Zoom meetingId)' })
+  @ApiParam({ name: 'meetingId', description: 'Google meetingId, calendar event id, or Zoom meeting id' })
+  @ApiBearerAuth('JWT-auth')
+  async patchByMeetingId(
+    @Param('meetingId') meetingId: string,
+    @Body() updateData: updateSessionDto,
+    @Req() req
+  ) {
+    const userInfo = {
+      id: Number(req.user[0].id),
+      email: req.user[0].email,
+      roles: req.user[0].roles || []
+    };
+    const result = await this.classesService.updateSessionByMeetingId(meetingId, updateData, userInfo);
+    if (!result.success) {
+      throw new BadRequestException(result.message || 'Failed to update session');
+    }
+    return result;
+  }
+
+  @Delete('/delete/:meetingId')
+  @ApiOperation({ summary: 'Delete session by meeting identifier (Google meetingId or Zoom meetingId)' })
+  @ApiParam({ name: 'meetingId', description: 'meetingId it can be Google meetingId or calendar event id as per the class' })
+  @ApiBearerAuth('JWT-auth')
+  async deleteByMeetingId(
+    @Param('meetingId') meetingId: string,
+    @Req() req
+  ) {
+    const userInfo = {
+      id: Number(req.user[0].id),
+      email: req.user[0].email,
+      roles: req.user[0].roles || []
+    };
+    const result = await this.classesService.deleteSessionByMeetingId(meetingId, userInfo);
+    if (!result.success) {
+      throw new BadRequestException(result.message || 'Failed to delete session');
+    }
+    return result;
+  }
+
   @Post('/sessions/:id/fetch-attendance')
   @ApiOperation({ summary: 'Manually fetch Zoom attendance for a session' })
   @ApiBearerAuth('JWT-auth')

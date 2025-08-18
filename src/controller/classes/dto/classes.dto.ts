@@ -195,9 +195,9 @@ export class updateSessionDto {
     example: 'python class',
     required: true,
   })
-  @IsNotEmpty()
+  @IsOptional()
   @IsString()
-  title: string;
+  title?: string;
 
   @ApiProperty({
     description: 'The description of the live  event',
@@ -216,9 +216,9 @@ export class updateSessionDto {
     example: '2022-03-01T00:00:00Z',
     required: true,
   })
-  @IsNotEmpty()
+  @IsOptional()
   @IsDateString()
-  startDateTime: string;
+  startDateTime?: string;
 
   @ApiProperty({
     description: 'The end time of the live  event',
@@ -227,9 +227,18 @@ export class updateSessionDto {
     example: '2022-03-01T00:00:00Z',
     required: true,
   })
-  @IsNotEmpty()
+  @IsOptional()
   @IsDateString()
-  endDateTime: string;
+  endDateTime?: string;
+
+  @ApiProperty({
+    description: 'Whether this session uses Zoom (cannot be toggled after creation; included to avoid validation error)',
+    type: Boolean,
+    required: false,
+  })
+  @IsOptional()
+  @IsBoolean()
+  isZoomMeet?: boolean;
 }
 
 export class AddLiveClassesAsChaptersDto {

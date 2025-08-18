@@ -42,350 +42,344 @@ export class ScheduleService {
 
   constructor(private readonly classesService: ClassesService, private readonly zoomService: ZoomService) {
     // Initialize the interval when the service starts
-    this.handleDynamicScheduling();
   }
 
-  // Trigger session processing periodically so it doesn't rely on a manual call
-  // @Cron('0 */10 * * * *')
-  // triggerSessionProcessing() {
-  //   this.logger.log('Cron job triggered to process completed sessions');
-  //   this.handleDynamicScheduling();
+
+  // async handleDynamicScheduling() {
+  //   this.logger.log('Running main function to determine interval');
+  //   if (this.processingActive) {
+  //     this.logger.log('Skipping: Previous job still running');
+  //     return;
+  //   }
+
+  //   this.processingActive = true;
+  //   try {
+  //     const now = new Date();
+  //     const [startOfDay, endOfDay] = this.getDayBounds(now);
+  //     const sessions = await this.fetchSessions(startOfDay, endOfDay);
+  //     this.logger.log(`Fetched ${sessions.length} sessions`);
+  //     const shouldProcess = this.shouldProcessSessions(sessions.length, now);
+  //     if (!shouldProcess) {
+  //       this.logger.log(
+  //         `Skipping processing - Session count: ${sessions.length}, Last run: ${Math.floor(
+  //           (now.getTime() - this.lastProcessedTime.getTime()) / 60000
+  //         )} mins ago`
+  //       );
+  //       return;
+  //     }
+
+  //     // Determine the interval based on session count
+  //     this.currentInterval = this.getIntervalBasedOnSessionCount(sessions.length);
+  //     this.logger.log(`Setting interval to ${this.currentInterval / 60000} minutes`);
+
+  //     // Clear any existing timeout
+  //     this.resetTimeout();
+  //     // Start the recursive timeout
+  //     this.startRecursiveTimeout(sessions);
+
+  //     this.lastProcessedTime = now;
+  //   } catch (error) {
+  //     this.logger.error(`Scheduling error: ${error.message}`);
+  //   } finally {
+  //     this.processingActive = false;
+  //   }
   // }
 
-  async handleDynamicScheduling() {
-    this.logger.log('Running main function to determine interval');
-    if (this.processingActive) {
-      this.logger.log('Skipping: Previous job still running');
-      return;
-    }
+  // private getDayBounds(date: Date): [Date, Date] {
+  //   const startOfDay = new Date(date);
+  //   startOfDay.setHours(0, 0, 0, 0);
 
-    this.processingActive = true;
-    try {
-      const now = new Date();
-      const [startOfDay, endOfDay] = this.getDayBounds(now);
-      const sessions = await this.fetchSessions(startOfDay, endOfDay);
-      this.logger.log(`Fetched ${sessions.length} sessions`);
-      const shouldProcess = this.shouldProcessSessions(sessions.length, now);
-      if (!shouldProcess) {
-        this.logger.log(
-          `Skipping processing - Session count: ${sessions.length}, Last run: ${Math.floor(
-            (now.getTime() - this.lastProcessedTime.getTime()) / 60000
-          )} mins ago`
-        );
-        return;
-      }
+  //   const endOfDay = new Date(date);
+  //   endOfDay.setHours(24, 59, 59, 999);
+  //   return [startOfDay, endOfDay];
+  // }
 
-      // Determine the interval based on session count
-      this.currentInterval = this.getIntervalBasedOnSessionCount(sessions.length);
-      this.logger.log(`Setting interval to ${this.currentInterval / 60000} minutes`);
+  // private async fetchSessions(startOfDay: Date, endOfDay: Date) {
+  //   let red = await db.select()
+  //     .from(zuvySessions)
+  //     .where(
+  //       and(
+  //         isNull(zuvySessions.s3link),
+  //         eq(zuvySessions.status, 'completed'),
+  //         gte(zuvySessions.startTime, startOfDay.toISOString()),
+  //         lt(zuvySessions.startTime, endOfDay.toISOString()),
+  //       )
+  //     );
+  //   return red;
+  // }
 
-      // Clear any existing timeout
-      this.resetTimeout();
-      // Start the recursive timeout
-      this.startRecursiveTimeout(sessions);
+  // private shouldProcessSessions(sessionCount: number, now: Date): boolean {
+  //   const timeSinceLastRun = now.getTime() - this.lastProcessedTime.getTime();
+  //   for (const condition of this.conditions) {
+  //       if (sessionCount >= condition.min && sessionCount <= condition.max) {
+  //           return timeSinceLastRun >= condition.interval;
+  //       }
+  //   }
 
-      this.lastProcessedTime = now;
-    } catch (error) {
-      this.logger.error(`Scheduling error: ${error.message}`);
-    } finally {
-      this.processingActive = false;
-    }
-  }
+  //   // Default case if no conditions match
+  //   return timeSinceLastRun >= 1 * 60 * 1000; // 1 minute
+  // }
 
-  private getDayBounds(date: Date): [Date, Date] {
-    const startOfDay = new Date(date);
-    startOfDay.setHours(0, 0, 0, 0);
+  // private getIntervalBasedOnSessionCount(sessionCount: number): number {
+  //   for (const condition of this.conditions) {
+  //     if (sessionCount >= condition.min && sessionCount <= condition.max) {
+  //           return condition.interval;
+  //       }
+  //   }
+  //   // Default case if no conditions match
+  //   return 2 * 60 * 1000; // 1 minute
+  // }
 
-    const endOfDay = new Date(date);
-    endOfDay.setHours(24, 59, 59, 999);
-    return [startOfDay, endOfDay];
-  }
+  // private resetTimeout() {
+  //   if (this.timeoutId) {
+  //     clearTimeout(this.timeoutId);
+  //     this.logger.log('Previous timeout cleared');
+  //   }
+  // }
 
-  private async fetchSessions(startOfDay: Date, endOfDay: Date) {
-    let red = await db.select()
-      .from(zuvySessions)
-      .where(
-        and(
-          isNull(zuvySessions.s3link),
-          eq(zuvySessions.status, 'completed'),
-          gte(zuvySessions.startTime, startOfDay.toISOString()),
-          lt(zuvySessions.startTime, endOfDay.toISOString()),
-        )
-      );
-    return red;
-  }
+  // private startRecursiveTimeout(sessions: any[]) {
+  //   this.timeoutId = setTimeout(async () => {
+  //     try {
+  //       await this.processSessions(sessions);
+  //     } catch (error) {
+  //       this.logger.error(`Error processing sessions: ${error}`);
+  //     }
+  //     this.startRecursiveTimeout(sessions); // Recursively call itself
+  //   }, this.currentInterval);
+  // }
 
-  private shouldProcessSessions(sessionCount: number, now: Date): boolean {
-    const timeSinceLastRun = now.getTime() - this.lastProcessedTime.getTime();
-    for (const condition of this.conditions) {
-        if (sessionCount >= condition.min && sessionCount <= condition.max) {
-            return timeSinceLastRun >= condition.interval;
-        }
-    }
+  // private async processSessions(sessions: any[]) {
+  //   this.logger.log(`Processing ${sessions.length} sessions with delayed execution`);
+  //   let index = 0;
 
-    // Default case if no conditions match
-    return timeSinceLastRun >= 1 * 60 * 1000; // 1 minute
-  }
+  //   const processNext = async () => {
+  //     if (index >= sessions.length) {
+  //       this.logger.log("All sessions processed");
+  //       return;
+  //     }
+  //     const session = sessions[index];
+  //     index++;
+  //     try {
+  //       await this.processSingleSession(session);
+  //     } catch (error) {
+  //       this.logger.error(`Error processing session: ${error}`);
+  //     }
 
-  private getIntervalBasedOnSessionCount(sessionCount: number): number {
-    for (const condition of this.conditions) {
-      if (sessionCount >= condition.min && sessionCount <= condition.max) {
-            return condition.interval;
-        }
-    }
-    // Default case if no conditions match
-    return 2 * 60 * 1000; // 1 minute
-  }
+  //     setTimeout(processNext, 1000); // Delay of 1 second between each session
+  //   };
 
-  private resetTimeout() {
-    if (this.timeoutId) {
-      clearTimeout(this.timeoutId);
-      this.logger.log('Previous timeout cleared');
-    }
-  }
+  //   processNext();
+  // }
 
-  private startRecursiveTimeout(sessions: any[]) {
-    this.timeoutId = setTimeout(async () => {
-      try {
-        await this.processSessions(sessions);
-      } catch (error) {
-        this.logger.error(`Error processing sessions: ${error}`);
-      }
-      this.startRecursiveTimeout(sessions); // Recursively call itself
-    }, this.currentInterval);
-  }
+  // private async processSingleSession(session: any) {
+  //   try {
+  //     if (!session) {
+  //       return;
+  //     }
+  //     const userTokenData = await this.getUserTokens(session.creator);
+  //     if (!userTokenData) {
+  //       this.logger.warn(`No tokens found for creator: ${session.creator}`);
+  //       return;
+  //     }
 
-  private async processSessions(sessions: any[]) {
-    this.logger.log(`Processing ${sessions.length} sessions with delayed execution`);
-    let index = 0;
+  //     auth2Client.setCredentials({
+  //       access_token: userTokenData.accessToken,
+  //       refresh_token: userTokenData.refreshToken,
+  //     });
 
-    const processNext = async () => {
-      if (index >= sessions.length) {
-        this.logger.log("All sessions processed");
-        return;
-      }
-      const session = sessions[index];
-      index++;
-      try {
-        await this.processSingleSession(session);
-      } catch (error) {
-        this.logger.error(`Error processing session: ${error}`);
-      }
+  //     const calendar = google.calendar({ version: 'v3', auth: auth2Client });
 
-      setTimeout(processNext, 1000); // Delay of 1 second between each session
-    };
+  //     if (session.meetingId && session.status === 'completed') {
+  //       await this.updateSessionLink(calendar, session);
+  //       await this.handleOldSessions(session);
+  //       const existing = await db
+  //         .select()
+  //         .from(zuvyStudentAttendance)
+  //         .where(eq(zuvyStudentAttendance.meetingId, session.meetingId));
+  //       if (existing.length === 0) {
+  //         let [errAtten, dataAttendance] = await this.getAttendanceByBatchId(session.batchId, session.creator);
+  //         if (errAtten) {
+  //           this.logger.error(`Attendance error: ${errAtten}`);
+  //         }
+  //         this.logger.log(`Attendance: ${JSON.stringify(dataAttendance)}`);
+  //         if (Array.isArray(dataAttendance)) {
+  //           this.logger.error(`Attendance error: ${dataAttendance}`);
+  //         } else if ('data' in dataAttendance) {
+  //           await db.insert(zuvyStudentAttendance).values({attendance: dataAttendance.data, meetingId: session.meetingId, batchId: session.batchId, bootcampId: session.bootcampId }).execute();
+  //         }
+  //       }
+  //     }
+  //   } catch (error) {
+  //     this.logger.error(`Session error: ${error}`);
+  //   }
+  // }
 
-    processNext();
-  }
+  // private async getUserTokens(email: string) {
+  //   const result = await db
+  //     .select()
+  //     .from(userTokens)
+  //     .where(eq(userTokens.userEmail, email));
+  //   return result.length ? result[0] : null;
+  // }
 
-  private async processSingleSession(session: any) {
-    try {
-      if (!session) {
-        return;
-      }
-      const userTokenData = await this.getUserTokens(session.creator);
-      if (!userTokenData) {
-        this.logger.warn(`No tokens found for creator: ${session.creator}`);
-        return;
-      }
+  // private async updateSessionLink(calendar: any, session: any) {
+  //   const eventDetails = await calendar.events.get({
+  //     calendarId: 'primary',
+  //     eventId: session.meetingId,
+  //   });
+  //   const videoAttachment = eventDetails.data.attachments?.find(
+  //     (a: any) => a.mimeType === 'video/mp4'
+  //   );
+  //   if (videoAttachment) {
+  //     let updateData: any = { s3link: videoAttachment.fileUrl };
+  //     await db.update(zuvySessions)
+  //       .set(updateData)
+  //       .where(eq(zuvySessions.id, session.id));
+  //   }
+  // }
 
-      auth2Client.setCredentials({
-        access_token: userTokenData.accessToken,
-        refresh_token: userTokenData.refreshToken,
-      });
+  // private async handleOldSessions(session: any) {
+  //   if (new Date(session.startTime) < new Date(Date.now() - 3 * 24 * 60 * 60 * 1000)) {
+  //     let updateData: any = { s3link: 'not found' };
+  //     await db.update(zuvySessions)
+  //       .set(updateData)
+  //       .where(eq(zuvySessions.id, session.id));
+  //   }
+  // }
 
-      const calendar = google.calendar({ version: 'v3', auth: auth2Client });
+  // private async getAttendanceByBatchId(batchId, creatorEmail: string) {
+  //   try {
+  //     const students = await db
+  //       .select()
+  //       .from(zuvyBatchEnrollments)
+  //       .where(eq(zuvyBatchEnrollments.batchId, Number(batchId)));
 
-      if (session.meetingId && session.status === 'completed') {
-        await this.updateSessionLink(calendar, session);
-        await this.handleOldSessions(session);
-        const existing = await db
-          .select()
-          .from(zuvyStudentAttendance)
-          .where(eq(zuvyStudentAttendance.meetingId, session.meetingId));
-        if (existing.length === 0) {
-          let [errAtten, dataAttendance] = await this.getAttendanceByBatchId(session.batchId, session.creator);
-          if (errAtten) {
-            this.logger.error(`Attendance error: ${errAtten}`);
-          }
-          this.logger.log(`Attendance: ${JSON.stringify(dataAttendance)}`);
-          if (Array.isArray(dataAttendance)) {
-            this.logger.error(`Attendance error: ${dataAttendance}`);
-          } else if ('data' in dataAttendance) {
-            await db.insert(zuvyStudentAttendance).values({attendance: dataAttendance.data, meetingId: session.meetingId, batchId: session.batchId, bootcampId: session.bootcampId }).execute();
-          }
-        }
-      }
-    } catch (error) {
-      this.logger.error(`Session error: ${error}`);
-    }
-  }
+  //     const userData = await db.select().from(users).where(eq(users.email, creatorEmail));
+  //     if (!userData.length) {
+  //       this.logger.warn(`No user found for email: ${creatorEmail}`);
+  //       return[{ status: 'error', message: 'User not found' }];
+  //     }
 
-  private async getUserTokens(email: string) {
-    const result = await db
-      .select()
-      .from(userTokens)
-      .where(eq(userTokens.userEmail, email));
-    return result.length ? result[0] : null;
-  }
+  //     const tokens = await db
+  //       .select()
+  //       .from(userTokens)
+  //       .where(eq(userTokens.userId, Number(userData[0].id)));
 
-  private async updateSessionLink(calendar: any, session: any) {
-    const eventDetails = await calendar.events.get({
-      calendarId: 'primary',
-      eventId: session.meetingId,
-    });
-    const videoAttachment = eventDetails.data.attachments?.find(
-      (a: any) => a.mimeType === 'video/mp4'
-    );
-    if (videoAttachment) {
-      let updateData: any = { s3link: videoAttachment.fileUrl };
-      await db.update(zuvySessions)
-        .set(updateData)
-        .where(eq(zuvySessions.id, session.id));
-    }
-  }
+  //     if (!tokens.length) return [{ status: 'error', message: 'Unable to fetch tokens' }];
 
-  private async handleOldSessions(session: any) {
-    if (new Date(session.startTime) < new Date(Date.now() - 3 * 24 * 60 * 60 * 1000)) {
-      let updateData: any = { s3link: 'not found' };
-      await db.update(zuvySessions)
-        .set(updateData)
-        .where(eq(zuvySessions.id, session.id));
-    }
-  }
+  //     auth2Client.setCredentials({
+  //       access_token: tokens[0].accessToken,
+  //       refresh_token: tokens[0].refreshToken,
+  //     });
 
-  private async getAttendanceByBatchId(batchId, creatorEmail: string) {
-    try {
-      const students = await db
-        .select()
-        .from(zuvyBatchEnrollments)
-        .where(eq(zuvyBatchEnrollments.batchId, Number(batchId)));
+  //     const client = google.admin({ version: 'reports_v1', auth: auth2Client });
+  //     const meetings = await db
+  //       .select()
+  //       .from(zuvySessions)
+  //       .where(and(eq(zuvySessions.batchId, Number(batchId)), eq(zuvySessions.status, 'completed')));
 
-      const userData = await db.select().from(users).where(eq(users.email, creatorEmail));
-      if (!userData.length) {
-        this.logger.warn(`No user found for email: ${creatorEmail}`);
-        return[{ status: 'error', message: 'User not found' }];
-      }
+  //     const [errorAttendance, attendance] = await this.calculateAttendance(client, meetings, students);
+  //     if (errorAttendance) return [errorAttendance];
+  //     return [null,{ data: attendance, status: 'success' }];
+  //   } catch (error) {
+  //     throw new Error(`Error fetching attendance: ${error.message}`);
+  //   }
+  // }
 
-      const tokens = await db
-        .select()
-        .from(userTokens)
-        .where(eq(userTokens.userId, Number(userData[0].id)));
+  // private async calculateAttendance(client: any, meetings: any[], students: any[]) {
+  //   let {PRIVATE_KEY, CLIENT_EMAIL} = process.env
 
-      if (!tokens.length) return [{ status: 'error', message: 'Unable to fetch tokens' }];
-
-      auth2Client.setCredentials({
-        access_token: tokens[0].accessToken,
-        refresh_token: tokens[0].refreshToken,
-      });
-
-      const client = google.admin({ version: 'reports_v1', auth: auth2Client });
-      const meetings = await db
-        .select()
-        .from(zuvySessions)
-        .where(and(eq(zuvySessions.batchId, Number(batchId)), eq(zuvySessions.status, 'completed')));
-
-      const [errorAttendance, attendance] = await this.calculateAttendance(client, meetings, students);
-      if (errorAttendance) return [errorAttendance];
-      return [null,{ data: attendance, status: 'success' }];
-    } catch (error) {
-      throw new Error(`Error fetching attendance: ${error.message}`);
-    }
-  }
-
-  private async calculateAttendance(client: any, meetings: any[], students: any[]) {
-    let {PRIVATE_KEY, CLIENT_EMAIL} = process.env
-
-    const attendanceByTitle: Record<string, any> = {};
-    for (const meeting of meetings) {
-      const response = await client.activities.list({
-        userKey:         'all',
-        applicationName: 'meet',
-        eventName:       'call_ended',
-        maxResults:      1000,
-        filters:         `calendar_event_id==${meeting.meetingId}`,
-      });
-      const items = response.data.items || [];
+  //   const attendanceByTitle: Record<string, any> = {};
+  //   for (const meeting of meetings) {
+  //     const response = await client.activities.list({
+  //       userKey:         'all',
+  //       applicationName: 'meet',
+  //       eventName:       'call_ended',
+  //       maxResults:      1000,
+  //       filters:         `calendar_event_id==${meeting.meetingId}`,
+  //     });
+  //     const items = response.data.items || [];
   
-      // 2️⃣ Extract the host’s email from the first log entry
-      const organizerParam = items[0].events?.[0].parameters?.find(p => p.name === 'organizer_email');
-      const hostEmail = organizerParam?.value;
-      const jwtClient = new google.auth.JWT({
-        email:   CLIENT_EMAIL,
-        key:     PRIVATE_KEY,
-        scopes: [
-          'https://www.googleapis.com/auth/drive.metadata.readonly',
-          'https://www.googleapis.com/auth/calendar.events.readonly',
-        ],
-        subject: hostEmail
-      })
-      await jwtClient.authorize();
-      const calendar = google.calendar({ version: 'v3', auth: jwtClient });
-      const drive    = google.drive({ version: 'v3', auth: jwtClient });
-      const { data: event } = await calendar.events.get({
-        calendarId: 'primary',
-        eventId:    meeting.meetingId,
-        fields:     'attachments(fileId,mimeType)',
-      });
-      const videoAttach = event.attachments?.find(
-        (a: any) => a.mimeType === 'video/mp4'
-      );
-      if (!videoAttach) {
-        console.warn(`No recording for ${meeting.meetingId}, skipping.`);
-        continue;
-      }
+  //     // 2️⃣ Extract the host’s email from the first log entry
+  //     const organizerParam = items[0].events?.[0].parameters?.find(p => p.name === 'organizer_email');
+  //     const hostEmail = organizerParam?.value;
+  //     const jwtClient = new google.auth.JWT({
+  //       email:   CLIENT_EMAIL,
+  //       key:     PRIVATE_KEY,
+  //       scopes: [
+  //         'https://www.googleapis.com/auth/drive.metadata.readonly',
+  //         'https://www.googleapis.com/auth/calendar.events.readonly',
+  //       ],
+  //       subject: hostEmail
+  //     })
+  //     await jwtClient.authorize();
+  //     const calendar = google.calendar({ version: 'v3', auth: jwtClient });
+  //     const drive    = google.drive({ version: 'v3', auth: jwtClient });
+  //     const { data: event } = await calendar.events.get({
+  //       calendarId: 'primary',
+  //       eventId:    meeting.meetingId,
+  //       fields:     'attachments(fileId,mimeType)',
+  //     });
+  //     const videoAttach = event.attachments?.find(
+  //       (a: any) => a.mimeType === 'video/mp4'
+  //     );
+  //     if (!videoAttach) {
+  //       console.warn(`No recording for ${meeting.meetingId}, skipping.`);
+  //       continue;
+  //     }
   
-      // 3️⃣ Fetch the recording’s duration from Drive metadata
-      const { data: fileMeta } = await drive.files.get({
-        fileId: videoAttach.fileId,
-        fields: 'videoMediaMetadata(durationMillis)'
-      });
-      const durationMillisStr = fileMeta.videoMediaMetadata?.durationMillis;
+  //     // 3️⃣ Fetch the recording’s duration from Drive metadata
+  //     const { data: fileMeta } = await drive.files.get({
+  //       fileId: videoAttach.fileId,
+  //       fields: 'videoMediaMetadata(durationMillis)'
+  //     });
+  //     const durationMillisStr = fileMeta.videoMediaMetadata?.durationMillis;
 
-      const durationMillis = Number(durationMillisStr) || 0;
+  //     const durationMillis = Number(durationMillisStr) || 0;
 
-      const totalSeconds = durationMillis / 1000;
-    const cutoff       = totalSeconds * 0.75;
-    const attendance: Record<string, { email: string; duration: number; attendance: string }> = {};
-    for (const student of students) {
-      const user = await db
-          .select()
-          .from(users)
-          .where(sql`${users.id} = ${BigInt(student.userId)}`);
+  //     const totalSeconds = durationMillis / 1000;
+  //   const cutoff       = totalSeconds * 0.75;
+  //   const attendance: Record<string, { email: string; duration: number; attendance: string }> = {};
+  //   for (const student of students) {
+  //     const user = await db
+  //         .select()
+  //         .from(users)
+  //         .where(sql`${users.id} = ${BigInt(student.userId)}`);
 
-        attendance[user[0].email] = {
-          email:      user[0].email,
-          duration:   0,
-          attendance: 'absent'
-        };
-    }
+  //       attendance[user[0].email] = {
+  //         email:      user[0].email,
+  //         duration:   0,
+  //         attendance: 'absent'
+  //       };
+  //   }
 
-    response.data.items?.forEach((item: any) => {
-      const e      = item.events[0];
-      const email  = e.parameters.find((p: any) => p.name === 'identifier')?.value;
-      const secs   = e.parameters.find((p: any) => p.name === 'duration_seconds')?.intValue || 0;
-      if (email && attendance[email]) {
-        attendance[email].duration += Number(secs);
-      }
-    });
-    for (const rec of Object.values(attendance)) {
-      rec.attendance = rec.duration >= cutoff ? 'present' : 'absent';
-    }
-    for (const [email, rec] of Object.entries(attendance)) {
-      attendanceByTitle[email] = {
-        ...(attendanceByTitle[email] || {}),
-        ...rec
-      };
-    }
-  }
+  //   response.data.items?.forEach((item: any) => {
+  //     const e      = item.events[0];
+  //     const email  = e.parameters.find((p: any) => p.name === 'identifier')?.value;
+  //     const secs   = e.parameters.find((p: any) => p.name === 'duration_seconds')?.intValue || 0;
+  //     if (email && attendance[email]) {
+  //       attendance[email].duration += Number(secs);
+  //     }
+  //   });
+  //   for (const rec of Object.values(attendance)) {
+  //     rec.attendance = rec.duration >= cutoff ? 'present' : 'absent';
+  //   }
+  //   for (const [email, rec] of Object.entries(attendance)) {
+  //     attendanceByTitle[email] = {
+  //       ...(attendanceByTitle[email] || {}),
+  //       ...rec
+  //     };
+  //   }
+  // }
 
-  // 7️⃣ Flatten for return
-  const attendanceOfStudents = Object.values(attendanceByTitle);
-  return [ null, attendanceOfStudents ];
-  }
+  // // 7️⃣ Flatten for return
+  // const attendanceOfStudents = Object.values(attendanceByTitle);
+  // return [ null, attendanceOfStudents ];
+  // }
 
   // Daily midnight job (server timezone) to backfill attendance from invited_students snapshot.
   // Runs at 00:00:05 to avoid exact midnight race with other processes.
+ 
   @Cron('5 0 0 * * *')
   async backfillInvitedStudentsAttendanceMidnight() {
     this.logger.log('Midnight cron: Backfilling attendance from invited_students');
