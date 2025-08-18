@@ -15,7 +15,7 @@ import {
   users,
   zuvySessionMerge
 } from '../../../drizzle/schema';
-import { eq, desc, and, or, sql, ilike, inArray, gte, lt } from 'drizzle-orm';
+import { eq, desc, and, or, sql, ilike, inArray, gte, lt, count } from 'drizzle-orm';
 import { Res, Req } from '@nestjs/common';
 import { Response } from 'express';
 import { S3 } from 'aws-sdk';
@@ -1619,6 +1619,14 @@ export class ClassesService {
         if (user?.roles?.includes('admin')) {
           // Admin gets full access including zoomStartUrl for Zoom meetings
           const sessionWithAny = processedSession as any;
+          const moduleInfo = sessionWithAny.moduleId != null ? await db.select().from(zuvyCourseModules).where(eq(zuvyCourseModules.id, sessionWithAny.moduleId)) : null;
+          if (moduleInfo && moduleInfo.length > 0) {
+            sessionWithAny.moduleName = moduleInfo[0].name;
+          }
+          const batchInfo = sessionWithAny != null ? await db.select().from(zuvyBatches).where(eq(zuvyBatches.id, sessionWithAny.batchId)) : null;
+          if (batchInfo && batchInfo.length > 0) {
+            sessionWithAny.batchName = batchInfo[0].name;
+          }
           return {
             id: sessionWithAny.id,
             meetingId: sessionWithAny.meetingId,
@@ -1627,8 +1635,10 @@ export class ClassesService {
             startTime: sessionWithAny.startTime,
             endTime: sessionWithAny.endTime,
             batchId: sessionWithAny.batchId,
+            batchName: sessionWithAny.batchName,
             bootcampId: sessionWithAny.bootcampId,
             moduleId: sessionWithAny.moduleId,
+            moduleName: sessionWithAny.moduleName,
             chapterId: sessionWithAny.chapterId,
             title: sessionWithAny.title,
             s3link: sessionWithAny.s3link,
@@ -1656,8 +1666,10 @@ export class ClassesService {
             startTime: sessionWithAny.startTime,
             endTime: sessionWithAny.endTime,
             batchId: sessionWithAny.batchId,
+            batchName: sessionWithAny.batchName,
             bootcampId: sessionWithAny.bootcampId,
             moduleId: sessionWithAny.moduleId,
+            moduleName: sessionWithAny.moduleName,
             chapterId: sessionWithAny.chapterId,
             title: sessionWithAny.title,
             s3link: (sessionWithAny as any).s3Link,
@@ -1685,6 +1697,107 @@ export class ClassesService {
       };
     } catch (err) {
       return { status: 'error', message: err.message, code: 500 };
+    }
+  }
+
+
+  async addLiveClassesAsChapters(
+    sessionIds: number[],
+    moduleId: number,
+    user: any
+  ): Promise<any> {
+    try {
+      // Check if user has admin role
+      if (!user.roles?.includes('admin')) {
+        return [{
+          status: 'error',
+          message: 'Only admin can add live classes as chapters',
+          code: 403
+        }, null];
+      }
+
+      // Validate module exists
+      const moduleInfo = await db
+        .select()
+        .from(zuvyCourseModules)
+        .where(eq(zuvyCourseModules.id, moduleId));
+      
+      if (moduleInfo.length === 0) {
+        return [{
+          status: 'error',
+          message: 'Module not found',
+          code: 404
+        }, null];
+      }
+
+      // Get all sessions
+      const sessions = await db
+        .select()
+        .from(zuvySessions)
+        .where(inArray(zuvySessions.id, sessionIds))
+        .orderBy(zuvySessions.id);
+
+      if (sessions.length === 0) {
+        return [{
+          status: 'error',
+          message: 'No sessions found with the provided IDs',
+          code: 404
+        }, null];
+      }
+
+      // Get current chapter count for ordering
+      const noOfChaptersOfAModule = await db
+        .select({ count: count(zuvyModuleChapter.id) })
+        .from(zuvyModuleChapter)
+        .where(eq(zuvyModuleChapter.moduleId, moduleId));
+      
+      let order = noOfChaptersOfAModule[0].count + 1;
+
+      // Create chapters for each session
+      const chapters = [];
+      for (const session of sessions) {
+        const chapterData = {
+          title: session.title,
+          moduleId: moduleId,
+          topicId: 8, // Live class topic ID
+          order: order++,
+        };
+
+        const chapter = await db
+          .insert(zuvyModuleChapter)
+          .values(chapterData)
+          .returning();
+
+        if (chapter.length > 0) {
+          // Update session with module and chapter IDs
+          await db
+            .update(zuvySessions)
+            .set({
+              moduleId: moduleId,
+              chapterId: chapter[0].id
+            })
+            .where(eq(zuvySessions.id, session.id));
+
+          chapters.push(chapter[0]);
+        }
+      }
+
+      return [null, {
+        status: 'success',
+        message: 'Live classes added as chapters successfully',
+        code: 200,
+        data: {
+          chapters,
+          totalAdded: chapters.length
+        }
+      }];
+
+    } catch (error) {
+      return [{
+        status: 'error',
+        message: 'Error adding live classes as chapters: ' + error.message,
+        code: 500
+      }, null];
     }
   }
 

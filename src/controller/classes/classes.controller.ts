@@ -354,6 +354,32 @@ export class ClassesController {
   }
 
 
+  @Post('/addliveClassesAsChapters')
+  @ApiOperation({ summary: 'Add existing live classes as chapters to a module' })
+  @ApiBearerAuth()
+  async addLiveClassesAsChapters(
+    @Body() data: AddLiveClassesAsChaptersDto,
+    @Req() req,
+    @Res() res: Response,
+  ): Promise<object> {
+    try {
+      const [err, success] = await this.classesService.addLiveClassesAsChapters(
+        data.sessionIds,
+        data.moduleId,
+        req.user[0]
+      );
+      if (err) {
+        return ErrorResponse.BadRequestException(err.message).send(res);
+      }
+      return new SuccessResponse(
+        success.message,
+        success.statusCode,
+        success.data,
+      ).send(res);
+    } catch (error) {
+      return ErrorResponse.BadRequestException(error.message).send(res);
+    }
+  }
 
   @Get('/sessions/:id')
   @ApiOperation({ summary: 'Get individual session by ID with role-based access and merge handling' })
