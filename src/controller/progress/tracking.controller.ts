@@ -80,6 +80,16 @@ export class TrackingController {
     return res;
   }
 
+  @Post('/recomputeAttendance/:batchId')
+  @ApiOperation({ summary: 'Recompute attendance percentage for a batch (testing)' })
+  @ApiBearerAuth('JWT-auth')
+  async recomputeAttendance(
+    @Param('batchId') batchId: number,
+  ) {
+    const res = await this.TrackingService.recomputeBatchAttendancePercentages(Number(batchId));
+    return res;
+  }
+
   @Post('updateQuizAndAssignmentStatus/:bootcampId/:moduleId')
   @ApiOperation({ summary: 'Update Chapter status' })
   @ApiBody({ type: SubmitBodyDto, required: false })

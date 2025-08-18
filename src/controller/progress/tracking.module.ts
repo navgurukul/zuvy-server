@@ -12,6 +12,7 @@ import { ClassesModule } from '../classes/classes.module';
     imports: [BatchesModule, AuthModule, ContentModule, ClassesModule],
     controllers: [TrackingController],
     providers: [TrackingService, JwtService],
+    exports: [TrackingService]
 })
 export class TrackingModule implements NestModule {
     configure(consumer: MiddlewareConsumer) {

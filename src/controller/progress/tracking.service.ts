@@ -12,6 +12,7 @@ import {
   zuvyBootcampTracking,
   zuvyCourseModules,
   zuvyBatchEnrollments,
+  zuvyStudentAttendanceRecords,
   zuvyProjectTracking,
   zuvyRecentBootcamp,
   zuvyPracticeCode,
@@ -43,7 +44,89 @@ let { ACCEPTED, SUBMIT } = helperVariable;
 
 @Injectable()
 export class TrackingService {
+  logger: any;
   constructor(private contentService: ContentService, private classesService: ClassesService) { }
+
+  /**
+   * Recompute attendance percentage for all students in a batch and persist
+   * it to `zuvy_batch_enrollments.attendance`.
+   * Counts sessions where the batch appears as `batchId` OR `secondBatchId`.
+   */
+  async recomputeBatchAttendancePercentages(batchId: number) {
+    try {
+      
+      // ensure we have a logger
+      if (!this.logger) this.logger = console;
+
+      // 1. Fetch all session ids where this batch participated (primary or secondary)
+      const sessions = await db.select({ id: zuvySessions.id })
+        .from(zuvySessions)
+        .where(sql`${zuvySessions.batchId} = ${batchId} OR ${zuvySessions.secondBatchId} = ${batchId}`);
+
+      const sessionIds = sessions.map(s => s.id);
+      console.log("Session IDs for batch:", sessions);
+      // If there are no sessions, set attendance to 0 for enrolled students and return
+      if (sessionIds.length === 0) {
+        await db.update(zuvyBatchEnrollments)
+          .set({ attendance: 0 })
+          .where(eq(zuvyBatchEnrollments.batchId, batchId));
+        return { success: true, updated: 0, reason: 'no_sessions' };
+      }
+
+      // 2. Fetch all enrolled students for this batch
+      const enrollments = await db.select({ id: zuvyBatchEnrollments.id, userId: zuvyBatchEnrollments.userId })
+        .from(zuvyBatchEnrollments)
+        .where(eq(zuvyBatchEnrollments.batchId, batchId));
+      console.log("Enrollments for batch:", enrollments);
+      if (!enrollments || enrollments.length === 0) {
+        return { success: true, updated: 0, reason: 'no_enrollments' };
+      }
+
+      // 3. Fetch present counts for all users in one grouped query (count distinct sessionId to avoid duplicates)
+      const presentCountsRaw = await db.select({ userId: zuvyStudentAttendanceRecords.userId, cnt: sql<number>`cast(count(DISTINCT ${zuvyStudentAttendanceRecords.sessionId}) as int)` })
+        .from(zuvyStudentAttendanceRecords)
+        .where(sql`${inArray(zuvyStudentAttendanceRecords.sessionId, sessionIds)} AND lower(${zuvyStudentAttendanceRecords.status}) = ${'present'}`)
+        .groupBy(zuvyStudentAttendanceRecords.userId);
+
+
+      // map userId -> presentCount (string keys to support BigInt)
+      const presentMap = new Map<string, number>();
+      for (const r of presentCountsRaw) {
+        const key = String((r as any).userId);
+        presentMap.set(key, Number((r as any).cnt ?? 0));
+      }
+
+      // 4. Build a CASE expression to batch update attendance in a single query
+      const sqlChunks: SQL[] = [];
+      const ids: number[] = [];
+
+      sqlChunks.push(sql`(case`);
+
+      const totalClasses = sessionIds.length;
+
+      for (const enroll of enrollments) {
+        const key = String(enroll.userId);
+        const presentCount = presentMap.get(key) ?? 0;
+        const rawPercentage = totalClasses > 0 ? Math.round((presentCount / totalClasses) * 100) : 0;
+        const percentage = Math.max(0, Math.min(100, rawPercentage));
+
+        sqlChunks.push(sql`when ${zuvyBatchEnrollments.id} = ${enroll.id} then ${sql.raw(`CAST(${percentage} AS INTEGER)`)}`);
+        ids.push(enroll.id as unknown as number);
+      }
+
+      sqlChunks.push(sql`end)`);
+
+      const finalSql: SQL = sql.join(sqlChunks, sql.raw(' '));
+
+      // perform batch update for all enrollments in this batch
+      await db.update(zuvyBatchEnrollments).set({ attendance: finalSql }).where(sql`${inArray(zuvyBatchEnrollments.id, ids)}`);
+
+      return { success: true, updated: ids.length };
+    } catch (err: any) {
+      if (this.logger) this.logger.error(`recomputeBatchAttendancePercentages failed: ${err?.message ?? err}`);
+      return { success: false, error: err?.message ?? String(err) };
+    }
+  }
 
   async updateChapterStatus(
     bootcampId: number,
