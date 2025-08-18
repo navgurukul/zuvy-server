@@ -63,7 +63,7 @@ let configUser = { id: process.env.ID, email: process.env.TEAM_EMAIL };
   }),
 )
 export class ClassesController {
-  constructor(private classesService: ClassesService) {}
+  constructor(private classesService: ClassesService) { }
 
   @Public()
   @Get('/')
@@ -94,10 +94,10 @@ export class ClassesController {
     try {
       const { code, state } = request.query;
       const { tokens } = await auth2Client.getToken(code);
-      
+
       // Parse state to get user info
       const userInfo = JSON.parse(state);
-      
+
       // Store tokens in database
       await db
         .insert(userTokens)
@@ -137,8 +137,8 @@ export class ClassesController {
       email: req.user[0].email,
       roles: req.user[0].roles || []
     };
-  // Delegate all validation & batch combination logic to service
-  const result = await this.classesService.createSession(classData as any, userInfo);
+    // Delegate all validation & batch combination logic to service
+    const result = await this.classesService.createSession(classData as any, userInfo);
     return result;
   }
 
@@ -174,7 +174,7 @@ export class ClassesController {
       roles: req.user[0].roles || []
     };
     const [err, values] = await this.classesService.meetingAttendanceAnalytics(
-      sessionId,userInfo
+      sessionId, userInfo
     );
     if (err) {
       throw new BadRequestException(err);
@@ -321,7 +321,7 @@ export class ClassesController {
   ): Promise<object> {
     return this.classesService.unattendanceClassesByBootcampId(bootcampId);
   }
-  
+
   @Get('/check-calendar-access')
   @ApiOperation({ summary: 'Check if admin has calendar access' })
   @ApiBearerAuth('JWT-auth')
@@ -332,7 +332,7 @@ export class ClassesController {
         email: req.user[0].email,
         roles: req.user[0].roles || []
       };
-      
+
       const calendar = await this.classesService.accessOfCalendar(userInfo);
       if ('status' in calendar && calendar.status === 'error') {
         return {
@@ -364,7 +364,7 @@ export class ClassesController {
       email: req.user[0].email,
       roles: req.user[0].roles || []
     };
-    
+
     // Route to appropriate service method based on user role
     if (userInfo.roles?.includes('admin')) {
       return this.classesService.getSessionForAdmin(sessionId, userInfo);
@@ -462,7 +462,7 @@ export class ClassesController {
   }
 
   @Post('/merge')
-  @ApiOperation({ 
+  @ApiOperation({
     summary: 'Merge two classes - combines students from both sessions into parent session',
     description: 'Merges classes by adding students from both child and parent session batches to the parent session (which becomes the main session). Updates Google Calendar and Zoom meeting invitees. Sets hasBeenMerged=true for both sessions.'
   })
@@ -491,5 +491,27 @@ export class ClassesController {
     } else {
       throw new BadRequestException(result.message);
     }
+  }
+
+
+  @Post('/attendance/by-bootcamp/:bootcampId')
+  @ApiOperation({
+    summary: 'Migrate old attendance data for a specific bootcamp',
+    description: 'Triggers a background process to migrate attendance records from the old JSON format to the new normalized table for all completed classes within a given bootcamp.'
+  })
+  @ApiBearerAuth('JWT-auth') // Protect the endpoint
+  async migrateAttendanceByBootcamp(
+    @Param('bootcampId') bootcampId: number,
+  ): Promise<object> {
+    // We don't await the service call here.
+    // This allows the server to respond immediately while the migration
+    // runs as a background task.
+    this.classesService.migrateCompletedAttendancesByBootcamp(bootcampId);
+
+    // Return an immediate success response to the client
+    return {
+      statusCode: 200,
+      message: `Attendance migration started for bootcampId: ${bootcampId}. This process will run in the background.`,
+    };
   }
 }
