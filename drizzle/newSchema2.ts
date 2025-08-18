@@ -1,5 +1,5 @@
 import { pgTable, customType, pgSchema, varchar, serial, integer, timestamp, text, unique, foreignKey, uniqueIndex, bigserial, bigint, date, boolean, char, index, jsonb, doublePrecision, json, type AnyPgColumn, time, numeric } from "drizzle-orm/pg-core"
-	import { sql } from "drizzle-orm"
+  import { sql } from "drizzle-orm"
 
 export const main = pgSchema("main");
 export const action = main.enum("action", ['submit', 'run'])
@@ -15,20 +15,20 @@ export const usersCenter = main.enum("users_center", ['dharamshala', 'bangalore'
 
 
 const batey = customType<{ data: string; notNull: false; default: false }>({
-	dataType() {
+  dataType() {
 	return 'bytea';
-	},
-	toDriver(val: string) {
+  },
+  toDriver(val: string) {
 	let newVal = val;
 	if (val.startsWith('0x')) {
-		newVal = val.slice(2);
+	  newVal = val.slice(2);
 	}
 
 	return Buffer.from(newVal, 'hex');
-	},
-	fromDriver(val: Buffer) {
+  },
+  fromDriver(val: Buffer) {
 	return val.toString('hex');
-	},
+  },
 });
 
 export const userSession = main.table("user_session", {
@@ -3667,10 +3667,10 @@ export const zuvyOutsourseAssessments = main.table("zuvy_outsourse_assessments",
 	canScreenExit: boolean("can_screen_exit"),
 	canCopyPaste: boolean("can_copy_paste"),
 	publishDatetime: timestamp('publish_datetime', { withTimezone: true, mode: 'string' }),
-	startDatetime: timestamp('start_datetime', { withTimezone: true, mode: 'string' }),
-	endDatetime: timestamp('end_datetime', { withTimezone: true, mode: 'string' }),
-	unpublishDatetime: timestamp('unpublish_datetime', { withTimezone: true, mode: 'string' }),
-	currentState: integer('current_state').default(0),
+  	startDatetime: timestamp('start_datetime', { withTimezone: true, mode: 'string' }),
+  	endDatetime: timestamp('end_datetime', { withTimezone: true, mode: 'string' }),
+  	unpublishDatetime: timestamp('unpublish_datetime', { withTimezone: true, mode: 'string' }),
+  	currentState: integer('current_state').default(0),
 	version: varchar("version", { length: 10 }),
 	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
 },

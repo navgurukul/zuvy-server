@@ -1,67 +1,61 @@
 CREATE SCHEMA "main";
 --> statement-breakpoint
 DO $$ BEGIN
- CREATE TYPE "action" AS ENUM('submit', 'run');
+ CREATE TYPE "main"."action" AS ENUM('submit', 'run');
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
- CREATE TYPE "course_enrolments_course_status" AS ENUM('enroll', 'unenroll', 'completed');
+ CREATE TYPE "main"."course_enrolments_course_status" AS ENUM('enroll', 'unenroll', 'completed');
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
- CREATE TYPE "courses_type" AS ENUM('html', 'js', 'python');
+ CREATE TYPE "main"."courses_type" AS ENUM('html', 'js', 'python');
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
- CREATE TYPE "difficulty" AS ENUM('Easy', 'Medium', 'Hard');
+ CREATE TYPE "main"."difficulty" AS ENUM('Easy', 'Medium', 'Hard');
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
- CREATE TYPE "exercises_review_type" AS ENUM('manual', 'peer', 'facilitator', 'automatic');
+ CREATE TYPE "main"."exercises_review_type" AS ENUM('manual', 'peer', 'facilitator', 'automatic');
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
- CREATE TYPE "exercises_submission_type" AS ENUM('number', 'text', 'text_large', 'attachments', 'url');
+ CREATE TYPE "main"."exercises_submission_type" AS ENUM('number', 'text', 'text_large', 'attachments', 'url');
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
- CREATE TYPE "questionType" AS ENUM('Multiple Choice', 'Checkboxes', 'Long Text Answer', 'Date', 'Time');
+ CREATE TYPE "main"."submissions_state" AS ENUM('completed', 'pending', 'rejected');
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
- CREATE TYPE "submissions_state" AS ENUM('completed', 'pending', 'rejected');
+ CREATE TYPE "main"."user_roles_center" AS ENUM('dharamshala', 'banagalore', 'all');
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
- CREATE TYPE "user_roles_center" AS ENUM('dharamshala', 'banagalore', 'all');
+ CREATE TYPE "main"."user_roles_roles" AS ENUM('admin', 'alumni', 'student', 'facilitator');
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
- CREATE TYPE "user_roles_roles" AS ENUM('admin', 'alumni', 'student', 'facilitator');
-EXCEPTION
- WHEN duplicate_object THEN null;
-END $$;
---> statement-breakpoint
-DO $$ BEGIN
- CREATE TYPE "users_center" AS ENUM('dharamshala', 'bangalore');
+ CREATE TYPE "main"."users_center" AS ENUM('dharamshala', 'bangalore');
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
@@ -83,6 +77,7 @@ CREATE TABLE IF NOT EXISTS "main"."assessment_outcome" (
 	"status" varchar(255) NOT NULL,
 	"selected_option" integer,
 	"attempt_count" integer NOT NULL,
+	"multiple_choice" varchar(255),
 	"team_id" integer,
 	"selected_multiple_option" varchar(255)
 );
@@ -233,6 +228,49 @@ CREATE TABLE IF NOT EXISTS "main"."campus_school" (
 	CONSTRAINT "main_campus_school_campus_id_school_id_unique" UNIQUE("campus_id","school_id")
 );
 --> statement-breakpoint
+CREATE TABLE IF NOT EXISTS "main"."career_students" (
+	"id" serial PRIMARY KEY NOT NULL,
+	"name" varchar(100) NOT NULL,
+	"class" integer NOT NULL,
+	"career_teacher_id" integer NOT NULL,
+	"career_team_id" integer NOT NULL,
+	"created_at" timestamp with time zone DEFAULT CURRENT_TIMESTAMP,
+	"updated_at" timestamp with time zone DEFAULT CURRENT_TIMESTAMP
+);
+--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS "main"."career_teachers" (
+	"id" serial PRIMARY KEY NOT NULL,
+	"name" varchar(100) NOT NULL,
+	"school" varchar(100) NOT NULL,
+	"district" varchar(100) NOT NULL,
+	"state" varchar(100) NOT NULL,
+	"phone_number" varchar(15),
+	"email" varchar(255) NOT NULL,
+	"profile_url" varchar(255),
+	"user_id" integer NOT NULL,
+	"cluster_manager_id" integer NOT NULL,
+	"created_at" timestamp with time zone DEFAULT CURRENT_TIMESTAMP,
+	"updated_at" timestamp with time zone DEFAULT CURRENT_TIMESTAMP,
+	CONSTRAINT "main_career_teachers_phone_number_unique" UNIQUE("phone_number"),
+	CONSTRAINT "main_career_teachers_email_unique" UNIQUE("email")
+);
+--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS "main"."career_teams" (
+	"id" serial PRIMARY KEY NOT NULL,
+	"name" varchar(100) NOT NULL,
+	"team_size" integer NOT NULL,
+	"login_id" varchar(255) NOT NULL,
+	"password" varchar(255) NOT NULL,
+	"career_teacher_id" integer NOT NULL,
+	"state" varchar(100),
+	"district" varchar(100),
+	"school" varchar(255),
+	"last_login" varchar(100),
+	"created_at" timestamp with time zone DEFAULT CURRENT_TIMESTAMP,
+	"updated_at" timestamp with time zone DEFAULT CURRENT_TIMESTAMP,
+	CONSTRAINT "main_career_teams_name_unique" UNIQUE("name")
+);
+--> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "main"."category" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"category_name" varchar(100) NOT NULL,
@@ -341,6 +379,21 @@ CREATE TABLE IF NOT EXISTS "main"."classes_to_courses" (
 	"course_v3" integer,
 	"exercise_v3" integer,
 	"slug_id" integer
+);
+--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS "main"."cluster_managers" (
+	"id" serial PRIMARY KEY NOT NULL,
+	"name" varchar(100) NOT NULL,
+	"point_of_contact" varchar(100),
+	"email" varchar(255) NOT NULL,
+	"web_link" varchar(255),
+	"phone_number" varchar(15),
+	"admin_id" integer NOT NULL,
+	"short_code" varchar(50),
+	"created_at" timestamp with time zone DEFAULT CURRENT_TIMESTAMP,
+	"updated_at" timestamp with time zone DEFAULT CURRENT_TIMESTAMP,
+	CONSTRAINT "main_cluster_managers_email_unique" UNIQUE("email"),
+	CONSTRAINT "main_cluster_managers_phone_number_unique" UNIQUE("phone_number")
 );
 --> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "main"."contacts" (
@@ -528,9 +581,9 @@ CREATE TABLE IF NOT EXISTS "main"."exercises" (
 	"name" varchar(300) DEFAULT '' NOT NULL,
 	"slug" varchar(100) DEFAULT '' NOT NULL,
 	"sequence_num" double precision,
-	"review_type" "exercises_review_type" DEFAULT 'manual',
+	"review_type" "main"."exercises_review_type" DEFAULT 'manual',
 	"content" text,
-	"submission_type" "exercises_submission_type",
+	"submission_type" "main"."exercises_submission_type",
 	"github_link" varchar(300),
 	"solution" text
 );
@@ -586,6 +639,11 @@ CREATE TABLE IF NOT EXISTS "main"."feedbacks" (
 	"notification_status" text
 );
 --> statement-breakpoint
+CREATE TABLE IF NOT EXISTS "main"."ghar_users" (
+	"id" serial PRIMARY KEY NOT NULL,
+	"email" varchar(255) NOT NULL
+);
+--> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "main"."incoming_calls" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"contact_id" integer,
@@ -620,7 +678,10 @@ CREATE TABLE IF NOT EXISTS "main"."interview_slot" (
 	"is_cancelled" boolean DEFAULT false,
 	"cancelltion_reason" varchar(255),
 	"created_at" timestamp with time zone NOT NULL,
-	"updated_at" timestamp with time zone
+	"updated_at" timestamp with time zone,
+	"meet_link" varchar(255),
+	"meet_link_status" boolean,
+	"result_status" boolean
 );
 --> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "main"."k_details" (
@@ -692,7 +753,17 @@ CREATE TABLE IF NOT EXISTS "main"."meraki_certificate" (
 	"url" varchar(255),
 	"register_at" varchar(255),
 	"created_at" timestamp with time zone,
+	"pathway_id" integer,
 	"pathway_code" varchar(255)
+);
+--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS "main"."meraki_students" (
+	"id" serial PRIMARY KEY NOT NULL,
+	"user_name" varchar(255) NOT NULL,
+	"name" varchar(255) NOT NULL,
+	"password" varchar(255) NOT NULL,
+	"partner_id" integer NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now()
 );
 --> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "main"."merged_classes" (
@@ -819,8 +890,18 @@ CREATE TABLE IF NOT EXISTS "main"."partner_specific_batches" (
 	"class_id" integer,
 	"recurring_id" integer,
 	"partner_id" integer,
-	"group_id" integer,
 	"space_id" integer,
+	"group_id" integer,
+	"pathway_id" integer
+);
+--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS "main"."partner_specific_batches_v2" (
+	"id" serial PRIMARY KEY NOT NULL,
+	"class_id" integer,
+	"recurring_id" integer,
+	"space_id" integer,
+	"group_id" integer,
+	"partner_id" integer,
 	"pathway_id" integer
 );
 --> statement-breakpoint
@@ -1060,8 +1141,9 @@ CREATE TABLE IF NOT EXISTS "main"."questions" (
 	"type" integer NOT NULL,
 	"created_at" varchar(45) NOT NULL,
 	"ma_text" varchar(2000),
+	"schoolId" integer,
 	"school_test" varchar(255),
-	"schoolId" integer
+	"hien_text" varchar(2000)
 );
 --> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "main"."record_versions_of_post_delete_exercisedetails" (
@@ -1094,6 +1176,29 @@ CREATE TABLE IF NOT EXISTS "main"."registration_form_structure" (
 	"partner_id" integer NOT NULL,
 	"form_structure" json,
 	CONSTRAINT "main_registration_form_structure_partner_id_unique" UNIQUE("partner_id")
+);
+--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS "main"."sama_clients" (
+	"id" serial PRIMARY KEY NOT NULL,
+	"name" varchar,
+	"mac_address" varchar(27) NOT NULL,
+	"software_status" boolean DEFAULT false,
+	"wallpaper_status" boolean DEFAULT false,
+	"created_at" timestamp DEFAULT CURRENT_TIMESTAMP NOT NULL,
+	"last_sync" timestamp with time zone,
+	"installed_softwares" text,
+	"serial_number" varchar(255),
+	"ngo_name" varchar(255),
+	CONSTRAINT "unique_mac_serial" UNIQUE("mac_address","serial_number")
+);
+--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS "main"."sama_system_tracking" (
+	"id" serial PRIMARY KEY NOT NULL,
+	"mac_address" varchar(27) NOT NULL,
+	"active_time" time,
+	"date" timestamp DEFAULT CURRENT_TIMESTAMP,
+	"location" text,
+	"created_at" timestamp DEFAULT CURRENT_TIMESTAMP NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "main"."sansaar_user_roles" (
@@ -1133,6 +1238,15 @@ CREATE TABLE IF NOT EXISTS "main"."scratch_sample" (
 	"url" varchar(255) NOT NULL,
 	"project_name" varchar(255),
 	"created_at" timestamp with time zone DEFAULT now()
+);
+--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS "main"."short_links" (
+	"id" serial PRIMARY KEY NOT NULL,
+	"short_code" varchar(10) NOT NULL,
+	"original_url" text NOT NULL,
+	"created_at" timestamp with time zone DEFAULT CURRENT_TIMESTAMP,
+	"last_accessed" timestamp with time zone,
+	CONSTRAINT "main_short_links_short_code_unique" UNIQUE("short_code")
 );
 --> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "main"."slot_booked" (
@@ -1285,7 +1399,9 @@ CREATE TABLE IF NOT EXISTS "main"."teacher_capacity_building" (
 	"teacher_id" integer,
 	"class_of_teacher" varchar(255),
 	"email" varchar(255),
-	"phone_number" varchar(255)
+	"phone_number" varchar(255),
+	"employee_type" varchar(255),
+	"created_at" timestamp with time zone
 );
 --> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "main"."test_versions" (
@@ -1299,8 +1415,8 @@ CREATE TABLE IF NOT EXISTS "main"."test_versions" (
 CREATE TABLE IF NOT EXISTS "main"."user_roles" (
 	"id" bigserial PRIMARY KEY NOT NULL,
 	"user_id" bigint,
-	"roles" "user_roles_roles" DEFAULT 'student',
-	"center" "user_roles_center"
+	"roles" "main"."user_roles_roles" DEFAULT 'student',
+	"center" "main"."user_roles_center"
 );
 --> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "main"."user_session" (
@@ -1323,7 +1439,7 @@ CREATE TABLE IF NOT EXISTS "main"."users" (
 	"name" varchar(250) DEFAULT '' NOT NULL,
 	"profile_picture" varchar(250),
 	"google_user_id" varchar(250),
-	"center" "users_center",
+	"center" "main"."users_center",
 	"github_link" varchar(145),
 	"linkedin_link" varchar(145),
 	"medium_link" varchar(145),
@@ -1336,13 +1452,15 @@ CREATE TABLE IF NOT EXISTS "main"."users" (
 	"mode" varchar(255),
 	"contact" varchar(255),
 	"last_login_at" timestamp with time zone,
-	"group_id" integer,
 	"space_id" integer,
+	"group_id" integer,
 	"c4ca_partner_id" integer,
 	"c4ca_facilitator_id" integer,
 	"user_name" varchar(255),
 	"password" varchar(255),
 	"pass_iv" varchar(255),
+	"auth_tag" varchar(255),
+	"cluster_manager_id" integer,
 	CONSTRAINT "main_users_user_name_unique" UNIQUE("user_name")
 );
 --> statement-breakpoint
@@ -1376,6 +1494,17 @@ CREATE TABLE IF NOT EXISTS "main"."vb_words" (
 	"d_level" bigint NOT NULL
 );
 --> statement-breakpoint
+CREATE TABLE IF NOT EXISTS "main"."view_page" (
+	"id" serial PRIMARY KEY NOT NULL,
+	"user_id" integer NOT NULL,
+	"durations" integer NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now(),
+	"page_url" varchar(255),
+	"page_title" varchar(255),
+	"start_time" timestamp with time zone,
+	"end_time" timestamp with time zone
+);
+--> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "main"."volunteer" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"user_id" integer,
@@ -1388,6 +1517,16 @@ CREATE TABLE IF NOT EXISTS "main"."volunteer" (
 	"pathway_id" integer
 );
 --> statement-breakpoint
+CREATE TABLE IF NOT EXISTS "main"."whatsapp_outreach" (
+	"id" serial PRIMARY KEY NOT NULL,
+	"name" varchar(255) NOT NULL,
+	"contact_number" varchar(50) NOT NULL,
+	"is_active" boolean DEFAULT true,
+	"message_sent" boolean DEFAULT false,
+	"responded" boolean DEFAULT false,
+	"created_at" timestamp
+);
+--> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "main"."youtube_broadcast" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"video_id" varchar(255) NOT NULL,
@@ -1395,16 +1534,46 @@ CREATE TABLE IF NOT EXISTS "main"."youtube_broadcast" (
 	"recurring_id" integer
 );
 --> statement-breakpoint
+CREATE TABLE IF NOT EXISTS "main"."zuvy_assessment_reattempt" (
+	"id" serial PRIMARY KEY NOT NULL,
+	"assessment_submission_id" integer NOT NULL,
+	"user_id" integer NOT NULL,
+	"remarks" text,
+	"status" varchar(255) NOT NULL,
+	"requested_at" timestamp with time zone DEFAULT now(),
+	"approved_at" timestamp with time zone
+);
+--> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "main"."zuvy_assessment_submission" (
 	"id" serial PRIMARY KEY NOT NULL,
-	"assessment_outsourse_id" integer NOT NULL,
 	"user_id" integer NOT NULL,
-	"marks" integer,
+	"marks" double precision,
 	"started_at" timestamp with time zone DEFAULT now(),
+	"submited_at" timestamp with time zone,
+	"assessment_outsourse_id" integer NOT NULL,
 	"copy_paste" integer,
-	"embedded_google_search" integer,
 	"tab_change" integer,
-	"submited_at" timestamp with time zone
+	"coding_question_count" integer,
+	"mcq_question_count" integer,
+	"open_ended_question_count" integer,
+	"attempted_coding_questions" integer,
+	"attempted_mcq_questions" integer,
+	"attempted_open_ended_questions" integer,
+	"is_passed" boolean,
+	"coding_score" double precision,
+	"open_ended_score" double precision,
+	"mcq_score" double precision,
+	"required_coding_score" double precision,
+	"required_open_ended_score" double precision,
+	"required_mcq_score" double precision,
+	"type_of_submission" varchar(255),
+	"percentage" double precision,
+	"full_screen_exit" integer,
+	"eye_moment_count" integer,
+	"version" varchar(10),
+	"active" boolean DEFAULT true NOT NULL,
+	"reattempt_approved" boolean DEFAULT false NOT NULL,
+	"reattempt_requested" boolean DEFAULT false NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "main"."zuvy_assignment_submission" (
@@ -1416,7 +1585,8 @@ CREATE TABLE IF NOT EXISTS "main"."zuvy_assignment_submission" (
 	"time_limit" timestamp with time zone NOT NULL,
 	"project_url" varchar(255),
 	"created_at" timestamp with time zone DEFAULT now(),
-	"updated_at" timestamp with time zone DEFAULT now()
+	"updated_at" timestamp with time zone DEFAULT now(),
+	"version" varchar(10)
 );
 --> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "main"."zuvy_batch_enrollments" (
@@ -1424,9 +1594,10 @@ CREATE TABLE IF NOT EXISTS "main"."zuvy_batch_enrollments" (
 	"user_id" bigserial NOT NULL,
 	"bootcamp_id" integer,
 	"batch_id" integer,
-	"attendance" integer,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
-	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"attendance" integer,
+	"version" varchar(10)
 );
 --> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "main"."zuvy_batches" (
@@ -1436,7 +1607,8 @@ CREATE TABLE IF NOT EXISTS "main"."zuvy_batches" (
 	"instructor_id" integer,
 	"cap_enrollment" integer,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
-	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"version" varchar(10)
 );
 --> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "main"."zuvy_bootcamp_tracking" (
@@ -1445,25 +1617,33 @@ CREATE TABLE IF NOT EXISTS "main"."zuvy_bootcamp_tracking" (
 	"progress" integer DEFAULT 0,
 	"bootcamp_id" integer,
 	"created_at" timestamp with time zone DEFAULT now(),
-	"updated_at" timestamp with time zone DEFAULT now()
+	"updated_at" timestamp with time zone DEFAULT now(),
+	"version" varchar(10)
 );
 --> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "main"."zuvy_bootcamp_type" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"bootcamp_id" integer,
-	"type" text NOT NULL
+	"type" text NOT NULL,
+	"version" varchar(10),
+	"is_module_locked" boolean DEFAULT false,
+	"created_at" timestamp with time zone DEFAULT now(),
+	"updated_at" timestamp with time zone DEFAULT now()
 );
 --> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "main"."zuvy_bootcamps" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"name" text NOT NULL,
+	"description" text,
+	"collaborator" text,
 	"cover_image" text,
 	"bootcamp_topic" text,
 	"start_time" timestamp with time zone,
 	"duration" text,
 	"language" text,
 	"created_at" timestamp with time zone DEFAULT now(),
-	"updated_at" timestamp with time zone DEFAULT now()
+	"updated_at" timestamp with time zone DEFAULT now(),
+	"version" varchar(10)
 );
 --> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "main"."zuvy_chapter_tracking" (
@@ -1472,7 +1652,8 @@ CREATE TABLE IF NOT EXISTS "main"."zuvy_chapter_tracking" (
 	"chapter_id" integer NOT NULL,
 	"module_id" integer NOT NULL,
 	"completed_at" timestamp with time zone,
-	"answer_Details" text
+	"answer_Details" text,
+	"version" varchar(10)
 );
 --> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "main"."zuvy_coding_questions" (
@@ -1480,24 +1661,35 @@ CREATE TABLE IF NOT EXISTS "main"."zuvy_coding_questions" (
 	"title" varchar(255) NOT NULL,
 	"description" text NOT NULL,
 	"difficulty" varchar(50),
-	"content" jsonb,
-	"constraints" text,
-	"usage" integer,
 	"tag_id" integer,
-	"created_at" timestamp with time zone DEFAULT now(),
-	"updated_at" timestamp with time zone DEFAULT now()
+	"constraints" text,
+	"created_at" timestamp with time zone DEFAULT CURRENT_TIMESTAMP,
+	"updated_at" timestamp with time zone DEFAULT CURRENT_TIMESTAMP,
+	"usage" integer,
+	"content" text,
+	"version" varchar(10),
+	"embedding" jsonb
+);
+--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS "main"."zuvy_coding_submission" (
+	"id" bigserial PRIMARY KEY NOT NULL,
+	"user_id" integer NOT NULL,
+	"question_solved" jsonb NOT NULL,
+	"created_at" timestamp with time zone,
+	"updated_at" timestamp with time zone
 );
 --> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "main"."zuvy_course_modules" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"type_id" integer,
 	"is_lock" boolean DEFAULT false,
-	"bootcamp_id" integer,
 	"name" varchar,
 	"description" text,
 	"project_id" integer,
 	"order" integer,
-	"time_alloted" bigint
+	"time_alloted" bigint,
+	"bootcamp_id" integer,
+	"version" varchar(10)
 );
 --> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "main"."zuvy_course_projects" (
@@ -1505,41 +1697,39 @@ CREATE TABLE IF NOT EXISTS "main"."zuvy_course_projects" (
 	"title" varchar,
 	"instruction" jsonb,
 	"is_lock" boolean DEFAULT false,
-	"completed_at" timestamp with time zone DEFAULT now()
-);
---> statement-breakpoint
-CREATE TABLE IF NOT EXISTS "main"."zuvy_cq_template" (
-	"id" serial PRIMARY KEY NOT NULL,
-	"language_id" integer,
-	"template" jsonb NOT NULL
+	"completed_at" timestamp with time zone DEFAULT now(),
+	"version" varchar(10)
 );
 --> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "main"."zuvy_form_tracking" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"user_id" integer,
 	"module_id" integer,
-	"question_id" integer,
 	"chapter_id" integer,
+	"question_id" integer,
 	"chosen_options" integer[],
 	"answer" text,
+	"updated_at" timestamp with time zone DEFAULT now(),
 	"status" varchar(255),
-	"updated_at" timestamp with time zone DEFAULT now()
+	"version" varchar(10)
 );
 --> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "main"."zuvy_languages" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"name" varchar(255) NOT NULL,
 	"language_id" varchar(50) NOT NULL,
-	"default_coding_template" text NOT NULL
+	"default_coding_template" text,
+	"version" varchar(10)
 );
 --> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "main"."zuvy_module_assessment" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"title" varchar,
-	"description" text
+	"description" text,
+	"version" varchar(10)
 );
 --> statement-breakpoint
-CREATE TABLE IF NOT EXISTS "main"."zuvy_module_chapter" (
+CREATE TABLE IF NOT EXISTS "main"."bytea" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"title" varchar,
 	"description" text,
@@ -1550,10 +1740,11 @@ CREATE TABLE IF NOT EXISTS "main"."zuvy_module_chapter" (
 	"article_content" jsonb,
 	"quiz_questions" jsonb,
 	"coding_questions" integer,
-	"form_questions" jsonb,
 	"assessment_id" integer,
 	"completion_date" timestamp with time zone,
-	"order" integer
+	"order" integer,
+	"form_questions" jsonb,
+	"version" varchar(10)
 );
 --> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "main"."zuvy_module_form" (
@@ -1565,7 +1756,8 @@ CREATE TABLE IF NOT EXISTS "main"."zuvy_module_form" (
 	"is_required" boolean NOT NULL,
 	"created_at" timestamp with time zone,
 	"updated_at" timestamp with time zone,
-	"usage" integer DEFAULT 0
+	"usage" integer DEFAULT 0,
+	"version" varchar(10)
 );
 --> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "main"."zuvy_module_quiz" (
@@ -1574,14 +1766,33 @@ CREATE TABLE IF NOT EXISTS "main"."zuvy_module_quiz" (
 	"options" jsonb,
 	"correct_option" integer,
 	"marks" integer,
-	"difficulty" "difficulty",
+	"difficulty" "main"."difficulty",
 	"tag_id" integer,
-	"usage" integer DEFAULT 0
+	"usage" integer DEFAULT 0,
+	"title" text,
+	"content" text,
+	"is_random_options" boolean DEFAULT false,
+	"created_at" timestamp with time zone DEFAULT now(),
+	"updated_at" timestamp with time zone DEFAULT now(),
+	"version" varchar(10)
+);
+--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS "main"."zuvy_module_quiz_variants" (
+	"id" serial PRIMARY KEY NOT NULL,
+	"quiz_id" integer,
+	"question" text,
+	"options" jsonb,
+	"correct_option" integer,
+	"variant_number" integer NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now(),
+	"updated_at" timestamp with time zone DEFAULT now(),
+	"version" varchar(10)
 );
 --> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "main"."zuvy_module_topics" (
 	"id" serial PRIMARY KEY NOT NULL,
-	"name" varchar
+	"name" varchar,
+	"version" varchar(10)
 );
 --> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "main"."zuvy_module_tracking" (
@@ -1591,27 +1802,31 @@ CREATE TABLE IF NOT EXISTS "main"."zuvy_module_tracking" (
 	"progress" integer DEFAULT 0,
 	"bootcamp_id" integer,
 	"created_at" timestamp with time zone DEFAULT now(),
-	"updated_at" timestamp with time zone DEFAULT now()
+	"updated_at" timestamp with time zone DEFAULT now(),
+	"version" varchar(10)
 );
 --> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "main"."zuvy_open_ended_question_submission" (
 	"id" serial PRIMARY KEY NOT NULL,
-	"question_id" integer NOT NULL,
-	"assessment_submission_id" integer,
-	"user_id" integer NOT NULL,
 	"answer" text,
 	"marks" integer,
-	"feedback" text,
 	"submit_at" timestamp with time zone DEFAULT now(),
-	"updated_at" timestamp with time zone DEFAULT now()
+	"updated_at" timestamp with time zone DEFAULT now(),
+	"feedback" text,
+	"assessment_submission_id" integer,
+	"user_id" integer NOT NULL,
+	"question_id" integer NOT NULL,
+	"version" varchar(10)
 );
 --> statement-breakpoint
-CREATE TABLE IF NOT EXISTS "main"."zuvy_openEnded_questions" (
+CREATE TABLE IF NOT EXISTS "main"."zuvy_open_ended_questions" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"question" text NOT NULL,
-	"difficulty" "difficulty",
+	"difficulty" varchar(255),
 	"tag_id" integer,
-	"usage" integer DEFAULT 0
+	"marks" integer,
+	"usage" integer DEFAULT 0,
+	"version" varchar(10)
 );
 --> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "main"."zuvy_outsourse_assessments" (
@@ -1625,12 +1840,41 @@ CREATE TABLE IF NOT EXISTS "main"."zuvy_outsourse_assessments" (
 	"pass_percentage" integer,
 	"screen_record" boolean,
 	"embedded_google_search" boolean,
-	"deadline" text,
 	"time_limit" bigint,
 	"marks" integer,
 	"copy_paste" boolean,
 	"order" integer,
-	"created_at" timestamp with time zone DEFAULT now()
+	"created_at" timestamp with time zone DEFAULT now(),
+	"deadline" text,
+	"coding_question_tag_id" integer[],
+	"mcq_tag_id" integer[],
+	"easy_coding_questions" integer,
+	"medium_coding_questions" integer,
+	"hard_coding_questions" integer,
+	"total_coding_questions" integer,
+	"total_mcq_questions" integer,
+	"easy_mcq_questions" integer,
+	"medium_mcq_questions" integer,
+	"hard_mcq_questions" integer,
+	"weightage_coding_questions" integer,
+	"weightage_mcq_questions" integer,
+	"easy_coding_mark" double precision,
+	"medium_coding_mark" double precision,
+	"hard_coding_mark" double precision,
+	"easy_mcq_mark" double precision,
+	"medium_mcq_mark" double precision,
+	"hard_mcq_mark" double precision,
+	"can_eye_track" boolean,
+	"can_tab_change" boolean,
+	"can_screen_exit" boolean,
+	"can_copy_paste" boolean,
+	"publish_datetime" timestamp with time zone,
+	"start_datetime" timestamp with time zone,
+	"end_datetime" timestamp with time zone,
+	"unpublish_datetime" timestamp with time zone,
+	"current_state" integer DEFAULT 0,
+	"version" varchar(10),
+	"updated_at" timestamp with time zone DEFAULT now()
 );
 --> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "main"."zuvy_outsourse_coding_questions" (
@@ -1639,38 +1883,46 @@ CREATE TABLE IF NOT EXISTS "main"."zuvy_outsourse_coding_questions" (
 	"assessment_outsourse_id" integer NOT NULL,
 	"bootcamp_id" integer NOT NULL,
 	"chapter_id" integer NOT NULL,
-	"created_at" timestamp with time zone DEFAULT now()
+	"created_at" timestamp with time zone DEFAULT now(),
+	"version" varchar(10)
 );
 --> statement-breakpoint
-CREATE TABLE IF NOT EXISTS "main"."zuvy_outsourse_openEnded_questions" (
+CREATE TABLE IF NOT EXISTS "main"."zuvy_outsourse_open_ended_questions" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"open_ended_question_id" integer,
+	"marks" integer,
 	"assessment_outsourse_id" integer NOT NULL,
 	"bootcamp_id" integer NOT NULL,
 	"module_id" integer,
 	"chapter_id" integer NOT NULL,
-	"created_at" timestamp with time zone DEFAULT now()
+	"created_at" timestamp with time zone DEFAULT now(),
+	"version" varchar(10)
 );
 --> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "main"."zuvy_outsourse_quizzes" (
-	"id" serial PRIMARY KEY NOT NULL,
 	"quiz_id" integer,
+	"marks" integer,
 	"assessment_outsourse_id" integer NOT NULL,
 	"bootcamp_id" integer NOT NULL,
 	"chapter_id" integer NOT NULL,
-	"created_at" timestamp with time zone DEFAULT now()
+	"created_at" timestamp with time zone DEFAULT now(),
+	"id" serial PRIMARY KEY NOT NULL,
+	"version" varchar(10)
 );
 --> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "main"."zuvy_practice_code" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"user_id" bigserial NOT NULL,
 	"status" varchar(255) NOT NULL,
-	"action" "action" NOT NULL,
+	"action" "main"."action" NOT NULL,
 	"question_id" integer,
 	"coding_outsourse_id" integer,
 	"submission_id" integer,
 	"created_at" timestamp with time zone DEFAULT now(),
-	"sourse_code" text 
+	"source_code" text,
+	"program_lang_id" varchar(255),
+	"version" varchar(10),
+	"chapter_id" integer
 );
 --> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "main"."zuvy_project_tracking" (
@@ -1680,15 +1932,22 @@ CREATE TABLE IF NOT EXISTS "main"."zuvy_project_tracking" (
 	"module_id" integer,
 	"bootcamp_id" integer,
 	"project_link" varchar,
+	"created_at" timestamp with time zone DEFAULT now(),
+	"updated_at" timestamp with time zone DEFAULT now(),
 	"is_checked" boolean DEFAULT false,
 	"grades" integer,
-	"created_at" timestamp with time zone DEFAULT now(),
-	"updated_at" timestamp with time zone DEFAULT now()
+	"version" varchar(10)
 );
 --> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "main"."zuvy_question_type" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"question_type" varchar
+);
+--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS "main"."zuvy_question_types" (
+	"id" serial PRIMARY KEY NOT NULL,
+	"question_type" varchar(255),
+	"version" varchar(10)
 );
 --> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "main"."zuvy_quiz_tracking" (
@@ -1700,10 +1959,12 @@ CREATE TABLE IF NOT EXISTS "main"."zuvy_quiz_tracking" (
 	"chapter_id" integer,
 	"status" varchar(255),
 	"assessment_submission_id" integer,
-	"question_id" integer NOT NULL,
+	"question_id" integer,
 	"chosen_option" integer,
 	"created_at" timestamp with time zone DEFAULT now(),
-	"updated_at" timestamp with time zone DEFAULT now()
+	"updated_at" timestamp with time zone DEFAULT now(),
+	"variant_id" integer,
+	"version" varchar(10)
 );
 --> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "main"."zuvy_recent_bootcamp" (
@@ -1713,6 +1974,39 @@ CREATE TABLE IF NOT EXISTS "main"."zuvy_recent_bootcamp" (
 	"module_id" integer NOT NULL,
 	"chapter_id" integer,
 	"progress" integer,
+	"updated_at" timestamp with time zone DEFAULT now(),
+	"version" varchar(10)
+);
+--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS "main"."zuvy_session_merge" (
+	"id" serial PRIMARY KEY NOT NULL,
+	"child_session_id" integer NOT NULL,
+	"parent_session_id" integer NOT NULL,
+	"redirect_meeting_url" text,
+	"merged_justification" text,
+	"is_active" boolean DEFAULT true,
+	"created_at" timestamp with time zone DEFAULT now(),
+	"updated_at" timestamp with time zone DEFAULT now()
+);
+--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS "main"."zuvy_session_record_views" (
+	"id" serial PRIMARY KEY NOT NULL,
+	"user_id" integer NOT NULL,
+	"session_id" integer NOT NULL,
+	"viewed_at" timestamp with time zone DEFAULT now(),
+	"version" varchar(10)
+);
+--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS "main"."zuvy_session_video_recordings" (
+	"id" serial PRIMARY KEY NOT NULL,
+	"recording_url" text NOT NULL,
+	"recording_size" integer NOT NULL,
+	"recording_duration" integer NOT NULL,
+	"session_id" integer NOT NULL,
+	"batch_id" integer,
+	"bootcamp_id" integer,
+	"user_id" integer,
+	"created_at" timestamp with time zone DEFAULT now(),
 	"updated_at" timestamp with time zone DEFAULT now()
 );
 --> statement-breakpoint
@@ -1724,11 +2018,35 @@ CREATE TABLE IF NOT EXISTS "main"."zuvy_sessions" (
 	"start_time" text NOT NULL,
 	"end_time" text NOT NULL,
 	"batch_id" integer NOT NULL,
+	"second_batch_id" integer,
 	"bootcamp_id" integer NOT NULL,
 	"title" text NOT NULL,
 	"s3link" text,
 	"recurring_id" integer,
-	"status" text DEFAULT 'upcoming'
+	"status" text DEFAULT 'upcoming',
+	"version" varchar(10),
+	"module_id" integer,
+	"chapter_id" integer,
+	"is_zoom_meet" boolean,
+	"zoom_start_url" text,
+	"zoom_password" text,
+	"zoom_meeting_id" text,
+	"has_been_merged" boolean DEFAULT false,
+	"is_parent_session" boolean DEFAULT false,
+	"is_child_session" boolean DEFAULT false,
+	"invited_students" jsonb DEFAULT '[]'::jsonb NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS "main"."zuvy_student_application_record" (
+	"id" serial PRIMARY KEY NOT NULL,
+	"name" text NOT NULL,
+	"email" text NOT NULL,
+	"year" text NOT NULL,
+	"family_income_under_3lakhs" boolean NOT NULL,
+	"created_at" timestamp with time zone DEFAULT CURRENT_TIMESTAMP,
+	"updated_at" timestamp with time zone DEFAULT CURRENT_TIMESTAMP,
+	"phone_no" text,
+	"version" varchar(10)
 );
 --> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "main"."zuvy_student_attendance" (
@@ -1736,19 +2054,33 @@ CREATE TABLE IF NOT EXISTS "main"."zuvy_student_attendance" (
 	"meeting_id" text,
 	"attendance" jsonb,
 	"batch_id" integer,
-	"bootcamp_id" integer
+	"bootcamp_id" integer,
+	"version" varchar(10)
+);
+--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS "main"."zuvy_student_attendance_records" (
+	"id" serial PRIMARY KEY NOT NULL,
+	"user_id" integer NOT NULL,
+	"batch_id" integer NOT NULL,
+	"bootcamp_id" integer NOT NULL,
+	"session_id" integer NOT NULL,
+	"attendance_date" date NOT NULL,
+	"status" varchar(10) DEFAULT 'absent' NOT NULL,
+	"version" varchar(10)
 );
 --> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "main"."zuvy_tags" (
 	"id" serial PRIMARY KEY NOT NULL,
-	"tag_name" varchar
+	"tag_name" varchar,
+	"version" varchar(10)
 );
 --> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "main"."zuvy_test_cases" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"question_id" integer,
 	"inputs" jsonb NOT NULL,
-	"expected_output" jsonb NOT NULL
+	"expected_output" jsonb NOT NULL,
+	"version" varchar(10)
 );
 --> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "main"."zuvy_test_cases_submission" (
@@ -1756,35 +2088,16 @@ CREATE TABLE IF NOT EXISTS "main"."zuvy_test_cases_submission" (
 	"testcast_id" integer,
 	"status" varchar(255),
 	"token" varchar(255),
-	"action" varchar(255),
-	"submission_id" integer
+	"submission_id" integer,
+	"stdout" text,
+	"memory" integer,
+	"stderr" text,
+	"created_at" timestamp with time zone DEFAULT now(),
+	"time" numeric,
+	"version" varchar(10),
+	"language_id" integer
 );
 --> statement-breakpoint
-CREATE UNIQUE INDEX IF NOT EXISTS "idx_80228_users_email_unique" ON "main"."c_users" ("email");--> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "idx_80237_student_idx" ON "main"."contacts" ("student_id");--> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "idx_50433_course_enrolments_ibfk_2_idx" ON "main"."course_enrolments" ("student_id");--> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "idx_50433_course_enrolments_ibfk_1_idx" ON "main"."course_enrolments" ("course_id");--> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "idx_50441_course_relation_ibfk_1" ON "main"."course_relation" ("course_id");--> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "idx_50441_course_relation_ibfk_2" ON "main"."course_relation" ("relies_on");--> statement-breakpoint
-CREATE UNIQUE INDEX IF NOT EXISTS "idx_80250_key__unique" ON "main"."enrolment_keys" ("key");--> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "idx_80250_student_idx" ON "main"."enrolment_keys" ("student_id");--> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "idx_80250_enrolment_keys_questionsetid_foreign" ON "main"."enrolment_keys" ("question_set_id");--> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "idx_50457_course_id" ON "main"."exercises" ("course_id");--> statement-breakpoint
-CREATE UNIQUE INDEX IF NOT EXISTS "idx_50457_slug__unique" ON "main"."exercises" ("slug");--> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "idx_80256_feedbacks_studentid_foreign" ON "main"."feedbacks" ("student_id");--> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "idx_80256_feedbacks_userid_foreign" ON "main"."feedbacks" ("user_id");--> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "idx_80265_contact_idx" ON "main"."incoming_calls" ("contact_id");--> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "idx_50487_mentor_ibfk_1_idx" ON "main"."mentors" ("mentor");--> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "idx_50487_mentor_ibfk_2_idx" ON "main"."mentors" ("mentee");--> statement-breakpoint
-CREATE UNIQUE INDEX IF NOT EXISTS "idx_80292_partner_name" ON "main"."partners" ("name");--> statement-breakpoint
-CREATE UNIQUE INDEX IF NOT EXISTS "idx_80292_partners_slug_unique" ON "main"."partners" ("slug");--> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "idx_80307_question_bucket_choices_bucketid_foreign" ON "main"."question_bucket_choices" ("bucket_id");--> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "idx_80322_question_idx" ON "main"."question_options" ("question_id");--> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "idx_80331_question_sets_versionid_foreign" ON "main"."question_sets" ("version_id");--> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "idx_80349_stage_transitions_studentid_foreign" ON "main"."stage_transitions" ("student_id");--> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "idx_80358_students_partnerid_foreign" ON "main"."students" ("partner_id");--> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "idx_50519_user_role_ibfk_1_idx" ON "main"."user_roles" ("user_id");--> statement-breakpoint
-CREATE UNIQUE INDEX IF NOT EXISTS "idx_50526_google_user_id" ON "main"."users" ("google_user_id");--> statement-breakpoint
 DO $$ BEGIN
  ALTER TABLE "main"."assessment" ADD CONSTRAINT "assessment_course_id_courses_v2_id_fk" FOREIGN KEY ("course_id") REFERENCES "main"."courses_v2"("id") ON DELETE no action ON UPDATE no action;
 EXCEPTION
@@ -1798,13 +2111,13 @@ EXCEPTION
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
- ALTER TABLE "main"."assessment_outcome" ADD CONSTRAINT "assessment_outcome_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "main"."users"("id") ON DELETE no action ON UPDATE no action;
+ ALTER TABLE "main"."assessment_outcome" ADD CONSTRAINT "assessment_outcome_team_id_c4ca_teams_id_fk" FOREIGN KEY ("team_id") REFERENCES "main"."c4ca_teams"("id") ON DELETE set null ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
- ALTER TABLE "main"."assessment_outcome" ADD CONSTRAINT "assessment_outcome_team_id_c4ca_teams_id_fk" FOREIGN KEY ("team_id") REFERENCES "main"."c4ca_teams"("id") ON DELETE set null ON UPDATE no action;
+ ALTER TABLE "main"."assessment_outcome" ADD CONSTRAINT "assessment_outcome_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "main"."users"("id") ON DELETE no action ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
@@ -1847,12 +2160,6 @@ END $$;
 --> statement-breakpoint
 DO $$ BEGIN
  ALTER TABLE "main"."c4ca_students" ADD CONSTRAINT "c4ca_students_teacher_id_c4ca_teachers_id_fk" FOREIGN KEY ("teacher_id") REFERENCES "main"."c4ca_teachers"("id") ON DELETE no action ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
-END $$;
---> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "main"."c4ca_students" ADD CONSTRAINT "c4ca_students_team_id_c4ca_teams_id_fk" FOREIGN KEY ("team_id") REFERENCES "main"."c4ca_teams"("id") ON DELETE no action ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
@@ -1918,19 +2225,49 @@ EXCEPTION
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
+ ALTER TABLE "main"."career_students" ADD CONSTRAINT "main_career_students_career_teacher_id_foreign" FOREIGN KEY ("career_teacher_id") REFERENCES "main"."career_teachers"("id") ON DELETE cascade ON UPDATE no action;
+EXCEPTION
+ WHEN duplicate_object THEN null;
+END $$;
+--> statement-breakpoint
+DO $$ BEGIN
+ ALTER TABLE "main"."career_students" ADD CONSTRAINT "main_career_students_career_team_id_foreign" FOREIGN KEY ("career_team_id") REFERENCES "main"."career_teams"("id") ON DELETE cascade ON UPDATE no action;
+EXCEPTION
+ WHEN duplicate_object THEN null;
+END $$;
+--> statement-breakpoint
+DO $$ BEGIN
+ ALTER TABLE "main"."career_teachers" ADD CONSTRAINT "main_career_teachers_user_id_foreign" FOREIGN KEY ("user_id") REFERENCES "main"."users"("id") ON DELETE no action ON UPDATE no action;
+EXCEPTION
+ WHEN duplicate_object THEN null;
+END $$;
+--> statement-breakpoint
+DO $$ BEGIN
+ ALTER TABLE "main"."career_teachers" ADD CONSTRAINT "main_career_teachers_cluster_manager_id_foreign" FOREIGN KEY ("cluster_manager_id") REFERENCES "main"."cluster_managers"("id") ON DELETE no action ON UPDATE no action;
+EXCEPTION
+ WHEN duplicate_object THEN null;
+END $$;
+--> statement-breakpoint
+DO $$ BEGIN
+ ALTER TABLE "main"."career_teams" ADD CONSTRAINT "main_career_teams_career_teacher_id_foreign" FOREIGN KEY ("career_teacher_id") REFERENCES "main"."career_teachers"("id") ON DELETE cascade ON UPDATE no action;
+EXCEPTION
+ WHEN duplicate_object THEN null;
+END $$;
+--> statement-breakpoint
+DO $$ BEGIN
  ALTER TABLE "main"."chanakya_access" ADD CONSTRAINT "chanakya_access_user_role_id_chanakya_user_roles_id_fk" FOREIGN KEY ("user_role_id") REFERENCES "main"."chanakya_user_roles"("id") ON DELETE no action ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
- ALTER TABLE "main"."chanakya_partner_relationship" ADD CONSTRAINT "chanakya_partner_relationship_partner_id_partners_id_fk" FOREIGN KEY ("partner_id") REFERENCES "main"."partners"("id") ON DELETE no action ON UPDATE no action;
+ ALTER TABLE "main"."chanakya_partner_relationship" ADD CONSTRAINT "chanakya_partner_relationship_partner_group_id_chanakya_partner" FOREIGN KEY ("partner_group_id") REFERENCES "main"."chanakya_partner_group"("id") ON DELETE no action ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
- ALTER TABLE "main"."chanakya_partner_relationship" ADD CONSTRAINT "chanakya_partner_relationship_partner_group_id_chanakya_partner_group_id_fk" FOREIGN KEY ("partner_group_id") REFERENCES "main"."chanakya_partner_group"("id") ON DELETE no action ON UPDATE no action;
+ ALTER TABLE "main"."chanakya_partner_relationship" ADD CONSTRAINT "chanakya_partner_relationship_partner_id_partners_id_fk" FOREIGN KEY ("partner_id") REFERENCES "main"."partners"("id") ON DELETE no action ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
@@ -1990,12 +2327,6 @@ EXCEPTION
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
- ALTER TABLE "main"."classes_to_courses" ADD CONSTRAINT "classes_to_courses_pathway_v1_pathways_id_fk" FOREIGN KEY ("pathway_v1") REFERENCES "main"."pathways"("id") ON DELETE no action ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
-END $$;
---> statement-breakpoint
-DO $$ BEGIN
  ALTER TABLE "main"."classes_to_courses" ADD CONSTRAINT "classes_to_courses_course_v1_courses_id_fk" FOREIGN KEY ("course_v1") REFERENCES "main"."courses"("id") ON DELETE no action ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
@@ -2021,6 +2352,12 @@ END $$;
 --> statement-breakpoint
 DO $$ BEGIN
  ALTER TABLE "main"."classes_to_courses" ADD CONSTRAINT "classes_to_courses_exercise_v2_exercises_v2_id_fk" FOREIGN KEY ("exercise_v2") REFERENCES "main"."exercises_v2"("id") ON DELETE no action ON UPDATE no action;
+EXCEPTION
+ WHEN duplicate_object THEN null;
+END $$;
+--> statement-breakpoint
+DO $$ BEGIN
+ ALTER TABLE "main"."cluster_managers" ADD CONSTRAINT "main_cluster_managers_admin_id_foreign" FOREIGN KEY ("admin_id") REFERENCES "main"."users"("id") ON DELETE cascade ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
@@ -2296,12 +2633,6 @@ EXCEPTION
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
- ALTER TABLE "main"."mentor_tree" ADD CONSTRAINT "mentor_tree_pathway_id_pathways_id_fk" FOREIGN KEY ("pathway_id") REFERENCES "main"."pathways"("id") ON DELETE no action ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
-END $$;
---> statement-breakpoint
-DO $$ BEGIN
  ALTER TABLE "main"."mentors" ADD CONSTRAINT "mentors_mentor_users_id_fk" FOREIGN KEY ("mentor") REFERENCES "main"."users"("id") ON DELETE no action ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
@@ -2321,6 +2652,12 @@ END $$;
 --> statement-breakpoint
 DO $$ BEGIN
  ALTER TABLE "main"."meraki_certificate" ADD CONSTRAINT "meraki_certificate_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "main"."users"("id") ON DELETE no action ON UPDATE no action;
+EXCEPTION
+ WHEN duplicate_object THEN null;
+END $$;
+--> statement-breakpoint
+DO $$ BEGIN
+ ALTER TABLE "main"."meraki_students" ADD CONSTRAINT "meraki_students_partner_id_partners_id_fk" FOREIGN KEY ("partner_id") REFERENCES "main"."partners"("id") ON DELETE cascade ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
@@ -2350,6 +2687,12 @@ EXCEPTION
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
+ ALTER TABLE "main"."ongoing_topics" ADD CONSTRAINT "ongoing_topics_project_solution_id_c4ca_team_projectsubmit_solu" FOREIGN KEY ("project_solution_id") REFERENCES "main"."c4ca_team_projectsubmit_solution"("id") ON DELETE cascade ON UPDATE cascade;
+EXCEPTION
+ WHEN duplicate_object THEN null;
+END $$;
+--> statement-breakpoint
+DO $$ BEGIN
  ALTER TABLE "main"."ongoing_topics" ADD CONSTRAINT "ongoing_topics_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "main"."users"("id") ON DELETE no action ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
@@ -2363,12 +2706,6 @@ END $$;
 --> statement-breakpoint
 DO $$ BEGIN
  ALTER TABLE "main"."ongoing_topics" ADD CONSTRAINT "ongoing_topics_project_topic_id_c4ca_team_projecttopic_id_fk" FOREIGN KEY ("project_topic_id") REFERENCES "main"."c4ca_team_projecttopic"("id") ON DELETE cascade ON UPDATE cascade;
-EXCEPTION
- WHEN duplicate_object THEN null;
-END $$;
---> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "main"."ongoing_topics" ADD CONSTRAINT "ongoing_topics_project_solution_id_c4ca_team_projectsubmit_solution_id_fk" FOREIGN KEY ("project_solution_id") REFERENCES "main"."c4ca_team_projectsubmit_solution"("id") ON DELETE cascade ON UPDATE cascade;
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
@@ -2428,13 +2765,43 @@ EXCEPTION
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
+ ALTER TABLE "main"."partner_specific_batches" ADD CONSTRAINT "partner_specific_batches_pathway_id_pathways_v2_id_fk" FOREIGN KEY ("pathway_id") REFERENCES "main"."pathways_v2"("id") ON DELETE no action ON UPDATE no action;
+EXCEPTION
+ WHEN duplicate_object THEN null;
+END $$;
+--> statement-breakpoint
+DO $$ BEGIN
  ALTER TABLE "main"."partner_specific_batches" ADD CONSTRAINT "partner_specific_batches_space_id_partner_space_id_fk" FOREIGN KEY ("space_id") REFERENCES "main"."partner_space"("id") ON DELETE set null ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
- ALTER TABLE "main"."partner_specific_batches" ADD CONSTRAINT "partner_specific_batches_pathway_id_pathways_v2_id_fk" FOREIGN KEY ("pathway_id") REFERENCES "main"."pathways_v2"("id") ON DELETE no action ON UPDATE no action;
+ ALTER TABLE "main"."partner_specific_batches_v2" ADD CONSTRAINT "partner_specific_batches_v2_recurring_id_recurring_classes_id_f" FOREIGN KEY ("recurring_id") REFERENCES "main"."recurring_classes"("id") ON DELETE no action ON UPDATE no action;
+EXCEPTION
+ WHEN duplicate_object THEN null;
+END $$;
+--> statement-breakpoint
+DO $$ BEGIN
+ ALTER TABLE "main"."partner_specific_batches_v2" ADD CONSTRAINT "partner_specific_batches_v2_class_id_classes_id_fk" FOREIGN KEY ("class_id") REFERENCES "main"."classes"("id") ON DELETE no action ON UPDATE no action;
+EXCEPTION
+ WHEN duplicate_object THEN null;
+END $$;
+--> statement-breakpoint
+DO $$ BEGIN
+ ALTER TABLE "main"."partner_specific_batches_v2" ADD CONSTRAINT "partner_specific_batches_v2_partner_id_partners_id_fk" FOREIGN KEY ("partner_id") REFERENCES "main"."partners"("id") ON DELETE no action ON UPDATE no action;
+EXCEPTION
+ WHEN duplicate_object THEN null;
+END $$;
+--> statement-breakpoint
+DO $$ BEGIN
+ ALTER TABLE "main"."partner_specific_batches_v2" ADD CONSTRAINT "partner_specific_batches_v2_space_id_partner_space_id_fk" FOREIGN KEY ("space_id") REFERENCES "main"."partner_space"("id") ON DELETE cascade ON UPDATE cascade;
+EXCEPTION
+ WHEN duplicate_object THEN null;
+END $$;
+--> statement-breakpoint
+DO $$ BEGIN
+ ALTER TABLE "main"."partner_specific_batches_v2" ADD CONSTRAINT "partner_specific_batches_v2_group_id_space_group_id_fk" FOREIGN KEY ("group_id") REFERENCES "main"."space_group"("id") ON DELETE cascade ON UPDATE cascade;
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
@@ -2447,12 +2814,6 @@ END $$;
 --> statement-breakpoint
 DO $$ BEGIN
  ALTER TABLE "main"."pathway_completion" ADD CONSTRAINT "pathway_completion_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "main"."users"("id") ON DELETE no action ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
-END $$;
---> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "main"."pathway_completion" ADD CONSTRAINT "pathway_completion_pathway_id_pathways_id_fk" FOREIGN KEY ("pathway_id") REFERENCES "main"."pathways"("id") ON DELETE no action ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
@@ -2476,12 +2837,6 @@ EXCEPTION
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
- ALTER TABLE "main"."pathway_courses" ADD CONSTRAINT "pathway_courses_pathway_id_pathways_id_fk" FOREIGN KEY ("pathway_id") REFERENCES "main"."pathways"("id") ON DELETE no action ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
-END $$;
---> statement-breakpoint
-DO $$ BEGIN
  ALTER TABLE "main"."pathway_courses_v2" ADD CONSTRAINT "pathway_courses_v2_course_id_courses_v2_id_fk" FOREIGN KEY ("course_id") REFERENCES "main"."courses_v2"("id") ON DELETE no action ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
@@ -2489,12 +2844,6 @@ END $$;
 --> statement-breakpoint
 DO $$ BEGIN
  ALTER TABLE "main"."pathway_courses_v2" ADD CONSTRAINT "pathway_courses_v2_pathway_id_pathways_v2_id_fk" FOREIGN KEY ("pathway_id") REFERENCES "main"."pathways_v2"("id") ON DELETE no action ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
-END $$;
---> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "main"."pathway_milestones" ADD CONSTRAINT "pathway_milestones_pathway_id_pathways_id_fk" FOREIGN KEY ("pathway_id") REFERENCES "main"."pathways"("id") ON DELETE no action ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
@@ -2512,25 +2861,13 @@ EXCEPTION
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
- ALTER TABLE "main"."pathway_tracking_form_structure" ADD CONSTRAINT "pathway_tracking_form_structure_pathway_id_pathways_id_fk" FOREIGN KEY ("pathway_id") REFERENCES "main"."pathways"("id") ON DELETE no action ON UPDATE no action;
+ ALTER TABLE "main"."pathway_tracking_form_structure" ADD CONSTRAINT "pathway_tracking_form_structure_parameter_id_progress_parameter" FOREIGN KEY ("parameter_id") REFERENCES "main"."progress_parameters"("id") ON DELETE no action ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
- ALTER TABLE "main"."pathway_tracking_form_structure" ADD CONSTRAINT "pathway_tracking_form_structure_parameter_id_progress_parameters_id_fk" FOREIGN KEY ("parameter_id") REFERENCES "main"."progress_parameters"("id") ON DELETE no action ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
-END $$;
---> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "main"."pathway_tracking_form_structure" ADD CONSTRAINT "pathway_tracking_form_structure_question_id_progress_questions_id_fk" FOREIGN KEY ("question_id") REFERENCES "main"."progress_questions"("id") ON DELETE no action ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
-END $$;
---> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "main"."pathway_tracking_request" ADD CONSTRAINT "pathway_tracking_request_pathway_id_pathways_id_fk" FOREIGN KEY ("pathway_id") REFERENCES "main"."pathways"("id") ON DELETE no action ON UPDATE no action;
+ ALTER TABLE "main"."pathway_tracking_form_structure" ADD CONSTRAINT "pathway_tracking_form_structure_question_id_progress_questions_" FOREIGN KEY ("question_id") REFERENCES "main"."progress_questions"("id") ON DELETE no action ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
@@ -2548,7 +2885,7 @@ EXCEPTION
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
- ALTER TABLE "main"."pathway_tracking_request_details" ADD CONSTRAINT "pathway_tracking_request_details_pathway_id_pathways_id_fk" FOREIGN KEY ("pathway_id") REFERENCES "main"."pathways"("id") ON DELETE no action ON UPDATE no action;
+ ALTER TABLE "main"."pathway_tracking_request_details" ADD CONSTRAINT "pathway_tracking_request_details_request_id_pathway_tracking_re" FOREIGN KEY ("request_id") REFERENCES "main"."pathway_tracking_request"("id") ON DELETE no action ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
@@ -2566,19 +2903,13 @@ EXCEPTION
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
- ALTER TABLE "main"."pathway_tracking_request_details" ADD CONSTRAINT "pathway_tracking_request_details_request_id_pathway_tracking_request_id_fk" FOREIGN KEY ("request_id") REFERENCES "main"."pathway_tracking_request"("id") ON DELETE no action ON UPDATE no action;
+ ALTER TABLE "main"."pathway_tracking_request_parameter_details" ADD CONSTRAINT "pathway_tracking_request_parameter_details_parameter_id_progres" FOREIGN KEY ("parameter_id") REFERENCES "main"."progress_parameters"("id") ON DELETE no action ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
- ALTER TABLE "main"."pathway_tracking_request_parameter_details" ADD CONSTRAINT "pathway_tracking_request_parameter_details_parameter_id_progress_parameters_id_fk" FOREIGN KEY ("parameter_id") REFERENCES "main"."progress_parameters"("id") ON DELETE no action ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
-END $$;
---> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "main"."pathway_tracking_request_question_details" ADD CONSTRAINT "pathway_tracking_request_question_details_question_id_progress_questions_id_fk" FOREIGN KEY ("question_id") REFERENCES "main"."progress_questions"("id") ON DELETE no action ON UPDATE no action;
+ ALTER TABLE "main"."pathway_tracking_request_question_details" ADD CONSTRAINT "pathway_tracking_request_question_details_question_id_progress_" FOREIGN KEY ("question_id") REFERENCES "main"."progress_questions"("id") ON DELETE no action ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
@@ -2638,13 +2969,13 @@ EXCEPTION
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
- ALTER TABLE "main"."record_versions_of_post_delete_exercisedetails" ADD CONSTRAINT "record_versions_of_post_delete_exercisedetails_course_id_courses_v2_id_fk" FOREIGN KEY ("course_id") REFERENCES "main"."courses_v2"("id") ON DELETE no action ON UPDATE no action;
+ ALTER TABLE "main"."record_versions_of_post_delete_exercisedetails" ADD CONSTRAINT "record_versions_of_post_delete_exercisedetails_course_id_course" FOREIGN KEY ("course_id") REFERENCES "main"."courses_v2"("id") ON DELETE no action ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
- ALTER TABLE "main"."record_versions_of_post_delete_exercisedetails" ADD CONSTRAINT "record_versions_of_post_delete_exercisedetails_exercise_id_exercises_v2_id_fk" FOREIGN KEY ("exercise_id") REFERENCES "main"."exercises_v2"("id") ON DELETE no action ON UPDATE no action;
+ ALTER TABLE "main"."record_versions_of_post_delete_exercisedetails" ADD CONSTRAINT "record_versions_of_post_delete_exercisedetails_exercise_id_exer" FOREIGN KEY ("exercise_id") REFERENCES "main"."exercises_v2"("id") ON DELETE no action ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
@@ -2657,6 +2988,12 @@ END $$;
 --> statement-breakpoint
 DO $$ BEGIN
  ALTER TABLE "main"."registration_form_structure" ADD CONSTRAINT "registration_form_structure_partner_id_partners_id_fk" FOREIGN KEY ("partner_id") REFERENCES "main"."partners"("id") ON DELETE no action ON UPDATE no action;
+EXCEPTION
+ WHEN duplicate_object THEN null;
+END $$;
+--> statement-breakpoint
+DO $$ BEGIN
+ ALTER TABLE "main"."sama_system_tracking" ADD CONSTRAINT "sama_system_tracking_mac_address_fkey" FOREIGN KEY ("mac_address") REFERENCES "main"."sama_clients"("mac_address") ON DELETE no action ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
@@ -2734,12 +3071,6 @@ EXCEPTION
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
- ALTER TABLE "main"."student_pathways" ADD CONSTRAINT "student_pathways_pathway_id_pathways_id_fk" FOREIGN KEY ("pathway_id") REFERENCES "main"."pathways"("id") ON DELETE no action ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
-END $$;
---> statement-breakpoint
-DO $$ BEGIN
  ALTER TABLE "main"."students" ADD CONSTRAINT "students_partner_id_partners_id_fk" FOREIGN KEY ("partner_id") REFERENCES "main"."partners"("id") ON DELETE no action ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
@@ -2812,13 +3143,13 @@ EXCEPTION
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
- ALTER TABLE "main"."users" ADD CONSTRAINT "users_group_id_space_group_id_fk" FOREIGN KEY ("group_id") REFERENCES "main"."space_group"("id") ON DELETE set null ON UPDATE no action;
+ ALTER TABLE "main"."users" ADD CONSTRAINT "users_space_id_partner_space_id_fk" FOREIGN KEY ("space_id") REFERENCES "main"."partner_space"("id") ON DELETE cascade ON UPDATE cascade;
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
- ALTER TABLE "main"."users" ADD CONSTRAINT "users_space_id_partner_space_id_fk" FOREIGN KEY ("space_id") REFERENCES "main"."partner_space"("id") ON DELETE cascade ON UPDATE cascade;
+ ALTER TABLE "main"."users" ADD CONSTRAINT "users_group_id_space_group_id_fk" FOREIGN KEY ("group_id") REFERENCES "main"."space_group"("id") ON DELETE set null ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
@@ -2836,13 +3167,31 @@ EXCEPTION
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
+ ALTER TABLE "main"."users" ADD CONSTRAINT "main_users_cluster_manager_id_foreign" FOREIGN KEY ("cluster_manager_id") REFERENCES "main"."cluster_managers"("id") ON DELETE set null ON UPDATE no action;
+EXCEPTION
+ WHEN duplicate_object THEN null;
+END $$;
+--> statement-breakpoint
+DO $$ BEGIN
  ALTER TABLE "main"."volunteer" ADD CONSTRAINT "volunteer_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "main"."users"("id") ON DELETE no action ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
- ALTER TABLE "main"."zuvy_assessment_submission" ADD CONSTRAINT "zuvy_assessment_submission_assessment_outsourse_id_zuvy_outsourse_assessments_id_fk" FOREIGN KEY ("assessment_outsourse_id") REFERENCES "main"."zuvy_outsourse_assessments"("id") ON DELETE cascade ON UPDATE cascade;
+ ALTER TABLE "main"."zuvy_assessment_reattempt" ADD CONSTRAINT "zuvy_assessment_reattempt_assessment_submission_id_fkey" FOREIGN KEY ("assessment_submission_id") REFERENCES "main"."zuvy_assessment_submission"("id") ON DELETE cascade ON UPDATE cascade;
+EXCEPTION
+ WHEN duplicate_object THEN null;
+END $$;
+--> statement-breakpoint
+DO $$ BEGIN
+ ALTER TABLE "main"."zuvy_assessment_reattempt" ADD CONSTRAINT "zuvy_assessment_reattempt_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "main"."users"("id") ON DELETE no action ON UPDATE no action;
+EXCEPTION
+ WHEN duplicate_object THEN null;
+END $$;
+--> statement-breakpoint
+DO $$ BEGIN
+ ALTER TABLE "main"."zuvy_assessment_submission" ADD CONSTRAINT "zuvy_assessment_submission_assessment_outsourse_id_zuvy_outsour" FOREIGN KEY ("assessment_outsourse_id") REFERENCES "main"."zuvy_outsourse_assessments"("id") ON DELETE cascade ON UPDATE cascade;
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
@@ -2854,13 +3203,13 @@ EXCEPTION
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
- ALTER TABLE "main"."zuvy_assignment_submission" ADD CONSTRAINT "zuvy_assignment_submission_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "main"."users"("id") ON DELETE no action ON UPDATE no action;
+ ALTER TABLE "main"."zuvy_assignment_submission" ADD CONSTRAINT "zuvy_assignment_submission_bootcamp_id_zuvy_bootcamps_id_fk" FOREIGN KEY ("bootcamp_id") REFERENCES "main"."zuvy_bootcamps"("id") ON DELETE no action ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
- ALTER TABLE "main"."zuvy_assignment_submission" ADD CONSTRAINT "zuvy_assignment_submission_bootcamp_id_zuvy_bootcamps_id_fk" FOREIGN KEY ("bootcamp_id") REFERENCES "main"."zuvy_bootcamps"("id") ON DELETE no action ON UPDATE no action;
+ ALTER TABLE "main"."zuvy_assignment_submission" ADD CONSTRAINT "zuvy_assignment_submission_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "main"."users"("id") ON DELETE no action ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
@@ -2878,7 +3227,7 @@ EXCEPTION
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
- ALTER TABLE "main"."zuvy_batch_enrollments" ADD CONSTRAINT "zuvy_batch_enrollments_batch_id_zuvy_batches_id_fk" FOREIGN KEY ("batch_id") REFERENCES "main"."zuvy_batches"("id") ON DELETE set null ON UPDATE cascade;
+ ALTER TABLE "main"."zuvy_batch_enrollments" ADD CONSTRAINT "zuvy_batch_enrollments_batch_id_zuvy_batches_id_fk" FOREIGN KEY ("batch_id") REFERENCES "main"."zuvy_batches"("id") ON DELETE cascade ON UPDATE cascade;
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
@@ -2914,31 +3263,31 @@ EXCEPTION
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
- ALTER TABLE "main"."zuvy_chapter_tracking" ADD CONSTRAINT "zuvy_chapter_tracking_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "main"."users"("id") ON DELETE no action ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
-END $$;
---> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "main"."zuvy_chapter_tracking" ADD CONSTRAINT "zuvy_chapter_tracking_chapter_id_zuvy_module_chapter_id_fk" FOREIGN KEY ("chapter_id") REFERENCES "main"."zuvy_module_chapter"("id") ON DELETE cascade ON UPDATE cascade;
-EXCEPTION
- WHEN duplicate_object THEN null;
-END $$;
---> statement-breakpoint
-DO $$ BEGIN
  ALTER TABLE "main"."zuvy_chapter_tracking" ADD CONSTRAINT "zuvy_chapter_tracking_module_id_zuvy_course_modules_id_fk" FOREIGN KEY ("module_id") REFERENCES "main"."zuvy_course_modules"("id") ON DELETE cascade ON UPDATE cascade;
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
- ALTER TABLE "main"."zuvy_coding_questions" ADD CONSTRAINT "zuvy_coding_questions_tag_id_zuvy_tags_id_fk" FOREIGN KEY ("tag_id") REFERENCES "main"."zuvy_tags"("id") ON DELETE no action ON UPDATE no action;
+ ALTER TABLE "main"."zuvy_chapter_tracking" ADD CONSTRAINT "zuvy_chapter_tracking_chapter_id_zuvy_module_chapter_id_fk" FOREIGN KEY ("chapter_id") REFERENCES "main"."bytea"("id") ON DELETE cascade ON UPDATE cascade;
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
- ALTER TABLE "main"."zuvy_course_modules" ADD CONSTRAINT "zuvy_course_modules_bootcamp_id_zuvy_bootcamps_id_fk" FOREIGN KEY ("bootcamp_id") REFERENCES "main"."zuvy_bootcamps"("id") ON DELETE no action ON UPDATE no action;
+ ALTER TABLE "main"."zuvy_chapter_tracking" ADD CONSTRAINT "zuvy_chapter_tracking_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "main"."users"("id") ON DELETE no action ON UPDATE no action;
+EXCEPTION
+ WHEN duplicate_object THEN null;
+END $$;
+--> statement-breakpoint
+DO $$ BEGIN
+ ALTER TABLE "main"."zuvy_coding_questions" ADD CONSTRAINT "zuvy_coding_questions_tag_id_fkey" FOREIGN KEY ("tag_id") REFERENCES "main"."zuvy_tags"("id") ON DELETE no action ON UPDATE no action;
+EXCEPTION
+ WHEN duplicate_object THEN null;
+END $$;
+--> statement-breakpoint
+DO $$ BEGIN
+ ALTER TABLE "main"."zuvy_coding_submission" ADD CONSTRAINT "zuvy_coding_submission_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "main"."users"("id") ON DELETE no action ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
@@ -2950,25 +3299,25 @@ EXCEPTION
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
- ALTER TABLE "main"."zuvy_form_tracking" ADD CONSTRAINT "zuvy_form_tracking_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "main"."users"("id") ON DELETE no action ON UPDATE no action;
+ ALTER TABLE "main"."zuvy_form_tracking" ADD CONSTRAINT "zuvy_form_tracking_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "main"."users"("id") ON DELETE no action ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
- ALTER TABLE "main"."zuvy_module_chapter" ADD CONSTRAINT "zuvy_module_chapter_topic_id_zuvy_module_topics_id_fk" FOREIGN KEY ("topic_id") REFERENCES "main"."zuvy_module_topics"("id") ON DELETE no action ON UPDATE no action;
+ ALTER TABLE "main"."bytea" ADD CONSTRAINT "zuvy_module_chapter_module_id_zuvy_course_modules_id_fk" FOREIGN KEY ("module_id") REFERENCES "main"."zuvy_course_modules"("id") ON DELETE cascade ON UPDATE cascade;
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
- ALTER TABLE "main"."zuvy_module_chapter" ADD CONSTRAINT "zuvy_module_chapter_module_id_zuvy_course_modules_id_fk" FOREIGN KEY ("module_id") REFERENCES "main"."zuvy_course_modules"("id") ON DELETE cascade ON UPDATE cascade;
+ ALTER TABLE "main"."bytea" ADD CONSTRAINT "zuvy_module_chapter_topic_id_zuvy_module_topics_id_fk" FOREIGN KEY ("topic_id") REFERENCES "main"."zuvy_module_topics"("id") ON DELETE no action ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
- ALTER TABLE "main"."zuvy_module_form" ADD CONSTRAINT "zuvy_module_form_chapter_id_zuvy_module_chapter_id_fk" FOREIGN KEY ("chapter_id") REFERENCES "main"."zuvy_module_chapter"("id") ON DELETE no action ON UPDATE no action;
+ ALTER TABLE "main"."zuvy_module_form" ADD CONSTRAINT "zuvy_module_form_chapter_id_zuvy_module_chapter_id_fk" FOREIGN KEY ("chapter_id") REFERENCES "main"."bytea"("id") ON DELETE no action ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
@@ -2986,6 +3335,12 @@ EXCEPTION
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
+ ALTER TABLE "main"."zuvy_module_quiz_variants" ADD CONSTRAINT "zuvy_module_quiz_variants_quiz_id_fkey" FOREIGN KEY ("quiz_id") REFERENCES "main"."zuvy_module_quiz"("id") ON DELETE no action ON UPDATE no action;
+EXCEPTION
+ WHEN duplicate_object THEN null;
+END $$;
+--> statement-breakpoint
+DO $$ BEGIN
  ALTER TABLE "main"."zuvy_module_tracking" ADD CONSTRAINT "zuvy_module_tracking_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "main"."users"("id") ON DELETE no action ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
@@ -2998,13 +3353,13 @@ EXCEPTION
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
- ALTER TABLE "main"."zuvy_open_ended_question_submission" ADD CONSTRAINT "zuvy_open_ended_question_submission_question_id_zuvy_outsourse_openEnded_questions_id_fk" FOREIGN KEY ("question_id") REFERENCES "main"."zuvy_outsourse_openEnded_questions"("id") ON DELETE no action ON UPDATE no action;
+ ALTER TABLE "main"."zuvy_open_ended_question_submission" ADD CONSTRAINT "zuvy_open_ended_question_submission_question_id_zuvy_outsourse_" FOREIGN KEY ("question_id") REFERENCES "main"."zuvy_outsourse_open_ended_questions"("id") ON DELETE no action ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
- ALTER TABLE "main"."zuvy_open_ended_question_submission" ADD CONSTRAINT "zuvy_open_ended_question_submission_assessment_submission_id_zuvy_assessment_submission_id_fk" FOREIGN KEY ("assessment_submission_id") REFERENCES "main"."zuvy_assessment_submission"("id") ON DELETE cascade ON UPDATE cascade;
+ ALTER TABLE "main"."zuvy_open_ended_question_submission" ADD CONSTRAINT "zuvy_open_ended_question_submission_assessment_submission_id_zu" FOREIGN KEY ("assessment_submission_id") REFERENCES "main"."zuvy_assessment_submission"("id") ON DELETE cascade ON UPDATE cascade;
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
@@ -3016,13 +3371,19 @@ EXCEPTION
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
- ALTER TABLE "main"."zuvy_openEnded_questions" ADD CONSTRAINT "zuvy_openEnded_questions_tag_id_zuvy_tags_id_fk" FOREIGN KEY ("tag_id") REFERENCES "main"."zuvy_tags"("id") ON DELETE no action ON UPDATE no action;
+ ALTER TABLE "main"."zuvy_open_ended_questions" ADD CONSTRAINT "zuvy_open_ended_questions_tag_id_fkey" FOREIGN KEY ("tag_id") REFERENCES "main"."zuvy_tags"("id") ON DELETE no action ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
- ALTER TABLE "main"."zuvy_outsourse_assessments" ADD CONSTRAINT "zuvy_outsourse_assessments_assessment_id_zuvy_module_assessment_id_fk" FOREIGN KEY ("assessment_id") REFERENCES "main"."zuvy_module_assessment"("id") ON DELETE cascade ON UPDATE cascade;
+ ALTER TABLE "main"."zuvy_outsourse_assessments" ADD CONSTRAINT "zuvy_outsourse_assessments_chapter_id_zuvy_module_chapter_id_fk" FOREIGN KEY ("chapter_id") REFERENCES "main"."bytea"("id") ON DELETE cascade ON UPDATE cascade;
+EXCEPTION
+ WHEN duplicate_object THEN null;
+END $$;
+--> statement-breakpoint
+DO $$ BEGIN
+ ALTER TABLE "main"."zuvy_outsourse_assessments" ADD CONSTRAINT "zuvy_outsourse_assessments_assessment_id_zuvy_module_assessment" FOREIGN KEY ("assessment_id") REFERENCES "main"."zuvy_module_assessment"("id") ON DELETE cascade ON UPDATE cascade;
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
@@ -3040,61 +3401,55 @@ EXCEPTION
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
- ALTER TABLE "main"."zuvy_outsourse_assessments" ADD CONSTRAINT "zuvy_outsourse_assessments_chapter_id_zuvy_module_chapter_id_fk" FOREIGN KEY ("chapter_id") REFERENCES "main"."zuvy_module_chapter"("id") ON DELETE cascade ON UPDATE cascade;
+ ALTER TABLE "main"."zuvy_outsourse_coding_questions" ADD CONSTRAINT "zuvy_outsourse_coding_questions_coding_question_id_zuvy_coding_" FOREIGN KEY ("coding_question_id") REFERENCES "main"."zuvy_coding_questions"("id") ON DELETE cascade ON UPDATE cascade;
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
- ALTER TABLE "main"."zuvy_outsourse_coding_questions" ADD CONSTRAINT "zuvy_outsourse_coding_questions_coding_question_id_zuvy_coding_questions_id_fk" FOREIGN KEY ("coding_question_id") REFERENCES "main"."zuvy_coding_questions"("id") ON DELETE no action ON UPDATE no action;
+ ALTER TABLE "main"."zuvy_outsourse_coding_questions" ADD CONSTRAINT "zuvy_outsourse_coding_questions_assessment_outsourse_id_zuvy_ou" FOREIGN KEY ("assessment_outsourse_id") REFERENCES "main"."zuvy_outsourse_assessments"("id") ON DELETE cascade ON UPDATE cascade;
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
- ALTER TABLE "main"."zuvy_outsourse_coding_questions" ADD CONSTRAINT "zuvy_outsourse_coding_questions_assessment_outsourse_id_zuvy_outsourse_assessments_id_fk" FOREIGN KEY ("assessment_outsourse_id") REFERENCES "main"."zuvy_outsourse_assessments"("id") ON DELETE cascade ON UPDATE cascade;
+ ALTER TABLE "main"."zuvy_outsourse_coding_questions" ADD CONSTRAINT "zuvy_outsourse_coding_questions_bootcamp_id_zuvy_bootcamps_id_f" FOREIGN KEY ("bootcamp_id") REFERENCES "main"."zuvy_bootcamps"("id") ON DELETE cascade ON UPDATE cascade;
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
- ALTER TABLE "main"."zuvy_outsourse_coding_questions" ADD CONSTRAINT "zuvy_outsourse_coding_questions_bootcamp_id_zuvy_bootcamps_id_fk" FOREIGN KEY ("bootcamp_id") REFERENCES "main"."zuvy_bootcamps"("id") ON DELETE cascade ON UPDATE cascade;
+ ALTER TABLE "main"."zuvy_outsourse_coding_questions" ADD CONSTRAINT "zuvy_outsourse_coding_questions_chapter_id_zuvy_module_chapter_" FOREIGN KEY ("chapter_id") REFERENCES "main"."bytea"("id") ON DELETE cascade ON UPDATE cascade;
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
- ALTER TABLE "main"."zuvy_outsourse_coding_questions" ADD CONSTRAINT "zuvy_outsourse_coding_questions_chapter_id_zuvy_module_chapter_id_fk" FOREIGN KEY ("chapter_id") REFERENCES "main"."zuvy_module_chapter"("id") ON DELETE cascade ON UPDATE cascade;
+ ALTER TABLE "main"."zuvy_outsourse_open_ended_questions" ADD CONSTRAINT "zuvy_outsourse_open_ended_questions_open_ended_question_id_fkey" FOREIGN KEY ("open_ended_question_id") REFERENCES "main"."zuvy_open_ended_questions"("id") ON DELETE no action ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
- ALTER TABLE "main"."zuvy_outsourse_openEnded_questions" ADD CONSTRAINT "zuvy_outsourse_openEnded_questions_open_ended_question_id_zuvy_openEnded_questions_id_fk" FOREIGN KEY ("open_ended_question_id") REFERENCES "main"."zuvy_openEnded_questions"("id") ON DELETE no action ON UPDATE no action;
+ ALTER TABLE "main"."zuvy_outsourse_open_ended_questions" ADD CONSTRAINT "zuvy_outsourse_open_ended_question_assessment_outsourse_id_fkey" FOREIGN KEY ("assessment_outsourse_id") REFERENCES "main"."zuvy_outsourse_assessments"("id") ON DELETE cascade ON UPDATE cascade;
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
- ALTER TABLE "main"."zuvy_outsourse_openEnded_questions" ADD CONSTRAINT "zuvy_outsourse_openEnded_questions_assessment_outsourse_id_zuvy_outsourse_assessments_id_fk" FOREIGN KEY ("assessment_outsourse_id") REFERENCES "main"."zuvy_outsourse_assessments"("id") ON DELETE cascade ON UPDATE cascade;
+ ALTER TABLE "main"."zuvy_outsourse_open_ended_questions" ADD CONSTRAINT "zuvy_outsourse_open_ended_questions_bootcamp_id_fkey" FOREIGN KEY ("bootcamp_id") REFERENCES "main"."zuvy_bootcamps"("id") ON DELETE cascade ON UPDATE cascade;
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
- ALTER TABLE "main"."zuvy_outsourse_openEnded_questions" ADD CONSTRAINT "zuvy_outsourse_openEnded_questions_bootcamp_id_zuvy_bootcamps_id_fk" FOREIGN KEY ("bootcamp_id") REFERENCES "main"."zuvy_bootcamps"("id") ON DELETE cascade ON UPDATE cascade;
+ ALTER TABLE "main"."zuvy_outsourse_open_ended_questions" ADD CONSTRAINT "zuvy_outsourse_open_ended_questions_module_id_fkey" FOREIGN KEY ("module_id") REFERENCES "main"."zuvy_course_modules"("id") ON DELETE cascade ON UPDATE cascade;
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
- ALTER TABLE "main"."zuvy_outsourse_openEnded_questions" ADD CONSTRAINT "zuvy_outsourse_openEnded_questions_module_id_zuvy_course_modules_id_fk" FOREIGN KEY ("module_id") REFERENCES "main"."zuvy_course_modules"("id") ON DELETE cascade ON UPDATE cascade;
-EXCEPTION
- WHEN duplicate_object THEN null;
-END $$;
---> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "main"."zuvy_outsourse_openEnded_questions" ADD CONSTRAINT "zuvy_outsourse_openEnded_questions_chapter_id_zuvy_module_chapter_id_fk" FOREIGN KEY ("chapter_id") REFERENCES "main"."zuvy_module_chapter"("id") ON DELETE cascade ON UPDATE cascade;
+ ALTER TABLE "main"."zuvy_outsourse_open_ended_questions" ADD CONSTRAINT "zuvy_outsourse_open_ended_questions_chapter_id_fkey" FOREIGN KEY ("chapter_id") REFERENCES "main"."bytea"("id") ON DELETE cascade ON UPDATE cascade;
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
@@ -3106,43 +3461,43 @@ EXCEPTION
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
- ALTER TABLE "main"."zuvy_outsourse_quizzes" ADD CONSTRAINT "zuvy_outsourse_quizzes_assessment_outsourse_id_zuvy_outsourse_assessments_id_fk" FOREIGN KEY ("assessment_outsourse_id") REFERENCES "main"."zuvy_outsourse_assessments"("id") ON DELETE cascade ON UPDATE cascade;
-EXCEPTION
- WHEN duplicate_object THEN null;
-END $$;
---> statement-breakpoint
-DO $$ BEGIN
  ALTER TABLE "main"."zuvy_outsourse_quizzes" ADD CONSTRAINT "zuvy_outsourse_quizzes_bootcamp_id_zuvy_bootcamps_id_fk" FOREIGN KEY ("bootcamp_id") REFERENCES "main"."zuvy_bootcamps"("id") ON DELETE cascade ON UPDATE cascade;
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
- ALTER TABLE "main"."zuvy_outsourse_quizzes" ADD CONSTRAINT "zuvy_outsourse_quizzes_chapter_id_zuvy_module_chapter_id_fk" FOREIGN KEY ("chapter_id") REFERENCES "main"."zuvy_module_chapter"("id") ON DELETE cascade ON UPDATE cascade;
+ ALTER TABLE "main"."zuvy_outsourse_quizzes" ADD CONSTRAINT "zuvy_outsourse_quizzes_chapter_id_zuvy_module_chapter_id_fk" FOREIGN KEY ("chapter_id") REFERENCES "main"."bytea"("id") ON DELETE cascade ON UPDATE cascade;
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
- ALTER TABLE "main"."zuvy_practice_code" ADD CONSTRAINT "zuvy_practice_code_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "main"."users"("id") ON DELETE no action ON UPDATE no action;
+ ALTER TABLE "main"."zuvy_outsourse_quizzes" ADD CONSTRAINT "zuvy_outsourse_quizzes_assessment_outsourse_id_zuvy_outsourse_a" FOREIGN KEY ("assessment_outsourse_id") REFERENCES "main"."zuvy_outsourse_assessments"("id") ON DELETE cascade ON UPDATE cascade;
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
- ALTER TABLE "main"."zuvy_practice_code" ADD CONSTRAINT "zuvy_practice_code_question_id_zuvy_coding_questions_id_fk" FOREIGN KEY ("question_id") REFERENCES "main"."zuvy_coding_questions"("id") ON DELETE no action ON UPDATE no action;
+ ALTER TABLE "main"."zuvy_practice_code" ADD CONSTRAINT "zuvy_practice_code_submission_id_zuvy_assessment_submission_id_" FOREIGN KEY ("submission_id") REFERENCES "main"."zuvy_assessment_submission"("id") ON DELETE cascade ON UPDATE cascade;
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
- ALTER TABLE "main"."zuvy_practice_code" ADD CONSTRAINT "zuvy_practice_code_coding_outsourse_id_zuvy_outsourse_coding_questions_id_fk" FOREIGN KEY ("coding_outsourse_id") REFERENCES "main"."zuvy_outsourse_coding_questions"("id") ON DELETE no action ON UPDATE no action;
+ ALTER TABLE "main"."zuvy_practice_code" ADD CONSTRAINT "zuvy_practice_code_coding_outsourse_id_zuvy_outsourse_coding_qu" FOREIGN KEY ("coding_outsourse_id") REFERENCES "main"."zuvy_outsourse_coding_questions"("id") ON DELETE cascade ON UPDATE cascade;
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
- ALTER TABLE "main"."zuvy_practice_code" ADD CONSTRAINT "zuvy_practice_code_submission_id_zuvy_assessment_submission_id_fk" FOREIGN KEY ("submission_id") REFERENCES "main"."zuvy_assessment_submission"("id") ON DELETE no action ON UPDATE no action;
+ ALTER TABLE "main"."zuvy_practice_code" ADD CONSTRAINT "zuvy_practice_code_question_id_zuvy_coding_questions_id_fk" FOREIGN KEY ("question_id") REFERENCES "main"."zuvy_coding_questions"("id") ON DELETE cascade ON UPDATE cascade;
+EXCEPTION
+ WHEN duplicate_object THEN null;
+END $$;
+--> statement-breakpoint
+DO $$ BEGIN
+ ALTER TABLE "main"."zuvy_practice_code" ADD CONSTRAINT "fk_chapter" FOREIGN KEY ("chapter_id") REFERENCES "main"."bytea"("id") ON DELETE cascade ON UPDATE cascade;
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
@@ -3178,13 +3533,19 @@ EXCEPTION
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
- ALTER TABLE "main"."zuvy_quiz_tracking" ADD CONSTRAINT "zuvy_quiz_tracking_assessment_submission_id_zuvy_assessment_submission_id_fk" FOREIGN KEY ("assessment_submission_id") REFERENCES "main"."zuvy_assessment_submission"("id") ON DELETE cascade ON UPDATE cascade;
+ ALTER TABLE "main"."zuvy_quiz_tracking" ADD CONSTRAINT "zuvy_quiz_tracking_assessment_submission_id_zuvy_assessment_sub" FOREIGN KEY ("assessment_submission_id") REFERENCES "main"."zuvy_assessment_submission"("id") ON DELETE cascade ON UPDATE cascade;
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
- ALTER TABLE "main"."zuvy_quiz_tracking" ADD CONSTRAINT "zuvy_quiz_tracking_question_id_zuvy_outsourse_quizzes_id_fk" FOREIGN KEY ("question_id") REFERENCES "main"."zuvy_outsourse_quizzes"("id") ON DELETE no action ON UPDATE no action;
+ ALTER TABLE "main"."zuvy_recent_bootcamp" ADD CONSTRAINT "zuvy_recent_bootcamp_module_id_zuvy_course_modules_id_fk" FOREIGN KEY ("module_id") REFERENCES "main"."zuvy_course_modules"("id") ON DELETE cascade ON UPDATE cascade;
+EXCEPTION
+ WHEN duplicate_object THEN null;
+END $$;
+--> statement-breakpoint
+DO $$ BEGIN
+ ALTER TABLE "main"."zuvy_recent_bootcamp" ADD CONSTRAINT "zuvy_recent_bootcamp_chapter_id_zuvy_module_chapter_id_fk" FOREIGN KEY ("chapter_id") REFERENCES "main"."bytea"("id") ON DELETE cascade ON UPDATE cascade;
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
@@ -3202,19 +3563,61 @@ EXCEPTION
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
- ALTER TABLE "main"."zuvy_recent_bootcamp" ADD CONSTRAINT "zuvy_recent_bootcamp_module_id_zuvy_course_modules_id_fk" FOREIGN KEY ("module_id") REFERENCES "main"."zuvy_course_modules"("id") ON DELETE cascade ON UPDATE cascade;
+ ALTER TABLE "main"."zuvy_session_merge" ADD CONSTRAINT "zuvy_session_merge_child_session_id_fkey" FOREIGN KEY ("child_session_id") REFERENCES "main"."zuvy_sessions"("id") ON DELETE cascade ON UPDATE cascade;
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
- ALTER TABLE "main"."zuvy_recent_bootcamp" ADD CONSTRAINT "zuvy_recent_bootcamp_chapter_id_zuvy_module_chapter_id_fk" FOREIGN KEY ("chapter_id") REFERENCES "main"."zuvy_module_chapter"("id") ON DELETE cascade ON UPDATE cascade;
+ ALTER TABLE "main"."zuvy_session_merge" ADD CONSTRAINT "zuvy_session_merge_parent_session_id_fkey" FOREIGN KEY ("parent_session_id") REFERENCES "main"."zuvy_sessions"("id") ON DELETE cascade ON UPDATE cascade;
+EXCEPTION
+ WHEN duplicate_object THEN null;
+END $$;
+--> statement-breakpoint
+DO $$ BEGIN
+ ALTER TABLE "main"."zuvy_session_record_views" ADD CONSTRAINT "zuvy_session_record_views_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "main"."users"("id") ON DELETE no action ON UPDATE no action;
+EXCEPTION
+ WHEN duplicate_object THEN null;
+END $$;
+--> statement-breakpoint
+DO $$ BEGIN
+ ALTER TABLE "main"."zuvy_session_record_views" ADD CONSTRAINT "zuvy_session_record_views_session_id_fkey" FOREIGN KEY ("session_id") REFERENCES "main"."zuvy_sessions"("id") ON DELETE no action ON UPDATE no action;
+EXCEPTION
+ WHEN duplicate_object THEN null;
+END $$;
+--> statement-breakpoint
+DO $$ BEGIN
+ ALTER TABLE "main"."zuvy_session_video_recordings" ADD CONSTRAINT "zuvy_session_video_recordings_session_id_fkey" FOREIGN KEY ("session_id") REFERENCES "main"."zuvy_sessions"("id") ON DELETE no action ON UPDATE no action;
+EXCEPTION
+ WHEN duplicate_object THEN null;
+END $$;
+--> statement-breakpoint
+DO $$ BEGIN
+ ALTER TABLE "main"."zuvy_session_video_recordings" ADD CONSTRAINT "zuvy_session_video_recordings_batch_id_fkey" FOREIGN KEY ("batch_id") REFERENCES "main"."zuvy_batches"("id") ON DELETE no action ON UPDATE no action;
+EXCEPTION
+ WHEN duplicate_object THEN null;
+END $$;
+--> statement-breakpoint
+DO $$ BEGIN
+ ALTER TABLE "main"."zuvy_session_video_recordings" ADD CONSTRAINT "zuvy_session_video_recordings_bootcamp_id_fkey" FOREIGN KEY ("bootcamp_id") REFERENCES "main"."zuvy_bootcamps"("id") ON DELETE no action ON UPDATE no action;
+EXCEPTION
+ WHEN duplicate_object THEN null;
+END $$;
+--> statement-breakpoint
+DO $$ BEGIN
+ ALTER TABLE "main"."zuvy_session_video_recordings" ADD CONSTRAINT "zuvy_session_video_recordings_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "main"."users"("id") ON DELETE no action ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
  ALTER TABLE "main"."zuvy_sessions" ADD CONSTRAINT "zuvy_sessions_batch_id_zuvy_batches_id_fk" FOREIGN KEY ("batch_id") REFERENCES "main"."zuvy_batches"("id") ON DELETE cascade ON UPDATE cascade;
+EXCEPTION
+ WHEN duplicate_object THEN null;
+END $$;
+--> statement-breakpoint
+DO $$ BEGIN
+ ALTER TABLE "main"."zuvy_sessions" ADD CONSTRAINT "zuvy_sessions_second_batch_id_zuvy_batches_id_fk" FOREIGN KEY ("second_batch_id") REFERENCES "main"."zuvy_batches"("id") ON DELETE cascade ON UPDATE cascade;
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
@@ -3238,7 +3641,31 @@ EXCEPTION
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
- ALTER TABLE "main"."zuvy_test_cases" ADD CONSTRAINT "zuvy_test_cases_question_id_zuvy_coding_questions_id_fk" FOREIGN KEY ("question_id") REFERENCES "main"."zuvy_coding_questions"("id") ON DELETE cascade ON UPDATE cascade;
+ ALTER TABLE "main"."zuvy_student_attendance_records" ADD CONSTRAINT "zuvy_student_attendance_records_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "main"."users"("id") ON DELETE no action ON UPDATE no action;
+EXCEPTION
+ WHEN duplicate_object THEN null;
+END $$;
+--> statement-breakpoint
+DO $$ BEGIN
+ ALTER TABLE "main"."zuvy_student_attendance_records" ADD CONSTRAINT "zuvy_student_attendance_records_batch_id_fkey" FOREIGN KEY ("batch_id") REFERENCES "main"."zuvy_batches"("id") ON DELETE no action ON UPDATE no action;
+EXCEPTION
+ WHEN duplicate_object THEN null;
+END $$;
+--> statement-breakpoint
+DO $$ BEGIN
+ ALTER TABLE "main"."zuvy_student_attendance_records" ADD CONSTRAINT "zuvy_student_attendance_records_bootcamp_id_fkey" FOREIGN KEY ("bootcamp_id") REFERENCES "main"."zuvy_bootcamps"("id") ON DELETE no action ON UPDATE no action;
+EXCEPTION
+ WHEN duplicate_object THEN null;
+END $$;
+--> statement-breakpoint
+DO $$ BEGIN
+ ALTER TABLE "main"."zuvy_student_attendance_records" ADD CONSTRAINT "zuvy_student_attendance_records_session_id_fkey" FOREIGN KEY ("session_id") REFERENCES "main"."zuvy_sessions"("id") ON DELETE no action ON UPDATE no action;
+EXCEPTION
+ WHEN duplicate_object THEN null;
+END $$;
+--> statement-breakpoint
+DO $$ BEGIN
+ ALTER TABLE "main"."zuvy_test_cases" ADD CONSTRAINT "zuvy_test_cases_question_id_fkey" FOREIGN KEY ("question_id") REFERENCES "main"."zuvy_coding_questions"("id") ON DELETE cascade ON UPDATE cascade;
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
@@ -3249,8 +3676,29 @@ EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
 --> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "main"."zuvy_test_cases_submission" ADD CONSTRAINT "zuvy_test_cases_submission_submission_id_zuvy_practice_code_id_fk" FOREIGN KEY ("submission_id") REFERENCES "main"."zuvy_practice_code"("id") ON DELETE cascade ON UPDATE cascade;
-EXCEPTION
- WHEN duplicate_object THEN null;
-END $$;
+CREATE UNIQUE INDEX IF NOT EXISTS "idx_80228_users_email_unique" ON "main"."c_users" USING btree ("email");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_80237_student_idx" ON "main"."contacts" USING btree ("student_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_50433_course_enrolments_ibfk_1_idx" ON "main"."course_enrolments" USING btree ("course_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_50433_course_enrolments_ibfk_2_idx" ON "main"."course_enrolments" USING btree ("student_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_50441_course_relation_ibfk_1" ON "main"."course_relation" USING btree ("course_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_50441_course_relation_ibfk_2" ON "main"."course_relation" USING btree ("relies_on");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_80250_enrolment_keys_questionsetid_foreign" ON "main"."enrolment_keys" USING btree ("question_set_id");--> statement-breakpoint
+CREATE UNIQUE INDEX IF NOT EXISTS "idx_80250_key__unique" ON "main"."enrolment_keys" USING btree ("key");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_80250_student_idx" ON "main"."enrolment_keys" USING btree ("student_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_50457_course_id" ON "main"."exercises" USING btree ("course_id");--> statement-breakpoint
+CREATE UNIQUE INDEX IF NOT EXISTS "idx_50457_slug__unique" ON "main"."exercises" USING btree ("slug");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_80256_feedbacks_studentid_foreign" ON "main"."feedbacks" USING btree ("student_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_80256_feedbacks_userid_foreign" ON "main"."feedbacks" USING btree ("user_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_80265_contact_idx" ON "main"."incoming_calls" USING btree ("contact_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_50487_mentor_ibfk_1_idx" ON "main"."mentors" USING btree ("mentor");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_50487_mentor_ibfk_2_idx" ON "main"."mentors" USING btree ("mentee");--> statement-breakpoint
+CREATE UNIQUE INDEX IF NOT EXISTS "idx_80292_partner_name" ON "main"."partners" USING btree ("name");--> statement-breakpoint
+CREATE UNIQUE INDEX IF NOT EXISTS "idx_80292_partners_slug_unique" ON "main"."partners" USING btree ("slug");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_80307_question_bucket_choices_bucketid_foreign" ON "main"."question_bucket_choices" USING btree ("bucket_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_80322_question_idx" ON "main"."question_options" USING btree ("question_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_80331_question_sets_versionid_foreign" ON "main"."question_sets" USING btree ("version_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "main_short_links_short_code_index" ON "main"."short_links" USING btree ("short_code");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_80349_stage_transitions_studentid_foreign" ON "main"."stage_transitions" USING btree ("student_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_80358_students_partnerid_foreign" ON "main"."students" USING btree ("partner_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_50519_user_role_ibfk_1_idx" ON "main"."user_roles" USING btree ("user_id");--> statement-breakpoint
+CREATE UNIQUE INDEX IF NOT EXISTS "idx_50526_google_user_id" ON "main"."users" USING btree ("google_user_id");
