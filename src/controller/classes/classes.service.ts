@@ -2915,6 +2915,31 @@ export class ClassesService {
       const invitedStudents = Array.isArray(session.invitedStudents) ? session.invitedStudents : [];
       const attendanceRecords = Array.isArray(session.studentAttendanceRecords) ? session.studentAttendanceRecords : [];
       const studentMap = new Map();
+      if(invitedStudents.length == 0)
+      {
+        const query = db.select({
+                userId: users.id,
+                name: users.name,
+                email: users.email,
+                profilePicture: users.profilePicture,
+                bootcampId: zuvyBatchEnrollments.bootcampId,
+                attendance: zuvyBatchEnrollments.attendance,
+                batchName: zuvyBatches.name,
+                batchId: zuvyBatches.id
+              })
+                .from(zuvyBatchEnrollments)
+                .leftJoin(users, eq(zuvyBatchEnrollments.userId, users.id))
+                .leftJoin(zuvyBatches, eq(zuvyBatchEnrollments.batchId, zuvyBatches.id))
+                .where(or(
+                  session?.batchId ? eq(zuvyBatchEnrollments.batchId, session.batchId) : undefined,
+                  session?.batchId ? eq(zuvyBatchEnrollments.batchId, session.secondBatchId) : undefined
+                ))
+                .orderBy(users.name);
+              const mapData = await query;
+              const totalNumberOfStudents = mapData.length;
+          invitedStudents.push(...mapData.map(s => ({ userId: Number(s.userId), email: s.email, name: s.name || null })));   
+        
+      }
       for (const student of invitedStudents) {
         studentMap.set(student.userId, {
           email: student.email,
