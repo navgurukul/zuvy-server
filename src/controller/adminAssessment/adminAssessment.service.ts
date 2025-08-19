@@ -1,9 +1,9 @@
 const AWS = require('aws-sdk');
 import { Injectable, Logger } from '@nestjs/common';
 import { db } from '../../db/index';
-import { count, eq, SQL, sql } from 'drizzle-orm';
+import { count, eq, inArray, SQL, sql } from 'drizzle-orm';
 import * as _ from 'lodash';
-import { zuvyBatchEnrollments, zuvyChapterTracking, zuvyAssessmentReattempt, zuvyModuleChapter, zuvyOutsourseAssessments, zuvyAssessmentSubmission } from '../../../drizzle/schema';
+import { zuvyBatchEnrollments, zuvyChapterTracking, zuvyAssessmentReattempt, zuvyModuleChapter, zuvyOutsourseAssessments, zuvyAssessmentSubmission, users } from '../../../drizzle/schema';
 import { STATUS_CODES } from 'src/helpers';
 import { helperVariable } from 'src/constants/helper'
 
@@ -535,7 +535,6 @@ Team Zuvy`;
       }
 
       const bootcampId = assessmentInfo[0].bootcampId;
-
       // Fetch all students enrolled in the bootcamp
       const enrolledStudents = await db.query.zuvyBatchEnrollments.findMany({
         where: (zuvyBatchEnrollments, { eq, sql }) => sql`
@@ -577,12 +576,14 @@ Team Zuvy`;
         },
         orderBy: (zuvyBatchEnrollments, { asc }) => asc(zuvyBatchEnrollments.userId),
       });
+      let userIds = enrolledStudents.map(student => Number(student.userId));
       // Fetch submitted assessments for the given assessmentID
       const submitedOutsourseAssessments = await db
         .query
         .zuvyAssessmentSubmission.findMany({
-          where: (zuvyAssessmentSubmission, { sql }) => sql`
+          where: (zuvyAssessmentSubmission, { sql, inArray }) => sql`
           ${zuvyAssessmentSubmission.assessmentOutsourseId} = ${assessmentID}
+          AND ${inArray(zuvyAssessmentSubmission.userId, userIds)}
           AND EXISTS (
             SELECT 1
             FROM main.zuvy_batch_enrollments 
@@ -626,6 +627,7 @@ Team Zuvy`;
           limit,
           offset
         });
+        console.log("submitedOutsourseAssessments", submitedOutsourseAssessments)
       const totalStudentsCount = await db
         .select({
           count: sql<number>`COUNT(*)`,
