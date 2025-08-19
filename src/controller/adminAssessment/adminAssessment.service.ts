@@ -6,7 +6,6 @@ import * as _ from 'lodash';
 import { zuvyBatchEnrollments, zuvyChapterTracking, zuvyAssessmentReattempt, zuvyModuleChapter, zuvyOutsourseAssessments, zuvyAssessmentSubmission, users } from '../../../drizzle/schema';
 import { STATUS_CODES } from 'src/helpers';
 import { helperVariable } from 'src/constants/helper'
-import { editUserDetailsDto } from '../bootcamp/dto/bootcamp.dto';
 
 const { PENDING, ACCEPTED, REJECTED } = helperVariable.REATTMEPT_STATUS; // Importing helper variables
 const { SUPPORT_EMAIL, AWS_SUPPORT_ACCESS_SECRET_KEY, AWS_SUPPORT_ACCESS_KEY_ID, ZUVY_BASH_URL } = process.env; // Importing env values
