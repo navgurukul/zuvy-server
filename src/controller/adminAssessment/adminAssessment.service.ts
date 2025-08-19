@@ -520,8 +520,8 @@ Team Zuvy`;
     req,
     assessmentID: number,
     searchStudent: string,
-    limit = 10,
-    offset = 0,
+    limit,
+    offset,
   ) {
     try {
       // Fetch assessment details

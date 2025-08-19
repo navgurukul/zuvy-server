@@ -1561,19 +1561,13 @@ export class ContentService {
     if (zuvySessionIds.length > 0) {
       const sessionIds = zuvySessionIds.map(r => r.id);
       const meetingIds = zuvySessionIds.map(s => s.meetingId);
-      await db
-        .delete(zuvySessionRecordViews)
-        .where(inArray(zuvySessionRecordViews.sessionId, sessionIds));
-      await db
-        .delete(zuvyStudentAttendance)
-        .where(inArray(zuvyStudentAttendance.meetingId, meetingIds));
+      await db.update(zuvySessions).set({chapterId: null, moduleId: null}).where(inArray(zuvySessions.id, sessionIds));
     }
     // 2. Cascade delete all related records for each chapter
     const cascadeChapterTables = [
       { table: zuvyOutsourseQuizzes, column: zuvyOutsourseQuizzes.chapterId, name: 'zuvyOutsourseQuizzes' },
       { table: zuvyOutsourseOpenEndedQuestions, column: zuvyOutsourseOpenEndedQuestions.chapterId, name: 'zuvyOutsourseOpenEndedQuestions' },
       { table: zuvyOutsourseCodingQuestions, column: zuvyOutsourseCodingQuestions.chapterId, name: 'zuvyOutsourseCodingQuestions' },
-      { table: zuvySessions, column: zuvySessions.chapterId, name: 'zuvySessions' },
       { table: zuvyModuleForm, column: zuvyModuleForm.chapterId, name: 'zuvyModuleForm' },
       { table: zuvyFormTracking, column: zuvyFormTracking.chapterId, name: 'zuvyFormTracking' },
       { table: zuvyAssignmentSubmission, column: zuvyAssignmentSubmission.chapterId, name: 'zuvyAssignmentSubmission' },
@@ -1604,8 +1598,7 @@ export class ContentService {
       { table: zuvyOutsourseAssessments, column: zuvyOutsourseAssessments.moduleId, name: 'zuvyOutsourseAssessments' },
       { table: zuvyQuizTracking, column: zuvyQuizTracking.moduleId, name: 'zuvyQuizTracking' },
       { table: zuvyProjectTracking, column: zuvyProjectTracking.moduleId, name: 'zuvyProjectTracking' },
-      { table: zuvyModuleTracking, column: zuvyModuleTracking.moduleId, name: 'zuvyModuleTracking' },
-      { table: zuvySessions, column: zuvySessions.moduleId, name: 'zuvySessions' }
+      { table: zuvyModuleTracking, column: zuvyModuleTracking.moduleId, name: 'zuvyModuleTracking' }
     ];
     for (const { table, column, name } of cascadeModuleTables) {
       try {
@@ -1649,7 +1642,6 @@ export class ContentService {
       { table: zuvyOutsourseOpenEndedQuestions, column: zuvyOutsourseOpenEndedQuestions.chapterId, name: 'zuvyOutsourseOpenEndedQuestions' },
       { table: zuvyOutsourseCodingQuestions, column: zuvyOutsourseCodingQuestions.chapterId, name: 'zuvyOutsourseCodingQuestions' },
       { table: zuvyOutsourseAssessments, column: zuvyOutsourseAssessments.chapterId, name: 'zuvyOutsourseAssessments' },
-      { table: zuvySessions, column: zuvySessions.chapterId, name: 'zuvySessions' },
       { table: zuvyModuleForm, column: zuvyModuleForm.chapterId, name: 'zuvyModuleForm' },
       { table: zuvyFormTracking, column: zuvyFormTracking.chapterId, name: 'zuvyFormTracking' },
       { table: zuvyAssignmentSubmission, column: zuvyAssignmentSubmission.chapterId, name: 'zuvyAssignmentSubmission' },
@@ -1658,6 +1650,14 @@ export class ContentService {
       { table: zuvyPracticeCode, column: zuvyPracticeCode.chapterId, name: 'zuvyPracticeCode' },
       { table: zuvyRecentBootcamp, column: zuvyRecentBootcamp.chapterId, name: 'zuvyRecentBootcamp' }
     ];
+    const chapterInfo = await db.select().from(zuvyModuleChapter).where(eq(zuvyModuleChapter.id, chapterId));
+    if (chapterInfo.length === 0) {
+      return [{ status: 'error', message: 'Chapter not found', code: 404 }, null];
+    }
+    if(chapterInfo[0].topicId == 8)
+    {
+      await db.update(zuvySessions).set({ chapterId: null ,moduleId: null}).where(eq(zuvySessions.chapterId, chapterId));
+    }
     for (const { table, column, name } of cascadeChapterTables) {
       try {
         await db.delete(table).where(eq(column, chapterId));
