@@ -736,12 +736,7 @@ export class BootcampService {
         attendance: zuvyBatchEnrollments.attendance,
         batchName: zuvyBatches.name,
         batchId: zuvyBatches.id,
-        progress: zuvyBootcampTracking.progress,
-        totalClasses: sql<number>`(
-        SELECT COUNT(*) FROM main.zuvy_sessions 
-        WHERE main.zuvy_sessions.bootcamp_id = ${zuvyBatchEnrollments.bootcampId}
-        AND (${zuvyBatchEnrollments.batchId} IS NULL OR main.zuvy_sessions.batch_id = ${zuvyBatchEnrollments.batchId})
-      )`
+        progress: zuvyBootcampTracking.progress
       })
         .from(zuvyBatchEnrollments)
         .leftJoin(users, eq(zuvyBatchEnrollments.userId, users.id))
@@ -760,17 +755,11 @@ export class BootcampService {
       const totalNumberOfStudents = mapData.length;
       const studentsInfo = !isNaN(limit) && !isNaN(offset) ? mapData.slice(offset, offset + limit) : mapData;
       const modifiedStudentInfo = studentsInfo.map(item => {
-        const attendancePercentage =
-          item.batchId !== null &&
-            item.attendance !== null &&
-            item.totalClasses > 0
-            ? Math.ceil((item.attendance / item.totalClasses) * 100)
-            : 0;
 
-        return {
+      return {
           ...item,
           userId: Number(item.userId),
-          attendance: attendancePercentage,
+          attendance: item.attendance,
           batchName: item.batchId != null ? item.batchName : 'unassigned',
           progress: item.progress != null ? item.progress : 0,
         };
