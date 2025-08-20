@@ -352,7 +352,7 @@ export class ClassesService {
         settings: {
           host_video: true,
           participant_video: true,
-          join_before_host: true,
+          join_before_host: false,
           mute_upon_entry: true,
           // Disable waiting room so invited participants can join without manual admit
           waiting_room: false,
