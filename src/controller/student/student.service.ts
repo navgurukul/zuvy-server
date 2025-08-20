@@ -17,7 +17,8 @@ import {
   zuvyModuleChapter,
   zuvyCourseModules,
   zuvyModuleTopics,
-  zuvyStudentAttendanceRecords
+  zuvyStudentAttendanceRecords,
+  zuvyAssignmentSubmission
 } from '../../../drizzle/schema';
 import { db } from '../../db/index';
 import { eq, sql, desc, count, asc, or, and, inArray, isNull } from 'drizzle-orm';
@@ -582,14 +583,28 @@ export class StudentService {
         .innerJoin(zuvyModuleAssessment, eq(zuvyOutsourseAssessments.assessmentId, zuvyModuleAssessment.id))
         .innerJoin(zuvyBootcamps, eq(zuvyOutsourseAssessments.bootcampId, zuvyBootcamps.id))
         .innerJoin(zuvyCourseModules, eq(zuvyOutsourseAssessments.moduleId, zuvyCourseModules.id))
+        .leftJoin(zuvyAssessmentSubmission, and(
+            eq(zuvyAssessmentSubmission.assessmentOutsourseId, zuvyOutsourseAssessments.id),
+            eq(zuvyAssessmentSubmission.userId, student_id)
+          )
+        )
         .where(
           and(
-            inArray(zuvyOutsourseAssessments.bootcampId, bootcampAndbatchIds.map(b => b.bootcampId)),
+            inArray(
+              zuvyOutsourseAssessments.bootcampId,
+              bootcampAndbatchIds.map(b => b.bootcampId)
+            ),
             sql`
-                ${zuvyOutsourseAssessments.startDatetime}::timestamp >= ${now.toISOString()}
-                AND ${zuvyOutsourseAssessments.startDatetime}::timestamp <= ${sevenDaysLater.toISOString()}
-                AND ${zuvyOutsourseAssessments.currentState} IN (1, 2)
-                `
+              (
+                (${zuvyOutsourseAssessments.startDatetime}::timestamp >= ${now.toISOString()} AND ${zuvyOutsourseAssessments.startDatetime}::timestamp <= ${sevenDaysLater.toISOString()})
+                OR
+                (${zuvyOutsourseAssessments.startDatetime}::timestamp <= ${now.toISOString()} AND ${zuvyOutsourseAssessments.endDatetime} IS NULL)
+                OR
+                (${zuvyOutsourseAssessments.startDatetime}::timestamp <= ${now.toISOString()} AND ${zuvyOutsourseAssessments.endDatetime}::timestamp > ${now.toISOString()} AND ${zuvyOutsourseAssessments.endDatetime}::timestamp <= ${sevenDaysLater.toISOString()})
+              )
+              AND ${zuvyOutsourseAssessments.currentState} IN (1, 2)
+            `,
+            sql`${zuvyAssessmentSubmission.id} IS NULL`
           )
         )
         .orderBy(asc(zuvyOutsourseAssessments.startDatetime));
@@ -611,11 +626,22 @@ export class StudentService {
           zuvyCourseModules,
           eq(zuvyModuleChapter.moduleId, zuvyCourseModules.id)
         )
+        .leftJoin(
+          zuvyAssignmentSubmission,
+          and(
+            eq(zuvyAssignmentSubmission.userId, student_id),
+            eq(zuvyAssignmentSubmission.chapterId, zuvyModuleChapter.id)
+          )
+        )
         .where(
           and(
             eq(zuvyModuleChapter.topicId, 5), // topicId 5 = assignment
-            inArray(zuvyCourseModules.bootcampId, bootcampAndbatchIds.map(b => b.bootcampId)),
-            sql`${zuvyModuleChapter.completionDate}::timestamp >= ${now.toISOString()} AND ${zuvyModuleChapter.completionDate}::timestamp <= ${sevenDaysLater.toISOString()}`
+            inArray(
+              zuvyCourseModules.bootcampId,
+              bootcampAndbatchIds.map(b => b.bootcampId)
+            ),
+            sql`${zuvyModuleChapter.completionDate}::timestamp >= ${now.toISOString()} AND ${zuvyModuleChapter.completionDate}::timestamp <= ${sevenDaysLater.toISOString()}`,
+            sql`${zuvyAssignmentSubmission.id} IS NULL`
           )
         )
         .orderBy(asc(zuvyModuleChapter.completionDate));
