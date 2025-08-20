@@ -135,4 +135,11 @@ export class ZoomController {
       : meetingIdParam;
     return this.zoomService.computeAttendanceAndRecordings75(ids as any);
   }
+
+  @Get('meetings/:id/recording-link')
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({ summary: 'Get a playable Zoom recording link' })
+  async getMeetingRecordingLink(@Param('id') id: string) {
+    return this.zoomService.getMeetingRecordingLink(id);
+  }
 }

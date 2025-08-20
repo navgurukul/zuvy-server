@@ -37,6 +37,7 @@ import { helperVariable } from 'src/constants/helper';
 import * as crypto from 'crypto';
 import { ContentService } from '../content/content.service';
 import { ClassesService } from '../classes/classes.service';
+import { ZoomService } from 'src/services/zoom/zoom.service';
 import { courseEnrolments } from 'drizzle/tables';
 
 // Difficulty Points Mapping
@@ -45,7 +46,7 @@ let { ACCEPTED, SUBMIT } = helperVariable;
 @Injectable()
 export class TrackingService {
   logger: any;
-  constructor(private contentService: ContentService, private classesService: ClassesService) { }
+  constructor(private contentService: ContentService, private classesService: ClassesService , private readonly zoomService: ZoomService) { }
 
   /**
    * Recompute attendance percentage for all students in a batch and persist
@@ -980,12 +981,19 @@ export class TrackingService {
           status: true,
           isZoomMeet: true,
           batchId:true,
-          bootcampId:true // Fetch the new flag
+          bootcampId:true,
+          zoomMeetingId:true // Fetch the new flag
         }
       });
       
       // If a session exists, fetch its attendance conditionally
       if (session) {
+        if(session.s3link !== null && session.s3link !== '' && session.status === 'completed') {
+          const updatedRecordingLink = await this.zoomService.getMeetingRecordingLink(session.zoomMeetingId);
+          if(updatedRecordingLink.success) {
+            session.s3link = updatedRecordingLink.data.playUrl !== null ? updatedRecordingLink.data.playUrl : session.s3link;
+          }
+        }
         let attendanceStatus = 'absent';
         let durationSeconds = 0;
 
