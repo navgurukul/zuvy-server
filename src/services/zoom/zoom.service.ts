@@ -123,6 +123,23 @@ export interface ZoomAttendanceResponse {
   }>;
 }
 
+export interface ZoomRecordingFile {
+  id: string;
+  file_type: 'MP4' | 'M4A' | 'TIMELINE' | 'TRANSCRIPT' | 'CHAT';
+  play_url: string;
+  download_url: string;
+  recording_type: 'shared_screen_with_speaker_view' | 'shared_screen_with_gallery_view' | 'speaker_view' | 'gallery_view' | 'shared_screen' | 'audio_only' | 'chat_file' | 'timeline';
+}
+
+export interface ZoomRecordingResponse {
+  uuid: string;
+  id: number;
+  topic: string;
+  duration: number;
+  start_time: string;
+  recording_files: ZoomRecordingFile[];
+}
+
 @Injectable()
 export class ZoomService {
   private readonly logger = new Logger(ZoomService.name);
@@ -579,4 +596,55 @@ export class ZoomService {
       attendance: participant.duration >= attendanceThreshold ? 'present' : 'absent'
     }));
   }
+
+  async getMeetingRecordingLink(meetingId: string | number): Promise<{ success: boolean; data?: { playUrl: string, topic: string, duration: number }; error?: string }> {
+  try {
+    // We need the access token to authenticate the download URL
+    const headers = await this.getHeaders();
+    const accessToken = headers.Authorization.replace('Bearer ', ''); // Extract token
+
+    const url = `${this.baseUrl}/meetings/${encodeURIComponent(meetingId)}/recordings`;
+    const response: AxiosResponse<ZoomRecordingResponse> = await axios.get(url, { headers });
+    const recordingData = response.data;
+
+    if (!recordingData || !recordingData.recording_files || recordingData.recording_files.length === 0) {
+      this.logger.warn(`No recording files found for Zoom meeting ${meetingId}`);
+      return { success: false, error: 'No recording files exist for this meeting.' };
+    }
+
+    // Find the desired MP4 video file from the list.
+    const videoFile = 
+      recordingData.recording_files.find(file => file.file_type === 'MP4' && file.recording_type === 'shared_screen_with_speaker_view') ||
+      recordingData.recording_files.find(file => file.file_type === 'MP4');
+
+    if (!videoFile) {
+      this.logger.warn(`No MP4 video file found for Zoom meeting ${meetingId}`);
+      return { success: false, error: 'An MP4 video file could not be found for this recording.' };
+    }
+
+    // *** MODIFICATION HERE ***
+    // Construct the playable URL using the download_url and the access token.
+    const playableUrl = `${videoFile.download_url}?access_token=${accessToken}`;
+
+    this.logger.log(`Successfully fetched React Player URL for Zoom meeting: ${meetingId}`);
+    
+    return {
+      success: true,
+      data: {
+        playUrl: playableUrl, // Use the newly constructed URL
+        topic: recordingData.topic,
+        duration: recordingData.duration,
+      }
+    };
+
+  } catch (error: any) {
+    this.logger.error(`Error fetching recording for Zoom meeting ${meetingId}: ${error.response?.data?.message || error.message}`);
+    
+    if (error.response?.status === 404) {
+        return { success: false, error: `Meeting with ID ${meetingId} not found or has no recordings.` };
+    }
+    
+    return { success: false, error: error.response?.data?.message || 'Failed to fetch recording details.' };
+  }
+}
 }

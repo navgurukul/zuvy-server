@@ -8,8 +8,9 @@ import { AuthModule } from 'src/auth/auth.module';
 
 import { ContentModule } from '../content/content.module';
 import { ClassesModule } from '../classes/classes.module';
+import { ZoomModule } from 'src/services/zoom/zoom.module';
 @Module({
-    imports: [BatchesModule, AuthModule, ContentModule, ClassesModule],
+    imports: [BatchesModule, AuthModule, ContentModule, ClassesModule,ZoomModule],
     controllers: [TrackingController],
     providers: [TrackingService, JwtService],
     exports: [TrackingService]
