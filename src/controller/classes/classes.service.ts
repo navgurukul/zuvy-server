@@ -399,29 +399,29 @@ export class ClassesService {
       }
       // Create corresponding Google Calendar event for Zoom meeting
       let calendarEventId = null;
-      try {
-        const eventData = {
-          title: `${eventDetails.title} (Zoom Meeting)`,
-          description: `${eventDetails.description || 'Live class session'}\n\nJoin Zoom Meeting: ${zoomResponse.data.join_url}\nMeeting ID: ${zoomResponse.data.id}\nPassword: ${zoomResponse.data.password}`,
-          startTime: zoomStartDate.toISOString(),
-          endTime: zoomEndDate.toISOString(),
-          timeZone: eventDetails.timeZone,
-          attendees: meetingInvitees.map(m => m.email),
-          location: `Zoom Meeting - ${zoomResponse.data.join_url}`,
-        };
-        const calendarResult = await this.createGoogleCalendarEvent(eventData, creatorInfo);
+      // try {
+      //   const eventData = {
+      //     title: `${eventDetails.title} (Zoom Meeting)`,
+      //     description: `${eventDetails.description || 'Live class session'}\n\nJoin Zoom Meeting: ${zoomResponse.data.join_url}\nMeeting ID: ${zoomResponse.data.id}\nPassword: ${zoomResponse.data.password}`,
+      //     startTime: zoomStartDate.toISOString(),
+      //     endTime: zoomEndDate.toISOString(),
+      //     timeZone: eventDetails.timeZone,
+      //     attendees: meetingInvitees.map(m => m.email),
+      //     location: `Zoom Meeting - ${zoomResponse.data.join_url}`,
+      //   };
+      //   const calendarResult = await this.createGoogleCalendarEvent(eventData, creatorInfo);
 
-        if (calendarResult.success) {
-          calendarEventId = calendarResult.data.id;
-          this.logger.log(`Google Calendar event created: ${calendarEventId}`);
-        } else {
-          this.logger.warn(`Failed to create Google Calendar event: ${calendarResult.error}`);
+      //   if (calendarResult.success) {
+      //     calendarEventId = calendarResult.data.id;
+      //     this.logger.log(`Google Calendar event created: ${calendarEventId}`);
+      //   } else {
+      //     this.logger.warn(`Failed to create Google Calendar event: ${calendarResult.error}`);
 
-        }
-      } catch (calendarError) {
-        this.logger.warn(`Google Calendar integration failed: ${calendarError.message}`);
-        // Continue without failing the entire process
-      }
+      //   }
+      // } catch (calendarError) {
+      //   this.logger.warn(`Google Calendar integration failed: ${calendarError.message}`);
+      //   // Continue without failing the entire process
+      // }
 
       zoomStartDate.setHours(zoomStartDate.getHours() - 5);
       zoomStartDate.setMinutes(zoomStartDate.getMinutes() - 30);
