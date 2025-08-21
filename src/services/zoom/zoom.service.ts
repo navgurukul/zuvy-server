@@ -123,6 +123,24 @@ export interface ZoomAttendanceResponse {
   }>;
 }
 
+export interface ZoomParticipantReportResponse {
+  page_count?: number;
+  page_size?: number;
+  total_records?: number;
+  next_page_token?: string;
+  participants: ZoomParticipant[];
+}
+
+interface ZoomParticipant {
+  id: string;
+  name: string;
+  user_email?: string;
+  join_time: string;
+  leave_time: string;
+  duration: number; // Duration in seconds
+  // Add other fields you might need
+}
+
 export interface ZoomRecordingFile {
   id: string;
   file_type: 'MP4' | 'M4A' | 'TIMELINE' | 'TRANSCRIPT' | 'CHAT';
@@ -403,24 +421,42 @@ export class ZoomService {
   /**
    * Get meeting participants/attendance
    */
-  async getMeetingParticipants(meetingUuid: string): Promise<ZoomAttendanceResponse> {
-    try {
-      // URL encode the UUID as it might contain special characters
-      const encodedUuid = encodeURIComponent(meetingUuid);
-      const url = `${this.baseUrl}/report/meetings/${encodedUuid}/participants`;
+  async getMeetingParticipants(meetingUuid: string): Promise<ZoomParticipantReportResponse> {
+  try {
+    const encodedUuid = encodeURIComponent(meetingUuid);
+    let allParticipants: ZoomParticipant[] = [];
+    let nextPageToken = ''; // Start with an empty token
+
+    // Use a do...while loop to fetch all pages of participants
+    do {
+      // Append the next_page_token and set a max page_size to reduce API calls
+      const url = `${this.baseUrl}/report/meetings/${encodedUuid}/participants?page_size=300&next_page_token=${encodeURIComponent(nextPageToken)}`;
       
-      const response: AxiosResponse<ZoomAttendanceResponse> = await axios.get(
+      const response: AxiosResponse<ZoomParticipantReportResponse> = await axios.get(
         url,
         { headers: await this.getHeaders() }
       );
 
-      return response.data;
-    } catch (error) {
-      this.logger.error(`Error fetching Zoom meeting participants: ${error.response?.data || error.message}`);
-      throw new Error(`Failed to fetch Zoom meeting participants: ${error.response?.data?.message || error.message}`);
-    }
-  }
+      // Add the participants from the current page to our master list
+      if (response.data && response.data.participants) {
+        allParticipants = allParticipants.concat(response.data.participants);
+      }
 
+      // Get the token for the next page. If it's empty or null, the loop will end.
+      nextPageToken = response.data.next_page_token;
+
+    } while (nextPageToken);
+
+    // Return the complete list of participants from all pages
+    console.log("Fetched participants:", allParticipants.length);
+    return { participants: allParticipants };
+
+  } catch (error) {
+    this.logger.error(`Error fetching Zoom meeting participants for UUID ${meetingUuid}: ${error.response?.data?.message || error.message}`);
+    // Return an empty list on error to prevent the main aggregation loop from crashing
+    return { participants: [] }; 
+  }
+  }
   /**
    * Get meeting recordings
    */
@@ -470,16 +506,18 @@ export class ZoomService {
     }
     const hostEmail = hostInfo[0].email;
     try {
-      const participantsResp = await this.getMeetingParticipants(singleMeetingId);
-      console.log(`Participants for meeting ${singleMeetingId}:`, participantsResp);
-      const hostDuration = (participantsResp.participants || [])
+      // const computeAny = await this.getAllParticipantsForMeetingId(singleMeetingId);
+      // console.log(`computeAttendanceAndRecordings75 response:`, computeAny);
+      const participantsResp = await this.getAllParticipantsForMeetingId(singleMeetingId);
+     // console.log(`Participants for meeting ${singleMeetingId}:`, participantsResp);
+      const hostDuration = (participantsResp || [])
         .filter(p => p.user_email === hostEmail)
         .reduce((a, b) => a + (b.duration || 0), 0);
       const thresholdRatio = 0.75;
       const threshold = hostDuration * thresholdRatio;
       // Build a map of user -> total duration
       const durationMap: Record<string, number> = {};
-      for (const p of participantsResp.participants || []) {
+      for (const p of participantsResp || []) {
         if (!p.user_email) continue;
         durationMap[p.user_email] = (durationMap[p.user_email] || 0) + (p.duration || 0);
       }
@@ -492,6 +530,7 @@ export class ZoomService {
           attendance: dur >= threshold ? AttendanceStatus.PRESENT : AttendanceStatus.ABSENT
         };
       }
+     // console.log(`Attendance map for meeting ${singleMeetingId}:`, attendanceMap);
       // Fetch invitedStudents snapshot for the session (if any) to mark absent ones
       try {
         const sessionRows = await db
@@ -524,6 +563,61 @@ export class ZoomService {
       return { success: false, error: e.message };
     }
   }
+
+  // Assume you have your existing 'getMeetingParticipants(uuid)' function ready.
+
+async getAllParticipantsForMeetingId(meetingId: string | number): Promise<any[]> {
+  try {
+    // Step 1: Get all past session UUIDs
+    const instancesUrl = `${this.baseUrl}/past_meetings/${encodeURIComponent(meetingId)}/instances`;
+    const instancesResponse = await axios.get(instancesUrl, { headers: await this.getHeaders() });
+    const pastSessions = instancesResponse.data.meetings;
+
+    if (!pastSessions || pastSessions.length === 0) return [];
+
+    // Step 2: Fetch all participant lists from all sessions first
+    const allSessionReports = [];
+    for (const session of pastSessions) {
+      const report = await this.getMeetingParticipants(session.uuid); // Use your fixed pagination function
+      if (report && report.participants && report.participants.length > 0) {
+        allSessionReports.push(report.participants);
+      }
+    }
+
+    if (allSessionReports.length === 0) return [];
+
+    // Step 3: Identify the main summary report (the one with the most participants)
+    allSessionReports.sort((a, b) => b.length - a.length);
+    const mainReport = allSessionReports[0];
+    const otherReports = allSessionReports.slice(1);
+
+    // Step 4: Use the main report as the primary source of truth
+    const finalParticipantsMap = new Map();
+    for (const participant of mainReport) {
+      const key = participant.user_email || participant.name;
+      if (key) {
+        finalParticipantsMap.set(key, participant);
+      }
+    }
+
+    // Step 5: Loop through the OTHER reports ONLY to find participants missed by the main report
+    for (const report of otherReports) {
+      for (const participant of report) {
+        const key = participant.user_email || participant.name;
+        if (key && !finalParticipantsMap.has(key)) {
+          finalParticipantsMap.set(key, participant);
+        }
+      }
+    }
+   // console.log("Final participants map size:", Array.from(finalParticipantsMap.values()));
+
+    return Array.from(finalParticipantsMap.values());
+
+  } catch (error) {
+    this.logger.error(`Failed to get all participants for meeting ID ${meetingId}: ${error.message}`);
+    throw error;
+  }
+}
 
   /**
    * Create recurring meetings based on days of week and total classes

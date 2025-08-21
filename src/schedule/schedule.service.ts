@@ -29,7 +29,7 @@ export class ScheduleService {
 
   constructor(private readonly classesService: ClassesService, private readonly zoomService: ZoomService, private readonly trackingService: TrackingService) {}
 
-  @Cron('5 0 0 * * *')
+  @Cron('0 */6 * * *')
   async backfillInvitedStudentsAttendanceMidnight() {
     this.logger.log('Midnight cron: Backfilling attendance from invited_students');
     try {
@@ -46,6 +46,7 @@ export class ScheduleService {
 
       // Filter out those already having attendance
       const meetingIds = completedZoomSessions.map(s => s.meetingId).filter(Boolean);
+      console.log(`Found ${completedZoomSessions.length} completed Zoom sessions with meetingIds:`, meetingIds);
       if (!meetingIds.length) {
         this.logger.log('No meetingIds present on completed sessions');
         return;
@@ -54,7 +55,7 @@ export class ScheduleService {
         .select({ meetingId: zuvyStudentAttendance.meetingId })
         .from(zuvyStudentAttendance)
         .where(inArray(zuvyStudentAttendance.meetingId, meetingIds));
-
+      console.log(`Existing attendance for ${existingAttendance.length} meetings:`, existingAttendance);
       const existingSet = new Set(existingAttendance.map(e => e.meetingId));
       const sessionsNeedingBackfill = completedZoomSessions.filter(s => !existingSet.has(s.meetingId));
 
@@ -75,6 +76,7 @@ export class ScheduleService {
       this.logger.log(`Backfilling attendance for ${zoomIds.length} Zoom meetings`);
       const compute = await this.zoomService.computeAttendanceAndRecordings75(zoomIds as any);
       const computeAny: any = compute; // normalize to any for flexible shape handling
+      console.log(`computeAttendanceAndRecordings75 response:`, computeAny);
       if (!computeAny.success) {
         this.logger.error(`computeAttendanceAndRecordings75 failed (batch): ${computeAny.error}`);
         return;
@@ -89,6 +91,7 @@ export class ScheduleService {
       } else if (computeAny.data) {
         resultsArray = [computeAny.data];
       }
+      console.log(`Results array length: ${resultsArray.length} , {resultsArray[0]}`, resultsArray[0]);
       let processedMeetings = 0;
       let aggregatedInserted = 0;
       const perStudentRecords: any[] = [];
@@ -104,6 +107,7 @@ export class ScheduleService {
             .from(zuvyStudentAttendanceRecords)
             .where(inArray(zuvyStudentAttendanceRecords.sessionId, sessionIdList))
         : [];
+      console.log(`Existing records fetched for ${existingRecordsRaw.length} sessions`);  
       const existingRecordsMap = new Map<number, Set<any>>();
       for (const r of existingRecordsRaw) {
         const sid = Number((r as any).sessionId);
@@ -120,7 +124,7 @@ export class ScheduleService {
           // Insert aggregated attendance JSON (no need to re-check aggregated existence; filtered earlier)
           await db.insert(zuvyStudentAttendance).values({
             meetingId: meetingIdMatch.meetingId,
-            attendance: result.attendance,
+            attendance: result.data.attendance,
             batchId: meetingIdMatch.batchId,
             bootcampId: meetingIdMatch.bootcampId
           }).catch(() => null); // ignore unique-constraint races
