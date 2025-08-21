@@ -29,7 +29,7 @@ export class ScheduleService {
 
   constructor(private readonly classesService: ClassesService, private readonly zoomService: ZoomService, private readonly trackingService: TrackingService) {}
 
-  @Cron('5 0 0 * * *')
+  @Cron('0 */6 * * *')
   async backfillInvitedStudentsAttendanceMidnight() {
     this.logger.log('Midnight cron: Backfilling attendance from invited_students');
     try {
@@ -54,7 +54,6 @@ export class ScheduleService {
         .select({ meetingId: zuvyStudentAttendance.meetingId })
         .from(zuvyStudentAttendance)
         .where(inArray(zuvyStudentAttendance.meetingId, meetingIds));
-
       const existingSet = new Set(existingAttendance.map(e => e.meetingId));
       const sessionsNeedingBackfill = completedZoomSessions.filter(s => !existingSet.has(s.meetingId));
 
@@ -89,6 +88,7 @@ export class ScheduleService {
       } else if (computeAny.data) {
         resultsArray = [computeAny.data];
       }
+      console.log(`Results array length: ${resultsArray.length} , {resultsArray[0]}`, resultsArray[0]);
       let processedMeetings = 0;
       let aggregatedInserted = 0;
       const perStudentRecords: any[] = [];
@@ -113,24 +113,25 @@ export class ScheduleService {
       }
 
       for (const result of resultsArray) {
-        const meetingIdMatch = sessionsByZoomId.get(result.meetingId);
+        
+        const meetingIdMatch = sessionsByZoomId.get(result.data.meetingId);
         if (!meetingIdMatch) continue;
         processedMeetings++;
         try {
           // Insert aggregated attendance JSON (no need to re-check aggregated existence; filtered earlier)
           await db.insert(zuvyStudentAttendance).values({
             meetingId: meetingIdMatch.meetingId,
-            attendance: result.attendance,
+            attendance: result.data.attendance,
             batchId: meetingIdMatch.batchId,
             bootcampId: meetingIdMatch.bootcampId
           }).catch(() => null); // ignore unique-constraint races
           aggregatedInserted++;
 
           // Update session recording link if we got one and session s3link is null or 'not found'
-          if (result.recordings) {
+          if (result.data.recordings) {
             try {
               await db.update(zuvySessions)
-                .set({ s3link: result.recordings } as any)
+                .set({ s3link: result.data.recordings } as any)
                 .where(and(eq(zuvySessions.id, meetingIdMatch.id), or(isNull(zuvySessions.s3link), eq(zuvySessions.s3link, 'not found'))));
             } catch (recErr:any) {
               this.logger.warn(`Failed updating recording link for session ${meetingIdMatch.id}: ${recErr?.message ?? recErr}`);
@@ -140,7 +141,7 @@ export class ScheduleService {
           // Build per-student attendance records using invitedStudents snapshot as authoritative list
           const invited = Array.isArray(meetingIdMatch.invitedStudents) ? meetingIdMatch.invitedStudents : [];
           const invitedByEmail = new Map(invited.map((i: any) => [(i.email || '').toLowerCase(), i]));
-          const attendanceArray = Array.isArray(result.attendance) ? result.attendance : [];
+          const attendanceArray = Array.isArray(result.data.attendance) ? result.data.attendance : [];
           const sessionDate = meetingIdMatch.startTime ? new Date(meetingIdMatch.startTime) : new Date();
 
           const existingUserSet = existingRecordsMap.get(meetingIdMatch.id) ?? new Set<any>();
@@ -164,7 +165,7 @@ export class ScheduleService {
             });
           }
         } catch (innerErr:any) {
-          this.logger.warn(`Failed to process attendance for meeting ${result.meetingId}: ${innerErr?.message ?? innerErr}`);
+          this.logger.warn(`Failed to process attendance for meeting ${result.data.meetingId}: ${innerErr?.message ?? innerErr}`);
         }
       }
   // Batch insert per-student records once (chunk if large)

@@ -365,7 +365,7 @@ export class ClassesService {
           in_meeting: false,
           jbh_time: 0,
           // Do not require authenticated Zoom profile (some students might be guests)
-          meeting_authentication: false,
+          meeting_authentication: true,
           registrants_confirmation_email: true,
           registrants_email_notification: true,
           registration_type: 1,
