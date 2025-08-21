@@ -46,7 +46,6 @@ export class ScheduleService {
 
       // Filter out those already having attendance
       const meetingIds = completedZoomSessions.map(s => s.meetingId).filter(Boolean);
-      console.log(`Found ${completedZoomSessions.length} completed Zoom sessions with meetingIds:`, meetingIds);
       if (!meetingIds.length) {
         this.logger.log('No meetingIds present on completed sessions');
         return;
@@ -55,7 +54,6 @@ export class ScheduleService {
         .select({ meetingId: zuvyStudentAttendance.meetingId })
         .from(zuvyStudentAttendance)
         .where(inArray(zuvyStudentAttendance.meetingId, meetingIds));
-      console.log(`Existing attendance for ${existingAttendance.length} meetings:`, existingAttendance);
       const existingSet = new Set(existingAttendance.map(e => e.meetingId));
       const sessionsNeedingBackfill = completedZoomSessions.filter(s => !existingSet.has(s.meetingId));
 
@@ -76,7 +74,6 @@ export class ScheduleService {
       this.logger.log(`Backfilling attendance for ${zoomIds.length} Zoom meetings`);
       const compute = await this.zoomService.computeAttendanceAndRecordings75(zoomIds as any);
       const computeAny: any = compute; // normalize to any for flexible shape handling
-      console.log(`computeAttendanceAndRecordings75 response:`, computeAny);
       if (!computeAny.success) {
         this.logger.error(`computeAttendanceAndRecordings75 failed (batch): ${computeAny.error}`);
         return;
@@ -107,7 +104,6 @@ export class ScheduleService {
             .from(zuvyStudentAttendanceRecords)
             .where(inArray(zuvyStudentAttendanceRecords.sessionId, sessionIdList))
         : [];
-      console.log(`Existing records fetched for ${existingRecordsRaw.length} sessions`);  
       const existingRecordsMap = new Map<number, Set<any>>();
       for (const r of existingRecordsRaw) {
         const sid = Number((r as any).sessionId);
@@ -117,7 +113,8 @@ export class ScheduleService {
       }
 
       for (const result of resultsArray) {
-        const meetingIdMatch = sessionsByZoomId.get(result.meetingId);
+        
+        const meetingIdMatch = sessionsByZoomId.get(result.data.meetingId);
         if (!meetingIdMatch) continue;
         processedMeetings++;
         try {
@@ -131,10 +128,10 @@ export class ScheduleService {
           aggregatedInserted++;
 
           // Update session recording link if we got one and session s3link is null or 'not found'
-          if (result.recordings) {
+          if (result.data.recordings) {
             try {
               await db.update(zuvySessions)
-                .set({ s3link: result.recordings } as any)
+                .set({ s3link: result.data.recordings } as any)
                 .where(and(eq(zuvySessions.id, meetingIdMatch.id), or(isNull(zuvySessions.s3link), eq(zuvySessions.s3link, 'not found'))));
             } catch (recErr:any) {
               this.logger.warn(`Failed updating recording link for session ${meetingIdMatch.id}: ${recErr?.message ?? recErr}`);
@@ -144,7 +141,7 @@ export class ScheduleService {
           // Build per-student attendance records using invitedStudents snapshot as authoritative list
           const invited = Array.isArray(meetingIdMatch.invitedStudents) ? meetingIdMatch.invitedStudents : [];
           const invitedByEmail = new Map(invited.map((i: any) => [(i.email || '').toLowerCase(), i]));
-          const attendanceArray = Array.isArray(result.attendance) ? result.attendance : [];
+          const attendanceArray = Array.isArray(result.data.attendance) ? result.data.attendance : [];
           const sessionDate = meetingIdMatch.startTime ? new Date(meetingIdMatch.startTime) : new Date();
 
           const existingUserSet = existingRecordsMap.get(meetingIdMatch.id) ?? new Set<any>();
@@ -168,7 +165,7 @@ export class ScheduleService {
             });
           }
         } catch (innerErr:any) {
-          this.logger.warn(`Failed to process attendance for meeting ${result.meetingId}: ${innerErr?.message ?? innerErr}`);
+          this.logger.warn(`Failed to process attendance for meeting ${result.data.meetingId}: ${innerErr?.message ?? innerErr}`);
         }
       }
   // Batch insert per-student records once (chunk if large)

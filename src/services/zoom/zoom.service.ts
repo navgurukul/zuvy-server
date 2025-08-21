@@ -448,7 +448,6 @@ export class ZoomService {
     } while (nextPageToken);
 
     // Return the complete list of participants from all pages
-    console.log("Fetched participants:", allParticipants.length);
     return { participants: allParticipants };
 
   } catch (error) {
@@ -556,7 +555,6 @@ export class ZoomService {
       }
       const attendance = Object.values(attendanceMap);
       const recordings = await this.getMeetingRecordings(singleMeetingId).catch(() => null);
-      console.log(recordings);
       return { success: true, data: { meetingId: singleMeetingId, thresholdRatio, hostDuration, threshold, attendance, recordings } };
     } catch (e:any) {
       this.logger.error(`computeAttendanceAndRecordings75 failed: ${e.message}`);
@@ -575,10 +573,10 @@ async getAllParticipantsForMeetingId(meetingId: string | number): Promise<any[]>
 
     if (!pastSessions || pastSessions.length === 0) return [];
 
-    // Step 2: Fetch all participant lists from all sessions first
+    // Step 2: Fetch all participant lists from all sessions
     const allSessionReports = [];
     for (const session of pastSessions) {
-      const report = await this.getMeetingParticipants(session.uuid); // Use your fixed pagination function
+      const report = await this.getMeetingParticipants(session.uuid);
       if (report && report.participants && report.participants.length > 0) {
         allSessionReports.push(report.participants);
       }
@@ -586,10 +584,31 @@ async getAllParticipantsForMeetingId(meetingId: string | number): Promise<any[]>
 
     if (allSessionReports.length === 0) return [];
 
-    // Step 3: Identify the main summary report (the one with the most participants)
-    allSessionReports.sort((a, b) => b.length - a.length);
-    const mainReport = allSessionReports[0];
-    const otherReports = allSessionReports.slice(1);
+    // ========================================================================
+    // NEW STEP: Consolidate each report to handle users rejoining the SAME session
+    // ========================================================================
+    const consolidatedReports = allSessionReports.map(report => {
+      const consolidatedMap = new Map<string, ZoomParticipant>();
+      for (const participant of report) {
+        const key = participant.user_email || participant.name;
+        if (!key) continue;
+
+        if (consolidatedMap.has(key)) {
+          // If we've already seen this person in THIS report, just add their duration
+          const existingRecord = consolidatedMap.get(key)!;
+          existingRecord.duration += participant.duration;
+        } else {
+          // Otherwise, add them to the map for this report
+          consolidatedMap.set(key, { ...participant });
+        }
+      }
+      return Array.from(consolidatedMap.values());
+    });
+
+    // Step 3: Identify the main summary report from the CLEANED reports
+    consolidatedReports.sort((a, b) => b.length - a.length);
+    const mainReport = consolidatedReports[0];
+    const otherReports = consolidatedReports.slice(1);
 
     // Step 4: Use the main report as the primary source of truth
     const finalParticipantsMap = new Map();
@@ -600,7 +619,7 @@ async getAllParticipantsForMeetingId(meetingId: string | number): Promise<any[]>
       }
     }
 
-    // Step 5: Loop through the OTHER reports ONLY to find participants missed by the main report
+    // Step 5: Loop through OTHER reports ONLY to find participants missed by the main report
     for (const report of otherReports) {
       for (const participant of report) {
         const key = participant.user_email || participant.name;
@@ -609,7 +628,6 @@ async getAllParticipantsForMeetingId(meetingId: string | number): Promise<any[]>
         }
       }
     }
-   // console.log("Final participants map size:", Array.from(finalParticipantsMap.values()));
 
     return Array.from(finalParticipantsMap.values());
 
