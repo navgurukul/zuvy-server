@@ -383,6 +383,10 @@ export class ClassesService {
           watermark: false,
           calendar_type: 1, // Google Calendar
           auto_recording: 'cloud',
+          recording: {
+          // Do not require users to be logged in to view cloud recordings.
+          recording_authentication: false
+        }
         }
       };
       let zoomResponse = await this.zoomService.createMeetingForUser(hostEmail, zoomMeetingData as any);

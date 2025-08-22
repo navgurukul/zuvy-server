@@ -81,6 +81,7 @@ import {
 } from '@aws-sdk/client-s3';
 import { SseService } from '../../services/sse.service';
 import { ClassesService } from '../classes/classes.service';
+import { ZoomService } from 'src/services/zoom/zoom.service';
 let { S3_ACCESS_KEY_ID, S3_BUCKET_NAME, S3_REGION, S3_SECRET_KEY_ACCESS } = process.env
 import e from 'express';
 let { DIFFICULTY } = helperVariable;
@@ -94,7 +95,8 @@ export class ContentService {
   constructor(
     private config: ConfigService,
     private sseService: SseService,
-    private classesService: ClassesService
+    private classesService: ClassesService,
+    private zoomService: ZoomService
   ) {
     this.bucket = this.config.get('S3_BUCKET_NAME');
     this.region = 'ap-south-1';
@@ -839,9 +841,18 @@ export class ContentService {
               status: true,
               hasBeenMerged: true,
               batchId: true,
-              secondBatchId: true
+              secondBatchId: true,
+              zoomMeetingId: true
             }
           });
+          let session = sessionDetails[0]
+          if(session.s3link !== null && session.s3link !== '' && session.status === 'completed') {
+          const updatedRecordingLink = await this.zoomService.getMeetingRecordingLink(session.zoomMeetingId);
+          if(updatedRecordingLink.success) {
+            session.s3link = updatedRecordingLink.data.playUrl !== null ? updatedRecordingLink.data.playUrl : session.s3link;
+            sessionDetails[0] = session;
+          }
+        }
           
           // Fetch attendance data and format response for each session
           const sessionDetailsWithAttendance = await Promise.all(
