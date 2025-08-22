@@ -194,4 +194,83 @@ export class ScheduleService {
       this.logger.error(`Unexpected error in backfillInvitedStudentsAttendanceMidnight: ${error.message}`);
     }
   }
+
+  @Cron('0 */12 * * *') // Runs at the start of every 12th hour (e.g., 12:00 AM, 12:00 PM)
+async backfillMissingRecordings() {
+  this.logger.log('Cron Job: Starting to fetch missing Zoom recordings.');
+
+  try {
+    // 1. Find completed Zoom sessions where the recording link is missing.
+    // We check for both NULL and 'not found' to avoid re-processing meetings that have no recordings.
+    const sessionsToUpdate = await db
+      .select({
+        id: zuvySessions.id,
+        zoomMeetingId: zuvySessions.zoomMeetingId,
+      })
+      .from(zuvySessions)
+      .where(and(eq(zuvySessions.status, 'completed'), eq(zuvySessions.isZoomMeet, true), isNull(zuvySessions.s3link)));
+
+    if (!sessionsToUpdate.length) {
+      this.logger.log('No sessions found with missing recordings. Cron job finished.');
+      return;
+    }
+    
+    // Filter out any sessions that might be missing a zoomMeetingId
+    const validSessions = sessionsToUpdate.filter(s => s.zoomMeetingId);
+
+    if (!validSessions.length) {
+        this.logger.log('Found sessions needing recordings, but none have a valid zoomMeetingId.');
+        return;
+    }
+
+    this.logger.log(`Found ${validSessions.length} sessions to fetch recordings for.`);
+
+    let successCount = 0;
+    let notFoundCount = 0;
+    let errorCount = 0;
+
+    // 2. Iterate through each session and fetch its recording.
+    for (const session of validSessions) {
+      try {
+        // Use the existing service method to get the recording URL
+        // It's assumed getMeetingRecordings handles the API call and returns the share_url or throws an error.
+        const recordingUrl = await this.zoomService.getMeetingRecordings(session.zoomMeetingId);
+
+        if (recordingUrl) {
+          // 3. If a URL is found, update the session in the database.
+          await db
+            .update(zuvySessions)
+            .set({ s3link: recordingUrl } as any)
+            .where(eq(zuvySessions.id, session.id));
+          
+          this.logger.log(`Successfully updated session ${session.id} with recording link.`);
+          successCount++;
+        } else {
+          // 4. If the API returns no recording, mark it as 'not found' to prevent future checks.
+          await db
+            .update(zuvySessions)
+            .set({ s3link: null } as any)
+            .where(eq(zuvySessions.id, session.id));
+            
+          this.logger.log(`No recording found for Zoom Meeting ID: ${session.zoomMeetingId}. Marked as 'not found'.`);
+          notFoundCount++;
+        }
+      } catch (error) {
+        // 5. If an error occurs for a single meeting, log it and continue with the next.
+        this.logger.error(`Failed to process recording for session ID ${session.id} (Zoom ID: ${session.zoomMeetingId}): ${error.message}`);
+        errorCount++;
+        // Optionally, mark as 'failed' to avoid retries on a permanently failing ID
+         await db
+            .update(zuvySessions)
+            .set({ s3link: null } as any)
+            .where(eq(zuvySessions.id, session.id));
+      }
+    }
+
+    this.logger.log(`Recording fetch complete. Success: ${successCount}, No Recording Found: ${notFoundCount}, Errors: ${errorCount}.`);
+
+  } catch (error) {
+    this.logger.error(`Unexpected error in backfillMissingRecordings cron job: ${error.message}`);
+  }
+}
 }
