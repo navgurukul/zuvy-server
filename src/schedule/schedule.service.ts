@@ -10,7 +10,7 @@ import {
   zuvyOutsourseAssessments
 } from '../../drizzle/schema';
 import { db } from '../db/index';
-import { eq, sql, isNull, and, gte, lt, inArray, or } from 'drizzle-orm';
+import { eq, sql, isNull, and, gte, lt, inArray, or, notExists } from 'drizzle-orm';
 import { google } from 'googleapis';
 import { ClassesService } from '../controller/classes/classes.service';
 import { ZoomService } from '../services/zoom/zoom.service';
@@ -37,7 +37,11 @@ export class ScheduleService {
       const completedZoomSessions = await db
         .select({ id: zuvySessions.id, meetingId: zuvySessions.meetingId, zoomMeetingId: zuvySessions.zoomMeetingId, batchId: zuvySessions.batchId, bootcampId: zuvySessions.bootcampId, invitedStudents: zuvySessions.invitedStudents, isZoomMeet: zuvySessions.isZoomMeet, startTime: zuvySessions.startTime })
         .from(zuvySessions)
-        .where(and(eq(zuvySessions.status, 'completed'), eq(zuvySessions.isZoomMeet, true), isNull(zuvySessions.s3link)));
+        .where(and(eq(zuvySessions.status, 'completed'), eq(zuvySessions.isZoomMeet, true), notExists(
+            db.select()
+              .from(zuvyStudentAttendance)
+              .where(eq(zuvyStudentAttendance.meetingId, zuvySessions.meetingId))
+          )));
 
       if (!completedZoomSessions.length) {
         this.logger.log('No completed Zoom sessions found for backfill');
@@ -56,7 +60,6 @@ export class ScheduleService {
         .where(inArray(zuvyStudentAttendance.meetingId, meetingIds));
       const existingSet = new Set(existingAttendance.map(e => e.meetingId));
       const sessionsNeedingBackfill = completedZoomSessions.filter(s => !existingSet.has(s.meetingId));
-
       if (!sessionsNeedingBackfill.length) {
         this.logger.log('All completed zoom sessions already have attendance');
         return;

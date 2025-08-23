@@ -214,8 +214,8 @@ export class StudentController {
     @Res() res: Response
   ) {
     try {
-      const parsedLimit = limit ? Number(limit) : 10;
-      const parsedOffset = offset ? Number(offset) : 0;
+      const parsedLimit = limit ? Number(limit) :  null;
+      const parsedOffset = offset ? Number(offset) : null;
       const [err, success] = await this.studentService.getCompletedClassesWithAttendance(
         req.user[0].id,
         bootcampId,
