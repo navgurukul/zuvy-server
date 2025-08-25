@@ -476,20 +476,56 @@ export class ZoomService {
 
   /**
    * Compute attendance & recordings at a 75% threshold of host duration.
-   * This method only queries Zoom APIs; persistence is handled by caller.
+   * Backwards-compatible wrapper: uses computeAttendance75 and fetches recordings.
    */
   async computeAttendanceAndRecordings75(meetingId: string | string[]) {
-    
-    // Support array input without breaking existing callers expecting single object
+    // Support array input
     if (Array.isArray(meetingId)) {
       const results = [] as any[];
       for (const id of meetingId) {
-        const single = await this.computeAttendanceAndRecordings75(id);
+        const single = await this.computeAttendance75(id);
+        if (!single.success) {
+          results.push({ meetingId: id, success: false, error: single.error });
+          continue;
+        }
+        let recordings = null;
+        try {
+          recordings = await this.getMeetingRecordings(id).catch(() => null);
+        } catch (_e) {
+          recordings = null;
+        }
+        results.push({ meetingId: id, ...single.data, recordings });
+      }
+      return { success: true, data: results };
+    }
+
+    // Single meeting: compute attendance then fetch recordings
+    const singleMeetingId = meetingId;
+    const attendanceRes = await this.computeAttendance75(singleMeetingId);
+    if (!attendanceRes.success) return attendanceRes;
+    try {
+      const recordings = await this.getMeetingRecordings(singleMeetingId).catch(() => null);
+      return { success: true, data: { meetingId: singleMeetingId, ...attendanceRes.data, recordings } };
+    } catch (e:any) {
+      this.logger.error(`computeAttendanceAndRecordings75 failed when fetching recordings: ${e.message}`);
+      return { success: true, data: { meetingId: singleMeetingId, ...attendanceRes.data, recordings: null } };
+    }
+  }
+
+  /**
+   * Compute attendance at 75% threshold only (no recordings fetched).
+   */
+  async computeAttendance75(meetingId: string | string[]) {
+    // Support batch
+    if (Array.isArray(meetingId)) {
+      const results: any[] = [];
+      for (const id of meetingId) {
+        const single = await this.computeAttendance75(id);
         results.push({ meetingId: id, ...single });
       }
       return { success: true, data: results };
     }
-    const singleMeetingId = meetingId; // alias for clarity
+    const singleMeetingId = meetingId;
     const session = await db.select().from(zuvySessions).where(eq(zuvySessions.zoomMeetingId, singleMeetingId)).limit(1);
     if (!session.length) {
       return { success: false, error: `No session found for meeting ID ${meetingId}` };
@@ -505,10 +541,7 @@ export class ZoomService {
     }
     const hostEmail = hostInfo[0].email;
     try {
-      // const computeAny = await this.getAllParticipantsForMeetingId(singleMeetingId);
-      // console.log(`computeAttendanceAndRecordings75 response:`, computeAny);
       const participantsResp = await this.getAllParticipantsForMeetingId(singleMeetingId);
-     // console.log(`Participants for meeting ${singleMeetingId}:`, participantsResp);
       const hostDuration = (participantsResp || [])
         .filter(p => p.user_email === hostEmail)
         .reduce((a, b) => a + (b.duration || 0), 0);
@@ -529,7 +562,6 @@ export class ZoomService {
           attendance: dur >= threshold ? AttendanceStatus.PRESENT : AttendanceStatus.ABSENT
         };
       }
-     // console.log(`Attendance map for meeting ${singleMeetingId}:`, attendanceMap);
       // Fetch invitedStudents snapshot for the session (if any) to mark absent ones
       try {
         const sessionRows = await db
@@ -554,10 +586,33 @@ export class ZoomService {
         this.logger.warn(`Failed to enrich attendance with invitedStudents for meeting ${singleMeetingId}: ${subErr.message}`);
       }
       const attendance = Object.values(attendanceMap);
-      const recordings = await this.getMeetingRecordings(singleMeetingId).catch(() => null);
-      return { success: true, data: { meetingId: singleMeetingId, thresholdRatio, hostDuration, threshold, attendance, recordings } };
+      return { success: true, data: { meetingId: singleMeetingId, thresholdRatio, hostDuration, threshold, attendance } };
     } catch (e:any) {
-      this.logger.error(`computeAttendanceAndRecordings75 failed: ${e.message}`);
+      this.logger.error(`computeAttendance75 failed: ${e.message}`);
+      return { success: false, error: e.message };
+    }
+  }
+
+  /**
+   * Fetch recordings for one or multiple meeting IDs (returns share_url or null)
+   */
+  async getMeetingRecordingsBatch(meetingId: string | string[]) {
+    if (Array.isArray(meetingId)) {
+      const results: any[] = [];
+      for (const id of meetingId) {
+        try {
+          const rec = await this.getMeetingRecordings(id).catch(() => null);
+          results.push({ meetingId: id, recordings: rec });
+        } catch (e:any) {
+          results.push({ meetingId: id, recordings: null, error: e.message });
+        }
+      }
+      return { success: true, data: results };
+    }
+    try {
+      const rec = await this.getMeetingRecordings(meetingId).catch(() => null);
+      return { success: true, data: { meetingId, recordings: rec } };
+    } catch (e:any) {
       return { success: false, error: e.message };
     }
   }

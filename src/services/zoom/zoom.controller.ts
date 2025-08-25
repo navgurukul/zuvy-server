@@ -133,7 +133,19 @@ export class ZoomController {
     const ids = meetingIdParam.includes(',')
       ? meetingIdParam.split(',').map(s => s.trim()).filter(Boolean)
       : meetingIdParam;
-    return this.zoomService.computeAttendanceAndRecordings75(ids as any);
+    // Attendance-only
+    return this.zoomService.computeAttendance75(ids as any);
+  }
+
+  @Get('meetings/:id/recordings')
+  @Roles('admin')
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({ summary: 'Fetch recording share links for one or multiple Zoom meetings (comma-separated IDs)' })
+  async recordings(@Param('id') meetingIdParam: string) {
+    const ids = meetingIdParam.includes(',')
+      ? meetingIdParam.split(',').map(s => s.trim()).filter(Boolean)
+      : meetingIdParam;
+    return this.zoomService.getMeetingRecordingsBatch(ids as any);
   }
 
   @Get('meetings/:id/recording-link')
