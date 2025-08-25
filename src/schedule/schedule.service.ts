@@ -91,7 +91,6 @@ export class ScheduleService {
       } else if (computeAny.data) {
         resultsArray = [computeAny.data];
       }
-      console.log(`Results array length: ${resultsArray.length} , {resultsArray[0]}`, resultsArray[0]);
       let processedMeetings = 0;
       let aggregatedInserted = 0;
       const perStudentRecords: any[] = [];

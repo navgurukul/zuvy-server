@@ -423,7 +423,7 @@ export class ZoomService {
    */
   async getMeetingParticipants(meetingUuid: string): Promise<ZoomParticipantReportResponse> {
   try {
-    const encodedUuid = encodeURIComponent(meetingUuid);
+    const encodedUuid = encodeURIComponent(encodeURIComponent(meetingUuid));
     let allParticipants: ZoomParticipant[] = [];
     let nextPageToken = ''; // Start with an empty token
 
@@ -436,7 +436,6 @@ export class ZoomService {
         url,
         { headers: await this.getHeaders() }
       );
-
       // Add the participants from the current page to our master list
       if (response.data && response.data.participants) {
         allParticipants = allParticipants.concat(response.data.participants);
