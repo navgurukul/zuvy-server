@@ -751,7 +751,7 @@ export class StudentService {
     }
   }
 
-  async getCompletedClassesWithAttendance(userId: number, bootcampId: number, limit = 10, offset = 0) 
+  async getCompletedClassesWithAttendance(userId: number, bootcampId: number, limit, offset) 
   {
   try {
     const userRecord = await db

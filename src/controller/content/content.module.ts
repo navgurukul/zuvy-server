@@ -8,6 +8,7 @@ import { ContentService } from './content.service';
 import { JwtService } from '@nestjs/jwt';
 import { SseService } from '../../services/sse.service';
 import { ClassesModule } from '../classes/classes.module';
+import { ZoomModule } from '../../services/zoom/zoom.module';
 
 @Module({
   imports: [
@@ -24,7 +25,7 @@ import { ClassesModule } from '../classes/classes.module';
         cb(null, isImage || isPdf);
       },
     }),
-    ClassesModule
+    ClassesModule,ZoomModule
   ],
   controllers: [ContentController],
   providers: [ContentService, JwtService, SseService],
