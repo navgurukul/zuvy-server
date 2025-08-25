@@ -27,80 +27,94 @@ const auth2Client = new OAuth2(
 export class ScheduleService {
   private readonly logger = new Logger(ScheduleService.name); 
 
-  constructor(private readonly classesService: ClassesService, private readonly zoomService: ZoomService, private readonly trackingService: TrackingService) {}
+  constructor(
+    private readonly classesService: ClassesService,
+    private readonly zoomService: ZoomService,
+    private readonly trackingService: TrackingService
+  ) {
+    this.logger.log('ScheduleService initialized');
+  }
 
-  @Cron('0 */6 * * *')
+  @Cron('*/5 * * * *') // Runs every 5 minutes
   async backfillInvitedStudentsAttendanceMidnight() {
-    this.logger.log('Midnight cron: Backfilling attendance from invited_students');
+    this.logger.log('Midnight cron: Backfilling attendance & recordings (orchestrator)');
     try {
-      // 1. Find completed Zoom sessions that have invitedStudents snapshot and no attendance stored
+      // Fetch completed Zoom sessions (regardless of s3link)
       const completedZoomSessions = await db
-        .select({ id: zuvySessions.id, meetingId: zuvySessions.meetingId, zoomMeetingId: zuvySessions.zoomMeetingId, batchId: zuvySessions.batchId, bootcampId: zuvySessions.bootcampId, invitedStudents: zuvySessions.invitedStudents, isZoomMeet: zuvySessions.isZoomMeet, startTime: zuvySessions.startTime })
+        .select({ id: zuvySessions.id, meetingId: zuvySessions.meetingId, zoomMeetingId: zuvySessions.zoomMeetingId, batchId: zuvySessions.batchId, bootcampId: zuvySessions.bootcampId, invitedStudents: zuvySessions.invitedStudents, isZoomMeet: zuvySessions.isZoomMeet, startTime: zuvySessions.startTime, s3link: zuvySessions.s3link })
         .from(zuvySessions)
         .where(and(eq(zuvySessions.status, 'completed'), eq(zuvySessions.isZoomMeet, true), notExists(
             db.select()
               .from(zuvyStudentAttendance)
               .where(eq(zuvyStudentAttendance.meetingId, zuvySessions.meetingId))
           )));
-
+      this.logger.log(`Found ${completedZoomSessions.length} completed Zoom sessions for backfill`);
       if (!completedZoomSessions.length) {
         this.logger.log('No completed Zoom sessions found for backfill');
         return;
       }
 
-      // Filter out those already having attendance
+      // Sessions missing aggregated attendance
       const meetingIds = completedZoomSessions.map(s => s.meetingId).filter(Boolean);
-      if (!meetingIds.length) {
-        this.logger.log('No meetingIds present on completed sessions');
-        return;
-      }
-      const existingAttendance = await db
-        .select({ meetingId: zuvyStudentAttendance.meetingId })
-        .from(zuvyStudentAttendance)
-        .where(inArray(zuvyStudentAttendance.meetingId, meetingIds));
+      const existingAttendance = meetingIds.length
+        ? await db.select({ meetingId: zuvyStudentAttendance.meetingId }).from(zuvyStudentAttendance).where(inArray(zuvyStudentAttendance.meetingId, meetingIds))
+        : [];
       const existingSet = new Set(existingAttendance.map(e => e.meetingId));
-      const sessionsNeedingBackfill = completedZoomSessions.filter(s => !existingSet.has(s.meetingId));
-      if (!sessionsNeedingBackfill.length) {
-        this.logger.log('All completed zoom sessions already have attendance');
-        return;
+      const sessionsMissingAttendance = completedZoomSessions.filter(s => !existingSet.has(s.meetingId));
+
+      // Sessions missing recordings (s3link null or 'not found')
+      let sessionS3linkNull = await db
+        .select({ id: zuvySessions.id, s3link: zuvySessions.s3link, meetingId: zuvySessions.meetingId })
+        .from(zuvySessions)
+        .where(and(eq(zuvySessions.status, 'completed'), eq(zuvySessions.isZoomMeet, true), isNull(zuvySessions.s3link)));
+      // list the zuvySessions collect the meetingId for the sessionS3linkNull i want output as a array
+      const sessionS3linkNullArray = sessionS3linkNull.map(s => s.meetingId);
+      // Step 1: backfill attendance for sessionsMissingAttendance
+      if (sessionsMissingAttendance.length) {
+        await this.backfillAttendanceForSessions(sessionsMissingAttendance);
+      } else {
+        this.logger.log('No sessions missing attendance');
       }
 
-      // Collect zoomMeetingIds (needed for Zoom API) ensuring they exist
-      const zoomIds = sessionsNeedingBackfill
-        .map(s => s.zoomMeetingId)
-        .filter(id => !!id);
+      // Step 2: fetch recordings for sessionsMissingRecordings
+      if (sessionS3linkNullArray.length) {
+        await this.fetchAndStoreRecordingsForSessions(sessionS3linkNullArray);
+      } else {
+        this.logger.log('No sessions missing recordings');
+      }
+    } catch (error:any) {
+      this.logger.error(`Unexpected error in backfillInvitedStudentsAttendanceMidnight: ${error.message}`);
+    }
+  }
+
+  // Helper: compute attendance and insert aggregated + per-student records for provided sessions
+  private async backfillAttendanceForSessions(sessionsMissingAttendance: any[]) {
+    try {
+      const zoomIds = sessionsMissingAttendance.map(s => s.zoomMeetingId).filter(Boolean);
       if (!zoomIds.length) {
-        this.logger.log('No zoomMeetingIds to backfill');
+        this.logger.log('No zoomMeetingIds to backfill for attendance');
         return;
       }
-
       this.logger.log(`Backfilling attendance for ${zoomIds.length} Zoom meetings`);
-      const compute = await this.zoomService.computeAttendanceAndRecordings75(zoomIds as any);
-      const computeAny: any = compute; // normalize to any for flexible shape handling
+      const compute = await this.zoomService.computeAttendance75(zoomIds as any);
+      const computeAny: any = compute;
       if (!computeAny.success) {
-        this.logger.error(`computeAttendanceAndRecordings75 failed (batch): ${computeAny.error}`);
+        this.logger.error(`computeAttendance75 failed (batch): ${computeAny.error}`);
         return;
       }
 
-      // Normalise compute response: it can be {success:true,data:{meetingId,..}} or {success:true,data:[...]}
+      // Normalize compute results
       let resultsArray: any[] = [];
-      if (Array.isArray(computeAny.data)) {
-        resultsArray = computeAny.data;
-      } else if (computeAny.data && Array.isArray((computeAny.data as any).data)) {
-        resultsArray = (computeAny.data as any).data;
-      } else if (computeAny.data) {
-        resultsArray = [computeAny.data];
-      }
-      let processedMeetings = 0;
-      let aggregatedInserted = 0;
-      const perStudentRecords: any[] = [];
+      if (Array.isArray(computeAny.data)) resultsArray = computeAny.data;
+      else if (computeAny.data && Array.isArray((computeAny.data as any).data)) resultsArray = (computeAny.data as any).data;
+      else if (computeAny.data) resultsArray = [computeAny.data];
 
-      // Pre-build a map of sessions by zoomMeetingId for fast lookup
+      // Pre-build map
       const sessionsByZoomId = new Map<string | number, any>();
-      for (const s of sessionsNeedingBackfill) sessionsByZoomId.set(s.zoomMeetingId as any, s);
+      for (const s of sessionsMissingAttendance) sessionsByZoomId.set(s.zoomMeetingId as any, s);
 
-      // Prefetch existing per-session student records to avoid per-result queries
-      const sessionIdList = sessionsNeedingBackfill.map(s => s.id);
+      // Prefetch existing per-session student records
+      const sessionIdList = sessionsMissingAttendance.map(s => s.id);
       const existingRecordsRaw = sessionIdList.length
         ? await db.select({ sessionId: zuvyStudentAttendanceRecords.sessionId, userId: zuvyStudentAttendanceRecords.userId })
             .from(zuvyStudentAttendanceRecords)
@@ -114,33 +128,20 @@ export class ScheduleService {
         existingRecordsMap.set(sid, set);
       }
 
+      const perStudentRecords: any[] = [];
+
       for (const result of resultsArray) {
-        
-        const meetingIdMatch = sessionsByZoomId.get(result.data.meetingId);
+        const meetingKey = result?.data?.meetingId ?? result.meetingId;
+        const meetingIdMatch = sessionsByZoomId.get(meetingKey);
         if (!meetingIdMatch) continue;
-        processedMeetings++;
         try {
-          // Insert aggregated attendance JSON (no need to re-check aggregated existence; filtered earlier)
           await db.insert(zuvyStudentAttendance).values({
             meetingId: meetingIdMatch.meetingId,
             attendance: result.data.attendance,
             batchId: meetingIdMatch.batchId,
             bootcampId: meetingIdMatch.bootcampId
-          }).catch(() => null); // ignore unique-constraint races
-          aggregatedInserted++;
+          }).catch(() => null);
 
-          // Update session recording link if we got one and session s3link is null or 'not found'
-          if (result.data.recordings) {
-            try {
-              await db.update(zuvySessions)
-                .set({ s3link: result.data.recordings } as any)
-                .where(and(eq(zuvySessions.id, meetingIdMatch.id), or(isNull(zuvySessions.s3link), eq(zuvySessions.s3link, 'not found'))));
-            } catch (recErr:any) {
-              this.logger.warn(`Failed updating recording link for session ${meetingIdMatch.id}: ${recErr?.message ?? recErr}`);
-            }
-          }
-
-          // Build per-student attendance records using invitedStudents snapshot as authoritative list
           const invited = Array.isArray(meetingIdMatch.invitedStudents) ? meetingIdMatch.invitedStudents : [];
           const invitedByEmail = new Map(invited.map((i: any) => [(i.email || '').toLowerCase(), i]));
           const attendanceArray = Array.isArray(result.data.attendance) ? result.data.attendance : [];
@@ -152,9 +153,9 @@ export class ScheduleService {
           for (const att of attendanceArray) {
             const email = (att.email || '').toLowerCase();
             const invitedInfo: any = invitedByEmail.get(email);
-            if (!invitedInfo || !invitedInfo.userId) continue; // Only record for invited snapshot users
+            if (!invitedInfo || !invitedInfo.userId) continue;
             const uid = invitedInfo.userId;
-            if (existingUserSet.has(uid) || addedUserSet.has(uid)) continue; // Skip duplicates
+            if (existingUserSet.has(uid) || addedUserSet.has(uid)) continue;
             addedUserSet.add(uid);
             perStudentRecords.push({
               userId: uid,
@@ -167,10 +168,11 @@ export class ScheduleService {
             });
           }
         } catch (innerErr:any) {
-          this.logger.warn(`Failed to process attendance for meeting ${result.data.meetingId}: ${innerErr?.message ?? innerErr}`);
+          this.logger.warn(`Failed to process attendance for meeting ${meetingKey}: ${innerErr?.message ?? innerErr}`);
         }
       }
-  // Batch insert per-student records once (chunk if large)
+
+      // Bulk insert per-student records
       if (perStudentRecords.length) {
         const CHUNK_SIZE = 1000;
         for (let i = 0; i < perStudentRecords.length; i += CHUNK_SIZE) {
@@ -181,8 +183,7 @@ export class ScheduleService {
             this.logger.error(`Bulk insert failure for records ${i}-${i+slice.length-1}: ${bulkErr.message}`);
           }
         }
-        this.logger.log(`Inserted ${perStudentRecords.length} per-student attendance records in ${Math.ceil(perStudentRecords.length/1000)} batch(es).`);
-        // Recompute attendance percentages for affected batches (unique batchIds from inserted records)
+        this.logger.log(`Inserted ${perStudentRecords.length} per-student attendance records.`);
         try {
           const affectedBatchIds = Array.from(new Set(perStudentRecords.map(r => r.batchId).filter(Boolean)));
           for (const bid of affectedBatchIds) {
@@ -192,87 +193,119 @@ export class ScheduleService {
           this.logger.warn(`Failed to recompute attendance percentages after backfill: ${recErr.message}`);
         }
       }
-    } catch (error) {
-      this.logger.error(`Unexpected error in backfillInvitedStudentsAttendanceMidnight: ${error.message}`);
+    } catch (err:any) {
+      this.logger.error(`Error in backfillAttendanceForSessions: ${err.message}`);
+    }
+  }
+
+  // Helper: fetch recordings and update session s3link for provided sessions
+  private async fetchAndStoreRecordingsForSessions(sessionsMissingRecordings: any[]) {
+    try {
+      const zoomIdsForRecordings = sessionsMissingRecordings.map(s => s.zoomMeetingId).filter(Boolean);
+      if (!zoomIdsForRecordings.length) {
+        this.logger.log('No zoomMeetingIds to fetch recordings for');
+        return;
+      }
+      this.logger.log(`Fetching recordings for ${zoomIdsForRecordings.length} meetings`);
+      const recResp: any = await this.zoomService.getMeetingRecordingsBatch(zoomIdsForRecordings as any);
+      if (recResp && recResp.success && Array.isArray(recResp.data)) {
+        for (const item of recResp.data) {
+          const meetingZoomId = item.meetingId;
+          const recordings = item.recordings || null;
+          const match = sessionsMissingRecordings.find(s => s.zoomMeetingId === meetingZoomId);
+          if (!match) continue;
+          if (recordings) {
+            try {
+              await db.update(zuvySessions)
+                .set({ s3link: recordings } as any)
+                .where(and(eq(zuvySessions.id, match.id), or(isNull(zuvySessions.s3link), eq(zuvySessions.s3link, 'not found'))));
+            } catch (uErr:any) {
+              this.logger.warn(`Failed updating recording link for session ${match.id}: ${uErr?.message ?? uErr}`);
+            }
+          }
+        }
+      }
+    } catch (err:any) {
+      this.logger.error(`Error in fetchAndStoreRecordingsForSessions: ${err.message}`);
     }
   }
 
   @Cron('0 */12 * * *') // Runs at the start of every 12th hour (e.g., 12:00 AM, 12:00 PM)
-async backfillMissingRecordings() {
-  this.logger.log('Cron Job: Starting to fetch missing Zoom recordings.');
+  async backfillMissingRecordings() {
+    this.logger.log('Cron Job: Starting to fetch missing Zoom recordings.');
 
-  try {
-    // 1. Find completed Zoom sessions where the recording link is missing.
-    // We check for both NULL and 'not found' to avoid re-processing meetings that have no recordings.
-    const sessionsToUpdate = await db
-      .select({
-        id: zuvySessions.id,
-        zoomMeetingId: zuvySessions.zoomMeetingId,
-      })
-      .from(zuvySessions)
-      .where(and(eq(zuvySessions.status, 'completed'), eq(zuvySessions.isZoomMeet, true), isNull(zuvySessions.s3link)));
+    try {
+      // 1. Find completed Zoom sessions where the recording link is missing.
+      // We check for both NULL and 'not found' to avoid re-processing meetings that have no recordings.
+      const sessionsToUpdate = await db
+        .select({
+          id: zuvySessions.id,
+          zoomMeetingId: zuvySessions.zoomMeetingId,
+        })
+        .from(zuvySessions)
+        .where(and(eq(zuvySessions.status, 'completed'), eq(zuvySessions.isZoomMeet, true), isNull(zuvySessions.s3link)));
 
-    if (!sessionsToUpdate.length) {
-      this.logger.log('No sessions found with missing recordings. Cron job finished.');
-      return;
-    }
-    
-    // Filter out any sessions that might be missing a zoomMeetingId
-    const validSessions = sessionsToUpdate.filter(s => s.zoomMeetingId);
-
-    if (!validSessions.length) {
-        this.logger.log('Found sessions needing recordings, but none have a valid zoomMeetingId.');
+      if (!sessionsToUpdate.length) {
+        this.logger.log('No sessions found with missing recordings. Cron job finished.');
         return;
-    }
-
-    this.logger.log(`Found ${validSessions.length} sessions to fetch recordings for.`);
-
-    let successCount = 0;
-    let notFoundCount = 0;
-    let errorCount = 0;
-
-    // 2. Iterate through each session and fetch its recording.
-    for (const session of validSessions) {
-      try {
-        // Use the existing service method to get the recording URL
-        // It's assumed getMeetingRecordings handles the API call and returns the share_url or throws an error.
-        const recordingUrl = await this.zoomService.getMeetingRecordings(session.zoomMeetingId);
-
-        if (recordingUrl) {
-          // 3. If a URL is found, update the session in the database.
-          await db
-            .update(zuvySessions)
-            .set({ s3link: recordingUrl } as any)
-            .where(eq(zuvySessions.id, session.id));
-          
-          this.logger.log(`Successfully updated session ${session.id} with recording link.`);
-          successCount++;
-        } else {
-          // 4. If the API returns no recording, mark it as 'not found' to prevent future checks.
-          await db
-            .update(zuvySessions)
-            .set({ s3link: null } as any)
-            .where(eq(zuvySessions.id, session.id));
-            
-          this.logger.log(`No recording found for Zoom Meeting ID: ${session.zoomMeetingId}. Marked as 'not found'.`);
-          notFoundCount++;
-        }
-      } catch (error) {
-        // 5. If an error occurs for a single meeting, log it and continue with the next.
-        this.logger.error(`Failed to process recording for session ID ${session.id} (Zoom ID: ${session.zoomMeetingId}): ${error.message}`);
-        errorCount++;
-        // Optionally, mark as 'failed' to avoid retries on a permanently failing ID
-         await db
-            .update(zuvySessions)
-            .set({ s3link: null } as any)
-            .where(eq(zuvySessions.id, session.id));
       }
+      
+      // Filter out any sessions that might be missing a zoomMeetingId
+      const validSessions = sessionsToUpdate.filter(s => s.zoomMeetingId);
+
+      if (!validSessions.length) {
+          this.logger.log('Found sessions needing recordings, but none have a valid zoomMeetingId.');
+          return;
+      }
+
+      this.logger.log(`Found ${validSessions.length} sessions to fetch recordings for.`);
+
+      let successCount = 0;
+      let notFoundCount = 0;
+      let errorCount = 0;
+
+      // 2. Iterate through each session and fetch its recording.
+      for (const session of validSessions) {
+        try {
+          // Use the existing service method to get the recording URL
+          // It's assumed getMeetingRecordings handles the API call and returns the share_url or throws an error.
+          const recordingUrl = await this.zoomService.getMeetingRecordings(session.zoomMeetingId);
+
+          if (recordingUrl) {
+            // 3. If a URL is found, update the session in the database.
+            await db
+              .update(zuvySessions)
+              .set({ s3link: recordingUrl } as any)
+              .where(eq(zuvySessions.id, session.id));
+            
+            this.logger.log(`Successfully updated session ${session.id} with recording link.`);
+            successCount++;
+          } else {
+            // 4. If the API returns no recording, mark it as 'not found' to prevent future checks.
+            await db
+              .update(zuvySessions)
+              .set({ s3link: null } as any)
+              .where(eq(zuvySessions.id, session.id));
+              
+            this.logger.log(`No recording found for Zoom Meeting ID: ${session.zoomMeetingId}. Marked as 'not found'.`);
+            notFoundCount++;
+          }
+        } catch (error) {
+          // 5. If an error occurs for a single meeting, log it and continue with the next.
+          this.logger.error(`Failed to process recording for session ID ${session.id} (Zoom ID: ${session.zoomMeetingId}): ${error.message}`);
+          errorCount++;
+          // Optionally, mark as 'failed' to avoid retries on a permanently failing ID
+          await db
+              .update(zuvySessions)
+              .set({ s3link: null } as any)
+              .where(eq(zuvySessions.id, session.id));
+        }
+      }
+
+      this.logger.log(`Recording fetch complete. Success: ${successCount}, No Recording Found: ${notFoundCount}, Errors: ${errorCount}.`);
+
+    } catch (error) {
+      this.logger.error(`Unexpected error in backfillMissingRecordings cron job: ${error.message}`);
     }
-
-    this.logger.log(`Recording fetch complete. Success: ${successCount}, No Recording Found: ${notFoundCount}, Errors: ${errorCount}.`);
-
-  } catch (error) {
-    this.logger.error(`Unexpected error in backfillMissingRecordings cron job: ${error.message}`);
   }
-}
 }
