@@ -27,9 +27,15 @@ const auth2Client = new OAuth2(
 export class ScheduleService {
   private readonly logger = new Logger(ScheduleService.name); 
 
-  constructor(private readonly classesService: ClassesService, private readonly zoomService: ZoomService, private readonly trackingService: TrackingService) {}
+  constructor(
+    private readonly classesService: ClassesService,
+    private readonly zoomService: ZoomService,
+    private readonly trackingService: TrackingService
+  ) {
+    this.logger.log('ScheduleService initialized');
+  }
 
-  @Cron('0 */6 * * *')
+  @Cron('*/5 * * * *') // Runs every 5 minutes
   async backfillInvitedStudentsAttendanceMidnight() {
     this.logger.log('Midnight cron: Backfilling attendance & recordings (orchestrator)');
     try {
@@ -42,7 +48,7 @@ export class ScheduleService {
               .from(zuvyStudentAttendance)
               .where(eq(zuvyStudentAttendance.meetingId, zuvySessions.meetingId))
           )));
-
+      this.logger.log(`Found ${completedZoomSessions.length} completed Zoom sessions for backfill`);
       if (!completedZoomSessions.length) {
         this.logger.log('No completed Zoom sessions found for backfill');
         return;
@@ -57,8 +63,12 @@ export class ScheduleService {
       const sessionsMissingAttendance = completedZoomSessions.filter(s => !existingSet.has(s.meetingId));
 
       // Sessions missing recordings (s3link null or 'not found')
-      const sessionsMissingRecordings = completedZoomSessions.filter(s => !s.s3link || s.s3link === 'not found');
-
+      let sessionS3linkNull = await db
+        .select({ id: zuvySessions.id, s3link: zuvySessions.s3link, meetingId: zuvySessions.meetingId })
+        .from(zuvySessions)
+        .where(and(eq(zuvySessions.status, 'completed'), eq(zuvySessions.isZoomMeet, true), isNull(zuvySessions.s3link)));
+      // list the zuvySessions collect the meetingId for the sessionS3linkNull i want output as a array
+      const sessionS3linkNullArray = sessionS3linkNull.map(s => s.meetingId);
       // Step 1: backfill attendance for sessionsMissingAttendance
       if (sessionsMissingAttendance.length) {
         await this.backfillAttendanceForSessions(sessionsMissingAttendance);
@@ -67,8 +77,8 @@ export class ScheduleService {
       }
 
       // Step 2: fetch recordings for sessionsMissingRecordings
-      if (sessionsMissingRecordings.length) {
-        await this.fetchAndStoreRecordingsForSessions(sessionsMissingRecordings);
+      if (sessionS3linkNullArray.length) {
+        await this.fetchAndStoreRecordingsForSessions(sessionS3linkNullArray);
       } else {
         this.logger.log('No sessions missing recordings');
       }
