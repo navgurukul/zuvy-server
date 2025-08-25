@@ -35,7 +35,7 @@ export class ScheduleService {
     this.logger.log('ScheduleService initialized');
   }
 
-  @Cron('*/5 * * * *') // Runs every 5 minutes
+  @Cron('0 */6 * * *')
   async backfillInvitedStudentsAttendanceMidnight() {
     this.logger.log('Midnight cron: Backfilling attendance & recordings (orchestrator)');
     try {
