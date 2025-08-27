@@ -15,17 +15,33 @@ import { google } from 'googleapis';
 import { ClassesService } from '../controller/classes/classes.service';
 import { ZoomService } from '../services/zoom/zoom.service';
 import { TrackingService } from '../controller/progress/tracking.service';
+import axios from 'axios';
+import * as fs from 'fs';
+import * as path from 'path';
 
 const { OAuth2 } = google.auth;
-const auth2Client = new OAuth2(
-  process.env.GOOGLE_CLIENT_ID,
-  process.env.GOOGLE_CLIENT_SECRET,
-  process.env.GOOGLE_REDIRECT
-);
+
+export interface ZoomRecordingFile {
+  id: string;
+  file_type: 'MP4' | 'M4A' | 'TIMELINE' | 'TRANSCRIPT' | 'CHAT';
+  play_url: string;
+  download_url: string;
+  recording_type: 'shared_screen_with_speaker_view' | 'shared_screen_with_gallery_view' | 'speaker_view' | 'gallery_view' | 'shared_screen' | 'audio_only' | 'chat_file' | 'timeline';
+  meeting_id: string;
+  recording_start: string;
+  file_size: number;
+  recording_end: string;
+}
+
+interface ZoomRecordingDetails {
+  uuid: string; // The critical Meeting UUID
+  recording_files: ZoomRecordingFile[];
+}
 
 @Injectable()
 export class ScheduleService {
   private readonly logger = new Logger(ScheduleService.name); 
+  private youtube: any;
 
   constructor(
     private readonly classesService: ClassesService,
@@ -33,6 +49,28 @@ export class ScheduleService {
     private readonly trackingService: TrackingService
   ) {
     this.logger.log('ScheduleService initialized');
+    try {
+      // Initialize the YouTube API client
+      const oAuth2Client = new OAuth2(
+        process.env.GOOGLE_CLIENT_ID,
+        process.env.GOOGLE_CLIENT_SECRET,
+        'https://developers.google.com/oauthplayground', // Must match your GCP setup
+      );
+
+      // Set the refresh token you obtained
+      oAuth2Client.setCredentials({
+        refresh_token: process.env.GOOGLE_YT_REFRESH_TOKEN,
+      });
+
+      this.youtube = google.youtube({
+        version: 'v3',
+        auth: oAuth2Client,
+      });
+
+      this.logger.log('YouTube client initialized');
+    } catch (e:any) {
+      this.logger.warn(`Failed to initialize YouTube client: ${e.message}`);
+    }
   }
 
   @Cron('0 */6 * * *')
@@ -198,32 +236,107 @@ export class ScheduleService {
     }
   }
 
+  // Helper: download video to temp
+  private async downloadVideoToTemp(downloadUrl: string, fileId: string): Promise<string> {
+    const tempDir = path.join(__dirname, '..', 'temp');
+    if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir, { recursive: true });
+    const filePath = path.join(tempDir, `${fileId}.mp4`);
+    const writer = fs.createWriteStream(filePath);
+
+    return new Promise(async (resolve, reject) => {
+      try {
+        const response = await axios({ method: 'get', url: downloadUrl, responseType: 'stream', maxRedirects: 5 });
+
+        if ((response.headers['content-type'] || '').includes('application/json')) {
+          let errData = '';
+          response.data.on('data', (c: any) => errData += c);
+          response.data.on('end', () => reject(new Error(`Zoom returned JSON error: ${errData}`)));
+          return;
+        }
+
+        response.data.pipe(writer);
+        writer.on('finish', () => resolve(filePath));
+        writer.on('error', (err) => reject(err));
+        response.data.on('error', (err: any) => { writer.end(); reject(err); });
+      } catch (err:any) {
+        reject(err);
+      }
+    });
+  }
+
+  // Helper: upload file to YouTube and return video id
+  private async uploadToYouTube(filePath: string, title: string): Promise<string> {
+    const fileSize = fs.statSync(filePath).size;
+    const res = await this.youtube.videos.insert(
+      {
+        part: ['snippet', 'status'],
+        requestBody: {
+          snippet: { title, description: 'Automated session recording upload', tags: ['session', 'recording'] },
+          status: { privacyStatus: 'unlisted' }
+        },
+        media: { body: fs.createReadStream(filePath) }
+      },
+      { onUploadProgress: (evt: any) => { const progress = (evt.bytesRead / fileSize) * 100; this.logger.log(`YouTube upload ${Math.round(progress)}%`); } }
+    );
+    return res.data.id;
+  }
+
+  // Handle single session: fetch Zoom recording playable/download URL, download, upload to YouTube and update DB
+  private async handleSingleRecording(sessionId: number, meetingId: string | number, title?: string) {
+    this.logger.log(`Processing session ${sessionId} (meetingId=${meetingId})`);
+    try {
+      const recResp = await this.zoomService.getMeetingRecordingLink(meetingId);
+      if (!recResp || !recResp.success || !recResp.data || !recResp.data.playUrl) {
+        this.logger.log(`No downloadable recording for meeting ${meetingId}`);
+        await db.update(zuvySessions).set({ s3link: null, youtubeVideoId: null } as any).where(eq(zuvySessions.id, sessionId));
+        return;
+      }
+
+      const playUrl = recResp.data.playUrl;
+      const fileId = `${meetingId}_${Date.now()}`;
+      const tempPath = await this.downloadVideoToTemp(playUrl, fileId);
+      try {
+        const videoTitle = title ?? `Session Recording - ${meetingId}`;
+        const ytId = await this.uploadToYouTube(tempPath, videoTitle);
+        const youTubeUrl = `https://www.youtube.com/watch?v=${ytId}`;
+        await db.update(zuvySessions).set({ s3link: youTubeUrl, youtubeVideoId: ytId } as any).where(eq(zuvySessions.id, sessionId));
+        this.logger.log(`Stored YouTube URL and ID for session ${sessionId}`);
+      } finally {
+        try { fs.unlinkSync(tempPath); } catch (e) { /* ignore */ }
+      }
+    } catch (e:any) {
+      this.logger.error(`Failed handling recording for session ${sessionId}: ${e.message}`);
+      // mark as null to avoid retries if permanent
+      try { await db.update(zuvySessions).set({ s3link: null, youtubeVideoId: null } as any).where(eq(zuvySessions.id, sessionId)); } catch (_) {}
+    }
+  }
+
   // Helper: fetch recordings and update session s3link for provided sessions
   private async fetchAndStoreRecordingsForSessions(sessionsMissingRecordings: any[]) {
     try {
-      const zoomIdsForRecordings = sessionsMissingRecordings.map(s => s.zoomMeetingId).filter(Boolean);
-      if (!zoomIdsForRecordings.length) {
-        this.logger.log('No zoomMeetingIds to fetch recordings for');
+      // Accept either array of meetingIds or array of session objects
+      const meetingIds = (sessionsMissingRecordings || [])
+        .map((s: any) => (s && typeof s === 'object') ? (s.zoomMeetingId ?? s.meetingId) : s)
+        .filter(Boolean);
+
+      if (!meetingIds.length) {
+        this.logger.log('No meetingIds to fetch recordings for');
         return;
       }
-      this.logger.log(`Fetching recordings for ${zoomIdsForRecordings.length} meetings`);
-      const recResp: any = await this.zoomService.getMeetingRecordingsBatch(zoomIdsForRecordings as any);
-      if (recResp && recResp.success && Array.isArray(recResp.data)) {
-        for (const item of recResp.data) {
-          const meetingZoomId = item.meetingId;
-          const recordings = item.recordings || null;
-          const match = sessionsMissingRecordings.find(s => s.zoomMeetingId === meetingZoomId);
-          if (!match) continue;
-          if (recordings) {
-            try {
-              await db.update(zuvySessions)
-                .set({ s3link: recordings } as any)
-                .where(and(eq(zuvySessions.id, match.id), or(isNull(zuvySessions.s3link), eq(zuvySessions.s3link, 'not found'))));
-            } catch (uErr:any) {
-              this.logger.warn(`Failed updating recording link for session ${match.id}: ${uErr?.message ?? uErr}`);
-            }
-          }
-        }
+
+      // Load sessions from DB that match the meetingIds and still need s3link
+      const sessionsToProcess = await db
+        .select({ id: zuvySessions.id, meetingId: zuvySessions.meetingId, zoomMeetingId: zuvySessions.zoomMeetingId, title: zuvySessions.title })
+        .from(zuvySessions)
+        .where(and(inArray(zuvySessions.meetingId, meetingIds), or(isNull(zuvySessions.s3link), eq(zuvySessions.s3link, 'not found'))));
+
+      if (!sessionsToProcess.length) {
+        this.logger.log('No sessions found matching provided meetingIds to process');
+        return;
+      }
+
+      for (const session of sessionsToProcess) {
+        await this.handleSingleRecording(Number(session.id), session.zoomMeetingId || session.meetingId, session.title);
       }
     } catch (err:any) {
       this.logger.error(`Error in fetchAndStoreRecordingsForSessions: ${err.message}`);
