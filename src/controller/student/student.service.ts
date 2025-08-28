@@ -1218,7 +1218,7 @@ Team Zuvy`;
     }
   }
 
-  async getCourseSyllabus(userId: number, bootcampId: number): Promise<any> {
+async getCourseSyllabus(userId: number, bootcampId: number): Promise<any> {
   try {
     // 1. Check if user is enrolled
     const enrollment = await db.query.zuvyBatchEnrollments.findFirst({
@@ -1271,11 +1271,11 @@ Team Zuvy`;
     });
     const isCourseLocked = bootcampLockData?.isModuleLocked || false;
 
-    // 3. Total enrolled students
-    const totalStudents = await db
-      .select({ count: count() })
-      .from(zuvyBatchEnrollments)
-      .where(sql`${zuvyBatchEnrollments.bootcampId} = ${bootcampId} AND ${zuvyBatchEnrollments.batchId} IS NOT NULL`);
+    // // 3. Total enrolled students
+    // const totalStudents = await db
+    //   .select({ count: count() })
+    //   .from(zuvyBatchEnrollments)
+    //   .where(sql`${zuvyBatchEnrollments.bootcampId} = ${bootcampId} AND ${zuvyBatchEnrollments.batchId} IS NOT NULL`);
 
     // 4. Fetch course modules and chapters
     const modules = await db.query.zuvyCourseModules.findMany({
@@ -1440,6 +1440,39 @@ Team Zuvy`;
       }
     }
 
+    // get totalStudents of a batch
+          // Get batch details with proper typing
+          const batchDetails = await db.query.zuvyBatchEnrollments.findFirst({
+            where: (batchEnroll, { sql }) =>
+              sql`${batchEnroll.userId} = ${BigInt(userId)} AND ${batchEnroll.bootcampId} = ${bootcampId}`,
+            with: {
+              batchInfo: {
+                columns: {
+                  id: true,
+                  name: true,
+                  capEnrollment: true,
+                  createdAt: true
+                },
+                with: {
+                  instructorDetails: {
+                    columns: {
+                      id: true,
+                      name: true,
+                      profilePicture: true
+                    }
+                  }
+                }
+              }
+            },
+          });
+    
+          // Get total enrolled students in the batch
+          const totalEnrolledStudents = batchDetails['batchInfo'].id ? await db
+            .select()
+            .from(zuvyBatchEnrollments)
+            .where(eq(zuvyBatchEnrollments.batchId, batchDetails['batchInfo'].id))
+            .then(results => results.length) : 0;
+
     // 10. Final syllabus response
     const syllabus = {
       bootcampId: Number((enrollment as any).bootcamp?.id || bootcampId),
@@ -1448,7 +1481,7 @@ Team Zuvy`;
       collaboratorName: (enrollment as any).bootcamp?.collaborator || '',
       courseDuration: (enrollment as any).bootcamp?.duration || '',
       coverImage: (enrollment as any).bootcamp?.coverImage || '',
-      totalStudentsInCourse: totalStudents[0]?.count || 0,
+      totalStudentsInBatch: totalEnrolledStudents || 0,
       studentBatchId: (enrollment as any).batchInfo?.id ? Number((enrollment as any).batchInfo.id) : null,
       studentBatchName: (enrollment as any).batchInfo?.name || 'Not Assigned',
       instructorName: (enrollment as any).batchInfo?.instructorDetails?.name || 'Not Assigned',
