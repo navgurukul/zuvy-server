@@ -846,7 +846,7 @@ export class ContentService {
             }
           });
           let session = sessionDetails[0]
-          if(session.s3link !== null && session.s3link !== '' && session.status === 'completed') {
+          if(session.s3link !== null && session.s3link !== '' && session.status === 'completed' && session.isZoomMeet === true && !session.s3link.includes('www.youtube.com')) {
           const updatedRecordingLink = await this.zoomService.getMeetingRecordingLink(session.zoomMeetingId);
           if(updatedRecordingLink.success) {
             session.s3link = updatedRecordingLink.data.playUrl !== null ? updatedRecordingLink.data.playUrl : session.s3link;

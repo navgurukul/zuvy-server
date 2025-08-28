@@ -147,7 +147,17 @@ export interface ZoomRecordingFile {
   play_url: string;
   download_url: string;
   recording_type: 'shared_screen_with_speaker_view' | 'shared_screen_with_gallery_view' | 'speaker_view' | 'gallery_view' | 'shared_screen' | 'audio_only' | 'chat_file' | 'timeline';
+  meeting_id: string;
+  recording_start: string;
+  file_size: number;
+  recording_end: string;
 }
+
+interface ZoomRecordingDetails {
+  uuid: string; // The critical Meeting UUID
+  recording_files: ZoomRecordingFile[];
+}
+
 
 export interface ZoomRecordingResponse {
   uuid: string;
@@ -780,7 +790,7 @@ async getAllParticipantsForMeetingId(meetingId: string | number): Promise<any[]>
 
     // Find the desired MP4 video file from the list.
     const videoFile = 
-      recordingData.recording_files.find(file => file.file_type === 'MP4' && file.recording_type === 'shared_screen_with_speaker_view') ||
+      recordingData.recording_files.find(file => file.file_type === 'MP4' && file.recording_type.includes('shared_screen_with_speaker_view')) ||
       recordingData.recording_files.find(file => file.file_type === 'MP4');
 
     if (!videoFile) {
@@ -813,4 +823,23 @@ async getAllParticipantsForMeetingId(meetingId: string | number): Promise<any[]>
     return { success: false, error: error.response?.data?.message || 'Failed to fetch recording details.' };
   }
 }
+
+  async getZoomRecordingFiles(meetingId: string | number): Promise<ZoomRecordingDetails> {
+
+    // This assumes you have a zoomService or a way to make authenticated requests to Zoom
+    const url = `${this.baseUrl}/meetings/${meetingId}/recordings`;
+    const response = await axios.get(url, { headers: await this.getHeaders() });
+    return response.data;
+  }
+
+  async deleteFromZoomCloud(meetingId: string | number, recordingId: string) {
+    // Note: Zoom API uses the meeting UUID for deletion, which might be different from the ID.
+    // For simplicity, this example assumes meetingId can be used, but you may need to fetch the UUID.
+    const encodedUuid = encodeURIComponent(encodeURIComponent(meetingId));
+    this.logger.log(`Deleting Zoom recording for meeting UUID: ${encodedUuid}, recording ID: ${recordingId}`);
+    const url = `${this.baseUrl}/meetings/${encodedUuid}/recordings`;
+    await axios.delete(url, { headers:await this.getHeaders() });
+    this.logger.log(`Deleted Zoom recording for meeting ${meetingId}`);
+    
+  }
 }
