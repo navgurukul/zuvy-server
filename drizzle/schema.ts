@@ -2262,6 +2262,7 @@ export const zuvySessions = main.table('zuvy_sessions', {
   isChildSession: boolean('is_child_session').default(false),
   // multi-batch invited students snapshot
   invitedStudents: jsonb('invited_students').$type<{userId:number; email:string}[]>().default([]).notNull(),
+  youtubeVideoId: text('youtube_video_id').notNull()
 });
 
 export const zuvySessionMerge = main.table('zuvy_session_merge', {

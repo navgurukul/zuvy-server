@@ -885,6 +885,8 @@ export class ClassesService {
         zoomMeetingId: session.zoomMeetingId,
         googleCalendarEventId: session.googleCalendarEventId, // Add Google Calendar event ID
         invitedStudents: session.invitedStudents || [],
+        youtubeVideoId: session.youtubeVideoId || null, // Ensure required field is present
+        recurringId: session.recurringId || null // Add other required fields if needed
       }));
 
       this.logger.log(`Saving ${sessionData.length} sessions to the database.`);

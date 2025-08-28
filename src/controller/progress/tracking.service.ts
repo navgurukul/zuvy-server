@@ -988,7 +988,7 @@ export class TrackingService {
       
       // If a session exists, fetch its attendance conditionally
       if (session) {
-        if(session.s3link !== null && session.s3link !== '' && session.status === 'completed') {
+        if(session.s3link !== null && session.s3link !== '' && session.status === 'completed' && session.isZoomMeet && !session.s3link.includes('www.youtube.com')) {
           const updatedRecordingLink = await this.zoomService.getMeetingRecordingLink(session.zoomMeetingId);
           if(updatedRecordingLink.success) {
             session.s3link = updatedRecordingLink.data.playUrl !== null ? updatedRecordingLink.data.playUrl : session.s3link;
