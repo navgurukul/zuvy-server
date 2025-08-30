@@ -1368,7 +1368,17 @@ export class ClassesService {
         const startTime = new Date(classObj.startTime);
         const endTime = new Date(classObj.endTime);
         let newStatus;
-        if (currentTime > endTime) newStatus = 'completed';
+        if (currentTime > endTime && classObj.status == 'ongoing') {
+          const live = await this.zoomService.isMeetingLiveViaDashboard(classObj.meetingId);
+          if (live) {
+            newStatus = 'ongoing';
+          }
+          else
+          {
+           newStatus = 'completed';
+          }
+        }
+
         else if (currentTime >= startTime && currentTime <= endTime) newStatus = 'ongoing';
         else newStatus = 'upcoming';
         if (newStatus !== classObj.status) {

@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import axios, { AxiosResponse } from 'axios';
+import axios, { AxiosError, AxiosResponse } from 'axios';
 import { db } from '../../db';
 import { zuvySessions, AttendanceStatus,zuvyBatches,users } from '../../../drizzle/schema';
 import { eq } from 'drizzle-orm';
@@ -428,6 +428,41 @@ export class ZoomService {
     }
   }
 
+  async isMeetingLiveViaDashboard(
+  meetingIdOrUuid: string
+): Promise<boolean> {
+  const encoded = encodeURIComponent(encodeURIComponent(meetingIdOrUuid));
+  const url = `${this.baseUrl}/metrics/meetings/${encoded}`;
+
+  try {
+    // type=live asks Zoom to return only if it's currently running
+    await axios.get(url, {
+      headers: await this.getHeaders(),
+      params: { type: "live" },
+    });
+    return true; // 200 OK -> live right now
+  } catch (e) {
+    const err = e as AxiosError<any>;
+  const status = err.response?.status;
+  const code = err.response?.data?.code;
+  const headers = err.response?.headers || {};
+  const rlType = String(headers["x-ratelimit-type"] || "").toLowerCase();
+  const retryAfter = Number(headers["retry-after"] || 0);
+
+  if (status === 404 || code === 3001) return false; // not live
+  if (status === 429) {
+      this.logger.warn(`Rate limited by Zoom (${rlType || "unknown"}); treating as not live.`);
+      return false;
+    }
+  if (status === 503) {
+      this.logger.warn("Zoom 503; treating as not live.");
+      return false;
+    }  
+  // If code === 200 with a message about Dashboard/plan, it's a plan/scope issue.
+  throw e;
+  }
+}
+
   /**
    * Get meeting participants/attendance
    */
@@ -529,12 +564,39 @@ export class ZoomService {
     if (Array.isArray(meetingId)) {
       const results: any[] = [];
       for (const id of meetingId) {
+        try {
+           const live = await this.isMeetingLiveViaDashboard(id);
+        if (live) {
+          results.push({
+            meetingId: id,
+            success: true,
+            data: { meetingId: id, live: true, skipped: true, message: "Meeting is currently live; attendance will be computed after it ends." }
+          });
+          continue; // go to next meeting
+        }
+      } catch (liveErr: any) {
+        // If the dashboard call itself errors (non-404/3001), surface it so you can see why
+        this.logger.warn(`Live check failed for ${id}: ${liveErr?.message || liveErr}`);
+        // fall through to try attendance anyway
+      }
         const single = await this.computeAttendance75(id);
         results.push({ meetingId: id, ...single });
       }
       return { success: true, data: results };
     }
     const singleMeetingId = meetingId;
+    try {
+    const live = await this.isMeetingLiveViaDashboard(singleMeetingId);
+    if (live) {
+      return {
+        success: true,
+        data: { meetingId: singleMeetingId, live: true, skipped: true, message: "Meeting is currently live; attendance will be computed after it ends." }
+      };
+    }
+  } catch (liveErr: any) {
+    // If the dashboard call itself errors (non-404/3001), log and continue to attempt attendance calc
+    this.logger.warn(`Live check failed for ${singleMeetingId}: ${liveErr?.message || liveErr}`);
+  }
     const session = await db.select().from(zuvySessions).where(eq(zuvySessions.zoomMeetingId, singleMeetingId)).limit(1);
     if (!session.length) {
       return { success: false, error: `No session found for meeting ID ${meetingId}` };
