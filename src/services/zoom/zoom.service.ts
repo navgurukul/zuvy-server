@@ -567,11 +567,6 @@ export class ZoomService {
         try {
            const live = await this.isMeetingLiveViaDashboard(id);
         if (live) {
-          results.push({
-            meetingId: id,
-            success: true,
-            data: { meetingId: id, live: true, skipped: true, message: "Meeting is currently live; attendance will be computed after it ends." }
-          });
           continue; // go to next meeting
         }
       } catch (liveErr: any) {
