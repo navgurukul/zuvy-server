@@ -1,5 +1,5 @@
 import { ApiProperty, ApiResponseProperty } from '@nestjs/swagger';
-import { IsString, IsNotEmpty, IsOptional, ValidateNested, IsNumber, IsEmail, IsBoolean, IsIn } from 'class-validator';
+import { IsString, IsNotEmpty, IsOptional, ValidateNested, IsNumber, IsEmail, IsBoolean, IsIn, Matches, IsUrl } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class CreateBootcampDto {
@@ -35,10 +35,19 @@ export class CreateBootcampDto {
 export class EditBootcampDto {
   @ApiProperty({
     type: String,
-    example: 'The bootcamp cover image',
+    example: 'https://example.com/bootcamp-cover.jpg',
     required: true,
   })
-  @IsNotEmpty()
+  @IsNotEmpty({ message: 'Cover image is required' })
+    @IsUrl({ 
+    protocols: ['http', 'https'],
+    require_protocol: true 
+  }, { 
+    message: 'coverImage must be a valid HTTP/HTTPS URL' 
+  })
+  @Matches(/\.(jpg|jpeg|png|gif|bmp|webp|svg)(\?.*)?$/i, {
+    message: 'coverImage must end with a valid image extension (jpg, jpeg, png, gif, bmp, webp, svg)'
+  })
   coverImage: string;
 
   @ApiProperty({
@@ -135,6 +144,15 @@ export class PatchBootcampDto {
     example: 'https://example.com/image.jpg',
   })
   @IsOptional()
+    @IsUrl({ 
+    protocols: ['http', 'https'],
+    require_protocol: true 
+  }, { 
+    message: 'coverImage must be a valid HTTP/HTTPS URL' 
+  })
+  @Matches(/\.(jpg|jpeg|png|gif|bmp|webp|svg)(\?.*)?$/i, {
+    message: 'coverImage must end with a valid image extension (jpg, jpeg, png, gif, bmp, webp, svg)'
+  })
   coverImage: string;
 
   @ApiProperty({
