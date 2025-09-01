@@ -242,6 +242,26 @@ export class AdminAssessmentController {
       return ErrorResponse.BadRequestException(error.message).send(res);
     }
   }
+
+
+  @Get('/getOpenEndedSolutionForStudents/assessmentSubmissionId')
+  @Roles('admin')
+  @ApiOperation({ summary: 'Get open ended solution of a particular student' })
+  @ApiBearerAuth('JWT-auth')
+  async getOpenEndedSolutionForStudents(
+    @Query('assessmentSubmissionId') assessmentSubmissionId: number,
+    @Res() res
+  ): Promise<any>  {
+    try {
+      let [err, success] =  await this.adminAssessmentService.getOpenEndedSolutionForStudents(assessmentSubmissionId);
+       if (err) {
+        return ErrorResponse.BadRequestException(err.message).send(res);
+      }
+      return new SuccessResponse(success.message, success.statusCode, 'data' in success ? success.data : undefined).send(res);
+    } catch (error) {
+      return ErrorResponse.BadRequestException(error.message).send(res);
+    }
+  }
 }
 
 

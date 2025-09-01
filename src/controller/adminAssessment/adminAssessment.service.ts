@@ -885,6 +885,42 @@ Team Zuvy`;
     }
   }
 
+  async getOpenEndedSolutionForStudents(assessmentSubmissionId) 
+  {
+    try{
+      const assessmentOpenEndedSolution: any = await db.query.zuvyOpenEndedQuestionSubmission.findMany({
+        where: (zuvyOpenEndedQuestionSubmission, { eq, and, isNotNull, sql }) =>
+          sql`${zuvyOpenEndedQuestionSubmission.assessmentSubmissionId}= ${assessmentSubmissionId}`,
+        with: {
+          submissionData: {
+            with: {
+                  OpenEndedQuestion: true,
+                },
+          }, 
+        },
+      });
+      assessmentOpenEndedSolution.forEach((item) => {
+    if (item.submissionData && item.submissionData.OpenEndedQuestion) {
+      item.OpenEndedQuestion = item.submissionData.OpenEndedQuestion;
+       delete item.submissionData;
+    }
+  });
+      return [null,{
+          status: 'success',
+          statusCode: 200,
+          message: 'Open ended solution fetched successfully',
+          data: assessmentOpenEndedSolution
+        }];
+    }catch(err)
+    {
+       return [{
+          status: 'error',
+          statusCode: 400,
+          message: err.message,
+        }];
+    }
+  }
+
   async getAssessmentsAndStudents(bootcampID: number): Promise<any> {
     try {
       const assessments = await db.query.zuvyOutsourseAssessments.findMany({
