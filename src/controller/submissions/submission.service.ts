@@ -840,6 +840,7 @@ async getAssessmentSubmission(assessmentSubmissionId: number, userId: number) {
       } else {
         let quizInsertData = answers.map((answer) => ({ ...answer, userId, assessmentSubmissionId }));
         insertData = await db.insert(zuvyOpenEndedQuestionSubmission).values(quizInsertData).returning();
+        await db.update(zuvyAssessmentSubmission).set({ attemptedOpenEndedQuestions: insertData.length } as any).where(eq(zuvyAssessmentSubmission.id, assessmentSubmissionId)).returning();
       }
       return { message: "Successfully save the open ended question.", data: [...insertData, ...updateData] };
     } catch (err) {
