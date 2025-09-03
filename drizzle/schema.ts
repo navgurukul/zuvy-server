@@ -2438,6 +2438,7 @@ export const zuvyBootcamps = main.table('zuvy_bootcamps', {
     mode: 'string',
   }).defaultNow(),
   version: varchar('version', { length: 10 }),
+  youtubePlaylistId: text('youtube_playlist_id').notNull(),
 });
 
 export const zuvyBootcampType = main.table('zuvy_bootcamp_type', {
