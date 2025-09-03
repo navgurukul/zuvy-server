@@ -2841,12 +2841,13 @@ export class ContentService {
 
   async getAssessmentDetailsOfOpenEnded(assessment_outsourse_id: number, userId) {
     try {
+      const assessmentSubmissionlatest = await db.select().from(zuvyAssessmentSubmission).where(sql`${zuvyAssessmentSubmission.userId} = ${userId} AND ${zuvyAssessmentSubmission.assessmentOutsourseId} = ${assessment_outsourse_id}`).orderBy(desc(zuvyAssessmentSubmission.id)).limit(1);
       const assessment = await db.query.zuvyOutsourseOpenEndedQuestions.findMany({
         where: (zuvyOutsourseOpenEndedQuestions, { eq }) =>
           eq(zuvyOutsourseOpenEndedQuestions.assessmentOutsourseId, assessment_outsourse_id),
         with: {
           submissionsData: {
-            where: (zuvyOpenEndedQuestionSubmission, { eq }) => eq(zuvyOpenEndedQuestionSubmission.userId, userId),
+            where: (zuvyOpenEndedQuestionSubmission, { eq }) => and(eq(zuvyOpenEndedQuestionSubmission.userId, userId), eq(zuvyOpenEndedQuestionSubmission.assessmentSubmissionId, assessmentSubmissionlatest[0]?.id)),
             columns: {
               id: true,
               userId: true,

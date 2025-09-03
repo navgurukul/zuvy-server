@@ -590,7 +590,14 @@ async getAssessmentSubmission(assessmentSubmissionId: number, userId: number) {
             where: (projectTracking, { and, eq, sql }) =>
               and(
                 eq(projectTracking.bootcampId, bootcampId),
-                sql`TRUE` // Filter for additional conditions if needed
+                searchStudent
+                  ? sql`EXISTS (
+                      SELECT 1
+                      FROM main.users AS u
+                      WHERE u.id = ${projectTracking.userId}
+                      AND (u.name ILIKE ${searchStudent + '%'} OR u.email ILIKE ${searchStudent + '%'})
+                    )`
+                  : sql`TRUE`
               ),
             columns: {
               id: true,
@@ -606,11 +613,6 @@ async getAssessmentSubmission(assessmentSubmissionId: number, userId: number) {
                   name: true,
                   email: true,
                 },
-                where: (userDetails, { sql }) =>
-                  searchStudent
-
-                    ? sql`${userDetails.name} ILIKE ${searchStudent + '%'} OR ${userDetails.email} ILIKE ${searchStudent + '%'}`
-                    : sql`TRUE`, // If no search string is provided, return all records
               },
             },
             limit: limit,
@@ -619,12 +621,21 @@ async getAssessmentSubmission(assessmentSubmissionId: number, userId: number) {
         },
       });
 
-      // Get total count of students for pagination
+      // Get total count of students for pagination with search filter
       const totalStudentsCount = await db
         .select()
         .from(zuvyProjectTracking)
         .where(
-          sql`${zuvyProjectTracking.projectId} = ${projectId} and ${zuvyProjectTracking.bootcampId} = ${bootcampId}`
+          searchStudent
+            ? sql`${zuvyProjectTracking.projectId} = ${projectId}
+                AND ${zuvyProjectTracking.bootcampId} = ${bootcampId}
+                AND EXISTS (
+                  SELECT 1
+                  FROM main.users AS u
+                  WHERE u.id = ${zuvyProjectTracking.userId}
+                  AND (u.name ILIKE ${searchStudent + '%'} OR u.email ILIKE ${searchStudent + '%'})
+                )`
+            : sql`${zuvyProjectTracking.projectId} = ${projectId} and ${zuvyProjectTracking.bootcampId} = ${bootcampId}`
         );
 
       const totalPages = Math.ceil(totalStudentsCount.length / limit);
@@ -840,6 +851,7 @@ async getAssessmentSubmission(assessmentSubmissionId: number, userId: number) {
       } else {
         let quizInsertData = answers.map((answer) => ({ ...answer, userId, assessmentSubmissionId }));
         insertData = await db.insert(zuvyOpenEndedQuestionSubmission).values(quizInsertData).returning();
+        await db.update(zuvyAssessmentSubmission).set({ attemptedOpenEndedQuestions: insertData.length } as any).where(eq(zuvyAssessmentSubmission.id, assessmentSubmissionId)).returning();
       }
       return { message: "Successfully save the open ended question.", data: [...insertData, ...updateData] };
     } catch (err) {
@@ -858,69 +870,88 @@ async getAssessmentSubmission(assessmentSubmissionId: number, userId: number) {
     }
   }
 
-  async getSubmissionOfForms(bootcampId: number) {
-    try {
-      const topicId = 7;
-      const trackingData = await db.query.zuvyCourseModules.findMany({
-        where: (courseModules, { eq }) =>
-          eq(courseModules.bootcampId, bootcampId),
-        orderBy: (courseModules, { asc }) => asc(courseModules.order),
-        with: {
-          moduleChapterData: {
-            columns: {
-              id: true,
-              title: true,
-            },
-            where: (moduleChapter, { eq }) =>
+  async getSubmissionOfForms(bootcampId: number, searchForm?: string, limit?: number, offset?: number) {
+  try {
+    const topicId = 7;
+
+    // Get tracking data with search filter and pagination
+    const trackingData = await db.query.zuvyCourseModules.findMany({
+      where: (courseModules, { eq }) =>
+        eq(courseModules.bootcampId, bootcampId),
+      orderBy: (courseModules, { asc }) => asc(courseModules.order),
+      with: {
+        moduleChapterData: {
+          columns: {
+            id: true,
+            title: true,
+          },
+          where: (moduleChapter, { eq, sql }) =>
+            and(
               eq(moduleChapter.topicId, topicId),
-            with: {
-              chapterTrackingDetails: {
-                columns: {
-                  userId: true,
-                },
+              searchForm
+                ? sql`${moduleChapter.title} ILIKE ${searchForm + '%'}`
+                : sql`TRUE`
+            ),
+          with: {
+            chapterTrackingDetails: {
+              columns: {
+                userId: true,
               },
             },
           },
-        }
+        },
+      },
+      limit: limit,
+      offset: offset
+    });
+
+    // Calculate total forms from the current results
+    const totalForms = trackingData.reduce((total, course: any) => total + course.moduleChapterData.length, 0);
+
+    const zuvyBatchEnrollmentsCount = await db
+      .select({
+        count: sql<number>`cast(count(${zuvyBatchEnrollments.id}) as int)`,
+      })
+      .from(zuvyBatchEnrollments)
+      .where(eq(zuvyBatchEnrollments.bootcampId, bootcampId));
+
+    // Filter tracking data to only include modules with chapter data
+    const filteredTrackingData = trackingData.filter((course: any) => course.moduleChapterData.length > 0);
+
+    // Process the data to add submitStudents count
+    filteredTrackingData.forEach((course: any) => {
+      course.moduleChapterData.forEach((chapterTracking) => {
+        chapterTracking['submitStudents'] =
+          chapterTracking['chapterTrackingDetails'].length;
+        delete chapterTracking['chapterTrackingDetails'];
       });
+    });
 
-      const zuvyBatchEnrollmentsCount = await db
-        .select({
-          count: sql<number>`cast(count(${zuvyBatchEnrollments.id}) as int)`,
-        })
-        .from(zuvyBatchEnrollments)
-        .where(eq(zuvyBatchEnrollments.bootcampId, bootcampId));
+    // Calculate total pages
+    const totalPages = limit ? Math.ceil(totalForms / limit) : 1;
 
-
-      const filteredTrackingData = trackingData.filter((course: any) => course.moduleChapterData.length > 0);
-
-      filteredTrackingData.forEach((course: any) => {
-        course.moduleChapterData.forEach((chapterTracking) => {
-          chapterTracking['submitStudents'] =
-            chapterTracking['chapterTrackingDetails'].length;
-          delete chapterTracking['chapterTrackingDetails'];
-        });
-      });
-
-      if (filteredTrackingData.length > 0) {
-        return {
-          status: 'success',
-          code: 200,
-          trackingData: filteredTrackingData,
-          totalStudents: zuvyBatchEnrollmentsCount[0]?.count,
-        }
+    if (filteredTrackingData.length > 0) {
+      return {
+        status: 'success',
+        code: 200,
+        trackingData: filteredTrackingData,
+        totalStudents: zuvyBatchEnrollmentsCount[0]?.count,
+        totalForms,
+        totalPages,
+        currentPage: limit && offset !== undefined ? Math.floor(offset / limit) + 1 : 1,
       }
-      else {
-        return {
-          status: 'error',
-          code: 404,
-          message: 'No forms in this course.'
-        }
-      }
-
-    } catch (err) {
-      throw err;
     }
+    else {
+      return {
+        status: 'error',
+        code: 404,
+        message: 'No forms in this course.'
+      }
+    }
+
+  } catch (err) {
+    throw err;
+  }
   }
 
   async formsStatusOfStudents(
