@@ -2210,14 +2210,17 @@ export class ClassesService {
       let gmtStartTime = normalizedStart;
       let gmtEndTime = normalizedEnd;
       if (normalizedStart) {
-        const startDate = new Date(normalizedStart);
-       
-        gmtStartTime = startDate.toISOString();
+          gmtStartTime = new Date(normalizedStart);
+         gmtStartTime.setHours(gmtStartTime.getHours() - 5);
+      gmtStartTime.setMinutes(gmtStartTime.getMinutes() - 30);
+        gmtStartTime = gmtStartTime.toISOString();
       }
       
       if (normalizedEnd) {
-        const endDate = new Date(normalizedEnd);
-        gmtEndTime = endDate.toISOString();
+         gmtEndTime = new Date(normalizedEnd);
+         gmtEndTime.setHours(gmtEndTime.getHours() - 5);
+      gmtEndTime.setMinutes(gmtEndTime.getMinutes() - 30);
+        gmtEndTime = gmtEndTime.toISOString();
       }
       // Prevent platform toggle via update
       if (updateData.isZoomMeet !== undefined && updateData.isZoomMeet !== session.isZoomMeet) {
