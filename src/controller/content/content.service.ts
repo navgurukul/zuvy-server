@@ -2811,7 +2811,8 @@ export class ContentService {
       };
 
       const mcqs = Object.entries(quizQuestions).flatMap(([difficulty, questions]) => {
-        const mark = Math.floor(Number(difficultyMarks[difficulty.toLowerCase()])) || 0;
+        const raw = Number(difficultyMarks[difficulty.toLowerCase()]);
+        const mark = Math.trunc(raw * 100) / 100 || 0;
 
         return (questions || []).map(question => ({
           quizId: question.quizId,
