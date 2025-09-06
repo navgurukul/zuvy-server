@@ -33,63 +33,124 @@ export class CodingPlatformService {
     }
   }
 
-  async submitCodeBatch(sourceCode: SubmitCodeDto, codingOutsourseId: number, action: string): Promise<any> {
-    let testCase;
-    if (RUN === action) {
-      testCase = 2;
-    } else {
-      testCase = 0;
+  toJSONSafe(value, seen = new WeakSet()) {
+    if (value === null) return null;
+
+    const t = typeof value;
+
+    // primitives
+    if (t === 'string' || t === 'boolean') return value;
+    if (t === 'number') {
+      if (Number.isNaN(value)) return "NaN";
+      if (!Number.isFinite(value)) return value > 0 ? "Infinity" : "-Infinity";
+      return value; // keep as number
     }
-    const [error, question] = await this.getCodingQuestion(codingOutsourseId, false, testCase);
+    if (t === 'bigint') return value.toString(); // JSON doesn't support BigInt
+
+    // functions/symbols/undefined -> represent as strings (JSON would drop them)
+    if (t === 'function') return `[Function ${value.name || 'anonymous'}]`;
+    if (t === 'undefined') return "[undefined]";
+    if (t === 'symbol') return value.toString();
+
+    // objects
+    if (seen.has(value)) return "[Circular]";
+    seen.add(value);
+
+    // Dates -> ISO strings
+    if (value instanceof Date) return value.toISOString();
+
+    // Buffers / ArrayBuffer / typed arrays -> base64 string
+    if (typeof Buffer !== 'undefined' && Buffer.isBuffer(value)) {
+      return `base64:${value.toString('base64')}`;
+    }
+    if (ArrayBuffer.isView(value)) return Array.from(new Uint8Array(value.buffer, value.byteOffset, value.byteLength));
+    if (value instanceof ArrayBuffer) return Array.from(new Uint8Array(value));
+
+    // Set -> sorted array for deterministic output
+    if (value instanceof Set) {
+      const arr = Array.from(value).map(v => this.toJSONSafe(v, seen));
+      return arr.sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
+    }
+
+    // Map -> sorted array of [key, value] pairs (keys coerced to string for stability)
+    if (value instanceof Map) {
+      const pairs = Array.from(value.entries()).map(([k, v]) => [String(k), this.toJSONSafe(v, seen)]);
+      pairs.sort((a, b) => a[0].localeCompare(b[0]));
+      return pairs;
+    }
+
+    // Arrays
+    if (Array.isArray(value)) {
+      return value.map(v => this.toJSONSafe(v, seen));
+    }
+
+    // Plain object or class instance -> plain object with sorted keys
+    const obj = {};
+    const keys = Object.keys(value).sort((a, b) => a.localeCompare(b));
+    for (const k of keys) obj[k] = this.toJSONSafe(value[k], seen);
+    return obj;
+  }
+
+  canonicalJSONStringify(value, { pretty = false } = {}) {
+    const normalized = this.toJSONSafe(value);
+    // toJSONSafe already sorts object keys and normalizes types.
+    return JSON.stringify(normalized, null, pretty ? 2 : 0);
+  }
+  // One serializer to rule them all
+  serializeForJudge(parameterType, parameterValue, languageId) {
+     const isJava = languageId === 96;
+
+  if (parameterType === 'object' || parameterType === 'jsonType') {
+    return isJava
+      ? this.formatForJavaStrict(parameterValue)           // must return a string
+      : this.canonicalJSONStringify(parameterValue);            // JSON for everyone else
+  }
+
+  // Everything else (primitives, arrays, multidimensional arrays, etc.) -> canonical JSON
+  return this.canonicalJSONStringify(parameterValue);
+  }
+
+  async submitCodeBatch(sourceCode: SubmitCodeDto, codingOutsourseId: number, action: string): Promise<any> {
+    // let testCase;
+    // if (RUN === action) {
+    //   testCase = 2;
+    // } else {
+    //   testCase = 0;
+    // }
+    const [error, question] = await this.getCodingQuestion(codingOutsourseId, false);
     if (error) {
       return [error];
     }
     let testCasesArray = question.data.testCases;
 
     const preparedSubmissions = testCasesArray.map((testCase) => {
-      // Process inputs based on their data types
-      const input = testCase.inputs.map(input => {
-        switch (input.parameterType) {
-          case 'int':
-          case 'float':
-          case 'str':
-          case 'bool':
-            return input.parameterValue.toString(); // Convert to string
-          case 'arrayOfnum':
-          case 'arrayOfStr':
-          case 'object':
-          case 'jsonType':
-            return (sourceCode.languageId == 96) ? this.formatForJavaStrict(input.parameterValue) : JSON.stringify(input.parameterValue);
-          default:
-            throw new Error(`Unsupported input type: ${input.parameterType}`);
-        }
-      }
+      // Inputs: one JSON value per line
+      const inputLines = testCase.inputs.map((inp) =>
+        this.serializeForJudge.call(
+          this,
+          inp.parameterType,
+          inp.parameterValue,
+          sourceCode.languageId
+        )
       );
 
-      // Process expected output based on its data type
-      const output = (() => {
-        switch (testCase.expectedOutput.parameterType) {
-          case 'int':
-          case 'float':
-          case 'str':
-          case 'bool':
-            return testCase.expectedOutput.parameterValue.toString();
-          case 'arrayOfnum':
-          case 'arrayOfStr':
-          case 'jsonType':
-          case 'object':
-            return (sourceCode.languageId == 96) ? this.formatForJavaStrict(testCase.expectedOutput.parameterValue) : JSON.stringify(testCase.expectedOutput.parameterValue);
-          default:
-            throw new Error(`Unsupported output type: ${testCase.expectedOutput.parameterType}`);
-        }
-      }
-      )();
-      // Join inputs with newlines and encode in base64
-      const stdinput = input.join('\n');
-      const encodedStdInput = Buffer.from(stdinput).toString('base64');
+      const stdinput = inputLines.join('\n');
+      const encodedStdInput = Buffer.from(stdinput, 'utf8').toString('base64');
 
-      // Encode expected output in base64
-      const encodedStdOutput = Buffer.from(output).toString('base64');
+      // Expected output: single JSON value
+      const out = this.serializeForJudge.call(
+        this,
+        testCase.expectedOutput.parameterType,
+        testCase.expectedOutput.parameterValue,
+        sourceCode.languageId
+      );
+
+      if (typeof out !== 'string') {
+        // Safety: ensure we're always encoding a string
+        throw new Error('serializeForJudge must return a string');
+      }
+
+      const encodedStdOutput = Buffer.from(out, 'utf8').toString('base64');
 
       return {
         language_id: sourceCode.languageId,
@@ -495,7 +556,7 @@ export class CodingPlatformService {
     }
   }
 
-  async getCodingQuestion(id: number, withTemplate: boolean = true, totalCasses = 0): Promise<any> {
+  async getCodingQuestion(id: number, withTemplate: boolean = true): Promise<any> {
     try {
       const question: any = await db.query.zuvyCodingQuestions.findMany({
         where: (zuvyCodingQuestions, { sql }) => sql`${zuvyCodingQuestions.id} = ${id}`,
@@ -517,7 +578,6 @@ export class CodingPlatformService {
               expectedOutput: true,
             },
             orderBy: (testCase, { asc }) => asc(testCase.id),
-            limit: totalCasses == 2 ? totalCasses : undefined,
           }
         }
       })
