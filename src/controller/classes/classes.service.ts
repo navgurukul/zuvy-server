@@ -289,8 +289,6 @@ export class ClassesService {
       else{
         // Creating playlist for the bootcamp, as per the bootcamp name
         let playlistId=await this.createyoutubePlaylist(bootcampData[0].name,bootcampId);
-
-        console.log(playlistId,"playlist id from youtube")
         eventData['youtubePlaylistId']=playlistId;
       }
         if (eventDetails.isZoomMeet) {
