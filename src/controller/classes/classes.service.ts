@@ -127,7 +127,45 @@ export class ClassesService {
       return res.status(500).json({ status: 'error', message: 'Failed to save tokens', error: (error as any).message });
     }
   }
+  async createyoutubePlaylist(bootcampName:string, bootcampId:number){
+    try{
+      let youtuberefershToken=process.env.GOOGLE_YT_REFRESH_TOKEN;
+      if(!youtuberefershToken) throw new Error('No YouTube refresh token configured');
+      auth2Client.setCredentials({
+        refresh_token: youtuberefershToken,
+      })
+      const youtube = google.youtube({ version: 'v3', auth: auth2Client });
+      const response = await youtube.playlists.insert({
+        part: ['snippet', 'status'],
+        requestBody: {
+          snippet: {
+            title: `${bootcampName} - Class Recordings`,
+            description: `This playlist contains all class session recordings for the ${bootcampName} bootcamp.`,
+            tags: ['Zuvy', 'Bootcamp', bootcampName],
+            defaultLanguage: 'en',
+          },
+          status: {
+            privacyStatus: 'unlisted',
+          },
+        },
+      });
+      if (response.status !== 200) {
 
+        throw new Error(`YouTube API error: ${response.statusText}`);
+      }
+      const playlistId = response.data.id;
+      if(playlistId){
+        await db.update(zuvyBootcamps).set({youtubePlaylistId:playlistId}).where(eq(zuvyBootcamps.id,bootcampId));
+        return playlistId;
+      }
+      throw new Error('No playlist ID returned from YouTube');
+
+    }
+    catch(error){
+      this.logger.error(`Error creating YouTube playlist: ${error.message}`);
+      throw error;
+    }
+  }
   async createSession(
     eventDetails: {
       title: string;
@@ -157,7 +195,6 @@ export class ClassesService {
       if (isNaN(parsedStart.getTime())) {
         return { status: 'error', message: 'Invalid startDateTime', code: 400 };
       }
-      console.log({ startDate: parsedStart.getTime(), now: Date.now() });
       if (parsedStart.getTime() < Date.now()) {
         return { status: 'error', message: 'Cannot create a session in the past', code: 400 };
       }
@@ -170,7 +207,6 @@ export class ClassesService {
           message: 'Primary batch ID is required',
         };
       }
-
       // Fetch primary batch (await the query; previously we logged the query builder itself)
       const primaryBatchRows = await db
         .select({
@@ -242,8 +278,19 @@ export class ClassesService {
         });
       }
       let eventData = { ...eventDetails, invitedStudents, bootcampId: primaryBatchInfo.bootcampId };
+      let bootcampId=primaryBatchInfo.bootcampId;
+      let bootcampData=await db.select().from(zuvyBootcamps).where(eq(zuvyBootcamps.id,bootcampId)).limit(1);
+      console.log(bootcampData,"bootcamp data")
+      if (bootcampData && bootcampData.length && bootcampData[0].youtubePlaylistId) {
+        eventData['youtubePlaylistId']=bootcampData[0].youtubePlaylistId;
 
-      if (eventDetails.isZoomMeet) {
+      }
+      else{
+        // Creating playlist for the bootcamp, as per the bootcamp name
+        let playlistId=await this.createyoutubePlaylist(bootcampData[0].name,bootcampId);
+        eventData['youtubePlaylistId']=playlistId;
+      }
+        if (eventDetails.isZoomMeet) {
         this.logger.log('Creating Zoom session (multi-batch aware)');
         return this.createZoomSession(eventData, creatorInfo);
       } else {
