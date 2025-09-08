@@ -207,7 +207,6 @@ export class ClassesService {
           message: 'Primary batch ID is required',
         };
       }
-
       // Fetch primary batch (await the query; previously we logged the query builder itself)
       const primaryBatchRows = await db
         .select({
