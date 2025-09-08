@@ -233,8 +233,31 @@ export class SubmissionController {
 
   @Get('/submissionsOfForms/:bootcampId')
   @ApiOperation({ summary: 'Get the submission by bootcampId' })
-  async getSubmissionOfForms(@Param('bootcampId') bootcampId: number) {
-    return this.submissionService.getSubmissionOfForms(bootcampId);
+  @ApiQuery({
+    name: 'searchForm',
+    required: false,
+    type: String,
+    description: 'Search by form name',
+  })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    type: Number,
+    description: 'Number of items per page',
+  })
+  @ApiQuery({
+    name: 'offset',
+    required: false,
+    type: Number,
+    description: 'Number of items to skip',
+  })
+  async getSubmissionOfForms(
+    @Param('bootcampId') bootcampId: number,
+    @Query('searchForm') searchForm?: string,
+    @Query('limit') limit?: number,
+    @Query('offset') offset?: number
+  ) {
+    return this.submissionService.getSubmissionOfForms(bootcampId, searchForm, limit, offset);
   }
 
   @Get('/formsStatus/:bootcampId/:moduleId')
