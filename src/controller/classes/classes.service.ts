@@ -150,6 +150,7 @@ export class ClassesService {
         },
       });
       if (response.status !== 200) {
+
         throw new Error(`YouTube API error: ${response.statusText}`);
       }
       const playlistId = response.data.id;
@@ -194,7 +195,6 @@ export class ClassesService {
       if (isNaN(parsedStart.getTime())) {
         return { status: 'error', message: 'Invalid startDateTime', code: 400 };
       }
-      console.log({ startDate: parsedStart.getTime(), now: Date.now() });
       if (parsedStart.getTime() < Date.now()) {
         return { status: 'error', message: 'Cannot create a session in the past', code: 400 };
       }
@@ -281,7 +281,7 @@ export class ClassesService {
       let eventData = { ...eventDetails, invitedStudents, bootcampId: primaryBatchInfo.bootcampId };
       let bootcampId=primaryBatchInfo.bootcampId;
       let bootcampData=await db.select().from(zuvyBootcamps).where(eq(zuvyBootcamps.id,bootcampId)).limit(1);
-
+      console.log(bootcampData,"bootcamp data")
       if (bootcampData && bootcampData.length && bootcampData[0].youtubePlaylistId) {
         eventData['youtubePlaylistId']=bootcampData[0].youtubePlaylistId;
 
@@ -289,12 +289,11 @@ export class ClassesService {
       else{
         // Creating playlist for the bootcamp, as per the bootcamp name
         let playlistId=await this.createyoutubePlaylist(bootcampData[0].name,bootcampId);
+
+        console.log(playlistId,"playlist id from youtube")
         eventData['youtubePlaylistId']=playlistId;
-
       }
-  
-
-      if (eventDetails.isZoomMeet) {
+        if (eventDetails.isZoomMeet) {
         this.logger.log('Creating Zoom session (multi-batch aware)');
         return this.createZoomSession(eventData, creatorInfo);
       } else {
