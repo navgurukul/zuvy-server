@@ -22,6 +22,7 @@ import {
   doublePrecision,
   customType,
   numeric,
+  primaryKey,
 } from 'drizzle-orm/pg-core';
 // import { users } from './users'; // Import the 'users' module
 
@@ -3704,3 +3705,71 @@ export const zuvyZoomUsers = main.table('zuvy_zoom_users', {
 		zoomUsersZoomEmailUnique: uniqueIndex('zoom_users_zoom_email_key').on(table.zoomEmail)
 	};
 });
+
+// RBAC: Roles Table
+export const zuvyUserRoles = main.table('zuvy_user_roles', {
+  id: serial('id').primaryKey().notNull(),
+  name: varchar('name', { length: 50 }).notNull().unique(), // e.g. 'admin', 'instructor', 'ops'
+  description: text('description'),
+});
+
+// RBAC: Permissions Table
+export const zuvyPermissions = main.table('zuvy_permissions', {
+  id: serial('id').primaryKey().notNull(),
+  name: varchar('name', { length: 100 }).notNull().unique(), // e.g. 'course.view', etc.
+  description: text('description'),
+});
+
+// RBAC: UserRoles (M:N)
+export const zuvyUserRolesAssigned = main.table('zuvy_user_roles_assigned', {
+  id: serial('id').primaryKey().notNull(),
+  userId: integer('user_id').notNull().references(() => users.id),
+  roleId: integer('role_id').notNull().references(() => zuvyUserRoles.id),
+  createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow(),
+}, (t) => ({
+  pk: primaryKey(t.userId, t.roleId),
+}));
+
+// RBAC: RolePermissions (M:N)
+export const zuvyRolePermissions = main.table('zuvy_role_permissions', {
+  id: serial('id').primaryKey().notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow(),
+  roleId: integer('role_id').notNull().references(() => zuvyUserRoles.id),
+  permissionId: integer('permission_id').notNull().references(() => zuvyPermissions.id),
+}, (t) => ({
+  pk: primaryKey(t.roleId, t.permissionId),
+}));
+
+// RBAC Relations
+export const rolesRelations = relations(zuvyUserRoles, ({ many }) => ({
+  userRoles: many(zuvyUserRolesAssigned),
+  rolePermissions: many(zuvyRolePermissions),
+}));
+
+export const permissionsRelations = relations(zuvyPermissions, ({ many }) => ({
+  rolePermissions: many(zuvyRolePermissions),
+}));
+
+export const userRolesAssignedelations = relations(zuvyUserRolesAssigned, ({ one }) => ({
+  user: one(users, {
+    fields: [zuvyUserRolesAssigned.userId],
+    references: [users.id],
+  }),
+  role: one(zuvyUserRoles, {
+    fields: [zuvyUserRolesAssigned.roleId],
+    references: [zuvyUserRoles.id],
+  }),
+}));
+
+export const rolePermissionsRelations = relations(zuvyRolePermissions, ({ one }) => ({
+  role: one(zuvyUserRoles, {
+    fields: [zuvyRolePermissions.roleId],
+    references: [zuvyUserRoles.id],
+  }),
+  permission: one(zuvyPermissions, {
+    fields: [zuvyRolePermissions.permissionId],
+    references: [zuvyPermissions.id],
+  }),
+}));
