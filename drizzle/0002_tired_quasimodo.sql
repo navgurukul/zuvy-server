@@ -263,3 +263,39 @@ CREATE TABLE IF NOT EXISTS "main"."zuvy_outsourse_quizzes" (
 	"created_at" timestamp with time zone DEFAULT now(),
 	"id" serial PRIMARY KEY NOT NULL
 );
+
+CREATE TABLE "main"."zuvy_permissions" (
+	"id" serial PRIMARY KEY NOT NULL,
+	"name" varchar(100) NOT NULL,
+	"description" text,
+	CONSTRAINT "zuvy_permissions_name_unique" UNIQUE("name")
+);
+--> statement-breakpoint
+CREATE TABLE "main"."zuvy_role_permissions" (
+	"id" serial PRIMARY KEY NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now(),
+	"updated_at" timestamp with time zone DEFAULT now(),
+	"role_id" integer NOT NULL,
+	"permission_id" integer NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "main"."zuvy_user_roles" (
+	"id" serial PRIMARY KEY NOT NULL,
+	"name" varchar(50) NOT NULL,
+	"description" text,
+	CONSTRAINT "zuvy_user_roles_name_unique" UNIQUE("name")
+);
+--> statement-breakpoint
+CREATE TABLE "main"."zuvy_user_roles_assigned" (
+	"id" serial PRIMARY KEY NOT NULL,
+	"user_id" integer NOT NULL,
+	"role_id" integer NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now(),
+	"updated_at" timestamp with time zone DEFAULT now()
+
+);
+--> statement-breakpoint
+ALTER TABLE "main"."zuvy_role_permissions" ADD CONSTRAINT "zuvy_role_permissions_role_id_zuvy_user_roles_id_fk" FOREIGN KEY ("role_id") REFERENCES "main"."zuvy_user_roles"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "main"."zuvy_role_permissions" ADD CONSTRAINT "zuvy_role_permissions_permission_id_zuvy_permissions_id_fk" FOREIGN KEY ("permission_id") REFERENCES "main"."zuvy_permissions"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "main"."zuvy_user_roles_assigned" ADD CONSTRAINT "zuvy_user_roles_assigned_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "main"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "main"."zuvy_user_roles_assigned" ADD CONSTRAINT "zuvy_user_roles_assigned_role_id_zuvy_user_roles_id_fk" FOREIGN KEY ("role_id") REFERENCES "main"."zuvy_user_roles"("id") ON DELETE no action ON UPDATE no action;

@@ -1,12 +1,12 @@
 import { Injectable, CanActivate, ExecutionContext, ForbiddenException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { RbacService } from '../rbac.service';
+import { RbacPermissionService } from '../rbac.permission.service';
 
 @Injectable()
 export class PermissionsGuard implements CanActivate {
   constructor(
     private reflector: Reflector,
-    private rbacService: RbacService
+    private rbacPermissionService: RbacPermissionService
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -27,7 +27,7 @@ export class PermissionsGuard implements CanActivate {
 
     try {
       // Check if user has all required permissions
-      const hasPermissions = await this.rbacService.userHasPermissions(user.id, requiredPermissions);
+      const hasPermissions = await this.rbacPermissionService.userHasPermissions(user.id, requiredPermissions);
       
       if (!hasPermissions) {
         throw new ForbiddenException('Insufficient permissions');

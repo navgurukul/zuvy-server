@@ -1,6 +1,7 @@
 import { Controller, Post, Get, Body, HttpStatus, HttpException, UsePipes, ValidationPipe, UseGuards, Delete, Param, ParseIntPipe } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBody, ApiBearerAuth } from '@nestjs/swagger';
-import { RbacService } from './rbac.service';
+import { RbacUserService } from './rbac.user.service';
+import { RbacPermissionService } from './rbac.permission.service';
 import { CreateUserRoleDto, UserRoleResponseDto } from './dto/user-role.dto';
 import { CreatePermissionDto, PermissionResponseDto } from './dto/permission.dto';
 // import { PermissionsGuard } from './guards/permissions.guard';
@@ -18,7 +19,10 @@ import { CreatePermissionDto, PermissionResponseDto } from './dto/permission.dto
 // @UseGuards(PermissionsGuard)
 @ApiBearerAuth('JWT-auth')
 export class RbacController {
-  constructor(private readonly rbacService: RbacService) {}
+  constructor(
+    private readonly rbacUserService: RbacUserService,
+    private readonly rbacPermissionService: RbacPermissionService,
+  ) {}
 
   @Post('users')
 //   @RequirePermissions('create_user_role')
@@ -46,7 +50,7 @@ export class RbacController {
   @ApiBearerAuth('JWT-auth')
   async createUserRole(@Body() createUserRoleDto: CreateUserRoleDto): Promise<any> {
     try {
-      const result = await this.rbacService.createUserRole(createUserRoleDto);
+      const result = await this.rbacUserService.createUserRole(createUserRoleDto);
       return result;
     } catch (error) {
       if (error.code === '23505') { // PostgreSQL unique constraint violation
@@ -74,7 +78,7 @@ export class RbacController {
   @ApiBearerAuth('JWT-auth')
   async getAllUserRoles(): Promise<any> {
     try {
-      const result = await this.rbacService.getAllUserRoles();
+      const result = await this.rbacUserService.getAllUserRoles();
       return result;
     } catch (error) {
       throw new HttpException('Internal Server Error', HttpStatus.INTERNAL_SERVER_ERROR);
@@ -107,7 +111,7 @@ export class RbacController {
   @ApiBearerAuth('JWT-auth')
   async createPermission(@Body() createPermissionDto: CreatePermissionDto): Promise<any> {
     try {
-      const result = await this.rbacService.createPermission(createPermissionDto);
+      const result = await this.rbacPermissionService.createPermission(createPermissionDto);
       return result;
     } catch (error) {
       if (error.code === '23505') {
@@ -135,7 +139,7 @@ export class RbacController {
   @ApiBearerAuth('JWT-auth')
   async getAllPermissions(): Promise<any> {
     try {
-      const result = await this.rbacService.getAllPermissions();
+      const result = await this.rbacPermissionService.getAllPermissions();
       return result;
     } catch (error) {
       throw new HttpException('Internal Server Error', HttpStatus.INTERNAL_SERVER_ERROR);
@@ -162,7 +166,7 @@ export class RbacController {
   })
   async deletePermission(@Param('id', ParseIntPipe) id: number): Promise<any> {
     try {
-      const result = await this.rbacService.deletePermission(id);
+      const result = await this.rbacPermissionService.deletePermission(id);
       return result;
     } catch (error) {
       if (error instanceof HttpException) {

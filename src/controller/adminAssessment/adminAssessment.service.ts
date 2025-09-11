@@ -17,7 +17,7 @@ export class AdminAssessmentService {
 
   // Generate email content dynamically for student notification
   private async generateStudentEmailContent(user: any, submission: any): Promise<string> {
-    const assessmentDeepLink = `${ZUVY_BASH_URL}/student/courses/${submission.bootcampId}/modules/${submission.moduleId}/chapters/${submission.chapterId}`;
+    const assessmentDeepLink = `${ZUVY_BASH_URL}/student/course/${submission.bootcampId}/modules/${submission.moduleId}?chapterId=${submission.chapterId}`;
 
     // Format duration to display hours if applicable
     let durationText = 'N/A';

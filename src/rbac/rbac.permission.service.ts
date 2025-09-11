@@ -1,51 +1,11 @@
-import { Injectable, Logger, InternalServerErrorException, NotFoundException } from '@nestjs/common';
+import { Injectable, InternalServerErrorException, Logger } from '@nestjs/common';
 import { db } from 'src/db/index';
 import { sql } from 'drizzle-orm';
-import { CreateUserRoleDto, UserRoleResponseDto } from './dto/user-role.dto';
-import { CreatePermissionDto, PermissionResponseDto } from './dto/permission.dto';
+import { CreatePermissionDto } from './dto/permission.dto';
 
 @Injectable()
-export class RbacService {
-  private readonly logger = new Logger(RbacService.name);
-
-  async createUserRole(createUserRoleDto: CreateUserRoleDto): Promise<any> {
-    try {
-      const { name, description } = createUserRoleDto;
-      const result = await db.execute(
-        sql`INSERT INTO main.zuvy_user_roles (name, description) VALUES (${name}, ${description ?? null}) RETURNING *`
-      );
-      if ((result as any).rows.length > 0) {
-        return {
-          status: 'success',
-          message: 'User role created successfully',
-          code: 200,
-          data: (result as any).rows[0]
-        };
-      } else {
-        return {
-          status: 'error',
-          code: 400,
-          message: 'User role creation failed. Please try again'
-        };
-      }
-    } catch (err) {
-      throw err;
-    }
-  }
-
-  async getAllUserRoles(): Promise<any> {
-    try {
-      const result = await db.execute(sql`SELECT * FROM main.zuvy_user_roles`);
-      return {
-        status: 'success',
-        message: 'User roles retrieved successfully',
-        code: 200,
-        data: (result as any).rows
-      };
-    } catch (err) {
-      throw err;
-    }
-  }
+export class RbacPermissionService {
+  private readonly logger = new Logger(RbacPermissionService.name);
 
   async createPermission(createPermissionDto: CreatePermissionDto): Promise<any> {
     try {
@@ -109,14 +69,8 @@ export class RbacService {
     }
   }
 
-  /**
-   * Get all permissions for a specific user
-   * @param userId - The user ID to get permissions for
-   * @returns Array of permission names
-   */
   async getUserPermissions(userId: number): Promise<string[]> {
     try {
-      // Query to get user permissions through user roles
       const result = await db.execute(sql`
         SELECT DISTINCT p.name 
         FROM main.zuvy_permissions p
@@ -134,12 +88,6 @@ export class RbacService {
     }
   }
 
-  /**
-   * Check if a user has all the required permissions
-   * @param userId - The user ID to check
-   * @param requiredPermissions - Array of permission names required
-   * @returns boolean indicating if user has all required permissions
-   */
   async userHasPermissions(userId: number, requiredPermissions: string[]): Promise<boolean> {
     try {
       if (!requiredPermissions || requiredPermissions.length === 0) {
@@ -147,8 +95,6 @@ export class RbacService {
       }
 
       const userPermissions = await this.getUserPermissions(userId);
-      
-      // Check if user has ALL required permissions
       const hasAllPermissions = requiredPermissions.every(permission => 
         userPermissions.includes(permission)
       );
@@ -160,3 +106,5 @@ export class RbacService {
     }
   }
 }
+
+
