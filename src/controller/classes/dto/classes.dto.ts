@@ -281,3 +281,35 @@ export class MergeClassesDto {
   @IsNumber()
   parentSessionId: number;
 }
+
+export class SyncAttendanceDto {
+  @ApiProperty({
+    description: 'The batch ID',
+    type: Number,
+    example: 112,
+    required: true,
+  })
+  @IsNotEmpty()
+  @IsNumber()
+  batchId: number;
+
+  @ApiProperty({
+    description: 'The bootcamp ID',
+    type: Number,
+    example: 69,
+    required: true,
+  })
+  @IsNotEmpty()
+  @IsNumber()
+  bootcampId: number;
+
+  @ApiProperty({
+    description: 'Sync attendance records up to this date (inclusive)',
+    type: String,
+    example: '2025-06-30',
+    required: true,
+  })
+  @IsNotEmpty()
+  @IsString()
+  tillDate: string;
+}

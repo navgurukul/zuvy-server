@@ -35,6 +35,7 @@ import {
   DTOsessionRecordViews,
   AddLiveClassesAsChaptersDto,
   MergeClassesDto,
+  SyncAttendanceDto,
 } from './dto/classes.dto';
 import { Response } from 'express';
 import { ErrorResponse, SuccessResponse } from 'src/errorHandler/handler';
@@ -540,4 +541,98 @@ export class ClassesController {
       message: `Attendance migration started for bootcampId: ${bootcampId}. This process will run in the background.`,
     };
   }
+
+  @Post('/attendance/migrate')
+  @ApiOperation({
+    summary: 'Migrate old attendance data to new format',
+    description: 'Triggers a background process to migrate attendance records from the old JSON format to the new normalized table.'
+  })
+  @ApiBearerAuth('JWT-auth') // Protect the endpoint
+  async migrateAttendance(
+    @Req() req
+  ): Promise<object> {
+    const userInfo = {
+      id: Number(req.user[0].id),
+      email: req.user[0].email,
+      roles: req.user[0].roles || []
+    };
+
+    // Check admin access
+    if (!userInfo.roles?.includes('admin')) {
+      throw new BadRequestException('Only admins can trigger attendance migration');
+    }
+
+    // Start the migration process
+    await this.classesService.enrichSessionsWithIds();
+
+    // Return an immediate success response to the client
+    return {
+      statusCode: 200,
+      message: `Attendance migration started. This process will run in the background.`,
+    };
+  }
+
+  @Post('/sync-attendance-from-json')
+  @ApiOperation({ 
+    summary: 'Sync attendance data from summ.json file',
+    description: 'Remove existing attendance records for specified batch/bootcamp up to tillDate and insert new data from summ.json'
+  })
+  @ApiBody({ type: SyncAttendanceDto })
+  @ApiResponse({
+    status: 200,
+    description: 'Attendance data synced successfully',
+    schema: {
+      type: 'object',
+      properties: {
+        statusCode: { type: 'number', example: 200 },
+        message: { type: 'string', example: 'Attendance data synced successfully' },
+        data: {
+          type: 'object',
+          properties: {
+            sessionsRemoved: { type: 'number', example: 10 },
+            attendanceSessionsInserted: { type: 'number', example: 15 },
+            attendanceRecordsInserted: { type: 'number', example: 150 },
+            syncedUpTo: { type: 'string', example: '2025-06-30' }
+          }
+        }
+      }
+    }
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Bad Request - Invalid parameters or missing file',
+  })
+  @ApiBearerAuth('JWT-auth')
+  async syncAttendanceFromJson(
+    @Body() syncAttendanceDto: SyncAttendanceDto,
+    @Req() req
+  ): Promise<object> {
+    try {
+      const userInfo = {
+        id: Number(req.user[0].id),
+        email: req.user[0].email,
+        roles: req.user[0].roles || []
+      };
+
+      // Check admin access
+      if (!userInfo.roles?.includes('admin')) {
+        throw new BadRequestException('Only admins can sync attendance data');
+      }
+
+      const result = await this.classesService.syncAttendanceFromJson(
+        syncAttendanceDto.batchId,
+        syncAttendanceDto.bootcampId,
+        syncAttendanceDto.tillDate
+      );
+
+      return {
+        statusCode: 200,
+        message: result.message,
+        data: result.data
+      };
+    } catch (error) {
+      throw new BadRequestException(error.message);
+    }
+  }
+
 }
