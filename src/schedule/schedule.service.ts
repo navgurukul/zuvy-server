@@ -7,7 +7,8 @@ import {
   users,
   zuvyStudentAttendance,
   zuvyStudentAttendanceRecords,
-  zuvyOutsourseAssessments
+  zuvyOutsourseAssessments,
+  zuvyBootcamps,
 } from '../../drizzle/schema';
 import { db } from '../db/index';
 import { eq, sql, isNull, and, gte, lt, inArray, or, notExists, gt } from 'drizzle-orm';
@@ -25,6 +26,8 @@ const { OAuth2 } = google.auth;
 export class ScheduleService {
   private readonly logger = new Logger(ScheduleService.name); 
   private youtube: any;
+
+  private playlistId: string | null = null; 
 
   constructor(
     private readonly classesService: ClassesService,
@@ -56,7 +59,7 @@ export class ScheduleService {
     }
   }
 
-  @Cron('0 */6 * * *')
+  @Cron('*/2 * * * *')
   async backfillInvitedStudentsAttendanceMidnight() {
     this.logger.log('Midnight cron: Backfilling attendance & recordings (orchestrator)');
     try {
@@ -92,7 +95,7 @@ export class ScheduleService {
     }
       // Sessions missing recordings (s3link null or 'not found')
       let sessionS3linkNull = await db
-        .select({ id: zuvySessions.id, s3link: zuvySessions.s3link, meetingId: zuvySessions.meetingId })
+        .select({ id: zuvySessions.id, s3link: zuvySessions.s3link, meetingId: zuvySessions.meetingId , bootcampId:zuvySessions.bootcampId})
         .from(zuvySessions)
         .where(and(or(
             eq(zuvySessions.status, 'completed'),
@@ -254,7 +257,7 @@ export class ScheduleService {
   }
 
   // Helper: upload file to YouTube and return video id
-  private async uploadToYouTube(filePath: string, title: string): Promise<string> {
+  private async uploadToYouTube(filePath: string, title: string, playlistId: string): Promise<string> {
     const fileSize = fs.statSync(filePath).size;
     const res = await this.youtube.videos.insert(
       {
@@ -267,11 +270,29 @@ export class ScheduleService {
       },
       { onUploadProgress: (evt: any) => { const progress = (evt.bytesRead / fileSize) * 100; this.logger.log(`YouTube upload ${Math.round(progress)}%`); } }
     );
-    return res.data.id;
+  
+    const videoId = res.data.id;
+    this.logger.log(`Video uploaded successfully with ID: ${videoId}`);
+    await this.youtube.playlistItems.insert({
+      part: ['snippet'],
+      requestBody: {
+        snippet: {
+          playlistId,
+          resourceId: {
+            kind: 'youtube#video',
+            videoId,
+          },
+        },
+      },
+    });
+  
+    this.logger.log(`Video added to playlist: ${playlistId}`);
+    return videoId;
   }
+  
 
   // Handle single session: fetch Zoom recording playable/download URL, download, upload to YouTube and update DB
-  private async handleSingleRecording(sessionId: number, meetingId: string | number, title?: string) {
+  private async handleSingleRecording(sessionId: number, meetingId: string | number, title?: string, bootcampId?:number) {
     this.logger.log(`Processing session ${sessionId} (meetingId=${meetingId})`);
     try {
       const recResp = await this.zoomService.getZoomRecordingFiles(meetingId);
@@ -290,13 +311,16 @@ export class ScheduleService {
       const tempPath =  await this.downloadVideoToTemp(videoFile.download_url, videoFile.id);
       try {
         const videoTitle = title ?? `Session Recording - ${meetingId}`;
-        const ytId = await this.uploadToYouTube(tempPath, videoTitle);
+        let bootcampData=await db.select().from(zuvyBootcamps).where(eq(zuvyBootcamps.id,bootcampId)).limit(1);
+        const youtubePlaylistId = bootcampData && bootcampData.length && bootcampData[0].youtubePlaylistId
+        const ytId = await this.uploadToYouTube(tempPath, videoTitle, youtubePlaylistId );
         if (!ytId) {
         throw new Error('YouTube upload returned no video ID');
       }
         const youTubeUrl = `https://www.youtube.com/watch?v=${ytId}`;
         await db.update(zuvySessions).set({ s3link: youTubeUrl, youtubeVideoId: ytId , status: 'completed'} as any).where(eq(zuvySessions.id, sessionId));
         this.logger.log(`Stored YouTube URL and ID for session ${sessionId}`);
+        
 
         // 5. Delete the recording from Zoom Cloud
       await this.zoomService.deleteFromZoomCloud(uuid, videoFile.id);
@@ -326,7 +350,7 @@ export class ScheduleService {
 
       // Load sessions from DB that match the meetingIds and still need s3link
       const sessionsToProcess = await db
-        .select({ id: zuvySessions.id, meetingId: zuvySessions.meetingId, zoomMeetingId: zuvySessions.zoomMeetingId, title: zuvySessions.title })
+        .select({ id: zuvySessions.id, meetingId: zuvySessions.meetingId, zoomMeetingId: zuvySessions.zoomMeetingId, title: zuvySessions.title, bootcampId: zuvySessions.bootcampId })
         .from(zuvySessions)
         .where(and(inArray(zuvySessions.meetingId, meetingIds), or(isNull(zuvySessions.s3link), eq(zuvySessions.s3link, 'not found'))));
 
@@ -336,7 +360,7 @@ export class ScheduleService {
       }
 
       for (const session of sessionsToProcess) {
-        await this.handleSingleRecording(Number(session.id), session.zoomMeetingId || session.meetingId, session.title);
+        await this.handleSingleRecording(Number(session.id), session.zoomMeetingId || session.meetingId, session.title,session.bootcampId);
       }
     } catch (err:any) {
       this.logger.error(`Error in fetchAndStoreRecordingsForSessions: ${err.message}`);

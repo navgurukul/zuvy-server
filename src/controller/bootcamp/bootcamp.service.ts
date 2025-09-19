@@ -21,14 +21,36 @@ import { editUserDetailsDto } from './dto/bootcamp.dto'
 import { batch } from 'googleapis/build/src/apis/batch';
 import { STATUS_CODES } from 'src/helpers';
 import { ContentService } from '../content/content.service';
+import {google, Auth} from 'googleapis';
+import { OAuth2Client } from 'google-auth-library';
+
 
 const { ZUVY_CONTENT_URL } = process.env; // INPORTING env VALUSE ZUVY_CONTENT
 
 @Injectable()
 export class BootcampService {
+  private youtube: any; // Add this property to hold the YouTube API client
+  private logger = new Logger(BootcampService.name); // Add logger property
+
   constructor(
     private contentService: ContentService,
-  ) { }
+  ) {
+    const oAuth2Client = new google.auth.OAuth2(
+      process.env.GOOGLE_CLIENT_ID,
+      process.env.GOOGLE_CLIENT_SECRET,
+      'https://developers.google.com/oauthplayground', // Must match your GCP setup
+    );
+
+    // Set the refresh token you obtained
+    oAuth2Client.setCredentials({
+      refresh_token: process.env.GOOGLE_YT_REFRESH_TOKEN,
+    });
+    // Initialize the YouTube API client here
+    this.youtube = require('googleapis').google.youtube({
+      version: 'v3',
+      auth: oAuth2Client, // Ensure you have set the YOUTUBE_API_KEY in your environment variables
+    });
+  }
   async enrollData(bootcampId: number) {
     try {
       let enrolled = await db
@@ -182,9 +204,37 @@ export class BootcampService {
         .values(bootcampData)
         .returning();
 
+      const bootcampId = newBootcamp[0].id;
+       // Create a YouTube playlist for the course
+    let playlistId: string | null = null;
+    try {
+      const playlistResponse = await this.youtube.playlists.insert({
+        part: ['snippet', 'status'],
+        requestBody: {
+          snippet: {
+            title: bootcampData.name,
+            description: `Playlist for the course: ${bootcampData.name}`,
+          },
+          status: {
+            privacyStatus: 'Unlisted'
+          },
+        },
+      });
+      playlistId = playlistResponse.data.id;
+      this.logger.log(`Created playlist with ID: ${playlistId}`);
+
+      // Store the playlist ID in the database
+      await db
+        .update(zuvyBootcamps)
+        .set({ youtubePlaylistId: playlistId })
+        .where(eq(zuvyBootcamps.id, bootcampId));
+    } catch (error) {
+      this.logger.warn(`Failed to create playlist: ${error.message}`);
+    }
+
       const bootcampTypeData = {
         bootcampId: newBootcamp[0].id,
-        type: 'Private', // Assuming type is present in bootcampData
+        type: 'unlisted', // Assuming type is present in bootcampData
         isModuleLocked: false,
       };
 
