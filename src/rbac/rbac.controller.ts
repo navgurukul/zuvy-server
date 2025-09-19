@@ -2,8 +2,9 @@ import { Controller, Post, Get, Body, HttpStatus, HttpException, UsePipes, Valid
 import { ApiTags, ApiOperation, ApiResponse, ApiBody, ApiBearerAuth } from '@nestjs/swagger';
 import { RbacUserService } from './rbac.user.service';
 import { RbacPermissionService } from './rbac.permission.service';
-import { CreateUserRoleDto, UserRoleResponseDto } from './dto/user-role.dto';
-import { CreatePermissionDto, PermissionResponseDto } from './dto/permission.dto';
+import { RbacAllocPermsService } from './rbac.alloc-perms.service';
+import { CreateUserRoleDto, UserRoleResponseDto, AssignUserRoleDto } from './dto/user-role.dto';
+import { CreatePermissionDto, PermissionResponseDto, AssignUserPermissionDto, GetUserPermissionsByResourceDto, UserPermissionResponseDto } from './dto/permission.dto';
 // import { PermissionsGuard } from './guards/permissions.guard';
 // import { RequirePermissions } from './decorators/require-permissions.decorator';
 
@@ -22,6 +23,7 @@ export class RbacController {
   constructor(
     private readonly rbacUserService: RbacUserService,
     private readonly rbacPermissionService: RbacPermissionService,
+    private readonly rbacAllocPermsService: RbacAllocPermsService,
   ) {}
 
   @Post('users')
@@ -142,6 +144,83 @@ export class RbacController {
       const result = await this.rbacPermissionService.getAllPermissions();
       return result;
     } catch (error) {
+      throw new HttpException('Internal Server Error', HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+  }
+
+  @Post('users/assign-permission')
+  @ApiOperation({
+    summary: 'Assign an extra permission to a specific user',
+    description: 'Records the assignment in the audit log table for traceability'
+  })
+  @ApiBody({ type: AssignUserPermissionDto })
+  @ApiResponse({ status: 200, description: 'Assignment recorded in audit log' })
+  @ApiResponse({ status: 404, description: 'User or permission not found' })
+  @ApiResponse({ status: 500, description: 'Internal server error' })
+  @ApiBearerAuth('JWT-auth')
+  async assignPermissionToUser(@Body() body: AssignUserPermissionDto): Promise<any> {
+    try {
+      const result = await this.rbacPermissionService.assignExtraPermissionToUser(body);
+      return result;
+    } catch (error) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
+      throw new HttpException('Internal Server Error', HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+  }
+
+  @Post('users/assign-role')
+  @ApiOperation({
+    summary: 'Assign a role to a user',
+    description: 'Assigns an existing role to an existing user; idempotent if already assigned'
+  })
+  @ApiBody({
+    type: AssignUserRoleDto,
+    description: 'User ID and Role ID to assign'
+  })
+  @ApiResponse({ status: 200, description: 'Role assigned to user successfully' })
+  @ApiResponse({ status: 404, description: 'User or Role not found' })
+  @ApiResponse({ status: 500, description: 'Internal server error' })
+  @ApiBearerAuth('JWT-auth')
+  async assignRoleToUser(@Body() body: AssignUserRoleDto): Promise<any> {
+    try {
+      const result = await this.rbacUserService.assignRoleToUser(body);
+      return result;
+    } catch (error) {
+      throw new HttpException('Internal Server Error', HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+  }
+  @Get('users/:userId/permissions/:resourceId')
+  @ApiOperation({
+    summary: 'Get user permissions for a specific resource',
+    description: 'Retrieves all permissions (role-based and extra) that a user has for a specific resource'
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'User permissions retrieved successfully',
+    type: UserPermissionResponseDto
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'User or resource not found'
+  })
+  @ApiResponse({
+    status: 500,
+    description: 'Internal server error'
+  })
+  @ApiBearerAuth('JWT-auth')
+  async getUserPermissionsByResource(
+    @Param('userId', ParseIntPipe) userId: number,
+    @Param('resourceId', ParseIntPipe) resourceId: number
+  ): Promise<any> {
+    try {
+      const result = await this.rbacAllocPermsService.getUserPermissionsByResource(userId, resourceId);
+      return result;
+    } catch (error) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
       throw new HttpException('Internal Server Error', HttpStatus.INTERNAL_SERVER_ERROR);
     }
   }

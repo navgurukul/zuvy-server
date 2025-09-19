@@ -1,7 +1,7 @@
-import { Injectable, InternalServerErrorException, Logger } from '@nestjs/common';
+import { Injectable, InternalServerErrorException, Logger, NotFoundException } from '@nestjs/common';
 import { db } from 'src/db/index';
 import { sql } from 'drizzle-orm';
-import { CreatePermissionDto } from './dto/permission.dto';
+import { CreatePermissionDto, AssignUserPermissionDto } from './dto/permission.dto';
 
 @Injectable()
 export class RbacPermissionService {
@@ -105,6 +105,46 @@ export class RbacPermissionService {
       return false;
     }
   }
+
+  async assignExtraPermissionToUser(payload: AssignUserPermissionDto): Promise<any> {
+    const { actorUserId, targetUserId, permissionId, scopeId } = payload;
+    try {
+      const userCheck = await db.execute(sql`SELECT id FROM main.users WHERE id = ${targetUserId} LIMIT 1`);
+      if (!(userCheck as any).rows?.length) {
+        throw new NotFoundException('Target user not found');
+      }
+
+      if (actorUserId) {
+        const actorCheck = await db.execute(sql`SELECT id FROM main.users WHERE id = ${actorUserId} LIMIT 1`);
+        if (!(actorCheck as any).rows?.length) {
+          throw new NotFoundException('Actor user not found');
+        }
+      }
+
+      const permCheck = await db.execute(sql`SELECT id FROM main.zuvy_permissions WHERE id = ${permissionId} LIMIT 1`);
+      if (!(permCheck as any).rows?.length) {
+        throw new NotFoundException('Permission not found');
+      }
+
+      const insertAudit = await db.execute(sql`
+        INSERT INTO main.zuvy_audit_logs (user_id, target_user_id, action, permission_id, scope_id)
+        VALUES (${actorUserId ?? null}, ${targetUserId}, ${'assign_extra_permission'}, ${permissionId}, ${scopeId ?? null})
+        RETURNING *
+      `);
+
+      return {
+        status: 'success',
+        code: 200,
+        message: 'Extra permission assignment recorded in audit log',
+        data: (insertAudit as any).rows[0]
+      };
+    } catch (err) {
+      this.logger.error('Failed to assign extra permission to user', err as any);
+      if (err instanceof NotFoundException) throw err;
+      throw new InternalServerErrorException('Failed to assign extra permission');
+    }
+  }
+
 }
 
 
