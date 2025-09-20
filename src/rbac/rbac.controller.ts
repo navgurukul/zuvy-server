@@ -225,6 +225,64 @@ export class RbacController {
     }
   }
 
+  @Get('resources')
+  @ApiOperation({
+    summary: 'Get all resources',
+    description: 'Retrieves all resources from the system'
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Resources retrieved successfully'
+  })
+  @ApiResponse({
+    status: 500,
+    description: 'Internal server error'
+  })
+  @ApiBearerAuth('JWT-auth')
+  async getAllResources(): Promise<any> {
+    try {
+      const result = await this.rbacPermissionService.getAllResources();
+      return result;
+    } catch (error) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
+      throw new HttpException('Internal Server Error', HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+  }
+
+  @Get('users/:userId/permissions-multiple')
+  @ApiOperation({
+    summary: 'Get user permissions for multiple resources',
+    description: 'Retrieves permissions for course, contentBank, and roles and permissions resources'
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'User permissions retrieved successfully'
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'User not found'
+  })
+  @ApiResponse({
+    status: 500,
+    description: 'Internal server error'
+  })
+  @ApiBearerAuth('JWT-auth')
+  async getUserPermissionsForMultipleResources(
+    @Param('userId', ParseIntPipe) userId: number
+  ): Promise<any> {
+    try {
+      const result = await this.rbacAllocPermsService.getUserPermissionsForMultipleResources(userId);
+      return result;
+    } catch (error) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
+      throw new HttpException('Internal Server Error', HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+  }
+
   @Delete('permissions/:id')
 //   @RequirePermissions('delete_permission')
   @ApiOperation({

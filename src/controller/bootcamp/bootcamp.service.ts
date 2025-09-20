@@ -21,6 +21,7 @@ import { editUserDetailsDto } from './dto/bootcamp.dto'
 import { batch } from 'googleapis/build/src/apis/batch';
 import { STATUS_CODES } from 'src/helpers';
 import { ContentService } from '../content/content.service';
+import { RbacAllocPermsService } from '../../rbac/rbac.alloc-perms.service';
 
 const { ZUVY_CONTENT_URL } = process.env; // INPORTING env VALUSE ZUVY_CONTENT
 
@@ -28,6 +29,7 @@ const { ZUVY_CONTENT_URL } = process.env; // INPORTING env VALUSE ZUVY_CONTENT
 export class BootcampService {
   constructor(
     private contentService: ContentService,
+    private rbacAllocPermsService: RbacAllocPermsService,
   ) { }
   async enrollData(bootcampId: number) {
     try {
@@ -68,6 +70,7 @@ export class BootcampService {
     limit: number,
     offset: number,
     searchTerm?: string | number,
+    userId?: number,
   ): Promise<any> {
     try {
       let query;
@@ -112,13 +115,26 @@ export class BootcampService {
 
       const totalPages = Math.ceil(totalCount / limit);
 
+      // Get permissions for all resources if userId is provided
+      let allPermissions = {};
+      if (userId) {
+        try {
+          const permissionResult = await this.rbacAllocPermsService.getUserPermissionsForMultipleResources(userId);
+          allPermissions = permissionResult.permissions || {};
+        } catch (permissionError) {
+          // If permission check fails, continue with empty permissions
+          log(`Error getting permissions for user ${userId}: ${permissionError.message}`);
+        }
+      }
+
       const data = await Promise.all(
         getBootcamps.map(async (bootcamp) => {
           let [err, res] = await this.enrollData(bootcamp.id);
           if (err) {
             return [err, null];
           }
-          return { ...bootcamp, ...res };
+          
+          return { ...bootcamp, ...res, permissions: allPermissions };
         }),
       );
 
@@ -926,6 +942,15 @@ export class BootcampService {
       ];
     } catch (err) {
       return [null, { message: err.message, statusCode: STATUS_CODES.BAD_REQUEST }];
+    }
+  }
+
+  async getUserPermissionsForMultipleResources(userId: number) {
+    try {
+      const result = await this.rbacAllocPermsService.getUserPermissionsForMultipleResources(userId);
+      return [null, result];
+    } catch (err) {
+      return [err, null];
     }
   }
 

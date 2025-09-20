@@ -145,6 +145,22 @@ export class RbacPermissionService {
     }
   }
 
+  async getAllResources(): Promise<any> {
+      try {
+        const result = await db.execute(sql`SELECT id, name FROM main.zuvy_resources ORDER BY id ASC`);
+        
+        return {
+          status: 'success',
+          message: 'Resources retrieved successfully',
+          code: 200,
+          data: (result as any).rows
+        };
+      } catch (err) {
+        this.logger.error('Error getting all resources:', err);
+        throw new InternalServerErrorException('Failed to retrieve resources');
+      }
+    }
+
 }
 
 

@@ -68,14 +68,17 @@ export class BootcampController {
     @Query('limit') limit: number,
     @Query('offset') offset: number,
     @Query('searchTerm') searchTerm: string,
+    @Req() req: any,
   ): Promise<object> {
     const searchTermAsNumber = !isNaN(Number(searchTerm))
       ? Number(searchTerm)
       : searchTerm;
+    const userId = req.user?.id;
     const [err, res] = await this.bootcampService.getAllBootcamps(
       limit,
       offset,
       searchTermAsNumber,
+      userId,
     );
 
     if (err) {
