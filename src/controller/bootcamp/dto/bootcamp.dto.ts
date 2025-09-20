@@ -118,7 +118,7 @@ export class PatchBootcampSettingDto {
     message: 'type must be either "Public" or "Private"',
   })
   type?: string;
-  
+
   @ApiProperty({
     type: Boolean,
     example: false,
@@ -243,4 +243,51 @@ export class editUserDetailsDto {
   @IsOptional() // Marks the field as optional
   @IsString({ message: 'Name must be a string' }) // Ensures name is a string if provided
   name?: string;
+
+  @ApiProperty({
+    type: Object,
+    required: false,
+    description: 'Optional enrollment details to update per-bootcamp enrollment record',
+  })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => EnrollmentDto)
+  enrollment?: EnrollmentDto;
+}
+
+export class EnrollmentDto {
+  @ApiProperty({ type: Number, required: false, example: 101 })
+  @IsOptional()
+  @IsNumber()
+  bootcampId?: number;
+
+  @ApiProperty({ type: String, required: false, example: '2025-09-20', description: 'ISO date string' })
+  @IsOptional()
+  @IsString()
+  enrolledDate?: string;
+
+  @ApiProperty({ type: String, required: false, example: '2025-09-20', description: 'ISO date string' })
+  @IsOptional()
+  @IsString()
+  lastActiveDate?: string;
+
+  @ApiProperty({ type: String, required: false, example: 'active', enum: ['active', 'graduate', 'dropout'] })
+  @IsOptional()
+  @IsIn(['active', 'graduate', 'dropout'])
+  status?: 'active' | 'graduate' | 'dropout';
+}
+
+export class AttendanceMarkDto {
+  @ApiProperty({ type: Number, required: true, example: 123 })
+  sessionId: number;
+
+  @ApiProperty({ type: Number, required: true, example: 456 })
+  userId: number;
+
+  @ApiProperty({ type: String, required: true, example: 'present' })
+  status: 'present' | 'absent';
+
+  @ApiProperty({ type: Number, required: false, example: 45 })
+  @IsOptional()
+  duration?: number; // in minutes (or agreed unit)
 }

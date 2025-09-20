@@ -2462,22 +2462,32 @@ export const batchesRelations = relations(zuvyBootcamps, ({ one, many }) => ({
 }));
 
 
-export const zuvyBatches = main.table('zuvy_batches', {
-  id: serial('id').primaryKey().notNull(),
-  name: text('name').notNull(),
-  bootcampId: integer('bootcamp_id').references(() => zuvyBootcamps.id, {
-    onDelete: 'cascade',
-  }),
-  instructorId: integer('instructor_id').references(() => users.id),
-  capEnrollment: integer('cap_enrollment'),
-  createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' })
-    .defaultNow()
-    .notNull(),
-  updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' })
-    .defaultNow()
-    .notNull(),
-  version: varchar('version', { length: 10 })
-});
+export const zuvyBatches = main.table("zuvy_batches", {
+  id: serial("id").primaryKey().notNull(),
+  name: text("name").notNull(),
+  bootcampId: integer("bootcamp_id"),
+  instructorId: integer("instructor_id"),
+  startDate: timestamp("start_date", { withTimezone: true, mode: 'string' }),
+  endDate: timestamp("end_date", { withTimezone: true, mode: 'string' }),
+  capEnrollment: integer("cap_enrollment"),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+},
+(table) => {
+  return {
+    zuvyBatchesBootcampIdZuvyBootcampsIdFk: foreignKey({
+      columns: [table.bootcampId],
+      foreignColumns: [zuvyBootcamps.id],
+      name: "zuvy_batches_bootcamp_id_zuvy_bootcamps_id_fk"
+    }).onDelete("cascade"),
+    zuvyBatchesInstructorIdUsersIdFk: foreignKey({
+      columns: [table.instructorId],
+      foreignColumns: [users.id],
+      name: "zuvy_batches_instructor_id_users_id_fk"
+    }),
+  }
+  });
+
 export const zuvyBatchesRelations = relations(
   zuvyBatches,
   ({ one, many }) => ({
@@ -2532,6 +2542,9 @@ export const zuvyBatchEnrollments = main.table('zuvy_batch_enrollments', {
     onDelete: 'set null',
     onUpdate: 'cascade'
   }),
+  enrolledDate: timestamp('enrolled_date', { withTimezone: true, mode: 'string' }),
+  lastActiveDate: timestamp('last_active_date', { withTimezone: true, mode: 'string' }),
+  status: varchar('status', { length: 32 }),
   attendance: integer('attendance'),
   createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' })
     .defaultNow()

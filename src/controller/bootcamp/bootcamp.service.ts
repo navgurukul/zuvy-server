@@ -13,6 +13,7 @@ import {
   zuvyBootcampType,
   zuvySessions,
   zuvyStudentAttendance,
+  zuvyStudentAttendanceRecords,
   zuvyCourseModules,
   zuvyRecentBootcamp,
   zuvyModuleTracking
@@ -641,7 +642,14 @@ export class BootcampService {
           }
           else if (userEnrolled.length == 0) {
             c += 1;
-            enroling = { userId: userInfo[0].id, bootcampId };
+            const now = new Date();
+            enroling = {
+              userId: userInfo[0].id,
+              bootcampId,
+              enrolledDate: now,
+              lastActiveDate: now,
+              status: 'active',
+            };
             if (batchId) {
               enroling['batchId'] = batchId;
             }
@@ -734,6 +742,9 @@ export class BootcampService {
         profilePicture: users.profilePicture,
         bootcampId: zuvyBatchEnrollments.bootcampId,
         attendance: zuvyBatchEnrollments.attendance,
+        enrolledDate: sql`zuvy_batch_enrollments.enrolled_date`,
+        lastActiveDate: sql`zuvy_batch_enrollments.last_active_date`,
+        status: sql`zuvy_batch_enrollments.status`,
         batchName: zuvyBatches.name,
         batchId: zuvyBatches.id,
         progress: zuvyBootcampTracking.progress
@@ -756,12 +767,15 @@ export class BootcampService {
       const studentsInfo = !isNaN(limit) && !isNaN(offset) ? mapData.slice(offset, offset + limit) : mapData;
       const modifiedStudentInfo = studentsInfo.map(item => {
 
-      return {
+        return {
           ...item,
           userId: Number(item.userId),
           attendance: item.attendance,
           batchName: item.batchId != null ? item.batchName : 'unassigned',
           progress: item.progress != null ? item.progress : 0,
+          enrolledDate: item.enrolledDate ? new Date(String(item.enrolledDate)).toISOString() : null,
+          lastActiveDate: item.lastActiveDate ? new Date(String(item.lastActiveDate)).toISOString() : null,
+          status: item.status || null,
         };
       });
       const currentPage = !isNaN(limit) && !isNaN(offset) ? offset / limit + 1 : 1;
@@ -847,7 +861,7 @@ export class BootcampService {
     try {
       // Validate user existence in the users table
       const userExists = await db
-        .select({ id: users.id,email: users.email })
+        .select({ id: users.id, email: users.email })
         .from(users)
         .where(eq(users.id, BigInt(userId)))
         .limit(1);
@@ -889,8 +903,7 @@ export class BootcampService {
       }
       if (editUserDetailsDto.email) {
         updateData.email = editUserDetailsDto.email;
-        if(editUserDetailsDto.email !== userExists[0].email)
-        {
+        if (editUserDetailsDto.email !== userExists[0].email) {
           updateData.googleUserId = null
         }
       }
@@ -915,6 +928,43 @@ export class BootcampService {
         ...updatedUser[0],
         id: Number(updatedUser[0].id),
       };
+
+      // If enrollment update provided, update zuvyBatchEnrollments for this user and specified bootcamp
+      if (editUserDetailsDto.enrollment && editUserDetailsDto.enrollment.bootcampId) {
+        try {
+          const enrollmentFilter = sql`${zuvyBatchEnrollments.userId} = ${BigInt(userId)} AND ${zuvyBatchEnrollments.bootcampId} = ${editUserDetailsDto.enrollment.bootcampId}`;
+          const enrollmentRows = await db.select().from(zuvyBatchEnrollments).where(enrollmentFilter).limit(1);
+          if (!enrollmentRows.length) {
+            // Enrollment not found; return a 404-like response in the payload
+            return [null, {
+              message: 'User updated but enrollment not found for provided bootcampId',
+              statusCode: STATUS_CODES.NOT_FOUND,
+              data: userData,
+            }];
+          }
+
+          const enrollmentUpdateData: any = {};
+          if (editUserDetailsDto.enrollment.enrolledDate) {
+            // Accept ISO date string or Date; store as Date object
+            enrollmentUpdateData.enrolledDate = new Date(editUserDetailsDto.enrollment.enrolledDate);
+          }
+          if (editUserDetailsDto.enrollment.lastActiveDate) {
+            enrollmentUpdateData.lastActiveDate = new Date(editUserDetailsDto.enrollment.lastActiveDate);
+          }
+          if (editUserDetailsDto.enrollment.status) {
+            enrollmentUpdateData.status = editUserDetailsDto.enrollment.status;
+          }
+
+          if (Object.keys(enrollmentUpdateData).length > 0) {
+            await db.update(zuvyBatchEnrollments)
+              .set(enrollmentUpdateData)
+              .where(enrollmentFilter)
+              .returning();
+          }
+        } catch (err) {
+          return [null, { message: 'Failed to update enrollment: ' + err.message, statusCode: STATUS_CODES.BAD_REQUEST }];
+        }
+      }
 
       return [
         null,
@@ -1043,6 +1093,52 @@ export class BootcampService {
       }];
     } catch (err) {
       return [err, null];
+    }
+  }
+
+  async markAttendance(attendanceMarkDto: any) {
+    try {
+      const { sessionId, userId, status, duration } = attendanceMarkDto;
+
+      // Validate session exists and get bootcampId
+      const sessions = await db.select({ id: zuvySessions.id, bootcampId: zuvySessions.bootcampId })
+        .from(zuvySessions)
+        .where(eq(zuvySessions.id, sessionId));
+      if (!sessions.length) {
+        return [{ status: 'error', message: 'Session not found', code: 404 }, null];
+      }
+      const bootcampId = sessions[0].bootcampId;
+
+      // Upsert into zuvyStudentAttendanceRecords
+      const existing = await db.select().from(zuvyStudentAttendanceRecords)
+        .where(sql`${zuvyStudentAttendanceRecords.sessionId} = ${sessionId} AND ${zuvyStudentAttendanceRecords.userId} = ${userId}`)
+        .limit(1);
+
+      if (existing.length) {
+        await db.update(zuvyStudentAttendanceRecords)
+          .set({ status, duration } as any)
+          .where(sql`${zuvyStudentAttendanceRecords.sessionId} = ${sessionId} AND ${zuvyStudentAttendanceRecords.userId} = ${userId}`);
+      } else {
+        await db.insert(zuvyStudentAttendanceRecords).values({ sessionId, userId, status, duration } as any).returning();
+      }
+
+      // Recompute aggregate attendance for this user's enrollment in the bootcamp
+      // Count number of present records for the user across sessions belonging to this bootcamp
+      const presentCountQuery = await db.select({ count: sql<number>`cast(count(${zuvyStudentAttendanceRecords.id}) as int)` })
+        .from(zuvyStudentAttendanceRecords)
+        .leftJoin(zuvySessions, eq(zuvyStudentAttendanceRecords.sessionId, zuvySessions.id))
+        .where(sql`${zuvyStudentAttendanceRecords.userId} = ${userId} AND ${zuvySessions.bootcampId} = ${bootcampId} AND ${zuvyStudentAttendanceRecords.status} = 'present'`);
+
+      const presentCount = presentCountQuery[0]?.count || 0;
+
+      // Update zuvyBatchEnrollments.attendance for this user's enrollments in this bootcamp
+      await db.update(zuvyBatchEnrollments)
+        .set({ attendance: presentCount })
+        .where(sql`${zuvyBatchEnrollments.userId} = ${BigInt(userId)} AND ${zuvyBatchEnrollments.bootcampId} = ${bootcampId}`);
+
+      return [null, { message: 'Attendance marked successfully', code: 200, attendance: presentCount }];
+    } catch (err) {
+      return [{ status: 'error', message: err.message, code: 500 }, null];
     }
   }
 }

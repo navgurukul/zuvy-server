@@ -53,7 +53,9 @@ export class BatchesService {
             name: batch.name,
             bootcampId: batch.bootcampId,
             instructorId: Number(user[0].id),
-            capEnrollment: batch.capEnrollment
+            capEnrollment: batch.capEnrollment,
+            startDate: batch.startDate ? new Date(batch.startDate) : undefined,
+            endDate: batch.endDate ? new Date(batch.endDate) : undefined,
           }
         }
       }
@@ -84,13 +86,19 @@ export class BatchesService {
             sql`bootcamp_id = ${batch.bootcampId} AND ${inArray(zuvyBatchEnrollments.userId, userIds)}`,
           );
 
+        const createdBatch = newData[0];
+        // compute status based on endDate
+        const createdBatchWithStatus = {
+          ...createdBatch,
+          status: ((createdBatch as any).endDate && new Date(String((createdBatch as any).endDate)) < new Date()) ? 'Completed' : 'Ongoing',
+        } as any;
         return [
           null,
           {
             status: helperVariable.success,
             message: 'Batch created successfully',
             code: 200,
-            batch: newData[0],
+            batch: createdBatchWithStatus,
           },
         ];
       }
@@ -155,6 +163,9 @@ export class BatchesService {
       const instructorEmail = batchInstructor.length > 0 ? batchInstructor[0].email : null;
       data[0]['instructorName'] = instructorName;
       data[0]['instructorEmail'] = instructorEmail;
+      // Ensure start/end dates are present in returned batch object
+      data[0]['startDate'] = data[0]['startDate'] || null;
+      data[0]['endDate'] = data[0]['endDate'] || null;
       // data[0]['students'] = respObj;
       return [
         null,
@@ -162,7 +173,7 @@ export class BatchesService {
           status: 'success',
           message: 'Batch fetched successfully',
           code: 200,
-          batch: data[0],
+          batch: { ...data[0], status: ((data[0] as any).endDate && new Date(String((data[0] as any).endDate)) < new Date()) ? 'Completed' : 'Ongoing' },
         },
       ];
     } catch (e) {
@@ -204,7 +215,9 @@ export class BatchesService {
             batchValue = {
               name: batch.name,
               instructorId: Number(user[0].id),
-              capEnrollment: batch.capEnrollment
+              capEnrollment: batch.capEnrollment,
+              startDate: batch.startDate ? new Date(batch.startDate) : undefined,
+              endDate: batch.endDate ? new Date(batch.endDate) : undefined,
             }
           }
         }
@@ -233,7 +246,7 @@ export class BatchesService {
           status: 'success',
           message: 'Batch updated successfully',
           code: 200,
-          batch: updateData[0],
+          batch: { ...updateData[0], status: (((updateData[0] as any).endDate) && new Date(String((updateData[0] as any).endDate)) < new Date()) ? 'Completed' : 'Ongoing' },
         },
       ];
     } catch (e) {
@@ -345,27 +358,27 @@ export class BatchesService {
 
       const usersData = await db
         .select({
-          id: sql`CAST(${users.id} AS INTEGER)`.as('id'), 
+          id: sql`CAST(${users.id} AS INTEGER)`.as('id'),
           name: users.name,
           email: users.email,
         })
         .from(users)
         .where(
           and(
-            inArray(sql`CAST(${users.id} AS INTEGER)`, userIds), 
+            inArray(sql`CAST(${users.id} AS INTEGER)`, userIds),
             searchTerm
               ? or(
                 ilike(users.name, `${searchTerm}%`),
                 ilike(users.email, `${searchTerm}%`)
               )
-              : undefined 
+              : undefined
           )
         )
         .orderBy(users.id);
 
       return [null, { status: 'success', message: 'Students not enrolled in any batch', statusCode: 200, data: usersData }];
     } catch (err) {
-      return [{ status: 'error', message: err.message, code: 400}, null];
+      return [{ status: 'error', message: err.message, code: 400 }, null];
     }
   }
 

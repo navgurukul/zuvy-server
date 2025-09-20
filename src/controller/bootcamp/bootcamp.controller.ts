@@ -23,6 +23,7 @@ import {
   studentDataDto,
   PatchBootcampSettingDto,
   editUserDetailsDto,
+  AttendanceMarkDto,
 } from './dto/bootcamp.dto';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 import { RolesGuard } from 'src/guards/roles.guard';
@@ -40,7 +41,7 @@ import { Roles } from 'src/decorators/roles.decorator';
 @UseGuards(JwtAuthGuard, RolesGuard)
 @ApiBearerAuth('JWT-auth')
 export class BootcampController {
-  constructor(private bootcampService: BootcampService) {}
+  constructor(private bootcampService: BootcampService) { }
 
   @Get('/')
   @Roles('admin')
@@ -313,11 +314,11 @@ export class BootcampController {
     @Query('limit') limit: number,
     @Query('searchTerm') searchTerm: string,
     @Query('offset') offset: number,
-  )  {
+  ) {
     const searchTermAsNumber = !isNaN(Number(searchTerm))
       ? BigInt(searchTerm)
       : searchTerm;
-    const res =  await this.bootcampService.getStudentsInABootcamp(
+    const res = await this.bootcampService.getStudentsInABootcamp(
       bootcamp_id,
       batch_id,
       searchTermAsNumber,
@@ -365,6 +366,18 @@ export class BootcampController {
     return res;
   }
 
+  @Post('/attendance/mark')
+  @Roles('admin')
+  @ApiOperation({ summary: 'Mark attendance for a session (admin)' })
+  @ApiBearerAuth('JWT-auth')
+  async markAttendance(@Body() attendanceMarkDto: AttendanceMarkDto): Promise<any> {
+    const [err, res] = await this.bootcampService.markAttendance(attendanceMarkDto);
+    if (err) {
+      throw new BadRequestException(err);
+    }
+    return res;
+  }
+
   @Post('/process-attendance')
   @ApiOperation({ summary: 'Process attendance records and update attendance counts' })
   @ApiQuery({
@@ -378,7 +391,7 @@ export class BootcampController {
     if (!bootcampId) {
       throw new BadRequestException('bootcampId is required');
     }
-    
+
     const [err, res] = await this.bootcampService.processAttendanceRecords(bootcampId);
     if (err) {
       throw new BadRequestException(err);
