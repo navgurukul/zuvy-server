@@ -9,10 +9,16 @@ export class RbacPermissionService {
 
   async createPermission(createPermissionDto: CreatePermissionDto): Promise<any> {
     try {
-      const { name, description } = createPermissionDto;
+      const { name, resourceId, description } = createPermissionDto;
+
+      // Check if resource exists
+      const resourceCheck = await db.execute(sql`SELECT id FROM main.zuvy_resources WHERE id = ${resourceId} LIMIT 1`);
+      if (!(resourceCheck as any).rows?.length) {
+        throw new NotFoundException('Resource not found');
+      }
 
       const result = await db.execute(
-        sql`INSERT INTO main.zuvy_permissions (name, description) VALUES (${name}, ${description ?? null}) RETURNING *`
+        sql`INSERT INTO main.zuvy_permissions (name, resource_id, description) VALUES (${name}, ${resourceId}, ${description ?? null}) RETURNING *`
       );
 
       if ((result as any).rows.length > 0) {
@@ -30,13 +36,24 @@ export class RbacPermissionService {
         };
       }
     } catch (err) {
+      if (err instanceof NotFoundException) throw err;
       throw err;
     }
   }
 
   async getAllPermissions(): Promise<any> {
     try {
-      const result = await db.execute(sql`SELECT * FROM main.zuvy_permissions ORDER BY id ASC`);
+      const result = await db.execute(sql`
+        SELECT 
+          p.id,
+          p.name,
+          p.resource_id,
+          p.description,
+          r.name as resource_name
+        FROM main.zuvy_permissions p
+        LEFT JOIN main.zuvy_resources r ON p.resource_id = r.id
+        ORDER BY p.id ASC
+      `);
       return {
         status: 'success',
         message: 'Permissions retrieved successfully',

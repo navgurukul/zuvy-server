@@ -3720,8 +3720,9 @@ export const zuvyResources = main.table('zuvy_resources', {
 // RBAC: Permissions Table
 export const zuvyPermissions = main.table('zuvy_permissions', {
   id: serial('id').primaryKey().notNull(),
-  name: varchar('name', { length: 100 }).notNull().unique(), // e.g. 'course.view', etc.
+  name: varchar('name', { length: 100 }).notNull(), // e.g. 'view', 'create', etc. - not unique
   resourcesId: integer('resource_id').notNull().references(() => zuvyResources.id),
+  description: text('description'),
 });
 
 // RBAC: UserRoles (M:N)

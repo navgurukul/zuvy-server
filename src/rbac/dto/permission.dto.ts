@@ -3,12 +3,20 @@ import { IsNotEmpty, IsNumber, IsOptional, IsString } from 'class-validator';
 
 export class CreatePermissionDto {
   @ApiProperty({
-    description: 'Unique name of the permission (e.g., course.view)',
-    example: 'course.view'
+    description: 'Name of the permission (e.g., view, create, delete)',
+    example: 'view'
   })
   @IsString()
   @IsNotEmpty()
   name: string;
+
+  @ApiProperty({
+    description: 'Resource ID that this permission belongs to',
+    example: 1
+  })
+  @IsNumber()
+  @IsNotEmpty()
+  resourceId: number;
 
   @ApiProperty({
     description: 'Optional human readable description',
@@ -24,8 +32,11 @@ export class PermissionResponseDto {
   @ApiProperty({ description: 'Numeric identifier', example: 1 })
   id: number;
 
-  @ApiProperty({ description: 'Permission name', example: 'course.view' })
+  @ApiProperty({ description: 'Permission name', example: 'view' })
   name: string;
+
+  @ApiProperty({ description: 'Resource ID', example: 1 })
+  resourceId: number;
 
   @ApiProperty({ description: 'Permission description', example: 'Allows viewing course details', required: false })
   description?: string;

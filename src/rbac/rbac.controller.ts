@@ -91,7 +91,7 @@ export class RbacController {
 //   @RequirePermissions('create_permission')
   @ApiOperation({
     summary: 'Create a new permission',
-    description: 'Adds a new permission with name and optional description'
+    description: 'Adds a new permission with name, resource ID and optional description'
   })
   @ApiBody({
     type: CreatePermissionDto,
@@ -104,7 +104,7 @@ export class RbacController {
   })
   @ApiResponse({
     status: 400,
-    description: 'Bad request - Invalid input data or duplicate name'
+    description: 'Bad request - Invalid input data or resource not found'
   })
   @ApiResponse({
     status: 500,
@@ -116,6 +116,9 @@ export class RbacController {
       const result = await this.rbacPermissionService.createPermission(createPermissionDto);
       return result;
     } catch (error) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
       if (error.code === '23505') {
         throw new HttpException('Permission with this name already exists', HttpStatus.BAD_REQUEST);
       }
