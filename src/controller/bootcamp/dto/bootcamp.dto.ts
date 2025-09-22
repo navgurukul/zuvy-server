@@ -234,6 +234,28 @@ export class studentDataDto {
   students: studentEmail[];
 }
 
+export class EnrollmentDto {
+  @ApiProperty({ type: Number, required: false, example: 101 })
+  @IsOptional()
+  @IsNumber()
+  bootcampId?: number;
+
+  @ApiProperty({ type: String, required: false, example: '2025-09-20', description: 'ISO date string' })
+  @IsOptional()
+  @IsString()
+  enrolledDate?: string;
+
+  @ApiProperty({ type: String, required: false, example: '2025-09-20', description: 'ISO date string' })
+  @IsOptional()
+  @IsString()
+  lastActiveDate?: string;
+
+  @ApiProperty({ type: String, required: false, example: 'active', enum: ['active', 'graduate', 'dropout'] })
+  @IsOptional()
+  @IsIn(['active', 'graduate', 'dropout'])
+  status?: 'active' | 'graduate' | 'dropout';
+}
+
 export class editUserDetailsDto {
   @ApiProperty({
     type: String,
@@ -262,28 +284,6 @@ export class editUserDetailsDto {
   @ValidateNested()
   @Type(() => EnrollmentDto)
   enrollment?: EnrollmentDto;
-}
-
-export class EnrollmentDto {
-  @ApiProperty({ type: Number, required: false, example: 101 })
-  @IsOptional()
-  @IsNumber()
-  bootcampId?: number;
-
-  @ApiProperty({ type: String, required: false, example: '2025-09-20', description: 'ISO date string' })
-  @IsOptional()
-  @IsString()
-  enrolledDate?: string;
-
-  @ApiProperty({ type: String, required: false, example: '2025-09-20', description: 'ISO date string' })
-  @IsOptional()
-  @IsString()
-  lastActiveDate?: string;
-
-  @ApiProperty({ type: String, required: false, example: 'active', enum: ['active', 'graduate', 'dropout'] })
-  @IsOptional()
-  @IsIn(['active', 'graduate', 'dropout'])
-  status?: 'active' | 'graduate' | 'dropout';
 }
 
 export class AttendanceMarkDto {
