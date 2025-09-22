@@ -58,34 +58,10 @@ export class AdminAssessmentController {
     description: 'skip data',
   })
   @ApiQuery({
-    name: 'submittedDateFrom',
-    required: false,
-    type: String,
-    description: 'Filter by submission date from (YYYY-MM-DD format)',
-  })
-  @ApiQuery({
-    name: 'submittedDateTo',
-    required: false,
-    type: String,
-    description: 'Filter by submission date to (YYYY-MM-DD format)',
-  })
-  @ApiQuery({
     name: 'batchId',
     required: false,
     type: Number,
     description: 'Filter by batch ID',
-  })
-  @ApiQuery({
-    name: 'percentageFrom',
-    required: false,
-    type: Number,
-    description: 'Filter by minimum percentage (0-100)',
-  })
-  @ApiQuery({
-    name: 'percentageTo',
-    required: false,
-    type: Number,
-    description: 'Filter by maximum percentage (0-100)',
   })
   @ApiQuery({
     name: 'qualified',
@@ -115,11 +91,7 @@ export class AdminAssessmentController {
     @Query('searchStudent') searchStudent: string,
     @Query('limit') limit,
     @Query('offset') offset,
-    @Query('submittedDateFrom') submittedDateFrom: string,
-    @Query('submittedDateTo') submittedDateTo: string,
     @Query('batchId') batchId: number,
-    @Query('percentageFrom') percentageFrom: number,
-    @Query('percentageTo') percentageTo: number,
     @Query('qualified') qualified: string,
     @Query('orderBy') orderBy: string,
     @Query('orderDirection') orderDirection: string,
@@ -130,11 +102,7 @@ export class AdminAssessmentController {
       searchStudent,
       Number(limit) || 10,
       Number(offset) || 0,
-      submittedDateFrom,
-      submittedDateTo,
       batchId ? Number(batchId) : undefined,
-      percentageFrom ? Number(percentageFrom) : undefined,
-      percentageTo ? Number(percentageTo) : undefined,
       qualified,
       orderBy,
       orderDirection,

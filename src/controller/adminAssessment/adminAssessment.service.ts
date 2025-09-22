@@ -522,43 +522,15 @@ Team Zuvy`;
     searchStudent: string,
     limit: number = 10,
     offset: number = 0,
-    submittedDateFrom?: string,
-    submittedDateTo?: string,
     batchId?: number,
-    percentageFrom?: number,
-    percentageTo?: number,
     qualified?: string,
     orderBy?: string,
     orderDirection?: string,
   ) {
     try {
-      // Validate percentage range
-      if (percentageFrom !== undefined && (percentageFrom < 0 || percentageFrom > 100)) {
-        throw { statusCode: 400, message: 'percentageFrom must be between 0 and 100' };
-      }
-      if (percentageTo !== undefined && (percentageTo < 0 || percentageTo > 100)) {
-        throw { statusCode: 400, message: 'percentageTo must be between 0 and 100' };
-      }
-      if (percentageFrom !== undefined && percentageTo !== undefined && percentageFrom > percentageTo) {
-        throw { statusCode: 400, message: 'percentageFrom cannot be greater than percentageTo' };
-      }
-
       // Validate batchId
       if (batchId !== undefined && batchId <= 0) {
         throw { statusCode: 400, message: 'batchId must be a positive integer' };
-      }
-
-      // Validate date format (basic validation)
-      if (submittedDateFrom && !/^\d{4}-\d{2}-\d{2}$/.test(submittedDateFrom)) {
-        throw { statusCode: 400, message: 'submittedDateFrom must be in YYYY-MM-DD format' };
-      }
-      if (submittedDateTo && !/^\d{4}-\d{2}-\d{2}$/.test(submittedDateTo)) {
-        throw { statusCode: 400, message: 'submittedDateTo must be in YYYY-MM-DD format' };
-      }
-
-      // Validate date range
-      if (submittedDateFrom && submittedDateTo && submittedDateFrom > submittedDateTo) {
-        throw { statusCode: 400, message: 'submittedDateFrom cannot be later than submittedDateTo' };
       }
 
       // Validate qualified parameter
@@ -644,10 +616,6 @@ Team Zuvy`;
             AND main.zuvy_batch_enrollments.batch_id IS NOT NULL
             ${batchId && !isNaN(batchId) ? sql`AND main.zuvy_batch_enrollments.batch_id = ${batchId}` : sql``}
           )
-          ${submittedDateFrom && submittedDateFrom.trim() ? sql`AND DATE(${zuvyAssessmentSubmission.submitedAt}) >= ${submittedDateFrom}` : sql``}
-          ${submittedDateTo && submittedDateTo.trim() ? sql`AND DATE(${zuvyAssessmentSubmission.submitedAt}) <= ${submittedDateTo}` : sql``}
-          ${percentageFrom !== undefined && !isNaN(percentageFrom) ? sql`AND ${zuvyAssessmentSubmission.percentage} >= ${percentageFrom}` : sql``}
-          ${percentageTo !== undefined && !isNaN(percentageTo) ? sql`AND ${zuvyAssessmentSubmission.percentage} <= ${percentageTo}` : sql``}
           ${qualified === 'true' ? sql`AND ${zuvyAssessmentSubmission.isPassed} = true` : qualified === 'false' ? sql`AND (${zuvyAssessmentSubmission.isPassed} = false OR ${zuvyAssessmentSubmission.isPassed} IS NULL)` : sql``}
             AND ${zuvyAssessmentSubmission.id} = (
         SELECT MAX(sub2.id)
@@ -685,7 +653,6 @@ Team Zuvy`;
           limit,
           offset
         });
-      console.log("submitedOutsourseAssessments", submitedOutsourseAssessments)
       const totalStudentsCount = await db
         .select({
           count: sql<number>`COUNT(*)`,
@@ -722,10 +689,6 @@ Team Zuvy`;
     and ${zuvyBatchEnrollments.bootcampId} = ${bootcampId}
     and ${zuvyBatchEnrollments.batchId} is not null
     ${batchId && !isNaN(batchId) ? sql`and ${zuvyBatchEnrollments.batchId} = ${batchId}` : sql``}
-    ${submittedDateFrom && submittedDateFrom.trim() ? sql`AND DATE(${zuvyAssessmentSubmission.submitedAt}) >= ${submittedDateFrom}` : sql``}
-    ${submittedDateTo && submittedDateTo.trim() ? sql`AND DATE(${zuvyAssessmentSubmission.submitedAt}) <= ${submittedDateTo}` : sql``}
-    ${percentageFrom !== undefined && !isNaN(percentageFrom) ? sql`AND ${zuvyAssessmentSubmission.percentage} >= ${percentageFrom}` : sql``}
-    ${percentageTo !== undefined && !isNaN(percentageTo) ? sql`AND ${zuvyAssessmentSubmission.percentage} <= ${percentageTo}` : sql``}
     and ${zuvyAssessmentSubmission.isPassed} = true
   `
         )
@@ -744,10 +707,6 @@ Team Zuvy`;
         AND main.zuvy_batch_enrollments.batch_id IS NOT NULL
         ${batchId && !isNaN(batchId) ? sql`AND main.zuvy_batch_enrollments.batch_id = ${batchId}` : sql``}
       )
-      ${submittedDateFrom && submittedDateFrom.trim() ? sql`AND DATE(${zuvyAssessmentSubmission.submitedAt}) >= ${submittedDateFrom}` : sql``}
-      ${submittedDateTo && submittedDateTo.trim() ? sql`AND DATE(${zuvyAssessmentSubmission.submitedAt}) <= ${submittedDateTo}` : sql``}
-      ${percentageFrom !== undefined && !isNaN(percentageFrom) ? sql`AND ${zuvyAssessmentSubmission.percentage} >= ${percentageFrom}` : sql``}
-      ${percentageTo !== undefined && !isNaN(percentageTo) ? sql`AND ${zuvyAssessmentSubmission.percentage} <= ${percentageTo}` : sql``}
       ${qualified === 'true' ? sql`AND ${zuvyAssessmentSubmission.isPassed} = true` : qualified === 'false' ? sql`AND (${zuvyAssessmentSubmission.isPassed} = false OR ${zuvyAssessmentSubmission.isPassed} IS NULL)` : sql``}
       AND ${zuvyAssessmentSubmission.id} = (
         SELECT MAX(sub2.id)
