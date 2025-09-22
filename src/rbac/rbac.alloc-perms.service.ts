@@ -1,6 +1,7 @@
 import { Injectable, InternalServerErrorException, Logger, NotFoundException } from '@nestjs/common';
 import { db } from 'src/db/index';
-import { sql } from 'drizzle-orm';
+import { inArray, sql, eq, and } from 'drizzle-orm';
+import { userRoles, zuvyPermissions, zuvyResources, zuvyRolePermissions, zuvyUserRolesAssigned } from 'drizzle/schema';
 
 @Injectable()
 export class RbacAllocPermsService {
@@ -149,7 +150,7 @@ export class RbacAllocPermsService {
 
       // Group permissions by resource
       const permissionsByResource = {};
-      
+
       // Process role-based permissions
       rolePermissionsList.forEach(perm => {
         if (!permissionsByResource[perm.resource_id]) {
@@ -209,155 +210,83 @@ export class RbacAllocPermsService {
     }
   }
 
-  async getUserPermissionsForMultipleResources(userId: number): Promise<any> {
+  async getUserPermissionsForMultipleResources(userId: bigint): Promise<any> {
+  try {
+    // Check if user exists
+    const userCheck = await db.execute(sql`SELECT id FROM main.users WHERE id = ${userId} LIMIT 1`);
+    if (!(userCheck as any).rows?.length) {
+      throw new NotFoundException('User not found');
+    }
+
+    // Get user's role
+    const userRoleResult = await db
+      .select({
+        roleId: zuvyUserRolesAssigned.roleId
+      })
+      .from(zuvyUserRolesAssigned)
+      .where(eq(zuvyUserRolesAssigned.userId, userId))
+      .limit(1);
+
+    if (!userRoleResult.length) {
+      // Return empty permissions if user has no role assigned
+      return {
+        userId,
+        roleId: null,
+        permissions: {}
+      };
+    }
+
+    const userRoleId = userRoleResult[0].roleId;
+
     try {
-      // First check if user exists
-      const userCheck = await db.execute(sql`SELECT id FROM main.users WHERE id = ${userId} LIMIT 1`);
-      if (!(userCheck as any).rows?.length) {
-        throw new NotFoundException('User not found');
+      // Get user's permissions
+      const userPermissionsResult = await db.execute(sql`
+        SELECT 
+          p.name as "permissionName",
+          p.resource_id as "resourceId",
+          r.name as "resourceName"
+        FROM main.zuvy_role_permissions rp
+        INNER JOIN main.zuvy_permissions p ON rp.permission_id = p.id
+        INNER JOIN main.zuvy_resources r ON p.resource_id = r.id
+        WHERE rp.role_id = ${userRoleId}
+        AND p.resource_id IN (1, 2, 3)
+      `);
+
+      const permissions = {};
+
+      if (userPermissionsResult.rows && userPermissionsResult.rows.length > 0) {
+        (userPermissionsResult.rows as any[]).forEach((perm: any) => {
+          const resourceName = perm.resourceName === 'course' ? 'Bootcamp' :
+                              perm.resourceName === 'contentBank' ? 'ContentBank' :
+                              perm.resourceName;
+
+          const permissionKey = `${perm.permissionName}${resourceName.charAt(0).toUpperCase() + resourceName.slice(1)}`;
+          permissions[permissionKey] = true;
+        });
       }
 
-      // Define the three resources we want to check
-      const resourceIds = [1, 2, 3]; // course, contentBank, roles and permissions
-      
-      // Get all resources information
-      const resources = await db.execute(sql`
-        SELECT id, name FROM main.zuvy_resources WHERE id IN (${resourceIds.join(',')})
-      `);
-      
-      const resourcesList = (resources as any).rows || [];
-      const resourceMap = {};
-      resourcesList.forEach(resource => {
-        resourceMap[resource.id] = resource.name;
-      });
-
-      // Get permissions through roles for all three resources with filtering
-      const rolePermissions = await db.execute(sql`
-        SELECT DISTINCT 
-          p.id as permission_id,
-          p.name as permission_name,
-          r.id as resource_id,
-          r.name as resource_name,
-          ur.name as role_name,
-          'role_based' as permission_type
-        FROM main.zuvy_permissions p
-        INNER JOIN main.zuvy_resources r ON p.resources_id = r.id
-        INNER JOIN main.zuvy_role_permissions rp ON p.id = rp.permission_id
-        INNER JOIN main.zuvy_user_roles ur ON rp.role_id = ur.id
-        INNER JOIN main.zuvy_user_roles_assigned ura ON ura.role_id = ur.id
-        WHERE ura.user_id = ${userId} 
-        AND (
-          (r.id = 1) OR 
-          (r.id = 2 AND p.name = 'view') OR 
-          (r.id = 3 AND p.name = 'view')
-        )
-      `);
-
-      // Get extra permissions for all three resources with filtering
-      const extraPermissions = await db.execute(sql`
-        SELECT DISTINCT 
-          ep.id as extra_permission_id,
-          p.name as permission_name,
-          r.id as resource_id,
-          r.name as resource_name,
-          ep.action,
-          ep.course_name,
-          'extra' as permission_type,
-          u2.email as granted_by_email
-        FROM main.zuvy_extra_permissions ep
-        INNER JOIN main.zuvy_permissions p ON ep.permission_id = p.id
-        INNER JOIN main.zuvy_resources r ON ep.resource_id = r.id
-        INNER JOIN main.users u2 ON ep.granted_by = u2.id
-        WHERE ep.user_id = ${userId} 
-        AND (
-          (r.id = 1) OR 
-          (r.id = 2 AND p.name = 'view') OR 
-          (r.id = 3 AND p.name = 'view')
-        )
-      `);
-
-      // Get all possible permissions for these resources with filtering
-      const allPermissionsQuery = await db.execute(sql`
-        SELECT DISTINCT p.name as permission_name, r.id as resource_id, r.name as resource_name
-        FROM main.zuvy_permissions p
-        INNER JOIN main.zuvy_resources r ON p.resources_id = r.id
-        WHERE (
-          (r.id = 1) OR 
-          (r.id = 2 AND p.name = 'view') OR 
-          (r.id = 3 AND p.name = 'view')
-        )
-      `);
-
-      const rolePermissionsList = (rolePermissions as any).rows || [];
-      const extraPermissionsList = (extraPermissions as any).rows || [];
-      const allPermissionsList = (allPermissionsQuery as any).rows || [];
-
-      // Group permissions by resource
-      const permissionsByResource = {};
-      
-      // Initialize all resources with empty permissions
-      resourceIds.forEach(resourceId => {
-        const resourceName = resourceMap[resourceId];
-        if (resourceName) {
-          permissionsByResource[resourceId] = {
-            resourceId,
-            resourceName,
-            permissions: {}
-          };
-        }
-      });
-
-      // Initialize all possible permissions as false (filtering already done in query)
-      allPermissionsList.forEach(perm => {
-        const resourceId = perm.resource_id;
-        const resourceName = perm.resource_name;
-        const permissionName = perm.permission_name;
-        const combinedKey = `${resourceName}${permissionName}`;
-        
-        if (permissionsByResource[resourceId]) {
-          permissionsByResource[resourceId].permissions[combinedKey] = false;
-        }
-      });
-
-      // Set role-based permissions to true (filtering already done in query)
-      rolePermissionsList.forEach(perm => {
-        const resourceId = perm.resource_id;
-        const resourceName = perm.resource_name;
-        const permissionName = perm.permission_name;
-        const combinedKey = `${resourceName}${permissionName}`;
-        
-        if (permissionsByResource[resourceId]) {
-          permissionsByResource[resourceId].permissions[combinedKey] = true;
-        }
-      });
-
-      // Set extra permissions to true (filtering already done in query)
-      extraPermissionsList.forEach(perm => {
-        const resourceId = perm.resource_id;
-        const resourceName = perm.resource_name;
-        const permissionName = perm.permission_name;
-        const combinedKey = `${resourceName}${permissionName}`;
-        
-        if (permissionsByResource[resourceId]) {
-          permissionsByResource[resourceId].permissions[combinedKey] = true;
-        }
-      });
-
-      // Combine all permissions into a single object
-      const combinedPermissions = {};
-      Object.values(permissionsByResource).forEach((resource: any) => {
-        Object.assign(combinedPermissions, resource.permissions);
-      });
-
       return {
-        permissions: combinedPermissions
+        userId,
+        roleId: userRoleId,
+        permissions
       };
-    } catch (err) {
-      this.logger.error(`Error getting user permissions for multiple resources for user ${userId}:`, err);
-      if (err instanceof NotFoundException) throw err;
-      throw new InternalServerErrorException('Failed to retrieve user permissions');
+
+    } catch (dbError) {
+      this.logger.error(`Database error in permissions query:`, dbError);
+      // Return empty permissions if there's a database error in the permissions query
+      return {
+        userId,
+        roleId: userRoleId,
+        permissions: {}
+      };
     }
+
+  } catch (err) {
+    this.logger.error(`Error in getUserPermissionsForMultipleResources for user ${userId}:`, err);
+    if (err instanceof NotFoundException) throw err;
+    throw new InternalServerErrorException('Failed to retrieve user permissions');
   }
+}
 
   async checkUserPermission(userId: number, resourceId: number, permissionName: string): Promise<any> {
     try {

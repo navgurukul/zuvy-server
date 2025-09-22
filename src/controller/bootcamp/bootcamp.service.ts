@@ -70,7 +70,7 @@ export class BootcampService {
     limit: number,
     offset: number,
     searchTerm?: string | number,
-    userId?: number,
+    userId?: bigint,
   ): Promise<any> {
     try {
       let query;
@@ -117,15 +117,8 @@ export class BootcampService {
 
       // Get permissions for all resources if userId is provided
       let allPermissions = {};
-      if (userId) {
-        try {
-          const permissionResult = await this.rbacAllocPermsService.getUserPermissionsForMultipleResources(userId);
-          allPermissions = permissionResult.permissions || {};
-        } catch (permissionError) {
-          // If permission check fails, continue with empty permissions
-          log(`Error getting permissions for user ${userId}: ${permissionError.message}`);
-        }
-      }
+      const permissionResult = await this.rbacAllocPermsService.getUserPermissionsForMultipleResources(userId);
+      allPermissions = permissionResult.permissions || {};
 
       const data = await Promise.all(
         getBootcamps.map(async (bootcamp) => {
@@ -133,12 +126,12 @@ export class BootcampService {
           if (err) {
             return [err, null];
           }
-          
-          return { ...bootcamp, ...res, permissions: allPermissions };
+
+          return { ...bootcamp, ...res };
         }),
       );
 
-      return [null, { data, totalBootcamps: totalCount, totalPages }];
+      return [null, { data, permissions: allPermissions, totalBootcamps: totalCount, totalPages }];
     } catch (e) {
       log(`error: ${e.message}`);
       return [{ status: 'error', message: e.message, code: 500 }, null];
@@ -772,7 +765,7 @@ export class BootcampService {
       const studentsInfo = !isNaN(limit) && !isNaN(offset) ? mapData.slice(offset, offset + limit) : mapData;
       const modifiedStudentInfo = studentsInfo.map(item => {
 
-      return {
+        return {
           ...item,
           userId: Number(item.userId),
           attendance: item.attendance,
@@ -863,7 +856,7 @@ export class BootcampService {
     try {
       // Validate user existence in the users table
       const userExists = await db
-        .select({ id: users.id,email: users.email })
+        .select({ id: users.id, email: users.email })
         .from(users)
         .where(eq(users.id, BigInt(userId)))
         .limit(1);
@@ -905,8 +898,7 @@ export class BootcampService {
       }
       if (editUserDetailsDto.email) {
         updateData.email = editUserDetailsDto.email;
-        if(editUserDetailsDto.email !== userExists[0].email)
-        {
+        if (editUserDetailsDto.email !== userExists[0].email) {
           updateData.googleUserId = null
         }
       }
@@ -945,7 +937,7 @@ export class BootcampService {
     }
   }
 
-  async getUserPermissionsForMultipleResources(userId: number) {
+  async getUserPermissionsForMultipleResources(userId: bigint) {
     try {
       const result = await this.rbacAllocPermsService.getUserPermissionsForMultipleResources(userId);
       return [null, result];

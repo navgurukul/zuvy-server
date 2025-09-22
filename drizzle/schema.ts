@@ -3716,6 +3716,7 @@ export const zuvyUserRoles = main.table('zuvy_user_roles', {
 export const zuvyResources = main.table('zuvy_resources', {
   id: serial('id').primaryKey().notNull(),
   name: varchar('name', { length: 100 }).notNull().unique(), // e.g. 'course', 'user', etc.
+  description: text('description'),
 });
 // RBAC: Permissions Table
 export const zuvyPermissions = main.table('zuvy_permissions', {
@@ -3728,7 +3729,7 @@ export const zuvyPermissions = main.table('zuvy_permissions', {
 // RBAC: UserRoles (M:N)
 export const zuvyUserRolesAssigned = main.table('zuvy_user_roles_assigned', {
   id: serial('id').primaryKey().notNull(),
-  userId: integer('user_id').notNull().references(() => users.id),
+  userId: bigserial("user_id", { mode: "bigint" }).notNull().references(() => users.id),
   roleId: integer('role_id').notNull().references(() => zuvyUserRoles.id),
   createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow(),
@@ -3799,8 +3800,8 @@ export const zuvyPermissionsScope = main.table('zuvy_permissions_scope', {
 
 export const zuvyAuditLoga = main.table('zuvy_audit_logs', {
   id: serial('id').primaryKey().notNull(),
-  actorUserId: integer('user_id').references(() => users.id),
-  targetUserId: integer('target_user_id').references(() => users.id),
+  actorUserId: bigserial("actor_user_id", { mode: "bigint" }).references(() => users.id),
+  targetUserId: bigserial('target_user_id', { mode: "bigint" }).references(() => users.id),
   action: varchar('action', { length: 100 }).notNull(),
   roleid: integer('role_id').references(() => zuvyUserRoles.id),
   permissionId: integer('permission_id').references(() => zuvyPermissions.id),
@@ -3859,8 +3860,8 @@ export const usersAuditRelations = relations(users, ({ many }) => ({
 
 export const zuvyExtraPermissions = main.table('zuvy_extra_permissions', {
   id: serial('id').primaryKey().notNull(),
-  userId: integer('user_id').notNull().references(() => users.id), // jisko extra permission mila
-  grantedBy: integer('granted_by').notNull().references(() => users.id), // admin jo grant kar raha hai
+  userId: bigserial('user_id', { mode: "bigint" }).notNull().references(() => users.id), // jisko extra permission mila
+  grantedBy: bigserial('granted_by', { mode: "bigint" }).notNull().references(() => users.id), // admin jo grant kar raha hai
   permissionId: integer('permission_id').notNull().references(() => zuvyPermissions.id), // extra permission ka type (edit/delete etc.)
   resourceId: integer('resource_id').notNull().references(() => zuvyResources.id), // e.g. course, user
   courseName: varchar('course_name', { length: 255 }), // jis course pe action mila

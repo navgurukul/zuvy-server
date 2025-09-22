@@ -28,7 +28,7 @@ export class AuthService {
     return null;
   }
 
-  async getUserRoles(userId: number | string): Promise<string[]> {
+  async getUserRoles(userId: bigint ): Promise<string[]> {
     try {
       const userRoles = await db
         .select({
@@ -37,7 +37,7 @@ export class AuthService {
         })
         .from(zuvyUserRolesAssigned)
         .innerJoin(zuvyUserRoles, eq(zuvyUserRolesAssigned.roleId, zuvyUserRoles.id))
-        .where(eq(zuvyUserRolesAssigned.userId, Number(userId)));
+        .where(eq(zuvyUserRolesAssigned.userId, userId));
 
       return userRoles.length > 0 
         ? userRoles.map(role => role.roleName)
@@ -90,7 +90,7 @@ export class AuthService {
         .where(eq(users.id, user.id));
 
       // Get user roles
-      const roles = await this.getUserRoles(user.id.toString());
+      const roles = await this.getUserRoles(user.id);
 
       const jwtPayload = { 
         sub: user.id.toString(),
@@ -183,7 +183,7 @@ export class AuthService {
       }
 
       // Get user roles for the new token
-      const roles = await this.getUserRoles(user.id.toString());
+      const roles = await this.getUserRoles(user.id);
 
       // Generate new tokens
       const newPayload = {

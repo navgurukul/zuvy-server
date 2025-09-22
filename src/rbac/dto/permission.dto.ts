@@ -1,5 +1,7 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsNotEmpty, IsNumber, IsOptional, IsString } from 'class-validator';
+import { ArrayMinSize, IsArray, IsNotEmpty, IsNumber, IsOptional, IsString, ValidateNested } from 'class-validator';
+import { Type } from 'class-transformer';
+import { Transform } from 'class-transformer';
 
 export class CreatePermissionDto {
   @ApiProperty({
@@ -161,5 +163,46 @@ export class UserPermissionResponseDto {
     extraPermissionsCount: number;
     uniquePermissions: string[];
   };
+}
+
+export class PermissionAssignmentDto {
+  @IsNumber()
+  @IsNotEmpty()
+  permissionId: number;
+}
+
+export class AssignPermissionsToUserDto {
+  @Transform(({ value }) => BigInt(value))
+  @IsNotEmpty()
+  userId: bigint;
+
+  @IsNumber()
+  @IsNotEmpty()
+  roleId: number;
+
+  @IsArray()
+  @ArrayMinSize(1)
+  @ValidateNested({ each: true })
+  @Type(() => PermissionAssignmentDto)
+  permissions: PermissionAssignmentDto[];
+}
+
+// permission-assignment-response.dto.ts
+export class PermissionAssignmentResponseDto {
+  userId: number;
+  roleId: number;
+  assignedPermissions: {
+    permissionId: number;
+    permissionName: string;
+    resourceId: number;
+    resourceName: string;
+  }[];
+  alreadyAssigned: {
+    permissionId: number;
+    permissionName: string;
+    resourceId: number;
+    resourceName: string;
+  }[];
+  message: string;
 }
 
