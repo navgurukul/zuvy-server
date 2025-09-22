@@ -2261,7 +2261,7 @@ export const zuvySessions = main.table('zuvy_sessions', {
   isParentSession: boolean('is_parent_session').default(false),
   isChildSession: boolean('is_child_session').default(false),
   // multi-batch invited students snapshot
-  invitedStudents: jsonb('invited_students').$type<{userId:number; email:string}[]>().default([]).notNull(),
+  invitedStudents: jsonb('invited_students').$type<{ userId: number; email: string }[]>().default([]).notNull(),
   youtubeVideoId: text('youtube_video_id').notNull()
 });
 
@@ -2308,7 +2308,7 @@ export const zuvyStudentAttendanceRecords = main.table('zuvy_student_attendance_
   version: varchar('version', { length: 10 }),
   duration: integer('duration').default(0), // Duration in seconds
   createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
-}); 
+});
 
 export const zuvySessionAttendanceRelations = relations(zuvyStudentAttendanceRecords, ({ one }) => ({
   user: one(users, {
@@ -2427,7 +2427,7 @@ export const zuvyBootcamps = main.table('zuvy_bootcamps', {
   coverImage: text('cover_image'),
   bootcampTopic: text('bootcamp_topic'),
   startTime: timestamp('start_time', { withTimezone: true, mode: 'string' }),
-  duration: text('duration'),
+  duration: integer('duration'),
   language: text('language'),
   createdAt: timestamp('created_at', {
     withTimezone: true,
@@ -2473,19 +2473,19 @@ export const zuvyBatches = main.table("zuvy_batches", {
   createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
 },
-(table) => {
-  return {
-    zuvyBatchesBootcampIdZuvyBootcampsIdFk: foreignKey({
-      columns: [table.bootcampId],
-      foreignColumns: [zuvyBootcamps.id],
-      name: "zuvy_batches_bootcamp_id_zuvy_bootcamps_id_fk"
-    }).onDelete("cascade"),
-    zuvyBatchesInstructorIdUsersIdFk: foreignKey({
-      columns: [table.instructorId],
-      foreignColumns: [users.id],
-      name: "zuvy_batches_instructor_id_users_id_fk"
-    }),
-  }
+  (table) => {
+    return {
+      zuvyBatchesBootcampIdZuvyBootcampsIdFk: foreignKey({
+        columns: [table.bootcampId],
+        foreignColumns: [zuvyBootcamps.id],
+        name: "zuvy_batches_bootcamp_id_zuvy_bootcamps_id_fk"
+      }).onDelete("cascade"),
+      zuvyBatchesInstructorIdUsersIdFk: foreignKey({
+        columns: [table.instructorId],
+        foreignColumns: [users.id],
+        name: "zuvy_batches_instructor_id_users_id_fk"
+      }),
+    }
   });
 
 export const zuvyBatchesRelations = relations(
@@ -3662,58 +3662,58 @@ export const blacklistedTokens = main.table('blacklisted_tokens', {
 
 // Zoom license allocation tracking
 export const zuvyZoomLicenses = main.table('zuvy_zoom_licenses', {
-	id: serial('id').primaryKey().notNull(),
-	userId: integer('user_id').notNull(),
-	// zoom license type: 1 basic, 2 licensed, 3 on-prem
-	licenseType: integer('license_type').notNull().default(2),
-	// current status: active, downgraded, revoked
-	status: varchar('status', { length: 20 }).notNull().default('active'),
-	// when this allocation started (first time assigned or upgraded)
-	assignedAt: timestamp('assigned_at', { withTimezone: true, mode: 'string' }).defaultNow(),
-	// when downgraded/revoked
-	releasedAt: timestamp('released_at', { withTimezone: true, mode: 'string' }),
-	// optional reference to the session that triggered ensuring license
-	lastSessionId: integer('last_session_id'),
-	// counts for analytics
-	meetingsHosted: integer('meetings_hosted').notNull().default(0),
-	// auditing
-	updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow(),
+  id: serial('id').primaryKey().notNull(),
+  userId: integer('user_id').notNull(),
+  // zoom license type: 1 basic, 2 licensed, 3 on-prem
+  licenseType: integer('license_type').notNull().default(2),
+  // current status: active, downgraded, revoked
+  status: varchar('status', { length: 20 }).notNull().default('active'),
+  // when this allocation started (first time assigned or upgraded)
+  assignedAt: timestamp('assigned_at', { withTimezone: true, mode: 'string' }).defaultNow(),
+  // when downgraded/revoked
+  releasedAt: timestamp('released_at', { withTimezone: true, mode: 'string' }),
+  // optional reference to the session that triggered ensuring license
+  lastSessionId: integer('last_session_id'),
+  // counts for analytics
+  meetingsHosted: integer('meetings_hosted').notNull().default(0),
+  // auditing
+  updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow(),
 }, (table) => {
-	return {
-		zuvyZoomLicenses: foreignKey({
-			columns: [table.userId],
-			foreignColumns: [users.id],
-			name: 'zoom_licenses_user_id_fkey'
-		}).onUpdate('cascade').onDelete('cascade'),
-		zoomLicensesLastSessionIdFkey: foreignKey({
-			columns: [table.lastSessionId],
-			foreignColumns: [zuvySessions.id],
-			name: 'zoom_licenses_last_session_id_fkey'
-		}).onUpdate('cascade').onDelete('set null'),
-		zoomLicensesUserUniqueIdx: uniqueIndex('zoom_licenses_user_id_key').on(table.userId)
-	};
+  return {
+    zuvyZoomLicenses: foreignKey({
+      columns: [table.userId],
+      foreignColumns: [users.id],
+      name: 'zoom_licenses_user_id_fkey'
+    }).onUpdate('cascade').onDelete('cascade'),
+    zoomLicensesLastSessionIdFkey: foreignKey({
+      columns: [table.lastSessionId],
+      foreignColumns: [zuvySessions.id],
+      name: 'zoom_licenses_last_session_id_fkey'
+    }).onUpdate('cascade').onDelete('set null'),
+    zoomLicensesUserUniqueIdx: uniqueIndex('zoom_licenses_user_id_key').on(table.userId)
+  };
 });
 
 // Zoom users table (tracks provisioned Zoom accounts mapped to platform users)
 export const zuvyZoomUsers = main.table('zuvy_zoom_users', {
-	id: serial('id').primaryKey().notNull(),
-	userId: integer('user_id').notNull(), // FK to users table
-	zoomEmail: varchar('zoom_email', { length: 255 }).notNull(),
-	zoomUserId: varchar('zoom_user_id', { length: 128 }), // Zoom's internal user id (optional store)
-	type: integer('type').notNull().default(1), // 1 Basic, 2 Licensed, 3 On-Prem
-	status: varchar('status', { length: 30 }).notNull().default('active'), // active, pending, deactivated
-	firstName: varchar('first_name', { length: 100 }),
-	lastName: varchar('last_name', { length: 100 }),
-	createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow(),
-	updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow(),
+  id: serial('id').primaryKey().notNull(),
+  userId: integer('user_id').notNull(), // FK to users table
+  zoomEmail: varchar('zoom_email', { length: 255 }).notNull(),
+  zoomUserId: varchar('zoom_user_id', { length: 128 }), // Zoom's internal user id (optional store)
+  type: integer('type').notNull().default(1), // 1 Basic, 2 Licensed, 3 On-Prem
+  status: varchar('status', { length: 30 }).notNull().default('active'), // active, pending, deactivated
+  firstName: varchar('first_name', { length: 100 }),
+  lastName: varchar('last_name', { length: 100 }),
+  createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow(),
 }, (table) => {
-	return {
-		zoomUsersUserIdFkey: foreignKey({
-			columns: [table.userId],
-			foreignColumns: [users.id],
-			name: 'zoom_users_user_id_fkey'
-		}).onUpdate('cascade').onDelete('cascade'),
-		zoomUsersUserUnique: uniqueIndex('zoom_users_user_id_key').on(table.userId),
-		zoomUsersZoomEmailUnique: uniqueIndex('zoom_users_zoom_email_key').on(table.zoomEmail)
-	};
+  return {
+    zoomUsersUserIdFkey: foreignKey({
+      columns: [table.userId],
+      foreignColumns: [users.id],
+      name: 'zoom_users_user_id_fkey'
+    }).onUpdate('cascade').onDelete('cascade'),
+    zoomUsersUserUnique: uniqueIndex('zoom_users_user_id_key').on(table.userId),
+    zoomUsersZoomEmailUnique: uniqueIndex('zoom_users_zoom_email_key').on(table.zoomEmail)
+  };
 });

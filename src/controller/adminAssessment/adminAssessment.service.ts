@@ -528,6 +528,8 @@ Team Zuvy`;
     percentageFrom?: number,
     percentageTo?: number,
     qualified?: string,
+    orderBy?: string,
+    orderDirection?: string,
   ) {
     try {
       // Validate percentage range
@@ -562,6 +564,16 @@ Team Zuvy`;
       // Validate qualified parameter
       if (qualified && !['true', 'false', 'all'].includes(qualified)) {
         throw { statusCode: 400, message: 'qualified must be "true", "false", or "all"' };
+      }
+
+      // Validate orderBy parameter
+      if (orderBy && !['submittedDate', 'percentage', 'name', 'email'].includes(orderBy)) {
+        throw { statusCode: 400, message: 'orderBy must be one of: submittedDate, percentage, name, email' };
+      }
+
+      // Validate orderDirection parameter
+      if (orderDirection && !['asc', 'desc'].includes(orderDirection)) {
+        throw { statusCode: 400, message: 'orderDirection must be either "asc" or "desc"' };
       }
       // Fetch assessment details
       const assessmentInfo = await db
@@ -792,6 +804,40 @@ Team Zuvy`;
           };
         })
         .filter((data) => data.startedAt);
+
+      // Apply sorting if orderBy is specified
+      if (orderBy) {
+        const direction = orderDirection === 'desc' ? -1 : 1;
+
+        combinedData.sort((a, b) => {
+          let valueA, valueB;
+
+          switch (orderBy) {
+            case 'submittedDate':
+              valueA = a.submitedAt ? new Date(a.submitedAt).getTime() : 0;
+              valueB = b.submitedAt ? new Date(b.submitedAt).getTime() : 0;
+              break;
+            case 'percentage':
+              valueA = a.percentage || 0;
+              valueB = b.percentage || 0;
+              break;
+            case 'name':
+              valueA = (a.name || '').toLowerCase();
+              valueB = (b.name || '').toLowerCase();
+              break;
+            case 'email':
+              valueA = (a.email || '').toLowerCase();
+              valueB = (b.email || '').toLowerCase();
+              break;
+            default:
+              return 0;
+          }
+
+          if (valueA < valueB) return -1 * direction;
+          if (valueA > valueB) return 1 * direction;
+          return 0;
+        });
+      }
 
       // Fetch ModuleAssessment details
       const moduleAssessment = await db.query.zuvyOutsourseAssessments.findFirst({

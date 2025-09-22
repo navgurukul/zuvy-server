@@ -29,6 +29,15 @@ export class CreateBootcampDto {
   @IsOptional()
   @IsString()
   description?: string;
+
+  @ApiProperty({
+    type: Number,
+    example: 12,
+    required: false,
+  })
+  @IsOptional()
+  @IsNumber()
+  duration?: number;
 }
 
 
@@ -78,13 +87,13 @@ export class EditBootcampDto {
   bootcampTopic: string;
 
   @ApiProperty({
-    type: String,
-    example: '3 months',
+    type: Number,
+    example: 12,
     required: true,
   })
   @IsNotEmpty()
-  @IsString()
-  duration: string;
+  @IsNumber()
+  duration: number;
 
   @ApiProperty({
     type: String,
@@ -170,13 +179,13 @@ export class PatchBootcampDto {
   bootcampTopic: string;
 
   @ApiProperty({
-    type: String,
-    example: '3 months',
+    type: Number,
+    example: 12,
     required: true,
   })
-  @IsString()
+  @IsNumber()
   @IsOptional()
-  duration: string;
+  duration: number;
 
   @ApiProperty({
     type: String,

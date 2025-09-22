@@ -94,6 +94,20 @@ export class AdminAssessmentController {
     description: 'Filter by qualification status (true/false/all)',
     enum: ['true', 'false', 'all']
   })
+  @ApiQuery({
+    name: 'orderBy',
+    required: false,
+    type: String,
+    description: 'Field to order by (submittedDate, percentage, name, email)',
+    enum: ['submittedDate', 'percentage', 'name', 'email']
+  })
+  @ApiQuery({
+    name: 'orderDirection',
+    required: false,
+    type: String,
+    description: 'Order direction (asc/desc)',
+    enum: ['asc', 'desc']
+  })
   @ApiBearerAuth('JWT-auth')
   async AssessmentStudents(
     @Req() req: Request,
@@ -107,6 +121,8 @@ export class AdminAssessmentController {
     @Query('percentageFrom') percentageFrom: number,
     @Query('percentageTo') percentageTo: number,
     @Query('qualified') qualified: string,
+    @Query('orderBy') orderBy: string,
+    @Query('orderDirection') orderDirection: string,
   ) {
     return this.adminAssessmentService.getSubmissionsListOfAssessment(
       req,
@@ -120,6 +136,8 @@ export class AdminAssessmentController {
       percentageFrom ? Number(percentageFrom) : undefined,
       percentageTo ? Number(percentageTo) : undefined,
       qualified,
+      orderBy,
+      orderDirection,
     );
   }
 
