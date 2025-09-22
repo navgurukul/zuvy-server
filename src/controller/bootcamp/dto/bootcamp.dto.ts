@@ -1,5 +1,14 @@
 import { ApiProperty, ApiResponseProperty } from '@nestjs/swagger';
-import { IsString, IsNotEmpty, IsOptional, ValidateNested, IsNumber, IsEmail, IsBoolean, IsIn } from 'class-validator';
+import {
+  IsString,
+  IsNotEmpty,
+  IsOptional,
+  ValidateNested,
+  IsNumber,
+  IsEmail,
+  IsBoolean,
+  IsIn,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class CreateBootcampDto {
@@ -39,7 +48,6 @@ export class CreateBootcampDto {
   @IsNumber()
   duration?: number;
 }
-
 
 export class EditBootcampDto {
   @ApiProperty({
@@ -112,7 +120,6 @@ export class EditBootcampDto {
   @IsNotEmpty()
   @IsString()
   language: string;
-
 }
 
 export class PatchBootcampSettingDto {
@@ -240,17 +247,32 @@ export class EnrollmentDto {
   @IsNumber()
   bootcampId?: number;
 
-  @ApiProperty({ type: String, required: false, example: '2025-09-20', description: 'ISO date string' })
+  @ApiProperty({
+    type: String,
+    required: false,
+    example: '2025-09-20',
+    description: 'ISO date string',
+  })
   @IsOptional()
   @IsString()
   enrolledDate?: string;
 
-  @ApiProperty({ type: String, required: false, example: '2025-09-20', description: 'ISO date string' })
+  @ApiProperty({
+    type: String,
+    required: false,
+    example: '2025-09-20',
+    description: 'ISO date string',
+  })
   @IsOptional()
   @IsString()
   lastActiveDate?: string;
 
-  @ApiProperty({ type: String, required: false, example: 'active', enum: ['active', 'graduate', 'dropout'] })
+  @ApiProperty({
+    type: String,
+    required: false,
+    example: 'active',
+    enum: ['active', 'graduate', 'dropout'],
+  })
   @IsOptional()
   @IsIn(['active', 'graduate', 'dropout'])
   status?: 'active' | 'graduate' | 'dropout';
@@ -278,7 +300,8 @@ export class editUserDetailsDto {
   @ApiProperty({
     type: Object,
     required: false,
-    description: 'Optional enrollment details to update per-bootcamp enrollment record',
+    description:
+      'Optional enrollment details to update per-bootcamp enrollment record',
   })
   @IsOptional()
   @ValidateNested()
