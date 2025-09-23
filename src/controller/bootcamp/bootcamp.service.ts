@@ -21,6 +21,7 @@ import { editUserDetailsDto } from './dto/bootcamp.dto'
 import { batch } from 'googleapis/build/src/apis/batch';
 import { STATUS_CODES } from 'src/helpers';
 import { ContentService } from '../content/content.service';
+import { RbacAllocPermsService } from '../../rbac/rbac.alloc-perms.service';
 
 const { ZUVY_CONTENT_URL } = process.env; // INPORTING env VALUSE ZUVY_CONTENT
 
@@ -28,6 +29,7 @@ const { ZUVY_CONTENT_URL } = process.env; // INPORTING env VALUSE ZUVY_CONTENT
 export class BootcampService {
   constructor(
     private contentService: ContentService,
+    private rbacAllocPermsService: RbacAllocPermsService,
   ) { }
   async enrollData(bootcampId: number) {
     try {
@@ -68,6 +70,7 @@ export class BootcampService {
     limit: number,
     offset: number,
     searchTerm?: string | number,
+    userId?: bigint,
   ): Promise<any> {
     try {
       let query;
@@ -112,17 +115,23 @@ export class BootcampService {
 
       const totalPages = Math.ceil(totalCount / limit);
 
+      // Get permissions for all resources if userId is provided
+      let allPermissions = {};
+      const permissionResult = await this.rbacAllocPermsService.getUserPermissionsForMultipleResources(userId);
+      allPermissions = permissionResult.permissions || {};
+
       const data = await Promise.all(
         getBootcamps.map(async (bootcamp) => {
           let [err, res] = await this.enrollData(bootcamp.id);
           if (err) {
             return [err, null];
           }
+
           return { ...bootcamp, ...res };
         }),
       );
 
-      return [null, { data, totalBootcamps: totalCount, totalPages }];
+      return [null, { data, permissions: allPermissions, totalBootcamps: totalCount, totalPages }];
     } catch (e) {
       log(`error: ${e.message}`);
       return [{ status: 'error', message: e.message, code: 500 }, null];
@@ -756,7 +765,7 @@ export class BootcampService {
       const studentsInfo = !isNaN(limit) && !isNaN(offset) ? mapData.slice(offset, offset + limit) : mapData;
       const modifiedStudentInfo = studentsInfo.map(item => {
 
-      return {
+        return {
           ...item,
           userId: Number(item.userId),
           attendance: item.attendance,
@@ -847,7 +856,7 @@ export class BootcampService {
     try {
       // Validate user existence in the users table
       const userExists = await db
-        .select({ id: users.id,email: users.email })
+        .select({ id: users.id, email: users.email })
         .from(users)
         .where(eq(users.id, BigInt(userId)))
         .limit(1);
@@ -889,8 +898,7 @@ export class BootcampService {
       }
       if (editUserDetailsDto.email) {
         updateData.email = editUserDetailsDto.email;
-        if(editUserDetailsDto.email !== userExists[0].email)
-        {
+        if (editUserDetailsDto.email !== userExists[0].email) {
           updateData.googleUserId = null
         }
       }
@@ -926,6 +934,15 @@ export class BootcampService {
       ];
     } catch (err) {
       return [null, { message: err.message, statusCode: STATUS_CODES.BAD_REQUEST }];
+    }
+  }
+
+  async getUserPermissionsForMultipleResources(userId: bigint) {
+    try {
+      const result = await this.rbacAllocPermsService.getUserPermissionsForMultipleResources(userId);
+      return [null, result];
+    } catch (err) {
+      return [err, null];
     }
   }
 

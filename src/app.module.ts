@@ -15,6 +15,7 @@ import { SubmissionModule } from './controller/submissions/submission.module';
 import { AdminAssessmentModule } from './controller/adminAssessment/adminAssessment.module';
 import { ScheduleModule } from './schedule/schedule.module';
 import { InstructorModule } from './controller/instructor/instructor.module';
+import { RbacModule } from './rbac/rbac.module';
 import { AuthModule } from './auth/auth.module';
 import { JwtMiddleware } from './middleware/jwt.middleware';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
@@ -44,6 +45,7 @@ let { GOOGLE_CLIENT_ID, GOOGLE_SECRET, GOOGLE_REDIRECT,JWT_SECRET_KEY } = proces
     TrackingModule,
     InstructorModule,
     ScheduleModule,
+    RbacModule,
   ],
   providers: [
     {

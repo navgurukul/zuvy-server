@@ -11,7 +11,7 @@ import { Request, Response, NextFunction } from 'express';
 import { JwtService } from '@nestjs/jwt';
 import { db } from '../db/index';
 import { eq, sql, count } from 'drizzle-orm';
-import { users, sansaarUserRoles } from '../../drizzle/schema';
+import { users, zuvyUserRolesAssigned, zuvyUserRoles } from '../../drizzle/schema';
 import { helperVariable } from 'src/constants/helper';
 import { AuthService } from '../auth/auth.service';
 import { Observable } from 'rxjs';
@@ -88,25 +88,51 @@ export class JwtMiddleware implements NestMiddleware {
         throw new UnauthorizedException('User is not authorized');
       }
 
-      const rolesArray = await db
-        .select()
-        .from(sansaarUserRoles)
-        .where(sql`${sansaarUserRoles.userId} = ${user[0].id}`);
-      user[0].roles = rolesArray.map(role => role.role);
+      // Fetch user roles with role names using proper join
+      let rolesArray = [];
+      try {
+        rolesArray = await db
+          .select({
+            roleId: zuvyUserRolesAssigned.roleId,
+            roleName: zuvyUserRoles.name
+          })
+          .from(zuvyUserRolesAssigned)
+          .innerJoin(zuvyUserRoles, eq(zuvyUserRolesAssigned.roleId, zuvyUserRoles.id))
+          .where(eq(zuvyUserRolesAssigned.userId, user[0].id));
+      } catch (roleError) {
+        console.error("Error fetching user roles:", roleError);
+        // If role fetching fails, set empty roles array but don't block the request
+        rolesArray = [];
+      }
+      
+      user[0].roles = rolesArray.map(role => role.roleName);
 
       // Initialize req.user as an array if it doesn't exist
       if (!req.user) {
         req.user = [];
       }
       req.user = user[0];
+      // Role-based access control
+      const userRoles = user[0].roles || [];
+      const isAdmin = userRoles.includes(helperVariable.admin);
+      const isInstructor = userRoles.includes(helperVariable.instructor);
+      
       // Restrict access to instructor-side routes
       if (
         req._parsedUrl.pathname.startsWith('/instructor') &&
-        !user[0].roles.includes(helperVariable.admin) &&
-        !user[0].roles.includes(helperVariable.instructor)
+        !isAdmin &&
+        !isInstructor
       ) {
         throw new ForbiddenException('Access restricted to admins and instructors');
       }
+      
+      // Add user role information to request for use in controllers
+      req.user.roleInfo = {
+        roles: userRoles,
+        isAdmin,
+        isInstructor,
+        hasRole: (role: string) => userRoles.includes(role)
+      };
 
       next();
     } catch (error) {

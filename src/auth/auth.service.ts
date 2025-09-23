@@ -2,7 +2,7 @@ import { Injectable, UnauthorizedException, Logger } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { LoginDto } from './dto/login.dto';
 import { db } from '../db';
-import { users, blacklistedTokens, sansaarUserRoles } from '../../drizzle/schema';
+import { users, blacklistedTokens, zuvyUserRolesAssigned, zuvyUserRoles } from '../../drizzle/schema';
 import { eq } from 'drizzle-orm';
 import { OAuth2Client } from 'google-auth-library';
 let { GOOGLE_CLIENT_ID, GOOGLE_SECRET, GOOGLE_REDIRECT,JWT_SECRET_KEY } = process.env;
@@ -28,15 +28,27 @@ export class AuthService {
     return null;
   }
 
-  async getUserRoles(userId: number | string): Promise<string[]> {
-    const userRoles = await db.select()
-      .from(sansaarUserRoles)
-      .where(eq(sansaarUserRoles.userId, Number(userId)));
+  async getUserRoles(userId: bigint ): Promise<string[]> {
+    try {
+      const userRoles = await db
+        .select({
+          roleId: zuvyUserRolesAssigned.roleId,
+          roleName: zuvyUserRoles.name
+        })
+        .from(zuvyUserRolesAssigned)
+        .innerJoin(zuvyUserRoles, eq(zuvyUserRolesAssigned.roleId, zuvyUserRoles.id))
+        .where(eq(zuvyUserRolesAssigned.userId, userId));
 
-    return userRoles.length > 0 
-      ? userRoles.map(role => role.role)
-      : ['student'];
+      return userRoles.length > 0 
+        ? userRoles.map(role => role.roleName)
+        : ['student'];
+    } catch (error) {
+      this.logger.error('Error fetching user roles:', error);
+      return ['student']; // Default fallback role
+    }
   }
+
+  
 
   async login(loginDto: LoginDto) {
     try {      
@@ -78,7 +90,7 @@ export class AuthService {
         .where(eq(users.id, user.id));
 
       // Get user roles
-      const roles = await this.getUserRoles(user.id.toString());
+      const roles = await this.getUserRoles(user.id);
 
       const jwtPayload = { 
         sub: user.id.toString(),
@@ -170,12 +182,16 @@ export class AuthService {
         throw new UnauthorizedException('User not found');
       }
 
+      // Get user roles for the new token
+      const roles = await this.getUserRoles(user.id);
+
       // Generate new tokens
       const newPayload = {
         sub: user.id.toString(),
         email: user.email,
         googleUserId: user.googleUserId,
-        role: user.mode
+        role: user.mode,
+        rolesList: roles
       };
 
       const newAccessToken = this.jwtService.sign(newPayload);
