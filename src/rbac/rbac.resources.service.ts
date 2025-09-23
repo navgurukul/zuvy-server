@@ -1,20 +1,34 @@
 import { Injectable, Inject, NotFoundException, Logger, InternalServerErrorException, BadRequestException } from '@nestjs/common';
 import { db } from 'src/db/index';
 import { CreateResourceDto } from './dto/resources.dto';
-import { zuvyResources } from 'drizzle/schema';
+import { zuvyResources, zuvyPermissions } from 'drizzle/schema';
 import { eq, asc } from 'drizzle-orm';
 import { convertToPascalCaseWithSpaces } from './utility';
+import { permissions } from 'src/helpers';
 
 @Injectable()
 export class RbacResourcesService {
-   private readonly logger = new Logger(RbacResourcesService.name);
+  private readonly logger = new Logger(RbacResourcesService.name);
 
-   async createResource(createResourceDto: CreateResourceDto) {
+  async createResource(createResourceDto: CreateResourceDto) {
     try {
+      // Create the resource first
       const [resource] = await db
         .insert(zuvyResources)
         .values(createResourceDto)
         .returning();
+
+      // Create default permissions for this resource
+      const defaultPermissions = [
+        { name: permissions.CREATE, resourcesId: resource.id, description: `Create ${createResourceDto.name}` },
+        { name: permissions.READ, resourcesId: resource.id, description: `Read ${createResourceDto.name}` },
+        { name: permissions.UPDATE, resourcesId: resource.id, description: `Update ${createResourceDto.name}` },
+        { name: permissions.DELETE, resourcesId: resource.id, description: `Delete ${createResourceDto.name}` },
+      ];
+
+      await db
+        .insert(zuvyPermissions)
+        .values(defaultPermissions);
 
       return resource;
     } catch (error) {
@@ -34,10 +48,10 @@ export class RbacResourcesService {
 
       let pascalResources = convertToPascalCaseWithSpaces(resources);
       return {
-          status: 'success',
-          message: 'Resources fetched successfully',
-          code: 200, 
-          data: pascalResources
+        status: 'success',
+        message: 'Resources fetched successfully',
+        code: 200,
+        data: pascalResources
       };
     } catch (error) {
       throw new InternalServerErrorException('Failed to retrieve resources');
@@ -88,7 +102,7 @@ export class RbacResourcesService {
     }
   }
 
-    async deleteResource(id: number): Promise<void> {
+  async deleteResource(id: number): Promise<void> {
     try {
       const result = await db
         .delete(zuvyResources)

@@ -290,7 +290,7 @@ export class RbacController {
   })
   @ApiBearerAuth('JWT-auth')
   async getUserPermissionsByResource(
-    @Param('userId', ParseIntPipe) userId: number,
+    @Param('userId', ParseIntPipe) userId: bigint,
     @Param('resourceId', ParseIntPipe) resourceId: number
   ): Promise<any> {
     try {
@@ -587,6 +587,12 @@ export class RbacController {
     type: Number,
     description: 'offset',
   })
+  @ApiQuery({
+    name: 'searchTerm',
+    required: false,
+    type: String,
+    description: 'Filter by user name or email (default empty = all users)'
+  })
   @ApiResponse({
     status: 200,
     description: 'Users retrieved successfully',
@@ -612,9 +618,12 @@ export class RbacController {
     description: 'Internal server error'
   })
 
-  async getAllUsers( @Query('limit') limit: number,
-      @Query('offset') offSet: number,) {
-    return this.rbacUserService.getAllUsersWithRoles(limit, offSet);
+  async getAllUsers(
+    @Query('limit') limit: number,
+    @Query('offset') offSet: number,
+    @Query('searchTerm') searchTerm: string,
+  ) {
+    return this.rbacUserService.getAllUsersWithRoles(limit, offSet, searchTerm);
   }
 
   @Get('/getUser/:id')

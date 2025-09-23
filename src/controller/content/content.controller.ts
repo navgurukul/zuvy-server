@@ -413,13 +413,16 @@ export class ContentController {
     @Query('searchTerm') searchTerm: string,
     @Query('limit') limit: number,
     @Query('offset') offSet: number,
+    @Req() req
   ): Promise<object> {
+    const userId = req.user[0]?.id
     const res = await this.contentService.getAllQuizQuestions(
       tagId,
       difficulty,
       searchTerm,
       limit,
-      offSet
+      offSet,
+      userId
     );
     return res;
   }
@@ -479,13 +482,16 @@ export class ContentController {
     @Query('searchTerm') searchTerm: string,
     @Query('limit') limit: number,
     @Query('offset') offSet: number,
+    @Req() req
   ): Promise<object> {
+    const userId = req.user[0]?.id
     const res = await this.contentService.getAllCodingQuestions(
       tagId,
       difficulty,
       searchTerm,
       limit,
-      offSet
+      offSet,
+      userId
     );
     return res;
   }
@@ -586,13 +592,16 @@ export class ContentController {
     @Query('searchTerm') searchTerm: string,
     @Query('limit') limit: number,
     @Query('offset') offset: number,
+    @Req() req
   ): Promise<object> {
+    const userId = req.user[0]?.id
     const res = await this.contentService.getAllOpenEndedQuestions(
       tagId,
       difficulty,
       searchTerm,
       limit,
-      offset
+      offset,
+      userId
     );
     return res;
   }

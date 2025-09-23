@@ -1,9 +1,10 @@
 import { BadRequestException, Injectable, InternalServerErrorException, Logger, NotFoundException } from '@nestjs/common';
 import { db } from 'src/db/index';
-import { asc, eq, sql } from 'drizzle-orm';
+import { asc, eq, ilike, or, sql } from 'drizzle-orm';
 import { CreateUserRoleDto, AssignUserRoleDto, CreateUserDto, UpdateUserDto } from './dto/user-role.dto';
 import { users, zuvyUserRoles, zuvyUserRolesAssigned } from 'drizzle/schema';
 import { BigInt } from 'postgres';
+import { STATUS_CODES } from 'src/helpers';
 
 @Injectable()
 export class RbacUserService {
@@ -104,33 +105,66 @@ export class RbacUserService {
   }
 
   // Corrected code with data transformation
- // In your service
-  async getAllUsersWithRoles(limit: number, offset:number) {
-      try {
-          const userData = await db
-          .select({
-            id: zuvyUserRolesAssigned.id,
-            roleId: zuvyUserRolesAssigned.roleId,
-            userId: zuvyUserRolesAssigned.userId,
-            name: users.name,
-            email: users.email,
-            roleName: zuvyUserRoles.name
-          })
-          .from(zuvyUserRolesAssigned)
-          .leftJoin(users, eq(zuvyUserRolesAssigned.userId, users.id))
-          .leftJoin(zuvyUserRoles, eq(zuvyUserRolesAssigned.roleId, zuvyUserRoles.id))
-          .limit(limit)
-          .offset(offset)
-          .orderBy(asc(users.name));
+  // In your service
+  async getAllUsersWithRoles(limit: number, offset: number, searchTerm: string = '') {
+    try {
+      const search = `%${searchTerm}%`;
 
-        return userData.map(u => ({
+      // 1. Query for filtered users
+      const userData = await db
+        .select({
+          id: zuvyUserRolesAssigned.id,
+          roleId: zuvyUserRolesAssigned.roleId,
+          userId: zuvyUserRolesAssigned.userId,
+          name: users.name,
+          email: users.email,
+          roleName: zuvyUserRoles.name
+        })
+        .from(zuvyUserRolesAssigned)
+        .leftJoin(users, eq(zuvyUserRolesAssigned.userId, users.id))
+        .leftJoin(zuvyUserRoles, eq(zuvyUserRolesAssigned.roleId, zuvyUserRoles.id))
+        .where(
+          or(
+            ilike(users.name, search),
+            ilike(users.email, search)
+          )
+        )
+        .limit(limit)
+        .offset(offset)
+        .orderBy(asc(users.name));
+
+      // 2. Query for total count (same filter but without limit/offset)
+      const totalCount = await db
+        .select({ count: sql<number>`count(*)` })
+        .from(zuvyUserRolesAssigned)
+        .leftJoin(users, eq(zuvyUserRolesAssigned.userId, users.id))
+        .where(
+          or(
+            ilike(users.name, search),
+            ilike(users.email, search)
+          )
+        );
+
+      const totalRows = Number(totalCount[0]?.count ?? 0);
+      const totalPages = !Number.isNaN(limit) && limit > 0
+        ? Math.ceil(totalRows / limit)
+        : 1;
+
+      return {
+        status: 'success',
+        message: 'Users retrieved successfully',
+        code: STATUS_CODES.OK,
+        data: userData.map(u => ({
           ...u,
-          userId: Number(u.userId), // convert string → number
-        }));
-      } catch (error) {
-          console.error('Error in getAllUsersWithRoles:', error);
-          throw new InternalServerErrorException('Failed to retrieve users');
-      }
+          userId: Number(u.userId)
+        })),
+        totalRows,
+        totalPages,
+      };
+    } catch (error) {
+      console.error('Error in getAllUsersWithRoles:', error);
+      throw new InternalServerErrorException('Failed to retrieve users');
+    }
   }
 
   async getUserByIdWithRole(id: bigint) {

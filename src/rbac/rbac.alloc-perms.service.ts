@@ -7,90 +7,48 @@ import { userRoles, zuvyPermissions, zuvyResources, zuvyRolePermissions, zuvyUse
 export class RbacAllocPermsService {
   private readonly logger = new Logger(RbacAllocPermsService.name);
 
-  async getUserPermissionsByResource(userId: number, resourceId: number): Promise<any> {
+  async getUserPermissionsByResource(userId: bigint, resourceId: number): Promise<any> {
     try {
-      // First check if user exists
+      // Check if user exists
       const userCheck = await db.execute(sql`SELECT id FROM main.users WHERE id = ${userId} LIMIT 1`);
       if (!(userCheck as any).rows?.length) {
         throw new NotFoundException('User not found');
       }
-
-      // Check if resource exists
-      const resourceCheck = await db.execute(sql`SELECT id, name FROM main.zuvy_resources WHERE id = ${resourceId} LIMIT 1`);
-      if (!(resourceCheck as any).rows?.length) {
-        throw new NotFoundException('Resource not found');
-      }
-
-      const resourceName = (resourceCheck as any).rows[0].name;
-
-      // Get permissions through roles
-      const rolePermissions = await db.execute(sql`
-        SELECT DISTINCT 
-          p.id as permission_id,
-          p.name as permission_name,
-          r.name as resource_name,
-          ur.name as role_name,
-          'role_based' as permission_type
-        FROM main.zuvy_permissions p
-        INNER JOIN main.zuvy_resources r ON p.resources_id = r.id
-        INNER JOIN main.zuvy_role_permissions rp ON p.id = rp.permission_id
-        INNER JOIN main.zuvy_user_roles ur ON rp.role_id = ur.id
-        INNER JOIN main.zuvy_user_roles_assigned ura ON ura.role_id = ur.id
-        WHERE ura.user_id = ${userId} AND r.id = ${resourceId}
-      `);
-
-      // Get extra permissions for this resource
-      const extraPermissionsResult = await db.execute(sql`
-        SELECT DISTINCT 
-          ep.id as extra_permission_id,
-          p.name as permission_name,
-          r.name as resource_name,
-          ep.action,
-          ep.course_name,
-          'extra' as permission_type,
-          u2.email as granted_by_email
-        FROM main.zuvy_extra_permissions ep
-        INNER JOIN main.zuvy_permissions p ON ep.permission_id = p.id
-        INNER JOIN main.zuvy_resources r ON ep.resource_id = r.id
-        INNER JOIN main.users u2 ON ep.granted_by = u2.id
-        WHERE ep.user_id = ${userId} AND ep.resource_id = ${resourceId}
-      `);
-
-      const rolePermissionsList = (rolePermissions as any).rows || [];
-      const extraPermissionsList = (extraPermissionsResult as any).rows || [];
-
-      // Get all possible permissions for this resource to create complete permission object
-      const allPermissions = await db.execute(sql`
-        SELECT DISTINCT p.name as permission_name
-        FROM main.zuvy_permissions p
-        INNER JOIN main.zuvy_resources r ON p.resources_id = r.id
-        WHERE r.id = ${resourceId}
-      `);
-
-      const allPermissionsList = (allPermissions as any).rows || [];
-
-      // Create permissions object with combined resource and permission names
+      // Get user's role
+      const userRoleResult = await db
+        .select({ roleId: zuvyUserRolesAssigned.roleId })
+        .from(zuvyUserRolesAssigned)
+        .where(eq(zuvyUserRolesAssigned.userId, userId))
+        .limit(1);
+      if (!userRoleResult.length) {
+        // Return empty permissions if user has no role assigned
+        return { userId, roleId: null, permissions: {} };
+      } 
+      const userRoleId = userRoleResult[0].roleId;
+      // Get user's permissions
+      const userPermissionsResult = await db.select({
+        permissionName: zuvyPermissions.name,
+        resourceId: zuvyPermissions.resourcesId,
+        resourceName: zuvyResources.name
+      })
+      .from(zuvyRolePermissions)
+      .innerJoin(zuvyPermissions, eq(zuvyRolePermissions.permissionId, zuvyPermissions.id))
+      .innerJoin(zuvyResources, eq(zuvyPermissions.resourcesId, zuvyResources.id))
+      .where(and(
+        eq(zuvyRolePermissions.roleId, userRoleId),
+        eq(zuvyPermissions.resourcesId, resourceId)
+      ));
       const permissions = {};
-
-      // Initialize all possible permissions as false
-      allPermissionsList.forEach(perm => {
-        const combinedKey = `${resourceName}${perm.permission_name}`;
-        permissions[combinedKey] = false;
+      userPermissionsResult.forEach(perm => {
+        const resourceName = perm.resourceName === 'course' ? 'Bootcamp' :
+                            perm.resourceName === 'contentBank' ? 'ContentBank' :
+                            perm.resourceName;
+        const permissionKey = `${perm.permissionName}${resourceName.charAt(0).toUpperCase() + resourceName.slice(1)}`;
+        permissions[permissionKey] = true;
       });
-
-      // Set role-based permissions to true
-      rolePermissionsList.forEach(perm => {
-        const combinedKey = `${resourceName}${perm.permission_name}`;
-        permissions[combinedKey] = true;
-      });
-
-      // Set extra permissions to true
-      extraPermissionsList.forEach(perm => {
-        const combinedKey = `${resourceName}${perm.permission_name}`;
-        permissions[combinedKey] = true;
-      });
-
       return {
+        userId,
+        roleId: userRoleId,
         permissions
       };
     } catch (err) {
