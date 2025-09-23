@@ -66,7 +66,7 @@ export class RbacController {
     }
   }
 
-  @Get('users')
+  @Get('get/roles')
   //   @RequirePermissions('read_user_roles')
   @ApiOperation({
     summary: 'Get all user roles',
@@ -303,7 +303,7 @@ export class RbacController {
       throw new HttpException('Internal Server Error', HttpStatus.INTERNAL_SERVER_ERROR);
     }
   }
-  
+
   @Get('users/:userId/permissions-multiple')
   @ApiOperation({
     summary: 'Get user permissions for multiple resources',
@@ -368,7 +368,7 @@ export class RbacController {
   }
 
 
-  @Post()
+  @Post('/newResource')
   @ApiOperation({
     summary: 'Create a new resource',
     description: 'Adds a new resource to the system with the specified name and description'
@@ -570,38 +570,51 @@ export class RbacController {
     }
   }
 
-  @Get('getAllUsers')
+  @Get('get/all/users')
   @ApiOperation({
     summary: 'Get all users with their roles',
     description: 'Retrieves a list of all users with their role information'
   })
-  // @ApiResponse({
-  //   status: 200,
-  //   description: 'Users retrieved successfully',
-  //   schema: {
-  //     type: 'array',
-  //     items: {
-  //       type: 'object',
-  //       properties: {
-  //         id: { type: 'string', example: 1 },
-  //         name: { type: 'string', example: 'John Doe' },
-  //         email: { type: 'string', example: 'john@example.com' },
-  //         roleId: { type: 'number', example: 1 },
-  //         roleName: { type: 'string', example: 'admin' },
-  //         roleDescription: { type: 'string', example: 'Administrator role', nullable: true },
-  //         createdAt: { type: 'string', example: '2023-12-01T10:00:00.000Z' },
-  //         updatedAt: { type: 'string', example: '2023-12-01T10:00:00.000Z' }
-  //       }
-  //     }
-  //   }
-  // })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    type: Number,
+    description: 'limit',
+  })
+  @ApiQuery({
+    name: 'offset',
+    required: false,
+    type: Number,
+    description: 'offset',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Users retrieved successfully',
+    schema: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          id: { type: 'string', example: "1" },
+          name: { type: 'string', example: 'John Doe' },
+          email: { type: 'string', example: 'john@example.com' },
+          roleId: { type: 'number', example: 1 },
+          roleName: { type: 'string', example: 'admin' },
+          roleDescription: { type: 'string', example: 'Administrator role', nullable: true },
+          createdAt: { type: 'string', example: '2023-12-01T10:00:00.000Z' },
+          updatedAt: { type: 'string', example: '2023-12-01T10:00:00.000Z' }
+        }
+      }
+    }
+  })
   @ApiResponse({
     status: 500,
     description: 'Internal server error'
   })
-  @ApiBearerAuth('JWT-auth')
-  async getAllUsers() {
-    return this.rbacUserService.getAllUsersWithRoles();
+
+  async getAllUsers( @Query('limit') limit: number,
+      @Query('offset') offSet: number,) {
+    return this.rbacUserService.getAllUsersWithRoles(limit, offSet);
   }
 
   @Get('/getUser/:id')

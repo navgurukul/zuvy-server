@@ -103,30 +103,34 @@ export class RbacUserService {
     }
   }
 
-  async getAllUsersWithRoles() {
-    try {
-      
-      const userData = await db
-        .select({
-          id: users.id,
-          name: users.name,
-          email: users.email,
-          // roleId: zuvyUserRoles.id,
-          // roleName: zuvyUserRoles.name,
-          // roleDescription: zuvyUserRoles.description,
-          // createdAt: zuvyUserRolesAssigned.createdAt,
-          // updatedAt: zuvyUserRolesAssigned.updatedAt
-        })
-        .from(users)
-        // .leftJoin(zuvyUserRolesAssigned, eq(users.id, zuvyUserRolesAssigned.userId))
-        // .leftJoin(zuvyUserRoles, eq(zuvyUserRolesAssigned.roleId, zuvyUserRoles.id))
-        .orderBy(asc(users.name));
-      
+  // Corrected code with data transformation
+ // In your service
+  async getAllUsersWithRoles(limit: number, offset:number) {
+      try {
+          const userData = await db
+          .select({
+            id: zuvyUserRolesAssigned.id,
+            roleId: zuvyUserRolesAssigned.roleId,
+            userId: zuvyUserRolesAssigned.userId,
+            name: users.name,
+            email: users.email,
+            roleName: zuvyUserRoles.name
+          })
+          .from(zuvyUserRolesAssigned)
+          .leftJoin(users, eq(zuvyUserRolesAssigned.userId, users.id))
+          .leftJoin(zuvyUserRoles, eq(zuvyUserRolesAssigned.roleId, zuvyUserRoles.id))
+          .limit(limit)
+          .offset(offset)
+          .orderBy(asc(users.name));
 
-      return userData;
-    } catch (error) {
-      throw new InternalServerErrorException('Failed to retrieve users');
-    }
+        return userData.map(u => ({
+          ...u,
+          userId: Number(u.userId), // convert string → number
+        }));
+      } catch (error) {
+          console.error('Error in getAllUsersWithRoles:', error);
+          throw new InternalServerErrorException('Failed to retrieve users');
+      }
   }
 
   async getUserByIdWithRole(id: bigint) {
