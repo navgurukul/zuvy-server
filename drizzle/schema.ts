@@ -3716,6 +3716,7 @@ export const zuvyUserRoles = main.table('zuvy_user_roles', {
 export const zuvyResources = main.table('zuvy_resources', {
   id: serial('id').primaryKey().notNull(),
   name: varchar('name', { length: 100 }).notNull().unique(), // e.g. 'course', 'user', etc.
+  roleId: integer('role_id').notNull().references(() => zuvyUserRoles.id),
   description: text('description'),
 });
 // RBAC: Permissions Table
@@ -3725,6 +3726,33 @@ export const zuvyPermissions = main.table('zuvy_permissions', {
   resourcesId: integer('resource_id').notNull().references(() => zuvyResources.id),
   description: text('description'),
 });
+
+export const zuvyUserPermissions = main.table('zuvy_user_permissions', {
+  id: serial('id').primaryKey().notNull(),
+  userId: bigserial("user_id", { mode: "bigint" }).notNull().references(() => users.id),
+  permissionId: integer('permission_id').notNull().references(() => zuvyPermissions.id),
+  createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow(),
+});
+
+export const zuvyUserPermissionsRelations = relations(zuvyUserPermissions, ({ one }) => ({
+  user: one(users, {
+    fields: [zuvyUserPermissions.userId],
+    references: [users.id],
+  }),
+  permission: one(zuvyPermissions, {
+    fields: [zuvyUserPermissions.permissionId],
+    references: [zuvyPermissions.id],
+  }),
+}));
+
+export const userPermissionsRelations = relations(zuvyUserPermissions, ({ many }) => ({
+  userPermissions: many(zuvyUserPermissions),
+  permissions: many(zuvyPermissions),
+  users: many(users),
+}));
+
+
 
 // RBAC: UserRoles (M:N)
 export const zuvyUserRolesAssigned = main.table('zuvy_user_roles_assigned', {

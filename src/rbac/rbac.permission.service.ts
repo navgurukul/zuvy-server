@@ -1,8 +1,8 @@
-import { Injectable, InternalServerErrorException, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, InternalServerErrorException, Logger, NotFoundException } from '@nestjs/common';
 import { db } from 'src/db/index';
 import { sql, eq, and, asc, ilike, or } from 'drizzle-orm';
 import { CreatePermissionDto, AssignUserPermissionDto, AssignPermissionsToUserDto } from './dto/permission.dto';
-import { zuvyPermissions, zuvyResources, zuvyRolePermissions, zuvyUserRoles, zuvyUserRolesAssigned } from 'drizzle/schema';
+import { zuvyPermissions, zuvyResources, zuvyRolePermissions, zuvyUserPermissions, zuvyUserRoles, zuvyUserRolesAssigned } from 'drizzle/schema';
 
 @Injectable()
 export class RbacPermissionService {
@@ -231,122 +231,49 @@ export class RbacPermissionService {
   // rbac-permission.service.ts
   async assignPermissionsToUser(assignPermissionsDto: AssignPermissionsToUserDto): Promise<any> {
     try {
-      const { userId, roleId, permissions } = assignPermissionsDto;
-
+      const { userId, permissions } = assignPermissionsDto;
+      console.log('Assigning permissions:', assignPermissionsDto);
+      let insertUserPermission;
       // Check if user exists
       const userExists = await db.execute(sql`SELECT id FROM main.users WHERE id = ${userId} LIMIT 1`);
       if (!(userExists as any).rows?.length) {
         throw new NotFoundException('User not found');
       }
 
-      // Check if role exists
-      const roleExists = await db
-        .select({ id: zuvyUserRoles.id })
-        .from(zuvyUserRoles)
-        .where(eq(zuvyUserRoles.id, roleId))
-        .limit(1);
-
-      if (!roleExists.length) {
-        throw new NotFoundException('Role not found');
+      const permissionsExists = await db.execute(sql`SELECT id FROM main.zuvy_permissions WHERE id IN (${permissions.map(permission => permission).join(',')}) LIMIT 1`);
+      if (!(permissionsExists as any).rows?.length) {
+        throw new NotFoundException('Permissions not found');
       }
 
-      // Assign role to user (if not already assigned)
-      try {
-        let assignData = {
-          userId,
-          roleId
-        }
-        await db.insert(zuvyUserRolesAssigned).values(assignData);
-      } catch (error) {
-        // Ignore duplicate key error (role already assigned)
-        if (error.code !== '23505') {
-          throw error;
-        }
+      // const insertAudit = await db.execute(sql`
+      //   INSERT INTO main.zuvy_audit_logs (user_id, target_user_id, action, permission_id, scope_id)
+      //   VALUES (${userId}, ${userId}, ${'assign_permissions'}, ${permissions.map(permission => permission.id).join(',')}, ${scopeId ?? null})
+      //   RETURNING *
+      // `);
+      const alreadyAssignedPermissions = await db.execute(sql`SELECT id FROM main.zuvy_user_permissions WHERE user_id = ${userId} AND permission_id IN (${permissions.map(permission => permission).join(',')}) LIMIT 1`);
+      if ((alreadyAssignedPermissions as any).rows?.length) {
+        throw new BadRequestException('Permissions already assigned to user');
       }
 
-      const assignedPermissions = [];
-      const alreadyAssigned = [];
+      for (const permissionId of assignPermissionsDto.permissions) {
+        const exists = await db.query.zuvyUserPermissions.findFirst({
+          where: (u, { eq, and }) =>
+            and(eq(u.userId, BigInt(assignPermissionsDto.userId)), eq(u.permissionId, permissionId)),
+        });
 
-      for (const permission of permissions) {
-        try {
-          // Check if permission exists
-          const permissionExists = await db
-            .select({
-              id: zuvyPermissions.id,
-              name: zuvyPermissions.name,
-              resourcesId: zuvyPermissions.resourcesId,
-              resourceName: zuvyResources.name
-            })
-            .from(zuvyPermissions)
-            .innerJoin(zuvyResources, eq(zuvyPermissions.resourcesId, zuvyResources.id))
-            .where(eq(zuvyPermissions.id, permission.permissionId))
-            .limit(1);
-
-          if (!permissionExists.length) {
-            throw new NotFoundException(`Permission with ID ${permission.permissionId} not found`);
+        if (!exists) {
+          const insertData = {
+            userId: assignPermissionsDto.userId,
+            permissionId,
           }
-
-          const permissionDetail = permissionExists[0];
-
-          // Check if permission is already assigned to this role
-          const existingPermission = await db
-            .select({ id: zuvyRolePermissions.id })
-            .from(zuvyRolePermissions)
-            .where(and(
-              eq(zuvyRolePermissions.roleId, roleId),
-              eq(zuvyRolePermissions.permissionId, permission.permissionId)
-            ))
-            .limit(1);
-
-          if (existingPermission.length) {
-            alreadyAssigned.push({
-              permissionId: permission.permissionId,
-              permissionName: permissionDetail.name,
-              resourceId: permissionDetail.resourcesId,
-              resourceName: permissionDetail.resourceName
-            });
-            continue;
-          }
-
-          // Assign permission to role
-          await db.insert(zuvyRolePermissions).values({
-            roleId,
-            permissionId: permission.permissionId
-          });
-
-          assignedPermissions.push({
-            permissionId: permission.permissionId,
-            permissionName: permissionDetail.name,
-            resourceId: permissionDetail.resourcesId,
-            resourceName: permissionDetail.resourceName
-          });
-
-        } catch (error) {
-          if (error instanceof NotFoundException) {
-            throw error;
-          }
-          // Ignore duplicate permission assignments
-          if (error.code !== '23505') {
-            throw error;
-          }
+          insertUserPermission = await db.insert(zuvyUserPermissions).values(insertData).returning();
         }
       }
-
-      let message = 'Permissions assigned to role successfully';
-      if (alreadyAssigned.length > 0) {
-        if (assignedPermissions.length > 0) {
-          message = `Some permissions were already assigned to this role. ${assignedPermissions.length} new permissions assigned.`;
-        } else {
-          message = 'All permissions were already assigned to this role';
-        }
-      }
-
       return {
-        userId,
-        roleId,
-        assignedPermissions,
-        alreadyAssigned,
-        message
+        status: 'success',
+        code: 200,
+        message: 'Permissions assigned successfully',
+        data: insertUserPermission
       };
 
     } catch (error) {

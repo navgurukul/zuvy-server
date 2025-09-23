@@ -182,29 +182,29 @@ export class RbacController {
     }
   }
 
-  @Post('users/assign-permission')
-  @ApiOperation({
-    summary: 'Assign an extra permission to a specific user',
-    description: 'Records the assignment in the audit log table for traceability'
-  })
-  @ApiBody({ type: AssignUserPermissionDto })
-  @ApiResponse({ status: 200, description: 'Assignment recorded in audit log' })
-  @ApiResponse({ status: 404, description: 'User or permission not found' })
-  @ApiResponse({ status: 500, description: 'Internal server error' })
-  @ApiBearerAuth('JWT-auth')
-  async assignPermissionToUser(@Body() body: AssignUserPermissionDto): Promise<any> {
-    try {
-      const result = await this.rbacPermissionService.assignExtraPermissionToUser(body);
-      return result;
-    } catch (error) {
-      if (error instanceof HttpException) {
-        throw error;
-      }
-      throw new HttpException('Internal Server Error', HttpStatus.INTERNAL_SERVER_ERROR);
-    }
-  }
+  // @Post('assign/extra/permission')
+  // @ApiOperation({
+  //   summary: 'Assign an extra permission to a specific user',
+  //   description: 'Records the assignment in the audit log table for traceability'
+  // })
+  // @ApiBody({ type: AssignUserPermissionDto })
+  // @ApiResponse({ status: 200, description: 'Assignment recorded in audit log' })
+  // @ApiResponse({ status: 404, description: 'User or permission not found' })
+  // @ApiResponse({ status: 500, description: 'Internal server error' })
+  // @ApiBearerAuth('JWT-auth')
+  // async assignPermissionToUser(@Body() body: AssignUserPermissionDto): Promise<any> {
+  //   try {
+  //     const result = await this.rbacPermissionService.assignExtraPermissionToUser(body);
+  //     return result;
+  //   } catch (error) {
+  //     if (error instanceof HttpException) {
+  //       throw error;
+  //     }
+  //     throw new HttpException('Internal Server Error', HttpStatus.INTERNAL_SERVER_ERROR);
+  //   }
+  // }
 
-  @Post('assign-permissions')
+  @Post('assign/permissions/to/user')
   @ApiOperation({
     summary: 'Assign permissions to user',
     description: 'Admin can assign specific permissions to a user'

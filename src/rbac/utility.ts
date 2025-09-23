@@ -42,3 +42,10 @@ declare global {
 (BigInt.prototype as any).toJSON = function () {
   return this.toString();
 };
+
+export enum Role {
+  SUPER_ADMIN = 'super_admin',
+  ADMIN = 'admin',
+  OPS = 'ops',
+  INSTRUCTOR = 'instructor',
+}
