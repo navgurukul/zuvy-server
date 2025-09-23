@@ -2204,6 +2204,24 @@ export class ClassesService {
       const normalizedStart = updateData.startTime || updateData.startDateTime;
       const normalizedEnd = updateData.endTime || updateData.endDateTime;
 
+      // Convert IST to GMT for database storage (same as createZoomSession)
+      // Frontend sends IST time, we need to store as GMT
+      // IST is GMT+5:30, so to convert IST to GMT we subtract 5:30
+      let gmtStartTime = normalizedStart;
+      let gmtEndTime = normalizedEnd;
+      if (normalizedStart) {
+          gmtStartTime = new Date(normalizedStart);
+         gmtStartTime.setHours(gmtStartTime.getHours() - 5);
+      gmtStartTime.setMinutes(gmtStartTime.getMinutes() - 30);
+        gmtStartTime = gmtStartTime.toISOString();
+      }
+      
+      if (normalizedEnd) {
+         gmtEndTime = new Date(normalizedEnd);
+         gmtEndTime.setHours(gmtEndTime.getHours() - 5);
+      gmtEndTime.setMinutes(gmtEndTime.getMinutes() - 30);
+        gmtEndTime = gmtEndTime.toISOString();
+      }
       // Prevent platform toggle via update
       if (updateData.isZoomMeet !== undefined && updateData.isZoomMeet !== session.isZoomMeet) {
         this.logger.warn('Attempt to change isZoomMeet ignored');
@@ -2212,11 +2230,11 @@ export class ClassesService {
       await db.update(zuvySessions)
         .set({
           title: updateData.title || session.title,
-          startTime: normalizedStart || session.startTime,
-          endTime: normalizedEnd || session.endTime,
+          startTime: gmtStartTime || session.startTime,
+          endTime: gmtEndTime || session.endTime,
         })
         .where(eq(zuvySessions.id, sessionId));
-
+      await db.update(zuvyModuleChapter).set({ title: updateData.title || session.title}).where(eq(zuvyModuleChapter.id, session.chapterId))
       // Handle platform-specific updates
       if (session.isZoomMeet) {
         // Update Zoom meeting
@@ -2232,32 +2250,14 @@ export class ClassesService {
 
             const zoomUpdateData: any = {};
             if (updateData.title) zoomUpdateData.topic = updateData.title;
+            // Use original IST time for Zoom API (not the GMT converted time)
             if (normalizedStart) zoomUpdateData.start_time = normalizedStart;
             if (duration) zoomUpdateData.duration = duration;
 
             await this.zoomService.updateMeeting(session.zoomMeetingId, zoomUpdateData);
             this.logger.log(`Zoom meeting ${session.zoomMeetingId} updated successfully`);
 
-            // Also update corresponding Google Calendar event if it exists
-            if (session.meetingId) {
-              try {
-                const calendarUpdateData = {
-                  title: updateData.title ? `${updateData.title} (Zoom Meeting)` : undefined,
-                  startTime: normalizedStart,
-                  endTime: normalizedEnd,
-                  timeZone: updateData.timeZone,
-                  description: updateData.description ?
-                    `${updateData.description}\n\nJoin Zoom Meeting: ${session.hangoutLink}\nMeeting ID: ${session.zoomMeetingId}\nPassword: ${session.zoomPassword}` :
-                    undefined
-                };
-
-                await this.updateGoogleCalendarEvent(session.meetingId, calendarUpdateData, userInfo);
-                this.logger.log(`Google Calendar event ${session.meetingId} updated successfully`);
-              } catch (calendarError) {
-                this.logger.warn(`Failed to update Google Calendar event: ${calendarError.message}`);
-                // Continue without failing the entire update
-              }
-            }
+  
           } catch (error) {
             this.logger.error(`Failed to update Zoom meeting: ${error.message}`);
             // Could rollback DB changes or continue with warning
@@ -2292,7 +2292,7 @@ export class ClassesService {
 
       return {
         success: true,
-        data: { sessionId, ...updateData, startTime: normalizedStart || session.startTime, endTime: normalizedEnd || session.endTime },
+        data: { sessionId, ...updateData, startTime: gmtStartTime || session.startTime, endTime: gmtEndTime || session.endTime },
         message: 'Session updated successfully'
       };
     } catch (error) {
@@ -2408,7 +2408,6 @@ export class ClassesService {
       if (!session) {
         return { success: false, message: 'Session not found for given meeting identifier' };
       }
-      console.log({ session });
       // Platform consistency checks
       if (session.isZoomMeet) {
         if (!session.zoomMeetingId) {
@@ -2875,7 +2874,6 @@ export class ClassesService {
 
           if (individualRecords.length > 0) {
             await db.insert(zuvyStudentAttendanceRecords).values(individualRecords);
-            console.log(`Inserted ${individualRecords.length} individual Google Meet attendance records`);
           }
         }
 
@@ -2996,7 +2994,6 @@ export class ClassesService {
 
       return [null, { success: true, data: { session, analytics }, message: 'Meeting attendance analytics processed successfully' }];
     } catch (error) {
-      console.log(error)
       this.logger.error(`Error processing meeting attendance analytics: ${error.message}`);
       return [error, null];
     }
@@ -3076,7 +3073,6 @@ export class ClassesService {
         // Aggregate durations per email from Zoom data
         const durationByEmail: Record<string, number> = {};
         for (const p of zoomParticipants) {
-          console.log({ p })
           const email = (p.user_email || '').toLowerCase();
           if (!email) continue;
           durationByEmail[email] = (durationByEmail[email] || 0) + (p.duration || 0);
@@ -3097,7 +3093,6 @@ export class ClassesService {
           const emailKey = inv.email.toLowerCase();
           const totalDuration = durationByEmail[emailKey] || 0;
           const present = totalDuration > 0; // Mark present if appeared at all
-          console.log({ emailKey, totalDuration, present, inv });
 
           // Resolve correct batch (primary vs second) if user enrolled in secondBatchId
           let effectiveBatchId = session.batchId;

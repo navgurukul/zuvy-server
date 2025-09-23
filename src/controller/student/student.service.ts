@@ -792,7 +792,10 @@ export class StudentService {
       where: (session, { and, eq }) =>
         and(
           eq(session.bootcampId, bootcampId),
+          or(
           eq(session.batchId, batchId),
+          eq(session.secondBatchId, batchId)
+          ),
           eq(session.status, helperVariable.completed)
         ),
       with: {
