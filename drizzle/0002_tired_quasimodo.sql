@@ -273,6 +273,7 @@ CREATE TABLE "main"."zuvy_user_roles" (
 CREATE TABLE "main"."zuvy_resources" (
     "id" SERIAL PRIMARY KEY,
     "name" VARCHAR(100) NOT NULL UNIQUE,
+    "role_id" INTEGER NOT NULL REFERENCES "main"."zuvy_user_roles"("id"),
     "description" TEXT
 );
 --> statement-breakpoint
@@ -280,7 +281,10 @@ CREATE TABLE "main"."zuvy_permissions" (
     "id" SERIAL PRIMARY KEY,
     "name" VARCHAR(100) NOT NULL,
     "resource_id" INTEGER NOT NULL REFERENCES "main"."zuvy_resources"("id"),
+    "grantable" BOOLEAN NOT NULL DEFAULT FALSE,
     "description" TEXT
+	"created_at" TIMESTAMPTZ DEFAULT NOW(),
+    "updated_at" TIMESTAMPTZ DEFAULT NOW(),
 );
 --> statement-breakpoint
 CREATE TABLE "main"."zuvy_scopes" (

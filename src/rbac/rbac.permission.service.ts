@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, InternalServerErrorException, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, InternalServerErrorException, Logger, NotFoundException } from '@nestjs/common';
 import { db } from 'src/db/index';
 import { sql, eq, and, asc, ilike, or, inArray } from 'drizzle-orm';
 import { CreatePermissionDto, AssignUserPermissionDto, AssignPermissionsToUserDto, AssignPermissionsToRoleDto } from './dto/permission.dto';
@@ -280,33 +280,143 @@ export class RbacPermissionService {
     }
   }
 
-  async assignPermissionsToRole(assignPermissionsDto: AssignPermissionsToRoleDto): Promise<any> {
-    try {
-      const entries = Object.entries(assignPermissionsDto.permissions).map(
-        ([id, g]) => [Number(id), Boolean(g)]
+async assignPermissionsToRole(dto: AssignPermissionsToRoleDto) {
+  try {
+    return await db.transaction(async (tx) => {
+      // Check if resource exists
+      const resource = await tx
+        .select({ 
+          id: zuvyResources.id,
+          name: zuvyResources.name 
+        })
+        .from(zuvyResources)
+        .where(eq(zuvyResources.id, dto.resourceId))
+        .limit(1);
+
+      if (!resource.length) {
+        throw new NotFoundException(`Resource with ID ${dto.resourceId} not found`);
+      }
+
+      // Get all permission IDs that should exist for this resource
+      const permissionIds = Object.keys(dto.permissions).map(Number);
+      
+      const existingPermissions = await tx
+        .select({ 
+          id: zuvyPermissions.id,
+          name: zuvyPermissions.name,
+          resourcesId: zuvyPermissions.resourcesId
+        })
+        .from(zuvyPermissions)
+        .where(
+          and(
+            inArray(zuvyPermissions.id, permissionIds),
+            eq(zuvyPermissions.resourcesId, dto.resourceId)
+          )
+        );
+
+      // Check if all provided permission IDs exist and belong to the resource
+      const existingPermissionIds = new Set(existingPermissions.map(p => p.id));
+      const invalidPermissionIds = permissionIds.filter(id => !existingPermissionIds.has(id));
+
+      if (invalidPermissionIds.length > 0) {
+        throw new BadRequestException(
+          `Permission(s) with ID(s) [${invalidPermissionIds.join(', ')}] not found for resource ${dto.resourceId}`
+        );
+      }
+
+      // Perform updates
+      const updateResults = await Promise.allSettled(
+        Object.entries(dto.permissions).map(async ([permissionId, grantable]) => {
+          const result = await tx
+            .update(zuvyPermissions)
+            .set({
+              [zuvyPermissions.grantable.name]: grantable,
+              // [zuvyPermissions.updatedAt.name]: new Date()
+            })
+            .where(
+              and(
+                eq(zuvyPermissions.id, Number(permissionId)),
+                eq(zuvyPermissions.resourcesId, dto.resourceId)
+              )
+            )
+            .returning({ 
+              id: zuvyPermissions.id, 
+              grantable: zuvyPermissions.grantable 
+            });
+
+          if (!result.length) {
+            throw new Error(`Failed to update permission ${permissionId}`);
+          }
+
+          return result[0];
+        })
       );
-      if (!entries.length) return [];
 
-      const valuesSql = sql.join(
-        entries.map(([id, g]) => sql`(${id}, ${g})`),
-        sql`, `
-      );
+      // Check for any failed updates
+      const failedUpdates = updateResults
+        .map((result, index) => ({ result, permissionId: permissionIds[index] }))
+        .filter(({ result }) => result.status === 'rejected');
 
-      const result = await db.execute(sql`
-        UPDATE ${zuvyPermissions} AS p
-        SET grantable = v.grantable
-        FROM (VALUES ${valuesSql}) AS v(id, grantable)
-        WHERE p.id = v.id AND p.resource_id = ${assignPermissionsDto.resourceId}
-        RETURNING p.id, p.grantable;
-      `);
+      if (failedUpdates.length > 0) {
+        const failedIds = failedUpdates.map(({ permissionId }) => permissionId);
+        throw new InternalServerErrorException(
+          `Failed to update permission(s): ${failedIds.join(', ')}`
+        );
+      }
 
-      return result;
+      // Extract successful results
+      const successfulUpdates = updateResults
+        .filter((result): result is PromiseFulfilledResult<any> => result.status === 'fulfilled')
+        .map(result => result.value);
 
-    } catch (error) {
-      this.logger.error('Error assigning permissions to role:', error);
+      return {
+        success: true,
+        message: `Successfully updated ${successfulUpdates.length} permission(s) for resource ${resource[0].name}`,
+        data: {
+          resourceId: dto.resourceId,
+          resourceName: resource[0].name,
+          updatedPermissions: successfulUpdates,
+          totalUpdated: successfulUpdates.length
+        }
+      };
+    });
+
+  } catch (error) {
+    // Log the error for monitoring
+    this.logger.error('Error updating permissions:', {
+      resourceId: dto.resourceId,
+      permissionCount: Object.keys(dto.permissions || {}).length,
+      error: error.message,
+      stack: error.stack
+    });
+
+    // Re-throw known HTTP exceptions
+    if (error instanceof BadRequestException || 
+        error instanceof NotFoundException || 
+        error instanceof InternalServerErrorException) {
       throw error;
     }
+
+    // Handle database-specific errors
+    if (error.code) {
+      switch (error.code) {
+        case '23503': // Foreign key violation
+          throw new BadRequestException('Invalid reference to related data');
+        case '23505': // Unique constraint violation
+          throw new ConflictException('Duplicate permission configuration');
+        case '23514': // Check constraint violation
+          throw new BadRequestException('Invalid permission data provided');
+        default:
+          throw new InternalServerErrorException(
+            'Database error occurred while updating permissions'
+          );
+      }
+    }
+
+    // Generic error fallback
+    throw new InternalServerErrorException(
+      'An unexpected error occurred while updating permissions'
+    );
   }
 }
-
-
+}
