@@ -263,46 +263,40 @@ CREATE TABLE IF NOT EXISTS "main"."zuvy_outsourse_quizzes" (
 	"created_at" timestamp with time zone DEFAULT now(),
 	"id" serial PRIMARY KEY NOT NULL
 );
-
+--> rbac tables
+CREATE TABLE "main"."zuvy_user_roles" (
+    "id" SERIAL PRIMARY KEY,
+    "name" VARCHAR(50) NOT NULL UNIQUE,
+    "description" TEXT
+);
+--> statement-breakpoint
+CREATE TABLE "main"."zuvy_resources" (
+    "id" SERIAL PRIMARY KEY,
+    "name" VARCHAR(100) NOT NULL UNIQUE,
+    "description" TEXT
+);
+--> statement-breakpoint
 CREATE TABLE "main"."zuvy_permissions" (
     "id" SERIAL PRIMARY KEY,
     "name" VARCHAR(100) NOT NULL,
     "resource_id" INTEGER NOT NULL REFERENCES "main"."zuvy_resources"("id"),
-    "grantable" BOOLEAN NOT NULL DEFAULT FALSE,
     "description" TEXT
 );
-
 --> statement-breakpoint
-CREATE TABLE "main"."zuvy_role_permissions" (
-	"id" serial PRIMARY KEY NOT NULL,
-	"created_at" timestamp with time zone DEFAULT now(),
-	"updated_at" timestamp with time zone DEFAULT now(),
-	"role_id" integer NOT NULL,
-	"permission_id" integer NOT NULL
-);
-
-CREATE TABLE "main"."zuvy_resources" (
+CREATE TABLE "main"."zuvy_scopes" (
     "id" SERIAL PRIMARY KEY,
     "name" VARCHAR(100) NOT NULL UNIQUE,
-    "role_id" INTEGER NOT NULL REFERENCES "main"."zuvy_user_roles"("id"),
     "description" TEXT
-);
-
---> statement-breakpoint
-CREATE TABLE "main"."zuvy_user_roles" (
-	"id" serial PRIMARY KEY NOT NULL,
-	"name" varchar(50) NOT NULL,
-	"description" text,
-	CONSTRAINT "zuvy_user_roles_name_unique" UNIQUE("name")
 );
 --> statement-breakpoint
 CREATE TABLE "main"."zuvy_user_roles_assigned" (
-	"id" serial PRIMARY KEY NOT NULL,
-	"user_id" integer NOT NULL,
-	"role_id" integer NOT NULL,
-	"created_at" timestamp with time zone DEFAULT now(),
-	"updated_at" timestamp with time zone DEFAULT now()
-
+    "id" SERIAL PRIMARY KEY,
+    "user_id" BIGINT NOT NULL REFERENCES "main"."users"("id"),
+    "role_id" INTEGER NOT NULL REFERENCES "main"."zuvy_user_roles"("id"),
+    "created_at" TIMESTAMPTZ DEFAULT NOW(),
+    "updated_at" TIMESTAMPTZ DEFAULT NOW(),
+    CONSTRAINT "zuvy_user_roles_assigned_user_id_role_id_pk"
+        UNIQUE ("user_id", "role_id")
 );
 --> statement-breakpoint
 CREATE TABLE "main"."zuvy_user_permissions" (
