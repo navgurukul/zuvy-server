@@ -315,9 +315,3 @@ CREATE TABLE "main"."zuvy_resources_granted_permissions" (
     "created_at" TIMESTAMPTZ DEFAULT NOW(),
     "updated_at" TIMESTAMPTZ DEFAULT NOW()
 );
-
---> statement-breakpoint
-ALTER TABLE "main"."zuvy_role_permissions" ADD CONSTRAINT "zuvy_role_permissions_role_id_zuvy_user_roles_id_fk" FOREIGN KEY ("role_id") REFERENCES "main"."zuvy_user_roles"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "main"."zuvy_role_permissions" ADD CONSTRAINT "zuvy_role_permissions_permission_id_zuvy_permissions_id_fk" FOREIGN KEY ("permission_id") REFERENCES "main"."zuvy_permissions"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "main"."zuvy_user_roles_assigned" ADD CONSTRAINT "zuvy_user_roles_assigned_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "main"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "main"."zuvy_user_roles_assigned" ADD CONSTRAINT "zuvy_user_roles_assigned_role_id_zuvy_user_roles_id_fk" FOREIGN KEY ("role_id") REFERENCES "main"."zuvy_user_roles"("id") ON DELETE no action ON UPDATE no action;
