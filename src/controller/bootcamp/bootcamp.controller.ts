@@ -15,7 +15,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { BootcampService } from './bootcamp.service';
-import { ApiTags, ApiOperation, ApiQuery, ApiBearerAuth } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiQuery, ApiBearerAuth, ApiBody } from '@nestjs/swagger';
 import {
   CreateBootcampDto,
   EditBootcampDto,
@@ -307,6 +307,36 @@ export class BootcampController {
     type: String,
     description: 'Search by name or email',
   })
+  @ApiQuery({
+    name: 'enrolledDate',
+    required: false,
+    type: String,
+    description: 'Filter by enrolled date (YYYY-MM-DD)',
+  })
+  @ApiQuery({
+    name: 'lastActiveDate',
+    required: false,
+    type: String,
+    description: 'Filter by last active date (YYYY-MM-DD)',
+  })
+  @ApiQuery({
+    name: 'status',
+    required: false,
+    type: String,
+    description: 'Filter by enrollment status',
+  })
+  @ApiQuery({
+    name: 'attendance',
+    required: false,
+    type: Number,
+    description: 'Filter by attendance number',
+  })
+  @ApiQuery({
+    name: 'meetingSearch',
+    required: false,
+    type: String,
+    description: 'Search meetings/sessions by title',
+  })
   @ApiBearerAuth('JWT-auth')
   async getStudentsByBootcamp(
     @Param('bootcamp_id') bootcamp_id: number,
@@ -314,6 +344,11 @@ export class BootcampController {
     @Query('limit') limit: number,
     @Query('searchTerm') searchTerm: string,
     @Query('offset') offset: number,
+    @Query('enrolledDate') enrolledDate: string,
+    @Query('lastActiveDate') lastActiveDate: string,
+    @Query('status') status: string,
+    @Query('attendance') attendance: number,
+    @Query('meetingSearch') meetingSearch: string,
   ) {
     const searchTermAsNumber = !isNaN(Number(searchTerm))
       ? BigInt(searchTerm)
@@ -324,6 +359,11 @@ export class BootcampController {
       searchTermAsNumber,
       limit,
       offset,
+      enrolledDate,
+      lastActiveDate,
+      status,
+      attendance,
+      meetingSearch,
     );
     return res;
   }
@@ -348,6 +388,33 @@ export class BootcampController {
     if (err) {
       throw new BadRequestException(err);
     }
+    return res;
+  }
+
+  @Post('/:bootcamp_id/attendance/:session_id/mark')
+  @ApiOperation({ summary: 'Mark or update student attendance for a specific session' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        userId: { type: 'number', description: 'Student user ID' },
+        status: { type: 'string', enum: ['present', 'absent'], description: 'Attendance status' },
+      },
+      required: ['userId', 'status'],
+    },
+  })
+  @ApiBearerAuth('JWT-auth')
+  async markStudentAttendance(
+    @Param('bootcamp_id') bootcamp_id: number,
+    @Param('session_id') session_id: number,
+    @Body() body: { userId: number; status: string },
+  ) {
+    const res = await this.bootcampService.markStudentAttendance(
+      bootcamp_id,
+      session_id,
+      body.userId,
+      body.status,
+    );
     return res;
   }
 
