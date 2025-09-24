@@ -1,7 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { ArrayMinSize, IsArray, IsNotEmpty, IsNumber, IsOptional, IsString, ValidateNested } from 'class-validator';
-import { Type } from 'class-transformer';
-import { Transform } from 'class-transformer';
+import { ArrayMinSize, IsArray, IsNotEmpty, IsNotEmptyObject, IsNumber, IsOptional, IsString, ValidateNested } from 'class-validator';
+import { Transform, Type } from 'class-transformer';
 
 export class CreatePermissionDto {
   @ApiProperty({
@@ -19,6 +18,16 @@ export class CreatePermissionDto {
   @IsNumber()
   @IsNotEmpty()
   resourceId: number;
+
+  @ApiProperty({
+    description: 'Indicates if this permission can be granted by users who have it',
+    example: false,
+    required: false
+  })
+  @IsOptional()
+  @Transform(({ value }) => (value === 'true' || value === true))
+  @IsNotEmpty()
+  grantable: boolean;
 
   @ApiProperty({
     description: 'Optional human readable description',
@@ -45,31 +54,31 @@ export class PermissionResponseDto {
 }
 
 export class AssignUserPermissionDto {
-  @ApiProperty({ 
-    description: 'Admin (actor) user ID performing the assignment', 
-    example: 1 
+  @ApiProperty({
+    description: 'Admin (actor) user ID performing the assignment',
+    example: 1
   })
   @IsNumber()
   actorUserId: number;
 
-  @ApiProperty({ 
-    description: 'Target user ID receiving the extra permission', 
-    example: 123 
+  @ApiProperty({
+    description: 'Target user ID receiving the extra permission',
+    example: 123
   })
   @IsNumber()
   targetUserId: number;
 
-  @ApiProperty({ 
-    description: 'Permission ID being assigned to the user', 
-    example: 42 
+  @ApiProperty({
+    description: 'Permission ID being assigned to the user',
+    example: 42
   })
   @IsNumber()
   permissionId: number;
 
-  @ApiProperty({ 
-    description: 'Optional scope ID if scoping is used', 
-    required: false, 
-    example: 3 
+  @ApiProperty({
+    description: 'Optional scope ID if scoping is used',
+    required: false,
+    example: 3
   })
   @IsOptional()
   @IsNumber()
@@ -77,16 +86,16 @@ export class AssignUserPermissionDto {
 }
 
 export class GetUserPermissionsByResourceDto {
-  @ApiProperty({ 
-    description: 'User ID to get permissions for', 
-    example: 123 
+  @ApiProperty({
+    description: 'User ID to get permissions for',
+    example: 123
   })
   @IsNumber()
   userId: number;
 
-  @ApiProperty({ 
-    description: 'Resource ID to filter permissions by', 
-    example: 5 
+  @ApiProperty({
+    description: 'Resource ID to filter permissions by',
+    example: 5
   })
   @IsNumber()
   resourceId: number;
@@ -102,7 +111,7 @@ export class UserPermissionResponseDto {
   @ApiProperty({ description: 'Resource name', example: 'course' })
   resourceName: string;
 
-  @ApiProperty({ 
+  @ApiProperty({
     description: 'Permissions breakdown',
     type: 'object',
     properties: {
@@ -143,15 +152,15 @@ export class UserPermissionResponseDto {
     total: number;
   };
 
-  @ApiProperty({ 
+  @ApiProperty({
     description: 'Permission summary',
     type: 'object',
     properties: {
       totalPermissions: { type: 'number', example: 5 },
       roleBasedCount: { type: 'number', example: 3 },
       extraPermissionsCount: { type: 'number', example: 2 },
-      uniquePermissions: { 
-        type: 'array', 
+      uniquePermissions: {
+        type: 'array',
         items: { type: 'string' },
         example: ['course.view', 'course.edit', 'course.delete']
       }
@@ -165,26 +174,21 @@ export class UserPermissionResponseDto {
   };
 }
 
-export class PermissionAssignmentDto {
-  @IsNumber()
-  @IsNotEmpty()
-  permissionId: number;
-}
 
 export class AssignPermissionsToUserDto {
-  @Transform(({ value }) => BigInt(value))
-  @IsNotEmpty()
-  userId: bigint;
-
+  @ApiProperty({
+    description: 'User ID to assign the role to',
+    example: 123
+  })
   @IsNumber()
-  @IsNotEmpty()
-  roleId: number;
+  userId: number;
 
+  @ApiProperty({
+    type: [Number],
+    example: [1, 2],
+  })
   @IsArray()
-  @ArrayMinSize(1)
-  @ValidateNested({ each: true })
-  @Type(() => PermissionAssignmentDto)
-  permissions: PermissionAssignmentDto[];
+  permissions: number[];
 }
 
 // permission-assignment-response.dto.ts
@@ -206,3 +210,21 @@ export class PermissionAssignmentResponseDto {
   message: string;
 }
 
+
+export class AssignPermissionsToRoleDto {
+  @ApiProperty({
+    description: 'Role ID to assign the permissions to',
+    example: 123
+  })
+  @IsNumber()
+  resourceId: number;
+  
+  @IsNotEmptyObject()
+  @Transform(({ value }) => {
+    // ensure keys are numbers and values are booleans
+    return Object.fromEntries(
+      Object.entries(value).map(([key, val]) => [Number(key), Boolean(val)])
+    );
+  })
+  permissions: Record<number, boolean>;
+}

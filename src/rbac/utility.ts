@@ -15,6 +15,7 @@ export function convertToPascalCaseWithSpaces(items: Item[]): Item[] {
   });
 }
 
+
 function convertNameToPascalWithSpaces(name: string): string {
   // If the name already contains spaces, maintain them and just capitalize each word
   if (name.includes(' ')) {
@@ -30,4 +31,21 @@ function convertNameToPascalWithSpaces(name: string): string {
     .split(' ')
     .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
     .join(' ');
+}
+
+declare global {
+  interface BigInt {
+    toJSON(): string;
+  }
+}
+
+(BigInt.prototype as any).toJSON = function () {
+  return this.toString();
+};
+
+export enum Role {
+  SUPER_ADMIN = 'super_admin',
+  ADMIN = 'admin',
+  OPS = 'ops',
+  INSTRUCTOR = 'instructor',
 }

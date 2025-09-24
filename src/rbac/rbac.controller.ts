@@ -4,7 +4,7 @@ import { RbacUserService } from './rbac.user.service';
 import { RbacPermissionService } from './rbac.permission.service';
 import { RbacAllocPermsService } from './rbac.alloc-perms.service';
 import { CreateUserRoleDto, UserRoleResponseDto, AssignUserRoleDto, CreateUserDto, UpdateUserDto } from './dto/user-role.dto';
-import { CreatePermissionDto, PermissionResponseDto, AssignUserPermissionDto, GetUserPermissionsByResourceDto, UserPermissionResponseDto, AssignPermissionsToUserDto, PermissionAssignmentResponseDto } from './dto/permission.dto';
+import { CreatePermissionDto, PermissionResponseDto, AssignUserPermissionDto, GetUserPermissionsByResourceDto, UserPermissionResponseDto, AssignPermissionsToUserDto, PermissionAssignmentResponseDto, AssignPermissionsToRoleDto } from './dto/permission.dto';
 import { RbacResourcesService } from './rbac.resources.service';
 import { CreateResourceDto } from './dto/resources.dto';
 import { bigint } from 'drizzle-orm/mysql-core';
@@ -66,7 +66,7 @@ export class RbacController {
     }
   }
 
-  @Get('users')
+  @Get('get/roles')
   //   @RequirePermissions('read_user_roles')
   @ApiOperation({
     summary: 'Get all user roles',
@@ -130,7 +130,7 @@ export class RbacController {
     }
   }
 
-  @Get('permissions')
+  @Get('get/all/permissions')
   @ApiOperation({
     summary: 'Get all permissions',
     description: 'Retrieves all permissions from the system with pagination, search, and filtering. Optional parameters for resourceId, search, page, and limit.'
@@ -142,22 +142,10 @@ export class RbacController {
     type: Number
   })
   @ApiQuery({
-    name: 'search',
+    name: 'searchPermission',
     required: false,
     description: 'Optional search term to filter permissions by name or description',
     type: String
-  })
-  @ApiQuery({
-    name: 'page',
-    required: false,
-    description: 'Page number for pagination (default: 1)',
-    type: Number
-  })
-  @ApiQuery({
-    name: 'limit',
-    required: false,
-    description: 'Number of items per page (default: 10)',
-    type: Number
   })
   @ApiResponse({
     status: 200,
@@ -170,41 +158,85 @@ export class RbacController {
   @ApiBearerAuth('JWT-auth')
   async getAllPermissions(
     @Query('resourceId') resourceId?: number,
-    @Query('search') search?: string,
-    @Query('page') page?: number,
-    @Query('limit') limit?: number
+    @Query('searchPermission') searchPermission?: string,
   ): Promise<any> {
     try {
-      const result = await this.rbacPermissionService.getAllPermissions(resourceId, search, page, limit);
+      const result = await this.rbacPermissionService.getAllPermissions(resourceId, searchPermission);
       return result;
     } catch (error) {
       throw new HttpException('Internal Server Error', HttpStatus.INTERNAL_SERVER_ERROR);
     }
   }
 
-  @Post('users/assign-permission')
+  // @Post('assign/extra/permission')
+  // @ApiOperation({
+  //   summary: 'Assign an extra permission to a specific user',
+  //   description: 'Records the assignment in the audit log table for traceability'
+  // })
+  // @ApiBody({ type: AssignUserPermissionDto })
+  // @ApiResponse({ status: 200, description: 'Assignment recorded in audit log' })
+  // @ApiResponse({ status: 404, description: 'User or permission not found' })
+  // @ApiResponse({ status: 500, description: 'Internal server error' })
+  // @ApiBearerAuth('JWT-auth')
+  // async assignPermissionToUser(@Body() body: AssignUserPermissionDto): Promise<any> {
+  //   try {
+  //     const result = await this.rbacPermissionService.assignExtraPermissionToUser(body);
+  //     return result;
+  //   } catch (error) {
+  //     if (error instanceof HttpException) {
+  //       throw error;
+  //     }
+  //     throw new HttpException('Internal Server Error', HttpStatus.INTERNAL_SERVER_ERROR);
+  //   }
+  // }
+
+
+  @Put('assign/permissionsToRole')
   @ApiOperation({
-    summary: 'Assign an extra permission to a specific user',
-    description: 'Records the assignment in the audit log table for traceability'
+    summary: 'Assign permissions to role',
+    description: 'Admin can assign specific permissions to a role'
   })
-  @ApiBody({ type: AssignUserPermissionDto })
-  @ApiResponse({ status: 200, description: 'Assignment recorded in audit log' })
-  @ApiResponse({ status: 404, description: 'User or permission not found' })
-  @ApiResponse({ status: 500, description: 'Internal server error' })
+  @ApiBody({
+    type: AssignPermissionsToRoleDto,
+    description: 'Role ID and permissions to assign'
+  })
+  @ApiResponse({
+    status: 201,
+    description: 'Permissions assigned successfully',
+    type: PermissionAssignmentResponseDto
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Bad request - Invalid input data or role not found'
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Role not found'
+  })
+  @ApiResponse({
+    status: 500,
+    description: 'Internal server error'
+  })
   @ApiBearerAuth('JWT-auth')
-  async assignPermissionToUser(@Body() body: AssignUserPermissionDto): Promise<any> {
+  async assignPermissionsToRole(@Body() assignPermissionsDto: AssignPermissionsToRoleDto): Promise<any> {
     try {
-      const result = await this.rbacPermissionService.assignExtraPermissionToUser(body);
+      const result = await this.rbacPermissionService.assignPermissionsToRole(assignPermissionsDto);
       return result;
     } catch (error) {
       if (error instanceof HttpException) {
         throw error;
       }
+      if (error.code === '23503') {
+        throw new HttpException('Role not found', HttpStatus.NOT_FOUND);
+      }
+      if (error.code === '23505') {
+        throw new HttpException('Permission already assigned to role', HttpStatus.BAD_REQUEST);
+      }
       throw new HttpException('Internal Server Error', HttpStatus.INTERNAL_SERVER_ERROR);
     }
   }
 
-  @Post('assign-permissions')
+  @Post('assign/permissions/to/user')
   @ApiOperation({
     summary: 'Assign permissions to user',
     description: 'Admin can assign specific permissions to a user'
@@ -290,7 +322,7 @@ export class RbacController {
   })
   @ApiBearerAuth('JWT-auth')
   async getUserPermissionsByResource(
-    @Param('userId', ParseIntPipe) userId: number,
+    @Param('userId', ParseIntPipe) userId: bigint,
     @Param('resourceId', ParseIntPipe) resourceId: number
   ): Promise<any> {
     try {
@@ -303,7 +335,7 @@ export class RbacController {
       throw new HttpException('Internal Server Error', HttpStatus.INTERNAL_SERVER_ERROR);
     }
   }
-  
+
   @Get('users/:userId/permissions-multiple')
   @ApiOperation({
     summary: 'Get user permissions for multiple resources',
@@ -368,7 +400,7 @@ export class RbacController {
   }
 
 
-  @Post()
+  @Post('/newResource')
   @ApiOperation({
     summary: 'Create a new resource',
     description: 'Adds a new resource to the system with the specified name and description'
@@ -570,38 +602,60 @@ export class RbacController {
     }
   }
 
-  @Get('getAllUsers')
+  @Get('get/all/users')
   @ApiOperation({
     summary: 'Get all users with their roles',
     description: 'Retrieves a list of all users with their role information'
   })
-  // @ApiResponse({
-  //   status: 200,
-  //   description: 'Users retrieved successfully',
-  //   schema: {
-  //     type: 'array',
-  //     items: {
-  //       type: 'object',
-  //       properties: {
-  //         id: { type: 'string', example: 1 },
-  //         name: { type: 'string', example: 'John Doe' },
-  //         email: { type: 'string', example: 'john@example.com' },
-  //         roleId: { type: 'number', example: 1 },
-  //         roleName: { type: 'string', example: 'admin' },
-  //         roleDescription: { type: 'string', example: 'Administrator role', nullable: true },
-  //         createdAt: { type: 'string', example: '2023-12-01T10:00:00.000Z' },
-  //         updatedAt: { type: 'string', example: '2023-12-01T10:00:00.000Z' }
-  //       }
-  //     }
-  //   }
-  // })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    type: Number,
+    description: 'limit',
+  })
+  @ApiQuery({
+    name: 'offset',
+    required: false,
+    type: Number,
+    description: 'offset',
+  })
+  @ApiQuery({
+    name: 'searchTerm',
+    required: false,
+    type: String,
+    description: 'Filter by user name or email (default empty = all users)'
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Users retrieved successfully',
+    schema: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          id: { type: 'string', example: "1" },
+          name: { type: 'string', example: 'John Doe' },
+          email: { type: 'string', example: 'john@example.com' },
+          roleId: { type: 'number', example: 1 },
+          roleName: { type: 'string', example: 'admin' },
+          roleDescription: { type: 'string', example: 'Administrator role', nullable: true },
+          createdAt: { type: 'string', example: '2023-12-01T10:00:00.000Z' },
+          updatedAt: { type: 'string', example: '2023-12-01T10:00:00.000Z' }
+        }
+      }
+    }
+  })
   @ApiResponse({
     status: 500,
     description: 'Internal server error'
   })
-  @ApiBearerAuth('JWT-auth')
-  async getAllUsers() {
-    return this.rbacUserService.getAllUsersWithRoles();
+
+  async getAllUsers(
+    @Query('limit') limit: number,
+    @Query('offset') offSet: number,
+    @Query('searchTerm') searchTerm: string,
+  ) {
+    return this.rbacUserService.getAllUsersWithRoles(limit, offSet, searchTerm);
   }
 
   @Get('/getUser/:id')

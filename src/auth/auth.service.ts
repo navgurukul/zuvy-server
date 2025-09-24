@@ -6,6 +6,7 @@ import { users, blacklistedTokens, zuvyUserRolesAssigned, zuvyUserRoles } from '
 import { eq } from 'drizzle-orm';
 import { OAuth2Client } from 'google-auth-library';
 let { GOOGLE_CLIENT_ID, GOOGLE_SECRET, GOOGLE_REDIRECT,JWT_SECRET_KEY } = process.env;
+// import { Role } from '../rbac/utility';
 
 @Injectable()
 export class AuthService {

@@ -265,11 +265,13 @@ CREATE TABLE IF NOT EXISTS "main"."zuvy_outsourse_quizzes" (
 );
 
 CREATE TABLE "main"."zuvy_permissions" (
-	"id" serial PRIMARY KEY NOT NULL,
-	"name" varchar(100) NOT NULL,
-	"description" text,
-	CONSTRAINT "zuvy_permissions_name_unique" UNIQUE("name")
+    "id" SERIAL PRIMARY KEY,
+    "name" VARCHAR(100) NOT NULL,
+    "resource_id" INTEGER NOT NULL REFERENCES "main"."zuvy_resources"("id"),
+    "grantable" BOOLEAN NOT NULL DEFAULT FALSE,
+    "description" TEXT
 );
+
 --> statement-breakpoint
 CREATE TABLE "main"."zuvy_role_permissions" (
 	"id" serial PRIMARY KEY NOT NULL,
@@ -278,6 +280,14 @@ CREATE TABLE "main"."zuvy_role_permissions" (
 	"role_id" integer NOT NULL,
 	"permission_id" integer NOT NULL
 );
+
+CREATE TABLE "main"."zuvy_resources" (
+    "id" SERIAL PRIMARY KEY,
+    "name" VARCHAR(100) NOT NULL UNIQUE,
+    "role_id" INTEGER NOT NULL REFERENCES "main"."zuvy_user_roles"("id"),
+    "description" TEXT
+);
+
 --> statement-breakpoint
 CREATE TABLE "main"."zuvy_user_roles" (
 	"id" serial PRIMARY KEY NOT NULL,
@@ -294,6 +304,24 @@ CREATE TABLE "main"."zuvy_user_roles_assigned" (
 	"updated_at" timestamp with time zone DEFAULT now()
 
 );
+--> statement-breakpoint
+CREATE TABLE "main"."zuvy_user_permissions" (
+    "id" SERIAL PRIMARY KEY,
+    "user_id" BIGINT NOT NULL REFERENCES "main"."users"("id"),
+    "permission_id" INTEGER NOT NULL REFERENCES "main"."zuvy_permissions"("id"),
+    "created_at" TIMESTAMPTZ DEFAULT NOW(),
+    "updated_at" TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE "main"."zuvy_resources_granted_permissions" (
+    "id" SERIAL PRIMARY KEY,
+    "resource_id" INTEGER NOT NULL REFERENCES "main"."zuvy_resources"("id"),
+    "permission_id" INTEGER NOT NULL REFERENCES "main"."zuvy_permissions"("id"),
+    "granted_permission" BOOLEAN NOT NULL,
+    "created_at" TIMESTAMPTZ DEFAULT NOW(),
+    "updated_at" TIMESTAMPTZ DEFAULT NOW()
+);
+
 --> statement-breakpoint
 ALTER TABLE "main"."zuvy_role_permissions" ADD CONSTRAINT "zuvy_role_permissions_role_id_zuvy_user_roles_id_fk" FOREIGN KEY ("role_id") REFERENCES "main"."zuvy_user_roles"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "main"."zuvy_role_permissions" ADD CONSTRAINT "zuvy_role_permissions_permission_id_zuvy_permissions_id_fk" FOREIGN KEY ("permission_id") REFERENCES "main"."zuvy_permissions"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
