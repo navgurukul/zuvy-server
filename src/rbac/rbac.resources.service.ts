@@ -20,10 +20,10 @@ export class RbacResourcesService {
 
       // Create default permissions for this resource
       const defaultPermissions = [
-        { name: permissions.CREATE, resourcesId: resource.id, description: `Create ${createResourceDto.name}` },
-        { name: permissions.READ, resourcesId: resource.id, description: `Read ${createResourceDto.name}` },
-        { name: permissions.UPDATE, resourcesId: resource.id, description: `Update ${createResourceDto.name}` },
-        { name: permissions.DELETE, resourcesId: resource.id, description: `Delete ${createResourceDto.name}` },
+        { name: permissions.CREATE, resourcesId: resource.id, grantable: false, description: `Create ${createResourceDto.name}` },
+        { name: permissions.READ, resourcesId: resource.id, grantable: false, description: `Read ${createResourceDto.name}` },
+        { name: permissions.UPDATE, resourcesId: resource.id, grantable: false, description: `Update ${createResourceDto.name}` },
+        { name: permissions.DELETE, resourcesId: resource.id, grantable: false, description: `Delete ${createResourceDto.name}` },
       ];
 
       await db

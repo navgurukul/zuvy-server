@@ -4,7 +4,7 @@ import { RbacUserService } from './rbac.user.service';
 import { RbacPermissionService } from './rbac.permission.service';
 import { RbacAllocPermsService } from './rbac.alloc-perms.service';
 import { CreateUserRoleDto, UserRoleResponseDto, AssignUserRoleDto, CreateUserDto, UpdateUserDto } from './dto/user-role.dto';
-import { CreatePermissionDto, PermissionResponseDto, AssignUserPermissionDto, GetUserPermissionsByResourceDto, UserPermissionResponseDto, AssignPermissionsToUserDto, PermissionAssignmentResponseDto } from './dto/permission.dto';
+import { CreatePermissionDto, PermissionResponseDto, AssignUserPermissionDto, GetUserPermissionsByResourceDto, UserPermissionResponseDto, AssignPermissionsToUserDto, PermissionAssignmentResponseDto, AssignPermissionsToRoleDto } from './dto/permission.dto';
 import { RbacResourcesService } from './rbac.resources.service';
 import { CreateResourceDto } from './dto/resources.dto';
 import { bigint } from 'drizzle-orm/mysql-core';
@@ -130,7 +130,7 @@ export class RbacController {
     }
   }
 
-  @Get('permissions')
+  @Get('get/all/permissions')
   @ApiOperation({
     summary: 'Get all permissions',
     description: 'Retrieves all permissions from the system with pagination, search, and filtering. Optional parameters for resourceId, search, page, and limit.'
@@ -142,22 +142,10 @@ export class RbacController {
     type: Number
   })
   @ApiQuery({
-    name: 'search',
+    name: 'searchPermission',
     required: false,
     description: 'Optional search term to filter permissions by name or description',
     type: String
-  })
-  @ApiQuery({
-    name: 'page',
-    required: false,
-    description: 'Page number for pagination (default: 1)',
-    type: Number
-  })
-  @ApiQuery({
-    name: 'limit',
-    required: false,
-    description: 'Number of items per page (default: 10)',
-    type: Number
   })
   @ApiResponse({
     status: 200,
@@ -170,12 +158,10 @@ export class RbacController {
   @ApiBearerAuth('JWT-auth')
   async getAllPermissions(
     @Query('resourceId') resourceId?: number,
-    @Query('search') search?: string,
-    @Query('page') page?: number,
-    @Query('limit') limit?: number
+    @Query('searchPermission') searchPermission?: string,
   ): Promise<any> {
     try {
-      const result = await this.rbacPermissionService.getAllPermissions(resourceId, search, page, limit);
+      const result = await this.rbacPermissionService.getAllPermissions(resourceId, searchPermission);
       return result;
     } catch (error) {
       throw new HttpException('Internal Server Error', HttpStatus.INTERNAL_SERVER_ERROR);
@@ -203,6 +189,52 @@ export class RbacController {
   //     throw new HttpException('Internal Server Error', HttpStatus.INTERNAL_SERVER_ERROR);
   //   }
   // }
+
+
+  @Put('assign/permissionsToRole')
+  @ApiOperation({
+    summary: 'Assign permissions to role',
+    description: 'Admin can assign specific permissions to a role'
+  })
+  @ApiBody({
+    type: AssignPermissionsToRoleDto,
+    description: 'Role ID and permissions to assign'
+  })
+  @ApiResponse({
+    status: 201,
+    description: 'Permissions assigned successfully',
+    type: PermissionAssignmentResponseDto
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Bad request - Invalid input data or role not found'
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Role not found'
+  })
+  @ApiResponse({
+    status: 500,
+    description: 'Internal server error'
+  })
+  @ApiBearerAuth('JWT-auth')
+  async assignPermissionsToRole(@Body() assignPermissionsDto: AssignPermissionsToRoleDto): Promise<any> {
+    try {
+      const result = await this.rbacPermissionService.assignPermissionsToRole(assignPermissionsDto);
+      return result;
+    } catch (error) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
+      if (error.code === '23503') {
+        throw new HttpException('Role not found', HttpStatus.NOT_FOUND);
+      }
+      if (error.code === '23505') {
+        throw new HttpException('Permission already assigned to role', HttpStatus.BAD_REQUEST);
+      }
+      throw new HttpException('Internal Server Error', HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+  }
 
   @Post('assign/permissions/to/user')
   @ApiOperation({

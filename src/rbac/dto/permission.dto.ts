@@ -1,7 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { ArrayMinSize, IsArray, IsNotEmpty, IsNumber, IsOptional, IsString, ValidateNested } from 'class-validator';
-import { Type } from 'class-transformer';
-import { Transform } from 'class-transformer';
+import { ArrayMinSize, IsArray, IsNotEmpty, IsNotEmptyObject, IsNumber, IsOptional, IsString, ValidateNested } from 'class-validator';
+import { Transform, Type } from 'class-transformer';
 
 export class CreatePermissionDto {
   @ApiProperty({
@@ -19,6 +18,16 @@ export class CreatePermissionDto {
   @IsNumber()
   @IsNotEmpty()
   resourceId: number;
+
+  @ApiProperty({
+    description: 'Indicates if this permission can be granted by users who have it',
+    example: false,
+    required: false
+  })
+  @IsOptional()
+  @Transform(({ value }) => (value === 'true' || value === true))
+  @IsNotEmpty()
+  grantable: boolean;
 
   @ApiProperty({
     description: 'Optional human readable description',
@@ -201,3 +210,21 @@ export class PermissionAssignmentResponseDto {
   message: string;
 }
 
+
+export class AssignPermissionsToRoleDto {
+  @ApiProperty({
+    description: 'Role ID to assign the permissions to',
+    example: 123
+  })
+  @IsNumber()
+  resourceId: number;
+  
+  @IsNotEmptyObject()
+  @Transform(({ value }) => {
+    // ensure keys are numbers and values are booleans
+    return Object.fromEntries(
+      Object.entries(value).map(([key, val]) => [Number(key), Boolean(val)])
+    );
+  })
+  permissions: Record<number, boolean>;
+}
