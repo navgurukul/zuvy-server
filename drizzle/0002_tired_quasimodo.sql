@@ -269,30 +269,32 @@ CREATE TABLE "main"."zuvy_user_roles" (
     "name" VARCHAR(50) NOT NULL UNIQUE,
     "description" TEXT
 );
---> statement-breakpoint
+
+
 CREATE TABLE "main"."zuvy_resources" (
     "id" SERIAL PRIMARY KEY,
     "name" VARCHAR(100) NOT NULL UNIQUE,
     "role_id" INTEGER NOT NULL REFERENCES "main"."zuvy_user_roles"("id"),
-    "description" TEXT
+    "description"TEXT
 );
---> statement-breakpoint
+
+
 CREATE TABLE "main"."zuvy_permissions" (
     "id" SERIAL PRIMARY KEY,
     "name" VARCHAR(100) NOT NULL,
     "resource_id" INTEGER NOT NULL REFERENCES "main"."zuvy_resources"("id"),
     "grantable" BOOLEAN NOT NULL DEFAULT FALSE,
-    "description" TEXT
-	"created_at" TIMESTAMPTZ DEFAULT NOW(),
-    "updated_at" TIMESTAMPTZ DEFAULT NOW(),
+    "description"TEXT
 );
---> statement-breakpoint
+
+
 CREATE TABLE "main"."zuvy_scopes" (
     "id" SERIAL PRIMARY KEY,
     "name" VARCHAR(100) NOT NULL UNIQUE,
     "description" TEXT
 );
---> statement-breakpoint
+
+
 CREATE TABLE "main"."zuvy_user_roles_assigned" (
     "id" SERIAL PRIMARY KEY,
     "user_id" BIGINT NOT NULL REFERENCES "main"."users"("id"),
@@ -302,7 +304,53 @@ CREATE TABLE "main"."zuvy_user_roles_assigned" (
     CONSTRAINT "zuvy_user_roles_assigned_user_id_role_id_pk"
         UNIQUE ("user_id", "role_id")
 );
---> statement-breakpoint
+
+
+CREATE TABLE "main"."zuvy_role_permissions" (
+    "id" SERIAL PRIMARY KEY,
+    "created_at" TIMESTAMPTZ DEFAULT NOW(),
+    "updated_at" TIMESTAMPTZ DEFAULT NOW(),
+    "role_id" INTEGER NOT NULL REFERENCES "main"."zuvy_user_roles"("id"),
+    "permission_id" INTEGER NOT NULL REFERENCES "main"."zuvy_permissions"("id"),
+    CONSTRAINT "zuvy_role_permissions_role_id_permission_id_pk"
+        UNIQUE ("role_id", "permission_id")
+);
+
+
+CREATE TABLE "main"."zuvy_permissions_scope" (
+    "id" SERIAL PRIMARY KEY,
+    "permission_id" INTEGER NOT NULL REFERENCES "main"."zuvy_permissions"("id"),
+    "scope_id" INTEGER NOT NULL REFERENCES "main"."zuvy_scopes"("id"),
+    "created_at" TIMESTAMPTZ DEFAULT NOW(),
+    "updated_at" TIMESTAMPTZ DEFAULT NOW(),
+    CONSTRAINT "zuvy_permissions_scope_permission_id_scope_id_pk"
+        UNIQUE ("permission_id", "scope_id")
+);
+
+
+CREATE TABLE "main"."zuvy_audit_logs" (
+    "id" SERIAL PRIMARY KEY,
+    "actor_user_id" BIGINT REFERENCES "main"."users"("id"),
+    "target_user_id" BIGINT REFERENCES "main"."users"("id"),
+    "action" VARCHAR(100) NOT NULL,
+    "role_id" INTEGER REFERENCES "main"."zuvy_user_roles"("id"),
+    "permission_id" INTEGER REFERENCES "main"."zuvy_permissions"("id"),
+    "scope_id" INTEGER REFERENCES "main"."zuvy_scopes"("id"),
+    "created_at" TIMESTAMPTZ DEFAULT NOW()
+);
+
+
+CREATE TABLE "main"."zuvy_extra_permissions" (
+    "id" SERIAL PRIMARY KEY,
+    "user_id" BIGINT NOT NULL REFERENCES "main"."users"("id"),
+    "granted_by" BIGINT NOT NULL REFERENCES "main"."users"("id"),
+    "permission_id" INTEGER NOT NULL REFERENCES "main"."zuvy_permissions"("id"),
+    "resource_id" INTEGER NOT NULL REFERENCES "main"."zuvy_resources"("id"),
+    "course_name" VARCHAR(255),
+    "action" VARCHAR(100) NOT NULL,
+    "created_at" TIMESTAMPTZ DEFAULT NOW(),
+    "updated_at" TIMESTAMPTZ DEFAULT NOW()
+);
 CREATE TABLE "main"."zuvy_user_permissions" (
     "id" SERIAL PRIMARY KEY,
     "user_id" BIGINT NOT NULL REFERENCES "main"."users"("id"),
