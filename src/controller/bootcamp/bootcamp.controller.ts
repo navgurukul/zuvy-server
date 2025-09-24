@@ -13,6 +13,8 @@ import {
   BadRequestException,
   Req,
   UseGuards,
+  ParseIntPipe,
+  Res,
 } from '@nestjs/common';
 import { BootcampService } from './bootcamp.service';
 import { ApiTags, ApiOperation, ApiQuery, ApiBearerAuth } from '@nestjs/swagger';
@@ -23,6 +25,7 @@ import {
   studentDataDto,
   PatchBootcampSettingDto,
   editUserDetailsDto,
+  UpdateAttendanceStatusDto
 } from './dto/bootcamp.dto';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 import { RolesGuard } from 'src/guards/roles.guard';
@@ -364,6 +367,27 @@ export class BootcampController {
     }
     return res;
   }
+  
+  @Patch ('updateAttendance/:userId/:sessionId')
+  @Roles('admin')
+  @ApiOperation({ summary: 'Update attendance status of a user for a session' })
+  @ApiBearerAuth('JWT-auth')
+  async updateAttendanceStatus(
+    @Param('userId', ParseIntPipe) userId: number,
+    @Param('sessionId', ParseIntPipe) sessionId: number,
+    @Body() updateAttendanceStatusDto: UpdateAttendanceStatusDto,
+  ): Promise<any> {
+    const {status } = updateAttendanceStatusDto;
+    const [err, res] = await this.bootcampService.updateAttendanceStatus(
+      userId,
+      sessionId,
+      status,
+    );
+    if (err) {
+      throw new BadRequestException(err);
+    }
+    return res;
+  }
 
   @Post('/process-attendance')
   @ApiOperation({ summary: 'Process attendance records and update attendance counts' })
@@ -385,4 +409,5 @@ export class BootcampController {
     }
     return res;
   }
+
 }

@@ -12,7 +12,7 @@ import {
   zuvyBootcampTracking,
   zuvyBootcampType,
   zuvySessions,
-  zuvyStudentAttendance,
+  zuvyStudentAttendanceRecords,
   zuvyCourseModules,
   zuvyRecentBootcamp,
   zuvyModuleTracking
@@ -21,9 +21,6 @@ import { editUserDetailsDto } from './dto/bootcamp.dto'
 import { batch } from 'googleapis/build/src/apis/batch';
 import { STATUS_CODES } from 'src/helpers';
 import { ContentService } from '../content/content.service';
-import {google, Auth} from 'googleapis';
-import { OAuth2Client } from 'google-auth-library';
-
 
 const { ZUVY_CONTENT_URL } = process.env; // INPORTING env VALUSE ZUVY_CONTENT
 
@@ -35,20 +32,10 @@ export class BootcampService {
   constructor(
     private contentService: ContentService,
   ) {
-    const oAuth2Client = new google.auth.OAuth2(
-      process.env.GOOGLE_CLIENT_ID,
-      process.env.GOOGLE_CLIENT_SECRET,
-      'https://developers.google.com/oauthplayground', // Must match your GCP setup
-    );
-
-    // Set the refresh token you obtained
-    oAuth2Client.setCredentials({
-      refresh_token: process.env.GOOGLE_YT_REFRESH_TOKEN,
-    });
     // Initialize the YouTube API client here
     this.youtube = require('googleapis').google.youtube({
       version: 'v3',
-      auth: oAuth2Client, // Ensure you have set the YOUTUBE_API_KEY in your environment variables
+      auth: process.env.YOUTUBE_API_KEY, // Ensure you have set the YOUTUBE_API_KEY in your environment variables
     });
   }
   async enrollData(bootcampId: number) {
@@ -234,7 +221,7 @@ export class BootcampService {
 
       const bootcampTypeData = {
         bootcampId: newBootcamp[0].id,
-        type: 'unlisted', // Assuming type is present in bootcampData
+        type: 'Private', // Assuming type is present in bootcampData
         isModuleLocked: false,
       };
 
@@ -301,6 +288,59 @@ export class BootcampService {
         },
       ];
     } catch (e) {
+      log(`error: ${e.message}`);
+      return [{ status: 'error', message: e.message, code: 500 }, null];
+    }
+  }
+
+  async updateAttendanceStatus(userId: number, sessionId: number, status: string) {
+    try {
+      // Fetch the attendance record for the given userId and sessionId
+      let attendanceRecord = await db
+        .select()
+        .from(zuvyStudentAttendanceRecords)
+        .where(
+          and(
+            eq(zuvyStudentAttendanceRecords.userId, userId),
+            eq(zuvyStudentAttendanceRecords.sessionId, sessionId)
+          )
+        );
+  
+      // If no record is found, return an error
+      if (attendanceRecord.length === 0) {
+        return [
+          { status: 'error', message: 'Attendance record not found', code: 404 },
+          null,
+        ];
+      }
+  
+      // Toggle the status between 'present' and 'absent'
+      const newStatus = attendanceRecord[0].status === 'present' ? 'absent' : 'present';
+  
+      // Update the record with the new status
+      let updatedRecord = await db
+        .update(zuvyStudentAttendanceRecords)
+        .set({ status: newStatus }) 
+        .where(
+          and(
+            eq(zuvyStudentAttendanceRecords.userId, userId),
+            eq(zuvyStudentAttendanceRecords.sessionId, sessionId)
+          )
+        )
+        .returning();
+  
+      // Return success response
+      return [
+        null,
+        {
+          status: 'success',
+          message: 'Attendance status updated successfully',
+          code: 200,
+          updatedRecord,
+        },
+      ];
+    } catch (e) {
+      // Log and return error response
       log(`error: ${e.message}`);
       return [{ status: 'error', message: e.message, code: 500 }, null];
     }
@@ -887,95 +927,6 @@ export class BootcampService {
       ];
     } catch (e) {
       return [{ status: 'error', message: e.message, code: 500 }, null];
-    }
-  }
-
-  async updateUserDetails(
-    userId: number,
-    editUserDetailsDto: editUserDetailsDto,
-  ): Promise<[string | null, any]> {
-    try {
-      // Validate user existence in the users table
-      const userExists = await db
-        .select({ id: users.id,email: users.email })
-        .from(users)
-        .where(eq(users.id, BigInt(userId)))
-        .limit(1);
-
-      if (!userExists.length) {
-        return [null, { message: 'User not found', statusCode: STATUS_CODES.NOT_FOUND }];
-      }
-
-      // Check if no fields are provided to update
-      if (!editUserDetailsDto.name && !editUserDetailsDto.email) {
-        return [null, { message: 'No fields to update', statusCode: STATUS_CODES.BAD_REQUEST }];
-      }
-
-      // If updating email, check if it already exists for another user
-      if (editUserDetailsDto.email) {
-        const existingUserWithEmail = await db
-          .select({ id: users.id, name: users.name, email: users.email })
-          .from(users)
-          .where(
-            and(
-              eq(users.email, editUserDetailsDto.email),
-              ne(users.id, userExists[0].id)
-            )
-          )
-          .limit(1);
-        if (existingUserWithEmail.length > 0) {
-          return [
-            `User with name ${existingUserWithEmail[0].name} already exists with the email id you updated`,
-            null
-          ];
-        }
-      }
-
-      // Prepare update data
-      const updateData: { name?: string; email?: string; googleUserId?: string } = {};
-
-      if (editUserDetailsDto.name) {
-        updateData.name = editUserDetailsDto.name;
-      }
-      if (editUserDetailsDto.email) {
-        updateData.email = editUserDetailsDto.email;
-        if(editUserDetailsDto.email !== userExists[0].email)
-        {
-          updateData.googleUserId = null
-        }
-      }
-
-      // Update user details in the users table
-      const updatedUser = await db
-        .update(users)
-        .set(updateData)
-        .where(eq(users.id, BigInt(userId)))
-        .returning({
-          id: users.id,
-          name: users.name,
-          email: users.email,
-        });
-
-      if (!updatedUser.length) {
-        return [null, { message: 'Failed to update user details', statusCode: STATUS_CODES.INTERNAL_SERVER_ERROR }];
-      }
-
-      // Convert BigInt to number
-      const userData = {
-        ...updatedUser[0],
-        id: Number(updatedUser[0].id),
-      };
-
-      return [
-        null,
-        {
-          message: 'User details updated successfully',
-          statusCode: STATUS_CODES.OK,
-          data: userData,
-        },
-      ];
-    } catch (err) {
-      return [null, { message: err.message, statusCode: STATUS_CODES.BAD_REQUEST }];
     }
   }
 

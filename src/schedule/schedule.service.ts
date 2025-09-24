@@ -59,7 +59,7 @@ export class ScheduleService {
     }
   }
 
-  @Cron('*/2 * * * *')
+  @Cron('0 */6 * * *')
   async backfillInvitedStudentsAttendanceMidnight() {
     this.logger.log('Midnight cron: Backfilling attendance & recordings (orchestrator)');
     try {

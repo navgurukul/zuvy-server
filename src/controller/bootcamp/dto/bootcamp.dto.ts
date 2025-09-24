@@ -106,6 +106,7 @@ export class EditBootcampDto {
 
 }
 
+
 export class PatchBootcampSettingDto {
   @ApiProperty({
     type: String,
@@ -214,6 +215,7 @@ class studentEmail {
   @IsString()
   name: string;
 }
+
 export class studentDataDto {
   @ApiProperty({
     type: [studentEmail],
@@ -244,3 +246,31 @@ export class editUserDetailsDto {
   @IsString({ message: 'Name must be a string' }) // Ensures name is a string if provided
   name?: string;
 }
+
+export class UpdateAttendanceStatusDto {
+  @ApiProperty({
+    type: Number,
+    example: 1,
+    required: true,
+  })
+  @IsNotEmpty()
+  @IsNumber()
+  userId: number;
+  @ApiProperty({
+    type:Number,
+    example:1,
+    required:true
+  })
+  @IsNotEmpty()
+  @IsNumber()
+  sessionId:number;
+  @ApiProperty({
+    type: String,
+    example: 'present',
+    required: true,
+  })
+  @IsNotEmpty()
+  @IsString()
+  status: string;
+}
+
