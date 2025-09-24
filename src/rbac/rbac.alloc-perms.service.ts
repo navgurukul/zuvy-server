@@ -23,7 +23,7 @@ export class RbacAllocPermsService {
       if (!userRoleResult.length) {
         // Return empty permissions if user has no role assigned
         return { userId, roleId: null, permissions: {} };
-      } 
+      }
       const userRoleId = userRoleResult[0].roleId;
       // Get user's permissions
       const userPermissionsResult = await db.select({
@@ -31,18 +31,18 @@ export class RbacAllocPermsService {
         resourceId: zuvyPermissions.resourcesId,
         resourceName: zuvyResources.name
       })
-      .from(zuvyRolePermissions)
-      .innerJoin(zuvyPermissions, eq(zuvyRolePermissions.permissionId, zuvyPermissions.id))
-      .innerJoin(zuvyResources, eq(zuvyPermissions.resourcesId, zuvyResources.id))
-      .where(and(
-        eq(zuvyRolePermissions.roleId, userRoleId),
-        eq(zuvyPermissions.resourcesId, resourceId)
-      ));
+        .from(zuvyRolePermissions)
+        .innerJoin(zuvyPermissions, eq(zuvyRolePermissions.permissionId, zuvyPermissions.id))
+        .innerJoin(zuvyResources, eq(zuvyPermissions.resourcesId, zuvyResources.id))
+        .where(and(
+          eq(zuvyRolePermissions.roleId, userRoleId),
+          eq(zuvyPermissions.resourcesId, resourceId)
+        ));
       const permissions = {};
       userPermissionsResult.forEach(perm => {
         const resourceName = perm.resourceName === 'course' ? 'Bootcamp' :
-                            perm.resourceName === 'contentBank' ? 'ContentBank' :
-                            perm.resourceName;
+          perm.resourceName === 'contentBank' ? 'ContentBank' :
+            perm.resourceName;
         const permissionKey = `${perm.permissionName}${resourceName.charAt(0).toUpperCase() + resourceName.slice(1)}`;
         permissions[permissionKey] = true;
       });
@@ -169,82 +169,70 @@ export class RbacAllocPermsService {
   }
 
   async getUserPermissionsForMultipleResources(userId: bigint): Promise<any> {
-  try {
-    // Check if user exists
-    const userCheck = await db.execute(sql`SELECT id FROM main.users WHERE id = ${userId} LIMIT 1`);
-    if (!(userCheck as any).rows?.length) {
-      throw new NotFoundException('User not found');
-    }
-
-    // Get user's role
-    const userRoleResult = await db
-      .select({
-        roleId: zuvyUserRolesAssigned.roleId
-      })
-      .from(zuvyUserRolesAssigned)
-      .where(eq(zuvyUserRolesAssigned.userId, userId))
-      .limit(1);
-
-    if (!userRoleResult.length) {
-      // Return empty permissions if user has no role assigned
-      return {
-        userId,
-        roleId: null,
-        permissions: {}
-      };
-    }
-
-    const userRoleId = userRoleResult[0].roleId;
-
     try {
-      // Get user's permissions
+      // Check if user exists
+      const userCheck = await db.execute(
+        sql`SELECT id FROM main.users WHERE id = ${userId} LIMIT 1`
+      );
+      if (!(userCheck as any).rows?.length) {
+        throw new NotFoundException('User not found');
+      }
+
+      // Get user's role
+      const userRoleResult = await db
+        .select({ roleId: zuvyUserRolesAssigned.roleId })
+        .from(zuvyUserRolesAssigned)
+        .where(eq(zuvyUserRolesAssigned.userId, userId))
+        .limit(1);
+
+      if (!userRoleResult.length) {
+        return { userId, roleId: null, permissions: {} };
+      }
+
+      const userRoleId = userRoleResult[0].roleId;
+
+      // Fetch permissions directly from zuvy_permissions for this role
       const userPermissionsResult = await db.execute(sql`
-        SELECT 
-          p.name as "permissionName",
-          p.resource_id as "resourceId",
-          r.name as "resourceName"
-        FROM main.zuvy_role_permissions rp
-        INNER JOIN main.zuvy_permissions p ON rp.permission_id = p.id
-        INNER JOIN main.zuvy_resources r ON p.resource_id = r.id
-        WHERE rp.role_id = ${userRoleId}
+      SELECT 
+        p.name AS "permissionName",
+        r.name AS "resourceName"
+      FROM main.zuvy_permissions p
+      INNER JOIN main.zuvy_resources r ON p.resource_id = r.id
+      WHERE p.role_id = ${userRoleId}
         AND p.resource_id IN (1, 2, 3)
-      `);
+    `);
 
-      const permissions = {};
+      // Build permissions object
+      const permissions: Record<string, boolean> = {};
 
-      if (userPermissionsResult.rows && userPermissionsResult.rows.length > 0) {
-        (userPermissionsResult.rows as any[]).forEach((perm: any) => {
-          const resourceName = perm.resourceName === 'course' ? 'Bootcamp' :
-                              perm.resourceName === 'contentBank' ? 'ContentBank' :
-                              perm.resourceName;
+      if (userPermissionsResult.rows?.length) {
+        (userPermissionsResult.rows as any[]).forEach((perm) => {
+          const resourceName =
+            perm.resourceName === 'course'
+              ? 'Bootcamp'
+              : perm.resourceName === 'contentBank'
+                ? 'ContentBank'
+                : perm.resourceName;
 
-          const permissionKey = `${perm.permissionName}${resourceName.charAt(0).toUpperCase() + resourceName.slice(1)}`;
-          permissions[permissionKey] = true;
+          const key =
+            `${perm.permissionName}${resourceName.charAt(0).toUpperCase()}${resourceName.slice(1)}`;
+
+          permissions[key] = true; // only granted permissions
         });
       }
 
-      return {
-        userId,
-        roleId: userRoleId,
-        permissions
-      };
-
-    } catch (dbError) {
-      this.logger.error(`Database error in permissions query:`, dbError);
-      // Return empty permissions if there's a database error in the permissions query
-      return {
-        userId,
-        roleId: userRoleId,
-        permissions: {}
-      };
+      return { userId, roleId: userRoleId, permissions };
+    } catch (err) {
+      this.logger.error(
+        `Error in getUserPermissionsForMultipleResources for user ${userId}:`,
+        err,
+      );
+      if (err instanceof NotFoundException) throw err;
+      throw new InternalServerErrorException('Failed to retrieve user permissions');
     }
-
-  } catch (err) {
-    this.logger.error(`Error in getUserPermissionsForMultipleResources for user ${userId}:`, err);
-    if (err instanceof NotFoundException) throw err;
-    throw new InternalServerErrorException('Failed to retrieve user permissions');
   }
-}
+
+
 
   async checkUserPermission(userId: number, resourceId: number, permissionName: string): Promise<any> {
     try {

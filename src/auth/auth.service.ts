@@ -2,10 +2,10 @@ import { Injectable, UnauthorizedException, Logger } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { LoginDto } from './dto/login.dto';
 import { db } from '../db';
-import { users, blacklistedTokens, zuvyUserRolesAssigned, zuvyUserRoles } from '../../drizzle/schema';
-import { eq } from 'drizzle-orm';
+import { users, blacklistedTokens, zuvyUserRolesAssigned, zuvyUserRoles, sansaarUserRoles } from '../../drizzle/schema';
+import { eq, inArray } from 'drizzle-orm';
 import { OAuth2Client } from 'google-auth-library';
-let { GOOGLE_CLIENT_ID, GOOGLE_SECRET, GOOGLE_REDIRECT,JWT_SECRET_KEY } = process.env;
+let { GOOGLE_CLIENT_ID, GOOGLE_SECRET, GOOGLE_REDIRECT, JWT_SECRET_KEY } = process.env;
 // import { Role } from '../rbac/utility';
 
 @Injectable()
@@ -29,9 +29,10 @@ export class AuthService {
     return null;
   }
 
-  async getUserRoles(userId: bigint ): Promise<string[]> {
+  async getUserRoles(userId: bigint): Promise<string[]> {
     try {
-      const userRoles = await db
+      // Query the new role system
+      let userRoles = await db
         .select({
           roleId: zuvyUserRolesAssigned.roleId,
           roleName: zuvyUserRoles.name
@@ -40,7 +41,37 @@ export class AuthService {
         .innerJoin(zuvyUserRoles, eq(zuvyUserRolesAssigned.roleId, zuvyUserRoles.id))
         .where(eq(zuvyUserRolesAssigned.userId, userId));
 
-      return userRoles.length > 0 
+      // Check if roles were found (fix: check length instead of truthiness)
+      if (userRoles.length === 0) {
+        // Fallback to legacy system
+        const oldUserRoles = await db.select()
+          .from(sansaarUserRoles)
+          .where(eq(sansaarUserRoles.userId, Number(userId)));
+
+        if (oldUserRoles.length > 0) {
+          // Map legacy roles to new system format (fix: corrected mapping)
+          const rolesToMigrate = oldUserRoles.map(role => ({
+            userId: userId, // Use the original bigint userId
+            roleId: role.role === 'admin' ? 2 : role.role === 'instructor' ? 3 : 4
+          }));
+
+          // Migrate roles to new system
+          await db.insert(zuvyUserRolesAssigned).values(rolesToMigrate);
+
+          // Get role names for the migrated roles (fix: query role names properly)
+          const migratedRoles = await db
+            .select({
+              roleName: zuvyUserRoles.name
+            })
+            .from(zuvyUserRoles)
+            .where(inArray(zuvyUserRoles.id, rolesToMigrate.map(r => r.roleId)));
+
+          userRoles = migratedRoles.map(role => ({ roleId: 0, roleName: role.roleName }));
+        }
+      }
+
+      // Return role names or default to 'student'
+      return userRoles.length > 0
         ? userRoles.map(role => role.roleName)
         : ['student'];
     } catch (error) {
@@ -49,10 +80,10 @@ export class AuthService {
     }
   }
 
-  
+
 
   async login(loginDto: LoginDto) {
-    try {      
+    try {
       // 1. Verify the Google ID token
       const ticket = await this.googleAuthClient.verifyIdToken({
         idToken: loginDto.googleIdToken,
@@ -93,7 +124,7 @@ export class AuthService {
       // Get user roles
       const roles = await this.getUserRoles(user.id);
 
-      const jwtPayload = { 
+      const jwtPayload = {
         sub: user.id.toString(),
         email: user.email,
         googleUserId: user.googleUserId,
@@ -150,7 +181,7 @@ export class AuthService {
   }
 
   async validateToken(token: string) {
-    try {      
+    try {
       // Check if token is blacklisted
       const [blacklistedToken] = await db.select()
         .from(blacklistedTokens)
@@ -200,7 +231,7 @@ export class AuthService {
       // Blacklist the old refresh token
       const decoded = this.jwtService.decode(refreshToken) as { exp: number };
       const expiresAt = new Date(decoded.exp * 1000).toISOString();
-      
+
       await db.insert(blacklistedTokens).values({
         token: refreshToken,
         expiresAt: new Date(expiresAt),
