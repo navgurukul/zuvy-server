@@ -74,12 +74,12 @@ export class BootcampController {
     const searchTermAsNumber = !isNaN(Number(searchTerm))
       ? Number(searchTerm)
       : searchTerm;
-    const userId = req.user[0]?.id;
+    const roleName = req.user[0]?.roles;
     const [err, res] = await this.bootcampService.getAllBootcamps(
+      roleName,
       limit,
       offset,
       searchTermAsNumber,
-      userId,
     );
 
     if (err) {

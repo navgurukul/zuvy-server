@@ -1,7 +1,7 @@
 import { Injectable, InternalServerErrorException, Logger, NotFoundException } from '@nestjs/common';
 import { db } from 'src/db/index';
 import { inArray, sql, eq, and } from 'drizzle-orm';
-import { userRoles, zuvyPermissions, zuvyResources, zuvyRolePermissions, zuvyUserRolesAssigned } from 'drizzle/schema';
+import { userRoles, zuvyPermissions, zuvyResources, zuvyRolePermissions, zuvyUserRoles, zuvyUserRolesAssigned } from 'drizzle/schema';
 import { ResourceList } from './utility';
 
 @Injectable()
@@ -310,6 +310,99 @@ export class RbacAllocPermsService {
       this.logger.error(`Error checking permission for user ${userId}, resource ${resourceId}, permission ${permissionName}:`, err);
       if (err instanceof NotFoundException) throw err;
       throw new InternalServerErrorException('Failed to check user permission');
+    }
+  }
+
+  async formatPermissionsAndCompare(
+    permissions: any[],
+    targetPermissions: string[]
+  ): Promise<Record<string, boolean>> {
+    try {
+      const formattedPermissions: Record<string, boolean> = {};
+
+      for (const perm of targetPermissions) {
+        formattedPermissions[perm] = false;
+      }
+
+      for (const perm of permissions) {
+        const action = perm.name; // create / read / edit / delete
+        const resourceName = perm.resourceName || perm.resourcesName;
+
+        for (const [resourceKey, actions] of Object.entries(ResourceList)) {
+          if (resourceKey === resourceName && actions[action as keyof typeof actions]) {
+            const targetKey = actions[action as keyof typeof actions];
+            if (targetPermissions.includes(targetKey)) {
+              formattedPermissions[targetKey] = true;
+            }
+          }
+        }
+      }
+
+      return formattedPermissions;
+    } catch (err) {
+      this.logger.error('Error formatting permissions:', err);
+      throw new InternalServerErrorException('Failed to format permissions');
+    }
+  }
+
+
+  async getAllPermissions(roleName: string[], targetPermissions: string[], resourceIds?: number): Promise<any> {
+    try {
+      if (!resourceIds) {
+        // Check if role exists
+        const roleCheck = await db
+          .select({ id: zuvyUserRoles.id })
+          .from(zuvyUserRoles)
+          .where(eq(zuvyUserRoles.name, roleName[0]))
+          .limit(1);
+
+        if (!roleCheck.length) {
+          throw new NotFoundException('Role not found');
+        }
+        const roleId = roleCheck[0].id;
+
+        // Get resources
+        const resources = await db
+          .select({
+            id: zuvyResources.id,
+            name: zuvyResources.name
+          })
+          .from(zuvyResources)
+          .where(eq(zuvyResources.roleId, roleId));
+
+        const resourceIds = resources.map(r => r.id);
+
+        //if resourceid length is 0 then return the targetpermissions with false
+        if (resourceIds.length === 0) {
+          const permissionsObj: Record<string, boolean> = {};
+          targetPermissions.forEach(perm => {
+            permissionsObj[perm] = false;
+          });
+          return { roleName, permissions: permissionsObj };
+        }
+      }
+      const permissionWhere = Array.isArray(resourceIds) ? resourceIds : [resourceIds];
+      // Get permissions for these resources
+      const assignedPermissions = await db
+        .select({
+          id: zuvyPermissions.id,
+          name: zuvyPermissions.name,
+          resourcesId: zuvyPermissions.resourcesId,
+          description: zuvyPermissions.description,
+          grantable: zuvyPermissions.grantable
+        })
+        .from(zuvyPermissions)
+        .where(and(
+          (inArray(zuvyPermissions.resourcesId, permissionWhere),
+            eq(zuvyPermissions.grantable, true))));
+      // Filter permissions based on targetPermissions
+      const filteredPermissions = await this.formatPermissionsAndCompare(assignedPermissions, targetPermissions)
+
+      return { roleName, permissions: filteredPermissions };
+    }
+    catch (err) {
+      this.logger.error('Error retrieving all permissions:', err);
+      throw new InternalServerErrorException('Failed to retrieve permissions');
     }
   }
 }

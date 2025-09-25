@@ -69,10 +69,10 @@ export class BootcampService {
   }
 
   async getAllBootcamps(
+    roleName: string[],
     limit: number,
     offset: number,
     searchTerm?: string | number,
-    userId?: bigint,
   ): Promise<any> {
     try {
       let query;
@@ -117,9 +117,10 @@ export class BootcampService {
 
       const totalPages = Math.ceil(totalCount / limit);
 
+      const targetPermissions=["createCourse", "viewCourse", "editCourse", "deleteCourse", "readContent", "readRolesPermission"]
       // Get permissions for all resources if userId is provided
       let allPermissions = {};
-      const permissionResult = await this.rbacAllocPermsService.getUserPermissionsForMultipleResources(userId);
+      const permissionResult = await this.rbacAllocPermsService.getAllPermissions(roleName, targetPermissions);
       allPermissions = permissionResult.permissions || {};
 
       /* 

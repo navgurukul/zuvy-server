@@ -41,7 +41,7 @@ export class AuthService {
         .innerJoin(zuvyUserRoles, eq(zuvyUserRolesAssigned.roleId, zuvyUserRoles.id))
         .where(eq(zuvyUserRolesAssigned.userId, userId));
 
-      // Check if roles were found (fix: check length instead of truthiness)
+      // Check if roles were found
       if (userRoles.length === 0) {
         // Fallback to legacy system
         const oldUserRoles = await db.select()
@@ -49,24 +49,58 @@ export class AuthService {
           .where(eq(sansaarUserRoles.userId, Number(userId)));
 
         if (oldUserRoles.length > 0) {
-          // Map legacy roles to new system format (fix: corrected mapping)
-          const rolesToMigrate = oldUserRoles.map(role => ({
-            userId: userId, // Use the original bigint userId
-            roleId: role.role === 'admin' ? 2 : role.role === 'instructor' ? 3 : 4
-          }));
+          const legacyRoleName = oldUserRoles[0].role;
 
-          // Migrate roles to new system
-          await db.insert(zuvyUserRolesAssigned).values(rolesToMigrate);
-
-          // Get role names for the migrated roles (fix: query role names properly)
-          const migratedRoles = await db
-            .select({
-              roleName: zuvyUserRoles.name
-            })
+          // Check if role exists in zuvy_user_roles table
+          const existingRole = await db
+            .select()
             .from(zuvyUserRoles)
-            .where(inArray(zuvyUserRoles.id, rolesToMigrate.map(r => r.roleId)));
+            .where(eq(zuvyUserRoles.name, legacyRoleName))
+            .limit(1);
 
-          userRoles = migratedRoles.map(role => ({ roleId: 0, roleName: role.roleName }));
+          let roleId: number;
+
+          if (existingRole.length > 0) {
+            // Role exists, use existing role ID
+            roleId = existingRole[0].id;
+          } else {
+            // Role doesn't exist, create new role
+            try {
+              const addNewRole = {
+                  name: legacyRoleName,
+                  description: `Migrated role: ${legacyRoleName}`
+                }
+              const newRole = await db.insert(zuvyUserRoles)
+                .values(addNewRole)
+                .returning();
+
+              if (newRole.length > 0) {
+                roleId = newRole[0].id;
+              } else {
+                // If role creation fails, use default mapping
+                roleId = legacyRoleName === 'admin' ? 2 :
+                  legacyRoleName === 'instructor' ? 3 : 4;
+              }
+            } catch (error) {
+              this.logger.error(`Error creating role ${legacyRoleName}:`, error);
+              // Fallback to default mapping if creation fails
+              roleId = legacyRoleName === 'admin' ? 2 :
+                legacyRoleName === 'instructor' ? 3 : 4;
+            }
+          }
+
+          const assignmentData = {
+            userId: userId,
+            roleId: roleId
+          };
+          // Assign role to user
+          await db.insert(zuvyUserRolesAssigned).values(assignmentData);
+
+          // Get the final role name
+          userRoles = [{
+            roleId: 0,
+            roleName: legacyRoleName
+          }];
         }
       }
 

@@ -54,8 +54,27 @@ export enum Role {
 // utils/resources.ts
 export const ResourceList = {
   courseManagement: {
+    read: "readCourse",
     create: "createCourse",
     edit: "editCourse",
     delete: "deleteCourse",
+  },
+  contentManagement: {
+    read: "readContent",
+    create: "createContent",
+    edit: "editContent",
+    delete: "deleteContent",
+  },
+  userManagement: {
+    read: "readUser",
+    create: "createUser",
+    edit: "editUser",
+    delete: "deleteUser",
+  },
+  batchManagement: {
+    read: "readBatch",
+    create: "createBatch",
+    edit: "editBatch",
+    delete: "deleteBatch",
   },
 } as const;
