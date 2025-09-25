@@ -17,7 +17,8 @@ import {
   zuvyCourseModules,
   zuvyRecentBootcamp,
   zuvyModuleTracking,
-  AttendanceStatus
+  AttendanceStatus,
+  updateAttendanceStatus
 } from '../../../drizzle/schema';
 import { editUserDetailsDto } from './dto/bootcamp.dto'
 import { batch } from 'googleapis/build/src/apis/batch';
@@ -467,6 +468,59 @@ export class BootcampService {
       const data = await Promise.all(promises);
       return [null, { data, totalBatches: totalCount, totalPages }];
     } catch (e) {
+      return [{ status: 'error', message: e.message, code: 500 }, null];
+    }
+  }
+
+  async updateAttendanceStatus(userId: number, sessionId: number, status: string) {
+    try {
+      // Fetch the attendance record for the given userId and sessionId
+      let attendanceRecord = await db
+        .select()
+        .from(zuvyStudentAttendanceRecords)
+        .where(
+          and(
+            eq(zuvyStudentAttendanceRecords.userId, userId),
+            eq(zuvyStudentAttendanceRecords.sessionId, sessionId)
+          )
+        );
+  
+      // If no record is found, return an error
+      if (attendanceRecord.length === 0) {
+        return [
+          { status: 'error', message: 'Attendance record not found', code: 404 },
+          null,
+        ];
+      }
+  
+      // Toggle the status between 'present' and 'absent'
+      const newStatus = attendanceRecord[0].status === 'present' ? 'absent' : 'present';
+  
+      // Update the record with the new status
+      let updatedRecord = await db
+        .update(zuvyStudentAttendanceRecords)
+        .set({ status: newStatus }) 
+        .where(
+          and(
+            eq(zuvyStudentAttendanceRecords.userId, userId),
+            eq(zuvyStudentAttendanceRecords.sessionId, sessionId)
+          )
+        )
+        .returning();
+  
+      // Return success response
+      return [
+        null,
+        {
+          status: 'success',
+          message: 'Attendance status updated successfully',
+          code: 200,
+          updatedRecord,
+        },
+      ];
+    } catch (e) {
+      // Log and return error response
+      log(`error: ${e.message}`);
       return [{ status: 'error', message: e.message, code: 500 }, null];
     }
   }

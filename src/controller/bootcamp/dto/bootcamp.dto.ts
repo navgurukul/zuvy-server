@@ -289,3 +289,14 @@ export class AttendanceMarkDto {
   @IsOptional()
   duration?: number; // in minutes (or agreed unit)
 }
+
+export class UpdateAttendanceStatusDto {
+  @ApiProperty({
+    type: String,
+    example: 'present',
+    required: true,
+  })
+  @IsNotEmpty()
+  @IsString()
+  status: string;
+}
