@@ -244,3 +244,14 @@ export class editUserDetailsDto {
   @IsString({ message: 'Name must be a string' }) // Ensures name is a string if provided
   name?: string;
 }
+
+export class UpdateAttendanceStatusDto {
+  @ApiProperty({
+    type: String,
+    example: 'present',
+    required: true,
+  })
+  @IsNotEmpty()
+  @IsString()
+  status: string;
+}
