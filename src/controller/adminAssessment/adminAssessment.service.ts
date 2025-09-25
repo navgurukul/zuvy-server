@@ -520,10 +520,33 @@ Team Zuvy`;
     req,
     assessmentID: number,
     searchStudent: string,
-    limit,
-    offset,
+    limit: number = 10,
+    offset: number = 0,
+    batchId?: number,
+    qualified?: string,
+    orderBy?: string,
+    orderDirection?: string,
   ) {
     try {
+      // Validate batchId
+      if (batchId !== undefined && batchId <= 0) {
+        throw { statusCode: 400, message: 'batchId must be a positive integer' };
+      }
+
+      // Validate qualified parameter
+      if (qualified && !['true', 'false', 'all'].includes(qualified)) {
+        throw { statusCode: 400, message: 'qualified must be "true", "false", or "all"' };
+      }
+
+      // Validate orderBy parameter
+      if (orderBy && !['submittedDate', 'percentage', 'name', 'email'].includes(orderBy)) {
+        throw { statusCode: 400, message: 'orderBy must be one of: submittedDate, percentage, name, email' };
+      }
+
+      // Validate orderDirection parameter
+      if (orderDirection && !['asc', 'desc'].includes(orderDirection)) {
+        throw { statusCode: 400, message: 'orderDirection must be either "asc" or "desc"' };
+      }
       // Fetch assessment details
       const assessmentInfo = await db
         .select()
@@ -540,6 +563,7 @@ Team Zuvy`;
         where: (zuvyBatchEnrollments, { eq, sql }) => sql`
     ${zuvyBatchEnrollments.bootcampId} = ${bootcampId}
     AND ${zuvyBatchEnrollments.batchId} IS NOT NULL
+    ${batchId && !isNaN(batchId) ? sql`AND ${zuvyBatchEnrollments.batchId} = ${batchId}` : sql``}
     AND EXISTS (
       SELECT 1
       FROM main.users
@@ -590,7 +614,9 @@ Team Zuvy`;
             WHERE main.zuvy_batch_enrollments.user_id = ${zuvyAssessmentSubmission.userId}
             AND main.zuvy_batch_enrollments.bootcamp_id = ${bootcampId}
             AND main.zuvy_batch_enrollments.batch_id IS NOT NULL
+            ${batchId && !isNaN(batchId) ? sql`AND main.zuvy_batch_enrollments.batch_id = ${batchId}` : sql``}
           )
+          ${qualified === 'true' ? sql`AND ${zuvyAssessmentSubmission.isPassed} = true` : qualified === 'false' ? sql`AND (${zuvyAssessmentSubmission.isPassed} = false OR ${zuvyAssessmentSubmission.isPassed} IS NULL)` : sql``}
             AND ${zuvyAssessmentSubmission.id} = (
         SELECT MAX(sub2.id)
         FROM main.zuvy_assessment_submission sub2
@@ -627,7 +653,6 @@ Team Zuvy`;
           limit,
           offset
         });
-        console.log("submitedOutsourseAssessments", submitedOutsourseAssessments)
       const totalStudentsCount = await db
         .select({
           count: sql<number>`COUNT(*)`,
@@ -636,6 +661,7 @@ Team Zuvy`;
         .where(sql`
         ${zuvyBatchEnrollments.bootcampId} = ${bootcampId}
         AND ${zuvyBatchEnrollments.batchId} IS NOT NULL
+        ${batchId && !isNaN(batchId) ? sql`AND ${zuvyBatchEnrollments.batchId} = ${batchId}` : sql``}
         `);
 
 
@@ -662,6 +688,7 @@ Team Zuvy`;
     ${zuvyAssessmentSubmission.assessmentOutsourseId} = ${assessmentID}
     and ${zuvyBatchEnrollments.bootcampId} = ${bootcampId}
     and ${zuvyBatchEnrollments.batchId} is not null
+    ${batchId && !isNaN(batchId) ? sql`and ${zuvyBatchEnrollments.batchId} = ${batchId}` : sql``}
     and ${zuvyAssessmentSubmission.isPassed} = true
   `
         )
@@ -678,7 +705,9 @@ Team Zuvy`;
         WHERE main.zuvy_batch_enrollments.user_id = ${zuvyAssessmentSubmission.userId}
         AND main.zuvy_batch_enrollments.bootcamp_id = ${bootcampId}
         AND main.zuvy_batch_enrollments.batch_id IS NOT NULL
+        ${batchId && !isNaN(batchId) ? sql`AND main.zuvy_batch_enrollments.batch_id = ${batchId}` : sql``}
       )
+      ${qualified === 'true' ? sql`AND ${zuvyAssessmentSubmission.isPassed} = true` : qualified === 'false' ? sql`AND (${zuvyAssessmentSubmission.isPassed} = false OR ${zuvyAssessmentSubmission.isPassed} IS NULL)` : sql``}
       AND ${zuvyAssessmentSubmission.id} = (
         SELECT MAX(sub2.id)
         FROM main.zuvy_assessment_submission sub2
@@ -734,6 +763,40 @@ Team Zuvy`;
           };
         })
         .filter((data) => data.startedAt);
+
+      // Apply sorting if orderBy is specified
+      if (orderBy) {
+        const direction = orderDirection === 'desc' ? -1 : 1;
+
+        combinedData.sort((a, b) => {
+          let valueA, valueB;
+
+          switch (orderBy) {
+            case 'submittedDate':
+              valueA = a.submitedAt ? new Date(a.submitedAt).getTime() : 0;
+              valueB = b.submitedAt ? new Date(b.submitedAt).getTime() : 0;
+              break;
+            case 'percentage':
+              valueA = a.percentage || 0;
+              valueB = b.percentage || 0;
+              break;
+            case 'name':
+              valueA = (a.name || '').toLowerCase();
+              valueB = (b.name || '').toLowerCase();
+              break;
+            case 'email':
+              valueA = (a.email || '').toLowerCase();
+              valueB = (b.email || '').toLowerCase();
+              break;
+            default:
+              return 0;
+          }
+
+          if (valueA < valueB) return -1 * direction;
+          if (valueA > valueB) return 1 * direction;
+          return 0;
+        });
+      }
 
       // Fetch ModuleAssessment details
       const moduleAssessment = await db.query.zuvyOutsourseAssessments.findFirst({
@@ -885,39 +948,37 @@ Team Zuvy`;
     }
   }
 
-  async getOpenEndedSolutionForStudents(assessmentSubmissionId) 
-  {
-    try{
+  async getOpenEndedSolutionForStudents(assessmentSubmissionId) {
+    try {
       const assessmentOpenEndedSolution: any = await db.query.zuvyOpenEndedQuestionSubmission.findMany({
         where: (zuvyOpenEndedQuestionSubmission, { eq, and, isNotNull, sql }) =>
           sql`${zuvyOpenEndedQuestionSubmission.assessmentSubmissionId}= ${assessmentSubmissionId}`,
         with: {
           submissionData: {
             with: {
-                  OpenEndedQuestion: true,
-                },
-          }, 
+              OpenEndedQuestion: true,
+            },
+          },
         },
       });
       assessmentOpenEndedSolution.forEach((item) => {
-    if (item.submissionData && item.submissionData.OpenEndedQuestion) {
-      item.OpenEndedQuestion = item.submissionData.OpenEndedQuestion;
-       delete item.submissionData;
-    }
-  });
-      return [null,{
-          status: 'success',
-          statusCode: 200,
-          message: 'Open ended solution fetched successfully',
-          data: assessmentOpenEndedSolution
-        }];
-    }catch(err)
-    {
-       return [{
-          status: 'error',
-          statusCode: 400,
-          message: err.message,
-        }];
+        if (item.submissionData && item.submissionData.OpenEndedQuestion) {
+          item.OpenEndedQuestion = item.submissionData.OpenEndedQuestion;
+          delete item.submissionData;
+        }
+      });
+      return [null, {
+        status: 'success',
+        statusCode: 200,
+        message: 'Open ended solution fetched successfully',
+        data: assessmentOpenEndedSolution
+      }];
+    } catch (err) {
+      return [{
+        status: 'error',
+        statusCode: 400,
+        message: err.message,
+      }];
     }
   }
 
