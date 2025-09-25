@@ -323,7 +323,8 @@ export class BootcampController {
     name: 'status',
     required: false,
     type: String,
-    description: 'Filter by enrollment status',
+    description: 'Filter by enrollment status (Active, Dropout, Graduated)',
+    enum: ['active', 'graduate', 'dropout'],
   })
   @ApiQuery({
     name: 'attendance',
@@ -332,10 +333,18 @@ export class BootcampController {
     description: 'Filter by attendance number',
   })
   @ApiQuery({
-    name: 'meetingSearch',
+    name: 'orderBy',
     required: false,
     type: String,
-    description: 'Search meetings/sessions by title',
+    description: 'Field to order by (submittedDate, percentage, name, email)',
+    enum: ['submittedDate', 'percentage', 'name', 'email']
+  })
+  @ApiQuery({
+    name: 'orderDirection',
+    required: false,
+    type: String,
+    description: 'Order direction (asc/desc)',
+    enum: ['asc', 'desc']
   })
   @ApiBearerAuth('JWT-auth')
   async getStudentsByBootcamp(
@@ -348,11 +357,24 @@ export class BootcampController {
     @Query('lastActiveDate') lastActiveDate: string,
     @Query('status') status: string,
     @Query('attendance') attendance: number,
-    @Query('meetingSearch') meetingSearch: string,
+    @Query('orderBy') orderBy: string,
+    @Query('orderDirection') orderDirection: string,
   ) {
     const searchTermAsNumber = !isNaN(Number(searchTerm))
       ? BigInt(searchTerm)
       : searchTerm;
+
+    // Validate status param - only allow specific values
+    const allowedStatuses = ['active', 'graduate', 'dropout'];
+    let statusNormalized: string | undefined = undefined;
+    if (status !== undefined && status !== null && String(status).trim() !== '') {
+      if (typeof status === 'string' && allowedStatuses.includes(status.toLowerCase())) {
+        statusNormalized = status.toLowerCase();
+      } else {
+        throw new BadRequestException({ status: 'error', message: `Invalid status. Allowed values: ${allowedStatuses.join(', ')}` });
+      }
+    }
+
     const res = await this.bootcampService.getStudentsInABootcamp(
       bootcamp_id,
       batch_id,
@@ -361,9 +383,9 @@ export class BootcampController {
       offset,
       enrolledDate,
       lastActiveDate,
-      status,
-      attendance,
-      meetingSearch,
+      statusNormalized,
+      attendance
+      , orderBy, orderDirection
     );
     return res;
   }

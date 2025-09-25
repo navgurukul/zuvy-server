@@ -17,7 +17,7 @@ export class BatchDto {
     required: true,
   })
   @IsNotEmpty()
-  @IsString()
+  @IsEmail()
   instructorEmail: string;
 
   @ApiProperty({
@@ -68,6 +68,16 @@ export class BatchDto {
   assignAll: boolean;
 
   @ApiProperty({
+    type: String,
+    example: 'Ongoing',
+    required: false,
+    description: 'Optional status of the batch (e.g. Ongoing, Completed)'
+  })
+  @IsOptional()
+  @IsString()
+  status?: string;
+
+  @ApiProperty({
     type: [Number],
     example: [101, 102, 103],
     required: false,
@@ -92,7 +102,7 @@ export class PatchBatchDto {
     example: 'giribabu@gmail.com',
   })
   @IsOptional()
-  @IsString()
+  @IsEmail()
   instructorEmail: string;
 
   @ApiProperty({
@@ -123,4 +133,14 @@ export class PatchBatchDto {
   @IsOptional()
   @IsDateString()
   endDate?: string;
+
+  @ApiProperty({
+    type: String,
+    example: 'Ongoing',
+    required: false,
+    description: 'Optional status of the batch (e.g. Ongoing, Completed)'
+  })
+  @IsOptional()
+  @IsString()
+  status?: string;
 }

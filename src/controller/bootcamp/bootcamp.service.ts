@@ -392,21 +392,44 @@ export class BootcampService {
     offset: number,
   ): Promise<any> {
     try {
-      const batchesData = await db
-        .select()
+      console.log({ bootcamp_id, limit, offset });
+
+      // sanitize pagination parameters
+      const limitNum = Number.isFinite(Number(limit)) ? Number(limit) : undefined;
+      const offsetNum = Number.isFinite(Number(offset)) ? Number(offset) : undefined;
+
+      // build query using a loose-typed builder to avoid TS generic reassign issues
+      // select explicit columns to avoid referencing columns that may not exist in some DB schemas
+      const baseQuery: any = db
+        .select({
+          id: zuvyBatches.id,
+          name: zuvyBatches.name,
+          bootcampId: zuvyBatches.bootcampId,
+          instructorId: zuvyBatches.instructorId,
+          capEnrollment: zuvyBatches.capEnrollment,
+          createdAt: zuvyBatches.createdAt,
+          updatedAt: zuvyBatches.updatedAt,
+          status: zuvyBatches.status,
+          startDate: zuvyBatches.startDate,
+          endDate: zuvyBatches.endDate,
+        })
         .from(zuvyBatches)
-        .where(eq(zuvyBatches.bootcampId, bootcamp_id))
-        .limit(limit)
-        .offset(offset);
+        .where(eq(zuvyBatches.bootcampId, bootcamp_id));
+      let queryBuilder: any = baseQuery;
+      if (limitNum !== undefined) queryBuilder = queryBuilder.limit(limitNum);
+      if (offsetNum !== undefined) queryBuilder = queryBuilder.offset(offsetNum);
+
+      const batchesData = await queryBuilder;
 
       const totalCountQuery = await db
         .select({ count: count(zuvyBatches.id) })
         .from(zuvyBatches)
         .where(eq(zuvyBatches.bootcampId, bootcamp_id));
-      let totalPages;
-      totalPages = Math.ceil(totalCountQuery[0].count / limit);
+      const totalCount = totalCountQuery[0]?.count || 0;
+      const totalPages = limitNum && limitNum > 0 ? Math.ceil(totalCount / limitNum) : 1;
 
       const promises = batchesData.map(async (batch) => {
+        // students enrolled
         const userEnrolled = await db
           .select()
           .from(zuvyBatchEnrollments)
@@ -414,15 +437,37 @@ export class BootcampService {
             sql`${zuvyBatchEnrollments.batchId} = ${batch.id} and ${zuvyBatchEnrollments.bootcampId} = ${bootcamp_id}`,
           );
         batch['students_enrolled'] = userEnrolled.length;
+
+        // instructor info (id and email)
+        const instrId = batch.instructorId ?? null;
+        if (instrId) {
+          const instr = await db
+            .select({ id: users.id, email: users.email })
+            .from(users)
+            .where(eq(users.id, BigInt(instrId)))
+            .limit(1);
+          if (instr.length) {
+            batch['instructorId'] = Number(instr[0].id as any);
+            batch['instructorEmail'] = instr[0].email;
+          } else {
+            batch['instructorEmail'] = null;
+          }
+        } else {
+          batch['instructorId'] = null;
+          batch['instructorEmail'] = null;
+        }
+
+        // duration fields and status (prefer DB status if set)
+        batch['startDate'] = batch['startDate'] ? new Date(String(batch['startDate'])).toISOString() : null;
+        batch['endDate'] = batch['endDate'] ? new Date(String(batch['endDate'])).toISOString() : null;
+        batch['status'] = batch['status'] ? batch['status'] : (batch['endDate'] && new Date(String(batch['endDate'])) < new Date() ? 'Completed' : 'Ongoing');
+
         return batch; // return the modified batch
       });
       const data = await Promise.all(promises);
-      return [
-        null,
-        { data, totalBatches: totalCountQuery[0].count, totalPages },
-      ];
+      return [null, { data, totalBatches: totalCount, totalPages }];
     } catch (e) {
-      return { status: 'error', message: e.message, code: 500 };
+      return [{ status: 'error', message: e.message, code: 500 }, null];
     }
   }
 
@@ -432,11 +477,23 @@ export class BootcampService {
   ): Promise<any> {
     try {
       const batchesData = await db
-        .select()
+        .select({
+          id: zuvyBatches.id,
+          name: zuvyBatches.name,
+          bootcampId: zuvyBatches.bootcampId,
+          instructorId: zuvyBatches.instructorId,
+          capEnrollment: zuvyBatches.capEnrollment,
+          createdAt: zuvyBatches.createdAt,
+          updatedAt: zuvyBatches.updatedAt,
+          status: zuvyBatches.status,
+          startDate: zuvyBatches.startDate,
+          endDate: zuvyBatches.endDate,
+        })
         .from(zuvyBatches)
         .where(
           sql`${zuvyBatches.bootcampId}=${bootcamp_id} AND (LOWER(${zuvyBatches.name}) LIKE ${searchTerm.toLowerCase()} || '%')`,
         );
+
       const promises = batchesData.map(async (batch) => {
         const userEnrolled = await db
           .select()
@@ -445,12 +502,37 @@ export class BootcampService {
             sql`${zuvyBatchEnrollments.batchId} = ${batch.id} and ${zuvyBatchEnrollments.bootcampId} = ${bootcamp_id}`,
           );
         batch['students_enrolled'] = userEnrolled.length;
+
+        // instructor info
+        const instrId = batch.instructorId ?? null;
+        if (instrId) {
+          const instr = await db
+            .select({ id: users.id, email: users.email })
+            .from(users)
+            .where(eq(users.id, BigInt(instrId)))
+            .limit(1);
+          if (instr.length) {
+            batch['instructorId'] = Number(instr[0].id as any);
+            batch['instructorEmail'] = instr[0].email;
+          } else {
+            batch['instructorEmail'] = null;
+          }
+        } else {
+          batch['instructorId'] = null;
+          batch['instructorEmail'] = null;
+        }
+
+        batch['startDate'] = batch['startDate'] ? new Date(String(batch['startDate'])).toISOString() : null;
+        batch['endDate'] = batch['endDate'] ? new Date(String(batch['endDate'])).toISOString() : null;
+        batch['status'] = batch['status'] ? batch['status'] : (batch['endDate'] && new Date(String(batch['endDate'])) < new Date() ? 'Completed' : 'Ongoing');
+        batch['status'] = batch['endDate'] && new Date(String(batch['endDate'])) < new Date() ? 'Completed' : 'Ongoing';
+
         return batch; // return the modified batch
       });
       const batchesWithEnrollment = await Promise.all(promises);
       return [null, batchesWithEnrollment];
     } catch (e) {
-      return { status: 'error', message: e.message, code: 500 };
+      return [{ status: 'error', message: e.message, code: 500 }, null];
     }
   }
 
@@ -737,10 +819,46 @@ export class BootcampService {
     lastActiveDate?: string,
     status?: string,
     attendance?: number,
-    meetingSearch?: string,
+    orderBy?: string,
+    orderDirection?: string
   ) {
     try {
+      console.log({ bootcampId, batchId, searchTerm, limit, offset, enrolledDate, lastActiveDate, status, attendance });
 
+      // sanitize numeric inputs to avoid sending NaN to SQL (Postgres will error on 'NaN' for integer fields)
+      const batchIdNum = Number.isFinite(Number(batchId)) ? Number(batchId) : undefined;
+      const limitNum = Number.isFinite(Number(limit)) ? Number(limit) : undefined;
+      const offsetNum = Number.isFinite(Number(offset)) ? Number(offset) : undefined;
+      const attendanceNum = Number.isFinite(Number(attendance)) ? Number(attendance) : undefined;
+
+      const batchFilter = batchIdNum !== undefined ? eq(zuvyBatchEnrollments.batchId, batchIdNum) : undefined;
+      const attendanceFilter = attendanceNum !== undefined ? eq(zuvyBatchEnrollments.attendance, attendanceNum) : undefined;
+      const searchFilter = (searchTerm && typeof searchTerm === 'string' && searchTerm.trim() !== '')
+        ? sql`(LOWER(${users.name}) LIKE ${searchTerm.toLowerCase()} || '%' OR LOWER(${users.email}) LIKE ${searchTerm.toLowerCase()} || '%')`
+        : undefined;
+      const enrolledDateFilter = enrolledDate ? sql`DATE(${zuvyBatchEnrollments.enrolledDate}) = ${enrolledDate}` : undefined;
+      const lastActiveDateFilter = lastActiveDate ? sql`DATE(${zuvyBatchEnrollments.lastActiveDate}) = ${lastActiveDate}` : undefined;
+      const statusFilter = status ? eq(zuvyBatchEnrollments.status, status) : undefined;
+      console.log({ orderBy, orderDirection });
+      // Determine order field and direction
+      let orderField;
+      switch (orderBy) {
+        case 'submittedDate':
+          orderField = zuvyBatchEnrollments.enrolledDate;
+          break;
+        case 'percentage':
+          orderField = zuvyBootcampTracking.progress;
+          break;
+        case 'name':
+          orderField = users.name;
+          break;
+        case 'email':
+          orderField = users.email;
+          break;
+        default:
+          orderField = users.name;
+      }
+      const direction = orderDirection === 'desc' ? desc(orderField) : orderField;
       const query = db.select({
         userId: users.id,
         name: users.name,
@@ -753,7 +871,10 @@ export class BootcampService {
         status: sql`zuvy_batch_enrollments.status`,
         batchName: zuvyBatches.name,
         batchId: zuvyBatches.id,
-        progress: zuvyBootcampTracking.progress
+        progress: zuvyBootcampTracking.progress,
+        zuvyBootcampTrackingId: zuvyBootcampTracking.id,
+        zuvyBatchEnrollmentsId: zuvyBatchEnrollments.id,
+
       })
         .from(zuvyBatchEnrollments)
         .leftJoin(users, eq(zuvyBatchEnrollments.userId, users.id))
@@ -764,56 +885,23 @@ export class BootcampService {
         ))
         .where(and(
           eq(zuvyBatchEnrollments.bootcampId, bootcampId),
-          batchId ? eq(zuvyBatchEnrollments.batchId, batchId) : undefined,
-          searchTerm && searchTerm.constructor === String ? sql`(LOWER(${users.name}) LIKE ${searchTerm.toLowerCase()} || '%' OR LOWER(${users.email}) LIKE ${searchTerm.toLowerCase()} || '%')` : undefined,
-          enrolledDate ? sql`DATE(${zuvyBatchEnrollments.enrolledDate}) = ${enrolledDate}` : undefined,
-          lastActiveDate ? sql`DATE(${zuvyBatchEnrollments.lastActiveDate}) = ${lastActiveDate}` : undefined,
-          status ? eq(zuvyBatchEnrollments.status, status) : undefined,
-          attendance !== undefined ? eq(zuvyBatchEnrollments.attendance, attendance) : undefined
+          batchFilter,
+          searchFilter,
+          enrolledDateFilter,
+          lastActiveDateFilter,
+          statusFilter,
+          attendanceFilter
         ))
-        .orderBy(users.name);
+        .orderBy(direction);
+
       const mapData = await query;
       const totalNumberOfStudents = mapData.length;
-      const studentsInfo = !isNaN(limit) && !isNaN(offset) ? mapData.slice(offset, offset + limit) : mapData;
-      
-      // Fetch meeting/session data for the bootcamp
-      let sessionQuery = db.select({
-        sessionId: zuvySessions.id,
-        meetingId: zuvySessions.meetingId,
-        title: zuvySessions.title,
-        startTime: zuvySessions.startTime,
-        endTime: zuvySessions.endTime,
-        batchId: zuvySessions.batchId,
-        bootcampId: zuvySessions.bootcampId,
-      })
-        .from(zuvySessions)
-        .where(and(
-          eq(zuvySessions.bootcampId, bootcampId),
-          batchId ? eq(zuvySessions.batchId, batchId) : undefined,
-          meetingSearch ? like(zuvySessions.title, `%${meetingSearch}%`) : undefined
-        ))
-        .orderBy(zuvySessions.startTime);
-      
-      const sessionData = await sessionQuery;
-      
+      const hasPagination = Number.isFinite(limitNum) && Number.isFinite(offsetNum);
+      const studentsInfo = hasPagination ? mapData.slice(offsetNum, offsetNum + limitNum) : mapData;
+
       // For each student, fetch their attendance records
       const modifiedStudentInfo = await Promise.all(studentsInfo.map(async (item) => {
-        const attendanceRecords = await db.select({
-          sessionId: zuvyStudentAttendanceRecords.sessionId,
-          meetingId: zuvySessions.meetingId,
-          title: zuvySessions.title,
-          startTime: zuvySessions.startTime,
-          endTime: zuvySessions.endTime,
-          attendanceStatus: zuvyStudentAttendanceRecords.status,
-        })
-          .from(zuvyStudentAttendanceRecords)
-          .leftJoin(zuvySessions, eq(zuvyStudentAttendanceRecords.sessionId, zuvySessions.id))
-          .where(and(
-            eq(zuvyStudentAttendanceRecords.userId, Number(item.userId)),
-            eq(zuvyStudentAttendanceRecords.bootcampId, bootcampId),
-            batchId ? eq(zuvyStudentAttendanceRecords.batchId, batchId) : undefined
-          ));
-
+        console.log({ item });
         return {
           ...item,
           userId: Number(item.userId),
@@ -823,11 +911,12 @@ export class BootcampService {
           enrolledDate: item.enrolledDate ? new Date(String(item.enrolledDate)).toISOString() : null,
           lastActiveDate: item.lastActiveDate ? new Date(String(item.lastActiveDate)).toISOString() : null,
           status: item.status || null,
-          attendanceRecords: attendanceRecords,
+          zuvyBatchEnrollmentsId: item.zuvyBatchEnrollmentsId || null,
+          zuvyBootcampTrackingId: item.zuvyBootcampTrackingId || null
         };
       }));
-      const currentPage = !isNaN(limit) && !isNaN(offset) ? offset / limit + 1 : 1;
-      const totalPages = !isNaN(limit) ? Math.ceil(totalNumberOfStudents / limit) : 1;
+      const currentPage = hasPagination ? Math.floor(offsetNum / limitNum) + 1 : 1;
+      const totalPages = Number.isFinite(limitNum) && limitNum > 0 ? Math.ceil(totalNumberOfStudents / limitNum) : 1;
       return {
         status: 'success',
         code: 200,
@@ -835,7 +924,6 @@ export class BootcampService {
         totalNumberOfStudents,
         currentPage,
         totalPages,
-        sessions: sessionData, // Include all sessions for the bootcamp/batch
       };
     } catch (err) {
       throw err;
@@ -908,6 +996,7 @@ export class BootcampService {
     editUserDetailsDto: editUserDetailsDto,
   ): Promise<[string | null, any]> {
     try {
+      console.log({ userId, editUserDetailsDto });
       // Validate user existence in the users table
       const userExists = await db
         .select({ id: users.id, email: users.email })
@@ -922,26 +1011,6 @@ export class BootcampService {
       // Check if no fields are provided to update
       if (!editUserDetailsDto.name && !editUserDetailsDto.email) {
         return [null, { message: 'No fields to update', statusCode: STATUS_CODES.BAD_REQUEST }];
-      }
-
-      // If updating email, check if it already exists for another user
-      if (editUserDetailsDto.email) {
-        const existingUserWithEmail = await db
-          .select({ id: users.id, name: users.name, email: users.email })
-          .from(users)
-          .where(
-            and(
-              eq(users.email, editUserDetailsDto.email),
-              ne(users.id, userExists[0].id)
-            )
-          )
-          .limit(1);
-        if (existingUserWithEmail.length > 0) {
-          return [
-            `User with name ${existingUserWithEmail[0].name} already exists with the email id you updated`,
-            null
-          ];
-        }
       }
 
       // Prepare update data
@@ -978,37 +1047,66 @@ export class BootcampService {
         id: Number(updatedUser[0].id),
       };
 
-      // If enrollment update provided, update zuvyBatchEnrollments for this user and specified bootcamp
-      if (editUserDetailsDto.enrollment && editUserDetailsDto.enrollment.bootcampId) {
+      // If enrollment update provided, support both old nested shape (enrollment + bootcampId)
+      // and the new flat shape (status, batchId, bootcampId). We try to locate the
+      // enrollment by the most specific identifier available (batchId > bootcampId)
+      // and then apply status / batch changes as requested.
+      // Cast DTO to any for optional/legacy fields that may not be present in type
+      const dtoAny = editUserDetailsDto as any;
+
+      if (
+        dtoAny.enrollment ||
+        dtoAny.bootcampId ||
+        dtoAny.status ||
+        dtoAny.batchId
+      ) {
         try {
-          const enrollmentFilter = sql`${zuvyBatchEnrollments.userId} = ${BigInt(userId)} AND ${zuvyBatchEnrollments.bootcampId} = ${editUserDetailsDto.enrollment.bootcampId}`;
-          const enrollmentRows = await db.select().from(zuvyBatchEnrollments).where(enrollmentFilter).limit(1);
-          if (!enrollmentRows.length) {
-            // Enrollment not found; return a 404-like response in the payload
-            return [null, {
-              message: 'User updated but enrollment not found for provided bootcampId',
-              statusCode: STATUS_CODES.NOT_FOUND,
-              data: userData,
-            }];
+          // Build enrollment filter
+          let enrollmentFilter: any = null;
+
+          if (dtoAny.enrollment && dtoAny.enrollment.bootcampId) {
+            enrollmentFilter = sql`${zuvyBatchEnrollments.userId} = ${BigInt(userId)} AND ${zuvyBatchEnrollments.bootcampId} = ${dtoAny.enrollment.bootcampId}`;
+          } else if (dtoAny.batchId !== undefined && dtoAny.batchId !== null && dtoAny.batchId !== '') {
+            // match by batchId when provided in the flat payload
+            enrollmentFilter = sql`${zuvyBatchEnrollments.userId} = ${BigInt(userId)} AND ${zuvyBatchEnrollments.batchId} = ${BigInt(dtoAny.batchId)}`;
+          } else if (dtoAny.bootcampId !== undefined && dtoAny.bootcampId !== null && dtoAny.bootcampId !== '') {
+            enrollmentFilter = sql`${zuvyBatchEnrollments.userId} = ${BigInt(userId)} AND ${zuvyBatchEnrollments.bootcampId} = ${dtoAny.bootcampId}`;
           }
 
-          const enrollmentUpdateData: any = {};
-          if (editUserDetailsDto.enrollment.enrolledDate) {
-            // Accept ISO date string or Date; store as Date object
-            enrollmentUpdateData.enrolledDate = new Date(editUserDetailsDto.enrollment.enrolledDate);
-          }
-          if (editUserDetailsDto.enrollment.lastActiveDate) {
-            enrollmentUpdateData.lastActiveDate = new Date(editUserDetailsDto.enrollment.lastActiveDate);
-          }
-          if (editUserDetailsDto.enrollment.status) {
-            enrollmentUpdateData.status = editUserDetailsDto.enrollment.status;
-          }
+          if (!enrollmentFilter) {
+            // Nothing to identify an enrollment; skip enrollment update silently
+          } else {
+            const enrollmentRows = await db.select().from(zuvyBatchEnrollments).where(enrollmentFilter).limit(1);
+            if (!enrollmentRows.length) {
+              // Enrollment not found; return a 404-like response in the payload
+              return [null, {
+                message: 'User updated but enrollment not found for provided identifier',
+                statusCode: STATUS_CODES.NOT_FOUND,
+                data: userData,
+              }];
+            }
 
-          if (Object.keys(enrollmentUpdateData).length > 0) {
-            await db.update(zuvyBatchEnrollments)
-              .set(enrollmentUpdateData)
-              .where(enrollmentFilter)
-              .returning();
+            const enrollmentUpdateData: any = {};
+            // status can be provided either as top-level `status` or inside `enrollment.status`
+            const statusVal = dtoAny.status ?? dtoAny.enrollment?.status;
+            if (statusVal) {
+              enrollmentUpdateData.status = statusVal;
+            }
+
+            // Allow changing batch assignment when a new batchId is provided (flat payload)
+            if (dtoAny.batchId !== undefined && dtoAny.batchId !== null && dtoAny.batchId !== '') {
+              const currentBatchId = enrollmentRows[0].batchId;
+              if (Number(currentBatchId) !== Number(dtoAny.batchId)) {
+                enrollmentUpdateData.batchId = BigInt(dtoAny.batchId);
+              }
+            }
+
+            if (Object.keys(enrollmentUpdateData).length > 0) {
+              await db.update(zuvyBatchEnrollments)
+                .set(enrollmentUpdateData)
+                .where(enrollmentFilter)
+                .returning();
+            }
           }
         } catch (err) {
           return [null, { message: 'Failed to update enrollment: ' + err.message, statusCode: STATUS_CODES.BAD_REQUEST }];
@@ -1199,8 +1297,8 @@ export class BootcampService {
   ) {
     try {
       // Validate session exists and belongs to the bootcamp
-      const sessions = await db.select({ 
-        id: zuvySessions.id, 
+      const sessions = await db.select({
+        id: zuvySessions.id,
         bootcampId: zuvySessions.bootcampId,
         batchId: zuvySessions.batchId
       })
@@ -1209,7 +1307,7 @@ export class BootcampService {
           eq(zuvySessions.id, sessionId),
           eq(zuvySessions.bootcampId, bootcampId)
         ));
-      
+
       if (!sessions.length) {
         return {
           status: 'error',
@@ -1248,14 +1346,14 @@ export class BootcampService {
       if (existing.length) {
         // Update existing record
         await db.update(zuvyStudentAttendanceRecords)
-          .set({ 
+          .set({
             attendanceDate: new Date().toISOString().split('T')[0], // Update date
           })
           .where(and(
             eq(zuvyStudentAttendanceRecords.sessionId, sessionId),
             eq(zuvyStudentAttendanceRecords.userId, userId)
           ));
-        
+
         // Update status separately using raw SQL
         await db.execute(
           sql`UPDATE zuvy_student_attendance_records 
@@ -1273,8 +1371,8 @@ export class BootcampService {
       }
 
       // Recompute total attendance count for the user (count only 'present' records)
-      const presentCount = await db.select({ 
-        count: sql<number>`cast(count(${zuvyStudentAttendanceRecords.id}) as int)` 
+      const presentCount = await db.select({
+        count: sql<number>`cast(count(${zuvyStudentAttendanceRecords.id}) as int)`
       })
         .from(zuvyStudentAttendanceRecords)
         .leftJoin(zuvySessions, eq(zuvyStudentAttendanceRecords.sessionId, zuvySessions.id))

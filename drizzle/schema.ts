@@ -2469,6 +2469,7 @@ export const zuvyBatches = main.table("zuvy_batches", {
   instructorId: integer("instructor_id"),
   startDate: timestamp("start_date", { withTimezone: true, mode: 'string' }),
   endDate: timestamp("end_date", { withTimezone: true, mode: 'string' }),
+  status: text("status"),
   capEnrollment: integer("cap_enrollment"),
   createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),

@@ -241,43 +241,6 @@ export class studentDataDto {
   students: studentEmail[];
 }
 
-export class EnrollmentDto {
-  @ApiProperty({ type: Number, required: false, example: 101 })
-  @IsOptional()
-  @IsNumber()
-  bootcampId?: number;
-
-  @ApiProperty({
-    type: String,
-    required: false,
-    example: '2025-09-20',
-    description: 'ISO date string',
-  })
-  @IsOptional()
-  @IsString()
-  enrolledDate?: string;
-
-  @ApiProperty({
-    type: String,
-    required: false,
-    example: '2025-09-20',
-    description: 'ISO date string',
-  })
-  @IsOptional()
-  @IsString()
-  lastActiveDate?: string;
-
-  @ApiProperty({
-    type: String,
-    required: false,
-    example: 'active',
-    enum: ['active', 'graduate', 'dropout'],
-  })
-  @IsOptional()
-  @IsIn(['active', 'graduate', 'dropout'])
-  status?: 'active' | 'graduate' | 'dropout';
-}
-
 export class editUserDetailsDto {
   @ApiProperty({
     type: String,
@@ -298,15 +261,18 @@ export class editUserDetailsDto {
   name?: string;
 
   @ApiProperty({
-    type: Object,
+    type: String,
     required: false,
-    description:
-      'Optional enrollment details to update per-bootcamp enrollment record',
+    example: 'active',
+    enum: ['active', 'graduate', 'dropout'],
   })
   @IsOptional()
-  @ValidateNested()
-  @Type(() => EnrollmentDto)
-  enrollment?: EnrollmentDto;
+  @IsIn(['active', 'graduate', 'dropout'])
+  status?: 'active' | 'graduate' | 'dropout';
+
+  @ApiProperty({ type: Number, required: true, example: 456 })
+  @IsOptional() // Marks the field as optional
+  batchId: number;
 }
 
 export class AttendanceMarkDto {
