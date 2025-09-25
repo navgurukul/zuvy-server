@@ -49,3 +49,13 @@ export enum Role {
   OPS = 'ops',
   INSTRUCTOR = 'instructor',
 }
+
+//create the source of truth for resource
+// utils/resources.ts
+export const ResourceList = {
+  courseManagement: {
+    create: "createCourse",
+    edit: "editCourse",
+    delete: "deleteCourse",
+  },
+} as const;

@@ -2,6 +2,7 @@ import { Injectable, InternalServerErrorException, Logger, NotFoundException } f
 import { db } from 'src/db/index';
 import { inArray, sql, eq, and } from 'drizzle-orm';
 import { userRoles, zuvyPermissions, zuvyResources, zuvyRolePermissions, zuvyUserRolesAssigned } from 'drizzle/schema';
+import { ResourceList } from './utility';
 
 @Injectable()
 export class RbacAllocPermsService {

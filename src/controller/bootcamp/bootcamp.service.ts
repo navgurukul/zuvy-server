@@ -122,6 +122,19 @@ export class BootcampService {
       const permissionResult = await this.rbacAllocPermsService.getUserPermissionsForMultipleResources(userId);
       allPermissions = permissionResult.permissions || {};
 
+      /* 
+        target permissions: {createCourse, viewCourse, editCourse, deleteCourse, readContent, readRolesPermission}
+
+        get all granted=true permissions {createCourse: true, createBootcamp: true, readCourse: true}
+        function returnGrantablePermissions(roleName: string){
+          roleName: roleId --> resourceId --> all grantable permissions.
+
+          permissions --> format the permissions.
+        }
+      
+        compare both permissions and than prepare the final permission: 
+        permissions: {createCourse: true, viewCourse: false, editCourse: false, deleteCourse: false, readContent: false}
+      */
       const data = await Promise.all(
         getBootcamps.map(async (bootcamp) => {
           let [err, res] = await this.enrollData(bootcamp.id);
