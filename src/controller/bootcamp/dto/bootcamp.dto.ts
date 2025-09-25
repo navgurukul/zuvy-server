@@ -1,5 +1,14 @@
 import { ApiProperty, ApiResponseProperty } from '@nestjs/swagger';
-import { IsString, IsNotEmpty, IsOptional, ValidateNested, IsNumber, IsEmail, IsBoolean, IsIn } from 'class-validator';
+import {
+  IsString,
+  IsNotEmpty,
+  IsOptional,
+  ValidateNested,
+  IsNumber,
+  IsEmail,
+  IsBoolean,
+  IsIn,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class CreateBootcampDto {
@@ -29,8 +38,16 @@ export class CreateBootcampDto {
   @IsOptional()
   @IsString()
   description?: string;
-}
 
+  @ApiProperty({
+    type: Number,
+    example: 12,
+    required: false,
+  })
+  @IsOptional()
+  @IsNumber()
+  duration?: number;
+}
 
 export class EditBootcampDto {
   @ApiProperty({
@@ -78,13 +95,13 @@ export class EditBootcampDto {
   bootcampTopic: string;
 
   @ApiProperty({
-    type: String,
-    example: '3 months',
+    type: Number,
+    example: 12,
     required: true,
   })
   @IsNotEmpty()
-  @IsString()
-  duration: string;
+  @IsNumber()
+  duration: number;
 
   @ApiProperty({
     type: String,
@@ -103,7 +120,6 @@ export class EditBootcampDto {
   @IsNotEmpty()
   @IsString()
   language: string;
-
 }
 
 export class PatchBootcampSettingDto {
@@ -118,7 +134,7 @@ export class PatchBootcampSettingDto {
     message: 'type must be either "Public" or "Private"',
   })
   type?: string;
-  
+
   @ApiProperty({
     type: Boolean,
     example: false,
@@ -170,13 +186,13 @@ export class PatchBootcampDto {
   bootcampTopic: string;
 
   @ApiProperty({
-    type: String,
-    example: '3 months',
+    type: Number,
+    example: 12,
     required: true,
   })
-  @IsString()
+  @IsNumber()
   @IsOptional()
-  duration: string;
+  duration: number;
 
   @ApiProperty({
     type: String,
@@ -243,4 +259,33 @@ export class editUserDetailsDto {
   @IsOptional() // Marks the field as optional
   @IsString({ message: 'Name must be a string' }) // Ensures name is a string if provided
   name?: string;
+
+  @ApiProperty({
+    type: String,
+    required: false,
+    example: 'active',
+    enum: ['active', 'graduate', 'dropout'],
+  })
+  @IsOptional()
+  @IsIn(['active', 'graduate', 'dropout'])
+  status?: 'active' | 'graduate' | 'dropout';
+
+  @ApiProperty({ type: Number, required: true, example: 456 })
+  @IsOptional() // Marks the field as optional
+  batchId: number;
+}
+
+export class AttendanceMarkDto {
+  @ApiProperty({ type: Number, required: true, example: 123 })
+  sessionId: number;
+
+  @ApiProperty({ type: Number, required: true, example: 456 })
+  userId: number;
+
+  @ApiProperty({ type: String, required: true, example: 'present' })
+  status: 'present' | 'absent';
+
+  @ApiProperty({ type: Number, required: false, example: 45 })
+  @IsOptional()
+  duration?: number; // in minutes (or agreed unit)
 }

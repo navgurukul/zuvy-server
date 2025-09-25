@@ -32,8 +32,8 @@ export class AdminAssessmentController {
     description: 'Search by assessment name',
   })
   @ApiBearerAuth('JWT-auth')
-  async BootcampAssessment(@Req() req: Request, @Param('bootcamp_id') bootcampID: number,@Query('searchAssessment') searchAssessment: string) {
-    return this.adminAssessmentService.getBootcampAssessment(bootcampID,searchAssessment);
+  async BootcampAssessment(@Req() req: Request, @Param('bootcamp_id') bootcampID: number, @Query('searchAssessment') searchAssessment: string) {
+    return this.adminAssessmentService.getBootcampAssessment(bootcampID, searchAssessment);
   }
 
   @Get('assessment/students/assessment_id:assessment_id')
@@ -57,6 +57,33 @@ export class AdminAssessmentController {
     type: Number,
     description: 'skip data',
   })
+  @ApiQuery({
+    name: 'batchId',
+    required: false,
+    type: Number,
+    description: 'Filter by batch ID',
+  })
+  @ApiQuery({
+    name: 'qualified',
+    required: false,
+    type: String,
+    description: 'Filter by qualification status (true/false/all)',
+    enum: ['true', 'false', 'all']
+  })
+  @ApiQuery({
+    name: 'orderBy',
+    required: false,
+    type: String,
+    description: 'Field to order by (submittedDate, percentage, name, email)',
+    enum: ['submittedDate', 'percentage', 'name', 'email']
+  })
+  @ApiQuery({
+    name: 'orderDirection',
+    required: false,
+    type: String,
+    description: 'Order direction (asc/desc)',
+    enum: ['asc', 'desc']
+  })
   @ApiBearerAuth('JWT-auth')
   async AssessmentStudents(
     @Req() req: Request,
@@ -64,13 +91,21 @@ export class AdminAssessmentController {
     @Query('searchStudent') searchStudent: string,
     @Query('limit') limit,
     @Query('offset') offset,
+    @Query('batchId') batchId: number,
+    @Query('qualified') qualified: string,
+    @Query('orderBy') orderBy: string,
+    @Query('orderDirection') orderDirection: string,
   ) {
     return this.adminAssessmentService.getSubmissionsListOfAssessment(
       req,
       assessmentID,
       searchStudent,
-      Number(limit),
-      Number(offset),
+      Number(limit) || 10,
+      Number(offset) || 0,
+      batchId ? Number(batchId) : undefined,
+      qualified,
+      orderBy,
+      orderDirection,
     );
   }
 
@@ -79,7 +114,7 @@ export class AdminAssessmentController {
   @ApiOperation({ summary: 'Get the submission of student' })
   @ApiBearerAuth('JWT-auth')
   async AssessmentSubmission(@Req() req: Request, @Param('user_id') userID: number, @Query('submission_id') submissionID: number) {
-    return this.adminAssessmentService.getUserAssessmentSubmission(req,submissionID, userID);
+    return this.adminAssessmentService.getUserAssessmentSubmission(req, submissionID, userID);
   }
 
   @Get(':bootcamp_id/assessments')
@@ -211,7 +246,7 @@ export class AdminAssessmentController {
     @Query('assessmentSubmissionId') assessmentSubmissionId: number,
     @Req() req: Request,
     @Res() res
-  ): Promise<any>  {
+  ): Promise<any> {
     try {
       let [err, success] = await this.adminAssessmentService.approveReattempt(assessmentSubmissionId);
       if (err) {
@@ -231,7 +266,7 @@ export class AdminAssessmentController {
     @Query('assessmentSubmissionId') assessmentSubmissionId: number,
     @Req() req: Request,
     @Res() res
-  ): Promise<any>  {
+  ): Promise<any> {
     try {
       let [err, success] = await this.adminAssessmentService.rejectReattempt(assessmentSubmissionId);
       if (err) {
@@ -251,10 +286,10 @@ export class AdminAssessmentController {
   async getOpenEndedSolutionForStudents(
     @Query('assessmentSubmissionId') assessmentSubmissionId: number,
     @Res() res
-  ): Promise<any>  {
+  ): Promise<any> {
     try {
-      let [err, success] =  await this.adminAssessmentService.getOpenEndedSolutionForStudents(assessmentSubmissionId);
-       if (err) {
+      let [err, success] = await this.adminAssessmentService.getOpenEndedSolutionForStudents(assessmentSubmissionId);
+      if (err) {
         return ErrorResponse.BadRequestException(err.message).send(res);
       }
       return new SuccessResponse(success.message, success.statusCode, 'data' in success ? success.data : undefined).send(res);

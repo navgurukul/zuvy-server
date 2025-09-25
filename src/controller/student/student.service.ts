@@ -751,7 +751,7 @@ export class StudentService {
     }
   }
 
-  async getCompletedClassesWithAttendance(userId: number, bootcampId: number, limit, offset) 
+  async getCompletedClassesWithAttendance(userId: number, bootcampId: number, limit, offset, status?: string, searchTerm?: string) 
   {
   try {
     const userRecord = await db
@@ -804,27 +804,66 @@ export class StudentService {
       orderBy: (session, { desc }) => desc(session.id),
     });
 
-    const totalClasses = allSessions.length;
-    if (totalClasses === 0) {
-        return [
-            null,
-            {
-                message: 'No completed classes found',
-                statusCode: STATUS_CODES.OK,
-                data: {
-                    batchId,
-                    batchName: null,
-                    classes: [],
-                    totalClasses: 0,
-                    totalPages: 0,
-                    attendanceStats: { presentCount: 0, absentCount: 0, attendancePercentage: 0 },
-                },
-            },
-        ];
+    // Map all sessions to include user's attendance information
+    const mappedAllSessions = allSessions.map((cls) => {
+      const userAttendance = unifiedAttendanceMap.get(cls.id);
+      const attendanceStatus = userAttendance?.status || 'absent';
+      const duration = userAttendance?.duration || 0;
+
+      return {
+        id: Number(cls.id),
+        title: cls.title,
+        startTime: cls.startTime,
+        endTime: cls.endTime,
+        s3Link: cls.s3link,
+        moduleId: cls.moduleId,
+        chapterId: cls.chapterId,
+        attendanceStatus,
+        duration,
+        raw: cls,
+      };
+    });
+
+    // Apply searchTerm filter (case-insensitive) on title or s3Link if provided
+    let filteredSessions = mappedAllSessions;
+    if (searchTerm && searchTerm.trim().length > 0) {
+      const term = searchTerm.trim().toLowerCase();
+      filteredSessions = filteredSessions.filter(s => {
+        const title = (s.title || '').toString().toLowerCase();
+        const s3 = (s.s3Link || '').toString().toLowerCase();
+        return title.includes(term) || s3.includes(term);
+      });
     }
-    
-    const paginatedClasses = limit ? allSessions.slice(offset, offset + limit) : allSessions;
+
+    // Apply attendance status filter (present/absent) if provided
+    if (status && (status === 'present' || status === 'absent')) {
+      filteredSessions = filteredSessions.filter(s => s.attendanceStatus === status);
+    }
+
+    const totalClasses = filteredSessions.length;
     const batchName = (allSessions[0] as any)?.batches?.name || null;
+
+    if (totalClasses === 0) {
+      return [
+        null,
+        {
+          message: 'No completed classes found',
+          statusCode: STATUS_CODES.OK,
+          data: {
+            batchId,
+            batchName,
+            classes: [],
+            totalClasses: 0,
+            totalPages: 0,
+            attendanceStats: { presentCount: 0, absentCount: 0, attendancePercentage: 0 },
+          },
+        },
+      ];
+    }
+
+    const pLimit = Number(limit);
+    const pOffset = Number(offset) || 0;
+    const paginatedClasses = !isNaN(pLimit) && pLimit > 0 ? filteredSessions.slice(pOffset, pOffset + pLimit) : filteredSessions;
 
     // 2. Partition sessions into Zoom and Google Meet categories
     const zoomSessions = allSessions.filter(session => session.isZoomMeet === true);
@@ -889,38 +928,20 @@ export class StudentService {
       });
     }
 
-    // 6. Map paginated classes to the final result structure using the unified map
-    const result = paginatedClasses.map((cls) => {
-      const userAttendance = unifiedAttendanceMap.get(cls.id);
-      const status = userAttendance?.status || 'absent';
-      const duration = userAttendance?.duration || 0;
-
-      return {
-        id: Number(cls.id),
-        title: cls.title,
-        startTime: cls.startTime,
-        endTime: cls.endTime,
-        s3Link: cls.s3link,
-        moduleId: cls.moduleId,
-        chapterId: cls.chapterId,
-        attendanceStatus: status,
-        duration,
-      };
+    // 6. Build final paginated result (remove internal 'raw' before returning)
+    const result = paginatedClasses.map((c) => {
+      const { raw, ...rest } = c as any;
+      return rest;
     });
 
-    // 7. Calculate overall attendance statistics using all sessions
+    // 7. Calculate attendance statistics on the filtered set
     let presentCount = 0;
-    allSessions.forEach((session) => {
-      const userAttendance = unifiedAttendanceMap.get(session.id);
-      if (userAttendance && userAttendance.status === 'present') {
-        presentCount++;
-      }
+    filteredSessions.forEach((s) => {
+      if (s.attendanceStatus === 'present') presentCount++;
     });
 
     const absentCount = totalClasses - presentCount;
-    const attendancePercentage = totalClasses > 0
-      ? Number(((presentCount / totalClasses) * 100).toFixed(2))
-      : 0;
+    const attendancePercentage = totalClasses > 0 ? Number(((presentCount / totalClasses) * 100).toFixed(2)) : 0;
 
     // 8. Return the final, consistently structured response
     return [
@@ -933,7 +954,7 @@ export class StudentService {
           batchName,
           classes: result,
           totalClasses,
-          totalPages: limit ? Math.ceil(totalClasses / limit) : 1,
+          totalPages: !isNaN(pLimit) && pLimit > 0 ? Math.ceil(totalClasses / pLimit) : 1,
           attendanceStats: {
             presentCount,
             absentCount,
