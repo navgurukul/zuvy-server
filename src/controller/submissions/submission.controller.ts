@@ -434,4 +434,123 @@ export class SubmissionController {
       return ErrorResponse.BadRequestException(error.message).send(res);
     }
   }
+
+  // Live session  submissions Tab admin side api
+
+  @Get('livesession/zuvy_livechapter_submissions')
+
+  @ApiQuery({
+    name: 'bootcamp_id',
+    required: true,
+    type: String,
+    description: 'Bootcamp Id',
+  })
+
+  @ApiQuery({
+    name: 'searchTerm',
+    required: false,
+    type: String,
+    description: 'Search by module or chapter name',
+  })
+
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    type: String,
+    description: 'Limit the number of results',
+  })
+
+  @ApiQuery({
+    name: 'offset',
+    required: false,
+    type: String,
+    description: 'Offset the results by this amount',
+  })
+
+  @ApiOperation({ summary: 'Get chapter tracking data for Live sessions inside modules' })
+  async getLiveChapterSubmissions(
+    @Query('bootcamp_id') bootcampId: number,
+    @Query('searchTerm') searchTerm: string,
+    @Query('limit') limit: number,
+    @Query('offset') offset: number,
+    @Res() res
+  ) {
+    try {
+      // Service should return: { trackingData: [...], totalStudents: N }
+      const [err, result] = await this.submissionService.getLiveChapterSubmissions(bootcampId, searchTerm, limit, offset);
+      if (err) {
+        return ErrorResponse.BadRequestException(err.message, err.statusCode).send(res);
+      }
+      return new SuccessResponse(
+        'Submission of live sessions for modules has been fetched',
+        200,
+        result
+      ).send(res);
+    } catch (error) {
+      return ErrorResponse.BadRequestException(error.message).send(res);
+    }
+  }
+
+  // Live session submissions session chapter id wise data
+  @Get('livesession/zuvy_livechapter_student_submission/:module_chapter_id')
+  @ApiOperation({ summary: 'Get live session submission data for a module chapter (session view)' })
+  
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    type: String,
+    description: 'Limit the number of results',
+  })
+
+  @ApiQuery({
+    name: 'offset',
+    required: false,
+    type: String,
+    description: 'Offset the results by this amount',
+  })
+
+  @ApiQuery({
+    name: 'name',
+    required: false,
+    type: String,
+    description: 'Filter by student name',
+  })
+
+  @ApiQuery({
+    name: 'email',
+    required: false,
+    type: String,
+    description: 'Filter by student email',
+  })
+
+  @ApiQuery({
+    name: 'status',
+    required: false,
+    type: String,
+    description: 'Filter by attendance status (present or absent)',
+  })
+
+  async getLiveChapterStudentSubmission(
+    @Param('module_chapter_id') moduleChapterId: number,
+    @Res() res,
+    @Query('limit') limit?: number,
+    @Query('offset') offset?: number,
+    @Query('name') name?: string,
+    @Query('email') email?: string,
+    @Query('status') status?: 'present' | 'absent'
+  ) {
+    try {
+      const [err, result] = await this.submissionService.getLiveChapterStudentSubmission(moduleChapterId, limit, offset, name, email, status);
+      if (err) {
+        return ErrorResponse.BadRequestException(err.message, err.statusCode).send(res);
+      }
+      return new SuccessResponse(
+        'Submission of live sessions for module chapter has been fetched',
+        200,
+        result
+      ).send(res);
+    } catch (error) {
+      return ErrorResponse.BadRequestException(error.message).send(res);
+    }
+  }
 }
