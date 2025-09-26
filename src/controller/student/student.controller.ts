@@ -191,6 +191,51 @@ export class StudentController {
     return await this.studentService.getAttendanceClass(req.user[0].id);
   }
 
+  // @Get('/bootcamp/:bootcampId/completed-classes')
+  // @ApiOperation({ summary: 'Get completed classes with attendance for a bootcamp' })
+  // @ApiBearerAuth('JWT-auth')
+  // @ApiQuery({
+  //   name: 'limit',
+  //   type: Number,
+  //   description: 'Number of items per page',
+  //   required: false
+  // })
+  // @ApiQuery({
+  //   name: 'offset',
+  //   type: Number,
+  //   description: 'Offset for pagination',
+  //   required: false
+  // })
+  // async getCompletedClassesWithAttendance(
+  //   @Req() req,
+  //   @Param('bootcampId') bootcampId: number,
+  //   @Query('limit') limit: number,
+  //   @Query('offset') offset: number,
+  //   @Query('status') status: string,
+  //   @Query('searchTerm') searchTerm: string,
+  //   @Res() res: Response
+  // ) {
+  //   try {
+  //     const parsedLimit = limit ? Number(limit) : null;
+  //     const parsedOffset = offset ? Number(offset) : null;
+  //     const [err, success] = await this.studentService.getCompletedClassesWithAttendance(
+  //       req.user[0].id,
+  //       bootcampId,
+  //       parsedLimit,
+  //       parsedOffset,
+  //       status,
+  //       searchTerm,
+  //     );
+  //     if (err) {
+  //       return ErrorResponse.BadRequestException(err.message).send(res);
+  //     }
+  //     const result: any = success;
+  //     return new SuccessResponse(result.message, result.statusCode, result.data).send(res);
+  //   } catch (error) {
+  //     return ErrorResponse.BadRequestException(error.message).send(res);
+  //   }
+  // }
+  @Public()
   @Get('/bootcamp/:bootcampId/completed-classes')
   @ApiOperation({ summary: 'Get completed classes with attendance for a bootcamp' })
   @ApiBearerAuth('JWT-auth')
@@ -200,31 +245,76 @@ export class StudentController {
     description: 'Number of items per page',
     required: false
   })
+
   @ApiQuery({
     name: 'offset',
     type: Number,
     description: 'Offset for pagination',
     required: false
   })
+
+  @ApiQuery({
+    name: 'userId',
+    type: Number,
+    description: 'If userId is provided, this api will be for admin side',
+    required: false
+  })
+
+  @ApiQuery({
+    name: 'searchTerm',
+    type: String,
+    description: 'Search by class name',
+    required: false
+  })
+
+  @ApiQuery({
+    name: 'attendanceStatus',
+    type: String,
+    description: 'Filter by attendance status: present or absent',
+    required: false
+  })
+
+  @ApiQuery({
+    name: 'fromDate',
+    type: String,
+    description: 'Filter by start date (ISO format)',
+    required: false
+  })
+
+  @ApiQuery({
+    name: 'toDate',
+    type: String,
+    description: 'Filter by end date (ISO format)',
+    required: false
+  })
+
   async getCompletedClassesWithAttendance(
     @Req() req,
     @Param('bootcampId') bootcampId: number,
     @Query('limit') limit: number,
     @Query('offset') offset: number,
-    @Query('status') status: string,
-    @Query('searchTerm') searchTerm: string,
-    @Res() res: Response
+    @Res() res: Response,
+    @Query('userId') userId?: number,
+    @Query('searchTerm') search?: string,
+     @Query('attendanceStatus') attendanceStatus?: 'present' | 'absent',
+     @Query('fromDate') fromDate?: Date,
+     @Query('toDate') toDate?: Date
   ) {
     try {
-      const parsedLimit = limit ? Number(limit) : null;
+      const parsedLimit = limit ? Number(limit) :  null;
       const parsedOffset = offset ? Number(offset) : null;
+      const parsedUserId = userId ? Number(userId) : null;
+      const searchTerm = search ? String(search) : null;
+      const parsedAttendanceStatus = attendanceStatus ? String(attendanceStatus) : null;
       const [err, success] = await this.studentService.getCompletedClassesWithAttendance(
-        req.user[0].id,
+        parsedUserId || req.user[0].id,
         bootcampId,
         parsedLimit,
         parsedOffset,
-        status,
         searchTerm,
+        parsedAttendanceStatus,
+        fromDate ? new Date(fromDate) : null,
+        toDate ? new Date(toDate) : null
       );
       if (err) {
         return ErrorResponse.BadRequestException(err.message).send(res);
@@ -235,7 +325,6 @@ export class StudentController {
       return ErrorResponse.BadRequestException(error.message).send(res);
     }
   }
-
 
   @Get('/leaderboard/:bootcampId')
   @ApiOperation({ summary: 'Get the leaderboard of a course' })
