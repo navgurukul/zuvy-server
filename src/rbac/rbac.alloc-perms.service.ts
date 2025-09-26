@@ -30,7 +30,7 @@ export class RbacAllocPermsService {
       const userPermissionsResult = await db.select({
         permissionName: zuvyPermissions.name,
         resourceId: zuvyPermissions.resourcesId,
-        resourceName: zuvyResources.name
+        resourceName: zuvyResources.displayName
       })
         .from(zuvyRolePermissions)
         .innerJoin(zuvyPermissions, eq(zuvyRolePermissions.permissionId, zuvyPermissions.id))
@@ -314,37 +314,37 @@ export class RbacAllocPermsService {
   }
 
   async formatPermissionsAndCompare(
-    permissions: any[],
+    rolePermissions: any[],
     targetPermissions: string[]
   ): Promise<Record<string, boolean>> {
     try {
-      const formattedPermissions: Record<string, boolean> = {};
+      const roleSet: Set<string> = new Set(rolePermissions);
+      console.log(roleSet);
+      const finalPermissions: Record<string, boolean> = Object.fromEntries(
+        targetPermissions.map((permission: string): [string, boolean] => [permission, roleSet.has(permission)])
+      )
 
-      for (const perm of targetPermissions) {
-        formattedPermissions[perm] = false;
-      }
+      // const formattedPermissions: Record<string, boolean> = {};
+      // for (const perm of permissions) {
+      //   const action = perm.name;
+      //   const resourceName = perm.resourceName || perm.resourcesName;
 
-      for (const perm of permissions) {
-        const action = perm.name; // create / read / edit / delete
-        const resourceName = perm.resourceName || perm.resourcesName;
+      //   for (const [resourceKey, actions] of Object.entries(ResourceList)) {
+      //     if (resourceKey === resourceName && actions[action as keyof typeof actions]) {
+      //       const targetKey = actions[action as keyof typeof actions];
+      //       if (targetPermissions.includes(targetKey)) {
+      //         formattedPermissions[targetKey] = true;
+      //       }
+      //     }
+      //   }
+      // }
 
-        for (const [resourceKey, actions] of Object.entries(ResourceList)) {
-          if (resourceKey === resourceName && actions[action as keyof typeof actions]) {
-            const targetKey = actions[action as keyof typeof actions];
-            if (targetPermissions.includes(targetKey)) {
-              formattedPermissions[targetKey] = true;
-            }
-          }
-        }
-      }
-
-      return formattedPermissions;
+      return finalPermissions;
     } catch (err) {
       this.logger.error('Error formatting permissions:', err);
       throw new InternalServerErrorException('Failed to format permissions');
     }
   }
-
 
   async getAllPermissions(roleName: string[], targetPermissions: string[], resourceIds?: number): Promise<any> {
     try {
@@ -365,7 +365,7 @@ export class RbacAllocPermsService {
         const resources = await db
           .select({
             id: zuvyResources.id,
-            name: zuvyResources.name
+            name: zuvyResources.displayName
           })
           .from(zuvyResources)
           .where(eq(zuvyResources.roleId, roleId));
@@ -385,10 +385,10 @@ export class RbacAllocPermsService {
       // Get permissions for these resources
       const assignedPermissions = await db
         .select({
-          id: zuvyPermissions.id,
+          // id: zuvyPermissions.id,
           name: zuvyPermissions.name,
           resourcesId: zuvyPermissions.resourcesId,
-          description: zuvyPermissions.description,
+          // description: zuvyPermissions.description,
           grantable: zuvyPermissions.grantable
         })
         .from(zuvyPermissions)

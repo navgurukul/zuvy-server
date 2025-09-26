@@ -1,3 +1,5 @@
+import { pgEnum } from "drizzle-orm/pg-core";
+
 export interface Item {
   id: number;
   name: string;
@@ -50,29 +52,32 @@ export enum Role {
   INSTRUCTOR = 'instructor',
 }
 
+export const actionEnum = pgEnum('action', ['create','read','update','delete','assign','publish','approve','archive']);
+export const scopeEnum = pgEnum('scope', ['global','tenant','own']);
+
 //create the source of truth for resource
 // utils/resources.ts
 export const ResourceList = {
-  courseManagement: {
-    read: "readCourse",
+  course_Management: {
+    read: "viewCourse",
     create: "createCourse",
     edit: "editCourse",
     delete: "deleteCourse",
   },
-  contentManagement: {
-    read: "readContent",
+  content_Management: {
+    read: "viewContent",
     create: "createContent",
     edit: "editContent",
     delete: "deleteContent",
   },
-  userManagement: {
-    read: "readUser",
+  user_Management: {
+    read: "viewUser",
     create: "createUser",
     edit: "editUser",
     delete: "deleteUser",
   },
-  batchManagement: {
-    read: "readBatch",
+  batch_Management: {
+    read: "viewBatch",
     create: "createBatch",
     edit: "editBatch",
     delete: "deleteBatch",

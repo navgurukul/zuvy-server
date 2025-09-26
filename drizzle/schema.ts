@@ -72,6 +72,7 @@ export const questionType = pgEnum('questionType', [
   'Time',
 ]);
 import { helperVariable } from '../src/constants/helper';
+import { actionEnum } from 'src/rbac/utility';
 let schName;
 if (process.env.ENV_NOTE == helperVariable.schemaName) {
   schName = helperVariable.schemaName;
@@ -3727,17 +3728,37 @@ export const zuvyUserRoles = main.table('zuvy_user_roles', {
   description: text('description'),
 });
 
-export const zuvyResources = main.table('zuvy_resources', {
-  id: serial('id').primaryKey().notNull(),
-  name: varchar('name', { length: 100 }).notNull().unique(), // e.g. 'course', 'user', etc.
+// export const zuvyResources = main.table('zuvy_resources', {
+//   id: serial('id').primaryKey().notNull(),
+//   name: varchar('name', { length: 100 }).notNull().unique(), // e.g. 'course', 'user', etc.
+//   roleId: integer('role_id').notNull().references(() => zuvyUserRoles.id),
+//   description: text('description'),
+// });
+export const zuvyResources = pgTable('zuvy_resources', {
+  id: serial('id').primaryKey(),
   roleId: integer('role_id').notNull().references(() => zuvyUserRoles.id),
+  key: varchar('key', { length: 64 }).notNull().unique(),
+  displayName: varchar('display_name', { length: 100 }).notNull(),
   description: text('description'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
 });
+export const zuvyResourceActions = pgTable('zuvy_resource_actions', {
+  id: serial('id').primaryKey(),
+  resourceId: integer('resource_id').notNull().references(() => zuvyResources.id, { onDelete: 'cascade' }),
+  action: actionEnum('action').notNull(),
+  description: text('description'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
+  }, (t) => ({
+  uq: { unique: true, columns: [t.resourceId, t.action] },
+}));
 // RBAC: Permissions Table
 export const zuvyPermissions = main.table('zuvy_permissions', {
   id: serial('id').primaryKey().notNull(),
   name: varchar('name', { length: 100 }).notNull(), // e.g. 'view', 'create', etc. - not unique
   resourcesId: integer('resource_id').notNull().references(() => zuvyResources.id),
+  resourceActionId: integer('resourceAction_id').notNull().references(()=>zuvyResourceActions.id),
   grantable: boolean('grantable').notNull().default(false), // can this permission be granted by users with this permission
   description: text('description'),
   createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow(),

@@ -745,7 +745,7 @@ export const STATUS_CODES = {
 
 export const permissions = {
   CREATE: 'create',
-  READ: 'read',
+  READ: 'view',
   UPDATE: 'update',
   DELETE: 'delete',
 }

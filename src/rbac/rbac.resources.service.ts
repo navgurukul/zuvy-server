@@ -19,16 +19,16 @@ export class RbacResourcesService {
         .returning();
 
       // Create default permissions for this resource
-      const defaultPermissions = [
-        { name: permissions.CREATE, resourcesId: resource.id, grantable: false, description: `Create ${createResourceDto.name}` },
-        { name: permissions.READ, resourcesId: resource.id, grantable: false, description: `Read ${createResourceDto.name}` },
-        { name: permissions.UPDATE, resourcesId: resource.id, grantable: false, description: `Update ${createResourceDto.name}` },
-        { name: permissions.DELETE, resourcesId: resource.id, grantable: false, description: `Delete ${createResourceDto.name}` },
-      ];
+      // const defaultPermissions = [
+      //   { name: permissions.CREATE, resourcesId: resource.id, grantable: false, description: `Create ${createResourceDto.displayName}` },
+      //   { name: permissions.READ, resourcesId: resource.id, grantable: false, description: `View ${createResourceDto.displayName}` },
+      //   { name: permissions.UPDATE, resourcesId: resource.id, grantable: false, description: `Update ${createResourceDto.displayName}` },
+      //   { name: permissions.DELETE, resourcesId: resource.id, grantable: false, description: `Delete ${createResourceDto.displayName}` },
+      // ];
 
-      await db
-        .insert(zuvyPermissions)
-        .values(defaultPermissions);
+      // await db
+      //   .insert(zuvyPermissions)
+      //   .values(defaultPermissions);
 
       return resource;
     } catch (error) {
@@ -39,24 +39,24 @@ export class RbacResourcesService {
     }
   }
 
-  async getAllResources() {
-    try {
-      const resources = await db
-        .select()
-        .from(zuvyResources)
-        .orderBy(asc(zuvyResources.name));
+  // async getAllResources() {
+  //   try {
+  //     const resources = await db
+  //       .select()
+  //       .from(zuvyResources)
+  //       .orderBy(asc(zuvyResources.name));
 
-      let pascalResources = convertToPascalCaseWithSpaces(resources);
-      return {
-        status: 'success',
-        message: 'Resources fetched successfully',
-        code: 200,
-        data: pascalResources
-      };
-    } catch (error) {
-      throw new InternalServerErrorException('Failed to retrieve resources');
-    }
-  }
+  //     let pascalResources = convertToPascalCaseWithSpaces(resources);
+  //     return {
+  //       status: 'success',
+  //       message: 'Resources fetched successfully',
+  //       code: 200,
+  //       data: pascalResources
+  //     };
+  //   } catch (error) {
+  //     throw new InternalServerErrorException('Failed to retrieve resources');
+  //   }
+  // }
 
   async getResourceById(id: number) {
     try {

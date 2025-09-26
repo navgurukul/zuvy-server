@@ -24,6 +24,7 @@ import { batch } from 'googleapis/build/src/apis/batch';
 import { STATUS_CODES } from 'src/helpers';
 import { ContentService } from '../content/content.service';
 import { RbacAllocPermsService } from '../../rbac/rbac.alloc-perms.service';
+import { ResourceList } from 'src/rbac/utility';
 
 const { ZUVY_CONTENT_URL } = process.env; // INPORTING env VALUSE ZUVY_CONTENT
 
@@ -117,7 +118,15 @@ export class BootcampService {
 
       const totalPages = Math.ceil(totalCount / limit);
 
-      const targetPermissions=["createCourse", "viewCourse", "editCourse", "deleteCourse", "readContent", "readRolesPermission"]
+      // const targetPermissions=["createCourse", "viewCourse", "editCourse", "deleteCourse", "readContent", "readRolesPermission"];
+      const targetPermissions = [
+        ResourceList.course_Management.create, 
+        ResourceList.course_Management.read, 
+        ResourceList.course_Management.edit, 
+        ResourceList.course_Management.delete,
+        ResourceList.content_Management.read, 
+        ResourceList.user_Management.read
+      ];
       // Get permissions for all resources if userId is provided
       let allPermissions = {};
       const permissionResult = await this.rbacAllocPermsService.getAllPermissions(roleName, targetPermissions);
