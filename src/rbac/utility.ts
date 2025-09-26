@@ -50,31 +50,40 @@ export enum Role {
   INSTRUCTOR = 'instructor',
 }
 
-//create the source of truth for resource
+// utils/resource-keys.ts (single source of truth)
+export const ResourceKeys = ['Course','User','Bootcamp','Mcq','Codingquestions'] as const;
+export type ResourceKey = typeof ResourceKeys[number];
+
 // utils/resources.ts
 export const ResourceList = {
-  courseManagement: {
-    read: "readCourse",
+  course: {
+    read: "viewCourse",
     create: "createCourse",
     edit: "editCourse",
     delete: "deleteCourse",
   },
-  contentManagement: {
-    read: "readContent",
+  content: {
+    read: "viewContent",
     create: "createContent",
     edit: "editContent",
     delete: "deleteContent",
   },
-  userManagement: {
-    read: "readUser",
+  user: {
+    read: "viewUser",
     create: "createUser",
     edit: "editUser",
     delete: "deleteUser",
   },
-  batchManagement: {
-    read: "readBatch",
+  batch: {
+    read: "viewBatch",
     create: "createBatch",
     edit: "editBatch",
     delete: "deleteBatch",
   },
+  rolesandpermissions: {
+    read: "viewRolesAndPermissions",
+    create: "createRolesAndPermissions",
+    edit: "editRolesAndPermissions",
+    delete: "deleteRolesAndPermissions"
+  }
 } as const;

@@ -1,7 +1,7 @@
 import { Injectable, InternalServerErrorException, Logger, NotFoundException } from '@nestjs/common';
 import { db } from 'src/db/index';
 import { inArray, sql, eq, and } from 'drizzle-orm';
-import { userRoles, zuvyPermissions, zuvyResources, zuvyRolePermissions, zuvyUserRoles, zuvyUserRolesAssigned } from 'drizzle/schema';
+import { userRoles, zuvyPermissions, zuvyPermissionsRoles, zuvyResources, zuvyRolePermissions, zuvyUserRoles, zuvyUserRolesAssigned } from 'drizzle/schema';
 import { ResourceList } from './utility';
 
 @Injectable()
@@ -348,53 +348,28 @@ export class RbacAllocPermsService {
 
   async getAllPermissions(roleName: string[], targetPermissions: string[], resourceIds?: number): Promise<any> {
     try {
-      if (!resourceIds) {
-        // Check if role exists
-        const roleCheck = await db
-          .select({ id: zuvyUserRoles.id })
-          .from(zuvyUserRoles)
-          .where(eq(zuvyUserRoles.name, roleName[0]))
-          .limit(1);
+      // if (!resourceIds) {
+      // Check if role exists
+      const roleCheck = await db
+        .select({ id: zuvyUserRoles.id })
+        .from(zuvyUserRoles)
+        .where(eq(zuvyUserRoles.name, roleName[0]))
+        .limit(1);
 
-        if (!roleCheck.length) {
-          throw new NotFoundException('Role not found');
-        }
-        const roleId = roleCheck[0].id;
-
-        // Get resources
-        const resources = await db
-          .select({
-            id: zuvyResources.id,
-            name: zuvyResources.name
-          })
-          .from(zuvyResources)
-          .where(eq(zuvyResources.roleId, roleId));
-
-        const resourceIds = resources.map(r => r.id);
-
-        //if resourceid length is 0 then return the targetpermissions with false
-        if (resourceIds.length === 0) {
-          const permissionsObj: Record<string, boolean> = {};
-          targetPermissions.forEach(perm => {
-            permissionsObj[perm] = false;
-          });
-          return { roleName, permissions: permissionsObj };
-        }
+      if (!roleCheck.length) {
+        throw new NotFoundException('Role not found');
       }
-      const permissionWhere = Array.isArray(resourceIds) ? resourceIds : [resourceIds];
-      // Get permissions for these resources
-      const assignedPermissions = await db
-        .select({
-          id: zuvyPermissions.id,
-          name: zuvyPermissions.name,
-          resourcesId: zuvyPermissions.resourcesId,
-          description: zuvyPermissions.description,
-          grantable: zuvyPermissions.grantable
-        })
-        .from(zuvyPermissions)
-        .where(and(
-          (inArray(zuvyPermissions.resourcesId, permissionWhere),
-            eq(zuvyPermissions.grantable, true))));
+      const roleId = roleCheck[0].id;
+
+      const permissionsWithRoles = await db
+      .select({ action: zuvyPermissions.name, key: zuvyResources.key })
+      .from(zuvyPermissions)
+      .innerJoin(zuvyPermissionsRoles, eq(zuvyPermissionsRoles.permissionId, zuvyPermissions.id))
+      .innerJoin(zuvyResources, eq(zuvyPermissions.resourcesId, zuvyResources.id))
+      .where(and(eq(zuvyPermissionsRoles.roleId, roleId), eq(zuvyPermissions.grantable, true)));
+
+      const assignedPermissions: string[] = permissionsWithRoles.map(r => `${r.action}${r.key}`);
+
       // Filter permissions based on targetPermissions
       const filteredPermissions = await this.formatPermissionsAndCompare(assignedPermissions, targetPermissions)
 

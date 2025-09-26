@@ -1,6 +1,7 @@
 // create-resource.dto.ts
-import { IsString, IsNotEmpty, MaxLength, IsOptional, IsNumber } from 'class-validator';
+import { IsString, IsNotEmpty, MaxLength, IsOptional, IsNumber, IsIn } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
+import { ResourceKey, ResourceKeys } from '../utility';
 
 export class CreateResourceDto {
   @ApiProperty({
@@ -13,14 +14,9 @@ export class CreateResourceDto {
   @MaxLength(100)
   name: string;
 
-  @ApiProperty({
-    description: 'Role ID of the resource',
-    example: 1,
-    required: true
-  })
-  @IsNumber()
-  @IsNotEmpty()
-  roleId: number;
+  @ApiProperty({ description: 'Resource key', enum: ResourceKeys, example: 'Course' })
+  @IsString() @IsIn(ResourceKeys)
+  key: ResourceKey;
   
   @ApiProperty({
     description: 'Description of the resource',
