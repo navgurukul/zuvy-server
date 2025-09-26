@@ -3736,7 +3736,7 @@ export const zuvyUserRoles = main.table('zuvy_user_roles', {
 // });
 export const zuvyResources = pgTable('zuvy_resources', {
   id: serial('id').primaryKey(),
-  roleId: integer('role_id').notNull().references(() => zuvyUserRoles.id),
+  roleId: integer('role_id').references(() => zuvyUserRoles.id),
   key: varchar('key', { length: 64 }).notNull().unique(),
   displayName: varchar('display_name', { length: 100 }).notNull(),
   description: text('description'),
@@ -3745,14 +3745,17 @@ export const zuvyResources = pgTable('zuvy_resources', {
 });
 export const zuvyResourceActions = pgTable('zuvy_resource_actions', {
   id: serial('id').primaryKey(),
+  roleId: integer('role_id').references(() => zuvyUserRoles.id),
   resourceId: integer('resource_id').notNull().references(() => zuvyResources.id, { onDelete: 'cascade' }),
-  action: actionEnum('action').notNull(),
+  name: varchar('name', {length: 100}).notNull(),
   description: text('description'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
-  }, (t) => ({
-  uq: { unique: true, columns: [t.resourceId, t.action] },
-}));
+  }
+//   , (t) => ({
+//   uq: { unique: true, columns: [t.resourceId, t.action] },
+// })
+);
 // RBAC: Permissions Table
 export const zuvyPermissions = main.table('zuvy_permissions', {
   id: serial('id').primaryKey().notNull(),

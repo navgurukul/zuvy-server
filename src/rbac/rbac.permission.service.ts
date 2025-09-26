@@ -37,7 +37,7 @@ export class RbacPermissionService {
             name: zuvyPermissions.name,
             resourceId: zuvyPermissions.resourcesId,
             description: zuvyPermissions.description,
-            resourceName: zuvyResources.name
+            resourceName: zuvyResources.displayName
           })
           .from(zuvyPermissions)
           .leftJoin(zuvyResources, eq(zuvyPermissions.resourcesId, zuvyResources.id))
@@ -85,7 +85,7 @@ export class RbacPermissionService {
           or(
             ilike(zuvyPermissions.name, `%${search}%`),
             ilike(zuvyPermissions.description, `%${search}%`),
-            ilike(zuvyResources.name, `%${search}%`)
+            ilike(zuvyResources.displayName, `%${search}%`)
           )
         );
       }
@@ -99,7 +99,7 @@ export class RbacPermissionService {
           name: zuvyPermissions.name,
           resourceId: zuvyPermissions.resourcesId,
           description: zuvyPermissions.description,
-          resourceName: zuvyResources.name
+          resourceName: zuvyResources.displayName
         })
         .from(zuvyPermissions)
         .leftJoin(zuvyResources, eq(zuvyPermissions.resourcesId, zuvyResources.id))
@@ -287,7 +287,7 @@ async assignPermissionsToRole(dto: AssignPermissionsToRoleDto) {
       const resource = await tx
         .select({ 
           id: zuvyResources.id,
-          name: zuvyResources.name 
+          name: zuvyResources.displayName 
         })
         .from(zuvyResources)
         .where(eq(zuvyResources.id, dto.resourceId))
