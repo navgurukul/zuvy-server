@@ -1,9 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
 const AWS = require('aws-sdk');
 import { db } from '../../db/index';
-import { eq, sql, count, lte, inArray, and } from 'drizzle-orm';
+import { eq, sql, count, lte, inArray, and, isNotNull, ilike, or } from 'drizzle-orm';
 import * as _ from 'lodash';
-import { zuvyBatchEnrollments, zuvyAssessmentSubmission, zuvyChapterTracking, zuvyOpenEndedQuestionSubmission, zuvyProjectTracking, zuvyQuizTracking, zuvyModuleChapter, zuvyFormTracking, zuvyPracticeCode,zuvyOutsourseQuizzes, zuvyModuleQuizVariants, zuvyOutsourseAssessments } from '../../../drizzle/schema';
+import { zuvyBatchEnrollments, zuvyAssessmentSubmission, zuvyChapterTracking, zuvyOpenEndedQuestionSubmission, zuvyProjectTracking, zuvyQuizTracking, zuvyModuleChapter, zuvyFormTracking, zuvyPracticeCode,zuvyOutsourseQuizzes, zuvyModuleQuizVariants, zuvyOutsourseAssessments, users } from '../../../drizzle/schema';
 import { InstructorFeedbackDto, PatchOpenendedQuestionDto, CreateOpenendedQuestionDto } from './dto/submission.dto';
 import { STATUS_CODES } from 'src/helpers';
 import { helperVariable } from 'src/constants/helper';
@@ -1699,4 +1699,155 @@ Zuvy LMS Team
       console.error(`❌ Failed to send email to ${user.email}`, err);
     }
   }
+
+  // Service function for Live session submissions admin side api
+
+  async getLiveChapterSubmissions(bootcampId: number, searchTerm?: string, limit?: number, offset?: number): Promise<[any, any]> {
+    try {
+      // Query modules mapped to bootcampId
+      const topicId = 8; // or as per your schema for chapters
+      const trackingData = await db.query.zuvyCourseModules.findMany({
+        where: (courseModules, { eq, and }) =>
+          and(eq(courseModules.bootcampId, bootcampId)),
+        orderBy: (courseModules, { asc }) => asc(courseModules.order),
+        with: {
+          moduleChapterData: {
+            columns: {
+              id: true,
+              title: true,
+            },
+             where: (moduleChapter, { eq, and, ilike }) =>
+            and(
+              eq(moduleChapter.topicId, topicId),
+              searchTerm
+                ? ilike(moduleChapter.title, `%${searchTerm}%`)
+                : undefined
+            ),
+            with: {
+              chapterTrackingDetails: {
+                columns: {
+                  userId: true,
+                },
+              },
+            },
+          },
+        },
+        limit,
+        offset,
+      });
+      // Get total students for bootcamp
+      const zuvyBatchEnrollmentsCount = await db
+        .select({
+          count: sql<number>`cast(count(${zuvyBatchEnrollments.id}) as int)`,
+        })
+        .from(zuvyBatchEnrollments)
+        .where(sql`${zuvyBatchEnrollments.bootcampId} = ${bootcampId} AND ${zuvyBatchEnrollments.batchId} IS NOT NULL`);
+      // Add submitStudents field to each chapter
+      trackingData.forEach((course: any) => {
+        course.moduleChapterData.forEach((chapterTracking: any) => {
+          chapterTracking['submitStudents'] = chapterTracking['chapterTrackingDetails'].length;
+          delete chapterTracking['chapterTrackingDetails'];
+        });
+      });
+      const totalStudents = zuvyBatchEnrollmentsCount[0]?.count || 0;
+      // Filter out modules with no chapters
+      const filteredTrackingData = trackingData.filter((course: any) => course.moduleChapterData.length > 0);
+      return [null, { trackingData: filteredTrackingData, totalStudents }];
+    } catch (err) {
+      return [err, null];
+    }
+  }
+
+  // Service function to fetch the session by chapterId from zuvy_sessions and relation fetch with zuvyStudentAttendanceRecords
+
+  async getLiveChapterStudentSubmission(
+  moduleChapterId: number,
+  limit: number,
+  offset: number,
+  name?: string,
+  email?: string,
+  status?: "present" | "absent"
+): Promise<[any, any]> {
+  try {
+    const submissions = await db.query.zuvySessions.findMany({
+      where: (session, { eq }) => eq(session.chapterId, moduleChapterId),
+      columns: {
+        id: true,
+        meetingId: true,
+        hangoutLink: true,
+        creator: true,
+        startTime: true,
+        endTime: true,
+        batchId: true,
+        secondBatchId: true,
+        bootcampId: true,
+        moduleId: true,
+        chapterId: true,
+        title: true,
+        s3link: true,
+      },
+      with: {
+        studentAttendanceRecords: {
+          where: (record) =>
+            and(
+              // Only attendance where the user has a completed chapter_tracking for this chapter
+              inArray(
+                record.userId,
+                db
+                  .select({ userId: zuvyChapterTracking.userId })
+                  .from(zuvyChapterTracking)
+                  .where(
+                    and(
+                      eq(zuvyChapterTracking.chapterId, moduleChapterId),
+                      isNotNull(zuvyChapterTracking.completedAt)
+                    )
+                  )
+              ),
+
+              // Optional user filter by name/email (if provided)
+              (name || email)
+                ? inArray(
+                    record.userId,
+                    db
+                      .select({ id: users.id })
+                      .from(users)
+                      .where(
+                        or(
+                          name ? ilike(users.name, `${name}%`) : undefined,
+                          email ? ilike(users.email, `${email}%`) : undefined
+                        )
+                      )
+                  )
+                : undefined,
+
+              // Optional status filter
+              status ? eq(record.status, status) : undefined
+            ),
+
+          columns: {
+            userId: true,
+            status: true,
+            duration: true,
+          },
+
+          with: {
+            user: {
+              columns: {
+                name: true,
+                email: true,
+              },
+            },
+          },
+          limit,
+          offset,
+        },
+      },
+
+    });
+
+    return [null, submissions];
+  } catch (err) {
+    return [err, null];
+  }
+}
 }
