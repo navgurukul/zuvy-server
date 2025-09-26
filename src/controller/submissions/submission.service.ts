@@ -48,7 +48,7 @@ export class SubmissionService {
       let orderClause = (courseModules, { asc }) => asc(courseModules.order);
       if (orderBy) {
         orderClause = (courseModules, helpers) => {
-          const dir = orderDirection === 'desc' ? helpers.desc : helpers.asc;
+          const dir = (orderDirection && orderDirection.toLowerCase() === 'desc') ? helpers.desc : helpers.asc;
           if (orderBy === 'submittedDate') return dir(courseModules.submitted_date);
           if (orderBy === 'percentage') return dir(courseModules.percentage);
           if (orderBy === 'name') return dir(courseModules.name);
@@ -158,7 +158,7 @@ export class SubmissionService {
       let orderClause = undefined;
       if (orderBy) {
         orderClause = (chapterTracking, helpers) => {
-          const dir = orderDirection === 'desc' ? helpers.desc : helpers.asc;
+          const dir = (orderDirection && orderDirection.toLowerCase() === 'desc') ? helpers.desc : helpers.asc;
           if (orderBy === 'submittedDate') return dir(chapterTracking.submitted_date);
           if (orderBy === 'percentage') return dir(chapterTracking.percentage);
           if (orderBy === 'name') return dir(chapterTracking.name);
@@ -257,7 +257,7 @@ export class SubmissionService {
       let orderClause = undefined;
       if (orderBy) {
         orderClause = (zuvyCourseModules, helpers) => {
-          const dir = orderDirection === 'desc' ? helpers.desc : helpers.asc;
+          const dir = (orderDirection && orderDirection.toLowerCase() === 'desc') ? helpers.desc : helpers.asc;
           if (orderBy === 'submittedDate') return dir(zuvyCourseModules.submitted_date);
           if (orderBy === 'percentage') return dir(zuvyCourseModules.percentage);
           if (orderBy === 'name') return dir(zuvyCourseModules.name);
@@ -611,7 +611,7 @@ export class SubmissionService {
       let orderClause = (courseModule, { asc }) => asc(courseModule.order);
       if (orderBy) {
         orderClause = (courseModule, helpers) => {
-          const dir = orderDirection === 'desc' ? helpers.desc : helpers.asc;
+          const dir = (orderDirection && orderDirection.toLowerCase() === 'desc') ? helpers.desc : helpers.asc;
           if (orderBy === 'submittedDate') return dir(courseModule.submitted_date);
           if (orderBy === 'percentage') return dir(courseModule.percentage);
           if (orderBy === 'name') return dir(courseModule.name);
@@ -722,7 +722,7 @@ export class SubmissionService {
       let orderClause = undefined;
       if (orderBy) {
         orderClause = (projectTracking, helpers) => {
-          const dir = orderDirection === 'desc' ? helpers.desc : helpers.asc;
+          const dir = (orderDirection && orderDirection.toLowerCase() === 'desc') ? helpers.desc : helpers.asc;
           if (orderBy === 'submittedDate') return dir(projectTracking.submitted_date);
           if (orderBy === 'percentage') return dir(projectTracking.percentage);
           if (orderBy === 'name') return dir(projectTracking.name);
@@ -1052,7 +1052,7 @@ export class SubmissionService {
       let orderClause = (courseModules, { asc }) => asc(courseModules.order);
       if (orderBy) {
         orderClause = (courseModules, helpers) => {
-          const dir = orderDirection === 'desc' ? helpers.desc : helpers.asc;
+          const dir = (orderDirection && orderDirection.toLowerCase() === 'desc') ? helpers.desc : helpers.asc;
           if (orderBy === 'submittedDate') return dir(courseModules.submitted_date);
           if (orderBy === 'percentage') return dir(courseModules.percentage);
           if (orderBy === 'name') return dir(courseModules.name);
@@ -1214,7 +1214,7 @@ export class SubmissionService {
       let orderClause = undefined;
       if (orderBy) {
         orderClause = (chapterTracking, helpers) => {
-          const dir = orderDirection === 'desc' ? helpers.desc : helpers.asc;
+          const dir = (orderDirection && orderDirection.toLowerCase() === 'desc') ? helpers.desc : helpers.asc;
           if (orderBy === 'submittedDate') return dir(chapterTracking.submitted_date);
           if (orderBy === 'percentage') return dir(chapterTracking.percentage);
           if (orderBy === 'name') return dir(chapterTracking.name);
