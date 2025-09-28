@@ -314,31 +314,18 @@ export class RbacAllocPermsService {
   }
 
   async formatPermissionsAndCompare(
-    permissions: any[],
+    rolePermissions: string[],
     targetPermissions: string[]
   ): Promise<Record<string, boolean>> {
     try {
-      const formattedPermissions: Record<string, boolean> = {};
+      const permissions: Record<string, boolean> = {};
+      const permissionSet = new Set(rolePermissions);
 
-      for (const perm of targetPermissions) {
-        formattedPermissions[perm] = false;
+      for (const target of targetPermissions) {
+        permissions[target] = permissionSet.has(target);
       }
 
-      for (const perm of permissions) {
-        const action = perm.name; // create / read / edit / delete
-        const resourceName = perm.resourceName || perm.resourcesName;
-
-        for (const [resourceKey, actions] of Object.entries(ResourceList)) {
-          if (resourceKey === resourceName && actions[action as keyof typeof actions]) {
-            const targetKey = actions[action as keyof typeof actions];
-            if (targetPermissions.includes(targetKey)) {
-              formattedPermissions[targetKey] = true;
-            }
-          }
-        }
-      }
-
-      return formattedPermissions;
+      return permissions;
     } catch (err) {
       this.logger.error('Error formatting permissions:', err);
       throw new InternalServerErrorException('Failed to format permissions');
