@@ -61,7 +61,7 @@ export class BatchesService {
         const hasInstructorRole = instructorRoles.some((r) => r.role === helperVariable.instructor);
         if (!hasInstructorRole) {
           try {
-            await db.insert(sansaarUserRoles).values({ userId: Number(user[0].id), role: helperVariable.instructor, createdAt: new Date().toISOString() }).returning();
+            await db.insert(sansaarUserRoles).values({ userId: Number(user[0].id), role: helperVariable.instructor, createdAt: new Date().toISOString() } as any).returning();
           } catch (err) {
             console.log('Failed to assign instructor role:', err?.message || err);
           }

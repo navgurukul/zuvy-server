@@ -23,6 +23,8 @@ import { editUserDetailsDto } from './dto/bootcamp.dto'
 import { batch } from 'googleapis/build/src/apis/batch';
 import { STATUS_CODES } from 'src/helpers';
 import { ContentService } from '../content/content.service';
+import { RbacAllocPermsService } from '../../rbac/rbac.alloc-perms.service';
+import { ResourceList } from 'src/rbac/utility';
 
 const { ZUVY_CONTENT_URL } = process.env; // INPORTING env VALUSE ZUVY_CONTENT
 
@@ -30,6 +32,7 @@ const { ZUVY_CONTENT_URL } = process.env; // INPORTING env VALUSE ZUVY_CONTENT
 export class BootcampService {
   constructor(
     private contentService: ContentService,
+    private rbacAllocPermsService: RbacAllocPermsService,
   ) { }
   async enrollData(bootcampId: number) {
     try {
@@ -67,6 +70,7 @@ export class BootcampService {
   }
 
   async getAllBootcamps(
+    roleName: string[],
     limit: number,
     offset: number,
     searchTerm?: string | number,
@@ -114,17 +118,44 @@ export class BootcampService {
 
       const totalPages = Math.ceil(totalCount / limit);
 
+      const targetPermissions= [
+        ResourceList.course.create,
+        ResourceList.course.read,
+        ResourceList.course.edit, 
+        ResourceList.course.delete,
+        ResourceList.content.read,
+        ResourceList.rolesandpermissions.read
+      ]
+      // Get permissions for all resources if userId is provided
+      let allPermissions = {};
+      const permissionResult = await this.rbacAllocPermsService.getAllPermissions(roleName, targetPermissions);
+      allPermissions = permissionResult.permissions || {};
+
+      /* 
+        target permissions: {createCourse, viewCourse, editCourse, deleteCourse, readContent, readRolesPermission}
+
+        get all granted=true permissions {createCourse: true, createBootcamp: true, readCourse: true}
+        function returnGrantablePermissions(roleName: string){
+          roleName: roleId --> resourceId --> all grantable permissions.
+
+          permissions --> format the permissions.
+        }
+      
+        compare both permissions and than prepare the final permission: 
+        permissions: {createCourse: true, viewCourse: false, editCourse: false, deleteCourse: false, readContent: false}
+      */
       const data = await Promise.all(
         getBootcamps.map(async (bootcamp) => {
           let [err, res] = await this.enrollData(bootcamp.id);
           if (err) {
             return [err, null];
           }
+
           return { ...bootcamp, ...res };
         }),
       );
 
-      return [null, { data, totalBootcamps: totalCount, totalPages }];
+      return [null, { data, permissions: allPermissions, totalBootcamps: totalCount, totalPages }];
     } catch (e) {
       log(`error: ${e.message}`);
       return [{ status: 'error', message: e.message, code: 500 }, null];
@@ -1123,6 +1154,15 @@ export class BootcampService {
       ];
     } catch (err) {
       return [null, { message: err.message, statusCode: STATUS_CODES.BAD_REQUEST }];
+    }
+  }
+
+  async getUserPermissionsForMultipleResources(userId: bigint) {
+    try {
+      const result = await this.rbacAllocPermsService.getUserPermissionsForMultipleResources(userId);
+      return [null, result];
+    } catch (err) {
+      return [err, null];
     }
   }
 

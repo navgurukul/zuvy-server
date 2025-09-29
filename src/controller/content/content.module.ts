@@ -9,7 +9,7 @@ import { JwtService } from '@nestjs/jwt';
 import { SseService } from '../../services/sse.service';
 import { ClassesModule } from '../classes/classes.module';
 import { ZoomModule } from '../../services/zoom/zoom.module';
-
+import { RbacModule } from '../../rbac/rbac.module';
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -25,7 +25,7 @@ import { ZoomModule } from '../../services/zoom/zoom.module';
         cb(null, isImage || isPdf);
       },
     }),
-    ClassesModule,ZoomModule
+    ClassesModule,ZoomModule, RbacModule
   ],
   controllers: [ContentController],
   providers: [ContentService, JwtService, SseService],
