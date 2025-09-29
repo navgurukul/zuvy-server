@@ -271,11 +271,13 @@ CREATE TABLE "main"."zuvy_user_roles" (
 );
 
 
-CREATE TABLE "main"."zuvy_resources" (
+CREATE TABLE "zuvy_resources" (
     "id" SERIAL PRIMARY KEY,
-    "name" VARCHAR(100) NOT NULL UNIQUE,
-    "role_id" INTEGER NOT NULL REFERENCES "main"."zuvy_user_roles"("id"),
-    "description"TEXT
+    "key" VARCHAR(64) NOT NULL UNIQUE,
+    "display_name" VARCHAR(100) NOT NULL,
+    "description" TEXT,
+    "created_at" TIMESTAMPTZ DEFAULT NOW(),
+    "updated_at" TIMESTAMPTZ DEFAULT NOW()
 );
 
 
@@ -364,6 +366,14 @@ CREATE TABLE "main"."zuvy_resources_granted_permissions" (
     "resource_id" INTEGER NOT NULL REFERENCES "main"."zuvy_resources"("id"),
     "permission_id" INTEGER NOT NULL REFERENCES "main"."zuvy_permissions"("id"),
     "granted_permission" BOOLEAN NOT NULL,
+    "created_at" TIMESTAMPTZ DEFAULT NOW(),
+    "updated_at" TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE "main"."zuvy_permissions_roles" (
+    "id" SERIAL PRIMARY KEY,
+    "permission_id" INTEGER NOT NULL REFERENCES "main"."zuvy_permissions"("id"),
+    "role_id" INTEGER NOT NULL REFERENCES "main"."zuvy_user_roles"("id"),
     "created_at" TIMESTAMPTZ DEFAULT NOW(),
     "updated_at" TIMESTAMPTZ DEFAULT NOW()
 );

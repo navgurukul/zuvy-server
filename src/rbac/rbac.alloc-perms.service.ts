@@ -353,7 +353,7 @@ export class RbacAllocPermsService {
       .from(zuvyPermissions)
       .innerJoin(zuvyPermissionsRoles, eq(zuvyPermissionsRoles.permissionId, zuvyPermissions.id))
       .innerJoin(zuvyResources, eq(zuvyPermissions.resourcesId, zuvyResources.id))
-      .where(and(eq(zuvyPermissionsRoles.roleId, roleId), eq(zuvyPermissions.grantable, true)));
+      .where(eq(zuvyPermissionsRoles.roleId, roleId));
 
       const assignedPermissions: string[] = permissionsWithRoles.map(r => `${r.action}${r.key}`);
 
