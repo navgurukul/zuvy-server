@@ -213,11 +213,14 @@ export class PermissionAssignmentResponseDto {
 
 export class AssignPermissionsToRoleDto {
   @ApiProperty({
-    description: 'Role ID to assign the permissions to',
+    description: 'Resource ID to assign the permissions to',
     example: 123
   })
   @IsNumber()
   resourceId: number;
+
+  @IsNumber()
+  roleId: number;
   
   @IsNotEmptyObject()
   @Transform(({ value }) => {

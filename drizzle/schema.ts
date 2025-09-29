@@ -72,6 +72,7 @@ export const questionType = pgEnum('questionType', [
   'Time',
 ]);
 import { helperVariable } from '../src/constants/helper';
+import { table } from 'console';
 let schName;
 if (process.env.ENV_NOTE == helperVariable.schemaName) {
   schName = helperVariable.schemaName;
@@ -3751,7 +3752,14 @@ export const zuvyPermissionsRoles = main.table('zuvy_permissions_roles', {
   roleId: integer('role_id').notNull().references(() => zuvyUserRoles.id),
   createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow(),
-});
+},
+(table) => ({
+  uniqRolePermission: unique("uniq_role_permission").on(
+    table.roleId,
+    table.permissionId
+  )
+})
+);
 export const zuvyPermissionsRolesRelations = relations(zuvyPermissionsRoles, ({ many }) => ({
   permissions: many(zuvyPermissions),
   roles: many(zuvyUserRoles),

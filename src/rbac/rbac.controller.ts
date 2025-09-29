@@ -191,7 +191,7 @@ export class RbacController {
   // }
 
 
-  @Put('assign/permissionsToRole')
+  @Post('assign/permissionsToRole')
   @ApiOperation({
     summary: 'Assign permissions to role',
     description: 'Admin can assign specific permissions to a role'
