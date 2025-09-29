@@ -21,7 +21,7 @@ import {
   zuvyAssignmentSubmission
 } from '../../../drizzle/schema';
 import { db } from '../../db/index';
-import { eq, sql, desc, count, asc, or, and, inArray, isNull } from 'drizzle-orm';
+import { eq, sql, desc, count, asc, or, and, inArray, isNull, gte, lte } from 'drizzle-orm';
 import { ClassesService } from '../classes/classes.service'
 import { helperVariable } from 'src/constants/helper';
 import { STATUS_CODES } from "../../helpers/index";
@@ -29,6 +29,7 @@ const { PENDING } = helperVariable.REATTMEPT_STATUS; // Importing helper variabl
 
 import { google } from 'googleapis';
 import { OAuth2Client } from 'google-auth-library';
+import { IoTJobsDataPlane } from 'aws-sdk';
 
 
 const { GOOGLE_SHEETS_SERVICE_ACCOUNT, GOOGLE_SHEETS_PRIVATE_KEY, JOIN_ZUVY_ACCESS_KEY_ID, JOIN_ZUVY_SECRET_KEY, SPREADSHEET_ID, SES_EMAIL, SUPPORT_EMAIL, QUERY_EMAIL, AWS_QUERY_ACCESS_SECRET_KEY, AWS_QUERY_ACCESS_KEY_ID } = process.env;
@@ -751,9 +752,37 @@ export class StudentService {
     }
   }
 
-  async getCompletedClassesWithAttendance(userId: number, bootcampId: number, limit, offset, status?: string, searchTerm?: string) 
+    async getCompletedClassesWithAttendance(userId: number, bootcampId: number, limit, offset, searchTerm?: string,  attendanceStatus?: string,   fromDate?: Date, toDate?: Date) 
   {
   try {
+
+     const hasFrom = fromDate instanceof Date && !isNaN(fromDate.getTime());
+    const hasTo = toDate instanceof Date && !isNaN(toDate.getTime());
+
+    if ((hasFrom && !hasTo) || (!hasFrom && hasTo)) {
+      return [{
+        message: 'Both "from" and "to" are required when filtering by date.',
+        statusCode: STATUS_CODES.BAD_REQUEST
+      }];
+    }
+
+    if (hasFrom && hasTo) {
+      fromDate = new Date(fromDate!);
+      toDate = new Date(toDate!);
+      if (isNaN(fromDate.getTime()) || isNaN(toDate.getTime())) {
+        return [{
+          message: 'Invalid "from" or "to" date format. Use ISO strings (e.g., 2025-08-01 or 2025-08-01T00:00:00Z).',
+          statusCode: STATUS_CODES.BAD_REQUEST
+        }];
+      }
+      if (fromDate > toDate) {
+        return [{
+          message: '"from" must be earlier than or equal to "to".',
+          statusCode: STATUS_CODES.BAD_REQUEST
+        }];
+      }
+    }
+
     const userRecord = await db
       .select({ email: users.email })
       .from(users)
@@ -789,81 +818,44 @@ export class StudentService {
 
     // 1. Fetch all completed sessions for the batch
     const allSessions = await db.query.zuvySessions.findMany({
-      where: (session, { and, eq }) =>
+      where: (session, { and, eq, or, ilike, gte, lte }) =>
         and(
           eq(session.bootcampId, bootcampId),
-          or(
-          eq(session.batchId, batchId),
-          eq(session.secondBatchId, batchId)
-          ),
-          eq(session.status, helperVariable.completed)
+          or(eq(session.batchId, batchId), eq(session.secondBatchId, batchId)),
+          eq(session.status, helperVariable.completed),
+          searchTerm ? ilike(session.title, `%${searchTerm}%`) : undefined,
+          fromDate && toDate ? and(
+            gte(session.startTime, fromDate.toISOString()),
+            lte(session.startTime, toDate.toISOString())
+          ) : undefined
         ),
       with: {
         batches: { columns: { id: true, name: true } },
       },
-      orderBy: (session, { desc }) => desc(session.id),
+      orderBy: (session, { asc, desc }) => fromDate && toDate ? asc(session.startTime) : desc(session.id),
+      limit,
+      offset,
     });
-
-    // Map all sessions to include user's attendance information
-    const mappedAllSessions = allSessions.map((cls) => {
-      const userAttendance = unifiedAttendanceMap.get(cls.id);
-      const attendanceStatus = userAttendance?.status || 'absent';
-      const duration = userAttendance?.duration || 0;
-
-      return {
-        id: Number(cls.id),
-        title: cls.title,
-        startTime: cls.startTime,
-        endTime: cls.endTime,
-        s3Link: cls.s3link,
-        moduleId: cls.moduleId,
-        chapterId: cls.chapterId,
-        attendanceStatus,
-        duration,
-        raw: cls,
-      };
-    });
-
-    // Apply searchTerm filter (case-insensitive) on title or s3Link if provided
-    let filteredSessions = mappedAllSessions;
-    if (searchTerm && searchTerm.trim().length > 0) {
-      const term = searchTerm.trim().toLowerCase();
-      filteredSessions = filteredSessions.filter(s => {
-        const title = (s.title || '').toString().toLowerCase();
-        const s3 = (s.s3Link || '').toString().toLowerCase();
-        return title.includes(term) || s3.includes(term);
-      });
-    }
-
-    // Apply attendance status filter (present/absent) if provided
-    if (status && (status === 'present' || status === 'absent')) {
-      filteredSessions = filteredSessions.filter(s => s.attendanceStatus === status);
-    }
-
-    const totalClasses = filteredSessions.length;
-    const batchName = (allSessions[0] as any)?.batches?.name || null;
-
+    const totalClasses = allSessions.length;
     if (totalClasses === 0) {
-      return [
-        null,
-        {
-          message: 'No completed classes found',
-          statusCode: STATUS_CODES.OK,
-          data: {
-            batchId,
-            batchName,
-            classes: [],
-            totalClasses: 0,
-            totalPages: 0,
-            attendanceStats: { presentCount: 0, absentCount: 0, attendancePercentage: 0 },
-          },
-        },
-      ];
+        return [
+            null,
+            {
+                message: 'No completed classes found',
+                statusCode: STATUS_CODES.OK,
+                data: {
+                    batchId,
+                    batchName: null,
+                    classes: [],
+                    totalClasses: 0,
+                    totalPages: 0,
+                    attendanceStats: { presentCount: 0, absentCount: 0, attendancePercentage: 0 },
+                },
+            },
+        ];
     }
-
-    const pLimit = Number(limit);
-    const pOffset = Number(offset) || 0;
-    const paginatedClasses = !isNaN(pLimit) && pLimit > 0 ? filteredSessions.slice(pOffset, pOffset + pLimit) : filteredSessions;
+    
+    const batchName = (allSessions[0] as any)?.batches?.name || null;
 
     // 2. Partition sessions into Zoom and Google Meet categories
     const zoomSessions = allSessions.filter(session => session.isZoomMeet === true);
@@ -928,20 +920,42 @@ export class StudentService {
       });
     }
 
-    // 6. Build final paginated result (remove internal 'raw' before returning)
-    const result = paginatedClasses.map((c) => {
-      const { raw, ...rest } = c as any;
-      return rest;
+    // 6. Map paginated classes to the final result structure using the unified map
+     const result = allSessions.map((cls) => {
+      const userAttendance = unifiedAttendanceMap.get(cls.id);
+      const status = userAttendance?.status || 'absent';
+      const duration = userAttendance?.duration || 0;
+
+      return {
+        id: Number(cls.id),
+        title: cls.title,
+        startTime: cls.startTime,
+        endTime: cls.endTime,
+        s3Link: cls.s3link,
+        moduleId: cls.moduleId,
+        chapterId: cls.chapterId,
+        attendanceStatus: status,
+        duration,
+      };
     });
 
-    // 7. Calculate attendance statistics on the filtered set
-    let presentCount = 0;
-    filteredSessions.forEach((s) => {
-      if (s.attendanceStatus === 'present') presentCount++;
-    });
+    // Filter results by attendance status if specified
+    const filteredResults = attendanceStatus 
+      ? result.filter(cls => cls.attendanceStatus === attendanceStatus)
+      : result;
 
-    const absentCount = totalClasses - presentCount;
-    const attendancePercentage = totalClasses > 0 ? Number(((presentCount / totalClasses) * 100).toFixed(2)) : 0;
+    // Recalculate pagination after filtering
+    const totalFilteredClasses = filteredResults.length;
+    const paginatedFilteredResults = limit 
+      ? filteredResults.slice(offset || 0, (offset || 0) + limit) 
+      : filteredResults;
+
+    // 7. Calculate overall attendance statistics using filtered results
+    const presentCount = filteredResults.filter(cls => cls.attendanceStatus === 'present').length;
+    const absentCount = filteredResults.filter(cls => cls.attendanceStatus === 'absent').length;
+    const attendancePercentage = totalFilteredClasses > 0
+      ? Number(((presentCount / totalFilteredClasses) * 100).toFixed(2))
+      : 0;
 
     // 8. Return the final, consistently structured response
     return [
@@ -952,9 +966,10 @@ export class StudentService {
         data: {
           batchId,
           batchName,
-          classes: result,
-          totalClasses,
-          totalPages: !isNaN(pLimit) && pLimit > 0 ? Math.ceil(totalClasses / pLimit) : 1,
+          classes: paginatedFilteredResults,
+          totalClasses: totalFilteredClasses,
+          totalPages: limit ? Math.ceil(totalFilteredClasses / limit) : 1,
+          searchTerm: searchTerm || null,
           attendanceStats: {
             presentCount,
             absentCount,
@@ -963,16 +978,13 @@ export class StudentService {
         },
       },
     ];
+
   } catch (error) {
-    // console.error("Error fetching completed classes:", error); // Recommended for debugging
     return [{ message: error.message, statusCode: STATUS_CODES.BAD_REQUEST }];
   }
 }
 
-  //This function returns the rank of a particular course based on avg of attendance and course progress
-  //The query has a hierarchy from:-
-  //zuvyBootcamp->zuvyBatchEnrollments(It has all the students of that particular bootcamp along with attendance)
-  //ZuvyBatchEnrollments has a relation with userInfo and bootcamp Tracking table(contains course Progress)
+
   async getLeaderBoardDetailByBootcamp(bootcampId: number, limit: number, offset: number) {
     try {
       const data = await db.query.zuvyBootcamps.findMany({
