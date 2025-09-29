@@ -377,3 +377,5 @@ CREATE TABLE "main"."zuvy_permissions_roles" (
     "created_at" TIMESTAMPTZ DEFAULT NOW(),
     "updated_at" TIMESTAMPTZ DEFAULT NOW()
 );
+
+ALTER TABLE main.zuvy_permissions_roles ADD CONSTRAINT uniq_role_permission UNIQUE (role_id, permission_id);

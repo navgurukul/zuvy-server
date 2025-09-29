@@ -420,43 +420,84 @@ export class RbacPermissionService {
 //   }
 // }
 
-  async assignPermissionsToRole(dto: AssignPermissionsToRoleDto) {
+async assignPermissionsToRole(dto: AssignPermissionsToRoleDto) {
+  try {
     const { resourceId, roleId, permissions } = dto;
-    return db.transaction(async (tx) => {
-      const [resource] = await tx.select().from(zuvyResources).where(eq(zuvyResources.id, resourceId)).limit(1);
+
+    return await db.transaction(async (tx) => {
+      const [resource] = await tx
+        .select()
+        .from(zuvyResources)
+        .where(eq(zuvyResources.id, resourceId))
+        .limit(1);
       if (!resource) throw new NotFoundException('Resource not found');
-      const [role] = await tx.select().from(zuvyUserRoles).where(eq(zuvyUserRoles.id, roleId)).limit(1);
+
+      const [role] = await tx
+        .select()
+        .from(zuvyUserRoles)
+        .where(eq(zuvyUserRoles.id, roleId))
+        .limit(1);
       if (!role) throw new NotFoundException('Role not found');
 
-      const resourcePerms = await tx.select({ id: zuvyPermissions.id }).from(zuvyPermissions).where(eq(zuvyPermissions.resourcesId, resourceId));
-      const validIds = new Set(resourcePerms.map(p => p.id));
-      const incomingIds = Object.keys(permissions).map(Number);
-      const invalid = incomingIds.filter(id => !validIds.has(id));
-      if (invalid.length) throw new BadRequestException(`Invalid permission ids for resource: ${invalid.join(', ')}`);
+      const resourcePerms = await tx
+        .select({ id: zuvyPermissions.id })
+        .from(zuvyPermissions)
+        .where(eq(zuvyPermissions.resourcesId, resourceId));
 
-      const enableIds = incomingIds.filter(id => permissions[id] === true);
-      const disableIds = incomingIds.filter(id => permissions[id] === false);
+      const validIds = new Set(resourcePerms.map((p) => p.id));
+      const incomingIds = Object.keys(permissions).map(Number);
+      const invalid = incomingIds.filter((id) => !validIds.has(id));
+      if (invalid.length)
+        throw new BadRequestException(
+          `Invalid permission ids for resource: ${invalid.join(', ')}`
+        );
+
+      const enableIds = incomingIds.filter((id) => permissions[id] === true);
+      const disableIds = incomingIds.filter((id) => permissions[id] === false);
 
       if (enableIds.length) {
-        await tx.insert(zuvyPermissionsRoles)
-          .values(enableIds.map(permissionId => ({ roleId, permissionId })))
-          .onConflictDoNothing();
-      }
-      if (disableIds.length) {
-        await tx.delete(zuvyPermissionsRoles)
-          .where(and(eq(zuvyPermissionsRoles.roleId, roleId), inArray(zuvyPermissionsRoles.permissionId, disableIds)));
+        await tx
+          .insert(zuvyPermissionsRoles)
+          .values(enableIds.map((permissionId) => ({ roleId, permissionId })))
+          .onConflictDoNothing({
+            target: [
+              zuvyPermissionsRoles.roleId,
+              zuvyPermissionsRoles.permissionId,
+            ],
+          });
       }
 
-      const assigned = await tx.select({ permissionId: zuvyPermissionsRoles.permissionId })
+      if (disableIds.length) {
+        await tx
+          .delete(zuvyPermissionsRoles)
+          .where(
+            and(
+              eq(zuvyPermissionsRoles.roleId, roleId),
+              inArray(zuvyPermissionsRoles.permissionId, disableIds)
+            )
+          );
+      }
+
+      const assigned = await tx
+        .select({ permissionId: zuvyPermissionsRoles.permissionId })
         .from(zuvyPermissionsRoles)
         .where(eq(zuvyPermissionsRoles.roleId, roleId));
 
       return {
         status: 'success',
         message: 'Permissions updated',
-        data: { roleId, resourceId, assignedPermissionIds: assigned.map(r => r.permissionId) }
+        data: {
+          roleId,
+          resourceId,
+          assignedPermissionIds: assigned.map((r) => r.permissionId),
+        },
       };
     });
+  } catch (error) {
+    this.logger.error('Error in assignPermissionsToRole:', error);
+    throw new InternalServerErrorException('Failed to assign permissions');
   }
+}
+
 
 }
