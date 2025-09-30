@@ -118,10 +118,10 @@ export class BootcampService {
 
       const totalPages = Math.ceil(totalCount / limit);
 
-      const targetPermissions= [
+      const targetPermissions = [
         ResourceList.course.create,
         ResourceList.course.read,
-        ResourceList.course.edit, 
+        ResourceList.course.edit,
         ResourceList.course.delete,
         ResourceList.content.read,
         ResourceList.rolesandpermissions.read
@@ -1285,45 +1285,52 @@ export class BootcampService {
 
   async markAttendance(attendanceMarkDto: any) {
     try {
-      const { sessionId, userId, status, duration } = attendanceMarkDto;
-
-      // Validate session exists and get bootcampId
-      const sessions = await db.select({ id: zuvySessions.id, bootcampId: zuvySessions.bootcampId })
-        .from(zuvySessions)
-        .where(eq(zuvySessions.id, sessionId));
-      if (!sessions.length) {
-        return [{ status: 'error', message: 'Session not found', code: 404 }, null];
+      if (!Array.isArray(attendanceMarkDto)) {
+        attendanceMarkDto = [attendanceMarkDto];
       }
-      const bootcampId = sessions[0].bootcampId;
+      const results = [];
+      for (const record of attendanceMarkDto) {
+        const { sessionId, userId, status, duration } = record;
 
-      // Upsert into zuvyStudentAttendanceRecords
-      const existing = await db.select().from(zuvyStudentAttendanceRecords)
-        .where(sql`${zuvyStudentAttendanceRecords.sessionId} = ${sessionId} AND ${zuvyStudentAttendanceRecords.userId} = ${userId}`)
-        .limit(1);
+        // Validate session exists and get bootcampId
+        const sessions = await db.select({ id: zuvySessions.id, bootcampId: zuvySessions.bootcampId })
+          .from(zuvySessions)
+          .where(eq(zuvySessions.id, sessionId));
+        if (!sessions.length) {
+          results.push({ userId, sessionId, error: 'Session not found', code: 404 });
+          continue;
+        }
+        const bootcampId = sessions[0].bootcampId;
 
-      if (existing.length) {
-        await db.update(zuvyStudentAttendanceRecords)
-          .set({ status, duration } as any)
-          .where(sql`${zuvyStudentAttendanceRecords.sessionId} = ${sessionId} AND ${zuvyStudentAttendanceRecords.userId} = ${userId}`);
-      } else {
-        await db.insert(zuvyStudentAttendanceRecords).values({ sessionId, userId, status, duration } as any).returning();
+        // Upsert into zuvyStudentAttendanceRecords
+        const existing = await db.select().from(zuvyStudentAttendanceRecords)
+          .where(sql`${zuvyStudentAttendanceRecords.sessionId} = ${sessionId} AND ${zuvyStudentAttendanceRecords.userId} = ${userId}`)
+          .limit(1);
+
+        if (existing.length) {
+          await db.update(zuvyStudentAttendanceRecords)
+            .set({ status, duration } as any)
+            .where(sql`${zuvyStudentAttendanceRecords.sessionId} = ${sessionId} AND ${zuvyStudentAttendanceRecords.userId} = ${userId}`);
+        } else {
+          await db.insert(zuvyStudentAttendanceRecords).values({ sessionId, userId, status, duration } as any).returning();
+        }
+
+        // Recompute aggregate attendance for this user's enrollment in the bootcamp
+        const presentCountQuery = await db.select({ count: sql<number>`cast(count(${zuvyStudentAttendanceRecords.id}) as int)` })
+          .from(zuvyStudentAttendanceRecords)
+          .leftJoin(zuvySessions, eq(zuvyStudentAttendanceRecords.sessionId, zuvySessions.id))
+          .where(sql`${zuvyStudentAttendanceRecords.userId} = ${userId} AND ${zuvySessions.bootcampId} = ${bootcampId} AND ${zuvyStudentAttendanceRecords.status} = 'present'`);
+
+        const presentCount = presentCountQuery[0]?.count || 0;
+
+        // Update zuvyBatchEnrollments.attendance for this user's enrollments in this bootcamp
+        await db.update(zuvyBatchEnrollments)
+          .set({ attendance: presentCount })
+          .where(sql`${zuvyBatchEnrollments.userId} = ${BigInt(userId)} AND ${zuvyBatchEnrollments.bootcampId} = ${bootcampId}`);
+
+        results.push({ userId, sessionId, message: 'Attendance marked successfully', code: 200, attendance: presentCount });
       }
-
-      // Recompute aggregate attendance for this user's enrollment in the bootcamp
-      // Count number of present records for the user across sessions belonging to this bootcamp
-      const presentCountQuery = await db.select({ count: sql<number>`cast(count(${zuvyStudentAttendanceRecords.id}) as int)` })
-        .from(zuvyStudentAttendanceRecords)
-        .leftJoin(zuvySessions, eq(zuvyStudentAttendanceRecords.sessionId, zuvySessions.id))
-        .where(sql`${zuvyStudentAttendanceRecords.userId} = ${userId} AND ${zuvySessions.bootcampId} = ${bootcampId} AND ${zuvyStudentAttendanceRecords.status} = 'present'`);
-
-      const presentCount = presentCountQuery[0]?.count || 0;
-
-      // Update zuvyBatchEnrollments.attendance for this user's enrollments in this bootcamp
-      await db.update(zuvyBatchEnrollments)
-        .set({ attendance: presentCount })
-        .where(sql`${zuvyBatchEnrollments.userId} = ${BigInt(userId)} AND ${zuvyBatchEnrollments.bootcampId} = ${bootcampId}`);
-
-      return [null, { message: 'Attendance marked successfully', code: 200, attendance: presentCount }];
+      return [null, results];
     } catch (err) {
       return [{ status: 'error', message: err.message, code: 500 }, null];
     }
