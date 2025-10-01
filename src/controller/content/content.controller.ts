@@ -244,8 +244,12 @@ export class ContentController {
   @Roles('admin')
   @ApiOperation({ summary: 'Get all modules of a course' })
   @ApiBearerAuth('JWT-auth')
-  async getAllModules(@Param('bootcampId') bootcampId: number) {
-    const res = await this.contentService.getAllModuleByBootcampId(bootcampId);
+  async getAllModules(
+    @Param('bootcampId') bootcampId: number,
+    @Req() req
+  ) {
+    const roleName = req.user[0]?.roles;
+    const res = await this.contentService.getAllModuleByBootcampId(bootcampId, roleName);
     return res;
   }
 

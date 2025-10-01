@@ -123,27 +123,14 @@ export class BootcampService {
         ResourceList.course.read,
         ResourceList.course.edit, 
         ResourceList.course.delete,
-        ResourceList.content.read,
-        ResourceList.rolesandpermissions.read
+        ResourceList.question.read,
+        ResourceList.rolesandpermission.read
       ]
       // Get permissions for all resources if userId is provided
       let allPermissions = {};
       const permissionResult = await this.rbacAllocPermsService.getAllPermissions(roleName, targetPermissions);
       allPermissions = permissionResult.permissions || {};
 
-      /* 
-        target permissions: {createCourse, viewCourse, editCourse, deleteCourse, readContent, readRolesPermission}
-
-        get all granted=true permissions {createCourse: true, createBootcamp: true, readCourse: true}
-        function returnGrantablePermissions(roleName: string){
-          roleName: roleId --> resourceId --> all grantable permissions.
-
-          permissions --> format the permissions.
-        }
-      
-        compare both permissions and than prepare the final permission: 
-        permissions: {createCourse: true, viewCourse: false, editCourse: false, deleteCourse: false, readContent: false}
-      */
       const data = await Promise.all(
         getBootcamps.map(async (bootcamp) => {
           let [err, res] = await this.enrollData(bootcamp.id);
@@ -162,7 +149,7 @@ export class BootcampService {
     }
   }
 
-  async getBootcampById(id: number, isContent: boolean): Promise<any> {
+  async getBootcampById(id: number, isContent: boolean, role: string[]): Promise<any> {
     try {
       let bootcamp = await db
         .select()
@@ -176,6 +163,15 @@ export class BootcampService {
           null,
         ];
       }
+      const targetPermissions = [
+        ResourceList.course.edit,
+        ResourceList.module.read,
+        ResourceList.batch.read, 
+        ResourceList.student.read,
+        ResourceList.submission.read,
+        ResourceList.setting.read
+      ]
+      const grantedPermissions = await this.rbacAllocPermsService.getAllPermissions(role, targetPermissions);
       return [
         null,
         {
@@ -183,6 +179,7 @@ export class BootcampService {
           message: 'Bootcamp fetched successfully',
           code: 200,
           bootcamp: { ...bootcamp[0], ...res },
+          ...grantedPermissions
         },
       ];
     } catch (e) {
@@ -289,7 +286,7 @@ export class BootcampService {
     }
   }
 
-  async updateBootcampSetting(bootcamp_id: number, settingData) {
+  async updateBootcampSetting(bootcamp_id: number, settingData, roleName: string[]) {
     try {
       const typeOfBootcamp = settingData.type ? settingData.type.toLowerCase() : null;
       if (settingData.type) {
@@ -297,7 +294,13 @@ export class BootcampService {
           settingData.type.charAt(0).toUpperCase() +
           settingData.type.slice(1).toLowerCase();
       }
-
+      const targetPermissions = [
+        ResourceList.setting.read,
+        ResourceList.course.delete,
+        ResourceList.module.lock,
+        ResourceList.course.edit
+      ]
+      const grantedPermissions = await this.rbacAllocPermsService.getAllPermissions(roleName, targetPermissions);
       if (
         typeOfBootcamp == 'Public'.toLowerCase() ||
         typeOfBootcamp == 'Private'.toLowerCase() ||
@@ -315,6 +318,7 @@ export class BootcampService {
               status: 'error',
               message: 'Bootcamp not found for the provided id',
               code: 404,
+              ...grantedPermissions
             },
             null,
           ];
@@ -326,6 +330,7 @@ export class BootcampService {
             message: 'Bootcamp Type updated successfully',
             code: 200,
             updatedBootcampSetting,
+            ...grantedPermissions
           },
         ];
       } else {
@@ -335,6 +340,7 @@ export class BootcampService {
             status: 'success',
             message: `Course type can be of type Public or Private`,
             code: 200,
+            ...grantedPermissions
           },
         ];
       }
@@ -419,6 +425,7 @@ export class BootcampService {
 
   async getBatchByIdBootcamp(
     bootcamp_id: number,
+    roleName: string[],
     limit: number,
     offset: number,
   ): Promise<any> {
@@ -496,7 +503,14 @@ export class BootcampService {
         return batch; // return the modified batch
       });
       const data = await Promise.all(promises);
-      return [null, { data, totalBatches: totalCount, totalPages }];
+      const targetPermissions = [
+        ResourceList.batch.read,
+        ResourceList.batch.create,
+        ResourceList.batch.edit,
+        ResourceList.batch.delete
+      ]
+      const grantedPermission = await this.rbacAllocPermsService.getAllPermissions(roleName, targetPermissions);
+      return [null, { data, ...grantedPermission, totalBatches: totalCount, totalPages }];
     } catch (e) {
       return [{ status: 'error', message: e.message, code: 500 }, null];
     }
@@ -571,6 +585,7 @@ export class BootcampService {
     bootcampId: number,
     batchId: number,
     users_data: any[],
+    roleName: string[]
   ) {
     try {
       var a = 0, b = 0, c = 0, d = 0;
@@ -808,6 +823,13 @@ export class BootcampService {
       }
 
       let message = messageParts.join(' & ');
+      const targetePermission = [
+        ResourceList.student.read,
+        ResourceList.student.create,
+        ResourceList.student.edit,
+        ResourceList.student.delete
+      ]
+      const grantedPermissions = await this.rbacAllocPermsService.getAllPermissions(roleName, targetePermission);
 
       return [
         null,
@@ -816,6 +838,7 @@ export class BootcampService {
           code: 200,
           message: message,
           students_enrolled: userReport,
+          ...grantedPermissions
         },
       ];
     } catch (e) {

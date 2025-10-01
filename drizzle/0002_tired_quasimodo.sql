@@ -285,7 +285,6 @@ CREATE TABLE "main"."zuvy_permissions" (
     "id" SERIAL PRIMARY KEY,
     "name" VARCHAR(100) NOT NULL,
     "resource_id" INTEGER NOT NULL REFERENCES "main"."zuvy_resources"("id"),
-    "grantable" BOOLEAN NOT NULL DEFAULT FALSE,
     "description" TEXT,
     "created_at" TIMESTAMPTZ DEFAULT now(),
     "updated_at" TIMESTAMPTZ DEFAULT now()
