@@ -23,7 +23,7 @@ import {
   studentDataDto,
   PatchBootcampSettingDto,
   editUserDetailsDto,
-  AttendanceMarkDto,
+  AttendanceMarkDtoArray,
 } from './dto/bootcamp.dto';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 import { RolesGuard } from 'src/guards/roles.guard';
@@ -474,7 +474,8 @@ export class BootcampController {
   @Roles('admin')
   @ApiOperation({ summary: 'Mark attendance for a session (admin)' })
   @ApiBearerAuth('JWT-auth')
-  async markAttendance(@Body() attendanceMarkDto: AttendanceMarkDto): Promise<any> {
+  async markAttendance(@Body() attendanceMarkDto: AttendanceMarkDtoArray[]): Promise<any> {
+    // Accept an array of AttendanceMarkDto
     const [err, res] = await this.bootcampService.markAttendance(attendanceMarkDto);
     if (err) {
       throw new BadRequestException(err);
