@@ -219,9 +219,17 @@ export class AssignPermissionsToRoleDto {
   @IsNumber()
   resourceId: number;
 
+  @ApiProperty({
+    description: 'Resource ID to assign the permissions to',
+    example: 123
+  })
   @IsNumber()
   roleId: number;
   
+  @ApiProperty({
+    description: 'Resource ID to assign the permissions to',
+    example: {1: true, 2: false}
+  })
   @IsNotEmptyObject()
   @Transform(({ value }) => {
     // ensure keys are numbers and values are booleans

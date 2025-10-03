@@ -3741,7 +3741,6 @@ export const zuvyPermissions = main.table('zuvy_permissions', {
   id: serial('id').primaryKey().notNull(),
   name: varchar('name', { length: 100 }).notNull(), // e.g. 'view', 'create', etc. - not unique
   resourcesId: integer('resource_id').notNull().references(() => zuvyResources.id),
-  grantable: boolean('grantable').notNull().default(false), // can this permission be granted by users with this permission
   description: text('description'),
   createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow(),

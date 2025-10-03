@@ -100,10 +100,13 @@ export class BootcampController {
   async getBootcampById(
     @Param('id') id: number,
     @Query('isContent') isContent: boolean = false,
+    @Req() req
   ): Promise<object> {
+    const roleName = req.user[0]?.roles;
     const [err, res] = await this.bootcampService.getBootcampById(
       id,
       isContent,
+      roleName
     );
     if (err) {
       throw new BadRequestException(err);
@@ -131,10 +134,13 @@ export class BootcampController {
   async updateBootcampSetting(
     @Body() bootcampSetting: PatchBootcampSettingDto,
     @Param('bootcampId') bootcampId: number,
+    @Req() req
   ) {
+    const roleName = req.user[0]?.roles;
     const [err, res] = await this.bootcampService.updateBootcampSetting(
       bootcampId,
       bootcampSetting,
+      roleName
     );
     if (err) {
       throw new BadRequestException(err);
@@ -204,9 +210,12 @@ export class BootcampController {
     @Param('bootcamp_id') bootcamp_id: number,
     @Query('limit') limit: number,
     @Query('offset') offset: number,
+    @Req() req
   ): Promise<object> {
+    const roleName = req.user[0]?.roles;
     const [err, res] = await this.bootcampService.getBatchByIdBootcamp(
       bootcamp_id,
+      roleName,
       limit,
       offset,
     );
@@ -271,11 +280,14 @@ export class BootcampController {
     @Param('bootcamp_id') bootcamp_id: number,
     @Query('batch_id') batch_id: number,
     @Body() studentData: studentDataDto,
+    @Req() req
   ) {
+    const roleName = req.user[0]?.roles;
     const [err, res] = await this.bootcampService.addStudentToBootcamp(
       bootcamp_id,
       batch_id,
       studentData.students,
+      roleName
     );
     if (err) {
       throw new BadRequestException(err);

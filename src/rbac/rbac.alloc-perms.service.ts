@@ -360,7 +360,7 @@ export class RbacAllocPermsService {
       // Filter permissions based on targetPermissions
       const filteredPermissions = await this.formatPermissionsAndCompare(assignedPermissions, targetPermissions)
 
-      return { roleName, permissions: filteredPermissions };
+      return { permissions: filteredPermissions };
     }
     catch (err) {
       this.logger.error('Error retrieving all permissions:', err);

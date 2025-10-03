@@ -85,6 +85,7 @@ import { ZoomService } from 'src/services/zoom/zoom.service';
 import { RbacAllocPermsService } from '../../rbac/rbac.alloc-perms.service';
 let { S3_ACCESS_KEY_ID, S3_BUCKET_NAME, S3_REGION, S3_SECRET_KEY_ACCESS } = process.env
 import e from 'express';
+import { ResourceList } from 'src/rbac/utility';
 let { DIFFICULTY } = helperVariable;
 
 @Injectable()
@@ -491,7 +492,7 @@ export class ContentService {
     }
   }
 
-  async getAllModuleByBootcampId(bootcampId: number) {
+  async getAllModuleByBootcampId(bootcampId: number, roleName: string[]) {
     const bootcampInfo = await db.select().from(zuvyBootcamps).where(eq(zuvyBootcamps.id, bootcampId));
     if (bootcampInfo.length == 0) {
       throw new NotFoundException('Bootcamp not found!');
@@ -533,7 +534,15 @@ export class ContentService {
         };
       });
       modules.sort((a, b) => a.order - b.order);
-      return modules;
+      //get permissions.
+      const targetPermissions = [
+        ResourceList.module.read,
+        ResourceList.module.create,
+        ResourceList.module.edit,
+        ResourceList.module.delete
+      ]
+      const grantedPermission = await this.rbacAllocPermsService.getAllPermissions(roleName, targetPermissions)
+      return {modules, ...grantedPermission};
     } catch (err) {
       console.error(err);
       return [];
