@@ -289,3 +289,8 @@ export class AttendanceMarkDto {
   @IsOptional()
   duration?: number; // in minutes (or agreed unit)
 }
+
+export class AttendanceMarkDtoArray {
+  @ApiProperty({ type: [AttendanceMarkDto], required: true })
+  attendance: AttendanceMarkDto[];
+}
