@@ -10,7 +10,7 @@ export class RbacPermissionService {
 
   async createPermission(createPermissionDto: CreatePermissionDto): Promise<any> {
     try {
-      const { name, resourceId, grantable, description } = createPermissionDto;
+      const { name, resourceId, description } = createPermissionDto;
 
       // Check if resource exists
       const resourceCheck = await db.execute(sql`SELECT id FROM main.zuvy_resources WHERE id = ${resourceId} LIMIT 1`);
@@ -25,7 +25,7 @@ export class RbacPermissionService {
       }
       // Create new permission
       const result = await db.execute(
-        sql`INSERT INTO main.zuvy_permissions (name, resource_id, grantable, description) VALUES (${name}, ${resourceId},${grantable}, ${description ?? null}) RETURNING *`
+        sql`INSERT INTO main.zuvy_permissions (name, resource_id, description) VALUES (${name}, ${resourceId}, ${description ?? null}) RETURNING *`
       );
 
       if ((result as any).rows.length > 0) {
@@ -131,20 +131,23 @@ export class RbacPermissionService {
 
   async deletePermission(id: number): Promise<any> {
     try {
-      const result = await db.execute(sql`DELETE FROM main.zuvy_permissions WHERE id = ${id}`);
-      if ((result as any).rowCount > 0) {
-        return {
-          status: 'success',
-          message: 'Permission deleted successfully',
-          code: 200
-        };
-      } else {
-        return {
-          status: 'error',
-          code: 404,
-          message: 'Permission not found'
-        };
+      // Check if the permission is associated with any roles
+      const associatedRoles = await db
+        .select()
+        .from(zuvyPermissionsRoles)
+        .where(eq(zuvyPermissionsRoles.permissionId, id));
+      if (associatedRoles.length > 0) {
+        throw new BadRequestException('Cannot delete permission associated with roles. Please remove associations first.');
       }
+      // If there are no associated roles, the permission is deleted successfully
+      const deletedPermission = await db
+        .delete(zuvyPermissions)
+        .where(eq(zuvyPermissions.id, id));
+      if (deletedPermission.rowCount === 0) {
+        throw new NotFoundException(`Permission with ID ${id} not found`);
+      }
+      // Permission deleted successfully then return the permission details
+      return { message: 'Permission deleted successfully', code: 200, status: 'success'};
     } catch (err) {
       throw err;
     }

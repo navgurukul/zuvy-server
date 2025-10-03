@@ -2,7 +2,7 @@ import { BadRequestException, Injectable, InternalServerErrorException, Logger, 
 import { db } from 'src/db/index';
 import { asc, eq, ilike, or, sql } from 'drizzle-orm';
 import { CreateUserRoleDto, AssignUserRoleDto, CreateUserDto, UpdateUserDto } from './dto/user-role.dto';
-import { users, zuvyUserRoles, zuvyUserRolesAssigned } from 'drizzle/schema';
+import { users, zuvyPermissionsRoles, zuvyUserRoles, zuvyUserRolesAssigned } from 'drizzle/schema';
 import { BigInt } from 'postgres';
 import { STATUS_CODES } from 'src/helpers';
 
@@ -371,28 +371,20 @@ export class RbacUserService {
     }
   }
 
-  async deleteUser(id: bigint): Promise<void> {
+  async deleteUser(id: bigint): Promise<any> {
     try {
-      return await db.transaction(async (tx) => {
-        // First delete the user role assignment
-        const roleDeleteResult = await tx
-          .delete(zuvyUserRolesAssigned)
-          .where(eq(zuvyUserRolesAssigned.userId, id));
-
-        // Then delete the user
-        const userDeleteResult = await tx
-          .delete(users)
-          .where(eq(users.id, id));
-
-        if (userDeleteResult.rowCount === 0) {
-          throw new NotFoundException(`User with ID ${id} not found`);
-        }
-      });
-    } catch (error) {
-      if (error instanceof NotFoundException) {
-        throw error;
+      // delete the user by id in zuvyUserRolesAssigned table
+      const deletedUser = await db
+        .delete(zuvyUserRolesAssigned)
+        .where(eq(zuvyUserRolesAssigned.userId, id))
+        .returning();
+      if (deletedUser.length === 0) {
+        throw new NotFoundException(`User with ID ${id} not found`);
       }
-      throw new InternalServerErrorException('Failed to delete user');
+      // send the response
+      return { message: 'User deleted successfully', code: 204, status: 'success' }; 
+    } catch (error) {
+      throw error;
     }
   }
 }

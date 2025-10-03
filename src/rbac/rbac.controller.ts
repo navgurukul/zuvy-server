@@ -568,15 +568,10 @@ export class RbacController {
     }
   }
 
-  @Delete('resource/:id')
+  @Delete('deleteResource/:id')
   @ApiOperation({
     summary: 'Delete a resource',
     description: 'Deletes a specific resource by its ID'
-  })
-  @ApiParam({
-    name: 'id',
-    description: 'Resource ID to delete',
-    type: bigint
   })
   @ApiResponse({
     status: 204,
@@ -595,10 +590,7 @@ export class RbacController {
     try {
       await this.resourcesService.deleteResource(id);
     } catch (error) {
-      if (error.status === HttpStatus.NOT_FOUND) {
-        throw error;
-      }
-      throw new HttpException('Internal Server Error', HttpStatus.INTERNAL_SERVER_ERROR);
+      throw error;
     }
   }
 
@@ -792,11 +784,6 @@ export class RbacController {
   @ApiOperation({
     summary: 'Delete a user',
     description: 'Deletes a user and their role assignments'
-  })
-  @ApiParam({
-    name: 'id',
-    description: 'User ID to delete',
-    type: bigint
   })
   @ApiResponse({
     status: 204,
