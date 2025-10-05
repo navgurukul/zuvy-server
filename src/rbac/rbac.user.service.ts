@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable, InternalServerErrorException, Logger, NotFoundException } from '@nestjs/common';
 import { db } from 'src/db/index';
-import { asc, eq, ilike, or, sql } from 'drizzle-orm';
+import { and, asc, eq, ilike, inArray, or, sql } from 'drizzle-orm';
 import { CreateUserRoleDto, AssignUserRoleDto, CreateUserDto, UpdateUserDto } from './dto/user-role.dto';
 import { users, zuvyPermissionsRoles, zuvyUserRoles, zuvyUserRolesAssigned } from 'drizzle/schema';
 import { BigInt } from 'postgres';
@@ -106,9 +106,34 @@ export class RbacUserService {
 
   // Corrected code with data transformation
   // In your service
-  async getAllUsersWithRoles(limit: number, offset: number, searchTerm: string = '') {
+  async getAllUsersWithRoles(limit: number, offset: number, searchTerm: string = '', roleId?: number | number[]): Promise<any> {
     try {
       const search = `%${searchTerm}%`;
+      
+      // Build the base conditions
+      const baseConditions = or(
+        ilike(users.name, search),
+        ilike(users.email, search)
+      );
+
+      // Add role filter if roleId is provided
+      let finalCondition = baseConditions;
+      
+      if (roleId !== undefined && roleId !== null) {
+        if (Array.isArray(roleId)) {
+          // Multiple role IDs
+          finalCondition = and(
+            baseConditions,
+            inArray(zuvyUserRolesAssigned.roleId, roleId)
+          );
+        } else {
+          // Single role ID
+          finalCondition = and(
+            baseConditions,
+            eq(zuvyUserRolesAssigned.roleId, roleId)
+          );
+        }
+      }
 
       // 1. Query for filtered users
       const userData = await db
@@ -118,17 +143,13 @@ export class RbacUserService {
           userId: zuvyUserRolesAssigned.userId,
           name: users.name,
           email: users.email,
-          roleName: zuvyUserRoles.name
+          roleName: zuvyUserRoles.name,
+          createdAt: zuvyUserRolesAssigned.createdAt,
         })
         .from(zuvyUserRolesAssigned)
         .leftJoin(users, eq(zuvyUserRolesAssigned.userId, users.id))
         .leftJoin(zuvyUserRoles, eq(zuvyUserRolesAssigned.roleId, zuvyUserRoles.id))
-        .where(
-          or(
-            ilike(users.name, search),
-            ilike(users.email, search)
-          )
-        )
+        .where(finalCondition)
         .limit(limit)
         .offset(offset)
         .orderBy(asc(users.name));
@@ -138,12 +159,7 @@ export class RbacUserService {
         .select({ count: sql<number>`count(*)` })
         .from(zuvyUserRolesAssigned)
         .leftJoin(users, eq(zuvyUserRolesAssigned.userId, users.id))
-        .where(
-          or(
-            ilike(users.name, search),
-            ilike(users.email, search)
-          )
-        );
+        .where(finalCondition);
 
       const totalRows = Number(totalCount[0]?.count ?? 0);
       const totalPages = !Number.isNaN(limit) && limit > 0
@@ -276,8 +292,10 @@ export class RbacUserService {
   async updateUser(id: bigint, updateUserDto: UpdateUserDto) {
     try {
       return await db.transaction(async (tx) => {
+        const currentTime = new Date().toISOString(); // ISO string format
+        
         // Prepare user update data (only include provided fields)
-        const userUpdateData: { name?: string; email?: string } = {};
+        const userUpdateData: { name?: string; email?: string; updatedAt?: string } = {};
 
         if (updateUserDto.name !== undefined) {
           userUpdateData.name = updateUserDto.name;
@@ -286,13 +304,18 @@ export class RbacUserService {
           userUpdateData.email = updateUserDto.email;
         }
 
+        // Add updatedAt timestamp if any user data is being updated
+        if (Object.keys(userUpdateData).length > 0) {
+          userUpdateData.updatedAt = currentTime;
+        }
+
         // Update user details only if there are fields to update
         let user;
         if (Object.keys(userUpdateData).length > 0) {
           [user] = await tx
             .update(users)
             .set(userUpdateData)
-            .where(eq(users.id, id)) // Make sure users.id is the correct column reference
+            .where(eq(users.id, id))
             .returning();
 
           if (!user) {
@@ -314,21 +337,26 @@ export class RbacUserService {
           const existingRole = await tx
             .select()
             .from(zuvyUserRolesAssigned)
-            .where(eq(zuvyUserRolesAssigned.userId, id)); // Make sure userId column exists
+            .where(eq(zuvyUserRolesAssigned.userId, id));
 
           if (existingRole.length > 0) {
-            // Update existing role
+            // Update existing role with updatedAt - FIXED TYPE
+            const roleUpdateData = {
+              roleId: updateUserDto.roleId,
+              updatedAt: currentTime // ISO string for role assignment
+            };
+            
             const [updatedRole] = await tx
               .update(zuvyUserRolesAssigned)
-              .set({
-                roleId: updateUserDto.roleId,
-              })
-              .where(eq(zuvyUserRolesAssigned.userId, id)) // Make sure userId column exists
+              .set(roleUpdateData)
+              .where(eq(zuvyUserRolesAssigned.userId, id))
               .returning();
           } else {
             let rolesAssignData = {
               userId: id,
-              roleId: updateUserDto.roleId
+              roleId: updateUserDto.roleId,
+              createdAt: currentTime, // ISO string
+              updatedAt: currentTime  // ISO string
             }
             // Assign new role
             const [newRole] = await tx
@@ -351,23 +379,14 @@ export class RbacUserService {
             updatedAt: zuvyUserRolesAssigned.updatedAt
           })
           .from(users)
-          .leftJoin(zuvyUserRolesAssigned, eq(users.id, zuvyUserRolesAssigned.userId)) // Make sure column names match
-          .leftJoin(zuvyUserRoles, eq(zuvyUserRolesAssigned.roleId, zuvyUserRoles.id)) // Make sure column names match
-          .where(eq(users.id, id)); // Make sure users.id is the correct column reference
+          .leftJoin(zuvyUserRolesAssigned, eq(users.id, zuvyUserRolesAssigned.userId))
+          .leftJoin(zuvyUserRoles, eq(zuvyUserRolesAssigned.roleId, zuvyUserRoles.id))
+          .where(eq(users.id, id));
 
         return userWithRole;
       });
     } catch (error) {
-      if (error.code === '23505') {
-        throw new BadRequestException('User with this email already exists');
-      }
-      if (error.code === '23503') {
-        throw new BadRequestException('Invalid role ID');
-      }
-      if (error instanceof NotFoundException) {
-        throw error;
-      }
-      throw new InternalServerErrorException('Failed to update user');
+      throw error;
     }
   }
 

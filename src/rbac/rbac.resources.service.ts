@@ -70,11 +70,8 @@ export class RbacResourcesService {
       }
 
       return resource;
-    } catch (error) {
-      if (error instanceof NotFoundException) {
-        throw error;
-      }
-      throw new InternalServerErrorException('Failed to retrieve resource');
+    } catch (error) {  
+      throw error;
     }
   }
 
@@ -93,13 +90,7 @@ export class RbacResourcesService {
 
       return resource;
     } catch (error) {
-      if (error instanceof NotFoundException) {
-        throw error;
-      }
-      if (error.code === '23505') {
-        throw new BadRequestException('Resource with this name already exists');
-      }
-      throw new InternalServerErrorException('Failed to update resource');
+      throw error;
     }
   }
 
@@ -121,7 +112,7 @@ export class RbacResourcesService {
         throw new NotFoundException(`Resource with ID ${id} not found`);
       } 
       // Resource deleted successfully then return the resurce details
-      return { message: 'Resource deleted successfully', code: 200, status: 'success' , data: deletedResource};
+      return { message: 'Resource deleted successfully', code: 200, status: 'success'};
     } catch (error) {
       throw error;
     }

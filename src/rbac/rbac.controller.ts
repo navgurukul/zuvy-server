@@ -617,6 +617,12 @@ export class RbacController {
     type: String,
     description: 'Filter by user name or email (default empty = all users)'
   })
+   @ApiQuery({
+      name: 'roleId',
+      required: false,
+      type: [Number],
+      description: 'roleId',
+    })
   @ApiResponse({
     status: 200,
     description: 'Users retrieved successfully',
@@ -646,8 +652,9 @@ export class RbacController {
     @Query('limit') limit: number,
     @Query('offset') offSet: number,
     @Query('searchTerm') searchTerm: string,
+    @Query('roleId') roleId: number[],
   ) {
-    return this.rbacUserService.getAllUsersWithRoles(limit, offSet, searchTerm);
+    return this.rbacUserService.getAllUsersWithRoles(limit, offSet, searchTerm, roleId);
   }
 
   @Get('/getUser/:id')
