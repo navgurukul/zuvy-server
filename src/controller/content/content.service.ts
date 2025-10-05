@@ -2197,9 +2197,13 @@ export class ContentService {
     }
   }
 
-  async getAllTags() {
+  async getAllTags(searchTerm: string = '') {
     try {
-      const allTags = await db.select().from(zuvyTags);
+      const allTags = await db
+        .select()
+        .from(zuvyTags)
+        .where(sql`LOWER(${zuvyTags.tagName}) LIKE LOWER(${`%${searchTerm}%`})`)
+        .execute();
       if (allTags.length > 0) {
         return {
           status: 'success',
@@ -2226,6 +2230,43 @@ export class ContentService {
           status: 'success',
           code: 200,
           newTag,
+        };
+      } else {
+        return {
+          status: 'error',
+          code: 404,
+          message: 'Tag is not created.Please try again.',
+        };
+      }
+    } catch (err) {
+      throw err;
+    }
+  }
+
+  async deleteQuestionTag(tagId: number) {
+
+    const associatedQuestions = new Map();
+    associatedQuestions.set('quiz', db.select().from(zuvyModuleQuiz).where(eq(zuvyModuleQuiz.tagId, tagId)).limit(1));
+    associatedQuestions.set('coding', db.select().from(zuvyCodingQuestions).where(eq(zuvyCodingQuestions.tagId, tagId)).limit(1));
+    associatedQuestions.set('openEnded', db.select().from(zuvyOpenEndedQuestions).where(eq(zuvyOpenEndedQuestions.tagId, tagId)).limit(1));
+
+    for (const [key, query] of associatedQuestions) {
+      const result = await query;
+      if (result.length > 0) {
+        return {
+          status: 'error',
+          code: 400,
+          message: `Tag is associated with existing ${key} questions and cannot be deleted.`,
+        };
+      }
+    }
+
+    try {
+      const deletedTag = await db.delete(zuvyTags).where(eq(zuvyTags.id, tagId)).returning();
+      if (deletedTag.length > 0) {
+        return {
+          status: 'success',
+          code: 200
         };
       } else {
         return {
