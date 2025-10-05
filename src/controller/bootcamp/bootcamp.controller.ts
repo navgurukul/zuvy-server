@@ -44,7 +44,7 @@ export class BootcampController {
   constructor(private bootcampService: BootcampService) { }
 
   @Get('/')
-  @Roles('admin')
+  // @Roles('admin')
   @ApiOperation({ summary: 'Get all bootcamps' })
   @ApiQuery({
     name: 'limit',
