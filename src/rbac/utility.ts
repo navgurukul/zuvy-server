@@ -63,7 +63,8 @@ export const ResourceKeys = [
   'Student',
   'Submission',
   'Setting',
-  'Chapter'
+  'Chapter',
+  'RolesAndPermission'
 ] as const;
 export type ResourceKey = typeof ResourceKeys[number];
 

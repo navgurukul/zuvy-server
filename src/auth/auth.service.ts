@@ -95,7 +95,9 @@ export class AuthService {
           };
           // Assign role to user
           await db.insert(zuvyUserRolesAssigned).values(assignmentData);
-
+ 
+          // after assigning the role, delete the old role entries
+          await db.delete(sansaarUserRoles).where(eq(sansaarUserRoles.userId, Number(userId)));
           // Get the final role name
           userRoles = [{
             roleId: 0,

@@ -568,15 +568,10 @@ export class RbacController {
     }
   }
 
-  @Delete('resource/:id')
+  @Delete('deleteResource/:id')
   @ApiOperation({
     summary: 'Delete a resource',
     description: 'Deletes a specific resource by its ID'
-  })
-  @ApiParam({
-    name: 'id',
-    description: 'Resource ID to delete',
-    type: bigint
   })
   @ApiResponse({
     status: 204,
@@ -595,10 +590,7 @@ export class RbacController {
     try {
       await this.resourcesService.deleteResource(id);
     } catch (error) {
-      if (error.status === HttpStatus.NOT_FOUND) {
-        throw error;
-      }
-      throw new HttpException('Internal Server Error', HttpStatus.INTERNAL_SERVER_ERROR);
+      throw error;
     }
   }
 
@@ -625,6 +617,12 @@ export class RbacController {
     type: String,
     description: 'Filter by user name or email (default empty = all users)'
   })
+   @ApiQuery({
+      name: 'roleId',
+      required: false,
+      type: [Number],
+      description: 'roleId',
+    })
   @ApiResponse({
     status: 200,
     description: 'Users retrieved successfully',
@@ -654,8 +652,9 @@ export class RbacController {
     @Query('limit') limit: number,
     @Query('offset') offSet: number,
     @Query('searchTerm') searchTerm: string,
+    @Query('roleId') roleId: number[],
   ) {
-    return this.rbacUserService.getAllUsersWithRoles(limit, offSet, searchTerm);
+    return this.rbacUserService.getAllUsersWithRoles(limit, offSet, searchTerm, roleId);
   }
 
   @Get('/getUser/:id')
@@ -792,11 +791,6 @@ export class RbacController {
   @ApiOperation({
     summary: 'Delete a user',
     description: 'Deletes a user and their role assignments'
-  })
-  @ApiParam({
-    name: 'id',
-    description: 'User ID to delete',
-    type: bigint
   })
   @ApiResponse({
     status: 204,

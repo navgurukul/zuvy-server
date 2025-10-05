@@ -20,10 +20,10 @@ export class RbacResourcesService {
 
       // Create default permissions for this resource
       const defaultPermissions = [
-        { name: permissions.CREATE, resourcesId: resource.id, grantable: false, description: `Create ${createResourceDto.name}` },
-        { name: permissions.READ, resourcesId: resource.id, grantable: false, description: `Read ${createResourceDto.name}` },
-        { name: permissions.EDIT, resourcesId: resource.id, grantable: false, description: `Update ${createResourceDto.name}` },
-        { name: permissions.DELETE, resourcesId: resource.id, grantable: false, description: `Delete ${createResourceDto.name}` },
+        { name: permissions.CREATE, resourcesId: resource.id, description: `Create ${createResourceDto.name}` },
+        { name: permissions.READ, resourcesId: resource.id, description: `Read ${createResourceDto.name}` },
+        { name: permissions.EDIT, resourcesId: resource.id, description: `Update ${createResourceDto.name}` },
+        { name: permissions.DELETE, resourcesId: resource.id, description: `Delete ${createResourceDto.name}` },
       ];
 
       await db
@@ -70,16 +70,14 @@ export class RbacResourcesService {
       }
 
       return resource;
-    } catch (error) {
-      if (error instanceof NotFoundException) {
-        throw error;
-      }
-      throw new InternalServerErrorException('Failed to retrieve resource');
+    } catch (error) {  
+      throw error;
     }
   }
 
   async updateResource(id: number, updateData: Partial<CreateResourceDto>) {
     try {
+
       const [resource] = await db
         .update(zuvyResources)
         .set(updateData)
@@ -92,30 +90,31 @@ export class RbacResourcesService {
 
       return resource;
     } catch (error) {
-      if (error instanceof NotFoundException) {
-        throw error;
-      }
-      if (error.code === '23505') {
-        throw new BadRequestException('Resource with this name already exists');
-      }
-      throw new InternalServerErrorException('Failed to update resource');
+      throw error;
     }
   }
 
-  async deleteResource(id: number): Promise<void> {
+  async deleteResource(id: number): Promise<any> {
     try {
-      const result = await db
+      // check if the resourse has associated permissions
+      const associatedPermissions = await db
+        .select()
+        .from(zuvyPermissions)
+        .where(eq(zuvyPermissions.resourcesId, id));
+      if (associatedPermissions.length > 0) {
+        throw new BadRequestException('Cannot delete resource with associated permissions. Please delete associated permissions first.');
+      }
+      // If there are no associated permissions, the resource is deleted successfully
+      const deletedResource = await db
         .delete(zuvyResources)
         .where(eq(zuvyResources.id, id));
-
-      if (result.rowCount === 0) {
+      if (deletedResource.rowCount === 0) {
         throw new NotFoundException(`Resource with ID ${id} not found`);
-      }
+      } 
+      // Resource deleted successfully then return the resurce details
+      return { message: 'Resource deleted successfully', code: 200, status: 'success'};
     } catch (error) {
-      if (error instanceof NotFoundException) {
-        throw error;
-      }
-      throw new InternalServerErrorException('Failed to delete resource');
+      throw error;
     }
   }
 }

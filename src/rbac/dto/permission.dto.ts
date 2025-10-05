@@ -20,16 +20,6 @@ export class CreatePermissionDto {
   resourceId: number;
 
   @ApiProperty({
-    description: 'Indicates if this permission can be granted by users who have it',
-    example: false,
-    required: false
-  })
-  @IsOptional()
-  @Transform(({ value }) => (value === 'true' || value === true))
-  @IsNotEmpty()
-  grantable: boolean;
-
-  @ApiProperty({
     description: 'Optional human readable description',
     example: 'Allows viewing course details',
     required: false
