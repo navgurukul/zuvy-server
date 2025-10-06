@@ -216,12 +216,12 @@ export class RbacUserService {
 
   async createUserWithRole(createUserDto: CreateUserDto) {
     try {
-      console.log('Creating user with data:', createUserDto);
-      const insertedUser = await db.insert(users).values({
-        name: createUserDto.name,
-        email: createUserDto.email
-      }).returning();
-      console.log('Inserted User:', insertedUser);
+      //before inserting, check if user with email already exists in users table
+      const existingUser = await db.select().from(users).where(eq(users.email, createUserDto.email));
+      if (existingUser.length > 0) {
+        throw new BadRequestException('User with this email already exists');
+      }
+      
       return await db.transaction(async (tx) => {
         // First create the user
         const [user] = await tx
@@ -276,16 +276,7 @@ export class RbacUserService {
         };
       });
     } catch (error) {
-      if (error.code === '23505') {
-        throw new BadRequestException('User with this email already exists');
-      }
-      if (error.code === '23503') {
-        throw new BadRequestException('Invalid role ID');
-      }
-      if (error instanceof BadRequestException || error instanceof InternalServerErrorException) {
-        throw error;
-      }
-      throw new InternalServerErrorException('Failed to create user');
+      throw error;
     }
   }
 

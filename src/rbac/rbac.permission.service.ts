@@ -92,14 +92,14 @@ export class RbacPermissionService {
 
       const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
 
-      // Execute data query
       const dataResult = await db
         .select({
           id: zuvyPermissions.id,
           name: zuvyPermissions.name,
           resourceId: zuvyPermissions.resourcesId,
           description: zuvyPermissions.description,
-          resourceName: zuvyResources.name
+          resourceName: zuvyResources.name,
+          granted: sql<boolean>`EXISTS (SELECT 1 FROM ${zuvyPermissionsRoles} pr WHERE pr.permission_id = ${zuvyPermissions.id})`.as('granted')
         })
         .from(zuvyPermissions)
         .leftJoin(zuvyResources, eq(zuvyPermissions.resourcesId, zuvyResources.id))
