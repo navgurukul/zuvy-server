@@ -433,7 +433,9 @@ export class ContentController {
     @Req() req,
   ): Promise<object> {
     const userId = req.user[0]?.id;
+    const roleName = req.user[0]?.roles;
     const res = await this.contentService.getAllQuizQuestions(
+      roleName,
       tagId,
       difficulty,
       searchTerm,
@@ -503,7 +505,9 @@ export class ContentController {
     @Req() req,
   ): Promise<object> {
     const userId = req.user[0]?.id;
+    const roleName = req.user[0]?.roles;
     const res = await this.contentService.getAllCodingQuestions(
+      roleName,
       tagId,
       difficulty,
       searchTerm,
@@ -633,7 +637,9 @@ export class ContentController {
     @Req() req,
   ): Promise<object> {
     const userId = req.user[0]?.id;
+    const roleName = req.user[0]?.roles;
     const res = await this.contentService.getAllOpenEndedQuestions(
+      roleName,
       tagId,
       difficulty,
       searchTerm,
