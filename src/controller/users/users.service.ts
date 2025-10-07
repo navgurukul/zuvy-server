@@ -1,14 +1,21 @@
-import { Injectable,
+import {
+  Injectable,
   NestMiddleware,
   UnauthorizedException,
-  ForbiddenException, Logger} from '@nestjs/common';
-import { users } from '../../../drizzle/schema';
+  ForbiddenException, Logger,
+  InternalServerErrorException,
+  NotFoundException,
+  BadRequestException
+} from '@nestjs/common';
+import { users, zuvyUserRoles, zuvyUserRolesAssigned } from '../../../drizzle/schema';
 import { db } from '../../db/index';
-import { eq, sql } from 'drizzle-orm';
+import { and, eq, ilike, inArray, or, sql, asc } from 'drizzle-orm';
 import * as fs from 'fs';
 import * as path from 'path';
 import { JwtService } from '@nestjs/jwt';
 import { parseInt } from 'lodash';
+import { AssignUserRoleDto, CreateUserDto, CreateUserRoleDto, UpdateUserDto } from './dto/user-role.dto';
+import { STATUS_CODES } from 'src/helpers';
 
 
 @Injectable()
@@ -24,13 +31,13 @@ export class UsersService {
     try {
       // Fetch all users from the database
       const allUsers = await db.select().from(users);
-      
+
       // Convert to JSON string with pretty formatting
       const jsonData = JSON.stringify(allUsers, null, 2);
-      
+
       // Write to file
       fs.writeFileSync(this.usersJsonPath, jsonData);
-      
+
       return {
         status: 'success',
         message: 'All users fetched and stored in users.json',
@@ -55,11 +62,11 @@ export class UsersService {
           message: 'users.json file not found. Please fetch users first.'
         };
       }
-      
+
       // Read the JSON file
       const jsonData = fs.readFileSync(this.usersJsonPath, 'utf8');
       const usersData = JSON.parse(jsonData);
-      
+
       // Validate that the data is an array
       if (!Array.isArray(usersData)) {
         return {
@@ -67,21 +74,21 @@ export class UsersService {
           message: 'Invalid JSON format. Expected an array of users.'
         };
       }
-      
+
       // Insert users into the database
       const insertedUsers = [];
       const errors = [];
-      
+
       for (const userData of usersData) {
         try {
           // Remove the id field to avoid conflicts with existing records
           const { id, ...userWithoutId } = userData;
-          
+
           // Check if user with this email already exists
-          const existingUser = userData.email 
+          const existingUser = userData.email
             ? await db.select().from(users).where(eq(users.email, userData.email))
             : [];
-            
+
           if (existingUser.length > 0) {
             // Update existing user
             const updatedUser = await db
@@ -89,7 +96,7 @@ export class UsersService {
               .set(userWithoutId)
               .where(eq(users.email, userData.email))
               .returning();
-              
+
             insertedUsers.push(updatedUser[0]);
           } else {
             // Insert new user
@@ -97,7 +104,7 @@ export class UsersService {
               .insert(users)
               .values(userWithoutId)
               .returning();
-              
+
             insertedUsers.push(newUser[0]);
           }
         } catch (error) {
@@ -107,7 +114,7 @@ export class UsersService {
           });
         }
       }
-      
+
       return {
         status: 'success',
         message: 'Users inserted/updated from users.json',
@@ -119,7 +126,7 @@ export class UsersService {
       throw new Error(`Failed to insert users: ${error.message}`);
     }
   }
-  
+
   /**
    * Verify JWT token and check if user exists, if not create user
    * @param email Email of the user to check/create
@@ -137,7 +144,7 @@ export class UsersService {
         .from(users)
         .where(sql`${users.id} = ${decoded.id} AND ${users.email} = ${decoded.email}`);
       if (user.length > 0) {
-        user[0].id = parseInt(user[0].id) ; // Assign default role
+        user[0].id = parseInt(user[0].id); // Assign default role
 
         return {
           status: 'success',
@@ -147,15 +154,15 @@ export class UsersService {
       } else {
         // User doesn't exist, create new user
         let userInset: any = {
-          id:  decoded.id,
+          id: decoded.id,
           email: decoded.email,
           name: decoded.name || decoded.email.split('@')[0], // Use email as fallback for name
         }
-        const newUser:any = await db
+        const newUser: any = await db
           .insert(users)
           .values(userInset)
           .returning();
-        newUser[0].id = parseInt(newUser[0].id) ; // Assign default role
+        newUser[0].id = parseInt(newUser[0].id); // Assign default role
         return {
           status: 'success',
           message: 'New user created in the database',
@@ -165,6 +172,389 @@ export class UsersService {
     } catch (error) {
       this.logger.error(`Error verifying user: ${error.message}`, error.stack);
       throw new Error(`Failed to verify user: ${error.message}`);
+    }
+  }
+
+  async createUserRole(createUserRoleDto: CreateUserRoleDto): Promise<any> {
+    try {
+      const { name, description } = createUserRoleDto;
+      const result = await db.execute(
+        sql`INSERT INTO main.zuvy_user_roles (name, description) VALUES (${name}, ${description ?? null}) RETURNING *`
+      );
+      if ((result as any).rows.length > 0) {
+        return {
+          status: 'success',
+          message: 'User role created successfully',
+          code: 200,
+          data: (result as any).rows[0]
+        };
+      } else {
+        return {
+          status: 'error',
+          code: 400,
+          message: 'User role creation failed. Please try again'
+        };
+      }
+    } catch (err) {
+      throw err;
+    }
+  }
+
+  async getAllUserRoles(): Promise<any> {
+    try {
+      const result = await db.execute(sql`SELECT * FROM main.zuvy_user_roles`);
+      return {
+        status: 'success',
+        message: 'User roles retrieved successfully',
+        code: 200,
+        data: (result as any).rows
+      };
+    } catch (err) {
+      throw err;
+    }
+  }
+
+  async assignRoleToUser(payload: AssignUserRoleDto): Promise<any> {
+    const { userId, roleId } = payload;
+    try {
+      // Ensure user exists
+      const userCheck = await db.execute(
+        sql`SELECT id FROM main.users WHERE id = ${userId} LIMIT 1`
+      );
+      if (!(userCheck as any).rows?.length) {
+        return {
+          status: 'error',
+          code: 404,
+          message: 'User not found'
+        };
+      }
+
+      // Ensure role exists
+      const roleCheck = await db.execute(
+        sql`SELECT id FROM main.zuvy_user_roles WHERE id = ${roleId} LIMIT 1`
+      );
+      if (!(roleCheck as any).rows?.length) {
+        return {
+          status: 'error',
+          code: 404,
+          message: 'Role not found'
+        };
+      }
+
+      // Assign role to user, ignore if already assigned
+      const insertResult = await db.execute(sql`
+          INSERT INTO main.zuvy_user_roles_assigned (user_id, role_id)
+          VALUES (${userId}, ${roleId})
+          ON CONFLICT (user_id, role_id) DO NOTHING
+          RETURNING *
+        `);
+
+      if ((insertResult as any).rows?.length) {
+        return {
+          status: 'success',
+          code: 200,
+          message: 'Role assigned to user successfully',
+          data: (insertResult as any).rows[0]
+        };
+      }
+
+      return {
+        status: 'success',
+        code: 200,
+        message: 'Role already assigned to user'
+      };
+    } catch (err) {
+      this.logger.error('Failed to assign role to user', err as any);
+      throw err;
+    }
+  }
+
+  async getAllUsersWithRoles(limit: number, offset: number, searchTerm: string = '', roleId?: number | number[]): Promise<any> {
+    try {
+      const search = `%${searchTerm}%`;
+
+      // Build the base conditions
+      const baseConditions = or(
+        ilike(users.name, search),
+        ilike(users.email, search)
+      );
+
+      // Add role filter if roleId is provided
+      let finalCondition = baseConditions;
+
+      if (roleId !== undefined && roleId !== null) {
+        if (Array.isArray(roleId)) {
+          // Multiple role IDs
+          finalCondition = and(
+            baseConditions,
+            inArray(zuvyUserRolesAssigned.roleId, roleId)
+          );
+        } else {
+          // Single role ID
+          finalCondition = and(
+            baseConditions,
+            eq(zuvyUserRolesAssigned.roleId, roleId)
+          );
+        }
+      }
+
+      // 1. Query for filtered users
+      const userData = await db
+        .select({
+          id: zuvyUserRolesAssigned.id,
+          roleId: zuvyUserRolesAssigned.roleId,
+          userId: zuvyUserRolesAssigned.userId,
+          name: users.name,
+          email: users.email,
+          roleName: zuvyUserRoles.name,
+          createdAt: zuvyUserRolesAssigned.createdAt,
+        })
+        .from(zuvyUserRolesAssigned)
+        .leftJoin(users, eq(zuvyUserRolesAssigned.userId, users.id))
+        .leftJoin(zuvyUserRoles, eq(zuvyUserRolesAssigned.roleId, zuvyUserRoles.id))
+        .where(finalCondition)
+        .limit(limit)
+        .offset(offset)
+        .orderBy(asc(users.name));
+
+      // 2. Query for total count (same filter but without limit/offset)
+      const totalCount = await db
+        .select({ count: sql<number>`count(*)` })
+        .from(zuvyUserRolesAssigned)
+        .leftJoin(users, eq(zuvyUserRolesAssigned.userId, users.id))
+        .where(finalCondition);
+
+      const totalRows = Number(totalCount[0]?.count ?? 0);
+      const totalPages = !Number.isNaN(limit) && limit > 0
+        ? Math.ceil(totalRows / limit)
+        : 1;
+
+      return {
+        status: 'success',
+        message: 'Users retrieved successfully',
+        code: STATUS_CODES.OK,
+        data: userData.map(u => ({
+          ...u,
+          userId: Number(u.userId)
+        })),
+        totalRows,
+        totalPages,
+      };
+    } catch (error) {
+      console.error('Error in getAllUsersWithRoles:', error);
+      throw error;
+    }
+  }
+
+  async getUserByIdWithRole(id: bigint) {
+    try {
+      const [userData] = await db
+        .select({
+          id: users.id,
+          name: users.name,
+          email: users.email,
+          roleId: zuvyUserRoles.id,
+          roleName: zuvyUserRoles.name,
+          roleDescription: zuvyUserRoles.description,
+          createdAt: zuvyUserRolesAssigned.createdAt,
+          updatedAt: zuvyUserRolesAssigned.updatedAt
+        })
+        .from(users)
+        .leftJoin(zuvyUserRolesAssigned, eq(users.id, zuvyUserRolesAssigned.userId))
+        .leftJoin(zuvyUserRoles, eq(zuvyUserRolesAssigned.roleId, zuvyUserRoles.id))
+        .where(eq(users.id, id));
+
+      if (!userData) {
+        throw new NotFoundException(`User with ID ${id} not found`);
+      }
+
+      return userData;
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  async createUserWithRole(createUserDto: CreateUserDto) {
+    try {
+      //before inserting, check if user with email already exists in users table
+      const existingUser = await db.select().from(users).where(eq(users.email, createUserDto.email));
+      if (existingUser.length > 0) {
+        throw new BadRequestException('User with this email already exists');
+      }
+
+      return await db.transaction(async (tx) => {
+        // First create the user
+        const [user] = await tx
+          .insert(users)
+          .values({
+            name: createUserDto.name,
+            email: createUserDto.email
+          })
+          .returning();
+
+        if (!user) {
+          throw new InternalServerErrorException('Failed to create user');
+        }
+
+        let rolesAssignData = {
+          userId: user.id,
+          roleId: createUserDto.roleId
+        };
+
+        // Then assign the role
+        const [userRole] = await tx
+          .insert(zuvyUserRolesAssigned)
+          .values(rolesAssignData)
+          .returning();
+
+        if (!userRole) {
+          throw new InternalServerErrorException('Failed to assign role to user');
+        }
+
+        // Get the complete user data with role
+        const [userWithRole] = await tx
+          .select({
+            id: users.id,
+            name: users.name,
+            email: users.email,
+            roleId: zuvyUserRoles.id,
+            roleName: zuvyUserRoles.name,
+            roleDescription: zuvyUserRoles.description,
+            createdAt: zuvyUserRolesAssigned.createdAt,
+            updatedAt: zuvyUserRolesAssigned.updatedAt
+          })
+          .from(users)
+          .leftJoin(zuvyUserRolesAssigned, eq(users.id, zuvyUserRolesAssigned.userId))
+          .leftJoin(zuvyUserRoles, eq(zuvyUserRolesAssigned.roleId, zuvyUserRoles.id))
+          .where(eq(users.id, user.id));
+
+        // Convert BigInt to Number for JSON serialization
+        return {
+          ...userWithRole,
+          id: Number(userWithRole.id),
+          roleId: userWithRole.roleId ? Number(userWithRole.roleId) : null
+        };
+      });
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  async updateUser(id: bigint, updateUserDto: UpdateUserDto) {
+    try {
+      return await db.transaction(async (tx) => {
+        const currentTime = new Date().toISOString(); // ISO string format
+
+        // Prepare user update data (only include provided fields)
+        const userUpdateData: { name?: string; email?: string; updatedAt?: string } = {};
+
+        if (updateUserDto.name !== undefined) {
+          userUpdateData.name = updateUserDto.name;
+        }
+        if (updateUserDto.email !== undefined) {
+          userUpdateData.email = updateUserDto.email;
+        }
+
+        // Add updatedAt timestamp if any user data is being updated
+        if (Object.keys(userUpdateData).length > 0) {
+          userUpdateData.updatedAt = currentTime;
+        }
+
+        // Update user details only if there are fields to update
+        let user;
+        if (Object.keys(userUpdateData).length > 0) {
+          [user] = await tx
+            .update(users)
+            .set(userUpdateData)
+            .where(eq(users.id, id))
+            .returning();
+
+          if (!user) {
+            throw new NotFoundException(`User with ID ${id} not found`);
+          }
+        } else {
+          [user] = await tx
+            .select()
+            .from(users)
+            .where(eq(users.id, id));
+
+          if (!user) {
+            throw new NotFoundException(`User with ID ${id} not found`);
+          }
+        }
+
+        // Handle role update if roleId is provided
+        if (updateUserDto.roleId !== undefined) {
+          const existingRole = await tx
+            .select()
+            .from(zuvyUserRolesAssigned)
+            .where(eq(zuvyUserRolesAssigned.userId, id));
+
+          if (existingRole.length > 0) {
+            // Update existing role with updatedAt - FIXED TYPE
+            const roleUpdateData = {
+              roleId: updateUserDto.roleId,
+              updatedAt: currentTime // ISO string for role assignment
+            };
+
+            const [updatedRole] = await tx
+              .update(zuvyUserRolesAssigned)
+              .set(roleUpdateData)
+              .where(eq(zuvyUserRolesAssigned.userId, id))
+              .returning();
+          } else {
+            let rolesAssignData = {
+              userId: id,
+              roleId: updateUserDto.roleId,
+              createdAt: currentTime, // ISO string
+              updatedAt: currentTime  // ISO string
+            }
+            // Assign new role
+            const [newRole] = await tx
+              .insert(zuvyUserRolesAssigned)
+              .values(rolesAssignData)
+              .returning();
+          }
+        }
+
+        // Get updated user data with role
+        const [userWithRole] = await tx
+          .select({
+            id: users.id,
+            name: users.name,
+            email: users.email,
+            roleId: zuvyUserRoles.id,
+            roleName: zuvyUserRoles.name,
+            roleDescription: zuvyUserRoles.description,
+            createdAt: zuvyUserRolesAssigned.createdAt,
+            updatedAt: zuvyUserRolesAssigned.updatedAt
+          })
+          .from(users)
+          .leftJoin(zuvyUserRolesAssigned, eq(users.id, zuvyUserRolesAssigned.userId))
+          .leftJoin(zuvyUserRoles, eq(zuvyUserRolesAssigned.roleId, zuvyUserRoles.id))
+          .where(eq(users.id, id));
+
+        return userWithRole;
+      });
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  async deleteUser(id: bigint): Promise<any> {
+    try {
+      // delete the user by id in zuvyUserRolesAssigned table
+      const deletedUser = await db
+        .delete(zuvyUserRolesAssigned)
+        .where(eq(zuvyUserRolesAssigned.userId, id))
+        .returning();
+      if (deletedUser.length === 0) {
+        throw new NotFoundException(`User with ID ${id} not found`);
+      }
+      // send the response
+      return { message: 'User deleted successfully', code: 204, status: 'success' };
+    } catch (error) {
+      throw error;
     }
   }
 }

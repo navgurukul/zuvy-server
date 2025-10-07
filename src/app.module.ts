@@ -21,6 +21,7 @@ import { JwtMiddleware } from './middleware/jwt.middleware';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
 import { Reflector } from '@nestjs/core';
 import { AuthService } from './auth/auth.service';
+import { UsersModule } from './controller/users/users.module';
 let { GOOGLE_CLIENT_ID, GOOGLE_SECRET, GOOGLE_REDIRECT,JWT_SECRET_KEY } = process.env;
 @Module({
   imports: [
@@ -46,6 +47,7 @@ let { GOOGLE_CLIENT_ID, GOOGLE_SECRET, GOOGLE_REDIRECT,JWT_SECRET_KEY } = proces
     InstructorModule,
     ScheduleModule,
     RbacModule,
+    UsersModule,
   ],
   providers: [
     {
