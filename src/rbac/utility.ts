@@ -56,10 +56,12 @@ export const ResourceKeys = [
   'User',
   'Bootcamp',
   'Mcq',
-  'Codingquestion', 
+  'CodingQuestion',
+  'OpendEnded',
+  'Topic',
   'Module', 
-  'Question', 
-  'Batch', 
+  'Question',
+  'Batch',
   'Student',
   'Submission',
   'Setting',
@@ -135,5 +137,35 @@ export const ResourceList = {
     create: "createChapter",
     edit: "editChapter",
     delete: "deleteChapter"
+  },
+  mcq: {
+    read: "viewMcq",
+    create: "createMcq",
+    edit: "editMcq",
+    delete: "deleteMcq"
+  },
+  codingquestion: {
+    read: "viewCodingQuestion",
+    create: "createCodingQuestion",
+    edit: "editCodingQuestion",
+    delete: "deleteCodingQuestion"
+  },
+  opendended: {
+    read: "viewOpendEnded",
+    create: "createOpendEnded",
+    edit: "editOpendEnded",
+    delete: "deleteOpendEnded"
+  },
+  bootcamp: {
+    read: "viewBootcamp",
+    create: "createBootcamp",
+    edit: "editBootcamp",
+    delete: "deleteBootcamp"
+  },
+  topic: {
+    read: "viewTopic",
+    create: "createTopic",
+    edit: "editTopic",
+    delete: "deleteTopic"
   }
 } as const;

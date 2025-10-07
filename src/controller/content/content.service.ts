@@ -1721,6 +1721,7 @@ export class ContentService {
   }
 
   async getAllQuizQuestions(
+    roleName: string[],
     tagId: number | number[],
     difficulty: ('Easy' | 'Medium' | 'Hard') | ('Easy' | 'Medium' | 'Hard')[],
     searchTerm: string = '',
@@ -1797,11 +1798,18 @@ export class ContentService {
       let userPermissions = {};
 
       try {
-        const permissionsResult = await this.rbacAllocPermsService.getUserPermissionsByResource(
-          userId, // Convert bigint to number
-          resourceId
-        );
-        userPermissions = permissionsResult.permissions;
+        const targetPermissions = [
+          ResourceList.question.read,
+          ResourceList.question.create,
+          ResourceList.question.edit,
+          ResourceList.question.delete,
+          ResourceList.topic.read,
+          ResourceList.topic.create,
+          ResourceList.topic.edit,
+          ResourceList.topic.delete,
+        ]
+        const permissionsResult = await this.rbacAllocPermsService.getAllPermissions(roleName, targetPermissions);
+        userPermissions = permissionsResult;
       } catch (permissionError) {
         // Log the error but don't fail the entire request
         console.error('Error fetching user permissions:', permissionError);
@@ -1813,7 +1821,7 @@ export class ContentService {
         data: result,
         totalRows: totalCount.length,
         totalPages: !Number.isNaN(limit) ? Math.ceil(totalCount.length / limit) : 1,
-        permissions: userPermissions
+        ...userPermissions
       };
 
     } catch (err) {
@@ -1822,6 +1830,7 @@ export class ContentService {
   }
 
   async getAllCodingQuestions(
+    roleName: string[],
     tagId: number | number[],
     difficulty: ('Easy' | 'Medium' | 'Hard') | ('Easy' | 'Medium' | 'Hard')[],
     searchTerm: string = '',
@@ -1912,11 +1921,18 @@ export class ContentService {
 
       try {
         // Get user permissions for coding questions resource
-        const permissionsResult = await this.rbacAllocPermsService.getUserPermissionsByResource(
-          userId,
-          resourceId
-        );
-        userPermissions = permissionsResult.permissions;
+        const targetPermissions = [
+          ResourceList.question.read,
+          ResourceList.question.create,
+          ResourceList.question.edit,
+          ResourceList.question.delete,
+          ResourceList.topic.read,
+          ResourceList.topic.create,
+          ResourceList.topic.edit,
+          ResourceList.topic.delete,
+        ]
+        const permissionsResult = await this.rbacAllocPermsService.getAllPermissions(roleName, targetPermissions);
+        userPermissions = permissionsResult;
       } catch (permissionError) {
         // Log the error but don't fail the entire request
         console.error('Error fetching user permissions:', permissionError);
@@ -1928,7 +1944,7 @@ export class ContentService {
         data: question,
         totalRows,
         totalPages,
-        permissions: userPermissions
+        ...userPermissions
       };
     } catch (err) {
       throw err;
@@ -2281,6 +2297,7 @@ export class ContentService {
   }
 
   async getAllOpenEndedQuestions(
+    roleName: string[],
     tagId: number | number[],
     difficulty: ('Easy' | 'Medium' | 'Hard') | ('Easy' | 'Medium' | 'Hard')[],
     searchTerm: string = '',
@@ -2338,11 +2355,18 @@ export class ContentService {
       let userPermissions = {};
 
       try {
-        const permissionsResult = await this.rbacAllocPermsService.getUserPermissionsByResource(
-          userId, // Convert bigint to number
-          resourceId
-        );
-        userPermissions = permissionsResult.permissions;
+        const targetPermissions = [
+          ResourceList.question.read,
+          ResourceList.question.create,
+          ResourceList.question.edit,
+          ResourceList.question.delete,
+          ResourceList.topic.read,
+          ResourceList.topic.create,
+          ResourceList.topic.edit,
+          ResourceList.topic.delete,
+        ]
+        const permissionsResult = await this.rbacAllocPermsService.getAllPermissions(roleName, targetPermissions);
+        userPermissions = permissionsResult;
       } catch (permissionError) {
         // Log the error but don't fail the entire request
         console.error('Error fetching user permissions:', permissionError);
@@ -2353,7 +2377,7 @@ export class ContentService {
         data: result,
         totalRows: Number(totalRows[0].count),
         totalPages: !Number.isNaN(limit) ? Math.ceil(totalRows[0].count / limit) : 1,
-        permissions: userPermissions
+        ...userPermissions
       };
 
     } catch (err) {
