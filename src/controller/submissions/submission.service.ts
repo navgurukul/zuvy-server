@@ -3,7 +3,7 @@ const AWS = require('aws-sdk');
 import { db } from '../../db/index';
 import { eq, sql, count, lte, inArray, and, isNotNull, ilike, or } from 'drizzle-orm';
 import * as _ from 'lodash';
-import { zuvyBatchEnrollments, zuvyAssessmentSubmission, zuvyChapterTracking, zuvyOpenEndedQuestionSubmission, zuvyProjectTracking, zuvyQuizTracking, zuvyModuleChapter, zuvyFormTracking, zuvyPracticeCode,zuvyOutsourseQuizzes, zuvyModuleQuizVariants, zuvyOutsourseAssessments, users } from '../../../drizzle/schema';
+import { zuvyBatchEnrollments, zuvyAssessmentSubmission, zuvyChapterTracking, zuvyOpenEndedQuestionSubmission, zuvyProjectTracking, zuvyQuizTracking, zuvyModuleChapter, zuvyFormTracking, zuvyPracticeCode, zuvyOutsourseQuizzes, zuvyModuleQuizVariants, zuvyOutsourseAssessments, users } from '../../../drizzle/schema';
 import { InstructorFeedbackDto, PatchOpenendedQuestionDto, CreateOpenendedQuestionDto } from './dto/submission.dto';
 import { STATUS_CODES } from 'src/helpers';
 import { helperVariable } from 'src/constants/helper';
@@ -135,9 +135,10 @@ export class SubmissionService {
     questionId: number,
     chapterId: number,
     moduleId: number,
-    limit: number,
-    offset: number,
-    searchStudent: string,
+    batchId?: number,
+    limit?: number,
+    offset?: number,
+    searchStudent?: string,
     orderBy?: 'submittedDate' | 'percentage' | 'name' | 'email',
     orderDirection?: 'asc' | 'desc',
     submittedDateStart?: string,
@@ -168,8 +169,17 @@ export class SubmissionService {
       }
 
       const statusOfStudentCode = await db.query.zuvyChapterTracking.findMany({
-        where: (chapterTracking, { sql }) =>
-          sql`${chapterTracking.chapterId} = ${chapterId} AND ${chapterTracking.moduleId} = ${moduleId} AND ${dateFilter}`,
+        where: (chapterTracking, { sql, and }) => {
+          let conditions = [
+            sql`${chapterTracking.chapterId} = ${chapterId}`,
+            sql`${chapterTracking.moduleId} = ${moduleId}`,
+            dateFilter
+          ];
+          if (batchId) {
+            conditions.push(sql`${chapterTracking.batchId} = ${batchId}`);
+          }
+          return and(...conditions);
+        },
         with: {
           user: {
             columns: {
@@ -189,8 +199,8 @@ export class SubmissionService {
             },
           },
         },
-        limit: limit,
-        offset: offset,
+        ...(typeof limit === 'number' ? { limit } : {}),
+        ...(typeof offset === 'number' ? { offset } : {}),
         ...(orderClause ? { orderBy: orderClause } : {}),
       });
 
@@ -199,28 +209,33 @@ export class SubmissionService {
         .select()
         .from(zuvyChapterTracking)
         .where(
-          sql`${zuvyChapterTracking.moduleId} = ${moduleId} and ${zuvyChapterTracking.chapterId} = ${chapterId}`
+          batchId
+            ? sql`${zuvyChapterTracking.moduleId} = ${moduleId} and ${zuvyChapterTracking.chapterId} = ${chapterId} and ${zuvyChapterTracking.batchId} = ${batchId}`
+            : sql`${zuvyChapterTracking.moduleId} = ${moduleId} and ${zuvyChapterTracking.chapterId} = ${chapterId}`
         );
-
       const totalStudentsCount = totalStudents.length;
-      const totalPages = Math.ceil(totalStudentsCount / limit);
+      const totalPages = limit ? Math.ceil(totalStudentsCount / limit) : 1;
 
       // Prepare the result with data about each student's attempts and submission status
       const data = statusOfStudentCode.map((statusCode) => {
         const user = statusCode['user'];
-
-        // Check if user exists before accessing properties
         if (user) {
           return {
             id: Number(user['id']),
             name: user['name'],
-            emailId: user['email'],
+            email: user['email'],
             noOfAttempts: user['studentCodeDetails']?.length,
             status: user['studentCodeDetails']?.some(
               (submission) => submission.status === 'Accepted'
             )
               ? 'Accepted'
               : 'Not Accepted',
+            // Add any other top-level fields from statusCode if needed
+            ...Object.fromEntries(
+              Object.entries(statusCode).filter(
+                ([key]) => key !== 'user'
+              )
+            )
           };
         } else {
           return null;
@@ -699,9 +714,10 @@ export class SubmissionService {
   async getUserDetailsForProject(
     projectId: number,
     bootcampId: number,
-    limit: number,
-    offset: number,
-    searchStudent: string,
+    batchId?: number,
+    limit?: number,
+    offset?: number,
+    searchStudent?: string,
     orderBy?: 'submittedDate' | 'percentage' | 'name' | 'email',
     orderDirection?: 'asc' | 'desc',
     submittedDateStart?: string,
@@ -739,19 +755,21 @@ export class SubmissionService {
         },
         with: {
           projectTrackingData: {
-            where: (projectTracking, { and, eq, sql }) =>
-              and(
-                eq(projectTracking.bootcampId, bootcampId),
-                searchStudent
-                  ? sql`EXISTS (
-                      SELECT 1
-                      FROM main.users AS u
-                      WHERE u.id = ${projectTracking.userId}
-                      AND (u.name ILIKE ${searchStudent + '%'} OR u.email ILIKE ${searchStudent + '%'})
-                    )`
-                  : sql`TRUE`,
-                dateFilter
-              ),
+            where: (projectTracking, { and, eq, sql }) => {
+              let conditions = [eq(projectTracking.bootcampId, bootcampId), dateFilter];
+              if (batchId) {
+                conditions.push(eq(projectTracking.batchId, batchId));
+              }
+              if (searchStudent) {
+                conditions.push(sql`EXISTS (
+                  SELECT 1
+                  FROM main.users AS u
+                  WHERE u.id = ${projectTracking.userId}
+                  AND (u.name ILIKE ${searchStudent + '%'} OR u.email ILIKE ${searchStudent + '%'})
+                )`);
+              }
+              return and(...conditions);
+            },
             columns: {
               id: true,
               userId: true,
@@ -768,8 +786,8 @@ export class SubmissionService {
                 },
               },
             },
-            limit: limit,
-            offset: offset,
+            ...(typeof limit === 'number' ? { limit } : {}),
+            ...(typeof offset === 'number' ? { offset } : {}),
             ...(orderClause ? { orderBy: orderClause } : {}),
           },
         },
@@ -792,14 +810,16 @@ export class SubmissionService {
             : sql`${zuvyProjectTracking.projectId} = ${projectId} and ${zuvyProjectTracking.bootcampId} = ${bootcampId}`
         );
 
-      const totalPages = Math.ceil(totalStudentsCount.length / limit);
+      const totalPages = limit ? Math.ceil(totalStudentsCount.length / limit) : 1;
 
       // Process the project submission data
       if (projectSubmissionData['projectTrackingData'].length > 0) {
         projectSubmissionData['projectTrackingData'].forEach((project: any) => {
-          project['userName'] = project['userDetails']['name'];
-          project['userEmail'] = project['userDetails']['email'];
-          delete project['userDetails'];
+          if (project['userDetails']) {
+            project['name'] = project['userDetails']['name'];
+            project['email'] = project['userDetails']['email'];
+            delete project['userDetails'];
+          }
         });
 
         return {
@@ -1145,8 +1165,9 @@ export class SubmissionService {
     bootcampId: number,
     chapterId: number,
     moduleId: number,
-    limit: number,
-    offset: number,
+    batchId?: number,
+    limit?: number,
+    offset?: number,
     searchStudent?: string,
     orderBy?: 'submittedDate' | 'percentage' | 'name' | 'email',
     orderDirection?: 'asc' | 'desc',
@@ -1166,14 +1187,20 @@ export class SubmissionService {
           count: sql<number>`cast(count(${zuvyBatchEnrollments.id}) as int)`,
         })
         .from(zuvyBatchEnrollments)
-        .where(sql`${zuvyBatchEnrollments.bootcampId} = ${bootcampId} AND ${zuvyBatchEnrollments.batchId} IS NOT NULL`);
-
+        .where(batchId
+          ? sql`${zuvyBatchEnrollments.bootcampId} = ${bootcampId} AND ${zuvyBatchEnrollments.batchId} = ${batchId}`
+          : sql`${zuvyBatchEnrollments.bootcampId} = ${bootcampId} AND ${zuvyBatchEnrollments.batchId} IS NOT NULL`);
       const totalStudentss = zuvyBatchEnrollmentsCount[0]?.count ?? 0;
 
       // Get all students in the bootcamp
       const statusOfIncompletedStudentFormRaw = await db.query.zuvyBatchEnrollments.findMany({
-        where: (batchEnrollments, { sql }) =>
-          sql`${batchEnrollments.bootcampId} = ${bootcampId} AND ${batchEnrollments.batchId} IS NOT NULL`,
+        where: (batchEnrollments, { sql, and }) => {
+          let conditions = [
+            sql`${batchEnrollments.bootcampId} = ${bootcampId}`,
+            batchId ? sql`${batchEnrollments.batchId} = ${batchId}` : sql`${batchEnrollments.batchId} IS NOT NULL`
+          ];
+          return and(...conditions);
+        },
         with: {
           user: {
             columns: {
@@ -1224,8 +1251,17 @@ export class SubmissionService {
       }
 
       const statusOfCompletedStudentFormRaw = await db.query.zuvyChapterTracking.findMany({
-        where: (chapterTracking, { sql }) =>
-          sql`${chapterTracking.chapterId} = ${chapterId} AND ${chapterTracking.moduleId} = ${moduleId} AND ${dateFilter}`,
+        where: (chapterTracking, { sql, and }) => {
+          let conditions = [
+            sql`${chapterTracking.chapterId} = ${chapterId}`,
+            sql`${chapterTracking.moduleId} = ${moduleId}`,
+            dateFilter
+          ];
+          if (batchId) {
+            conditions.push(sql`${chapterTracking.batchId} = ${batchId}`);
+          }
+          return and(...conditions);
+        },
         with: {
           user: {
             columns: {
@@ -1287,11 +1323,12 @@ export class SubmissionService {
       const combinedData = [...data1, ...data2];
 
       // Apply pagination to the filtered results
-      const paginatedData = combinedData.slice(offset, offset + limit);
-
+      const paginatedData = (typeof offset === 'number' && typeof limit === 'number')
+        ? combinedData.slice(offset, offset + limit)
+        : combinedData;
       // Calculate total count and pages based on filtered results
       const filteredTotalCount = combinedData.length;
-      const totalPages = Math.ceil(filteredTotalCount / limit);
+      const totalPages = limit ? Math.ceil(filteredTotalCount / limit) : 1;
 
       return {
         status: "Success",
@@ -1519,9 +1556,10 @@ export class SubmissionService {
 
   async assignmentStatusOfStudents(
     chapterId: number,
-    limit: number,
-    offset: number,
-    searchStudent: string,
+    batchId?: number,
+    limit?: number,
+    offset?: number,
+    searchStudent?: string,
     orderBy?: 'submittedDate' | 'percentage' | 'name' | 'email',
     orderDirection?: 'asc' | 'desc',
     submittedDateStart?: string,
@@ -1559,8 +1597,13 @@ export class SubmissionService {
         }
 
         const statusOfStudentCode = await db.query.zuvyChapterTracking.findMany({
-          where: (chapterTracking) =>
-            sql`${chapterTracking.chapterId} = ${chapterId} AND ${dateFilter}`,
+          where: (chapterTracking, { sql, and }) => {
+            let conditions = [sql`${chapterTracking.chapterId} = ${chapterId}`, dateFilter];
+            if (batchId) {
+              conditions.push(sql`${chapterTracking.batchId} = ${batchId}`);
+            }
+            return and(...conditions);
+          },
           with: {
             user: {
               columns: {
@@ -1584,17 +1627,19 @@ export class SubmissionService {
               },
             },
           },
-          limit: limit,
-          offset: offset,
+          ...(typeof limit === 'number' ? { limit } : {}),
+          ...(typeof offset === 'number' ? { offset } : {}),
           ...(orderClause ? { orderBy: orderClause } : {}),
         });
 
         // Get the total student count for pagination
         const totalStudents = await db.select()
           .from(zuvyChapterTracking)
-          .where(sql`${zuvyChapterTracking.chapterId} = ${chapterId}`);
+          .where(batchId
+            ? sql`${zuvyChapterTracking.chapterId} = ${chapterId} and ${zuvyChapterTracking.batchId} = ${batchId}`
+            : sql`${zuvyChapterTracking.chapterId} = ${chapterId}`);
         const totalStudentsCount = totalStudents.length;
-        const totalPages = Math.ceil(totalStudentsCount / limit);
+        const totalPages = limit ? Math.ceil(totalStudentsCount / limit) : 1;
         const deadlineDate = new Date(chapterDeadline[0].completionDate).getTime();
 
         // Process the result data with filtering out entries without a valid user
@@ -1986,13 +2031,13 @@ Zuvy LMS Team
               id: true,
               title: true,
             },
-             where: (moduleChapter, { eq, and, ilike }) =>
-            and(
-              eq(moduleChapter.topicId, topicId),
-              searchTerm
-                ? ilike(moduleChapter.title, `%${searchTerm}%`)
-                : undefined
-            ),
+            where: (moduleChapter, { eq, and, ilike }) =>
+              and(
+                eq(moduleChapter.topicId, topicId),
+                searchTerm
+                  ? ilike(moduleChapter.title, `%${searchTerm}%`)
+                  : undefined
+              ),
             with: {
               chapterTrackingDetails: {
                 columns: {
@@ -2077,17 +2122,17 @@ Zuvy LMS Team
                 // Optional user filter by name/email (if provided)
                 (name || email)
                   ? inArray(
-                      record.userId,
-                      db
-                        .select({ id: users.id })
-                        .from(users)
-                        .where(
-                          or(
-                            name ? ilike(users.name, `${name}%`) : undefined,
-                            email ? ilike(users.email, `${email}%`) : undefined
-                          )
+                    record.userId,
+                    db
+                      .select({ id: users.id })
+                      .from(users)
+                      .where(
+                        or(
+                          name ? ilike(users.name, `${name}%`) : undefined,
+                          email ? ilike(users.email, `${email}%`) : undefined
                         )
-                    )
+                      )
+                  )
                   : undefined,
 
                 // Optional status filter
