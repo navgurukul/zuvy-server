@@ -218,8 +218,10 @@ export class UsersController {
     @Query('offset') offSet: number,
     @Query('searchTerm') searchTerm: string,
     @Query('roleId') roleId: number[],
+    @Req() req,
   ) {
-    return this.usersService.getAllUsersWithRoles(limit, offSet, searchTerm, roleId);
+    const roleName = req.user[0]?.roles;
+    return this.usersService.getAllUsersWithRoles(roleName, limit, offSet, searchTerm, roleId);
   }
 
   @Get('/getUser/:id')

@@ -16,13 +16,18 @@ import { JwtService } from '@nestjs/jwt';
 import { parseInt } from 'lodash';
 import { AssignUserRoleDto, CreateUserDto, CreateUserRoleDto, UpdateUserDto } from './dto/user-role.dto';
 import { STATUS_CODES } from 'src/helpers';
+import { ResourceList } from 'src/rbac/utility';
+import { RbacAllocPermsService } from 'src/rbac/rbac.alloc-perms.service';
 
 
 @Injectable()
 export class UsersService {
   private readonly logger = new Logger(UsersService.name);
   private readonly usersJsonPath = path.join(process.cwd(), 'users.json');
-  constructor(private readonly jwtService: JwtService) { }
+  constructor(
+    private readonly jwtService: JwtService,
+    private readonly rbacAllocPermsService: RbacAllocPermsService,
+  ) { }
 
   /**
    * Fetch all users from the database and store them in a JSON file
@@ -269,7 +274,7 @@ export class UsersService {
     }
   }
 
-  async getAllUsersWithRoles(limit: number, offset: number, searchTerm: string = '', roleId?: number | number[]): Promise<any> {
+  async getAllUsersWithRoles(roleName: string[], limit: number, offset: number, searchTerm: string = '', roleId?: number | number[]): Promise<any> {
     try {
       const search = `%${searchTerm}%`;
 
@@ -329,6 +334,18 @@ export class UsersService {
         ? Math.ceil(totalRows / limit)
         : 1;
 
+        const targetPermissions = [
+          ResourceList.user.read,
+          ResourceList.user.create,
+          ResourceList.user.edit,
+          ResourceList.user.delete,
+          ResourceList.rolesandpermission.read,
+          ResourceList.rolesandpermission.create,
+          ResourceList.rolesandpermission.edit,
+          ResourceList.rolesandpermission.delete,
+        ]
+        const permissionsResult = await this.rbacAllocPermsService.getAllPermissions(roleName, targetPermissions);
+
       return {
         status: 'success',
         message: 'Users retrieved successfully',
@@ -337,6 +354,7 @@ export class UsersService {
           ...u,
           userId: Number(u.userId)
         })),
+        ...permissionsResult,
         totalRows,
         totalPages,
       };
