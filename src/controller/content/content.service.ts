@@ -1809,7 +1809,7 @@ export class ContentService {
           ResourceList.topic.delete,
         ]
         const permissionsResult = await this.rbacAllocPermsService.getAllPermissions(roleName, targetPermissions);
-        userPermissions = permissionsResult.permissions;
+        userPermissions = permissionsResult;
       } catch (permissionError) {
         // Log the error but don't fail the entire request
         console.error('Error fetching user permissions:', permissionError);
@@ -1932,7 +1932,7 @@ export class ContentService {
           ResourceList.topic.delete,
         ]
         const permissionsResult = await this.rbacAllocPermsService.getAllPermissions(roleName, targetPermissions);
-        userPermissions = permissionsResult.permissions;
+        userPermissions = permissionsResult;
       } catch (permissionError) {
         // Log the error but don't fail the entire request
         console.error('Error fetching user permissions:', permissionError);
@@ -2366,7 +2366,7 @@ export class ContentService {
           ResourceList.topic.delete,
         ]
         const permissionsResult = await this.rbacAllocPermsService.getAllPermissions(roleName, targetPermissions);
-        userPermissions = permissionsResult.permissions;
+        userPermissions = permissionsResult;
       } catch (permissionError) {
         // Log the error but don't fail the entire request
         console.error('Error fetching user permissions:', permissionError);
