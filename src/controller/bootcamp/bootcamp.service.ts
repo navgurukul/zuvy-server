@@ -73,6 +73,7 @@ export class BootcampService {
 
   async getAllBootcamps(
     roleName: string[],
+    userId: number,
     limit: number,
     offset: number,
     searchTerm?: string | number,
@@ -106,6 +107,28 @@ export class BootcampService {
             .from(zuvyBootcamps)
             .where(searchCondition);
         }
+      } else if (roleName.includes('instructor')) {
+        //first get all batches assigned to the instructor in zuvyBatches table then get all bootcampas from zuvyBootcamps table
+        const batches = await db
+          .select()
+          .from(zuvyBatches)
+          .where(eq(zuvyBatches.instructorId, userId));
+        const bootcampIds = batches.map((batch) => batch.bootcampId);
+        if (bootcampIds.length === 0) {
+          return [null, { message: 'No batches assigned to this instructor.',data: [], permissions: {}, totalBootcamps: 0, totalPages: 0 }];
+        }
+        query = db
+          .select()
+          .from(zuvyBootcamps)
+          .where(inArray(zuvyBootcamps.id, bootcampIds))
+          .limit(limit)
+          .offset(offset);
+
+        countQuery = db
+          .select({ count: count(zuvyBootcamps.id) })
+          .from(zuvyBootcamps)
+          .where(inArray(zuvyBootcamps.id, bootcampIds));
+
       } else {
         query = db.select().from(zuvyBootcamps).limit(limit).offset(offset);
         countQuery = db
@@ -168,7 +191,7 @@ export class BootcampService {
       const targetPermissions = [
         ResourceList.course.edit,
         ResourceList.module.read,
-        ResourceList.batch.read, 
+        ResourceList.batch.read,
         ResourceList.student.read,
         ResourceList.submission.read,
         ResourceList.setting.read
