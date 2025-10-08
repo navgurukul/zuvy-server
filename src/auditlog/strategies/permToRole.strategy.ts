@@ -22,7 +22,7 @@ export class AssignPermToRoleStrategy implements IAuditStrategy<any> {
 
             // for (const [permissionId, isGranted] of Object.entries(permissions)) {
             //     await tx.insert(AuditLogsTable).values({
-            //         actorId: BigInt(actorUserId),
+            //         actorUserId: BigInt(actorUserId),
             //         targetUserId: null,
             //         action: isGranted ? 'assign' : 'revoke',
             //         roleId,
