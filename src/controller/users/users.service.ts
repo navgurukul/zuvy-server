@@ -19,6 +19,8 @@ import { STATUS_CODES } from 'src/helpers';
 import { ResourceList } from 'src/rbac/utility';
 import { RbacAllocPermsService } from 'src/rbac/rbac.alloc-perms.service';
 import { RbacService } from 'src/rbac/rbac.service';
+import { CreateAuditlogDto } from 'src/auditlog/dto/create-auditlog.dto';
+import { AuditlogService } from 'src/auditlog/auditlog.service';
 
 
 @Injectable()
@@ -27,8 +29,8 @@ export class UsersService {
   private readonly usersJsonPath = path.join(process.cwd(), 'users.json');
   constructor(
     private readonly jwtService: JwtService,
-    private readonly rbacAllocPermsService: RbacAllocPermsService,
-    private readonly rbacService: RbacService
+    private readonly rbacService: RbacService,
+    private readonly auditlogService: AuditlogService
   ) { }
 
   /**
@@ -182,6 +184,14 @@ export class UsersService {
     }
   }
 
+  private async getRoleNameById(tx, roleId: number) {
+    const [role] = await tx
+      .select({ name: zuvyUserRoles.name })
+      .from(zuvyUserRoles)
+      .where(eq(zuvyUserRoles.id, roleId));
+    return role?.name ?? '';
+  }
+
   async createUserRole(createUserRoleDto: CreateUserRoleDto): Promise<any> {
     try {
       const { name, description } = createUserRoleDto;
@@ -264,6 +274,15 @@ export class UsersService {
           data: (insertResult as any).rows[0]
         };
       }
+
+      const auditlogPayload: CreateAuditlogDto = {
+        actorUserId: userId,
+        targetUserId: null,
+        action: "assign",
+        roleId: roleId
+      }
+
+      await this.auditlogService.createAudit(auditlogPayload);
 
       return {
         status: 'success',
@@ -448,6 +467,16 @@ export class UsersService {
           .leftJoin(zuvyUserRoles, eq(zuvyUserRolesAssigned.roleId, zuvyUserRoles.id))
           .where(eq(users.id, user.id));
 
+        const newRoleName = await this.getRoleNameById(tx, createUserDto.roleId);
+        const auditlogPayload: CreateAuditlogDto = {
+          actorUserId: BigInt.apply(userWithRole.id),
+          targetUserId: null,
+          action: `Assign role: ${newRoleName}`,
+          roleId: createUserDto.roleId,
+        }
+
+        await this.auditlogService.createAudit(auditlogPayload);
+
         // Convert BigInt to Number for JSON serialization
         return {
           ...userWithRole,
@@ -522,6 +551,19 @@ export class UsersService {
               .set(roleUpdateData)
               .where(eq(zuvyUserRolesAssigned.userId, id))
               .returning();
+
+            if(existingRole[0].roleId !== updateUserDto.roleId){
+              const oldRoleName = await this.getRoleNameById(tx, existingRole[0].roleId);
+              const newRoleName = await this.getRoleNameById(tx, updateUserDto.roleId);
+              const auditlogPayload: CreateAuditlogDto = {
+                actorUserId: BigInt.apply(id),
+                targetUserId: null,
+                action: `revoke role: ${oldRoleName} and re-assign role: ${newRoleName}`,
+                roleId: updateUserDto.roleId,
+              }
+
+              await this.auditlogService.createAudit(auditlogPayload);
+            }
           } else {
             let rolesAssignData = {
               userId: id,
