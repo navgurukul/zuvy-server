@@ -1,12 +1,12 @@
 import { BadRequestException, ConflictException, Injectable, InternalServerErrorException, Logger, NotFoundException } from '@nestjs/common';
 import { db } from 'src/db/index';
 import { sql, eq, and, asc, ilike, or, inArray } from 'drizzle-orm';
-import { CreatePermissionDto, AssignUserPermissionDto, AssignPermissionsToUserDto, AssignPermissionsToRoleDto } from './dto/permission.dto';
+import { CreatePermissionDto, AssignPermissionsToRoleDto, AssignPermissionsToUserDto, AssignUserPermissionDto} from './dto/create-permission.dto';
 import { users, zuvyPermissions, zuvyResources, zuvyPermissionsRoles, zuvyRolePermissions, zuvyUserPermissions, zuvyUserRoles, zuvyUserRolesAssigned } from 'drizzle/schema';
 
 @Injectable()
-export class RbacPermissionService {
-  private readonly logger = new Logger(RbacPermissionService.name);
+export class PermissionsService {
+  private readonly logger = new Logger(PermissionsService.name);
 
   async createPermission(createPermissionDto: CreatePermissionDto): Promise<any> {
     try {
@@ -229,7 +229,6 @@ export class RbacPermissionService {
     }
   }
 
-  // rbac-permission.service.ts
   async assignPermissionsToUser(assignPermissionsDto: AssignPermissionsToUserDto): Promise<any> {
     try {
       const { userId, permissions } = assignPermissionsDto;

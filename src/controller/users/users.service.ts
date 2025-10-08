@@ -18,6 +18,7 @@ import { AssignUserRoleDto, CreateUserDto, CreateUserRoleDto, UpdateUserDto } fr
 import { STATUS_CODES } from 'src/helpers';
 import { ResourceList } from 'src/rbac/utility';
 import { RbacAllocPermsService } from 'src/rbac/rbac.alloc-perms.service';
+import { RbacService } from 'src/rbac/rbac.service';
 
 
 @Injectable()
@@ -27,6 +28,7 @@ export class UsersService {
   constructor(
     private readonly jwtService: JwtService,
     private readonly rbacAllocPermsService: RbacAllocPermsService,
+    private readonly rbacService: RbacService
   ) { }
 
   /**
@@ -344,7 +346,7 @@ export class UsersService {
           ResourceList.rolesandpermission.edit,
           ResourceList.rolesandpermission.delete,
         ]
-        const permissionsResult = await this.rbacAllocPermsService.getAllPermissions(roleName, targetPermissions);
+        const permissionsResult = await this.rbacService.getAllPermissions(roleName, targetPermissions);
 
       return {
         status: 'success',

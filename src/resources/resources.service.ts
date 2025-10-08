@@ -1,13 +1,13 @@
 import { Injectable, Inject, NotFoundException, Logger, InternalServerErrorException, BadRequestException } from '@nestjs/common';
 import { db } from 'src/db/index';
-import { CreateResourceDto } from './dto/resources.dto';
+import { CreateResourceDto } from './dto/create-resource.dto';
 import { zuvyResources, zuvyPermissions } from 'drizzle/schema';
 import { eq, asc } from 'drizzle-orm';
 import { permissions } from 'src/helpers';
 
 @Injectable()
-export class RbacResourcesService {
-  private readonly logger = new Logger(RbacResourcesService.name);
+export class ResourcesService {
+  private readonly logger = new Logger(ResourcesService.name);
 
   async createResource(createResourceDto: CreateResourceDto) {
     try {
@@ -43,9 +43,8 @@ export class RbacResourcesService {
       const resources = await db
         .select()
         .from(zuvyResources)
-        .orderBy(asc(zuvyResources.name));
+        .orderBy(asc(zuvyResources.key));
 
-      // let pascalResources = convertToPascalCaseWithSpaces(resources);
       return {
         status: 'success',
         message: 'Resources fetched successfully',

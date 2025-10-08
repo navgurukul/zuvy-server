@@ -25,6 +25,7 @@ import { STATUS_CODES } from 'src/helpers';
 import { ContentService } from '../content/content.service';
 import { RbacAllocPermsService } from '../../rbac/rbac.alloc-perms.service';
 import { ResourceList } from 'src/rbac/utility';
+import { RbacService } from 'src/rbac/rbac.service';
 
 const { ZUVY_CONTENT_URL } = process.env; // INPORTING env VALUSE ZUVY_CONTENT
 
@@ -33,6 +34,7 @@ export class BootcampService {
   constructor(
     private contentService: ContentService,
     private rbacAllocPermsService: RbacAllocPermsService,
+    private rbacService: RbacService
   ) { }
   async enrollData(bootcampId: number) {
     try {
@@ -128,7 +130,7 @@ export class BootcampService {
       ]
       // Get permissions for all resources if userId is provided
       let allPermissions = {};
-      const permissionResult = await this.rbacAllocPermsService.getAllPermissions(roleName, targetPermissions);
+      const permissionResult = await this.rbacService.getAllPermissions(roleName, targetPermissions);
       allPermissions = permissionResult.permissions || {};
 
       const data = await Promise.all(
@@ -171,7 +173,7 @@ export class BootcampService {
         ResourceList.submission.read,
         ResourceList.setting.read
       ]
-      const grantedPermissions = await this.rbacAllocPermsService.getAllPermissions(role, targetPermissions);
+      const grantedPermissions = await this.rbacService.getAllPermissions(role, targetPermissions);
       return [
         null,
         {
@@ -300,7 +302,7 @@ export class BootcampService {
         ResourceList.module.lock,
         ResourceList.course.edit
       ]
-      const grantedPermissions = await this.rbacAllocPermsService.getAllPermissions(roleName, targetPermissions);
+      const grantedPermissions = await this.rbacService.getAllPermissions(roleName, targetPermissions);
       if (
         typeOfBootcamp == 'Public'.toLowerCase() ||
         typeOfBootcamp == 'Private'.toLowerCase() ||
@@ -509,7 +511,7 @@ export class BootcampService {
         ResourceList.batch.edit,
         ResourceList.batch.delete
       ]
-      const grantedPermission = await this.rbacAllocPermsService.getAllPermissions(roleName, targetPermissions);
+      const grantedPermission = await this.rbacService.getAllPermissions(roleName, targetPermissions);
       return [null, { data, ...grantedPermission, totalBatches: totalCount, totalPages }];
     } catch (e) {
       return [{ status: 'error', message: e.message, code: 500 }, null];
@@ -829,7 +831,7 @@ export class BootcampService {
         ResourceList.student.edit,
         ResourceList.student.delete
       ]
-      const grantedPermissions = await this.rbacAllocPermsService.getAllPermissions(roleName, targetePermission);
+      const grantedPermissions = await this.rbacService.getAllPermissions(roleName, targetePermission);
 
       return [
         null,
@@ -1182,7 +1184,7 @@ export class BootcampService {
 
   async getUserPermissionsForMultipleResources(userId: bigint) {
     try {
-      const result = await this.rbacAllocPermsService.getUserPermissionsForMultipleResources(userId);
+      const result = await this.rbacService.getUserPermissionsForMultipleResources(userId);
       return [null, result];
     } catch (err) {
       return [err, null];

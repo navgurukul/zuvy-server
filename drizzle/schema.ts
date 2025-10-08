@@ -3863,20 +3863,21 @@ export const zuvyPermissionsScope = main.table('zuvy_permissions_scope', {
   pk: primaryKey(t.permissionId, t.scopeId),
 }));
 
-export const zuvyAuditLoga = main.table('zuvy_audit_logs', {
+export const zuvyAuditLogs = main.table('zuvy_audit_logs', {
   id: serial('id').primaryKey().notNull(),
   actorUserId: bigserial("actor_user_id", { mode: "bigint" }).references(() => users.id),
   targetUserId: bigserial('target_user_id', { mode: "bigint" }).references(() => users.id),
   action: varchar('action', { length: 100 }).notNull(),
   roleid: integer('role_id').references(() => zuvyUserRoles.id),
   permissionId: integer('permission_id').references(() => zuvyPermissions.id),
-  scopeId: integer('scope_id').references(() => zuvyScopes.id),
+  scopeId: integer('scope_id').references(() => zuvyScopes.id).default(null),
   createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow(),
+  updatedAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow(),
 })
 
 // Relations for scopes and audit logs
 export const zuvyScopesRelations = relations(zuvyScopes, ({ many }) => ({
-  auditLogs: many(zuvyAuditLoga),
+  auditLogs: many(zuvyAuditLogs),
   permissionsScope: many(zuvyPermissionsScope),
 }));
 
@@ -3892,35 +3893,35 @@ export const zuvyPermissionsScopeRelations = relations(zuvyPermissionsScope, ({ 
   }),
 }));
 
-export const zuvyAuditLogRelations = relations(zuvyAuditLoga, ({ one }) => ({
+export const zuvyAuditLogRelations = relations(zuvyAuditLogs, ({ one }) => ({
   actor: one(users, {
-    fields: [zuvyAuditLoga.actorUserId],
+    fields: [zuvyAuditLogs.actorUserId],
     references: [users.id],
     relationName: 'actorUser',
   }),
   target: one(users, {
-    fields: [zuvyAuditLoga.targetUserId],
+    fields: [zuvyAuditLogs.targetUserId],
     references: [users.id],
     relationName: 'targetUser',
   }),
   role: one(zuvyUserRoles, {
-    fields: [zuvyAuditLoga.roleid],
+    fields: [zuvyAuditLogs.roleid],
     references: [zuvyUserRoles.id],
   }),
   permission: one(zuvyPermissions, {
-    fields: [zuvyAuditLoga.permissionId],
+    fields: [zuvyAuditLogs.permissionId],
     references: [zuvyPermissions.id],
   }),
   scope: one(zuvyScopes, {
-    fields: [zuvyAuditLoga.scopeId],
+    fields: [zuvyAuditLogs.scopeId],
     references: [zuvyScopes.id],
   }),
 }));
 
 // Reverse relations on users to disambiguate actor/target
 export const usersAuditRelations = relations(users, ({ many }) => ({
-  actorAuditLogs: many(zuvyAuditLoga, { relationName: 'actorUser' }),
-  targetAuditLogs: many(zuvyAuditLoga, { relationName: 'targetUser' }),
+  actorAuditLogs: many(zuvyAuditLogs, { relationName: 'actorUser' }),
+  targetAuditLogs: many(zuvyAuditLogs, { relationName: 'targetUser' }),
 }));
 
 export const zuvyExtraPermissions = main.table('zuvy_extra_permissions', {

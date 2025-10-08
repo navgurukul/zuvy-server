@@ -6,11 +6,13 @@ import {RbacResourcesService} from './rbac.resources.service';
 import { AuthModule } from 'src/auth/auth.module';
 import { JwtService } from '@nestjs/jwt';
 import { PermissionsGuard } from './guards/permissions.guard';
+import { PermissionsModule } from 'src/permissions/permissions.module';
+import { RbacService } from './rbac.service';
 
 @Module({
-  imports: [AuthModule],
+  imports: [AuthModule, PermissionsModule],
   controllers: [RbacController],
-  providers: [ RbacPermissionService, RbacAllocPermsService, JwtService, PermissionsGuard, RbacResourcesService],
-  exports: [ RbacPermissionService, RbacAllocPermsService, PermissionsGuard, RbacResourcesService],
+  providers: [ RbacPermissionService, RbacAllocPermsService, JwtService, PermissionsGuard, RbacResourcesService, RbacService],
+  exports: [ RbacPermissionService, RbacAllocPermsService, PermissionsGuard, RbacResourcesService, RbacService],
 })
 export class RbacModule {}
