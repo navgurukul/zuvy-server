@@ -1,15 +1,125 @@
 import { Injectable } from '@nestjs/common';
+import { db } from 'src/db/index';
 import { CreateAuditlogDto } from './dto/create-auditlog.dto';
 import { UpdateAuditlogDto } from './dto/update-auditlog.dto';
+import { users, zuvyAuditLogs, zuvyPermissions, zuvyScopes, zuvyUserRoles, zuvyUserRolesAssigned } from 'drizzle/schema';
+import { sql, eq, and, asc, ilike, or, inArray } from 'drizzle-orm';
 
 @Injectable()
 export class AuditlogService {
-  create(createAuditlogDto: CreateAuditlogDto) {
-    return 'This action adds a new auditlog';
-  }
+  async createAudit(createAuditlogDto: CreateAuditlogDto): Promise<any> {
+  try {
+    const { actorUserId, targetUserId, action, roleId, permissionIds, scopeId } = createAuditlogDto;
+    
+    console.log('Creating audit log with data:', createAuditlogDto);
 
-  findAll() {
-    return `This action returns all auditlog`;
+    // Validate required fields
+    if (!actorUserId) {
+      throw new Error('Actor user ID is required');
+    }
+
+    if (!action) {
+      throw new Error('Action is required');
+    }
+
+    // Check if actorUserId is a valid user
+    const actorUser = await db.select().from(users).where(eq(users.id, BigInt(actorUserId)));
+    if (actorUser.length === 0) {
+      throw new Error('Actor user not found');
+    }
+
+    // Check if targetUserId is provided and valid
+    if (targetUserId) {
+      const targetUser = await db.select().from(users).where(eq(users.id, BigInt(targetUserId)));
+      if (targetUser.length === 0) {
+        throw new Error('Target user not found');
+      }
+    }
+
+    // Check if roleId is provided and valid
+    if (roleId) {
+      const role = await db.select().from(zuvyUserRoles).where(eq(zuvyUserRoles.id, roleId));
+      if (role.length === 0) {
+        throw new Error('Role not found');
+      }
+    }
+
+    // Check if permissionIds are provided and valid
+    if (permissionIds && permissionIds.length > 0) {
+      const permissions = await db.select().from(zuvyPermissions).where(inArray(zuvyPermissions.id, permissionIds));
+      
+      // Check if all permission IDs are valid
+      if (permissions.length !== permissionIds.length) {
+        const foundPermissionIds = permissions.map(p => p.id);
+        const invalidPermissionIds = permissionIds.filter(id => !foundPermissionIds.includes(id));
+        throw new Error(`Invalid permission IDs: ${invalidPermissionIds.join(', ')}`);
+      }
+    }
+
+    // Check if scopeId is provided and valid
+    if (scopeId) {
+      const scope = await db.select().from(zuvyScopes).where(eq(zuvyScopes.id, scopeId));
+      if (scope.length === 0) {
+        throw new Error('Scope not found');
+      }
+    }
+
+    // Create audit log entries
+    // If multiple permissionIds are provided, create separate entries for each permission
+    if (permissionIds && permissionIds.length > 0) {
+      const auditLogPromises = permissionIds.map(permissionId => 
+        db.insert(zuvyAuditLogs).values({
+          actorUserId,
+          targetUserId: targetUserId || null,
+          action,
+          roleid: roleId || null,
+          permissionId: permissionId,
+          scopeId: scopeId || null,
+          createdAt: new Date().toISOString(),
+        })
+      );
+      
+      const results = await Promise.all(auditLogPromises);
+      console.log(`Created ${results.length} audit log entries`);
+      return { 
+        success: true, 
+        message: `Successfully created ${results.length} audit log entries`,
+        entries: results 
+      };
+    } else {
+      // Create single audit log entry
+      const result = await db.insert(zuvyAuditLogs).values({
+        actorUserId,
+        targetUserId: targetUserId || null,
+        action,
+        roleid: roleId || null,
+        permissionId: null, // No specific permission if permissionIds not provided
+        scopeId: scopeId || null,
+        createdAt: new Date().toISOString(),
+      });
+
+      console.log('Created audit log entry:', result);
+      return { 
+        success: true, 
+        message: 'Successfully created audit log entry',
+        entry: result 
+      };
+    }
+  } catch (error) {
+    console.error('Error creating audit log:', error);
+    throw error;
+  }
+}
+
+  async getAllAudit(): Promise<any> {
+    try {
+      // all audit logs
+      
+   
+    } catch (error) {
+      console.error('Error getting all audit logs:', error);
+      throw error;
+    }
   }
 
   findOne(id: number) {
