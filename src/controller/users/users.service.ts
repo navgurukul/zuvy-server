@@ -275,15 +275,6 @@ export class UsersService {
         };
       }
 
-      const auditlogPayload: CreateAuditlogDto = {
-        actorUserId: userId,
-        targetUserId: null,
-        action: "assign",
-        roleId: roleId
-      }
-
-      await this.auditlogService.createAudit(auditlogPayload);
-
       return {
         status: 'success',
         code: 200,
@@ -468,14 +459,6 @@ export class UsersService {
           .where(eq(users.id, user.id));
 
         const newRoleName = await this.getRoleNameById(tx, createUserDto.roleId);
-        const auditlogPayload: CreateAuditlogDto = {
-          actorUserId: BigInt.apply(userWithRole.id),
-          targetUserId: null,
-          action: `Assign role: ${newRoleName}`,
-          roleId: createUserDto.roleId,
-        }
-
-        await this.auditlogService.createAudit(auditlogPayload);
 
         // Convert BigInt to Number for JSON serialization
         return {
@@ -552,18 +535,6 @@ export class UsersService {
               .where(eq(zuvyUserRolesAssigned.userId, id))
               .returning();
 
-            if(existingRole[0].roleId !== updateUserDto.roleId){
-              const oldRoleName = await this.getRoleNameById(tx, existingRole[0].roleId);
-              const newRoleName = await this.getRoleNameById(tx, updateUserDto.roleId);
-              const auditlogPayload: CreateAuditlogDto = {
-                actorUserId: BigInt.apply(id),
-                targetUserId: null,
-                action: `revoke role: ${oldRoleName} and re-assign role: ${newRoleName}`,
-                roleId: updateUserDto.roleId,
-              }
-
-              await this.auditlogService.createAudit(auditlogPayload);
-            }
           } else {
             let rolesAssignData = {
               userId: id,
