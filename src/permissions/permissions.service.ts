@@ -3,9 +3,13 @@ import { db } from 'src/db/index';
 import { sql, eq, and, asc, ilike, or, inArray } from 'drizzle-orm';
 import { CreatePermissionDto, AssignPermissionsToRoleDto, AssignPermissionsToUserDto, AssignUserPermissionDto} from './dto/create-permission.dto';
 import { users, zuvyPermissions, zuvyResources, zuvyPermissionsRoles, zuvyRolePermissions, zuvyUserPermissions, zuvyUserRoles, zuvyUserRolesAssigned } from 'drizzle/schema';
+import { AuditlogService } from 'src/auditlog/auditlog.service';
 
 @Injectable()
 export class PermissionsService {
+  constructor(
+    private auditLogService: AuditlogService
+  ){}
   private readonly logger = new Logger(PermissionsService.name);
 
   async createPermission(createPermissionDto: CreatePermissionDto): Promise<any> {
@@ -282,7 +286,7 @@ export class PermissionsService {
     }
   }
 
-  async assignPermissionsToRole(dto: AssignPermissionsToRoleDto) {
+  async assignPermissionsToRole(userId, dto: AssignPermissionsToRoleDto) {
     try {
       const { resourceId, roleId, permissions } = dto;
 
@@ -344,6 +348,19 @@ export class PermissionsService {
           .select({ permissionId: zuvyPermissionsRoles.permissionId })
           .from(zuvyPermissionsRoles)
           .where(eq(zuvyPermissionsRoles.roleId, roleId));
+
+        for (const [permissionId, isGranted] of Object.entries(permissions)) {
+          const auditLogPayload = {
+            actorUserId: userId,
+            targetUserId: null,
+            action: isGranted ? 'assign' : 'revoke',
+            roleId,
+            permissionId: Number(permissionId),
+            scopeId: null,
+          };
+
+          await this.auditLogService.createAudit(auditLogPayload);
+        }
 
         return {
           status: 'success',

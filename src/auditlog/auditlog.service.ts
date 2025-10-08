@@ -1,9 +1,10 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, InternalServerErrorException } from '@nestjs/common';
 import { db } from 'src/db/index';
 import { CreateAuditlogDto } from './dto/create-auditlog.dto';
 import { UpdateAuditlogDto } from './dto/update-auditlog.dto';
 import { users, zuvyAuditLogs, zuvyPermissions, zuvyScopes, zuvyUserRoles, zuvyUserRolesAssigned } from 'drizzle/schema';
 import { sql, eq, and, asc, ilike, or, inArray } from 'drizzle-orm';
+type AuditLogInsert = typeof zuvyAuditLogs.$inferInsert;
 
 @Injectable()
 export class AuditlogService {
@@ -63,48 +64,27 @@ export class AuditlogService {
         throw new Error('Scope not found');
       }
     }
+    await db.transaction(async (tx) => {
+      const rows: AuditLogInsert[] =
+          permissionIds.length
+            ? permissionIds.map(pid => ({
+                actorUserId, targetUserId: targetUserId ?? null, action,
+                roleId: roleId ?? null, permissionId: pid, scopeId: scopeId ?? null,
+              }))
+            : [{
+                actorUserId, targetUserId: targetUserId ?? null, action,
+                roleId: roleId ?? null, permissionId: null, scopeId: scopeId ?? null,
+              }];
 
-    // Create audit log entries
-    // If multiple permissionIds are provided, create separate entries for each permission
-    if (permissionIds && permissionIds.length > 0) {
-      const auditLogPromises = permissionIds.map(permissionId => 
-        db.insert(zuvyAuditLogs).values({
-          actorUserId,
-          targetUserId: targetUserId || null,
-          action,
-          roleid: roleId || null,
-          permissionId: permissionId,
-          scopeId: scopeId || null,
-          createdAt: new Date().toISOString(),
-        })
-      );
-      
-      const results = await Promise.all(auditLogPromises);
-      console.log(`Created ${results.length} audit log entries`);
-      return { 
-        success: true, 
-        message: `Successfully created ${results.length} audit log entries`,
-        entries: results 
-      };
-    } else {
-      // Create single audit log entry
-      const result = await db.insert(zuvyAuditLogs).values({
-        actorUserId,
-        targetUserId: targetUserId || null,
-        action,
-        roleid: roleId || null,
-        permissionId: null, // No specific permission if permissionIds not provided
-        scopeId: scopeId || null,
-        createdAt: new Date().toISOString(),
-      });
+        const inserted = await tx.insert(zuvyAuditLogs).values(rows).returning();
 
-      console.log('Created audit log entry:', result);
-      return { 
-        success: true, 
-        message: 'Successfully created audit log entry',
-        entry: result 
-      };
-    }
+        if (!inserted.length) throw new InternalServerErrorException('insert failed');
+        return { 
+            success: true, 
+            message: 'Successfully created audit log entry',
+            entry: inserted 
+        };
+    })
   } catch (error) {
     console.error('Error creating audit log:', error);
     throw error;

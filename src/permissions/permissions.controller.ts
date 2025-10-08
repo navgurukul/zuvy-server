@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, HttpException, HttpStatus, Query, ParseIntPipe } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, HttpException, HttpStatus, Query, ParseIntPipe, Req } from '@nestjs/common';
 import { PermissionsService } from './permissions.service';
 import { CreatePermissionDto } from './dto/create-permission.dto';
 import { UpdatePermissionDto } from './dto/update-permission.dto';
@@ -141,9 +141,13 @@ export class PermissionsController {
     description: 'Internal server error'
   })
   @ApiBearerAuth('JWT-auth')
-  async assignPermissionsToRole(@Body() assignPermissionsDto: AssignPermissionsToRoleDto): Promise<any> {
+  async assignPermissionsToRole(
+    @Body() assignPermissionsDto: AssignPermissionsToRoleDto,
+    @Req() req
+  ): Promise<any> {
     try {
-      const result = await this.permissionsService.assignPermissionsToRole(assignPermissionsDto);
+      const userId = req.sub;
+      const result = await this.permissionsService.assignPermissionsToRole(userId, assignPermissionsDto);
       return result;
     } catch (error) {
       if (error instanceof HttpException) {

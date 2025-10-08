@@ -1,4 +1,4 @@
-import { Many, relations } from 'drizzle-orm';
+import { Many, relations, sql } from 'drizzle-orm';
 import {
   pgTable,
   jsonb,
@@ -3868,11 +3868,13 @@ export const zuvyAuditLogs = main.table('zuvy_audit_logs', {
   actorUserId: bigserial("actor_user_id", { mode: "bigint" }).references(() => users.id),
   targetUserId: bigserial('target_user_id', { mode: "bigint" }).references(() => users.id),
   action: varchar('action', { length: 100 }).notNull(),
-  roleid: integer('role_id').references(() => zuvyUserRoles.id),
+  roleId: integer('role_id').references(() => zuvyUserRoles.id),
   permissionId: integer('permission_id').references(() => zuvyPermissions.id),
   scopeId: integer('scope_id').references(() => zuvyScopes.id).default(null),
   createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow(),
-  updatedAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow()
+    .defaultNow()
+    .$onUpdate(() => sql`now()`),
 })
 
 // Relations for scopes and audit logs
@@ -3905,7 +3907,7 @@ export const zuvyAuditLogRelations = relations(zuvyAuditLogs, ({ one }) => ({
     relationName: 'targetUser',
   }),
   role: one(zuvyUserRoles, {
-    fields: [zuvyAuditLogs.roleid],
+    fields: [zuvyAuditLogs.roleId],
     references: [zuvyUserRoles.id],
   }),
   permission: one(zuvyPermissions, {

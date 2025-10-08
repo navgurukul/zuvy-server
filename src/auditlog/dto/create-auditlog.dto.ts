@@ -1,4 +1,5 @@
 import { ApiProperty } from "@nestjs/swagger";
+import { Transform } from "class-transformer";
 import { IsNumber, IsOptional } from "class-validator";
 
 export class CreateAuditlogDto {
@@ -7,6 +8,7 @@ export class CreateAuditlogDto {
         description: 'Admin (actor) user ID performing the assignment',
         example: 1
     })
+    @Transform(({ value }) => BigInt(value))
     @IsNumber()
     actorUserId: number;
 
@@ -15,6 +17,7 @@ export class CreateAuditlogDto {
         required: false,
         example: 123
     })
+    @Transform(({ value }) => value !== undefined ? BigInt(value) : undefined)
     @IsOptional()
     @IsNumber()
     targetUserId?: number;
@@ -34,7 +37,7 @@ export class CreateAuditlogDto {
     })
     @IsOptional()
     @IsNumber()
-    roleId: number;
+    roleId?: number;
 
    // add permissionId property it will take single or multiple permission ids
    @ApiProperty({

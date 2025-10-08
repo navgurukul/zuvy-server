@@ -10,7 +10,7 @@ export class AuditlogController {
   constructor(private readonly auditlogService: AuditlogService) { }
 
   @Post()
-  @ApiOperation({ summary: 'Crate Audit log' })
+  @ApiOperation({ summary: 'Create Audit log' })
   @ApiBody({
     type: CreateAuditlogDto,
     description: 'Audit data to create'
