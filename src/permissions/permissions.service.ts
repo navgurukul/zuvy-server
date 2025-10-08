@@ -349,19 +349,6 @@ export class PermissionsService {
           .from(zuvyPermissionsRoles)
           .where(eq(zuvyPermissionsRoles.roleId, roleId));
 
-        for (const [permissionId, isGranted] of Object.entries(permissions)) {
-          const auditLogPayload = {
-            actorUserId: userId,
-            targetUserId: null,
-            action: isGranted ? 'assign' : 'revoke',
-            roleId,
-            permissionId: Number(permissionId),
-            scopeId: null,
-          };
-
-          await this.auditLogService.createAudit(auditLogPayload);
-        }
-
         return {
           status: 'success',
           message: 'Permissions updated',

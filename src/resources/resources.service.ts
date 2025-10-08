@@ -31,10 +31,7 @@ export class ResourcesService {
 
       return resource;
     } catch (error) {
-      if (error.code === '23505') { // PostgreSQL unique constraint violation
-        throw new BadRequestException('Resource with this name already exists');
-      }
-      throw new InternalServerErrorException('Failed to create resource');
+      throw error;
     }
   }
 

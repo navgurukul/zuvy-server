@@ -3872,7 +3872,7 @@ export const zuvyAuditLogs = main.table('zuvy_audit_logs', {
   permissionId: integer('permission_id').references(() => zuvyPermissions.id),
   scopeId: integer('scope_id').references(() => zuvyScopes.id).default(null),
   createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow(),
-  updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow()
+  updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' })
     .defaultNow()
     .$onUpdate(() => sql`now()`),
 })

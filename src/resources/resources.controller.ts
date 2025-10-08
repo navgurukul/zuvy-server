@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, HttpException, HttpStatus, Query, ParseIntPipe, Put } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, HttpException, HttpStatus, Query, ParseIntPipe, Put, ConflictException, InternalServerErrorException } from '@nestjs/common';
 import { ApiBearerAuth, ApiBody, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { ResourcesService } from './resources.service';
 import { CreateResourceDto } from './dto/create-resource.dto';
@@ -44,10 +44,10 @@ export class ResourcesController {
       const result = await this.resourcesService.createResource(createResourceDto);
       return result;
     } catch (error) {
-      if (error.code === '23505') { // PostgreSQL unique constraint violation
-        throw new HttpException('Resource with this name already exists', HttpStatus.BAD_REQUEST);
+      if (error.code === '23505') {
+        throw new ConflictException('Resource already exists');
       }
-      throw new HttpException('Internal Server Error', HttpStatus.INTERNAL_SERVER_ERROR);
+      throw new InternalServerErrorException(error.message || 'Something went wrong');
     }
   }
 

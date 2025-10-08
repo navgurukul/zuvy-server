@@ -146,8 +146,8 @@ export class PermissionsController {
     @Req() req
   ): Promise<any> {
     try {
-      const userId = req.sub;
-      const result = await this.permissionsService.assignPermissionsToRole(userId, assignPermissionsDto);
+      const userIdString = req.user[0].id;
+      const result = await this.permissionsService.assignPermissionsToRole(userIdString, assignPermissionsDto);
       return result;
     } catch (error) {
       if (error instanceof HttpException) {
