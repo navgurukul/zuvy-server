@@ -1216,6 +1216,7 @@ Team Zuvy`;
   async getModuleChapterStudents(
     chapterID: number,
     searchStudent: string,
+    batchId?: number,
     limit?: number,
     offSet?: number
   ) {
@@ -1237,40 +1238,63 @@ Team Zuvy`;
         },
       });
 
-      const bootcampId = Number(chapterDetails.courseModulesData.bootcampId);
+      if (!chapterDetails) {
+        return {
+          message: 'Chapter not found',
+        };
+      }
 
-      // Fetch total students
+      const bootcampId = Number(chapterDetails.courseModulesData?.bootcampId);
+
+      // Fetch total students (respecting optional batchId)
       const totalStudentsResult = await db
         .select({ count: sql<number>`count(*)` })
         .from(zuvyBatchEnrollments)
-        .where(eq(zuvyBatchEnrollments.bootcampId, bootcampId))
+        .where(batchId ? sql`${zuvyBatchEnrollments.bootcampId} = ${bootcampId} AND ${zuvyBatchEnrollments.batchId} = ${batchId}` : sql`${zuvyBatchEnrollments.bootcampId} = ${bootcampId} AND ${zuvyBatchEnrollments.batchId} IS NOT NULL`)
         .execute();
       const totalStudents = Number(totalStudentsResult[0]?.count || 0);
 
-      // Fetch total submitted students
-      const totalSubmittedStudentsResult = await db
+      // Fetch total submitted students (only count submissions from enrolled users)
+      interface TotalSubmittedStudentsResult {
+        count: number | bigint;
+      }
+
+      const totalSubmittedStudentsResult: TotalSubmittedStudentsResult[] = await db
         .select({ count: sql<number>`count(*)` })
         .from(zuvyChapterTracking)
-        .where(eq(zuvyChapterTracking.chapterId, chapterID))
+        .where(
+          batchId
+            ? sql`${zuvyChapterTracking.chapterId} = ${chapterID} AND EXISTS (SELECT 1 FROM main.zuvy_batch_enrollments AS be WHERE be.user_id = ${zuvyChapterTracking.userId} AND be.batch_id = ${batchId})`
+            : sql`${zuvyChapterTracking.chapterId} = ${chapterID} AND EXISTS (SELECT 1 FROM main.zuvy_batch_enrollments AS be WHERE be.user_id = ${zuvyChapterTracking.userId} AND be.batch_id IS NOT NULL)`
+        )
         .execute();
       const totalSubmittedStudents = Number(totalSubmittedStudentsResult[0]?.count || 0);
 
       // Fetch chapter tracking details with students
       const chapterTrackingDetails = await db.query.zuvyChapterTracking.findMany({
-        where: (zuvyChapterTracking, { eq, sql }) => sql`
-          ${zuvyChapterTracking.chapterId} = ${chapterID}
-          ${searchStudent ? sql`
-            AND EXISTS (
+        where: (zuvyChapterTracking, { eq, sql, and }) => {
+          const baseConditions = [sql`${zuvyChapterTracking.chapterId} = ${chapterID}`];
+          // Only include users who are enrolled in the bootcamp and (optionally) specific batch
+          baseConditions.push(sql`EXISTS (
+            SELECT 1 FROM main.zuvy_batch_enrollments AS be WHERE be.user_id = ${zuvyChapterTracking.userId} AND be.bootcamp_id = ${bootcampId} ${batchId ? sql`AND be.batch_id = ${batchId}` : sql`AND be.batch_id IS NOT NULL`}
+          )`);
+
+          if (searchStudent) {
+            // Use contains search on users.name and users.email
+            const pattern = `%${searchStudent}%`;
+            baseConditions.push(sql`EXISTS (
               SELECT 1
               FROM main.users
               WHERE main.users.id = ${zuvyChapterTracking.userId}
               AND (
-                lower(main.users.name) LIKE lower(${searchStudent + '%'})
-                OR lower(main.users.email) LIKE lower(${searchStudent + '%'})
+                lower(main.users.name) LIKE lower(${pattern})
+                OR lower(main.users.email) LIKE lower(${pattern})
               )
-            )
-          ` : sql``}
-        `,
+            )`);
+          }
+
+          return and(...baseConditions);
+        },
         columns: {
           userId: true,
           completedAt: true,
@@ -1287,12 +1311,45 @@ Team Zuvy`;
         orderBy: (zuvyChapterTracking, { asc }) => asc(zuvyChapterTracking.id),
       });
 
-      const submittedStudents = chapterTrackingDetails.map((tracking) => ({
-        id: Number(tracking['user'].id), // Convert user ID to number
-        name: tracking['user'].name,
-        email: tracking['user'].email,
-        completedAt: tracking.completedAt,
-      }));
+      // Fetch batch enrollments for these users to attach batchId/batchName
+      const userIds = Array.from(new Set(chapterTrackingDetails.map((t) => Number(t.userId))));
+      const userIdsBigInt = userIds.map((id) => BigInt(id));
+      let enrollmentMap = new Map();
+      if (userIds.length > 0) {
+        const enrollments = await db.query.zuvyBatchEnrollments.findMany({
+          where: (zuvyBatchEnrollments, { sql, inArray }) => sql`
+            ${inArray(zuvyBatchEnrollments.userId, userIdsBigInt)}
+            AND ${zuvyBatchEnrollments.bootcampId} = ${bootcampId}
+            ${batchId ? sql`AND ${zuvyBatchEnrollments.batchId} = ${batchId}` : sql`AND ${zuvyBatchEnrollments.batchId} IS NOT NULL`}
+          `,
+          columns: {
+            userId: true,
+            batchId: true,
+          },
+          with: {
+            batchInfo: {
+              columns: {
+                name: true,
+              },
+            },
+          },
+        });
+
+        enrollmentMap = new Map(enrollments.map((e) => [Number(e.userId), e]));
+      }
+
+      const submittedStudents = chapterTrackingDetails.map((tracking) => {
+        const uid = Number(tracking['user'].id);
+        const enrollment = enrollmentMap.get(uid);
+        return {
+          id: uid,
+          name: tracking['user'].name,
+          email: tracking['user'].email,
+          completedAt: tracking.completedAt,
+          batchId: enrollment ? Number(enrollment.batchId) : null,
+          batchName: enrollment && enrollment.batchInfo ? enrollment.batchInfo.name : null,
+        };
+      });
 
       // Apply pagination to submitted students
       const totalRows = submittedStudents.length; // Total rows before pagination
@@ -1434,8 +1491,5 @@ Team Zuvy`;
       throw err;
     }
   }
-}
-function and(arg0: SQL<unknown>, arg1: SQL<unknown>): import("drizzle-orm").SQL<unknown> {
-  throw new Error('Function not implemented.');
 }
 

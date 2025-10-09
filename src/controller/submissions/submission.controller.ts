@@ -52,11 +52,17 @@ export class SubmissionController {
     description: 'Search by practise problem name',
   })
   @ApiQuery({
+    name: 'searchStudent',
+    required: false,
+    type: String,
+    description: 'Search by student name or email',
+  })
+  @ApiQuery({
     name: 'orderBy',
     required: false,
     type: String,
     description: 'Field to order by (submittedDate, percentage, name, email)',
-    enum: ['submittedDate', 'percentage', 'name', 'email']
+    enum: ['submittedDate', 'name', 'email']
   })
   @ApiQuery({
     name: 'orderDirection',
@@ -65,35 +71,20 @@ export class SubmissionController {
     description: 'Order direction (asc/desc)',
     enum: ['asc', 'desc']
   })
-  @ApiQuery({
-    name: 'submittedDateStart',
-    required: false,
-    type: String,
-    description: 'Start date for submittedDate range (YYYY-MM-DD)',
-  })
-  @ApiQuery({
-    name: 'submittedDateEnd',
-    required: false,
-    type: String,
-    description: 'End date for submittedDate range (YYYY-MM-DD)',
-  })
-
-  async getChapterTracking(@Param('bootcampId') bootcampId: number, @Query('searchPractiseProblem') searchProblem: string) {
-    return this.submissionService.getSubmissionOfPractiseProblem(bootcampId, searchProblem);
+  async getChapterTracking(@Param('bootcampId') bootcampId: number, @Query('searchPractiseProblem') searchProblem: string, @Query('orderBy') orderBy?: 'submittedDate' | 'name' | 'email', @Query('orderDirection') orderDirection?: 'asc' | 'desc', @Query('searchStudent') searchStudent?: string) {
+    return this.submissionService.getSubmissionOfPractiseProblem(bootcampId, searchProblem, orderBy, orderDirection, searchStudent);
   }
 
   @Get('/practiseProblemStatus/:moduleId')
   @ApiOperation({ summary: 'Get the status of practise Problems' })
   @ApiQuery({ name: 'chapterId', required: true, type: Number, description: 'chapter id' })
-  @ApiQuery({ name: 'questionId', required: true, type: Number, description: 'question Id' })
+  @ApiQuery({ name: 'questionId', required: false, type: Number, description: 'question Id' })
   @ApiQuery({ name: 'batchId', required: false, type: Number, description: 'Batch id (optional)' })
   @ApiQuery({ name: 'limit', required: false, type: Number, description: 'limit (optional)' })
   @ApiQuery({ name: 'offset', required: false, type: Number, description: 'offset (optional)' })
   @ApiQuery({ name: 'searchStudent', required: false, type: String, description: 'Search by name or email' })
   @ApiQuery({ name: 'orderBy', required: false, type: String, description: 'Field to order by (submittedDate, percentage, name, email)', enum: ['submittedDate', 'percentage', 'name', 'email'] })
   @ApiQuery({ name: 'orderDirection', required: false, type: String, description: 'Order direction (asc/desc)', enum: ['asc', 'desc'] })
-  @ApiQuery({ name: 'submittedDateStart', required: false, type: String, description: 'Start date for submittedDate range (YYYY-MM-DD)' })
-  @ApiQuery({ name: 'submittedDateEnd', required: false, type: String, description: 'End date for submittedDate range (YYYY-MM-DD)' })
   async getStatusOfPractiseProblem(
     @Param('moduleId') moduleId: number,
     @Query('chapterId') chapterId: number,
@@ -104,8 +95,6 @@ export class SubmissionController {
     @Query('searchStudent') searchStudent?: string,
     @Query('orderBy') orderBy?: string,
     @Query('orderDirection') orderDirection?: string,
-    @Query('submittedDateStart') submittedDateStart?: string,
-    @Query('submittedDateEnd') submittedDateEnd?: string
   ) {
     return this.submissionService.practiseProblemStatusOfStudents(
       questionId,
@@ -116,9 +105,7 @@ export class SubmissionController {
       offset,
       searchStudent,
       orderBy,
-      orderDirection,
-      submittedDateStart,
-      submittedDateEnd
+      orderDirection
     );
   }
 
@@ -137,8 +124,8 @@ export class SubmissionController {
     name: 'orderBy',
     required: false,
     type: String,
-    description: 'Field to order by (submittedDate, percentage, name, email)',
-    enum: ['submittedDate', 'percentage', 'name', 'email']
+    description: 'Field to order by (submittedDate, name, email)',
+    enum: ['submittedDate', 'name', 'email']
   })
   @ApiQuery({
     name: 'orderDirection',
@@ -146,18 +133,6 @@ export class SubmissionController {
     type: String,
     description: 'Order direction (asc/desc)',
     enum: ['asc', 'desc']
-  })
-  @ApiQuery({
-    name: 'submittedDateStart',
-    required: false,
-    type: String,
-    description: 'Start date for submittedDate range (YYYY-MM-DD)',
-  })
-  @ApiQuery({
-    name: 'submittedDateEnd',
-    required: false,
-    type: String,
-    description: 'End date for submittedDate range (YYYY-MM-DD)',
   })
   async getAssessmentInfoBy(
     @Query('bootcampId') bootcampId: number,
@@ -216,7 +191,7 @@ export class SubmissionController {
     name: 'orderBy',
     required: false,
     type: String,
-    description: 'Field to order by (submittedDate, percentage, name, email)',
+    description: 'Field to order by (submittedDate, name, email)',
     enum: ['submittedDate', 'percentage', 'name', 'email']
   })
   @ApiQuery({
@@ -225,18 +200,6 @@ export class SubmissionController {
     type: String,
     description: 'Order direction (asc/desc)',
     enum: ['asc', 'desc']
-  })
-  @ApiQuery({
-    name: 'submittedDateStart',
-    required: false,
-    type: String,
-    description: 'Start date for submittedDate range (YYYY-MM-DD)',
-  })
-  @ApiQuery({
-    name: 'submittedDateEnd',
-    required: false,
-    type: String,
-    description: 'End date for submittedDate range (YYYY-MM-DD)',
   })
   async getProjectSubmissions(@Param('bootcampId') bootcampId: number, @Query('searchProject') projectName: string) {
     return this.submissionService.getAllProjectSubmissions(bootcampId, projectName);
@@ -263,8 +226,8 @@ export class SubmissionController {
     name: 'orderBy',
     required: false,
     type: String,
-    description: 'Field to order by (submittedDate, percentage, name, email)',
-    enum: ['submittedDate', 'percentage', 'name', 'email']
+    description: 'Field to order by (submittedDate, name, email)',
+    enum: ['submittedDate', 'name', 'email']
   })
   @ApiQuery({
     name: 'orderDirection',
@@ -274,25 +237,43 @@ export class SubmissionController {
     enum: ['asc', 'desc']
   })
   @ApiQuery({
-    name: 'submittedDateStart',
-    required: false,
-    type: String,
-    description: 'Start date for submittedDate range (YYYY-MM-DD)',
+    name: 'projectId',
+    required: true,
+    type: Number,
+    description: 'Project Id',
   })
   @ApiQuery({
-    name: 'submittedDateEnd',
+    name: 'bootcampId',
+    required: true,
+    type: Number,
+    description: 'Bootcamp Id',
+  })
+  @ApiQuery({
+    name: 'batchId',
     required: false,
-    type: String,
-    description: 'End date for submittedDate range (YYYY-MM-DD)',
+    type: Number,
+    description: 'Batch id (optional)',
   })
   async projectStudentsInfoBy(
     @Query('projectId') projectId: number,
     @Query('bootcampId') bootcampId: number,
-    @Query('limit') limit: number,
-    @Query('offset') offset: number,
-    @Query('searchStudent') searchStudent: string
+    @Query('batchId') batchId?: number,
+    @Query('limit') limit?: number,
+    @Query('offset') offset?: number,
+    @Query('searchStudent') searchStudent?: string,
+    @Query('orderBy') orderBy?: 'submittedDate' | 'name' | 'email',
+    @Query('orderDirection') orderDirection?: 'asc' | 'desc',
   ) {
-    return this.submissionService.getUserDetailsForProject(projectId, bootcampId, limit, offset, searchStudent);
+    return this.submissionService.getUserDetailsForProject(
+      projectId,
+      bootcampId,
+      batchId,
+      limit,
+      offset,
+      searchStudent,
+      orderBy,
+      orderDirection
+    );
   }
 
   @Get('/projectDetail/:userId')
@@ -351,8 +332,8 @@ export class SubmissionController {
     name: 'orderBy',
     required: false,
     type: String,
-    description: 'Field to order by (submittedDate, percentage, name, email)',
-    enum: ['submittedDate', 'percentage', 'name', 'email']
+    description: 'Field to order by (submittedDate, name, email)',
+    enum: ['submittedDate', 'name', 'email']
   })
   @ApiQuery({
     name: 'orderDirection',
@@ -360,18 +341,6 @@ export class SubmissionController {
     type: String,
     description: 'Order direction (asc/desc)',
     enum: ['asc', 'desc']
-  })
-  @ApiQuery({
-    name: 'submittedDateStart',
-    required: false,
-    type: String,
-    description: 'Start date for submittedDate range (YYYY-MM-DD)',
-  })
-  @ApiQuery({
-    name: 'submittedDateEnd',
-    required: false,
-    type: String,
-    description: 'End date for submittedDate range (YYYY-MM-DD)',
   })
   async getSubmissionOfForms(
     @Param('bootcampId') bootcampId: number,
@@ -389,10 +358,8 @@ export class SubmissionController {
   @ApiQuery({ name: 'limit', required: false, type: Number, description: 'limit (optional)' })
   @ApiQuery({ name: 'offset', required: false, type: Number, description: 'offset (optional)' })
   @ApiQuery({ name: 'searchStudent', type: String, required: false, description: 'Search by student name or email' })
-  @ApiQuery({ name: 'orderBy', required: false, type: String, description: 'Field to order by (submittedDate, percentage, name, email)', enum: ['submittedDate', 'percentage', 'name', 'email'] })
+  @ApiQuery({ name: 'orderBy', required: false, type: String, description: 'Field to order by (submittedDate, name, email)', enum: ['submittedDate', 'name', 'email'] })
   @ApiQuery({ name: 'orderDirection', required: false, type: String, description: 'Order direction (asc/desc)', enum: ['asc', 'desc'] })
-  @ApiQuery({ name: 'submittedDateStart', required: false, type: String, description: 'Start date for submittedDate range (YYYY-MM-DD)' })
-  @ApiQuery({ name: 'submittedDateEnd', required: false, type: String, description: 'End date for submittedDate range (YYYY-MM-DD)' })
   async getStatusOfForms(
     @Param('bootcampId') bootcampId: number,
     @Param('moduleId') moduleId: number,
@@ -402,9 +369,7 @@ export class SubmissionController {
     @Query('offset') offset?: number,
     @Query('searchStudent') searchStudent?: string,
     @Query('orderBy') orderBy?: string,
-    @Query('orderDirection') orderDirection?: string,
-    @Query('submittedDateStart') submittedDateStart?: string,
-    @Query('submittedDateEnd') submittedDateEnd?: string
+    @Query('orderDirection') orderDirection?: string
   ) {
     return this.submissionService.formsStatusOfStudents(
       bootcampId,
@@ -415,9 +380,7 @@ export class SubmissionController {
       offset,
       searchStudent,
       orderBy,
-      orderDirection,
-      submittedDateStart,
-      submittedDateEnd
+      orderDirection
     );
   }
 
@@ -448,8 +411,8 @@ export class SubmissionController {
     name: 'orderBy',
     required: false,
     type: String,
-    description: 'Field to order by (submittedDate, percentage, name, email)',
-    enum: ['submittedDate', 'percentage', 'name', 'email']
+    description: 'Field to order by (submittedDate, name, email)',
+    enum: ['submittedDate', 'name', 'email']
   })
   @ApiQuery({
     name: 'orderDirection',
@@ -457,18 +420,6 @@ export class SubmissionController {
     type: String,
     description: 'Order direction (asc/desc)',
     enum: ['asc', 'desc']
-  })
-  @ApiQuery({
-    name: 'submittedDateStart',
-    required: false,
-    type: String,
-    description: 'Start date for submittedDate range (YYYY-MM-DD)',
-  })
-  @ApiQuery({
-    name: 'submittedDateEnd',
-    required: false,
-    type: String,
-    description: 'End date for submittedDate range (YYYY-MM-DD)',
   })
   async getAssignmentSubmission(@Param('bootcampId') bootcampId: number, @Query('searchAssignment') assignmentName: string, @Res() res) {
     try {
@@ -489,10 +440,8 @@ export class SubmissionController {
   @ApiQuery({ name: 'limit', required: false, type: Number, description: 'limit (optional)' })
   @ApiQuery({ name: 'offset', required: false, type: Number, description: 'offset (optional)' })
   @ApiQuery({ name: 'searchStudent', required: false, type: String, description: 'Search by name or email' })
-  @ApiQuery({ name: 'orderBy', required: false, type: String, description: 'Field to order by (submittedDate, percentage, name, email)', enum: ['submittedDate', 'percentage', 'name', 'email'] })
+  @ApiQuery({ name: 'orderBy', required: false, type: String, description: 'Field to order by (submittedDate, name, email)', enum: ['submittedDate', 'name', 'email'] })
   @ApiQuery({ name: 'orderDirection', required: false, type: String, description: 'Order direction (asc/desc)', enum: ['asc', 'desc'] })
-  @ApiQuery({ name: 'submittedDateStart', required: false, type: String, description: 'Start date for submittedDate range (YYYY-MM-DD)' })
-  @ApiQuery({ name: 'submittedDateEnd', required: false, type: String, description: 'End date for submittedDate range (YYYY-MM-DD)' })
   async getStatusOfAssignment(
     @Query('chapterId') chapterId: number,
     @Query('batchId') batchId?: number,
@@ -501,9 +450,7 @@ export class SubmissionController {
     @Query('searchStudent') searchStudent?: string,
     @Query('orderBy') orderBy?: string,
     @Query('orderDirection') orderDirection?: string,
-    @Query('submittedDateStart') submittedDateStart?: string,
-    @Query('submittedDateEnd') submittedDateEnd?: string,
-    @Res() res
+    @Res() res?: any
   ) {
     try {
       let [err, success] = await this.submissionService.assignmentStatusOfStudents(
@@ -513,9 +460,7 @@ export class SubmissionController {
         offset,
         searchStudent,
         orderBy,
-        orderDirection,
-        submittedDateStart,
-        submittedDateEnd
+        orderDirection
       );
       if (err) {
         return ErrorResponse.BadRequestException(err.message, err.statusCode).send(res)
@@ -670,10 +615,9 @@ export class SubmissionController {
     type: String,
     description: 'Filter by attendance status (present or absent)',
   })
-
   async getLiveChapterStudentSubmission(
     @Param('module_chapter_id') moduleChapterId: number,
-    @Res() res,
+    @Res() res?: any,
     @Query('limit') limit?: number,
     @Query('offset') offset?: number,
     @Query('name') name?: string,
