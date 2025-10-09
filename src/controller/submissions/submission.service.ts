@@ -279,11 +279,12 @@ export class SubmissionService {
       // Build order clause
       let orderClause = undefined;
       if (orderBy) {
-        orderClause = (zuvyCourseModules: { submitted_date: any; percentage: any; name: any; email: any; id: any; }, helpers: { desc: any; asc: (arg0: any) => any; }) => {
+        orderClause = (zuvyCourseModules: { submitted_date: any; percentage: any; name: any; email: any; id: any }, helpers: { desc: any; asc: (arg0: any) => any }, { sql }: any) => {
           const dir = (orderDirection && orderDirection.toLowerCase() === 'desc') ? helpers.desc : helpers.asc;
           if (orderBy === 'submittedDate') return dir(zuvyCourseModules.submitted_date);
-          if (orderBy === 'name') return dir(zuvyCourseModules.name);
-          if (orderBy === 'email') return dir(zuvyCourseModules.email);
+          // Order by related user fields via subselects if requested
+          if (orderBy === 'name') return dir(sql`(SELECT name FROM main.users AS u WHERE u.id = ${zuvyCourseModules.id}) order by name ${dir === helpers.desc ? 'desc' : 'asc'}`);
+          if (orderBy === 'email') return dir(sql`(SELECT email FROM main.users AS u WHERE u.id = ${zuvyCourseModules.id}) order by email ${dir === helpers.desc ? 'desc' : 'asc'}`);
           return helpers.asc(zuvyCourseModules.id);
         };
       }
@@ -1103,34 +1104,20 @@ export class SubmissionService {
     searchForm?: string,
     limit?: number,
     offset?: number,
-    orderBy?: 'submittedDate' | 'name' | 'email',
+    orderBy?: 'name' | 'email',
     orderDirection?: 'asc' | 'desc',
-    submittedDateStart?: string,
-    submittedDateEnd?: string
   ) {
     try {
       const topicId = 7;
-
-      // Get tracking data with search filter and pagination
-      // Build date filter for submittedDate
-      let dateFilter = sql`TRUE`;
-      if (submittedDateStart && submittedDateEnd) {
-        dateFilter = sql`moduleChapter.submitted_date BETWEEN ${submittedDateStart} AND ${submittedDateEnd}`;
-      } else if (submittedDateStart) {
-        dateFilter = sql`moduleChapter.submitted_date >= ${submittedDateStart}`;
-      } else if (submittedDateEnd) {
-        dateFilter = sql`moduleChapter.submitted_date <= ${submittedDateEnd}`;
-      }
-
       // Build order clause
       let orderClause = (courseModules: { order: any; }, { asc }: any) => asc(courseModules.order);
       if (orderBy) {
         orderClause = (courseModules: any, helpers: any) => {
           const dir = (orderDirection && orderDirection.toLowerCase() === 'desc') ? helpers.desc : helpers.asc;
-          if (orderBy === 'submittedDate') return dir(courseModules.submitted_date);
-          if (orderBy === 'name') return dir(courseModules.name);
-          if (orderBy === 'email') return dir(courseModules.email);
-          return helpers.asc(courseModules.order);
+          // Order by related user fields via subselects if requested
+          if (orderBy === 'name') return dir(sql`(SELECT name FROM main.users AS u WHERE u.id = ${courseModules.id}) order by name ${dir === helpers.desc ? 'desc' : 'asc'}`);
+          if (orderBy === 'email') return dir(sql`(SELECT email FROM main.users AS u WHERE u.id = ${courseModules.id}) order by email ${dir === helpers.desc ? 'desc' : 'asc'}`);
+          return dir(courseModules.order);
         };
       }
 
@@ -1149,8 +1136,7 @@ export class SubmissionService {
                 eq(moduleChapter.topicId, topicId),
                 searchForm
                   ? sql`${moduleChapter.title} ILIKE ${searchForm + '%'}`
-                  : sql`TRUE`,
-                dateFilter
+                  : sql`TRUE`
               ),
             with: {
               chapterTrackingDetails: {
@@ -1298,9 +1284,12 @@ export class SubmissionService {
       // Build order clause
       let orderClause = undefined;
       if (orderBy) {
-        orderClause = (chapterTracking: { submitted_date: any; percentage: any; id: any; }, helpers: { desc: any; asc: (arg0: any) => any; }) => {
+        orderClause = (chapterTracking: { submitted_date: any; percentage: any; id: any; userId?: any }, helpers: { desc: any; asc: (arg0: any) => any; }, { sql }: any) => {
           const dir = (orderDirection && orderDirection.toLowerCase() === 'desc') ? helpers.desc : helpers.asc;
           if (orderBy === 'submittedDate') return dir(chapterTracking.submitted_date);
+          // Order by related user fields using a sub-select on users table
+          if (orderBy === 'name') return dir(sql`(SELECT name FROM main.users AS u WHERE u.id = ${chapterTracking.userId}) order by name ${dir === helpers.desc ? 'desc' : 'asc'}`);
+          if (orderBy === 'email') return dir(sql`(SELECT email FROM main.users AS u WHERE u.id = ${chapterTracking.userId}) order by email ${dir === helpers.desc ? 'desc' : 'asc'}`);
           return helpers.asc(chapterTracking.id);
         };
       }
@@ -1360,7 +1349,7 @@ export class SubmissionService {
               ? Number(statusForm['user']['id'])
               : statusForm['user']['id'],
             name: statusForm['user']['name'],
-            emailId: statusForm['user']['email'],
+            email: statusForm['user']['email'],
             status: 'Submitted',
           };
         });
@@ -1632,7 +1621,9 @@ export class SubmissionService {
         // Build order clause (support submittedDate, name, email)
         let orderClause = undefined;
         if (orderBy) {
-          orderClause = (chapterTracking: { submitted_date: any; percentage: any; name: any; email: any; id: any; }, helpers: { desc: any; asc: (arg0: any) => any; }, { sql }: any) => {
+          orderClause = (chapterTracking: {
+            userId: any; submitted_date: any; percentage: any; name: any; email: any; id: any;
+          }, helpers: { desc: any; asc: (arg0: any) => any; }, { sql }: any) => {
             const dir = orderDirection && orderDirection.toString().toLowerCase() === 'desc' ? helpers.desc : helpers.asc;
             if (orderBy === 'submittedDate') return dir(chapterTracking.submitted_date);
             // Order by related user fields using a sub-select. This avoids fetching all rows and sorting in JS
@@ -2276,7 +2267,6 @@ Zuvy LMS Team
             offset,
           },
         },
-
       });
 
       return [null, submissions];
