@@ -18,6 +18,9 @@ import { AssignUserRoleDto, CreateUserDto, CreateUserRoleDto, UpdateUserDto } fr
 import { STATUS_CODES } from 'src/helpers';
 import { ResourceList } from 'src/rbac/utility';
 import { RbacAllocPermsService } from 'src/rbac/rbac.alloc-perms.service';
+import { RbacService } from 'src/rbac/rbac.service';
+import { CreateAuditlogDto } from 'src/auditlog/dto/create-auditlog.dto';
+import { AuditlogService } from 'src/auditlog/auditlog.service';
 
 
 @Injectable()
@@ -26,7 +29,8 @@ export class UsersService {
   private readonly usersJsonPath = path.join(process.cwd(), 'users.json');
   constructor(
     private readonly jwtService: JwtService,
-    private readonly rbacAllocPermsService: RbacAllocPermsService,
+    private readonly rbacService: RbacService,
+    private readonly auditlogService: AuditlogService
   ) { }
 
   /**
@@ -178,6 +182,14 @@ export class UsersService {
       this.logger.error(`Error verifying user: ${error.message}`, error.stack);
       throw new Error(`Failed to verify user: ${error.message}`);
     }
+  }
+
+  private async getRoleNameById(tx, roleId: number) {
+    const [role] = await tx
+      .select({ name: zuvyUserRoles.name })
+      .from(zuvyUserRoles)
+      .where(eq(zuvyUserRoles.id, roleId));
+    return role?.name ?? '';
   }
 
   async createUserRole(createUserRoleDto: CreateUserRoleDto): Promise<any> {
@@ -344,7 +356,7 @@ export class UsersService {
           ResourceList.rolesandpermission.edit,
           ResourceList.rolesandpermission.delete,
         ]
-        const permissionsResult = await this.rbacAllocPermsService.getAllPermissions(roleName, targetPermissions);
+        const permissionsResult = await this.rbacService.getAllPermissions(roleName, targetPermissions);
 
       return {
         status: 'success',
@@ -446,6 +458,8 @@ export class UsersService {
           .leftJoin(zuvyUserRoles, eq(zuvyUserRolesAssigned.roleId, zuvyUserRoles.id))
           .where(eq(users.id, user.id));
 
+        const newRoleName = await this.getRoleNameById(tx, createUserDto.roleId);
+
         // Convert BigInt to Number for JSON serialization
         return {
           ...userWithRole,
@@ -520,6 +534,7 @@ export class UsersService {
               .set(roleUpdateData)
               .where(eq(zuvyUserRolesAssigned.userId, id))
               .returning();
+
           } else {
             let rolesAssignData = {
               userId: id,

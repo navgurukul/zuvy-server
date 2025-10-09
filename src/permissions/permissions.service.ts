@@ -1,12 +1,17 @@
 import { BadRequestException, ConflictException, Injectable, InternalServerErrorException, Logger, NotFoundException } from '@nestjs/common';
 import { db } from 'src/db/index';
 import { sql, eq, and, asc, ilike, or, inArray } from 'drizzle-orm';
-import { CreatePermissionDto, AssignUserPermissionDto, AssignPermissionsToUserDto, AssignPermissionsToRoleDto } from './dto/permission.dto';
+import { CreatePermissionDto, AssignPermissionsToRoleDto, AssignPermissionsToUserDto, AssignUserPermissionDto} from './dto/create-permission.dto';
 import { users, zuvyPermissions, zuvyResources, zuvyPermissionsRoles, zuvyRolePermissions, zuvyUserPermissions, zuvyUserRoles, zuvyUserRolesAssigned } from 'drizzle/schema';
+import { AuditlogService } from 'src/auditlog/auditlog.service';
+import { alias } from 'drizzle-orm/pg-core';
 
 @Injectable()
-export class RbacPermissionService {
-  private readonly logger = new Logger(RbacPermissionService.name);
+export class PermissionsService {
+  constructor(
+    private auditLogService: AuditlogService
+  ){}
+  private readonly logger = new Logger(PermissionsService.name);
 
   async createPermission(createPermissionDto: CreatePermissionDto): Promise<any> {
     try {
@@ -229,7 +234,6 @@ export class RbacPermissionService {
     }
   }
 
-  // rbac-permission.service.ts
   async assignPermissionsToUser(assignPermissionsDto: AssignPermissionsToUserDto): Promise<any> {
     try {
       const { userId, permissions } = assignPermissionsDto;
@@ -283,7 +287,7 @@ export class RbacPermissionService {
     }
   }
 
-  async assignPermissionsToRole(dto: AssignPermissionsToRoleDto) {
+  async assignPermissionsToRole(userId, dto: AssignPermissionsToRoleDto) {
     try {
       const { resourceId, roleId, permissions } = dto;
 
@@ -359,6 +363,44 @@ export class RbacPermissionService {
     } catch (error) {
       this.logger.error('Error in assignPermissionsToRole:', error);
       throw new InternalServerErrorException('Failed to assign permissions');
+    }
+  }
+
+  async ensureExists(id: number) {
+      const [role] = await db.select({ id: zuvyUserRoles.id }).from(zuvyUserRoles).where(eq(zuvyUserRoles.id, id)).limit(1);
+      if (!role) throw new NotFoundException('Role not found');
+  }
+
+  async getPermissionsByRoleAndResource(roleId: number, resourceId: number) {
+    try {
+      // Ensure role exists
+      await this.ensureExists(roleId);
+
+      // Ensure resource exists
+      const resource = await db
+        .select()
+        .from(zuvyResources)
+        .where(eq(zuvyResources.id, resourceId))
+        .limit(1)
+        .then(res => res[0]);
+      if (!resource) throw new NotFoundException('Resource not found');
+
+      const pr = alias(zuvyPermissionsRoles, 'pr');
+      const permissions = await db.select({
+        id: zuvyPermissions.id, name: zuvyPermissions.name, description: zuvyPermissions.description,
+        resourceId: zuvyPermissions.resourcesId, createdAt: zuvyPermissions.createdAt, updatedAt: zuvyPermissions.updatedAt,
+        granted: sql<boolean>`(${pr.permissionId} IS NOT NULL)`.as('granted'),
+      })
+      .from(zuvyPermissions)
+      .leftJoin(pr, and(eq(pr.permissionId, zuvyPermissions.id), eq(pr.roleId, roleId)))
+      .where(eq(zuvyPermissions.resourcesId, resourceId))
+      .orderBy(zuvyPermissions.id);
+
+      return permissions;
+    }
+    catch (error) {
+      if(error.status == 404) throw error;
+      throw new InternalServerErrorException('Failed to get permissions for role and resource', error);
     }
   }
 
