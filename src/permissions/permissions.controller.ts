@@ -2,7 +2,7 @@ import { Controller, Get, Post, Body, Patch, Param, Delete, HttpException, HttpS
 import { PermissionsService } from './permissions.service';
 import { CreatePermissionDto } from './dto/create-permission.dto';
 import { UpdatePermissionDto } from './dto/update-permission.dto';
-import { ApiBearerAuth, ApiBody, ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiBody, ApiNotFoundResponse, ApiOkResponse, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { AssignPermissionsToRoleDto, AssignPermissionsToUserDto, PermissionAssignmentResponseDto, PermissionResponseDto, UserPermissionResponseDto } from 'src/rbac/dto/permission.dto';
 import { PermissionsAllocationService } from './permissions.alloc.service';
 
@@ -304,4 +304,17 @@ export class PermissionsController {
       throw new HttpException('Internal Server Error', HttpStatus.INTERNAL_SERVER_ERROR);
     }
   }
+
+    @Get(':roleId/permissions/:resourceId')
+    @ApiOperation({ summary: 'Get permissions for a role and resource' })
+    @ApiParam({ name: 'roleId', example: 1, description: 'Role ID' })
+    @ApiParam({ name: 'resourceId', example: 1, description: 'Resource ID' })
+    @ApiOkResponse({ description: 'Permissions retrieved' })
+    @ApiNotFoundResponse({ description: 'Role or Resource not found' })
+    async getPermissionsByRoleAndResource(
+      @Param('roleId') roleId: number,
+      @Param('resourceId') resourceId: number,
+    ) {
+      return this.permissionsService.getPermissionsByRoleAndResource(+roleId, +resourceId);
+    }
 }
