@@ -1,19 +1,21 @@
 // src/modules/auditlog/auditlog.service.ts (delegate)
 import { Injectable } from '@nestjs/common';
-import { AssignPermToRoleStrategy } from './strategies/permtorole.strategy';
-import { AssignRoleToUserStrategy } from './strategies/roletouser.strategy';
+import { AssignPermToRoleStrategy } from './strategies/permToRole.strategy';
+import { AssignRoleToUserStrategy } from './strategies/roleToUser.strategy';
 @Injectable()
 export class AuditlogService {
   constructor(
     private readonly permToRole: AssignPermToRoleStrategy,
     private readonly roleToUser: AssignRoleToUserStrategy,
   ) {}
-  async log(action: 'perm_to_role'|'role_to_user', dto: any) {
-    const map = { perm_to_role: this.permToRole, role_to_user: this.roleToUser } as const;
+  async log(action: 'perm_to_role' | 'role_to_user', dto: any) {
+    const map = {
+      perm_to_role: this.permToRole,
+      role_to_user: this.roleToUser,
+    } as const;
     await map[action].execute(dto);
   }
 }
-
 
 // import { Injectable, InternalServerErrorException } from '@nestjs/common';
 // import { db } from 'src/db/index';
@@ -24,7 +26,7 @@ export class AuditlogService {
 // @Injectable()
 // export class AuditlogService {
 //   async createAudit(createAuditlogDto): Promise<any> {
-    
+
 //   }
 
 //   async getAllAudit(limit: number = 10, offset: number = 0): Promise<any> {
