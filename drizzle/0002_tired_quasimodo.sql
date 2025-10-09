@@ -339,8 +339,7 @@ CREATE TABLE "main"."zuvy_audit_logs" (
     "role_id" INTEGER REFERENCES "main"."zuvy_user_roles"("id"),
     "permission_id" INTEGER REFERENCES "main"."zuvy_permissions"("id"),
     "scope_id" INTEGER REFERENCES "main"."zuvy_scopes"("id"),
-    "created_at" TIMESTAMPTZ DEFAULT NOW(),
-	"updated_at" TIMESTAMPTZ DEFAULT NOW()
+    "created_at" TIMESTAMPTZ DEFAULT NOW()
 );
 
 
