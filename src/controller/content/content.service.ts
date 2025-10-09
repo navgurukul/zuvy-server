@@ -86,7 +86,6 @@ import { RbacAllocPermsService } from '../../rbac/rbac.alloc-perms.service';
 let { S3_ACCESS_KEY_ID, S3_BUCKET_NAME, S3_REGION, S3_SECRET_KEY_ACCESS } = process.env
 import e from 'express';
 import { ResourceList } from 'src/rbac/utility';
-import { RbacService } from 'src/rbac/rbac.service';
 let { DIFFICULTY } = helperVariable;
 
 @Injectable()
@@ -101,7 +100,6 @@ export class ContentService {
     private classesService: ClassesService,
     private zoomService: ZoomService,
     private rbacAllocPermsService: RbacAllocPermsService,
-    private rbacService: RbacService
   ) {
     this.bucket = this.config.get('S3_BUCKET_NAME');
     this.region = 'ap-south-1';
@@ -543,7 +541,7 @@ export class ContentService {
         ResourceList.module.edit,
         ResourceList.module.delete
       ]
-      const grantedPermission = await this.rbacService.getAllPermissions(roleName, targetPermissions)
+      const grantedPermission = await this.rbacAllocPermsService.getAllPermissions(roleName, targetPermissions)
       return {modules, ...grantedPermission};
     } catch (err) {
       console.error(err);
@@ -1810,7 +1808,7 @@ export class ContentService {
           ResourceList.topic.edit,
           ResourceList.topic.delete,
         ]
-        const permissionsResult = await this.rbacService.getAllPermissions(roleName, targetPermissions);
+        const permissionsResult = await this.rbacAllocPermsService.getAllPermissions(roleName, targetPermissions);
         userPermissions = permissionsResult;
       } catch (permissionError) {
         // Log the error but don't fail the entire request
@@ -1933,7 +1931,7 @@ export class ContentService {
           ResourceList.topic.edit,
           ResourceList.topic.delete,
         ]
-        const permissionsResult = await this.rbacService.getAllPermissions(roleName, targetPermissions);
+        const permissionsResult = await this.rbacAllocPermsService.getAllPermissions(roleName, targetPermissions);
         userPermissions = permissionsResult;
       } catch (permissionError) {
         // Log the error but don't fail the entire request
@@ -2367,7 +2365,7 @@ export class ContentService {
           ResourceList.topic.edit,
           ResourceList.topic.delete,
         ]
-        const permissionsResult = await this.rbacService.getAllPermissions(roleName, targetPermissions);
+        const permissionsResult = await this.rbacAllocPermsService.getAllPermissions(roleName, targetPermissions);
         userPermissions = permissionsResult;
       } catch (permissionError) {
         // Log the error but don't fail the entire request

@@ -75,10 +75,8 @@ export class BootcampController {
       ? Number(searchTerm)
       : searchTerm;
     const roleName = req.user[0]?.roles;
-    const userId = req.user[0]?.id;
     const [err, res] = await this.bootcampService.getAllBootcamps(
       roleName,
-      userId,
       limit,
       offset,
       searchTermAsNumber,
@@ -193,7 +191,7 @@ export class BootcampController {
   }
 
   @Get('/batches/:bootcamp_id')
-  // @Roles('admin')
+  @Roles('admin')
   @ApiOperation({ summary: 'Get the batches by bootcamp_id' })
   @ApiQuery({
     name: 'limit',
