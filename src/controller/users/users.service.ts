@@ -40,7 +40,7 @@ export class UsersService {
     private readonly jwtService: JwtService,
     private readonly rbacService: RbacService,
     private readonly auditlogService: AuditlogService,
-  ) {}
+  ) { }
 
   /**
    * Fetch all users from the database and store them in a JSON file
@@ -105,9 +105,9 @@ export class UsersService {
           // Check if user with this email already exists
           const existingUser = userData.email
             ? await db
-                .select()
-                .from(users)
-                .where(eq(users.email, userData.email))
+              .select()
+              .from(users)
+              .where(eq(users.email, userData.email))
             : [];
 
           if (existingUser.length > 0) {
@@ -453,44 +453,61 @@ export class UsersService {
 
   async createUserWithRole(createUserDto: CreateUserDto) {
     try {
-      //before inserting, check if user with email already exists in users table
-      const existingUser = await db
-        .select()
-        .from(users)
-        .where(eq(users.email, createUserDto.email));
-      if (existingUser.length > 0) {
-        throw new BadRequestException('User with this email already exists');
-      }
-
       return await db.transaction(async (tx) => {
-        // First create the user
-        const [user] = await tx
-          .insert(users)
-          .values({
-            name: createUserDto.name,
-            email: createUserDto.email,
-          })
-          .returning();
+        // First check if user with email already exists
+        const [existingUser] = await tx
+          .select()
+          .from(users)
+          .where(eq(users.email, createUserDto.email));
 
-        if (!user) {
-          throw new InternalServerErrorException('Failed to create user');
+        let user;
+
+        if (existingUser) {
+          // User exists, check if they already have this role assigned
+          const existingRole = await tx
+            .select()
+            .from(zuvyUserRolesAssigned)
+            .where(
+              and(
+                eq(zuvyUserRolesAssigned.userId, existingUser.id),
+                eq(zuvyUserRolesAssigned.roleId, createUserDto.roleId)
+              )
+            );
+
+          if (existingRole.length > 0) {
+            throw new BadRequestException('User already has this role assigned');
+          }
+
+          // User exists but doesn't have this role - assign the role
+          user = existingUser;
+        } else {
+          // User doesn't exist - create new user
+          const [newUser] = await tx
+            .insert(users)
+            .values({
+              name: createUserDto.name,
+              email: createUserDto.email,
+            })
+            .returning();
+
+          if (!newUser) {
+            throw new InternalServerErrorException('Failed to create user');
+          }
+          user = newUser;
         }
 
         let rolesAssignData = {
           userId: user.id,
           roleId: createUserDto.roleId,
         };
-
-        // Then assign the role
+        // Assign role to user (whether existing or new)
         const [userRole] = await tx
           .insert(zuvyUserRolesAssigned)
           .values(rolesAssignData)
           .returning();
 
         if (!userRole) {
-          throw new InternalServerErrorException(
-            'Failed to assign role to user',
-          );
+          throw new InternalServerErrorException('Failed to assign role to user');
         }
 
         // Get the complete user data with role
@@ -515,11 +532,6 @@ export class UsersService {
             eq(zuvyUserRolesAssigned.roleId, zuvyUserRoles.id),
           )
           .where(eq(users.id, user.id));
-
-        const newRoleName = await this.getRoleNameById(
-          tx,
-          createUserDto.roleId,
-        );
 
         // Convert BigInt to Number for JSON serialization
         return {
