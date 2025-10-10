@@ -326,10 +326,10 @@ export class UsersService {
     try {
       const search = `%${searchTerm}%`;
 
-      // Build the base conditions
+      // Build the base conditions - name OR email se search
       const baseConditions = or(
         ilike(users.name, search),
-        ilike(users.email, search),
+        ilike(users.email, search)
       );
 
       // Add role filter if roleId is provided
