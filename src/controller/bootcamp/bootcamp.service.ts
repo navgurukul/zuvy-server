@@ -166,7 +166,7 @@ export class BootcampService {
       const targetPermissions = [
         ResourceList.course.edit,
         ResourceList.module.read,
-        ResourceList.batch.read, 
+        ResourceList.batch.read,
         ResourceList.student.read,
         ResourceList.submission.read,
         ResourceList.setting.read
@@ -877,9 +877,9 @@ export class BootcampService {
     orderDirection?: string
   ) {
     try {
-      console.log({ bootcampId, batchId, searchTerm, limit, offset, enrolledDate, lastActiveDate, status, attendance });
 
       // sanitize numeric inputs to avoid sending NaN to SQL (Postgres will error on 'NaN' for integer fields)
+      // batchId column is integer in the enrollments table, so keep it as number
       const batchIdNum = Number.isFinite(Number(batchId)) ? Number(batchId) : undefined;
       const limitNum = Number.isFinite(Number(limit)) ? Number(limit) : undefined;
       const offsetNum = Number.isFinite(Number(offset)) ? Number(offset) : undefined;
@@ -887,9 +887,13 @@ export class BootcampService {
 
       const batchFilter = batchIdNum !== undefined ? eq(zuvyBatchEnrollments.batchId, batchIdNum) : undefined;
       const attendanceFilter = attendanceNum !== undefined ? eq(zuvyBatchEnrollments.attendance, attendanceNum) : undefined;
-      const searchFilter = (searchTerm && typeof searchTerm === 'string' && searchTerm.trim() !== '')
-        ? sql`(LOWER(${users.name}) LIKE ${searchTerm.toLowerCase()} || '%' OR LOWER(${users.email}) LIKE ${searchTerm.toLowerCase()} || '%')`
-        : undefined;
+      // If searchTerm is a bigint (numeric id), match users.id. Otherwise for non-empty strings use name/email LIKE.
+      let searchFilter: any = undefined;
+      if (searchTerm && typeof searchTerm === 'bigint') {
+        searchFilter = sql`${users.id} = ${searchTerm}`;
+      } else if (searchTerm && typeof searchTerm === 'string' && searchTerm.trim() !== '') {
+        searchFilter = sql`(LOWER(${users.name}) LIKE ${searchTerm.toLowerCase()} || '%' OR LOWER(${users.email}) LIKE ${searchTerm.toLowerCase()} || '%')`;
+      }
       const enrolledDateFilter = enrolledDate ? sql`DATE(${zuvyBatchEnrollments.enrolledDate}) = ${enrolledDate}` : undefined;
       const lastActiveDateFilter = lastActiveDate ? sql`DATE(${zuvyBatchEnrollments.lastActiveDate}) = ${lastActiveDate}` : undefined;
       const statusFilter = status ? eq(zuvyBatchEnrollments.status, status) : undefined;
@@ -920,9 +924,9 @@ export class BootcampService {
         profilePicture: users.profilePicture,
         bootcampId: zuvyBatchEnrollments.bootcampId,
         attendance: zuvyBatchEnrollments.attendance,
-        enrolledDate: sql`zuvy_batch_enrollments.enrolled_date`,
-        lastActiveDate: sql`zuvy_batch_enrollments.last_active_date`,
-        status: sql`zuvy_batch_enrollments.status`,
+        enrolledDate: zuvyBatchEnrollments.enrolledDate,
+        lastActiveDate: zuvyBatchEnrollments.lastActiveDate,
+        status: zuvyBatchEnrollments.status,
         batchName: zuvyBatches.name,
         batchId: zuvyBatches.id,
         progress: zuvyBootcampTracking.progress,
@@ -937,15 +941,20 @@ export class BootcampService {
           eq(zuvyBootcampTracking.userId, zuvyBatchEnrollments.userId),
           eq(zuvyBootcampTracking.bootcampId, zuvyBatchEnrollments.bootcampId)
         ))
-        .where(and(
-          eq(zuvyBatchEnrollments.bootcampId, bootcampId),
-          batchFilter,
-          searchFilter,
-          enrolledDateFilter,
-          lastActiveDateFilter,
-          statusFilter,
-          attendanceFilter
-        ))
+        // build where clause only with defined filters to avoid passing undefined to AND
+        .where(
+          (() => {
+            const conditions = [] as any[];
+            conditions.push(eq(zuvyBatchEnrollments.bootcampId, bootcampId));
+            if (batchFilter) conditions.push(batchFilter);
+            if (searchFilter) conditions.push(searchFilter);
+            if (enrolledDateFilter) conditions.push(enrolledDateFilter);
+            if (lastActiveDateFilter) conditions.push(lastActiveDateFilter);
+            if (statusFilter) conditions.push(statusFilter);
+            if (attendanceFilter) conditions.push(attendanceFilter);
+            return conditions.length === 1 ? conditions[0] : and(...conditions);
+          })()
+        )
         .orderBy(direction);
 
       const mapData = await query;

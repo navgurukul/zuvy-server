@@ -351,8 +351,8 @@ export class BootcampController {
     name: 'orderBy',
     required: false,
     type: String,
-    description: 'Field to order by (submittedDate, percentage, name, email)',
-    enum: ['submittedDate', 'percentage', 'name', 'email']
+    description: 'Field to order by ( percentage, name, email)',
+    enum: ['percentage', 'name', 'email']
   })
   @ApiQuery({
     name: 'orderDirection',
