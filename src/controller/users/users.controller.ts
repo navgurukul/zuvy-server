@@ -1,12 +1,40 @@
-import { Controller, Get, Post, HttpStatus, HttpException, Body, Res, Query, Req, ParseIntPipe, Param, Put, Delete, } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  HttpStatus,
+  HttpException,
+  Body,
+  Res,
+  Query,
+  Req,
+  ParseIntPipe,
+  Param,
+  Put,
+  Delete,
+} from '@nestjs/common';
 import { UsersService } from './users.service';
-import { ApiTags, ApiBody, ApiOperation, ApiQuery, ApiBearerAuth, ApiParam, ApiResponse } from '@nestjs/swagger';
-import { AssignUserRoleDto, CreateUserDto, CreateUserRoleDto, UpdateUserDto, UserRoleResponseDto } from './dto/user-role.dto';
+import {
+  ApiTags,
+  ApiBody,
+  ApiOperation,
+  ApiQuery,
+  ApiBearerAuth,
+  ApiParam,
+  ApiResponse,
+} from '@nestjs/swagger';
+import {
+  AssignUserRoleDto,
+  CreateUserDto,
+  CreateUserRoleDto,
+  UpdateUserDto,
+  UserRoleResponseDto,
+} from './dto/user-role.dto';
 
 @ApiTags('Users')
 @Controller('users')
 export class UsersController {
-  constructor(private readonly usersService: UsersService) { }
+  constructor(private readonly usersService: UsersService) {}
 
   /**
    * Fetch all users and store them in a JSON file
@@ -63,7 +91,8 @@ export class UsersController {
   })
   async verifyToken(@Query('authToken') authToken: string) {
     try {
-      const result = await this.usersService.verifyTokenAndManageUser(authToken);
+      const result =
+        await this.usersService.verifyTokenAndManageUser(authToken);
       return result;
     } catch (error) {
       throw new HttpException(
@@ -80,35 +109,45 @@ export class UsersController {
   //   @RequirePermissions('create_user_role')
   @ApiOperation({
     summary: 'Create a new user role',
-    description: 'Adds a new user role to the system with the specified id, name, and description'
+    description:
+      'Adds a new user role to the system with the specified id, name, and description',
   })
   @ApiBody({
     type: CreateUserRoleDto,
-    description: 'User role data to create'
+    description: 'User role data to create',
   })
   @ApiResponse({
     status: 201,
     description: 'User role created successfully',
-    type: UserRoleResponseDto
+    type: UserRoleResponseDto,
   })
   @ApiResponse({
     status: 400,
-    description: 'Bad request - Invalid input data'
+    description: 'Bad request - Invalid input data',
   })
   @ApiResponse({
     status: 500,
-    description: 'Internal server error'
+    description: 'Internal server error',
   })
   @ApiBearerAuth('JWT-auth')
-  async createUserRole(@Body() createUserRoleDto: CreateUserRoleDto): Promise<any> {
+  async createUserRole(
+    @Body() createUserRoleDto: CreateUserRoleDto,
+  ): Promise<any> {
     try {
       const result = await this.usersService.createUserRole(createUserRoleDto);
       return result;
     } catch (error) {
-      if (error.code === '23505') { // PostgreSQL unique constraint violation
-        throw new HttpException('User role with this ID already exists', HttpStatus.BAD_REQUEST);
+      if (error.code === '23505') {
+        // PostgreSQL unique constraint violation
+        throw new HttpException(
+          'User role with this ID already exists',
+          HttpStatus.BAD_REQUEST,
+        );
       }
-      throw new HttpException('Internal Server Error', HttpStatus.INTERNAL_SERVER_ERROR);
+      throw new HttpException(
+        'Internal Server Error',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
     }
   }
 
@@ -116,16 +155,16 @@ export class UsersController {
   //   @RequirePermissions('read_user_roles')
   @ApiOperation({
     summary: 'Get all user roles',
-    description: 'Retrieves all user roles from the system'
+    description: 'Retrieves all user roles from the system',
   })
   @ApiResponse({
     status: 200,
     description: 'User roles retrieved successfully',
-    type: [UserRoleResponseDto]
+    type: [UserRoleResponseDto],
   })
   @ApiResponse({
     status: 500,
-    description: 'Internal server error'
+    description: 'Internal server error',
   })
   @ApiBearerAuth('JWT-auth')
   async getAllUserRoles(): Promise<any> {
@@ -133,36 +172,53 @@ export class UsersController {
       const result = await this.usersService.getAllUserRoles();
       return result;
     } catch (error) {
-      throw new HttpException('Internal Server Error', HttpStatus.INTERNAL_SERVER_ERROR);
+      throw new HttpException(
+        'Internal Server Error',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
     }
   }
 
   @Post('users/assign-role')
   @ApiOperation({
     summary: 'Assign a role to a user',
-    description: 'Assigns an existing role to an existing user; idempotent if already assigned'
+    description:
+      'Assigns an existing role to an existing user; idempotent if already assigned',
   })
   @ApiBody({
     type: AssignUserRoleDto,
-    description: 'User ID and Role ID to assign'
+    description: 'User ID and Role ID to assign',
   })
-  @ApiResponse({ status: 200, description: 'Role assigned to user successfully' })
+  @ApiResponse({
+    status: 200,
+    description: 'Role assigned to user successfully',
+  })
   @ApiResponse({ status: 404, description: 'User or Role not found' })
   @ApiResponse({ status: 500, description: 'Internal server error' })
   @ApiBearerAuth('JWT-auth')
-  async assignRoleToUser(@Body() body: AssignUserRoleDto): Promise<any> {
+  async assignRoleToUser(
+    @Body() body: AssignUserRoleDto,
+    @Req() req,
+  ): Promise<any> {
     try {
-      const result = await this.usersService.assignRoleToUser(body);
+      const actorUserId = req.user[0]?.id;
+      const result = await this.usersService.assignRoleToUser(
+        actorUserId,
+        body,
+      );
       return result;
     } catch (error) {
-      throw new HttpException('Internal Server Error', HttpStatus.INTERNAL_SERVER_ERROR);
+      throw new HttpException(
+        'Internal Server Error',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
     }
   }
 
   @Get('get/all/users')
   @ApiOperation({
     summary: 'Get all users with their roles',
-    description: 'Retrieves a list of all users with their role information'
+    description: 'Retrieves a list of all users with their role information',
   })
   @ApiQuery({
     name: 'limit',
@@ -180,7 +236,7 @@ export class UsersController {
     name: 'searchTerm',
     required: false,
     type: String,
-    description: 'Filter by user name or email (default empty = all users)'
+    description: 'Filter by user name or email (default empty = all users)',
   })
   @ApiQuery({
     name: 'roleId',
@@ -196,23 +252,26 @@ export class UsersController {
       items: {
         type: 'object',
         properties: {
-          id: { type: 'string', example: "1" },
+          id: { type: 'string', example: '1' },
           name: { type: 'string', example: 'John Doe' },
           email: { type: 'string', example: 'john@example.com' },
           roleId: { type: 'number', example: 1 },
           roleName: { type: 'string', example: 'admin' },
-          roleDescription: { type: 'string', example: 'Administrator role', nullable: true },
+          roleDescription: {
+            type: 'string',
+            example: 'Administrator role',
+            nullable: true,
+          },
           createdAt: { type: 'string', example: '2023-12-01T10:00:00.000Z' },
-          updatedAt: { type: 'string', example: '2023-12-01T10:00:00.000Z' }
-        }
-      }
-    }
+          updatedAt: { type: 'string', example: '2023-12-01T10:00:00.000Z' },
+        },
+      },
+    },
   })
   @ApiResponse({
     status: 500,
-    description: 'Internal server error'
+    description: 'Internal server error',
   })
-
   async getAllUsers(
     @Query('limit') limit: number,
     @Query('offset') offSet: number,
@@ -221,18 +280,24 @@ export class UsersController {
     @Req() req,
   ) {
     const roleName = req.user[0]?.roles;
-    return this.usersService.getAllUsersWithRoles(roleName, limit, offSet, searchTerm, roleId);
+    return this.usersService.getAllUsersWithRoles(
+      roleName,
+      limit,
+      offSet,
+      searchTerm,
+      roleId,
+    );
   }
 
   @Get('/getUser/:id')
   @ApiOperation({
     summary: 'Get user by ID with role',
-    description: 'Retrieves a specific user with their role information'
+    description: 'Retrieves a specific user with their role information',
   })
   @ApiParam({
     name: 'id',
     description: 'User ID',
-    type: BigInt
+    type: BigInt,
   })
   @ApiResponse({
     status: 200,
@@ -245,19 +310,23 @@ export class UsersController {
         email: { type: 'string', example: 'john@example.com' },
         roleId: { type: 'number', example: 1 },
         roleName: { type: 'string', example: 'admin' },
-        roleDescription: { type: 'string', example: 'Administrator role', nullable: true },
+        roleDescription: {
+          type: 'string',
+          example: 'Administrator role',
+          nullable: true,
+        },
         createdAt: { type: 'string', example: '2023-12-01T10:00:00.000Z' },
-        updatedAt: { type: 'string', example: '2023-12-01T10:00:00.000Z' }
-      }
-    }
+        updatedAt: { type: 'string', example: '2023-12-01T10:00:00.000Z' },
+      },
+    },
   })
   @ApiResponse({
     status: 404,
-    description: 'User not found'
+    description: 'User not found',
   })
   @ApiResponse({
     status: 500,
-    description: 'Internal server error'
+    description: 'Internal server error',
   })
   @ApiBearerAuth('JWT-auth')
   async getUserById(@Param('id', ParseIntPipe) id: bigint) {
@@ -267,11 +336,11 @@ export class UsersController {
   @Post('/addUsers')
   @ApiOperation({
     summary: 'Create a new user with role',
-    description: 'Creates a new user and assigns them a role'
+    description: 'Creates a new user and assigns them a role',
   })
   @ApiBody({
     type: CreateUserDto,
-    description: 'User data with role assignment'
+    description: 'User data with role assignment',
   })
   @ApiResponse({
     status: 201,
@@ -284,19 +353,24 @@ export class UsersController {
         email: { type: 'string', example: 'john@example.com' },
         roleId: { type: 'number', example: 1 },
         roleName: { type: 'string', example: 'admin' },
-        roleDescription: { type: 'string', example: 'Administrator role', nullable: true },
+        roleDescription: {
+          type: 'string',
+          example: 'Administrator role',
+          nullable: true,
+        },
         createdAt: { type: 'string', example: '2023-12-01T10:00:00.000Z' },
-        updatedAt: { type: 'string', example: '2023-12-01T10:00:00.000Z' }
-      }
-    }
+        updatedAt: { type: 'string', example: '2023-12-01T10:00:00.000Z' },
+      },
+    },
   })
   @ApiResponse({
     status: 400,
-    description: 'Bad request - Invalid input data, duplicate email, or invalid role'
+    description:
+      'Bad request - Invalid input data, duplicate email, or invalid role',
   })
   @ApiResponse({
     status: 500,
-    description: 'Internal server error'
+    description: 'Internal server error',
   })
   @ApiBearerAuth('JWT-auth')
   async createUser(@Body() createUserDto: CreateUserDto) {
@@ -306,16 +380,16 @@ export class UsersController {
   @Put('/updateUser/:id')
   @ApiOperation({
     summary: 'Update user and role',
-    description: 'Updates user details and/or their role assignment'
+    description: 'Updates user details and/or their role assignment',
   })
   @ApiParam({
     name: 'id',
     description: 'User ID to update',
-    type: Number
+    type: Number,
   })
   @ApiBody({
     type: UpdateUserDto,
-    description: 'Updated user data'
+    description: 'Updated user data',
   })
   @ApiResponse({
     status: 200,
@@ -328,28 +402,33 @@ export class UsersController {
         email: { type: 'string', example: 'john@example.com' },
         roleId: { type: 'number', example: 1 },
         roleName: { type: 'string', example: 'admin' },
-        roleDescription: { type: 'string', example: 'Administrator role', nullable: true },
+        roleDescription: {
+          type: 'string',
+          example: 'Administrator role',
+          nullable: true,
+        },
         createdAt: { type: 'string', example: '2023-12-01T10:00:00.000Z' },
-        updatedAt: { type: 'string', example: '2023-12-01T10:00:00.000Z' }
-      }
-    }
+        updatedAt: { type: 'string', example: '2023-12-01T10:00:00.000Z' },
+      },
+    },
   })
   @ApiResponse({
     status: 400,
-    description: 'Bad request - Invalid input data, duplicate email, or invalid role'
+    description:
+      'Bad request - Invalid input data, duplicate email, or invalid role',
   })
   @ApiResponse({
     status: 404,
-    description: 'User not found'
+    description: 'User not found',
   })
   @ApiResponse({
     status: 500,
-    description: 'Internal server error'
+    description: 'Internal server error',
   })
   @ApiBearerAuth('JWT-auth')
   async updateUser(
     @Param('id', ParseIntPipe) id: bigint,
-    @Body() updateUserDto: UpdateUserDto
+    @Body() updateUserDto: UpdateUserDto,
   ) {
     return this.usersService.updateUser(id, updateUserDto);
   }
@@ -357,19 +436,19 @@ export class UsersController {
   @Delete('/deleteUser/:id')
   @ApiOperation({
     summary: 'Delete a user',
-    description: 'Deletes a user and their role assignments'
+    description: 'Deletes a user and their role assignments',
   })
   @ApiResponse({
     status: 204,
-    description: 'User deleted successfully'
+    description: 'User deleted successfully',
   })
   @ApiResponse({
     status: 404,
-    description: 'User not found'
+    description: 'User not found',
   })
   @ApiResponse({
     status: 500,
-    description: 'Internal server error'
+    description: 'Internal server error',
   })
   @ApiBearerAuth('JWT-auth')
   async deleteUser(@Param('id', ParseIntPipe) id: bigint) {

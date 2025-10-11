@@ -40,7 +40,7 @@ export class UsersService {
     private readonly jwtService: JwtService,
     private readonly rbacService: RbacService,
     private readonly auditlogService: AuditlogService,
-  ) { }
+  ) {}
 
   /**
    * Fetch all users from the database and store them in a JSON file
@@ -105,9 +105,9 @@ export class UsersService {
           // Check if user with this email already exists
           const existingUser = userData.email
             ? await db
-              .select()
-              .from(users)
-              .where(eq(users.email, userData.email))
+                .select()
+                .from(users)
+                .where(eq(users.email, userData.email))
             : [];
 
           if (existingUser.length > 0) {
@@ -245,12 +245,32 @@ export class UsersService {
     }
   }
 
-  async assignRoleToUser(payload: AssignUserRoleDto): Promise<any> {
+  async roleCheck(roleId: number) {
+    const roleDetails = await db.execute(
+      sql`SELECT id, name FROM main.zuvy_user_roles WHERE id = ${roleId} LIMIT 1`,
+    );
+    if (!(roleDetails as any).rows?.length) {
+      return {
+        status: 'error',
+        code: 404,
+        message: 'Role not found',
+        data: null,
+      };
+    }
+    return roleDetails;
+  }
+
+  async assignRoleToUser(
+    actorUserIdString,
+    payload: AssignUserRoleDto,
+  ): Promise<any> {
     const { userId, roleId } = payload;
     try {
+      const actorUserId = Number(actorUserIdString);
       const userCheck = await db.execute(
-        sql`SELECT id FROM main.users WHERE id = ${userId} LIMIT 1`,
+        sql`SELECT id, name FROM main.users WHERE id = ${userId} LIMIT 1`,
       );
+
       if (!(userCheck as any).rows?.length) {
         return {
           status: 'error',
@@ -260,21 +280,29 @@ export class UsersService {
         };
       }
 
-      const roleCheck = await db.execute(
-        sql`SELECT id FROM main.zuvy_user_roles WHERE id = ${roleId} LIMIT 1`,
+      const actorUserCheck = await db.execute(
+        sql`SELECT id, name FROM main.users WHERE id = ${actorUserId} LIMIT 1`,
       );
-      if (!(roleCheck as any).rows?.length) {
+      if (!(actorUserCheck as any).rows?.length) {
         return {
           status: 'error',
           code: 404,
-          message: 'Role not found',
+          message: 'User not found',
           data: null,
         };
       }
 
+      const roleCheck = await this.roleCheck(roleId);
+
       const existing = await db.execute(
         sql`SELECT role_id FROM main.zuvy_user_roles_assigned WHERE user_id = ${userId} LIMIT 1`,
       );
+
+      const targetUserId = userId;
+      const actorName = (actorUserCheck as any).rows?.[0]?.name;
+      const targetName = (userCheck as any).rows?.[0]?.name;
+      const roleName = (roleCheck as any).rows?.[0]?.name;
+
       if ((existing as any).rows?.length) {
         const currentRoleId = (existing as any).rows[0].role_id;
         if (Number(currentRoleId) === Number(roleId)) {
@@ -292,6 +320,15 @@ export class UsersService {
           INSERT INTO main.zuvy_user_roles_assigned (user_id, role_id)
           VALUES (${userId}, ${roleId})
           RETURNING *`);
+        const currentRoleDetails = await this.roleCheck(currentRoleId);
+        const currentRoleName = (currentRoleDetails as any).rows?.[0]?.name;
+        const actionUpdate = `${actorName} updated ${targetName}'s role from ${currentRoleName} to ${roleName}`;
+        const auditLog = await this.auditlogService.log('role_to_user', {
+          actorUserId,
+          targetUserId,
+          roleId,
+          action: actionUpdate,
+        });
         return {
           status: 'success',
           code: 200,
@@ -304,6 +341,15 @@ export class UsersService {
         INSERT INTO main.zuvy_user_roles_assigned (user_id, role_id)
         VALUES (${userId}, ${roleId})
         RETURNING *`);
+
+      const action = `${actorName} assigned role ${roleName} to ${targetName}`;
+      const auditLog = await this.auditlogService.log('role_to_user', {
+        actorUserId,
+        targetUserId,
+        roleId,
+        action,
+      });
+
       return {
         status: 'success',
         code: 200,
@@ -329,7 +375,7 @@ export class UsersService {
       // Build the base conditions - name OR email se search
       const baseConditions = or(
         ilike(users.name, search),
-        ilike(users.email, search)
+        ilike(users.email, search),
       );
 
       // Add role filter if roleId is provided
@@ -470,12 +516,14 @@ export class UsersService {
             .where(
               and(
                 eq(zuvyUserRolesAssigned.userId, existingUser.id),
-                eq(zuvyUserRolesAssigned.roleId, createUserDto.roleId)
-              )
+                eq(zuvyUserRolesAssigned.roleId, createUserDto.roleId),
+              ),
             );
 
           if (existingRole.length > 0) {
-            throw new BadRequestException('User already has this role assigned');
+            throw new BadRequestException(
+              'User already has this role assigned',
+            );
           }
 
           // User exists but doesn't have this role - assign the role
@@ -507,7 +555,9 @@ export class UsersService {
           .returning();
 
         if (!userRole) {
-          throw new InternalServerErrorException('Failed to assign role to user');
+          throw new InternalServerErrorException(
+            'Failed to assign role to user',
+          );
         }
 
         // Get the complete user data with role
