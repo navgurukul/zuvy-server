@@ -602,6 +602,7 @@ Team Zuvy`;
       });
       let userIds = enrolledStudents.map(student => Number(student.userId));
       // Fetch submitted assessments for the given assessmentID
+      // Fetch the latest submission per user for this assessment (no DB-level limit/offset here)
       const submitedOutsourseAssessments = await db
         .query
         .zuvyAssessmentSubmission.findMany({
@@ -650,8 +651,6 @@ Team Zuvy`;
             },
           },
           orderBy: (zuvyAssessmentSubmission, { asc }) => asc(zuvyAssessmentSubmission.userId),
-          limit,
-          offset
         });
       const totalStudentsCount = await db
         .select({
@@ -716,7 +715,8 @@ Team Zuvy`;
       )
     `
         );
-      const totalCount = totalCountResult[0]?.value;
+      // totalCountResult holds count from DB if needed; we'll compute final totalCount from combinedData below
+      // const totalCount = totalCountResult[0]?.value;
 
       const reattemptCountMap = new Map(
         userReattemptCounts.map((entry) => [Number(entry.userId), entry.reattemptCount])
@@ -730,7 +730,7 @@ Team Zuvy`;
       );
 
       // Combine enrolled students with their submissions
-      const combinedData = enrolledStudents
+      let combinedData = enrolledStudents
         .map((student: any) => {
           const userId = Number(student.userId);
           const submission = submissionsMap.get(userId);
@@ -746,12 +746,12 @@ Team Zuvy`;
             startedAt: started || null,
             submitedAt: ended || null,
             isPassed: submission?.isPassed,
-            percentage: parseFloat(submission?.percentage?.toFixed(2)) || null,
+            percentage: submission?.percentage != null ? parseFloat(submission.percentage.toFixed(2)) : null,
             typeOfsubmission: submission ? submission.typeOfsubmission : 'not attempted',
             copyPaste: submission?.copyPaste || null,
             active: submission?.active,
-            mcqScore: parseFloat(submission?.mcqScore?.toFixed(2)),
-            codingScore: parseFloat(submission?.codingScore?.toFixed(2)),
+            mcqScore: submission?.mcqScore != null ? parseFloat(submission.mcqScore.toFixed(2)) : null,
+            codingScore: submission?.codingScore != null ? parseFloat(submission.codingScore.toFixed(2)) : null,
             reattemptRequested: submission?.reattemptRequested,
             reattemptApproved: submission?.reattemptApproved,
             reattemptCount: (reattemptCountMap.get(userId) || 1) - 1,
@@ -764,12 +764,12 @@ Team Zuvy`;
         })
         .filter((data) => data.startedAt);
 
-      // Apply sorting if orderBy is specified
+      // Apply sorting if orderBy is specified (do in-memory so we can sort by user.name/user.email which come from users relation)
       if (orderBy) {
         const direction = orderDirection === 'desc' ? -1 : 1;
 
         combinedData.sort((a, b) => {
-          let valueA, valueB;
+          let valueA: any, valueB: any;
 
           switch (orderBy) {
             case 'submittedDate':
@@ -777,8 +777,8 @@ Team Zuvy`;
               valueB = b.submitedAt ? new Date(b.submitedAt).getTime() : 0;
               break;
             case 'percentage':
-              valueA = a.percentage || 0;
-              valueB = b.percentage || 0;
+              valueA = a.percentage != null ? a.percentage : -Infinity;
+              valueB = b.percentage != null ? b.percentage : -Infinity;
               break;
             case 'name':
               valueA = (a.name || '').toLowerCase();
@@ -798,6 +798,12 @@ Team Zuvy`;
         });
       }
 
+      // Apply pagination after sorting to ensure correct ordering
+      const totalCount = combinedData.length;
+      const offsetNumFinal = Number.isFinite(Number(offset)) ? Number(offset) : 0;
+      const limitNumFinal = Number.isFinite(Number(limit)) && Number(limit) > 0 ? Number(limit) : totalCount || 10;
+      const paginatedData = combinedData.slice(offsetNumFinal, offsetNumFinal + limitNumFinal);
+
       // Fetch ModuleAssessment details
       const moduleAssessment = await db.query.zuvyOutsourseAssessments.findFirst({
         where: (zuvyOutsourseAssessments, { eq }) =>
@@ -816,7 +822,7 @@ Team Zuvy`;
       });
 
       // Prepare the final response
-      const totalPages = Math.ceil(totalCount / limit);
+      const totalPages = Math.ceil(totalCount / limitNumFinal) || 1;
 
       const response = {
         ModuleAssessment: {
@@ -828,7 +834,7 @@ Team Zuvy`;
           totalQualifiedStudents: totalCountOfQualifiedStudents.length,
           totalPages,
         },
-        submitedOutsourseAssessments: combinedData,
+        submitedOutsourseAssessments: paginatedData,
       };
 
       return response;

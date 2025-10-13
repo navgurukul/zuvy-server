@@ -1,6 +1,6 @@
 import { Injectable, Logger, HttpStatus } from '@nestjs/common';
 import { db } from '../../db/index';
-import { eq, sql, count, inArray, or, and, like, desc, ne } from 'drizzle-orm';
+import { eq, sql, count, inArray, or, and, like, desc, asc, ne } from 'drizzle-orm';
 import axios from 'axios';
 import * as _ from 'lodash';
 import { error, log } from 'console';
@@ -430,8 +430,6 @@ export class BootcampService {
     offset: number,
   ): Promise<any> {
     try {
-      console.log({ bootcamp_id, limit, offset });
-
       // sanitize pagination parameters
       const limitNum = Number.isFinite(Number(limit)) ? Number(limit) : undefined;
       const offsetNum = Number.isFinite(Number(offset)) ? Number(offset) : undefined;
@@ -897,7 +895,6 @@ export class BootcampService {
       const enrolledDateFilter = enrolledDate ? sql`DATE(${zuvyBatchEnrollments.enrolledDate}) = ${enrolledDate}` : undefined;
       const lastActiveDateFilter = lastActiveDate ? sql`DATE(${zuvyBatchEnrollments.lastActiveDate}) = ${lastActiveDate}` : undefined;
       const statusFilter = status ? eq(zuvyBatchEnrollments.status, status) : undefined;
-      console.log({ orderBy, orderDirection });
       // Determine order field and direction
       let orderField;
       switch (orderBy) {
@@ -916,7 +913,7 @@ export class BootcampService {
         default:
           orderField = users.name;
       }
-      const direction = orderDirection === 'desc' ? desc(orderField) : orderField;
+      const direction = orderDirection === 'desc' ? desc(orderField) : asc(orderField);
       const query = db.select({
         userId: users.id,
         name: users.name,
@@ -964,7 +961,6 @@ export class BootcampService {
 
       // For each student, fetch their attendance records
       const modifiedStudentInfo = await Promise.all(studentsInfo.map(async (item) => {
-        console.log({ item });
         return {
           ...item,
           userId: Number(item.userId),
@@ -1059,7 +1055,6 @@ export class BootcampService {
     editUserDetailsDto: editUserDetailsDto,
   ): Promise<[string | null, any]> {
     try {
-      console.log({ userId, editUserDetailsDto });
       // Validate user existence in the users table
       const userExists = await db
         .select({ id: users.id, email: users.email })

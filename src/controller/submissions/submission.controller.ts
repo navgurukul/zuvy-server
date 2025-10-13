@@ -71,8 +71,8 @@ export class SubmissionController {
     description: 'Order direction (asc/desc)',
     enum: ['asc', 'desc']
   })
-  async getChapterTracking(@Param('bootcampId') bootcampId: number, @Query('searchPractiseProblem') searchProblem: string, @Query('orderBy') orderBy?: 'submittedDate' | 'name' | 'email', @Query('orderDirection') orderDirection?: 'asc' | 'desc', @Query('searchStudent') searchStudent?: string) {
-    return this.submissionService.getSubmissionOfPractiseProblem(bootcampId, searchProblem, orderBy, orderDirection, searchStudent);
+  async getChapterTracking(@Param('bootcampId') bootcampId: number, @Query('searchPractiseProblem') searchProblem: string, @Query('orderBy') orderBy?: 'submittedDate' | 'percentage' | 'name' | 'email', @Query('orderDirection') orderDirection?: 'asc' | 'desc', @Query('searchStudent') searchStudent?: string) {
+    return this.submissionService.getSubmissionOfPractiseProblem(bootcampId, searchProblem, orderBy as any, orderDirection as any, searchStudent);
   }
 
   @Get('/practiseProblemStatus/:moduleId')
@@ -125,7 +125,7 @@ export class SubmissionController {
     required: false,
     type: String,
     description: 'Field to order by (submittedDate, name, email)',
-    enum: ['submittedDate', 'name', 'email']
+    enum: ['submittedDate', 'percentage', 'name', 'email']
   })
   @ApiQuery({
     name: 'orderDirection',
@@ -137,9 +137,11 @@ export class SubmissionController {
   async getAssessmentInfoBy(
     @Query('bootcampId') bootcampId: number,
     @Query('limit') limit: number,
-    @Query('offset') offset: number
+    @Query('offset') offset: number,
+    @Query('orderBy') orderBy?: 'submittedDate' | 'percentage' | 'name' | 'email',
+    @Query('orderDirection') orderDirection?: 'asc' | 'desc',
   ) {
-    return this.submissionService.getAssessmentInfoBy(bootcampId, limit, offset);
+    return this.submissionService.getAssessmentInfoBy(bootcampId, limit, offset, orderBy as any, orderDirection as any);
   }
 
 
@@ -201,8 +203,8 @@ export class SubmissionController {
     description: 'Order direction (asc/desc)',
     enum: ['asc', 'desc']
   })
-  async getProjectSubmissions(@Param('bootcampId') bootcampId: number, @Query('searchProject') projectName: string) {
-    return this.submissionService.getAllProjectSubmissions(bootcampId, projectName);
+  async getProjectSubmissions(@Param('bootcampId') bootcampId: number, @Query('searchProject') projectName: string, @Query('orderBy') orderBy?: 'submittedDate' | 'percentage' | 'name' | 'email', @Query('orderDirection') orderDirection?: 'asc' | 'desc') {
+    return this.submissionService.getAllProjectSubmissions(bootcampId, projectName, orderBy as any, orderDirection as any);
   }
 
   @Get('/projects/students')
@@ -261,7 +263,7 @@ export class SubmissionController {
     @Query('limit') limit?: number,
     @Query('offset') offset?: number,
     @Query('searchStudent') searchStudent?: string,
-    @Query('orderBy') orderBy?: 'submittedDate' | 'name' | 'email',
+    @Query('orderBy') orderBy?: 'submittedDate' | 'percentage' | 'name' | 'email',
     @Query('orderDirection') orderDirection?: 'asc' | 'desc',
   ) {
     return this.submissionService.getUserDetailsForProject(
