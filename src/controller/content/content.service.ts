@@ -82,8 +82,10 @@ import {
 import { SseService } from '../../services/sse.service';
 import { ClassesService } from '../classes/classes.service';
 import { ZoomService } from 'src/services/zoom/zoom.service';
+import { RbacAllocPermsService } from '../../rbac/rbac.alloc-perms.service';
 let { S3_ACCESS_KEY_ID, S3_BUCKET_NAME, S3_REGION, S3_SECRET_KEY_ACCESS } = process.env
 import e from 'express';
+import { ResourceList } from 'src/rbac/utility';
 let { DIFFICULTY } = helperVariable;
 
 @Injectable()
@@ -96,7 +98,8 @@ export class ContentService {
     private config: ConfigService,
     private sseService: SseService,
     private classesService: ClassesService,
-    private zoomService: ZoomService
+    private zoomService: ZoomService,
+    private rbacAllocPermsService: RbacAllocPermsService,
   ) {
     this.bucket = this.config.get('S3_BUCKET_NAME');
     this.region = 'ap-south-1';
@@ -489,7 +492,7 @@ export class ContentService {
     }
   }
 
-  async getAllModuleByBootcampId(bootcampId: number) {
+  async getAllModuleByBootcampId(bootcampId: number, roleName: string[]) {
     const bootcampInfo = await db.select().from(zuvyBootcamps).where(eq(zuvyBootcamps.id, bootcampId));
     if (bootcampInfo.length == 0) {
       throw new NotFoundException('Bootcamp not found!');
@@ -531,7 +534,15 @@ export class ContentService {
         };
       });
       modules.sort((a, b) => a.order - b.order);
-      return modules;
+      //get permissions.
+      const targetPermissions = [
+        ResourceList.module.read,
+        ResourceList.module.create,
+        ResourceList.module.edit,
+        ResourceList.module.delete
+      ]
+      const grantedPermission = await this.rbacAllocPermsService.getAllPermissions(roleName, targetPermissions)
+      return {modules, ...grantedPermission};
     } catch (err) {
       console.error(err);
       return [];
@@ -846,14 +857,14 @@ export class ContentService {
             }
           });
           let session = sessionDetails[0]
-          if(session.s3link !== null && session.s3link !== '' && session.status === 'completed' && session.isZoomMeet === true && !session.s3link.includes('www.youtube.com')) {
-          const updatedRecordingLink = await this.zoomService.getMeetingRecordingLink(session.zoomMeetingId);
-          if(updatedRecordingLink.success) {
-            session.s3link = updatedRecordingLink.data.playUrl !== null ? updatedRecordingLink.data.playUrl : session.s3link;
-            sessionDetails[0] = session;
+          if (session.s3link !== null && session.s3link !== '' && session.status === 'completed' && session.isZoomMeet === true && !session.s3link.includes('www.youtube.com')) {
+            const updatedRecordingLink = await this.zoomService.getMeetingRecordingLink(session.zoomMeetingId);
+            if (updatedRecordingLink.success) {
+              session.s3link = updatedRecordingLink.data.playUrl !== null ? updatedRecordingLink.data.playUrl : session.s3link;
+              sessionDetails[0] = session;
+            }
           }
-        }
-          
+
           // Fetch attendance data and format response for each session
           const sessionDetailsWithAttendance = await Promise.all(
             sessionDetails.map(async (session) => {
@@ -887,10 +898,10 @@ export class ContentService {
                   }
                 }
               });
-              
-              let userJoinLink =  mergeInfoAsChild 
-                  ? mergeInfoAsChild.parentSession.hangoutLink
-                  : (session.isZoomMeet ? session.zoomStartUrl : session.hangoutLink);
+
+              let userJoinLink = mergeInfoAsChild
+                ? mergeInfoAsChild.parentSession.hangoutLink
+                : (session.isZoomMeet ? session.zoomStartUrl : session.hangoutLink);
               if (userRole.includes('admin') || userRole.includes('instructor')) {
                 // If the user is an admin or instructor, use the session's zoomStartUrl or hangoutLink
                 userJoinLink = session.isZoomMeet ? session.zoomStartUrl : session.hangoutLink;
@@ -1572,7 +1583,7 @@ export class ContentService {
     if (zuvySessionIds.length > 0) {
       const sessionIds = zuvySessionIds.map(r => r.id);
       const meetingIds = zuvySessionIds.map(s => s.meetingId);
-      await db.update(zuvySessions).set({chapterId: null, moduleId: null}).where(inArray(zuvySessions.id, sessionIds));
+      await db.update(zuvySessions).set({ chapterId: null, moduleId: null }).where(inArray(zuvySessions.id, sessionIds));
     }
     // 2. Cascade delete all related records for each chapter
     const cascadeChapterTables = [
@@ -1665,9 +1676,8 @@ export class ContentService {
     if (chapterInfo.length === 0) {
       return [{ status: 'error', message: 'Chapter not found', code: 404 }, null];
     }
-    if(chapterInfo[0].topicId == 8)
-    {
-      await db.update(zuvySessions).set({ chapterId: null ,moduleId: null}).where(eq(zuvySessions.chapterId, chapterId));
+    if (chapterInfo[0].topicId == 8) {
+      await db.update(zuvySessions).set({ chapterId: null, moduleId: null }).where(eq(zuvySessions.chapterId, chapterId));
     }
     for (const { table, column, name } of cascadeChapterTables) {
       try {
@@ -1711,15 +1721,17 @@ export class ContentService {
   }
 
   async getAllQuizQuestions(
+    roleName: string[],
     tagId: number | number[],
     difficulty: ('Easy' | 'Medium' | 'Hard') | ('Easy' | 'Medium' | 'Hard')[],
     searchTerm: string = '',
     limit: number,
     offSet: number,
+    userId: bigint,
   ) {
     try {
       const where: SQL[] = [];
-
+      let resourceId = 2;
       let tagIds;
       if (tagId) {
         tagIds = Array.isArray(tagId) ? tagId : [tagId];
@@ -1783,10 +1795,33 @@ export class ContentService {
         offset: offSet
       });
 
+      let userPermissions = {};
+
+      try {
+        const targetPermissions = [
+          ResourceList.question.read,
+          ResourceList.question.create,
+          ResourceList.question.edit,
+          ResourceList.question.delete,
+          ResourceList.topic.read,
+          ResourceList.topic.create,
+          ResourceList.topic.edit,
+          ResourceList.topic.delete,
+        ]
+        const permissionsResult = await this.rbacAllocPermsService.getAllPermissions(roleName, targetPermissions);
+        userPermissions = permissionsResult;
+      } catch (permissionError) {
+        // Log the error but don't fail the entire request
+        console.error('Error fetching user permissions:', permissionError);
+        userPermissions = { error: 'Failed to fetch permissions' };
+      }
+
+      // Return the results with permissions
       return {
         data: result,
         totalRows: totalCount.length,
-        totalPages: !Number.isNaN(limit) ? Math.ceil(totalCount.length / limit) : 1
+        totalPages: !Number.isNaN(limit) ? Math.ceil(totalCount.length / limit) : 1,
+        ...userPermissions
       };
 
     } catch (err) {
@@ -1795,15 +1830,17 @@ export class ContentService {
   }
 
   async getAllCodingQuestions(
+    roleName: string[],
     tagId: number | number[],
     difficulty: ('Easy' | 'Medium' | 'Hard') | ('Easy' | 'Medium' | 'Hard')[],
     searchTerm: string = '',
     limit: number,
     offSet: number,
+    userId: bigint,
   ) {
     try {
       let conditions = [];
-
+      let resourceId = 2;
       let tagIds;
 
       if (tagId) {
@@ -1880,11 +1917,34 @@ export class ContentService {
         offset: offSet, // Apply offset
       });
 
-      // Return the results along with totalRows and totalPages
+      let userPermissions = {};
+
+      try {
+        // Get user permissions for coding questions resource
+        const targetPermissions = [
+          ResourceList.question.read,
+          ResourceList.question.create,
+          ResourceList.question.edit,
+          ResourceList.question.delete,
+          ResourceList.topic.read,
+          ResourceList.topic.create,
+          ResourceList.topic.edit,
+          ResourceList.topic.delete,
+        ]
+        const permissionsResult = await this.rbacAllocPermsService.getAllPermissions(roleName, targetPermissions);
+        userPermissions = permissionsResult;
+      } catch (permissionError) {
+        // Log the error but don't fail the entire request
+        console.error('Error fetching user permissions:', permissionError);
+        userPermissions = { error: 'Failed to fetch permissions' };
+      }
+
+      // Return the results with permissions
       return {
         data: question,
         totalRows,
         totalPages,
+        ...userPermissions
       };
     } catch (err) {
       throw err;
@@ -2153,9 +2213,13 @@ export class ContentService {
     }
   }
 
-  async getAllTags() {
+  async getAllTags(searchTerm: string = '') {
     try {
-      const allTags = await db.select().from(zuvyTags);
+      const allTags = await db
+        .select()
+        .from(zuvyTags)
+        .where(sql`LOWER(${zuvyTags.tagName}) LIKE LOWER(${`%${searchTerm}%`})`)
+        .execute();
       if (allTags.length > 0) {
         return {
           status: 'success',
@@ -2195,16 +2259,55 @@ export class ContentService {
     }
   }
 
+  async deleteQuestionTag(tagId: number) {
+
+    const associatedQuestions = new Map();
+    associatedQuestions.set('quiz', db.select().from(zuvyModuleQuiz).where(eq(zuvyModuleQuiz.tagId, tagId)).limit(1));
+    associatedQuestions.set('coding', db.select().from(zuvyCodingQuestions).where(eq(zuvyCodingQuestions.tagId, tagId)).limit(1));
+    associatedQuestions.set('openEnded', db.select().from(zuvyOpenEndedQuestions).where(eq(zuvyOpenEndedQuestions.tagId, tagId)).limit(1));
+
+    for (const [key, query] of associatedQuestions) {
+      const result = await query;
+      if (result.length > 0) {
+        return {
+          status: 'error',
+          code: 400,
+          message: `Tag is associated with existing ${key} questions and cannot be deleted.`,
+        };
+      }
+    }
+
+    try {
+      const deletedTag = await db.delete(zuvyTags).where(eq(zuvyTags.id, tagId)).returning();
+      if (deletedTag.length > 0) {
+        return {
+          status: 'success',
+          code: 200
+        };
+      } else {
+        return {
+          status: 'error',
+          code: 404,
+          message: 'Tag is not created.Please try again.',
+        };
+      }
+    } catch (err) {
+      throw err;
+    }
+  }
+
   async getAllOpenEndedQuestions(
+    roleName: string[],
     tagId: number | number[],
     difficulty: ('Easy' | 'Medium' | 'Hard') | ('Easy' | 'Medium' | 'Hard')[],
     searchTerm: string = '',
     limit: number,
-    offset: number
+    offset: number,
+    userId: bigint,
   ) {
     try {
       let conditions = [];
-
+      let resourceId = 2;
       let tagIdsArray;
 
       if (tagId) {
@@ -2249,11 +2352,32 @@ export class ContentService {
         )
         .limit(limit)
         .offset(offset);
+      let userPermissions = {};
+
+      try {
+        const targetPermissions = [
+          ResourceList.question.read,
+          ResourceList.question.create,
+          ResourceList.question.edit,
+          ResourceList.question.delete,
+          ResourceList.topic.read,
+          ResourceList.topic.create,
+          ResourceList.topic.edit,
+          ResourceList.topic.delete,
+        ]
+        const permissionsResult = await this.rbacAllocPermsService.getAllPermissions(roleName, targetPermissions);
+        userPermissions = permissionsResult;
+      } catch (permissionError) {
+        // Log the error but don't fail the entire request
+        console.error('Error fetching user permissions:', permissionError);
+        userPermissions = { error: 'Failed to fetch permissions' };
+      }
 
       return {
         data: result,
         totalRows: Number(totalRows[0].count),
-        totalPages: !Number.isNaN(limit) ? Math.ceil(totalRows[0].count / limit) : 1
+        totalPages: !Number.isNaN(limit) ? Math.ceil(totalRows[0].count / limit) : 1,
+        ...userPermissions
       };
 
     } catch (err) {

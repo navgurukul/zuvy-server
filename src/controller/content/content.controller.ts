@@ -20,7 +20,7 @@ import {
   UploadedFile,
   InternalServerErrorException,
   BadGatewayException,
-  UploadedFiles
+  UploadedFiles,
 } from '@nestjs/common';
 import { ContentService } from './content.service';
 import {
@@ -31,6 +31,7 @@ import {
   ApiConsumes,
   getSchemaPath,
   ApiExtraModels,
+  ApiParam,
 } from '@nestjs/swagger';
 import { ApiBearerAuth } from '@nestjs/swagger';
 import {
@@ -57,14 +58,17 @@ import {
   EditQuizBatchDto,
   AddQuizVariantsDto,
   deleteQuestionOrVariantDto,
-  UpdateChapterDto
+  UpdateChapterDto,
 } from './dto/content.dto';
 import { RolesGuard } from 'src/guards/roles.guard';
 import { Roles } from 'src/decorators/roles.decorator';
 import { ErrorResponse, SuccessResponse } from 'src/errorHandler/handler';
 import { Response } from 'express';
 import { complairDateTyeps } from 'src/helpers/index';
-import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express/multer';
+import {
+  FileInterceptor,
+  FilesInterceptor,
+} from '@nestjs/platform-express/multer';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 
 @Controller('content')
@@ -79,7 +83,7 @@ import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 @UseGuards(JwtAuthGuard, RolesGuard)
 @ApiBearerAuth('JWT-auth')
 export class ContentController {
-  constructor(private contentService: ContentService) { }
+  constructor(private contentService: ContentService) {}
 
   @Post('/modules/:bootcampId')
   @Roles('admin')
@@ -99,7 +103,7 @@ export class ContentController {
     const res = await this.contentService.createModuleForCourse(
       bootcampId,
       moduleData,
-      typeId
+      typeId,
     );
     return res;
   }
@@ -122,7 +126,7 @@ export class ContentController {
     const res = await this.contentService.createProjectForCourse(
       bootcampId,
       projectData,
-      typeId
+      typeId,
     );
     return res;
   }
@@ -141,10 +145,7 @@ export class ContentController {
     @Param('id') id: number,
     @Query('bootcampId') bootcampId: number,
   ) {
-    const res = await this.contentService.getProjectDetails(
-      bootcampId,
-      id
-    );
+    const res = await this.contentService.getProjectDetails(bootcampId, id);
     return res;
   }
 
@@ -158,7 +159,7 @@ export class ContentController {
   ) {
     const res = await this.contentService.updateProjectDetails(
       projectId,
-      projectData
+      projectData,
     );
     return res;
   }
@@ -182,12 +183,12 @@ export class ContentController {
   async deleteProject(
     @Param('projectId') projectId: number,
     @Query('bootcampId') bootcampId: number,
-    @Query('moduleId') moduleId: number
+    @Query('moduleId') moduleId: number,
   ) {
     const res = await this.contentService.deleteProjectForBootcamp(
       projectId,
       moduleId,
-      bootcampId
+      bootcampId,
     );
     return res;
   }
@@ -196,10 +197,12 @@ export class ContentController {
   @Roles('admin')
   @ApiOperation({ summary: 'Create a chapter for this module' })
   @ApiBearerAuth('JWT-auth')
-  async createChapter(
-    @Body() chapterData: CreateChapterDto,
-  ) {
-    return this.contentService.createChapterForModule(chapterData.moduleId, chapterData.topicId, chapterData.bootcampId);
+  async createChapter(@Body() chapterData: CreateChapterDto) {
+    return this.contentService.createChapterForModule(
+      chapterData.moduleId,
+      chapterData.topicId,
+      chapterData.bootcampId,
+    );
   }
 
   @Post('/quiz')
@@ -208,16 +211,19 @@ export class ContentController {
   @ApiBearerAuth('JWT-auth')
   async createQuizForModule(
     @Body() quizQuestions: CreateQuizzesDto,
-    @Res() res
+    @Res() res,
   ): Promise<object> {
     try {
-      let [err, success] = await this.contentService.createQuizForModule(
-        quizQuestions
-      );
+      let [err, success] =
+        await this.contentService.createQuizForModule(quizQuestions);
       if (err) {
         return ErrorResponse.BadRequestException(err.message).send(res);
       }
-      return new SuccessResponse(success.message, success.statusCode, success.data).send(res);
+      return new SuccessResponse(
+        success.message,
+        success.statusCode,
+        success.data,
+      ).send(res);
     } catch (error) {
       return ErrorResponse.BadRequestException(error.message).send(res);
     }
@@ -230,12 +236,12 @@ export class ContentController {
   async editAssessment(
     @Body() assessmentBody: CreateAssessmentBody,
     @Param('assessmentOutsourseId') assessmentOutsourseId: number,
-    @Param('chapterId') chapterId: number
+    @Param('chapterId') chapterId: number,
   ) {
     const res = await this.contentService.editAssessment(
       assessmentOutsourseId,
       assessmentBody,
-      chapterId
+      chapterId,
     );
     return res;
   }
@@ -244,8 +250,12 @@ export class ContentController {
   @Roles('admin')
   @ApiOperation({ summary: 'Get all modules of a course' })
   @ApiBearerAuth('JWT-auth')
-  async getAllModules(@Param('bootcampId') bootcampId: number) {
-    const res = await this.contentService.getAllModuleByBootcampId(bootcampId);
+  async getAllModules(@Param('bootcampId') bootcampId: number, @Req() req) {
+    const roleName = req.user[0]?.roles;
+    const res = await this.contentService.getAllModuleByBootcampId(
+      bootcampId,
+      roleName,
+    );
     return res;
   }
 
@@ -281,14 +291,20 @@ export class ContentController {
   })
   @ApiBearerAuth('JWT-auth')
   async getChapterDetailsById(
-    @Param('chapterId') chapterId: number, 
-    @Query('bootcampId') bootcampId: number, 
-    @Query('moduleId') moduleId: number, 
+    @Param('chapterId') chapterId: number,
+    @Query('bootcampId') bootcampId: number,
+    @Query('moduleId') moduleId: number,
     @Query('topicId') topicId: number,
-    @Req() req
+    @Req() req,
   ) {
     const userRole = req.user[0]?.roles;
-    return this.contentService.getChapterDetailsById(chapterId, bootcampId, moduleId, topicId, userRole);
+    return this.contentService.getChapterDetailsById(
+      chapterId,
+      bootcampId,
+      moduleId,
+      topicId,
+      userRole,
+    );
   }
 
   @Put('/editModuleOfBootcamp/:bootcampId')
@@ -409,17 +425,23 @@ export class ContentController {
   @ApiBearerAuth('JWT-auth')
   async getAllQuizQuestions(
     @Query('tagId') tagId: number[],
-    @Query('difficulty') difficulty: ('Easy' | 'Medium' | 'Hard') | ('Easy' | 'Medium' | 'Hard')[],
+    @Query('difficulty')
+    difficulty: ('Easy' | 'Medium' | 'Hard') | ('Easy' | 'Medium' | 'Hard')[],
     @Query('searchTerm') searchTerm: string,
     @Query('limit') limit: number,
     @Query('offset') offSet: number,
+    @Req() req,
   ): Promise<object> {
+    const userId = req.user[0]?.id;
+    const roleName = req.user[0]?.roles;
     const res = await this.contentService.getAllQuizQuestions(
+      roleName,
       tagId,
       difficulty,
       searchTerm,
       limit,
-      offSet
+      offSet,
+      userId,
     );
     return res;
   }
@@ -475,17 +497,23 @@ export class ContentController {
   @ApiBearerAuth('JWT-auth')
   async getAllCodingQuestions(
     @Query('tagId') tagId: number[],
-    @Query('difficulty') difficulty: ('Easy' | 'Medium' | 'Hard') | ('Easy' | 'Medium' | 'Hard')[],
+    @Query('difficulty')
+    difficulty: ('Easy' | 'Medium' | 'Hard') | ('Easy' | 'Medium' | 'Hard')[],
     @Query('searchTerm') searchTerm: string,
     @Query('limit') limit: number,
     @Query('offset') offSet: number,
+    @Req() req,
   ): Promise<object> {
+    const userId = req.user[0]?.id;
+    const roleName = req.user[0]?.roles;
     const res = await this.contentService.getAllCodingQuestions(
+      roleName,
       tagId,
       difficulty,
       searchTerm,
       limit,
-      offSet
+      offSet,
+      userId,
     );
     return res;
   }
@@ -503,18 +531,18 @@ export class ContentController {
   @Roles('admin')
   @ApiOperation({ summary: 'Edit a quiz' })
   @ApiBearerAuth('JWT-auth')
-  async editQuizForModule(
-    @Body() quizUpdates: EditQuizBatchDto,
-    @Res() res
-  ) {
+  async editQuizForModule(@Body() quizUpdates: EditQuizBatchDto, @Res() res) {
     try {
-      let [err, success] = await this.contentService.editQuizQuestion(
-        quizUpdates
-      );
+      let [err, success] =
+        await this.contentService.editQuizQuestion(quizUpdates);
       if (err) {
         return ErrorResponse.BadRequestException(err.message).send(res);
       }
-      return new SuccessResponse(success.message, success.statusCode, success.data).send(res);
+      return new SuccessResponse(
+        success.message,
+        success.statusCode,
+        success.data,
+      ).send(res);
     } catch (error) {
       return ErrorResponse.BadRequestException(error.message).send(res);
     }
@@ -541,9 +569,28 @@ export class ContentController {
   @Get('/allTags')
   @ApiOperation({ summary: 'Get all the available tags' })
   @ApiBearerAuth('JWT-auth')
-  async getAllTags() {
-    const res = await this.contentService.getAllTags();
+  @ApiQuery({
+    name: 'searchTerm',
+    required: false,
+    type: String,
+    description: 'Search term for tag name',
+  })
+  async getAllTags(@Query('searchTerm') searchTerm?: string) {
+    const res = await this.contentService.getAllTags(searchTerm);
     return res;
+  }
+
+  @Delete('/deletequestiontag/:tagId')
+  @Roles('admin')
+  @ApiOperation({ summary: 'Delete Question Tag' })
+  @ApiParam({
+    name: 'tagId',
+    type: Number,
+    description: 'ID of the tag to delete',
+  })
+  @ApiBearerAuth('JWT-auth')
+  async deleteQuestionTag(@Param('tagId') tagId: number) {
+    return this.contentService.deleteQuestionTag(tagId);
   }
 
   @Get('/openEndedQuestions')
@@ -582,17 +629,23 @@ export class ContentController {
   @ApiBearerAuth('JWT-auth')
   async getAllOpenEndedQuestions(
     @Query('tagId') tagId: number[],
-    @Query('difficulty') difficulty: ('Easy' | 'Medium' | 'Hard') | ('Easy' | 'Medium' | 'Hard')[],
+    @Query('difficulty')
+    difficulty: ('Easy' | 'Medium' | 'Hard') | ('Easy' | 'Medium' | 'Hard')[],
     @Query('searchTerm') searchTerm: string,
     @Query('limit') limit: number,
     @Query('offset') offset: number,
+    @Req() req,
   ): Promise<object> {
+    const userId = req.user[0]?.id;
+    const roleName = req.user[0]?.roles;
     const res = await this.contentService.getAllOpenEndedQuestions(
+      roleName,
       tagId,
       difficulty,
       searchTerm,
       limit,
-      offset
+      offset,
+      userId,
     );
     return res;
   }
@@ -631,20 +684,47 @@ export class ContentController {
   @Get('/students/assessmentId=:assessmentId')
   @ApiOperation({ summary: 'Get the student of a particular assessment' })
   @ApiBearerAuth('JWT-auth')
-  async getStudentsOfAssessment(@Param('assessmentId') assessmentId: number, @Query('moduleId') moduleId: number, @Query('bootcampId') bootcampId: number, @Query('chapterId') chapterId: number, @Req() req) {
-    return this.contentService.getStudentsOfAssessment(assessmentId, chapterId, moduleId, bootcampId, req);
+  async getStudentsOfAssessment(
+    @Param('assessmentId') assessmentId: number,
+    @Query('moduleId') moduleId: number,
+    @Query('bootcampId') bootcampId: number,
+    @Query('chapterId') chapterId: number,
+    @Req() req,
+  ) {
+    return this.contentService.getStudentsOfAssessment(
+      assessmentId,
+      chapterId,
+      moduleId,
+      bootcampId,
+      req,
+    );
   }
 
-  @Get('/startAssessmentForStudent/assessmentOutsourseId=:assessmentOutsourseId/newStart=:newStart')
+  @Get(
+    '/startAssessmentForStudent/assessmentOutsourseId=:assessmentOutsourseId/newStart=:newStart',
+  )
   @ApiOperation({ summary: 'Start the assessment for a student' })
   @ApiBearerAuth('JWT-auth')
-  async startAssessmentForStudent(@Req() req, @Param('assessmentOutsourseId') assessmentOutsourseId: number, @Param('newStart') newStart:boolean, @Res() res: Response): Promise<any> {
-    try{
-      let [err, success] = await this.contentService.startAssessmentForStudent(assessmentOutsourseId, newStart, req.user[0]);
+  async startAssessmentForStudent(
+    @Req() req,
+    @Param('assessmentOutsourseId') assessmentOutsourseId: number,
+    @Param('newStart') newStart: boolean,
+    @Res() res: Response,
+  ): Promise<any> {
+    try {
+      let [err, success] = await this.contentService.startAssessmentForStudent(
+        assessmentOutsourseId,
+        newStart,
+        req.user[0],
+      );
       if (err) {
         return ErrorResponse.BadRequestException(err.message).send(res);
       }
-      return new SuccessResponse(success.message, success.statusCode, success.data).send(res);
+      return new SuccessResponse(
+        success.message,
+        success.statusCode,
+        success.data,
+      ).send(res);
     } catch (error) {
       return ErrorResponse.BadRequestException(error.message).send(res);
     }
@@ -663,25 +743,36 @@ export class ContentController {
     @Param('assessmentOutsourseId') assessmentOutsourseId: number,
     @Req() req,
     @Query('studentId') studentId: number,
-    @Res() res: Response
+    @Res() res: Response,
   ): Promise<any> {
     try {
-    let IsAdmin = !studentId ? false : true;
-    const userId = studentId || req.user[0].id;
+      let IsAdmin = !studentId ? false : true;
+      const userId = studentId || req.user[0].id;
 
-    // Create the `quizConfig` object from the query parameters
-    let [err, success] = await this.contentService.getAssessmentDetailsOfQuiz(assessmentOutsourseId,req.user[0], userId, IsAdmin);
-    if (err) {
-      return ErrorResponse.BadRequestException(err.message).send(res);
-    }
-    return new SuccessResponse(success.message, success.statusCode, success.data).send(res);
+      // Create the `quizConfig` object from the query parameters
+      let [err, success] = await this.contentService.getAssessmentDetailsOfQuiz(
+        assessmentOutsourseId,
+        req.user[0],
+        userId,
+        IsAdmin,
+      );
+      if (err) {
+        return ErrorResponse.BadRequestException(err.message).send(res);
+      }
+      return new SuccessResponse(
+        success.message,
+        success.statusCode,
+        success.data,
+      ).send(res);
     } catch (error) {
       return ErrorResponse.BadRequestException(error.message).send(res);
     }
   }
 
   @Get('/assessmentDetailsOfOpenEnded/:assessmentOutsourseId')
-  @ApiOperation({ summary: 'Get the assessment details of the open Ended questions' })
+  @ApiOperation({
+    summary: 'Get the assessment details of the open Ended questions',
+  })
   @ApiQuery({
     name: 'studentId',
     required: false,
@@ -689,11 +780,18 @@ export class ContentController {
     description: 'studentId of the assessment',
   })
   @ApiBearerAuth('JWT-auth')
-  async getAssessmentDetailsOfOpenEnded(@Param('assessmentOutsourseId') assessmentOutsourseId: number, @Req() req, @Query('studentId') userId: number) {
+  async getAssessmentDetailsOfOpenEnded(
+    @Param('assessmentOutsourseId') assessmentOutsourseId: number,
+    @Req() req,
+    @Query('studentId') userId: number,
+  ) {
     if (!userId) {
       userId = req.user[0].id;
     }
-    return this.contentService.getAssessmentDetailsOfOpenEnded(assessmentOutsourseId, userId);
+    return this.contentService.getAssessmentDetailsOfOpenEnded(
+      assessmentOutsourseId,
+      userId,
+    );
   }
 
   @Post('/createQuestionType')
@@ -720,11 +818,11 @@ export class ContentController {
   @ApiBearerAuth('JWT-auth')
   async createFormForModule(
     @Query('chapterId') chapterId: number,
-    @Body() formQuestion: formBatchDto
+    @Body() formQuestion: formBatchDto,
   ) {
     const res = await this.contentService.createFormForModule(
       chapterId,
-      formQuestion
+      formQuestion,
     );
     return res;
   }
@@ -764,10 +862,11 @@ export class ContentController {
   @ApiBearerAuth('JWT-auth')
   async editFormForModule(
     @Query('chapterId') chapterId: number,
-    @Body() formQuestions: editFormBatchDto) {
+    @Body() formQuestions: editFormBatchDto,
+  ) {
     const res = await this.contentService.editFormQuestions(
       chapterId,
-      formQuestions
+      formQuestions,
     );
     return res;
   }
@@ -778,10 +877,11 @@ export class ContentController {
   @ApiBearerAuth('JWT-auth')
   async createAndEditForm(
     @Param('chapterId') chapterId: number,
-    @Body() formQuestions: CreateAndEditFormBody) {
+    @Body() formQuestions: CreateAndEditFormBody,
+  ) {
     const res = await this.contentService.createAndEditFormQuestions(
       chapterId,
-      formQuestions
+      formQuestions,
     );
     return res;
   }
@@ -790,16 +890,18 @@ export class ContentController {
   @Roles('admin')
   @ApiOperation({ summary: 'Get the openended question by id' })
   @ApiBearerAuth('JWT-auth')
-  async getOpenendedQuestionDetails(
-    @Param('id') id: number,
-    @Res() res
-  ) {
+  async getOpenendedQuestionDetails(@Param('id') id: number, @Res() res) {
     try {
-      let [err, success] = await this.contentService.getOpenendedQuestionDetails(id);
+      let [err, success] =
+        await this.contentService.getOpenendedQuestionDetails(id);
       if (err) {
         return ErrorResponse.BadRequestException(err.message).send(res);
       }
-      return new SuccessResponse(success.message, success.statusCode, success.data).send(res);
+      return new SuccessResponse(
+        success.message,
+        success.statusCode,
+        success.data,
+      ).send(res);
     } catch (error) {
       return ErrorResponse.BadRequestException(error.message).send(res);
     }
@@ -809,16 +911,18 @@ export class ContentController {
   @Roles('admin')
   @ApiOperation({ summary: 'Get the openended question by id' })
   @ApiBearerAuth('JWT-auth')
-  async getCodingQuestionDetails(
-    @Param('id') id: number,
-    @Res() res
-  ) {
+  async getCodingQuestionDetails(@Param('id') id: number, @Res() res) {
     try {
-      let [err, success] = await this.contentService.getCodingQuestionDetails(id);
+      let [err, success] =
+        await this.contentService.getCodingQuestionDetails(id);
       if (err) {
         return ErrorResponse.BadRequestException(err.message).send(res);
       }
-      return new SuccessResponse(success.message, success.statusCode, success.data).send(res);
+      return new SuccessResponse(
+        success.message,
+        success.statusCode,
+        success.data,
+      ).send(res);
     } catch (error) {
       return ErrorResponse.BadRequestException(error.message).send(res);
     }
@@ -828,16 +932,17 @@ export class ContentController {
   @Roles('admin')
   @ApiOperation({ summary: 'Get the openended question by id' })
   @ApiBearerAuth('JWT-auth')
-  async getQuizQuestionDetails(
-    @Param('id') id: number,
-    @Res() res
-  ) {
+  async getQuizQuestionDetails(@Param('id') id: number, @Res() res) {
     try {
       let [err, success] = await this.contentService.getQuizQuestionDetails(id);
       if (err) {
         return ErrorResponse.BadRequestException(err.message).send(res);
       }
-      return new SuccessResponse(success.message, success.statusCode, success.data).send(res);
+      return new SuccessResponse(
+        success.message,
+        success.statusCode,
+        success.data,
+      ).send(res);
     } catch (error) {
       return ErrorResponse.BadRequestException(error.message).send(res);
     }
@@ -849,11 +954,16 @@ export class ContentController {
   @ApiBearerAuth('JWT-auth')
   async getAllQuizVariants(@Param('quizId') quizId: number, @Res() res) {
     try {
-      const [err, success] = await this.contentService.getAllQuizVariants(quizId);
+      const [err, success] =
+        await this.contentService.getAllQuizVariants(quizId);
       if (err) {
         return ErrorResponse.BadRequestException(err.message).send(res);
       }
-      return new SuccessResponse(success.message, success.statusCode, success.data).send(res);
+      return new SuccessResponse(
+        success.message,
+        success.statusCode,
+        success.data,
+      ).send(res);
     } catch (error) {
       return ErrorResponse.BadRequestException(error.message).send(res);
     }
@@ -865,16 +975,21 @@ export class ContentController {
   @ApiBearerAuth('JWT-auth')
   async addQuizVariants(
     @Body() addQuizVariantsDto: AddQuizVariantsDto,
-    @Res() res
+    @Res() res,
   ) {
     try {
-      const [err, success] = await this.contentService.addQuizVariants(addQuizVariantsDto);
+      const [err, success] =
+        await this.contentService.addQuizVariants(addQuizVariantsDto);
 
       if (err) {
         return ErrorResponse.BadRequestException(err.message).send(res);
       }
 
-      return new SuccessResponse(success.message, success.statusCode, success.data).send(res);
+      return new SuccessResponse(
+        success.message,
+        success.statusCode,
+        success.data,
+      ).send(res);
     } catch (error) {
       return ErrorResponse.BadRequestException(error.message).send(res);
     }
@@ -888,22 +1003,30 @@ export class ContentController {
     @Body() deleteDto: deleteQuestionOrVariantDto,
     @Res() res,
   ) {
-    const [err, success] = await this.contentService.deleteQuizOrVariant(deleteDto);
+    const [err, success] =
+      await this.contentService.deleteQuizOrVariant(deleteDto);
     if (err) {
-      return ErrorResponse.BadRequestException(err.message, err.statusCode).send(res);
+      return ErrorResponse.BadRequestException(
+        err.message,
+        err.statusCode,
+      ).send(res);
     }
-    return new SuccessResponse(success.message, success.statusCode,null).send(res);
+    return new SuccessResponse(success.message, success.statusCode, null).send(
+      res,
+    );
   }
 
   @Get('/getCompilerTypes')
   @Roles('admin')
   @ApiOperation({ summary: 'Get all compiler types' })
   @ApiBearerAuth('JWT-auth')
-  async getCompilerTypes(
-    @Res() res
-  ) {
+  async getCompilerTypes(@Res() res) {
     try {
-      return await new SuccessResponse('Compiler types fetched successfully', 200, complairDateTyeps ).send(res);      
+      return await new SuccessResponse(
+        'Compiler types fetched successfully',
+        200,
+        complairDateTyeps,
+      ).send(res);
     } catch (error) {
       return ErrorResponse.BadRequestException(error.message).send(res);
     }
@@ -931,31 +1054,29 @@ export class ContentController {
     @UploadedFile() file: Express.Multer.File,
     @Query('moduleId') moduleId: number,
     @Query('chapterId') chapterId: number,
-    @Body() reOrder: UpdateChapterDto
+    @Body() reOrder: UpdateChapterDto,
   ) {
-    if(file)
-    {
-    let url: string;
+    if (file) {
+      let url: string;
 
-    try {
-      url = await this.contentService.uploadPdfToS3(
-        file.buffer,
-        file.originalname,
-      );
-    } catch (err) {
-      if (err instanceof InternalServerErrorException) {
-        throw err;
+      try {
+        url = await this.contentService.uploadPdfToS3(
+          file.buffer,
+          file.originalname,
+        );
+      } catch (err) {
+        if (err instanceof InternalServerErrorException) {
+          throw err;
+        }
+        throw new BadGatewayException('Failed to upload PDF to S3', {
+          cause: err as Error,
+        });
       }
-      throw new BadGatewayException(
-        'Failed to upload PDF to S3',
-        { cause: err as Error },
-      );
+      if (!url) {
+        throw new BadGatewayException('S3 returned an empty URL');
+      }
+      reOrder.links = [url];
     }
-    if (!url) {
-      throw new BadGatewayException('S3 returned an empty URL');
-    }
-    reOrder.links = [url];
-  }
     const res = await this.contentService.editChapter(
       reOrder,
       moduleId,
@@ -964,25 +1085,23 @@ export class ContentController {
     return res;
   }
 
-   @Post('curriculum/upload-images')
-@ApiOperation({ summary: 'Upload one or more images to S3' })
-@ApiBearerAuth('JWT-auth')
-@ApiConsumes('multipart/form-data')
-@ApiBody({
-  schema: {
-    type: 'object',
-    properties: {
-      images: {
-        type: 'array',
-        items: { type: 'string', format: 'binary' },
+  @Post('curriculum/upload-images')
+  @ApiOperation({ summary: 'Upload one or more images to S3' })
+  @ApiBearerAuth('JWT-auth')
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        images: {
+          type: 'array',
+          items: { type: 'string', format: 'binary' },
+        },
       },
     },
-  },
-})
-@UseInterceptors(FilesInterceptor('images', 10))
-async uploadImages(
-    @UploadedFiles() files: Express.Multer.File[],
-  ) {
+  })
+  @UseInterceptors(FilesInterceptor('images', 10))
+  async uploadImages(@UploadedFiles() files: Express.Multer.File[]) {
     if (!files || files.length === 0) {
       throw new BadRequestException('No image files provided');
     }
@@ -990,10 +1109,7 @@ async uploadImages(
     // 1) upload each buffer, collecting URLs
     const urls = await Promise.all(
       files.map((file) =>
-        this.contentService.uploadImageToS3(
-          file.buffer,
-          file.originalname
-        ),
+        this.contentService.uploadImageToS3(file.buffer, file.originalname),
       ),
     );
 
