@@ -31,15 +31,18 @@ import { RbacAllocPermsService } from 'src/rbac/rbac.alloc-perms.service';
 import { RbacService } from 'src/rbac/rbac.service';
 import { CreateAuditlogDto } from 'src/auditlog/dto/create-auditlog.dto';
 import { AuditlogService } from 'src/auditlog/auditlog.service';
+import { AuthService } from 'src/auth/auth.service';
 
 @Injectable()
 export class UsersService {
   private readonly logger = new Logger(UsersService.name);
   private readonly usersJsonPath = path.join(process.cwd(), 'users.json');
+
   constructor(
     private readonly jwtService: JwtService,
     private readonly rbacService: RbacService,
     private readonly auditlogService: AuditlogService,
+    private readonly authService: AuthService,
   ) {}
 
   /**
@@ -658,6 +661,7 @@ export class UsersService {
               .set(roleUpdateData)
               .where(eq(zuvyUserRolesAssigned.userId, id))
               .returning();
+            
           } else {
             let rolesAssignData = {
               userId: id,
@@ -671,6 +675,7 @@ export class UsersService {
               .values(rolesAssignData)
               .returning();
           }
+          const permissionsResult = await this.authService.refreshUserToken(id);
         }
 
         // Get updated user data with role

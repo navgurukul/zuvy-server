@@ -2,7 +2,7 @@ import { Injectable, UnauthorizedException, Logger } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { LoginDto } from './dto/login.dto';
 import { db } from '../db';
-import { users, blacklistedTokens, zuvyUserRolesAssigned, zuvyUserRoles, sansaarUserRoles } from '../../drizzle/schema';
+import { users, blacklistedTokens, zuvyUserRolesAssigned, zuvyUserRoles, sansaarUserRoles, userTokens } from '../../drizzle/schema';
 import { eq, inArray } from 'drizzle-orm';
 import { OAuth2Client } from 'google-auth-library';
 let { GOOGLE_CLIENT_ID, GOOGLE_SECRET, GOOGLE_REDIRECT, JWT_SECRET_KEY } = process.env;
@@ -67,9 +67,9 @@ export class AuthService {
             // Role doesn't exist, create new role
             try {
               const addNewRole = {
-                  name: legacyRoleName,
-                  description: `Migrated role: ${legacyRoleName}`
-                }
+                name: legacyRoleName,
+                description: `Migrated role: ${legacyRoleName}`
+              }
               const newRole = await db.insert(zuvyUserRoles)
                 .values(addNewRole)
                 .returning();
@@ -95,7 +95,7 @@ export class AuthService {
           };
           // Assign role to user
           await db.insert(zuvyUserRolesAssigned).values(assignmentData);
- 
+
           // after assigning the role, delete the old role entries
           await db.delete(sansaarUserRoles).where(eq(sansaarUserRoles.userId, Number(userId)));
           // Get the final role name
@@ -280,6 +280,37 @@ export class AuthService {
       };
     } catch {
       throw new UnauthorizedException('Invalid refresh token');
+    }
+  }
+
+  //update the user access and refresh token 
+  async refreshUserToken(userId: bigint) {
+    try {
+      let user_id = Number(userId)
+      // Get user's current tokens from database
+      const [userToken] = await db.select()
+        .from(userTokens)
+        .where(eq(userTokens.userId, user_id));
+
+      if (!userToken) {
+        throw new UnauthorizedException('User tokens not found');
+      }
+
+      // Use the existing refresh token to generate new tokens
+      const newTokens = await this.refreshToken(userToken.refreshToken);
+
+      // / Update tokens in DB
+      await db
+        .update(userTokens)
+        .set({
+          accessToken: newTokens.access_token,
+          refreshToken: newTokens.refresh_token,
+        })
+        .where(eq(userTokens.userId, user_id))
+
+      return newTokens;
+    } catch (err) {
+      throw err;
     }
   }
 
