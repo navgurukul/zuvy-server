@@ -39,9 +39,8 @@ import { Roles } from 'src/decorators/roles.decorator';
 @UseGuards(JwtAuthGuard, RolesGuard)
 @ApiBearerAuth('JWT-auth')
 export class BatchesController {
-  constructor(private batchService: BatchesService) { }
+  constructor(private batchService: BatchesService) {}
 
-  
   @Get('/:id')
   @ApiOperation({ summary: 'Get the batch by id' })
   @ApiBearerAuth('JWT-auth')
@@ -55,7 +54,6 @@ export class BatchesController {
   }
 
   @Post('/')
-  @Roles('admin')
   @ApiOperation({ summary: 'Create the new batch' })
   @ApiBearerAuth('JWT-auth')
   async createBatch(@Body() batchData: BatchDto) {
@@ -67,7 +65,6 @@ export class BatchesController {
   }
 
   @Put('/:id')
-  @Roles('admin')
   @ApiOperation({ summary: 'Put the batch by id' })
   @ApiBearerAuth('JWT-auth')
   async updateBatch(@Param('id') id: string, @Body() batchData: PatchBatchDto) {
@@ -82,7 +79,6 @@ export class BatchesController {
   }
 
   @Delete('/:id')
-  @Roles('admin')
   @ApiOperation({ summary: 'Delete the batch by id' })
   @ApiBearerAuth('JWT-auth')
   async deleteBatch(@Param('id') id: string) {
@@ -94,7 +90,6 @@ export class BatchesController {
   }
 
   @Patch('/:id')
-  @Roles('admin')
   @ApiOperation({ summary: 'Update the Batch partially' })
   @ApiBearerAuth('JWT-auth')
   async updatePartialBatch(
@@ -112,7 +107,6 @@ export class BatchesController {
   }
 
   @Patch('reassign/student_id=:student_id/new_batch_id=:new_batch_id')
-  @Roles('admin')
   @ApiQuery({
     name: 'old_batch_id',
     required: false,
@@ -144,8 +138,9 @@ export class BatchesController {
   }
 
   @Get('/allUnassignStudent/:bootcampId')
-  @Roles('admin')
-  @ApiOperation({ summary: 'Get students not enrolled in any batch for a specific bootcamp' })
+  @ApiOperation({
+    summary: 'Get students not enrolled in any batch for a specific bootcamp',
+  })
   @ApiQuery({
     name: 'searchTerm',
     required: false,
@@ -153,12 +148,22 @@ export class BatchesController {
     description: 'Search by name or email',
   })
   @ApiBearerAuth('JWT-auth')
-  async getNotEnrolledStudents(@Param('bootcampId') bootcampId: number, @Query('searchTerm') searchTerm: string): Promise<object> {
-    const [err, res] = await this.batchService.getNotEnrolledStudents(bootcampId, searchTerm);
+  async getNotEnrolledStudents(
+    @Param('bootcampId') bootcampId: number,
+    @Query('searchTerm') searchTerm: string,
+  ): Promise<object> {
+    const [err, res] = await this.batchService.getNotEnrolledStudents(
+      bootcampId,
+      searchTerm,
+    );
     if (err) {
       throw new BadRequestException(err);
     }
-    return { status: res.status, message: res.message, StatusCode: res.statusCode, data: res.data };
+    return {
+      status: res.status,
+      message: res.message,
+      StatusCode: res.statusCode,
+      data: res.data,
+    };
   }
-
 }
