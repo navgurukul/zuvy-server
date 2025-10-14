@@ -598,7 +598,7 @@ export class UsersService {
     }
   }
 
-  async updateUser(id: bigint, updateUserDto: UpdateUserDto) {
+  async updateUser(token, id: bigint, updateUserDto: UpdateUserDto) {
     try {
       return await db.transaction(async (tx) => {
         const currentTime = new Date().toISOString(); // ISO string format
@@ -661,7 +661,6 @@ export class UsersService {
               .set(roleUpdateData)
               .where(eq(zuvyUserRolesAssigned.userId, id))
               .returning();
-            
           } else {
             let rolesAssignData = {
               userId: id,
@@ -675,7 +674,7 @@ export class UsersService {
               .values(rolesAssignData)
               .returning();
           }
-          const permissionsResult = await this.authService.refreshUserToken(id);
+          const permissionsResult = await this.authService.logout(id, token);
         }
 
         // Get updated user data with role

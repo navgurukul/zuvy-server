@@ -429,8 +429,10 @@ export class UsersController {
   async updateUser(
     @Param('id', ParseIntPipe) id: bigint,
     @Body() updateUserDto: UpdateUserDto,
+    @Req() req,
   ) {
-    return this.usersService.updateUser(id, updateUserDto);
+    const token = req.headers.authorization?.split(' ')[1];
+    return this.usersService.updateUser(token, id, updateUserDto);
   }
 
   @Delete('/deleteUser/:id')
