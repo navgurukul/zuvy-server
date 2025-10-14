@@ -157,8 +157,15 @@ export class BootcampController {
   @Get('bootcampSetting/:id')
   @ApiOperation({ summary: 'Get the bootcamp setting by id' })
   @ApiBearerAuth('JWT-auth')
-  async getBootcampSettingById(@Param('id') id: number): Promise<object> {
-    const [err, res] = await this.bootcampService.getBootcampSettingById(id);
+  async getBootcampSettingById(
+    @Param('id') id: number,
+    @Req() req,
+  ): Promise<object> {
+    const roleName = req.user[0]?.roles;
+    const [err, res] = await this.bootcampService.getBootcampSettingById(
+      roleName,
+      id,
+    );
     if (err) {
       throw new BadRequestException(err);
     }
@@ -374,7 +381,9 @@ export class BootcampController {
     @Query('attendance') attendance: number,
     @Query('orderBy') orderBy: string,
     @Query('orderDirection') orderDirection: string,
+    @Req() req,
   ) {
+    const roleName = req.user[0]?.roles;
     const searchTermAsNumber = !isNaN(Number(searchTerm))
       ? BigInt(searchTerm)
       : searchTerm;
@@ -401,6 +410,7 @@ export class BootcampController {
     }
 
     const res = await this.bootcampService.getStudentsInABootcamp(
+      roleName,
       bootcamp_id,
       batch_id,
       searchTermAsNumber,
