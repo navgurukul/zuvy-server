@@ -253,8 +253,15 @@ export class ContentController {
   @Get('/allChaptersOfModule/:moduleId')
   @ApiOperation({ summary: 'Get all the chapters of a module' })
   @ApiBearerAuth('JWT-auth')
-  async getChapterDetailsOfModule(@Param('moduleId') moduleId: number) {
-    const res = await this.contentService.getAllChaptersOfModule(moduleId);
+  async getChapterDetailsOfModule(
+    @Param('moduleId') moduleId: number,
+    @Req() req,
+  ) {
+    const roleName = req.user[0]?.roles;
+    const res = await this.contentService.getAllChaptersOfModule(
+      roleName,
+      moduleId,
+    );
     return res;
   }
 

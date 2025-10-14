@@ -1,4 +1,9 @@
-import { Injectable, InternalServerErrorException, Logger, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  InternalServerErrorException,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import {
   zuvyModuleTracking,
   zuvyAssignmentSubmission,
@@ -29,7 +34,7 @@ import {
   zuvyChapterTracking,
   zuvyRecentBootcamp,
   zuvySessionRecordViews,
-  zuvyBootcamps
+  zuvyBootcamps,
 } from '../../../drizzle/schema';
 
 import { error, log } from 'console';
@@ -43,7 +48,7 @@ import {
   asc,
   ne,
   SQL,
-  desc
+  desc,
 } from 'drizzle-orm';
 import { db } from '../../db/index';
 import {
@@ -69,7 +74,7 @@ import {
   CreateQuizVariantDto,
   AddQuizVariantsDto,
   deleteQuestionOrVariantDto,
-  UpdateChapterDto
+  UpdateChapterDto,
 } from './dto/content.dto';
 import { STATUS_CODES } from '../../helpers';
 import { helperVariable } from '../../constants/helper';
@@ -83,7 +88,8 @@ import { SseService } from '../../services/sse.service';
 import { ClassesService } from '../classes/classes.service';
 import { ZoomService } from 'src/services/zoom/zoom.service';
 import { RbacAllocPermsService } from '../../rbac/rbac.alloc-perms.service';
-let { S3_ACCESS_KEY_ID, S3_BUCKET_NAME, S3_REGION, S3_SECRET_KEY_ACCESS } = process.env
+let { S3_ACCESS_KEY_ID, S3_BUCKET_NAME, S3_REGION, S3_SECRET_KEY_ACCESS } =
+  process.env;
 import e from 'express';
 import { ResourceList } from 'src/rbac/utility';
 import { RbacService } from 'src/rbac/rbac.service';
@@ -101,7 +107,7 @@ export class ContentService {
     private classesService: ClassesService,
     private zoomService: ZoomService,
     private rbacAllocPermsService: RbacAllocPermsService,
-    private rbacService: RbacService
+    private rbacService: RbacService,
   ) {
     this.bucket = this.config.get('S3_BUCKET_NAME');
     this.region = 'ap-south-1';
@@ -131,9 +137,7 @@ export class ContentService {
     }
   }
 
-  async uploadImageToS3(
-    buffer: Buffer,
-    filename: string): Promise<string> {
+  async uploadImageToS3(buffer: Buffer, filename: string): Promise<string> {
     const key = `mcq_images/${Date.now()}_${filename}`;
     await this.s3.send(
       new PutObjectCommand({
@@ -165,7 +169,11 @@ export class ContentService {
     return modules__;
   }
 
-  async createModuleForCourse(bootcampId: number, module: moduleDto, typeId: number) {
+  async createModuleForCourse(
+    bootcampId: number,
+    module: moduleDto,
+    typeId: number,
+  ) {
     try {
       const noOfModuleOfBootcamp = await db
         .select({ count: count(zuvyCourseModules.id) })
@@ -173,7 +181,10 @@ export class ContentService {
         .where(eq(zuvyCourseModules.bootcampId, bootcampId));
       let projectId = null;
       if (typeId == 2) {
-        const newProject = await db.insert(zuvyCourseProjects).values({ title: module.name }).returning();
+        const newProject = await db
+          .insert(zuvyCourseProjects)
+          .values({ title: module.name })
+          .returning();
         projectId = newProject.length > 0 ? newProject[0].id : null;
       }
       var moduleWithBootcamp = {
@@ -194,27 +205,36 @@ export class ContentService {
           code: 200,
           module: moduleData,
         };
-      }
-      else {
+      } else {
         return {
           status: 'error',
           code: 400,
-          message: 'Module creation failed.Please try again'
-        }
+          message: 'Module creation failed.Please try again',
+        };
       }
     } catch (err) {
       throw err;
     }
   }
 
-  async createProjectForCourse(bootcampId: number, project: projectDto, typeId: number) {
+  async createProjectForCourse(
+    bootcampId: number,
+    project: projectDto,
+    typeId: number,
+  ) {
     try {
-      const bootcampInfo = await db.select().from(zuvyBootcamps).where(eq(zuvyBootcamps.id, bootcampId))
+      const bootcampInfo = await db
+        .select()
+        .from(zuvyBootcamps)
+        .where(eq(zuvyBootcamps.id, bootcampId));
       if (bootcampInfo.length == 0) {
         throw new NotFoundException('Bootcamp not found or deleted!');
       }
 
-      const newProject = await db.insert(zuvyCourseProjects).values(project).returning();
+      const newProject = await db
+        .insert(zuvyCourseProjects)
+        .values(project)
+        .returning();
       if (newProject.length > 0) {
         const newModule = {
           bootcampId,
@@ -222,30 +242,41 @@ export class ContentService {
           name: null,
           timeAlloted: null,
           description: null,
-          projectId: newProject[0].id
-        }
-        const moduleCreated = await this.createModuleForCourse(bootcampId, newModule, typeId);
+          projectId: newProject[0].id,
+        };
+        const moduleCreated = await this.createModuleForCourse(
+          bootcampId,
+          newModule,
+          typeId,
+        );
         if (moduleCreated.status == 'success') {
           return {
             status: 'success',
             code: 200,
             projectCreated: {
               ...newProject[0],
-              order: moduleCreated.module[0]?.order
-            }
-          }
+              order: moduleCreated.module[0]?.order,
+            },
+          };
         }
       }
-    }
-    catch (err) {
+    } catch (err) {
       throw err;
     }
   }
 
   async getProjectDetails(bootcampId: number, projectId: number) {
     try {
-      const project = await db.select().from(zuvyCourseProjects).where(eq(zuvyCourseProjects.id, projectId));
-      const correspondingModule = await db.select().from(zuvyCourseModules).where(sql`${zuvyCourseModules.bootcampId} = ${bootcampId} and ${zuvyCourseModules.projectId} = ${projectId}`);
+      const project = await db
+        .select()
+        .from(zuvyCourseProjects)
+        .where(eq(zuvyCourseProjects.id, projectId));
+      const correspondingModule = await db
+        .select()
+        .from(zuvyCourseModules)
+        .where(
+          sql`${zuvyCourseModules.bootcampId} = ${bootcampId} and ${zuvyCourseModules.projectId} = ${projectId}`,
+        );
       if (project.length > 0) {
         return {
           status: 'success',
@@ -253,14 +284,13 @@ export class ContentService {
           project,
           bootcampId,
           moduleId: correspondingModule[0].id,
-        }
-      }
-      else {
+        };
+      } else {
         return {
           status: 'error',
           code: 404,
-          message: 'There is no such project with this id'
-        }
+          message: 'There is no such project with this id',
+        };
       }
     } catch (err) {
       throw err;
@@ -269,34 +299,43 @@ export class ContentService {
 
   async updateProjectDetails(projectId: number, project: projectDto) {
     try {
-      const updatedProjects = await db.update(zuvyCourseProjects).set(project).where(eq(zuvyCourseProjects.id, projectId)).returning();
+      const updatedProjects = await db
+        .update(zuvyCourseProjects)
+        .set(project)
+        .where(eq(zuvyCourseProjects.id, projectId))
+        .returning();
       if (updatedProjects.length > 0) {
         return {
           status: 'success',
           code: 200,
-          message: 'The project has been updated successfully'
-        }
-      }
-      else {
+          message: 'The project has been updated successfully',
+        };
+      } else {
         return {
           status: 'error',
           code: 400,
-          message: 'Update failed.Please try again'
-        }
+          message: 'Update failed.Please try again',
+        };
       }
     } catch (err) {
       throw err;
     }
   }
 
-  async deleteProjectForBootcamp(projectId: number, moduleId: number, bootcampId: number) {
+  async deleteProjectForBootcamp(
+    projectId: number,
+    moduleId: number,
+    bootcampId: number,
+  ) {
     try {
       let deletedProject = await db
         .delete(zuvyCourseProjects)
         .where(eq(zuvyCourseProjects.id, projectId))
         .returning();
       if (deletedProject.length > 0) {
-        await db.delete(zuvyProjectTracking).where(eq(zuvyProjectTracking.id, projectId));
+        await db
+          .delete(zuvyProjectTracking)
+          .where(eq(zuvyProjectTracking.id, projectId));
         let data = await db
           .delete(zuvyCourseModules)
           .where(eq(zuvyCourseModules.id, moduleId))
@@ -317,26 +356,30 @@ export class ContentService {
         return {
           status: 'success',
           code: 200,
-          message: 'Project has been deleted successfully'
-        }
-      }
-      else {
+          message: 'Project has been deleted successfully',
+        };
+      } else {
         return {
           status: 'error',
           code: 404,
-          message: 'Project not found with this id'
-        }
+          message: 'Project not found with this id',
+        };
       }
-    }
-    catch (err) {
+    } catch (err) {
       throw err;
     }
   }
 
-  async createChapterForModule(moduleId: number, topicId: number, bootcampId: number) {
-
+  async createChapterForModule(
+    moduleId: number,
+    topicId: number,
+    bootcampId: number,
+  ) {
     try {
-      const moduleInfo = await db.select().from(zuvyCourseModules).where(eq(zuvyCourseModules.id, moduleId))
+      const moduleInfo = await db
+        .select()
+        .from(zuvyCourseModules)
+        .where(eq(zuvyCourseModules.id, moduleId));
       if (moduleInfo.length == 0) {
         throw new NotFoundException('Module not found or deleted!');
       }
@@ -346,7 +389,7 @@ export class ContentService {
         .select({ count: count(zuvyModuleChapter.id) })
         .from(zuvyModuleChapter)
         .where(eq(zuvyModuleChapter.moduleId, moduleId));
-      const order = noOfChaptersOfAModule[0].count + 1
+      const order = noOfChaptersOfAModule[0].count + 1;
       if (topicId == 6) {
         newAssessment = await this.createAssessment(moduleId);
         chapterData = {
@@ -356,7 +399,6 @@ export class ContentService {
           order,
           assessmentId: newAssessment[0].id,
         };
-
       } else {
         chapterData = { title: `Chapter ${order}`, moduleId, topicId, order };
       }
@@ -379,9 +421,12 @@ export class ContentService {
           bootcampId,
           chapterId: chapter[0].id,
           order,
-          currentState: 0 // Setting initial state to DRAFT
-        }
-        let outsourseAssessmentData = await db.insert(zuvyOutsourseAssessments).values(insertedAssessmentOutsourse).returning();
+          currentState: 0, // Setting initial state to DRAFT
+        };
+        let outsourseAssessmentData = await db
+          .insert(zuvyOutsourseAssessments)
+          .values(insertedAssessmentOutsourse)
+          .returning();
         if (outsourseAssessmentData.length == 0) {
           return {
             status: 'error',
@@ -399,7 +444,7 @@ export class ContentService {
         module: chapter,
       };
     } catch (err) {
-      Logger.error({ err })
+      Logger.error({ err });
       throw err;
     }
   }
@@ -407,7 +452,9 @@ export class ContentService {
   async createQuizForModule(quizData: CreateQuizzesDto): Promise<any> {
     try {
       // Ensure quizzes is an array
-      const quizzes = Array.isArray(quizData.quizzes) ? quizData.quizzes : [quizData.quizzes];
+      const quizzes = Array.isArray(quizData.quizzes)
+        ? quizData.quizzes
+        : [quizData.quizzes];
       const quizUploadResults = [];
       let validationErrors = [];
 
@@ -420,7 +467,12 @@ export class ContentService {
         // Validate variants if they exist
         if (quiz.variantMCQs) {
           for (const variant of quiz.variantMCQs) {
-            if (!variant.question || typeof variant.options !== 'object' || Object.keys(variant.options).length === 0 || variant.correctOption === undefined) {
+            if (
+              !variant.question ||
+              typeof variant.options !== 'object' ||
+              Object.keys(variant.options).length === 0 ||
+              variant.correctOption === undefined
+            ) {
               validationErrors.push('All fields are required.');
             }
           }
@@ -446,13 +498,15 @@ export class ContentService {
         const allVariantsData = [];
         insertedQuizzes.forEach((insertedQuiz, quizIndex) => {
           const quizId = insertedQuiz.id;
-          const variants = quizzes[quizIndex].variantMCQs?.map((variant, index) => ({
-            quizId,
-            question: variant.question,
-            options: variant.options,
-            correctOption: variant.correctOption,
-            variantNumber: index + 1,
-          }));
+          const variants = quizzes[quizIndex].variantMCQs?.map(
+            (variant, index) => ({
+              quizId,
+              question: variant.question,
+              options: variant.options,
+              correctOption: variant.correctOption,
+              variantNumber: index + 1,
+            }),
+          );
 
           // Push quiz data along with variants into the result array
           quizUploadResults.push({
@@ -467,18 +521,33 @@ export class ContentService {
         });
 
         // Insert all variants in batch
-        await db.insert(zuvyModuleQuizVariants).values(allVariantsData).returning();
+        await db
+          .insert(zuvyModuleQuizVariants)
+          .values(allVariantsData)
+          .returning();
 
-        return [null, {
-          message: 'MCQ and variants have been created successfully.',
-          statusCode: STATUS_CODES.CREATED,
-          data: quizUploadResults,
-        }];
+        return [
+          null,
+          {
+            message: 'MCQ and variants have been created successfully.',
+            statusCode: STATUS_CODES.CREATED,
+            data: quizUploadResults,
+          },
+        ];
       } else {
-        return [{ message: validationErrors[0], statusCode: STATUS_CODES.BAD_REQUEST }, null]
+        return [
+          {
+            message: validationErrors[0],
+            statusCode: STATUS_CODES.BAD_REQUEST,
+          },
+          null,
+        ];
       }
     } catch (err) {
-      return [{ message: err.message, statusCode: STATUS_CODES.BAD_REQUEST }, null];
+      return [
+        { message: err.message, statusCode: STATUS_CODES.BAD_REQUEST },
+        null,
+      ];
     }
   }
 
@@ -495,7 +564,10 @@ export class ContentService {
   }
 
   async getAllModuleByBootcampId(bootcampId: number, roleName: string[]) {
-    const bootcampInfo = await db.select().from(zuvyBootcamps).where(eq(zuvyBootcamps.id, bootcampId));
+    const bootcampInfo = await db
+      .select()
+      .from(zuvyBootcamps)
+      .where(eq(zuvyBootcamps.id, bootcampId));
     if (bootcampInfo.length == 0) {
       throw new NotFoundException('Bootcamp not found!');
     }
@@ -505,19 +577,24 @@ export class ContentService {
           eq(courseModules.bootcampId, bootcampId),
         with: {
           moduleChapterData: true,
-          projectData: true
+          projectData: true,
         },
       });
       let modules = data.map((module: any) => {
         return {
           id: module.id,
-          name: module['projectData'].length == 0 ? module.name : module['projectData'][0]['title'],
+          name:
+            module['projectData'].length == 0
+              ? module.name
+              : module['projectData'][0]['title'],
           description: module.description,
           typeId: module.typeId,
           order: module.order,
           projectId: module.projectId,
           timeAlloted: module.timeAlloted,
-          ChapterId: module.moduleChapterData.find((chapter) => chapter.order === 1)?.id || null,
+          ChapterId:
+            module.moduleChapterData.find((chapter) => chapter.order === 1)
+              ?.id || null,
           quizCount: module.moduleChapterData.filter(
             (chapter) => chapter.topicId === 4,
           ).length,
@@ -541,17 +618,20 @@ export class ContentService {
         ResourceList.module.read,
         ResourceList.module.create,
         ResourceList.module.edit,
-        ResourceList.module.delete
-      ]
-      const grantedPermission = await this.rbacService.getAllPermissions(roleName, targetPermissions)
-      return {modules, ...grantedPermission};
+        ResourceList.module.delete,
+      ];
+      const grantedPermission = await this.rbacService.getAllPermissions(
+        roleName,
+        targetPermissions,
+      );
+      return { modules, ...grantedPermission };
     } catch (err) {
       console.error(err);
       return [];
     }
   }
 
-  async getAllChaptersOfModule(moduleId: number) {
+  async getAllChaptersOfModule(roleName, moduleId: number) {
     try {
       const module = await db
         .select()
@@ -598,8 +678,22 @@ export class ContentService {
           order: ch.order,
         };
       });
-
-      return { chapterWithTopic, moduleName: module[0].name };
+      const targetPermissions = [
+        ResourceList.chapter.read,
+        ResourceList.chapter.create,
+        ResourceList.chapter.edit,
+        ResourceList.chapter.delete,
+      ];
+      const grantedPermissions =
+        await this.rbacAllocPermsService.getAllPermissions(
+          roleName,
+          targetPermissions,
+        );
+      return {
+        chapterWithTopic,
+        moduleName: module[0].name,
+        ...grantedPermissions,
+      };
     } catch (err) {
       throw err;
     }
@@ -608,35 +702,56 @@ export class ContentService {
   async formatedChapterDetails(chapterDetails: any) {
     try {
       chapterDetails.Quizzes = chapterDetails?.Quizzes.map((Quizzes) => {
-        let quizDetails = { ...Quizzes.Quiz, }
-        delete Quizzes.Quiz
-        return { ...Quizzes, ...quizDetails }
-      })
+        let quizDetails = { ...Quizzes.Quiz };
+        delete Quizzes.Quiz;
+        return { ...Quizzes, ...quizDetails };
+      });
 
-      chapterDetails.OpenEndedQuestions = chapterDetails?.OpenEndedQuestions.map((OpenEndedQuestions) => {
-        let openEndedDetails = { ...OpenEndedQuestions.OpenEndedQuestion, }
-        delete OpenEndedQuestions.OpenEndedQuestion
-        return { ...OpenEndedQuestions, ...openEndedDetails }
-      })
+      chapterDetails.OpenEndedQuestions =
+        chapterDetails?.OpenEndedQuestions.map((OpenEndedQuestions) => {
+          let openEndedDetails = { ...OpenEndedQuestions.OpenEndedQuestion };
+          delete OpenEndedQuestions.OpenEndedQuestion;
+          return { ...OpenEndedQuestions, ...openEndedDetails };
+        });
 
-      chapterDetails.CodingQuestions = chapterDetails?.CodingQuestions.map((CodingQuestions) => {
-        let codingOutsourseId = CodingQuestions.id
-        let codingDetails = { codingOutsourseId, ...CodingQuestions.CodingQuestion }
-        delete CodingQuestions.CodingQuestion
-        return { ...CodingQuestions, ...codingDetails }
-      })
+      chapterDetails.CodingQuestions = chapterDetails?.CodingQuestions.map(
+        (CodingQuestions) => {
+          let codingOutsourseId = CodingQuestions.id;
+          let codingDetails = {
+            codingOutsourseId,
+            ...CodingQuestions.CodingQuestion,
+          };
+          delete CodingQuestions.CodingQuestion;
+          return { ...CodingQuestions, ...codingDetails };
+        },
+      );
 
-      return chapterDetails
+      return chapterDetails;
     } catch (err) {
       throw err;
     }
   }
 
-  async getChapterDetailsById(chapterId: number, bootcampId: number, moduleId: number, topicId: number, userRole?: string) {
+  async getChapterDetailsById(
+    chapterId: number,
+    bootcampId: number,
+    moduleId: number,
+    topicId: number,
+    userRole?: string,
+  ) {
     try {
-      const bootcampInfo = await db.select().from(zuvyBootcamps).where(eq(zuvyBootcamps.id, bootcampId));
-      const chapterInfo = await db.select().from(zuvyModuleChapter).where(eq(zuvyModuleChapter.id, chapterId));
-      const moduleInfo = await db.select().from(zuvyCourseModules).where(eq(zuvyCourseModules.id, moduleId));
+      const bootcampInfo = await db
+        .select()
+        .from(zuvyBootcamps)
+        .where(eq(zuvyBootcamps.id, bootcampId));
+      const chapterInfo = await db
+        .select()
+        .from(zuvyModuleChapter)
+        .where(eq(zuvyModuleChapter.id, chapterId));
+      const moduleInfo = await db
+        .select()
+        .from(zuvyCourseModules)
+        .where(eq(zuvyCourseModules.id, moduleId));
 
       if (bootcampInfo.length == 0) {
         throw new NotFoundException('Bootcamp not found or deleted!');
@@ -647,78 +762,89 @@ export class ContentService {
       if (chapterInfo.length == 0) {
         throw new NotFoundException('Module not found or deleted!');
       }
-      if (topicId === 8) { // Assuming 8 is for sessions/live classes
-        await this.classesService.updatingStatusOfClass(bootcampId, undefined, chapterId);
+      if (topicId === 8) {
+        // Assuming 8 is for sessions/live classes
+        await this.classesService.updatingStatusOfClass(
+          bootcampId,
+          undefined,
+          chapterId,
+        );
       }
       if (topicId == 6) {
-        const chapterDetails = await db.query.zuvyOutsourseAssessments.findMany({
-          where: (zuvyOutsourseAssessments, { eq }) => eq(zuvyOutsourseAssessments.chapterId, chapterId),
-          with: {
-            ModuleAssessment: {
-              columns: {
-                id: true,
-                title: true,
-                description: true,
-              }
-            },
-            Quizzes: {
-              columns: {
-                id: true,
-                assessmentOutsourseId: true,
-                bootcampId: true
+        const chapterDetails = await db.query.zuvyOutsourseAssessments.findMany(
+          {
+            where: (zuvyOutsourseAssessments, { eq }) =>
+              eq(zuvyOutsourseAssessments.chapterId, chapterId),
+            with: {
+              ModuleAssessment: {
+                columns: {
+                  id: true,
+                  title: true,
+                  description: true,
+                },
               },
-              where: (zuvyOutsourseQuizzes, { sql }) => sql`${zuvyOutsourseQuizzes.bootcampId} = ${bootcampId} AND ${zuvyOutsourseQuizzes.chapterId} = ${chapterId}`,
-              with: {
-                Quiz: {
-                  with: {
-                    quizVariants: true
-                  }
-                }
-              }
-            },
-            OpenEndedQuestions: {
-              columns: {
-                id: true,
-                assessmentOutsourseId: true,
-                bootcampId: true
-              },
-              where: (zuvyOutsourseOpenEndedQuestions, { sql }) => sql`${zuvyOutsourseOpenEndedQuestions.bootcampId} = ${bootcampId} AND ${zuvyOutsourseOpenEndedQuestions.chapterId} = ${chapterId} AND ${zuvyOutsourseOpenEndedQuestions.moduleId} = ${moduleId}`,
-              with: {
-                OpenEndedQuestion: true
-              }
-            },
-            CodingQuestions: {
-              columns: {
-                id: true,
-                assessmentOutsourseId: true,
-                bootcampId: true
-              },
-              where: (zuvyOutsourseCodingQuestions, { sql }) => sql`${zuvyOutsourseCodingQuestions.bootcampId} = ${bootcampId} AND ${zuvyOutsourseCodingQuestions.chapterId} = ${chapterId}`,
-              with: {
-                CodingQuestion: {
-                  columns: {
-                    id: true,
-                    title: true,
-                    description: true,
-                    difficulty: true,
-                    tagId: true,
-                    constraints: true,
+              Quizzes: {
+                columns: {
+                  id: true,
+                  assessmentOutsourseId: true,
+                  bootcampId: true,
+                },
+                where: (zuvyOutsourseQuizzes, { sql }) =>
+                  sql`${zuvyOutsourseQuizzes.bootcampId} = ${bootcampId} AND ${zuvyOutsourseQuizzes.chapterId} = ${chapterId}`,
+                with: {
+                  Quiz: {
+                    with: {
+                      quizVariants: true,
+                    },
                   },
-                  with: {
-                    testCases: {
-                      columns: {
-                        id: true,
-                        inputs: true,
-                        expectedOutput: true,
+                },
+              },
+              OpenEndedQuestions: {
+                columns: {
+                  id: true,
+                  assessmentOutsourseId: true,
+                  bootcampId: true,
+                },
+                where: (zuvyOutsourseOpenEndedQuestions, { sql }) =>
+                  sql`${zuvyOutsourseOpenEndedQuestions.bootcampId} = ${bootcampId} AND ${zuvyOutsourseOpenEndedQuestions.chapterId} = ${chapterId} AND ${zuvyOutsourseOpenEndedQuestions.moduleId} = ${moduleId}`,
+                with: {
+                  OpenEndedQuestion: true,
+                },
+              },
+              CodingQuestions: {
+                columns: {
+                  id: true,
+                  assessmentOutsourseId: true,
+                  bootcampId: true,
+                },
+                where: (zuvyOutsourseCodingQuestions, { sql }) =>
+                  sql`${zuvyOutsourseCodingQuestions.bootcampId} = ${bootcampId} AND ${zuvyOutsourseCodingQuestions.chapterId} = ${chapterId}`,
+                with: {
+                  CodingQuestion: {
+                    columns: {
+                      id: true,
+                      title: true,
+                      description: true,
+                      difficulty: true,
+                      tagId: true,
+                      constraints: true,
+                    },
+                    with: {
+                      testCases: {
+                        columns: {
+                          id: true,
+                          inputs: true,
+                          expectedOutput: true,
+                        },
+                        orderBy: (testCase, { asc }) => asc(testCase.id),
                       },
-                      orderBy: (testCase, { asc }) => asc(testCase.id),
-                    }
-                  }
-                }
-              }
-            }
+                    },
+                  },
+                },
+              },
+            },
           },
-        });
+        );
 
         if (!chapterDetails || chapterDetails.length === 0) {
           return 'No Chapter found';
@@ -728,24 +854,26 @@ export class ContentService {
         await this.handleAssessmentUpdate(chapterDetails[0].id);
 
         // Get the updated assessment to get the current state
-        const updatedAssessment = await db.query.zuvyOutsourseAssessments.findFirst({
-          where: eq(zuvyOutsourseAssessments.id, chapterDetails[0].id)
-        });
+        const updatedAssessment =
+          await db.query.zuvyOutsourseAssessments.findFirst({
+            where: eq(zuvyOutsourseAssessments.id, chapterDetails[0].id),
+          });
 
         const stateMap = {
           0: 'DRAFT',
           1: 'PUBLISHED',
           2: 'ACTIVE',
-          3: 'CLOSED'
+          3: 'CLOSED',
         };
 
-        chapterDetails[0]["assessmentOutsourseId"] = chapterDetails[0].id;
+        chapterDetails[0]['assessmentOutsourseId'] = chapterDetails[0].id;
         let formatedData = await this.formatedChapterDetails(chapterDetails[0]);
 
         formatedData.publishDatetime = chapterDetails[0].publishDatetime;
         formatedData.startDatetime = chapterDetails[0].startDatetime;
         formatedData.endDatetime = chapterDetails[0].endDatetime;
-        formatedData.currentState = stateMap[updatedAssessment.currentState] || stateMap[2];
+        formatedData.currentState =
+          stateMap[updatedAssessment.currentState] || stateMap[2];
 
         return formatedData;
       }
@@ -775,7 +903,7 @@ export class ContentService {
         moduleId: chapterDetails[0].moduleId,
         topicId: chapterDetails[0].topicId,
         order: chapterDetails[0].order,
-        completionDate: chapterDetails[0].completionDate
+        completionDate: chapterDetails[0].completionDate,
       };
 
       if (chapterDetails.length > 0) {
@@ -783,14 +911,18 @@ export class ContentService {
           const quizDetails =
             chapterDetails[0].quizQuestions !== null
               ? await db.query.zuvyModuleQuiz.findMany({
-                where: (quiz, { inArray }) =>
-                  inArray(quiz.id, Object.values(chapterDetails[0].quizQuestions)),
-                with: {
-                  quizVariants: {
-                    where: (variants, { eq }) => eq(variants.variantNumber, 1), // Filter for variantNumber = 1
+                  where: (quiz, { inArray }) =>
+                    inArray(
+                      quiz.id,
+                      Object.values(chapterDetails[0].quizQuestions),
+                    ),
+                  with: {
+                    quizVariants: {
+                      where: (variants, { eq }) =>
+                        eq(variants.variantNumber, 1), // Filter for variantNumber = 1
+                    },
                   },
-                },
-              })
+                })
               : [];
           modifiedChapterDetails.quizQuestionDetails = quizDetails;
         } else if (chapterDetails[0].topicId == 3) {
@@ -798,48 +930,49 @@ export class ContentService {
           const codingProblemDetails =
             chapterDetails[0].codingQuestions !== null
               ? await db.query.zuvyCodingQuestions.findMany({
-                where: (codingQuestion, { eq }) =>
-                  eq(codingQuestion.id, chapterDetails[0].codingQuestions),
-                columns: {
-                  id: true,
-                  title: true,
-                  description: true,
-                  difficulty: true,
-                  tagId: true,
-                  constraints: true, // Include constraints here
-                },
-                with: {
-                  testCases: {
-                    columns: {
-                      id: true,
-                      inputs: true,
-                      expectedOutput: true,
+                  where: (codingQuestion, { eq }) =>
+                    eq(codingQuestion.id, chapterDetails[0].codingQuestions),
+                  columns: {
+                    id: true,
+                    title: true,
+                    description: true,
+                    difficulty: true,
+                    tagId: true,
+                    constraints: true, // Include constraints here
+                  },
+                  with: {
+                    testCases: {
+                      columns: {
+                        id: true,
+                        inputs: true,
+                        expectedOutput: true,
+                      },
+                      orderBy: (testCase, { asc }) => asc(testCase.id),
                     },
-                    orderBy: (testCase, { asc }) => asc(testCase.id),
-                  }
-                }
-              })
+                  },
+                })
               : [];
           modifiedChapterDetails.codingQuestionDetails = codingProblemDetails;
         } else if (chapterDetails[0].topicId == 7) {
           const formDetails =
             chapterDetails[0].formQuestions !== null
               ? await db
-                .select()
-                .from(zuvyModuleForm)
-                .where(
-                  sql`${inArray(zuvyModuleForm.id, Object.values(chapterDetails[0].formQuestions))}`,
-                )
+                  .select()
+                  .from(zuvyModuleForm)
+                  .where(
+                    sql`${inArray(zuvyModuleForm.id, Object.values(chapterDetails[0].formQuestions))}`,
+                  )
               : [];
           modifiedChapterDetails.formQuestionDetails = formDetails;
         } else if (chapterDetails[0].topicId == 8) {
           // Fetch session data for live classes with Zoom integration
           const sessionDetails = await db.query.zuvySessions.findMany({
-            where: (sessions, { and, eq }) => and(
-              eq(sessions.chapterId, chapterId),
-              eq(sessions.bootcampId, bootcampId),
-              eq(sessions.moduleId, moduleId)
-            ),
+            where: (sessions, { and, eq }) =>
+              and(
+                eq(sessions.chapterId, chapterId),
+                eq(sessions.bootcampId, bootcampId),
+                eq(sessions.moduleId, moduleId),
+              ),
             columns: {
               id: true,
               meetingId: true,
@@ -855,14 +988,26 @@ export class ContentService {
               hasBeenMerged: true,
               batchId: true,
               secondBatchId: true,
-              zoomMeetingId: true
-            }
+              zoomMeetingId: true,
+            },
           });
-          let session = sessionDetails[0]
-          if (session.s3link !== null && session.s3link !== '' && session.status === 'completed' && session.isZoomMeet === true && !session.s3link.includes('www.youtube.com')) {
-            const updatedRecordingLink = await this.zoomService.getMeetingRecordingLink(session.zoomMeetingId);
+          let session = sessionDetails[0];
+          if (
+            session.s3link !== null &&
+            session.s3link !== '' &&
+            session.status === 'completed' &&
+            session.isZoomMeet === true &&
+            !session.s3link.includes('www.youtube.com')
+          ) {
+            const updatedRecordingLink =
+              await this.zoomService.getMeetingRecordingLink(
+                session.zoomMeetingId,
+              );
             if (updatedRecordingLink.success) {
-              session.s3link = updatedRecordingLink.data.playUrl !== null ? updatedRecordingLink.data.playUrl : session.s3link;
+              session.s3link =
+                updatedRecordingLink.data.playUrl !== null
+                  ? updatedRecordingLink.data.playUrl
+                  : session.s3link;
               sessionDetails[0] = session;
             }
           }
@@ -870,43 +1015,53 @@ export class ContentService {
           // Fetch attendance data and format response for each session
           const sessionDetailsWithAttendance = await Promise.all(
             sessionDetails.map(async (session) => {
-
               // Fetch merge information separately
-              const mergeInfoAsParent = await db.query.zuvySessionMerge.findMany({
-                where: (merge, { eq }) => eq(merge.parentSessionId, session.id),
-                with: {
-                  childSession: {
-                    columns: {
-                      id: true,
-                      title: true,
-                      startTime: true,
-                      endTime: true
-                    }
-                  }
-                }
-              });
+              const mergeInfoAsParent =
+                await db.query.zuvySessionMerge.findMany({
+                  where: (merge, { eq }) =>
+                    eq(merge.parentSessionId, session.id),
+                  with: {
+                    childSession: {
+                      columns: {
+                        id: true,
+                        title: true,
+                        startTime: true,
+                        endTime: true,
+                      },
+                    },
+                  },
+                });
 
-              const mergeInfoAsChild = await db.query.zuvySessionMerge.findFirst({
-                where: (merge, { eq }) => eq(merge.childSessionId, session.id),
-                with: {
-                  parentSession: {
-                    columns: {
-                      id: true,
-                      title: true,
-                      hangoutLink: true,
-                      zoomStartUrl: true,
-                      isZoomMeet: true
-                    }
-                  }
-                }
-              });
+              const mergeInfoAsChild =
+                await db.query.zuvySessionMerge.findFirst({
+                  where: (merge, { eq }) =>
+                    eq(merge.childSessionId, session.id),
+                  with: {
+                    parentSession: {
+                      columns: {
+                        id: true,
+                        title: true,
+                        hangoutLink: true,
+                        zoomStartUrl: true,
+                        isZoomMeet: true,
+                      },
+                    },
+                  },
+                });
 
               let userJoinLink = mergeInfoAsChild
                 ? mergeInfoAsChild.parentSession.hangoutLink
-                : (session.isZoomMeet ? session.zoomStartUrl : session.hangoutLink);
-              if (userRole.includes('admin') || userRole.includes('instructor')) {
+                : session.isZoomMeet
+                  ? session.zoomStartUrl
+                  : session.hangoutLink;
+              if (
+                userRole.includes('admin') ||
+                userRole.includes('instructor')
+              ) {
                 // If the user is an admin or instructor, use the session's zoomStartUrl or hangoutLink
-                userJoinLink = session.isZoomMeet ? session.zoomStartUrl : session.hangoutLink;
+                userJoinLink = session.isZoomMeet
+                  ? session.zoomStartUrl
+                  : session.hangoutLink;
               }
               // Format session data with role-based response and merge information
               const formattedSession = {
@@ -926,13 +1081,15 @@ export class ContentService {
                   isMerged: session.hasBeenMerged,
                   isParentSession: mergeInfoAsParent.length > 0,
                   isChildSession: !!mergeInfoAsChild,
-                  childSessions: mergeInfoAsParent.map(merge => merge.childSession),
-                  parentSession: mergeInfoAsChild?.parentSession || null
-                }
+                  childSessions: mergeInfoAsParent.map(
+                    (merge) => merge.childSession,
+                  ),
+                  parentSession: mergeInfoAsChild?.parentSession || null,
+                },
               };
 
               return formattedSession;
-            })
+            }),
           );
 
           modifiedChapterDetails.sessionDetails = sessionDetailsWithAttendance;
@@ -943,7 +1100,7 @@ export class ContentService {
               description: chapterDetails[0].description,
               links: chapterDetails[0].links,
               file: chapterDetails[0].file,
-              content: chapterDetails[0].articleContent
+              content: chapterDetails[0].articleContent,
             },
           ];
           modifiedChapterDetails.contentDetails = content;
@@ -964,12 +1121,17 @@ export class ContentService {
     moduleId: number,
   ) {
     try {
-
-      const bootcampInfo = await db.select().from(zuvyBootcamps).where(eq(zuvyBootcamps.id, bootcampId));
+      const bootcampInfo = await db
+        .select()
+        .from(zuvyBootcamps)
+        .where(eq(zuvyBootcamps.id, bootcampId));
       if (bootcampInfo.length == 0) {
         throw new NotFoundException('Bootcamp not found or deleted!');
       }
-      const moduleInfo = await db.select().from(zuvyCourseModules).where(eq(zuvyCourseModules.id, moduleId));
+      const moduleInfo = await db
+        .select()
+        .from(zuvyCourseModules)
+        .where(eq(zuvyCourseModules.id, moduleId));
       if (moduleInfo.length == 0) {
         throw new NotFoundException('Module not found or deleted!');
       }
@@ -1029,7 +1191,7 @@ export class ContentService {
 
   async updateCodingProblemForModule(
     questionId: number,
-    codingProblem: UpdateProblemDto
+    codingProblem: UpdateProblemDto,
   ) {
     try {
       let examples = [];
@@ -1050,7 +1212,7 @@ export class ContentService {
       const updatedQuestion = await db
         .update(zuvyCodingQuestions)
         .set({
-          ...codingProblem
+          ...codingProblem,
         })
         .where(eq(zuvyCodingQuestions.id, questionId))
         .returning();
@@ -1082,7 +1244,10 @@ export class ContentService {
         .select()
         .from(zuvyModuleChapter)
         .where(eq(zuvyModuleChapter.id, chapterId));
-      const moduleInfo = await db.select().from(zuvyCourseModules).where(eq(zuvyCourseModules.id, moduleId));
+      const moduleInfo = await db
+        .select()
+        .from(zuvyCourseModules)
+        .where(eq(zuvyCourseModules.id, moduleId));
       if (moduleInfo.length == 0 || chapterInfo.length == 0) {
         throw new NotFoundException('Module or chapter not found!');
       }
@@ -1094,7 +1259,6 @@ export class ContentService {
           .from(zuvyModuleChapter)
           .where(eq(zuvyModuleChapter.moduleId, moduleId))
           .orderBy(zuvyModuleChapter.order);
-
 
         const draggedModuleIndex = chapters.findIndex(
           (m) => m.id === chapterId,
@@ -1128,7 +1292,6 @@ export class ContentService {
             .where(eq(zuvyModuleChapter.id, chapterId));
         }
       } else if (editData.newOrder == undefined) {
-
         const chapter = await db
           .select()
           .from(zuvyModuleChapter)
@@ -1141,14 +1304,14 @@ export class ContentService {
           const remainingQuizIds =
             editData.quizQuestions != null && earlierQuizIds.length > 0
               ? earlierQuizIds.filter(
-                (questionId) => !editData.quizQuestions.includes(questionId),
-              )
+                  (questionId) => !editData.quizQuestions.includes(questionId),
+                )
               : [];
           const toUpdateIds =
             editData.quizQuestions != null && earlierQuizIds.length > 0
               ? editData.quizQuestions.filter(
-                (questionId) => !earlierQuizIds.includes(questionId),
-              )
+                  (questionId) => !earlierQuizIds.includes(questionId),
+                )
               : editData.quizQuestions;
           if (remainingQuizIds.length > 0) {
             await db
@@ -1173,17 +1336,23 @@ export class ContentService {
           const earlierCodingId = chapter[0].codingQuestions;
 
           if (earlierCodingId !== editData.codingQuestions) {
-            let updatedCodingQuestion: any = { usage: sql`${zuvyCodingQuestions.usage}::numeric - 1` }
+            let updatedCodingQuestion: any = {
+              usage: sql`${zuvyCodingQuestions.usage}::numeric - 1`,
+            };
             const updatedquestion = await db
               .update(zuvyCodingQuestions)
               .set(updatedCodingQuestion)
-              .where(eq(zuvyCodingQuestions.id, earlierCodingId)).returning();
+              .where(eq(zuvyCodingQuestions.id, earlierCodingId))
+              .returning();
             if (editData.codingQuestions) {
-              updatedCodingQuestion = { usage: sql`${zuvyCodingQuestions.usage}::numeric + 1` }
+              updatedCodingQuestion = {
+                usage: sql`${zuvyCodingQuestions.usage}::numeric + 1`,
+              };
               await db
                 .update(zuvyCodingQuestions)
                 .set(updatedCodingQuestion)
-                .where(eq(zuvyCodingQuestions.id, editData.codingQuestions)).returning();
+                .where(eq(zuvyCodingQuestions.id, editData.codingQuestions))
+                .returning();
             }
           }
         } else if (editData.formQuestions) {
@@ -1194,17 +1363,19 @@ export class ContentService {
           const remainingFormIds =
             editData.formQuestions != null && earlierFormIds.length > 0
               ? earlierFormIds.filter(
-                (questionId) => !editData.formQuestions.includes(questionId),
-              )
+                  (questionId) => !editData.formQuestions.includes(questionId),
+                )
               : [];
           const toUpdateIds =
             editData.formQuestions != null && earlierFormIds.length > 0
               ? editData.formQuestions.filter(
-                (questionId) => !earlierFormIds.includes(questionId),
-              )
+                  (questionId) => !earlierFormIds.includes(questionId),
+                )
               : editData.formQuestions;
           if (remainingFormIds.length > 0) {
-            let updateModuleForm: any = { usage: sql`${zuvyModuleForm.usage}::numeric - 1` }
+            let updateModuleForm: any = {
+              usage: sql`${zuvyModuleForm.usage}::numeric - 1`,
+            };
 
             await db
               .update(zuvyModuleForm)
@@ -1212,7 +1383,9 @@ export class ContentService {
               .where(sql`${inArray(zuvyModuleForm.id, remainingFormIds)}`);
           }
           if (toUpdateIds.length > 0) {
-            let updateModuleForm: any = { usage: sql`${zuvyModuleForm.usage}::numeric + 1` }
+            let updateModuleForm: any = {
+              usage: sql`${zuvyModuleForm.usage}::numeric + 1`,
+            };
             await db
               .update(zuvyModuleForm)
               .set(updateModuleForm)
@@ -1253,14 +1426,21 @@ export class ContentService {
   }
 
   // Helper function to calculate the score for each question based on the weightage and counts
-  async calculateQuestionScores(totalScore, weightage, questionCounts, type = 'MCQ') {
-    const sectionScore = (totalScore * (weightage / 100));
+  async calculateQuestionScores(
+    totalScore,
+    weightage,
+    questionCounts,
+    type = 'MCQ',
+  ) {
+    const sectionScore = totalScore * (weightage / 100);
     const { easy, medium, hard } = questionCounts;
 
     // Use the appropriate points for the type of questions (MCQ or Coding)
-    const points = type === 'MCQ' ? helperVariable.MCQ_POINTS : helperVariable.CODING_POINTS;
+    const points =
+      type === 'MCQ' ? helperVariable.MCQ_POINTS : helperVariable.CODING_POINTS;
 
-    const totalWeight = (easy * points.Easy) + (medium * points.Medium) + (hard * points.Hard);
+    const totalWeight =
+      easy * points.Easy + medium * points.Medium + hard * points.Hard;
 
     const scores = {
       easy: easy ? (points.Easy / totalWeight) * sectionScore : 0,
@@ -1274,33 +1454,41 @@ export class ContentService {
   async editAssessment(
     assessmentOutsourseId: number,
     assessmentBody: CreateAssessmentBody,
-    chapterId: number
+    chapterId: number,
   ) {
-
     try {
-      const chapterInfo = await db.select().from(zuvyModuleChapter).where(eq(zuvyModuleChapter.id, chapterId))
+      const chapterInfo = await db
+        .select()
+        .from(zuvyModuleChapter)
+        .where(eq(zuvyModuleChapter.id, chapterId));
       if (chapterInfo.length == 0) {
         throw new NotFoundException('Assessment not found or deleted!');
-      }
-      else {
-        const moduleInfo = await db.select().from(zuvyCourseModules).where(eq(zuvyCourseModules.id, chapterInfo[0].moduleId))
+      } else {
+        const moduleInfo = await db
+          .select()
+          .from(zuvyCourseModules)
+          .where(eq(zuvyCourseModules.id, chapterInfo[0].moduleId));
         if (moduleInfo.length == 0) {
           throw new NotFoundException('Module not found or deleted!');
         }
       }
-      if (assessmentBody.weightageCodingQuestions + assessmentBody.weightageMcqQuestions != 100) {
-        throw ({
+      if (
+        assessmentBody.weightageCodingQuestions +
+          assessmentBody.weightageMcqQuestions !=
+        100
+      ) {
+        throw {
           status: 'error',
           statusCode: 404,
           message: 'The total weightage must equal 100.',
-        });
+        };
       }
       if (assessmentBody.passPercentage > 100) {
-        throw ({
+        throw {
           status: 'error',
           statusCode: 404,
           message: 'Pass percentage cannot be greater than 100.',
-        })
+        };
       }
       // New date validations
       if (assessmentBody.publishDatetime && assessmentBody.startDatetime) {
@@ -1311,7 +1499,8 @@ export class ContentService {
           throw {
             status: 'error',
             statusCode: 400,
-            message: 'startDatetime must be greater than or equal to publishDatetime',
+            message:
+              'startDatetime must be greater than or equal to publishDatetime',
           };
         }
       }
@@ -1330,13 +1519,17 @@ export class ContentService {
       }
 
       if (assessmentBody.title) {
-        const updatedChapterName = await db.update(zuvyModuleChapter).set({ title: assessmentBody.title }).where(eq(zuvyModuleChapter.id, chapterId)).returning();
+        const updatedChapterName = await db
+          .update(zuvyModuleChapter)
+          .set({ title: assessmentBody.title })
+          .where(eq(zuvyModuleChapter.id, chapterId))
+          .returning();
         if (updatedChapterName.length == 0) {
-          throw ({
+          throw {
             status: 'error',
             statusCode: 404,
             message: 'Chapter title not updated properly.Please try again',
-          });
+          };
         }
       }
       const assessment: any = await db.query.zuvyOutsourseAssessments.findMany({
@@ -1346,19 +1539,34 @@ export class ContentService {
           ModuleAssessment: true,
           OutsourseQuizzes: true,
           OutsourseOpenEndedQuestions: true,
-          OutsourseCodingQuestions: true
+          OutsourseCodingQuestions: true,
         },
       });
 
       if (assessment == undefined || assessment.length == 0) {
-        throw ({
+        throw {
           status: 'error',
           statusCode: 404,
           message: 'Assessment not found',
-        });
+        };
       } else {
-        let { bootcampId, moduleId, chapterId, ModuleAssessment, OutsourseQuizzes, OutsourseOpenEndedQuestions, OutsourseCodingQuestions } = assessment[0];
-        let { mcqIds, openEndedQuestionIds, codingProblemIds, title, description, ...OutsourseAssessmentData__ } = assessmentBody;
+        let {
+          bootcampId,
+          moduleId,
+          chapterId,
+          ModuleAssessment,
+          OutsourseQuizzes,
+          OutsourseOpenEndedQuestions,
+          OutsourseCodingQuestions,
+        } = assessment[0];
+        let {
+          mcqIds,
+          openEndedQuestionIds,
+          codingProblemIds,
+          title,
+          description,
+          ...OutsourseAssessmentData__
+        } = assessmentBody;
 
         let assessment_id = ModuleAssessment.id;
 
@@ -1395,47 +1603,84 @@ export class ContentService {
         }
 
         // filter out the ids that are not in the assessment
-        let existingQuizIds = OutsourseQuizzes.length > 0 ? OutsourseQuizzes.map((q) => q.quiz_id).filter(id => id !== null) : [];
-        let existingOpenEndedQuestionIds = OutsourseOpenEndedQuestions.length > 0 ? OutsourseOpenEndedQuestions.map((q) => q.openEndedQuestionId).filter(id => id !== null) : [];
-        let existingCodingQuestionIds = OutsourseCodingQuestions.length > 0 ? OutsourseCodingQuestions.map((q) => q.codingQuestionId).filter(id => id !== null) : [];
+        let existingQuizIds =
+          OutsourseQuizzes.length > 0
+            ? OutsourseQuizzes.map((q) => q.quiz_id).filter((id) => id !== null)
+            : [];
+        let existingOpenEndedQuestionIds =
+          OutsourseOpenEndedQuestions.length > 0
+            ? OutsourseOpenEndedQuestions.map(
+                (q) => q.openEndedQuestionId,
+              ).filter((id) => id !== null)
+            : [];
+        let existingCodingQuestionIds =
+          OutsourseCodingQuestions.length > 0
+            ? OutsourseCodingQuestions.map((q) => q.codingQuestionId).filter(
+                (id) => id !== null,
+              )
+            : [];
 
-        let quizIdsToDelete = existingQuizIds.filter((id) => !mcqIds.includes(id));
-        let openEndedQuestionIdsToDelete = existingOpenEndedQuestionIds.filter((id) => !openEndedQuestionIds.includes(id));
-        let codingQuestionIdsToDelete = existingCodingQuestionIds.filter((id) => !codingProblemIds.includes(id));
+        let quizIdsToDelete = existingQuizIds.filter(
+          (id) => !mcqIds.includes(id),
+        );
+        let openEndedQuestionIdsToDelete = existingOpenEndedQuestionIds.filter(
+          (id) => !openEndedQuestionIds.includes(id),
+        );
+        let codingQuestionIdsToDelete = existingCodingQuestionIds.filter(
+          (id) => !codingProblemIds.includes(id),
+        );
 
         let quizIdsToAdd = mcqIds.filter((id) => !existingQuizIds.includes(id));
-        let openEndedQuestionIdsToAdd = openEndedQuestionIds.filter((id) => !existingOpenEndedQuestionIds.includes(id));
-        let codingQuestionIdsToAdd = codingProblemIds.filter((id) => !existingCodingQuestionIds.includes(id));
+        let openEndedQuestionIdsToAdd = openEndedQuestionIds.filter(
+          (id) => !existingOpenEndedQuestionIds.includes(id),
+        );
+        let codingQuestionIdsToAdd = codingProblemIds.filter(
+          (id) => !existingCodingQuestionIds.includes(id),
+        );
         // Delete operations
         if (quizIdsToDelete.length > 0) {
-          let updatedMcqQuestions: any = { usage: sql`${zuvyModuleQuiz.usage}::numeric - 1` }
+          let updatedMcqQuestions: any = {
+            usage: sql`${zuvyModuleQuiz.usage}::numeric - 1`,
+          };
           await db
             .update(zuvyModuleQuiz)
             .set(updatedMcqQuestions)
             .where(inArray(zuvyModuleQuiz.id, quizIdsToDelete));
           await db
             .delete(zuvyOutsourseQuizzes)
-            .where(sql`${zuvyOutsourseQuizzes.assessmentOutsourseId} = ${assessmentOutsourseId} AND ${inArray(zuvyOutsourseQuizzes.quiz_id, quizIdsToDelete)}`);
+            .where(
+              sql`${zuvyOutsourseQuizzes.assessmentOutsourseId} = ${assessmentOutsourseId} AND ${inArray(zuvyOutsourseQuizzes.quiz_id, quizIdsToDelete)}`,
+            );
         }
         if (openEndedQuestionIdsToDelete.length > 0) {
-          let updatedOpenEndedQuestions: any = { usage: sql`${zuvyOpenEndedQuestions.usage}::numeric - 1` }
+          let updatedOpenEndedQuestions: any = {
+            usage: sql`${zuvyOpenEndedQuestions.usage}::numeric - 1`,
+          };
           await db
             .update(zuvyOpenEndedQuestions)
             .set(updatedOpenEndedQuestions)
-            .where(inArray(zuvyOpenEndedQuestions.id, openEndedQuestionIdsToDelete));
+            .where(
+              inArray(zuvyOpenEndedQuestions.id, openEndedQuestionIdsToDelete),
+            );
           await db
             .delete(zuvyOutsourseOpenEndedQuestions)
-            .where(sql`${zuvyOutsourseOpenEndedQuestions.assessmentOutsourseId} = ${assessmentOutsourseId} AND ${inArray(zuvyOutsourseOpenEndedQuestions.openEndedQuestionId, openEndedQuestionIdsToDelete)}`);
+            .where(
+              sql`${zuvyOutsourseOpenEndedQuestions.assessmentOutsourseId} = ${assessmentOutsourseId} AND ${inArray(zuvyOutsourseOpenEndedQuestions.openEndedQuestionId, openEndedQuestionIdsToDelete)}`,
+            );
         }
         if (codingQuestionIdsToDelete.length > 0) {
-          let updatedCodingQuestion: any = { usage: sql`${zuvyCodingQuestions.usage}::numeric - 1` }
+          let updatedCodingQuestion: any = {
+            usage: sql`${zuvyCodingQuestions.usage}::numeric - 1`,
+          };
           await db
             .update(zuvyCodingQuestions)
             .set(updatedCodingQuestion)
             .where(inArray(zuvyCodingQuestions.id, codingQuestionIdsToDelete));
           await db
             .delete(zuvyOutsourseCodingQuestions)
-            .where(sql`${zuvyOutsourseCodingQuestions.assessmentOutsourseId} = ${assessmentOutsourseId} AND ${inArray(zuvyOutsourseCodingQuestions.codingQuestionId, codingQuestionIdsToDelete)}`);
+            .where(
+              sql`${zuvyOutsourseCodingQuestions.assessmentOutsourseId} = ${assessmentOutsourseId} AND ${inArray(zuvyOutsourseCodingQuestions.codingQuestionId, codingQuestionIdsToDelete)}`,
+            );
         }
 
         // Extract counts for each question type and difficulty
@@ -1452,11 +1697,26 @@ export class ContentService {
         };
 
         // Calculate the scores for each type
-        const codingScores: any = await this.calculateQuestionScores(helperVariable.TOTAL_SCORE, OutsourseAssessmentData__.weightageCodingQuestions, codingQuestionsCount, 'Coding');
-        const mcqScores: any = await this.calculateQuestionScores(helperVariable.TOTAL_SCORE, OutsourseAssessmentData__.weightageMcqQuestions, mcqQuestionsCount);
+        const codingScores: any = await this.calculateQuestionScores(
+          helperVariable.TOTAL_SCORE,
+          OutsourseAssessmentData__.weightageCodingQuestions,
+          codingQuestionsCount,
+          'Coding',
+        );
+        const mcqScores: any = await this.calculateQuestionScores(
+          helperVariable.TOTAL_SCORE,
+          OutsourseAssessmentData__.weightageMcqQuestions,
+          mcqQuestionsCount,
+        );
         // Update marks in the assessment
-        OutsourseAssessmentData__.totalCodingQuestions = codingQuestionsCount.easy + codingQuestionsCount.medium + codingQuestionsCount.hard;
-        OutsourseAssessmentData__.totalMcqQuestions = mcqQuestionsCount.easy + mcqQuestionsCount.medium + mcqQuestionsCount.hard;
+        OutsourseAssessmentData__.totalCodingQuestions =
+          codingQuestionsCount.easy +
+          codingQuestionsCount.medium +
+          codingQuestionsCount.hard;
+        OutsourseAssessmentData__.totalMcqQuestions =
+          mcqQuestionsCount.easy +
+          mcqQuestionsCount.medium +
+          mcqQuestionsCount.hard;
         let marks = {
           easyCodingMark: codingScores.easy,
           mediumCodingMark: codingScores.medium,
@@ -1464,7 +1724,7 @@ export class ContentService {
           easyMcqMark: mcqScores.easy,
           mediumMcqMark: mcqScores.medium,
           hardMcqMark: mcqScores.hard,
-        }
+        };
 
         let updatedOutsourse: any = {
           ...OutsourseAssessmentData__,
@@ -1472,13 +1732,15 @@ export class ContentService {
           currentState,
           updatedAt: new Date().toISOString(),
           ...(assessmentBody.publishDatetime && {
-            publishDatetime: new Date(assessmentBody.publishDatetime).toISOString()
+            publishDatetime: new Date(
+              assessmentBody.publishDatetime,
+            ).toISOString(),
           }),
           ...(assessmentBody.startDatetime && {
-            startDatetime: new Date(assessmentBody.startDatetime).toISOString()
+            startDatetime: new Date(assessmentBody.startDatetime).toISOString(),
           }),
           ...(assessmentBody.endDatetime && {
-            endDatetime: new Date(assessmentBody.endDatetime).toISOString()
+            endDatetime: new Date(assessmentBody.endDatetime).toISOString(),
           }),
         };
         let updatedOutsourseAssessment = await db
@@ -1496,24 +1758,50 @@ export class ContentService {
 
         // Update chapter title when assessment title changes
         if (title) {
-          const updatedChapterName = await db.update(zuvyModuleChapter).set({ title }).where(eq(zuvyModuleChapter.id, chapterId)).returning();
+          const updatedChapterName = await db
+            .update(zuvyModuleChapter)
+            .set({ title })
+            .where(eq(zuvyModuleChapter.id, chapterId))
+            .returning();
           if (updatedChapterName.length == 0) {
-            throw ({
+            throw {
               status: 'error',
               statusCode: 404,
               message: 'Chapter title not updated properly. Please try again',
-            });
+            };
           }
         }
 
-        let mcqArray = quizIdsToAdd.map(id => ({ quiz_id: id, bootcampId, chapterId, assessmentOutsourseId }));
-        let openEndedQuestionsArray = openEndedQuestionIdsToAdd.map(id => ({ openEndedQuestionId: id, bootcampId, moduleId, chapterId, assessmentOutsourseId }));
-        let codingProblemsArray = codingQuestionIdsToAdd.map(id => ({ codingQuestionId: id, bootcampId, moduleId, chapterId, assessmentOutsourseId }));
+        let mcqArray = quizIdsToAdd.map((id) => ({
+          quiz_id: id,
+          bootcampId,
+          chapterId,
+          assessmentOutsourseId,
+        }));
+        let openEndedQuestionsArray = openEndedQuestionIdsToAdd.map((id) => ({
+          openEndedQuestionId: id,
+          bootcampId,
+          moduleId,
+          chapterId,
+          assessmentOutsourseId,
+        }));
+        let codingProblemsArray = codingQuestionIdsToAdd.map((id) => ({
+          codingQuestionId: id,
+          bootcampId,
+          moduleId,
+          chapterId,
+          assessmentOutsourseId,
+        }));
 
         if (mcqArray.length > 0) {
-          let createZOMQ = await db.insert(zuvyOutsourseQuizzes).values(mcqArray).returning();
+          let createZOMQ = await db
+            .insert(zuvyOutsourseQuizzes)
+            .values(mcqArray)
+            .returning();
           if (createZOMQ.length > 0) {
-            const toUpdateIds = createZOMQ.filter((c) => c.quiz_id).map((c) => c.quiz_id);
+            const toUpdateIds = createZOMQ
+              .filter((c) => c.quiz_id)
+              .map((c) => c.quiz_id);
             await db
               .update(zuvyModuleQuiz)
               .set({ usage: sql`${zuvyModuleQuiz.usage}::numeric + 1` })
@@ -1522,21 +1810,36 @@ export class ContentService {
         }
 
         if (openEndedQuestionsArray.length > 0) {
-          let createZOOQ = await db.insert(zuvyOutsourseOpenEndedQuestions).values(openEndedQuestionsArray).returning();
+          let createZOOQ = await db
+            .insert(zuvyOutsourseOpenEndedQuestions)
+            .values(openEndedQuestionsArray)
+            .returning();
           if (createZOOQ.length > 0) {
-            const toUpdateIds = createZOOQ.filter((c) => c.openEndedQuestionId).map((c) => c.openEndedQuestionId);
-            let updateOpendEndedQuestions: any = { usage: sql`${zuvyOpenEndedQuestions.usage}::numeric + 1` }
-            await db.update(zuvyOpenEndedQuestions)
+            const toUpdateIds = createZOOQ
+              .filter((c) => c.openEndedQuestionId)
+              .map((c) => c.openEndedQuestionId);
+            let updateOpendEndedQuestions: any = {
+              usage: sql`${zuvyOpenEndedQuestions.usage}::numeric + 1`,
+            };
+            await db
+              .update(zuvyOpenEndedQuestions)
               .set(updateOpendEndedQuestions)
               .where(sql`${inArray(zuvyOpenEndedQuestions.id, toUpdateIds)}`);
           }
         }
 
         if (codingProblemsArray.length > 0) {
-          let createZOCQ = await db.insert(zuvyOutsourseCodingQuestions).values(codingProblemsArray).returning();
+          let createZOCQ = await db
+            .insert(zuvyOutsourseCodingQuestions)
+            .values(codingProblemsArray)
+            .returning();
           if (createZOCQ.length > 0) {
-            const toUpdateIds = createZOCQ.filter((c) => c.codingQuestionId).map((c) => c.codingQuestionId);
-            let updateCodingQuestions: any = { usage: sql`${zuvyCodingQuestions.usage}::numeric + 1` }
+            const toUpdateIds = createZOCQ
+              .filter((c) => c.codingQuestionId)
+              .map((c) => c.codingQuestionId);
+            let updateCodingQuestions: any = {
+              usage: sql`${zuvyCodingQuestions.usage}::numeric + 1`,
+            };
             await db
               .update(zuvyCodingQuestions)
               .set(updateCodingQuestions)
@@ -1563,9 +1866,9 @@ export class ContentService {
           ModuleAssessment: true,
           Quizzes: true,
           OpenEndedQuestions: true,
-          CodingQuestions: true
+          CodingQuestions: true,
         },
-      })
+      });
       return assessment;
     } catch (err) {
       throw err;
@@ -1576,29 +1879,85 @@ export class ContentService {
     // 1. Find all chapters for this module
     let chapterIds: number[] = [];
     try {
-      const chapters = await db.select({ id: zuvyModuleChapter.id }).from(zuvyModuleChapter).where(eq(zuvyModuleChapter.moduleId, moduleId));
-      chapterIds = chapters.map(ch => ch.id);
+      const chapters = await db
+        .select({ id: zuvyModuleChapter.id })
+        .from(zuvyModuleChapter)
+        .where(eq(zuvyModuleChapter.moduleId, moduleId));
+      chapterIds = chapters.map((ch) => ch.id);
     } catch (err) {
-      return [{ status: 'error', message: `Failed to fetch chapters: ${err.message}`, code: 500 }, null];
+      return [
+        {
+          status: 'error',
+          message: `Failed to fetch chapters: ${err.message}`,
+          code: 500,
+        },
+        null,
+      ];
     }
-    const zuvySessionIds = await db.select({ id: zuvySessions.id, meetingId: zuvySessions.meetingId }).from(zuvySessions).where(eq(zuvySessions.moduleId, moduleId))
+    const zuvySessionIds = await db
+      .select({ id: zuvySessions.id, meetingId: zuvySessions.meetingId })
+      .from(zuvySessions)
+      .where(eq(zuvySessions.moduleId, moduleId));
     if (zuvySessionIds.length > 0) {
-      const sessionIds = zuvySessionIds.map(r => r.id);
-      const meetingIds = zuvySessionIds.map(s => s.meetingId);
-      await db.update(zuvySessions).set({ chapterId: null, moduleId: null }).where(inArray(zuvySessions.id, sessionIds));
+      const sessionIds = zuvySessionIds.map((r) => r.id);
+      const meetingIds = zuvySessionIds.map((s) => s.meetingId);
+      await db
+        .update(zuvySessions)
+        .set({ chapterId: null, moduleId: null })
+        .where(inArray(zuvySessions.id, sessionIds));
     }
     // 2. Cascade delete all related records for each chapter
     const cascadeChapterTables = [
-      { table: zuvyOutsourseQuizzes, column: zuvyOutsourseQuizzes.chapterId, name: 'zuvyOutsourseQuizzes' },
-      { table: zuvyOutsourseOpenEndedQuestions, column: zuvyOutsourseOpenEndedQuestions.chapterId, name: 'zuvyOutsourseOpenEndedQuestions' },
-      { table: zuvyOutsourseCodingQuestions, column: zuvyOutsourseCodingQuestions.chapterId, name: 'zuvyOutsourseCodingQuestions' },
-      { table: zuvyModuleForm, column: zuvyModuleForm.chapterId, name: 'zuvyModuleForm' },
-      { table: zuvyFormTracking, column: zuvyFormTracking.chapterId, name: 'zuvyFormTracking' },
-      { table: zuvyAssignmentSubmission, column: zuvyAssignmentSubmission.chapterId, name: 'zuvyAssignmentSubmission' },
-      { table: zuvyChapterTracking, column: zuvyChapterTracking.chapterId, name: 'zuvyChapterTracking' },
-      { table: zuvyQuizTracking, column: zuvyQuizTracking.chapterId, name: 'zuvyQuizTracking' },
-      { table: zuvyPracticeCode, column: zuvyPracticeCode.chapterId, name: 'zuvyPracticeCode' },
-      { table: zuvyRecentBootcamp, column: zuvyRecentBootcamp.chapterId, name: 'zuvyRecentBootcamp' }
+      {
+        table: zuvyOutsourseQuizzes,
+        column: zuvyOutsourseQuizzes.chapterId,
+        name: 'zuvyOutsourseQuizzes',
+      },
+      {
+        table: zuvyOutsourseOpenEndedQuestions,
+        column: zuvyOutsourseOpenEndedQuestions.chapterId,
+        name: 'zuvyOutsourseOpenEndedQuestions',
+      },
+      {
+        table: zuvyOutsourseCodingQuestions,
+        column: zuvyOutsourseCodingQuestions.chapterId,
+        name: 'zuvyOutsourseCodingQuestions',
+      },
+      {
+        table: zuvyModuleForm,
+        column: zuvyModuleForm.chapterId,
+        name: 'zuvyModuleForm',
+      },
+      {
+        table: zuvyFormTracking,
+        column: zuvyFormTracking.chapterId,
+        name: 'zuvyFormTracking',
+      },
+      {
+        table: zuvyAssignmentSubmission,
+        column: zuvyAssignmentSubmission.chapterId,
+        name: 'zuvyAssignmentSubmission',
+      },
+      {
+        table: zuvyChapterTracking,
+        column: zuvyChapterTracking.chapterId,
+        name: 'zuvyChapterTracking',
+      },
+      {
+        table: zuvyQuizTracking,
+        column: zuvyQuizTracking.chapterId,
+        name: 'zuvyQuizTracking',
+      },
+      {
+        table: zuvyPracticeCode,
+        column: zuvyPracticeCode.chapterId,
+        name: 'zuvyPracticeCode',
+      },
+      {
+        table: zuvyRecentBootcamp,
+        column: zuvyRecentBootcamp.chapterId,
+        name: 'zuvyRecentBootcamp',
+      },
     ];
     for (const { table, column, name } of cascadeChapterTables) {
       try {
@@ -1606,39 +1965,82 @@ export class ContentService {
           await db.delete(table).where(inArray(column, chapterIds));
         }
       } catch (err) {
-        return [{ status: 'error', message: `Failed to delete from ${name}: ${err.message}`, code: 500 }, null];
+        return [
+          {
+            status: 'error',
+            message: `Failed to delete from ${name}: ${err.message}`,
+            code: 500,
+          },
+          null,
+        ];
       }
     }
     // 3. Delete chapters
     try {
       if (chapterIds.length > 0) {
-        await db.delete(zuvyModuleChapter).where(inArray(zuvyModuleChapter.id, chapterIds));
+        await db
+          .delete(zuvyModuleChapter)
+          .where(inArray(zuvyModuleChapter.id, chapterIds));
       }
     } catch (err) {
-      return [{ status: 'error', message: `Failed to delete chapters: ${err.message}`, code: 500 }, null];
+      return [
+        {
+          status: 'error',
+          message: `Failed to delete chapters: ${err.message}`,
+          code: 500,
+        },
+        null,
+      ];
     }
     // 4. Cascade delete all related records for the module itself
     const cascadeModuleTables = [
-      { table: zuvyOutsourseAssessments, column: zuvyOutsourseAssessments.moduleId, name: 'zuvyOutsourseAssessments' },
-      { table: zuvyQuizTracking, column: zuvyQuizTracking.moduleId, name: 'zuvyQuizTracking' },
-      { table: zuvyProjectTracking, column: zuvyProjectTracking.moduleId, name: 'zuvyProjectTracking' },
-      { table: zuvyModuleTracking, column: zuvyModuleTracking.moduleId, name: 'zuvyModuleTracking' }
+      {
+        table: zuvyOutsourseAssessments,
+        column: zuvyOutsourseAssessments.moduleId,
+        name: 'zuvyOutsourseAssessments',
+      },
+      {
+        table: zuvyQuizTracking,
+        column: zuvyQuizTracking.moduleId,
+        name: 'zuvyQuizTracking',
+      },
+      {
+        table: zuvyProjectTracking,
+        column: zuvyProjectTracking.moduleId,
+        name: 'zuvyProjectTracking',
+      },
+      {
+        table: zuvyModuleTracking,
+        column: zuvyModuleTracking.moduleId,
+        name: 'zuvyModuleTracking',
+      },
     ];
     for (const { table, column, name } of cascadeModuleTables) {
       try {
         await db.delete(table).where(eq(column, moduleId));
       } catch (err) {
-        return [{ status: 'error', message: `Failed to delete from ${name}: ${err.message}`, code: 500 }, null];
+        return [
+          {
+            status: 'error',
+            message: `Failed to delete from ${name}: ${err.message}`,
+            code: 500,
+          },
+          null,
+        ];
       }
     }
     // 5. Delete the module itself
     let deletedModuleOrder = null;
     try {
-      const deleted = await db.delete(zuvyCourseModules)
+      const deleted = await db
+        .delete(zuvyCourseModules)
         .where(eq(zuvyCourseModules.id, moduleId))
         .returning();
       if (!deleted.length) {
-        return [{ status: 'error', message: 'Module not found', code: 404 }, null];
+        return [
+          { status: 'error', message: 'Module not found', code: 404 },
+          null,
+        ];
       }
       deletedModuleOrder = deleted[0].order;
       // Update order of remaining modules in the bootcamp
@@ -1662,30 +2064,90 @@ export class ContentService {
   async deleteChapter(chapterId: number, moduleId: number): Promise<any> {
     // Cascade delete all related records for this chapter
     const cascadeChapterTables = [
-      { table: zuvyOutsourseQuizzes, column: zuvyOutsourseQuizzes.chapterId, name: 'zuvyOutsourseQuizzes' },
-      { table: zuvyOutsourseOpenEndedQuestions, column: zuvyOutsourseOpenEndedQuestions.chapterId, name: 'zuvyOutsourseOpenEndedQuestions' },
-      { table: zuvyOutsourseCodingQuestions, column: zuvyOutsourseCodingQuestions.chapterId, name: 'zuvyOutsourseCodingQuestions' },
-      { table: zuvyOutsourseAssessments, column: zuvyOutsourseAssessments.chapterId, name: 'zuvyOutsourseAssessments' },
-      { table: zuvyModuleForm, column: zuvyModuleForm.chapterId, name: 'zuvyModuleForm' },
-      { table: zuvyFormTracking, column: zuvyFormTracking.chapterId, name: 'zuvyFormTracking' },
-      { table: zuvyAssignmentSubmission, column: zuvyAssignmentSubmission.chapterId, name: 'zuvyAssignmentSubmission' },
-      { table: zuvyChapterTracking, column: zuvyChapterTracking.chapterId, name: 'zuvyChapterTracking' },
-      { table: zuvyQuizTracking, column: zuvyQuizTracking.chapterId, name: 'zuvyQuizTracking' },
-      { table: zuvyPracticeCode, column: zuvyPracticeCode.chapterId, name: 'zuvyPracticeCode' },
-      { table: zuvyRecentBootcamp, column: zuvyRecentBootcamp.chapterId, name: 'zuvyRecentBootcamp' }
+      {
+        table: zuvyOutsourseQuizzes,
+        column: zuvyOutsourseQuizzes.chapterId,
+        name: 'zuvyOutsourseQuizzes',
+      },
+      {
+        table: zuvyOutsourseOpenEndedQuestions,
+        column: zuvyOutsourseOpenEndedQuestions.chapterId,
+        name: 'zuvyOutsourseOpenEndedQuestions',
+      },
+      {
+        table: zuvyOutsourseCodingQuestions,
+        column: zuvyOutsourseCodingQuestions.chapterId,
+        name: 'zuvyOutsourseCodingQuestions',
+      },
+      {
+        table: zuvyOutsourseAssessments,
+        column: zuvyOutsourseAssessments.chapterId,
+        name: 'zuvyOutsourseAssessments',
+      },
+      {
+        table: zuvyModuleForm,
+        column: zuvyModuleForm.chapterId,
+        name: 'zuvyModuleForm',
+      },
+      {
+        table: zuvyFormTracking,
+        column: zuvyFormTracking.chapterId,
+        name: 'zuvyFormTracking',
+      },
+      {
+        table: zuvyAssignmentSubmission,
+        column: zuvyAssignmentSubmission.chapterId,
+        name: 'zuvyAssignmentSubmission',
+      },
+      {
+        table: zuvyChapterTracking,
+        column: zuvyChapterTracking.chapterId,
+        name: 'zuvyChapterTracking',
+      },
+      {
+        table: zuvyQuizTracking,
+        column: zuvyQuizTracking.chapterId,
+        name: 'zuvyQuizTracking',
+      },
+      {
+        table: zuvyPracticeCode,
+        column: zuvyPracticeCode.chapterId,
+        name: 'zuvyPracticeCode',
+      },
+      {
+        table: zuvyRecentBootcamp,
+        column: zuvyRecentBootcamp.chapterId,
+        name: 'zuvyRecentBootcamp',
+      },
     ];
-    const chapterInfo = await db.select().from(zuvyModuleChapter).where(eq(zuvyModuleChapter.id, chapterId));
+    const chapterInfo = await db
+      .select()
+      .from(zuvyModuleChapter)
+      .where(eq(zuvyModuleChapter.id, chapterId));
     if (chapterInfo.length === 0) {
-      return [{ status: 'error', message: 'Chapter not found', code: 404 }, null];
+      return [
+        { status: 'error', message: 'Chapter not found', code: 404 },
+        null,
+      ];
     }
     if (chapterInfo[0].topicId == 8) {
-      await db.update(zuvySessions).set({ chapterId: null, moduleId: null }).where(eq(zuvySessions.chapterId, chapterId));
+      await db
+        .update(zuvySessions)
+        .set({ chapterId: null, moduleId: null })
+        .where(eq(zuvySessions.chapterId, chapterId));
     }
     for (const { table, column, name } of cascadeChapterTables) {
       try {
         await db.delete(table).where(eq(column, chapterId));
       } catch (err) {
-        return [{ status: 'error', message: `Failed to delete from ${name}: ${err.message}`, code: 500 }, null];
+        return [
+          {
+            status: 'error',
+            message: `Failed to delete from ${name}: ${err.message}`,
+            code: 500,
+          },
+          null,
+        ];
       }
     }
     // Now delete the chapter itself
@@ -1702,7 +2164,14 @@ export class ContentService {
         ];
       }
     } catch (err) {
-      return [{ status: 'error', message: `Failed to delete chapter: ${err.message}`, code: 500 }, null];
+      return [
+        {
+          status: 'error',
+          message: `Failed to delete chapter: ${err.message}`,
+          code: 500,
+        },
+        null,
+      ];
     }
     // Update order of remaining chapters in the module
     try {
@@ -1713,7 +2182,14 @@ export class ContentService {
           sql`${zuvyModuleChapter.order} > ${spyMan[0].order} and ${zuvyModuleChapter.moduleId} = ${moduleId}`,
         );
     } catch (err) {
-      return [{ status: 'error', message: `Failed to update chapter order: ${err.message}`, code: 500 }, null];
+      return [
+        {
+          status: 'error',
+          message: `Failed to update chapter order: ${err.message}`,
+          code: 500,
+        },
+        null,
+      ];
     }
     return {
       status: 'success',
@@ -1748,16 +2224,18 @@ export class ContentService {
 
       // First get the quiz IDs that match the search term
       const matchingQuizIds = searchTerm
-        ? await db.query.zuvyModuleQuizVariants.findMany({
-          columns: {
-            quizId: true
-          },
-          where: (variants, { and, eq }) =>
-            and(
-              eq(variants.variantNumber, 1),
-              sql`LOWER(${variants.question}) ~ ${sql.raw(`'\\m${searchTerm.toLowerCase()}'`)}`
-            )
-        }).then(results => results.map(r => r.quizId))
+        ? await db.query.zuvyModuleQuizVariants
+            .findMany({
+              columns: {
+                quizId: true,
+              },
+              where: (variants, { and, eq }) =>
+                and(
+                  eq(variants.variantNumber, 1),
+                  sql`LOWER(${variants.question}) ~ ${sql.raw(`'\\m${searchTerm.toLowerCase()}'`)}`,
+                ),
+            })
+            .then((results) => results.map((r) => r.quizId))
         : null;
 
       // Add the quiz ID condition if we have search results
@@ -1767,7 +2245,7 @@ export class ContentService {
 
       // Get total count
       const totalCount = await db.query.zuvyModuleQuiz.findMany({
-        where: and(...where)
+        where: and(...where),
       });
 
       // Get paginated results
@@ -1783,18 +2261,18 @@ export class ContentService {
                                   WHEN LOWER(${quizVariants.question}) ~ ${sql.raw(`'\\m${searchTerm.toLowerCase()}'`)} THEN 
                                       POSITION(${sql.raw(`'${searchTerm.toLowerCase()}'`)} IN LOWER(${quizVariants.question})) - 1
                                   ELSE 9999
-                              END`
+                              END`,
                 ];
               } else {
                 return [sql`${quizVariants.id} ASC`];
               }
-            }
-          }
+            },
+          },
         },
         where: and(...where),
         orderBy: (quiz, { desc }) => desc(quiz.id),
         limit: limit,
-        offset: offSet
+        offset: offSet,
       });
 
       let userPermissions = {};
@@ -1809,8 +2287,11 @@ export class ContentService {
           ResourceList.topic.create,
           ResourceList.topic.edit,
           ResourceList.topic.delete,
-        ]
-        const permissionsResult = await this.rbacService.getAllPermissions(roleName, targetPermissions);
+        ];
+        const permissionsResult = await this.rbacService.getAllPermissions(
+          roleName,
+          targetPermissions,
+        );
         userPermissions = permissionsResult;
       } catch (permissionError) {
         // Log the error but don't fail the entire request
@@ -1822,10 +2303,11 @@ export class ContentService {
       return {
         data: result,
         totalRows: totalCount.length,
-        totalPages: !Number.isNaN(limit) ? Math.ceil(totalCount.length / limit) : 1,
-        ...userPermissions
+        totalPages: !Number.isNaN(limit)
+          ? Math.ceil(totalCount.length / limit)
+          : 1,
+        ...userPermissions,
       };
-
     } catch (err) {
       throw err;
     }
@@ -1854,12 +2336,14 @@ export class ContentService {
 
       if (difficulty) {
         difficultyArray = Array.isArray(difficulty) ? difficulty : [difficulty];
-        conditions.push(inArray(zuvyCodingQuestions.difficulty, difficultyArray));
+        conditions.push(
+          inArray(zuvyCodingQuestions.difficulty, difficultyArray),
+        );
       }
 
       if (searchTerm) {
         conditions.push(
-          sql`LOWER(${zuvyCodingQuestions.title}) ~ ${sql.raw(`'\\m${searchTerm.toLowerCase()}'`)}`
+          sql`LOWER(${zuvyCodingQuestions.title}) ~ ${sql.raw(`'\\m${searchTerm.toLowerCase()}'`)}`,
         );
       }
 
@@ -1873,8 +2357,9 @@ export class ContentService {
       const totalRows = Number(totalRowsResult[0].count);
 
       // Calculate totalPages based on totalRows and limit
-      const totalPages = !Number.isNaN(limit) ? Math.ceil(totalRows / limit) : 1;
-
+      const totalPages = !Number.isNaN(limit)
+        ? Math.ceil(totalRows / limit)
+        : 1;
 
       const question = await db.query.zuvyCodingQuestions.findMany({
         where: and(...conditions),
@@ -1909,7 +2394,7 @@ export class ContentService {
                     POSITION(${sql.raw(`'${searchTerm.toLowerCase()}'`)} IN LOWER(${zuvyCodingQuestions.title})) + 1
                   ELSE 9999
                 END
-              `
+              `,
             ];
           } else {
             return [sql`${zuvyCodingQuestions.id} DESC`];
@@ -1932,8 +2417,11 @@ export class ContentService {
           ResourceList.topic.create,
           ResourceList.topic.edit,
           ResourceList.topic.delete,
-        ]
-        const permissionsResult = await this.rbacService.getAllPermissions(roleName, targetPermissions);
+        ];
+        const permissionsResult = await this.rbacService.getAllPermissions(
+          roleName,
+          targetPermissions,
+        );
         userPermissions = permissionsResult;
       } catch (permissionError) {
         // Log the error but don't fail the entire request
@@ -1946,7 +2434,7 @@ export class ContentService {
         data: question,
         totalRows,
         totalPages,
-        ...userPermissions
+        ...userPermissions,
       };
     } catch (err) {
       throw err;
@@ -1964,52 +2452,67 @@ export class ContentService {
       // Prepare update object for quiz details
       const updateData: any = {};
       if (quizUpdates.title !== undefined) updateData.title = quizUpdates.title;
-      if (quizUpdates.difficulty !== undefined) updateData.difficulty = quizUpdates.difficulty;
+      if (quizUpdates.difficulty !== undefined)
+        updateData.difficulty = quizUpdates.difficulty;
       if (quizUpdates.tagId !== undefined) updateData.tagId = quizUpdates.tagId;
-      if (quizUpdates.content !== undefined) updateData.content = quizUpdates.content;
-      if (quizUpdates.isRandomOptions !== undefined) updateData.isRandomOptions = quizUpdates.isRandomOptions;
+      if (quizUpdates.content !== undefined)
+        updateData.content = quizUpdates.content;
+      if (quizUpdates.isRandomOptions !== undefined)
+        updateData.isRandomOptions = quizUpdates.isRandomOptions;
 
       // Update the main quiz details only if there's something to update
       if (Object.keys(updateData).length > 0) {
-        await db.update(zuvyModuleQuiz)
+        await db
+          .update(zuvyModuleQuiz)
           .set(updateData)
           .where(eq(zuvyModuleQuiz.id, quizUpdates.id));
-        resultData.quizDetails = updateData;  // Store updated quiz details
+        resultData.quizDetails = updateData; // Store updated quiz details
       }
 
       // Update specific quiz variants only if variantMCQs is provided
       if (quizUpdates.variantMCQs) {
         // Use forEach to ensure sequential execution
-        await Promise.all(quizUpdates.variantMCQs.map(async (variant) => {
-          const variantData: EditQuizVariantDto = {
-            question: variant.question,
-            options: variant.options,
-            correctOption: variant.correctOption,
-            variantNumber: variant.variantNumber,
-          };
+        await Promise.all(
+          quizUpdates.variantMCQs.map(async (variant) => {
+            const variantData: EditQuizVariantDto = {
+              question: variant.question,
+              options: variant.options,
+              correctOption: variant.correctOption,
+              variantNumber: variant.variantNumber,
+            };
 
-          await db.update(zuvyModuleQuizVariants)
-            .set(variantData)
-            .where(
-              and(
-                eq(zuvyModuleQuizVariants.quizId, quizUpdates.id),
-                eq(zuvyModuleQuizVariants.variantNumber, variant.variantNumber)
-              )
-            );
+            await db
+              .update(zuvyModuleQuizVariants)
+              .set(variantData)
+              .where(
+                and(
+                  eq(zuvyModuleQuizVariants.quizId, quizUpdates.id),
+                  eq(
+                    zuvyModuleQuizVariants.variantNumber,
+                    variant.variantNumber,
+                  ),
+                ),
+              );
 
-          // Add each updated variant data to resultData array
-          resultData.variantMCQs.push(variantData);
-        }));
+            // Add each updated variant data to resultData array
+            resultData.variantMCQs.push(variantData);
+          }),
+        );
       }
 
-      return [null, {
-        message: 'Quiz and variants have been updated successfully.',
-        statusCode: STATUS_CODES.OK,
-        data: resultData,
-      }];
-
+      return [
+        null,
+        {
+          message: 'Quiz and variants have been updated successfully.',
+          statusCode: STATUS_CODES.OK,
+          data: resultData,
+        },
+      ];
     } catch (err) {
-      return [{ message: err.message, statusCode: STATUS_CODES.BAD_REQUEST }, null];
+      return [
+        { message: err.message, statusCode: STATUS_CODES.BAD_REQUEST },
+        null,
+      ];
     }
   }
 
@@ -2058,9 +2561,9 @@ export class ContentService {
         deletedQuestions =
           remainingIds.length > 0
             ? await db
-              .delete(zuvyModuleQuiz)
-              .where(sql`${inArray(zuvyModuleQuiz.id, remainingIds)}`)
-              .returning()
+                .delete(zuvyModuleQuiz)
+                .where(sql`${inArray(zuvyModuleQuiz.id, remainingIds)}`)
+                .returning()
             : [];
         if (deletedQuestions.length > 0) {
           return {
@@ -2115,9 +2618,9 @@ export class ContentService {
         deletedQuestions =
           remainingIds.length > 0
             ? await db
-              .delete(zuvyCodingQuestions)
-              .where(sql`${inArray(zuvyCodingQuestions.id, remainingIds)}`)
-              .returning()
+                .delete(zuvyCodingQuestions)
+                .where(sql`${inArray(zuvyCodingQuestions.id, remainingIds)}`)
+                .returning()
             : [];
         if (deletedQuestions.length > 0) {
           return {
@@ -2175,9 +2678,9 @@ export class ContentService {
         deletedQuestions =
           remainingIds.length > 0
             ? await db
-              .delete(zuvyOpenEndedQuestions)
-              .where(sql`${inArray(zuvyOpenEndedQuestions.id, remainingIds)}`)
-              .returning()
+                .delete(zuvyOpenEndedQuestions)
+                .where(sql`${inArray(zuvyOpenEndedQuestions.id, remainingIds)}`)
+                .returning()
             : [];
         if (deletedQuestions.length > 0) {
           return {
@@ -2262,11 +2765,31 @@ export class ContentService {
   }
 
   async deleteQuestionTag(tagId: number) {
-
     const associatedQuestions = new Map();
-    associatedQuestions.set('quiz', db.select().from(zuvyModuleQuiz).where(eq(zuvyModuleQuiz.tagId, tagId)).limit(1));
-    associatedQuestions.set('coding', db.select().from(zuvyCodingQuestions).where(eq(zuvyCodingQuestions.tagId, tagId)).limit(1));
-    associatedQuestions.set('openEnded', db.select().from(zuvyOpenEndedQuestions).where(eq(zuvyOpenEndedQuestions.tagId, tagId)).limit(1));
+    associatedQuestions.set(
+      'quiz',
+      db
+        .select()
+        .from(zuvyModuleQuiz)
+        .where(eq(zuvyModuleQuiz.tagId, tagId))
+        .limit(1),
+    );
+    associatedQuestions.set(
+      'coding',
+      db
+        .select()
+        .from(zuvyCodingQuestions)
+        .where(eq(zuvyCodingQuestions.tagId, tagId))
+        .limit(1),
+    );
+    associatedQuestions.set(
+      'openEnded',
+      db
+        .select()
+        .from(zuvyOpenEndedQuestions)
+        .where(eq(zuvyOpenEndedQuestions.tagId, tagId))
+        .limit(1),
+    );
 
     for (const [key, query] of associatedQuestions) {
       const result = await query;
@@ -2280,11 +2803,14 @@ export class ContentService {
     }
 
     try {
-      const deletedTag = await db.delete(zuvyTags).where(eq(zuvyTags.id, tagId)).returning();
+      const deletedTag = await db
+        .delete(zuvyTags)
+        .where(eq(zuvyTags.id, tagId))
+        .returning();
       if (deletedTag.length > 0) {
         return {
           status: 'success',
-          code: 200
+          code: 200,
         };
       } else {
         return {
@@ -2321,11 +2847,13 @@ export class ContentService {
 
       if (difficulty) {
         difficultyArray = Array.isArray(difficulty) ? difficulty : [difficulty];
-        conditions.push(inArray(zuvyOpenEndedQuestions.difficulty, difficultyArray));
+        conditions.push(
+          inArray(zuvyOpenEndedQuestions.difficulty, difficultyArray),
+        );
       }
       if (searchTerm) {
         conditions.push(
-          sql`LOWER(${zuvyOpenEndedQuestions.question}) ~ ${sql.raw(`'\\m${searchTerm.toLowerCase()}'`)}`
+          sql`LOWER(${zuvyOpenEndedQuestions.question}) ~ ${sql.raw(`'\\m${searchTerm.toLowerCase()}'`)}`,
         );
       }
 
@@ -2335,13 +2863,13 @@ export class ContentService {
         .where(and(...conditions))
         .execute();
 
-
       const result = await db
         .select()
         .from(zuvyOpenEndedQuestions)
         .where(and(...conditions))
-        .orderBy(searchTerm ?
-          sql`
+        .orderBy(
+          searchTerm
+            ? sql`
             CASE 
               WHEN LOWER(${zuvyOpenEndedQuestions.question}) LIKE ${sql.raw(`'${searchTerm.toLowerCase()}%'`)} THEN 1
               WHEN LOWER(${zuvyOpenEndedQuestions.question}) ~ ${sql.raw(`'\\m${searchTerm.toLowerCase()}'`)} THEN 
@@ -2349,8 +2877,7 @@ export class ContentService {
               ELSE 9999 -- Push non-matching to end
             END
           `
-          :
-          sql`${zuvyOpenEndedQuestions.id} DESC`
+            : sql`${zuvyOpenEndedQuestions.id} DESC`,
         )
         .limit(limit)
         .offset(offset);
@@ -2366,8 +2893,11 @@ export class ContentService {
           ResourceList.topic.create,
           ResourceList.topic.edit,
           ResourceList.topic.delete,
-        ]
-        const permissionsResult = await this.rbacService.getAllPermissions(roleName, targetPermissions);
+        ];
+        const permissionsResult = await this.rbacService.getAllPermissions(
+          roleName,
+          targetPermissions,
+        );
         userPermissions = permissionsResult;
       } catch (permissionError) {
         // Log the error but don't fail the entire request
@@ -2378,16 +2908,23 @@ export class ContentService {
       return {
         data: result,
         totalRows: Number(totalRows[0].count),
-        totalPages: !Number.isNaN(limit) ? Math.ceil(totalRows[0].count / limit) : 1,
-        ...userPermissions
+        totalPages: !Number.isNaN(limit)
+          ? Math.ceil(totalRows[0].count / limit)
+          : 1,
+        ...userPermissions,
       };
-
     } catch (err) {
       throw err;
     }
   }
 
-  async getStudentsOfAssessment(assessmentId: number, chapterId: number, moduleId: number, bootcampId: number, req) {
+  async getStudentsOfAssessment(
+    assessmentId: number,
+    chapterId: number,
+    moduleId: number,
+    bootcampId: number,
+    req,
+  ) {
     try {
       let { id } = req.user[0];
       const assessment = await db.query.zuvyOutsourseAssessments.findMany({
@@ -2395,69 +2932,73 @@ export class ContentService {
           sql`${zuvyOutsourseAssessments.assessmentId} = ${assessmentId} AND ${zuvyOutsourseAssessments.bootcampId} = ${bootcampId} AND ${zuvyOutsourseAssessments.chapterId} = ${chapterId} AND ${zuvyOutsourseAssessments.moduleId} = ${moduleId}`,
         with: {
           submitedOutsourseAssessments: {
-            where: (zuvyAssessmentSubmission, { eq }) => eq(zuvyAssessmentSubmission.userId, id),
+            where: (zuvyAssessmentSubmission, { eq }) =>
+              eq(zuvyAssessmentSubmission.userId, id),
             orderBy: [desc(zuvyAssessmentSubmission.startedAt)],
-            limit: 1
+            limit: 1,
           },
           ModuleAssessment: true,
           Quizzes: {
             columns: {
               assessmentOutsourseId: true,
-              bootcampId: true
+              bootcampId: true,
             },
             with: {
               Quiz: {
                 with: {
-                  quizVariants: true
-                }
+                  quizVariants: true,
+                },
               },
-            }
+            },
           },
           OpenEndedQuestions: {
             columns: {
               id: true,
               assessmentOutsourseId: true,
-              bootcampId: true
+              bootcampId: true,
             },
             with: {
-              OpenEndedQuestion: true
-            }
+              OpenEndedQuestion: true,
+            },
           },
           CodingQuestions: {
             columns: {
               id: true,
               assessmentOutsourseId: true,
-              bootcampId: true
+              bootcampId: true,
             },
             with: {
-              CodingQuestion: true
-            }
+              CodingQuestion: true,
+            },
           },
         },
       });
 
       if (!assessment || assessment.length === 0) {
-        throw ({
+        throw {
           status: 'error',
           statusCode: 404,
           message: 'Assessment not found',
-        });
+        };
       }
 
       // Update assessment state using AssessmentStateService
       await this.handleAssessmentUpdate(assessment[0].id);
 
       // Get the updated assessment to get the current state
-      const updatedAssessment = await db.query.zuvyOutsourseAssessments.findFirst({
-        where: eq(zuvyOutsourseAssessments.id, assessment[0].id)
-      });
+      const updatedAssessment =
+        await db.query.zuvyOutsourseAssessments.findFirst({
+          where: eq(zuvyOutsourseAssessments.id, assessment[0].id),
+        });
       if (updatedAssessment.currentState === null) {
         updatedAssessment.currentState = 2;
       }
 
-      assessment[0]["totalQuizzes"] = assessment[0]?.Quizzes.length || 0;
-      assessment[0]["totalOpenEndedQuestions"] = assessment[0]?.OpenEndedQuestions.length || 0;
-      assessment[0]["totalCodingQuestions"] = assessment[0]?.CodingQuestions.length || 0;
+      assessment[0]['totalQuizzes'] = assessment[0]?.Quizzes.length || 0;
+      assessment[0]['totalOpenEndedQuestions'] =
+        assessment[0]?.OpenEndedQuestions.length || 0;
+      assessment[0]['totalCodingQuestions'] =
+        assessment[0]?.CodingQuestions.length || 0;
 
       delete assessment[0].Quizzes;
       delete assessment[0].OpenEndedQuestions;
@@ -2476,21 +3017,21 @@ export class ContentService {
         // PUBLISHED
         const startTime = assessment[0].startDatetime
           ? new Date(assessment[0].startDatetime).toLocaleString('en-US', {
-            year: 'numeric',
-            month: 'numeric',
-            day: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit',
-            second: '2-digit',
-            hour12: true
-          })
+              year: 'numeric',
+              month: 'numeric',
+              day: 'numeric',
+              hour: '2-digit',
+              minute: '2-digit',
+              second: '2-digit',
+              hour12: true,
+            })
           : 'Unknown';
         return {
           status: 'success',
           statusCode: 200,
           assessmentState: 'PUBLISHED',
           message: `Assessment is published but not started yet. Assessment will start at ${startTime}`,
-          ...assessment[0]
+          ...assessment[0],
         };
       }
       if (updatedAssessment.currentState === 2) {
@@ -2498,7 +3039,8 @@ export class ContentService {
         return {
           status: 'success',
           statusCode: 200,
-          message: 'The assessment is currently available. Kindly proceed to attempt it.',
+          message:
+            'The assessment is currently available. Kindly proceed to attempt it.',
           assessmentState: 'ACTIVE',
           ...assessment[0],
         };
@@ -2510,7 +3052,7 @@ export class ContentService {
           statusCode: 200,
           assessmentState: 'CLOSED',
           message: 'Assessment is closed. You cannot attempt it anymore.',
-          ...assessment[0]
+          ...assessment[0],
         };
       }
 
@@ -2528,7 +3070,7 @@ export class ContentService {
   async handleAssessmentUpdate(assessmentId: number) {
     try {
       const assessment = await db.query.zuvyOutsourseAssessments.findFirst({
-        where: eq(zuvyOutsourseAssessments.id, assessmentId)
+        where: eq(zuvyOutsourseAssessments.id, assessmentId),
       });
 
       if (!assessment) {
@@ -2538,7 +3080,10 @@ export class ContentService {
 
       await this.updateAssessmentState(assessment);
     } catch (error) {
-      this.logger.error(`Error handling assessment update for ${assessmentId}:`, error);
+      this.logger.error(
+        `Error handling assessment update for ${assessmentId}:`,
+        error,
+      );
     }
   }
 
@@ -2581,23 +3126,31 @@ export class ContentService {
         .update(zuvyOutsourseAssessments)
         .set({
           currentState: newState,
-          updatedAt: now.toISOString()
+          updatedAt: now.toISOString(),
         } as any)
         .where(eq(zuvyOutsourseAssessments.id, assessment.id));
     }
   }
 
-  async getCodingQuestionsByDifficulty(difficultyLevel, assessmentOutsourseId, limit, selectedTagIds, userId, assessmentSubmissionId) {
+  async getCodingQuestionsByDifficulty(
+    difficultyLevel,
+    assessmentOutsourseId,
+    limit,
+    selectedTagIds,
+    userId,
+    assessmentSubmissionId,
+  ) {
     try {
       // Fetching the combined results with a join
-      let questions
-      assessmentSubmissionId = undefined
+      let questions;
+      assessmentSubmissionId = undefined;
       if (assessmentSubmissionId != undefined) {
         questions = await db
           .select({
             codingQuestionId: zuvyCodingQuestions.id,
             codingOutsourseId: zuvyOutsourseCodingQuestions.id,
-            assessmentOutsourseId: zuvyOutsourseCodingQuestions.assessmentOutsourseId,
+            assessmentOutsourseId:
+              zuvyOutsourseCodingQuestions.assessmentOutsourseId,
             title: zuvyCodingQuestions.title, // Add other fields you need
             description: zuvyCodingQuestions.description,
             constraints: zuvyCodingQuestions.constraints,
@@ -2606,17 +3159,20 @@ export class ContentService {
             submissionData: {
               status: zuvyPracticeCode.status,
               sourceCode: zuvyPracticeCode.sourceCode,
-              createdAt: zuvyPracticeCode.createdAt
-            }
+              createdAt: zuvyPracticeCode.createdAt,
+            },
           })
           .from(zuvyOutsourseCodingQuestions)
           .innerJoin(
             zuvyCodingQuestions,
             and(
-              eq(zuvyCodingQuestions.id, zuvyOutsourseCodingQuestions.codingQuestionId),
+              eq(
+                zuvyCodingQuestions.id,
+                zuvyOutsourseCodingQuestions.codingQuestionId,
+              ),
               eq(zuvyCodingQuestions.difficulty, difficultyLevel),
-              inArray(zuvyCodingQuestions.tagId, selectedTagIds)
-            )
+              inArray(zuvyCodingQuestions.tagId, selectedTagIds),
+            ),
           )
           .leftJoin(
             zuvyPracticeCode,
@@ -2624,17 +3180,25 @@ export class ContentService {
               eq(zuvyPracticeCode.questionId, zuvyCodingQuestions.id),
               eq(zuvyPracticeCode.submissionId, assessmentSubmissionId),
               eq(zuvyPracticeCode.userId, userId),
-            )
+            ),
           )
-          .where(eq(zuvyOutsourseCodingQuestions.assessmentOutsourseId, assessmentOutsourseId))
-          .orderBy(sql`md5(${zuvyOutsourseCodingQuestions.id}::text || ${parseInt(userId)})`) // Using seed for randomization
+          .where(
+            eq(
+              zuvyOutsourseCodingQuestions.assessmentOutsourseId,
+              assessmentOutsourseId,
+            ),
+          )
+          .orderBy(
+            sql`md5(${zuvyOutsourseCodingQuestions.id}::text || ${parseInt(userId)})`,
+          ) // Using seed for randomization
           .limit(limit);
       } else {
         questions = await db
           .select({
             codingQuestionId: zuvyCodingQuestions.id,
             codingOutsourseId: zuvyOutsourseCodingQuestions.id,
-            assessmentOutsourseId: zuvyOutsourseCodingQuestions.assessmentOutsourseId,
+            assessmentOutsourseId:
+              zuvyOutsourseCodingQuestions.assessmentOutsourseId,
             title: zuvyCodingQuestions.title, // Add other fields you need
             description: zuvyCodingQuestions.description,
             constraints: zuvyCodingQuestions.constraints,
@@ -2645,37 +3209,57 @@ export class ContentService {
           .innerJoin(
             zuvyCodingQuestions,
             and(
-              eq(zuvyCodingQuestions.id, zuvyOutsourseCodingQuestions.codingQuestionId),
+              eq(
+                zuvyCodingQuestions.id,
+                zuvyOutsourseCodingQuestions.codingQuestionId,
+              ),
               eq(zuvyCodingQuestions.difficulty, difficultyLevel),
-              inArray(zuvyCodingQuestions.tagId, selectedTagIds)
-            )
+              inArray(zuvyCodingQuestions.tagId, selectedTagIds),
+            ),
           )
-          .where(eq(zuvyOutsourseCodingQuestions.assessmentOutsourseId, assessmentOutsourseId))
-          .orderBy(sql`md5(${zuvyOutsourseCodingQuestions.id}::text || ${parseInt(userId)})`) // Using seed for randomization
+          .where(
+            eq(
+              zuvyOutsourseCodingQuestions.assessmentOutsourseId,
+              assessmentOutsourseId,
+            ),
+          )
+          .orderBy(
+            sql`md5(${zuvyOutsourseCodingQuestions.id}::text || ${parseInt(userId)})`,
+          ) // Using seed for randomization
           .limit(limit);
       }
 
       return questions;
     } catch (error) {
-      console.error("Error in getCodingQuestionsByDifficulty: ", error);
+      console.error('Error in getCodingQuestionsByDifficulty: ', error);
       throw error;
     }
   }
 
-  async getCodingQuestionsByAllDifficulties(assessmentOutsourseId, assessmentOutsourseData, userId, assessmentSubmissionId): Promise<any> {
+  async getCodingQuestionsByAllDifficulties(
+    assessmentOutsourseId,
+    assessmentOutsourseData,
+    userId,
+    assessmentSubmissionId,
+  ): Promise<any> {
     try {
-      const difficulties = [DIFFICULTY.EASY, DIFFICULTY.MEDIUM, DIFFICULTY.HARD];
+      const difficulties = [
+        DIFFICULTY.EASY,
+        DIFFICULTY.MEDIUM,
+        DIFFICULTY.HARD,
+      ];
 
-      const promises = difficulties.map(difficulty =>
+      const promises = difficulties.map((difficulty) =>
         this.getCodingQuestionsByDifficulty(
           difficulty,
           assessmentOutsourseId,
           assessmentOutsourseData[`${difficulty.toLowerCase()}CodingQuestions`],
           assessmentOutsourseData.codingQuestionTagId,
-          userId, assessmentSubmissionId
-        ).then(result => {
+          userId,
+          assessmentSubmissionId,
+        ).then((result) => {
           return { difficulty, result };
-        })
+        }),
       );
 
       const results = await Promise.all(promises);
@@ -2693,54 +3277,85 @@ export class ContentService {
   }
 
   /**
- * Initiates an assessment for a student.
- * This function might set up necessary variables, database entries, or other prerequisites 
- * for a student to begin taking an assessment.
- */
-  async startAssessmentForStudent(assessmentOutsourseId: number, newStart: boolean, user): Promise<any> {
+   * Initiates an assessment for a student.
+   * This function might set up necessary variables, database entries, or other prerequisites
+   * for a student to begin taking an assessment.
+   */
+  async startAssessmentForStudent(
+    assessmentOutsourseId: number,
+    newStart: boolean,
+    user,
+  ): Promise<any> {
     try {
       let { id, roles } = user;
-      const assessmentOutsourseData = await db.query.zuvyOutsourseAssessments.findFirst({
-        where: (zuvyOutsourseAssessments, { eq }) =>
-          eq(zuvyOutsourseAssessments.id, assessmentOutsourseId),
-        with: {
-          ModuleAssessment: true,
-        },
-      });
+      const assessmentOutsourseData =
+        await db.query.zuvyOutsourseAssessments.findFirst({
+          where: (zuvyOutsourseAssessments, { eq }) =>
+            eq(zuvyOutsourseAssessments.id, assessmentOutsourseId),
+          with: {
+            ModuleAssessment: true,
+          },
+        });
 
       // Check if assessment exists
       if (!assessmentOutsourseData) {
-        return [{
-          status: 'error',
-          statusCode: 404,
-          message: 'Assessment not found. It may have been deleted or is no longer available.'
-        }];
+        return [
+          {
+            status: 'error',
+            statusCode: 404,
+            message:
+              'Assessment not found. It may have been deleted or is no longer available.',
+          },
+        ];
       }
 
-      let submission = []
-      let quizzes = []
+      let submission = [];
+      let quizzes = [];
       if (roles.includes('admin')) {
         id = Math.floor(Math.random() * (99999 - 1000 + 1)) + 1000;
       } else {
         if (newStart) {
           let startedAt = new Date().toISOString();
-          let insertAssessmentSubmission: any = { userId: id, assessmentOutsourseId, startedAt }
-          submission = await db.insert(zuvyAssessmentSubmission).values(insertAssessmentSubmission).returning();
-        }
-        else {
-          submission = await db.select().from(zuvyAssessmentSubmission)
-            .where(sql`${zuvyAssessmentSubmission.active} = true AND ${zuvyAssessmentSubmission.assessmentOutsourseId} = ${assessmentOutsourseId} AND ${zuvyAssessmentSubmission.userId} = ${id}`)
+          let insertAssessmentSubmission: any = {
+            userId: id,
+            assessmentOutsourseId,
+            startedAt,
+          };
+          submission = await db
+            .insert(zuvyAssessmentSubmission)
+            .values(insertAssessmentSubmission)
+            .returning();
+        } else {
+          submission = await db
+            .select()
+            .from(zuvyAssessmentSubmission)
+            .where(
+              sql`${zuvyAssessmentSubmission.active} = true AND ${zuvyAssessmentSubmission.assessmentOutsourseId} = ${assessmentOutsourseId} AND ${zuvyAssessmentSubmission.userId} = ${id}`,
+            )
             .orderBy(desc(zuvyAssessmentSubmission.id))
-            .limit(1)
+            .limit(1);
           if (!submission) {
-            return [{ error: 'not started the assessment or not get approvel' }]
+            return [
+              { error: 'not started the assessment or not get approvel' },
+            ];
           }
         }
-        quizzes = await db.select().from(zuvyQuizTracking).where(sql`${zuvyQuizTracking.assessmentSubmissionId} = ${submission[0].id}`)
+        quizzes = await db
+          .select()
+          .from(zuvyQuizTracking)
+          .where(
+            sql`${zuvyQuizTracking.assessmentSubmissionId} = ${submission[0].id}`,
+          );
       }
-      let assessmentSubmissionId
+      let assessmentSubmissionId;
       // Fetching all coding questions at once
-      const [err, codingQuestions] = await this.getCodingQuestionsByAllDifficulties(assessmentOutsourseId, assessmentOutsourseData, id, assessmentSubmissionId);
+      const [err, codingQuestions] =
+        await this.getCodingQuestionsByAllDifficulties(
+          assessmentOutsourseId,
+          assessmentOutsourseData,
+          id,
+          assessmentSubmissionId,
+        );
       if (err) {
         Logger.error(JSON.stringify(err));
         return [{ message: err.message, statusCode: STATUS_CODES.BAD_REQUEST }];
@@ -2751,21 +3366,25 @@ export class ContentService {
       const mediumCodingQuestions = codingQuestions[DIFFICULTY.MEDIUM];
       const hardCodingQuestions = codingQuestions[DIFFICULTY.HARD];
 
-
-
       let assessment = {
         ...assessmentOutsourseData,
         IsQuizzSubmission: quizzes!.length > 0 ? true : false,
         codingQuestions: [
           ...easyCodingQuestions,
           ...mediumCodingQuestions,
-          ...hardCodingQuestions
+          ...hardCodingQuestions,
         ],
-        submission: submission[0]
-      }
+        submission: submission[0],
+      };
       // return [null, assessment];
-      return [null, { message: 'Coding question fetched successfully', data: assessment, statusCode: STATUS_CODES.OK }];
-
+      return [
+        null,
+        {
+          message: 'Coding question fetched successfully',
+          data: assessment,
+          statusCode: STATUS_CODES.OK,
+        },
+      ];
     } catch (err) {
       Logger.error(JSON.stringify(err));
       return [{ message: err.message, statusCode: STATUS_CODES.BAD_REQUEST }];
@@ -2778,7 +3397,7 @@ export class ContentService {
     limit,
     selectedTagIds,
     userId,
-    assessmentSubmissionId
+    assessmentSubmissionId,
   ): Promise<any> {
     try {
       let quizzes;
@@ -2798,17 +3417,18 @@ export class ContentService {
           .from(zuvyOutsourseQuizzes)
           .innerJoin(
             zuvyModuleQuizVariants,
-            eq(zuvyOutsourseQuizzes.quiz_id, zuvyModuleQuizVariants.quizId) // Joining with quiz variants
+            eq(zuvyOutsourseQuizzes.quiz_id, zuvyModuleQuizVariants.quizId), // Joining with quiz variants
           )
           .innerJoin(
             zuvyModuleQuiz,
             and(
               eq(zuvyModuleQuiz.id, zuvyModuleQuizVariants.quizId), // Joining with the main quiz
               eq(zuvyModuleQuiz.difficulty, difficultyLevel), // Filtering by difficulty level
-              inArray(zuvyModuleQuiz.tagId, selectedTagIds) // Filtering by tag IDs
-            )
-          ).orderBy(
-            sql`md5(CAST(${zuvyOutsourseQuizzes.id} AS text) || ${userId}::text)` // Randomized order by user ID
+              inArray(zuvyModuleQuiz.tagId, selectedTagIds), // Filtering by tag IDs
+            ),
+          )
+          .orderBy(
+            sql`md5(CAST(${zuvyOutsourseQuizzes.id} AS text) || ${userId}::text)`, // Randomized order by user ID
           )
           .limit(limit);
       } else {
@@ -2830,38 +3450,46 @@ export class ContentService {
               chosenOption: zuvyQuizTracking.chosenOption, // Chosen option from zuvyQuizTracking
               status: zuvyQuizTracking.status, // Status from zuvyQuizTracking
               createdAt: zuvyQuizTracking.createdAt,
-            }
+            },
           })
           .from(zuvyOutsourseQuizzes)
           .innerJoin(
             zuvyModuleQuizVariants,
-            eq(zuvyOutsourseQuizzes.quiz_id, zuvyModuleQuizVariants.quizId) // Joining with quiz variants
+            eq(zuvyOutsourseQuizzes.quiz_id, zuvyModuleQuizVariants.quizId), // Joining with quiz variants
           )
           .innerJoin(
             zuvyModuleQuiz,
             and(
               eq(zuvyModuleQuiz.id, zuvyModuleQuizVariants.quizId), // Joining with the main quiz
               eq(zuvyModuleQuiz.difficulty, difficultyLevel), // Filtering by difficulty level
-              inArray(zuvyModuleQuiz.tagId, selectedTagIds) // Filtering by tag IDs
-            )
+              inArray(zuvyModuleQuiz.tagId, selectedTagIds), // Filtering by tag IDs
+            ),
           )
           .leftJoin(
             zuvyQuizTracking,
             and(
               eq(zuvyQuizTracking.variantId, zuvyModuleQuizVariants.id),
-              eq(zuvyQuizTracking.assessmentSubmissionId, assessmentSubmissionId),
+              eq(
+                zuvyQuizTracking.assessmentSubmissionId,
+                assessmentSubmissionId,
+              ),
               eq(zuvyQuizTracking.userId, userId),
-            )
+            ),
           )
-          .where(eq(zuvyOutsourseQuizzes.assessmentOutsourseId, assessmentOutsourseId)) // Filtering by assessment ID
+          .where(
+            eq(
+              zuvyOutsourseQuizzes.assessmentOutsourseId,
+              assessmentOutsourseId,
+            ),
+          ) // Filtering by assessment ID
           .orderBy(
-            sql`md5(CAST(${zuvyOutsourseQuizzes.id} AS text) || ${userId}::text)` // Randomized order by user ID
+            sql`md5(CAST(${zuvyOutsourseQuizzes.id} AS text) || ${userId}::text)`, // Randomized order by user ID
           )
           .limit(limit);
       }
       return quizzes;
     } catch (err) {
-      console.error("Error fetching quiz questions: ", err);
+      console.error('Error fetching quiz questions: ', err);
       return { message: err.message, statusCode: STATUS_CODES.BAD_REQUEST };
     }
   }
@@ -2870,7 +3498,7 @@ export class ContentService {
     assessmentOutsourseId,
     quizConfig,
     userId,
-    assessmentSubmissionId
+    assessmentSubmissionId,
   ): Promise<[null | Error, { [key: string]: any[] }]> {
     try {
       const difficulties = ['easy', 'medium', 'hard'];
@@ -2879,120 +3507,168 @@ export class ContentService {
       // Fetching quiz questions for all difficulties in parallel
       await Promise.all(
         difficulties.map(async (difficulty) => {
-          const capitalizedDifficulty = difficulty.charAt(0).toUpperCase() + difficulty.slice(1);
+          const capitalizedDifficulty =
+            difficulty.charAt(0).toUpperCase() + difficulty.slice(1);
 
-          questionsByDifficulty[difficulty] = await this.getQuizQuestionsByDifficulty(
-            capitalizedDifficulty,
-            assessmentOutsourseId,
-            quizConfig[`${difficulty}McqQuestions`],
-            quizConfig.mcqTagId,
-            userId,
-            assessmentSubmissionId
-          );
-        })
+          questionsByDifficulty[difficulty] =
+            await this.getQuizQuestionsByDifficulty(
+              capitalizedDifficulty,
+              assessmentOutsourseId,
+              quizConfig[`${difficulty}McqQuestions`],
+              quizConfig.mcqTagId,
+              userId,
+              assessmentSubmissionId,
+            );
+        }),
       );
 
       return [null, questionsByDifficulty];
     } catch (error) {
-      console.error("Error fetching questions by all difficulties: ", error);
+      console.error('Error fetching questions by all difficulties: ', error);
       return [error, {}];
     }
   }
 
-
-  async getAssessmentDetailsOfQuiz(assessmentOutsourseId: number, user, userId, IsAdmin): Promise<any> {
+  async getAssessmentDetailsOfQuiz(
+    assessmentOutsourseId: number,
+    user,
+    userId,
+    IsAdmin,
+  ): Promise<any> {
     try {
-      const assessmentOutsourseData = await db.query.zuvyOutsourseAssessments.findFirst({
-        where: (zuvyOutsourseAssessments, { eq }) =>
-          eq(zuvyOutsourseAssessments.id, assessmentOutsourseId),
-        with: {
-          ModuleAssessment: true,
-          submitedOutsourseAssessments: {
-            where: (submissions, { sql }) => sql`${submissions.userId} = ${userId}`,
-            columns: { id: true },
-            orderBy: (submissions, { desc }) => [desc(submissions.id)],
-            limit: 1
-          }
-        },
-      });
+      const assessmentOutsourseData =
+        await db.query.zuvyOutsourseAssessments.findFirst({
+          where: (zuvyOutsourseAssessments, { eq }) =>
+            eq(zuvyOutsourseAssessments.id, assessmentOutsourseId),
+          with: {
+            ModuleAssessment: true,
+            submitedOutsourseAssessments: {
+              where: (submissions, { sql }) =>
+                sql`${submissions.userId} = ${userId}`,
+              columns: { id: true },
+              orderBy: (submissions, { desc }) => [desc(submissions.id)],
+              limit: 1,
+            },
+          },
+        });
 
       if (!IsAdmin && user.roles.includes('admin')) {
         userId = Math.floor(Math.random() * (99999 - 1000 + 1)) + 1000;
       }
 
-      const assessmentSubmissionId = assessmentOutsourseData?.submitedOutsourseAssessments?.[0]?.id ?? null;
+      const assessmentSubmissionId =
+        assessmentOutsourseData?.submitedOutsourseAssessments?.[0]?.id ?? null;
 
-      const [err, quizQuestions] = await this.getQuizQuestionsByAllDifficulties(assessmentOutsourseId, assessmentOutsourseData, userId, assessmentSubmissionId);
+      const [err, quizQuestions] = await this.getQuizQuestionsByAllDifficulties(
+        assessmentOutsourseId,
+        assessmentOutsourseData,
+        userId,
+        assessmentSubmissionId,
+      );
 
       if (err) {
         Logger.error(JSON.stringify(err));
-        return [null, { message: err.message, statusCode: STATUS_CODES.BAD_REQUEST }];
+        return [
+          null,
+          { message: err.message, statusCode: STATUS_CODES.BAD_REQUEST },
+        ];
       }
 
       // Get marks for each difficulty level
       const difficultyMarks = {
         easy: assessmentOutsourseData.easyMcqMark || 0,
         medium: assessmentOutsourseData.mediumMcqMark || 0,
-        hard: assessmentOutsourseData.hardMcqMark || 0
+        hard: assessmentOutsourseData.hardMcqMark || 0,
       };
 
-      const mcqs = Object.entries(quizQuestions).flatMap(([difficulty, questions]) => {
-        const raw = Number(difficultyMarks[difficulty.toLowerCase()]);
-        const mark = Math.trunc(raw * 100) / 100 || 0;
+      const mcqs = Object.entries(quizQuestions).flatMap(
+        ([difficulty, questions]) => {
+          const raw = Number(difficultyMarks[difficulty.toLowerCase()]);
+          const mark = Math.trunc(raw * 100) / 100 || 0;
 
-        return (questions || []).map(question => ({
-          quizId: question.quizId,
-          quizTitle: question.quizTitle,
-          difficulty: difficulty.charAt(0).toUpperCase() + difficulty.slice(1),
-          mark: mark,
-          variantId: question.variantId,
-          question: question.question,
-          options: question.options,
-          correctOption: question.correctOption,
-          variantNumber: question.variantNumber,
-          outsourseQuizzesId: question.outsourseQuizzesId || question.assessmentId,
-          submissionsData: question.submissionsData || null
-        }));
-      });
+          return (questions || []).map((question) => ({
+            quizId: question.quizId,
+            quizTitle: question.quizTitle,
+            difficulty:
+              difficulty.charAt(0).toUpperCase() + difficulty.slice(1),
+            mark: mark,
+            variantId: question.variantId,
+            question: question.question,
+            options: question.options,
+            correctOption: question.correctOption,
+            variantNumber: question.variantNumber,
+            outsourseQuizzesId:
+              question.outsourseQuizzesId || question.assessmentId,
+            submissionsData: question.submissionsData || null,
+          }));
+        },
+      );
 
-      return [null, {
-        message: 'Quiz questions fetched successfully',
-        data: { mcqs },
-        statusCode: STATUS_CODES.OK
-      }];
+      return [
+        null,
+        {
+          message: 'Quiz questions fetched successfully',
+          data: { mcqs },
+          statusCode: STATUS_CODES.OK,
+        },
+      ];
     } catch (err) {
       Logger.error(JSON.stringify(err));
-      return [null, { message: err.message, statusCode: STATUS_CODES.BAD_REQUEST }];
+      return [
+        null,
+        { message: err.message, statusCode: STATUS_CODES.BAD_REQUEST },
+      ];
     }
   }
 
-  async getAssessmentDetailsOfOpenEnded(assessment_outsourse_id: number, userId) {
+  async getAssessmentDetailsOfOpenEnded(
+    assessment_outsourse_id: number,
+    userId,
+  ) {
     try {
-      const assessmentSubmissionlatest = await db.select().from(zuvyAssessmentSubmission).where(sql`${zuvyAssessmentSubmission.userId} = ${userId} AND ${zuvyAssessmentSubmission.assessmentOutsourseId} = ${assessment_outsourse_id}`).orderBy(desc(zuvyAssessmentSubmission.id)).limit(1);
-      const assessment = await db.query.zuvyOutsourseOpenEndedQuestions.findMany({
-        where: (zuvyOutsourseOpenEndedQuestions, { eq }) =>
-          eq(zuvyOutsourseOpenEndedQuestions.assessmentOutsourseId, assessment_outsourse_id),
-        with: {
-          submissionsData: {
-            where: (zuvyOpenEndedQuestionSubmission, { eq }) => and(eq(zuvyOpenEndedQuestionSubmission.userId, userId), eq(zuvyOpenEndedQuestionSubmission.assessmentSubmissionId, assessmentSubmissionlatest[0]?.id)),
-            columns: {
-              id: true,
-              userId: true,
-              answer: true,
-              questionId: true,
-              submitAt: true,
-              assessmentSubmissionId: true
-            }
+      const assessmentSubmissionlatest = await db
+        .select()
+        .from(zuvyAssessmentSubmission)
+        .where(
+          sql`${zuvyAssessmentSubmission.userId} = ${userId} AND ${zuvyAssessmentSubmission.assessmentOutsourseId} = ${assessment_outsourse_id}`,
+        )
+        .orderBy(desc(zuvyAssessmentSubmission.id))
+        .limit(1);
+      const assessment =
+        await db.query.zuvyOutsourseOpenEndedQuestions.findMany({
+          where: (zuvyOutsourseOpenEndedQuestions, { eq }) =>
+            eq(
+              zuvyOutsourseOpenEndedQuestions.assessmentOutsourseId,
+              assessment_outsourse_id,
+            ),
+          with: {
+            submissionsData: {
+              where: (zuvyOpenEndedQuestionSubmission, { eq }) =>
+                and(
+                  eq(zuvyOpenEndedQuestionSubmission.userId, userId),
+                  eq(
+                    zuvyOpenEndedQuestionSubmission.assessmentSubmissionId,
+                    assessmentSubmissionlatest[0]?.id,
+                  ),
+                ),
+              columns: {
+                id: true,
+                userId: true,
+                answer: true,
+                questionId: true,
+                submitAt: true,
+                assessmentSubmissionId: true,
+              },
+            },
+            OpenEndedQuestion: {
+              columns: {
+                id: true,
+                question: true,
+                difficulty: true,
+              },
+            },
           },
-          OpenEndedQuestion: {
-            columns: {
-              id: true,
-              question: true,
-              difficulty: true,
-            }
-          }
-        }
-      })
+        });
       if (assessment.length == 0) {
         return [];
       }
@@ -3001,7 +3677,6 @@ export class ContentService {
       throw err;
     }
   }
-
 
   async getAllQuestionTypes() {
     try {
@@ -3022,7 +3697,10 @@ export class ContentService {
 
   async createQuestionType(questionType: CreateTypeDto) {
     try {
-      const newQuestionType = await db.insert(zuvyQuestionTypes).values(questionType).returning();
+      const newQuestionType = await db
+        .insert(zuvyQuestionTypes)
+        .values(questionType)
+        .returning();
       if (newQuestionType.length > 0) {
         return {
           status: 'success',
@@ -3041,15 +3719,13 @@ export class ContentService {
     }
   }
 
-
   async createFormForModule(chapterId: number, form: formBatchDto) {
     try {
-
       if (isNaN(chapterId)) {
         return {
-          status: "error",
+          status: 'error',
           code: 400,
-          message: "Invalid chapterId. Please provide a valid number."
+          message: 'Invalid chapterId. Please provide a valid number.',
         };
       }
 
@@ -3061,12 +3737,18 @@ export class ContentService {
         isRequired: f.isRequired,
       }));
 
-      const allFieldsFilled = formQuestion.every(question => question.question !== null && question.options !== null && question.typeId !== null && question.isRequired !== null);
+      const allFieldsFilled = formQuestion.every(
+        (question) =>
+          question.question !== null &&
+          question.options !== null &&
+          question.typeId !== null &&
+          question.isRequired !== null,
+      );
       if (!allFieldsFilled) {
         return {
-          status: "error",
+          status: 'error',
           code: 400,
-          message: " One or more fields are empty. Please try again."
+          message: ' One or more fields are empty. Please try again.',
         };
       }
 
@@ -3075,8 +3757,7 @@ export class ContentService {
         .values(formQuestion)
         .returning();
 
-
-      const formIds = result.length > 0 ? result.map(obj => obj.id) : [];
+      const formIds = result.length > 0 ? result.map((obj) => obj.id) : [];
 
       const existingChapter = await db
         .select()
@@ -3093,28 +3774,25 @@ export class ContentService {
       const updatedChapter = await db
         .update(zuvyModuleChapter)
         .set({
-          formQuestions: updatedFormQuestions
+          formQuestions: updatedFormQuestions,
         })
         .where(eq(zuvyModuleChapter.id, formQuestion[0].chapterId))
         .returning();
 
-
-
       if (result.length > 0 || updatedChapter.length > 0) {
         return {
-
-          status: "success",
+          status: 'success',
           code: 200,
           result,
-          updatedChapter
-        }
-      }
-      else {
+          updatedChapter,
+        };
+      } else {
         return {
-          status: "error",
+          status: 'error',
           code: 404,
-          message: "Form questions did not create successfully.Please try again"
-        }
+          message:
+            'Form questions did not create successfully.Please try again',
+        };
       }
     } catch (err) {
       throw err;
@@ -3147,8 +3825,10 @@ export class ContentService {
     }
   }
 
-
-  async editFormQuestions(chapterId: number, editFormDetails: editFormBatchDto) {
+  async editFormQuestions(
+    chapterId: number,
+    editFormDetails: editFormBatchDto,
+  ) {
     try {
       const editFormQuestions = editFormDetails.questions.map((f) => ({
         chapterId,
@@ -3164,14 +3844,14 @@ export class ContentService {
           question.question !== null &&
           question.options !== null &&
           question.typeId !== null &&
-          question.isRequired !== null
+          question.isRequired !== null,
       );
 
       if (!allFieldsFilled) {
         return {
-          status: "error",
+          status: 'error',
           code: 400,
-          message: "One or more fields are empty. Please try again.",
+          message: 'One or more fields are empty. Please try again.',
         };
       }
 
@@ -3184,8 +3864,9 @@ export class ContentService {
 
       const existingFormIds = existingFormRecords.map((record) => record.id);
       const providedFormIds = editFormQuestions.map((question) => question.id);
-      const idsToRemove = existingFormIds.filter(id => !providedFormIds.includes(id));
-
+      const idsToRemove = existingFormIds.filter(
+        (id) => !providedFormIds.includes(id),
+      );
 
       if (idsToRemove.length > 0) {
         await db
@@ -3198,7 +3879,7 @@ export class ContentService {
           const existingRecord = await db
             .select()
             .from(zuvyModuleForm)
-            .where(eq(zuvyModuleForm.id, formQuestion.id))
+            .where(eq(zuvyModuleForm.id, formQuestion.id));
 
           if (existingRecord) {
             let updateModuleForm: any = {
@@ -3207,7 +3888,7 @@ export class ContentService {
               options: formQuestion.options,
               typeId: formQuestion.typeId,
               isRequired: formQuestion.isRequired,
-            }
+            };
             const result = await db
               .update(zuvyModuleForm)
               .set(updateModuleForm)
@@ -3216,20 +3897,19 @@ export class ContentService {
             results.push(result);
           } else {
             return {
-              status: "Error",
+              status: 'Error',
               code: 400,
-              message: "Form question id(s) are invalid",
+              message: 'Form question id(s) are invalid',
             };
           }
         } else {
           return {
-            status: "Error",
+            status: 'Error',
             code: 400,
-            message: "Form question ids(s) are missing",
+            message: 'Form question ids(s) are missing',
           };
         }
       }
-
 
       const formIds = results.flat().map((obj) => obj.id);
 
@@ -3242,9 +3922,9 @@ export class ContentService {
         .returning();
 
       return {
-        status: "success",
+        status: 'success',
         code: 200,
-        message: "Form questions are updated successfully",
+        message: 'Form questions are updated successfully',
         results,
         updatedChapter,
       };
@@ -3253,58 +3933,51 @@ export class ContentService {
     }
   }
 
-  async createAndEditFormQuestions(chapterId: number, form: CreateAndEditFormBody) {
+  async createAndEditFormQuestions(
+    chapterId: number,
+    form: CreateAndEditFormBody,
+  ) {
     try {
-
       if (isNaN(chapterId)) {
         return {
-          status: "error",
+          status: 'error',
           code: 400,
-          message: "Invalid chapterId. Please provide a valid number."
+          message: 'Invalid chapterId. Please provide a valid number.',
         };
       }
 
-
-
-
-      if (form.formQuestionDto && !(form.editFormQuestionDto)) {
+      if (form.formQuestionDto && !form.editFormQuestionDto) {
         await this.createFormForModule(chapterId, form.formQuestionDto);
-
-
-      } else if (form.editFormQuestionDto && !(form.formQuestionDto)) {
+      } else if (form.editFormQuestionDto && !form.formQuestionDto) {
         await this.editFormQuestions(chapterId, form.editFormQuestionDto);
-
       } else if (form.editFormQuestionDto && form.formQuestionDto) {
-
         await this.editFormQuestions(chapterId, form.editFormQuestionDto);
         await this.createFormForModule(chapterId, form.formQuestionDto);
       } else {
         return {
-          status: "error",
+          status: 'error',
           code: 400,
-          message: "Invalid input."
+          message: 'Invalid input.',
         };
       }
 
       const res1 = await db
         .select()
         .from(zuvyModuleForm)
-        .where(eq(zuvyModuleForm.chapterId, chapterId))
+        .where(eq(zuvyModuleForm.chapterId, chapterId));
 
       const res2 = await db
         .select()
         .from(zuvyModuleChapter)
-        .where(eq(zuvyModuleChapter.id, chapterId))
-
+        .where(eq(zuvyModuleChapter.id, chapterId));
 
       return {
-        status: "success",
+        status: 'success',
         code: 200,
-        message: "Form questions are updated successfully",
+        message: 'Form questions are updated successfully',
         res1,
         res2,
       };
-
     } catch (err) {
       throw err;
     }
@@ -3312,56 +3985,77 @@ export class ContentService {
 
   async getOpenendedQuestionDetails(id: number): Promise<any> {
     try {
-      const openEnded = await db.select().from(zuvyOpenEndedQuestions).where(eq(zuvyOpenEndedQuestions.id, id));
+      const openEnded = await db
+        .select()
+        .from(zuvyOpenEndedQuestions)
+        .where(eq(zuvyOpenEndedQuestions.id, id));
       if (openEnded.length > 0) {
-        return [null, { data: openEnded }]
+        return [null, { data: openEnded }];
       }
-      return [{ statusCode: STATUS_CODES.NOT_FOUND, message: 'The openended question is not found' }];
-    }
-    catch (err) {
-      return [{ message: err.message }]
+      return [
+        {
+          statusCode: STATUS_CODES.NOT_FOUND,
+          message: 'The openended question is not found',
+        },
+      ];
+    } catch (err) {
+      return [{ message: err.message }];
     }
   }
 
   async getCodingQuestionDetails(id: number): Promise<any> {
     try {
-      const codingQuestion = await db.select().from(zuvyCodingQuestions).where(eq(zuvyCodingQuestions.id, id));
+      const codingQuestion = await db
+        .select()
+        .from(zuvyCodingQuestions)
+        .where(eq(zuvyCodingQuestions.id, id));
       if (codingQuestion.length > 0) {
-        return [null, { data: codingQuestion }]
+        return [null, { data: codingQuestion }];
       }
-      return [{ statusCode: STATUS_CODES.NOT_FOUND, message: 'The coding question is not found' }];
-    }
-    catch (err) {
-      return [{ message: err.message }]
+      return [
+        {
+          statusCode: STATUS_CODES.NOT_FOUND,
+          message: 'The coding question is not found',
+        },
+      ];
+    } catch (err) {
+      return [{ message: err.message }];
     }
   }
 
   async getQuizQuestionDetails(id: number): Promise<any> {
     try {
-      const quizQuestion = await db.select().from(zuvyModuleQuiz).where(eq(zuvyModuleQuiz.id, id));
+      const quizQuestion = await db
+        .select()
+        .from(zuvyModuleQuiz)
+        .where(eq(zuvyModuleQuiz.id, id));
       if (quizQuestion.length > 0) {
-        return [null, { data: quizQuestion }]
+        return [null, { data: quizQuestion }];
       }
-      return [{ statusCode: STATUS_CODES.NOT_FOUND, message: 'The quiz question is not found' }];
-    }
-    catch (err) {
-      return [{ message: err.message }]
+      return [
+        {
+          statusCode: STATUS_CODES.NOT_FOUND,
+          message: 'The quiz question is not found',
+        },
+      ];
+    } catch (err) {
+      return [{ message: err.message }];
     }
   }
 
   async getAllQuizVariants(quizId: number): Promise<any> {
     try {
-      const result = await db.query.zuvyModuleQuiz.findMany({
-        where: (zuvyModuleQuiz, { eq }) =>
-          eq(zuvyModuleQuiz.id, quizId),
-        with: {
-          quizVariants: {
-            where: (zuvyModuleQuizVariants, { eq }) =>
-              eq(zuvyModuleQuizVariants.quizId, quizId),
-            orderBy: (quizVariants, { asc }) => asc(quizVariants.id),
+      const result = await db.query.zuvyModuleQuiz
+        .findMany({
+          where: (zuvyModuleQuiz, { eq }) => eq(zuvyModuleQuiz.id, quizId),
+          with: {
+            quizVariants: {
+              where: (zuvyModuleQuizVariants, { eq }) =>
+                eq(zuvyModuleQuizVariants.quizId, quizId),
+              orderBy: (quizVariants, { asc }) => asc(quizVariants.id),
+            },
           },
-        }
-      })
+        })
         .execute();
 
       if (result.length === 0) {
@@ -3370,8 +4064,8 @@ export class ContentService {
           {
             message: 'No variants found for the provided quiz ID',
             statusCode: STATUS_CODES.NOT_FOUND,
-            data: []
-          }
+            data: [],
+          },
         ];
       }
 
@@ -3380,11 +4074,14 @@ export class ContentService {
         {
           message: 'Variants retrieved successfully',
           statusCode: STATUS_CODES.OK,
-          data: result
-        }
+          data: result,
+        },
       ];
     } catch (err) {
-      return [{ message: err.message, statusCode: STATUS_CODES.BAD_REQUEST }, null];
+      return [
+        { message: err.message, statusCode: STATUS_CODES.BAD_REQUEST },
+        null,
+      ];
     }
   }
 
@@ -3400,7 +4097,10 @@ export class ContentService {
 
       if (mainQuizExists.length === 0) {
         return [
-          { message: `Quiz ID ${quizId} does not exist in the main quiz table.`, statusCode: STATUS_CODES.NOT_FOUND },
+          {
+            message: `Quiz ID ${quizId} does not exist in the main quiz table.`,
+            statusCode: STATUS_CODES.NOT_FOUND,
+          },
           null,
         ];
       }
@@ -3411,7 +4111,10 @@ export class ContentService {
         .from(zuvyModuleQuizVariants)
         .where(eq(zuvyModuleQuizVariants.quizId, quizId));
 
-      const maxVariantNumber = existingVariants.reduce((max, variant) => Math.max(max, variant.variantNumber), 0);
+      const maxVariantNumber = existingVariants.reduce(
+        (max, variant) => Math.max(max, variant.variantNumber),
+        0,
+      );
       let nextVariantNumber = maxVariantNumber + 1;
 
       // Prepare new variant data with incremented variant numbers
@@ -3426,17 +4129,25 @@ export class ContentService {
       // Insert new variants into the variants table
       await db.insert(zuvyModuleQuizVariants).values(variantData);
 
-      return [null, {
-        message: 'Variants added successfully.',
-        statusCode: STATUS_CODES.CREATED,
-        data: variantData
-      }];
+      return [
+        null,
+        {
+          message: 'Variants added successfully.',
+          statusCode: STATUS_CODES.CREATED,
+          data: variantData,
+        },
+      ];
     } catch (err) {
-      return [{ message: err.message, statusCode: STATUS_CODES.BAD_REQUEST }, null];
+      return [
+        { message: err.message, statusCode: STATUS_CODES.BAD_REQUEST },
+        null,
+      ];
     }
   }
 
-  async deleteQuizOrVariant(deleteDto: deleteQuestionOrVariantDto): Promise<any> {
+  async deleteQuizOrVariant(
+    deleteDto: deleteQuestionOrVariantDto,
+  ): Promise<any> {
     try {
       let mainQuizIds: number[] = [];
       let variantDeletions: { id: number; quizId: number }[] = [];
@@ -3463,15 +4174,21 @@ export class ContentService {
         const usedQuizzes = await db
           .select()
           .from(zuvyModuleQuiz)
-          .where(sql`${inArray(zuvyModuleQuiz.id, mainQuizIds)} AND ${zuvyModuleQuiz.usage} > 0`);
+          .where(
+            sql`${inArray(zuvyModuleQuiz.id, mainQuizIds)} AND ${zuvyModuleQuiz.usage} > 0`,
+          );
 
-        const usedQuizIds = usedQuizzes.map(quiz => quiz.id);
-        const deletableQuizIds = mainQuizIds.filter(id => !usedQuizIds.includes(id));
+        const usedQuizIds = usedQuizzes.map((quiz) => quiz.id);
+        const deletableQuizIds = mainQuizIds.filter(
+          (id) => !usedQuizIds.includes(id),
+        );
 
         if (deletableQuizIds.length > 0) {
           await db
             .delete(zuvyModuleQuizVariants)
-            .where(sql`${inArray(zuvyModuleQuizVariants.quizId, deletableQuizIds)}`);
+            .where(
+              sql`${inArray(zuvyModuleQuizVariants.quizId, deletableQuizIds)}`,
+            );
           await db
             .delete(zuvyModuleQuiz)
             .where(sql`${inArray(zuvyModuleQuiz.id, deletableQuizIds)}`)
@@ -3479,10 +4196,13 @@ export class ContentService {
         }
 
         if (usedQuizIds.length > 0) {
-          return [{
-            message: `Quizzes with IDs ${usedQuizIds.join(', ')} cannot be deleted as they are in use.`,
-            statusCode: STATUS_CODES.BAD_REQUEST,
-          }, null];
+          return [
+            {
+              message: `Quizzes with IDs ${usedQuizIds.join(', ')} cannot be deleted as they are in use.`,
+              statusCode: STATUS_CODES.BAD_REQUEST,
+            },
+            null,
+          ];
         }
       }
 
@@ -3494,10 +4214,13 @@ export class ContentService {
           .where(sql`${zuvyModuleQuizVariants.quizId} = ${quizId}`);
 
         if (variantCount.length <= 1) {
-          return [{
-            message: `Quiz with ID ${quizId} cannot delete its last remaining variant.`,
-            statusCode: STATUS_CODES.BAD_REQUEST,
-          }, null];
+          return [
+            {
+              message: `Quiz with ID ${quizId} cannot delete its last remaining variant.`,
+              statusCode: STATUS_CODES.BAD_REQUEST,
+            },
+            null,
+          ];
         }
 
         // Check if the main quiz of this variant has `usage` > 0
@@ -3508,10 +4231,13 @@ export class ContentService {
           .limit(1);
 
         if (mainQuizUsage.length && mainQuizUsage[0].usage > 0) {
-          return [{
-            message: `Variant with ID ${variantId} cannot be deleted as its main quiz with ID ${quizId} is in use.`,
-            statusCode: STATUS_CODES.BAD_REQUEST,
-          }, null];
+          return [
+            {
+              message: `Variant with ID ${variantId} cannot be deleted as its main quiz with ID ${quizId} is in use.`,
+              statusCode: STATUS_CODES.BAD_REQUEST,
+            },
+            null,
+          ];
         }
 
         const variantToDelete = await db
@@ -3520,10 +4246,13 @@ export class ContentService {
           .where(sql`${zuvyModuleQuizVariants.id} = ${variantId}`);
 
         if (!variantToDelete.length) {
-          return [{
-            message: `Variant with ID ${variantId} not found.`,
-            statusCode: STATUS_CODES.NOT_FOUND,
-          }, null];
+          return [
+            {
+              message: `Variant with ID ${variantId} not found.`,
+              statusCode: STATUS_CODES.NOT_FOUND,
+            },
+            null,
+          ];
         }
 
         const { variantNumber } = variantToDelete[0];
@@ -3535,22 +4264,32 @@ export class ContentService {
         // Update the variant numbers for remaining variants
         await db
           .update(zuvyModuleQuizVariants)
-          .set({ variantNumber: sql`${zuvyModuleQuizVariants.variantNumber} - 1` })
-          .where(sql`${zuvyModuleQuizVariants.variantNumber} > ${variantNumber} AND ${zuvyModuleQuizVariants.quizId} = ${quizId}`)
+          .set({
+            variantNumber: sql`${zuvyModuleQuizVariants.variantNumber} - 1`,
+          })
+          .where(
+            sql`${zuvyModuleQuizVariants.variantNumber} > ${variantNumber} AND ${zuvyModuleQuizVariants.quizId} = ${quizId}`,
+          )
           .returning();
       }
 
-      return [null, {
-        message: 'Selected quizzes and/or variants have been deleted and renumbered successfully where applicable.',
-        statusCode: STATUS_CODES.OK,
-      }];
+      return [
+        null,
+        {
+          message:
+            'Selected quizzes and/or variants have been deleted and renumbered successfully where applicable.',
+          statusCode: STATUS_CODES.OK,
+        },
+      ];
     } catch (error) {
       Logger.log(`Error in deleteQuizOrVariant: ${error.message}`);
-      return [{
-        message: error.message,
-        statusCode: STATUS_CODES.BAD_REQUEST,
-      }, null];
+      return [
+        {
+          message: error.message,
+          statusCode: STATUS_CODES.BAD_REQUEST,
+        },
+        null,
+      ];
     }
   }
 }
-
