@@ -3728,7 +3728,7 @@ export const zuvyUserRoles = main.table('zuvy_user_roles', {
   description: text('description'),
 });
 
-export const zuvyResources = pgTable('zuvy_resources', {
+export const zuvyResources = main.table('zuvy_resources', {
   id: serial('id').primaryKey(),
   key: varchar('key', { length: 64 }).notNull().unique(),
   name: varchar('display_name', { length: 100 }).notNull(),
