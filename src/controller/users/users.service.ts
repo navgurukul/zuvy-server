@@ -674,7 +674,7 @@ export class UsersService {
               .values(rolesAssignData)
               .returning();
           }
-          const permissionsResult = await this.authService.logout(id, token);
+          // const permissionsResult = await this.authService.logout(id, token);
         }
 
         // Get updated user data with role
