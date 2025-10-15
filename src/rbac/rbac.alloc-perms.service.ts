@@ -9,7 +9,7 @@ import { PermissionsAllocationService } from 'src/permissions/permissions.alloc.
 export class RbacAllocPermsService {
   constructor(
     private readonly permissionAllocationService: PermissionsAllocationService
-  ){}
+  ) { }
   private readonly logger = new Logger(RbacAllocPermsService.name);
 
   async getUserPermissionsByResource(userId: bigint, resourceId: number): Promise<any> {

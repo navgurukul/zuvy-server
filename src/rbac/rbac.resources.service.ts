@@ -69,7 +69,7 @@ export class RbacResourcesService {
       }
 
       return resource;
-    } catch (error) {  
+    } catch (error) {
       throw error;
     }
   }
@@ -109,9 +109,9 @@ export class RbacResourcesService {
         .where(eq(zuvyResources.id, id));
       if (deletedResource.rowCount === 0) {
         throw new NotFoundException(`Resource with ID ${id} not found`);
-      } 
+      }
       // Resource deleted successfully then return the resurce details
-      return { message: 'Resource deleted successfully', code: 200, status: 'success'};
+      return { message: 'Resource deleted successfully', code: 200, status: 'success' };
     } catch (error) {
       throw error;
     }

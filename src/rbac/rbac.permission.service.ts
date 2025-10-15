@@ -147,7 +147,7 @@ export class RbacPermissionService {
         throw new NotFoundException(`Permission with ID ${id} not found`);
       }
       // Permission deleted successfully then return the permission details
-      return { message: 'Permission deleted successfully', code: 200, status: 'success'};
+      return { message: 'Permission deleted successfully', code: 200, status: 'success' };
     } catch (err) {
       throw err;
     }

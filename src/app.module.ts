@@ -26,7 +26,7 @@ import { PermissionsModule } from './permissions/permissions.module';
 import { ResourcesModule } from './resources/resources.module';
 import { AuditlogModule } from './auditlog/auditlog.module';
 import { RolesModule } from './roles/roles.module';
-let { GOOGLE_CLIENT_ID, GOOGLE_SECRET, GOOGLE_REDIRECT,JWT_SECRET_KEY } = process.env;
+let { GOOGLE_CLIENT_ID, GOOGLE_SECRET, GOOGLE_REDIRECT, JWT_SECRET_KEY } = process.env;
 @Module({
   imports: [
     ConfigModule.forRoot({

@@ -7,7 +7,7 @@ export interface Item {
 export function convertToPascalCaseWithSpaces(items: Item[]): Item[] {
   return items.map(item => {
     const processedName = convertNameToPascalWithSpaces(item.name);
-    
+
     return {
       ...item,
       name: processedName
@@ -24,7 +24,7 @@ function convertNameToPascalWithSpaces(name: string): string {
       .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
       .join(' ');
   }
-  
+
   // If no spaces, then it's camelCase or PascalCase - split by capital letters
   return name
     .replace(/([a-z])([A-Z])/g, '$1 $2')
@@ -59,7 +59,7 @@ export const ResourceKeys = [
   'CodingQuestion',
   'OpendEnded',
   'Topic',
-  'Module', 
+  'Module',
   'Question',
   'Batch',
   'Student',

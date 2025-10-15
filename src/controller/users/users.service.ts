@@ -43,7 +43,7 @@ export class UsersService {
     private readonly rbacService: RbacService,
     private readonly auditlogService: AuditlogService,
     private readonly authService: AuthService,
-  ) {}
+  ) { }
 
   /**
    * Fetch all users from the database and store them in a JSON file
@@ -108,9 +108,9 @@ export class UsersService {
           // Check if user with this email already exists
           const existingUser = userData.email
             ? await db
-                .select()
-                .from(users)
-                .where(eq(users.email, userData.email))
+              .select()
+              .from(users)
+              .where(eq(users.email, userData.email))
             : [];
 
           if (existingUser.length > 0) {
