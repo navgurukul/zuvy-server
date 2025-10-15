@@ -3,7 +3,6 @@ import { db } from 'src/db/index';
 import { CreateResourceDto } from './dto/resources.dto';
 import { zuvyResources, zuvyPermissions } from 'drizzle/schema';
 import { eq, asc } from 'drizzle-orm';
-import { convertToPascalCaseWithSpaces } from './utility';
 import { permissions } from 'src/helpers';
 
 @Injectable()
@@ -46,12 +45,12 @@ export class RbacResourcesService {
         .from(zuvyResources)
         .orderBy(asc(zuvyResources.name));
 
-      let pascalResources = convertToPascalCaseWithSpaces(resources);
+      // let pascalResources = convertToPascalCaseWithSpaces(resources);
       return {
         status: 'success',
         message: 'Resources fetched successfully',
         code: 200,
-        data: pascalResources
+        data: resources
       };
     } catch (error) {
       throw new InternalServerErrorException('Failed to retrieve resources');
@@ -70,7 +69,7 @@ export class RbacResourcesService {
       }
 
       return resource;
-    } catch (error) {  
+    } catch (error) {
       throw error;
     }
   }
@@ -110,9 +109,9 @@ export class RbacResourcesService {
         .where(eq(zuvyResources.id, id));
       if (deletedResource.rowCount === 0) {
         throw new NotFoundException(`Resource with ID ${id} not found`);
-      } 
+      }
       // Resource deleted successfully then return the resurce details
-      return { message: 'Resource deleted successfully', code: 200, status: 'success'};
+      return { message: 'Resource deleted successfully', code: 200, status: 'success' };
     } catch (error) {
       throw error;
     }

@@ -9,7 +9,7 @@ import { PermissionsAllocationService } from 'src/permissions/permissions.alloc.
 export class RbacService {
   constructor(
     private readonly permissionAllocationService: PermissionsAllocationService
-  ){}
+  ) { }
   private readonly logger = new Logger(RbacService.name);
 
   async getAllPermissions(roleName: string[], targetPermissions: string[], resourceIds?: number): Promise<any> {
@@ -22,26 +22,26 @@ export class RbacService {
     }
   }
 
-    async getUserPermissionsByResource(userId: bigint, resourceId: number): Promise<any> {
-      try {
-        await this.permissionAllocationService.getUserPermissionsByResource(userId, resourceId);
-      } catch (err) {
-        this.logger.error(`Error getting user permissions for user ${userId} and resource ${resourceId}:`, err);
-        if (err instanceof NotFoundException) throw err;
-        throw new InternalServerErrorException('Failed to retrieve user permissions');
-      }
+  async getUserPermissionsByResource(userId: bigint, resourceId: number): Promise<any> {
+    try {
+      await this.permissionAllocationService.getUserPermissionsByResource(userId, resourceId);
+    } catch (err) {
+      this.logger.error(`Error getting user permissions for user ${userId} and resource ${resourceId}:`, err);
+      if (err instanceof NotFoundException) throw err;
+      throw new InternalServerErrorException('Failed to retrieve user permissions');
     }
-  
-    async getUserPermissionsForMultipleResources(userId: bigint): Promise<any> {
-      try {
-        return await this.permissionAllocationService.getUserPermissionsForMultipleResources(userId);
-      } catch (err) {
-        this.logger.error(
-          `Error in getUserPermissionsForMultipleResources for user ${userId}:`,
-          err,
-        );
-        if (err instanceof NotFoundException) throw err;
-        throw new InternalServerErrorException('Failed to retrieve user permissions');
-      }
+  }
+
+  async getUserPermissionsForMultipleResources(userId: bigint): Promise<any> {
+    try {
+      return await this.permissionAllocationService.getUserPermissionsForMultipleResources(userId);
+    } catch (err) {
+      this.logger.error(
+        `Error in getUserPermissionsForMultipleResources for user ${userId}:`,
+        err,
+      );
+      if (err instanceof NotFoundException) throw err;
+      throw new InternalServerErrorException('Failed to retrieve user permissions');
     }
+  }
 }

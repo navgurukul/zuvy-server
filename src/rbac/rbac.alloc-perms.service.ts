@@ -3,55 +3,18 @@ import { db } from 'src/db/index';
 import { inArray, sql, eq, and } from 'drizzle-orm';
 import { userRoles, zuvyPermissions, zuvyPermissionsRoles, zuvyResources, zuvyRolePermissions, zuvyUserRoles, zuvyUserRolesAssigned } from 'drizzle/schema';
 import { ResourceList } from './utility';
+import { PermissionsAllocationService } from 'src/permissions/permissions.alloc.service';
 
 @Injectable()
 export class RbacAllocPermsService {
+  constructor(
+    private readonly permissionAllocationService: PermissionsAllocationService
+  ) { }
   private readonly logger = new Logger(RbacAllocPermsService.name);
 
   async getUserPermissionsByResource(userId: bigint, resourceId: number): Promise<any> {
     try {
-      // Check if user exists
-      const userCheck = await db.execute(sql`SELECT id FROM main.users WHERE id = ${userId} LIMIT 1`);
-      if (!(userCheck as any).rows?.length) {
-        throw new NotFoundException('User not found');
-      }
-      // Get user's role
-      const userRoleResult = await db
-        .select({ roleId: zuvyUserRolesAssigned.roleId })
-        .from(zuvyUserRolesAssigned)
-        .where(eq(zuvyUserRolesAssigned.userId, userId))
-        .limit(1);
-      if (!userRoleResult.length) {
-        // Return empty permissions if user has no role assigned
-        return { userId, roleId: null, permissions: {} };
-      }
-      const userRoleId = userRoleResult[0].roleId;
-      // Get user's permissions
-      const userPermissionsResult = await db.select({
-        permissionName: zuvyPermissions.name,
-        resourceId: zuvyPermissions.resourcesId,
-        resourceName: zuvyResources.name
-      })
-        .from(zuvyRolePermissions)
-        .innerJoin(zuvyPermissions, eq(zuvyRolePermissions.permissionId, zuvyPermissions.id))
-        .innerJoin(zuvyResources, eq(zuvyPermissions.resourcesId, zuvyResources.id))
-        .where(and(
-          eq(zuvyRolePermissions.roleId, userRoleId),
-          eq(zuvyPermissions.resourcesId, resourceId)
-        ));
-      const permissions = {};
-      userPermissionsResult.forEach(perm => {
-        const resourceName = perm.resourceName === 'course' ? 'Bootcamp' :
-          perm.resourceName === 'contentBank' ? 'ContentBank' :
-            perm.resourceName;
-        const permissionKey = `${perm.permissionName}${resourceName.charAt(0).toUpperCase() + resourceName.slice(1)}`;
-        permissions[permissionKey] = true;
-      });
-      return {
-        userId,
-        roleId: userRoleId,
-        permissions
-      };
+      await this.permissionAllocationService.getUserPermissionsByResource(userId, resourceId);
     } catch (err) {
       this.logger.error(`Error getting user permissions for user ${userId} and resource ${resourceId}:`, err);
       if (err instanceof NotFoundException) throw err;
@@ -61,58 +24,7 @@ export class RbacAllocPermsService {
 
   async getUserPermissionsForMultipleResources(userId: bigint): Promise<any> {
     try {
-      // Check if user exists
-      const userCheck = await db.execute(
-        sql`SELECT id FROM main.users WHERE id = ${userId} LIMIT 1`
-      );
-      if (!(userCheck as any).rows?.length) {
-        throw new NotFoundException('User not found');
-      }
-
-      // Get user's role
-      const userRoleResult = await db
-        .select({ roleId: zuvyUserRolesAssigned.roleId })
-        .from(zuvyUserRolesAssigned)
-        .where(eq(zuvyUserRolesAssigned.userId, userId))
-        .limit(1);
-
-      if (!userRoleResult.length) {
-        return { userId, roleId: null, permissions: {} };
-      }
-
-      const userRoleId = userRoleResult[0].roleId;
-
-      // Fetch permissions directly from zuvy_permissions for this role
-      const userPermissionsResult = await db.execute(sql`
-      SELECT 
-        p.name AS "permissionName",
-        r.name AS "resourceName"
-      FROM main.zuvy_permissions p
-      INNER JOIN main.zuvy_resources r ON p.resource_id = r.id
-      WHERE p.role_id = ${userRoleId}
-        AND p.resource_id IN (1, 2, 3)
-    `);
-
-      // Build permissions object
-      const permissions: Record<string, boolean> = {};
-
-      if (userPermissionsResult.rows?.length) {
-        (userPermissionsResult.rows as any[]).forEach((perm) => {
-          const resourceName =
-            perm.resourceName === 'course'
-              ? 'Bootcamp'
-              : perm.resourceName === 'contentBank'
-                ? 'ContentBank'
-                : perm.resourceName;
-
-          const key =
-            `${perm.permissionName}${resourceName.charAt(0).toUpperCase()}${resourceName.slice(1)}`;
-
-          permissions[key] = true; // only granted permissions
-        });
-      }
-
-      return { userId, roleId: userRoleId, permissions };
+      return await this.permissionAllocationService.getUserPermissionsForMultipleResources(userId);
     } catch (err) {
       this.logger.error(
         `Error in getUserPermissionsForMultipleResources for user ${userId}:`,
@@ -122,8 +34,6 @@ export class RbacAllocPermsService {
       throw new InternalServerErrorException('Failed to retrieve user permissions');
     }
   }
-
-
 
   async checkUserPermission(userId: number, resourceId: number, permissionName: string): Promise<any> {
     try {
@@ -222,35 +132,9 @@ export class RbacAllocPermsService {
     }
   }
 
-
   async getAllPermissions(roleName: string[], targetPermissions: string[], resourceIds?: number): Promise<any> {
     try {
-      // if (!resourceIds) {
-      // Check if role exists
-      const roleCheck = await db
-        .select({ id: zuvyUserRoles.id })
-        .from(zuvyUserRoles)
-        .where(eq(zuvyUserRoles.name, roleName[0]))
-        .limit(1);
-
-      if (!roleCheck.length) {
-        throw new NotFoundException('Role not found');
-      }
-      const roleId = roleCheck[0].id;
-
-      const permissionsWithRoles = await db
-      .select({ action: zuvyPermissions.name, key: zuvyResources.key })
-      .from(zuvyPermissions)
-      .innerJoin(zuvyPermissionsRoles, eq(zuvyPermissionsRoles.permissionId, zuvyPermissions.id))
-      .innerJoin(zuvyResources, eq(zuvyPermissions.resourcesId, zuvyResources.id))
-      .where(eq(zuvyPermissionsRoles.roleId, roleId));
-
-      const assignedPermissions: string[] = permissionsWithRoles.map(r => `${r.action}${r.key}`);
-
-      // Filter permissions based on targetPermissions
-      const filteredPermissions = await this.formatPermissionsAndCompare(assignedPermissions, targetPermissions)
-
-      return { permissions: filteredPermissions };
+      return await this.permissionAllocationService.getAllPermissions(roleName, targetPermissions);
     }
     catch (err) {
       this.logger.error('Error retrieving all permissions:', err);

@@ -43,7 +43,7 @@ export class UsersService {
     private readonly rbacService: RbacService,
     private readonly auditlogService: AuditlogService,
     private readonly authService: AuthService,
-  ) {}
+  ) { }
 
   /**
    * Fetch all users from the database and store them in a JSON file
@@ -108,9 +108,9 @@ export class UsersService {
           // Check if user with this email already exists
           const existingUser = userData.email
             ? await db
-                .select()
-                .from(users)
-                .where(eq(users.email, userData.email))
+              .select()
+              .from(users)
+              .where(eq(users.email, userData.email))
             : [];
 
           if (existingUser.length > 0) {
@@ -199,6 +199,14 @@ export class UsersService {
       this.logger.error(`Error verifying user: ${error.message}`, error.stack);
       throw new Error(`Failed to verify user: ${error.message}`);
     }
+  }
+
+  private async getRoleNameById(tx, roleId: number) {
+    const [role] = await tx
+      .select({ name: zuvyUserRoles.name })
+      .from(zuvyUserRoles)
+      .where(eq(zuvyUserRoles.id, roleId));
+    return role?.name ?? '';
   }
 
   async createUserRole(createUserRoleDto: CreateUserRoleDto): Promise<any> {
@@ -666,7 +674,7 @@ export class UsersService {
               .values(rolesAssignData)
               .returning();
           }
-          const permissionsResult = await this.authService.logout(id, token);
+          // const permissionsResult = await this.authService.logout(id, token);
         }
 
         // Get updated user data with role

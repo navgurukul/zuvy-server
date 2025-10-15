@@ -6,6 +6,7 @@ import { CreatePermissionDto, PermissionResponseDto, AssignUserPermissionDto, Ge
 import { RbacResourcesService } from './rbac.resources.service';
 import { CreateResourceDto } from './dto/resources.dto';
 import { bigint } from 'drizzle-orm/mysql-core';
+import { RbacService } from './rbac.service';
 // import { PermissionsGuard } from './guards/permissions.guard';
 // import { RequirePermissions } from './decorators/require-permissions.decorator';
 
@@ -23,7 +24,7 @@ import { bigint } from 'drizzle-orm/mysql-core';
 export class RbacController {
   constructor(
     private readonly rbacPermissionService: RbacPermissionService,
-    private readonly rbacAllocPermsService: RbacAllocPermsService,
+    private readonly rbacService: RbacService,
     private readonly resourcesService: RbacResourcesService,
   ) { }
 
@@ -241,7 +242,7 @@ export class RbacController {
     @Param('resourceId', ParseIntPipe) resourceId: number
   ): Promise<any> {
     try {
-      const result = await this.rbacAllocPermsService.getUserPermissionsByResource(userId, resourceId);
+      const result = await this.rbacService.getUserPermissionsByResource(userId, resourceId);
       return result;
     } catch (error) {
       if (error instanceof HttpException) {
@@ -273,7 +274,7 @@ export class RbacController {
     @Param('userId', ParseIntPipe) userId: bigint
   ): Promise<any> {
     try {
-      const result = await this.rbacAllocPermsService.getUserPermissionsForMultipleResources(userId);
+      const result = await this.rbacService.getUserPermissionsForMultipleResources(userId);
       return result;
     } catch (error) {
       if (error instanceof HttpException) {
