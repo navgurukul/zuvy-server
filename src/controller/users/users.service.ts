@@ -10,6 +10,7 @@ import {
 } from '@nestjs/common';
 import {
   users,
+  userTokens,
   zuvyUserRoles,
   zuvyUserRolesAssigned,
 } from '../../../drizzle/schema';
@@ -43,7 +44,7 @@ export class UsersService {
     private readonly rbacService: RbacService,
     private readonly auditlogService: AuditlogService,
     private readonly authService: AuthService,
-  ) {}
+  ) { }
 
   /**
    * Fetch all users from the database and store them in a JSON file
@@ -108,9 +109,9 @@ export class UsersService {
           // Check if user with this email already exists
           const existingUser = userData.email
             ? await db
-                .select()
-                .from(users)
-                .where(eq(users.email, userData.email))
+              .select()
+              .from(users)
+              .where(eq(users.email, userData.email))
             : [];
 
           if (existingUser.length > 0) {
@@ -674,7 +675,22 @@ export class UsersService {
               .values(rolesAssignData)
               .returning();
           }
-          const permissionsResult = await this.authService.logout(id, token);
+          // get the user token
+          const userToken = await db
+            .select({
+              accessToken: userTokens.accessToken
+            })
+            .from(userTokens)
+            .where(eq(userTokens.userId, Number(id)))
+            .limit(1);
+
+          const accessToken = userToken[0]?.accessToken;
+
+          if (!accessToken) {
+            throw new Error('No access token found for user');
+          }
+
+          const permissionsResult = await this.authService.logout(id, accessToken);
         }
 
         // Get updated user data with role
