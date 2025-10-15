@@ -31,15 +31,18 @@ import { RbacAllocPermsService } from 'src/rbac/rbac.alloc-perms.service';
 import { RbacService } from 'src/rbac/rbac.service';
 import { CreateAuditlogDto } from 'src/auditlog/dto/create-auditlog.dto';
 import { AuditlogService } from 'src/auditlog/auditlog.service';
+import { AuthService } from 'src/auth/auth.service';
 
 @Injectable()
 export class UsersService {
   private readonly logger = new Logger(UsersService.name);
   private readonly usersJsonPath = path.join(process.cwd(), 'users.json');
+
   constructor(
     private readonly jwtService: JwtService,
     private readonly rbacService: RbacService,
     private readonly auditlogService: AuditlogService,
+    private readonly authService: AuthService,
   ) {}
 
   /**
@@ -595,7 +598,7 @@ export class UsersService {
     }
   }
 
-  async updateUser(id: bigint, updateUserDto: UpdateUserDto) {
+  async updateUser(token, id: bigint, updateUserDto: UpdateUserDto) {
     try {
       return await db.transaction(async (tx) => {
         const currentTime = new Date().toISOString(); // ISO string format
@@ -671,6 +674,7 @@ export class UsersService {
               .values(rolesAssignData)
               .returning();
           }
+          const permissionsResult = await this.authService.logout(id, token);
         }
 
         // Get updated user data with role
