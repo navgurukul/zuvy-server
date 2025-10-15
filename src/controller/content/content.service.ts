@@ -92,7 +92,6 @@ let { S3_ACCESS_KEY_ID, S3_BUCKET_NAME, S3_REGION, S3_SECRET_KEY_ACCESS } =
   process.env;
 import e from 'express';
 import { ResourceList } from 'src/rbac/utility';
-import { RbacService } from 'src/rbac/rbac.service';
 let { DIFFICULTY } = helperVariable;
 
 @Injectable()

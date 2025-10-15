@@ -1,6 +1,6 @@
 import { Injectable, Logger, HttpStatus } from '@nestjs/common';
 import { db } from '../../db/index';
-import { eq, sql, count, inArray, or, and, like, desc, ne } from 'drizzle-orm';
+import { eq, sql, count, inArray, or, and, like, desc, asc, ne } from 'drizzle-orm';
 import axios from 'axios';
 import * as _ from 'lodash';
 import { error, log } from 'console';
@@ -73,7 +73,6 @@ export class BootcampService {
 
   async getAllBootcamps(
     roleName: string[],
-    userId: number,
     limit: number,
     offset: number,
     searchTerm?: string | number,
@@ -525,8 +524,6 @@ export class BootcampService {
     offset: number,
   ): Promise<any> {
     try {
-      console.log({ bootcamp_id, limit, offset });
-
       // sanitize pagination parameters
       const limitNum = Number.isFinite(Number(limit))
         ? Number(limit)
@@ -1028,17 +1025,6 @@ export class BootcampService {
     orderDirection?: string,
   ) {
     try {
-      console.log({
-        bootcampId,
-        batchId,
-        searchTerm,
-        limit,
-        offset,
-        enrolledDate,
-        lastActiveDate,
-        status,
-        attendance,
-      });
 
       // sanitize numeric inputs to avoid sending NaN to SQL (Postgres will error on 'NaN' for integer fields)
       const batchIdNum = Number.isFinite(Number(batchId))
@@ -1269,7 +1255,6 @@ export class BootcampService {
     editUserDetailsDto: editUserDetailsDto,
   ): Promise<[string | null, any]> {
     try {
-      console.log({ userId, editUserDetailsDto });
       // Validate user existence in the users table
       const userExists = await db
         .select({ id: users.id, email: users.email })
@@ -1450,8 +1435,7 @@ export class BootcampService {
 
   async getUserPermissionsForMultipleResources(userId: bigint) {
     try {
-      const result =
-        await this.rbacService.getUserPermissionsForMultipleResources(userId);
+      const result = await this.rbacAllocPermsService.getUserPermissionsForMultipleResources(userId);
       return [null, result];
     } catch (err) {
       return [err, null];

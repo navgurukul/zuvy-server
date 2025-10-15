@@ -201,14 +201,6 @@ export class UsersService {
     }
   }
 
-  private async getRoleNameById(tx, roleId: number) {
-    const [role] = await tx
-      .select({ name: zuvyUserRoles.name })
-      .from(zuvyUserRoles)
-      .where(eq(zuvyUserRoles.id, roleId));
-    return role?.name ?? '';
-  }
-
   async createUserRole(createUserRoleDto: CreateUserRoleDto): Promise<any> {
     try {
       const { name, description } = createUserRoleDto;

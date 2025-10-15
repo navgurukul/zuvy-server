@@ -81,10 +81,8 @@ export class BootcampController {
       ? Number(searchTerm)
       : searchTerm;
     const roleName = req.user[0]?.roles;
-    const userId = req.user[0]?.id;
     const [err, res] = await this.bootcampService.getAllBootcamps(
       roleName,
-      userId,
       limit,
       offset,
       searchTermAsNumber,
@@ -201,7 +199,7 @@ export class BootcampController {
   }
 
   @Get('/batches/:bootcamp_id')
-  //
+  @Roles('admin')
   @ApiOperation({ summary: 'Get the batches by bootcamp_id' })
   @ApiQuery({
     name: 'limit',
@@ -358,8 +356,8 @@ export class BootcampController {
     name: 'orderBy',
     required: false,
     type: String,
-    description: 'Field to order by (submittedDate, percentage, name, email)',
-    enum: ['submittedDate', 'percentage', 'name', 'email'],
+    description: 'Field to order by ( percentage, name, email)',
+    enum: ['percentage', 'name', 'email']
   })
   @ApiQuery({
     name: 'orderDirection',

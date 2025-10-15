@@ -3,6 +3,7 @@ import { db } from 'src/db/index';
 import { CreateResourceDto } from './dto/resources.dto';
 import { zuvyResources, zuvyPermissions } from 'drizzle/schema';
 import { eq, asc } from 'drizzle-orm';
+import { convertToPascalCaseWithSpaces } from './utility';
 import { permissions } from 'src/helpers';
 
 @Injectable()
@@ -45,12 +46,12 @@ export class RbacResourcesService {
         .from(zuvyResources)
         .orderBy(asc(zuvyResources.name));
 
-      // let pascalResources = convertToPascalCaseWithSpaces(resources);
+      let pascalResources = convertToPascalCaseWithSpaces(resources);
       return {
         status: 'success',
         message: 'Resources fetched successfully',
         code: 200,
-        data: resources
+        data: pascalResources
       };
     } catch (error) {
       throw new InternalServerErrorException('Failed to retrieve resources');
