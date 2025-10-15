@@ -10,6 +10,7 @@ import {
 } from '@nestjs/common';
 import {
   users,
+  userTokens,
   zuvyUserRoles,
   zuvyUserRolesAssigned,
 } from '../../../drizzle/schema';
@@ -674,7 +675,22 @@ export class UsersService {
               .values(rolesAssignData)
               .returning();
           }
-          // const permissionsResult = await this.authService.logout(id, token);
+          // get the user token
+          const userToken = await db
+            .select({
+              accessToken: userTokens.accessToken
+            })
+            .from(userTokens)
+            .where(eq(userTokens.userId, Number(id)))
+            .limit(1);
+
+          const accessToken = userToken[0]?.accessToken;
+
+          if (!accessToken) {
+            throw new Error('No access token found for user');
+          }
+
+          const permissionsResult = await this.authService.logout(id, accessToken);
         }
 
         // Get updated user data with role
