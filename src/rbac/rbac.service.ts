@@ -1,4 +1,4 @@
-import { Injectable, InternalServerErrorException, Logger, NotFoundException } from '@nestjs/common';
+import { Injectable, InternalServerErrorException, Logger, NotFoundException, Inject, forwardRef } from '@nestjs/common';
 import { db } from 'src/db/index';
 import { inArray, sql, eq, and } from 'drizzle-orm';
 import { userRoles, zuvyPermissions, zuvyPermissionsRoles, zuvyResources, zuvyRolePermissions, zuvyUserRoles, zuvyUserRolesAssigned } from 'drizzle/schema';
@@ -8,6 +8,7 @@ import { PermissionsAllocationService } from 'src/permissions/permissions.alloc.
 @Injectable()
 export class RbacService {
   constructor(
+    @Inject(forwardRef(() => PermissionsAllocationService))
     private readonly permissionAllocationService: PermissionsAllocationService
   ) { }
   private readonly logger = new Logger(RbacService.name);

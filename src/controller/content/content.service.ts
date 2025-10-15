@@ -88,6 +88,7 @@ import { SseService } from '../../services/sse.service';
 import { ClassesService } from '../classes/classes.service';
 import { ZoomService } from 'src/services/zoom/zoom.service';
 import { RbacAllocPermsService } from '../../rbac/rbac.alloc-perms.service';
+import { RbacService } from '../../rbac/rbac.service';
 let { S3_ACCESS_KEY_ID, S3_BUCKET_NAME, S3_REGION, S3_SECRET_KEY_ACCESS } =
   process.env;
 import e from 'express';
@@ -910,18 +911,18 @@ export class ContentService {
           const quizDetails =
             chapterDetails[0].quizQuestions !== null
               ? await db.query.zuvyModuleQuiz.findMany({
-                  where: (quiz, { inArray }) =>
-                    inArray(
-                      quiz.id,
-                      Object.values(chapterDetails[0].quizQuestions),
-                    ),
-                  with: {
-                    quizVariants: {
-                      where: (variants, { eq }) =>
-                        eq(variants.variantNumber, 1), // Filter for variantNumber = 1
-                    },
+                where: (quiz, { inArray }) =>
+                  inArray(
+                    quiz.id,
+                    Object.values(chapterDetails[0].quizQuestions),
+                  ),
+                with: {
+                  quizVariants: {
+                    where: (variants, { eq }) =>
+                      eq(variants.variantNumber, 1), // Filter for variantNumber = 1
                   },
-                })
+                },
+              })
               : [];
           modifiedChapterDetails.quizQuestionDetails = quizDetails;
         } else if (chapterDetails[0].topicId == 3) {
@@ -929,38 +930,38 @@ export class ContentService {
           const codingProblemDetails =
             chapterDetails[0].codingQuestions !== null
               ? await db.query.zuvyCodingQuestions.findMany({
-                  where: (codingQuestion, { eq }) =>
-                    eq(codingQuestion.id, chapterDetails[0].codingQuestions),
-                  columns: {
-                    id: true,
-                    title: true,
-                    description: true,
-                    difficulty: true,
-                    tagId: true,
-                    constraints: true, // Include constraints here
-                  },
-                  with: {
-                    testCases: {
-                      columns: {
-                        id: true,
-                        inputs: true,
-                        expectedOutput: true,
-                      },
-                      orderBy: (testCase, { asc }) => asc(testCase.id),
+                where: (codingQuestion, { eq }) =>
+                  eq(codingQuestion.id, chapterDetails[0].codingQuestions),
+                columns: {
+                  id: true,
+                  title: true,
+                  description: true,
+                  difficulty: true,
+                  tagId: true,
+                  constraints: true, // Include constraints here
+                },
+                with: {
+                  testCases: {
+                    columns: {
+                      id: true,
+                      inputs: true,
+                      expectedOutput: true,
                     },
+                    orderBy: (testCase, { asc }) => asc(testCase.id),
                   },
-                })
+                },
+              })
               : [];
           modifiedChapterDetails.codingQuestionDetails = codingProblemDetails;
         } else if (chapterDetails[0].topicId == 7) {
           const formDetails =
             chapterDetails[0].formQuestions !== null
               ? await db
-                  .select()
-                  .from(zuvyModuleForm)
-                  .where(
-                    sql`${inArray(zuvyModuleForm.id, Object.values(chapterDetails[0].formQuestions))}`,
-                  )
+                .select()
+                .from(zuvyModuleForm)
+                .where(
+                  sql`${inArray(zuvyModuleForm.id, Object.values(chapterDetails[0].formQuestions))}`,
+                )
               : [];
           modifiedChapterDetails.formQuestionDetails = formDetails;
         } else if (chapterDetails[0].topicId == 8) {
@@ -1303,14 +1304,14 @@ export class ContentService {
           const remainingQuizIds =
             editData.quizQuestions != null && earlierQuizIds.length > 0
               ? earlierQuizIds.filter(
-                  (questionId) => !editData.quizQuestions.includes(questionId),
-                )
+                (questionId) => !editData.quizQuestions.includes(questionId),
+              )
               : [];
           const toUpdateIds =
             editData.quizQuestions != null && earlierQuizIds.length > 0
               ? editData.quizQuestions.filter(
-                  (questionId) => !earlierQuizIds.includes(questionId),
-                )
+                (questionId) => !earlierQuizIds.includes(questionId),
+              )
               : editData.quizQuestions;
           if (remainingQuizIds.length > 0) {
             await db
@@ -1362,14 +1363,14 @@ export class ContentService {
           const remainingFormIds =
             editData.formQuestions != null && earlierFormIds.length > 0
               ? earlierFormIds.filter(
-                  (questionId) => !editData.formQuestions.includes(questionId),
-                )
+                (questionId) => !editData.formQuestions.includes(questionId),
+              )
               : [];
           const toUpdateIds =
             editData.formQuestions != null && earlierFormIds.length > 0
               ? editData.formQuestions.filter(
-                  (questionId) => !earlierFormIds.includes(questionId),
-                )
+                (questionId) => !earlierFormIds.includes(questionId),
+              )
               : editData.formQuestions;
           if (remainingFormIds.length > 0) {
             let updateModuleForm: any = {
@@ -1473,7 +1474,7 @@ export class ContentService {
       }
       if (
         assessmentBody.weightageCodingQuestions +
-          assessmentBody.weightageMcqQuestions !=
+        assessmentBody.weightageMcqQuestions !=
         100
       ) {
         throw {
@@ -1609,14 +1610,14 @@ export class ContentService {
         let existingOpenEndedQuestionIds =
           OutsourseOpenEndedQuestions.length > 0
             ? OutsourseOpenEndedQuestions.map(
-                (q) => q.openEndedQuestionId,
-              ).filter((id) => id !== null)
+              (q) => q.openEndedQuestionId,
+            ).filter((id) => id !== null)
             : [];
         let existingCodingQuestionIds =
           OutsourseCodingQuestions.length > 0
             ? OutsourseCodingQuestions.map((q) => q.codingQuestionId).filter(
-                (id) => id !== null,
-              )
+              (id) => id !== null,
+            )
             : [];
 
         let quizIdsToDelete = existingQuizIds.filter(
@@ -2224,17 +2225,17 @@ export class ContentService {
       // First get the quiz IDs that match the search term
       const matchingQuizIds = searchTerm
         ? await db.query.zuvyModuleQuizVariants
-            .findMany({
-              columns: {
-                quizId: true,
-              },
-              where: (variants, { and, eq }) =>
-                and(
-                  eq(variants.variantNumber, 1),
-                  sql`LOWER(${variants.question}) ~ ${sql.raw(`'\\m${searchTerm.toLowerCase()}'`)}`,
-                ),
-            })
-            .then((results) => results.map((r) => r.quizId))
+          .findMany({
+            columns: {
+              quizId: true,
+            },
+            where: (variants, { and, eq }) =>
+              and(
+                eq(variants.variantNumber, 1),
+                sql`LOWER(${variants.question}) ~ ${sql.raw(`'\\m${searchTerm.toLowerCase()}'`)}`,
+              ),
+          })
+          .then((results) => results.map((r) => r.quizId))
         : null;
 
       // Add the quiz ID condition if we have search results
@@ -2560,9 +2561,9 @@ export class ContentService {
         deletedQuestions =
           remainingIds.length > 0
             ? await db
-                .delete(zuvyModuleQuiz)
-                .where(sql`${inArray(zuvyModuleQuiz.id, remainingIds)}`)
-                .returning()
+              .delete(zuvyModuleQuiz)
+              .where(sql`${inArray(zuvyModuleQuiz.id, remainingIds)}`)
+              .returning()
             : [];
         if (deletedQuestions.length > 0) {
           return {
@@ -2617,9 +2618,9 @@ export class ContentService {
         deletedQuestions =
           remainingIds.length > 0
             ? await db
-                .delete(zuvyCodingQuestions)
-                .where(sql`${inArray(zuvyCodingQuestions.id, remainingIds)}`)
-                .returning()
+              .delete(zuvyCodingQuestions)
+              .where(sql`${inArray(zuvyCodingQuestions.id, remainingIds)}`)
+              .returning()
             : [];
         if (deletedQuestions.length > 0) {
           return {
@@ -2677,9 +2678,9 @@ export class ContentService {
         deletedQuestions =
           remainingIds.length > 0
             ? await db
-                .delete(zuvyOpenEndedQuestions)
-                .where(sql`${inArray(zuvyOpenEndedQuestions.id, remainingIds)}`)
-                .returning()
+              .delete(zuvyOpenEndedQuestions)
+              .where(sql`${inArray(zuvyOpenEndedQuestions.id, remainingIds)}`)
+              .returning()
             : [];
         if (deletedQuestions.length > 0) {
           return {
@@ -3016,14 +3017,14 @@ export class ContentService {
         // PUBLISHED
         const startTime = assessment[0].startDatetime
           ? new Date(assessment[0].startDatetime).toLocaleString('en-US', {
-              year: 'numeric',
-              month: 'numeric',
-              day: 'numeric',
-              hour: '2-digit',
-              minute: '2-digit',
-              second: '2-digit',
-              hour12: true,
-            })
+            year: 'numeric',
+            month: 'numeric',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+            hour12: true,
+          })
           : 'Unknown';
         return {
           status: 'success',
