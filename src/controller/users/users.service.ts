@@ -44,7 +44,7 @@ export class UsersService {
     private readonly rbacService: RbacService,
     private readonly auditlogService: AuditlogService,
     private readonly authService: AuthService,
-  ) {}
+  ) { }
 
   /**
    * Fetch all users from the database and store them in a JSON file
@@ -109,9 +109,9 @@ export class UsersService {
           // Check if user with this email already exists
           const existingUser = userData.email
             ? await db
-                .select()
-                .from(users)
-                .where(eq(users.email, userData.email))
+              .select()
+              .from(users)
+              .where(eq(users.email, userData.email))
             : [];
 
           if (existingUser.length > 0) {
@@ -599,7 +599,7 @@ export class UsersService {
     }
   }
 
-  async updateUser(token, id: bigint, updateUserDto: UpdateUserDto) {
+  async updateUser(id: bigint, updateUserDto: UpdateUserDto) {
     try {
       return await db.transaction(async (tx) => {
         const currentTime = new Date().toISOString(); // ISO string format
@@ -675,22 +675,6 @@ export class UsersService {
               .values(rolesAssignData)
               .returning();
           }
-          // get the user token
-          const userToken = await db
-            .select({
-              accessToken: userTokens.accessToken
-            })
-            .from(userTokens)
-            .where(eq(userTokens.userId, Number(id)))
-            .limit(1);
-
-          const accessToken = userToken[0]?.accessToken;
-
-          if (!accessToken) {
-            throw new Error('No access token found for user');
-          }
-
-          const permissionsResult = await this.authService.logout(id, accessToken);
         }
 
         // Get updated user data with role
@@ -716,6 +700,9 @@ export class UsersService {
           )
           .where(eq(users.id, id));
 
+        // logout the user
+        await this.getUserAccessToken(id)
+
         return userWithRole;
       });
     } catch (error) {
@@ -723,6 +710,30 @@ export class UsersService {
     }
   }
 
+  async getUserAccessToken(id: bigint) {
+    try {
+      // get the user token
+        const userToken = await db
+          .select({
+            accessToken: userTokens.accessToken
+          })
+          .from(userTokens)
+          .where(eq(userTokens.userId, Number(id)))
+          .limit(1);
+
+        const accessToken = userToken[0]?.accessToken;
+
+        if (!accessToken) {
+          throw new Error('No access token found for user');
+        }
+
+        // logout the user
+        const permissionsResult = await this.authService.logout(id, accessToken);
+
+    } catch (error) {
+      throw error;
+    }
+  }
   async deleteUser(id: bigint): Promise<any> {
     try {
       // delete the user by id in zuvyUserRolesAssigned table
@@ -733,6 +744,10 @@ export class UsersService {
       if (deletedUser.length === 0) {
         throw new NotFoundException(`User with ID ${id} not found`);
       }
+
+      // logout the user
+      await this.getUserAccessToken(id)
+
       // send the response
       return {
         message: 'User deleted successfully',
