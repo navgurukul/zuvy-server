@@ -1311,8 +1311,8 @@ CREATE TABLE IF NOT EXISTS "main"."user_tokens" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"user_id" integer NOT NULL,
 	"user_email" varchar(255) NOT NULL,
-	"access_token" varchar(255) NOT NULL,
-	"refresh_token" varchar(255) NOT NULL,
+	"access_token" varchar(300) NOT NULL,
+	"refresh_token" varchar(300) NOT NULL,
 	CONSTRAINT "main_user_tokens_user_id_unique" UNIQUE("user_id"),
 	CONSTRAINT "main_user_tokens_user_email_unique" UNIQUE("user_email")
 );

@@ -700,6 +700,8 @@ export class UsersService {
           )
           .where(eq(users.id, id));
 
+        // check the user is exsist or not in user Token table
+        // await this.authService.storeUserTokens(id, )
         // logout the user
         await this.getUserAccessToken(id)
 

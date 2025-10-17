@@ -240,6 +240,7 @@ export class AuthService {
   async storeUserTokens(userId: bigint, userEmail: string, accessToken: string, refreshToken: string) {
     try {
       // Check if tokens already exist for this user
+      let setUserToken;
       const existingTokens = await db
         .select()
         .from(userTokens)
@@ -247,24 +248,39 @@ export class AuthService {
 
       if (existingTokens.length > 0) {
         // Update existing tokens
-        await db
+        setUserToken = await db
           .update(userTokens)
           .set({
             accessToken: accessToken,
             refreshToken: refreshToken,
           })
-          .where(eq(userTokens.userId, Number(userId)));
+          .where(eq(userTokens.userId, Number(userId)))
+          .returning();
       } else {
         // Insert new tokens
-        await db.insert(userTokens).values({
-          userId: Number(userId),
-          userEmail: userEmail,
-          accessToken: accessToken,
-          refreshToken: refreshToken,
-        });
+        setUserToken = await db
+          .insert(userTokens)
+          .values({
+            userId: Number(userId),
+            userEmail: userEmail,
+            accessToken: accessToken,
+            refreshToken: refreshToken,
+          })
+          .returning();
       }
+      console.log("set user tokens", setUserToken)
+      return { message: 'Successfully store the user token' };
     } catch (error) {
       console.error('Failed to store user tokens:', error);
+      console.error('Error details:', {
+        userId: Number(userId),
+        userEmail,
+        accessTokenLength: accessToken.length,
+        refreshTokenLength: refreshToken.length,
+        errorName: error.name,
+        errorMessage: error.message,
+        errorStack: error.stack
+      });
       throw new Error('Failed to store authentication tokens');
     }
   }
@@ -284,7 +300,7 @@ export class AuthService {
       await db
         .delete(userTokens)
         .where(eq(userTokens.userId, Number(userId)));
-        
+
       return { message: 'Successfully logged out' };
     } catch (error) {
       throw new UnauthorizedException('Invalid token');

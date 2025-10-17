@@ -958,8 +958,8 @@ export const userTokens = main.table(
     userEmail: varchar('user_email', { length: 255 })
       .notNull()
       .references(() => users.email),
-    accessToken: varchar('access_token', { length: 255 }).notNull(),
-    refreshToken: varchar('refresh_token', { length: 255 }).notNull(),
+    accessToken: varchar('access_token', { length: 300 }).notNull(),
+    refreshToken: varchar('refresh_token', { length: 300 }).notNull(),
   },
   (table) => {
     return {
