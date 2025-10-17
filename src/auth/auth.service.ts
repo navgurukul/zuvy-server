@@ -12,6 +12,7 @@ import {
 } from '../../drizzle/schema';
 import { eq, inArray } from 'drizzle-orm';
 import { OAuth2Client } from 'google-auth-library';
+import { UserTokensService } from 'src/user-tokens/user-tokens.service';
 let { GOOGLE_CLIENT_ID, GOOGLE_SECRET, GOOGLE_REDIRECT, JWT_SECRET_KEY } =
   process.env;
 // import { Role } from '../rbac/utility';
@@ -21,7 +22,10 @@ export class AuthService {
   private readonly logger = new Logger(AuthService.name);
   private readonly googleAuthClient: OAuth2Client;
 
-  constructor(private jwtService: JwtService) {
+  constructor(
+    private jwtService: JwtService,
+    private readonly userTokenService: UserTokensService,
+  ) {
     const clientId = process.env.GOOGLE_CLIENT_ID;
     this.googleAuthClient = new OAuth2Client(clientId);
   }
@@ -204,8 +208,12 @@ export class AuthService {
         expiresIn: '7d',
       });
 
-      // store the access and refresh tokens in userToken table.
-      await this.storeUserTokens(user.id, user.email, access_token, refresh_token);
+      await this.userTokenService.upsertToken({
+        userId: Number(user.id),
+        userEmail: user.email,
+        accessToken: access_token,
+        refreshToken: refresh_token,
+      });
 
       return {
         access_token,
@@ -237,53 +245,6 @@ export class AuthService {
     }
   }
 
-  async storeUserTokens(userId: bigint, userEmail: string, accessToken: string, refreshToken: string) {
-    try {
-      // Check if tokens already exist for this user
-      let setUserToken;
-      const existingTokens = await db
-        .select()
-        .from(userTokens)
-        .where(eq(userTokens.userId, Number(userId)));
-
-      if (existingTokens.length > 0) {
-        // Update existing tokens
-        setUserToken = await db
-          .update(userTokens)
-          .set({
-            accessToken: accessToken,
-            refreshToken: refreshToken,
-          })
-          .where(eq(userTokens.userId, Number(userId)))
-          .returning();
-      } else {
-        // Insert new tokens
-        setUserToken = await db
-          .insert(userTokens)
-          .values({
-            userId: Number(userId),
-            userEmail: userEmail,
-            accessToken: accessToken,
-            refreshToken: refreshToken,
-          })
-          .returning();
-      }
-      console.log("set user tokens", setUserToken)
-      return { message: 'Successfully store the user token' };
-    } catch (error) {
-      console.error('Failed to store user tokens:', error);
-      console.error('Error details:', {
-        userId: Number(userId),
-        userEmail,
-        accessTokenLength: accessToken.length,
-        refreshTokenLength: refreshToken.length,
-        errorName: error.name,
-        errorMessage: error.message,
-        errorStack: error.stack
-      });
-      throw new Error('Failed to store authentication tokens');
-    }
-  }
   async logout(userId: bigint, token: string) {
     try {
       // Decode token to get expiration
@@ -296,10 +257,6 @@ export class AuthService {
         userId: BigInt(userId),
         expiresAt: new Date(expiresAt),
       });
-
-      await db
-        .delete(userTokens)
-        .where(eq(userTokens.userId, Number(userId)));
 
       return { message: 'Successfully logged out' };
     } catch (error) {
@@ -370,7 +327,12 @@ export class AuthService {
         userId: payload.sub,
       });
 
-      await this.storeUserTokens(user.id, user.email, newAccessToken, newRefreshToken);
+      await this.userTokenService.upsertToken({
+        userId: Number(user.id),
+        userEmail: user.email,
+        accessToken: newAccessToken,
+        refreshToken: newRefreshToken,
+      });
 
       return {
         access_token: newAccessToken,

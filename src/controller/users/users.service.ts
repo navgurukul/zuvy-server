@@ -28,11 +28,10 @@ import {
 } from './dto/user-role.dto';
 import { STATUS_CODES } from 'src/helpers';
 import { ResourceList } from 'src/rbac/utility';
-import { RbacAllocPermsService } from 'src/rbac/rbac.alloc-perms.service';
 import { RbacService } from 'src/rbac/rbac.service';
-import { CreateAuditlogDto } from 'src/auditlog/dto/create-auditlog.dto';
 import { AuditlogService } from 'src/auditlog/auditlog.service';
 import { AuthService } from 'src/auth/auth.service';
+import { UserTokensService } from 'src/user-tokens/user-tokens.service';
 
 @Injectable()
 export class UsersService {
@@ -44,7 +43,8 @@ export class UsersService {
     private readonly rbacService: RbacService,
     private readonly auditlogService: AuditlogService,
     private readonly authService: AuthService,
-  ) { }
+    private readonly userTokenService: UserTokensService,
+  ) {}
 
   /**
    * Fetch all users from the database and store them in a JSON file
@@ -109,9 +109,9 @@ export class UsersService {
           // Check if user with this email already exists
           const existingUser = userData.email
             ? await db
-              .select()
-              .from(users)
-              .where(eq(users.email, userData.email))
+                .select()
+                .from(users)
+                .where(eq(users.email, userData.email))
             : [];
 
           if (existingUser.length > 0) {
@@ -700,10 +700,8 @@ export class UsersService {
           )
           .where(eq(users.id, id));
 
-        // check the user is exsist or not in user Token table
-        // await this.authService.storeUserTokens(id, )
-        // logout the user
-        await this.getUserAccessToken(id)
+        const { data } = await this.userTokenService.getUserTokens(id);
+        await this.authService.logout(id, data['accessToken']);
 
         return userWithRole;
       });
@@ -712,30 +710,6 @@ export class UsersService {
     }
   }
 
-  async getUserAccessToken(id: bigint) {
-    try {
-      // get the user token
-        const userToken = await db
-          .select({
-            accessToken: userTokens.accessToken
-          })
-          .from(userTokens)
-          .where(eq(userTokens.userId, Number(id)))
-          .limit(1);
-
-        const accessToken = userToken[0]?.accessToken;
-
-        if (!accessToken) {
-          throw new Error('No access token found for user');
-        }
-
-        // logout the user
-        const permissionsResult = await this.authService.logout(id, accessToken);
-
-    } catch (error) {
-      throw error;
-    }
-  }
   async deleteUser(id: bigint): Promise<any> {
     try {
       // delete the user by id in zuvyUserRolesAssigned table
@@ -747,8 +721,12 @@ export class UsersService {
         throw new NotFoundException(`User with ID ${id} not found`);
       }
 
-      // logout the user
-      await this.getUserAccessToken(id)
+      const { data } = await this.userTokenService.deleteToken({
+        userId: Number(id),
+      });
+
+      //logout
+      await this.authService.logout(id, data['accessToken']);
 
       // send the response
       return {
