@@ -1866,7 +1866,8 @@ export class BootcampService {
           totalAttendance,
         },
       };
-    } catch (err) {
+    }
+     catch (err) {
       return {
         status: 'error',
         message: err.message,
