@@ -1688,12 +1688,30 @@ export class BootcampService {
     status: string,
   ) {
     try {
+      const user = await db
+        .select({
+          id: users.id,
+          email: users.email,
+        })
+
+        .from(users)
+        .where(and(eq(users.id, BigInt(userId))));
+
+      if (!user.length) {
+        return {
+          status: 'error',
+          message: 'User not found',
+          code: 404,
+        };
+      }
+
       // Validate session exists and belongs to the bootcamp
       const sessions = await db
         .select({
           id: zuvySessions.id,
           bootcampId: zuvySessions.bootcampId,
           batchId: zuvySessions.batchId,
+          meetingId: zuvySessions.meetingId,
         })
         .from(zuvySessions)
         .where(
@@ -1774,6 +1792,37 @@ export class BootcampService {
                       ${new Date().toISOString().split('T')[0]}, ${AttendanceStatus.PRESENT})`,
         );
       }
+
+      const allStudentsRecord = await db
+        .select({
+          meetingId: zuvyStudentAttendance.meetingId,
+          attendance: zuvyStudentAttendance.attendance,
+        })
+        .from(zuvyStudentAttendance)
+        .where(eq(zuvyStudentAttendance.meetingId, sessions[0].meetingId));
+
+      if (!allStudentsRecord.length) {
+        return {
+          status: 'error',
+          message: 'Students Records not found for this session',
+          code: 404,
+        };
+      }
+
+      const record = allStudentsRecord[0];
+      const { attendance }: { attendance: any } = record;
+
+      const updatedAttendance = attendance.map((entry: any) =>
+        entry.email === user[0].email
+          ? { ...entry, attendance: status }
+          : entry,
+      );
+
+      // update the record in DB
+      await db
+        .update(zuvyStudentAttendance)
+        .set({ attendance: updatedAttendance })
+        .where(eq(zuvyStudentAttendance.meetingId, record.meetingId));
 
       // Recompute total attendance count for the user (count only 'present' records)
       const presentCount = await db
