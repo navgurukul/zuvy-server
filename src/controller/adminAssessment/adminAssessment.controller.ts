@@ -60,7 +60,9 @@ export class AdminAssessmentController {
     @Param('bootcamp_id') bootcampID: number,
     @Query('searchAssessment') searchAssessment: string,
   ) {
+    const roleName = req.user[0]?.roles;
     return this.adminAssessmentService.getBootcampAssessment(
+      roleName,
       bootcampID,
       searchAssessment,
     );
@@ -204,8 +206,11 @@ export class AdminAssessmentController {
     @Query('searchVideos') searchVideos: string,
     @Query('limit') limit: number,
     @Query('offset') offSet: number,
+    @Req() req,
   ) {
+    const roleName = req.user[0]?.roles;
     return this.adminAssessmentService.getBootcampModuleCompletion(
+      roleName,
       bootcampID,
       searchVideos,
       limit,

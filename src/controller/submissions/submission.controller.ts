@@ -25,7 +25,16 @@ import {
   ApiQuery,
 } from '@nestjs/swagger';
 import { ApiBearerAuth } from '@nestjs/swagger';
-import { InstructorFeedbackDto, PatchOpenendedQuestionDto, CreateOpenendedQuestionDto, SubmissionassessmentDto, StartAssessmentDto, OpenEndedQuestionSubmissionDtoList, QuizSubmissionDtoList, PropertingPutBody } from './dto/submission.dto';
+import {
+  InstructorFeedbackDto,
+  PatchOpenendedQuestionDto,
+  CreateOpenendedQuestionDto,
+  SubmissionassessmentDto,
+  StartAssessmentDto,
+  OpenEndedQuestionSubmissionDtoList,
+  QuizSubmissionDtoList,
+  PropertingPutBody,
+} from './dto/submission.dto';
 import { ErrorResponse, SuccessResponse } from 'src/errorHandler/handler';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 
@@ -41,7 +50,7 @@ import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 @UseGuards(JwtAuthGuard)
 @ApiBearerAuth('JWT-auth')
 export class SubmissionController {
-  constructor(private submissionService: SubmissionService) { }
+  constructor(private submissionService: SubmissionService) {}
 
   @Get('/submissionsOfPractiseProblems/:bootcampId')
   @ApiOperation({ summary: 'Get the submission by bootcampId' })
@@ -56,14 +65,14 @@ export class SubmissionController {
     required: false,
     type: String,
     description: 'Field to order by (submittedDate, percentage, name, email)',
-    enum: ['submittedDate', 'percentage', 'name', 'email']
+    enum: ['submittedDate', 'percentage', 'name', 'email'],
   })
   @ApiQuery({
     name: 'orderDirection',
     required: false,
     type: String,
     description: 'Order direction (asc/desc)',
-    enum: ['asc', 'desc']
+    enum: ['asc', 'desc'],
   })
   @ApiQuery({
     name: 'submittedDateStart',
@@ -77,23 +86,83 @@ export class SubmissionController {
     type: String,
     description: 'End date for submittedDate range (YYYY-MM-DD)',
   })
-
-  async getChapterTracking(@Param('bootcampId') bootcampId: number, @Query('searchPractiseProblem') searchProblem: string) {
-    return this.submissionService.getSubmissionOfPractiseProblem(bootcampId, searchProblem);
+  async getChapterTracking(
+    @Param('bootcampId') bootcampId: number,
+    @Query('searchPractiseProblem') searchProblem: string,
+    @Req() req,
+  ) {
+    const roleName = req.user[0]?.roles;
+    return this.submissionService.getSubmissionOfPractiseProblem(
+      roleName,
+      bootcampId,
+      searchProblem,
+    );
   }
 
   @Get('/practiseProblemStatus/:moduleId')
   @ApiOperation({ summary: 'Get the status of practise Problems' })
-  @ApiQuery({ name: 'chapterId', required: true, type: Number, description: 'chapter id' })
-  @ApiQuery({ name: 'questionId', required: true, type: Number, description: 'question Id' })
-  @ApiQuery({ name: 'batchId', required: false, type: Number, description: 'Batch id (optional)' })
-  @ApiQuery({ name: 'limit', required: false, type: Number, description: 'limit (optional)' })
-  @ApiQuery({ name: 'offset', required: false, type: Number, description: 'offset (optional)' })
-  @ApiQuery({ name: 'searchStudent', required: false, type: String, description: 'Search by name or email' })
-  @ApiQuery({ name: 'orderBy', required: false, type: String, description: 'Field to order by (submittedDate, percentage, name, email)', enum: ['submittedDate', 'percentage', 'name', 'email'] })
-  @ApiQuery({ name: 'orderDirection', required: false, type: String, description: 'Order direction (asc/desc)', enum: ['asc', 'desc'] })
-  @ApiQuery({ name: 'submittedDateStart', required: false, type: String, description: 'Start date for submittedDate range (YYYY-MM-DD)' })
-  @ApiQuery({ name: 'submittedDateEnd', required: false, type: String, description: 'End date for submittedDate range (YYYY-MM-DD)' })
+  @ApiQuery({
+    name: 'chapterId',
+    required: true,
+    type: Number,
+    description: 'chapter id',
+  })
+  @ApiQuery({
+    name: 'questionId',
+    required: true,
+    type: Number,
+    description: 'question Id',
+  })
+  @ApiQuery({
+    name: 'batchId',
+    required: false,
+    type: Number,
+    description: 'Batch id (optional)',
+  })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    type: Number,
+    description: 'limit (optional)',
+  })
+  @ApiQuery({
+    name: 'offset',
+    required: false,
+    type: Number,
+    description: 'offset (optional)',
+  })
+  @ApiQuery({
+    name: 'searchStudent',
+    required: false,
+    type: String,
+    description: 'Search by name or email',
+  })
+  @ApiQuery({
+    name: 'orderBy',
+    required: false,
+    type: String,
+    description: 'Field to order by (submittedDate, percentage, name, email)',
+    enum: ['submittedDate', 'percentage', 'name', 'email'],
+  })
+  @ApiQuery({
+    name: 'orderDirection',
+    required: false,
+    type: String,
+    description: 'Order direction (asc/desc)',
+    enum: ['asc', 'desc'],
+  })
+  @ApiQuery({
+    name: 'submittedDateStart',
+    required: false,
+    type: String,
+    description: 'Start date for submittedDate range (YYYY-MM-DD)',
+  })
+  @ApiQuery({
+    name: 'submittedDateEnd',
+    required: false,
+    type: String,
+    description: 'End date for submittedDate range (YYYY-MM-DD)',
+  })
   async getStatusOfPractiseProblem(
     @Param('moduleId') moduleId: number,
     @Query('chapterId') chapterId: number,
@@ -105,7 +174,7 @@ export class SubmissionController {
     @Query('orderBy') orderBy?: string,
     @Query('orderDirection') orderDirection?: string,
     @Query('submittedDateStart') submittedDateStart?: string,
-    @Query('submittedDateEnd') submittedDateEnd?: string
+    @Query('submittedDateEnd') submittedDateEnd?: string,
   ) {
     return this.submissionService.practiseProblemStatusOfStudents(
       questionId,
@@ -118,7 +187,7 @@ export class SubmissionController {
       orderBy,
       orderDirection,
       submittedDateStart,
-      submittedDateEnd
+      submittedDateEnd,
     );
   }
 
@@ -138,14 +207,14 @@ export class SubmissionController {
     required: false,
     type: String,
     description: 'Field to order by (submittedDate, percentage, name, email)',
-    enum: ['submittedDate', 'percentage', 'name', 'email']
+    enum: ['submittedDate', 'percentage', 'name', 'email'],
   })
   @ApiQuery({
     name: 'orderDirection',
     required: false,
     type: String,
     description: 'Order direction (asc/desc)',
-    enum: ['asc', 'desc']
+    enum: ['asc', 'desc'],
   })
   @ApiQuery({
     name: 'submittedDateStart',
@@ -162,24 +231,36 @@ export class SubmissionController {
   async getAssessmentInfoBy(
     @Query('bootcampId') bootcampId: number,
     @Query('limit') limit: number,
-    @Query('offset') offset: number
+    @Query('offset') offset: number,
   ) {
-    return this.submissionService.getAssessmentInfoBy(bootcampId, limit, offset);
+    return this.submissionService.getAssessmentInfoBy(
+      bootcampId,
+      limit,
+      offset,
+    );
   }
 
-
   @Post('/openended/questions')
-  async submissionOpenended(@Body() data: CreateOpenendedQuestionDto, @Req() req) {
+  async submissionOpenended(
+    @Body() data: CreateOpenendedQuestionDto,
+    @Req() req,
+  ) {
     return this.submissionService.submissionOpenended(data, req.user[0].id);
   }
 
   @Patch('/openended/questions')
-  async patchOpenendedQuestion(@Body() data: PatchOpenendedQuestionDto, @Query('id') id: number) {
+  async patchOpenendedQuestion(
+    @Body() data: PatchOpenendedQuestionDto,
+    @Query('id') id: number,
+  ) {
     return this.submissionService.patchOpenendedQuestion(data, id);
   }
 
   @Post('/instructor/feedback')
-  async instructorFeedback(@Body() data: InstructorFeedbackDto, @Query('id') id: number) {
+  async instructorFeedback(
+    @Body() data: InstructorFeedbackDto,
+    @Query('id') id: number,
+  ) {
     return this.submissionService.instructorFeedback(data, id);
   }
 
@@ -189,16 +270,29 @@ export class SubmissionController {
   }
 
   @Patch('/assessment/submit')
-
-  async assessmentSubmission(@Body() data: SubmissionassessmentDto, @Query('assessmentSubmissionId') assessmentSubmissionId: number, @Req() req,
-    @Res() res
+  async assessmentSubmission(
+    @Body() data: SubmissionassessmentDto,
+    @Query('assessmentSubmissionId') assessmentSubmissionId: number,
+    @Req() req,
+    @Res() res,
   ) {
     try {
-      let [err, success] = await this.submissionService.assessmentSubmission(data, assessmentSubmissionId, req.user[0].id);
+      let [err, success] = await this.submissionService.assessmentSubmission(
+        data,
+        assessmentSubmissionId,
+        req.user[0].id,
+      );
       if (err) {
-        return ErrorResponse.BadRequestException(err.message, err.statusCode).send(res)
+        return ErrorResponse.BadRequestException(
+          err.message,
+          err.statusCode,
+        ).send(res);
       }
-      return new SuccessResponse(success.message, success.statusCode, success.data).send(res);
+      return new SuccessResponse(
+        success.message,
+        success.statusCode,
+        success.data,
+      ).send(res);
     } catch (error) {
       return ErrorResponse.BadRequestException(error.message).send(res);
     }
@@ -217,14 +311,14 @@ export class SubmissionController {
     required: false,
     type: String,
     description: 'Field to order by (submittedDate, percentage, name, email)',
-    enum: ['submittedDate', 'percentage', 'name', 'email']
+    enum: ['submittedDate', 'percentage', 'name', 'email'],
   })
   @ApiQuery({
     name: 'orderDirection',
     required: false,
     type: String,
     description: 'Order direction (asc/desc)',
-    enum: ['asc', 'desc']
+    enum: ['asc', 'desc'],
   })
   @ApiQuery({
     name: 'submittedDateStart',
@@ -238,8 +332,17 @@ export class SubmissionController {
     type: String,
     description: 'End date for submittedDate range (YYYY-MM-DD)',
   })
-  async getProjectSubmissions(@Param('bootcampId') bootcampId: number, @Query('searchProject') projectName: string) {
-    return this.submissionService.getAllProjectSubmissions(bootcampId, projectName);
+  async getProjectSubmissions(
+    @Param('bootcampId') bootcampId: number,
+    @Query('searchProject') projectName: string,
+    @Req() req,
+  ) {
+    const roleName = req.user[0]?.roles;
+    return this.submissionService.getAllProjectSubmissions(
+      roleName,
+      bootcampId,
+      projectName,
+    );
   }
 
   @Get('/projects/students')
@@ -264,14 +367,14 @@ export class SubmissionController {
     required: false,
     type: String,
     description: 'Field to order by (submittedDate, percentage, name, email)',
-    enum: ['submittedDate', 'percentage', 'name', 'email']
+    enum: ['submittedDate', 'percentage', 'name', 'email'],
   })
   @ApiQuery({
     name: 'orderDirection',
     required: false,
     type: String,
     description: 'Order direction (asc/desc)',
-    enum: ['asc', 'desc']
+    enum: ['asc', 'desc'],
   })
   @ApiQuery({
     name: 'submittedDateStart',
@@ -290,41 +393,72 @@ export class SubmissionController {
     @Query('bootcampId') bootcampId: number,
     @Query('limit') limit: number,
     @Query('offset') offset: number,
-    @Query('searchStudent') searchStudent: string
+    @Query('searchStudent') searchStudent: string,
   ) {
-    return this.submissionService.getUserDetailsForProject(projectId, bootcampId, limit, offset, searchStudent);
+    return this.submissionService.getUserDetailsForProject(
+      projectId,
+      bootcampId,
+      limit,
+      offset,
+      searchStudent,
+    );
   }
 
   @Get('/projectDetail/:userId')
   async projectStudentsDetails(
     @Query('projectId') projectId: number,
     @Query('bootcampId') bootcampId: number,
-    @Param('userId') userId: number
+    @Param('userId') userId: number,
   ) {
-    return this.submissionService.getProjectDetailsForAUser(projectId, userId, bootcampId);
+    return this.submissionService.getProjectDetailsForAUser(
+      projectId,
+      userId,
+      bootcampId,
+    );
   }
 
   @Patch('/quiz/assessmentSubmissionId=:assessmentSubmissionId')
-  async submitQuiz(@Body() QuizSubmission: QuizSubmissionDtoList,
+  async submitQuiz(
+    @Body() QuizSubmission: QuizSubmissionDtoList,
     @Param('assessmentSubmissionId') assessmentSubmissionId: number,
     @Query('assessmentOutsourseId') assessmentOutsourseId: number,
     @Req() req,
-    @Res() res
+    @Res() res,
   ) {
     try {
-      let [err, success] = await this.submissionService.submitQuiz(QuizSubmission.quizSubmissionDto, req.user[0].id, assessmentSubmissionId, assessmentOutsourseId);
+      let [err, success] = await this.submissionService.submitQuiz(
+        QuizSubmission.quizSubmissionDto,
+        req.user[0].id,
+        assessmentSubmissionId,
+        assessmentOutsourseId,
+      );
       if (err) {
-        return ErrorResponse.BadRequestException(err.message, err.statusCode).send(res)
+        return ErrorResponse.BadRequestException(
+          err.message,
+          err.statusCode,
+        ).send(res);
       }
-      return new SuccessResponse(success.message, success.statusCode, success.data).send(res);
+      return new SuccessResponse(
+        success.message,
+        success.statusCode,
+        success.data,
+      ).send(res);
     } catch (error) {
       return ErrorResponse.BadRequestException(error.message).send(res);
     }
   }
 
-  @Patch("/openended/assessmentSubmissionId=:assessmentSubmissionId")
-  async submitOpenended(@Body() OpenEndedQuestionSubmission: OpenEndedQuestionSubmissionDtoList, @Param('assessmentSubmissionId') assessmentSubmissionId: number, @Req() req) {
-    return this.submissionService.submitOpenEndedQuestion(OpenEndedQuestionSubmission.openEndedQuestionSubmissionDto, req.user[0].id, assessmentSubmissionId);
+  @Patch('/openended/assessmentSubmissionId=:assessmentSubmissionId')
+  async submitOpenended(
+    @Body() OpenEndedQuestionSubmission: OpenEndedQuestionSubmissionDtoList,
+    @Param('assessmentSubmissionId') assessmentSubmissionId: number,
+    @Req() req,
+  ) {
+    return this.submissionService.submitOpenEndedQuestion(
+      OpenEndedQuestionSubmission.openEndedQuestionSubmissionDto,
+      req.user[0].id,
+      assessmentSubmissionId,
+    );
   }
 
   @Get('/submissionsOfForms/:bootcampId')
@@ -352,14 +486,14 @@ export class SubmissionController {
     required: false,
     type: String,
     description: 'Field to order by (submittedDate, percentage, name, email)',
-    enum: ['submittedDate', 'percentage', 'name', 'email']
+    enum: ['submittedDate', 'percentage', 'name', 'email'],
   })
   @ApiQuery({
     name: 'orderDirection',
     required: false,
     type: String,
     description: 'Order direction (asc/desc)',
-    enum: ['asc', 'desc']
+    enum: ['asc', 'desc'],
   })
   @ApiQuery({
     name: 'submittedDateStart',
@@ -375,24 +509,79 @@ export class SubmissionController {
   })
   async getSubmissionOfForms(
     @Param('bootcampId') bootcampId: number,
+    @Req() req,
     @Query('searchForm') searchForm?: string,
     @Query('limit') limit?: number,
-    @Query('offset') offset?: number
+    @Query('offset') offset?: number,
   ) {
-    return this.submissionService.getSubmissionOfForms(bootcampId, searchForm, limit, offset);
+    const roleName = req.user[0]?.roles;
+    return this.submissionService.getSubmissionOfForms(
+      roleName,
+      bootcampId,
+      searchForm,
+      limit,
+      offset,
+    );
   }
 
   @Get('/formsStatus/:bootcampId/:moduleId')
   @ApiOperation({ summary: 'Get the status of forms' })
-  @ApiQuery({ name: 'chapterId', required: true, type: Number, description: 'chapter id' })
-  @ApiQuery({ name: 'batchId', required: false, type: Number, description: 'Batch id (optional)' })
-  @ApiQuery({ name: 'limit', required: false, type: Number, description: 'limit (optional)' })
-  @ApiQuery({ name: 'offset', required: false, type: Number, description: 'offset (optional)' })
-  @ApiQuery({ name: 'searchStudent', type: String, required: false, description: 'Search by student name or email' })
-  @ApiQuery({ name: 'orderBy', required: false, type: String, description: 'Field to order by (submittedDate, percentage, name, email)', enum: ['submittedDate', 'percentage', 'name', 'email'] })
-  @ApiQuery({ name: 'orderDirection', required: false, type: String, description: 'Order direction (asc/desc)', enum: ['asc', 'desc'] })
-  @ApiQuery({ name: 'submittedDateStart', required: false, type: String, description: 'Start date for submittedDate range (YYYY-MM-DD)' })
-  @ApiQuery({ name: 'submittedDateEnd', required: false, type: String, description: 'End date for submittedDate range (YYYY-MM-DD)' })
+  @ApiQuery({
+    name: 'chapterId',
+    required: true,
+    type: Number,
+    description: 'chapter id',
+  })
+  @ApiQuery({
+    name: 'batchId',
+    required: false,
+    type: Number,
+    description: 'Batch id (optional)',
+  })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    type: Number,
+    description: 'limit (optional)',
+  })
+  @ApiQuery({
+    name: 'offset',
+    required: false,
+    type: Number,
+    description: 'offset (optional)',
+  })
+  @ApiQuery({
+    name: 'searchStudent',
+    type: String,
+    required: false,
+    description: 'Search by student name or email',
+  })
+  @ApiQuery({
+    name: 'orderBy',
+    required: false,
+    type: String,
+    description: 'Field to order by (submittedDate, percentage, name, email)',
+    enum: ['submittedDate', 'percentage', 'name', 'email'],
+  })
+  @ApiQuery({
+    name: 'orderDirection',
+    required: false,
+    type: String,
+    description: 'Order direction (asc/desc)',
+    enum: ['asc', 'desc'],
+  })
+  @ApiQuery({
+    name: 'submittedDateStart',
+    required: false,
+    type: String,
+    description: 'Start date for submittedDate range (YYYY-MM-DD)',
+  })
+  @ApiQuery({
+    name: 'submittedDateEnd',
+    required: false,
+    type: String,
+    description: 'End date for submittedDate range (YYYY-MM-DD)',
+  })
   async getStatusOfForms(
     @Param('bootcampId') bootcampId: number,
     @Param('moduleId') moduleId: number,
@@ -404,7 +593,7 @@ export class SubmissionController {
     @Query('orderBy') orderBy?: string,
     @Query('orderDirection') orderDirection?: string,
     @Query('submittedDateStart') submittedDateStart?: string,
-    @Query('submittedDateEnd') submittedDateEnd?: string
+    @Query('submittedDateEnd') submittedDateEnd?: string,
   ) {
     return this.submissionService.formsStatusOfStudents(
       bootcampId,
@@ -417,7 +606,7 @@ export class SubmissionController {
       orderBy,
       orderDirection,
       submittedDateStart,
-      submittedDateEnd
+      submittedDateEnd,
     );
   }
 
@@ -431,7 +620,7 @@ export class SubmissionController {
     const res = await this.submissionService.getFormDetailsById(
       moduleId,
       chapterId,
-      userId
+      userId,
     );
     return res;
   }
@@ -449,14 +638,14 @@ export class SubmissionController {
     required: false,
     type: String,
     description: 'Field to order by (submittedDate, percentage, name, email)',
-    enum: ['submittedDate', 'percentage', 'name', 'email']
+    enum: ['submittedDate', 'percentage', 'name', 'email'],
   })
   @ApiQuery({
     name: 'orderDirection',
     required: false,
     type: String,
     description: 'Order direction (asc/desc)',
-    enum: ['asc', 'desc']
+    enum: ['asc', 'desc'],
   })
   @ApiQuery({
     name: 'submittedDateStart',
@@ -470,13 +659,31 @@ export class SubmissionController {
     type: String,
     description: 'End date for submittedDate range (YYYY-MM-DD)',
   })
-  async getAssignmentSubmission(@Param('bootcampId') bootcampId: number, @Query('searchAssignment') assignmentName: string, @Res() res) {
+  async getAssignmentSubmission(
+    @Param('bootcampId') bootcampId: number,
+    @Query('searchAssignment') assignmentName: string,
+    @Res() res,
+    @Req() req,
+  ) {
     try {
-      let [err, success] = await this.submissionService.getSubmissionOfAssignment(bootcampId, assignmentName)
+      const roleName = req.user[0]?.roles;
+      let [err, success] =
+        await this.submissionService.getSubmissionOfAssignment(
+          roleName,
+          bootcampId,
+          assignmentName,
+        );
       if (err) {
-        return ErrorResponse.BadRequestException(err.message, err.statusCode).send(res)
+        return ErrorResponse.BadRequestException(
+          err.message,
+          err.statusCode,
+        ).send(res);
       }
-      return new SuccessResponse(success.message, success.statusCode, success.data).send(res);
+      return new SuccessResponse(
+        success.message,
+        success.statusCode,
+        success.data,
+      ).send(res);
     } catch (error) {
       return ErrorResponse.BadRequestException(error.message).send(res);
     }
@@ -484,15 +691,62 @@ export class SubmissionController {
 
   @Get('/assignmentStatus')
   @ApiOperation({ summary: 'Get the status of assignment' })
-  @ApiQuery({ name: 'chapterId', required: true, type: Number, description: 'chapter id' })
-  @ApiQuery({ name: 'batchId', required: false, type: Number, description: 'Batch id (optional)' })
-  @ApiQuery({ name: 'limit', required: false, type: Number, description: 'limit (optional)' })
-  @ApiQuery({ name: 'offset', required: false, type: Number, description: 'offset (optional)' })
-  @ApiQuery({ name: 'searchStudent', required: false, type: String, description: 'Search by name or email' })
-  @ApiQuery({ name: 'orderBy', required: false, type: String, description: 'Field to order by (submittedDate, percentage, name, email)', enum: ['submittedDate', 'percentage', 'name', 'email'] })
-  @ApiQuery({ name: 'orderDirection', required: false, type: String, description: 'Order direction (asc/desc)', enum: ['asc', 'desc'] })
-  @ApiQuery({ name: 'submittedDateStart', required: false, type: String, description: 'Start date for submittedDate range (YYYY-MM-DD)' })
-  @ApiQuery({ name: 'submittedDateEnd', required: false, type: String, description: 'End date for submittedDate range (YYYY-MM-DD)' })
+  @ApiQuery({
+    name: 'chapterId',
+    required: true,
+    type: Number,
+    description: 'chapter id',
+  })
+  @ApiQuery({
+    name: 'batchId',
+    required: false,
+    type: Number,
+    description: 'Batch id (optional)',
+  })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    type: Number,
+    description: 'limit (optional)',
+  })
+  @ApiQuery({
+    name: 'offset',
+    required: false,
+    type: Number,
+    description: 'offset (optional)',
+  })
+  @ApiQuery({
+    name: 'searchStudent',
+    required: false,
+    type: String,
+    description: 'Search by name or email',
+  })
+  @ApiQuery({
+    name: 'orderBy',
+    required: false,
+    type: String,
+    description: 'Field to order by (submittedDate, percentage, name, email)',
+    enum: ['submittedDate', 'percentage', 'name', 'email'],
+  })
+  @ApiQuery({
+    name: 'orderDirection',
+    required: false,
+    type: String,
+    description: 'Order direction (asc/desc)',
+    enum: ['asc', 'desc'],
+  })
+  @ApiQuery({
+    name: 'submittedDateStart',
+    required: false,
+    type: String,
+    description: 'Start date for submittedDate range (YYYY-MM-DD)',
+  })
+  @ApiQuery({
+    name: 'submittedDateEnd',
+    required: false,
+    type: String,
+    description: 'End date for submittedDate range (YYYY-MM-DD)',
+  })
   async getStatusOfAssignment(
     @Query('chapterId') chapterId: number,
     @Query('batchId') batchId?: number,
@@ -503,24 +757,32 @@ export class SubmissionController {
     @Query('orderDirection') orderDirection?: string,
     @Query('submittedDateStart') submittedDateStart?: string,
     @Query('submittedDateEnd') submittedDateEnd?: string,
-    @Res() res
+    @Res() res,
   ) {
     try {
-      let [err, success] = await this.submissionService.assignmentStatusOfStudents(
-        chapterId,
-        batchId,
-        limit,
-        offset,
-        searchStudent,
-        orderBy,
-        orderDirection,
-        submittedDateStart,
-        submittedDateEnd
-      );
+      let [err, success] =
+        await this.submissionService.assignmentStatusOfStudents(
+          chapterId,
+          batchId,
+          limit,
+          offset,
+          searchStudent,
+          orderBy,
+          orderDirection,
+          submittedDateStart,
+          submittedDateEnd,
+        );
       if (err) {
-        return ErrorResponse.BadRequestException(err.message, err.statusCode).send(res)
+        return ErrorResponse.BadRequestException(
+          err.message,
+          err.statusCode,
+        ).send(res);
       }
-      return new SuccessResponse(success.message, success.statusCode, success.data).send(res);
+      return new SuccessResponse(
+        success.message,
+        success.statusCode,
+        success.data,
+      ).send(res);
     } catch (error) {
       return ErrorResponse.BadRequestException(error.message).send(res);
     }
@@ -531,46 +793,81 @@ export class SubmissionController {
   async getAssignmentDetailForAUser(
     @Query('chapterId') chapterId: number,
     @Query('userId') userId: number,
-    @Res() res
+    @Res() res,
   ) {
     try {
-      let [err, success] = await this.submissionService.getAssignmentSubmissionDetailForUser(
-        chapterId,
-        userId
-      );
+      let [err, success] =
+        await this.submissionService.getAssignmentSubmissionDetailForUser(
+          chapterId,
+          userId,
+        );
       if (err) {
-        return ErrorResponse.BadRequestException(err.message, err.statusCode).send(res)
+        return ErrorResponse.BadRequestException(
+          err.message,
+          err.statusCode,
+        ).send(res);
       }
-      return new SuccessResponse(success.message, success.statusCode, success.data).send(res);
+      return new SuccessResponse(
+        success.message,
+        success.statusCode,
+        success.data,
+      ).send(res);
     } catch (error) {
       return ErrorResponse.BadRequestException(error.message).send(res);
     }
   }
 
   // put api endpoint: assessment/properting
-  @Patch("/assessment/properting")
+  @Patch('/assessment/properting')
   @ApiOperation({ summary: 'Updating the assignment properting data' })
-  async submitProperting(@Body() propertingPutBody: PropertingPutBody, @Query('assessment_submission_id') assessmentSubmissionId: number, @Res() res) {
+  async submitProperting(
+    @Body() propertingPutBody: PropertingPutBody,
+    @Query('assessment_submission_id') assessmentSubmissionId: number,
+    @Res() res,
+  ) {
     try {
-      let [err, success] = await this.submissionService.submitProperting(assessmentSubmissionId, propertingPutBody);
+      let [err, success] = await this.submissionService.submitProperting(
+        assessmentSubmissionId,
+        propertingPutBody,
+      );
       if (err) {
-        return ErrorResponse.BadRequestException(err.message, err.statusCode).send(res)
+        return ErrorResponse.BadRequestException(
+          err.message,
+          err.statusCode,
+        ).send(res);
       }
-      return new SuccessResponse(success.message, success.statusCode, success.data).send(res);
+      return new SuccessResponse(
+        success.message,
+        success.statusCode,
+        success.data,
+      ).send(res);
     } catch (error) {
       return ErrorResponse.BadRequestException(error.message).send(res);
     }
   }
   //recalcOnlyMCQ
-  @Patch("/assessment/recalcOnlyMCQ")
+  @Patch('/assessment/recalcOnlyMCQ')
   @ApiOperation({ summary: 'Recalculating the MCQ score' })
-  async recalcAndFixMCQForAssessment(@Query('assessment_outsourse_id') assessmentOutsourseId: number, @Res() res) {
+  async recalcAndFixMCQForAssessment(
+    @Query('assessment_outsourse_id') assessmentOutsourseId: number,
+    @Res() res,
+  ) {
     try {
-      let [err, success] = await this.submissionService.recalcAndFixMCQForAssessment(assessmentOutsourseId);
+      let [err, success] =
+        await this.submissionService.recalcAndFixMCQForAssessment(
+          assessmentOutsourseId,
+        );
       if (err) {
-        return ErrorResponse.BadRequestException(err.message, err.statusCode).send(res)
+        return ErrorResponse.BadRequestException(
+          err.message,
+          err.statusCode,
+        ).send(res);
       }
-      return new SuccessResponse(success.message, success.statusCode, success.data).send(res);
+      return new SuccessResponse(
+        success.message,
+        success.statusCode,
+        success.data,
+      ).send(res);
     } catch (error) {
       return ErrorResponse.BadRequestException(error.message).send(res);
     }
@@ -579,53 +876,59 @@ export class SubmissionController {
   // Live session  submissions Tab admin side api
 
   @Get('livesession/zuvy_livechapter_submissions')
-
   @ApiQuery({
     name: 'bootcamp_id',
     required: true,
     type: String,
     description: 'Bootcamp Id',
   })
-
   @ApiQuery({
     name: 'searchTerm',
     required: false,
     type: String,
     description: 'Search by module or chapter name',
   })
-
   @ApiQuery({
     name: 'limit',
     required: false,
     type: String,
     description: 'Limit the number of results',
   })
-
   @ApiQuery({
     name: 'offset',
     required: false,
     type: String,
     description: 'Offset the results by this amount',
   })
-
-  @ApiOperation({ summary: 'Get chapter tracking data for Live sessions inside modules' })
+  @ApiOperation({
+    summary: 'Get chapter tracking data for Live sessions inside modules',
+  })
   async getLiveChapterSubmissions(
     @Query('bootcamp_id') bootcampId: number,
     @Query('searchTerm') searchTerm: string,
     @Query('limit') limit: number,
     @Query('offset') offset: number,
-    @Res() res
+    @Res() res,
   ) {
     try {
       // Service should return: { trackingData: [...], totalStudents: N }
-      const [err, result] = await this.submissionService.getLiveChapterSubmissions(bootcampId, searchTerm, limit, offset);
+      const [err, result] =
+        await this.submissionService.getLiveChapterSubmissions(
+          bootcampId,
+          searchTerm,
+          limit,
+          offset,
+        );
       if (err) {
-        return ErrorResponse.BadRequestException(err.message, err.statusCode).send(res);
+        return ErrorResponse.BadRequestException(
+          err.message,
+          err.statusCode,
+        ).send(res);
       }
       return new SuccessResponse(
         'Submission of live sessions for modules has been fetched',
         200,
-        result
+        result,
       ).send(res);
     } catch (error) {
       return ErrorResponse.BadRequestException(error.message).send(res);
@@ -634,43 +937,40 @@ export class SubmissionController {
 
   // Live session submissions session chapter id wise data
   @Get('livesession/zuvy_livechapter_student_submission/:module_chapter_id')
-  @ApiOperation({ summary: 'Get live session submission data for a module chapter (session view)' })
-
+  @ApiOperation({
+    summary:
+      'Get live session submission data for a module chapter (session view)',
+  })
   @ApiQuery({
     name: 'limit',
     required: false,
     type: String,
     description: 'Limit the number of results',
   })
-
   @ApiQuery({
     name: 'offset',
     required: false,
     type: String,
     description: 'Offset the results by this amount',
   })
-
   @ApiQuery({
     name: 'name',
     required: false,
     type: String,
     description: 'Filter by student name',
   })
-
   @ApiQuery({
     name: 'email',
     required: false,
     type: String,
     description: 'Filter by student email',
   })
-
   @ApiQuery({
     name: 'status',
     required: false,
     type: String,
     description: 'Filter by attendance status (present or absent)',
   })
-
   async getLiveChapterStudentSubmission(
     @Param('module_chapter_id') moduleChapterId: number,
     @Res() res,
@@ -678,17 +978,28 @@ export class SubmissionController {
     @Query('offset') offset?: number,
     @Query('name') name?: string,
     @Query('email') email?: string,
-    @Query('status') status?: 'present' | 'absent'
+    @Query('status') status?: 'present' | 'absent',
   ) {
     try {
-      const [err, result] = await this.submissionService.getLiveChapterStudentSubmission(moduleChapterId, limit, offset, name, email, status);
+      const [err, result] =
+        await this.submissionService.getLiveChapterStudentSubmission(
+          moduleChapterId,
+          limit,
+          offset,
+          name,
+          email,
+          status,
+        );
       if (err) {
-        return ErrorResponse.BadRequestException(err.message, err.statusCode).send(res);
+        return ErrorResponse.BadRequestException(
+          err.message,
+          err.statusCode,
+        ).send(res);
       }
       return new SuccessResponse(
         'Submission of live sessions for module chapter has been fetched',
         200,
-        result
+        result,
       ).send(res);
     } catch (error) {
       return ErrorResponse.BadRequestException(error.message).send(res);
