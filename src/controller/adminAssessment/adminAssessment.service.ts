@@ -609,6 +609,7 @@ Team Zuvy`;
         roleName,
         targetPermissions,
       );
+      result['permissions'] = grantedPermissions.permissions;
       //add ...grantedPermissions to the response by modifying minimum response structure
       return result;
     } catch (error) {

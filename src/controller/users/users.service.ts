@@ -32,6 +32,7 @@ import { RbacService } from 'src/rbac/rbac.service';
 import { AuditlogService } from 'src/auditlog/auditlog.service';
 import { AuthService } from 'src/auth/auth.service';
 import { UserTokensService } from 'src/user-tokens/user-tokens.service';
+import { bigint } from 'drizzle-orm/mysql-core';
 
 @Injectable()
 export class UsersService {
@@ -327,6 +328,15 @@ export class UsersService {
         const currentRoleDetails = await this.roleCheck(currentRoleId);
         const currentRoleName = (currentRoleDetails as any).rows?.[0]?.name;
         const actionUpdate = `${actorName} updated ${targetName}'s role from ${currentRoleName} to ${roleName}`;
+
+        const { data } = await this.userTokenService.getUserTokens(
+          BigInt(targetUserId),
+        );
+        await this.authService.logout(
+          BigInt(targetUserId),
+          data['accessToken'],
+        );
+
         const auditLog = await this.auditlogService.log('role_to_user', {
           actorUserId,
           targetUserId,
@@ -347,6 +357,12 @@ export class UsersService {
         RETURNING *`);
 
       const action = `${actorName} assigned role ${roleName} to ${targetName}`;
+
+      const { data } = await this.userTokenService.getUserTokens(
+        BigInt(targetUserId),
+      );
+      await this.authService.logout(BigInt(targetUserId), data['accessToken']);
+
       const auditLog = await this.auditlogService.log('role_to_user', {
         actorUserId,
         targetUserId,

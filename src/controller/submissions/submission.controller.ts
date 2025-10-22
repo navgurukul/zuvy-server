@@ -909,11 +909,14 @@ export class SubmissionController {
     @Query('limit') limit: number,
     @Query('offset') offset: number,
     @Res() res,
+    @Req() req,
   ) {
     try {
       // Service should return: { trackingData: [...], totalStudents: N }
+      const roleName = req.user[0]?.roles;
       const [err, result] =
         await this.submissionService.getLiveChapterSubmissions(
+          roleName,
           bootcampId,
           searchTerm,
           limit,

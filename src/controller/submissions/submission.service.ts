@@ -2410,6 +2410,7 @@ Zuvy LMS Team
   // Service function for Live session submissions admin side api
 
   async getLiveChapterSubmissions(
+    roleName,
     bootcampId: number,
     searchTerm?: string,
     limit?: number,
@@ -2469,7 +2470,23 @@ Zuvy LMS Team
       const filteredTrackingData = trackingData.filter(
         (course: any) => course.moduleChapterData.length > 0,
       );
-      return [null, { trackingData: filteredTrackingData, totalStudents }];
+      const targetPermissions = [
+        ResourceList.submission.read,
+        ResourceList.submission.download,
+        ResourceList.submission.re_attempt,
+      ];
+      const grantedPermissions = await this.rbacService.getAllPermissions(
+        roleName,
+        targetPermissions,
+      );
+      return [
+        null,
+        {
+          trackingData: filteredTrackingData,
+          totalStudents,
+          ...grantedPermissions,
+        },
+      ];
     } catch (err) {
       return [err, null];
     }
