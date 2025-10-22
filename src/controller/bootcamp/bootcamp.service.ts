@@ -492,7 +492,6 @@ export class BootcampService {
         .delete(zuvyStudentAttendanceRecords)
         .where(eq(zuvyStudentAttendanceRecords.bootcampId, id));
       await db.delete(zuvySessions).where(eq(zuvySessions.bootcampId, id));
-
       // Delete batches and enrollments
       await db.delete(zuvyBatches).where(eq(zuvyBatches.bootcampId, id));
       await db

@@ -1,5 +1,5 @@
 # # syntax=docker/dockerfile:1
-FROM node:20.10.0-alpine
+FROM mirror.gcr.io/library/node:20-alpine
 # Set the working directory in the container
 WORKDIR /app
 # Copy package.json and package-lock.json to the container

@@ -5,8 +5,8 @@ import {
   sansaarUserRoles,
   zuvyBatchEnrollments,
   zuvyStudentAttendance,
-  zuvySessions,
   zuvyStudentAttendanceRecords,
+  zuvySessions,
 } from '../../../drizzle/schema';
 import { db } from '../../db/index';
 import { eq, ilike, inArray, or, sql, and } from 'drizzle-orm';
@@ -541,8 +541,11 @@ export class BatchesService {
       await db
         .delete(zuvyStudentAttendanceRecords)
         .where(eq(zuvyStudentAttendanceRecords.batchId, id));
-      await db.delete(zuvySessions).where(eq(zuvySessions.batchId, id));
-      await db.delete(zuvySessions).where(eq(zuvySessions.secondBatchId, id));
+      await db
+        .delete(zuvySessions)
+        .where(
+          or(eq(zuvySessions.batchId, id), eq(zuvySessions.secondBatchId, id)),
+        );
       let data = await db
         .delete(zuvyBatches)
         .where(eq(zuvyBatches.id, id))
