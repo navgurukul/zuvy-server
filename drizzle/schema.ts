@@ -963,12 +963,7 @@ export const userTokens = main.table(
   },
   (table) => {
     return {
-      mainUserTokensUserIdUnique: unique('main_user_tokens_user_id_unique').on(
-        table.userId,
-      ),
-      mainUserTokensUserEmailUnique: unique(
-        'main_user_tokens_user_email_unique',
-      ).on(table.userEmail),
+      mainUserTokensUserIdEmailUnique: unique('main_user_tokens_user_id_email_unique').on(table.userId, table.userEmail)
     };
   },
 );
