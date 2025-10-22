@@ -15,6 +15,8 @@ import {
   Req,
   Res,
   UseGuards,
+  ParseIntPipe,
+  ParseArrayPipe,
 } from '@nestjs/common';
 import { Request } from 'express';
 import { AdminAssessmentService } from './adminAssessment.service';
@@ -369,6 +371,57 @@ export class AdminAssessmentController {
       ).send(res);
     } catch (error) {
       return ErrorResponse.BadRequestException(error.message).send(res);
+    }
+  }
+
+  @Get('/assessment-performance/:bootcampId')
+  @ApiOperation({ summary: 'Get assessment performance' })
+  @ApiBearerAuth('JWT-auth')
+  @ApiQuery({ name: 'assessmentId', required: false, type: Number })
+  @ApiQuery({ name: 'userId', required: false, type: Number })
+  @ApiQuery({
+    name: 'percentages',
+    required: false,
+    type: Number,
+    isArray: true,
+  })
+  async getAssessmentPerformance(
+    @Param('bootcampId', ParseIntPipe) bootcampId: number,
+    @Query('assessmentId') assessmentId?: string,
+    @Query('userId') userId?: string,
+    @Query(
+      'percentages',
+      new ParseArrayPipe({
+        items: Number,
+        optional: true,
+        separator: ',',
+      }),
+    )
+    percentages?: number[],
+  ) {
+    try {
+      // Parse optional number parameters manually
+      const parsedAssessmentId = assessmentId
+        ? parseInt(assessmentId)
+        : undefined;
+      const parsedUserId = userId ? parseInt(userId) : undefined;
+
+      // Validate parsed numbers
+      if (assessmentId && isNaN(parsedAssessmentId)) {
+        throw new BadRequestException('assessmentId must be a valid number');
+      }
+      if (userId && isNaN(parsedUserId)) {
+        throw new BadRequestException('userId must be a valid number');
+      }
+
+      return await this.adminAssessmentService.getAssessmentStats(
+        bootcampId,
+        parsedAssessmentId,
+        parsedUserId,
+        percentages,
+      );
+    } catch (error) {
+      throw new BadRequestException(error.message);
     }
   }
 }

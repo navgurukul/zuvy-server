@@ -1,7 +1,12 @@
 const AWS = require('aws-sdk');
-import { Injectable, Logger } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { db } from '../../db/index';
-import { count, eq, inArray, SQL, sql } from 'drizzle-orm';
+import { count, eq, inArray, SQL, sql, desc } from 'drizzle-orm';
 import * as _ from 'lodash';
 import {
   zuvyBatchEnrollments,
@@ -11,6 +16,15 @@ import {
   zuvyOutsourseAssessments,
   zuvyAssessmentSubmission,
   users,
+  zuvyModuleQuizVariants,
+  zuvyModuleQuiz,
+  zuvyOpenEndedQuestions,
+  zuvyCodingQuestions,
+  zuvyModuleAssessment,
+  zuvyOutsourseQuizzes,
+  zuvyOutsourseOpenEndedQuestions,
+  zuvyOutsourseCodingQuestions,
+  zuvyTags,
 } from '../../../drizzle/schema';
 import { STATUS_CODES } from 'src/helpers';
 import { helperVariable } from 'src/constants/helper';
@@ -1643,6 +1657,229 @@ Team Zuvy`;
       return leaderboardData;
     } catch (err) {
       throw err;
+    }
+  }
+
+  async getAssessmentStats(
+    bootcampId: number,
+    assessmentId?: number,
+    userId?: number,
+    percentages?: number | number[],
+  ) {
+    try {
+      // Step 1: Fetch assessment with submissions and question IDs
+      const assessmentWithSubmissions = await db
+        .select({
+          assessment: zuvyOutsourseAssessments,
+          submission: zuvyAssessmentSubmission,
+          codingQuestion: zuvyOutsourseCodingQuestions.codingQuestionId,
+          openEndedQuestion:
+            zuvyOutsourseOpenEndedQuestions.openEndedQuestionId,
+          openEndedMarks: zuvyOutsourseOpenEndedQuestions.marks,
+          quizQuestion: zuvyOutsourseQuizzes.quiz_id,
+        })
+        .from(zuvyOutsourseAssessments)
+        .leftJoin(
+          zuvyAssessmentSubmission,
+          eq(
+            zuvyAssessmentSubmission.assessmentOutsourseId,
+            zuvyOutsourseAssessments.id,
+          ),
+        )
+        .leftJoin(
+          zuvyOutsourseCodingQuestions,
+          eq(
+            zuvyOutsourseCodingQuestions.assessmentOutsourseId,
+            zuvyOutsourseAssessments.id,
+          ),
+        )
+        .leftJoin(
+          zuvyOutsourseOpenEndedQuestions,
+          eq(
+            zuvyOutsourseOpenEndedQuestions.assessmentOutsourseId,
+            zuvyOutsourseAssessments.id,
+          ),
+        )
+        .leftJoin(
+          zuvyOutsourseQuizzes,
+          eq(
+            zuvyOutsourseQuizzes.assessmentOutsourseId,
+            zuvyOutsourseAssessments.id,
+          ),
+        )
+        .where(
+          assessmentId
+            ? eq(zuvyOutsourseAssessments.id, assessmentId)
+            : eq(zuvyOutsourseAssessments.bootcampId, bootcampId),
+        )
+        .orderBy(desc(zuvyOutsourseAssessments.createdAt));
+
+      if (!assessmentWithSubmissions.length) {
+        throw new NotFoundException('No assessment found for this bootcamp');
+      }
+
+      const assessment = assessmentWithSubmissions[0].assessment;
+
+      // Step 1.5: Get the actual assessment name from zuvyModuleAssessment
+      const assessmentDetails = await db
+        .select({
+          title: zuvyModuleAssessment.title,
+          description: zuvyModuleAssessment.description,
+        })
+        .from(zuvyModuleAssessment)
+        .where(eq(zuvyModuleAssessment.id, assessment.assessmentId))
+        .limit(1);
+
+      const assessmentName =
+        assessmentDetails[0]?.title || 'Untitled Assessment';
+
+      // Step 2: Filter submissions (all or by user)
+      const allSubmissions = assessmentWithSubmissions
+        .map((row) => row.submission)
+        .filter(Boolean);
+
+      // Remove duplicate submissions by ID
+      const uniqueSubmissions = allSubmissions.filter(
+        (submission, index, self) =>
+          index === self.findIndex((s) => s.id === submission.id),
+      );
+
+      let submissions = uniqueSubmissions.filter((s) =>
+        userId ? s.userId === userId : true,
+      );
+
+      if (!submissions.length) {
+        throw new NotFoundException('No submissions found for this assessment');
+      }
+
+      // Step 3: Apply percentage filter if provided
+      if (percentages) {
+        const percentageArray = Array.isArray(percentages)
+          ? percentages
+          : [percentages];
+        submissions = submissions.filter((s) =>
+          percentageArray.some((p) => s.percentage >= p),
+        );
+      }
+
+      // Step 4: Compute percentage distribution
+      const brackets = [80, 60, 50, 30];
+      const sortedBrackets = [...brackets].sort((a, b) => b - a);
+
+      const percentageStats = sortedBrackets.map((bracket, index) => {
+        let studentCount = 0;
+
+        // Get unique users to avoid counting same user multiple times
+        const uniqueUsers = [...new Set(submissions.map((s) => s.userId))];
+
+        uniqueUsers.forEach((userId) => {
+          // Get all submissions for this user and take the latest one
+          const userSubmissions = submissions.filter(
+            (s) => s.userId === userId,
+          );
+          const latestSubmission = userSubmissions.reduce((latest, current) =>
+            new Date(current.submitedAt) > new Date(latest.submitedAt)
+              ? current
+              : latest,
+          );
+
+          const percentage = latestSubmission.percentage || 0;
+
+          if (index === 0) {
+            // Highest bracket: 80% and above
+            if (percentage >= bracket) {
+              studentCount++;
+            }
+          } else {
+            // Other brackets: between current bracket and next higher bracket
+            const higherBracket = sortedBrackets[index - 1];
+            if (percentage >= bracket && percentage < higherBracket) {
+              studentCount++;
+            }
+          }
+        });
+
+        return {
+          percentage: `${bracket}%`,
+          students: studentCount,
+        };
+      });
+
+      // Step 5: Collect only MCQ question IDs (coding aur open-ended skip karo)
+      const quizIds = [
+        ...new Set(
+          assessmentWithSubmissions
+            .map((row) => row.quizQuestion)
+            .filter(Boolean)
+            .filter((id, index, self) => self.indexOf(id) === index),
+        ),
+      ];
+
+      // Step 6: Fetch only MCQ question details
+      const mcqDetails = quizIds.length
+        ? await db
+            .select({
+              id: zuvyModuleQuizVariants.id,
+              quizId: zuvyModuleQuizVariants.quizId,
+              question: zuvyModuleQuizVariants.question,
+              options: zuvyModuleQuizVariants.options,
+              correctOption: zuvyModuleQuizVariants.correctOption,
+              difficulty: zuvyModuleQuiz.difficulty,
+              tagId: zuvyModuleQuiz.tagId,
+            })
+            .from(zuvyModuleQuizVariants)
+            .leftJoin(
+              zuvyModuleQuiz,
+              eq(zuvyModuleQuiz.id, zuvyModuleQuizVariants.quizId),
+            )
+            .where(inArray(zuvyModuleQuizVariants.quizId, quizIds))
+        : [];
+
+      // Step 7: Fetch tags only for MCQ questions
+      const tagIds = mcqDetails.map((q) => q.tagId).filter(Boolean);
+      const tags = tagIds.length
+        ? await db
+            .select({ id: zuvyTags.id, name: zuvyTags.tagName })
+            .from(zuvyTags)
+            .where(inArray(zuvyTags.id, tagIds))
+        : [];
+
+      const mapTagName = (tagId?: number) =>
+        tags.find((t) => t.id === tagId)?.name || null;
+
+      // Step 8: Prepare assessment question structure - sirf MCQ rakho
+      const assessmentQuestions = {
+        mcq: mcqDetails.map((q) => ({
+          id: q.id,
+          question: q.question,
+          options: q.options,
+          correctOption: q.correctOption,
+          difficulty: q.difficulty,
+          topic: mapTagName(q.tagId),
+        })),
+      };
+
+      // Step 9: Return final response
+      return {
+        assessmentId: assessment.id,
+        assessmentName: assessmentName,
+        totalMarks: assessment.marks,
+        passPercentage: assessment.passPercentage,
+        totalStudents: uniqueSubmissions.length,
+        percentageStats,
+        assessmentQuestions,
+        ...(userId
+          ? {
+              userPercentage: submissions[0].percentage,
+              userMarks: submissions[0].marks,
+            }
+          : {}),
+      };
+    } catch (error) {
+      console.error('Error fetching assessment stats:', error);
+      throw new BadRequestException(
+        error.message || 'Failed to fetch assessment stats',
+      );
     }
   }
 }
