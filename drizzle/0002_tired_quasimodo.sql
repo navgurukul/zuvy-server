@@ -271,7 +271,7 @@ CREATE TABLE "main"."zuvy_user_roles" (
 );
 
 
-CREATE TABLE "zuvy_resources" (
+CREATE TABLE "main"."zuvy_resources" (
     "id" SERIAL PRIMARY KEY,
     "key" VARCHAR(64) NOT NULL UNIQUE,
     "display_name" VARCHAR(100) NOT NULL,
