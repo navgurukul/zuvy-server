@@ -24,7 +24,7 @@ export class UserTokensService {
         .insert(userTokens)
         .values({ userId, userEmail, accessToken, refreshToken })
         .onConflictDoUpdate({
-          target: [userTokens.userId, userTokens.userEmail],
+          target: userTokens.userId,
           set: { userEmail, accessToken, refreshToken },
         })
         .returning();
