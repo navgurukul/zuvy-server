@@ -46,7 +46,7 @@ import { ErrorResponse, SuccessResponse } from 'src/errorHandler/handler';
 @UseGuards(JwtAuthGuard, RolesGuard)
 @ApiBearerAuth('JWT-auth')
 export class AdminAssessmentController {
-  constructor(private adminAssessmentService: AdminAssessmentService) { }
+  constructor(private adminAssessmentService: AdminAssessmentService) {}
 
   @Get('bootcampAssessment/bootcamp_id:bootcamp_id')
   @ApiOperation({ summary: 'Get the assessment of bootcamp' })
@@ -62,7 +62,9 @@ export class AdminAssessmentController {
     @Param('bootcamp_id') bootcampID: number,
     @Query('searchAssessment') searchAssessment: string,
   ) {
+    const roleName = req.user[0]?.roles;
     return this.adminAssessmentService.getBootcampAssessment(
+      roleName,
       bootcampID,
       searchAssessment,
     );
@@ -206,8 +208,11 @@ export class AdminAssessmentController {
     @Query('searchVideos') searchVideos: string,
     @Query('limit') limit: number,
     @Query('offset') offSet: number,
+    @Req() req,
   ) {
+    const roleName = req.user[0]?.roles;
     return this.adminAssessmentService.getBootcampModuleCompletion(
+      roleName,
       bootcampID,
       searchVideos,
       limit,
@@ -227,7 +232,7 @@ export class AdminAssessmentController {
     name: 'batchId',
     required: false,
     type: Number,
-    description: 'Batch id (optional)'
+    description: 'Batch id (optional)',
   })
   @ApiQuery({
     name: 'limit',
@@ -249,7 +254,13 @@ export class AdminAssessmentController {
     @Query('limit') limit: number,
     @Query('offset') offSet: number,
   ) {
-    return this.adminAssessmentService.getModuleChapterStudents(chapterID, searchStudent, batchId, limit, offSet);
+    return this.adminAssessmentService.getModuleChapterStudents(
+      chapterID,
+      searchStudent,
+      batchId,
+      limit,
+      offSet,
+    );
   }
 
   @Get('/leaderBoard/bootcampId:bootcampId')
@@ -376,20 +387,31 @@ export class AdminAssessmentController {
   @ApiBearerAuth('JWT-auth')
   @ApiQuery({ name: 'assessmentId', required: false, type: Number })
   @ApiQuery({ name: 'userId', required: false, type: Number })
-  @ApiQuery({ name: 'percentages', required: false, type: Number, isArray: true })
+  @ApiQuery({
+    name: 'percentages',
+    required: false,
+    type: Number,
+    isArray: true,
+  })
   async getAssessmentPerformance(
     @Param('bootcampId', ParseIntPipe) bootcampId: number,
     @Query('assessmentId') assessmentId?: string,
     @Query('userId') userId?: string,
-    @Query('percentages', new ParseArrayPipe({
-      items: Number,
-      optional: true,
-      separator: ','
-    })) percentages?: number[],
+    @Query(
+      'percentages',
+      new ParseArrayPipe({
+        items: Number,
+        optional: true,
+        separator: ',',
+      }),
+    )
+    percentages?: number[],
   ) {
     try {
       // Parse optional number parameters manually
-      const parsedAssessmentId = assessmentId ? parseInt(assessmentId) : undefined;
+      const parsedAssessmentId = assessmentId
+        ? parseInt(assessmentId)
+        : undefined;
       const parsedUserId = userId ? parseInt(userId) : undefined;
 
       // Validate parsed numbers

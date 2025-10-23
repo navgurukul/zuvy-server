@@ -10,6 +10,7 @@ import {
 } from '@nestjs/common';
 import {
   users,
+  userTokens,
   zuvyUserRoles,
   zuvyUserRolesAssigned,
 } from '../../../drizzle/schema';
@@ -27,11 +28,11 @@ import {
 } from './dto/user-role.dto';
 import { STATUS_CODES } from 'src/helpers';
 import { ResourceList } from 'src/rbac/utility';
-import { RbacAllocPermsService } from 'src/rbac/rbac.alloc-perms.service';
 import { RbacService } from 'src/rbac/rbac.service';
-import { CreateAuditlogDto } from 'src/auditlog/dto/create-auditlog.dto';
 import { AuditlogService } from 'src/auditlog/auditlog.service';
 import { AuthService } from 'src/auth/auth.service';
+import { UserTokensService } from 'src/user-tokens/user-tokens.service';
+import { bigint } from 'drizzle-orm/mysql-core';
 
 @Injectable()
 export class UsersService {
@@ -43,6 +44,7 @@ export class UsersService {
     private readonly rbacService: RbacService,
     private readonly auditlogService: AuditlogService,
     private readonly authService: AuthService,
+    private readonly userTokenService: UserTokensService,
   ) {}
 
   /**
@@ -326,6 +328,15 @@ export class UsersService {
         const currentRoleDetails = await this.roleCheck(currentRoleId);
         const currentRoleName = (currentRoleDetails as any).rows?.[0]?.name;
         const actionUpdate = `${actorName} updated ${targetName}'s role from ${currentRoleName} to ${roleName}`;
+
+        const { data } = await this.userTokenService.getUserTokens(
+          BigInt(targetUserId),
+        );
+        await this.authService.logout(
+          BigInt(targetUserId),
+          data['accessToken'],
+        );
+
         const auditLog = await this.auditlogService.log('role_to_user', {
           actorUserId,
           targetUserId,
@@ -346,6 +357,12 @@ export class UsersService {
         RETURNING *`);
 
       const action = `${actorName} assigned role ${roleName} to ${targetName}`;
+
+      const { data } = await this.userTokenService.getUserTokens(
+        BigInt(targetUserId),
+      );
+      await this.authService.logout(BigInt(targetUserId), data['accessToken']);
+
       const auditLog = await this.auditlogService.log('role_to_user', {
         actorUserId,
         targetUserId,
@@ -598,7 +615,7 @@ export class UsersService {
     }
   }
 
-  async updateUser(token, id: bigint, updateUserDto: UpdateUserDto) {
+  async updateUser(id: bigint, updateUserDto: UpdateUserDto) {
     try {
       return await db.transaction(async (tx) => {
         const currentTime = new Date().toISOString(); // ISO string format
@@ -674,7 +691,6 @@ export class UsersService {
               .values(rolesAssignData)
               .returning();
           }
-          // const permissionsResult = await this.authService.logout(id, token);
         }
 
         // Get updated user data with role
@@ -700,6 +716,9 @@ export class UsersService {
           )
           .where(eq(users.id, id));
 
+        const { data } = await this.userTokenService.getUserTokens(id);
+        await this.authService.logout(id, data['accessToken']);
+
         return userWithRole;
       });
     } catch (error) {
@@ -717,6 +736,14 @@ export class UsersService {
       if (deletedUser.length === 0) {
         throw new NotFoundException(`User with ID ${id} not found`);
       }
+
+      const { data } = await this.userTokenService.deleteToken({
+        userId: Number(id),
+      });
+
+      //logout
+      await this.authService.logout(id, data['accessToken']);
+
       // send the response
       return {
         message: 'User deleted successfully',

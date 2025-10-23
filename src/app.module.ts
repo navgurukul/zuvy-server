@@ -26,7 +26,9 @@ import { PermissionsModule } from './permissions/permissions.module';
 import { ResourcesModule } from './resources/resources.module';
 import { AuditlogModule } from './auditlog/auditlog.module';
 import { RolesModule } from './roles/roles.module';
-let { GOOGLE_CLIENT_ID, GOOGLE_SECRET, GOOGLE_REDIRECT,JWT_SECRET_KEY } = process.env;
+import { UserTokensModule } from './user-tokens/user-tokens.module';
+let { GOOGLE_CLIENT_ID, GOOGLE_SECRET, GOOGLE_REDIRECT, JWT_SECRET_KEY } =
+  process.env;
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -56,6 +58,7 @@ let { GOOGLE_CLIENT_ID, GOOGLE_SECRET, GOOGLE_REDIRECT,JWT_SECRET_KEY } = proces
     ResourcesModule,
     AuditlogModule,
     RolesModule,
+    UserTokensModule,
   ],
   providers: [
     {
@@ -68,13 +71,11 @@ let { GOOGLE_CLIENT_ID, GOOGLE_SECRET, GOOGLE_REDIRECT,JWT_SECRET_KEY } = proces
     },
     JwtMiddleware,
     Reflector,
-    AuthService
-  ]
+    AuthService,
+  ],
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
-    consumer
-      .apply(JwtMiddleware)
-      .forRoutes('*');
+    consumer.apply(JwtMiddleware).forRoutes('*');
   }
 }

@@ -534,7 +534,6 @@ export class BatchesService {
         .set({ batchId: null })
         .where(eq(zuvyBatchEnrollments.batchId, id))
         .returning();
-
       await db
         .delete(zuvyStudentAttendance)
         .where(eq(zuvyStudentAttendance.batchId, id));
