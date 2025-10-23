@@ -3,7 +3,10 @@ const { spawn } = require('child_process');
 
 function runPythonScript(inputData) {
   return new Promise((resolve, reject) => {
-    const python = spawn('/home/ravip/Documents/navgurukul/mcq-generator/.venv/bin/python', ['/home/ravip/Documents/navgurukul/mcq-generator/mcq_generator.py', JSON.stringify(inputData)]);
+    const python = spawn('python3', [
+      'mcq_generator.py',
+      JSON.stringify(inputData),
+    ]);
 
     let output = '';
     let error = '';
@@ -32,6 +35,11 @@ function runPythonScript(inputData) {
 }
 
 // Example usage
-runPythonScript({ name: 'Ravi' })
+runPythonScript({
+  bootcampid: 803,
+  difficulty: 'Medium',
+  topics: { Arrays: 4, Loops: 3 },
+  audience: 'Assessment for AFE cohort, semester 2 and 3 CSE',
+})
   .then((result) => console.log('Python Output:', result))
   .catch((err) => console.error('Error:', err));
