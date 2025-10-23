@@ -73,7 +73,6 @@ export class BootcampService {
 
   async getAllBootcamps(
     roleName: string[],
-    userId: number,
     limit: number,
     offset: number,
     searchTerm?: string | number,
@@ -529,8 +528,6 @@ export class BootcampService {
     offset: number,
   ): Promise<any> {
     try {
-      console.log({ bootcamp_id, limit, offset });
-
       // sanitize pagination parameters
       const limitNum = Number.isFinite(Number(limit))
         ? Number(limit)
@@ -1032,18 +1029,6 @@ export class BootcampService {
     orderDirection?: string,
   ) {
     try {
-      console.log({
-        bootcampId,
-        batchId,
-        searchTerm,
-        limit,
-        offset,
-        enrolledDate,
-        lastActiveDate,
-        status,
-        attendance,
-      });
-
       // sanitize numeric inputs to avoid sending NaN to SQL (Postgres will error on 'NaN' for integer fields)
       const batchIdNum = Number.isFinite(Number(batchId))
         ? Number(batchId)
@@ -1099,7 +1084,7 @@ export class BootcampService {
           orderField = users.name;
       }
       const direction =
-        orderDirection === 'desc' ? desc(orderField) : orderField;
+        orderDirection === 'desc' ? desc(orderField) : asc(orderField);
       const query = db
         .select({
           userId: users.id,
@@ -1108,9 +1093,9 @@ export class BootcampService {
           profilePicture: users.profilePicture,
           bootcampId: zuvyBatchEnrollments.bootcampId,
           attendance: zuvyBatchEnrollments.attendance,
-          enrolledDate: sql`zuvy_batch_enrollments.enrolled_date`,
-          lastActiveDate: sql`zuvy_batch_enrollments.last_active_date`,
-          status: sql`zuvy_batch_enrollments.status`,
+          enrolledDate: zuvyBatchEnrollments.enrolledDate,
+          lastActiveDate: zuvyBatchEnrollments.lastActiveDate,
+          status: zuvyBatchEnrollments.status,
           batchName: zuvyBatches.name,
           batchId: zuvyBatches.id,
           progress: zuvyBootcampTracking.progress,
@@ -1154,7 +1139,6 @@ export class BootcampService {
       // For each student, fetch their attendance records
       const modifiedStudentInfo = await Promise.all(
         studentsInfo.map(async (item) => {
-          console.log({ item });
           return {
             ...item,
             userId: Number(item.userId),
@@ -1273,7 +1257,6 @@ export class BootcampService {
     editUserDetailsDto: editUserDetailsDto,
   ): Promise<[string | null, any]> {
     try {
-      console.log({ userId, editUserDetailsDto });
       // Validate user existence in the users table
       const userExists = await db
         .select({ id: users.id, email: users.email })
