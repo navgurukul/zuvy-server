@@ -224,6 +224,12 @@ export class AdminAssessmentController {
     description: 'Search by name or email',
   })
   @ApiQuery({
+    name: 'batchId',
+    required: false,
+    type: Number,
+    description: 'Batch id (optional)'
+  })
+  @ApiQuery({
     name: 'limit',
     required: false,
     type: Number,
@@ -239,15 +245,11 @@ export class AdminAssessmentController {
   async ModuleChapterStudents(
     @Param('chapter_id') chapterID: number,
     @Query('searchStudent') searchStudent: string,
+    @Query('batchId') batchId: number,
     @Query('limit') limit: number,
     @Query('offset') offSet: number,
   ) {
-    return this.adminAssessmentService.getModuleChapterStudents(
-      chapterID,
-      searchStudent,
-      limit,
-      offSet,
-    );
+    return this.adminAssessmentService.getModuleChapterStudents(chapterID, searchStudent, batchId, limit, offSet);
   }
 
   @Get('/leaderBoard/bootcampId:bootcampId')

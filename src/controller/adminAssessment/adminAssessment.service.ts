@@ -602,6 +602,7 @@ Team Zuvy`;
       });
       let userIds = enrolledStudents.map(student => Number(student.userId));
       // Fetch submitted assessments for the given assessmentID
+      // Fetch the latest submission per user for this assessment (no DB-level limit/offset here)
       const submitedOutsourseAssessments = await db
         .query
         .zuvyAssessmentSubmission.findMany({
@@ -650,8 +651,6 @@ Team Zuvy`;
             },
           },
           orderBy: (zuvyAssessmentSubmission, { asc }) => asc(zuvyAssessmentSubmission.userId),
-          limit,
-          offset
         });
       const totalStudentsCount = await db
         .select({
@@ -716,7 +715,8 @@ Team Zuvy`;
       )
     `
         );
-      const totalCount = totalCountResult[0]?.value;
+      // totalCountResult holds count from DB if needed; we'll compute final totalCount from combinedData below
+      // const totalCount = totalCountResult[0]?.value;
 
       const reattemptCountMap = new Map(
         userReattemptCounts.map((entry) => [Number(entry.userId), entry.reattemptCount])
@@ -730,7 +730,7 @@ Team Zuvy`;
       );
 
       // Combine enrolled students with their submissions
-      const combinedData = enrolledStudents
+      let combinedData = enrolledStudents
         .map((student: any) => {
           const userId = Number(student.userId);
           const submission = submissionsMap.get(userId);
@@ -746,12 +746,12 @@ Team Zuvy`;
             startedAt: started || null,
             submitedAt: ended || null,
             isPassed: submission?.isPassed,
-            percentage: parseFloat(submission?.percentage?.toFixed(2)) || null,
+            percentage: submission?.percentage != null ? parseFloat(submission.percentage.toFixed(2)) : null,
             typeOfsubmission: submission ? submission.typeOfsubmission : 'not attempted',
             copyPaste: submission?.copyPaste || null,
             active: submission?.active,
-            mcqScore: parseFloat(submission?.mcqScore?.toFixed(2)),
-            codingScore: parseFloat(submission?.codingScore?.toFixed(2)),
+            mcqScore: submission?.mcqScore != null ? parseFloat(submission.mcqScore.toFixed(2)) : null,
+            codingScore: submission?.codingScore != null ? parseFloat(submission.codingScore.toFixed(2)) : null,
             reattemptRequested: submission?.reattemptRequested,
             reattemptApproved: submission?.reattemptApproved,
             reattemptCount: (reattemptCountMap.get(userId) || 1) - 1,
@@ -764,12 +764,12 @@ Team Zuvy`;
         })
         .filter((data) => data.startedAt);
 
-      // Apply sorting if orderBy is specified
+      // Apply sorting if orderBy is specified (do in-memory so we can sort by user.name/user.email which come from users relation)
       if (orderBy) {
         const direction = orderDirection === 'desc' ? -1 : 1;
 
         combinedData.sort((a, b) => {
-          let valueA, valueB;
+          let valueA: any, valueB: any;
 
           switch (orderBy) {
             case 'submittedDate':
@@ -777,8 +777,8 @@ Team Zuvy`;
               valueB = b.submitedAt ? new Date(b.submitedAt).getTime() : 0;
               break;
             case 'percentage':
-              valueA = a.percentage || 0;
-              valueB = b.percentage || 0;
+              valueA = a.percentage != null ? a.percentage : -Infinity;
+              valueB = b.percentage != null ? b.percentage : -Infinity;
               break;
             case 'name':
               valueA = (a.name || '').toLowerCase();
@@ -798,6 +798,12 @@ Team Zuvy`;
         });
       }
 
+      // Apply pagination after sorting to ensure correct ordering
+      const totalCount = combinedData.length;
+      const offsetNumFinal = Number.isFinite(Number(offset)) ? Number(offset) : 0;
+      const limitNumFinal = Number.isFinite(Number(limit)) && Number(limit) > 0 ? Number(limit) : totalCount || 10;
+      const paginatedData = combinedData.slice(offsetNumFinal, offsetNumFinal + limitNumFinal);
+
       // Fetch ModuleAssessment details
       const moduleAssessment = await db.query.zuvyOutsourseAssessments.findFirst({
         where: (zuvyOutsourseAssessments, { eq }) =>
@@ -816,7 +822,7 @@ Team Zuvy`;
       });
 
       // Prepare the final response
-      const totalPages = Math.ceil(totalCount / limit);
+      const totalPages = Math.ceil(totalCount / limitNumFinal) || 1;
 
       const response = {
         ModuleAssessment: {
@@ -828,7 +834,7 @@ Team Zuvy`;
           totalQualifiedStudents: totalCountOfQualifiedStudents.length,
           totalPages,
         },
-        submitedOutsourseAssessments: combinedData,
+        submitedOutsourseAssessments: paginatedData,
       };
 
       return response;
@@ -1216,6 +1222,7 @@ Team Zuvy`;
   async getModuleChapterStudents(
     chapterID: number,
     searchStudent: string,
+    batchId?: number,
     limit?: number,
     offSet?: number
   ) {
@@ -1237,40 +1244,63 @@ Team Zuvy`;
         },
       });
 
-      const bootcampId = Number(chapterDetails.courseModulesData.bootcampId);
+      if (!chapterDetails) {
+        return {
+          message: 'Chapter not found',
+        };
+      }
 
-      // Fetch total students
+      const bootcampId = Number(chapterDetails.courseModulesData?.bootcampId);
+
+      // Fetch total students (respecting optional batchId)
       const totalStudentsResult = await db
         .select({ count: sql<number>`count(*)` })
         .from(zuvyBatchEnrollments)
-        .where(eq(zuvyBatchEnrollments.bootcampId, bootcampId))
+        .where(batchId ? sql`${zuvyBatchEnrollments.bootcampId} = ${bootcampId} AND ${zuvyBatchEnrollments.batchId} = ${batchId}` : sql`${zuvyBatchEnrollments.bootcampId} = ${bootcampId} AND ${zuvyBatchEnrollments.batchId} IS NOT NULL`)
         .execute();
       const totalStudents = Number(totalStudentsResult[0]?.count || 0);
 
-      // Fetch total submitted students
-      const totalSubmittedStudentsResult = await db
+      // Fetch total submitted students (only count submissions from enrolled users)
+      interface TotalSubmittedStudentsResult {
+        count: number | bigint;
+      }
+
+      const totalSubmittedStudentsResult: TotalSubmittedStudentsResult[] = await db
         .select({ count: sql<number>`count(*)` })
         .from(zuvyChapterTracking)
-        .where(eq(zuvyChapterTracking.chapterId, chapterID))
+        .where(
+          batchId
+            ? sql`${zuvyChapterTracking.chapterId} = ${chapterID} AND EXISTS (SELECT 1 FROM main.zuvy_batch_enrollments AS be WHERE be.user_id = ${zuvyChapterTracking.userId} AND be.batch_id = ${batchId})`
+            : sql`${zuvyChapterTracking.chapterId} = ${chapterID} AND EXISTS (SELECT 1 FROM main.zuvy_batch_enrollments AS be WHERE be.user_id = ${zuvyChapterTracking.userId} AND be.batch_id IS NOT NULL)`
+        )
         .execute();
       const totalSubmittedStudents = Number(totalSubmittedStudentsResult[0]?.count || 0);
 
       // Fetch chapter tracking details with students
       const chapterTrackingDetails = await db.query.zuvyChapterTracking.findMany({
-        where: (zuvyChapterTracking, { eq, sql }) => sql`
-          ${zuvyChapterTracking.chapterId} = ${chapterID}
-          ${searchStudent ? sql`
-            AND EXISTS (
+        where: (zuvyChapterTracking, { eq, sql, and }) => {
+          const baseConditions = [sql`${zuvyChapterTracking.chapterId} = ${chapterID}`];
+          // Only include users who are enrolled in the bootcamp and (optionally) specific batch
+          baseConditions.push(sql`EXISTS (
+            SELECT 1 FROM main.zuvy_batch_enrollments AS be WHERE be.user_id = ${zuvyChapterTracking.userId} AND be.bootcamp_id = ${bootcampId} ${batchId ? sql`AND be.batch_id = ${batchId}` : sql`AND be.batch_id IS NOT NULL`}
+          )`);
+
+          if (searchStudent) {
+            // Use contains search on users.name and users.email
+            const pattern = `%${searchStudent}%`;
+            baseConditions.push(sql`EXISTS (
               SELECT 1
               FROM main.users
               WHERE main.users.id = ${zuvyChapterTracking.userId}
               AND (
-                lower(main.users.name) LIKE lower(${searchStudent + '%'})
-                OR lower(main.users.email) LIKE lower(${searchStudent + '%'})
+                lower(main.users.name) LIKE lower(${pattern})
+                OR lower(main.users.email) LIKE lower(${pattern})
               )
-            )
-          ` : sql``}
-        `,
+            )`);
+          }
+
+          return and(...baseConditions);
+        },
         columns: {
           userId: true,
           completedAt: true,
@@ -1287,12 +1317,45 @@ Team Zuvy`;
         orderBy: (zuvyChapterTracking, { asc }) => asc(zuvyChapterTracking.id),
       });
 
-      const submittedStudents = chapterTrackingDetails.map((tracking) => ({
-        id: Number(tracking['user'].id), // Convert user ID to number
-        name: tracking['user'].name,
-        email: tracking['user'].email,
-        completedAt: tracking.completedAt,
-      }));
+      // Fetch batch enrollments for these users to attach batchId/batchName
+      const userIds = Array.from(new Set(chapterTrackingDetails.map((t) => Number(t.userId))));
+      const userIdsBigInt = userIds.map((id) => BigInt(id));
+      let enrollmentMap = new Map();
+      if (userIds.length > 0) {
+        const enrollments = await db.query.zuvyBatchEnrollments.findMany({
+          where: (zuvyBatchEnrollments, { sql, inArray }) => sql`
+            ${inArray(zuvyBatchEnrollments.userId, userIdsBigInt)}
+            AND ${zuvyBatchEnrollments.bootcampId} = ${bootcampId}
+            ${batchId ? sql`AND ${zuvyBatchEnrollments.batchId} = ${batchId}` : sql`AND ${zuvyBatchEnrollments.batchId} IS NOT NULL`}
+          `,
+          columns: {
+            userId: true,
+            batchId: true,
+          },
+          with: {
+            batchInfo: {
+              columns: {
+                name: true,
+              },
+            },
+          },
+        });
+
+        enrollmentMap = new Map(enrollments.map((e) => [Number(e.userId), e]));
+      }
+
+      const submittedStudents = chapterTrackingDetails.map((tracking) => {
+        const uid = Number(tracking['user'].id);
+        const enrollment = enrollmentMap.get(uid);
+        return {
+          id: uid,
+          name: tracking['user'].name,
+          email: tracking['user'].email,
+          completedAt: tracking.completedAt,
+          batchId: enrollment ? Number(enrollment.batchId) : null,
+          batchName: enrollment && enrollment.batchInfo ? enrollment.batchInfo.name : null,
+        };
+      });
 
       // Apply pagination to submitted students
       const totalRows = submittedStudents.length; // Total rows before pagination
