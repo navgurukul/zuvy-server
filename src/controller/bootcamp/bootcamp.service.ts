@@ -73,6 +73,7 @@ export class BootcampService {
 
   async getAllBootcamps(
     roleName: string[],
+    userId,
     limit: number,
     offset: number,
     searchTerm?: string | number,
