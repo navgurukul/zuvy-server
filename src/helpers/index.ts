@@ -365,6 +365,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.HashMap;
 import java.util.ArrayList;
+import java.util.PriorityQueue;
+import java.util.Comparator;
 
 public class Main {
   // Function with specified return type and parameters
@@ -403,12 +405,30 @@ public class Main {
       }
       sb.append("]");
       return sb.toString();
+    } else if (data instanceof char[]) {
+      // Special handling for char arrays without quotes (Issue #1 fix)
+      char[] arr = (char[]) data;
+      StringBuilder sb = new StringBuilder();
+      sb.append("[");
+      for (int i = 0; i < arr.length; i++) {
+          sb.append(arr[i]);
+          if (i != arr.length - 1) {
+              sb.append(",");
+          }
+      }
+      sb.append("]");
+      return sb.toString();
     } else if (data instanceof String[]) {
       String[] arr = (String[]) data;
       StringBuilder sb = new StringBuilder();
       sb.append("[");
       for (int i = 0; i < arr.length; i++) {
-          sb.append("\\"").append(arr[i]).append("\\"");
+          // Check if string is a single character - output without quotes
+          if (arr[i] != null && arr[i].length() == 1) {
+              sb.append(arr[i]);
+          } else {
+              sb.append("\\"").append(arr[i]).append("\\"");
+          }
           if (i != arr.length - 1) {
               sb.append(",");
           }
@@ -516,6 +536,12 @@ public class Main {
   // Helper method to parse values
   private static Object parseValue(String value) {
     value = value.trim();
+    
+    // Handle null values explicitly (Issue #3 fix - null handling in tree nodes)
+    if (value.equalsIgnoreCase("null")) {
+      return null;
+    }
+    
     if ((value.startsWith("\\"") && value.endsWith("\\"")) ||
         (value.startsWith("'") && value.endsWith("'"))) {
       return value.substring(1, value.length() - 1);
@@ -742,3 +768,10 @@ export const STATUS_CODES = {
   CONFLICT: 409,
   INTERNAL_SERVER_ERROR: 500,
 };
+
+export const permissions = {
+  CREATE: 'create',
+  READ: 'view',
+  EDIT: 'edit',
+  DELETE: 'delete',
+}
