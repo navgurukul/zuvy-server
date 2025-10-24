@@ -62,7 +62,7 @@ export class SubmissionService {
     roleName,
     bootcampId: number,
     searchProblem: string,
-    orderBy?: 'submittedDate' | 'name' | 'email' | 'percentage',
+    orderBy?: 'name' | 'email' | 'percentage',
     orderDirection?: 'asc' | 'desc',
     searchTerm?: string,
   ) {
@@ -1303,7 +1303,7 @@ export class SubmissionService {
       const insertData = [];
       const updatePromises = [];
 
-      answers.forEach((answer: {}) => {
+      answers.forEach((answer: any) => {
         answer.status = 'failed';
         answer.assessmentSubmissionId = assessmentSubmissionId;
 
@@ -2728,8 +2728,6 @@ Zuvy LMS Team
     }
   }
 
-  // Service function for Live session submissions admin side api
-
   async getLiveChapterSubmissions(
     roleName,
     bootcampId: number,
@@ -2841,8 +2839,6 @@ Zuvy LMS Team
       return [err, null];
     }
   }
-
-  // Service function to fetch the session by chapterId from zuvy_sessions and relation fetch with zuvyStudentAttendanceRecords
 
   async getLiveChapterStudentSubmission(
     moduleChapterId: number,
