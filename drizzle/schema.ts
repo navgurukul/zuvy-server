@@ -73,6 +73,7 @@ export const questionType = pgEnum('questionType', [
 ]);
 import { helperVariable } from '../src/constants/helper';
 import { table } from 'console';
+import { doublePrecisionArray } from './tables';
 let schName;
 if (process.env.ENV_NOTE == helperVariable.schemaName) {
   schName = helperVariable.schemaName;
@@ -2625,6 +2626,7 @@ export const zuvyModuleQuizVariants = main.table('zuvy_module_quiz_variants', {
   createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
   version: varchar('version', { length: 10 }),
+  embeddings: doublePrecisionArray('embeddings'),
 });
 
 export const zuvyModuleQuizVariantsRelations = relations(zuvyModuleQuizVariants, ({ one }) => ({
