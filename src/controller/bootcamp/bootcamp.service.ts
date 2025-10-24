@@ -1,6 +1,17 @@
 import { Injectable, Logger, HttpStatus } from '@nestjs/common';
 import { db } from '../../db/index';
-import { eq, sql, count, inArray, or, and, like, desc, ne } from 'drizzle-orm';
+import {
+  eq,
+  sql,
+  count,
+  inArray,
+  or,
+  and,
+  like,
+  desc,
+  asc,
+  ne,
+} from 'drizzle-orm';
 import axios from 'axios';
 import * as _ from 'lodash';
 import { error, log } from 'console';
@@ -1030,7 +1041,6 @@ export class BootcampService {
     orderDirection?: string,
   ) {
     try {
-      // sanitize numeric inputs to avoid sending NaN to SQL (Postgres will error on 'NaN' for integer fields)
       const batchIdNum = Number.isFinite(Number(batchId))
         ? Number(batchId)
         : undefined;
