@@ -190,14 +190,14 @@ export const typeMappings = {
 export async function generateTemplates(functionName, parameters, returnType) {
   try {
     functionName = functionName.replace(/ /g, '_').toLowerCase();
-/**
- * Generate JavaScript function template
- */
-const generateJavaScriptTemplate = (functionName, parameters, returnType) => {
-  // Map parameter names
-  const parameterMappings = parameters.map(p => p.parameterName).join(', ');
+    /**
+     * Generate JavaScript function template
+     */
+    const generateJavaScriptTemplate = (functionName, parameters, returnType) => {
+      // Map parameter names
+      const parameterMappings = parameters.map(p => p.parameterName).join(', ');
 
-  return [null, `
+      return [null, `
 const readline = require('readline');
 
 // Create readline interface
@@ -225,14 +225,14 @@ rl.on('line', (line) => {
 rl.on('close', () => {
   // Process inputs
   ${parameters
-  .map(
-      (p, index) => `const _${p.parameterName}_ = ${typeMappings.javascript.input(p.parameterType).replace('input', `inputLines[${index}]`)};`
-  ).join('\n  ')}
+          .map(
+            (p, index) => `const _${p.parameterName}_ = ${typeMappings.javascript.input(p.parameterType).replace('input', `inputLines[${index}]`)};`
+          ).join('\n  ')}
   const result = ${functionName}(${parameters.map(p => `_${p.parameterName}_`).join(', ')});
-  ${ !["arrayOfnum","arrayOfStr", "jsonType","object"].includes(returnType)? 'console.log(result);' : 'console.log(JSON.stringify(result));'}
+  ${!["arrayOfnum", "arrayOfStr", "jsonType", "object"].includes(returnType) ? 'console.log(result);' : 'console.log(JSON.stringify(result));'}
   });
   `];
-};
+    };
     let [errorCtemplate, cTemplate] = await generateCTemplates(functionName, parameters, returnType);
     if (errorCtemplate) {
       return [errorCtemplate, null];
@@ -255,7 +255,7 @@ rl.on('close', () => {
     if (errorJavascriptTemplate) {
       return [errorJavascriptTemplate, null];
     }
-   
+
     const templates = {};
     // Generate C template
     templates['c'] = {
@@ -365,6 +365,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.HashMap;
 import java.util.ArrayList;
+import java.util.PriorityQueue;
+import java.util.Comparator;
 
 public class Main {
   // Function with specified return type and parameters
@@ -403,12 +405,30 @@ public class Main {
       }
       sb.append("]");
       return sb.toString();
+    } else if (data instanceof char[]) {
+      // Special handling for char arrays without quotes (Issue #1 fix)
+      char[] arr = (char[]) data;
+      StringBuilder sb = new StringBuilder();
+      sb.append("[");
+      for (int i = 0; i < arr.length; i++) {
+          sb.append(arr[i]);
+          if (i != arr.length - 1) {
+              sb.append(",");
+          }
+      }
+      sb.append("]");
+      return sb.toString();
     } else if (data instanceof String[]) {
       String[] arr = (String[]) data;
       StringBuilder sb = new StringBuilder();
       sb.append("[");
       for (int i = 0; i < arr.length; i++) {
-          sb.append("\\"").append(arr[i]).append("\\"");
+          // Check if string is a single character - output without quotes
+          if (arr[i] != null && arr[i].length() == 1) {
+              sb.append(arr[i]);
+          } else {
+              sb.append("\\"").append(arr[i]).append("\\"");
+          }
           if (i != arr.length - 1) {
               sb.append(",");
           }
@@ -516,6 +536,13 @@ public class Main {
   // Helper method to parse values
   private static Object parseValue(String value) {
     value = value.trim();
+    
+    // Handle null values explicitly (Issue #3 fix - null handling in tree nodes)
+    // Handle both "null" string and empty values (e.g., [0,1,,2] where ,, represents null)
+    if (value.isEmpty() || value.equalsIgnoreCase("null")) {
+      return null;
+    }
+    
     if ((value.startsWith("\\"") && value.endsWith("\\"")) ||
         (value.startsWith("'") && value.endsWith("'"))) {
       return value.substring(1, value.length() - 1);
@@ -614,19 +641,19 @@ async function generatePythonTemplate(functionName, parameters, returnType) {
   try {
     // Create function parameter mappings with type hints
     const parameterMappings = parameters
-        .map(p => {
-            const type = typeMappings.python[p.parameterType] || 'Any';
-            return `${p.parameterName}: ${type}`;
-        })
-        .join(', ');
+      .map(p => {
+        const type = typeMappings.python[p.parameterType] || 'Any';
+        return `${p.parameterName}: ${type}`;
+      })
+      .join(', ');
 
     // Generate input handling code for each parameter
     const inputHandling = parameters
-        .map(p => {
-            const inputLogic = typeMappings.python.input(p.parameterType);
-            return `_${p.parameterName}_ = ${inputLogic}`;
-        })
-        .join('\n');
+      .map(p => {
+        const inputLogic = typeMappings.python.input(p.parameterType);
+        return `_${p.parameterName}_ = ${inputLogic}`;
+      })
+      .join('\n');
 
     // Return the complete Python template as a string
     return [null, `
@@ -642,7 +669,7 @@ def ${functionName}(${parameterMappings}) -> ${typeMappings.python[returnType]}:
 # Example usage
 ${inputHandling}
 result = ${functionName}(${parameters.map(p => `_${p.parameterName}_`).join(', ')})
-${ !["arrayOfnum","arrayOfStr", "jsonType","object"].includes(returnType)? 'print(result);' : 'print(json.dumps(result, separators=(",", ":")));'}`];
+${!["arrayOfnum", "arrayOfStr", "jsonType", "object"].includes(returnType) ? 'print(result);' : 'print(json.dumps(result, separators=(",", ":")));'}`];
   } catch (error) {
     console.error('Error generating template:', error);
     return [error, null];
@@ -655,7 +682,7 @@ async function generateCppTemplate(functionName, parameters, returnType = 'void'
     const returnTypeMapped = typeMappings.cpp[returnType] || 'void';
     const defaultReturn = typeMappings.cpp.defaultReturnValue[returnType] || '';
 
-    const parameterList = parameters.map(p => 
+    const parameterList = parameters.map(p =>
       `${typeMappings.cpp[p.parameterType]} ${p.parameterName}`
     ).join(', ');
 
@@ -742,3 +769,10 @@ export const STATUS_CODES = {
   CONFLICT: 409,
   INTERNAL_SERVER_ERROR: 500,
 };
+
+export const permissions = {
+  CREATE: 'create',
+  READ: 'view',
+  EDIT: 'edit',
+  DELETE: 'delete',
+}
