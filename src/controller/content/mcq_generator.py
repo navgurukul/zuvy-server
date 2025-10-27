@@ -10,37 +10,11 @@ duplicate filtering via cosine similarity.
 import subprocess
 import sys
 import os
-import requests
-import json
-import psycopg2
-import numpy as np
-from sentence_transformers import SentenceTransformer
-from dotenv import load_dotenv
-from typing import List, Dict, Any, Tuple
-from google import genai
-
-# --------------------------------------------------------
-# Configuration
-# --------------------------------------------------------
-load_dotenv()
-
-DB_HOST = os.getenv("DB_HOST", "localhost")
-DB_PORT = int(os.getenv("DB_PORT", 5432))
-DB_NAME = os.getenv("DB_NAME", "mcqdb")
-DB_USER = os.getenv("DB_USER", "postgres")
-DB_PASSWORD = os.getenv("DB_PASS", "1")
-
-os.environ["GOOGLE_API_KEY"] = os.getenv("GOOGLE_API_KEY", "AIzaSyAFuU4BE7voM9h3RIduHS2Qc36TjMd6QnM")
-SIMILARITY_THRESHOLD = 0.86
-EMBED_MODEL_NAME = "all-MiniLM-L6-v2"
-
-JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI1ODM1MyIsImVtYWlsIjoic3VrYW55YW1vaGFudHlAbmF2Z3VydWt1bC5vcmciLCJnb29nbGVVc2VySWQiOiIxMDI1MzkzNzgwNzI3NTUwMDg4NjMiLCJyb2xlIjoid2ViIiwicm9sZXNMaXN0IjpbIkFkbWluIl0sImlhdCI6MTc2MTA3NDg3OCwiZXhwIjoxNzYxMTYxMjc4fQ.m6vTKsIvM1jkoyGl_8H3OectVIohugGcnPgHNCH8LGQ")
-embed_model = SentenceTransformer(EMBED_MODEL_NAME)
 
 def install_requirements():
     try:
         result = subprocess.run(
-            ['pip', 'install', '-r', 'requirements.txt'],
+            ['pip', 'install', 'requests','google-genai'],
             check=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -49,6 +23,34 @@ def install_requirements():
         #print("Installation successful:\n", result.stdout)
     except subprocess.CalledProcessError as e:
         print("Installation failed:\n", e.stderr)
+
+install_requirements()
+
+import json
+#import psycopg2
+#import numpy as np
+#from sentence_transformers import SentenceTransformer
+#from dotenv import load_dotenv
+from typing import List, Dict, Any, Tuple
+#from google import genai
+
+# --------------------------------------------------------
+# Configuration
+# --------------------------------------------------------
+# load_dotenv()
+
+# DB_HOST = os.getenv("DB_HOST", "localhost")
+# DB_PORT = int(os.getenv("DB_PORT", 5432))
+# DB_NAME = os.getenv("DB_NAME", "mcqdb")
+# DB_USER = os.getenv("DB_USER", "postgres")
+# DB_PASSWORD = os.getenv("DB_PASS", "1")
+
+os.environ["GOOGLE_API_KEY"] = os.getenv("GOOGLE_API_KEY", "AIzaSyAFuU4BE7voM9h3RIduHS2Qc36TjMd6QnM")
+SIMILARITY_THRESHOLD = 0.86
+EMBED_MODEL_NAME = "all-MiniLM-L6-v2"
+
+JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI1ODM1MyIsImVtYWlsIjoic3VrYW55YW1vaGFudHlAbmF2Z3VydWt1bC5vcmciLCJnb29nbGVVc2VySWQiOiIxMDI1MzkzNzgwNzI3NTUwMDg4NjMiLCJyb2xlIjoid2ViIiwicm9sZXNMaXN0IjpbIkFkbWluIl0sImlhdCI6MTc2MTA3NDg3OCwiZXhwIjoxNzYxMTYxMjc4fQ.m6vTKsIvM1jkoyGl_8H3OectVIohugGcnPgHNCH8LGQ")
+#embed_model = SentenceTransformer(EMBED_MODEL_NAME)
 
 # --------------------------------------------------------
 # Helper Functions
@@ -92,6 +94,7 @@ Guidelines:
 
 
 def send_to_llm(prompt: str) -> str:
+    from google import genai
     client = genai.Client()
     response = client.models.generate_content(
         model="gemini-2.5-flash",
@@ -108,7 +111,7 @@ def parse_json(text: str):
     return json.loads(text[start:end + 1])
 
 
-def embed_texts(texts: List[str]) -> np.ndarray:
+def embed_texts(texts: List[str]):
     """Return normalized embeddings"""
     embs = embed_model.encode(texts, convert_to_numpy=True, normalize_embeddings=True)
     return embs
@@ -128,7 +131,7 @@ def get_conn():
     )
 
 
-def fetch_existing_embeddings(conn) -> List[np.ndarray]:
+def fetch_existing_embeddings(conn):
     """Fetch embeddings from zuvy_module_quiz_variants"""
     with conn.cursor() as cur:
         cur.execute("SELECT embeddings FROM zuvy_module_quiz_variants WHERE embeddings IS NOT NULL;")
@@ -143,6 +146,7 @@ def fetch_existing_embeddings(conn) -> List[np.ndarray]:
 
 
 def get_previous_assessment_data(bootcamp_id: str) -> Dict[str, Any]:
+    import requests
     url = f"https://dev.api.zuvy.org/admin/assessment-performance/{bootcamp_id}"
     headers = {
         'accept': '*/*',
@@ -164,33 +168,33 @@ def generate_mcqs_as_json(difficulty: str, topics: Dict[str, int], audience: str
     raw = send_to_llm(prompt)
     mcqs = parse_json(raw)
 
-    conn = get_conn()
-    existing_embeddings = fetch_existing_embeddings(conn)
-    conn.close()
+    # conn = get_conn()
+    # existing_embeddings = fetch_existing_embeddings(conn)
+    # conn.close()
     #print(f"Fetched {len(existing_embeddings)} embeddings from DB for duplicate check.")
 
     # Compute embeddings for generated MCQs
-    question_texts = [m["question"] for m in mcqs]
-    generated_embs = embed_texts(question_texts)
+    # question_texts = [m["question"] for m in mcqs]
+    # generated_embs = embed_texts(question_texts)
 
-    unique_mcqs = []
-    for i, q in enumerate(mcqs):
-        q_emb = generated_embs[i]
-        duplicate_found = False
-        for ex_emb in existing_embeddings:
-            if cosine(q_emb, ex_emb) >= SIMILARITY_THRESHOLD:
-                duplicate_found = True
-                break
-        if not duplicate_found:
-            unique_mcqs.append([
-                q.get("topic"),
-                q.get("difficulty"),
-                q.get("question").strip(),
-                q.get("options"),
-                q.get("answer")
-            ])
+    # unique_mcqs = []
+    # for i, q in enumerate(mcqs):
+    #     q_emb = generated_embs[i]
+    #     duplicate_found = False
+    #     for ex_emb in existing_embeddings:
+    #         if cosine(q_emb, ex_emb) >= SIMILARITY_THRESHOLD:
+    #             duplicate_found = True
+    #             break
+    #     if not duplicate_found:
+    #         unique_mcqs.append([
+    #             q.get("topic"),
+    #             q.get("difficulty"),
+    #             q.get("question").strip(),
+    #             q.get("options"),
+    #             q.get("answer")
+    #         ])
 
-    print(json.dumps(unique_mcqs, indent=2, ensure_ascii=False))
+    print(json.dumps(mcqs, indent=2, ensure_ascii=False))
     #print(f"\n✅ Unique: {len(unique_mcqs)} | ❌ Duplicates Removed: {len(mcqs) - len(unique_mcqs)}")
 
 
