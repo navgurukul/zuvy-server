@@ -545,7 +545,7 @@ export class ContentController {
 
   @Post('/createTag')
   @ApiOperation({ summary: 'Create single or multiple tags for the curriculum' })
-  @UsePipes(new ValidationPipe({ transform: true }))
+  @ApiBearerAuth('JWT-auth')
   async createTag(@Body() tagData: CreateTagDto) {
     const res = await this.contentService.createTag(tagData);
     return res;
