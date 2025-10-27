@@ -5,14 +5,15 @@ import { BatchesModule } from '../batches/batch.module';
 import { JwtModule, JwtService } from '@nestjs/jwt';
 import { JwtMiddleware } from 'src/middleware/jwt.middleware';
 import { AuthModule } from 'src/auth/auth.module';
+import { RbacModule } from 'src/rbac/rbac.module';
 
 @Module({
-    imports: [AuthModule],
-    controllers: [AdminAssessmentController],
-    providers: [AdminAssessmentService, JwtService],
+  imports: [AuthModule, RbacModule],
+  controllers: [AdminAssessmentController],
+  providers: [AdminAssessmentService, JwtService],
 })
 export class AdminAssessmentModule implements NestModule {
-    configure(consumer: MiddlewareConsumer) {
-        consumer.apply(JwtMiddleware).forRoutes('*'); // Apply JwtMiddleware to all routes
-    }
+  configure(consumer: MiddlewareConsumer) {
+    consumer.apply(JwtMiddleware).forRoutes('*'); // Apply JwtMiddleware to all routes
+  }
 }

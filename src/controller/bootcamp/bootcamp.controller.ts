@@ -201,7 +201,6 @@ export class BootcampController {
   }
 
   @Get('/batches/:bootcamp_id')
-  //
   @ApiOperation({ summary: 'Get the batches by bootcamp_id' })
   @ApiQuery({
     name: 'limit',
@@ -358,8 +357,8 @@ export class BootcampController {
     name: 'orderBy',
     required: false,
     type: String,
-    description: 'Field to order by (submittedDate, percentage, name, email)',
-    enum: ['submittedDate', 'percentage', 'name', 'email'],
+    description: 'Field to order by ( percentage, name, email)',
+    enum: ['percentage', 'name', 'email'],
   })
   @ApiQuery({
     name: 'orderDirection',

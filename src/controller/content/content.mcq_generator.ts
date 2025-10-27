@@ -35,11 +35,13 @@ function runPythonScript(inputData) {
 }
 
 // Example usage
-runPythonScript({
-  bootcampid: 803,
-  difficulty: 'Medium',
-  topics: { Arrays: 4, Loops: 3 },
-  audience: 'Assessment for AFE cohort, semester 2 and 3 CSE',
-})
-  .then((result) => console.log('Python Output:', result))
-  .catch((err) => console.error('Error:', err));
+// runPythonScript({
+//   bootcampid: 803,
+//   difficulty: 'Medium',
+//   topics: { Arrays: 4, Loops: 3 },
+//   audience: 'Assessment for AFE cohort, semester 2 and 3 CSE',
+// })
+  // .then((result) => console.log('Python Output:', result))
+  // .catch((err) => console.error('Error:', err));
+
+module.exports = { runPythonScript };

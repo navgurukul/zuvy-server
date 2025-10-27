@@ -14,7 +14,9 @@ import { AuthController } from './auth.controller';
 import { PassportModule } from '@nestjs/passport';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { JwtModule } from '@nestjs/jwt';
-let { GOOGLE_CLIENT_ID, GOOGLE_SECRET, GOOGLE_REDIRECT,JWT_SECRET_KEY } = process.env;
+import { UserTokensModule } from 'src/user-tokens/user-tokens.module';
+let { GOOGLE_CLIENT_ID, GOOGLE_SECRET, GOOGLE_REDIRECT, JWT_SECRET_KEY } =
+  process.env;
 @Module({
   imports: [
     PassportModule,
@@ -22,10 +24,11 @@ let { GOOGLE_CLIENT_ID, GOOGLE_SECRET, GOOGLE_REDIRECT,JWT_SECRET_KEY } = proces
       secret: JWT_SECRET_KEY,
       signOptions: { expiresIn: '24h' },
     }),
+    UserTokensModule,
   ],
   providers: [AuthService, JwtStrategy],
   controllers: [AuthController],
   exports: [AuthService, JwtStrategy],
 })
 export class AuthModule {}
-// // 
+// //

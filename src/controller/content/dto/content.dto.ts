@@ -17,6 +17,7 @@ import {
   IsBoolean,
   IsDefined,
   IsISO8601,
+  ArrayMinSize,
 } from 'class-validator';
 import { truncateSync } from 'fs';
 import { Transform, TransformFnParams, Type } from 'class-transformer';
@@ -1372,4 +1373,45 @@ export class deleteQuestionOrVariantDto {
   @ValidateNested({ each: true })
   @Type(() => QuestionIdDto)
   questionIds: QuestionIdDto[];
+}
+
+export class generateMcqDto {
+  @ApiProperty({
+    example: 803,
+    description: 'Bootcamp ID',
+    required: true
+  })
+  @IsNumber()
+  @IsNotEmpty()
+  bootcampid: number;
+
+  @ApiProperty({
+    example: ['Medium'],
+    description: 'Difficulty level - single or multiple',
+    required: true,
+    type: [String]
+  })
+  @IsArray()
+  @ArrayMinSize(1)
+  @IsString({ each: true })
+  @IsNotEmpty({ each: true })
+  difficulty: string[];
+
+  @ApiProperty({
+    example: { Arrays: 4, Loops: 3 },
+    description: 'Topics with their counts',
+    required: true
+  })
+  @IsObject()
+  @IsNotEmpty()
+  topics: Record<string, number>;
+
+  @ApiProperty({
+    example: 'Assessment for AFE cohort, semester 2 and 3 CSE',
+    description: 'Target audience description',
+    required: true
+  })
+  @IsString()
+  @IsOptional()
+  audience: string;
 }

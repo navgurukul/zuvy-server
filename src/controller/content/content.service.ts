@@ -75,6 +75,7 @@ import {
   AddQuizVariantsDto,
   deleteQuestionOrVariantDto,
   UpdateChapterDto,
+  generateMcqDto,
 } from './dto/content.dto';
 import { STATUS_CODES } from '../../helpers';
 import { helperVariable } from '../../constants/helper';
@@ -4290,6 +4291,15 @@ export class ContentService {
         },
         null,
       ];
+    }
+  }
+
+  async generateMcqsByAI(mcqData: generateMcqDto): Promise<any> {
+    try {
+      const result = await runPythonScript(mcqData);
+      return result;
+    } catch (err) {
+      throw err;
     }
   }
 }

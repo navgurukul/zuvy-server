@@ -15,6 +15,8 @@ import {
   Req,
   Res,
   UseGuards,
+  ParseIntPipe,
+  ParseArrayPipe,
 } from '@nestjs/common';
 import { Request } from 'express';
 import { AdminAssessmentService } from './adminAssessment.service';
@@ -60,7 +62,9 @@ export class AdminAssessmentController {
     @Param('bootcamp_id') bootcampID: number,
     @Query('searchAssessment') searchAssessment: string,
   ) {
+    const roleName = req.user[0]?.roles;
     return this.adminAssessmentService.getBootcampAssessment(
+      roleName,
       bootcampID,
       searchAssessment,
     );
@@ -204,8 +208,11 @@ export class AdminAssessmentController {
     @Query('searchVideos') searchVideos: string,
     @Query('limit') limit: number,
     @Query('offset') offSet: number,
+    @Req() req,
   ) {
+    const roleName = req.user[0]?.roles;
     return this.adminAssessmentService.getBootcampModuleCompletion(
+      roleName,
       bootcampID,
       searchVideos,
       limit,
@@ -220,6 +227,12 @@ export class AdminAssessmentController {
     required: false,
     type: String,
     description: 'Search by name or email',
+  })
+  @ApiQuery({
+    name: 'batchId',
+    required: false,
+    type: Number,
+    description: 'Batch id (optional)',
   })
   @ApiQuery({
     name: 'limit',
@@ -237,12 +250,14 @@ export class AdminAssessmentController {
   async ModuleChapterStudents(
     @Param('chapter_id') chapterID: number,
     @Query('searchStudent') searchStudent: string,
+    @Query('batchId') batchId: number,
     @Query('limit') limit: number,
     @Query('offset') offSet: number,
   ) {
     return this.adminAssessmentService.getModuleChapterStudents(
       chapterID,
       searchStudent,
+      batchId,
       limit,
       offSet,
     );
@@ -364,6 +379,57 @@ export class AdminAssessmentController {
       ).send(res);
     } catch (error) {
       return ErrorResponse.BadRequestException(error.message).send(res);
+    }
+  }
+
+  @Get('/assessment-performance/:bootcampId')
+  @ApiOperation({ summary: 'Get assessment performance' })
+  @ApiBearerAuth('JWT-auth')
+  @ApiQuery({ name: 'assessmentId', required: false, type: Number })
+  @ApiQuery({ name: 'userId', required: false, type: Number })
+  @ApiQuery({
+    name: 'percentages',
+    required: false,
+    type: Number,
+    isArray: true,
+  })
+  async getAssessmentPerformance(
+    @Param('bootcampId', ParseIntPipe) bootcampId: number,
+    @Query('assessmentId') assessmentId?: string,
+    @Query('userId') userId?: string,
+    @Query(
+      'percentages',
+      new ParseArrayPipe({
+        items: Number,
+        optional: true,
+        separator: ',',
+      }),
+    )
+    percentages?: number[],
+  ) {
+    try {
+      // Parse optional number parameters manually
+      const parsedAssessmentId = assessmentId
+        ? parseInt(assessmentId)
+        : undefined;
+      const parsedUserId = userId ? parseInt(userId) : undefined;
+
+      // Validate parsed numbers
+      if (assessmentId && isNaN(parsedAssessmentId)) {
+        throw new BadRequestException('assessmentId must be a valid number');
+      }
+      if (userId && isNaN(parsedUserId)) {
+        throw new BadRequestException('userId must be a valid number');
+      }
+
+      return await this.adminAssessmentService.getAssessmentStats(
+        bootcampId,
+        parsedAssessmentId,
+        parsedUserId,
+        percentages,
+      );
+    } catch (error) {
+      throw new BadRequestException(error.message);
     }
   }
 }

@@ -8,9 +8,11 @@ import {
   zuvyUserRolesAssigned,
   zuvyUserRoles,
   sansaarUserRoles,
+  userTokens,
 } from '../../drizzle/schema';
 import { eq, inArray } from 'drizzle-orm';
 import { OAuth2Client } from 'google-auth-library';
+import { UserTokensService } from 'src/user-tokens/user-tokens.service';
 let { GOOGLE_CLIENT_ID, GOOGLE_SECRET, GOOGLE_REDIRECT, JWT_SECRET_KEY } =
   process.env;
 // import { Role } from '../rbac/utility';
@@ -20,7 +22,10 @@ export class AuthService {
   private readonly logger = new Logger(AuthService.name);
   private readonly googleAuthClient: OAuth2Client;
 
-  constructor(private jwtService: JwtService) {
+  constructor(
+    private jwtService: JwtService,
+    private readonly userTokenService: UserTokensService,
+  ) {
     const clientId = process.env.GOOGLE_CLIENT_ID;
     this.googleAuthClient = new OAuth2Client(clientId);
   }
@@ -203,6 +208,13 @@ export class AuthService {
         expiresIn: '7d',
       });
 
+      await this.userTokenService.upsertToken({
+        userId: Number(user.id),
+        userEmail: user.email,
+        accessToken: access_token,
+        refreshToken: refresh_token,
+      });
+
       return {
         access_token,
         refresh_token,
@@ -313,6 +325,13 @@ export class AuthService {
         token: refreshToken,
         expiresAt: new Date(expiresAt),
         userId: payload.sub,
+      });
+
+      await this.userTokenService.upsertToken({
+        userId: Number(user.id),
+        userEmail: user.email,
+        accessToken: newAccessToken,
+        refreshToken: newRefreshToken,
       });
 
       return {

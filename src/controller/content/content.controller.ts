@@ -59,6 +59,7 @@ import {
   AddQuizVariantsDto,
   deleteQuestionOrVariantDto,
   UpdateChapterDto,
+  generateMcqDto,
 } from './dto/content.dto';
 import { RolesGuard } from 'src/guards/roles.guard';
 import { Roles } from 'src/decorators/roles.decorator';
@@ -1081,5 +1082,18 @@ export class ContentController {
     );
 
     return { urls };
+  }
+
+  // create a endpoint to generate mcq questions using openai
+  @Post('/generate-mcqs')
+  @ApiOperation({ summary: 'Generate MCQs using Python script' })
+  @ApiBearerAuth('JWT-auth')
+  async generateMCQs(@Body() inputData: generateMcqDto) {
+    try {
+      const result = await this.contentService.generateMcqsByAI(inputData);
+      return result;
+    } catch (error) {
+      return error;
+    }
   }
 }
