@@ -549,10 +549,12 @@ export class ContentController {
   }
 
   @Post('/createTag')
-  @ApiOperation({ summary: 'Create a tag for the curriculum' })
+  @ApiOperation({
+    summary: 'Create single or multiple tags for the curriculum',
+  })
   @ApiBearerAuth('JWT-auth')
-  async createTag(@Body() tag: CreateTagDto) {
-    const res = await this.contentService.createTag(tag);
+  async createTag(@Body() tagData: CreateTagDto) {
+    const res = await this.contentService.createTag(tagData);
     return res;
   }
 
@@ -1101,6 +1103,19 @@ export class ContentController {
         audience,
         bootcampid,
       );
+      return result;
+    } catch (error) {
+      return error;
+    }
+  }
+
+  @Get('/get-mcqs')
+  @ApiOperation({ summary: 'Get MCQs by ID' })
+  @ApiBearerAuth('JWT-auth')
+  async getMCQs(@Query('id') id: number) {
+    try {
+      const result =
+        await this.contentMcqGeneratorService.getQuestionsBySetId(id);
       return result;
     } catch (error) {
       return error;

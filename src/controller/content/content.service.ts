@@ -2744,20 +2744,64 @@ export class ContentService {
     }
   }
 
-  async createTag(tag: CreateTagDto) {
+  async createTag(tagData: CreateTagDto) {
     try {
-      const newTag = await db.insert(zuvyTags).values(tag).returning();
-      if (newTag.length > 0) {
+      const { tagNames } = tagData;
+
+      // Remove duplicates and trim
+      const uniqueTagNames = [...new Set(tagNames.map((name) => name.trim()))];
+
+      // Check which tags already exist
+      const existingTags = await db
+        .select()
+        .from(zuvyTags)
+        .where(inArray(zuvyTags.tagName, uniqueTagNames));
+
+      const existingTagNames = existingTags.map((tag) => tag.tagName);
+      const newTagNames = uniqueTagNames.filter(
+        (name) => !existingTagNames.includes(name),
+      );
+
+      // Insert only new tags
+      if (newTagNames.length > 0) {
+        const tagsToInsert = newTagNames.map((tagName) => ({
+          tagName: tagName,
+        }));
+
+        const newTags = await db
+          .insert(zuvyTags)
+          .values(tagsToInsert)
+          .returning();
+
+        let message = '';
+        if (existingTags.length === 0) {
+          message = `Tags created successfully: ${newTagNames.join(', ')}`;
+        } else {
+          message = `Tags created: ${newTagNames.join(', ')}. Cannot add these tags as already there: ${existingTagNames.join(', ')}`;
+        }
+
         return {
           status: 'success',
           code: 200,
-          newTag,
+          message: message,
+          data: {
+            createdTags: newTags,
+            existingTags: existingTags,
+            createdTagNames: newTagNames,
+            existingTagNames: existingTagNames,
+          },
         };
       } else {
         return {
           status: 'error',
-          code: 404,
-          message: 'Tag is not created.Please try again.',
+          code: 409,
+          message: `Cannot add these tags as already there: ${existingTagNames.join(', ')}`,
+          data: {
+            createdTags: [],
+            existingTags: existingTags,
+            createdTagNames: [],
+            existingTagNames: existingTagNames,
+          },
         };
       }
     } catch (err) {
