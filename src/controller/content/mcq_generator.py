@@ -29,7 +29,7 @@ from typing import List, Dict, Any, Tuple
 # DB_USER = os.getenv("DB_USER", "postgres")
 # DB_PASSWORD = os.getenv("DB_PASS", "1")
 
-os.environ["GOOGLE_API_KEY"] = os.getenv("GOOGLE_API_KEY", "AIzaSyAFuU4BE7voM9h3RIduHS2Qc36TjMd6QnM")
+os.environ["GOOGLE_API_KEY"] = os.getenv("GOOGLE_API_KEY", "AIzaSyBAvd_d97UrEVhgxHxXaoWOij0Aw5xgsAY")
 SIMILARITY_THRESHOLD = 0.86
 EMBED_MODEL_NAME = "all-MiniLM-L6-v2"
 
