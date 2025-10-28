@@ -1115,13 +1115,17 @@ export class deleteQuestionDto {
 
 export class CreateTagDto {
   @ApiProperty({
-    type: String,
-    example: 'Linked List',
+    type: [String],
+    example: ['Linked List', 'Array', 'Tree'],
+    description:
+      'Array of tag names. Send as: ["tag1"] for single or ["tag1", "tag2", "tag3"] for multiple',
     required: true,
   })
-  @IsString()
-  @IsNotEmpty()
-  tagName: string;
+  @IsArray()
+  @ArrayMinSize(1, { message: 'At least one tag is required' })
+  @IsString({ each: true, message: 'Each tag must be a string' })
+  @IsNotEmpty({ each: true, message: 'Tag name cannot be empty' })
+  tagNames: string[];
 }
 
 export class CreateChapterDto {
@@ -1415,6 +1419,25 @@ export class deleteQuestionOrVariantDto {
 }
 
 export class generateMcqDto {
+  // add title and description fiea
+  @ApiProperty({
+    example: 'Intro to Data Structures',
+    description: 'Title of the MCQ set',
+    required: true,
+  })
+  @IsString()
+  @IsNotEmpty()
+  title: string;
+
+  @ApiProperty({
+    example: 'This set covers basic data structure concepts.',
+    description: 'Description of the MCQ set',
+    required: false,
+  })
+  @IsString()
+  @IsOptional()
+  description: string;
+
   @ApiProperty({
     example: 803,
     description: 'Bootcamp ID',

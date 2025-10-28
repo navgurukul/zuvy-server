@@ -3961,9 +3961,10 @@ export const usersExtraPermissionsRelations = relations(users, ({ many }) => ({
   grantedPermissions: many(zuvyExtraPermissions, { relationName: 'grantedByUser' }),
 }));
 
-// create an table to store the ai generated mcq questions
 export const zuvyQuestionSets = main.table('zuvy_question_sets', {
   id: serial('id').primaryKey().notNull(),
+  title: varchar('title', { length: 255 }).notNull(),
+  description: text('description'),
   bootcampId: integer('bootcamp_id').notNull(),
   difficulty: varchar('difficulty', { length: 50 }),
   topics: jsonb('topics').notNull(), // { "Arrays": 4, "Loops": 3 }
@@ -3997,3 +3998,4 @@ export const zuvyAIGeneratedQuestionsRelations = relations(zuvyAIGeneratedQuesti
     references: [zuvyQuestionSets.id],
   }),
 }));
+

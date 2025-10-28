@@ -4,6 +4,7 @@ import * as dotenv from 'dotenv';
 import { GoogleGenAI } from '@google/genai';
 import { db } from 'src/db';
 import { zuvyAIGeneratedQuestions, zuvyQuestionSets } from 'drizzle/schema';
+import { eq } from 'drizzle-orm';
 dotenv.config();
 interface TopicCount {
   [topic: string]: number;
@@ -115,11 +116,32 @@ export class MCQGeneratorService {
   /**
    * Main function — orchestrates MCQ generation
    */
+  // async generateMCQsAsJson(
+  //   difficulty: string,
+  //   topics: TopicCount,
+  //   audience: string,
+  //   bootcampId: number,
+  // ): Promise<MCQ[]> {
+  //   const previousAssessment = await this.getPreviousAssessmentData(bootcampId);
+  //   const prompt = await this.buildPrompt(
+  //     difficulty,
+  //     topics,
+  //     audience,
+  //     previousAssessment,
+  //   );
+  //   const rawOutput = await this.sendToLLM(prompt);
+  //   const mcqs = this.parseJson(rawOutput);
+
+  //   console.log(JSON.stringify(mcqs, null, 2));
+  //   return mcqs;
+  // }
   async generateMCQsAsJson(
     difficulty: string,
     topics: TopicCount,
     audience: string,
     bootcampId: number,
+    title?: string,
+    description?: string,
   ): Promise<MCQ[]> {
     const previousAssessment = await this.getPreviousAssessmentData(bootcampId);
     const prompt = await this.buildPrompt(
@@ -136,6 +158,7 @@ export class MCQGeneratorService {
     // ✅ STORE MCQs IN DATABASE
     await this.storeMCQsInDatabase(
       mcqs,
+
       bootcampId,
       difficulty,
       topics,
@@ -151,13 +174,18 @@ export class MCQGeneratorService {
     difficulty: string,
     topics: TopicCount,
     audience: string,
+    title?: string,
+    description?: string,
   ): Promise<void> {
     try {
       const payLoad = {
+        title: title || `MCQ Set for Bootcamp ${bootcampId}`,
+        description: description || 'AI generated MCQ set',
         bootcampId,
         difficulty,
         topics,
         audience,
+        totalQuestions: mcqs.length,
         generatedAt: new Date(),
       };
 
@@ -198,6 +226,31 @@ export class MCQGeneratorService {
     } catch (error) {
       console.error('Error storing MCQs in database:', error);
       throw new Error(`Failed to store MCQs: ${error.message}`);
+    }
+  }
+
+  async getQuestionsBySetId(questionSetId: number) {
+    try {
+      const questions = await db
+        .select()
+        .from(zuvyAIGeneratedQuestions)
+        .where(eq(zuvyAIGeneratedQuestions.questionSetId, questionSetId));
+      return questions;
+    } catch (error) {
+      throw new Error(`Failed to fetch questions: ${error.message}`);
+    }
+  }
+
+  // get question sets by bootcamp id
+  async getMCQSetsByBootcampId(bootcampId: number) {
+    try {
+      const questionSets = await db
+        .select()
+        .from(zuvyQuestionSets)
+        .where(eq(zuvyQuestionSets.bootcampId, bootcampId));
+      return questionSets;
+    } catch (error) {
+      throw new Error(`Failed to fetch question sets: ${error.message}`);
     }
   }
 }
