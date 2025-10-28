@@ -381,3 +381,35 @@ CREATE TABLE "main"."zuvy_permissions_roles" (
 );
 
 ALTER TABLE main.zuvy_permissions_roles ADD CONSTRAINT uniq_role_permission UNIQUE (role_id, permission_id);
+
+-- Create question sets table
+CREATE TABLE "zuvy_question_sets" (
+    "id" SERIAL PRIMARY KEY NOT NULL,
+    "bootcamp_id" INTEGER NOT NULL,
+    "difficulty" VARCHAR(50),
+    "topics" JSONB NOT NULL,
+    "audience" TEXT,
+    "total_questions" INTEGER,
+    "created_at" TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Create AI generated questions table
+CREATE TABLE "zuvy_ai_generated_questions" (
+    "id" SERIAL PRIMARY KEY NOT NULL,
+    "question" TEXT NOT NULL,
+    "options" JSONB NOT NULL,
+    "correct_option" VARCHAR(255) NOT NULL,
+    "difficulty" VARCHAR(50),
+    "topic" VARCHAR(100),
+    "question_set_id" INTEGER NOT NULL,
+    "created_at" TIMESTAMPTZ DEFAULT NOW(),
+    "updated_at" TIMESTAMPTZ DEFAULT NOW(),
+    "is_active" BOOLEAN DEFAULT true
+);
+
+-- Add foreign key constraint with CASCADE DELETE
+ALTER TABLE "zuvy_ai_generated_questions" 
+ADD CONSTRAINT "fk_question_set" 
+FOREIGN KEY ("question_set_id") 
+REFERENCES "zuvy_question_sets"("id") 
+ON DELETE CASCADE;

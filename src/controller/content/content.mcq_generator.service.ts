@@ -2,6 +2,8 @@ import { Injectable } from '@nestjs/common';
 import { AdminAssessmentService } from '../adminAssessment/adminAssessment.service';
 import * as dotenv from 'dotenv';
 import { GoogleGenAI } from '@google/genai';
+import { db } from 'src/db';
+import { zuvyAIGeneratedQuestions, zuvyQuestionSets } from 'drizzle/schema';
 dotenv.config();
 interface TopicCount {
   [topic: string]: number;
@@ -127,9 +129,75 @@ export class MCQGeneratorService {
       previousAssessment,
     );
     const rawOutput = await this.sendToLLM(prompt);
-    const mcqs = this.parseJson(rawOutput);
+    const mcqs = await this.parseJson(rawOutput);
 
     console.log(JSON.stringify(mcqs, null, 2));
+
+    // ✅ STORE MCQs IN DATABASE
+    await this.storeMCQsInDatabase(
+      mcqs,
+      bootcampId,
+      difficulty,
+      topics,
+      audience,
+    );
+
     return mcqs;
+  }
+
+  async storeMCQsInDatabase(
+    mcqs: MCQ[],
+    bootcampId: number,
+    difficulty: string,
+    topics: TopicCount,
+    audience: string,
+  ): Promise<void> {
+    try {
+      const payLoad = {
+        bootcampId,
+        difficulty,
+        topics,
+        audience,
+        generatedAt: new Date(),
+      };
+
+      // Transaction use karein for data consistency
+      await db.transaction(async (tx) => {
+        // 1. Create question set
+        const [questionSet] = await tx
+          .insert(zuvyQuestionSets)
+          .values(payLoad)
+          .returning();
+
+        if (!questionSet) {
+          throw new Error('Failed to create question set');
+        }
+
+        // 2. Insert questions one by one ya batch mein
+        const questionsData = mcqs.map((mcq) => ({
+          questionSetId: questionSet.id,
+          topic: mcq.topic,
+          difficulty: mcq.difficulty,
+          question: mcq.question,
+          options: mcq.options, // JSONB
+          correctOption: mcq.answer, // Column name 'correctOption' hai
+          isActive: true,
+          // createdAt aur updatedAt automatically handle honge
+        }));
+
+        // 3. Single batch insert
+        const insertedQuestions = await tx
+          .insert(zuvyAIGeneratedQuestions)
+          .values(questionsData)
+          .returning();
+      });
+
+      console.log(
+        `✅ Successfully stored ${mcqs.length} MCQs for bootcamp ${bootcampId}`,
+      );
+    } catch (error) {
+      console.error('Error storing MCQs in database:', error);
+      throw new Error(`Failed to store MCQs: ${error.message}`);
+    }
   }
 }

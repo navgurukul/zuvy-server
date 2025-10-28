@@ -3961,3 +3961,39 @@ export const usersExtraPermissionsRelations = relations(users, ({ many }) => ({
   grantedPermissions: many(zuvyExtraPermissions, { relationName: 'grantedByUser' }),
 }));
 
+// create an table to store the ai generated mcq questions
+export const zuvyQuestionSets = main.table('zuvy_question_sets', {
+  id: serial('id').primaryKey().notNull(),
+  bootcampId: integer('bootcamp_id').notNull(),
+  difficulty: varchar('difficulty', { length: 50 }),
+  topics: jsonb('topics').notNull(), // { "Arrays": 4, "Loops": 3 }
+  audience: text('audience'),
+  totalQuestions: integer('total_questions'),
+  createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow()
+});
+
+export const zuvyAIGeneratedQuestions = main.table('zuvy_ai_generated_questions', {
+  id: serial('id').primaryKey().notNull(),
+  question: text('question').notNull(),
+  options: jsonb('options').notNull(),
+  correctOption: varchar('correct_option', { length: 255 }).notNull(),
+  difficulty: varchar('difficulty', { length: 50 }),
+  topic: varchar('topic', { length: 100 }),
+  questionSetId: integer('question_set_id').notNull().references(() => zuvyQuestionSets.id, { onDelete: 'cascade' }), 
+  createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow(),
+  isActive: boolean('is_active').default(true)
+});
+
+// Relation for Question Sets
+export const zuvyQuestionSetsRelations = relations(zuvyQuestionSets, ({ many }) => ({
+  questions: many(zuvyAIGeneratedQuestions),
+}));
+
+// Relation for AI Generated Questions
+export const zuvyAIGeneratedQuestionsRelations = relations(zuvyAIGeneratedQuestions, ({ one }) => ({
+  questionSet: one(zuvyQuestionSets, {
+    fields: [zuvyAIGeneratedQuestions.questionSetId],
+    references: [zuvyQuestionSets.id],
+  }),
+}));
