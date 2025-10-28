@@ -71,6 +71,7 @@ import {
   FilesInterceptor,
 } from '@nestjs/platform-express/multer';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
+import { MCQGeneratorService } from './content.mcq_generator.service';
 
 @Controller('content')
 @ApiTags('content')
@@ -84,7 +85,10 @@ import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 @UseGuards(JwtAuthGuard, RolesGuard)
 @ApiBearerAuth('JWT-auth')
 export class ContentController {
-  constructor(private contentService: ContentService) {}
+  constructor(
+    private contentService: ContentService,
+    private readonly contentMcqGeneratorService: MCQGeneratorService,
+  ) {}
 
   @Post('/modules/:bootcampId')
   @ApiOperation({ summary: 'Create the module of a particular bootcamp' })
@@ -1090,7 +1094,13 @@ export class ContentController {
   @ApiBearerAuth('JWT-auth')
   async generateMCQs(@Body() inputData: generateMcqDto) {
     try {
-      const result = await this.contentService.generateMcqsByAI(inputData);
+      const { difficulty, topics, audience, bootcampid } = inputData;
+      const result = await this.contentMcqGeneratorService.generateMCQsAsJson(
+        difficulty,
+        topics,
+        audience,
+        bootcampid,
+      );
       return result;
     } catch (error) {
       return error;

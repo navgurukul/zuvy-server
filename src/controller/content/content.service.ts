@@ -4293,13 +4293,4 @@ export class ContentService {
       ];
     }
   }
-
-  async generateMcqsByAI(mcqData: generateMcqDto): Promise<any> {
-    try {
-      const result = await runPythonScript(mcqData);
-      return result;
-    } catch (err) {
-      throw err;
-    }
-  }
 }
