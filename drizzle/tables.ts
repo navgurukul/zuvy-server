@@ -30,6 +30,15 @@ const bytea = customType<{ data: string; notNull: false; default: false }>({
   },
 });
 
+export const doublePrecisionArray = customType<{
+  data: number[];
+  driverData: string;
+}>({
+  dataType() {
+    return 'double precision[]';
+  },
+});
+
 
 export const userSession = main.table("user_session", {
 	id: varchar("id", { length: 255 }).primaryKey().notNull(),

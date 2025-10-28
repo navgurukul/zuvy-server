@@ -59,6 +59,7 @@ import {
   AddQuizVariantsDto,
   deleteQuestionOrVariantDto,
   UpdateChapterDto,
+  generateMcqDto,
 } from './dto/content.dto';
 import { RolesGuard } from 'src/guards/roles.guard';
 import { Roles } from 'src/decorators/roles.decorator';
@@ -70,6 +71,7 @@ import {
   FilesInterceptor,
 } from '@nestjs/platform-express/multer';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
+import { MCQGeneratorService } from './content.mcq_generator.service';
 
 @Controller('content')
 @ApiTags('content')
@@ -83,7 +85,10 @@ import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 @UseGuards(JwtAuthGuard, RolesGuard)
 @ApiBearerAuth('JWT-auth')
 export class ContentController {
-  constructor(private contentService: ContentService) {}
+  constructor(
+    private contentService: ContentService,
+    private readonly contentMcqGeneratorService: MCQGeneratorService,
+  ) {}
 
   @Post('/modules/:bootcampId')
   @ApiOperation({ summary: 'Create the module of a particular bootcamp' })
@@ -544,7 +549,9 @@ export class ContentController {
   }
 
   @Post('/createTag')
-  @ApiOperation({ summary: 'Create single or multiple tags for the curriculum' })
+  @ApiOperation({
+    summary: 'Create single or multiple tags for the curriculum',
+  })
   @ApiBearerAuth('JWT-auth')
   async createTag(@Body() tagData: CreateTagDto) {
     const res = await this.contentService.createTag(tagData);
@@ -1081,5 +1088,53 @@ export class ContentController {
     );
 
     return { urls };
+  }
+
+  // create a endpoint to generate mcq questions using openai
+  @Post('/generate-mcqs')
+  @ApiOperation({ summary: 'Generate MCQs using Python script' })
+  @ApiBearerAuth('JWT-auth')
+  async generateMCQs(@Body() inputData: generateMcqDto) {
+    try {
+      const { difficulty, topics, audience, bootcampid } = inputData;
+      const result = await this.contentMcqGeneratorService.generateMCQsAsJson(
+        difficulty,
+        topics,
+        audience,
+        bootcampid,
+      );
+      return result;
+    } catch (error) {
+      return error;
+    }
+  }
+
+  @Get('/get-mcqs')
+  @ApiOperation({ summary: 'Get MCQs by ID' })
+  @ApiBearerAuth('JWT-auth')
+  async getMCQs(@Query('id') id: number) {
+    try {
+      const result =
+        await this.contentMcqGeneratorService.getQuestionsBySetId(id);
+      return result;
+    } catch (error) {
+      return error;
+    }
+  }
+
+  // get the list of mcq sets by bootcamp id
+  @Get('/get-mcq-sets/:bootcampid')
+  @ApiOperation({ summary: 'Get MCQ sets by Bootcamp ID' })
+  @ApiBearerAuth('JWT-auth')
+  async getMCQSets(@Param('bootcampid') bootcampid: number) {
+    try {
+      const result =
+        await this.contentMcqGeneratorService.getMCQSetsByBootcampId(
+          bootcampid,
+        );
+      return result;
+    } catch (error) {
+      return error;
+    }
   }
 }

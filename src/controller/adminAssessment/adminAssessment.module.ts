@@ -11,6 +11,7 @@ import { RbacModule } from 'src/rbac/rbac.module';
   imports: [AuthModule, RbacModule],
   controllers: [AdminAssessmentController],
   providers: [AdminAssessmentService, JwtService],
+  exports: [AdminAssessmentService],
 })
 export class AdminAssessmentModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
