@@ -10,22 +10,6 @@ duplicate filtering via cosine similarity.
 import subprocess
 import sys
 import os
-
-def install_requirements():
-    try:
-        result = subprocess.run(
-            ['pip', 'install', 'requests','google-genai'],
-            check=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True
-        )
-        #print("Installation successful:\n", result.stdout)
-    except subprocess.CalledProcessError as e:
-        print("Installation failed:\n", e.stderr)
-
-install_requirements()
-
 import json
 #import psycopg2
 #import numpy as np
@@ -55,6 +39,20 @@ JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVC
 # --------------------------------------------------------
 # Helper Functions
 # --------------------------------------------------------
+def install_requirements():
+    try:
+        result = subprocess.run(
+            ['pip', 'install', 'requests','google-genai'],
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True
+        )
+        #print("Installation successful:\n", result.stdout)
+    except subprocess.CalledProcessError as e:
+        print("Installation failed:\n", e.stderr)
+
+
 def build_prompt(difficulty: str, topics: Dict[str, int], audience: str, previous_assessment: Dict[str, Any] = None) -> str:
     topic_lines = "\n".join([f"- {topic}: {count} question(s)" for topic, count in topics.items()])
     prev_data_str = ""
@@ -202,7 +200,7 @@ def generate_mcqs_as_json(difficulty: str, topics: Dict[str, int], audience: str
 # Run Example
 # --------------------------------------------------------
 if __name__ == "__main__":
-    install_requirements()
+    #install_requirements()
     difficulty = "Medium"
     topics = {"Arrays": 4, "Loops": 3}
     audience = "Assessment for AFE cohort, semester 2 and 3 CSE"
