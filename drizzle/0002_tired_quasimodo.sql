@@ -381,3 +381,15 @@ CREATE TABLE "main"."zuvy_permissions_roles" (
 );
 
 ALTER TABLE main.zuvy_permissions_roles ADD CONSTRAINT uniq_role_permission UNIQUE (role_id, permission_id);
+
+--> questions by llm table.
+CREATE TABLE questions_by_llm (
+  id SERIAL PRIMARY KEY NOT NULL,
+  topic VARCHAR(100),
+  difficulty VARCHAR(50),
+  question TEXT NOT NULL,
+  options JSONB NOT NULL,
+  answer VARCHAR(255) NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);

@@ -27,6 +27,9 @@ import { ResourcesModule } from './resources/resources.module';
 import { AuditlogModule } from './auditlog/auditlog.module';
 import { RolesModule } from './roles/roles.module';
 import { UserTokensModule } from './user-tokens/user-tokens.module';
+import { LlmModule } from './llm/llm.module';
+import { QuestionsByLlmModule } from './questions-by-llm/questions-by-llm.module';
+import { LevelModule } from './level/level.module';
 let { GOOGLE_CLIENT_ID, GOOGLE_SECRET, GOOGLE_REDIRECT, JWT_SECRET_KEY } =
   process.env;
 @Module({
@@ -59,6 +62,9 @@ let { GOOGLE_CLIENT_ID, GOOGLE_SECRET, GOOGLE_REDIRECT, JWT_SECRET_KEY } =
     AuditlogModule,
     RolesModule,
     UserTokensModule,
+    LlmModule,
+    QuestionsByLlmModule,
+    LevelModule,
   ],
   providers: [
     {

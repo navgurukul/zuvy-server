@@ -3959,3 +3959,61 @@ export const usersExtraPermissionsRelations = relations(users, ({ many }) => ({
   grantedPermissions: many(zuvyExtraPermissions, { relationName: 'grantedByUser' }),
 }));
 
+//llm related tables
+export const questionsByLLM = main.table("questions_by_llm", {
+  id: serial("id").primaryKey().notNull(),
+  topic: varchar("topic", { length: 100 }),
+  difficulty: varchar("difficulty", { length: 50 }),
+  question: text("question").notNull(),
+  options: jsonb("options").notNull(), // store as JSON array
+  answer: varchar("answer", { length: 255 }).notNull(),
+  language: varchar("language", {length: 255}),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: "string" }).defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true, mode: "string" }).defaultNow(),
+});
+
+export const questionLevelRelation = main.table("question_level_relation", {
+  id: serial("id").primaryKey().notNull(),
+  levelId: integer("level_id").notNull().references(() => levels.id),
+  questionId: integer("question_id").notNull().references(() => questionsByLLM.id),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: "string" }).defaultNow(),
+}, (table) => ({
+  uniqStudentQuestion: unique("uniq_student_question").on(table.levelId, table.questionId),
+}));
+
+export const questionStudentAnswerRelation = main.table("question_student_answer_relation", {
+  id: serial("id").primaryKey().notNull(),
+  studentId: integer("student_id").notNull().references(() => students.id),
+  questionId: integer("question_id").notNull().references(() => questionsByLLM.id),
+  answer: varchar("answer", { length: 255 }),
+  status: integer("status").notNull().default(0), // 1 = correct, 0 = wrong
+  answeredAt: timestamp("answered_at", { withTimezone: true, mode: "string" }).defaultNow(),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: "string" }).defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true, mode: "string" }).defaultNow(),
+}, (table) => ({
+  uniqStudentQuestionAnswer: unique("uniq_student_question_answer").on(table.studentId, table.questionId),
+}));
+
+export const levels = main.table("levels", {
+  id: serial("id").primaryKey().notNull(),
+  grade: varchar("grade", { length: 5 }).notNull(), // e.g. A+, A, B...
+  scoreRange: varchar("score_range", { length: 50 }).notNull(), // e.g. ">= 90", "80-89"
+  scoreMin: integer("score_min"), // optional numeric range start
+  scoreMax: integer("score_max"), // optional numeric range end
+  hardship: varchar("hardship", { length: 20 }), // "+20%", etc.
+  meaning: text("meaning"),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: "string" }).defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true, mode: "string" }).defaultNow(),
+}, (table) => ({
+  uniqGrade: unique("uniq_level_grade").on(table.grade),
+}));
+
+export const studentLevelRelation = main.table("student_level_relation", {
+  id: serial("id").primaryKey().notNull(),
+  studentId: integer("student_id").notNull().references(() => students.id),
+  levelId: integer("level_id").notNull().references(() => levels.id),
+  assignedAt: timestamp("assigned_at", { withTimezone: true, mode: "string" }).defaultNow(),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: "string" }).defaultNow(),
+}, (table) => ({
+  uniqStudentLevel: unique("uniq_student_level").on(table.studentId, table.levelId),
+}));
