@@ -385,6 +385,7 @@ ALTER TABLE main.zuvy_permissions_roles ADD CONSTRAINT uniq_role_permission UNIQ
 --> questions by llm table.
 CREATE TABLE "questions_by_llm" (
   "id" SERIAL PRIMARY KEY NOT NULL,
+  "bootcampId" INTEGER NOT NULL REFERENCES "main"."ai_assessment"("id"),
   "topic" VARCHAR(100),
   "difficulty" VARCHAR(50),
   "bootcamp_id" INTEGER,
@@ -411,8 +412,8 @@ CREATE TABLE "levels" (
 
 CREATE TABLE "question_level_relation" (
   "id" SERIAL PRIMARY KEY NOT NULL,
-  "level_id" INTEGER NOT NULL REFERENCES "levels"("id"),
-  "question_id" INTEGER NOT NULL REFERENCES "questions_by_llm"("id"),
+  "level_id" INTEGER NOT NULL REFERENCES "main"."levels"("id"),
+  "question_id" INTEGER NOT NULL REFERENCES "main"."questions_by_llm"("id"),
   "created_at" TIMESTAMPTZ DEFAULT NOW(),
   CONSTRAINT "uniq_student_question" UNIQUE ("level_id", "question_id")
 );
@@ -431,8 +432,9 @@ CREATE TABLE "question_student_answer_relation" (
 
 CREATE TABLE "student_level_relation" (
   "id" SERIAL PRIMARY KEY NOT NULL,
-  "student_id" INTEGER NOT NULL REFERENCES "users"("id"),
-  "level_id" INTEGER NOT NULL REFERENCES "levels"("id"),
+  "student_id" INTEGER NOT NULL REFERENCES "main"."users"("id"),
+  "level_id" INTEGER NOT NULL REFERENCES "main"."levels"("id"),
+  "ai_assessment_id" INTEGER NOT NULL REFERENCES "main"."ai_assessment"("id"),
   "assigned_at" TIMESTAMPTZ DEFAULT NOW(),
   "created_at" TIMESTAMPTZ DEFAULT NOW(),
   CONSTRAINT "uniq_student_level" UNIQUE ("student_id", "level_id")
@@ -440,6 +442,7 @@ CREATE TABLE "student_level_relation" (
 
 CREATE TABLE IF NOT EXISTS "question_evaluation" (
   "id" SERIAL PRIMARY KEY NOT NULL,
+  "ai_assessment_id" INTEGER NOT NULL REFERENCES "main"."ai_assessment"("id"),
   "question" TEXT NOT NULL,
   "topic" VARCHAR(255),
   "difficulty" VARCHAR(50),
@@ -455,3 +458,17 @@ CREATE TABLE IF NOT EXISTS "question_evaluation" (
   "created_at" TIMESTAMPTZ DEFAULT NOW(),
   "updated_at" TIMESTAMPTZ DEFAULT NOW()
 );
+
+CREATE TABLE IF NOT EXISTS "ai_assessment" (
+  "id" SERIAL PRIMARY KEY NOT NULL,
+  "bootcamp_id" INTEGER NOT NULL REFERENCES "zuvy_bootcamps"("id"),
+  "title" VARCHAR(255) NOT NULL,
+  "description" TEXT,
+  "difficulty" VARCHAR(50),
+  "topics" JSONB NOT NULL,
+  "audience" JSONB,
+  "total_number_of_questions" INTEGER NOT NULL,
+  "created_at" TIMESTAMPTZ DEFAULT NOW(),
+  "updated_at" TIMESTAMPTZ DEFAULT NOW()
+);
+

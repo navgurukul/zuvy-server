@@ -1,4 +1,8 @@
-import { Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { CreateAiAssessmentDto } from './dto/create-ai-assessment.dto';
 import { UpdateAiAssessmentDto } from './dto/update-ai-assessment.dto';
 import { db } from 'src/db';
@@ -6,12 +10,14 @@ import {
   questionStudentAnswerRelation,
   studentLevelRelation,
   levels,
+  aiAssessment,
 } from 'drizzle/schema';
 import { SubmitAssessmentDto } from './dto/create-ai-assessment.dto';
 import { LlmService } from 'src/llm/llm.service';
 import { answerEvaluationPrompt } from './system_prompts/system_prompts';
 import { parseLlmEvaluation } from 'src/llm/llm_response_parsers/evaluationParser';
 import { QuestionEvaluationService } from 'src/questions-by-llm/question-evaluation.service';
+import { eq } from 'drizzle-orm';
 
 @Injectable()
 export class AiAssessmentService {
@@ -19,8 +25,32 @@ export class AiAssessmentService {
     private readonly llmService: LlmService,
     private readonly questionEvaluationService: QuestionEvaluationService,
   ) {}
-  create(createAiAssessmentDto: CreateAiAssessmentDto) {
-    return 'This action adds a new aiAssessment';
+  async create(createAiAssessmentDto: CreateAiAssessmentDto) {
+    try {
+      const payload = {
+        bootcampId: createAiAssessmentDto.bootcampId,
+        title: createAiAssessmentDto.title,
+        description: createAiAssessmentDto.description ?? null,
+        difficulty: createAiAssessmentDto.difficulty ?? null,
+        topics: createAiAssessmentDto.topics,
+        audience: createAiAssessmentDto.audience ?? null,
+        totalNumberOfQuestions: createAiAssessmentDto.totalNumberOfQuestions,
+      };
+
+      const [inserted] = await db
+        .insert(aiAssessment)
+        .values(payload)
+        .returning();
+
+      return {
+        message: 'AI Assessment created successfully',
+        data: inserted,
+      };
+    } catch (error) {
+      throw new BadRequestException(
+        'Failed to create AI assessment: ' + error.message,
+      );
+    }
   }
 
   async submitLlmAssessment(
@@ -145,8 +175,20 @@ export class AiAssessmentService {
     return level;
   }
 
-  findAll() {
-    return `This action returns all aiAssessment`;
+  async findAll(bootcampId?: number) {
+    const query = db.select().from(aiAssessment);
+
+    const results = bootcampId
+      ? await query.where(eq(aiAssessment.bootcampId, bootcampId))
+      : await query;
+
+    if (bootcampId && results.length === 0) {
+      throw new NotFoundException(
+        `No assessments found for bootcampId ${bootcampId}`,
+      );
+    }
+
+    return results;
   }
 
   findOne(id: number) {

@@ -3964,7 +3964,7 @@ export const questionsByLLM = main.table("questions_by_llm", {
   id: serial("id").primaryKey().notNull(),
   topic: varchar("topic", { length: 100 }),
   difficulty: varchar("difficulty", { length: 50 }),
-  bootcampId: integer('bootcamp_id').references(() => zuvyBootcamps.id).default(null),
+  aiAssessmentId: integer('ai_assessment_id').references(() => aiAssessment.id).default(null),
   question: text("question").notNull(),
   options: jsonb("options").notNull(), // store as JSON array
   answer: integer("answer").notNull(),
@@ -4013,6 +4013,7 @@ export const studentLevelRelation = main.table("student_level_relation", {
   id: serial("id").primaryKey().notNull(),
   studentId: integer("student_id").notNull().references(() => users.id),
   levelId: integer("level_id").notNull().references(() => levels.id),
+  aiAssessmentId: integer('ai_assessment_id').references(() => aiAssessment.id).default(null),
   assignedAt: timestamp("assigned_at", { withTimezone: true, mode: "string" }).defaultNow(),
   createdAt: timestamp("created_at", { withTimezone: true, mode: "string" }).defaultNow(),
 }, (table) => ({
@@ -4021,6 +4022,7 @@ export const studentLevelRelation = main.table("student_level_relation", {
 
 export const questionEvaluation = main.table('question_evaluation', {
   id: serial('id').primaryKey().notNull(),
+  aiAssessmentId: integer('ai_assessment_id').references(() => aiAssessment.id).default(null),
   question: text('question').notNull(),
   topic: varchar('topic', { length: 255 }),
   difficulty: varchar('difficulty', { length: 50 }),
@@ -4035,4 +4037,19 @@ export const questionEvaluation = main.table('question_evaluation', {
   studentId: integer("student_id").notNull().references(() => users.id),
   createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow(),
+});
+
+export const aiAssessment = main.table("ai_assessment", {
+  id: serial("id").primaryKey().notNull(),
+  bootcampId: integer("bootcamp_id")
+    .notNull()
+    .references(() => zuvyBootcamps.id),
+  title: varchar("title", { length: 255 }).notNull(),
+  description: text("description"),
+  difficulty: varchar("difficulty", { length: 50 }),
+  topics: jsonb("topics").notNull(),
+  audience: jsonb("audience"),
+  totalNumberOfQuestions: integer("total_number_of_questions").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: "string" }).defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true, mode: "string" }).defaultNow(),
 });

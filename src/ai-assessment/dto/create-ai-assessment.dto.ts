@@ -9,7 +9,34 @@ import {
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
-export class CreateAiAssessmentDto {}
+export class CreateAiAssessmentDto {
+  @IsNumber()
+  @IsNotEmpty()
+  bootcampId: number;
+
+  @IsString()
+  @IsNotEmpty()
+  title: string;
+
+  @IsString()
+  @IsOptional()
+  description?: string;
+
+  @IsString()
+  @IsOptional()
+  difficulty?: string;
+
+  @IsObject()
+  @IsNotEmpty()
+  topics: Record<string, number>;
+
+  @IsOptional()
+  audience?: any;
+
+  @IsNumber()
+  @IsNotEmpty()
+  totalNumberOfQuestions: number;
+}
 class QuestionAnswerDto {
   @IsNumber()
   @IsNotEmpty()

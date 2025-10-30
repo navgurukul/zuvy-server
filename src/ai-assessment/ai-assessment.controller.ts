@@ -8,6 +8,7 @@ import {
   Delete,
   Req,
   UseGuards,
+  Query,
 } from '@nestjs/common';
 import { AiAssessmentService } from './ai-assessment.service';
 import {
@@ -22,6 +23,7 @@ import {
   ApiResponse,
   ApiParam,
   ApiBody,
+  ApiQuery,
 } from '@nestjs/swagger';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 import { submitAssessmentExample } from './swagger_examples/examples';
@@ -70,10 +72,13 @@ export class AiAssessmentController {
   }
 
   @Get()
-  @ApiOperation({ summary: 'Get all AI assessments' })
-  @ApiResponse({ status: 200, description: 'List of all AI assessments.' })
-  findAll() {
-    return this.aiAssessmentService.findAll();
+  @ApiOperation({
+    summary: 'Get all AI assessments (optionally filter by bootcampId)',
+  })
+  @ApiQuery({ name: 'bootcampId', required: false, type: Number })
+  @ApiResponse({ status: 200, description: 'List of AI assessments.' })
+  findAll(@Query('bootcampId') bootcampId?: number) {
+    return this.aiAssessmentService.findAll(bootcampId);
   }
 
   @Get(':id')
