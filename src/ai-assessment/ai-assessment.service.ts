@@ -10,6 +10,7 @@ import {
 import { SubmitAssessmentDto } from './dto/create-ai-assessment.dto';
 import { LlmService } from 'src/llm/llm.service';
 import { answerEvaluationPrompt } from './system_prompts/system_prompts';
+import { parseLlmEvaluation } from 'src/llm/llm_response_parsers/evaluationParser';
 @Injectable()
 export class AiAssessmentService {
   constructor(private readonly llmService: LlmService) {}
@@ -57,9 +58,40 @@ export class AiAssessmentService {
 
       //here evaluate the answers by the LLM.
       const evaluationPrompt = answerEvaluationPrompt(answers);
-      const aiEvaluationResponse = await this.llmService.generate({
+      const llmResponse = await this.llmService.generate({
         systemPrompt: evaluationPrompt,
       });
+
+      let rawEvaluationText: string | null = null;
+      if (!llmResponse) rawEvaluationText = null;
+      else if (typeof llmResponse === 'string') rawEvaluationText = llmResponse;
+      else if (typeof llmResponse === 'object') {
+        rawEvaluationText =
+          (llmResponse as any).text ??
+          (llmResponse as any).content ??
+          (llmResponse as any).response ??
+          (llmResponse as any).output ??
+          JSON.stringify(llmResponse);
+      } else {
+        rawEvaluationText = String(llmResponse);
+      }
+
+      // Parse & validate BEFORE returning to client
+      let parsedEvaluation: any = null;
+      let parseError: string | null = null;
+
+      if (rawEvaluationText) {
+        try {
+          parsedEvaluation = parseLlmEvaluation(rawEvaluationText);
+        } catch (err) {
+          parseError = (err as Error).message;
+        }
+      } else {
+        parseError = 'Empty LLM response.';
+      }
+
+      // Optionally: persist parsedEvaluation to DB here if successful
+      // if (parsedEvaluation) { await db.insert(...).values({ ... }) }
 
       return {
         totalQuestions,
@@ -68,7 +100,9 @@ export class AiAssessmentService {
         level: level.grade,
         performance: level.meaning,
         hardship: level.hardship,
-        aiEvaluationResponse,
+        evaluation: parsedEvaluation ?? null,
+        rawEvaluationText: parsedEvaluation ? null : rawEvaluationText,
+        parseError,
       };
     } catch (error) {
       throw error;
