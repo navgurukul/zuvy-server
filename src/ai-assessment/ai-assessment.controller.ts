@@ -20,7 +20,7 @@ export class AiAssessmentController {
     return this.aiAssessmentService.create(createAiAssessmentDto);
   }
 
-  @Post()
+  @Post('/submit')
   takeAssessment(@Body() createAiAssessmentDto: CreateAiAssessmentDto) {
     return this.aiAssessmentService.take(createAiAssessmentDto);
   }
