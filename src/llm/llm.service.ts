@@ -1,26 +1,43 @@
-import { Injectable } from '@nestjs/common';
-import { CreateLlmDto } from './dto/create-llm.dto';
-import { UpdateLlmDto } from './dto/update-llm.dto';
+import {
+  BadRequestException,
+  Injectable,
+  InternalServerErrorException,
+} from '@nestjs/common';
+import { GenerateResponseDto } from './dto/generate-response.dto';
+import { GoogleGenAI } from '@google/genai';
 
 @Injectable()
 export class LlmService {
-  create(createLlmDto: CreateLlmDto) {
-    return 'This action adds a new llm';
+  private readonly ai: GoogleGenAI;
+  constructor() {
+    const key = process.env.GOOGLE_GENAI_API_KEY;
+    if (!key)
+      throw new InternalServerErrorException(
+        'Missing GOOGLE_GENAI_API_KEY for Llm module',
+      );
+    this.ai = new GoogleGenAI({ apiKey: key });
   }
 
-  findAll() {
-    return `This action returns all llm`;
-  }
+  async generate(generateResponseDto: GenerateResponseDto) {
+    const prompt = generateResponseDto?.systemPrompt?.toString()?.trim();
+    if (!prompt)
+      throw new BadRequestException('systemPrompt must be a non-empty string');
 
-  findOne(id: number) {
-    return `This action returns a #${id} llm`;
-  }
+    try {
+      const response = await this.ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: prompt,
+      });
 
-  update(id: number, updateLlmDto: UpdateLlmDto) {
-    return `This action updates a #${id} llm`;
-  }
-
-  remove(id: number) {
-    return `This action removes a #${id} llm`;
+      return (
+        (response as any).text ??
+        (response as any).outputs?.[0]?.content?.text ??
+        ''
+      );
+    } catch (err) {
+      throw new InternalServerErrorException(
+        `LLM call failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
   }
 }

@@ -387,6 +387,7 @@ CREATE TABLE "questions_by_llm" (
   "id" SERIAL PRIMARY KEY NOT NULL,
   "topic" VARCHAR(100),
   "difficulty" VARCHAR(50),
+  "bootcamp_id" INTEGER,
   "question" TEXT NOT NULL,
   "options" JSONB NOT NULL,
   "answer" INTEGER NOT NULL,

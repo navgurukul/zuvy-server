@@ -3964,6 +3964,7 @@ export const questionsByLLM = main.table("questions_by_llm", {
   id: serial("id").primaryKey().notNull(),
   topic: varchar("topic", { length: 100 }),
   difficulty: varchar("difficulty", { length: 50 }),
+  bootcampId: integer('bootcamp_id').references(() => zuvyBootcamps.id).default(null),
   question: text("question").notNull(),
   options: jsonb("options").notNull(), // store as JSON array
   answer: integer("answer").notNull(),
