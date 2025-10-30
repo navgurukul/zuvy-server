@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { GenerateResponseDto } from './dto/generate-response.dto';
 import { GoogleGenAI } from '@google/genai';
+import { deepseekResponse } from './providers/deepseek';
 
 @Injectable()
 export class LlmService {
@@ -35,9 +36,22 @@ export class LlmService {
         ''
       );
     } catch (err) {
-      throw new InternalServerErrorException(
-        `LLM call failed: ${err instanceof Error ? err.message : String(err)}`,
-      );
+      console.error('Gemini failed, falling back to DeepSeek:', err.message);
+
+      try {
+        const fallback = await deepseekResponse(prompt);
+        return fallback;
+      } catch (fallbackErr) {
+        throw new InternalServerErrorException(
+          `Both Gemini and DeepSeek failed. Gemini error: ${
+            err instanceof Error ? err.message : String(err)
+          }, DeepSeek error: ${
+            fallbackErr instanceof Error
+              ? fallbackErr.message
+              : String(fallbackErr)
+          }`,
+        );
+      }
     }
   }
 }
