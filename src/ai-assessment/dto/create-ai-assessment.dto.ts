@@ -44,10 +44,10 @@ class QuestionAnswerDto {
   language?: string;
 }
 
-export class CreateSubmitAssessmentDto {
+export class SubmitAssessmentDto {
   @IsArray()
   @IsNotEmpty()
   @ValidateNested({ each: true })
   @Type(() => QuestionAnswerDto)
-  questions: QuestionAnswerDto[];
+  answers: QuestionAnswerDto[];
 }

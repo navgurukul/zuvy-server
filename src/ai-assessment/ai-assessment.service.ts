@@ -7,7 +7,7 @@ import {
   studentLevelRelation,
   levels,
 } from 'drizzle/schema';
-import { CreateSubmitAssessmentDto } from './dto/create-ai-assessment.dto';
+import { SubmitAssessmentDto } from './dto/create-ai-assessment.dto';
 @Injectable()
 export class AiAssessmentService {
   create(createAiAssessmentDto: CreateAiAssessmentDto) {
@@ -16,71 +16,41 @@ export class AiAssessmentService {
 
   async submitLlmAssessment(
     studentId: number,
-    submitAssessmentDto: CreateSubmitAssessmentDto,
+    submitAssessmentDto: SubmitAssessmentDto,
   ) {
     try {
-      const { questions } = submitAssessmentDto; // Changed from 'answers' to 'questions'
+      const { answers } = submitAssessmentDto;
 
-      // 1. Calculate marks
-      const totalQuestions = questions.length;
-      const correctAnswers = questions.filter(
-        (question) =>
-          question.selectedAnswerByStudent === question.correctOption, // Changed from 'answer' to 'correctOption'
+      const totalQuestions = answers.length;
+      const correctAnswers = answers.filter(
+        (q) => q.selectedAnswerByStudent === q.correctOption,
       ).length;
       const score = (correctAnswers / totalQuestions) * 100;
 
-      // 2. Insert into question_student_answer_relation
-      const answerPromises = questions.map(async (question) => {
-        // Changed from 'answers' to 'questions'
-        const status =
-          question.selectedAnswerByStudent === question.correctOption ? 1 : 0; // Changed from 'answer' to 'correctOption'
+      // Prepare payloads
+      const answerPayloads = answers.map((q) => ({
+        studentId,
+        questionId: q.id,
+        answer: q.selectedAnswerByStudent,
+        status: q.selectedAnswerByStudent === q.correctOption ? 1 : 0,
+        answeredAt: new Date().toISOString(),
+      }));
 
-        return this.db
-          .insert(questionStudentAnswerRelation)
-          .values({
-            studentId,
-            questionId: question.id,
-            answer: question.selectedAnswerByStudent,
-            status,
-            answeredAt: new Date().toISOString(),
-          })
-          .onConflictDoUpdate({
-            target: [
-              questionStudentAnswerRelation.studentId,
-              questionStudentAnswerRelation.questionId,
-            ],
-            set: {
-              answer: question.selectedAnswerByStudent,
-              status,
-              answeredAt: new Date().toISOString(),
-              updatedAt: new Date().toISOString(),
-            },
-          });
-      });
+      await Promise.all(
+        answerPayloads.map((payload) =>
+          db.insert(questionStudentAnswerRelation).values(payload),
+        ),
+      );
 
-      await Promise.all(answerPromises);
-
-      // 3. Calculate student level based on score
       const level = await this.calculateStudentLevel(score);
 
-      // 4. Update student_level_relation
-      await this.db
-        .insert(studentLevelRelation)
-        .values({
-          studentId,
-          levelId: level.id,
-          assignedAt: new Date().toISOString(),
-        })
-        .onConflictDoUpdate({
-          target: [
-            studentLevelRelation.studentId,
-            studentLevelRelation.levelId,
-          ],
-          set: {
-            assignedAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-          },
-        });
+      const levelPayload = {
+        studentId,
+        levelId: level.id,
+        assignedAt: new Date().toISOString(),
+      };
+
+      await db.insert(studentLevelRelation).values(levelPayload);
 
       return {
         totalQuestions,
@@ -96,7 +66,7 @@ export class AiAssessmentService {
   }
 
   private async calculateStudentLevel(score: number) {
-    const allLevels = await this.db.select().from(levels); // Renamed to avoid conflict
+    const allLevels = await db.select().from(levels); // Renamed to avoid conflict
 
     const level = allLevels.find((level) => {
       const min = level.scoreMin ?? -Infinity;
