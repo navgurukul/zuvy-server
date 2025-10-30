@@ -8,8 +8,11 @@ import {
   levels,
 } from 'drizzle/schema';
 import { SubmitAssessmentDto } from './dto/create-ai-assessment.dto';
+import { LlmService } from 'src/llm/llm.service';
+import { answerEvaluationPrompt } from './system_prompts/system_prompts';
 @Injectable()
 export class AiAssessmentService {
+  constructor(private readonly llmService: LlmService) {}
   create(createAiAssessmentDto: CreateAiAssessmentDto) {
     return 'This action adds a new aiAssessment';
   }
@@ -52,6 +55,12 @@ export class AiAssessmentService {
 
       await db.insert(studentLevelRelation).values(levelPayload);
 
+      //here evaluate the answers by the LLM.
+      const evaluationPrompt = answerEvaluationPrompt(answers);
+      const aiEvaluationResponse = await this.llmService.generate({
+        systemPrompt: evaluationPrompt,
+      });
+
       return {
         totalQuestions,
         correctAnswers,
@@ -59,6 +68,7 @@ export class AiAssessmentService {
         level: level.grade,
         performance: level.meaning,
         hardship: level.hardship,
+        aiEvaluationResponse,
       };
     } catch (error) {
       throw error;

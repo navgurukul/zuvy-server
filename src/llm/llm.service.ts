@@ -19,7 +19,7 @@ export class LlmService {
   }
 
   async generate(generateResponseDto: GenerateResponseDto) {
-    const prompt = generateResponseDto?.systemPrompt?.toString()?.trim();
+    const prompt = generateResponseDto.systemPrompt.trim();
     if (!prompt)
       throw new BadRequestException('systemPrompt must be a non-empty string');
 
