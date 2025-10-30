@@ -389,7 +389,7 @@ CREATE TABLE "questions_by_llm" (
   "difficulty" VARCHAR(50),
   "question" TEXT NOT NULL,
   "options" JSONB NOT NULL,
-  "answer" VARCHAR(255) NOT NULL,
+  "answer" INTEGER NOT NULL,
   "language" VARCHAR(255),
   "created_at" TIMESTAMPTZ DEFAULT NOW(),
   "updated_at" TIMESTAMPTZ DEFAULT NOW()
@@ -420,7 +420,7 @@ CREATE TABLE "question_student_answer_relation" (
   "id" SERIAL PRIMARY KEY NOT NULL,
   "student_id" INTEGER NOT NULL REFERENCES "users"("id"),
   "question_id" INTEGER NOT NULL REFERENCES "questions_by_llm"("id"),
-  "answer" VARCHAR(255),
+  "answer" INTEGER NOT NULL,
   "status" INTEGER NOT NULL DEFAULT 0, -- 1 = correct, 0 = wrong
   "answered_at" TIMESTAMPTZ DEFAULT NOW(),
   "created_at" TIMESTAMPTZ DEFAULT NOW(),

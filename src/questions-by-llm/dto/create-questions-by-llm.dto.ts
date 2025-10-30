@@ -6,7 +6,7 @@ export class CreateQuestionsByLlmDto {
   questions: {
     question: string;
     options: string[];
-    correctOption: string;
+    correctOption: number;
     difficulty?: string;
     topic?: string;
     language?: string;

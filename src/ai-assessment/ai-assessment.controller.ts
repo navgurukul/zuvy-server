@@ -6,9 +6,13 @@ import {
   Patch,
   Param,
   Delete,
+  Req,
 } from '@nestjs/common';
 import { AiAssessmentService } from './ai-assessment.service';
-import { CreateAiAssessmentDto } from './dto/create-ai-assessment.dto';
+import {
+  CreateAiAssessmentDto,
+  CreateSubmitAssessmentDto,
+} from './dto/create-ai-assessment.dto';
 import { UpdateAiAssessmentDto } from './dto/update-ai-assessment.dto';
 
 @Controller('ai-assessment')
@@ -21,8 +25,16 @@ export class AiAssessmentController {
   }
 
   @Post('/submit')
-  takeAssessment(@Body() createAiAssessmentDto: CreateAiAssessmentDto) {
-    return this.aiAssessmentService.take(createAiAssessmentDto);
+  takeAssessment(
+    @Body() createAiAssessmentDto: CreateSubmitAssessmentDto,
+    @Req() req: Request,
+  ) {
+    // Extract studentId from request (from auth token or session)
+    const studentId = req.user[0]?.id;
+    return this.aiAssessmentService.submitLlmAssessment(
+      studentId,
+      createAiAssessmentDto,
+    );
   }
 
   @Get()

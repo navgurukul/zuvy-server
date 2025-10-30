@@ -3966,7 +3966,7 @@ export const questionsByLLM = main.table("questions_by_llm", {
   difficulty: varchar("difficulty", { length: 50 }),
   question: text("question").notNull(),
   options: jsonb("options").notNull(), // store as JSON array
-  answer: varchar("answer", { length: 255 }).notNull(),
+  answer: integer("answer").notNull(),
   language: varchar("language", {length: 255}),
   createdAt: timestamp("created_at", { withTimezone: true, mode: "string" }).defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true, mode: "string" }).defaultNow(),
@@ -3985,7 +3985,7 @@ export const questionStudentAnswerRelation = main.table("question_student_answer
   id: serial("id").primaryKey().notNull(),
   studentId: integer("student_id").notNull().references(() => users.id),
   questionId: integer("question_id").notNull().references(() => questionsByLLM.id),
-  answer: varchar("answer", { length: 255 }),
+  answer: integer("answer"),
   status: integer("status").notNull().default(0), // 1 = correct, 0 = wrong
   answeredAt: timestamp("answered_at", { withTimezone: true, mode: "string" }).defaultNow(),
   createdAt: timestamp("created_at", { withTimezone: true, mode: "string" }).defaultNow(),
