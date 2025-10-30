@@ -36,7 +36,10 @@ export class LlmService {
         ''
       );
     } catch (err) {
-      console.error('Gemini failed, falling back to DeepSeek:', err.message);
+      console.error(
+        'Google genai failed, falling back to DeepSeek:',
+        err.message,
+      );
 
       try {
         const fallback = await deepseekResponse(prompt);

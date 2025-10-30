@@ -11,9 +11,14 @@ import { SubmitAssessmentDto } from './dto/create-ai-assessment.dto';
 import { LlmService } from 'src/llm/llm.service';
 import { answerEvaluationPrompt } from './system_prompts/system_prompts';
 import { parseLlmEvaluation } from 'src/llm/llm_response_parsers/evaluationParser';
+import { QuestionEvaluationService } from 'src/questions-by-llm/question-evaluation.service';
+
 @Injectable()
 export class AiAssessmentService {
-  constructor(private readonly llmService: LlmService) {}
+  constructor(
+    private readonly llmService: LlmService,
+    private readonly questionEvaluationService: QuestionEvaluationService,
+  ) {}
   create(createAiAssessmentDto: CreateAiAssessmentDto) {
     return 'This action adds a new aiAssessment';
   }
@@ -92,6 +97,10 @@ export class AiAssessmentService {
 
       // Optionally: persist parsedEvaluation to DB here if successful
       // if (parsedEvaluation) { await db.insert(...).values({ ... }) }
+      await this.questionEvaluationService.saveEvaluations(
+        parsedEvaluation,
+        studentId,
+      );
 
       return {
         totalQuestions,

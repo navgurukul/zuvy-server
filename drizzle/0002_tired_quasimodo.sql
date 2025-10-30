@@ -438,3 +438,20 @@ CREATE TABLE "student_level_relation" (
   CONSTRAINT "uniq_student_level" UNIQUE ("student_id", "level_id")
 );
 
+CREATE TABLE IF NOT EXISTS "question_evaluation" (
+  "id" SERIAL PRIMARY KEY NOT NULL,
+  "question" TEXT NOT NULL,
+  "topic" VARCHAR(255),
+  "difficulty" VARCHAR(50),
+  "options" JSONB NOT NULL,
+  "correct_option" INTEGER NOT NULL,
+  "selected_answer_by_student" INTEGER NOT NULL,
+  "language" VARCHAR(50),
+  "status" VARCHAR(50),
+  "explanation" TEXT,
+  "summary" TEXT,
+  "recommendations" TEXT,
+  "student_id" INTEGER NOT NULL REFERENCES "users"("id"),
+  "created_at" TIMESTAMPTZ DEFAULT NOW(),
+  "updated_at" TIMESTAMPTZ DEFAULT NOW()
+);

@@ -4018,3 +4018,21 @@ export const studentLevelRelation = main.table("student_level_relation", {
 }, (table) => ({
   uniqStudentLevel: unique("uniq_student_level").on(table.studentId, table.levelId),
 }));
+
+export const questionEvaluation = main.table('question_evaluation', {
+  id: serial('id').primaryKey().notNull(),
+  question: text('question').notNull(),
+  topic: varchar('topic', { length: 255 }),
+  difficulty: varchar('difficulty', { length: 50 }),
+  options: jsonb('options').notNull(), // { "1": "A", "2": "B", "3": "C", "4": "D" }
+  correctOption: integer('correct_option').notNull(),
+  selectedAnswerByStudent: integer('selected_answer_by_student').notNull(),
+  language: varchar('language', { length: 50 }),
+  status: varchar('status', { length: 50 }), // e.g., 'correct' or 'incorrect'
+  explanation: text('explanation'),
+  summary: text('summary'),
+  recommendations: text('recommendations'),
+  studentId: integer("student_id").notNull().references(() => users.id),
+  createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow(),
+});
