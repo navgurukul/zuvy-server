@@ -45,7 +45,7 @@ export class QuestionsByLlmController {
     type: [CreateQuestionsByLlmDto],
   })
   findAll() {
-    return this.questionsByLlmService.findAll();
+    return this.questionsByLlmService.getAllLlmQuestions();
   }
 
   @Get(':id')

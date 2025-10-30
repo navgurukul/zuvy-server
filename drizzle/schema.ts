@@ -3983,7 +3983,7 @@ export const questionLevelRelation = main.table("question_level_relation", {
 
 export const questionStudentAnswerRelation = main.table("question_student_answer_relation", {
   id: serial("id").primaryKey().notNull(),
-  studentId: integer("student_id").notNull().references(() => students.id),
+  studentId: integer("student_id").notNull().references(() => users.id),
   questionId: integer("question_id").notNull().references(() => questionsByLLM.id),
   answer: varchar("answer", { length: 255 }),
   status: integer("status").notNull().default(0), // 1 = correct, 0 = wrong
@@ -4010,7 +4010,7 @@ export const levels = main.table("levels", {
 
 export const studentLevelRelation = main.table("student_level_relation", {
   id: serial("id").primaryKey().notNull(),
-  studentId: integer("student_id").notNull().references(() => students.id),
+  studentId: integer("student_id").notNull().references(() => users.id),
   levelId: integer("level_id").notNull().references(() => levels.id),
   assignedAt: timestamp("assigned_at", { withTimezone: true, mode: "string" }).defaultNow(),
   createdAt: timestamp("created_at", { withTimezone: true, mode: "string" }).defaultNow(),

@@ -55,8 +55,15 @@ export class QuestionsByLlmService {
     }
   }
 
-  findAll() {
-    return `This action returns all questionsByLlm`;
+  async getAllLlmQuestions() {
+    try {
+      const questions = await db.select().from(questionsByLLM);
+      return questions;
+    } catch (error) {
+      console.error('Error fetching LLM questions:', error);
+      throw new InternalServerErrorException('Failed to fetch LLM questions');
+    }
+    // return `This action returns all questionsByLlm`;
   }
 
   findOne(id: number) {

@@ -383,13 +383,57 @@ CREATE TABLE "main"."zuvy_permissions_roles" (
 ALTER TABLE main.zuvy_permissions_roles ADD CONSTRAINT uniq_role_permission UNIQUE (role_id, permission_id);
 
 --> questions by llm table.
-CREATE TABLE questions_by_llm (
-  id SERIAL PRIMARY KEY NOT NULL,
-  topic VARCHAR(100),
-  difficulty VARCHAR(50),
-  question TEXT NOT NULL,
-  options JSONB NOT NULL,
-  answer VARCHAR(255) NOT NULL,
-  created_at TIMESTAMPTZ DEFAULT NOW(),
-  updated_at TIMESTAMPTZ DEFAULT NOW()
+CREATE TABLE "questions_by_llm" (
+  "id" SERIAL PRIMARY KEY NOT NULL,
+  "topic" VARCHAR(100),
+  "difficulty" VARCHAR(50),
+  "question" TEXT NOT NULL,
+  "options" JSONB NOT NULL,
+  "answer" VARCHAR(255) NOT NULL,
+  "language" VARCHAR(255),
+  "created_at" TIMESTAMPTZ DEFAULT NOW(),
+  "updated_at" TIMESTAMPTZ DEFAULT NOW()
 );
+
+CREATE TABLE "levels" (
+  "id" SERIAL PRIMARY KEY NOT NULL,
+  "grade" VARCHAR(5) NOT NULL,
+  "score_range" VARCHAR(50) NOT NULL,
+  "score_min" INTEGER,
+  "score_max" INTEGER,
+  "hardship" VARCHAR(20),
+  "meaning" TEXT,
+  "created_at" TIMESTAMPTZ DEFAULT NOW(),
+  "updated_at" TIMESTAMPTZ DEFAULT NOW(),
+  CONSTRAINT "uniq_level_grade" UNIQUE ("grade")
+);
+
+CREATE TABLE "question_level_relation" (
+  "id" SERIAL PRIMARY KEY NOT NULL,
+  "level_id" INTEGER NOT NULL REFERENCES "levels"("id"),
+  "question_id" INTEGER NOT NULL REFERENCES "questions_by_llm"("id"),
+  "created_at" TIMESTAMPTZ DEFAULT NOW(),
+  CONSTRAINT "uniq_student_question" UNIQUE ("level_id", "question_id")
+);
+
+CREATE TABLE "question_student_answer_relation" (
+  "id" SERIAL PRIMARY KEY NOT NULL,
+  "student_id" INTEGER NOT NULL REFERENCES "users"("id"),
+  "question_id" INTEGER NOT NULL REFERENCES "questions_by_llm"("id"),
+  "answer" VARCHAR(255),
+  "status" INTEGER NOT NULL DEFAULT 0, -- 1 = correct, 0 = wrong
+  "answered_at" TIMESTAMPTZ DEFAULT NOW(),
+  "created_at" TIMESTAMPTZ DEFAULT NOW(),
+  "updated_at" TIMESTAMPTZ DEFAULT NOW(),
+  CONSTRAINT "uniq_student_question_answer" UNIQUE ("student_id", "question_id")
+);
+
+CREATE TABLE "student_level_relation" (
+  "id" SERIAL PRIMARY KEY NOT NULL,
+  "student_id" INTEGER NOT NULL REFERENCES "users"("id"),
+  "level_id" INTEGER NOT NULL REFERENCES "levels"("id"),
+  "assigned_at" TIMESTAMPTZ DEFAULT NOW(),
+  "created_at" TIMESTAMPTZ DEFAULT NOW(),
+  CONSTRAINT "uniq_student_level" UNIQUE ("student_id", "level_id")
+);
+
