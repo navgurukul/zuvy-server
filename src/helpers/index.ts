@@ -1,113 +1,71 @@
 export const complairDateTyeps = [
   'int',
-  'long',
-  'short',
-  'byte',
   'float',
   'double',
   'str',
-  'char',
   'bool',
   'arrayOfnum',
   'arrayOfStr',
-  'arrayOfChar',
-  'arrayOfObj',
   'object',
-  'map',
   "jsonType"
 ];
 
 export const typeMappings = {
   java: {
     int: 'int',
-    long: 'long',
-    short: 'short',
-    byte: 'byte',
     float: 'float',
     double: 'double',
     str: 'String',
-    char: 'char',
     bool: 'boolean',
     arrayOfnum: 'int[]',
     arrayOfStr: 'String[]',
-    arrayOfChar: 'char[]',
-    arrayOfObj: 'Object[]',
     jsonType: 'Object', // Generic type for JSON-like structures
     object: 'Object',
-    map: 'Map<String,Object>',
     void: 'void',
     input: (parameterType) => {
       const mapping = {
         int: 'Integer.parseInt(scanner.nextLine().trim())',
-        long: 'Long.parseLong(scanner.nextLine().trim())',
-        short: 'Short.parseShort(scanner.nextLine().trim())',
-        byte: 'Byte.parseByte(scanner.nextLine().trim())',
         float: 'Float.parseFloat(scanner.nextLine().trim())',
         double: 'Double.parseDouble(scanner.nextLine().trim())',
         str: 'scanner.nextLine().trim()',
-        char: `(() -> { String _tmp = scanner.nextLine().trim(); return _tmp.isEmpty()? '\\0' : _tmp.charAt(0); })()`,
         bool: 'Boolean.parseBoolean(scanner.nextLine().trim())',
         arrayOfnum: 'parseJavaStrictFormat(scanner.nextLine().trim())',
         arrayOfStr: 'parseJavaStrictFormat(scanner.nextLine().trim())',
-        arrayOfChar: 'parseJavaStrictFormat(scanner.nextLine().trim())',
-        arrayOfObj: 'parseJavaStrictFormat(scanner.nextLine().trim())',
         object: 'parseJavaStrictFormat(scanner.nextLine().trim())',
-        map: 'parseJavaStrictFormat(scanner.nextLine().trim())',
         jsonType: 'parseJavaStrictFormat(scanner.nextLine().trim())', // Handle JSON-like input
       };
       return mapping[parameterType] || 'scanner.nextLine().trim()';
     },
     defaultReturnValue: {
       int: '0',
-      long: '0L',
-      short: '(short)0',
-      byte: '(byte)0',
       float: '0.0f',
       double: '0.0',
       str: '""',
-      char: "'\\0'",
       bool: 'false',
       arrayOfnum: 'new int[0]',
-      arrayOfChar: 'new char[0]',
       arrayOfStr: 'new String[0]',
-      arrayOfObj: 'new Object[0]',
       object: 'null',
-      map: 'null',
       jsonType: 'null', // Default for JSON-like structures
       void: '',
     },
   },
   python: {
     int: 'int',
-    long: 'int',
-    short: 'int',
-    byte: 'int',
     float: 'float',
     str: 'str',
-    char: 'str',
     bool: 'bool',
     arrayOfnum: 'List[int]',
     arrayOfStr: 'List[str]',
-    arrayOfChar: 'List[str]',
-    arrayOfObj: 'List[Any]',
-    map: 'Dict[str, Any]',
     jsonType: 'Any',
     returnType: 'Any',
     input: (parameterType) => {
       const mapping = {
         'int': 'int(input())',
-        'long': 'int(input())',
-        'short': 'int(input())',
-        'byte': 'int(input())',
         'float': 'float(input())',
         'str': 'input()',
-        'char': 'input()',
         'bool': 'bool(input())',
         'arrayOfnum': 'json.loads(input())',
         'arrayOfStr': 'json.loads(input())',
-        'arrayOfChar': 'json.loads(input())',
-        'arrayOfObj': 'json.loads(input())',
-        'map': 'json.loads(input())',
         'jsonType': 'json.loads(input())',
       };
       return mapping[parameterType] || 'input()';
@@ -115,20 +73,13 @@ export const typeMappings = {
   },
   javascript: {
     int: 'number',
-    long: 'number',
-    short: 'number',
-    byte: 'number',
     float: 'number',
     double: 'number',
     str: 'string',
-    char: 'string',
     bool: 'boolean',
     arrayOfnum: 'number[]',
     arrayOfStr: 'string[]',
-    arrayOfChar: 'string[]',
-    arrayOfObj: 'any[]',
     jsonType: 'any',
-    map: 'any',
     returnType: 'any',
     defaultReturnValue: 'null',
     object: 'object',
@@ -138,7 +89,6 @@ export const typeMappings = {
         float: 'Number',
         double: 'Number',
         str: 'String',
-        char: 'String',
         bool: 'Boolean',
         any: 'Object',
       };
@@ -147,75 +97,55 @@ export const typeMappings = {
     input: (parameterType) => {
       const mapping = {
         int: 'Number(input)',
-        long: 'Number(input)',
-        short: 'Number(input)',
-        byte: 'Number(input)',
         float: 'Number(input)',
         double: 'Number(input)',
         str: 'input',
-        char: 'input',
         bool: 'Boolean(input)',
         arrayOfnum: 'JSON.parse(input)',
         arrayOfStr: 'JSON.parse(input)',
-        arrayOfChar: 'JSON.parse(input)',
-        arrayOfObj: 'JSON.parse(input)',
         jsonType: 'JSON.parse(input)',
         object: 'JSON.parse(input)',
-        map: 'JSON.parse(input)',
       };
       return mapping[parameterType] || 'input';
     },
   },
   c: {
     int: 'int',
-    long: 'long',
     float: 'float',
     double: 'double',
     str: 'char*',
-    char: 'char',
     bool: 'int',
-    byte: 'unsigned char',
     arrayOfnum: 'int*',
     arrayOfStr: 'char**',
-    arrayOfChar: 'char*',
     jsonType: 'void',
     defaultReturnValue: {
       int: '0',
-      long: '0L',
       float: '0.0f',
       double: '0.0',
       str: 'NULL',
-      char: "'\\0'",
       bool: '0',
       arrayOfnum: 'NULL',
       arrayOfStr: 'NULL',
-      arrayOfChar: 'NULL',
       void: '',
     },
   },
   cpp: {
     int: 'int',
-    long: 'long',
     float: 'float',
     double: 'double',
     str: 'std::string',
-    char: 'char',
     bool: 'bool',
     arrayOfnum: 'std::vector<int>',
     arrayOfStr: 'std::vector<std::string>',
-    arrayOfChar: 'std::vector<char>',
-    arrayOfObj: 'std::vector<std::string>',
     jsonType: 'std::string',
     object: 'std::string',
     returnType: 'void',
     input: (parameterType, paramName) => {
       const mapping = {
         int: `[]() { return std::stoi(input${paramName}); }()`,
-        long: `[]() { return std::stol(input${paramName}); }()`,
         float: `[]() { return std::stof(input${paramName}); }()`,
         double: `[]() { return std::stod(input${paramName}); }()`,
         str: `input${paramName}`,
-        char: `[]() { return input${paramName}.empty() ? '\\0' : input${paramName}[0]; }()`,
         bool: `[]() { return input${paramName} == "true"; }()`,
         arrayOfnum: `[&input${paramName}]() {
             std::vector<int> arr;
@@ -235,30 +165,18 @@ export const typeMappings = {
             }
             return arr;
         }()`,
-        arrayOfChar: `[&input${paramName}]() {
-            std::vector<char> arr;
-            std::string token;
-            std::istringstream stream(input${paramName});
-            while (std::getline(stream, token, ',')) {
-                arr.push_back(token.empty() ? '\\0' : token[0]);
-            }
-            return arr;
-        }()`,
         object: `input${paramName}`
       };
       return mapping[parameterType] || `input${paramName}`;
     },
     defaultReturnValue: {
       int: '0',
-      long: '0',
       float: '0.0f',
       double: '0.0',
       str: '""',
-      char: "'\\0'",
       bool: 'false',
       arrayOfnum: '{}',
       arrayOfStr: '{}',
-      arrayOfChar: '{}',
       jsonType: '""',
       object: '""',
       void: ''
@@ -509,8 +427,7 @@ public class Main {
           if (arr[i] != null && arr[i].length() == 1) {
               sb.append(arr[i]);
           } else {
-              // Use (char)34 to append a double-quote character to avoid escaping issues
-              sb.append((char)34).append(arr[i]).append((char)34);
+              sb.append("\\"").append(arr[i]).append("\\"");
           }
           if (i != arr.length - 1) {
               sb.append(",");
@@ -537,8 +454,7 @@ public class Main {
       int count = 0;
       for (Map.Entry<?, ?> entry : map.entrySet()) {
           if (count > 0) sb.append(",");
-          // Use (char)34 for quoting keys to avoid escape-mangling in the template string
-          sb.append((char)34).append(entry.getKey()).append((char)34).append(":");
+          sb.append("\\"").append(entry.getKey()).append("\\":");
           sb.append(formatArrayNoSpaces(entry.getValue()));
           count++;
       }
@@ -627,7 +543,7 @@ public class Main {
       return null;
     }
     
-    if ((value.startsWith("\\"") && value.endsWith("\\")) ||
+    if ((value.startsWith("\\"") && value.endsWith("\\"")) ||
         (value.startsWith("'") && value.endsWith("'"))) {
       return value.substring(1, value.length() - 1);
     } else {
@@ -796,62 +712,6 @@ async function generateCppTemplate(functionName, parameters, returnType = 'void'
 #include <sstream>
 #include <string>
 #include <type_traits>
-#include <map>
-
-// Generic vector printer
-template<typename T>
-void printVector(const std::vector<T>& v) {
-    std::cout << "[";
-    for (size_t i = 0; i < v.size(); ++i) {
-        std::cout << v[i] << (i < v.size()-1 ? "," : "");
-    }
-    std::cout << "]";
-}
-
-// Specialization for vector<string> to handle single-char strings without quotes
-void printVector(const std::vector<std::string>& v) {
-    std::cout << "[";
-    for (size_t i = 0; i < v.size(); ++i) {
-        if (!v[i].empty() && v[i].size() == 1) std::cout << v[i];
-        else std::cout << "\"" << v[i] << "\"";
-        if (i < v.size()-1) std::cout << ",";
-    }
-    std::cout << "]";
-}
-
-// Specialization for vector<char> to print characters without quotes
-void printVector(const std::vector<char>& v) {
-    std::cout << "[";
-    for (size_t i = 0; i < v.size(); ++i) {
-        std::cout << v[i] << (i < v.size()-1 ? "," : "");
-    }
-    std::cout << "]";
-}
-
-// Generic result printer with overloads for common containers
-template<typename T>
-void printResult(const T& val) { std::cout << val; }
-
-void printResult(const std::vector<int>& v) { printVector(v); }
-void printResult(const std::vector<long>& v) { printVector(v); }
-void printResult(const std::vector<std::string>& v) { printVector(v); }
-void printResult(const std::vector<char>& v) { printVector(v); }
-void printResult(const std::string& s) { std::cout << s; }
-void printResult(char c) { std::cout << c; }
-
-// Simple map<string,string> printer (used when parse yields simple string values)
-void printResult(const std::map<std::string, std::string>& m) {
-    std::cout << "{";
-    size_t cnt = 0;
-    for (auto &kv : m) {
-        if (cnt++) std::cout << ",";
-        std::cout << "\"" << kv.first << "\":";
-        // print string value (quotes if length > 1)
-        if (!kv.second.empty() && kv.second.size() == 1) std::cout << kv.second;
-        else std::cout << "\"" << kv.second << "\"";
-    }
-    std::cout << "}";
-}
 
 ${returnTypeMapped} ${functionName}(${parameterList}) {
 ${debugPrints}
@@ -869,9 +729,26 @@ ${debugPrints}
 
 int main() {${inputHandling}
 
-    ${returnTypeMapped === 'void' ? `${functionName}(${parameters.map(p => p.parameterName).join(', ')});` : `auto result = ${functionName}(${parameters.map(p => p.parameterName).join(', ')});
-    // Unified output handling
-    printResult(result);`}
+    auto result = ${functionName}(${parameters.map(p => p.parameterName).join(', ')});
+    
+    // C++11 compatible output handling
+    if (!std::is_same<decltype(result), void>::value) {
+        if (std::is_same<decltype(result), std::vector<int>>::value) {
+            std::cout << "[";
+            for (size_t i = 0; i < result.size(); ++i) {
+                std::cout << result[i] << (i < result.size()-1 ? "," : "");
+            }
+            std::cout << "]";
+        } else if (std::is_same<decltype(result), std::vector<std::string>>::value) {
+            std::cout << "[";
+            for (size_t i = 0; i < result.size(); ++i) {
+                std::cout << "\\"" << result[i] << "\\"" << (i < result.size()-1 ? "," : "");
+            }
+            std::cout << "]";
+        } else {
+            std::cout << result;
+        }
+    }
     
     return 0;
 }`;
