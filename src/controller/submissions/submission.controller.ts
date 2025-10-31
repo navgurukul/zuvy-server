@@ -87,8 +87,11 @@ export class SubmissionController {
     orderBy?: 'submittedDate' | 'percentage' | 'name' | 'email',
     @Query('orderDirection') orderDirection?: 'asc' | 'desc',
     @Query('searchStudent') searchStudent?: string,
+    @Req() req?: any,
   ) {
+    let roleName = req?.user[0]?.roles;
     return this.submissionService.getSubmissionOfPractiseProblem(
+      roleName,
       bootcampId,
       searchProblem,
       orderBy as any,
@@ -301,8 +304,11 @@ export class SubmissionController {
     @Query('orderBy')
     orderBy?: 'submittedDate' | 'percentage' | 'name' | 'email',
     @Query('orderDirection') orderDirection?: 'asc' | 'desc',
+    @Req() req?: any,
   ) {
+    const roleName = req?.user?.[0]?.roles;
     return this.submissionService.getAllProjectSubmissions(
+      roleName,
       bootcampId,
       projectName,
       orderBy as any,
@@ -399,9 +405,9 @@ export class SubmissionController {
   async submitQuiz(
     @Body() QuizSubmission: QuizSubmissionDtoList,
     @Param('assessmentSubmissionId') assessmentSubmissionId: number,
-    @Query('assessmentOutsourseId') assessmentOutsourseId: number,
-    @Req() req,
-    @Res() res,
+    @Req() req: any,
+    @Query('assessmentOutsourseId') assessmentOutsourseId?: number,
+    @Res() res?: any,
   ) {
     try {
       let [err, success] = await this.submissionService.submitQuiz(
@@ -831,7 +837,7 @@ export class SubmissionController {
     @Query('limit') limit: number,
     @Query('offset') offset: number,
     @Res() res,
-    @Req() req,
+    @Req() req?: any,
   ) {
     try {
       // Service should return: { trackingData: [...], totalStudents: N }
