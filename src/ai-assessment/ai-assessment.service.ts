@@ -308,6 +308,15 @@ export class AiAssessmentService {
       )
       .where(eq(studentLevelRelation.studentId, userId));
 
+    if (assessments.length === 0) {
+      const defaultAssessment = await db
+        .select()
+        .from(aiAssessment)
+        .where(eq(aiAssessment.id, 1))
+        .limit(1);
+      return defaultAssessment;
+    }
+
     return assessments;
   }
 }
