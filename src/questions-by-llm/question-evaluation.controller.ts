@@ -39,7 +39,7 @@ export class QuestionsEvaluationController {
   //     return this.questionsByLlmService.getAllLlmQuestions();
   //   }
 
-  @Get(':studentId')
+  @Get(':studentId/:aiAssessmentId')
   @ApiOperation({ summary: 'Get one evaluation entry by studentId' })
   @ApiParam({
     name: 'studentId',
