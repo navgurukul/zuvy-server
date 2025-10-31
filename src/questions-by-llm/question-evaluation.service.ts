@@ -20,7 +20,6 @@ export class QuestionEvaluationService {
       correctOption: item.correctOption,
       selectedAnswerByStudent: item.selectedAnswerByStudent,
       language: item.language,
-      status: item.status,
       explanation: item.explanation,
       summary: evaluationResponse.summary,
       recommendations: evaluationResponse.recommendations,

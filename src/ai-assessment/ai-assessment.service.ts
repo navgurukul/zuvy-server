@@ -14,6 +14,7 @@ import {
   studentLevelRelation,
   levels,
   aiAssessment,
+  correctAnswers,
 } from 'drizzle/schema';
 import { SubmitAssessmentDto } from './dto/create-ai-assessment.dto';
 import { LlmService } from 'src/llm/llm.service';
@@ -23,7 +24,7 @@ import {
 } from './system_prompts/system_prompts';
 import { parseLlmEvaluation } from 'src/llm/llm_response_parsers/evaluationParser';
 import { QuestionEvaluationService } from 'src/questions-by-llm/question-evaluation.service';
-import { eq } from 'drizzle-orm';
+import { eq, and } from 'drizzle-orm';
 import { parseLlmMcq } from 'src/llm/llm_response_parsers/mcqParser';
 import { QuestionsByLlmService } from 'src/questions-by-llm/questions-by-llm.service';
 
@@ -123,25 +124,46 @@ export class AiAssessmentService {
     await this.generateMcqPromptsForEachLevel(distinctLevels, aiAssessmentId);
   }
 
+  async countScore(submitAssessmentDto: SubmitAssessmentDto) {
+    const { answers } = submitAssessmentDto;
+    let score = 0;
+
+    for (const q of answers) {
+      const correct = await db
+        .select()
+        .from(correctAnswers)
+        .where(
+          and(
+            eq(correctAnswers.questionId, q.id),
+            eq(correctAnswers.id, q.selectedAnswerByStudent.id),
+          ),
+        )
+        .limit(1);
+
+      if (correct.length > 0) {
+        score++;
+      }
+    }
+    return { score, totalQuestions: answers.length };
+  }
+
   async submitLlmAssessment(
     studentId: number,
     submitAssessmentDto: SubmitAssessmentDto,
   ) {
     try {
-      const { answers } = submitAssessmentDto;
+      const { answers, aiAssessmentId } = submitAssessmentDto;
 
-      const totalQuestions = answers.length;
-      const correctAnswers = answers.filter(
-        (q) => q.selectedAnswerByStudent === q.correctOption,
-      ).length;
-      const score = (correctAnswers / totalQuestions) * 100;
+      // const totalQuestions = answers.length;
+      const { score, totalQuestions } =
+        await this.countScore(submitAssessmentDto);
+      const totalScore = (score / totalQuestions) * 100;
 
       // Prepare payloads
       const answerPayloads = answers.map((q) => ({
         studentId,
         questionId: q.id,
         answer: q.selectedAnswerByStudent,
-        status: q.selectedAnswerByStudent === q.correctOption ? 1 : 0,
         answeredAt: new Date().toISOString(),
       }));
 
@@ -151,11 +173,12 @@ export class AiAssessmentService {
         ),
       );
 
-      const level = await this.calculateStudentLevel(score);
+      const level = await this.calculateStudentLevel(totalScore);
 
       const levelPayload = {
         studentId,
         levelId: level.id,
+        aiAssessmentId,
         assignedAt: new Date().toISOString(),
       };
 

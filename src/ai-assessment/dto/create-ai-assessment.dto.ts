@@ -37,6 +37,24 @@ export class CreateAiAssessmentDto {
   @IsNotEmpty()
   totalNumberOfQuestions: number;
 }
+
+export class SelectedAnswerByStudentDto {
+  @IsNumber()
+  @IsNotEmpty()
+  id: number;
+
+  @IsNumber()
+  @IsNotEmpty()
+  questionId: number;
+
+  @IsString()
+  @IsNotEmpty()
+  optionText: string;
+
+  @IsNumber()
+  @IsNotEmpty()
+  optionNumber: number;
+}
 class QuestionAnswerDto {
   @IsNumber()
   @IsNotEmpty()
@@ -62,9 +80,9 @@ class QuestionAnswerDto {
   @IsNotEmpty()
   correctOption: number;
 
-  @IsNumber()
-  @IsNotEmpty()
-  selectedAnswerByStudent: number;
+  @ValidateNested()
+  @Type(() => SelectedAnswerByStudentDto)
+  selectedAnswerByStudent: SelectedAnswerByStudentDto;
 
   @IsString()
   @IsOptional()
@@ -77,6 +95,9 @@ export class SubmitAssessmentDto {
   @ValidateNested({ each: true })
   @Type(() => QuestionAnswerDto)
   answers: QuestionAnswerDto[];
+
+  @IsNumber()
+  aiAssessmentId: number;
 }
 
 export class GenerateAssessmentDto {

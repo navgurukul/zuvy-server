@@ -3998,7 +3998,6 @@ export const questionStudentAnswerRelation = main.table("question_student_answer
   studentId: integer("student_id").notNull().references(() => users.id),
   questionId: integer("question_id").notNull().references(() => questionsByLLM.id),
   answer: integer("answer"),
-  status: integer("status").notNull().default(0), // 1 = correct, 0 = wrong
   answeredAt: timestamp("answered_at", { withTimezone: true, mode: "string" }).defaultNow(),
   createdAt: timestamp("created_at", { withTimezone: true, mode: "string" }).defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true, mode: "string" }).defaultNow(),
@@ -4028,7 +4027,7 @@ export const studentLevelRelation = main.table("student_level_relation", {
   assignedAt: timestamp("assigned_at", { withTimezone: true, mode: "string" }).defaultNow(),
   createdAt: timestamp("created_at", { withTimezone: true, mode: "string" }).defaultNow(),
 }, (table) => ({
-  uniqStudentLevel: unique("uniq_student_level").on(table.studentId, table.levelId),
+  uniqStudentLevel: unique("uniq_student_assessment_level").on(table.studentId, table.levelId, table.aiAssessmentId),
 }));
 
 export const questionEvaluation = main.table('question_evaluation', {

@@ -434,7 +434,6 @@ CREATE TABLE "question_student_answer_relation" (
   "student_id" INTEGER NOT NULL REFERENCES "users"("id"),
   "question_id" INTEGER NOT NULL REFERENCES "questions_by_llm"("id"),
   "answer" INTEGER NOT NULL,
-  "status" INTEGER NOT NULL DEFAULT 0, -- 1 = correct, 0 = wrong
   "answered_at" TIMESTAMPTZ DEFAULT NOW(),
   "created_at" TIMESTAMPTZ DEFAULT NOW(),
   "updated_at" TIMESTAMPTZ DEFAULT NOW(),
@@ -448,7 +447,7 @@ CREATE TABLE "student_level_relation" (
   "ai_assessment_id" INTEGER NOT NULL REFERENCES "main"."ai_assessment"("id"),
   "assigned_at" TIMESTAMPTZ DEFAULT NOW(),
   "created_at" TIMESTAMPTZ DEFAULT NOW(),
-  CONSTRAINT "uniq_student_level" UNIQUE ("student_id", "level_id")
+  CONSTRAINT "uniq_student_assessment_level" UNIQUE ("student_id", "level_id", "ai_assessment_id")
 );
 
 CREATE TABLE IF NOT EXISTS "question_evaluation" (
@@ -461,7 +460,6 @@ CREATE TABLE IF NOT EXISTS "question_evaluation" (
   "correct_option" INTEGER NOT NULL,
   "selected_answer_by_student" INTEGER NOT NULL,
   "language" VARCHAR(50),
-  "status" VARCHAR(50),
   "explanation" TEXT,
   "summary" TEXT,
   "recommendations" TEXT,
