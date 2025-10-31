@@ -9,8 +9,8 @@ import {
   and,
   like,
   desc,
-  ne,
   asc,
+  ne,
 } from 'drizzle-orm';
 import axios from 'axios';
 import * as _ from 'lodash';
@@ -1041,7 +1041,6 @@ export class BootcampService {
     orderDirection?: string,
   ) {
     try {
-      // sanitize numeric inputs to avoid sending NaN to SQL (Postgres will error on 'NaN' for integer fields)
       const batchIdNum = Number.isFinite(Number(batchId))
         ? Number(batchId)
         : undefined;
