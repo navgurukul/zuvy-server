@@ -10,16 +10,20 @@ import { z } from 'zod';
  * }
  */
 
-const OptionsSchema = z.record(z.string(), z.string()); // e.g. { "1": "A", "2": "B", ... }
+const OptionSchema = z.object({
+  id: z.union([z.string(), z.number()]),
+  questionId: z.union([z.string(), z.number()]),
+  optionText: z.string(),
+  optionNumber: z.number(),
+});
 
 const EvaluationItemSchema = z.object({
   id: z.union([z.string(), z.number()]),
   question: z.string(),
   topic: z.string().optional(),
   difficulty: z.string().optional(),
-  options: OptionsSchema,
-  correctOption: z.union([z.string(), z.number()]),
-  selectedAnswerByStudent: z.union([z.string(), z.number()]),
+  options: z.array(OptionSchema),
+  selectedAnswerByStudent: OptionSchema,
   language: z.string().optional(),
   status: z.enum(['correct', 'incorrect']),
   explanation: z.string().min(1),

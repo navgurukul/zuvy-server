@@ -97,11 +97,15 @@ export class AiAssessmentController {
   })
   @ApiResponse({ status: 400, description: 'Invalid assessment data.' })
   takeAssessment(@Body() submitAssessmentDto: SubmitAssessmentDto, @Req() req) {
-    const studentId = req.user[0]?.id;
-    return this.aiAssessmentService.submitLlmAssessment(
-      studentId,
-      submitAssessmentDto,
-    );
+    try {
+      const studentId = req.user[0]?.id;
+      return this.aiAssessmentService.submitLlmAssessment(
+        studentId,
+        submitAssessmentDto,
+      );
+    } catch (error) {
+      console.error('error in evaluation controller', error);
+    }
   }
 
   @Get()
@@ -110,7 +114,21 @@ export class AiAssessmentController {
   })
   @ApiQuery({ name: 'bootcampId', required: false, type: Number })
   @ApiResponse({ status: 200, description: 'List of AI assessments.' })
-  findAll(@Query('bootcampId') bootcampId?: number) {
-    return this.aiAssessmentService.findAll(bootcampId);
+  findAll(@Req() req, @Query('bootcampId') bootcampId?: number) {
+    const userId = req.user[0]?.id;
+    return this.aiAssessmentService.findAll(userId, bootcampId);
+  }
+
+  @Get('/by/studentId')
+  @ApiOperation({
+    summary: 'Get all AI assessments by student id',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'List of AI assessments of a student.',
+  })
+  findAllAssessmentOfAStudent(@Req() req) {
+    const userId = req.user[0]?.id;
+    return this.aiAssessmentService.findAllAssessmentOfAStudent(userId);
   }
 }

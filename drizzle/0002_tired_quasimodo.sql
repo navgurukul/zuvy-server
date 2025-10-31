@@ -447,7 +447,7 @@ CREATE TABLE "student_level_relation" (
   "ai_assessment_id" INTEGER NOT NULL REFERENCES "main"."ai_assessment"("id"),
   "assigned_at" TIMESTAMPTZ DEFAULT NOW(),
   "created_at" TIMESTAMPTZ DEFAULT NOW(),
-  CONSTRAINT "uniq_student_assessment_level" UNIQUE ("student_id", "level_id", "ai_assessment_id")
+  CONSTRAINT "uniq_student_assessment_level" UNIQUE ("student_id", "ai_assessment_id")
 );
 
 CREATE TABLE IF NOT EXISTS "question_evaluation" (
@@ -457,9 +457,10 @@ CREATE TABLE IF NOT EXISTS "question_evaluation" (
   "topic" VARCHAR(255),
   "difficulty" VARCHAR(50),
   "options" JSONB NOT NULL,
-  "correct_option" INTEGER NOT NULL,
+--   "correct_option" INTEGER NOT NULL,
   "selected_answer_by_student" INTEGER NOT NULL,
   "language" VARCHAR(50),
+  "status" VARCHAR(50) DEFAULT NULL,
   "explanation" TEXT,
   "summary" TEXT,
   "recommendations" TEXT,

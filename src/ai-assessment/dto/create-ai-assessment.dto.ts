@@ -72,13 +72,9 @@ class QuestionAnswerDto {
   @IsOptional()
   difficulty?: string;
 
-  @IsObject()
-  @IsNotEmpty()
-  options: Record<string, string>;
-
-  @IsNumber()
-  @IsNotEmpty()
-  correctOption: number;
+  @ValidateNested()
+  @Type(() => SelectedAnswerByStudentDto)
+  options: SelectedAnswerByStudentDto;
 
   @ValidateNested()
   @Type(() => SelectedAnswerByStudentDto)

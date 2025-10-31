@@ -52,7 +52,13 @@ export class QuestionsEvaluationController {
     type: CreateQuestionsByLlmDto,
   })
   @ApiResponse({ status: 404, description: 'Not found' })
-  findOne(@Param('studentId', ParseIntPipe) studentId: number) {
-    return this.questionEvaluationsService.findOneByStudentId(studentId);
+  findOne(
+    @Param('studentId') studentId: number,
+    @Param('aiAssessmentId') aiAssessmentId: number,
+  ) {
+    return this.questionEvaluationsService.findOneByStudentId(
+      studentId,
+      aiAssessmentId,
+    );
   }
 }

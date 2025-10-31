@@ -15,14 +15,12 @@ export function answerEvaluationPrompt(questionsWithAnswers: any) {
     - topic
     - difficulty
     - options
-    - correctOption
     - selectedAnswerByStudent
     - language
-    - status
     - explanation
 
     Evaluation rules:
-    1. Mark "status" as "correct" if the student's selected answer exactly matches the correct option.
+    1. Mark "status" as "correct" if the student's selected answer is correct.
     2. Mark "status" as "incorrect" otherwise.
     3. For incorrect answers, explain briefly *why* (conceptual, procedural, or factual error) and mention the correct answer clearly.
     4. Never hallucinate — use only the provided data above.
@@ -37,9 +35,8 @@ export function answerEvaluationPrompt(questionsWithAnswers: any) {
         "question": "<full question text>",
         "topic": "<topic>",
         "difficulty": "<difficulty>",
-        "options": { "1": "<A>", "2": "<B>", "3": "<C>", "4": "<D>" },
-        "correctOption": <correct option number>,
-        "selectedAnswerByStudent": <selected option number>,
+        "options": { <the way it is> },
+        "selectedAnswerByStudent": <selected answer>,
         "language": "<language>",
         "status": "<correct | incorrect>",
         "explanation": "<1-2 sentences explaining correctness or mistake, and providing correct answer if wrong>"

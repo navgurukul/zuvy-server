@@ -135,7 +135,7 @@ export class AiAssessmentService {
         .where(
           and(
             eq(correctAnswers.questionId, q.id),
-            eq(correctAnswers.id, q.selectedAnswerByStudent.id),
+            eq(correctAnswers.correctOptionId, q.selectedAnswerByStudent.id),
           ),
         )
         .limit(1);
@@ -152,90 +152,93 @@ export class AiAssessmentService {
     submitAssessmentDto: SubmitAssessmentDto,
   ) {
     try {
-      const { answers, aiAssessmentId } = submitAssessmentDto;
+      return await db.transaction(async (tx) => {
+        const { answers, aiAssessmentId } = submitAssessmentDto;
 
-      // const totalQuestions = answers.length;
-      const { score, totalQuestions } =
-        await this.countScore(submitAssessmentDto);
-      const totalScore = (score / totalQuestions) * 100;
+        // const totalQuestions = answers.length;
+        const { score, totalQuestions } =
+          await this.countScore(submitAssessmentDto);
+        const totalScore = (score / totalQuestions) * 100;
 
-      // Prepare payloads
-      const answerPayloads = answers.map((q) => ({
-        studentId,
-        questionId: q.id,
-        answer: q.selectedAnswerByStudent,
-        answeredAt: new Date().toISOString(),
-      }));
+        // Prepare payloads
+        const answerPayloads = answers.map((q) => ({
+          studentId,
+          questionId: q.id,
+          answer: q.selectedAnswerByStudent.id,
+          answeredAt: new Date().toISOString(),
+        }));
 
-      await Promise.all(
-        answerPayloads.map((payload) =>
-          db.insert(questionStudentAnswerRelation).values(payload),
-        ),
-      );
+        await Promise.all(
+          answerPayloads.map((payload) =>
+            tx.insert(questionStudentAnswerRelation).values(payload),
+          ),
+        );
 
-      const level = await this.calculateStudentLevel(totalScore);
+        const level = await this.calculateStudentLevel(totalScore);
 
-      const levelPayload = {
-        studentId,
-        levelId: level.id,
-        aiAssessmentId,
-        assignedAt: new Date().toISOString(),
-      };
+        const levelPayload = {
+          studentId,
+          levelId: level.id,
+          aiAssessmentId,
+          assignedAt: new Date().toISOString(),
+        };
 
-      await db.insert(studentLevelRelation).values(levelPayload);
+        await tx.insert(studentLevelRelation).values(levelPayload);
 
-      //here evaluate the answers by the LLM.
-      const evaluationPrompt = answerEvaluationPrompt(answers);
-      const llmResponse = await this.llmService.generate({
-        systemPrompt: evaluationPrompt,
-      });
+        //here evaluate the answers by the LLM.
+        const evaluationPrompt = answerEvaluationPrompt(answers);
+        const llmResponse = await this.llmService.generate({
+          systemPrompt: evaluationPrompt,
+        });
 
-      let rawEvaluationText: string | null = null;
-      if (!llmResponse) rawEvaluationText = null;
-      else if (typeof llmResponse === 'string') rawEvaluationText = llmResponse;
-      else if (typeof llmResponse === 'object') {
-        rawEvaluationText =
-          (llmResponse as any).text ??
-          (llmResponse as any).content ??
-          (llmResponse as any).response ??
-          (llmResponse as any).output ??
-          JSON.stringify(llmResponse);
-      } else {
-        rawEvaluationText = String(llmResponse);
-      }
-
-      // Parse & validate BEFORE returning to client
-      let parsedEvaluation: any = null;
-      let parseError: string | null = null;
-
-      if (rawEvaluationText) {
-        try {
-          parsedEvaluation = parseLlmEvaluation(rawEvaluationText);
-        } catch (err) {
-          parseError = (err as Error).message;
+        let rawEvaluationText: string | null = null;
+        if (!llmResponse) rawEvaluationText = null;
+        else if (typeof llmResponse === 'string')
+          rawEvaluationText = llmResponse;
+        else if (typeof llmResponse === 'object') {
+          rawEvaluationText =
+            (llmResponse as any).text ??
+            (llmResponse as any).content ??
+            (llmResponse as any).response ??
+            (llmResponse as any).output ??
+            JSON.stringify(llmResponse);
+        } else {
+          rawEvaluationText = String(llmResponse);
         }
-      } else {
-        parseError = 'Empty LLM response.';
-      }
 
-      // Optionally: persist parsedEvaluation to DB here if successful
-      // if (parsedEvaluation) { await db.insert(...).values({ ... }) }
-      await this.questionEvaluationService.saveEvaluations(
-        parsedEvaluation,
-        studentId,
-      );
+        // Parse & validate BEFORE returning to client
+        let parsedEvaluation: any = null;
+        let parseError: string | null = null;
 
-      return {
-        totalQuestions,
-        correctAnswers,
-        score: Math.round(score * 100) / 100,
-        level: level.grade,
-        performance: level.meaning,
-        hardship: level.hardship,
-        evaluation: parsedEvaluation ?? null,
-        rawEvaluationText: parsedEvaluation ? null : rawEvaluationText,
-        parseError,
-      };
+        if (rawEvaluationText) {
+          try {
+            parsedEvaluation = parseLlmEvaluation(rawEvaluationText);
+          } catch (err) {
+            parseError = (err as Error).message;
+          }
+        } else {
+          parseError = 'Empty LLM response.';
+        }
+
+        // Optionally: persist parsedEvaluation to DB here if successful
+        // if (parsedEvaluation) { await db.insert(...).values({ ... }) }
+        await this.questionEvaluationService.saveEvaluations(
+          parsedEvaluation,
+          studentId,
+          aiAssessmentId,
+        );
+
+        return {
+          totalQuestions,
+          score: Math.round(score * 100) / 100,
+          level: level.grade,
+          performance: level.meaning,
+          hardship: level.hardship,
+          evaluation: parsedEvaluation ?? null,
+          rawEvaluationText: parsedEvaluation ? null : rawEvaluationText,
+          parseError,
+        };
+      });
     } catch (error) {
       throw error;
     }
@@ -268,7 +271,7 @@ export class AiAssessmentService {
     return level;
   }
 
-  async findAll(bootcampId?: number) {
+  async findAll(userId: number, bootcampId?: number) {
     const query = db.select().from(aiAssessment);
 
     const results = bootcampId
@@ -276,11 +279,35 @@ export class AiAssessmentService {
       : await query;
 
     if (bootcampId && results.length === 0) {
-      throw new NotFoundException(
-        `No assessments found for bootcampId ${bootcampId}`,
-      );
+      return [];
     }
 
     return results;
+  }
+
+  async findAllAssessmentOfAStudent(userId: number) {
+    if (!userId) return [];
+
+    const assessments = await db
+      .select({
+        id: aiAssessment.id,
+        bootcampId: aiAssessment.bootcampId,
+        title: aiAssessment.title,
+        description: aiAssessment.description,
+        difficulty: aiAssessment.difficulty,
+        topics: aiAssessment.topics,
+        audience: aiAssessment.audience,
+        totalNumberOfQuestions: aiAssessment.totalNumberOfQuestions,
+        createdAt: aiAssessment.createdAt,
+        updatedAt: aiAssessment.updatedAt,
+      })
+      .from(studentLevelRelation)
+      .innerJoin(
+        aiAssessment,
+        eq(studentLevelRelation.aiAssessmentId, aiAssessment.id),
+      )
+      .where(eq(studentLevelRelation.studentId, userId));
+
+    return assessments;
   }
 }

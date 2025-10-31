@@ -3997,7 +3997,7 @@ export const questionStudentAnswerRelation = main.table("question_student_answer
   id: serial("id").primaryKey().notNull(),
   studentId: integer("student_id").notNull().references(() => users.id),
   questionId: integer("question_id").notNull().references(() => questionsByLLM.id),
-  answer: integer("answer"),
+  answer: integer("answer").notNull().references(() => correctAnswers.id),
   answeredAt: timestamp("answered_at", { withTimezone: true, mode: "string" }).defaultNow(),
   createdAt: timestamp("created_at", { withTimezone: true, mode: "string" }).defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true, mode: "string" }).defaultNow(),
@@ -4027,7 +4027,7 @@ export const studentLevelRelation = main.table("student_level_relation", {
   assignedAt: timestamp("assigned_at", { withTimezone: true, mode: "string" }).defaultNow(),
   createdAt: timestamp("created_at", { withTimezone: true, mode: "string" }).defaultNow(),
 }, (table) => ({
-  uniqStudentLevel: unique("uniq_student_assessment_level").on(table.studentId, table.levelId, table.aiAssessmentId),
+  uniqStudentLevel: unique("uniq_student_assessment").on(table.studentId, table.aiAssessmentId),
 }));
 
 export const questionEvaluation = main.table('question_evaluation', {
@@ -4037,10 +4037,10 @@ export const questionEvaluation = main.table('question_evaluation', {
   topic: varchar('topic', { length: 255 }),
   difficulty: varchar('difficulty', { length: 50 }),
   options: jsonb('options').notNull(), // { "1": "A", "2": "B", "3": "C", "4": "D" }
-  correctOption: integer('correct_option').notNull(),
+  // correctOption: integer('correct_option').notNull(),
   selectedAnswerByStudent: integer('selected_answer_by_student').notNull(),
   language: varchar('language', { length: 50 }),
-  status: varchar('status', { length: 50 }), // e.g., 'correct' or 'incorrect'
+  status: varchar('status', { length: 50 }).default(null), // e.g., 'correct' or 'incorrect'
   explanation: text('explanation'),
   summary: text('summary'),
   recommendations: text('recommendations'),
