@@ -26,7 +26,10 @@ import {
   ApiQuery,
 } from '@nestjs/swagger';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
-import { submitAssessmentExample } from './swagger_examples/examples';
+import {
+  createAiAssessment,
+  submitAssessmentExample,
+} from './swagger_examples/examples';
 
 @ApiTags('AI Assessment')
 @ApiBearerAuth('JWT-auth')
@@ -37,7 +40,15 @@ export class AiAssessmentController {
 
   @Post()
   @ApiOperation({ summary: 'Create a new AI assessment' })
-  @ApiBody({ type: CreateAiAssessmentDto })
+  @ApiBody({
+    type: CreateAiAssessmentDto,
+    examples: {
+      basicExample: {
+        summary: 'Payload for creating ai assessment.',
+        value: createAiAssessment,
+      },
+    },
+  })
   @ApiResponse({
     status: 201,
     description: 'AI assessment successfully created.',

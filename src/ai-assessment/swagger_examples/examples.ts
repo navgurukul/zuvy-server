@@ -48,3 +48,16 @@ export const submitAssessmentExample = {
     },
   ],
 };
+
+export const createAiAssessment = {
+  bootcampId: 803,
+  title: 'Assessment Title',
+  description: 'This is a description',
+  difficulty: 'Medium',
+  topics: {
+    Trees: 4,
+    'Linked Lists': 4,
+  },
+  audience: 'Any previous cohorts (based on bootcampId)',
+  totalNumberOfQuestions: 8,
+};
