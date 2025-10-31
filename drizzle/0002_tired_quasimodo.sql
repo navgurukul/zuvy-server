@@ -385,16 +385,27 @@ ALTER TABLE main.zuvy_permissions_roles ADD CONSTRAINT uniq_role_permission UNIQ
 --> questions by llm table.
 CREATE TABLE "questions_by_llm" (
   "id" SERIAL PRIMARY KEY NOT NULL,
-  "bootcampId" INTEGER NOT NULL REFERENCES "main"."ai_assessment"("id"),
+  "ai_assessment_id" INTEGER NOT NULL REFERENCES "main"."ai_assessment"("id"),
   "topic" VARCHAR(100),
   "difficulty" VARCHAR(50),
   "bootcamp_id" INTEGER,
   "question" TEXT NOT NULL,
-  "options" JSONB NOT NULL,
-  "answer" INTEGER NOT NULL,
   "language" VARCHAR(255),
   "created_at" TIMESTAMPTZ DEFAULT NOW(),
   "updated_at" TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE "mcq_question_options" (
+  "id" SERIAL PRIMARY KEY NOT NULL,
+  "question_id" INTEGER NOT NULL REFERENCES "questions_by_llm"("id") ON DELETE CASCADE,
+  "option_text" TEXT NOT NULL,
+  "option_number" INTEGER NOT NULL
+);
+
+CREATE TABLE "correct_answers" (
+  "id" SERIAL PRIMARY KEY NOT NULL,
+  "question_id" INTEGER NOT NULL REFERENCES "questions_by_llm"("id") ON DELETE CASCADE,
+  "correct_option_id" INTEGER NOT NULL REFERENCES "question_options"("id") ON DELETE CASCADE
 );
 
 CREATE TABLE "levels" (

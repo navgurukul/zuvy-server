@@ -7,6 +7,6 @@ import { QuestionsEvaluationController } from './question-evaluation.controller'
 @Module({
   controllers: [QuestionsByLlmController, QuestionsEvaluationController],
   providers: [QuestionsByLlmService, QuestionEvaluationService],
-  exports: [QuestionEvaluationService],
+  exports: [QuestionEvaluationService, QuestionsByLlmService],
 })
 export class QuestionsByLlmModule {}

@@ -56,3 +56,51 @@ export function answerEvaluationPrompt(questionsWithAnswers: any) {
     - Use consistent key naming for all question objects.
     `;
 }
+
+export function generateMcqPrompt(
+  level,
+  levelDescription,
+  audience,
+  previous_mcqs_str,
+) {
+  return `
+  """
+  You are an assistant that generates EXACTLY 5 computer programming adaptive multiple-choice questions in strict JSON format, based on the student's past performance and the requested level.
+
+  Inputs:
+  - level: ${level}
+  - level_description: ${levelDescription}
+  - audience: ${audience}
+  - previous_mcqs_json: ${previous_mcqs_str}
+
+  OUTPUT REQUIREMENTS:
+  1. Output ONLY a single valid JSON object (no surrounding text).
+  2. The top-level JSON object MUST be:
+  {
+    "evaluations": [ /* array of 5 question objects */ ]
+  }
+  3. There MUST be exactly 5 objects in evaluations.
+  4. Each question object MUST have these fields and types:
+    {
+      "question": "<full question text>",
+      "topic": "<topic>",
+      "difficulty": "<difficulty>",
+      "options": { "1": "<A>", "2": "<B>", "3": "<C>", "4": "<D>" },
+      "correctOption": <1|2|3|4>,
+      "language": "<coding language>"
+    }
+  5. Options must be exactly 4 entries.
+  6. correctOption must match one of the options.
+  7. Questions must NOT duplicate any question in previous_mcqs_json.
+  8. Prefer topics where the student showed weaknesses in past_performance_json.
+  9. Include at least 2 distinct topics across the 5 questions.
+  10. Adjust difficulty adaptively but respect the provided level_description.
+  11. IDs must be unique.
+  12. Do NOT include explanations or extra keys.
+  13. If you cannot produce valid JSON, return:
+    { "error": "INVALID_JSON", "reason": "<short reason>" }
+
+  Now produce the JSON only.
+  """
+  `.trim();
+}

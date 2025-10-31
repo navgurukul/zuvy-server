@@ -3966,11 +3966,22 @@ export const questionsByLLM = main.table("questions_by_llm", {
   difficulty: varchar("difficulty", { length: 50 }),
   aiAssessmentId: integer('ai_assessment_id').references(() => aiAssessment.id).default(null),
   question: text("question").notNull(),
-  options: jsonb("options").notNull(), // store as JSON array
-  answer: integer("answer").notNull(),
-  language: varchar("language", {length: 255}),
+  language: varchar("language", { length: 255 }),
   createdAt: timestamp("created_at", { withTimezone: true, mode: "string" }).defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true, mode: "string" }).defaultNow(),
+});
+
+export const mcqQuestionOptions = main.table("mcq_question_options", {
+  id: serial("id").primaryKey().notNull(),
+  questionId: integer("question_id").notNull().references(() => questionsByLLM.id, { onDelete: "cascade" }),
+  optionText: text("option_text").notNull(),
+  optionNumber: integer("option_number").notNull(), // e.g., 1,2,3,4
+});
+
+export const correctAnswers = main.table("correct_answers", {
+  id: serial("id").primaryKey().notNull(),
+  questionId: integer("question_id").notNull().references(() => questionsByLLM.id, { onDelete: "cascade" }),
+  correctOptionId: integer("correct_option_id").notNull().references(() => mcqQuestionOptions.id, { onDelete: "cascade" }),
 });
 
 export const questionLevelRelation = main.table("question_level_relation", {

@@ -78,3 +78,9 @@ export class SubmitAssessmentDto {
   @Type(() => QuestionAnswerDto)
   answers: QuestionAnswerDto[];
 }
+
+export class GenerateAssessmentDto {
+  @IsNumber()
+  @IsNotEmpty()
+  aiAssessmentId: number;
+}

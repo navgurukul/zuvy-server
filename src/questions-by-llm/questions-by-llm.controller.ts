@@ -7,6 +7,7 @@ import {
   Param,
   Delete,
   ParseIntPipe,
+  Query,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -14,6 +15,7 @@ import {
   ApiResponse,
   ApiBody,
   ApiParam,
+  ApiQuery,
 } from '@nestjs/swagger';
 import { QuestionsByLlmService } from './questions-by-llm.service';
 import { CreateQuestionsByLlmDto } from './dto/create-questions-by-llm.dto';
@@ -34,18 +36,24 @@ export class QuestionsByLlmController {
   })
   @ApiResponse({ status: 400, description: 'Invalid payload' })
   create(@Body() createQuestionsByLlmDto: CreateQuestionsByLlmDto) {
-    return this.questionsByLlmService.create(createQuestionsByLlmDto);
+    return this.questionsByLlmService.create(createQuestionsByLlmDto, 1);
   }
 
   @Get()
   @ApiOperation({ summary: 'Get all QuestionsByLlm entries' })
+  @ApiQuery({
+    name: 'aiAssessmentId',
+    required: true,
+    type: String,
+    description: 'Search by ai assessment id',
+  })
   @ApiResponse({
     status: 200,
     description: 'List retrieved',
     type: [CreateQuestionsByLlmDto],
   })
-  findAll() {
-    return this.questionsByLlmService.getAllLlmQuestions();
+  findAll(@Query('aiAssessmentId') id: number) {
+    return this.questionsByLlmService.getAllLlmQuestions(id);
   }
 
   // @Get(':id')

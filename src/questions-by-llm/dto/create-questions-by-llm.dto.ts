@@ -1,11 +1,17 @@
-import { IsArray, IsNotEmpty, IsString, IsOptional } from 'class-validator';
+import {
+  IsArray,
+  IsNotEmpty,
+  IsString,
+  IsOptional,
+  IsNumber,
+} from 'class-validator';
 
 export class CreateQuestionsByLlmDto {
   @IsArray()
   @IsNotEmpty()
   questions: {
     question: string;
-    options: string[];
+    options: object;
     correctOption: number;
     difficulty?: string;
     topic?: string;
@@ -15,4 +21,28 @@ export class CreateQuestionsByLlmDto {
   @IsString()
   @IsOptional()
   levelId?: string;
+}
+
+export class CreateMcqQuestionOptionDto {
+  @IsNumber()
+  @IsNotEmpty()
+  questionId: number;
+
+  @IsString()
+  @IsNotEmpty()
+  optionText: string;
+
+  @IsNumber()
+  @IsNotEmpty()
+  optionNumber: number;
+}
+
+export class CreateCorrectAnswerDto {
+  @IsNumber()
+  @IsNotEmpty()
+  questionId: number;
+
+  @IsNumber()
+  @IsNotEmpty()
+  correctOptionId: number;
 }

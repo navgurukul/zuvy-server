@@ -13,6 +13,7 @@ import {
 import { AiAssessmentService } from './ai-assessment.service';
 import {
   CreateAiAssessmentDto,
+  GenerateAssessmentDto,
   SubmitAssessmentDto,
 } from './dto/create-ai-assessment.dto';
 import { UpdateAiAssessmentDto } from './dto/update-ai-assessment.dto';
@@ -58,6 +59,27 @@ export class AiAssessmentController {
     return this.aiAssessmentService.create(createAiAssessmentDto);
   }
 
+  @Post('/generate/all')
+  @ApiOperation({ summary: 'Generate mcqs' })
+  @ApiBody({
+    type: Object,
+    examples: {
+      basicExample: {
+        summary: 'Generate Mcqs.',
+        value: { aiAssessmentId: 800 },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Assessment successfully submitted and evaluated.',
+  })
+  @ApiResponse({ status: 400, description: 'Invalid assessment data.' })
+  generate(@Body() generateAssessmentDto: GenerateAssessmentDto, @Req() req) {
+    const userId = req.user[0]?.id;
+    return this.aiAssessmentService.generate(userId, generateAssessmentDto);
+  }
+
   @Post('/submit')
   @ApiOperation({ summary: 'Submit an AI assessment for evaluation' })
   @ApiBody({
@@ -90,36 +112,5 @@ export class AiAssessmentController {
   @ApiResponse({ status: 200, description: 'List of AI assessments.' })
   findAll(@Query('bootcampId') bootcampId?: number) {
     return this.aiAssessmentService.findAll(bootcampId);
-  }
-
-  @Get(':id')
-  @ApiOperation({ summary: 'Get details of a specific AI assessment' })
-  @ApiParam({ name: 'id', description: 'Assessment ID', type: Number })
-  @ApiResponse({ status: 200, description: 'Assessment details retrieved.' })
-  @ApiResponse({ status: 404, description: 'Assessment not found.' })
-  findOne(@Param('id') id: string) {
-    return this.aiAssessmentService.findOne(+id);
-  }
-
-  @Patch(':id')
-  @ApiOperation({ summary: 'Update a specific AI assessment' })
-  @ApiParam({ name: 'id', description: 'Assessment ID', type: Number })
-  @ApiBody({ type: UpdateAiAssessmentDto })
-  @ApiResponse({ status: 200, description: 'Assessment updated successfully.' })
-  @ApiResponse({ status: 404, description: 'Assessment not found.' })
-  update(
-    @Param('id') id: string,
-    @Body() updateAiAssessmentDto: UpdateAiAssessmentDto,
-  ) {
-    return this.aiAssessmentService.update(+id, updateAiAssessmentDto);
-  }
-
-  @Delete(':id')
-  @ApiOperation({ summary: 'Delete a specific AI assessment' })
-  @ApiParam({ name: 'id', description: 'Assessment ID', type: Number })
-  @ApiResponse({ status: 200, description: 'Assessment deleted successfully.' })
-  @ApiResponse({ status: 404, description: 'Assessment not found.' })
-  remove(@Param('id') id: string) {
-    return this.aiAssessmentService.remove(+id);
   }
 }

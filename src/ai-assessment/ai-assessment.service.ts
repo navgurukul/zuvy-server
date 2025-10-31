@@ -3,7 +3,10 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { CreateAiAssessmentDto } from './dto/create-ai-assessment.dto';
+import {
+  CreateAiAssessmentDto,
+  GenerateAssessmentDto,
+} from './dto/create-ai-assessment.dto';
 import { UpdateAiAssessmentDto } from './dto/update-ai-assessment.dto';
 import { db } from 'src/db';
 import {
@@ -14,16 +17,22 @@ import {
 } from 'drizzle/schema';
 import { SubmitAssessmentDto } from './dto/create-ai-assessment.dto';
 import { LlmService } from 'src/llm/llm.service';
-import { answerEvaluationPrompt } from './system_prompts/system_prompts';
+import {
+  answerEvaluationPrompt,
+  generateMcqPrompt,
+} from './system_prompts/system_prompts';
 import { parseLlmEvaluation } from 'src/llm/llm_response_parsers/evaluationParser';
 import { QuestionEvaluationService } from 'src/questions-by-llm/question-evaluation.service';
 import { eq } from 'drizzle-orm';
+import { parseLlmMcq } from 'src/llm/llm_response_parsers/mcqParser';
+import { QuestionsByLlmService } from 'src/questions-by-llm/questions-by-llm.service';
 
 @Injectable()
 export class AiAssessmentService {
   constructor(
     private readonly llmService: LlmService,
     private readonly questionEvaluationService: QuestionEvaluationService,
+    private readonly questionByLlmService: QuestionsByLlmService,
   ) {}
   async create(createAiAssessmentDto: CreateAiAssessmentDto) {
     try {
@@ -51,6 +60,67 @@ export class AiAssessmentService {
         'Failed to create AI assessment: ' + error.message,
       );
     }
+  }
+
+  async getDistinctLevelsByAssessment(aiAssessmentId: number) {
+    const results = await db
+      .select({
+        id: levels.id,
+        grade: levels.grade,
+        scoreRange: levels.scoreRange,
+        scoreMin: levels.scoreMin,
+        scoreMax: levels.scoreMax,
+        hardship: levels.hardship,
+        meaning: levels.meaning,
+        createdAt: levels.createdAt,
+        updatedAt: levels.updatedAt,
+      })
+      .from(studentLevelRelation)
+      .innerJoin(levels, eq(levels.id, studentLevelRelation.levelId))
+      .where(eq(studentLevelRelation.aiAssessmentId, aiAssessmentId))
+      .groupBy(levels.id);
+
+    return results;
+  }
+
+  async generateMcqPromptsForEachLevel(levels, aiAssessmentId) {
+    // const systemPrompts = [];
+    for (const level of levels) {
+      const levelName = level.grade;
+      const levelDescription =
+        level.meaning || `${levelName} — ${level.scoreRange}`;
+      const audience = 'student';
+      const previous_mcqs_str = JSON.stringify([]);
+
+      const prompt = generateMcqPrompt(
+        levelName,
+        levelDescription,
+        audience,
+        previous_mcqs_str,
+      );
+
+      const aiResponse = await this.llmService.generate({
+        systemPrompt: prompt,
+      });
+      const parsedAiResponse = await parseLlmMcq(aiResponse);
+      await this.questionByLlmService.create(
+        { questions: parsedAiResponse.evaluations, levelId: level.id },
+        aiAssessmentId,
+      );
+      // systemPrompts.push({
+      //   levelId: level.id,
+      //   grade: level.grade,
+      //   prompt,
+      // });
+    }
+    // return systemPrompts;
+  }
+
+  async generate(userId, generateAssessmentDto: GenerateAssessmentDto) {
+    const { aiAssessmentId } = generateAssessmentDto;
+    const distinctLevels =
+      await this.getDistinctLevelsByAssessment(aiAssessmentId);
+    await this.generateMcqPromptsForEachLevel(distinctLevels, aiAssessmentId);
   }
 
   async submitLlmAssessment(
@@ -189,17 +259,5 @@ export class AiAssessmentService {
     }
 
     return results;
-  }
-
-  findOne(id: number) {
-    return `This action returns a #${id} aiAssessment`;
-  }
-
-  update(id: number, updateAiAssessmentDto: UpdateAiAssessmentDto) {
-    return `This action updates a #${id} aiAssessment`;
-  }
-
-  remove(id: number) {
-    return `This action removes a #${id} aiAssessment`;
   }
 }
