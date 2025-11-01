@@ -3959,3 +3959,107 @@ export const usersExtraPermissionsRelations = relations(users, ({ many }) => ({
   grantedPermissions: many(zuvyExtraPermissions, { relationName: 'grantedByUser' }),
 }));
 
+//llm related tables
+export const questionsByLLM = main.table("questions_by_llm", {
+  id: serial("id").primaryKey().notNull(),
+  topic: varchar("topic", { length: 100 }),
+  difficulty: varchar("difficulty", { length: 50 }),
+  aiAssessmentId: integer('ai_assessment_id').references(() => aiAssessment.id).default(null),
+  question: text("question").notNull(),
+  language: varchar("language", { length: 255 }),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: "string" }).defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true, mode: "string" }).defaultNow(),
+});
+
+export const mcqQuestionOptions = main.table("mcq_question_options", {
+  id: serial("id").primaryKey().notNull(),
+  questionId: integer("question_id").notNull().references(() => questionsByLLM.id, { onDelete: "cascade" }),
+  optionText: text("option_text").notNull(),
+  optionNumber: integer("option_number").notNull(), // e.g., 1,2,3,4
+});
+
+export const correctAnswers = main.table("correct_answers", {
+  id: serial("id").primaryKey().notNull(),
+  questionId: integer("question_id").notNull().references(() => questionsByLLM.id, { onDelete: "cascade" }),
+  correctOptionId: integer("correct_option_id").notNull().references(() => mcqQuestionOptions.id, { onDelete: "cascade" }),
+});
+
+export const questionLevelRelation = main.table("question_level_relation", {
+  id: serial("id").primaryKey().notNull(),
+  levelId: integer("level_id").notNull().references(() => levels.id),
+  questionId: integer("question_id").notNull().references(() => questionsByLLM.id),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: "string" }).defaultNow(),
+}, (table) => ({
+  uniqStudentQuestion: unique("uniq_student_question").on(table.levelId, table.questionId),
+}));
+
+export const questionStudentAnswerRelation = main.table("question_student_answer_relation", {
+  id: serial("id").primaryKey().notNull(),
+  studentId: integer("student_id").notNull().references(() => users.id),
+  questionId: integer("question_id").notNull().references(() => questionsByLLM.id),
+  answer: integer("answer").notNull().references(() => correctAnswers.id),
+  answeredAt: timestamp("answered_at", { withTimezone: true, mode: "string" }).defaultNow(),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: "string" }).defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true, mode: "string" }).defaultNow(),
+}, (table) => ({
+  uniqStudentQuestionAnswer: unique("uniq_student_question_answer").on(table.studentId, table.questionId),
+}));
+
+export const levels = main.table("levels", {
+  id: serial("id").primaryKey().notNull(),
+  grade: varchar("grade", { length: 5 }).notNull(), // e.g. A+, A, B...
+  scoreRange: varchar("score_range", { length: 50 }).notNull(), // e.g. ">= 90", "80-89"
+  scoreMin: integer("score_min"), // optional numeric range start
+  scoreMax: integer("score_max"), // optional numeric range end
+  hardship: varchar("hardship", { length: 20 }), // "+20%", etc.
+  meaning: text("meaning"),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: "string" }).defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true, mode: "string" }).defaultNow(),
+}, (table) => ({
+  uniqGrade: unique("uniq_level_grade").on(table.grade),
+}));
+
+export const studentLevelRelation = main.table("student_level_relation", {
+  id: serial("id").primaryKey().notNull(),
+  studentId: integer("student_id").notNull().references(() => users.id),
+  levelId: integer("level_id").notNull().references(() => levels.id),
+  aiAssessmentId: integer('ai_assessment_id').references(() => aiAssessment.id).default(null),
+  assignedAt: timestamp("assigned_at", { withTimezone: true, mode: "string" }).defaultNow(),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: "string" }).defaultNow(),
+}, (table) => ({
+  uniqStudentLevel: unique("uniq_student_assessment").on(table.studentId, table.aiAssessmentId),
+}));
+
+export const questionEvaluation = main.table('question_evaluation', {
+  id: serial('id').primaryKey().notNull(),
+  aiAssessmentId: integer('ai_assessment_id').references(() => aiAssessment.id).default(null),
+  question: text('question').notNull(),
+  topic: varchar('topic', { length: 255 }),
+  difficulty: varchar('difficulty', { length: 50 }),
+  options: jsonb('options').notNull(), // { "1": "A", "2": "B", "3": "C", "4": "D" }
+  // correctOption: integer('correct_option').notNull(),
+  selectedAnswerByStudent: integer('selected_answer_by_student').notNull(),
+  language: varchar('language', { length: 50 }),
+  status: varchar('status', { length: 50 }).default(null), // e.g., 'correct' or 'incorrect'
+  explanation: text('explanation'),
+  summary: text('summary'),
+  recommendations: text('recommendations'),
+  studentId: integer("student_id").notNull().references(() => users.id),
+  createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow(),
+});
+
+export const aiAssessment = main.table("ai_assessment", {
+  id: serial("id").primaryKey().notNull(),
+  bootcampId: integer("bootcamp_id")
+    .notNull()
+    .references(() => zuvyBootcamps.id),
+  title: varchar("title", { length: 255 }).notNull(),
+  description: text("description"),
+  difficulty: varchar("difficulty", { length: 50 }),
+  topics: jsonb("topics").notNull(),
+  audience: jsonb("audience"),
+  totalNumberOfQuestions: integer("total_number_of_questions").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: "string" }).defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true, mode: "string" }).defaultNow(),
+});

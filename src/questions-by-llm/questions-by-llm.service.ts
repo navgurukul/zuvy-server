@@ -1,0 +1,244 @@
+import {
+  Injectable,
+  InternalServerErrorException,
+  NotFoundException,
+} from '@nestjs/common';
+import {
+  CreateCorrectAnswerDto,
+  CreateMcqQuestionOptionDto,
+  CreateQuestionsByLlmDto,
+} from './dto/create-questions-by-llm.dto';
+import { UpdateQuestionsByLlmDto } from './dto/update-questions-by-llm.dto';
+import { db } from 'src/db';
+import {
+  questionsByLLM,
+  questionLevelRelation,
+  mcqQuestionOptions,
+  correctAnswers,
+} from 'drizzle/schema';
+import { asc } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
+
+@Injectable()
+export class QuestionsByLlmService {
+  async createMcqQuestionOption(dto: CreateMcqQuestionOptionDto) {
+    return await db.insert(mcqQuestionOptions).values(dto).returning();
+  }
+
+  async createCorrectAnswer(dto: CreateCorrectAnswerDto) {
+    return await db.insert(correctAnswers).values(dto).returning();
+  }
+
+  async create(
+    createQuestionsByLlmDto: CreateQuestionsByLlmDto,
+    aiAssessmentId,
+  ) {
+    const { questions, levelId } = createQuestionsByLlmDto;
+
+    const questionsPayload = questions.map((q) => ({
+      topic: q.topic ?? null,
+      difficulty: q.difficulty ?? null,
+      question: q.question,
+      language: q.language,
+      aiAssessmentId,
+    }));
+
+    try {
+      const result = await db.transaction(async (tx) => {
+        let insertedQuestions;
+
+        // 1️⃣ Insert questions
+        try {
+          insertedQuestions = await tx
+            .insert(questionsByLLM)
+            .values(questionsPayload)
+            .returning({
+              id: questionsByLLM.id,
+              question: questionsByLLM.question,
+              topic: questionsByLLM.topic,
+              difficulty: questionsByLLM.difficulty,
+              language: questionsByLLM.language,
+            });
+        } catch (err) {
+          console.error('Error inserting questionsByLLM:', err);
+          throw new InternalServerErrorException('Failed to insert questions');
+        }
+
+        // 2️⃣ Insert question-level relations
+        if (levelId) {
+          try {
+            const relationsPayload = insertedQuestions.map((q) => ({
+              questionId: q.id,
+              levelId: Number(levelId),
+            }));
+            await tx.insert(questionLevelRelation).values(relationsPayload);
+          } catch (err) {
+            console.error('Error inserting questionLevelRelation:', err);
+            throw new InternalServerErrorException(
+              'Failed to insert question-level relations',
+            );
+          }
+        }
+
+        // 3️⃣ Insert options & 4️⃣ correct answers
+        for (let i = 0; i < insertedQuestions.length; i++) {
+          const insertedQ = insertedQuestions[i];
+          const originalQ = questions[i];
+          if (!originalQ?.options) continue;
+
+          let insertedOptions;
+
+          // Insert options
+          try {
+            const optionPayloads = Object.entries(originalQ.options).map(
+              ([num, text]) => ({
+                questionId: insertedQ.id,
+                optionText: text,
+                optionNumber: Number(num),
+              }),
+            );
+
+            insertedOptions = await tx
+              .insert(mcqQuestionOptions)
+              .values(optionPayloads)
+              .returning({
+                id: mcqQuestionOptions.id,
+                optionNumber: mcqQuestionOptions.optionNumber,
+              });
+          } catch (err) {
+            console.error(
+              `Error inserting mcqQuestionOptions for questionId ${insertedQ.id}:`,
+              err,
+            );
+            throw new InternalServerErrorException(
+              `Failed to insert options for questionId ${insertedQ.id}`,
+            );
+          }
+
+          // Insert correct answer
+          try {
+            const correctOptionNumber = Number(originalQ.correctOption);
+            const matched = insertedOptions.find(
+              (o) => Number(o.optionNumber) === correctOptionNumber,
+            );
+
+            if (matched) {
+              await tx.insert(correctAnswers).values({
+                questionId: insertedQ.id,
+                correctOptionId: matched.id,
+              });
+            } else {
+              console.warn(
+                `No matching option found for questionId ${insertedQ.id}`,
+              );
+            }
+          } catch (err) {
+            console.error(
+              `Error inserting correctAnswers for questionId ${insertedQ.id}:`,
+              err,
+            );
+            throw new InternalServerErrorException(
+              `Failed to insert correct answer for questionId ${insertedQ.id}`,
+            );
+          }
+        }
+
+        return { insertedQuestions };
+      });
+
+      return {
+        message:
+          'Questions, options and answers (and relations) created successfully',
+        data: result,
+      };
+    } catch (error) {
+      console.error('Transaction failed:', error);
+      throw new InternalServerErrorException('Failed to create questions');
+    }
+  }
+
+  async getAllLlmQuestions(aiAssessmentId: number) {
+    try {
+      // fetch questions by aiAssessmentId
+      const questions = await db
+        .select()
+        .from(questionsByLLM)
+        .where(eq(questionsByLLM.aiAssessmentId, aiAssessmentId));
+
+      if (!questions || questions.length === 0) {
+        throw new NotFoundException(
+          `No questions found for aiAssessmentId ${aiAssessmentId}`,
+        );
+      }
+
+      // populate options and correctOption for each question
+      const populated = await Promise.all(
+        questions.map(async (q) => {
+          // get options for this question (ordered by optionNumber)
+          const options = await db
+            .select()
+            .from(mcqQuestionOptions)
+            .where(eq(mcqQuestionOptions.questionId, q.id))
+            .orderBy(asc(mcqQuestionOptions.optionNumber));
+
+          // get correct answer row (if exists)
+          const correctRow = await db
+            .select()
+            .from(correctAnswers)
+            .where(eq(correctAnswers.questionId, q.id))
+            .limit(1);
+
+          let correctOption = null;
+          if (correctRow && correctRow.length > 0) {
+            // fetch the option referenced by correct_option_id
+            const correctOptionRows = await db
+              .select()
+              .from(mcqQuestionOptions)
+              .where(eq(mcqQuestionOptions.id, correctRow[0].correctOptionId))
+              .limit(1);
+
+            correctOption =
+              correctOptionRows && correctOptionRows.length > 0
+                ? correctOptionRows[0]
+                : null;
+          }
+
+          // return original question + TWO additional fields: options & correctOption
+          return {
+            ...q,
+            options,
+            correctOption,
+          };
+        }),
+      );
+
+      return populated;
+    } catch (error) {
+      console.error('Error fetching LLM questions:', error);
+      throw new InternalServerErrorException('Failed to fetch LLM questions');
+    }
+  }
+
+  // async getAllLlmQuestions(id) {
+  //   try {
+  //     const questions = await db.select().from(questionsByLLM);
+  //     return questions;
+  //   } catch (error) {
+  //     console.error('Error fetching LLM questions:', error);
+  //     throw new InternalServerErrorException('Failed to fetch LLM questions');
+  //   }
+  //   // return `This action returns all questionsByLlm`;
+  // }
+
+  findOne(id: number) {
+    return `This action returns a #${id} questionsByLlm`;
+  }
+
+  update(id: number, updateQuestionsByLlmDto: UpdateQuestionsByLlmDto) {
+    return `This action updates a #${id} questionsByLlm`;
+  }
+
+  remove(id: number) {
+    return `This action removes a #${id} questionsByLlm`;
+  }
+}

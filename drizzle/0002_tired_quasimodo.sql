@@ -381,3 +381,104 @@ CREATE TABLE "main"."zuvy_permissions_roles" (
 );
 
 ALTER TABLE main.zuvy_permissions_roles ADD CONSTRAINT uniq_role_permission UNIQUE (role_id, permission_id);
+
+--> questions by llm table.
+CREATE TABLE "questions_by_llm" (
+  "id" SERIAL PRIMARY KEY NOT NULL,
+  "ai_assessment_id" INTEGER NOT NULL REFERENCES "main"."ai_assessment"("id"),
+  "topic" VARCHAR(100),
+  "difficulty" VARCHAR(50),
+  "bootcamp_id" INTEGER,
+  "question" TEXT NOT NULL,
+  "language" VARCHAR(255),
+  "created_at" TIMESTAMPTZ DEFAULT NOW(),
+  "updated_at" TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE "mcq_question_options" (
+  "id" SERIAL PRIMARY KEY NOT NULL,
+  "question_id" INTEGER NOT NULL REFERENCES "questions_by_llm"("id") ON DELETE CASCADE,
+  "option_text" TEXT NOT NULL,
+  "option_number" INTEGER NOT NULL
+);
+
+CREATE TABLE "correct_answers" (
+  "id" SERIAL PRIMARY KEY NOT NULL,
+  "question_id" INTEGER NOT NULL REFERENCES "questions_by_llm"("id") ON DELETE CASCADE,
+  "correct_option_id" INTEGER NOT NULL REFERENCES "question_options"("id") ON DELETE CASCADE
+);
+
+CREATE TABLE "levels" (
+  "id" SERIAL PRIMARY KEY NOT NULL,
+  "grade" VARCHAR(5) NOT NULL,
+  "score_range" VARCHAR(50) NOT NULL,
+  "score_min" INTEGER,
+  "score_max" INTEGER,
+  "hardship" VARCHAR(20),
+  "meaning" TEXT,
+  "created_at" TIMESTAMPTZ DEFAULT NOW(),
+  "updated_at" TIMESTAMPTZ DEFAULT NOW(),
+  CONSTRAINT "uniq_level_grade" UNIQUE ("grade")
+);
+
+CREATE TABLE "question_level_relation" (
+  "id" SERIAL PRIMARY KEY NOT NULL,
+  "level_id" INTEGER NOT NULL REFERENCES "main"."levels"("id"),
+  "question_id" INTEGER NOT NULL REFERENCES "main"."questions_by_llm"("id"),
+  "created_at" TIMESTAMPTZ DEFAULT NOW(),
+  CONSTRAINT "uniq_student_question" UNIQUE ("level_id", "question_id")
+);
+
+CREATE TABLE "question_student_answer_relation" (
+  "id" SERIAL PRIMARY KEY NOT NULL,
+  "student_id" INTEGER NOT NULL REFERENCES "users"("id"),
+  "question_id" INTEGER NOT NULL REFERENCES "questions_by_llm"("id"),
+  "answer" INTEGER NOT NULL,
+  "answered_at" TIMESTAMPTZ DEFAULT NOW(),
+  "created_at" TIMESTAMPTZ DEFAULT NOW(),
+  "updated_at" TIMESTAMPTZ DEFAULT NOW(),
+  CONSTRAINT "uniq_student_question_answer" UNIQUE ("student_id", "question_id")
+);
+
+CREATE TABLE "student_level_relation" (
+  "id" SERIAL PRIMARY KEY NOT NULL,
+  "student_id" INTEGER NOT NULL REFERENCES "main"."users"("id"),
+  "level_id" INTEGER NOT NULL REFERENCES "main"."levels"("id"),
+  "ai_assessment_id" INTEGER NOT NULL REFERENCES "main"."ai_assessment"("id"),
+  "assigned_at" TIMESTAMPTZ DEFAULT NOW(),
+  "created_at" TIMESTAMPTZ DEFAULT NOW(),
+  CONSTRAINT "uniq_student_assessment_level" UNIQUE ("student_id", "ai_assessment_id")
+);
+
+CREATE TABLE IF NOT EXISTS "question_evaluation" (
+  "id" SERIAL PRIMARY KEY NOT NULL,
+  "ai_assessment_id" INTEGER NOT NULL REFERENCES "main"."ai_assessment"("id"),
+  "question" TEXT NOT NULL,
+  "topic" VARCHAR(255),
+  "difficulty" VARCHAR(50),
+  "options" JSONB NOT NULL,
+--   "correct_option" INTEGER NOT NULL,
+  "selected_answer_by_student" INTEGER NOT NULL,
+  "language" VARCHAR(50),
+  "status" VARCHAR(50) DEFAULT NULL,
+  "explanation" TEXT,
+  "summary" TEXT,
+  "recommendations" TEXT,
+  "student_id" INTEGER NOT NULL REFERENCES "users"("id"),
+  "created_at" TIMESTAMPTZ DEFAULT NOW(),
+  "updated_at" TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS "ai_assessment" (
+  "id" SERIAL PRIMARY KEY NOT NULL,
+  "bootcamp_id" INTEGER NOT NULL REFERENCES "zuvy_bootcamps"("id"),
+  "title" VARCHAR(255) NOT NULL,
+  "description" TEXT,
+  "difficulty" VARCHAR(50),
+  "topics" JSONB NOT NULL,
+  "audience" JSONB,
+  "total_number_of_questions" INTEGER NOT NULL,
+  "created_at" TIMESTAMPTZ DEFAULT NOW(),
+  "updated_at" TIMESTAMPTZ DEFAULT NOW()
+);
+
