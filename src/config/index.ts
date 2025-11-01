@@ -5,5 +5,8 @@ export const ConfigIndex = {
     port:5432,
     password: process.env.DB_PASS,
     database: process.env.DB_NAME,
+    ssl: {
+      rejectUnauthorized: false, // Needed for RDS or any managed Postgres requiring SSL
+    },
   },
 };
