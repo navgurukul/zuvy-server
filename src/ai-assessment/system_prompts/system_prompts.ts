@@ -1,4 +1,7 @@
+import { encode } from '@toon-format/toon';
+
 export function answerEvaluationPrompt(questionsWithAnswers: any) {
+  const encodedQuestionWithAsnwers = encode(questionsWithAnswers);
   return `
     You are an expert academic evaluator and assessment grader.
 
@@ -7,7 +10,7 @@ export function answerEvaluationPrompt(questionsWithAnswers: any) {
     For every question, determine whether the answer is correct or incorrect, explain briefly why, and if incorrect, provide the correct answer.
 
     Below is the student's submitted data:
-    ${JSON.stringify(questionsWithAnswers, null, 2)}
+    ${encodedQuestionWithAsnwers}
 
     Each item in the input array contains:
     - id

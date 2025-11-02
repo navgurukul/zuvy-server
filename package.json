@@ -45,6 +45,7 @@
     "@nestjs/platform-express": "^10.3.3",
     "@nestjs/schedule": "^4.0.1",
     "@nestjs/swagger": "^7.1.17",
+    "@toon-format/toon": "^0.7.0",
     "aws-sdk": "^2.1692.0",
     "axios": "^1.6.7",
     "chalk": "^4.1.2",
