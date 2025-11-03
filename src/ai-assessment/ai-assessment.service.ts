@@ -45,7 +45,7 @@ export class AiAssessmentService {
         title: createAiAssessmentDto.title,
         description: createAiAssessmentDto.description ?? null,
         topics: createAiAssessmentDto.topics,
-        audience: createAiAssessmentDto.audience ?? null,
+        // audience: createAiAssessmentDto.audience ?? null,
         totalNumberOfQuestions: createAiAssessmentDto.totalNumberOfQuestions,
         totalQuestionsWithBuffer: Math.floor(
           createAiAssessmentDto.totalNumberOfQuestions * 2.25,
