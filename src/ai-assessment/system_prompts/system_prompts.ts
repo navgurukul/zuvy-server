@@ -1,6 +1,7 @@
-// import { encode } from '@toon-format/toon';
+import { encode } from '@toon-format/toon';
 
-export function answerEvaluationPrompt(encodedQuestionsWithAnswers: any) {
+export function answerEvaluationPrompt(answers: any) {
+  const encodedQuestionsWithAnswers = encode(answers);
   return `
     You are an expert academic evaluator and assessment grader.
 
