@@ -15,6 +15,8 @@ import {
   levels,
   aiAssessment,
   correctAnswers,
+  zuvyBatchEnrollments,
+  studentAssessment,
 } from 'drizzle/schema';
 import { SubmitAssessmentDto } from './dto/create-ai-assessment.dto';
 import { LlmService } from 'src/llm/llm.service';
@@ -46,6 +48,9 @@ export class AiAssessmentService {
         topics: createAiAssessmentDto.topics,
         audience: createAiAssessmentDto.audience ?? null,
         totalNumberOfQuestions: createAiAssessmentDto.totalNumberOfQuestions,
+        totalQuestionsWithBuffer: Math.floor(
+          createAiAssessmentDto.totalNumberOfQuestions * 2.25,
+        ),
       };
 
       const [inserted] = await db
@@ -53,9 +58,33 @@ export class AiAssessmentService {
         .values(payload)
         .returning();
 
+      // Fetch all enrolled students in that bootcamp
+      const enrolledStudents = await db
+        .select({
+          studentId: zuvyBatchEnrollments.userId,
+        })
+        .from(zuvyBatchEnrollments)
+        .where(
+          eq(zuvyBatchEnrollments.bootcampId, createAiAssessmentDto.bootcampId),
+        );
+
+      // Prepare student-assessment mapping
+      if (enrolledStudents.length > 0) {
+        const studentAssessments = enrolledStudents.map((student) => ({
+          studentId: Number(student.studentId),
+          aiAssessmentId: inserted.id,
+          status: 0, // not started
+        }));
+
+        // Bulk insert all student-assessment records
+        await db.insert(studentAssessment).values(studentAssessments);
+      }
+
       return {
-        message: 'AI Assessment created successfully',
+        message:
+          'AI Assessment created successfully and assigned to all enrolled students',
         data: inserted,
+        totalAssignedStudents: enrolledStudents.length,
       };
     } catch (error) {
       throw new BadRequestException(
@@ -191,6 +220,20 @@ export class AiAssessmentService {
         // const evaluationPrompt = answerEvaluationPrompt(
         //   encodedQuestionWithAsnwers,
         // );
+
+        await tx
+          .update(studentAssessment)
+          .set({
+            status: 1, // completed
+            updatedAt: new Date().toISOString(),
+          } as any)
+          .where(
+            and(
+              eq(studentAssessment.studentId, studentId),
+              eq(studentAssessment.aiAssessmentId, aiAssessmentId),
+            ),
+          );
+
         const evaluationPrompt = answerEvaluationPrompt(answers);
         const llmResponse = await this.llmService.generate({
           systemPrompt: evaluationPrompt,

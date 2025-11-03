@@ -469,16 +469,38 @@ CREATE TABLE IF NOT EXISTS "question_evaluation" (
   "updated_at" TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE TABLE IF NOT EXISTS "ai_assessment" (
+CREATE TABLE "ai_assessment" (
   "id" SERIAL PRIMARY KEY NOT NULL,
-  "bootcamp_id" INTEGER NOT NULL REFERENCES "zuvy_bootcamps"("id"),
+  "bootcamp_id" INTEGER NOT NULL,
   "title" VARCHAR(255) NOT NULL,
   "description" TEXT,
   "difficulty" VARCHAR(50),
   "topics" JSONB NOT NULL,
-  "audience" JSONB,
+  "audience" JSONB DEFAULT NULL,
   "total_number_of_questions" INTEGER NOT NULL,
+  "total_questions_with_buffer" INTEGER NOT NULL,
+  "start_datetime" TIMESTAMPTZ,
+  "end_datetime" TIMESTAMPTZ,
   "created_at" TIMESTAMPTZ DEFAULT NOW(),
-  "updated_at" TIMESTAMPTZ DEFAULT NOW()
+  "updated_at" TIMESTAMPTZ DEFAULT NOW(),
+  
+  CONSTRAINT "ai_assessment_bootcamp_id_fkey" 
+    FOREIGN KEY ("bootcamp_id") REFERENCES "zuvy_bootcamps"("id")
+);
+CREATE TABLE "student_assessment" (
+  "id" SERIAL PRIMARY KEY NOT NULL,
+  "student_id" INTEGER NOT NULL,
+  "ai_assessment_id" INTEGER NOT NULL,
+  "status" INTEGER NOT NULL DEFAULT 0,
+  "created_at" TIMESTAMPTZ DEFAULT NOW(),
+  "updated_at" TIMESTAMPTZ DEFAULT NOW(),
+  
+  CONSTRAINT "student_assessment_student_id_fkey" 
+    FOREIGN KEY ("student_id") REFERENCES "users"("id"),
+  CONSTRAINT "student_assessment_ai_assessment_id_fkey" 
+    FOREIGN KEY ("ai_assessment_id") REFERENCES "ai_assessment"("id"),
+  
+  CONSTRAINT "uniq_student_assessment" 
+    UNIQUE ("student_id", "ai_assessment_id")
 );
 
