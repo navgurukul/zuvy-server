@@ -22,10 +22,6 @@ export class CreateAiAssessmentDto {
   @IsOptional()
   description?: string;
 
-  @IsString()
-  @IsOptional()
-  difficulty?: string;
-
   @IsObject()
   @IsNotEmpty()
   topics: Record<string, number>;

@@ -474,7 +474,6 @@ CREATE TABLE "ai_assessment" (
   "bootcamp_id" INTEGER NOT NULL,
   "title" VARCHAR(255) NOT NULL,
   "description" TEXT,
-  "difficulty" VARCHAR(50),
   "topics" JSONB NOT NULL,
   "audience" JSONB DEFAULT NULL,
   "total_number_of_questions" INTEGER NOT NULL,

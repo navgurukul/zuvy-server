@@ -3967,7 +3967,6 @@ export const aiAssessment = main.table("ai_assessment", {
     .references(() => zuvyBootcamps.id),
   title: varchar("title", { length: 255 }).notNull(),
   description: text("description"),
-  difficulty: varchar("difficulty", { length: 50 }),
   topics: jsonb("topics").notNull(),
   audience: jsonb("audience").default(null),
   totalNumberOfQuestions: integer("total_number_of_questions").notNull(),
