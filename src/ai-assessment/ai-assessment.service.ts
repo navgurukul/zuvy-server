@@ -27,6 +27,7 @@ import { QuestionEvaluationService } from 'src/questions-by-llm/question-evaluat
 import { eq, and } from 'drizzle-orm';
 import { parseLlmMcq } from 'src/llm/llm_response_parsers/mcqParser';
 import { QuestionsByLlmService } from 'src/questions-by-llm/questions-by-llm.service';
+import { encode } from '@toon-format/toon';
 
 @Injectable()
 export class AiAssessmentService {
@@ -186,7 +187,10 @@ export class AiAssessmentService {
         await tx.insert(studentLevelRelation).values(levelPayload);
 
         //here evaluate the answers by the LLM.
-        const evaluationPrompt = answerEvaluationPrompt(answers);
+        const encodedQuestionWithAsnwers = encode(answers);
+        const evaluationPrompt = answerEvaluationPrompt(
+          encodedQuestionWithAsnwers,
+        );
         const llmResponse = await this.llmService.generate({
           systemPrompt: evaluationPrompt,
         });
