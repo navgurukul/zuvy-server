@@ -431,12 +431,12 @@ export class AiAssessmentService {
         createdAt: aiAssessment.createdAt,
         updatedAt: aiAssessment.updatedAt,
       })
-      .from(studentLevelRelation)
+      .from(studentAssessment)
       .innerJoin(
         aiAssessment,
-        eq(studentLevelRelation.aiAssessmentId, aiAssessment.id),
+        eq(studentAssessment.aiAssessmentId, aiAssessment.id),
       )
-      .where(eq(studentLevelRelation.studentId, userId));
+      .where(eq(studentAssessment.studentId, userId));
 
     if (assessments.length === 0) {
       const defaultAssessment = await db
