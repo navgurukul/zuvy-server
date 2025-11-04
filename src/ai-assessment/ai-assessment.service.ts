@@ -17,6 +17,7 @@ import {
   correctAnswers,
   zuvyBatchEnrollments,
   studentAssessment,
+  users,
 } from 'drizzle/schema';
 import { SubmitAssessmentDto } from './dto/create-ai-assessment.dto';
 import { LlmService } from 'src/llm/llm.service';
@@ -63,8 +64,11 @@ export class AiAssessmentService {
             .returning();
 
           const enrolledStudents = await tx
-            .select({ studentId: zuvyBatchEnrollments.userId })
+            .select({
+              studentId: zuvyBatchEnrollments.userId,
+            })
             .from(zuvyBatchEnrollments)
+            .innerJoin(users, eq(zuvyBatchEnrollments.userId, users.id))
             .where(
               eq(
                 zuvyBatchEnrollments.bootcampId,
