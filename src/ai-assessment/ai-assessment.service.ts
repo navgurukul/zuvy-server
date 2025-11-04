@@ -40,47 +40,55 @@ export class AiAssessmentService {
   ) {}
   async create(userId, createAiAssessmentDto: CreateAiAssessmentDto) {
     try {
-      const payload = {
-        bootcampId: createAiAssessmentDto.bootcampId,
-        title: createAiAssessmentDto.title,
-        description: createAiAssessmentDto.description ?? null,
-        topics: createAiAssessmentDto.topics,
-        // audience: createAiAssessmentDto.audience ?? null,
-        totalNumberOfQuestions: createAiAssessmentDto.totalNumberOfQuestions,
-        totalQuestionsWithBuffer: Math.floor(
-          createAiAssessmentDto.totalNumberOfQuestions * 2.25,
-        ),
-        startDatetime: createAiAssessmentDto.startDatetime,
-        endDatetime: createAiAssessmentDto.endDatetime,
-      };
+      const { inserted, enrolledStudentsCount } = await db.transaction(
+        async (tx) => {
+          const payload = {
+            bootcampId: createAiAssessmentDto.bootcampId,
+            title: createAiAssessmentDto.title,
+            description: createAiAssessmentDto.description ?? null,
+            topics: createAiAssessmentDto.topics,
+            // audience: createAiAssessmentDto.audience ?? null,
+            totalNumberOfQuestions:
+              createAiAssessmentDto.totalNumberOfQuestions,
+            totalQuestionsWithBuffer: Math.floor(
+              createAiAssessmentDto.totalNumberOfQuestions * 2.25,
+            ),
+            startDatetime: createAiAssessmentDto.startDatetime,
+            endDatetime: createAiAssessmentDto.endDatetime,
+          };
 
-      const [inserted] = await db
-        .insert(aiAssessment)
-        .values(payload)
-        .returning();
+          const [aiRow] = await tx
+            .insert(aiAssessment)
+            .values(payload)
+            .returning();
 
-      // Fetch all enrolled students in that bootcamp
-      const enrolledStudents = await db
-        .select({
-          studentId: zuvyBatchEnrollments.userId,
-        })
-        .from(zuvyBatchEnrollments)
-        .where(
-          eq(zuvyBatchEnrollments.bootcampId, createAiAssessmentDto.bootcampId),
-        );
+          const enrolledStudents = await tx
+            .select({ studentId: zuvyBatchEnrollments.userId })
+            .from(zuvyBatchEnrollments)
+            .where(
+              eq(
+                zuvyBatchEnrollments.bootcampId,
+                createAiAssessmentDto.bootcampId,
+              ),
+            );
 
-      // Prepare student-assessment mapping
-      if (enrolledStudents.length > 0) {
-        const studentAssessments = enrolledStudents.map((student) => ({
-          studentId: Number(student.studentId),
-          aiAssessmentId: inserted.id,
-          status: 0, // not started
-        }));
+          if (enrolledStudents.length > 0) {
+            const studentAssessments = enrolledStudents.map((student) => ({
+              studentId: Number(student.studentId),
+              aiAssessmentId: aiRow.id,
+              status: 0,
+            }));
+            await tx.insert(studentAssessment).values(studentAssessments);
+          }
 
-        // Bulk insert all student-assessment records
-        await db.insert(studentAssessment).values(studentAssessments);
-      }
+          return {
+            inserted: aiRow,
+            enrolledStudentsCount: enrolledStudents.length,
+          };
+        },
+      );
 
+      // keep generate outside transaction (unchanged logic)
       await this.generate(userId, {
         aiAssessmentId: inserted.id,
         bootcampId: inserted.bootcampId,
@@ -90,7 +98,7 @@ export class AiAssessmentService {
         message:
           'AI Assessment created successfully and assigned to all enrolled students',
         data: inserted,
-        totalAssignedStudents: enrolledStudents.length,
+        totalAssignedStudents: enrolledStudentsCount,
       };
     } catch (error) {
       throw new BadRequestException(

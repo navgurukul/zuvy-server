@@ -3981,7 +3981,7 @@ export const questionsByLLM = main.table("questions_by_llm", {
   id: serial("id").primaryKey().notNull(),
   topic: varchar("topic", { length: 100 }),
   difficulty: varchar("difficulty", { length: 50 }),
-  aiAssessmentId: integer('ai_assessment_id').references(() => aiAssessment.id).notNull(),
+  aiAssessmentId: integer('ai_assessment_id').references(() => aiAssessment.id, { onDelete: "cascade" }).notNull(),
   question: text("question").notNull(),
   language: varchar("language", { length: 255 }),
   createdAt: timestamp("created_at", { withTimezone: true, mode: "string" }).defaultNow(),
@@ -4069,7 +4069,7 @@ export const questionEvaluation = main.table('question_evaluation', {
 export const studentAssessment = main.table('student_assessment', {
   id: serial('id').primaryKey().notNull(),
   studentId: integer("student_id").notNull().references(() => users.id),
-  aiAssessmentId: integer('ai_assessment_id').notNull().references(() => aiAssessment.id),
+  aiAssessmentId: integer('ai_assessment_id').notNull().references(() => aiAssessment.id, { onDelete: "cascade" }),
   status: integer('status').notNull().default(0),
   createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow(),
