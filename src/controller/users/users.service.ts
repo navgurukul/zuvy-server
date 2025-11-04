@@ -329,13 +329,23 @@ export class UsersService {
         const currentRoleName = (currentRoleDetails as any).rows?.[0]?.name;
         const actionUpdate = `${actorName} updated ${targetName}'s role from ${currentRoleName} to ${roleName}`;
 
-        const { data } = await this.userTokenService.getUserTokens(
+        const { data, success } = await this.userTokenService.getUserTokens(
           BigInt(targetUserId),
         );
+        if (!success) {
+          return {
+            success: true,
+            message:
+              'User role updated. User did not login after role update. No tokens found, skipping logout and delete',
+          };
+        }
         await this.authService.logout(
           BigInt(targetUserId),
           data['accessToken'],
         );
+        const deletedResponse = await this.userTokenService.deleteToken({
+          userId: targetUserId,
+        });
 
         const auditLog = await this.auditlogService.log('role_to_user', {
           actorUserId,
