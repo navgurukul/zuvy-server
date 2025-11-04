@@ -4050,6 +4050,7 @@ export const studentLevelRelation = main.table("student_level_relation", {
 export const questionEvaluation = main.table('question_evaluation', {
   id: serial('id').primaryKey().notNull(),
   aiAssessmentId: integer('ai_assessment_id').references(() => aiAssessment.id).default(null),
+  questionId: integer("question_id").notNull().references(() => questionsByLLM.id),
   question: text('question').notNull(),
   topic: varchar('topic', { length: 255 }),
   difficulty: varchar('difficulty', { length: 50 }),

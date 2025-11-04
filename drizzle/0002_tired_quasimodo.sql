@@ -454,6 +454,7 @@ CREATE TABLE "student_level_relation" (
 CREATE TABLE IF NOT EXISTS "question_evaluation" (
   "id" SERIAL PRIMARY KEY NOT NULL,
   "ai_assessment_id" INTEGER NOT NULL REFERENCES "main"."ai_assessment"("id"),
+  "question_id" INTEGER NOT NULL REFERENCES "questions_by_llm"("id"),
   "question" TEXT NOT NULL,
   "topic" VARCHAR(255),
   "difficulty" VARCHAR(50),

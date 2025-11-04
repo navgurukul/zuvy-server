@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { db } from 'src/db';
-import { questionEvaluation } from 'drizzle/schema';
+import { correctAnswers, questionEvaluation } from 'drizzle/schema';
 import { eq, and } from 'drizzle-orm';
 
 @Injectable()
@@ -25,6 +25,7 @@ export class QuestionEvaluationService {
         selectedAnswerByStudent: item.selectedAnswerByStudent.id,
         language: item.language,
         explanation: item.explanation,
+        questionId: item.id,
         summary: evaluationResponse.summary,
         recommendations: evaluationResponse.recommendations,
         studentId,
@@ -38,10 +39,30 @@ export class QuestionEvaluationService {
     }
   }
 
+  // async findOneByStudentId(studentId: number, aiAssessmentId: number) {
+  //   const result = await db
+  //     .select()
+  //     .from(questionEvaluation)
+  //     .where(
+  //       and(
+  //         eq(questionEvaluation.studentId, studentId),
+  //         eq(questionEvaluation.aiAssessmentId, aiAssessmentId),
+  //       ),
+  //     );
+
+  //   return result;
+  // }
   async findOneByStudentId(studentId: number, aiAssessmentId: number) {
     const result = await db
-      .select()
+      .select({
+        questionEvaluation: questionEvaluation,
+        correctOptionId: correctAnswers.correctOptionId,
+      })
       .from(questionEvaluation)
+      .leftJoin(
+        correctAnswers,
+        eq(questionEvaluation.questionId, correctAnswers.questionId),
+      )
       .where(
         and(
           eq(questionEvaluation.studentId, studentId),
