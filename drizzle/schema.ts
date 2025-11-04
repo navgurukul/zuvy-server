@@ -4070,7 +4070,7 @@ export const studentAssessment = main.table('student_assessment', {
   id: serial('id').primaryKey().notNull(),
   studentId: integer("student_id").notNull().references(() => users.id),
   aiAssessmentId: integer('ai_assessment_id').notNull().references(() => aiAssessment.id),
-  status: integer('status').notNull().default(0), // 0 = not started, 1 = in progress, 2 = completed
+  status: integer('status').notNull().default(0),
   createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow(),
 }, (table) => ({

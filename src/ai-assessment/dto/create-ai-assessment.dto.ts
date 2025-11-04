@@ -114,4 +114,8 @@ export class GenerateAssessmentDto {
   @IsNumber()
   @IsNotEmpty()
   aiAssessmentId: number;
+
+  @IsNumber()
+  @IsNotEmpty()
+  bootcampId: number;
 }

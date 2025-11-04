@@ -55,8 +55,9 @@ export class AiAssessmentController {
     description: 'AI assessment successfully created.',
   })
   @ApiResponse({ status: 400, description: 'Invalid input data.' })
-  create(@Body() createAiAssessmentDto: CreateAiAssessmentDto) {
-    return this.aiAssessmentService.create(createAiAssessmentDto);
+  create(@Body() createAiAssessmentDto: CreateAiAssessmentDto, @Req() req) {
+    const userId = req.user[0]?.id;
+    return this.aiAssessmentService.create(userId, createAiAssessmentDto);
   }
 
   @Post('/generate/all')
