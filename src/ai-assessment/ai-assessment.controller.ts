@@ -128,8 +128,15 @@ export class AiAssessmentController {
     status: 200,
     description: 'List of AI assessments of a student.',
   })
-  findAllAssessmentOfAStudent(@Req() req) {
+  @ApiQuery({ name: 'bootcampId', required: false, type: Number })
+  findAllAssessmentOfAStudent(
+    @Query('bootcampId') bootcampId: number,
+    @Req() req,
+  ) {
     const userId = req.user[0]?.id;
-    return this.aiAssessmentService.findAllAssessmentOfAStudent(userId);
+    return this.aiAssessmentService.findAllAssessmentOfAStudent(
+      userId,
+      bootcampId,
+    );
   }
 }

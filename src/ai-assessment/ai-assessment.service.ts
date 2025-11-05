@@ -412,7 +412,7 @@ export class AiAssessmentService {
     return results;
   }
 
-  async findAllAssessmentOfAStudent(userId: number) {
+  async findAllAssessmentOfAStudent(userId: number, bootcampId) {
     if (!userId) return [];
 
     const assessments = await db
@@ -429,13 +429,19 @@ export class AiAssessmentService {
         endDatetime: aiAssessment.endDatetime,
         createdAt: aiAssessment.createdAt,
         updatedAt: aiAssessment.updatedAt,
+        status: studentAssessment.status,
       })
       .from(studentAssessment)
       .innerJoin(
         aiAssessment,
         eq(studentAssessment.aiAssessmentId, aiAssessment.id),
       )
-      .where(eq(studentAssessment.studentId, userId));
+      .where(
+        and(
+          eq(studentAssessment.studentId, userId),
+          eq(aiAssessment.bootcampId, bootcampId),
+        ),
+      );
 
     if (assessments.length === 0) {
       const defaultAssessment = await db
