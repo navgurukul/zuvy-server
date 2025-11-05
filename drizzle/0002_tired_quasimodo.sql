@@ -406,7 +406,7 @@ CREATE TABLE "mcq_question_options" (
 CREATE TABLE "correct_answers" (
   "id" SERIAL PRIMARY KEY NOT NULL,
   "question_id" INTEGER NOT NULL REFERENCES "questions_by_llm"("id") ON DELETE CASCADE,
-  "correct_option_id" INTEGER NOT NULL REFERENCES "question_options"("id") ON DELETE CASCADE
+  "correct_option_id" INTEGER NOT NULL REFERENCES "mcq_question_options"("id") ON DELETE CASCADE
 );
 
 CREATE TABLE "levels" (

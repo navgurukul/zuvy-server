@@ -88,7 +88,6 @@ export class AiAssessmentService {
         },
       );
 
-      // keep generate outside transaction (unchanged logic)
       await this.generate(userId, {
         aiAssessmentId: inserted.id,
         bootcampId: inserted.bootcampId,
