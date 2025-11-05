@@ -568,57 +568,9 @@ export class UsersService {
             );
           }
 
-          const [currentAssignment] = await tx
-            .select()
-            .from(zuvyUserRolesAssigned)
-            .where(eq(zuvyUserRolesAssigned.userId, existingUser.id));
-
-          if (currentAssignment) {
-            const roleUpdateData = {
-              roleId: createUserDto.roleId,
-              // Drizzle's inferred update type omits updatedAt, so cast to keep strong typing elsewhere
-              updatedAt: new Date().toISOString(),
-            };
-
-            const [updatedRole] = await tx
-              .update(zuvyUserRolesAssigned)
-              .set(
-                roleUpdateData as {
-                  roleId?: number;
-                  updatedAt?: string;
-                },
-              )
-              .where(eq(zuvyUserRolesAssigned.userId, existingUser.id))
-              .returning();
-
-            if (!updatedRole) {
-              throw new InternalServerErrorException(
-                'Failed to update user role',
-              );
-            }
-
-            userRole = updatedRole;
-          } else {
-            const rolesAssignData = {
-              userId: existingUser.id,
-              roleId: createUserDto.roleId,
-            };
-
-            const [newUserRole] = await tx
-              .insert(zuvyUserRolesAssigned)
-              .values(
-                rolesAssignData as unknown as typeof zuvyUserRolesAssigned.$inferInsert,
-              )
-              .returning();
-
-            if (!newUserRole) {
-              throw new InternalServerErrorException(
-                'Failed to assign role to user',
-              );
-            }
-
-            userRole = newUserRole;
-          }
+          throw new BadRequestException(
+            'User already exists, please update role of the user instead',
+          );
         } else {
           const [newUser] = await tx
             .insert(users)
@@ -702,6 +654,8 @@ export class UsersService {
 
   async updateUser(id: bigint, updateUserDto: UpdateUserDto) {
     try {
+      const targetUserId = typeof id === 'bigint' ? id : BigInt(id);
+
       return await db.transaction(async (tx) => {
         const currentTime = new Date().toISOString(); // ISO string format
 
@@ -729,7 +683,13 @@ export class UsersService {
             .from(users)
             .where(eq(users.email, normalizedEmail));
 
-          if (userWithSameEmail && userWithSameEmail.id !== id) {
+          const emailOwnerId =
+            userWithSameEmail &&
+            (typeof userWithSameEmail.id === 'bigint'
+              ? userWithSameEmail.id
+              : BigInt(userWithSameEmail.id));
+
+          if (emailOwnerId && emailOwnerId !== targetUserId) {
             throw new BadRequestException(
               'User already exists with this email id',
             );
@@ -749,14 +709,17 @@ export class UsersService {
           [user] = await tx
             .update(users)
             .set(userUpdateData)
-            .where(eq(users.id, id))
+            .where(eq(users.id, targetUserId))
             .returning();
 
           if (!user) {
             throw new NotFoundException(`User with ID ${id} not found`);
           }
         } else {
-          [user] = await tx.select().from(users).where(eq(users.id, id));
+          [user] = await tx
+            .select()
+            .from(users)
+            .where(eq(users.id, targetUserId));
 
           if (!user) {
             throw new NotFoundException(`User with ID ${id} not found`);
@@ -768,7 +731,7 @@ export class UsersService {
           const existingRole = await tx
             .select()
             .from(zuvyUserRolesAssigned)
-            .where(eq(zuvyUserRolesAssigned.userId, id));
+            .where(eq(zuvyUserRolesAssigned.userId, targetUserId));
 
           if (existingRole.length > 0) {
             // Update existing role with updatedAt - FIXED TYPE
@@ -780,11 +743,11 @@ export class UsersService {
             const [updatedRole] = await tx
               .update(zuvyUserRolesAssigned)
               .set(roleUpdateData)
-              .where(eq(zuvyUserRolesAssigned.userId, id))
+              .where(eq(zuvyUserRolesAssigned.userId, targetUserId))
               .returning();
           } else {
             let rolesAssignData = {
-              userId: id,
+              userId: targetUserId,
               roleId: updateUserDto.roleId,
               createdAt: currentTime, // ISO string
               updatedAt: currentTime, // ISO string
@@ -818,7 +781,7 @@ export class UsersService {
             zuvyUserRoles,
             eq(zuvyUserRolesAssigned.roleId, zuvyUserRoles.id),
           )
-          .where(eq(users.id, id));
+          .where(eq(users.id, targetUserId));
 
         if (!userWithRole) {
           throw new InternalServerErrorException(
@@ -832,10 +795,11 @@ export class UsersService {
           roleId: userWithRole.roleId ? Number(userWithRole.roleId) : null,
         };
 
-        const { data, success } = await this.userTokenService.getUserTokens(id);
+        const { data, success } =
+          await this.userTokenService.getUserTokens(targetUserId);
 
         if (success && data?.accessToken) {
-          await this.authService.logout(id, data.accessToken);
+          await this.authService.logout(targetUserId, data.accessToken);
         }
 
         return response;
