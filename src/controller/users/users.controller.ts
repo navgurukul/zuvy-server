@@ -439,8 +439,20 @@ export class UsersController {
     description: 'Deletes a user and their role assignments',
   })
   @ApiResponse({
-    status: 204,
-    description: 'User deleted successfully',
+    status: 200,
+    description: 'User deleted successfully and all associated content removed',
+    schema: {
+      type: 'object',
+      properties: {
+        message: {
+          type: 'string',
+          example:
+            'User has been deleted and all content has been removed for the user',
+        },
+        code: { type: 'number', example: 200 },
+        status: { type: 'string', example: 'success' },
+      },
+    },
   })
   @ApiResponse({
     status: 404,
@@ -452,6 +464,6 @@ export class UsersController {
   })
   @ApiBearerAuth('JWT-auth')
   async deleteUser(@Param('id', ParseIntPipe) id: bigint) {
-    await this.usersService.deleteUser(id);
+    return this.usersService.deleteUser(id);
   }
 }
