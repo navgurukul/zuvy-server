@@ -3960,11 +3960,28 @@ export const usersExtraPermissionsRelations = relations(users, ({ many }) => ({
 }));
 
 //llm related tables
+export const aiAssessment = main.table("ai_assessment", {
+  id: serial("id").primaryKey().notNull(),
+  bootcampId: integer("bootcamp_id")
+    .notNull()
+    .references(() => zuvyBootcamps.id),
+  title: varchar("title", { length: 255 }).notNull(),
+  description: text("description"),
+  topics: jsonb("topics").notNull(),
+  audience: jsonb("audience").default(null),
+  totalNumberOfQuestions: integer("total_number_of_questions").notNull(),
+  totalQuestionsWithBuffer: integer("total_questions_with_buffer").notNull(),
+  startDatetime: timestamp('start_datetime', { withTimezone: true, mode: 'string' }),
+  endDatetime: timestamp('end_datetime', { withTimezone: true, mode: 'string' }),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: "string" }).defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true, mode: "string" }).defaultNow(),
+});
+
 export const questionsByLLM = main.table("questions_by_llm", {
   id: serial("id").primaryKey().notNull(),
   topic: varchar("topic", { length: 100 }),
   difficulty: varchar("difficulty", { length: 50 }),
-  aiAssessmentId: integer('ai_assessment_id').references(() => aiAssessment.id).default(null),
+  aiAssessmentId: integer('ai_assessment_id').references(() => aiAssessment.id, { onDelete: "cascade" }).notNull(),
   question: text("question").notNull(),
   language: varchar("language", { length: 255 }),
   createdAt: timestamp("created_at", { withTimezone: true, mode: "string" }).defaultNow(),
@@ -4033,6 +4050,7 @@ export const studentLevelRelation = main.table("student_level_relation", {
 export const questionEvaluation = main.table('question_evaluation', {
   id: serial('id').primaryKey().notNull(),
   aiAssessmentId: integer('ai_assessment_id').references(() => aiAssessment.id).default(null),
+  questionId: integer("question_id").notNull().references(() => questionsByLLM.id),
   question: text('question').notNull(),
   topic: varchar('topic', { length: 255 }),
   difficulty: varchar('difficulty', { length: 50 }),
@@ -4049,17 +4067,13 @@ export const questionEvaluation = main.table('question_evaluation', {
   updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow(),
 });
 
-export const aiAssessment = main.table("ai_assessment", {
-  id: serial("id").primaryKey().notNull(),
-  bootcampId: integer("bootcamp_id")
-    .notNull()
-    .references(() => zuvyBootcamps.id),
-  title: varchar("title", { length: 255 }).notNull(),
-  description: text("description"),
-  difficulty: varchar("difficulty", { length: 50 }),
-  topics: jsonb("topics").notNull(),
-  audience: jsonb("audience"),
-  totalNumberOfQuestions: integer("total_number_of_questions").notNull(),
-  createdAt: timestamp("created_at", { withTimezone: true, mode: "string" }).defaultNow(),
-  updatedAt: timestamp("updated_at", { withTimezone: true, mode: "string" }).defaultNow(),
-});
+export const studentAssessment = main.table('student_assessment', {
+  id: serial('id').primaryKey().notNull(),
+  studentId: integer("student_id").notNull().references(() => users.id),
+  aiAssessmentId: integer('ai_assessment_id').notNull().references(() => aiAssessment.id, { onDelete: "cascade" }),
+  status: integer('status').notNull().default(0),
+  createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow(),
+}, (table) => ({
+  uniqStudentAssessment: unique("uniq_student_assessment").on(table.studentId, table.aiAssessmentId),
+}));

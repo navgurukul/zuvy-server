@@ -6,8 +6,10 @@ import {
   IsObject,
   IsOptional,
   ValidateNested,
+  IsISO8601,
 } from 'class-validator';
 import { Type } from 'class-transformer';
+import { ApiProperty } from '@nestjs/swagger';
 
 export class CreateAiAssessmentDto {
   @IsNumber()
@@ -22,16 +24,28 @@ export class CreateAiAssessmentDto {
   @IsOptional()
   description?: string;
 
-  @IsString()
-  @IsOptional()
-  difficulty?: string;
-
   @IsObject()
   @IsNotEmpty()
   topics: Record<string, number>;
 
+  // add start date and end date
+  @ApiProperty({
+    type: String,
+    example: '2025-05-21T10:00:00',
+    description: 'Optional. When the assessment becomes active for taking',
+  })
   @IsOptional()
-  audience?: any;
+  @IsISO8601()
+  startDatetime?: string;
+
+  @ApiProperty({
+    type: String,
+    example: '2025-05-21T11:30:00',
+    description: 'Optional. When the assessment expires',
+  })
+  @IsOptional()
+  @IsISO8601()
+  endDatetime?: string;
 
   @IsNumber()
   @IsNotEmpty()
@@ -100,4 +114,8 @@ export class GenerateAssessmentDto {
   @IsNumber()
   @IsNotEmpty()
   aiAssessmentId: number;
+
+  @IsNumber()
+  @IsNotEmpty()
+  bootcampId: number;
 }

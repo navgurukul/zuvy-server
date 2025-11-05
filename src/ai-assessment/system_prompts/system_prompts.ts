@@ -1,4 +1,7 @@
-export function answerEvaluationPrompt(questionsWithAnswers: any) {
+// import { encode } from '@toon-format/toon';
+
+export function answerEvaluationPrompt(answers: any) {
+  // const encodedQuestionsWithAnswers = encode(answers);
   return `
     You are an expert academic evaluator and assessment grader.
 
@@ -7,7 +10,7 @@ export function answerEvaluationPrompt(questionsWithAnswers: any) {
     For every question, determine whether the answer is correct or incorrect, explain briefly why, and if incorrect, provide the correct answer.
 
     Below is the student's submitted data:
-    ${JSON.stringify(questionsWithAnswers, null, 2)}
+    ${JSON.stringify(answers, null, 2)}
 
     Each item in the input array contains:
     - id
@@ -57,8 +60,10 @@ export function answerEvaluationPrompt(questionsWithAnswers: any) {
 export function generateMcqPrompt(
   level,
   levelDescription,
-  audience,
+  // audience,
   previous_mcqs_str,
+  topicOfCurrentAssessment,
+  totalQuestions,
 ) {
   return `
   """
@@ -67,17 +72,18 @@ export function generateMcqPrompt(
   Inputs:
   - level: ${level}
   - level_description: ${levelDescription}
-  - audience: ${audience}
   - previous_mcqs_json: ${previous_mcqs_str}
 
   OUTPUT REQUIREMENTS:
   1. Output ONLY a single valid JSON object (no surrounding text).
-  2. The top-level JSON object MUST be:
+  2. Mcqs must be from the topics as selected. The selected topics are: ${JSON.stringify(topicOfCurrentAssessment)}.
+  3. You must generate total of ${totalQuestions} mcqs only. Not more not less.
+  4. The top-level JSON object MUST be:
   {
-    "evaluations": [ /* array of 5 question objects */ ]
+    "evaluations": [ /* array of ${totalQuestions} question objects */ ]
   }
-  3. There MUST be exactly 5 objects in evaluations.
-  4. Each question object MUST have these fields and types:
+  5. There MUST be exactly ${totalQuestions} objects in evaluations.
+  6. Each question object MUST have these fields and types:
     {
       "question": "<full question text>",
       "topic": "<topic>",
@@ -86,15 +92,15 @@ export function generateMcqPrompt(
       "correctOption": <1|2|3|4>,
       "language": "<coding language>"
     }
-  5. Options must be exactly 4 entries.
-  6. correctOption must match one of the options.
-  7. Questions must NOT duplicate any question in previous_mcqs_json.
-  8. Prefer topics where the student showed weaknesses in past_performance_json.
-  9. Include at least 2 distinct topics across the 5 questions.
-  10. Adjust difficulty adaptively but respect the provided level_description.
-  11. IDs must be unique.
-  12. Do NOT include explanations or extra keys.
-  13. If you cannot produce valid JSON, return:
+  7. Options must be exactly 4 entries.
+  8. correctOption must match one of the options.
+  9. Questions must NOT duplicate any question in previous_mcqs_json.
+  10. Prefer topics where the student showed weaknesses in past_performance_json.
+  11. Include at least 2 distinct topics across the 5 questions.
+  12. Adjust difficulty adaptively but respect the provided level_description.
+  13. IDs must be unique.
+  14. Do NOT include explanations or extra keys.
+  15. If you cannot produce valid JSON, return:
     { "error": "INVALID_JSON", "reason": "<short reason>" }
 
   Now produce the JSON only.

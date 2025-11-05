@@ -16,7 +16,7 @@ import {
   mcqQuestionOptions,
   correctAnswers,
 } from 'drizzle/schema';
-import { asc } from 'drizzle-orm';
+import { asc, inArray } from 'drizzle-orm';
 import { eq } from 'drizzle-orm';
 
 @Injectable()
@@ -166,9 +166,7 @@ export class QuestionsByLlmService {
         .where(eq(questionsByLLM.aiAssessmentId, aiAssessmentId));
 
       if (!questions || questions.length === 0) {
-        throw new NotFoundException(
-          `No questions found for aiAssessmentId ${aiAssessmentId}`,
-        );
+        return [];
       }
 
       // populate options and correctOption for each question
@@ -219,6 +217,65 @@ export class QuestionsByLlmService {
     }
   }
 
+  async getAllLlmQuestionsOfAllAssessments(aiAssessmentIds: number[]) {
+    try {
+      if (!aiAssessmentIds || aiAssessmentIds.length === 0) {
+        return [];
+      }
+
+      // Fetch all questions that belong to any of the given aiAssessmentIds
+      const questions = await db
+        .select()
+        .from(questionsByLLM)
+        .where(inArray(questionsByLLM.aiAssessmentId, aiAssessmentIds));
+
+      if (questions.length === 0) {
+        return [];
+      }
+
+      // Populate options & correct options for each question
+      const populated = await Promise.all(
+        questions.map(async (q) => {
+          // Fetch options for this question
+          const options = await db
+            .select()
+            .from(mcqQuestionOptions)
+            .where(eq(mcqQuestionOptions.questionId, q.id))
+            .orderBy(asc(mcqQuestionOptions.optionNumber));
+
+          // Fetch correct answer (if any)
+          const correctRow = await db
+            .select()
+            .from(correctAnswers)
+            .where(eq(correctAnswers.questionId, q.id))
+            .limit(1);
+
+          let correctOption = null;
+          if (correctRow.length > 0) {
+            const correctOptionRows = await db
+              .select()
+              .from(mcqQuestionOptions)
+              .where(eq(mcqQuestionOptions.id, correctRow[0].correctOptionId))
+              .limit(1);
+
+            correctOption =
+              correctOptionRows.length > 0 ? correctOptionRows[0] : null;
+          }
+
+          return {
+            ...q,
+            options,
+            correctOption,
+          };
+        }),
+      );
+
+      return populated;
+    } catch (error) {
+      console.error('Error fetching LLM questions:', error);
+      throw new InternalServerErrorException('Failed to fetch LLM questions');
+    }
+  }
   // async getAllLlmQuestions(id) {
   //   try {
   //     const questions = await db.select().from(questionsByLLM);
