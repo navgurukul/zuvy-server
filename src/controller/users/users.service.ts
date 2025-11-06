@@ -548,29 +548,34 @@ export class UsersService {
 
         let user;
         let userRole;
+        let shouldAssignRole = false;
 
         if (existingUser) {
           user = existingUser;
 
-          const [sameRoleAssignment] = await tx
-            .select()
+          const existingAssignments = await tx
+            .select({ roleId: zuvyUserRolesAssigned.roleId })
             .from(zuvyUserRolesAssigned)
-            .where(
-              and(
-                eq(zuvyUserRolesAssigned.userId, existingUser.id),
-                eq(zuvyUserRolesAssigned.roleId, createUserDto.roleId),
-              ),
-            );
+            .where(eq(zuvyUserRolesAssigned.userId, existingUser.id));
 
-          if (sameRoleAssignment) {
+          const hasSameRole = existingAssignments.some(
+            (assignment) =>
+              Number(assignment.roleId) === Number(createUserDto.roleId),
+          );
+
+          if (hasSameRole) {
             throw new BadRequestException(
               'User already has this role assigned',
             );
           }
 
-          throw new BadRequestException(
-            'User already exists, please update role of the user instead',
-          );
+          if (existingAssignments.length > 0) {
+            throw new BadRequestException(
+              'User already exists, please update role of the user instead',
+            );
+          }
+
+          shouldAssignRole = true;
         } else {
           const [newUser] = await tx
             .insert(users)
@@ -585,7 +590,10 @@ export class UsersService {
           }
 
           user = newUser;
+          shouldAssignRole = true;
+        }
 
+        if (shouldAssignRole) {
           const rolesAssignData = {
             userId: user.id,
             roleId: createUserDto.roleId,
