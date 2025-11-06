@@ -10,9 +10,9 @@ import {
 } from '@nestjs/common';
 import {
   users,
-  userTokens,
   zuvyUserRoles,
   zuvyUserRolesAssigned,
+  blacklistedTokens,
 } from '../../../drizzle/schema';
 import { db } from '../../db/index';
 import { and, eq, ilike, inArray, or, sql, asc } from 'drizzle-orm';
@@ -38,6 +38,7 @@ import { bigint } from 'drizzle-orm/mysql-core';
 export class UsersService {
   private readonly logger = new Logger(UsersService.name);
   private readonly usersJsonPath = path.join(process.cwd(), 'users.json');
+  private readonly emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
   constructor(
     private readonly jwtService: JwtService,
@@ -529,18 +530,29 @@ export class UsersService {
 
   async createUserWithRole(createUserDto: CreateUserDto) {
     try {
+      const emailInput = createUserDto.email;
+      const normalizedEmail =
+        typeof emailInput === 'string' ? emailInput.trim() : '';
+
+      if (!normalizedEmail || !this.isValidEmail(normalizedEmail)) {
+        throw new BadRequestException('Invalid email format');
+      }
+
+      createUserDto.email = normalizedEmail;
+
       return await db.transaction(async (tx) => {
-        // First check if user with email already exists
         const [existingUser] = await tx
           .select()
           .from(users)
           .where(eq(users.email, createUserDto.email));
 
         let user;
+        let userRole;
 
         if (existingUser) {
-          // User exists, check if they already have this role assigned
-          const existingRole = await tx
+          user = existingUser;
+
+          const [sameRoleAssignment] = await tx
             .select()
             .from(zuvyUserRolesAssigned)
             .where(
@@ -550,16 +562,16 @@ export class UsersService {
               ),
             );
 
-          if (existingRole.length > 0) {
+          if (sameRoleAssignment) {
             throw new BadRequestException(
               'User already has this role assigned',
             );
           }
 
-          // User exists but doesn't have this role - assign the role
-          user = existingUser;
+          throw new BadRequestException(
+            'User already exists, please update role of the user instead',
+          );
         } else {
-          // User doesn't exist - create new user
           const [newUser] = await tx
             .insert(users)
             .values({
@@ -571,18 +583,29 @@ export class UsersService {
           if (!newUser) {
             throw new InternalServerErrorException('Failed to create user');
           }
-          user = newUser;
-        }
 
-        let rolesAssignData = {
-          userId: user.id,
-          roleId: createUserDto.roleId,
-        };
-        // Assign role to user (whether existing or new)
-        const [userRole] = await tx
-          .insert(zuvyUserRolesAssigned)
-          .values(rolesAssignData)
-          .returning();
+          user = newUser;
+
+          const rolesAssignData = {
+            userId: user.id,
+            roleId: createUserDto.roleId,
+          };
+
+          const [newUserRole] = await tx
+            .insert(zuvyUserRolesAssigned)
+            .values(
+              rolesAssignData as unknown as typeof zuvyUserRolesAssigned.$inferInsert,
+            )
+            .returning();
+
+          if (!newUserRole) {
+            throw new InternalServerErrorException(
+              'Failed to assign role to user',
+            );
+          }
+
+          userRole = newUserRole;
+        }
 
         if (!userRole) {
           throw new InternalServerErrorException(
@@ -590,7 +613,6 @@ export class UsersService {
           );
         }
 
-        // Get the complete user data with role
         const [userWithRole] = await tx
           .select({
             id: users.id,
@@ -613,7 +635,12 @@ export class UsersService {
           )
           .where(eq(users.id, user.id));
 
-        // Convert BigInt to Number for JSON serialization
+        if (!userWithRole) {
+          throw new InternalServerErrorException(
+            'Failed to fetch user with role',
+          );
+        }
+
         return {
           ...userWithRole,
           id: Number(userWithRole.id),
@@ -627,6 +654,8 @@ export class UsersService {
 
   async updateUser(id: bigint, updateUserDto: UpdateUserDto) {
     try {
+      const targetUserId = typeof id === 'bigint' ? id : BigInt(id);
+
       return await db.transaction(async (tx) => {
         const currentTime = new Date().toISOString(); // ISO string format
 
@@ -641,7 +670,32 @@ export class UsersService {
           userUpdateData.name = updateUserDto.name;
         }
         if (updateUserDto.email !== undefined) {
-          userUpdateData.email = updateUserDto.email;
+          const emailInput = updateUserDto.email;
+          const normalizedEmail =
+            typeof emailInput === 'string' ? emailInput.trim() : '';
+
+          if (!normalizedEmail || !this.isValidEmail(normalizedEmail)) {
+            throw new BadRequestException('Invalid email format');
+          }
+
+          const [userWithSameEmail] = await tx
+            .select({ id: users.id })
+            .from(users)
+            .where(eq(users.email, normalizedEmail));
+
+          const emailOwnerId =
+            userWithSameEmail &&
+            (typeof userWithSameEmail.id === 'bigint'
+              ? userWithSameEmail.id
+              : BigInt(userWithSameEmail.id));
+
+          if (emailOwnerId && emailOwnerId !== targetUserId) {
+            throw new BadRequestException(
+              'User already exists with this email id',
+            );
+          }
+
+          userUpdateData.email = normalizedEmail;
         }
 
         // Add updatedAt timestamp if any user data is being updated
@@ -655,14 +709,17 @@ export class UsersService {
           [user] = await tx
             .update(users)
             .set(userUpdateData)
-            .where(eq(users.id, id))
+            .where(eq(users.id, targetUserId))
             .returning();
 
           if (!user) {
             throw new NotFoundException(`User with ID ${id} not found`);
           }
         } else {
-          [user] = await tx.select().from(users).where(eq(users.id, id));
+          [user] = await tx
+            .select()
+            .from(users)
+            .where(eq(users.id, targetUserId));
 
           if (!user) {
             throw new NotFoundException(`User with ID ${id} not found`);
@@ -674,7 +731,7 @@ export class UsersService {
           const existingRole = await tx
             .select()
             .from(zuvyUserRolesAssigned)
-            .where(eq(zuvyUserRolesAssigned.userId, id));
+            .where(eq(zuvyUserRolesAssigned.userId, targetUserId));
 
           if (existingRole.length > 0) {
             // Update existing role with updatedAt - FIXED TYPE
@@ -686,11 +743,11 @@ export class UsersService {
             const [updatedRole] = await tx
               .update(zuvyUserRolesAssigned)
               .set(roleUpdateData)
-              .where(eq(zuvyUserRolesAssigned.userId, id))
+              .where(eq(zuvyUserRolesAssigned.userId, targetUserId))
               .returning();
           } else {
             let rolesAssignData = {
-              userId: id,
+              userId: targetUserId,
               roleId: updateUserDto.roleId,
               createdAt: currentTime, // ISO string
               updatedAt: currentTime, // ISO string
@@ -724,12 +781,28 @@ export class UsersService {
             zuvyUserRoles,
             eq(zuvyUserRolesAssigned.roleId, zuvyUserRoles.id),
           )
-          .where(eq(users.id, id));
+          .where(eq(users.id, targetUserId));
 
-        const { data } = await this.userTokenService.getUserTokens(id);
-        await this.authService.logout(id, data['accessToken']);
+        if (!userWithRole) {
+          throw new InternalServerErrorException(
+            'Failed to fetch user with role',
+          );
+        }
 
-        return userWithRole;
+        const response = {
+          ...userWithRole,
+          id: Number(userWithRole.id),
+          roleId: userWithRole.roleId ? Number(userWithRole.roleId) : null,
+        };
+
+        const { data, success } =
+          await this.userTokenService.getUserTokens(targetUserId);
+
+        if (success && data?.accessToken) {
+          await this.authService.logout(targetUserId, data.accessToken);
+        }
+
+        return response;
       });
     } catch (error) {
       throw error;
@@ -738,6 +811,9 @@ export class UsersService {
 
   async deleteUser(id: bigint): Promise<any> {
     try {
+      const { data: existingTokens, success: hasTokens } =
+        await this.userTokenService.getUserTokens(id);
+
       // delete the user by id in zuvyUserRolesAssigned table
       const deletedUser = await db
         .delete(zuvyUserRolesAssigned)
@@ -747,21 +823,34 @@ export class UsersService {
         throw new NotFoundException(`User with ID ${id} not found`);
       }
 
-      const { data } = await this.userTokenService.deleteToken({
+      if (hasTokens && existingTokens?.accessToken) {
+        try {
+          await this.authService.logout(id, existingTokens.accessToken);
+        } catch (logoutError) {
+          this.logger.warn(
+            `Failed to invalidate tokens for user ${id.toString()}: ${
+              (logoutError as Error).message
+            }`,
+          );
+        }
+      }
+
+      await this.userTokenService.deleteToken({
         userId: Number(id),
       });
 
-      //logout
-      await this.authService.logout(id, data['accessToken']);
-
-      // send the response
       return {
-        message: 'User deleted successfully',
-        code: 204,
+        message:
+          'User has been deleted and all content has been removed for the user',
+        code: 200,
         status: 'success',
       };
     } catch (error) {
       throw error;
     }
+  }
+
+  private isValidEmail(email: string): boolean {
+    return this.emailRegex.test(email);
   }
 }

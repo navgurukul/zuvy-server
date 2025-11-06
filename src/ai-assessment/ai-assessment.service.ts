@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import {
@@ -34,6 +35,7 @@ import { QuestionsByLlmService } from 'src/questions-by-llm/questions-by-llm.ser
 
 @Injectable()
 export class AiAssessmentService {
+  private readonly logger = new Logger(AiAssessmentService.name);
   constructor(
     private readonly llmService: LlmService,
     private readonly questionEvaluationService: QuestionEvaluationService,
@@ -92,7 +94,6 @@ export class AiAssessmentService {
         },
       );
 
-      // keep generate outside transaction (unchanged logic)
       await this.generate(userId, {
         aiAssessmentId: inserted.id,
         bootcampId: inserted.bootcampId,
@@ -417,7 +418,7 @@ export class AiAssessmentService {
     return results;
   }
 
-  async findAllAssessmentOfAStudent(userId: number) {
+  async findAllAssessmentOfAStudent(userId: number, bootcampId) {
     if (!userId) return [];
 
     const assessments = await db
@@ -434,13 +435,19 @@ export class AiAssessmentService {
         endDatetime: aiAssessment.endDatetime,
         createdAt: aiAssessment.createdAt,
         updatedAt: aiAssessment.updatedAt,
+        status: studentAssessment.status,
       })
-      .from(studentLevelRelation)
+      .from(studentAssessment)
       .innerJoin(
         aiAssessment,
-        eq(studentLevelRelation.aiAssessmentId, aiAssessment.id),
+        eq(studentAssessment.aiAssessmentId, aiAssessment.id),
       )
-      .where(eq(studentLevelRelation.studentId, userId));
+      .where(
+        and(
+          eq(studentAssessment.studentId, userId),
+          eq(aiAssessment.bootcampId, bootcampId),
+        ),
+      );
 
     if (assessments.length === 0) {
       const defaultAssessment = await db
@@ -470,7 +477,7 @@ export class AiAssessmentService {
 
       return topicsData;
     } catch (error) {
-      console.error('Error fetching topics of assessments:', error);
+      this.logger.error('Error fetching topics of assessments:', error);
       // throw new InternalServerErrorException('Failed to fetch topics');
     }
   }
@@ -490,7 +497,7 @@ export class AiAssessmentService {
 
       return Number(result?.totalQuestions || 0);
     } catch (error) {
-      console.error('Error fetching total questions:', error);
+      this.logger.error('Error fetching total questions:', error);
       // throw new InternalServerErrorException('Failed to fetch total questions');
     }
   }
@@ -510,7 +517,7 @@ export class AiAssessmentService {
 
       return Number(result?.totalBufferedQuestions || 0);
     } catch (error) {
-      console.error('Error fetching total buffered questions:', error);
+      this.logger.error('Error fetching total buffered questions:', error);
       // throw new InternalServerErrorException('Failed to fetch total buffered questions');
     }
   }

@@ -385,7 +385,8 @@ ALTER TABLE main.zuvy_permissions_roles ADD CONSTRAINT uniq_role_permission UNIQ
 --> questions by llm table.
 CREATE TABLE "questions_by_llm" (
   "id" SERIAL PRIMARY KEY NOT NULL,
-  "ai_assessment_id" INTEGER NOT NULL REFERENCES "main"."ai_assessment"("id"),
+  "ai_assessment_id" INTEGER NOT NULL 
+    REFERENCES "main"."ai_assessment"("id") ON DELETE CASCADE,
   "topic" VARCHAR(100),
   "difficulty" VARCHAR(50),
   "bootcamp_id" INTEGER,
@@ -405,7 +406,7 @@ CREATE TABLE "mcq_question_options" (
 CREATE TABLE "correct_answers" (
   "id" SERIAL PRIMARY KEY NOT NULL,
   "question_id" INTEGER NOT NULL REFERENCES "questions_by_llm"("id") ON DELETE CASCADE,
-  "correct_option_id" INTEGER NOT NULL REFERENCES "question_options"("id") ON DELETE CASCADE
+  "correct_option_id" INTEGER NOT NULL REFERENCES "mcq_question_options"("id") ON DELETE CASCADE
 );
 
 CREATE TABLE "levels" (
@@ -453,6 +454,7 @@ CREATE TABLE "student_level_relation" (
 CREATE TABLE IF NOT EXISTS "question_evaluation" (
   "id" SERIAL PRIMARY KEY NOT NULL,
   "ai_assessment_id" INTEGER NOT NULL REFERENCES "main"."ai_assessment"("id"),
+  "question_id" INTEGER NOT NULL REFERENCES "questions_by_llm"("id"),
   "question" TEXT NOT NULL,
   "topic" VARCHAR(255),
   "difficulty" VARCHAR(50),
@@ -497,7 +499,7 @@ CREATE TABLE "student_assessment" (
   CONSTRAINT "student_assessment_student_id_fkey" 
     FOREIGN KEY ("student_id") REFERENCES "users"("id"),
   CONSTRAINT "student_assessment_ai_assessment_id_fkey" 
-    FOREIGN KEY ("ai_assessment_id") REFERENCES "ai_assessment"("id"),
+    FOREIGN KEY ("ai_assessment_id") REFERENCES "ai_assessment"("id") ON DELETE CASCADE,
   
   CONSTRAINT "uniq_student_assessment" 
     UNIQUE ("student_id", "ai_assessment_id")

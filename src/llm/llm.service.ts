@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Injectable,
   InternalServerErrorException,
+  Logger,
 } from '@nestjs/common';
 import { GenerateResponseDto } from './dto/generate-response.dto';
 import { GoogleGenAI } from '@google/genai';
@@ -9,6 +10,7 @@ import { deepseekResponse } from './providers/deepseek';
 
 @Injectable()
 export class LlmService {
+  private readonly logger = new Logger(LlmService.name);
   private readonly ai: GoogleGenAI;
   constructor() {
     const key = process.env.GOOGLE_GENAI_API_KEY;
@@ -36,7 +38,7 @@ export class LlmService {
         ''
       );
     } catch (err) {
-      console.error(
+      this.logger.error(
         'Google genai failed, falling back to DeepSeek:',
         err.message,
       );
