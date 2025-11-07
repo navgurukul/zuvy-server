@@ -813,6 +813,10 @@ export class UsersService {
             data.accessToken,
             data.refreshToken,
           );
+
+          const deletedResponse = await this.userTokenService.deleteToken({
+            userId: Number(id),
+          });
         }
 
         return response;
