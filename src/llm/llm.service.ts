@@ -23,9 +23,10 @@ export class LlmService {
 
   async generate(generateResponseDto: GenerateResponseDto) {
     const prompt = generateResponseDto.systemPrompt.trim();
-    if (!prompt)
+    if (!prompt) {
+      this.logger.error('systemPrompt is empty', prompt);
       throw new BadRequestException('systemPrompt must be a non-empty string');
-
+    }
     try {
       const response = await this.ai.models.generateContent({
         model: 'gemini-2.5-pro',
@@ -47,6 +48,7 @@ export class LlmService {
         const fallback = await deepseekResponse(prompt);
         return fallback;
       } catch (fallbackErr) {
+        this.logger.error('DeepSeek fallback also failed:', fallbackErr);
         throw new InternalServerErrorException(
           `Both Gemini and DeepSeek failed. Gemini error: ${
             err instanceof Error ? err.message : String(err)

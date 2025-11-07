@@ -15,6 +15,7 @@ export class QuestionEvaluationService {
       const evaluations = evaluationResponse?.evaluations ?? [];
 
       if (!Array.isArray(evaluations) || evaluations.length === 0) {
+        this.logger.error('No evaluations found in response', evaluations);
         throw new Error('No evaluations found in response');
       }
 
@@ -37,6 +38,7 @@ export class QuestionEvaluationService {
       return { inserted: payload.length };
     } catch (error) {
       this.logger.error('Error creating evaluation', error);
+      throw error;
     }
   }
 

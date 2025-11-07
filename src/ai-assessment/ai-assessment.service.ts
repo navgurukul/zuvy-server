@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   Injectable,
+  InternalServerErrorException,
   Logger,
   NotFoundException,
 } from '@nestjs/common';
@@ -106,6 +107,10 @@ export class AiAssessmentService {
         totalAssignedStudents: enrolledStudentsCount,
       };
     } catch (error) {
+      this.logger.error(
+        'Error creating AI assessment:',
+        error instanceof Error ? error.message : String(error),
+      );
       throw new BadRequestException(
         'Failed to create AI assessment: ' + error.message,
       );
@@ -373,6 +378,10 @@ export class AiAssessmentService {
         };
       });
     } catch (error) {
+      this.logger.error(
+        'Error submitting LLM assessment:',
+        error instanceof Error ? error.message : String(error),
+      );
       throw error;
     }
   }
@@ -478,7 +487,9 @@ export class AiAssessmentService {
       return topicsData;
     } catch (error) {
       this.logger.error('Error fetching topics of assessments:', error);
-      // throw new InternalServerErrorException('Failed to fetch topics');
+      throw new InternalServerErrorException(
+        'Failed to fetch topics of assessments',
+      );
     }
   }
 
@@ -498,7 +509,7 @@ export class AiAssessmentService {
       return Number(result?.totalQuestions || 0);
     } catch (error) {
       this.logger.error('Error fetching total questions:', error);
-      // throw new InternalServerErrorException('Failed to fetch total questions');
+      throw new InternalServerErrorException('Failed to fetch total questions');
     }
   }
 
@@ -518,7 +529,9 @@ export class AiAssessmentService {
       return Number(result?.totalBufferedQuestions || 0);
     } catch (error) {
       this.logger.error('Error fetching total buffered questions:', error);
-      // throw new InternalServerErrorException('Failed to fetch total buffered questions');
+      throw new InternalServerErrorException(
+        'Failed to fetch total buffered questions',
+      );
     }
   }
 }
