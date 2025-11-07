@@ -264,6 +264,37 @@ export class AuthService {
     }
   }
 
+  async updateUserlogout(userId: bigint, accToken: string, refToken: string) {
+    try {
+      // Decode access token
+      const decodedAcc = this.jwtService.decode(accToken) as { exp: number };
+      const accExpiresAt = new Date(decodedAcc.exp * 1000);
+
+      // Decode refresh token
+      const decodedRef = this.jwtService.decode(refToken) as { exp: number };
+      const refExpiresAt = new Date(decodedRef.exp * 1000);
+
+      // Insert access token
+      await db.insert(blacklistedTokens).values({
+        token: accToken,
+        userId: BigInt(userId),
+        expiresAt: accExpiresAt,
+      });
+
+      // Insert refresh token
+      await db.insert(blacklistedTokens).values({
+        token: refToken,
+        userId: BigInt(userId),
+        expiresAt: refExpiresAt,
+      });
+
+      return { message: 'Successfully logged out' };
+    } catch (error) {
+      this.logger.error('Logout error:', error);
+      throw new UnauthorizedException('Invalid tokens');
+    }
+  }
+
   async validateToken(token: string) {
     try {
       // Check if token is blacklisted

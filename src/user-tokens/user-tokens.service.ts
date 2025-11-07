@@ -44,6 +44,7 @@ export class UserTokensService {
       const [tokens] = await db
         .select({
           accessToken: userTokens.accessToken,
+          refreshToken: userTokens.refreshToken,
         })
         .from(userTokens)
         .where(eq(userTokens.userId, Number(userId)));

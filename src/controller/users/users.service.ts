@@ -807,7 +807,11 @@ export class UsersService {
           await this.userTokenService.getUserTokens(targetUserId);
 
         if (success && data?.accessToken) {
-          await this.authService.logout(targetUserId, data.accessToken);
+          await this.authService.updateUserlogout(
+            targetUserId,
+            data.accessToken,
+            data.refreshToken,
+          );
         }
 
         return response;
