@@ -340,9 +340,10 @@ export class UsersService {
               'User role updated. User did not login after role update. No tokens found, skipping logout and delete',
           };
         }
-        await this.authService.logout(
+        await this.authService.updateUserlogout(
           BigInt(targetUserId),
           data['accessToken'],
+          data['refreshToken'],
         );
         const deletedResponse = await this.userTokenService.deleteToken({
           userId: targetUserId,
@@ -807,7 +808,15 @@ export class UsersService {
           await this.userTokenService.getUserTokens(targetUserId);
 
         if (success && data?.accessToken) {
-          await this.authService.logout(targetUserId, data.accessToken);
+          await this.authService.updateUserlogout(
+            targetUserId,
+            data.accessToken,
+            data.refreshToken,
+          );
+
+          const deletedResponse = await this.userTokenService.deleteToken({
+            userId: Number(id),
+          });
         }
 
         return response;

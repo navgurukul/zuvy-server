@@ -1,10 +1,11 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { db } from 'src/db';
 import { correctAnswers, questionEvaluation } from 'drizzle/schema';
 import { eq, and } from 'drizzle-orm';
 
 @Injectable()
 export class QuestionEvaluationService {
+  private readonly logger = new Logger(QuestionEvaluationService.name);
   async saveEvaluations(
     evaluationResponse: any,
     studentId: number,
@@ -14,6 +15,7 @@ export class QuestionEvaluationService {
       const evaluations = evaluationResponse?.evaluations ?? [];
 
       if (!Array.isArray(evaluations) || evaluations.length === 0) {
+        this.logger.error('No evaluations found in response', evaluations);
         throw new Error('No evaluations found in response');
       }
 
@@ -35,7 +37,8 @@ export class QuestionEvaluationService {
       await db.insert(questionEvaluation).values(payload);
       return { inserted: payload.length };
     } catch (error) {
-      console.log('Error creating evaluation', error);
+      this.logger.error('Error creating evaluation', error);
+      throw error;
     }
   }
 

@@ -1,6 +1,7 @@
 import {
   Injectable,
   InternalServerErrorException,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import {
@@ -21,6 +22,7 @@ import { eq } from 'drizzle-orm';
 
 @Injectable()
 export class QuestionsByLlmService {
+  private readonly logger = new Logger(QuestionsByLlmService.name);
   async createMcqQuestionOption(dto: CreateMcqQuestionOptionDto) {
     return await db.insert(mcqQuestionOptions).values(dto).returning();
   }
@@ -60,7 +62,7 @@ export class QuestionsByLlmService {
               language: questionsByLLM.language,
             });
         } catch (err) {
-          console.error('Error inserting questionsByLLM:', err);
+          this.logger.error('Error inserting questionsByLLM:', err);
           throw new InternalServerErrorException('Failed to insert questions');
         }
 
@@ -73,7 +75,7 @@ export class QuestionsByLlmService {
             }));
             await tx.insert(questionLevelRelation).values(relationsPayload);
           } catch (err) {
-            console.error('Error inserting questionLevelRelation:', err);
+            this.logger.error('Error inserting questionLevelRelation:', err);
             throw new InternalServerErrorException(
               'Failed to insert question-level relations',
             );
@@ -106,7 +108,7 @@ export class QuestionsByLlmService {
                 optionNumber: mcqQuestionOptions.optionNumber,
               });
           } catch (err) {
-            console.error(
+            this.logger.error(
               `Error inserting mcqQuestionOptions for questionId ${insertedQ.id}:`,
               err,
             );
@@ -128,12 +130,12 @@ export class QuestionsByLlmService {
                 correctOptionId: matched.id,
               });
             } else {
-              console.warn(
+              this.logger.warn(
                 `No matching option found for questionId ${insertedQ.id}`,
               );
             }
           } catch (err) {
-            console.error(
+            this.logger.error(
               `Error inserting correctAnswers for questionId ${insertedQ.id}:`,
               err,
             );
@@ -152,7 +154,7 @@ export class QuestionsByLlmService {
         data: result,
       };
     } catch (error) {
-      console.error('Transaction failed:', error);
+      this.logger.error('Transaction failed:', error);
       throw new InternalServerErrorException('Failed to create questions');
     }
   }
@@ -212,7 +214,7 @@ export class QuestionsByLlmService {
 
       return populated;
     } catch (error) {
-      console.error('Error fetching LLM questions:', error);
+      this.logger.error('Error fetching LLM questions:', error);
       throw new InternalServerErrorException('Failed to fetch LLM questions');
     }
   }
@@ -272,7 +274,7 @@ export class QuestionsByLlmService {
 
       return populated;
     } catch (error) {
-      console.error('Error fetching LLM questions:', error);
+      this.logger.error('Error fetching LLM questions:', error);
       throw new InternalServerErrorException('Failed to fetch LLM questions');
     }
   }
@@ -281,7 +283,7 @@ export class QuestionsByLlmService {
   //     const questions = await db.select().from(questionsByLLM);
   //     return questions;
   //   } catch (error) {
-  //     console.error('Error fetching LLM questions:', error);
+  //     this.logger.error('Error fetching LLM questions:', error);
   //     throw new InternalServerErrorException('Failed to fetch LLM questions');
   //   }
   //   // return `This action returns all questionsByLlm`;

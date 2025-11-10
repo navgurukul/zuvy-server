@@ -1,6 +1,8 @@
 import {
   BadRequestException,
   Injectable,
+  InternalServerErrorException,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import {
@@ -17,6 +19,7 @@ import {
   correctAnswers,
   zuvyBatchEnrollments,
   studentAssessment,
+  users,
 } from 'drizzle/schema';
 import { SubmitAssessmentDto } from './dto/create-ai-assessment.dto';
 import { LlmService } from 'src/llm/llm.service';
@@ -33,6 +36,7 @@ import { QuestionsByLlmService } from 'src/questions-by-llm/questions-by-llm.ser
 
 @Injectable()
 export class AiAssessmentService {
+  private readonly logger = new Logger(AiAssessmentService.name);
   constructor(
     private readonly llmService: LlmService,
     private readonly questionEvaluationService: QuestionEvaluationService,
@@ -63,8 +67,11 @@ export class AiAssessmentService {
             .returning();
 
           const enrolledStudents = await tx
-            .select({ studentId: zuvyBatchEnrollments.userId })
+            .select({
+              studentId: zuvyBatchEnrollments.userId,
+            })
             .from(zuvyBatchEnrollments)
+            .innerJoin(users, eq(zuvyBatchEnrollments.userId, users.id))
             .where(
               eq(
                 zuvyBatchEnrollments.bootcampId,
@@ -100,6 +107,10 @@ export class AiAssessmentService {
         totalAssignedStudents: enrolledStudentsCount,
       };
     } catch (error) {
+      this.logger.error(
+        'Error creating AI assessment:',
+        error instanceof Error ? error.message : String(error),
+      );
       throw new BadRequestException(
         'Failed to create AI assessment: ' + error.message,
       );
@@ -367,6 +378,10 @@ export class AiAssessmentService {
         };
       });
     } catch (error) {
+      this.logger.error(
+        'Error submitting LLM assessment:',
+        error instanceof Error ? error.message : String(error),
+      );
       throw error;
     }
   }
@@ -471,8 +486,10 @@ export class AiAssessmentService {
 
       return topicsData;
     } catch (error) {
-      console.error('Error fetching topics of assessments:', error);
-      // throw new InternalServerErrorException('Failed to fetch topics');
+      this.logger.error('Error fetching topics of assessments:', error);
+      throw new InternalServerErrorException(
+        'Failed to fetch topics of assessments',
+      );
     }
   }
 
@@ -491,8 +508,8 @@ export class AiAssessmentService {
 
       return Number(result?.totalQuestions || 0);
     } catch (error) {
-      console.error('Error fetching total questions:', error);
-      // throw new InternalServerErrorException('Failed to fetch total questions');
+      this.logger.error('Error fetching total questions:', error);
+      throw new InternalServerErrorException('Failed to fetch total questions');
     }
   }
 
@@ -511,8 +528,10 @@ export class AiAssessmentService {
 
       return Number(result?.totalBufferedQuestions || 0);
     } catch (error) {
-      console.error('Error fetching total buffered questions:', error);
-      // throw new InternalServerErrorException('Failed to fetch total buffered questions');
+      this.logger.error('Error fetching total buffered questions:', error);
+      throw new InternalServerErrorException(
+        'Failed to fetch total buffered questions',
+      );
     }
   }
 }

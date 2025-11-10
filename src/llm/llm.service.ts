@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Injectable,
   InternalServerErrorException,
+  Logger,
 } from '@nestjs/common';
 import { GenerateResponseDto } from './dto/generate-response.dto';
 import { GoogleGenAI } from '@google/genai';
@@ -9,6 +10,7 @@ import { deepseekResponse } from './providers/deepseek';
 
 @Injectable()
 export class LlmService {
+  private readonly logger = new Logger(LlmService.name);
   private readonly ai: GoogleGenAI;
   constructor() {
     const key = process.env.GOOGLE_GENAI_API_KEY;
@@ -21,9 +23,10 @@ export class LlmService {
 
   async generate(generateResponseDto: GenerateResponseDto) {
     const prompt = generateResponseDto.systemPrompt.trim();
-    if (!prompt)
+    if (!prompt) {
+      this.logger.error('systemPrompt is empty', prompt);
       throw new BadRequestException('systemPrompt must be a non-empty string');
-
+    }
     try {
       const response = await this.ai.models.generateContent({
         model: 'gemini-2.5-pro',
@@ -36,7 +39,7 @@ export class LlmService {
         ''
       );
     } catch (err) {
-      console.error(
+      this.logger.error(
         'Google genai failed, falling back to DeepSeek:',
         err.message,
       );
@@ -45,6 +48,7 @@ export class LlmService {
         const fallback = await deepseekResponse(prompt);
         return fallback;
       } catch (fallbackErr) {
+        this.logger.error('DeepSeek fallback also failed:', fallbackErr);
         throw new InternalServerErrorException(
           `Both Gemini and DeepSeek failed. Gemini error: ${
             err instanceof Error ? err.message : String(err)
