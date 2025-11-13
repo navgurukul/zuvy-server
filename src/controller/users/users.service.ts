@@ -277,6 +277,88 @@ export class UsersService {
     return roleDetails;
   }
 
+  // create a function to assign defualt permissions to a role
+  async assignDefaultPermissionsToRole(
+    roleId: number,
+    roleName: string,
+  ): Promise<any> {
+    try {
+      // 🔍 Step 1: Check if role already has any permissions
+      const existingPermissions = await db.execute(
+        sql`SELECT COUNT(*) AS count FROM main.zuvy_permissions_roles WHERE role_id = ${roleId}`,
+      );
+
+      const alreadyAssigned = Number(
+        (existingPermissions as any).rows?.[0]?.count ?? 0,
+      );
+
+      if (alreadyAssigned > 0) {
+        this.logger.log(
+          `Role ID ${roleId} (${roleName}) already has permissions assigned. Skipping default assignment.`,
+        );
+        return {
+          status: 'skipped',
+          message: `Permissions already assigned for role: ${roleName}`,
+          code: 200,
+        };
+      }
+
+      // 🧩 Step 2: Build list of default permissions
+      let defaultPermissions: string[] = [];
+
+      // ✅ Assign view/create for all resources only if role is 'admin'
+      if (roleName.toLowerCase() === 'admin') {
+        for (const resource of Object.values(ResourceList)) {
+          defaultPermissions.push(resource.read, resource.create);
+        }
+      } else {
+        // Assign limited defaults for non-admin roles
+        defaultPermissions = [
+          ResourceList.course.read,
+          ResourceList.batch.read,
+          ResourceList.module.read,
+          ResourceList.chapter.read,
+          ResourceList.student.read,
+          ResourceList.bootcamp.read,
+          ResourceList.mcq.read,
+          ResourceList.codingquestion.read,
+          ResourceList.opendended.read,
+          ResourceList.topic.read,
+        ];
+      }
+
+      // 🏗️ Step 3: Insert missing permissions
+      for (const permission of defaultPermissions) {
+        const permissionDetails = await db.execute(
+          sql`SELECT id FROM main.zuvy_permissions WHERE name = ${permission} LIMIT 1`,
+        );
+
+        if (!(permissionDetails as any).rows?.length) {
+          throw new NotFoundException(`Permission ${permission} not found`);
+        }
+
+        const permissionId = (permissionDetails as any).rows[0].id;
+        await db.execute(
+          sql`INSERT INTO main.zuvy_permissions_roles (role_id, permission_id)
+             VALUES (${roleId}, ${permissionId})
+             ON CONFLICT DO NOTHING`,
+        );
+      }
+
+      // ✅ Step 4: Return success
+      return {
+        status: 'success',
+        message: `Default permissions assigned successfully for role: ${roleName}`,
+        code: 200,
+      };
+    } catch (err) {
+      this.logger.error('Error assigning default permissions to role:', err);
+      throw new InternalServerErrorException(
+        'Failed to assign default permissions to role',
+      );
+    }
+  }
+
   async assignRoleToUser(
     actorUserIdString,
     payload: AssignUserRoleDto,
@@ -337,6 +419,9 @@ export class UsersService {
           INSERT INTO main.zuvy_user_roles_assigned (user_id, role_id)
           VALUES (${userId}, ${roleId})
           RETURNING *`);
+        // ✅ Assign default permissions for new role
+        await this.assignDefaultPermissionsToRole(roleId, roleName);
+
         const currentRoleDetails = await this.roleCheck(currentRoleId);
         const currentRoleName = (currentRoleDetails as any).rows?.[0]?.name;
         const actionUpdate = `${actorName} updated ${targetName}'s role from ${currentRoleName} to ${roleName}`;
@@ -378,6 +463,9 @@ export class UsersService {
         INSERT INTO main.zuvy_user_roles_assigned (user_id, role_id)
         VALUES (${userId}, ${roleId})
         RETURNING *`);
+
+      // ✅ Assign default permissions for new role
+      await this.assignDefaultPermissionsToRole(roleId, roleName);
 
       const action = `${actorName} assigned role ${roleName} to ${targetName}`;
 

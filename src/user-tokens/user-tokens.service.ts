@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Injectable,
   InternalServerErrorException,
+  Logger,
 } from '@nestjs/common';
 import { eq } from 'drizzle-orm';
 import { userTokens } from 'drizzle/schema';
@@ -17,6 +18,7 @@ type DeleteFilter = { userId?: number; userEmail?: string };
 
 @Injectable()
 export class UserTokensService {
+  private readonly logger = new Logger(UserTokensService.name);
   async upsertToken(params: UpsertParams) {
     const { userId, userEmail, accessToken, refreshToken } = params;
     try {
@@ -31,6 +33,7 @@ export class UserTokensService {
 
       return { success: true, message: 'UPSERT_OK', data: row };
     } catch (err) {
+      this.logger.error('Failed to upsert user tokens:', err);
       throw new InternalServerErrorException({
         success: false,
         message: 'UPSERT_FAILED',
@@ -59,7 +62,7 @@ export class UserTokensService {
         data: tokens,
       };
     } catch (error) {
-      console.error('Failed to fetch user tokens:', error);
+      this.logger.error('Failed to fetch user tokens:', error);
       throw new Error('Failed to fetch user tokens');
     }
   }
@@ -84,6 +87,7 @@ export class UserTokensService {
         data: deleted,
       };
     } catch (err) {
+      this.logger.error('Failed to delete user tokens:', err);
       throw new InternalServerErrorException({
         success: false,
         message: 'DELETE_FAILED',
