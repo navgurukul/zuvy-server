@@ -237,8 +237,24 @@ export class UsersService {
     }
   }
 
-  async getAllUserRoles(roleName: string): Promise<any> {
+  async getAllUserRoles(roleName: string, duplicate?: boolean): Promise<any> {
     try {
+      if (duplicate) {
+        try {
+          const result = await db.execute(
+            sql`SELECT * FROM main.zuvy_user_roles`,
+          );
+          return {
+            status: 'success',
+            message: 'User roles retrieved successfully',
+            code: 200,
+            data: (result as any).rows,
+          };
+        } catch (err) {
+          throw err;
+        }
+      }
+
       let query;
 
       if (roleName[0] === 'super admin') {

@@ -180,6 +180,35 @@ export class UsersController {
     }
   }
 
+  @Get('get/all/roles')
+  //   @RequirePermissions('read_user_roles')
+  @ApiOperation({
+    summary: 'Get all user roles',
+    description: 'Retrieves all user roles from the system',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'User roles retrieved successfully',
+    type: [UserRoleResponseDto],
+  })
+  @ApiResponse({
+    status: 500,
+    description: 'Internal server error',
+  })
+  @ApiBearerAuth('JWT-auth')
+  async getAllUserRolesNoFilter(@Req() req): Promise<any> {
+    try {
+      const roleName = req.user[0]?.roles;
+      const result = await this.usersService.getAllUserRoles(roleName, true);
+      return result;
+    } catch (error) {
+      throw new HttpException(
+        'Internal Server Error',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
   @Post('users/assign-role')
   @ApiOperation({
     summary: 'Assign a role to a user',
