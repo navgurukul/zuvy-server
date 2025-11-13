@@ -98,6 +98,7 @@ export class PermissionsService {
         };
       }
     } catch (err) {
+      this.logger.error('Error creating permission:', err);
       if (err instanceof NotFoundException) throw err;
       throw err;
     }
@@ -200,6 +201,7 @@ export class PermissionsService {
         status: 'success',
       };
     } catch (err) {
+      this.logger.error('Error deleting permission:', err);
       throw err;
     }
   }
@@ -508,6 +510,10 @@ export class PermissionsService {
 
       return permissions;
     } catch (error) {
+      this.logger.error(
+        'Error getting permissions for role and resource:',
+        error,
+      );
       if (error.status == 404) throw error;
       throw new InternalServerErrorException(
         'Failed to get permissions for role and resource',

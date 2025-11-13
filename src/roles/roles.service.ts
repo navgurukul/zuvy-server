@@ -4,6 +4,7 @@ import {
   InternalServerErrorException,
   NotFoundException,
   BadRequestException,
+  Logger,
 } from '@nestjs/common';
 import { and, eq, ne, sql } from 'drizzle-orm';
 import { db } from 'src/db/index';
@@ -13,6 +14,7 @@ import { UpdateRoleDto } from './dto/update-role.dto';
 
 @Injectable()
 export class RolesService {
+  private readonly logger = new Logger(RolesService.name);
   async create(createRoleDto: CreateRoleDto) {
     try {
       const rawName = createRoleDto.name?.trim();
@@ -44,6 +46,7 @@ export class RolesService {
         .returning();
       return role;
     } catch (e: any) {
+      this.logger.error('Failed to create role:', e);
       if (e.code === '23505')
         throw new ConflictException('Role name already exists');
       throw new InternalServerErrorException('Failed to create role');
@@ -117,6 +120,7 @@ export class RolesService {
         .returning();
       return updated;
     } catch (e: any) {
+      this.logger.error('Failed to update role:', e);
       if (e.code === '23505')
         throw new ConflictException('Role name already exists');
       throw new InternalServerErrorException('Failed to update role');

@@ -1,4 +1,11 @@
-import { Injectable, Inject, NotFoundException, Logger, InternalServerErrorException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  Inject,
+  NotFoundException,
+  Logger,
+  InternalServerErrorException,
+  BadRequestException,
+} from '@nestjs/common';
 import { db } from 'src/db/index';
 import { CreateResourceDto } from './dto/create-resource.dto';
 import { zuvyResources, zuvyPermissions } from 'drizzle/schema';
@@ -19,18 +26,33 @@ export class ResourcesService {
 
       // Create default permissions for this resource
       const defaultPermissions = [
-        { name: permissions.CREATE, resourcesId: resource.id, description: `Create ${createResourceDto.name}` },
-        { name: permissions.READ, resourcesId: resource.id, description: `Read ${createResourceDto.name}` },
-        { name: permissions.EDIT, resourcesId: resource.id, description: `Update ${createResourceDto.name}` },
-        { name: permissions.DELETE, resourcesId: resource.id, description: `Delete ${createResourceDto.name}` },
+        {
+          name: permissions.CREATE,
+          resourcesId: resource.id,
+          description: `Create ${createResourceDto.name}`,
+        },
+        {
+          name: permissions.READ,
+          resourcesId: resource.id,
+          description: `Read ${createResourceDto.name}`,
+        },
+        {
+          name: permissions.EDIT,
+          resourcesId: resource.id,
+          description: `Update ${createResourceDto.name}`,
+        },
+        {
+          name: permissions.DELETE,
+          resourcesId: resource.id,
+          description: `Delete ${createResourceDto.name}`,
+        },
       ];
 
-      await db
-        .insert(zuvyPermissions)
-        .values(defaultPermissions);
+      await db.insert(zuvyPermissions).values(defaultPermissions);
 
       return resource;
     } catch (error) {
+      this.logger.error('Failed to create resource:', error);
       throw error;
     }
   }
@@ -46,9 +68,10 @@ export class ResourcesService {
         status: 'success',
         message: 'Resources fetched successfully',
         code: 200,
-        data: resources
+        data: resources,
       };
     } catch (error) {
+      this.logger.error('Failed to retrieve resources:', error);
       throw new InternalServerErrorException('Failed to retrieve resources');
     }
   }
@@ -65,14 +88,14 @@ export class ResourcesService {
       }
 
       return resource;
-    } catch (error) {  
+    } catch (error) {
+      this.logger.error(`Failed to retrieve resource with ID ${id}:`, error);
       throw error;
     }
   }
 
   async updateResource(id: number, updateData: Partial<CreateResourceDto>) {
     try {
-
       const [resource] = await db
         .update(zuvyResources)
         .set(updateData)
@@ -85,6 +108,7 @@ export class ResourcesService {
 
       return resource;
     } catch (error) {
+      this.logger.error(`Failed to update resource with ID ${id}:`, error);
       throw error;
     }
   }
@@ -97,7 +121,9 @@ export class ResourcesService {
         .from(zuvyPermissions)
         .where(eq(zuvyPermissions.resourcesId, id));
       if (associatedPermissions.length > 0) {
-        throw new BadRequestException('Cannot delete resource with associated permissions. Please delete associated permissions first.');
+        throw new BadRequestException(
+          'Cannot delete resource with associated permissions. Please delete associated permissions first.',
+        );
       }
       // If there are no associated permissions, the resource is deleted successfully
       const deletedResource = await db
@@ -105,10 +131,15 @@ export class ResourcesService {
         .where(eq(zuvyResources.id, id));
       if (deletedResource.rowCount === 0) {
         throw new NotFoundException(`Resource with ID ${id} not found`);
-      } 
+      }
       // Resource deleted successfully then return the resurce details
-      return { message: 'Resource deleted successfully', code: 200, status: 'success'};
+      return {
+        message: 'Resource deleted successfully',
+        code: 200,
+        status: 'success',
+      };
     } catch (error) {
+      this.logger.error(`Failed to delete resource with ID ${id}:`, error);
       throw error;
     }
   }

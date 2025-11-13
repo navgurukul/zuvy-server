@@ -167,9 +167,10 @@ export class UsersController {
     description: 'Internal server error',
   })
   @ApiBearerAuth('JWT-auth')
-  async getAllUserRoles(): Promise<any> {
+  async getAllUserRoles(@Req() req): Promise<any> {
     try {
-      const result = await this.usersService.getAllUserRoles();
+      const roleName = req.user[0]?.roles;
+      const result = await this.usersService.getAllUserRoles(roleName);
       return result;
     } catch (error) {
       throw new HttpException(
