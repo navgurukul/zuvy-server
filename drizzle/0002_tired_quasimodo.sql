@@ -505,3 +505,13 @@ CREATE TABLE "student_assessment" (
     UNIQUE ("student_id", "ai_assessment_id")
 );
 
+CREATE TABLE "main"."llm_usage" (
+  "id" serial PRIMARY KEY,
+  "ai_assessment_id" integer NOT NULL REFERENCES "main"."ai_assessment"("id") ON DELETE CASCADE,
+  "provider" varchar(50) NOT NULL,
+  "prompt" text NOT NULL,
+  "response_text" text NOT NULL,
+  "latency_ms" integer NOT NULL,
+  "usage" jsonb,
+  "created_at" timestamp DEFAULT now() NOT NULL
+);
