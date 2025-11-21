@@ -548,8 +548,7 @@ public class Main {
           if (arr[i] != null && arr[i].length() == 1) {
               sb.append(arr[i]);
           } else {
-              // Use (char)34 to append a double-quote character to avoid escaping issues
-              sb.append((char)34).append(arr[i]).append((char)34);
+              sb.append("\\"").append(arr[i]).append("\\"");
           }
           if (i != arr.length - 1) {
               sb.append(",");
@@ -576,8 +575,7 @@ public class Main {
       int count = 0;
       for (Map.Entry<?, ?> entry : map.entrySet()) {
           if (count > 0) sb.append(",");
-          // Use (char)34 for quoting keys to avoid escape-mangling in the template string
-          sb.append((char)34).append(entry.getKey()).append((char)34).append(":");
+          sb.append("\\"").append(entry.getKey()).append("\\":");
           sb.append(formatArrayNoSpaces(entry.getValue()));
           count++;
       }
@@ -666,7 +664,7 @@ public class Main {
       return null;
     }
     
-    if ((value.startsWith("\\"") && value.endsWith("\\")) ||
+    if ((value.startsWith("\\"") && value.endsWith("\\"")) ||
         (value.startsWith("'") && value.endsWith("'"))) {
       return value.substring(1, value.length() - 1);
     } else {
@@ -804,7 +802,7 @@ ${!['arrayOfnum', 'arrayOfStr', 'jsonType', 'object'].includes(returnType) ? 'pr
 }
 
 // generate c++ template for the given function name and parameters
-async function generateCppTemplate(
+async function generateCppTemplateOld(
   functionName,
   parameters,
   returnType = 'void',
@@ -932,6 +930,516 @@ int main() {${inputHandling}
 }`;
     return [null, template];
   } catch (error) {
+    return [error, null];
+  }
+}
+
+// New generateCppTemplate: safer signatures, const-ref containers, string-safe returns
+export async function generateCppTemplate(
+  functionName: string,
+  parameters: Array<{ parameterName: string; parameterType: string }>,
+  returnType = 'void',
+) {
+  try {
+    const hasTypeMappings =
+      typeof typeMappings !== 'undefined' && !!typeMappings.cpp;
+
+    // Helper: safe signature for a param
+    function cppParamSignatureFor(paramType: string, paramName: string) {
+      const t = paramType;
+      switch (t) {
+        case 'int':
+        case 'long':
+          return `long long ${paramName}`;
+        case 'float':
+        case 'double':
+          return `double ${paramName}`;
+        case 'char':
+          return `char ${paramName}`;
+        case 'bool':
+          return `bool ${paramName}`;
+        case 'string':
+          return `std::string ${paramName}`;
+        case 'arrayOfnum':
+          return `const std::vector<long long>& ${paramName}`;
+        case 'arrayOfDouble':
+          return `const std::vector<double>& ${paramName}`;
+        case 'arrayOfStr':
+          return `const std::vector<std::string>& ${paramName}`;
+        case 'nestedArrayOfnum':
+        case 'arrayOfArray':
+        case 'matrix':
+          return `const std::vector<std::vector<long long>>& ${paramName}`;
+        case 'pair':
+          return `const std::pair<long long,long long>& ${paramName}`;
+        case 'edgeList':
+        case 'graph':
+        case 'tree':
+          return `const std::vector<std::vector<int>>& ${paramName}`;
+        case 'map':
+        case 'object':
+        case 'jsonType':
+          return `const std::map<std::string, Variant>& ${paramName}`;
+        default:
+          // fallback to mapping if present
+          if (
+            hasTypeMappings &&
+            typeMappings.cpp &&
+            typeMappings.cpp[paramType]
+          ) {
+            const mapped = typeMappings.cpp[paramType];
+            // use const-ref for containers
+            if (mapped.includes('vector') || mapped.includes('map')) {
+              return `const ${mapped}& ${paramName}`;
+            }
+            return `${mapped} ${paramName}`;
+          }
+          return `std::string ${paramName}`;
+      }
+    }
+
+    // Determine a safe return type for the signature. Prefer scalar mappings,
+    // but default to std::string for complex/array returns to keep printing simple.
+    let returnTypeMapped: string;
+    if (hasTypeMappings && typeMappings.cpp && typeMappings.cpp[returnType]) {
+      const rt = typeMappings.cpp[returnType];
+      if (
+        rt.includes('vector') ||
+        rt.includes('map') ||
+        rt.includes('Variant') ||
+        rt.includes('std::vector')
+      ) {
+        returnTypeMapped = 'std::string';
+      } else {
+        returnTypeMapped = rt;
+      }
+    } else {
+      returnTypeMapped = returnType === 'void' ? 'void' : 'std::string';
+    }
+
+    // Build the signature using helper
+    const paramSigParts = parameters.map((p) =>
+      cppParamSignatureFor(p.parameterType, p.parameterName),
+    );
+    const funcSignature = `${returnTypeMapped} ${functionName}(${paramSigParts.join(', ')})`;
+
+    // Input readers: raw_<name>
+    const inputReaders = parameters
+      .map((p) => {
+        const name = p.parameterName;
+        return `  // parameter: ${name}
+  string raw_${name};
+  if (lineIndex < (int)allLines.size()) {
+    raw_${name} = allLines[lineIndex++];
+  } else {
+    if (tokenPos < (int)tokens.size()) raw_${name} = tokens[tokenPos++]; else raw_${name} = "";
+  }
+  raw_${name} = trim(raw_${name});`;
+      })
+      .join('\n\n');
+
+    // Conversion lines: create typed variables that match the signature helper types
+    const conversionLines = parameters
+      .map((p) => {
+        const name = p.parameterName;
+        const t = p.parameterType;
+        if (t === 'int' || t === 'long') {
+          return `  long long ${name} = 0;
+  {
+    Variant v = parseJavaStrictFormat(raw_${name});
+    if (v.isInt()) ${name} = v.asInt();
+    else if (v.isDouble()) ${name} = (long long)v.asDouble();
+    else if (!raw_${name}.empty()) try { ${name} = stoll(raw_${name}); } catch(...) {}
+  }`;
+        } else if (t === 'float' || t === 'double') {
+          return `  double ${name} = 0.0;
+  {
+    Variant v = parseJavaStrictFormat(raw_${name});
+    if (v.isDouble()) ${name} = v.asDouble();
+    else if (v.isInt()) ${name} = (double)v.asInt();
+    else if (!raw_${name}.empty()) try { ${name} = stod(raw_${name}); } catch(...) {}
+  }`;
+        } else if (t === 'char') {
+          return `  char ${name} = '\\0';
+  {
+    Variant v = parseJavaStrictFormat(raw_${name});
+    if (v.isString() && !v.asString().empty()) ${name} = v.asString()[0];
+    else if (!raw_${name}.empty()) ${name} = raw_${name}[0];
+  }`;
+        } else if (t === 'bool') {
+          return `  bool ${name} = false;
+  {
+    Variant v = parseJavaStrictFormat(raw_${name});
+    if (v.isBool()) ${name} = v.asBool();
+    else if (v.isInt()) ${name} = v.asInt() != 0;
+    else { string low = raw_${name}; transform(low.begin(), low.end(), low.begin(), ::tolower); if (low=="true" || low=="1") ${name}=true; }
+  }`;
+        } else if (t === 'string') {
+          return `  string ${name} = "";
+  {
+    Variant v = parseJavaStrictFormat(raw_${name});
+    if (v.isString()) ${name} = v.asString();
+    else if (v.isInt()) ${name} = to_string(v.asInt());
+    else if (v.isDouble()) ${name} = to_string(v.asDouble());
+    else ${name} = raw_${name};
+  }`;
+        } else if (t === 'arrayOfnum') {
+          return `  vector<long long> ${name};
+  {
+    Variant v = parseJavaStrictFormat(raw_${name});
+    if (v.isArray()) {
+      for (const Variant &vv : v.asArray()) {
+        if (vv.isInt()) ${name}.push_back(vv.asInt());
+        else if (vv.isDouble()) ${name}.push_back((long long)vv.asDouble());
+      }
+    } else if (!raw_${name}.empty()) {
+      auto parts = splitOnDelimiters(raw_${name});
+      for (auto &s : parts) try { ${name}.push_back(stoll(s)); } catch(...) {}
+    }
+  }`;
+        } else if (t === 'arrayOfDouble') {
+          return `  vector<double> ${name};
+  {
+    Variant v = parseJavaStrictFormat(raw_${name});
+    if (v.isArray()) {
+      for (const Variant &vv : v.asArray()) {
+        if (vv.isDouble()) ${name}.push_back(vv.asDouble());
+        else if (vv.isInt()) ${name}.push_back((double)vv.asInt());
+      }
+    } else if (!raw_${name}.empty()) {
+      auto parts = splitOnDelimiters(raw_${name});
+      for (auto &s : parts) try { ${name}.push_back(stod(s)); } catch(...) {}
+    }
+  }`;
+        } else if (t === 'arrayOfStr') {
+          return `  vector<string> ${name};
+  {
+    Variant v = parseJavaStrictFormat(raw_${name});
+    if (v.isArray()) {
+      for (const Variant &vv : v.asArray()) {
+        if (vv.isString()) ${name}.push_back(vv.asString());
+        else if (vv.isInt()) ${name}.push_back(to_string(vv.asInt()));
+      }
+    } else if (!raw_${name}.empty()) {
+      ${name} = splitOnDelimiters(raw_${name});
+    }
+  }`;
+        } else if (
+          t === 'nestedArrayOfnum' ||
+          t === 'arrayOfArray' ||
+          t === 'matrix'
+        ) {
+          return `  vector<vector<long long>> ${name};
+  {
+    Variant v = parseJavaStrictFormat(raw_${name});
+    if (v.isArray()) {
+      for (const Variant &row : v.asArray()) {
+        if (row.isArray()) {
+          vector<long long> r;
+          for (const Variant &vv : row.asArray()) {
+            if (vv.isInt()) r.push_back(vv.asInt());
+            else if (vv.isDouble()) r.push_back((long long)vv.asDouble());
+          }
+          ${name}.push_back(r);
+        }
+      }
+    } else {
+      auto rows = splitBySemicolon(raw_${name});
+      for (auto &r : rows) {
+        auto parts = splitOnDelimiters(r);
+        vector<long long> rr; for (auto &s : parts) try { rr.push_back(stoll(s)); } catch(...) {}
+        if (!rr.empty()) ${name}.push_back(rr);
+      }
+    }
+  }`;
+        } else if (t === 'pair') {
+          return `  pair<long long,long long> ${name} = {0,0};
+  {
+    Variant v = parseJavaStrictFormat(raw_${name});
+    if (v.isArray()) { auto arr = v.asArray(); if (arr.size()>=2) { long long a = arr[0].isInt()?arr[0].asInt():0; long long b = arr[1].isInt()?arr[1].asInt():0; ${name}={a,b}; } }
+    else { auto parts = splitOnDelimiters(raw_${name}); if (parts.size()>=2) try{ ${name}.first = stoll(parts[0]); ${name}.second = stoll(parts[1]); } catch(...){} }
+  }`;
+        } else if (t === 'edgeList' || t === 'graph' || t === 'tree') {
+          return `  vector<vector<int>> ${name};
+  {
+    Variant v = parseJavaStrictFormat(raw_${name});
+    if (v.isArray()) {
+      for (const Variant &elem : v.asArray()) if (elem.isArray()) { auto arr = elem.asArray(); if (arr.size()>=2 && arr[0].isInt() && arr[1].isInt()) ${name}.push_back({(int)arr[0].asInt(),(int)arr[1].asInt()}); }
+    } else { auto parts = splitOnDelimiters(raw_${name}); vector<int> nums; for (auto &s: parts) try { nums.push_back((int)stoll(s)); } catch(...){} for (size_t i=0;i+1<nums.size(); i+=2) ${name}.push_back({nums[i], nums[i+1]}); }
+  }`;
+        } else if (t === 'map' || t === 'jsonType' || t === 'object') {
+          return `  map<string, Variant> ${name};
+  {
+    Variant v = parseJavaStrictFormat(raw_${name});
+    if (v.isMap()) ${name} = v.asMap();
+  }`;
+        } else {
+          // fallback string
+          return `  string ${name} = "";
+  {
+    Variant v = parseJavaStrictFormat(raw_${name});
+    if (v.isString()) ${name} = v.asString();
+    else if (v.isInt()) ${name} = to_string(v.asInt());
+    else if (v.isDouble()) ${name} = to_string(v.asDouble());
+    else ${name} = raw_${name};
+  }`;
+        }
+      })
+      .join('\n\n');
+
+    // Build final template using single-line markers
+    const template = `#include <bits/stdc++.h>
+using namespace std;
+
+/* ----- Begin shared parser / Variant / serializer code ----- */
+/* Variant, parse, and serialization helpers (same as earlier template)
+   (Forward declarations included) */
+
+struct Variant {
+  enum T {NUL, INT, DBL, STR, ARR, MAP, BOOL} t;
+  long long i; double d; string s; vector<Variant> a; map<string,Variant> m; bool b;
+  Variant(): t(NUL), i(0), d(0.0), s(\"\"), a(), m(), b(false) {}
+  static Variant makeInt(long long v){ Variant x; x.t=INT; x.i=v; return x; }
+  static Variant makeDouble(double v){ Variant x; x.t=DBL; x.d=v; return x; }
+  static Variant makeStr(const string &v){ Variant x; x.t=STR; x.s=v; return x; }
+  static Variant makeArr(const vector<Variant>&v){ Variant x; x.t=ARR; x.a=v; return x; }
+  static Variant makeMap(const map<string,Variant>&m_){ Variant x; x.t=MAP; x.m=m_; return x; }
+  static Variant makeBool(bool vv){ Variant x; x.t=BOOL; x.b=vv; return x; }
+  bool isNull() const { return t==NUL; }
+  bool isInt() const { return t==INT; }
+  bool isDouble() const { return t==DBL; }
+  bool isString() const { return t==STR; }
+  bool isArray() const { return t==ARR; }
+  bool isMap() const { return t==MAP; }
+  bool isBool() const { return t==BOOL; }
+  long long asInt() const { return i; }
+  double asDouble() const { return d; }
+  string asString() const { return s; }
+  const vector<Variant>& asArray() const { return a; }
+  const map<string,Variant>& asMap() const { return m; }
+  bool asBool() const { return b; }
+};
+
+static inline string trim(const string &s) {
+  size_t a = s.find_first_not_of(\" \\t\\r\\n\");
+  if (a==string::npos) return \"\";
+  size_t b = s.find_last_not_of(\" \\t\\r\\n\");
+  return s.substr(a, b - a + 1);
+}
+
+static vector<string> splitTopLevel(const string &input) {
+  vector<string> parts; string cur; int level=0;
+  for (size_t i=0;i<input.size();++i) {
+    char c = input[i];
+    if (c=='[' || c=='{') { level++; cur.push_back(c); }
+    else if (c==']' || c=='}') { level--; cur.push_back(c); }
+    else if (c==',' && level==0) { if(!cur.empty()) { parts.push_back(trim(cur)); cur.clear(); } }
+    else cur.push_back(c);
+  }
+  if (!cur.empty()) parts.push_back(trim(cur));
+  return parts;
+}
+
+static vector<string> splitOnDelimiters(const string &s) {
+  vector<string> out; string cur;
+  for (size_t i=0;i<s.size();++i) {
+    char c = s[i];
+    if (isspace((unsigned char)c) || c==',') {
+      if (!cur.empty()) { out.push_back(cur); cur.clear(); }
+    } else cur.push_back(c);
+  }
+  if (!cur.empty()) out.push_back(cur);
+  return out;
+}
+
+static vector<string> splitBySemicolon(const string &s) {
+  vector<string> out; string cur;
+  for (size_t i=0;i<s.size();++i) {
+    char c = s[i];
+    if (c==';') { out.push_back(trim(cur)); cur.clear(); }
+    else cur.push_back(c);
+  }
+  if (!cur.empty()) out.push_back(trim(cur));
+  return out;
+}
+
+static string unquote(const string &s) {
+  if (s.size()>=2 && ((s.front()=='\"' && s.back()=='\"') || (s.front()=='\\'' && s.back()=='\\''))) return s.substr(1,s.size()-2);
+  return s;
+}
+
+static Variant parseValue(const string &raw) {
+  string v = trim(raw);
+  if (v.empty() || v == \"null\") return Variant();
+  if (v.size()>=2 && ((v.front()=='\"' && v.back()=='\"') || (v.front()== '\\'' && v.back()== '\\''))) {
+    return Variant::makeStr(unquote(v));
+  }
+  string low=v; transform(low.begin(), low.end(), low.begin(), ::tolower);
+  if (low==\"true\") return Variant::makeBool(true);
+  if (low==\"false\") return Variant::makeBool(false);
+  bool isNum=true; int dots=0;
+  for (char c : v) { if (!( (c>='0' && c<='9') || c=='-' || c=='+' || c=='.' || c=='e' || c=='E')) { isNum=false; break; } if (c=='.') dots++; }
+  if (isNum && dots==0) { try { long long x = stoll(v); return Variant::makeInt(x); } catch(...) {} }
+  if (isNum) { try { double x = stod(v); return Variant::makeDouble(x); } catch(...) {} }
+  return Variant::makeStr(v);
+}
+
+// forward decl for parseMap used by parseArray
+static Variant parseMap(const string &s);
+
+static Variant parseArray(const string &s) {
+  string inner = s;
+  if (!inner.empty() && inner.front()=='[' && inner.back()==']') inner = inner.substr(1, inner.size()-2);
+  vector<string> parts = splitTopLevel(inner);
+  vector<Variant> out;
+  for (auto &p : parts) {
+    string t = trim(p);
+    if (t.empty()) { out.push_back(Variant()); continue; }
+    if (t.front()=='[') out.push_back(parseArray(t));
+    else if (t.front()=='{') { Variant m = parseMap(t); out.push_back(m); }
+    else out.push_back(parseValue(t));
+  }
+  return Variant::makeArr(out);
+}
+
+static Variant parseMap(const string &s) {
+  string inner = s;
+  if (!inner.empty() && inner.front()=='{' && inner.back()=='}') inner = inner.substr(1, inner.size()-2);
+  vector<string> parts = splitTopLevel(inner);
+  map<string,Variant> mp;
+  for (auto &p : parts) {
+    size_t col = p.find(':');
+    if (col==string::npos) continue;
+    string key = trim(p.substr(0,col));
+    string val = trim(p.substr(col+1));
+    string k = unquote(key);
+    if (!val.empty() && val.front()=='[') mp[k] = parseArray(val);
+    else if (!val.empty() && val.front()=='{') mp[k] = parseMap(val);
+    else mp[k] = parseValue(val);
+  }
+  return Variant::makeMap(mp);
+}
+
+static Variant parseJavaStrictFormat(const string &inputRaw) {
+  string s = trim(inputRaw);
+  if (s.empty()) return Variant();
+  if (s.front()=='[' && s.back()==']') return parseArray(s);
+  if (s.front()=='{' && s.back()=='}') return parseMap(s);
+  vector<string> parts = splitOnDelimiters(s);
+  if (parts.size() > 1) {
+    vector<Variant> arr;
+    for (auto &t : parts) arr.push_back(parseValue(t));
+    return Variant::makeArr(arr);
+  }
+  return parseValue(s);
+}
+
+static string formatVariant(const Variant &v);
+static string formatStringForOutput(const string &s) {
+  if ((int)s.size() == 1) return s;
+  return string(\"\\\"\") + s + string(\"\\\"\");
+}
+static string formatArrayNoSpaces(const Variant &v) {
+  if (v.isArray()) {
+    string out = \"[\";
+    const auto &arr = v.asArray();
+    for (size_t i=0;i<arr.size();++i) { if (i) out += \",\"; out += formatVariant(arr[i]); }
+    out += \"]\"; return out;
+  } else if (v.isMap()) {
+    string out = \"{\"; const auto &mp = v.asMap(); size_t cnt=0;
+    for (const auto &kv : mp) { if (cnt++) out += \",\"; out += '\"' + kv.first + '\"' + \":\" + formatVariant(kv.second); }
+    out += \"}\"; return out;
+  } else return formatVariant(v);
+}
+static string formatVariant(const Variant &v) {
+  if (v.isNull()) return string(\"null\");
+  if (v.isInt()) return to_string(v.asInt());
+  if (v.isDouble()) { ostringstream oss; oss<<v.asDouble(); return oss.str(); }
+  if (v.isBool()) return v.asBool() ? string(\"true\") : string(\"false\");
+  if (v.isString()) return formatStringForOutput(v.asString());
+  if (v.isArray() || v.isMap()) return formatArrayNoSpaces(v);
+  return string(\"null\");
+}
+static vector<string> readAllStdinLines() { vector<string> lines; string line; while (getline(cin, line)) lines.push_back(trim(line)); return lines; }
+static vector<string> tokenizeAll(const vector<string>& lines) { vector<string> out; for (auto &ln : lines) { auto parts = splitOnDelimiters(ln); for (auto &p : parts) if (!p.empty()) out.push_back(p); } return out; }
+
+/* ----- End shared code ----- */
+
+/* ===== USER FUNCTION: ONLY EDIT THE BODY BETWEEN THE MARKERS =====
+   The frontend should extract the section between
+   "// USER CODE START" and "// USER CODE END" and present
+   it to the user in the editor. When the user submits their code,
+   inject their body back into the full template before sending to judge.
+*/
+
+${funcSignature} {
+  // USER CODE START
+  // Implement function logic here.
+  // The user should only edit code inside this block.
+  //
+  // Example:
+  //   long long sum = 0;
+  //   for (int i = 1; i <= n; ++i) sum += i;
+  //   return sum;
+  //
+  // USER CODE END
+}
+
+/* ===== End user-editable function ===== */
+
+/* ---------- main: parse inputs, call user function and print ---------- */
+int main() {
+  ios::sync_with_stdio(false);
+  cin.tie(nullptr);
+
+  vector<string> allLines = readAllStdinLines();
+  vector<string> tokens = tokenizeAll(allLines);
+  int lineIndex = 0, tokenPos = 0;
+
+${inputReaders}
+
+// conversions
+${conversionLines}
+
+// call function and print result
+${
+  returnTypeMapped === 'void'
+    ? `${functionName}(${parameters.map((p) => p.parameterName).join(', ')});`
+    : `auto result = ${functionName}(${parameters.map((p) => p.parameterName).join(', ')});\n  // print result for common return types\n  ${
+        returnTypeMapped === 'std::string' || returnTypeMapped === 'string'
+          ? `cout << result;`
+          : returnTypeMapped === 'long long' ||
+              returnTypeMapped === 'int' ||
+              returnTypeMapped === 'double' ||
+              returnTypeMapped === 'float'
+            ? `cout << result;`
+            : `// Fallback: attempt to print with serializer if user returns Variant\n  cout << result;`
+      }`
+}
+
+  return 0;
+}
+`;
+
+    // Inject the computed pieces into the template string
+    const finalSource = template
+      .replace('${funcSignature}', funcSignature)
+      .replace('${inputReaders}', inputReaders)
+      .replace('${conversionLines}', conversionLines)
+      .replace(
+        /\$\{parameters\.map\(p=>p\.parameterName\)\.join\(', '\)\}/g,
+        parameters.map((p) => p.parameterName).join(', '),
+      )
+      .replace(/\$\{functionName\}/g, functionName)
+      .replace(/\$\{returnTypeMapped\}/g, returnTypeMapped)
+      .replace(
+        /\$\{parameters\.map\(p=>p\.parameterName\)\.join\(', '\)\}/g,
+        parameters.map((p) => p.parameterName).join(', '),
+      );
+
+    return [null, finalSource];
+  } catch (error) {
+    console.error('generateCppTemplate error:', error);
     return [error, null];
   }
 }
