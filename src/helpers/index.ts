@@ -548,8 +548,7 @@ public class Main {
           if (arr[i] != null && arr[i].length() == 1) {
               sb.append(arr[i]);
           } else {
-              // Use (char)34 to append a double-quote character to avoid escaping issues
-              sb.append((char)34).append(arr[i]).append((char)34);
+              sb.append("\\"").append(arr[i]).append("\\"");
           }
           if (i != arr.length - 1) {
               sb.append(",");
@@ -576,8 +575,7 @@ public class Main {
       int count = 0;
       for (Map.Entry<?, ?> entry : map.entrySet()) {
           if (count > 0) sb.append(",");
-          // Use (char)34 for quoting keys to avoid escape-mangling in the template string
-          sb.append((char)34).append(entry.getKey()).append((char)34).append(":");
+          sb.append("\\"").append(entry.getKey()).append("\\":");
           sb.append(formatArrayNoSpaces(entry.getValue()));
           count++;
       }
@@ -666,7 +664,7 @@ public class Main {
       return null;
     }
     
-    if ((value.startsWith("\\"") && value.endsWith("\\")) ||
+    if ((value.startsWith("\\"") && value.endsWith("\\"")) ||
         (value.startsWith("'") && value.endsWith("'"))) {
       return value.substring(1, value.length() - 1);
     } else {
