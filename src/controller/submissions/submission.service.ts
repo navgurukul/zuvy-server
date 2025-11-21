@@ -62,25 +62,46 @@ export class SubmissionService {
     roleName,
     bootcampId: number,
     searchProblem: string,
-    orderBy?: 'name' | 'email' | 'percentage',
+    orderBy?: 'title',
     orderDirection?: 'asc' | 'desc',
     searchTerm?: string,
   ) {
     try {
       const topicId = 3;
 
+      // -------------------------
+      // Order validation (ERROR)
+      // -------------------------
+      if ((orderBy && !orderDirection) || (!orderBy && orderDirection)) {
+        // Return an error-like object so controller can handle it consistently.
+        return {
+          status: 'error',
+          code: 400,
+          message: 'Both orderBy and orderDirection are required together',
+        };
+      }
       const trackingData = await db.query.zuvyCourseModules.findMany({
-        where: (courseModules, { eq, and }) =>
-          and(eq(courseModules.bootcampId, bootcampId)),
+        where: (courseModules, { eq }) =>
+          eq(courseModules.bootcampId, bootcampId),
+
         with: {
           moduleChapterData: {
-            columns: {
-              id: true,
+            columns: { id: true, codingQuestions: true },
+
+            // TITLE-BASED SORTING (if orderDirection not provided, default asc)
+            orderBy: (chapter, { asc, desc, sql }) => {
+              const titleColumn = sql`
+              (SELECT cq.title 
+               FROM main.zuvy_coding_questions AS cq
+               WHERE cq.id = ${chapter.codingQuestions})
+            `;
+              return [
+                orderDirection === 'desc'
+                  ? desc(titleColumn)
+                  : asc(titleColumn),
+              ];
             },
-            where: (
-              moduleChapter: { topicId: any; codingQuestions: any },
-              { eq, and, sql }: any,
-            ) =>
+            where: (moduleChapter, { eq, and, sql }) =>
               and(
                 eq(moduleChapter.topicId, topicId),
                 searchProblem
@@ -96,70 +117,81 @@ export class SubmissionService {
               ),
             with: {
               chapterTrackingDetails: {
-                columns: {
-                  userId: true,
-                  completedAt: true,
-                },
+                columns: { userId: true, completedAt: true },
                 with: {
-                  user: {
-                    columns: {
-                      name: true,
-                      email: true,
-                      id: true,
-                    },
-                  },
+                  user: { columns: { name: true, email: true, id: true } },
                 },
               },
               codingQuestionDetails: {
-                columns: {
-                  id: true,
-                  title: true,
-                },
+                columns: { id: true, title: true },
               },
             },
           },
         },
       });
-
-      // Query to get the count of total students enrolled in the bootcamp
+      // If DB returned nothing
+      if (!trackingData || trackingData.length === 0) {
+        return {
+          status: 'success',
+          code: 200,
+          trackingData: [],
+          totalStudents: 0,
+        };
+      }
+      // Count students
       const zuvyBatchEnrollmentsCount = await db
         .select({
           count: sql<number>`cast(count(${zuvyBatchEnrollments.id}) as int)`,
         })
         .from(zuvyBatchEnrollments)
         .where(
-          sql`${zuvyBatchEnrollments.bootcampId} = ${bootcampId} AND ${zuvyBatchEnrollments.batchId} IS NOT NULL`,
+          sql`${zuvyBatchEnrollments.bootcampId} = ${bootcampId} 
+          AND ${zuvyBatchEnrollments.batchId} IS NOT NULL`,
         );
-
-      // Processing tracking data to add `submitStudents` field and expose completedAt & user
+      // Add submission count & submissions list
       trackingData.forEach((course: any) => {
-        course.moduleChapterData.forEach(
-          (chapterTracking: { [x: string]: any }) => {
-            const details = Array.isArray(
-              chapterTracking['chapterTrackingDetails'],
-            )
-              ? chapterTracking['chapterTrackingDetails']
-              : [];
-            chapterTracking['submitStudents'] = details.length;
-            // Expose a concise list of submissions with completedAt and user info
-            chapterTracking['submissions'] = details.map((d: any) => ({
-              userId: d.userId ?? d.user?.id,
-              name: d.user?.name ?? null,
-              email: d.user?.email ?? null,
-              completedAt: d.completedAt ?? null,
-            }));
-            // keep chapterTrackingDetails if needed elsewhere, but do not leak internal structures
-          },
-        );
+        course.moduleChapterData.forEach((chapter: any) => {
+          const details = Array.isArray(chapter.chapterTrackingDetails)
+            ? chapter.chapterTrackingDetails
+            : [];
+          chapter.submitStudents = details.length;
+
+          chapter.submissions = details.map((d: any) => ({
+            userId: d.userId ?? d.user?.id,
+            name: d.user?.name ?? null,
+            email: d.user?.email ?? null,
+            completedAt: d.completedAt ?? null,
+          }));
+          // remove raw details if you don't want to return them
+          delete chapter.chapterTrackingDetails;
+        });
       });
+      // Student-level filter: name/email
+      let filteredTrackingData = trackingData;
+      if (searchTerm) {
+        const lower = searchTerm.toLowerCase();
+        filteredTrackingData = trackingData
+          .map((course: any) => {
+            const filteredChapters = course.moduleChapterData
+              .map((chapter: any) => {
+                const matched = chapter.submissions.filter(
+                  (s: any) =>
+                    (s.name && s.name.toLowerCase().includes(lower)) ||
+                    (s.email && s.email.toLowerCase().includes(lower)),
+                );
 
-      // Check if data exists and return result
-      if (!trackingData || trackingData.length === 0) {
-        return [];
+                return matched.length > 0
+                  ? { ...chapter, submissions: matched }
+                  : null;
+              })
+              .filter(Boolean);
+
+            return filteredChapters.length > 0
+              ? { ...course, moduleChapterData: filteredChapters }
+              : null;
+          })
+          .filter(Boolean);
       }
-
-      const totalStudents = zuvyBatchEnrollmentsCount[0]?.count || 0;
-
       const targetPermissions = [
         ResourceList.submission.read,
         ResourceList.submission.download,
@@ -169,12 +201,13 @@ export class SubmissionService {
         roleName,
         targetPermissions,
       );
-
       return {
-        trackingData: trackingData.filter(
+        status: 'success',
+        code: 200,
+        trackingData: filteredTrackingData.filter(
           (course: any) => course.moduleChapterData.length > 0,
         ),
-        totalStudents: totalStudents,
+        totalStudents: zuvyBatchEnrollmentsCount[0]?.count || 0,
         ...grantedPermissions,
       };
     } catch (err) {
@@ -821,13 +854,13 @@ export class SubmissionService {
     roleName,
     bootcampId: number,
     searchProject: string,
-    orderBy?: 'submittedDate' | 'name' | 'email',
+    orderBy?: 'title',
     orderDirection?: 'asc' | 'desc',
     submittedDateStart?: string,
     submittedDateEnd?: string,
   ) {
     try {
-      // Build date filter for submittedDate
+      // ===== DATE FILTER =====
       let dateFilter = sql`TRUE`;
       if (submittedDateStart && submittedDateEnd) {
         dateFilter = sql`projectData.submitted_date BETWEEN ${submittedDateStart} AND ${submittedDateEnd}`;
@@ -837,11 +870,26 @@ export class SubmissionService {
         dateFilter = sql`projectData.submitted_date <= ${submittedDateEnd}`;
       }
 
-      // Build order clause
-      let orderClause = (courseModule: { order: any }, { asc }: any) =>
-        asc(courseModule.order);
+      // ===== SORT VALIDATION =====
+      if (!orderBy && orderDirection) {
+        return {
+          status: 'error',
+          code: 400,
+          message: 'You cannot pass orderDirection without orderBy field.',
+        };
+      }
 
-      const data = await db.query.zuvyBootcamps.findFirst({
+      if (orderBy && !orderDirection) {
+        return {
+          status: 'error',
+          code: 400,
+          message:
+            'orderDirection is required when orderBy is provided. Please use "asc" or "desc".',
+        };
+      }
+
+      // ===== FETCH DATA (DRIZZLE SORTING HERE) =====
+      const data: any = await db.query.zuvyBootcamps.findFirst({
         columns: {
           id: true,
           name: true,
@@ -849,25 +897,37 @@ export class SubmissionService {
         where: (bootcamp, { eq }) => eq(bootcamp.id, bootcampId),
         with: {
           bootcampModules: {
-            columns: {
-              id: true,
-            },
+            columns: { id: true },
             where: (courseModule: { typeId: any }, { sql }: any) =>
               sql`${courseModule.typeId} = 2`,
-            orderBy: orderClause,
+
+            // Module sorting remains same
+            orderBy: (courseModule, { asc }) => asc(courseModule.order),
+
             with: {
               projectData: {
                 columns: {
                   id: true,
                   title: true,
+                  submitted_date: true,
                 },
+
                 where: (projectData: { title: any }, { sql }: any) =>
                   and(
                     searchProject
-                      ? sql`${projectData.title} ILIKE ${searchProject + '%'}`
+                      ? sql`${projectData.title} ILIKE ${'%' + searchProject + '%'}`
                       : sql`TRUE`,
                     dateFilter,
                   ),
+
+                // ⭐⭐⭐ DRIZZLE ORDER BY TITLE (ALPHABETICAL SORTING)
+                orderBy: (projectData, { asc, desc }) =>
+                  orderBy === 'title'
+                    ? orderDirection === 'desc'
+                      ? desc(projectData.title)
+                      : asc(projectData.title)
+                    : asc(projectData.title),
+
                 with: {
                   projectTrackingData: true,
                 },
@@ -877,6 +937,7 @@ export class SubmissionService {
         },
       });
 
+      // ===== STUDENT COUNT =====
       const zuvyBatchEnrollmentsCount = await db
         .select({
           count: sql<number>`cast(count(${zuvyBatchEnrollments.id}) as int)`,
@@ -884,19 +945,20 @@ export class SubmissionService {
         .from(zuvyBatchEnrollments)
         .where(eq(zuvyBatchEnrollments.bootcampId, bootcampId));
 
-      // Filter and process project data
-      data['bootcampModules'].forEach((module: any) => {
+      // ===== PROCESS DATA =====
+      data.bootcampModules.forEach((module: any) => {
         module.projectData.forEach((project: any) => {
-          project['submitStudents'] = project['projectTrackingData'].length;
-          delete project['projectTrackingData'];
+          project.submitStudents = project.projectTrackingData.length;
+          delete project.projectTrackingData;
         });
       });
 
-      // Filter out modules where projectData is empty
-      data['bootcampModules'] = data['bootcampModules'].filter(
+      // Remove empty modules
+      data.bootcampModules = data.bootcampModules.filter(
         (module: any) => module.projectData.length > 0,
       );
 
+      // ===== PERMISSIONS =====
       const targetPermissions = [
         ResourceList.submission.read,
         ResourceList.submission.download,
@@ -907,8 +969,8 @@ export class SubmissionService {
         targetPermissions,
       );
 
-      // Check if there are any modules left and return response
-      if (data['bootcampModules'].length > 0) {
+      // ===== RESPONSE =====
+      if (data.bootcampModules.length > 0) {
         return {
           status: 'success',
           code: 200,
@@ -1484,79 +1546,86 @@ export class SubmissionService {
     searchForm?: string,
     limit?: number,
     offset?: number,
-    orderBy?: 'name' | 'email' | 'percentage',
+    orderBy?: 'title',
     orderDirection?: 'asc' | 'desc',
   ) {
     try {
       const topicId = 7;
-      // Build order clause
-      let orderClause = (courseModules: { order: any }, { asc }: any) =>
-        asc(courseModules.order);
-      if (orderBy) {
-        orderClause = (courseModules: any, helpers: any) => {
-          const dir =
-            orderDirection && orderDirection.toLowerCase() === 'desc'
-              ? helpers.desc
-              : helpers.asc;
-          // Order by related user fields via subselects if requested
-          if (orderBy === 'name')
-            return dir(
-              sql`(SELECT name FROM main.users AS u WHERE u.id = ${courseModules.id}) order by name ${dir === helpers.desc ? 'desc' : 'asc'}`,
-            );
-          if (orderBy === 'email')
-            return dir(
-              sql`(SELECT email FROM main.users AS u WHERE u.id = ${courseModules.id}) order by email ${dir === helpers.desc ? 'desc' : 'asc'}`,
-            );
-          return dir(courseModules.order);
+
+      // Validate ordering inputs
+      if ((orderBy && !orderDirection) || (!orderBy && orderDirection)) {
+        return {
+          status: 'error',
+          code: 400,
+          message: 'Both orderBy and orderDirection are required together',
         };
       }
 
-      const trackingData = await db.query.zuvyCourseModules.findMany({
+      // ORDER BY chapter title
+      let chapterOrderClause = (moduleChapter: any, helpers: any) =>
+        helpers.asc(moduleChapter.title);
+
+      if (orderBy === 'title') {
+        chapterOrderClause = (moduleChapter: any, helpers: any) => {
+          const dir = orderDirection === 'desc' ? helpers.desc : helpers.asc;
+          return dir(moduleChapter.title);
+        };
+      }
+
+      const trackingData: any[] = await db.query.zuvyCourseModules.findMany({
         where: (courseModules, { eq }) =>
           eq(courseModules.bootcampId, bootcampId),
-        orderBy: orderClause,
+
+        // ORDER BY course.order
+        orderBy: (courseModules, { asc }) => asc(courseModules.order),
+
         with: {
           moduleChapterData: {
-            columns: {
-              id: true,
-              title: true,
-            },
-            where: (
-              moduleChapter: { topicId: any; title: any },
-              { eq, sql }: any,
-            ) =>
+            columns: { id: true, title: true },
+
+            // APPLY ORDER BY title inside chapters
+            orderBy: chapterOrderClause,
+
+            where: (moduleChapter, { eq, sql, and }) =>
               and(
                 eq(moduleChapter.topicId, topicId),
                 searchForm
                   ? sql`${moduleChapter.title} ILIKE ${searchForm + '%'}`
                   : sql`TRUE`,
               ),
+
             with: {
               chapterTrackingDetails: {
-                columns: {
-                  userId: true,
-                  completedAt: true,
-                },
+                columns: { userId: true, completedAt: true },
                 with: {
-                  user: {
-                    columns: {
-                      name: true,
-                      email: true,
-                      id: true,
-                    },
-                  },
+                  user: { columns: { name: true, email: true, id: true } },
                 },
               },
             },
           },
         },
-        limit: limit,
-        offset: offset,
+
+        limit,
+        offset,
       });
 
-      // Calculate total forms from the current results
+      // Process data
+      trackingData.forEach((course) => {
+        course.moduleChapterData.forEach((chapter) => {
+          const details = chapter.chapterTrackingDetails || [];
+          chapter.submitStudents = details.length;
+          chapter.submissions = details.map((d: any) => ({
+            userId: d.user?.id,
+            name: d.user?.name,
+            email: d.user?.email,
+            completedAt: d.completedAt,
+          }));
+          delete chapter.chapterTrackingDetails;
+        });
+      });
+
       const totalForms = trackingData.reduce(
-        (total, course: any) => total + course.moduleChapterData.length,
+        (total, course) => total + course.moduleChapterData.length,
         0,
       );
 
@@ -1567,33 +1636,12 @@ export class SubmissionService {
         .from(zuvyBatchEnrollments)
         .where(eq(zuvyBatchEnrollments.bootcampId, bootcampId));
 
-      // Filter tracking data to only include modules with chapter data
       const filteredTrackingData = trackingData.filter(
-        (course: any) => course.moduleChapterData.length > 0,
+        (course) => course.moduleChapterData.length > 0,
       );
 
-      // Process the data to add submitStudents count and expose submissions
-      filteredTrackingData.forEach((course: any) => {
-        course.moduleChapterData.forEach(
-          (chapterTracking: { [x: string]: any }) => {
-            const details = Array.isArray(
-              chapterTracking['chapterTrackingDetails'],
-            )
-              ? chapterTracking['chapterTrackingDetails']
-              : [];
-            chapterTracking['submitStudents'] = details.length;
-            chapterTracking['submissions'] = details.map((d: any) => ({
-              userId: d.userId ?? d.user?.id,
-              name: d.user?.name ?? null,
-              email: d.user?.email ?? null,
-              completedAt: d.completedAt ?? null,
-            }));
-          },
-        );
-      });
-
-      // Calculate total pages
       const totalPages = limit ? Math.ceil(totalForms / limit) : 1;
+
       const targetPermissions = [
         ResourceList.submission.read,
         ResourceList.submission.download,
@@ -1604,26 +1652,17 @@ export class SubmissionService {
         targetPermissions,
       );
 
-      if (filteredTrackingData.length > 0) {
-        return {
-          status: 'success',
-          code: 200,
-          trackingData: filteredTrackingData,
-          ...grantedPermissions,
-          totalStudents: zuvyBatchEnrollmentsCount[0]?.count,
-          totalForms,
-          totalPages,
-          currentPage:
-            limit && offset !== undefined ? Math.floor(offset / limit) + 1 : 1,
-        };
-      } else {
-        return {
-          status: 'error',
-          code: 404,
-          message: 'No forms in this course.',
-          ...grantedPermissions,
-        };
-      }
+      return {
+        status: 'success',
+        code: 200,
+        trackingData: filteredTrackingData,
+        ...grantedPermissions,
+        totalStudents: zuvyBatchEnrollmentsCount[0]?.count,
+        totalForms,
+        totalPages,
+        currentPage:
+          limit && offset !== undefined ? Math.floor(offset / limit) + 1 : 1,
+      };
     } catch (err) {
       throw err;
     }
@@ -1969,40 +2008,194 @@ export class SubmissionService {
     }
   }
 
+  // async getSubmissionOfAssignment(
+  //   roleName,
+  //   bootcampId: number,
+  //   assignmentName: string,
+  //   orderBy?: 'submittedDate' | 'name' | 'email' | 'title',
+  //   orderDirection?: 'asc' | 'desc',
+  // ): Promise<any> {
+  //   try {
+  //     const topicId = 5;
+
+  //     // Build order clause
+  //     let orderClause = (courseModules: { order: any }, { asc }: any) =>
+  //       asc(courseModules.order);
+  //     if (orderBy) {
+  //       orderClause = (courseModules: any, helpers: any) => {
+  //         const dir = orderDirection === 'desc' ? helpers.desc : helpers.asc;
+  //         if (orderBy === 'submittedDate')
+  //           return dir(courseModules.submitted_date);
+  //         if (orderBy === 'name') return dir(courseModules.name);
+  //         if (orderBy === 'email') return dir(courseModules.email);
+  //         return helpers.asc(courseModules.order);
+  //       };
+  //     }
+
+  //     const trackingData = await db.query.zuvyCourseModules.findMany({
+  //       where: (courseModules, { eq }) =>
+  //         eq(courseModules.bootcampId, bootcampId),
+  //       orderBy: orderClause,
+  //       with: {
+  //         moduleChapterData: {
+  //           columns: {
+  //             id: true,
+  //             title: true,
+  //           },
+  //           where: (
+  //             moduleChapter: { topicId: any; title: any },
+  //             { and, eq, sql }: any,
+  //           ) =>
+  //             and(
+  //               eq(moduleChapter.topicId, topicId),
+  //               console.log('assignmentName', assignmentName),
+  //               assignmentName
+  //                 ? sql`${moduleChapter.title} ILIKE ${'%' + assignmentName + '%'}`
+  //                 : sql`TRUE`,
+  //             ),
+  //           with: {
+  //             chapterTrackingDetails: {
+  //               columns: {
+  //                 userId: true,
+  //                 completedAt: true,
+  //               },
+  //               with: {
+  //                 user: {
+  //                   columns: {
+  //                     name: true,
+  //                     email: true,
+  //                     id: true,
+  //                   },
+  //                 },
+  //               },
+  //             },
+  //           },
+  //         },
+  //       },
+  //     });
+
+  //     // Fetch the total student count for the bootcamp
+  //     const zuvyBatchEnrollmentsCount = await db
+  //       .select({
+  //         count: sql<number>`cast(count(${zuvyBatchEnrollments.id}) as int)`,
+  //       })
+  //       .from(zuvyBatchEnrollments)
+  //       .where(
+  //         sql`(${zuvyBatchEnrollments.bootcampId} = ${bootcampId} AND ${zuvyBatchEnrollments.batchId} IS NOT NULL)`,
+  //       );
+
+  //     // Process tracking data, count submitted students, and filter out empty moduleChapterData
+  //     const filteredTrackingData = trackingData
+  //       .map((course: any) => {
+  //         course.moduleChapterData = course.moduleChapterData
+  //           .map((chapterTracking: { [x: string]: any }) => {
+  //             chapterTracking['submitStudents'] =
+  //               chapterTracking['chapterTrackingDetails'].length;
+  //             delete chapterTracking['chapterTrackingDetails'];
+
+  //             return chapterTracking;
+  //           })
+  //           .filter(
+  //             (chapterTracking: { [x: string]: number }) =>
+  //               chapterTracking['submitStudents'] > 0,
+  //           );
+
+  //           course.moduleChapterData.sort((a: any, b: any) => {
+  //             const titleA = a.title.toLowerCase();
+  //             console.log('titleA:', titleA);
+  //             const titleB = b.title.toLowerCase();
+  //             console.log('titleB:', titleB);
+
+  //             if (orderDirection === 'desc') {
+  //               return titleB.localeCompare(titleA);
+  //             }
+  //             return titleA.localeCompare(titleB);
+
+  //           });
+  //         console.log('Sorted moduleChapterData:', course.moduleChapterData);
+
+  //         return course;
+  //       })
+  //       .filter((course: any) => course.moduleChapterData.length > 0);
+
+  //     // If no assignment name is provided, return all courses regardless of submissions
+  //     const finalTrackingData = filteredTrackingData;
+  //     console.log('Final Tracking Data:', finalTrackingData);
+  //     const targetPermissions = [
+  //       ResourceList.submission.read,
+  //       ResourceList.submission.download,
+  //       ResourceList.submission.re_attempt,
+  //     ];
+  //     const grantedPermissions = await this.rbacService.getAllPermissions(
+  //       roleName,
+  //       targetPermissions,
+  //     );
+
+  //     return [
+  //       null,
+  //       {
+  //         message: 'Submission of assignment for courses has been fetched',
+  //         statusCode: STATUS_CODES.OK,
+  //         data: {
+  //           trackingData: finalTrackingData,
+  //           totalStudents: zuvyBatchEnrollmentsCount[0]?.count,
+  //         },
+  //         ...grantedPermissions,
+  //       },
+  //     ];
+  //   } catch (error) {
+  //     return [
+  //       { message: error.message, statusCode: STATUS_CODES.BAD_REQUEST },
+  //       null,
+  //     ];
+  //   }
+  // }
+
   async getSubmissionOfAssignment(
     roleName,
     bootcampId: number,
     assignmentName: string,
-    orderBy?: 'submittedDate' | 'name' | 'email',
+    orderBy?: 'title',
     orderDirection?: 'asc' | 'desc',
   ): Promise<any> {
     try {
       const topicId = 5;
 
-      // Build order clause
-      let orderClause = (courseModules: { order: any }, { asc }: any) =>
-        asc(courseModules.order);
-      if (orderBy) {
-        orderClause = (courseModules: any, helpers: any) => {
+      // Validate ordering inputs
+      if ((orderBy && !orderDirection) || (!orderBy && orderDirection)) {
+        return [
+          {
+            message: 'Both orderBy and orderDirection are required together',
+            statusCode: STATUS_CODES.BAD_REQUEST,
+          },
+          null,
+        ];
+      }
+
+      // ORDER BY chapter title only
+      let chapterOrderClause = (moduleChapter: any, helpers: any) =>
+        helpers.asc(moduleChapter.title);
+
+      if (orderBy === 'title') {
+        chapterOrderClause = (moduleChapter: any, helpers: any) => {
           const dir = orderDirection === 'desc' ? helpers.desc : helpers.asc;
-          if (orderBy === 'submittedDate')
-            return dir(courseModules.submitted_date);
-          if (orderBy === 'name') return dir(courseModules.name);
-          if (orderBy === 'email') return dir(courseModules.email);
-          return helpers.asc(courseModules.order);
+          return dir(moduleChapter.title);
         };
       }
 
       const trackingData = await db.query.zuvyCourseModules.findMany({
         where: (courseModules, { eq }) =>
           eq(courseModules.bootcampId, bootcampId),
-        orderBy: orderClause,
+        // MODULE ORDER
+        orderBy: (courseModules, { desc }) => desc(courseModules.order),
         with: {
           moduleChapterData: {
             columns: {
               id: true,
               title: true,
             },
+            // APPLY ORDER BY TITLE HERE
+            orderBy: chapterOrderClause,
             where: (
               moduleChapter: { topicId: any; title: any },
               { and, eq, sql }: any,
@@ -2724,7 +2917,7 @@ Zuvy LMS Team
     try {
       const result = await ses.sendEmail(emailParams).promise();
     } catch (err) {
-      console.error(`❌ Failed to send email to ${user.email}`, err);
+      console.error(` Failed to send email to ${user.email}`, err);
     }
   }
 
@@ -2734,8 +2927,32 @@ Zuvy LMS Team
     searchTerm?: string,
     limit?: number,
     offset?: number,
+    orderBy?: 'title',
+    orderDirection?: 'asc' | 'desc',
   ): Promise<[any, any]> {
     try {
+      // Validate ordering inputs
+      if ((orderBy && !orderDirection) || (!orderBy && orderDirection)) {
+        return [
+          {
+            message: 'Both orderBy and orderDirection are required together',
+            statusCode: STATUS_CODES.BAD_REQUEST,
+          },
+          null,
+        ];
+      }
+
+      // ORDER BY chapter title only
+      let chapterOrderClause = (moduleChapter: any, helpers: any) =>
+        helpers.asc(moduleChapter.title);
+
+      if (orderBy === 'title') {
+        chapterOrderClause = (moduleChapter: any, helpers: any) => {
+          const dir = orderDirection === 'desc' ? helpers.desc : helpers.asc;
+          return dir(moduleChapter.title);
+        };
+      }
+
       // Query modules mapped to bootcampId
       const topicId = 8; // or as per your schema for chapters
       const trackingData = await db.query.zuvyCourseModules.findMany({
@@ -2748,6 +2965,8 @@ Zuvy LMS Team
               id: true,
               title: true,
             },
+            // APPLY ORDER BY TITLE HERE
+            orderBy: chapterOrderClause,
             where: (moduleChapter: any, { eq, and, ilike, sql }: any) =>
               and(
                 eq(moduleChapter.topicId, topicId),
