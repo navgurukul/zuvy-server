@@ -70,8 +70,8 @@ export class SubmissionController {
     name: 'orderBy',
     required: false,
     type: String,
-    description: 'Field to order by (submittedDate, percentage, name, email)',
-    enum: ['submittedDate', 'percentage', 'name', 'email'],
+    description: 'Field to order by ( title)',
+    enum: ['title'],
   })
   @ApiQuery({
     name: 'orderDirection',
@@ -84,7 +84,7 @@ export class SubmissionController {
     @Param('bootcampId') bootcampId: number,
     @Query('searchPractiseProblem') searchProblem: string,
     @Query('orderBy')
-    orderBy?: 'submittedDate' | 'percentage' | 'name' | 'email',
+    orderBy?: 'title',
     @Query('orderDirection') orderDirection?: 'asc' | 'desc',
     @Query('searchStudent') searchStudent?: string,
     @Req() req?: any,
@@ -288,8 +288,8 @@ export class SubmissionController {
     name: 'orderBy',
     required: false,
     type: String,
-    description: 'Field to order by (submittedDate, name, email)',
-    enum: ['submittedDate', 'percentage', 'name', 'email'],
+    description: 'Field to order by (title)',
+    enum: ['title'],
   })
   @ApiQuery({
     name: 'orderDirection',
@@ -302,7 +302,7 @@ export class SubmissionController {
     @Param('bootcampId') bootcampId: number,
     @Query('searchProject') projectName: string,
     @Query('orderBy')
-    orderBy?: 'submittedDate' | 'percentage' | 'name' | 'email',
+    orderBy?: 'title',
     @Query('orderDirection') orderDirection?: 'asc' | 'desc',
     @Req() req?: any,
   ) {
@@ -469,14 +469,14 @@ export class SubmissionController {
     name: 'orderBy',
     required: false,
     type: String,
-    description: 'Field to order by (submittedDate, name, email)',
-    enum: ['submittedDate', 'name', 'email'],
+    description: 'Order by field (only title)',
+    enum: ['title'],
   })
   @ApiQuery({
     name: 'orderDirection',
     required: false,
     type: String,
-    description: 'Order direction (asc/desc)',
+    description: 'Order direction (asc or desc)',
     enum: ['asc', 'desc'],
   })
   async getSubmissionOfForms(
@@ -485,15 +485,30 @@ export class SubmissionController {
     @Query('searchForm') searchForm?: string,
     @Query('limit') limit?: number,
     @Query('offset') offset?: number,
+    @Query('orderBy') orderBy?: 'title',
+    @Query('orderDirection') orderDirection?: 'asc' | 'desc',
   ) {
-    const roleName = req.user[0]?.roles;
-    return this.submissionService.getSubmissionOfForms(
-      roleName,
-      bootcampId,
-      searchForm,
-      limit,
-      offset,
-    );
+    try {
+      const roleName = req.user[0]?.roles;
+
+      const result = await this.submissionService.getSubmissionOfForms(
+        roleName,
+        bootcampId,
+        searchForm,
+        limit,
+        offset,
+        orderBy,
+        orderDirection,
+      );
+
+      return result;
+    } catch (error) {
+      return {
+        status: 'error',
+        code: 400,
+        message: error.message,
+      };
+    }
   }
 
   @Get('/formsStatus/:bootcampId/:moduleId')
@@ -594,7 +609,7 @@ export class SubmissionController {
     required: false,
     type: String,
     description: 'Field to order by (submittedDate, name, email)',
-    enum: ['submittedDate', 'name', 'email'],
+    enum: ['title'],
   })
   @ApiQuery({
     name: 'orderDirection',
@@ -606,6 +621,8 @@ export class SubmissionController {
   async getAssignmentSubmission(
     @Param('bootcampId') bootcampId: number,
     @Query('searchAssignment') assignmentName: string,
+    @Query('orderBy') orderBy: 'title',
+    @Query('orderDirection') orderDirection: 'asc' | 'desc',
     @Res() res,
     @Req() req,
   ) {
@@ -616,6 +633,8 @@ export class SubmissionController {
           roleName,
           bootcampId,
           assignmentName,
+          orderBy,
+          orderDirection,
         );
       if (err) {
         return ErrorResponse.BadRequestException(
@@ -828,6 +847,20 @@ export class SubmissionController {
     type: String,
     description: 'Offset the results by this amount',
   })
+  @ApiQuery({
+    name: 'orderBy',
+    required: false,
+    type: String,
+    description: 'Field to order by (submittedDate, name, email)',
+    enum: ['title'],
+  })
+  @ApiQuery({
+    name: 'orderDirection',
+    required: false,
+    type: String,
+    description: 'Order direction (asc/desc)',
+    enum: ['asc', 'desc'],
+  })
   @ApiOperation({
     summary: 'Get chapter tracking data for Live sessions inside modules',
   })
@@ -836,6 +869,8 @@ export class SubmissionController {
     @Query('searchTerm') searchTerm: string,
     @Query('limit') limit: number,
     @Query('offset') offset: number,
+    @Query('orderBy') orderBy: 'title',
+    @Query('orderDirection') orderDirection: 'asc' | 'desc',
     @Res() res,
     @Req() req?: any,
   ) {
@@ -849,6 +884,8 @@ export class SubmissionController {
           searchTerm,
           limit,
           offset,
+          orderBy,
+          orderDirection,
         );
       if (err) {
         return ErrorResponse.BadRequestException(

@@ -2,6 +2,7 @@ const AWS = require('aws-sdk');
 import {
   BadRequestException,
   Injectable,
+  InternalServerErrorException,
   Logger,
   NotFoundException,
 } from '@nestjs/common';
@@ -530,25 +531,68 @@ Team Zuvy`;
     roleName,
     bootcampID: number,
     searchAssessment: string,
+    orderBy: 'title',
+    orderDirection: 'asc' | 'desc',
   ) {
     try {
+      // ⭐ ERROR HANDLING BLOCK
+      if (orderBy && !orderDirection) {
+        throw new BadRequestException(
+          'orderDirection is required when orderBy is provided',
+        );
+      }
+
+      if (!orderBy && orderDirection) {
+        throw new BadRequestException(
+          'orderBy is required when orderDirection is provided',
+        );
+      }
+
+      if (orderBy && orderBy !== 'title') {
+        throw new BadRequestException('Invalid orderBy value. Allowed: title');
+      }
+
+      if (orderDirection && !['asc', 'desc'].includes(orderDirection)) {
+        throw new BadRequestException(
+          'Invalid orderDirection. Allowed: asc, desc',
+        );
+      }
+
+      // DEFAULT VALUES
+      orderBy = orderBy ?? 'title';
+      orderDirection = orderDirection ?? 'asc';
+
+      // ⭐ MAIN QUERY
       const assessment = await db.query.zuvyOutsourseAssessments.findMany({
-        where: (zuvyOutsourseAssessments, { eq, and }) => {
-          const conditions = [
-            eq(zuvyOutsourseAssessments.bootcampId, bootcampID),
-          ];
+        where: (z, { eq, and, sql }) => {
+          const conditions = [eq(z.bootcampId, bootcampID)];
+
           if (searchAssessment) {
-            conditions.push(sql`
-              EXISTS (
-                SELECT 1
-                FROM main.zuvy_module_assessment AS ma
-                WHERE ma.id = ${zuvyOutsourseAssessments.id}
-                AND lower(ma.title) LIKE lower(${searchAssessment + '%'})
-                )`);
+            conditions.push(
+              sql`LOWER(
+                  (SELECT ma.title 
+                   FROM main.zuvy_module_assessment ma 
+                   WHERE ma.id = ${z.id})
+                ) LIKE LOWER(${searchAssessment + '%'})`,
+            );
           }
 
           return and(...conditions);
         },
+
+        // ⭐ SORTING BLOCK
+        orderBy: (z, { sql }) => {
+          const titleColumn = sql`(
+            SELECT ma.title 
+            FROM main.zuvy_module_assessment ma 
+            WHERE ma.id = ${z.id}
+        )`;
+
+          return orderDirection === 'desc'
+            ? sql`${titleColumn} DESC`
+            : sql`${titleColumn} ASC`;
+        },
+
         columns: {
           id: true,
           order: true,
@@ -559,12 +603,10 @@ Team Zuvy`;
           endDatetime: true,
           currentState: true,
         },
+
         with: {
           ModuleAssessment: {
-            columns: {
-              title: true,
-              description: true,
-            },
+            columns: { title: true, description: true },
           },
           Module: {
             columns: {
@@ -577,56 +619,60 @@ Team Zuvy`;
           Quizzes: true,
           OpenEndedQuestions: true,
           CodingQuestions: true,
+
           submitedOutsourseAssessments: {
-            where: (zuvyAssessmentSubmission, { sql }) =>
-              sql`
-            ${zuvyAssessmentSubmission.submitedAt} IS NOT NULL 
-            AND ${zuvyAssessmentSubmission.active} IS true
-            AND ${zuvyAssessmentSubmission.isPassed} IS NOT NULL
+            where: (sub, { sql }) => sql`
+            ${sub.submitedAt} IS NOT NULL
+            AND ${sub.active} = true
+            AND ${sub.isPassed} IS NOT NULL
             AND EXISTS (
                 SELECT 1
                 FROM main.zuvy_batch_enrollments
-                WHERE main.zuvy_batch_enrollments.user_id = ${zuvyAssessmentSubmission.userId}
-                AND main.zuvy_batch_enrollments.bootcamp_id = ${bootcampID}
-                AND main.zuvy_batch_enrollments.batch_id IS NOT NULL
-              )
-            `,
+                WHERE user_id = ${sub.userId}
+                AND bootcamp_id = ${bootcampID}
+                AND batch_id IS NOT NULL
+            )
+          `,
           },
         },
       });
-      assessment.forEach((item) => {
-        const uniqueSubmissions = [];
-        const userIds = new Set();
 
-        item.submitedOutsourseAssessments.forEach((submission) => {
-          if (!userIds.has(submission.userId)) {
-            userIds.add(submission.userId);
-            uniqueSubmissions.push(submission);
+      // ⭐ REMOVE DUPLICATE SUBMISSIONS
+      assessment.forEach((item) => {
+        const unique: any[] = [];
+        const set = new Set();
+
+        item.submitedOutsourseAssessments.forEach((s) => {
+          if (!set.has(s.userId)) {
+            set.add(s.userId);
+            unique.push(s);
           }
         });
 
-        item.submitedOutsourseAssessments = uniqueSubmissions;
+        item.submitedOutsourseAssessments = unique;
       });
-      if (assessment == undefined || assessment.length == 0) {
-        return [];
-      }
-      // assessment
-      let studentsEnrolled = await this.getTotalStudentsEnrolled(bootcampID);
-      let result = await this.transformAssessments(assessment);
+
+      if (!assessment.length) return [];
+
+      // ⭐ STUDENTS COUNT
+      const studentsEnrolled = await this.getTotalStudentsEnrolled(bootcampID);
+
+      // ⭐ TRANSFORM & PERMISSIONS
+      const result = await this.transformAssessments(assessment);
       result['totalStudents'] = studentsEnrolled.length;
-      const targetPermissions = [
+
+      const allowed = [
         ResourceList.submission.read,
         ResourceList.submission.download,
         ResourceList.submission.re_attempt,
       ];
-      const grantedPermissions = await this.rbacService.getAllPermissions(
-        roleName,
-        targetPermissions,
-      );
-      result['permissions'] = grantedPermissions.permissions;
-      //add ...grantedPermissions to the response by modifying minimum response structure
+
+      const perm = await this.rbacService.getAllPermissions(roleName, allowed);
+      result['permissions'] = perm.permissions;
+
       return result;
     } catch (error) {
+      console.error('❌ ERROR in getBootcampAssessment:', error);
       throw error;
     }
   }
@@ -1294,8 +1340,28 @@ Team Zuvy`;
     searchVideos?: string,
     limit?: number,
     offSet?: number,
+    orderBy?: 'title',
+    orderDirection?: 'asc' | 'desc',
   ) {
     try {
+      // Validate ordering inputs
+      if ((orderBy && !orderDirection) || (!orderBy && orderDirection)) {
+        return {
+          message: 'Both orderBy and orderDirection are required together',
+          statusCode: 400,
+        };
+      }
+
+      // ORDER BY chapter.title (same style as your other method)
+      let chapterOrderClause = (moduleChapter: any, helpers: any) =>
+        helpers.asc(moduleChapter.title);
+
+      if (orderBy === 'title') {
+        chapterOrderClause = (moduleChapter: any, helpers: any) => {
+          const dir = orderDirection === 'desc' ? helpers.desc : helpers.asc;
+          return dir(moduleChapter.title);
+        };
+      }
       // Get total enrolled students
       const studentsEnrolled = await db
         .select()
@@ -1322,6 +1388,7 @@ Team Zuvy`;
               description: true,
               order: true,
             },
+            orderBy: chapterOrderClause,
             where: (zuvyModuleChapter, { eq }) =>
               eq(zuvyModuleChapter.topicId, 1), // Filter by topicId = 1
             with: {
