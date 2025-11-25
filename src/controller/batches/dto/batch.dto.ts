@@ -1,5 +1,5 @@
-import { IsString, IsNotEmpty,IsOptional,  IsArray, ValidateNested, IsEmail, IsNumber, IsBoolean, ArrayNotEmpty } from 'class-validator';
-import { ApiProperty, ApiResponseProperty,ApiResponse } from '@nestjs/swagger';
+import { IsString, IsNotEmpty, IsOptional, IsArray, ValidateNested, IsEmail, IsNumber, IsBoolean, ArrayNotEmpty, IsDateString } from 'class-validator';
+import { ApiProperty, ApiResponseProperty, ApiResponse } from '@nestjs/swagger';
 
 export class BatchDto {
   @ApiProperty({
@@ -17,7 +17,7 @@ export class BatchDto {
     required: true,
   })
   @IsNotEmpty()
-  @IsString()
+  @IsEmail()
   instructorEmail: string;
 
   @ApiProperty({
@@ -34,9 +34,29 @@ export class BatchDto {
     example: 500,
     required: true,
   })
-  @IsNotEmpty({message: 'capEnrollment is required'})
+  @IsNotEmpty({ message: 'capEnrollment is required' })
   @IsNumber()
   capEnrollment: number;
+
+  @ApiProperty({
+    type: String,
+    example: '2025-09-20',
+    required: false,
+    description: 'Optional start date for the batch (ISO date string)'
+  })
+  @IsOptional()
+  @IsDateString()
+  startDate?: string;
+
+  @ApiProperty({
+    type: String,
+    example: '2025-12-20',
+    required: false,
+    description: 'Optional end date for the batch (ISO date string)'
+  })
+  @IsOptional()
+  @IsDateString()
+  endDate?: string;
 
   @ApiProperty({
     type: Boolean,
@@ -46,6 +66,16 @@ export class BatchDto {
   @IsNotEmpty({ message: 'assignAll is required' })
   @IsBoolean()
   assignAll: boolean;
+
+  @ApiProperty({
+    type: String,
+    example: 'Ongoing',
+    required: false,
+    description: 'Optional status of the batch (e.g. Ongoing, Completed)'
+  })
+  @IsOptional()
+  @IsString()
+  status?: string;
 
   @ApiProperty({
     type: [Number],
@@ -72,7 +102,7 @@ export class PatchBatchDto {
     example: 'giribabu@gmail.com',
   })
   @IsOptional()
-  @IsString()
+  @IsEmail()
   instructorEmail: string;
 
   @ApiProperty({
@@ -83,4 +113,34 @@ export class PatchBatchDto {
   @IsOptional()
   @IsNumber()
   capEnrollment: number;
+
+  @ApiProperty({
+    type: String,
+    example: '2025-09-20',
+    required: false,
+    description: 'Optional start date for the batch (ISO date string)'
+  })
+  @IsOptional()
+  @IsDateString()
+  startDate?: string;
+
+  @ApiProperty({
+    type: String,
+    example: '2025-12-20',
+    required: false,
+    description: 'Optional end date for the batch (ISO date string)'
+  })
+  @IsOptional()
+  @IsDateString()
+  endDate?: string;
+
+  @ApiProperty({
+    type: String,
+    example: 'Ongoing',
+    required: false,
+    description: 'Optional status of the batch (e.g. Ongoing, Completed)'
+  })
+  @IsOptional()
+  @IsString()
+  status?: string;
 }

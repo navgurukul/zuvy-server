@@ -62,10 +62,9 @@ export class TrackingService {
       // 1. Fetch all session ids where this batch participated (primary or secondary)
       const sessions = await db.select({ id: zuvySessions.id })
         .from(zuvySessions)
-        .where(sql`${zuvySessions.batchId} = ${batchId} OR ${zuvySessions.secondBatchId} = ${batchId}`);
+        .where(sql`${zuvySessions.batchId} = ${batchId} OR ${zuvySessions.secondBatchId} = ${batchId} AND ${zuvySessions.status} = 'completed'`);
 
       const sessionIds = sessions.map(s => s.id);
-      console.log("Session IDs for batch:", sessions);
       // If there are no sessions, set attendance to 0 for enrolled students and return
       if (sessionIds.length === 0) {
         await db.update(zuvyBatchEnrollments)

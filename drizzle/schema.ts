@@ -1,4 +1,4 @@
-import { Many, relations } from 'drizzle-orm';
+import { Many, relations, sql } from 'drizzle-orm';
 import {
   pgTable,
   jsonb,
@@ -22,6 +22,7 @@ import {
   doublePrecision,
   customType,
   numeric,
+  primaryKey,
 } from 'drizzle-orm/pg-core';
 // import { users } from './users'; // Import the 'users' module
 
@@ -71,6 +72,7 @@ export const questionType = pgEnum('questionType', [
   'Time',
 ]);
 import { helperVariable } from '../src/constants/helper';
+import { table } from 'console';
 let schName;
 if (process.env.ENV_NOTE == helperVariable.schemaName) {
   schName = helperVariable.schemaName;
@@ -2261,7 +2263,7 @@ export const zuvySessions = main.table('zuvy_sessions', {
   isParentSession: boolean('is_parent_session').default(false),
   isChildSession: boolean('is_child_session').default(false),
   // multi-batch invited students snapshot
-  invitedStudents: jsonb('invited_students').$type<{userId:number; email:string}[]>().default([]).notNull(),
+  invitedStudents: jsonb('invited_students').$type<{ userId: number; email: string }[]>().default([]).notNull(),
   youtubeVideoId: text('youtube_video_id').notNull()
 });
 
@@ -2308,7 +2310,7 @@ export const zuvyStudentAttendanceRecords = main.table('zuvy_student_attendance_
   version: varchar('version', { length: 10 }),
   duration: integer('duration').default(0), // Duration in seconds
   createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
-}); 
+});
 
 export const zuvySessionAttendanceRelations = relations(zuvyStudentAttendanceRecords, ({ one }) => ({
   user: one(users, {
@@ -2427,7 +2429,7 @@ export const zuvyBootcamps = main.table('zuvy_bootcamps', {
   coverImage: text('cover_image'),
   bootcampTopic: text('bootcamp_topic'),
   startTime: timestamp('start_time', { withTimezone: true, mode: 'string' }),
-  duration: text('duration'),
+  duration: integer('duration'),
   language: text('language'),
   createdAt: timestamp('created_at', {
     withTimezone: true,
@@ -2462,22 +2464,33 @@ export const batchesRelations = relations(zuvyBootcamps, ({ one, many }) => ({
 }));
 
 
-export const zuvyBatches = main.table('zuvy_batches', {
-  id: serial('id').primaryKey().notNull(),
-  name: text('name').notNull(),
-  bootcampId: integer('bootcamp_id').references(() => zuvyBootcamps.id, {
-    onDelete: 'cascade',
-  }),
-  instructorId: integer('instructor_id').references(() => users.id),
-  capEnrollment: integer('cap_enrollment'),
-  createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' })
-    .defaultNow()
-    .notNull(),
-  updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' })
-    .defaultNow()
-    .notNull(),
-  version: varchar('version', { length: 10 })
-});
+export const zuvyBatches = main.table("zuvy_batches", {
+  id: serial("id").primaryKey().notNull(),
+  name: text("name").notNull(),
+  bootcampId: integer("bootcamp_id"),
+  instructorId: integer("instructor_id"),
+  startDate: timestamp("start_date", { withTimezone: true, mode: 'string' }),
+  endDate: timestamp("end_date", { withTimezone: true, mode: 'string' }),
+  status: text("status"),
+  capEnrollment: integer("cap_enrollment"),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+},
+  (table) => {
+    return {
+      zuvyBatchesBootcampIdZuvyBootcampsIdFk: foreignKey({
+        columns: [table.bootcampId],
+        foreignColumns: [zuvyBootcamps.id],
+        name: "zuvy_batches_bootcamp_id_zuvy_bootcamps_id_fk"
+      }).onDelete("cascade"),
+      zuvyBatchesInstructorIdUsersIdFk: foreignKey({
+        columns: [table.instructorId],
+        foreignColumns: [users.id],
+        name: "zuvy_batches_instructor_id_users_id_fk"
+      }),
+    }
+  });
+
 export const zuvyBatchesRelations = relations(
   zuvyBatches,
   ({ one, many }) => ({
@@ -2532,6 +2545,9 @@ export const zuvyBatchEnrollments = main.table('zuvy_batch_enrollments', {
     onDelete: 'set null',
     onUpdate: 'cascade'
   }),
+  enrolledDate: timestamp('enrolled_date', { withTimezone: true, mode: 'string' }),
+  lastActiveDate: timestamp('last_active_date', { withTimezone: true, mode: 'string' }),
+  status: varchar('status', { length: 32 }),
   attendance: integer('attendance'),
   createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' })
     .defaultNow()
@@ -3649,58 +3665,302 @@ export const blacklistedTokens = main.table('blacklisted_tokens', {
 
 // Zoom license allocation tracking
 export const zuvyZoomLicenses = main.table('zuvy_zoom_licenses', {
-	id: serial('id').primaryKey().notNull(),
-	userId: integer('user_id').notNull(),
-	// zoom license type: 1 basic, 2 licensed, 3 on-prem
-	licenseType: integer('license_type').notNull().default(2),
-	// current status: active, downgraded, revoked
-	status: varchar('status', { length: 20 }).notNull().default('active'),
-	// when this allocation started (first time assigned or upgraded)
-	assignedAt: timestamp('assigned_at', { withTimezone: true, mode: 'string' }).defaultNow(),
-	// when downgraded/revoked
-	releasedAt: timestamp('released_at', { withTimezone: true, mode: 'string' }),
-	// optional reference to the session that triggered ensuring license
-	lastSessionId: integer('last_session_id'),
-	// counts for analytics
-	meetingsHosted: integer('meetings_hosted').notNull().default(0),
-	// auditing
-	updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow(),
+  id: serial('id').primaryKey().notNull(),
+  userId: integer('user_id').notNull(),
+  // zoom license type: 1 basic, 2 licensed, 3 on-prem
+  licenseType: integer('license_type').notNull().default(2),
+  // current status: active, downgraded, revoked
+  status: varchar('status', { length: 20 }).notNull().default('active'),
+  // when this allocation started (first time assigned or upgraded)
+  assignedAt: timestamp('assigned_at', { withTimezone: true, mode: 'string' }).defaultNow(),
+  // when downgraded/revoked
+  releasedAt: timestamp('released_at', { withTimezone: true, mode: 'string' }),
+  // optional reference to the session that triggered ensuring license
+  lastSessionId: integer('last_session_id'),
+  // counts for analytics
+  meetingsHosted: integer('meetings_hosted').notNull().default(0),
+  // auditing
+  updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow(),
 }, (table) => {
-	return {
-		zuvyZoomLicenses: foreignKey({
-			columns: [table.userId],
-			foreignColumns: [users.id],
-			name: 'zoom_licenses_user_id_fkey'
-		}).onUpdate('cascade').onDelete('cascade'),
-		zoomLicensesLastSessionIdFkey: foreignKey({
-			columns: [table.lastSessionId],
-			foreignColumns: [zuvySessions.id],
-			name: 'zoom_licenses_last_session_id_fkey'
-		}).onUpdate('cascade').onDelete('set null'),
-		zoomLicensesUserUniqueIdx: uniqueIndex('zoom_licenses_user_id_key').on(table.userId)
-	};
+  return {
+    zuvyZoomLicenses: foreignKey({
+      columns: [table.userId],
+      foreignColumns: [users.id],
+      name: 'zoom_licenses_user_id_fkey'
+    }).onUpdate('cascade').onDelete('cascade'),
+    zoomLicensesLastSessionIdFkey: foreignKey({
+      columns: [table.lastSessionId],
+      foreignColumns: [zuvySessions.id],
+      name: 'zoom_licenses_last_session_id_fkey'
+    }).onUpdate('cascade').onDelete('set null'),
+    zoomLicensesUserUniqueIdx: uniqueIndex('zoom_licenses_user_id_key').on(table.userId)
+  };
 });
 
 // Zoom users table (tracks provisioned Zoom accounts mapped to platform users)
 export const zuvyZoomUsers = main.table('zuvy_zoom_users', {
-	id: serial('id').primaryKey().notNull(),
-	userId: integer('user_id').notNull(), // FK to users table
-	zoomEmail: varchar('zoom_email', { length: 255 }).notNull(),
-	zoomUserId: varchar('zoom_user_id', { length: 128 }), // Zoom's internal user id (optional store)
-	type: integer('type').notNull().default(1), // 1 Basic, 2 Licensed, 3 On-Prem
-	status: varchar('status', { length: 30 }).notNull().default('active'), // active, pending, deactivated
-	firstName: varchar('first_name', { length: 100 }),
-	lastName: varchar('last_name', { length: 100 }),
-	createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow(),
-	updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow(),
+  id: serial('id').primaryKey().notNull(),
+  userId: integer('user_id').notNull(), // FK to users table
+  zoomEmail: varchar('zoom_email', { length: 255 }).notNull(),
+  zoomUserId: varchar('zoom_user_id', { length: 128 }), // Zoom's internal user id (optional store)
+  type: integer('type').notNull().default(1), // 1 Basic, 2 Licensed, 3 On-Prem
+  status: varchar('status', { length: 30 }).notNull().default('active'), // active, pending, deactivated
+  firstName: varchar('first_name', { length: 100 }),
+  lastName: varchar('last_name', { length: 100 }),
+  createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow(),
 }, (table) => {
-	return {
-		zoomUsersUserIdFkey: foreignKey({
-			columns: [table.userId],
-			foreignColumns: [users.id],
-			name: 'zoom_users_user_id_fkey'
-		}).onUpdate('cascade').onDelete('cascade'),
-		zoomUsersUserUnique: uniqueIndex('zoom_users_user_id_key').on(table.userId),
-		zoomUsersZoomEmailUnique: uniqueIndex('zoom_users_zoom_email_key').on(table.zoomEmail)
-	};
+  return {
+    zoomUsersUserIdFkey: foreignKey({
+      columns: [table.userId],
+      foreignColumns: [users.id],
+      name: 'zoom_users_user_id_fkey'
+    }).onUpdate('cascade').onDelete('cascade'),
+    zoomUsersUserUnique: uniqueIndex('zoom_users_user_id_key').on(table.userId),
+    zoomUsersZoomEmailUnique: uniqueIndex('zoom_users_zoom_email_key').on(table.zoomEmail)
+  };
 });
+
+// RBAC: Roles Table
+export const zuvyUserRoles = main.table('zuvy_user_roles', {
+  id: serial('id').primaryKey().notNull(),
+  name: varchar('name', { length: 50 }).notNull().unique(), // e.g. 'admin', 'instructor', 'ops'
+  description: text('description'),
+});
+
+export const zuvyResources = main.table('zuvy_resources', {
+  id: serial('id').primaryKey(),
+  key: varchar('key', { length: 64 }).notNull().unique(),
+  name: varchar('display_name', { length: 100 }).notNull(),
+  description: text('description'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
+});
+// RBAC: Permissions Table
+export const zuvyPermissions = main.table('zuvy_permissions', {
+  id: serial('id').primaryKey().notNull(),
+  name: varchar('name', { length: 100 }).notNull(), // e.g. 'view', 'create', etc. - not unique
+  resourcesId: integer('resource_id').notNull().references(() => zuvyResources.id),
+  description: text('description'),
+  createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow(),
+});
+export const zuvyPermissionsRoles = main.table('zuvy_permissions_roles', {
+  id: serial('id').primaryKey().notNull(),
+  permissionId: integer('permission_id').notNull().references(() => zuvyPermissions.id),
+  roleId: integer('role_id').notNull().references(() => zuvyUserRoles.id),
+  createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow(),
+},
+(table) => ({
+  uniqRolePermission: unique("uniq_role_permission").on(
+    table.roleId,
+    table.permissionId
+  )
+})
+);
+export const zuvyPermissionsRolesRelations = relations(zuvyPermissionsRoles, ({ many }) => ({
+  permissions: many(zuvyPermissions),
+  roles: many(zuvyUserRoles),
+}));
+
+export const zuvyUserPermissions = main.table('zuvy_user_permissions', {
+  id: serial('id').primaryKey().notNull(),
+  userId: bigserial("user_id", { mode: "bigint" }).notNull().references(() => users.id),
+  permissionId: integer('permission_id').notNull().references(() => zuvyPermissions.id),
+  createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow(),
+});
+
+export const zuvyUserPermissionsRelations = relations(zuvyUserPermissions, ({ one }) => ({
+  user: one(users, {
+    fields: [zuvyUserPermissions.userId],
+    references: [users.id],
+  }),
+  permission: one(zuvyPermissions, {
+    fields: [zuvyUserPermissions.permissionId],
+    references: [zuvyPermissions.id],
+  }),
+}));
+
+export const userPermissionsRelations = relations(zuvyUserPermissions, ({ many }) => ({
+  userPermissions: many(zuvyUserPermissions),
+  permissions: many(zuvyPermissions),
+  users: many(users),
+}));
+
+
+
+// RBAC: UserRoles (M:N)
+export const zuvyUserRolesAssigned = main.table('zuvy_user_roles_assigned', {
+  id: serial('id').primaryKey().notNull(),
+  userId: bigserial("user_id", { mode: "bigint" }).notNull().references(() => users.id),
+  roleId: integer('role_id').notNull().references(() => zuvyUserRoles.id),
+  createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow(),
+}, (t) => ({
+  pk: primaryKey(t.userId, t.roleId),
+}));
+
+// RBAC: RolePermissions (M:N)
+export const zuvyRolePermissions = main.table('zuvy_role_permissions', {
+  id: serial('id').primaryKey().notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow(),
+  roleId: integer('role_id').notNull().references(() => zuvyUserRoles.id),
+  permissionId: integer('permission_id').notNull().references(() => zuvyPermissions.id),
+}, (t) => ({
+  pk: primaryKey(t.roleId, t.permissionId),
+}));
+
+// RBAC Relations
+export const rolesRelations = relations(zuvyUserRoles, ({ many }) => ({
+  userRoles: many(zuvyUserRolesAssigned),
+  rolePermissions: many(zuvyRolePermissions),
+}));
+
+export const permissionsRelations = relations(zuvyPermissions, ({ many }) => ({
+  rolePermissions: many(zuvyRolePermissions),
+  permissionsScope: many(zuvyPermissionsScope),
+}));
+
+export const userRolesAssignedelations = relations(zuvyUserRolesAssigned, ({ one }) => ({
+  user: one(users, {
+    fields: [zuvyUserRolesAssigned.userId],
+    references: [users.id],
+  }),
+  role: one(zuvyUserRoles, {
+    fields: [zuvyUserRolesAssigned.roleId],
+    references: [zuvyUserRoles.id],
+  }),
+}));
+
+export const rolePermissionsRelations = relations(zuvyRolePermissions, ({ one }) => ({
+  role: one(zuvyUserRoles, {
+    fields: [zuvyRolePermissions.roleId],
+    references: [zuvyUserRoles.id],
+  }),
+  permission: one(zuvyPermissions, {
+    fields: [zuvyRolePermissions.permissionId],
+    references: [zuvyPermissions.id],
+  }),
+}));
+
+export const zuvyScopes = main.table('zuvy_scopes', {
+  id: serial('id').primaryKey().notNull(),
+  name: varchar('name', { length: 100 }).notNull().unique(), // e.g. 'self', 'org' etc.
+  description: text('description'),
+});
+
+// RBAC: Permissions Scope (M:N)
+export const zuvyPermissionsScope = main.table('zuvy_permissions_scope', {
+  id: serial('id').primaryKey().notNull(),
+  permissionId: integer('permission_id').notNull().references(() => zuvyPermissions.id),
+  scopeId: integer('scope_id').notNull().references(() => zuvyScopes.id),
+  createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow(),
+}, (t) => ({
+  pk: primaryKey(t.permissionId, t.scopeId),
+}));
+
+export const zuvyAuditLogs = main.table('zuvy_audit_logs', {
+  id: serial('id').primaryKey().notNull(),
+  actorUserId: bigserial("actor_user_id", { mode: "bigint" }).references(() => users.id),
+  targetUserId: bigserial('target_user_id', { mode: "bigint" }).references(() => users.id),
+  action: varchar('action', { length: 100 }).notNull(),
+  roleId: integer('role_id').references(() => zuvyUserRoles.id),
+  permissionId: integer('permission_id').references(() => zuvyPermissions.id),
+  scopeId: integer('scope_id').references(() => zuvyScopes.id).default(null),
+  createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' })
+    .defaultNow()
+    .$onUpdate(() => sql`now()`),
+})
+
+// Relations for scopes and audit logs
+export const zuvyScopesRelations = relations(zuvyScopes, ({ many }) => ({
+  auditLogs: many(zuvyAuditLogs),
+  permissionsScope: many(zuvyPermissionsScope),
+}));
+
+// RBAC: Permissions Scope Relations
+export const zuvyPermissionsScopeRelations = relations(zuvyPermissionsScope, ({ one }) => ({
+  permission: one(zuvyPermissions, {
+    fields: [zuvyPermissionsScope.permissionId],
+    references: [zuvyPermissions.id],
+  }),
+  scope: one(zuvyScopes, {
+    fields: [zuvyPermissionsScope.scopeId],
+    references: [zuvyScopes.id],
+  }),
+}));
+
+export const zuvyAuditLogRelations = relations(zuvyAuditLogs, ({ one }) => ({
+  actor: one(users, {
+    fields: [zuvyAuditLogs.actorUserId],
+    references: [users.id],
+    relationName: 'actorUser',
+  }),
+  target: one(users, {
+    fields: [zuvyAuditLogs.targetUserId],
+    references: [users.id],
+    relationName: 'targetUser',
+  }),
+  role: one(zuvyUserRoles, {
+    fields: [zuvyAuditLogs.roleId],
+    references: [zuvyUserRoles.id],
+  }),
+  permission: one(zuvyPermissions, {
+    fields: [zuvyAuditLogs.permissionId],
+    references: [zuvyPermissions.id],
+  }),
+  scope: one(zuvyScopes, {
+    fields: [zuvyAuditLogs.scopeId],
+    references: [zuvyScopes.id],
+  }),
+}));
+
+// Reverse relations on users to disambiguate actor/target
+export const usersAuditRelations = relations(users, ({ many }) => ({
+  actorAuditLogs: many(zuvyAuditLogs, { relationName: 'actorUser' }),
+  targetAuditLogs: many(zuvyAuditLogs, { relationName: 'targetUser' }),
+}));
+
+export const zuvyExtraPermissions = main.table('zuvy_extra_permissions', {
+  id: serial('id').primaryKey().notNull(),
+  userId: bigserial('user_id', { mode: "bigint" }).notNull().references(() => users.id), // jisko extra permission mila
+  grantedBy: bigserial('granted_by', { mode: "bigint" }).notNull().references(() => users.id), // admin jo grant kar raha hai
+  permissionId: integer('permission_id').notNull().references(() => zuvyPermissions.id), // extra permission ka type (edit/delete etc.)
+  resourceId: integer('resource_id').notNull().references(() => zuvyResources.id), // e.g. course, user
+  courseName: varchar('course_name', { length: 255 }), // jis course pe action mila
+  action: varchar('action', { length: 100 }).notNull(), // e.g. 'edit', 'delete'
+  createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow(),
+});
+
+export const extraPermissionsRelations = relations(zuvyExtraPermissions, ({ one }) => ({
+  user: one(users, {
+    fields: [zuvyExtraPermissions.userId],
+    references: [users.id],
+    relationName: 'extraPermissionUser',
+  }),
+  grantedByUser: one(users, {
+    fields: [zuvyExtraPermissions.grantedBy],
+    references: [users.id],
+    relationName: 'grantedByUser',
+  }),
+  permission: one(zuvyPermissions, {
+    fields: [zuvyExtraPermissions.permissionId],
+    references: [zuvyPermissions.id],
+  }),
+  resource: one(zuvyResources, {
+    fields: [zuvyExtraPermissions.resourceId],
+    references: [zuvyResources.id],
+  }),
+}));
+
+export const usersExtraPermissionsRelations = relations(users, ({ many }) => ({
+  extraPermissions: many(zuvyExtraPermissions, { relationName: 'extraPermissionUser' }),
+  grantedPermissions: many(zuvyExtraPermissions, { relationName: 'grantedByUser' }),
+}));
+

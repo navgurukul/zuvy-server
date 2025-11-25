@@ -21,7 +21,7 @@ import {
   zuvyAssignmentSubmission
 } from '../../../drizzle/schema';
 import { db } from '../../db/index';
-import { eq, sql, desc, count, asc, or, and, inArray, isNull } from 'drizzle-orm';
+import { eq, sql, desc, count, asc, or, and, inArray, isNull, gte, lte } from 'drizzle-orm';
 import { ClassesService } from '../classes/classes.service'
 import { helperVariable } from 'src/constants/helper';
 import { STATUS_CODES } from "../../helpers/index";
@@ -29,6 +29,7 @@ const { PENDING } = helperVariable.REATTMEPT_STATUS; // Importing helper variabl
 
 import { google } from 'googleapis';
 import { OAuth2Client } from 'google-auth-library';
+import { IoTJobsDataPlane } from 'aws-sdk';
 
 
 const { GOOGLE_SHEETS_SERVICE_ACCOUNT, GOOGLE_SHEETS_PRIVATE_KEY, JOIN_ZUVY_ACCESS_KEY_ID, JOIN_ZUVY_SECRET_KEY, SPREADSHEET_ID, SES_EMAIL, SUPPORT_EMAIL, QUERY_EMAIL, AWS_QUERY_ACCESS_SECRET_KEY, AWS_QUERY_ACCESS_KEY_ID } = process.env;
@@ -751,9 +752,37 @@ export class StudentService {
     }
   }
 
-  async getCompletedClassesWithAttendance(userId: number, bootcampId: number, limit, offset) 
+    async getCompletedClassesWithAttendance(userId: number, bootcampId: number, limit, offset, searchTerm?: string,  attendanceStatus?: string,   fromDate?: Date, toDate?: Date) 
   {
   try {
+
+     const hasFrom = fromDate instanceof Date && !isNaN(fromDate.getTime());
+    const hasTo = toDate instanceof Date && !isNaN(toDate.getTime());
+
+    if ((hasFrom && !hasTo) || (!hasFrom && hasTo)) {
+      return [{
+        message: 'Both "from" and "to" are required when filtering by date.',
+        statusCode: STATUS_CODES.BAD_REQUEST
+      }];
+    }
+
+    if (hasFrom && hasTo) {
+      fromDate = new Date(fromDate!);
+      toDate = new Date(toDate!);
+      if (isNaN(fromDate.getTime()) || isNaN(toDate.getTime())) {
+        return [{
+          message: 'Invalid "from" or "to" date format. Use ISO strings (e.g., 2025-08-01 or 2025-08-01T00:00:00Z).',
+          statusCode: STATUS_CODES.BAD_REQUEST
+        }];
+      }
+      if (fromDate > toDate) {
+        return [{
+          message: '"from" must be earlier than or equal to "to".',
+          statusCode: STATUS_CODES.BAD_REQUEST
+        }];
+      }
+    }
+
     const userRecord = await db
       .select({ email: users.email })
       .from(users)
@@ -789,21 +818,24 @@ export class StudentService {
 
     // 1. Fetch all completed sessions for the batch
     const allSessions = await db.query.zuvySessions.findMany({
-      where: (session, { and, eq }) =>
+      where: (session, { and, eq, or, ilike, gte, lte }) =>
         and(
           eq(session.bootcampId, bootcampId),
-          or(
-          eq(session.batchId, batchId),
-          eq(session.secondBatchId, batchId)
-          ),
-          eq(session.status, helperVariable.completed)
+          or(eq(session.batchId, batchId), eq(session.secondBatchId, batchId)),
+          eq(session.status, helperVariable.completed),
+          searchTerm ? ilike(session.title, `%${searchTerm}%`) : undefined,
+          fromDate && toDate ? and(
+            gte(session.startTime, fromDate.toISOString()),
+            lte(session.startTime, toDate.toISOString())
+          ) : undefined
         ),
       with: {
         batches: { columns: { id: true, name: true } },
       },
-      orderBy: (session, { desc }) => desc(session.id),
+      orderBy: (session, { asc, desc }) => fromDate && toDate ? asc(session.startTime) : desc(session.id),
+      limit,
+      offset,
     });
-
     const totalClasses = allSessions.length;
     if (totalClasses === 0) {
         return [
@@ -823,7 +855,6 @@ export class StudentService {
         ];
     }
     
-    const paginatedClasses = limit ? allSessions.slice(offset, offset + limit) : allSessions;
     const batchName = (allSessions[0] as any)?.batches?.name || null;
 
     // 2. Partition sessions into Zoom and Google Meet categories
@@ -890,7 +921,7 @@ export class StudentService {
     }
 
     // 6. Map paginated classes to the final result structure using the unified map
-    const result = paginatedClasses.map((cls) => {
+     const result = allSessions.map((cls) => {
       const userAttendance = unifiedAttendanceMap.get(cls.id);
       const status = userAttendance?.status || 'absent';
       const duration = userAttendance?.duration || 0;
@@ -908,18 +939,22 @@ export class StudentService {
       };
     });
 
-    // 7. Calculate overall attendance statistics using all sessions
-    let presentCount = 0;
-    allSessions.forEach((session) => {
-      const userAttendance = unifiedAttendanceMap.get(session.id);
-      if (userAttendance && userAttendance.status === 'present') {
-        presentCount++;
-      }
-    });
+    // Filter results by attendance status if specified
+    const filteredResults = attendanceStatus 
+      ? result.filter(cls => cls.attendanceStatus === attendanceStatus)
+      : result;
 
-    const absentCount = totalClasses - presentCount;
-    const attendancePercentage = totalClasses > 0
-      ? Number(((presentCount / totalClasses) * 100).toFixed(2))
+    // Recalculate pagination after filtering
+    const totalFilteredClasses = filteredResults.length;
+    const paginatedFilteredResults = limit 
+      ? filteredResults.slice(offset || 0, (offset || 0) + limit) 
+      : filteredResults;
+
+    // 7. Calculate overall attendance statistics using filtered results
+    const presentCount = filteredResults.filter(cls => cls.attendanceStatus === 'present').length;
+    const absentCount = filteredResults.filter(cls => cls.attendanceStatus === 'absent').length;
+    const attendancePercentage = totalFilteredClasses > 0
+      ? Number(((presentCount / totalFilteredClasses) * 100).toFixed(2))
       : 0;
 
     // 8. Return the final, consistently structured response
@@ -931,9 +966,10 @@ export class StudentService {
         data: {
           batchId,
           batchName,
-          classes: result,
-          totalClasses,
-          totalPages: limit ? Math.ceil(totalClasses / limit) : 1,
+          classes: paginatedFilteredResults,
+          totalClasses: totalFilteredClasses,
+          totalPages: limit ? Math.ceil(totalFilteredClasses / limit) : 1,
+          searchTerm: searchTerm || null,
           attendanceStats: {
             presentCount,
             absentCount,
@@ -942,16 +978,13 @@ export class StudentService {
         },
       },
     ];
+
   } catch (error) {
-    // console.error("Error fetching completed classes:", error); // Recommended for debugging
     return [{ message: error.message, statusCode: STATUS_CODES.BAD_REQUEST }];
   }
 }
 
-  //This function returns the rank of a particular course based on avg of attendance and course progress
-  //The query has a hierarchy from:-
-  //zuvyBootcamp->zuvyBatchEnrollments(It has all the students of that particular bootcamp along with attendance)
-  //ZuvyBatchEnrollments has a relation with userInfo and bootcamp Tracking table(contains course Progress)
+
   async getLeaderBoardDetailByBootcamp(bootcampId: number, limit: number, offset: number) {
     try {
       const data = await db.query.zuvyBootcamps.findMany({
