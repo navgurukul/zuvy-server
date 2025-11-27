@@ -776,9 +776,60 @@ export class UsersService {
     }
   }
 
+  // get user by id and innerjoin with zuvyUserRolesAssigned and zuvyUserRoles to get role details
+  async getUserById(id: bigint) {
+    try {
+      const [user] = await db
+        .select({
+          id: users.id,
+          name: users.name,
+          email: users.email,
+          roleId: zuvyUserRoles.id,
+          roleName: zuvyUserRoles.name,
+          roleDescription: zuvyUserRoles.description,
+          createdAt: zuvyUserRolesAssigned.createdAt,
+          updatedAt: zuvyUserRolesAssigned.updatedAt,
+        })
+        .from(users)
+        .leftJoin(
+          zuvyUserRolesAssigned,
+          eq(users.id, zuvyUserRolesAssigned.userId),
+        )
+        .leftJoin(
+          zuvyUserRoles,
+          eq(zuvyUserRolesAssigned.roleId, zuvyUserRoles.id),
+        )
+        .where(eq(users.id, id));
+
+      if (!user) {
+        throw new NotFoundException(`User with ID ${id} not found`);
+      }
+
+      return user;
+    } catch (error) {
+      throw error;
+    }
+  }
+
   async updateUser(id: bigint, updateUserDto: UpdateUserDto) {
     try {
       const targetUserId = typeof id === 'bigint' ? id : BigInt(id);
+      // compare email and roleId with existing data and update only name and return
+      const existingUser = await this.getUserById(targetUserId);
+      // check if email and roleId with existing data and update only name and return
+      if (
+        updateUserDto.email === existingUser.email &&
+        updateUserDto.roleId === Number(existingUser.roleId)
+      ) {
+        // Only name is being updated
+        return await db
+          .update(users)
+          .set({
+            name: updateUserDto.name,
+            updatedAt: new Date().toISOString(),
+          })
+          .where(eq(users.id, targetUserId));
+      }
 
       return await db.transaction(async (tx) => {
         const currentTime = new Date().toISOString(); // ISO string format
