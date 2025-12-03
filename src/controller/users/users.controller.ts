@@ -303,19 +303,42 @@ export class UsersController {
     description: 'Internal server error',
   })
   async getAllUsers(
-    @Query('limit') limit: number,
-    @Query('offset') offSet: number,
+    @Query('limit') limit: string,
+    @Query('offset') offSet: string,
     @Query('searchTerm') searchTerm: string,
-    @Query('roleId') roleId: number[],
+    @Query('roleId') roleId: string | string[],
     @Req() req,
   ) {
     const roleName = req.user[0]?.roles;
+
+    // parse limit and offset from query strings to numbers with sensible defaults
+    const parsedLimit = limit ? parseInt(limit, 10) : 10;
+    const parsedOffset = offSet ? parseInt(offSet, 10) : 0;
+
+    // parse roleId if provided (can be single or multiple values)
+    let parsedRoleId: number | number[] | undefined = undefined;
+    if (roleId !== undefined && roleId !== null) {
+      if (Array.isArray(roleId)) {
+        parsedRoleId = roleId
+          .map((r) => parseInt(r, 10))
+          .filter((n) => !Number.isNaN(n));
+      } else if (typeof roleId === 'string' && roleId.includes(',')) {
+        parsedRoleId = roleId
+          .split(',')
+          .map((r) => parseInt(r.trim(), 10))
+          .filter((n) => !Number.isNaN(n));
+      } else {
+        const single = parseInt(roleId as string, 10);
+        if (!Number.isNaN(single)) parsedRoleId = single;
+      }
+    }
+
     return this.usersService.getAllUsersWithRoles(
       roleName,
-      limit,
-      offSet,
+      parsedLimit,
+      parsedOffset,
       searchTerm,
-      roleId,
+      parsedRoleId,
     );
   }
 
