@@ -350,14 +350,18 @@ export class UsersService {
         );
 
         if (!(permissionDetails as any).rows?.length) {
-          throw new NotFoundException(`Permission ${permission} not found`);
+          this.logger.warn(
+            `Permission not found in DB, skipping: ${permission}`,
+          );
+          continue;
         }
 
         const permissionId = (permissionDetails as any).rows[0].id;
+
         await db.execute(
           sql`INSERT INTO main.zuvy_permissions_roles (role_id, permission_id)
-             VALUES (${roleId}, ${permissionId})
-             ON CONFLICT DO NOTHING`,
+            VALUES (${roleId}, ${permissionId})
+            ON CONFLICT DO NOTHING`,
         );
       }
 
