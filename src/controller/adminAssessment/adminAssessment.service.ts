@@ -1605,16 +1605,9 @@ Team Zuvy`;
             userId: true,
             completedAt: true,
           },
+          orderBy: (z, { asc }) => asc(z.id),
           with: {
-            user: {
-              columns: {
-                id: true,
-                name: true,
-                email: true,
-              },
-            },
-            orderBy: (zuvyChapterTracking, { asc }) =>
-              asc(zuvyChapterTracking.id),
+            user: { columns: { id: true, name: true, email: true } },
           },
         });
 
