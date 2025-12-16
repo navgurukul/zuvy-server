@@ -1,5 +1,14 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsString, IsNotEmpty, IsNumber, IsArray, ArrayNotEmpty, ValidateNested, IsObject, IsOptional } from 'class-validator';
+import {
+  IsString,
+  IsNotEmpty,
+  IsNumber,
+  IsArray,
+  ArrayNotEmpty,
+  ValidateNested,
+  IsObject,
+  IsOptional,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 export class SubmitCodeDto {
   @ApiProperty({
@@ -20,7 +29,6 @@ export class SubmitCodeDto {
   @IsString()
   sourceCode: string;
 }
-
 
 class OutputParameter {
   @ApiProperty({ type: 'string', example: 'str' })
@@ -50,8 +58,16 @@ export class TestCaseDto {
   @ApiProperty({
     type: 'array',
     example: [
-      { parameterType: 'str', parameterValue: 'example input 1', parameterName: 'a' },
-      { parameterType: 'str', parameterValue: 'example input 2', parameterName: 'b' },
+      {
+        parameterType: 'str',
+        parameterValue: 'example input 1',
+        parameterName: 'a',
+      },
+      {
+        parameterType: 'str',
+        parameterValue: 'example input 2',
+        parameterName: 'b',
+      },
     ],
     required: true,
   })
@@ -60,7 +76,10 @@ export class TestCaseDto {
 
   @ApiProperty({
     type: 'object',
-    example: { expectedOutputType: 'str', expectedOutputValue: 'expected output' },
+    example: {
+      expectedOutputType: 'str',
+      expectedOutputValue: 'expected output',
+    },
     required: true,
   })
   @IsObject()
@@ -73,7 +92,11 @@ export class CreateProblemDto {
   @IsString()
   title: string;
 
-  @ApiProperty({ type: String, example: 'Write a program to add two float values', required: true })
+  @ApiProperty({
+    type: String,
+    example: 'Write a program to add two float values',
+    required: true,
+  })
   @IsNotEmpty()
   @IsString()
   description: string;
@@ -91,8 +114,12 @@ export class CreateProblemDto {
     type: [TestCaseDto],
     example: [
       {
-        inputs:  [
-          { parameterType: 'jsonType', parameterValue: [{"name":"prem", age:45}], parameterName: 'studentInfo' },
+        inputs: [
+          {
+            parameterType: 'jsonType',
+            parameterValue: [{ name: 'prem', age: 45 }],
+            parameterName: 'studentInfo',
+          },
           { parameterType: 'int', parameterValue: 45, parameterName: 'age' },
         ],
         expectedOutput: { parameterType: 'int', parameterValue: 10 },
@@ -106,27 +133,40 @@ export class CreateProblemDto {
   @Type(() => TestCaseDto)
   testCases: TestCaseDto[];
 
-  @ApiProperty({ type: String, example: '2024-03-01T00:00:00Z', required: true })
+  @ApiProperty({
+    type: String,
+    example: '2024-03-01T00:00:00Z',
+    required: true,
+  })
   @IsString()
   createdAt: string;
 
-  @ApiProperty({ type: String, example: '2024-03-01T00:00:00Z', required: true })
+  @ApiProperty({
+    type: String,
+    example: '2024-03-01T00:00:00Z',
+    required: true,
+  })
   @IsString()
-  updatedAt: string;
+  updatedAt: string;
 
-  @ApiProperty({ type: String, example: `2 <= nums.length <= 104
+  @ApiProperty({
+    type: String,
+    example: `2 <= nums.length <= 104
 -109 <= nums[i] <= 109
--109 <= target <= 109`, required: true })
+-109 <= target <= 109`,
+    required: true,
+  })
   @IsString()
   constraints: string;
 
-  @ApiProperty({ type: Object, example: {"data":"about question"}, required: false })
+  @ApiProperty({
+    type: Object,
+    example: { data: 'about question' },
+    required: false,
+  })
   @IsObject()
-  content: object
+  content: object;
 }
-
-
-
 
 export class updateTestCaseDto {
   @ApiProperty({ type: Number, example: 2 })
@@ -137,8 +177,16 @@ export class updateTestCaseDto {
   @ApiProperty({
     type: 'array',
     example: [
-      { parameterType: 'str', parameterValue: 'example input 1', parameterName: 'a' },
-      { parameterType: 'str', parameterValue: 'example input 2', parameterName: 'b' },
+      {
+        parameterType: 'str',
+        parameterValue: 'example input 1',
+        parameterName: 'a',
+      },
+      {
+        parameterType: 'str',
+        parameterValue: 'example input 2',
+        parameterName: 'b',
+      },
     ],
     required: true,
   })
@@ -147,7 +195,10 @@ export class updateTestCaseDto {
 
   @ApiProperty({
     type: 'object',
-    example: { expectedOutputType: 'str', expectedOutputValue: 'expected output' },
+    example: {
+      expectedOutputType: 'str',
+      expectedOutputValue: 'expected output',
+    },
     required: true,
   })
   @IsObject()
@@ -160,7 +211,11 @@ export class updateProblemDto {
   @IsString()
   title: string;
 
-  @ApiProperty({ type: String, example: 'Write a program to add two float values', required: true })
+  @ApiProperty({
+    type: String,
+    example: 'Write a program to add two float values',
+    required: true,
+  })
   @IsNotEmpty()
   @IsString()
   description: string;
@@ -180,8 +235,8 @@ export class updateProblemDto {
       {
         id: 1,
         inputs: [
-          { parameterType: 'int', parameterValue: 5 , parameterName: 'a'},
-          { parameterType: 'int', parameterValue: 5 , parameterName: 'b'}
+          { parameterType: 'int', parameterValue: 5, parameterName: 'a' },
+          { parameterType: 'int', parameterValue: 5, parameterName: 'b' },
         ],
         expectedOutput: { parameterType: 'int', parameterValue: 10 },
       },
@@ -194,18 +249,32 @@ export class updateProblemDto {
   @Type(() => updateTestCaseDto)
   testCases: updateTestCaseDto[];
 
-  @ApiProperty({ type: String, example: '2024-03-01T00:00:00Z', required: true })
+  @ApiProperty({
+    type: String,
+    example: '2024-03-01T00:00:00Z',
+    required: true,
+  })
   @IsString()
-  updatedAt: string;
+  updatedAt: string;
 
-  @ApiProperty({ type: String, example: `2 <= nums.length <= 104
+  @ApiProperty({
+    type: String,
+    example: `2 <= nums.length <= 104
     -109 <= nums[i] <= 109
-    -109 <= target <= 109`, required: false })
+    -109 <= target <= 109`,
+    required: false,
+  })
   @IsString()
   constraints: string;
 
   @ApiProperty({ type: Object, example: 'python', required: false })
   @IsObject()
   @IsOptional()
-  content: object
+  content: object;
+}
+
+export class CodingPlatformDto {
+  language: 'cpp' | 'python' | 'java' | 'javascript';
+  inputMode?: 'SIMPLE' | 'HYBRID' | 'INTERACTIVE';
+  multipleTests?: boolean;
 }
