@@ -1613,9 +1613,9 @@ Team Zuvy`;
                 email: true,
               },
             },
-            orderBy: (zuvyChapterTracking, { asc }) =>
-              asc(zuvyChapterTracking.id),
           },
+          orderBy: (zuvyChapterTracking, { asc }) =>
+            asc(zuvyChapterTracking.id),
         });
 
       // Fetch batch enrollments for these users to attach batchId/batchName

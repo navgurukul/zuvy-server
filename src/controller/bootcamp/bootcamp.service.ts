@@ -510,7 +510,9 @@ export class BootcampService {
         .where(eq(zuvyBatchEnrollments.bootcampId, id));
       // Finally, delete the bootcamp
       let data = await db
-        .delete(zuvyBootcamps)
+        .update(zuvyBootcamps)
+        // cast to any to allow soft-delete fields; ideally add these columns to the schema
+        .set({ isDeleted: true, deletedAt: new Date().toISOString() } as any)
         .where(eq(zuvyBootcamps.id, id))
         .returning();
       if (data.length === 0) {
@@ -864,7 +866,14 @@ export class BootcampService {
         if (userInfo.length === 0) {
           userInfo = await db.insert(users).values(newUser).returning();
           c += 1;
-          enroling = { userId: userInfo[0].id, bootcampId };
+          const now = new Date();
+          enroling = {
+            userId: userInfo[0].id,
+            bootcampId,
+            enrolledDate: now,
+            lastActiveDate: now,
+            status: 'active',
+          };
           if (batchId) {
             enroling['batchId'] = batchId;
           }
@@ -1077,6 +1086,7 @@ export class BootcampService {
         : undefined;
       console.log({ orderBy, orderDirection });
       // Determine order field and direction
+      console.log(enrolledDate, 'enrollData');
       let orderField;
       switch (orderBy) {
         case 'submittedDate':
