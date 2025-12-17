@@ -43,6 +43,7 @@ export async function generateCppTemplate(
       switch (t) {
         case 'int':
           return 'long long';
+        case 'float':
         case 'double':
           return 'double';
         case 'bool':
@@ -255,6 +256,22 @@ ${parameters
       if (returnType === 'bool') {
         return `cout << (result ? "true" : "false");`;
       }
+      if (returnType === 'float' || returnType === 'double') {
+        return `
+        std::ostringstream oss;
+        oss << std::setprecision(15) << result;
+        std::string out = oss.str();
+
+        // trim trailing zeros
+        if (out.find('.') != std::string::npos) {
+        while (!out.empty() && out.back() == '0') out.pop_back();
+        if (!out.empty() && out.back() == '.') out.push_back('0');
+        }
+
+        cout << out;
+        `;
+      }
+
       if (returnType === 'jsonType') {
         return `printVariant(result);`;
       }
