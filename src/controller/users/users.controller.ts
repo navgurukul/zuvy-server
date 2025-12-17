@@ -303,8 +303,8 @@ export class UsersController {
     description: 'Internal server error',
   })
   async getAllUsers(
-    @Query('limit') limit: number,
-    @Query('offset') offSet: number,
+    @Query('limit', new ParseIntPipe()) limit: number,
+    @Query('offset', new ParseIntPipe()) offset: number,
     @Query('searchTerm') searchTerm: string,
     @Query('roleId') roleId: number[],
     @Req() req,
@@ -313,7 +313,7 @@ export class UsersController {
     return this.usersService.getAllUsersWithRoles(
       roleName,
       limit,
-      offSet,
+      offset,
       searchTerm,
       roleId,
     );
