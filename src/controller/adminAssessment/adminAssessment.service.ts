@@ -645,7 +645,8 @@ Team Zuvy`;
           reattemptCount: sql<number>`COUNT(*)`,
         })
         .from(zuvyAssessmentSubmission)
-        .where(sql`${zuvyAssessmentSubmission.assessmentOutsourseId} = ${assessmentID}`)
+        .where(sql`${zuvyAssessmentSubmission.assessmentOutsourseId} = ${assessmentID}
+          AND ${zuvyAssessmentSubmission.submitedAt} IS NOT NULL`)
         .groupBy(zuvyAssessmentSubmission.userId)
 
       const totalCountOfQualifiedStudents = await db.select({
