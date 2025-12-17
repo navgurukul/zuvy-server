@@ -82,6 +82,32 @@ ${parameters
   .join('')}
 `;
 
+    const hybridConversions = parameters
+      .map((p) => {
+        const name = p.parameterName;
+        const type = p.parameterType;
+
+        if (type === 'int') {
+          return `
+  long long ${name} = 0;
+  if (v_${name}.t == Variant::INT) ${name} = v_${name}.i;
+`;
+        }
+
+        if (type === 'str' || type === 'jsonType' || type === 'object') {
+          return `
+  string ${name} = "";
+  if (v_${name}.t == Variant::STR) ${name} = v_${name}.s;
+`;
+        }
+
+        // fallback
+        return `
+  string ${name} = "";
+`;
+      })
+      .join('\n');
+
     /* ---------- main body ---------- */
     const mainBody = interactive
       ? `
@@ -90,6 +116,8 @@ ${parameters
 `
       : `
 ${inputMode === 'HYBRID' ? hybridInput : simpleInput}
+
+${inputMode === 'HYBRID' ? hybridConversions : ''}
 
   auto result = ${functionName}(${parameters.map((p) => p.parameterName).join(', ')});
   cout << result;
