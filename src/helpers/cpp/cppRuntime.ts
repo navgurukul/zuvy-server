@@ -83,5 +83,129 @@ static void printVariant(const Variant &v) {
   }
 }
 
+/* ===== Linked List ===== */
+struct ListNode {
+  int val;
+  ListNode* next;
+  ListNode(int x) : val(x), next(nullptr) {}
+};
+
+static ListNode* buildLinkedList(const Variant& v) {
+  if (v.t != Variant::ARR) return nullptr;
+  ListNode dummy(0);
+  ListNode* cur = &dummy;
+  for (auto &el : v.a) {
+    if (el.t != Variant::INT) return nullptr;
+    cur->next = new ListNode(el.i);
+    cur = cur->next;
+  }
+  return dummy.next;
+}
+
+/* ===== Binary Tree ===== */
+struct TreeNode {
+  int val;
+  TreeNode* left;
+  TreeNode* right;
+  TreeNode(int x) : val(x), left(nullptr), right(nullptr) {}
+};
+
+static TreeNode* buildBinaryTree(const Variant& v) {
+  if (v.t != Variant::ARR || v.a.empty()) return nullptr;
+
+  vector<TreeNode*> nodes;
+  for (auto &el : v.a) {
+    if (el.t == Variant::INT) {
+      nodes.push_back(new TreeNode(el.i));
+    } else {
+      nodes.push_back(nullptr);
+    }
+  }
+
+  int pos = 1;
+  for (int i = 0; i < (int)nodes.size(); i++) {
+    if (!nodes[i]) continue;
+    if (pos < (int)nodes.size()) nodes[i]->left = nodes[pos++];
+    if (pos < (int)nodes.size()) nodes[i]->right = nodes[pos++];
+  }
+
+  return nodes[0];
+}
+
+/* ===== Map Builders ===== */
+
+static map<string, long long> buildMapStrInt(const Variant& v) {
+  map<string, long long> res;
+  if (v.t != Variant::MAP) return res;
+  for (auto &kv : v.m) {
+    if (kv.second.t != Variant::INT) continue;
+    res[kv.first] = kv.second.i;
+  }
+  return res;
+}
+
+static unordered_map<long long, long long> buildMapIntInt(const Variant& v) {
+  unordered_map<long long, long long> res;
+  if (v.t != Variant::ARR) return res;
+
+  for (auto &pair : v.a) {
+    if (pair.t != Variant::ARR || pair.a.size() != 2) continue;
+    if (pair.a[0].t != Variant::INT || pair.a[1].t != Variant::INT) continue;
+    res[pair.a[0].i] = pair.a[1].i;
+  }
+  return res;
+}
+
+/* ===== Graph Builders ===== */
+
+static vector<vector<int>> buildGraph(const Variant& v) {
+  vector<vector<int>> graph;
+  if (v.t != Variant::ARR) return graph;
+
+  int maxNode = 0;
+  for (auto &e : v.a) {
+    if (e.t == Variant::ARR && e.a.size() >= 2) {
+      maxNode = max(maxNode, (int)max(e.a[0].i, e.a[1].i));
+    }
+  }
+
+  graph.assign(maxNode + 1, {});
+
+  for (auto &e : v.a) {
+    if (e.t != Variant::ARR || e.a.size() < 2) continue;
+    int u = e.a[0].i;
+    int v2 = e.a[1].i;
+    graph[u].push_back(v2);
+    // undirected graphs can add reverse edge in user code
+  }
+
+  return graph;
+}
+
+static vector<vector<pair<int,int>>> buildWeightedGraph(const Variant& v) {
+  vector<vector<pair<int,int>>> graph;
+  if (v.t != Variant::ARR) return graph;
+
+  int maxNode = 0;
+  for (auto &e : v.a) {
+    if (e.t == Variant::ARR && e.a.size() == 3) {
+      maxNode = max(maxNode, (int)max(e.a[0].i, e.a[1].i));
+    }
+  }
+
+  graph.assign(maxNode + 1, {});
+
+  for (auto &e : v.a) {
+    if (e.t != Variant::ARR || e.a.size() != 3) continue;
+    int u = e.a[0].i;
+    int v2 = e.a[1].i;
+    int w = e.a[2].i;
+    graph[u].push_back({v2, w});
+  }
+
+  return graph;
+}
+
+
 /* ----- End shared runtime ----- */
 `;

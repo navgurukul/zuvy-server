@@ -1,5 +1,4 @@
 import { CPP_RUNTIME } from './cppRuntime';
-import { cppEscape } from './cppUtils';
 import { CppInputMode } from './cppInputModes';
 
 export async function generateCppTemplate(
@@ -16,7 +15,22 @@ export async function generateCppTemplate(
     const inputMode: CppInputMode =
       options?.inputMode ||
       (parameters.some((p) =>
-        ['map', 'object', 'jsonType', 'arrayOfObj'].includes(p.parameterType),
+        [
+          'map',
+          'object',
+          'jsonType',
+          'arrayOfObj',
+          'arrayOfnum',
+          'arrayOfStr',
+          'arrayOfarrayOfnum',
+          'arrayOfarrayOfStr',
+          'linkedList',
+          'binaryTree',
+          'mapStrInt',
+          'mapIntInt',
+          'graph',
+          'weightedGraph',
+        ].includes(p.parameterType),
       )
         ? 'HYBRID'
         : 'SIMPLE');
@@ -24,7 +38,7 @@ export async function generateCppTemplate(
     const multipleTests = options?.multipleTests ?? false;
     const interactive = options?.interactive ?? false;
 
-    /* ---------- function signature ---------- */
+    /* ---------- type mapping ---------- */
     const cppType = (t: string) => {
       switch (t) {
         case 'int':
@@ -41,6 +55,24 @@ export async function generateCppTemplate(
           return 'vector<long long>';
         case 'arrayOfStr':
           return 'vector<string>';
+        case 'arrayOfarrayOfnum':
+          return 'vector<vector<long long>>';
+        case 'arrayOfarrayOfStr':
+          return 'vector<vector<string>>';
+        case 'linkedList':
+          return 'ListNode*';
+        case 'binaryTree':
+          return 'TreeNode*';
+        case 'mapStrInt':
+          return 'map<string, long long>';
+        case 'mapIntInt':
+          return 'unordered_map<long long, long long>';
+        case 'graph':
+          return 'vector<vector<int>>';
+        case 'weightedGraph':
+          return 'vector<vector<pair<int,int>>>';
+        case 'jsonType':
+          return 'Variant';
         default:
           return 'string';
       }
@@ -52,61 +84,182 @@ export async function generateCppTemplate(
 
     const returnCppType = returnType === 'void' ? 'void' : cppType(returnType);
 
-    /* ---------- input handling ---------- */
+    /* ---------- SIMPLE input ---------- */
     const simpleInput = parameters
-      .map((p) => {
-        if (p.parameterType.startsWith('array')) {
-          return `
-  int ${p.parameterName}_n;
-  cin >> ${p.parameterName}_n;
-  vector<long long> ${p.parameterName}(${p.parameterName}_n);
-  for (int i = 0; i < ${p.parameterName}_n; ++i) cin >> ${p.parameterName}[i];
-`;
-        }
-        return `  ${cppType(p.parameterType)} ${p.parameterName}; cin >> ${p.parameterName};`;
-      })
+      .map(
+        (p) =>
+          `  ${cppType(p.parameterType)} ${p.parameterName}; cin >> ${p.parameterName};`,
+      )
       .join('\n');
 
+    /* ---------- HYBRID input ---------- */
     const hybridInput = `
   vector<string> lines;
   string line;
   while (getline(cin, line)) lines.push_back(line);
-
   int idx = 0;
 ${parameters
   .map(
     (p) => `
-  Variant v_${p.parameterName} = parseJavaStrictFormat(idx < (int)lines.size() ? lines[idx++] : "");
+  Variant v_${p.parameterName} =
+    parseJavaStrictFormat(idx < (int)lines.size() ? lines[idx++] : "");
 `,
   )
   .join('')}
 `;
 
+    /* ---------- HYBRID conversions ---------- */
     const hybridConversions = parameters
       .map((p) => {
         const name = p.parameterName;
-        const type = p.parameterType;
 
-        if (type === 'int') {
-          return `
+        switch (p.parameterType) {
+          case 'int':
+            return `
   long long ${name} = 0;
-  if (v_${name}.t == Variant::INT) ${name} = v_${name}.i;
+  if (v_${name}.t == Variant::INT)
+    ${name} = v_${name}.i;
+`;
+
+          case 'bool':
+            return `
+  bool ${name} = false;
+  if (v_${name}.t == Variant::BOOL)
+    ${name} = v_${name}.b;
+`;
+
+          case 'str':
+            return `
+  string ${name};
+  if (v_${name}.t == Variant::STR)
+    ${name} = v_${name}.s;
+`;
+
+          case 'arrayOfnum':
+            return `
+  vector<long long> ${name};
+  if (v_${name}.t == Variant::ARR) {
+    for (auto &el : v_${name}.a) {
+      if (el.t != Variant::INT) {
+        cerr << "Type error: expected INT in array '${name}'" << endl;
+        return 0;
+      }
+      ${name}.push_back(el.i);
+    }
+  }
+`;
+
+          case 'arrayOfStr':
+            return `
+  vector<string> ${name};
+  if (v_${name}.t == Variant::ARR) {
+    for (auto &el : v_${name}.a) {
+      if (el.t != Variant::STR) {
+        cerr << "Type error: expected STR in array '${name}'" << endl;
+        return 0;
+      }
+      ${name}.push_back(el.s);
+    }
+  }
+`;
+
+          case 'arrayOfarrayOfnum':
+            return `
+  vector<vector<long long>> ${name};
+  if (v_${name}.t == Variant::ARR) {
+    for (auto &row : v_${name}.a) {
+      if (row.t != Variant::ARR) {
+        cerr << "Type error: expected array in '${name}'" << endl;
+        return 0;
+      }
+      vector<long long> temp;
+      for (auto &el : row.a) {
+        if (el.t != Variant::INT) {
+          cerr << "Type error: expected INT in nested array '${name}'" << endl;
+          return 0;
+        }
+        temp.push_back(el.i);
+      }
+      ${name}.push_back(temp);
+    }
+  }
+`;
+
+          case 'arrayOfarrayOfStr':
+            return `
+  vector<vector<string>> ${name};
+  if (v_${name}.t == Variant::ARR) {
+    for (auto &row : v_${name}.a) {
+      if (row.t != Variant::ARR) {
+        cerr << "Type error: expected array in '${name}'" << endl;
+        return 0;
+      }
+      vector<string> temp;
+      for (auto &el : row.a) {
+        if (el.t != Variant::STR) {
+          cerr << "Type error: expected STR in nested array '${name}'" << endl;
+          return 0;
+        }
+        temp.push_back(el.s);
+      }
+      ${name}.push_back(temp);
+    }
+  }
+`;
+
+          case 'linkedList':
+            return `
+  ListNode* ${name} = buildLinkedList(v_${name});
+`;
+
+          case 'binaryTree':
+            return `
+  TreeNode* ${name} = buildBinaryTree(v_${name});
+`;
+
+          case 'mapStrInt':
+            return `
+  map<string, long long> ${name} = buildMapStrInt(v_${name});
+`;
+
+          case 'mapIntInt':
+            return `
+  unordered_map<long long, long long> ${name} = buildMapIntInt(v_${name});
+`;
+
+          case 'graph':
+            return `
+  vector<vector<int>> ${name} = buildGraph(v_${name});
+`;
+
+          case 'weightedGraph':
+            return `
+  vector<vector<pair<int,int>>> ${name} = buildWeightedGraph(v_${name});
+`;
+
+          case 'jsonType':
+            return `
+  Variant ${name} = v_${name};
+`;
+
+          default:
+            return `
+  // Unsupported type: ${p.parameterType}
 `;
         }
-
-        if (type === 'str' || type === 'jsonType' || type === 'object') {
-          return `
-  string ${name} = "";
-  if (v_${name}.t == Variant::STR) ${name} = v_${name}.s;
-`;
-        }
-
-        // fallback
-        return `
-  string ${name} = "";
-`;
       })
       .join('\n');
+
+    /* ---------- OUTPUT handling ---------- */
+    const outputHandling = (() => {
+      if (returnType === 'bool') {
+        return `cout << (result ? "true" : "false");`;
+      }
+      if (returnType === 'jsonType') {
+        return `printVariant(result);`;
+      }
+      return `cout << result;`;
+    })();
 
     /* ---------- main body ---------- */
     const mainBody = interactive
@@ -120,7 +273,7 @@ ${inputMode === 'HYBRID' ? hybridInput : simpleInput}
 ${inputMode === 'HYBRID' ? hybridConversions : ''}
 
   auto result = ${functionName}(${parameters.map((p) => p.parameterName).join(', ')});
-  cout << result;
+  ${outputHandling}
 `;
 
     /* ---------- final template ---------- */
