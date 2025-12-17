@@ -37,6 +37,31 @@ struct Variant {
   Variant():t(NUL),i(0),d(0),b(false){}
 };
 
+static Variant parseObject(const string& input) {
+  Variant v;
+  v.t = Variant::MAP;
+
+  string inner = trim(input.substr(1, input.size() - 2));
+  if (inner.empty()) return v;
+
+  for (auto& part : splitTopLevel(inner)) {
+    size_t colon = part.find(':');
+    if (colon == string::npos) continue;
+
+    string key = trim(part.substr(0, colon));
+    string val = trim(part.substr(colon + 1));
+
+    // remove quotes from key
+    if (!key.empty() && key.front() == '"' && key.back() == '"') {
+      key = key.substr(1, key.size() - 2);
+    }
+
+    // ATOMIC insertion
+    v.m[key] = parseJavaStrictFormat(val);
+  }
+
+  return v;
+}
 
 static Variant parseJavaStrictFormat(const string &raw) {
   string x = trim(raw);
@@ -44,6 +69,11 @@ static Variant parseJavaStrictFormat(const string &raw) {
 
   if (x == "true" || x == "false") {
     Variant v; v.t = Variant::BOOL; v.b = (x == "true"); return v;
+  }
+
+  // Object
+  if (x.front() == '{' && x.back() == '}') {
+    return parseObject(x);
   }
 
   // Array
