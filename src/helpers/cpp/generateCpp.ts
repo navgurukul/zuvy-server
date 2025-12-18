@@ -61,11 +61,11 @@ export async function generateCppTemplate(
         case 'str':
           return 'string';
         case 'arrayOfnum':
-          return 'vector<long long>';
+          return 'vector<double>';
         case 'arrayOfStr':
           return 'vector<string>';
         case 'arrayOfarrayOfnum':
-          return 'vector<vector<long long>>';
+          return 'vector<vector<double>>';
         case 'arrayOfarrayOfStr':
           return 'vector<vector<string>>';
         case 'linkedList':
@@ -112,6 +112,15 @@ export async function generateCppTemplate(
   cin >> ${p.parameterName}_n;
   vector<long long> ${p.parameterName}(${p.parameterName}_n);
   for (int i = 0; i < ${p.parameterName}_n; ++i) cin >> ${p.parameterName}[i];
+`;
+        }
+
+        if (p.parameterType === 'bool') {
+          return `
+  string ${p.parameterName}_str;
+  cin >> ${p.parameterName}_str;
+  bool ${p.parameterName} =
+    (${p.parameterName}_str == "true" || ${p.parameterName}_str == "1");
 `;
         }
 
@@ -168,14 +177,17 @@ ${parameters
 
           case 'arrayOfnum':
             return `
-  vector<long long> ${name};
+  vector<double> ${name};
   if (v_${name}.t == Variant::ARR) {
     for (auto &el : v_${name}.a) {
-      if (el.t != Variant::INT) {
-        cerr << "Type error: expected INT in array '${name}'" << endl;
+      if (el.t == Variant::INT) {
+        ${name}.push_back((double)el.i);
+      } else if (el.t == Variant::DBL) {
+        ${name}.push_back(el.d);
+      } else {
+        cerr << "Type error: expected numeric value in array '${name}'" << endl;
         return 0;
       }
-      ${name}.push_back(el.i);
     }
   }
 `;

@@ -86,16 +86,40 @@ static Variant parseJavaStrictFormat(const string &raw) {
     return v;
   }
 
-  // Integer
-  bool isNum = true;
-  for (char c : x) if (!isdigit(c) && c != '-') isNum = false;
-  if (isNum) {
-    Variant v; v.t = Variant::INT; v.i = stoll(x); return v;
+// Integer or Double
+bool isInt = true, isDouble = false;
+for (char c : x) {
+  if (c == '.') {
+    isDouble = true;
+  } else if (!isdigit(c) && c != '-') {
+    isInt = false;
   }
+}
 
-  // String
-  Variant v; v.t = Variant::STR; v.s = x;
-  return v;
+if (isInt && !isDouble) {
+  Variant v; v.t = Variant::INT; v.i = stoll(x); return v;
+}
+
+if (isInt && isDouble) {
+  Variant v; v.t = Variant::DBL; v.d = stod(x); return v;
+}
+
+
+// String
+Variant v;
+v.t = Variant::STR;
+
+// Strip surrounding quotes if present
+if (x.size() >= 2 &&
+    ((x.front() == '"' && x.back() == '"') ||
+     (x.front() == '\'' && x.back() == '\''))) {
+  v.s = x.substr(1, x.size() - 2);
+} else {
+  v.s = x;
+}
+
+return v;
+
 }
 
 static void printVariant(const Variant &v) {
@@ -105,6 +129,9 @@ static void printVariant(const Variant &v) {
   else if (v.t == Variant::INT) {
     cout << v.i;
   }
+  else if (v.t == Variant::DBL) {
+    cout << v.d;
+ }
   else if (v.t == Variant::BOOL) {
     cout << (v.b ? "true" : "false");
   }
