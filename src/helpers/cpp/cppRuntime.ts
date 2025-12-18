@@ -1,7 +1,5 @@
-export const CPP_RUNTIME = `
+export const CPP_RUNTIME = String.raw`
 /* ----- Begin shared runtime (DO NOT EDIT) ----- */
-#include <bits/stdc++.h>
-using namespace std;
 
 static inline string trim(const string &s) {
   size_t a = s.find_first_not_of(" \\t\\r\\n");
@@ -36,6 +34,8 @@ struct Variant {
   map<string,Variant> m;
   Variant():t(NUL),i(0),d(0),b(false){}
 };
+
+static Variant parseJavaStrictFormat(const string &raw);
 
 static Variant parseObject(const string& input) {
   Variant v;
@@ -99,10 +99,18 @@ static Variant parseJavaStrictFormat(const string &raw) {
 }
 
 static void printVariant(const Variant &v) {
-  if (v.t == Variant::NUL) cout << "null";
-  else if (v.t == Variant::INT) cout << v.i;
-  else if (v.t == Variant::BOOL) cout << (v.b ? "true" : "false");
-  else if (v.t == Variant::STR) cout << v.s;
+  if (v.t == Variant::NUL) {
+    cout << "null";
+  }
+  else if (v.t == Variant::INT) {
+    cout << v.i;
+  }
+  else if (v.t == Variant::BOOL) {
+    cout << (v.b ? "true" : "false");
+  }
+  else if (v.t == Variant::STR) {
+    cout << v.s;
+  }
   else if (v.t == Variant::ARR) {
     cout << "[";
     for (size_t i = 0; i < v.a.size(); ++i) {
@@ -111,7 +119,19 @@ static void printVariant(const Variant &v) {
     }
     cout << "]";
   }
+  else if (v.t == Variant::MAP) {
+    cout << "{";
+    bool first = true;
+    for (const auto &kv : v.m) {
+      if (!first) cout << ",";
+      first = false;
+      cout << "\"" << kv.first << "\":";
+      printVariant(kv.second);
+    }
+    cout << "}";
+  }
 }
+
 
 /* ===== Linked List ===== */
 struct ListNode {

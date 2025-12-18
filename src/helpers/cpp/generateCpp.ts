@@ -38,6 +38,14 @@ export async function generateCppTemplate(
     const multipleTests = options?.multipleTests ?? false;
     const interactive = options?.interactive ?? false;
 
+    /* runtime inclusion rule */
+    const needsRuntime =
+      inputMode === 'HYBRID' ||
+      returnType === 'jsonType' ||
+      parameters.some((p) =>
+        ['jsonType', 'object', 'map', 'arrayOfObj'].includes(p.parameterType),
+      );
+
     /* ---------- type mapping ---------- */
     const cppType = (t: string) => {
       switch (t) {
@@ -344,7 +352,7 @@ void printVector(const vector<T>& v) {
   cout << "]";
 }
 
-${inputMode === 'HYBRID' ? CPP_RUNTIME : ''}
+${needsRuntime ? CPP_RUNTIME : ''}
 
 /* ===== USER FUNCTION (EDIT ONLY BODY) ===== */
 ${returnCppType} ${functionName}(${paramList}) {
