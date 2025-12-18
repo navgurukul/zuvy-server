@@ -87,10 +87,32 @@ export async function generateCppTemplate(
 
     /* ---------- SIMPLE input ---------- */
     const simpleInput = parameters
-      .map(
-        (p) =>
-          `  ${cppType(p.parameterType)} ${p.parameterName}; cin >> ${p.parameterName};`,
-      )
+      .map((p, index) => {
+        // STRING WITH SPACES
+        if (p.parameterType === 'str') {
+          return `
+  string ${p.parameterName};
+  ${index === 0 ? '' : "cin.ignore(numeric_limits<streamsize>::max(), '\\n');"}
+  getline(cin, ${p.parameterName});
+`;
+        }
+
+        // ARRAYS (existing logic)
+        if (p.parameterType.startsWith('array')) {
+          return `
+  int ${p.parameterName}_n;
+  cin >> ${p.parameterName}_n;
+  vector<long long> ${p.parameterName}(${p.parameterName}_n);
+  for (int i = 0; i < ${p.parameterName}_n; ++i) cin >> ${p.parameterName}[i];
+`;
+        }
+
+        // OTHER TYPES
+        return `
+  ${cppType(p.parameterType)} ${p.parameterName};
+  cin >> ${p.parameterName};
+`;
+      })
       .join('\n');
 
     /* ---------- HYBRID input ---------- */
@@ -272,6 +294,10 @@ ${parameters
         `;
       }
 
+      if (returnType === 'arrayOfnum' || returnType === 'arrayOfStr') {
+        return `printVector(result);`;
+      }
+
       if (returnType === 'jsonType') {
         return `printVariant(result);`;
       }
@@ -307,6 +333,16 @@ using namespace std;
 #else
 #define dbg(x)
 #endif
+
+template <typename T>
+void printVector(const vector<T>& v) {
+  cout << "[";
+  for (size_t i = 0; i < v.size(); i++) {
+    if (i) cout << ",";
+    cout << v[i];
+  }
+  cout << "]";
+}
 
 ${inputMode === 'HYBRID' ? CPP_RUNTIME : ''}
 
