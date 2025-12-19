@@ -105,15 +105,24 @@ export async function generateCppTemplate(
 `;
         }
 
-        // ARRAYS (existing logic)
-        if (p.parameterType.startsWith('array')) {
+        if (p.parameterType === 'arrayOfnum') {
           return `
   int ${p.parameterName}_n;
   cin >> ${p.parameterName}_n;
-  vector<long long> ${p.parameterName}(${p.parameterName}_n);
+  vector<double> ${p.parameterName}(${p.parameterName}_n);
   for (int i = 0; i < ${p.parameterName}_n; ++i) cin >> ${p.parameterName}[i];
 `;
         }
+
+        if (p.parameterType === 'arrayOfStr') {
+          return `
+  int ${p.parameterName}_n;
+  cin >> ${p.parameterName}_n;
+  vector<string> ${p.parameterName}(${p.parameterName}_n);
+  for (int i = 0; i < ${p.parameterName}_n; ++i) cin >> ${p.parameterName}[i];
+`;
+      }
+
 
         if (p.parameterType === 'bool') {
           return `
@@ -207,21 +216,24 @@ ${parameters
 `;
 
           case 'arrayOfarrayOfnum':
-            return `
-  vector<vector<long long>> ${name};
+  return `
+  vector<vector<double>> ${name};
   if (v_${name}.t == Variant::ARR) {
     for (auto &row : v_${name}.a) {
       if (row.t != Variant::ARR) {
         cerr << "Type error: expected array in '${name}'" << endl;
         return 0;
       }
-      vector<long long> temp;
+      vector<double> temp;
       for (auto &el : row.a) {
-        if (el.t != Variant::INT) {
-          cerr << "Type error: expected INT in nested array '${name}'" << endl;
+        if (el.t == Variant::INT) {
+          temp.push_back((double)el.i);
+        } else if (el.t == Variant::DBL) {
+          temp.push_back(el.d);
+        } else {
+          cerr << "Type error: expected numeric value in nested array '${name}'" << endl;
           return 0;
         }
-        temp.push_back(el.i);
       }
       ${name}.push_back(temp);
     }
@@ -363,6 +375,29 @@ void printVector(const vector<T>& v) {
   }
   cout << "]";
 }
+
+// ===== Float vector printer (DO NOT REMOVE) =====
+template <>
+void printVector<double>(const vector<double>& v) {
+  cout << "[";
+  for (size_t i = 0; i < v.size(); i++) {
+    if (i) cout << ",";
+
+    std::ostringstream oss;
+    oss << std::setprecision(15) << v[i];
+    string out = oss.str();
+
+    // trim trailing zeros
+    if (out.find('.') != string::npos) {
+      while (!out.empty() && out.back() == '0') out.pop_back();
+      if (!out.empty() && out.back() == '.') out.push_back('0');
+    }
+
+    cout << out;
+  }
+  cout << "]";
+}
+
 
 ${needsRuntime ? CPP_RUNTIME : ''}
 
