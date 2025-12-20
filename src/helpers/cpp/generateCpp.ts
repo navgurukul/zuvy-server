@@ -121,8 +121,7 @@ export async function generateCppTemplate(
   vector<string> ${p.parameterName}(${p.parameterName}_n);
   for (int i = 0; i < ${p.parameterName}_n; ++i) cin >> ${p.parameterName}[i];
 `;
-      }
-
+        }
 
         if (p.parameterType === 'bool') {
           return `
@@ -216,7 +215,7 @@ ${parameters
 `;
 
           case 'arrayOfarrayOfnum':
-  return `
+            return `
   vector<vector<double>> ${name};
   if (v_${name}.t == Variant::ARR) {
     for (auto &row : v_${name}.a) {
@@ -356,6 +355,17 @@ ${inputMode === 'HYBRID' ? hybridConversions : ''}
 #include <bits/stdc++.h>
 using namespace std;
 
+/* ============================================================
+ *  SCROLL DOWN TO FIND THE USER FUNCTION 
+ *
+ *  You only need to write code inside the function marked as:
+ *      // ==================== USER CODE START ====================
+ *
+ *  Do NOT modify any other part of this file.
+ *
+ * ============================================================ */
+
+
 #ifndef ONLINE_JUDGE
 #define DEBUG
 #endif
@@ -401,14 +411,25 @@ void printVector<double>(const vector<double>& v) {
 
 ${needsRuntime ? CPP_RUNTIME : ''}
 
-/* ===== USER FUNCTION (EDIT ONLY BODY) ===== */
+/* =====================================================================
+ *   WRITE YOUR SOLUTION INSIDE THE FUNCTION BODY BELOW 
+ *
+ *  DO NOT change the function name or parameters
+ *  DO NOT write code outside this function
+ *  ONLY replace the code between USER CODE START and USER CODE END
+ *
+ * ===================================================================== */
 ${returnCppType} ${functionName}(${paramList}) {
-  // USER CODE START
-  // Write logic here
+
+  // ==================== USER CODE START ====================
+  // Write your solution logic here
+  
   ${returnType === 'void' ? '' : 'return {};'}
-  // USER CODE END
+  
+  // ===================== USER CODE END =====================
 }
-/* ===== END USER FUNCTION ===== */
+/* ================= END OF USER FUNCTION =================== */
+
 
 int main() {
   ios::sync_with_stdio(false);
