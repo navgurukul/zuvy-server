@@ -5,7 +5,7 @@ import { db } from '../db';
 import { users, blacklistedTokens, sansaarUserRoles } from '../../drizzle/schema';
 import { eq } from 'drizzle-orm';
 import { OAuth2Client } from 'google-auth-library';
-let { GOOGLE_CLIENT_ID, GOOGLE_SECRET, GOOGLE_REDIRECT,JWT_SECRET_KEY } = process.env;
+let { GOOGLE_CLIENT_ID, GOOGLE_SECRET, GOOGLE_REDIRECT, JWT_SECRET_KEY } = process.env;
 
 @Injectable()
 export class AuthService {
@@ -33,13 +33,13 @@ export class AuthService {
       .from(sansaarUserRoles)
       .where(eq(sansaarUserRoles.userId, Number(userId)));
 
-    return userRoles.length > 0 
+    return userRoles.length > 0
       ? userRoles.map(role => role.role)
       : ['student'];
   }
 
   async login(loginDto: LoginDto) {
-    try {      
+    try {
       // 1. Verify the Google ID token
       const ticket = await this.googleAuthClient.verifyIdToken({
         idToken: loginDto.googleIdToken,
@@ -57,30 +57,45 @@ export class AuthService {
       }
 
       // 4. Find user in your DB
-      const [user] = await db.select().from(users).where(eq(users.email, tokenEmail));
-      if (!user) {
-        throw new UnauthorizedException('User not found');
-      }
-      if (!user.googleUserId) {
-        await db.update(users)
-          .set({ googleUserId: googleUserId })
-          .where(eq(users.id, user.id));
-        // Optionally, update the user object in memory as well
-        user.googleUserId = googleUserId;
-      }
-      if (user.googleUserId !== googleUserId) {
-        throw new UnauthorizedException('Google user ID mismatch');
-      }
+      const result = await db.select().from(users).where(eq(users.email, tokenEmail));
+      let user = result[0];
 
-      // Update last login timestamp
-      await db.update(users)
-        .set({ lastLoginAt: new Date().toISOString() })
-        .where(eq(users.id, user.id));
+      if (!user) {
+        // Create new user if not exists
+        const [newUser] = await db.insert(users).values({
+          email: tokenEmail,
+          name: payload.name || '',
+          profilePicture: payload.picture || '',
+          googleUserId: googleUserId,
+          createdAt: new Date().toISOString(),
+          lastLoginAt: new Date().toISOString(),
+          mode: 'student', // Default mode
+        }).returning();
+        user = newUser;
+      } else {
+        // Existing user logic
+        if (!user.googleUserId) {
+          await db.update(users)
+            .set({ googleUserId: googleUserId })
+            .where(eq(users.id, user.id));
+          // Update the user object in memory as well
+          user.googleUserId = googleUserId;
+        }
+
+        if (user.googleUserId !== googleUserId) {
+          throw new UnauthorizedException('Google user ID mismatch');
+        }
+
+        // Update last login timestamp
+        await db.update(users)
+          .set({ lastLoginAt: new Date().toISOString() })
+          .where(eq(users.id, user.id));
+      }
 
       // Get user roles
       const roles = await this.getUserRoles(user.id.toString());
 
-      const jwtPayload = { 
+      const jwtPayload = {
         sub: user.id.toString(),
         email: user.email,
         googleUserId: user.googleUserId,
@@ -137,7 +152,7 @@ export class AuthService {
   }
 
   async validateToken(token: string) {
-    try {      
+    try {
       // Check if token is blacklisted
       const [blacklistedToken] = await db.select()
         .from(blacklistedTokens)
@@ -183,7 +198,7 @@ export class AuthService {
       // Blacklist the old refresh token
       const decoded = this.jwtService.decode(refreshToken) as { exp: number };
       const expiresAt = new Date(decoded.exp * 1000).toISOString();
-      
+
       await db.insert(blacklistedTokens).values({
         token: refreshToken,
         expiresAt: new Date(expiresAt),
