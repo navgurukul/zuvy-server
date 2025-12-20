@@ -2325,7 +2325,18 @@ export class SubmissionService {
           `);
 
         const totalStudentsCount = totalStudentsRes[0]?.count ?? 0;
-        const totalPages = limit ? Math.ceil(totalStudentsCount / limit) : 1;
+        // Normalize pagination inputs: treat non-positive/invalid limits as undefined
+        const safeLimit =
+          Number.isFinite(Number(limit)) && Number(limit) > 0
+            ? Number(limit)
+            : undefined;
+        const safeOffset =
+          Number.isFinite(Number(offset)) && Number(offset) >= 0
+            ? Number(offset)
+            : 0;
+        const totalPages = safeLimit
+          ? Math.ceil(totalStudentsCount / safeLimit)
+          : 1;
         const deadlineDate = new Date(
           chapterDeadline[0].completionDate,
         ).getTime();
@@ -2399,13 +2410,15 @@ export class SubmissionService {
 
         // Apply pagination in JS after sorting so ordering by name/email works correctly
         const paginatedData =
-          typeof offset === 'number' && typeof limit === 'number'
-            ? sortedData.slice(offset, offset + limit)
+          typeof safeLimit === 'number'
+            ? sortedData.slice(safeOffset, safeOffset + safeLimit)
             : sortedData;
 
         // Calculate the current page based on limit and offset
         const currentPage =
-          !isNaN(limit) && !isNaN(offset) ? offset / limit + 1 : 1;
+          typeof safeLimit === 'number'
+            ? Math.floor(safeOffset / safeLimit) + 1
+            : 1;
 
         // Return the response with student data
         return [
