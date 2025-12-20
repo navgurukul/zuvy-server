@@ -355,6 +355,17 @@ ${inputMode === 'HYBRID' ? hybridConversions : ''}
 #include <bits/stdc++.h>
 using namespace std;
 
+/* ============================================================
+ *  SCROLL DOWN TO FIND THE USER FUNCTION 
+ *
+ *  You only need to write code inside the function marked as:
+ *      // ==================== USER CODE START ====================
+ *
+ *  Do NOT modify any other part of this file.
+ *
+ * ============================================================ */
+
+
 #ifndef ONLINE_JUDGE
 #define DEBUG
 #endif
