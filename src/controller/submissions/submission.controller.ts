@@ -939,6 +939,22 @@ export class SubmissionController {
     type: String,
     description: 'Filter by attendance status (present or absent)',
   })
+  @ApiQuery({
+    name: 'orderBy',
+    required: false,
+    type: String,
+    enum: ['name', 'email', 'status'],
+    enumName: 'LiveSessionOrderBy',
+    description: "Sort by 'name', 'email' or 'status'",
+  })
+  @ApiQuery({
+    name: 'orderDirection',
+    required: false,
+    type: String,
+    enum: ['asc', 'desc'],
+    enumName: 'OrderDirection',
+    description: "Sort direction 'asc' or 'desc'",
+  })
   async getLiveChapterStudentSubmission(
     @Param('module_chapter_id') moduleChapterId: number,
     @Res() res?: any,
@@ -947,6 +963,8 @@ export class SubmissionController {
     @Query('name') name?: string,
     @Query('email') email?: string,
     @Query('status') status?: 'present' | 'absent',
+    @Query('orderBy') orderBy?: 'name' | 'email' | 'status',
+    @Query('orderDirection') orderDirection?: 'asc' | 'desc',
   ) {
     try {
       const [err, result] =
@@ -957,6 +975,8 @@ export class SubmissionController {
           name,
           email,
           status,
+          orderBy,
+          orderDirection,
         );
       if (err) {
         return ErrorResponse.BadRequestException(

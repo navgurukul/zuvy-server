@@ -1514,8 +1514,38 @@ Team Zuvy`;
     batchId?: number,
     limit?: number,
     offSet?: number,
+    orderBy?: 'name' | 'email' | 'completedAt',
+    orderDirection?: 'asc' | 'desc',
   ) {
     try {
+      // Validate ordering inputs when provided
+      if ((orderBy && !orderDirection) || (!orderBy && orderDirection)) {
+        return {
+          message: 'Both orderBy and orderDirection are required together',
+          statusCode: 400,
+        };
+      }
+
+      if (
+        orderBy &&
+        !['name', 'email', 'completedAt'].includes(orderBy as string)
+      ) {
+        return {
+          message: 'orderBy must be one of: name, email, completedAt',
+          statusCode: 400,
+        };
+      }
+
+      if (
+        orderDirection &&
+        !['asc', 'desc'].includes(orderDirection as string)
+      ) {
+        return {
+          message: 'orderDirection must be either asc or desc',
+          statusCode: 400,
+        };
+      }
+
       // Fetch bootcampId using chapterId
       const chapterDetails = await db.query.zuvyModuleChapter.findFirst({
         where: (zuvyModuleChapter, { eq }) =>
@@ -1613,9 +1643,9 @@ Team Zuvy`;
                 email: true,
               },
             },
-            orderBy: (zuvyChapterTracking, { asc }) =>
-              asc(zuvyChapterTracking.id),
           },
+          orderBy: (zuvyChapterTracking, { asc }) =>
+            asc(zuvyChapterTracking.id),
         });
 
       // Fetch batch enrollments for these users to attach batchId/batchName
@@ -1662,6 +1692,36 @@ Team Zuvy`;
               : null,
         };
       });
+
+      // Apply sorting if requested
+      if (orderBy) {
+        const direction = orderDirection === 'desc' ? -1 : 1;
+        submittedStudents.sort((a, b) => {
+          let valueA: any = null;
+          let valueB: any = null;
+
+          switch (orderBy) {
+            case 'name':
+              valueA = (a.name || '').toLowerCase();
+              valueB = (b.name || '').toLowerCase();
+              break;
+            case 'email':
+              valueA = (a.email || '').toLowerCase();
+              valueB = (b.email || '').toLowerCase();
+              break;
+            case 'completedAt':
+              valueA = a.completedAt ? new Date(a.completedAt).getTime() : 0;
+              valueB = b.completedAt ? new Date(b.completedAt).getTime() : 0;
+              break;
+            default:
+              return 0;
+          }
+
+          if (valueA < valueB) return -1 * direction;
+          if (valueA > valueB) return 1 * direction;
+          return 0;
+        });
+      }
 
       // Apply pagination to submitted students
       const totalRows = submittedStudents.length; // Total rows before pagination

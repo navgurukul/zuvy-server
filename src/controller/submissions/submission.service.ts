@@ -1091,6 +1091,7 @@ export class SubmissionService {
                 grades: true,
                 submitted_date: true,
                 createdAt: true,
+                projectLink: true,
               },
               with: {
                 userDetails: {
@@ -2301,6 +2302,22 @@ export class SubmissionService {
     orderDirection?: any,
   ): Promise<any> {
     try {
+      // Normalize pagination inputs to safe numbers
+      const safeLimit =
+        typeof limit === 'number' && !isNaN(limit) ? Number(limit) : undefined;
+      const safeOffset =
+        typeof offset === 'number' && !isNaN(offset)
+          ? Number(offset)
+          : undefined;
+      const safeBatchId =
+        typeof batchId === 'number' && !isNaN(batchId)
+          ? Number(batchId)
+          : undefined;
+      const hasBatchFilter =
+        typeof safeBatchId === 'number' && safeBatchId > 0
+          ? safeBatchId
+          : undefined;
+
       // Get chapter details
       const chapterDeadline = await db
         .select()
@@ -2346,15 +2363,21 @@ export class SubmissionService {
         const statusOfStudentCode = await db.query.zuvyChapterTracking.findMany(
           {
             where: (chapterTracking, { sql, and }) => {
-              const conditions = [
+              const conditions: any[] = [
                 sql`${chapterTracking.chapterId} = ${chapterId}`,
                 sql`EXISTS (
-                SELECT 1
-                FROM main.zuvy_batch_enrollments AS be
+                SELECT 1 FROM main.zuvy_batch_enrollments AS be
                 WHERE be.user_id = ${chapterTracking.userId}
-                ${batchId ? sql`AND be.batch_id = ${batchId}` : sql``}
+                ${hasBatchFilter ? sql`AND be.batch_id = ${hasBatchFilter}` : sql``}
               )`,
               ];
+              if (searchStudent) {
+                conditions.push(sql`EXISTS (
+                SELECT 1 FROM main.users AS u
+                WHERE u.id = ${chapterTracking.userId}
+                AND (u.name ILIKE ${searchStudent + '%'} OR u.email ILIKE ${searchStudent + '%'})
+              )`);
+              }
               return and(...conditions);
             },
             with: {
@@ -2364,13 +2387,6 @@ export class SubmissionService {
                   name: true,
                   email: true,
                 },
-                where: (user: { name: any; email: any }, { sql, or }: any) =>
-                  searchStudent
-                    ? or(
-                        sql`${user.name} ILIKE ${searchStudent + '%'}`,
-                        sql`${user.email} ILIKE ${searchStudent + '%'}`,
-                      )
-                    : sql`TRUE`,
                 with: {
                   studentAssignmentStatus: {
                     columns: {
@@ -2379,10 +2395,8 @@ export class SubmissionService {
                   },
                 },
               },
-              ...(typeof limit === 'number' ? { limit } : {}),
-              ...(typeof offset === 'number' ? { offset } : {}),
-              ...(orderClause ? { orderBy: orderClause } : {}),
             },
+            ...(orderClause ? { orderBy: orderClause } : {}),
           },
         );
 
@@ -2480,13 +2494,15 @@ export class SubmissionService {
 
         // Apply pagination in JS after sorting so ordering by name/email works correctly
         const paginatedData =
-          typeof offset === 'number' && typeof limit === 'number'
-            ? sortedData.slice(offset, offset + limit)
+          typeof safeOffset === 'number' && typeof safeLimit === 'number'
+            ? sortedData.slice(safeOffset, safeOffset + safeLimit)
             : sortedData;
 
         // Calculate the current page based on limit and offset
         const currentPage =
-          !isNaN(limit) && !isNaN(offset) ? offset / limit + 1 : 1;
+          typeof safeLimit === 'number' && typeof safeOffset === 'number'
+            ? safeOffset / safeLimit + 1
+            : 1;
 
         // Return the response with student data
         return [
@@ -3066,8 +3082,21 @@ Zuvy LMS Team
     name?: string,
     email?: string,
     status?: 'present' | 'absent',
+    orderBy?: 'name' | 'email' | 'status',
+    orderDirection?: 'asc' | 'desc',
   ): Promise<[any, any]> {
     try {
+      // Validate ordering inputs
+      if ((orderBy && !orderDirection) || (!orderBy && orderDirection)) {
+        return [
+          {
+            message: 'Both orderBy and orderDirection are required together',
+            statusCode: 400,
+          },
+          null,
+        ];
+      }
+
       const submissions = await db.query.zuvySessions.findMany({
         where: (session, { eq }) => eq(session.chapterId, moduleChapterId),
         columns: {
@@ -3112,8 +3141,10 @@ Zuvy LMS Team
                         .from(users)
                         .where(
                           or(
-                            name ? ilike(users.name, `${name}%`) : undefined,
-                            email ? ilike(users.email, `${email}%`) : undefined,
+                            name ? ilike(users.name, `%${name}%`) : undefined,
+                            email
+                              ? ilike(users.email, `%${email}%`)
+                              : undefined,
                           ),
                         ),
                     )
@@ -3137,6 +3168,30 @@ Zuvy LMS Team
                 },
               },
             },
+            // Apply ordering for nested records
+            ...(orderBy
+              ? {
+                  orderBy: (
+                    record: { status: any; userId: any },
+                    helpers: { asc: any; desc: any },
+                  ) => {
+                    const dir =
+                      orderDirection && orderDirection.toLowerCase() === 'desc'
+                        ? helpers.desc
+                        : helpers.asc;
+                    if (orderBy === 'status') return dir(record.status);
+                    if (orderBy === 'name')
+                      return dir(
+                        sql`(SELECT name FROM main.users AS u WHERE u.id = ${record.userId})`,
+                      );
+                    if (orderBy === 'email')
+                      return dir(
+                        sql`(SELECT email FROM main.users AS u WHERE u.id = ${record.userId})`,
+                      );
+                    return helpers.asc(record.userId);
+                  },
+                }
+              : {}),
             limit,
             offset,
           },
