@@ -1,7 +1,5 @@
-export const CPP_RUNTIME = `
+export const CPP_RUNTIME = String.raw`
 /* ----- Begin shared runtime (DO NOT EDIT) ----- */
-#include <bits/stdc++.h>
-using namespace std;
 
 static inline string trim(const string &s) {
   size_t a = s.find_first_not_of(" \\t\\r\\n");
@@ -37,6 +35,33 @@ struct Variant {
   Variant():t(NUL),i(0),d(0),b(false){}
 };
 
+static Variant parseJavaStrictFormat(const string &raw);
+
+static Variant parseObject(const string& input) {
+  Variant v;
+  v.t = Variant::MAP;
+
+  string inner = trim(input.substr(1, input.size() - 2));
+  if (inner.empty()) return v;
+
+  for (auto& part : splitTopLevel(inner)) {
+    size_t colon = part.find(':');
+    if (colon == string::npos) continue;
+
+    string key = trim(part.substr(0, colon));
+    string val = trim(part.substr(colon + 1));
+
+    // remove quotes from key
+    if (!key.empty() && key.front() == '"' && key.back() == '"') {
+      key = key.substr(1, key.size() - 2);
+    }
+
+    // ATOMIC insertion
+    v.m[key] = parseJavaStrictFormat(val);
+  }
+
+  return v;
+}
 
 static Variant parseJavaStrictFormat(const string &raw) {
   string x = trim(raw);
@@ -44,6 +69,11 @@ static Variant parseJavaStrictFormat(const string &raw) {
 
   if (x == "true" || x == "false") {
     Variant v; v.t = Variant::BOOL; v.b = (x == "true"); return v;
+  }
+
+  // Object
+  if (x.front() == '{' && x.back() == '}') {
+    return parseObject(x);
   }
 
   // Array
@@ -56,23 +86,58 @@ static Variant parseJavaStrictFormat(const string &raw) {
     return v;
   }
 
-  // Integer
-  bool isNum = true;
-  for (char c : x) if (!isdigit(c) && c != '-') isNum = false;
-  if (isNum) {
-    Variant v; v.t = Variant::INT; v.i = stoll(x); return v;
+// Integer or Double
+bool isInt = true, isDouble = false;
+for (char c : x) {
+  if (c == '.') {
+    isDouble = true;
+  } else if (!isdigit(c) && c != '-') {
+    isInt = false;
   }
+}
 
-  // String
-  Variant v; v.t = Variant::STR; v.s = x;
-  return v;
+if (isInt && !isDouble) {
+  Variant v; v.t = Variant::INT; v.i = stoll(x); return v;
+}
+
+if (isInt && isDouble) {
+  Variant v; v.t = Variant::DBL; v.d = stod(x); return v;
+}
+
+
+// String
+Variant v;
+v.t = Variant::STR;
+
+// Strip surrounding quotes if present
+if (x.size() >= 2 &&
+    ((x.front() == '"' && x.back() == '"') ||
+     (x.front() == '\'' && x.back() == '\''))) {
+  v.s = x.substr(1, x.size() - 2);
+} else {
+  v.s = x;
+}
+
+return v;
+
 }
 
 static void printVariant(const Variant &v) {
-  if (v.t == Variant::NUL) cout << "null";
-  else if (v.t == Variant::INT) cout << v.i;
-  else if (v.t == Variant::BOOL) cout << (v.b ? "true" : "false");
-  else if (v.t == Variant::STR) cout << v.s;
+  if (v.t == Variant::NUL) {
+    cout << "null";
+  }
+  else if (v.t == Variant::INT) {
+    cout << v.i;
+  }
+  else if (v.t == Variant::DBL) {
+    cout << v.d;
+ }
+  else if (v.t == Variant::BOOL) {
+    cout << (v.b ? "true" : "false");
+  }
+  else if (v.t == Variant::STR) {
+    cout << v.s;
+  }
   else if (v.t == Variant::ARR) {
     cout << "[";
     for (size_t i = 0; i < v.a.size(); ++i) {
@@ -81,7 +146,19 @@ static void printVariant(const Variant &v) {
     }
     cout << "]";
   }
+  else if (v.t == Variant::MAP) {
+    cout << "{";
+    bool first = true;
+    for (const auto &kv : v.m) {
+      if (!first) cout << ",";
+      first = false;
+      cout << "\"" << kv.first << "\":";
+      printVariant(kv.second);
+    }
+    cout << "}";
+  }
 }
+
 
 /* ===== Linked List ===== */
 struct ListNode {

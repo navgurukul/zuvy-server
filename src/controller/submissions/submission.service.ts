@@ -227,29 +227,15 @@ export class SubmissionService {
     orderDirection?: any,
   ) {
     try {
-      // Build order clause (percentage removed; only submittedDate/name/email supported)
-      let orderClause = undefined;
-      if (orderBy) {
-        orderClause = (
-          chapterTracking: {
-            submitted_date: any;
-            name: any;
-            email: any;
-            id: any;
-          },
-          helpers: { desc: any; asc: (arg0: any) => any },
-        ) => {
-          const dir =
-            orderDirection && orderDirection.toLowerCase() === 'desc'
-              ? helpers.desc
-              : helpers.asc;
-          if (orderBy === 'submittedDate')
-            return dir(chapterTracking.submitted_date);
-          if (orderBy === 'name') return dir(chapterTracking.name);
-          if (orderBy === 'email') return dir(chapterTracking.email);
-          return helpers.asc(chapterTracking.id);
-        };
-      }
+      // Coerce numeric params to safe values
+      const safeLimit =
+        typeof limit === 'number' && !isNaN(limit) && limit > 0
+          ? limit
+          : undefined;
+      const safeOffset =
+        typeof offset === 'number' && !isNaN(offset) && offset >= 0
+          ? offset
+          : undefined;
 
       const statusOfStudentCode = await db.query.zuvyChapterTracking.findMany({
         where: (chapterTracking, { sql, and }) => {
@@ -264,6 +250,14 @@ export class SubmissionService {
               ${batchId ? sql`AND be.batch_id = ${batchId}` : sql``}
             )`,
           ];
+          if (searchStudent) {
+            conditions.push(sql`EXISTS (
+              SELECT 1
+              FROM main.users AS u
+              WHERE u.id = ${chapterTracking.userId}
+              AND (u.name ILIKE ${searchStudent + '%'} OR u.email ILIKE ${searchStudent + '%'})
+            )`);
+          }
           return and(...conditions);
         },
         with: {
@@ -273,10 +267,6 @@ export class SubmissionService {
               name: true,
               email: true,
             },
-            where: (user: { name: any; email: any }, { sql }: any) =>
-              searchStudent
-                ? sql`(${user.name} ILIKE ${searchStudent + '%'} OR ${user.email} ILIKE ${searchStudent + '%'})`
-                : sql`TRUE`,
             with: {
               studentCodeDetails: {
                 where: (
@@ -288,30 +278,41 @@ export class SubmissionService {
             },
           },
         },
+        ...(typeof safeLimit === 'number' ? { limit: safeLimit } : {}),
+        ...(typeof safeOffset === 'number' ? { offset: safeOffset } : {}),
       });
 
-      // Get the total number of students matching the chapter and module criteria
-      // Count total students who have chapter tracking for this chapter/module
-      // and are enrolled in a batch (or the specific batch if provided).
-      const totalStudents = await db
-        .select()
+      // Get the total number of students matching the chapter, module, batch, and search criteria
+      const totalStudentsRes = await db
+        .select({
+          count: sql<number>`cast(count(${zuvyChapterTracking.id}) as int)`,
+        })
         .from(zuvyChapterTracking)
-        .where((aliases) => {
-          const { sql, and } = require('drizzle-orm');
+        .where(() => {
           const conditions = [
-            sql`${aliases.moduleId} = ${moduleId}`,
-            sql`${aliases.chapterId} = ${chapterId}`,
+            sql`${zuvyChapterTracking.chapterId} = ${chapterId}`,
+            sql`${zuvyChapterTracking.moduleId} = ${moduleId}`,
             sql`EXISTS (
               SELECT 1
               FROM main.zuvy_batch_enrollments AS be
-              WHERE be.user_id = ${aliases.userId}
+              WHERE be.user_id = ${zuvyChapterTracking.userId}
               ${batchId ? sql`AND be.batch_id = ${batchId}` : sql``}
             )`,
           ];
+          if (searchStudent) {
+            conditions.push(sql`EXISTS (
+              SELECT 1
+              FROM main.users AS u
+              WHERE u.id = ${zuvyChapterTracking.userId}
+              AND (u.name ILIKE ${searchStudent + '%'} OR u.email ILIKE ${searchStudent + '%'})
+            )`);
+          }
           return and(...conditions);
         });
-      const totalStudentsCount = totalStudents.length;
-      const totalPages = limit ? Math.ceil(totalStudentsCount / limit) : 1;
+      const totalStudentsCount = totalStudentsRes[0]?.count ?? 0;
+      const totalPages = safeLimit
+        ? Math.ceil(totalStudentsCount / safeLimit)
+        : 1;
 
       // Prepare the result with data about each student's attempts and submission status
       // Attach batchId per user by fetching enrollments for returned userIds
@@ -353,6 +354,7 @@ export class SubmissionService {
               )
                 ? 'Accepted'
                 : 'Not Accepted',
+              submittedDate: statusCode['submitted_date'],
               // Add any other top-level fields from statusCode if needed (exclude user)
               ...Object.fromEntries(
                 Object.entries(statusCode).filter(([key]) => key !== 'user'),
@@ -363,6 +365,55 @@ export class SubmissionService {
           }
         })
         .filter((item) => item !== null);
+
+      // Apply JavaScript-side sorting (for name, email, submittedDate)
+      if (orderBy) {
+        const dir =
+          orderDirection && String(orderDirection).toLowerCase() === 'desc'
+            ? -1
+            : 1;
+        data.sort((a: any, b: any) => {
+          let va: any;
+          let vb: any;
+          switch (orderBy) {
+            case 'submittedDate':
+              va = a.submittedDate;
+              vb = b.submittedDate;
+              break;
+            case 'name':
+              va = a.name != null ? String(a.name) : null;
+              vb = b.name != null ? String(b.name) : null;
+              if (va != null && vb != null) {
+                const cmp = va.localeCompare(vb, 'en', {
+                  sensitivity: 'base',
+                  numeric: true,
+                });
+                return dir === -1 ? -cmp : cmp;
+              }
+              break;
+            case 'email':
+              va = a.email != null ? String(a.email) : null;
+              vb = b.email != null ? String(b.email) : null;
+              if (va != null && vb != null) {
+                const cmp = va.localeCompare(vb, 'en', {
+                  sensitivity: 'base',
+                  numeric: true,
+                });
+                return dir === -1 ? -cmp : cmp;
+              }
+              break;
+            default:
+              va = a.id;
+              vb = b.id;
+          }
+          if (va == null && vb == null) return 0;
+          if (va == null) return dir === -1 ? 1 : -1;
+          if (vb == null) return dir === -1 ? -1 : 1;
+          if (va < vb) return dir === -1 ? 1 : -1;
+          if (va > vb) return dir === -1 ? -1 : 1;
+          return 0;
+        });
+      }
 
       return { data, totalPages, totalStudentsCount };
     } catch (err) {
@@ -1100,13 +1151,13 @@ export class SubmissionService {
                     email: true,
                   },
                 },
-                ...(typeof limit === 'number' ? { limit } : {}),
-                ...(typeof offset === 'number' ? { offset } : {}),
-                ...(orderClause ? { orderBy: orderClause } : {}),
               },
-              // allow DB-side ordering when possible (name/email/percentage)
-              ...(orderClause ? { orderBy: orderClause } : {}),
-              // perform limit/offset after fetching to apply ordering reliably in JS
+              // attach DB-side limit/offset at the relation level (use safe values)
+              // NOTE: we intentionally avoid DB-side `orderBy` here and perform
+              // ordering in JS below to reliably support sorting by related
+              // fields like `name`/`email` (via localeCompare) and `percentage`.
+              ...(typeof safeLimit === 'number' ? { limit: safeLimit } : {}),
+              ...(typeof safeOffset === 'number' ? { offset: safeOffset } : {}),
             },
           },
         },
@@ -1291,6 +1342,19 @@ export class SubmissionService {
                 { sql }: any,
               ) =>
                 sql`${projectTracking.bootcampId} = ${bootcampId} and ${projectTracking.userId} = ${userId}`,
+              columns: {
+                id: true,
+                userId: true,
+                projectId: true,
+                bootcampId: true,
+                isChecked: true,
+                moduleId: true,
+                batchId: true,
+                grades: true,
+                submitted_date: true,
+                createdAt: true,
+                projectLink: true,
+              },
               with: {
                 userDetails: {
                   columns: {
@@ -2009,149 +2073,6 @@ export class SubmissionService {
     }
   }
 
-  // async getSubmissionOfAssignment(
-  //   roleName,
-  //   bootcampId: number,
-  //   assignmentName: string,
-  //   orderBy?: 'submittedDate' | 'name' | 'email' | 'title',
-  //   orderDirection?: 'asc' | 'desc',
-  // ): Promise<any> {
-  //   try {
-  //     const topicId = 5;
-
-  //     // Build order clause
-  //     let orderClause = (courseModules: { order: any }, { asc }: any) =>
-  //       asc(courseModules.order);
-  //     if (orderBy) {
-  //       orderClause = (courseModules: any, helpers: any) => {
-  //         const dir = orderDirection === 'desc' ? helpers.desc : helpers.asc;
-  //         if (orderBy === 'submittedDate')
-  //           return dir(courseModules.submitted_date);
-  //         if (orderBy === 'name') return dir(courseModules.name);
-  //         if (orderBy === 'email') return dir(courseModules.email);
-  //         return helpers.asc(courseModules.order);
-  //       };
-  //     }
-
-  //     const trackingData = await db.query.zuvyCourseModules.findMany({
-  //       where: (courseModules, { eq }) =>
-  //         eq(courseModules.bootcampId, bootcampId),
-  //       orderBy: orderClause,
-  //       with: {
-  //         moduleChapterData: {
-  //           columns: {
-  //             id: true,
-  //             title: true,
-  //           },
-  //           where: (
-  //             moduleChapter: { topicId: any; title: any },
-  //             { and, eq, sql }: any,
-  //           ) =>
-  //             and(
-  //               eq(moduleChapter.topicId, topicId),
-  //               console.log('assignmentName', assignmentName),
-  //               assignmentName
-  //                 ? sql`${moduleChapter.title} ILIKE ${'%' + assignmentName + '%'}`
-  //                 : sql`TRUE`,
-  //             ),
-  //           with: {
-  //             chapterTrackingDetails: {
-  //               columns: {
-  //                 userId: true,
-  //                 completedAt: true,
-  //               },
-  //               with: {
-  //                 user: {
-  //                   columns: {
-  //                     name: true,
-  //                     email: true,
-  //                     id: true,
-  //                   },
-  //                 },
-  //               },
-  //             },
-  //           },
-  //         },
-  //       },
-  //     });
-
-  //     // Fetch the total student count for the bootcamp
-  //     const zuvyBatchEnrollmentsCount = await db
-  //       .select({
-  //         count: sql<number>`cast(count(${zuvyBatchEnrollments.id}) as int)`,
-  //       })
-  //       .from(zuvyBatchEnrollments)
-  //       .where(
-  //         sql`(${zuvyBatchEnrollments.bootcampId} = ${bootcampId} AND ${zuvyBatchEnrollments.batchId} IS NOT NULL)`,
-  //       );
-
-  //     // Process tracking data, count submitted students, and filter out empty moduleChapterData
-  //     const filteredTrackingData = trackingData
-  //       .map((course: any) => {
-  //         course.moduleChapterData = course.moduleChapterData
-  //           .map((chapterTracking: { [x: string]: any }) => {
-  //             chapterTracking['submitStudents'] =
-  //               chapterTracking['chapterTrackingDetails'].length;
-  //             delete chapterTracking['chapterTrackingDetails'];
-
-  //             return chapterTracking;
-  //           })
-  //           .filter(
-  //             (chapterTracking: { [x: string]: number }) =>
-  //               chapterTracking['submitStudents'] > 0,
-  //           );
-
-  //           course.moduleChapterData.sort((a: any, b: any) => {
-  //             const titleA = a.title.toLowerCase();
-  //             console.log('titleA:', titleA);
-  //             const titleB = b.title.toLowerCase();
-  //             console.log('titleB:', titleB);
-
-  //             if (orderDirection === 'desc') {
-  //               return titleB.localeCompare(titleA);
-  //             }
-  //             return titleA.localeCompare(titleB);
-
-  //           });
-  //         console.log('Sorted moduleChapterData:', course.moduleChapterData);
-
-  //         return course;
-  //       })
-  //       .filter((course: any) => course.moduleChapterData.length > 0);
-
-  //     // If no assignment name is provided, return all courses regardless of submissions
-  //     const finalTrackingData = filteredTrackingData;
-  //     console.log('Final Tracking Data:', finalTrackingData);
-  //     const targetPermissions = [
-  //       ResourceList.submission.read,
-  //       ResourceList.submission.download,
-  //       ResourceList.submission.re_attempt,
-  //     ];
-  //     const grantedPermissions = await this.rbacService.getAllPermissions(
-  //       roleName,
-  //       targetPermissions,
-  //     );
-
-  //     return [
-  //       null,
-  //       {
-  //         message: 'Submission of assignment for courses has been fetched',
-  //         statusCode: STATUS_CODES.OK,
-  //         data: {
-  //           trackingData: finalTrackingData,
-  //           totalStudents: zuvyBatchEnrollmentsCount[0]?.count,
-  //         },
-  //         ...grantedPermissions,
-  //       },
-  //     ];
-  //   } catch (error) {
-  //     return [
-  //       { message: error.message, statusCode: STATUS_CODES.BAD_REQUEST },
-  //       null,
-  //     ];
-  //   }
-  // }
-
   async getSubmissionOfAssignment(
     roleName,
     bootcampId: number,
@@ -2302,22 +2223,6 @@ export class SubmissionService {
     orderDirection?: any,
   ): Promise<any> {
     try {
-      // Normalize pagination inputs to safe numbers
-      const safeLimit =
-        typeof limit === 'number' && !isNaN(limit) ? Number(limit) : undefined;
-      const safeOffset =
-        typeof offset === 'number' && !isNaN(offset)
-          ? Number(offset)
-          : undefined;
-      const safeBatchId =
-        typeof batchId === 'number' && !isNaN(batchId)
-          ? Number(batchId)
-          : undefined;
-      const hasBatchFilter =
-        typeof safeBatchId === 'number' && safeBatchId > 0
-          ? safeBatchId
-          : undefined;
-
       // Get chapter details
       const chapterDeadline = await db
         .select()
@@ -2363,20 +2268,21 @@ export class SubmissionService {
         const statusOfStudentCode = await db.query.zuvyChapterTracking.findMany(
           {
             where: (chapterTracking, { sql, and }) => {
-              const conditions: any[] = [
+              const conditions = [
                 sql`${chapterTracking.chapterId} = ${chapterId}`,
                 sql`EXISTS (
-                SELECT 1 FROM main.zuvy_batch_enrollments AS be
+                SELECT 1
+                FROM main.zuvy_batch_enrollments AS be
                 WHERE be.user_id = ${chapterTracking.userId}
-                ${hasBatchFilter ? sql`AND be.batch_id = ${hasBatchFilter}` : sql``}
+                ${batchId ? sql`AND be.batch_id = ${batchId}` : sql``}
               )`,
               ];
               if (searchStudent) {
                 conditions.push(sql`EXISTS (
-                SELECT 1 FROM main.users AS u
-                WHERE u.id = ${chapterTracking.userId}
-                AND (u.name ILIKE ${searchStudent + '%'} OR u.email ILIKE ${searchStudent + '%'})
-              )`);
+                  SELECT 1 FROM main.users AS u
+                  WHERE u.id = ${chapterTracking.userId}
+                  AND (u.name ILIKE ${searchStudent + '%'} OR u.email ILIKE ${searchStudent + '%'})
+                )`);
               }
               return and(...conditions);
             },
@@ -2396,7 +2302,6 @@ export class SubmissionService {
                 },
               },
             },
-            ...(orderClause ? { orderBy: orderClause } : {}),
           },
         );
 
@@ -2494,15 +2399,13 @@ export class SubmissionService {
 
         // Apply pagination in JS after sorting so ordering by name/email works correctly
         const paginatedData =
-          typeof safeOffset === 'number' && typeof safeLimit === 'number'
-            ? sortedData.slice(safeOffset, safeOffset + safeLimit)
+          typeof offset === 'number' && typeof limit === 'number'
+            ? sortedData.slice(offset, offset + limit)
             : sortedData;
 
         // Calculate the current page based on limit and offset
         const currentPage =
-          typeof safeLimit === 'number' && typeof safeOffset === 'number'
-            ? safeOffset / safeLimit + 1
-            : 1;
+          !isNaN(limit) && !isNaN(offset) ? offset / limit + 1 : 1;
 
         // Return the response with student data
         return [
@@ -2993,7 +2896,7 @@ Zuvy LMS Team
                         OR EXISTS (
                           SELECT 1 FROM main.zuvy_chapter_tracking AS ct
                           JOIN main.users AS u ON u.id = ct.user_id
-                          WHERE ct.chapterId = ${moduleChapter.id}
+                          WHERE ct.chapter_id = ${moduleChapter.id}
                             AND (u.name ILIKE ${searchTerm + '%'} OR u.email ILIKE ${searchTerm + '%'})
                         )
                       )
@@ -3077,8 +2980,8 @@ Zuvy LMS Team
 
   async getLiveChapterStudentSubmission(
     moduleChapterId: number,
-    limit: number,
-    offset: number,
+    limit?: number,
+    offset?: number,
     name?: string,
     email?: string,
     status?: 'present' | 'absent',
@@ -3086,17 +2989,6 @@ Zuvy LMS Team
     orderDirection?: 'asc' | 'desc',
   ): Promise<[any, any]> {
     try {
-      // Validate ordering inputs
-      if ((orderBy && !orderDirection) || (!orderBy && orderDirection)) {
-        return [
-          {
-            message: 'Both orderBy and orderDirection are required together',
-            statusCode: 400,
-          },
-          null,
-        ];
-      }
-
       const submissions = await db.query.zuvySessions.findMany({
         where: (session, { eq }) => eq(session.chapterId, moduleChapterId),
         columns: {
@@ -3141,10 +3033,8 @@ Zuvy LMS Team
                         .from(users)
                         .where(
                           or(
-                            name ? ilike(users.name, `%${name}%`) : undefined,
-                            email
-                              ? ilike(users.email, `%${email}%`)
-                              : undefined,
+                            name ? ilike(users.name, `${name}%`) : undefined,
+                            email ? ilike(users.email, `${email}%`) : undefined,
                           ),
                         ),
                     )
@@ -3168,37 +3058,75 @@ Zuvy LMS Team
                 },
               },
             },
-            // Apply ordering for nested records
-            ...(orderBy
-              ? {
-                  orderBy: (
-                    record: { status: any; userId: any },
-                    helpers: { asc: any; desc: any },
-                  ) => {
-                    const dir =
-                      orderDirection && orderDirection.toLowerCase() === 'desc'
-                        ? helpers.desc
-                        : helpers.asc;
-                    if (orderBy === 'status') return dir(record.status);
-                    if (orderBy === 'name')
-                      return dir(
-                        sql`(SELECT name FROM main.users AS u WHERE u.id = ${record.userId})`,
-                      );
-                    if (orderBy === 'email')
-                      return dir(
-                        sql`(SELECT email FROM main.users AS u WHERE u.id = ${record.userId})`,
-                      );
-                    return helpers.asc(record.userId);
-                  },
-                }
-              : {}),
-            limit,
-            offset,
           },
         },
       });
 
-      return [null, submissions];
+      // Process and sort data in JavaScript
+      let allRecords: any[] = [];
+      submissions.forEach((session: any) => {
+        if (
+          session.studentAttendanceRecords &&
+          session.studentAttendanceRecords.length > 0
+        ) {
+          session.studentAttendanceRecords.forEach((record: any) => {
+            allRecords.push({
+              ...record,
+              sessionId: session.id,
+              sessionTitle: session.title,
+              meetingId: session.meetingId,
+              hangoutLink: session.hangoutLink,
+            });
+          });
+        }
+      });
+
+      // Sort if orderBy is provided
+      if (orderBy) {
+        const dir =
+          orderDirection && orderDirection.toLowerCase() === 'desc' ? -1 : 1;
+
+        if (orderBy === 'name') {
+          allRecords.sort((a: any, b: any) => {
+            const an = (a.user?.name || '').toString();
+            const bn = (b.user?.name || '').toString();
+            return an.localeCompare(bn) * dir;
+          });
+        } else if (orderBy === 'email') {
+          allRecords.sort((a: any, b: any) => {
+            const ae = (a.user?.email || '').toString();
+            const be = (b.user?.email || '').toString();
+            return ae.localeCompare(be) * dir;
+          });
+        } else if (orderBy === 'status') {
+          allRecords.sort((a: any, b: any) => {
+            const as = (a.status || '').toString();
+            const bs = (b.status || '').toString();
+            return as.localeCompare(bs) * dir;
+          });
+        }
+      }
+
+      // Apply pagination
+      const safeLim =
+        typeof limit === 'number' && limit > 0 ? limit : undefined;
+      const safeOff = typeof offset === 'number' && offset >= 0 ? offset : 0;
+
+      let paginatedRecords = allRecords;
+      if (safeLim) {
+        paginatedRecords = allRecords.slice(safeOff, safeOff + safeLim);
+      }
+
+      const totalPages = safeLim ? Math.ceil(allRecords.length / safeLim) : 1;
+
+      return [
+        null,
+        {
+          data: paginatedRecords,
+          totalCount: allRecords.length,
+          totalPages,
+        },
+      ];
     } catch (err) {
       return [err, null];
     }

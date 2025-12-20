@@ -993,6 +993,7 @@ export class ContentService {
           });
           let session = sessionDetails[0];
           if (
+            session &&
             session.s3link !== null &&
             session.s3link !== '' &&
             session.status === 'completed' &&
@@ -1055,8 +1056,8 @@ export class ContentService {
                   ? session.zoomStartUrl
                   : session.hangoutLink;
               if (
-                userRole.includes('admin') ||
-                userRole.includes('instructor')
+                userRole &&
+                (userRole.includes('admin') || userRole.includes('instructor'))
               ) {
                 // If the user is an admin or instructor, use the session's zoomStartUrl or hangoutLink
                 userJoinLink = session.isZoomMeet

@@ -38,11 +38,20 @@ export async function generateCppTemplate(
     const multipleTests = options?.multipleTests ?? false;
     const interactive = options?.interactive ?? false;
 
+    /* runtime inclusion rule */
+    const needsRuntime =
+      inputMode === 'HYBRID' ||
+      returnType === 'jsonType' ||
+      parameters.some((p) =>
+        ['jsonType', 'object', 'map', 'arrayOfObj'].includes(p.parameterType),
+      );
+
     /* ---------- type mapping ---------- */
     const cppType = (t: string) => {
       switch (t) {
         case 'int':
           return 'long long';
+        case 'float':
         case 'double':
           return 'double';
         case 'bool':
@@ -52,11 +61,11 @@ export async function generateCppTemplate(
         case 'str':
           return 'string';
         case 'arrayOfnum':
-          return 'vector<long long>';
+          return 'vector<double>';
         case 'arrayOfStr':
           return 'vector<string>';
         case 'arrayOfarrayOfnum':
-          return 'vector<vector<long long>>';
+          return 'vector<vector<double>>';
         case 'arrayOfarrayOfStr':
           return 'vector<vector<string>>';
         case 'linkedList':
@@ -86,10 +95,41 @@ export async function generateCppTemplate(
 
     /* ---------- SIMPLE input ---------- */
     const simpleInput = parameters
-      .map(
-        (p) =>
-          `  ${cppType(p.parameterType)} ${p.parameterName}; cin >> ${p.parameterName};`,
-      )
+      .map((p, index) => {
+        // STRING WITH SPACES
+        if (p.parameterType === 'str') {
+          return `
+  string ${p.parameterName};
+  ${index === 0 ? '' : "cin.ignore(numeric_limits<streamsize>::max(), '\\n');"}
+  getline(cin, ${p.parameterName});
+`;
+        }
+
+        // ARRAYS (existing logic)
+        if (p.parameterType.startsWith('array')) {
+          return `
+  int ${p.parameterName}_n;
+  cin >> ${p.parameterName}_n;
+  vector<long long> ${p.parameterName}(${p.parameterName}_n);
+  for (int i = 0; i < ${p.parameterName}_n; ++i) cin >> ${p.parameterName}[i];
+`;
+        }
+
+        if (p.parameterType === 'bool') {
+          return `
+  string ${p.parameterName}_str;
+  cin >> ${p.parameterName}_str;
+  bool ${p.parameterName} =
+    (${p.parameterName}_str == "true" || ${p.parameterName}_str == "1");
+`;
+        }
+
+        // OTHER TYPES
+        return `
+  ${cppType(p.parameterType)} ${p.parameterName};
+  cin >> ${p.parameterName};
+`;
+      })
       .join('\n');
 
     /* ---------- HYBRID input ---------- */
@@ -137,14 +177,17 @@ ${parameters
 
           case 'arrayOfnum':
             return `
-  vector<long long> ${name};
+  vector<double> ${name};
   if (v_${name}.t == Variant::ARR) {
     for (auto &el : v_${name}.a) {
-      if (el.t != Variant::INT) {
-        cerr << "Type error: expected INT in array '${name}'" << endl;
+      if (el.t == Variant::INT) {
+        ${name}.push_back((double)el.i);
+      } else if (el.t == Variant::DBL) {
+        ${name}.push_back(el.d);
+      } else {
+        cerr << "Type error: expected numeric value in array '${name}'" << endl;
         return 0;
       }
-      ${name}.push_back(el.i);
     }
   }
 `;
@@ -255,6 +298,26 @@ ${parameters
       if (returnType === 'bool') {
         return `cout << (result ? "true" : "false");`;
       }
+      if (returnType === 'float' || returnType === 'double') {
+        return `
+        std::ostringstream oss;
+        oss << std::setprecision(15) << result;
+        std::string out = oss.str();
+
+        // trim trailing zeros
+        if (out.find('.') != std::string::npos) {
+        while (!out.empty() && out.back() == '0') out.pop_back();
+        if (!out.empty() && out.back() == '.') out.push_back('0');
+        }
+
+        cout << out;
+        `;
+      }
+
+      if (returnType === 'arrayOfnum' || returnType === 'arrayOfStr') {
+        return `printVector(result);`;
+      }
+
       if (returnType === 'jsonType') {
         return `printVariant(result);`;
       }
@@ -291,7 +354,17 @@ using namespace std;
 #define dbg(x)
 #endif
 
-${inputMode === 'HYBRID' ? CPP_RUNTIME : ''}
+template <typename T>
+void printVector(const vector<T>& v) {
+  cout << "[";
+  for (size_t i = 0; i < v.size(); i++) {
+    if (i) cout << ",";
+    cout << v[i];
+  }
+  cout << "]";
+}
+
+${needsRuntime ? CPP_RUNTIME : ''}
 
 /* ===== USER FUNCTION (EDIT ONLY BODY) ===== */
 ${returnCppType} ${functionName}(${paramList}) {
