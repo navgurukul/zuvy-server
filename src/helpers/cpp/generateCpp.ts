@@ -400,14 +400,25 @@ void printVector<double>(const vector<double>& v) {
 
 ${needsRuntime ? CPP_RUNTIME : ''}
 
-/* ===== USER FUNCTION (EDIT ONLY BODY) ===== */
+/* =====================================================================
+ *   WRITE YOUR SOLUTION INSIDE THE FUNCTION BODY BELOW 
+ *
+ *  DO NOT change the function name or parameters
+ *  DO NOT write code outside this function
+ *  ONLY replace the code between USER CODE START and USER CODE END
+ *
+ * ===================================================================== */
 ${returnCppType} ${functionName}(${paramList}) {
-  // USER CODE START
-  // Write logic here
+
+  // ==================== USER CODE START ====================
+  // Write your solution logic here
+  
   ${returnType === 'void' ? '' : 'return {};'}
-  // USER CODE END
+  
+  // ===================== USER CODE END =====================
 }
-/* ===== END USER FUNCTION ===== */
+/* ================= END OF USER FUNCTION =================== */
+
 
 int main() {
   ios::sync_with_stdio(false);
