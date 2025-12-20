@@ -312,16 +312,24 @@ ${parameters
       if (returnType === 'float' || returnType === 'double') {
         return `
         std::ostringstream oss;
-        oss << std::setprecision(15) << result;
-        std::string out = oss.str();
 
-        // trim trailing zeros
-        if (out.find('.') != std::string::npos) {
-        while (!out.empty() && out.back() == '0') out.pop_back();
-        if (!out.empty() && out.back() == '.') out.push_back('0');
-        }
+// If value is integer-like, force one decimal
+if (std::floor(result) == result) {
+  oss << std::fixed << std::setprecision(1) << result;
+} else {
+  oss << std::setprecision(15) << result;
+}
 
-        cout << out;
+std::string out = oss.str();
+
+// Trim trailing zeros ONLY for non-integer floats
+if (out.find('.') != std::string::npos) {
+  while (!out.empty() && out.back() == '0') out.pop_back();
+  if (!out.empty() && out.back() == '.') out.push_back('0');
+}
+
+cout << out;
+
         `;
       }
 
@@ -394,16 +402,21 @@ void printVector<double>(const vector<double>& v) {
     if (i) cout << ",";
 
     std::ostringstream oss;
+    if (std::floor(v[i]) == v[i]) {
+    oss << std::fixed << std::setprecision(1) << v[i];
+    } else {
     oss << std::setprecision(15) << v[i];
+    }
+
     string out = oss.str();
 
-    // trim trailing zeros
     if (out.find('.') != string::npos) {
-      while (!out.empty() && out.back() == '0') out.pop_back();
-      if (!out.empty() && out.back() == '.') out.push_back('0');
+    while (!out.empty() && out.back() == '0') out.pop_back();
+    if (!out.empty() && out.back() == '.') out.push_back('0');
     }
 
     cout << out;
+
   }
   cout << "]";
 }
