@@ -3991,20 +3991,133 @@ export class ContentService {
         };
       }
 
-      if (form.formQuestionDto && !form.editFormQuestionDto) {
-        await this.createFormForModule(chapterId, form.formQuestionDto);
-      } else if (form.editFormQuestionDto && !form.formQuestionDto) {
-        await this.editFormQuestions(chapterId, form.editFormQuestionDto);
-      } else if (form.editFormQuestionDto && form.formQuestionDto) {
-        await this.editFormQuestions(chapterId, form.editFormQuestionDto);
-        await this.createFormForModule(chapterId, form.formQuestionDto);
-      } else {
+      // Combine all questions (both edit and create)
+      const allQuestions = [];
+
+      if (form.editFormQuestionDto?.questions) {
+        allQuestions.push(...form.editFormQuestionDto.questions);
+      }
+
+      if (form.formQuestionDto?.questions) {
+        allQuestions.push(...form.formQuestionDto.questions);
+      }
+
+      if (allQuestions.length === 0) {
         return {
           status: 'error',
           code: 400,
-          message: 'Invalid input.',
+          message: 'No questions provided.',
         };
       }
+
+      // Validate all questions have required fields
+      const allFieldsFilled = allQuestions.every(
+        (question) =>
+          question.question !== null &&
+          question.question !== undefined &&
+          question.options !== null &&
+          question.options !== undefined &&
+          question.typeId !== null &&
+          question.typeId !== undefined &&
+          question.isRequired !== null &&
+          question.isRequired !== undefined,
+      );
+
+      if (!allFieldsFilled) {
+        return {
+          status: 'error',
+          code: 400,
+          message: 'One or more fields are empty. Please try again.',
+        };
+      }
+
+      // Get existing form records for this chapter
+      const existingFormRecords = await db
+        .select()
+        .from(zuvyModuleForm)
+        .where(eq(zuvyModuleForm.chapterId, chapterId));
+
+      const existingFormIds = existingFormRecords.map((record) => record.id);
+      const providedFormIds = allQuestions.filter((q) => q.id).map((q) => q.id);
+
+      // Delete questions that exist in DB but not in the request
+      const idsToRemove = existingFormIds.filter(
+        (id) => !providedFormIds.includes(id),
+      );
+
+      if (idsToRemove.length > 0) {
+        await db
+          .delete(zuvyModuleForm)
+          .where(inArray(zuvyModuleForm.id, idsToRemove));
+      }
+
+      const finalFormIds = [];
+
+      // Process each question
+      for (const question of allQuestions) {
+        if (question.id) {
+          // Update existing question
+          const existingRecord = existingFormRecords.find(
+            (record) => record.id === question.id,
+          );
+
+          if (!existingRecord) {
+            return {
+              status: 'error',
+              code: 400,
+              message: `Form question with id ${question.id} does not exist.`,
+            };
+          }
+
+          const updateData: any = {
+            chapterId: chapterId,
+            question: question.question,
+            options: question.options,
+            typeId: question.typeId,
+            isRequired: question.isRequired,
+          };
+
+          const updated = await db
+            .update(zuvyModuleForm)
+            .set(updateData)
+            .where(eq(zuvyModuleForm.id, question.id))
+            .returning();
+
+          if (updated.length > 0) {
+            finalFormIds.push(updated[0].id);
+          }
+        } else {
+          // Create new question
+          const insertData: any = {
+            chapterId: chapterId,
+            isRequired: question.isRequired,
+          };
+
+          // Only add optional fields if they exist in the schema
+          if ('question' in zuvyModuleForm)
+            insertData.question = question.question;
+          if ('options' in zuvyModuleForm)
+            insertData.options = question.options;
+          if ('typeId' in zuvyModuleForm) insertData.typeId = question.typeId;
+
+          const newQuestion = await db
+            .insert(zuvyModuleForm)
+            .values(insertData)
+            .returning();
+
+          if (newQuestion.length > 0) {
+            finalFormIds.push(newQuestion[0].id);
+          }
+        }
+      }
+
+      // Update chapter with final form IDs
+      await db
+        .update(zuvyModuleChapter)
+        .set({
+          formQuestions: finalFormIds,
+        })
+        .where(eq(zuvyModuleChapter.id, chapterId));
 
       const res1 = await db
         .select()

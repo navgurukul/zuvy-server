@@ -1142,6 +1142,7 @@ export class SubmissionService {
                 grades: true,
                 submitted_date: true,
                 createdAt: true,
+                projectLink: true,
               },
               with: {
                 userDetails: {
@@ -1341,6 +1342,19 @@ export class SubmissionService {
                 { sql }: any,
               ) =>
                 sql`${projectTracking.bootcampId} = ${bootcampId} and ${projectTracking.userId} = ${userId}`,
+              columns: {
+                id: true,
+                userId: true,
+                projectId: true,
+                bootcampId: true,
+                isChecked: true,
+                moduleId: true,
+                batchId: true,
+                grades: true,
+                submitted_date: true,
+                createdAt: true,
+                projectLink: true,
+              },
               with: {
                 userDetails: {
                   columns: {
@@ -2311,7 +2325,18 @@ export class SubmissionService {
           `);
 
         const totalStudentsCount = totalStudentsRes[0]?.count ?? 0;
-        const totalPages = limit ? Math.ceil(totalStudentsCount / limit) : 1;
+        // Normalize pagination inputs: treat non-positive/invalid limits as undefined
+        const safeLimit =
+          Number.isFinite(Number(limit)) && Number(limit) > 0
+            ? Number(limit)
+            : undefined;
+        const safeOffset =
+          Number.isFinite(Number(offset)) && Number(offset) >= 0
+            ? Number(offset)
+            : 0;
+        const totalPages = safeLimit
+          ? Math.ceil(totalStudentsCount / safeLimit)
+          : 1;
         const deadlineDate = new Date(
           chapterDeadline[0].completionDate,
         ).getTime();
@@ -2385,13 +2410,15 @@ export class SubmissionService {
 
         // Apply pagination in JS after sorting so ordering by name/email works correctly
         const paginatedData =
-          typeof offset === 'number' && typeof limit === 'number'
-            ? sortedData.slice(offset, offset + limit)
+          typeof safeLimit === 'number'
+            ? sortedData.slice(safeOffset, safeOffset + safeLimit)
             : sortedData;
 
         // Calculate the current page based on limit and offset
         const currentPage =
-          !isNaN(limit) && !isNaN(offset) ? offset / limit + 1 : 1;
+          typeof safeLimit === 'number'
+            ? Math.floor(safeOffset / safeLimit) + 1
+            : 1;
 
         // Return the response with student data
         return [
@@ -2966,11 +2993,13 @@ Zuvy LMS Team
 
   async getLiveChapterStudentSubmission(
     moduleChapterId: number,
-    limit: number,
-    offset: number,
+    limit?: number,
+    offset?: number,
     name?: string,
     email?: string,
     status?: 'present' | 'absent',
+    orderBy?: 'name' | 'email' | 'status',
+    orderDirection?: 'asc' | 'desc',
   ): Promise<[any, any]> {
     try {
       const submissions = await db.query.zuvySessions.findMany({
@@ -3042,13 +3071,75 @@ Zuvy LMS Team
                 },
               },
             },
-            limit,
-            offset,
           },
         },
       });
 
-      return [null, submissions];
+      // Process and sort data in JavaScript
+      let allRecords: any[] = [];
+      submissions.forEach((session: any) => {
+        if (
+          session.studentAttendanceRecords &&
+          session.studentAttendanceRecords.length > 0
+        ) {
+          session.studentAttendanceRecords.forEach((record: any) => {
+            allRecords.push({
+              ...record,
+              sessionId: session.id,
+              sessionTitle: session.title,
+              meetingId: session.meetingId,
+              hangoutLink: session.hangoutLink,
+            });
+          });
+        }
+      });
+
+      // Sort if orderBy is provided
+      if (orderBy) {
+        const dir =
+          orderDirection && orderDirection.toLowerCase() === 'desc' ? -1 : 1;
+
+        if (orderBy === 'name') {
+          allRecords.sort((a: any, b: any) => {
+            const an = (a.user?.name || '').toString();
+            const bn = (b.user?.name || '').toString();
+            return an.localeCompare(bn) * dir;
+          });
+        } else if (orderBy === 'email') {
+          allRecords.sort((a: any, b: any) => {
+            const ae = (a.user?.email || '').toString();
+            const be = (b.user?.email || '').toString();
+            return ae.localeCompare(be) * dir;
+          });
+        } else if (orderBy === 'status') {
+          allRecords.sort((a: any, b: any) => {
+            const as = (a.status || '').toString();
+            const bs = (b.status || '').toString();
+            return as.localeCompare(bs) * dir;
+          });
+        }
+      }
+
+      // Apply pagination
+      const safeLim =
+        typeof limit === 'number' && limit > 0 ? limit : undefined;
+      const safeOff = typeof offset === 'number' && offset >= 0 ? offset : 0;
+
+      let paginatedRecords = allRecords;
+      if (safeLim) {
+        paginatedRecords = allRecords.slice(safeOff, safeOff + safeLim);
+      }
+
+      const totalPages = safeLim ? Math.ceil(allRecords.length / safeLim) : 1;
+
+      return [
+        null,
+        {
+          data: paginatedRecords,
+          totalCount: allRecords.length,
+          totalPages,
+        },
+      ];
     } catch (err) {
       return [err, null];
     }

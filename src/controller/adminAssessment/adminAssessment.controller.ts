@@ -278,6 +278,20 @@ export class AdminAssessmentController {
     type: Number,
     description: 'offset',
   })
+  @ApiQuery({
+    name: 'orderBy',
+    required: false,
+    type: String,
+    description: 'Field to order by (name, email, completedAt)',
+    enum: ['name', 'email', 'completedAt'],
+  })
+  @ApiQuery({
+    name: 'orderDirection',
+    required: false,
+    type: String,
+    description: 'Order direction (asc/desc)',
+    enum: ['asc', 'desc'],
+  })
   @ApiBearerAuth('JWT-auth')
   async ModuleChapterStudents(
     @Param('chapter_id') chapterID: number,
@@ -285,6 +299,8 @@ export class AdminAssessmentController {
     @Query('batchId') batchId: number,
     @Query('limit') limit: number,
     @Query('offset') offSet: number,
+    @Query('orderBy') orderBy: 'name' | 'email' | 'completedAt',
+    @Query('orderDirection') orderDirection: 'asc' | 'desc',
   ) {
     return this.adminAssessmentService.getModuleChapterStudents(
       chapterID,
@@ -292,6 +308,8 @@ export class AdminAssessmentController {
       batchId,
       limit,
       offSet,
+      orderBy,
+      orderDirection,
     );
   }
 
