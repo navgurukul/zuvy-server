@@ -2426,7 +2426,6 @@ export class ContentService {
         userPermissions = permissionsResult;
       } catch (permissionError) {
         // Log the error but don't fail the entire request
-        console.error('Error fetching user permissions:', permissionError);
         userPermissions = { error: 'Failed to fetch permissions' };
       }
 
@@ -2856,6 +2855,7 @@ export class ContentService {
         return {
           status: 'success',
           code: 200,
+          message: 'Tag has been deleted successfully.',
         };
       } else {
         return {
