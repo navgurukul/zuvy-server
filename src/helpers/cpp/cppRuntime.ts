@@ -31,7 +31,7 @@ struct Variant {
   long long i; double d; bool b;
   string s;
   vector<Variant> a;
-  map<string,Variant> m;
+  vector<pair<string, Variant>> m;
   Variant():t(NUL),i(0),d(0),b(false){}
 };
 
@@ -57,7 +57,8 @@ static Variant parseObject(const string& input) {
     }
 
     // ATOMIC insertion
-    v.m[key] = parseJavaStrictFormat(val);
+    v.m.push_back({key, parseJavaStrictFormat(val)});
+
   }
 
   return v;
@@ -105,21 +106,49 @@ if (isInt && isDouble) {
 }
 
 
-// String
+// ---------- STRING ----------
 Variant v;
 v.t = Variant::STR;
 
-// Strip surrounding quotes if present
+string s;
+
+// strip surrounding quotes if present
 if (x.size() >= 2 &&
     ((x.front() == '"' && x.back() == '"') ||
      (x.front() == '\'' && x.back() == '\''))) {
-  v.s = x.substr(1, x.size() - 2);
+  s = x.substr(1, x.size() - 2);
 } else {
-  v.s = x;
+  s = x;
 }
 
-return v;
+// unescape \" and \\ safely
+string unescaped;
+for (size_t i = 0; i < s.size(); ++i) {
+  if (s[i] == '\\' && i + 1 < s.size()) {
+    unescaped.push_back(s[i + 1]);
+    ++i;
+  } else {
+    unescaped.push_back(s[i]);
+  }
+}
 
+v.s = unescaped;
+
+// Judge0 normalization: string that is only quotes → empty
+bool onlyQuotes = true;
+for (char c : v.s) {
+  if (c != '"') {
+    onlyQuotes = false;
+    break;
+  }
+}
+
+if (onlyQuotes) {
+  v.s.clear();
+}
+
+
+return v;
 }
 
 static void printVariant(const Variant &v) {
@@ -211,12 +240,14 @@ static TreeNode* buildBinaryTree(const Variant& v) {
 
 /* ===== Map Builders ===== */
 
-static map<string, long long> buildMapStrInt(const Variant& v) {
-  map<string, long long> res;
+static vector<pair<string, long long>> buildMapStrInt(const Variant& v) {
+  vector<pair<string, long long>> res;
   if (v.t != Variant::MAP) return res;
+
   for (auto &kv : v.m) {
-    if (kv.second.t != Variant::INT) continue;
-    res[kv.first] = kv.second.i;
+    if (kv.second.t == Variant::INT) {
+      res.push_back({kv.first, kv.second.i});
+    }
   }
   return res;
 }

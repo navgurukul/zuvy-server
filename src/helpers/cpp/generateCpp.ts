@@ -102,15 +102,54 @@ export async function generateCppTemplate(
   string ${p.parameterName};
   ${index === 0 ? '' : "cin.ignore(numeric_limits<streamsize>::max(), '\\n');"}
   getline(cin, ${p.parameterName});
+
+  // Judge0 normalization for quoted strings
+  if (${p.parameterName}.size() >= 2 &&
+      ${p.parameterName}.front() == '"' &&
+      ${p.parameterName}.back() == '"') {
+
+    string inner;
+    for (size_t i = 1; i + 1 < ${p.parameterName}.size(); ++i) {
+      if (${p.parameterName}[i] == '\\\\' && i + 1 < ${p.parameterName}.size()) {
+        inner.push_back(${p.parameterName}[i + 1]);
+        ++i;
+      } else {
+        inner.push_back(${p.parameterName}[i]);
+      }
+    }
+
+    bool onlyQuotes = true;
+    for (char c : inner) {
+      if (c != '"') {
+        onlyQuotes = false;
+        break;
+      }
+    }
+
+    if (inner.empty() || onlyQuotes) {
+      ${p.parameterName}.clear();
+    } else {
+      ${p.parameterName} = inner;
+    }
+  }
 `;
         }
+        // ARRAY OF NUMBERS
 
-        // ARRAYS (existing logic)
-        if (p.parameterType.startsWith('array')) {
+        if (p.parameterType === 'arrayOfnum') {
           return `
   int ${p.parameterName}_n;
   cin >> ${p.parameterName}_n;
-  vector<long long> ${p.parameterName}(${p.parameterName}_n);
+  vector<double> ${p.parameterName}(${p.parameterName}_n);
+  for (int i = 0; i < ${p.parameterName}_n; ++i) cin >> ${p.parameterName}[i];
+`;
+        }
+
+        if (p.parameterType === 'arrayOfStr') {
+          return `
+  int ${p.parameterName}_n;
+  cin >> ${p.parameterName}_n;
+  vector<string> ${p.parameterName}(${p.parameterName}_n);
   for (int i = 0; i < ${p.parameterName}_n; ++i) cin >> ${p.parameterName}[i];
 `;
         }
@@ -208,20 +247,23 @@ ${parameters
 
           case 'arrayOfarrayOfnum':
             return `
-  vector<vector<long long>> ${name};
+  vector<vector<double>> ${name};
   if (v_${name}.t == Variant::ARR) {
     for (auto &row : v_${name}.a) {
       if (row.t != Variant::ARR) {
         cerr << "Type error: expected array in '${name}'" << endl;
         return 0;
       }
-      vector<long long> temp;
+      vector<double> temp;
       for (auto &el : row.a) {
-        if (el.t != Variant::INT) {
-          cerr << "Type error: expected INT in nested array '${name}'" << endl;
+        if (el.t == Variant::INT) {
+          temp.push_back((double)el.i);
+        } else if (el.t == Variant::DBL) {
+          temp.push_back(el.d);
+        } else {
+          cerr << "Type error: expected numeric value in nested array '${name}'" << endl;
           return 0;
         }
-        temp.push_back(el.i);
       }
       ${name}.push_back(temp);
     }
@@ -301,16 +343,24 @@ ${parameters
       if (returnType === 'float' || returnType === 'double') {
         return `
         std::ostringstream oss;
-        oss << std::setprecision(15) << result;
-        std::string out = oss.str();
 
-        // trim trailing zeros
-        if (out.find('.') != std::string::npos) {
-        while (!out.empty() && out.back() == '0') out.pop_back();
-        if (!out.empty() && out.back() == '.') out.push_back('0');
-        }
+// If value is integer-like, force one decimal
+if (std::floor(result) == result) {
+  oss << std::fixed << std::setprecision(1) << result;
+} else {
+  oss << std::setprecision(15) << result;
+}
 
-        cout << out;
+std::string out = oss.str();
+
+// Trim trailing zeros ONLY for non-integer floats
+if (out.find('.') != std::string::npos) {
+  while (!out.empty() && out.back() == '0') out.pop_back();
+  if (!out.empty() && out.back() == '.') out.push_back('0');
+}
+
+cout << out;
+
         `;
       }
 
@@ -344,6 +394,17 @@ ${inputMode === 'HYBRID' ? hybridConversions : ''}
 #include <bits/stdc++.h>
 using namespace std;
 
+/* ============================================================
+ *  SCROLL DOWN TO FIND THE USER FUNCTION 
+ *
+ *  You only need to write code inside the function marked as:
+ *      // ==================== USER CODE START ====================
+ *
+ *  Do NOT modify any other part of this file.
+ *
+ * ============================================================ */
+
+
 #ifndef ONLINE_JUDGE
 #define DEBUG
 #endif
@@ -364,16 +425,55 @@ void printVector(const vector<T>& v) {
   cout << "]";
 }
 
+// ===== Float vector printer (DO NOT REMOVE) =====
+template <>
+void printVector<double>(const vector<double>& v) {
+  cout << "[";
+  for (size_t i = 0; i < v.size(); i++) {
+    if (i) cout << ",";
+
+    std::ostringstream oss;
+    if (std::floor(v[i]) == v[i]) {
+    oss << std::fixed << std::setprecision(1) << v[i];
+    } else {
+    oss << std::setprecision(15) << v[i];
+    }
+
+    string out = oss.str();
+
+    if (out.find('.') != string::npos) {
+    while (!out.empty() && out.back() == '0') out.pop_back();
+    if (!out.empty() && out.back() == '.') out.push_back('0');
+    }
+
+    cout << out;
+
+  }
+  cout << "]";
+}
+
+
 ${needsRuntime ? CPP_RUNTIME : ''}
 
-/* ===== USER FUNCTION (EDIT ONLY BODY) ===== */
+/* =====================================================================
+ *   WRITE YOUR SOLUTION INSIDE THE FUNCTION BODY BELOW 
+ *
+ *  DO NOT change the function name or parameters
+ *  DO NOT write code outside this function
+ *  ONLY replace the code between USER CODE START and USER CODE END
+ *
+ * ===================================================================== */
 ${returnCppType} ${functionName}(${paramList}) {
-  // USER CODE START
-  // Write logic here
+
+  // ==================== USER CODE START ====================
+  // Write your solution logic here
+  
   ${returnType === 'void' ? '' : 'return {};'}
-  // USER CODE END
+  
+  // ===================== USER CODE END =====================
 }
-/* ===== END USER FUNCTION ===== */
+/* ================= END OF USER FUNCTION =================== */
+
 
 int main() {
   ios::sync_with_stdio(false);
