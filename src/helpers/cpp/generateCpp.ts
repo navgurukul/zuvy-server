@@ -102,8 +102,39 @@ export async function generateCppTemplate(
   string ${p.parameterName};
   ${index === 0 ? '' : "cin.ignore(numeric_limits<streamsize>::max(), '\\n');"}
   getline(cin, ${p.parameterName});
+
+  // Judge0 normalization for quoted strings
+  if (${p.parameterName}.size() >= 2 &&
+      ${p.parameterName}.front() == '"' &&
+      ${p.parameterName}.back() == '"') {
+
+    string inner;
+    for (size_t i = 1; i + 1 < ${p.parameterName}.size(); ++i) {
+      if (${p.parameterName}[i] == '\\\\' && i + 1 < ${p.parameterName}.size()) {
+        inner.push_back(${p.parameterName}[i + 1]);
+        ++i;
+      } else {
+        inner.push_back(${p.parameterName}[i]);
+      }
+    }
+
+    bool onlyQuotes = true;
+    for (char c : inner) {
+      if (c != '"') {
+        onlyQuotes = false;
+        break;
+      }
+    }
+
+    if (inner.empty() || onlyQuotes) {
+      ${p.parameterName}.clear();
+    } else {
+      ${p.parameterName} = inner;
+    }
+  }
 `;
         }
+        // ARRAY OF NUMBERS
 
         if (p.parameterType === 'arrayOfnum') {
           return `
