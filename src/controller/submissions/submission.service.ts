@@ -2256,7 +2256,6 @@ export class SubmissionService {
         .select()
         .from(zuvyModuleChapter)
         .where(eq(zuvyModuleChapter.id, chapterId));
-
       if (chapterDeadline.length > 0) {
         // Build order clause (support submittedDate, name, email)
         let orderClause = undefined;
@@ -2292,7 +2291,6 @@ export class SubmissionService {
             return helpers.asc(chapterTracking.id);
           };
         }
-
         const statusOfStudentCode = await db.query.zuvyChapterTracking.findMany(
           {
             where: (chapterTracking, { sql, and }) => {
@@ -2332,7 +2330,69 @@ export class SubmissionService {
             },
           },
         );
-
+        // Pre-fetch batch enrollment info for all matched users so we can attach batchId/name in the response
+        const userIds = statusOfStudentCode
+          .map((record: any) => record?.user?.id)
+          .filter((id: any) => id !== undefined && id !== null)
+          .map((id: any) => Number(id))
+          .filter((id: number) => Number.isFinite(id));
+        // Drizzle column is bigint, so convert values to bigint for inArray
+        const userIdsBigint: bigint[] = userIds.map((id) => BigInt(id));
+        const batchEnrollmentMap: Record<
+          number,
+          { batchId: number | null; batchName: string | null }
+        > = {};
+        if (userIdsBigint.length > 0) {
+          const enrollmentRows = (await db.query.zuvyBatchEnrollments.findMany({
+            where: (enrollment, { and, inArray, sql }) => {
+              const enrollmentConditions: any[] = [
+                inArray(enrollment.userId, userIdsBigint),
+              ];
+              if (batchId) {
+                enrollmentConditions.push(
+                  sql`${enrollment.batchId} = ${batchId}`,
+                );
+              } else {
+                enrollmentConditions.push(
+                  sql`${enrollment.batchId} IS NOT NULL`,
+                );
+              }
+              return and(...enrollmentConditions);
+            },
+            columns: {
+              userId: true,
+              batchId: true,
+            },
+            with: {
+              batchInfo: {
+                columns: {
+                  id: true,
+                  name: true,
+                },
+              },
+            },
+          })) as Array<{
+            userId: bigint;
+            batchId: number | null;
+            batchInfo?: { id: number | null; name: string | null };
+          }>;
+          enrollmentRows.forEach((enrollment) => {
+            const uid = Number(enrollment.userId);
+            if (!Number.isFinite(uid)) return;
+            const resolvedBatchId =
+              enrollment.batchId ??
+              (enrollment.batchInfo?.id !== undefined
+                ? Number(enrollment.batchInfo.id)
+                : null);
+            const resolvedBatchName = enrollment.batchInfo?.name ?? null;
+            // Keep the first matched enrollment per user
+            if (batchEnrollmentMap[uid]) return;
+            batchEnrollmentMap[uid] = {
+              batchId: resolvedBatchId,
+              batchName: resolvedBatchName,
+            };
+          });
+        }
         // Get the total student count for pagination using enrollment table to respect batch filtering
         const totalStudentsRes = await db
           .select({
@@ -2351,7 +2411,6 @@ export class SubmissionService {
                 : sql``
             }
           `);
-
         const totalStudentsCount = totalStudentsRes[0]?.count ?? 0;
         // Normalize pagination inputs: treat non-positive/invalid limits as undefined
         const safeLimit =
@@ -2368,14 +2427,16 @@ export class SubmissionService {
         const deadlineDate = new Date(
           chapterDeadline[0].completionDate,
         ).getTime();
-
         // Process the result data with filtering out entries without a valid user
         const data = statusOfStudentCode
           .filter((statusCode) => statusCode['user'])
           .map((statusCode) => {
             const studentAssignmentStatus = statusCode;
             let isLate = false;
-
+            const userIdNumber = Number(statusCode['user']['id']);
+            const enrollmentDetails =
+              batchEnrollmentMap[userIdNumber] ||
+              ({ batchId: null, batchName: null } as const);
             if (
               studentAssignmentStatus &&
               studentAssignmentStatus['completedAt']
@@ -2387,23 +2448,22 @@ export class SubmissionService {
                 isLate = true;
               }
             }
-
             // Expose submitted_date so we can sort by it on the JS side if requested
             const submittedDate =
               statusCode['submitted_date'] ?? statusCode['completedAt'] ?? null;
-
             // Return properties without null or unknown
             return {
-              id: Number(statusCode['user']['id']),
+              id: userIdNumber,
               name: statusCode['user']['name'],
               emailId: statusCode['user']['email'],
               status: isLate ? 'Late Submission' : 'On Time',
               bootcampId:
                 statusCode['user'].studentAssignmentStatus?.bootcampId,
+              batchId: enrollmentDetails.batchId,
+              batchName: enrollmentDetails.batchName,
               submitted_date: submittedDate,
             };
           });
-
         // Sort in JS to support ordering by related user fields (name/email) as well as submittedDate
         let sortedData = data;
         if (orderBy) {
@@ -2435,19 +2495,16 @@ export class SubmissionService {
             });
           }
         }
-
         // Apply pagination in JS after sorting so ordering by name/email works correctly
         const paginatedData =
           typeof safeLimit === 'number'
             ? sortedData.slice(safeOffset, safeOffset + safeLimit)
             : sortedData;
-
         // Calculate the current page based on limit and offset
         const currentPage =
           typeof safeLimit === 'number'
             ? Math.floor(safeOffset / safeLimit) + 1
             : 1;
-
         // Return the response with student data
         return [
           null,
@@ -2918,38 +2975,32 @@ Zuvy LMS Team
       const trackingData = await db.query.zuvyCourseModules.findMany({
         where: (courseModules, { eq, and }) =>
           and(eq(courseModules.bootcampId, bootcampId)),
-
         orderBy: (courseModules, { asc }) => asc(courseModules.order),
-
         with: {
           moduleChapterData: {
             columns: {
               id: true,
               title: true,
             },
-
+            // APPLY ORDER BY TITLE HERE
             orderBy: chapterOrderClause,
-
             where: (moduleChapter: any, { eq, and, ilike, sql }: any) =>
               and(
                 eq(moduleChapter.topicId, topicId),
                 searchTerm
                   ? sql`
-                (
-                  ${ilike(moduleChapter.title, `%${searchTerm}%`)}
-                  OR EXISTS (
-                    SELECT 1
-                    FROM main.zuvy_chapter_tracking AS ct
-                    JOIN main.users AS u ON u.id = ct.user_id
-                    WHERE ct.chapter_id = ${moduleChapter.id}
-                      AND (u.name ILIKE ${searchTerm + '%'}
-                        OR u.email ILIKE ${searchTerm + '%'})
-                  )
-                )
-              `
+                      (
+                        ${ilike(moduleChapter.title, `%${searchTerm}%`)}
+                        OR EXISTS (
+                          SELECT 1 FROM main.zuvy_chapter_tracking AS ct
+                          JOIN main.users AS u ON u.id = ct.user_id
+                          WHERE ct.chapter_id = ${moduleChapter.id}
+                            AND (u.name ILIKE ${searchTerm + '%'} OR u.email ILIKE ${searchTerm + '%'})
+                        )
+                      )
+                    `
                   : sql`TRUE`,
               ),
-
             with: {
               chapterTrackingDetails: {
                 columns: {
@@ -2962,20 +3013,6 @@ Zuvy LMS Team
                       id: true,
                       name: true,
                       email: true,
-                    },
-                  },
-                  studentChapterDetails: {
-                    columns: {
-                      batchId: true,
-                      bootcampId: true,
-                    },
-                    with: {
-                      batchInfo: {
-                        columns: {
-                          id: true,
-                          name: true,
-                        },
-                      },
                     },
                   },
                 },
@@ -3008,8 +3045,6 @@ Zuvy LMS Team
             userId: d.userId ?? d.user?.id,
             name: d.user?.name ?? null,
             email: d.user?.email ?? null,
-            batchId: d.studentChapterDetails?.batchInfo?.id ?? null,
-            batchName: d.studentChapterDetails?.batchInfo?.name ?? null,
             completedAt: d.completedAt ?? null,
           }));
         });
@@ -3061,7 +3096,7 @@ Zuvy LMS Team
           creator: true,
           startTime: true,
           endTime: true,
-          batchId: true,
+          batchId: true, // already present
           secondBatchId: true,
           bootcampId: true,
           moduleId: true,
@@ -3073,7 +3108,6 @@ Zuvy LMS Team
           studentAttendanceRecords: {
             where: (record: { userId: any; status: any }) =>
               and(
-                // Only attendance where the user has a completed chapter_tracking for this chapter
                 inArray(
                   record.userId,
                   db
@@ -3086,8 +3120,6 @@ Zuvy LMS Team
                       ),
                     ),
                 ),
-
-                // Optional user filter by name/email (if provided)
                 name || email
                   ? inArray(
                       record.userId,
@@ -3102,17 +3134,13 @@ Zuvy LMS Team
                         ),
                     )
                   : undefined,
-
-                // Optional status filter
                 status ? eq(record.status, status) : undefined,
               ),
-
             columns: {
               userId: true,
               status: true,
               duration: true,
             },
-
             with: {
               user: {
                 columns: {
@@ -3125,13 +3153,35 @@ Zuvy LMS Team
         },
       });
 
-      // Process and sort data in JavaScript
+      // ✅ STEP 1: collect unique batchIds from sessions
+      const batchIds = Array.from(
+        new Set(
+          submissions
+            .map((s: any) => s.batchId)
+            .filter((id: any) => id !== null && id !== undefined),
+        ),
+      );
+
+      // ✅ STEP 2: fetch batch names
+      let batchMap: Record<number, string> = {};
+      if (batchIds.length > 0) {
+        const batches = await db
+          .select({
+            id: zuvyBatches.id,
+            name: zuvyBatches.name,
+          })
+          .from(zuvyBatches)
+          .where(inArray(zuvyBatches.id, batchIds));
+
+        batches.forEach((b) => {
+          batchMap[b.id] = b.name;
+        });
+      }
+
+      // Process and flatten data
       let allRecords: any[] = [];
       submissions.forEach((session: any) => {
-        if (
-          session.studentAttendanceRecords &&
-          session.studentAttendanceRecords.length > 0
-        ) {
+        if (session.studentAttendanceRecords?.length) {
           session.studentAttendanceRecords.forEach((record: any) => {
             allRecords.push({
               ...record,
@@ -3139,46 +3189,45 @@ Zuvy LMS Team
               sessionTitle: session.title,
               meetingId: session.meetingId,
               hangoutLink: session.hangoutLink,
+              batchId: session.batchId ?? null,
+              batchName: session.batchId
+                ? batchMap[session.batchId] ?? null
+                : null,
             });
           });
         }
       });
 
-      // Sort if orderBy is provided
+      // Sorting (unchanged)
       if (orderBy) {
         const dir =
           orderDirection && orderDirection.toLowerCase() === 'desc' ? -1 : 1;
 
         if (orderBy === 'name') {
-          allRecords.sort((a: any, b: any) => {
-            const an = (a.user?.name || '').toString();
-            const bn = (b.user?.name || '').toString();
-            return an.localeCompare(bn) * dir;
-          });
+          allRecords.sort(
+            (a, b) =>
+              (a.user?.name || '').localeCompare(b.user?.name || '') * dir,
+          );
         } else if (orderBy === 'email') {
-          allRecords.sort((a: any, b: any) => {
-            const ae = (a.user?.email || '').toString();
-            const be = (b.user?.email || '').toString();
-            return ae.localeCompare(be) * dir;
-          });
+          allRecords.sort(
+            (a, b) =>
+              (a.user?.email || '').localeCompare(b.user?.email || '') * dir,
+          );
         } else if (orderBy === 'status') {
-          allRecords.sort((a: any, b: any) => {
-            const as = (a.status || '').toString();
-            const bs = (b.status || '').toString();
-            return as.localeCompare(bs) * dir;
-          });
+          allRecords.sort(
+            (a, b) => (a.status || '').localeCompare(b.status || '') * dir,
+          );
         }
       }
 
-      // Apply pagination
+      // Pagination
       const safeLim =
         typeof limit === 'number' && limit > 0 ? limit : undefined;
       const safeOff = typeof offset === 'number' && offset >= 0 ? offset : 0;
 
-      let paginatedRecords = allRecords;
-      if (safeLim) {
-        paginatedRecords = allRecords.slice(safeOff, safeOff + safeLim);
-      }
+      const paginatedRecords = safeLim
+        ? allRecords.slice(safeOff, safeOff + safeLim)
+        : allRecords;
 
       const totalPages = safeLim ? Math.ceil(allRecords.length / safeLim) : 1;
 
