@@ -2396,9 +2396,10 @@ export class ContentService {
                   ELSE 9999
                 END
               `,
+              desc(zuvyCodingQuestions.createdAt),
             ];
           } else {
-            return [sql`${zuvyCodingQuestions.id} DESC`];
+            return [desc(zuvyCodingQuestions.createdAt)];
           }
         },
         limit, // Apply limit as a number
