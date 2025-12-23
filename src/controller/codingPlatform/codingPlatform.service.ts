@@ -34,13 +34,13 @@ export class CodingPlatformService {
   }
 
   async submitCodeBatch(sourceCode: SubmitCodeDto, codingOutsourseId: number, action: string): Promise<any> {
-    let testCase;
-    if (RUN === action) {
-      testCase = 2;
-    } else {
-      testCase = 0;
-    }
-    const [error, question] = await this.getCodingQuestion(codingOutsourseId, false, testCase);
+    // let testCase;
+    // if (RUN === action) {
+    //   testCase = 2;
+    // } else {
+    //   testCase = 0;
+    // }
+    const [error, question] = await this.getCodingQuestion(codingOutsourseId, false);
     if (error) {
       return [error];
     }
@@ -495,7 +495,7 @@ export class CodingPlatformService {
     }
   }
 
-  async getCodingQuestion(id: number, withTemplate: boolean = true, totalCasses = 0): Promise<any> {
+  async getCodingQuestion(id: number, withTemplate: boolean = true): Promise<any> {
     try {
       const question: any = await db.query.zuvyCodingQuestions.findMany({
         where: (zuvyCodingQuestions, { sql }) => sql`${zuvyCodingQuestions.id} = ${id}`,
@@ -517,7 +517,7 @@ export class CodingPlatformService {
               expectedOutput: true,
             },
             orderBy: (testCase, { asc }) => asc(testCase.id),
-            limit: totalCasses == 2 ? totalCasses : undefined,
+            // limit: totalCasses == 2 ? totalCasses : undefined,
           }
         }
       })
