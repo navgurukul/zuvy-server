@@ -775,6 +775,7 @@ Team Zuvy`;
           },
           batchInfo: {
             columns: {
+              id: true,
               name: true,
             },
           },
@@ -929,6 +930,7 @@ Team Zuvy`;
             userId,
             name: student.user?.name || 'Unknown',
             email: student.user?.email || 'Unknown',
+            batchId: student.batchInfo?.id || null,
             batchName: student.batchInfo?.name || null,
             marks: submission?.marks || null,
             startedAt: started || null,

@@ -509,13 +509,11 @@ export class BootcampService {
         .delete(zuvyBatchEnrollments)
         .where(eq(zuvyBatchEnrollments.bootcampId, id));
       // Finally, delete the bootcamp
-      let data = await db
-        .update(zuvyBootcamps)
-        // cast to any to allow soft-delete fields; ideally add these columns to the schema
-        .set({ isDeleted: true, deletedAt: new Date().toISOString() } as any)
+      const deleted = await db
+        .delete(zuvyBootcamps)
         .where(eq(zuvyBootcamps.id, id))
         .returning();
-      if (data.length === 0) {
+      if (deleted.length === 0) {
         return [
           { status: 'error', message: 'Bootcamp not found', code: 404 },
           null,
