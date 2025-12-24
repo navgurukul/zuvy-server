@@ -3083,12 +3083,57 @@ Zuvy LMS Team
     name?: string,
     email?: string,
     status?: 'present' | 'absent',
-    orderBy?: 'name' | 'email' | 'status',
+    orderBy?: 'name' | 'email' | 'status' | 'batchId' | 'batchName',
     orderDirection?: 'asc' | 'desc',
+    batchId?: number,
+    batchName?: string,
   ): Promise<[any, any]> {
     try {
+      // Resolve batch filters up-front so we can filter sessions at the DB layer
+      const batchFilterIds: number[] = [];
+      const normalizedBatchId =
+        Number.isFinite(Number(batchId)) && Number(batchId) > 0
+          ? Number(batchId)
+          : undefined;
+      if (normalizedBatchId) {
+        batchFilterIds.push(normalizedBatchId);
+      }
+
+      // If batchName is provided, fetch matching ids and merge into filter set
+      if (batchName) {
+        const matchingBatches = await db
+          .select({ id: zuvyBatches.id })
+          .from(zuvyBatches)
+          .where(ilike(zuvyBatches.name, `%${batchName}%`));
+        matchingBatches.forEach((b) => {
+          const maybeId =
+            typeof b.id === 'bigint' ? Number(b.id) : Number(b.id ?? 0);
+          if (Number.isFinite(maybeId) && maybeId > 0) {
+            batchFilterIds.push(maybeId);
+          }
+        });
+      }
+
+      const uniqueBatchFilterIds = Array.from(new Set(batchFilterIds));
+
+      // If a batchName was requested but no batches match, short-circuit to empty
+      if (batchName && uniqueBatchFilterIds.length === 0) {
+        return [null, { data: [], totalCount: 0, totalPages: limit ? 0 : 1 }];
+      }
+
       const submissions = await db.query.zuvySessions.findMany({
-        where: (session, { eq }) => eq(session.chapterId, moduleChapterId),
+        where: (session, { and, eq, or, inArray }) => {
+          const conditions: any[] = [eq(session.chapterId, moduleChapterId)];
+          if (uniqueBatchFilterIds.length > 0) {
+            conditions.push(
+              or(
+                inArray(session.batchId, uniqueBatchFilterIds),
+                inArray(session.secondBatchId, uniqueBatchFilterIds),
+              ),
+            );
+          }
+          return and(...conditions);
+        },
         columns: {
           id: true,
           meetingId: true,
@@ -3157,7 +3202,7 @@ Zuvy LMS Team
       const batchIds = Array.from(
         new Set(
           submissions
-            .map((s: any) => s.batchId)
+            .flatMap((s: any) => [s.batchId, s.secondBatchId])
             .filter((id: any) => id !== null && id !== undefined),
         ),
       );
@@ -3183,16 +3228,28 @@ Zuvy LMS Team
       submissions.forEach((session: any) => {
         if (session.studentAttendanceRecords?.length) {
           session.studentAttendanceRecords.forEach((record: any) => {
+            const resolvedBatchId = uniqueBatchFilterIds.length
+              ? [session.batchId, session.secondBatchId].find((id: any) =>
+                  id !== null && id !== undefined
+                    ? uniqueBatchFilterIds.includes(Number(id))
+                    : false,
+                ) ??
+                session.batchId ??
+                session.secondBatchId ??
+                null
+              : session.batchId ?? session.secondBatchId ?? null;
+            const resolvedBatchName =
+              resolvedBatchId !== null && resolvedBatchId !== undefined
+                ? batchMap[Number(resolvedBatchId)] ?? null
+                : null;
             allRecords.push({
               ...record,
               sessionId: session.id,
               sessionTitle: session.title,
               meetingId: session.meetingId,
               hangoutLink: session.hangoutLink,
-              batchId: session.batchId ?? null,
-              batchName: session.batchId
-                ? batchMap[session.batchId] ?? null
-                : null,
+              batchId: resolvedBatchId,
+              batchName: resolvedBatchName,
             });
           });
         }
@@ -3216,6 +3273,19 @@ Zuvy LMS Team
         } else if (orderBy === 'status') {
           allRecords.sort(
             (a, b) => (a.status || '').localeCompare(b.status || '') * dir,
+          );
+        } else if (orderBy === 'batchId') {
+          allRecords.sort((a, b) => {
+            const aId = Number(a.batchId) || 0;
+            const bId = Number(b.batchId) || 0;
+            return (aId - bId) * dir;
+          });
+        } else if (orderBy === 'batchName') {
+          allRecords.sort(
+            (a, b) =>
+              ((a.batchName as string) || '').localeCompare(
+                (b.batchName as string) || '',
+              ) * dir,
           );
         }
       }

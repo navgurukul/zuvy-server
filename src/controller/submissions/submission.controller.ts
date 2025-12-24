@@ -940,12 +940,24 @@ export class SubmissionController {
     description: 'Filter by attendance status (present or absent)',
   })
   @ApiQuery({
+    name: 'batchId',
+    required: false,
+    type: Number,
+    description: 'Filter by batch id',
+  })
+  @ApiQuery({
+    name: 'batchName',
+    required: false,
+    type: String,
+    description: 'Filter by batch name (partial match)',
+  })
+  @ApiQuery({
     name: 'orderBy',
     required: false,
     type: String,
-    enum: ['name', 'email', 'status'],
+    enum: ['name', 'email', 'status', 'batchId', 'batchName'],
     enumName: 'LiveSessionOrderBy',
-    description: "Sort by 'name', 'email' or 'status'",
+    description: "Sort by 'name', 'email', 'status', 'batchId', or 'batchName'",
   })
   @ApiQuery({
     name: 'orderDirection',
@@ -963,7 +975,10 @@ export class SubmissionController {
     @Query('name') name?: string,
     @Query('email') email?: string,
     @Query('status') status?: 'present' | 'absent',
-    @Query('orderBy') orderBy?: 'name' | 'email' | 'status',
+    @Query('batchId') batchId?: number,
+    @Query('batchName') batchName?: string,
+    @Query('orderBy')
+    orderBy?: 'name' | 'email' | 'status' | 'batchId' | 'batchName',
     @Query('orderDirection') orderDirection?: 'asc' | 'desc',
   ) {
     try {
@@ -977,6 +992,8 @@ export class SubmissionController {
           status,
           orderBy,
           orderDirection,
+          batchId,
+          batchName,
         );
       if (err) {
         return ErrorResponse.BadRequestException(
