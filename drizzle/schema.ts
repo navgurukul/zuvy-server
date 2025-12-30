@@ -2426,6 +2426,9 @@ export const zuvyBootcamps = main.table('zuvy_bootcamps', {
   startTime: timestamp('start_time', { withTimezone: true, mode: 'string' }),
   duration: integer('duration'),
   language: text('language'),
+  organizationId: integer('organization_id').notNull().references(() => organizations.id, {
+    onDelete: 'cascade'
+  }),
   createdAt: timestamp('created_at', {
     withTimezone: true,
     mode: 'string',
@@ -4077,3 +4080,14 @@ export const studentAssessment = main.table('student_assessment', {
 }, (table) => ({
   uniqStudentAssessment: unique("uniq_student_assessment").on(table.studentId, table.aiAssessmentId),
 }));
+
+// create orgnization table
+export const organizations = main.table('organizations', {
+  id: serial('id').primaryKey().notNull(),
+  title: varchar('title', { length: 255 }).notNull(),
+  displayName: varchar('display_name', { length: 255 }).notNull(),
+  isManagedByZuvy: boolean('is_managed_by_zuvy').notNull().default(true),
+  createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow(),
+  version: varchar('version', { length: 10 })
+});

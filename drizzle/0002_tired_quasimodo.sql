@@ -505,3 +505,12 @@ CREATE TABLE "student_assessment" (
     UNIQUE ("student_id", "ai_assessment_id")
 );
 
+CREATE TABLE "organizations" (
+    "id" SERIAL PRIMARY KEY NOT NULL,
+    "title" VARCHAR(255) NOT NULL,
+    "display_name" VARCHAR(255) NOT NULL,
+    "is_managed_by_zuvy" BOOLEAN NOT NULL DEFAULT true,
+    "created_at" TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    "updated_at" TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    "version" VARCHAR(10)
+);

@@ -12,3 +12,6 @@ ALTER TABLE "main"."zuvy_assessment_submission" ADD COLUMN "mcq_score" integer;-
 ALTER TABLE "main"."zuvy_assessment_submission" ADD COLUMN "required_coding_score" integer;--> statement-breakpoint
 ALTER TABLE "main"."zuvy_assessment_submission" ADD COLUMN "required_open_ended_score" integer;--> statement-breakpoint
 ALTER TABLE "main"."zuvy_assessment_submission" ADD COLUMN "required_mcq_score" integer;
+
+ALTER TABLE "main"."zuvy_bootcamps" ADD COLUMN "organization_id" integer REFERENCES "organizations"("id") ON DELETE CASCADE NOT NULL;--> statement-breakpoint
+UPDATE "main"."zuvy_bootcamps" SET "organization_id" = 1;
