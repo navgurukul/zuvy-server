@@ -383,6 +383,7 @@ export class BootcampController {
     @Req() req,
   ) {
     const roleName = req.user[0]?.roles;
+    const userId = req.user[0]?.id;
     const searchTermAsNumber = !isNaN(Number(searchTerm))
       ? BigInt(searchTerm)
       : searchTerm;
@@ -421,6 +422,7 @@ export class BootcampController {
       attendance,
       orderBy,
       orderDirection,
+      userId,
     );
     return res;
   }

@@ -509,11 +509,11 @@ export class BootcampService {
         .delete(zuvyBatchEnrollments)
         .where(eq(zuvyBatchEnrollments.bootcampId, id));
       // Finally, delete the bootcamp
-      let data = await db
+      const deleted = await db
         .delete(zuvyBootcamps)
         .where(eq(zuvyBootcamps.id, id))
         .returning();
-      if (data.length === 0) {
+      if (deleted.length === 0) {
         return [
           { status: 'error', message: 'Bootcamp not found', code: 404 },
           null,
@@ -864,7 +864,14 @@ export class BootcampService {
         if (userInfo.length === 0) {
           userInfo = await db.insert(users).values(newUser).returning();
           c += 1;
-          enroling = { userId: userInfo[0].id, bootcampId };
+          const now = new Date();
+          enroling = {
+            userId: userInfo[0].id,
+            bootcampId,
+            enrolledDate: now,
+            lastActiveDate: now,
+            status: 'active',
+          };
           if (batchId) {
             enroling['batchId'] = batchId;
           }
@@ -1039,6 +1046,7 @@ export class BootcampService {
     attendance?: number,
     orderBy?: string,
     orderDirection?: string,
+    instructorId?: number, // Add instructor ID parameter
   ) {
     try {
       const batchIdNum = Number.isFinite(Number(batchId))
@@ -1075,8 +1083,15 @@ export class BootcampService {
       const statusFilter = status
         ? eq(zuvyBatchEnrollments.status, status)
         : undefined;
-      console.log({ orderBy, orderDirection });
+
+      // Normalize roleName for comparison (handle case sensitivity and whitespace)
+      const normalizedRoleName =
+        typeof roleName[0] === 'string' ? roleName[0].toLowerCase().trim() : '';
+
+      const isInstructor = normalizedRoleName === 'instructor';
+
       // Determine order field and direction
+      console.log(enrolledDate, 'enrollData');
       let orderField;
       switch (orderBy) {
         case 'submittedDate':
@@ -1096,6 +1111,13 @@ export class BootcampService {
       }
       const direction =
         orderDirection === 'desc' ? desc(orderField) : asc(orderField);
+
+      // Build the where condition to include instructor filter if needed
+      const instructorBatchFilter =
+        isInstructor && instructorId
+          ? eq(zuvyBatches.instructorId, instructorId)
+          : undefined;
+
       const query = db
         .select({
           userId: users.id,
@@ -1135,6 +1157,7 @@ export class BootcampService {
             lastActiveDateFilter,
             statusFilter,
             attendanceFilter,
+            instructorBatchFilter, // Add instructor filter to WHERE clause
           ),
         )
         .orderBy(direction);

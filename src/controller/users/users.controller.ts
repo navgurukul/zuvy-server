@@ -167,9 +167,39 @@ export class UsersController {
     description: 'Internal server error',
   })
   @ApiBearerAuth('JWT-auth')
-  async getAllUserRoles(): Promise<any> {
+  async getAllUserRoles(@Req() req): Promise<any> {
     try {
-      const result = await this.usersService.getAllUserRoles();
+      const roleName = req.user[0]?.roles;
+      const result = await this.usersService.getAllUserRoles(roleName);
+      return result;
+    } catch (error) {
+      throw new HttpException(
+        'Internal Server Error',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  @Get('get/all/roles')
+  //   @RequirePermissions('read_user_roles')
+  @ApiOperation({
+    summary: 'Get all user roles',
+    description: 'Retrieves all user roles from the system',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'User roles retrieved successfully',
+    type: [UserRoleResponseDto],
+  })
+  @ApiResponse({
+    status: 500,
+    description: 'Internal server error',
+  })
+  @ApiBearerAuth('JWT-auth')
+  async getAllUserRolesNoFilter(@Req() req): Promise<any> {
+    try {
+      const roleName = req.user[0]?.roles;
+      const result = await this.usersService.getAllUserRoles(roleName, true);
       return result;
     } catch (error) {
       throw new HttpException(
@@ -273,8 +303,8 @@ export class UsersController {
     description: 'Internal server error',
   })
   async getAllUsers(
-    @Query('limit') limit: number,
-    @Query('offset') offSet: number,
+    @Query('limit', new ParseIntPipe()) limit: number,
+    @Query('offset', new ParseIntPipe()) offset: number,
     @Query('searchTerm') searchTerm: string,
     @Query('roleId') roleId: number[],
     @Req() req,
@@ -283,7 +313,7 @@ export class UsersController {
     return this.usersService.getAllUsersWithRoles(
       roleName,
       limit,
-      offSet,
+      offset,
       searchTerm,
       roleId,
     );

@@ -56,17 +56,31 @@ export class AdminAssessmentController {
     type: String,
     description: 'Search by assessment name',
   })
+  @ApiQuery({
+    name: 'orderBy',
+    required: false,
+    enum: ['title'],
+  })
+  @ApiQuery({
+    name: 'orderDirection',
+    required: false,
+    enum: ['asc', 'desc'],
+  })
   @ApiBearerAuth('JWT-auth')
   async BootcampAssessment(
     @Req() req: Request,
     @Param('bootcamp_id') bootcampID: number,
     @Query('searchAssessment') searchAssessment: string,
+    @Query('orderBy') orderBy: 'title',
+    @Query('orderDirection') orderDirection: 'asc' | 'desc',
   ) {
     const roleName = req.user[0]?.roles;
     return this.adminAssessmentService.getBootcampAssessment(
       roleName,
       bootcampID,
       searchAssessment,
+      orderBy,
+      orderDirection,
     );
   }
 
@@ -202,12 +216,28 @@ export class AdminAssessmentController {
     type: Number,
     description: 'offset',
   })
+  @ApiQuery({
+    name: 'orderBy',
+    required: false,
+    type: String,
+    description: 'Field to order by (submittedDate, name, email)',
+    enum: ['title'],
+  })
+  @ApiQuery({
+    name: 'orderDirection',
+    required: false,
+    type: String,
+    description: 'Order direction (asc/desc)',
+    enum: ['asc', 'desc'],
+  })
   @ApiBearerAuth('JWT-auth')
   async BootcampModuleCompletion(
     @Param('bootcamp_id') bootcampID: number,
     @Query('searchVideos') searchVideos: string,
     @Query('limit') limit: number,
     @Query('offset') offSet: number,
+    @Query('orderBy') orderBy: 'title',
+    @Query('orderDirection') orderDirection: 'asc' | 'desc',
     @Req() req,
   ) {
     const roleName = req.user[0]?.roles;
@@ -217,6 +247,8 @@ export class AdminAssessmentController {
       searchVideos,
       limit,
       offSet,
+      orderBy,
+      orderDirection,
     );
   }
 
@@ -246,6 +278,20 @@ export class AdminAssessmentController {
     type: Number,
     description: 'offset',
   })
+  @ApiQuery({
+    name: 'orderBy',
+    required: false,
+    type: String,
+    description: 'Field to order by (name, email, completedAt)',
+    enum: ['name', 'email', 'completedAt'],
+  })
+  @ApiQuery({
+    name: 'orderDirection',
+    required: false,
+    type: String,
+    description: 'Order direction (asc/desc)',
+    enum: ['asc', 'desc'],
+  })
   @ApiBearerAuth('JWT-auth')
   async ModuleChapterStudents(
     @Param('chapter_id') chapterID: number,
@@ -253,6 +299,8 @@ export class AdminAssessmentController {
     @Query('batchId') batchId: number,
     @Query('limit') limit: number,
     @Query('offset') offSet: number,
+    @Query('orderBy') orderBy: 'name' | 'email' | 'completedAt',
+    @Query('orderDirection') orderDirection: 'asc' | 'desc',
   ) {
     return this.adminAssessmentService.getModuleChapterStudents(
       chapterID,
@@ -260,6 +308,8 @@ export class AdminAssessmentController {
       batchId,
       limit,
       offSet,
+      orderBy,
+      orderDirection,
     );
   }
 

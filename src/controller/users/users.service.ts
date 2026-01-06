@@ -237,9 +237,36 @@ export class UsersService {
     }
   }
 
-  async getAllUserRoles(): Promise<any> {
+  async getAllUserRoles(roleName: string, duplicate?: boolean): Promise<any> {
     try {
-      const result = await db.execute(sql`SELECT * FROM main.zuvy_user_roles`);
+      if (duplicate) {
+        try {
+          const result = await db.execute(
+            sql`SELECT * FROM main.zuvy_user_roles`,
+          );
+          return {
+            status: 'success',
+            message: 'User roles retrieved successfully',
+            code: 200,
+            data: (result as any).rows,
+          };
+        } catch (err) {
+          throw err;
+        }
+      }
+
+      let query;
+
+      if (roleName[0] === 'super admin') {
+        query = sql`SELECT * FROM main.zuvy_user_roles WHERE name != 'super admin'`;
+      } else if (roleName[0] === 'admin') {
+        query = sql`SELECT * FROM main.zuvy_user_roles WHERE name NOT IN ('admin', 'super admin')`;
+      } else {
+        query = sql`SELECT * FROM main.zuvy_user_roles WHERE name NOT IN ('admin', 'super admin')`;
+      }
+
+      const result = await db.execute(query);
+
       return {
         status: 'success',
         message: 'User roles retrieved successfully',
@@ -264,6 +291,92 @@ export class UsersService {
       };
     }
     return roleDetails;
+  }
+
+  // create a function to assign defualt permissions to a role
+  async assignDefaultPermissionsToRole(
+    roleId: number,
+    roleName: string,
+  ): Promise<any> {
+    try {
+      // 🔍 Step 1: Check if role already has any permissions
+      const existingPermissions = await db.execute(
+        sql`SELECT COUNT(*) AS count FROM main.zuvy_permissions_roles WHERE role_id = ${roleId}`,
+      );
+
+      const alreadyAssigned = Number(
+        (existingPermissions as any).rows?.[0]?.count ?? 0,
+      );
+
+      if (alreadyAssigned > 0) {
+        this.logger.log(
+          `Role ID ${roleId} (${roleName}) already has permissions assigned. Skipping default assignment.`,
+        );
+        return {
+          status: 'skipped',
+          message: `Permissions already assigned for role: ${roleName}`,
+          code: 200,
+        };
+      }
+
+      // 🧩 Step 2: Build list of default permissions
+      let defaultPermissions: string[] = [];
+
+      // ✅ Assign view/create for all resources only if role is 'admin'
+      if (roleName.toLowerCase() === 'admin') {
+        for (const resource of Object.values(ResourceList)) {
+          defaultPermissions.push(resource.read, resource.create);
+        }
+      } else {
+        // Assign limited defaults for non-admin roles
+        defaultPermissions = [
+          ResourceList.course.read,
+          ResourceList.batch.read,
+          ResourceList.module.read,
+          ResourceList.chapter.read,
+          ResourceList.student.read,
+          ResourceList.bootcamp.read,
+          ResourceList.mcq.read,
+          ResourceList.codingquestion.read,
+          ResourceList.opendended.read,
+          ResourceList.topic.read,
+        ];
+      }
+
+      // 🏗️ Step 3: Insert missing permissions
+      for (const permission of defaultPermissions) {
+        const permissionDetails = await db.execute(
+          sql`SELECT id FROM main.zuvy_permissions WHERE name = ${permission} LIMIT 1`,
+        );
+
+        if (!(permissionDetails as any).rows?.length) {
+          this.logger.warn(
+            `Permission not found in DB, skipping: ${permission}`,
+          );
+          continue;
+        }
+
+        const permissionId = (permissionDetails as any).rows[0].id;
+
+        await db.execute(
+          sql`INSERT INTO main.zuvy_permissions_roles (role_id, permission_id)
+            VALUES (${roleId}, ${permissionId})
+            ON CONFLICT DO NOTHING`,
+        );
+      }
+
+      // ✅ Step 4: Return success
+      return {
+        status: 'success',
+        message: `Default permissions assigned successfully for role: ${roleName}`,
+        code: 200,
+      };
+    } catch (err) {
+      this.logger.error('Error assigning default permissions to role:', err);
+      throw new InternalServerErrorException(
+        'Failed to assign default permissions to role',
+      );
+    }
   }
 
   async assignRoleToUser(
@@ -326,6 +439,9 @@ export class UsersService {
           INSERT INTO main.zuvy_user_roles_assigned (user_id, role_id)
           VALUES (${userId}, ${roleId})
           RETURNING *`);
+        // ✅ Assign default permissions for new role
+        await this.assignDefaultPermissionsToRole(roleId, roleName);
+
         const currentRoleDetails = await this.roleCheck(currentRoleId);
         const currentRoleName = (currentRoleDetails as any).rows?.[0]?.name;
         const actionUpdate = `${actorName} updated ${targetName}'s role from ${currentRoleName} to ${roleName}`;
@@ -367,6 +483,9 @@ export class UsersService {
         INSERT INTO main.zuvy_user_roles_assigned (user_id, role_id)
         VALUES (${userId}, ${roleId})
         RETURNING *`);
+
+      // ✅ Assign default permissions for new role
+      await this.assignDefaultPermissionsToRole(roleId, roleName);
 
       const action = `${actorName} assigned role ${roleName} to ${targetName}`;
 
@@ -661,9 +780,60 @@ export class UsersService {
     }
   }
 
+  // get user by id and innerjoin with zuvyUserRolesAssigned and zuvyUserRoles to get role details
+  async getUserById(id: bigint) {
+    try {
+      const [user] = await db
+        .select({
+          id: users.id,
+          name: users.name,
+          email: users.email,
+          roleId: zuvyUserRoles.id,
+          roleName: zuvyUserRoles.name,
+          roleDescription: zuvyUserRoles.description,
+          createdAt: zuvyUserRolesAssigned.createdAt,
+          updatedAt: zuvyUserRolesAssigned.updatedAt,
+        })
+        .from(users)
+        .leftJoin(
+          zuvyUserRolesAssigned,
+          eq(users.id, zuvyUserRolesAssigned.userId),
+        )
+        .leftJoin(
+          zuvyUserRoles,
+          eq(zuvyUserRolesAssigned.roleId, zuvyUserRoles.id),
+        )
+        .where(eq(users.id, id));
+
+      if (!user) {
+        throw new NotFoundException(`User with ID ${id} not found`);
+      }
+
+      return user;
+    } catch (error) {
+      throw error;
+    }
+  }
+
   async updateUser(id: bigint, updateUserDto: UpdateUserDto) {
     try {
       const targetUserId = typeof id === 'bigint' ? id : BigInt(id);
+      // compare email and roleId with existing data and update only name and return
+      const existingUser = await this.getUserById(targetUserId);
+      // check if email and roleId with existing data and update only name and return
+      if (
+        updateUserDto.email === existingUser.email &&
+        updateUserDto.roleId === Number(existingUser.roleId)
+      ) {
+        // Only name is being updated
+        return await db
+          .update(users)
+          .set({
+            name: updateUserDto.name,
+            updatedAt: new Date().toISOString(),
+          })
+          .where(eq(users.id, targetUserId));
+      }
 
       return await db.transaction(async (tx) => {
         const currentTime = new Date().toISOString(); // ISO string format

@@ -911,18 +911,18 @@ export class ContentService {
           const quizDetails =
             chapterDetails[0].quizQuestions !== null
               ? await db.query.zuvyModuleQuiz.findMany({
-                where: (quiz, { inArray }) =>
-                  inArray(
-                    quiz.id,
-                    Object.values(chapterDetails[0].quizQuestions),
-                  ),
-                with: {
-                  quizVariants: {
-                    where: (variants, { eq }) =>
-                      eq(variants.variantNumber, 1), // Filter for variantNumber = 1
+                  where: (quiz, { inArray }) =>
+                    inArray(
+                      quiz.id,
+                      Object.values(chapterDetails[0].quizQuestions),
+                    ),
+                  with: {
+                    quizVariants: {
+                      where: (variants, { eq }) =>
+                        eq(variants.variantNumber, 1), // Filter for variantNumber = 1
+                    },
                   },
-                },
-              })
+                })
               : [];
           modifiedChapterDetails.quizQuestionDetails = quizDetails;
         } else if (chapterDetails[0].topicId == 3) {
@@ -930,38 +930,38 @@ export class ContentService {
           const codingProblemDetails =
             chapterDetails[0].codingQuestions !== null
               ? await db.query.zuvyCodingQuestions.findMany({
-                where: (codingQuestion, { eq }) =>
-                  eq(codingQuestion.id, chapterDetails[0].codingQuestions),
-                columns: {
-                  id: true,
-                  title: true,
-                  description: true,
-                  difficulty: true,
-                  tagId: true,
-                  constraints: true, // Include constraints here
-                },
-                with: {
-                  testCases: {
-                    columns: {
-                      id: true,
-                      inputs: true,
-                      expectedOutput: true,
-                    },
-                    orderBy: (testCase, { asc }) => asc(testCase.id),
+                  where: (codingQuestion, { eq }) =>
+                    eq(codingQuestion.id, chapterDetails[0].codingQuestions),
+                  columns: {
+                    id: true,
+                    title: true,
+                    description: true,
+                    difficulty: true,
+                    tagId: true,
+                    constraints: true, // Include constraints here
                   },
-                },
-              })
+                  with: {
+                    testCases: {
+                      columns: {
+                        id: true,
+                        inputs: true,
+                        expectedOutput: true,
+                      },
+                      orderBy: (testCase, { asc }) => asc(testCase.id),
+                    },
+                  },
+                })
               : [];
           modifiedChapterDetails.codingQuestionDetails = codingProblemDetails;
         } else if (chapterDetails[0].topicId == 7) {
           const formDetails =
             chapterDetails[0].formQuestions !== null
               ? await db
-                .select()
-                .from(zuvyModuleForm)
-                .where(
-                  sql`${inArray(zuvyModuleForm.id, Object.values(chapterDetails[0].formQuestions))}`,
-                )
+                  .select()
+                  .from(zuvyModuleForm)
+                  .where(
+                    sql`${inArray(zuvyModuleForm.id, Object.values(chapterDetails[0].formQuestions))}`,
+                  )
               : [];
           modifiedChapterDetails.formQuestionDetails = formDetails;
         } else if (chapterDetails[0].topicId == 8) {
@@ -993,6 +993,7 @@ export class ContentService {
           });
           let session = sessionDetails[0];
           if (
+            session &&
             session.s3link !== null &&
             session.s3link !== '' &&
             session.status === 'completed' &&
@@ -1055,8 +1056,8 @@ export class ContentService {
                   ? session.zoomStartUrl
                   : session.hangoutLink;
               if (
-                userRole.includes('admin') ||
-                userRole.includes('instructor')
+                userRole &&
+                (userRole.includes('admin') || userRole.includes('instructor'))
               ) {
                 // If the user is an admin or instructor, use the session's zoomStartUrl or hangoutLink
                 userJoinLink = session.isZoomMeet
@@ -1304,14 +1305,14 @@ export class ContentService {
           const remainingQuizIds =
             editData.quizQuestions != null && earlierQuizIds.length > 0
               ? earlierQuizIds.filter(
-                (questionId) => !editData.quizQuestions.includes(questionId),
-              )
+                  (questionId) => !editData.quizQuestions.includes(questionId),
+                )
               : [];
           const toUpdateIds =
             editData.quizQuestions != null && earlierQuizIds.length > 0
               ? editData.quizQuestions.filter(
-                (questionId) => !earlierQuizIds.includes(questionId),
-              )
+                  (questionId) => !earlierQuizIds.includes(questionId),
+                )
               : editData.quizQuestions;
           if (remainingQuizIds.length > 0) {
             await db
@@ -1363,14 +1364,14 @@ export class ContentService {
           const remainingFormIds =
             editData.formQuestions != null && earlierFormIds.length > 0
               ? earlierFormIds.filter(
-                (questionId) => !editData.formQuestions.includes(questionId),
-              )
+                  (questionId) => !editData.formQuestions.includes(questionId),
+                )
               : [];
           const toUpdateIds =
             editData.formQuestions != null && earlierFormIds.length > 0
               ? editData.formQuestions.filter(
-                (questionId) => !earlierFormIds.includes(questionId),
-              )
+                  (questionId) => !earlierFormIds.includes(questionId),
+                )
               : editData.formQuestions;
           if (remainingFormIds.length > 0) {
             let updateModuleForm: any = {
@@ -1474,7 +1475,7 @@ export class ContentService {
       }
       if (
         assessmentBody.weightageCodingQuestions +
-        assessmentBody.weightageMcqQuestions !=
+          assessmentBody.weightageMcqQuestions !=
         100
       ) {
         throw {
@@ -1610,14 +1611,14 @@ export class ContentService {
         let existingOpenEndedQuestionIds =
           OutsourseOpenEndedQuestions.length > 0
             ? OutsourseOpenEndedQuestions.map(
-              (q) => q.openEndedQuestionId,
-            ).filter((id) => id !== null)
+                (q) => q.openEndedQuestionId,
+              ).filter((id) => id !== null)
             : [];
         let existingCodingQuestionIds =
           OutsourseCodingQuestions.length > 0
             ? OutsourseCodingQuestions.map((q) => q.codingQuestionId).filter(
-              (id) => id !== null,
-            )
+                (id) => id !== null,
+              )
             : [];
 
         let quizIdsToDelete = existingQuizIds.filter(
@@ -2225,17 +2226,17 @@ export class ContentService {
       // First get the quiz IDs that match the search term
       const matchingQuizIds = searchTerm
         ? await db.query.zuvyModuleQuizVariants
-          .findMany({
-            columns: {
-              quizId: true,
-            },
-            where: (variants, { and, eq }) =>
-              and(
-                eq(variants.variantNumber, 1),
-                sql`LOWER(${variants.question}) ~ ${sql.raw(`'\\m${searchTerm.toLowerCase()}'`)}`,
-              ),
-          })
-          .then((results) => results.map((r) => r.quizId))
+            .findMany({
+              columns: {
+                quizId: true,
+              },
+              where: (variants, { and, eq }) =>
+                and(
+                  eq(variants.variantNumber, 1),
+                  sql`LOWER(${variants.question}) ~ ${sql.raw(`'\\m${searchTerm.toLowerCase()}'`)}`,
+                ),
+            })
+            .then((results) => results.map((r) => r.quizId))
         : null;
 
       // Add the quiz ID condition if we have search results
@@ -2395,9 +2396,10 @@ export class ContentService {
                   ELSE 9999
                 END
               `,
+              desc(zuvyCodingQuestions.createdAt),
             ];
           } else {
-            return [sql`${zuvyCodingQuestions.id} DESC`];
+            return [desc(zuvyCodingQuestions.createdAt)];
           }
         },
         limit, // Apply limit as a number
@@ -2425,7 +2427,6 @@ export class ContentService {
         userPermissions = permissionsResult;
       } catch (permissionError) {
         // Log the error but don't fail the entire request
-        console.error('Error fetching user permissions:', permissionError);
         userPermissions = { error: 'Failed to fetch permissions' };
       }
 
@@ -2561,9 +2562,9 @@ export class ContentService {
         deletedQuestions =
           remainingIds.length > 0
             ? await db
-              .delete(zuvyModuleQuiz)
-              .where(sql`${inArray(zuvyModuleQuiz.id, remainingIds)}`)
-              .returning()
+                .delete(zuvyModuleQuiz)
+                .where(sql`${inArray(zuvyModuleQuiz.id, remainingIds)}`)
+                .returning()
             : [];
         if (deletedQuestions.length > 0) {
           return {
@@ -2618,9 +2619,9 @@ export class ContentService {
         deletedQuestions =
           remainingIds.length > 0
             ? await db
-              .delete(zuvyCodingQuestions)
-              .where(sql`${inArray(zuvyCodingQuestions.id, remainingIds)}`)
-              .returning()
+                .delete(zuvyCodingQuestions)
+                .where(sql`${inArray(zuvyCodingQuestions.id, remainingIds)}`)
+                .returning()
             : [];
         if (deletedQuestions.length > 0) {
           return {
@@ -2678,9 +2679,9 @@ export class ContentService {
         deletedQuestions =
           remainingIds.length > 0
             ? await db
-              .delete(zuvyOpenEndedQuestions)
-              .where(sql`${inArray(zuvyOpenEndedQuestions.id, remainingIds)}`)
-              .returning()
+                .delete(zuvyOpenEndedQuestions)
+                .where(sql`${inArray(zuvyOpenEndedQuestions.id, remainingIds)}`)
+                .returning()
             : [];
         if (deletedQuestions.length > 0) {
           return {
@@ -2744,65 +2745,69 @@ export class ContentService {
   }
 
   async createTag(tagData: CreateTagDto) {
-  try {
-    const { tagNames } = tagData;
-    
-    // Remove duplicates and trim
-    const uniqueTagNames = [...new Set(tagNames.map(name => name.trim()))];
-    
-    // Check which tags already exist
-    const existingTags = await db.select()
-      .from(zuvyTags)
-      .where(inArray(zuvyTags.tagName, uniqueTagNames));
-    
-    const existingTagNames = existingTags.map(tag => tag.tagName);
-    const newTagNames = uniqueTagNames.filter(name => !existingTagNames.includes(name));
-    
-    // Insert only new tags
-    if (newTagNames.length > 0) {
-      const tagsToInsert = newTagNames.map(tagName => ({ 
-        tagName: tagName 
-      }));
-      
-      const newTags = await db.insert(zuvyTags)
-        .values(tagsToInsert)
-        .returning();
-      
-      let message = '';
-      if (existingTags.length === 0) {
-        message = `Tags created successfully: ${newTagNames.join(', ')}`;
+    try {
+      const { tagNames } = tagData;
+
+      // Remove duplicates and trim
+      const uniqueTagNames = [...new Set(tagNames.map((name) => name.trim()))];
+
+      // Check which tags already exist
+      const existingTags = await db
+        .select()
+        .from(zuvyTags)
+        .where(inArray(zuvyTags.tagName, uniqueTagNames));
+
+      const existingTagNames = existingTags.map((tag) => tag.tagName);
+      const newTagNames = uniqueTagNames.filter(
+        (name) => !existingTagNames.includes(name),
+      );
+
+      // Insert only new tags
+      if (newTagNames.length > 0) {
+        const tagsToInsert = newTagNames.map((tagName) => ({
+          tagName: tagName,
+        }));
+
+        const newTags = await db
+          .insert(zuvyTags)
+          .values(tagsToInsert)
+          .returning();
+
+        let message = '';
+        if (existingTags.length === 0) {
+          message = `Tags created successfully: ${newTagNames.join(', ')}`;
+        } else {
+          message = `Tags created: ${newTagNames.join(', ')}. Cannot add these tags as already there: ${existingTagNames.join(', ')}`;
+        }
+
+        return {
+          status: 'success',
+          code: 200,
+          message: message,
+          data: {
+            createdTags: newTags,
+            existingTags: existingTags,
+            createdTagNames: newTagNames,
+            existingTagNames: existingTagNames,
+          },
+        };
       } else {
-        message = `Tags created: ${newTagNames.join(', ')}. Cannot add these tags as already there: ${existingTagNames.join(', ')}`;
+        return {
+          status: 'error',
+          code: 409,
+          message: `Cannot add these tags as already there: ${existingTagNames.join(', ')}`,
+          data: {
+            createdTags: [],
+            existingTags: existingTags,
+            createdTagNames: [],
+            existingTagNames: existingTagNames,
+          },
+        };
       }
-      
-      return {
-        status: 'success',
-        code: 200,
-        message: message,
-        data: {
-          createdTags: newTags,
-          existingTags: existingTags,
-          createdTagNames: newTagNames,
-          existingTagNames: existingTagNames
-        }
-      };
-    } else {
-      return {
-        status: 'error',
-        code: 409,
-        message: `Cannot add these tags as already there: ${existingTagNames.join(', ')}`,
-        data: {
-          createdTags: [],
-          existingTags: existingTags,
-          createdTagNames: [],
-          existingTagNames: existingTagNames
-        }
-      };
+    } catch (err) {
+      throw err;
     }
-  } catch (err) {
-    throw err;
   }
-}
 
   async deleteQuestionTag(tagId: number) {
     const associatedQuestions = new Map();
@@ -2851,6 +2856,7 @@ export class ContentService {
         return {
           status: 'success',
           code: 200,
+          message: 'Tag has been deleted successfully.',
         };
       } else {
         return {
@@ -3057,14 +3063,14 @@ export class ContentService {
         // PUBLISHED
         const startTime = assessment[0].startDatetime
           ? new Date(assessment[0].startDatetime).toLocaleString('en-US', {
-            year: 'numeric',
-            month: 'numeric',
-            day: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit',
-            second: '2-digit',
-            hour12: true,
-          })
+              year: 'numeric',
+              month: 'numeric',
+              day: 'numeric',
+              hour: '2-digit',
+              minute: '2-digit',
+              second: '2-digit',
+              hour12: true,
+            })
           : 'Unknown';
         return {
           status: 'success',
@@ -3986,20 +3992,133 @@ export class ContentService {
         };
       }
 
-      if (form.formQuestionDto && !form.editFormQuestionDto) {
-        await this.createFormForModule(chapterId, form.formQuestionDto);
-      } else if (form.editFormQuestionDto && !form.formQuestionDto) {
-        await this.editFormQuestions(chapterId, form.editFormQuestionDto);
-      } else if (form.editFormQuestionDto && form.formQuestionDto) {
-        await this.editFormQuestions(chapterId, form.editFormQuestionDto);
-        await this.createFormForModule(chapterId, form.formQuestionDto);
-      } else {
+      // Combine all questions (both edit and create)
+      const allQuestions = [];
+
+      if (form.editFormQuestionDto?.questions) {
+        allQuestions.push(...form.editFormQuestionDto.questions);
+      }
+
+      if (form.formQuestionDto?.questions) {
+        allQuestions.push(...form.formQuestionDto.questions);
+      }
+
+      if (allQuestions.length === 0) {
         return {
           status: 'error',
           code: 400,
-          message: 'Invalid input.',
+          message: 'No questions provided.',
         };
       }
+
+      // Validate all questions have required fields
+      const allFieldsFilled = allQuestions.every(
+        (question) =>
+          question.question !== null &&
+          question.question !== undefined &&
+          question.options !== null &&
+          question.options !== undefined &&
+          question.typeId !== null &&
+          question.typeId !== undefined &&
+          question.isRequired !== null &&
+          question.isRequired !== undefined,
+      );
+
+      if (!allFieldsFilled) {
+        return {
+          status: 'error',
+          code: 400,
+          message: 'One or more fields are empty. Please try again.',
+        };
+      }
+
+      // Get existing form records for this chapter
+      const existingFormRecords = await db
+        .select()
+        .from(zuvyModuleForm)
+        .where(eq(zuvyModuleForm.chapterId, chapterId));
+
+      const existingFormIds = existingFormRecords.map((record) => record.id);
+      const providedFormIds = allQuestions.filter((q) => q.id).map((q) => q.id);
+
+      // Delete questions that exist in DB but not in the request
+      const idsToRemove = existingFormIds.filter(
+        (id) => !providedFormIds.includes(id),
+      );
+
+      if (idsToRemove.length > 0) {
+        await db
+          .delete(zuvyModuleForm)
+          .where(inArray(zuvyModuleForm.id, idsToRemove));
+      }
+
+      const finalFormIds = [];
+
+      // Process each question
+      for (const question of allQuestions) {
+        if (question.id) {
+          // Update existing question
+          const existingRecord = existingFormRecords.find(
+            (record) => record.id === question.id,
+          );
+
+          if (!existingRecord) {
+            return {
+              status: 'error',
+              code: 400,
+              message: `Form question with id ${question.id} does not exist.`,
+            };
+          }
+
+          const updateData: any = {
+            chapterId: chapterId,
+            question: question.question,
+            options: question.options,
+            typeId: question.typeId,
+            isRequired: question.isRequired,
+          };
+
+          const updated = await db
+            .update(zuvyModuleForm)
+            .set(updateData)
+            .where(eq(zuvyModuleForm.id, question.id))
+            .returning();
+
+          if (updated.length > 0) {
+            finalFormIds.push(updated[0].id);
+          }
+        } else {
+          // Create new question
+          const insertData: any = {
+            chapterId: chapterId,
+            isRequired: question.isRequired,
+          };
+
+          // Only add optional fields if they exist in the schema
+          if ('question' in zuvyModuleForm)
+            insertData.question = question.question;
+          if ('options' in zuvyModuleForm)
+            insertData.options = question.options;
+          if ('typeId' in zuvyModuleForm) insertData.typeId = question.typeId;
+
+          const newQuestion = await db
+            .insert(zuvyModuleForm)
+            .values(insertData)
+            .returning();
+
+          if (newQuestion.length > 0) {
+            finalFormIds.push(newQuestion[0].id);
+          }
+        }
+      }
+
+      // Update chapter with final form IDs
+      await db
+        .update(zuvyModuleChapter)
+        .set({
+          formQuestions: finalFormIds,
+        })
+        .where(eq(zuvyModuleChapter.id, chapterId));
 
       const res1 = await db
         .select()

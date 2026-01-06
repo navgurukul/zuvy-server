@@ -28,6 +28,7 @@ import {
   zuvyModuleQuizVariants,
   zuvyOutsourseAssessments,
   users,
+  zuvyBatches,
 } from '../../../drizzle/schema';
 import {
   InstructorFeedbackDto,
@@ -62,25 +63,46 @@ export class SubmissionService {
     roleName,
     bootcampId: number,
     searchProblem: string,
-    orderBy?: 'name' | 'email' | 'percentage',
+    orderBy?: 'title',
     orderDirection?: 'asc' | 'desc',
     searchTerm?: string,
   ) {
     try {
       const topicId = 3;
 
+      // -------------------------
+      // Order validation (ERROR)
+      // -------------------------
+      if ((orderBy && !orderDirection) || (!orderBy && orderDirection)) {
+        // Return an error-like object so controller can handle it consistently.
+        return {
+          status: 'error',
+          code: 400,
+          message: 'Both orderBy and orderDirection are required together',
+        };
+      }
       const trackingData = await db.query.zuvyCourseModules.findMany({
-        where: (courseModules, { eq, and }) =>
-          and(eq(courseModules.bootcampId, bootcampId)),
+        where: (courseModules, { eq }) =>
+          eq(courseModules.bootcampId, bootcampId),
+
         with: {
           moduleChapterData: {
-            columns: {
-              id: true,
+            columns: { id: true, codingQuestions: true },
+
+            // TITLE-BASED SORTING (if orderDirection not provided, default asc)
+            orderBy: (chapter, { asc, desc, sql }) => {
+              const titleColumn = sql`
+              (SELECT cq.title 
+               FROM main.zuvy_coding_questions AS cq
+               WHERE cq.id = ${chapter.codingQuestions})
+            `;
+              return [
+                orderDirection === 'desc'
+                  ? desc(titleColumn)
+                  : asc(titleColumn),
+              ];
             },
-            where: (
-              moduleChapter: { topicId: any; codingQuestions: any },
-              { eq, and, sql }: any,
-            ) =>
+            where: (moduleChapter, { eq, and, sql }) =>
               and(
                 eq(moduleChapter.topicId, topicId),
                 searchProblem
@@ -96,70 +118,81 @@ export class SubmissionService {
               ),
             with: {
               chapterTrackingDetails: {
-                columns: {
-                  userId: true,
-                  completedAt: true,
-                },
+                columns: { userId: true, completedAt: true },
                 with: {
-                  user: {
-                    columns: {
-                      name: true,
-                      email: true,
-                      id: true,
-                    },
-                  },
+                  user: { columns: { name: true, email: true, id: true } },
                 },
               },
               codingQuestionDetails: {
-                columns: {
-                  id: true,
-                  title: true,
-                },
+                columns: { id: true, title: true },
               },
             },
           },
         },
       });
-
-      // Query to get the count of total students enrolled in the bootcamp
+      // If DB returned nothing
+      if (!trackingData || trackingData.length === 0) {
+        return {
+          status: 'success',
+          code: 200,
+          trackingData: [],
+          totalStudents: 0,
+        };
+      }
+      // Count students
       const zuvyBatchEnrollmentsCount = await db
         .select({
           count: sql<number>`cast(count(${zuvyBatchEnrollments.id}) as int)`,
         })
         .from(zuvyBatchEnrollments)
         .where(
-          sql`${zuvyBatchEnrollments.bootcampId} = ${bootcampId} AND ${zuvyBatchEnrollments.batchId} IS NOT NULL`,
+          sql`${zuvyBatchEnrollments.bootcampId} = ${bootcampId} 
+          AND ${zuvyBatchEnrollments.batchId} IS NOT NULL`,
         );
-
-      // Processing tracking data to add `submitStudents` field and expose completedAt & user
+      // Add submission count & submissions list
       trackingData.forEach((course: any) => {
-        course.moduleChapterData.forEach(
-          (chapterTracking: { [x: string]: any }) => {
-            const details = Array.isArray(
-              chapterTracking['chapterTrackingDetails'],
-            )
-              ? chapterTracking['chapterTrackingDetails']
-              : [];
-            chapterTracking['submitStudents'] = details.length;
-            // Expose a concise list of submissions with completedAt and user info
-            chapterTracking['submissions'] = details.map((d: any) => ({
-              userId: d.userId ?? d.user?.id,
-              name: d.user?.name ?? null,
-              email: d.user?.email ?? null,
-              completedAt: d.completedAt ?? null,
-            }));
-            // keep chapterTrackingDetails if needed elsewhere, but do not leak internal structures
-          },
-        );
+        course.moduleChapterData.forEach((chapter: any) => {
+          const details = Array.isArray(chapter.chapterTrackingDetails)
+            ? chapter.chapterTrackingDetails
+            : [];
+          chapter.submitStudents = details.length;
+
+          chapter.submissions = details.map((d: any) => ({
+            userId: d.userId ?? d.user?.id,
+            name: d.user?.name ?? null,
+            email: d.user?.email ?? null,
+            completedAt: d.completedAt ?? null,
+          }));
+          // remove raw details if you don't want to return them
+          delete chapter.chapterTrackingDetails;
+        });
       });
+      // Student-level filter: name/email
+      let filteredTrackingData = trackingData;
+      if (searchTerm) {
+        const lower = searchTerm.toLowerCase();
+        filteredTrackingData = trackingData
+          .map((course: any) => {
+            const filteredChapters = course.moduleChapterData
+              .map((chapter: any) => {
+                const matched = chapter.submissions.filter(
+                  (s: any) =>
+                    (s.name && s.name.toLowerCase().includes(lower)) ||
+                    (s.email && s.email.toLowerCase().includes(lower)),
+                );
 
-      // Check if data exists and return result
-      if (!trackingData || trackingData.length === 0) {
-        return [];
+                return matched.length > 0
+                  ? { ...chapter, submissions: matched }
+                  : null;
+              })
+              .filter(Boolean);
+
+            return filteredChapters.length > 0
+              ? { ...course, moduleChapterData: filteredChapters }
+              : null;
+          })
+          .filter(Boolean);
       }
-
-      const totalStudents = zuvyBatchEnrollmentsCount[0]?.count || 0;
-
       const targetPermissions = [
         ResourceList.submission.read,
         ResourceList.submission.download,
@@ -169,12 +202,13 @@ export class SubmissionService {
         roleName,
         targetPermissions,
       );
-
       return {
-        trackingData: trackingData.filter(
+        status: 'success',
+        code: 200,
+        trackingData: filteredTrackingData.filter(
           (course: any) => course.moduleChapterData.length > 0,
         ),
-        totalStudents: totalStudents,
+        totalStudents: zuvyBatchEnrollmentsCount[0]?.count || 0,
         ...grantedPermissions,
       };
     } catch (err) {
@@ -194,29 +228,15 @@ export class SubmissionService {
     orderDirection?: any,
   ) {
     try {
-      // Build order clause (percentage removed; only submittedDate/name/email supported)
-      let orderClause = undefined;
-      if (orderBy) {
-        orderClause = (
-          chapterTracking: {
-            submitted_date: any;
-            name: any;
-            email: any;
-            id: any;
-          },
-          helpers: { desc: any; asc: (arg0: any) => any },
-        ) => {
-          const dir =
-            orderDirection && orderDirection.toLowerCase() === 'desc'
-              ? helpers.desc
-              : helpers.asc;
-          if (orderBy === 'submittedDate')
-            return dir(chapterTracking.submitted_date);
-          if (orderBy === 'name') return dir(chapterTracking.name);
-          if (orderBy === 'email') return dir(chapterTracking.email);
-          return helpers.asc(chapterTracking.id);
-        };
-      }
+      // Coerce numeric params to safe values
+      const safeLimit =
+        typeof limit === 'number' && !isNaN(limit) && limit > 0
+          ? limit
+          : undefined;
+      const safeOffset =
+        typeof offset === 'number' && !isNaN(offset) && offset >= 0
+          ? offset
+          : undefined;
 
       const statusOfStudentCode = await db.query.zuvyChapterTracking.findMany({
         where: (chapterTracking, { sql, and }) => {
@@ -231,6 +251,14 @@ export class SubmissionService {
               ${batchId ? sql`AND be.batch_id = ${batchId}` : sql``}
             )`,
           ];
+          if (searchStudent) {
+            conditions.push(sql`EXISTS (
+              SELECT 1
+              FROM main.users AS u
+              WHERE u.id = ${chapterTracking.userId}
+              AND (u.name ILIKE ${searchStudent + '%'} OR u.email ILIKE ${searchStudent + '%'})
+            )`);
+          }
           return and(...conditions);
         },
         with: {
@@ -240,10 +268,6 @@ export class SubmissionService {
               name: true,
               email: true,
             },
-            where: (user: { name: any; email: any }, { sql }: any) =>
-              searchStudent
-                ? sql`(${user.name} ILIKE ${searchStudent + '%'} OR ${user.email} ILIKE ${searchStudent + '%'})`
-                : sql`TRUE`,
             with: {
               studentCodeDetails: {
                 where: (
@@ -255,30 +279,41 @@ export class SubmissionService {
             },
           },
         },
+        ...(typeof safeLimit === 'number' ? { limit: safeLimit } : {}),
+        ...(typeof safeOffset === 'number' ? { offset: safeOffset } : {}),
       });
 
-      // Get the total number of students matching the chapter and module criteria
-      // Count total students who have chapter tracking for this chapter/module
-      // and are enrolled in a batch (or the specific batch if provided).
-      const totalStudents = await db
-        .select()
+      // Get the total number of students matching the chapter, module, batch, and search criteria
+      const totalStudentsRes = await db
+        .select({
+          count: sql<number>`cast(count(${zuvyChapterTracking.id}) as int)`,
+        })
         .from(zuvyChapterTracking)
-        .where((aliases) => {
-          const { sql, and } = require('drizzle-orm');
+        .where(() => {
           const conditions = [
-            sql`${aliases.moduleId} = ${moduleId}`,
-            sql`${aliases.chapterId} = ${chapterId}`,
+            sql`${zuvyChapterTracking.chapterId} = ${chapterId}`,
+            sql`${zuvyChapterTracking.moduleId} = ${moduleId}`,
             sql`EXISTS (
               SELECT 1
               FROM main.zuvy_batch_enrollments AS be
-              WHERE be.user_id = ${aliases.userId}
+              WHERE be.user_id = ${zuvyChapterTracking.userId}
               ${batchId ? sql`AND be.batch_id = ${batchId}` : sql``}
             )`,
           ];
+          if (searchStudent) {
+            conditions.push(sql`EXISTS (
+              SELECT 1
+              FROM main.users AS u
+              WHERE u.id = ${zuvyChapterTracking.userId}
+              AND (u.name ILIKE ${searchStudent + '%'} OR u.email ILIKE ${searchStudent + '%'})
+            )`);
+          }
           return and(...conditions);
         });
-      const totalStudentsCount = totalStudents.length;
-      const totalPages = limit ? Math.ceil(totalStudentsCount / limit) : 1;
+      const totalStudentsCount = totalStudentsRes[0]?.count ?? 0;
+      const totalPages = safeLimit
+        ? Math.ceil(totalStudentsCount / safeLimit)
+        : 1;
 
       // Prepare the result with data about each student's attempts and submission status
       // Attach batchId per user by fetching enrollments for returned userIds
@@ -291,14 +326,22 @@ export class SubmissionService {
           .select({
             userId: zuvyBatchEnrollments.userId,
             batchId: zuvyBatchEnrollments.batchId,
+            batchName: zuvyBatches.name,
           })
           .from(zuvyBatchEnrollments)
+          .leftJoin(
+            zuvyBatches,
+            sql`${zuvyBatches.id} = ${zuvyBatchEnrollments.batchId}`,
+          )
           .where(sql`${zuvyBatchEnrollments.userId} in ${userIds}`);
 
         enrollments.forEach((e: any) => {
-          // prefer first found batchId for a user
-          enrollmentMap[String(e.userId)] =
-            enrollmentMap[String(e.userId)] ?? e.batchId;
+          if (!enrollmentMap[String(e.userId)]) {
+            enrollmentMap[String(e.userId)] = {
+              batchId: e.batchId ?? null,
+              batchName: e.batchName ?? null,
+            };
+          }
         });
       }
 
@@ -312,7 +355,9 @@ export class SubmissionService {
               id: Number(canonicalUserId),
               name: user['name'],
               email: user['email'],
-              batchId: enrollmentMap[String(canonicalUserId)] ?? null,
+              batchId: enrollmentMap[String(canonicalUserId)]?.batchId ?? null,
+              batchName:
+                enrollmentMap[String(canonicalUserId)]?.batchName ?? null,
               noOfAttempts: user['studentCodeDetails']?.length,
               status: user['studentCodeDetails']?.some(
                 (submission: { status: string }) =>
@@ -320,6 +365,7 @@ export class SubmissionService {
               )
                 ? 'Accepted'
                 : 'Not Accepted',
+              submittedDate: statusCode['submitted_date'],
               // Add any other top-level fields from statusCode if needed (exclude user)
               ...Object.fromEntries(
                 Object.entries(statusCode).filter(([key]) => key !== 'user'),
@@ -330,6 +376,55 @@ export class SubmissionService {
           }
         })
         .filter((item) => item !== null);
+
+      // Apply JavaScript-side sorting (for name, email, submittedDate)
+      if (orderBy) {
+        const dir =
+          orderDirection && String(orderDirection).toLowerCase() === 'desc'
+            ? -1
+            : 1;
+        data.sort((a: any, b: any) => {
+          let va: any;
+          let vb: any;
+          switch (orderBy) {
+            case 'submittedDate':
+              va = a.submittedDate;
+              vb = b.submittedDate;
+              break;
+            case 'name':
+              va = a.name != null ? String(a.name) : null;
+              vb = b.name != null ? String(b.name) : null;
+              if (va != null && vb != null) {
+                const cmp = va.localeCompare(vb, 'en', {
+                  sensitivity: 'base',
+                  numeric: true,
+                });
+                return dir === -1 ? -cmp : cmp;
+              }
+              break;
+            case 'email':
+              va = a.email != null ? String(a.email) : null;
+              vb = b.email != null ? String(b.email) : null;
+              if (va != null && vb != null) {
+                const cmp = va.localeCompare(vb, 'en', {
+                  sensitivity: 'base',
+                  numeric: true,
+                });
+                return dir === -1 ? -cmp : cmp;
+              }
+              break;
+            default:
+              va = a.id;
+              vb = b.id;
+          }
+          if (va == null && vb == null) return 0;
+          if (va == null) return dir === -1 ? 1 : -1;
+          if (vb == null) return dir === -1 ? -1 : 1;
+          if (va < vb) return dir === -1 ? 1 : -1;
+          if (va > vb) return dir === -1 ? -1 : 1;
+          return 0;
+        });
+      }
 
       return { data, totalPages, totalStudentsCount };
     } catch (err) {
@@ -821,13 +916,13 @@ export class SubmissionService {
     roleName,
     bootcampId: number,
     searchProject: string,
-    orderBy?: 'submittedDate' | 'name' | 'email',
+    orderBy?: 'title',
     orderDirection?: 'asc' | 'desc',
     submittedDateStart?: string,
     submittedDateEnd?: string,
   ) {
     try {
-      // Build date filter for submittedDate
+      // ===== DATE FILTER =====
       let dateFilter = sql`TRUE`;
       if (submittedDateStart && submittedDateEnd) {
         dateFilter = sql`projectData.submitted_date BETWEEN ${submittedDateStart} AND ${submittedDateEnd}`;
@@ -837,11 +932,26 @@ export class SubmissionService {
         dateFilter = sql`projectData.submitted_date <= ${submittedDateEnd}`;
       }
 
-      // Build order clause
-      let orderClause = (courseModule: { order: any }, { asc }: any) =>
-        asc(courseModule.order);
+      // ===== SORT VALIDATION =====
+      if (!orderBy && orderDirection) {
+        return {
+          status: 'error',
+          code: 400,
+          message: 'You cannot pass orderDirection without orderBy field.',
+        };
+      }
 
-      const data = await db.query.zuvyBootcamps.findFirst({
+      if (orderBy && !orderDirection) {
+        return {
+          status: 'error',
+          code: 400,
+          message:
+            'orderDirection is required when orderBy is provided. Please use "asc" or "desc".',
+        };
+      }
+
+      // ===== FETCH DATA (DRIZZLE SORTING HERE) =====
+      const data: any = await db.query.zuvyBootcamps.findFirst({
         columns: {
           id: true,
           name: true,
@@ -849,25 +959,37 @@ export class SubmissionService {
         where: (bootcamp, { eq }) => eq(bootcamp.id, bootcampId),
         with: {
           bootcampModules: {
-            columns: {
-              id: true,
-            },
+            columns: { id: true },
             where: (courseModule: { typeId: any }, { sql }: any) =>
               sql`${courseModule.typeId} = 2`,
-            orderBy: orderClause,
+
+            // Module sorting remains same
+            orderBy: (courseModule, { asc }) => asc(courseModule.order),
+
             with: {
               projectData: {
                 columns: {
                   id: true,
                   title: true,
+                  submitted_date: true,
                 },
+
                 where: (projectData: { title: any }, { sql }: any) =>
                   and(
                     searchProject
-                      ? sql`${projectData.title} ILIKE ${searchProject + '%'}`
+                      ? sql`${projectData.title} ILIKE ${'%' + searchProject + '%'}`
                       : sql`TRUE`,
                     dateFilter,
                   ),
+
+                // ⭐⭐⭐ DRIZZLE ORDER BY TITLE (ALPHABETICAL SORTING)
+                orderBy: (projectData, { asc, desc }) =>
+                  orderBy === 'title'
+                    ? orderDirection === 'desc'
+                      ? desc(projectData.title)
+                      : asc(projectData.title)
+                    : asc(projectData.title),
+
                 with: {
                   projectTrackingData: true,
                 },
@@ -877,6 +999,7 @@ export class SubmissionService {
         },
       });
 
+      // ===== STUDENT COUNT =====
       const zuvyBatchEnrollmentsCount = await db
         .select({
           count: sql<number>`cast(count(${zuvyBatchEnrollments.id}) as int)`,
@@ -884,19 +1007,20 @@ export class SubmissionService {
         .from(zuvyBatchEnrollments)
         .where(eq(zuvyBatchEnrollments.bootcampId, bootcampId));
 
-      // Filter and process project data
-      data['bootcampModules'].forEach((module: any) => {
+      // ===== PROCESS DATA =====
+      data.bootcampModules.forEach((module: any) => {
         module.projectData.forEach((project: any) => {
-          project['submitStudents'] = project['projectTrackingData'].length;
-          delete project['projectTrackingData'];
+          project.submitStudents = project.projectTrackingData.length;
+          delete project.projectTrackingData;
         });
       });
 
-      // Filter out modules where projectData is empty
-      data['bootcampModules'] = data['bootcampModules'].filter(
+      // Remove empty modules
+      data.bootcampModules = data.bootcampModules.filter(
         (module: any) => module.projectData.length > 0,
       );
 
+      // ===== PERMISSIONS =====
       const targetPermissions = [
         ResourceList.submission.read,
         ResourceList.submission.download,
@@ -907,8 +1031,8 @@ export class SubmissionService {
         targetPermissions,
       );
 
-      // Check if there are any modules left and return response
-      if (data['bootcampModules'].length > 0) {
+      // ===== RESPONSE =====
+      if (data.bootcampModules.length > 0) {
         return {
           status: 'success',
           code: 200,
@@ -1029,6 +1153,7 @@ export class SubmissionService {
                 grades: true,
                 submitted_date: true,
                 createdAt: true,
+                projectLink: true,
               },
               with: {
                 userDetails: {
@@ -1037,13 +1162,13 @@ export class SubmissionService {
                     email: true,
                   },
                 },
-                ...(typeof limit === 'number' ? { limit } : {}),
-                ...(typeof offset === 'number' ? { offset } : {}),
-                ...(orderClause ? { orderBy: orderClause } : {}),
               },
-              // allow DB-side ordering when possible (name/email/percentage)
-              ...(orderClause ? { orderBy: orderClause } : {}),
-              // perform limit/offset after fetching to apply ordering reliably in JS
+              // attach DB-side limit/offset at the relation level (use safe values)
+              // NOTE: we intentionally avoid DB-side `orderBy` here and perform
+              // ordering in JS below to reliably support sorting by related
+              // fields like `name`/`email` (via localeCompare) and `percentage`.
+              ...(typeof safeLimit === 'number' ? { limit: safeLimit } : {}),
+              ...(typeof safeOffset === 'number' ? { offset: safeOffset } : {}),
             },
           },
         },
@@ -1096,16 +1221,24 @@ export class SubmissionService {
             .select({
               userId: zuvyBatchEnrollments.userId,
               batchId: zuvyBatchEnrollments.batchId,
+              batchName: zuvyBatches.name,
             })
             .from(zuvyBatchEnrollments)
+            .leftJoin(
+              zuvyBatches,
+              eq(zuvyBatches.id, zuvyBatchEnrollments.batchId),
+            )
             .where(
               sql`${zuvyBatchEnrollments.bootcampId} = ${bootcampId} AND ${zuvyBatchEnrollments.userId} in ${userIds} ${safeBatchId ? sql`AND ${zuvyBatchEnrollments.batchId} = ${safeBatchId}` : sql``}`,
             );
 
           enrollments.forEach((e: any) => {
-            // choose the first enrollment found for the user (if multiple exist)
-            enrollmentMap[String(e.userId)] =
-              enrollmentMap[String(e.userId)] ?? e.batchId;
+            if (!enrollmentMap[String(e.userId)]) {
+              enrollmentMap[String(e.userId)] = {
+                batchId: e.batchId ?? null,
+                batchName: e.batchName ?? null,
+              };
+            }
           });
         }
 
@@ -1120,11 +1253,23 @@ export class SubmissionService {
           }
 
           // ensure the additional fields are present on the object and prefer enrollment batch when available
+          const enrollment = enrollmentMap[String(project.userId)];
+
+          // ✅ FIXED batch mapping
           project['batchId'] =
             project['batchId'] ??
             project['batch_id'] ??
-            enrollmentMap[String(project.userId)] ??
+            enrollment?.batchId ??
             null;
+
+          project['batchName'] =
+            project['batchName'] ??
+            project['batch_name'] ??
+            enrollment?.batchName ??
+            null;
+          project['submitted_date'] =
+            project['submitted_date'] ?? project['submittedDate'] ?? null;
+
           project['createdAt'] =
             project['createdAt'] ?? project['created_at'] ?? null;
           return project;
@@ -1228,6 +1373,19 @@ export class SubmissionService {
                 { sql }: any,
               ) =>
                 sql`${projectTracking.bootcampId} = ${bootcampId} and ${projectTracking.userId} = ${userId}`,
+              columns: {
+                id: true,
+                userId: true,
+                projectId: true,
+                bootcampId: true,
+                isChecked: true,
+                moduleId: true,
+                batchId: true,
+                grades: true,
+                submitted_date: true,
+                createdAt: true,
+                projectLink: true,
+              },
               with: {
                 userDetails: {
                   columns: {
@@ -1484,79 +1642,86 @@ export class SubmissionService {
     searchForm?: string,
     limit?: number,
     offset?: number,
-    orderBy?: 'name' | 'email' | 'percentage',
+    orderBy?: 'title',
     orderDirection?: 'asc' | 'desc',
   ) {
     try {
       const topicId = 7;
-      // Build order clause
-      let orderClause = (courseModules: { order: any }, { asc }: any) =>
-        asc(courseModules.order);
-      if (orderBy) {
-        orderClause = (courseModules: any, helpers: any) => {
-          const dir =
-            orderDirection && orderDirection.toLowerCase() === 'desc'
-              ? helpers.desc
-              : helpers.asc;
-          // Order by related user fields via subselects if requested
-          if (orderBy === 'name')
-            return dir(
-              sql`(SELECT name FROM main.users AS u WHERE u.id = ${courseModules.id}) order by name ${dir === helpers.desc ? 'desc' : 'asc'}`,
-            );
-          if (orderBy === 'email')
-            return dir(
-              sql`(SELECT email FROM main.users AS u WHERE u.id = ${courseModules.id}) order by email ${dir === helpers.desc ? 'desc' : 'asc'}`,
-            );
-          return dir(courseModules.order);
+
+      // Validate ordering inputs
+      if ((orderBy && !orderDirection) || (!orderBy && orderDirection)) {
+        return {
+          status: 'error',
+          code: 400,
+          message: 'Both orderBy and orderDirection are required together',
         };
       }
 
-      const trackingData = await db.query.zuvyCourseModules.findMany({
+      // ORDER BY chapter title
+      let chapterOrderClause = (moduleChapter: any, helpers: any) =>
+        helpers.asc(moduleChapter.title);
+
+      if (orderBy === 'title') {
+        chapterOrderClause = (moduleChapter: any, helpers: any) => {
+          const dir = orderDirection === 'desc' ? helpers.desc : helpers.asc;
+          return dir(moduleChapter.title);
+        };
+      }
+
+      const trackingData: any[] = await db.query.zuvyCourseModules.findMany({
         where: (courseModules, { eq }) =>
           eq(courseModules.bootcampId, bootcampId),
-        orderBy: orderClause,
+
+        // ORDER BY course.order
+        orderBy: (courseModules, { asc }) => asc(courseModules.order),
+
         with: {
           moduleChapterData: {
-            columns: {
-              id: true,
-              title: true,
-            },
-            where: (
-              moduleChapter: { topicId: any; title: any },
-              { eq, sql }: any,
-            ) =>
+            columns: { id: true, title: true },
+
+            // APPLY ORDER BY title inside chapters
+            orderBy: chapterOrderClause,
+
+            where: (moduleChapter, { eq, sql, and }) =>
               and(
                 eq(moduleChapter.topicId, topicId),
                 searchForm
                   ? sql`${moduleChapter.title} ILIKE ${searchForm + '%'}`
                   : sql`TRUE`,
               ),
+
             with: {
               chapterTrackingDetails: {
-                columns: {
-                  userId: true,
-                  completedAt: true,
-                },
+                columns: { userId: true, completedAt: true },
                 with: {
-                  user: {
-                    columns: {
-                      name: true,
-                      email: true,
-                      id: true,
-                    },
-                  },
+                  user: { columns: { name: true, email: true, id: true } },
                 },
               },
             },
           },
         },
-        limit: limit,
-        offset: offset,
+
+        limit,
+        offset,
       });
 
-      // Calculate total forms from the current results
+      // Process data
+      trackingData.forEach((course) => {
+        course.moduleChapterData.forEach((chapter) => {
+          const details = chapter.chapterTrackingDetails || [];
+          chapter.submitStudents = details.length;
+          chapter.submissions = details.map((d: any) => ({
+            userId: d.user?.id,
+            name: d.user?.name,
+            email: d.user?.email,
+            completedAt: d.completedAt,
+          }));
+          delete chapter.chapterTrackingDetails;
+        });
+      });
+
       const totalForms = trackingData.reduce(
-        (total, course: any) => total + course.moduleChapterData.length,
+        (total, course) => total + course.moduleChapterData.length,
         0,
       );
 
@@ -1567,33 +1732,12 @@ export class SubmissionService {
         .from(zuvyBatchEnrollments)
         .where(eq(zuvyBatchEnrollments.bootcampId, bootcampId));
 
-      // Filter tracking data to only include modules with chapter data
       const filteredTrackingData = trackingData.filter(
-        (course: any) => course.moduleChapterData.length > 0,
+        (course) => course.moduleChapterData.length > 0,
       );
 
-      // Process the data to add submitStudents count and expose submissions
-      filteredTrackingData.forEach((course: any) => {
-        course.moduleChapterData.forEach(
-          (chapterTracking: { [x: string]: any }) => {
-            const details = Array.isArray(
-              chapterTracking['chapterTrackingDetails'],
-            )
-              ? chapterTracking['chapterTrackingDetails']
-              : [];
-            chapterTracking['submitStudents'] = details.length;
-            chapterTracking['submissions'] = details.map((d: any) => ({
-              userId: d.userId ?? d.user?.id,
-              name: d.user?.name ?? null,
-              email: d.user?.email ?? null,
-              completedAt: d.completedAt ?? null,
-            }));
-          },
-        );
-      });
-
-      // Calculate total pages
       const totalPages = limit ? Math.ceil(totalForms / limit) : 1;
+
       const targetPermissions = [
         ResourceList.submission.read,
         ResourceList.submission.download,
@@ -1604,26 +1748,17 @@ export class SubmissionService {
         targetPermissions,
       );
 
-      if (filteredTrackingData.length > 0) {
-        return {
-          status: 'success',
-          code: 200,
-          trackingData: filteredTrackingData,
-          ...grantedPermissions,
-          totalStudents: zuvyBatchEnrollmentsCount[0]?.count,
-          totalForms,
-          totalPages,
-          currentPage:
-            limit && offset !== undefined ? Math.floor(offset / limit) + 1 : 1,
-        };
-      } else {
-        return {
-          status: 'error',
-          code: 404,
-          message: 'No forms in this course.',
-          ...grantedPermissions,
-        };
-      }
+      return {
+        status: 'success',
+        code: 200,
+        trackingData: filteredTrackingData,
+        ...grantedPermissions,
+        totalStudents: zuvyBatchEnrollmentsCount[0]?.count,
+        totalForms,
+        totalPages,
+        currentPage:
+          limit && offset !== undefined ? Math.floor(offset / limit) + 1 : 1,
+      };
     } catch (err) {
       throw err;
     }
@@ -1645,12 +1780,7 @@ export class SubmissionService {
         throw new Error('Invalid bootcampId');
       }
 
-      // Prepare search term for filtering
-      const searchTerm = searchStudent
-        ? searchStudent.toLowerCase().trim()
-        : null;
-
-      // normalize batchId to a safe number (undefined when not provided or invalid)
+      // normalize batchId
       const safeBatchId =
         typeof batchId !== 'undefined' && batchId !== null
           ? Number(batchId)
@@ -1670,22 +1800,24 @@ export class SubmissionService {
             ? sql`${zuvyBatchEnrollments.bootcampId} = ${bootcampId} AND ${zuvyBatchEnrollments.batchId} = ${hasBatchFilter}`
             : sql`${zuvyBatchEnrollments.bootcampId} = ${bootcampId} AND ${zuvyBatchEnrollments.batchId} IS NOT NULL`,
         );
-      const totalStudentss = zuvyBatchEnrollmentsCount[0]?.count ?? 0;
 
-      // Get all students in the bootcamp
+      const totalAllStudents = zuvyBatchEnrollmentsCount[0]?.count ?? 0;
+
+      //INCOMPLETE STUDENTS (ENROLLMENTS)//
       const statusOfIncompletedStudentFormRaw =
         await db.query.zuvyBatchEnrollments.findMany({
-          where: (batchEnrollments, { sql, and }) => {
+          where: (be, { sql, and }) => {
             const conditions: any[] = [
-              sql`${batchEnrollments.bootcampId} = ${bootcampId}`,
+              sql`${be.bootcampId} = ${bootcampId}`,
               hasBatchFilter
-                ? sql`${batchEnrollments.batchId} = ${hasBatchFilter}`
-                : sql`${batchEnrollments.batchId} IS NOT NULL`,
+                ? sql`${be.batchId} = ${hasBatchFilter}`
+                : sql`${be.batchId} IS NOT NULL`,
             ];
+
             if (searchStudent) {
               conditions.push(sql`EXISTS (
               SELECT 1 FROM main.users AS u
-              WHERE u.id = ${batchEnrollments.userId}
+              WHERE u.id = ${be.userId}
               AND (u.name ILIKE ${searchStudent + '%'} OR u.email ILIKE ${searchStudent + '%'})
             )`);
             }
@@ -1699,47 +1831,41 @@ export class SubmissionService {
                 email: true,
               },
             },
+            batchInfo: {
+              columns: {
+                id: true,
+                name: true,
+              },
+            },
           },
         });
 
-      // Only ensure user exists here; search filtering is handled in DB
       const statusOfIncompletedStudentForm =
-        statusOfIncompletedStudentFormRaw.filter((record) => record['user']);
+        statusOfIncompletedStudentFormRaw.filter((r) => r['user']);
 
-      // Get students who have completed the form with search filter
-      // Build date filter for submittedDate
-
-      // We will perform ordering in JS after fetching combined results (so ordering by user.name/email works reliably)
-      let orderClause = undefined;
-
-      // Instead of relying on chapterTracking.batchId (which may be null),
-      // ensure the user is enrolled in the requested bootcamp and batch by
-      // checking the zuvy_batch_enrollments table. This guarantees correct
-      // filtering when batchId is provided.
       const statusOfCompletedStudentFormRaw =
         await db.query.zuvyChapterTracking.findMany({
-          where: (chapterTracking, { sql, and }) => {
-            // Base conditions for chapter/module and date
-            const baseConditions: any[] = [
-              sql`${chapterTracking.chapterId} = ${chapterId}`,
-              sql`${chapterTracking.moduleId} = ${moduleId}`,
-              // Ensure the tracked user is enrolled in the given bootcamp and (optionally) batch
+          where: (ct, { sql, and }) => {
+            const conditions: any[] = [
+              sql`${ct.chapterId} = ${chapterId}`,
+              sql`${ct.moduleId} = ${moduleId}`,
               sql`EXISTS (
-                SELECT 1
-                FROM main.zuvy_batch_enrollments AS be
-                WHERE be.user_id = ${chapterTracking.userId}
-                AND be.bootcamp_id = ${bootcampId}
-                ${hasBatchFilter ? sql`AND be.batch_id = ${hasBatchFilter}` : sql``}
-              )`,
+              SELECT 1 FROM main.zuvy_batch_enrollments AS be
+              WHERE be.user_id = ${ct.userId}
+              AND be.bootcamp_id = ${bootcampId}
+              ${hasBatchFilter ? sql`AND be.batch_id = ${hasBatchFilter}` : sql``}
+            )`,
             ];
+
             if (searchStudent) {
-              baseConditions.push(sql`EXISTS (
-                SELECT 1 FROM main.users AS u
-                WHERE u.id = ${chapterTracking.userId}
-                AND (u.name ILIKE ${searchStudent + '%'} OR u.email ILIKE ${searchStudent + '%'})
-              )`);
+              conditions.push(sql`EXISTS (
+              SELECT 1 FROM main.users AS u
+              WHERE u.id = ${ct.userId}
+              AND (u.name ILIKE ${searchStudent + '%'} OR u.email ILIKE ${searchStudent + '%'})
+            )`);
             }
-            return and(...baseConditions);
+
+            return and(...conditions);
           },
           with: {
             user: {
@@ -1752,106 +1878,112 @@ export class SubmissionService {
           },
         });
 
-      // Filter completed students based on search criteria
-      // Search is handled by the DB; only ensure user exists
-      const statusOfCompletedStudentForm =
-        statusOfCompletedStudentFormRaw.filter((record) => record['user']);
+      /* -------------------------------------------------- */
+      /* 🔹 FETCH BATCH INFO FOR COMPLETED USERS */
+      /* -------------------------------------------------- */
+      const completedUserIds = statusOfCompletedStudentFormRaw
+        .map((s: any) => s.userId)
+        .filter((id: any) => id !== undefined && id !== null);
 
-      // Process completed students
-      const data1 = statusOfCompletedStudentForm
-        .filter((statusForm) => statusForm['user']) // Ensure user exists
-        .map((statusForm) => {
+      let completedEnrollmentMap: Record<
+        string,
+        { batchId: number | null; batchName: string | null }
+      > = {};
+
+      if (completedUserIds.length > 0) {
+        const enrollments = await db
+          .select({
+            userId: zuvyBatchEnrollments.userId,
+            batchId: zuvyBatchEnrollments.batchId,
+            batchName: zuvyBatches.name,
+          })
+          .from(zuvyBatchEnrollments)
+          .leftJoin(
+            zuvyBatches,
+            eq(zuvyBatches.id, zuvyBatchEnrollments.batchId),
+          ).where(sql`
+          ${zuvyBatchEnrollments.bootcampId} = ${bootcampId}
+          AND ${zuvyBatchEnrollments.userId} IN ${completedUserIds}
+          ${hasBatchFilter ? sql`AND ${zuvyBatchEnrollments.batchId} = ${hasBatchFilter}` : sql``}
+        `);
+
+        enrollments.forEach((e: any) => {
+          if (!completedEnrollmentMap[String(e.userId)]) {
+            completedEnrollmentMap[String(e.userId)] = {
+              batchId: e.batchId ?? null,
+              batchName: e.batchName ?? null,
+            };
+          }
+        });
+      }
+
+      const data1 = statusOfCompletedStudentFormRaw
+        .filter((s) => s['user'])
+        .map((s) => {
+          const uid = String(s['user'].id);
           return {
-            id:
-              typeof statusForm['user']['id'] === 'bigint'
-                ? Number(statusForm['user']['id'])
-                : statusForm['user']['id'],
-            name: statusForm['user']['name'],
-            email: statusForm['user']['email'],
+            id: Number(s['user'].id),
+            name: s['user'].name,
+            email: s['user'].email,
             status: 'Submitted',
-            batchId: statusForm['batchId'] || null,
-            createdAt: statusForm['createdAt'] || null,
-            // include submission timestamp if present for sorting by submittedDate
+            batchId: completedEnrollmentMap[uid]?.batchId ?? null,
+            batchName: completedEnrollmentMap[uid]?.batchName ?? null,
             submittedAt:
-              statusForm['submitted_date'] ||
-              statusForm['completedAt'] ||
-              statusForm['createdAt'] ||
-              null,
+              s['submitted_date'] || s.completedAt || s['createdAt'] || null,
           };
         });
 
-      // Get completed student IDs for filtering
-      const completedIds = new Set(data1.map((item) => item.id));
+      const completedIds = new Set(data1.map((d) => d.id));
 
-      // Process incomplete students (exclude those who have already completed)
       const data2 = statusOfIncompletedStudentForm
-        .filter((statusForm) => statusForm['user']) // Ensure user exists
-        .map((statusForm) => {
-          return {
-            id:
-              typeof statusForm['user']['id'] === 'bigint'
-                ? Number(statusForm['user']['id'])
-                : statusForm['user']['id'],
-            name: statusForm['user']['name'],
-            email: statusForm['user']['email'],
-            status: 'Not Submitted',
-            batchId: statusForm['batchId'] || null,
-            createdAt: statusForm['createdAt'] || null,
-          };
-        })
-        .filter((statusForm) => !completedIds.has(statusForm.id));
+        .filter((s) => !completedIds.has(Number(s['user'].id)))
+        .map((s) => ({
+          id: Number(s['user'].id),
+          name: s['user'].name,
+          email: s['user'].email,
+          status: 'Not Submitted',
+          batchId: s.batchId ?? null,
+          batchName: s['batchInfo'].name ?? null,
+          submittedAt: null,
+        }));
 
-      // Combine the data
       let combinedData = [...data1, ...data2];
 
-      // Apply ordering in-memory (supports submittedDate, name, email)
       if (orderBy) {
-        const dir =
-          orderDirection && String(orderDirection).toLowerCase() === 'desc'
-            ? -1
-            : 1;
+        const dir = orderDirection?.toLowerCase() === 'desc' ? -1 : 1;
+
         combinedData.sort((a: any, b: any) => {
           let va: any;
           let vb: any;
-          switch (orderBy) {
-            case 'submittedDate':
-              va = a.submittedAt ? new Date(a.submittedAt).getTime() : 0;
-              vb = b.submittedAt ? new Date(b.submittedAt).getTime() : 0;
-              break;
-            case 'name':
-              va = (a.name || '').toLowerCase();
-              vb = (b.name || '').toLowerCase();
-              break;
-            case 'email':
-              va = (a.email || '').toLowerCase();
-              vb = (b.email || '').toLowerCase();
-              break;
-            default:
-              return 0;
+          if (orderBy === 'submittedDate') {
+            va = a.submittedAt ? new Date(a.submittedAt).getTime() : 0;
+            vb = b.submittedAt ? new Date(b.submittedAt).getTime() : 0;
+          } else if (orderBy === 'name') {
+            va = (a.name || '').toLowerCase();
+            vb = (b.name || '').toLowerCase();
+          } else if (orderBy === 'email') {
+            va = (a.email || '').toLowerCase();
+            vb = (b.email || '').toLowerCase();
           }
-          if (va == null && vb == null) return 0;
-          if (va == null) return -1 * dir;
-          if (vb == null) return 1 * dir;
           if (va < vb) return -1 * dir;
           if (va > vb) return 1 * dir;
           return 0;
         });
       }
 
-      // Apply pagination to the filtered results
       const offsetNum = Number.isFinite(Number(offset)) ? Number(offset) : 0;
       const limitNum =
         Number.isFinite(Number(limit)) && Number(limit) > 0
           ? Number(limit)
           : undefined;
+
       const paginatedData =
         typeof limitNum === 'number'
           ? combinedData.slice(offsetNum, offsetNum + limitNum)
           : combinedData;
-      // Calculate total count and pages based on filtered results
-      const filteredTotalCount = combinedData.length;
+
       const totalPages = limitNum
-        ? Math.ceil(filteredTotalCount / limitNum)
+        ? Math.ceil(combinedData.length / limitNum)
         : 1;
 
       return {
@@ -1861,8 +1993,8 @@ export class SubmissionService {
         chapterId,
         combinedData: paginatedData,
         totalPages,
-        totalStudentsCount: filteredTotalCount, // Use filtered count instead of total
-        totalAllStudents: totalStudentss, // Optional: keep original total if needed
+        totalStudentsCount: combinedData.length,
+        totalAllStudents,
       };
     } catch (err) {
       throw err;
@@ -1973,36 +2105,47 @@ export class SubmissionService {
     roleName,
     bootcampId: number,
     assignmentName: string,
-    orderBy?: 'submittedDate' | 'name' | 'email',
+    orderBy?: 'title',
     orderDirection?: 'asc' | 'desc',
   ): Promise<any> {
     try {
       const topicId = 5;
 
-      // Build order clause
-      let orderClause = (courseModules: { order: any }, { asc }: any) =>
-        asc(courseModules.order);
-      if (orderBy) {
-        orderClause = (courseModules: any, helpers: any) => {
+      // Validate ordering inputs
+      if ((orderBy && !orderDirection) || (!orderBy && orderDirection)) {
+        return [
+          {
+            message: 'Both orderBy and orderDirection are required together',
+            statusCode: STATUS_CODES.BAD_REQUEST,
+          },
+          null,
+        ];
+      }
+
+      // ORDER BY chapter title only
+      let chapterOrderClause = (moduleChapter: any, helpers: any) =>
+        helpers.asc(moduleChapter.title);
+
+      if (orderBy === 'title') {
+        chapterOrderClause = (moduleChapter: any, helpers: any) => {
           const dir = orderDirection === 'desc' ? helpers.desc : helpers.asc;
-          if (orderBy === 'submittedDate')
-            return dir(courseModules.submitted_date);
-          if (orderBy === 'name') return dir(courseModules.name);
-          if (orderBy === 'email') return dir(courseModules.email);
-          return helpers.asc(courseModules.order);
+          return dir(moduleChapter.title);
         };
       }
 
       const trackingData = await db.query.zuvyCourseModules.findMany({
         where: (courseModules, { eq }) =>
           eq(courseModules.bootcampId, bootcampId),
-        orderBy: orderClause,
+        // MODULE ORDER
+        orderBy: (courseModules, { desc }) => desc(courseModules.order),
         with: {
           moduleChapterData: {
             columns: {
               id: true,
               title: true,
             },
+            // APPLY ORDER BY TITLE HERE
+            orderBy: chapterOrderClause,
             where: (
               moduleChapter: { topicId: any; title: any },
               { and, eq, sql }: any,
@@ -2113,7 +2256,6 @@ export class SubmissionService {
         .select()
         .from(zuvyModuleChapter)
         .where(eq(zuvyModuleChapter.id, chapterId));
-
       if (chapterDeadline.length > 0) {
         // Build order clause (support submittedDate, name, email)
         let orderClause = undefined;
@@ -2149,7 +2291,6 @@ export class SubmissionService {
             return helpers.asc(chapterTracking.id);
           };
         }
-
         const statusOfStudentCode = await db.query.zuvyChapterTracking.findMany(
           {
             where: (chapterTracking, { sql, and }) => {
@@ -2162,6 +2303,13 @@ export class SubmissionService {
                 ${batchId ? sql`AND be.batch_id = ${batchId}` : sql``}
               )`,
               ];
+              if (searchStudent) {
+                conditions.push(sql`EXISTS (
+                  SELECT 1 FROM main.users AS u
+                  WHERE u.id = ${chapterTracking.userId}
+                  AND (u.name ILIKE ${searchStudent + '%'} OR u.email ILIKE ${searchStudent + '%'})
+                )`);
+              }
               return and(...conditions);
             },
             with: {
@@ -2171,13 +2319,6 @@ export class SubmissionService {
                   name: true,
                   email: true,
                 },
-                where: (user: { name: any; email: any }, { sql, or }: any) =>
-                  searchStudent
-                    ? or(
-                        sql`${user.name} ILIKE ${searchStudent + '%'}`,
-                        sql`${user.email} ILIKE ${searchStudent + '%'}`,
-                      )
-                    : sql`TRUE`,
                 with: {
                   studentAssignmentStatus: {
                     columns: {
@@ -2186,13 +2327,72 @@ export class SubmissionService {
                   },
                 },
               },
-              ...(typeof limit === 'number' ? { limit } : {}),
-              ...(typeof offset === 'number' ? { offset } : {}),
-              ...(orderClause ? { orderBy: orderClause } : {}),
             },
           },
         );
-
+        // Pre-fetch batch enrollment info for all matched users so we can attach batchId/name in the response
+        const userIds = statusOfStudentCode
+          .map((record: any) => record?.user?.id)
+          .filter((id: any) => id !== undefined && id !== null)
+          .map((id: any) => Number(id))
+          .filter((id: number) => Number.isFinite(id));
+        // Drizzle column is bigint, so convert values to bigint for inArray
+        const userIdsBigint: bigint[] = userIds.map((id) => BigInt(id));
+        const batchEnrollmentMap: Record<
+          number,
+          { batchId: number | null; batchName: string | null }
+        > = {};
+        if (userIdsBigint.length > 0) {
+          const enrollmentRows = (await db.query.zuvyBatchEnrollments.findMany({
+            where: (enrollment, { and, inArray, sql }) => {
+              const enrollmentConditions: any[] = [
+                inArray(enrollment.userId, userIdsBigint),
+              ];
+              if (batchId) {
+                enrollmentConditions.push(
+                  sql`${enrollment.batchId} = ${batchId}`,
+                );
+              } else {
+                enrollmentConditions.push(
+                  sql`${enrollment.batchId} IS NOT NULL`,
+                );
+              }
+              return and(...enrollmentConditions);
+            },
+            columns: {
+              userId: true,
+              batchId: true,
+            },
+            with: {
+              batchInfo: {
+                columns: {
+                  id: true,
+                  name: true,
+                },
+              },
+            },
+          })) as Array<{
+            userId: bigint;
+            batchId: number | null;
+            batchInfo?: { id: number | null; name: string | null };
+          }>;
+          enrollmentRows.forEach((enrollment) => {
+            const uid = Number(enrollment.userId);
+            if (!Number.isFinite(uid)) return;
+            const resolvedBatchId =
+              enrollment.batchId ??
+              (enrollment.batchInfo?.id !== undefined
+                ? Number(enrollment.batchInfo.id)
+                : null);
+            const resolvedBatchName = enrollment.batchInfo?.name ?? null;
+            // Keep the first matched enrollment per user
+            if (batchEnrollmentMap[uid]) return;
+            batchEnrollmentMap[uid] = {
+              batchId: resolvedBatchId,
+              batchName: resolvedBatchName,
+            };
+          });
+        }
         // Get the total student count for pagination using enrollment table to respect batch filtering
         const totalStudentsRes = await db
           .select({
@@ -2211,20 +2411,32 @@ export class SubmissionService {
                 : sql``
             }
           `);
-
         const totalStudentsCount = totalStudentsRes[0]?.count ?? 0;
-        const totalPages = limit ? Math.ceil(totalStudentsCount / limit) : 1;
+        // Normalize pagination inputs: treat non-positive/invalid limits as undefined
+        const safeLimit =
+          Number.isFinite(Number(limit)) && Number(limit) > 0
+            ? Number(limit)
+            : undefined;
+        const safeOffset =
+          Number.isFinite(Number(offset)) && Number(offset) >= 0
+            ? Number(offset)
+            : 0;
+        const totalPages = safeLimit
+          ? Math.ceil(totalStudentsCount / safeLimit)
+          : 1;
         const deadlineDate = new Date(
           chapterDeadline[0].completionDate,
         ).getTime();
-
         // Process the result data with filtering out entries without a valid user
         const data = statusOfStudentCode
           .filter((statusCode) => statusCode['user'])
           .map((statusCode) => {
             const studentAssignmentStatus = statusCode;
             let isLate = false;
-
+            const userIdNumber = Number(statusCode['user']['id']);
+            const enrollmentDetails =
+              batchEnrollmentMap[userIdNumber] ||
+              ({ batchId: null, batchName: null } as const);
             if (
               studentAssignmentStatus &&
               studentAssignmentStatus['completedAt']
@@ -2236,23 +2448,22 @@ export class SubmissionService {
                 isLate = true;
               }
             }
-
             // Expose submitted_date so we can sort by it on the JS side if requested
             const submittedDate =
               statusCode['submitted_date'] ?? statusCode['completedAt'] ?? null;
-
             // Return properties without null or unknown
             return {
-              id: Number(statusCode['user']['id']),
+              id: userIdNumber,
               name: statusCode['user']['name'],
               emailId: statusCode['user']['email'],
               status: isLate ? 'Late Submission' : 'On Time',
               bootcampId:
                 statusCode['user'].studentAssignmentStatus?.bootcampId,
+              batchId: enrollmentDetails.batchId,
+              batchName: enrollmentDetails.batchName,
               submitted_date: submittedDate,
             };
           });
-
         // Sort in JS to support ordering by related user fields (name/email) as well as submittedDate
         let sortedData = data;
         if (orderBy) {
@@ -2284,17 +2495,16 @@ export class SubmissionService {
             });
           }
         }
-
         // Apply pagination in JS after sorting so ordering by name/email works correctly
         const paginatedData =
-          typeof offset === 'number' && typeof limit === 'number'
-            ? sortedData.slice(offset, offset + limit)
+          typeof safeLimit === 'number'
+            ? sortedData.slice(safeOffset, safeOffset + safeLimit)
             : sortedData;
-
         // Calculate the current page based on limit and offset
         const currentPage =
-          !isNaN(limit) && !isNaN(offset) ? offset / limit + 1 : 1;
-
+          typeof safeLimit === 'number'
+            ? Math.floor(safeOffset / safeLimit) + 1
+            : 1;
         // Return the response with student data
         return [
           null,
@@ -2724,7 +2934,7 @@ Zuvy LMS Team
     try {
       const result = await ses.sendEmail(emailParams).promise();
     } catch (err) {
-      console.error(`❌ Failed to send email to ${user.email}`, err);
+      console.error(` Failed to send email to ${user.email}`, err);
     }
   }
 
@@ -2734,8 +2944,32 @@ Zuvy LMS Team
     searchTerm?: string,
     limit?: number,
     offset?: number,
+    orderBy?: 'title',
+    orderDirection?: 'asc' | 'desc',
   ): Promise<[any, any]> {
     try {
+      // Validate ordering inputs
+      if ((orderBy && !orderDirection) || (!orderBy && orderDirection)) {
+        return [
+          {
+            message: 'Both orderBy and orderDirection are required together',
+            statusCode: STATUS_CODES.BAD_REQUEST,
+          },
+          null,
+        ];
+      }
+
+      // ORDER BY chapter title only
+      let chapterOrderClause = (moduleChapter: any, helpers: any) =>
+        helpers.asc(moduleChapter.title);
+
+      if (orderBy === 'title') {
+        chapterOrderClause = (moduleChapter: any, helpers: any) => {
+          const dir = orderDirection === 'desc' ? helpers.desc : helpers.asc;
+          return dir(moduleChapter.title);
+        };
+      }
+
       // Query modules mapped to bootcampId
       const topicId = 8; // or as per your schema for chapters
       const trackingData = await db.query.zuvyCourseModules.findMany({
@@ -2748,6 +2982,8 @@ Zuvy LMS Team
               id: true,
               title: true,
             },
+            // APPLY ORDER BY TITLE HERE
+            orderBy: chapterOrderClause,
             where: (moduleChapter: any, { eq, and, ilike, sql }: any) =>
               and(
                 eq(moduleChapter.topicId, topicId),
@@ -2758,7 +2994,7 @@ Zuvy LMS Team
                         OR EXISTS (
                           SELECT 1 FROM main.zuvy_chapter_tracking AS ct
                           JOIN main.users AS u ON u.id = ct.user_id
-                          WHERE ct.chapterId = ${moduleChapter.id}
+                          WHERE ct.chapter_id = ${moduleChapter.id}
                             AND (u.name ILIKE ${searchTerm + '%'} OR u.email ILIKE ${searchTerm + '%'})
                         )
                       )
@@ -2842,15 +3078,62 @@ Zuvy LMS Team
 
   async getLiveChapterStudentSubmission(
     moduleChapterId: number,
-    limit: number,
-    offset: number,
+    limit?: number,
+    offset?: number,
     name?: string,
     email?: string,
     status?: 'present' | 'absent',
+    orderBy?: 'name' | 'email' | 'status' | 'batchId' | 'batchName',
+    orderDirection?: 'asc' | 'desc',
+    batchId?: number,
+    batchName?: string,
   ): Promise<[any, any]> {
     try {
+      // Resolve batch filters up-front so we can filter sessions at the DB layer
+      const batchFilterIds: number[] = [];
+      const normalizedBatchId =
+        Number.isFinite(Number(batchId)) && Number(batchId) > 0
+          ? Number(batchId)
+          : undefined;
+      if (normalizedBatchId) {
+        batchFilterIds.push(normalizedBatchId);
+      }
+
+      // If batchName is provided, fetch matching ids and merge into filter set
+      if (batchName) {
+        const matchingBatches = await db
+          .select({ id: zuvyBatches.id })
+          .from(zuvyBatches)
+          .where(ilike(zuvyBatches.name, `%${batchName}%`));
+        matchingBatches.forEach((b) => {
+          const maybeId =
+            typeof b.id === 'bigint' ? Number(b.id) : Number(b.id ?? 0);
+          if (Number.isFinite(maybeId) && maybeId > 0) {
+            batchFilterIds.push(maybeId);
+          }
+        });
+      }
+
+      const uniqueBatchFilterIds = Array.from(new Set(batchFilterIds));
+
+      // If a batchName was requested but no batches match, short-circuit to empty
+      if (batchName && uniqueBatchFilterIds.length === 0) {
+        return [null, { data: [], totalCount: 0, totalPages: limit ? 0 : 1 }];
+      }
+
       const submissions = await db.query.zuvySessions.findMany({
-        where: (session, { eq }) => eq(session.chapterId, moduleChapterId),
+        where: (session, { and, eq, or, inArray }) => {
+          const conditions: any[] = [eq(session.chapterId, moduleChapterId)];
+          if (uniqueBatchFilterIds.length > 0) {
+            conditions.push(
+              or(
+                inArray(session.batchId, uniqueBatchFilterIds),
+                inArray(session.secondBatchId, uniqueBatchFilterIds),
+              ),
+            );
+          }
+          return and(...conditions);
+        },
         columns: {
           id: true,
           meetingId: true,
@@ -2858,7 +3141,7 @@ Zuvy LMS Team
           creator: true,
           startTime: true,
           endTime: true,
-          batchId: true,
+          batchId: true, // already present
           secondBatchId: true,
           bootcampId: true,
           moduleId: true,
@@ -2870,7 +3153,6 @@ Zuvy LMS Team
           studentAttendanceRecords: {
             where: (record: { userId: any; status: any }) =>
               and(
-                // Only attendance where the user has a completed chapter_tracking for this chapter
                 inArray(
                   record.userId,
                   db
@@ -2883,8 +3165,6 @@ Zuvy LMS Team
                       ),
                     ),
                 ),
-
-                // Optional user filter by name/email (if provided)
                 name || email
                   ? inArray(
                       record.userId,
@@ -2899,17 +3179,13 @@ Zuvy LMS Team
                         ),
                     )
                   : undefined,
-
-                // Optional status filter
                 status ? eq(record.status, status) : undefined,
               ),
-
             columns: {
               userId: true,
               status: true,
               duration: true,
             },
-
             with: {
               user: {
                 columns: {
@@ -2918,13 +3194,121 @@ Zuvy LMS Team
                 },
               },
             },
-            limit,
-            offset,
           },
         },
       });
 
-      return [null, submissions];
+      // ✅ STEP 1: collect unique batchIds from sessions
+      const batchIds = Array.from(
+        new Set(
+          submissions
+            .flatMap((s: any) => [s.batchId, s.secondBatchId])
+            .filter((id: any) => id !== null && id !== undefined),
+        ),
+      );
+
+      // ✅ STEP 2: fetch batch names
+      let batchMap: Record<number, string> = {};
+      if (batchIds.length > 0) {
+        const batches = await db
+          .select({
+            id: zuvyBatches.id,
+            name: zuvyBatches.name,
+          })
+          .from(zuvyBatches)
+          .where(inArray(zuvyBatches.id, batchIds));
+
+        batches.forEach((b) => {
+          batchMap[b.id] = b.name;
+        });
+      }
+
+      // Process and flatten data
+      let allRecords: any[] = [];
+      submissions.forEach((session: any) => {
+        if (session.studentAttendanceRecords?.length) {
+          session.studentAttendanceRecords.forEach((record: any) => {
+            const resolvedBatchId = uniqueBatchFilterIds.length
+              ? [session.batchId, session.secondBatchId].find((id: any) =>
+                  id !== null && id !== undefined
+                    ? uniqueBatchFilterIds.includes(Number(id))
+                    : false,
+                ) ??
+                session.batchId ??
+                session.secondBatchId ??
+                null
+              : session.batchId ?? session.secondBatchId ?? null;
+            const resolvedBatchName =
+              resolvedBatchId !== null && resolvedBatchId !== undefined
+                ? batchMap[Number(resolvedBatchId)] ?? null
+                : null;
+            allRecords.push({
+              ...record,
+              sessionId: session.id,
+              sessionTitle: session.title,
+              meetingId: session.meetingId,
+              hangoutLink: session.hangoutLink,
+              batchId: resolvedBatchId,
+              batchName: resolvedBatchName,
+            });
+          });
+        }
+      });
+
+      // Sorting (unchanged)
+      if (orderBy) {
+        const dir =
+          orderDirection && orderDirection.toLowerCase() === 'desc' ? -1 : 1;
+
+        if (orderBy === 'name') {
+          allRecords.sort(
+            (a, b) =>
+              (a.user?.name || '').localeCompare(b.user?.name || '') * dir,
+          );
+        } else if (orderBy === 'email') {
+          allRecords.sort(
+            (a, b) =>
+              (a.user?.email || '').localeCompare(b.user?.email || '') * dir,
+          );
+        } else if (orderBy === 'status') {
+          allRecords.sort(
+            (a, b) => (a.status || '').localeCompare(b.status || '') * dir,
+          );
+        } else if (orderBy === 'batchId') {
+          allRecords.sort((a, b) => {
+            const aId = Number(a.batchId) || 0;
+            const bId = Number(b.batchId) || 0;
+            return (aId - bId) * dir;
+          });
+        } else if (orderBy === 'batchName') {
+          allRecords.sort(
+            (a, b) =>
+              ((a.batchName as string) || '').localeCompare(
+                (b.batchName as string) || '',
+              ) * dir,
+          );
+        }
+      }
+
+      // Pagination
+      const safeLim =
+        typeof limit === 'number' && limit > 0 ? limit : undefined;
+      const safeOff = typeof offset === 'number' && offset >= 0 ? offset : 0;
+
+      const paginatedRecords = safeLim
+        ? allRecords.slice(safeOff, safeOff + safeLim)
+        : allRecords;
+
+      const totalPages = safeLim ? Math.ceil(allRecords.length / safeLim) : 1;
+
+      return [
+        null,
+        {
+          data: paginatedRecords,
+          totalCount: allRecords.length,
+          totalPages,
+        },
+      ];
     } catch (err) {
       return [err, null];
     }
