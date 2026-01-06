@@ -2426,6 +2426,9 @@ export const zuvyBootcamps = main.table('zuvy_bootcamps', {
   startTime: timestamp('start_time', { withTimezone: true, mode: 'string' }),
   duration: integer('duration'),
   language: text('language'),
+  organizationId: integer('organization_id').default(null).references(() => organizations.id, {
+    onDelete: 'cascade'
+  }),
   createdAt: timestamp('created_at', {
     withTimezone: true,
     mode: 'string',
@@ -4076,4 +4079,59 @@ export const studentAssessment = main.table('student_assessment', {
   updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow(),
 }, (table) => ({
   uniqStudentAssessment: unique("uniq_student_assessment").on(table.studentId, table.aiAssessmentId),
+}));
+
+// create orgnization table
+export const organizations = main.table('organizations', {
+  id: serial('id').primaryKey().notNull(),
+  title: varchar('title', { length: 255 }).notNull(),
+  displayName: varchar('display_name', { length: 255 }).notNull(),
+  isManagedByZuvy: boolean('is_managed_by_zuvy').notNull().default(true),
+  logoUrl: varchar('logo_url', { length: 500 }),
+  pocName: varchar('poc_name', { length: 255 }),
+  pocEmail: varchar('poc_email', { length: 255 }),
+  zuvyPocName: varchar('zuvy_poc_name', { length: 255 }),
+  zuvyPocEmail: varchar('zuvy_poc_email', { length: 255 }),
+  isVerified: boolean('is_verified').notNull().default(false),
+  createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow(),
+  version: varchar('version', { length: 10 })
+}, (table) => ({
+  // add the db index
+  orgTitleIdx: index('org_title_idx').on(table.title),
+  orgDisplayNameIdx: index('org_display_name_idx').on(table.displayName),
+  orgPocEmailIdx: index('org_poc_email_idx').on(table.pocEmail),
+  orgPocNameIdx: index('org_poc_name_idx').on(table.pocName),
+  isVerifiedIdx: index('organizations_is_verified_idx').on(table.isVerified),
+  createdAtIdx: index('organizations_created_at_idx').on(table.createdAt),
+}));
+
+// create user and organizations table
+export const userOrganizations = main.table('user_organizations', {
+  id: serial('id').primaryKey().notNull(),
+  userId: integer('user_id').notNull().references(() => users.id),
+  organizationId: integer('organization_id').notNull().references(() => organizations.id, { onDelete: 'cascade' }),
+  joinedAt: timestamp('joined_at', { withTimezone: true, mode: 'string' }).defaultNow(),
+}, (table) => ({
+  uniqUserOrganization: unique("uniq_user_organization").on(table.userId, table.organizationId),
+  // add the db index
+  userIdIdx: index('user_org_user_id_idx').on(table.userId),
+  organizationIdIdx: index('user_org_org_id_idx').on(table.organizationId),
+  joinedAtIdx: index('user_org_joined_at_idx').on(table.joinedAt),
+}));
+
+// create relations between organizations and userorganizations
+export const organizationsRelations = relations(organizations, ({ many }) => ({
+  userOrganizations: many(userOrganizations),
+}));
+
+export const userOrganizationsRelations = relations(userOrganizations, ({ one }) => ({
+  user: one(users, {
+    fields: [userOrganizations.userId],
+    references: [users.id],
+  }),
+  organization: one(organizations, {
+    fields: [userOrganizations.organizationId],
+    references: [organizations.id],
+  }),
 }));
