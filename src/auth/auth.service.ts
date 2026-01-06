@@ -167,30 +167,48 @@ export class AuthService {
       }
 
       // 4. Find user in your DB
-      const [user] = await db
+      const result = await db
         .select()
         .from(users)
         .where(eq(users.email, tokenEmail));
+      let user = result[0];
+
       if (!user) {
-        throw new UnauthorizedException('User not found');
-      }
-      if (!user.googleUserId) {
+        // Create new user if not exists
+        const [newUser] = await db
+          .insert(users)
+          .values({
+            email: tokenEmail,
+            name: payload.name || '',
+            profilePicture: payload.picture || '',
+            googleUserId: googleUserId,
+            createdAt: new Date().toISOString(),
+            lastLoginAt: new Date().toISOString(),
+            mode: 'student', // Default mode
+          })
+          .returning();
+        user = newUser;
+      } else {
+        // Existing user logic
+        if (!user.googleUserId) {
+          await db
+            .update(users)
+            .set({ googleUserId: googleUserId })
+            .where(eq(users.id, user.id));
+          // Update the user object in memory as well
+          user.googleUserId = googleUserId;
+        }
+
+        if (user.googleUserId !== googleUserId) {
+          throw new UnauthorizedException('Google user ID mismatch');
+        }
+
+        // Update last login timestamp
         await db
           .update(users)
-          .set({ googleUserId: googleUserId })
+          .set({ lastLoginAt: new Date().toISOString() })
           .where(eq(users.id, user.id));
-        // Optionally, update the user object in memory as well
-        user.googleUserId = googleUserId;
       }
-      if (user.googleUserId !== googleUserId) {
-        throw new UnauthorizedException('Google user ID mismatch');
-      }
-
-      // Update last login timestamp
-      await db
-        .update(users)
-        .set({ lastLoginAt: new Date().toISOString() })
-        .where(eq(users.id, user.id));
 
       // Get user roles
       const roles = await this.getUserRoles(user.id);
@@ -206,13 +224,6 @@ export class AuthService {
       const access_token = this.jwtService.sign(jwtPayload);
       const refresh_token = this.jwtService.sign(jwtPayload, {
         expiresIn: '7d',
-      });
-
-      await this.userTokenService.upsertToken({
-        userId: Number(user.id),
-        userEmail: user.email,
-        accessToken: access_token,
-        refreshToken: refresh_token,
       });
 
       return {
