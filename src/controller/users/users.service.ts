@@ -215,23 +215,42 @@ export class UsersService {
   async createUserRole(createUserRoleDto: CreateUserRoleDto): Promise<any> {
     try {
       const { name, description } = createUserRoleDto;
-      const result = await db.execute(
-        sql`INSERT INTO main.zuvy_user_roles (name, description) VALUES (${name}, ${description ?? null}) RETURNING *`,
-      );
-      if ((result as any).rows.length > 0) {
-        return {
-          status: 'success',
-          message: 'User role created successfully',
-          code: 200,
-          data: (result as any).rows[0],
-        };
-      } else {
+
+      //Normalize name (case-insensitive handling)
+      const normalizedName = name.trim().toLowerCase();
+
+      // Fetch all roles with same name
+      const existingRole = await db.query.zuvyUserRoles.findFirst({
+        where: (roles, { eq }) => eq(roles.name, normalizedName),
+      });
+
+      if (existingRole) {
         return {
           status: 'error',
           code: 400,
-          message: 'User role creation failed. Please try again',
+          message: 'User role with this name already exists',
         };
       }
+
+      // Create new role data
+      const newRoleData = {
+        name: normalizedName,
+        description: description ?? null,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+
+      const [createdRole] = await db
+        .insert(zuvyUserRoles)
+        .values(newRoleData)
+        .returning();
+
+      return {
+        status: 'success',
+        message: 'User role created successfully',
+        code: 200,
+        data: createdRole,
+      };
     } catch (err) {
       throw err;
     }
@@ -489,10 +508,21 @@ export class UsersService {
 
       const action = `${actorName} assigned role ${roleName} to ${targetName}`;
 
-      const { data } = await this.userTokenService.getUserTokens(
+      const { data, success } = await this.userTokenService.getUserTokens(
         BigInt(targetUserId),
       );
-      await this.authService.logout(BigInt(targetUserId), data['accessToken']);
+
+      if (success && data?.accessToken) {
+        await this.authService.updateUserlogout(
+          BigInt(targetUserId),
+          data.accessToken,
+          data.refreshToken,
+        );
+
+        await this.userTokenService.deleteToken({
+          userId: targetUserId,
+        });
+      }
 
       const auditLog = await this.auditlogService.log('role_to_user', {
         actorUserId,
@@ -835,7 +865,7 @@ export class UsersService {
           .where(eq(users.id, targetUserId));
       }
 
-      return await db.transaction(async (tx) => {
+      const result = await db.transaction(async (tx) => {
         const currentTime = new Date().toISOString(); // ISO string format
 
         // Prepare user update data (only include provided fields)
@@ -913,7 +943,7 @@ export class UsersService {
             .where(eq(zuvyUserRolesAssigned.userId, targetUserId));
 
           if (existingRole.length > 0) {
-            // Update existing role with updatedAt - FIXED TYPE
+            // Update existing role with updatedAt
             const roleUpdateData = {
               roleId: updateUserDto.roleId,
               updatedAt: currentTime, // ISO string for role assignment
@@ -968,29 +998,31 @@ export class UsersService {
           );
         }
 
-        const response = {
-          ...userWithRole,
-          id: Number(userWithRole.id),
-          roleId: userWithRole.roleId ? Number(userWithRole.roleId) : null,
-        };
-
-        const { data, success } =
-          await this.userTokenService.getUserTokens(targetUserId);
-
-        if (success && data?.accessToken) {
-          await this.authService.updateUserlogout(
-            targetUserId,
-            data.accessToken,
-            data.refreshToken,
-          );
-
-          const deletedResponse = await this.userTokenService.deleteToken({
-            userId: Number(id),
-          });
-        }
-
-        return response;
+        return userWithRole;
       });
+
+      // Invalidate tokens OUTSIDE transaction for the target user (person being updated)
+      const { data, success } =
+        await this.userTokenService.getUserTokens(targetUserId);
+
+      if (success && data?.accessToken) {
+        await this.authService.updateUserlogout(
+          targetUserId,
+          data.accessToken,
+          data.refreshToken,
+        );
+
+        await this.userTokenService.deleteToken({
+          userId: Number(targetUserId),
+        });
+      }
+
+      // Return the final response
+      return {
+        ...result,
+        id: Number(result.id),
+        roleId: result.roleId ? Number(result.roleId) : null,
+      };
     } catch (error) {
       throw error;
     }
