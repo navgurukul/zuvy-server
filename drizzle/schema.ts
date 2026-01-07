@@ -4086,7 +4086,7 @@ export const organizations = main.table('organizations', {
   id: serial('id').primaryKey().notNull(),
   title: varchar('title', { length: 255 }).notNull(),
   displayName: varchar('display_name', { length: 255 }).notNull(),
-  isManagedByZuvy: boolean('is_managed_by_zuvy').notNull().default(true),
+  isManagedByZuvy: boolean('is_managed_by_zuvy').notNull().default(false),
   logoUrl: varchar('logo_url', { length: 500 }),
   pocName: varchar('poc_name', { length: 255 }),
   pocEmail: varchar('poc_email', { length: 255 }),
@@ -4099,9 +4099,6 @@ export const organizations = main.table('organizations', {
 }, (table) => ({
   // add the db index
   orgTitleIdx: index('org_title_idx').on(table.title),
-  orgDisplayNameIdx: index('org_display_name_idx').on(table.displayName),
-  orgPocEmailIdx: index('org_poc_email_idx').on(table.pocEmail),
-  orgPocNameIdx: index('org_poc_name_idx').on(table.pocName),
   isVerifiedIdx: index('organizations_is_verified_idx').on(table.isVerified),
   createdAtIdx: index('organizations_created_at_idx').on(table.createdAt),
 }));
