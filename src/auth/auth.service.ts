@@ -41,7 +41,7 @@ export class AuthService {
 
   async getUserRoles(userId: bigint): Promise<string[]> {
     try {
-      // Query the new role system
+      // 🔹 Step 1: Try new role system first
       let userRoles = await db
         .select({
           roleId: zuvyUserRolesAssigned.roleId,
@@ -54,9 +54,8 @@ export class AuthService {
         )
         .where(eq(zuvyUserRolesAssigned.userId, userId));
 
-      // Check if roles were found
+      // 🔹 Step 2: If no roles found, fallback to legacy system
       if (userRoles.length === 0) {
-        // Fallback to legacy system
         const oldUserRoles = await db
           .select()
           .from(sansaarUserRoles)
@@ -64,85 +63,85 @@ export class AuthService {
 
         if (oldUserRoles.length > 0) {
           const legacyRoleName = oldUserRoles[0].role;
+          const normalizedRoleName = legacyRoleName.trim().toLowerCase();
 
-          // Check if role exists in zuvy_user_roles table
+          // 🔹 Step 3: Check if role already exists (case-insensitive handled)
           const existingRole = await db
             .select()
             .from(zuvyUserRoles)
-            .where(eq(zuvyUserRoles.name, legacyRoleName))
+            .where(eq(zuvyUserRoles.name, normalizedRoleName))
             .limit(1);
 
           let roleId: number;
 
           if (existingRole.length > 0) {
-            // Role exists, use existing role ID
+            // Role already exists
             roleId = existingRole[0].id;
           } else {
-            // Role doesn't exist, create new role
+            // 🔹 Step 4: Create role safely (normalized)
             try {
               const addNewRole = {
-                name: legacyRoleName,
+                name: normalizedRoleName,
                 description: `Migrated role: ${legacyRoleName}`,
               };
+
               const newRole = await db
                 .insert(zuvyUserRoles)
                 .values(addNewRole)
                 .returning();
 
-              if (newRole.length > 0) {
-                roleId = newRole[0].id;
-              } else {
-                // If role creation fails, use default mapping
-                roleId =
-                  legacyRoleName === 'admin'
+              roleId =
+                newRole.length > 0
+                  ? newRole[0].id
+                  : normalizedRoleName === 'admin'
                     ? 2
-                    : legacyRoleName === 'instructor'
+                    : normalizedRoleName === 'instructor'
                       ? 3
                       : 4;
-              }
             } catch (error) {
               this.logger.error(
                 `Error creating role ${legacyRoleName}:`,
                 error,
               );
-              // Fallback to default mapping if creation fails
+
+              // 🔹 Safe fallback mapping
               roleId =
-                legacyRoleName === 'admin'
+                normalizedRoleName === 'admin'
                   ? 2
-                  : legacyRoleName === 'instructor'
+                  : normalizedRoleName === 'instructor'
                     ? 3
                     : 4;
             }
           }
 
-          const assignmentData = {
+          // 🔹 Step 5: Assign role to user
+          const assignRole = {
             userId: userId,
             roleId: roleId,
           };
-          // Assign role to user
-          await db.insert(zuvyUserRolesAssigned).values(assignmentData);
+          await db.insert(zuvyUserRolesAssigned).values(assignRole);
 
-          // after assigning the role, delete the old role entries
+          // 🔹 Step 6: Cleanup legacy role entry
           await db
             .delete(sansaarUserRoles)
             .where(eq(sansaarUserRoles.userId, Number(userId)));
-          // Get the final role name
+
           userRoles = [
             {
-              roleId: 0,
-              roleName: legacyRoleName,
+              roleId: roleId,
+              roleName: normalizedRoleName,
             },
           ];
         }
       }
 
-      // Return role names or default to 'student'
+      // 🔹 Step 7: Return roles or default
       return userRoles.length > 0
         ? userRoles.map((role) => role.roleName)
         : ['student'];
     } catch (error) {
       this.logger.error('Error fetching user roles:', error);
-      return ['student']; // Default fallback role
+      return ['student'];
     }
   }
 

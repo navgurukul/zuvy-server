@@ -215,23 +215,42 @@ export class UsersService {
   async createUserRole(createUserRoleDto: CreateUserRoleDto): Promise<any> {
     try {
       const { name, description } = createUserRoleDto;
-      const result = await db.execute(
-        sql`INSERT INTO main.zuvy_user_roles (name, description) VALUES (${name}, ${description ?? null}) RETURNING *`,
-      );
-      if ((result as any).rows.length > 0) {
-        return {
-          status: 'success',
-          message: 'User role created successfully',
-          code: 200,
-          data: (result as any).rows[0],
-        };
-      } else {
+
+      //Normalize name (case-insensitive handling)
+      const normalizedName = name.trim().toLowerCase();
+
+      // Fetch all roles with same name
+      const existingRole = await db.query.zuvyUserRoles.findFirst({
+        where: (roles, { eq }) => eq(roles.name, normalizedName),
+      });
+
+      if (existingRole) {
         return {
           status: 'error',
           code: 400,
-          message: 'User role creation failed. Please try again',
+          message: 'User role with this name already exists',
         };
       }
+
+      // Create new role data
+      const newRoleData = {
+        name: normalizedName,
+        description: description ?? null,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+
+      const [createdRole] = await db
+        .insert(zuvyUserRoles)
+        .values(newRoleData)
+        .returning();
+
+      return {
+        status: 'success',
+        message: 'User role created successfully',
+        code: 200,
+        data: createdRole,
+      };
     } catch (err) {
       throw err;
     }
