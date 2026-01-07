@@ -303,18 +303,36 @@ export class UsersController {
     description: 'Internal server error',
   })
   async getAllUsers(
-    @Query('limit', new ParseIntPipe()) limit: number,
-    @Query('offset', new ParseIntPipe()) offset: number,
-    @Query('searchTerm') searchTerm: string,
-    @Query('roleId') roleId: number[],
-    @Req() req,
+    @Req() req, // Required parameter first
+    @Query('limit') limit?: string, // Optional
+    @Query('offset') offset?: string, // Optional
+    @Query('searchTerm') searchTerm?: string, // Optional (default to '')
+    @Query('roleId') roleId?: number[], // Optional
   ) {
+    // Parse limit and offset with defaults to avoid errors
+    const limitNum = limit ? parseInt(limit, 10) : 10; // Default limit (adjust as needed)
+    const offsetNum = offset ? parseInt(offset, 10) : 0; // Default offset
+
+    // Optional: Add basic validation to ensure parsed values are positive integers
+    if (isNaN(limitNum) || limitNum < 0) {
+      throw new HttpException(
+        'Invalid limit: must be a non-negative integer',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+    if (isNaN(offsetNum) || offsetNum < 0) {
+      throw new HttpException(
+        'Invalid offset: must be a non-negative integer',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+
     const roleName = req.user[0]?.roles;
     return this.usersService.getAllUsersWithRoles(
       roleName,
-      limit,
-      offset,
-      searchTerm,
+      limitNum,
+      offsetNum,
+      searchTerm || '', // Default to empty string if undefined
       roleId,
     );
   }
