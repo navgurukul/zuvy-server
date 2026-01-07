@@ -225,6 +225,23 @@ export class AuthService {
         expiresIn: '7d',
       });
 
+      // Store tokens in database so they can be blacklisted when user info is updated
+      await db
+        .insert(userTokens)
+        .values({
+          userId: Number(user.id),
+          userEmail: user.email,
+          accessToken: access_token,
+          refreshToken: refresh_token,
+        })
+        .onConflictDoUpdate({
+          target: userTokens.userId,
+          set: {
+            accessToken: access_token,
+            refreshToken: refresh_token,
+          },
+        });
+
       return {
         access_token,
         refresh_token,
@@ -285,18 +302,24 @@ export class AuthService {
       const refExpiresAt = new Date(decodedRef.exp * 1000);
 
       // Insert access token
-      await db.insert(blacklistedTokens).values({
-        token: accToken,
-        userId: BigInt(userId),
-        expiresAt: accExpiresAt,
-      });
+      await db
+        .insert(blacklistedTokens)
+        .values({
+          token: accToken,
+          userId: BigInt(userId),
+          expiresAt: accExpiresAt,
+        })
+        .onConflictDoNothing();
 
       // Insert refresh token
-      await db.insert(blacklistedTokens).values({
-        token: refToken,
-        userId: BigInt(userId),
-        expiresAt: refExpiresAt,
-      });
+      await db
+        .insert(blacklistedTokens)
+        .values({
+          token: refToken,
+          userId: BigInt(userId),
+          expiresAt: refExpiresAt,
+        })
+        .onConflictDoNothing();
 
       return { message: 'Successfully logged out' };
     } catch (error) {
