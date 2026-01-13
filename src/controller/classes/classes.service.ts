@@ -15,13 +15,37 @@ import {
   users,
   zuvySessionMerge
 } from '../../../drizzle/schema';
-import { eq, desc, and, or, sql, ilike, inArray, gte, lt, count } from 'drizzle-orm';
+import { eq, desc, and, or, sql, ilike, inArray, gte, lt, count, like } from 'drizzle-orm';
 import { Res, Req } from '@nestjs/common';
 import { Response } from 'express';
 import { S3 } from 'aws-sdk';
 import { v4 as uuid } from 'uuid';
 import { ZoomService } from '../../services/zoom/zoom.service';
 import { Console } from 'console';
+import * as fs from 'fs/promises';
+import * as path from 'path';
+
+
+type InputSession = {
+  batchId: number;
+  bootcampId: number;
+  sessionId: number;
+  meetingId: string;
+  BatchId: number;
+  BootcampId: number;
+  session_info: {
+    title: string;
+    date: string; // e.g. "2025-05-30"
+    date_label: string;
+  };
+  attendees: {
+    name: string;
+    email: string;
+    attended: string;
+    duration: string;
+    status: string;
+  }[];
+};
 
 @Injectable()
 export class ClassesService {
@@ -157,7 +181,6 @@ export class ClassesService {
       if (isNaN(parsedStart.getTime())) {
         return { status: 'error', message: 'Invalid startDateTime', code: 400 };
       }
-      console.log({ startDate: parsedStart.getTime(), now: Date.now() });
       if (parsedStart.getTime() < Date.now()) {
         return { status: 'error', message: 'Cannot create a session in the past', code: 400 };
       }
@@ -504,7 +527,7 @@ export class ClassesService {
       secondBatchId?: number;
       bootcampId: number;
       moduleId: number;
-      invitedStudents?: { userId: number; email: string }[];
+      invitedStudents?: { userId: number; email: string; name: string }[];
     },
     creatorInfo: any,
   ) {
@@ -1297,12 +1320,11 @@ export class ClassesService {
         .where(and(
           eq(zuvySessions.bootcampId, bootcamp_id),
           sql`${zuvySessions.status} not in ('completed')`,
-          !isNaN(batch_id) ? or(eq(zuvySessions.batchId, batch_id), eq(zuvySessions.secondBatchId, batch_id)) : undefined,
+          !isNaN(batch_id) ? or(eq(zuvyBatches.id, batch_id), eq(zuvyBatches.id, batch_id)) : undefined,
           chapterId ? eq(zuvySessions.chapterId, chapterId) : undefined
         ));
 
       let classes = await classesQuery;
-      console.log("Executing classes query:", classes);
       // Partition classes by platform
       const zoomClasses = classes.filter(c => c.isZoomMeet === true);
       const meetClasses = classes.filter(c => !c.isZoomMeet);
@@ -2137,8 +2159,8 @@ export class ClassesService {
       const response = {
         id: sessionData.id,
         meetingId: sessionData.meetingId,
-        hangoutLink: sessionData.hangoutLink, // Join URL for both Google Meet and Zoom
-        creator: sessionData.creator,
+        hangoutLink: sessionData.hangoutLink // Join URL for both Google Meet and Zoom
+        , creator: sessionData.creator,
         startTime: sessionData.startTime,
         endTime: sessionData.endTime,
         batchId: sessionData.batchId,
@@ -3550,6 +3572,296 @@ export class ClassesService {
 
     } catch (error) {
       console.error(`Failed to migrate attendance for meetingId "${meetingId}". Error:`, error);
+    }
+  }
+
+  async enrichSessionsWithIds(inputFilePath?: string) {
+    try {
+      const rawData = await fs.readFile('C:\\Users\\preml\\projects\\LMS\\ZS-backend\\src\\controller\\classes\\sessions_data.json', 'utf-8');
+      const sessions: InputSession[] = JSON.parse(rawData);
+
+      const results: any[] = [];
+      const sessionsNotFound: any[] = [];
+      const usersNotFound: any[] = [];
+      const attendanceRecordsToInsert: any[] = []; // For zuvy_student_attendance_records table
+      const attendanceSessionsToInsert: any[] = []; // For zuvy_student_attendance table
+
+      for (const session of sessions) {
+        // fetch matching session row - first try with date and title
+        let dbSession = await db
+          .select()
+          .from(zuvySessions)
+          .where(
+            and(
+              eq(zuvySessions.title, session.session_info.title),
+              like(zuvySessions.startTime, `${session.session_info.date}%`)
+            )
+          )
+          .limit(1);
+
+        let sessionRow = dbSession[0];
+
+        // If not found, try with title only
+        if (!sessionRow) {
+          dbSession = await db
+            .select()
+            .from(zuvySessions)
+            .where(
+              and(
+                eq(zuvySessions.batchId, 112),
+                like(zuvySessions.startTime, `${session.session_info.date}%`)
+              )
+            )
+            .limit(1);
+          
+          sessionRow = dbSession[0];
+        }
+
+        // If still not found, add to sessions not found and continue
+        if (!sessionRow) {
+          sessionsNotFound.push({
+            sessionTitle: session.session_info.title,
+            sessionDate: session.session_info.date,
+            sessionData: session.session_info,
+            attendeesCount: session.attendees.length
+          });
+
+          results.push({
+            sessionId: null,
+            meetingId: null,
+            batchId: null,
+            bootcampId: null,
+            attendees: session.attendees.map((a: any) => ({ ...a, userId: null })),
+            ...session,
+          });
+          continue;
+        }
+
+        const enrichedAttendees: any[] = [];
+        for (const attendee of session.attendees) {
+          const dbUser = await db
+            .select({ id: users.id, name: users.name })
+            .from(users)
+            .where(eq(users.email, attendee.email.trim()))
+            .limit(1);
+
+          if (dbUser.length) {
+            enrichedAttendees.push({
+              ...attendee,
+              userId: Number(dbUser[0].id)|| null,
+            });
+          } else {
+            // Add to users not found array
+            usersNotFound.push({
+              email: attendee.email,
+              name: attendee.name || null,
+              sessionTitle: session.session_info.title,
+              sessionDate: session.session_info.date
+            });
+
+            enrichedAttendees.push({
+              ...attendee,
+            });
+          }
+        }
+
+        console.log("enrichedAttendees: ", enrichedAttendees.length);
+        
+        // Set session properties with correct casing
+        session.sessionId = sessionRow.id;
+        session.meetingId = sessionRow.meetingId;
+        session.batchId = sessionRow.batchId;
+        session.bootcampId = sessionRow.bootcampId;
+        
+        // Prepare data for zuvy_student_attendance table (one entry per session)
+        const attendanceData = enrichedAttendees.map(attendee => ({
+          email: attendee.email,
+          duration: attendee.duration || 0,
+          userId: attendee.userId,
+          // Handle different possible field names for attendance status
+          attendance: (attendee.status === 'present' || attendee.attendance === 'present') ? 'present' : 'absent'
+        }));
+
+        attendanceSessionsToInsert.push({
+          meetingId: sessionRow.meetingId,
+          attendance: attendanceData,
+          batchId: sessionRow.batchId,
+          bootcampId: sessionRow.bootcampId,
+          version: 'v1'
+        });
+
+        // Prepare data for zuvy_student_attendance_records table (one entry per student per session)
+        const attendanceDate = new Date(session.session_info.date).toISOString().split('T')[0];
+        
+        for (const attendee of enrichedAttendees) {
+          if (attendee.userId) { // Only create records for found users
+            attendanceRecordsToInsert.push({
+              userId: attendee.userId,
+              batchId: sessionRow.batchId,
+              bootcampId: sessionRow.bootcampId,
+              sessionId: sessionRow.id,
+              attendanceDate: attendanceDate,
+              // Handle different possible field names for attendance status
+              status: (attendee.status === 'present' || attendee.attendance === 'present') ? 'PRESENT' : 'ABSENT',
+              version: 'v1',
+              duration: attendee.duration || 0
+            });
+          }
+        }
+        
+        results.push({
+          ...session,
+          attendees: enrichedAttendees,
+        });
+      }
+
+      // Create comprehensive output with all data
+      const output = {
+        enrichedSessions: results,
+        notFound: {
+          sessions: sessionsNotFound,
+          users: usersNotFound
+        },
+        databaseInserts: {
+          attendanceSessions: attendanceSessionsToInsert,
+          attendanceRecords: attendanceRecordsToInsert
+        },
+        summary: {
+          totalSessions: sessions.length,
+          sessionsFound: results.filter(r => r.sessionId !== null).length,
+          sessionsNotFound: sessionsNotFound.length,
+          totalUsers: sessions.reduce((sum, s) => sum + s.attendees.length, 0),
+          usersNotFound: usersNotFound.length,
+          attendanceSessionsToInsert: attendanceSessionsToInsert.length,
+          attendanceRecordsToInsert: attendanceRecordsToInsert.length
+        }
+      };
+
+      await fs.writeFile('C:\\Users\\preml\\projects\\LMS\\ZS-backend\\src\\controller\\classes\\summ.json', JSON.stringify(output, null, 2), 'utf-8');
+
+      console.log(`✅ Enriched data saved with summary:`);
+      console.log(`   - Total sessions: ${output.summary.totalSessions}`);
+      console.log(`   - Sessions found: ${output.summary.sessionsFound}`);
+      console.log(`   - Sessions not found: ${output.summary.sessionsNotFound}`);
+      console.log(`   - Total users: ${output.summary.totalUsers}`);
+      console.log(`   - Users not found: ${output.summary.usersNotFound}`);
+      console.log(`   - Attendance sessions ready to insert: ${output.summary.attendanceSessionsToInsert}`);
+      console.log(`   - Attendance records ready to insert: ${output.summary.attendanceRecordsToInsert}`);
+    } catch (err) {
+      console.error('❌ Error enriching sessions:', err);
+    }
+  }
+
+  async syncAttendanceFromJson(batchId: number, bootcampId: number, tillDate: string) {
+    try {
+      const logger = new Logger('SyncAttendance');
+      
+      // Read summ.json file
+      const summFilePath = path.join(process.cwd(), 'src', 'controller', 'classes', 'summ.json');
+      const summData = JSON.parse(await fs.readFile(summFilePath, 'utf-8'));
+      
+      if (!summData.databaseInserts) {
+        throw new Error('No databaseInserts found in summ.json');
+      }
+
+      const tillDateObj = new Date(tillDate);
+      
+      // Remove existing attendance records for the batch/bootcamp up to tillDate
+      logger.log(`Removing existing attendance records for batch ${batchId}, bootcamp ${bootcampId} up to ${tillDate}`);
+      
+      // First, get sessions to be removed
+      const sessionsToRemove = await db
+        .select()
+        .from(zuvySessions)
+        .where(
+          and(
+            eq(zuvySessions.batchId, batchId),
+            eq(zuvySessions.bootcampId, bootcampId),
+            sql`DATE(${zuvySessions.endTime}) <= ${tillDate}`
+          )
+        );
+
+      const sessionIds = sessionsToRemove.map(s => s.id);
+      const meetingIds = sessionsToRemove.map(s => s.meetingId);
+      
+      if (sessionIds.length > 0) {
+        // Remove attendance records
+        await db
+          .delete(zuvyStudentAttendanceRecords)
+          .where(
+            and(
+              eq(zuvyStudentAttendanceRecords.batchId, batchId),
+              eq(zuvyStudentAttendanceRecords.bootcampId, bootcampId),
+              inArray(zuvyStudentAttendanceRecords.sessionId, sessionIds)
+            )
+          );
+
+        // Remove attendance sessions
+        await db
+          .delete(zuvyStudentAttendance)
+          .where(
+            and(
+              eq(zuvyStudentAttendance.batchId, batchId),
+              eq(zuvyStudentAttendance.bootcampId, bootcampId),
+              inArray(zuvyStudentAttendance.meetingId, meetingIds)
+            )
+          );
+
+        logger.log(`Removed existing attendance data for ${sessionIds.length} sessions`);
+      }
+
+      // Filter attendance sessions by batchId, bootcampId, and date
+      const filteredAttendanceSessions = summData.databaseInserts.attendanceSessions.filter(session => {
+        const sessionDate = new Date(session.attendanceDate || session.date);
+        return session.batchId === batchId && 
+               session.bootcampId === bootcampId && 
+               sessionDate <= tillDateObj;
+      });
+
+      // Filter attendance records by batchId, bootcampId, and date
+      const filteredAttendanceRecords = summData.databaseInserts.attendanceRecords.filter(record => {
+        const recordDate = new Date(record.attendanceDate);
+        return record.batchId === batchId && 
+               record.bootcampId === bootcampId && 
+               recordDate <= tillDateObj;
+      });
+
+      logger.log(`Found ${filteredAttendanceSessions.length} attendance sessions to insert`);
+      logger.log(`Found ${filteredAttendanceRecords.length} attendance records to insert`);
+
+      // Insert attendance sessions in batches
+      if (filteredAttendanceSessions.length > 0) {
+        const batchSize = 100;
+        for (let i = 0; i < filteredAttendanceSessions.length; i += batchSize) {
+          const batch = filteredAttendanceSessions.slice(i, i + batchSize);
+          await db.insert(zuvyStudentAttendance).values(batch);
+        }
+        logger.log(`Inserted ${filteredAttendanceSessions.length} attendance sessions`);
+      }
+
+      // Insert attendance records in batches
+      if (filteredAttendanceRecords.length > 0) {
+        const batchSize = 100;
+        for (let i = 0; i < filteredAttendanceRecords.length; i += batchSize) {
+          const batch = filteredAttendanceRecords.slice(i, i + batchSize);
+          await db.insert(zuvyStudentAttendanceRecords).values(batch);
+        }
+        logger.log(`Inserted ${filteredAttendanceRecords.length} attendance records`);
+      }
+
+      return {
+        success: true,
+        message: 'Attendance data synced successfully',
+        data: {
+          sessionsRemoved: sessionIds.length,
+          attendanceSessionsInserted: filteredAttendanceSessions.length,
+          attendanceRecordsInserted: filteredAttendanceRecords.length,
+          syncedUpTo: tillDate
+        }
+      };
+    } catch (error) {
+      console.error('Error syncing attendance from JSON:', error);
+      throw new Error(`Failed to sync attendance: ${error.message}`);
     }
   }
 }
