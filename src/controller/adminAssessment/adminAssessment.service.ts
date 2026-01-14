@@ -681,7 +681,7 @@ Team Zuvy`;
     req,
     assessmentID: number,
     searchStudent: string,
-    limit: number = 10,
+    limit?: number,
     offset: number = 0,
     batchId?: number,
     qualified?: string,
@@ -1010,7 +1010,7 @@ Team Zuvy`;
       const limitNumFinal =
         Number.isFinite(Number(limit)) && Number(limit) > 0
           ? Number(limit)
-          : totalCount || 10;
+          : totalCount;
       const paginatedData = combinedData.slice(
         offsetNumFinal,
         offsetNumFinal + limitNumFinal,

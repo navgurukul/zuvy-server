@@ -147,7 +147,7 @@ export class AdminAssessmentController {
       req,
       assessmentID,
       searchStudent,
-      Number(limit) || 10,
+      limit ? Number(limit) : undefined,
       Number(offset) || 0,
       batchId ? Number(batchId) : undefined,
       qualified,
