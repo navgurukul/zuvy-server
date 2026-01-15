@@ -3792,7 +3792,7 @@ export const userPermissionsRelations = relations(zuvyUserPermissions, ({ many }
 // RBAC: UserRoles (M:N)
 export const zuvyUserRolesAssigned = main.table('zuvy_user_roles_assigned', {
   id: serial('id').primaryKey().notNull(),
-  userId: bigserial("user_id", { mode: "bigint" }).notNull().references(() => users.id),
+  userId: bigint('user_id', { mode: 'bigint' }).notNull().references(() => users.id),
   roleId: integer('role_id').notNull().references(() => zuvyUserRoles.id),
   createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow(),
@@ -3987,7 +3987,7 @@ export const organizations = main.table('organizations', {
 // create user and organizations table
 export const userOrganizations = main.table('user_organizations', {
   id: serial('id').primaryKey().notNull(),
-  userId: integer('user_id').notNull().references(() => users.id),
+  userId: bigint('user_id', { mode: 'bigint' }).notNull().references(() => users.id),
   organizationId: integer('organization_id').notNull().references(() => organizations.id, { onDelete: 'cascade' }),
   joinedAt: timestamp('joined_at', { withTimezone: true, mode: 'string' }).defaultNow(),
 }, (table) => ({

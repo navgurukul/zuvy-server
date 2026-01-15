@@ -9,6 +9,8 @@ import {
   zuvyUserRoles,
   sansaarUserRoles,
   userTokens,
+  organizations,
+  userOrganizations,
 } from '../../drizzle/schema';
 import { eq, inArray } from 'drizzle-orm';
 import { OAuth2Client } from 'google-auth-library';
@@ -212,12 +214,28 @@ export class AuthService {
       // Get user roles
       const roles = await this.getUserRoles(user.id);
 
+      // Get User Org
+      const [userOrg] = await db
+        .select({
+          orgId: organizations.id,
+          orgName: organizations.displayName,
+        })
+        .from(userOrganizations)
+        .innerJoin(
+          organizations,
+          eq(userOrganizations.organizationId, organizations.id),
+        )
+        .where(eq(userOrganizations.userId, user.id))
+        .limit(1);
+
       const jwtPayload = {
         sub: user.id.toString(),
         email: user.email,
         googleUserId: user.googleUserId,
         role: user.mode,
         rolesList: roles,
+        orgId: userOrg?.orgId || null,
+        orgName: userOrg?.orgName || null,
       };
 
       const access_token = this.jwtService.sign(jwtPayload);
@@ -253,6 +271,8 @@ export class AuthService {
           role: user.mode,
           center: user.center,
           rolesList: roles,
+          orgId: userOrg?.orgId || null,
+          orgName: userOrg?.orgName || null,
         },
       };
     } catch (error) {
@@ -368,6 +388,20 @@ export class AuthService {
       // Get user roles for the new token
       const roles = await this.getUserRoles(user.id);
 
+      // Get User Org
+      const [userOrg] = await db
+        .select({
+          orgId: organizations.id,
+          orgName: organizations.displayName,
+        })
+        .from(userOrganizations)
+        .innerJoin(
+          organizations,
+          eq(userOrganizations.organizationId, organizations.id),
+        )
+        .where(eq(userOrganizations.userId, user.id))
+        .limit(1);
+
       // Generate new tokens
       const newPayload = {
         sub: user.id.toString(),
@@ -375,6 +409,8 @@ export class AuthService {
         googleUserId: user.googleUserId,
         role: user.mode,
         rolesList: roles,
+        orgId: userOrg?.orgId || null,
+        orgName: userOrg?.orgName || null,
       };
 
       const newAccessToken = this.jwtService.sign(newPayload);
