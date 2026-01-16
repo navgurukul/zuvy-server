@@ -117,12 +117,10 @@ export class ClassesService {
     try {
       const { code, state } = req.query;
       if (!code || !state) {
-        return res
-          .status(400)
-          .json({
-            status: 'error',
-            message: 'Missing code or state in redirect',
-          });
+        return res.status(400).json({
+          status: 'error',
+          message: 'Missing code or state in redirect',
+        });
       }
       const parsedState = JSON.parse(state as string);
       const { tokens } = await auth2Client.getToken(code as string);
@@ -145,13 +143,11 @@ export class ClassesService {
       });
     } catch (error) {
       this.logger.error(`Error saving tokens: ${error.message}`);
-      return res
-        .status(500)
-        .json({
-          status: 'error',
-          message: 'Failed to save tokens',
-          error: (error as any).message,
-        });
+      return res.status(500).json({
+        status: 'error',
+        message: 'Failed to save tokens',
+        error: (error as any).message,
+      });
     }
   }
 
@@ -2561,11 +2557,43 @@ export class ClassesService {
         sessionUpdateData.status = updateData.status;
       }
       if (updateData.batchId !== undefined) {
+        const batch = await db
+          .select()
+          .from(zuvyBatches)
+          .where(eq(zuvyBatches.id, updateData.batchId))
+          .limit(1);
+
+        if (batch.length === 0) {
+          return {
+            success: false,
+            message: `Batch with ID ${updateData.batchId} not found`,
+          };
+        }
         sessionUpdateData.batchId = updateData.batchId;
       }
+
+      // Validate and update secondBatchId if provided
       if (updateData.secondBatchId !== undefined) {
-        sessionUpdateData.secondBatchId = updateData.secondBatchId;
+        if (updateData.secondBatchId === null) {
+          // Allow setting to null
+          sessionUpdateData.secondBatchId = null;
+        } else {
+          const secondBatch = await db
+            .select()
+            .from(zuvyBatches)
+            .where(eq(zuvyBatches.id, updateData.secondBatchId))
+            .limit(1);
+
+          if (secondBatch.length === 0) {
+            return {
+              success: false,
+              message: `Second batch with ID ${updateData.secondBatchId} not found`,
+            };
+          }
+          sessionUpdateData.secondBatchId = updateData.secondBatchId;
+        }
       }
+
       if (updateData.bootcampId !== undefined) {
         sessionUpdateData.bootcampId = updateData.bootcampId;
       }
@@ -2671,14 +2699,56 @@ export class ClassesService {
         }
       }
 
+      // Fetch updated session with batch names
+      const updatedSession = await db
+        .select()
+        .from(zuvySessions)
+        .where(eq(zuvySessions.id, sessionId))
+        .limit(1);
+
+      const responseData: any = {
+        sessionId,
+        ...updateData,
+        startTime: gmtStartTime || session.startTime,
+        endTime: gmtEndTime || session.endTime,
+      };
+
+      // Add batch names if batchId was updated or exists
+      if (updatedSession.length > 0) {
+        const updatedSessionData = updatedSession[0];
+
+        // Include the actual batchId and secondBatchId in response
+        responseData.batchId = updatedSessionData.batchId;
+        responseData.secondBatchId = updatedSessionData.secondBatchId;
+
+        if (updatedSessionData.batchId) {
+          const batchInfo = await db
+            .select()
+            .from(zuvyBatches)
+            .where(eq(zuvyBatches.id, updatedSessionData.batchId))
+            .limit(1);
+
+          if (batchInfo.length > 0) {
+            responseData.batchName = batchInfo[0].name;
+          }
+        }
+
+        if (updatedSessionData.secondBatchId) {
+          const secondBatchInfo = await db
+            .select()
+            .from(zuvyBatches)
+            .where(eq(zuvyBatches.id, updatedSessionData.secondBatchId))
+            .limit(1);
+
+          if (secondBatchInfo.length > 0) {
+            responseData.secondBatchName = secondBatchInfo[0].name;
+          }
+        }
+      }
+
       return {
         success: true,
-        data: {
-          sessionId,
-          ...updateData,
-          startTime: gmtStartTime || session.startTime,
-          endTime: gmtEndTime || session.endTime,
-        },
+        data: responseData,
         message: 'Session updated successfully',
       };
     } catch (error) {
