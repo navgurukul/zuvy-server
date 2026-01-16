@@ -10,7 +10,7 @@ import {
   IsEmail,
   IsNumber,
   IsDateString,
-  IsBoolean
+  IsBoolean,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 /*
@@ -94,7 +94,8 @@ export class CreateSessionDto {
   title: string;
 
   @ApiProperty({
-    description: 'The batchId of the live class (use when targeting a single batch). Either batchId or batchIds is required.',
+    description:
+      'The batchId of the live class (use when targeting a single batch). Either batchId or batchIds is required.',
     type: Number,
     example: 327,
     required: false,
@@ -104,7 +105,8 @@ export class CreateSessionDto {
   batchId?: number;
 
   @ApiProperty({
-    description: 'Optional second batch id (legacy support for exactly two batches). Prefer using batchIds array for >2.',
+    description:
+      'Optional second batch id (legacy support for exactly two batches). Prefer using batchIds array for >2.',
     type: Number,
     required: false,
   })
@@ -165,7 +167,8 @@ export class CreateSessionDto {
   timeZone: string;
 
   @ApiProperty({
-    description: 'Whether this session uses Zoom meeting (alias for useZoom for consistency with database schema)',
+    description:
+      'Whether this session uses Zoom meeting (alias for useZoom for consistency with database schema)',
     type: Boolean,
     example: true,
     required: false,
@@ -232,20 +235,40 @@ export class updateSessionDto {
   endDateTime?: string;
 
   @ApiProperty({
-    description: 'Whether this session uses Zoom (cannot be toggled after creation; included to avoid validation error)',
+    description:
+      'Whether this session uses Zoom (cannot be toggled after creation; included to avoid validation error)',
     type: Boolean,
     required: false,
   })
   @IsOptional()
   @IsBoolean()
   isZoomMeet?: boolean;
+
+  @ApiProperty({
+    description: 'Primary batch ID associated with the session',
+    example: 1,
+    required: false,
+  })
+  @IsOptional()
+  @IsNumber()
+  batchId?: number;
+
+  @ApiProperty({
+    description: 'Secondary batch ID associated with the session',
+    example: 2,
+    required: false,
+    nullable: true,
+  })
+  @IsOptional()
+  @IsNumber()
+  secondBatchId?: number;
 }
 
 export class AddLiveClassesAsChaptersDto {
   @ApiProperty({
     description: 'Array of session IDs to be added as chapters',
     type: [Number],
-    example: [1, 2, 3]
+    example: [1, 2, 3],
   })
   @IsArray()
   @IsNumber({}, { each: true })
@@ -254,7 +277,7 @@ export class AddLiveClassesAsChaptersDto {
   @ApiProperty({
     description: 'Module ID where the live classes will be added as chapters',
     type: Number,
-    example: 1
+    example: 1,
   })
   @IsNumber()
   moduleId: number;
@@ -272,7 +295,8 @@ export class MergeClassesDto {
   childSessionId: number;
 
   @ApiProperty({
-    description: 'The parent session ID (main session that will receive all students)',
+    description:
+      'The parent session ID (main session that will receive all students)',
     type: Number,
     example: 456,
     required: true,
