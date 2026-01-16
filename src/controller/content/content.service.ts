@@ -35,6 +35,7 @@ import {
   zuvyRecentBootcamp,
   zuvySessionRecordViews,
   zuvyBootcamps,
+  zuvyBatches,
 } from '../../../drizzle/schema';
 
 import { error, log } from 'console';
@@ -738,6 +739,7 @@ export class ContentService {
     moduleId: number,
     topicId: number,
     userRole?: string,
+    batchId?: number,
   ) {
     try {
       const bootcampInfo = await db
@@ -762,6 +764,40 @@ export class ContentService {
       if (chapterInfo.length == 0) {
         throw new NotFoundException('Module not found or deleted!');
       }
+
+      // Fetch batch information
+      let batchInfo = null;
+      if (batchId) {
+        // If batchId is provided, fetch that specific batch
+        const batchData = await db
+          .select()
+          .from(zuvyBatches)
+          .where(eq(zuvyBatches.id, batchId));
+        if (batchData.length > 0) {
+          batchInfo = {
+            batchId: batchData[0].id,
+            batchName: batchData[0].name,
+          };
+        }
+      } else {
+        // If batchId is not provided, fetch the first batch associated with this bootcamp
+        const batchData = await db
+          .select()
+          .from(zuvyBatches)
+          .where(eq(zuvyBatches.bootcampId, bootcampId))
+          .limit(2);
+        if (batchData.length > 0) {
+          batchInfo = {
+            batchId: batchData[0].id,
+            batchName: batchData[0].name,
+          };
+          if (batchData.length > 1) {
+            batchInfo['secondBatchId'] = batchData[1].id;
+            batchInfo['secondBatchName'] = batchData[1].name;
+          }
+        }
+      }
+
       if (topicId === 8) {
         // Assuming 8 is for sessions/live classes
         await this.classesService.updatingStatusOfClass(
@@ -874,6 +910,16 @@ export class ContentService {
         formatedData.endDatetime = chapterDetails[0].endDatetime;
         formatedData.currentState =
           stateMap[updatedAssessment.currentState] || stateMap[2];
+
+        // Add batch information if available
+        if (batchInfo) {
+          formatedData.batchId = batchInfo.batchId;
+          formatedData.batchName = batchInfo.batchName;
+          if (batchInfo.secondBatchId) {
+            formatedData.secondBatchId = batchInfo.secondBatchId;
+            formatedData.secondBatchName = batchInfo.secondBatchName;
+          }
+        }
 
         return formatedData;
       }
@@ -1078,6 +1124,8 @@ export class ContentService {
                 isZoomMeet: session.isZoomMeet,
                 hasBeenMerged: session.hasBeenMerged,
                 platform: session.isZoomMeet ? 'zoom' : 'google_meet',
+                batchId: session.batchId,
+                secondBatchId: session.secondBatchId,
                 mergeInfo: {
                   isMerged: session.hasBeenMerged,
                   isParentSession: mergeInfoAsParent.length > 0,
@@ -1106,6 +1154,55 @@ export class ContentService {
           ];
           modifiedChapterDetails.contentDetails = content;
         }
+
+        // Add batch information if available
+        if (batchInfo) {
+          // For session/live class topics (topicId 8), use session's batch info if available
+          if (
+            chapterDetails[0].topicId == 8 &&
+            modifiedChapterDetails.sessionDetails &&
+            modifiedChapterDetails.sessionDetails.length > 0
+          ) {
+            const firstSession = modifiedChapterDetails.sessionDetails[0];
+            modifiedChapterDetails['batchId'] = firstSession.batchId;
+            modifiedChapterDetails['secondBatchId'] =
+              firstSession.secondBatchId;
+
+            // Fetch batch names
+            if (firstSession.batchId) {
+              const batchData = await db
+                .select()
+                .from(zuvyBatches)
+                .where(eq(zuvyBatches.id, firstSession.batchId))
+                .limit(1);
+              if (batchData.length > 0) {
+                modifiedChapterDetails['batchName'] = batchData[0].name;
+              }
+            }
+
+            if (firstSession.secondBatchId) {
+              const secondBatchData = await db
+                .select()
+                .from(zuvyBatches)
+                .where(eq(zuvyBatches.id, firstSession.secondBatchId))
+                .limit(1);
+              if (secondBatchData.length > 0) {
+                modifiedChapterDetails['secondBatchName'] =
+                  secondBatchData[0].name;
+              }
+            }
+          } else {
+            // For other topics, use the bootcamp's batch info
+            modifiedChapterDetails['batchId'] = batchInfo.batchId;
+            modifiedChapterDetails['batchName'] = batchInfo.batchName;
+            if (batchInfo.secondBatchId) {
+              modifiedChapterDetails['secondBatchId'] = batchInfo.secondBatchId;
+              modifiedChapterDetails['secondBatchName'] =
+                batchInfo.secondBatchName;
+            }
+          }
+        }
+
         return modifiedChapterDetails;
       } else {
         return 'No Chapter found';

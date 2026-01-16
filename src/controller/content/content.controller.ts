@@ -285,12 +285,19 @@ export class ContentController {
     type: Number,
     description: 'topic Id',
   })
+  @ApiQuery({
+    name: 'batchId',
+    required: false,
+    type: Number,
+    description: 'batch Id',
+  })
   @ApiBearerAuth('JWT-auth')
   async getChapterDetailsById(
     @Param('chapterId') chapterId: number,
     @Query('bootcampId') bootcampId: number,
     @Query('moduleId') moduleId: number,
     @Query('topicId') topicId: number,
+    @Query('batchId') batchId: number,
     @Req() req,
   ) {
     const userRole = req.user[0]?.roles;
@@ -300,6 +307,7 @@ export class ContentController {
       moduleId,
       topicId,
       userRole,
+      batchId,
     );
   }
 
