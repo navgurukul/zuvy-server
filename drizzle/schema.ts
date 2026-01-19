@@ -4077,3 +4077,73 @@ export const studentAssessment = main.table('student_assessment', {
 }, (table) => ({
   uniqStudentAssessment: unique("uniq_student_assessment").on(table.studentId, table.aiAssessmentId),
 }));
+
+
+// Zoom Session Recordings Tracking
+
+export const zuvySessionRecordings = main.table(
+  'zuvy_session_recordings',
+  {
+    id: serial('id').primaryKey().notNull(),
+
+    sessionId: integer('session_id')
+      .notNull()
+      .references(() => zuvySessions.id, { onDelete: 'cascade' }),
+
+    zoomMeetingId: text('zoom_meeting_id').notNull(),
+    zoomRecordingId: text('zoom_recording_id'),
+
+    status: varchar('status', { length: 32 })
+      .notNull()
+      .default('DISCOVERED'),
+    /*
+      DISCOVERED
+      METADATA_READY
+      DOWNLOADING
+      UPLOADING
+      COMPLETED
+      FAILED
+    */
+
+    retryCount: integer('retry_count').default(0),
+    lastError: text('last_error'),
+
+    driveFileId: text('drive_file_id'),
+    driveLink: text('drive_link'),
+
+    createdAt: timestamp('created_at', {
+      withTimezone: true,
+      mode: 'string',
+    }).defaultNow(),
+
+    updatedAt: timestamp('updated_at', {
+      withTimezone: true,
+      mode: 'string',
+    }).defaultNow(),
+  },
+  (table) => ({
+    uniqSessionRecording: unique('uniq_session_recording').on(
+      table.sessionId
+    ),
+  })
+);
+
+export const zoomWebhookEvents = main.table(
+  'zoom_webhook_events',
+  {
+    id: serial('id').primaryKey().notNull(),
+
+    eventId: text('event_id').notNull(),
+    eventType: text('event_type').notNull(),
+    meetingId: text('meeting_id'),
+    payload: jsonb('payload').notNull(),
+
+    receivedAt: timestamp('received_at', {
+      withTimezone: true,
+      mode: 'string',
+    }).defaultNow(),
+  },
+  (table) => ({
+    uniqZoomEvent: unique('uniq_zoom_event').on(table.eventId),
+  })
+);
