@@ -1015,7 +1015,6 @@ export class ClassesService {
       }));
 
       this.logger.log(`Saving ${sessionData.length} sessions to the database.`);
-
       const savedSessions = await db
         .insert(zuvySessions)
         .values(sessionData)
@@ -1575,9 +1574,30 @@ export class ClassesService {
       }
 
       if (deleteClassIds.length > 0) {
-        await db
-          .delete(zuvySessions)
+        // Get session IDs for the classes to be deleted
+        const sessionsToDelete = await db
+          .select({ id: zuvySessions.id })
+          .from(zuvySessions)
           .where(inArray(zuvySessions.meetingId, deleteClassIds));
+
+        const sessionIds = sessionsToDelete.map((s) => s.id);
+
+        // Delete in transaction to maintain referential integrity
+        await db.transaction(async (tx) => {
+          // First delete attendance records (child table with FK constraint)
+          if (sessionIds.length > 0) {
+            await tx
+              .delete(zuvyStudentAttendanceRecords)
+              .where(
+                inArray(zuvyStudentAttendanceRecords.sessionId, sessionIds),
+              );
+          }
+
+          // Then delete sessions
+          await tx
+            .delete(zuvySessions)
+            .where(inArray(zuvySessions.meetingId, deleteClassIds));
+        });
       }
 
       // Batch update all classes that need updates
@@ -2481,18 +2501,6 @@ export class ClassesService {
 
       const session = currentSession[0];
 
-      // Disallow edits after the session has started
-      const now = new Date();
-      const existingStart = session.startTime
-        ? new Date(session.startTime)
-        : null;
-      if (existingStart && existingStart.getTime() <= now.getTime()) {
-        return {
-          success: false,
-          message: 'Session has already started; updates are not allowed',
-        };
-      }
-
       // Check permissions (admin or session creator)
       if (
         !userInfo.roles?.includes('admin') &&
@@ -2507,6 +2515,31 @@ export class ClassesService {
       // Normalise incoming DTO fields
       const normalizedStart = updateData.startTime || updateData.startDateTime;
       const normalizedEnd = updateData.endTime || updateData.endDateTime;
+
+      // Validation: Check if session has already started
+      const now = new Date();
+      const existingStart = session.startTime
+        ? new Date(session.startTime)
+        : null;
+
+      // If session has already started and no new valid startTime is provided, block the update
+      if (existingStart && existingStart.getTime() <= now.getTime()) {
+        // Allow update only if providing a new future startTime
+        if (!normalizedStart) {
+          return {
+            success: false,
+            message:
+              'Session has already started; updates require a new future start time',
+          };
+        }
+        const requestedStart = new Date(normalizedStart);
+        if (requestedStart.getTime() <= now.getTime()) {
+          return {
+            success: false,
+            message: 'Cannot update to a start time in the past',
+          };
+        }
+      }
 
       // Convert IST to GMT for database storage (same as createZoomSession)
       // Frontend sends IST time, we need to store as GMT
@@ -2897,10 +2930,18 @@ export class ClassesService {
 
       // Delete session and attendance in a single transaction
       await db.transaction(async (tx) => {
-        await tx.delete(zuvySessions).where(eq(zuvySessions.id, sessionId));
+        // First delete from zuvy_student_attendance_records (child table with FK constraint)
+        await tx
+          .delete(zuvyStudentAttendanceRecords)
+          .where(eq(zuvyStudentAttendanceRecords.sessionId, sessionId));
+
+        // Then delete from zuvy_student_attendance (old attendance table)
         await tx
           .delete(zuvyStudentAttendance)
           .where(eq(zuvyStudentAttendance.meetingId, sessionData.meetingId));
+
+        // Finally delete the session itself
+        await tx.delete(zuvySessions).where(eq(zuvySessions.id, sessionId));
       });
 
       // Delete the linked chapter if it exists
