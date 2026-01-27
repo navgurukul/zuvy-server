@@ -12,11 +12,11 @@ import { OrgQueryDto } from './dto/org-query.dto';
 import { EmailService } from './email.service';
 import { db } from '../db/index';
 import {
-  organizations,
+  zuvyOrganizations,
   users,
   zuvyUserRoles,
   zuvyUserRolesAssigned,
-  userOrganizations,
+  zuvyUserOrganizations,
 } from '../../drizzle/schema';
 import { eq, and, ilike, or, sql, desc } from 'drizzle-orm';
 import { JwtService } from '@nestjs/jwt';
@@ -58,7 +58,7 @@ export class OrgService {
 
         // 2. Create Organization
         const [newOrg] = await tx
-          .insert(organizations)
+          .insert(zuvyOrganizations)
           .values(createOrgDtoValues)
           .returning();
 
@@ -107,7 +107,7 @@ export class OrgService {
           }
 
           // Link User to Organization
-          await tx.insert(userOrganizations).values({
+          await tx.insert(zuvyUserOrganizations).values({
             userId: userId,
             organizationId: newOrg.id,
           });
@@ -162,27 +162,27 @@ export class OrgService {
     if (search) {
       const searchLike = `%${search}%`;
       whereClause = or(
-        ilike(organizations.title, searchLike),
-        ilike(organizations.displayName, searchLike),
-        ilike(organizations.pocName, searchLike),
-        ilike(organizations.pocEmail, searchLike),
-        ilike(organizations.zuvyPocName, searchLike),
-        ilike(organizations.zuvyPocEmail, searchLike),
+        ilike(zuvyOrganizations.title, searchLike),
+        ilike(zuvyOrganizations.displayName, searchLike),
+        ilike(zuvyOrganizations.pocName, searchLike),
+        ilike(zuvyOrganizations.pocEmail, searchLike),
+        ilike(zuvyOrganizations.zuvyPocName, searchLike),
+        ilike(zuvyOrganizations.zuvyPocEmail, searchLike),
       );
     }
 
     const orgs = await db
       .select()
-      .from(organizations)
+      .from(zuvyOrganizations)
       .where(whereClause)
       .limit(limit)
       .offset(offset)
-      .orderBy(desc(organizations.createdAt));
+      .orderBy(desc(zuvyOrganizations.createdAt));
 
     // Get total count
     const [countResult] = await db
       .select({ count: sql<number>`count(*)` })
-      .from(organizations)
+      .from(zuvyOrganizations)
       .where(whereClause);
 
     const total = Number(countResult.count);
@@ -202,21 +202,22 @@ export class OrgService {
   async findOne(id: number) {
     const [org] = await db
       .select()
-      .from(organizations)
-      .where(eq(organizations.id, id));
+      .from(zuvyOrganizations)
+      .where(eq(zuvyOrganizations.id, id));
     if (!org) throw new NotFoundException('Organization not found');
     return org;
   }
 
   async update(id: number, updateOrgDto: UpdateOrgDto) {
     try {
+      const updateData = {
+        ...updateOrgDto,
+        updatedAt: new Date().toISOString(),
+      };
       const [updatedOrg] = await db
-        .update(organizations)
-        .set({
-          ...updateOrgDto,
-          updatedAt: new Date().toISOString(),
-        })
-        .where(eq(organizations.id, id))
+        .update(zuvyOrganizations)
+        .set(updateData)
+        .where(eq(zuvyOrganizations.id, id))
         .returning();
 
       if (!updatedOrg) throw new NotFoundException('Organization not found');
@@ -277,7 +278,7 @@ export class OrgService {
       const orgId = payload.orgId;
 
       // Perform actual delete
-      await db.delete(organizations).where(eq(organizations.id, orgId));
+      await db.delete(zuvyOrganizations).where(eq(zuvyOrganizations.id, orgId));
 
       return {
         status: 'success',
@@ -298,14 +299,15 @@ export class OrgService {
     }
 
     try {
+      const updatedValues = {
+        ...updateData,
+        isVerified: true,
+        updatedAt: new Date().toISOString(),
+      };
       const [updatedOrg] = await db
-        .update(organizations)
-        .set({
-          ...updateData,
-          isVerified: true, // Lock it
-          updatedAt: new Date().toISOString(),
-        })
-        .where(eq(organizations.id, id))
+        .update(zuvyOrganizations)
+        .set(updatedValues)
+        .where(eq(zuvyOrganizations.id, id))
         .returning();
 
       return {

@@ -2426,7 +2426,7 @@ export const zuvyBootcamps = main.table('zuvy_bootcamps', {
   startTime: timestamp('start_time', { withTimezone: true, mode: 'string' }),
   duration: integer('duration'),
   language: text('language'),
-  organizationId: integer('organization_id').default(null).references(() => organizations.id, {
+  organizationId: integer('organization_id').default(null).references(() => zuvyOrganizations.id, {
     onDelete: 'cascade'
   }),
   createdAt: timestamp('created_at', {
@@ -3963,7 +3963,7 @@ export const usersExtraPermissionsRelations = relations(users, ({ many }) => ({
 }));
 
 // create orgnization table
-export const organizations = main.table('organizations', {
+export const zuvyOrganizations = main.table('zuvy_organizations', {
   id: serial('id').primaryKey().notNull(),
   title: varchar('title', { length: 255 }).notNull(),
   displayName: varchar('display_name', { length: 255 }).notNull(),
@@ -3979,37 +3979,37 @@ export const organizations = main.table('organizations', {
   version: varchar('version', { length: 10 })
 }, (table) => ({
   // add the db index
-  orgTitleIdx: index('org_title_idx').on(table.title),
-  isVerifiedIdx: index('organizations_is_verified_idx').on(table.isVerified),
-  createdAtIdx: index('organizations_created_at_idx').on(table.createdAt),
+  orgTitleIdx: index('zuvy_organizations_title_idx').on(table.title),
+  isVerifiedIdx: index('zuvy_organizations_is_verified_idx').on(table.isVerified),
+  createdAtIdx: index('zuvy_organizations_created_at_idx').on(table.createdAt),
 }));
 
 // create user and organizations table
-export const userOrganizations = main.table('user_organizations', {
+export const zuvyUserOrganizations = main.table('zuvy_user_organizations', {
   id: serial('id').primaryKey().notNull(),
   userId: bigint('user_id', { mode: 'bigint' }).notNull().references(() => users.id),
-  organizationId: integer('organization_id').notNull().references(() => organizations.id, { onDelete: 'cascade' }),
+  organizationId: integer('organization_id').notNull().references(() => zuvyOrganizations.id, { onDelete: 'cascade' }),
   joinedAt: timestamp('joined_at', { withTimezone: true, mode: 'string' }).defaultNow(),
 }, (table) => ({
-  uniqUserOrganization: unique("uniq_user_organization").on(table.userId, table.organizationId),
+  uniqUserOrganization: unique("zuvy_user_organizations_uniq_user_organization").on(table.userId, table.organizationId),
   // add the db index
-  userIdIdx: index('user_org_user_id_idx').on(table.userId),
-  organizationIdIdx: index('user_org_org_id_idx').on(table.organizationId),
-  joinedAtIdx: index('user_org_joined_at_idx').on(table.joinedAt),
+  userIdIdx: index('zuvy_user_organizations_user_id_idx').on(table.userId),
+  organizationIdIdx: index('zuvy_user_organizations_organization_id_idx').on(table.organizationId),
+  joinedAtIdx: index('zuvy_user_organizations_joined_at_idx').on(table.joinedAt),
 }));
 
 // create relations between organizations and userorganizations
-export const organizationsRelations = relations(organizations, ({ many }) => ({
-  userOrganizations: many(userOrganizations),
+export const organizationsRelations = relations(zuvyOrganizations, ({ many }) => ({
+  userOrganizations: many(zuvyUserOrganizations),
 }));
 
-export const userOrganizationsRelations = relations(userOrganizations, ({ one }) => ({
+export const userOrganizationsRelations = relations(zuvyUserOrganizations, ({ one }) => ({
   user: one(users, {
-    fields: [userOrganizations.userId],
+    fields: [zuvyUserOrganizations.userId],
     references: [users.id],
   }),
-  organization: one(organizations, {
-    fields: [userOrganizations.organizationId],
-    references: [organizations.id],
+  organization: one(zuvyOrganizations, {
+    fields: [zuvyUserOrganizations.organizationId],
+    references: [zuvyOrganizations.id],
   }),
 }));

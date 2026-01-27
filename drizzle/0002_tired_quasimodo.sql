@@ -505,3 +505,56 @@ CREATE TABLE "student_assessment" (
     UNIQUE ("student_id", "ai_assessment_id")
 );
 
+
+
+-- orgnization: zuvy
+CREATE TABLE "zuvy_organizations" (
+    "id" SERIAL PRIMARY KEY NOT NULL,
+    "title" VARCHAR(255) NOT NULL,
+    "display_name" VARCHAR(255) NOT NULL,
+    "is_managed_by_zuvy" BOOLEAN NOT NULL DEFAULT false,
+    "logo_url" VARCHAR(500),
+    "poc_name" VARCHAR(255),
+    "poc_email" VARCHAR(255),
+    "zuvy_poc_name" VARCHAR(255),
+    "zuvy_poc_email" VARCHAR(255),
+    "is_verified" BOOLEAN NOT NULL DEFAULT false,
+    "created_at" TIMESTAMPTZ DEFAULT NOW(),
+    "updated_at" TIMESTAMPTZ DEFAULT NOW(),
+    "version" VARCHAR(10)
+);
+
+-- Create indexes
+CREATE INDEX "zuvy_organizations_title_idx" ON "zuvy_organizations" ("title");
+CREATE INDEX "zuvy_organizations_is_verified_idx" ON "zuvy_organizations" ("is_verified");
+CREATE INDEX "zuvy_organizations_created_at_idx" ON "zuvy_organizations" ("created_at");
+ALTER TABLE "zuvy_organizations" ADD CONSTRAINT "zuvy_organizations_title_unique" UNIQUE("title");
+
+-- Create user_organizations table
+CREATE TABLE "zuvy_user_organizations" (
+    "id" SERIAL PRIMARY KEY,
+    "user_id" BIGINT NOT NULL,
+    "organization_id" INTEGER NOT NULL,
+    "joined_at" TIMESTAMPTZ DEFAULT NOW(),
+
+    CONSTRAINT "zuvy_user_organizations_user_id_fkey"
+        FOREIGN KEY ("user_id")
+        REFERENCES "users"("id"),
+
+    CONSTRAINT "zuvy_user_organizations_organization_id_fkey"
+        FOREIGN KEY ("organization_id")
+        REFERENCES "zuvy_organizations"("id")
+        ON DELETE CASCADE,
+
+    CONSTRAINT "zuvy_user_organizations_uniq_user_organization"
+        UNIQUE ("user_id", "organization_id")
+);
+
+CREATE INDEX "zuvy_user_organizations_user_id_idx"
+    ON "zuvy_user_organizations" ("user_id");
+
+CREATE INDEX "zuvy_user_organizations_organization_id_idx"
+    ON "zuvy_user_organizations" ("organization_id");
+
+CREATE INDEX "zuvy_user_organizations_joined_at_idx"
+    ON "zuvy_user_organizations" ("joined_at");
