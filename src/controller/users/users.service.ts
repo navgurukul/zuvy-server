@@ -708,6 +708,26 @@ export class UsersService {
             .from(zuvyUserRolesAssigned)
             .where(eq(zuvyUserRolesAssigned.userId, existingUser.id));
 
+          // If the same email is being re-used after a delete, refresh the name
+          if (
+            createUserDto.name &&
+            createUserDto.name.trim() !== '' &&
+            createUserDto.name !== existingUser.name
+          ) {
+            const [updatedUser] = await tx
+              .update(users)
+              .set({
+                name: createUserDto.name,
+                updatedAt: new Date().toISOString(),
+              })
+              .where(eq(users.id, existingUser.id))
+              .returning();
+
+            if (updatedUser) {
+              user = updatedUser;
+            }
+          }
+
           const hasSameRole = existingAssignments.some(
             (assignment) =>
               Number(assignment.roleId) === Number(createUserDto.roleId),
