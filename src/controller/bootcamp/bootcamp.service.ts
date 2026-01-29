@@ -29,6 +29,7 @@ import {
   zuvyRecentBootcamp,
   zuvyModuleTracking,
   AttendanceStatus,
+  zuvyUserOrganizations,
 } from '../../../drizzle/schema';
 import { editUserDetailsDto } from './dto/bootcamp.dto';
 import { batch } from 'googleapis/build/src/apis/batch';
@@ -88,13 +89,72 @@ export class BootcampService {
     limit: number,
     offset: number,
     searchTerm?: string | number,
+    organization_id?: number,
   ): Promise<any> {
     try {
       let query;
       let countQuery;
+
+      // Fetch user's organizations
+      const userOrgs = await db
+        .select()
+        .from(zuvyUserOrganizations)
+        .where(eq(zuvyUserOrganizations.userId, userId));
+
+      let filterOrgId = organization_id;
+
+      // Regular User / Admin Logic (Applied to everyone now):
+      if (filterOrgId) {
+        // Verify user belongs to the requested organization
+        const belongsToOrg = userOrgs.some(
+          (org) => org.organizationId == filterOrgId,
+        );
+        if (!belongsToOrg) {
+          // If user doesn't belong to the requested org, restrict access.
+          return [
+            null,
+            {
+              data: [],
+              permissions: {},
+              totalBootcamps: 0,
+              totalPages: 0,
+              message:
+                "You do not have access to this organization's bootcamps.",
+            },
+          ];
+        }
+      } else {
+        // Organization ID NOT provided -> Default Logic
+        if (userOrgs.length > 0) {
+          // Default to the first organization
+          filterOrgId = userOrgs[0].organizationId;
+        } else {
+          // User has NO organizations.
+          // Strict mode: Only show bootcamps from user's orgs. If none, show none.
+          return [
+            null,
+            {
+              data: [],
+              permissions: {},
+              totalBootcamps: 0,
+              totalPages: 0,
+              message: 'You are not associated with any organization.',
+            },
+          ];
+        }
+      }
+
+      let orgCondition = undefined;
+      if (filterOrgId) {
+        orgCondition = eq(zuvyBootcamps.organizationId, filterOrgId);
+      }
+
       if (searchTerm) {
         if (typeof searchTerm === 'string') {
-          const searchCondition = sql`LOWER(${zuvyBootcamps.name}) LIKE ${searchTerm.toLowerCase()} || '%'`;
+          let searchCondition = sql`LOWER(${zuvyBootcamps.name}) LIKE ${searchTerm.toLowerCase()} || '%'`;
+          if (orgCondition) {
+            searchCondition = and(searchCondition, orgCondition);
+          }
           query = db
             .select()
             .from(zuvyBootcamps)
@@ -106,7 +166,10 @@ export class BootcampService {
             .from(zuvyBootcamps)
             .where(searchCondition);
         } else {
-          const searchCondition = sql`${zuvyBootcamps.id} = ${searchTerm}`;
+          let searchCondition = sql`${zuvyBootcamps.id} = ${searchTerm}`;
+          if (orgCondition) {
+            searchCondition = and(searchCondition, orgCondition);
+          }
           query = db
             .select()
             .from(zuvyBootcamps)
@@ -137,22 +200,36 @@ export class BootcampService {
             },
           ];
         }
+
+        let condition = inArray(zuvyBootcamps.id, bootcampIds);
+        if (orgCondition) {
+          condition = and(condition, orgCondition);
+        }
+
         query = db
           .select()
           .from(zuvyBootcamps)
-          .where(inArray(zuvyBootcamps.id, bootcampIds))
+          .where(condition)
           .limit(limit)
           .offset(offset);
 
         countQuery = db
           .select({ count: count(zuvyBootcamps.id) })
           .from(zuvyBootcamps)
-          .where(inArray(zuvyBootcamps.id, bootcampIds));
+          .where(condition);
       } else {
-        query = db.select().from(zuvyBootcamps).limit(limit).offset(offset);
+        query = db.select().from(zuvyBootcamps);
+        if (orgCondition) {
+          query = query.where(orgCondition);
+        }
+        query = query.limit(limit).offset(offset);
+
         countQuery = db
           .select({ count: count(zuvyBootcamps.id) })
           .from(zuvyBootcamps);
+        if (orgCondition) {
+          countQuery = countQuery.where(orgCondition);
+        }
       }
 
       const getBootcamps = await query;

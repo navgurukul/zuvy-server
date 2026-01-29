@@ -116,6 +116,21 @@ export class OrgController {
     return await this.orgService.confirmDelete(token);
   }
 
+  // create a endpoint  to get org by user id
+  @Get('/getOrgByUserId/:userId')
+  @ApiOperation({ summary: 'Get organization by user ID' })
+  @ApiResponse({
+    status: 200,
+    description: 'The organization has been successfully retrieved.',
+  })
+  @ApiResponse({ status: 403, description: 'Forbidden.' })
+  @ApiResponse({ status: 404, description: 'Not Found.' })
+  @ApiResponse({ status: 500, description: 'Internal Server Error.' })
+  @ApiBearerAuth('JWT-auth')
+  async getOrgByUserId(@Param('userId') userId: string) {
+    return await this.orgService.getOrgByUserId(+userId);
+  }
+
   @Patch('/complete-setup/:id')
   @ApiOperation({
     summary: 'Complete organization setup (POC only, verifies org)',

@@ -9,7 +9,7 @@ import {
 import { CreateOrgDto } from './dto/create-org.dto';
 import { UpdateOrgDto } from './dto/update-org.dto';
 import { OrgQueryDto } from './dto/org-query.dto';
-import { EmailService } from './email.service';
+import { NotificationEmailService } from '../notification/email/email.service';
 import { db } from '../db/index';
 import {
   zuvyOrganizations,
@@ -26,7 +26,7 @@ export class OrgService {
   private readonly logger = new Logger(OrgService.name);
 
   constructor(
-    private readonly emailService: EmailService,
+    private readonly notificationEmailService: NotificationEmailService,
     private readonly jwtService: JwtService,
   ) {}
 
@@ -130,11 +130,24 @@ export class OrgService {
       // 5. Send Email (After transaction)
       const magicLink = `https://zuvy.org/setup-org/${result.id}`;
       try {
-        await this.emailService.sendOrgCreationEmail(
-          createOrgDto.pocEmail,
-          createOrgDto.displayName,
-          magicLink,
-        );
+        const subject = `Welcome to Zuvy - Complete ${createOrgDto.displayName} Setup`;
+        const html = `
+          <h1>Welcome to Zuvy!</h1>
+          <p>You have been invited to set up the organization <b>${createOrgDto.displayName}</b>.</p>
+          <p>Please click the link below to complete your profile and organization details:</p>
+          <a href="${magicLink}">Complete Setup</a>
+          <p>If you did not request this, please ignore this email.</p>
+        `;
+
+        const emailBuilder = this.notificationEmailService
+          .createEmail()
+          .setProvider('ses')
+          .setTo(createOrgDto.pocEmail)
+          .setSubject(subject)
+          .setTemplate(html)
+          .setData({});
+
+        await emailBuilder.send();
       } catch (emailError) {
         this.logger.error(
           `Failed to send email to ${createOrgDto.pocEmail}: ${emailError.message}`,
@@ -208,6 +221,37 @@ export class OrgService {
     return org;
   }
 
+  async getOrgByUserId(userId: number) {
+    try {
+      const orgs = await db
+        .select({
+          id: zuvyOrganizations.id,
+          title: zuvyOrganizations.title,
+          displayName: zuvyOrganizations.displayName,
+          logoUrl: zuvyOrganizations.logoUrl,
+          isVerified: zuvyOrganizations.isVerified,
+          joinedAt: zuvyUserOrganizations.joinedAt,
+        })
+        .from(zuvyUserOrganizations)
+        .innerJoin(
+          zuvyOrganizations,
+          eq(zuvyUserOrganizations.organizationId, zuvyOrganizations.id),
+        )
+        .where(eq(zuvyUserOrganizations.userId, BigInt(userId)));
+
+      return {
+        status: 'success',
+        message: 'Organizations fetched successfully',
+        statusCode: 200,
+        data: orgs,
+      };
+    } catch (error) {
+      throw new InternalServerErrorException(
+        `Failed to fetch organizations: ${error.message}`,
+      );
+    }
+  }
+
   async update(id: number, updateOrgDto: UpdateOrgDto) {
     try {
       const updateData = {
@@ -246,7 +290,7 @@ export class OrgService {
 
     // Send to POC
     if (org.pocEmail) {
-      await this.emailService.sendDeletePermissionEmail(
+      await this.sendDeletePermissionEmail(
         org.pocEmail,
         org.displayName,
         deleteLink,
@@ -254,7 +298,7 @@ export class OrgService {
     }
     // Send to Zuvy POC if exists
     if (org.zuvyPocEmail) {
-      await this.emailService.sendDeletePermissionEmail(
+      await this.sendDeletePermissionEmail(
         org.zuvyPocEmail,
         org.displayName,
         deleteLink,
@@ -325,5 +369,39 @@ export class OrgService {
   // Backwards compatibility for controller if needed, but we will update controller
   remove(id: number) {
     return this.initiateDelete(id);
+  }
+
+  private async sendDeletePermissionEmail(
+    to: string,
+    orgName: string,
+    deleteLink: string,
+  ) {
+    if (!to) return;
+    const subject = `Action Required: Confirm Deletion of ${orgName}`;
+    const html = `
+        <h1>Organization Deletion Request</h1>
+        <p>A request has been made to delete the organization <b>${orgName}</b>.</p>
+        <p>If you approve this action, please click the link below to confirm the deletion:</p>
+        <a href="${deleteLink}">Confirm Deletion</a>
+        <p><b>This action cannot be undone.</b></p>
+        <p>If you did not request this, please ignore this email and contact support immediately.</p>
+      `;
+
+    try {
+      const emailBuilder = this.notificationEmailService
+        .createEmail()
+        .setProvider('ses')
+        .setTo(to)
+        .setSubject(subject)
+        .setTemplate(html)
+        .setData({})
+        .setConfig({ from: '"Zuvy Support" <support@zuvy.org>' });
+
+      await emailBuilder.send();
+    } catch (error) {
+      this.logger.error(
+        `Failed to send delete permission email to ${to}: ${error.message}`,
+      );
+    }
   }
 }

@@ -70,11 +70,18 @@ export class BootcampController {
     type: String,
     description: 'Search by name or id in bootcamps',
   })
+  @ApiQuery({
+    name: 'organization_id',
+    required: false,
+    type: Number,
+    description: 'Filter by organization id',
+  })
   @ApiBearerAuth('JWT-auth')
   async getAllBootcamps(
     @Query('limit') limit: number,
     @Query('offset') offset: number,
     @Query('searchTerm') searchTerm: string,
+    @Query('organization_id') organization_id: number,
     @Req() req,
   ): Promise<object> {
     const searchTermAsNumber = !isNaN(Number(searchTerm))
@@ -88,6 +95,7 @@ export class BootcampController {
       limit,
       offset,
       searchTermAsNumber,
+      organization_id,
     );
 
     if (err) {

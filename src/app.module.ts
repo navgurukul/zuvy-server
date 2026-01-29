@@ -32,6 +32,7 @@ import { QuestionsByLlmModule } from './questions-by-llm/questions-by-llm.module
 import { LevelModule } from './level/level.module';
 import { AiAssessmentModule } from './ai-assessment/ai-assessment.module';
 import { OrgModule } from './org/org.module';
+import { NotificationModule } from './notification/notification.module';
 let { GOOGLE_CLIENT_ID, GOOGLE_SECRET, GOOGLE_REDIRECT, JWT_SECRET_KEY } =
   process.env;
 @Module({
@@ -69,6 +70,7 @@ let { GOOGLE_CLIENT_ID, GOOGLE_SECRET, GOOGLE_REDIRECT, JWT_SECRET_KEY } =
     LevelModule,
     AiAssessmentModule,
     OrgModule,
+    NotificationModule,
   ],
   providers: [
     {

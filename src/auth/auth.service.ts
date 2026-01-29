@@ -9,8 +9,8 @@ import {
   zuvyUserRoles,
   sansaarUserRoles,
   userTokens,
-  organizations,
-  userOrganizations,
+  zuvyOrganizations,
+  zuvyUserOrganizations,
 } from '../../drizzle/schema';
 import { eq, inArray } from 'drizzle-orm';
 import { OAuth2Client } from 'google-auth-library';
@@ -217,15 +217,15 @@ export class AuthService {
       // Get User Org
       const [userOrg] = await db
         .select({
-          orgId: organizations.id,
-          orgName: organizations.displayName,
+          orgId: zuvyOrganizations.id,
+          orgName: zuvyOrganizations.displayName,
         })
-        .from(userOrganizations)
+        .from(zuvyUserOrganizations)
         .innerJoin(
-          organizations,
-          eq(userOrganizations.organizationId, organizations.id),
+          zuvyOrganizations,
+          eq(zuvyUserOrganizations.organizationId, zuvyOrganizations.id),
         )
-        .where(eq(userOrganizations.userId, user.id))
+        .where(eq(zuvyUserOrganizations.userId, user.id))
         .limit(1);
 
       const jwtPayload = {
@@ -391,15 +391,15 @@ export class AuthService {
       // Get User Org
       const [userOrg] = await db
         .select({
-          orgId: organizations.id,
-          orgName: organizations.displayName,
+          orgId: zuvyOrganizations.id,
+          orgName: zuvyOrganizations.displayName,
         })
-        .from(userOrganizations)
+        .from(zuvyUserOrganizations)
         .innerJoin(
-          organizations,
-          eq(userOrganizations.organizationId, organizations.id),
+          zuvyOrganizations,
+          eq(zuvyUserOrganizations.organizationId, zuvyOrganizations.id),
         )
-        .where(eq(userOrganizations.userId, user.id))
+        .where(eq(zuvyUserOrganizations.userId, user.id))
         .limit(1);
 
       // Generate new tokens
