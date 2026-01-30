@@ -31,6 +31,9 @@ import { LlmModule } from './llm/llm.module';
 import { QuestionsByLlmModule } from './questions-by-llm/questions-by-llm.module';
 import { LevelModule } from './level/level.module';
 import { AiAssessmentModule } from './ai-assessment/ai-assessment.module';
+import { ZoomService } from './services/zoom/zoom.service';
+import { RecordingWorkerService } from './services/recording-worker.service';
+
 let { GOOGLE_CLIENT_ID, GOOGLE_SECRET, GOOGLE_REDIRECT, JWT_SECRET_KEY } =
   process.env;
 @Module({
@@ -80,6 +83,8 @@ let { GOOGLE_CLIENT_ID, GOOGLE_SECRET, GOOGLE_REDIRECT, JWT_SECRET_KEY } =
     JwtMiddleware,
     Reflector,
     AuthService,
+    ZoomService,
+    RecordingWorkerService,
   ],
 })
 export class AppModule implements NestModule {

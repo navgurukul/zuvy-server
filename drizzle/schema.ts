@@ -2253,6 +2253,7 @@ export const zuvySessions = main.table('zuvy_sessions', {
   zoomStartUrl: text('zoom_start_url'), // Admin start URL for Zoom
   zoomPassword: text('zoom_password'),
   zoomMeetingId: text('zoom_meeting_id'), // Zoom meeting ID
+  zoomMeetingUuid: text('zoom_meeting_uuid'),
   // merged  
   hasBeenMerged: boolean('has_been_merged').default(false),
   isParentSession: boolean('is_parent_session').default(false),
@@ -4091,6 +4092,7 @@ export const zuvySessionRecordings = main.table(
       .references(() => zuvySessions.id, { onDelete: 'cascade' }),
 
     zoomMeetingId: text('zoom_meeting_id').notNull(),
+    zoomMeetingUuid: text('zoom_meeting_uuid').default(null),
     zoomRecordingId: text('zoom_recording_id'),
 
     status: varchar('status', { length: 32 })
