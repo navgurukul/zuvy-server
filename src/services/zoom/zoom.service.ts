@@ -1088,19 +1088,6 @@ export class ZoomService {
     return response.data;
   }
 
-  async getZoomRecordingFilesByUUID(
-    uuid: string,
-  ): Promise<ZoomRecordingDetails> {
-    // Zoom UUIDs can contain / + = so MUST be encoded
-    const safeUuid = encodeURIComponent(uuid);
-
-    const url = `${this.baseUrl}/meetings/${safeUuid}/recordings`;
-    const response = await axios.get(url, {
-      headers: await this.getHeaders(),
-    });
-    return response.data;
-  }
-
   async deleteFromZoomCloud(meetingId: string | number, recordingId: string) {
     // Note: Zoom API uses the meeting UUID for deletion, which might be different from the ID.
     // For simplicity, this example assumes meetingId can be used, but you may need to fetch the UUID.
@@ -1111,5 +1098,58 @@ export class ZoomService {
     const url = `${this.baseUrl}/meetings/${encodedUuid}/recordings`;
     await axios.delete(url, { headers: await this.getHeaders() });
     this.logger.log(`Deleted Zoom recording for meeting ${meetingId}`);
+  }
+
+  async getZoomRecordingFilesByUuid(
+    uuid: string,
+  ): Promise<ZoomRecordingDetails> {
+    // Zoom UUIDs can contain / + = so MUST be encoded
+    const encodedUuid = encodeURIComponent(uuid);
+    const url = `${this.baseUrl}/meetings/${encodedUuid}/recordings`;
+
+    const response = await axios.get(url, {
+      headers: await this.getHeaders(),
+    });
+    return response.data;
+  }
+
+  /**
+   * Fetch Zoom recordings using UUID (preferred) with safe encoding.
+   * Falls back to meetingId if UUID fails.
+   */
+  async getZoomRecordingFilesSafe(params: {
+    meetingId: string | number;
+    meetingUuid?: string | null;
+  }): Promise<any> {
+    const headers = await this.getHeaders();
+
+    // Try UUID first (Zoom best practice)
+    if (params.meetingUuid) {
+      try {
+        // Zoom requires UUID to be URL-encoded (base64 safe)
+        const encodedUuid = encodeURIComponent(params.meetingUuid);
+
+        const uuidUrl = `${this.baseUrl}/meetings/${encodedUuid}/recordings`;
+        const uuidResp = await axios.get(uuidUrl, { headers });
+
+        return {
+          source: 'uuid',
+          ...uuidResp.data,
+        };
+      } catch (err: any) {
+        this.logger.warn(
+          `UUID fetch failed for ${params.meetingUuid}, falling back to meetingId`,
+        );
+      }
+    }
+
+    // Fallback to meetingId
+    const idUrl = `${this.baseUrl}/meetings/${params.meetingId}/recordings`;
+    const idResp = await axios.get(idUrl, { headers });
+
+    return {
+      source: 'meetingId',
+      ...idResp.data,
+    };
   }
 }

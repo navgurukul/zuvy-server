@@ -579,6 +579,16 @@ export class ClassesService {
       // Save sessions to database
       const saveResult = await this.saveSessionsToDatabase(sessionsToCreate);
 
+      // Enqueue recording job AFTER session is saved
+      for (const saved of saveResult.data) {
+        await this.enqueueRecordingJob({
+          id: saved.id,
+          zoomMeetingId: saved.zoomMeetingId,
+          zoomMeetingUuid: saved.zoomMeetingUuid,
+          isZoomMeet: saved.isZoomMeet,
+        });
+      }
+
       if (saveResult.status === 'error') {
         throw new Error(saveResult.message);
       }

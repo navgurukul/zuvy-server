@@ -4108,6 +4108,10 @@ export const zuvySessionRecordings = main.table(
     */
 
     retryCount: integer('retry_count').default(0),
+    nextRetryAt: timestamp('next_retry_at', {
+      withTimezone: true,
+      mode: 'string',
+    }),
     lastError: text('last_error'),
 
     driveFileId: text('drive_file_id'),
