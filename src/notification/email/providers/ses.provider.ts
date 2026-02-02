@@ -1,10 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import * as nodemailer from 'nodemailer';
 import * as AWS from 'aws-sdk';
-import { EmailProvider } from './email-provider.interface';
-
 @Injectable()
-export class SesProvider implements EmailProvider {
+export class SesProvider {
   private transporter;
 
   constructor() {

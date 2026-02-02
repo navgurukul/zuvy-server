@@ -7,6 +7,7 @@ import {
   Param,
   Delete,
   Query,
+  ParseIntPipe,
 } from '@nestjs/common';
 import { OrgService } from './org.service';
 import { CreateOrgDto } from './dto/create-org.dto';
@@ -67,8 +68,8 @@ export class OrgController {
   @ApiResponse({ status: 404, description: 'Not Found.' })
   @ApiResponse({ status: 500, description: 'Internal Server Error.' })
   @ApiBearerAuth('JWT-auth')
-  findOne(@Param('id') id: string) {
-    return this.orgService.findOne(+id);
+  findOne(@Param('id') id: number) {
+    return this.orgService.findOne(id);
   }
 
   @Patch('/updateOrgById/:id')
@@ -82,8 +83,8 @@ export class OrgController {
   @ApiResponse({ status: 404, description: 'Not Found.' })
   @ApiResponse({ status: 500, description: 'Internal Server Error.' })
   @ApiBearerAuth('JWT-auth')
-  update(@Param('id') id: string, @Body() updateOrgDto: UpdateOrgDto) {
-    return this.orgService.update(+id, updateOrgDto);
+  update(@Param('id') id: number, @Body() updateOrgDto: UpdateOrgDto) {
+    return this.orgService.update(id, updateOrgDto);
   }
 
   @Delete('/deleteOrgById/:id')
@@ -98,8 +99,8 @@ export class OrgController {
   @ApiResponse({ status: 404, description: 'Not Found.' })
   @ApiResponse({ status: 500, description: 'Internal Server Error.' })
   @ApiBearerAuth('JWT-auth')
-  remove(@Param('id') id: string) {
-    return this.orgService.initiateDelete(+id);
+  remove(@Param('id') id: number) {
+    return this.orgService.initiateDelete(id);
   }
 
   @Post('/delete/confirm')
@@ -127,8 +128,8 @@ export class OrgController {
   @ApiResponse({ status: 404, description: 'Not Found.' })
   @ApiResponse({ status: 500, description: 'Internal Server Error.' })
   @ApiBearerAuth('JWT-auth')
-  async getOrgByUserId(@Param('userId') userId: string) {
-    return await this.orgService.getOrgByUserId(+userId);
+  async getOrgByUserId(@Param('userId') userId: number) {
+    return await this.orgService.getOrgByUserId(userId);
   }
 
   @Patch('/complete-setup/:id')
@@ -142,9 +143,9 @@ export class OrgController {
     description: 'Already verified or invalid data.',
   })
   async completeSetup(
-    @Param('id') id: string,
+    @Param('id') id: number,
     @Body() updateOrgDto: UpdateOrgDto,
   ) {
-    return await this.orgService.completeSetup(+id, updateOrgDto);
+    return await this.orgService.completeSetup(id, updateOrgDto);
   }
 }

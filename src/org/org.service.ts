@@ -139,15 +139,13 @@ export class OrgService {
           <p>If you did not request this, please ignore this email.</p>
         `;
 
-        const emailBuilder = this.notificationEmailService
-          .createEmail()
-          .setProvider('ses')
-          .setTo(createOrgDto.pocEmail)
-          .setSubject(subject)
-          .setTemplate(html)
-          .setData({});
-
-        await emailBuilder.send();
+        await this.notificationEmailService.sendEmail(
+          createOrgDto.pocEmail,
+          subject,
+          html,
+          {},
+          'ses',
+        );
       } catch (emailError) {
         this.logger.error(
           `Failed to send email to ${createOrgDto.pocEmail}: ${emailError.message}`,
@@ -202,6 +200,8 @@ export class OrgService {
 
     return {
       status: 'success',
+      message: 'Organizations fetched successfully',
+      statusCode: 200,
       data: orgs,
       meta: {
         total,
@@ -388,16 +388,14 @@ export class OrgService {
       `;
 
     try {
-      const emailBuilder = this.notificationEmailService
-        .createEmail()
-        .setProvider('ses')
-        .setTo(to)
-        .setSubject(subject)
-        .setTemplate(html)
-        .setData({})
-        .setConfig({ from: '"Zuvy Support" <support@zuvy.org>' });
-
-      await emailBuilder.send();
+      await this.notificationEmailService.sendEmail(
+        to,
+        subject,
+        html,
+        {},
+        'ses',
+        { from: '"Zuvy Support" <support@zuvy.org>' },
+      );
     } catch (error) {
       this.logger.error(
         `Failed to send delete permission email to ${to}: ${error.message}`,

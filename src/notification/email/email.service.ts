@@ -1,8 +1,15 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
 import { TemplateService } from './templates/template.service';
-import { EmailProvider } from './providers/email-provider.interface';
-import { EmailBuilder } from './email.builder';
+// Basic interface for providers (since we are removing builder, defining here or importing from a shared place)
+export interface EmailProvider {
+  sendEmail(
+    to: string,
+    subject: string,
+    body: string,
+    config?: any,
+  ): Promise<any>;
+}
 
 @Injectable()
 export class NotificationEmailService {
@@ -13,12 +20,14 @@ export class NotificationEmailService {
     private templateService: TemplateService,
   ) {}
 
-  createEmail(): EmailBuilder {
-    return new EmailBuilder(this);
-  }
-
-  async sendEmail(builder: EmailBuilder) {
-    const providerName = builder.provider;
+  async sendEmail(
+    to: string,
+    subject: string,
+    template: string,
+    data: any,
+    providerName: string = 'ses',
+    config: any = {},
+  ) {
     let provider: EmailProvider;
 
     try {
@@ -29,16 +38,11 @@ export class NotificationEmailService {
       );
     }
 
-    const body = this.templateService.render(builder.template, builder.data);
+    const body = this.templateService.render(template, data);
 
     try {
-      this.logger.log(`Sending email via ${providerName} to ${builder.to}`);
-      const result = await provider.sendEmail(
-        builder.to,
-        builder.subject,
-        body,
-        builder.config,
-      );
+      this.logger.log(`Sending email via ${providerName} to ${to}`);
+      const result = await provider.sendEmail(to, subject, body, config);
       this.logger.log(`Email sent successfully via ${providerName}`);
       return result;
     } catch (error) {
