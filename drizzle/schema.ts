@@ -4134,8 +4134,8 @@ export const zuvySessionRecordings = main.table(
   })
 );
 
-export const zoomWebhookEvents = main.table(
-  'zoom_webhook_events',
+export const zuvyZoomWebhookEvents = main.table(
+  'zuvy_zoom_webhook_events',
   {
     id: serial('id').primaryKey().notNull(),
 
@@ -4148,6 +4148,16 @@ export const zoomWebhookEvents = main.table(
       withTimezone: true,
       mode: 'string',
     }).defaultNow(),
+    processingStatus: varchar('processing_status', { 
+      length: 32 
+    }).default('RECEIVED'),
+    /*
+      RECEIVED
+      PROCESSED
+      IGNORED
+      FAILED
+    */
+    processingError: text('processing_error'),
   },
   (table) => ({
     uniqZoomEvent: unique('uniq_zoom_event').on(table.eventId),

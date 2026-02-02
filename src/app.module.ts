@@ -32,7 +32,10 @@ import { QuestionsByLlmModule } from './questions-by-llm/questions-by-llm.module
 import { LevelModule } from './level/level.module';
 import { AiAssessmentModule } from './ai-assessment/ai-assessment.module';
 import { ZoomService } from './services/zoom/zoom.service';
-import { RecordingWorkerService } from './services/recording-worker.service';
+import { RecordingWorkerService } from './services/recording-worker/recording-worker.service';
+import { ZoomWebhookModule } from './webhooks/zoom/zoom.webhook.module';
+import { RecordingWorkerTriggerService } from './services/recording-worker/recording-worker-trigger.service';
+import { RecordingWorkerModule } from './services/recording-worker/recording-worker.module';
 
 let { GOOGLE_CLIENT_ID, GOOGLE_SECRET, GOOGLE_REDIRECT, JWT_SECRET_KEY } =
   process.env;
@@ -70,6 +73,8 @@ let { GOOGLE_CLIENT_ID, GOOGLE_SECRET, GOOGLE_REDIRECT, JWT_SECRET_KEY } =
     QuestionsByLlmModule,
     LevelModule,
     AiAssessmentModule,
+    RecordingWorkerModule,
+    ZoomWebhookModule,
   ],
   providers: [
     {
@@ -85,6 +90,7 @@ let { GOOGLE_CLIENT_ID, GOOGLE_SECRET, GOOGLE_REDIRECT, JWT_SECRET_KEY } =
     AuthService,
     ZoomService,
     RecordingWorkerService,
+    RecordingWorkerTriggerService,
   ],
 })
 export class AppModule implements NestModule {

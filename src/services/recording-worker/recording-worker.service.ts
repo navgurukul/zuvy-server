@@ -1,12 +1,15 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Interval } from '@nestjs/schedule';
 import { sql } from 'drizzle-orm';
-import { db } from '../db/index';
-import { ZoomService } from '../services/zoom/zoom.service';
+import { db } from '../../db/index';
+import { ZoomService } from '../zoom/zoom.service';
+import { OnModuleInit } from '@nestjs/common';
+import { RecordingWorkerTriggerService } from './recording-worker-trigger.service';
 import * as fs from 'fs';
 import * as path from 'path';
 import axios from 'axios';
 import { google } from 'googleapis';
+import { Subject } from 'rxjs';
 
 const RECORDING_WORKER_ENABLED =
   process.env.RECORDING_WORKER_ENABLED === 'true';
@@ -27,11 +30,25 @@ type RecordingJob = {
 };
 
 @Injectable()
-export class RecordingWorkerService {
+export class RecordingWorkerService implements OnModuleInit {
   private readonly logger = new Logger(RecordingWorkerService.name);
   private youtube: any;
 
-  constructor(private readonly zoomService: ZoomService) {
+  onModuleInit() {
+    this.trigger.onTrigger().subscribe(async () => {
+      try {
+        this.logger.log('⚡ Immediate worker execution triggered by webhook');
+        await this.runWorkerOnce(); // reuse existing logic
+      } catch (err) {
+        this.logger.error('Triggered worker execution failed', err);
+      }
+    });
+  }
+
+  constructor(
+    private readonly zoomService: ZoomService,
+    private readonly trigger: RecordingWorkerTriggerService,
+  ) {
     const oAuth2Client = new google.auth.OAuth2(
       process.env.GOOGLE_CLIENT_ID,
       process.env.GOOGLE_CLIENT_SECRET,
@@ -69,7 +86,7 @@ export class RecordingWorkerService {
   // =====================================================
   @Interval(5000)
   async runWorkerOnce() {
-    this.logger.log('⏱ Recording worker tick');
+    // this.logger.debug('⏱ Recording worker tick');
 
     if (!RECORDING_WORKER_ENABLED) {
       this.logger.debug('Recording worker disabled by env flag');
@@ -78,7 +95,7 @@ export class RecordingWorkerService {
 
     const job = await this.pickJob();
     if (!job) {
-      this.logger.debug('No recording jobs found');
+      // this.logger.debug('No recording jobs found');
       return;
     }
 
@@ -91,41 +108,31 @@ export class RecordingWorkerService {
   // =====================================================
   private async pickJob(): Promise<RecordingJob | null> {
     const result = await db.execute(sql`
-      SELECT *
+    UPDATE zuvy_session_recordings
+    SET
+      status = CASE
+        WHEN status IN ('DISCOVERED', 'FAILED') THEN 'PROCESSING_METADATA'
+        WHEN status = 'METADATA_READY' THEN 'PROCESSING_DOWNLOAD'
+        WHEN status = 'DOWNLOADING' THEN 'PROCESSING_UPLOAD'
+        ELSE status
+      END,
+      updated_at = NOW()
+    WHERE id = (
+      SELECT id
       FROM zuvy_session_recordings
       WHERE status IN ('DISCOVERED', 'FAILED', 'METADATA_READY', 'DOWNLOADING')
-        AND status != 'PERMANENT_FAILED'
         AND status NOT LIKE 'PROCESSING_%'
+        AND status != 'PERMANENT_FAILED'
         AND retry_count < ${MAX_RETRIES}
         AND (next_retry_at IS NULL OR next_retry_at <= NOW())
       ORDER BY created_at ASC
       FOR UPDATE SKIP LOCKED
       LIMIT 1
-    `);
-
-    const job = result.rows?.[0] as RecordingJob | undefined;
-    if (!job) return null;
-
-    // Soft-lock via status
-    let nextStatus = job.status;
-
-    if (job.status === 'DISCOVERED' || job.status === 'FAILED') {
-      nextStatus = 'PROCESSING_METADATA';
-    } else if (job.status === 'METADATA_READY') {
-      nextStatus = 'PROCESSING_DOWNLOAD';
-    } else if (job.status === 'DOWNLOADING') {
-      nextStatus = 'PROCESSING_UPLOAD';
-    }
-
-    await db.execute(sql`
-    UPDATE zuvy_session_recordings
-    SET
-      status = ${nextStatus},
-      updated_at = NOW()
-    WHERE id = ${job.id}
+    )
+    RETURNING *
   `);
 
-    return { ...job, status: nextStatus };
+    return (result.rows?.[0] as RecordingJob) ?? null;
   }
 
   // =====================================================
@@ -311,20 +318,35 @@ export class RecordingWorkerService {
       `${job.session_id}-${job.zoom_recording_id}.mp4`,
     );
 
-    if (!fs.existsSync(finalPath)) {
-      await this.downloadRecordingToFile(
-        job.zoom_meeting_id,
-        job.zoom_recording_id,
-        finalPath,
-        job,
-      );
+    const lockPath = `${finalPath}.lock`;
+
+    if (fs.existsSync(lockPath)) {
+      this.logger.warn(`Download already in progress for job ${job.id}`);
+      return;
     }
 
-    await db.execute(sql`
+    fs.writeFileSync(lockPath, process.pid.toString());
+
+    try {
+      if (!fs.existsSync(finalPath)) {
+        await this.downloadRecordingToFile(
+          job.zoom_meeting_id,
+          job.zoom_recording_id,
+          finalPath,
+          job,
+        );
+      }
+
+      await db.execute(sql`
       UPDATE zuvy_session_recordings
       SET status = 'DOWNLOADING'
       WHERE id = ${job.id}
     `);
+    } finally {
+      try {
+        fs.unlinkSync(lockPath);
+      } catch {}
+    }
   }
 
   // =====================================================
@@ -362,6 +384,9 @@ export class RecordingWorkerService {
       url: file.download_url,
       responseType: 'stream',
       maxRedirects: 5,
+      timeout: 0,
+      maxContentLength: Infinity,
+      maxBodyLength: Infinity,
     });
 
     return new Promise<void>((resolve, reject) => {
