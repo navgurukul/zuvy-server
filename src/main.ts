@@ -3,6 +3,7 @@ import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 import { CorsOptions } from '@nestjs/common/interfaces/external/cors-options.interface';
 import { log } from 'console';
+import * as bodyParser from 'body-parser';
 import { WrapUserInArrayInterceptor } from './middleware/jwt.middleware';
 import { ScheduleService } from './schedule/schedule.service';
 
@@ -16,6 +17,15 @@ async function bootstrap() {
     credentials: true,
   };
   const app = await NestFactory.create(AppModule);
+
+  app.use(
+    bodyParser.json({
+      verify: (req: any, _res, buf) => {
+        req.rawBody = buf.toString();
+      },
+    }),
+  );
+
   // Enable CORS
   app.enableCors(corsOptions);
   app.useGlobalInterceptors(new WrapUserInArrayInterceptor());

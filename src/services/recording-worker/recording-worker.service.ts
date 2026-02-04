@@ -86,7 +86,7 @@ export class RecordingWorkerService implements OnModuleInit {
   // =====================================================
   @Interval(5000)
   async runWorkerOnce() {
-    // this.logger.debug('⏱ Recording worker tick');
+    this.logger.debug('⏱ Recording worker tick');
 
     if (!RECORDING_WORKER_ENABLED) {
       this.logger.debug('Recording worker disabled by env flag');
@@ -95,7 +95,7 @@ export class RecordingWorkerService implements OnModuleInit {
 
     const job = await this.pickJob();
     if (!job) {
-      // this.logger.debug('No recording jobs found');
+      this.logger.debug('No recording jobs found');
       return;
     }
 
