@@ -2253,6 +2253,7 @@ export const zuvySessions = main.table('zuvy_sessions', {
   zoomStartUrl: text('zoom_start_url'), // Admin start URL for Zoom
   zoomPassword: text('zoom_password'),
   zoomMeetingId: text('zoom_meeting_id'), // Zoom meeting ID
+  zoomMeetingUuid: text('zoom_meeting_uuid'),
   // merged  
   hasBeenMerged: boolean('has_been_merged').default(false),
   isParentSession: boolean('is_parent_session').default(false),
@@ -2426,9 +2427,6 @@ export const zuvyBootcamps = main.table('zuvy_bootcamps', {
   startTime: timestamp('start_time', { withTimezone: true, mode: 'string' }),
   duration: integer('duration'),
   language: text('language'),
-  organizationId: integer('organization_id').default(null).references(() => zuvyOrganizations.id, {
-    onDelete: 'cascade'
-  }),
   createdAt: timestamp('created_at', {
     withTimezone: true,
     mode: 'string',
@@ -3750,12 +3748,12 @@ export const zuvyPermissionsRoles = main.table('zuvy_permissions_roles', {
   createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow(),
 },
-  (table) => ({
-    uniqRolePermission: unique("uniq_role_permission").on(
-      table.roleId,
-      table.permissionId
-    )
-  })
+(table) => ({
+  uniqRolePermission: unique("uniq_role_permission").on(
+    table.roleId,
+    table.permissionId
+  )
+})
 );
 export const zuvyPermissionsRolesRelations = relations(zuvyPermissionsRoles, ({ many }) => ({
   permissions: many(zuvyPermissions),
@@ -3792,7 +3790,7 @@ export const userPermissionsRelations = relations(zuvyUserPermissions, ({ many }
 // RBAC: UserRoles (M:N)
 export const zuvyUserRolesAssigned = main.table('zuvy_user_roles_assigned', {
   id: serial('id').primaryKey().notNull(),
-  userId: bigint('user_id', { mode: 'bigint' }).notNull().references(() => users.id),
+  userId: bigserial("user_id", { mode: "bigint" }).notNull().references(() => users.id),
   roleId: integer('role_id').notNull().references(() => zuvyUserRoles.id),
   createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow(),
@@ -3962,54 +3960,206 @@ export const usersExtraPermissionsRelations = relations(users, ({ many }) => ({
   grantedPermissions: many(zuvyExtraPermissions, { relationName: 'grantedByUser' }),
 }));
 
-// create orgnization table
-export const zuvyOrganizations = main.table('zuvy_organizations', {
+//llm related tables
+export const aiAssessment = main.table("ai_assessment", {
+  id: serial("id").primaryKey().notNull(),
+  bootcampId: integer("bootcamp_id")
+    .notNull()
+    .references(() => zuvyBootcamps.id),
+  title: varchar("title", { length: 255 }).notNull(),
+  description: text("description"),
+  topics: jsonb("topics").notNull(),
+  audience: jsonb("audience").default(null),
+  totalNumberOfQuestions: integer("total_number_of_questions").notNull(),
+  totalQuestionsWithBuffer: integer("total_questions_with_buffer").notNull(),
+  startDatetime: timestamp('start_datetime', { withTimezone: true, mode: 'string' }),
+  endDatetime: timestamp('end_datetime', { withTimezone: true, mode: 'string' }),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: "string" }).defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true, mode: "string" }).defaultNow(),
+});
+
+export const questionsByLLM = main.table("questions_by_llm", {
+  id: serial("id").primaryKey().notNull(),
+  topic: varchar("topic", { length: 100 }),
+  difficulty: varchar("difficulty", { length: 50 }),
+  aiAssessmentId: integer('ai_assessment_id').references(() => aiAssessment.id, { onDelete: "cascade" }).notNull(),
+  question: text("question").notNull(),
+  language: varchar("language", { length: 255 }),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: "string" }).defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true, mode: "string" }).defaultNow(),
+});
+
+export const mcqQuestionOptions = main.table("mcq_question_options", {
+  id: serial("id").primaryKey().notNull(),
+  questionId: integer("question_id").notNull().references(() => questionsByLLM.id, { onDelete: "cascade" }),
+  optionText: text("option_text").notNull(),
+  optionNumber: integer("option_number").notNull(), // e.g., 1,2,3,4
+});
+
+export const correctAnswers = main.table("correct_answers", {
+  id: serial("id").primaryKey().notNull(),
+  questionId: integer("question_id").notNull().references(() => questionsByLLM.id, { onDelete: "cascade" }),
+  correctOptionId: integer("correct_option_id").notNull().references(() => mcqQuestionOptions.id, { onDelete: "cascade" }),
+});
+
+export const questionLevelRelation = main.table("question_level_relation", {
+  id: serial("id").primaryKey().notNull(),
+  levelId: integer("level_id").notNull().references(() => levels.id),
+  questionId: integer("question_id").notNull().references(() => questionsByLLM.id),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: "string" }).defaultNow(),
+}, (table) => ({
+  uniqStudentQuestion: unique("uniq_student_question").on(table.levelId, table.questionId),
+}));
+
+export const questionStudentAnswerRelation = main.table("question_student_answer_relation", {
+  id: serial("id").primaryKey().notNull(),
+  studentId: integer("student_id").notNull().references(() => users.id),
+  questionId: integer("question_id").notNull().references(() => questionsByLLM.id),
+  answer: integer("answer").notNull().references(() => correctAnswers.id),
+  answeredAt: timestamp("answered_at", { withTimezone: true, mode: "string" }).defaultNow(),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: "string" }).defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true, mode: "string" }).defaultNow(),
+}, (table) => ({
+  uniqStudentQuestionAnswer: unique("uniq_student_question_answer").on(table.studentId, table.questionId),
+}));
+
+export const levels = main.table("levels", {
+  id: serial("id").primaryKey().notNull(),
+  grade: varchar("grade", { length: 5 }).notNull(), // e.g. A+, A, B...
+  scoreRange: varchar("score_range", { length: 50 }).notNull(), // e.g. ">= 90", "80-89"
+  scoreMin: integer("score_min"), // optional numeric range start
+  scoreMax: integer("score_max"), // optional numeric range end
+  hardship: varchar("hardship", { length: 20 }), // "+20%", etc.
+  meaning: text("meaning"),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: "string" }).defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true, mode: "string" }).defaultNow(),
+}, (table) => ({
+  uniqGrade: unique("uniq_level_grade").on(table.grade),
+}));
+
+export const studentLevelRelation = main.table("student_level_relation", {
+  id: serial("id").primaryKey().notNull(),
+  studentId: integer("student_id").notNull().references(() => users.id),
+  levelId: integer("level_id").notNull().references(() => levels.id),
+  aiAssessmentId: integer('ai_assessment_id').references(() => aiAssessment.id).default(null),
+  assignedAt: timestamp("assigned_at", { withTimezone: true, mode: "string" }).defaultNow(),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: "string" }).defaultNow(),
+}, (table) => ({
+  uniqStudentLevel: unique("uniq_student_assessment").on(table.studentId, table.aiAssessmentId),
+}));
+
+export const questionEvaluation = main.table('question_evaluation', {
   id: serial('id').primaryKey().notNull(),
-  title: varchar('title', { length: 255 }).notNull(),
-  displayName: varchar('display_name', { length: 255 }).notNull(),
-  isManagedByZuvy: boolean('is_managed_by_zuvy').notNull().default(false),
-  logoUrl: varchar('logo_url', { length: 500 }),
-  pocName: varchar('poc_name', { length: 255 }),
-  pocEmail: varchar('poc_email', { length: 255 }),
-  zuvyPocName: varchar('zuvy_poc_name', { length: 255 }),
-  zuvyPocEmail: varchar('zuvy_poc_email', { length: 255 }),
-  isVerified: boolean('is_verified').notNull().default(false),
+  aiAssessmentId: integer('ai_assessment_id').references(() => aiAssessment.id).default(null),
+  questionId: integer("question_id").notNull().references(() => questionsByLLM.id),
+  question: text('question').notNull(),
+  topic: varchar('topic', { length: 255 }),
+  difficulty: varchar('difficulty', { length: 50 }),
+  options: jsonb('options').notNull(), // { "1": "A", "2": "B", "3": "C", "4": "D" }
+  // correctOption: integer('correct_option').notNull(),
+  selectedAnswerByStudent: integer('selected_answer_by_student').notNull(),
+  language: varchar('language', { length: 50 }),
+  status: varchar('status', { length: 50 }).default(null), // e.g., 'correct' or 'incorrect'
+  explanation: text('explanation'),
+  summary: text('summary'),
+  recommendations: text('recommendations'),
+  studentId: integer("student_id").notNull().references(() => users.id),
   createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow(),
-  version: varchar('version', { length: 10 })
-}, (table) => ({
-  // add the db index
-  orgTitleIdx: index('zuvy_organizations_title_idx').on(table.title),
-  isVerifiedIdx: index('zuvy_organizations_is_verified_idx').on(table.isVerified),
-  createdAtIdx: index('zuvy_organizations_created_at_idx').on(table.createdAt),
-}));
+});
 
-// create user and organizations table
-export const zuvyUserOrganizations = main.table('zuvy_user_organizations', {
+export const studentAssessment = main.table('student_assessment', {
   id: serial('id').primaryKey().notNull(),
-  userId: bigint('user_id', { mode: 'bigint' }).notNull().references(() => users.id),
-  organizationId: integer('organization_id').notNull().references(() => zuvyOrganizations.id, { onDelete: 'cascade' }),
-  joinedAt: timestamp('joined_at', { withTimezone: true, mode: 'string' }).defaultNow(),
+  studentId: integer("student_id").notNull().references(() => users.id),
+  aiAssessmentId: integer('ai_assessment_id').notNull().references(() => aiAssessment.id, { onDelete: "cascade" }),
+  status: integer('status').notNull().default(0),
+  createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow(),
 }, (table) => ({
-  uniqUserOrganization: unique("zuvy_user_organizations_uniq_user_organization").on(table.userId, table.organizationId),
-  // add the db index
-  userIdIdx: index('zuvy_user_organizations_user_id_idx').on(table.userId),
-  organizationIdIdx: index('zuvy_user_organizations_organization_id_idx').on(table.organizationId),
-  joinedAtIdx: index('zuvy_user_organizations_joined_at_idx').on(table.joinedAt),
+  uniqStudentAssessment: unique("uniq_student_assessment").on(table.studentId, table.aiAssessmentId),
 }));
 
-// create relations between organizations and userorganizations
-export const organizationsRelations = relations(zuvyOrganizations, ({ many }) => ({
-  userOrganizations: many(zuvyUserOrganizations),
-}));
 
-export const userOrganizationsRelations = relations(zuvyUserOrganizations, ({ one }) => ({
-  user: one(users, {
-    fields: [zuvyUserOrganizations.userId],
-    references: [users.id],
-  }),
-  organization: one(zuvyOrganizations, {
-    fields: [zuvyUserOrganizations.organizationId],
-    references: [zuvyOrganizations.id],
-  }),
-}));
+// Zoom Session Recordings Tracking
+
+export const zuvySessionRecordings = main.table(
+  'zuvy_session_recordings',
+  {
+    id: serial('id').primaryKey().notNull(),
+
+    sessionId: integer('session_id')
+      .notNull()
+      .references(() => zuvySessions.id, { onDelete: 'cascade' }),
+
+    zoomMeetingId: text('zoom_meeting_id').notNull(),
+    zoomMeetingUuid: text('zoom_meeting_uuid').default(null),
+    zoomRecordingId: text('zoom_recording_id'),
+
+    status: varchar('status', { length: 32 })
+      .notNull()
+      .default('DISCOVERED'),
+    /*
+      DISCOVERED
+      METADATA_READY
+      DOWNLOADING
+      UPLOADING
+      COMPLETED
+      FAILED
+    */
+
+    retryCount: integer('retry_count').default(0),
+    nextRetryAt: timestamp('next_retry_at', {
+      withTimezone: true,
+      mode: 'string',
+    }),
+    lastError: text('last_error'),
+
+    driveFileId: text('drive_file_id'),
+    driveLink: text('drive_link'),
+
+    createdAt: timestamp('created_at', {
+      withTimezone: true,
+      mode: 'string',
+    }).defaultNow(),
+
+    updatedAt: timestamp('updated_at', {
+      withTimezone: true,
+      mode: 'string',
+    }).defaultNow(),
+  },
+  (table) => ({
+    uniqSessionRecording: unique('uniq_session_recording').on(
+      table.sessionId
+    ),
+  })
+);
+
+export const zuvyZoomWebhookEvents = main.table(
+  'zuvy_zoom_webhook_events',
+  {
+    id: serial('id').primaryKey().notNull(),
+
+    eventId: text('event_id').notNull(),
+    eventType: text('event_type').notNull(),
+    meetingId: text('meeting_id'),
+    payload: jsonb('payload').notNull(),
+
+    receivedAt: timestamp('received_at', {
+      withTimezone: true,
+      mode: 'string',
+    }).defaultNow(),
+    processingStatus: varchar('processing_status', { 
+      length: 32 
+    }).default('RECEIVED'),
+    /*
+      RECEIVED
+      PROCESSED
+      IGNORED
+      FAILED
+    */
+    processingError: text('processing_error'),
+  },
+  (table) => ({
+    uniqZoomEvent: unique('uniq_zoom_event').on(table.eventId),
+  })
+);
