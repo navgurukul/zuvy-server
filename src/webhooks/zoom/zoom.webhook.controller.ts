@@ -70,6 +70,27 @@ export class ZoomWebhookController {
   async handleZoomEvent(@Req() req: Request, @Res() res: Response) {
     const body = req.body;
     const event = body?.event;
+
+    // --------------------------------
+    // URL VALIDATION
+    // --------------------------------
+    if (event === 'endpoint.url_validation') {
+      const plainToken = body.payload?.plainToken;
+
+      if (!plainToken) {
+        return res.status(400).send();
+      }
+      const encryptedToken = crypto
+        .createHmac('sha256', process.env.ZOOM_WEBHOOK_SECRET!)
+        .update(plainToken)
+        .digest('hex');
+
+      return res.status(200).json({
+        plainToken,
+        encryptedToken,
+      });
+    }
+
     const eventType = body?.event;
     const eventId =
       body?.event_id ??
@@ -131,23 +152,6 @@ export class ZoomWebhookController {
     `);
         return res.status(401).send();
       }
-    }
-
-    // --------------------------------
-    // URL VALIDATION
-    // --------------------------------
-    if (event === 'endpoint.url_validation') {
-      const plainToken = body.payload?.plainToken;
-
-      if (!plainToken) {
-        return res.status(400).send();
-      }
-      const encryptedToken = crypto
-        .createHmac('sha256', process.env.ZOOM_WEBHOOK_SECRET!)
-        .update(plainToken)
-        .digest('hex');
-
-      return res.status(200).json({ plainToken, encryptedToken });
     }
 
     try {
