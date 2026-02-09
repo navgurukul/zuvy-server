@@ -141,12 +141,12 @@ export class AuthService {
           orgId: zuvyOrganizations.id,
           orgName: zuvyOrganizations.displayName,
         })
-        .from(zuvyUserOrganizations)
+        .from(zuvyUserRolesAssigned)
         .innerJoin(
           zuvyOrganizations,
-          eq(zuvyUserOrganizations.organizationId, zuvyOrganizations.id),
+          eq(zuvyUserRolesAssigned.organizationId, zuvyOrganizations.id),
         )
-        .where(eq(zuvyUserOrganizations.userId, Number(user.id)));
+        .where(eq(zuvyUserRolesAssigned.userId, user.id));
 
       let selectedOrg = null;
       if (userOrgs.length > 0) {
