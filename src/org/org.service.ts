@@ -240,14 +240,14 @@ export class OrgService {
           displayName: zuvyOrganizations.displayName,
           logoUrl: zuvyOrganizations.logoUrl,
           isVerified: zuvyOrganizations.isVerified,
-          joinedAt: zuvyUserOrganizations.joinedAt,
+          joinedAt: zuvyUserRolesAssigned.createdAt,
         })
-        .from(zuvyUserOrganizations)
+        .from(zuvyUserRolesAssigned)
         .innerJoin(
           zuvyOrganizations,
-          eq(zuvyUserOrganizations.organizationId, zuvyOrganizations.id),
+          eq(zuvyUserRolesAssigned.organizationId, zuvyOrganizations.id),
         )
-        .where(eq(zuvyUserOrganizations.userId, Number(userId)));
+        .where(eq(zuvyUserRolesAssigned.userId, BigInt(userId)));
 
       return {
         status: 'success',

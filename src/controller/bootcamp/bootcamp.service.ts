@@ -30,6 +30,7 @@ import {
   zuvyModuleTracking,
   AttendanceStatus,
   zuvyUserOrganizations,
+  zuvyUserRolesAssigned,
 } from '../../../drizzle/schema';
 import { editUserDetailsDto } from './dto/bootcamp.dto';
 import { batch } from 'googleapis/build/src/apis/batch';
@@ -98,8 +99,8 @@ export class BootcampService {
       // Fetch user's organizations
       const userOrgs = await db
         .select()
-        .from(zuvyUserOrganizations)
-        .where(eq(zuvyUserOrganizations.userId, userId));
+        .from(zuvyUserRolesAssigned)
+        .where(eq(zuvyUserRolesAssigned.userId, userId));
 
       let filterOrgId = organization_id;
 
