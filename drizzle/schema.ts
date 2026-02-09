@@ -2427,6 +2427,9 @@ export const zuvyBootcamps = main.table('zuvy_bootcamps', {
   startTime: timestamp('start_time', { withTimezone: true, mode: 'string' }),
   duration: integer('duration'),
   language: text('language'),
+  organizationId: integer('organization_id').default(null).references(() => zuvyOrganizations.id, {
+    onDelete: 'cascade'
+  }),
   createdAt: timestamp('created_at', {
     withTimezone: true,
     mode: 'string',
@@ -3722,6 +3725,7 @@ export const zuvyUserRoles = main.table('zuvy_user_roles', {
   id: serial('id').primaryKey().notNull(),
   name: varchar('name', { length: 50 }).notNull().unique(), // e.g. 'admin', 'instructor', 'ops'
   description: text('description'),
+  orgId: integer('org_id').notNull().references(() => zuvyOrganizations.id),
 });
 
 export const zuvyResources = main.table('zuvy_resources', {
@@ -3729,6 +3733,7 @@ export const zuvyResources = main.table('zuvy_resources', {
   key: varchar('key', { length: 64 }).notNull().unique(),
   name: varchar('display_name', { length: 100 }).notNull(),
   description: text('description'),
+  orgId: integer('org_id').notNull().references(() => zuvyOrganizations.id),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
 });
@@ -3748,12 +3753,12 @@ export const zuvyPermissionsRoles = main.table('zuvy_permissions_roles', {
   createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow(),
 },
-(table) => ({
-  uniqRolePermission: unique("uniq_role_permission").on(
-    table.roleId,
-    table.permissionId
-  )
-})
+  (table) => ({
+    uniqRolePermission: unique("uniq_role_permission").on(
+      table.roleId,
+      table.permissionId
+    )
+  })
 );
 export const zuvyPermissionsRolesRelations = relations(zuvyPermissionsRoles, ({ many }) => ({
   permissions: many(zuvyPermissions),
@@ -3794,8 +3799,11 @@ export const zuvyUserRolesAssigned = main.table('zuvy_user_roles_assigned', {
   roleId: integer('role_id').notNull().references(() => zuvyUserRoles.id),
   createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow(),
+  organizationId: integer('organization_id').references(() => zuvyOrganizations.id),
 }, (t) => ({
-  pk: primaryKey(t.userId, t.roleId),
+  // Composite unique constraint (userId, roleId, organizationId)
+  // We use a unique constraint because organizationId might be nullable for global roles
+  uniqUserRoleOrg: unique('uniq_user_role_org').on(t.userId, t.roleId, t.organizationId),
 }));
 
 // RBAC: RolePermissions (M:N)
@@ -3960,6 +3968,62 @@ export const usersExtraPermissionsRelations = relations(users, ({ many }) => ({
   grantedPermissions: many(zuvyExtraPermissions, { relationName: 'grantedByUser' }),
 }));
 
+// org table
+export const zuvyOrganizations = main.table('zuvy_organizations', {
+  id: serial('id').primaryKey().notNull(),
+  title: varchar('title', { length: 255 }).notNull(),
+  displayName: varchar('display_name', { length: 255 }).notNull(),
+  isManagedByZuvy: boolean('is_managed_by_zuvy').notNull().default(false),
+  logoUrl: varchar('logo_url', { length: 500 }),
+  pocName: varchar('poc_name', { length: 255 }),
+  pocEmail: varchar('poc_email', { length: 255 }),
+  zuvyPocName: varchar('zuvy_poc_name', { length: 255 }),
+  zuvyPocEmail: varchar('zuvy_poc_email', { length: 255 }),
+  isVerified: boolean('is_verified').notNull().default(false),
+  createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow(),
+  version: varchar('version', { length: 10 })
+}, (table) => ({
+  // add the db index
+  orgTitleIdx: index('zuvy_organizations_title_idx').on(table.title),
+  isVerifiedIdx: index('zuvy_organizations_is_verified_idx').on(table.isVerified),
+  createdAtIdx: index('zuvy_organizations_created_at_idx').on(table.createdAt),
+}));
+
+
+// create user and organizations table
+export const zuvyUserOrganizations = main.table('zuvy_user_organizations', {
+  id: serial('id').primaryKey().notNull(),
+  userId: integer('user_id').notNull().references(() => users.id),
+  userEmail: varchar('user_email', { length: 255 }).notNull(),
+  accessToken: text('access_token',),
+  refreshToken: text('refresh_token'),
+  organizationId: integer('organization_id').notNull().references(() => zuvyOrganizations.id, { onDelete: 'cascade' }),
+  joinedAt: timestamp('joined_at', { withTimezone: true, mode: 'string' }).defaultNow(),
+}, (table) => ({
+  uniqUserOrganization: unique("zuvy_user_organizations_uniq_user_organization").on(table.userId, table.organizationId),
+  // add the db index
+  userIdIdx: index('zuvy_user_organizations_user_id_idx').on(table.userId),
+  organizationIdIdx: index('zuvy_user_organizations_organization_id_idx').on(table.organizationId),
+  joinedAtIdx: index('zuvy_user_organizations_joined_at_idx').on(table.joinedAt),
+}));
+
+// create relations between organizations and userorganizations
+export const organizationsRelations = relations(zuvyOrganizations, ({ many }) => ({
+  userOrganizations: many(zuvyUserOrganizations),
+}));
+
+export const userOrganizationsRelations = relations(zuvyUserOrganizations, ({ one }) => ({
+  user: one(users, {
+    fields: [zuvyUserOrganizations.userId],
+    references: [users.id],
+  }),
+  organization: one(zuvyOrganizations, {
+    fields: [zuvyUserOrganizations.organizationId],
+    references: [zuvyOrganizations.id],
+  }),
+}));
+
 //llm related tables
 export const aiAssessment = main.table("ai_assessment", {
   id: serial("id").primaryKey().notNull(),
@@ -4080,6 +4144,7 @@ export const studentAssessment = main.table('student_assessment', {
 }));
 
 
+
 // Zoom Session Recordings Tracking
 
 export const zuvySessionRecordings = main.table(
@@ -4148,8 +4213,8 @@ export const zuvyZoomWebhookEvents = main.table(
       withTimezone: true,
       mode: 'string',
     }).defaultNow(),
-    processingStatus: varchar('processing_status', { 
-      length: 32 
+    processingStatus: varchar('processing_status', {
+      length: 32
     }).default('RECEIVED'),
     /*
       RECEIVED
@@ -4163,3 +4228,4 @@ export const zuvyZoomWebhookEvents = main.table(
     uniqZoomEvent: unique('uniq_zoom_event').on(table.eventId),
   })
 );
+

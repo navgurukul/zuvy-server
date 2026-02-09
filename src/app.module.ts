@@ -31,6 +31,8 @@ import { LlmModule } from './llm/llm.module';
 import { QuestionsByLlmModule } from './questions-by-llm/questions-by-llm.module';
 import { LevelModule } from './level/level.module';
 import { AiAssessmentModule } from './ai-assessment/ai-assessment.module';
+import { OrgModule } from './org/org.module';
+import { NotificationModule } from './notification/notification.module';
 import { ZoomService } from './services/zoom/zoom.service';
 import { RecordingWorkerService } from './services/recording-worker/recording-worker.service';
 import { ZoomWebhookModule } from './webhooks/zoom/zoom.webhook.module';
@@ -73,6 +75,8 @@ let { GOOGLE_CLIENT_ID, GOOGLE_SECRET, GOOGLE_REDIRECT, JWT_SECRET_KEY } =
     QuestionsByLlmModule,
     LevelModule,
     AiAssessmentModule,
+    OrgModule,
+    NotificationModule,
     RecordingWorkerModule,
     ZoomWebhookModule,
   ],
