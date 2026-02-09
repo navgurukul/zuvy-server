@@ -14,12 +14,15 @@ import { db } from '../db/index';
 import {
   zuvyOrganizations,
   users,
+  blacklistedTokens,
   zuvyUserRoles,
   zuvyUserRolesAssigned,
   zuvyUserOrganizations,
 } from '../../drizzle/schema';
 import { eq, and, ilike, or, sql, desc } from 'drizzle-orm';
 import { JwtService } from '@nestjs/jwt';
+import { AuthService } from '../auth/auth.service';
+import { UserTokensService } from '../user-tokens/user-tokens.service';
 
 @Injectable()
 export class OrgService {
@@ -28,9 +31,11 @@ export class OrgService {
   constructor(
     private readonly notificationEmailService: NotificationEmailService,
     private readonly jwtService: JwtService,
+    private readonly authService: AuthService,
+    private readonly userTokenService: UserTokensService,
   ) {}
 
-  async create(createOrgDto: CreateOrgDto) {
+  async createOrg(createOrgDto: CreateOrgDto) {
     try {
       const createOrgDtoValues = {
         title: createOrgDto.title,
@@ -99,18 +104,23 @@ export class OrgService {
             )
             .limit(1);
 
+          const roleData = {
+            userId: userId,
+            roleId: adminRoleId,
+            organizationId: newOrg.id,
+            createdAt: new Date().toISOString(),
+          };
           if (!existingRole) {
-            await tx.insert(zuvyUserRolesAssigned).values({
-              userId: userId,
-              roleId: adminRoleId,
-            });
+            await tx.insert(zuvyUserRolesAssigned).values(roleData);
           }
 
           // Link User to Organization
-          await tx.insert(zuvyUserOrganizations).values({
-            userId: userId,
+          let userData = {
+            userId: Number(userId),
             organizationId: newOrg.id,
-          });
+            userEmail: email,
+          };
+          await tx.insert(zuvyUserOrganizations).values(userData);
         };
 
         // 3. Process POC
@@ -128,7 +138,7 @@ export class OrgService {
       });
 
       // 5. Send Email (After transaction)
-      const magicLink = `https://zuvy.org/setup-org/${result.id}`;
+      const magicLink = `${process.env.APP_BASE_URL}/org/getOrgById/${result.id}`;
       try {
         const subject = `Welcome to Zuvy - Complete ${createOrgDto.displayName} Setup`;
         const html = `
@@ -212,7 +222,7 @@ export class OrgService {
     };
   }
 
-  async findOne(id: number) {
+  async getOrg(id: number) {
     const [org] = await db
       .select()
       .from(zuvyOrganizations)
@@ -237,7 +247,7 @@ export class OrgService {
           zuvyOrganizations,
           eq(zuvyUserOrganizations.organizationId, zuvyOrganizations.id),
         )
-        .where(eq(zuvyUserOrganizations.userId, BigInt(userId)));
+        .where(eq(zuvyUserOrganizations.userId, Number(userId)));
 
       return {
         status: 'success',
@@ -252,7 +262,7 @@ export class OrgService {
     }
   }
 
-  async update(id: number, updateOrgDto: UpdateOrgDto) {
+  async updateOrgDetails(id: number, updateOrgDto: UpdateOrgDto) {
     try {
       const updateData = {
         ...updateOrgDto,
@@ -279,14 +289,14 @@ export class OrgService {
   }
 
   async initiateDelete(id: number) {
-    const org = await this.findOne(id);
+    const org = await this.getOrg(id);
 
     // Generate confirmation token (valid for 1 hour)
     const token = this.jwtService.sign(
       { orgId: id, action: 'delete' },
       { expiresIn: '1h' },
     );
-    const deleteLink = `https://zuvy.org/confirm-delete?token=${token}`; // Frontend URL
+    const deleteLink = `${process.env.APP_BASE_URL}/confirm-delete?token=${token}`; // Frontend URL
 
     // Send to POC
     if (org.pocEmail) {
@@ -334,7 +344,7 @@ export class OrgService {
   }
 
   async completeSetup(id: number, updateData: UpdateOrgDto) {
-    const org = await this.findOne(id);
+    const org = await this.getOrg(id);
 
     if (org.isVerified) {
       throw new BadRequestException(
@@ -401,5 +411,14 @@ export class OrgService {
         `Failed to send delete permission email to ${to}: ${error.message}`,
       );
     }
+  }
+
+  async switchOrg(
+    userId: bigint,
+    newOrgId: number,
+    accessToken: string,
+    refreshToken: string,
+  ) {
+    return this.authService.generateTokensForSwitch(userId, newOrgId);
   }
 }

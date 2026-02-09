@@ -236,6 +236,7 @@ export class UsersService {
       const newRoleData = {
         name: normalizedName,
         description: description ?? null,
+        orgId: createUserRoleDto.orgId ?? 1, // Default orgId to 1 if not provided
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };
@@ -476,7 +477,7 @@ export class UsersService {
           };
         }
         await this.authService.updateUserlogout(
-          BigInt(targetUserId),
+          targetUserId,
           data['accessToken'],
           data['refreshToken'],
         );
@@ -514,7 +515,7 @@ export class UsersService {
 
       if (success && data?.accessToken) {
         await this.authService.updateUserlogout(
-          BigInt(targetUserId),
+          targetUserId,
           data.accessToken,
           data.refreshToken,
         );
@@ -1027,7 +1028,7 @@ export class UsersService {
 
       if (success && data?.accessToken) {
         await this.authService.updateUserlogout(
-          targetUserId,
+          Number(targetUserId),
           data.accessToken,
           data.refreshToken,
         );

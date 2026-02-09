@@ -533,8 +533,14 @@ ALTER TABLE "zuvy_organizations" ADD CONSTRAINT "zuvy_organizations_title_unique
 -- Create user_organizations table
 CREATE TABLE "zuvy_user_organizations" (
     "id" SERIAL PRIMARY KEY,
+    
     "user_id" BIGINT NOT NULL,
     "organization_id" INTEGER NOT NULL,
+    "user_email" VARCHAR(255) NOT NULL,
+    
+    "access_token" TEXT,
+    "refresh_token" TEXT,
+    
     "joined_at" TIMESTAMPTZ DEFAULT NOW(),
 
     CONSTRAINT "zuvy_user_organizations_user_id_fkey"
@@ -549,6 +555,7 @@ CREATE TABLE "zuvy_user_organizations" (
     CONSTRAINT "zuvy_user_organizations_uniq_user_organization"
         UNIQUE ("user_id", "organization_id")
 );
+
 
 CREATE INDEX "zuvy_user_organizations_user_id_idx"
     ON "zuvy_user_organizations" ("user_id");

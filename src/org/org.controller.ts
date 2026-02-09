@@ -13,6 +13,8 @@ import { OrgService } from './org.service';
 import { CreateOrgDto } from './dto/create-org.dto';
 import { UpdateOrgDto } from './dto/update-org.dto';
 import { OrgQueryDto } from './dto/org-query.dto';
+import { SwitchOrgDto } from './dto/switch-org.dto';
+import { AuthService } from '../auth/auth.service';
 import {
   ApiOperation,
   ApiResponse,
@@ -21,11 +23,15 @@ import {
   ApiQuery,
   ApiTags,
 } from '@nestjs/swagger';
+import { Request, UnauthorizedException } from '@nestjs/common';
 
 @ApiTags('org')
 @Controller('org')
 export class OrgController {
-  constructor(private readonly orgService: OrgService) {}
+  constructor(
+    private readonly orgService: OrgService,
+    private readonly authService: AuthService,
+  ) {}
 
   @Post('/create')
   @ApiOperation({ summary: 'Create a new organization' })
@@ -39,7 +45,7 @@ export class OrgController {
   @ApiResponse({ status: 500, description: 'Internal Server Error.' })
   @ApiBearerAuth('JWT-auth')
   async create(@Body() createOrgDto: CreateOrgDto) {
-    return await this.orgService.create(createOrgDto);
+    return await this.orgService.createOrg(createOrgDto);
   }
 
   @Get('/getAllOrgs')
@@ -69,7 +75,7 @@ export class OrgController {
   @ApiResponse({ status: 500, description: 'Internal Server Error.' })
   @ApiBearerAuth('JWT-auth')
   findOne(@Param('id') id: number) {
-    return this.orgService.findOne(id);
+    return this.orgService.getOrg(id);
   }
 
   @Patch('/updateOrgById/:id')
@@ -84,7 +90,7 @@ export class OrgController {
   @ApiResponse({ status: 500, description: 'Internal Server Error.' })
   @ApiBearerAuth('JWT-auth')
   update(@Param('id') id: number, @Body() updateOrgDto: UpdateOrgDto) {
-    return this.orgService.update(id, updateOrgDto);
+    return this.orgService.updateOrgDetails(id, updateOrgDto);
   }
 
   @Delete('/deleteOrgById/:id')
@@ -147,5 +153,34 @@ export class OrgController {
     @Body() updateOrgDto: UpdateOrgDto,
   ) {
     return await this.orgService.completeSetup(id, updateOrgDto);
+  }
+  @Post('switch-org')
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({ summary: 'Switch organization and get new tokens' })
+  @ApiBody({ type: SwitchOrgDto })
+  @ApiResponse({
+    status: 200,
+    description: 'Successfully switched organization',
+    schema: {
+      type: 'object',
+      properties: {
+        access_token: { type: 'string' },
+        refresh_token: { type: 'string' },
+        user: { type: 'object' },
+      },
+    },
+  })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  async switchOrg(@Request() req, @Body() switchOrgDto: SwitchOrgDto) {
+    const accessToken = req.headers.authorization?.split(' ')[1];
+    if (!accessToken) {
+      throw new UnauthorizedException('No token provided');
+    }
+    return this.orgService.switchOrg(
+      BigInt(req.user.sub),
+      switchOrgDto.orgId,
+      accessToken,
+      switchOrgDto.refresh_token,
+    );
   }
 }
