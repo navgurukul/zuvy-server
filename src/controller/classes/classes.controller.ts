@@ -14,6 +14,7 @@ import {
   Query,
   BadRequestException,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
 import { ClassesService } from './classes.service';
 import {
@@ -40,6 +41,8 @@ import { Response } from 'express';
 import { ErrorResponse, SuccessResponse } from 'src/errorHandler/handler';
 import { Public } from '../../auth/decorators/public.decorator';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
+import { TrackAction } from 'src/trackinglog/decorators/track-action.decorator';
+import { TrackActionInterceptor } from 'src/trackinglog/interceptors/track-action.interceptor';
 import { auth2Client } from '../../auth/google-auth';
 import { db } from '../../db/index';
 import { userTokens, zuvyBatches } from '../../../drizzle/schema';
@@ -51,6 +54,7 @@ let configUser = { id: process.env.ID, email: process.env.TEAM_EMAIL };
 @Controller('classes')
 @ApiTags('classes')
 @UseGuards(JwtAuthGuard)
+@UseInterceptors(TrackActionInterceptor)
 @ApiBearerAuth('JWT-auth')
 @UsePipes(
   new ValidationPipe({
@@ -127,6 +131,65 @@ export class ClassesController {
   @ApiOperation({ summary: 'Create the new class' })
   @ApiBearerAuth('JWT-auth')
   @Public()
+  @TrackAction({
+    action: 'create_classes',
+    resourceType: 'class',
+    permissionName: 'createClass',
+    getResourceName: (result) => {
+      return (
+        result?.data?.[0]?.title ||
+        result?.data?.title ||
+        result?.title ||
+        'Live Session'
+      );
+    },
+    getBootcampId: (result, params) => {
+      return (
+        result?.data?.[0]?.bootcampId ||
+        result?.data?.bootcampId ||
+        result?.bootcampId ||
+        null
+      );
+    },
+    getCustomDescription: (actorName, result, params, body) => {
+      const classTitle =
+        result?.data?.[0]?.title ||
+        result?.data?.title ||
+        result?.title ||
+        'new class';
+      const bootcampId =
+        result?.data?.[0]?.bootcampId ||
+        result?.data?.bootcampId ||
+        result?.bootcampId ||
+        body?.bootcampId ||
+        'N/A';
+      const batchId =
+        result?.data?.[0]?.batchId ||
+        result?.data?.batchId ||
+        result?.batchId ||
+        body?.batchId ||
+        'N/A';
+      const secondBatchId =
+        result?.data?.[0]?.secondBatchId ||
+        result?.data?.secondBatchId ||
+        result?.secondBatchId ||
+        body?.secondBatchId;
+      const moduleId =
+        result?.data?.[0]?.moduleId ||
+        result?.data?.moduleId ||
+        result?.moduleId ||
+        body?.moduleId ||
+        'N/A';
+
+      let description = `${actorName} created live session "${classTitle}" | Bootcamp: ${bootcampId} | Batch: ${batchId}`;
+      if (secondBatchId) {
+        description += ` | Second Batch: ${secondBatchId}`;
+      }
+      description += ` | Module: ${moduleId}`;
+
+      return description;
+    },
+  })
   async create(@Body() classData: CreateSessionDto, @Req() req) {
     const userInfo = {
       id: Number(req.user[0].id),
@@ -361,28 +424,65 @@ export class ClassesController {
     summary: 'Add existing live classes as chapters to a module',
   })
   @ApiBearerAuth()
+  @TrackAction({
+    action: 'create_chapter',
+    resourceType: 'chapter',
+    permissionName: 'createChapter',
+    getResourceName: (result) => {
+      // Result can be SuccessResponse instance or direct service response
+      const chapters = result?.data?.chapters || result?.chapters;
+      if (chapters?.length) {
+        // If multiple chapters, show titles separated by comma
+        const titles = chapters
+          .map((ch) => ch.title)
+          .filter((t) => t)
+          .join(', ');
+        return titles || 'Live Sessions';
+      }
+      return 'Live Sessions';
+    },
+    getBootcampId: (result, params) => {
+      const bootcampId =
+        params?.bootcampId ||
+        result?.data?.bootcampId ||
+        result?.bootcampId ||
+        null;
+      return bootcampId;
+    },
+    getCustomDescription: (actorName, result, params, body) => {
+      const chapters = result?.data?.chapters || result?.chapters || [];
+      const bootcampId =
+        params?.bootcampId ||
+        result?.data?.bootcampId ||
+        result?.bootcampId ||
+        'N/A';
+      const moduleId = body?.moduleId || params?.moduleId || 'N/A';
+      const count = chapters.length || 0;
+      const titles = chapters
+        .map((ch) => ch.title)
+        .filter((t) => t)
+        .join(', ');
+      return `${actorName} added ${count} live class session(s) as chapters [${titles || 'Live Sessions'}] to Module ID: ${moduleId} in Bootcamp ID: ${bootcampId}`;
+    },
+  })
   async addLiveClassesAsChapters(
     @Body() data: AddLiveClassesAsChaptersDto,
     @Req() req,
-    @Res() res: Response,
   ): Promise<object> {
-    try {
-      const [err, success] = await this.classesService.addLiveClassesAsChapters(
-        data.sessionIds,
-        data.moduleId,
-        req.user[0],
-      );
-      if (err) {
-        return ErrorResponse.BadRequestException(err.message).send(res);
-      }
-      return new SuccessResponse(
-        success.message,
-        success.statusCode,
-        success.data,
-      ).send(res);
-    } catch (error) {
-      return ErrorResponse.BadRequestException(error.message).send(res);
+    const [err, success] = await this.classesService.addLiveClassesAsChapters(
+      data.sessionIds,
+      data.moduleId,
+      req.user[0],
+    );
+    if (err) {
+      throw new BadRequestException(err.message);
     }
+    return {
+      message: success.message,
+      code: success.code,
+      isSuccess: true,
+      data: success.data,
+    };
   }
 
   @Get('/sessions/:id')
@@ -409,6 +509,42 @@ export class ClassesController {
   @Put('/sessions/:id')
   @ApiOperation({ summary: 'Update session by ID' })
   @ApiBearerAuth('JWT-auth')
+  @TrackAction({
+    action: 'edit_class',
+    resourceType: 'class',
+    permissionName: 'editClass',
+    getResourceName: (result) => {
+      return result?.data?.title || result?.title || 'Session';
+    },
+    getBootcampId: (result, params) => {
+      return result?.data?.bootcampId || result?.bootcampId || null;
+    },
+    getCustomDescription: (actorName, result, params, body) => {
+      const sessionId = params?.id || 'N/A';
+      const title =
+        result?.data?.title || result?.title || body?.title || 'session';
+      const bootcampId =
+        result?.data?.bootcampId || result?.bootcampId || 'N/A';
+      const batchId =
+        result?.data?.batchId || result?.batchId || body?.batchId || 'N/A';
+      const moduleId =
+        result?.data?.moduleId || result?.moduleId || body?.moduleId || 'N/A';
+
+      const updatedFields = [];
+      if (body?.title) updatedFields.push('title');
+      if (body?.startDateTime || body?.startTime)
+        updatedFields.push('start time');
+      if (body?.endDateTime || body?.endTime) updatedFields.push('end time');
+      if (body?.description) updatedFields.push('description');
+
+      const fieldsText =
+        updatedFields.length > 0
+          ? ` (updated: ${updatedFields.join(', ')})`
+          : '';
+
+      return `${actorName} edited session "${title}" (ID: ${sessionId}) | Bootcamp: ${bootcampId} | Batch: ${batchId} | Module: ${moduleId}${fieldsText}`;
+    },
+  })
   async updateSession(
     @Param('id') sessionId: number,
     @Body() updateData: updateSessionDto,

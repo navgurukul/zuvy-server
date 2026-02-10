@@ -70,9 +70,12 @@ import {
   FilesInterceptor,
 } from '@nestjs/platform-express/multer';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
+import { TrackAction } from 'src/trackinglog/decorators/track-action.decorator';
+import { TrackActionInterceptor } from 'src/trackinglog/interceptors/track-action.interceptor';
 
 @Controller('content')
 @ApiTags('content')
+@UseInterceptors(TrackActionInterceptor)
 @UsePipes(
   new ValidationPipe({
     whitelist: true,
@@ -94,6 +97,28 @@ export class ContentController {
     description: 'type id',
   })
   @ApiBearerAuth('JWT-auth')
+  @TrackAction({
+    action: 'create_module',
+    resourceType: 'module',
+    permissionName: 'createModule',
+    getResourceName: (result) => {
+      return result?.module?.[0]?.name || result?.module?.name || 'Module';
+    },
+    getBootcampId: (result, params) => {
+      return params?.bootcampId || result?.module?.[0]?.bootcampId || null;
+    },
+    getCustomDescription: (actorName, result, params, body) => {
+      const moduleName =
+        result?.module?.[0]?.name ||
+        result?.module?.name ||
+        body?.name ||
+        'module';
+      const bootcampId = params?.bootcampId || 'N/A';
+      const moduleId = result?.module?.[0]?.id || 'N/A';
+      const typeId = params?.typeId || body?.typeId || 'N/A';
+      return `${actorName} created module "${moduleName}" (Module ID: ${moduleId}) for Bootcamp ID: ${bootcampId} | Type ID: ${typeId}`;
+    },
+  })
   async createModule(
     @Body() moduleData: moduleDto,
     @Param('bootcampId') bootcampId: number,
@@ -191,6 +216,23 @@ export class ContentController {
   @Post('/chapter')
   @ApiOperation({ summary: 'Create a chapter for this module' })
   @ApiBearerAuth('JWT-auth')
+  @TrackAction({
+    action: 'create_chapter',
+    resourceType: 'chapter',
+    permissionName: 'createChapter',
+    getResourceName: (result) => {
+      return result?.module?.[0]?.title || 'Chapter';
+    },
+    getBootcampId: (result, params) => {
+      return params?.bootcampId || null;
+    },
+    getCustomDescription: (actorName, result, params, body) => {
+      const chapterTitle = result?.module?.[0]?.title || 'new chapter';
+      const bootcampId = body?.bootcampId || params?.bootcampId || 'N/A';
+      const moduleId = body?.moduleId || params?.moduleId || 'N/A';
+      return `${actorName} created chapter "${chapterTitle}" in Module ID: ${moduleId}, Bootcamp ID: ${bootcampId}`;
+    },
+  })
   async createChapter(@Body() chapterData: CreateChapterDto) {
     return this.contentService.createChapterForModule(
       chapterData.moduleId,
@@ -225,6 +267,36 @@ export class ContentController {
   @Put('/editAssessment/:assessmentOutsourseId/:chapterId')
   @ApiOperation({ summary: 'Edit the assessment for this module' })
   @ApiBearerAuth('JWT-auth')
+  @TrackAction({
+    action: 'edit_chapter',
+    resourceType: 'chapter',
+    permissionName: 'editChapter',
+    getResourceName: (result) => {
+      return `Assessment for Chapter ${result?.chapterId || ''}`;
+    },
+    getBootcampId: (result, params) => {
+      return params?.bootcampId || result?.bootcampId || null;
+    },
+    getCustomDescription: (actorName, result, params, body) => {
+      const chapterId = params?.chapterId || 'N/A';
+      const assessmentId = params?.assessmentOutsourseId || 'N/A';
+      const bootcampId = params?.bootcampId || result?.bootcampId || 'N/A';
+
+      // Detect what was updated in assessment
+      const updates = [];
+      if (body?.quiz?.length)
+        updates.push(`${body.quiz.length} quiz question(s)`);
+      if (body?.codingProblems?.length)
+        updates.push(`${body.codingProblems.length} coding problem(s)`);
+      if (body?.openEnded?.length)
+        updates.push(`${body.openEnded.length} open-ended question(s)`);
+
+      const updatedFields =
+        updates.length > 0 ? ` - Added: ${updates.join(', ')}` : '';
+
+      return `${actorName} updated assessment (ID: ${assessmentId}) for Chapter ID: ${chapterId} in Bootcamp ID: ${bootcampId}${updatedFields}`;
+    },
+  })
   async editAssessment(
     @Body() assessmentBody: CreateAssessmentBody,
     @Param('assessmentOutsourseId') assessmentOutsourseId: number,
@@ -320,6 +392,29 @@ export class ContentController {
     description: 'module Id',
   })
   @ApiBearerAuth('JWT-auth')
+  @TrackAction({
+    action: 'edit_module',
+    resourceType: 'module',
+    permissionName: 'editModule',
+    getResourceName: (result) => {
+      return result?.data?.name || result?.module?.name || 'Module';
+    },
+    getBootcampId: (result, params) => {
+      return params?.bootcampId || result?.bootcampId || null;
+    },
+    getCustomDescription: (actorName, result, params, body) => {
+      const moduleName = result?.data?.name || result?.module?.name || 'module';
+      const moduleId = result?.data?.id || body?.moduleId || 'N/A';
+      const bootcampId = params?.bootcampId || 'N/A';
+      const newOrder =
+        body?.reOrderDto?.newOrder !== undefined
+          ? body?.reOrderDto?.newOrder
+          : body?.newOrder !== undefined
+            ? body?.newOrder
+            : 'N/A';
+      return `${actorName} reordered module "${moduleName}" (Module ID: ${moduleId}) to position ${newOrder} in Bootcamp ID: ${bootcampId}`;
+    },
+  })
   async reOrderModules(
     @Body() reOrder: ReOrderModuleBody,
     @Param('bootcampId') bootcampId: number,
@@ -342,6 +437,23 @@ export class ContentController {
     description: 'module Id',
   })
   @ApiBearerAuth('JWT-auth')
+  @TrackAction({
+    action: 'delete_module',
+    resourceType: 'module',
+    permissionName: 'deleteModule',
+    getResourceName: (result) => {
+      return result?.data?.name || result?.module?.name || 'Module';
+    },
+    getBootcampId: (result, params) => {
+      return params?.bootcampId || result?.bootcampId || null;
+    },
+    getCustomDescription: (actorName, result, params, body) => {
+      const moduleName = result?.data?.name || result?.module?.name || 'module';
+      const moduleId = params?.moduleId || result?.data?.id || 'N/A';
+      const bootcampId = params?.bootcampId || 'N/A';
+      return `${actorName} deleted module "${moduleName}" (Module ID: ${moduleId}) from Bootcamp ID: ${bootcampId}`;
+    },
+  })
   async deleteModule(
     @Param('bootcampId') bootcampId: number,
     @Query('moduleId') moduleId: number,
@@ -359,8 +471,48 @@ export class ContentController {
     description: 'chapter id',
   })
   @ApiBearerAuth('JWT-auth')
+  @TrackAction({
+    action: 'edit_chapter',
+    resourceType: 'chapter',
+    permissionName: 'editChapter',
+    getResourceName: (result) => {
+      return result?.chapter?.[0]?.title || 'Chapter';
+    },
+    getBootcampId: (result, params) => {
+      return result?.bootcampId || params?.bootcampId || null;
+    },
+    getCustomDescription: (actorName, result, params, body) => {
+      const chapterTitle = result?.chapter?.[0]?.title || 'chapter';
+      const chapterId = result?.chapter?.[0]?.id || params?.chapterId || 'N/A';
+      const moduleId = params?.moduleId || 'N/A';
+      const bootcampId = result?.bootcampId || 'N/A';
+
+      // Detect what fields were updated
+      const updates = [];
+      if (body?.title) updates.push(`title to "${body.title}"`);
+      if (body?.description) updates.push(`description`);
+      if (body?.completionDate)
+        updates.push(`completion date to "${body.completionDate}"`);
+      if (body?.quizQuestions?.length)
+        updates.push(`quiz questions (${body.quizQuestions.length} questions)`);
+      if (body?.formQuestions?.length)
+        updates.push(`form questions (${body.formQuestions.length} questions)`);
+      if (body?.codingQuestions)
+        updates.push(`coding question (ID: ${body.codingQuestions})`);
+      if (body?.links?.length)
+        updates.push(`links (${body.links.length} link(s))`);
+      if (body?.articleContent?.length) updates.push(`article content`);
+      if (body?.newOrder !== undefined)
+        updates.push(`order to ${body.newOrder}`);
+
+      const updatedFields =
+        updates.length > 0 ? ` - Updated: ${updates.join(', ')}` : '';
+
+      return `${actorName} updated chapter "${chapterTitle}" (Chapter ID: ${chapterId}) in Module ID: ${moduleId}, Bootcamp ID: ${bootcampId}${updatedFields}`;
+    },
+  })
   async editChapter(
-    @Body() reOrder: EditChapterDto,
+    @Body() reOrder: UpdateChapterDto,
     @Param('moduleId') moduleId: number,
     @Query('chapterId') chapterId: number,
   ) {
@@ -381,6 +533,24 @@ export class ContentController {
     description: 'chapter Id',
   })
   @ApiBearerAuth('JWT-auth')
+  @TrackAction({
+    action: 'delete_chapter',
+    resourceType: 'chapter',
+    permissionName: 'deleteChapter',
+    getResourceName: (result) => {
+      return result?.chapter?.title || 'Chapter';
+    },
+    getBootcampId: (result, params) => {
+      return result?.bootcampId || params?.bootcampId || null;
+    },
+    getCustomDescription: (actorName, result, params, body) => {
+      const chapterTitle = result?.chapter?.title || 'chapter';
+      const chapterId = result?.chapter?.id || params?.chapterId || 'N/A';
+      const moduleId = params?.moduleId || 'N/A';
+      const bootcampId = result?.bootcampId || 'N/A';
+      return `${actorName} deleted chapter "${chapterTitle}" (Chapter ID: ${chapterId}) from Module ID: ${moduleId}, Bootcamp ID: ${bootcampId}`;
+    },
+  })
   async deleteChapter(
     @Param('moduleId') moduleId: number,
     @Query('chapterId') chapterId: number,
@@ -803,6 +973,23 @@ export class ContentController {
   @Post('/form')
   @ApiOperation({ summary: 'Create a form' })
   @ApiBearerAuth('JWT-auth')
+  @TrackAction({
+    action: 'edit_chapter',
+    resourceType: 'chapter',
+    permissionName: 'editChapter',
+    getResourceName: (result) => {
+      return `Form for Chapter ${result?.chapterId || ''}`;
+    },
+    getBootcampId: (result, params) => {
+      return params?.bootcampId || result?.bootcampId || null;
+    },
+    getCustomDescription: (actorName, result, params, body) => {
+      const chapterId = params?.chapterId || result?.chapterId || 'N/A';
+      const bootcampId = params?.bootcampId || result?.bootcampId || 'N/A';
+      const questionCount = body?.questions?.length || 0;
+      return `${actorName} created a form with ${questionCount} question(s) for Chapter ID: ${chapterId} in Bootcamp ID: ${bootcampId}`;
+    },
+  })
   async createFormForModule(
     @Query('chapterId') chapterId: number,
     @Body() formQuestion: formBatchDto,
@@ -843,8 +1030,25 @@ export class ContentController {
   }
 
   @Post('/editform')
-  @ApiOperation({ summary: 'Create a form' })
+  @ApiOperation({ summary: 'Edit a form' })
   @ApiBearerAuth('JWT-auth')
+  @TrackAction({
+    action: 'edit_chapter',
+    resourceType: 'chapter',
+    permissionName: 'editChapter',
+    getResourceName: (result) => {
+      return `Form for Chapter ${result?.chapterId || ''}`;
+    },
+    getBootcampId: (result, params) => {
+      return params?.bootcampId || result?.bootcampId || null;
+    },
+    getCustomDescription: (actorName, result, params, body) => {
+      const chapterId = params?.chapterId || result?.chapterId || 'N/A';
+      const bootcampId = params?.bootcampId || result?.bootcampId || 'N/A';
+      const questionCount = body?.questions?.length || 0;
+      return `${actorName} updated form with ${questionCount} question(s) for Chapter ID: ${chapterId} in Bootcamp ID: ${bootcampId}`;
+    },
+  })
   async editFormForModule(
     @Query('chapterId') chapterId: number,
     @Body() formQuestions: editFormBatchDto,
@@ -859,6 +1063,23 @@ export class ContentController {
   @Post('/createAndEditForm/:chapterId')
   @ApiOperation({ summary: 'Create a form' })
   @ApiBearerAuth('JWT-auth')
+  @TrackAction({
+    action: 'edit_chapter',
+    resourceType: 'chapter',
+    permissionName: 'editChapter',
+    getResourceName: (result) => {
+      return `Form for Chapter ${result?.chapterId || ''}`;
+    },
+    getBootcampId: (result, params) => {
+      return params?.bootcampId || null;
+    },
+    getCustomDescription: (actorName, result, params, body) => {
+      const chapterId = params?.chapterId || result?.chapterId || 'N/A';
+      const bootcampId = params?.bootcampId || result?.bootcampId || 'N/A';
+      const questionCount = body?.questions?.length || 0;
+      return `${actorName} created/updated form with ${questionCount} question(s) for Chapter ID: ${chapterId} in Bootcamp ID: ${bootcampId}`;
+    },
+  })
   async createAndEditForm(
     @Param('chapterId') chapterId: number,
     @Body() formQuestions: CreateAndEditFormBody,
@@ -1027,6 +1248,24 @@ export class ContentController {
   @ApiConsumes('multipart/form-data')
   @ApiBody({ type: UpdateChapterDto })
   @UseInterceptors(FileInterceptor('pdf'))
+  @TrackAction({
+    action: 'edit_chapter',
+    resourceType: 'chapter',
+    permissionName: 'editChapter',
+    getResourceName: (result) => {
+      return result?.chapter?.[0]?.title || 'Chapter PDF';
+    },
+    getBootcampId: (result, params) => {
+      return result?.bootcampId || params?.bootcampId || null;
+    },
+    getCustomDescription: (actorName, result, params, body) => {
+      const chapterTitle = result?.chapter?.[0]?.title || 'chapter';
+      const chapterId = result?.chapter?.[0]?.id || params?.chapterId || 'N/A';
+      const moduleId = params?.moduleId || 'N/A';
+      const bootcampId = result?.bootcampId || params?.bootcampId || 'N/A';
+      return `${actorName} uploaded PDF to chapter "${chapterTitle}" (Chapter ID: ${chapterId}) in Module ID: ${moduleId}, Bootcamp ID: ${bootcampId}`;
+    },
+  })
   async uploadPdf(
     @UploadedFile() file: Express.Multer.File,
     @Query('moduleId') moduleId: number,

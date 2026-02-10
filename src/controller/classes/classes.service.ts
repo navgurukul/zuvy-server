@@ -2067,6 +2067,7 @@ export class ClassesService {
           data: {
             chapters,
             totalAdded: chapters.length,
+            bootcampId: moduleInfo[0].bootcampId, // Add bootcampId from module
           },
         },
       ];
@@ -2740,7 +2741,10 @@ export class ClassesService {
         .limit(1);
 
       const responseData: any = {
-        sessionId,
+        id: sessionId,
+        title: updateData.title || session.title,
+        bootcampId: updatedSession[0]?.bootcampId || session.bootcampId,
+        moduleId: updatedSession[0]?.moduleId || session.moduleId,
         ...updateData,
         startTime: gmtStartTime || session.startTime,
         endTime: gmtEndTime || session.endTime,
@@ -2753,6 +2757,8 @@ export class ClassesService {
         // Include the actual batchId and secondBatchId in response
         responseData.batchId = updatedSessionData.batchId;
         responseData.secondBatchId = updatedSessionData.secondBatchId;
+        responseData.bootcampId = updatedSessionData.bootcampId;
+        responseData.moduleId = updatedSessionData.moduleId;
 
         if (updatedSessionData.batchId) {
           const batchInfo = await db

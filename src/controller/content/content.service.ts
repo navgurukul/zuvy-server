@@ -1279,8 +1279,17 @@ export class ContentService {
           .set(reorderData.moduleDto)
           .where(eq(zuvyCourseModules.id, moduleId));
       }
+
+      // Fetch updated module data
+      const updatedModule = await db
+        .select()
+        .from(zuvyCourseModules)
+        .where(eq(zuvyCourseModules.id, moduleId))
+        .limit(1);
+
       return {
         message: 'Modified successfully',
+        data: updatedModule[0] || null,
       };
     } catch (err) {
       throw err;
@@ -1498,8 +1507,14 @@ export class ContentService {
           .set(editData)
           .where(eq(zuvyModuleChapter.id, chapterId));
       }
+      const updatedChapter = await db
+        .select()
+        .from(zuvyModuleChapter)
+        .where(eq(zuvyModuleChapter.id, chapterId));
       return {
         message: 'Modified successfully',
+        chapter: updatedChapter,
+        bootcampId: moduleInfo[0].bootcampId,
       };
     } catch (err) {
       throw err;
@@ -2289,10 +2304,17 @@ export class ContentService {
         null,
       ];
     }
+    // Get module info for bootcampId
+    const moduleInfo = await db
+      .select()
+      .from(zuvyCourseModules)
+      .where(eq(zuvyCourseModules.id, moduleId));
     return {
       status: 'success',
       message: 'Chapter and all related data deleted successfully',
       code: 200,
+      chapter: spyMan[0],
+      bootcampId: moduleInfo[0]?.bootcampId || null,
     };
   }
 
