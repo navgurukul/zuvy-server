@@ -176,27 +176,40 @@ export class OrgService {
   }
 
   async findAll(queryDto: OrgQueryDto) {
-    const { page = 1, limit = 10, search } = queryDto;
-    const offset = (page - 1) * limit;
+    const { page = 1, limit = 10, search, filterType } = queryDto;
+    const pageNum = Number(page) || 1;
+    const limitNum = Number(limit) || 10;
+    const offset = (pageNum - 1) * limitNum;
 
-    let whereClause = undefined;
+    const conditions = [];
+
     if (search) {
       const searchLike = `%${search}%`;
-      whereClause = or(
-        ilike(zuvyOrganizations.title, searchLike),
-        ilike(zuvyOrganizations.displayName, searchLike),
-        ilike(zuvyOrganizations.pocName, searchLike),
-        ilike(zuvyOrganizations.pocEmail, searchLike),
-        ilike(zuvyOrganizations.zuvyPocName, searchLike),
-        ilike(zuvyOrganizations.zuvyPocEmail, searchLike),
+      conditions.push(
+        or(
+          ilike(zuvyOrganizations.title, searchLike),
+          ilike(zuvyOrganizations.displayName, searchLike),
+          ilike(zuvyOrganizations.pocName, searchLike),
+          ilike(zuvyOrganizations.pocEmail, searchLike),
+          ilike(zuvyOrganizations.zuvyPocName, searchLike),
+          ilike(zuvyOrganizations.zuvyPocEmail, searchLike),
+        ),
       );
     }
+
+    if (filterType === 'self_manage') {
+      conditions.push(eq(zuvyOrganizations.isManagedByZuvy, false));
+    } else if (filterType === 'zuvy_manage') {
+      conditions.push(eq(zuvyOrganizations.isManagedByZuvy, true));
+    }
+
+    const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
 
     const orgs = await db
       .select()
       .from(zuvyOrganizations)
       .where(whereClause)
-      .limit(limit)
+      .limit(limitNum)
       .offset(offset)
       .orderBy(desc(zuvyOrganizations.createdAt));
 
@@ -215,9 +228,9 @@ export class OrgService {
       data: orgs,
       meta: {
         total,
-        page,
-        limit,
-        totalPages: Math.ceil(total / limit),
+        page: pageNum,
+        limit: limitNum,
+        totalPages: Math.ceil(total / limitNum),
       },
     };
   }
