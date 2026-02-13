@@ -59,6 +59,11 @@ export class OrgController {
   @ApiQuery({ name: 'page', required: false, type: Number })
   @ApiQuery({ name: 'limit', required: false, type: Number })
   @ApiQuery({ name: 'search', required: false, type: String })
+  @ApiQuery({
+    name: 'filterType',
+    required: false,
+    enum: ['all', 'self_manage', 'zuvy_manage'],
+  })
   @ApiBearerAuth('JWT-auth')
   findAll(@Query() query: OrgQueryDto) {
     return this.orgService.findAll(query);

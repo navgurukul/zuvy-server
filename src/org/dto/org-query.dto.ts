@@ -17,4 +17,8 @@ export class OrgQueryDto {
   @IsOptional()
   @IsString()
   search?: string;
+
+  @IsOptional()
+  @IsString()
+  filterType?: 'all' | 'self_manage' | 'zuvy_manage' = 'all';
 }
