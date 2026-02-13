@@ -87,37 +87,32 @@ export class BootcampService {
     userId,
     limit: number,
     offset: number,
-    searchTerm?: string | number,
+    searchTerm?: string,
   ): Promise<any> {
     try {
       let query;
       let countQuery;
       if (searchTerm) {
-        if (typeof searchTerm === 'string') {
-          const searchCondition = sql`LOWER(${zuvyBootcamps.name}) LIKE ${searchTerm.toLowerCase()} || '%'`;
-          query = db
-            .select()
-            .from(zuvyBootcamps)
-            .where(searchCondition)
-            .limit(limit)
-            .offset(offset);
-          countQuery = db
-            .select({ count: count(zuvyBootcamps.id) })
-            .from(zuvyBootcamps)
-            .where(searchCondition);
-        } else {
-          const searchCondition = sql`${zuvyBootcamps.id} = ${searchTerm}`;
-          query = db
-            .select()
-            .from(zuvyBootcamps)
-            .where(searchCondition)
-            .limit(limit)
-            .offset(offset);
-          countQuery = db
-            .select({ count: count(zuvyBootcamps.id) })
-            .from(zuvyBootcamps)
-            .where(searchCondition);
-        }
+        const searchTokens = searchTerm.split(/\s+/); // Split by whitespace
+        const searchConditions = searchTokens.map(
+          (token) =>
+            sql`LOWER(${zuvyBootcamps.name}) LIKE ${'%' + token.toLowerCase() + '%'}`,
+        );
+
+        const finalSearchCondition = and(...searchConditions);
+
+        query = db
+          .select()
+          .from(zuvyBootcamps)
+          .where(finalSearchCondition)
+          .orderBy(desc(zuvyBootcamps.updatedAt))
+          .limit(limit)
+          .offset(offset);
+
+        countQuery = db
+          .select({ count: count(zuvyBootcamps.id) })
+          .from(zuvyBootcamps)
+          .where(finalSearchCondition);
       } else if (roleName.includes('instructor')) {
         //first get all batches assigned to the instructor in zuvyBatches table then get all bootcampas from zuvyBootcamps table
         const batches = await db
@@ -141,6 +136,7 @@ export class BootcampService {
           .select()
           .from(zuvyBootcamps)
           .where(inArray(zuvyBootcamps.id, bootcampIds))
+          .orderBy(desc(zuvyBootcamps.updatedAt))
           .limit(limit)
           .offset(offset);
 
@@ -149,7 +145,12 @@ export class BootcampService {
           .from(zuvyBootcamps)
           .where(inArray(zuvyBootcamps.id, bootcampIds));
       } else {
-        query = db.select().from(zuvyBootcamps).limit(limit).offset(offset);
+        query = db
+          .select()
+          .from(zuvyBootcamps)
+          .orderBy(desc(zuvyBootcamps.updatedAt))
+          .limit(limit)
+          .offset(offset);
         countQuery = db
           .select({ count: count(zuvyBootcamps.id) })
           .from(zuvyBootcamps);
