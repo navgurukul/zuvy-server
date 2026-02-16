@@ -40,12 +40,12 @@ export class OrgService {
       const createOrgDtoValues = {
         title: createOrgDto.title,
         displayName: createOrgDto.displayName,
-        logoUrl: createOrgDto.logoUrl,
+        logoUrl: createOrgDto.logoUrl || null,
         pocName: createOrgDto.pocName,
         pocEmail: createOrgDto.pocEmail,
         isManagedByZuvy: createOrgDto.isManagedByZuvy,
-        zuvyPocName: createOrgDto.zuvyPocName,
-        zuvyPocEmail: createOrgDto.zuvyPocEmail,
+        zuvyPocName: createOrgDto.zuvyPocName || null,
+        zuvyPocEmail: createOrgDto.zuvyPocEmail || null,
       };
 
       const result = await db.transaction(async (tx) => {
