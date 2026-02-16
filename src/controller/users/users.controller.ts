@@ -511,7 +511,16 @@ export class UsersController {
     description: 'Internal server error',
   })
   @ApiBearerAuth('JWT-auth')
-  async deleteUser(@Param('id', ParseIntPipe) id: bigint) {
-    return this.usersService.deleteUser(id);
+  @ApiQuery({
+    name: 'orgId',
+    required: true,
+    type: Number,
+    description: 'Organization ID to delete user from specific org',
+  })
+  async deleteUser(
+    @Param('id', ParseIntPipe) id: bigint,
+    @Query('orgId', ParseIntPipe) orgId: number,
+  ) {
+    return this.usersService.deleteUser(id, orgId);
   }
 }

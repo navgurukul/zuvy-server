@@ -59,6 +59,11 @@ export class OrgController {
   @ApiQuery({ name: 'page', required: false, type: Number })
   @ApiQuery({ name: 'limit', required: false, type: Number })
   @ApiQuery({ name: 'search', required: false, type: String })
+  @ApiQuery({
+    name: 'filterType',
+    required: false,
+    enum: ['all', 'self_manage', 'zuvy_manage'],
+  })
   @ApiBearerAuth('JWT-auth')
   findAll(@Query() query: OrgQueryDto) {
     return this.orgService.findAll(query);
@@ -133,9 +138,13 @@ export class OrgController {
   @ApiResponse({ status: 403, description: 'Forbidden.' })
   @ApiResponse({ status: 404, description: 'Not Found.' })
   @ApiResponse({ status: 500, description: 'Internal Server Error.' })
+  @ApiQuery({ name: 'searchTerm', required: false, type: String })
   @ApiBearerAuth('JWT-auth')
-  async getOrgByUserId(@Param('userId') userId: number) {
-    return await this.orgService.getOrgByUserId(userId);
+  async getOrgByUserId(
+    @Param('userId') userId: number,
+    @Query('searchTerm') searchTerm?: string,
+  ) {
+    return await this.orgService.getOrgByUserId(userId, searchTerm);
   }
 
   @Patch('/complete-setup/:id')

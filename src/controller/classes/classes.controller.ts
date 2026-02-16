@@ -99,9 +99,6 @@ export class ClassesController {
       // Parse state to get user info
       const userInfo = JSON.parse(state);
 
-      let accessToken = tokens.access_token;
-      let refreshToken = tokens.refresh_token;
-
       let userData = {
         userId: userInfo.id,
         userEmail: userInfo.email,
@@ -110,10 +107,12 @@ export class ClassesController {
         refreshToken: tokens.refresh_token,
       };
 
-      let setTokens = {
-        accessToken,
-        refreshToken,
+      let setData = {
+        userEmail: userInfo.email,
+        accessToken: tokens.access_token,
+        refreshToken: tokens.refresh_token,
       };
+
       // Store tokens in database
       await db
         .insert(zuvyUserOrganizations)
@@ -123,7 +122,7 @@ export class ClassesController {
             zuvyUserOrganizations.userId,
             zuvyUserOrganizations.organizationId,
           ],
-          set: setTokens,
+          set: setData,
         });
 
       return {

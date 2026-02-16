@@ -149,6 +149,10 @@ export class OrgService {
           <p>If you did not request this, please ignore this email.</p>
         `;
 
+        this.logger.log(
+          `Attempting to send welcome email to POC: ${createOrgDto.pocEmail}`,
+        );
+
         await this.notificationEmailService.sendEmail(
           createOrgDto.pocEmail,
           subject,
@@ -156,10 +160,19 @@ export class OrgService {
           {},
           'ses',
         );
+
+        this.logger.log(
+          `✅ Welcome email sent successfully to ${createOrgDto.pocEmail}`,
+        );
       } catch (emailError) {
         this.logger.error(
-          `Failed to send email to ${createOrgDto.pocEmail}: ${emailError.message}`,
+          `❌ Failed to send email to ${createOrgDto.pocEmail}`,
         );
+        this.logger.error(`Error message: ${emailError.message}`);
+        this.logger.error(`Error stack: ${emailError.stack}`);
+
+        // Don't throw - org was created successfully, just email failed
+        // The user will see this in the logs
       }
 
       return {
@@ -176,27 +189,40 @@ export class OrgService {
   }
 
   async findAll(queryDto: OrgQueryDto) {
-    const { page = 1, limit = 10, search } = queryDto;
-    const offset = (page - 1) * limit;
+    const { page = 1, limit = 10, search, filterType } = queryDto;
+    const pageNum = Number(page) || 1;
+    const limitNum = Number(limit) || 10;
+    const offset = (pageNum - 1) * limitNum;
 
-    let whereClause = undefined;
+    const conditions = [];
+
     if (search) {
       const searchLike = `%${search}%`;
-      whereClause = or(
-        ilike(zuvyOrganizations.title, searchLike),
-        ilike(zuvyOrganizations.displayName, searchLike),
-        ilike(zuvyOrganizations.pocName, searchLike),
-        ilike(zuvyOrganizations.pocEmail, searchLike),
-        ilike(zuvyOrganizations.zuvyPocName, searchLike),
-        ilike(zuvyOrganizations.zuvyPocEmail, searchLike),
+      conditions.push(
+        or(
+          ilike(zuvyOrganizations.title, searchLike),
+          ilike(zuvyOrganizations.displayName, searchLike),
+          ilike(zuvyOrganizations.pocName, searchLike),
+          ilike(zuvyOrganizations.pocEmail, searchLike),
+          ilike(zuvyOrganizations.zuvyPocName, searchLike),
+          ilike(zuvyOrganizations.zuvyPocEmail, searchLike),
+        ),
       );
     }
+
+    if (filterType === 'self_manage') {
+      conditions.push(eq(zuvyOrganizations.isManagedByZuvy, false));
+    } else if (filterType === 'zuvy_manage') {
+      conditions.push(eq(zuvyOrganizations.isManagedByZuvy, true));
+    }
+
+    const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
 
     const orgs = await db
       .select()
       .from(zuvyOrganizations)
       .where(whereClause)
-      .limit(limit)
+      .limit(limitNum)
       .offset(offset)
       .orderBy(desc(zuvyOrganizations.createdAt));
 
@@ -215,9 +241,9 @@ export class OrgService {
       data: orgs,
       meta: {
         total,
-        page,
-        limit,
-        totalPages: Math.ceil(total / limit),
+        page: pageNum,
+        limit: limitNum,
+        totalPages: Math.ceil(total / limitNum),
       },
     };
   }
@@ -231,8 +257,21 @@ export class OrgService {
     return org;
   }
 
-  async getOrgByUserId(userId: number) {
+  async getOrgByUserId(userId: number, searchTerm?: string) {
     try {
+      let whereClause: any = eq(zuvyUserRolesAssigned.userId, BigInt(userId));
+
+      if (searchTerm) {
+        const searchLike = `%${searchTerm}%`;
+        whereClause = and(
+          whereClause,
+          or(
+            ilike(zuvyOrganizations.title, searchLike),
+            ilike(zuvyOrganizations.displayName, searchLike),
+          ),
+        );
+      }
+
       const orgs = await db
         .select({
           id: zuvyOrganizations.id,
@@ -247,7 +286,7 @@ export class OrgService {
           zuvyOrganizations,
           eq(zuvyUserRolesAssigned.organizationId, zuvyOrganizations.id),
         )
-        .where(eq(zuvyUserRolesAssigned.userId, BigInt(userId)));
+        .where(whereClause);
 
       return {
         status: 'success',
