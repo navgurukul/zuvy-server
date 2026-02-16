@@ -91,7 +91,8 @@ export class BootcampService {
     userId,
     limit: number,
     offset: number,
-    searchTerm?: string | number,
+    searchTermAsNumber?: string | number,
+    searchTermAsString?: string,
     organization_id?: number,
   ): Promise<any> {
     try {
@@ -130,38 +131,52 @@ export class BootcampService {
         );
       }
 
-      if (searchTerm) {
-        if (typeof searchTerm === 'string') {
-          let searchCondition = sql`LOWER(${zuvyBootcamps.name}) LIKE ${searchTerm.toLowerCase()} || '%'`;
-          if (orgCondition) {
-            searchCondition = and(searchCondition, orgCondition);
-          }
-          query = db
-            .select()
-            .from(zuvyBootcamps)
-            .where(searchCondition)
-            .limit(limit)
-            .offset(offset);
-          countQuery = db
-            .select({ count: count(zuvyBootcamps.id) })
-            .from(zuvyBootcamps)
-            .where(searchCondition);
-        } else {
-          let searchCondition = sql`${zuvyBootcamps.id} = ${searchTerm}`;
-          if (orgCondition) {
-            searchCondition = and(searchCondition, orgCondition);
-          }
-          query = db
-            .select()
-            .from(zuvyBootcamps)
-            .where(searchCondition)
-            .limit(limit)
-            .offset(offset);
-          countQuery = db
-            .select({ count: count(zuvyBootcamps.id) })
-            .from(zuvyBootcamps)
-            .where(searchCondition);
+      const isSearchAsNumber =
+        typeof searchTermAsNumber === 'number' ||
+        (typeof searchTermAsNumber === 'string' &&
+          searchTermAsNumber.trim() !== '' &&
+          !isNaN(Number(searchTermAsNumber)));
+
+      if (isSearchAsNumber) {
+        let searchCondition = sql`${zuvyBootcamps.id} = ${Number(searchTermAsNumber)}`;
+        if (orgCondition) {
+          searchCondition = and(searchCondition, orgCondition);
         }
+        query = db
+          .select()
+          .from(zuvyBootcamps)
+          .where(searchCondition)
+          .orderBy(desc(zuvyBootcamps.updatedAt))
+          .limit(limit)
+          .offset(offset);
+        countQuery = db
+          .select({ count: count(zuvyBootcamps.id) })
+          .from(zuvyBootcamps)
+          .where(searchCondition);
+      } else if (searchTermAsString) {
+        const searchTokens = searchTermAsString.split(/\s+/); // Split by whitespace
+        const searchConditions = searchTokens.map(
+          (token) =>
+            sql`LOWER(${zuvyBootcamps.name}) LIKE ${'%' + token.toLowerCase() + '%'}`,
+        );
+
+        let finalSearchCondition = and(...searchConditions);
+        if (orgCondition) {
+          finalSearchCondition = and(finalSearchCondition, orgCondition);
+        }
+
+        query = db
+          .select()
+          .from(zuvyBootcamps)
+          .where(finalSearchCondition)
+          .orderBy(desc(zuvyBootcamps.updatedAt))
+          .limit(limit)
+          .offset(offset);
+
+        countQuery = db
+          .select({ count: count(zuvyBootcamps.id) })
+          .from(zuvyBootcamps)
+          .where(finalSearchCondition);
       } else if (roleName.includes('instructor')) {
         //first get all batches assigned to the instructor in zuvyBatches table then get all bootcampas from zuvyBootcamps table
         const batches = await db
@@ -194,6 +209,7 @@ export class BootcampService {
           .select()
           .from(zuvyBootcamps)
           .where(condition)
+          .orderBy(desc(zuvyBootcamps.updatedAt))
           .limit(limit)
           .offset(offset);
 
@@ -206,7 +222,10 @@ export class BootcampService {
         if (orgCondition) {
           query = query.where(orgCondition);
         }
-        query = query.limit(limit).offset(offset);
+        query = query
+          .orderBy(desc(zuvyBootcamps.updatedAt))
+          .limit(limit)
+          .offset(offset);
 
         countQuery = db
           .select({ count: count(zuvyBootcamps.id) })
