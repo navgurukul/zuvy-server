@@ -2260,7 +2260,11 @@ export const zuvySessions = main.table('zuvy_sessions', {
   isChildSession: boolean('is_child_session').default(false),
   // multi-batch invited students snapshot
   invitedStudents: jsonb('invited_students').$type<{ userId: number; email: string }[]>().default([]).notNull(),
-  youtubeVideoId: text('youtube_video_id').notNull()
+  youtubeVideoId: text('youtube_video_id'),
+
+  finalVideoPath: text('final_video_path'),
+  finalUploaded: boolean('final_uploaded').default(false),
+
 });
 
 export const zuvySessionMerge = main.table('zuvy_session_merge', {
@@ -4095,14 +4099,33 @@ export const zuvySessionRecordings = main.table(
     zoomMeetingUuid: text('zoom_meeting_uuid').default(null),
     zoomRecordingId: text('zoom_recording_id'),
 
+    // stores ALL MP4 segments from Zoom
+    zoomRecordingManifest: jsonb('zoom_recording_manifest'),
+    // stores local temp paths before merge
+    localSegmentPaths: jsonb('local_segment_paths'),
+    // final merged file path
+    mergedFilePath: text('merged_file_path'),
+    // metadata verification flag
+    metadataVerified: boolean('metadata_verified').default(false),
+    // number of segments detected
+    segmentsCount: integer('segments_count').default(0),
+
+    // OPTIONAL — last time live check was done
+    liveCheckedAt: timestamp('live_checked_at', {
+      withTimezone: true,
+      mode: 'string',
+    }),
+
     status: varchar('status', { length: 32 })
       .notNull()
       .default('DISCOVERED'),
     /*
       DISCOVERED
       METADATA_READY
+      PROCESSING_DOWNLOAD
       DOWNLOADING
-      UPLOADING
+      MERGING
+      PROCESSING_UPLOAD
       COMPLETED
       FAILED
     */
@@ -4117,6 +4140,18 @@ export const zuvySessionRecordings = main.table(
     driveFileId: text('drive_file_id'),
     driveLink: text('drive_link'),
 
+
+    recordingStart: timestamp('recording_start', {
+    withTimezone: true,
+    mode: 'string',
+    }),
+
+    recordingEnd: timestamp('recording_end', {
+    withTimezone: true,
+    mode: 'string',
+    }),
+
+    isFinalMerged: boolean('is_final_merged').default(false),
     createdAt: timestamp('created_at', {
       withTimezone: true,
       mode: 'string',
@@ -4128,11 +4163,10 @@ export const zuvySessionRecordings = main.table(
     }).defaultNow(),
   },
   (table) => ({
-    uniqSessionRecording: unique('uniq_session_recording').on(
-      table.sessionId
-    ),
-  })
-);
+    uniqSessionUuid: unique('uniq_session_uuid')
+      .on(table.sessionId, table.zoomMeetingUuid),
+    })
+  );
 
 export const zuvyZoomWebhookEvents = main.table(
   'zuvy_zoom_webhook_events',
@@ -4161,5 +4195,9 @@ export const zuvyZoomWebhookEvents = main.table(
   },
   (table) => ({
     uniqZoomEvent: unique('uniq_zoom_event').on(table.eventId),
+    idxZoomMeetingId: index('idx_zoom_webhook_meeting_id').on(
+      table.meetingId
+    ),
   })
+
 );

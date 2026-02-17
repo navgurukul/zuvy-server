@@ -162,18 +162,43 @@ export class ZoomWebhookController {
         const payload = body.payload;
         const { meetingId, meetingUuid } = extractMeetingIdentifiers(payload);
 
-        this.logger.log(`🎥 Recording completed for meeting ${meetingId}`);
+        this.logger.log(` Recording completed for meeting ${meetingId}`);
 
+        // 1️ Find session
+        const session = await db.query.zuvySessions.findFirst({
+          where: (s, { eq }) => eq(s.zoomMeetingId, meetingId),
+        });
+
+        if (!session) {
+          this.logger.warn(`Session not found for meeting ${meetingId}`);
+          return res.status(200).send();
+        }
+
+        // 2️ Insert NEW recording row per UUID (restart-safe)
         await db.execute(sql`
-      UPDATE zuvy_session_recordings
-      SET
-        status = 'DISCOVERED',
-        retry_count = 0,
-        last_error = NULL,
-        next_retry_at = NULL
-      WHERE zoom_meeting_id = ${meetingId}
-         OR zoom_meeting_uuid = ${meetingUuid}
-    `);
+    INSERT INTO zuvy_session_recordings (
+      session_id,
+      zoom_meeting_id,
+      zoom_meeting_uuid,
+      status,
+      recording_start,
+      recording_end,
+      segments_count,
+      retry_count
+    )
+    VALUES (
+      ${session.id},
+      ${meetingId},
+      ${meetingUuid},
+      'DISCOVERED',
+      ${payload.object.start_time},
+      ${payload.object.recording_files?.[0]?.recording_end},
+      ${payload.object.recording_count || 0},
+      0
+    )
+    ON CONFLICT (session_id, zoom_meeting_uuid)
+    DO NOTHING
+  `);
 
         this.recordingWorkerTrigger.triggerNow();
 
@@ -193,7 +218,7 @@ export class ZoomWebhookController {
         const payload = body.payload;
         const { meetingId, meetingUuid } = extractMeetingIdentifiers(payload);
 
-        this.logger.log(`🛑 Meeting ended: ${meetingId}`);
+        this.logger.log(` Meeting ended: ${meetingId}`);
 
         // Optional: ensure recording job exists
         await db.execute(sql`
@@ -210,7 +235,7 @@ export class ZoomWebhookController {
         'DISCOVERED'
       FROM zuvy_sessions s
       WHERE s.zoom_meeting_id = ${meetingId}
-      ON CONFLICT (session_id) DO NOTHING
+      ON CONFLICT (session_id, zoom_meeting_uuid) DO NOTHING
     `);
 
         this.recordingWorkerTrigger.triggerNow();
