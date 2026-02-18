@@ -3,9 +3,11 @@ import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 import { CorsOptions } from '@nestjs/common/interfaces/external/cors-options.interface';
 import { log } from 'console';
+import * as bodyParser from 'body-parser';
 import { WrapUserInArrayInterceptor } from './middleware/jwt.middleware';
+import { ScheduleService } from './schedule/schedule.service';
 
-// IMPORTING env VALUES 
+// IMPORTING env VALUES
 const { PORT, BASE_URL } = process.env;
 
 async function bootstrap() {
@@ -15,12 +17,22 @@ async function bootstrap() {
     credentials: true,
   };
   const app = await NestFactory.create(AppModule);
+
+  app.use(
+    bodyParser.json({
+      verify: (req: any, _res, buf) => {
+        req.rawBody = buf.toString();
+      },
+    }),
+  );
+
   // Enable CORS
   app.enableCors(corsOptions);
   app.useGlobalInterceptors(new WrapUserInArrayInterceptor());
   const config = new DocumentBuilder()
     .setTitle('NG zuvy API Docs')
-    .setDescription(`[Base url: ${BASE_URL}]
+    .setDescription(
+      `[Base url: ${BASE_URL}]
     
 ## Authentication
 This API uses Google OAuth2 for authentication. The flow is as follows:
@@ -34,7 +46,8 @@ This API uses Google OAuth2 for authentication. The flow is as follows:
 - All endpoints except /auth/login require a valid JWT token
 - The token should be included in the Authorization header as: \`Bearer <token>\`
 - Refresh tokens can be used to obtain new access tokens via /auth/refresh
-- Tokens can be invalidated via /auth/logout`)
+- Tokens can be invalidated via /auth/logout`,
+    )
     .setVersion('1.0')
     .addBearerAuth(
       {
@@ -53,13 +66,16 @@ This API uses Google OAuth2 for authentication. The flow is as follows:
     const document = SwaggerModule.createDocument(app, config);
     document.security = [
       {
-        'JWT-auth': [], 
+        'JWT-auth': [],
       },
     ];
-    
+
     SwaggerModule.setup('apis', app, document);
   }
   await app.listen(PORT || 6000);
   log(`Application is running on swagger: localhost:${PORT}/apis#/`);
+
+  const scheduleService = app.get(ScheduleService);
+  await scheduleService.backfillInvitedStudentsAttendanceMidnight();
 }
 bootstrap();

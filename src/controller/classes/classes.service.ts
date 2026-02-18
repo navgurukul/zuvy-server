@@ -14,6 +14,7 @@ import {
   userTokens,
   users,
   zuvySessionMerge,
+  zuvySessionRecordings,
 } from '../../../drizzle/schema';
 import {
   eq,
@@ -495,6 +496,16 @@ export class ClassesService {
       if (!zoomResponse.success) {
         throw new Error(`Failed to create Zoom meeting: ${zoomResponse.error}`);
       }
+
+      // FETCH UUID EXPLICITLY (Zoom does NOT always return it on create)
+      const meetingDetails = await this.zoomService.getMeeting(
+        zoomResponse.data.id.toString(),
+      );
+
+      if (!meetingDetails.success || !meetingDetails.data?.uuid) {
+        throw new Error('Failed to fetch Zoom meeting UUID');
+      }
+
       // Create corresponding Google Calendar event for Zoom meeting
       let calendarEventId = null;
       // try {
@@ -533,6 +544,7 @@ export class ClassesService {
         zoomStartUrl: zoomResponse.data.start_url,
         zoomPassword: zoomResponse.data.password,
         zoomMeetingId: zoomResponse.data.id.toString(),
+        zoomMeetingUuid: meetingDetails.data.uuid,
         googleCalendarEventId: calendarEventId, // Store Google Calendar event ID
         creator: creatorInfo.email,
         startTime: zoomStartDate.toISOString(), // Use original start time for database
@@ -566,6 +578,16 @@ export class ClassesService {
 
       // Save sessions to database
       const saveResult = await this.saveSessionsToDatabase(sessionsToCreate);
+
+      // Enqueue recording job AFTER session is saved
+      for (const saved of saveResult.data) {
+        await this.enqueueRecordingJob({
+          id: saved.id,
+          zoomMeetingId: saved.zoomMeetingId,
+          zoomMeetingUuid: saved.zoomMeetingUuid,
+          isZoomMeet: saved.isZoomMeet,
+        });
+      }
 
       if (saveResult.status === 'error') {
         throw new Error(saveResult.message);
@@ -1008,6 +1030,7 @@ export class ClassesService {
         zoomStartUrl: session.zoomStartUrl,
         zoomPassword: session.zoomPassword,
         zoomMeetingId: session.zoomMeetingId,
+        zoomMeetingUuid: session.zoomMeetingUuid,
         googleCalendarEventId: session.googleCalendarEventId, // Add Google Calendar event ID
         invitedStudents: session.invitedStudents || [],
         youtubeVideoId: session.youtubeVideoId || null, // Ensure required field is present
@@ -1570,6 +1593,17 @@ export class ClassesService {
             id: classObj.id,
             updatedClass: { status: newStatus },
           });
+          if (newStatus === 'completed') {
+            await this.enqueueRecordingJob({
+              id: classObj.id,
+              zoomMeetingId: classObj.zoomMeetingId,
+              zoomMeetingUuid: classObj.zoomMeetingUuid,
+              isZoomMeet: classObj.isZoomMeet,
+            });
+            this.logger.log(
+              `[Recording] Job enqueued for completed Zoom session ${classObj.id}`,
+            );
+          }
         }
       }
 
@@ -4414,6 +4448,37 @@ export class ClassesService {
       console.error(
         `Failed to migrate attendance for meetingId "${meetingId}". Error:`,
         error,
+      );
+    }
+  }
+  ///////////////////////////////////////////////////
+  private async enqueueRecordingJob(session: {
+    id: number;
+    zoomMeetingId: string | null;
+    zoomMeetingUuid?: string | null;
+    isZoomMeet: boolean;
+  }) {
+    if (!session.isZoomMeet || !session.zoomMeetingId) return;
+
+    try {
+      const recordingData = {
+        sessionId: session.id,
+        zoomMeetingId: session.zoomMeetingId,
+        zoomMeetingUuid: session.zoomMeetingUuid ?? null,
+        status: 'DISCOVERED',
+      } as const;
+
+      await db
+        .insert(zuvySessionRecordings)
+        .values(recordingData)
+        .onConflictDoNothing();
+
+      this.logger.log(
+        `Recording job enqueued for session ${session.id}, meetingId: ${session.zoomMeetingId}`,
+      );
+    } catch (error) {
+      this.logger.error(
+        `Failed to enqueue recording job for session ${session.id}: ${error.message}`,
       );
     }
   }

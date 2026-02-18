@@ -5,11 +5,12 @@ import {
   Logger,
 } from '@nestjs/common';
 import { eq } from 'drizzle-orm';
-import { userTokens } from 'drizzle/schema';
+import { zuvyUserOrganizations } from 'drizzle/schema';
 import { db } from 'src/db';
 
 type UpsertParams = {
   userId: number;
+  organizationId: number;
   userEmail: string;
   accessToken: string;
   refreshToken: string;
@@ -20,14 +21,19 @@ type DeleteFilter = { userId?: number; userEmail?: string };
 export class UserTokensService {
   private readonly logger = new Logger(UserTokensService.name);
   async upsertToken(params: UpsertParams) {
-    const { userId, userEmail, accessToken, refreshToken } = params;
+    const { userId, organizationId, userEmail, accessToken, refreshToken } =
+      params;
     try {
+      let setData = { userEmail, accessToken, refreshToken };
       const [row] = await db
-        .insert(userTokens)
-        .values({ userId, userEmail, accessToken, refreshToken })
+        .insert(zuvyUserOrganizations)
+        .values(params)
         .onConflictDoUpdate({
-          target: userTokens.userId,
-          set: { userEmail, accessToken, refreshToken },
+          target: [
+            zuvyUserOrganizations.userId,
+            zuvyUserOrganizations.organizationId,
+          ],
+          set: setData,
         })
         .returning();
 
@@ -46,11 +52,11 @@ export class UserTokensService {
     try {
       const [tokens] = await db
         .select({
-          accessToken: userTokens.accessToken,
-          refreshToken: userTokens.refreshToken,
+          accessToken: zuvyUserOrganizations.accessToken,
+          refreshToken: zuvyUserOrganizations.refreshToken,
         })
-        .from(userTokens)
-        .where(eq(userTokens.userId, Number(userId)));
+        .from(zuvyUserOrganizations)
+        .where(eq(zuvyUserOrganizations.userId, Number(userId)));
 
       if (!tokens) {
         return { success: false, message: 'No tokens found for this user' };
@@ -75,11 +81,14 @@ export class UserTokensService {
       });
 
     const where = filter.userId
-      ? eq(userTokens.userId, filter.userId)
-      : eq(userTokens.userEmail, filter.userEmail!);
+      ? eq(zuvyUserOrganizations.userId, filter.userId)
+      : eq(zuvyUserOrganizations.userEmail, filter.userEmail!);
 
     try {
-      const deleted = await db.delete(userTokens).where(where).returning();
+      const deleted = await db
+        .delete(zuvyUserOrganizations)
+        .where(where)
+        .returning();
       const found = deleted.length > 0;
       return {
         success: found,
