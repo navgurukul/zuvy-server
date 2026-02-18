@@ -328,12 +328,14 @@ export class UsersController {
     }
 
     const roleName = req.user[0]?.roles;
+    const orgId = req.user[0]?.orgId;
     return this.usersService.getAllUsersWithRoles(
       roleName,
       limitNum,
       offsetNum,
       searchTerm || '', // Default to empty string if undefined
       roleId,
+      orgId,
     );
   }
 

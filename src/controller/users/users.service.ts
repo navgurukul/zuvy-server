@@ -552,6 +552,7 @@ export class UsersService {
     offset: number,
     searchTerm: string = '',
     roleId?: number | number[],
+    orgId?: number,
   ): Promise<any> {
     try {
       const search = `%${searchTerm}%`;
@@ -579,6 +580,13 @@ export class UsersService {
             eq(zuvyUserRolesAssigned.roleId, roleId),
           );
         }
+      }
+
+      if (orgId) {
+        finalCondition = and(
+          finalCondition,
+          eq(zuvyUserRolesAssigned.organizationId, orgId),
+        );
       }
 
       // 1. Query for filtered users
@@ -627,6 +635,7 @@ export class UsersService {
       const permissionsResult = await this.rbacService.getAllPermissions(
         roleName,
         targetPermissions,
+        orgId,
       );
 
       return {

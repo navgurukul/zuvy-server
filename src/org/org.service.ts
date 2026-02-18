@@ -49,19 +49,7 @@ export class OrgService {
       };
 
       const result = await db.transaction(async (tx) => {
-        // 1. Find Admin Role ID
-        const adminRole = await tx
-          .select()
-          .from(zuvyUserRoles)
-          .where(eq(zuvyUserRoles.name, 'admin'))
-          .limit(1);
-
-        if (!adminRole.length) {
-          throw new InternalServerErrorException("Role 'admin' not found");
-        }
-        const adminRoleId = adminRole[0].id;
-
-        // 2. Create Organization
+        // 1. Create Organization
         const [newOrg] = await tx
           .insert(zuvyOrganizations)
           .values(createOrgDtoValues)
@@ -72,6 +60,18 @@ export class OrgService {
             'Failed to create organization',
           );
         }
+
+        // 2. Create org-scoped admin role
+        let createAdminRoleData = {
+          name: 'admin',
+          description: 'Organization Admin with full permissions',
+          orgId: newOrg.id,
+        };
+        const [adminRole] = await tx
+          .insert(zuvyUserRoles)
+          .values(createAdminRoleData)
+          .returning();
+        const adminRoleId = adminRole.id;
 
         // Helper to get or create user and assign role
         const processUser = async (email: string, name: string) => {
@@ -92,7 +92,7 @@ export class OrgService {
             userId = newUser.id;
           }
 
-          // Assign Admin Role if not already assigned
+          // Assign Admin Role if not already assigned for this org
           const [existingRole] = await tx
             .select()
             .from(zuvyUserRolesAssigned)
@@ -100,6 +100,7 @@ export class OrgService {
               and(
                 eq(zuvyUserRolesAssigned.userId, userId),
                 eq(zuvyUserRolesAssigned.roleId, adminRoleId),
+                eq(zuvyUserRolesAssigned.organizationId, newOrg.id),
               ),
             )
             .limit(1);

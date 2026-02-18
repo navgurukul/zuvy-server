@@ -92,6 +92,7 @@ export class BootcampController {
       : undefined;
     const roleName = req.user[0]?.roles;
     const userId = req.user[0]?.id;
+    const orgId = req.user[0]?.orgId;
     const [err, res] = await this.bootcampService.getAllBootcamps(
       roleName,
       userId,
@@ -100,6 +101,7 @@ export class BootcampController {
       searchTermAsNumber,
       searchTermAsString,
       organization_id,
+      orgId,
     );
 
     if (err) {
@@ -123,10 +125,12 @@ export class BootcampController {
     @Req() req,
   ): Promise<object> {
     const roleName = req.user[0]?.roles;
+    const orgId = req.user[0]?.orgId;
     const [err, res] = await this.bootcampService.getBootcampById(
       id,
       isContent,
       roleName,
+      orgId,
     );
     if (err) {
       throw new BadRequestException(err);
@@ -155,10 +159,12 @@ export class BootcampController {
     @Req() req,
   ) {
     const roleName = req.user[0]?.roles;
+    const orgId = req.user[0]?.orgId;
     const [err, res] = await this.bootcampService.updateBootcampSetting(
       bootcampId,
       bootcampSetting,
       roleName,
+      orgId,
     );
     if (err) {
       throw new BadRequestException(err);
@@ -174,9 +180,11 @@ export class BootcampController {
     @Req() req,
   ): Promise<object> {
     const roleName = req.user[0]?.roles;
+    const orgId = req.user[0]?.orgId;
     const [err, res] = await this.bootcampService.getBootcampSettingById(
       roleName,
       id,
+      orgId,
     );
     if (err) {
       throw new BadRequestException(err);
@@ -234,11 +242,13 @@ export class BootcampController {
     @Req() req,
   ): Promise<object> {
     const roleName = req.user[0]?.roles;
+    const orgId = req.user[0]?.orgId;
     const [err, res] = await this.bootcampService.getBatchByIdBootcamp(
       bootcamp_id,
       roleName,
       limit,
       offset,
+      orgId,
     );
     if (err) {
       throw new BadRequestException(err);
@@ -302,11 +312,13 @@ export class BootcampController {
     @Req() req,
   ) {
     const roleName = req.user[0]?.roles;
+    const orgId = req.user[0]?.orgId;
     const [err, res] = await this.bootcampService.addStudentToBootcamp(
       bootcamp_id,
       batch_id,
       studentData.students,
       roleName,
+      orgId,
     );
     if (err) {
       throw new BadRequestException(err);
@@ -396,6 +408,7 @@ export class BootcampController {
   ) {
     const roleName = req.user[0]?.roles;
     const userId = req.user[0]?.id;
+    const orgId = req.user[0]?.orgId;
     const searchTermAsNumber = !isNaN(Number(searchTerm))
       ? BigInt(searchTerm)
       : searchTerm;
@@ -435,6 +448,7 @@ export class BootcampController {
       orderBy,
       orderDirection,
       userId,
+      orgId,
     );
     return res;
   }

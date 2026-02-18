@@ -19,7 +19,6 @@ import {
   zuvyPermissions,
   zuvyResources,
   zuvyPermissionsRoles,
-  zuvyRolePermissions,
   zuvyUserPermissions,
   zuvyUserRoles,
   zuvyUserRolesAssigned,
@@ -206,15 +205,16 @@ export class PermissionsService {
     }
   }
 
-  async getUserPermissions(userId: number): Promise<string[]> {
+  async getUserPermissions(userId: number, orgId: number): Promise<string[]> {
     try {
       const result = await db.execute(sql`
         SELECT DISTINCT p.name 
         FROM main.zuvy_permissions p
-        INNER JOIN main.zuvy_role_permissions rp ON p.id = rp.permission_id
-        INNER JOIN main.zuvy_user_roles ur ON rp.role_id = ur.id
+        INNER JOIN main.zuvy_permissions_roles pr ON p.id = pr.permission_id
+        INNER JOIN main.zuvy_user_roles ur ON pr.role_id = ur.id
         INNER JOIN main.zuvy_user_roles_assigned ura ON ura.role_id = ur.id
-        WHERE ura.user_id = ${userId}
+        WHERE ura.user_id = ${userId} AND ura.organization_id = ${orgId}
+          AND pr.org_id = ${orgId}
       `);
 
       const permissions = (result as any).rows.map((row) => row.name);
@@ -233,13 +233,14 @@ export class PermissionsService {
   async userHasPermissions(
     userId: number,
     requiredPermissions: string[],
+    orgId: number,
   ): Promise<boolean> {
     try {
       if (!requiredPermissions || requiredPermissions.length === 0) {
         return true;
       }
 
-      const userPermissions = await this.getUserPermissions(userId);
+      const userPermissions = await this.getUserPermissions(userId, orgId);
       const hasAllPermissions = requiredPermissions.every((permission) =>
         userPermissions.includes(permission),
       );
@@ -369,7 +370,11 @@ export class PermissionsService {
     }
   }
 
-  async assignPermissionsToRole(userIdString, dto: AssignPermissionsToRoleDto) {
+  async assignPermissionsToRole(
+    userIdString,
+    dto: AssignPermissionsToRoleDto,
+    orgId: number,
+  ) {
     try {
       const { resourceId, roleId, permissions } = dto;
       const actorUserId = Number(userIdString);
@@ -419,7 +424,13 @@ export class PermissionsService {
         if (enableIds.length) {
           await tx
             .insert(zuvyPermissionsRoles)
-            .values(enableIds.map((permissionId) => ({ roleId, permissionId })))
+            .values(
+              enableIds.map((permissionId) => ({
+                roleId,
+                permissionId,
+                orgId,
+              })),
+            )
             .onConflictDoNothing({
               target: [
                 zuvyPermissionsRoles.roleId,

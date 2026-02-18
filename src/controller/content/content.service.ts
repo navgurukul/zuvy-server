@@ -564,7 +564,11 @@ export class ContentService {
     }
   }
 
-  async getAllModuleByBootcampId(bootcampId: number, roleName: string[]) {
+  async getAllModuleByBootcampId(
+    bootcampId: number,
+    roleName: string[],
+    orgId?: number,
+  ) {
     const bootcampInfo = await db
       .select()
       .from(zuvyBootcamps)
@@ -624,6 +628,7 @@ export class ContentService {
       const grantedPermission = await this.rbacService.getAllPermissions(
         roleName,
         targetPermissions,
+        orgId,
       );
       return { modules, ...grantedPermission };
     } catch (err) {
@@ -632,7 +637,7 @@ export class ContentService {
     }
   }
 
-  async getAllChaptersOfModule(roleName, moduleId: number) {
+  async getAllChaptersOfModule(roleName, moduleId: number, orgId?: number) {
     try {
       const module = await db
         .select()
@@ -689,6 +694,7 @@ export class ContentService {
         await this.rbacAllocPermsService.getAllPermissions(
           roleName,
           targetPermissions,
+          orgId,
         );
       return {
         chapterWithTopic,
@@ -2304,6 +2310,7 @@ export class ContentService {
     limit: number,
     offSet: number,
     userId: bigint,
+    orgId?: number,
   ) {
     try {
       const where: SQL[] = [];
@@ -2389,6 +2396,7 @@ export class ContentService {
         const permissionsResult = await this.rbacService.getAllPermissions(
           roleName,
           targetPermissions,
+          orgId,
         );
         userPermissions = permissionsResult;
       } catch (permissionError) {
@@ -2419,6 +2427,7 @@ export class ContentService {
     limit: number,
     offSet: number,
     userId: bigint,
+    orgId?: number,
   ) {
     try {
       let conditions = [];
@@ -2520,6 +2529,7 @@ export class ContentService {
         const permissionsResult = await this.rbacService.getAllPermissions(
           roleName,
           targetPermissions,
+          orgId,
         );
         userPermissions = permissionsResult;
       } catch (permissionError) {
@@ -2975,6 +2985,7 @@ export class ContentService {
     limit: number,
     offset: number,
     userId: bigint,
+    orgId?: number,
   ) {
     try {
       let conditions = [];
@@ -3040,6 +3051,7 @@ export class ContentService {
         const permissionsResult = await this.rbacService.getAllPermissions(
           roleName,
           targetPermissions,
+          orgId,
         );
         userPermissions = permissionsResult;
       } catch (permissionError) {

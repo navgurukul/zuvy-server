@@ -94,6 +94,7 @@ export class BootcampService {
     searchTermAsNumber?: string | number,
     searchTermAsString?: string,
     organization_id?: number,
+    orgId?: number,
   ): Promise<any> {
     try {
       let query;
@@ -255,6 +256,7 @@ export class BootcampService {
       const permissionResult = await this.rbacService.getAllPermissions(
         roleName,
         targetPermissions,
+        orgId,
       );
       allPermissions = permissionResult.permissions || {};
 
@@ -288,6 +290,7 @@ export class BootcampService {
     id: number,
     isContent: boolean,
     role: string[],
+    orgId: number,
   ): Promise<any> {
     try {
       let bootcamp = await db
@@ -313,6 +316,7 @@ export class BootcampService {
       const grantedPermissions = await this.rbacService.getAllPermissions(
         role,
         targetPermissions,
+        orgId,
       );
       return [
         null,
@@ -438,6 +442,7 @@ export class BootcampService {
     bootcamp_id: number,
     settingData,
     roleName: string[],
+    orgId: number,
   ) {
     try {
       const typeOfBootcamp = settingData.type
@@ -457,6 +462,7 @@ export class BootcampService {
       const grantedPermissions = await this.rbacService.getAllPermissions(
         roleName,
         targetPermissions,
+        orgId,
       );
       if (
         typeOfBootcamp == 'Public'.toLowerCase() ||
@@ -507,7 +513,7 @@ export class BootcampService {
     }
   }
 
-  async getBootcampSettingById(roleName, bootcampId: number) {
+  async getBootcampSettingById(roleName, bootcampId: number, orgId: number) {
     try {
       let bootcampSetting = await db
         .select()
@@ -533,6 +539,7 @@ export class BootcampService {
       const grantedPermissions = await this.rbacService.getAllPermissions(
         roleName,
         targetPermissions,
+        orgId,
       );
       return [
         null,
@@ -618,6 +625,7 @@ export class BootcampService {
     roleName: string[],
     limit: number,
     offset: number,
+    orgId: number,
   ): Promise<any> {
     try {
       // sanitize pagination parameters
@@ -714,6 +722,7 @@ export class BootcampService {
       const grantedPermission = await this.rbacService.getAllPermissions(
         roleName,
         targetPermissions,
+        orgId,
       );
       return [
         null,
@@ -805,6 +814,7 @@ export class BootcampService {
     batchId: number,
     users_data: any[],
     roleName: string[],
+    orgId: number,
   ) {
     try {
       var a = 0,
@@ -1078,6 +1088,7 @@ export class BootcampService {
       const grantedPermissions = await this.rbacService.getAllPermissions(
         roleName,
         targetePermission,
+        orgId,
       );
 
       return [
@@ -1127,6 +1138,7 @@ export class BootcampService {
     orderBy?: string,
     orderDirection?: string,
     instructorId?: number, // Add instructor ID parameter
+    orgId?: number,
   ) {
     try {
       const batchIdNum = Number.isFinite(Number(batchId))
@@ -1289,6 +1301,7 @@ export class BootcampService {
         await this.rbacAllocPermsService.getAllPermissions(
           roleName,
           targetPermissions,
+          orgId,
         );
 
       return {
@@ -1562,10 +1575,13 @@ export class BootcampService {
     }
   }
 
-  async getUserPermissionsForMultipleResources(userId: bigint) {
+  async getUserPermissionsForMultipleResources(userId: bigint, orgId: number) {
     try {
       const result =
-        await this.rbacService.getUserPermissionsForMultipleResources(userId);
+        await this.rbacService.getUserPermissionsForMultipleResources(
+          userId,
+          orgId,
+        );
       return [null, result];
     } catch (err) {
       return [err, null];

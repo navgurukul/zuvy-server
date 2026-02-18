@@ -565,3 +565,7 @@ CREATE INDEX "zuvy_user_organizations_organization_id_idx"
 
 CREATE INDEX "zuvy_user_organizations_joined_at_idx"
     ON "zuvy_user_organizations" ("joined_at");
+
+ALTER TABLE "zuvy_permissions_roles" 
+ADD COLUMN IF NOT EXISTS "org_id" INTEGER NOT NULL 
+REFERENCES "zuvy_organizations"("id") DEFAULT 1;
