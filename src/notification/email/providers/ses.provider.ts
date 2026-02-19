@@ -22,16 +22,30 @@ export class SesProvider {
     body: string,
     config?: any,
   ): Promise<any> {
-    const info = await this.ses.sendEmail({
-      from:
-        config?.from ||
-        process.env.SUPPORT_EMAIL ||
-        '"Zuvy Support" <team@zuvy.org>',
-      to,
-      subject,
-      html: body,
-    });
+    try {
+      const emailParams = {
+        Source: 'team@zuvy.org',
+        Destination: {
+          ToAddresses: [to],
+        },
+        Message: {
+          Subject: {
+            Data: subject,
+          },
+          Body: {
+            Text: {
+              Data: body,
+            },
+          },
+        },
+      };
 
-    return info;
+      const info = await this.ses.sendEmail(emailParams);
+
+      return info;
+    } catch (error) {
+      this.logger.error(`Failed to send email via SES: ${error.message}`);
+      throw error;
+    }
   }
 }
