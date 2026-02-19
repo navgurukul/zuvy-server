@@ -27,7 +27,7 @@ export class RbacAllocPermsService {
   async getUserPermissionsByResource(
     userId: bigint,
     resourceId: number,
-    orgId: number,
+    orgId: number | null,
   ): Promise<any> {
     try {
       await this.permissionAllocationService.getUserPermissionsByResource(
@@ -49,7 +49,7 @@ export class RbacAllocPermsService {
 
   async getUserPermissionsForMultipleResources(
     userId: bigint,
-    orgId: number,
+    orgId: number | null,
   ): Promise<any> {
     try {
       return await this.permissionAllocationService.getUserPermissionsForMultipleResources(
@@ -72,7 +72,7 @@ export class RbacAllocPermsService {
     userId: number,
     resourceId: number,
     permissionName: string,
-    orgId: number,
+    orgId: number | null,
   ): Promise<any> {
     try {
       // First check if user exists
@@ -104,8 +104,9 @@ export class RbacAllocPermsService {
         INNER JOIN main.zuvy_permissions_roles pr ON p.id = pr.permission_id
         INNER JOIN main.zuvy_user_roles ur ON pr.role_id = ur.id
         INNER JOIN main.zuvy_user_roles_assigned ura ON ura.role_id = ur.id
-        WHERE ura.user_id = ${userId} AND ura.organization_id = ${orgId}
-          AND pr.org_id = ${orgId}
+        WHERE ura.user_id = ${userId} 
+          AND ura.organization_id IS NOT DISTINCT FROM ${orgId}
+          AND pr.org_id IS NOT DISTINCT FROM ${orgId}
           AND r.id = ${resourceId} AND p.name = ${permissionName}
       `);
 
@@ -182,7 +183,7 @@ export class RbacAllocPermsService {
   async getAllPermissions(
     roleName: string[],
     targetPermissions: string[],
-    orgId: number,
+    orgId: number | null,
   ): Promise<any> {
     try {
       return await this.permissionAllocationService.getAllPermissions(

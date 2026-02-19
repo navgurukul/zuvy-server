@@ -11,7 +11,7 @@ import {
   zuvyOrganizations,
   zuvyUserOrganizations,
 } from '../../drizzle/schema';
-import { eq, inArray, and } from 'drizzle-orm';
+import { eq, inArray, and, isNull, or } from 'drizzle-orm';
 import { OAuth2Client } from 'google-auth-library';
 import { UserTokensService } from 'src/user-tokens/user-tokens.service';
 let { GOOGLE_CLIENT_ID, GOOGLE_SECRET, GOOGLE_REDIRECT, JWT_SECRET_KEY } =
@@ -40,8 +40,16 @@ export class AuthService {
     return null;
   }
 
-  async getUserRoles(userId: number, orgId: number): Promise<string[]> {
+  async getUserRoles(userId: number, orgId: number | null): Promise<string[]> {
     try {
+      const orgFilter =
+        orgId !== null
+          ? or(
+              eq(zuvyUserRolesAssigned.organizationId, orgId),
+              isNull(zuvyUserRolesAssigned.organizationId),
+            )
+          : isNull(zuvyUserRolesAssigned.organizationId);
+
       // 🔹 Step 1: Try new role system first
       let userRoles = await db
         .select({
@@ -54,10 +62,7 @@ export class AuthService {
           eq(zuvyUserRolesAssigned.roleId, zuvyUserRoles.id),
         )
         .where(
-          and(
-            eq(zuvyUserRolesAssigned.userId, BigInt(userId)),
-            eq(zuvyUserRolesAssigned.organizationId, orgId),
-          ),
+          and(eq(zuvyUserRolesAssigned.userId, BigInt(userId)), orgFilter),
         );
 
       // 🔹 Step 2: Return roles or default
@@ -177,21 +182,27 @@ export class AuthService {
         expiresIn: '7d',
       });
 
-      // Store tokens in database for the specific organization
-      if (selectedOrg) {
-        await db
-          .update(zuvyUserOrganizations)
-          .set({
-            accessToken: access_token,
-            refreshToken: refresh_token,
-          } as any)
-          .where(
-            and(
-              eq(zuvyUserOrganizations.userId, Number(user.id)),
-              eq(zuvyUserOrganizations.organizationId, selectedOrg.orgId),
-            ),
-          );
-      }
+      // Store tokens in database for the specific organization (or null orgId for superadmin)
+      let setTokenData = {
+        accessToken: access_token,
+        refreshToken: refresh_token,
+      } as any;
+      await db
+        .insert(zuvyUserOrganizations)
+        .values({
+          userId: Number(user.id),
+          organizationId: selectedOrg?.orgId || null,
+          userEmail: user.email,
+          accessToken: access_token,
+          refreshToken: refresh_token,
+        } as any)
+        .onConflictDoUpdate({
+          target: [
+            zuvyUserOrganizations.userId,
+            zuvyUserOrganizations.organizationId,
+          ],
+          set: setTokenData,
+        });
 
       // Legacy userTokens table update removed/commented out as per requirement
       /*
@@ -498,21 +509,27 @@ export class AuthService {
     const [user] = await db.select().from(users).where(eq(users.id, userId));
     if (!user) throw new UnauthorizedException('User not found');
 
-    // Verify membership
-    const [membership] = await db
-      .select()
-      .from(zuvyUserRolesAssigned)
-      .where(
-        and(
-          eq(zuvyUserRolesAssigned.userId, userId),
-          eq(zuvyUserRolesAssigned.organizationId, targetOrgId),
-        ),
-      );
+    // Check for super_admin role globally
+    const globalRoles = await this.getUserRoles(Number(userId), null);
+    const isSuperAdmin = globalRoles.includes('super_admin');
 
-    if (!membership) {
-      throw new UnauthorizedException(
-        'User is not a member of this organization',
-      );
+    if (!isSuperAdmin) {
+      // Verify membership for non-super_admins
+      const [membership] = await db
+        .select()
+        .from(zuvyUserRolesAssigned)
+        .where(
+          and(
+            eq(zuvyUserRolesAssigned.userId, userId),
+            eq(zuvyUserRolesAssigned.organizationId, targetOrgId),
+          ),
+        );
+
+      if (!membership) {
+        throw new UnauthorizedException(
+          'User is not a member of this organization',
+        );
+      }
     }
 
     const [org] = await db
@@ -520,7 +537,12 @@ export class AuthService {
       .from(zuvyOrganizations)
       .where(eq(zuvyOrganizations.id, targetOrgId));
 
-    const roles = await this.getUserRoles(Number(userId), targetOrgId);
+    let roles = await this.getUserRoles(Number(userId), targetOrgId);
+
+    // If super admin, ensure they keep their super_admin role even when switched
+    if (isSuperAdmin && !roles.includes('super_admin')) {
+      roles = [...roles, 'super_admin'];
+    }
 
     const payload = {
       sub: user.id.toString(),
@@ -536,27 +558,37 @@ export class AuthService {
     const refresh_token = this.jwtService.sign(payload, { expiresIn: '7d' });
 
     // Update DB
+    let setTokenData = {
+      accessToken: access_token,
+      refreshToken: refresh_token,
+    } as any;
     await db
-      .update(zuvyUserOrganizations)
-      .set({
+      .insert(zuvyUserOrganizations)
+      .values({
         userId: Number(userId),
         organizationId: targetOrgId,
         userEmail: user.email,
         accessToken: access_token,
         refreshToken: refresh_token,
       } as any)
-      .where(
-        and(
-          eq(zuvyUserOrganizations.userId, Number(userId)),
-          eq(zuvyUserOrganizations.organizationId, targetOrgId),
-        ),
-      );
+      .onConflictDoUpdate({
+        target: [
+          zuvyUserOrganizations.userId,
+          zuvyUserOrganizations.organizationId,
+        ],
+        set: setTokenData,
+      });
 
     return {
       access_token,
       refresh_token,
       user: {
-        ...user,
+        id: user.id.toString(),
+        email: user.email,
+        name: user.name,
+        profilePicture: user.profilePicture,
+        role: user.mode,
+        rolesList: roles,
         orgId: targetOrgId,
         orgName: org?.displayName,
       },

@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { db } from 'src/db/index';
-import { inArray, sql, eq, and } from 'drizzle-orm';
+import { inArray, sql, eq, and, isNull } from 'drizzle-orm';
 import {
   userRoles,
   zuvyPermissions,
@@ -23,7 +23,7 @@ export class PermissionsAllocationService {
   async getUserPermissionsByResource(
     userId: bigint,
     resourceId: number,
-    orgId: number,
+    orgId: number | null,
   ): Promise<any> {
     try {
       // Check if user exists
@@ -40,7 +40,9 @@ export class PermissionsAllocationService {
         .where(
           and(
             eq(zuvyUserRolesAssigned.userId, userId),
-            eq(zuvyUserRolesAssigned.organizationId, orgId),
+            orgId !== null
+              ? eq(zuvyUserRolesAssigned.organizationId, orgId)
+              : isNull(zuvyUserRolesAssigned.organizationId),
           ),
         )
         .limit(1);
@@ -68,7 +70,9 @@ export class PermissionsAllocationService {
         .where(
           and(
             eq(zuvyPermissionsRoles.roleId, userRoleId),
-            eq(zuvyPermissionsRoles.orgId, orgId),
+            orgId !== null
+              ? eq(zuvyPermissionsRoles.orgId, orgId)
+              : isNull(zuvyPermissionsRoles.orgId),
             eq(zuvyPermissions.resourcesId, resourceId),
           ),
         );
@@ -102,7 +106,7 @@ export class PermissionsAllocationService {
 
   async getUserPermissionsForMultipleResources(
     userId: bigint,
-    orgId: number,
+    orgId: number | null,
   ): Promise<any> {
     try {
       // Check if user exists
@@ -120,7 +124,9 @@ export class PermissionsAllocationService {
         .where(
           and(
             eq(zuvyUserRolesAssigned.userId, userId),
-            eq(zuvyUserRolesAssigned.organizationId, orgId),
+            orgId !== null
+              ? eq(zuvyUserRolesAssigned.organizationId, orgId)
+              : isNull(zuvyUserRolesAssigned.organizationId),
           ),
         )
         .limit(1);
@@ -140,7 +146,7 @@ export class PermissionsAllocationService {
       INNER JOIN main.zuvy_resources r ON p.resource_id = r.id
       INNER JOIN main.zuvy_permissions_roles pr ON p.id = pr.permission_id
       WHERE pr.role_id = ${userRoleId}
-        AND pr.org_id = ${orgId}
+        AND pr.org_id IS NOT DISTINCT FROM ${orgId}
         AND p.resource_id IN (1, 2, 3)
     `);
 
@@ -179,7 +185,7 @@ export class PermissionsAllocationService {
     userId: number,
     resourceId: number,
     permissionName: string,
-    orgId: number,
+    orgId: number | null,
   ): Promise<any> {
     try {
       // First check if user exists
@@ -211,10 +217,16 @@ export class PermissionsAllocationService {
         INNER JOIN main.zuvy_permissions_roles pr ON p.id = pr.permission_id
         INNER JOIN main.zuvy_user_roles ur ON pr.role_id = ur.id
         INNER JOIN main.zuvy_user_roles_assigned ura ON ura.role_id = ur.id
-        WHERE ura.user_id = ${userId} AND ura.organization_id = ${orgId} 
-          AND pr.org_id = ${orgId}
+        WHERE ura.user_id = ${userId} 
+          AND ura.organization_id IS NOT DISTINCT FROM ${orgId} 
+          AND pr.org_id IS NOT DISTINCT FROM ${orgId}
           AND r.id = ${resourceId} AND p.name = ${permissionName}
       `);
+      // Note: raw SQL above might still fail if orgId is null because of = null.
+      // However, most drivers handle it if passed as null, but ura.organization_id = null is wrong in valid SQL.
+      // I should ideally use sql`ura.organization_id IS NOT DISTINCT FROM ${orgId}` or similar if supported.
+      // For now, I'll stick to drizzle if possible or refine the raw query.
+      // Actually, for checkUserPermission, it's raw SQL. I should probably use a safer condition.
 
       // Check extra permission
       const extraPermission = await db.execute(sql`
@@ -289,7 +301,7 @@ export class PermissionsAllocationService {
   async getAllPermissions(
     roleNames: string[],
     targetPermissions: string[],
-    orgId: number,
+    orgId: number | null,
   ): Promise<any> {
     try {
       if (!roleNames || roleNames.length === 0) {
@@ -307,7 +319,9 @@ export class PermissionsAllocationService {
         .where(
           and(
             inArray(zuvyUserRoles.name, roleNames),
-            eq(zuvyUserRoles.orgId, orgId),
+            orgId !== null
+              ? eq(zuvyUserRoles.orgId, orgId)
+              : isNull(zuvyUserRoles.orgId),
           ),
         );
 
@@ -341,7 +355,9 @@ export class PermissionsAllocationService {
         .where(
           and(
             inArray(zuvyPermissionsRoles.roleId, roleIds),
-            eq(zuvyPermissionsRoles.orgId, orgId),
+            orgId !== null
+              ? eq(zuvyPermissionsRoles.orgId, orgId)
+              : isNull(zuvyPermissionsRoles.orgId),
           ),
         );
 
