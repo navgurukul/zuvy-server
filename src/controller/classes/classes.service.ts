@@ -11,7 +11,7 @@ import {
   zuvyCourseModules,
   zuvyModuleChapter,
   zuvyBootcamps,
-  userTokens,
+  zuvyUserOrganizations,
   users,
   zuvySessionMerge,
   zuvySessionRecordings,
@@ -130,14 +130,17 @@ export class ClassesService {
 
       // Delete existing tokens for user then insert new (simpler than upsert for clarity)
       await db
-        .delete(userTokens)
-        .where(eq(userTokens.userId, Number(parsedState.id)));
-      await db.insert(userTokens).values({
+        .delete(zuvyUserOrganizations)
+        .where(eq(zuvyUserOrganizations.userId, Number(parsedState.id)));
+
+      let userData = {
         userId: Number(parsedState.id),
+        organizationId: parsedState.organizationId, // Placeholder, adjust as needed for multi-org support
         userEmail: parsedState.email,
         accessToken: tokens.access_token,
         refreshToken: tokens.refresh_token || '',
-      });
+      };
+      await db.insert(zuvyUserOrganizations).values(userData);
       return res.json({
         status: 'success',
         message: 'Tokens saved successfully',
@@ -1062,8 +1065,8 @@ export class ClassesService {
   private async getUserTokens(email: string) {
     const result = await db
       .select()
-      .from(userTokens)
-      .where(eq(userTokens.userEmail, email));
+      .from(zuvyUserOrganizations)
+      .where(eq(zuvyUserOrganizations.userEmail, email));
     return result.length ? result[0] : null;
   }
 

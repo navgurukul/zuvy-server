@@ -66,6 +66,7 @@ export class SubmissionService {
     orderBy?: 'title',
     orderDirection?: 'asc' | 'desc',
     searchTerm?: string,
+    orgId?: number,
   ) {
     try {
       const topicId = 3;
@@ -201,6 +202,7 @@ export class SubmissionService {
       const grantedPermissions = await this.rbacService.getAllPermissions(
         roleName,
         targetPermissions,
+        orgId,
       );
       return {
         status: 'success',
@@ -920,6 +922,7 @@ export class SubmissionService {
     orderDirection?: 'asc' | 'desc',
     submittedDateStart?: string,
     submittedDateEnd?: string,
+    orgId?: number,
   ) {
     try {
       // ===== DATE FILTER =====
@@ -1029,6 +1032,7 @@ export class SubmissionService {
       const grantedPermissions = await this.rbacService.getAllPermissions(
         roleName,
         targetPermissions,
+        orgId,
       );
 
       // ===== RESPONSE =====
@@ -1644,6 +1648,7 @@ export class SubmissionService {
     offset?: number,
     orderBy?: 'title',
     orderDirection?: 'asc' | 'desc',
+    orgId?: number,
   ) {
     try {
       const topicId = 7;
@@ -1746,6 +1751,7 @@ export class SubmissionService {
       const grantedPermissions = await this.rbacService.getAllPermissions(
         roleName,
         targetPermissions,
+        orgId,
       );
 
       return {
@@ -2107,6 +2113,7 @@ export class SubmissionService {
     assignmentName: string,
     orderBy?: 'title',
     orderDirection?: 'asc' | 'desc',
+    orgId?: number,
   ): Promise<any> {
     try {
       const topicId = 5;
@@ -2219,6 +2226,7 @@ export class SubmissionService {
       const grantedPermissions = await this.rbacService.getAllPermissions(
         roleName,
         targetPermissions,
+        orgId,
       );
 
       return [
@@ -2946,6 +2954,7 @@ Zuvy LMS Team
     offset?: number,
     orderBy?: 'title',
     orderDirection?: 'asc' | 'desc',
+    orgId?: number,
   ): Promise<[any, any]> {
     try {
       // Validate ordering inputs
@@ -3062,6 +3071,7 @@ Zuvy LMS Team
       const grantedPermissions = await this.rbacService.getAllPermissions(
         roleName,
         targetPermissions,
+        orgId,
       );
       return [
         null,

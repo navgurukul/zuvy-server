@@ -3723,9 +3723,12 @@ export const zuvyZoomUsers = main.table('zuvy_zoom_users', {
 // RBAC: Roles Table
 export const zuvyUserRoles = main.table('zuvy_user_roles', {
   id: serial('id').primaryKey().notNull(),
-  name: varchar('name', { length: 50 }).notNull().unique(), // e.g. 'admin', 'instructor', 'ops'
+  name: varchar('name', { length: 50 }).notNull(), // e.g. 'admin', 'instructor', 'ops'
   description: text('description'),
-  orgId: integer('org_id').notNull().references(() => zuvyOrganizations.id),
+  orgId: integer('org_id').default(null).references(() => zuvyOrganizations.id,  {
+    onUpdate: 'cascade',
+    onDelete: 'cascade'
+  }),
 });
 
 export const zuvyResources = main.table('zuvy_resources', {
@@ -3733,7 +3736,6 @@ export const zuvyResources = main.table('zuvy_resources', {
   key: varchar('key', { length: 64 }).notNull().unique(),
   name: varchar('display_name', { length: 100 }).notNull(),
   description: text('description'),
-  orgId: integer('org_id').notNull().references(() => zuvyOrganizations.id),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
 });
@@ -3750,6 +3752,7 @@ export const zuvyPermissionsRoles = main.table('zuvy_permissions_roles', {
   id: serial('id').primaryKey().notNull(),
   permissionId: integer('permission_id').notNull().references(() => zuvyPermissions.id),
   roleId: integer('role_id').notNull().references(() => zuvyUserRoles.id),
+  orgId: integer('org_id').references(() => zuvyOrganizations.id),
   createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow(),
 },
@@ -3998,7 +4001,9 @@ export const zuvyUserOrganizations = main.table('zuvy_user_organizations', {
   userEmail: varchar('user_email', { length: 255 }).notNull(),
   accessToken: text('access_token',),
   refreshToken: text('refresh_token'),
-  organizationId: integer('organization_id').notNull().references(() => zuvyOrganizations.id, { onDelete: 'cascade' }),
+  organizationId: integer('organization_id').default(null).references(() => zuvyOrganizations.id, {
+    onDelete: 'cascade'
+  }),
   joinedAt: timestamp('joined_at', { withTimezone: true, mode: 'string' }).defaultNow(),
 }, (table) => ({
   uniqUserOrganization: unique("zuvy_user_organizations_uniq_user_organization").on(table.userId, table.organizationId),

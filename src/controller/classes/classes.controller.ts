@@ -45,7 +45,12 @@ import { TrackAction } from 'src/trackinglog/decorators/track-action.decorator';
 import { TrackActionInterceptor } from 'src/trackinglog/interceptors/track-action.interceptor';
 import { auth2Client } from '../../auth/google-auth';
 import { db } from '../../db/index';
-import { userTokens, zuvyBatches } from '../../../drizzle/schema';
+import {
+  userTokens,
+  zuvyBatches,
+  zuvyUserOrganizations,
+  zuvyUserRolesAssigned,
+} from '../../../drizzle/schema';
 import { eq, desc, and, sql, ilike } from 'drizzle-orm';
 
 // config user for admin
@@ -98,21 +103,30 @@ export class ClassesController {
       // Parse state to get user info
       const userInfo = JSON.parse(state);
 
+      let userData = {
+        userId: userInfo.id,
+        userEmail: userInfo.email,
+        organizationId: userInfo.orgId,
+        accessToken: tokens.access_token,
+        refreshToken: tokens.refresh_token,
+      };
+
+      let setData = {
+        userEmail: userInfo.email,
+        accessToken: tokens.access_token,
+        refreshToken: tokens.refresh_token,
+      };
+
       // Store tokens in database
       await db
-        .insert(userTokens)
-        .values({
-          userId: userInfo.id,
-          userEmail: userInfo.email,
-          accessToken: tokens.access_token,
-          refreshToken: tokens.refresh_token,
-        })
+        .insert(zuvyUserOrganizations)
+        .values(userData)
         .onConflictDoUpdate({
-          target: [userTokens.userId],
-          set: {
-            accessToken: tokens.access_token,
-            refreshToken: tokens.refresh_token,
-          },
+          target: [
+            zuvyUserOrganizations.userId,
+            zuvyUserOrganizations.organizationId,
+          ],
+          set: setData,
         });
 
       return {

@@ -47,6 +47,16 @@ export class CreateBootcampDto {
   @IsOptional()
   @IsNumber()
   duration?: number;
+
+  // add the orgId
+  @ApiProperty({
+    type: Number,
+    example: 123,
+    required: true,
+  })
+  @IsNotEmpty()
+  @IsNumber()
+  organizationId: number;
 }
 
 export class EditBootcampDto {

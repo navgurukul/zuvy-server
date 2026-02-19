@@ -6,19 +6,27 @@ export class RolesGuard implements CanActivate {
   constructor(private reflector: Reflector) {}
 
   canActivate(context: ExecutionContext): boolean {
-    const requiredRoles = this.reflector.get<string[]>('roles', context.getHandler());
+    const requiredRoles = this.reflector.get<string[]>(
+      'roles',
+      context.getHandler(),
+    );
     if (!requiredRoles) {
       return true;
     }
 
     const { user } = context.switchToHttp().getRequest();
-    
+
     // If user has no roles array, they are a student
     if (!user.roles) {
       return false;
     }
 
+    // Super Admin bypass
+    if (user.roles.includes('super_admin')) {
+      return true;
+    }
+
     // Check if user has any of the required roles
-    return requiredRoles.some(role => user.roles.includes(role));
+    return requiredRoles.some((role) => user.roles.includes(role));
   }
 }
