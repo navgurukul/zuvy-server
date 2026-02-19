@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import * as nodemailer from 'nodemailer';
 import * as AWS from 'aws-sdk';
+import { SendEmailRequest } from 'aws-sdk/clients/ses';
 @Injectable()
 export class SesProvider {
   private ses: AWS.SES;
@@ -10,10 +11,10 @@ export class SesProvider {
     AWS.config.update({
       accessKeyId: process.env.AWS_SUPPORT_ACCESS_KEY_ID,
       secretAccessKey: process.env.AWS_SUPPORT_ACCESS_SECRET_KEY,
-      region: process.env.AWS_REGION,
+      region: 'ap-south-1',
     });
 
-    this.ses = new AWS.SES({ apiVersion: '2010-12-01' });
+    this.ses = new AWS.SES();
   }
 
   async sendEmail(
@@ -23,24 +24,18 @@ export class SesProvider {
     config?: any,
   ): Promise<any> {
     try {
-      const emailParams = {
+      const emailParams: SendEmailRequest = {
         Source: 'team@zuvy.org',
         Destination: {
           ToAddresses: [to],
         },
         Message: {
-          Subject: {
-            Data: subject,
-          },
-          Body: {
-            Text: {
-              Data: body,
-            },
-          },
+          Subject: { Data: subject },
+          Body: { Text: { Data: body } },
         },
       };
 
-      const info = await this.ses.sendEmail(emailParams);
+      const info = await this.ses.sendEmail(emailParams).promise();
 
       return info;
     } catch (error) {
