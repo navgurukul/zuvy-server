@@ -1,23 +1,19 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import * as nodemailer from 'nodemailer';
 import * as AWS from 'aws-sdk';
 @Injectable()
 export class SesProvider {
-  private transporter;
+  private ses: AWS.SES;
+  private readonly logger = new Logger(SesProvider.name);
 
   constructor() {
-    // Configure AWS SDK
     AWS.config.update({
       accessKeyId: process.env.AWS_SUPPORT_ACCESS_KEY_ID,
       secretAccessKey: process.env.AWS_SUPPORT_ACCESS_SECRET_KEY,
       region: process.env.AWS_REGION,
     });
 
-    const ses = new AWS.SES({ apiVersion: '2010-12-01' });
-
-    this.transporter = nodemailer.createTransport({
-      SES: ses,
-    });
+    this.ses = new AWS.SES({ apiVersion: '2010-12-01' });
   }
 
   async sendEmail(
@@ -26,7 +22,7 @@ export class SesProvider {
     body: string,
     config?: any,
   ): Promise<any> {
-    const info = await this.transporter.sendMail({
+    const info = await this.ses.sendEmail({
       from:
         config?.from ||
         process.env.SUPPORT_EMAIL ||
