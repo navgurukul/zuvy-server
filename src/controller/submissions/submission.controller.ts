@@ -89,15 +89,18 @@ export class SubmissionController {
     @Query('searchStudent') searchStudent?: string,
     @Req() req?: any,
   ) {
-    let roleName = req?.user[0]?.roles;
-    return this.submissionService.getSubmissionOfPractiseProblem(
+    const roleName = req.user[0]?.roles;
+    const orgId = req.user[0]?.orgId;
+    const resData = await this.submissionService.getSubmissionOfPractiseProblem(
       roleName,
       bootcampId,
       searchProblem,
-      orderBy as any,
-      orderDirection as any,
+      orderBy,
+      orderDirection,
       searchStudent,
+      orgId,
     );
+    return resData;
   }
 
   @Get('/practiseProblemStatus/:moduleId')
@@ -306,14 +309,19 @@ export class SubmissionController {
     @Query('orderDirection') orderDirection?: 'asc' | 'desc',
     @Req() req?: any,
   ) {
-    const roleName = req?.user?.[0]?.roles;
-    return this.submissionService.getAllProjectSubmissions(
+    const roleName = req.user[0]?.roles;
+    const orgId = req.user[0]?.orgId;
+    const resData = await this.submissionService.getAllProjectSubmissions(
       roleName,
       bootcampId,
       projectName,
       orderBy as any,
       orderDirection as any,
+      undefined,
+      undefined,
+      orgId,
     );
+    return resData;
   }
 
   @Get('/projects/students')
@@ -490,8 +498,8 @@ export class SubmissionController {
   ) {
     try {
       const roleName = req.user[0]?.roles;
-
-      const result = await this.submissionService.getSubmissionOfForms(
+      const orgId = req.user[0]?.orgId;
+      const resValue = await this.submissionService.getSubmissionOfForms(
         roleName,
         bootcampId,
         searchForm,
@@ -499,9 +507,10 @@ export class SubmissionController {
         offset,
         orderBy,
         orderDirection,
+        orgId,
       );
 
-      return result;
+      return resValue;
     } catch (error) {
       return {
         status: 'error',
@@ -628,6 +637,7 @@ export class SubmissionController {
   ) {
     try {
       const roleName = req.user[0]?.roles;
+      const orgId = req.user[0]?.orgId;
       let [err, success] =
         await this.submissionService.getSubmissionOfAssignment(
           roleName,
@@ -635,6 +645,7 @@ export class SubmissionController {
           assignmentName,
           orderBy,
           orderDirection,
+          orgId,
         );
       if (err) {
         return ErrorResponse.BadRequestException(
@@ -877,6 +888,7 @@ export class SubmissionController {
     try {
       // Service should return: { trackingData: [...], totalStudents: N }
       const roleName = req.user[0]?.roles;
+      const orgId = req.user[0]?.orgId;
       const [err, result] =
         await this.submissionService.getLiveChapterSubmissions(
           roleName,
@@ -886,6 +898,7 @@ export class SubmissionController {
           offset,
           orderBy,
           orderDirection,
+          orgId,
         );
       if (err) {
         return ErrorResponse.BadRequestException(

@@ -75,12 +75,14 @@ export class AdminAssessmentController {
     @Query('orderDirection') orderDirection: 'asc' | 'desc',
   ) {
     const roleName = req.user[0]?.roles;
+    const orgId = req.user[0]?.orgId;
     return this.adminAssessmentService.getBootcampAssessment(
       roleName,
       bootcampID,
       searchAssessment,
       orderBy,
       orderDirection,
+      orgId,
     );
   }
 
@@ -241,6 +243,7 @@ export class AdminAssessmentController {
     @Req() req,
   ) {
     const roleName = req.user[0]?.roles;
+    const orgId = req.user[0]?.orgId;
     return this.adminAssessmentService.getBootcampModuleCompletion(
       roleName,
       bootcampID,
@@ -249,6 +252,7 @@ export class AdminAssessmentController {
       offSet,
       orderBy,
       orderDirection,
+      orgId,
     );
   }
 

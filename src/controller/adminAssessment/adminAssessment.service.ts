@@ -533,6 +533,7 @@ Team Zuvy`;
     searchAssessment: string,
     orderBy: 'title',
     orderDirection: 'asc' | 'desc',
+    orgId?: number,
   ) {
     try {
       // ⭐ ERROR HANDLING BLOCK
@@ -667,7 +668,11 @@ Team Zuvy`;
         ResourceList.submission.re_attempt,
       ];
 
-      const perm = await this.rbacService.getAllPermissions(roleName, allowed);
+      const perm = await this.rbacService.getAllPermissions(
+        roleName,
+        allowed,
+        orgId,
+      );
       result['permissions'] = perm.permissions;
 
       return result;
@@ -1344,6 +1349,7 @@ Team Zuvy`;
     offSet?: number,
     orderBy?: 'title',
     orderDirection?: 'asc' | 'desc',
+    orgId?: number,
   ) {
     try {
       // Validate ordering inputs
@@ -1496,6 +1502,7 @@ Team Zuvy`;
       const grantedPermissions = await this.rbacService.getAllPermissions(
         roleName,
         targetPermissions,
+        orgId,
       );
 
       return {

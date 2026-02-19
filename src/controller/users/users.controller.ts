@@ -328,12 +328,14 @@ export class UsersController {
     }
 
     const roleName = req.user[0]?.roles;
+    const orgId = req.user[0]?.orgId;
     return this.usersService.getAllUsersWithRoles(
       roleName,
       limitNum,
       offsetNum,
       searchTerm || '', // Default to empty string if undefined
       roleId,
+      orgId,
     );
   }
 
@@ -511,7 +513,16 @@ export class UsersController {
     description: 'Internal server error',
   })
   @ApiBearerAuth('JWT-auth')
-  async deleteUser(@Param('id', ParseIntPipe) id: bigint) {
-    return this.usersService.deleteUser(id);
+  @ApiQuery({
+    name: 'orgId',
+    required: true,
+    type: Number,
+    description: 'Organization ID to delete user from specific org',
+  })
+  async deleteUser(
+    @Param('id', ParseIntPipe) id: bigint,
+    @Query('orgId', ParseIntPipe) orgId: number,
+  ) {
+    return this.usersService.deleteUser(id, orgId);
   }
 }

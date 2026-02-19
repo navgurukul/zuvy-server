@@ -243,9 +243,11 @@ export class ContentController {
   @ApiBearerAuth('JWT-auth')
   async getAllModules(@Param('bootcampId') bootcampId: number, @Req() req) {
     const roleName = req.user[0]?.roles;
+    const orgId = req.user[0]?.orgId;
     const res = await this.contentService.getAllModuleByBootcampId(
       bootcampId,
       roleName,
+      orgId,
     );
     return res;
   }
@@ -258,9 +260,11 @@ export class ContentController {
     @Req() req,
   ) {
     const roleName = req.user[0]?.roles;
+    const orgId = req.user[0]?.orgId;
     const res = await this.contentService.getAllChaptersOfModule(
       roleName,
       moduleId,
+      orgId,
     );
     return res;
   }
@@ -431,8 +435,9 @@ export class ContentController {
     @Query('offset') offSet: number,
     @Req() req,
   ): Promise<object> {
-    const userId = req.user[0]?.id;
     const roleName = req.user[0]?.roles;
+    const userId = req.user[0]?.id;
+    const orgId = req.user[0]?.orgId;
     const res = await this.contentService.getAllQuizQuestions(
       roleName,
       tagId,
@@ -441,6 +446,7 @@ export class ContentController {
       limit,
       offSet,
       userId,
+      orgId,
     );
     return res;
   }
@@ -501,8 +507,9 @@ export class ContentController {
     @Query('offset') offSet: number,
     @Req() req,
   ): Promise<object> {
-    const userId = req.user[0]?.id;
     const roleName = req.user[0]?.roles;
+    const userId = req.user[0]?.id;
+    const orgId = req.user[0]?.orgId;
     const res = await this.contentService.getAllCodingQuestions(
       roleName,
       tagId,
@@ -511,6 +518,7 @@ export class ContentController {
       limit,
       offSet,
       userId,
+      orgId,
     );
     return res;
   }
@@ -629,8 +637,9 @@ export class ContentController {
     @Query('offset') offset: number,
     @Req() req,
   ): Promise<object> {
-    const userId = req.user[0]?.id;
     const roleName = req.user[0]?.roles;
+    const userId = req.user[0]?.id;
+    const orgId = req.user[0]?.orgId;
     const res = await this.contentService.getAllOpenEndedQuestions(
       roleName,
       tagId,
@@ -639,6 +648,7 @@ export class ContentController {
       limit,
       offset,
       userId,
+      orgId,
     );
     return res;
   }

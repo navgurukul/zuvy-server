@@ -40,28 +40,16 @@ export class OrgService {
       const createOrgDtoValues = {
         title: createOrgDto.title,
         displayName: createOrgDto.displayName,
-        logoUrl: createOrgDto.logoUrl,
+        logoUrl: createOrgDto.logoUrl || null,
         pocName: createOrgDto.pocName,
         pocEmail: createOrgDto.pocEmail,
         isManagedByZuvy: createOrgDto.isManagedByZuvy,
-        zuvyPocName: createOrgDto.zuvyPocName,
-        zuvyPocEmail: createOrgDto.zuvyPocEmail,
+        zuvyPocName: createOrgDto.zuvyPocName || null,
+        zuvyPocEmail: createOrgDto.zuvyPocEmail || null,
       };
 
       const result = await db.transaction(async (tx) => {
-        // 1. Find Admin Role ID
-        const adminRole = await tx
-          .select()
-          .from(zuvyUserRoles)
-          .where(eq(zuvyUserRoles.name, 'admin'))
-          .limit(1);
-
-        if (!adminRole.length) {
-          throw new InternalServerErrorException("Role 'admin' not found");
-        }
-        const adminRoleId = adminRole[0].id;
-
-        // 2. Create Organization
+        // 1. Create Organization
         const [newOrg] = await tx
           .insert(zuvyOrganizations)
           .values(createOrgDtoValues)
@@ -72,6 +60,18 @@ export class OrgService {
             'Failed to create organization',
           );
         }
+
+        // 2. Create org-scoped admin role
+        let createAdminRoleData = {
+          name: 'admin',
+          description: 'Organization Admin with full permissions',
+          orgId: newOrg.id,
+        };
+        const [adminRole] = await tx
+          .insert(zuvyUserRoles)
+          .values(createAdminRoleData)
+          .returning();
+        const adminRoleId = adminRole.id;
 
         // Helper to get or create user and assign role
         const processUser = async (email: string, name: string) => {
@@ -92,7 +92,7 @@ export class OrgService {
             userId = newUser.id;
           }
 
-          // Assign Admin Role if not already assigned
+          // Assign Admin Role if not already assigned for this org
           const [existingRole] = await tx
             .select()
             .from(zuvyUserRolesAssigned)
@@ -100,6 +100,7 @@ export class OrgService {
               and(
                 eq(zuvyUserRolesAssigned.userId, userId),
                 eq(zuvyUserRolesAssigned.roleId, adminRoleId),
+                eq(zuvyUserRolesAssigned.organizationId, newOrg.id),
               ),
             )
             .limit(1);
@@ -149,6 +150,10 @@ export class OrgService {
           <p>If you did not request this, please ignore this email.</p>
         `;
 
+        this.logger.log(
+          `Attempting to send welcome email to POC: ${createOrgDto.pocEmail}`,
+        );
+
         await this.notificationEmailService.sendEmail(
           createOrgDto.pocEmail,
           subject,
@@ -156,10 +161,19 @@ export class OrgService {
           {},
           'ses',
         );
+
+        this.logger.log(
+          `✅ Welcome email sent successfully to ${createOrgDto.pocEmail}`,
+        );
       } catch (emailError) {
         this.logger.error(
-          `Failed to send email to ${createOrgDto.pocEmail}: ${emailError.message}`,
+          `❌ Failed to send email to ${createOrgDto.pocEmail}`,
         );
+        this.logger.error(`Error message: ${emailError.message}`);
+        this.logger.error(`Error stack: ${emailError.stack}`);
+
+        // Don't throw - org was created successfully, just email failed
+        // The user will see this in the logs
       }
 
       return {
@@ -244,8 +258,21 @@ export class OrgService {
     return org;
   }
 
-  async getOrgByUserId(userId: number) {
+  async getOrgByUserId(userId: number, searchTerm?: string) {
     try {
+      let whereClause: any = eq(zuvyUserRolesAssigned.userId, BigInt(userId));
+
+      if (searchTerm) {
+        const searchLike = `%${searchTerm}%`;
+        whereClause = and(
+          whereClause,
+          or(
+            ilike(zuvyOrganizations.title, searchLike),
+            ilike(zuvyOrganizations.displayName, searchLike),
+          ),
+        );
+      }
+
       const orgs = await db
         .select({
           id: zuvyOrganizations.id,
@@ -260,7 +287,7 @@ export class OrgService {
           zuvyOrganizations,
           eq(zuvyUserRolesAssigned.organizationId, zuvyOrganizations.id),
         )
-        .where(eq(zuvyUserRolesAssigned.userId, BigInt(userId)));
+        .where(whereClause);
 
       return {
         status: 'success',

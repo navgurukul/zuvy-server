@@ -8,8 +8,8 @@ export class SesProvider {
   constructor() {
     // Configure AWS SDK
     AWS.config.update({
-      accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+      accessKeyId: process.env.AWS_SUPPORT_ACCESS_KEY_ID,
+      secretAccessKey: process.env.AWS_SUPPORT_ACCESS_SECRET_KEY,
       region: process.env.AWS_REGION,
     });
 
@@ -29,7 +29,7 @@ export class SesProvider {
     const info = await this.transporter.sendMail({
       from:
         config?.from ||
-        process.env.SES_FROM_EMAIL ||
+        process.env.SUPPORT_EMAIL ||
         '"Zuvy Support" <team@zuvy.org>',
       to,
       subject,

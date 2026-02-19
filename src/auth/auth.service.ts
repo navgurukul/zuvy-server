@@ -501,11 +501,11 @@ export class AuthService {
     // Verify membership
     const [membership] = await db
       .select()
-      .from(zuvyUserOrganizations)
+      .from(zuvyUserRolesAssigned)
       .where(
         and(
-          eq(zuvyUserOrganizations.userId, Number(userId)),
-          eq(zuvyUserOrganizations.organizationId, targetOrgId),
+          eq(zuvyUserRolesAssigned.userId, userId),
+          eq(zuvyUserRolesAssigned.organizationId, targetOrgId),
         ),
       );
 
@@ -539,6 +539,9 @@ export class AuthService {
     await db
       .update(zuvyUserOrganizations)
       .set({
+        userId: Number(userId),
+        organizationId: targetOrgId,
+        userEmail: user.email,
         accessToken: access_token,
         refreshToken: refresh_token,
       } as any)
