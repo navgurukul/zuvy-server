@@ -27,7 +27,7 @@ export class RbacService {
   async getAllPermissions(
     roleName: string[],
     targetPermissions: string[],
-    orgId: number,
+    orgId: number | null,
   ): Promise<any> {
     try {
       return await this.permissionAllocationService.getAllPermissions(
@@ -44,7 +44,7 @@ export class RbacService {
   async getUserPermissionsByResource(
     userId: bigint,
     resourceId: number,
-    orgId: number,
+    orgId: number | null,
   ): Promise<any> {
     try {
       await this.permissionAllocationService.getUserPermissionsByResource(
@@ -66,7 +66,7 @@ export class RbacService {
 
   async getUserPermissionsForMultipleResources(
     userId: bigint,
-    orgId: number,
+    orgId: number | null,
   ): Promise<any> {
     try {
       return await this.permissionAllocationService.getUserPermissionsForMultipleResources(

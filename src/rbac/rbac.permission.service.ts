@@ -7,7 +7,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { db } from 'src/db/index';
-import { sql, eq, and, asc, ilike, or, inArray } from 'drizzle-orm';
+import { sql, eq, and, asc, ilike, or, inArray, isNull } from 'drizzle-orm';
 import {
   CreatePermissionDto,
   AssignUserPermissionDto,
@@ -200,7 +200,10 @@ export class RbacPermissionService {
     }
   }
 
-  async getUserPermissions(userId: number, orgId: number): Promise<string[]> {
+  async getUserPermissions(
+    userId: number,
+    orgId: number | null,
+  ): Promise<string[]> {
     try {
       const result = await db.execute(sql`
         SELECT DISTINCT p.name 
@@ -208,8 +211,9 @@ export class RbacPermissionService {
         INNER JOIN main.zuvy_permissions_roles pr ON p.id = pr.permission_id
         INNER JOIN main.zuvy_user_roles ur ON pr.role_id = ur.id
         INNER JOIN main.zuvy_user_roles_assigned ura ON ura.role_id = ur.id
-        WHERE ura.user_id = ${userId} AND ura.organization_id = ${orgId}
-          AND pr.org_id = ${orgId}
+        WHERE ura.user_id = ${userId} 
+          AND ura.organization_id IS NOT DISTINCT FROM ${orgId}
+          AND pr.org_id IS NOT DISTINCT FROM ${orgId}
       `);
 
       const permissions = (result as any).rows.map((row) => row.name);
@@ -228,10 +232,29 @@ export class RbacPermissionService {
   async userHasPermissions(
     userId: number,
     requiredPermissions: string[],
-    orgId: number,
+    orgId: number | null,
   ): Promise<boolean> {
     try {
       if (!requiredPermissions || requiredPermissions.length === 0) {
+        return true;
+      }
+
+      // 🔹 Super Admin Bypass: Always allow everything if they have a global super_admin role
+      const globalRoles = await db
+        .select({ name: zuvyUserRoles.name })
+        .from(zuvyUserRolesAssigned)
+        .innerJoin(
+          zuvyUserRoles,
+          eq(zuvyUserRolesAssigned.roleId, zuvyUserRoles.id),
+        )
+        .where(
+          and(
+            eq(zuvyUserRolesAssigned.userId, BigInt(userId)),
+            isNull(zuvyUserRolesAssigned.organizationId),
+          ),
+        );
+
+      if (globalRoles.some((r) => r.name === 'super_admin')) {
         return true;
       }
 

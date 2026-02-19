@@ -3725,7 +3725,7 @@ export const zuvyUserRoles = main.table('zuvy_user_roles', {
   id: serial('id').primaryKey().notNull(),
   name: varchar('name', { length: 50 }).notNull(), // e.g. 'admin', 'instructor', 'ops'
   description: text('description'),
-  orgId: integer('org_id').notNull().references(() => zuvyOrganizations.id,  {
+  orgId: integer('org_id').default(null).references(() => zuvyOrganizations.id,  {
     onUpdate: 'cascade',
     onDelete: 'cascade'
   }),
@@ -4001,7 +4001,9 @@ export const zuvyUserOrganizations = main.table('zuvy_user_organizations', {
   userEmail: varchar('user_email', { length: 255 }).notNull(),
   accessToken: text('access_token',),
   refreshToken: text('refresh_token'),
-  organizationId: integer('organization_id').notNull().references(() => zuvyOrganizations.id, { onDelete: 'cascade' }),
+  organizationId: integer('organization_id').default(null).references(() => zuvyOrganizations.id, {
+    onDelete: 'cascade'
+  }),
   joinedAt: timestamp('joined_at', { withTimezone: true, mode: 'string' }).defaultNow(),
 }, (table) => ({
   uniqUserOrganization: unique("zuvy_user_organizations_uniq_user_organization").on(table.userId, table.organizationId),

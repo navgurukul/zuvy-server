@@ -18,6 +18,8 @@ import {
   zuvyUserRoles,
   zuvyUserRolesAssigned,
   zuvyUserOrganizations,
+  zuvyPermissions,
+  zuvyPermissionsRoles,
 } from '../../drizzle/schema';
 import { eq, and, ilike, or, sql, desc } from 'drizzle-orm';
 import { JwtService } from '@nestjs/jwt';
@@ -72,6 +74,18 @@ export class OrgService {
           .values(createAdminRoleData)
           .returning();
         const adminRoleId = adminRole.id;
+
+        // 2a. Assign all permissions to the admin role
+        const allPermissions = await tx.select().from(zuvyPermissions);
+        if (allPermissions.length > 0) {
+          await tx.insert(zuvyPermissionsRoles).values(
+            allPermissions.map((permission) => ({
+              permissionId: permission.id,
+              roleId: adminRoleId,
+              orgId: newOrg.id,
+            })),
+          );
+        }
 
         // Helper to get or create user and assign role
         const processUser = async (email: string, name: string) => {
