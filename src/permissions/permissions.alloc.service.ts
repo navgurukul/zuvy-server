@@ -313,6 +313,13 @@ export class PermissionsAllocationService {
         };
       }
 
+      // 🔹 Super Admin Bypass: Return all requested permissions as true
+      if (roleNames.includes('super_admin')) {
+        const permissions: Record<string, boolean> = {};
+        targetPermissions.forEach((perm) => (permissions[perm] = true));
+        return { permissions };
+      }
+
       const roles = await db
         .select({ id: zuvyUserRoles.id })
         .from(zuvyUserRoles)
