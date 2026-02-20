@@ -259,12 +259,16 @@ export class UsersService {
     }
   }
 
-  async getAllUserRoles(roleName: string, duplicate?: boolean): Promise<any> {
+  async getAllUserRoles(
+    roleName: string,
+    duplicate?: boolean,
+    orgId?: number,
+  ): Promise<any> {
     try {
       if (duplicate) {
         try {
           const result = await db.execute(
-            sql`SELECT * FROM main.zuvy_user_roles`,
+            sql`SELECT * FROM main.zuvy_user_roles WHERE org_id = ${orgId}`,
           );
           return {
             status: 'success',
@@ -280,11 +284,11 @@ export class UsersService {
       let query;
 
       if (roleName[0] === 'super admin') {
-        query = sql`SELECT * FROM main.zuvy_user_roles WHERE name != 'super admin'`;
+        query = sql`SELECT * FROM main.zuvy_user_roles WHERE name != 'super_admin' AND org_id = ${orgId}`;
       } else if (roleName[0] === 'admin') {
-        query = sql`SELECT * FROM main.zuvy_user_roles WHERE name NOT IN ('admin', 'super admin')`;
+        query = sql`SELECT * FROM main.zuvy_user_roles WHERE name NOT IN ('admin', 'super_admin') AND org_id = ${orgId}`;
       } else {
-        query = sql`SELECT * FROM main.zuvy_user_roles WHERE name NOT IN ('admin', 'super admin')`;
+        query = sql`SELECT * FROM main.zuvy_user_roles WHERE name NOT IN ('admin', 'super_admin') AND org_id = ${orgId}`;
       }
 
       const result = await db.execute(query);

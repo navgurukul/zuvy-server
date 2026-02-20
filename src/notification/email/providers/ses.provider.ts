@@ -11,7 +11,7 @@ export class SesProvider {
     AWS.config.update({
       accessKeyId: process.env.AWS_SUPPORT_ACCESS_KEY_ID,
       secretAccessKey: process.env.AWS_SUPPORT_ACCESS_SECRET_KEY,
-      region: 'ap-south-1',
+      region: process.env.AWS_REGION,
     });
 
     this.ses = new AWS.SES();
@@ -30,8 +30,8 @@ export class SesProvider {
           ToAddresses: [to],
         },
         Message: {
-          Subject: { Data: subject },
-          Body: { Text: { Data: body } },
+          Subject: { Data: subject, Charset: 'UTF-8' },
+          Body: { Text: { Data: body, Charset: 'UTF-8' } },
         },
       };
 
