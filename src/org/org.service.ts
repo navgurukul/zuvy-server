@@ -37,11 +37,135 @@ export class OrgService {
     private readonly userTokenService: UserTokensService,
   ) {}
 
+  private generateCode(title: string): string {
+    const words = title.split(' ');
+    if (words.length > 1) {
+      return words
+        .map((word) => word[0])
+        .join('')
+        .toUpperCase();
+    }
+    const capitals = title.match(/[A-Z]/g);
+    if (capitals && capitals.length > 1) {
+      return capitals.join('').toUpperCase();
+    }
+    return title.substring(0, 2).toUpperCase();
+  }
+
+  private async createDefaultRoles(tx: any, orgId: number) {
+    const defaultRoles = [
+      {
+        name: 'admin',
+        description: 'Organization Admin with full permissions',
+      },
+      { name: 'ops', description: 'Operations role' },
+      { name: 'instructor', description: 'Instructor role' },
+    ];
+
+    const createdRoles = await tx
+      .insert(zuvyUserRoles)
+      .values(
+        defaultRoles.map((role) => ({
+          ...role,
+          orgId,
+        })),
+      )
+      .returning();
+
+    const adminRole = createdRoles.find((r) => r.name === 'admin');
+
+    // Assign all permissions to the admin role
+    const allPermissions = await tx.select().from(zuvyPermissions);
+    if (allPermissions.length > 0 && adminRole) {
+      await tx.insert(zuvyPermissionsRoles).values(
+        allPermissions.map((permission) => ({
+          permissionId: permission.id,
+          roleId: adminRole.id,
+          orgId,
+        })),
+      );
+    }
+
+    return createdRoles;
+  }
+
+  async assignAdminToUser(
+    tx: any,
+    email: string,
+    name: string,
+    orgId: number,
+    adminRoleId: number,
+  ) {
+    let userId: number | bigint;
+    const [existingUser] = await tx
+      .select()
+      .from(users)
+      .where(eq(users.email, email))
+      .limit(1);
+
+    if (existingUser) {
+      userId = existingUser.id;
+    } else {
+      const [newUser] = await tx
+        .insert(users)
+        .values({ email, name })
+        .returning();
+      userId = newUser.id;
+    }
+
+    // Assign Admin Role if not already assigned for this org
+    const [existingAssignment] = await tx
+      .select()
+      .from(zuvyUserRolesAssigned)
+      .where(
+        and(
+          eq(zuvyUserRolesAssigned.userId, BigInt(userId)),
+          eq(zuvyUserRolesAssigned.roleId, adminRoleId),
+          eq(zuvyUserRolesAssigned.organizationId, orgId),
+        ),
+      )
+      .limit(1);
+
+    if (!existingAssignment) {
+      await tx.insert(zuvyUserRolesAssigned).values({
+        userId: userId,
+        roleId: adminRoleId,
+        organizationId: orgId,
+        createdAt: new Date().toISOString(),
+      });
+    }
+
+    // Link User to Organization
+    const [existingLink] = await tx
+      .select()
+      .from(zuvyUserOrganizations)
+      .where(
+        and(
+          eq(zuvyUserOrganizations.userId, Number(userId)),
+          eq(zuvyUserOrganizations.organizationId, orgId),
+        ),
+      )
+      .limit(1);
+
+    if (!existingLink) {
+      await tx.insert(zuvyUserOrganizations).values({
+        userId: Number(userId),
+        organizationId: orgId,
+        userEmail: email,
+      });
+    }
+
+    return userId;
+  }
+
   async createOrg(createOrgDto: CreateOrgDto) {
     try {
+      const displayName =
+        createOrgDto.displayName || this.generateCode(createOrgDto.title);
+
       const createOrgDtoValues = {
         title: createOrgDto.title,
-        displayName: createOrgDto.displayName,
+        displayName: displayName,
         logoUrl: createOrgDto.logoUrl || null,
         pocName: createOrgDto.pocName,
         pocEmail: createOrgDto.pocEmail,
@@ -63,89 +187,27 @@ export class OrgService {
           );
         }
 
-        // 2. Create org-scoped admin role
-        let createAdminRoleData = {
-          name: 'admin',
-          description: 'Organization Admin with full permissions',
-          orgId: newOrg.id,
-        };
-        const [adminRole] = await tx
-          .insert(zuvyUserRoles)
-          .values(createAdminRoleData)
-          .returning();
-        const adminRoleId = adminRole.id;
+        // 2. Create default roles and assign permissions to admin
+        const createdRoles = await this.createDefaultRoles(tx, newOrg.id);
+        const adminRoleId = createdRoles.find((r) => r.name === 'admin').id;
 
-        // 2a. Assign all permissions to the admin role
-        const allPermissions = await tx.select().from(zuvyPermissions);
-        if (allPermissions.length > 0) {
-          await tx.insert(zuvyPermissionsRoles).values(
-            allPermissions.map((permission) => ({
-              permissionId: permission.id,
-              roleId: adminRoleId,
-              orgId: newOrg.id,
-            })),
-          );
-        }
+        // 3. Process POC (Assign Admin Role)
+        await this.assignAdminToUser(
+          tx,
+          createOrgDto.pocEmail,
+          createOrgDto.pocName || 'POC',
+          newOrg.id,
+          adminRoleId,
+        );
 
-        // Helper to get or create user and assign role
-        const processUser = async (email: string, name: string) => {
-          let userId: number | bigint;
-          const [existingUser] = await tx
-            .select()
-            .from(users)
-            .where(eq(users.email, email))
-            .limit(1);
-
-          if (existingUser) {
-            userId = existingUser.id;
-          } else {
-            const [newUser] = await tx
-              .insert(users)
-              .values({ email, name })
-              .returning();
-            userId = newUser.id;
-          }
-
-          // Assign Admin Role if not already assigned for this org
-          const [existingRole] = await tx
-            .select()
-            .from(zuvyUserRolesAssigned)
-            .where(
-              and(
-                eq(zuvyUserRolesAssigned.userId, userId),
-                eq(zuvyUserRolesAssigned.roleId, adminRoleId),
-                eq(zuvyUserRolesAssigned.organizationId, newOrg.id),
-              ),
-            )
-            .limit(1);
-
-          const roleData = {
-            userId: userId,
-            roleId: adminRoleId,
-            organizationId: newOrg.id,
-            createdAt: new Date().toISOString(),
-          };
-          if (!existingRole) {
-            await tx.insert(zuvyUserRolesAssigned).values(roleData);
-          }
-
-          // Link User to Organization
-          let userData = {
-            userId: Number(userId),
-            organizationId: newOrg.id,
-            userEmail: email,
-          };
-          await tx.insert(zuvyUserOrganizations).values(userData);
-        };
-
-        // 3. Process POC
-        await processUser(createOrgDto.pocEmail, createOrgDto.pocName || 'POC');
-
-        // 4. Process Zuvy POC if managed
+        // 4. Process Zuvy POC (Assign Admin Role) if managed
         if (createOrgDto.isManagedByZuvy && createOrgDto.zuvyPocEmail) {
-          await processUser(
+          await this.assignAdminToUser(
+            tx,
             createOrgDto.zuvyPocEmail,
             createOrgDto.zuvyPocName || 'Zuvy POC',
+            newOrg.id,
+            adminRoleId,
           );
         }
 
@@ -155,10 +217,10 @@ export class OrgService {
       // 5. Send Email (After transaction)
       const magicLink = `${process.env.APP_BASE_URL}/org/getOrgById/${result.id}`;
       try {
-        const subject = `Welcome to Zuvy - Complete ${createOrgDto.displayName} Setup`;
+        const subject = `Welcome to Zuvy - Complete ${displayName} Setup`;
         const html = `
           <h1>Welcome to Zuvy!</h1>
-          <p>You have been invited to set up the organization <b>${createOrgDto.displayName}</b>.</p>
+          <p>You have been invited to set up the organization <b>${displayName}</b>.</p>
           <p>Please click the link below to complete your profile and organization details:</p>
           <a href="${magicLink}">Complete Setup</a>
           <p>If you did not request this, please ignore this email.</p>
@@ -184,10 +246,8 @@ export class OrgService {
           `❌ Failed to send email to ${createOrgDto.pocEmail}`,
         );
         this.logger.error(`Error message: ${emailError.message}`);
-        this.logger.error(`Error stack: ${emailError.stack}`);
 
         // Don't throw - org was created successfully, just email failed
-        // The user will see this in the logs
       }
 
       return {
@@ -253,7 +313,13 @@ export class OrgService {
       status: 'success',
       message: 'Organizations fetched successfully',
       statusCode: 200,
-      data: orgs,
+      data: orgs.map((org) => {
+        const { displayName, ...rest } = org;
+        return {
+          ...rest,
+          code: displayName,
+        };
+      }),
       meta: {
         total,
         page: pageNum,

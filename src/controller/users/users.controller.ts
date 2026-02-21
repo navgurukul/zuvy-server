@@ -166,11 +166,24 @@ export class UsersController {
     status: 500,
     description: 'Internal server error',
   })
+  @ApiQuery({
+    name: 'orgId',
+    required: true,
+    type: Number,
+    description: 'Organization ID to filter roles',
+  })
   @ApiBearerAuth('JWT-auth')
-  async getAllUserRoles(@Req() req): Promise<any> {
+  async getAllUserRoles(
+    @Req() req,
+    @Query('orgId', ParseIntPipe) orgId: number,
+  ): Promise<any> {
     try {
       const roleName = req.user[0]?.roles;
-      const result = await this.usersService.getAllUserRoles(roleName);
+      const result = await this.usersService.getAllUserRoles(
+        roleName,
+        false,
+        orgId,
+      );
       return result;
     } catch (error) {
       throw new HttpException(
@@ -195,11 +208,24 @@ export class UsersController {
     status: 500,
     description: 'Internal server error',
   })
+  @ApiQuery({
+    name: 'orgId',
+    required: true,
+    type: Number,
+    description: 'Organization ID to filter roles',
+  })
   @ApiBearerAuth('JWT-auth')
-  async getAllUserRolesNoFilter(@Req() req): Promise<any> {
+  async getAllUserRolesNoFilter(
+    @Req() req,
+    @Query('orgId', ParseIntPipe) orgId: number,
+  ): Promise<any> {
     try {
       const roleName = req.user[0]?.roles;
-      const result = await this.usersService.getAllUserRoles(roleName, true);
+      const result = await this.usersService.getAllUserRoles(
+        roleName,
+        true,
+        orgId,
+      );
       return result;
     } catch (error) {
       throw new HttpException(
@@ -302,8 +328,15 @@ export class UsersController {
     status: 500,
     description: 'Internal server error',
   })
+  @ApiQuery({
+    name: 'orgId',
+    required: true,
+    type: Number,
+    description: 'Organization ID to filter users',
+  })
   async getAllUsers(
     @Req() req, // Required parameter first
+    @Query('orgId', ParseIntPipe) orgIdQuery: number,
     @Query('limit') limit?: string, // Optional
     @Query('offset') offset?: string, // Optional
     @Query('searchTerm') searchTerm?: string, // Optional (default to '')
@@ -328,7 +361,7 @@ export class UsersController {
     }
 
     const roleName = req.user[0]?.roles;
-    const orgId = req.user[0]?.orgId;
+    const orgId = orgIdQuery || req.user[0]?.orgId;
     return this.usersService.getAllUsersWithRoles(
       roleName,
       limitNum,
