@@ -71,6 +71,17 @@ export const questionType = pgEnum('questionType', [
   'Date',
   'Time',
 ]);
+export const learnerYearOfStudy = pgEnum('learner_year_of_study', [
+  '1st',
+  '2nd',
+  '3rd',
+  '4th',
+]);
+export const learnerCurrentStatus = pgEnum('learner_current_status', [
+  'Learning',
+  'Looking for Job',
+  'Working',
+]);
 import { helperVariable } from '../src/constants/helper';
 import { table } from 'console';
 let schName;
@@ -3016,6 +3027,62 @@ export const zuvyAssessmentReattemptRelation = relations(zuvyAssessmentReattempt
     references: [users.id],
   })
 }))
+
+export const zuvyLearnerInformation = main.table(
+  'zuvy_learner_information',
+  {
+    id: serial('id').primaryKey().notNull(),
+    userId: bigint('user_id', { mode: 'number' })
+      .notNull()
+      .references(() => users.id, {
+        onDelete: 'cascade',
+        onUpdate: 'cascade',
+      }),
+    fullName: varchar('full_name', { length: 255 }).notNull(),
+    email: varchar('email', { length: 255 }).notNull(),
+    phoneNumber: varchar('phone_number', { length: 20 }).notNull(),
+    collegeName: varchar('college_name', { length: 255 }).notNull(),
+    otherCollegeName: varchar('other_college_name', { length: 100 }),
+    degreeProgram: varchar('degree_program', { length: 100 }),
+    branchSpecialisation: varchar('branch_specialisation', { length: 100 }).notNull(),
+    yearOfStudy: learnerYearOfStudy('year_of_study').notNull(),
+    expectedGraduationMonth: integer('expected_graduation_month').notNull(),
+    expectedGraduationYear: integer('expected_graduation_year').notNull(),
+    currentStatus: learnerCurrentStatus('current_status').notNull(),
+    createdAt: timestamp('created_at', {
+      withTimezone: true,
+      mode: 'string',
+    })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp('updated_at', {
+      withTimezone: true,
+      mode: 'string',
+    })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => {
+    return {
+      zuvyLearnerInformationUserIdUnique: uniqueIndex(
+        'zuvy_learner_information_user_id_unique',
+      ).on(table.userId),
+      zuvyLearnerInformationEmailUnique: uniqueIndex(
+        'zuvy_learner_information_email_unique',
+      ).on(table.email),
+    };
+  },
+);
+
+export const zuvyLearnerInformationRelation = relations(
+  zuvyLearnerInformation,
+  ({ one }) => ({
+    user: one(users, {
+      fields: [zuvyLearnerInformation.userId],
+      references: [users.id],
+    }),
+  }),
+);
 
 export const zuvyOpenEndedQuestionSubmission = main.table("zuvy_open_ended_question_submission", {
   id: serial("id").primaryKey().notNull(),
