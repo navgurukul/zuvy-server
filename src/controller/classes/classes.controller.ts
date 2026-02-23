@@ -14,6 +14,7 @@ import {
   Query,
   BadRequestException,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
 import { ClassesService } from './classes.service';
 import {
@@ -40,6 +41,8 @@ import { Response } from 'express';
 import { ErrorResponse, SuccessResponse } from 'src/errorHandler/handler';
 import { Public } from '../../auth/decorators/public.decorator';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
+import { TrackAction } from 'src/trackinglog/decorators/track-action.decorator';
+import { TrackActionInterceptor } from 'src/trackinglog/interceptors/track-action.interceptor';
 import { auth2Client } from '../../auth/google-auth';
 import { db } from '../../db/index';
 import {
@@ -56,6 +59,7 @@ let configUser = { id: process.env.ID, email: process.env.TEAM_EMAIL };
 @Controller('classes')
 @ApiTags('classes')
 @UseGuards(JwtAuthGuard)
+@UseInterceptors(TrackActionInterceptor)
 @ApiBearerAuth('JWT-auth')
 @UsePipes(
   new ValidationPipe({
@@ -141,6 +145,19 @@ export class ClassesController {
   @ApiOperation({ summary: 'Create the new class' })
   @ApiBearerAuth('JWT-auth')
   @Public()
+  @TrackAction({
+    action: 'create_classes',
+    resourceType: 'class',
+    permissionName: 'createClass',
+    getResourceName: (result) => {
+      return (
+        result?.data?.[0]?.title ||
+        result?.data?.title ||
+        result?.title ||
+        'Live Session'
+      );
+    },
+  })
   async create(@Body() classData: CreateSessionDto, @Req() req) {
     const userInfo = {
       id: Number(req.user[0].id),
@@ -375,28 +392,42 @@ export class ClassesController {
     summary: 'Add existing live classes as chapters to a module',
   })
   @ApiBearerAuth()
+  @TrackAction({
+    action: 'create_chapter',
+    resourceType: 'chapter',
+    permissionName: 'createChapter',
+    getResourceName: (result) => {
+      // Result can be SuccessResponse instance or direct service response
+      const chapters = result?.data?.chapters || result?.chapters;
+      if (chapters?.length) {
+        // If multiple chapters, show titles separated by comma
+        const titles = chapters
+          .map((ch) => ch.title)
+          .filter((t) => t)
+          .join(', ');
+        return titles || 'Live Sessions';
+      }
+      return 'Live Sessions';
+    },
+  })
   async addLiveClassesAsChapters(
     @Body() data: AddLiveClassesAsChaptersDto,
     @Req() req,
-    @Res() res: Response,
   ): Promise<object> {
-    try {
-      const [err, success] = await this.classesService.addLiveClassesAsChapters(
-        data.sessionIds,
-        data.moduleId,
-        req.user[0],
-      );
-      if (err) {
-        return ErrorResponse.BadRequestException(err.message).send(res);
-      }
-      return new SuccessResponse(
-        success.message,
-        success.statusCode,
-        success.data,
-      ).send(res);
-    } catch (error) {
-      return ErrorResponse.BadRequestException(error.message).send(res);
+    const [err, success] = await this.classesService.addLiveClassesAsChapters(
+      data.sessionIds,
+      data.moduleId,
+      req.user[0],
+    );
+    if (err) {
+      throw new BadRequestException(err.message);
     }
+    return {
+      message: success.message,
+      code: success.code,
+      isSuccess: true,
+      data: success.data,
+    };
   }
 
   @Get('/sessions/:id')
@@ -423,6 +454,14 @@ export class ClassesController {
   @Put('/sessions/:id')
   @ApiOperation({ summary: 'Update session by ID' })
   @ApiBearerAuth('JWT-auth')
+  @TrackAction({
+    action: 'edit_class',
+    resourceType: 'class',
+    permissionName: 'editClass',
+    getResourceName: (result) => {
+      return result?.data?.title || result?.title || 'Session';
+    },
+  })
   async updateSession(
     @Param('id') sessionId: number,
     @Body() updateData: updateSessionDto,
@@ -445,6 +484,15 @@ export class ClassesController {
     description: 'Also delete linked chapter when true',
   })
   @ApiBearerAuth('JWT-auth')
+  @TrackAction({
+    action: 'delete_class',
+    resourceType: 'class',
+    permissionName: 'deleteClass',
+    getResourceName: (result) => {
+      const title = result?.sessionTitle;
+      return title ? `"${title}"` : 'Session';
+    },
+  })
   async deleteSession(
     @Param('id') sessionId: number,
     @Query('deleteChapter') deleteChapter: string,
@@ -474,6 +522,13 @@ export class ClassesController {
     description: 'Google meetingId, calendar event id, or Zoom meeting id',
   })
   @ApiBearerAuth('JWT-auth')
+  @TrackAction({
+    action: 'edit_session',
+    resourceType: 'session',
+    permissionName: 'editClass',
+    getResourceName: (result) =>
+      result?.data?.title || result?.data?.topic || 'Session',
+  })
   async patchByMeetingId(
     @Param('meetingId') meetingId: string,
     @Body() updateData: updateSessionDto,
@@ -514,6 +569,13 @@ export class ClassesController {
     description: 'Also delete linked chapter when true',
   })
   @ApiBearerAuth('JWT-auth')
+  @TrackAction({
+    action: 'delete_session',
+    resourceType: 'session',
+    permissionName: 'deleteClass',
+    getResourceName: (result) =>
+      result?.data?.title || result?.data?.topic || 'Session',
+  })
   async deleteByMeetingId(
     @Param('meetingId') meetingId: string,
     @Query('deleteChapter') deleteChapter: string,
@@ -567,6 +629,13 @@ export class ClassesController {
   })
   @ApiBody({ type: MergeClassesDto })
   @ApiBearerAuth('JWT-auth')
+  @TrackAction({
+    action: 'merge_class',
+    resourceType: 'class',
+    permissionName: 'editClass',
+    getResourceName: (result) =>
+      result?.data?.title || result?.data?.topic || 'Class',
+  })
   async mergeClasses(@Body() mergeData: MergeClassesDto, @Req() req) {
     const userInfo = {
       id: Number(req.user[0].id),
