@@ -160,8 +160,7 @@ export class OrgService {
 
   async createOrg(createOrgDto: CreateOrgDto) {
     try {
-      const displayName =
-        createOrgDto.displayName || this.generateCode(createOrgDto.title);
+      const displayName = await this.generateCode(createOrgDto.title);
 
       const createOrgDtoValues = {
         title: createOrgDto.title,
@@ -215,12 +214,12 @@ export class OrgService {
       });
 
       // 5. Send Email (After transaction)
-      const magicLink = `${process.env.APP_BASE_URL}/org/getOrgById/${result.id}`;
+      const magicLink = `${process.env.APP_BASE_URL}/admin/${result.displayName}/setting`;
       try {
-        const subject = `Welcome to Zuvy - Complete ${displayName} Setup`;
+        const subject = `Welcome to Zuvy - Complete ${result.title} Setup`;
         const html = `
           <h1>Welcome to Zuvy!</h1>
-          <p>You have been invited to set up the organization <b>${displayName}</b>.</p>
+          <p>You have been invited to set up the organization <b>${result.title}</b>.</p>
           <p>Please click the link below to complete your profile and organization details:</p>
           <a href="${magicLink}">Complete Setup</a>
           <p>If you did not request this, please ignore this email.</p>
@@ -277,10 +276,6 @@ export class OrgService {
         or(
           ilike(zuvyOrganizations.title, searchLike),
           ilike(zuvyOrganizations.displayName, searchLike),
-          ilike(zuvyOrganizations.pocName, searchLike),
-          ilike(zuvyOrganizations.pocEmail, searchLike),
-          ilike(zuvyOrganizations.zuvyPocName, searchLike),
-          ilike(zuvyOrganizations.zuvyPocEmail, searchLike),
         ),
       );
     }
@@ -512,7 +507,9 @@ export class OrgService {
         <h1>Organization Deletion Request</h1>
         <p>A request has been made to delete the organization <b>${orgName}</b>.</p>
         <p>If you approve this action, please click the link below to confirm the deletion:</p>
-        <a href="${deleteLink}">Confirm Deletion</a>
+        <div style="margin: 20px 0;">
+          <a href="${deleteLink}" style="background-color: #ff4d4f; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">Confirm Deletion</a>
+        </div>
         <p><b>This action cannot be undone.</b></p>
         <p>If you did not request this, please ignore this email and contact support immediately.</p>
       `;
