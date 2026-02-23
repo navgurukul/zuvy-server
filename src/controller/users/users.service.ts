@@ -1104,11 +1104,6 @@ export class UsersService {
         ...result,
         id: Number(result.id),
         roleId: result.roleId ? Number(result.roleId) : null,
-        before: {
-          name: existingUser.name,
-          email: existingUser.email,
-        },
-        data: result,
       };
     } catch (error) {
       throw error;

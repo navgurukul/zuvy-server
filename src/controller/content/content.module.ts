@@ -10,7 +10,6 @@ import { SseService } from '../../services/sse.service';
 import { ClassesModule } from '../classes/classes.module';
 import { ZoomModule } from '../../services/zoom/zoom.module';
 import { RbacModule } from '../../rbac/rbac.module';
-import { TrackinglogModule } from '../../trackinglog/trackinglog.module';
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -19,17 +18,14 @@ import { TrackinglogModule } from '../../trackinglog/trackinglog.module';
 
     MulterModule.register({
       storage: memoryStorage(),
-      limits: { fileSize: 20 * 1024 * 1024 },
+       limits: { fileSize: 20 * 1024 * 1024 },
       fileFilter: (_req, file, cb) => {
         const isImage = file.mimetype.startsWith('image/');
-        const isPdf = file.mimetype === 'application/pdf';
+        const isPdf   = file.mimetype === 'application/pdf';
         cb(null, isImage || isPdf);
       },
     }),
-    ClassesModule,
-    ZoomModule,
-    RbacModule,
-    TrackinglogModule,
+    ClassesModule,ZoomModule, RbacModule
   ],
   controllers: [ContentController],
   providers: [ContentService, JwtService, SseService],

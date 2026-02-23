@@ -5,16 +5,15 @@ import { JwtModule, JwtService } from '@nestjs/jwt';
 import { JwtMiddleware } from 'src/middleware/jwt.middleware';
 import { AuthModule } from 'src/auth/auth.module';
 import { ZoomModule } from '../../services/zoom/zoom.module';
-import { TrackinglogModule } from '../../trackinglog/trackinglog.module';
 
 @Module({
-  imports: [AuthModule, ZoomModule, TrackinglogModule],
-  controllers: [ClassesController],
-  providers: [ClassesService, JwtService],
-  exports: [ClassesService],
+    imports: [AuthModule, ZoomModule],
+    controllers: [ClassesController],
+    providers: [ClassesService, JwtService],
+    exports: [ClassesService]
 })
 export class ClassesModule implements NestModule {
-  configure(consumer: MiddlewareConsumer) {
-    consumer.apply(JwtMiddleware).forRoutes('*');
-  }
+    configure(consumer: MiddlewareConsumer) {
+        consumer.apply(JwtMiddleware).forRoutes('*');
+    }
 }

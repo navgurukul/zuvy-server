@@ -6,10 +6,9 @@ import { JwtModule, JwtService } from '@nestjs/jwt';
 import { JwtMiddleware } from 'src/middleware/jwt.middleware';
 import { ClassesModule } from '../classes/classes.module';
 import { AuthModule } from 'src/auth/auth.module';
-import { TrackinglogModule } from 'src/trackinglog/trackinglog.module';
 
 @Module({
-  imports: [AuthModule, BatchesModule, ClassesModule, TrackinglogModule],
+  imports: [AuthModule, BatchesModule, ClassesModule],
   controllers: [StudentController],
   providers: [StudentService, JwtService],
 })

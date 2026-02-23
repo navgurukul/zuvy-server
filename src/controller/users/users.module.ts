@@ -8,16 +8,9 @@ import { AuthModule } from 'src/auth/auth.module';
 import { RbacModule } from 'src/rbac/rbac.module';
 import { AuditlogModule } from 'src/auditlog/auditlog.module';
 import { UserTokensModule } from 'src/user-tokens/user-tokens.module';
-import { TrackinglogModule } from 'src/trackinglog/trackinglog.module';
 
 @Module({
-  imports: [
-    AuthModule,
-    RbacModule,
-    AuditlogModule,
-    UserTokensModule,
-    TrackinglogModule,
-  ],
+  imports: [AuthModule, RbacModule, AuditlogModule, UserTokensModule],
   controllers: [UsersController],
   providers: [UsersService, JwtService],
   exports: [UsersService],
