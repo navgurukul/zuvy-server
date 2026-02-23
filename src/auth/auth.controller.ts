@@ -7,44 +7,24 @@ import {
   Headers,
   UnauthorizedException,
   Request,
-  UseInterceptors,
 } from '@nestjs/common';
 import { AuthService } from './auth.service';
-import { TrackAction } from 'src/trackinglog/decorators/track-action.decorator';
-import { TrackActionInterceptor } from 'src/trackinglog/interceptors/track-action.interceptor';
 import { LoginDto } from './dto/login.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
-import {
-  ApiTags,
-  ApiOperation,
-  ApiResponse,
-  ApiBearerAuth,
-  ApiBody,
-} from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiBody } from '@nestjs/swagger';
 import { Public } from './decorators/public.decorator';
 
 @ApiTags('Authentication')
 @Controller('auth')
-@UseInterceptors(TrackActionInterceptor)
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
   @Public()
   @Post('login')
-  @TrackAction({
-    action: 'login',
-    resourceType: 'user',
-    permissionName: 'viewUser',
-    getResourceName: (result, params) => {
-      const email = result?.user?.email || params?.email || 'Unknown';
-      const name = result?.user?.name || '';
-      return `${name ? `${name} (${email})` : email}`;
-    },
-  })
   @ApiOperation({ summary: 'Login with Google OAuth2' })
   @ApiBody({ type: LoginDto })
-  @ApiResponse({
-    status: 200,
+  @ApiResponse({ 
+    status: 200, 
     description: 'Successfully logged in',
     schema: {
       type: 'object',
@@ -59,11 +39,11 @@ export class AuthController {
             name: { type: 'string' },
             profilePicture: { type: 'string' },
             role: { type: 'string' },
-            center: { type: 'string' },
-          },
-        },
-      },
-    },
+            center: { type: 'string' }
+          }
+        }
+      }
+    }
   })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   async login(@Body() loginDto: LoginDto) {
@@ -71,39 +51,32 @@ export class AuthController {
   }
 
   @Post('logout')
-  @TrackAction({
-    action: 'logout',
-    resourceType: 'user',
-    permissionName: 'viewUser',
-    getResourceName: () => '',
-  })
   @ApiBearerAuth('JWT-auth')
-  @ApiOperation({
+  @ApiOperation({ 
     summary: 'Logout and invalidate token',
     description: `To use this endpoint:
     1. First call the login API to get an access_token
     2. Click the 'Authorize' button at the top of the page
     3. Enter your access_token in the format: Bearer your_access_token
     4. Click 'Authorize' and close the popup
-    5. Then call this logout endpoint`,
+    5. Then call this logout endpoint`
   })
-  @ApiResponse({
-    status: 200,
+  @ApiResponse({ 
+    status: 200, 
     description: 'Successfully logged out',
     schema: {
       type: 'object',
       properties: {
-        message: {
+        message: { 
           type: 'string',
-          example: 'Successfully logged out',
-        },
-      },
-    },
+          example: 'Successfully logged out'
+        }
+      }
+    }
   })
-  @ApiResponse({
-    status: 401,
-    description:
-      'Unauthorized - Make sure you have authorized with a valid access_token',
+  @ApiResponse({ 
+    status: 401, 
+    description: 'Unauthorized - Make sure you have authorized with a valid access_token'
   })
   async logout(@Request() req) {
     const token = req.headers.authorization?.split(' ')[1];
@@ -115,36 +88,29 @@ export class AuthController {
 
   @Public()
   @Post('refresh')
-  @TrackAction({
-    action: 'refresh_token',
-    resourceType: 'user',
-    permissionName: 'viewUser',
-    getResourceName: (result) => {
-      return result?.user?.email || result?.email || 'Token Refreshed';
-    },
-  })
   @ApiOperation({ summary: 'Refresh access token' })
   @ApiBody({
     schema: {
       type: 'object',
       properties: {
-        refresh_token: { type: 'string' },
-      },
-    },
+        refresh_token: { type: 'string' }
+      }
+    }
   })
-  @ApiResponse({
-    status: 200,
+  @ApiResponse({ 
+    status: 200, 
     description: 'Successfully refreshed token',
     schema: {
       type: 'object',
       properties: {
         access_token: { type: 'string' },
-        refresh_token: { type: 'string' },
-      },
-    },
+        refresh_token: { type: 'string' }
+      }
+    }
   })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   async refreshToken(@Body('refresh_token') refreshToken: string) {
     return this.authService.refreshToken(refreshToken);
   }
 }
+  

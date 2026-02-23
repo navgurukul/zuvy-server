@@ -5,26 +5,18 @@ import { BatchesModule } from '../batches/batch.module';
 import { JwtModule, JwtService } from '@nestjs/jwt';
 import { JwtMiddleware } from 'src/middleware/jwt.middleware';
 import { AuthModule } from 'src/auth/auth.module';
-import { TrackinglogModule } from '../../trackinglog/trackinglog.module';
 
 import { ContentModule } from '../content/content.module';
 import { ClassesModule } from '../classes/classes.module';
 import { ZoomModule } from 'src/services/zoom/zoom.module';
 @Module({
-  imports: [
-    BatchesModule,
-    AuthModule,
-    ContentModule,
-    ClassesModule,
-    ZoomModule,
-    TrackinglogModule,
-  ],
-  controllers: [TrackingController],
-  providers: [TrackingService, JwtService],
-  exports: [TrackingService],
+    imports: [BatchesModule, AuthModule, ContentModule, ClassesModule,ZoomModule],
+    controllers: [TrackingController],
+    providers: [TrackingService, JwtService],
+    exports: [TrackingService]
 })
 export class TrackingModule implements NestModule {
-  configure(consumer: MiddlewareConsumer) {
-    consumer.apply(JwtMiddleware).forRoutes('*'); // Apply JwtMiddleware to all routes
-  }
+    configure(consumer: MiddlewareConsumer) {
+        consumer.apply(JwtMiddleware).forRoutes('*'); // Apply JwtMiddleware to all routes
+    }
 }

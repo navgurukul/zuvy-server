@@ -593,13 +593,6 @@ export class CodingPlatformService {
   ): Promise<any> {
     let { testCases, ...questionData } = updateCodingQuestionDto;
     try {
-      const beforeRows = await db
-        .select()
-        .from(zuvyCodingQuestions)
-        .where(sql`${zuvyCodingQuestions.id} = ${id}`)
-        .limit(1);
-      const before = beforeRows[0] || null;
-
       const question = await db
         .update(zuvyCodingQuestions)
         .set(questionData)
@@ -640,7 +633,6 @@ export class CodingPlatformService {
         {
           message: 'Coding question updated successfully',
           data: { question, testCases: [...testCases, ...newAddedTestCases] },
-          before,
           statusCode: STATUS_CODES.OK,
         },
       ];
