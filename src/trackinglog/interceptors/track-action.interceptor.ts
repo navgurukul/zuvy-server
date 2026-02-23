@@ -12,6 +12,7 @@ import {
   TRACK_ACTION_KEY,
   TrackActionMetadata,
 } from '../decorators/track-action.decorator';
+import { diffRecords } from '../utils';
 
 @Injectable()
 export class TrackActionInterceptor implements NestInterceptor {
@@ -34,20 +35,10 @@ export class TrackActionInterceptor implements NestInterceptor {
     const request = context.switchToHttp().getRequest();
     const user = request.user;
 
-    if (!user) {
-      return next.handle();
-    }
-
     return next.handle().pipe(
       tap(
         async (result) => {
           try {
-            console.log('[INTERCEPTOR] TrackActionInterceptor called');
-            console.log(
-              '[INTERCEPTOR] Result:',
-              JSON.stringify(result, null, 2),
-            );
-
             // Extract metadata values or use empty object
             const metadataValues = metadata || {};
             let {
@@ -58,12 +49,6 @@ export class TrackActionInterceptor implements NestInterceptor {
               getBootcampId,
               getTargetUser,
             } = metadataValues;
-
-            console.log('[INTERCEPTOR] Metadata:', {
-              action,
-              resourceType,
-              permissionName,
-            });
 
             // Auto-detect resourceType from route path if not provided
             // Example: /bootcamp/123 -> bootcamp, /content/chapter -> chapter
@@ -155,50 +140,85 @@ export class TrackActionInterceptor implements NestInterceptor {
               actualResult = result;
             }
 
-            // Extract user data - handle both array and object formats
-            const userData = Array.isArray(user) ? user[0] : user;
+            // we only need orgId / email for audit logging).
+            let rawUser = Array.isArray(user) ? user[0] : user;
+
+            if (!rawUser) {
+              try {
+                const authHeader = request.headers?.authorization as string;
+                if (authHeader?.startsWith('Bearer ')) {
+                  const token = authHeader.slice(7);
+                  const payloadBase64 = token.split('.')[1];
+                  if (payloadBase64) {
+                    const decoded = JSON.parse(
+                      Buffer.from(payloadBase64, 'base64url').toString('utf8'),
+                    );
+                    // JWT payload uses "sub" for userId — mirror the shape that
+                    // JwtStrategy.validate() produces so the rest of the code is unchanged.
+                    rawUser = {
+                      id: decoded.sub,
+                      email: decoded.email,
+                      orgId: decoded.orgId,
+                      orgName: decoded.orgName,
+                    };
+                  }
+                }
+              } catch {
+                // Unreadable token — rawUser stays null, fields will be null in log
+              }
+            }
+
+            const userData = rawUser;
 
             const actorUserId =
-              typeof userData.id === 'string'
+              typeof userData?.id === 'string'
                 ? parseInt(userData.id)
-                : userData.id;
+                : userData?.id;
 
-            // Extract name from email (before @) or use full email as fallback
+            // Use full email as actor identifier
             let actorName = 'User';
-            if (userData.email) {
-              const emailParts = userData.email.split('@');
-              actorName = emailParts[0];
-              // Capitalize first letter and replace dots/underscores with spaces
-              actorName = actorName
-                .replace(/[._]/g, ' ')
-                .split(' ')
-                .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-                .join(' ');
+            if (userData?.email) {
+              actorName = userData.email;
             }
 
             const orgId =
-              typeof userData.orgId === 'string'
+              typeof userData?.orgId === 'string'
                 ? parseInt(userData.orgId)
-                : userData.orgId;
+                : userData?.orgId;
 
             // Extract resource name from result if function provided
+            const allParamsFull = {
+              ...request.params,
+              ...request.query,
+              ...request.body,
+            };
             const resourceName = getResourceName
-              ? getResourceName(actualResult)
+              ? getResourceName(actualResult, allParamsFull)
               : '';
 
-            // Extract bootcamp ID from result or request params if function provided
+            // Extract bootcamp ID from result or request params/body/query if function provided
             let bootcampId = null;
             if (getBootcampId) {
-              // Pass both request.params and request.body to the function
-              const allParams = { ...request.params, ...request.body };
-              bootcampId = getBootcampId(actualResult, allParams);
+              bootcampId = getBootcampId(actualResult, allParamsFull);
             } else {
-              // Auto-detect bootcampId from URL params or request body
+              // Auto-detect bootcampId from URL params (camelCase & snake_case), query, body, or service result
               bootcampId = request.params?.bootcampId
                 ? parseInt(request.params.bootcampId)
-                : request.body?.bootcampId
-                  ? parseInt(request.body.bootcampId)
-                  : null;
+                : request.params?.bootcamp_id
+                  ? parseInt(request.params.bootcamp_id)
+                  : request.query?.bootcampId
+                    ? parseInt(request.query.bootcampId as string)
+                    : request.body?.bootcampId
+                      ? parseInt(request.body.bootcampId)
+                      : actualResult?.bootcampId
+                        ? parseInt(actualResult.bootcampId)
+                        : actualResult?.data?.bootcampId
+                          ? parseInt(actualResult.data.bootcampId)
+                          : actualResult?.batch?.bootcampId
+                            ? parseInt(actualResult.batch.bootcampId)
+                            : actualResult?.bootcamp?.id
+                              ? parseInt(actualResult.bootcamp.id)
+                              : null;
             }
 
             // Extract target user info if function provided
@@ -206,200 +226,9 @@ export class TrackActionInterceptor implements NestInterceptor {
               ? getTargetUser(actualResult)
               : null;
 
-            // Build description dynamically from action pattern
-            // Extract verb from action (create, edit, delete, mark, enroll, etc.)
-            const actionParts = action.split('_');
-            const verb = actionParts[0]; // create, edit, delete, mark, enroll, etc.
-
-            // Check if custom description function is provided
-            let description: string;
-            if (metadata.getCustomDescription) {
-              // Pass both route params and query params
-              const allParams = { ...request.params, ...request.query };
-              const customDesc = metadata.getCustomDescription(
-                actorName,
-                actualResult,
-                allParams,
-                request.body,
-              );
-              if (customDesc) {
-                description = customDesc;
-              }
-            }
-
-            // If no custom description, generate default
-            if (!description) {
-              // Map verbs to past tense and description patterns
-              const verbPatterns = {
-                create: {
-                  past: 'created',
-                  pattern: '{actor} created the {resource} "{name}"',
-                },
-                edit: {
-                  past: 'updated',
-                  pattern: '{actor} updated the {resource} "{name}"',
-                },
-                update: {
-                  past: 'updated',
-                  pattern: '{actor} updated the {resource} "{name}"',
-                },
-                delete: {
-                  past: 'deleted',
-                  pattern: '{actor} deleted the {resource} "{name}"',
-                },
-                view: {
-                  past: 'viewed',
-                  pattern: '{actor} viewed the {resource} "{name}"',
-                },
-                mark: {
-                  past: 'marked',
-                  pattern: '{actor} marked {target} as {status}',
-                },
-                enroll: {
-                  past: 'enrolled',
-                  pattern: '{actor} enrolled {target} in {resource} "{name}"',
-                },
-                unenroll: {
-                  past: 'unenrolled',
-                  pattern:
-                    '{actor} unenrolled {target} from {resource} "{name}"',
-                },
-                assign: {
-                  past: 'assigned',
-                  pattern: '{actor} assigned {target} to {resource} "{name}"',
-                },
-                remove: {
-                  past: 'removed',
-                  pattern: '{actor} removed {target} from {resource} "{name}"',
-                },
-                submit: {
-                  past: 'submitted',
-                  pattern: '{actor} submitted the {resource} "{name}"',
-                },
-                grade: {
-                  past: 'graded',
-                  pattern: '{actor} graded the {resource} "{name}"',
-                },
-                publish: {
-                  past: 'published',
-                  pattern: '{actor} published the {resource} "{name}"',
-                },
-                lock: {
-                  past: 'locked',
-                  pattern: '{actor} locked the {resource} "{name}"',
-                },
-                unlock: {
-                  past: 'unlocked',
-                  pattern: '{actor} unlocked the {resource} "{name}"',
-                },
-                download: {
-                  past: 'downloaded',
-                  pattern: '{actor} downloaded the {resource} "{name}"',
-                },
-                upload: {
-                  past: 'uploaded',
-                  pattern: '{actor} uploaded the {resource} "{name}"',
-                },
-                approve: {
-                  past: 'approved',
-                  pattern: '{actor} approved the {resource} "{name}"',
-                },
-                reject: {
-                  past: 'rejected',
-                  pattern: '{actor} rejected the {resource} "{name}"',
-                },
-                archive: {
-                  past: 'archived',
-                  pattern: '{actor} archived the {resource} "{name}"',
-                },
-                restore: {
-                  past: 'restored',
-                  pattern: '{actor} restored the {resource} "{name}"',
-                },
-                clone: {
-                  past: 'cloned',
-                  pattern: '{actor} cloned the {resource} "{name}"',
-                },
-                duplicate: {
-                  past: 'duplicated',
-                  pattern: '{actor} duplicated the {resource} "{name}"',
-                },
-                share: {
-                  past: 'shared',
-                  pattern: '{actor} shared the {resource} "{name}"',
-                },
-                export: {
-                  past: 'exported',
-                  pattern: '{actor} exported the {resource} "{name}"',
-                },
-                import: {
-                  past: 'imported',
-                  pattern: '{actor} imported the {resource} "{name}"',
-                },
-              };
-
-              // Get pattern for verb or create default
-              const verbConfig = verbPatterns[verb] || {
-                past: verb + 'ed',
-                pattern: '{actor} {past} the {resource} "{name}"',
-              };
-
-              // Build description by replacing placeholders
-              description = verbConfig.pattern;
-
-              // Replace placeholders dynamically
-              description = description
-                .replace('{actor}', actorName)
-                .replace('{past}', verbConfig.past)
-                .replace('{resource}', resourceType || 'item')
-                .replace('"{name}"', resourceName ? `"${resourceName}"` : '')
-                .replace(' ""', ''); // Clean up empty quotes
-
-              // Handle target user placeholder
-              if (description.includes('{target}')) {
-                const targetInfo = targetUser
-                  ? `${targetUser.name || targetUser.email || 'user'}${targetUser.email ? ' (' + targetUser.email + ')' : ''}`
-                  : 'user';
-                description = description.replace('{target}', targetInfo);
-              }
-
-              // Handle status placeholder (for attendance)
-              if (description.includes('{status}')) {
-                const status = targetUser?.status || 'present';
-                description = description.replace(
-                  '{status}',
-                  status.toUpperCase(),
-                );
-                if (resourceName) {
-                  description += ` for session "${resourceName}"`;
-                }
-              }
-
-              // Handle changes array for updates
-              if (
-                (verb === 'edit' || verb === 'update') &&
-                actualResult?.changes?.length > 0
-              ) {
-                const changesText = actualResult.changes.join(', ');
-                description = `${actorName} updated ${changesText} in ${resourceType}${resourceName ? ' "' + resourceName + '"' : ''}`;
-              }
-
-              // Clean up extra spaces
-              description = description.replace(/\s+/g, ' ').trim();
-            }
-
-            // Determine status based on result
+            // ─── Status detection (must happen BEFORE description) ────────────────
             let logStatus = 'success';
 
-            console.log('[INTERCEPTOR] Checking result status:', {
-              status: actualResult?.status,
-              isSuccess: actualResult?.isSuccess,
-              code: actualResult?.code,
-              statusCode: actualResult?.statusCode,
-              success: actualResult?.success,
-            });
-
-            // Check for error responses
             if (
               actualResult?.status === 'error' ||
               actualResult?.isSuccess === false ||
@@ -417,22 +246,31 @@ export class TrackActionInterceptor implements NestInterceptor {
               logStatus = 'success'; // Main operation succeeded but sync failed
             }
 
-            // Log the action
-            console.log('[INTERCEPTOR] About to call logAction with:', {
-              orgId,
-              bootcampId,
-              actorUserId,
-              action,
-              resourceType,
-              permissionName: permissionName || action,
-              description,
-              actorName,
-              status: logStatus,
-            });
+            // ─── Description ─────────────────────────────────────────────────────
+            let description: string;
 
-            const logResult = await this.trackinglogService.logAction({
+            if (logStatus === 'failed') {
+              // For failed actions, describe the attempt + reason
+              const errorMsg = actualResult?.message || 'Unknown error';
+              const actionVerb = action.replace(/_/g, ' ');
+              description = `${actorName} attempted to ${actionVerb} but failed: ${errorMsg}`;
+            } else {
+              description = this.buildSmartDescription(
+                actorName,
+                action,
+                resourceType,
+                resourceName,
+                targetUser,
+                actualResult,
+              );
+            }
+
+            const logPayload = {
               orgId: orgId,
               bootcampId: bootcampId,
+              batchId: request.body?.batchId
+                ? Number(request.body.batchId)
+                : undefined,
               actorUserId: actorUserId,
               action,
               resourceType,
@@ -440,9 +278,20 @@ export class TrackActionInterceptor implements NestInterceptor {
               customDescription: description,
               actorName: actorName,
               status: logStatus,
-            });
+            };
 
-            console.log('[INTERCEPTOR] logAction result:', logResult);
+            try {
+              await this.trackinglogService.logAction(logPayload);
+            } catch (_logErr) {
+              // FK violation: bootcamp was deleted before log could be inserted.
+              // Retry with bootcampId: null so the audit log is still recorded.
+              if (bootcampId != null) {
+                await this.trackinglogService.logAction({
+                  ...logPayload,
+                  bootcampId: null,
+                });
+              }
+            }
           } catch (error) {
             // Don't throw error to avoid breaking the main flow
             console.error(
@@ -508,12 +357,7 @@ export class TrackActionInterceptor implements NestInterceptor {
 
             let actorName = 'User';
             if (userData.email) {
-              const emailParts = userData.email.split('@');
-              actorName = emailParts[0]
-                .replace(/[._]/g, ' ')
-                .split(' ')
-                .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-                .join(' ');
+              actorName = userData.email;
             }
 
             const orgId =
@@ -521,10 +365,22 @@ export class TrackActionInterceptor implements NestInterceptor {
                 ? parseInt(userData.orgId)
                 : userData.orgId;
 
-            // Auto-detect bootcampId from URL params
-            const bootcampId = request.params?.bootcampId
-              ? parseInt(request.params.bootcampId)
-              : null;
+            // Use getBootcampId from metadata if available (handles snake_case params too)
+            let bootcampId: number | null = null;
+            if (metadataValues.getBootcampId) {
+              const allErrParams = {
+                ...request.params,
+                ...request.query,
+                ...request.body,
+              };
+              bootcampId = metadataValues.getBootcampId(null, allErrParams);
+            }
+            // Fallback: auto-detect from both camelCase and snake_case URL params
+            if (!bootcampId) {
+              const raw =
+                request.params?.bootcampId || request.params?.bootcamp_id;
+              bootcampId = raw ? parseInt(raw) : null;
+            }
 
             // Create description for failed action
             const errorMessage = error?.message || 'Unknown error';
@@ -551,5 +407,112 @@ export class TrackActionInterceptor implements NestInterceptor {
         },
       ),
     );
+  }
+
+  /**
+   * Centralized description builder — fully dynamic, zero hardcoded fields.
+   */
+  private buildSmartDescription(
+    actorName: string,
+    action: string,
+    resourceType: string,
+    resourceName: string,
+    targetUser: { status?: string; name?: string; email?: string } | null,
+    result: any,
+  ): string {
+    const actionVerb = action.split('_')[0].toLowerCase();
+    const pastTense = this.toPastTense(actionVerb);
+
+    // ── Compute diff first so we can use field names in the base sentence ─────
+    if (!result?.changes && result?.before && (result?.data || result?.after)) {
+      const afterRecord = result.data ?? result.after;
+      result.changes = diffRecords(result.before, afterRecord);
+    }
+
+    // Parse each change string: 'Type: "Private" → "Public"'
+    // → { field: 'Type', from: 'Private', to: 'Public' }
+    const parseChange = (c: string) => {
+      const colonIdx = c.indexOf(': ');
+      if (colonIdx === -1) return { field: c, from: '', to: '' };
+      const field = c.substring(0, colonIdx);
+      const rest = c.substring(colonIdx + 2);
+      const arrowIdx = rest.indexOf(' → ');
+      if (arrowIdx === -1) return { field, from: rest, to: '' };
+      const from = rest.substring(0, arrowIdx).replace(/^"|"$/g, '');
+      const to = rest.substring(arrowIdx + 3).replace(/^"|"$/g, '');
+      return { field, from, to };
+    };
+
+    const parsedChanges =
+      result?.changes?.length > 0
+        ? (result.changes as string[]).map(parseChange)
+        : null;
+
+    // ── Base sentence ─────────────────────────────────────────────────────────
+    let desc: string;
+    if (parsedChanges) {
+      const fieldNames = parsedChanges.map((c) => c.field).join(', ');
+      desc = `${actorName} ${pastTense} ${resourceType} ${fieldNames}`;
+      if (resourceName) desc += ` for "${resourceName}"`;
+
+      // Append "from X to Y" — single change: inline, multiple: each listed
+      if (parsedChanges.length === 1) {
+        const { from, to } = parsedChanges[0];
+        if (from && to) desc += ` from "${from}" to "${to}"`;
+      } else {
+        const changeList = parsedChanges
+          .filter((c) => c.from && c.to)
+          .map((c) => `${c.field} from "${c.from}" to "${c.to}"`)
+          .join(', ');
+        if (changeList) desc += ` (${changeList})`;
+      }
+    } else {
+      desc = `${actorName} ${pastTense} ${resourceType}`;
+      if (resourceName) desc += ` "${resourceName}"`;
+    }
+
+    // ── Target user — included generically whenever present ───────────────────
+    if (targetUser) {
+      const who =
+        [targetUser.name, targetUser.email ? `(${targetUser.email})` : null]
+          .filter(Boolean)
+          .join(' ') || 'user';
+      const statusPart = targetUser.status
+        ? ` → ${targetUser.status.toUpperCase()}`
+        : '';
+      desc += ` | User: ${who}${statusPart}`;
+    }
+
+    return desc;
+  }
+
+  private toPastTense(verb: string): string {
+    if (!verb) return 'processed';
+
+    // All other verbs are handled purely by the algorithm below.
+    const semanticOverrides: Record<string, string> = {
+      edit: 'updated',
+    };
+    if (semanticOverrides[verb]) return semanticOverrides[verb];
+
+    const vowels = new Set(['a', 'e', 'i', 'o', 'u']);
+    const len = verb.length;
+
+    // Rule 1: silent-e ending → add 'd'
+    if (verb.endsWith('e')) return verb + 'd';
+
+    // Rule 2: CVC pattern (short stressed syllable) → double final consonant + 'ed'
+    if (
+      len >= 3 &&
+      !vowels.has(verb[len - 1]) &&
+      vowels.has(verb[len - 2]) &&
+      !vowels.has(verb[len - 3]) &&
+      !['x', 'w', 'y'].includes(verb[len - 1])
+    ) {
+      return verb + verb[len - 1] + 'ed';
+    }
+
+    // Rule 3: default
+    return verb + 'ed';
   }
 }

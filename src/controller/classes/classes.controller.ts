@@ -157,52 +157,6 @@ export class ClassesController {
         'Live Session'
       );
     },
-    getBootcampId: (result, params) => {
-      return (
-        result?.data?.[0]?.bootcampId ||
-        result?.data?.bootcampId ||
-        result?.bootcampId ||
-        null
-      );
-    },
-    getCustomDescription: (actorName, result, params, body) => {
-      const classTitle =
-        result?.data?.[0]?.title ||
-        result?.data?.title ||
-        result?.title ||
-        'new class';
-      const bootcampId =
-        result?.data?.[0]?.bootcampId ||
-        result?.data?.bootcampId ||
-        result?.bootcampId ||
-        body?.bootcampId ||
-        'N/A';
-      const batchId =
-        result?.data?.[0]?.batchId ||
-        result?.data?.batchId ||
-        result?.batchId ||
-        body?.batchId ||
-        'N/A';
-      const secondBatchId =
-        result?.data?.[0]?.secondBatchId ||
-        result?.data?.secondBatchId ||
-        result?.secondBatchId ||
-        body?.secondBatchId;
-      const moduleId =
-        result?.data?.[0]?.moduleId ||
-        result?.data?.moduleId ||
-        result?.moduleId ||
-        body?.moduleId ||
-        'N/A';
-
-      let description = `${actorName} created live session "${classTitle}" | Bootcamp: ${bootcampId} | Batch: ${batchId}`;
-      if (secondBatchId) {
-        description += ` | Second Batch: ${secondBatchId}`;
-      }
-      description += ` | Module: ${moduleId}`;
-
-      return description;
-    },
   })
   async create(@Body() classData: CreateSessionDto, @Req() req) {
     const userInfo = {
@@ -455,29 +409,6 @@ export class ClassesController {
       }
       return 'Live Sessions';
     },
-    getBootcampId: (result, params) => {
-      const bootcampId =
-        params?.bootcampId ||
-        result?.data?.bootcampId ||
-        result?.bootcampId ||
-        null;
-      return bootcampId;
-    },
-    getCustomDescription: (actorName, result, params, body) => {
-      const chapters = result?.data?.chapters || result?.chapters || [];
-      const bootcampId =
-        params?.bootcampId ||
-        result?.data?.bootcampId ||
-        result?.bootcampId ||
-        'N/A';
-      const moduleId = body?.moduleId || params?.moduleId || 'N/A';
-      const count = chapters.length || 0;
-      const titles = chapters
-        .map((ch) => ch.title)
-        .filter((t) => t)
-        .join(', ');
-      return `${actorName} added ${count} live class session(s) as chapters [${titles || 'Live Sessions'}] to Module ID: ${moduleId} in Bootcamp ID: ${bootcampId}`;
-    },
   })
   async addLiveClassesAsChapters(
     @Body() data: AddLiveClassesAsChaptersDto,
@@ -530,34 +461,6 @@ export class ClassesController {
     getResourceName: (result) => {
       return result?.data?.title || result?.title || 'Session';
     },
-    getBootcampId: (result, params) => {
-      return result?.data?.bootcampId || result?.bootcampId || null;
-    },
-    getCustomDescription: (actorName, result, params, body) => {
-      const sessionId = params?.id || 'N/A';
-      const title =
-        result?.data?.title || result?.title || body?.title || 'session';
-      const bootcampId =
-        result?.data?.bootcampId || result?.bootcampId || 'N/A';
-      const batchId =
-        result?.data?.batchId || result?.batchId || body?.batchId || 'N/A';
-      const moduleId =
-        result?.data?.moduleId || result?.moduleId || body?.moduleId || 'N/A';
-
-      const updatedFields = [];
-      if (body?.title) updatedFields.push('title');
-      if (body?.startDateTime || body?.startTime)
-        updatedFields.push('start time');
-      if (body?.endDateTime || body?.endTime) updatedFields.push('end time');
-      if (body?.description) updatedFields.push('description');
-
-      const fieldsText =
-        updatedFields.length > 0
-          ? ` (updated: ${updatedFields.join(', ')})`
-          : '';
-
-      return `${actorName} edited session "${title}" (ID: ${sessionId}) | Bootcamp: ${bootcampId} | Batch: ${batchId} | Module: ${moduleId}${fieldsText}`;
-    },
   })
   async updateSession(
     @Param('id') sessionId: number,
@@ -581,6 +484,15 @@ export class ClassesController {
     description: 'Also delete linked chapter when true',
   })
   @ApiBearerAuth('JWT-auth')
+  @TrackAction({
+    action: 'delete_class',
+    resourceType: 'class',
+    permissionName: 'deleteClass',
+    getResourceName: (result) => {
+      const title = result?.sessionTitle;
+      return title ? `"${title}"` : 'Session';
+    },
+  })
   async deleteSession(
     @Param('id') sessionId: number,
     @Query('deleteChapter') deleteChapter: string,
@@ -610,6 +522,13 @@ export class ClassesController {
     description: 'Google meetingId, calendar event id, or Zoom meeting id',
   })
   @ApiBearerAuth('JWT-auth')
+  @TrackAction({
+    action: 'edit_session',
+    resourceType: 'session',
+    permissionName: 'editClass',
+    getResourceName: (result) =>
+      result?.data?.title || result?.data?.topic || 'Session',
+  })
   async patchByMeetingId(
     @Param('meetingId') meetingId: string,
     @Body() updateData: updateSessionDto,
@@ -650,6 +569,13 @@ export class ClassesController {
     description: 'Also delete linked chapter when true',
   })
   @ApiBearerAuth('JWT-auth')
+  @TrackAction({
+    action: 'delete_session',
+    resourceType: 'session',
+    permissionName: 'deleteClass',
+    getResourceName: (result) =>
+      result?.data?.title || result?.data?.topic || 'Session',
+  })
   async deleteByMeetingId(
     @Param('meetingId') meetingId: string,
     @Query('deleteChapter') deleteChapter: string,
@@ -703,6 +629,13 @@ export class ClassesController {
   })
   @ApiBody({ type: MergeClassesDto })
   @ApiBearerAuth('JWT-auth')
+  @TrackAction({
+    action: 'merge_class',
+    resourceType: 'class',
+    permissionName: 'editClass',
+    getResourceName: (result) =>
+      result?.data?.title || result?.data?.topic || 'Class',
+  })
   async mergeClasses(@Body() mergeData: MergeClassesDto, @Req() req) {
     const userInfo = {
       id: Number(req.user[0].id),

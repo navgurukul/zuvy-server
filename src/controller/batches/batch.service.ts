@@ -519,6 +519,15 @@ export class BatchesService {
           message: 'Batch updated successfully',
           code: 200,
           batch: updatedResp,
+          before: {
+            name: batchOld[0].name,
+            capEnrollment: batchOld[0].capEnrollment,
+            status: batchOld[0].status,
+            startDate: batchOld[0].startDate,
+            endDate: batchOld[0].endDate,
+            instructorId: batchOld[0].instructorId,
+          },
+          data: updatedResp,
         },
       ];
     } catch (e) {
@@ -529,6 +538,13 @@ export class BatchesService {
 
   async deleteBatch(id: number) {
     try {
+      // Fetch batch details before deletion for tracking log
+      const batchToDelete = await db
+        .select({ name: zuvyBatches.name, bootcampId: zuvyBatches.bootcampId })
+        .from(zuvyBatches)
+        .where(eq(zuvyBatches.id, id))
+        .limit(1);
+
       await db
         .update(zuvyBatchEnrollments)
         .set({ batchId: null })
@@ -559,7 +575,13 @@ export class BatchesService {
       }
       return [
         null,
-        { status: 'success', message: 'Batch deleted successfully', code: 200 },
+        {
+          status: 'success',
+          message: 'Batch deleted successfully',
+          code: 200,
+          batchName: batchToDelete[0]?.name || null,
+          bootcampId: batchToDelete[0]?.bootcampId || null,
+        },
       ];
     } catch (e) {
       log(`error: ${e.message}`);

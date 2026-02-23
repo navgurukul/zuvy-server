@@ -1,16 +1,42 @@
-import { Controller, Get, Post, Put, Delete, Patch, Body, Param, ValidationPipe, UsePipes, BadRequestException, Query, Req, Res } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Put,
+  Delete,
+  Patch,
+  Body,
+  Param,
+  ValidationPipe,
+  UsePipes,
+  BadRequestException,
+  Query,
+  Req,
+  Res,
+  UseInterceptors,
+} from '@nestjs/common';
 import { StudentService } from './student.service';
-import { ApiTags, ApiBody, ApiOperation, ApiQuery, ApiBearerAuth, ApiParam } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiBody,
+  ApiOperation,
+  ApiQuery,
+  ApiBearerAuth,
+  ApiParam,
+} from '@nestjs/swagger';
+import { TrackAction } from 'src/trackinglog/decorators/track-action.decorator';
+import { TrackActionInterceptor } from 'src/trackinglog/interceptors/track-action.interceptor';
 import { get } from 'http';
 import { Response } from 'express';
 import { ErrorResponse, SuccessResponse } from 'src/errorHandler/handler';
-import { ApplyFormData } from './dto/student.dto'
+import { ApplyFormData } from './dto/student.dto';
 import { Public } from '../../auth/decorators/public.decorator';
 import { UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 
 @Controller('student')
 @ApiTags('student')
+@UseInterceptors(TrackActionInterceptor)
 @UsePipes(
   new ValidationPipe({
     whitelist: true,
@@ -21,7 +47,7 @@ import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 @UseGuards(JwtAuthGuard)
 @ApiBearerAuth('JWT-auth')
 export class StudentController {
-  constructor(private studentService: StudentService) { }
+  constructor(private studentService: StudentService) {}
 
   @Get('/')
   @ApiOperation({ summary: 'Get all course enrolled by student' })
@@ -30,20 +56,24 @@ export class StudentController {
     name: 'limit',
     type: Number,
     description: 'Number of items per page',
-    required: false
+    required: false,
   })
   @ApiQuery({
     name: 'offset',
     type: Number,
     description: 'Offset for pagination',
-    required: false
+    required: false,
   })
   async getAllStudents(
     @Req() req,
     @Query('limit') limit?: number,
-    @Query('offset') offset?: number
+    @Query('offset') offset?: number,
   ): Promise<object> {
-    const [err, res] = await this.studentService.enrollData(req.user[0].id, limit, offset);
+    const [err, res] = await this.studentService.enrollData(
+      req.user[0].id,
+      limit,
+      offset,
+    );
     if (err) {
       throw new BadRequestException(err);
     }
@@ -73,16 +103,13 @@ export class StudentController {
   @Get('/bootcamp/public')
   @ApiOperation({ summary: 'Get all Public Bootcamp' })
   @ApiBearerAuth('JWT-auth')
-  async getPublicBootcamps(
-  ): Promise<object> {
-    const [err, res] =
-      await this.studentService.getPublicBootcamp();
+  async getPublicBootcamps(): Promise<object> {
+    const [err, res] = await this.studentService.getPublicBootcamp();
     if (err) {
       throw new BadRequestException(err);
     }
     return res;
   }
-
 
   @Delete('/:userId/:bootcampId')
   @ApiOperation({ summary: 'Removing student from bootcamp' })
@@ -92,6 +119,18 @@ export class StudentController {
     required: true,
     type: [Number],
     description: 'userId',
+  })
+  @TrackAction({
+    action: 'delete_student',
+    resourceType: 'bootcamp',
+    permissionName: 'deleteStudent',
+    getResourceName: (result) => {
+      const removed = result?.removedUsers;
+      if (!removed || removed.length === 0) return 'student';
+      if (removed.length === 1)
+        return removed[0].name || removed[0].email || 'student';
+      return removed.map((u) => u.name || u.email).join(', ');
+    },
   })
   async removingStudents(
     @Query('userId') userId: number | number[],
@@ -108,7 +147,6 @@ export class StudentController {
     return res;
   }
 
-
   @Get('/Dashboard/classes')
   @ApiOperation({ summary: 'Get dashboard upcoming class' })
   @ApiBearerAuth('JWT-auth')
@@ -116,13 +154,13 @@ export class StudentController {
     name: 'limit',
     type: Number,
     description: 'limit',
-    required: false
+    required: false,
   })
   @ApiQuery({
     name: 'offset',
     type: Number,
     description: 'offset',
-    required: false
+    required: false,
   })
   @ApiQuery({
     name: 'batch_id',
@@ -130,54 +168,79 @@ export class StudentController {
     type: String,
     description: 'batch_id',
   })
-  async getUpcomingClass(@Req() req, @Query('batch_id') batchID: number, @Query('limit') limit: number,
-    @Query('offset') offset: number, @Res() res: Response
+  async getUpcomingClass(
+    @Req() req,
+    @Query('batch_id') batchID: number,
+    @Query('limit') limit: number,
+    @Query('offset') offset: number,
+    @Res() res: Response,
   ) {
     try {
-      const [err, success] = await this.studentService.getUpcomingClass(req.user[0].id, batchID, limit, offset);
+      const [err, success] = await this.studentService.getUpcomingClass(
+        req.user[0].id,
+        batchID,
+        limit,
+        offset,
+      );
       if (err) {
         return ErrorResponse.BadRequestException(err.message).send(res);
       }
-      return new SuccessResponse(success.message, success.statusCode, success.data).send(res);
+      return new SuccessResponse(
+        success.message,
+        success.statusCode,
+        success.data,
+      ).send(res);
     } catch (error) {
       return ErrorResponse.BadRequestException(error.message).send(res);
     }
   }
 
   @Get('/UpcomingEvents')
-  @ApiOperation({ summary: 'Get upcoming events  for next 7 days including classes and assessments' })
+  @ApiOperation({
+    summary:
+      'Get upcoming events  for next 7 days including classes and assessments',
+  })
   @ApiBearerAuth('JWT-auth')
   @ApiQuery({
     name: 'limit',
     type: Number,
     description: 'Number of events per page',
-    required: false
+    required: false,
   })
   @ApiQuery({
     name: 'offset',
     type: Number,
     description: 'Offset for pagination',
-    required: false
+    required: false,
   })
   @ApiQuery({
     name: 'bootcampId',
     type: Number,
     description: 'upcoming events of a particular bootcamp',
-    required: false
+    required: false,
   })
   async getUpcomingEvents(
     @Req() req,
     @Query('limit') limit: number,
     @Query('offset') offset: number,
     @Query('bootcampId') bootcampId: number,
-    @Res() res: Response
+    @Res() res: Response,
   ) {
     try {
-      const [err, success] = await this.studentService.getUpcomingEvents(req.user[0].id, limit, offset, bootcampId);
+      const [err, success] = await this.studentService.getUpcomingEvents(
+        req.user[0].id,
+        limit,
+        offset,
+        bootcampId,
+      );
       if (err) {
         return ErrorResponse.BadRequestException(err.message).send(res);
       }
-      return new SuccessResponse(success.message, success.statusCode, success.data).send(res);
+      return new SuccessResponse(
+        success.message,
+        success.statusCode,
+        success.data,
+      ).send(res);
     } catch (error) {
       return ErrorResponse.BadRequestException(error.message).send(res);
     }
@@ -186,8 +249,7 @@ export class StudentController {
   @Get('/Dashboard/attendance')
   @ApiOperation({ summary: 'Get dashboard Attendance.' })
   @ApiBearerAuth('JWT-auth')
-  async getAttendanceClass(@Req() req
-  ) {
+  async getAttendanceClass(@Req() req) {
     return await this.studentService.getAttendanceClass(req.user[0].id);
   }
 
@@ -237,57 +299,52 @@ export class StudentController {
   // }
   @Public()
   @Get('/bootcamp/:bootcampId/completed-classes')
-  @ApiOperation({ summary: 'Get completed classes with attendance for a bootcamp' })
+  @ApiOperation({
+    summary: 'Get completed classes with attendance for a bootcamp',
+  })
   @ApiBearerAuth('JWT-auth')
   @ApiQuery({
     name: 'limit',
     type: Number,
     description: 'Number of items per page',
-    required: false
+    required: false,
   })
-
   @ApiQuery({
     name: 'offset',
     type: Number,
     description: 'Offset for pagination',
-    required: false
+    required: false,
   })
-
   @ApiQuery({
     name: 'userId',
     type: Number,
     description: 'If userId is provided, this api will be for admin side',
-    required: false
+    required: false,
   })
-
   @ApiQuery({
     name: 'searchTerm',
     type: String,
     description: 'Search by class name',
-    required: false
+    required: false,
   })
-
   @ApiQuery({
     name: 'attendanceStatus',
     type: String,
     description: 'Filter by attendance status: present or absent',
-    required: false
+    required: false,
   })
-
   @ApiQuery({
     name: 'fromDate',
     type: String,
     description: 'Filter by start date (ISO format)',
-    required: false
+    required: false,
   })
-
   @ApiQuery({
     name: 'toDate',
     type: String,
     description: 'Filter by end date (ISO format)',
-    required: false
+    required: false,
   })
-
   async getCompletedClassesWithAttendance(
     @Req() req,
     @Param('bootcampId') bootcampId: number,
@@ -296,31 +353,38 @@ export class StudentController {
     @Res() res: Response,
     @Query('userId') userId?: number,
     @Query('searchTerm') search?: string,
-     @Query('attendanceStatus') attendanceStatus?: 'present' | 'absent',
-     @Query('fromDate') fromDate?: Date,
-     @Query('toDate') toDate?: Date
+    @Query('attendanceStatus') attendanceStatus?: 'present' | 'absent',
+    @Query('fromDate') fromDate?: Date,
+    @Query('toDate') toDate?: Date,
   ) {
     try {
-      const parsedLimit = limit ? Number(limit) :  null;
+      const parsedLimit = limit ? Number(limit) : null;
       const parsedOffset = offset ? Number(offset) : null;
       const parsedUserId = userId ? Number(userId) : null;
       const searchTerm = search ? String(search) : null;
-      const parsedAttendanceStatus = attendanceStatus ? String(attendanceStatus) : null;
-      const [err, success] = await this.studentService.getCompletedClassesWithAttendance(
-        parsedUserId || req.user[0].id,
-        bootcampId,
-        parsedLimit,
-        parsedOffset,
-        searchTerm,
-        parsedAttendanceStatus,
-        fromDate ? new Date(fromDate) : null,
-        toDate ? new Date(toDate) : null
-      );
+      const parsedAttendanceStatus = attendanceStatus
+        ? String(attendanceStatus)
+        : null;
+      const [err, success] =
+        await this.studentService.getCompletedClassesWithAttendance(
+          parsedUserId || req.user[0].id,
+          bootcampId,
+          parsedLimit,
+          parsedOffset,
+          searchTerm,
+          parsedAttendanceStatus,
+          fromDate ? new Date(fromDate) : null,
+          toDate ? new Date(toDate) : null,
+        );
       if (err) {
         return ErrorResponse.BadRequestException(err.message).send(res);
       }
       const result: any = success;
-      return new SuccessResponse(result.message, result.statusCode, result.data).send(res);
+      return new SuccessResponse(
+        result.message,
+        result.statusCode,
+        result.data,
+      ).send(res);
     } catch (error) {
       return ErrorResponse.BadRequestException(error.message).send(res);
     }
@@ -332,22 +396,24 @@ export class StudentController {
     name: 'limit',
     type: Number,
     description: 'limit',
-    required: false
+    required: false,
   })
   @ApiQuery({
     name: 'offset',
     type: Number,
     description: 'offset',
-    required: false
+    required: false,
   })
   @ApiBearerAuth('JWT-auth')
   async getleaderboardDetails(
     @Param('bootcampId') bootcampId: number,
     @Query('limit') limit: number,
-    @Query('offset') offset: number
+    @Query('offset') offset: number,
   ): Promise<object> {
     const res = await this.studentService.getLeaderBoardDetailByBootcamp(
-      bootcampId, limit, offset
+      bootcampId,
+      limit,
+      offset,
     );
     return res;
   }
@@ -356,18 +422,25 @@ export class StudentController {
   @Post('/apply')
   @ApiBearerAuth('JWT-auth')
   @ApiOperation({ summary: 'student can apply for the course' })
-  async getCodingQuestion(@Res() res: Response, @Body() applyFormData: ApplyFormData): Promise<any> {
+  async getCodingQuestion(
+    @Res() res: Response,
+    @Body() applyFormData: ApplyFormData,
+  ): Promise<any> {
     try {
-      const [err, success] = await this.studentService.updateSpreadsheet(applyFormData);
+      const [err, success] =
+        await this.studentService.updateSpreadsheet(applyFormData);
       if (err) {
         return ErrorResponse.BadRequestException(err.message).send(res);
       }
-      return new SuccessResponse(success.message, success.statusCode, success.data).send(res);
+      return new SuccessResponse(
+        success.message,
+        success.statusCode,
+        success.data,
+      ).send(res);
     } catch (error) {
       return ErrorResponse.BadRequestException(error.message).send(res);
     }
   }
-
 
   @Post('assessment/request-reattempt')
   @ApiOperation({ summary: 'Request re-attempt for an assessment submission' })
@@ -376,14 +449,21 @@ export class StudentController {
     @Query('assessmentSubmissionId') assessmentSubmissionId: number,
     @Query('userId') userId: number,
     @Req() req,
-    @Res() res: Response
+    @Res() res: Response,
   ): Promise<any> {
     try {
-      let [err, success] = await this.studentService.requestReattempt(assessmentSubmissionId, userId);
+      let [err, success] = await this.studentService.requestReattempt(
+        assessmentSubmissionId,
+        userId,
+      );
       if (err) {
         return ErrorResponse.BadRequestException(err.message).send(res);
       }
-      return new SuccessResponse(success.message, success.statusCode, success.data).send(res);
+      return new SuccessResponse(
+        success.message,
+        success.statusCode,
+        success.data,
+      ).send(res);
     } catch (error) {
       return ErrorResponse.BadRequestException(error.message).send(res);
     }
@@ -396,19 +476,26 @@ export class StudentController {
     name: 'bootcampId',
     type: Number,
     description: 'Bootcamp ID',
-    required: true
+    required: true,
   })
   async getCourseSyllabus(
     @Req() req,
     @Param('bootcampId') bootcampId: number,
-    @Res() res: Response
+    @Res() res: Response,
   ): Promise<any> {
     try {
-      const [err, success] = await this.studentService.getCourseSyllabus(req.user[0].id, bootcampId);
+      const [err, success] = await this.studentService.getCourseSyllabus(
+        req.user[0].id,
+        bootcampId,
+      );
       if (err) {
         return ErrorResponse.BadRequestException(err.message).send(res);
       }
-      return new SuccessResponse(success.message, success.statusCode, success.data).send(res);
+      return new SuccessResponse(
+        success.message,
+        success.statusCode,
+        success.data,
+      ).send(res);
     } catch (error) {
       return ErrorResponse.BadRequestException(error.message).send(res);
     }

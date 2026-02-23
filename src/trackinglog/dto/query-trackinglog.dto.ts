@@ -1,30 +1,24 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import {
-  IsOptional,
   IsNumber,
+  IsOptional,
   IsString,
   Min,
   MaxLength,
-  IsDateString,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
-// Note: ActionType and ResourceType enums removed - these are now dynamically managed in database tables:
-// - Actions come from zuvy_permissions table (name column: create, edit, delete, view, etc.)
-// - Resources come from zuvy_resources table (display_name column)
-// No need to maintain hardcoded enums when database already has this data
-
 export class QueryTrackinglogDto {
-  @ApiPropertyOptional({
-    description: 'Organization ID filter (optional)',
-    example: 1,
-  })
+  @ApiPropertyOptional({ description: 'Organization ID', example: 1 })
   @IsOptional()
   @Type(() => Number)
   @IsNumber()
   orgId?: number;
 
-  @ApiPropertyOptional({ description: 'Filter by actor user ID', example: 123 })
+  @ApiPropertyOptional({
+    description: 'Filter by user who performed the action',
+    example: 123,
+  })
   @IsOptional()
   @Type(() => Number)
   @IsNumber()
@@ -32,23 +26,13 @@ export class QueryTrackinglogDto {
 
   @ApiPropertyOptional({
     description:
-      'Filter by action type (e.g., create_bootcamp, update_course, delete_class, etc.)',
-    example: 'create_bootcamp',
+      'Filter by action type. Use generic verbs (create, edit, delete) or specific (create_course, edit_batch)',
+    example: 'create',
   })
   @IsOptional()
   @IsString()
   @MaxLength(100)
   action?: string;
-
-  @ApiPropertyOptional({
-    description:
-      'Filter by resource type (e.g., bootcamp, course, class, batch, user, etc.)',
-    example: 'bootcamp',
-  })
-  @IsOptional()
-  @IsString()
-  @MaxLength(100)
-  resourceType?: string;
 
   @ApiPropertyOptional({
     description:
@@ -92,18 +76,22 @@ export class QueryTrackinglogDto {
   limit?: number = 100;
 
   @ApiPropertyOptional({
-    description: 'Filter logs from this date (ISO 8601 format)',
-    example: '2026-01-01',
+    description:
+      'Time range filter dropdown: all | today | yesterday | past7days | past30days',
+    example: 'today',
+    enum: ['all', 'today', 'yesterday', 'past7days', 'past30days'],
   })
   @IsOptional()
-  @IsDateString()
-  startDate?: string;
+  @IsString()
+  timeRange?: string;
 
   @ApiPropertyOptional({
-    description: 'Filter logs until this date (ISO 8601 format)',
-    example: '2026-01-31',
+    description:
+      'Full-text search across action, resourceType, description and actor name.',
+    example: 'module',
   })
   @IsOptional()
-  @IsDateString()
-  endDate?: string;
+  @IsString()
+  @MaxLength(200)
+  search?: string;
 }

@@ -57,19 +57,8 @@ export class TrackingController {
     action: 'edit_chapter',
     resourceType: 'chapter',
     permissionName: 'editChapter',
-    getResourceName: (result) => {
-      return result?.chapter?.title || 'Chapter Status';
-    },
-    getBootcampId: (result, params) => {
-      return params?.bootcampId || null;
-    },
-    getCustomDescription: (actorName, result, params, body) => {
-      const chapterTitle = result?.chapter?.title || 'chapter';
-      const chapterId = params?.chapterId || result?.chapterId || 'N/A';
-      const moduleId = params?.moduleId || 'N/A';
-      const bootcampId = params?.bootcampId || 'N/A';
-      const status = result?.status || 'updated';
-      return `${actorName} marked chapter \"${chapterTitle}\" (Chapter ID: ${chapterId}) as ${status} in Module ID: ${moduleId}, Bootcamp ID: ${bootcampId}`;
+    getResourceName: (_result) => {
+      return 'Chapter';
     },
   })
   async updateChapterStatus(

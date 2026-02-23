@@ -26,7 +26,7 @@ export class TrackinglogController {
     name: 'orgId',
     required: false,
     type: Number,
-    description: 'Organization ID (optional)',
+    description: 'Organization ID',
   })
   @ApiQuery({
     name: 'actorUserId',
@@ -39,10 +39,9 @@ export class TrackinglogController {
     required: false,
     type: String,
     description:
-      'Filter by action type. Use generic verbs (create, update, delete) or specific actions (create_course, edit_batch)',
+      'Filter by action type. Use generic verbs (create, edit, delete) or specific actions (create_course, edit_batch)',
     enum: [
       '',
-      // Generic action verbs - will match all actions starting with this verb
       'create',
       'edit',
       'update',
@@ -59,40 +58,6 @@ export class TrackinglogController {
       'unenroll',
       'mark',
       'reassign',
-      // Or use specific actions
-      'create_course',
-      'edit_course',
-      'delete_course',
-      'create_bootcamp',
-      'edit_bootcamp',
-      'delete_bootcamp',
-      'create_batch',
-      'edit_batch',
-      'delete_batch',
-      'reassign_batch',
-      'create_class',
-      'edit_class',
-      'delete_class',
-      'enroll_student',
-      'unenroll_student',
-      'mark_attendance',
-    ],
-  })
-  @ApiQuery({
-    name: 'resourceType',
-    required: false,
-    type: String,
-    description:
-      'Filter by resource type - use /trackinglog/filters/available to see all available types',
-    enum: [
-      '',
-      'bootcamp',
-      'course',
-      'batch',
-      'class',
-      'module',
-      'user',
-      'student',
     ],
   })
   @ApiQuery({
@@ -110,20 +75,18 @@ export class TrackinglogController {
     enum: ['', 'success', 'failed', 'pending'],
   })
   @ApiQuery({
-    name: 'startDate',
+    name: 'timeRange',
     required: false,
     type: String,
-    description:
-      'Filter logs from this date (ISO 8601 format: YYYY-MM-DD or YYYY-MM-DDTHH:mm:ss.sssZ)',
-    example: '2026-01-01',
+    description: 'Quick time filter dropdown.',
+    enum: ['all', 'today', 'yesterday', 'past7days', 'past30days'],
   })
   @ApiQuery({
-    name: 'endDate',
+    name: 'search',
     required: false,
     type: String,
     description:
-      'Filter logs until this date (ISO 8601 format: YYYY-MM-DD or YYYY-MM-DDTHH:mm:ss.sssZ)',
-    example: '2026-01-31',
+      'Full-text search: matches action, resourceType, description or actor name. E.g. "module", "create", "Sarah"',
   })
   @ApiQuery({
     name: 'offset',
@@ -175,9 +138,6 @@ export class TrackinglogController {
     // Clean up query parameters - remove invalid dropdown values
     if (query.action === '--' || query.action === '') {
       query.action = undefined;
-    }
-    if (query.resourceType === '--' || query.resourceType === '') {
-      query.resourceType = undefined;
     }
 
     // Extract user role from request (assumes JWT payload contains role)

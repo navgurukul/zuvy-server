@@ -1,10 +1,9 @@
 import {
   Injectable,
-  NotFoundException,
   ForbiddenException,
   InternalServerErrorException,
 } from '@nestjs/common';
-import { Cron, CronExpression } from '@nestjs/schedule';
+import { Cron } from '@nestjs/schedule';
 import { CreateTrackinglogDto } from './dto/create-trackinglog.dto';
 import { QueryTrackinglogDto } from './dto/query-trackinglog.dto';
 import { db } from '../db';
@@ -15,13 +14,14 @@ import {
   zuvyResources,
   zuvyUserRolesAssigned,
   zuvyUserRoles,
+  zuvyUserOrganizations,
+  zuvyBatches,
 } from '../../drizzle/schema';
-import { eq, and, desc, sql, lt, inArray } from 'drizzle-orm';
+import { eq, and, desc, sql, lt } from 'drizzle-orm';
 
 @Injectable()
 export class TrackinglogService {
   /**
-   * Get permission ID and resource ID from permission name
    * Returns both permission ID and the resource ID from zuvy_resources table
    */
   private async getPermissionAndResourceId(
@@ -34,7 +34,6 @@ export class TrackinglogService {
         /^(create|edit|delete|view|publish|lock|assign|download|reattempt|enroll|unenroll|mark|submit|grade|approve|reject)(.+)$/i,
       );
       if (!match) {
-        console.log(`[DEBUG] No match for permission name: ${permissionName}`);
         return { permissionId: null, resourceId: null };
       }
 
@@ -42,41 +41,25 @@ export class TrackinglogService {
       const action = actionRaw.toLowerCase(); // Normalize action to lowercase
       const resourceKey = resourceName.toLowerCase(); // "chapter", "course", "bootcamp", etc.
 
-      console.log(
-        `[DEBUG] Searching - action: "${action}", resourceKey: "${resourceKey}"`,
-      );
-
       // First, find the resource by key (e.g., "chapter")
       // Try both lowercase and capitalized versions since DB might store with different casing
+      // Note: only select 'id' to avoid selecting columns (like org_id) that may not exist in the DB
       const resource = await db
-        .select()
+        .select({ id: zuvyResources.id })
         .from(zuvyResources)
         .where(sql`LOWER(${zuvyResources.key}) = ${resourceKey}`)
         .limit(1);
 
-      console.log(
-        `[DEBUG] Resource search result for "${resourceKey}":`,
-        resource.length > 0 ? `Found ID: ${resource[0].id}` : 'NOT FOUND',
-      );
-
       if (resource.length === 0) {
         // Try alternative names
         const alternativeKeys = ['content', 'module', 'topic'];
-        console.log(`[DEBUG] Trying alternatives:`, alternativeKeys);
 
         for (const altKey of alternativeKeys) {
           const altResource = await db
-            .select()
+            .select({ id: zuvyResources.id })
             .from(zuvyResources)
             .where(sql`LOWER(${zuvyResources.key}) = ${altKey.toLowerCase()}`)
             .limit(1);
-
-          console.log(
-            `[DEBUG] Alternative "${altKey}":`,
-            altResource.length > 0
-              ? `Found ID: ${altResource[0].id}`
-              : 'NOT FOUND',
-          );
 
           if (altResource.length > 0) {
             const resourceId = altResource[0].id;
@@ -93,13 +76,6 @@ export class TrackinglogService {
               )
               .limit(1);
 
-            console.log(
-              `[DEBUG] Permission for action="${action}" + resourceId=${resourceId}:`,
-              permission.length > 0
-                ? `Found ID: ${permission[0].id}`
-                : 'NOT FOUND',
-            );
-
             if (permission.length > 0) {
               return {
                 permissionId: permission[0].id,
@@ -108,7 +84,6 @@ export class TrackinglogService {
             }
           }
         }
-        console.log(`[DEBUG] No alternatives worked, returning null`);
         return { permissionId: null, resourceId: null };
       }
 
@@ -125,11 +100,6 @@ export class TrackinglogService {
           ),
         )
         .limit(1);
-
-      console.log(
-        `[DEBUG] Permission for action="${action}" + resourceId=${resourceId}:`,
-        permission.length > 0 ? `Found ID: ${permission[0].id}` : 'NOT FOUND',
-      );
 
       if (permission.length > 0) {
         return {
@@ -157,7 +127,10 @@ export class TrackinglogService {
         .values({
           actorUserId: createTrackinglogDto.actorUserId,
           action: createTrackinglogDto.action,
-          resourceType: createTrackinglogDto.resourceType,
+          resourceType: createTrackinglogDto.resourceType
+            ? createTrackinglogDto.resourceType.charAt(0).toUpperCase() +
+              createTrackinglogDto.resourceType.slice(1)
+            : createTrackinglogDto.resourceType,
           description: createTrackinglogDto.description,
           orgId: createTrackinglogDto.orgId,
           bootcampId: createTrackinglogDto.bootcampId,
@@ -189,30 +162,21 @@ export class TrackinglogService {
         orgId,
         actorUserId,
         action,
-        resourceType,
         role,
         status,
-        startDate,
-        endDate,
         offset,
         limit,
+        timeRange,
+        search,
       } = query;
 
       // Convert to numbers with defaults
       offset = Number(offset) || 0;
       limit = Number(limit) || 100;
 
-      // Clean up action and resourceType - remove invalid values
+      // Clean up action - remove invalid values
       if (action === '--' || action === '' || !action || action.trim() === '') {
         action = undefined;
-      }
-      if (
-        resourceType === '--' ||
-        resourceType === '' ||
-        !resourceType ||
-        resourceType.trim() === ''
-      ) {
-        resourceType = undefined;
       }
 
       // Build filter conditions
@@ -234,26 +198,18 @@ export class TrackinglogService {
         action !== '' &&
         action !== '--'
       ) {
-        // Support both exact match and partial match
-        // If action contains underscore, use exact match (e.g., "create_course")
-        // Otherwise use LIKE pattern (e.g., "create" matches "create_*")
+        // Support both exact match and prefix match:
+        // "login"  → matches exact "login" OR prefix "login_*"
+        // "create" → matches exact "create" OR prefix "create_*" (create_course etc.)
+        // "create_course" → exact match only
         if (action.includes('_')) {
           conditions.push(eq(zuvyTrackingLogs.action, action));
         } else {
-          // Lowercase action names stored in DB like "create_course", so match prefix
+          const a = action.toLowerCase();
           conditions.push(
-            sql`LOWER(${zuvyTrackingLogs.action}) LIKE ${action.toLowerCase() + '_%'}`,
+            sql`(LOWER(${zuvyTrackingLogs.action}) = ${a} OR LOWER(${zuvyTrackingLogs.action}) LIKE ${a + '_%'})`,
           );
         }
-      }
-
-      if (
-        resourceType !== undefined &&
-        resourceType !== null &&
-        resourceType !== '' &&
-        resourceType !== '--'
-      ) {
-        conditions.push(eq(zuvyTrackingLogs.resourceType, resourceType));
       }
 
       // Role filter - filter by user role from zuvyUserRolesAssigned table
@@ -304,17 +260,65 @@ export class TrackinglogService {
         conditions.push(eq(zuvyTrackingLogs.status, status));
       }
 
-      if (startDate) {
-        conditions.push(sql`${zuvyTrackingLogs.createdAt} >= ${startDate}`);
+      // ── timeRange dropdown — overrides manual startDate/endDate ─────────────
+      if (timeRange && timeRange !== 'all') {
+        const now = new Date();
+        let from: Date | null = null;
+        if (timeRange === 'today') {
+          from = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        } else if (timeRange === 'yesterday') {
+          const start = new Date(
+            now.getFullYear(),
+            now.getMonth(),
+            now.getDate() - 1,
+          );
+          const end = new Date(
+            now.getFullYear(),
+            now.getMonth(),
+            now.getDate(),
+          );
+          conditions.push(
+            sql`${zuvyTrackingLogs.createdAt} >= ${start.toISOString()}`,
+          );
+          conditions.push(
+            sql`${zuvyTrackingLogs.createdAt} < ${end.toISOString()}`,
+          );
+        } else if (timeRange === 'past7days') {
+          from = new Date(now);
+          from.setDate(now.getDate() - 7);
+        } else if (timeRange === 'past30days') {
+          from = new Date(now);
+          from.setDate(now.getDate() - 30);
+        }
+        if (from) {
+          conditions.push(
+            sql`${zuvyTrackingLogs.createdAt} >= ${from.toISOString()}`,
+          );
+        }
       }
 
-      if (endDate) {
-        // Add one day to endDate to include the entire end date
-        const endDateTime = new Date(endDate);
-        endDateTime.setDate(endDateTime.getDate() + 1);
-        conditions.push(
-          sql`${zuvyTrackingLogs.createdAt} < ${endDateTime.toISOString()}`,
-        );
+      // ── Full-text search — split by spaces/underscores so "create_chapter",
+      // "create chapter", or even "creat chapt" all return relevant results.
+      // Each word is matched independently (AND between words, OR across fields).
+      if (search && search.trim() !== '') {
+        const words = search
+          .trim()
+          .toLowerCase()
+          .split(/[\s_]+/) // split on space or underscore
+          .map((w) => w.trim())
+          .filter((w) => w.length > 0);
+
+        for (const word of words) {
+          const term = `%${word}%`;
+          conditions.push(
+            sql`(
+              LOWER(${zuvyTrackingLogs.action}) LIKE ${term} OR
+              LOWER(${zuvyTrackingLogs.resourceType}) LIKE ${term} OR
+              LOWER(${zuvyTrackingLogs.description}) LIKE ${term} OR
+              LOWER(${users.name}) LIKE ${term}
+            )`,
+          );
+        }
       }
 
       // Build where clause
@@ -347,6 +351,7 @@ export class TrackinglogService {
         db
           .select({ count: sql<number>`count(*)` })
           .from(zuvyTrackingLogs)
+          .leftJoin(users, eq(zuvyTrackingLogs.actorUserId, users.id))
           .where(whereClause),
       ]);
 
@@ -398,57 +403,6 @@ export class TrackinglogService {
   }
 
   /**
-   * Find a single tracking log by ID
-   */
-  async findOne(id: number, orgId?: number, userRole?: string) {
-    try {
-      const isAdmin = userRole === 'admin' || userRole === 'super_admin';
-
-      const conditions: any[] = [eq(zuvyTrackingLogs.id, id)];
-
-      // Non-admins can only view logs from their org
-      if (!isAdmin && orgId) {
-        conditions.push(eq(zuvyTrackingLogs.orgId, orgId));
-      }
-
-      const [log] = await db
-        .select({
-          id: zuvyTrackingLogs.id,
-          orgId: zuvyTrackingLogs.orgId,
-          actorUserId: zuvyTrackingLogs.actorUserId,
-          actorName: users.name,
-          actorEmail: users.email,
-          permissionId: zuvyTrackingLogs.permissionId,
-          resourceId: zuvyTrackingLogs.resourceId,
-          action: zuvyTrackingLogs.action,
-          resourceType: zuvyTrackingLogs.resourceType,
-          createdAt: zuvyTrackingLogs.createdAt,
-        })
-        .from(zuvyTrackingLogs)
-        .leftJoin(users, eq(zuvyTrackingLogs.actorUserId, users.id))
-        .where(and(...conditions));
-
-      if (!log) {
-        throw new NotFoundException(`Tracking log with ID ${id} not found`);
-      }
-
-      return {
-        success: true,
-        message: 'Tracking log fetched successfully',
-        data: log,
-      };
-    } catch (error) {
-      if (error instanceof NotFoundException) {
-        throw error;
-      }
-      throw new InternalServerErrorException(
-        'Failed to fetch tracking log',
-        error.message,
-      );
-    }
-  }
-
-  /**
    * Helper method to log actions with human-readable descriptions
    * Examples:
    * - "Arunesh Dhar has created a new course named: JavaScript Course"
@@ -463,10 +417,11 @@ export class TrackinglogService {
     targetUserName?: string;
     orgId?: number;
     bootcampId?: number;
+    batchId?: number;
     permissionId?: number;
-    permissionName?: string; // e.g., "createCourse", "editBootcamp"
-    customDescription?: string; // Custom description for specific changes
-    status?: string; // Status: 'success', 'failed', 'pending'
+    permissionName?: string;
+    customDescription?: string;
+    status?: string;
   }) {
     try {
       const {
@@ -478,6 +433,7 @@ export class TrackinglogService {
         targetUserName,
         orgId,
         bootcampId,
+        batchId,
         permissionId,
         permissionName,
         customDescription,
@@ -488,33 +444,72 @@ export class TrackinglogService {
       let finalPermissionId = permissionId;
       let finalResourceId = null;
 
+      // If orgId is missing but actorUserId is known, resolve it from the DB.
+      // This handles @Public() routes where request.user is null and the JWT
+      // decode fallback in the interceptor couldn't get an orgId.
+      let resolvedOrgId = orgId;
+      if (
+        (resolvedOrgId === null || resolvedOrgId === undefined) &&
+        actorUserId
+      ) {
+        try {
+          const orgRow = await db
+            .select({ organizationId: zuvyUserOrganizations.organizationId })
+            .from(zuvyUserOrganizations)
+            .where(eq(zuvyUserOrganizations.userId, actorUserId))
+            .limit(1);
+          if (orgRow.length > 0) {
+            resolvedOrgId = orgRow[0].organizationId;
+          }
+        } catch {
+          // ignore — orgId stays null
+        }
+      }
+
+      // If bootcampId is missing but batchId is known, resolve it from the DB.
+      // Covers cases where the service fails early before returning data (e.g.
+      // validation errors) so result.data is never populated.
+      let resolvedBootcampId = bootcampId;
+      if (
+        (resolvedBootcampId === null || resolvedBootcampId === undefined) &&
+        batchId
+      ) {
+        try {
+          const batchRow = await db
+            .select({ bootcampId: zuvyBatches.bootcampId })
+            .from(zuvyBatches)
+            .where(eq(zuvyBatches.id, batchId))
+            .limit(1);
+          if (batchRow.length > 0) {
+            resolvedBootcampId = batchRow[0].bootcampId;
+          }
+        } catch {
+          // ignore — bootcampId stays null
+        }
+      }
+
       if (!finalPermissionId && permissionName) {
         const result = await this.getPermissionAndResourceId(permissionName);
         finalPermissionId = result.permissionId;
         finalResourceId = result.resourceId;
       }
 
-      // Use custom description if provided, otherwise generate default
+      // Use custom description if provided (always sent by TrackActionInterceptor via buildSmartDescription)
+      // Fallback is a simple generic sentence for direct service calls (rare edge case)
       const description =
         customDescription ||
-        this.generateDescription(
-          actorName,
-          action,
-          resourceType,
-          resourceName,
-          targetUserName,
-        );
+        `${actorName} performed ${action} on ${resourceType}${resourceName ? ': ' + resourceName : ''}`;
 
       const createDto: CreateTrackinglogDto = {
         actorUserId,
         action,
         resourceType,
         description,
-        orgId,
-        bootcampId,
+        orgId: resolvedOrgId,
+        bootcampId: resolvedBootcampId,
         permissionId: finalPermissionId,
         resourceId: finalResourceId,
-        status: status || 'success', // Default to success if not provided
+        status: status || 'success',
       };
 
       return await this.create(createDto);
@@ -524,180 +519,6 @@ export class TrackinglogService {
         error.message,
       );
     }
-  }
-
-  /**
-   * Generate human-readable descriptions for various actions
-   */
-  private generateDescription(
-    actorName: string,
-    action: string,
-    resourceType: string,
-    resourceName?: string,
-    targetUserName?: string,
-  ): string {
-    const actionMap: Record<
-      string,
-      (name: string, resource?: string, target?: string) => string
-    > = {
-      create_bootcamp: (actor, resource) =>
-        `${actor} has created a new bootcamp named: ${resource}`,
-      update_bootcamp: (actor, resource) =>
-        `${actor} has updated the bootcamp: ${resource}`,
-      delete_bootcamp: (actor, resource) =>
-        `${actor} has deleted the bootcamp: ${resource}`,
-      create_chapter: (actor, resource) =>
-        `${actor} has created a new chapter named: ${resource}`,
-      update_chapter: (actor, resource) =>
-        `${actor} has updated the chapter: ${resource}`,
-      delete_chapter: (actor, resource) =>
-        `${actor} has deleted the chapter: ${resource}`,
-      create_course: (actor, resource) =>
-        `${actor} has created a new course named: ${resource}`,
-      update_course: (actor, resource) =>
-        `${actor} has updated the course: ${resource}`,
-      delete_course: (actor, resource) =>
-        `${actor} has deleted the course: ${resource}`,
-      assign_role: (actor, resource, target) =>
-        `${actor} has assigned ${resource} role to ${target}`,
-      remove_role: (actor, resource, target) =>
-        `${actor} has removed ${resource} role from ${target}`,
-      create_user: (actor, resource) =>
-        `${actor} has created a new user: ${resource}`,
-      update_user: (actor, resource) =>
-        `${actor} has updated user: ${resource}`,
-      delete_user: (actor, resource) =>
-        `${actor} has deleted user: ${resource}`,
-      enroll_student: (actor, resource, target) =>
-        `${actor} has enrolled ${target} in ${resource}`,
-      unenroll_student: (actor, resource, target) =>
-        `${actor} has unenrolled ${target} from ${resource}`,
-      create_batch: (actor, resource) =>
-        `${actor} has created a new batch: ${resource}`,
-      update_batch: (actor, resource) =>
-        `${actor} has updated the batch: ${resource}`,
-      delete_batch: (actor, resource) =>
-        `${actor} has deleted the batch: ${resource}`,
-      create_class: (actor, resource) =>
-        `${actor} has created a new class: ${resource}`,
-      update_class: (actor, resource) =>
-        `${actor} has updated the class: ${resource}`,
-      delete_class: (actor, resource) =>
-        `${actor} has deleted the class: ${resource}`,
-      submit_assessment: (actor, resource) =>
-        `${actor} has submitted assessment: ${resource}`,
-      grade_submission: (actor, resource, target) =>
-        `${actor} has graded submission for ${target}`,
-    };
-
-    const generator = actionMap[action];
-    if (generator) {
-      return generator(actorName, resourceName, targetUserName);
-    }
-
-    // Fallback generic description
-    const resourcePart = resourceName
-      ? ` on ${resourceType}: ${resourceName}`
-      : ` on ${resourceType}`;
-    const targetPart = targetUserName ? ` for ${targetUserName}` : '';
-    return `${actorName} has performed ${action}${resourcePart}${targetPart}`;
-  }
-
-  /**
-   * Detect changes between old and new data for any resource
-   * Returns array of human-readable change descriptions
-   */
-  detectChanges(oldData: any, newData: any, updatedFields: any): string[] {
-    const changes: string[] = [];
-
-    // Common field labels for all resources
-    const fieldLabels = {
-      // Common fields
-      name: 'name',
-      title: 'title',
-      description: 'description',
-
-      // Bootcamp fields
-      startTime: 'start time',
-      endTime: 'end time',
-      duration: 'duration',
-      coverImage: 'cover image',
-      collaborator: 'collaborator',
-      bootcampTopic: 'bootcamp topic',
-      language: 'language',
-
-      // Module fields
-      moduleId: 'module',
-      order: 'order',
-      timeAlloted: 'time alloted',
-
-      // Chapter fields
-      chapterId: 'chapter',
-      topicId: 'topic',
-      content: 'content',
-
-      // Batch fields
-      capEnrollment: 'enrollment capacity',
-      instructorId: 'instructor',
-
-      // Class fields
-      recurringId: 'recurring schedule',
-      bootcampId: 'bootcamp',
-      batchId: 'batch',
-
-      // User fields
-      email: 'email',
-      phone: 'phone number',
-      role: 'role',
-      status: 'status',
-
-      // Generic fields
-      isActive: 'active status',
-      isPublished: 'published status',
-      isLocked: 'locked status',
-    };
-
-    // Check all fields that were provided in updatedFields
-    for (const [key, value] of Object.entries(updatedFields)) {
-      // Skip certain fields
-      if (key === 'instructorId' || key === 'updatedAt' || key === 'createdAt')
-        continue;
-
-      const oldValue = oldData?.[key];
-      const newValue = newData?.[key];
-
-      // Only track if value actually changed
-      if (oldValue !== newValue) {
-        const fieldLabel =
-          fieldLabels[key] ||
-          key
-            .replace(/([A-Z])/g, ' $1')
-            .toLowerCase()
-            .trim();
-
-        // Handle different types of changes
-        if (key === 'name' || key === 'title') {
-          changes.push(`${fieldLabel} from "${oldValue}" to "${newValue}"`);
-        } else if (key === 'language' || key === 'email') {
-          changes.push(`${fieldLabel} from "${oldValue}" to "${newValue}"`);
-        } else if (typeof newValue === 'number') {
-          changes.push(`${fieldLabel} from ${oldValue} to ${newValue}`);
-        } else if (typeof newValue === 'boolean') {
-          changes.push(`${fieldLabel} to ${newValue ? 'enabled' : 'disabled'}`);
-        } else if (key.includes('Time') || key.includes('Date')) {
-          changes.push(`${fieldLabel} to ${newValue}`);
-        } else if (newValue === null || newValue === undefined) {
-          changes.push(`removed ${fieldLabel}`);
-        } else if (oldValue === null || oldValue === undefined) {
-          changes.push(`added ${fieldLabel}`);
-        } else {
-          // For other fields, just mention the field name
-          changes.push(fieldLabel);
-        }
-      }
-    }
-
-    return changes;
   }
 
   /**
@@ -727,67 +548,6 @@ export class TrackinglogService {
     } catch (error) {
       throw new InternalServerErrorException(
         'Failed to delete old tracking logs',
-        error.message,
-      );
-    }
-  }
-
-  /**
-   * Get available filter options from database
-   * Returns distinct actions and resource types from trackingLogs and zuvy_resources table
-   */
-  async getAvailableFilters() {
-    try {
-      // Get distinct actions from trackingLogs
-      const actionsResult = await db
-        .selectDistinct({ action: zuvyTrackingLogs.action })
-        .from(zuvyTrackingLogs)
-        .where(sql`${zuvyTrackingLogs.action} IS NOT NULL`)
-        .orderBy(zuvyTrackingLogs.action);
-
-      const actions = actionsResult.map((row) => row.action).filter(Boolean);
-
-      // Get resource types from zuvy_resources table
-      const resourcesResult = await db
-        .select({
-          key: zuvyResources.key,
-          name: zuvyResources.name,
-        })
-        .from(zuvyResources)
-        .orderBy(zuvyResources.name);
-
-      const resourceTypes = resourcesResult.map((row) => ({
-        key: row.key,
-        name: row.name,
-      }));
-
-      // Get all available roles from zuvyUserRoles table
-      const rolesResult = await db
-        .select({
-          id: zuvyUserRoles.id,
-          name: zuvyUserRoles.name,
-          description: zuvyUserRoles.description,
-        })
-        .from(zuvyUserRoles)
-        .orderBy(zuvyUserRoles.name);
-
-      const roles = rolesResult.map((row) => ({
-        id: row.id,
-        name: row.name,
-        description: row.description,
-      }));
-
-      return {
-        success: true,
-        data: {
-          actions,
-          resourceTypes,
-          roles, // Added roles for filtering
-        },
-      };
-    } catch (error) {
-      throw new InternalServerErrorException(
-        'Failed to fetch available filters',
         error.message,
       );
     }
