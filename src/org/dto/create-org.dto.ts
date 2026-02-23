@@ -17,14 +17,14 @@ export class CreateOrgDto {
   @IsNotEmpty()
   title: string;
 
-  @ApiProperty({
+  @ApiPropertyOptional({
     type: String,
     example: 'The display name of the organization',
-    required: true,
+    required: false,
   })
   @IsString()
-  @IsNotEmpty()
-  displayName: string;
+  @IsOptional()
+  displayName?: string;
 
   @ApiPropertyOptional({
     type: String,

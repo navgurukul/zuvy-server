@@ -26,7 +26,7 @@ export class NotificationEmailService {
     template: string,
     data: any,
     providerName: string = 'ses',
-    config: any = {},
+    config?: any,
   ) {
     let provider: EmailProvider;
 
