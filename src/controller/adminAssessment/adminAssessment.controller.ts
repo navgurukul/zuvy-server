@@ -15,6 +15,7 @@ import {
   Req,
   Res,
   UseGuards,
+  UseInterceptors,
   ParseIntPipe,
   ParseArrayPipe,
 } from '@nestjs/common';
@@ -33,6 +34,8 @@ import { RolesGuard } from 'src/guards/roles.guard';
 import { Roles } from 'src/decorators/roles.decorator';
 import { STATUS_CODES } from 'src/helpers';
 import { ErrorResponse, SuccessResponse } from 'src/errorHandler/handler';
+import { TrackAction } from 'src/trackinglog/decorators/track-action.decorator';
+import { TrackActionInterceptor } from 'src/trackinglog/interceptors/track-action.interceptor';
 
 @Controller('admin')
 @ApiTags('admin')
@@ -45,6 +48,7 @@ import { ErrorResponse, SuccessResponse } from 'src/errorHandler/handler';
 )
 @UseGuards(JwtAuthGuard, RolesGuard)
 @ApiBearerAuth('JWT-auth')
+@UseInterceptors(TrackActionInterceptor)
 export class AdminAssessmentController {
   constructor(private adminAssessmentService: AdminAssessmentService) {}
 
@@ -364,6 +368,12 @@ export class AdminAssessmentController {
   @Post('assessment/approve-reattempt')
   @ApiOperation({ summary: 'Approve re-attempt for an assessment submission' })
   @ApiBearerAuth('JWT-auth')
+  @TrackAction({
+    action: 'approve_reattempt',
+    resourceType: 'assessment',
+    permissionName: 'editAssessment',
+    getResourceName: (result) => result?.data?.title || 'Assessment',
+  })
   async approveReattempt(
     @Query('assessmentSubmissionId') assessmentSubmissionId: number,
     @Req() req: Request,
@@ -389,6 +399,12 @@ export class AdminAssessmentController {
   @Delete('assessment/reject-reattempt')
   @ApiOperation({ summary: 'Reject re-attempt for an assessment submission' })
   @ApiBearerAuth('JWT-auth')
+  @TrackAction({
+    action: 'reject_reattempt',
+    resourceType: 'assessment',
+    permissionName: 'editAssessment',
+    getResourceName: (result) => result?.data?.title || 'Assessment',
+  })
   async rejectReattempt(
     @Query('assessmentSubmissionId') assessmentSubmissionId: number,
     @Req() req: Request,

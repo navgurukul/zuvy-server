@@ -4234,3 +4234,37 @@ export const zuvyZoomWebhookEvents = main.table(
   })
 );
 
+// Tracking Logs Table for comprehensive audit logging
+export const zuvyTrackingLogs = main.table('zuvy_tracking_logs', {
+  id: serial('id').primaryKey().notNull(),
+  orgId: integer('org_id').default(null), // Organization ID for multi-tenant isolation
+  bootcampId: integer('bootcamp_id').references(() => zuvyBootcamps.id).default(null), // Bootcamp ID for tracking bootcamp-specific actions
+  actorUserId: bigint('actor_user_id', { mode: 'number' }).notNull().references(() => users.id), // User who performed the action
+  permissionId: integer('permission_id').references(() => zuvyPermissions.id).default(null), // Associated permission if applicable
+  resourceId: integer('resource_id').references(() => zuvyResources.id).default(null), // Associated resource ID from zuvy_resources table
+  action: varchar('action', { length: 100 }).notNull(), // Action type (e.g., 'create_course', 'assign_role')
+  resourceType: varchar('resource_type', { length: 100 }).notNull(), // Resource type (e.g., 'course', 'user', 'role')
+  description: text('description').notNull(), // Human-readable description of the action
+  status: varchar('status', { length: 50 }).notNull().default('success'), // Status of the action (success, failed, pending)
+  createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow(),
+});
+
+// Relations for tracking logs
+export const zuvyTrackingLogsRelations = relations(zuvyTrackingLogs, ({ one }) => ({
+  actor: one(users, {
+    fields: [zuvyTrackingLogs.actorUserId],
+    references: [users.id],
+  }),
+  bootcamp: one(zuvyBootcamps, {
+    fields: [zuvyTrackingLogs.bootcampId],
+    references: [zuvyBootcamps.id],
+  }),
+  permission: one(zuvyPermissions, {
+    fields: [zuvyTrackingLogs.permissionId],
+    references: [zuvyPermissions.id],
+  }),
+  resource: one(zuvyResources, {
+    fields: [zuvyTrackingLogs.resourceId],
+    references: [zuvyResources.id],
+  }),
+}));
