@@ -370,6 +370,7 @@ export class OrgService {
         or(
           ilike(zuvyOrganizations.title, searchLike),
           ilike(zuvyOrganizations.displayName, searchLike),
+          ilike(zuvyOrganizations.pocEmail, searchLike),
         ),
       );
     }
