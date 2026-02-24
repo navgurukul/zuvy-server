@@ -87,14 +87,13 @@ export class BootcampService {
   }
 
   async getAllBootcamps(
+    orgId: number,
     roleName: string[],
     userId,
     limit: number,
     offset: number,
     searchTermAsNumber?: string | number,
     searchTermAsString?: string,
-    organization_id?: number,
-    orgId?: number,
   ): Promise<any> {
     try {
       let query;
@@ -106,21 +105,20 @@ export class BootcampService {
         .from(zuvyUserRolesAssigned)
         .where(eq(zuvyUserRolesAssigned.userId, userId));
 
-      let filterOrgId = organization_id;
+      let filterOrgId = orgId;
 
-      // Regular User / Admin Logic (Applied to everyone now):
-      if (filterOrgId) {
-        // Verify user belongs to the requested organization
+      // Verify user belongs to the requested organization
+      if (roleName.includes('admin') || roleName.includes('super_admin')) {
+        // Admins can see any org's bootcamps
+      } else {
         const belongsToOrg = userOrgs.some(
           (org) => org.organizationId == filterOrgId,
         );
         if (!belongsToOrg) {
-          // If user doesn't belong to the requested org, clear filterOrgId so they only see public bootcamps.
+          // If user doesn't belong to the requested org, they can only see public bootcamps
+          // but if orgId is mandatory path param, we should probably throw error or restrict.
+          // For now, let's keep the isolation.
           filterOrgId = undefined;
-        }
-        if (userOrgs.length > 0) {
-          // Default to the first organization
-          filterOrgId = userOrgs[0].organizationId;
         }
       }
 
@@ -522,13 +520,18 @@ export class BootcampService {
     }
   }
 
-  async updateBootcamp(id: number, bootcampData): Promise<any> {
+  async updateBootcamp(id: number, orgId: number, bootcampData): Promise<any> {
     try {
       delete bootcampData.instructorId;
       let updatedBootcamp = await db
         .update(zuvyBootcamps)
         .set({ ...bootcampData })
-        .where(eq(zuvyBootcamps.id, id))
+        .where(
+          and(
+            eq(zuvyBootcamps.id, id),
+            eq(zuvyBootcamps.organizationId, orgId),
+          ),
+        )
         .returning();
 
       if (updatedBootcamp.length === 0) {

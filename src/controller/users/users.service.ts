@@ -238,7 +238,7 @@ export class UsersService {
       const newRoleData = {
         name: normalizedName,
         description: description ?? null,
-        orgId: createUserRoleDto.orgId ?? 1, // Default orgId to 1 if not provided
+        orgId: createUserRoleDto.orgId, // Default orgId to 1 if not provided
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };
@@ -864,7 +864,7 @@ export class UsersService {
           roleName: zuvyUserRoles.name,
           roleDescription: zuvyUserRoles.description,
           orgId: zuvyUserRolesAssigned.organizationId,
-          orgName: sql`(SELECT name FROM main.zuvy_organizations WHERE id = ${zuvyUserRolesAssigned.organizationId})`,
+          orgName: sql`(SELECT title FROM main.zuvy_organizations WHERE id = ${zuvyUserRolesAssigned.organizationId})`,
           createdAt: zuvyUserRolesAssigned.createdAt,
           updatedAt: zuvyUserRolesAssigned.updatedAt,
         })

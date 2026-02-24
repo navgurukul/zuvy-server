@@ -13,6 +13,7 @@ import {
   BadRequestException,
   Req,
   UseGuards,
+  ParseIntPipe,
 } from '@nestjs/common';
 import { BootcampService } from './bootcamp.service';
 import {
@@ -49,7 +50,7 @@ import { Roles } from 'src/decorators/roles.decorator';
 export class BootcampController {
   constructor(private bootcampService: BootcampService) {}
 
-  @Get('/')
+  @Get('/all/:orgId')
   //
   @ApiOperation({ summary: 'Get all bootcamps' })
   @ApiQuery({
@@ -70,18 +71,12 @@ export class BootcampController {
     type: String,
     description: 'Search by name or id in bootcamps',
   })
-  @ApiQuery({
-    name: 'organization_id',
-    required: false,
-    type: Number,
-    description: 'Filter by organization id',
-  })
   @ApiBearerAuth('JWT-auth')
   async getAllBootcamps(
+    @Param('orgId') orgId: number,
     @Query('limit') limit: number,
     @Query('offset') offset: number,
     @Query('searchTerm') searchTerm: string,
-    @Query('organization_id') organization_id: number,
     @Req() req,
   ): Promise<object> {
     const searchTermAsNumber = !isNaN(Number(searchTerm))
@@ -92,16 +87,14 @@ export class BootcampController {
       : undefined;
     const roleName = req.user[0]?.roles;
     const userId = req.user[0]?.id;
-    const orgId = req.user[0]?.orgId;
     const [err, res] = await this.bootcampService.getAllBootcamps(
+      orgId,
       roleName,
       userId,
       limit,
       offset,
       searchTermAsNumber,
       searchTermAsString,
-      organization_id,
-      orgId,
     );
 
     if (err) {
@@ -192,15 +185,17 @@ export class BootcampController {
     return res;
   }
 
-  @Put('/:id')
+  @Put('/:id/:orgId')
   @ApiOperation({ summary: 'Update the bootcamp' })
   @ApiBearerAuth('JWT-auth')
   async updateBootcamp(
-    @Param('id') id: number,
+    @Param('id', ParseIntPipe) id: number,
+    @Param('orgId', ParseIntPipe) orgId: number,
     @Body() editBootcampDto: EditBootcampDto,
   ) {
     const [err, res] = await this.bootcampService.updateBootcamp(
       id,
+      orgId,
       editBootcampDto,
     );
     if (err) {
@@ -279,15 +274,17 @@ export class BootcampController {
     return res;
   }
 
-  @Patch('/:id')
+  @Patch('/:id/:orgId')
   @ApiOperation({ summary: 'Update the bootcamp partially' })
   @ApiBearerAuth('JWT-auth')
   async updatePartialBootcamp(
-    @Param('id') id: number,
+    @Param('id', ParseIntPipe) id: number,
+    @Param('orgId', ParseIntPipe) orgId: number,
     @Body() patchBootcampDto: PatchBootcampDto,
   ) {
     const [err, res] = await this.bootcampService.updateBootcamp(
       id,
+      orgId,
       patchBootcampDto,
     );
     if (err) {
