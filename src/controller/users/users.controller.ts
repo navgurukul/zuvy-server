@@ -343,7 +343,7 @@ export class UsersController {
     @Query('roleId') roleId?: number[], // Optional
   ) {
     // Parse limit and offset with defaults to avoid errors
-    const limitNum = limit ? parseInt(limit, 10) : 10; // Default limit (adjust as needed)
+    const limitNum = limit ? parseInt(limit, 10) : 50; // Default limit (increased from 10 to 50)
     const offsetNum = offset ? parseInt(offset, 10) : 0; // Default offset
 
     // Optional: Add basic validation to ensure parsed values are positive integers

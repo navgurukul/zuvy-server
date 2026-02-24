@@ -25,13 +25,16 @@ export class SesProvider {
   ): Promise<any> {
     try {
       const emailParams: SendEmailRequest = {
-        Source: 'team@zuvy.org',
+        Source: process.env.SUPPORT_EMAIL,
         Destination: {
           ToAddresses: [to],
         },
         Message: {
           Subject: { Data: subject, Charset: 'UTF-8' },
-          Body: { Text: { Data: body, Charset: 'UTF-8' } },
+          Body: {
+            Html: { Data: body, Charset: 'UTF-8' },
+            Text: { Data: body.replace(/<[^>]*>?/gm, ''), Charset: 'UTF-8' },
+          },
         },
       };
 

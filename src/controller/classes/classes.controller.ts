@@ -146,6 +146,7 @@ export class ClassesController {
       id: Number(req.user[0].id),
       email: req.user[0].email,
       roles: req.user[0].roles || [],
+      orgId: Number(req.user[0].orgId),
     };
     // Delegate all validation & batch combination logic to service
     const result = await this.classesService.createSession(
@@ -185,6 +186,7 @@ export class ClassesController {
       id: Number(req.user[0].id),
       email: req.user[0].email,
       roles: req.user[0].roles || [],
+      orgId: Number(req.user[0].orgId),
     };
     const [err, values] = await this.classesService.meetingAttendanceAnalytics(
       sessionId,
@@ -348,6 +350,7 @@ export class ClassesController {
         id: Number(req.user[0].id),
         email: req.user[0].email,
         roles: req.user[0].roles || [],
+        orgId: Number(req.user[0].orgId),
       };
 
       const calendar = await this.classesService.accessOfCalendar(userInfo);
@@ -410,6 +413,7 @@ export class ClassesController {
       id: Number(req.user[0].id),
       email: req.user[0].email,
       roles: req.user[0].roles || [],
+      orgId: Number(req.user[0].orgId),
     };
 
     // Route to appropriate service method based on user role
@@ -432,6 +436,7 @@ export class ClassesController {
       id: Number(req.user[0].id),
       email: req.user[0].email,
       roles: req.user[0].roles || [],
+      orgId: Number(req.user[0].orgId),
     };
     return this.classesService.updateSession(sessionId, updateData, userInfo);
   }
@@ -454,6 +459,7 @@ export class ClassesController {
       id: Number(req.user[0].id),
       email: req.user[0].email,
       roles: req.user[0].roles || [],
+      orgId: Number(req.user[0].orgId),
     };
     const shouldDeleteChapter = ['true', '1', 'yes'].includes(
       String(deleteChapter ?? '').toLowerCase(),
@@ -483,6 +489,7 @@ export class ClassesController {
       id: Number(req.user[0].id),
       email: req.user[0].email,
       roles: req.user[0].roles || [],
+      orgId: Number(req.user[0].orgId),
     };
     const result = await this.classesService.updateSessionByMeetingId(
       meetingId,
@@ -523,6 +530,7 @@ export class ClassesController {
       id: Number(req.user[0].id),
       email: req.user[0].email,
       roles: req.user[0].roles || [],
+      orgId: Number(req.user[0].orgId),
     };
     const shouldDeleteChapter = ['true', '1', 'yes'].includes(
       String(deleteChapter ?? '').toLowerCase(),
@@ -572,6 +580,7 @@ export class ClassesController {
       id: Number(req.user[0].id),
       email: req.user[0].email,
       roles: req.user[0].roles || [],
+      orgId: Number(req.user[0].orgId),
     };
 
     // Check admin access
