@@ -238,7 +238,7 @@ export class UsersService {
       const newRoleData = {
         name: normalizedName,
         description: description ?? null,
-        orgId: createUserRoleDto.orgId ?? 1, // Default orgId to 1 if not provided
+        orgId: createUserRoleDto.orgId, // Default orgId to 1 if not provided
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };
@@ -323,11 +323,12 @@ export class UsersService {
   async assignDefaultPermissionsToRole(
     roleId: number,
     roleName: string,
+    orgId: number,
   ): Promise<any> {
     try {
       // 🔍 Step 1: Check if role already has any permissions
       const existingPermissions = await db.execute(
-        sql`SELECT COUNT(*) AS count FROM main.zuvy_permissions_roles WHERE role_id = ${roleId}`,
+        sql`SELECT COUNT(*) AS count FROM main.zuvy_permissions_roles WHERE role_id = ${roleId} AND org_id = ${orgId}`,
       );
 
       const alreadyAssigned = Number(
@@ -385,8 +386,8 @@ export class UsersService {
         const permissionId = (permissionDetails as any).rows[0].id;
 
         await db.execute(
-          sql`INSERT INTO main.zuvy_permissions_roles (role_id, permission_id)
-            VALUES (${roleId}, ${permissionId})
+          sql`INSERT INTO main.zuvy_permissions_roles (role_id, permission_id, org_id)
+            VALUES (${roleId}, ${permissionId}, ${orgId})
             ON CONFLICT DO NOTHING`,
         );
       }
@@ -409,7 +410,7 @@ export class UsersService {
     actorUserIdString,
     payload: AssignUserRoleDto,
   ): Promise<any> {
-    const { userId, roleId } = payload;
+    const { userId, roleId, orgId } = payload;
     try {
       const actorUserId = Number(actorUserIdString);
       const userCheck = await db.execute(
@@ -440,7 +441,7 @@ export class UsersService {
       const roleCheck = await this.roleCheck(roleId);
 
       const existing = await db.execute(
-        sql`SELECT role_id FROM main.zuvy_user_roles_assigned WHERE user_id = ${userId} LIMIT 1`,
+        sql`SELECT role_id FROM main.zuvy_user_roles_assigned WHERE user_id = ${userId} AND organization_id = ${orgId} LIMIT 1`,
       );
 
       const targetUserId = userId;
@@ -459,14 +460,14 @@ export class UsersService {
           };
         }
         await db.execute(
-          sql`DELETE FROM main.zuvy_user_roles_assigned WHERE user_id = ${userId}`,
+          sql`DELETE FROM main.zuvy_user_roles_assigned WHERE user_id = ${userId} AND organization_id = ${orgId}`,
         );
         const updated = await db.execute(sql`
-          INSERT INTO main.zuvy_user_roles_assigned (user_id, role_id)
-          VALUES (${userId}, ${roleId})
+          INSERT INTO main.zuvy_user_roles_assigned (user_id, role_id, organization_id)
+          VALUES (${userId}, ${roleId}, ${orgId})
           RETURNING *`);
         // ✅ Assign default permissions for new role
-        await this.assignDefaultPermissionsToRole(roleId, roleName);
+        await this.assignDefaultPermissionsToRole(roleId, roleName, orgId);
 
         const currentRoleDetails = await this.roleCheck(currentRoleId);
         const currentRoleName = (currentRoleDetails as any).rows?.[0]?.name;
@@ -474,6 +475,7 @@ export class UsersService {
 
         const { data, success } = await this.userTokenService.getUserTokens(
           BigInt(targetUserId),
+          orgId,
         );
         if (!success) {
           return {
@@ -489,6 +491,7 @@ export class UsersService {
         );
         const deletedResponse = await this.userTokenService.deleteToken({
           userId: targetUserId,
+          organizationId: orgId,
         });
 
         const auditLog = await this.auditlogService.log('role_to_user', {
@@ -506,17 +509,18 @@ export class UsersService {
       }
 
       const inserted = await db.execute(sql`
-        INSERT INTO main.zuvy_user_roles_assigned (user_id, role_id)
-        VALUES (${userId}, ${roleId})
+        INSERT INTO main.zuvy_user_roles_assigned (user_id, role_id, organization_id)
+        VALUES (${userId}, ${roleId}, ${orgId})
         RETURNING *`);
 
       // ✅ Assign default permissions for new role
-      await this.assignDefaultPermissionsToRole(roleId, roleName);
+      await this.assignDefaultPermissionsToRole(roleId, roleName, orgId);
 
       const action = `${actorName} assigned role ${roleName} to ${targetName}`;
 
       const { data, success } = await this.userTokenService.getUserTokens(
         BigInt(targetUserId),
+        orgId,
       );
 
       if (success && data?.accessToken) {
@@ -528,6 +532,7 @@ export class UsersService {
 
         await this.userTokenService.deleteToken({
           userId: targetUserId,
+          organizationId: orgId,
         });
       }
 
@@ -859,7 +864,7 @@ export class UsersService {
           roleName: zuvyUserRoles.name,
           roleDescription: zuvyUserRoles.description,
           orgId: zuvyUserRolesAssigned.organizationId,
-          orgName: sql`(SELECT name FROM main.zuvy_organizations WHERE id = ${zuvyUserRolesAssigned.organizationId})`,
+          orgName: sql`(SELECT title FROM main.zuvy_organizations WHERE id = ${zuvyUserRolesAssigned.organizationId})`,
           createdAt: zuvyUserRolesAssigned.createdAt,
           updatedAt: zuvyUserRolesAssigned.updatedAt,
         })
@@ -1084,8 +1089,10 @@ export class UsersService {
       });
 
       // Invalidate tokens OUTSIDE transaction for the target user (person being updated)
-      const { data, success } =
-        await this.userTokenService.getUserTokens(targetUserId);
+      const { data, success } = await this.userTokenService.getUserTokens(
+        targetUserId,
+        updateUserDto.orgId,
+      );
 
       if (success && data?.accessToken) {
         await this.authService.updateUserlogout(
@@ -1096,6 +1103,7 @@ export class UsersService {
 
         await this.userTokenService.deleteToken({
           userId: Number(targetUserId),
+          organizationId: updateUserDto.orgId,
         });
       }
 
@@ -1113,7 +1121,7 @@ export class UsersService {
   async deleteUser(id: bigint, orgId: number): Promise<any> {
     try {
       const { data: existingTokens, success: hasTokens } =
-        await this.userTokenService.getUserTokens(id);
+        await this.userTokenService.getUserTokens(id, orgId);
 
       await db.transaction(async (tx) => {
         // delete the user by id in zuvyUserRolesAssigned table
@@ -1157,6 +1165,7 @@ export class UsersService {
 
       await this.userTokenService.deleteToken({
         userId: Number(id),
+        organizationId: orgId,
       });
 
       return {

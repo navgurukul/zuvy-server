@@ -160,8 +160,7 @@ export class OrgService {
 
   async createOrg(createOrgDto: CreateOrgDto) {
     try {
-      const displayName =
-        createOrgDto.displayName || this.generateCode(createOrgDto.title);
+      const displayName = await this.generateCode(createOrgDto.title);
 
       const createOrgDtoValues = {
         title: createOrgDto.title,
@@ -215,16 +214,110 @@ export class OrgService {
       });
 
       // 5. Send Email (After transaction)
-      const magicLink = `${process.env.APP_BASE_URL}/org/getOrgById/${result.id}`;
+      const magicLink = `${process.env.APP_BASE_URL}/admin/organizations/${result.id}/setting`;
       try {
-        const subject = `Welcome to Zuvy - Complete ${displayName} Setup`;
+        const subject = `Welcome to Zuvy - Complete ${result.title} Setup`;
+
         const html = `
-          <h1>Welcome to Zuvy!</h1>
-          <p>You have been invited to set up the organization <b>${displayName}</b>.</p>
-          <p>Please click the link below to complete your profile and organization details:</p>
-          <a href="${magicLink}">Complete Setup</a>
-          <p>If you did not request this, please ignore this email.</p>
-        `;
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <meta charset="UTF-8" />
+          </head>
+          <body style="margin:0; padding:0; background-color:#f6f9fc; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;">
+
+            <table width="100%" cellpadding="0" cellspacing="0" style="padding:40px 0;">
+              <tr>
+                <td align="center">
+
+                  <table width="520" cellpadding="0" cellspacing="0"
+                    style="background:#ffffff; border-radius:12px; padding:40px; box-shadow:0 4px 20px rgba(0,0,0,0.05);">
+
+                    <!-- Logo / Brand -->
+                    <tr>
+                      <td align="center" style="padding-bottom:30px;">
+                        <h2 style="margin:0; color:#111827;">Zuvy</h2>
+                      </td>
+                    </tr>
+
+                    <!-- Heading -->
+                    <tr>
+                      <td style="padding-bottom:20px;">
+                        <h1 style="margin:0; font-size:24px; color:#111827;">
+                          Welcome to Zuvy 👋
+                        </h1>
+                      </td>
+                    </tr>
+
+                    <!-- Message -->
+                    <tr>
+                      <td style="color:#4b5563; font-size:16px; line-height:1.6;">
+                        <p style="margin:0 0 15px 0;">
+                          You have been invited to set up the organization 
+                          <strong>${result.title}</strong>.
+                        </p>
+
+                        <p style="margin:0 0 25px 0;">
+                          Click the button below to complete your profile and organization setup.
+                        </p>
+                      </td>
+                    </tr>
+
+                    <!-- Button -->
+                    <tr>
+                      <td align="center" style="padding:10px 0 30px 0;">
+                        <a href="${magicLink}"
+                          style="
+                            background-color:#2563eb;
+                            color:#ffffff;
+                            padding:14px 28px;
+                            text-decoration:none;
+                            border-radius:8px;
+                            font-weight:600;
+                            font-size:15px;
+                            display:inline-block;
+                          ">
+                          Complete Setup
+                        </a>
+                      </td>
+                    </tr>
+
+                    <!-- Divider -->
+                    <tr>
+                      <td>
+                        <hr style="border:none; border-top:1px solid #e5e7eb; margin:30px 0;">
+                      </td>
+                    </tr>
+
+                    <!-- Fallback Link -->
+                    <tr>
+                      <td style="font-size:14px; color:#6b7280;">
+                        If the button doesn’t work, copy and paste this link into your browser:
+                        <br><br>
+                        <span style="word-break:break-all; color:#2563eb;">
+                          ${magicLink}
+                        </span>
+                      </td>
+                    </tr>
+
+                    <!-- Footer -->
+                    <tr>
+                      <td style="padding-top:30px; font-size:13px; color:#9ca3af; text-align:center;">
+                        If you did not request this email, you can safely ignore it.
+                        <br><br>
+                        © ${new Date().getFullYear()} Zuvy. All rights reserved.
+                      </td>
+                    </tr>
+
+                  </table>
+
+                </td>
+              </tr>
+            </table>
+
+          </body>
+          </html>
+          `;
 
         this.logger.log(
           `Attempting to send welcome email to POC: ${createOrgDto.pocEmail}`,
@@ -277,10 +370,6 @@ export class OrgService {
         or(
           ilike(zuvyOrganizations.title, searchLike),
           ilike(zuvyOrganizations.displayName, searchLike),
-          ilike(zuvyOrganizations.pocName, searchLike),
-          ilike(zuvyOrganizations.pocEmail, searchLike),
-          ilike(zuvyOrganizations.zuvyPocName, searchLike),
-          ilike(zuvyOrganizations.zuvyPocEmail, searchLike),
         ),
       );
     }
@@ -357,7 +446,7 @@ export class OrgService {
         .select({
           id: zuvyOrganizations.id,
           title: zuvyOrganizations.title,
-          displayName: zuvyOrganizations.displayName,
+          code: zuvyOrganizations.displayName,
           logoUrl: zuvyOrganizations.logoUrl,
           isVerified: zuvyOrganizations.isVerified,
           joinedAt: zuvyUserRolesAssigned.createdAt,
@@ -512,7 +601,9 @@ export class OrgService {
         <h1>Organization Deletion Request</h1>
         <p>A request has been made to delete the organization <b>${orgName}</b>.</p>
         <p>If you approve this action, please click the link below to confirm the deletion:</p>
-        <a href="${deleteLink}">Confirm Deletion</a>
+        <div style="margin: 20px 0;">
+          <a href="${deleteLink}" style="background-color: #ff4d4f; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">Confirm Deletion</a>
+        </div>
         <p><b>This action cannot be undone.</b></p>
         <p>If you did not request this, please ignore this email and contact support immediately.</p>
       `;

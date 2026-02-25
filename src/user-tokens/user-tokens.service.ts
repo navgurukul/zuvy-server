@@ -4,7 +4,7 @@ import {
   InternalServerErrorException,
   Logger,
 } from '@nestjs/common';
-import { eq } from 'drizzle-orm';
+import { eq, and } from 'drizzle-orm';
 import { zuvyUserOrganizations } from 'drizzle/schema';
 import { db } from 'src/db';
 
@@ -15,7 +15,11 @@ type UpsertParams = {
   accessToken: string;
   refreshToken: string;
 };
-type DeleteFilter = { userId?: number; userEmail?: string };
+type DeleteFilter = {
+  userId?: number;
+  userEmail?: string;
+  organizationId?: number;
+};
 
 @Injectable()
 export class UserTokensService {
@@ -48,15 +52,20 @@ export class UserTokensService {
     }
   }
 
-  async getUserTokens(userId: bigint) {
+  async getUserTokens(userId: bigint, orgId?: number) {
     try {
+      const conditions = [eq(zuvyUserOrganizations.userId, Number(userId))];
+      if (orgId) {
+        conditions.push(eq(zuvyUserOrganizations.organizationId, orgId));
+      }
+
       const [tokens] = await db
         .select({
           accessToken: zuvyUserOrganizations.accessToken,
           refreshToken: zuvyUserOrganizations.refreshToken,
         })
         .from(zuvyUserOrganizations)
-        .where(eq(zuvyUserOrganizations.userId, Number(userId)));
+        .where(and(...conditions));
 
       if (!tokens) {
         return { success: false, message: 'No tokens found for this user' };
@@ -80,9 +89,20 @@ export class UserTokensService {
         message: 'BAD_REQUEST: provide userId or userEmail',
       });
 
-    const where = filter.userId
-      ? eq(zuvyUserOrganizations.userId, filter.userId)
-      : eq(zuvyUserOrganizations.userEmail, filter.userEmail!);
+    const conditions = [];
+    if (filter.userId) {
+      conditions.push(eq(zuvyUserOrganizations.userId, filter.userId));
+    }
+    if (filter.userEmail) {
+      conditions.push(eq(zuvyUserOrganizations.userEmail, filter.userEmail));
+    }
+    if (filter.organizationId) {
+      conditions.push(
+        eq(zuvyUserOrganizations.organizationId, filter.organizationId),
+      );
+    }
+
+    const where = and(...conditions);
 
     try {
       const deleted = await db

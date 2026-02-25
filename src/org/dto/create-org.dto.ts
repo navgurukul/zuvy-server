@@ -19,15 +19,6 @@ export class CreateOrgDto {
 
   @ApiPropertyOptional({
     type: String,
-    example: 'The display name of the organization',
-    required: false,
-  })
-  @IsString()
-  @IsOptional()
-  displayName?: string;
-
-  @ApiPropertyOptional({
-    type: String,
     example: 'https://example.com/logo.png',
     required: false,
   })
