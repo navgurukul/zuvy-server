@@ -13,6 +13,7 @@ import {
   Query,
   Req,
   Res,
+  UseInterceptors,
 } from '@nestjs/common';
 import { StudentService } from './student.service';
 import {
@@ -23,6 +24,8 @@ import {
   ApiBearerAuth,
   ApiParam,
 } from '@nestjs/swagger';
+import { TrackAction } from 'src/trackinglog/decorators/track-action.decorator';
+import { TrackActionInterceptor } from 'src/trackinglog/interceptors/track-action.interceptor';
 import { get } from 'http';
 import { Response } from 'express';
 import { ErrorResponse, SuccessResponse } from 'src/errorHandler/handler';
@@ -33,6 +36,7 @@ import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 
 @Controller('student')
 @ApiTags('student')
+@UseInterceptors(TrackActionInterceptor)
 @UsePipes(
   new ValidationPipe({
     whitelist: true,
@@ -115,6 +119,18 @@ export class StudentController {
     required: true,
     type: [Number],
     description: 'userId',
+  })
+  @TrackAction({
+    action: 'delete_student',
+    resourceType: 'bootcamp',
+    permissionName: 'deleteStudent',
+    getResourceName: (result) => {
+      const removed = result?.removedUsers;
+      if (!removed || removed.length === 0) return 'student';
+      if (removed.length === 1)
+        return removed[0].name || removed[0].email || 'student';
+      return removed.map((u) => u.name || u.email).join(', ');
+    },
   })
   async removingStudents(
     @Query('userId') userId: number | number[],

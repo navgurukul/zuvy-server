@@ -456,6 +456,12 @@ export class StudentService {
     try {
       const userIdsArray = Array.isArray(user_id) ? user_id : [user_id];
 
+      // Fetch user details before deletion so tracking log can show real names
+      const removedUsers = await db
+        .select({ id: users.id, name: users.name, email: users.email })
+        .from(users)
+        .where(inArray(users.id, userIdsArray.map(BigInt)));
+
       let enrolled = await db
         .delete(zuvyBatchEnrollments)
         .where(
@@ -492,6 +498,8 @@ export class StudentService {
               ? 'Student removed from the bootcamp'
               : `${deletedCount} students removed from the bootcamp`,
           code: 200,
+          removedUsers,
+          bootcampId: Number(bootcamp_id),
         },
       ];
     } catch (e) {
