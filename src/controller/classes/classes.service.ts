@@ -2562,6 +2562,7 @@ export class ClassesService {
         return {
           success: false,
           message: 'Unauthorized to update this session',
+          bootcampId: session.bootcampId,
         };
       }
 
@@ -2583,6 +2584,7 @@ export class ClassesService {
             success: false,
             message:
               'Session has already started; updates require a new future start time',
+            bootcampId: session.bootcampId,
           };
         }
         const requestedStart = new Date(normalizedStart);
@@ -2590,6 +2592,7 @@ export class ClassesService {
           return {
             success: false,
             message: 'Cannot update to a start time in the past',
+            bootcampId: session.bootcampId,
           };
         }
       }
@@ -2835,6 +2838,14 @@ export class ClassesService {
       return {
         success: true,
         data: responseData,
+        before: {
+          title: session.title,
+          startTime: session.startTime,
+          endTime: session.endTime,
+          status: session.status,
+          batchId: session.batchId,
+          secondBatchId: session.secondBatchId,
+        },
         message: 'Session updated successfully',
       };
     } catch (error) {
@@ -3025,6 +3036,9 @@ export class ClassesService {
         message: chapterDeleted
           ? 'Session and linked chapter deleted successfully'
           : 'Session deleted successfully',
+        sessionTitle: sessionData.title,
+        sessionId: sessionId,
+        bootcampId: sessionData.bootcampId || null,
       };
     } catch (error) {
       this.logger.error(
