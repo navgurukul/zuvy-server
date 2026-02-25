@@ -78,7 +78,6 @@ import {
   UpdateChapterDto,
 } from './dto/content.dto';
 import { STATUS_CODES } from '../../helpers';
-import { diffRecords } from '../../trackinglog/utils';
 import { helperVariable } from '../../constants/helper';
 import { ConfigService } from '@nestjs/config';
 import {
@@ -1241,9 +1240,6 @@ export class ContentService {
         throw new NotFoundException('Module not found or deleted!');
       }
 
-      // ── Snapshot BEFORE state for diff ────────────────────────────────
-      const oldModule = moduleInfo[0];
-
       if (reorderData.moduleDto == undefined) {
         const { newOrder } = reorderData.reOrderDto;
 
@@ -1289,20 +1285,8 @@ export class ContentService {
           .set(reorderData.moduleDto)
           .where(eq(zuvyCourseModules.id, moduleId));
       }
-
-      // Fetch updated module data
-      const updatedModule = await db
-        .select()
-        .from(zuvyCourseModules)
-        .where(eq(zuvyCourseModules.id, moduleId))
-        .limit(1);
-
-      const newModule = updatedModule[0] || null;
-
       return {
         message: 'Modified successfully',
-        data: newModule,
-        changes: diffRecords(oldModule, newModule),
       };
     } catch (err) {
       throw err;
@@ -1316,13 +1300,6 @@ export class ContentService {
     try {
       let examples = [];
       let testCases = [];
-
-      const beforeRows = await db
-        .select()
-        .from(zuvyCodingQuestions)
-        .where(eq(zuvyCodingQuestions.id, questionId))
-        .limit(1);
-      const before = beforeRows[0] || null;
 
       if (codingProblem.examples) {
         for (let i = 0; i < codingProblem.examples.length; i++) {
@@ -1348,8 +1325,6 @@ export class ContentService {
           status: 'success',
           code: 200,
           message: 'Coding question has been updated successfully',
-          before,
-          data: updatedQuestion[0],
         };
       } else {
         return {
@@ -1529,18 +1504,8 @@ export class ContentService {
           .set(editData)
           .where(eq(zuvyModuleChapter.id, chapterId));
       }
-      const updatedChapter = await db
-        .select()
-        .from(zuvyModuleChapter)
-        .where(eq(zuvyModuleChapter.id, chapterId));
-
-      const chapterChanges = diffRecords(chapterInfo[0], updatedChapter[0]);
-
       return {
         message: 'Modified successfully',
-        chapter: updatedChapter,
-        bootcampId: moduleInfo[0].bootcampId,
-        changes: chapterChanges,
       };
     } catch (err) {
       throw err;
@@ -1990,8 +1955,6 @@ export class ContentService {
         status: 'success',
         code: 200,
         message: 'Updated successfully',
-        before: { title: chapterInfo[0]?.title },
-        data: { title: assessmentBody.title || chapterInfo[0]?.title },
       };
     } catch (err) {
       throw err;
@@ -2195,7 +2158,6 @@ export class ContentService {
         status: 'success',
         message: 'Module and all related data deleted successfully',
         code: 200,
-        moduleName: deleted[0].name,
       };
     } catch (error) {
       log(`error: ${error.message}`);
@@ -2589,14 +2551,6 @@ export class ContentService {
 
   async editQuizQuestion(quizUpdates: EditQuizBatchDto): Promise<any> {
     try {
-      // Snapshot before state for diff
-      const beforeRows = await db
-        .select()
-        .from(zuvyModuleQuiz)
-        .where(eq(zuvyModuleQuiz.id, quizUpdates.id))
-        .limit(1);
-      const before = beforeRows[0] || null;
-
       // Prepare an object to store updated data to return in response
       const resultData: any = {
         quizDetails: null,
@@ -2660,7 +2614,6 @@ export class ContentService {
           message: 'Quiz and variants have been updated successfully.',
           statusCode: STATUS_CODES.OK,
           data: resultData,
-          before,
         },
       ];
     } catch (err) {
@@ -2676,13 +2629,6 @@ export class ContentService {
     openEndedBody: UpdateOpenEndedDto,
   ) {
     try {
-      const beforeRows = await db
-        .select()
-        .from(zuvyOpenEndedQuestions)
-        .where(eq(zuvyOpenEndedQuestions.id, questionId))
-        .limit(1);
-      const before = beforeRows[0] || null;
-
       const updatedQuestion = await db
         .update(zuvyOpenEndedQuestions)
         .set(openEndedBody)
@@ -2693,8 +2639,6 @@ export class ContentService {
           status: 'success',
           code: 200,
           message: 'Open ended question has been updated successfully',
-          before,
-          data: updatedQuestion[0],
         };
       } else {
         return {
@@ -4138,8 +4082,6 @@ export class ContentService {
         message: 'Form questions are updated successfully',
         results,
         updatedChapter,
-        before: { formQuestions: existingFormIds },
-        data: updatedChapter[0],
       };
     } catch (error) {
       throw error;
@@ -4303,8 +4245,6 @@ export class ContentService {
         message: 'Form questions are updated successfully',
         res1,
         res2,
-        before: { formQuestions: existingFormIds },
-        data: res2[0],
       };
     } catch (err) {
       throw err;

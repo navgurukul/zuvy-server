@@ -12,11 +12,8 @@ import {
   Param,
   Put,
   Delete,
-  UseInterceptors,
 } from '@nestjs/common';
 import { UsersService } from './users.service';
-import { TrackAction } from 'src/trackinglog/decorators/track-action.decorator';
-import { TrackActionInterceptor } from 'src/trackinglog/interceptors/track-action.interceptor';
 import {
   ApiTags,
   ApiBody,
@@ -133,14 +130,6 @@ export class UsersController {
     description: 'Internal server error',
   })
   @ApiBearerAuth('JWT-auth')
-  @UseInterceptors(TrackActionInterceptor)
-  @TrackAction({
-    action: 'create_role',
-    resourceType: 'role',
-    permissionName: 'createRole',
-    getResourceName: (result, params) =>
-      params?.name || result?.data?.name || 'Role',
-  })
   async createUserRole(
     @Body() createUserRoleDto: CreateUserRoleDto,
   ): Promise<any> {
@@ -263,14 +252,6 @@ export class UsersController {
   @ApiResponse({ status: 404, description: 'User or Role not found' })
   @ApiResponse({ status: 500, description: 'Internal server error' })
   @ApiBearerAuth('JWT-auth')
-  @UseInterceptors(TrackActionInterceptor)
-  @TrackAction({
-    action: 'assign_role',
-    resourceType: 'role',
-    permissionName: 'editUser',
-    getResourceName: (result, params) =>
-      params?.roleName || result?.data?.name || 'Role',
-  })
   async assignRoleToUser(
     @Body() body: AssignUserRoleDto,
     @Req() req,
@@ -436,17 +417,6 @@ export class UsersController {
   }
 
   @Post('/addUsers')
-  @UseInterceptors(TrackActionInterceptor)
-  @TrackAction({
-    action: 'create_user',
-    resourceType: 'user',
-    permissionName: 'createUser',
-    getResourceName: (result, params) => {
-      const name = params?.name || result?.data?.name || result?.name || 'User';
-      const email = params?.email || result?.data?.email || result?.email || '';
-      return `${name}${email ? ` (${email})` : ''}`;
-    },
-  })
   @ApiOperation({
     summary: 'Create a new user with role',
     description: 'Creates a new user and assigns them a role',
@@ -491,17 +461,6 @@ export class UsersController {
   }
 
   @Put('/updateUser/:id')
-  @UseInterceptors(TrackActionInterceptor)
-  @TrackAction({
-    action: 'edit_user',
-    resourceType: 'user',
-    permissionName: 'editUser',
-    getResourceName: (result, params) => {
-      const name = params?.name || result?.data?.name || result?.name || 'User';
-      const email = params?.email || result?.data?.email || result?.email || '';
-      return `${name}${email ? ` (${email})` : ''}`;
-    },
-  })
   @ApiOperation({
     summary: 'Update user and role',
     description: 'Updates user details and/or their role assignment',
@@ -558,15 +517,6 @@ export class UsersController {
   }
 
   @Delete('/deleteUser/:id')
-  @UseInterceptors(TrackActionInterceptor)
-  @TrackAction({
-    action: 'delete_user',
-    resourceType: 'user',
-    permissionName: 'deleteUser',
-    getResourceName: (result) => {
-      return result?.data?.name || result?.name || 'User';
-    },
-  })
   @ApiOperation({
     summary: 'Delete a user',
     description: 'Deletes a user and their role assignments',

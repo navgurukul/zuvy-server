@@ -6,16 +6,15 @@ import { JwtMiddleware } from 'src/middleware/jwt.middleware';
 import { AuthModule } from 'src/auth/auth.module';
 import { ContentModule } from '../content/content.module';
 import { RbacModule } from 'src/rbac/rbac.module';
-import { TrackinglogModule } from 'src/trackinglog/trackinglog.module';
 
 @Module({
-  imports: [AuthModule, ContentModule, RbacModule, TrackinglogModule],
-  controllers: [BootcampController],
-  providers: [BootcampService, JwtService],
-  exports: [BootcampService],
+    imports: [AuthModule, ContentModule, RbacModule],
+    controllers: [BootcampController],
+    providers: [BootcampService, JwtService],
+    exports: [BootcampService]
 })
 export class BootcampModule implements NestModule {
-  configure(consumer: MiddlewareConsumer) {
-    consumer.apply(JwtMiddleware).forRoutes('*');
-  }
+    configure(consumer: MiddlewareConsumer) {
+        consumer.apply(JwtMiddleware).forRoutes('*');
+    }
 }
