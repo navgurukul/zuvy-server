@@ -38,7 +38,6 @@ import { quizBatchDto } from '../content/dto/content.dto';
 import { SubmitFormBodyDto } from './dto/form.dto';
 import { ErrorResponse, SuccessResponse } from 'src/errorHandler/handler';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
-import { TrackAction } from 'src/trackinglog/decorators/track-action.decorator';
 
 @Controller('tracking')
 @ApiTags('tracking')
@@ -50,14 +49,6 @@ export class TrackingController {
   @Post('updateChapterStatus/:bootcampId/:moduleId')
   @ApiOperation({ summary: 'Update Chapter status' })
   @ApiBearerAuth('JWT-auth')
-  @TrackAction({
-    action: 'edit_chapter',
-    resourceType: 'chapter',
-    permissionName: 'editChapter',
-    getResourceName: (_result) => {
-      return 'Chapter';
-    },
-  })
   async updateChapterStatus(
     @Param('bootcampId') bootcampId: number,
     @Req() req,

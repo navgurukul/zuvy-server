@@ -4,10 +4,9 @@ import { BatchesService } from './batch.service';
 import { JwtModule, JwtService } from '@nestjs/jwt';
 import { JwtMiddleware } from 'src/middleware/jwt.middleware';
 import { AuthModule } from 'src/auth/auth.module';
-import { TrackinglogModule } from 'src/trackinglog/trackinglog.module';
 
 @Module({
-  imports: [AuthModule, TrackinglogModule],
+  imports: [AuthModule],
   controllers: [BatchesController],
   providers: [BatchesService, JwtService],
   exports: [BatchesService],

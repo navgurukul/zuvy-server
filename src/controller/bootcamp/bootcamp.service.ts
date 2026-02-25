@@ -523,15 +523,6 @@ export class BootcampService {
   async updateBootcamp(id: number, orgId: number, bootcampData): Promise<any> {
     try {
       delete bootcampData.instructorId;
-
-      // Snapshot before state for auto-diff in tracking log
-      const beforeRows = await db
-        .select()
-        .from(zuvyBootcamps)
-        .where(eq(zuvyBootcamps.id, id))
-        .limit(1);
-      const before = beforeRows[0] || null;
-
       let updatedBootcamp = await db
         .update(zuvyBootcamps)
         .set({ ...bootcampData })
@@ -556,8 +547,6 @@ export class BootcampService {
           message: 'Bootcamp updated successfully',
           code: 200,
           updatedBootcamp,
-          before,
-          data: updatedBootcamp[0],
         },
       ];
     } catch (e) {
@@ -573,22 +562,6 @@ export class BootcampService {
     orgId: number,
   ) {
     try {
-      // Fetch bootcamp name for tracking log
-      const bootcampInfo = await db
-        .select({ name: zuvyBootcamps.name })
-        .from(zuvyBootcamps)
-        .where(eq(zuvyBootcamps.id, bootcamp_id))
-        .limit(1);
-      const bootcampName = bootcampInfo[0]?.name || null;
-
-      // Snapshot before state for auto-diff
-      const beforeRows = await db
-        .select()
-        .from(zuvyBootcampType)
-        .where(eq(zuvyBootcampType.bootcampId, bootcamp_id))
-        .limit(1);
-      const before = beforeRows[0] || null;
-
       const typeOfBootcamp = settingData.type
         ? settingData.type.toLowerCase()
         : null;
@@ -637,9 +610,6 @@ export class BootcampService {
             message: 'Bootcamp Type updated successfully',
             code: 200,
             updatedBootcampSetting,
-            bootcampName,
-            before,
-            data: updatedBootcampSetting[0],
             ...grantedPermissions,
           },
         ];
@@ -650,7 +620,6 @@ export class BootcampService {
             status: 'success',
             message: `Course type can be of type Public or Private`,
             code: 200,
-            bootcampName,
             ...grantedPermissions,
           },
         ];
@@ -760,8 +729,6 @@ export class BootcampService {
           status: 'success',
           message: 'Bootcamp deleted successfully',
           code: 200,
-          bootcampName: deleted[0]?.name || null,
-          bootcampId: id,
         },
       ];
     } catch (error) {
@@ -1536,7 +1503,7 @@ export class BootcampService {
     try {
       // Validate user existence in the users table
       const userExists = await db
-        .select({ id: users.id, email: users.email, name: users.name })
+        .select({ id: users.id, email: users.email })
         .from(users)
         .where(eq(users.id, BigInt(userId)))
         .limit(1);
@@ -1715,7 +1682,6 @@ export class BootcampService {
           message: 'User details updated successfully',
           statusCode: STATUS_CODES.OK,
           data: userData,
-          before: { name: userExists[0].name, email: userExists[0].email },
         },
       ];
     } catch (err) {
@@ -1973,7 +1939,6 @@ export class BootcampService {
         .select({
           id: users.id,
           email: users.email,
-          name: users.name,
         })
 
         .from(users)
@@ -2044,11 +2009,6 @@ export class BootcampService {
           ),
         )
         .limit(1);
-
-      // Capture the previous status before any update
-      const previousStatus: string | null = existing.length
-        ? (existing[0].status as string)
-        : null;
 
       if (existing.length) {
         // Update existing record
@@ -2146,15 +2106,11 @@ export class BootcampService {
         status: 'success',
         message: `Attendance marked as ${status} successfully`,
         code: 200,
-        before: { status: previousStatus ?? 'none' },
         data: {
           userId,
           sessionId,
           status,
-          previousStatus,
           totalAttendance,
-          userName: user[0]?.name || null,
-          userEmail: user[0]?.email || null,
         },
       };
     } catch (err) {

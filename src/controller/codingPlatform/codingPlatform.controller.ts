@@ -12,7 +12,6 @@ import {
   Req,
   Res,
   UseGuards,
-  UseInterceptors,
 } from '@nestjs/common';
 import { CodingPlatformService } from './codingPlatform.service';
 import {
@@ -30,8 +29,6 @@ import {
 import { ErrorResponse, SuccessResponse } from 'src/errorHandler/handler';
 import { Response } from 'express';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
-import { TrackAction } from 'src/trackinglog/decorators/track-action.decorator';
-import { TrackActionInterceptor } from 'src/trackinglog/interceptors/track-action.interceptor';
 
 @Controller('codingPlatform')
 @ApiTags('codingPlatform')
@@ -44,7 +41,6 @@ import { TrackActionInterceptor } from 'src/trackinglog/interceptors/track-actio
 )
 @UseGuards(JwtAuthGuard)
 @ApiBearerAuth('JWT-auth')
-@UseInterceptors(TrackActionInterceptor)
 export class CodingPlatformController {
   constructor(private codingPlatformService: CodingPlatformService) {}
 
@@ -175,13 +171,6 @@ export class CodingPlatformController {
   @Post('create-question')
   @ApiOperation({ summary: 'Create coding question with test cases' })
   @ApiBearerAuth('JWT-auth')
-  @TrackAction({
-    action: 'create_codingquestion',
-    resourceType: 'codingQuestion',
-    permissionName: 'createCodingQuestion',
-    getResourceName: (result) =>
-      result?.data?.title || result?.data?.name || 'Coding Question',
-  })
   async createCodingQuestion(
     @Body() createCodingQuestionDto: CreateProblemDto,
     @Res() res: Response,
@@ -207,15 +196,6 @@ export class CodingPlatformController {
   @Put('update-question/:id')
   @ApiOperation({ summary: 'Update coding question' })
   @ApiBearerAuth('JWT-auth')
-  @TrackAction({
-    action: 'edit_codingquestion',
-    resourceType: 'codingQuestion',
-    permissionName: 'editCodingQuestion',
-    getResourceName: (result, params) =>
-      result?.data?.title ||
-      result?.data?.name ||
-      (params?.id ? `Question #${params.id}` : 'Coding Question'),
-  })
   async updateCodingQuestion(
     @Param('id') id: number,
     @Body() updateCodingQuestionDto: updateProblemDto,
@@ -243,15 +223,6 @@ export class CodingPlatformController {
   @Delete('delete-question/:id')
   @ApiOperation({ summary: 'Delete coding question' })
   @ApiBearerAuth('JWT-auth')
-  @TrackAction({
-    action: 'delete_codingquestion',
-    resourceType: 'codingQuestion',
-    permissionName: 'deleteCodingQuestion',
-    getResourceName: (result, params) =>
-      result?.data?.title ||
-      result?.data?.name ||
-      (params?.id ? `Question #${params.id}` : 'Coding Question'),
-  })
   async deleteCodingQuestion(
     @Param('id') id: number,
     @Res() res: Response,
@@ -275,12 +246,6 @@ export class CodingPlatformController {
   @Delete('delete-testcase/:id')
   @ApiOperation({ summary: 'Delete coding Testcase' })
   @ApiBearerAuth('JWT-auth')
-  @TrackAction({
-    action: 'delete_testcase',
-    resourceType: 'codingQuestion',
-    permissionName: 'deleteCodingQuestion',
-    getResourceName: (result) => result?.data?.title || 'Test Case',
-  })
   async deleteCodingTestcase(
     @Param('id') id: number,
     @Res() res: Response,
@@ -327,12 +292,6 @@ export class CodingPlatformController {
   @Post('add-test-case/:question_id')
   @ApiOperation({ summary: 'Add test case to coding question' })
   @ApiBearerAuth('JWT-auth')
-  @TrackAction({
-    action: 'create_testcase',
-    resourceType: 'codingQuestion',
-    permissionName: 'editCodingQuestion',
-    getResourceName: (result) => result?.data?.title || 'Test Case',
-  })
   async addTestCase(
     @Param('question_id') question_id: number,
     @Body() updateTestCaseDto: TestCaseDto,
