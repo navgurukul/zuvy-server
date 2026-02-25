@@ -370,7 +370,6 @@ export class OrgService {
         or(
           ilike(zuvyOrganizations.title, searchLike),
           ilike(zuvyOrganizations.displayName, searchLike),
-          ilike(zuvyOrganizations.pocEmail, searchLike),
         ),
       );
     }
@@ -447,7 +446,7 @@ export class OrgService {
         .select({
           id: zuvyOrganizations.id,
           title: zuvyOrganizations.title,
-          displayName: zuvyOrganizations.displayName,
+          code: zuvyOrganizations.displayName,
           logoUrl: zuvyOrganizations.logoUrl,
           isVerified: zuvyOrganizations.isVerified,
           joinedAt: zuvyUserRolesAssigned.createdAt,

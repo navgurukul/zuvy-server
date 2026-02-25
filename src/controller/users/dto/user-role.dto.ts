@@ -122,6 +122,5 @@ export class UpdateUserDto {
 
   @ApiProperty({ description: 'Org ID', example: 1 })
   @IsNumber()
-  @IsOptional()
-  orgId?: number;
+  orgId: number;
 }
