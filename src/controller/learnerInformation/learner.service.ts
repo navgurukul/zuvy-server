@@ -1,16 +1,35 @@
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   InternalServerErrorException,
-  NotFoundException,
 } from '@nestjs/common';
-import { and, eq, sql } from 'drizzle-orm';
-import { users, zuvyLearnerInformation } from '../../../drizzle/schema';
+import { desc, sql } from 'drizzle-orm';
+import { zuvyLearnerInformation } from '../../../drizzle/schema';
 import { db } from '../../db/index';
 import { UpsertLearnerInformationDto } from './dto/learner.dto';
 
 @Injectable()
 export class LearnerService {
+  private isLearnerSchemaMissingError(error: any): boolean {
+    return ['42P01', '42703', '42704'].includes(String(error?.code || ''));
+  }
+
+  private async ensureLearnerInformationIndexes(): Promise<void> {
+    await db.execute(
+      sql.raw(`
+DROP INDEX IF EXISTS main.zuvy_learner_information_user_id_unique;
+`),
+    );
+
+    await db.execute(
+      sql.raw(`
+CREATE UNIQUE INDEX IF NOT EXISTS zuvy_learner_information_email_unique
+	ON main.zuvy_learner_information(email);
+`),
+    );
+  }
+
   private async ensureLearnerInformationStorageReady(): Promise<void> {
     await db.execute(
       sql.raw(`
@@ -39,6 +58,8 @@ END $$;
 CREATE TABLE IF NOT EXISTS main.zuvy_learner_information (
 	id serial PRIMARY KEY,
 	user_id bigint NOT NULL REFERENCES main.users(id) ON UPDATE CASCADE ON DELETE CASCADE,
+  first_name varchar(100),
+  last_name varchar(100),
 	full_name varchar(255) NOT NULL,
 	email varchar(255) NOT NULL,
 	phone_number varchar(20) NOT NULL,
@@ -58,17 +79,19 @@ CREATE TABLE IF NOT EXISTS main.zuvy_learner_information (
 
     await db.execute(
       sql.raw(`
-CREATE UNIQUE INDEX IF NOT EXISTS zuvy_learner_information_user_id_unique
-	ON main.zuvy_learner_information(user_id);
+ALTER TABLE main.zuvy_learner_information
+ADD COLUMN IF NOT EXISTS first_name varchar(100);
 `),
     );
 
     await db.execute(
       sql.raw(`
-CREATE UNIQUE INDEX IF NOT EXISTS zuvy_learner_information_email_unique
-	ON main.zuvy_learner_information(email);
+ALTER TABLE main.zuvy_learner_information
+ADD COLUMN IF NOT EXISTS last_name varchar(100);
 `),
     );
+
+    await this.ensureLearnerInformationIndexes();
   }
 
   private normalizePhoneNumber(phoneNumber: string): string {
@@ -103,52 +126,55 @@ CREATE UNIQUE INDEX IF NOT EXISTS zuvy_learner_information_email_unique
     }
   }
 
-  async getBasicInformation(userId: number, retryOnMissingTable = true) {
-    if (!userId || Number.isNaN(userId)) {
-      throw new BadRequestException('Invalid authenticated user id.');
-    }
+  async getAllBasicInformation(
+    page = 1,
+    limit = 10,
+    retryOnMissingTable = true,
+  ) {
+    const offset = (page - 1) * limit;
 
     try {
-      const [user] = await db
-        .select({ id: users.id, name: users.name, email: users.email })
-        .from(users)
-        .where(eq(users.id, userId));
+      const [totalResult] = await db
+        .select({ count: sql<number>`count(*)` })
+        .from(zuvyLearnerInformation);
 
-      if (!user) {
-        throw new NotFoundException('User not found.');
-      }
+      const total = Number(totalResult?.count || 0);
 
-      const [existing] = await db
+      const learners = await db
         .select()
         .from(zuvyLearnerInformation)
-        .where(eq(zuvyLearnerInformation.userId, userId));
-
-      if (existing) {
-        return {
-          status: 'success',
-          message: 'Learner information fetched successfully.',
-          data: existing,
-        };
-      }
+        .orderBy(desc(zuvyLearnerInformation.updatedAt))
+        .limit(limit)
+        .offset(offset);
 
       return {
         status: 'success',
-        message: 'No learner information found. Returning prefilled defaults.',
-        data: {
-          fullName: user.name,
-          email: user.email,
+        message: 'Learner information fetched successfully.',
+        data: learners,
+        meta: {
+          total,
+          page,
+          limit,
+          totalPages: Math.ceil(total / limit),
         },
       };
     } catch (error) {
-      if (error?.code === '42P01' && retryOnMissingTable) {
+      if (this.isLearnerSchemaMissingError(error) && retryOnMissingTable) {
         await this.ensureLearnerInformationStorageReady();
-        return this.getBasicInformation(userId, false);
+        return this.getAllBasicInformation(page, limit, false);
       }
+
+      if (this.isLearnerSchemaMissingError(error)) {
+        throw new InternalServerErrorException(
+          'Learner information schema is out of sync. Please run migrations and retry.',
+        );
+      }
+
       throw error;
     }
   }
 
-  async upsertBasicInformation(
+  async createBasicInformation(
     userId: number,
     userEmail: string,
     payload: UpsertLearnerInformationDto,
@@ -173,8 +199,9 @@ CREATE UNIQUE INDEX IF NOT EXISTS zuvy_learner_information_email_unique
     );
 
     const dataToPersist = {
-      userId,
-      fullName: payload.fullName.trim(),
+      firstName: payload.firstName.trim(),
+      lastName: payload.lastName.trim(),
+      fullName: `${payload.firstName.trim()} ${payload.lastName.trim()}`,
       email: payload.email?.trim().toLowerCase() || userEmail,
       phoneNumber: normalizedPhoneNumber,
       collegeName: payload.collegeName.trim(),
@@ -188,39 +215,16 @@ CREATE UNIQUE INDEX IF NOT EXISTS zuvy_learner_information_email_unique
       expectedGraduationMonth: payload.expectedGraduationMonth,
       expectedGraduationYear: payload.expectedGraduationYear,
       currentStatus: payload.currentStatus,
-      updatedAt: new Date().toISOString(),
     };
 
     try {
-      const [existing] = await db
-        .select({ id: zuvyLearnerInformation.id })
-        .from(zuvyLearnerInformation)
-        .where(eq(zuvyLearnerInformation.userId, userId));
-
-      if (existing) {
-        const [updated] = await db
-          .update(zuvyLearnerInformation)
-          .set(dataToPersist)
-          .where(
-            and(
-              eq(zuvyLearnerInformation.userId, userId),
-              eq(zuvyLearnerInformation.id, existing.id),
-            ),
-          )
-          .returning();
-
-        return {
-          status: 'success',
-          message: 'Learner information updated successfully.',
-          data: updated,
-        };
-      }
+      await this.ensureLearnerInformationIndexes();
 
       const [created] = await db
         .insert(zuvyLearnerInformation)
         .values({
+          userId: sql`${userId}::bigint`,
           ...dataToPersist,
-          createdAt: new Date().toISOString(),
         })
         .returning();
 
@@ -230,16 +234,49 @@ CREATE UNIQUE INDEX IF NOT EXISTS zuvy_learner_information_email_unique
         data: created,
       };
     } catch (error) {
-      if (error?.code === '42P01' && retryOnMissingTable) {
+      if (this.isLearnerSchemaMissingError(error) && retryOnMissingTable) {
         await this.ensureLearnerInformationStorageReady();
-        return this.upsertBasicInformation(userId, userEmail, payload, false);
+        return this.createBasicInformation(userId, userEmail, payload, false);
       }
 
-      if (error?.code === '42P01') {
+      if (this.isLearnerSchemaMissingError(error)) {
         throw new InternalServerErrorException(
-          'Learner information table is missing in DB and auto-creation failed. Please run migrations.',
+          'Learner information schema is out of sync. Please run migrations and retry.',
         );
       }
+
+      if (error?.code === '23505') {
+        const violatedConstraint = String(
+          error?.constraint || '',
+        ).toLowerCase();
+
+        if (violatedConstraint.includes('email')) {
+          throw new ConflictException(
+            'Learner information with this email already exists.',
+          );
+        }
+
+        if (violatedConstraint.includes('user_id')) {
+          throw new ConflictException(
+            'Duplicate learner record blocked by user_id unique constraint. Please run migrations and retry.',
+          );
+        }
+
+        throw new ConflictException('Duplicate learner information detected.');
+      }
+
+      if (error?.code === '23503') {
+        throw new BadRequestException(
+          'Invalid user reference for learner record.',
+        );
+      }
+
+      if (error?.code === '22P02') {
+        throw new BadRequestException(
+          'Invalid data format in learner payload.',
+        );
+      }
+
       throw error;
     }
   }

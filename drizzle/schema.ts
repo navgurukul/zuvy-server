@@ -3038,6 +3038,8 @@ export const zuvyLearnerInformation = main.table(
         onDelete: 'cascade',
         onUpdate: 'cascade',
       }),
+    firstName: varchar('first_name', { length: 100 }),
+    lastName: varchar('last_name', { length: 100 }),
     fullName: varchar('full_name', { length: 255 }).notNull(),
     email: varchar('email', { length: 255 }).notNull(),
     phoneNumber: varchar('phone_number', { length: 20 }).notNull(),
@@ -3064,9 +3066,6 @@ export const zuvyLearnerInformation = main.table(
   },
   (table) => {
     return {
-      zuvyLearnerInformationUserIdUnique: uniqueIndex(
-        'zuvy_learner_information_user_id_unique',
-      ).on(table.userId),
       zuvyLearnerInformationEmailUnique: uniqueIndex(
         'zuvy_learner_information_email_unique',
       ).on(table.email),

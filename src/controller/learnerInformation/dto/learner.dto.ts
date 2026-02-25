@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { Transform } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
   IsEmail,
   IsIn,
@@ -50,23 +50,37 @@ export const ENGINEERING_BRANCH_OPTIONS = [
 export class UpsertLearnerInformationDto {
   @ApiProperty({
     type: String,
-    example: 'Ananya Sharma',
-    description: 'Full Name (editable, pre-filled on UI)',
+    example: 'Ananya',
+    description: 'First name',
   })
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
   @IsString()
   @IsNotEmpty()
-  @Length(2, 255)
-  fullName: string;
+  @Length(2, 100)
+  firstName: string;
 
-  @ApiPropertyOptional({
+  @ApiProperty({
+    type: String,
+    example: 'Sharma',
+    description: 'Last name',
+  })
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  @IsString()
+  @IsNotEmpty()
+  @Length(1, 100)
+  lastName: string;
+
+  @ApiProperty({
     type: String,
     example: 'ananya@example.com',
-    description:
-      'Email to save for learner profile. If omitted, authenticated user email will be used.',
+    description: 'Email address',
   })
-  @IsOptional()
+  @Transform(({ value }) =>
+    typeof value === 'string' ? value.trim().toLowerCase() : value,
+  )
   @IsEmail()
-  email?: string;
+  @IsNotEmpty()
+  email: string;
 
   @ApiProperty({
     type: String,
@@ -78,6 +92,7 @@ export class UpsertLearnerInformationDto {
     typeof value === 'string' ? value.replace(/[\s-]/g, '') : value,
   )
   @IsString()
+  @IsNotEmpty()
   @Matches(/^(?:\+91)?[6-9]\d{9}$/, {
     message:
       'phoneNumber must be a valid Indian number (10 digits starting with 6-9) with optional +91 prefix',
@@ -106,6 +121,7 @@ export class UpsertLearnerInformationDto {
       o.collegeName.trim().toLowerCase() === 'other',
   )
   @IsString()
+  @IsNotEmpty()
   @Length(3, 100)
   otherCollegeName?: string;
 
@@ -144,8 +160,9 @@ export class UpsertLearnerInformationDto {
     example: 6,
     description: 'Expected graduation month (1-12)',
   })
-  @Transform(({ value }) => Number(value))
+  @Type(() => Number)
   @IsInt()
+  @IsNotEmpty()
   @Min(1)
   @Max(12)
   expectedGraduationMonth: number;
@@ -155,8 +172,9 @@ export class UpsertLearnerInformationDto {
     example: 2027,
     description: 'Expected graduation year',
   })
-  @Transform(({ value }) => Number(value))
+  @Type(() => Number)
   @IsInt()
+  @IsNotEmpty()
   @Min(2020)
   expectedGraduationYear: number;
 
@@ -178,6 +196,12 @@ export class LearnerInformationResponseDto {
   @ApiProperty({ type: Number, example: 23 })
   userId: number;
 
+  @ApiProperty({ type: String, example: 'Ananya' })
+  firstName: string;
+
+  @ApiProperty({ type: String, example: 'Sharma' })
+  lastName: string;
+
   @ApiProperty({ type: String, example: 'Ananya Sharma' })
   fullName: string;
 
@@ -191,10 +215,10 @@ export class LearnerInformationResponseDto {
   collegeName: string;
 
   @ApiPropertyOptional({ type: String, example: null })
-  otherCollegeName?: string;
+  otherCollegeName?: string | null;
 
   @ApiPropertyOptional({ type: String, example: 'B.Tech' })
-  degreeProgram?: string;
+  degreeProgram?: string | null;
 
   @ApiProperty({ type: String, example: 'Computer Science' })
   branchSpecialisation: string;
@@ -214,4 +238,18 @@ export class LearnerInformationResponseDto {
     example: 'Learning',
   })
   currentStatus: string;
+
+  @ApiProperty({
+    type: String,
+    format: 'date-time',
+    example: '2024-06-15T10:30:00.000Z',
+  })
+  createdAt: string;
+
+  @ApiProperty({
+    type: String,
+    format: 'date-time',
+    example: '2024-06-15T10:30:00.000Z',
+  })
+  updatedAt: string;
 }

@@ -3,13 +3,19 @@ import {
   Controller,
   Get,
   Post,
-  Put,
+  Query,
   Req,
   UnauthorizedException,
   UsePipes,
   ValidationPipe,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiBody, ApiOperation, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiBody,
+  ApiOperation,
+  ApiQuery,
+  ApiTags,
+} from '@nestjs/swagger';
 import { LearnerService } from './learner.service';
 import {
   LearnerInformationResponseDto,
@@ -17,7 +23,7 @@ import {
 } from './dto/learner.dto';
 
 @ApiTags('Learner Information')
-@Controller('learner-information')
+@Controller('besic')
 @UsePipes(
   new ValidationPipe({
     whitelist: true,
@@ -41,40 +47,23 @@ export class LearnerController {
     return { id: userId, email: userEmail };
   }
 
-  @Get('basic-information')
-  @ApiOperation({
-    summary:
-      'Get learner basic information (returns saved data or prefilled name/email)',
-  })
-  async getBasicInformation(@Req() req) {
-    const user = this.getAuthenticatedUser(req);
-    return this.learnerService.getBasicInformation(user.id);
+  @Get('learner-information/all')
+  @ApiOperation({ summary: 'Get all learner basic information records' })
+  @ApiQuery({ name: 'page', required: false, type: Number })
+  @ApiQuery({ name: 'limit', required: false, type: Number })
+  async getAllBasicInformation(
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    const parsedPage = Number(page) || 1;
+    const parsedLimit = Number(limit) || 10;
+
+    return this.learnerService.getAllBasicInformation(parsedPage, parsedLimit);
   }
 
-  @Put('basic-information')
-  @ApiOperation({ summary: 'Create or update learner basic information' })
-  @ApiBody({
-    type: UpsertLearnerInformationDto,
-  })
-  async upsertBasicInformation(
-    @Req() req,
-    @Body() payload: UpsertLearnerInformationDto,
-  ): Promise<{
-    status: string;
-    message: string;
-    data: LearnerInformationResponseDto;
-  }> {
-    const user = this.getAuthenticatedUser(req);
-    return this.learnerService.upsertBasicInformation(
-      user.id,
-      user.email,
-      payload,
-    );
-  }
-
-  @Post('basic-information')
+  @Post('learner-information')
   @ApiOperation({
-    summary: 'Create learner basic information (same payload as PUT)',
+    summary: 'Create learner basic information',
   })
   @ApiBody({
     type: UpsertLearnerInformationDto,
@@ -88,7 +77,7 @@ export class LearnerController {
     data: LearnerInformationResponseDto;
   }> {
     const user = this.getAuthenticatedUser(req);
-    return this.learnerService.upsertBasicInformation(
+    return this.learnerService.createBasicInformation(
       user.id,
       user.email,
       payload,
