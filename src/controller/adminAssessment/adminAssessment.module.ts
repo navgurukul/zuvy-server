@@ -1,14 +1,14 @@
 import { Module, NestModule, MiddlewareConsumer } from '@nestjs/common';
 import { AdminAssessmentController } from './adminAssessment.controller';
 import { AdminAssessmentService } from './adminAssessment.service';
-import { BatchesModule } from '../batches/batch.module';
 import { JwtModule, JwtService } from '@nestjs/jwt';
 import { JwtMiddleware } from 'src/middleware/jwt.middleware';
 import { AuthModule } from 'src/auth/auth.module';
 import { RbacModule } from 'src/rbac/rbac.module';
+import { TrackinglogModule } from 'src/trackinglog/trackinglog.module';
 
 @Module({
-  imports: [AuthModule, RbacModule],
+  imports: [AuthModule, RbacModule, TrackinglogModule],
   controllers: [AdminAssessmentController],
   providers: [AdminAssessmentService, JwtService],
 })
