@@ -1,11 +1,20 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { ArrayMinSize, IsArray, IsNotEmpty, IsNotEmptyObject, IsNumber, IsOptional, IsString, ValidateNested } from 'class-validator';
+import {
+  ArrayMinSize,
+  IsArray,
+  IsNotEmpty,
+  IsNotEmptyObject,
+  IsNumber,
+  IsOptional,
+  IsString,
+  ValidateNested,
+} from 'class-validator';
 import { Transform, Type } from 'class-transformer';
 
 export class CreatePermissionDto {
   @ApiProperty({
     description: 'Name of the permission (e.g., view, create, delete)',
-    example: 'view'
+    example: 'view',
   })
   @IsString()
   @IsNotEmpty()
@@ -13,7 +22,7 @@ export class CreatePermissionDto {
 
   @ApiProperty({
     description: 'Resource ID that this permission belongs to',
-    example: 1
+    example: 1,
   })
   @IsNumber()
   @IsNotEmpty()
@@ -22,7 +31,7 @@ export class CreatePermissionDto {
   @ApiProperty({
     description: 'Optional human readable description',
     example: 'Allows viewing course details',
-    required: false
+    required: false,
   })
   @IsString()
   @IsOptional()
@@ -39,28 +48,32 @@ export class PermissionResponseDto {
   @ApiProperty({ description: 'Resource ID', example: 1 })
   resourceId: number;
 
-  @ApiProperty({ description: 'Permission description', example: 'Allows viewing course details', required: false })
+  @ApiProperty({
+    description: 'Permission description',
+    example: 'Allows viewing course details',
+    required: false,
+  })
   description?: string;
 }
 
 export class AssignUserPermissionDto {
   @ApiProperty({
     description: 'Admin (actor) user ID performing the assignment',
-    example: 1
+    example: 1,
   })
   @IsNumber()
   actorUserId: number;
 
   @ApiProperty({
     description: 'Target user ID receiving the extra permission',
-    example: 123
+    example: 123,
   })
   @IsNumber()
   targetUserId: number;
 
   @ApiProperty({
     description: 'Permission ID being assigned to the user',
-    example: 42
+    example: 42,
   })
   @IsNumber()
   permissionId: number;
@@ -68,7 +81,7 @@ export class AssignUserPermissionDto {
   @ApiProperty({
     description: 'Optional scope ID if scoping is used',
     required: false,
-    example: 3
+    example: 3,
   })
   @IsOptional()
   @IsNumber()
@@ -78,14 +91,14 @@ export class AssignUserPermissionDto {
 export class GetUserPermissionsByResourceDto {
   @ApiProperty({
     description: 'User ID to get permissions for',
-    example: 123
+    example: 123,
   })
   @IsNumber()
   userId: number;
 
   @ApiProperty({
     description: 'Resource ID to filter permissions by',
-    example: 5
+    example: 5,
   })
   @IsNumber()
   resourceId: number;
@@ -114,9 +127,9 @@ export class UserPermissionResponseDto {
             permission_name: { type: 'string', example: 'course.view' },
             resource_name: { type: 'string', example: 'course' },
             role_name: { type: 'string', example: 'instructor' },
-            permission_type: { type: 'string', example: 'role_based' }
-          }
-        }
+            permission_type: { type: 'string', example: 'role_based' },
+          },
+        },
       },
       extra: {
         type: 'array',
@@ -129,12 +142,12 @@ export class UserPermissionResponseDto {
             action: { type: 'string', example: 'edit' },
             course_name: { type: 'string', example: 'React Bootcamp' },
             permission_type: { type: 'string', example: 'extra' },
-            granted_by_email: { type: 'string', example: 'admin@example.com' }
-          }
-        }
+            granted_by_email: { type: 'string', example: 'admin@example.com' },
+          },
+        },
       },
-      total: { type: 'number', example: 5 }
-    }
+      total: { type: 'number', example: 5 },
+    },
   })
   permissions: {
     roleBased: any[];
@@ -152,9 +165,9 @@ export class UserPermissionResponseDto {
       uniquePermissions: {
         type: 'array',
         items: { type: 'string' },
-        example: ['course.view', 'course.edit', 'course.delete']
-      }
-    }
+        example: ['course.view', 'course.edit', 'course.delete'],
+      },
+    },
   })
   summary: {
     totalPermissions: number;
@@ -164,11 +177,10 @@ export class UserPermissionResponseDto {
   };
 }
 
-
 export class AssignPermissionsToUserDto {
   @ApiProperty({
     description: 'User ID to assign the role to',
-    example: 123
+    example: 123,
   })
   @IsNumber()
   userId: number;
@@ -200,31 +212,38 @@ export class PermissionAssignmentResponseDto {
   message: string;
 }
 
-
 export class AssignPermissionsToRoleDto {
   @ApiProperty({
     description: 'Resource ID to assign the permissions to',
-    example: 123
+    example: 123,
   })
   @IsNumber()
   resourceId: number;
 
   @ApiProperty({
     description: 'Resource ID to assign the permissions to',
-    example: 123
+    example: 123,
   })
   @IsNumber()
   roleId: number;
-  
+
+  @ApiProperty({
+    description: 'Organization ID',
+    example: 1,
+  })
+  @IsNumber()
+  @IsOptional()
+  orgId?: number;
+
   @ApiProperty({
     description: 'Resource ID to assign the permissions to',
-    example: {1: true, 2: false}
+    example: { 1: true, 2: false },
   })
   @IsNotEmptyObject()
   @Transform(({ value }) => {
     // ensure keys are numbers and values are booleans
     return Object.fromEntries(
-      Object.entries(value).map(([key, val]) => [Number(key), Boolean(val)])
+      Object.entries(value).map(([key, val]) => [Number(key), Boolean(val)]),
     );
   })
   permissions: Record<number, boolean>;

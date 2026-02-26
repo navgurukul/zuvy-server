@@ -17,15 +17,6 @@ export class CreateOrgDto {
   @IsNotEmpty()
   title: string;
 
-  @ApiProperty({
-    type: String,
-    example: 'The display name of the organization',
-    required: true,
-  })
-  @IsString()
-  @IsNotEmpty()
-  displayName: string;
-
   @ApiPropertyOptional({
     type: String,
     example: 'https://example.com/logo.png',

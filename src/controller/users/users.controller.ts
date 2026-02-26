@@ -166,11 +166,24 @@ export class UsersController {
     status: 500,
     description: 'Internal server error',
   })
+  @ApiQuery({
+    name: 'orgId',
+    required: true,
+    type: Number,
+    description: 'Organization ID to filter roles',
+  })
   @ApiBearerAuth('JWT-auth')
-  async getAllUserRoles(@Req() req): Promise<any> {
+  async getAllUserRoles(
+    @Req() req,
+    @Query('orgId', ParseIntPipe) orgId: number,
+  ): Promise<any> {
     try {
       const roleName = req.user[0]?.roles;
-      const result = await this.usersService.getAllUserRoles(roleName);
+      const result = await this.usersService.getAllUserRoles(
+        roleName,
+        false,
+        orgId,
+      );
       return result;
     } catch (error) {
       throw new HttpException(
@@ -195,11 +208,24 @@ export class UsersController {
     status: 500,
     description: 'Internal server error',
   })
+  @ApiQuery({
+    name: 'orgId',
+    required: true,
+    type: Number,
+    description: 'Organization ID to filter roles',
+  })
   @ApiBearerAuth('JWT-auth')
-  async getAllUserRolesNoFilter(@Req() req): Promise<any> {
+  async getAllUserRolesNoFilter(
+    @Req() req,
+    @Query('orgId', ParseIntPipe) orgId: number,
+  ): Promise<any> {
     try {
       const roleName = req.user[0]?.roles;
-      const result = await this.usersService.getAllUserRoles(roleName, true);
+      const result = await this.usersService.getAllUserRoles(
+        roleName,
+        true,
+        orgId,
+      );
       return result;
     } catch (error) {
       throw new HttpException(
@@ -302,15 +328,22 @@ export class UsersController {
     status: 500,
     description: 'Internal server error',
   })
+  @ApiQuery({
+    name: 'orgId',
+    required: true,
+    type: Number,
+    description: 'Organization ID to filter users',
+  })
   async getAllUsers(
     @Req() req, // Required parameter first
+    @Query('orgId', ParseIntPipe) orgIdQuery: number,
     @Query('limit') limit?: string, // Optional
     @Query('offset') offset?: string, // Optional
     @Query('searchTerm') searchTerm?: string, // Optional (default to '')
     @Query('roleId') roleId?: number[], // Optional
   ) {
     // Parse limit and offset with defaults to avoid errors
-    const limitNum = limit ? parseInt(limit, 10) : 10; // Default limit (adjust as needed)
+    const limitNum = limit ? parseInt(limit, 10) : 50; // Default limit (increased from 10 to 50)
     const offsetNum = offset ? parseInt(offset, 10) : 0; // Default offset
 
     // Optional: Add basic validation to ensure parsed values are positive integers
@@ -328,12 +361,14 @@ export class UsersController {
     }
 
     const roleName = req.user[0]?.roles;
+    const orgId = orgIdQuery || req.user[0]?.orgId;
     return this.usersService.getAllUsersWithRoles(
       roleName,
       limitNum,
       offsetNum,
       searchTerm || '', // Default to empty string if undefined
       roleId,
+      orgId,
     );
   }
 
@@ -511,7 +546,16 @@ export class UsersController {
     description: 'Internal server error',
   })
   @ApiBearerAuth('JWT-auth')
-  async deleteUser(@Param('id', ParseIntPipe) id: bigint) {
-    return this.usersService.deleteUser(id);
+  @ApiQuery({
+    name: 'orgId',
+    required: true,
+    type: Number,
+    description: 'Organization ID to delete user from specific org',
+  })
+  async deleteUser(
+    @Param('id', ParseIntPipe) id: bigint,
+    @Query('orgId', ParseIntPipe) orgId: number,
+  ) {
+    return this.usersService.deleteUser(id, orgId);
   }
 }

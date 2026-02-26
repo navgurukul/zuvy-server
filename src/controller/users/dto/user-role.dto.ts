@@ -70,6 +70,15 @@ export class AssignUserRoleDto {
   })
   @IsNumber()
   roleId: number;
+
+  // Optional orgId for multi-tenancy support
+  @ApiProperty({
+    description: 'Organization ID for multi-tenancy support',
+    example: 1,
+    required: true,
+  })
+  @IsNumber()
+  orgId: number;
 }
 
 export class CreateUserDto {
@@ -87,6 +96,12 @@ export class CreateUserDto {
   @IsNumber()
   @IsNotEmpty()
   roleId: number;
+
+  // add orgId
+  @ApiProperty({ description: 'Org ID', example: 1 })
+  @IsNumber()
+  @IsNotEmpty()
+  orgId: number;
 }
 
 export class UpdateUserDto {
@@ -104,4 +119,8 @@ export class UpdateUserDto {
   @IsNumber()
   @IsOptional()
   roleId?: number;
+
+  @ApiProperty({ description: 'Org ID', example: 1 })
+  @IsNumber()
+  orgId: number;
 }

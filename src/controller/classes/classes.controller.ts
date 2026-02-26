@@ -42,7 +42,12 @@ import { Public } from '../../auth/decorators/public.decorator';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 import { auth2Client } from '../../auth/google-auth';
 import { db } from '../../db/index';
-import { userTokens, zuvyBatches } from '../../../drizzle/schema';
+import {
+  userTokens,
+  zuvyBatches,
+  zuvyUserOrganizations,
+  zuvyUserRolesAssigned,
+} from '../../../drizzle/schema';
 import { eq, desc, and, sql, ilike } from 'drizzle-orm';
 
 // config user for admin
@@ -94,21 +99,30 @@ export class ClassesController {
       // Parse state to get user info
       const userInfo = JSON.parse(state);
 
+      let userData = {
+        userId: userInfo.id,
+        userEmail: userInfo.email,
+        organizationId: userInfo.orgId,
+        accessToken: tokens.access_token,
+        refreshToken: tokens.refresh_token,
+      };
+
+      let setData = {
+        userEmail: userInfo.email,
+        accessToken: tokens.access_token,
+        refreshToken: tokens.refresh_token,
+      };
+
       // Store tokens in database
       await db
-        .insert(userTokens)
-        .values({
-          userId: userInfo.id,
-          userEmail: userInfo.email,
-          accessToken: tokens.access_token,
-          refreshToken: tokens.refresh_token,
-        })
+        .insert(zuvyUserOrganizations)
+        .values(userData)
         .onConflictDoUpdate({
-          target: [userTokens.userId],
-          set: {
-            accessToken: tokens.access_token,
-            refreshToken: tokens.refresh_token,
-          },
+          target: [
+            zuvyUserOrganizations.userId,
+            zuvyUserOrganizations.organizationId,
+          ],
+          set: setData,
         });
 
       return {
@@ -132,6 +146,7 @@ export class ClassesController {
       id: Number(req.user[0].id),
       email: req.user[0].email,
       roles: req.user[0].roles || [],
+      orgId: Number(req.user[0].orgId),
     };
     // Delegate all validation & batch combination logic to service
     const result = await this.classesService.createSession(
@@ -171,6 +186,7 @@ export class ClassesController {
       id: Number(req.user[0].id),
       email: req.user[0].email,
       roles: req.user[0].roles || [],
+      orgId: Number(req.user[0].orgId),
     };
     const [err, values] = await this.classesService.meetingAttendanceAnalytics(
       sessionId,
@@ -334,6 +350,7 @@ export class ClassesController {
         id: Number(req.user[0].id),
         email: req.user[0].email,
         roles: req.user[0].roles || [],
+        orgId: Number(req.user[0].orgId),
       };
 
       const calendar = await this.classesService.accessOfCalendar(userInfo);
@@ -396,6 +413,7 @@ export class ClassesController {
       id: Number(req.user[0].id),
       email: req.user[0].email,
       roles: req.user[0].roles || [],
+      orgId: Number(req.user[0].orgId),
     };
 
     // Route to appropriate service method based on user role
@@ -418,6 +436,7 @@ export class ClassesController {
       id: Number(req.user[0].id),
       email: req.user[0].email,
       roles: req.user[0].roles || [],
+      orgId: Number(req.user[0].orgId),
     };
     return this.classesService.updateSession(sessionId, updateData, userInfo);
   }
@@ -440,6 +459,7 @@ export class ClassesController {
       id: Number(req.user[0].id),
       email: req.user[0].email,
       roles: req.user[0].roles || [],
+      orgId: Number(req.user[0].orgId),
     };
     const shouldDeleteChapter = ['true', '1', 'yes'].includes(
       String(deleteChapter ?? '').toLowerCase(),
@@ -469,6 +489,7 @@ export class ClassesController {
       id: Number(req.user[0].id),
       email: req.user[0].email,
       roles: req.user[0].roles || [],
+      orgId: Number(req.user[0].orgId),
     };
     const result = await this.classesService.updateSessionByMeetingId(
       meetingId,
@@ -509,6 +530,7 @@ export class ClassesController {
       id: Number(req.user[0].id),
       email: req.user[0].email,
       roles: req.user[0].roles || [],
+      orgId: Number(req.user[0].orgId),
     };
     const shouldDeleteChapter = ['true', '1', 'yes'].includes(
       String(deleteChapter ?? '').toLowerCase(),
@@ -558,6 +580,7 @@ export class ClassesController {
       id: Number(req.user[0].id),
       email: req.user[0].email,
       roles: req.user[0].roles || [],
+      orgId: Number(req.user[0].orgId),
     };
 
     // Check admin access

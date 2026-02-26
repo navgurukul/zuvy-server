@@ -13,6 +13,7 @@ import {
   BadRequestException,
   Req,
   UseGuards,
+  ParseIntPipe,
 } from '@nestjs/common';
 import { BootcampService } from './bootcamp.service';
 import {
@@ -49,7 +50,7 @@ import { Roles } from 'src/decorators/roles.decorator';
 export class BootcampController {
   constructor(private bootcampService: BootcampService) {}
 
-  @Get('/')
+  @Get('/all/:orgId')
   //
   @ApiOperation({ summary: 'Get all bootcamps' })
   @ApiQuery({
@@ -70,32 +71,30 @@ export class BootcampController {
     type: String,
     description: 'Search by name or id in bootcamps',
   })
-  @ApiQuery({
-    name: 'organization_id',
-    required: false,
-    type: Number,
-    description: 'Filter by organization id',
-  })
   @ApiBearerAuth('JWT-auth')
   async getAllBootcamps(
+    @Param('orgId') orgId: number,
     @Query('limit') limit: number,
     @Query('offset') offset: number,
     @Query('searchTerm') searchTerm: string,
-    @Query('organization_id') organization_id: number,
     @Req() req,
   ): Promise<object> {
     const searchTermAsNumber = !isNaN(Number(searchTerm))
       ? Number(searchTerm)
       : searchTerm;
+    const searchTermAsString = searchTerm
+      ? String(searchTerm).trim()
+      : undefined;
     const roleName = req.user[0]?.roles;
     const userId = req.user[0]?.id;
     const [err, res] = await this.bootcampService.getAllBootcamps(
+      orgId,
       roleName,
       userId,
       limit,
       offset,
       searchTermAsNumber,
-      organization_id,
+      searchTermAsString,
     );
 
     if (err) {
@@ -119,10 +118,12 @@ export class BootcampController {
     @Req() req,
   ): Promise<object> {
     const roleName = req.user[0]?.roles;
+    const orgId = req.user[0]?.orgId;
     const [err, res] = await this.bootcampService.getBootcampById(
       id,
       isContent,
       roleName,
+      orgId,
     );
     if (err) {
       throw new BadRequestException(err);
@@ -151,10 +152,12 @@ export class BootcampController {
     @Req() req,
   ) {
     const roleName = req.user[0]?.roles;
+    const orgId = req.user[0]?.orgId;
     const [err, res] = await this.bootcampService.updateBootcampSetting(
       bootcampId,
       bootcampSetting,
       roleName,
+      orgId,
     );
     if (err) {
       throw new BadRequestException(err);
@@ -170,9 +173,11 @@ export class BootcampController {
     @Req() req,
   ): Promise<object> {
     const roleName = req.user[0]?.roles;
+    const orgId = req.user[0]?.orgId;
     const [err, res] = await this.bootcampService.getBootcampSettingById(
       roleName,
       id,
+      orgId,
     );
     if (err) {
       throw new BadRequestException(err);
@@ -180,15 +185,17 @@ export class BootcampController {
     return res;
   }
 
-  @Put('/:id')
+  @Put('/:id/:orgId')
   @ApiOperation({ summary: 'Update the bootcamp' })
   @ApiBearerAuth('JWT-auth')
   async updateBootcamp(
-    @Param('id') id: number,
+    @Param('id', ParseIntPipe) id: number,
+    @Param('orgId', ParseIntPipe) orgId: number,
     @Body() editBootcampDto: EditBootcampDto,
   ) {
     const [err, res] = await this.bootcampService.updateBootcamp(
       id,
+      orgId,
       editBootcampDto,
     );
     if (err) {
@@ -230,11 +237,13 @@ export class BootcampController {
     @Req() req,
   ): Promise<object> {
     const roleName = req.user[0]?.roles;
+    const orgId = req.user[0]?.orgId;
     const [err, res] = await this.bootcampService.getBatchByIdBootcamp(
       bootcamp_id,
       roleName,
       limit,
       offset,
+      orgId,
     );
     if (err) {
       throw new BadRequestException(err);
@@ -265,15 +274,17 @@ export class BootcampController {
     return res;
   }
 
-  @Patch('/:id')
+  @Patch('/:id/:orgId')
   @ApiOperation({ summary: 'Update the bootcamp partially' })
   @ApiBearerAuth('JWT-auth')
   async updatePartialBootcamp(
-    @Param('id') id: number,
+    @Param('id', ParseIntPipe) id: number,
+    @Param('orgId', ParseIntPipe) orgId: number,
     @Body() patchBootcampDto: PatchBootcampDto,
   ) {
     const [err, res] = await this.bootcampService.updateBootcamp(
       id,
+      orgId,
       patchBootcampDto,
     );
     if (err) {
@@ -298,11 +309,13 @@ export class BootcampController {
     @Req() req,
   ) {
     const roleName = req.user[0]?.roles;
+    const orgId = req.user[0]?.orgId;
     const [err, res] = await this.bootcampService.addStudentToBootcamp(
       bootcamp_id,
       batch_id,
       studentData.students,
       roleName,
+      orgId,
     );
     if (err) {
       throw new BadRequestException(err);
@@ -392,6 +405,7 @@ export class BootcampController {
   ) {
     const roleName = req.user[0]?.roles;
     const userId = req.user[0]?.id;
+    const orgId = req.user[0]?.orgId;
     const searchTermAsNumber = !isNaN(Number(searchTerm))
       ? BigInt(searchTerm)
       : searchTerm;
@@ -431,6 +445,7 @@ export class BootcampController {
       orderBy,
       orderDirection,
       userId,
+      orgId,
     );
     return res;
   }

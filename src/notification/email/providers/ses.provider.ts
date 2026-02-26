@@ -1,23 +1,20 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import * as nodemailer from 'nodemailer';
 import * as AWS from 'aws-sdk';
+import { SendEmailRequest } from 'aws-sdk/clients/ses';
 @Injectable()
 export class SesProvider {
-  private transporter;
+  private ses: AWS.SES;
+  private readonly logger = new Logger(SesProvider.name);
 
   constructor() {
-    // Configure AWS SDK
     AWS.config.update({
-      accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+      accessKeyId: process.env.AWS_SUPPORT_ACCESS_KEY_ID,
+      secretAccessKey: process.env.AWS_SUPPORT_ACCESS_SECRET_KEY,
       region: process.env.AWS_REGION,
     });
 
-    const ses = new AWS.SES({ apiVersion: '2010-12-01' });
-
-    this.transporter = nodemailer.createTransport({
-      SES: ses,
-    });
+    this.ses = new AWS.SES();
   }
 
   async sendEmail(
@@ -26,16 +23,27 @@ export class SesProvider {
     body: string,
     config?: any,
   ): Promise<any> {
-    const info = await this.transporter.sendMail({
-      from:
-        config?.from ||
-        process.env.SES_FROM_EMAIL ||
-        '"Zuvy Support" <team@zuvy.org>',
-      to,
-      subject,
-      html: body,
-    });
+    try {
+      const emailParams: SendEmailRequest = {
+        Source: process.env.SUPPORT_EMAIL,
+        Destination: {
+          ToAddresses: [to],
+        },
+        Message: {
+          Subject: { Data: subject, Charset: 'UTF-8' },
+          Body: {
+            Html: { Data: body, Charset: 'UTF-8' },
+            Text: { Data: body.replace(/<[^>]*>?/gm, ''), Charset: 'UTF-8' },
+          },
+        },
+      };
 
-    return info;
+      const info = await this.ses.sendEmail(emailParams).promise();
+
+      return info;
+    } catch (error) {
+      this.logger.error(`Failed to send email via SES: ${error.message}`);
+      throw error;
+    }
   }
 }

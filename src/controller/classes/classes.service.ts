@@ -11,7 +11,7 @@ import {
   zuvyCourseModules,
   zuvyModuleChapter,
   zuvyBootcamps,
-  userTokens,
+  zuvyUserOrganizations,
   users,
   zuvySessionMerge,
   zuvySessionRecordings,
@@ -43,7 +43,10 @@ export class ClassesService {
 
   async accessOfCalendar(creatorInfo) {
     try {
-      const userTokenData = await this.getUserTokens(creatorInfo.email);
+      const userTokenData = await this.getUserTokens(
+        creatorInfo.email,
+        creatorInfo.orgId,
+      );
       if (!userTokenData) {
         // Generate OAuth URL for calendar access
         const scopes = [
@@ -130,14 +133,17 @@ export class ClassesService {
 
       // Delete existing tokens for user then insert new (simpler than upsert for clarity)
       await db
-        .delete(userTokens)
-        .where(eq(userTokens.userId, Number(parsedState.id)));
-      await db.insert(userTokens).values({
+        .delete(zuvyUserOrganizations)
+        .where(eq(zuvyUserOrganizations.userId, Number(parsedState.id)));
+
+      let userData = {
         userId: Number(parsedState.id),
+        organizationId: parsedState.organizationId, // Placeholder, adjust as needed for multi-org support
         userEmail: parsedState.email,
         accessToken: tokens.access_token,
         refreshToken: tokens.refresh_token || '',
-      });
+      };
+      await db.insert(zuvyUserOrganizations).values(userData);
       return res.json({
         status: 'success',
         message: 'Tokens saved successfully',
@@ -871,7 +877,10 @@ export class ClassesService {
   private async deleteGoogleCalendarEvent(eventId: string, userInfo: any) {
     try {
       // Get user tokens for Google Calendar access
-      const userTokenData = await this.getUserTokens(userInfo.email);
+      const userTokenData = await this.getUserTokens(
+        userInfo.email,
+        userInfo.orgId,
+      );
       if (!userTokenData) {
         throw new Error('No Google Calendar access tokens found');
       }
@@ -908,7 +917,10 @@ export class ClassesService {
   ) {
     try {
       // Get user tokens for Google Calendar access
-      const userTokenData = await this.getUserTokens(userInfo.email);
+      const userTokenData = await this.getUserTokens(
+        userInfo.email,
+        userInfo.orgId,
+      );
       if (!userTokenData) {
         throw new Error('No Google Calendar access tokens found');
       }
@@ -957,7 +969,10 @@ export class ClassesService {
   // Helper method to create Google Calendar event
   private async createGoogleCalendarEvent(eventData: any, userInfo: any) {
     try {
-      const userTokenData = await this.getUserTokens(userInfo.email);
+      const userTokenData = await this.getUserTokens(
+        userInfo.email,
+        userInfo.orgId,
+      );
       if (!userTokenData) {
         throw new Error('No calendar tokens found for user');
       }
@@ -1059,11 +1074,15 @@ export class ClassesService {
   }
 
   // Get OAuth tokens for the designated account.
-  private async getUserTokens(email: string) {
+  private async getUserTokens(email: string, orgId?: number) {
+    const conditions = [eq(zuvyUserOrganizations.userEmail, email)];
+    if (orgId) {
+      conditions.push(eq(zuvyUserOrganizations.organizationId, orgId));
+    }
     const result = await db
       .select()
-      .from(userTokens)
-      .where(eq(userTokens.userEmail, email));
+      .from(zuvyUserOrganizations)
+      .where(and(...conditions));
     return result.length ? result[0] : null;
   }
 
@@ -1073,7 +1092,7 @@ export class ClassesService {
    */
   async fetchRecordingForMeeting(meetingId: string) {
     // Retrieve tokens for the designated account.
-    const userTokenData = await this.getUserTokens('team@zuvy.org');
+    const userTokenData = await this.getUserTokens('team@zuvy.org', 1);
     if (!userTokenData) {
       this.logger.warn('No tokens found for team@zuvy.org');
       return;
@@ -1137,7 +1156,7 @@ export class ClassesService {
     bootcampId,
   ) {
     // Retrieve tokens for the designated account.
-    const userTokenData = await this.getUserTokens('team@zuvy.org');
+    const userTokenData = await this.getUserTokens('team@zuvy.org', 1);
     if (!userTokenData) {
       this.logger.warn('No tokens found for team@zuvy.org');
       return;
@@ -4188,7 +4207,10 @@ export class ClassesService {
   ) {
     try {
       // Get user tokens for Google Calendar access
-      const userTokenData = await this.getUserTokens(userInfo.email);
+      const userTokenData = await this.getUserTokens(
+        userInfo.email,
+        userInfo.orgId,
+      );
       if (!userTokenData) {
         throw new Error('No Google Calendar access tokens found');
       }
