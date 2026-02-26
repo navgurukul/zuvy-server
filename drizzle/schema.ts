@@ -4229,3 +4229,485 @@ export const zuvyZoomWebhookEvents = main.table(
   })
 );
 
+/**
+ * ============================================================================
+ * MENTOR SLOT MANAGEMENT SYSTEM
+ * ============================================================================
+ * 
+ * This suite of tables implements a comprehensive mentorship slot management
+ * system that allows instructors, mentors, admin staff to create and manage
+ * time slots for meetings with students.
+ * 
+ * TABLES:
+ * - zuvy_mentor_slot_management: Main slot management profile
+ * - zuvy_mentor_slot_availability: Individual time slots created by mentors
+ * - zuvy_mentor_slot_booking: Student bookings against available slots
+ * - zuvy_mentor_student_association: Association between mentors and students
+ * 
+ * KEY FEATURES:
+ * - Track available slots created by mentors
+ * - Track booked slots by students
+ * - Manage mentor-student associations (direct, batch, or course-based)
+ * - Support multiple mentors per organization
+ * - Support slot capacity management (multiple students per slot)
+ * - Audit trail with timestamps and status tracking
+ * ============================================================================
+ */
+
+/**
+ * Mentor Slot Management Profile Table
+ * 
+ * Stores the primary slot management configuration for each mentor/instructor/ops user.
+ * Acts as the central hub for all slot-related operations.
+ * 
+ * Relationships:
+ * - Links to users (mentor/instructor/ops staff)
+ * - Links to organizations (admin/instructor belongs to org)
+ * - Referenced by slot availability and bookings
+ */
+export const zuvyMentorSlotManagement = main.table(
+  'zuvy_mentor_slot_management',
+  {
+    id: serial('id').primaryKey().notNull(),
+    
+    // User and Organization references
+    mentorUserId: bigserial('mentor_user_id', { mode: 'bigint' })
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade', onUpdate: 'cascade' }),
+    
+    organizationId: integer('organization_id')
+      .notNull()
+      .references(() => zuvyOrganizations.id, { onDelete: 'cascade', onUpdate: 'cascade' }),
+    
+    // Slot configuration
+    mentorType: varchar('mentor_type', { length: 50 })
+      .notNull()
+      .default('instructor'), // 'admin', 'instructor', 'ops', 'mentor'
+    
+    totalAvailableSlots: integer('total_available_slots').default(0),
+    totalBookedSlots: integer('total_booked_slots').default(0),
+    totalCancelledSlots: integer('total_cancelled_slots').default(0),
+    
+    // Profile information
+    title: varchar('title', { length: 255 }), // Job title/designation
+    bio: text('bio'), // Brief bio/description
+    expertise: jsonb('expertise'), // Array of expertise areas/topics
+    
+    // Status and settings
+    status: varchar('status', { length: 50 })
+      .notNull()
+      .default('active'), // 'active', 'inactive', 'paused'
+    
+    isVerified: boolean('is_verified').default(false),
+    acceptsNewMentees: boolean('accepts_new_mentees').default(true),
+    
+    // Audit timestamps  
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow(),
+    version: varchar('version', { length: 10 }),
+  },
+  (table) => ({
+    // Unique constraint: one management profile per mentor per organization
+    uniqMentorOrg: unique('uniq_mentor_org').on(table.mentorUserId, table.organizationId),
+    
+    // Indices for quick lookup
+    mentorUserIdIdx: index('idx_mentor_slot_mgmt_mentor_user_id').on(table.mentorUserId),
+    organizationIdIdx: index('idx_mentor_slot_mgmt_org_id').on(table.organizationId),
+    statusIdx: index('idx_mentor_slot_mgmt_status').on(table.status),
+  })
+);
+
+/**
+ * Mentor Slot Availability Table
+ * 
+ * Stores individual time slots created by mentors. Each slot represents a
+ * specific time window that can be booked by one or more students based on capacity.
+ * 
+ * Relationships:
+ * - References zuvy_mentor_slot_management (parent configuration)
+ * - Referenced by zuvy_mentor_slot_booking (bookings against this slot)
+ */
+export const zuvyMentorSlotAvailability = main.table(
+  'zuvy_mentor_slot_availability',
+  {
+    id: serial('id').primaryKey().notNull(),
+    
+    // Reference to mentor's slot management profile
+    mentorSlotManagementId: integer('mentor_slot_management_id')
+      .notNull()
+      .references(() => zuvyMentorSlotManagement.id, { 
+        onDelete: 'cascade', 
+        onUpdate: 'cascade' 
+      }),
+    
+    // Slot timing information
+    slotStartDateTime: timestamp('slot_start_date_time', { 
+      withTimezone: true, 
+      mode: 'string' 
+    }).notNull(),
+    
+    slotEndDateTime: timestamp('slot_end_date_time', { 
+      withTimezone: true, 
+      mode: 'string' 
+    }).notNull(),
+    
+    durationMinutes: integer('duration_minutes').notNull(), // Calculated from start/end times
+    
+    // Capacity management
+    maxCapacity: integer('max_capacity')
+      .notNull()
+      .default(1), // How many students can book this slot
+    
+    currentBookedCount: integer('current_booked_count')
+      .notNull()
+      .default(0), // Current number of confirmed bookings
+    
+    // Slot details
+    topic: varchar('topic', { length: 255 }), // Discussion topic/session title
+    description: text('description'), // Detailed description of the slot
+    slotType: varchar('slot_type', { length: 50 })
+      .notNull()
+      .default('one-on-one'), // 'one-on-one', 'group', 'batch'
+    
+    // Meeting information
+    meetingLink: varchar('meeting_link', { length: 500 }), // Zoom/Teams link
+    meetingType: varchar('meeting_type', { length: 50 })
+      .default('video'), // 'video', 'audio', 'in-person'
+    location: varchar('location', { length: 255 }), // Physical location if in-person
+    
+    // Slot status
+    status: varchar('status', { length: 50 })
+      .notNull()
+      .default('available'), 
+    /*
+      'available' - Open for booking
+      'full' - At max capacity
+      'cancelled' - Cancelled by mentor
+      'completed' - Slot time has passed
+      'archived' - Old slot
+    */
+    
+    cancellationReason: text('cancellation_reason'), // Why slot was cancelled
+    
+    // For recurring slots or reminders
+    isRecurring: boolean('is_recurring').default(false),
+    recurrencePattern: varchar('recurrence_pattern', { length: 100 }), // 'daily', 'weekly', 'monthly'
+    recurrenceEndDate: timestamp('recurrence_end_date', { withTimezone: true, mode: 'string' }),
+    
+    // Additional metadata
+    tags: jsonb('tags'), // Skill tags like ['javascript', 'nodejs', 'debugging']
+    isPublic: boolean('is_public').default(true), // Visible to all students or specific only
+    
+    // Audit timestamps
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow(),
+    version: varchar('version', { length: 10 }),
+  },
+  (table) => ({
+    // Indices for efficient querying
+    mentorSlotMgmtIdIdx: index('idx_slot_avail_mgmt_id').on(table.mentorSlotManagementId),
+    slotStartDateTimeIdx: index('idx_slot_avail_start_datetime').on(table.slotStartDateTime),
+    slotEndDateTimeIdx: index('idx_slot_avail_end_datetime').on(table.slotEndDateTime),
+    statusIdx: index('idx_slot_avail_status').on(table.status),
+    isPublicIdx: index('idx_slot_avail_is_public').on(table.isPublic),
+    
+    // Ensure end time is after start time
+    slotTimeValidation: index('idx_slot_avail_time_validation').on(
+      table.slotStartDateTime,
+      table.slotEndDateTime
+    ),
+  })
+);
+
+/**
+ * Mentor Slot Booking Table
+ * 
+ * Stores student bookings against available slots. Each booking represents
+ * a student's registration for a mentor slot.
+ * 
+ * Relationships:
+ * - References zuvy_mentor_slot_availability (the slot being booked)
+ * - References users (student booking the slot)
+ * - References zuvy_mentor_slot_management (mentor providing the slot)
+ */
+export const zuvyMentorSlotBooking = main.table(
+  'zuvy_mentor_slot_booking',
+  {
+    id: serial('id').primaryKey().notNull(),
+    
+    // Slot reference
+    slotAvailabilityId: integer('slot_availability_id')
+      .notNull()
+      .references(() => zuvyMentorSlotAvailability.id, { 
+        onDelete: 'cascade', 
+        onUpdate: 'cascade' 
+      }),
+    
+    // Student booking the slot
+    studentUserId: bigserial('student_user_id', { mode: 'bigint' })
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade', onUpdate: 'cascade' }),
+    
+    // Mentor providing the slot (denormalized for quick access)
+    mentorUserId: bigserial('mentor_user_id', { mode: 'bigint' })
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade', onUpdate: 'cascade' }),
+    
+    // Organization context
+    organizationId: integer('organization_id')
+      .notNull()
+      .references(() => zuvyOrganizations.id, { onDelete: 'cascade', onUpdate: 'cascade' }),
+    
+    // Booking status
+    status: varchar('status', { length: 50 })
+      .notNull()
+      .default('pending'),
+    /*
+      'pending' - Awaiting confirmation from mentor
+      'confirmed' - Approved by mentor
+      'attended' - Student attended the slot
+      'missed' - Student did not attend
+      'rescheduled' - Moved to different slot
+      'cancelled' - Cancelled by student or mentor
+      'no-show' - Student didn't show up
+    */
+    
+    // Cancellation details
+    cancellationReason: text('cancellation_reason'),
+    cancelledBy: varchar('cancelled_by', { length: 50 }), // 'student' or 'mentor'
+    cancelledAt: timestamp('cancelled_at', { withTimezone: true, mode: 'string' }),
+    
+    // Session details
+    sessionNotes: text('session_notes'), // Notes from the session
+    studentFeedback: jsonb('student_feedback'), // Feedback after session
+    mentorFeedback: jsonb('mentor_feedback'), // Feedback from mentor
+    
+    // Attendance tracking
+    joinedAt: timestamp('joined_at', { withTimezone: true, mode: 'string' }), // When student joined
+    leftAt: timestamp('left_at', { withTimezone: true, mode: 'string' }), // When student left
+    durationAttended: integer('duration_attended'), // Duration in minutes
+    
+    // Rating and review
+    studentRating: integer('student_rating'), // 1-5 star rating from student
+    mentorRating: integer('mentor_rating'), // Rating from mentor if applicable
+    
+    // Additional context
+    reference: text('reference'), // External reference (batch/course ID, etc.)
+    followUpAction: text('follow_up_action'), // Action items from session
+    
+    // Audit timestamps
+    bookedAt: timestamp('booked_at', { withTimezone: true, mode: 'string' }).defaultNow(),
+    confirmedAt: timestamp('confirmed_at', { withTimezone: true, mode: 'string' }),
+    completedAt: timestamp('completed_at', { withTimezone: true, mode: 'string' }),
+    
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow(),
+    version: varchar('version', { length: 10 }),
+  },
+  (table) => ({
+    // Unique constraint: one booking per student per slot
+    uniqStudentSlot: unique('uniq_student_slot_booking').on(
+      table.studentUserId, 
+      table.slotAvailabilityId
+    ),
+    
+    // Indices for efficient querying
+    slotAvailabilityIdIdx: index('idx_slot_booking_slot_avail_id').on(table.slotAvailabilityId),
+    studentUserIdIdx: index('idx_slot_booking_student_user_id').on(table.studentUserId),
+    mentorUserIdIdx: index('idx_slot_booking_mentor_user_id').on(table.mentorUserId),
+    organizationIdIdx: index('idx_slot_booking_org_id').on(table.organizationId),
+    statusIdx: index('idx_slot_booking_status').on(table.status),
+    bookedAtIdx: index('idx_slot_booking_booked_at').on(table.bookedAt),
+    
+    // For finding upcoming/past bookings
+    joinedAtIdx: index('idx_slot_booking_joined_at').on(table.joinedAt),
+  })
+);
+
+/**
+ * Mentor-Student Association Table
+ * 
+ * Links mentors with their associated students. Students can be associated
+ * through multiple channels: direct assignment, batch enrollment, or course enrollment.
+ * 
+ * Relationships:
+ * - References zuvyMentorSlotManagement (mentor profile)
+ * - References users (student user)
+ * - References zuvyBatchEnrollments (if association through batch)
+ * - References zuvyBootcamps (if association through bootcamp)
+ */
+export const zuvyMentorStudentAssociation = main.table(
+  'zuvy_mentor_student_association',
+  {
+    id: serial('id').primaryKey().notNull(),
+    
+    // Core references
+    mentorUserId: bigserial('mentor_user_id', { mode: 'bigint' })
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade', onUpdate: 'cascade' }),
+    
+    studentUserId: bigserial('student_user_id', { mode: 'bigint' })
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade', onUpdate: 'cascade' }),
+    
+    organizationId: integer('organization_id')
+      .notNull()
+      .references(() => zuvyOrganizations.id, { onDelete: 'cascade', onUpdate: 'cascade' }),
+    
+    // Association type: How the mentor-student relationship was established
+    associationType: varchar('association_type', { length: 50 })
+      .notNull(),
+    /*
+      'direct' - Direct assignment by admin
+      'batch' - Through batch enrollment
+      'bootcamp' - Through bootcamp enrollment
+      'course' - Through course enrollment
+      'request' - Student requested mentorship
+    */
+    
+    // Optional references based on association type
+    batchId: integer('batch_id').references(() => zuvyBatches.id, { 
+      onDelete: 'set null' 
+    }), // For batch-based associations
+    
+    bootcampId: integer('bootcamp_id').references(() => zuvyBootcamps.id, { 
+      onDelete: 'set null' 
+    }), // For bootcamp-based associations
+    
+    // Status of the association
+    status: varchar('status', { length: 50 })
+      .notNull()
+      .default('active'),
+    /*
+      'active' - Active mentorship
+      'inactive' - Paused/inactive
+      'completed' - Mentorship completed
+      'promoted' - Student promoted to peer mentor/leader
+      'declined' - Request declined
+      'suspended' - Temporarily suspended
+    */
+    
+    // Relationship metadata
+    role: varchar('role', { length: 50 }), // 'mentee', 'peer', 'assistant', etc.
+    goals: jsonb('goals'), // Array of mentorship goals
+    notes: text('notes'), // Contextual notes about the relationship
+    
+    // Engagement metrics
+    totalSessions: integer('total_sessions').default(0),
+    totalBookedSlots: integer('total_booked_slots').default(0),
+    totalAttendedSessions: integer('total_attended_sessions').default(0),
+    averageAttendanceRate: doublePrecision('average_attendance_rate'),
+    
+    // Timeline
+    assignedAt: timestamp('assigned_at', { withTimezone: true, mode: 'string' }).defaultNow(),
+    startDate: timestamp('start_date', { withTimezone: true, mode: 'string' }),
+    endDate: timestamp('end_date', { withTimezone: true, mode: 'string' }),
+    
+    // Audit timestamps
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow(),
+    version: varchar('version', { length: 10 }),
+  },
+  (table) => ({
+    // Though students can have one active relationship per mentor per context
+    uniqMentorStudentBatch: unique('uniq_mentor_student_batch').on(
+      table.mentorUserId,
+      table.studentUserId,
+      table.batchId
+    ),
+    
+    // Indices for efficient querying
+    mentorUserIdIdx: index('idx_assoc_mentor_user_id').on(table.mentorUserId),
+    studentUserIdIdx: index('idx_assoc_student_user_id').on(table.studentUserId),
+    organizationIdIdx: index('idx_assoc_org_id').on(table.organizationId),
+    associationTypeIdx: index('idx_assoc_association_type').on(table.associationType),
+    statusIdx: index('idx_assoc_status').on(table.status),
+    batchIdIdx: index('idx_assoc_batch_id').on(table.batchId),
+    bootcampIdIdx: index('idx_assoc_bootcamp_id').on(table.bootcampId),
+    
+    // For finding active associations
+    startEndDateIdx: index('idx_assoc_start_end_date').on(table.startDate, table.endDate),
+  })
+);
+
+/**
+ * ============================================================================
+ * RELATIONS FOR MENTOR SLOT MANAGEMENT SYSTEM
+ * ============================================================================
+ */
+
+export const zuvyMentorSlotManagementRelations = relations(
+  zuvyMentorSlotManagement,
+  ({ one, many }) => ({
+    mentor: one(users, {
+      fields: [zuvyMentorSlotManagement.mentorUserId],
+      references: [users.id],
+    }),
+    organization: one(zuvyOrganizations, {
+      fields: [zuvyMentorSlotManagement.organizationId],
+      references: [zuvyOrganizations.id],
+    }),
+    slotAvailabilities: many(zuvyMentorSlotAvailability),
+    studentAssociations: many(zuvyMentorStudentAssociation),
+  })
+);
+
+export const zuvyMentorSlotAvailabilityRelations = relations(
+  zuvyMentorSlotAvailability,
+  ({ one, many }) => ({
+    mentorSlotManagement: one(zuvyMentorSlotManagement, {
+      fields: [zuvyMentorSlotAvailability.mentorSlotManagementId],
+      references: [zuvyMentorSlotManagement.id],
+    }),
+    bookings: many(zuvyMentorSlotBooking),
+  })
+);
+
+export const zuvyMentorSlotBookingRelations = relations(
+  zuvyMentorSlotBooking,
+  ({ one }) => ({
+    slot: one(zuvyMentorSlotAvailability, {
+      fields: [zuvyMentorSlotBooking.slotAvailabilityId],
+      references: [zuvyMentorSlotAvailability.id],
+    }),
+    student: one(users, {
+      fields: [zuvyMentorSlotBooking.studentUserId],
+      references: [users.id],
+    }),
+    mentor: one(users, {
+      fields: [zuvyMentorSlotBooking.mentorUserId],
+      references: [users.id],
+    }),
+    organization: one(zuvyOrganizations, {
+      fields: [zuvyMentorSlotBooking.organizationId],
+      references: [zuvyOrganizations.id],
+    }),
+  })
+);
+
+export const zuvyMentorStudentAssociationRelations = relations(
+  zuvyMentorStudentAssociation,
+  ({ one }) => ({
+    mentor: one(users, {
+      fields: [zuvyMentorStudentAssociation.mentorUserId],
+      references: [users.id],
+    }),
+    student: one(users, {
+      fields: [zuvyMentorStudentAssociation.studentUserId],
+      references: [users.id],
+    }),
+    organization: one(zuvyOrganizations, {
+      fields: [zuvyMentorStudentAssociation.organizationId],
+      references: [zuvyOrganizations.id],
+    }),
+    batch: one(zuvyBatches, {
+      fields: [zuvyMentorStudentAssociation.batchId],
+      references: [zuvyBatches.id],
+    }),
+    bootcamp: one(zuvyBootcamps, {
+      fields: [zuvyMentorStudentAssociation.bootcampId],
+      references: [zuvyBootcamps.id],
+    }),
+  })
+);
+
