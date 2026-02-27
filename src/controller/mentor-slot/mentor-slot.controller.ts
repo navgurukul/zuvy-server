@@ -1,6 +1,8 @@
 import {
   Controller,
+  Get,
   Post,
+  Patch,
   Delete,
   Body,
   Param,
@@ -15,6 +17,8 @@ import { BookSlotDto } from './dto/book-slot.dto';
 import { CancelBookingDto } from './dto/cancel-booking.dto';
 import { ProposeRescheduleDto } from './dto/reschedule.dto';
 import { FeedbackDto } from './dto/feedback.dto';
+import { CreateSlotDto } from './dto/create-slot.dto';
+import { AttendanceDto } from './dto/attendance.dto';
 
 @ApiTags('Mentor Slots')
 @ApiBearerAuth()
@@ -106,5 +110,50 @@ export class MentorSlotController {
   @Delete(':slotId')
   async removeSlot(@Param('slotId', ParseIntPipe) slotId: number) {
     return this.mentorSlotService.removeSlot(slotId);
+  }
+
+  @Post()
+  async createSlot(@Req() req, @Body() dto: CreateSlotDto) {
+    return this.mentorSlotService.createSlot(req.user.id, dto);
+  }
+
+  @Get('my')
+  async getMySlots(@Req() req) {
+    return this.mentorSlotService.getMySlots(req.user.id);
+  }
+
+  @Get(':slotId/details')
+  async getSlotDetails(
+    @Req() req,
+    @Param('slotId', ParseIntPipe) slotId: number,
+  ) {
+    return this.mentorSlotService.getSlotDetails(req.user.id, slotId);
+  }
+
+  @Get('student/my')
+  async getStudentBookings(@Req() req) {
+    return this.mentorSlotService.getStudentBookings(req.user.id);
+  }
+
+  @Post(':bookingId/attendance')
+  async markAttendance(
+    @Param('bookingId', ParseIntPipe) bookingId: number,
+    @Body() dto: AttendanceDto,
+  ) {
+    return this.mentorSlotService.markAttendance(
+      bookingId,
+      dto.joinedAt,
+      dto.leftAt,
+    );
+  }
+
+  @Post(':bookingId/complete')
+  async completeSession(@Param('bookingId', ParseIntPipe) bookingId: number) {
+    return this.mentorSlotService.completeSession(bookingId);
+  }
+
+  @Patch('mentor/profile')
+  async updateProfile(@Req() req, @Body() body: any) {
+    return this.mentorSlotService.updateMentorProfile(req.user.id, body);
   }
 }

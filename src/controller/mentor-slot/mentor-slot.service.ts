@@ -13,6 +13,7 @@ import {
 } from '../../../drizzle/schema';
 
 import { and, eq, lt, sql } from 'drizzle-orm';
+import { CreateSlotDto } from './dto/create-slot.dto';
 
 @Injectable()
 export class MentorSlotService {
@@ -372,5 +373,159 @@ export class MentorSlotService {
       .where(eq(zuvyMentorSlotBooking.id, bookingId));
 
     return { message: 'Reschedule declined.' };
+  }
+
+  async createSlot(userId: number, dto: CreateSlotDto) {
+    const start = new Date(dto.slotStartDateTime);
+    const end = new Date(dto.slotEndDateTime);
+
+    if (end <= start) {
+      throw new BadRequestException('Invalid time range.');
+    }
+
+    if (start.getTime() <= Date.now()) {
+      throw new BadRequestException('Cannot create past slot.');
+    }
+
+    const durationMinutes = Math.floor(
+      (end.getTime() - start.getTime()) / (1000 * 60),
+    );
+
+    if (durationMinutes <= 0) {
+      throw new BadRequestException('Invalid duration.');
+    }
+
+    const [mentorProfile] = await db
+      .select()
+      .from(zuvyMentorSlotManagement)
+      .where(eq(zuvyMentorSlotManagement.mentorUserId, BigInt(userId)))
+      .limit(1);
+
+    if (!mentorProfile) {
+      throw new NotFoundException('Mentor profile not found.');
+    }
+
+    const overlap = await db
+      .select()
+      .from(zuvyMentorSlotAvailability)
+      .where(
+        and(
+          eq(
+            zuvyMentorSlotAvailability.mentorSlotManagementId,
+            mentorProfile.id,
+          ),
+          sql`${start} < ${zuvyMentorSlotAvailability.slotEndDateTime}`,
+          sql`${end} > ${zuvyMentorSlotAvailability.slotStartDateTime}`,
+        ),
+      );
+
+    if (overlap.length > 0) {
+      throw new BadRequestException('Slot overlaps existing slot.');
+    }
+
+    return db.insert(zuvyMentorSlotAvailability).values({
+      mentorSlotManagementId: mentorProfile.id,
+      slotStartDateTime: start,
+      slotEndDateTime: end,
+      durationMinutes,
+      maxCapacity: dto.maxCapacity || 1,
+      topic: dto.topic,
+    } as typeof zuvyMentorSlotAvailability.$inferInsert);
+  }
+
+  async getMySlots(userId: number) {
+    const [mentorProfile] = await db
+      .select()
+      .from(zuvyMentorSlotManagement)
+      .where(eq(zuvyMentorSlotManagement.mentorUserId, BigInt(userId)))
+      .limit(1);
+
+    if (!mentorProfile) {
+      throw new NotFoundException('Mentor profile not found.');
+    }
+
+    return db
+      .select()
+      .from(zuvyMentorSlotAvailability)
+      .where(
+        eq(zuvyMentorSlotAvailability.mentorSlotManagementId, mentorProfile.id),
+      );
+  }
+
+  async getSlotDetails(userId: number, slotId: number) {
+    const [slot] = await db
+      .select()
+      .from(zuvyMentorSlotAvailability)
+      .where(eq(zuvyMentorSlotAvailability.id, slotId))
+      .limit(1);
+
+    if (!slot) throw new NotFoundException('Slot not found.');
+
+    const bookings = await db
+      .select()
+      .from(zuvyMentorSlotBooking)
+      .where(eq(zuvyMentorSlotBooking.slotAvailabilityId, slotId));
+
+    return {
+      slot,
+      bookings,
+    };
+  }
+
+  async getStudentBookings(userId: number) {
+    return db
+      .select()
+      .from(zuvyMentorSlotBooking)
+      .where(eq(zuvyMentorSlotBooking.studentUserId, BigInt(userId)));
+  }
+
+  async markAttendance(
+    bookingId: number,
+    joinedAtStr: string,
+    leftAtStr: string,
+  ) {
+    const joinedAt = new Date(joinedAtStr);
+    const leftAt = new Date(leftAtStr);
+
+    if (leftAt <= joinedAt) {
+      throw new BadRequestException('Invalid attendance range.');
+    }
+
+    const duration = Math.floor(
+      (leftAt.getTime() - joinedAt.getTime()) / (1000 * 60),
+    );
+
+    return db
+      .update(zuvyMentorSlotBooking)
+      .set({
+        joinedAt,
+        leftAt,
+        durationAttended: duration,
+      } as Partial<typeof zuvyMentorSlotBooking.$inferInsert>)
+      .where(eq(zuvyMentorSlotBooking.id, bookingId));
+  }
+
+  async completeSession(bookingId: number) {
+    return db
+      .update(zuvyMentorSlotBooking)
+      .set({
+        completedAt: new Date(),
+        sessionLifecycleState: 'COMPLETED',
+      } as Partial<typeof zuvyMentorSlotBooking.$inferInsert>)
+      .where(eq(zuvyMentorSlotBooking.id, bookingId));
+  }
+
+  async updateMentorProfile(userId: number, dto: any) {
+    const updatePayload: Partial<typeof zuvyMentorSlotManagement.$inferSelect> =
+      {};
+
+    if (dto.bio !== undefined) updatePayload.bio = dto.bio;
+    if (dto.expertise !== undefined) updatePayload.expertise = dto.expertise;
+    if (dto.title !== undefined) updatePayload.title = dto.title;
+
+    return db
+      .update(zuvyMentorSlotManagement)
+      .set(updatePayload)
+      .where(eq(zuvyMentorSlotManagement.mentorUserId, BigInt(userId)));
   }
 }
