@@ -1,10 +1,13 @@
-import { Controller, Post, Body } from '@nestjs/common';
+import { Controller, Post, Body, UseGuards } from '@nestjs/common';
+import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { MentorRecurrenceService } from './mentor-recurrence.service';
+import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 import { RecurrenceDto } from './dto/recurrence.dto';
-import { ApiTags } from '@nestjs/swagger';
 
+@ApiTags('Mentor Recurrence')
+@ApiBearerAuth()
+@UseGuards(JwtAuthGuard)
 @Controller('mentor-slots/recurrence')
-@ApiTags('Mentor Slots')
 export class MentorRecurrenceController {
   constructor(private readonly recurrenceService: MentorRecurrenceService) {}
 

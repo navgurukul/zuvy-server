@@ -1,24 +1,35 @@
-import { Controller, Get, Post, Param, ParseIntPipe } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Param,
+  ParseIntPipe,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
+import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { NotificationService } from './notification.service';
-import { ApiTags } from '@nestjs/swagger';
+import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 
-@Controller('notifications')
 @ApiTags('Notifications')
+@ApiBearerAuth()
+@UseGuards(JwtAuthGuard)
+@Controller('notifications')
 export class NotificationController {
   constructor(private readonly notificationService: NotificationService) {}
 
   /* ==========================================================================
-     GET USER NOTIFICATIONS
-  ========================================================================== */
+       GET USER NOTIFICATIONS
+    ========================================================================== */
 
-  @Get(':userId')
-  async getUserNotifications(@Param('userId', ParseIntPipe) userId: number) {
-    return this.notificationService.getUserNotifications(BigInt(userId));
+  @Get()
+  async getMyNotifications(@Req() req) {
+    return this.notificationService.getUserNotifications(BigInt(req.user.id));
   }
 
   /* ==========================================================================
-     MARK NOTIFICATION AS READ
-  ========================================================================== */
+       MARK NOTIFICATION AS READ
+    ========================================================================== */
 
   @Post(':notificationId/read')
   async markAsRead(

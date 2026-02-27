@@ -4,30 +4,31 @@ import {
   Delete,
   Body,
   Param,
-  Req,
   ParseIntPipe,
+  Req,
   UseGuards,
-  UsePipes,
-  ValidationPipe,
 } from '@nestjs/common';
-import { ApiTags, ApiBody, ApiOperation, ApiQuery } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { MentorSlotService } from './mentor-slot.service';
+import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 import { BookSlotDto } from './dto/book-slot.dto';
 import { CancelBookingDto } from './dto/cancel-booking.dto';
 import { ProposeRescheduleDto } from './dto/reschedule.dto';
 import { FeedbackDto } from './dto/feedback.dto';
 
-@Controller('mentor-slots')
 @ApiTags('Mentor Slots')
+@ApiBearerAuth()
+@UseGuards(JwtAuthGuard)
+@Controller('mentor-slots')
 export class MentorSlotController {
   constructor(private readonly mentorSlotService: MentorSlotService) {}
 
   /* ==========================================================================
-     BOOK SLOT
+     BOOK SLOT (student from JWT)
   ========================================================================== */
 
   @Post('book')
-  bookSlot(@Req() req, @Body() dto: BookSlotDto) {
+  async bookSlot(@Req() req, @Body() dto: BookSlotDto) {
     return this.mentorSlotService.bookSlot(req.user.id, dto.slotId);
   }
 
@@ -37,6 +38,7 @@ export class MentorSlotController {
 
   @Post(':bookingId/cancel')
   async cancelBooking(
+    @Req() req,
     @Param('bookingId', ParseIntPipe) bookingId: number,
     @Body() dto: CancelBookingDto,
   ) {
@@ -82,7 +84,7 @@ export class MentorSlotController {
   }
 
   /* ==========================================================================
-     SUBMIT MENTOR FEEDBACK
+     SUBMIT FEEDBACK
   ========================================================================== */
 
   @Post(':bookingId/feedback')
