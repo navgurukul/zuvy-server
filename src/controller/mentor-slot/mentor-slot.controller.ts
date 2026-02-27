@@ -1,68 +1,108 @@
 import {
   Controller,
   Post,
-  Get,
+  Delete,
   Body,
   Param,
-  Query,
-  Logger,
+  Req,
+  ParseIntPipe,
+  UseGuards,
   UsePipes,
   ValidationPipe,
-  UseGuards,
 } from '@nestjs/common';
+import { ApiTags, ApiBody, ApiOperation, ApiQuery } from '@nestjs/swagger';
 import { MentorSlotService } from './mentor-slot.service';
-import { CreateMentorProfileDto } from './dto/create-profile.dto';
-import { CreateSlotDto } from './dto/create-slot.dto';
-import { CreateBookingDto } from './dto/create-booking.dto';
-import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
-import { RolesGuard } from 'src/guards/roles.guard';
-import { Roles } from 'src/decorators/roles.decorator';
-import { ApiTags } from '@nestjs/swagger';
+import { BookSlotDto } from './dto/book-slot.dto';
+import { CancelBookingDto } from './dto/cancel-booking.dto';
+import { ProposeRescheduleDto } from './dto/reschedule.dto';
+import { FeedbackDto } from './dto/feedback.dto';
 
-@Controller('mentor-slot')
-@ApiTags('mentor-slot')
+@Controller('mentor-slots')
+@ApiTags('Mentor Slots')
 export class MentorSlotController {
-  private readonly logger = new Logger(MentorSlotController.name);
+  constructor(private readonly mentorSlotService: MentorSlotService) {}
 
-  constructor(private readonly service: MentorSlotService) {}
+  /* ==========================================================================
+     BOOK SLOT
+  ========================================================================== */
 
-  @Post('profiles')
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('admin', 'instructor', 'ops', 'mentor')
-  @UsePipes(new ValidationPipe({ whitelist: true, transform: true }))
-  async createProfile(@Body() body: CreateMentorProfileDto) {
-    return this.service.createProfile(body);
+  @Post('book')
+  bookSlot(@Req() req, @Body() dto: BookSlotDto) {
+    return this.mentorSlotService.bookSlot(req.user.id, dto.slotId);
   }
 
-  @Get('profiles/:id')
-  @UseGuards(JwtAuthGuard)
-  async getProfile(@Param('id') id: string) {
-    return this.service.getProfileById(Number(id));
-  }
+  /* ==========================================================================
+     CANCEL BOOKING
+  ========================================================================== */
 
-  @Post('slots')
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('admin', 'instructor', 'ops', 'mentor')
-  @UsePipes(new ValidationPipe({ whitelist: true, transform: true }))
-  async createSlot(@Body() body: CreateSlotDto) {
-    return this.service.createSlot(body);
-  }
-
-  @Get('slots')
-  async listSlots(
-    @Query('mentorUserId') mentorUserId: string,
-    @Query('organizationId') organizationId: string,
+  @Post(':bookingId/cancel')
+  async cancelBooking(
+    @Param('bookingId', ParseIntPipe) bookingId: number,
+    @Body() dto: CancelBookingDto,
   ) {
-    const q: any = {};
-    if (mentorUserId) q.mentorUserId = Number(mentorUserId);
-    if (organizationId) q.organizationId = Number(organizationId);
-    return this.service.listSlots(q);
+    return this.mentorSlotService.cancelBooking(
+      bookingId,
+      dto.reason,
+      dto.cancelledBy,
+    );
   }
 
-  @Post('bookings')
-  @UseGuards(JwtAuthGuard)
-  @UsePipes(new ValidationPipe({ whitelist: true, transform: true }))
-  async bookSlot(@Body() body: CreateBookingDto) {
-    return this.service.bookSlot(body);
+  /* ==========================================================================
+     PROPOSE RESCHEDULE
+  ========================================================================== */
+
+  @Post(':bookingId/reschedule')
+  async proposeReschedule(
+    @Param('bookingId', ParseIntPipe) bookingId: number,
+    @Body() dto: ProposeRescheduleDto,
+  ) {
+    return this.mentorSlotService.proposeReschedule(
+      bookingId,
+      dto.newSlotId,
+      dto.reason,
+    );
+  }
+
+  /* ==========================================================================
+     ACCEPT RESCHEDULE
+  ========================================================================== */
+
+  @Post(':bookingId/reschedule/accept')
+  async acceptReschedule(@Param('bookingId', ParseIntPipe) bookingId: number) {
+    return this.mentorSlotService.acceptReschedule(bookingId);
+  }
+
+  /* ==========================================================================
+     DECLINE RESCHEDULE
+  ========================================================================== */
+
+  @Post(':bookingId/reschedule/decline')
+  async declineReschedule(@Param('bookingId', ParseIntPipe) bookingId: number) {
+    return this.mentorSlotService.declineReschedule(bookingId);
+  }
+
+  /* ==========================================================================
+     SUBMIT MENTOR FEEDBACK
+  ========================================================================== */
+
+  @Post(':bookingId/feedback')
+  async submitMentorFeedback(
+    @Param('bookingId', ParseIntPipe) bookingId: number,
+    @Body() dto: FeedbackDto,
+  ) {
+    return this.mentorSlotService.submitMentorFeedback(
+      bookingId,
+      dto.feedback,
+      dto.rating,
+    );
+  }
+
+  /* ==========================================================================
+     REMOVE SLOT
+  ========================================================================== */
+
+  @Delete(':slotId')
+  async removeSlot(@Param('slotId', ParseIntPipe) slotId: number) {
+    return this.mentorSlotService.removeSlot(slotId);
   }
 }

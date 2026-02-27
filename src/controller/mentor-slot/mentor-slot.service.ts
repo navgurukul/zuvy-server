@@ -1,184 +1,376 @@
 import {
   Injectable,
-  Logger,
   BadRequestException,
+  ForbiddenException,
   NotFoundException,
 } from '@nestjs/common';
-import { db } from 'src/db';
-import { eq } from 'drizzle-orm';
-import type { InferInsertModel } from 'drizzle-orm';
+
+import { db } from '../../db';
 import {
   zuvyMentorSlotAvailability,
   zuvyMentorSlotBooking,
   zuvyMentorSlotManagement,
-} from 'drizzle/schema';
+} from '../../../drizzle/schema';
+
+import { and, eq, lt, sql } from 'drizzle-orm';
 
 @Injectable()
 export class MentorSlotService {
-  private readonly logger = new Logger(MentorSlotService.name);
+  /* ==========================================================================
+     UTILITY — 12 HOUR RULE ENFORCER
+  ========================================================================== */
 
-  async createProfile(payload: any) {
-    const insertObj = {
-      mentorUserId: payload.mentorUserId,
-      organizationId: payload.organizationId,
-      mentorType: payload.mentorType ?? 'instructor',
-      totalAvailableSlots: payload.totalAvailableSlots ?? 0,
-      totalBookedSlots: payload.totalBookedSlots ?? 0,
-      totalCancelledSlots: payload.totalCancelledSlots ?? 0,
-      status: payload.status ?? 'active',
-      expertise: payload.expertise ?? null,
-      version: payload.version ?? null,
-      title: payload.title ?? null,
-      bio: payload.bio ?? null,
-      isVerified: payload.isVerified ?? false,
-      acceptsNewMentees: payload.acceptsNewMentees ?? true,
-    } as unknown as InferInsertModel<typeof zuvyMentorSlotManagement>;
+  private enforceMinimumNotice(slotStart: Date) {
+    const now = new Date();
+    const diffMs = slotStart.getTime() - now.getTime();
+    const diffHours = diffMs / (1000 * 60 * 60);
 
-    const [result] = await db
-      .insert(zuvyMentorSlotManagement)
-      .values(insertObj)
-      .returning();
-    return result ?? null;
-  }
-
-  async getProfileById(id: number) {
-    const [result] = await db
-      .select()
-      .from(zuvyMentorSlotManagement)
-      .where((m) => eq(m.id, id))
-      .limit(1);
-    return result ?? null;
-  }
-
-  async createSlot(payload: any) {
-    const [result] = await db
-      .insert(zuvyMentorSlotAvailability)
-      .values({
-        mentorSlotManagementId: payload.mentorSlotManagementId,
-        slotStartDateTime: payload.slotStartDateTime,
-        slotEndDateTime: payload.slotEndDateTime,
-        durationMinutes: payload.durationMinutes,
-        maxCapacity: payload.maxCapacity ?? 1,
-        currentBookedCount: 0,
-        topic: payload.topic ?? null,
-        description: payload.description ?? null,
-        slotType: payload.slotType ?? 'one-on-one',
-        meetingLink: payload.meetingLink ?? null,
-        meetingType: payload.meetingType ?? 'video',
-        location: payload.location ?? null,
-        status: payload.status ?? 'available',
-        isRecurring: payload.isRecurring ?? false,
-        recurrencePattern: payload.recurrencePattern ?? null,
-        isPublic: payload.isPublic ?? true,
-      } as unknown as InferInsertModel<typeof zuvyMentorSlotAvailability>)
-      .returning();
-    return result ?? null;
-  }
-
-  async listSlots(query: { mentorUserId?: number; organizationId?: number }) {
-    if (query.mentorUserId) {
-      const result = await db
-        .select()
-        .from(zuvyMentorSlotAvailability)
-        .innerJoin(
-          zuvyMentorSlotManagement,
-          eq(
-            zuvyMentorSlotManagement.id,
-            zuvyMentorSlotAvailability.mentorSlotManagementId,
-          ),
-        )
-        .where(
-          eq(zuvyMentorSlotManagement.mentorUserId, BigInt(query.mentorUserId)),
-        )
-        .orderBy(zuvyMentorSlotAvailability.slotStartDateTime);
-      return result?.map((r) => r.zuvy_mentor_slot_availability) ?? [];
+    if (diffHours < 12) {
+      throw new BadRequestException(
+        'Booking must be made at least 12 hours in advance.',
+      );
     }
-    if (query.organizationId) {
-      const result = await db
-        .select()
-        .from(zuvyMentorSlotAvailability)
-        .innerJoin(
-          zuvyMentorSlotManagement,
-          eq(
-            zuvyMentorSlotManagement.id,
-            zuvyMentorSlotAvailability.mentorSlotManagementId,
-          ),
-        )
-        .where(
-          eq(zuvyMentorSlotManagement.organizationId, query.organizationId),
-        )
-        .orderBy(zuvyMentorSlotAvailability.slotStartDateTime);
-      return result?.map((r) => r.zuvy_mentor_slot_availability) ?? [];
-    }
-    const result = await db
-      .select()
-      .from(zuvyMentorSlotAvailability)
-      .orderBy(zuvyMentorSlotAvailability.slotStartDateTime);
-    return result ?? [];
   }
 
-  async bookSlot(payload: {
-    slotAvailabilityId: number;
-    studentUserId: bigint | number;
-    mentorUserId?: bigint | number;
-    organizationId?: number;
-  }) {
-    return await db.transaction(async (tx) => {
-      // fetch slot
-      const [slot] = await tx
+  /* ==========================================================================
+     DERIVE SESSION LIFECYCLE STATE
+  ========================================================================== */
+
+  private deriveLifecycleState(booking: any, slot: any): string {
+    const now = new Date();
+    const slotEnd = new Date(slot.slotEndDateTime);
+
+    if (booking.status === 'cancelled') return 'CANCELLED';
+
+    if (booking.rescheduleStatus === 'pending') return 'RESCHEDULE_PENDING';
+
+    if (booking.completedAt) return 'COMPLETED';
+
+    if (booking.joinedAt && !booking.completedAt) return 'IN_PROGRESS';
+
+    if (now.getTime() > slotEnd.getTime() && !booking.joinedAt) return 'MISSED';
+
+    return 'SCHEDULED';
+  }
+
+  /* ==========================================================================
+     BOOK SLOT (CONCURRENCY SAFE)
+  ========================================================================== */
+
+  async bookSlot(studentId: number, slotId: number) {
+    return db.transaction(async (trx) => {
+      const [slot] = await trx
         .select()
         .from(zuvyMentorSlotAvailability)
-        .where(eq(zuvyMentorSlotAvailability.id, payload.slotAvailabilityId))
+        .where(eq(zuvyMentorSlotAvailability.id, slotId))
         .limit(1);
-      if (!slot) throw new NotFoundException('Slot not found');
 
-      if (slot.status === 'cancelled' || slot.status === 'archived') {
-        throw new BadRequestException('Slot not available for booking');
-      }
+      if (!slot) throw new NotFoundException('Slot not found.');
 
-      if (slot.currentBookedCount >= slot.maxCapacity) {
-        throw new BadRequestException('Slot capacity reached');
-      }
+      if (slot.status !== 'available')
+        throw new BadRequestException('Slot not available.');
 
-      // fetch mentor slot management
-      const [mentorSlot] = await tx
+      this.enforceMinimumNotice(slot.slotStartDateTime);
+
+      // Fetch mentor buffer settings
+      const [mentorProfile] = await trx
         .select()
         .from(zuvyMentorSlotManagement)
         .where(eq(zuvyMentorSlotManagement.id, slot.mentorSlotManagementId))
         .limit(1);
 
-      // Insert booking
-      const insertBooking = {
-        slotAvailabilityId: payload.slotAvailabilityId,
-        studentUserId: BigInt(payload.studentUserId),
-        mentorUserId: payload.mentorUserId
-          ? BigInt(payload.mentorUserId)
-          : mentorSlot?.mentorUserId ?? null,
-        organizationId:
-          payload.organizationId ?? mentorSlot?.organizationId ?? null,
-        status: 'pending',
-      } as unknown as InferInsertModel<typeof zuvyMentorSlotBooking>;
+      if (mentorProfile?.isBufferEnabled && mentorProfile.bufferMinutes > 0) {
+        const bufferMs = mentorProfile.bufferMinutes * 60 * 1000;
 
-      const [inserted] = await tx
+        const slotStart = new Date(slot.slotStartDateTime).getTime();
+        const slotEnd = new Date(slot.slotEndDateTime).getTime();
+
+        const bufferedStart = new Date(slotStart - bufferMs);
+        const bufferedEnd = new Date(slotEnd + bufferMs);
+
+        const conflictingBookings = await trx
+          .select({
+            id: zuvyMentorSlotBooking.id,
+          })
+          .from(zuvyMentorSlotBooking)
+          .innerJoin(
+            zuvyMentorSlotAvailability,
+            eq(
+              zuvyMentorSlotBooking.slotAvailabilityId,
+              zuvyMentorSlotAvailability.id,
+            ),
+          )
+          .where(
+            and(
+              eq(
+                zuvyMentorSlotBooking.mentorUserId,
+                mentorProfile.mentorUserId,
+              ),
+              eq(zuvyMentorSlotBooking.sessionLifecycleState, 'SCHEDULED'),
+              sql`${zuvyMentorSlotAvailability.slotStartDateTime} < ${bufferedEnd}`,
+              sql`${zuvyMentorSlotAvailability.slotEndDateTime} > ${bufferedStart}`,
+            ),
+          );
+
+        if (conflictingBookings.length > 0) {
+          throw new BadRequestException(
+            `Buffer time violation. Mentor requires ${mentorProfile.bufferMinutes} minutes between sessions.`,
+          );
+        }
+      }
+
+      if (slot.currentBookedCount >= slot.maxCapacity)
+        throw new BadRequestException('Slot is full.');
+
+      /* Lock row */
+      await trx.execute(
+        sql`SELECT id FROM zuvy_mentor_slot_availability WHERE id = ${slotId} FOR UPDATE`,
+      );
+
+      await trx
+        .update(zuvyMentorSlotAvailability)
+        .set({
+          currentBookedCount: sql`${zuvyMentorSlotAvailability.currentBookedCount} + 1`,
+        } as Partial<typeof zuvyMentorSlotAvailability.$inferInsert>)
+        .where(eq(zuvyMentorSlotAvailability.id, slotId));
+
+      const booking = await trx
         .insert(zuvyMentorSlotBooking)
-        .values(insertBooking)
+        .values({
+          slotAvailabilityId: slotId,
+          studentUserId: BigInt(studentId),
+          mentorUserId: mentorProfile.mentorUserId,
+          organizationId: mentorProfile.organizationId,
+          status: 'confirmed',
+          sessionLifecycleState: 'SCHEDULED',
+        } as typeof zuvyMentorSlotBooking.$inferInsert)
         .returning();
 
-      // increment currentBookedCount
-      await tx
-        .update(zuvyMentorSlotAvailability)
-        .set({ currentBookedCount: (slot.currentBookedCount ?? 0) + 1 } as any)
-        .where(eq(zuvyMentorSlotAvailability.id, payload.slotAvailabilityId));
-
-      // increment totalBookedSlots
-      await tx
-        .update(zuvyMentorSlotManagement)
-        .set({
-          totalBookedSlots: (mentorSlot?.totalBookedSlots ?? 0) + 1,
-        } as any)
-        .where(eq(zuvyMentorSlotManagement.id, slot.mentorSlotManagementId));
-
-      return inserted ?? null;
+      return booking[0];
     });
+  }
+
+  /* ==========================================================================
+     CANCEL SESSION (PRD — MANDATORY REASON)
+  ========================================================================== */
+
+  async cancelBooking(
+    bookingId: number,
+    reason: string,
+    cancelledBy: 'mentor' | 'student',
+  ) {
+    if (!reason || reason.length < 10) {
+      throw new BadRequestException(
+        'Cancellation reason must be at least 10 characters.',
+      );
+    }
+
+    const [booking] = await db
+      .select()
+      .from(zuvyMentorSlotBooking)
+      .where(eq(zuvyMentorSlotBooking.id, bookingId))
+      .limit(1);
+
+    if (!booking) throw new NotFoundException('Booking not found.');
+
+    return db
+      .update(zuvyMentorSlotBooking)
+      .set({
+        status: 'cancelled',
+        sessionLifecycleState: 'CANCELLED',
+        cancellationReason: reason,
+        cancelledBy,
+        cancelledAt: new Date(),
+      } as Partial<typeof zuvyMentorSlotBooking.$inferInsert>)
+      .where(eq(zuvyMentorSlotBooking.id, bookingId));
+  }
+
+  /* ==========================================================================
+     RESCHEDULE WORKFLOW (PROPOSE)
+  ========================================================================== */
+
+  async proposeReschedule(
+    bookingId: number,
+    newSlotId: number,
+    reason: string,
+  ) {
+    if (!reason || reason.length < 10)
+      throw new BadRequestException(
+        'Reschedule reason must be at least 10 characters.',
+      );
+
+    return db
+      .update(zuvyMentorSlotBooking)
+      .set({
+        rescheduleStatus: 'pending',
+        rescheduleRequestedAt: new Date(),
+        rescheduleProposedSlotId: newSlotId,
+        sessionLifecycleState: 'RESCHEDULE_PENDING',
+      } as Partial<typeof zuvyMentorSlotBooking.$inferInsert>)
+      .where(eq(zuvyMentorSlotBooking.id, bookingId));
+  }
+
+  /* ==========================================================================
+     SUBMIT MENTOR FEEDBACK (PRD COMPLIANT)
+  ========================================================================== */
+
+  async submitMentorFeedback(
+    bookingId: number,
+    feedback: any,
+    rating?: number,
+  ) {
+    const [booking] = await db
+      .select()
+      .from(zuvyMentorSlotBooking)
+      .where(eq(zuvyMentorSlotBooking.id, bookingId))
+      .limit(1);
+
+    if (!booking) throw new NotFoundException('Booking not found.');
+
+    if (booking.mentorFeedbackLocked)
+      throw new ForbiddenException('Feedback is locked after 24 hours.');
+
+    return db
+      .update(zuvyMentorSlotBooking)
+      .set({
+        mentorFeedback: feedback,
+        mentorRating: rating,
+        mentorFeedbackSubmittedAt: new Date(),
+      } as Partial<typeof zuvyMentorSlotBooking.$inferInsert>)
+      .where(eq(zuvyMentorSlotBooking.id, bookingId));
+  }
+
+  /* ==========================================================================
+     AUTO LOCK FEEDBACK (CALLED BY JOB)
+  ========================================================================== */
+
+  async lockExpiredFeedback() {
+    const now = new Date();
+    const cutoff = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+
+    return db
+      .update(zuvyMentorSlotBooking)
+      .set({ mentorFeedbackLocked: true } as Partial<
+        typeof zuvyMentorSlotBooking.$inferInsert
+      >)
+      .where(
+        and(
+          lt(zuvyMentorSlotBooking.mentorFeedbackSubmittedAt, cutoff),
+          eq(zuvyMentorSlotBooking.mentorFeedbackLocked, false),
+        ),
+      );
+  }
+
+  /* ==========================================================================
+     ENFORCE 12-HOUR SLOT DELETION RULE
+  ========================================================================== */
+
+  async removeSlot(slotId: number) {
+    const [slot] = await db
+      .select()
+      .from(zuvyMentorSlotAvailability)
+      .where(eq(zuvyMentorSlotAvailability.id, slotId))
+      .limit(1);
+
+    if (!slot) throw new NotFoundException('Slot not found.');
+
+    this.enforceMinimumNotice(slot.slotStartDateTime);
+
+    return db
+      .delete(zuvyMentorSlotAvailability)
+      .where(eq(zuvyMentorSlotAvailability.id, slotId));
+  }
+
+  async acceptReschedule(bookingId: number) {
+    return db.transaction(async (trx) => {
+      const [booking] = await trx
+        .select()
+        .from(zuvyMentorSlotBooking)
+        .where(eq(zuvyMentorSlotBooking.id, bookingId))
+        .limit(1);
+
+      if (!booking) throw new NotFoundException('Booking not found.');
+
+      if (booking.rescheduleStatus !== 'pending')
+        throw new BadRequestException('No pending reschedule.');
+
+      if (!booking.rescheduleProposedSlotId)
+        throw new BadRequestException('Invalid proposed slot.');
+
+      const [newSlot] = await trx
+        .select()
+        .from(zuvyMentorSlotAvailability)
+        .where(
+          eq(zuvyMentorSlotAvailability.id, booking.rescheduleProposedSlotId),
+        )
+        .limit(1);
+
+      if (!newSlot) throw new NotFoundException('Proposed slot not found.');
+
+      if (newSlot.currentBookedCount >= newSlot.maxCapacity)
+        throw new BadRequestException('Proposed slot is full.');
+
+      /* Lock both slots */
+      await trx.execute(
+        sql`SELECT id FROM zuvy_mentor_slot_availability WHERE id IN (${booking.slotAvailabilityId}, ${booking.rescheduleProposedSlotId}) FOR UPDATE`,
+      );
+
+      /* Decrement old slot capacity */
+      await trx
+        .update(zuvyMentorSlotAvailability)
+        .set({
+          currentBookedCount: sql`${zuvyMentorSlotAvailability.currentBookedCount} - 1`,
+        } as Partial<typeof zuvyMentorSlotAvailability.$inferInsert>)
+        .where(eq(zuvyMentorSlotAvailability.id, booking.slotAvailabilityId));
+
+      /* Increment new slot capacity */
+      await trx
+        .update(zuvyMentorSlotAvailability)
+        .set({
+          currentBookedCount: sql`${zuvyMentorSlotAvailability.currentBookedCount} + 1`,
+        } as Partial<typeof zuvyMentorSlotAvailability.$inferInsert>)
+        .where(
+          eq(zuvyMentorSlotAvailability.id, booking.rescheduleProposedSlotId),
+        );
+
+      /* Update booking */
+      await trx
+        .update(zuvyMentorSlotBooking)
+        .set({
+          slotAvailabilityId: booking.rescheduleProposedSlotId,
+          rescheduleStatus: null,
+          rescheduleRequestedAt: null,
+          rescheduleProposedSlotId: null,
+          sessionLifecycleState: 'SCHEDULED',
+        } as Partial<typeof zuvyMentorSlotBooking.$inferInsert>)
+        .where(eq(zuvyMentorSlotBooking.id, bookingId));
+
+      return { message: 'Reschedule accepted successfully.' };
+    });
+  }
+
+  async declineReschedule(bookingId: number) {
+    const [booking] = await db
+      .select()
+      .from(zuvyMentorSlotBooking)
+      .where(eq(zuvyMentorSlotBooking.id, bookingId))
+      .limit(1);
+
+    if (!booking) throw new NotFoundException('Booking not found.');
+
+    if (booking.rescheduleStatus !== 'pending')
+      throw new BadRequestException('No pending reschedule.');
+
+    await db
+      .update(zuvyMentorSlotBooking)
+      .set({
+        rescheduleStatus: null,
+        rescheduleRequestedAt: null,
+        rescheduleProposedSlotId: null,
+        sessionLifecycleState: 'SCHEDULED',
+      } as Partial<typeof zuvyMentorSlotBooking.$inferInsert>)
+      .where(eq(zuvyMentorSlotBooking.id, bookingId));
+
+    return { message: 'Reschedule declined.' };
   }
 }
