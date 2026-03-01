@@ -236,7 +236,7 @@ export class OrgService {
                     <!-- Logo / Brand -->
                     <tr>
                       <td align="center" style="padding-bottom:30px;">
-                        <img src="../logos/zuvy-logo-horizontal.png" alt="Zuvy" height="30" />
+                        <img src="${process.env.BASE_URL}/logos/zuvy-logo-horizontal.png" alt="Zuvy" height="30" />
                       </td>
                     </tr>
 

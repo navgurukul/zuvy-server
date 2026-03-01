@@ -151,7 +151,7 @@ export class UsersController {
     }
   }
 
-  @Get('get/roles')
+  @Get('get/roles/:orgId')
   //   @RequirePermissions('read_user_roles')
   @ApiOperation({
     summary: 'Get all user roles',
@@ -174,15 +174,15 @@ export class UsersController {
   })
   @ApiBearerAuth('JWT-auth')
   async getAllUserRoles(
+    @Param('orgId') orgId: number,
     @Req() req,
-    @Query('orgId', ParseIntPipe) orgId: number,
   ): Promise<any> {
     try {
       const roleName = req.user[0]?.roles;
       const result = await this.usersService.getAllUserRoles(
+        orgId,
         roleName,
         false,
-        orgId,
       );
       return result;
     } catch (error) {
@@ -193,7 +193,7 @@ export class UsersController {
     }
   }
 
-  @Get('get/all/roles')
+  @Get('get/all/roles/:orgId')
   //   @RequirePermissions('read_user_roles')
   @ApiOperation({
     summary: 'Get all user roles',
@@ -216,15 +216,15 @@ export class UsersController {
   })
   @ApiBearerAuth('JWT-auth')
   async getAllUserRolesNoFilter(
+    @Param('orgId') orgId: number,
     @Req() req,
-    @Query('orgId', ParseIntPipe) orgId: number,
   ): Promise<any> {
     try {
       const roleName = req.user[0]?.roles;
       const result = await this.usersService.getAllUserRoles(
+        orgId,
         roleName,
         true,
-        orgId,
       );
       return result;
     } catch (error) {
@@ -271,7 +271,7 @@ export class UsersController {
     }
   }
 
-  @Get('get/all/users')
+  @Get('get/all/users/:orgId')
   @ApiOperation({
     summary: 'Get all users with their roles',
     description: 'Retrieves a list of all users with their role information',
@@ -335,8 +335,8 @@ export class UsersController {
     description: 'Organization ID to filter users',
   })
   async getAllUsers(
+    @Param('orgId') orgId: number,
     @Req() req, // Required parameter first
-    @Query('orgId', ParseIntPipe) orgIdQuery: number,
     @Query('limit') limit?: string, // Optional
     @Query('offset') offset?: string, // Optional
     @Query('searchTerm') searchTerm?: string, // Optional (default to '')
@@ -361,14 +361,13 @@ export class UsersController {
     }
 
     const roleName = req.user[0]?.roles;
-    const orgId = orgIdQuery || req.user[0]?.orgId;
     return this.usersService.getAllUsersWithRoles(
+      orgId,
       roleName,
       limitNum,
       offsetNum,
       searchTerm || '', // Default to empty string if undefined
       roleId,
-      orgId,
     );
   }
 
