@@ -71,6 +71,7 @@ import {
 } from '@nestjs/platform-express/multer';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 import { TrackAction } from 'src/trackinglog/decorators/track-action.decorator';
+import { TrackActionInterceptor } from 'src/trackinglog/interceptors/track-action.interceptor';
 
 @Controller('content')
 @ApiTags('content')
@@ -82,6 +83,7 @@ import { TrackAction } from 'src/trackinglog/decorators/track-action.decorator';
   }),
 )
 @UseGuards(JwtAuthGuard, RolesGuard)
+@UseInterceptors(TrackActionInterceptor)
 @ApiBearerAuth('JWT-auth')
 export class ContentController {
   constructor(private contentService: ContentService) {}

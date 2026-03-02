@@ -239,6 +239,7 @@ export class BootcampController {
     resourceType: 'course',
     permissionName: 'Deletecourse',
     getResourceName: (result) => result?.bootcampName || 'Bootcamp',
+    getBootcampId: () => null,
   })
   async deleteBootcamp(@Param('id') id: number): Promise<object> {
     const [err, res] = await this.bootcampService.deleteBootcamp(id);
