@@ -214,7 +214,7 @@ export class OrgService {
       });
 
       // 5. Send Email (After transaction)
-      const magicLink = `${process.env.APP_BASE_URL}/admin/organizations/${result.id}/setting`;
+      const magicLink = `${process.env.BASE_URL}/admin/organizations/${result.id}/setting`;
       try {
         const subject = `Welcome to Zuvy - Complete ${result.title} Setup`;
 
@@ -236,7 +236,7 @@ export class OrgService {
                     <!-- Logo / Brand -->
                     <tr>
                       <td align="center" style="padding-bottom:30px;">
-                        <h2 style="margin:0; color:#111827;">Zuvy</h2>
+                        <img src="${process.env.BASE_URL}/logos/zuvy-logo-horizontal.png" alt="Zuvy" height="30" />
                       </td>
                     </tr>
 

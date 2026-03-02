@@ -260,10 +260,11 @@ export class UsersService {
   }
 
   async getAllUserRoles(
+    orgId: number,
     roleName: string,
     duplicate?: boolean,
-    orgId?: number,
   ): Promise<any> {
+    orgId = Number(orgId);
     try {
       if (duplicate) {
         try {
@@ -556,13 +557,14 @@ export class UsersService {
   }
 
   async getAllUsersWithRoles(
+    orgId: number,
     roleName: string[],
     limit: number,
     offset: number,
     searchTerm: string = '',
     roleId?: number | number[],
-    orgId?: number,
   ): Promise<any> {
+    orgId = Number(orgId);
     try {
       const search = `%${searchTerm}%`;
 
@@ -797,6 +799,25 @@ export class UsersService {
               rolesAssignData as unknown as typeof zuvyUserRolesAssigned.$inferInsert,
             )
             .returning();
+
+          // Check if user is already in the organization
+          const [existingUserOrg] = await tx
+            .select()
+            .from(zuvyUserOrganizations)
+            .where(
+              and(
+                eq(zuvyUserOrganizations.userId, user.id),
+                eq(zuvyUserOrganizations.organizationId, createUserDto.orgId),
+              ),
+            );
+
+          if (!existingUserOrg) {
+            await tx.insert(zuvyUserOrganizations).values({
+              userId: Number(user.id),
+              userEmail: user.email,
+              organizationId: createUserDto.orgId,
+            } as unknown as typeof zuvyUserOrganizations.$inferInsert);
+          }
 
           if (!newUserRole) {
             throw new InternalServerErrorException(
@@ -1112,6 +1133,11 @@ export class UsersService {
         ...result,
         id: Number(result.id),
         roleId: result.roleId ? Number(result.roleId) : null,
+        before: {
+          name: existingUser.name,
+          email: existingUser.email,
+        },
+        data: result,
       };
     } catch (error) {
       throw error;
