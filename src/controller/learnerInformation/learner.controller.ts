@@ -18,8 +18,10 @@ import {
 } from '@nestjs/swagger';
 import { LearnerService } from './learner.service';
 import {
+  LearnerPersonalDetailsResponseDto,
   LearnerInformationResponseDto,
   UpsertLearnerInformationDto,
+  UpsertLearnerPersonalDetailsDto,
 } from './dto/learner.dto';
 
 @ApiTags('Learner Information')
@@ -35,16 +37,15 @@ import {
 export class LearnerController {
   constructor(private readonly learnerService: LearnerService) {}
 
-  private getAuthenticatedUser(req: any): { id: number; email: string } {
+  private getAuthenticatedUser(req: any): { id: number } {
     const user = Array.isArray(req?.user) ? req.user[0] : req?.user;
     const userId = Number(user?.id);
-    const userEmail = user?.email;
 
-    if (!userId || Number.isNaN(userId) || !userEmail) {
+    if (!userId || Number.isNaN(userId)) {
       throw new UnauthorizedException('User authentication required.');
     }
 
-    return { id: userId, email: userEmail };
+    return { id: userId };
   }
 
   @Get('learner-information/all')
@@ -77,10 +78,26 @@ export class LearnerController {
     data: LearnerInformationResponseDto;
   }> {
     const user = this.getAuthenticatedUser(req);
-    return this.learnerService.createBasicInformation(
-      user.id,
-      user.email,
-      payload,
-    );
+    return this.learnerService.createBasicInformation(user.id, payload);
+  }
+
+  @Post('learner-personal-details')
+  @ApiOperation({
+    summary:
+      'Create or update learner personal details (fullName, email, phoneNumber)',
+  })
+  @ApiBody({
+    type: UpsertLearnerPersonalDetailsDto,
+  })
+  async createPersonalDetails(
+    @Req() req,
+    @Body() payload: UpsertLearnerPersonalDetailsDto,
+  ): Promise<{
+    status: string;
+    message: string;
+    data: LearnerPersonalDetailsResponseDto;
+  }> {
+    const user = this.getAuthenticatedUser(req);
+    return this.learnerService.createPersonalDetails(user.id, payload);
   }
 }

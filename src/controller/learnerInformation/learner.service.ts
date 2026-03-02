@@ -4,10 +4,16 @@ import {
   Injectable,
   InternalServerErrorException,
 } from '@nestjs/common';
-import { desc, sql } from 'drizzle-orm';
-import { zuvyLearnerInformation } from '../../../drizzle/schema';
+import { desc, eq, sql } from 'drizzle-orm';
+import {
+  zuvyLearnerInformation,
+  zuvyLearnerPersonalDetails,
+} from '../../../drizzle/schema';
 import { db } from '../../db/index';
-import { UpsertLearnerInformationDto } from './dto/learner.dto';
+import {
+  UpsertLearnerInformationDto,
+  UpsertLearnerPersonalDetailsDto,
+} from './dto/learner.dto';
 
 @Injectable()
 export class LearnerService {
@@ -24,8 +30,41 @@ DROP INDEX IF EXISTS main.zuvy_learner_information_user_id_unique;
 
     await db.execute(
       sql.raw(`
-CREATE UNIQUE INDEX IF NOT EXISTS zuvy_learner_information_email_unique
-	ON main.zuvy_learner_information(email);
+DROP INDEX IF EXISTS main.zuvy_learner_information_email_unique;
+`),
+    );
+
+    await db.execute(
+      sql.raw(`
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'main'
+      AND table_name = 'zuvy_learner_information'
+      AND column_name = 'full_name'
+  ) THEN
+    ALTER TABLE main.zuvy_learner_information ALTER COLUMN full_name DROP NOT NULL;
+  END IF;
+
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'main'
+      AND table_name = 'zuvy_learner_information'
+      AND column_name = 'email'
+  ) THEN
+    ALTER TABLE main.zuvy_learner_information ALTER COLUMN email DROP NOT NULL;
+  END IF;
+
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'main'
+      AND table_name = 'zuvy_learner_information'
+      AND column_name = 'phone_number'
+  ) THEN
+    ALTER TABLE main.zuvy_learner_information ALTER COLUMN phone_number DROP NOT NULL;
+  END IF;
+END $$;
 `),
     );
   }
@@ -60,17 +99,17 @@ CREATE TABLE IF NOT EXISTS main.zuvy_learner_information (
 	user_id bigint NOT NULL REFERENCES main.users(id) ON UPDATE CASCADE ON DELETE CASCADE,
   first_name varchar(100),
   last_name varchar(100),
-	full_name varchar(255) NOT NULL,
-	email varchar(255) NOT NULL,
-	phone_number varchar(20) NOT NULL,
-	college_name varchar(255) NOT NULL,
+  full_name varchar(255),
+  email varchar(255),
+  phone_number varchar(20),
+  college_name varchar(255),
 	other_college_name varchar(100),
 	degree_program varchar(100),
-	branch_specialisation varchar(100) NOT NULL,
-	year_of_study learner_year_of_study NOT NULL,
-	expected_graduation_month integer NOT NULL,
-	expected_graduation_year integer NOT NULL,
-	current_status learner_current_status NOT NULL,
+  branch_specialisation varchar(100),
+  year_of_study learner_year_of_study,
+  expected_graduation_month integer,
+  expected_graduation_year integer,
+  current_status learner_current_status,
 	created_at timestamptz NOT NULL DEFAULT now(),
 	updated_at timestamptz NOT NULL DEFAULT now()
 );
@@ -94,9 +133,26 @@ ADD COLUMN IF NOT EXISTS last_name varchar(100);
     await this.ensureLearnerInformationIndexes();
   }
 
-  private normalizePhoneNumber(phoneNumber: string): string {
-    const cleaned = phoneNumber.replace(/[\s-]/g, '');
-    return cleaned.startsWith('+91') ? cleaned.slice(3) : cleaned;
+  private async ensureLearnerPersonalDetailsStorageReady(): Promise<void> {
+    await db.execute(
+      sql.raw(`
+CREATE TABLE IF NOT EXISTS main.zuvy_learner_personal_details (
+  id serial PRIMARY KEY,
+  user_id bigint NOT NULL REFERENCES main.users(id) ON UPDATE CASCADE ON DELETE CASCADE,
+  full_name varchar(255) NOT NULL,
+  phone_number varchar(20) NOT NULL,
+  email varchar(255) NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+`),
+    );
+
+    await db.execute(
+      sql.raw(`
+DROP INDEX IF EXISTS main.zuvy_learner_personal_details_user_id_unique;
+`),
+    );
   }
 
   private validateFutureGraduationDate(month: number, year: number): void {
@@ -115,9 +171,13 @@ ADD COLUMN IF NOT EXISTS last_name varchar(100);
   }
 
   private validateOtherCollegeInput(
-    collegeName: string,
+    collegeName?: string,
     otherCollegeName?: string,
   ): void {
+    if (!collegeName?.trim()) {
+      return;
+    }
+
     const isOtherSelected = collegeName.trim().toLowerCase() === 'other';
     if (isOtherSelected && !otherCollegeName?.trim()) {
       throw new BadRequestException(
@@ -176,45 +236,42 @@ ADD COLUMN IF NOT EXISTS last_name varchar(100);
 
   async createBasicInformation(
     userId: number,
-    userEmail: string,
     payload: UpsertLearnerInformationDto,
     retryOnMissingTable = true,
   ) {
-    if (!userId || Number.isNaN(userId) || !userEmail) {
+    if (!userId || Number.isNaN(userId)) {
       throw new BadRequestException('Invalid authenticated user details.');
     }
 
-    this.validateFutureGraduationDate(
-      payload.expectedGraduationMonth,
-      payload.expectedGraduationYear,
-    );
+    if (
+      payload.expectedGraduationMonth != null &&
+      payload.expectedGraduationYear != null
+    ) {
+      this.validateFutureGraduationDate(
+        payload.expectedGraduationMonth,
+        payload.expectedGraduationYear,
+      );
+    }
 
     this.validateOtherCollegeInput(
       payload.collegeName,
       payload.otherCollegeName,
     );
 
-    const normalizedPhoneNumber = this.normalizePhoneNumber(
-      payload.phoneNumber,
-    );
+    const normalizedCollegeName = payload.collegeName?.trim();
+    const isOtherCollege = normalizedCollegeName?.toLowerCase() === 'other';
 
     const dataToPersist = {
-      firstName: payload.firstName.trim(),
-      lastName: payload.lastName.trim(),
-      fullName: `${payload.firstName.trim()} ${payload.lastName.trim()}`,
-      email: payload.email?.trim().toLowerCase() || userEmail,
-      phoneNumber: normalizedPhoneNumber,
-      collegeName: payload.collegeName.trim(),
-      otherCollegeName:
-        payload.collegeName.trim().toLowerCase() === 'other'
-          ? payload.otherCollegeName?.trim() || null
-          : null,
+      collegeName: normalizedCollegeName || null,
+      otherCollegeName: isOtherCollege
+        ? payload.otherCollegeName?.trim() || null
+        : null,
       degreeProgram: payload.degreeProgram?.trim() || null,
-      branchSpecialisation: payload.branchSpecialisation.trim(),
-      yearOfStudy: payload.yearOfStudy,
-      expectedGraduationMonth: payload.expectedGraduationMonth,
-      expectedGraduationYear: payload.expectedGraduationYear,
-      currentStatus: payload.currentStatus,
+      branchSpecialisation: payload.branchSpecialisation?.trim() || null,
+      yearOfStudy: payload.yearOfStudy ?? null,
+      expectedGraduationMonth: payload.expectedGraduationMonth ?? null,
+      expectedGraduationYear: payload.expectedGraduationYear ?? null,
+      currentStatus: payload.currentStatus ?? null,
     };
 
     try {
@@ -236,7 +293,7 @@ ADD COLUMN IF NOT EXISTS last_name varchar(100);
     } catch (error) {
       if (this.isLearnerSchemaMissingError(error) && retryOnMissingTable) {
         await this.ensureLearnerInformationStorageReady();
-        return this.createBasicInformation(userId, userEmail, payload, false);
+        return this.createBasicInformation(userId, payload, false);
       }
 
       if (this.isLearnerSchemaMissingError(error)) {
@@ -249,12 +306,6 @@ ADD COLUMN IF NOT EXISTS last_name varchar(100);
         const violatedConstraint = String(
           error?.constraint || '',
         ).toLowerCase();
-
-        if (violatedConstraint.includes('email')) {
-          throw new ConflictException(
-            'Learner information with this email already exists.',
-          );
-        }
 
         if (violatedConstraint.includes('user_id')) {
           throw new ConflictException(
@@ -274,6 +325,93 @@ ADD COLUMN IF NOT EXISTS last_name varchar(100);
       if (error?.code === '22P02') {
         throw new BadRequestException(
           'Invalid data format in learner payload.',
+        );
+      }
+
+      throw error;
+    }
+  }
+
+  async createPersonalDetails(
+    userId: number,
+    payload: UpsertLearnerPersonalDetailsDto,
+    retryOnMissingTable = true,
+  ) {
+    if (!userId || Number.isNaN(userId)) {
+      throw new BadRequestException('Invalid authenticated user details.');
+    }
+
+    const requestEmail = payload.email?.trim().toLowerCase();
+
+    if (!requestEmail) {
+      throw new BadRequestException('Email is required.');
+    }
+
+    const normalizedPayload = {
+      fullName: payload.fullName.trim(),
+      email: requestEmail,
+      phoneNumber: payload.phoneNumber.trim(),
+    };
+
+    try {
+      await this.ensureLearnerPersonalDetailsStorageReady();
+
+      const [existingLearnerByEmail] = await db
+        .select({ id: zuvyLearnerPersonalDetails.id })
+        .from(zuvyLearnerPersonalDetails)
+        .where(eq(zuvyLearnerPersonalDetails.email, normalizedPayload.email))
+        .limit(1);
+
+      if (existingLearnerByEmail) {
+        throw new ConflictException('User already exists in database.');
+      }
+
+      const [saved] = await db
+        .insert(zuvyLearnerPersonalDetails)
+        .values({
+          userId: sql`${userId}::bigint`,
+          ...normalizedPayload,
+        })
+        .returning();
+
+      return {
+        status: 'success',
+        message: 'Learner personal details saved successfully.',
+        data: saved,
+      };
+    } catch (error) {
+      if (this.isLearnerSchemaMissingError(error) && retryOnMissingTable) {
+        await this.ensureLearnerPersonalDetailsStorageReady();
+        return this.createPersonalDetails(userId, payload, false);
+      }
+
+      if (this.isLearnerSchemaMissingError(error)) {
+        throw new InternalServerErrorException(
+          'Learner personal details schema is out of sync. Please run migrations and retry.',
+        );
+      }
+
+      if (error?.code === '23503') {
+        throw new BadRequestException(
+          'Invalid user reference for learner personal details.',
+        );
+      }
+
+      if (error?.code === '22001') {
+        throw new BadRequestException(
+          'One or more personal detail fields exceed allowed length.',
+        );
+      }
+
+      if (error?.code === '22P02') {
+        throw new BadRequestException(
+          'Invalid data format in learner personal details payload.',
+        );
+      }
+
+      if (error?.code === '23505') {
+        throw new ConflictException(
+          'Duplicate constraint violation while saving learner personal details.',
         );
       }
 

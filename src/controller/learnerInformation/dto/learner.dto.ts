@@ -48,67 +48,16 @@ export const ENGINEERING_BRANCH_OPTIONS = [
 ] as const;
 
 export class UpsertLearnerInformationDto {
-  @ApiProperty({
-    type: String,
-    example: 'Ananya',
-    description: 'First name',
-  })
-  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
-  @IsString()
-  @IsNotEmpty()
-  @Length(2, 100)
-  firstName: string;
-
-  @ApiProperty({
-    type: String,
-    example: 'Sharma',
-    description: 'Last name',
-  })
-  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
-  @IsString()
-  @IsNotEmpty()
-  @Length(1, 100)
-  lastName: string;
-
-  @ApiProperty({
-    type: String,
-    example: 'ananya@example.com',
-    description: 'Email address',
-  })
-  @Transform(({ value }) =>
-    typeof value === 'string' ? value.trim().toLowerCase() : value,
-  )
-  @IsEmail()
-  @IsNotEmpty()
-  email: string;
-
-  @ApiProperty({
-    type: String,
-    example: '+919876543210',
-    description:
-      'Phone Number in Indian format. Accepts 10 digits starting with 6-9 and optional +91 prefix.',
-  })
-  @Transform(({ value }) =>
-    typeof value === 'string' ? value.replace(/[\s-]/g, '') : value,
-  )
-  @IsString()
-  @IsNotEmpty()
-  @Matches(/^(?:\+91)?[6-9]\d{9}$/, {
-    message:
-      'phoneNumber must be a valid Indian number (10 digits starting with 6-9) with optional +91 prefix',
-  })
-  phoneNumber: string;
-
-  @ApiProperty({
+  @ApiPropertyOptional({
     type: String,
     example: 'IIT Bombay',
     description:
       'College name (select from dropdown, use Other for manual entry)',
   })
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
   @Length(2, 255)
-  collegeName: string;
+  collegeName?: string;
 
   @ApiPropertyOptional({
     type: String,
@@ -120,8 +69,8 @@ export class UpsertLearnerInformationDto {
       typeof o.collegeName === 'string' &&
       o.collegeName.trim().toLowerCase() === 'other',
   )
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
   @Length(3, 100)
   otherCollegeName?: string;
 
@@ -135,58 +84,58 @@ export class UpsertLearnerInformationDto {
   @IsIn(DEGREE_PROGRAM_OPTIONS)
   degreeProgram?: string;
 
-  @ApiProperty({
+  @ApiPropertyOptional({
     type: String,
     enum: ENGINEERING_BRANCH_OPTIONS,
     example: 'Computer Science',
   })
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
   @IsIn(ENGINEERING_BRANCH_OPTIONS)
-  branchSpecialisation: string;
+  branchSpecialisation?: string;
 
-  @ApiProperty({
+  @ApiPropertyOptional({
     type: String,
     enum: YEAR_OF_STUDY_OPTIONS,
     example: '3rd',
   })
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
   @IsIn(YEAR_OF_STUDY_OPTIONS)
-  yearOfStudy: (typeof YEAR_OF_STUDY_OPTIONS)[number];
+  yearOfStudy?: (typeof YEAR_OF_STUDY_OPTIONS)[number];
 
-  @ApiProperty({
+  @ApiPropertyOptional({
     type: Number,
     example: 6,
     description: 'Expected graduation month (1-12)',
   })
+  @IsOptional()
   @Type(() => Number)
   @IsInt()
-  @IsNotEmpty()
   @Min(1)
   @Max(12)
-  expectedGraduationMonth: number;
+  expectedGraduationMonth?: number;
 
-  @ApiProperty({
+  @ApiPropertyOptional({
     type: Number,
     example: 2027,
     description: 'Expected graduation year',
   })
+  @IsOptional()
   @Type(() => Number)
   @IsInt()
-  @IsNotEmpty()
   @Min(2020)
-  expectedGraduationYear: number;
+  expectedGraduationYear?: number;
 
-  @ApiProperty({
+  @ApiPropertyOptional({
     type: String,
     enum: CURRENT_STATUS_OPTIONS,
     example: 'Learning',
   })
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
   @IsIn(CURRENT_STATUS_OPTIONS)
-  currentStatus: (typeof CURRENT_STATUS_OPTIONS)[number];
+  currentStatus?: (typeof CURRENT_STATUS_OPTIONS)[number];
 }
 
 export class LearnerInformationResponseDto {
@@ -196,23 +145,8 @@ export class LearnerInformationResponseDto {
   @ApiProperty({ type: Number, example: 23 })
   userId: number;
 
-  @ApiProperty({ type: String, example: 'Ananya' })
-  firstName: string;
-
-  @ApiProperty({ type: String, example: 'Sharma' })
-  lastName: string;
-
-  @ApiProperty({ type: String, example: 'Ananya Sharma' })
-  fullName: string;
-
-  @ApiProperty({ type: String, example: 'ananya@example.com' })
-  email: string;
-
-  @ApiProperty({ type: String, example: '9876543210' })
-  phoneNumber: string;
-
-  @ApiProperty({ type: String, example: 'IIT Bombay' })
-  collegeName: string;
+  @ApiPropertyOptional({ type: String, example: 'IIT Bombay' })
+  collegeName?: string | null;
 
   @ApiPropertyOptional({ type: String, example: null })
   otherCollegeName?: string | null;
@@ -220,24 +154,100 @@ export class LearnerInformationResponseDto {
   @ApiPropertyOptional({ type: String, example: 'B.Tech' })
   degreeProgram?: string | null;
 
-  @ApiProperty({ type: String, example: 'Computer Science' })
-  branchSpecialisation: string;
+  @ApiPropertyOptional({ type: String, example: 'Computer Science' })
+  branchSpecialisation?: string | null;
 
-  @ApiProperty({ type: String, enum: YEAR_OF_STUDY_OPTIONS, example: '3rd' })
-  yearOfStudy: string;
+  @ApiPropertyOptional({
+    type: String,
+    enum: YEAR_OF_STUDY_OPTIONS,
+    example: '3rd',
+  })
+  yearOfStudy?: string | null;
 
-  @ApiProperty({ type: Number, example: 6 })
-  expectedGraduationMonth: number;
+  @ApiPropertyOptional({ type: Number, example: 6 })
+  expectedGraduationMonth?: number | null;
 
-  @ApiProperty({ type: Number, example: 2027 })
-  expectedGraduationYear: number;
+  @ApiPropertyOptional({ type: Number, example: 2027 })
+  expectedGraduationYear?: number | null;
 
-  @ApiProperty({
+  @ApiPropertyOptional({
     type: String,
     enum: CURRENT_STATUS_OPTIONS,
     example: 'Learning',
   })
-  currentStatus: string;
+  currentStatus?: string | null;
+
+  @ApiProperty({
+    type: String,
+    format: 'date-time',
+    example: '2024-06-15T10:30:00.000Z',
+  })
+  createdAt: string;
+
+  @ApiProperty({
+    type: String,
+    format: 'date-time',
+    example: '2024-06-15T10:30:00.000Z',
+  })
+  updatedAt: string;
+}
+
+export class UpsertLearnerPersonalDetailsDto {
+  @ApiProperty({
+    type: String,
+    example: 'Aditya Kumar',
+    description: 'Learner full name',
+  })
+  @IsString()
+  @IsNotEmpty({ message: 'Enter your full name' })
+  @Matches(/.*\S.*/, {
+    message: 'Enter your full name',
+  })
+  @Length(2, 255)
+  fullName: string;
+
+  @ApiProperty({
+    type: String,
+    example: 'aditya.student@zuvy.org',
+    description: 'Learner email address',
+  })
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  @IsString()
+  @IsNotEmpty()
+  @IsEmail()
+  @Length(5, 255)
+  email: string;
+
+  @ApiProperty({
+    type: String,
+    example: '+91 9999999999',
+    description:
+      'Learner phone number (10-digit Indian number starting with 6-9, optional +91 prefix)',
+  })
+  @IsString()
+  @IsNotEmpty()
+  @Matches(/^(?:\+91)?[6-9]\d{9}$/, {
+    message:
+      'phoneNumber must be a valid Indian mobile number (starts with 6-9, optional +91 prefix).',
+  })
+  phoneNumber: string;
+}
+
+export class LearnerPersonalDetailsResponseDto {
+  @ApiProperty({ type: Number, example: 1 })
+  id: number;
+
+  @ApiProperty({ type: Number, example: 23 })
+  userId: number;
+
+  @ApiProperty({ type: String, example: 'Aditya Kumar' })
+  fullName: string;
+
+  @ApiProperty({ type: String, example: 'aditya.student@zuvy.org' })
+  email: string;
+
+  @ApiProperty({ type: String, example: '+91 9999999999' })
+  phoneNumber: string;
 
   @ApiProperty({
     type: String,
