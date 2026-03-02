@@ -214,26 +214,31 @@ export class TrackinglogService {
 
       // Role filter - filter by user role from zuvyUserRolesAssigned table
       if (role !== undefined && role !== null && role !== '' && role !== '--') {
-        // First, get the role ID from role name
-        const roleRecord = await db
+        // Get all role IDs with this name (each org has its own role record)
+        const roleRecords = await db
           .select({ id: zuvyUserRoles.id })
           .from(zuvyUserRoles)
-          .where(eq(zuvyUserRoles.name, role))
-          .limit(1);
+          .where(eq(zuvyUserRoles.name, role));
 
-        if (roleRecord.length > 0) {
-          const roleId = roleRecord[0].id;
+        if (roleRecords.length > 0) {
+          const roleIds = roleRecords.map((r) => r.id);
 
-          // Get all user IDs with this role
+          // Get all user IDs assigned to any of these role IDs
           const usersWithRole = await db
             .select({ userId: zuvyUserRolesAssigned.userId })
             .from(zuvyUserRolesAssigned)
-            .where(eq(zuvyUserRolesAssigned.roleId, roleId));
+            .where(
+              sql`${zuvyUserRolesAssigned.roleId} IN (${sql.join(
+                roleIds.map((id) => sql`${id}`),
+                sql`, `,
+              )})`,
+            );
 
-          const userIds = usersWithRole.map((u) => Number(u.userId));
+          const userIds = [
+            ...new Set(usersWithRole.map((u) => Number(u.userId))),
+          ];
 
           if (userIds.length > 0) {
-            // Filter tracking logs by these user IDs using SQL IN clause
             conditions.push(
               sql`${zuvyTrackingLogs.actorUserId} IN (${sql.join(
                 userIds.map((id) => sql`${id}`),
@@ -241,7 +246,6 @@ export class TrackinglogService {
               )})`,
             );
           } else {
-            // No users found with this role - return empty result
             conditions.push(sql`1 = 0`);
           }
         } else {

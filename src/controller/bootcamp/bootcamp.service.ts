@@ -33,6 +33,7 @@ import {
   zuvyUserOrganizations,
   zuvyUserRolesAssigned,
   zuvyOrganizations,
+  zuvyTrackingLogs,
 } from '../../../drizzle/schema';
 import { editUserDetailsDto } from './dto/bootcamp.dto';
 import { batch } from 'googleapis/build/src/apis/batch';
@@ -743,6 +744,10 @@ export class BootcampService {
       await db
         .delete(zuvyBatchEnrollments)
         .where(eq(zuvyBatchEnrollments.bootcampId, id));
+      // Nullify bootcampId in tracking logs before deleting bootcamp (FK constraint)
+      await db.execute(
+        sql`UPDATE zuvy_tracking_logs SET bootcamp_id = NULL WHERE bootcamp_id = ${id}`,
+      );
       // Finally, delete the bootcamp
       const deleted = await db
         .delete(zuvyBootcamps)
