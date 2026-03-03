@@ -1554,7 +1554,15 @@ export class BootcampService {
       }
 
       // Check if no fields are provided to update
-      if (!editUserDetailsDto.name && !editUserDetailsDto.email) {
+      const dtoAny = editUserDetailsDto as any;
+      if (
+        !editUserDetailsDto.name &&
+        !editUserDetailsDto.email &&
+        dtoAny.status === undefined &&
+        dtoAny.batchId === undefined &&
+        dtoAny.bootcampId === undefined &&
+        dtoAny.enrollment === undefined
+      ) {
         return [
           null,
           {
@@ -1584,61 +1592,66 @@ export class BootcampService {
             }
           }
 
-          const updatedUser = await tx
-            .update(users)
-            .set(updateData)
-            .where(eq(users.id, BigInt(userId)))
-            .returning({
-              id: users.id,
-              name: users.name,
-              email: users.email,
-            });
-
-          if (!updatedUser.length) {
-            throw new Error('Failed to update user details');
-          }
-
-          // Handle POC name/email sync in zuvyOrganizations
-          const pocUpdateData: any = {};
-          if (editUserDetailsDto.name)
-            pocUpdateData.pocName = editUserDetailsDto.name;
-          if (editUserDetailsDto.email)
-            pocUpdateData.pocEmail = editUserDetailsDto.email;
-
-          if (Object.keys(pocUpdateData).length > 0) {
-            await tx
-              .update(zuvyOrganizations)
-              .set(pocUpdateData)
-              .where(eq(zuvyOrganizations.pocEmail, userExists[0].email));
-          }
-
-          const zuvyPocUpdateData: any = {};
-          if (editUserDetailsDto.name)
-            zuvyPocUpdateData.zuvyPocName = editUserDetailsDto.name;
-          if (editUserDetailsDto.email)
-            zuvyPocUpdateData.zuvyPocEmail = editUserDetailsDto.email;
-
-          if (Object.keys(zuvyPocUpdateData).length > 0) {
-            await tx
-              .update(zuvyOrganizations)
-              .set(zuvyPocUpdateData)
-              .where(eq(zuvyOrganizations.zuvyPocEmail, userExists[0].email));
-          }
-
-          // Convert BigInt to number
-          const userResData = {
-            ...updatedUser[0],
-            id: Number(updatedUser[0].id),
+          let userResData = {
+            ...userExists[0],
+            id: Number(userExists[0].id),
           };
+
+          if (Object.keys(updateData).length > 0) {
+            const updatedUser = await tx
+              .update(users)
+              .set(updateData)
+              .where(eq(users.id, BigInt(userId)))
+              .returning({
+                id: users.id,
+                name: users.name,
+                email: users.email,
+              });
+
+            if (!updatedUser.length) {
+              throw new Error('Failed to update user details');
+            }
+
+            userResData = {
+              ...updatedUser[0],
+              id: Number(updatedUser[0].id),
+            };
+
+            // Handle POC name/email sync in zuvyOrganizations
+            const pocUpdateData: any = {};
+            if (editUserDetailsDto.name)
+              pocUpdateData.pocName = editUserDetailsDto.name;
+            if (editUserDetailsDto.email)
+              pocUpdateData.pocEmail = editUserDetailsDto.email;
+
+            if (Object.keys(pocUpdateData).length > 0) {
+              await tx
+                .update(zuvyOrganizations)
+                .set(pocUpdateData)
+                .where(eq(zuvyOrganizations.pocEmail, userExists[0].email));
+            }
+
+            const zuvyPocUpdateData: any = {};
+            if (editUserDetailsDto.name)
+              zuvyPocUpdateData.zuvyPocName = editUserDetailsDto.name;
+            if (editUserDetailsDto.email)
+              zuvyPocUpdateData.zuvyPocEmail = editUserDetailsDto.email;
+
+            if (Object.keys(zuvyPocUpdateData).length > 0) {
+              await tx
+                .update(zuvyOrganizations)
+                .set(zuvyPocUpdateData)
+                .where(eq(zuvyOrganizations.zuvyPocEmail, userExists[0].email));
+            }
+          }
 
           // Handle enrollment update if provided
           let enrollmentRes = null;
-          const dtoAny = editUserDetailsDto as any;
           if (
             dtoAny.enrollment ||
             dtoAny.bootcampId ||
             dtoAny.status ||
-            dtoAny.batchId
+            dtoAny.batchId !== undefined
           ) {
             // Build enrollment filter
             let enrollmentFilter: any = null;
@@ -1650,7 +1663,7 @@ export class BootcampService {
               dtoAny.batchId !== null &&
               dtoAny.batchId !== ''
             ) {
-              enrollmentFilter = sql`${zuvyBatchEnrollments.userId} = ${BigInt(userId)} AND ${zuvyBatchEnrollments.batchId} = ${BigInt(dtoAny.batchId)}`;
+              enrollmentFilter = sql`${zuvyBatchEnrollments.userId} = ${BigInt(userId)} AND ${zuvyBatchEnrollments.batchId} = ${Number(dtoAny.batchId)}`;
             } else if (
               dtoAny.bootcampId !== undefined &&
               dtoAny.bootcampId !== null &&
@@ -1684,7 +1697,7 @@ export class BootcampService {
                 ) {
                   const currentBatchId = enrollmentRows[0].batchId;
                   if (Number(currentBatchId) !== Number(dtoAny.batchId)) {
-                    enrollmentUpdateData.batchId = BigInt(dtoAny.batchId);
+                    enrollmentUpdateData.batchId = Number(dtoAny.batchId);
                   }
                 }
 
@@ -1697,6 +1710,7 @@ export class BootcampService {
               }
             }
           }
+
           return [userResData, enrollmentRes];
         },
       );
