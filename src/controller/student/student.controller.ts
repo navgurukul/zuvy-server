@@ -111,6 +111,43 @@ export class StudentController {
     return res;
   }
 
+  @Get('/bootcamp/global')
+  @ApiOperation({ summary: 'Get all global public Bootcamps with details' })
+  @ApiBearerAuth('JWT-auth')
+  async getGlobalCourses(): Promise<object> {
+    const [err, res] = await this.studentService.fetchGlobalCourses();
+    if (err) {
+      throw new BadRequestException(err);
+    }
+    return res;
+  }
+
+  @Post('/bootcamp/enroll')
+  @ApiOperation({ summary: 'Enroll a student in a public course' })
+  @ApiBearerAuth('JWT-auth')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        bootcampId: { type: 'number' },
+      },
+      required: ['bootcampId'],
+    },
+  })
+  async enrollPublicCourse(
+    @Req() req,
+    @Body('bootcampId') bootcampId: number,
+  ): Promise<object> {
+    const [err, res] = await this.studentService.enrollInPublicCourse(
+      req.user[0].id,
+      bootcampId,
+    );
+    if (err) {
+      throw new BadRequestException(err);
+    }
+    return res;
+  }
+
   @Delete('/:userId/:bootcampId')
   @ApiOperation({ summary: 'Removing student from bootcamp' })
   @ApiBearerAuth('JWT-auth')
