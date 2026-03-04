@@ -4,16 +4,34 @@ import {
   Injectable,
   InternalServerErrorException,
 } from '@nestjs/common';
-import { desc, eq, sql } from 'drizzle-orm';
-import {
-  zuvyLearnerInformation,
-  zuvyLearnerPersonalDetails,
-} from '../../../drizzle/schema';
+import { desc, isNotNull, sql } from 'drizzle-orm';
+import { pgSchema, serial, timestamp, varchar } from 'drizzle-orm/pg-core';
+import { zuvyLearnerInformation } from '../../../drizzle/schema';
 import { db } from '../../db/index';
 import {
+  UpsertLearnerEducationMasterDataDto,
   UpsertLearnerInformationDto,
-  UpsertLearnerPersonalDetailsDto,
 } from './dto/learner.dto';
+
+const learnerMainSchema = pgSchema('main');
+
+const zuvyLearnerEducationMasterDataTable = learnerMainSchema.table(
+  'zuvy_learner_education_details',
+  {
+    id: serial('id').primaryKey().notNull(),
+    collegeName: varchar('college_name', { length: 255 }),
+    degreeProgram: varchar('degree_program', { length: 100 }),
+    branchName: varchar('branch_name', { length: 100 }),
+    createdAt: timestamp('created_at', {
+      withTimezone: true,
+      mode: 'string',
+    }).defaultNow(),
+    updatedAt: timestamp('updated_at', {
+      withTimezone: true,
+      mode: 'string',
+    }).defaultNow(),
+  },
+);
 
 @Injectable()
 export class LearnerService {
@@ -133,15 +151,14 @@ ADD COLUMN IF NOT EXISTS last_name varchar(100);
     await this.ensureLearnerInformationIndexes();
   }
 
-  private async ensureLearnerPersonalDetailsStorageReady(): Promise<void> {
+  private async ensureLearnerEducationMasterDataStorageReady(): Promise<void> {
     await db.execute(
       sql.raw(`
-CREATE TABLE IF NOT EXISTS main.zuvy_learner_personal_details (
+CREATE TABLE IF NOT EXISTS main.zuvy_learner_education_details (
   id serial PRIMARY KEY,
-  user_id bigint NOT NULL REFERENCES main.users(id) ON UPDATE CASCADE ON DELETE CASCADE,
-  full_name varchar(255) NOT NULL,
-  phone_number varchar(20) NOT NULL,
-  email varchar(255) NOT NULL,
+  college_name varchar(255),
+  degree_program varchar(100),
+  branch_name varchar(100),
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );
@@ -150,9 +167,83 @@ CREATE TABLE IF NOT EXISTS main.zuvy_learner_personal_details (
 
     await db.execute(
       sql.raw(`
-DROP INDEX IF EXISTS main.zuvy_learner_personal_details_user_id_unique;
+ALTER TABLE main.zuvy_learner_education_details
+ADD COLUMN IF NOT EXISTS college_name varchar(255),
+ADD COLUMN IF NOT EXISTS degree_program varchar(100),
+ADD COLUMN IF NOT EXISTS branch_name varchar(100);
 `),
     );
+
+    await db.execute(
+      sql.raw(`
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'main'
+      AND table_name = 'zuvy_learner_education_details'
+      AND column_name = 'category'
+  ) AND EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'main'
+      AND table_name = 'zuvy_learner_education_details'
+      AND column_name = 'name'
+  ) THEN
+    UPDATE main.zuvy_learner_education_details
+    SET college_name = name
+    WHERE category = 'college' AND college_name IS NULL;
+
+    UPDATE main.zuvy_learner_education_details
+    SET degree_program = name
+    WHERE category = 'programType' AND degree_program IS NULL;
+
+    UPDATE main.zuvy_learner_education_details
+    SET branch_name = name
+    WHERE category = 'branch' AND branch_name IS NULL;
+  END IF;
+END $$;
+`),
+    );
+
+    await db.execute(
+      sql.raw(`
+ALTER TABLE main.zuvy_learner_education_details
+DROP COLUMN IF EXISTS category,
+DROP COLUMN IF EXISTS name;
+`),
+    );
+
+    await db.execute(
+      sql.raw(`
+DROP INDEX IF EXISTS main.zuvy_learner_education_details_category_name_unique;
+DROP INDEX IF EXISTS main.zuvy_learner_education_details_college_name_unique;
+DROP INDEX IF EXISTS main.zuvy_learner_education_details_degree_program_unique;
+DROP INDEX IF EXISTS main.zuvy_learner_education_details_branch_name_unique;
+DROP INDEX IF EXISTS main.zuvy_learner_education_details_row_unique;
+
+CREATE UNIQUE INDEX IF NOT EXISTS zuvy_learner_education_details_row_unique
+ON main.zuvy_learner_education_details (college_name, degree_program, branch_name);
+`),
+    );
+  }
+
+  private normalizeMasterDataEntries(
+    values: string[],
+    label: string,
+  ): string[] {
+    const normalized = values
+      .map((value) => value?.trim())
+      .filter((value): value is string => Boolean(value));
+
+    if (!normalized.length) {
+      throw new BadRequestException(
+        `${label} must contain at least one value.`,
+      );
+    }
+
+    return normalized;
   }
 
   private validateFutureGraduationDate(month: number, year: number): void {
@@ -183,6 +274,67 @@ DROP INDEX IF EXISTS main.zuvy_learner_personal_details_user_id_unique;
       throw new BadRequestException(
         'otherCollegeName is required when collegeName is Other.',
       );
+    }
+  }
+
+  private async fetchEducationMasterDataGrouped() {
+    const collegesData = await db
+      .select({
+        id: zuvyLearnerEducationMasterDataTable.id,
+        name: zuvyLearnerEducationMasterDataTable.collegeName,
+      })
+      .from(zuvyLearnerEducationMasterDataTable)
+      .where(isNotNull(zuvyLearnerEducationMasterDataTable.collegeName))
+      .orderBy(zuvyLearnerEducationMasterDataTable.id);
+
+    const programTypesData = await db
+      .select({
+        id: zuvyLearnerEducationMasterDataTable.id,
+        name: zuvyLearnerEducationMasterDataTable.degreeProgram,
+      })
+      .from(zuvyLearnerEducationMasterDataTable)
+      .where(isNotNull(zuvyLearnerEducationMasterDataTable.degreeProgram))
+      .orderBy(zuvyLearnerEducationMasterDataTable.id);
+
+    const branchesData = await db
+      .select({
+        id: zuvyLearnerEducationMasterDataTable.id,
+        name: zuvyLearnerEducationMasterDataTable.branchName,
+      })
+      .from(zuvyLearnerEducationMasterDataTable)
+      .where(isNotNull(zuvyLearnerEducationMasterDataTable.branchName))
+      .orderBy(zuvyLearnerEducationMasterDataTable.id);
+
+    return {
+      colleges: collegesData,
+      programTypes: programTypesData,
+      branches: branchesData,
+    };
+  }
+
+  async getEducationMasterData(retryOnMissingTable = true) {
+    try {
+      await this.ensureLearnerEducationMasterDataStorageReady();
+
+      const groupedData = await this.fetchEducationMasterDataGrouped();
+
+      return {
+        success: true,
+        data: groupedData,
+      };
+    } catch (error) {
+      if (this.isLearnerSchemaMissingError(error) && retryOnMissingTable) {
+        await this.ensureLearnerEducationMasterDataStorageReady();
+        return this.getEducationMasterData(false);
+      }
+
+      if (this.isLearnerSchemaMissingError(error)) {
+        throw new InternalServerErrorException(
+          'Learner education master data schema is out of sync. Please run migrations and retry.',
+        );
+      }
+
+      throw error;
     }
   }
 
@@ -243,16 +395,6 @@ DROP INDEX IF EXISTS main.zuvy_learner_personal_details_user_id_unique;
       throw new BadRequestException('Invalid authenticated user details.');
     }
 
-    if (
-      payload.expectedGraduationMonth != null &&
-      payload.expectedGraduationYear != null
-    ) {
-      this.validateFutureGraduationDate(
-        payload.expectedGraduationMonth,
-        payload.expectedGraduationYear,
-      );
-    }
-
     this.validateOtherCollegeInput(
       payload.collegeName,
       payload.otherCollegeName,
@@ -268,10 +410,6 @@ DROP INDEX IF EXISTS main.zuvy_learner_personal_details_user_id_unique;
         : null,
       degreeProgram: payload.degreeProgram?.trim() || null,
       branchSpecialisation: payload.branchSpecialisation?.trim() || null,
-      yearOfStudy: payload.yearOfStudy ?? null,
-      expectedGraduationMonth: payload.expectedGraduationMonth ?? null,
-      expectedGraduationYear: payload.expectedGraduationYear ?? null,
-      currentStatus: payload.currentStatus ?? null,
     };
 
     try {
@@ -332,86 +470,68 @@ DROP INDEX IF EXISTS main.zuvy_learner_personal_details_user_id_unique;
     }
   }
 
-  async createPersonalDetails(
-    userId: number,
-    payload: UpsertLearnerPersonalDetailsDto,
+  async createEducationMasterData(
+    payload: UpsertLearnerEducationMasterDataDto,
     retryOnMissingTable = true,
   ) {
-    if (!userId || Number.isNaN(userId)) {
-      throw new BadRequestException('Invalid authenticated user details.');
-    }
+    const colleges = this.normalizeMasterDataEntries(
+      payload.colleges,
+      'colleges',
+    );
+    const programTypes = this.normalizeMasterDataEntries(
+      payload.programTypes,
+      'programTypes',
+    );
+    const branches = this.normalizeMasterDataEntries(
+      payload.branches,
+      'branches',
+    );
 
-    const requestEmail = payload.email?.trim().toLowerCase();
+    const totalRows = Math.max(
+      colleges.length,
+      programTypes.length,
+      branches.length,
+    );
 
-    if (!requestEmail) {
-      throw new BadRequestException('Email is required.');
-    }
+    const pickValue = (values: string[], index: number): string | null =>
+      values[index] ?? null;
 
-    const normalizedPayload = {
-      fullName: payload.fullName.trim(),
-      email: requestEmail,
-      phoneNumber: payload.phoneNumber.trim(),
-    };
+    const rowValues = Array.from({ length: totalRows }, (_, index) => ({
+      collegeName: pickValue(colleges, index),
+      degreeProgram: pickValue(programTypes, index),
+      branchName: pickValue(branches, index),
+      updatedAt: sql`now()`,
+    }));
 
     try {
-      await this.ensureLearnerPersonalDetailsStorageReady();
+      await this.ensureLearnerEducationMasterDataStorageReady();
 
-      const [existingLearnerByEmail] = await db
-        .select({ id: zuvyLearnerPersonalDetails.id })
-        .from(zuvyLearnerPersonalDetails)
-        .where(eq(zuvyLearnerPersonalDetails.email, normalizedPayload.email))
-        .limit(1);
+      await db.transaction(async (tx) => {
+        await tx.delete(zuvyLearnerEducationMasterDataTable);
+        await tx.insert(zuvyLearnerEducationMasterDataTable).values(rowValues);
+      });
 
-      if (existingLearnerByEmail) {
-        throw new ConflictException('User already exists in database.');
-      }
-
-      const [saved] = await db
-        .insert(zuvyLearnerPersonalDetails)
-        .values({
-          userId: sql`${userId}::bigint`,
-          ...normalizedPayload,
-        })
-        .returning();
+      const groupedData = await this.fetchEducationMasterDataGrouped();
 
       return {
-        status: 'success',
-        message: 'Learner personal details saved successfully.',
-        data: saved,
+        success: true,
+        data: groupedData,
       };
     } catch (error) {
       if (this.isLearnerSchemaMissingError(error) && retryOnMissingTable) {
-        await this.ensureLearnerPersonalDetailsStorageReady();
-        return this.createPersonalDetails(userId, payload, false);
+        await this.ensureLearnerEducationMasterDataStorageReady();
+        return this.createEducationMasterData(payload, false);
       }
 
       if (this.isLearnerSchemaMissingError(error)) {
         throw new InternalServerErrorException(
-          'Learner personal details schema is out of sync. Please run migrations and retry.',
-        );
-      }
-
-      if (error?.code === '23503') {
-        throw new BadRequestException(
-          'Invalid user reference for learner personal details.',
+          'Learner education master data schema is out of sync. Please run migrations and retry.',
         );
       }
 
       if (error?.code === '22001') {
         throw new BadRequestException(
-          'One or more personal detail fields exceed allowed length.',
-        );
-      }
-
-      if (error?.code === '22P02') {
-        throw new BadRequestException(
-          'Invalid data format in learner personal details payload.',
-        );
-      }
-
-      if (error?.code === '23505') {
-        throw new ConflictException(
-          'Duplicate constraint violation while saving learner personal details.',
+          'One or more education master data values exceed allowed length.',
         );
       }
 

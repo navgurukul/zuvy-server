@@ -3076,19 +3076,13 @@ export const zuvyLearnerInformationRelation = relations(
   }),
 );
 
-export const zuvyLearnerPersonalDetails = main.table(
-  'zuvy_learner_personal_details',
+export const zuvyLearnerEducationDetails = main.table(
+  'zuvy_learner_education_details',
   {
     id: serial('id').primaryKey().notNull(),
-    userId: bigint('user_id', { mode: 'number' })
-      .notNull()
-      .references(() => users.id, {
-        onDelete: 'cascade',
-        onUpdate: 'cascade',
-      }),
-    fullName: varchar('full_name', { length: 255 }).notNull(),
-    phoneNumber: varchar('phone_number', { length: 20 }).notNull(),
-    email: varchar('email', { length: 255 }).notNull(),
+    collegeName: varchar('college_name', { length: 255 }),
+    degreeProgram: varchar('degree_program', { length: 100 }),
+    branchName: varchar('branch_name', { length: 100 }),
     createdAt: timestamp('created_at', {
       withTimezone: true,
       mode: 'string',
@@ -3102,15 +3096,12 @@ export const zuvyLearnerPersonalDetails = main.table(
       .defaultNow()
       .notNull(),
   },
-);
-
-export const zuvyLearnerPersonalDetailsRelation = relations(
-  zuvyLearnerPersonalDetails,
-  ({ one }) => ({
-    user: one(users, {
-      fields: [zuvyLearnerPersonalDetails.userId],
-      references: [users.id],
-    }),
+  (table) => ({
+    rowUnique: uniqueIndex('zuvy_learner_education_details_row_unique').on(
+      table.collegeName,
+      table.degreeProgram,
+      table.branchName,
+    ),
   }),
 );
 
