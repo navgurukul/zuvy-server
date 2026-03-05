@@ -162,48 +162,6 @@ export class UsersController {
     }
   }
 
-  @Get('get/roles/:orgId')
-  //   @RequirePermissions('read_user_roles')
-  @ApiOperation({
-    summary: 'Get all user roles',
-    description: 'Retrieves all user roles from the system',
-  })
-  @ApiResponse({
-    status: 200,
-    description: 'User roles retrieved successfully',
-    type: [UserRoleResponseDto],
-  })
-  @ApiResponse({
-    status: 500,
-    description: 'Internal server error',
-  })
-  @ApiQuery({
-    name: 'orgId',
-    required: true,
-    type: Number,
-    description: 'Organization ID to filter roles',
-  })
-  @ApiBearerAuth('JWT-auth')
-  async getAllUserRoles(
-    @Param('orgId') orgId: number,
-    @Req() req,
-  ): Promise<any> {
-    try {
-      const roleName = req.user[0]?.roles;
-      const result = await this.usersService.getAllUserRoles(
-        orgId,
-        roleName,
-        false,
-      );
-      return result;
-    } catch (error) {
-      throw new HttpException(
-        'Internal Server Error',
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
-    }
-  }
-
   @Get('get/all/roles/:orgId')
   //   @RequirePermissions('read_user_roles')
   @ApiOperation({
@@ -218,12 +176,6 @@ export class UsersController {
   @ApiResponse({
     status: 500,
     description: 'Internal server error',
-  })
-  @ApiQuery({
-    name: 'orgId',
-    required: true,
-    type: Number,
-    description: 'Organization ID to filter roles',
   })
   @ApiBearerAuth('JWT-auth')
   async getAllUserRolesNoFilter(
@@ -346,12 +298,6 @@ export class UsersController {
   @ApiResponse({
     status: 500,
     description: 'Internal server error',
-  })
-  @ApiQuery({
-    name: 'orgId',
-    required: true,
-    type: Number,
-    description: 'Organization ID to filter users',
   })
   async getAllUsers(
     @Param('orgId') orgId: number,
