@@ -1,32 +1,59 @@
-import { Injectable } from '@nestjs/common';
-import { db } from '../../../db';
 import {
-  zuvyMentorSlotBooking,
-  zuvyMentorSlotManagement,
-} from '../../../../drizzle/schema';
+  Injectable,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
+
+import { db } from '../../../db';
+import { zuvyMentorSlotBooking } from '../../../../drizzle/schema';
+
 import { eq } from 'drizzle-orm';
 
 @Injectable()
 export class SessionService {
-  async getStudentSessions(userId: number) {
+  /* ==========================================================================
+     STUDENT SESSIONS
+  ========================================================================== */
+
+  async getStudentSessions(userId: bigint) {
     return db
       .select()
       .from(zuvyMentorSlotBooking)
-      .where(eq(zuvyMentorSlotBooking.studentUserId, BigInt(userId)));
+      .where(eq(zuvyMentorSlotBooking.studentUserId, userId));
   }
 
-  async getMentorSessions(userId: number) {
+  /* ==========================================================================
+     MENTOR SESSIONS
+  ========================================================================== */
+
+  async getMentorSessions(userId: bigint) {
     return db
       .select()
       .from(zuvyMentorSlotBooking)
-      .where(eq(zuvyMentorSlotBooking.mentorUserId, BigInt(userId)));
+      .where(eq(zuvyMentorSlotBooking.mentorUserId, userId));
   }
 
-  async getSessionDetail(sessionId: number) {
-    return db
+  /* ==========================================================================
+     SESSION DETAIL WITH ACCESS CONTROL
+  ========================================================================== */
+
+  async getSessionDetail(sessionId: number, userId: bigint) {
+    const [session] = await db
       .select()
       .from(zuvyMentorSlotBooking)
       .where(eq(zuvyMentorSlotBooking.id, sessionId))
       .limit(1);
+
+    if (!session) {
+      throw new NotFoundException('Session not found');
+    }
+
+    if (session.studentUserId !== userId && session.mentorUserId !== userId) {
+      throw new ForbiddenException(
+        'You are not allowed to access this session',
+      );
+    }
+
+    return session;
   }
 }

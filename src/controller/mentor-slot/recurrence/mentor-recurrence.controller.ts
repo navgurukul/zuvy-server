@@ -1,4 +1,4 @@
-import { Controller, Post, Body, UseGuards } from '@nestjs/common';
+import { Controller, Post, Body, UseGuards, Req } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { MentorRecurrenceService } from './mentor-recurrence.service';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
@@ -16,7 +16,7 @@ export class MentorRecurrenceController {
   ========================================================================== */
 
   @Post()
-  async generateRecurringSlots(@Body() dto: RecurrenceDto) {
+  async generateRecurringSlots(@Req() req, @Body() dto: RecurrenceDto) {
     return this.recurrenceService.generateRecurringSlots({
       mentorSlotManagementId: dto.mentorSlotManagementId,
       slotStart: new Date(dto.slotStart),

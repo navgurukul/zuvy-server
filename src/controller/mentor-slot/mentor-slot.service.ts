@@ -17,6 +17,19 @@ import { CreateSlotDto } from './dto/create-slot.dto';
 
 @Injectable()
 export class MentorSlotService {
+  private async getMentorProfile(userId: number) {
+    const [mentorProfile] = await db
+      .select()
+      .from(zuvyMentorSlotManagement)
+      .where(eq(zuvyMentorSlotManagement.mentorUserId, BigInt(userId)))
+      .limit(1);
+
+    if (!mentorProfile) {
+      throw new ForbiddenException('User is not registered as a mentor');
+    }
+
+    return mentorProfile;
+  }
   /* ==========================================================================
      UTILITY — 12 HOUR RULE ENFORCER
   ========================================================================== */
@@ -266,14 +279,22 @@ export class MentorSlotService {
      ENFORCE 12-HOUR SLOT DELETION RULE
   ========================================================================== */
 
-  async removeSlot(slotId: number) {
+  async removeSlot(userId: number, slotId: number) {
+    const mentorProfile = await this.getMentorProfile(userId);
+
     const [slot] = await db
       .select()
       .from(zuvyMentorSlotAvailability)
       .where(eq(zuvyMentorSlotAvailability.id, slotId))
       .limit(1);
 
-    if (!slot) throw new NotFoundException('Slot not found.');
+    if (!slot) {
+      throw new NotFoundException('Slot not found.');
+    }
+
+    if (slot.mentorSlotManagementId !== mentorProfile.id) {
+      throw new ForbiddenException('You do not own this slot.');
+    }
 
     this.enforceMinimumNotice(slot.slotStartDateTime);
 
@@ -375,7 +396,9 @@ export class MentorSlotService {
     return { message: 'Reschedule declined.' };
   }
 
-  async createSlot(userId: number, dto: CreateSlotDto) {
+  async createSlot(userId: number, dto: any) {
+    const mentorProfile = await this.getMentorProfile(userId);
+
     const start = new Date(dto.slotStartDateTime);
     const end = new Date(dto.slotEndDateTime);
 
@@ -385,24 +408,6 @@ export class MentorSlotService {
 
     if (start.getTime() <= Date.now()) {
       throw new BadRequestException('Cannot create past slot.');
-    }
-
-    const durationMinutes = Math.floor(
-      (end.getTime() - start.getTime()) / (1000 * 60),
-    );
-
-    if (durationMinutes <= 0) {
-      throw new BadRequestException('Invalid duration.');
-    }
-
-    const [mentorProfile] = await db
-      .select()
-      .from(zuvyMentorSlotManagement)
-      .where(eq(zuvyMentorSlotManagement.mentorUserId, BigInt(userId)))
-      .limit(1);
-
-    if (!mentorProfile) {
-      throw new NotFoundException('Mentor profile not found.');
     }
 
     const overlap = await db
@@ -423,14 +428,15 @@ export class MentorSlotService {
       throw new BadRequestException('Slot overlaps existing slot.');
     }
 
-    return db.insert(zuvyMentorSlotAvailability).values({
-      mentorSlotManagementId: mentorProfile.id,
-      slotStartDateTime: start,
-      slotEndDateTime: end,
-      durationMinutes,
-      maxCapacity: dto.maxCapacity || 1,
-      topic: dto.topic,
-    } as typeof zuvyMentorSlotAvailability.$inferInsert);
+    return db
+      .insert(zuvyMentorSlotAvailability)
+      .values({
+        mentorSlotManagementId: mentorProfile.id,
+        slotStartDateTime: start,
+        slotEndDateTime: end,
+        durationMinutes: dto.durationMinutes,
+      } as typeof zuvyMentorSlotAvailability.$inferInsert)
+      .returning();
   }
 
   async getMySlots(userId: number) {

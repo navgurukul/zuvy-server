@@ -104,24 +104,34 @@ export class MentorSlotController {
   }
 
   /* ==========================================================================
+     CREATE SLOT
+  ========================================================================== */
+  @Post('create')
+  async createSlot(@Req() req, @Body() dto: CreateSlotDto) {
+    return this.mentorSlotService.createSlot(req.user.id, dto);
+  }
+
+  /* ==========================================================================
      REMOVE SLOT
   ========================================================================== */
 
   @Delete(':slotId')
-  async removeSlot(@Param('slotId', ParseIntPipe) slotId: number) {
-    return this.mentorSlotService.removeSlot(slotId);
+  async removeSlot(@Req() req, @Param('slotId', ParseIntPipe) slotId: number) {
+    return this.mentorSlotService.removeSlot(req.user.id, slotId);
   }
 
-  @Post()
-  async createSlot(@Req() req, @Body() dto: CreateSlotDto) {
-    return this.mentorSlotService.createSlot(req.user.id, dto);
-  }
+  /* ==========================================================================  
+    GET MY SLOTS (for mentor) 
+========================================================================== */
 
   @Get('my')
   async getMySlots(@Req() req) {
     return this.mentorSlotService.getMySlots(req.user.id);
   }
 
+  /* ==========================================================================
+      GET SLOT DETAILS (for mentor or student) 
+  ========================================================================== */
   @Get(':slotId/details')
   async getSlotDetails(
     @Req() req,
@@ -130,11 +140,17 @@ export class MentorSlotController {
     return this.mentorSlotService.getSlotDetails(req.user.id, slotId);
   }
 
+  /* ==========================================================================  
+      GET STUDENT BOOKINGS (for student) 
+  ========================================================================== */
   @Get('student/my')
   async getStudentBookings(@Req() req) {
     return this.mentorSlotService.getStudentBookings(req.user.id);
   }
 
+  /* ==========================================================================  
+      MARK ATTENDANCE (for mentor) 
+  ========================================================================== */
   @Post(':bookingId/attendance')
   async markAttendance(
     @Param('bookingId', ParseIntPipe) bookingId: number,
@@ -147,11 +163,17 @@ export class MentorSlotController {
     );
   }
 
+  /* ==========================================================================  
+      COMPLETE SESSION (for mentor) 
+  ========================================================================== */
   @Post(':bookingId/complete')
   async completeSession(@Param('bookingId', ParseIntPipe) bookingId: number) {
     return this.mentorSlotService.completeSession(bookingId);
   }
 
+  /* ==========================================================================  
+      UPDATE MENTOR PROFILE (for mentor) 
+  ========================================================================== */
   @Patch('mentor/profile')
   async updateProfile(@Req() req, @Body() body: any) {
     return this.mentorSlotService.updateMentorProfile(req.user.id, body);
