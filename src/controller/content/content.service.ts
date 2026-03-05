@@ -78,7 +78,6 @@ import {
   UpdateChapterDto,
 } from './dto/content.dto';
 import { STATUS_CODES } from '../../helpers';
-import { diffRecords } from '../../trackinglog/utils';
 import { helperVariable } from '../../constants/helper';
 import { ConfigService } from '@nestjs/config';
 import {
@@ -1302,7 +1301,6 @@ export class ContentService {
       return {
         message: 'Modified successfully',
         data: newModule,
-        changes: diffRecords(oldModule, newModule),
       };
     } catch (err) {
       throw err;
@@ -1534,13 +1532,10 @@ export class ContentService {
         .from(zuvyModuleChapter)
         .where(eq(zuvyModuleChapter.id, chapterId));
 
-      const chapterChanges = diffRecords(chapterInfo[0], updatedChapter[0]);
-
       return {
         message: 'Modified successfully',
         chapter: updatedChapter,
         bootcampId: moduleInfo[0].bootcampId,
-        changes: chapterChanges,
       };
     } catch (err) {
       throw err;

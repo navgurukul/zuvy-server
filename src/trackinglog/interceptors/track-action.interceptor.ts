@@ -12,7 +12,6 @@ import {
   TRACK_ACTION_KEY,
   TrackActionMetadata,
 } from '../decorators/track-action.decorator';
-import { diffRecords } from '../utils';
 
 @Injectable()
 export class TrackActionInterceptor implements NestInterceptor {
@@ -472,58 +471,14 @@ export class TrackActionInterceptor implements NestInterceptor {
     resourceType: string,
     resourceName: string,
     targetUser: { status?: string; name?: string; email?: string } | null,
-    result: any,
+    _result: any,
   ): string {
     const actionVerb = action.split('_')[0].toLowerCase();
     const pastTense = this.toPastTense(actionVerb);
 
-    // ── Compute diff first so we can use field names in the base sentence ─────
-    if (!result?.changes && result?.before && (result?.data || result?.after)) {
-      const afterRecord = result.data ?? result.after;
-      result.changes = diffRecords(result.before, afterRecord);
-    }
-
-    // Parse each change string: 'Type: "Private" → "Public"'
-    // → { field: 'Type', from: 'Private', to: 'Public' }
-    const parseChange = (c: string) => {
-      const colonIdx = c.indexOf(': ');
-      if (colonIdx === -1) return { field: c, from: '', to: '' };
-      const field = c.substring(0, colonIdx);
-      const rest = c.substring(colonIdx + 2);
-      const arrowIdx = rest.indexOf(' → ');
-      if (arrowIdx === -1) return { field, from: rest, to: '' };
-      const from = rest.substring(0, arrowIdx).replace(/^"|"$/g, '');
-      const to = rest.substring(arrowIdx + 3).replace(/^"|"$/g, '');
-      return { field, from, to };
-    };
-
-    const parsedChanges =
-      result?.changes?.length > 0
-        ? (result.changes as string[]).map(parseChange)
-        : null;
-
     // ── Base sentence ─────────────────────────────────────────────────────────
-    let desc: string;
-    if (parsedChanges) {
-      const fieldNames = parsedChanges.map((c) => c.field).join(', ');
-      desc = `${actorName} ${pastTense} ${resourceType} ${fieldNames}`;
-      if (resourceName) desc += ` for "${resourceName}"`;
-
-      // Append "from X to Y" — single change: inline, multiple: each listed
-      if (parsedChanges.length === 1) {
-        const { from, to } = parsedChanges[0];
-        if (from && to) desc += ` from "${from}" to "${to}"`;
-      } else {
-        const changeList = parsedChanges
-          .filter((c) => c.from && c.to)
-          .map((c) => `${c.field} from "${c.from}" to "${c.to}"`)
-          .join(', ');
-        if (changeList) desc += ` (${changeList})`;
-      }
-    } else {
-      desc = `${actorName} ${pastTense} ${resourceType}`;
-      if (resourceName) desc += ` "${resourceName}"`;
-    }
+    let desc = `${actorName} ${pastTense} ${resourceType}`;
+    if (resourceName) desc += ` "${resourceName}"`;
 
     // ── Target user — included generically whenever present ───────────────────
     if (targetUser) {
