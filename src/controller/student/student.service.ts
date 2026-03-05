@@ -17,8 +17,9 @@ import {
   zuvyModuleChapter,
   zuvyCourseModules,
   zuvyModuleTopics,
-  zuvyStudentAttendanceRecords,
   zuvyAssignmentSubmission,
+  zuvyOrganizations,
+  zuvyStudentAttendanceRecords,
 } from '../../../drizzle/schema';
 import { db } from '../../db/index';
 import {
@@ -255,6 +256,9 @@ export class StudentService {
     try {
       // Get enrolled bootcamps
       let enrolled = await db.query.zuvyBatchEnrollments.findMany({
+        orderBy: (zuvyBatchEnrollments, { desc }) => [
+          desc(zuvyBatchEnrollments.createdAt),
+        ],
         where: (zuvyBatchEnrollments, { sql }) =>
           sql`${zuvyBatchEnrollments.userId} = ${userId} AND ${zuvyBatchEnrollments.batchId} IS NOT NULL`,
         columns: {
@@ -270,6 +274,7 @@ export class StudentService {
               language: true,
               bootcampTopic: true,
               description: true,
+              organizationId: true,
             },
           },
           batchInfo: {
@@ -296,6 +301,11 @@ export class StudentService {
       });
 
       // Fetch upcoming events once for all bootcamps
+      let allOrgs = await db.select().from(zuvyOrganizations);
+      const orgMap = {};
+      allOrgs.forEach((org) => {
+        orgMap[org.id] = org.title;
+      });
 
       // Process each enrollment and attach upcoming events
       const totalData = await Promise.all(
@@ -306,6 +316,10 @@ export class StudentService {
           return {
             ...bootcamp,
             id: Number(bootcamp.id),
+            courseOrgId: bootcamp.organizationId || null,
+            courseOrgName: bootcamp.organizationId
+              ? orgMap[bootcamp.organizationId]
+              : null,
             batchId: batchInfo?.id ? Number(batchInfo.id) : null,
             batchName: batchInfo?.name,
             progress,
@@ -452,9 +466,160 @@ export class StudentService {
     }
   }
 
+  async fetchGlobalCourses() {
+    try {
+      // Fetch public bootcamps
+      let publicBootcamps = await db
+        .select()
+        .from(zuvyBootcamps)
+        .innerJoin(
+          zuvyBootcampType,
+          eq(zuvyBootcamps.id, zuvyBootcampType.bootcampId),
+        )
+        .where(sql`${zuvyBootcampType.type} = 'Public'`);
+
+      let data = await Promise.all(
+        publicBootcamps.map(async (bootcampRecord) => {
+          const { zuvy_bootcamps, zuvy_bootcamp_type } = bootcampRecord;
+          let [err, res] = await this.enrollmentData(zuvy_bootcamps.id);
+
+          // fetch first batch
+          const firstBatch = await db.query.zuvyBatches.findFirst({
+            where: (zuvyBatches, { eq }) =>
+              eq(zuvyBatches.bootcampId, zuvy_bootcamps.id),
+            orderBy: (zuvyBatches, { desc }) => [desc(zuvyBatches.createdAt)],
+            with: {
+              instructorDetails: {
+                columns: {
+                  name: true,
+                  profilePicture: true,
+                },
+              },
+            },
+          });
+
+          return {
+            ...zuvy_bootcamps,
+            ...zuvy_bootcamp_type,
+            batchInfo: firstBatch || null,
+            enrolledInfo: res,
+          };
+        }),
+      );
+      return [null, data];
+    } catch (err) {
+      this.logger.error(`error: ${err.message}`);
+      return [{ status: 'error', message: err.message, code: 500 }, null];
+    }
+  }
+
+  async enrollInPublicCourse(userId: number, bootcampId: number) {
+    try {
+      // Verify public bootcamp
+      const isPublic = await db
+        .select()
+        .from(zuvyBootcampType)
+        .where(
+          and(
+            eq(zuvyBootcampType.bootcampId, bootcampId),
+            eq(zuvyBootcampType.type, 'Public'),
+          ),
+        );
+
+      if (!isPublic || isPublic.length === 0) {
+        return [
+          {
+            status: 'error',
+            message: 'This course is not public or does not exist.',
+            code: 400,
+          },
+          null,
+        ];
+      }
+
+      // Find an available batch where capEnrollment > enrollments
+      const batches = await db
+        .select()
+        .from(zuvyBatches)
+        .where(eq(zuvyBatches.bootcampId, bootcampId))
+        .orderBy(asc(zuvyBatches.createdAt));
+
+      let selectedBatchId = null;
+      for (const batch of batches) {
+        const enrollmentsCounts = await db
+          .select({ count: count() })
+          .from(zuvyBatchEnrollments)
+          .where(eq(zuvyBatchEnrollments.batchId, batch.id));
+
+        const currentCount = enrollmentsCounts[0].count;
+        if (!batch.capEnrollment || currentCount < batch.capEnrollment) {
+          selectedBatchId = batch.id;
+          break;
+        }
+      }
+
+      if (!selectedBatchId) {
+        return [
+          {
+            status: 'error',
+            message: 'All batches for this course are currently full.',
+            code: 400,
+          },
+          null,
+        ];
+      }
+
+      // Check if user already enrolled
+      const existingEnrollment = await db
+        .select()
+        .from(zuvyBatchEnrollments)
+        .where(
+          and(
+            eq(zuvyBatchEnrollments.userId, BigInt(userId)),
+            eq(zuvyBatchEnrollments.bootcampId, bootcampId),
+          ),
+        );
+
+      if (existingEnrollment && existingEnrollment.length > 0) {
+        return [
+          {
+            status: 'error',
+            message: 'Already enrolled in this course.',
+            code: 400,
+          },
+          null,
+        ];
+      }
+
+      // Create enrollment
+      const userEnroll = await db
+        .insert(zuvyBatchEnrollments)
+        .values({
+          userId: BigInt(userId),
+          bootcampId,
+          batchId: selectedBatchId,
+        })
+        .returning();
+
+      return [
+        null,
+        { message: 'Successfully enrolled in the course.', data: userEnroll },
+      ];
+    } catch (err) {
+      this.logger.error(`error: ${err.message}`);
+      return [{ status: 'error', message: err.message, code: 500 }, null];
+    }
+  }
+
   async removingStudent(user_id: number | number[], bootcamp_id: number) {
     try {
       const userIdsArray = Array.isArray(user_id) ? user_id : [user_id];
+
+      // Fetch user details before deletion so tracking log can show real names
+      const removedUsers = await db
+        .select({ id: users.id, name: users.name, email: users.email })
+        .from(users)
+        .where(inArray(users.id, userIdsArray.map(BigInt)));
 
       let enrolled = await db
         .delete(zuvyBatchEnrollments)
@@ -492,6 +657,8 @@ export class StudentService {
               ? 'Student removed from the bootcamp'
               : `${deletedCount} students removed from the bootcamp`,
           code: 200,
+          removedUsers,
+          bootcampId: Number(bootcamp_id),
         },
       ];
     } catch (e) {

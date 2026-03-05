@@ -13,6 +13,7 @@ import {
   Query,
   Req,
   Res,
+  UseInterceptors,
 } from '@nestjs/common';
 import { StudentService } from './student.service';
 import {
@@ -23,6 +24,8 @@ import {
   ApiBearerAuth,
   ApiParam,
 } from '@nestjs/swagger';
+import { TrackAction } from 'src/trackinglog/decorators/track-action.decorator';
+import { TrackActionInterceptor } from 'src/trackinglog/interceptors/track-action.interceptor';
 import { get } from 'http';
 import { Response } from 'express';
 import { ErrorResponse, SuccessResponse } from 'src/errorHandler/handler';
@@ -33,6 +36,7 @@ import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 
 @Controller('student')
 @ApiTags('student')
+@UseInterceptors(TrackActionInterceptor)
 @UsePipes(
   new ValidationPipe({
     whitelist: true,
@@ -107,6 +111,43 @@ export class StudentController {
     return res;
   }
 
+  @Get('/bootcamp/global')
+  @ApiOperation({ summary: 'Get all global public Bootcamps with details' })
+  @ApiBearerAuth('JWT-auth')
+  async getGlobalCourses(): Promise<object> {
+    const [err, res] = await this.studentService.fetchGlobalCourses();
+    if (err) {
+      throw new BadRequestException(err);
+    }
+    return res;
+  }
+
+  @Post('/bootcamp/enroll')
+  @ApiOperation({ summary: 'Enroll a student in a public course' })
+  @ApiBearerAuth('JWT-auth')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        bootcampId: { type: 'number' },
+      },
+      required: ['bootcampId'],
+    },
+  })
+  async enrollPublicCourse(
+    @Req() req,
+    @Body('bootcampId') bootcampId: number,
+  ): Promise<object> {
+    const [err, res] = await this.studentService.enrollInPublicCourse(
+      req.user[0].id,
+      bootcampId,
+    );
+    if (err) {
+      throw new BadRequestException(err);
+    }
+    return res;
+  }
+
   @Delete('/:userId/:bootcampId')
   @ApiOperation({ summary: 'Removing student from bootcamp' })
   @ApiBearerAuth('JWT-auth')
@@ -115,6 +156,18 @@ export class StudentController {
     required: true,
     type: [Number],
     description: 'userId',
+  })
+  @TrackAction({
+    action: 'delete_student',
+    resourceType: 'bootcamp',
+    permissionName: 'deleteStudent',
+    getResourceName: (result) => {
+      const removed = result?.removedUsers;
+      if (!removed || removed.length === 0) return 'student';
+      if (removed.length === 1)
+        return removed[0].name || removed[0].email || 'student';
+      return removed.map((u) => u.name || u.email).join(', ');
+    },
   })
   async removingStudents(
     @Query('userId') userId: number | number[],

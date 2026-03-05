@@ -33,6 +33,7 @@ import {
   zuvyUserOrganizations,
   zuvyUserRolesAssigned,
   zuvyOrganizations,
+  zuvyTrackingLogs,
 } from '../../../drizzle/schema';
 import { editUserDetailsDto } from './dto/bootcamp.dto';
 import { batch } from 'googleapis/build/src/apis/batch';
@@ -523,6 +524,15 @@ export class BootcampService {
   async updateBootcamp(id: number, orgId: number, bootcampData): Promise<any> {
     try {
       delete bootcampData.instructorId;
+
+      // Snapshot before state for auto-diff in tracking log
+      const beforeRows = await db
+        .select()
+        .from(zuvyBootcamps)
+        .where(eq(zuvyBootcamps.id, id))
+        .limit(1);
+      const before = beforeRows[0] || null;
+
       let updatedBootcamp = await db
         .update(zuvyBootcamps)
         .set({ ...bootcampData })
@@ -547,6 +557,8 @@ export class BootcampService {
           message: 'Bootcamp updated successfully',
           code: 200,
           updatedBootcamp,
+          before,
+          data: updatedBootcamp[0],
         },
       ];
     } catch (e) {
@@ -562,6 +574,22 @@ export class BootcampService {
     orgId: number,
   ) {
     try {
+      // Fetch bootcamp name for tracking log
+      const bootcampInfo = await db
+        .select({ name: zuvyBootcamps.name })
+        .from(zuvyBootcamps)
+        .where(eq(zuvyBootcamps.id, bootcamp_id))
+        .limit(1);
+      const bootcampName = bootcampInfo[0]?.name || null;
+
+      // Snapshot before state for auto-diff
+      const beforeRows = await db
+        .select()
+        .from(zuvyBootcampType)
+        .where(eq(zuvyBootcampType.bootcampId, bootcamp_id))
+        .limit(1);
+      const before = beforeRows[0] || null;
+
       const typeOfBootcamp = settingData.type
         ? settingData.type.toLowerCase()
         : null;
@@ -610,6 +638,9 @@ export class BootcampService {
             message: 'Bootcamp Type updated successfully',
             code: 200,
             updatedBootcampSetting,
+            bootcampName,
+            before,
+            data: updatedBootcampSetting[0],
             ...grantedPermissions,
           },
         ];
@@ -620,6 +651,7 @@ export class BootcampService {
             status: 'success',
             message: `Course type can be of type Public or Private`,
             code: 200,
+            bootcampName,
             ...grantedPermissions,
           },
         ];
@@ -712,6 +744,10 @@ export class BootcampService {
       await db
         .delete(zuvyBatchEnrollments)
         .where(eq(zuvyBatchEnrollments.bootcampId, id));
+      // Nullify bootcampId in tracking logs before deleting bootcamp (FK constraint)
+      await db.execute(
+        sql`UPDATE zuvy_tracking_logs SET bootcamp_id = NULL WHERE bootcamp_id = ${id}`,
+      );
       // Finally, delete the bootcamp
       const deleted = await db
         .delete(zuvyBootcamps)
@@ -729,6 +765,8 @@ export class BootcampService {
           status: 'success',
           message: 'Bootcamp deleted successfully',
           code: 200,
+          bootcampName: deleted[0]?.name || null,
+          bootcampId: id,
         },
       ];
     } catch (error) {
@@ -1503,7 +1541,7 @@ export class BootcampService {
     try {
       // Validate user existence in the users table
       const userExists = await db
-        .select({ id: users.id, email: users.email })
+        .select({ id: users.id, email: users.email, name: users.name })
         .from(users)
         .where(eq(users.id, BigInt(userId)))
         .limit(1);
@@ -1516,7 +1554,15 @@ export class BootcampService {
       }
 
       // Check if no fields are provided to update
-      if (!editUserDetailsDto.name && !editUserDetailsDto.email) {
+      const dtoAny = editUserDetailsDto as any;
+      if (
+        !editUserDetailsDto.name &&
+        !editUserDetailsDto.email &&
+        dtoAny.status === undefined &&
+        dtoAny.batchId === undefined &&
+        dtoAny.bootcampId === undefined &&
+        dtoAny.enrollment === undefined
+      ) {
         return [
           null,
           {
@@ -1546,61 +1592,66 @@ export class BootcampService {
             }
           }
 
-          const updatedUser = await tx
-            .update(users)
-            .set(updateData)
-            .where(eq(users.id, BigInt(userId)))
-            .returning({
-              id: users.id,
-              name: users.name,
-              email: users.email,
-            });
-
-          if (!updatedUser.length) {
-            throw new Error('Failed to update user details');
-          }
-
-          // Handle POC name/email sync in zuvyOrganizations
-          const pocUpdateData: any = {};
-          if (editUserDetailsDto.name)
-            pocUpdateData.pocName = editUserDetailsDto.name;
-          if (editUserDetailsDto.email)
-            pocUpdateData.pocEmail = editUserDetailsDto.email;
-
-          if (Object.keys(pocUpdateData).length > 0) {
-            await tx
-              .update(zuvyOrganizations)
-              .set(pocUpdateData)
-              .where(eq(zuvyOrganizations.pocEmail, userExists[0].email));
-          }
-
-          const zuvyPocUpdateData: any = {};
-          if (editUserDetailsDto.name)
-            zuvyPocUpdateData.zuvyPocName = editUserDetailsDto.name;
-          if (editUserDetailsDto.email)
-            zuvyPocUpdateData.zuvyPocEmail = editUserDetailsDto.email;
-
-          if (Object.keys(zuvyPocUpdateData).length > 0) {
-            await tx
-              .update(zuvyOrganizations)
-              .set(zuvyPocUpdateData)
-              .where(eq(zuvyOrganizations.zuvyPocEmail, userExists[0].email));
-          }
-
-          // Convert BigInt to number
-          const userResData = {
-            ...updatedUser[0],
-            id: Number(updatedUser[0].id),
+          let userResData = {
+            ...userExists[0],
+            id: Number(userExists[0].id),
           };
+
+          if (Object.keys(updateData).length > 0) {
+            const updatedUser = await tx
+              .update(users)
+              .set(updateData)
+              .where(eq(users.id, BigInt(userId)))
+              .returning({
+                id: users.id,
+                name: users.name,
+                email: users.email,
+              });
+
+            if (!updatedUser.length) {
+              throw new Error('Failed to update user details');
+            }
+
+            userResData = {
+              ...updatedUser[0],
+              id: Number(updatedUser[0].id),
+            };
+
+            // Handle POC name/email sync in zuvyOrganizations
+            const pocUpdateData: any = {};
+            if (editUserDetailsDto.name)
+              pocUpdateData.pocName = editUserDetailsDto.name;
+            if (editUserDetailsDto.email)
+              pocUpdateData.pocEmail = editUserDetailsDto.email;
+
+            if (Object.keys(pocUpdateData).length > 0) {
+              await tx
+                .update(zuvyOrganizations)
+                .set(pocUpdateData)
+                .where(eq(zuvyOrganizations.pocEmail, userExists[0].email));
+            }
+
+            const zuvyPocUpdateData: any = {};
+            if (editUserDetailsDto.name)
+              zuvyPocUpdateData.zuvyPocName = editUserDetailsDto.name;
+            if (editUserDetailsDto.email)
+              zuvyPocUpdateData.zuvyPocEmail = editUserDetailsDto.email;
+
+            if (Object.keys(zuvyPocUpdateData).length > 0) {
+              await tx
+                .update(zuvyOrganizations)
+                .set(zuvyPocUpdateData)
+                .where(eq(zuvyOrganizations.zuvyPocEmail, userExists[0].email));
+            }
+          }
 
           // Handle enrollment update if provided
           let enrollmentRes = null;
-          const dtoAny = editUserDetailsDto as any;
           if (
             dtoAny.enrollment ||
             dtoAny.bootcampId ||
             dtoAny.status ||
-            dtoAny.batchId
+            dtoAny.batchId !== undefined
           ) {
             // Build enrollment filter
             let enrollmentFilter: any = null;
@@ -1612,7 +1663,7 @@ export class BootcampService {
               dtoAny.batchId !== null &&
               dtoAny.batchId !== ''
             ) {
-              enrollmentFilter = sql`${zuvyBatchEnrollments.userId} = ${BigInt(userId)} AND ${zuvyBatchEnrollments.batchId} = ${BigInt(dtoAny.batchId)}`;
+              enrollmentFilter = sql`${zuvyBatchEnrollments.userId} = ${BigInt(userId)} AND ${zuvyBatchEnrollments.batchId} = ${Number(dtoAny.batchId)}`;
             } else if (
               dtoAny.bootcampId !== undefined &&
               dtoAny.bootcampId !== null &&
@@ -1646,7 +1697,7 @@ export class BootcampService {
                 ) {
                   const currentBatchId = enrollmentRows[0].batchId;
                   if (Number(currentBatchId) !== Number(dtoAny.batchId)) {
-                    enrollmentUpdateData.batchId = BigInt(dtoAny.batchId);
+                    enrollmentUpdateData.batchId = Number(dtoAny.batchId);
                   }
                 }
 
@@ -1659,6 +1710,7 @@ export class BootcampService {
               }
             }
           }
+
           return [userResData, enrollmentRes];
         },
       );
@@ -1682,6 +1734,7 @@ export class BootcampService {
           message: 'User details updated successfully',
           statusCode: STATUS_CODES.OK,
           data: userData,
+          before: { name: userExists[0].name, email: userExists[0].email },
         },
       ];
     } catch (err) {
@@ -1939,6 +1992,7 @@ export class BootcampService {
         .select({
           id: users.id,
           email: users.email,
+          name: users.name,
         })
 
         .from(users)
@@ -2009,6 +2063,11 @@ export class BootcampService {
           ),
         )
         .limit(1);
+
+      // Capture the previous status before any update
+      const previousStatus: string | null = existing.length
+        ? (existing[0].status as string)
+        : null;
 
       if (existing.length) {
         // Update existing record
@@ -2106,11 +2165,15 @@ export class BootcampService {
         status: 'success',
         message: `Attendance marked as ${status} successfully`,
         code: 200,
+        before: { status: previousStatus ?? 'none' },
         data: {
           userId,
           sessionId,
           status,
+          previousStatus,
           totalAttendance,
+          userName: user[0]?.name || null,
+          userEmail: user[0]?.email || null,
         },
       };
     } catch (err) {

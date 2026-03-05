@@ -7,8 +7,11 @@ import {
   Headers,
   UnauthorizedException,
   Request,
+  UseInterceptors,
 } from '@nestjs/common';
 import { AuthService } from './auth.service';
+import { TrackAction } from 'src/trackinglog/decorators/track-action.decorator';
+import { TrackActionInterceptor } from 'src/trackinglog/interceptors/track-action.interceptor';
 import { LoginDto } from './dto/login.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import {
@@ -22,11 +25,22 @@ import { Public } from './decorators/public.decorator';
 
 @ApiTags('Authentication')
 @Controller('auth')
+@UseInterceptors(TrackActionInterceptor)
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
   @Public()
   @Post('login')
+  @TrackAction({
+    action: 'login',
+    resourceType: 'user',
+    permissionName: 'viewUser',
+    getResourceName: (result, params) => {
+      const email = result?.user?.email || params?.email || 'Unknown';
+      const name = result?.user?.name || '';
+      return `${name ? `${name} (${email})` : email}`;
+    },
+  })
   @ApiOperation({ summary: 'Login with Google OAuth2' })
   @ApiBody({ type: LoginDto })
   @ApiResponse({
@@ -57,6 +71,12 @@ export class AuthController {
   }
 
   @Post('logout')
+  @TrackAction({
+    action: 'logout',
+    resourceType: 'user',
+    permissionName: 'viewUser',
+    getResourceName: () => '',
+  })
   @ApiBearerAuth('JWT-auth')
   @ApiOperation({
     summary: 'Logout and invalidate token',
@@ -95,6 +115,14 @@ export class AuthController {
 
   @Public()
   @Post('refresh')
+  @TrackAction({
+    action: 'refresh_token',
+    resourceType: 'user',
+    permissionName: 'viewUser',
+    getResourceName: (result) => {
+      return result?.user?.email || result?.email || 'Token Refreshed';
+    },
+  })
   @ApiOperation({ summary: 'Refresh access token' })
   @ApiBody({
     schema: {

@@ -12,8 +12,11 @@ import {
   Param,
   Put,
   Delete,
+  UseInterceptors,
 } from '@nestjs/common';
 import { UsersService } from './users.service';
+import { TrackAction } from 'src/trackinglog/decorators/track-action.decorator';
+import { TrackActionInterceptor } from 'src/trackinglog/interceptors/track-action.interceptor';
 import {
   ApiTags,
   ApiBody,
@@ -130,6 +133,14 @@ export class UsersController {
     description: 'Internal server error',
   })
   @ApiBearerAuth('JWT-auth')
+  @UseInterceptors(TrackActionInterceptor)
+  @TrackAction({
+    action: 'create_role',
+    resourceType: 'role',
+    permissionName: 'createRole',
+    getResourceName: (result, params) =>
+      params?.name || result?.data?.name || 'Role',
+  })
   async createUserRole(
     @Body() createUserRoleDto: CreateUserRoleDto,
   ): Promise<any> {
@@ -151,7 +162,7 @@ export class UsersController {
     }
   }
 
-  @Get('get/roles')
+  @Get('get/all/roles/:orgId')
   //   @RequirePermissions('read_user_roles')
   @ApiOperation({
     summary: 'Get all user roles',
@@ -165,66 +176,18 @@ export class UsersController {
   @ApiResponse({
     status: 500,
     description: 'Internal server error',
-  })
-  @ApiQuery({
-    name: 'orgId',
-    required: true,
-    type: Number,
-    description: 'Organization ID to filter roles',
-  })
-  @ApiBearerAuth('JWT-auth')
-  async getAllUserRoles(
-    @Req() req,
-    @Query('orgId', ParseIntPipe) orgId: number,
-  ): Promise<any> {
-    try {
-      const roleName = req.user[0]?.roles;
-      const result = await this.usersService.getAllUserRoles(
-        roleName,
-        false,
-        orgId,
-      );
-      return result;
-    } catch (error) {
-      throw new HttpException(
-        'Internal Server Error',
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
-    }
-  }
-
-  @Get('get/all/roles')
-  //   @RequirePermissions('read_user_roles')
-  @ApiOperation({
-    summary: 'Get all user roles',
-    description: 'Retrieves all user roles from the system',
-  })
-  @ApiResponse({
-    status: 200,
-    description: 'User roles retrieved successfully',
-    type: [UserRoleResponseDto],
-  })
-  @ApiResponse({
-    status: 500,
-    description: 'Internal server error',
-  })
-  @ApiQuery({
-    name: 'orgId',
-    required: true,
-    type: Number,
-    description: 'Organization ID to filter roles',
   })
   @ApiBearerAuth('JWT-auth')
   async getAllUserRolesNoFilter(
+    @Param('orgId') orgId: number,
     @Req() req,
-    @Query('orgId', ParseIntPipe) orgId: number,
   ): Promise<any> {
     try {
       const roleName = req.user[0]?.roles;
       const result = await this.usersService.getAllUserRoles(
+        orgId,
         roleName,
         true,
-        orgId,
       );
       return result;
     } catch (error) {
@@ -252,6 +215,14 @@ export class UsersController {
   @ApiResponse({ status: 404, description: 'User or Role not found' })
   @ApiResponse({ status: 500, description: 'Internal server error' })
   @ApiBearerAuth('JWT-auth')
+  @UseInterceptors(TrackActionInterceptor)
+  @TrackAction({
+    action: 'assign_role',
+    resourceType: 'role',
+    permissionName: 'editUser',
+    getResourceName: (result, params) =>
+      params?.roleName || result?.data?.name || 'Role',
+  })
   async assignRoleToUser(
     @Body() body: AssignUserRoleDto,
     @Req() req,
@@ -271,7 +242,7 @@ export class UsersController {
     }
   }
 
-  @Get('get/all/users')
+  @Get('get/all/users/:orgId')
   @ApiOperation({
     summary: 'Get all users with their roles',
     description: 'Retrieves a list of all users with their role information',
@@ -328,15 +299,9 @@ export class UsersController {
     status: 500,
     description: 'Internal server error',
   })
-  @ApiQuery({
-    name: 'orgId',
-    required: true,
-    type: Number,
-    description: 'Organization ID to filter users',
-  })
   async getAllUsers(
+    @Param('orgId') orgId: number,
     @Req() req, // Required parameter first
-    @Query('orgId', ParseIntPipe) orgIdQuery: number,
     @Query('limit') limit?: string, // Optional
     @Query('offset') offset?: string, // Optional
     @Query('searchTerm') searchTerm?: string, // Optional (default to '')
@@ -361,14 +326,13 @@ export class UsersController {
     }
 
     const roleName = req.user[0]?.roles;
-    const orgId = orgIdQuery || req.user[0]?.orgId;
     return this.usersService.getAllUsersWithRoles(
+      orgId,
       roleName,
       limitNum,
       offsetNum,
       searchTerm || '', // Default to empty string if undefined
       roleId,
-      orgId,
     );
   }
 
@@ -417,6 +381,17 @@ export class UsersController {
   }
 
   @Post('/addUsers')
+  @UseInterceptors(TrackActionInterceptor)
+  @TrackAction({
+    action: 'create_user',
+    resourceType: 'user',
+    permissionName: 'createUser',
+    getResourceName: (result, params) => {
+      const name = params?.name || result?.data?.name || result?.name || 'User';
+      const email = params?.email || result?.data?.email || result?.email || '';
+      return `${name}${email ? ` (${email})` : ''}`;
+    },
+  })
   @ApiOperation({
     summary: 'Create a new user with role',
     description: 'Creates a new user and assigns them a role',
@@ -461,6 +436,17 @@ export class UsersController {
   }
 
   @Put('/updateUser/:id')
+  @UseInterceptors(TrackActionInterceptor)
+  @TrackAction({
+    action: 'edit_user',
+    resourceType: 'user',
+    permissionName: 'editUser',
+    getResourceName: (result, params) => {
+      const name = params?.name || result?.data?.name || result?.name || 'User';
+      const email = params?.email || result?.data?.email || result?.email || '';
+      return `${name}${email ? ` (${email})` : ''}`;
+    },
+  })
   @ApiOperation({
     summary: 'Update user and role',
     description: 'Updates user details and/or their role assignment',
@@ -517,6 +503,15 @@ export class UsersController {
   }
 
   @Delete('/deleteUser/:id')
+  @UseInterceptors(TrackActionInterceptor)
+  @TrackAction({
+    action: 'delete_user',
+    resourceType: 'user',
+    permissionName: 'deleteUser',
+    getResourceName: (result) => {
+      return result?.data?.name || result?.name || 'User';
+    },
+  })
   @ApiOperation({
     summary: 'Delete a user',
     description: 'Deletes a user and their role assignments',

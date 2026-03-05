@@ -70,6 +70,8 @@ import {
   FilesInterceptor,
 } from '@nestjs/platform-express/multer';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
+import { TrackAction } from 'src/trackinglog/decorators/track-action.decorator';
+import { TrackActionInterceptor } from 'src/trackinglog/interceptors/track-action.interceptor';
 
 @Controller('content')
 @ApiTags('content')
@@ -81,6 +83,7 @@ import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
   }),
 )
 @UseGuards(JwtAuthGuard, RolesGuard)
+@UseInterceptors(TrackActionInterceptor)
 @ApiBearerAuth('JWT-auth')
 export class ContentController {
   constructor(private contentService: ContentService) {}
@@ -94,6 +97,14 @@ export class ContentController {
     description: 'type id',
   })
   @ApiBearerAuth('JWT-auth')
+  @TrackAction({
+    action: 'create_module',
+    resourceType: 'module',
+    permissionName: 'createModule',
+    getResourceName: (result) => {
+      return result?.module?.[0]?.name || result?.module?.name || 'Module';
+    },
+  })
   async createModule(
     @Body() moduleData: moduleDto,
     @Param('bootcampId') bootcampId: number,
@@ -116,6 +127,13 @@ export class ContentController {
     description: 'type id',
   })
   @ApiBearerAuth('JWT-auth')
+  @TrackAction({
+    action: 'create_project',
+    resourceType: 'project',
+    permissionName: 'createProject',
+    getResourceName: (result, params) =>
+      params?.title || result?.data?.title || 'Project',
+  })
   async createProject(
     @Body() projectData: projectDto,
     @Param('bootcampId') bootcampId: number,
@@ -149,6 +167,13 @@ export class ContentController {
   @Patch('/updateProjects/:projectId')
   @ApiOperation({ summary: 'Update the project' })
   @ApiBearerAuth('JWT-auth')
+  @TrackAction({
+    action: 'edit_project',
+    resourceType: 'project',
+    permissionName: 'editProject',
+    getResourceName: (result, params) =>
+      params?.title || result?.data?.title || 'Project',
+  })
   async updateProject(
     @Body() projectData: projectDto,
     @Param('projectId') projectId: number,
@@ -175,6 +200,12 @@ export class ContentController {
     description: 'module id',
   })
   @ApiBearerAuth('JWT-auth')
+  @TrackAction({
+    action: 'delete_project',
+    resourceType: 'project',
+    permissionName: 'deleteProject',
+    getResourceName: (result) => result?.data?.title || 'Project',
+  })
   async deleteProject(
     @Param('projectId') projectId: number,
     @Query('bootcampId') bootcampId: number,
@@ -191,6 +222,14 @@ export class ContentController {
   @Post('/chapter')
   @ApiOperation({ summary: 'Create a chapter for this module' })
   @ApiBearerAuth('JWT-auth')
+  @TrackAction({
+    action: 'create_chapter',
+    resourceType: 'chapter',
+    permissionName: 'createChapter',
+    getResourceName: (result) => {
+      return result?.module?.[0]?.title || 'Chapter';
+    },
+  })
   async createChapter(@Body() chapterData: CreateChapterDto) {
     return this.contentService.createChapterForModule(
       chapterData.moduleId,
@@ -202,6 +241,20 @@ export class ContentController {
   @Post('/quiz')
   @ApiOperation({ summary: 'Create a quiz' })
   @ApiBearerAuth('JWT-auth')
+  @TrackAction({
+    action: 'create_quiz',
+    resourceType: 'quiz',
+    permissionName: 'createMcq',
+    getResourceName: (result, params) => {
+      const quizzes = params?.quizzes;
+      if (Array.isArray(quizzes) && quizzes.length > 0) {
+        const title = quizzes[0]?.title || 'Quiz';
+        const count = quizzes.length;
+        return count > 1 ? `${title} (+${count - 1} more)` : title;
+      }
+      return result?.data?.title || result?.data?.name || 'Quiz';
+    },
+  })
   async createQuizForModule(
     @Body() quizQuestions: CreateQuizzesDto,
     @Res() res,
@@ -225,6 +278,14 @@ export class ContentController {
   @Put('/editAssessment/:assessmentOutsourseId/:chapterId')
   @ApiOperation({ summary: 'Edit the assessment for this module' })
   @ApiBearerAuth('JWT-auth')
+  @TrackAction({
+    action: 'edit_chapter',
+    resourceType: 'chapter',
+    permissionName: 'editChapter',
+    getResourceName: (result) => {
+      return result?.data?.title || result?.before?.title || 'Assessment';
+    },
+  })
   async editAssessment(
     @Body() assessmentBody: CreateAssessmentBody,
     @Param('assessmentOutsourseId') assessmentOutsourseId: number,
@@ -324,6 +385,14 @@ export class ContentController {
     description: 'module Id',
   })
   @ApiBearerAuth('JWT-auth')
+  @TrackAction({
+    action: 'edit_module',
+    resourceType: 'module',
+    permissionName: 'editModule',
+    getResourceName: (result) => {
+      return result?.data?.name || result?.module?.name || 'Module';
+    },
+  })
   async reOrderModules(
     @Body() reOrder: ReOrderModuleBody,
     @Param('bootcampId') bootcampId: number,
@@ -346,6 +415,19 @@ export class ContentController {
     description: 'module Id',
   })
   @ApiBearerAuth('JWT-auth')
+  @TrackAction({
+    action: 'delete_module',
+    resourceType: 'module',
+    permissionName: 'deleteModule',
+    getResourceName: (result) => {
+      return (
+        result?.moduleName ||
+        result?.data?.name ||
+        result?.module?.name ||
+        'Module'
+      );
+    },
+  })
   async deleteModule(
     @Param('bootcampId') bootcampId: number,
     @Query('moduleId') moduleId: number,
@@ -363,6 +445,14 @@ export class ContentController {
     description: 'chapter id',
   })
   @ApiBearerAuth('JWT-auth')
+  @TrackAction({
+    action: 'edit_chapter',
+    resourceType: 'chapter',
+    permissionName: 'editChapter',
+    getResourceName: (result) => {
+      return result?.chapter?.[0]?.title || 'Chapter';
+    },
+  })
   async editChapter(
     @Body() reOrder: EditChapterDto,
     @Param('moduleId') moduleId: number,
@@ -385,6 +475,14 @@ export class ContentController {
     description: 'chapter Id',
   })
   @ApiBearerAuth('JWT-auth')
+  @TrackAction({
+    action: 'delete_chapter',
+    resourceType: 'chapter',
+    permissionName: 'deleteChapter',
+    getResourceName: (result) => {
+      return result?.chapter?.title || 'Chapter';
+    },
+  })
   async deleteChapter(
     @Param('moduleId') moduleId: number,
     @Query('chapterId') chapterId: number,
@@ -454,6 +552,13 @@ export class ContentController {
   @Patch('/updateCodingQuestion/:questionId')
   @ApiOperation({ summary: 'Update the coding question for this module' })
   @ApiBearerAuth('JWT-auth')
+  @TrackAction({
+    action: 'edit_coding_question',
+    resourceType: 'codingQuestion',
+    permissionName: 'editCodingQuestion',
+    getResourceName: (result, params) =>
+      params?.title || result?.data?.title || 'Coding Question',
+  })
   async updateCodingQuestionForModule(
     @Body() codingQuestions: UpdateProblemDto,
     @Param('questionId') questionId: number,
@@ -526,6 +631,16 @@ export class ContentController {
   @Delete('/deleteCodingQuestion')
   @ApiOperation({ summary: 'Delete coding question' })
   @ApiBearerAuth('JWT-auth')
+  @TrackAction({
+    action: 'delete_coding_question',
+    resourceType: 'codingQuestion',
+    permissionName: 'deleteCodingQuestion',
+    getResourceName: (result, params) => {
+      const ids = params?.questionIds;
+      const count = Array.isArray(ids) ? ids.length : 1;
+      return `${count} Coding Question${count > 1 ? 's' : ''}`;
+    },
+  })
   async deleteCodingQuestion(@Body() questionIds: deleteQuestionDto) {
     const res = await this.contentService.deleteCodingProblem(questionIds);
     return res;
@@ -534,6 +649,13 @@ export class ContentController {
   @Post('/editquiz')
   @ApiOperation({ summary: 'Edit a quiz' })
   @ApiBearerAuth('JWT-auth')
+  @TrackAction({
+    action: 'edit_quiz',
+    resourceType: 'quiz',
+    permissionName: 'editMcq',
+    getResourceName: (result, params) =>
+      params?.title || result?.data?.title || result?.data?.name || 'Quiz',
+  })
   async editQuizForModule(@Body() quizUpdates: EditQuizBatchDto, @Res() res) {
     try {
       let [err, success] =
@@ -554,6 +676,16 @@ export class ContentController {
   @Delete('/deleteQuizQuestion')
   @ApiOperation({ summary: 'Delete quiz question' })
   @ApiBearerAuth('JWT-auth')
+  @TrackAction({
+    action: 'delete_quiz_question',
+    resourceType: 'quiz',
+    permissionName: 'deleteMcq',
+    getResourceName: (result, params) => {
+      const ids = params?.questionIds;
+      const count = Array.isArray(ids) ? ids.length : 1;
+      return `${count} Quiz Question${count > 1 ? 's' : ''}`;
+    },
+  })
   async deleteQuizQuestion(@Body() questionIds: deleteQuestionDto) {
     const res = await this.contentService.deleteQuiz(questionIds);
     return res;
@@ -564,6 +696,13 @@ export class ContentController {
     summary: 'Create single or multiple tags for the curriculum',
   })
   @ApiBearerAuth('JWT-auth')
+  @TrackAction({
+    action: 'create_tag',
+    resourceType: 'tag',
+    permissionName: 'createCodingQuestion',
+    getResourceName: (result) =>
+      result?.data?.name || result?.tag?.name || 'Tag',
+  })
   async createTag(@Body() tagData: CreateTagDto) {
     const res = await this.contentService.createTag(tagData);
     return res;
@@ -591,6 +730,13 @@ export class ContentController {
     description: 'ID of the tag to delete',
   })
   @ApiBearerAuth('JWT-auth')
+  @TrackAction({
+    action: 'delete_tag',
+    resourceType: 'tag',
+    permissionName: 'deleteCodingQuestion',
+    getResourceName: (result) =>
+      result?.data?.name || result?.tag?.name || 'Question Tag',
+  })
   async deleteQuestionTag(@Param('tagId') tagId: number) {
     return this.contentService.deleteQuestionTag(tagId);
   }
@@ -656,6 +802,13 @@ export class ContentController {
   @Patch('/updateOpenEndedQuestion/:questionId')
   @ApiOperation({ summary: 'Update the open ended question for this module' })
   @ApiBearerAuth('JWT-auth')
+  @TrackAction({
+    action: 'edit_openended',
+    resourceType: 'openEndedQuestion',
+    permissionName: 'editOpendEnded',
+    getResourceName: (result, params) =>
+      params?.question || result?.data?.question || 'Open Ended Question',
+  })
   async updateOpenEndedQuestionForModule(
     @Body() openEndedQuestions: UpdateOpenEndedDto,
     @Param('questionId') questionId: number,
@@ -670,6 +823,13 @@ export class ContentController {
   @Post('/createOpenEndedQuestion')
   @ApiOperation({ summary: 'Create a open ended question' })
   @ApiBearerAuth('JWT-auth')
+  @TrackAction({
+    action: 'create_openended',
+    resourceType: 'openEndedQuestion',
+    permissionName: 'createOpendEnded',
+    getResourceName: (result, params) =>
+      params?.question || result?.data?.question || 'Open Ended Question',
+  })
   async createOpenEndedQuestion(@Body() oEndedQuestions: openEndedDto) {
     return this.contentService.createOpenEndedQuestions(oEndedQuestions);
   }
@@ -677,6 +837,16 @@ export class ContentController {
   @Delete('/deleteOpenEndedQuestion')
   @ApiOperation({ summary: 'Delete openended question' })
   @ApiBearerAuth('JWT-auth')
+  @TrackAction({
+    action: 'delete_openended',
+    resourceType: 'openEndedQuestion',
+    permissionName: 'deleteOpendEnded',
+    getResourceName: (result, params) => {
+      const ids = params?.questionIds;
+      const count = Array.isArray(ids) ? ids.length : 1;
+      return `${count} Open Ended Question${count > 1 ? 's' : ''}`;
+    },
+  })
   async deleteOpenEndedQuestion(@Body() questionIds: deleteQuestionDto) {
     return this.contentService.deleteOpenEndedQuestion(questionIds);
   }
@@ -797,6 +967,13 @@ export class ContentController {
   @Post('/createQuestionType')
   @ApiOperation({ summary: 'Create a Question Type for the form' })
   @ApiBearerAuth('JWT-auth')
+  @TrackAction({
+    action: 'create_question_type',
+    resourceType: 'questionType',
+    permissionName: 'createQuestionType',
+    getResourceName: (result, params) =>
+      params?.type || result?.data?.type || 'Question Type',
+  })
   async createQuestionType(@Body() questionType: CreateTypeDto) {
     const res = await this.contentService.createQuestionType(questionType);
     return res;
@@ -813,6 +990,14 @@ export class ContentController {
   @Post('/form')
   @ApiOperation({ summary: 'Create a form' })
   @ApiBearerAuth('JWT-auth')
+  @TrackAction({
+    action: 'edit_chapter',
+    resourceType: 'chapter',
+    permissionName: 'editChapter',
+    getResourceName: (result) => {
+      return result?.updatedChapter?.[0]?.title || 'Chapter';
+    },
+  })
   async createFormForModule(
     @Query('chapterId') chapterId: number,
     @Body() formQuestion: formBatchDto,
@@ -855,6 +1040,14 @@ export class ContentController {
   @Post('/editform')
   @ApiOperation({ summary: 'Create a form' })
   @ApiBearerAuth('JWT-auth')
+  @TrackAction({
+    action: 'edit_chapter',
+    resourceType: 'chapter',
+    permissionName: 'editChapter',
+    getResourceName: (result) => {
+      return result?.updatedChapter?.[0]?.title || 'Chapter';
+    },
+  })
   async editFormForModule(
     @Query('chapterId') chapterId: number,
     @Body() formQuestions: editFormBatchDto,
@@ -869,6 +1062,14 @@ export class ContentController {
   @Post('/createAndEditForm/:chapterId')
   @ApiOperation({ summary: 'Create a form' })
   @ApiBearerAuth('JWT-auth')
+  @TrackAction({
+    action: 'edit_chapter',
+    resourceType: 'chapter',
+    permissionName: 'editChapter',
+    getResourceName: (result) => {
+      return result?.res2?.[0]?.title || 'Chapter';
+    },
+  })
   async createAndEditForm(
     @Param('chapterId') chapterId: number,
     @Body() formQuestions: CreateAndEditFormBody,
@@ -962,6 +1163,13 @@ export class ContentController {
   @Post('/quiz/add/variants')
   @ApiOperation({ summary: 'Add variants to a quiz' })
   @ApiBearerAuth('JWT-auth')
+  @TrackAction({
+    action: 'create_quiz_variant',
+    resourceType: 'quiz',
+    permissionName: 'editMcq',
+    getResourceName: (result) =>
+      result?.data?.title || result?.data?.name || 'Quiz',
+  })
   async addQuizVariants(
     @Body() addQuizVariantsDto: AddQuizVariantsDto,
     @Res() res,
@@ -987,6 +1195,14 @@ export class ContentController {
   @Delete('/deleteMainQuizOrVariant')
   @ApiOperation({ summary: 'Delete main quiz or variant' })
   @ApiBearerAuth('JWT-auth')
+  @TrackAction({
+    action: 'delete_quiz',
+    resourceType: 'quiz',
+    permissionName: 'deleteMcq',
+    getResourceName: (result) => {
+      return result?.data?.title || result?.data?.name || 'Quiz';
+    },
+  })
   async deleteMainQuizOrVariant(
     @Body() deleteDto: deleteQuestionOrVariantDto,
     @Res() res,
@@ -1037,6 +1253,14 @@ export class ContentController {
   @ApiConsumes('multipart/form-data')
   @ApiBody({ type: UpdateChapterDto })
   @UseInterceptors(FileInterceptor('pdf'))
+  @TrackAction({
+    action: 'edit_chapter',
+    resourceType: 'chapter',
+    permissionName: 'editChapter',
+    getResourceName: (result) => {
+      return result?.chapter?.[0]?.title || 'Chapter PDF';
+    },
+  })
   async uploadPdf(
     @UploadedFile() file: Express.Multer.File,
     @Query('moduleId') moduleId: number,
