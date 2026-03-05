@@ -18,7 +18,7 @@ import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 import { SessionService } from './session.service';
 
 @ApiTags('Mentor Sessions')
-@ApiBearerAuth()
+@ApiBearerAuth('JWT-auth')
 @UseGuards(JwtAuthGuard)
 @Controller('mentor-sessions')
 export class SessionController {
@@ -37,7 +37,7 @@ export class SessionController {
   })
   @Get('my')
   async getMySessions(@Req() req) {
-    return this.sessionService.getStudentSessions(BigInt(req.user.id));
+    return this.sessionService.getStudentSessions(BigInt(req.user[0].id));
   }
 
   /* ==========================================================================
@@ -53,7 +53,7 @@ export class SessionController {
   })
   @Get('mentor/my')
   async getMentorSessions(@Req() req) {
-    return this.sessionService.getMentorSessions(BigInt(req.user.id));
+    return this.sessionService.getMentorSessions(BigInt(req.user[0].id));
   }
 
   /* ==========================================================================
@@ -77,6 +77,9 @@ export class SessionController {
     @Param('sessionId', ParseIntPipe)
     sessionId: number,
   ) {
-    return this.sessionService.getSessionDetail(sessionId, BigInt(req.user.id));
+    return this.sessionService.getSessionDetail(
+      sessionId,
+      BigInt(req.user[0].id),
+    );
   }
 }

@@ -222,3 +222,123 @@ CREATE INDEX IF NOT EXISTS idx_slot_mgmt_lookup
 
 CREATE INDEX IF NOT EXISTS idx_slot_start_time
     ON zuvy_mentor_slot_availability(slot_start_date_time);
+
+
+INSERT INTO zuvy_mentor_slot_management (
+    mentor_user_id,
+    organization_id,
+    mentor_type,
+    status,
+    is_verified,
+    accepts_new_mentees,
+    created_at,
+    updated_at
+)
+SELECT
+    ura.user_id,
+    org.id,
+    'mentor',
+    'active',
+    true,
+    true,
+    NOW(),
+    NOW()
+FROM zuvy_user_roles_assigned ura
+JOIN zuvy_organizations org
+ON org.id = ura.organization_id
+LEFT JOIN zuvy_mentor_slot_management msm
+ON msm.mentor_user_id = ura.user_id
+WHERE msm.id IS NULL;
+
+INSERT INTO zuvy_mentor_slot_availability (
+    mentor_slot_management_id,
+    slot_start_date_time,
+    slot_end_date_time,
+    duration_minutes,
+    max_capacity,
+    current_booked_count,
+    status,
+    is_public,
+    created_at,
+    updated_at
+)
+SELECT
+    msm.id,
+    NOW() + INTERVAL '1 day',
+    NOW() + INTERVAL '1 day' + INTERVAL '1 hour',
+    60,
+    3,
+    0,
+    'available',
+    true,
+    NOW(),
+    NOW()
+FROM zuvy_mentor_slot_management msm
+LIMIT 30;
+
+
+INSERT INTO zuvy_mentor_slot_booking (
+    slot_availability_id,
+    student_user_id,
+    mentor_user_id,
+    organization_id,
+    status,
+    session_lifecycle_state,
+    booked_at,
+    created_at
+)
+SELECT
+    s.id,
+    u.id,
+    msm.mentor_user_id,
+    msm.organization_id,
+    'confirmed',
+    'SCHEDULED',
+    NOW(),
+    NOW()
+FROM users u
+JOIN zuvy_mentor_slot_availability s ON true
+JOIN zuvy_mentor_slot_management msm
+ON msm.id = s.mentor_slot_management_id
+LEFT JOIN zuvy_user_roles_assigned ura
+ON ura.user_id = u.id
+WHERE ura.user_id IS NULL
+LIMIT 20;
+
+
+UPDATE zuvy_mentor_slot_availability s
+SET current_booked_count = sub.count
+FROM (
+  SELECT slot_availability_id, COUNT(*) AS count
+  FROM zuvy_mentor_slot_booking
+  GROUP BY slot_availability_id
+) sub
+WHERE s.id = sub.slot_availability_id;
+
+INSERT INTO zuvy_notifications (
+    user_id,
+    type,
+    title,
+    message,
+    is_read,
+    created_at
+)
+SELECT
+    student_user_id,
+    'SESSION_BOOKED',
+    'Session Confirmed',
+    'Your mentorship session has been booked.',
+    false,
+    NOW()
+FROM zuvy_mentor_slot_booking
+LIMIT 10;
+
+DELETE FROM zuvy_user_roles_assigned
+WHERE organization_id = 4;
+
+ALTER TABLE zuvy_mentor_slot_booking
+DROP CONSTRAINT uniq_student_slot;
+
+CREATE UNIQUE INDEX uniq_active_student_slot
+ON zuvy_mentor_slot_booking(student_user_id, slot_availability_id)
+WHERE status != 'cancelled';

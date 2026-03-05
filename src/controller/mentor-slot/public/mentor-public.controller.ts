@@ -12,9 +12,9 @@ export class MentorPublicController {
     return this.service.getAllMentors();
   }
 
-  @Get(':mentorId')
-  getMentorProfile(@Param('mentorId', ParseIntPipe) mentorId: number) {
-    return this.service.getMentorProfile(mentorId);
+  @Get(':mentorUserId')
+  getMentorProfile(@Param('mentorUserId') mentorUserId: number) {
+    return this.service.getMentorProfile(mentorUserId);
   }
 
   @Get(':mentorId/availability')

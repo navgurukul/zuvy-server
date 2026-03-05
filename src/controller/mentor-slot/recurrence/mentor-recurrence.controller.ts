@@ -5,7 +5,7 @@ import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 import { RecurrenceDto } from './dto/recurrence.dto';
 
 @ApiTags('Mentor Recurrence')
-@ApiBearerAuth()
+@ApiBearerAuth('JWT-auth')
 @UseGuards(JwtAuthGuard)
 @Controller('mentor-slots/recurrence')
 export class MentorRecurrenceController {

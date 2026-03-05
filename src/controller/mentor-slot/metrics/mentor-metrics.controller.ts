@@ -4,7 +4,7 @@ import { MentorMetricsService } from './mentor-metrics.service';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 
 @ApiTags('Mentor Metrics')
-@ApiBearerAuth()
+@ApiBearerAuth('JWT-auth')
 @UseGuards(JwtAuthGuard)
 @Controller('mentor-slots/metrics')
 export class MentorMetricsController {

@@ -21,7 +21,7 @@ import { CreateSlotDto } from './dto/create-slot.dto';
 import { AttendanceDto } from './dto/attendance.dto';
 
 @ApiTags('Mentor Slots')
-@ApiBearerAuth()
+@ApiBearerAuth('JWT-auth')
 @UseGuards(JwtAuthGuard)
 @Controller('mentor-slots')
 export class MentorSlotController {
@@ -33,7 +33,7 @@ export class MentorSlotController {
 
   @Post('book')
   async bookSlot(@Req() req, @Body() dto: BookSlotDto) {
-    return this.mentorSlotService.bookSlot(req.user.id, dto.slotId);
+    return this.mentorSlotService.bookSlot(Number(req.user[0].id), dto.slotId);
   }
 
   /* ==========================================================================
@@ -108,7 +108,7 @@ export class MentorSlotController {
   ========================================================================== */
   @Post('create')
   async createSlot(@Req() req, @Body() dto: CreateSlotDto) {
-    return this.mentorSlotService.createSlot(req.user.id, dto);
+    return this.mentorSlotService.createSlot(Number(req.user[0].id), dto);
   }
 
   /* ==========================================================================
@@ -117,7 +117,7 @@ export class MentorSlotController {
 
   @Delete(':slotId')
   async removeSlot(@Req() req, @Param('slotId', ParseIntPipe) slotId: number) {
-    return this.mentorSlotService.removeSlot(req.user.id, slotId);
+    return this.mentorSlotService.removeSlot(Number(req.user[0].id), slotId);
   }
 
   /* ==========================================================================  
@@ -126,7 +126,7 @@ export class MentorSlotController {
 
   @Get('my')
   async getMySlots(@Req() req) {
-    return this.mentorSlotService.getMySlots(req.user.id);
+    return this.mentorSlotService.getMySlots(Number(req.user[0].id));
   }
 
   /* ==========================================================================
@@ -137,7 +137,10 @@ export class MentorSlotController {
     @Req() req,
     @Param('slotId', ParseIntPipe) slotId: number,
   ) {
-    return this.mentorSlotService.getSlotDetails(req.user.id, slotId);
+    return this.mentorSlotService.getSlotDetails(
+      Number(req.user[0].id),
+      slotId,
+    );
   }
 
   /* ==========================================================================  
@@ -145,7 +148,7 @@ export class MentorSlotController {
   ========================================================================== */
   @Get('student/my')
   async getStudentBookings(@Req() req) {
-    return this.mentorSlotService.getStudentBookings(req.user.id);
+    return this.mentorSlotService.getStudentBookings(Number(req.user[0].id));
   }
 
   /* ==========================================================================  
@@ -176,6 +179,9 @@ export class MentorSlotController {
   ========================================================================== */
   @Patch('mentor/profile')
   async updateProfile(@Req() req, @Body() body: any) {
-    return this.mentorSlotService.updateMentorProfile(req.user.id, body);
+    return this.mentorSlotService.updateMentorProfile(
+      Number(req.user[0].id),
+      body,
+    );
   }
 }

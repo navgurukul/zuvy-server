@@ -12,7 +12,7 @@ import { NotificationService } from './notification.service';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 
 @ApiTags('Notifications')
-@ApiBearerAuth()
+@ApiBearerAuth('JWT-auth')
 @UseGuards(JwtAuthGuard)
 @Controller('notifications')
 export class NotificationController {

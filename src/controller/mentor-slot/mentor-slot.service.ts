@@ -10,6 +10,7 @@ import {
   zuvyMentorSlotAvailability,
   zuvyMentorSlotBooking,
   zuvyMentorSlotManagement,
+  zuvyUserRolesAssigned,
 } from '../../../drizzle/schema';
 
 import { and, eq, lt, sql } from 'drizzle-orm';
@@ -18,18 +19,48 @@ import { CreateSlotDto } from './dto/create-slot.dto';
 @Injectable()
 export class MentorSlotService {
   private async getMentorProfile(userId: number) {
-    const [mentorProfile] = await db
+    const userIdBigInt = BigInt(userId);
+
+    let [mentorProfile] = await db
       .select()
       .from(zuvyMentorSlotManagement)
-      .where(eq(zuvyMentorSlotManagement.mentorUserId, BigInt(userId)))
+      .where(eq(zuvyMentorSlotManagement.mentorUserId, userIdBigInt))
       .limit(1);
 
     if (!mentorProfile) {
-      throw new ForbiddenException('User is not registered as a mentor');
+      const inserted = await db
+        .insert(zuvyMentorSlotManagement)
+        .values({
+          mentorUserId: userIdBigInt,
+          organizationId: 1,
+          mentorType: 'mentor',
+        } as typeof zuvyMentorSlotManagement.$inferInsert)
+        .returning();
+
+      mentorProfile = inserted[0];
     }
 
     return mentorProfile;
   }
+
+  private async ensureUserIsMentor(userId: number) {
+    if (!userId || Number.isNaN(userId)) {
+      throw new ForbiddenException('Invalid user');
+    }
+
+    const userIdBigInt = BigInt(userId);
+
+    const [role] = await db
+      .select()
+      .from(zuvyUserRolesAssigned)
+      .where(eq(zuvyUserRolesAssigned.userId, userIdBigInt))
+      .limit(1);
+
+    if (!role) {
+      throw new ForbiddenException('User is not allowed to act as mentor');
+    }
+  }
+
   /* ==========================================================================
      UTILITY — 12 HOUR RULE ENFORCER
   ========================================================================== */
@@ -54,7 +85,11 @@ export class MentorSlotService {
     const now = new Date();
     const slotEnd = new Date(slot.slotEndDateTime);
 
-    if (booking.status === 'cancelled') return 'CANCELLED';
+    if (booking.status === 'cancelled') {
+      throw new BadRequestException(
+        'Cancelled bookings cannot be rescheduled.',
+      );
+    }
 
     if (booking.rescheduleStatus === 'pending') return 'RESCHEDULE_PENDING';
 
@@ -73,11 +108,17 @@ export class MentorSlotService {
 
   async bookSlot(studentId: number, slotId: number) {
     return db.transaction(async (trx) => {
-      const [slot] = await trx
-        .select()
-        .from(zuvyMentorSlotAvailability)
-        .where(eq(zuvyMentorSlotAvailability.id, slotId))
-        .limit(1);
+      const result = await trx.execute(
+        sql`
+    SELECT *
+    FROM zuvy_mentor_slot_availability
+    WHERE id = ${slotId}
+    FOR UPDATE
+  `,
+      );
+
+      const slot = result
+        .rows[0] as typeof zuvyMentorSlotAvailability.$inferSelect;
 
       if (!slot) throw new NotFoundException('Slot not found.');
 
@@ -133,18 +174,36 @@ export class MentorSlotService {
         }
       }
 
+      const existingBooking = await trx
+        .select()
+        .from(zuvyMentorSlotBooking)
+        .where(
+          and(
+            eq(zuvyMentorSlotBooking.studentUserId, BigInt(studentId)),
+            eq(zuvyMentorSlotBooking.slotAvailabilityId, slotId),
+            eq(zuvyMentorSlotBooking.status, 'confirmed'),
+          ),
+        )
+        .limit(1);
+
+      if (existingBooking.length > 0) {
+        throw new BadRequestException('You already booked this slot.');
+      }
+
       if (slot.currentBookedCount >= slot.maxCapacity)
         throw new BadRequestException('Slot is full.');
-
-      /* Lock row */
-      await trx.execute(
-        sql`SELECT id FROM zuvy_mentor_slot_availability WHERE id = ${slotId} FOR UPDATE`,
-      );
 
       await trx
         .update(zuvyMentorSlotAvailability)
         .set({
           currentBookedCount: sql`${zuvyMentorSlotAvailability.currentBookedCount} + 1`,
+          status: sql`
+      CASE
+        WHEN ${zuvyMentorSlotAvailability.currentBookedCount} + 1 >= ${zuvyMentorSlotAvailability.maxCapacity}
+        THEN 'full'
+        ELSE 'available'
+      END
+    `,
         } as Partial<typeof zuvyMentorSlotAvailability.$inferInsert>)
         .where(eq(zuvyMentorSlotAvailability.id, slotId));
 
@@ -156,6 +215,7 @@ export class MentorSlotService {
           mentorUserId: mentorProfile.mentorUserId,
           organizationId: mentorProfile.organizationId,
           status: 'confirmed',
+          confirmedAt: new Date(),
           sessionLifecycleState: 'SCHEDULED',
         } as typeof zuvyMentorSlotBooking.$inferInsert)
         .returning();
@@ -179,24 +239,50 @@ export class MentorSlotService {
       );
     }
 
-    const [booking] = await db
-      .select()
-      .from(zuvyMentorSlotBooking)
-      .where(eq(zuvyMentorSlotBooking.id, bookingId))
-      .limit(1);
+    return db.transaction(async (trx) => {
+      const [booking] = await trx
+        .select()
+        .from(zuvyMentorSlotBooking)
+        .where(eq(zuvyMentorSlotBooking.id, bookingId))
+        .limit(1);
 
-    if (!booking) throw new NotFoundException('Booking not found.');
+      if (!booking) {
+        throw new NotFoundException('Booking not found.');
+      }
 
-    return db
-      .update(zuvyMentorSlotBooking)
-      .set({
-        status: 'cancelled',
-        sessionLifecycleState: 'CANCELLED',
-        cancellationReason: reason,
-        cancelledBy,
-        cancelledAt: new Date(),
-      } as Partial<typeof zuvyMentorSlotBooking.$inferInsert>)
-      .where(eq(zuvyMentorSlotBooking.id, bookingId));
+      /* Prevent double cancellation */
+
+      if (booking.status === 'cancelled') {
+        throw new BadRequestException('Booking already cancelled.');
+      }
+
+      /* Release slot capacity */
+
+      await trx
+        .update(zuvyMentorSlotAvailability)
+        .set({
+          currentBookedCount: sql`GREATEST(${zuvyMentorSlotAvailability.currentBookedCount} - 1, 0)`,
+          status: 'available',
+        } as Partial<typeof zuvyMentorSlotAvailability.$inferInsert>)
+        .where(eq(zuvyMentorSlotAvailability.id, booking.slotAvailabilityId));
+
+      /* Cancel booking */
+
+      await trx
+        .update(zuvyMentorSlotBooking)
+        .set({
+          status: 'cancelled',
+          sessionLifecycleState: 'CANCELLED',
+          cancellationReason: reason,
+          cancelledBy,
+          cancelledAt: new Date(),
+        } as Partial<typeof zuvyMentorSlotBooking.$inferInsert>)
+        .where(eq(zuvyMentorSlotBooking.id, bookingId));
+
+      return {
+        message: 'Booking cancelled successfully.',
+      };
+    });
   }
 
   /* ==========================================================================
@@ -311,33 +397,39 @@ export class MentorSlotService {
         .where(eq(zuvyMentorSlotBooking.id, bookingId))
         .limit(1);
 
-      if (!booking) throw new NotFoundException('Booking not found.');
+      if (!booking) {
+        throw new NotFoundException('Booking not found.');
+      }
 
-      if (booking.rescheduleStatus !== 'pending')
+      if (booking.rescheduleStatus !== 'pending') {
         throw new BadRequestException('No pending reschedule.');
+      }
 
-      if (!booking.rescheduleProposedSlotId)
+      if (!booking.rescheduleProposedSlotId) {
         throw new BadRequestException('Invalid proposed slot.');
+      }
 
-      const [newSlot] = await trx
-        .select()
-        .from(zuvyMentorSlotAvailability)
+      /* Atomic capacity check + increment */
+
+      const updated = await trx
+        .update(zuvyMentorSlotAvailability)
+        .set({
+          currentBookedCount: sql`${zuvyMentorSlotAvailability.currentBookedCount} + 1`,
+        } as Partial<typeof zuvyMentorSlotAvailability.$inferInsert>)
         .where(
-          eq(zuvyMentorSlotAvailability.id, booking.rescheduleProposedSlotId),
+          and(
+            eq(zuvyMentorSlotAvailability.id, booking.rescheduleProposedSlotId),
+            sql`${zuvyMentorSlotAvailability.currentBookedCount} < ${zuvyMentorSlotAvailability.maxCapacity}`,
+          ),
         )
-        .limit(1);
+        .returning();
 
-      if (!newSlot) throw new NotFoundException('Proposed slot not found.');
-
-      if (newSlot.currentBookedCount >= newSlot.maxCapacity)
+      if (updated.length === 0) {
         throw new BadRequestException('Proposed slot is full.');
+      }
 
-      /* Lock both slots */
-      await trx.execute(
-        sql`SELECT id FROM zuvy_mentor_slot_availability WHERE id IN (${booking.slotAvailabilityId}, ${booking.rescheduleProposedSlotId}) FOR UPDATE`,
-      );
+      /* Release old slot */
 
-      /* Decrement old slot capacity */
       await trx
         .update(zuvyMentorSlotAvailability)
         .set({
@@ -345,17 +437,8 @@ export class MentorSlotService {
         } as Partial<typeof zuvyMentorSlotAvailability.$inferInsert>)
         .where(eq(zuvyMentorSlotAvailability.id, booking.slotAvailabilityId));
 
-      /* Increment new slot capacity */
-      await trx
-        .update(zuvyMentorSlotAvailability)
-        .set({
-          currentBookedCount: sql`${zuvyMentorSlotAvailability.currentBookedCount} + 1`,
-        } as Partial<typeof zuvyMentorSlotAvailability.$inferInsert>)
-        .where(
-          eq(zuvyMentorSlotAvailability.id, booking.rescheduleProposedSlotId),
-        );
+      /* Move booking */
 
-      /* Update booking */
       await trx
         .update(zuvyMentorSlotBooking)
         .set({
@@ -364,6 +447,7 @@ export class MentorSlotService {
           rescheduleRequestedAt: null,
           rescheduleProposedSlotId: null,
           sessionLifecycleState: 'SCHEDULED',
+          updatedAt: new Date(),
         } as Partial<typeof zuvyMentorSlotBooking.$inferInsert>)
         .where(eq(zuvyMentorSlotBooking.id, bookingId));
 
@@ -397,6 +481,8 @@ export class MentorSlotService {
   }
 
   async createSlot(userId: number, dto: any) {
+    await this.ensureUserIsMentor(userId);
+
     const mentorProfile = await this.getMentorProfile(userId);
 
     const start = new Date(dto.slotStartDateTime);
@@ -440,11 +526,7 @@ export class MentorSlotService {
   }
 
   async getMySlots(userId: number) {
-    const [mentorProfile] = await db
-      .select()
-      .from(zuvyMentorSlotManagement)
-      .where(eq(zuvyMentorSlotManagement.mentorUserId, BigInt(userId)))
-      .limit(1);
+    const mentorProfile = await this.getMentorProfile(userId);
 
     if (!mentorProfile) {
       throw new NotFoundException('Mentor profile not found.');
@@ -459,6 +541,8 @@ export class MentorSlotService {
   }
 
   async getSlotDetails(userId: number, slotId: number) {
+    const mentorProfile = await this.getMentorProfile(userId);
+
     const [slot] = await db
       .select()
       .from(zuvyMentorSlotAvailability)
@@ -466,6 +550,10 @@ export class MentorSlotService {
       .limit(1);
 
     if (!slot) throw new NotFoundException('Slot not found.');
+
+    if (slot.mentorSlotManagementId !== mentorProfile.id) {
+      throw new ForbiddenException('You do not own this slot');
+    }
 
     const bookings = await db
       .select()
@@ -479,10 +567,12 @@ export class MentorSlotService {
   }
 
   async getStudentBookings(userId: number) {
+    const userIdBigInt = BigInt(userId);
+
     return db
       .select()
       .from(zuvyMentorSlotBooking)
-      .where(eq(zuvyMentorSlotBooking.studentUserId, BigInt(userId)));
+      .where(eq(zuvyMentorSlotBooking.studentUserId, userIdBigInt));
   }
 
   async markAttendance(
@@ -522,6 +612,7 @@ export class MentorSlotService {
   }
 
   async updateMentorProfile(userId: number, dto: any) {
+    const userIdBigInt = BigInt(userId);
     const updatePayload: Partial<typeof zuvyMentorSlotManagement.$inferSelect> =
       {};
 
@@ -532,6 +623,6 @@ export class MentorSlotService {
     return db
       .update(zuvyMentorSlotManagement)
       .set(updatePayload)
-      .where(eq(zuvyMentorSlotManagement.mentorUserId, BigInt(userId)));
+      .where(eq(zuvyMentorSlotManagement.mentorUserId, userIdBigInt));
   }
 }
