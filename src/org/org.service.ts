@@ -25,6 +25,7 @@ import { eq, and, ilike, or, sql, desc } from 'drizzle-orm';
 import { JwtService } from '@nestjs/jwt';
 import { AuthService } from '../auth/auth.service';
 import { UserTokensService } from '../user-tokens/user-tokens.service';
+import { ZUVY_LOGO_URL, ZUVY_LOGO_DARK_URL } from '../constants/helper';
 
 @Injectable()
 export class OrgService {
@@ -223,27 +224,42 @@ export class OrgService {
           <html>
           <head>
             <meta charset="UTF-8" />
+            <meta name="color-scheme" content="light dark">
+            <meta name="supported-color-schemes" content="light dark">
+            <style>
+              .dark-logo { display: none !important; }
+              @media (prefers-color-scheme: dark) {
+                .light-logo { display: none !important; }
+                .dark-logo { display: inline-block !important; }
+                .bg-main { background-color: #111827 !important; }
+                .bg-card { background-color: #1f2937 !important; }
+                .text-primary { color: #f9fafb !important; }
+                .text-secondary { color: #d1d5db !important; }
+                .border-divider { border-top-color: #374151 !important; }
+              }
+            </style>
           </head>
-          <body style="margin:0; padding:0; background-color:#f6f9fc; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;">
+          <body class="bg-main" style="margin:0; padding:0; background-color:#f6f9fc; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;">
 
             <table width="100%" cellpadding="0" cellspacing="0" style="padding:40px 0;">
               <tr>
                 <td align="center">
 
-                  <table width="520" cellpadding="0" cellspacing="0"
+                  <table class="bg-card" width="520" cellpadding="0" cellspacing="0"
                     style="background:#ffffff; border-radius:12px; padding:40px; box-shadow:0 4px 20px rgba(0,0,0,0.05);">
 
                     <!-- Logo / Brand -->
                     <tr>
                       <td align="center" style="padding-bottom:30px;">
-                        <img src="${process.env.BASE_URL}/logos/zuvy-logo-horizontal.png" alt="Zuvy" height="30" />
+                        <img class="light-logo" src="${ZUVY_LOGO_URL}" alt="Zuvy" height="30" />
+                        <img class="dark-logo" src="${ZUVY_LOGO_DARK_URL}" alt="Zuvy" height="30" />
                       </td>
                     </tr>
 
                     <!-- Heading -->
                     <tr>
                       <td style="padding-bottom:20px;">
-                        <h1 style="margin:0; font-size:24px; color:#111827;">
+                        <h1 class="text-primary" style="margin:0; font-size:24px; color:#111827;">
                           Welcome to Zuvy 👋
                         </h1>
                       </td>
@@ -251,10 +267,10 @@ export class OrgService {
 
                     <!-- Message -->
                     <tr>
-                      <td style="color:#4b5563; font-size:16px; line-height:1.6;">
+                      <td class="text-secondary" style="color:#4b5563; font-size:16px; line-height:1.6;">
                         <p style="margin:0 0 15px 0;">
                           You have been invited to set up the organization 
-                          <strong>${result.title}</strong>.
+                          <strong class="text-primary" style="color:#111827;">${result.title}</strong>.
                         </p>
 
                         <p style="margin:0 0 25px 0;">
@@ -285,13 +301,13 @@ export class OrgService {
                     <!-- Divider -->
                     <tr>
                       <td>
-                        <hr style="border:none; border-top:1px solid #e5e7eb; margin:30px 0;">
+                        <hr class="border-divider" style="border:none; border-top:1px solid #e5e7eb; margin:30px 0;">
                       </td>
                     </tr>
 
                     <!-- Fallback Link -->
                     <tr>
-                      <td style="font-size:14px; color:#6b7280;">
+                      <td class="text-secondary" style="font-size:14px; color:#6b7280;">
                         If the button doesn’t work, copy and paste this link into your browser:
                         <br><br>
                         <span style="word-break:break-all; color:#2563eb;">
@@ -302,7 +318,7 @@ export class OrgService {
 
                     <!-- Footer -->
                     <tr>
-                      <td style="padding-top:30px; font-size:13px; color:#9ca3af; text-align:center;">
+                      <td class="text-secondary" style="padding-top:30px; font-size:13px; color:#9ca3af; text-align:center;">
                         If you did not request this email, you can safely ignore it.
                         <br><br>
                         © ${new Date().getFullYear()} Zuvy. All rights reserved.

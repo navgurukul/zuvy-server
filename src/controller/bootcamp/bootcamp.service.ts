@@ -95,6 +95,7 @@ export class BootcampService {
     offset: number,
     searchTermAsNumber?: string | number,
     searchTermAsString?: string,
+    filter?: string,
   ): Promise<any> {
     try {
       let query;
@@ -123,15 +124,33 @@ export class BootcampService {
         }
       }
 
-      let orgCondition = or(
-        isNull(zuvyBootcamps.organizationId),
-        eq(zuvyBootcampType.type, 'Public'),
-      );
-      if (filterOrgId) {
+      let orgCondition;
+      const lowerFilter = filter ? filter.toLowerCase() : 'all';
+
+      if (lowerFilter === 'public') {
+        orgCondition = eq(zuvyBootcampType.type, 'Public');
+      } else if (lowerFilter === 'private') {
+        if (filterOrgId) {
+          orgCondition = and(
+            eq(zuvyBootcampType.type, 'Private'),
+            eq(zuvyBootcamps.organizationId, filterOrgId),
+          );
+        } else {
+          // If no org allowed, return no private bootcamps
+          orgCondition = sql`1=0`;
+        }
+      } else {
+        // 'all' or default
         orgCondition = or(
-          orgCondition,
-          eq(zuvyBootcamps.organizationId, filterOrgId),
+          isNull(zuvyBootcamps.organizationId),
+          eq(zuvyBootcampType.type, 'Public'),
         );
+        if (filterOrgId) {
+          orgCondition = or(
+            orgCondition,
+            eq(zuvyBootcamps.organizationId, filterOrgId),
+          );
+        }
       }
 
       const isSearchAsNumber =
@@ -161,6 +180,7 @@ export class BootcampService {
             updatedAt: zuvyBootcamps.updatedAt,
             version: zuvyBootcamps.version,
             code: zuvyOrganizations.displayName,
+            bootcampType: zuvyBootcampType.type,
           })
           .from(zuvyBootcamps)
           .leftJoin(
@@ -211,6 +231,7 @@ export class BootcampService {
             updatedAt: zuvyBootcamps.updatedAt,
             version: zuvyBootcamps.version,
             code: zuvyOrganizations.displayName,
+            bootcampType: zuvyBootcampType.type,
           })
           .from(zuvyBootcamps)
           .leftJoin(
@@ -279,6 +300,7 @@ export class BootcampService {
             updatedAt: zuvyBootcamps.updatedAt,
             version: zuvyBootcamps.version,
             code: zuvyOrganizations.displayName,
+            bootcampType: zuvyBootcampType.type,
           })
           .from(zuvyBootcamps)
           .leftJoin(
@@ -319,6 +341,7 @@ export class BootcampService {
             updatedAt: zuvyBootcamps.updatedAt,
             version: zuvyBootcamps.version,
             code: zuvyOrganizations.displayName,
+            bootcampType: zuvyBootcampType.type,
           })
           .from(zuvyBootcamps)
           .leftJoin(
