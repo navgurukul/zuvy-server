@@ -118,6 +118,26 @@ export class UpsertLearnerEducationMasterDataDto {
   branches: string[];
 }
 
+export class UpdateLearnerEducationMasterDataByIdDto {
+  @ApiPropertyOptional({ type: String, example: 'IIT Bombay' })
+  @IsOptional()
+  @IsString()
+  @Length(1, 255)
+  collegeName?: string;
+
+  @ApiPropertyOptional({ type: String, example: 'B.Tech' })
+  @IsOptional()
+  @IsString()
+  @Length(1, 100)
+  degreeProgram?: string;
+
+  @ApiPropertyOptional({ type: String, example: 'Computer Science' })
+  @IsOptional()
+  @IsString()
+  @Length(1, 100)
+  branchName?: string;
+}
+
 export class LearnerEducationMasterDataItemDto {
   @ApiProperty({ type: Number, example: 1 })
   id: number;
@@ -143,4 +163,74 @@ export class CreateLearnerEducationMasterDataApiResponseDto {
 
   @ApiProperty({ type: LearnerEducationMasterDataResponseDto })
   data: LearnerEducationMasterDataResponseDto;
+}
+
+export class UpsertTechnicalSkillsDto {
+  @ApiProperty({
+    type: [String],
+    example: ['React', 'JavaScript'],
+  })
+  @IsArray()
+  @ArrayMinSize(1)
+  @IsString({ each: true })
+  skills: string[];
+}
+
+export class UpdateTechnicalSkillByIdDto {
+  @ApiProperty({ type: String, example: 'React Native' })
+  @IsString()
+  @Length(1, 100)
+  name: string;
+}
+
+export class TechnicalSkillItemDto {
+  @ApiProperty({ type: Number, example: 1 })
+  id: number;
+
+  @ApiProperty({ type: String, example: 'React' })
+  name: string;
+}
+
+export class TechnicalSkillsResponseDto {
+  @ApiProperty({ type: [TechnicalSkillItemDto] })
+  skills: TechnicalSkillItemDto[];
+}
+
+export class TechnicalSkillsApiResponseDto {
+  @ApiProperty({ type: Boolean, example: true })
+  success: boolean;
+
+  @ApiProperty({ type: TechnicalSkillsResponseDto })
+  data: TechnicalSkillsResponseDto;
+}
+
+export class UpsertLearnerBoardsDto {
+  @ApiProperty({
+    type: [String],
+    example: ['CBSE', 'ICSE', 'ISC', 'AP Board'],
+  })
+  @IsArray()
+  @ArrayMinSize(1)
+  @IsString({ each: true })
+  boards: string[];
+}
+
+export class UpdateLearnerBoardByIdDto {
+  @ApiProperty({ type: String, example: 'CBSE' })
+  @IsString()
+  @Length(1, 100)
+  name: string;
+}
+
+export class LearnerBoardItemDto {
+  @ApiProperty({ type: Number, example: 1 })
+  id: number;
+
+  @ApiProperty({ type: String, example: 'CBSE' })
+  name: string;
+}
+
+export class LearnerBoardsResponseDto {
+  @ApiProperty({ type: [LearnerBoardItemDto] })
+  boards: LearnerBoardItemDto[];
 }

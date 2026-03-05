@@ -3,12 +3,18 @@ import {
   ConflictException,
   Injectable,
   InternalServerErrorException,
+  NotFoundException,
 } from '@nestjs/common';
-import { desc, isNotNull, sql } from 'drizzle-orm';
+import { desc, eq, isNotNull, sql } from 'drizzle-orm';
 import { pgSchema, serial, timestamp, varchar } from 'drizzle-orm/pg-core';
 import { zuvyLearnerInformation } from '../../../drizzle/schema';
 import { db } from '../../db/index';
 import {
+  UpdateLearnerBoardByIdDto,
+  UpdateLearnerEducationMasterDataByIdDto,
+  UpdateTechnicalSkillByIdDto,
+  UpsertLearnerBoardsDto,
+  UpsertTechnicalSkillsDto,
   UpsertLearnerEducationMasterDataDto,
   UpsertLearnerInformationDto,
 } from './dto/learner.dto';
@@ -32,6 +38,35 @@ const zuvyLearnerEducationMasterDataTable = learnerMainSchema.table(
     }).defaultNow(),
   },
 );
+
+const zuvyTechnicalSkillsTable = learnerMainSchema.table(
+  'zuvy_learners_techinal_skills',
+  {
+    id: serial('id').primaryKey().notNull(),
+    name: varchar('name', { length: 100 }).notNull(),
+    createdAt: timestamp('created_at', {
+      withTimezone: true,
+      mode: 'string',
+    }).defaultNow(),
+    updatedAt: timestamp('updated_at', {
+      withTimezone: true,
+      mode: 'string',
+    }).defaultNow(),
+  },
+);
+
+const zuvyLearnerBoardsTable = learnerMainSchema.table('zuvy_learners_boards', {
+  id: serial('id').primaryKey().notNull(),
+  name: varchar('name', { length: 100 }).notNull(),
+  createdAt: timestamp('created_at', {
+    withTimezone: true,
+    mode: 'string',
+  }).defaultNow(),
+  updatedAt: timestamp('updated_at', {
+    withTimezone: true,
+    mode: 'string',
+  }).defaultNow(),
+});
 
 @Injectable()
 export class LearnerService {
@@ -183,6 +218,45 @@ BEGIN
     FROM information_schema.columns
     WHERE table_schema = 'main'
       AND table_name = 'zuvy_learner_education_details'
+      AND column_name = 'degree_program'
+      AND udt_name = '_varchar'
+  ) THEN
+    ALTER TABLE main.zuvy_learner_education_details
+    ALTER COLUMN degree_program TYPE varchar(100)
+    USING CASE
+      WHEN degree_program IS NULL OR array_length(degree_program, 1) = 0 THEN NULL
+      ELSE degree_program[1]
+    END;
+  END IF;
+
+  IF EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'main'
+      AND table_name = 'zuvy_learner_education_details'
+      AND column_name = 'branch_name'
+      AND udt_name = '_varchar'
+  ) THEN
+    ALTER TABLE main.zuvy_learner_education_details
+    ALTER COLUMN branch_name TYPE varchar(100)
+    USING CASE
+      WHEN branch_name IS NULL OR array_length(branch_name, 1) = 0 THEN NULL
+      ELSE branch_name[1]
+    END;
+  END IF;
+END $$;
+`),
+    );
+
+    await db.execute(
+      sql.raw(`
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'main'
+      AND table_name = 'zuvy_learner_education_details'
       AND column_name = 'category'
   ) AND EXISTS (
     SELECT 1
@@ -229,6 +303,95 @@ ON main.zuvy_learner_education_details (college_name, degree_program, branch_nam
     );
   }
 
+  private async ensureTechnicalSkillsStorageReady(): Promise<void> {
+    await db.execute(
+      sql.raw(`
+DO $$
+BEGIN
+  CREATE TABLE IF NOT EXISTS main.zuvy_learners_techinal_skills (
+    id serial PRIMARY KEY,
+    name varchar(100) NOT NULL,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now()
+  );
+
+  IF EXISTS (
+    SELECT 1
+    FROM information_schema.tables
+    WHERE table_schema = 'main'
+      AND table_name = 'zuvy_technical_skills'
+  ) AND EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'main'
+      AND table_name = 'zuvy_technical_skills'
+      AND column_name = 'name'
+  ) THEN
+    INSERT INTO main.zuvy_learners_techinal_skills (name)
+    SELECT DISTINCT TRIM(CAST(name AS text))
+    FROM main.zuvy_technical_skills
+    WHERE name IS NOT NULL
+      AND TRIM(CAST(name AS text)) <> ''
+    ON CONFLICT DO NOTHING;
+  END IF;
+
+  IF EXISTS (
+    SELECT 1
+    FROM information_schema.tables
+    WHERE table_schema = 'main'
+      AND table_name = 'zuvy_learner_technical_skills'
+  ) AND EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'main'
+      AND table_name = 'zuvy_learner_technical_skills'
+      AND column_name = 'name'
+  ) THEN
+    INSERT INTO main.zuvy_learners_techinal_skills (name)
+    SELECT DISTINCT TRIM(CAST(name AS text))
+    FROM main.zuvy_learner_technical_skills
+    WHERE name IS NOT NULL
+      AND TRIM(CAST(name AS text)) <> ''
+    ON CONFLICT DO NOTHING;
+  END IF;
+END $$;
+`),
+    );
+
+    await db.execute(
+      sql.raw(`
+UPDATE main.zuvy_learners_techinal_skills
+SET name = TRIM(name)
+WHERE name IS NOT NULL;
+
+DELETE FROM main.zuvy_learners_techinal_skills
+WHERE name IS NULL OR name = '';
+
+WITH ranked AS (
+  SELECT
+    id,
+    ROW_NUMBER() OVER (PARTITION BY name ORDER BY id) AS row_num
+  FROM main.zuvy_learners_techinal_skills
+)
+DELETE FROM main.zuvy_learners_techinal_skills current_row
+USING ranked
+WHERE current_row.id = ranked.id
+  AND ranked.row_num > 1;
+`),
+    );
+
+    await db.execute(
+      sql.raw(`
+DROP INDEX IF EXISTS main.zuvy_technical_skills_name_unique;
+DROP INDEX IF EXISTS main.zuvy_learner_technical_skills_name_unique;
+DROP INDEX IF EXISTS main.zuvy_learners_techinal_skills_name_unique;
+
+CREATE UNIQUE INDEX zuvy_learners_techinal_skills_name_unique
+ON main.zuvy_learners_techinal_skills (name);
+`),
+    );
+  }
+
   private normalizeMasterDataEntries(
     values: string[],
     label: string,
@@ -244,6 +407,433 @@ ON main.zuvy_learner_education_details (college_name, degree_program, branch_nam
     }
 
     return normalized;
+  }
+
+  private normalizeTechnicalSkills(values: string[]): string[] {
+    const normalizedSkills = values
+      .map((value) => value?.trim())
+      .filter((value): value is string => Boolean(value));
+
+    const uniqueSkills = Array.from(new Set(normalizedSkills));
+
+    if (!uniqueSkills.length) {
+      throw new BadRequestException('skills must contain at least one value.');
+    }
+
+    return uniqueSkills;
+  }
+
+  private async fetchTechnicalSkills() {
+    const skills = await db
+      .select({
+        id: zuvyTechnicalSkillsTable.id,
+        name: zuvyTechnicalSkillsTable.name,
+      })
+      .from(zuvyTechnicalSkillsTable)
+      .orderBy(zuvyTechnicalSkillsTable.id);
+
+    return { skills };
+  }
+
+  async getTechnicalSkills(retryOnMissingTable = true) {
+    try {
+      await this.ensureTechnicalSkillsStorageReady();
+
+      const data = await this.fetchTechnicalSkills();
+
+      return {
+        success: true,
+        data,
+      };
+    } catch (error) {
+      if (this.isLearnerSchemaMissingError(error) && retryOnMissingTable) {
+        await this.ensureTechnicalSkillsStorageReady();
+        return this.getTechnicalSkills(false);
+      }
+
+      if (this.isLearnerSchemaMissingError(error)) {
+        throw new InternalServerErrorException(
+          'Technical skills schema is out of sync. Please run migrations and retry.',
+        );
+      }
+
+      throw error;
+    }
+  }
+
+  async createTechnicalSkills(
+    payload: UpsertTechnicalSkillsDto,
+    retryOnMissingTable = true,
+  ) {
+    const skills = this.normalizeTechnicalSkills(payload.skills);
+
+    try {
+      await this.ensureTechnicalSkillsStorageReady();
+
+      await db
+        .insert(zuvyTechnicalSkillsTable)
+        .values(skills.map((name) => ({ name })))
+        .onConflictDoNothing({
+          target: zuvyTechnicalSkillsTable.name,
+        });
+
+      const data = await this.fetchTechnicalSkills();
+
+      return {
+        success: true,
+        data,
+      };
+    } catch (error) {
+      if (this.isLearnerSchemaMissingError(error) && retryOnMissingTable) {
+        await this.ensureTechnicalSkillsStorageReady();
+        return this.createTechnicalSkills(payload, false);
+      }
+
+      if (this.isLearnerSchemaMissingError(error)) {
+        throw new InternalServerErrorException(
+          'Technical skills schema is out of sync. Please run migrations and retry.',
+        );
+      }
+
+      if (error?.code === '22001') {
+        throw new BadRequestException(
+          'One or more technical skill values exceed allowed length.',
+        );
+      }
+
+      throw error;
+    }
+  }
+
+  async updateTechnicalSkillById(
+    id: number,
+    payload: UpdateTechnicalSkillByIdDto,
+    retryOnMissingTable = true,
+  ) {
+    if (!id || Number.isNaN(id)) {
+      throw new BadRequestException('Valid id is required for update.');
+    }
+
+    const normalizedName = payload.name?.trim();
+    if (!normalizedName) {
+      throw new BadRequestException('name is required.');
+    }
+
+    try {
+      await this.ensureTechnicalSkillsStorageReady();
+
+      const [updated] = await db
+        .update(zuvyTechnicalSkillsTable)
+        .set({
+          name: normalizedName,
+        })
+        .where(eq(zuvyTechnicalSkillsTable.id, id))
+        .returning({ id: zuvyTechnicalSkillsTable.id });
+
+      if (!updated) {
+        throw new NotFoundException(`Technical skill not found for id ${id}.`);
+      }
+
+      const data = await this.fetchTechnicalSkills();
+
+      return {
+        success: true,
+        data,
+      };
+    } catch (error) {
+      if (this.isLearnerSchemaMissingError(error) && retryOnMissingTable) {
+        await this.ensureTechnicalSkillsStorageReady();
+        return this.updateTechnicalSkillById(id, payload, false);
+      }
+
+      if (this.isLearnerSchemaMissingError(error)) {
+        throw new InternalServerErrorException(
+          'Technical skills schema is out of sync. Please run migrations and retry.',
+        );
+      }
+
+      if (error?.code === '23505') {
+        throw new ConflictException('Technical skill already exists.');
+      }
+
+      if (error?.code === '22001') {
+        throw new BadRequestException(
+          'One or more technical skill values exceed allowed length.',
+        );
+      }
+
+      throw error;
+    }
+  }
+
+  async deleteTechnicalSkillById(id: number, retryOnMissingTable = true) {
+    if (!id || Number.isNaN(id)) {
+      throw new BadRequestException('Valid id is required for delete.');
+    }
+
+    try {
+      await this.ensureTechnicalSkillsStorageReady();
+
+      const [deleted] = await db
+        .delete(zuvyTechnicalSkillsTable)
+        .where(eq(zuvyTechnicalSkillsTable.id, id))
+        .returning({ id: zuvyTechnicalSkillsTable.id });
+
+      if (!deleted) {
+        throw new NotFoundException(`Technical skill not found for id ${id}.`);
+      }
+
+      const data = await this.fetchTechnicalSkills();
+
+      return {
+        success: true,
+        data,
+      };
+    } catch (error) {
+      if (this.isLearnerSchemaMissingError(error) && retryOnMissingTable) {
+        await this.ensureTechnicalSkillsStorageReady();
+        return this.deleteTechnicalSkillById(id, false);
+      }
+
+      if (this.isLearnerSchemaMissingError(error)) {
+        throw new InternalServerErrorException(
+          'Technical skills schema is out of sync. Please run migrations and retry.',
+        );
+      }
+
+      throw error;
+    }
+  }
+
+  private async ensureLearnerBoardsStorageReady(): Promise<void> {
+    await db.execute(
+      sql.raw(`
+CREATE TABLE IF NOT EXISTS main.zuvy_learners_boards (
+  id serial PRIMARY KEY,
+  name varchar(100) NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+UPDATE main.zuvy_learners_boards
+SET name = TRIM(name)
+WHERE name IS NOT NULL;
+
+DELETE FROM main.zuvy_learners_boards
+WHERE name IS NULL OR name = '';
+
+WITH ranked AS (
+  SELECT
+    id,
+    ROW_NUMBER() OVER (PARTITION BY name ORDER BY id) AS row_num
+  FROM main.zuvy_learners_boards
+)
+DELETE FROM main.zuvy_learners_boards current_row
+USING ranked
+WHERE current_row.id = ranked.id
+  AND ranked.row_num > 1;
+
+DROP INDEX IF EXISTS main.zuvy_learners_boards_name_unique;
+CREATE UNIQUE INDEX zuvy_learners_boards_name_unique
+ON main.zuvy_learners_boards (name);
+`),
+    );
+  }
+
+  private normalizeLearnerBoards(values: string[]): string[] {
+    const normalizedBoards = values
+      .map((value) => value?.trim())
+      .filter((value): value is string => Boolean(value));
+
+    const uniqueBoards = Array.from(new Set(normalizedBoards));
+
+    if (!uniqueBoards.length) {
+      throw new BadRequestException('boards must contain at least one value.');
+    }
+
+    return uniqueBoards;
+  }
+
+  private async fetchLearnerBoards() {
+    const boards = await db
+      .select({
+        id: zuvyLearnerBoardsTable.id,
+        name: zuvyLearnerBoardsTable.name,
+      })
+      .from(zuvyLearnerBoardsTable)
+      .orderBy(zuvyLearnerBoardsTable.id);
+
+    return { boards };
+  }
+
+  async getLearnerBoards(retryOnMissingTable = true) {
+    try {
+      await this.ensureLearnerBoardsStorageReady();
+
+      const data = await this.fetchLearnerBoards();
+
+      return {
+        success: true,
+        data,
+      };
+    } catch (error) {
+      if (this.isLearnerSchemaMissingError(error) && retryOnMissingTable) {
+        await this.ensureLearnerBoardsStorageReady();
+        return this.getLearnerBoards(false);
+      }
+
+      if (this.isLearnerSchemaMissingError(error)) {
+        throw new InternalServerErrorException(
+          'Learner boards schema is out of sync. Please run migrations and retry.',
+        );
+      }
+
+      throw error;
+    }
+  }
+
+  async createLearnerBoards(
+    payload: UpsertLearnerBoardsDto,
+    retryOnMissingTable = true,
+  ) {
+    const boards = this.normalizeLearnerBoards(payload.boards);
+
+    try {
+      await this.ensureLearnerBoardsStorageReady();
+
+      await db
+        .insert(zuvyLearnerBoardsTable)
+        .values(boards.map((name) => ({ name })))
+        .onConflictDoNothing({
+          target: zuvyLearnerBoardsTable.name,
+        });
+
+      const data = await this.fetchLearnerBoards();
+
+      return {
+        success: true,
+        data,
+      };
+    } catch (error) {
+      if (this.isLearnerSchemaMissingError(error) && retryOnMissingTable) {
+        await this.ensureLearnerBoardsStorageReady();
+        return this.createLearnerBoards(payload, false);
+      }
+
+      if (this.isLearnerSchemaMissingError(error)) {
+        throw new InternalServerErrorException(
+          'Learner boards schema is out of sync. Please run migrations and retry.',
+        );
+      }
+
+      if (error?.code === '22001') {
+        throw new BadRequestException(
+          'One or more learner board values exceed allowed length.',
+        );
+      }
+
+      throw error;
+    }
+  }
+
+  async updateLearnerBoardById(
+    id: number,
+    payload: UpdateLearnerBoardByIdDto,
+    retryOnMissingTable = true,
+  ) {
+    if (!id || Number.isNaN(id)) {
+      throw new BadRequestException('Valid id is required for update.');
+    }
+
+    const normalizedName = payload.name?.trim();
+    if (!normalizedName) {
+      throw new BadRequestException('name is required.');
+    }
+
+    try {
+      await this.ensureLearnerBoardsStorageReady();
+
+      const [updated] = await db
+        .update(zuvyLearnerBoardsTable)
+        .set({
+          name: normalizedName,
+        })
+        .where(eq(zuvyLearnerBoardsTable.id, id))
+        .returning({ id: zuvyLearnerBoardsTable.id });
+
+      if (!updated) {
+        throw new NotFoundException(`Learner board not found for id ${id}.`);
+      }
+
+      const data = await this.fetchLearnerBoards();
+
+      return {
+        success: true,
+        data,
+      };
+    } catch (error) {
+      if (this.isLearnerSchemaMissingError(error) && retryOnMissingTable) {
+        await this.ensureLearnerBoardsStorageReady();
+        return this.updateLearnerBoardById(id, payload, false);
+      }
+
+      if (this.isLearnerSchemaMissingError(error)) {
+        throw new InternalServerErrorException(
+          'Learner boards schema is out of sync. Please run migrations and retry.',
+        );
+      }
+
+      if (error?.code === '23505') {
+        throw new ConflictException('Learner board already exists.');
+      }
+
+      if (error?.code === '22001') {
+        throw new BadRequestException(
+          'One or more learner board values exceed allowed length.',
+        );
+      }
+
+      throw error;
+    }
+  }
+
+  async deleteLearnerBoardById(id: number, retryOnMissingTable = true) {
+    if (!id || Number.isNaN(id)) {
+      throw new BadRequestException('Valid id is required for delete.');
+    }
+
+    try {
+      await this.ensureLearnerBoardsStorageReady();
+
+      const [deleted] = await db
+        .delete(zuvyLearnerBoardsTable)
+        .where(eq(zuvyLearnerBoardsTable.id, id))
+        .returning({ id: zuvyLearnerBoardsTable.id });
+
+      if (!deleted) {
+        throw new NotFoundException(`Learner board not found for id ${id}.`);
+      }
+
+      const data = await this.fetchLearnerBoards();
+
+      return {
+        success: true,
+        data,
+      };
+    } catch (error) {
+      if (this.isLearnerSchemaMissingError(error) && retryOnMissingTable) {
+        await this.ensureLearnerBoardsStorageReady();
+        return this.deleteLearnerBoardById(id, false);
+      }
+
+      if (this.isLearnerSchemaMissingError(error)) {
+        throw new InternalServerErrorException(
+          'Learner boards schema is out of sync. Please run migrations and retry.',
+        );
+      }
+
+      throw error;
+    }
   }
 
   private validateFutureGraduationDate(month: number, year: number): void {
@@ -521,6 +1111,82 @@ ON main.zuvy_learner_education_details (college_name, degree_program, branch_nam
       if (this.isLearnerSchemaMissingError(error) && retryOnMissingTable) {
         await this.ensureLearnerEducationMasterDataStorageReady();
         return this.createEducationMasterData(payload, false);
+      }
+
+      if (this.isLearnerSchemaMissingError(error)) {
+        throw new InternalServerErrorException(
+          'Learner education master data schema is out of sync. Please run migrations and retry.',
+        );
+      }
+
+      if (error?.code === '22001') {
+        throw new BadRequestException(
+          'One or more education master data values exceed allowed length.',
+        );
+      }
+
+      throw error;
+    }
+  }
+
+  async updateEducationMasterDataById(
+    id: number,
+    payload: UpdateLearnerEducationMasterDataByIdDto,
+    retryOnMissingTable = true,
+  ) {
+    if (!id || Number.isNaN(id)) {
+      throw new BadRequestException('Valid id is required for update.');
+    }
+
+    const hasAnyField =
+      payload.collegeName !== undefined ||
+      payload.degreeProgram !== undefined ||
+      payload.branchName !== undefined;
+
+    if (!hasAnyField) {
+      throw new BadRequestException(
+        'At least one of collegeName, degreeProgram, or branchName is required.',
+      );
+    }
+
+    const updatePayload = {
+      ...(payload.collegeName !== undefined
+        ? { collegeName: payload.collegeName?.trim() || null }
+        : {}),
+      ...(payload.degreeProgram !== undefined
+        ? { degreeProgram: payload.degreeProgram?.trim() || null }
+        : {}),
+      ...(payload.branchName !== undefined
+        ? { branchName: payload.branchName?.trim() || null }
+        : {}),
+      updatedAt: sql`now()`,
+    };
+
+    try {
+      await this.ensureLearnerEducationMasterDataStorageReady();
+
+      const [updated] = await db
+        .update(zuvyLearnerEducationMasterDataTable)
+        .set(updatePayload)
+        .where(eq(zuvyLearnerEducationMasterDataTable.id, id))
+        .returning({ id: zuvyLearnerEducationMasterDataTable.id });
+
+      if (!updated) {
+        throw new NotFoundException(
+          `Learner education master data not found for id ${id}.`,
+        );
+      }
+
+      const groupedData = await this.fetchEducationMasterDataGrouped();
+
+      return {
+        success: true,
+        data: groupedData,
+      };
+    } catch (error) {
+      if (this.isLearnerSchemaMissingError(error) && retryOnMissingTable) {
+        await this.ensureLearnerEducationMasterDataStorageReady();
+        return this.updateEducationMasterDataById(id, payload, false);
       }
 
       if (this.isLearnerSchemaMissingError(error)) {

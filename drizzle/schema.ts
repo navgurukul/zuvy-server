@@ -3105,6 +3105,52 @@ export const zuvyLearnerEducationDetails = main.table(
   }),
 );
 
+export const zuvyTechnicalSkills = main.table(
+  'zuvy_learners_techinal_skills',
+  {
+    id: serial('id').primaryKey().notNull(),
+    name: varchar('name', { length: 100 }).notNull(),
+    createdAt: timestamp('created_at', {
+      withTimezone: true,
+      mode: 'string',
+    })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp('updated_at', {
+      withTimezone: true,
+      mode: 'string',
+    })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => ({
+    nameUnique: uniqueIndex('zuvy_learners_techinal_skills_name_unique').on(table.name),
+  }),
+);
+
+export const zuvyLearnersBoards = main.table(
+  'zuvy_learners_boards',
+  {
+    id: serial('id').primaryKey().notNull(),
+    name: varchar('name', { length: 100 }).notNull(),
+    createdAt: timestamp('created_at', {
+      withTimezone: true,
+      mode: 'string',
+    })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp('updated_at', {
+      withTimezone: true,
+      mode: 'string',
+    })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => ({
+    nameUnique: uniqueIndex('zuvy_learners_boards_name_unique').on(table.name),
+  }),
+);
+
 export const zuvyOpenEndedQuestionSubmission = main.table("zuvy_open_ended_question_submission", {
   id: serial("id").primaryKey().notNull(),
   questionId: integer("question_id").references(() => zuvyOutsourseOpenEndedQuestions.id).notNull(),
