@@ -95,18 +95,39 @@ export class BootcampService {
     offset: number,
     searchTermAsNumber?: string | number,
     searchTermAsString?: string,
+    filter?: string,
   ): Promise<any> {
     try {
       let query;
       let countQuery;
+
+      if (!orgId || isNaN(Number(orgId))) {
+        return [{ status: 'error', message: 'invalid orgId', code: 400 }, null];
+      }
+
+      const orgInfo = await db
+        .select()
+        .from(zuvyOrganizations)
+        .where(eq(zuvyOrganizations.id, Number(orgId)));
+
+      if (orgInfo.length === 0) {
+        return [
+          {
+            status: 'error',
+            message: 'Organization does not exist.',
+            code: 404,
+          },
+          null,
+        ];
+      }
+
+      let filterOrgId = Number(orgId);
 
       // Fetch user's organizations
       const userOrgs = await db
         .select()
         .from(zuvyUserRolesAssigned)
         .where(eq(zuvyUserRolesAssigned.userId, userId));
-
-      let filterOrgId = orgId;
 
       // Verify user belongs to the requested organization
       if (roleName.includes('admin') || roleName.includes('super_admin')) {
@@ -116,22 +137,44 @@ export class BootcampService {
           (org) => org.organizationId == filterOrgId,
         );
         if (!belongsToOrg) {
-          // If user doesn't belong to the requested org, they can only see public bootcamps
-          // but if orgId is mandatory path param, we should probably throw error or restrict.
-          // For now, let's keep the isolation.
-          filterOrgId = undefined;
+          return [
+            {
+              status: 'error',
+              message: 'User does not belong to this organization.',
+              code: 403,
+            },
+            null,
+          ];
         }
       }
 
-      let orgCondition = or(
-        isNull(zuvyBootcamps.organizationId),
-        eq(zuvyBootcampType.type, 'Public'),
-      );
-      if (filterOrgId) {
+      let orgCondition;
+      const lowerFilter = filter ? filter.toLowerCase() : 'all';
+
+      if (lowerFilter === 'public') {
+        orgCondition = eq(zuvyBootcampType.type, 'Public');
+      } else if (lowerFilter === 'private') {
+        if (filterOrgId) {
+          orgCondition = and(
+            eq(zuvyBootcampType.type, 'Private'),
+            eq(zuvyBootcamps.organizationId, filterOrgId),
+          );
+        } else {
+          // If no org allowed, return no private bootcamps
+          orgCondition = sql`1=0`;
+        }
+      } else {
+        // 'all' or default
         orgCondition = or(
-          orgCondition,
-          eq(zuvyBootcamps.organizationId, filterOrgId),
+          isNull(zuvyBootcamps.organizationId),
+          eq(zuvyBootcampType.type, 'Public'),
         );
+        if (filterOrgId) {
+          orgCondition = or(
+            orgCondition,
+            eq(zuvyBootcamps.organizationId, filterOrgId),
+          );
+        }
       }
 
       const isSearchAsNumber =
@@ -161,6 +204,7 @@ export class BootcampService {
             updatedAt: zuvyBootcamps.updatedAt,
             version: zuvyBootcamps.version,
             code: zuvyOrganizations.displayName,
+            bootcampType: zuvyBootcampType.type,
           })
           .from(zuvyBootcamps)
           .leftJoin(
@@ -211,6 +255,7 @@ export class BootcampService {
             updatedAt: zuvyBootcamps.updatedAt,
             version: zuvyBootcamps.version,
             code: zuvyOrganizations.displayName,
+            bootcampType: zuvyBootcampType.type,
           })
           .from(zuvyBootcamps)
           .leftJoin(
@@ -279,6 +324,7 @@ export class BootcampService {
             updatedAt: zuvyBootcamps.updatedAt,
             version: zuvyBootcamps.version,
             code: zuvyOrganizations.displayName,
+            bootcampType: zuvyBootcampType.type,
           })
           .from(zuvyBootcamps)
           .leftJoin(
@@ -319,6 +365,7 @@ export class BootcampService {
             updatedAt: zuvyBootcamps.updatedAt,
             version: zuvyBootcamps.version,
             code: zuvyOrganizations.displayName,
+            bootcampType: zuvyBootcampType.type,
           })
           .from(zuvyBootcamps)
           .leftJoin(
