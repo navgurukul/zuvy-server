@@ -466,27 +466,48 @@ export class StudentService {
     }
   }
 
-  async fetchGlobalCourses() {
+  async fetchGlobalCourses(userId?: number) {
     try {
       // Fetch public bootcamps
       let publicBootcamps = await db
-        .select()
+        .select({
+          bootcamp: zuvyBootcamps,
+          bootcampType: zuvyBootcampType,
+          organization: zuvyOrganizations,
+        })
         .from(zuvyBootcamps)
         .innerJoin(
           zuvyBootcampType,
           eq(zuvyBootcamps.id, zuvyBootcampType.bootcampId),
         )
+        .leftJoin(
+          zuvyOrganizations,
+          eq(zuvyBootcamps.organizationId, zuvyOrganizations.id),
+        )
         .where(sql`${zuvyBootcampType.type} = 'Public'`);
+
+      if (userId) {
+        const enrolled = await db
+          .select({ bootcampId: zuvyBatchEnrollments.bootcampId })
+          .from(zuvyBatchEnrollments)
+          .where(eq(zuvyBatchEnrollments.userId, BigInt(userId)));
+        const enrolledBootcampIds = new Set(
+          enrolled.map((e) => Number(e.bootcampId)),
+        );
+        publicBootcamps = publicBootcamps.filter(
+          (b) => !enrolledBootcampIds.has(Number(b.bootcamp.id)),
+        );
+      }
 
       let data = await Promise.all(
         publicBootcamps.map(async (bootcampRecord) => {
-          const { zuvy_bootcamps, zuvy_bootcamp_type } = bootcampRecord;
-          let [err, res] = await this.enrollmentData(zuvy_bootcamps.id);
+          const { bootcamp, bootcampType, organization } = bootcampRecord;
+          let [err, res] = await this.enrollmentData(bootcamp.id);
 
           // fetch first batch
           const firstBatch = await db.query.zuvyBatches.findFirst({
             where: (zuvyBatches, { eq }) =>
-              eq(zuvyBatches.bootcampId, zuvy_bootcamps.id),
+              eq(zuvyBatches.bootcampId, bootcamp.id),
             orderBy: (zuvyBatches, { desc }) => [desc(zuvyBatches.createdAt)],
             with: {
               instructorDetails: {
@@ -499,10 +520,12 @@ export class StudentService {
           });
 
           return {
-            ...zuvy_bootcamps,
-            ...zuvy_bootcamp_type,
+            ...bootcamp,
+            ...bootcampType,
             batchInfo: firstBatch || null,
             enrolledInfo: res,
+            courseOrgId: organization?.id || null,
+            courseOrgName: organization?.title || null,
           };
         }),
       );

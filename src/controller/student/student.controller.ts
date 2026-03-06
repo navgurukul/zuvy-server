@@ -114,8 +114,9 @@ export class StudentController {
   @Get('/bootcamp/global')
   @ApiOperation({ summary: 'Get all global public Bootcamps with details' })
   @ApiBearerAuth('JWT-auth')
-  async getGlobalCourses(): Promise<object> {
-    const [err, res] = await this.studentService.fetchGlobalCourses();
+  async getGlobalCourses(@Req() req): Promise<object> {
+    const userId = req.user ? req.user[0].id : undefined;
+    const [err, res] = await this.studentService.fetchGlobalCourses(userId);
     if (err) {
       throw new BadRequestException(err);
     }

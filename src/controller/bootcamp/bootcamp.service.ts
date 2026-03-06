@@ -101,13 +101,33 @@ export class BootcampService {
       let query;
       let countQuery;
 
+      if (!orgId || isNaN(Number(orgId))) {
+        return [{ status: 'error', message: 'invalid orgId', code: 400 }, null];
+      }
+
+      const orgInfo = await db
+        .select()
+        .from(zuvyOrganizations)
+        .where(eq(zuvyOrganizations.id, Number(orgId)));
+
+      if (orgInfo.length === 0) {
+        return [
+          {
+            status: 'error',
+            message: 'Organization does not exist.',
+            code: 404,
+          },
+          null,
+        ];
+      }
+
+      let filterOrgId = Number(orgId);
+
       // Fetch user's organizations
       const userOrgs = await db
         .select()
         .from(zuvyUserRolesAssigned)
         .where(eq(zuvyUserRolesAssigned.userId, userId));
-
-      let filterOrgId = orgId;
 
       // Verify user belongs to the requested organization
       if (roleName.includes('admin') || roleName.includes('super_admin')) {
@@ -117,10 +137,14 @@ export class BootcampService {
           (org) => org.organizationId == filterOrgId,
         );
         if (!belongsToOrg) {
-          // If user doesn't belong to the requested org, they can only see public bootcamps
-          // but if orgId is mandatory path param, we should probably throw error or restrict.
-          // For now, let's keep the isolation.
-          filterOrgId = undefined;
+          return [
+            {
+              status: 'error',
+              message: 'User does not belong to this organization.',
+              code: 403,
+            },
+            null,
+          ];
         }
       }
 
