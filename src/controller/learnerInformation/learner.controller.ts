@@ -20,14 +20,23 @@ import {
 import { LearnerService } from './learner.service';
 import {
   LearnerBoardsResponseDto,
-  LearnerEducationMasterDataResponseDto,
+  LearnerEducationBranchesResponseDto,
+  LearnerDegreesResponseDto,
+  LearnerRemoteLocationsResponseDto,
+  LearnerRolesResponseDto,
   TechnicalSkillsResponseDto,
   UpdateLearnerBoardByIdDto,
-  UpdateLearnerEducationMasterDataByIdDto,
+  UpdateLearnerEducationBranchByIdDto,
+  UpdateLearnerDegreeByIdDto,
+  UpdateLearnerRemoteLocationByIdDto,
+  UpdateLearnerRoleByIdDto,
   UpdateTechnicalSkillByIdDto,
   UpsertLearnerBoardsDto,
+  UpsertLearnerEducationBranchesDto,
+  UpsertLearnerDegreesDto,
+  UpsertLearnerRemoteLocationsDto,
+  UpsertLearnerRolesDto,
   UpsertTechnicalSkillsDto,
-  UpsertLearnerEducationMasterDataDto,
 } from './dto/learner.dto';
 @ApiTags('Learner Information')
 @Controller('besic')
@@ -41,47 +50,6 @@ import {
 @ApiBearerAuth('JWT-auth')
 export class LearnerController {
   constructor(private readonly learnerService: LearnerService) {}
-
-  @Get('learner-education-details')
-  @ApiOperation({
-    summary: 'Get learner education details (colleges, programTypes, branches)',
-  })
-  async getEducationMasterData(): Promise<{
-    success: boolean;
-    data: LearnerEducationMasterDataResponseDto;
-  }> {
-    return this.learnerService.getEducationMasterData();
-  }
-
-  @Post('learner-education-details')
-  @ApiOperation({
-    summary:
-      'Save learner education master data (colleges, programTypes, branches) in one request',
-  })
-  @ApiBody({ type: UpsertLearnerEducationMasterDataDto })
-  async createEducationMasterData(
-    @Body() payload: UpsertLearnerEducationMasterDataDto,
-  ): Promise<{
-    success: boolean;
-    data: LearnerEducationMasterDataResponseDto;
-  }> {
-    return this.learnerService.createEducationMasterData(payload);
-  }
-
-  @Put('learner-education-details/:id')
-  @ApiOperation({
-    summary: 'Update learner education master data by id',
-  })
-  @ApiBody({ type: UpdateLearnerEducationMasterDataByIdDto })
-  async updateEducationMasterData(
-    @Param('id', ParseIntPipe) id: number,
-    @Body() payload: UpdateLearnerEducationMasterDataByIdDto,
-  ): Promise<{
-    success: boolean;
-    data: LearnerEducationMasterDataResponseDto;
-  }> {
-    return this.learnerService.updateEducationMasterDataById(id, payload);
-  }
 
   @Get('learner-technical-skills')
   @ApiOperation({ summary: 'Get technical skills list' })
@@ -128,6 +96,96 @@ export class LearnerController {
     return this.learnerService.deleteTechnicalSkillById(id);
   }
 
+  @Get('learner-degree-details')
+  @ApiOperation({ summary: 'Get learner degree list' })
+  async getLearnerDegrees(): Promise<{
+    success: boolean;
+    data: LearnerDegreesResponseDto;
+  }> {
+    return this.learnerService.getLearnerDegrees();
+  }
+
+  @Post('learner-degree-details')
+  @ApiOperation({ summary: 'Create learner degree list' })
+  @ApiBody({ type: UpsertLearnerDegreesDto })
+  async createLearnerDegrees(
+    @Body() payload: UpsertLearnerDegreesDto,
+  ): Promise<{
+    success: boolean;
+    data: LearnerDegreesResponseDto;
+  }> {
+    return this.learnerService.createLearnerDegrees(payload);
+  }
+
+  @Put('learner-degree-details/:id')
+  @ApiOperation({ summary: 'Update learner degree by id' })
+  @ApiBody({ type: UpdateLearnerDegreeByIdDto })
+  async updateLearnerDegreeById(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() payload: UpdateLearnerDegreeByIdDto,
+  ): Promise<{
+    success: boolean;
+    data: LearnerDegreesResponseDto;
+  }> {
+    return this.learnerService.updateLearnerDegreeById(id, payload);
+  }
+
+  @Delete('learner-degree-details/:id')
+  @ApiOperation({ summary: 'Delete learner degree by id' })
+  async deleteLearnerDegreeById(
+    @Param('id', ParseIntPipe) id: number,
+  ): Promise<{
+    success: boolean;
+    data: LearnerDegreesResponseDto;
+  }> {
+    return this.learnerService.deleteLearnerDegreeById(id);
+  }
+
+  @Get('learner-education-branch-details')
+  @ApiOperation({ summary: 'Get learner education branch list' })
+  async getLearnerEducationBranches(): Promise<{
+    success: boolean;
+    data: LearnerEducationBranchesResponseDto;
+  }> {
+    return this.learnerService.getLearnerEducationBranches();
+  }
+
+  @Post('learner-education-branch-details')
+  @ApiOperation({ summary: 'Create learner education branch list' })
+  @ApiBody({ type: UpsertLearnerEducationBranchesDto })
+  async createLearnerEducationBranches(
+    @Body() payload: UpsertLearnerEducationBranchesDto,
+  ): Promise<{
+    success: boolean;
+    data: LearnerEducationBranchesResponseDto;
+  }> {
+    return this.learnerService.createLearnerEducationBranches(payload);
+  }
+
+  @Put('learner-education-branch-details/:id')
+  @ApiOperation({ summary: 'Update learner education branch by id' })
+  @ApiBody({ type: UpdateLearnerEducationBranchByIdDto })
+  async updateLearnerEducationBranchById(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() payload: UpdateLearnerEducationBranchByIdDto,
+  ): Promise<{
+    success: boolean;
+    data: LearnerEducationBranchesResponseDto;
+  }> {
+    return this.learnerService.updateLearnerEducationBranchById(id, payload);
+  }
+
+  @Delete('learner-education-branch-details/:id')
+  @ApiOperation({ summary: 'Delete learner education branch by id' })
+  async deleteLearnerEducationBranchById(
+    @Param('id', ParseIntPipe) id: number,
+  ): Promise<{
+    success: boolean;
+    data: LearnerEducationBranchesResponseDto;
+  }> {
+    return this.learnerService.deleteLearnerEducationBranchById(id);
+  }
+
   @Get('learner-boards')
   @ApiOperation({ summary: 'Get learner boards list' })
   async getLearnerBoards(): Promise<{
@@ -167,5 +225,91 @@ export class LearnerController {
     data: LearnerBoardsResponseDto;
   }> {
     return this.learnerService.deleteLearnerBoardById(id);
+  }
+
+  @Get('learner-roles')
+  @ApiOperation({ summary: 'Get learner roles list' })
+  async getLearnerRoles(): Promise<{
+    success: boolean;
+    data: LearnerRolesResponseDto;
+  }> {
+    return this.learnerService.getLearnerRoles();
+  }
+
+  @Post('learner-roles')
+  @ApiOperation({ summary: 'Create learner roles list' })
+  @ApiBody({ type: UpsertLearnerRolesDto })
+  async createLearnerRoles(@Body() payload: UpsertLearnerRolesDto): Promise<{
+    success: boolean;
+    data: LearnerRolesResponseDto;
+  }> {
+    return this.learnerService.createLearnerRoles(payload);
+  }
+
+  @Put('learner-roles/:id')
+  @ApiOperation({ summary: 'Update learner role by id' })
+  @ApiBody({ type: UpdateLearnerRoleByIdDto })
+  async updateLearnerRoleById(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() payload: UpdateLearnerRoleByIdDto,
+  ): Promise<{
+    success: boolean;
+    data: LearnerRolesResponseDto;
+  }> {
+    return this.learnerService.updateLearnerRoleById(id, payload);
+  }
+
+  @Delete('learner-roles/:id')
+  @ApiOperation({ summary: 'Delete learner role by id' })
+  async deleteLearnerRoleById(@Param('id', ParseIntPipe) id: number): Promise<{
+    success: boolean;
+    data: LearnerRolesResponseDto;
+  }> {
+    return this.learnerService.deleteLearnerRoleById(id);
+  }
+
+  @Get('learner-remote-locations')
+  @ApiOperation({ summary: 'Get learner remote locations list' })
+  async getLearnerRemoteLocations(): Promise<{
+    success: boolean;
+    data: LearnerRemoteLocationsResponseDto;
+  }> {
+    return this.learnerService.getLearnerRemoteLocations();
+  }
+
+  @Post('learner-remote-locations')
+  @ApiOperation({ summary: 'Create learner remote locations list' })
+  @ApiBody({ type: UpsertLearnerRemoteLocationsDto })
+  async createLearnerRemoteLocations(
+    @Body() payload: UpsertLearnerRemoteLocationsDto,
+  ): Promise<{
+    success: boolean;
+    data: LearnerRemoteLocationsResponseDto;
+  }> {
+    return this.learnerService.createLearnerRemoteLocations(payload);
+  }
+
+  @Put('learner-remote-locations/:id')
+  @ApiOperation({ summary: 'Update learner remote location by id' })
+  @ApiBody({ type: UpdateLearnerRemoteLocationByIdDto })
+  async updateLearnerRemoteLocationById(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() payload: UpdateLearnerRemoteLocationByIdDto,
+  ): Promise<{
+    success: boolean;
+    data: LearnerRemoteLocationsResponseDto;
+  }> {
+    return this.learnerService.updateLearnerRemoteLocationById(id, payload);
+  }
+
+  @Delete('learner-remote-locations/:id')
+  @ApiOperation({ summary: 'Delete learner remote location by id' })
+  async deleteLearnerRemoteLocationById(
+    @Param('id', ParseIntPipe) id: number,
+  ): Promise<{
+    success: boolean;
+    data: LearnerRemoteLocationsResponseDto;
+  }> {
+    return this.learnerService.deleteLearnerRemoteLocationById(id);
   }
 }

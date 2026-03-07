@@ -86,85 +86,6 @@ export class LearnerInformationResponseDto {
   updatedAt: string;
 }
 
-export class UpsertLearnerEducationMasterDataDto {
-  @ApiProperty({
-    type: [String],
-    example: [
-      'Indian Institute of Technology (IIT) Bombay',
-      'Indian Institute of Technology (IIT) Delhi',
-    ],
-  })
-  @IsArray()
-  @ArrayMinSize(1)
-  @IsString({ each: true })
-  colleges: string[];
-
-  @ApiProperty({
-    type: [String],
-    example: ['B.Tech', 'Diploma'],
-  })
-  @IsArray()
-  @ArrayMinSize(1)
-  @IsString({ each: true })
-  programTypes: string[];
-
-  @ApiProperty({
-    type: [String],
-    example: ['Computer Science', 'Electronics'],
-  })
-  @IsArray()
-  @ArrayMinSize(1)
-  @IsString({ each: true })
-  branches: string[];
-}
-
-export class UpdateLearnerEducationMasterDataByIdDto {
-  @ApiPropertyOptional({ type: String, example: 'IIT Bombay' })
-  @IsOptional()
-  @IsString()
-  @Length(1, 255)
-  collegeName?: string;
-
-  @ApiPropertyOptional({ type: String, example: 'B.Tech' })
-  @IsOptional()
-  @IsString()
-  @Length(1, 100)
-  degreeProgram?: string;
-
-  @ApiPropertyOptional({ type: String, example: 'Computer Science' })
-  @IsOptional()
-  @IsString()
-  @Length(1, 100)
-  branchName?: string;
-}
-
-export class LearnerEducationMasterDataItemDto {
-  @ApiProperty({ type: Number, example: 1 })
-  id: number;
-
-  @ApiProperty({ type: String, example: 'IIT Madras' })
-  name: string;
-}
-
-export class LearnerEducationMasterDataResponseDto {
-  @ApiProperty({ type: [LearnerEducationMasterDataItemDto] })
-  colleges: LearnerEducationMasterDataItemDto[];
-
-  @ApiProperty({ type: [LearnerEducationMasterDataItemDto] })
-  programTypes: LearnerEducationMasterDataItemDto[];
-
-  @ApiProperty({ type: [LearnerEducationMasterDataItemDto] })
-  branches: LearnerEducationMasterDataItemDto[];
-}
-
-export class CreateLearnerEducationMasterDataApiResponseDto {
-  @ApiProperty({ type: Boolean, example: true })
-  success: boolean;
-
-  @ApiProperty({ type: LearnerEducationMasterDataResponseDto })
-  data: LearnerEducationMasterDataResponseDto;
-}
-
 export class UpsertTechnicalSkillsDto {
   @ApiProperty({
     type: [String],
@@ -204,6 +125,68 @@ export class TechnicalSkillsApiResponseDto {
   data: TechnicalSkillsResponseDto;
 }
 
+export class UpsertLearnerDegreesDto {
+  @ApiProperty({
+    type: [String],
+    example: ['B.Tech', 'B.E'],
+  })
+  @IsArray()
+  @ArrayMinSize(1)
+  @IsString({ each: true })
+  degrees: string[];
+}
+
+export class UpdateLearnerDegreeByIdDto {
+  @ApiProperty({ type: String, example: 'B.Tech' })
+  @IsString()
+  @Length(1, 100)
+  name: string;
+}
+
+export class LearnerDegreeItemDto {
+  @ApiProperty({ type: Number, example: 1 })
+  id: number;
+
+  @ApiProperty({ type: String, example: 'B.Tech' })
+  name: string;
+}
+
+export class LearnerDegreesResponseDto {
+  @ApiProperty({ type: [LearnerDegreeItemDto] })
+  degrees: LearnerDegreeItemDto[];
+}
+
+export class UpsertLearnerEducationBranchesDto {
+  @ApiProperty({
+    type: [String],
+    example: ['Computer Science', 'Electronics'],
+  })
+  @IsArray()
+  @ArrayMinSize(1)
+  @IsString({ each: true })
+  branches: string[];
+}
+
+export class UpdateLearnerEducationBranchByIdDto {
+  @ApiProperty({ type: String, example: 'Computer Science' })
+  @IsString()
+  @Length(1, 100)
+  name: string;
+}
+
+export class LearnerEducationBranchItemDto {
+  @ApiProperty({ type: Number, example: 1 })
+  id: number;
+
+  @ApiProperty({ type: String, example: 'Computer Science' })
+  name: string;
+}
+
+export class LearnerEducationBranchesResponseDto {
+  @ApiProperty({ type: [LearnerEducationBranchItemDto] })
+  branches: LearnerEducationBranchItemDto[];
+}
+
 export class UpsertLearnerBoardsDto {
   @ApiProperty({
     type: [String],
@@ -233,4 +216,66 @@ export class LearnerBoardItemDto {
 export class LearnerBoardsResponseDto {
   @ApiProperty({ type: [LearnerBoardItemDto] })
   boards: LearnerBoardItemDto[];
+}
+
+export class UpsertLearnerRolesDto {
+  @ApiProperty({
+    type: [String],
+    example: ['Software Development Engineer (SDE)', 'Full Stack Developer'],
+  })
+  @IsArray()
+  @ArrayMinSize(1)
+  @IsString({ each: true })
+  roles: string[];
+}
+
+export class UpdateLearnerRoleByIdDto {
+  @ApiProperty({ type: String, example: 'Backend Developer' })
+  @IsString()
+  @Length(1, 100)
+  name: string;
+}
+
+export class LearnerRoleItemDto {
+  @ApiProperty({ type: Number, example: 1 })
+  id: number;
+
+  @ApiProperty({ type: String, example: 'Software Development Engineer (SDE)' })
+  name: string;
+}
+
+export class LearnerRolesResponseDto {
+  @ApiProperty({ type: [LearnerRoleItemDto] })
+  roles: LearnerRoleItemDto[];
+}
+
+export class UpsertLearnerRemoteLocationsDto {
+  @ApiProperty({
+    type: [String],
+    example: ['Work From Home', 'Mumbai', 'Bengaluru'],
+  })
+  @IsArray()
+  @ArrayMinSize(1)
+  @IsString({ each: true })
+  remoteLocations: string[];
+}
+
+export class UpdateLearnerRemoteLocationByIdDto {
+  @ApiProperty({ type: String, example: 'Pune' })
+  @IsString()
+  @Length(1, 100)
+  name: string;
+}
+
+export class LearnerRemoteLocationItemDto {
+  @ApiProperty({ type: Number, example: 1 })
+  id: number;
+
+  @ApiProperty({ type: String, example: 'Work From Home' })
+  name: string;
+}
+
+export class LearnerRemoteLocationsResponseDto {
+  @ApiProperty({ type: [LearnerRemoteLocationItemDto] })
+  remoteLocations: LearnerRemoteLocationItemDto[];
 }

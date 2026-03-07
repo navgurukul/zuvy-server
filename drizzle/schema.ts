@@ -3076,35 +3076,6 @@ export const zuvyLearnerInformationRelation = relations(
   }),
 );
 
-export const zuvyLearnerEducationDetails = main.table(
-  'zuvy_learner_education_details',
-  {
-    id: serial('id').primaryKey().notNull(),
-    collegeName: varchar('college_name', { length: 255 }),
-    degreeProgram: varchar('degree_program', { length: 100 }),
-    branchName: varchar('branch_name', { length: 100 }),
-    createdAt: timestamp('created_at', {
-      withTimezone: true,
-      mode: 'string',
-    })
-      .defaultNow()
-      .notNull(),
-    updatedAt: timestamp('updated_at', {
-      withTimezone: true,
-      mode: 'string',
-    })
-      .defaultNow()
-      .notNull(),
-  },
-  (table) => ({
-    rowUnique: uniqueIndex('zuvy_learner_education_details_row_unique').on(
-      table.collegeName,
-      table.degreeProgram,
-      table.branchName,
-    ),
-  }),
-);
-
 export const zuvyTechnicalSkills = main.table(
   'zuvy_learners_techinal_skills',
   {
@@ -3128,6 +3099,56 @@ export const zuvyTechnicalSkills = main.table(
   }),
 );
 
+export const zuvyLearnersDegreeDetails = main.table(
+  'zuvy_learners_degree_details',
+  {
+    id: serial('id').primaryKey().notNull(),
+    name: varchar('name', { length: 100 }).notNull(),
+    createdAt: timestamp('created_at', {
+      withTimezone: true,
+      mode: 'string',
+    })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp('updated_at', {
+      withTimezone: true,
+      mode: 'string',
+    })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => ({
+    nameUnique: uniqueIndex('zuvy_learners_degree_details_name_unique').on(
+      table.name,
+    ),
+  }),
+);
+
+export const zuvyLearnerEducationBranchDetails = main.table(
+  'zuvy_learner_education_branch_details',
+  {
+    id: serial('id').primaryKey().notNull(),
+    name: varchar('name', { length: 100 }).notNull(),
+    createdAt: timestamp('created_at', {
+      withTimezone: true,
+      mode: 'string',
+    })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp('updated_at', {
+      withTimezone: true,
+      mode: 'string',
+    })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => ({
+    nameUnique: uniqueIndex(
+      'zuvy_learner_education_branch_details_name_unique',
+    ).on(table.name),
+  }),
+);
+
 export const zuvyLearnersBoards = main.table(
   'zuvy_learners_boards',
   {
@@ -3148,6 +3169,54 @@ export const zuvyLearnersBoards = main.table(
   },
   (table) => ({
     nameUnique: uniqueIndex('zuvy_learners_boards_name_unique').on(table.name),
+  }),
+);
+
+export const zuvyLearnersRoles = main.table(
+  'zuvy_learnes_roles',
+  {
+    id: serial('id').primaryKey().notNull(),
+    name: varchar('name', { length: 100 }).notNull(),
+    createdAt: timestamp('created_at', {
+      withTimezone: true,
+      mode: 'string',
+    })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp('updated_at', {
+      withTimezone: true,
+      mode: 'string',
+    })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => ({
+    nameUnique: uniqueIndex('zuvy_learnes_roles_name_unique').on(table.name),
+  }),
+);
+
+export const zuvyLearnersRemoteLocation = main.table(
+  'zuvy_learners_remote_location',
+  {
+    id: serial('id').primaryKey().notNull(),
+    name: varchar('name', { length: 100 }).notNull(),
+    createdAt: timestamp('created_at', {
+      withTimezone: true,
+      mode: 'string',
+    })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp('updated_at', {
+      withTimezone: true,
+      mode: 'string',
+    })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => ({
+    nameUnique: uniqueIndex('zuvy_learners_remote_location_name_unique').on(
+      table.name,
+    ),
   }),
 );
 
