@@ -600,6 +600,15 @@ export class UsersService {
         );
       }
 
+      // Fetch org to get POC emails
+      const [orgDetails] = await db
+        .select({
+          pocEmail: zuvyOrganizations.pocEmail,
+          zuvyPocEmail: zuvyOrganizations.zuvyPocEmail,
+        })
+        .from(zuvyOrganizations)
+        .where(eq(zuvyOrganizations.id, orgId));
+
       // 1. Query for filtered users
       const userData = await db
         .select({
@@ -656,6 +665,14 @@ export class UsersService {
         data: userData.map((u) => ({
           ...u,
           userId: Number(u.userId),
+          isPoc:
+            orgDetails?.pocEmail && orgDetails.pocEmail === u.email
+              ? true
+              : false,
+          isZuvyPoc:
+            orgDetails?.zuvyPocEmail && orgDetails.zuvyPocEmail === u.email
+              ? true
+              : false,
         })),
         ...permissionsResult,
         totalRows,
@@ -729,7 +746,12 @@ export class UsersService {
           const existingAssignments = await tx
             .select({ roleId: zuvyUserRolesAssigned.roleId })
             .from(zuvyUserRolesAssigned)
-            .where(eq(zuvyUserRolesAssigned.userId, existingUser.id));
+            .where(
+              and(
+                eq(zuvyUserRolesAssigned.userId, existingUser.id),
+                eq(zuvyUserRolesAssigned.organizationId, createUserDto.orgId),
+              ),
+            );
 
           // If the same email is being re-used after a delete, refresh the name
           if (
