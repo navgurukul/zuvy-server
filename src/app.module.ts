@@ -38,6 +38,9 @@ import { RecordingWorkerService } from './services/recording-worker/recording-wo
 import { ZoomWebhookModule } from './webhooks/zoom/zoom.webhook.module';
 import { RecordingWorkerTriggerService } from './services/recording-worker/recording-worker-trigger.service';
 import { RecordingWorkerModule } from './services/recording-worker/recording-worker.module';
+import { MentorSlotModule } from './controller/mentor-slot/mentor-slot.module';
+import { NotificationJob } from './controller/notification/notification.job';
+import { NotificationService } from './controller/notification/notification.service';
 
 let { GOOGLE_CLIENT_ID, GOOGLE_SECRET, GOOGLE_REDIRECT, JWT_SECRET_KEY } =
   process.env;
@@ -79,6 +82,7 @@ let { GOOGLE_CLIENT_ID, GOOGLE_SECRET, GOOGLE_REDIRECT, JWT_SECRET_KEY } =
     NotificationModule,
     RecordingWorkerModule,
     ZoomWebhookModule,
+    MentorSlotModule,
   ],
   providers: [
     {
@@ -95,6 +99,8 @@ let { GOOGLE_CLIENT_ID, GOOGLE_SECRET, GOOGLE_REDIRECT, JWT_SECRET_KEY } =
     ZoomService,
     RecordingWorkerService,
     RecordingWorkerTriggerService,
+    NotificationService,
+    NotificationJob,
   ],
 })
 export class AppModule implements NestModule {
