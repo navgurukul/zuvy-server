@@ -12,6 +12,7 @@ import {
 } from 'drizzle-orm/pg-core';
 import { db } from '../../db/index';
 import { SaveCompleteProfileDto } from './dto/learner.dto';
+import { PROFILE_STRENGTH_FIELDS } from './helpers';
 
 const learnerMainSchema = pgSchema('main');
 
@@ -420,5 +421,22 @@ ON main.zuvy_learners_complete_profile (user_id);
       success: true,
       ...this.calculateProfileStrength(rows[0]),
     };
+  }
+
+  //priya yaha se
+  async calculateProfileStrengthNew(userId: number): Promise<number> {
+    const profile = await db.query.zuvyLearnersCompleteProfile.findFirst({
+      where: (table, { eq }) => eq(table.userId, userId),
+    });
+
+    if (!profile) return 0;
+
+    let filled = 0;
+
+    for (const field of PROFILE_STRENGTH_FIELDS) {
+      if (profile[field] !== null) filled++;
+    }
+
+    return Math.round((filled / PROFILE_STRENGTH_FIELDS.length) * 100);
   }
 }
