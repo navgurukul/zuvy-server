@@ -666,6 +666,7 @@ export class CodingPlatformService {
         {
           message: 'Coding question deleted successfully',
           statusCode: STATUS_CODES.OK,
+          questionTitle: data[0]?.title,
         },
       ];
     } catch (error) {
