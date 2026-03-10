@@ -2,11 +2,18 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   ArrayMinSize,
   IsArray,
+  IsBoolean,
+  IsEnum,
+  IsInt,
   IsOptional,
   IsString,
   Length,
+  Max,
+  Min,
   ValidateIf,
+  ValidateNested,
 } from 'class-validator';
+import { Type } from 'class-transformer';
 
 export class UpsertLearnerInformationDto {
   @ApiPropertyOptional({
@@ -310,4 +317,317 @@ export class ResumeResponseDto {
 
   @ApiProperty({ type: [String], example: ['B.Tech', 'M.Tech'] })
   education: string[];
+}
+
+// ─── COMPLETE PROFILE DTOs ─────────────────────────────────────────
+
+export class ProjectDto {
+  @ApiProperty({ example: 'E-commerce Platform' })
+  @IsString()
+  @Length(1, 255)
+  title: string;
+
+  @ApiPropertyOptional({ example: 'A short summary of what it does...' })
+  @IsOptional()
+  @IsString()
+  @Length(0, 255)
+  description?: string;
+
+  @ApiPropertyOptional({
+    example: ['React', 'Node.js', 'PostgreSQL'],
+    type: [String],
+  })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  techStack?: string[];
+
+  @ApiPropertyOptional({ example: 'Solo', enum: ['Solo', 'Team'] })
+  @IsOptional()
+  @IsString()
+  @IsEnum(['Solo', 'Team'])
+  projectType?: string;
+
+  @ApiPropertyOptional({ example: '2025-01-01' })
+  @IsOptional()
+  @IsString()
+  startDate?: string;
+
+  @ApiPropertyOptional({ example: '2025-06-01' })
+  @IsOptional()
+  @IsString()
+  endDate?: string;
+
+  @ApiPropertyOptional({ example: 'https://github.com/username/repo' })
+  @IsOptional()
+  @IsString()
+  githubUrl?: string;
+
+  @ApiPropertyOptional({ example: 'https://project-demo.com' })
+  @IsOptional()
+  @IsString()
+  demoUrl?: string;
+
+  @ApiPropertyOptional({
+    example: 'Explain key features, challenges faced, and architecture...',
+  })
+  @IsOptional()
+  @IsString()
+  @Length(0, 500)
+  detailedDescription?: string;
+}
+
+export class WorkExperienceDto {
+  @ApiPropertyOptional({ example: 'Software Intern' })
+  @IsOptional()
+  @IsString()
+  title?: string;
+
+  @ApiPropertyOptional({ example: 'Google' })
+  @IsOptional()
+  @IsString()
+  company?: string;
+
+  @ApiPropertyOptional({ example: '2025-01-01' })
+  @IsOptional()
+  @IsString()
+  startDate?: string;
+
+  @ApiPropertyOptional({ example: '2025-06-01' })
+  @IsOptional()
+  @IsString()
+  endDate?: string;
+
+  @ApiPropertyOptional({ example: 'Worked on search optimization' })
+  @IsOptional()
+  @IsString()
+  @Length(0, 500)
+  description?: string;
+}
+
+export class SaveCompleteProfileDto {
+  // ─── PAGE 1: BASICS (Personal Details + Education) ──────────────
+  @ApiPropertyOptional({ example: 'Aditya Kumar' })
+  @IsOptional()
+  @IsString()
+  @Length(2, 255)
+  fullName?: string;
+
+  @ApiPropertyOptional({ example: '9999999999' })
+  @IsOptional()
+  @IsString()
+  @Length(7, 20)
+  phoneNumber?: string;
+
+  @ApiPropertyOptional({ example: 'aditya.student@zuvy.org' })
+  @IsOptional()
+  @IsString()
+  @Length(5, 255)
+  email?: string;
+
+  @ApiPropertyOptional({ example: 'https://linkedin.com/in/yourname' })
+  @IsOptional()
+  @IsString()
+  @Length(5, 500)
+  linkedinProfile?: string;
+
+  @ApiPropertyOptional({ example: 'IIT Bombay' })
+  @IsOptional()
+  @IsString()
+  @Length(2, 255)
+  collegeName?: string;
+
+  @ApiPropertyOptional({ example: 'My Custom College' })
+  @IsOptional()
+  @IsString()
+  @Length(3, 100)
+  otherCollegeName?: string;
+
+  @ApiPropertyOptional({ example: 'B.Tech' })
+  @IsOptional()
+  @IsString()
+  degree?: string;
+
+  @ApiPropertyOptional({ example: 'Computer Science' })
+  @IsOptional()
+  @IsString()
+  branch?: string;
+
+  @ApiPropertyOptional({ example: '1st', enum: ['1st', '2nd', '3rd', '4th'] })
+  @IsOptional()
+  @IsString()
+  @IsEnum(['1st', '2nd', '3rd', '4th'])
+  yearOfStudy?: string;
+
+  @ApiPropertyOptional({ example: 6 })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(12)
+  graduationMonth?: number;
+
+  @ApiPropertyOptional({ example: 2026 })
+  @IsOptional()
+  @IsInt()
+  @Min(2000)
+  @Max(2050)
+  graduationYear?: number;
+
+  @ApiPropertyOptional({
+    example: 'Learning',
+    enum: ['Learning', 'Looking for Job', 'Working'],
+  })
+  @IsOptional()
+  @IsString()
+  @IsEnum(['Learning', 'Looking for Job', 'Working'])
+  currentStatus?: string;
+
+  // ─── PAGE 2: SKILLS & PROJECTS ──────────────────────────────────
+  @ApiPropertyOptional({
+    example: ['React', 'JavaScript', 'TypeScript'],
+    type: [String],
+  })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  technicalSkills?: string[];
+
+  @ApiPropertyOptional({ type: [ProjectDto] })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => ProjectDto)
+  projects?: ProjectDto[];
+
+  // ─── PAGE 3: EDUCATION & EXPERIENCE ─────────────────────────────
+  @ApiPropertyOptional({ example: 'Computer Science' })
+  @IsOptional()
+  @IsString()
+  collegeStream?: string;
+
+  @ApiPropertyOptional({ example: '8.5' })
+  @IsOptional()
+  @IsString()
+  collegeScore?: string;
+
+  @ApiPropertyOptional({ example: 'CGPA', enum: ['CGPA', '%'] })
+  @IsOptional()
+  @IsString()
+  @IsEnum(['CGPA', '%'])
+  collegeScoreType?: string;
+
+  @ApiPropertyOptional({ example: 'CBSE' })
+  @IsOptional()
+  @IsString()
+  class12Board?: string;
+
+  @ApiPropertyOptional({ example: '90' })
+  @IsOptional()
+  @IsString()
+  class12Score?: string;
+
+  @ApiPropertyOptional({ example: '%', enum: ['CGPA', '%'] })
+  @IsOptional()
+  @IsString()
+  @IsEnum(['CGPA', '%'])
+  class12ScoreType?: string;
+
+  @ApiPropertyOptional({ example: 'CBSE' })
+  @IsOptional()
+  @IsString()
+  class10Board?: string;
+
+  @ApiPropertyOptional({ example: '85' })
+  @IsOptional()
+  @IsString()
+  class10Score?: string;
+
+  @ApiPropertyOptional({ example: '%', enum: ['CGPA', '%'] })
+  @IsOptional()
+  @IsString()
+  @IsEnum(['CGPA', '%'])
+  class10ScoreType?: string;
+
+  @ApiPropertyOptional({ example: false })
+  @IsOptional()
+  @IsBoolean()
+  hasWorkExperience?: boolean;
+
+  @ApiPropertyOptional({ type: [WorkExperienceDto] })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => WorkExperienceDto)
+  workExperiences?: WorkExperienceDto[];
+
+  @ApiPropertyOptional({ example: 'john_doe' })
+  @IsOptional()
+  @IsString()
+  @Length(0, 100)
+  leetcodeUsername?: string;
+
+  @ApiPropertyOptional({ example: 'john_doe' })
+  @IsOptional()
+  @IsString()
+  @Length(0, 100)
+  codechefUsername?: string;
+
+  @ApiPropertyOptional({ example: 'john_doe' })
+  @IsOptional()
+  @IsString()
+  @Length(0, 100)
+  codeforcesUsername?: string;
+
+  // ─── PAGE 4: PREFERENCES ───────────────────────────────────────
+  @ApiPropertyOptional({
+    example: ['Full Stack Developer', 'Frontend Developer'],
+    type: [String],
+  })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  targetRoles?: string[];
+
+  @ApiPropertyOptional({
+    example: ['Bangalore', 'Hyderabad', 'Pune'],
+    type: [String],
+  })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  preferredLocations?: string[];
+
+  @ApiPropertyOptional({ example: true })
+  @IsOptional()
+  @IsBoolean()
+  openToRemote?: boolean;
+
+  @ApiPropertyOptional({ example: '₹20-30k' })
+  @IsOptional()
+  @IsString()
+  internshipStipend?: string;
+
+  @ApiPropertyOptional({ example: '₹7-10 LPA' })
+  @IsOptional()
+  @IsString()
+  fullTimeCtc?: string;
+
+  @ApiPropertyOptional({ example: ['Email', 'Whatsapp'], type: [String] })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  preferredContactMethods?: string[];
+
+  // ─── PAGE 5: REVIEW ────────────────────────────────────────────
+  @ApiPropertyOptional({ example: true })
+  @IsOptional()
+  @IsBoolean()
+  reviewCompleted?: boolean;
+
+  // ─── PAGE NUMBER (which page is being saved) ───────────────────
+  @ApiProperty({ example: 1, description: 'Page number being saved (1-5)' })
+  @IsInt()
+  @Min(1)
+  @Max(5)
+  pageNumber: number;
 }

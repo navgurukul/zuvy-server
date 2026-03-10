@@ -6,11 +6,22 @@ import { LearnerController } from './learner.controller';
 import { LearnerService } from './learner.service';
 import { LearnerResumeController } from './learner.resume.controller';
 import { LearnerResumeService } from './learner.resume.service';
+import { LearnerProfileController } from './learner.profile.controller';
+import { LearnerProfileService } from './learner.profile.service';
 
 @Module({
   imports: [AuthModule],
-  controllers: [LearnerController, LearnerResumeController],
-  providers: [LearnerService, LearnerResumeService, JwtService],
+  controllers: [
+    LearnerController,
+    LearnerResumeController,
+    LearnerProfileController,
+  ],
+  providers: [
+    LearnerService,
+    LearnerResumeService,
+    LearnerProfileService,
+    JwtService,
+  ],
 })
 export class LearnerModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {

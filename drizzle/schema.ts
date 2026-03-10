@@ -82,6 +82,11 @@ export const learnerCurrentStatus = pgEnum('learner_current_status', [
   'Looking for Job',
   'Working',
 ]);
+export const learnerScoreType = pgEnum('learner_score_type', ['CGPA', '%']);
+export const learnerProjectType = pgEnum('learner_project_type', [
+  'Solo',
+  'Team',
+]);
 import { helperVariable } from '../src/constants/helper';
 import { table } from 'console';
 let schName;
@@ -3217,6 +3222,102 @@ export const zuvyLearnersRemoteLocation = main.table(
     nameUnique: uniqueIndex('zuvy_learners_remote_location_name_unique').on(
       table.name,
     ),
+  }),
+);
+
+export const zuvyLearnersCompleteProfile = main.table(
+  'zuvy_learners_complete_profile',
+  {
+    id: serial('id').primaryKey().notNull(),
+    userId: bigint('user_id', { mode: 'number' })
+      .notNull()
+      .references(() => users.id, {
+        onDelete: 'cascade',
+        onUpdate: 'cascade',
+      }),
+
+    // PAGE 1: BASICS
+    fullName: varchar('full_name', { length: 255 }),
+    phoneNumber: varchar('phone_number', { length: 20 }),
+    email: varchar('email', { length: 255 }),
+    linkedinProfile: varchar('linkedin_profile', { length: 500 }),
+    collegeName: varchar('college_name', { length: 255 }),
+    otherCollegeName: varchar('other_college_name', { length: 100 }),
+    degree: varchar('degree', { length: 100 }),
+    branch: varchar('branch', { length: 100 }),
+    yearOfStudy: learnerYearOfStudy('year_of_study'),
+    graduationMonth: integer('graduation_month'),
+    graduationYear: integer('graduation_year'),
+    currentStatus: learnerCurrentStatus('current_status'),
+
+    // PAGE 2: SKILLS & PROJECTS
+    technicalSkills: jsonb('technical_skills').default([]),
+    projects: jsonb('projects').default([]),
+
+    // PAGE 3: EDUCATION & EXPERIENCE
+    collegeStream: varchar('college_stream', { length: 100 }),
+    collegeScore: varchar('college_score', { length: 20 }),
+    collegeScoreType: learnerScoreType('college_score_type'),
+    class12Board: varchar('class12_board', { length: 100 }),
+    class12Score: varchar('class12_score', { length: 20 }),
+    class12ScoreType: learnerScoreType('class12_score_type'),
+    class10Board: varchar('class10_board', { length: 100 }),
+    class10Score: varchar('class10_score', { length: 20 }),
+    class10ScoreType: learnerScoreType('class10_score_type'),
+    hasWorkExperience: boolean('has_work_experience').default(false),
+    workExperiences: jsonb('work_experiences').default([]),
+    leetcodeUsername: varchar('leetcode_username', { length: 100 }),
+    codechefUsername: varchar('codechef_username', { length: 100 }),
+    codeforcesUsername: varchar('codeforces_username', { length: 100 }),
+
+    // PAGE 4: PREFERENCES
+    targetRoles: jsonb('target_roles').default([]),
+    preferredLocations: jsonb('preferred_locations').default([]),
+    openToRemote: boolean('open_to_remote').default(false),
+    internshipStipend: varchar('internship_stipend', { length: 50 }),
+    fullTimeCtc: varchar('full_time_ctc', { length: 50 }),
+    preferredContactMethods: jsonb('preferred_contact_methods').default([]),
+
+    // PAGE 5: REVIEW
+    reviewCompleted: boolean('review_completed').default(false),
+
+    // Page completion tracking
+    page1Completed: boolean('page1_completed').default(false),
+    page2Completed: boolean('page2_completed').default(false),
+    page3Completed: boolean('page3_completed').default(false),
+    page4Completed: boolean('page4_completed').default(false),
+    page5Completed: boolean('page5_completed').default(false),
+
+    // Profile strength
+    profileStrength: integer('profile_strength').default(0),
+
+    createdAt: timestamp('created_at', {
+      withTimezone: true,
+      mode: 'string',
+    })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp('updated_at', {
+      withTimezone: true,
+      mode: 'string',
+    })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => ({
+    userIdUnique: uniqueIndex('zuvy_learners_complete_profile_user_id_unique').on(
+      table.userId,
+    ),
+  }),
+);
+
+export const zuvyLearnersCompleteProfileRelation = relations(
+  zuvyLearnersCompleteProfile,
+  ({ one }) => ({
+    user: one(users, {
+      fields: [zuvyLearnersCompleteProfile.userId],
+      references: [users.id],
+    }),
   }),
 );
 
