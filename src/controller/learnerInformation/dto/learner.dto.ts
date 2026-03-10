@@ -279,3 +279,35 @@ export class LearnerRemoteLocationsResponseDto {
   @ApiProperty({ type: [LearnerRemoteLocationItemDto] })
   remoteLocations: LearnerRemoteLocationItemDto[];
 }
+
+export class ResumeResponseDto {
+  @ApiProperty({ type: String, example: 'John Doe' })
+  name: string;
+
+  @ApiProperty({ type: String, example: 'john.doe@example.com' })
+  email: string;
+
+  @ApiProperty({ type: String, example: '+91 9876543210' })
+  phone: string;
+
+  @ApiProperty({
+    type: String,
+    example: 'https://www.linkedin.com/in/john-doe',
+  })
+  linkedin: string;
+
+  @ApiProperty({
+    type: String,
+    example: 'https://github.com/johndoe',
+  })
+  github: string;
+
+  @ApiProperty({
+    type: [String],
+    example: ['TypeScript', 'NestJS', 'PostgreSQL'],
+  })
+  skills: string[];
+
+  @ApiProperty({ type: [String], example: ['B.Tech', 'M.Tech'] })
+  education: string[];
+}
