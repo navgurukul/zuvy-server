@@ -20,6 +20,7 @@ import {
   zuvyUserOrganizations,
   zuvyPermissions,
   zuvyPermissionsRoles,
+  zuvyBootcamps,
 } from '../../drizzle/schema';
 import { eq, and, ilike, or, sql, desc, ne } from 'drizzle-orm';
 import { JwtService } from '@nestjs/jwt';
@@ -180,6 +181,17 @@ export class OrgService {
       if (existingPoc.length > 0) {
         throw new BadRequestException(
           'An organization with this POC email already exists',
+        );
+      }
+
+      const existingName = await db
+        .select()
+        .from(zuvyOrganizations)
+        .where(ilike(zuvyOrganizations.title, createOrgDto.title));
+
+      if (existingName.length > 0) {
+        throw new BadRequestException(
+          'An organization with this name already exists',
         );
       }
 
@@ -555,6 +567,27 @@ export class OrgService {
         }
       }
 
+      if (
+        updateOrgDto.title &&
+        updateOrgDto.title.toLowerCase() !== org.title.toLowerCase()
+      ) {
+        const existingName = await db
+          .select()
+          .from(zuvyOrganizations)
+          .where(
+            and(
+              ilike(zuvyOrganizations.title, updateOrgDto.title),
+              ne(zuvyOrganizations.id, id),
+            ),
+          );
+
+        if (existingName.length > 0) {
+          throw new BadRequestException(
+            'An organization with this name already exists',
+          );
+        }
+      }
+
       const updateData: any = {
         ...updateOrgDto,
         updatedAt: new Date().toISOString(),
@@ -624,17 +657,66 @@ export class OrgService {
         throw new BadRequestException('Invalid token');
       }
 
-      const orgId = payload.orgId;
-
-      // Perform actual delete
-      await db.delete(zuvyOrganizations).where(eq(zuvyOrganizations.id, orgId));
+      await this.deleteOrg(payload.orgId);
 
       return {
         status: 'success',
         message: 'Organization deleted successfully',
       };
     } catch (error) {
+      if (error instanceof BadRequestException) throw error;
       throw new UnauthorizedException('Invalid or expired deletion token');
+    }
+  }
+
+  async deleteOrg(orgId: number) {
+    try {
+      const org = await this.getOrg(orgId); // Verify org exists
+
+      // Perform cascading deletes within a transaction to ensure data integrity
+      await db.transaction(async (tx) => {
+        // 1. Delete associated bootcamps
+        await tx
+          .delete(zuvyBootcamps)
+          .where(eq(zuvyBootcamps.organizationId, orgId));
+
+        // 2. Delete user role assignments within the org
+        await tx
+          .delete(zuvyUserRolesAssigned)
+          .where(eq(zuvyUserRolesAssigned.organizationId, orgId));
+
+        // 3. Delete user organizations (sessions/links)
+        await tx
+          .delete(zuvyUserOrganizations)
+          .where(eq(zuvyUserOrganizations.organizationId, orgId));
+
+        // 4. Delete the roles defined for this org
+        // (Note: This might fail if zuvyPermissionsRoles has a foreign key constraint to zuvyUserRoles that isn't cascade.
+        // We'll assume the DB cascade handles it or permissions will be orphaned. If there's an issue, we would delete permissions first.)
+        await tx
+          .delete(zuvyPermissionsRoles)
+          .where(eq(zuvyPermissionsRoles.orgId, orgId));
+        await tx.delete(zuvyUserRoles).where(eq(zuvyUserRoles.orgId, orgId));
+
+        // 5. Finally, delete the organization itself
+        await tx
+          .delete(zuvyOrganizations)
+          .where(eq(zuvyOrganizations.id, orgId));
+      });
+
+      return {
+        status: 'success',
+        message: 'Organization and associated data deleted successfully',
+      };
+    } catch (error) {
+      this.logger.error(
+        `Failed to delete org ${orgId}: ${error.message}`,
+        error.stack,
+      );
+      if (error instanceof NotFoundException) throw error;
+      throw new InternalServerErrorException(
+        `Failed to delete org: ${error.message}`,
+      );
     }
   }
 

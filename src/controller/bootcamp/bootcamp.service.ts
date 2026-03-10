@@ -1608,15 +1608,7 @@ export class BootcampService {
       }
 
       // Check if no fields are provided to update
-      const dtoAny = editUserDetailsDto as any;
-      if (
-        !editUserDetailsDto.name &&
-        !editUserDetailsDto.email &&
-        dtoAny.status === undefined &&
-        dtoAny.batchId === undefined &&
-        dtoAny.bootcampId === undefined &&
-        dtoAny.enrollment === undefined
-      ) {
+      if (!editUserDetailsDto.name && !editUserDetailsDto.email) {
         return [
           null,
           {
@@ -1626,160 +1618,141 @@ export class BootcampService {
         ];
       }
 
-      // Update user details in the users table within a transaction
-      const [userData, enrollmentResponse] = await db.transaction(
-        async (tx) => {
-          // Prepare update data
-          const updateData: {
-            name?: string;
-            email?: string;
-            googleUserId?: string;
-          } = {};
+      // Prepare update data
+      const updateData: {
+        name?: string;
+        email?: string;
+        googleUserId?: string;
+      } = {};
 
-          if (editUserDetailsDto.name) {
-            updateData.name = editUserDetailsDto.name;
-          }
-          if (editUserDetailsDto.email) {
-            updateData.email = editUserDetailsDto.email;
-            if (editUserDetailsDto.email !== userExists[0].email) {
-              updateData.googleUserId = null;
-            }
-          }
+      if (editUserDetailsDto.name) {
+        updateData.name = editUserDetailsDto.name;
+      }
+      if (editUserDetailsDto.email) {
+        updateData.email = editUserDetailsDto.email;
+        if (editUserDetailsDto.email !== userExists[0].email) {
+          updateData.googleUserId = null;
+        }
+      }
 
-          let userResData = {
-            ...userExists[0],
-            id: Number(userExists[0].id),
-          };
+      // Update user details in the users table
+      const updatedUser = await db
+        .update(users)
+        .set(updateData)
+        .where(eq(users.id, BigInt(userId)))
+        .returning({
+          id: users.id,
+          name: users.name,
+          email: users.email,
+        });
 
-          if (Object.keys(updateData).length > 0) {
-            const updatedUser = await tx
-              .update(users)
-              .set(updateData)
-              .where(eq(users.id, BigInt(userId)))
-              .returning({
-                id: users.id,
-                name: users.name,
-                email: users.email,
-              });
+      if (!updatedUser.length) {
+        return [
+          null,
+          {
+            message: 'Failed to update user details',
+            statusCode: STATUS_CODES.INTERNAL_SERVER_ERROR,
+          },
+        ];
+      }
 
-            if (!updatedUser.length) {
-              throw new Error('Failed to update user details');
-            }
+      // Convert BigInt to number
+      const userData = {
+        ...updatedUser[0],
+        id: Number(updatedUser[0].id),
+      };
 
-            userResData = {
-              ...updatedUser[0],
-              id: Number(updatedUser[0].id),
-            };
+      // If enrollment update provided, support both old nested shape (enrollment + bootcampId)
+      // and the new flat shape (status, batchId, bootcampId). We try to locate the
+      // enrollment by the most specific identifier available (batchId > bootcampId)
+      // and then apply status / batch changes as requested.
+      // Cast DTO to any for optional/legacy fields that may not be present in type
+      const dtoAny = editUserDetailsDto as any;
 
-            // Handle POC name/email sync in zuvyOrganizations
-            const pocUpdateData: any = {};
-            if (editUserDetailsDto.name)
-              pocUpdateData.pocName = editUserDetailsDto.name;
-            if (editUserDetailsDto.email)
-              pocUpdateData.pocEmail = editUserDetailsDto.email;
+      if (
+        dtoAny.enrollment ||
+        dtoAny.bootcampId ||
+        dtoAny.status ||
+        dtoAny.batchId
+      ) {
+        try {
+          // Build enrollment filter
+          let enrollmentFilter: any = null;
 
-            if (Object.keys(pocUpdateData).length > 0) {
-              await tx
-                .update(zuvyOrganizations)
-                .set(pocUpdateData)
-                .where(eq(zuvyOrganizations.pocEmail, userExists[0].email));
-            }
-
-            const zuvyPocUpdateData: any = {};
-            if (editUserDetailsDto.name)
-              zuvyPocUpdateData.zuvyPocName = editUserDetailsDto.name;
-            if (editUserDetailsDto.email)
-              zuvyPocUpdateData.zuvyPocEmail = editUserDetailsDto.email;
-
-            if (Object.keys(zuvyPocUpdateData).length > 0) {
-              await tx
-                .update(zuvyOrganizations)
-                .set(zuvyPocUpdateData)
-                .where(eq(zuvyOrganizations.zuvyPocEmail, userExists[0].email));
-            }
-          }
-
-          // Handle enrollment update if provided
-          let enrollmentRes = null;
-          if (
-            dtoAny.enrollment ||
-            dtoAny.bootcampId ||
-            dtoAny.status ||
-            dtoAny.batchId !== undefined
+          if (dtoAny.enrollment && dtoAny.enrollment.bootcampId) {
+            enrollmentFilter = sql`${zuvyBatchEnrollments.userId} = ${BigInt(userId)} AND ${zuvyBatchEnrollments.bootcampId} = ${dtoAny.enrollment.bootcampId}`;
+          } else if (
+            dtoAny.batchId !== undefined &&
+            dtoAny.batchId !== null &&
+            dtoAny.batchId !== ''
           ) {
-            // Build enrollment filter
-            let enrollmentFilter: any = null;
+            // match by batchId when provided in the flat payload
+            enrollmentFilter = sql`${zuvyBatchEnrollments.userId} = ${BigInt(userId)} AND ${zuvyBatchEnrollments.batchId} = ${BigInt(dtoAny.batchId)}`;
+          } else if (
+            dtoAny.bootcampId !== undefined &&
+            dtoAny.bootcampId !== null &&
+            dtoAny.bootcampId !== ''
+          ) {
+            enrollmentFilter = sql`${zuvyBatchEnrollments.userId} = ${BigInt(userId)} AND ${zuvyBatchEnrollments.bootcampId} = ${dtoAny.bootcampId}`;
+          }
 
-            if (dtoAny.enrollment && dtoAny.enrollment.bootcampId) {
-              enrollmentFilter = sql`${zuvyBatchEnrollments.userId} = ${BigInt(userId)} AND ${zuvyBatchEnrollments.bootcampId} = ${dtoAny.enrollment.bootcampId}`;
-            } else if (
+          if (!enrollmentFilter) {
+            // Nothing to identify an enrollment; skip enrollment update silently
+          } else {
+            const enrollmentRows = await db
+              .select()
+              .from(zuvyBatchEnrollments)
+              .where(enrollmentFilter)
+              .limit(1);
+            if (!enrollmentRows.length) {
+              // Enrollment not found; return a 404-like response in the payload
+              return [
+                null,
+                {
+                  message:
+                    'User updated but enrollment not found for provided identifier',
+                  statusCode: STATUS_CODES.NOT_FOUND,
+                  data: userData,
+                },
+              ];
+            }
+
+            const enrollmentUpdateData: any = {};
+            // status can be provided either as top-level `status` or inside `enrollment.status`
+            const statusVal = dtoAny.status ?? dtoAny.enrollment?.status;
+            if (statusVal) {
+              enrollmentUpdateData.status = statusVal;
+            }
+
+            // Allow changing batch assignment when a new batchId is provided (flat payload)
+            if (
               dtoAny.batchId !== undefined &&
               dtoAny.batchId !== null &&
               dtoAny.batchId !== ''
             ) {
-              enrollmentFilter = sql`${zuvyBatchEnrollments.userId} = ${BigInt(userId)} AND ${zuvyBatchEnrollments.batchId} = ${Number(dtoAny.batchId)}`;
-            } else if (
-              dtoAny.bootcampId !== undefined &&
-              dtoAny.bootcampId !== null &&
-              dtoAny.bootcampId !== ''
-            ) {
-              enrollmentFilter = sql`${zuvyBatchEnrollments.userId} = ${BigInt(userId)} AND ${zuvyBatchEnrollments.bootcampId} = ${dtoAny.bootcampId}`;
-            }
-
-            if (enrollmentFilter) {
-              const enrollmentRows = await tx
-                .select()
-                .from(zuvyBatchEnrollments)
-                .where(enrollmentFilter)
-                .limit(1);
-
-              if (!enrollmentRows.length) {
-                enrollmentRes = {
-                  message:
-                    'User updated but enrollment not found for provided identifier',
-                  statusCode: STATUS_CODES.NOT_FOUND,
-                };
-              } else {
-                const enrollmentUpdateData: any = {};
-                const statusVal = dtoAny.status ?? dtoAny.enrollment?.status;
-                if (statusVal) enrollmentUpdateData.status = statusVal;
-
-                if (
-                  dtoAny.batchId !== undefined &&
-                  dtoAny.batchId !== null &&
-                  dtoAny.batchId !== ''
-                ) {
-                  const currentBatchId = enrollmentRows[0].batchId;
-                  if (Number(currentBatchId) !== Number(dtoAny.batchId)) {
-                    enrollmentUpdateData.batchId = Number(dtoAny.batchId);
-                  }
-                }
-
-                if (Object.keys(enrollmentUpdateData).length > 0) {
-                  await tx
-                    .update(zuvyBatchEnrollments)
-                    .set(enrollmentUpdateData)
-                    .where(enrollmentFilter);
-                }
+              const currentBatchId = enrollmentRows[0].batchId;
+              if (Number(currentBatchId) !== Number(dtoAny.batchId)) {
+                enrollmentUpdateData.batchId = BigInt(dtoAny.batchId);
               }
             }
+
+            if (Object.keys(enrollmentUpdateData).length > 0) {
+              await db
+                .update(zuvyBatchEnrollments)
+                .set(enrollmentUpdateData)
+                .where(enrollmentFilter)
+                .returning();
+            }
           }
-
-          return [userResData, enrollmentRes];
-        },
-      );
-
-      if (
-        enrollmentResponse &&
-        enrollmentResponse.statusCode === STATUS_CODES.NOT_FOUND
-      ) {
-        return [
-          null,
-          {
-            ...enrollmentResponse,
-            data: userData,
-          },
-        ];
+        } catch (err) {
+          return [
+            null,
+            {
+              message: 'Failed to update enrollment: ' + err.message,
+              statusCode: STATUS_CODES.BAD_REQUEST,
+            },
+          ];
+        }
       }
 
       return [
