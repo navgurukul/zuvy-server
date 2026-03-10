@@ -4029,7 +4029,7 @@ export const zuvyUserRoles = main.table('zuvy_user_roles', {
   id: serial('id').primaryKey().notNull(),
   name: varchar('name', { length: 50 }).notNull(), // e.g. 'admin', 'instructor', 'ops'
   description: text('description'),
-  orgId: integer('org_id').default(null).references(() => zuvyOrganizations.id,  {
+  orgId: integer('org_id').default(null).references(() => zuvyOrganizations.id, {
     onUpdate: 'cascade',
     onDelete: 'cascade'
   }),
@@ -4572,3 +4572,294 @@ export const zuvyTrackingLogsRelations = relations(zuvyTrackingLogs, ({ one }) =
     references: [zuvyResources.id],
   }),
 }));
+
+/**
+ * ============================================================================
+ * MENTOR SLOT MANAGEMENT SYSTEM (PRODUCTION GRADE - PRD ALIGNED)
+ * ============================================================================
+ * Fully aligned with Mentorship Module PRD
+ * - Lifecycle state engine
+ * - Feedback locking
+ * - Reschedule workflow
+ * - Buffer support
+ * - Timezone support
+ * - Strong indexing
+ * ============================================================================
+ */
+
+
+/* ============================================================================
+   ENUM TYPES (STRING BASED FOR FLEXIBILITY)
+============================================================================ */
+
+/* Canonical lifecycle state (derived + materialized for indexing) */
+export const SESSION_LIFECYCLE_STATES = [
+  'SCHEDULED',
+  'IN_PROGRESS',
+  'COMPLETED',
+  'CANCELLED',
+  'RESCHEDULE_PENDING',
+  'MISSED',
+  'NO_SHOW',
+] as const;
+
+export const RESCHEDULE_STATUSES = [
+  'pending',
+  'accepted',
+  'declined',
+] as const;
+
+/* ============================================================================
+   MENTOR SLOT MANAGEMENT PROFILE
+============================================================================ */
+
+export const zuvyMentorSlotManagement = pgTable(
+  'zuvy_mentor_slot_management',
+  {
+    id: serial('id').primaryKey().notNull(),
+
+    mentorUserId: bigserial('mentor_user_id', { mode: 'bigint' })
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+
+    organizationId: integer('organization_id')
+      .notNull()
+      .references(() => zuvyOrganizations.id, { onDelete: 'cascade' }),
+
+    mentorType: varchar('mentor_type', { length: 50 })
+      .notNull()
+      .default('instructor'),
+
+    /* Buffer & Timezone (PRD Requirement) */
+    isBufferEnabled: boolean('is_buffer_enabled').default(false),
+    bufferMinutes: integer('buffer_minutes').default(0),
+    timezone: varchar('timezone', { length: 100 }).default('UTC'),
+
+    /* Metrics */
+    totalAvailableSlots: integer('total_available_slots').default(0),
+    totalBookedSlots: integer('total_booked_slots').default(0),
+    totalCancelledSlots: integer('total_cancelled_slots').default(0),
+
+    title: varchar('title', { length: 255 }),
+    bio: text('bio'),
+    expertise: jsonb('expertise'),
+
+    status: varchar('status', { length: 50 }).default('active'),
+    isVerified: boolean('is_verified').default(false),
+    acceptsNewMentees: boolean('accepts_new_mentees').default(true),
+
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
+  },
+  (table) => ({
+    uniqMentorOrg: unique('uniq_mentor_org').on(
+      table.mentorUserId,
+      table.organizationId,
+    ),
+    mentorIdx: index('idx_mgmt_mentor').on(table.mentorUserId),
+    orgIdx: index('idx_mgmt_org').on(table.organizationId),
+  }),
+);
+
+/* ============================================================================
+   SLOT AVAILABILITY
+============================================================================ */
+
+export const zuvyMentorSlotAvailability = pgTable(
+  'zuvy_mentor_slot_availability',
+  {
+    id: serial('id').primaryKey().notNull(),
+
+    mentorSlotManagementId: integer('mentor_slot_management_id')
+      .notNull()
+      .references(() => zuvyMentorSlotManagement.id, {
+        onDelete: 'cascade',
+      }),
+
+    slotStartDateTime: timestamp('slot_start_date_time', {
+      withTimezone: true,
+    }).notNull(),
+
+    slotEndDateTime: timestamp('slot_end_date_time', {
+      withTimezone: true,
+    }).notNull(),
+
+    durationMinutes: integer('duration_minutes').notNull(),
+
+    maxCapacity: integer('max_capacity').default(1),
+    currentBookedCount: integer('current_booked_count').default(0),
+
+    topic: varchar('topic', { length: 255 }),
+    description: text('description'),
+    slotType: varchar('slot_type', { length: 50 }).default('one-on-one'),
+
+    meetingLink: varchar('meeting_link', { length: 500 }),
+    meetingType: varchar('meeting_type', { length: 50 }).default('video'),
+    location: varchar('location', { length: 255 }),
+
+    status: varchar('status', { length: 50 }).default('available'),
+
+    cancellationReason: text('cancellation_reason'),
+
+    /* Advanced Recurrence (future upgrade ready) */
+    isRecurring: boolean('is_recurring').default(false),
+    recurrenceRule: text('recurrence_rule'), // RRULE string
+    recurrenceEndDate: timestamp('recurrence_end_date', {
+      withTimezone: true,
+    }),
+
+    tags: jsonb('tags'),
+    isPublic: boolean('is_public').default(true),
+
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
+  },
+  (table) => ({
+    mgmtIdx: index('idx_slot_mgmt').on(table.mentorSlotManagementId),
+    startIdx: index('idx_slot_start').on(table.slotStartDateTime),
+    statusIdx: index('idx_slot_status').on(table.status),
+  }),
+);
+
+/* ============================================================================
+   SLOT BOOKING (CORE SESSION ENGINE)
+============================================================================ */
+
+export const zuvyMentorSlotBooking = pgTable(
+  'zuvy_mentor_slot_booking',
+  {
+    id: serial('id').primaryKey().notNull(),
+
+    slotAvailabilityId: integer('slot_availability_id')
+      .notNull()
+      .references(() => zuvyMentorSlotAvailability.id, {
+        onDelete: 'cascade',
+      }),
+
+    studentUserId: bigserial('student_user_id', { mode: 'bigint' })
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+
+    mentorUserId: bigserial('mentor_user_id', { mode: 'bigint' })
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+
+    organizationId: integer('organization_id')
+      .notNull()
+      .references(() => zuvyOrganizations.id, { onDelete: 'cascade' }),
+
+    /* Original booking state */
+    status: varchar('status', { length: 50 }).default('confirmed'),
+
+    /* Canonical lifecycle state */
+    sessionLifecycleState: varchar('session_lifecycle_state', {
+      length: 50,
+    }).default('SCHEDULED'),
+
+    /* Reschedule workflow */
+    rescheduleRequestedAt: timestamp('reschedule_requested_at', {
+      withTimezone: true,
+    }),
+    rescheduleProposedSlotId: integer('reschedule_proposed_slot_id'),
+    rescheduleStatus: varchar('reschedule_status', {
+      length: 50,
+    }),
+
+    /* Cancellation */
+    cancellationReason: text('cancellation_reason'),
+    cancelledBy: varchar('cancelled_by', { length: 50 }),
+    cancelledAt: timestamp('cancelled_at', { withTimezone: true }),
+
+    /* Attendance */
+    joinedAt: timestamp('joined_at', { withTimezone: true }),
+    leftAt: timestamp('left_at', { withTimezone: true }),
+    durationAttended: integer('duration_attended'),
+
+    /* Mentor Feedback (PRD aligned) */
+    mentorFeedback: jsonb('mentor_feedback'),
+    mentorRating: integer('mentor_rating'),
+
+    mentorFeedbackSubmittedAt: timestamp(
+      'mentor_feedback_submitted_at',
+      { withTimezone: true },
+    ),
+    mentorFeedbackLocked: boolean('mentor_feedback_locked').default(false),
+
+    /* Student Feedback */
+    studentFeedback: jsonb('student_feedback'),
+    studentRating: integer('student_rating'),
+
+    bookedAt: timestamp('booked_at', { withTimezone: true }).defaultNow(),
+    confirmedAt: timestamp('confirmed_at', { withTimezone: true }),
+    completedAt: timestamp('completed_at', { withTimezone: true }),
+
+
+    reminder24hSent: boolean('reminder_24h_sent').default(false),
+    reminder1hSent: boolean('reminder_1h_sent').default(false),
+
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
+  },
+  (table) => ({
+    uniqStudentSlot: unique('uniq_student_slot').on(
+      table.studentUserId,
+      table.slotAvailabilityId,
+    ),
+    mentorIdx: index('idx_booking_mentor').on(table.mentorUserId),
+    lifecycleIdx: index('idx_booking_lifecycle').on(
+      table.sessionLifecycleState,
+    ),
+    feedbackIdx: index('idx_booking_feedback_pending').on(
+      table.mentorFeedbackSubmittedAt,
+    ),
+  }),
+);
+
+/* ============================================================================
+   RELATIONS
+============================================================================ */
+
+export const zuvyMentorSlotBookingRelations = relations(
+  zuvyMentorSlotBooking,
+  ({ one }) => ({
+    slot: one(zuvyMentorSlotAvailability, {
+      fields: [zuvyMentorSlotBooking.slotAvailabilityId],
+      references: [zuvyMentorSlotAvailability.id],
+    }),
+    mentor: one(users, {
+      fields: [zuvyMentorSlotBooking.mentorUserId],
+      references: [users.id],
+    }),
+    student: one(users, {
+      fields: [zuvyMentorSlotBooking.studentUserId],
+      references: [users.id],
+    }),
+  }),
+);
+
+export const zuvyNotifications = pgTable(
+  'zuvy_notifications',
+  {
+    id: serial('id').primaryKey(),
+
+    userId: bigserial('user_id', { mode: 'bigint' })
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+
+    type: varchar('type', { length: 100 }).notNull(),
+
+    title: varchar('title', { length: 255 }).notNull(),
+    message: text('message').notNull(),
+
+    referenceId: integer('reference_id'),
+    referenceType: varchar('reference_type', { length: 100 }),
+
+    isRead: boolean('is_read').default(false),
+
+    channel: varchar('channel', { length: 50 }).default('in-app'),
+
+    sentAt: timestamp('sent_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+  },
+);
+
