@@ -66,16 +66,6 @@ CREATE TABLE IF NOT EXISTS main.zuvy_learners_complete_profile (
   -- This page is marked complete when the learner reviews and confirms all data
   review_completed boolean DEFAULT false,
 
-  -- Page completion tracking
-  page1_completed boolean DEFAULT false,
-  page2_completed boolean DEFAULT false,
-  page3_completed boolean DEFAULT false,
-  page4_completed boolean DEFAULT false,
-  page5_completed boolean DEFAULT false,
-
-  -- Profile strength percentage (0-100)
-  profile_strength integer DEFAULT 0,
-
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );

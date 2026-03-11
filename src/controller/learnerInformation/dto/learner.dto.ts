@@ -625,9 +625,9 @@ export class SaveCompleteProfileDto {
   reviewCompleted?: boolean;
 
   // ─── PAGE NUMBER (which page is being saved) ───────────────────
-  @ApiProperty({ example: 1, description: 'Page number being saved (1-5)' })
-  @IsInt()
-  @Min(1)
-  @Max(5)
-  pageNumber: number;
+  // @ApiProperty({ example: 1, description: 'Page number being saved (1-5)' })
+  // @IsInt()
+  // @Min(1)
+  // @Max(5)
+  // pageNumber: number;
 }

@@ -26,8 +26,7 @@ export class LearnerProfileController {
 
   @Post()
   @ApiOperation({
-    summary:
-      'Save learner complete profile — send pageNumber (1-5), each page = 20% profile strength',
+    summary: 'Save learner complete profile data',
   })
   @ApiBody({ type: SaveCompleteProfileDto })
   async saveCompleteProfile(
@@ -40,8 +39,7 @@ export class LearnerProfileController {
 
   @Get()
   @ApiOperation({
-    summary:
-      'Get complete learner profile with all pages data and profile strength',
+    summary: 'Get complete learner profile with all data',
   })
   async getCompleteProfile(@Req() req) {
     const userId = req.user[0]?.id;
@@ -54,6 +52,6 @@ export class LearnerProfileController {
   })
   async getProfileStrength(@Req() req) {
     const userId = req.user[0]?.id;
-    return this.learnerProfileService.getProfileStrength(userId);
+    return this.learnerProfileService.calculateProfileStrengthNew(userId);
   }
 }

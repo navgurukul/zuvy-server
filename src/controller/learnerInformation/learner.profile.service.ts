@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { eq, sql } from 'drizzle-orm';
 import {
   pgSchema,
@@ -12,7 +12,6 @@ import {
 } from 'drizzle-orm/pg-core';
 import { db } from '../../db/index';
 import { SaveCompleteProfileDto } from './dto/learner.dto';
-import { PROFILE_STRENGTH_FIELDS } from './helpers';
 
 const learnerMainSchema = pgSchema('main');
 
@@ -66,16 +65,6 @@ const zuvyLearnersCompleteProfileTable = learnerMainSchema.table(
 
     // PAGE 5: REVIEW
     reviewCompleted: boolean('review_completed').default(false),
-
-    // Page completion tracking
-    page1Completed: boolean('page1_completed').default(false),
-    page2Completed: boolean('page2_completed').default(false),
-    page3Completed: boolean('page3_completed').default(false),
-    page4Completed: boolean('page4_completed').default(false),
-    page5Completed: boolean('page5_completed').default(false),
-
-    // Profile strength
-    profileStrength: integer('profile_strength').default(0),
 
     createdAt: timestamp('created_at', {
       withTimezone: true,
@@ -159,14 +148,6 @@ CREATE TABLE IF NOT EXISTS main.zuvy_learners_complete_profile (
 
   review_completed boolean DEFAULT false,
 
-  page1_completed boolean DEFAULT false,
-  page2_completed boolean DEFAULT false,
-  page3_completed boolean DEFAULT false,
-  page4_completed boolean DEFAULT false,
-  page5_completed boolean DEFAULT false,
-
-  profile_strength integer DEFAULT 0,
-
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );
@@ -179,44 +160,6 @@ CREATE UNIQUE INDEX IF NOT EXISTS zuvy_learners_complete_profile_user_id_unique
 ON main.zuvy_learners_complete_profile (user_id);
 `),
     );
-  }
-
-  private calculateProfileStrength(profile: any): {
-    profileStrength: number;
-    level: string;
-    pages: {
-      page1: boolean;
-      page2: boolean;
-      page3: boolean;
-      page4: boolean;
-      page5: boolean;
-    };
-  } {
-    const pages = {
-      page1: profile.page1Completed ?? false,
-      page2: profile.page2Completed ?? false,
-      page3: profile.page3Completed ?? false,
-      page4: profile.page4Completed ?? false,
-      page5: profile.page5Completed ?? false,
-    };
-
-    let strength = 0;
-    if (pages.page1) strength += 20;
-    if (pages.page2) strength += 20;
-    if (pages.page3) strength += 20;
-    if (pages.page4) strength += 20;
-    if (pages.page5) strength += 20;
-
-    let level: string;
-    if (strength <= 20) level = 'Beginner';
-    else if (strength <= 40) level = 'Basic';
-    else if (strength <= 60) level = 'Intermediate';
-    else if (strength <= 80) level = 'Job Ready';
-    else if (strength <= 90) level = 'Almost Complete';
-    else if (strength <= 95) level = 'Nearly Done';
-    else level = 'Complete';
-
-    return { profileStrength: strength, level, pages };
   }
 
   private async getOrCreateProfile(userId: number) {
@@ -246,19 +189,11 @@ ON main.zuvy_learners_complete_profile (user_id);
     await this.ensureCompleteProfileTableReady();
     await this.getOrCreateProfile(userId);
 
-    const { pageNumber, ...data } = payload;
-
-    if (pageNumber < 1 || pageNumber > 5) {
-      throw new BadRequestException('pageNumber must be between 1 and 5');
-    }
+    const data = payload;
 
     const updateData: any = {
       updatedAt: new Date().toISOString(),
     };
-
-    // Mark the corresponding page as completed
-    const pageKey = `page${pageNumber}Completed`;
-    updateData[pageKey] = true;
 
     // PAGE 1: BASICS fields
     if (data.fullName !== undefined) updateData.fullName = data.fullName;
@@ -336,30 +271,16 @@ ON main.zuvy_learners_complete_profile (user_id);
       updateData.reviewCompleted = data.reviewCompleted;
     }
 
-    await db
+    const [updatedProfile] = await db
       .update(zuvyLearnersCompleteProfileTable)
       .set(updateData)
-      .where(eq(zuvyLearnersCompleteProfileTable.userId, userId));
-
-    // Recalculate and update profile strength
-    const rows = await db
-      .select()
-      .from(zuvyLearnersCompleteProfileTable)
       .where(eq(zuvyLearnersCompleteProfileTable.userId, userId))
-      .limit(1);
-
-    const profile = rows[0];
-    const strengthInfo = this.calculateProfileStrength(profile);
-
-    await db
-      .update(zuvyLearnersCompleteProfileTable)
-      .set({ profileStrength: strengthInfo.profileStrength })
-      .where(eq(zuvyLearnersCompleteProfileTable.userId, userId));
+      .returning();
 
     return {
       success: true,
-      message: `Page ${pageNumber} saved successfully`,
-      profileStrength: strengthInfo,
+      message: 'Profile saved successfully',
+      data: updatedProfile,
     };
   }
 
@@ -378,52 +299,32 @@ ON main.zuvy_learners_complete_profile (user_id);
       return {
         success: true,
         data: null,
-        profileStrength: this.calculateProfileStrength({}),
-      };
-    }
-
-    const profile = rows[0];
-    const strengthInfo = this.calculateProfileStrength(profile);
-
-    return {
-      success: true,
-      data: profile,
-      profileStrength: strengthInfo,
-    };
-  }
-
-  // ─── GET PROFILE STRENGTH ───────────────────────────────────────
-
-  async getProfileStrength(userId: number) {
-    await this.ensureCompleteProfileTableReady();
-
-    const rows = await db
-      .select({
-        page1Completed: zuvyLearnersCompleteProfileTable.page1Completed,
-        page2Completed: zuvyLearnersCompleteProfileTable.page2Completed,
-        page3Completed: zuvyLearnersCompleteProfileTable.page3Completed,
-        page4Completed: zuvyLearnersCompleteProfileTable.page4Completed,
-        page5Completed: zuvyLearnersCompleteProfileTable.page5Completed,
-        profileStrength: zuvyLearnersCompleteProfileTable.profileStrength,
-      })
-      .from(zuvyLearnersCompleteProfileTable)
-      .where(eq(zuvyLearnersCompleteProfileTable.userId, userId))
-      .limit(1);
-
-    if (rows.length === 0) {
-      return {
-        success: true,
-        ...this.calculateProfileStrength({}),
       };
     }
 
     return {
       success: true,
-      ...this.calculateProfileStrength(rows[0]),
+      data: rows[0],
     };
   }
 
   //priya yaha se
+  // async calculateProfileStrengthNew(userId: number): Promise<number> {
+  //   const profile = await db.query.zuvyLearnersCompleteProfile.findFirst({
+  //     where: (table, { eq }) => eq(table.userId, userId),
+  //   });
+
+  //   if (!profile) return 0;
+
+  //   let filled = 0;
+
+  //   for (const field of PROFILE_STRENGTH_FIELDS) {
+  //     if (profile[field] !== null) filled++;
+  //   }
+
+  //   return Math.round((filled / PROFILE_STRENGTH_FIELDS.length) * 100);
+  // }
+
   async calculateProfileStrengthNew(userId: number): Promise<number> {
     const profile = await db.query.zuvyLearnersCompleteProfile.findFirst({
       where: (table, { eq }) => eq(table.userId, userId),
@@ -431,12 +332,57 @@ ON main.zuvy_learners_complete_profile (user_id);
 
     if (!profile) return 0;
 
-    let filled = 0;
+    const checks = [
+      // PAGE 1: BASICS
+      !!profile.fullName,
+      !!profile.phoneNumber,
+      !!profile.email,
+      !!profile.linkedinProfile,
+      !!(profile.collegeName || profile.otherCollegeName),
+      !!profile.degree,
+      !!profile.branch,
+      !!profile.yearOfStudy,
+      !!profile.graduationMonth,
+      !!profile.graduationYear,
+      !!profile.currentStatus,
 
-    for (const field of PROFILE_STRENGTH_FIELDS) {
-      if (profile[field] !== null) filled++;
-    }
+      // PAGE 2: SKILLS & PROJECTS
+      Array.isArray(profile.technicalSkills) &&
+        (profile.technicalSkills as any[]).length > 0,
+      Array.isArray(profile.projects) && (profile.projects as any[]).length > 0,
 
-    return Math.round((filled / PROFILE_STRENGTH_FIELDS.length) * 100);
+      // PAGE 3: EDUCATION & EXPERIENCE
+      !!profile.collegeStream,
+      !!profile.collegeScore,
+      !!profile.collegeScoreType,
+      !!profile.class12Board,
+      !!profile.class12Score,
+      !!profile.class12ScoreType,
+      !!profile.class10Board,
+      !!profile.class10Score,
+      !!profile.class10ScoreType,
+      profile.hasWorkExperience === false ||
+        (Array.isArray(profile.workExperiences) &&
+          (profile.workExperiences as any[]).length > 0),
+      !!(
+        profile.leetcodeUsername ||
+        profile.codechefUsername ||
+        profile.codeforcesUsername
+      ),
+
+      // PAGE 4: PREFERENCES
+      Array.isArray(profile.targetRoles) &&
+        (profile.targetRoles as any[]).length > 0,
+      Array.isArray(profile.preferredLocations) &&
+        (profile.preferredLocations as any[]).length > 0,
+      profile.openToRemote !== null && profile.openToRemote !== undefined,
+      !!profile.internshipStipend,
+      !!profile.fullTimeCtc,
+      Array.isArray(profile.preferredContactMethods) &&
+        (profile.preferredContactMethods as any[]).length > 0,
+    ];
+
+    const filled = checks.filter(Boolean).length;
+    return Math.round((filled / checks.length) * 100);
   }
 }

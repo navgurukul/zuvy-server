@@ -3243,11 +3243,11 @@ export const zuvyLearnersCompleteProfile = main.table(
     linkedinProfile: varchar('linkedin_profile', { length: 500 }),
     collegeName: varchar('college_name', { length: 255 }),
     otherCollegeName: varchar('other_college_name', { length: 100 }),
-    degree: varchar('degree', { length: 100 }),
-    branch: varchar('branch', { length: 100 }),
-    yearOfStudy: learnerYearOfStudy('year_of_study'),
-    graduationMonth: integer('graduation_month'),
-    graduationYear: integer('graduation_year'),
+    degree: varchar('degree', { length: 100 }).notNull(),
+    branch: varchar('branch', { length: 100 }).notNull(),
+    yearOfStudy: learnerYearOfStudy('year_of_study').notNull(),
+    graduationMonth: integer('graduation_month').notNull(),
+    graduationYear: integer('graduation_year').notNull(),
     currentStatus: learnerCurrentStatus('current_status'),
 
     // PAGE 2: SKILLS & PROJECTS
@@ -3280,16 +3280,6 @@ export const zuvyLearnersCompleteProfile = main.table(
 
     // PAGE 5: REVIEW
     reviewCompleted: boolean('review_completed').default(false),
-
-    // Page completion tracking
-    page1Completed: boolean('page1_completed').default(false),
-    page2Completed: boolean('page2_completed').default(false),
-    page3Completed: boolean('page3_completed').default(false),
-    page4Completed: boolean('page4_completed').default(false),
-    page5Completed: boolean('page5_completed').default(false),
-
-    // Profile strength
-    profileStrength: integer('profile_strength').default(0),
 
     createdAt: timestamp('created_at', {
       withTimezone: true,
