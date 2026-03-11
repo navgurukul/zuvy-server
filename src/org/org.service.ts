@@ -479,34 +479,66 @@ export class OrgService {
 
   async getOrgByUserId(userId: number, searchTerm?: string) {
     try {
-      let whereClause: any = eq(zuvyUserRolesAssigned.userId, BigInt(userId));
+      const globalRoles = await this.authService.getUserRoles(
+        Number(userId),
+        null,
+      );
+      const isSuperAdmin = globalRoles.includes('super_admin');
 
-      if (searchTerm) {
-        const searchLike = `%${searchTerm}%`;
-        whereClause = and(
-          whereClause,
-          or(
+      let orgs;
+
+      if (isSuperAdmin) {
+        let adminWhereClause: any = undefined;
+
+        if (searchTerm) {
+          const searchLike = `%${searchTerm}%`;
+          adminWhereClause = or(
             ilike(zuvyOrganizations.title, searchLike),
             ilike(zuvyOrganizations.displayName, searchLike),
-          ),
-        );
-      }
+          );
+        }
 
-      const orgs = await db
-        .select({
-          id: zuvyOrganizations.id,
-          title: zuvyOrganizations.title,
-          code: zuvyOrganizations.displayName,
-          logoUrl: zuvyOrganizations.logoUrl,
-          isVerified: zuvyOrganizations.isVerified,
-          joinedAt: zuvyUserRolesAssigned.createdAt,
-        })
-        .from(zuvyUserRolesAssigned)
-        .innerJoin(
-          zuvyOrganizations,
-          eq(zuvyUserRolesAssigned.organizationId, zuvyOrganizations.id),
-        )
-        .where(whereClause);
+        orgs = await db
+          .select({
+            id: zuvyOrganizations.id,
+            title: zuvyOrganizations.title,
+            code: zuvyOrganizations.displayName,
+            logoUrl: zuvyOrganizations.logoUrl,
+            isVerified: zuvyOrganizations.isVerified,
+            joinedAt: zuvyOrganizations.createdAt,
+          })
+          .from(zuvyOrganizations)
+          .where(adminWhereClause);
+      } else {
+        let whereClause: any = eq(zuvyUserRolesAssigned.userId, BigInt(userId));
+
+        if (searchTerm) {
+          const searchLike = `%${searchTerm}%`;
+          whereClause = and(
+            whereClause,
+            or(
+              ilike(zuvyOrganizations.title, searchLike),
+              ilike(zuvyOrganizations.displayName, searchLike),
+            ),
+          );
+        }
+
+        orgs = await db
+          .select({
+            id: zuvyOrganizations.id,
+            title: zuvyOrganizations.title,
+            code: zuvyOrganizations.displayName,
+            logoUrl: zuvyOrganizations.logoUrl,
+            isVerified: zuvyOrganizations.isVerified,
+            joinedAt: zuvyUserRolesAssigned.createdAt,
+          })
+          .from(zuvyUserRolesAssigned)
+          .innerJoin(
+            zuvyOrganizations,
+            eq(zuvyUserRolesAssigned.organizationId, zuvyOrganizations.id),
+          )
+          .where(whereClause);
+      }
 
       return {
         status: 'success',
