@@ -62,10 +62,6 @@ CREATE TABLE IF NOT EXISTS main.zuvy_learners_complete_profile (
   full_time_ctc varchar(50),
   preferred_contact_methods jsonb DEFAULT '[]'::jsonb,
 
-  -- PAGE 5: REVIEW & COMPLETE (20%)
-  -- This page is marked complete when the learner reviews and confirms all data
-  review_completed boolean DEFAULT false,
-
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );

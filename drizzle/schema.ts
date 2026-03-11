@@ -3278,9 +3278,6 @@ export const zuvyLearnersCompleteProfile = main.table(
     fullTimeCtc: varchar('full_time_ctc', { length: 50 }),
     preferredContactMethods: jsonb('preferred_contact_methods').default([]),
 
-    // PAGE 5: REVIEW
-    reviewCompleted: boolean('review_completed').default(false),
-
     createdAt: timestamp('created_at', {
       withTimezone: true,
       mode: 'string',

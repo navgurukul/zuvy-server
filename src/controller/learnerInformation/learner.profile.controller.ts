@@ -1,15 +1,41 @@
+/* eslint-disable prettier/prettier */
 import {
+  BadRequestException,
   Body,
   Controller,
+  Delete,
   Get,
+  Param,
+  ParseIntPipe,
   Post,
+  Put,
   Req,
   UsePipes,
   ValidationPipe,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiBody, ApiOperation, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiBody,
+  ApiOperation,
+  ApiParam,
+  ApiTags,
+} from '@nestjs/swagger';
 import { LearnerProfileService } from './learner.profile.service';
 import { SaveCompleteProfileDto } from './dto/learner.dto';
+import { ValidationError } from 'class-validator';
+
+function flattenErrors(errors: ValidationError[]): string[] {
+  const messages: string[] = [];
+  for (const error of errors) {
+    if (error.constraints) {
+      messages.push(...Object.values(error.constraints));
+    }
+    if (error.children?.length) {
+      messages.push(...flattenErrors(error.children));
+    }
+  }
+  return messages;
+}
 
 @ApiTags('Learner Complete Profile')
 @Controller('learner-profile')
@@ -18,6 +44,9 @@ import { SaveCompleteProfileDto } from './dto/learner.dto';
     whitelist: true,
     transform: true,
     forbidNonWhitelisted: true,
+    exceptionFactory: (errors) => {
+      return new BadRequestException(flattenErrors(errors));
+    },
   }),
 )
 @ApiBearerAuth('JWT-auth')
@@ -46,12 +75,34 @@ export class LearnerProfileController {
     return this.learnerProfileService.getCompleteProfile(userId);
   }
 
+  @Put(':id')
+  @ApiOperation({
+    summary: 'Update learner profile by user ID',
+  })
+  @ApiParam({ name: 'id', type: Number, description: 'User ID' })
+  @ApiBody({ type: SaveCompleteProfileDto })
+  async updateProfile(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() payload: SaveCompleteProfileDto,
+  ) {
+    return this.learnerProfileService.updateProfile(id, payload);
+  }
+
   @Get('strength')
   @ApiOperation({
-    summary: 'Get profile strength percentage and level',
+    summary: 'Get profile strength percentage',
   })
   async getProfileStrength(@Req() req) {
     const userId = req.user[0]?.id;
     return this.learnerProfileService.calculateProfileStrengthNew(userId);
+  }
+
+  @Delete(':id')
+  @ApiOperation({
+    summary: 'Delete learner profile by user ID',
+  })
+  @ApiParam({ name: 'id', type: Number, description: 'User ID' })
+  async deleteProfile(@Param('id', ParseIntPipe) id: number) {
+    return this.learnerProfileService.deleteProfile(id);
   }
 }

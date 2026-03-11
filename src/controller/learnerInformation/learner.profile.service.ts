@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { eq, sql } from 'drizzle-orm';
 import {
   pgSchema,
@@ -62,9 +62,6 @@ const zuvyLearnersCompleteProfileTable = learnerMainSchema.table(
     internshipStipend: varchar('internship_stipend', { length: 50 }),
     fullTimeCtc: varchar('full_time_ctc', { length: 50 }),
     preferredContactMethods: jsonb('preferred_contact_methods').default([]),
-
-    // PAGE 5: REVIEW
-    reviewCompleted: boolean('review_completed').default(false),
 
     createdAt: timestamp('created_at', {
       withTimezone: true,
@@ -146,8 +143,6 @@ CREATE TABLE IF NOT EXISTS main.zuvy_learners_complete_profile (
   full_time_ctc varchar(50),
   preferred_contact_methods jsonb DEFAULT '[]'::jsonb,
 
-  review_completed boolean DEFAULT false,
-
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );
@@ -195,80 +190,10 @@ ON main.zuvy_learners_complete_profile (user_id);
       updatedAt: new Date().toISOString(),
     };
 
-    // PAGE 1: BASICS fields
-    if (data.fullName !== undefined) updateData.fullName = data.fullName;
-    if (data.phoneNumber !== undefined)
-      updateData.phoneNumber = data.phoneNumber;
-    if (data.email !== undefined) updateData.email = data.email;
-    if (data.linkedinProfile !== undefined)
-      updateData.linkedinProfile = data.linkedinProfile;
-    if (data.collegeName !== undefined)
-      updateData.collegeName = data.collegeName;
-    if (data.otherCollegeName !== undefined)
-      updateData.otherCollegeName = data.otherCollegeName;
-    if (data.degree !== undefined) updateData.degree = data.degree;
-    if (data.branch !== undefined) updateData.branch = data.branch;
-    if (data.yearOfStudy !== undefined)
-      updateData.yearOfStudy = data.yearOfStudy;
-    if (data.graduationMonth !== undefined)
-      updateData.graduationMonth = data.graduationMonth;
-    if (data.graduationYear !== undefined)
-      updateData.graduationYear = data.graduationYear;
-    if (data.currentStatus !== undefined)
-      updateData.currentStatus = data.currentStatus;
-
-    // PAGE 2: SKILLS & PROJECTS fields
-    if (data.technicalSkills !== undefined)
-      updateData.technicalSkills = data.technicalSkills;
-    if (data.projects !== undefined) updateData.projects = data.projects;
-
-    // PAGE 3: EDUCATION & EXPERIENCE fields
-    if (data.collegeStream !== undefined)
-      updateData.collegeStream = data.collegeStream;
-    if (data.collegeScore !== undefined)
-      updateData.collegeScore = data.collegeScore;
-    if (data.collegeScoreType !== undefined)
-      updateData.collegeScoreType = data.collegeScoreType;
-    if (data.class12Board !== undefined)
-      updateData.class12Board = data.class12Board;
-    if (data.class12Score !== undefined)
-      updateData.class12Score = data.class12Score;
-    if (data.class12ScoreType !== undefined)
-      updateData.class12ScoreType = data.class12ScoreType;
-    if (data.class10Board !== undefined)
-      updateData.class10Board = data.class10Board;
-    if (data.class10Score !== undefined)
-      updateData.class10Score = data.class10Score;
-    if (data.class10ScoreType !== undefined)
-      updateData.class10ScoreType = data.class10ScoreType;
-    if (data.hasWorkExperience !== undefined)
-      updateData.hasWorkExperience = data.hasWorkExperience;
-    if (data.workExperiences !== undefined)
-      updateData.workExperiences = data.workExperiences;
-    if (data.leetcodeUsername !== undefined)
-      updateData.leetcodeUsername = data.leetcodeUsername;
-    if (data.codechefUsername !== undefined)
-      updateData.codechefUsername = data.codechefUsername;
-    if (data.codeforcesUsername !== undefined)
-      updateData.codeforcesUsername = data.codeforcesUsername;
-
-    // PAGE 4: PREFERENCES fields
-    if (data.targetRoles !== undefined)
-      updateData.targetRoles = data.targetRoles;
-    if (data.preferredLocations !== undefined)
-      updateData.preferredLocations = data.preferredLocations;
-    if (data.openToRemote !== undefined)
-      updateData.openToRemote = data.openToRemote;
-    if (data.internshipStipend !== undefined)
-      updateData.internshipStipend = data.internshipStipend;
-    if (data.fullTimeCtc !== undefined)
-      updateData.fullTimeCtc = data.fullTimeCtc;
-    if (data.preferredContactMethods !== undefined)
-      updateData.preferredContactMethods = data.preferredContactMethods;
-
-    // PAGE 5: REVIEW fields
-    if (data.reviewCompleted !== undefined) {
-      updateData.reviewCompleted = data.reviewCompleted;
+    for (const [key, value] of Object.entries(data)) {
+      if (value !== undefined) {
+        updateData[key] = value;
+      }
     }
 
     const [updatedProfile] = await db
@@ -308,22 +233,70 @@ ON main.zuvy_learners_complete_profile (user_id);
     };
   }
 
-  //priya yaha se
-  // async calculateProfileStrengthNew(userId: number): Promise<number> {
-  //   const profile = await db.query.zuvyLearnersCompleteProfile.findFirst({
-  //     where: (table, { eq }) => eq(table.userId, userId),
-  //   });
+  // ─── PUT API: Update Profile ───────────────────────────────────
 
-  //   if (!profile) return 0;
+  async updateProfile(userId: number, payload: SaveCompleteProfileDto) {
+    await this.ensureCompleteProfileTableReady();
 
-  //   let filled = 0;
+    const existing = await db
+      .select()
+      .from(zuvyLearnersCompleteProfileTable)
+      .where(eq(zuvyLearnersCompleteProfileTable.userId, userId))
+      .limit(1);
 
-  //   for (const field of PROFILE_STRENGTH_FIELDS) {
-  //     if (profile[field] !== null) filled++;
-  //   }
+    if (existing.length === 0) {
+      throw new NotFoundException(
+        'Profile not found. Please create a profile first.',
+      );
+    }
 
-  //   return Math.round((filled / PROFILE_STRENGTH_FIELDS.length) * 100);
-  // }
+    const updateData: any = {
+      updatedAt: new Date().toISOString(),
+    };
+
+    for (const [key, value] of Object.entries(payload)) {
+      if (value !== undefined) {
+        updateData[key] = value;
+      }
+    }
+
+    const [updatedProfile] = await db
+      .update(zuvyLearnersCompleteProfileTable)
+      .set(updateData)
+      .where(eq(zuvyLearnersCompleteProfileTable.userId, userId))
+      .returning();
+
+    return {
+      success: true,
+      message: 'Profile updated successfully',
+      data: updatedProfile,
+    };
+  }
+
+  // ─── DELETE API: Delete Profile by User ID ─────────────────────
+
+  async deleteProfile(userId: number) {
+    await this.ensureCompleteProfileTableReady();
+
+    const existing = await db
+      .select()
+      .from(zuvyLearnersCompleteProfileTable)
+      .where(eq(zuvyLearnersCompleteProfileTable.userId, userId))
+      .limit(1);
+
+    if (existing.length === 0) {
+      throw new NotFoundException('Profile not found.');
+    }
+
+    await db
+      .delete(zuvyLearnersCompleteProfileTable)
+      .where(eq(zuvyLearnersCompleteProfileTable.userId, userId));
+
+    return {
+      success: true,
+      message: 'Profile deleted successfully',
+    };
+  }
 
   async calculateProfileStrengthNew(userId: number): Promise<number> {
     const profile = await db.query.zuvyLearnersCompleteProfile.findFirst({
