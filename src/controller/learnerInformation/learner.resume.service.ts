@@ -112,7 +112,6 @@ const PREDEFINED_SKILLS = [
   'Kafka',
   'Selenium',
   'Cypress',
-  // Office / Business
   'MS Word',
   'MS Excel',
   'MS Office',
