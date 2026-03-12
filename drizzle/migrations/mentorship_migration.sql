@@ -360,3 +360,17 @@ bio = 'Senior Backend Mentor',
 expertise = '["Node.js","NestJS","PostgreSQL"]',
 title = 'Backend Mentor'
 WHERE mentor_user_id = 65616;
+
+
+ALTER TABLE zuvy_mentor_slot_booking
+ADD COLUMN google_event_id VARCHAR(255);
+ALTER TABLE zuvy_mentor_slot_booking
+ADD COLUMN meeting_link VARCHAR(500);
+
+SELECT column_name
+FROM information_schema.columns
+WHERE table_name = 'zuvy_mentor_slot_booking';
+
+SELECT column_name
+FROM information_schema.columns
+WHERE table_name = 'zuvy_mentor_slot_management';
