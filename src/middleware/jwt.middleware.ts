@@ -10,12 +10,11 @@ import {
 import { Request, Response, NextFunction } from 'express';
 import { JwtService } from '@nestjs/jwt';
 import { db } from '../db/index';
-import { eq, sql, count, and } from 'drizzle-orm';
+import { eq, sql, count } from 'drizzle-orm';
 import {
   users,
   zuvyUserRolesAssigned,
   zuvyUserRoles,
-  zuvyUserOrganizations,
 } from '../../drizzle/schema';
 import { helperVariable } from 'src/constants/helper';
 import { AuthService } from '../auth/auth.service';
@@ -153,41 +152,6 @@ export class JwtMiddleware implements NestMiddleware {
         hasRole: (role: string) => userRoles.includes(role),
       };
 
-      // Organization authorization check
-      // Super admins bypass org checks
-      if (!userRoles.includes('super_admin')) {
-        const requestOrgId = this.extractOrgId(req);
-
-        if (requestOrgId !== null) {
-          const jwtOrgId = decoded.orgId ? Number(decoded.orgId) : null;
-
-          // Check 1: Compare request orgId against the user's JWT orgId
-          if (jwtOrgId !== null && requestOrgId !== jwtOrgId) {
-            throw new UnauthorizedException(
-              `Access denied: Your current session belongs to orgId ${jwtOrgId}, but you are trying to access data of orgId ${requestOrgId}`,
-            );
-          }
-
-          // Check 2: Verify user actually belongs to the target org in the database
-          const membership = await db
-            .select({ id: zuvyUserOrganizations.id })
-            .from(zuvyUserOrganizations)
-            .where(
-              and(
-                eq(zuvyUserOrganizations.userId, Number(user[0].id)),
-                eq(zuvyUserOrganizations.organizationId, requestOrgId),
-              ),
-            )
-            .limit(1);
-
-          if (membership.length === 0) {
-            throw new UnauthorizedException(
-              `Access denied: You are not a member of organization ${requestOrgId}. You do not have permission to access its data.`,
-            );
-          }
-        }
-      }
-
       next();
     } catch (error) {
       console.error('Token verification error:', error);
@@ -200,26 +164,6 @@ export class JwtMiddleware implements NestMiddleware {
         throw new UnauthorizedException('Invalid token');
       }
     }
-  }
-
-  /**
-   * Extracts orgId from request params, query, or body.
-   * Returns the numeric orgId if found, or null if not present.
-   */
-  private extractOrgId(req: any): number | null {
-    if (req.params?.orgId) {
-      return Number(req.params.orgId);
-    }
-    if (req.query?.orgId) {
-      return Number(req.query.orgId);
-    }
-    if (req.body?.organizationId) {
-      return Number(req.body.organizationId);
-    }
-    if (req.body?.orgId) {
-      return Number(req.body.orgId);
-    }
-    return null;
   }
 }
 @Injectable()
