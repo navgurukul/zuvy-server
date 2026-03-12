@@ -24,7 +24,7 @@ export class TrackinglogController {
   })
   @ApiQuery({
     name: 'orgId',
-    required: false,
+    required: true,
     type: Number,
     description: 'Organization ID',
   })

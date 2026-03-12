@@ -342,3 +342,35 @@ DROP CONSTRAINT uniq_student_slot;
 CREATE UNIQUE INDEX uniq_active_student_slot
 ON zuvy_mentor_slot_booking(student_user_id, slot_availability_id)
 WHERE status != 'cancelled';
+
+ALTER TABLE zuvy_mentor_slot_management
+ADD COLUMN google_refresh_token TEXT,
+ADD COLUMN google_email VARCHAR(255);
+
+SELECT google_refresh_token
+FROM zuvy_mentor_slot_management;
+
+SELECT google_refresh_token
+FROM zuvy_mentor_slot_management
+WHERE mentor_user_id = 61830;
+
+UPDATE zuvy_mentor_slot_management
+SET
+bio = 'Senior Backend Mentor',
+expertise = '["Node.js","NestJS","PostgreSQL"]',
+title = 'Backend Mentor'
+WHERE mentor_user_id = 65616;
+
+
+ALTER TABLE zuvy_mentor_slot_booking
+ADD COLUMN google_event_id VARCHAR(255);
+ALTER TABLE zuvy_mentor_slot_booking
+ADD COLUMN meeting_link VARCHAR(500);
+
+SELECT column_name
+FROM information_schema.columns
+WHERE table_name = 'zuvy_mentor_slot_booking';
+
+SELECT column_name
+FROM information_schema.columns
+WHERE table_name = 'zuvy_mentor_slot_management';

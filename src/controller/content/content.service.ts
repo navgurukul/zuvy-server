@@ -199,12 +199,19 @@ export class ContentService {
         .insert(zuvyCourseModules)
         .values(moduleWithBootcamp)
         .returning();
+      const courseRes = await db
+        .select({ name: zuvyBootcamps.name })
+        .from(zuvyBootcamps)
+        .where(eq(zuvyBootcamps.id, bootcampId))
+        .limit(1);
+      const courseName = courseRes[0]?.name || '';
       if (moduleData.length > 0) {
         return {
           status: 'success',
           message: 'Module created successfully for this course',
           code: 200,
           module: moduleData,
+          courseName,
         };
       } else {
         return {
@@ -1298,9 +1305,23 @@ export class ContentService {
 
       const newModule = updatedModule[0] || null;
 
+      // Fetch course name using bootcampId
+      let courseName = '';
+      if (newModule && newModule.bootcampId) {
+        const courseRes = await db
+          .select({ name: zuvyBootcamps.name })
+          .from(zuvyBootcamps)
+          .where(eq(zuvyBootcamps.id, newModule.bootcampId))
+          .limit(1);
+        courseName = courseRes[0]?.name || '';
+      }
+
       return {
         message: 'Modified successfully',
-        data: newModule,
+        data: {
+          ...newModule,
+          courseName,
+        },
       };
     } catch (err) {
       throw err;
@@ -2167,6 +2188,15 @@ export class ContentService {
     }
     // 5. Delete the module itself
     let deletedModuleOrder = null;
+    let courseName = '';
+    try {
+      const courseRes = await db
+        .select({ name: zuvyBootcamps.name })
+        .from(zuvyBootcamps)
+        .where(eq(zuvyBootcamps.id, bootcampId))
+        .limit(1);
+      courseName = courseRes[0]?.name || '';
+    } catch (_) {}
     try {
       const deleted = await db
         .delete(zuvyCourseModules)
@@ -2191,6 +2221,7 @@ export class ContentService {
         message: 'Module and all related data deleted successfully',
         code: 200,
         moduleName: deleted[0].name,
+        courseName,
       };
     } catch (error) {
       log(`error: ${error.message}`);
@@ -2819,6 +2850,12 @@ export class ContentService {
 
   async deleteOpenEndedQuestion(id: deleteQuestionDto) {
     try {
+      const firstQ = await db
+        .select({ question: zuvyOpenEndedQuestions.question })
+        .from(zuvyOpenEndedQuestions)
+        .where(sql`${zuvyOpenEndedQuestions.id} = ${id.questionIds[0]}`)
+        .limit(1);
+      const questionText = firstQ[0]?.question || '';
       const usedOpenEndedQuestions = await db
         .select()
         .from(zuvyOpenEndedQuestions)
@@ -2846,6 +2883,7 @@ export class ContentService {
             status: 'success',
             code: 200,
             message: `Open ended question which is used in other places like chapters and assessment cannot be deleted`,
+            questionText,
           };
         } else {
           return {
@@ -2864,6 +2902,7 @@ export class ContentService {
           status: 'success',
           code: 200,
           message: 'The open ended question has been deleted successfully',
+          questionText,
         };
       } else {
         return {
@@ -4474,6 +4513,35 @@ export class ContentService {
     try {
       let mainQuizIds: number[] = [];
       let variantDeletions: { id: number; quizId: number }[] = [];
+      let quizTitle = '';
+      const firstMainId = deleteDto.questionIds.find(
+        (q) => q.type === 'main',
+      )?.id;
+      const firstVariantId = deleteDto.questionIds.find(
+        (q) => q.type === 'variant',
+      )?.id;
+      if (firstMainId) {
+        const titleRes = await db
+          .select({ title: zuvyModuleQuiz.title })
+          .from(zuvyModuleQuiz)
+          .where(sql`${zuvyModuleQuiz.id} = ${firstMainId}`)
+          .limit(1);
+        quizTitle = titleRes[0]?.title || '';
+      } else if (firstVariantId) {
+        const variantRes = await db
+          .select({ quizId: zuvyModuleQuizVariants.quizId })
+          .from(zuvyModuleQuizVariants)
+          .where(sql`${zuvyModuleQuizVariants.id} = ${firstVariantId}`)
+          .limit(1);
+        if (variantRes[0]?.quizId) {
+          const titleRes = await db
+            .select({ title: zuvyModuleQuiz.title })
+            .from(zuvyModuleQuiz)
+            .where(sql`${zuvyModuleQuiz.id} = ${variantRes[0].quizId}`)
+            .limit(1);
+          quizTitle = titleRes[0]?.title || '';
+        }
+      }
 
       // Process deleteDto based on its type
       for (const item of deleteDto.questionIds) {
@@ -4602,6 +4670,7 @@ export class ContentService {
           message:
             'Selected quizzes and/or variants have been deleted and renumbered successfully where applicable.',
           statusCode: STATUS_CODES.OK,
+          quizTitle,
         },
       ];
     } catch (error) {

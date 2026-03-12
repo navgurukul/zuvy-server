@@ -1,4 +1,4 @@
-import { ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiPropertyOptional, ApiProperty } from '@nestjs/swagger';
 import {
   IsNumber,
   IsOptional,
@@ -9,15 +9,13 @@ import {
 import { Type } from 'class-transformer';
 
 export class QueryTrackinglogDto {
-  @ApiPropertyOptional({ description: 'Organization ID', example: 1 })
-  @IsOptional()
+  @ApiProperty({ description: 'Organization ID' })
   @Type(() => Number)
   @IsNumber()
-  orgId?: number;
+  orgId: number;
 
   @ApiPropertyOptional({
     description: 'Filter by user who performed the action',
-    example: 123,
   })
   @IsOptional()
   @Type(() => Number)
@@ -55,8 +53,6 @@ export class QueryTrackinglogDto {
 
   @ApiPropertyOptional({
     description: 'Number of records to skip',
-    example: 0,
-    default: 0,
   })
   @IsOptional()
   @Type(() => Number)
@@ -66,14 +62,12 @@ export class QueryTrackinglogDto {
 
   @ApiPropertyOptional({
     description: 'Maximum number of items to return',
-    example: 100,
-    default: 100,
   })
   @IsOptional()
   @Type(() => Number)
   @IsNumber()
   @Min(1)
-  limit?: number = 100;
+  limit?: number;
 
   @ApiPropertyOptional({
     description:
@@ -88,7 +82,6 @@ export class QueryTrackinglogDto {
   @ApiPropertyOptional({
     description:
       'Full-text search across action, resourceType, description and actor name.',
-    example: 'module',
   })
   @IsOptional()
   @IsString()

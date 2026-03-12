@@ -4,6 +4,7 @@ import {
   IsString,
   IsOptional,
   IsBoolean,
+  MaxLength,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
@@ -15,6 +16,9 @@ export class CreateOrgDto {
   })
   @IsString()
   @IsNotEmpty()
+  @MaxLength(30, {
+    message: 'Organization name is too long. Maximum length is 30 characters',
+  })
   title: string;
 
   @ApiPropertyOptional({

@@ -46,11 +46,12 @@ export class TrackActionInterceptor implements NestInterceptor {
                 let {
                   action,
                   resourceType,
+                  displayType: staticDisplayType,
                   permissionName,
                   getResourceName,
                   getBootcampId,
                   getTargetUser,
-                } = metadataValues;
+                } = metadataValues as any;
 
                 // Auto-detect resourceType from route path if not provided
                 // Example: /bootcamp/123 -> bootcamp, /content/chapter -> chapter
@@ -175,27 +176,32 @@ export class TrackActionInterceptor implements NestInterceptor {
 
                 const userData = rawUser;
 
-                const actorUserId =
-                  typeof userData?.id === 'string'
-                    ? parseInt(userData.id)
-                    : userData?.id;
+                // Fallback to result.user when request carries no auth (e.g. login endpoint)
+                const resultUser = actualResult?.user ?? null;
+
+                const actorUserId = (() => {
+                  const raw = userData?.id ?? resultUser?.id;
+                  return typeof raw === 'string' ? parseInt(raw) : raw;
+                })();
 
                 // Use full email as actor identifier
                 let actorName = 'User';
-                if (userData?.email) {
-                  actorName = userData.email;
+                const emailSource = userData?.email ?? resultUser?.email;
+                if (emailSource) {
+                  actorName = emailSource;
                 }
 
-                const orgId =
-                  typeof userData?.orgId === 'string'
-                    ? parseInt(userData.orgId)
-                    : userData?.orgId;
+                const orgId = (() => {
+                  const raw = userData?.orgId ?? resultUser?.orgId;
+                  return typeof raw === 'string' ? parseInt(raw) : raw;
+                })();
 
                 // Extract resource name from result if function provided
                 const allParamsFull = {
                   ...request.params,
                   ...request.query,
                   ...request.body,
+                  ...(request['trackingData'] || {}),
                 };
                 const resourceName = getResourceName
                   ? getResourceName(actualResult, allParamsFull)
@@ -267,6 +273,7 @@ export class TrackActionInterceptor implements NestInterceptor {
                     resourceName,
                     targetUser,
                     actualResult,
+                    staticDisplayType,
                   );
                 }
 
@@ -472,13 +479,19 @@ export class TrackActionInterceptor implements NestInterceptor {
     resourceName: string,
     targetUser: { status?: string; name?: string; email?: string } | null,
     _result: any,
+    staticDisplayType?: string,
   ): string {
     const actionVerb = action.split('_')[0].toLowerCase();
     const pastTense = this.toPastTense(actionVerb);
 
     // ── Base sentence ─────────────────────────────────────────────────────────
-    let desc = `${actorName} ${pastTense} ${resourceType}`;
+    const displayType =
+      _result?.descriptionPrefix ?? staticDisplayType ?? resourceType;
+    let desc = displayType
+      ? `${actorName} ${pastTense} ${displayType}`
+      : `${actorName} ${pastTense}`;
     if (resourceName) desc += ` "${resourceName}"`;
+    if (_result?.descriptionSuffix) desc += ` ${_result.descriptionSuffix}`;
 
     // ── Target user — included generically whenever present ───────────────────
     if (targetUser) {
@@ -501,6 +514,8 @@ export class TrackActionInterceptor implements NestInterceptor {
     // All other verbs are handled purely by the algorithm below.
     const semanticOverrides: Record<string, string> = {
       edit: 'updated',
+      login: 'has been logged in',
+      logout: 'has been logged out',
     };
     if (semanticOverrides[verb]) return semanticOverrides[verb];
 

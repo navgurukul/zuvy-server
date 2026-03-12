@@ -210,7 +210,9 @@ export class RbacController {
     @Req() req,
   ): Promise<any> {
     try {
-      const orgId = req.user[0]?.orgId;
+      const orgId =
+        assignPermissionsDto.orgId ??
+        (req.user[0]?.orgId ? parseInt(req.user[0].orgId) : undefined);
       const result = await this.rbacPermissionService.assignPermissionsToRole(
         assignPermissionsDto,
         orgId,

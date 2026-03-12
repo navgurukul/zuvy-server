@@ -2443,7 +2443,7 @@ export const zuvyBootcamps = main.table('zuvy_bootcamps', {
   startTime: timestamp('start_time', { withTimezone: true, mode: 'string' }),
   duration: integer('duration'),
   language: text('language'),
-  organizationId: integer('organization_id').default(null).references(() => zuvyOrganizations.id, {
+  organizationId: integer('organization_id').notNull().references(() => zuvyOrganizations.id, {
     onDelete: 'cascade'
   }),
   createdAt: timestamp('created_at', {
@@ -4635,6 +4635,9 @@ export const zuvyMentorSlotManagement = pgTable(
     isVerified: boolean('is_verified').default(false),
     acceptsNewMentees: boolean('accepts_new_mentees').default(true),
 
+    googleRefreshToken: text('google_refresh_token'),
+    googleEmail: varchar('google_email', { length: 255 }),
+
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
   },
@@ -4742,6 +4745,11 @@ export const zuvyMentorSlotBooking = pgTable(
     sessionLifecycleState: varchar('session_lifecycle_state', {
       length: 50,
     }).default('SCHEDULED'),
+
+    /*Google Calendar Integration  */
+    googleEventId: varchar('google_event_id', { length: 255 }),
+    meetingLink: varchar('meeting_link', { length: 500 }),
+
 
     /* Reschedule workflow */
     rescheduleRequestedAt: timestamp('reschedule_requested_at', {
