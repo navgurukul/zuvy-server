@@ -6,7 +6,7 @@ import { Request } from 'express';
 import { db } from 'src/db';
 import { sansaarUserRoles } from '../../../drizzle/schema';
 import { eq } from 'drizzle-orm';
-let { GOOGLE_CLIENT_ID, GOOGLE_SECRET, GOOGLE_REDIRECT, JWT_SECRET_KEY } =
+let { GOOGLE_CLIENT_ID, GOOGLE_SECRET, GOOGLE_REDIRECT_URI, JWT_SECRET_KEY } =
   process.env;
 
 // Extend Express Request type to include user property
