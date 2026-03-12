@@ -14,7 +14,7 @@ import {
 import { eq, inArray, and, isNull, or } from 'drizzle-orm';
 import { OAuth2Client } from 'google-auth-library';
 import { UserTokensService } from 'src/user-tokens/user-tokens.service';
-let { GOOGLE_CLIENT_ID, GOOGLE_SECRET, GOOGLE_REDIRECT, JWT_SECRET_KEY } =
+let { GOOGLE_CLIENT_ID, GOOGLE_SECRET, GOOGLE_REDIRECT_URI, JWT_SECRET_KEY } =
   process.env;
 // import { Role } from '../rbac/utility';
 

@@ -342,3 +342,14 @@ DROP CONSTRAINT uniq_student_slot;
 CREATE UNIQUE INDEX uniq_active_student_slot
 ON zuvy_mentor_slot_booking(student_user_id, slot_availability_id)
 WHERE status != 'cancelled';
+
+ALTER TABLE zuvy_mentor_slot_management
+ADD COLUMN google_refresh_token TEXT,
+ADD COLUMN google_email VARCHAR(255);
+
+SELECT google_refresh_token
+FROM zuvy_mentor_slot_management;
+
+SELECT google_refresh_token
+FROM zuvy_mentor_slot_management
+WHERE mentor_user_id = 61830;
