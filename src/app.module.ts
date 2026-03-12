@@ -19,6 +19,7 @@ import { RbacModule } from './rbac/rbac.module';
 import { AuthModule } from './auth/auth.module';
 import { JwtMiddleware } from './middleware/jwt.middleware';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
+import { OrgAuthorizationGuard } from './guards/org-authorization.guard';
 import { Reflector } from '@nestjs/core';
 import { AuthService } from './auth/auth.service';
 import { UsersModule } from './controller/users/users.module';
@@ -96,6 +97,10 @@ let { GOOGLE_CLIENT_ID, GOOGLE_SECRET, GOOGLE_REDIRECT_URI, JWT_SECRET_KEY } =
     {
       provide: APP_GUARD,
       useClass: JwtAuthGuard,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: OrgAuthorizationGuard,
     },
     JwtMiddleware,
     Reflector,
