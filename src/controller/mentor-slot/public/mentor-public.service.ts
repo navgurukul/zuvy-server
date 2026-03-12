@@ -35,7 +35,7 @@ export class MentorPublicService {
 
     if (expertise && expertise !== 'all') {
       filters.push(
-        sql`${zuvyMentorSlotManagement.expertise} ILIKE ${'%' + expertise + '%'}`,
+        sql`CAST(${zuvyMentorSlotManagement.expertise} AS TEXT) ILIKE ${'%' + expertise + '%'}`,
       );
     }
 
@@ -51,7 +51,7 @@ export class MentorPublicService {
         ${users.name} ILIKE ${'%' + search + '%'}
         OR ${users.email} ILIKE ${'%' + search + '%'}
         OR ${zuvyMentorSlotManagement.title} ILIKE ${'%' + search + '%'}
-        OR ${zuvyMentorSlotManagement.expertise} ILIKE ${'%' + search + '%'}
+        OR CAST(${zuvyMentorSlotManagement.expertise} AS TEXT) ILIKE ${'%' + search + '%'}
       )`,
       );
     }
