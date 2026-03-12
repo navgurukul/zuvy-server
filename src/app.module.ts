@@ -33,6 +33,7 @@ import { LevelModule } from './level/level.module';
 import { AiAssessmentModule } from './ai-assessment/ai-assessment.module';
 import { OrgModule } from './org/org.module';
 import { NotificationModule } from './notification/notification.module';
+import { LearnerModule } from './controller/learnerInformation/learner.module';
 import { ZoomService } from './services/zoom/zoom.service';
 import { RecordingWorkerService } from './services/recording-worker/recording-worker.service';
 import { ZoomWebhookModule } from './webhooks/zoom/zoom.webhook.module';
@@ -81,6 +82,7 @@ let { GOOGLE_CLIENT_ID, GOOGLE_SECRET, GOOGLE_REDIRECT_URI, JWT_SECRET_KEY } =
     AiAssessmentModule,
     OrgModule,
     NotificationModule,
+    LearnerModule,
     RecordingWorkerModule,
     ZoomWebhookModule,
     MentorSlotModule,
