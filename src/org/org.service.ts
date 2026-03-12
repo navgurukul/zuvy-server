@@ -21,7 +21,7 @@ import {
   zuvyPermissions,
   zuvyPermissionsRoles,
 } from '../../drizzle/schema';
-import { eq, and, ilike, or, sql, desc } from 'drizzle-orm';
+import { eq, and, ilike, or, sql, desc, ne } from 'drizzle-orm';
 import { JwtService } from '@nestjs/jwt';
 import { AuthService } from '../auth/auth.service';
 import { UserTokensService } from '../user-tokens/user-tokens.service';
@@ -161,6 +161,28 @@ export class OrgService {
 
   async createOrg(createOrgDto: CreateOrgDto) {
     try {
+      if (
+        createOrgDto.isManagedByZuvy &&
+        createOrgDto.pocEmail &&
+        createOrgDto.zuvyPocEmail &&
+        createOrgDto.pocEmail === createOrgDto.zuvyPocEmail
+      ) {
+        throw new BadRequestException(
+          'POC and Zuvy POC cannot have the same email in a Zuvy managed organization',
+        );
+      }
+
+      const existingPoc = await db
+        .select()
+        .from(zuvyOrganizations)
+        .where(eq(zuvyOrganizations.pocEmail, createOrgDto.pocEmail));
+
+      if (existingPoc.length > 0) {
+        throw new BadRequestException(
+          'An organization with this POC email already exists',
+        );
+      }
+
       const displayName = await this.generateCode(createOrgDto.title);
 
       const createOrgDtoValues = {
@@ -489,10 +511,58 @@ export class OrgService {
 
   async updateOrgDetails(id: number, updateOrgDto: UpdateOrgDto) {
     try {
-      const updateData = {
+      const org = await this.getOrg(id);
+
+      const isManagedByZuvy =
+        updateOrgDto.isManagedByZuvy !== undefined
+          ? updateOrgDto.isManagedByZuvy
+          : org.isManagedByZuvy;
+      const pocEmail =
+        updateOrgDto.pocEmail !== undefined
+          ? updateOrgDto.pocEmail
+          : org.pocEmail;
+      const zuvyPocEmail =
+        updateOrgDto.zuvyPocEmail !== undefined
+          ? updateOrgDto.zuvyPocEmail
+          : org.zuvyPocEmail;
+
+      if (
+        isManagedByZuvy &&
+        pocEmail &&
+        zuvyPocEmail &&
+        pocEmail === zuvyPocEmail
+      ) {
+        throw new BadRequestException(
+          'POC and Zuvy POC cannot have the same email in a Zuvy managed organization',
+        );
+      }
+
+      if (updateOrgDto.pocEmail && updateOrgDto.pocEmail !== org.pocEmail) {
+        const existingPoc = await db
+          .select()
+          .from(zuvyOrganizations)
+          .where(
+            and(
+              eq(zuvyOrganizations.pocEmail, updateOrgDto.pocEmail),
+              ne(zuvyOrganizations.id, id),
+            ),
+          );
+
+        if (existingPoc.length > 0) {
+          throw new BadRequestException(
+            'An organization with this POC email already exists',
+          );
+        }
+      }
+
+      const updateData: any = {
         ...updateOrgDto,
         updatedAt: new Date().toISOString(),
       };
+
+      if (updateOrgDto.title) {
+        updateData.displayName = await this.generateCode(updateOrgDto.title);
+      }
       const [updatedOrg] = await db
         .update(zuvyOrganizations)
         .set(updateData)

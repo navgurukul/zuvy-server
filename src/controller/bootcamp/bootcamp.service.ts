@@ -152,7 +152,17 @@ export class BootcampService {
       const lowerFilter = filter ? filter.toLowerCase() : 'all';
 
       if (lowerFilter === 'public') {
-        orgCondition = eq(zuvyBootcampType.type, 'Public');
+        if (filterOrgId) {
+          orgCondition = and(
+            eq(zuvyBootcampType.type, 'Public'),
+            or(
+              eq(zuvyBootcamps.organizationId, filterOrgId),
+              isNull(zuvyBootcamps.organizationId),
+            ),
+          );
+        } else {
+          orgCondition = eq(zuvyBootcampType.type, 'Public');
+        }
       } else if (lowerFilter === 'private') {
         if (filterOrgId) {
           orgCondition = and(
@@ -165,10 +175,7 @@ export class BootcampService {
         }
       } else {
         // 'all' or default
-        orgCondition = or(
-          isNull(zuvyBootcamps.organizationId),
-          eq(zuvyBootcampType.type, 'Public'),
-        );
+        orgCondition = isNull(zuvyBootcamps.organizationId);
         if (filterOrgId) {
           orgCondition = or(
             orgCondition,
