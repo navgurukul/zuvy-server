@@ -381,7 +381,7 @@ export class RbacController {
   }
 
   @Delete('permissions/:id')
-  //   @RequirePermissions('delete_permission')
+  //   @RequirePermissions('delete_permission')//
   @ApiOperation({
     summary: 'Delete a permission by id',
     description: 'Deletes a permission record by its numeric id',
