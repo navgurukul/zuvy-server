@@ -19,6 +19,7 @@ import { ProposeRescheduleDto } from './dto/reschedule.dto';
 import { FeedbackDto } from './dto/feedback.dto';
 import { CreateSlotDto } from './dto/create-slot.dto';
 import { AttendanceDto } from './dto/attendance.dto';
+import { UpdateMentorProfileDto } from './dto/update-mentor-profile.dto';
 
 @ApiTags('Mentor Slots')
 @ApiBearerAuth('JWT-auth')
@@ -178,10 +179,10 @@ export class MentorSlotController {
       UPDATE MENTOR PROFILE (for mentor) 
   ========================================================================== */
   @Patch('mentor/profile')
-  async updateProfile(@Req() req, @Body() body: any) {
+  async updateProfile(@Req() req, @Body() dto: UpdateMentorProfileDto) {
     return this.mentorSlotService.updateMentorProfile(
       Number(req.user[0].id),
-      body,
+      dto,
     );
   }
 }

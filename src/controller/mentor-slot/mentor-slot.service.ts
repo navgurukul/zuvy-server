@@ -111,24 +111,34 @@ export class MentorSlotService {
 
   async bookSlot(studentId: number, slotId: number) {
     return db.transaction(async (trx) => {
-      const result = await trx.execute(
-        sql`
-    SELECT *
-    FROM zuvy_mentor_slot_availability
-    WHERE id = ${slotId}
-    FOR UPDATE
-  `,
-      );
+      const result = await trx.execute(sql`
+SELECT
+  id,
+  mentor_slot_management_id AS "mentorSlotManagementId",
+  slot_start_date_time AS "slotStartDateTime",
+  slot_end_date_time AS "slotEndDateTime",
+  duration_minutes AS "durationMinutes",
+  max_capacity AS "maxCapacity",
+  current_booked_count AS "currentBookedCount",
+  status
+FROM zuvy_mentor_slot_availability
+WHERE id = ${slotId}
+FOR UPDATE
+`);
 
       const slot = result
         .rows[0] as typeof zuvyMentorSlotAvailability.$inferSelect;
 
       if (!slot) throw new NotFoundException('Slot not found.');
 
+      if (!slot.slotStartDateTime || !slot.slotEndDateTime) {
+        throw new BadRequestException('Slot time is missing.');
+      }
+
       if (slot.status !== 'available')
         throw new BadRequestException('Slot not available.');
 
-      this.enforceMinimumNotice(slot.slotStartDateTime);
+      this.enforceMinimumNotice(new Date(slot.slotStartDateTime));
 
       // Fetch mentor buffer settings
       const [mentorProfile] = await trx
@@ -240,44 +250,47 @@ export class MentorSlotService {
 
       const refreshToken = mentorProfile.googleRefreshToken;
 
-      if (!refreshToken) {
-        throw new BadRequestException(
-          'Mentor has not connected Google Calendar',
-        );
-      }
+      // if (!refreshToken) {
+      //   throw new BadRequestException(
+      //     'Mentor has not connected Google Calendar',
+      //   );
+      // }
 
-      /* Check mentor Google Calendar conflicts */
+      let meeting: { meetLink?: string; eventId?: string } = {};
 
-      const hasConflict =
-        await this.googleCalendarService.checkCalendarConflict(
+      if (refreshToken) {
+        /* Check mentor Google Calendar conflicts */
+
+        const hasConflict =
+          await this.googleCalendarService.checkCalendarConflict(
+            slot.slotStartDateTime,
+            slot.slotEndDateTime,
+            refreshToken,
+          );
+
+        if (hasConflict) {
+          throw new BadRequestException(
+            'Mentor already has a meeting scheduled during this time.',
+          );
+        }
+
+        /* Create Google Meet */
+
+        const meeting = await this.googleCalendarService.createMeeting(
           slot.slotStartDateTime,
           slot.slotEndDateTime,
+          mentorEmail,
+          studentEmail,
           refreshToken,
         );
-
-      if (hasConflict) {
-        throw new BadRequestException(
-          'Mentor already has a meeting scheduled during this time.',
-        );
       }
-
-      /* Create Google Meet */
-
-      const meeting = await this.googleCalendarService.createMeeting(
-        slot.slotStartDateTime,
-        slot.slotEndDateTime,
-        mentorEmail,
-        studentEmail,
-        refreshToken,
-      );
-
       /* Save meeting info */
 
       await trx
         .update(zuvyMentorSlotBooking)
         .set({
-          meetingLink: meeting.meetLink,
-          googleEventId: meeting.eventId,
+          meetingLink: meeting?.meetLink ?? null,
+          googleEventId: meeting?.eventId ?? null,
         } as Partial<typeof zuvyMentorSlotBooking.$inferInsert>)
         .where(eq(zuvyMentorSlotBooking.id, createdBooking.id));
 
@@ -728,6 +741,11 @@ export class MentorSlotService {
     if (dto.bio !== undefined) updatePayload.bio = dto.bio;
     if (dto.expertise !== undefined) updatePayload.expertise = dto.expertise;
     if (dto.title !== undefined) updatePayload.title = dto.title;
+
+    // prevent empty update
+    if (Object.keys(updatePayload).length === 0) {
+      throw new BadRequestException('No fields provided for update');
+    }
 
     return db
       .update(zuvyMentorSlotManagement)
