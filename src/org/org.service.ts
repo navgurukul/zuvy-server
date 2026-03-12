@@ -166,7 +166,8 @@ export class OrgService {
         createOrgDto.isManagedByZuvy &&
         createOrgDto.pocEmail &&
         createOrgDto.zuvyPocEmail &&
-        createOrgDto.pocEmail === createOrgDto.zuvyPocEmail
+        createOrgDto.pocEmail.toLowerCase() ===
+          createOrgDto.zuvyPocEmail.toLowerCase()
       ) {
         throw new BadRequestException(
           'POC and Zuvy POC cannot have the same email in a Zuvy managed organization',
@@ -176,7 +177,7 @@ export class OrgService {
       const existingPoc = await db
         .select()
         .from(zuvyOrganizations)
-        .where(eq(zuvyOrganizations.pocEmail, createOrgDto.pocEmail));
+        .where(ilike(zuvyOrganizations.pocEmail, createOrgDto.pocEmail));
 
       if (existingPoc.length > 0) {
         throw new BadRequestException(
@@ -574,7 +575,7 @@ export class OrgService {
         isManagedByZuvy &&
         pocEmail &&
         zuvyPocEmail &&
-        pocEmail === zuvyPocEmail
+        pocEmail.toLowerCase() === zuvyPocEmail.toLowerCase()
       ) {
         throw new BadRequestException(
           'POC and Zuvy POC cannot have the same email in a Zuvy managed organization',
@@ -587,7 +588,7 @@ export class OrgService {
           .from(zuvyOrganizations)
           .where(
             and(
-              eq(zuvyOrganizations.pocEmail, updateOrgDto.pocEmail),
+              ilike(zuvyOrganizations.pocEmail, updateOrgDto.pocEmail),
               ne(zuvyOrganizations.id, id),
             ),
           );

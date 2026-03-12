@@ -506,13 +506,18 @@ export class BootcampService {
       const existingBootcamp = await db
         .select()
         .from(zuvyBootcamps)
-        .where(eq(zuvyBootcamps.name, bootcampData.name));
+        .where(
+          and(
+            eq(zuvyBootcamps.name, bootcampData.name),
+            eq(zuvyBootcamps.organizationId, bootcampData.organizationId),
+          ),
+        );
 
       if (existingBootcamp.length > 0) {
         return [
           {
             status: 'error',
-            message: 'Course name already exists.',
+            message: `A course with the name "${bootcampData.name}" already exists in this organization.`,
             code: STATUS_CODES.BAD_REQUEST,
           },
           null,
