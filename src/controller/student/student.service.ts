@@ -671,6 +671,13 @@ export class StudentService {
 
       const deletedCount = enrolled.length;
 
+      const courseRes = await db
+        .select({ name: zuvyBootcamps.name })
+        .from(zuvyBootcamps)
+        .where(eq(zuvyBootcamps.id, bootcamp_id))
+        .limit(1);
+      const bootcampName = courseRes[0]?.name || '';
+
       return [
         null,
         {
@@ -682,6 +689,8 @@ export class StudentService {
           code: 200,
           removedUsers,
           bootcampId: Number(bootcamp_id),
+          descriptionPrefix: 'the student',
+          bootcampName,
         },
       ];
     } catch (e) {

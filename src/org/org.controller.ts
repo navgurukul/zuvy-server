@@ -111,7 +111,7 @@ export class OrgController {
   @ApiResponse({ status: 500, description: 'Internal Server Error.' })
   @ApiBearerAuth('JWT-auth')
   remove(@Param('id') id: number) {
-    return this.orgService.initiateDelete(id);
+    return this.orgService.deleteOrg(id);
   }
 
   @Post('/delete/confirm')
@@ -185,8 +185,15 @@ export class OrgController {
     if (!accessToken) {
       throw new UnauthorizedException('No token provided');
     }
+    const reqUser = Array.isArray(req.user) ? req.user[0] : req.user;
+    const userId = reqUser?.id || reqUser?.userId || reqUser?.sub;
+
+    if (!userId) {
+      throw new UnauthorizedException('User ID not found in request');
+    }
+
     return this.orgService.switchOrg(
-      BigInt(req.user.sub),
+      BigInt(userId),
       switchOrgDto.orgId,
       accessToken,
       switchOrgDto.refresh_token,

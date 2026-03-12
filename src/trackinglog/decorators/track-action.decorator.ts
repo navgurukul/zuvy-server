@@ -5,6 +5,7 @@ export const TRACK_ACTION_KEY = 'track_action';
 export interface TrackActionMetadata {
   action?: string;
   resourceType?: string;
+  displayType?: string;
   permissionName?: string;
   getResourceName?: (result: any, params?: any) => string;
   getBootcampId?: (result: any, params: any) => number | null;

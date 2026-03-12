@@ -171,7 +171,11 @@ export class BootcampController {
     action: 'edit_course',
     resourceType: 'Course',
     permissionName: 'editcourse',
-    getResourceName: (result) => result?.bootcampName || 'Bootcamp',
+    getResourceName: (result) => {
+      const resourceName =
+        result?.bootcampName || result?.data?.name || 'Course';
+      return `updated Course type for "${resourceName}"`;
+    },
   })
   async updateBootcampSetting(
     @Body() bootcampSetting: PatchBootcampSettingDto,
@@ -317,6 +321,31 @@ export class BootcampController {
     return res;
   }
 
+  @Patch('updateUserDetails/:userId')
+  @ApiOperation({ summary: 'Update user name and mail Id by userId' })
+  @ApiBearerAuth('JWT-auth')
+  @TrackAction({
+    action: 'edit_user',
+    resourceType: 'user',
+    permissionName: 'editUser',
+    getResourceName: (result) => {
+      return result?.data?.name || result?.data?.email || 'User';
+    },
+  })
+  async updateUserDetails(
+    @Param('userId') userId: number,
+    @Body() editUserDetailsDto: editUserDetailsDto,
+  ): Promise<any> {
+    const [err, res] = await this.bootcampService.updateUserDetails(
+      userId,
+      editUserDetailsDto,
+    );
+    if (err) {
+      throw new BadRequestException(err);
+    }
+    return res;
+  }
+
   @Patch('/:id/:orgId')
   @ApiOperation({ summary: 'Update the bootcamp partially' })
   @ApiBearerAuth('JWT-auth')
@@ -360,11 +389,13 @@ export class BootcampController {
     permissionName: 'createStudent',
     getResourceName: (result) => {
       const enrolled = result?.students_enrolled;
+      const bootcampName = result?.bootcampName || '';
+      const suffix = bootcampName ? ` in the bootcamp ${bootcampName}` : '';
       if (Array.isArray(enrolled) && enrolled.length === 1) {
-        return enrolled[0].email || 'student';
+        return `${enrolled[0].email || 'student'}${suffix}`;
       }
       if (Array.isArray(enrolled) && enrolled.length > 1) {
-        return `${enrolled.length} students`;
+        return `${enrolled.length} students${suffix}`;
       }
       return 'student';
     },
@@ -578,31 +609,6 @@ export class BootcampController {
       body.userId,
       body.status,
     );
-    return res;
-  }
-
-  @Patch('updateUserDetails/:userId')
-  @ApiOperation({ summary: 'Update user name and mail Id by userId' })
-  @ApiBearerAuth('JWT-auth')
-  @TrackAction({
-    action: 'edit_user',
-    resourceType: 'user',
-    permissionName: 'editUser',
-    getResourceName: (result) => {
-      return result?.data?.name || result?.data?.email || 'User';
-    },
-  })
-  async updateUserDetails(
-    @Param('userId') userId: number,
-    @Body() editUserDetailsDto: editUserDetailsDto,
-  ): Promise<any> {
-    const [err, res] = await this.bootcampService.updateUserDetails(
-      userId,
-      editUserDetailsDto,
-    );
-    if (err) {
-      throw new BadRequestException(err);
-    }
     return res;
   }
 
