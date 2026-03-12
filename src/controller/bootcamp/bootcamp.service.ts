@@ -1312,6 +1312,8 @@ export class BootcampService {
           code: 200,
           message: message,
           students_enrolled: userReport,
+          descriptionPrefix: 'the student',
+          bootcampName: bootcampData[0]?.name || '',
           ...grantedPermissions,
         },
       ];

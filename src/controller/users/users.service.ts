@@ -415,7 +415,7 @@ export class UsersService {
     try {
       const actorUserId = Number(actorUserIdString);
       const userCheck = await db.execute(
-        sql`SELECT id, name FROM main.users WHERE id = ${userId} LIMIT 1`,
+        sql`SELECT id, name, email FROM main.users WHERE id = ${userId} LIMIT 1`,
       );
 
       if (!(userCheck as any).rows?.length) {
@@ -448,6 +448,7 @@ export class UsersService {
       const targetUserId = userId;
       const actorName = (actorUserCheck as any).rows?.[0]?.name;
       const targetName = (userCheck as any).rows?.[0]?.name;
+      const targetEmail = (userCheck as any).rows?.[0]?.email || '';
       const roleName = (roleCheck as any).rows?.[0]?.name;
 
       if ((existing as any).rows?.length) {
@@ -506,6 +507,8 @@ export class UsersService {
           code: 200,
           message: 'Role updated for user',
           data: (updated as any).rows[0],
+          descriptionPrefix: 'a role to a user',
+          userEmail: targetEmail,
         };
       }
 
@@ -549,6 +552,8 @@ export class UsersService {
         code: 200,
         message: 'Role assigned to user successfully',
         data: (inserted as any).rows[0] ?? null,
+        descriptionPrefix: 'a role to a user',
+        userEmail: targetEmail,
       };
     } catch (err) {
       this.logger.error('Failed to assign role to user', err as any);
@@ -888,6 +893,7 @@ export class UsersService {
           ...userWithRole,
           id: Number(userWithRole.id),
           roleId: userWithRole.roleId ? Number(userWithRole.roleId) : null,
+          descriptionPrefix: 'a user with new role',
         };
       });
     } catch (error) {
@@ -1160,6 +1166,7 @@ export class UsersService {
           email: existingUser.email,
         },
         data: result,
+        descriptionPrefix: 'user details',
       };
     } catch (error) {
       throw error;
@@ -1168,6 +1175,12 @@ export class UsersService {
 
   async deleteUser(id: bigint, orgId: number): Promise<any> {
     try {
+      const [userToDelete] = await db
+        .select({ email: users.email })
+        .from(users)
+        .where(eq(users.id, id));
+      const deletedUserEmail = userToDelete?.email || '';
+
       const { data: existingTokens, success: hasTokens } =
         await this.userTokenService.getUserTokens(id, orgId);
 
@@ -1221,6 +1234,8 @@ export class UsersService {
           'User has been deleted and all content has been removed for the user',
         code: 200,
         status: 'success',
+        descriptionPrefix: 'an user',
+        userEmail: deletedUserEmail,
       };
     } catch (error) {
       throw error;

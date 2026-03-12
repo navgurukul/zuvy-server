@@ -220,8 +220,7 @@ export class UsersController {
     action: 'assign_role',
     resourceType: 'role',
     permissionName: 'editUser',
-    getResourceName: (result, params) =>
-      params?.roleName || result?.data?.name || 'Role',
+    getResourceName: (result) => result?.userEmail || 'user',
   })
   async assignRoleToUser(
     @Body() body: AssignUserRoleDto,
@@ -508,9 +507,7 @@ export class UsersController {
     action: 'delete_user',
     resourceType: 'user',
     permissionName: 'deleteUser',
-    getResourceName: (result) => {
-      return result?.data?.name || result?.name || 'User';
-    },
+    getResourceName: (result) => result?.userEmail || 'user',
   })
   @ApiOperation({
     summary: 'Delete a user',

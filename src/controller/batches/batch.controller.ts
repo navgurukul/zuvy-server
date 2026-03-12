@@ -64,7 +64,13 @@ export class BatchesController {
     action: 'create_batch',
     resourceType: 'batch',
     permissionName: 'createBatch',
-    getResourceName: (result) => result?.batch?.name || 'Batch',
+    getResourceName: (result) => {
+      const batchName = result?.batch?.name || 'Batch';
+      const bootcampName = result?.bootcampName || '';
+      return bootcampName
+        ? `${batchName} for course ${bootcampName}`
+        : batchName;
+    },
   })
   async createBatch(@Body() batchData: BatchDto) {
     const [err, res] = await this.batchService.createBatch(batchData);
@@ -81,7 +87,13 @@ export class BatchesController {
     action: 'edit_batch',
     resourceType: 'batch',
     permissionName: 'editBatch',
-    getResourceName: (result) => result?.batch?.name || 'Batch',
+    getResourceName: (result) => {
+      const batchName = result?.batch?.name || 'Batch';
+      const bootcampName = result?.bootcampName || '';
+      return bootcampName
+        ? `${batchName} for course ${bootcampName}`
+        : batchName;
+    },
   })
   async updateBatch(@Param('id') id: string, @Body() batchData: PatchBatchDto) {
     const [err, res] = await this.batchService.updateBatch(
