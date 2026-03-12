@@ -10,8 +10,10 @@ import { SessionController } from './session/session.controller';
 import { SessionService } from './session/session.service';
 import { MentorPublicController } from './public/mentor-public.controller';
 import { MentorPublicService } from './public/mentor-public.service';
+import { GoogleModule } from 'src/integrations/google/google.module';
 
 @Module({
+  imports: [GoogleModule],
   controllers: [
     MentorSlotController,
     MentorRecurrenceController,

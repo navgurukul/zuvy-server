@@ -15,9 +15,12 @@ import {
 
 import { and, eq, lt, sql } from 'drizzle-orm';
 import { CreateSlotDto } from './dto/create-slot.dto';
+import { GoogleCalendarService } from 'src/integrations/google/google-calendar.service';
 
 @Injectable()
 export class MentorSlotService {
+  constructor(private readonly googleCalendarService: GoogleCalendarService) {}
+
   private async getMentorProfile(userId: number) {
     const userIdBigInt = BigInt(userId);
 
@@ -220,7 +223,68 @@ export class MentorSlotService {
         } as typeof zuvyMentorSlotBooking.$inferInsert)
         .returning();
 
-      return booking[0];
+      const createdBooking = booking[0];
+
+      /* Fetch mentor + student emails */
+
+      const mentorResult = await trx.execute(
+        sql`SELECT email FROM users WHERE id = ${mentorProfile.mentorUserId}`,
+      );
+
+      const studentResult = await trx.execute(
+        sql`SELECT email FROM users WHERE id = ${studentId}`,
+      );
+
+      const mentorEmail = mentorResult.rows[0].email as string;
+      const studentEmail = studentResult.rows[0].email as string;
+
+      const refreshToken = mentorProfile.googleRefreshToken;
+
+      if (!refreshToken) {
+        throw new BadRequestException(
+          'Mentor has not connected Google Calendar',
+        );
+      }
+
+      /* Check mentor Google Calendar conflicts */
+
+      const hasConflict =
+        await this.googleCalendarService.checkCalendarConflict(
+          slot.slotStartDateTime,
+          slot.slotEndDateTime,
+          refreshToken,
+        );
+
+      if (hasConflict) {
+        throw new BadRequestException(
+          'Mentor already has a meeting scheduled during this time.',
+        );
+      }
+
+      /* Create Google Meet */
+
+      const meeting = await this.googleCalendarService.createMeeting(
+        slot.slotStartDateTime,
+        slot.slotEndDateTime,
+        mentorEmail,
+        studentEmail,
+        refreshToken,
+      );
+
+      /* Save meeting info */
+
+      await trx
+        .update(zuvyMentorSlotBooking)
+        .set({
+          meetingLink: meeting.meetLink,
+          googleEventId: meeting.eventId,
+        } as Partial<typeof zuvyMentorSlotBooking.$inferInsert>)
+        .where(eq(zuvyMentorSlotBooking.id, createdBooking.id));
+
+      return {
+        ...createdBooking,
+        meetingLink: meeting.meetLink,
+      };
     });
   }
 
@@ -278,6 +342,21 @@ export class MentorSlotService {
           cancelledAt: new Date(),
         } as Partial<typeof zuvyMentorSlotBooking.$inferInsert>)
         .where(eq(zuvyMentorSlotBooking.id, bookingId));
+
+      const [mentorProfile] = await trx
+        .select()
+        .from(zuvyMentorSlotManagement)
+        .where(eq(zuvyMentorSlotManagement.mentorUserId, booking.mentorUserId))
+        .limit(1);
+
+      const refreshToken = mentorProfile?.googleRefreshToken;
+
+      if (booking.googleEventId && refreshToken) {
+        await this.googleCalendarService.deleteMeeting(
+          booking.googleEventId,
+          refreshToken,
+        );
+      }
 
       return {
         message: 'Booking cancelled successfully.',
@@ -451,6 +530,36 @@ export class MentorSlotService {
         } as Partial<typeof zuvyMentorSlotBooking.$inferInsert>)
         .where(eq(zuvyMentorSlotBooking.id, bookingId));
 
+      /* Update Google meeting time */
+
+      if (booking.googleEventId) {
+        const [newSlot] = await trx
+          .select()
+          .from(zuvyMentorSlotAvailability)
+          .where(
+            eq(zuvyMentorSlotAvailability.id, booking.rescheduleProposedSlotId),
+          )
+          .limit(1);
+
+        const [mentorProfile] = await trx
+          .select()
+          .from(zuvyMentorSlotManagement)
+          .where(
+            eq(zuvyMentorSlotManagement.mentorUserId, booking.mentorUserId),
+          )
+          .limit(1);
+
+        const refreshToken = mentorProfile?.googleRefreshToken;
+
+        if (booking.googleEventId && refreshToken) {
+          await this.googleCalendarService.updateMeeting(
+            booking.googleEventId,
+            newSlot.slotStartDateTime,
+            newSlot.slotEndDateTime,
+            refreshToken,
+          );
+        }
+      }
       return { message: 'Reschedule accepted successfully.' };
     });
   }
