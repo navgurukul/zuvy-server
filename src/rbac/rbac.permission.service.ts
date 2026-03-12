@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  HttpException,
   Injectable,
   InternalServerErrorException,
   Logger,
@@ -475,6 +476,7 @@ export class RbacPermissionService {
       });
     } catch (error) {
       this.logger.error('Error in assignPermissionsToRole:', error);
+      if (error instanceof HttpException) throw error;
       throw new InternalServerErrorException('Failed to assign permissions');
     }
   }
