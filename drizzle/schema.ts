@@ -2427,7 +2427,7 @@ export const zuvyBootcamps = main.table('zuvy_bootcamps', {
   startTime: timestamp('start_time', { withTimezone: true, mode: 'string' }),
   duration: integer('duration'),
   language: text('language'),
-  organizationId: integer('organization_id').default(null).references(() => zuvyOrganizations.id, {
+  organizationId: integer('organization_id').notNull().references(() => zuvyOrganizations.id, {
     onDelete: 'cascade'
   }),
   createdAt: timestamp('created_at', {
