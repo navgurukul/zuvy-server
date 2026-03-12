@@ -41,8 +41,9 @@ import { RecordingWorkerModule } from './services/recording-worker/recording-wor
 import { MentorSlotModule } from './controller/mentor-slot/mentor-slot.module';
 import { NotificationJob } from './controller/notification/notification.job';
 import { NotificationService } from './controller/notification/notification.service';
+import { GoogleModule } from './integrations/google/google.module';
 
-let { GOOGLE_CLIENT_ID, GOOGLE_SECRET, GOOGLE_REDIRECT, JWT_SECRET_KEY } =
+let { GOOGLE_CLIENT_ID, GOOGLE_SECRET, GOOGLE_REDIRECT_URI, JWT_SECRET_KEY } =
   process.env;
 @Module({
   imports: [
@@ -83,6 +84,7 @@ let { GOOGLE_CLIENT_ID, GOOGLE_SECRET, GOOGLE_REDIRECT, JWT_SECRET_KEY } =
     RecordingWorkerModule,
     ZoomWebhookModule,
     MentorSlotModule,
+    GoogleModule,
   ],
   providers: [
     {

@@ -20,7 +20,7 @@ import {
 import { helperVariable } from 'src/constants/helper';
 import { AuthService } from '../auth/auth.service';
 import { Observable } from 'rxjs';
-let { GOOGLE_CLIENT_ID, GOOGLE_SECRET, GOOGLE_REDIRECT, JWT_SECRET_KEY } =
+let { GOOGLE_CLIENT_ID, GOOGLE_SECRET, GOOGLE_REDIRECT_URI, JWT_SECRET_KEY } =
   process.env;
 
 @Injectable()
