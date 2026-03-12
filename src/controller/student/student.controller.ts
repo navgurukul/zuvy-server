@@ -164,10 +164,12 @@ export class StudentController {
     permissionName: 'deleteStudent',
     getResourceName: (result) => {
       const removed = result?.removedUsers;
-      if (!removed || removed.length === 0) return 'student';
+      const bootcampName = result?.bootcampName || '';
+      const suffix = bootcampName ? ` from course ${bootcampName}` : '';
+      if (!removed || removed.length === 0) return `student${suffix}`;
       if (removed.length === 1)
-        return removed[0].name || removed[0].email || 'student';
-      return removed.map((u) => u.name || u.email).join(', ');
+        return `${removed[0].name || removed[0].email || 'student'}${suffix}`;
+      return `${removed.map((u) => u.name || u.email).join(', ')}${suffix}`;
     },
   })
   async removingStudents(

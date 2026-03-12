@@ -34,12 +34,9 @@ export class AuthController {
   @TrackAction({
     action: 'login',
     resourceType: 'user',
+    displayType: 'successfully',
     permissionName: 'viewUser',
-    getResourceName: (result, params) => {
-      const email = result?.user?.email || params?.email || 'Unknown';
-      const name = result?.user?.name || '';
-      return `${name ? `${name} (${email})` : email}`;
-    },
+    getResourceName: () => '',
   })
   @ApiOperation({ summary: 'Login with Google OAuth2' })
   @ApiBody({ type: LoginDto })
@@ -74,6 +71,7 @@ export class AuthController {
   @TrackAction({
     action: 'logout',
     resourceType: 'user',
+    displayType: '',
     permissionName: 'viewUser',
     getResourceName: () => '',
   })

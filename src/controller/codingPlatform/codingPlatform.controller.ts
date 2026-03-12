@@ -178,9 +178,15 @@ export class CodingPlatformController {
   @TrackAction({
     action: 'create_codingquestion',
     resourceType: 'codingQuestion',
+    displayType: 'a coding problem',
     permissionName: 'createCodingQuestion',
-    getResourceName: (result) =>
-      result?.data?.title || result?.data?.name || 'Coding Question',
+    getResourceName: (_result, params) => {
+      const title = params?.title || 'Coding Question';
+      const difficulty = params?.difficulty || '';
+      return difficulty
+        ? `${title} with difficulty level ${difficulty}`
+        : title;
+    },
   })
   async createCodingQuestion(
     @Body() createCodingQuestionDto: CreateProblemDto,
@@ -210,10 +216,12 @@ export class CodingPlatformController {
   @TrackAction({
     action: 'edit_codingquestion',
     resourceType: 'codingQuestion',
+    displayType: 'a coding problem',
     permissionName: 'editCodingQuestion',
     getResourceName: (result, params) =>
       result?.data?.title ||
       result?.data?.name ||
+      params?.title ||
       (params?.id ? `Question #${params.id}` : 'Coding Question'),
   })
   async updateCodingQuestion(
@@ -246,14 +254,17 @@ export class CodingPlatformController {
   @TrackAction({
     action: 'delete_codingquestion',
     resourceType: 'codingQuestion',
+    displayType: 'a coding problem',
     permissionName: 'deleteCodingQuestion',
     getResourceName: (result, params) =>
       result?.data?.title ||
       result?.data?.name ||
+      params?.questionTitle ||
       (params?.id ? `Question #${params.id}` : 'Coding Question'),
   })
   async deleteCodingQuestion(
     @Param('id') id: number,
+    @Req() req,
     @Res() res: Response,
   ): Promise<any> {
     try {
@@ -262,6 +273,7 @@ export class CodingPlatformController {
       if (err) {
         return ErrorResponse.BadRequestException(err.message).send(res);
       }
+      req['trackingData'] = { questionTitle: success?.questionTitle };
       return new SuccessResponse(
         success.message,
         success.statusCode,

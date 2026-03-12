@@ -102,7 +102,12 @@ export class ContentController {
     resourceType: 'module',
     permissionName: 'createModule',
     getResourceName: (result) => {
-      return result?.module?.[0]?.name || result?.module?.name || 'Module';
+      const moduleName =
+        result?.module?.[0]?.name || result?.module?.name || 'Module';
+      const courseName = result?.courseName || '';
+      return courseName
+        ? `${moduleName} for course name ${courseName}`
+        : moduleName;
     },
   })
   async createModule(
@@ -244,6 +249,7 @@ export class ContentController {
   @TrackAction({
     action: 'create_quiz',
     resourceType: 'quiz',
+    displayType: 'a mcq question',
     permissionName: 'createMcq',
     getResourceName: (result, params) => {
       const quizzes = params?.quizzes;
@@ -390,7 +396,14 @@ export class ContentController {
     resourceType: 'module',
     permissionName: 'editModule',
     getResourceName: (result) => {
-      return result?.data?.name || result?.module?.name || 'Module';
+      const moduleName = result?.data?.name || result?.module?.name || 'Module';
+      const batchName = result?.data?.batchName || result?.batchName || '';
+      let courseName = result?.data?.courseName || result?.courseName || '';
+      if (!courseName) courseName = 'Unknown';
+      let desc = moduleName;
+      if (batchName) desc += ` for Batch ${batchName}`;
+      desc += ` for course name ${courseName}`;
+      return desc;
     },
   })
   async reOrderModules(
@@ -420,12 +433,18 @@ export class ContentController {
     resourceType: 'module',
     permissionName: 'deleteModule',
     getResourceName: (result) => {
-      return (
+      const moduleName =
         result?.moduleName ||
         result?.data?.name ||
         result?.module?.name ||
-        'Module'
-      );
+        'Module';
+      const batchName = result?.batchName || result?.data?.batchName || '';
+      let courseName = result?.courseName || result?.data?.courseName || '';
+      if (!courseName) courseName = 'Unknown';
+      let desc = moduleName;
+      if (batchName) desc += ` for Batch ${batchName}`;
+      desc += ` for course name ${courseName}`;
+      return desc;
     },
   })
   async deleteModule(
@@ -652,6 +671,7 @@ export class ContentController {
   @TrackAction({
     action: 'edit_quiz',
     resourceType: 'quiz',
+    displayType: 'the mcq question',
     permissionName: 'editMcq',
     getResourceName: (result, params) =>
       params?.title || result?.data?.title || result?.data?.name || 'Quiz',
@@ -805,6 +825,7 @@ export class ContentController {
   @TrackAction({
     action: 'edit_openended',
     resourceType: 'openEndedQuestion',
+    displayType: 'the openEnded Coding question for module',
     permissionName: 'editOpendEnded',
     getResourceName: (result, params) =>
       params?.question || result?.data?.question || 'Open Ended Question',
@@ -826,6 +847,7 @@ export class ContentController {
   @TrackAction({
     action: 'create_openended',
     resourceType: 'openEndedQuestion',
+    displayType: 'an openEnded question',
     permissionName: 'createOpendEnded',
     getResourceName: (result, params) =>
       params?.question || result?.data?.question || 'Open Ended Question',
@@ -840,12 +862,9 @@ export class ContentController {
   @TrackAction({
     action: 'delete_openended',
     resourceType: 'openEndedQuestion',
+    displayType: 'the openEnded Coding question for module',
     permissionName: 'deleteOpendEnded',
-    getResourceName: (result, params) => {
-      const ids = params?.questionIds;
-      const count = Array.isArray(ids) ? ids.length : 1;
-      return `${count} Open Ended Question${count > 1 ? 's' : ''}`;
-    },
+    getResourceName: (result) => result?.questionText || 'Open Ended Question',
   })
   async deleteOpenEndedQuestion(@Body() questionIds: deleteQuestionDto) {
     return this.contentService.deleteOpenEndedQuestion(questionIds);
@@ -1198,13 +1217,17 @@ export class ContentController {
   @TrackAction({
     action: 'delete_quiz',
     resourceType: 'quiz',
+    displayType: 'the mcq question',
     permissionName: 'deleteMcq',
-    getResourceName: (result) => {
-      return result?.data?.title || result?.data?.name || 'Quiz';
-    },
+    getResourceName: (result, params) =>
+      result?.data?.title ||
+      result?.data?.name ||
+      params?.questionTitle ||
+      'Quiz',
   })
   async deleteMainQuizOrVariant(
     @Body() deleteDto: deleteQuestionOrVariantDto,
+    @Req() req,
     @Res() res,
   ) {
     const [err, success] =
@@ -1215,6 +1238,7 @@ export class ContentController {
         err.statusCode,
       ).send(res);
     }
+    req['trackingData'] = { questionTitle: success?.quizTitle };
     return new SuccessResponse(success.message, success.statusCode, null).send(
       res,
     );
