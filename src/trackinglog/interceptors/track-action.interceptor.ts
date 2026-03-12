@@ -176,21 +176,25 @@ export class TrackActionInterceptor implements NestInterceptor {
 
                 const userData = rawUser;
 
-                const actorUserId =
-                  typeof userData?.id === 'string'
-                    ? parseInt(userData.id)
-                    : userData?.id;
+                // Fallback to result.user when request carries no auth (e.g. login endpoint)
+                const resultUser = actualResult?.user ?? null;
+
+                const actorUserId = (() => {
+                  const raw = userData?.id ?? resultUser?.id;
+                  return typeof raw === 'string' ? parseInt(raw) : raw;
+                })();
 
                 // Use full email as actor identifier
                 let actorName = 'User';
-                if (userData?.email) {
-                  actorName = userData.email;
+                const emailSource = userData?.email ?? resultUser?.email;
+                if (emailSource) {
+                  actorName = emailSource;
                 }
 
-                const orgId =
-                  typeof userData?.orgId === 'string'
-                    ? parseInt(userData.orgId)
-                    : userData?.orgId;
+                const orgId = (() => {
+                  const raw = userData?.orgId ?? resultUser?.orgId;
+                  return typeof raw === 'string' ? parseInt(raw) : raw;
+                })();
 
                 // Extract resource name from result if function provided
                 const allParamsFull = {
