@@ -353,3 +353,10 @@ FROM zuvy_mentor_slot_management;
 SELECT google_refresh_token
 FROM zuvy_mentor_slot_management
 WHERE mentor_user_id = 61830;
+
+UPDATE zuvy_mentor_slot_management
+SET
+bio = 'Senior Backend Mentor',
+expertise = '["Node.js","NestJS","PostgreSQL"]',
+title = 'Backend Mentor'
+WHERE mentor_user_id = 65616;
