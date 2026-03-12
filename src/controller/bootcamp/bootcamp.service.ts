@@ -1712,7 +1712,7 @@ export class BootcampService {
               .where(enrollmentFilter)
               .limit(1);
             if (!enrollmentRows.length) {
-              // Enrollment not found; return a 404-like response in the payload
+              // Enrollment not found; return a 404-like response in the payloads
               return [
                 null,
                 {
