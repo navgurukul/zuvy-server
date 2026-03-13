@@ -24,7 +24,9 @@ export class NotificationController {
 
   @Get()
   async getMyNotifications(@Req() req) {
-    return this.notificationService.getUserNotifications(BigInt(req.user.id));
+    return this.notificationService.getUserNotifications(
+      BigInt(req.user[0].id),
+    );
   }
 
   /* ==========================================================================

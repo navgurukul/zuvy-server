@@ -16,10 +16,15 @@ import {
 import { and, eq, lt, sql } from 'drizzle-orm';
 import { CreateSlotDto } from './dto/create-slot.dto';
 import { GoogleCalendarService } from 'src/integrations/google/google-calendar.service';
+import { NotificationService } from '../notification/notification.service';
+import { NotificationType } from '../notification/notification.types';
 
 @Injectable()
 export class MentorSlotService {
-  constructor(private readonly googleCalendarService: GoogleCalendarService) {}
+  constructor(
+    private readonly googleCalendarService: GoogleCalendarService,
+    private readonly notificationService: NotificationService,
+  ) {}
 
   private async getMentorProfile(userId: number) {
     const userIdBigInt = BigInt(userId);
@@ -235,6 +240,24 @@ FOR UPDATE
 
       const createdBooking = booking[0];
 
+      await this.notificationService.createNotification({
+        userId: mentorProfile.mentorUserId,
+        type: NotificationType.BOOKING_CREATED,
+        title: 'New mentorship booking',
+        message: `A student booked your session.`,
+        referenceId: createdBooking.id,
+        referenceType: 'booking',
+      });
+
+      await this.notificationService.createNotification({
+        userId: BigInt(studentId),
+        type: NotificationType.BOOKING_CONFIRMED,
+        title: 'Session confirmed',
+        message: `Your mentorship session has been scheduled.`,
+        referenceId: createdBooking.id,
+        referenceType: 'booking',
+      });
+
       /* Fetch mentor + student emails */
 
       const mentorResult = await trx.execute(
@@ -276,7 +299,7 @@ FOR UPDATE
 
         /* Create Google Meet */
 
-        const meeting = await this.googleCalendarService.createMeeting(
+        meeting = await this.googleCalendarService.createMeeting(
           slot.slotStartDateTime,
           slot.slotEndDateTime,
           mentorEmail,
@@ -356,6 +379,24 @@ FOR UPDATE
         } as Partial<typeof zuvyMentorSlotBooking.$inferInsert>)
         .where(eq(zuvyMentorSlotBooking.id, bookingId));
 
+      await this.notificationService.createNotification({
+        userId: booking.studentUserId,
+        type: NotificationType.BOOKING_CANCELLED,
+        title: 'Session cancelled',
+        message: `Your mentorship session was cancelled.`,
+        referenceId: bookingId,
+        referenceType: 'booking',
+      });
+
+      await this.notificationService.createNotification({
+        userId: booking.mentorUserId,
+        type: NotificationType.BOOKING_CANCELLED,
+        title: 'Session cancelled',
+        message: `A mentorship session was cancelled.`,
+        referenceId: bookingId,
+        referenceType: 'booking',
+      });
+
       const [mentorProfile] = await trx
         .select()
         .from(zuvyMentorSlotManagement)
@@ -390,6 +431,24 @@ FOR UPDATE
       throw new BadRequestException(
         'Reschedule reason must be at least 10 characters.',
       );
+
+    const [booking] = await db
+      .select()
+      .from(zuvyMentorSlotBooking)
+      .where(eq(zuvyMentorSlotBooking.id, bookingId))
+      .limit(1);
+
+    if (!booking) {
+      throw new NotFoundException('Booking not found.');
+    }
+    await this.notificationService.createNotification({
+      userId: booking.mentorUserId,
+      type: NotificationType.RESCHEDULE_REQUEST,
+      title: 'Reschedule request',
+      message: 'A student requested to reschedule the session.',
+      referenceId: bookingId,
+      referenceType: 'booking',
+    });
 
     return db
       .update(zuvyMentorSlotBooking)
@@ -543,6 +602,15 @@ FOR UPDATE
         } as Partial<typeof zuvyMentorSlotBooking.$inferInsert>)
         .where(eq(zuvyMentorSlotBooking.id, bookingId));
 
+      await this.notificationService.createNotification({
+        userId: booking.studentUserId,
+        type: NotificationType.RESCHEDULE_ACCEPTED,
+        title: 'Reschedule accepted',
+        message: 'Your session reschedule request was accepted.',
+        referenceId: bookingId,
+        referenceType: 'booking',
+      });
+
       /* Update Google meeting time */
 
       if (booking.googleEventId) {
@@ -598,6 +666,15 @@ FOR UPDATE
         sessionLifecycleState: 'SCHEDULED',
       } as Partial<typeof zuvyMentorSlotBooking.$inferInsert>)
       .where(eq(zuvyMentorSlotBooking.id, bookingId));
+
+    await this.notificationService.createNotification({
+      userId: booking.studentUserId,
+      type: NotificationType.RESCHEDULE_DECLINED,
+      title: 'Reschedule declined',
+      message: 'Your session reschedule request was declined.',
+      referenceId: bookingId,
+      referenceType: 'booking',
+    });
 
     return { message: 'Reschedule declined.' };
   }

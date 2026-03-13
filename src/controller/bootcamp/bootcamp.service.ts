@@ -2047,6 +2047,7 @@ export class BootcampService {
           bootcampId: zuvySessions.bootcampId,
           batchId: zuvySessions.batchId,
           meetingId: zuvySessions.meetingId,
+          title: zuvySessions.title,
         })
         .from(zuvySessions)
         .where(
@@ -2195,11 +2196,23 @@ export class BootcampService {
           ),
         );
 
+      const bootcampRes = await db
+        .select({ name: zuvyBootcamps.name })
+        .from(zuvyBootcamps)
+        .where(eq(zuvyBootcamps.id, bootcampId))
+        .limit(1);
+      const bootcampName = bootcampRes[0]?.name || '';
+      const sessionTitle = session.title || '';
+      const studentName = user[0]?.name || user[0]?.email || '';
+      const descriptionSuffix = `for a student name "${studentName}" for the bootcamp "${bootcampName}"`;
+
       return {
         status: 'success',
         message: `Attendance marked as ${status} successfully`,
         code: 200,
         before: { status: previousStatus ?? 'none' },
+        sessionTitle,
+        descriptionSuffix,
         data: {
           userId,
           sessionId,

@@ -33,6 +33,7 @@ export class GoogleController {
   @Public()
   @Get('callback')
   async callback(@Query('code') code: string, @Query('state') state: string) {
+    console.log('Google callback triggered', { code, state });
     return this.googleService.handleCallback(code, state);
   }
 }

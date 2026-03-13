@@ -445,11 +445,18 @@ export class ContentService {
         }
       }
 
+      const courseRes = await db
+        .select({ name: zuvyBootcamps.name })
+        .from(zuvyBootcamps)
+        .where(eq(zuvyBootcamps.id, bootcampId))
+        .limit(1);
+      const courseName = courseRes[0]?.name || '';
       return {
         status: 'success',
         message: 'Chapter created successfully for this module',
         code: 200,
         module: chapter,
+        courseName,
       };
     } catch (err) {
       Logger.error({ err });
@@ -1305,23 +1312,23 @@ export class ContentService {
 
       const newModule = updatedModule[0] || null;
 
-      // Fetch course name using bootcampId
-      let courseName = '';
-      if (newModule && newModule.bootcampId) {
-        const courseRes = await db
-          .select({ name: zuvyBootcamps.name })
-          .from(zuvyBootcamps)
-          .where(eq(zuvyBootcamps.id, newModule.bootcampId))
-          .limit(1);
-        courseName = courseRes[0]?.name || '';
-      }
-
+      const courseRes = await db
+        .select({ name: zuvyBootcamps.name })
+        .from(zuvyBootcamps)
+        .where(eq(zuvyBootcamps.id, bootcampId))
+        .limit(1);
+      const courseName = courseRes[0]?.name || '';
+      const descriptionSuffix = courseName
+        ? `for class name ${courseName}`
+        : '';
       return {
         message: 'Modified successfully',
         data: {
           ...newModule,
           courseName,
+          descriptionSuffix,
         },
+        descriptionSuffix,
       };
     } catch (err) {
       throw err;
@@ -1553,10 +1560,21 @@ export class ContentService {
         .from(zuvyModuleChapter)
         .where(eq(zuvyModuleChapter.id, chapterId));
 
+      const courseRes = await db
+        .select({ name: zuvyBootcamps.name })
+        .from(zuvyBootcamps)
+        .where(eq(zuvyBootcamps.id, moduleInfo[0].bootcampId))
+        .limit(1);
+      const courseName = courseRes[0]?.name || '';
+      const descriptionSuffix = courseName
+        ? `for class name ${courseName}`
+        : '';
+
       return {
         message: 'Modified successfully',
         chapter: updatedChapter,
         bootcampId: moduleInfo[0].bootcampId,
+        descriptionSuffix,
       };
     } catch (err) {
       throw err;

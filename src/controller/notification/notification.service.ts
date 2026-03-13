@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { db } from '../../db';
 import { zuvyNotifications } from '../../../drizzle/schema';
-import { eq } from 'drizzle-orm';
+import { eq, desc } from 'drizzle-orm';
 
 @Injectable()
 export class NotificationService {
@@ -36,6 +36,6 @@ export class NotificationService {
       .select()
       .from(zuvyNotifications)
       .where(eq(zuvyNotifications.userId, userId))
-      .orderBy(zuvyNotifications.createdAt);
+      .orderBy(desc(zuvyNotifications.createdAt));
   }
 }
