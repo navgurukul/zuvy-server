@@ -232,7 +232,11 @@ export class ContentController {
     resourceType: 'chapter',
     permissionName: 'createChapter',
     getResourceName: (result) => {
-      return result?.module?.[0]?.title || 'Chapter';
+      const chapterTitle = result?.module?.[0]?.title || 'Chapter';
+      const courseName = result?.courseName || '';
+      return courseName
+        ? `${chapterTitle} for course name ${courseName}`
+        : chapterTitle;
     },
   })
   async createChapter(@Body() chapterData: CreateChapterDto) {
@@ -394,16 +398,10 @@ export class ContentController {
   @TrackAction({
     action: 'edit_module',
     resourceType: 'module',
+    displayType: 'chapter',
     permissionName: 'editModule',
     getResourceName: (result) => {
-      const moduleName = result?.data?.name || result?.module?.name || 'Module';
-      const batchName = result?.data?.batchName || result?.batchName || '';
-      let courseName = result?.data?.courseName || result?.courseName || '';
-      if (!courseName) courseName = 'Unknown';
-      let desc = moduleName;
-      if (batchName) desc += ` for Batch ${batchName}`;
-      desc += ` for course name ${courseName}`;
-      return desc;
+      return result?.data?.name || result?.module?.name || 'Module';
     },
   })
   async reOrderModules(

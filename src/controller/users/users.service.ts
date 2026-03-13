@@ -351,7 +351,7 @@ export class UsersService {
       let defaultPermissions: string[] = [];
 
       // ✅ Assign view/create for all resources only if role is 'admin'
-      if (roleName.toLowerCase() === 'admin') {
+      if (roleName?.toLowerCase() === 'admin') {
         for (const resource of Object.values(ResourceList)) {
           defaultPermissions.push(resource.read, resource.create);
         }
@@ -440,6 +440,15 @@ export class UsersService {
       }
 
       const roleCheck = await this.roleCheck(roleId);
+
+      if ((roleCheck as any).status === 'error') {
+        return {
+          status: 'error',
+          code: 404,
+          message: 'Role not found',
+          data: null,
+        };
+      }
 
       const existing = await db.execute(
         sql`SELECT role_id FROM main.zuvy_user_roles_assigned WHERE user_id = ${userId} AND organization_id = ${orgId} LIMIT 1`,

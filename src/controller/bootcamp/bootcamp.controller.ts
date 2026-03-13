@@ -593,10 +593,9 @@ export class BootcampController {
   @TrackAction({
     action: 'mark_attendance',
     resourceType: 'bootcamp',
+    displayType: 'attendance for session',
     permissionName: 'editStudent',
-    getResourceName: (result) => {
-      return result?.data?.userName || result?.data?.userEmail || 'User';
-    },
+    getResourceName: (result) => result?.sessionTitle || 'Session',
   })
   async markStudentAttendance(
     @Param('bootcamp_id') bootcamp_id: number,
