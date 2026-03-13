@@ -298,14 +298,20 @@ FOR UPDATE
         }
 
         /* Create Google Meet */
-
-        meeting = await this.googleCalendarService.createMeeting(
-          slot.slotStartDateTime,
-          slot.slotEndDateTime,
-          mentorEmail,
-          studentEmail,
-          refreshToken,
-        );
+        try {
+          meeting = await this.googleCalendarService.createMeeting(
+            slot.slotStartDateTime,
+            slot.slotEndDateTime,
+            mentorEmail,
+            studentEmail,
+            refreshToken,
+          );
+        } catch (error) {
+          console.error('Error creating Google Meet:', error);
+          throw new BadRequestException(
+            'Failed to create Google Meet session.',
+          );
+        }
       }
       /* Save meeting info */
 
