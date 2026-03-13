@@ -274,6 +274,7 @@ export class TrackActionInterceptor implements NestInterceptor {
                     targetUser,
                     actualResult,
                     staticDisplayType,
+                    allParamsFull,
                   );
                 }
 
@@ -480,6 +481,7 @@ export class TrackActionInterceptor implements NestInterceptor {
     targetUser: { status?: string; name?: string; email?: string } | null,
     _result: any,
     staticDisplayType?: string,
+    _params?: any,
   ): string {
     const actionVerb = action.split('_')[0].toLowerCase();
     const pastTense = this.toPastTense(actionVerb);
@@ -491,7 +493,12 @@ export class TrackActionInterceptor implements NestInterceptor {
       ? `${actorName} ${pastTense} ${displayType}`
       : `${actorName} ${pastTense}`;
     if (resourceName) desc += ` "${resourceName}"`;
-    if (_result?.descriptionSuffix) desc += ` ${_result.descriptionSuffix}`;
+    const suffix =
+      _result?.descriptionSuffix ??
+      _result?.data?.descriptionSuffix ??
+      _params?.descriptionSuffix ??
+      '';
+    if (suffix) desc += ` ${suffix}`;
 
     // ── Target user — included generically whenever present ───────────────────
     if (targetUser) {

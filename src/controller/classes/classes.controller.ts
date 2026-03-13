@@ -14,7 +14,9 @@ import {
   Query,
   BadRequestException,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
+import { TrackActionInterceptor } from 'src/trackinglog/interceptors/track-action.interceptor';
 import { ClassesService } from './classes.service';
 import {
   ApiTags,
@@ -48,6 +50,7 @@ import {
   zuvyBatches,
   zuvyUserOrganizations,
   zuvyUserRolesAssigned,
+  zuvyBootcamps,
 } from '../../../drizzle/schema';
 import { eq, desc, and, sql, ilike } from 'drizzle-orm';
 
@@ -57,6 +60,7 @@ let configUser = { id: process.env.ID, email: process.env.TEAM_EMAIL };
 @Controller('classes')
 @ApiTags('classes')
 @UseGuards(JwtAuthGuard)
+@UseInterceptors(TrackActionInterceptor)
 @ApiBearerAuth('JWT-auth')
 @UsePipes(
   new ValidationPipe({
@@ -145,6 +149,7 @@ export class ClassesController {
   @TrackAction({
     action: 'create_classes',
     resourceType: 'class',
+    displayType: 'class name',
     permissionName: 'createClass',
     getResourceName: (result) => {
       return (
@@ -395,12 +400,11 @@ export class ClassesController {
   @TrackAction({
     action: 'create_chapter',
     resourceType: 'chapter',
+    displayType: 'a chapter for existing live classes as chapters to a module',
     permissionName: 'createChapter',
-    getResourceName: (result) => {
-      // Result can be SuccessResponse instance or direct service response
+    getResourceName: (result, params) => {
       const chapters = result?.data?.chapters || result?.chapters;
       if (chapters?.length) {
-        // If multiple chapters, show titles separated by comma
         const titles = chapters
           .map((ch) => ch.title)
           .filter((t) => t)
@@ -424,6 +428,9 @@ export class ClassesController {
       if (err) {
         return ErrorResponse.BadRequestException(err.message).send(res);
       }
+      req['trackingData'] = {
+        descriptionSuffix: success.descriptionSuffix || '',
+      };
       return new SuccessResponse(
         success.message,
         success.statusCode,
@@ -462,9 +469,15 @@ export class ClassesController {
   @TrackAction({
     action: 'edit_class',
     resourceType: 'class',
+    displayType: 'class details for',
     permissionName: 'editClass',
     getResourceName: (result) => {
-      return result?.data?.title || result?.title || 'Session';
+      return (
+        result?.data?.title ||
+        result?.before?.title ||
+        result?.title ||
+        'Session'
+      );
     },
   })
   async updateSession(
@@ -493,10 +506,10 @@ export class ClassesController {
   @TrackAction({
     action: 'delete_class',
     resourceType: 'class',
+    displayType: 'session',
     permissionName: 'deleteClass',
     getResourceName: (result) => {
-      const title = result?.sessionTitle;
-      return title ? `"${title}"` : 'Session';
+      return result?.sessionTitle || 'Session';
     },
   })
   async deleteSession(
@@ -641,9 +654,14 @@ export class ClassesController {
   @TrackAction({
     action: 'merge_class',
     resourceType: 'class',
+    displayType: 'two classs',
     permissionName: 'editClass',
-    getResourceName: (result) =>
-      result?.data?.title || result?.data?.topic || 'Class',
+    getResourceName: (result) => {
+      const parent = result?.data?.parentSession?.title || '';
+      const child = result?.data?.childSession?.title || '';
+      if (parent && child) return `${parent} & ${child}`;
+      return parent || child || 'Class';
+    },
   })
   async mergeClasses(@Body() mergeData: MergeClassesDto, @Req() req) {
     const userInfo = {
@@ -681,19 +699,30 @@ export class ClassesController {
     description:
       'Triggers a background process to migrate attendance records from the old JSON format to the new normalized table for all completed classes within a given bootcamp.',
   })
-  @ApiBearerAuth('JWT-auth') // Protect the endpoint
+  @ApiBearerAuth('JWT-auth')
+  @TrackAction({
+    action: 'migrate_attendance',
+    resourceType: 'class',
+    displayType: 'old attendance data for a specific bootcamp name',
+    permissionName: 'editClass',
+    getResourceName: (result) => result?.bootcampName || 'Bootcamp',
+  })
   async migrateAttendanceByBootcamp(
     @Param('bootcampId') bootcampId: number,
   ): Promise<object> {
-    // We don't await the service call here.
-    // This allows the server to respond immediately while the migration
-    // runs as a background task.
+    const courseRes = await db
+      .select({ name: zuvyBootcamps.name })
+      .from(zuvyBootcamps)
+      .where(eq(zuvyBootcamps.id, bootcampId))
+      .limit(1);
+    const bootcampName = courseRes[0]?.name || '';
+
     this.classesService.migrateCompletedAttendancesByBootcamp(bootcampId);
 
-    // Return an immediate success response to the client
     return {
       statusCode: 200,
       message: `Attendance migration started for bootcampId: ${bootcampId}. This process will run in the background.`,
+      bootcampName,
     };
   }
 }

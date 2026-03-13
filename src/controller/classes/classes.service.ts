@@ -599,10 +599,21 @@ export class ClassesService {
         throw new Error(saveResult.message);
       }
 
+      const courseRes = await db
+        .select({ name: zuvyBootcamps.name })
+        .from(zuvyBootcamps)
+        .where(eq(zuvyBootcamps.id, eventDetails.bootcampId))
+        .limit(1);
+      const courseName = courseRes[0]?.name || '';
+      const descriptionSuffix = courseName
+        ? `for course name ${courseName}`
+        : '';
+
       return {
         status: 'success',
         message: 'Zoom session created successfully',
         data: saveResult.data,
+        descriptionSuffix,
       };
     } catch (error) {
       this.logger.error(`Error creating Zoom session: ${error.message}`);
@@ -694,10 +705,21 @@ export class ClassesService {
         throw new Error(saveResult.message);
       }
 
+      const courseRes = await db
+        .select({ name: zuvyBootcamps.name })
+        .from(zuvyBootcamps)
+        .where(eq(zuvyBootcamps.id, eventDetails.bootcampId))
+        .limit(1);
+      const courseName = courseRes[0]?.name || '';
+      const descriptionSuffix = courseName
+        ? `for course name ${courseName}`
+        : '';
+
       return {
         status: 'success',
         message: 'Google Meet session created successfully',
         data: saveResult.data,
+        descriptionSuffix,
       };
     } catch (error) {
       this.logger.error(`Error creating Google Meet session: ${error.message}`);
@@ -2111,16 +2133,24 @@ export class ClassesService {
         }
       }
 
+      const courseRes = await db
+        .select({ name: zuvyBootcamps.name })
+        .from(zuvyBootcamps)
+        .where(eq(zuvyBootcamps.id, moduleInfo[0].bootcampId))
+        .limit(1);
+      const courseName = courseRes[0]?.name || '';
+      const descriptionSuffix = courseName
+        ? `for course name ${courseName}`
+        : '';
+
       return [
         null,
         {
           status: 'success',
           message: 'Live classes added as chapters successfully',
           code: 200,
-          data: {
-            chapters,
-            totalAdded: chapters.length,
-          },
+          data: { chapters, totalAdded: chapters.length },
+          descriptionSuffix,
         },
       ];
     } catch (error) {
@@ -2835,6 +2865,16 @@ export class ClassesService {
         }
       }
 
+      const courseRes = await db
+        .select({ name: zuvyBootcamps.name })
+        .from(zuvyBootcamps)
+        .where(eq(zuvyBootcamps.id, session.bootcampId))
+        .limit(1);
+      const courseName = courseRes[0]?.name || '';
+      const descriptionSuffix = courseName
+        ? `from course name ${courseName}`
+        : '';
+
       return {
         success: true,
         data: responseData,
@@ -2847,6 +2887,7 @@ export class ClassesService {
           secondBatchId: session.secondBatchId,
         },
         message: 'Session updated successfully',
+        descriptionSuffix,
       };
     } catch (error) {
       this.logger.error(
@@ -3031,6 +3072,13 @@ export class ClassesService {
         }
       }
 
+      const courseRes = await db
+        .select({ name: zuvyBootcamps.name })
+        .from(zuvyBootcamps)
+        .where(eq(zuvyBootcamps.id, sessionData.bootcampId))
+        .limit(1);
+      const courseName = courseRes[0]?.name || '';
+
       return {
         success: true,
         message: chapterDeleted
@@ -3039,6 +3087,9 @@ export class ClassesService {
         sessionTitle: sessionData.title,
         sessionId: sessionId,
         bootcampId: sessionData.bootcampId || null,
+        descriptionSuffix: courseName
+          ? `from the course name ${courseName}`
+          : '',
       };
     } catch (error) {
       this.logger.error(
@@ -4192,16 +4243,18 @@ export class ClassesService {
             id: parentSessionData.id,
             title: parentSessionData.title,
             platform: parentSessionData.isZoomMeet ? 'zoom' : 'google_meet',
-            status: 'active', // Parent session becomes/remains the main session
+            status: 'active',
           },
           childSession: {
             id: childSessionData.id,
             title: childSessionData.title,
             batchId: childSessionData.batchId,
-            status: 'merged', // Child session is marked as merged
+            status: 'merged',
           },
           redirectUrl: redirectMeetingUrl,
         },
+        descriptionSuffix:
+          'combines students from both sessions into parent session',
       };
     } catch (error) {
       this.logger.error(`Error merging classes: ${error.message}`);
