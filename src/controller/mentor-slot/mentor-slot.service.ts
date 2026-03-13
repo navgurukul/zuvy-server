@@ -298,14 +298,20 @@ FOR UPDATE
         }
 
         /* Create Google Meet */
-
-        meeting = await this.googleCalendarService.createMeeting(
-          slot.slotStartDateTime,
-          slot.slotEndDateTime,
-          mentorEmail,
-          studentEmail,
-          refreshToken,
-        );
+        try {
+          meeting = await this.googleCalendarService.createMeeting(
+            slot.slotStartDateTime,
+            slot.slotEndDateTime,
+            mentorEmail,
+            studentEmail,
+            refreshToken,
+          );
+        } catch (error) {
+          console.error('Error creating Google Meet:', error);
+          throw new BadRequestException(
+            'Failed to create Google Meet session.',
+          );
+        }
       }
       /* Save meeting info */
 
@@ -694,6 +700,29 @@ FOR UPDATE
     if (start.getTime() <= Date.now()) {
       throw new BadRequestException('Cannot create past slot.');
     }
+
+    /* ================================
+        GOOGLE CALENDAR CONFLICT CHECK
+     ================================= */
+
+    if (mentorProfile.googleRefreshToken) {
+      const hasConflict =
+        await this.googleCalendarService.checkCalendarConflict(
+          start,
+          end,
+          mentorProfile.googleRefreshToken,
+        );
+
+      if (hasConflict) {
+        throw new BadRequestException(
+          'You already have a Google Calendar event during this time.',
+        );
+      }
+    }
+
+    /* ================================
+       PLATFORM SLOT OVERLAP CHECK
+    ================================= */
 
     const overlap = await db
       .select()

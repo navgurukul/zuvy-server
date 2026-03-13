@@ -34,10 +34,11 @@ export class GoogleService {
     const { tokens } = await this.oauthClient.getToken(code);
 
     await db.execute(sql`
-      UPDATE zuvy_mentor_slot_management
-      SET google_refresh_token = ${tokens.refresh_token}
-      WHERE mentor_user_id = ${BigInt(userId)}
-    `);
+  UPDATE zuvy_mentor_slot_management
+  SET google_refresh_token =
+      COALESCE(${tokens.refresh_token}, google_refresh_token)
+  WHERE mentor_user_id = ${BigInt(userId)}
+`);
 
     return {
       message: 'Google Calendar connected successfully',
