@@ -137,9 +137,10 @@ export class UsersController {
   @TrackAction({
     action: 'create_role',
     resourceType: 'role',
+    displayType: 'a new user role for',
     permissionName: 'createRole',
     getResourceName: (result, params) =>
-      params?.name || result?.data?.name || 'Role',
+      params?.email || result?.data?.email || result?.data?.name || 'User',
   })
   async createUserRole(
     @Body() createUserRoleDto: CreateUserRoleDto,
@@ -219,6 +220,7 @@ export class UsersController {
   @TrackAction({
     action: 'assign_role',
     resourceType: 'role',
+    displayType: 'a role to a user name',
     permissionName: 'editUser',
     getResourceName: (result) => result?.userEmail || 'user',
   })
