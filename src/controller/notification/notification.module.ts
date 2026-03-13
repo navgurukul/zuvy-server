@@ -8,4 +8,4 @@ import { NotificationJob } from './notification.job';
   providers: [NotificationService, NotificationJob],
   exports: [NotificationService],
 })
-export class NotificationModule {}
+export class NewNotificationModule {}
