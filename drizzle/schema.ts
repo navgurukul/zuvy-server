@@ -3033,54 +3033,6 @@ export const zuvyAssessmentReattemptRelation = relations(zuvyAssessmentReattempt
   })
 }))
 
-export const zuvyLearnerInformation = main.table(
-  'zuvy_learner_information',
-  {
-    id: serial('id').primaryKey().notNull(),
-    userId: bigint('user_id', { mode: 'number' })
-      .notNull()
-      .references(() => users.id, {
-        onDelete: 'cascade',
-        onUpdate: 'cascade',
-      }),
-    // firstName: varchar('first_name', { length: 100 }),
-    // lastName: varchar('last_name', { length: 100 }),
-    // fullName: varchar('full_name', { length: 255 }).notNull(),
-    // email: varchar('email', { length: 255 }).notNull(),
-    // phoneNumber: varchar('phone_number', { length: 20 }).notNull(),
-    collegeName: varchar('college_name', { length: 255 }),
-    otherCollegeName: varchar('other_college_name', { length: 100 }),
-    degreeProgram: varchar('degree_program', { length: 100 }),
-    branchSpecialisation: varchar('branch_specialisation', { length: 100 }),
-    yearOfStudy: learnerYearOfStudy('year_of_study'),
-    expectedGraduationMonth: integer('expected_graduation_month'),
-    expectedGraduationYear: integer('expected_graduation_year'),
-    currentStatus: learnerCurrentStatus('current_status'),
-    createdAt: timestamp('created_at', {
-      withTimezone: true,
-      mode: 'string',
-    })
-      .defaultNow()
-      .notNull(),
-    updatedAt: timestamp('updated_at', {
-      withTimezone: true,
-      mode: 'string',
-    })
-      .defaultNow()
-      .notNull(),
-  },
-);
-
-export const zuvyLearnerInformationRelation = relations(
-  zuvyLearnerInformation,
-  ({ one }) => ({
-    user: one(users, {
-      fields: [zuvyLearnerInformation.userId],
-      references: [users.id],
-    }),
-  }),
-);
-
 export const zuvyTechnicalSkills = main.table(
   'zuvy_learners_techinal_skills',
   {
@@ -3277,6 +3229,8 @@ export const zuvyLearnersCompleteProfile = main.table(
     internshipStipend: varchar('internship_stipend', { length: 50 }),
     fullTimeCtc: varchar('full_time_ctc', { length: 50 }),
     preferredContactMethods: jsonb('preferred_contact_methods').default([]),
+    resumeUrl: varchar('resume_url', { length: 1024 }),
+    originalFilename: varchar('original_filename', { length: 255 }),
 
     createdAt: timestamp('created_at', {
       withTimezone: true,

@@ -62,6 +62,8 @@ const zuvyLearnersCompleteProfileTable = learnerMainSchema.table(
     internshipStipend: varchar('internship_stipend', { length: 50 }),
     fullTimeCtc: varchar('full_time_ctc', { length: 50 }),
     preferredContactMethods: jsonb('preferred_contact_methods').default([]),
+    resumeUrl: varchar('resume_url', { length: 1024 }),
+    originalFilename: varchar('original_filename', { length: 255 }),
 
     createdAt: timestamp('created_at', {
       withTimezone: true,
@@ -153,6 +155,16 @@ CREATE TABLE IF NOT EXISTS main.zuvy_learners_complete_profile (
       sql.raw(`
 CREATE UNIQUE INDEX IF NOT EXISTS zuvy_learners_complete_profile_user_id_unique
 ON main.zuvy_learners_complete_profile (user_id);
+`),
+    );
+
+    await db.execute(
+      sql.raw(`
+ALTER TABLE IF EXISTS main.zuvy_learners_complete_profile
+ADD COLUMN IF NOT EXISTS resume_url VARCHAR(1024);
+
+ALTER TABLE IF EXISTS main.zuvy_learners_complete_profile
+ADD COLUMN IF NOT EXISTS original_filename VARCHAR(255);
 `),
     );
   }

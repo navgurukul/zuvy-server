@@ -325,6 +325,22 @@ export class ResumeResponseDto {
 
   @ApiProperty({ type: [String], example: ['B.Tech', 'M.Tech'] })
   education: string[];
+
+  @ApiProperty({
+    type: [Object],
+    example: [
+      {
+        title: 'E-commerce Platform',
+        description: 'Built full-stack app with auth and payment integration',
+        techStack: ['React', 'Node.js', 'PostgreSQL'],
+      },
+    ],
+  })
+  projects: {
+    title: string;
+    description?: string;
+    techStack?: string[];
+  }[];
 }
 
 // ─── COMPLETE PROFILE DTOs ─────────────────────────────────────────
