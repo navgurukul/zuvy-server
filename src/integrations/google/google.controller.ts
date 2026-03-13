@@ -1,8 +1,17 @@
-import { Controller, Get, Req, Res, Query, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Req,
+  Res,
+  Query,
+  UseGuards,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 import { GoogleService } from './google.service';
 import { Public } from 'src/auth/decorators/public.decorator';
+import * as jwt from 'jsonwebtoken';
 
 @ApiTags('Google Integration')
 @ApiBearerAuth('JWT-auth')
@@ -16,9 +25,15 @@ export class GoogleController {
   @Public()
   @Get('connect')
   async connect(@Query('token') token: string, @Res() res) {
-    const payload: any = JSON.parse(
-      Buffer.from(token.split('.')[1], 'base64').toString(),
-    );
+    if (!token) {
+      throw new UnauthorizedException('Token not found');
+    }
+
+    const payload: any = jwt.decode(token);
+
+    if (!payload) {
+      throw new UnauthorizedException('Invalid token');
+    }
 
     const userId = payload.sub;
 

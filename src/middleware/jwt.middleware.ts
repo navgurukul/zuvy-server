@@ -47,6 +47,9 @@ export class JwtMiddleware implements NestMiddleware {
       { path: '/classes/test-endpoint', method: 'GET' },
       { path: '/student/apply', method: 'POST' },
       { path: '/users/verify-token', method: 'POST' },
+      // GOOGLE OAUTH
+      { path: '/google/connect', method: 'GET' },
+      { path: '/google/callback', method: 'GET' },
       // Add more unrestricted routes here as needed
     ];
 

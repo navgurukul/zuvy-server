@@ -695,6 +695,29 @@ FOR UPDATE
       throw new BadRequestException('Cannot create past slot.');
     }
 
+    /* ================================
+        GOOGLE CALENDAR CONFLICT CHECK
+     ================================= */
+
+    if (mentorProfile.googleRefreshToken) {
+      const hasConflict =
+        await this.googleCalendarService.checkCalendarConflict(
+          start,
+          end,
+          mentorProfile.googleRefreshToken,
+        );
+
+      if (hasConflict) {
+        throw new BadRequestException(
+          'You already have a Google Calendar event during this time.',
+        );
+      }
+    }
+
+    /* ================================
+       PLATFORM SLOT OVERLAP CHECK
+    ================================= */
+
     const overlap = await db
       .select()
       .from(zuvyMentorSlotAvailability)

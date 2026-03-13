@@ -35,8 +35,14 @@ export class GoogleCalendarService {
       requestBody: {
         summary: 'Mentorship Session',
 
-        start: { dateTime: start.toISOString() },
-        end: { dateTime: end.toISOString() },
+        start: {
+          dateTime: start.toISOString(),
+          timeZone: 'UTC',
+        },
+        end: {
+          dateTime: end.toISOString(),
+          timeZone: 'UTC',
+        },
 
         attendees: [{ email: mentorEmail }, { email: studentEmail }],
 
@@ -92,38 +98,41 @@ export class GoogleCalendarService {
       calendarId: 'primary',
       eventId,
       requestBody: {
-        start: { dateTime: start.toISOString() },
-        end: { dateTime: end.toISOString() },
+        start: {
+          dateTime: start.toISOString(),
+          timeZone: 'UTC',
+        },
+        end: {
+          dateTime: end.toISOString(),
+          timeZone: 'UTC',
+        },
       },
     });
   }
 
   async checkCalendarConflict(start: Date, end: Date, refreshToken: string) {
-    const auth = new google.auth.OAuth2(
-      process.env.GOOGLE_CLIENT_ID,
-      process.env.GOOGLE_CLIENT_SECRET,
-      process.env.GOOGLE_REDIRECT_URI,
-    );
+    try {
+      const auth = this.createAuth(refreshToken);
 
-    auth.setCredentials({
-      refresh_token: refreshToken,
-    });
+      const calendar = google.calendar({
+        version: 'v3',
+        auth,
+      });
 
-    const calendar = google.calendar({
-      version: 'v3',
-      auth,
-    });
+      const response = await calendar.freebusy.query({
+        requestBody: {
+          timeMin: start.toISOString(),
+          timeMax: end.toISOString(),
+          items: [{ id: 'primary' }],
+        },
+      });
 
-    const response = await calendar.freebusy.query({
-      requestBody: {
-        timeMin: start.toISOString(),
-        timeMax: end.toISOString(),
-        items: [{ id: 'primary' }],
-      },
-    });
+      const busySlots = response.data.calendars?.primary?.busy ?? [];
 
-    const busySlots = response.data.calendars?.primary?.busy ?? [];
-
-    return busySlots.length > 0;
+      return busySlots.length > 0;
+    } catch (error) {
+      console.error('Google calendar conflict check failed:', error);
+      throw new Error('Unable to verify mentor calendar availability');
+    }
   }
 }
