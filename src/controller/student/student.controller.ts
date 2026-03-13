@@ -443,12 +443,24 @@ export class StudentController {
   }
 
   @Post('/enroll-course')
-  @ApiOperation({ summary: 'Enroll student in AI course' })
+  @ApiOperation({ summary: 'Enroll student in global course' })
   @ApiBearerAuth('JWT-auth')
-  async enrollAICourse(@Res() res: Response, @Req() req): Promise<any> {
+  @ApiQuery({
+    name: 'bootcampId',
+    type: Number,
+    required: false,
+    description:
+      'Optional global bootcamp ID. If omitted, defaults to Introduction to AI & Generative AI.',
+  })
+  async enrollAICourse(
+    @Res() res: Response,
+    @Req() req,
+    @Query('bootcampId') bootcampId?: number,
+  ): Promise<any> {
     try {
       const [err, success] = await this.studentService.enrollInAICourse(
         req.user[0].id,
+        bootcampId,
       );
       if (err) {
         return ErrorResponse.BadRequestException(err.message).send(res);

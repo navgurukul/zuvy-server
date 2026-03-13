@@ -95,6 +95,11 @@ export class StudentService {
   constructor(private ClassesService: ClassesService) {}
   private logger = new Logger(StudentService.name);
   private SCOPES = ['https://www.googleapis.com/auth/spreadsheets'];
+  private readonly GLOBAL_COURSE_NAMES = [
+    'Introduction to AI & Generative AI',
+    'AI Learning Series - NavGurukul',
+  ];
+  private readonly GLOBAL_BATCH_NAME = 'First Batch';
 
   // Authenticate and return the JWT client to interact with Google Sheets API
   private async authorize(): Promise<any> {
@@ -182,40 +187,53 @@ export class StudentService {
 
   async fetchGlobalCourses(userId: number): Promise<any> {
     try {
-      const bootcampName = 'Introduction to AI & Generative AI';
-      const bootcamp = await db
+      const globalBootcamps = await db
         .select()
         .from(zuvyBootcamps)
-        .where(eq(zuvyBootcamps.name, bootcampName))
-        .limit(1);
+        .where(inArray(zuvyBootcamps.name, this.GLOBAL_COURSE_NAMES));
 
-      if (bootcamp.length === 0) {
+      if (globalBootcamps.length === 0) {
         return [
-          { status: 'error', message: 'Course not found', code: 404 },
+          { status: 'error', message: 'Courses not found', code: 404 },
           null,
         ];
       }
 
-      const enrollment = await db
+      const globalBootcampIds = globalBootcamps.map((course) =>
+        Number(course.id),
+      );
+
+      const enrollments = await db
         .select()
         .from(zuvyBatchEnrollments)
         .where(
           and(
             eq(zuvyBatchEnrollments.userId, BigInt(userId)),
-            eq(zuvyBatchEnrollments.bootcampId, bootcamp[0].id),
+            inArray(zuvyBatchEnrollments.bootcampId, globalBootcampIds),
           ),
-        )
-        .limit(1);
+        );
 
-      if (enrollment.length > 0) {
-        return [null, {}];
+      const enrolledBootcampIds = new Set(
+        enrollments.map((item) => Number(item.bootcampId)),
+      );
+
+      const availableBootcamps = globalBootcamps.filter(
+        (course) => !enrolledBootcampIds.has(Number(course.id)),
+      );
+
+      if (availableBootcamps.length === 0) {
+        return [null, []];
       }
 
-      const batch = await db.query.zuvyBatches.findFirst({
-        where: (zuvyBatches, { and, eq }) =>
+      const availableBootcampIds = availableBootcamps.map((course) =>
+        Number(course.id),
+      );
+
+      const batches = await db.query.zuvyBatches.findMany({
+        where: (zuvyBatches, { and, eq, inArray }) =>
           and(
-            eq(zuvyBatches.bootcampId, bootcamp[0].id),
-            eq(zuvyBatches.name, 'First Batch'),
+            inArray(zuvyBatches.bootcampId, availableBootcampIds),
+            eq(zuvyBatches.name, this.GLOBAL_BATCH_NAME),
           ),
         with: {
           instructorDetails: {
@@ -228,37 +246,48 @@ export class StudentService {
         },
       });
 
-      // Enrichment to match enrollData format
-      const enrichedBootcamp = {
-        ...bootcamp[0],
-        id: Number(bootcamp[0].id),
-        batchId: batch?.id ? Number(batch.id) : null,
-        batchName: batch?.name || null,
-        progress: 0,
-        instructorDetails: batch?.instructorDetails
-          ? {
-              ...batch.instructorDetails,
-              id: Number(batch.instructorDetails.id),
-            }
-          : { name: 'Not Assigned', profilePicture: null },
-      };
+      const batchMap = new Map(
+        batches.map((item) => [Number(item.bootcampId), item]),
+      );
 
-      return [null, enrichedBootcamp];
+      const enrichedBootcamps = availableBootcamps.map((bootcamp) => {
+        const batch = batchMap.get(Number(bootcamp.id));
+
+        return {
+          ...bootcamp,
+          id: Number(bootcamp.id),
+          batchId: batch?.id ? Number(batch.id) : null,
+          batchName: batch?.name || null,
+          progress: 0,
+          instructorDetails: batch?.instructorDetails
+            ? {
+                ...batch.instructorDetails,
+                id: Number(batch.instructorDetails.id),
+              }
+            : { name: 'Not Assigned', profilePicture: null },
+        };
+      });
+
+      return [null, enrichedBootcamps];
     } catch (error) {
       log(`error: ${error.message}`);
       return [{ status: 'error', message: error.message, code: 500 }, null];
     }
   }
 
-  async enrollInAICourse(userId: number): Promise<any> {
+  async enrollInAICourse(userId: number, bootcampId?: number): Promise<any> {
     try {
-      const bootcampName = 'Introduction to AI & Generative AI';
-      const batchName = 'First Batch';
+      const bootcampCondition = bootcampId
+        ? and(
+            eq(zuvyBootcamps.id, bootcampId),
+            inArray(zuvyBootcamps.name, this.GLOBAL_COURSE_NAMES),
+          )
+        : eq(zuvyBootcamps.name, this.GLOBAL_COURSE_NAMES[0]);
 
       const bootcamp = await db
         .select()
         .from(zuvyBootcamps)
-        .where(eq(zuvyBootcamps.name, bootcampName))
+        .where(bootcampCondition)
         .limit(1);
 
       if (bootcamp.length === 0) {
@@ -274,7 +303,7 @@ export class StudentService {
         .where(
           and(
             eq(zuvyBatches.bootcampId, bootcamp[0].id),
-            eq(zuvyBatches.name, batchName),
+            eq(zuvyBatches.name, this.GLOBAL_BATCH_NAME),
           ),
         )
         .limit(1);
