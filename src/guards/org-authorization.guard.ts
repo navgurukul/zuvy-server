@@ -2,7 +2,7 @@ import {
   Injectable,
   CanActivate,
   ExecutionContext,
-  UnauthorizedException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { db } from '../db/index';
@@ -48,7 +48,7 @@ export class OrgAuthorizationGuard implements CanActivate {
 
     // Check 1: Compare request orgId against the user's JWT orgId
     if (userOrgId !== null && requestOrgId !== userOrgId) {
-      throw new UnauthorizedException(
+      throw new ForbiddenException(
         `Access denied: Your current session belongs to "${userOrgName}", but you are trying to access data of "${targetOrgName}"`,
       );
     }
@@ -67,7 +67,7 @@ export class OrgAuthorizationGuard implements CanActivate {
       .limit(1);
 
     if (membership.length === 0) {
-      throw new UnauthorizedException(
+      throw new ForbiddenException(
         `Access denied: You are not a member of "${targetOrgName}". You do not have permission to access its data.`,
       );
     }
