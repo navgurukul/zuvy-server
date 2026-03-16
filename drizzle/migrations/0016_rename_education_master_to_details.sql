@@ -1,0 +1,5 @@
+ALTER TABLE IF EXISTS main.zuvy_learner_education_master_data
+RENAME TO zuvy_learner_education_details;
+
+ALTER INDEX IF EXISTS main.zuvy_learner_education_master_data_category_name_unique
+RENAME TO zuvy_learner_education_details_category_name_unique;

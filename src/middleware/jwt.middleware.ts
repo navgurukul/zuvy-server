@@ -19,7 +19,7 @@ import {
 import { helperVariable } from 'src/constants/helper';
 import { AuthService } from '../auth/auth.service';
 import { Observable } from 'rxjs';
-let { GOOGLE_CLIENT_ID, GOOGLE_SECRET, GOOGLE_REDIRECT, JWT_SECRET_KEY } =
+let { GOOGLE_CLIENT_ID, GOOGLE_SECRET, GOOGLE_REDIRECT_URI, JWT_SECRET_KEY } =
   process.env;
 
 @Injectable()
@@ -47,6 +47,9 @@ export class JwtMiddleware implements NestMiddleware {
       { path: '/classes/test-endpoint', method: 'GET' },
       { path: '/student/apply', method: 'POST' },
       { path: '/users/verify-token', method: 'POST' },
+      // GOOGLE OAUTH
+      { path: '/google/connect', method: 'GET' },
+      { path: '/google/callback', method: 'GET' },
       // Add more unrestricted routes here as needed
     ];
 

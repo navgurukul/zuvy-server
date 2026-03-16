@@ -7,6 +7,7 @@ import {
   zuvyStudentAttendance,
   zuvyStudentAttendanceRecords,
   zuvySessions,
+  zuvyBootcamps,
 } from '../../../drizzle/schema';
 import { db } from '../../db/index';
 import { eq, ilike, inArray, or, sql, and } from 'drizzle-orm';
@@ -142,6 +143,14 @@ export class BatchesService {
       if (batch.endDate) batchValue.endDate = new Date(batch.endDate);
       if (batch.status) batchValue.status = batch.status;
 
+      // Fetch bootcamp name for audit log
+      const courseRes = await db
+        .select({ name: zuvyBootcamps.name })
+        .from(zuvyBootcamps)
+        .where(eq(zuvyBootcamps.id, batch.bootcampId))
+        .limit(1);
+      const bootcampName = courseRes[0]?.name || '';
+
       // If not assignAll: validate provided studentIds and enroll them
       if (!batch.assignAll) {
         if (
@@ -232,6 +241,7 @@ export class BatchesService {
             message: 'Batch created successfully',
             code: 200,
             batch: createdBatchWithStatus,
+            bootcampName,
           },
         ];
       }
@@ -275,6 +285,7 @@ export class BatchesService {
             message: 'Batch created successfully',
             code: 200,
             batch: createdBatchWithStatus,
+            bootcampName,
           },
         ];
       }
@@ -512,6 +523,13 @@ export class BatchesService {
             : 'Ongoing',
       } as any;
 
+      const courseRes = await db
+        .select({ name: zuvyBootcamps.name })
+        .from(zuvyBootcamps)
+        .where(eq(zuvyBootcamps.id, updated.bootcampId))
+        .limit(1);
+      const bootcampName = courseRes[0]?.name || '';
+
       return [
         null,
         {
@@ -519,6 +537,16 @@ export class BatchesService {
           message: 'Batch updated successfully',
           code: 200,
           batch: updatedResp,
+          bootcampName,
+          before: {
+            name: batchOld[0].name,
+            capEnrollment: batchOld[0].capEnrollment,
+            status: batchOld[0].status,
+            startDate: batchOld[0].startDate,
+            endDate: batchOld[0].endDate,
+            instructorId: batchOld[0].instructorId,
+          },
+          data: updatedResp,
         },
       ];
     } catch (e) {
@@ -529,6 +557,13 @@ export class BatchesService {
 
   async deleteBatch(id: number) {
     try {
+      // Fetch batch details before deletion for tracking log
+      const batchToDelete = await db
+        .select({ name: zuvyBatches.name, bootcampId: zuvyBatches.bootcampId })
+        .from(zuvyBatches)
+        .where(eq(zuvyBatches.id, id))
+        .limit(1);
+
       await db
         .update(zuvyBatchEnrollments)
         .set({ batchId: null })
@@ -557,9 +592,23 @@ export class BatchesService {
           null,
         ];
       }
+      const courseRes = await db
+        .select({ name: zuvyBootcamps.name })
+        .from(zuvyBootcamps)
+        .where(eq(zuvyBootcamps.id, batchToDelete[0]?.bootcampId))
+        .limit(1);
+      const bootcampName = courseRes[0]?.name || '';
+
       return [
         null,
-        { status: 'success', message: 'Batch deleted successfully', code: 200 },
+        {
+          status: 'success',
+          message: 'Batch deleted successfully',
+          code: 200,
+          batchName: batchToDelete[0]?.name || null,
+          bootcampId: batchToDelete[0]?.bootcampId || null,
+          descriptionSuffix: bootcampName ? `from course ${bootcampName}` : '',
+        },
       ];
     } catch (e) {
       log(`error: ${e.message}`);

@@ -199,12 +199,19 @@ export class ContentService {
         .insert(zuvyCourseModules)
         .values(moduleWithBootcamp)
         .returning();
+      const courseRes = await db
+        .select({ name: zuvyBootcamps.name })
+        .from(zuvyBootcamps)
+        .where(eq(zuvyBootcamps.id, bootcampId))
+        .limit(1);
+      const courseName = courseRes[0]?.name || '';
       if (moduleData.length > 0) {
         return {
           status: 'success',
           message: 'Module created successfully for this course',
           code: 200,
           module: moduleData,
+          courseName,
         };
       } else {
         return {
@@ -438,11 +445,18 @@ export class ContentService {
         }
       }
 
+      const courseRes = await db
+        .select({ name: zuvyBootcamps.name })
+        .from(zuvyBootcamps)
+        .where(eq(zuvyBootcamps.id, bootcampId))
+        .limit(1);
+      const courseName = courseRes[0]?.name || '';
       return {
         status: 'success',
         message: 'Chapter created successfully for this module',
         code: 200,
         module: chapter,
+        courseName,
       };
     } catch (err) {
       Logger.error({ err });
@@ -564,7 +578,11 @@ export class ContentService {
     }
   }
 
-  async getAllModuleByBootcampId(bootcampId: number, roleName: string[]) {
+  async getAllModuleByBootcampId(
+    bootcampId: number,
+    roleName: string[],
+    orgId?: number,
+  ) {
     const bootcampInfo = await db
       .select()
       .from(zuvyBootcamps)
@@ -624,6 +642,7 @@ export class ContentService {
       const grantedPermission = await this.rbacService.getAllPermissions(
         roleName,
         targetPermissions,
+        orgId,
       );
       return { modules, ...grantedPermission };
     } catch (err) {
@@ -632,7 +651,7 @@ export class ContentService {
     }
   }
 
-  async getAllChaptersOfModule(roleName, moduleId: number) {
+  async getAllChaptersOfModule(roleName, moduleId: number, orgId?: number) {
     try {
       const module = await db
         .select()
@@ -689,6 +708,7 @@ export class ContentService {
         await this.rbacAllocPermsService.getAllPermissions(
           roleName,
           targetPermissions,
+          orgId,
         );
       return {
         chapterWithTopic,
@@ -1234,6 +1254,9 @@ export class ContentService {
         throw new NotFoundException('Module not found or deleted!');
       }
 
+      // ── Snapshot BEFORE state for diff ────────────────────────────────
+      const oldModule = moduleInfo[0];
+
       if (reorderData.moduleDto == undefined) {
         const { newOrder } = reorderData.reOrderDto;
 
@@ -1279,8 +1302,33 @@ export class ContentService {
           .set(reorderData.moduleDto)
           .where(eq(zuvyCourseModules.id, moduleId));
       }
+
+      // Fetch updated module data
+      const updatedModule = await db
+        .select()
+        .from(zuvyCourseModules)
+        .where(eq(zuvyCourseModules.id, moduleId))
+        .limit(1);
+
+      const newModule = updatedModule[0] || null;
+
+      const courseRes = await db
+        .select({ name: zuvyBootcamps.name })
+        .from(zuvyBootcamps)
+        .where(eq(zuvyBootcamps.id, bootcampId))
+        .limit(1);
+      const courseName = courseRes[0]?.name || '';
+      const descriptionSuffix = courseName
+        ? `for class name ${courseName}`
+        : '';
       return {
         message: 'Modified successfully',
+        data: {
+          ...newModule,
+          courseName,
+          descriptionSuffix,
+        },
+        descriptionSuffix,
       };
     } catch (err) {
       throw err;
@@ -1294,6 +1342,13 @@ export class ContentService {
     try {
       let examples = [];
       let testCases = [];
+
+      const beforeRows = await db
+        .select()
+        .from(zuvyCodingQuestions)
+        .where(eq(zuvyCodingQuestions.id, questionId))
+        .limit(1);
+      const before = beforeRows[0] || null;
 
       if (codingProblem.examples) {
         for (let i = 0; i < codingProblem.examples.length; i++) {
@@ -1319,6 +1374,8 @@ export class ContentService {
           status: 'success',
           code: 200,
           message: 'Coding question has been updated successfully',
+          before,
+          data: updatedQuestion[0],
         };
       } else {
         return {
@@ -1498,8 +1555,26 @@ export class ContentService {
           .set(editData)
           .where(eq(zuvyModuleChapter.id, chapterId));
       }
+      const updatedChapter = await db
+        .select()
+        .from(zuvyModuleChapter)
+        .where(eq(zuvyModuleChapter.id, chapterId));
+
+      const courseRes = await db
+        .select({ name: zuvyBootcamps.name })
+        .from(zuvyBootcamps)
+        .where(eq(zuvyBootcamps.id, moduleInfo[0].bootcampId))
+        .limit(1);
+      const courseName = courseRes[0]?.name || '';
+      const descriptionSuffix = courseName
+        ? `for class name ${courseName}`
+        : '';
+
       return {
         message: 'Modified successfully',
+        chapter: updatedChapter,
+        bootcampId: moduleInfo[0].bootcampId,
+        descriptionSuffix,
       };
     } catch (err) {
       throw err;
@@ -1949,6 +2024,8 @@ export class ContentService {
         status: 'success',
         code: 200,
         message: 'Updated successfully',
+        before: { title: chapterInfo[0]?.title },
+        data: { title: assessmentBody.title || chapterInfo[0]?.title },
       };
     } catch (err) {
       throw err;
@@ -2129,6 +2206,15 @@ export class ContentService {
     }
     // 5. Delete the module itself
     let deletedModuleOrder = null;
+    let courseName = '';
+    try {
+      const courseRes = await db
+        .select({ name: zuvyBootcamps.name })
+        .from(zuvyBootcamps)
+        .where(eq(zuvyBootcamps.id, bootcampId))
+        .limit(1);
+      courseName = courseRes[0]?.name || '';
+    } catch (_) {}
     try {
       const deleted = await db
         .delete(zuvyCourseModules)
@@ -2152,6 +2238,8 @@ export class ContentService {
         status: 'success',
         message: 'Module and all related data deleted successfully',
         code: 200,
+        moduleName: deleted[0].name,
+        courseName,
       };
     } catch (error) {
       log(`error: ${error.message}`);
@@ -2304,6 +2392,7 @@ export class ContentService {
     limit: number,
     offSet: number,
     userId: bigint,
+    orgId?: number,
   ) {
     try {
       const where: SQL[] = [];
@@ -2389,6 +2478,7 @@ export class ContentService {
         const permissionsResult = await this.rbacService.getAllPermissions(
           roleName,
           targetPermissions,
+          orgId,
         );
         userPermissions = permissionsResult;
       } catch (permissionError) {
@@ -2419,6 +2509,7 @@ export class ContentService {
     limit: number,
     offSet: number,
     userId: bigint,
+    orgId?: number,
   ) {
     try {
       let conditions = [];
@@ -2520,6 +2611,7 @@ export class ContentService {
         const permissionsResult = await this.rbacService.getAllPermissions(
           roleName,
           targetPermissions,
+          orgId,
         );
         userPermissions = permissionsResult;
       } catch (permissionError) {
@@ -2541,6 +2633,14 @@ export class ContentService {
 
   async editQuizQuestion(quizUpdates: EditQuizBatchDto): Promise<any> {
     try {
+      // Snapshot before state for diff
+      const beforeRows = await db
+        .select()
+        .from(zuvyModuleQuiz)
+        .where(eq(zuvyModuleQuiz.id, quizUpdates.id))
+        .limit(1);
+      const before = beforeRows[0] || null;
+
       // Prepare an object to store updated data to return in response
       const resultData: any = {
         quizDetails: null,
@@ -2604,6 +2704,7 @@ export class ContentService {
           message: 'Quiz and variants have been updated successfully.',
           statusCode: STATUS_CODES.OK,
           data: resultData,
+          before,
         },
       ];
     } catch (err) {
@@ -2619,6 +2720,13 @@ export class ContentService {
     openEndedBody: UpdateOpenEndedDto,
   ) {
     try {
+      const beforeRows = await db
+        .select()
+        .from(zuvyOpenEndedQuestions)
+        .where(eq(zuvyOpenEndedQuestions.id, questionId))
+        .limit(1);
+      const before = beforeRows[0] || null;
+
       const updatedQuestion = await db
         .update(zuvyOpenEndedQuestions)
         .set(openEndedBody)
@@ -2629,6 +2737,8 @@ export class ContentService {
           status: 'success',
           code: 200,
           message: 'Open ended question has been updated successfully',
+          before,
+          data: updatedQuestion[0],
         };
       } else {
         return {
@@ -2758,6 +2868,12 @@ export class ContentService {
 
   async deleteOpenEndedQuestion(id: deleteQuestionDto) {
     try {
+      const firstQ = await db
+        .select({ question: zuvyOpenEndedQuestions.question })
+        .from(zuvyOpenEndedQuestions)
+        .where(sql`${zuvyOpenEndedQuestions.id} = ${id.questionIds[0]}`)
+        .limit(1);
+      const questionText = firstQ[0]?.question || '';
       const usedOpenEndedQuestions = await db
         .select()
         .from(zuvyOpenEndedQuestions)
@@ -2785,6 +2901,7 @@ export class ContentService {
             status: 'success',
             code: 200,
             message: `Open ended question which is used in other places like chapters and assessment cannot be deleted`,
+            questionText,
           };
         } else {
           return {
@@ -2803,6 +2920,7 @@ export class ContentService {
           status: 'success',
           code: 200,
           message: 'The open ended question has been deleted successfully',
+          questionText,
         };
       } else {
         return {
@@ -2975,6 +3093,7 @@ export class ContentService {
     limit: number,
     offset: number,
     userId: bigint,
+    orgId?: number,
   ) {
     try {
       let conditions = [];
@@ -3040,6 +3159,7 @@ export class ContentService {
         const permissionsResult = await this.rbacService.getAllPermissions(
           roleName,
           targetPermissions,
+          orgId,
         );
         userPermissions = permissionsResult;
       } catch (permissionError) {
@@ -4070,6 +4190,8 @@ export class ContentService {
         message: 'Form questions are updated successfully',
         results,
         updatedChapter,
+        before: { formQuestions: existingFormIds },
+        data: updatedChapter[0],
       };
     } catch (error) {
       throw error;
@@ -4233,6 +4355,8 @@ export class ContentService {
         message: 'Form questions are updated successfully',
         res1,
         res2,
+        before: { formQuestions: existingFormIds },
+        data: res2[0],
       };
     } catch (err) {
       throw err;
@@ -4407,6 +4531,35 @@ export class ContentService {
     try {
       let mainQuizIds: number[] = [];
       let variantDeletions: { id: number; quizId: number }[] = [];
+      let quizTitle = '';
+      const firstMainId = deleteDto.questionIds.find(
+        (q) => q.type === 'main',
+      )?.id;
+      const firstVariantId = deleteDto.questionIds.find(
+        (q) => q.type === 'variant',
+      )?.id;
+      if (firstMainId) {
+        const titleRes = await db
+          .select({ title: zuvyModuleQuiz.title })
+          .from(zuvyModuleQuiz)
+          .where(sql`${zuvyModuleQuiz.id} = ${firstMainId}`)
+          .limit(1);
+        quizTitle = titleRes[0]?.title || '';
+      } else if (firstVariantId) {
+        const variantRes = await db
+          .select({ quizId: zuvyModuleQuizVariants.quizId })
+          .from(zuvyModuleQuizVariants)
+          .where(sql`${zuvyModuleQuizVariants.id} = ${firstVariantId}`)
+          .limit(1);
+        if (variantRes[0]?.quizId) {
+          const titleRes = await db
+            .select({ title: zuvyModuleQuiz.title })
+            .from(zuvyModuleQuiz)
+            .where(sql`${zuvyModuleQuiz.id} = ${variantRes[0].quizId}`)
+            .limit(1);
+          quizTitle = titleRes[0]?.title || '';
+        }
+      }
 
       // Process deleteDto based on its type
       for (const item of deleteDto.questionIds) {
@@ -4535,6 +4688,7 @@ export class ContentService {
           message:
             'Selected quizzes and/or variants have been deleted and renumbered successfully where applicable.',
           statusCode: STATUS_CODES.OK,
+          quizTitle,
         },
       ];
     } catch (error) {

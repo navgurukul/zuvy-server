@@ -71,6 +71,22 @@ export const questionType = pgEnum('questionType', [
   'Date',
   'Time',
 ]);
+export const learnerYearOfStudy = pgEnum('learner_year_of_study', [
+  '1st',
+  '2nd',
+  '3rd',
+  '4th',
+]);
+export const learnerCurrentStatus = pgEnum('learner_current_status', [
+  'Learning',
+  'Looking for Job',
+  'Working',
+]);
+export const learnerScoreType = pgEnum('learner_score_type', ['CGPA', '%']);
+export const learnerProjectType = pgEnum('learner_project_type', [
+  'Solo',
+  'Team',
+]);
 import { helperVariable } from '../src/constants/helper';
 import { table } from 'console';
 let schName;
@@ -2431,6 +2447,9 @@ export const zuvyBootcamps = main.table('zuvy_bootcamps', {
   startTime: timestamp('start_time', { withTimezone: true, mode: 'string' }),
   duration: integer('duration'),
   language: text('language'),
+  organizationId: integer('organization_id').notNull().references(() => zuvyOrganizations.id, {
+    onDelete: 'cascade'
+  }),
   createdAt: timestamp('created_at', {
     withTimezone: true,
     mode: 'string',
@@ -3017,6 +3036,281 @@ export const zuvyAssessmentReattemptRelation = relations(zuvyAssessmentReattempt
     references: [users.id],
   })
 }))
+
+export const zuvyLearnerInformation = main.table(
+  'zuvy_learner_information',
+  {
+    id: serial('id').primaryKey().notNull(),
+    userId: bigint('user_id', { mode: 'number' })
+      .notNull()
+      .references(() => users.id, {
+        onDelete: 'cascade',
+        onUpdate: 'cascade',
+      }),
+    // firstName: varchar('first_name', { length: 100 }),
+    // lastName: varchar('last_name', { length: 100 }),
+    // fullName: varchar('full_name', { length: 255 }).notNull(),
+    // email: varchar('email', { length: 255 }).notNull(),
+    // phoneNumber: varchar('phone_number', { length: 20 }).notNull(),
+    collegeName: varchar('college_name', { length: 255 }),
+    otherCollegeName: varchar('other_college_name', { length: 100 }),
+    degreeProgram: varchar('degree_program', { length: 100 }),
+    branchSpecialisation: varchar('branch_specialisation', { length: 100 }),
+    yearOfStudy: learnerYearOfStudy('year_of_study'),
+    expectedGraduationMonth: integer('expected_graduation_month'),
+    expectedGraduationYear: integer('expected_graduation_year'),
+    currentStatus: learnerCurrentStatus('current_status'),
+    createdAt: timestamp('created_at', {
+      withTimezone: true,
+      mode: 'string',
+    })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp('updated_at', {
+      withTimezone: true,
+      mode: 'string',
+    })
+      .defaultNow()
+      .notNull(),
+  },
+);
+
+export const zuvyLearnerInformationRelation = relations(
+  zuvyLearnerInformation,
+  ({ one }) => ({
+    user: one(users, {
+      fields: [zuvyLearnerInformation.userId],
+      references: [users.id],
+    }),
+  }),
+);
+
+export const zuvyTechnicalSkills = main.table(
+  'zuvy_learners_techinal_skills',
+  {
+    id: serial('id').primaryKey().notNull(),
+    name: varchar('name', { length: 100 }).notNull(),
+    createdAt: timestamp('created_at', {
+      withTimezone: true,
+      mode: 'string',
+    })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp('updated_at', {
+      withTimezone: true,
+      mode: 'string',
+    })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => ({
+    nameUnique: uniqueIndex('zuvy_learners_techinal_skills_name_unique').on(table.name),
+  }),
+);
+
+export const zuvyLearnersDegreeDetails = main.table(
+  'zuvy_learners_education_degree_details',
+  {
+    id: serial('id').primaryKey().notNull(),
+    name: varchar('name', { length: 100 }).notNull(),
+    createdAt: timestamp('created_at', {
+      withTimezone: true,
+      mode: 'string',
+    })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp('updated_at', {
+      withTimezone: true,
+      mode: 'string',
+    })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => ({
+    nameUnique: uniqueIndex('zuvy_learners_education_degree_details_name_unique').on(
+      table.name,
+    ),
+  }),
+);
+
+export const zuvyLearnerEducationBranchDetails = main.table(
+  'zuvy_learner_education_branch_details',
+  {
+    id: serial('id').primaryKey().notNull(),
+    name: varchar('name', { length: 100 }).notNull(),
+    createdAt: timestamp('created_at', {
+      withTimezone: true,
+      mode: 'string',
+    })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp('updated_at', {
+      withTimezone: true,
+      mode: 'string',
+    })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => ({
+    nameUnique: uniqueIndex(
+      'zuvy_learner_education_branch_details_name_unique',
+    ).on(table.name),
+  }),
+);
+
+export const zuvyLearnersBoards = main.table(
+  'zuvy_learners_boards',
+  {
+    id: serial('id').primaryKey().notNull(),
+    name: varchar('name', { length: 100 }).notNull(),
+    createdAt: timestamp('created_at', {
+      withTimezone: true,
+      mode: 'string',
+    })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp('updated_at', {
+      withTimezone: true,
+      mode: 'string',
+    })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => ({
+    nameUnique: uniqueIndex('zuvy_learners_boards_name_unique').on(table.name),
+  }),
+);
+
+export const zuvyLearnersRoles = main.table(
+  'zuvy_learnes_roles',
+  {
+    id: serial('id').primaryKey().notNull(),
+    name: varchar('name', { length: 100 }).notNull(),
+    createdAt: timestamp('created_at', {
+      withTimezone: true,
+      mode: 'string',
+    })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp('updated_at', {
+      withTimezone: true,
+      mode: 'string',
+    })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => ({
+    nameUnique: uniqueIndex('zuvy_learnes_roles_name_unique').on(table.name),
+  }),
+);
+
+export const zuvyLearnersRemoteLocation = main.table(
+  'zuvy_learners_remote_location',
+  {
+    id: serial('id').primaryKey().notNull(),
+    name: varchar('name', { length: 100 }).notNull(),
+    createdAt: timestamp('created_at', {
+      withTimezone: true,
+      mode: 'string',
+    })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp('updated_at', {
+      withTimezone: true,
+      mode: 'string',
+    })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => ({
+    nameUnique: uniqueIndex('zuvy_learners_remote_location_name_unique').on(
+      table.name,
+    ),
+  }),
+);
+
+export const zuvyLearnersCompleteProfile = main.table(
+  'zuvy_learners_complete_profile',
+  {
+    id: serial('id').primaryKey().notNull(),
+    userId: bigint('user_id', { mode: 'number' })
+      .notNull()
+      .references(() => users.id, {
+        onDelete: 'cascade',
+        onUpdate: 'cascade',
+      }),
+
+    // PAGE 1: BASICS
+    fullName: varchar('full_name', { length: 255 }),
+    phoneNumber: varchar('phone_number', { length: 20 }),
+    email: varchar('email', { length: 255 }),
+    linkedinProfile: varchar('linkedin_profile', { length: 500 }),
+    collegeName: varchar('college_name', { length: 255 }),
+    otherCollegeName: varchar('other_college_name', { length: 100 }),
+    degree: varchar('degree', { length: 100 }).notNull(),
+    branch: varchar('branch', { length: 100 }).notNull(),
+    yearOfStudy: learnerYearOfStudy('year_of_study').notNull(),
+    graduationMonth: integer('graduation_month').notNull(),
+    graduationYear: integer('graduation_year').notNull(),
+    currentStatus: learnerCurrentStatus('current_status'),
+
+    // PAGE 2: SKILLS & PROJECTS
+    technicalSkills: jsonb('technical_skills').default([]),
+    projects: jsonb('projects').default([]),
+
+    // PAGE 3: EDUCATION & EXPERIENCE
+    collegeStream: varchar('college_stream', { length: 100 }),
+    collegeScore: varchar('college_score', { length: 20 }),
+    collegeScoreType: learnerScoreType('college_score_type'),
+    class12Board: varchar('class12_board', { length: 100 }),
+    class12Score: varchar('class12_score', { length: 20 }),
+    class12ScoreType: learnerScoreType('class12_score_type'),
+    class10Board: varchar('class10_board', { length: 100 }),
+    class10Score: varchar('class10_score', { length: 20 }),
+    class10ScoreType: learnerScoreType('class10_score_type'),
+    hasWorkExperience: boolean('has_work_experience').default(false),
+    workExperiences: jsonb('work_experiences').default([]),
+    leetcodeUsername: varchar('leetcode_username', { length: 100 }),
+    codechefUsername: varchar('codechef_username', { length: 100 }),
+    codeforcesUsername: varchar('codeforces_username', { length: 100 }),
+
+    // PAGE 4: PREFERENCES
+    targetRoles: jsonb('target_roles').default([]),
+    preferredLocations: jsonb('preferred_locations').default([]),
+    openToRemote: boolean('open_to_remote').default(false),
+    internshipStipend: varchar('internship_stipend', { length: 50 }),
+    fullTimeCtc: varchar('full_time_ctc', { length: 50 }),
+    preferredContactMethods: jsonb('preferred_contact_methods').default([]),
+
+    createdAt: timestamp('created_at', {
+      withTimezone: true,
+      mode: 'string',
+    })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp('updated_at', {
+      withTimezone: true,
+      mode: 'string',
+    })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => ({
+    userIdUnique: uniqueIndex('zuvy_learners_complete_profile_user_id_unique').on(
+      table.userId,
+    ),
+  }),
+);
+
+export const zuvyLearnersCompleteProfileRelation = relations(
+  zuvyLearnersCompleteProfile,
+  ({ one }) => ({
+    user: one(users, {
+      fields: [zuvyLearnersCompleteProfile.userId],
+      references: [users.id],
+    }),
+  }),
+);
 
 export const zuvyOpenEndedQuestionSubmission = main.table("zuvy_open_ended_question_submission", {
   id: serial("id").primaryKey().notNull(),
@@ -3724,8 +4018,12 @@ export const zuvyZoomUsers = main.table('zuvy_zoom_users', {
 // RBAC: Roles Table
 export const zuvyUserRoles = main.table('zuvy_user_roles', {
   id: serial('id').primaryKey().notNull(),
-  name: varchar('name', { length: 50 }).notNull().unique(), // e.g. 'admin', 'instructor', 'ops'
+  name: varchar('name', { length: 50 }).notNull(), // e.g. 'admin', 'instructor', 'ops'
   description: text('description'),
+  orgId: integer('org_id').default(null).references(() => zuvyOrganizations.id, {
+    onUpdate: 'cascade',
+    onDelete: 'cascade'
+  }),
 });
 
 export const zuvyResources = main.table('zuvy_resources', {
@@ -3749,15 +4047,16 @@ export const zuvyPermissionsRoles = main.table('zuvy_permissions_roles', {
   id: serial('id').primaryKey().notNull(),
   permissionId: integer('permission_id').notNull().references(() => zuvyPermissions.id),
   roleId: integer('role_id').notNull().references(() => zuvyUserRoles.id),
+  orgId: integer('org_id').references(() => zuvyOrganizations.id),
   createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow(),
 },
-(table) => ({
-  uniqRolePermission: unique("uniq_role_permission").on(
-    table.roleId,
-    table.permissionId
-  )
-})
+  (table) => ({
+    uniqRolePermission: unique("uniq_role_permission").on(
+      table.roleId,
+      table.permissionId
+    )
+  })
 );
 export const zuvyPermissionsRolesRelations = relations(zuvyPermissionsRoles, ({ many }) => ({
   permissions: many(zuvyPermissions),
@@ -3798,8 +4097,11 @@ export const zuvyUserRolesAssigned = main.table('zuvy_user_roles_assigned', {
   roleId: integer('role_id').notNull().references(() => zuvyUserRoles.id),
   createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow(),
+  organizationId: integer('organization_id').references(() => zuvyOrganizations.id),
 }, (t) => ({
-  pk: primaryKey(t.userId, t.roleId),
+  // Composite unique constraint (userId, roleId, organizationId)
+  // We use a unique constraint because organizationId might be nullable for global roles
+  uniqUserRoleOrg: unique('uniq_user_role_org').on(t.userId, t.roleId, t.organizationId),
 }));
 
 // RBAC: RolePermissions (M:N)
@@ -3964,6 +4266,64 @@ export const usersExtraPermissionsRelations = relations(users, ({ many }) => ({
   grantedPermissions: many(zuvyExtraPermissions, { relationName: 'grantedByUser' }),
 }));
 
+// org table
+export const zuvyOrganizations = main.table('zuvy_organizations', {
+  id: serial('id').primaryKey().notNull(),
+  title: varchar('title', { length: 255 }).notNull(),
+  displayName: varchar('display_name', { length: 255 }).notNull(),
+  isManagedByZuvy: boolean('is_managed_by_zuvy').notNull().default(false),
+  logoUrl: varchar('logo_url', { length: 500 }),
+  pocName: varchar('poc_name', { length: 255 }),
+  pocEmail: varchar('poc_email', { length: 255 }),
+  zuvyPocName: varchar('zuvy_poc_name', { length: 255 }),
+  zuvyPocEmail: varchar('zuvy_poc_email', { length: 255 }),
+  isVerified: boolean('is_verified').notNull().default(false),
+  createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow(),
+  version: varchar('version', { length: 10 })
+}, (table) => ({
+  // add the db index
+  orgTitleIdx: index('zuvy_organizations_title_idx').on(table.title),
+  isVerifiedIdx: index('zuvy_organizations_is_verified_idx').on(table.isVerified),
+  createdAtIdx: index('zuvy_organizations_created_at_idx').on(table.createdAt),
+}));
+
+
+// create user and organizations table
+export const zuvyUserOrganizations = main.table('zuvy_user_organizations', {
+  id: serial('id').primaryKey().notNull(),
+  userId: integer('user_id').notNull().references(() => users.id),
+  userEmail: varchar('user_email', { length: 255 }).notNull(),
+  accessToken: text('access_token',),
+  refreshToken: text('refresh_token'),
+  organizationId: integer('organization_id').default(null).references(() => zuvyOrganizations.id, {
+    onDelete: 'cascade'
+  }),
+  joinedAt: timestamp('joined_at', { withTimezone: true, mode: 'string' }).defaultNow(),
+}, (table) => ({
+  uniqUserOrganization: unique("zuvy_user_organizations_uniq_user_organization").on(table.userId, table.organizationId),
+  // add the db index
+  userIdIdx: index('zuvy_user_organizations_user_id_idx').on(table.userId),
+  organizationIdIdx: index('zuvy_user_organizations_organization_id_idx').on(table.organizationId),
+  joinedAtIdx: index('zuvy_user_organizations_joined_at_idx').on(table.joinedAt),
+}));
+
+// create relations between organizations and userorganizations
+export const organizationsRelations = relations(zuvyOrganizations, ({ many }) => ({
+  userOrganizations: many(zuvyUserOrganizations),
+}));
+
+export const userOrganizationsRelations = relations(zuvyUserOrganizations, ({ one }) => ({
+  user: one(users, {
+    fields: [zuvyUserOrganizations.userId],
+    references: [users.id],
+  }),
+  organization: one(zuvyOrganizations, {
+    fields: [zuvyUserOrganizations.organizationId],
+    references: [zuvyOrganizations.id],
+  }),
+}));
+
 //llm related tables
 export const aiAssessment = main.table("ai_assessment", {
   id: serial("id").primaryKey().notNull(),
@@ -4084,6 +4444,7 @@ export const studentAssessment = main.table('student_assessment', {
 }));
 
 
+
 // Zoom Session Recordings Tracking
 
 export const zuvySessionRecordings = main.table(
@@ -4182,8 +4543,8 @@ export const zuvyZoomWebhookEvents = main.table(
       withTimezone: true,
       mode: 'string',
     }).defaultNow(),
-    processingStatus: varchar('processing_status', { 
-      length: 32 
+    processingStatus: varchar('processing_status', {
+      length: 32
     }).default('RECEIVED'),
     /*
       RECEIVED
@@ -4201,3 +4562,337 @@ export const zuvyZoomWebhookEvents = main.table(
   })
 
 );
+
+// Tracking Logs Table for comprehensive audit logging
+export const zuvyTrackingLogs = main.table('zuvy_tracking_logs', {
+  id: serial('id').primaryKey().notNull(),
+  orgId: integer('org_id').default(null), // Organization ID for multi-tenant isolation
+  bootcampId: integer('bootcamp_id').references(() => zuvyBootcamps.id).default(null), // Bootcamp ID for tracking bootcamp-specific actions
+  actorUserId: bigint('actor_user_id', { mode: 'number' }).notNull().references(() => users.id), // User who performed the action
+  permissionId: integer('permission_id').references(() => zuvyPermissions.id).default(null), // Associated permission if applicable
+  resourceId: integer('resource_id').references(() => zuvyResources.id).default(null), // Associated resource ID from zuvy_resources table
+  action: varchar('action', { length: 100 }).notNull(), // Action type (e.g., 'create_course', 'assign_role')
+  resourceType: varchar('resource_type', { length: 100 }).notNull(), // Resource type (e.g., 'course', 'user', 'role')
+  description: text('description').notNull(), // Human-readable description of the action
+  status: varchar('status', { length: 50 }).notNull().default('success'), // Status of the action (success, failed, pending)
+  createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow(),
+});
+
+// Relations for tracking logs
+export const zuvyTrackingLogsRelations = relations(zuvyTrackingLogs, ({ one }) => ({
+  actor: one(users, {
+    fields: [zuvyTrackingLogs.actorUserId],
+    references: [users.id],
+  }),
+  bootcamp: one(zuvyBootcamps, {
+    fields: [zuvyTrackingLogs.bootcampId],
+    references: [zuvyBootcamps.id],
+  }),
+  permission: one(zuvyPermissions, {
+    fields: [zuvyTrackingLogs.permissionId],
+    references: [zuvyPermissions.id],
+  }),
+  resource: one(zuvyResources, {
+    fields: [zuvyTrackingLogs.resourceId],
+    references: [zuvyResources.id],
+  }),
+}));
+
+/**
+ * ============================================================================
+ * MENTOR SLOT MANAGEMENT SYSTEM (PRODUCTION GRADE - PRD ALIGNED)
+ * ============================================================================
+ * Fully aligned with Mentorship Module PRD
+ * - Lifecycle state engine
+ * - Feedback locking
+ * - Reschedule workflow
+ * - Buffer support
+ * - Timezone support
+ * - Strong indexing
+ * ============================================================================
+ */
+
+
+/* ============================================================================
+   ENUM TYPES (STRING BASED FOR FLEXIBILITY)
+============================================================================ */
+
+/* Canonical lifecycle state (derived + materialized for indexing) */
+export const SESSION_LIFECYCLE_STATES = [
+  'SCHEDULED',
+  'IN_PROGRESS',
+  'COMPLETED',
+  'CANCELLED',
+  'RESCHEDULE_PENDING',
+  'MISSED',
+  'NO_SHOW',
+] as const;
+
+export const RESCHEDULE_STATUSES = [
+  'pending',
+  'accepted',
+  'declined',
+] as const;
+
+/* ============================================================================
+   MENTOR SLOT MANAGEMENT PROFILE
+============================================================================ */
+
+export const zuvyMentorSlotManagement = pgTable(
+  'zuvy_mentor_slot_management',
+  {
+    id: serial('id').primaryKey().notNull(),
+
+    mentorUserId: bigserial('mentor_user_id', { mode: 'bigint' })
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+
+    organizationId: integer('organization_id')
+      .notNull()
+      .references(() => zuvyOrganizations.id, { onDelete: 'cascade' }),
+
+    mentorType: varchar('mentor_type', { length: 50 })
+      .notNull()
+      .default('instructor'),
+
+    /* Buffer & Timezone (PRD Requirement) */
+    isBufferEnabled: boolean('is_buffer_enabled').default(false),
+    bufferMinutes: integer('buffer_minutes').default(0),
+    timezone: varchar('timezone', { length: 100 }).default('UTC'),
+
+    /* Metrics */
+    totalAvailableSlots: integer('total_available_slots').default(0),
+    totalBookedSlots: integer('total_booked_slots').default(0),
+    totalCancelledSlots: integer('total_cancelled_slots').default(0),
+
+    title: varchar('title', { length: 255 }),
+    bio: text('bio'),
+    expertise: jsonb('expertise'),
+
+    status: varchar('status', { length: 50 }).default('active'),
+    isVerified: boolean('is_verified').default(false),
+    acceptsNewMentees: boolean('accepts_new_mentees').default(true),
+
+    googleRefreshToken: text('google_refresh_token'),
+    googleEmail: varchar('google_email', { length: 255 }),
+
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
+  },
+  (table) => ({
+    uniqMentorOrg: unique('uniq_mentor_org').on(
+      table.mentorUserId,
+      table.organizationId,
+    ),
+    mentorIdx: index('idx_mgmt_mentor').on(table.mentorUserId),
+    orgIdx: index('idx_mgmt_org').on(table.organizationId),
+  }),
+);
+
+/* ============================================================================
+   SLOT AVAILABILITY
+============================================================================ */
+
+export const zuvyMentorSlotAvailability = pgTable(
+  'zuvy_mentor_slot_availability',
+  {
+    id: serial('id').primaryKey().notNull(),
+
+    mentorSlotManagementId: integer('mentor_slot_management_id')
+      .notNull()
+      .references(() => zuvyMentorSlotManagement.id, {
+        onDelete: 'cascade',
+      }),
+
+    slotStartDateTime: timestamp('slot_start_date_time', {
+      withTimezone: true,
+    }).notNull(),
+
+    slotEndDateTime: timestamp('slot_end_date_time', {
+      withTimezone: true,
+    }).notNull(),
+
+    durationMinutes: integer('duration_minutes').notNull(),
+
+    maxCapacity: integer('max_capacity').default(1),
+    currentBookedCount: integer('current_booked_count').default(0),
+
+    topic: varchar('topic', { length: 255 }),
+    description: text('description'),
+    slotType: varchar('slot_type', { length: 50 }).default('one-on-one'),
+
+    meetingLink: varchar('meeting_link', { length: 500 }),
+    meetingType: varchar('meeting_type', { length: 50 }).default('video'),
+    location: varchar('location', { length: 255 }),
+
+    status: varchar('status', { length: 50 }).default('available'),
+
+    cancellationReason: text('cancellation_reason'),
+
+    /* Advanced Recurrence (future upgrade ready) */
+    isRecurring: boolean('is_recurring').default(false),
+    recurrenceRule: text('recurrence_rule'), // RRULE string
+    recurrenceEndDate: timestamp('recurrence_end_date', {
+      withTimezone: true,
+    }),
+
+    tags: jsonb('tags'),
+    isPublic: boolean('is_public').default(true),
+
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
+  },
+  (table) => ({
+    mgmtIdx: index('idx_slot_mgmt').on(table.mentorSlotManagementId),
+    startIdx: index('idx_slot_start').on(table.slotStartDateTime),
+    statusIdx: index('idx_slot_status').on(table.status),
+  }),
+);
+
+/* ============================================================================
+   SLOT BOOKING (CORE SESSION ENGINE)
+============================================================================ */
+
+export const zuvyMentorSlotBooking = pgTable(
+  'zuvy_mentor_slot_booking',
+  {
+    id: serial('id').primaryKey().notNull(),
+
+    slotAvailabilityId: integer('slot_availability_id')
+      .notNull()
+      .references(() => zuvyMentorSlotAvailability.id, {
+        onDelete: 'cascade',
+      }),
+
+    studentUserId: bigserial('student_user_id', { mode: 'bigint' })
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+
+    mentorUserId: bigserial('mentor_user_id', { mode: 'bigint' })
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+
+    organizationId: integer('organization_id')
+      .notNull()
+      .references(() => zuvyOrganizations.id, { onDelete: 'cascade' }),
+
+    /* Original booking state */
+    status: varchar('status', { length: 50 }).default('confirmed'),
+
+    /* Canonical lifecycle state */
+    sessionLifecycleState: varchar('session_lifecycle_state', {
+      length: 50,
+    }).default('SCHEDULED'),
+
+    /*Google Calendar Integration  */
+    googleEventId: varchar('google_event_id', { length: 255 }),
+    meetingLink: varchar('meeting_link', { length: 500 }),
+
+
+    /* Reschedule workflow */
+    rescheduleRequestedAt: timestamp('reschedule_requested_at', {
+      withTimezone: true,
+    }),
+    rescheduleProposedSlotId: integer('reschedule_proposed_slot_id'),
+    rescheduleStatus: varchar('reschedule_status', {
+      length: 50,
+    }),
+
+    /* Cancellation */
+    cancellationReason: text('cancellation_reason'),
+    cancelledBy: varchar('cancelled_by', { length: 50 }),
+    cancelledAt: timestamp('cancelled_at', { withTimezone: true }),
+
+    /* Attendance */
+    joinedAt: timestamp('joined_at', { withTimezone: true }),
+    leftAt: timestamp('left_at', { withTimezone: true }),
+    durationAttended: integer('duration_attended'),
+
+    /* Mentor Feedback (PRD aligned) */
+    mentorFeedback: jsonb('mentor_feedback'),
+    mentorRating: integer('mentor_rating'),
+
+    mentorFeedbackSubmittedAt: timestamp(
+      'mentor_feedback_submitted_at',
+      { withTimezone: true },
+    ),
+    mentorFeedbackLocked: boolean('mentor_feedback_locked').default(false),
+
+    /* Student Feedback */
+    studentFeedback: jsonb('student_feedback'),
+    studentRating: integer('student_rating'),
+
+    bookedAt: timestamp('booked_at', { withTimezone: true }).defaultNow(),
+    confirmedAt: timestamp('confirmed_at', { withTimezone: true }),
+    completedAt: timestamp('completed_at', { withTimezone: true }),
+
+
+    reminder24hSent: boolean('reminder_24h_sent').default(false),
+    reminder1hSent: boolean('reminder_1h_sent').default(false),
+
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
+  },
+  (table) => ({
+    uniqStudentSlot: unique('uniq_student_slot').on(
+      table.studentUserId,
+      table.slotAvailabilityId,
+    ),
+    mentorIdx: index('idx_booking_mentor').on(table.mentorUserId),
+    lifecycleIdx: index('idx_booking_lifecycle').on(
+      table.sessionLifecycleState,
+    ),
+    feedbackIdx: index('idx_booking_feedback_pending').on(
+      table.mentorFeedbackSubmittedAt,
+    ),
+  }),
+);
+
+/* ============================================================================
+   RELATIONS
+============================================================================ */
+
+export const zuvyMentorSlotBookingRelations = relations(
+  zuvyMentorSlotBooking,
+  ({ one }) => ({
+    slot: one(zuvyMentorSlotAvailability, {
+      fields: [zuvyMentorSlotBooking.slotAvailabilityId],
+      references: [zuvyMentorSlotAvailability.id],
+    }),
+    mentor: one(users, {
+      fields: [zuvyMentorSlotBooking.mentorUserId],
+      references: [users.id],
+    }),
+    student: one(users, {
+      fields: [zuvyMentorSlotBooking.studentUserId],
+      references: [users.id],
+    }),
+  }),
+);
+
+export const zuvyNotifications = pgTable(
+  'zuvy_notifications',
+  {
+    id: serial('id').primaryKey(),
+
+    userId: bigserial('user_id', { mode: 'bigint' })
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+
+    type: varchar('type', { length: 100 }).notNull(),
+
+    title: varchar('title', { length: 255 }).notNull(),
+    message: text('message').notNull(),
+
+    referenceId: integer('reference_id'),
+    referenceType: varchar('reference_type', { length: 100 }),
+
+    isRead: boolean('is_read').default(false),
+
+    channel: varchar('channel', { length: 50 }).default('in-app'),
+
+    sentAt: timestamp('sent_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+  },
+);
+

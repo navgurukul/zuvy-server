@@ -11,6 +11,7 @@ import {
   desc,
   asc,
   ne,
+  isNull,
 } from 'drizzle-orm';
 import axios from 'axios';
 import * as _ from 'lodash';
@@ -29,6 +30,10 @@ import {
   zuvyRecentBootcamp,
   zuvyModuleTracking,
   AttendanceStatus,
+  zuvyUserOrganizations,
+  zuvyUserRolesAssigned,
+  zuvyOrganizations,
+  zuvyTrackingLogs,
 } from '../../../drizzle/schema';
 import { editUserDetailsDto } from './dto/bootcamp.dto';
 import { batch } from 'googleapis/build/src/apis/batch';
@@ -83,41 +88,204 @@ export class BootcampService {
   }
 
   async getAllBootcamps(
+    orgId: number,
     roleName: string[],
     userId,
     limit: number,
     offset: number,
-    searchTerm?: string | number,
+    searchTermAsNumber?: string | number,
+    searchTermAsString?: string,
+    filter?: string,
   ): Promise<any> {
     try {
       let query;
       let countQuery;
-      if (searchTerm) {
-        if (typeof searchTerm === 'string') {
-          const searchCondition = sql`LOWER(${zuvyBootcamps.name}) LIKE ${searchTerm.toLowerCase()} || '%'`;
-          query = db
-            .select()
-            .from(zuvyBootcamps)
-            .where(searchCondition)
-            .limit(limit)
-            .offset(offset);
-          countQuery = db
-            .select({ count: count(zuvyBootcamps.id) })
-            .from(zuvyBootcamps)
-            .where(searchCondition);
-        } else {
-          const searchCondition = sql`${zuvyBootcamps.id} = ${searchTerm}`;
-          query = db
-            .select()
-            .from(zuvyBootcamps)
-            .where(searchCondition)
-            .limit(limit)
-            .offset(offset);
-          countQuery = db
-            .select({ count: count(zuvyBootcamps.id) })
-            .from(zuvyBootcamps)
-            .where(searchCondition);
+
+      if (!orgId || isNaN(Number(orgId))) {
+        return [{ status: 'error', message: 'invalid orgId', code: 400 }, null];
+      }
+
+      const orgInfo = await db
+        .select()
+        .from(zuvyOrganizations)
+        .where(eq(zuvyOrganizations.id, Number(orgId)));
+
+      if (orgInfo.length === 0) {
+        return [
+          {
+            status: 'error',
+            message: 'Organization does not exist.',
+            code: 404,
+          },
+          null,
+        ];
+      }
+
+      let filterOrgId = Number(orgId);
+
+      // Fetch user's organizations
+      const userOrgs = await db
+        .select()
+        .from(zuvyUserRolesAssigned)
+        .where(eq(zuvyUserRolesAssigned.userId, userId));
+
+      // Verify user belongs to the requested organization
+      if (roleName.includes('admin') || roleName.includes('super_admin')) {
+        // Admins can see any org's bootcamps
+      } else {
+        const belongsToOrg = userOrgs.some(
+          (org) => org.organizationId == filterOrgId,
+        );
+        if (!belongsToOrg) {
+          return [
+            {
+              status: 'error',
+              message: 'User does not belong to this organization.',
+              code: 403,
+            },
+            null,
+          ];
         }
+      }
+
+      let orgCondition;
+      const lowerFilter = filter ? filter.toLowerCase() : 'all';
+
+      if (lowerFilter === 'public') {
+        if (filterOrgId) {
+          orgCondition = and(
+            eq(zuvyBootcampType.type, 'Public'),
+            or(
+              eq(zuvyBootcamps.organizationId, filterOrgId),
+              isNull(zuvyBootcamps.organizationId),
+            ),
+          );
+        } else {
+          orgCondition = eq(zuvyBootcampType.type, 'Public');
+        }
+      } else if (lowerFilter === 'private') {
+        if (filterOrgId) {
+          orgCondition = and(
+            eq(zuvyBootcampType.type, 'Private'),
+            eq(zuvyBootcamps.organizationId, filterOrgId),
+          );
+        } else {
+          // If no org allowed, return no private bootcamps
+          orgCondition = sql`1=0`;
+        }
+      } else {
+        // 'all' or default
+        orgCondition = isNull(zuvyBootcamps.organizationId);
+        if (filterOrgId) {
+          orgCondition = or(
+            orgCondition,
+            eq(zuvyBootcamps.organizationId, filterOrgId),
+          );
+        }
+      }
+
+      const isSearchAsNumber =
+        typeof searchTermAsNumber === 'number' ||
+        (typeof searchTermAsNumber === 'string' &&
+          searchTermAsNumber.trim() !== '' &&
+          !isNaN(Number(searchTermAsNumber)));
+
+      if (isSearchAsNumber) {
+        let searchCondition = sql`${zuvyBootcamps.id} = ${Number(searchTermAsNumber)}`;
+        if (orgCondition) {
+          searchCondition = and(searchCondition, orgCondition);
+        }
+        query = db
+          .select({
+            id: zuvyBootcamps.id,
+            name: zuvyBootcamps.name,
+            description: zuvyBootcamps.description,
+            collaborator: zuvyBootcamps.collaborator,
+            coverImage: zuvyBootcamps.coverImage,
+            bootcampTopic: zuvyBootcamps.bootcampTopic,
+            startTime: zuvyBootcamps.startTime,
+            duration: zuvyBootcamps.duration,
+            language: zuvyBootcamps.language,
+            organizationId: zuvyBootcamps.organizationId,
+            createdAt: zuvyBootcamps.createdAt,
+            updatedAt: zuvyBootcamps.updatedAt,
+            version: zuvyBootcamps.version,
+            code: zuvyOrganizations.displayName,
+            bootcampType: zuvyBootcampType.type,
+          })
+          .from(zuvyBootcamps)
+          .leftJoin(
+            zuvyOrganizations,
+            eq(zuvyBootcamps.organizationId, zuvyOrganizations.id),
+          )
+          .leftJoin(
+            zuvyBootcampType,
+            eq(zuvyBootcamps.id, zuvyBootcampType.bootcampId),
+          )
+          .where(searchCondition)
+          .orderBy(desc(zuvyBootcamps.updatedAt))
+          .limit(limit)
+          .offset(offset);
+        countQuery = db
+          .select({ count: count(zuvyBootcamps.id) })
+          .from(zuvyBootcamps)
+          .leftJoin(
+            zuvyBootcampType,
+            eq(zuvyBootcamps.id, zuvyBootcampType.bootcampId),
+          )
+          .where(searchCondition);
+      } else if (searchTermAsString) {
+        const searchTokens = searchTermAsString.split(/\s+/); // Split by whitespace
+        const searchConditions = searchTokens.map(
+          (token) =>
+            sql`LOWER(${zuvyBootcamps.name}) LIKE ${'%' + token.toLowerCase() + '%'}`,
+        );
+
+        let finalSearchCondition = and(...searchConditions);
+        if (orgCondition) {
+          finalSearchCondition = and(finalSearchCondition, orgCondition);
+        }
+
+        query = db
+          .select({
+            id: zuvyBootcamps.id,
+            name: zuvyBootcamps.name,
+            description: zuvyBootcamps.description,
+            collaborator: zuvyBootcamps.collaborator,
+            coverImage: zuvyBootcamps.coverImage,
+            bootcampTopic: zuvyBootcamps.bootcampTopic,
+            startTime: zuvyBootcamps.startTime,
+            duration: zuvyBootcamps.duration,
+            language: zuvyBootcamps.language,
+            organizationId: zuvyBootcamps.organizationId,
+            createdAt: zuvyBootcamps.createdAt,
+            updatedAt: zuvyBootcamps.updatedAt,
+            version: zuvyBootcamps.version,
+            code: zuvyOrganizations.displayName,
+            bootcampType: zuvyBootcampType.type,
+          })
+          .from(zuvyBootcamps)
+          .leftJoin(
+            zuvyOrganizations,
+            eq(zuvyBootcamps.organizationId, zuvyOrganizations.id),
+          )
+          .leftJoin(
+            zuvyBootcampType,
+            eq(zuvyBootcamps.id, zuvyBootcampType.bootcampId),
+          )
+          .where(finalSearchCondition)
+          .orderBy(desc(zuvyBootcamps.updatedAt))
+          .limit(limit)
+          .offset(offset);
+
+        countQuery = db
+          .select({ count: count(zuvyBootcamps.id) })
+          .from(zuvyBootcamps)
+          .leftJoin(
+            zuvyBootcampType,
+            eq(zuvyBootcamps.id, zuvyBootcampType.bootcampId),
+          )
+          .where(finalSearchCondition);
       } else if (roleName.includes('instructor')) {
         //first get all batches assigned to the instructor in zuvyBatches table then get all bootcampas from zuvyBootcamps table
         const batches = await db
@@ -137,22 +305,102 @@ export class BootcampService {
             },
           ];
         }
+
+        let condition = or(
+          isNull(zuvyBootcamps.organizationId),
+          eq(zuvyBootcampType.type, 'Public'),
+          inArray(zuvyBootcamps.id, bootcampIds),
+        );
+        if (orgCondition) {
+          condition = and(condition, orgCondition);
+        }
+
         query = db
-          .select()
+          .select({
+            id: zuvyBootcamps.id,
+            name: zuvyBootcamps.name,
+            description: zuvyBootcamps.description,
+            collaborator: zuvyBootcamps.collaborator,
+            coverImage: zuvyBootcamps.coverImage,
+            bootcampTopic: zuvyBootcamps.bootcampTopic,
+            startTime: zuvyBootcamps.startTime,
+            duration: zuvyBootcamps.duration,
+            language: zuvyBootcamps.language,
+            organizationId: zuvyBootcamps.organizationId,
+            createdAt: zuvyBootcamps.createdAt,
+            updatedAt: zuvyBootcamps.updatedAt,
+            version: zuvyBootcamps.version,
+            code: zuvyOrganizations.displayName,
+            bootcampType: zuvyBootcampType.type,
+          })
           .from(zuvyBootcamps)
-          .where(inArray(zuvyBootcamps.id, bootcampIds))
+          .leftJoin(
+            zuvyOrganizations,
+            eq(zuvyBootcamps.organizationId, zuvyOrganizations.id),
+          )
+          .leftJoin(
+            zuvyBootcampType,
+            eq(zuvyBootcamps.id, zuvyBootcampType.bootcampId),
+          )
+          .where(condition)
+          .orderBy(desc(zuvyBootcamps.updatedAt))
           .limit(limit)
           .offset(offset);
 
         countQuery = db
           .select({ count: count(zuvyBootcamps.id) })
           .from(zuvyBootcamps)
-          .where(inArray(zuvyBootcamps.id, bootcampIds));
+          .leftJoin(
+            zuvyBootcampType,
+            eq(zuvyBootcamps.id, zuvyBootcampType.bootcampId),
+          )
+          .where(condition);
       } else {
-        query = db.select().from(zuvyBootcamps).limit(limit).offset(offset);
+        query = db
+          .select({
+            id: zuvyBootcamps.id,
+            name: zuvyBootcamps.name,
+            description: zuvyBootcamps.description,
+            collaborator: zuvyBootcamps.collaborator,
+            coverImage: zuvyBootcamps.coverImage,
+            bootcampTopic: zuvyBootcamps.bootcampTopic,
+            startTime: zuvyBootcamps.startTime,
+            duration: zuvyBootcamps.duration,
+            language: zuvyBootcamps.language,
+            organizationId: zuvyBootcamps.organizationId,
+            createdAt: zuvyBootcamps.createdAt,
+            updatedAt: zuvyBootcamps.updatedAt,
+            version: zuvyBootcamps.version,
+            code: zuvyOrganizations.displayName,
+            bootcampType: zuvyBootcampType.type,
+          })
+          .from(zuvyBootcamps)
+          .leftJoin(
+            zuvyOrganizations,
+            eq(zuvyBootcamps.organizationId, zuvyOrganizations.id),
+          )
+          .leftJoin(
+            zuvyBootcampType,
+            eq(zuvyBootcamps.id, zuvyBootcampType.bootcampId),
+          );
+        if (orgCondition) {
+          query = query.where(orgCondition);
+        }
+        query = query
+          .orderBy(desc(zuvyBootcamps.updatedAt))
+          .limit(limit)
+          .offset(offset);
+
         countQuery = db
           .select({ count: count(zuvyBootcamps.id) })
-          .from(zuvyBootcamps);
+          .from(zuvyBootcamps)
+          .leftJoin(
+            zuvyBootcampType,
+            eq(zuvyBootcamps.id, zuvyBootcampType.bootcampId),
+          );
+        if (orgCondition) {
+          countQuery = countQuery.where(orgCondition);
+        }
       }
 
       const getBootcamps = await query;
@@ -175,6 +423,7 @@ export class BootcampService {
       const permissionResult = await this.rbacService.getAllPermissions(
         roleName,
         targetPermissions,
+        orgId,
       );
       allPermissions = permissionResult.permissions || {};
 
@@ -208,6 +457,7 @@ export class BootcampService {
     id: number,
     isContent: boolean,
     role: string[],
+    orgId: number,
   ): Promise<any> {
     try {
       let bootcamp = await db
@@ -233,6 +483,7 @@ export class BootcampService {
       const grantedPermissions = await this.rbacService.getAllPermissions(
         role,
         targetPermissions,
+        orgId,
       );
       return [
         null,
@@ -255,13 +506,18 @@ export class BootcampService {
       const existingBootcamp = await db
         .select()
         .from(zuvyBootcamps)
-        .where(eq(zuvyBootcamps.name, bootcampData.name));
+        .where(
+          and(
+            eq(zuvyBootcamps.name, bootcampData.name),
+            eq(zuvyBootcamps.organizationId, bootcampData.organizationId),
+          ),
+        );
 
       if (existingBootcamp.length > 0) {
         return [
           {
             status: 'error',
-            message: 'Course name already exists.',
+            message: `A course with the name "${bootcampData.name}" already exists in this organization.`,
             code: STATUS_CODES.BAD_REQUEST,
           },
           null,
@@ -324,13 +580,27 @@ export class BootcampService {
     }
   }
 
-  async updateBootcamp(id: number, bootcampData): Promise<any> {
+  async updateBootcamp(id: number, orgId: number, bootcampData): Promise<any> {
     try {
       delete bootcampData.instructorId;
+
+      // Snapshot before state for auto-diff in tracking log
+      const beforeRows = await db
+        .select()
+        .from(zuvyBootcamps)
+        .where(eq(zuvyBootcamps.id, id))
+        .limit(1);
+      const before = beforeRows[0] || null;
+
       let updatedBootcamp = await db
         .update(zuvyBootcamps)
         .set({ ...bootcampData })
-        .where(eq(zuvyBootcamps.id, id))
+        .where(
+          and(
+            eq(zuvyBootcamps.id, id),
+            eq(zuvyBootcamps.organizationId, orgId),
+          ),
+        )
         .returning();
 
       if (updatedBootcamp.length === 0) {
@@ -346,6 +616,8 @@ export class BootcampService {
           message: 'Bootcamp updated successfully',
           code: 200,
           updatedBootcamp,
+          before,
+          data: updatedBootcamp[0],
         },
       ];
     } catch (e) {
@@ -358,8 +630,25 @@ export class BootcampService {
     bootcamp_id: number,
     settingData,
     roleName: string[],
+    orgId: number,
   ) {
     try {
+      // Fetch bootcamp name for tracking log
+      const bootcampInfo = await db
+        .select({ name: zuvyBootcamps.name })
+        .from(zuvyBootcamps)
+        .where(eq(zuvyBootcamps.id, bootcamp_id))
+        .limit(1);
+      const bootcampName = bootcampInfo[0]?.name || null;
+
+      // Snapshot before state for auto-diff
+      const beforeRows = await db
+        .select()
+        .from(zuvyBootcampType)
+        .where(eq(zuvyBootcampType.bootcampId, bootcamp_id))
+        .limit(1);
+      const before = beforeRows[0] || null;
+
       const typeOfBootcamp = settingData.type
         ? settingData.type.toLowerCase()
         : null;
@@ -377,6 +666,7 @@ export class BootcampService {
       const grantedPermissions = await this.rbacService.getAllPermissions(
         roleName,
         targetPermissions,
+        orgId,
       );
       if (
         typeOfBootcamp == 'Public'.toLowerCase() ||
@@ -407,6 +697,9 @@ export class BootcampService {
             message: 'Bootcamp Type updated successfully',
             code: 200,
             updatedBootcampSetting,
+            bootcampName,
+            before,
+            data: updatedBootcampSetting[0],
             ...grantedPermissions,
           },
         ];
@@ -417,6 +710,7 @@ export class BootcampService {
             status: 'success',
             message: `Course type can be of type Public or Private`,
             code: 200,
+            bootcampName,
             ...grantedPermissions,
           },
         ];
@@ -427,7 +721,7 @@ export class BootcampService {
     }
   }
 
-  async getBootcampSettingById(roleName, bootcampId: number) {
+  async getBootcampSettingById(roleName, bootcampId: number, orgId: number) {
     try {
       let bootcampSetting = await db
         .select()
@@ -453,6 +747,7 @@ export class BootcampService {
       const grantedPermissions = await this.rbacService.getAllPermissions(
         roleName,
         targetPermissions,
+        orgId,
       );
       return [
         null,
@@ -508,6 +803,10 @@ export class BootcampService {
       await db
         .delete(zuvyBatchEnrollments)
         .where(eq(zuvyBatchEnrollments.bootcampId, id));
+      // Nullify bootcampId in tracking logs before deleting bootcamp (FK constraint)
+      await db.execute(
+        sql`UPDATE zuvy_tracking_logs SET bootcamp_id = NULL WHERE bootcamp_id = ${id}`,
+      );
       // Finally, delete the bootcamp
       const deleted = await db
         .delete(zuvyBootcamps)
@@ -525,6 +824,8 @@ export class BootcampService {
           status: 'success',
           message: 'Bootcamp deleted successfully',
           code: 200,
+          bootcampName: deleted[0]?.name || null,
+          bootcampId: id,
         },
       ];
     } catch (error) {
@@ -538,6 +839,7 @@ export class BootcampService {
     roleName: string[],
     limit: number,
     offset: number,
+    orgId: number,
   ): Promise<any> {
     try {
       // sanitize pagination parameters
@@ -634,6 +936,7 @@ export class BootcampService {
       const grantedPermission = await this.rbacService.getAllPermissions(
         roleName,
         targetPermissions,
+        orgId,
       );
       return [
         null,
@@ -725,6 +1028,7 @@ export class BootcampService {
     batchId: number,
     users_data: any[],
     roleName: string[],
+    orgId: number,
   ) {
     try {
       var a = 0,
@@ -998,6 +1302,7 @@ export class BootcampService {
       const grantedPermissions = await this.rbacService.getAllPermissions(
         roleName,
         targetePermission,
+        orgId,
       );
 
       return [
@@ -1007,6 +1312,8 @@ export class BootcampService {
           code: 200,
           message: message,
           students_enrolled: userReport,
+          descriptionPrefix: 'the student',
+          bootcampName: bootcampData[0]?.name || '',
           ...grantedPermissions,
         },
       ];
@@ -1047,6 +1354,7 @@ export class BootcampService {
     orderBy?: string,
     orderDirection?: string,
     instructorId?: number, // Add instructor ID parameter
+    orgId?: number,
   ) {
     try {
       const batchIdNum = Number.isFinite(Number(batchId))
@@ -1209,6 +1517,7 @@ export class BootcampService {
         await this.rbacAllocPermsService.getAllPermissions(
           roleName,
           targetPermissions,
+          orgId,
         );
 
       return {
@@ -1293,7 +1602,7 @@ export class BootcampService {
     try {
       // Validate user existence in the users table
       const userExists = await db
-        .select({ id: users.id, email: users.email })
+        .select({ id: users.id, email: users.email, name: users.name })
         .from(users)
         .where(eq(users.id, BigInt(userId)))
         .limit(1);
@@ -1403,7 +1712,7 @@ export class BootcampService {
               .where(enrollmentFilter)
               .limit(1);
             if (!enrollmentRows.length) {
-              // Enrollment not found; return a 404-like response in the payload
+              // Enrollment not found; return a 404-like response in the payloads
               return [
                 null,
                 {
@@ -1459,6 +1768,7 @@ export class BootcampService {
           message: 'User details updated successfully',
           statusCode: STATUS_CODES.OK,
           data: userData,
+          before: { name: userExists[0].name, email: userExists[0].email },
         },
       ];
     } catch (err) {
@@ -1469,10 +1779,13 @@ export class BootcampService {
     }
   }
 
-  async getUserPermissionsForMultipleResources(userId: bigint) {
+  async getUserPermissionsForMultipleResources(userId: bigint, orgId: number) {
     try {
       const result =
-        await this.rbacService.getUserPermissionsForMultipleResources(userId);
+        await this.rbacService.getUserPermissionsForMultipleResources(
+          userId,
+          orgId,
+        );
       return [null, result];
     } catch (err) {
       return [err, null];
@@ -1713,6 +2026,7 @@ export class BootcampService {
         .select({
           id: users.id,
           email: users.email,
+          name: users.name,
         })
 
         .from(users)
@@ -1733,6 +2047,7 @@ export class BootcampService {
           bootcampId: zuvySessions.bootcampId,
           batchId: zuvySessions.batchId,
           meetingId: zuvySessions.meetingId,
+          title: zuvySessions.title,
         })
         .from(zuvySessions)
         .where(
@@ -1783,6 +2098,11 @@ export class BootcampService {
           ),
         )
         .limit(1);
+
+      // Capture the previous status before any update
+      const previousStatus: string | null = existing.length
+        ? (existing[0].status as string)
+        : null;
 
       if (existing.length) {
         // Update existing record
@@ -1876,15 +2196,31 @@ export class BootcampService {
           ),
         );
 
+      const bootcampRes = await db
+        .select({ name: zuvyBootcamps.name })
+        .from(zuvyBootcamps)
+        .where(eq(zuvyBootcamps.id, bootcampId))
+        .limit(1);
+      const bootcampName = bootcampRes[0]?.name || '';
+      const sessionTitle = session.title || '';
+      const studentName = user[0]?.name || user[0]?.email || '';
+      const descriptionSuffix = `for a student name "${studentName}" for the bootcamp "${bootcampName}"`;
+
       return {
         status: 'success',
         message: `Attendance marked as ${status} successfully`,
         code: 200,
+        before: { status: previousStatus ?? 'none' },
+        sessionTitle,
+        descriptionSuffix,
         data: {
           userId,
           sessionId,
           status,
+          previousStatus,
           totalAttendance,
+          userName: user[0]?.name || null,
+          userEmail: user[0]?.email || null,
         },
       };
     } catch (err) {

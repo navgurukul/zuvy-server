@@ -1,10 +1,16 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsString, IsNotEmpty, IsOptional, IsNumber, IsEmail } from 'class-validator';
+import {
+  IsString,
+  IsNotEmpty,
+  IsOptional,
+  IsNumber,
+  IsEmail,
+} from 'class-validator';
 
 export class CreateUserRoleDto {
   @ApiProperty({
     description: 'Name of the user role',
-    example: 'Administrator'
+    example: 'Administrator',
   })
   @IsString()
   @IsNotEmpty()
@@ -13,47 +19,66 @@ export class CreateUserRoleDto {
   @ApiProperty({
     description: 'Description of the user role',
     example: 'Full access to all system features',
-    required: false
+    required: false,
   })
   @IsString()
   @IsOptional()
   description?: string;
+
+  // Optional orgId for multi-tenancy support
+  @ApiProperty({
+    description: 'Organization ID for multi-tenancy support',
+    example: 1,
+    required: false,
+  })
+  @IsNumber()
+  @IsOptional()
+  orgId?: number;
 }
 
 export class UserRoleResponseDto {
   @ApiProperty({
     description: 'Unique identifier for the user role',
-    example: 1
+    example: 1,
   })
   id: number;
 
   @ApiProperty({
     description: 'Name of the user role',
-    example: 'Administrator'
+    example: 'Administrator',
   })
   name: string;
 
   @ApiProperty({
     description: 'Description of the user role',
-    example: 'Full access to all system features'
+    example: 'Full access to all system features',
   })
   description: string;
 }
 
 export class AssignUserRoleDto {
-  @ApiProperty({ 
-    description: 'User ID to assign the role to', 
-    example: 123 
+  @ApiProperty({
+    description: 'User ID to assign the role to',
+    example: 123,
   })
   @IsNumber()
   userId: number;
 
-  @ApiProperty({ 
-    description: 'Role ID to assign to the user', 
-    example: 2 
+  @ApiProperty({
+    description: 'Role ID to assign to the user',
+    example: 2,
   })
   @IsNumber()
   roleId: number;
+
+  // Optional orgId for multi-tenancy support
+  @ApiProperty({
+    description: 'Organization ID for multi-tenancy support',
+    example: 1,
+    required: true,
+  })
+  @IsNumber()
+  orgId: number;
 }
 
 export class CreateUserDto {
@@ -71,6 +96,12 @@ export class CreateUserDto {
   @IsNumber()
   @IsNotEmpty()
   roleId: number;
+
+  // add orgId
+  @ApiProperty({ description: 'Org ID', example: 1 })
+  @IsNumber()
+  @IsNotEmpty()
+  orgId: number;
 }
 
 export class UpdateUserDto {
@@ -88,4 +119,8 @@ export class UpdateUserDto {
   @IsNumber()
   @IsOptional()
   roleId?: number;
+
+  @ApiProperty({ description: 'Org ID', example: 1 })
+  @IsNumber()
+  orgId: number;
 }

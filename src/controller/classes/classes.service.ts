@@ -11,7 +11,7 @@ import {
   zuvyCourseModules,
   zuvyModuleChapter,
   zuvyBootcamps,
-  userTokens,
+  zuvyUserOrganizations,
   users,
   zuvySessionMerge,
   zuvySessionRecordings,
@@ -43,7 +43,10 @@ export class ClassesService {
 
   async accessOfCalendar(creatorInfo) {
     try {
-      const userTokenData = await this.getUserTokens(creatorInfo.email);
+      const userTokenData = await this.getUserTokens(
+        creatorInfo.email,
+        creatorInfo.orgId,
+      );
       if (!userTokenData) {
         // Generate OAuth URL for calendar access
         const scopes = [
@@ -130,14 +133,17 @@ export class ClassesService {
 
       // Delete existing tokens for user then insert new (simpler than upsert for clarity)
       await db
-        .delete(userTokens)
-        .where(eq(userTokens.userId, Number(parsedState.id)));
-      await db.insert(userTokens).values({
+        .delete(zuvyUserOrganizations)
+        .where(eq(zuvyUserOrganizations.userId, Number(parsedState.id)));
+
+      let userData = {
         userId: Number(parsedState.id),
+        organizationId: parsedState.organizationId, // Placeholder, adjust as needed for multi-org support
         userEmail: parsedState.email,
         accessToken: tokens.access_token,
         refreshToken: tokens.refresh_token || '',
-      });
+      };
+      await db.insert(zuvyUserOrganizations).values(userData);
       return res.json({
         status: 'success',
         message: 'Tokens saved successfully',
@@ -593,10 +599,21 @@ export class ClassesService {
         throw new Error(saveResult.message);
       }
 
+      const courseRes = await db
+        .select({ name: zuvyBootcamps.name })
+        .from(zuvyBootcamps)
+        .where(eq(zuvyBootcamps.id, eventDetails.bootcampId))
+        .limit(1);
+      const courseName = courseRes[0]?.name || '';
+      const descriptionSuffix = courseName
+        ? `for course name ${courseName}`
+        : '';
+
       return {
         status: 'success',
         message: 'Zoom session created successfully',
         data: saveResult.data,
+        descriptionSuffix,
       };
     } catch (error) {
       this.logger.error(`Error creating Zoom session: ${error.message}`);
@@ -688,10 +705,21 @@ export class ClassesService {
         throw new Error(saveResult.message);
       }
 
+      const courseRes = await db
+        .select({ name: zuvyBootcamps.name })
+        .from(zuvyBootcamps)
+        .where(eq(zuvyBootcamps.id, eventDetails.bootcampId))
+        .limit(1);
+      const courseName = courseRes[0]?.name || '';
+      const descriptionSuffix = courseName
+        ? `for course name ${courseName}`
+        : '';
+
       return {
         status: 'success',
         message: 'Google Meet session created successfully',
         data: saveResult.data,
+        descriptionSuffix,
       };
     } catch (error) {
       this.logger.error(`Error creating Google Meet session: ${error.message}`);
@@ -871,7 +899,10 @@ export class ClassesService {
   private async deleteGoogleCalendarEvent(eventId: string, userInfo: any) {
     try {
       // Get user tokens for Google Calendar access
-      const userTokenData = await this.getUserTokens(userInfo.email);
+      const userTokenData = await this.getUserTokens(
+        userInfo.email,
+        userInfo.orgId,
+      );
       if (!userTokenData) {
         throw new Error('No Google Calendar access tokens found');
       }
@@ -908,7 +939,10 @@ export class ClassesService {
   ) {
     try {
       // Get user tokens for Google Calendar access
-      const userTokenData = await this.getUserTokens(userInfo.email);
+      const userTokenData = await this.getUserTokens(
+        userInfo.email,
+        userInfo.orgId,
+      );
       if (!userTokenData) {
         throw new Error('No Google Calendar access tokens found');
       }
@@ -957,7 +991,10 @@ export class ClassesService {
   // Helper method to create Google Calendar event
   private async createGoogleCalendarEvent(eventData: any, userInfo: any) {
     try {
-      const userTokenData = await this.getUserTokens(userInfo.email);
+      const userTokenData = await this.getUserTokens(
+        userInfo.email,
+        userInfo.orgId,
+      );
       if (!userTokenData) {
         throw new Error('No calendar tokens found for user');
       }
@@ -1059,11 +1096,15 @@ export class ClassesService {
   }
 
   // Get OAuth tokens for the designated account.
-  private async getUserTokens(email: string) {
+  private async getUserTokens(email: string, orgId?: number) {
+    const conditions = [eq(zuvyUserOrganizations.userEmail, email)];
+    if (orgId) {
+      conditions.push(eq(zuvyUserOrganizations.organizationId, orgId));
+    }
     const result = await db
       .select()
-      .from(userTokens)
-      .where(eq(userTokens.userEmail, email));
+      .from(zuvyUserOrganizations)
+      .where(and(...conditions));
     return result.length ? result[0] : null;
   }
 
@@ -1073,7 +1114,7 @@ export class ClassesService {
    */
   async fetchRecordingForMeeting(meetingId: string) {
     // Retrieve tokens for the designated account.
-    const userTokenData = await this.getUserTokens('team@zuvy.org');
+    const userTokenData = await this.getUserTokens('team@zuvy.org', 1);
     if (!userTokenData) {
       this.logger.warn('No tokens found for team@zuvy.org');
       return;
@@ -1137,7 +1178,7 @@ export class ClassesService {
     bootcampId,
   ) {
     // Retrieve tokens for the designated account.
-    const userTokenData = await this.getUserTokens('team@zuvy.org');
+    const userTokenData = await this.getUserTokens('team@zuvy.org', 1);
     if (!userTokenData) {
       this.logger.warn('No tokens found for team@zuvy.org');
       return;
@@ -2092,16 +2133,24 @@ export class ClassesService {
         }
       }
 
+      const courseRes = await db
+        .select({ name: zuvyBootcamps.name })
+        .from(zuvyBootcamps)
+        .where(eq(zuvyBootcamps.id, moduleInfo[0].bootcampId))
+        .limit(1);
+      const courseName = courseRes[0]?.name || '';
+      const descriptionSuffix = courseName
+        ? `for course name ${courseName}`
+        : '';
+
       return [
         null,
         {
           status: 'success',
           message: 'Live classes added as chapters successfully',
           code: 200,
-          data: {
-            chapters,
-            totalAdded: chapters.length,
-          },
+          data: { chapters, totalAdded: chapters.length },
+          descriptionSuffix,
         },
       ];
     } catch (error) {
@@ -2543,6 +2592,7 @@ export class ClassesService {
         return {
           success: false,
           message: 'Unauthorized to update this session',
+          bootcampId: session.bootcampId,
         };
       }
 
@@ -2564,6 +2614,7 @@ export class ClassesService {
             success: false,
             message:
               'Session has already started; updates require a new future start time',
+            bootcampId: session.bootcampId,
           };
         }
         const requestedStart = new Date(normalizedStart);
@@ -2571,6 +2622,7 @@ export class ClassesService {
           return {
             success: false,
             message: 'Cannot update to a start time in the past',
+            bootcampId: session.bootcampId,
           };
         }
       }
@@ -2813,10 +2865,29 @@ export class ClassesService {
         }
       }
 
+      const courseRes = await db
+        .select({ name: zuvyBootcamps.name })
+        .from(zuvyBootcamps)
+        .where(eq(zuvyBootcamps.id, session.bootcampId))
+        .limit(1);
+      const courseName = courseRes[0]?.name || '';
+      const descriptionSuffix = courseName
+        ? `from course name ${courseName}`
+        : '';
+
       return {
         success: true,
         data: responseData,
+        before: {
+          title: session.title,
+          startTime: session.startTime,
+          endTime: session.endTime,
+          status: session.status,
+          batchId: session.batchId,
+          secondBatchId: session.secondBatchId,
+        },
         message: 'Session updated successfully',
+        descriptionSuffix,
       };
     } catch (error) {
       this.logger.error(
@@ -3001,11 +3072,24 @@ export class ClassesService {
         }
       }
 
+      const courseRes = await db
+        .select({ name: zuvyBootcamps.name })
+        .from(zuvyBootcamps)
+        .where(eq(zuvyBootcamps.id, sessionData.bootcampId))
+        .limit(1);
+      const courseName = courseRes[0]?.name || '';
+
       return {
         success: true,
         message: chapterDeleted
           ? 'Session and linked chapter deleted successfully'
           : 'Session deleted successfully',
+        sessionTitle: sessionData.title,
+        sessionId: sessionId,
+        bootcampId: sessionData.bootcampId || null,
+        descriptionSuffix: courseName
+          ? `from the course name ${courseName}`
+          : '',
       };
     } catch (error) {
       this.logger.error(
@@ -4159,16 +4243,18 @@ export class ClassesService {
             id: parentSessionData.id,
             title: parentSessionData.title,
             platform: parentSessionData.isZoomMeet ? 'zoom' : 'google_meet',
-            status: 'active', // Parent session becomes/remains the main session
+            status: 'active',
           },
           childSession: {
             id: childSessionData.id,
             title: childSessionData.title,
             batchId: childSessionData.batchId,
-            status: 'merged', // Child session is marked as merged
+            status: 'merged',
           },
           redirectUrl: redirectMeetingUrl,
         },
+        descriptionSuffix:
+          'combines students from both sessions into parent session',
       };
     } catch (error) {
       this.logger.error(`Error merging classes: ${error.message}`);
@@ -4188,7 +4274,10 @@ export class ClassesService {
   ) {
     try {
       // Get user tokens for Google Calendar access
-      const userTokenData = await this.getUserTokens(userInfo.email);
+      const userTokenData = await this.getUserTokens(
+        userInfo.email,
+        userInfo.orgId,
+      );
       if (!userTokenData) {
         throw new Error('No Google Calendar access tokens found');
       }

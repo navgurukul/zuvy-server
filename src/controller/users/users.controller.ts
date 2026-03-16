@@ -12,8 +12,11 @@ import {
   Param,
   Put,
   Delete,
+  UseInterceptors,
 } from '@nestjs/common';
 import { UsersService } from './users.service';
+import { TrackAction } from 'src/trackinglog/decorators/track-action.decorator';
+import { TrackActionInterceptor } from 'src/trackinglog/interceptors/track-action.interceptor';
 import {
   ApiTags,
   ApiBody,
@@ -130,6 +133,15 @@ export class UsersController {
     description: 'Internal server error',
   })
   @ApiBearerAuth('JWT-auth')
+  @UseInterceptors(TrackActionInterceptor)
+  @TrackAction({
+    action: 'create_role',
+    resourceType: 'role',
+    displayType: 'a new user role for',
+    permissionName: 'createRole',
+    getResourceName: (result, params) =>
+      params?.email || result?.data?.email || result?.data?.name || 'User',
+  })
   async createUserRole(
     @Body() createUserRoleDto: CreateUserRoleDto,
   ): Promise<any> {
@@ -151,7 +163,7 @@ export class UsersController {
     }
   }
 
-  @Get('get/roles')
+  @Get('get/all/roles/:orgId')
   //   @RequirePermissions('read_user_roles')
   @ApiOperation({
     summary: 'Get all user roles',
@@ -167,39 +179,17 @@ export class UsersController {
     description: 'Internal server error',
   })
   @ApiBearerAuth('JWT-auth')
-  async getAllUserRoles(@Req() req): Promise<any> {
+  async getAllUserRolesNoFilter(
+    @Param('orgId') orgId: number,
+    @Req() req,
+  ): Promise<any> {
     try {
       const roleName = req.user[0]?.roles;
-      const result = await this.usersService.getAllUserRoles(roleName);
-      return result;
-    } catch (error) {
-      throw new HttpException(
-        'Internal Server Error',
-        HttpStatus.INTERNAL_SERVER_ERROR,
+      const result = await this.usersService.getAllUserRoles(
+        orgId,
+        roleName,
+        true,
       );
-    }
-  }
-
-  @Get('get/all/roles')
-  //   @RequirePermissions('read_user_roles')
-  @ApiOperation({
-    summary: 'Get all user roles',
-    description: 'Retrieves all user roles from the system',
-  })
-  @ApiResponse({
-    status: 200,
-    description: 'User roles retrieved successfully',
-    type: [UserRoleResponseDto],
-  })
-  @ApiResponse({
-    status: 500,
-    description: 'Internal server error',
-  })
-  @ApiBearerAuth('JWT-auth')
-  async getAllUserRolesNoFilter(@Req() req): Promise<any> {
-    try {
-      const roleName = req.user[0]?.roles;
-      const result = await this.usersService.getAllUserRoles(roleName, true);
       return result;
     } catch (error) {
       throw new HttpException(
@@ -226,6 +216,14 @@ export class UsersController {
   @ApiResponse({ status: 404, description: 'User or Role not found' })
   @ApiResponse({ status: 500, description: 'Internal server error' })
   @ApiBearerAuth('JWT-auth')
+  @UseInterceptors(TrackActionInterceptor)
+  @TrackAction({
+    action: 'assign_role',
+    resourceType: 'role',
+    displayType: 'a role to a user name',
+    permissionName: 'editUser',
+    getResourceName: (result) => result?.userEmail || 'user',
+  })
   async assignRoleToUser(
     @Body() body: AssignUserRoleDto,
     @Req() req,
@@ -245,7 +243,7 @@ export class UsersController {
     }
   }
 
-  @Get('get/all/users')
+  @Get('get/all/users/:orgId')
   @ApiOperation({
     summary: 'Get all users with their roles',
     description: 'Retrieves a list of all users with their role information',
@@ -303,6 +301,7 @@ export class UsersController {
     description: 'Internal server error',
   })
   async getAllUsers(
+    @Param('orgId') orgId: number,
     @Req() req, // Required parameter first
     @Query('limit') limit?: string, // Optional
     @Query('offset') offset?: string, // Optional
@@ -310,7 +309,7 @@ export class UsersController {
     @Query('roleId') roleId?: number[], // Optional
   ) {
     // Parse limit and offset with defaults to avoid errors
-    const limitNum = limit ? parseInt(limit, 10) : 10; // Default limit (adjust as needed)
+    const limitNum = limit ? parseInt(limit, 10) : 50; // Default limit (increased from 10 to 50)
     const offsetNum = offset ? parseInt(offset, 10) : 0; // Default offset
 
     // Optional: Add basic validation to ensure parsed values are positive integers
@@ -329,6 +328,7 @@ export class UsersController {
 
     const roleName = req.user[0]?.roles;
     return this.usersService.getAllUsersWithRoles(
+      orgId,
       roleName,
       limitNum,
       offsetNum,
@@ -382,6 +382,17 @@ export class UsersController {
   }
 
   @Post('/addUsers')
+  @UseInterceptors(TrackActionInterceptor)
+  @TrackAction({
+    action: 'create_user',
+    resourceType: 'user',
+    permissionName: 'createUser',
+    getResourceName: (result, params) => {
+      const name = params?.name || result?.data?.name || result?.name || 'User';
+      const email = params?.email || result?.data?.email || result?.email || '';
+      return `${name}${email ? ` (${email})` : ''}`;
+    },
+  })
   @ApiOperation({
     summary: 'Create a new user with role',
     description: 'Creates a new user and assigns them a role',
@@ -426,6 +437,17 @@ export class UsersController {
   }
 
   @Put('/updateUser/:id')
+  @UseInterceptors(TrackActionInterceptor)
+  @TrackAction({
+    action: 'edit_user',
+    resourceType: 'user',
+    permissionName: 'editUser',
+    getResourceName: (result, params) => {
+      const name = params?.name || result?.data?.name || result?.name || 'User';
+      const email = params?.email || result?.data?.email || result?.email || '';
+      return `${name}${email ? ` (${email})` : ''}`;
+    },
+  })
   @ApiOperation({
     summary: 'Update user and role',
     description: 'Updates user details and/or their role assignment',
@@ -482,6 +504,13 @@ export class UsersController {
   }
 
   @Delete('/deleteUser/:id')
+  @UseInterceptors(TrackActionInterceptor)
+  @TrackAction({
+    action: 'delete_user',
+    resourceType: 'user',
+    permissionName: 'deleteUser',
+    getResourceName: (result) => result?.userEmail || 'user',
+  })
   @ApiOperation({
     summary: 'Delete a user',
     description: 'Deletes a user and their role assignments',
@@ -511,7 +540,16 @@ export class UsersController {
     description: 'Internal server error',
   })
   @ApiBearerAuth('JWT-auth')
-  async deleteUser(@Param('id', ParseIntPipe) id: bigint) {
-    return this.usersService.deleteUser(id);
+  @ApiQuery({
+    name: 'orgId',
+    required: true,
+    type: Number,
+    description: 'Organization ID to delete user from specific org',
+  })
+  async deleteUser(
+    @Param('id', ParseIntPipe) id: bigint,
+    @Query('orgId', ParseIntPipe) orgId: number,
+  ) {
+    return this.usersService.deleteUser(id, orgId);
   }
 }
