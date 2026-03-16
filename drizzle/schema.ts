@@ -3218,9 +3218,9 @@ export const zuvyLearnersCompleteProfile = main.table(
     class10ScoreType: learnerScoreType('class10_score_type'),
     hasWorkExperience: boolean('has_work_experience').default(false),
     workExperiences: jsonb('work_experiences').default([]),
-    leetcodeUsername: varchar('leetcode_username', { length: 100 }),
-    codechefUsername: varchar('codechef_username', { length: 100 }),
-    codeforcesUsername: varchar('codeforces_username', { length: 100 }),
+    leetcodeProfiles: jsonb('leetcode_profiles').default([]),
+    codechefProfiles: jsonb('codechef_profiles').default([]),
+    codeforcesProfiles: jsonb('codeforces_profiles').default([]),
 
     // PAGE 4: PREFERENCES
     targetRoles: jsonb('target_roles').default([]),
