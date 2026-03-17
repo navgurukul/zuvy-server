@@ -46,14 +46,7 @@ export class OrgAuthorizationGuard implements CanActivate {
       .limit(1);
     const targetOrgName = targetOrg?.title || `orgId ${requestOrgId}`;
 
-    // Check 1: Compare request orgId against the user's JWT orgId
-    if (userOrgId !== null && requestOrgId !== userOrgId) {
-      throw new ForbiddenException(
-        `Access denied: Your current session belongs to "${userOrgName}", but you are trying to access data of "${targetOrgName}"`,
-      );
-    }
-
-    // Check 2: Verify user actually belongs to the target org in the database
+    // Check: Verify user actually belongs to the target org in the database
     const userId = Number(user.id);
     const membership = await db
       .select({ id: zuvyUserOrganizations.id })
@@ -68,7 +61,7 @@ export class OrgAuthorizationGuard implements CanActivate {
 
     if (membership.length === 0) {
       throw new ForbiddenException(
-        `Access denied: You are not a member of "${targetOrgName}". You do not have permission to access its data.`,
+        `This page is accessible only to ${targetOrgName}. You are currently associated with the ${userOrgName} and do not have permission to view this page.`,
       );
     }
 
