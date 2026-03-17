@@ -308,9 +308,9 @@ FOR UPDATE
           );
         } catch (error) {
           console.error('Error creating Google Meet:', error);
-          throw new BadRequestException(
-            'Failed to create Google Meet session.',
-          );
+          // throw new BadRequestException(
+          //   'Failed to create Google Meet session.',
+          // );
         }
       }
       /* Save meeting info */
