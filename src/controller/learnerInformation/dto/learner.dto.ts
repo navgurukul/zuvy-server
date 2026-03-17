@@ -717,6 +717,19 @@ export class SaveCompleteProfileDto {
   @Type(() => WorkExperienceDto)
   workExperiences?: WorkExperienceDto[];
 
+  // Legacy fields (kept for backwards compatibility with older frontend versions)
+  @IsOptional()
+  @IsString()
+  leetcodeUsername?: string;
+
+  @IsOptional()
+  @IsString()
+  codechefUsername?: string;
+
+  @IsOptional()
+  @IsString()
+  codeforcesUsername?: string;
+
   @ApiPropertyOptional({
     type: [CodingPlatformProfileDto],
     example: [
