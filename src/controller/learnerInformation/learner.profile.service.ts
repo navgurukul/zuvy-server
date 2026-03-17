@@ -51,9 +51,9 @@ const zuvyLearnersCompleteProfileTable = learnerMainSchema.table(
     class10ScoreType: varchar('class10_score_type', { length: 10 }),
     hasWorkExperience: boolean('has_work_experience').default(false),
     workExperiences: jsonb('work_experiences').default([]),
-    leetcodeUsername: varchar('leetcode_username', { length: 100 }),
-    codechefUsername: varchar('codechef_username', { length: 100 }),
-    codeforcesUsername: varchar('codeforces_username', { length: 100 }),
+    leetcodeProfiles: jsonb('leetcode_profiles').default([]),
+    codechefProfiles: jsonb('codechef_profiles').default([]),
+    codeforcesProfiles: jsonb('codeforces_profiles').default([]),
 
     // PAGE 4: PREFERENCES
     targetRoles: jsonb('target_roles').default([]),
@@ -62,6 +62,8 @@ const zuvyLearnersCompleteProfileTable = learnerMainSchema.table(
     internshipStipend: varchar('internship_stipend', { length: 50 }),
     fullTimeCtc: varchar('full_time_ctc', { length: 50 }),
     preferredContactMethods: jsonb('preferred_contact_methods').default([]),
+    resumeUrl: varchar('resume_url', { length: 1024 }),
+    originalFilename: varchar('original_filename', { length: 255 }),
 
     createdAt: timestamp('created_at', {
       withTimezone: true,
@@ -132,9 +134,9 @@ CREATE TABLE IF NOT EXISTS main.zuvy_learners_complete_profile (
   class10_score_type varchar(10),
   has_work_experience boolean DEFAULT false,
   work_experiences jsonb DEFAULT '[]'::jsonb,
-  leetcode_username varchar(100),
-  codechef_username varchar(100),
-  codeforces_username varchar(100),
+  leetcode_profiles jsonb DEFAULT '[]'::jsonb,
+  codechef_profiles jsonb DEFAULT '[]'::jsonb,
+  codeforces_profiles jsonb DEFAULT '[]'::jsonb,
 
   target_roles jsonb DEFAULT '[]'::jsonb,
   preferred_locations jsonb DEFAULT '[]'::jsonb,
@@ -155,6 +157,38 @@ CREATE UNIQUE INDEX IF NOT EXISTS zuvy_learners_complete_profile_user_id_unique
 ON main.zuvy_learners_complete_profile (user_id);
 `),
     );
+
+    await db.execute(
+      sql.raw(`
+ALTER TABLE IF EXISTS main.zuvy_learners_complete_profile
+ADD COLUMN IF NOT EXISTS resume_url VARCHAR(1024);
+
+ALTER TABLE IF EXISTS main.zuvy_learners_complete_profile
+ADD COLUMN IF NOT EXISTS original_filename VARCHAR(255);
+
+ALTER TABLE IF EXISTS main.zuvy_learners_complete_profile
+ADD COLUMN IF NOT EXISTS leetcode_profiles jsonb DEFAULT '[]'::jsonb;
+
+ALTER TABLE IF EXISTS main.zuvy_learners_complete_profile
+ADD COLUMN IF NOT EXISTS codechef_profiles jsonb DEFAULT '[]'::jsonb;
+
+ALTER TABLE IF EXISTS main.zuvy_learners_complete_profile
+ADD COLUMN IF NOT EXISTS codeforces_profiles jsonb DEFAULT '[]'::jsonb;
+
+ALTER TABLE IF EXISTS main.zuvy_learners_complete_profile
+DROP COLUMN IF EXISTS leetcode_username;
+
+ALTER TABLE IF EXISTS main.zuvy_learners_complete_profile
+DROP COLUMN IF EXISTS codechef_username;
+
+ALTER TABLE IF EXISTS main.zuvy_learners_complete_profile
+DROP COLUMN IF EXISTS codeforces_username;
+`),
+    );
+  }
+
+  private normalizeCodingPlatformFields(payload: SaveCompleteProfileDto) {
+    return { ...payload };
   }
 
   private async getOrCreateProfile(userId: number) {
@@ -184,7 +218,7 @@ ON main.zuvy_learners_complete_profile (user_id);
     await this.ensureCompleteProfileTableReady();
     await this.getOrCreateProfile(userId);
 
-    const data = payload;
+    const data = this.normalizeCodingPlatformFields(payload);
 
     const updateData: any = {
       updatedAt: new Date().toISOString(),
@@ -254,7 +288,9 @@ ON main.zuvy_learners_complete_profile (user_id);
       updatedAt: new Date().toISOString(),
     };
 
-    for (const [key, value] of Object.entries(payload)) {
+    const normalizedPayload = this.normalizeCodingPlatformFields(payload);
+
+    for (const [key, value] of Object.entries(normalizedPayload)) {
       if (value !== undefined) {
         updateData[key] = value;
       }
@@ -305,6 +341,20 @@ ON main.zuvy_learners_complete_profile (user_id);
 
     if (!profile) return 0;
 
+    const hasCodingPlatformData = (profiles: unknown) => {
+      const hasProfiles =
+        Array.isArray(profiles) &&
+        profiles.some(
+          (profile) =>
+            profile &&
+            typeof profile === 'object' &&
+            typeof (profile as { username?: unknown }).username === 'string' &&
+            (profile as { username: string }).username.trim().length > 0,
+        );
+
+      return hasProfiles;
+    };
+
     const checks = [
       // PAGE 1: BASICS
       !!profile.fullName,
@@ -337,11 +387,9 @@ ON main.zuvy_learners_complete_profile (user_id);
       profile.hasWorkExperience === false ||
         (Array.isArray(profile.workExperiences) &&
           (profile.workExperiences as any[]).length > 0),
-      !!(
-        profile.leetcodeUsername ||
-        profile.codechefUsername ||
-        profile.codeforcesUsername
-      ),
+      hasCodingPlatformData(profile.leetcodeProfiles) ||
+        hasCodingPlatformData(profile.codechefProfiles) ||
+        hasCodingPlatformData(profile.codeforcesProfiles),
 
       // PAGE 4: PREFERENCES
       Array.isArray(profile.targetRoles) &&
