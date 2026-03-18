@@ -1,7 +1,10 @@
+/* eslint-disable prettier/prettier */
 import {
   BadRequestException,
   Controller,
+  Get,
   Post,
+  Req,
   UploadedFile,
   UseInterceptors,
 } from '@nestjs/common';
@@ -60,12 +63,56 @@ export class LearnerResumeController {
     }),
   )
   async parseResume(
+    @Req() req,
     @UploadedFile() file: Express.Multer.File,
-  ): Promise<{ success: boolean; data: ResumeResponseDto }> {
+  ): Promise<{ success: boolean; data: ResumeResponseDto; resumeUrl: string }> {
     if (!file) {
       throw new BadRequestException('Resume file is required (PDF or DOCX)');
     }
 
-    return this.learnerResumeService.parseResume(file);
+    const userId = req.user[0]?.id;
+
+    const parseResult = await this.learnerResumeService.parseResume(file);
+
+    let resumeUrl = '';
+    try {
+      const uploadResult = await this.learnerResumeService.uploadResumeAndSave(
+        file,
+        userId,
+        parseResult.data.projects || [],
+      );
+      resumeUrl = uploadResult.resumeUrl;
+    } catch {}
+
+    return {
+      ...parseResult,
+      resumeUrl,
+    };
+  }
+
+  // @Get('url')
+  // @ApiOperation({ summary: 'Get resume URL for the authenticated learner' })
+  // async getResumeUrl(
+  //   @Req() req,
+  // ): Promise<{ success: boolean; data: { resumeUrl: string; originalFilename: string } }> {
+  //   const userId = req.user[0]?.id;
+  //   const data = await this.learnerResumeService.getResumeByUserId(userId);
+  //   return { success: true, data };
+  // }
+
+  @Get('parsed')
+  @ApiOperation({
+    summary: 'Fetch resume from S3, parse it, and return extracted data',
+  })
+  async getParsedResume(@Req() req): Promise<{
+    success: boolean;
+    resumeUrl: string;
+    originalFilename: string;
+    data: ResumeResponseDto;
+  }> {
+    const userId = req.user[0]?.id;
+    const result =
+      await this.learnerResumeService.getParsedResumeFromS3(userId);
+    return { success: true, ...result };
   }
 }

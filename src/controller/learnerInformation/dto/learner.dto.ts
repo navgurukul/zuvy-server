@@ -325,6 +325,22 @@ export class ResumeResponseDto {
 
   @ApiProperty({ type: [String], example: ['B.Tech', 'M.Tech'] })
   education: string[];
+
+  @ApiProperty({
+    type: [Object],
+    example: [
+      {
+        title: 'E-commerce Platform',
+        description: 'Built full-stack app with auth and payment integration',
+        techStack: ['React', 'Node.js', 'PostgreSQL'],
+      },
+    ],
+  })
+  projects: {
+    title: string;
+    description?: string;
+    techStack?: string[];
+  }[];
 }
 
 // ─── COMPLETE PROFILE DTOs ─────────────────────────────────────────
@@ -451,6 +467,51 @@ export class WorkExperienceDto {
   @IsString()
   @Length(0, 500)
   description?: string;
+}
+
+export class CodingPlatformProfileDto {
+  @ApiPropertyOptional({ example: 'john_doe' })
+  @IsOptional()
+  @IsString()
+  @Length(0, 100)
+  @Matches(/^[a-zA-Z0-9_\-]*$/, {
+    message:
+      'username must contain only letters, numbers, underscores, and hyphens',
+  })
+  username?: string;
+
+  @ApiPropertyOptional({ example: '3355' })
+  @IsOptional()
+  @IsString()
+  @Length(0, 20)
+  @Matches(/^\d+(\.\d+)?$/, {
+    message: 'rating must be a valid number in string format',
+  })
+  rating?: string;
+
+  @ApiPropertyOptional({ example: 7 })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  stars?: number;
+
+  @ApiPropertyOptional({ example: 'Belarus' })
+  @IsOptional()
+  @IsString()
+  @Length(0, 100)
+  country?: string;
+
+  @ApiPropertyOptional({ example: 1234, nullable: true })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  globalRank?: number | null;
+
+  @ApiPropertyOptional({ example: 56, nullable: true })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  countryRank?: number | null;
 }
 
 @ValidatorConstraint({ name: 'FutureGraduationDate', async: false })
@@ -656,35 +717,75 @@ export class SaveCompleteProfileDto {
   @Type(() => WorkExperienceDto)
   workExperiences?: WorkExperienceDto[];
 
-  @ApiPropertyOptional({ example: 'john_doe' })
+  // Legacy fields (kept for backwards compatibility with older frontend versions)
   @IsOptional()
   @IsString()
-  @Length(0, 100)
-  @Matches(/^[a-zA-Z0-9_\-]*$/, {
-    message:
-      'leetcodeUsername must contain only letters, numbers, underscores, and hyphens',
-  })
   leetcodeUsername?: string;
 
-  @ApiPropertyOptional({ example: 'john_doe' })
   @IsOptional()
   @IsString()
-  @Length(0, 100)
-  @Matches(/^[a-zA-Z0-9_\-]*$/, {
-    message:
-      'codechefUsername must contain only letters, numbers, underscores, and hyphens',
-  })
   codechefUsername?: string;
 
-  @ApiPropertyOptional({ example: 'john_doe' })
   @IsOptional()
   @IsString()
-  @Length(0, 100)
-  @Matches(/^[a-zA-Z0-9_\-]*$/, {
-    message:
-      'codeforcesUsername must contain only letters, numbers, underscores, and hyphens',
-  })
   codeforcesUsername?: string;
+
+  @ApiPropertyOptional({
+    type: [CodingPlatformProfileDto],
+    example: [
+      {
+        username: 'john_doe',
+        rating: '3355',
+        stars: 7,
+        country: 'Belarus',
+        globalRank: null,
+        countryRank: null,
+      },
+    ],
+  })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => CodingPlatformProfileDto)
+  leetcodeProfiles?: CodingPlatformProfileDto[];
+
+  @ApiPropertyOptional({
+    type: [CodingPlatformProfileDto],
+    example: [
+      {
+        username: 'john_doe',
+        rating: '3355',
+        stars: 7,
+        country: 'Belarus',
+        globalRank: null,
+        countryRank: null,
+      },
+    ],
+  })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => CodingPlatformProfileDto)
+  codechefProfiles?: CodingPlatformProfileDto[];
+
+  @ApiPropertyOptional({
+    type: [CodingPlatformProfileDto],
+    example: [
+      {
+        username: 'john_doe',
+        rating: '3355',
+        stars: 7,
+        country: 'Belarus',
+        globalRank: null,
+        countryRank: null,
+      },
+    ],
+  })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => CodingPlatformProfileDto)
+  codeforcesProfiles?: CodingPlatformProfileDto[];
 
   // ─── PAGE 4: PREFERENCES ───────────────────────────────────────
   @ApiPropertyOptional({
