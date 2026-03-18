@@ -569,3 +569,55 @@ CREATE INDEX "zuvy_user_organizations_joined_at_idx"
 ALTER TABLE "zuvy_permissions_roles" 
 ADD COLUMN IF NOT EXISTS "org_id" INTEGER NOT NULL 
 REFERENCES "zuvy_organizations"("id") DEFAULT 1;
+
+-- mapping orgid in questions bank tables
+-- For MCQ
+ALTER TABLE "zuvy_module_quiz"
+ADD COLUMN "org_id" INTEGER;
+
+UPDATE "zuvy_module_quiz"
+SET "org_id" = 1;
+
+ALTER TABLE "zuvy_module_quiz"
+ALTER COLUMN "org_id" SET NOT NULL;
+
+ALTER TABLE "zuvy_module_quiz"
+ADD CONSTRAINT "fk_module_quiz_org"
+FOREIGN KEY ("org_id")
+REFERENCES "zuvy_organizations"("id")
+ON UPDATE CASCADE
+ON DELETE CASCADE;
+
+-- For Open Ended Questions
+ALTER TABLE "zuvy_openEnded_questions"
+ADD COLUMN "org_id" INTEGER;
+
+UPDATE "zuvy_openEnded_questions"
+SET "org_id" = 1;
+
+ALTER TABLE "zuvy_openEnded_questions"
+ALTER COLUMN "org_id" SET NOT NULL;
+
+ALTER TABLE "zuvy_openEnded_questions"
+ADD CONSTRAINT "fk_openended_org"
+FOREIGN KEY ("org_id")
+REFERENCES "zuvy_organizations"("id")
+ON UPDATE CASCADE
+ON DELETE CASCADE;
+
+-- For Coding Questions
+ALTER TABLE "zuvy_coding_questions"
+ADD COLUMN "org_id" INTEGER;
+
+UPDATE "zuvy_coding_questions"
+SET "org_id" = 1;
+
+ALTER TABLE "zuvy_coding_questions"
+ALTER COLUMN "org_id" SET NOT NULL;
+
+ALTER TABLE "zuvy_coding_questions"
+ADD CONSTRAINT "fk_coding_questions_org"
+FOREIGN KEY ("org_id")
+REFERENCES "zuvy_organizations"("id")
+ON UPDATE CASCADE
+ON DELETE CASCADE;
