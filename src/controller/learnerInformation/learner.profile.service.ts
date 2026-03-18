@@ -195,6 +195,36 @@ DROP COLUMN IF EXISTS codeforces_username;
   private normalizeCodingPlatformFields(payload: SaveCompleteProfileDto) {
     const normalizedPayload: SaveCompleteProfileDto = { ...payload };
 
+    const normalizeProfiles = (profiles: unknown) => {
+      if (!Array.isArray(profiles)) return profiles;
+
+      return profiles.map((profile) => {
+        if (!profile || typeof profile !== 'object') {
+          return profile;
+        }
+
+        const profileData = {
+          ...(profile as Record<string, unknown>),
+        } as Record<string, unknown>;
+
+        if (profileData.rating !== undefined && profileData.rating !== null) {
+          const parsedRating = Number(profileData.rating);
+          if (!Number.isNaN(parsedRating)) {
+            profileData.rating = parsedRating;
+          }
+        }
+
+        if (profileData.rank !== undefined && profileData.rank !== null) {
+          const parsedRank = Number(profileData.rank);
+          if (!Number.isNaN(parsedRank)) {
+            profileData.rank = parsedRank;
+          }
+        }
+
+        return profileData;
+      });
+    };
+
     if (payload.hasWorkExperience === false) {
       normalizedPayload.workExperiences = [];
     }
@@ -223,6 +253,16 @@ DROP COLUMN IF EXISTS codeforces_username;
         normalizedPayload.workExperiences = [];
       }
     }
+
+    normalizedPayload.leetcodeProfiles = normalizeProfiles(
+      payload.leetcodeProfiles,
+    ) as SaveCompleteProfileDto['leetcodeProfiles'];
+    normalizedPayload.codechefProfiles = normalizeProfiles(
+      payload.codechefProfiles,
+    ) as SaveCompleteProfileDto['codechefProfiles'];
+    normalizedPayload.codeforcesProfiles = normalizeProfiles(
+      payload.codeforcesProfiles,
+    ) as SaveCompleteProfileDto['codeforcesProfiles'];
 
     return normalizedPayload;
   }

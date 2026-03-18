@@ -8,6 +8,7 @@ import {
   IsEnum,
   IsInt,
   IsOptional,
+  IsNumber,
   IsString,
   IsUrl,
   Length,
@@ -480,14 +481,19 @@ export class CodingPlatformProfileDto {
   })
   username?: string;
 
-  @ApiPropertyOptional({ example: '3355' })
+  @ApiPropertyOptional({ example: 3355 })
   @IsOptional()
-  @IsString()
-  @Length(0, 20)
-  @Matches(/^\d+(\.\d+)?$/, {
-    message: 'rating must be a valid number in string format',
-  })
-  rating?: string;
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  rating?: number;
+
+  @ApiPropertyOptional({ example: 1234, nullable: true })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  rank?: number | null;
 
   @ApiPropertyOptional({ example: 7 })
   @IsOptional()
@@ -735,7 +741,8 @@ export class SaveCompleteProfileDto {
     example: [
       {
         username: 'john_doe',
-        rating: '3355',
+        rating: 3355,
+        rank: 1234,
         stars: 7,
         country: 'Belarus',
         globalRank: null,
@@ -754,7 +761,8 @@ export class SaveCompleteProfileDto {
     example: [
       {
         username: 'john_doe',
-        rating: '3355',
+        rating: 3355,
+        rank: 1234,
         stars: 7,
         country: 'Belarus',
         globalRank: null,
@@ -773,7 +781,8 @@ export class SaveCompleteProfileDto {
     example: [
       {
         username: 'john_doe',
-        rating: '3355',
+        rating: 3355,
+        rank: 1234,
         stars: 7,
         country: 'Belarus',
         globalRank: null,
