@@ -384,13 +384,13 @@ DROP COLUMN IF EXISTS codeforces_username;
       return {
         level: 'Beginner',
         message:
-          'You are just getting started. Keep adding your information to strengthen your profile.',
+          'Good start! Just a few quick additions to boost your profile.',
       };
     } else if (percentage <= 40) {
       return {
         level: 'Basic',
         message:
-          'Good start! Continue adding more details about your education and skills.',
+          'You are halfway there! Keep going to unlock job opportunities.',
       };
     } else if (percentage <= 60) {
       return {
@@ -400,20 +400,18 @@ DROP COLUMN IF EXISTS codeforces_username;
     } else if (percentage <= 80) {
       return {
         level: 'Job Ready',
-        message:
-          'Excellent! Your profile is almost complete. Just a few more touches to polish it.',
+        message: 'You can now apply for jobs! Add more details to stand out.',
       };
     } else if (percentage <= 90) {
       return {
-        level: 'Almost Complete',
+        level: 'Job Ready',
         message:
-          'You are very close! Complete a few remaining sections to finalize your profile.',
+          'You are so close! Complete your profile to unlock opportunities.',
       };
     } else if (percentage <= 99) {
       return {
-        level: 'Nearly Done',
-        message:
-          'Almost there! Just one or two more details to complete your profile.',
+        level: 'Job Ready',
+        message: 'Almost there! One step away from being job ready.',
       };
     } else {
       return {
