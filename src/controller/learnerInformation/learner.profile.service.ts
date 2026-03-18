@@ -1,4 +1,9 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+/* eslint-disable prettier/prettier */
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { eq, sql } from 'drizzle-orm';
 import {
   pgSchema,
@@ -188,7 +193,38 @@ DROP COLUMN IF EXISTS codeforces_username;
   }
 
   private normalizeCodingPlatformFields(payload: SaveCompleteProfileDto) {
-    return { ...payload };
+    const normalizedPayload: SaveCompleteProfileDto = { ...payload };
+
+    if (payload.hasWorkExperience === false) {
+      normalizedPayload.workExperiences = [];
+    }
+
+    if (payload.hasWorkExperience === true) {
+      if (
+        !Array.isArray(payload.workExperiences) ||
+        payload.workExperiences.length === 0
+      ) {
+        throw new BadRequestException(
+          'workExperiences must have at least one item when hasWorkExperience is true',
+        );
+      }
+
+      normalizedPayload.workExperiences = payload.workExperiences;
+    }
+
+    if (
+      payload.hasWorkExperience === undefined &&
+      Array.isArray(payload.workExperiences)
+    ) {
+      if (payload.workExperiences.length > 0) {
+        normalizedPayload.hasWorkExperience = true;
+      } else {
+        normalizedPayload.hasWorkExperience = false;
+        normalizedPayload.workExperiences = [];
+      }
+    }
+
+    return normalizedPayload;
   }
 
   private async getOrCreateProfile(userId: number) {
@@ -334,12 +370,74 @@ DROP COLUMN IF EXISTS codeforces_username;
     };
   }
 
-  async calculateProfileStrengthNew(userId: number): Promise<number> {
+  private getProfileStrengthDetails(percentage: number): {
+    level: string;
+    message: string;
+  } {
+    if (percentage === 0) {
+      return {
+        level: 'Not Started',
+        message:
+          'Start by filling in your basic information to begin building your profile.',
+      };
+    } else if (percentage <= 20) {
+      return {
+        level: 'Beginner',
+        message:
+          'You are just getting started. Keep adding your information to strengthen your profile.',
+      };
+    } else if (percentage <= 40) {
+      return {
+        level: 'Basic',
+        message:
+          'Good start! Continue adding more details about your education and skills.',
+      };
+    } else if (percentage <= 60) {
+      return {
+        level: 'Intermediate',
+        message: 'Great progress! A few more clicks to become job ready.',
+      };
+    } else if (percentage <= 80) {
+      return {
+        level: 'Job Ready',
+        message:
+          'Excellent! Your profile is almost complete. Just a few more touches to polish it.',
+      };
+    } else if (percentage <= 90) {
+      return {
+        level: 'Almost Complete',
+        message:
+          'You are very close! Complete a few remaining sections to finalize your profile.',
+      };
+    } else if (percentage <= 99) {
+      return {
+        level: 'Nearly Done',
+        message:
+          'Almost there! Just one or two more details to complete your profile.',
+      };
+    } else {
+      return {
+        level: 'Complete',
+        message: 'Congratulations! Your profile is now complete and job ready.',
+      };
+    }
+  }
+
+  async calculateProfileStrengthNew(
+    userId: number,
+  ): Promise<{ percentage: number; level: string; message: string }> {
     const profile = await db.query.zuvyLearnersCompleteProfile.findFirst({
       where: (table, { eq }) => eq(table.userId, userId),
     });
 
-    if (!profile) return 0;
+    if (!profile) {
+      const details = this.getProfileStrengthDetails(0);
+      return {
+        percentage: 0,
+        level: details.level,
+        message: details.message,
+      };
+    }
 
     const hasCodingPlatformData = (profiles: unknown) => {
       const hasProfiles =
@@ -384,9 +482,9 @@ DROP COLUMN IF EXISTS codeforces_username;
       !!profile.class10Board,
       !!profile.class10Score,
       !!profile.class10ScoreType,
-      profile.hasWorkExperience === false ||
-        (Array.isArray(profile.workExperiences) &&
-          (profile.workExperiences as any[]).length > 0),
+      profile.hasWorkExperience === true &&
+        Array.isArray(profile.workExperiences) &&
+        (profile.workExperiences as any[]).length > 0,
       hasCodingPlatformData(profile.leetcodeProfiles) ||
         hasCodingPlatformData(profile.codechefProfiles) ||
         hasCodingPlatformData(profile.codeforcesProfiles),
@@ -396,7 +494,7 @@ DROP COLUMN IF EXISTS codeforces_username;
         (profile.targetRoles as any[]).length > 0,
       Array.isArray(profile.preferredLocations) &&
         (profile.preferredLocations as any[]).length > 0,
-      profile.openToRemote !== null && profile.openToRemote !== undefined,
+      profile.openToRemote === true,
       !!profile.internshipStipend,
       !!profile.fullTimeCtc,
       Array.isArray(profile.preferredContactMethods) &&
@@ -404,6 +502,13 @@ DROP COLUMN IF EXISTS codeforces_username;
     ];
 
     const filled = checks.filter(Boolean).length;
-    return Math.round((filled / checks.length) * 100);
+    const percentage = Math.round((filled / checks.length) * 100);
+    const details = this.getProfileStrengthDetails(percentage);
+
+    return {
+      percentage,
+      level: details.level,
+      message: details.message,
+    };
   }
 }

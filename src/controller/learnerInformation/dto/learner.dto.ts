@@ -829,3 +829,17 @@ export class SaveCompleteProfileDto {
   @IsString({ each: true })
   preferredContactMethods?: string[];
 }
+
+export class ProfileStrengthResponseDto {
+  @ApiProperty({ type: Number, example: 60 })
+  percentage: number;
+
+  @ApiProperty({ type: String, example: 'Intermediate' })
+  level: string;
+
+  @ApiProperty({
+    type: String,
+    example: 'Great progress! A few more clicks to become job ready.',
+  })
+  message: string;
+}
