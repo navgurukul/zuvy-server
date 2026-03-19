@@ -1,8 +1,22 @@
 /* eslint-disable prettier/prettier */
-import { BadRequestException, Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  InternalServerErrorException,
+  NotFoundException,
+} from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import {
+  S3Client,
+  PutObjectCommand,
+  GetObjectCommand,
+} from '@aws-sdk/client-s3';
 import * as mammoth from 'mammoth';
 import pdfParse from 'pdf-parse';
 import { inflateSync } from 'zlib';
+import { eq, sql } from 'drizzle-orm';
+import { db } from '../../db/index';
+import { zuvyLearnersCompleteProfile } from '../../../drizzle/schema';
 import { ResumeResponseDto } from './dto/learner.dto';
 
 const PREDEFINED_SKILLS = [
@@ -257,10 +271,30 @@ const PDF_INTERNAL_WORDS = new Set([
   'length',
 ]);
 
+type ExtractedProject = {
+  title: string;
+  description?: string;
+  techStack?: string[];
+};
+
 @Injectable()
 export class LearnerResumeService {
   // Largest font text detected by pdfjs — typically the person's name
   private pdfJsLargestFontText = '';
+  private s3: S3Client;
+  private bucket: string;
+  private region: string = 'ap-south-1';
+
+  constructor(private config: ConfigService) {
+    this.bucket = this.config.get('S3_BUCKET_NAME');
+    this.s3 = new S3Client({
+      region: this.region,
+      credentials: {
+        accessKeyId: this.config.get('S3_ACCESS_KEY_ID'),
+        secretAccessKey: this.config.get('S3_SECRET_KEY_ACCESS'),
+      },
+    });
+  }
 
   async parseResume(
     file: Express.Multer.File,
@@ -280,6 +314,7 @@ export class LearnerResumeService {
       github: this.extractGithub(textForUrls),
       skills: this.extractSkills(resumeText),
       education: this.extractEducation(resumeText),
+      projects: this.extractProjects(resumeText),
     };
 
     if (this.isLowConfidenceExtraction(data)) {
@@ -291,6 +326,7 @@ export class LearnerResumeService {
         github: '',
         skills: [],
         education: [],
+        projects: [],
       };
     }
 
@@ -1000,6 +1036,120 @@ export class LearnerResumeService {
     return Array.from(new Set(items));
   }
 
+  private extractProjects(text: string): ExtractedProject[] {
+    const sectionPattern =
+      /(?:^|\n)\s*(?:projects?|personal\s+projects?|academic\s+projects?)\s*[:\-|\n]/i;
+    const sectionMatch = sectionPattern.exec(text);
+    if (!sectionMatch) return [];
+
+    const startIdx = sectionMatch.index + sectionMatch[0].length;
+    const restText = text.slice(startIdx);
+
+    const nextSectionPattern =
+      /\n\s*(?:education|experience|work\s*experience|employment|skills?|certifications?|achievements?|awards?|publications?|languages?|hobbies|interests|references?|objective|summary|profile|about\s*me|volunteering|volunteer)\s*[:\-|\n]/i;
+    const nextMatch = nextSectionPattern.exec(restText);
+    const sectionText = nextMatch
+      ? restText.slice(0, nextMatch.index)
+      : restText.slice(0, 1800);
+
+    const lines = sectionText
+      .split('\n')
+      .map((line) =>
+        line
+          .trim()
+          .replace(
+            /^[\u2022\-*\u25E6\u25AA\u25BA\u27A4\u27A2\u2713\u2714\u2192\d.)\s]+/,
+            '',
+          )
+          .trim(),
+      )
+      .filter(Boolean);
+
+    const projects: ExtractedProject[] = [];
+    let currentProject: ExtractedProject | null = null;
+
+    for (const line of lines) {
+      if (/^https?:\/\//i.test(line)) {
+        continue;
+      }
+
+      const isHeadingNoise =
+        /^(projects?|project\s+details?|description|responsibilities?|achievements?|technologies|tech\s*stack|role)$/i.test(
+          line,
+        );
+      if (isHeadingNoise) {
+        continue;
+      }
+
+      const words = line.split(/\s+/).filter(Boolean);
+      const hasInlineSeparator = /\s[:\-|]\s/.test(line);
+      const looksLikeTitle =
+        words.length >= 2 &&
+        words.length <= 12 &&
+        !/[.!?]$/.test(line) &&
+        !/^built\s|^developed\s|^implemented\s|^designed\s|^created\s/i.test(
+          line,
+        );
+
+      if (hasInlineSeparator || looksLikeTitle) {
+        if (currentProject?.title) {
+          projects.push(currentProject);
+        }
+
+        const split = line.split(/\s[:\-|]\s(.+)/);
+        const title = (split[0] || '').trim();
+        const inlineDescription = (split[1] || '').trim();
+
+        if (!title || title.length > 120) {
+          currentProject = null;
+          continue;
+        }
+
+        currentProject = {
+          title,
+          description: inlineDescription || undefined,
+        };
+
+        const techStack = this.extractSkills(`${title} ${inlineDescription}`);
+        if (techStack.length > 0) {
+          currentProject.techStack = techStack.slice(0, 8);
+        }
+        continue;
+      }
+
+      if (currentProject) {
+        const mergedDescription = [currentProject.description, line]
+          .filter(Boolean)
+          .join(' ')
+          .trim()
+          .slice(0, 255);
+
+        currentProject.description = mergedDescription;
+
+        const techStack = this.extractSkills(
+          `${currentProject.title} ${currentProject.description || ''}`,
+        );
+        if (techStack.length > 0) {
+          currentProject.techStack = techStack.slice(0, 8);
+        }
+      }
+    }
+
+    if (currentProject?.title) {
+      projects.push(currentProject);
+    }
+
+    const deduped = new Map<string, ExtractedProject>();
+    for (const project of projects) {
+      const key = project.title.toLowerCase().trim();
+      if (!deduped.has(key)) {
+        deduped.set(key, project);
+      }
+    }
+
+    return Array.from(deduped.values()).slice(0, 10);
+  }
+
   private normalizeContactText(text: string): string {
     return text
       .replace(/\s*@\s*/g, '@')
@@ -1110,5 +1260,159 @@ export class LearnerResumeService {
     const hasWeakSignal = data.skills.length >= 2 || data.education.length >= 1;
 
     return !hasWeakSignal;
+  }
+
+  private async ensureCompleteProfileResumeColumnsReady(): Promise<void> {
+    await db.execute(
+      sql.raw(`
+        ALTER TABLE IF EXISTS main.zuvy_learners_complete_profile
+        ADD COLUMN IF NOT EXISTS resume_url VARCHAR(1024);
+
+        ALTER TABLE IF EXISTS main.zuvy_learners_complete_profile
+        ADD COLUMN IF NOT EXISTS original_filename VARCHAR(255);
+
+        ALTER TABLE IF EXISTS main.zuvy_learners_complete_profile
+        ADD COLUMN IF NOT EXISTS projects JSONB DEFAULT '[]'::jsonb;
+      `),
+    );
+  }
+
+  async uploadResumeAndSave(
+    file: Express.Multer.File,
+    userId: number,
+    extractedProjects: ExtractedProject[] = [],
+  ): Promise<{ resumeUrl: string }> {
+    await this.ensureCompleteProfileResumeColumnsReady();
+    const resumeUrl = await this.uploadResumeToS3(file);
+    await this.saveResumeUrl(
+      userId,
+      resumeUrl,
+      file.originalname,
+      extractedProjects,
+    );
+    return { resumeUrl };
+  }
+
+  private async uploadResumeToS3(file: Express.Multer.File): Promise<string> {
+    try {
+      const key = `learner_resumes/${Date.now()}_${file.originalname}`;
+      await this.s3.send(
+        new PutObjectCommand({
+          Bucket: this.bucket,
+          Key: key,
+          Body: file.buffer,
+          ContentType: file.mimetype,
+        }),
+      );
+      return `https://${this.bucket}.s3.${this.region}.amazonaws.com/${key}`;
+    } catch (err) {
+      throw new InternalServerErrorException('Error uploading resume to S3');
+    }
+  }
+
+  private async saveResumeUrl(
+    userId: number,
+    resumeUrl: string,
+    originalFilename: string,
+    extractedProjects: ExtractedProject[],
+  ): Promise<void> {
+    const existing = await db
+      .select()
+      .from(zuvyLearnersCompleteProfile)
+      .where(eq(zuvyLearnersCompleteProfile.userId, userId))
+      .limit(1);
+
+    if (existing.length > 0) {
+      const updatePayload: any = {
+        resumeUrl,
+        originalFilename,
+        updatedAt: new Date().toISOString(),
+      };
+
+      if (extractedProjects.length > 0) {
+        updatePayload.projects = extractedProjects;
+      }
+
+      await db
+        .update(zuvyLearnersCompleteProfile)
+        .set(updatePayload)
+        .where(eq(zuvyLearnersCompleteProfile.userId, userId));
+    } else {
+      await db.insert(zuvyLearnersCompleteProfile).values({
+        userId,
+        resumeUrl,
+        originalFilename,
+        projects: extractedProjects,
+      });
+    }
+  }
+
+  async getResumeByUserId(
+    userId: number,
+  ): Promise<{ resumeUrl: string; originalFilename: string }> {
+    await this.ensureCompleteProfileResumeColumnsReady();
+    const result = await db
+      .select()
+      .from(zuvyLearnersCompleteProfile)
+      .where(eq(zuvyLearnersCompleteProfile.userId, userId))
+      .limit(1);
+
+    if (result.length === 0 || !result[0].resumeUrl) {
+      throw new NotFoundException('No resume found for this learner');
+    }
+
+    return {
+      resumeUrl: result[0].resumeUrl,
+      originalFilename: result[0].originalFilename,
+    };
+  }
+
+  async getParsedResumeFromS3(userId: number): Promise<{
+    resumeUrl: string;
+    originalFilename: string;
+    data: ResumeResponseDto;
+  }> {
+    const { resumeUrl, originalFilename } =
+      await this.getResumeByUserId(userId);
+
+    const key = this.extractS3KeyFromUrl(resumeUrl);
+    const response = await this.s3.send(
+      new GetObjectCommand({
+        Bucket: this.bucket,
+        Key: key,
+      }),
+    );
+
+    const chunks: Buffer[] = [];
+    for await (const chunk of response.Body as any) {
+      chunks.push(Buffer.from(chunk));
+    }
+    const buffer = Buffer.concat(chunks);
+
+    const mimetype = originalFilename?.toLowerCase().endsWith('.docx')
+      ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+      : 'application/pdf';
+
+    const fakeFile = {
+      buffer,
+      mimetype,
+      originalname: originalFilename || 'resume',
+    } as Express.Multer.File;
+
+    const parseResult = await this.parseResume(fakeFile);
+
+    return {
+      resumeUrl,
+      originalFilename,
+      ...parseResult,
+    };
+  }
+
+  private extractS3KeyFromUrl(url: string): string {
+    const bucketPrefix = `https://${this.bucket}.s3.${this.region}.amazonaws.com/`;
+    if (url.startsWith(bucketPrefix)) {
+      return decodeURIComponent(url.slice(bucketPrefix.length));
+    }
+    throw new BadRequestException('Invalid S3 resume URL');
   }
 }
