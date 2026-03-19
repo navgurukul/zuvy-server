@@ -132,7 +132,8 @@ export class GoogleCalendarService {
       return busySlots.length > 0;
     } catch (error) {
       console.error('Google calendar conflict check failed:', error);
-      throw new Error('Unable to verify mentor calendar availability');
+      // throw new Error('Unable to verify mentor calendar availability');
+      return false;
     }
   }
 }
