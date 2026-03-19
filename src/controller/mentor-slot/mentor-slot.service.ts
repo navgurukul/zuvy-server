@@ -438,6 +438,10 @@ FOR UPDATE
         'Reschedule reason must be at least 10 characters.',
       );
 
+    /* ================================
+     FETCH BOOKING
+  ================================= */
+
     const [booking] = await db
       .select()
       .from(zuvyMentorSlotBooking)
@@ -447,6 +451,37 @@ FOR UPDATE
     if (!booking) {
       throw new NotFoundException('Booking not found.');
     }
+
+    /* ================================
+    VALIDATE NEW SLOT
+  ================================= */
+
+    const [slot] = await db
+      .select()
+      .from(zuvyMentorSlotAvailability)
+      .where(eq(zuvyMentorSlotAvailability.id, newSlotId))
+      .limit(1);
+
+    if (!slot) {
+      throw new BadRequestException('Proposed slot not found.');
+    }
+
+    if (slot.status !== 'available') {
+      throw new BadRequestException('Proposed slot is not available.');
+    }
+
+    if (slot.currentBookedCount >= slot.maxCapacity) {
+      throw new BadRequestException('Proposed slot is full.');
+    }
+
+    if (new Date(slot.slotStartDateTime) <= new Date()) {
+      throw new BadRequestException('Cannot reschedule to past slot.');
+    }
+
+    /* ================================
+     SEND NOTIFICATION
+  ================================= */
+
     await this.notificationService.createNotification({
       userId: booking.mentorUserId,
       type: NotificationType.RESCHEDULE_REQUEST,
@@ -455,6 +490,10 @@ FOR UPDATE
       referenceId: bookingId,
       referenceType: 'booking',
     });
+
+    /* ================================
+     UPDATE BOOKING
+  ================================= */
 
     return db
       .update(zuvyMentorSlotBooking)
