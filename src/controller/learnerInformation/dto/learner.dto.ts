@@ -520,26 +520,6 @@ export class CodingPlatformProfileDto {
   countryRank?: number | null;
 }
 
-@ValidatorConstraint({ name: 'FutureGraduationDate', async: false })
-class FutureGraduationDate implements ValidatorConstraintInterface {
-  validate(year: number, args: ValidationArguments) {
-    const dto = args.object as any;
-    const month = dto.graduationMonth;
-    const now = new Date();
-    const currentYear = now.getFullYear();
-    const currentMonth = now.getMonth() + 1;
-
-    if (!year) return true;
-    if (year > currentYear) return true;
-    if (year === currentYear && month && month >= currentMonth) return true;
-    return false;
-  }
-
-  defaultMessage() {
-    return 'Expected graduation date must be in the future';
-  }
-}
-
 export class SaveCompleteProfileDto {
   // ─── PAGE 1: BASICS (Personal Details + Education) ──────────────
   @ApiPropertyOptional({ example: 'Aditya Kumar' })
@@ -621,7 +601,6 @@ export class SaveCompleteProfileDto {
   @IsInt()
   @Min(2000)
   @Max(2050)
-  @Validate(FutureGraduationDate)
   graduationYear?: number;
 
   @ApiPropertyOptional({
