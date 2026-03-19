@@ -104,9 +104,7 @@ export class LearnerResumeController {
   @ApiOperation({
     summary: 'Fetch resume from S3, parse it, and return extracted data',
   })
-  async getParsedResume(
-    @Req() req,
-  ): Promise<{
+  async getParsedResume(@Req() req): Promise<{
     success: boolean;
     resumeUrl: string;
     originalFilename: string;

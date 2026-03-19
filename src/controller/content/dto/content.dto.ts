@@ -1,4 +1,9 @@
-import { ApiProperty, ApiPropertyOptional, ApiResponseProperty, PartialType } from '@nestjs/swagger';
+import {
+  ApiProperty,
+  ApiPropertyOptional,
+  ApiResponseProperty,
+  PartialType,
+} from '@nestjs/swagger';
 import {
   IsString,
   IsNotEmpty,
@@ -49,7 +54,7 @@ export class moduleDto {
 
   @ApiProperty({
     type: Boolean,
-    example: false
+    example: false,
   })
   @IsOptional()
   @IsBoolean()
@@ -67,9 +72,10 @@ export class projectDto {
 
   @ApiProperty({
     type: Object,
-    example : {
-      "description" : "This project is based on the 3 months bootcamps that you have been taught"
-    }
+    example: {
+      description:
+        'This project is based on the 3 months bootcamps that you have been taught',
+    },
   })
   @IsOptional()
   @IsObject()
@@ -77,7 +83,7 @@ export class projectDto {
 
   @ApiProperty({
     type: Boolean,
-    example: false
+    example: false,
   })
   @IsOptional()
   @IsBoolean()
@@ -85,12 +91,11 @@ export class projectDto {
 
   @ApiProperty({
     type: String,
-    example: '2023-03-01T00:00:00Z'
+    example: '2023-03-01T00:00:00Z',
   })
   @IsString()
   @IsOptional()
   deadline: string;
-
 }
 
 export class chapterDto {
@@ -111,7 +116,7 @@ export class chapterDto {
 
   @ApiProperty({
     type: String,
-    example: '2023-03-01T00:00:00Z'
+    example: '2023-03-01T00:00:00Z',
   })
   @IsString()
   @IsOptional()
@@ -132,7 +137,7 @@ export class chapterDto {
   @IsOptional()
   @IsArray()
   formQuestions: number[];
-  
+
   @ApiProperty({
     type: [String],
     example: ['https://www.google.com'],
@@ -142,30 +147,27 @@ export class chapterDto {
   links: string[];
 
   @ApiProperty({
-    type : [Object],
+    type: [Object],
     example: [
       {
-          "blocks": [
-              {
-                  "key": "fbh77",
-                  "text": "asdfasddfasdf",
-                  "type": "unstyled",
-                  "depth": 0,
-                  "inlineStyleRanges": [],
-                  "entityRanges": [],
-                  "data": {}
-              }
-          ],
-          "entityMap": {}
-      }
-  ]
+        blocks: [
+          {
+            key: 'fbh77',
+            text: 'asdfasddfasdf',
+            type: 'unstyled',
+            depth: 0,
+            inlineStyleRanges: [],
+            entityRanges: [],
+            data: {},
+          },
+        ],
+        entityMap: {},
+      },
+    ],
   })
   @IsArray()
   @IsOptional()
-
   content: [object];
-
-
 }
 export class QuizVariantDto {
   @ApiProperty({
@@ -179,10 +181,10 @@ export class QuizVariantDto {
   @ApiProperty({
     type: 'object',
     example: {
-      1: "A theoretical cat",
-      2: "A type of experiment",
-      3: "Both alive and dead",
-      4: "None of the above",
+      1: 'A theoretical cat',
+      2: 'A type of experiment',
+      3: 'Both alive and dead',
+      4: 'None of the above',
     },
     required: true,
   })
@@ -202,10 +204,10 @@ export class quizBatchDto {
   @ApiProperty({
     type: String,
     example: 'Introduction to Quantum Physics',
-    required: false, 
+    required: false,
   })
   @IsString()
-  @IsOptional() 
+  @IsOptional()
   title?: string;
 
   @ApiProperty({
@@ -227,10 +229,10 @@ export class quizBatchDto {
   @ApiProperty({
     type: String,
     example: 'Detailed content explaining quantum theories and experiments.',
-    required: false, 
+    required: false,
   })
   @IsString()
-  @IsOptional() 
+  @IsOptional()
   content?: string;
 
   @ApiProperty({
@@ -239,7 +241,7 @@ export class quizBatchDto {
     required: false,
   })
   @IsBoolean()
-  @IsOptional() 
+  @IsOptional()
   isRandomOptions?: boolean;
 
   @ApiProperty({
@@ -248,20 +250,20 @@ export class quizBatchDto {
       {
         question: "What is Schrödinger's cat?",
         options: {
-          1: "A theoretical cat",
-          2: "A type of experiment",
-          3: "Both alive and dead",
-          4: "None of the above",
+          1: 'A theoretical cat',
+          2: 'A type of experiment',
+          3: 'Both alive and dead',
+          4: 'None of the above',
         },
         correctOption: 3,
       },
       {
-        question: "What is the Heisenberg Uncertainty Principle?",
+        question: 'What is the Heisenberg Uncertainty Principle?',
         options: {
-          1: "A rule about uncertainty",
-          2: "A principle in quantum mechanics",
-          3: "Both 1 and 2",
-          4: "None of the above",
+          1: 'A rule about uncertainty',
+          2: 'A principle in quantum mechanics',
+          3: 'Both 1 and 2',
+          4: 'None of the above',
         },
         correctOption: 3,
       },
@@ -283,6 +285,15 @@ export class CreateQuizzesDto {
   @ValidateNested({ each: true })
   @Type(() => quizBatchDto)
   quizzes: quizBatchDto[];
+
+  @ApiProperty({
+    type: Number,
+    example: 1,
+    required: true,
+  })
+  @IsNumber()
+  @IsOptional()
+  orgId?: number;
 }
 
 export class reOrderDto {
@@ -348,7 +359,7 @@ export class EditChapterDto {
   @IsArray()
   @IsOptional()
   formQuestions: any[];
-  
+
   @ApiPropertyOptional({
     type: Number,
     example: 10,
@@ -374,109 +385,148 @@ export class EditChapterDto {
   links: string[];
 
   @ApiPropertyOptional({
-    type : [Object],
+    type: [Object],
     example: [
       {
-          "blocks": [
-              {
-                  "key": "fbh77",
-                  "text": "asdfasddfasdf",
-                  "type": "unstyled",
-                  "depth": 0,
-                  "inlineStyleRanges": [],
-                  "entityRanges": [],
-                  "data": {}
-              }
-          ],
-          "entityMap": {}
-      }
-  ]
+        blocks: [
+          {
+            key: 'fbh77',
+            text: 'asdfasddfasdf',
+            type: 'unstyled',
+            depth: 0,
+            inlineStyleRanges: [],
+            entityRanges: [],
+            data: {},
+          },
+        ],
+        entityMap: {},
+      },
+    ],
   })
   @IsArray()
   @IsOptional()
-
   articleContent: [object];
 
-  @ApiPropertyOptional(
-    { type: 'string', format: 'binary'})
-  @IsOptional()  
-  pdf?: any; 
+  @ApiPropertyOptional({ type: 'string', format: 'binary' })
+  @IsOptional()
+  pdf?: any;
 }
 
 export class UpdateChapterDto extends PartialType(EditChapterDto) {
-
-   @Transform(({ value }: TransformFnParams) => {
-    if (value === '') return undefined;
-    return value;
-  }, { toClassOnly: true })
+  @Transform(
+    ({ value }: TransformFnParams) => {
+      if (value === '') return undefined;
+      return value;
+    },
+    { toClassOnly: true },
+  )
   @IsString()
   @IsOptional()
   title?: string;
 
-  @Transform(({ value }: TransformFnParams) => {
-    if (value === '') return undefined;
-    return value;
-  }, { toClassOnly: true })
+  @Transform(
+    ({ value }: TransformFnParams) => {
+      if (value === '') return undefined;
+      return value;
+    },
+    { toClassOnly: true },
+  )
   @IsString()
   @IsOptional()
   description?: string;
 
-   @Transform(({ value }: TransformFnParams) => {
-    if (value === '') return undefined;
-    return value;
-  }, { toClassOnly: true })
+  @Transform(
+    ({ value }: TransformFnParams) => {
+      if (value === '') return undefined;
+      return value;
+    },
+    { toClassOnly: true },
+  )
   @IsOptional()
   completionDate?: string;
 
-  @Transform(({ value }: TransformFnParams) => {
-    if (value === '') return undefined;
-    if (Array.isArray(value)) return value;
-    try { return JSON.parse(value); } catch { return undefined; }
-  }, { toClassOnly: true })
+  @Transform(
+    ({ value }: TransformFnParams) => {
+      if (value === '') return undefined;
+      if (Array.isArray(value)) return value;
+      try {
+        return JSON.parse(value);
+      } catch {
+        return undefined;
+      }
+    },
+    { toClassOnly: true },
+  )
   @IsArray()
   @IsOptional()
   quizQuestions?: number[];
 
-  @Transform(({ value }: TransformFnParams) => {
-    if (value === '') return undefined;
-    if (Array.isArray(value)) return value;
-    try { return JSON.parse(value); } catch { return undefined; }
-  }, { toClassOnly: true })
+  @Transform(
+    ({ value }: TransformFnParams) => {
+      if (value === '') return undefined;
+      if (Array.isArray(value)) return value;
+      try {
+        return JSON.parse(value);
+      } catch {
+        return undefined;
+      }
+    },
+    { toClassOnly: true },
+  )
   @IsArray()
   @IsOptional()
   formQuestions?: number[];
 
-  @Transform(({ value }: TransformFnParams) => {
-    if (value === '') return undefined;
-    return Number(value);
-  }, { toClassOnly: true })
+  @Transform(
+    ({ value }: TransformFnParams) => {
+      if (value === '') return undefined;
+      return Number(value);
+    },
+    { toClassOnly: true },
+  )
   @IsNumber()
   @IsOptional()
   codingQuestions?: number;
 
-  @Transform(({ value }: TransformFnParams) => {
-    if (value === '') return undefined;
-    return Number(value);
-  }, { toClassOnly: true })
+  @Transform(
+    ({ value }: TransformFnParams) => {
+      if (value === '') return undefined;
+      return Number(value);
+    },
+    { toClassOnly: true },
+  )
   @IsNumber()
   @IsOptional()
   newOrder?: number;
 
-  @Transform(({ value }: TransformFnParams) => {
-    if (value === '') return undefined;
-    if (Array.isArray(value)) return value;
-    try { return JSON.parse(value); } catch { return undefined; }
-  }, { toClassOnly: true })
+  @Transform(
+    ({ value }: TransformFnParams) => {
+      if (value === '') return undefined;
+      if (Array.isArray(value)) return value;
+      try {
+        return JSON.parse(value);
+      } catch {
+        return undefined;
+      }
+    },
+    { toClassOnly: true },
+  )
   @IsArray()
   @IsOptional()
   links?: string[];
 
-
-  @Transform(({ value }: TransformFnParams) => {
-    if (value === '') return undefined;
-    if (Array.isArray(value)) return value;
-    try { return JSON.parse(value); } catch { return undefined; }
-  }, { toClassOnly: true })
+  @Transform(
+    ({ value }: TransformFnParams) => {
+      if (value === '') return undefined;
+      if (Array.isArray(value)) return value;
+      try {
+        return JSON.parse(value);
+      } catch {
+        return undefined;
+      }
+    },
+    { toClassOnly: true },
+  )
   @IsArray()
   @IsOptional()
   articleContent?: [object];
@@ -520,7 +570,7 @@ export class openEndedDto {
 export class UpdateOpenEndedDto {
   @ApiProperty({
     type: String,
-    example: 'What is the national animal of India'
+    example: 'What is the national animal of India',
   })
   @IsOptional()
   @IsString()
@@ -536,7 +586,7 @@ export class UpdateOpenEndedDto {
 
   @ApiProperty({
     type: difficulty,
-    example: 'Easy'
+    example: 'Easy',
   })
   @IsString()
   @IsOptional()
@@ -585,7 +635,7 @@ export class CreateAssessmentBody {
 
   @ApiProperty({
     type: Number,
-    example: 70
+    example: 70,
   })
   @IsNumber()
   @IsDefined()
@@ -593,15 +643,15 @@ export class CreateAssessmentBody {
 
   @ApiProperty({
     type: Number,
-    example: 7200
+    example: 7200,
   })
   @IsNumber()
   @IsDefined()
   timeLimit: number;
-  
+
   @ApiProperty({
     type: Boolean,
-    example: true
+    example: true,
   })
   @IsOptional()
   @IsBoolean()
@@ -609,23 +659,23 @@ export class CreateAssessmentBody {
 
   @ApiProperty({
     type: Boolean,
-    example: false
+    example: false,
   })
   @IsOptional()
   @IsBoolean()
   canTabChange: boolean;
-  
+
   @ApiProperty({
     type: Boolean,
-    example: true
+    example: true,
   })
   @IsOptional()
   @IsBoolean()
   canScreenExit: boolean;
-  
+
   @ApiProperty({
     type: Boolean,
-    example: true
+    example: true,
   })
   @IsOptional()
   @IsBoolean()
@@ -727,7 +777,7 @@ export class CreateAssessmentBody {
   @IsOptional()
   weightageMcqQuestions: number;
 
-   @ApiProperty({
+  @ApiProperty({
     type: String,
     example: '2025-05-20T08:00:00',
     description: 'Optional. When the assessment becomes visible to students',
@@ -753,7 +803,6 @@ export class CreateAssessmentBody {
   @IsOptional()
   @IsISO8601()
   endDatetime?: string;
-  
 }
 
 export class EditQuizVariantDto {
@@ -776,10 +825,10 @@ export class EditQuizVariantDto {
   @ApiProperty({
     type: 'object',
     example: {
-      1: "A theoretical cat",
-      2: "A type of experiment",
-      3: "Both alive and dead",
-      4: "None of the above",
+      1: 'A theoretical cat',
+      2: 'A type of experiment',
+      3: 'Both alive and dead',
+      4: 'None of the above',
     },
     required: true,
   })
@@ -806,7 +855,7 @@ export class EditQuizBatchDto {
 
   @ApiProperty({
     type: String,
-    example: "Quantum Mechanics Quiz",
+    example: 'Quantum Mechanics Quiz',
     required: false, // Change to false
   })
   @IsString()
@@ -815,7 +864,7 @@ export class EditQuizBatchDto {
 
   @ApiProperty({
     type: String,
-    example: "medium",
+    example: 'medium',
     required: false, // Change to false
   })
   @IsString()
@@ -833,7 +882,7 @@ export class EditQuizBatchDto {
 
   @ApiProperty({
     type: String,
-    example: "This quiz covers basic concepts of quantum mechanics.",
+    example: 'This quiz covers basic concepts of quantum mechanics.',
     required: false, // Change to false
   })
   @IsString()
@@ -850,29 +899,38 @@ export class EditQuizBatchDto {
   isRandomOptions?: boolean;
 
   @ApiProperty({
+    type: Number,
+    example: 1,
+    required: true,
+  })
+  @IsNumber()
+  @IsOptional()
+  orgId?: number;
+
+  @ApiProperty({
     type: [EditQuizVariantDto],
     example: [
       {
         variantNumber: 1,
         question: "What is Schrödinger's cat?",
         options: {
-          1: "A theoretical cat",
-          2: "A type of experiment",
-          3: "Both alive and dead",
-          4: "None of the above"
+          1: 'A theoretical cat',
+          2: 'A type of experiment',
+          3: 'Both alive and dead',
+          4: 'None of the above',
         },
-        correctOption: 3
+        correctOption: 3,
       },
       {
         variantNumber: 3,
-        question: "What is the Heisenberg Uncertainty Principle?",
+        question: 'What is the Heisenberg Uncertainty Principle?',
         options: {
-          1: "A rule about uncertainty",
-          2: "A principle in quantum mechanics",
-          3: "Both 1 and 2",
-          4: "None of the above"
+          1: 'A rule about uncertainty',
+          2: 'A principle in quantum mechanics',
+          3: 'Both 1 and 2',
+          4: 'None of the above',
         },
-        correctOption: 3
+        correctOption: 3,
       },
     ],
     required: true,
@@ -886,17 +944,21 @@ export class EditQuizBatchDto {
 }
 
 export class CreateQuizVariantDto {
-  @ApiProperty({ type: String, example: "What is Schrödinger's cat?", required: true })
+  @ApiProperty({
+    type: String,
+    example: "What is Schrödinger's cat?",
+    required: true,
+  })
   @IsString()
   question: string;
 
   @ApiProperty({
     type: 'object',
     example: {
-      1: "A theoretical cat",
-      2: "A type of experiment",
-      3: "Both alive and dead",
-      4: "None of the above",
+      1: 'A theoretical cat',
+      2: 'A type of experiment',
+      3: 'Both alive and dead',
+      4: 'None of the above',
     },
     required: true,
   })
@@ -936,7 +998,7 @@ export class testCaseDto {
 export class UpdateProblemDto {
   @ApiProperty({
     type: String,
-    example: 'Add two numbers'
+    example: 'Add two numbers',
   })
   @IsOptional()
   @IsString()
@@ -944,7 +1006,7 @@ export class UpdateProblemDto {
 
   @ApiProperty({
     type: String,
-    example: 'Write a program to add two float values'
+    example: 'Write a program to add two float values',
   })
   @IsOptional()
   @IsString()
@@ -968,7 +1030,7 @@ export class UpdateProblemDto {
 
   @ApiProperty({
     type: String,
-    example: ' 10 <number < 1000'
+    example: ' 10 <number < 1000',
   })
   @IsOptional()
   @IsString()
@@ -991,7 +1053,7 @@ export class UpdateProblemDto {
           output: [5],
         },
       },
-    ]
+    ],
   })
   @IsOptional()
   @IsArray()
@@ -1015,7 +1077,7 @@ export class UpdateProblemDto {
           output: [11],
         },
       },
-    ]
+    ],
   })
   @IsOptional()
   @IsArray()
@@ -1035,7 +1097,7 @@ export class UpdateProblemDto {
 
   @ApiProperty({
     type: String,
-    example: 'solution of the coding question'
+    example: 'solution of the coding question',
   })
   @IsOptional()
   @IsString()
@@ -1043,7 +1105,7 @@ export class UpdateProblemDto {
 
   @ApiProperty({
     type: String,
-    example: '2023-03-01T00:00:00Z'
+    example: '2023-03-01T00:00:00Z',
   })
   @IsString()
   @IsOptional()
@@ -1051,19 +1113,18 @@ export class UpdateProblemDto {
 
   @ApiProperty({
     type: String,
-    example: '2023-03-01T00:00:00Z'
+    example: '2023-03-01T00:00:00Z',
   })
   @IsString()
   @IsOptional()
   updatedAt: string;
-
 }
 
-export class deleteQuestionDto{
+export class deleteQuestionDto {
   @ApiProperty({
     type: [Number],
-    examples: [1,2,3],
-    required: true
+    examples: [1, 2, 3],
+    required: true,
   })
   @IsArray()
   @ArrayNotEmpty()
@@ -1074,8 +1135,9 @@ export class CreateTagDto {
   @ApiProperty({
     type: [String],
     example: ['Linked List', 'Array', 'Tree'],
-    description: 'Array of tag names. Send as: ["tag1"] for single or ["tag1", "tag2", "tag3"] for multiple',
-    required: true
+    description:
+      'Array of tag names. Send as: ["tag1"] for single or ["tag1", "tag2", "tag3"] for multiple',
+    required: true,
   })
   @IsArray()
   @ArrayMinSize(1, { message: 'At least one tag is required' })
@@ -1110,16 +1172,15 @@ export class CreateChapterDto {
   topicId: number;
 }
 
-export class CreateTypeDto{
+export class CreateTypeDto {
   @ApiProperty({
     type: String,
-    example : 'Multiple Choice',
-    required: true
+    example: 'Multiple Choice',
+    required: true,
   })
-
   @IsString()
   @IsNotEmpty()
-  questionType : string
+  questionType: string;
 }
 
 export class formDto {
@@ -1138,10 +1199,10 @@ export class formDto {
       2: 'Option 2',
       3: 'Option 3',
       4: 'Option 4',
-    }
+    },
   })
   @IsObject()
-  @IsOptional() 
+  @IsOptional()
   options: object;
 
   @ApiProperty({
@@ -1154,12 +1215,11 @@ export class formDto {
 
   @ApiProperty({
     type: Boolean,
-    example: false
+    example: false,
   })
   @IsOptional()
   @IsBoolean()
   isRequired: boolean;
-
 }
 
 export class formBatchDto {
@@ -1176,7 +1236,7 @@ export class formBatchDto {
           4: 'Option 4',
         },
         typeId: 1,
-        isRequired:false,
+        isRequired: false,
       },
       {
         // chapterId:34,
@@ -1188,25 +1248,25 @@ export class formBatchDto {
           4: 'Rome',
         },
         typeId: 2,
-        isRequired:false,
+        isRequired: false,
       },
       {
         // chapterId:34,
         question: 'What is your opinion about the course?',
         typeId: 3,
-        isRequired:false,
+        isRequired: false,
       },
       {
         // chapterId:34,
         question: 'Choose date of opting the course',
         typeId: 4,
-        isRequired:false,
+        isRequired: false,
       },
       {
         // chapterId:34,
         question: 'Choose time of opting the course',
         typeId: 5,
-        isRequired:false,
+        isRequired: false,
       },
     ],
     required: true,
@@ -1219,15 +1279,14 @@ export class formBatchDto {
 }
 
 export class editFormDto {
-
   @ApiProperty({
     type: Number,
     example: 1,
-    required: true
+    required: true,
   })
   @IsNumber()
   id: number;
-  
+
   @ApiProperty({
     type: String,
     example: 'What is your opinion about the course?',
@@ -1243,7 +1302,7 @@ export class editFormDto {
       2: 'Option 2',
       3: 'Option 3',
       4: 'Option 4',
-    }
+    },
   })
   @IsObject()
   @IsOptional()
@@ -1259,7 +1318,7 @@ export class editFormDto {
 
   @ApiProperty({
     type: Boolean,
-    example: false
+    example: false,
   })
   @IsOptional()
   @IsBoolean()
@@ -1281,7 +1340,7 @@ export class editFormBatchDto {
           4: 'Option 4',
         },
         typeId: 1,
-        isRequired:false,
+        isRequired: false,
       },
       {
         id: 2,
@@ -1294,28 +1353,28 @@ export class editFormBatchDto {
           4: 'Rome',
         },
         typeId: 2,
-        isRequired:false,
+        isRequired: false,
       },
       {
         id: 3,
         // chapterId:34,
         question: 'What is the national animal of India?',
         typeId: 3,
-        isRequired:false,
+        isRequired: false,
       },
       {
         id: 4,
         // chapterId:34,
         question: 'Choose date of opting the course',
         typeId: 4,
-        isRequired:false,
+        isRequired: false,
       },
       {
         id: 5,
         // chapterId:34,
         question: 'Choose time of opting the course',
         typeId: 5,
-        isRequired:false,
+        isRequired: false,
       },
     ],
     required: true,
@@ -1325,7 +1384,6 @@ export class editFormBatchDto {
   @ValidateNested({ each: true })
   @Type(() => editFormDto)
   questions: editFormDto[];
-
 }
 
 export class CreateAndEditFormBody {
@@ -1347,15 +1405,16 @@ export class QuestionIdDto {
   @ApiProperty({
     example: 1,
     description: 'The ID of the main quiz or quiz variant to delete.',
-    required:true
+    required: true,
   })
   @IsNumber()
   id: number;
 
   @ApiProperty({
     example: 'main',
-    description: 'Type of the item to delete: "main" for main quiz, "variant" for quiz variant.',
-    required:true
+    description:
+      'Type of the item to delete: "main" for main quiz, "variant" for quiz variant.',
+    required: true,
   })
   @IsString()
   type: 'main' | 'variant';

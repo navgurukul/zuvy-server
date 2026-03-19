@@ -1367,9 +1367,7 @@ export class LearnerResumeService {
     };
   }
 
-  async getParsedResumeFromS3(
-    userId: number,
-  ): Promise<{
+  async getParsedResumeFromS3(userId: number): Promise<{
     resumeUrl: string;
     originalFilename: string;
     data: ResumeResponseDto;
