@@ -40,18 +40,19 @@ export class OrgService {
   ) {}
 
   private generateCode(title: string): string {
-    const words = title.split(' ');
+    const trimmedTitle = title.trim();
+    const words = trimmedTitle.split(/\s+/).filter((word) => word.length > 0);
+
     if (words.length > 1) {
-      return words
-        .map((word) => word[0])
-        .join('')
-        .toUpperCase();
+      return (words[0][0] + words[1][0]).toUpperCase();
     }
-    const capitals = title.match(/[A-Z]/g);
+
+    const word = words[0] || '';
+    const capitals = word.match(/[A-Z]/g);
     if (capitals && capitals.length > 1) {
-      return capitals.join('').toUpperCase();
+      return capitals.join('').toUpperCase().substring(0, 2);
     }
-    return title.substring(0, 2).toUpperCase();
+    return word.substring(0, 2).toUpperCase();
   }
 
   private async createDefaultRoles(tx: any, orgId: number) {
@@ -196,6 +197,11 @@ export class OrgService {
         );
       }
 
+      await this.checkRoleConflict(createOrgDto.pocEmail, 'poc');
+      if (createOrgDto.zuvyPocEmail) {
+        await this.checkRoleConflict(createOrgDto.zuvyPocEmail, 'zuvyPoc');
+      }
+
       const displayName = await this.generateCode(createOrgDto.title);
 
       const createOrgDtoValues = {
@@ -205,8 +211,12 @@ export class OrgService {
         pocName: createOrgDto.pocName,
         pocEmail: createOrgDto.pocEmail,
         isManagedByZuvy: createOrgDto.isManagedByZuvy,
-        zuvyPocName: createOrgDto.zuvyPocName || null,
-        zuvyPocEmail: createOrgDto.zuvyPocEmail || null,
+        zuvyPocName: createOrgDto.isManagedByZuvy
+          ? createOrgDto.zuvyPocName || null
+          : null,
+        zuvyPocEmail: createOrgDto.isManagedByZuvy
+          ? createOrgDto.zuvyPocEmail || null
+          : null,
       };
 
       const result = await db.transaction(async (tx) => {
@@ -629,6 +639,88 @@ export class OrgService {
       if (updateOrgDto.title) {
         updateData.displayName = await this.generateCode(updateOrgDto.title);
       }
+
+      if (updateOrgDto.pocEmail) {
+        await this.checkRoleConflict(updateOrgDto.pocEmail, 'poc', id);
+      }
+      if (updateOrgDto.zuvyPocEmail) {
+        await this.checkRoleConflict(updateOrgDto.zuvyPocEmail, 'zuvyPoc', id);
+      }
+
+      // 1. Check if management type is changing from Zuvy Managed to Self Managed
+      if (org.isManagedByZuvy && updateOrgDto.isManagedByZuvy === false) {
+        // Clear Zuvy POC fields
+        updateData.zuvyPocEmail = null;
+        updateData.zuvyPocName = null;
+
+        // Revoke Zuvy POC roles
+        await db.transaction(async (tx) => {
+          if (org.zuvyPocEmail) {
+            const [user] = await tx
+              .select({ id: users.id })
+              .from(users)
+              .where(eq(users.email, org.zuvyPocEmail))
+              .limit(1);
+
+            if (user) {
+              await tx
+                .delete(zuvyUserRolesAssigned)
+                .where(
+                  and(
+                    eq(zuvyUserRolesAssigned.userId, user.id),
+                    eq(zuvyUserRolesAssigned.organizationId, id),
+                  ),
+                );
+              await tx
+                .delete(zuvyUserOrganizations)
+                .where(
+                  and(
+                    eq(zuvyUserOrganizations.userId, Number(user.id)),
+                    eq(zuvyUserOrganizations.organizationId, id),
+                  ),
+                );
+            }
+          }
+        });
+      }
+
+      // 2. Check if management type is changing from Self Managed to Zuvy Managed
+      // Or if Zuvy POC email is being changed/added in a Zuvy Managed org
+      const newZuvyPocEmail = updateOrgDto.zuvyPocEmail;
+      const isSwitchingToZuvyManaged =
+        !org.isManagedByZuvy && updateOrgDto.isManagedByZuvy === true;
+      const isUpdatingZuvyPoc =
+        org.isManagedByZuvy &&
+        newZuvyPocEmail &&
+        newZuvyPocEmail !== org.zuvyPocEmail;
+
+      if (isSwitchingToZuvyManaged || isUpdatingZuvyPoc) {
+        const emailToAssign = newZuvyPocEmail || org.zuvyPocEmail;
+        if (emailToAssign) {
+          await db.transaction(async (tx) => {
+            const roles = await tx
+              .select()
+              .from(zuvyUserRoles)
+              .where(
+                and(
+                  eq(zuvyUserRoles.orgId, id),
+                  eq(zuvyUserRoles.name, 'admin'),
+                ),
+              )
+              .limit(1);
+
+            if (roles.length > 0) {
+              await this.assignAdminToUser(
+                tx,
+                emailToAssign,
+                updateOrgDto.zuvyPocName || org.zuvyPocName || 'Zuvy POC',
+                id,
+                roles[0].id,
+              );
+            }
+          });
+        }
+      }
       const [updatedOrg] = await db
         .update(zuvyOrganizations)
         .set(updateData)
@@ -789,6 +881,47 @@ export class OrgService {
   // Backwards compatibility for controller if needed, but we will update controller
   remove(id: number) {
     return this.initiateDelete(id);
+  }
+
+  private async checkRoleConflict(
+    email: string,
+    roleType: 'poc' | 'zuvyPoc',
+    excludeOrgId?: number,
+  ) {
+    if (roleType === 'poc') {
+      // Check if this email is already a zuvyPoc in ANY OTHER org
+      const existingZuvyPoc = await db
+        .select()
+        .from(zuvyOrganizations)
+        .where(
+          and(
+            ilike(zuvyOrganizations.zuvyPocEmail, email),
+            excludeOrgId ? ne(zuvyOrganizations.id, excludeOrgId) : sql`TRUE`,
+          ),
+        );
+      if (existingZuvyPoc.length > 0) {
+        throw new BadRequestException(
+          `User ${email} is already a Zuvy Assignee (ZA) in another organization`,
+        );
+      }
+    } else {
+      // roleType === 'zuvyPoc'
+      // Check if this email is already a poc in ANY OTHER org
+      const existingPoc = await db
+        .select()
+        .from(zuvyOrganizations)
+        .where(
+          and(
+            ilike(zuvyOrganizations.pocEmail, email),
+            excludeOrgId ? ne(zuvyOrganizations.id, excludeOrgId) : sql`TRUE`,
+          ),
+        );
+      if (existingPoc.length > 0) {
+        throw new BadRequestException(
+          `User ${email} is already a Point of Contact (POC) in another organization`,
+        );
+      }
+    }
   }
 
   private async sendDeletePermissionEmail(
