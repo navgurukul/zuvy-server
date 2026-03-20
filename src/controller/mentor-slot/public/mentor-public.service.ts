@@ -18,15 +18,13 @@ export class MentorPublicService {
   ========================================================= */
 
   async getAllMentors(
-    page = 1,
     limit = 10,
+    offset = 0,
     role?: string,
     expertise?: string,
     title?: string,
     search?: string,
   ) {
-    const offset = (page - 1) * limit;
-
     const filters = [];
 
     if (role && role !== 'all') {
@@ -113,10 +111,10 @@ export class MentorPublicService {
     const total = Number(totalCount[0].count);
 
     return {
-      page,
       limit,
+      offset,
       total,
-      totalPages: Math.ceil(total / limit),
+      hasMore: offset + limit < total,
       data: mentors,
     };
   }
