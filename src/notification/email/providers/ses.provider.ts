@@ -25,7 +25,7 @@ export class SesProvider {
   ): Promise<any> {
     try {
       const emailParams: SendEmailRequest = {
-        Source: process.env.SUPPORT_EMAIL,
+        Source: process.env.SES_FROM_EMAIL,
         Destination: {
           ToAddresses: [to],
         },

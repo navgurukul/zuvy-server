@@ -9,6 +9,7 @@ import {
   ParseIntPipe,
   Req,
   UseGuards,
+  Query,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { MentorSlotService } from './mentor-slot.service';
@@ -61,13 +62,10 @@ export class MentorSlotController {
   @Post(':bookingId/reschedule')
   async proposeReschedule(
     @Param('bookingId', ParseIntPipe) bookingId: number,
-    @Body() dto: ProposeRescheduleDto,
+    @Query('slotId') slotId: number,
+    @Body('reason') reason: string,
   ) {
-    return this.mentorSlotService.proposeReschedule(
-      bookingId,
-      dto.newSlotId,
-      dto.reason,
-    );
+    return this.mentorSlotService.proposeReschedule(bookingId, slotId, reason);
   }
 
   /* ==========================================================================

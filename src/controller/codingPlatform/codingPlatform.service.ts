@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { db } from '../../db/index';
-import { notInArray, sql } from 'drizzle-orm';
+import { and, eq, notInArray, sql } from 'drizzle-orm';
 import axios from 'axios';
 import { SubmitCodeDto, CreateProblemDto } from './dto/codingPlatform.dto';
 import * as _ from 'lodash';
@@ -41,6 +41,7 @@ export class CodingPlatformService {
   ): Promise<any> {
     const [error, question] = await this.getCodingQuestion(
       codingOutsourseId,
+      undefined,
       false,
     );
     if (error) {
@@ -532,28 +533,13 @@ export class CodingPlatformService {
     }
   }
 
-  async createCodingProblem(codingProblem: CreateProblemDto): Promise<any> {
-    try {
-      const newQuestionCreated = await db
-        .insert(zuvyCodingQuestions)
-        .values(codingProblem)
-        .returning();
-      return [
-        null,
-        {
-          message: 'Coding problem created successfully',
-          data: newQuestionCreated,
-          statusCode: STATUS_CODES.CREATED,
-        },
-      ];
-    } catch (err) {
-      return [{ message: err.message, statusCode: STATUS_CODES.BAD_REQUEST }];
-    }
-  }
-
-  async createCodingQuestion(createCodingQuestionDto: any): Promise<any> {
+  async createCodingQuestion(
+    createCodingQuestionDto: any,
+    orgId: number,
+  ): Promise<any> {
     const { testCases, ...questionData } = createCodingQuestionDto;
     questionData['usage'] = 0;
+    questionData['orgId'] = orgId;
     try {
       const question: any = await db
         .insert(zuvyCodingQuestions)
@@ -581,29 +567,47 @@ export class CodingPlatformService {
         },
       ];
     } catch (error) {
-      return [
-        [{ message: error.message, statusCode: STATUS_CODES.BAD_REQUEST }],
-      ];
+      return [{ message: error.message, statusCode: STATUS_CODES.BAD_REQUEST }];
     }
   }
 
   async updateCodingQuestion(
     id: number,
     updateCodingQuestionDto: any,
+    orgId: number,
   ): Promise<any> {
     let { testCases, ...questionData } = updateCodingQuestionDto;
     try {
       const beforeRows = await db
         .select()
         .from(zuvyCodingQuestions)
-        .where(sql`${zuvyCodingQuestions.id} = ${id}`)
+        .where(
+          and(
+            eq(zuvyCodingQuestions.id, id),
+            eq(zuvyCodingQuestions.orgId, orgId),
+          ),
+        )
         .limit(1);
       const before = beforeRows[0] || null;
+
+      if (!before) {
+        return [
+          {
+            message: 'Coding question not found or unauthorized',
+            statusCode: STATUS_CODES.NOT_FOUND,
+          },
+        ];
+      }
 
       const question = await db
         .update(zuvyCodingQuestions)
         .set(questionData)
-        .where(sql`${zuvyCodingQuestions.id} = ${id}`)
+        .where(
+          and(
+            eq(zuvyCodingQuestions.id, id),
+            eq(zuvyCodingQuestions.orgId, orgId),
+          ),
+        )
         .returning();
       let missingIdElements = [];
       if (testCases.length < 2) {
@@ -646,17 +650,20 @@ export class CodingPlatformService {
       ];
     } catch (error) {
       Logger.error(JSON.stringify(error));
-      return [
-        [{ message: error.message, statusCode: STATUS_CODES.BAD_REQUEST }],
-      ];
+      return [{ message: error.message, statusCode: STATUS_CODES.BAD_REQUEST }];
     }
   }
 
-  async deleteCodingQuestion(id: number): Promise<any> {
+  async deleteCodingQuestion(id: number, orgId: number): Promise<any> {
     try {
       let data = await db
         .delete(zuvyCodingQuestions)
-        .where(sql`${zuvyCodingQuestions.id} = ${id}`)
+        .where(
+          and(
+            eq(zuvyCodingQuestions.id, id),
+            eq(zuvyCodingQuestions.orgId, orgId),
+          ),
+        )
         .returning();
       if (data.length === 0) {
         return [{ message: 'Not found', statusCode: STATUS_CODES.NOT_FOUND }];
@@ -670,20 +677,24 @@ export class CodingPlatformService {
         },
       ];
     } catch (error) {
-      return [
-        [{ message: error.message, statusCode: STATUS_CODES.BAD_REQUEST }],
-      ];
+      return [{ message: error.message, statusCode: STATUS_CODES.BAD_REQUEST }];
     }
   }
 
   async getCodingQuestion(
     id: number,
+    orgId?: number,
     withTemplate: boolean = true,
   ): Promise<any> {
     try {
       const question: any = await db.query.zuvyCodingQuestions.findMany({
-        where: (zuvyCodingQuestions, { sql }) =>
-          sql`${zuvyCodingQuestions.id} = ${id}`,
+        where: (zuvyCodingQuestions, { and, eq }) => {
+          const conditions = [eq(zuvyCodingQuestions.id, id)];
+          if (orgId) {
+            conditions.push(eq(zuvyCodingQuestions.orgId, orgId));
+          }
+          return and(...conditions);
+        },
         columns: {
           id: true,
           title: true,
@@ -730,21 +741,19 @@ export class CodingPlatformService {
         },
       ];
     } catch (error) {
-      return [
-        [{ message: error.message, statusCode: STATUS_CODES.BAD_REQUEST }],
-      ];
+      return [{ message: error.message, statusCode: STATUS_CODES.BAD_REQUEST }];
     }
   }
   // i want to update the test case and expected output for the coding question
   async updateTestCaseAndExpectedOutput(testcases: any): Promise<any> {
     try {
-      testcases.forEach(async (testCase) => {
+      for (const testCase of testcases) {
         const { inputs, expectedOutput } = testCase;
         await db
           .update(zuvyTestCases)
           .set({ inputs, expectedOutput })
           .where(sql`${zuvyTestCases.id} = ${testCase.id}`);
-      });
+      }
       return [
         null,
         {
@@ -754,9 +763,7 @@ export class CodingPlatformService {
       ];
     } catch (error) {
       Logger.error(JSON.stringify(error));
-      return [
-        [{ message: error.message, statusCode: STATUS_CODES.BAD_REQUEST }],
-      ];
+      return [{ message: error.message, statusCode: STATUS_CODES.BAD_REQUEST }];
     }
   }
 
@@ -777,9 +784,7 @@ export class CodingPlatformService {
         },
       ];
     } catch (error) {
-      return [
-        [{ message: error.message, statusCode: STATUS_CODES.BAD_REQUEST }],
-      ];
+      return [{ message: error.message, statusCode: STATUS_CODES.BAD_REQUEST }];
     }
   }
 
@@ -793,13 +798,14 @@ export class CodingPlatformService {
         .returning();
       return [
         null,
-        { message: 'added the test case', data: testCase[0] },
-        STATUS_CODES.CREATED,
+        {
+          message: 'added the test case',
+          data: testCase[0],
+          statusCode: STATUS_CODES.CREATED,
+        },
       ];
     } catch (error) {
-      return [
-        [{ message: error.message, statusCode: STATUS_CODES.BAD_REQUEST }],
-      ];
+      return [{ message: error.message, statusCode: STATUS_CODES.BAD_REQUEST }];
     }
   }
 
