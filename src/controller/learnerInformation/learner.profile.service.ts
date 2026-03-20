@@ -64,6 +64,7 @@ const zuvyLearnersCompleteProfileTable = learnerMainSchema.table(
     targetRoles: jsonb('target_roles').default([]),
     preferredLocations: jsonb('preferred_locations').default([]),
     openToRemote: boolean('open_to_remote').default(false),
+    termsAndCondition: boolean('terms_and_condition').default(false),
     internshipStipend: varchar('internship_stipend', { length: 50 }),
     fullTimeCtc: varchar('full_time_ctc', { length: 50 }),
     preferredContactMethods: jsonb('preferred_contact_methods').default([]),
@@ -146,6 +147,7 @@ CREATE TABLE IF NOT EXISTS main.zuvy_learners_complete_profile (
   target_roles jsonb DEFAULT '[]'::jsonb,
   preferred_locations jsonb DEFAULT '[]'::jsonb,
   open_to_remote boolean DEFAULT false,
+  terms_and_condition boolean DEFAULT false,
   internship_stipend varchar(50),
   full_time_ctc varchar(50),
   preferred_contact_methods jsonb DEFAULT '[]'::jsonb,
@@ -179,6 +181,9 @@ ADD COLUMN IF NOT EXISTS codechef_profiles jsonb DEFAULT '[]'::jsonb;
 
 ALTER TABLE IF EXISTS main.zuvy_learners_complete_profile
 ADD COLUMN IF NOT EXISTS codeforces_profiles jsonb DEFAULT '[]'::jsonb;
+
+ALTER TABLE IF EXISTS main.zuvy_learners_complete_profile
+ADD COLUMN IF NOT EXISTS terms_and_condition boolean DEFAULT false;
 
 ALTER TABLE IF EXISTS main.zuvy_learners_complete_profile
 DROP COLUMN IF EXISTS leetcode_username;
@@ -312,10 +317,15 @@ DROP COLUMN IF EXISTS codeforces_username;
       .where(eq(zuvyLearnersCompleteProfileTable.userId, userId))
       .returning();
 
+    const responseData = {
+      ...updatedProfile,
+      termsAndCondition: updatedProfile?.termsAndCondition ?? false,
+    };
+
     return {
       success: true,
       message: 'Profile saved successfully',
-      data: updatedProfile,
+      data: responseData,
     };
   }
 
@@ -337,9 +347,14 @@ DROP COLUMN IF EXISTS codeforces_username;
       };
     }
 
+    const responseData = {
+      ...rows[0],
+      termsAndCondition: rows[0]?.termsAndCondition ?? false,
+    };
+
     return {
       success: true,
-      data: rows[0],
+      data: responseData,
     };
   }
 
@@ -378,10 +393,15 @@ DROP COLUMN IF EXISTS codeforces_username;
       .where(eq(zuvyLearnersCompleteProfileTable.userId, userId))
       .returning();
 
+    const responseData = {
+      ...updatedProfile,
+      termsAndCondition: updatedProfile?.termsAndCondition ?? false,
+    };
+
     return {
       success: true,
       message: 'Profile updated successfully',
-      data: updatedProfile,
+      data: responseData,
     };
   }
 

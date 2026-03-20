@@ -1694,12 +1694,6 @@ ON main.zuvy_learners_remote_location (name);
       throw error;
     }
   }
-
-  // private validateFutureGraduationDate(month: number, year: number): void {
-  //   void month;
-  //   void year;
-  // }
-
   private validateOtherCollegeInput(
     collegeName?: string,
     otherCollegeName?: string,

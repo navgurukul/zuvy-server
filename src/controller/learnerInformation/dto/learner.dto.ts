@@ -816,6 +816,11 @@ export class SaveCompleteProfileDto {
   @IsArray()
   @IsString({ each: true })
   preferredContactMethods?: string[];
+
+  @ApiPropertyOptional({ example: true, default: false })
+  @IsOptional()
+  @IsBoolean()
+  termsAndCondition?: boolean;
 }
 
 export class ProfileStrengthResponseDto {
