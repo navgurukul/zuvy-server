@@ -15,8 +15,8 @@ export class UpdateOrgDto {
   })
   @IsString()
   @IsOptional()
-  @MaxLength(30, {
-    message: 'Organization name is too long. Maximum length is 30 characters',
+  @MaxLength(255, {
+    message: 'Organization name is too long. Maximum length is 255 characters',
   })
   title?: string;
 

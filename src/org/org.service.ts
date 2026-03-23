@@ -22,7 +22,7 @@ import {
   zuvyPermissionsRoles,
   zuvyBootcamps,
 } from '../../drizzle/schema';
-import { eq, and, ilike, or, sql, desc, ne } from 'drizzle-orm';
+import { eq, and, ilike, or, sql, desc, ne, asc } from 'drizzle-orm';
 import { JwtService } from '@nestjs/jwt';
 import { AuthService } from '../auth/auth.service';
 import { UserTokensService } from '../user-tokens/user-tokens.service';
@@ -186,10 +186,16 @@ export class OrgService {
         );
       }
 
+      const normalizedTitle = createOrgDto.title
+        .replace(/\s+/g, '')
+        .toLowerCase();
+
       const existingName = await db
         .select()
         .from(zuvyOrganizations)
-        .where(ilike(zuvyOrganizations.title, createOrgDto.title));
+        .where(
+          sql`LOWER(REPLACE(${zuvyOrganizations.title}, ' ', '')) = ${normalizedTitle}`,
+        );
 
       if (existingName.length > 0) {
         throw new BadRequestException(
@@ -449,7 +455,7 @@ export class OrgService {
       .where(whereClause)
       .limit(limitNum)
       .offset(offset)
-      .orderBy(desc(zuvyOrganizations.createdAt));
+      .orderBy(asc(zuvyOrganizations.title));
 
     // Get total count
     const [countResult] = await db
@@ -519,7 +525,8 @@ export class OrgService {
             joinedAt: zuvyOrganizations.createdAt,
           })
           .from(zuvyOrganizations)
-          .where(adminWhereClause);
+          .where(adminWhereClause)
+          .orderBy(asc(zuvyOrganizations.title));
       } else {
         let whereClause: any = eq(zuvyUserRolesAssigned.userId, BigInt(userId));
 
@@ -548,7 +555,8 @@ export class OrgService {
             zuvyOrganizations,
             eq(zuvyUserRolesAssigned.organizationId, zuvyOrganizations.id),
           )
-          .where(whereClause);
+          .where(whereClause)
+          .orderBy(asc(zuvyOrganizations.title));
       }
 
       return {
@@ -614,12 +622,16 @@ export class OrgService {
         updateOrgDto.title &&
         updateOrgDto.title.toLowerCase() !== org.title.toLowerCase()
       ) {
+        const normalizedTitle = updateOrgDto.title
+          .replace(/\s+/g, '')
+          .toLowerCase();
+
         const existingName = await db
           .select()
           .from(zuvyOrganizations)
           .where(
             and(
-              ilike(zuvyOrganizations.title, updateOrgDto.title),
+              sql`LOWER(REPLACE(${zuvyOrganizations.title}, ' ', '')) = ${normalizedTitle}`,
               ne(zuvyOrganizations.id, id),
             ),
           );
