@@ -307,10 +307,14 @@ FOR UPDATE
             refreshToken,
           );
         } catch (error) {
-          console.error('Error creating Google Meet:', error);
-          // throw new BadRequestException(
-          //   'Failed to create Google Meet session.',
-          // );
+          console.error(
+            'Google Meet creation failed:',
+            error.response?.data || error.message,
+          );
+
+          throw new BadRequestException(
+            'Failed to create Google Meet. Please reconnect Google account.',
+          );
         }
       }
       /* Save meeting info */

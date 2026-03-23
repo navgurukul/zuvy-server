@@ -5,7 +5,7 @@ import {
 } from '@nestjs/common';
 
 import { db } from '../../../db';
-import { zuvyMentorSlotBooking } from '../../../../drizzle/schema';
+import { users, zuvyMentorSlotBooking } from '../../../../drizzle/schema';
 
 import { eq } from 'drizzle-orm';
 
@@ -17,8 +17,12 @@ export class SessionService {
 
   async getStudentSessions(userId: bigint) {
     return db
-      .select()
+      .select({
+        booking: zuvyMentorSlotBooking,
+        mentorName: users.name,
+      })
       .from(zuvyMentorSlotBooking)
+      .leftJoin(users, eq(users.id, zuvyMentorSlotBooking.mentorUserId))
       .where(eq(zuvyMentorSlotBooking.studentUserId, userId));
   }
 
@@ -28,8 +32,12 @@ export class SessionService {
 
   async getMentorSessions(userId: bigint) {
     return db
-      .select()
+      .select({
+        booking: zuvyMentorSlotBooking,
+        studentName: users.name,
+      })
       .from(zuvyMentorSlotBooking)
+      .leftJoin(users, eq(users.id, zuvyMentorSlotBooking.studentUserId))
       .where(eq(zuvyMentorSlotBooking.mentorUserId, userId));
   }
 

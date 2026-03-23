@@ -1,11 +1,11 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 
 export class MentorSearchDto {
-  @ApiPropertyOptional()
-  page?: number;
-
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ example: 10 })
   limit?: number;
+
+  @ApiPropertyOptional({ example: 0 })
+  offset?: number;
 
   @ApiPropertyOptional()
   role?: string;
