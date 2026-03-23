@@ -25,6 +25,9 @@ export class MentorPublicService {
     title?: string,
     search?: string,
   ) {
+    limit = Number(limit);
+    offset = Number(offset);
+
     const filters = [];
 
     if (role && role !== 'all') {
@@ -106,7 +109,16 @@ export class MentorPublicService {
       .innerJoin(
         zuvyMentorSlotManagement,
         eq(zuvyMentorSlotManagement.mentorUserId, users.id),
-      );
+      )
+      .leftJoin(
+        zuvyUserRolesAssigned,
+        eq(zuvyUserRolesAssigned.userId, users.id),
+      )
+      .leftJoin(
+        zuvyUserRoles,
+        eq(zuvyUserRoles.id, zuvyUserRolesAssigned.roleId),
+      )
+      .where(filters.length ? and(...filters) : undefined);
 
     const total = Number(totalCount[0].count);
 

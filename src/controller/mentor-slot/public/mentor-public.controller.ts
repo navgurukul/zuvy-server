@@ -11,8 +11,8 @@ export class MentorPublicController {
   @Get()
   async getMentors(@Query() query: MentorSearchDto) {
     return this.service.getAllMentors(
-      query.page,
       query.limit,
+      query.offset,
       query.role,
       query.expertise,
       query.title,
