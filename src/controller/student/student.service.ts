@@ -180,157 +180,214 @@ export class StudentService {
     }
   }
 
-  async fetchGlobalCourses(userId: number): Promise<any> {
+  async fetchGlobalCourses(userId?: number) {
     try {
-      const bootcampName = 'Introduction to AI & Generative AI';
-      const bootcamp = await db
-        .select()
+      // Fetch public bootcamps (removed organization join)
+      let publicBootcamps = await db
+        .select({
+          bootcamp: zuvyBootcamps,
+          bootcampType: zuvyBootcampType,
+        })
         .from(zuvyBootcamps)
-        .where(eq(zuvyBootcamps.name, bootcampName))
-        .limit(1);
-
-      if (bootcamp.length === 0) {
-        return [
-          { status: 'error', message: 'Course not found', code: 404 },
-          null,
-        ];
-      }
-
-      const enrollment = await db
-        .select()
-        .from(zuvyBatchEnrollments)
-        .where(
-          and(
-            eq(zuvyBatchEnrollments.userId, BigInt(userId)),
-            eq(zuvyBatchEnrollments.bootcampId, bootcamp[0].id),
-          ),
+        .innerJoin(
+          zuvyBootcampType,
+          eq(zuvyBootcamps.id, zuvyBootcampType.bootcampId),
         )
-        .limit(1);
+        .where(sql`${zuvyBootcampType.type} = 'Public'`);
 
-      if (enrollment.length > 0) {
-        return [null, {}];
+      // Remove already enrolled bootcamps
+      if (userId) {
+        const enrolled = await db
+          .select({ bootcampId: zuvyBatchEnrollments.bootcampId })
+          .from(zuvyBatchEnrollments)
+          .where(eq(zuvyBatchEnrollments.userId, BigInt(userId)));
+
+        const enrolledBootcampIds = new Set(
+          enrolled.map((e) => Number(e.bootcampId)),
+        );
+
+        publicBootcamps = publicBootcamps.filter(
+          (b) => !enrolledBootcampIds.has(Number(b.bootcamp.id)),
+        );
       }
 
-      const batch = await db.query.zuvyBatches.findFirst({
-        where: (zuvyBatches, { and, eq }) =>
-          and(
-            eq(zuvyBatches.bootcampId, bootcamp[0].id),
-            eq(zuvyBatches.name, 'First Batch'),
-          ),
-        with: {
-          instructorDetails: {
-            columns: {
-              id: true,
-              name: true,
-              profilePicture: true,
+      // Map response
+      let data = await Promise.all(
+        publicBootcamps.map(async (bootcampRecord) => {
+          const { bootcamp, bootcampType } = bootcampRecord;
+
+          let [err, res] = await this.enrollmentData(bootcamp.id);
+
+          // fetch latest batch
+          const firstBatch = await db.query.zuvyBatches.findFirst({
+            where: (zuvyBatches, { eq }) =>
+              eq(zuvyBatches.bootcampId, bootcamp.id),
+            orderBy: (zuvyBatches, { desc }) => [desc(zuvyBatches.createdAt)],
+            with: {
+              instructorDetails: {
+                columns: {
+                  name: true,
+                  profilePicture: true,
+                },
+              },
             },
-          },
-        },
-      });
+          });
 
-      // Enrichment to match enrollData format
-      const enrichedBootcamp = {
-        ...bootcamp[0],
-        id: Number(bootcamp[0].id),
-        batchId: batch?.id ? Number(batch.id) : null,
-        batchName: batch?.name || null,
-        progress: 0,
-        instructorDetails: batch?.instructorDetails
-          ? {
-              ...batch.instructorDetails,
-              id: Number(batch.instructorDetails.id),
-            }
-          : { name: 'Not Assigned', profilePicture: null },
-      };
+          return {
+            ...bootcamp,
+            ...bootcampType,
+            batchInfo: firstBatch || null,
+            enrolledInfo: res,
+          };
+        }),
+      );
 
-      return [null, enrichedBootcamp];
-    } catch (error) {
-      log(`error: ${error.message}`);
-      return [{ status: 'error', message: error.message, code: 500 }, null];
+      return [null, data];
+    } catch (err) {
+      this.logger.error(`error: ${err.message}`);
+      return [{ status: 'error', message: err.message, code: 500 }, null];
     }
   }
 
-  async enrollInAICourse(userId: number): Promise<any> {
+  async enrollInPublicCourse(userId: number, bootcampId: number) {
     try {
-      const bootcampName = 'Introduction to AI & Generative AI';
-      const batchName = 'First Batch';
-
-      const bootcamp = await db
-        .select()
-        .from(zuvyBootcamps)
-        .where(eq(zuvyBootcamps.name, bootcampName))
-        .limit(1);
-
-      if (bootcamp.length === 0) {
-        return [
-          { status: 'error', message: 'Bootcamp not found', code: 404 },
-          null,
-        ];
-      }
-
-      const batch = await db
-        .select()
-        .from(zuvyBatches)
+      // ✅ Check if bootcamp is public
+      const isPublic = await db
+        .select({ id: zuvyBootcampType.bootcampId })
+        .from(zuvyBootcampType)
         .where(
           and(
-            eq(zuvyBatches.bootcampId, bootcamp[0].id),
-            eq(zuvyBatches.name, batchName),
+            eq(zuvyBootcampType.bootcampId, bootcampId),
+            eq(zuvyBootcampType.type, 'Public'),
           ),
         )
         .limit(1);
 
-      if (batch.length === 0) {
+      if (!isPublic.length) {
         return [
-          { status: 'error', message: 'Batch not found', code: 404 },
+          {
+            status: 'error',
+            message: 'This course is not public or does not exist.',
+            code: 400,
+          },
           null,
         ];
       }
 
+      // ✅ Check if already enrolled
       const existingEnrollment = await db
-        .select()
+        .select({ id: zuvyBatchEnrollments.id })
         .from(zuvyBatchEnrollments)
         .where(
           and(
             eq(zuvyBatchEnrollments.userId, BigInt(userId)),
-            eq(zuvyBatchEnrollments.bootcampId, bootcamp[0].id),
+            eq(zuvyBatchEnrollments.bootcampId, bootcampId),
           ),
         )
         .limit(1);
 
-      if (existingEnrollment.length > 0) {
-        // If already enrolled but batchId is null, update it.
-        if (existingEnrollment[0].batchId === null) {
-          await db
-            .update(zuvyBatchEnrollments)
-            .set({ batchId: batch[0].id, updatedAt: new Date() })
-            .where(eq(zuvyBatchEnrollments.id, existingEnrollment[0].id));
-          return [
-            null,
-            { message: 'Enrolled in batch successfully', statusCode: 200 },
-          ];
-        }
+      if (existingEnrollment.length) {
         return [
-          { status: 'error', message: 'Already enrolled', code: 407 },
+          {
+            status: 'error',
+            message: 'Already enrolled in this course.',
+            code: 400,
+          },
           null,
         ];
       }
 
-      const now = new Date();
-      await db.insert(zuvyBatchEnrollments).values({
-        userId: BigInt(userId),
-        bootcampId: bootcamp[0].id,
-        batchId: batch[0].id,
-        enrolledDate: now,
-        lastActiveDate: now,
-        status: 'active',
-        updatedAt: now,
-        createdAt: now,
-      });
+      // ✅ Fetch batches
+      const batches = await db
+        .select({
+          id: zuvyBatches.id,
+          capEnrollment: zuvyBatches.capEnrollment,
+        })
+        .from(zuvyBatches)
+        .where(eq(zuvyBatches.bootcampId, bootcampId))
+        .orderBy(asc(zuvyBatches.createdAt));
 
-      return [null, { message: 'Enrolled successfully', statusCode: 200 }];
-    } catch (error) {
-      this.logger.error(`Error in enrollInAICourse: ${error.message}`);
-      return [{ message: error.message, statusCode: 500 }, null];
+      if (!batches.length) {
+        return [
+          {
+            status: 'error',
+            message: 'No batches available for this course.',
+            code: 400,
+          },
+          null,
+        ];
+      }
+
+      // ✅ Get enrollment count in one query
+      const enrollmentCounts = await db
+        .select({
+          batchId: zuvyBatchEnrollments.batchId,
+          count: count(),
+        })
+        .from(zuvyBatchEnrollments)
+        .where(
+          inArray(
+            zuvyBatchEnrollments.batchId,
+            batches.map((b) => b.id),
+          ),
+        )
+        .groupBy(zuvyBatchEnrollments.batchId);
+
+      const countMap = new Map(
+        enrollmentCounts.map((e) => [Number(e.batchId), Number(e.count)]),
+      );
+
+      // ✅ Find available batch
+      let selectedBatchId: number | null = null;
+
+      for (const batch of batches) {
+        const currentCount = countMap.get(batch.id) || 0;
+
+        if (!batch.capEnrollment || currentCount < batch.capEnrollment) {
+          selectedBatchId = batch.id;
+          break;
+        }
+      }
+
+      if (!selectedBatchId) {
+        return [
+          {
+            status: 'error',
+            message: 'All batches for this course are currently full.',
+            code: 400,
+          },
+          null,
+        ];
+      }
+
+      // ✅ Insert enrollment
+      const userEnroll = await db
+        .insert(zuvyBatchEnrollments)
+        .values({
+          userId: BigInt(userId),
+          bootcampId,
+          batchId: selectedBatchId,
+        })
+        .returning();
+
+      return [
+        null,
+        {
+          message: 'Successfully enrolled in the course.',
+          data: userEnroll,
+        },
+      ];
+    } catch (err) {
+      this.logger.error(`error: ${err?.message}`);
+
+      return [
+        {
+          status: 'error',
+          message: err?.message || 'Internal Server Error',
+          code: 500,
+        },
+        null,
+      ];
     }
   }
 
