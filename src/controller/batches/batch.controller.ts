@@ -14,6 +14,7 @@ import {
   Req,
   UseGuards,
   UseInterceptors,
+  ForbiddenException,
 } from '@nestjs/common';
 import { BatchesService } from './batch.service';
 import {
@@ -49,10 +50,26 @@ export class BatchesController {
   @ApiOperation({ summary: 'Get the batch by id' })
   @ApiBearerAuth('JWT-auth')
   // @ApiQuery({ name: 'students', required: false, type: Boolean, description: 'Optional content flag' })
-  async getBatchById(@Param('id') id: number): Promise<object> {
+  async getBatchById(
+    @Param('id') id: number,
+    @Req() req: any,
+  ): Promise<object> {
     const [err, res] = await this.batchService.getBatchById(id);
     if (err) {
       throw new BadRequestException(err);
+    }
+
+    const user = req.user;
+    const isInstructor = user.roles.includes('instructor');
+    const isAdmin =
+      user.roles.includes('admin') || user.roles.includes('super_admin');
+
+    if (isInstructor && !isAdmin) {
+      if (res['batch'].instructorId !== Number(user.id)) {
+        throw new ForbiddenException(
+          'You are not authorized to view this batch',
+        );
+      }
     }
     return res;
   }
