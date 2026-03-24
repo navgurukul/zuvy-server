@@ -63,8 +63,8 @@ export class GoogleController {
 
     let redirectUrl = result.redirectUrl;
 
-    if (!redirectUrl?.startsWith(process.env.FRONTEND_URL)) {
-      redirectUrl = `${process.env.FRONTEND_URL}/dashboard`;
+    if (!redirectUrl?.startsWith(process.env.ZUVY_BASH_URL)) {
+      redirectUrl = `${process.env.ZUVY_BASH_URL}/dashboard`;
     }
 
     return res.redirect(redirectUrl);
