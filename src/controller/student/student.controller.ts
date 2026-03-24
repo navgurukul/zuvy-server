@@ -426,7 +426,7 @@ export class StudentController {
     }
   }
 
-  @Get('/fetchGlobalCourses')
+  @Get('/bootcamp/global')
   @ApiOperation({ summary: 'Fetch global course details' })
   @ApiBearerAuth('JWT-auth')
   async fetchGlobalCourses(@Req() req, @Res() res: Response): Promise<any> {
