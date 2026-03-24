@@ -520,6 +520,55 @@ export class CodingPlatformProfileDto {
   countryRank?: number | null;
 }
 
+export class CodeforcesProfileDto {
+  @ApiPropertyOptional({ example: 'john_doe' })
+  @IsOptional()
+  @IsString()
+  @Length(0, 100)
+  @Matches(/^[a-zA-Z0-9_\-]*$/, {
+    message:
+      'username must contain only letters, numbers, underscores, and hyphens',
+  })
+  username?: string;
+
+  @ApiPropertyOptional({ example: 3355 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  rating?: number;
+
+  @ApiPropertyOptional({ example: 'legendary grandmaster', nullable: true })
+  @IsOptional()
+  @IsString()
+  @Length(0, 100)
+  rank?: string | null;
+
+  @ApiPropertyOptional({ example: 7 })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  stars?: number;
+
+  @ApiPropertyOptional({ example: 'Belarus' })
+  @IsOptional()
+  @IsString()
+  @Length(0, 100)
+  country?: string;
+
+  @ApiPropertyOptional({ example: 1234, nullable: true })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  globalRank?: number | null;
+
+  @ApiPropertyOptional({ example: 56, nullable: true })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  countryRank?: number | null;
+}
+
 export class SaveCompleteProfileDto {
   // ─── PAGE 1: BASICS (Personal Details + Education) ──────────────
   @ApiPropertyOptional({ example: 'Aditya Kumar' })
@@ -756,12 +805,12 @@ export class SaveCompleteProfileDto {
   codechefProfiles?: CodingPlatformProfileDto[];
 
   @ApiPropertyOptional({
-    type: [CodingPlatformProfileDto],
+    type: [CodeforcesProfileDto],
     example: [
       {
         username: 'john_doe',
         rating: 3355,
-        rank: 1234,
+        rank: 'legendary grandmaster',
         stars: 7,
         country: 'Belarus',
         globalRank: null,
@@ -772,8 +821,8 @@ export class SaveCompleteProfileDto {
   @IsOptional()
   @IsArray()
   @ValidateNested({ each: true })
-  @Type(() => CodingPlatformProfileDto)
-  codeforcesProfiles?: CodingPlatformProfileDto[];
+  @Type(() => CodeforcesProfileDto)
+  codeforcesProfiles?: CodeforcesProfileDto[];
 
   // ─── PAGE 4: PREFERENCES ───────────────────────────────────────
   @ApiPropertyOptional({
