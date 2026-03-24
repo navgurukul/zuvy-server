@@ -426,41 +426,62 @@ export class StudentController {
     }
   }
 
-  @Get('/fetchGlobalCourses')
+  @Get('/bootcamp/global')
   @ApiOperation({ summary: 'Fetch global course details' })
   @ApiBearerAuth('JWT-auth')
   async fetchGlobalCourses(@Req() req, @Res() res: Response): Promise<any> {
-    const userId = req.user[0]?.id;
-    const [err, resData] = await this.studentService.fetchGlobalCourses(userId);
-    if (err) {
-      return ErrorResponse.BadRequestException(err.message, err.code).send(res);
-    }
-    return new SuccessResponse(
-      'Successfully fetched global course',
-      200,
-      resData,
-    ).send(res);
-  }
-
-  @Post('/enroll-course')
-  @ApiOperation({ summary: 'Enroll student in AI course' })
-  @ApiBearerAuth('JWT-auth')
-  async enrollAICourse(@Res() res: Response, @Req() req): Promise<any> {
     try {
-      const [err, success] = await this.studentService.enrollInAICourse(
-        req.user[0].id,
-      );
+      // safer userId extraction
+      const userId = req.user?.[0]?.id ?? null;
+
+      const [err, data] = await this.studentService.fetchGlobalCourses(userId);
+
       if (err) {
-        return ErrorResponse.BadRequestException(err.message).send(res);
+        const error = err as any;
+
+        return ErrorResponse.BadRequestException(
+          error.message,
+          error.code,
+        ).send(res);
       }
+
       return new SuccessResponse(
-        success.message,
-        success.statusCode,
-        success.data,
+        'Successfully fetched global course',
+        200,
+        data,
       ).send(res);
     } catch (error) {
-      return ErrorResponse.BadRequestException(error.message).send(res);
+      return ErrorResponse.BadRequestException(
+        error.message || 'Something went wrong',
+        500,
+      ).send(res);
     }
+  }
+
+  @Post('/bootcamp/enroll')
+  @ApiOperation({ summary: 'Enroll a student in a public course' })
+  @ApiBearerAuth('JWT-auth')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        bootcampId: { type: 'number' },
+      },
+      required: ['bootcampId'],
+    },
+  })
+  async enrollPublicCourse(
+    @Req() req,
+    @Body('bootcampId') bootcampId: number,
+  ): Promise<object> {
+    const [err, res] = await this.studentService.enrollInPublicCourse(
+      req.user[0].id,
+      bootcampId,
+    );
+    if (err) {
+      throw new BadRequestException(err);
+    }
+    return res;
   }
 
   @Post('assessment/request-reattempt')
