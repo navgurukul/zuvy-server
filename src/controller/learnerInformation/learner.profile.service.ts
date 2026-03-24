@@ -200,6 +200,41 @@ DROP COLUMN IF EXISTS codeforces_username;
   private normalizeCodingPlatformFields(payload: SaveCompleteProfileDto) {
     const normalizedPayload: SaveCompleteProfileDto = { ...payload };
 
+    const normalizeProjects = (projects: unknown) => {
+      if (!Array.isArray(projects)) return projects;
+
+      return projects.map((project) => {
+        if (!project || typeof project !== 'object') {
+          return project;
+        }
+
+        const projectData = {
+          ...(project as Record<string, unknown>),
+        } as Record<string, unknown>;
+
+        const githubUrlValue = projectData.githubUrl;
+        const demoUrlValue = projectData.demoUrl;
+
+        return {
+          ...projectData,
+          githubUrl:
+            githubUrlValue === undefined ||
+            githubUrlValue === null ||
+            (typeof githubUrlValue === 'string' &&
+              githubUrlValue.trim().length === 0)
+              ? null
+              : githubUrlValue,
+          demoUrl:
+            demoUrlValue === undefined ||
+            demoUrlValue === null ||
+            (typeof demoUrlValue === 'string' &&
+              demoUrlValue.trim().length === 0)
+              ? null
+              : demoUrlValue,
+        };
+      });
+    };
+
     const normalizeProfiles = (profiles: unknown) => {
       if (!Array.isArray(profiles)) return profiles;
 
@@ -268,6 +303,9 @@ DROP COLUMN IF EXISTS codeforces_username;
     normalizedPayload.codeforcesProfiles = normalizeProfiles(
       payload.codeforcesProfiles,
     ) as SaveCompleteProfileDto['codeforcesProfiles'];
+    normalizedPayload.projects = normalizeProjects(
+      payload.projects,
+    ) as SaveCompleteProfileDto['projects'];
 
     return normalizedPayload;
   }
