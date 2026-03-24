@@ -5,9 +5,14 @@ import {
 } from '@nestjs/common';
 
 import { db } from '../../../db';
-import { users, zuvyMentorSlotBooking } from '../../../../drizzle/schema';
+import {
+  users,
+  zuvyMentorSlotAvailability,
+  zuvyMentorSlotBooking,
+} from '../../../../drizzle/schema';
 
-import { eq } from 'drizzle-orm';
+import { and, eq, desc } from 'drizzle-orm';
+import { sl } from 'zod/v4/locales';
 
 @Injectable()
 export class SessionService {
@@ -15,30 +20,110 @@ export class SessionService {
      STUDENT SESSIONS
   ========================================================================== */
 
-  async getStudentSessions(userId: bigint) {
-    return db
+  async getStudentSessions(
+    userId: bigint,
+    filter = 'all',
+    limit = 10,
+    offset = 0,
+  ) {
+    const conditions = [eq(zuvyMentorSlotBooking.studentUserId, userId)];
+
+    if (filter === 'upcoming') {
+      conditions.push(
+        eq(zuvyMentorSlotBooking.sessionLifecycleState, 'SCHEDULED'),
+      );
+    }
+
+    if (filter === 'completed') {
+      conditions.push(
+        eq(zuvyMentorSlotBooking.sessionLifecycleState, 'COMPLETED'),
+      );
+    }
+
+    if (filter === 'cancelled') {
+      conditions.push(eq(zuvyMentorSlotBooking.status, 'cancelled'));
+    }
+
+    const data = await db
       .select({
         booking: zuvyMentorSlotBooking,
         mentorName: users.name,
+        slotStart: zuvyMentorSlotAvailability.slotStartDateTime,
+        slotEnd: zuvyMentorSlotAvailability.slotEndDateTime,
       })
       .from(zuvyMentorSlotBooking)
+
       .leftJoin(users, eq(users.id, zuvyMentorSlotBooking.mentorUserId))
-      .where(eq(zuvyMentorSlotBooking.studentUserId, userId));
+
+      .leftJoin(
+        zuvyMentorSlotAvailability,
+        eq(
+          zuvyMentorSlotAvailability.id,
+          zuvyMentorSlotBooking.slotAvailabilityId,
+        ),
+      )
+
+      .where(and(...conditions))
+      .orderBy(desc(zuvyMentorSlotBooking.bookedAt))
+      .limit(limit)
+      .offset(offset);
+
+    return data;
   }
 
   /* ==========================================================================
      MENTOR SESSIONS
   ========================================================================== */
 
-  async getMentorSessions(userId: bigint) {
-    return db
+  async getMentorSessions(
+    userId: bigint,
+    filter = 'all',
+    limit = 10,
+    offset = 0,
+  ) {
+    const conditions = [eq(zuvyMentorSlotBooking.mentorUserId, userId)];
+
+    if (filter === 'upcoming') {
+      conditions.push(
+        eq(zuvyMentorSlotBooking.sessionLifecycleState, 'SCHEDULED'),
+      );
+    }
+
+    if (filter === 'completed') {
+      conditions.push(
+        eq(zuvyMentorSlotBooking.sessionLifecycleState, 'COMPLETED'),
+      );
+    }
+
+    if (filter === 'reschedule') {
+      conditions.push(eq(zuvyMentorSlotBooking.rescheduleStatus, 'pending'));
+    }
+
+    const data = await db
       .select({
         booking: zuvyMentorSlotBooking,
         studentName: users.name,
+        slotStart: zuvyMentorSlotAvailability.slotStartDateTime,
+        slotEnd: zuvyMentorSlotAvailability.slotEndDateTime,
       })
       .from(zuvyMentorSlotBooking)
+
       .leftJoin(users, eq(users.id, zuvyMentorSlotBooking.studentUserId))
-      .where(eq(zuvyMentorSlotBooking.mentorUserId, userId));
+
+      .leftJoin(
+        zuvyMentorSlotAvailability,
+        eq(
+          zuvyMentorSlotAvailability.id,
+          zuvyMentorSlotBooking.slotAvailabilityId,
+        ),
+      )
+
+      .where(and(...conditions))
+      .orderBy(desc(zuvyMentorSlotBooking.bookedAt))
+      .limit(limit)
+      .offset(offset);
+
+    return data;
   }
 
   /* ==========================================================================

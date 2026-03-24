@@ -285,12 +285,14 @@ export class BootcampController {
   ): Promise<object> {
     const roleName = req.user[0]?.roles;
     const orgId = req.user[0]?.orgId;
+    const userId = req.user[0]?.id;
     const [err, res] = await this.bootcampService.getBatchByIdBootcamp(
       bootcamp_id,
       roleName,
       limit,
       offset,
       orgId,
+      userId,
     );
     if (err) {
       throw new BadRequestException(err);
@@ -310,10 +312,15 @@ export class BootcampController {
   async searchBatchesByName(
     @Param('bootcamp_id') bootcamp_id: number,
     @Query('searchTerm') searchTerm: string,
+    @Req() req,
   ): Promise<object> {
+    const roleName = req.user[0]?.roles;
+    const userId = req.user[0]?.id;
     const [err, res] = await this.bootcampService.searchBatchByIdBootcamp(
       bootcamp_id,
       searchTerm,
+      roleName,
+      userId,
     );
     if (err) {
       throw new BadRequestException(err);

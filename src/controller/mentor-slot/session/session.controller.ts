@@ -5,12 +5,14 @@ import {
   ParseIntPipe,
   Req,
   UseGuards,
+  Query,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
   ApiTags,
   ApiOperation,
   ApiParam,
+  ApiQuery,
   ApiResponse,
 } from '@nestjs/swagger';
 
@@ -31,13 +33,34 @@ export class SessionController {
   @ApiOperation({
     summary: 'Get sessions booked by the current student',
   })
-  @ApiResponse({
-    status: 200,
-    description: 'List of student sessions',
+  @ApiQuery({
+    name: 'filter',
+    required: false,
+    enum: ['all', 'upcoming', 'completed', 'cancelled'],
+  })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    type: Number,
+  })
+  @ApiQuery({
+    name: 'offset',
+    required: false,
+    type: Number,
   })
   @Get('my')
-  async getMySessions(@Req() req) {
-    return this.sessionService.getStudentSessions(BigInt(req.user[0].id));
+  async getMySessions(
+    @Req() req,
+    @Query('filter') filter?: string,
+    @Query('limit') limit = 10,
+    @Query('offset') offset = 0,
+  ) {
+    return this.sessionService.getStudentSessions(
+      BigInt(req.user[0].id),
+      filter,
+      Number(limit),
+      Number(offset),
+    );
   }
 
   /* ==========================================================================
@@ -51,9 +74,34 @@ export class SessionController {
     status: 200,
     description: 'List of mentor sessions',
   })
+  @ApiQuery({
+    name: 'filter',
+    required: false,
+    enum: ['all', 'upcoming', 'reschedule', 'completed'],
+  })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    type: Number,
+  })
+  @ApiQuery({
+    name: 'offset',
+    required: false,
+    type: Number,
+  })
   @Get('mentor/my')
-  async getMentorSessions(@Req() req) {
-    return this.sessionService.getMentorSessions(BigInt(req.user[0].id));
+  async getMentorSessions(
+    @Req() req,
+    @Query('filter') filter?: string,
+    @Query('limit') limit = 10,
+    @Query('offset') offset = 0,
+  ) {
+    return this.sessionService.getMentorSessions(
+      BigInt(req.user[0].id),
+      filter,
+      Number(limit),
+      Number(offset),
+    );
   }
 
   /* ==========================================================================
