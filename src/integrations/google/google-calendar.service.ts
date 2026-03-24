@@ -1,3 +1,4 @@
+import { ne } from 'drizzle-orm';
 import { google } from 'googleapis';
 
 export class GoogleCalendarService {
@@ -16,8 +17,8 @@ export class GoogleCalendarService {
   }
 
   async createMeeting(
-    start: Date,
-    end: Date,
+    start: Date | string,
+    end: Date | string,
     mentorEmail: string,
     studentEmail: string,
     refreshToken: string,
@@ -29,6 +30,9 @@ export class GoogleCalendarService {
       auth,
     });
 
+    const startDate = new Date(start);
+    const endDate = new Date(end);
+
     const event = await calendar.events.insert({
       calendarId: 'primary',
       conferenceDataVersion: 1,
@@ -36,11 +40,11 @@ export class GoogleCalendarService {
         summary: 'Mentorship Session',
 
         start: {
-          dateTime: start.toISOString(),
+          dateTime: startDate.toISOString(),
           timeZone: 'UTC',
         },
         end: {
-          dateTime: end.toISOString(),
+          dateTime: endDate.toISOString(),
           timeZone: 'UTC',
         },
 
@@ -119,10 +123,13 @@ export class GoogleCalendarService {
         auth,
       });
 
+      const startDate = new Date(start);
+      const endDate = new Date(end);
+
       const response = await calendar.freebusy.query({
         requestBody: {
-          timeMin: start.toISOString(),
-          timeMax: end.toISOString(),
+          timeMin: startDate.toISOString(),
+          timeMax: endDate.toISOString(),
           items: [{ id: 'primary' }],
         },
       });
