@@ -4,7 +4,6 @@ import { ExtractJwt, Strategy } from 'passport-jwt';
 import { AuthService } from '../auth.service';
 import { Request } from 'express';
 import { db } from 'src/db';
-import { sansaarUserRoles } from '../../../drizzle/schema';
 import { eq } from 'drizzle-orm';
 let { GOOGLE_CLIENT_ID, GOOGLE_SECRET, GOOGLE_REDIRECT_URI, JWT_SECRET_KEY } =
   process.env;
