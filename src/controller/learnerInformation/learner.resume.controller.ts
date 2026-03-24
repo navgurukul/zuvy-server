@@ -90,16 +90,6 @@ export class LearnerResumeController {
     };
   }
 
-  // @Get('url')
-  // @ApiOperation({ summary: 'Get resume URL for the authenticated learner' })
-  // async getResumeUrl(
-  //   @Req() req,
-  // ): Promise<{ success: boolean; data: { resumeUrl: string; originalFilename: string } }> {
-  //   const userId = req.user[0]?.id;
-  //   const data = await this.learnerResumeService.getResumeByUserId(userId);
-  //   return { success: true, data };
-  // }
-
   @Get('parsed')
   @ApiOperation({
     summary: 'Fetch resume from S3, parse it, and return extracted data',
