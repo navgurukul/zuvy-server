@@ -328,6 +328,18 @@ export class ResumeResponseDto {
   education: string[];
 
   @ApiProperty({
+    type: [String],
+    example: ['Software Development Engineer (SDE)', 'Backend Developer'],
+  })
+  roles: string[];
+
+  @ApiProperty({
+    type: [String],
+    example: ['Pune', 'Bengaluru', 'Work From Home'],
+  })
+  locations: string[];
+
+  @ApiProperty({
     type: [Object],
     example: [
       {
