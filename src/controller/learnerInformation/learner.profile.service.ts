@@ -467,7 +467,6 @@ DROP COLUMN IF EXISTS codeforces_username;
       message: 'Profile deleted successfully',
     };
   }
-
   private getProfileStrengthDetails(percentage: number): {
     level: string;
     message: string;
