@@ -24,20 +24,27 @@ export class GoogleController {
   */
   @Public()
   @Get('connect')
-  async connect(@Query('token') token: string, @Res() res) {
+  async connect(
+    @Query('token') token: string,
+    @Query('redirectUrl') redirectUrl: string,
+    @Res() res,
+  ) {
     if (!token) {
       throw new UnauthorizedException('Token not found');
     }
 
-    const payload: any = jwt.decode(token);
+    const payload: any = jwt.verify(token, process.env.JWT_SECRET_KEY);
 
-    if (!payload) {
+    if (!payload?.sub) {
       throw new UnauthorizedException('Invalid token');
     }
 
     const userId = payload.sub;
 
-    const url = await this.googleService.generateConnectUrl(userId);
+    const url = await this.googleService.generateConnectUrl(
+      userId,
+      redirectUrl,
+    );
 
     return res.redirect(url);
   }
@@ -47,8 +54,19 @@ export class GoogleController {
   */
   @Public()
   @Get('callback')
-  async callback(@Query('code') code: string, @Query('state') state: string) {
-    console.log('Google callback triggered', { code, state });
-    return this.googleService.handleCallback(code, state);
+  async googleCallback(
+    @Query('code') code: string,
+    @Query('state') state: string,
+    @Res() res,
+  ) {
+    const result = await this.googleService.handleCallback(code, state);
+
+    let redirectUrl = result.redirectUrl;
+
+    if (!redirectUrl?.startsWith(process.env.ZUVY_BASH_URL)) {
+      redirectUrl = `${process.env.ZUVY_BASH_URL}/dashboard`;
+    }
+
+    return res.redirect(redirectUrl);
   }
 }
