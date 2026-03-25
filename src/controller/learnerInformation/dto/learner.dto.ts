@@ -8,6 +8,7 @@ import {
   IsEnum,
   IsInt,
   IsOptional,
+  IsNumber,
   IsString,
   IsUrl,
   Length,
@@ -327,6 +328,18 @@ export class ResumeResponseDto {
   education: string[];
 
   @ApiProperty({
+    type: [String],
+    example: ['Software Development Engineer (SDE)', 'Backend Developer'],
+  })
+  roles: string[];
+
+  @ApiProperty({
+    type: [String],
+    example: ['Pune', 'Bengaluru', 'Work From Home'],
+  })
+  locations: string[];
+
+  @ApiProperty({
     type: [Object],
     example: [
       {
@@ -480,14 +493,19 @@ export class CodingPlatformProfileDto {
   })
   username?: string;
 
-  @ApiPropertyOptional({ example: '3355' })
+  @ApiPropertyOptional({ example: 3355 })
   @IsOptional()
-  @IsString()
-  @Length(0, 20)
-  @Matches(/^\d+(\.\d+)?$/, {
-    message: 'rating must be a valid number in string format',
-  })
-  rating?: string;
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  rating?: number;
+
+  @ApiPropertyOptional({ example: 1234, nullable: true })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  rank?: number | null;
 
   @ApiPropertyOptional({ example: 7 })
   @IsOptional()
@@ -514,24 +532,53 @@ export class CodingPlatformProfileDto {
   countryRank?: number | null;
 }
 
-@ValidatorConstraint({ name: 'FutureGraduationDate', async: false })
-class FutureGraduationDate implements ValidatorConstraintInterface {
-  validate(year: number, args: ValidationArguments) {
-    const dto = args.object as any;
-    const month = dto.graduationMonth;
-    const now = new Date();
-    const currentYear = now.getFullYear();
-    const currentMonth = now.getMonth() + 1;
+export class CodeforcesProfileDto {
+  @ApiPropertyOptional({ example: 'john_doe' })
+  @IsOptional()
+  @IsString()
+  @Length(0, 100)
+  @Matches(/^[a-zA-Z0-9_\-]*$/, {
+    message:
+      'username must contain only letters, numbers, underscores, and hyphens',
+  })
+  username?: string;
 
-    if (!year) return true;
-    if (year > currentYear) return true;
-    if (year === currentYear && month && month >= currentMonth) return true;
-    return false;
-  }
+  @ApiPropertyOptional({ example: 3355 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  rating?: number;
 
-  defaultMessage() {
-    return 'Expected graduation date must be in the future';
-  }
+  @ApiPropertyOptional({ example: 'legendary grandmaster', nullable: true })
+  @IsOptional()
+  @IsString()
+  @Length(0, 100)
+  rank?: string | null;
+
+  @ApiPropertyOptional({ example: 7 })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  stars?: number;
+
+  @ApiPropertyOptional({ example: 'Belarus' })
+  @IsOptional()
+  @IsString()
+  @Length(0, 100)
+  country?: string;
+
+  @ApiPropertyOptional({ example: 1234, nullable: true })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  globalRank?: number | null;
+
+  @ApiPropertyOptional({ example: 56, nullable: true })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  countryRank?: number | null;
 }
 
 export class SaveCompleteProfileDto {
@@ -615,7 +662,6 @@ export class SaveCompleteProfileDto {
   @IsInt()
   @Min(2000)
   @Max(2050)
-  @Validate(FutureGraduationDate)
   graduationYear?: number;
 
   @ApiPropertyOptional({
@@ -735,7 +781,8 @@ export class SaveCompleteProfileDto {
     example: [
       {
         username: 'john_doe',
-        rating: '3355',
+        rating: 3355,
+        rank: 1234,
         stars: 7,
         country: 'Belarus',
         globalRank: null,
@@ -754,7 +801,8 @@ export class SaveCompleteProfileDto {
     example: [
       {
         username: 'john_doe',
-        rating: '3355',
+        rating: 3355,
+        rank: 1234,
         stars: 7,
         country: 'Belarus',
         globalRank: null,
@@ -769,11 +817,12 @@ export class SaveCompleteProfileDto {
   codechefProfiles?: CodingPlatformProfileDto[];
 
   @ApiPropertyOptional({
-    type: [CodingPlatformProfileDto],
+    type: [CodeforcesProfileDto],
     example: [
       {
         username: 'john_doe',
-        rating: '3355',
+        rating: 3355,
+        rank: 'legendary grandmaster',
         stars: 7,
         country: 'Belarus',
         globalRank: null,
@@ -784,8 +833,8 @@ export class SaveCompleteProfileDto {
   @IsOptional()
   @IsArray()
   @ValidateNested({ each: true })
-  @Type(() => CodingPlatformProfileDto)
-  codeforcesProfiles?: CodingPlatformProfileDto[];
+  @Type(() => CodeforcesProfileDto)
+  codeforcesProfiles?: CodeforcesProfileDto[];
 
   // ─── PAGE 4: PREFERENCES ───────────────────────────────────────
   @ApiPropertyOptional({
@@ -828,4 +877,23 @@ export class SaveCompleteProfileDto {
   @IsArray()
   @IsString({ each: true })
   preferredContactMethods?: string[];
+
+  @ApiPropertyOptional({ example: true, default: false })
+  @IsOptional()
+  @IsBoolean()
+  termsAndCondition?: boolean;
+}
+
+export class ProfileStrengthResponseDto {
+  @ApiProperty({ type: Number, example: 60 })
+  percentage: number;
+
+  @ApiProperty({ type: String, example: 'Intermediate' })
+  level: string;
+
+  @ApiProperty({
+    type: String,
+    example: 'Great progress! A few more clicks to become job ready.',
+  })
+  message: string;
 }
