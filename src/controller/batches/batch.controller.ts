@@ -60,9 +60,9 @@ export class BatchesController {
     }
 
     const user = req.user;
-    const isInstructor = user.roles.includes('instructor');
+    const isInstructor = user?.roles?.includes('instructor');
     const isAdmin =
-      user.roles.includes('admin') || user.roles.includes('super_admin');
+      user?.roles?.includes('admin') || user?.roles?.includes('super_admin');
 
     if (isInstructor && !isAdmin) {
       if (res['batch'].instructorId !== Number(user.id)) {
