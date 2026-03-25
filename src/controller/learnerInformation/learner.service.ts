@@ -1694,22 +1694,6 @@ ON main.zuvy_learners_remote_location (name);
       throw error;
     }
   }
-
-  private validateFutureGraduationDate(month: number, year: number): void {
-    const now = new Date();
-    const currentMonth = now.getMonth() + 1;
-    const currentYear = now.getFullYear();
-
-    const isNotFuture =
-      year < currentYear || (year === currentYear && month <= currentMonth);
-
-    if (isNotFuture) {
-      throw new BadRequestException(
-        'Expected graduation date must be a future month/year.',
-      );
-    }
-  }
-
   private validateOtherCollegeInput(
     collegeName?: string,
     otherCollegeName?: string,
