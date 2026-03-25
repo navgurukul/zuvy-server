@@ -266,7 +266,7 @@ export class OrgService {
       });
 
       // 5. Send Email (After transaction)
-      const magicLink = `${process.env.BASE_URL}/admin/organizations/${result.id}/setting`;
+      const magicLink = `${process.env.ZUVY_BASH_URL}/admin/organizations/${result.id}/setting`;
       try {
         const subject = `Welcome to Zuvy - Complete ${result.title} Setup`;
 

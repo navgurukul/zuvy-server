@@ -176,10 +176,13 @@ export class ClassesService {
   ) {
     try {
       // Check if user has permissions
-      if (!creatorInfo.roles?.includes('admin')) {
+      if (
+        !creatorInfo.roles?.includes('admin') &&
+        !creatorInfo.roles?.includes('super_admin')
+      ) {
         return {
           status: 'error',
-          message: 'Only admins can create sessions',
+          message: 'Only admins or super admins can create sessions',
         };
       }
       // Prevent creating sessions in the past
@@ -1740,7 +1743,10 @@ export class ClassesService {
   ) {
     try {
       // Check user permissions and enrollment
-      if (user?.roles?.includes('admin')) {
+      if (
+        user?.roles?.includes('admin') ||
+        user?.roles?.includes('super_admin')
+      ) {
         let desiredCourse = [];
         if (isNaN(batch_id)) {
           desiredCourse = await db
@@ -1926,7 +1932,10 @@ export class ClassesService {
           }
 
           // Apply role-based filtering and clean up response
-          if (user?.roles?.includes('admin')) {
+          if (
+            user?.roles?.includes('admin') ||
+            user?.roles?.includes('super_admin')
+          ) {
             // Admin gets full access including zoomStartUrl for Zoom meetings
             const sessionWithAny = processedSession as any;
             const moduleInfo =
@@ -2050,11 +2059,15 @@ export class ClassesService {
   ): Promise<any> {
     try {
       // Check if user has admin role
-      if (!user.roles?.includes('admin')) {
+      if (
+        !user.roles?.includes('admin') &&
+        !user.roles?.includes('super_admin')
+      ) {
         return [
           {
             status: 'error',
-            message: 'Only admin can add live classes as chapters',
+            message:
+              'Only admin or super admin can add live classes as chapters',
             code: 403,
           },
           null,
@@ -2170,7 +2183,10 @@ export class ClassesService {
       const batchIdNum = parseInt(batchId);
 
       // Check if user has access to this batch
-      if (!userInfo.roles?.includes('admin')) {
+      if (
+        !userInfo.roles?.includes('admin') &&
+        !userInfo.roles?.includes('super_admin')
+      ) {
         const enrollment = await db
           .select()
           .from(zuvyBatchEnrollments)
@@ -2587,6 +2603,7 @@ export class ClassesService {
       // Check permissions (admin or session creator)
       if (
         !userInfo.roles?.includes('admin') &&
+        !userInfo.roles?.includes('super_admin') &&
         session.creator !== userInfo.email
       ) {
         return {
@@ -2925,6 +2942,7 @@ export class ClassesService {
       // Check permissions (admin or session creator)
       if (
         !userInfo.roles?.includes('admin') &&
+        !userInfo.roles?.includes('super_admin') &&
         sessionData.creator !== userInfo.email
       ) {
         return {

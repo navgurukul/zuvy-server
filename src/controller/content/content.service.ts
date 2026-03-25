@@ -632,6 +632,9 @@ export class ContentService {
           formCount: module.moduleChapterData.filter(
             (chapter) => chapter.topicId === 7,
           ).length,
+          liveClassCount: module.moduleChapterData.filter(
+            (chapter) => chapter.topicId === 8,
+          ).length,
         };
       });
       modules.sort((a, b) => a.order - b.order);
