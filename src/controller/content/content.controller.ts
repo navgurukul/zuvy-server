@@ -513,7 +513,38 @@ export class ContentController {
 
   @Get('/:orgId/allQuizQuestions')
   @ApiOperation({ summary: 'Get all quiz Questions' })
-  // ... (keeping ApiQuery decorators)
+  @ApiQuery({
+    name: 'tagId',
+    required: false,
+    type: Number,
+    isArray: true,
+    description: 'Filter by tag IDs',
+  })
+  @ApiQuery({
+    name: 'difficulty',
+    required: false,
+    enum: ['Easy', 'Medium', 'Hard'],
+    isArray: true,
+    description: 'Filter by difficulty',
+  })
+  @ApiQuery({
+    name: 'searchTerm',
+    required: false,
+    type: String,
+    description: 'Search by question title or content',
+  })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    type: Number,
+    description: 'Number of records to fetch',
+  })
+  @ApiQuery({
+    name: 'offset',
+    required: false,
+    type: Number,
+    description: 'Number of records to skip',
+  })
   @ApiBearerAuth('JWT-auth')
   async getAllQuizQuestions(
     @Param('orgId') orgId: number,
@@ -565,7 +596,38 @@ export class ContentController {
 
   @Get('/:orgId/allCodingQuestions')
   @ApiOperation({ summary: 'Get all coding Questions' })
-  // ... (keeping ApiQuery decorators)
+  @ApiQuery({
+    name: 'tagId',
+    required: false,
+    type: Number,
+    isArray: true,
+    description: 'Filter by tag IDs',
+  })
+  @ApiQuery({
+    name: 'difficulty',
+    required: false,
+    enum: ['Easy', 'Medium', 'Hard'],
+    isArray: true,
+    description: 'Filter by difficulty',
+  })
+  @ApiQuery({
+    name: 'searchTerm',
+    required: false,
+    type: String,
+    description: 'Search by question title or content',
+  })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    type: Number,
+    description: 'Number of records to fetch',
+  })
+  @ApiQuery({
+    name: 'offset',
+    required: false,
+    type: Number,
+    description: 'Number of records to skip',
+  })
   @ApiBearerAuth('JWT-auth')
   async getAllCodingQuestions(
     @Param('orgId') orgId: number,
@@ -723,7 +785,38 @@ export class ContentController {
 
   @Get('/:orgId/openEndedQuestions')
   @ApiOperation({ summary: 'Get all open ended Questions' })
-  // ... (keeping ApiQuery decorators)
+  @ApiQuery({
+    name: 'tagId',
+    required: false,
+    type: Number,
+    isArray: true,
+    description: 'Filter by tag IDs',
+  })
+  @ApiQuery({
+    name: 'difficulty',
+    required: false,
+    enum: ['Easy', 'Medium', 'Hard'],
+    isArray: true,
+    description: 'Filter by difficulty',
+  })
+  @ApiQuery({
+    name: 'searchTerm',
+    required: false,
+    type: String,
+    description: 'Search by question title or content',
+  })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    type: Number,
+    description: 'Number of records to fetch',
+  })
+  @ApiQuery({
+    name: 'offset',
+    required: false,
+    type: Number,
+    description: 'Number of records to skip',
+  })
   @ApiBearerAuth('JWT-auth')
   async getAllOpenEndedQuestions(
     @Param('orgId') orgId: number,
