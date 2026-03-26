@@ -1,3 +1,4 @@
+/* eslint-disable prettier/prettier */
 import {
   BadRequestException,
   ConflictException,
@@ -42,7 +43,6 @@ const zuvyTechnicalSkillsTable = learnerMainSchema.table(
     }).defaultNow(),
   },
 );
-
 const zuvyLearnerDegreesTable = learnerMainSchema.table(
   'zuvy_learners_degree_details',
   {
@@ -345,7 +345,10 @@ ON main.zuvy_learners_techinal_skills (name);
         name: zuvyTechnicalSkillsTable.name,
       })
       .from(zuvyTechnicalSkillsTable)
-      .orderBy(zuvyTechnicalSkillsTable.id);
+      .orderBy(
+        sql`LOWER(${zuvyTechnicalSkillsTable.name})`,
+        zuvyTechnicalSkillsTable.id,
+      );
 
     return { skills };
   }
@@ -576,7 +579,10 @@ ON main.zuvy_learners_degree_details (name);
         name: zuvyLearnerDegreesTable.name,
       })
       .from(zuvyLearnerDegreesTable)
-      .orderBy(zuvyLearnerDegreesTable.id);
+      .orderBy(
+        sql`LOWER(${zuvyLearnerDegreesTable.name})`,
+        zuvyLearnerDegreesTable.id,
+      );
 
     return { degrees };
   }
@@ -809,7 +815,10 @@ ON main.zuvy_learner_education_branch_details (name);
         name: zuvyLearnerEducationBranchesTable.name,
       })
       .from(zuvyLearnerEducationBranchesTable)
-      .orderBy(zuvyLearnerEducationBranchesTable.id);
+      .orderBy(
+        sql`LOWER(${zuvyLearnerEducationBranchesTable.name})`,
+        zuvyLearnerEducationBranchesTable.id,
+      );
 
     return { branches };
   }
@@ -1047,7 +1056,10 @@ ON main.zuvy_learners_boards (name);
         name: zuvyLearnerBoardsTable.name,
       })
       .from(zuvyLearnerBoardsTable)
-      .orderBy(zuvyLearnerBoardsTable.id);
+      .orderBy(
+        sql`LOWER(${zuvyLearnerBoardsTable.name})`,
+        zuvyLearnerBoardsTable.id,
+      );
 
     return { boards };
   }
@@ -1278,7 +1290,10 @@ ON main.zuvy_learnes_roles (name);
         name: zuvyLearnerRolesTable.name,
       })
       .from(zuvyLearnerRolesTable)
-      .orderBy(zuvyLearnerRolesTable.id);
+      .orderBy(
+        sql`LOWER(${zuvyLearnerRolesTable.name})`,
+        zuvyLearnerRolesTable.id,
+      );
 
     return { roles };
   }
@@ -1511,7 +1526,10 @@ ON main.zuvy_learners_remote_location (name);
         name: zuvyLearnerRemoteLocationTable.name,
       })
       .from(zuvyLearnerRemoteLocationTable)
-      .orderBy(zuvyLearnerRemoteLocationTable.id);
+      .orderBy(
+        sql`LOWER(${zuvyLearnerRemoteLocationTable.name})`,
+        zuvyLearnerRemoteLocationTable.id,
+      );
 
     return { remoteLocations };
   }
