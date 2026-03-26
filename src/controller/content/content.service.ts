@@ -632,6 +632,9 @@ export class ContentService {
           formCount: module.moduleChapterData.filter(
             (chapter) => chapter.topicId === 7,
           ).length,
+          liveClassCount: module.moduleChapterData.filter(
+            (chapter) => chapter.topicId === 8,
+          ).length,
         };
       });
       modules.sort((a, b) => a.order - b.order);
@@ -2623,7 +2626,6 @@ export class ContentService {
       });
 
       let userPermissions = {};
-
       try {
         // Get user permissions for coding questions resource
         const targetPermissions = [

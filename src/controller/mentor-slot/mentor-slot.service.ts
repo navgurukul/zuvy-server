@@ -437,14 +437,15 @@ FOR UPDATE
     newSlotId: number,
     reason: string,
   ) {
-    if (!reason || reason.length < 10)
+    if (!reason || reason.length < 10) {
       throw new BadRequestException(
         'Reschedule reason must be at least 10 characters.',
       );
+    }
 
     /* ================================
-     FETCH BOOKING
-  ================================= */
+       FETCH BOOKING
+    ================================= */
 
     const [booking] = await db
       .select()
@@ -456,9 +457,21 @@ FOR UPDATE
       throw new NotFoundException('Booking not found.');
     }
 
+    if (booking.status === 'cancelled') {
+      throw new BadRequestException('Cancelled booking cannot be rescheduled.');
+    }
+
+    if (booking.rescheduleStatus === 'pending') {
+      throw new BadRequestException('Reschedule already requested.');
+    }
+
+    if (booking.slotAvailabilityId === newSlotId) {
+      throw new BadRequestException('Cannot reschedule to the same slot.');
+    }
+
     /* ================================
-    VALIDATE NEW SLOT
-  ================================= */
+       FETCH SLOT
+    ================================= */
 
     const [slot] = await db
       .select()
@@ -470,6 +483,10 @@ FOR UPDATE
       throw new BadRequestException('Proposed slot not found.');
     }
 
+    /* ================================
+    SLOT VALIDATIONS
+    ================================= */
+
     if (slot.status !== 'available') {
       throw new BadRequestException('Proposed slot is not available.');
     }
@@ -478,13 +495,45 @@ FOR UPDATE
       throw new BadRequestException('Proposed slot is full.');
     }
 
+    this.enforceMinimumNotice(new Date(slot.slotStartDateTime));
+
     if (new Date(slot.slotStartDateTime) <= new Date()) {
       throw new BadRequestException('Cannot reschedule to past slot.');
     }
 
     /* ================================
-     SEND NOTIFICATION
-  ================================= */
+       ENSURE SAME MENTOR
+    ================================= */
+
+    const [mentorProfile] = await db
+      .select()
+      .from(zuvyMentorSlotManagement)
+      .where(eq(zuvyMentorSlotManagement.mentorUserId, booking.mentorUserId))
+      .limit(1);
+
+    if (!mentorProfile || slot.mentorSlotManagementId !== mentorProfile.id) {
+      throw new BadRequestException(
+        'Cannot reschedule to a slot belonging to another mentor.',
+      );
+    }
+
+    /* ================================
+       UPDATE BOOKING
+    ================================= */
+
+    await db
+      .update(zuvyMentorSlotBooking)
+      .set({
+        rescheduleStatus: 'pending',
+        rescheduleRequestedAt: new Date(),
+        rescheduleProposedSlotId: newSlotId,
+        sessionLifecycleState: 'RESCHEDULE_PENDING',
+      } as Partial<typeof zuvyMentorSlotBooking.$inferInsert>)
+      .where(eq(zuvyMentorSlotBooking.id, bookingId));
+
+    /* ================================
+       SEND NOTIFICATION
+    ================================= */
 
     await this.notificationService.createNotification({
       userId: booking.mentorUserId,
@@ -495,19 +544,9 @@ FOR UPDATE
       referenceType: 'booking',
     });
 
-    /* ================================
-     UPDATE BOOKING
-  ================================= */
-
-    return db
-      .update(zuvyMentorSlotBooking)
-      .set({
-        rescheduleStatus: 'pending',
-        rescheduleRequestedAt: new Date(),
-        rescheduleProposedSlotId: newSlotId,
-        sessionLifecycleState: 'RESCHEDULE_PENDING',
-      } as Partial<typeof zuvyMentorSlotBooking.$inferInsert>)
-      .where(eq(zuvyMentorSlotBooking.id, bookingId));
+    return {
+      message: 'Reschedule request submitted successfully.',
+    };
   }
 
   /* ==========================================================================
