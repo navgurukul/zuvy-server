@@ -18,14 +18,15 @@ export class MentorPublicService {
   ========================================================= */
 
   async getAllMentors(
-    page = 1,
     limit = 10,
+    offset = 0,
     role?: string,
     expertise?: string,
     title?: string,
     search?: string,
   ) {
-    const offset = (page - 1) * limit;
+    limit = Number(limit);
+    offset = Number(offset);
 
     const filters = [];
 
@@ -108,15 +109,24 @@ export class MentorPublicService {
       .innerJoin(
         zuvyMentorSlotManagement,
         eq(zuvyMentorSlotManagement.mentorUserId, users.id),
-      );
+      )
+      .leftJoin(
+        zuvyUserRolesAssigned,
+        eq(zuvyUserRolesAssigned.userId, users.id),
+      )
+      .leftJoin(
+        zuvyUserRoles,
+        eq(zuvyUserRoles.id, zuvyUserRolesAssigned.roleId),
+      )
+      .where(filters.length ? and(...filters) : undefined);
 
     const total = Number(totalCount[0].count);
 
     return {
-      page,
       limit,
+      offset,
       total,
-      totalPages: Math.ceil(total / limit),
+      hasMore: offset + limit < total,
       data: mentors,
     };
   }

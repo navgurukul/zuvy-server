@@ -840,6 +840,7 @@ export class BootcampService {
     limit: number,
     offset: number,
     orgId: number,
+    userId: number,
   ): Promise<any> {
     try {
       // sanitize pagination parameters
@@ -852,6 +853,15 @@ export class BootcampService {
 
       // build query using a loose-typed builder to avoid TS generic reassign issues
       // select explicit columns to avoid referencing columns that may not exist in some DB schemas
+      let baseConditions = [eq(zuvyBatches.bootcampId, bootcamp_id)];
+      if (
+        roleName.includes('instructor') &&
+        !roleName.includes('admin') &&
+        !roleName.includes('super_admin')
+      ) {
+        baseConditions.push(eq(zuvyBatches.instructorId, userId));
+      }
+
       const baseQuery: any = db
         .select({
           id: zuvyBatches.id,
@@ -866,7 +876,7 @@ export class BootcampService {
           endDate: zuvyBatches.endDate,
         })
         .from(zuvyBatches)
-        .where(eq(zuvyBatches.bootcampId, bootcamp_id));
+        .where(and(...baseConditions));
       let queryBuilder: any = baseQuery;
       if (limitNum !== undefined) queryBuilder = queryBuilder.limit(limitNum);
       if (offsetNum !== undefined)
@@ -877,7 +887,7 @@ export class BootcampService {
       const totalCountQuery = await db
         .select({ count: count(zuvyBatches.id) })
         .from(zuvyBatches)
-        .where(eq(zuvyBatches.bootcampId, bootcamp_id));
+        .where(and(...baseConditions));
       const totalCount = totalCountQuery[0]?.count || 0;
       const totalPages =
         limitNum && limitNum > 0 ? Math.ceil(totalCount / limitNum) : 1;
@@ -950,8 +960,21 @@ export class BootcampService {
   async searchBatchByIdBootcamp(
     bootcamp_id: number,
     searchTerm: string,
+    roleName: string[],
+    userId: number,
   ): Promise<any> {
     try {
+      let baseConditions = [
+        sql`${zuvyBatches.bootcampId}=${bootcamp_id} AND (LOWER(${zuvyBatches.name}) LIKE ${searchTerm.toLowerCase()} || '%')`,
+      ];
+      if (
+        roleName.includes('instructor') &&
+        !roleName.includes('admin') &&
+        !roleName.includes('super_admin')
+      ) {
+        baseConditions.push(eq(zuvyBatches.instructorId, userId));
+      }
+
       const batchesData = await db
         .select({
           id: zuvyBatches.id,
@@ -966,9 +989,7 @@ export class BootcampService {
           endDate: zuvyBatches.endDate,
         })
         .from(zuvyBatches)
-        .where(
-          sql`${zuvyBatches.bootcampId}=${bootcamp_id} AND (LOWER(${zuvyBatches.name}) LIKE ${searchTerm.toLowerCase()} || '%')`,
-        );
+        .where(and(...baseConditions));
 
       const promises = batchesData.map(async (batch) => {
         const userEnrolled = await db

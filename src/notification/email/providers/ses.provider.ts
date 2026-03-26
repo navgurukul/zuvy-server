@@ -9,8 +9,8 @@ export class SesProvider {
 
   constructor() {
     AWS.config.update({
-      accessKeyId: process.env.AWS_SUPPORT_ACCESS_KEY_ID,
-      secretAccessKey: process.env.AWS_SUPPORT_ACCESS_SECRET_KEY,
+      accessKeyId: process.env.SES_ACCESS_KEY_ID,
+      secretAccessKey: process.env.SES_SECRET_ACCESS_KEY,
       region: process.env.AWS_REGION,
     });
 
@@ -25,7 +25,7 @@ export class SesProvider {
   ): Promise<any> {
     try {
       const emailParams: SendEmailRequest = {
-        Source: process.env.SUPPORT_EMAIL,
+        Source: process.env.SES_FROM_EMAIL,
         Destination: {
           ToAddresses: [to],
         },

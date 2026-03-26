@@ -48,6 +48,7 @@ import {
   getTableColumns,
   asc,
   ne,
+  gt,
   SQL,
   desc,
 } from 'drizzle-orm';
@@ -501,6 +502,7 @@ export class ContentService {
           tagId: quiz.tagId,
           content: quiz.content, // Optional
           isRandom: quiz.isRandomOptions, // Optional
+          orgId: quizData.orgId,
         }));
 
         // Insert quizzes into the database
@@ -566,11 +568,12 @@ export class ContentService {
     }
   }
 
-  async createOpenEndedQuestions(questions: openEndedDto) {
+  async createOpenEndedQuestions(questions: openEndedDto, orgId: number) {
     try {
+      const questionsWithOrg = { ...questions, orgId };
       const openEndedQuestions = await db
         .insert(zuvyOpenEndedQuestions)
-        .values(questions)
+        .values(questionsWithOrg)
         .returning();
       return openEndedQuestions;
     } catch (err) {
@@ -628,6 +631,9 @@ export class ContentService {
           ).length,
           formCount: module.moduleChapterData.filter(
             (chapter) => chapter.topicId === 7,
+          ).length,
+          liveClassCount: module.moduleChapterData.filter(
+            (chapter) => chapter.topicId === 8,
           ).length,
         };
       });
@@ -1338,6 +1344,7 @@ export class ContentService {
   async updateCodingProblemForModule(
     questionId: number,
     codingProblem: UpdateProblemDto,
+    orgId: number,
   ) {
     try {
       let examples = [];
@@ -1346,9 +1353,22 @@ export class ContentService {
       const beforeRows = await db
         .select()
         .from(zuvyCodingQuestions)
-        .where(eq(zuvyCodingQuestions.id, questionId))
+        .where(
+          and(
+            eq(zuvyCodingQuestions.id, questionId),
+            eq(zuvyCodingQuestions.orgId, orgId),
+          ),
+        )
         .limit(1);
       const before = beforeRows[0] || null;
+
+      if (!before) {
+        return {
+          status: 'error',
+          code: 404,
+          message: 'Coding question not found or unauthorized',
+        };
+      }
 
       if (codingProblem.examples) {
         for (let i = 0; i < codingProblem.examples.length; i++) {
@@ -1367,7 +1387,12 @@ export class ContentService {
         .set({
           ...codingProblem,
         })
-        .where(eq(zuvyCodingQuestions.id, questionId))
+        .where(
+          and(
+            eq(zuvyCodingQuestions.id, questionId),
+            eq(zuvyCodingQuestions.orgId, orgId),
+          ),
+        )
         .returning();
       if (updatedQuestion.length > 0) {
         return {
@@ -1471,13 +1496,13 @@ export class ContentService {
           if (remainingQuizIds.length > 0) {
             await db
               .update(zuvyModuleQuiz)
-              .set({ usage: sql`${zuvyModuleQuiz.usage}::numeric - 1` })
+              .set({ usage: sql`${zuvyModuleQuiz.usage}::numeric - 1` } as any)
               .where(sql`${inArray(zuvyModuleQuiz.id, remainingQuizIds)}`);
           }
           if (toUpdateIds.length > 0) {
             await db
               .update(zuvyModuleQuiz)
-              .set({ usage: sql`${zuvyModuleQuiz.usage}::numeric + 1` })
+              .set({ usage: sql`${zuvyModuleQuiz.usage}::numeric + 1` } as any)
               .where(sql`${inArray(zuvyModuleQuiz.id, toUpdateIds)}`);
           }
           if (editData.quizQuestions.length == 0) {
@@ -1496,7 +1521,7 @@ export class ContentService {
             };
             const updatedquestion = await db
               .update(zuvyCodingQuestions)
-              .set(updatedCodingQuestion)
+              .set(updatedCodingQuestion as any)
               .where(eq(zuvyCodingQuestions.id, earlierCodingId))
               .returning();
             if (editData.codingQuestions) {
@@ -1505,7 +1530,7 @@ export class ContentService {
               };
               await db
                 .update(zuvyCodingQuestions)
-                .set(updatedCodingQuestion)
+                .set(updatedCodingQuestion as any)
                 .where(eq(zuvyCodingQuestions.id, editData.codingQuestions))
                 .returning();
             }
@@ -1534,7 +1559,7 @@ export class ContentService {
 
             await db
               .update(zuvyModuleForm)
-              .set(updateModuleForm)
+              .set(updateModuleForm as any)
               .where(sql`${inArray(zuvyModuleForm.id, remainingFormIds)}`);
           }
           if (toUpdateIds.length > 0) {
@@ -1543,7 +1568,7 @@ export class ContentService {
             };
             await db
               .update(zuvyModuleForm)
-              .set(updateModuleForm)
+              .set(updateModuleForm as any)
               .where(sql`${inArray(zuvyModuleForm.id, toUpdateIds)}`);
           }
           if (editData.formQuestions.length == 0) {
@@ -1977,7 +2002,7 @@ export class ContentService {
               .map((c) => c.quiz_id);
             await db
               .update(zuvyModuleQuiz)
-              .set({ usage: sql`${zuvyModuleQuiz.usage}::numeric + 1` })
+              .set({ usage: sql`${zuvyModuleQuiz.usage}::numeric + 1` } as any)
               .where(sql`${inArray(zuvyModuleQuiz.id, toUpdateIds)}`);
           }
         }
@@ -2392,10 +2417,11 @@ export class ContentService {
     limit: number,
     offSet: number,
     userId: bigint,
-    orgId?: number,
+    orgId: number,
   ) {
     try {
       const where: SQL[] = [];
+      where.push(eq(zuvyModuleQuiz.orgId, orgId));
       let resourceId = 2;
       let tagIds;
       if (tagId) {
@@ -2411,17 +2437,21 @@ export class ContentService {
 
       // First get the quiz IDs that match the search term
       const matchingQuizIds = searchTerm
-        ? await db.query.zuvyModuleQuizVariants
-            .findMany({
-              columns: {
-                quizId: true,
-              },
-              where: (variants, { and, eq }) =>
-                and(
-                  eq(variants.variantNumber, 1),
-                  sql`LOWER(${variants.question}) ~ ${sql.raw(`'\\m${searchTerm.toLowerCase()}'`)}`,
-                ),
-            })
+        ? await db
+            .select({ quizId: zuvyModuleQuizVariants.quizId })
+            .from(zuvyModuleQuizVariants)
+            .innerJoin(
+              zuvyModuleQuiz,
+              eq(zuvyModuleQuizVariants.quizId, zuvyModuleQuiz.id),
+            )
+            .where(
+              and(
+                eq(zuvyModuleQuizVariants.variantNumber, 1),
+                eq(zuvyModuleQuiz.orgId, orgId),
+                sql`LOWER(${zuvyModuleQuizVariants.question}) ~ ${sql.raw(`'\\m${searchTerm.toLowerCase()}'`)}`,
+              ),
+            )
+            .execute()
             .then((results) => results.map((r) => r.quizId))
         : null;
 
@@ -2509,10 +2539,11 @@ export class ContentService {
     limit: number,
     offSet: number,
     userId: bigint,
-    orgId?: number,
+    orgId: number,
   ) {
     try {
       let conditions = [];
+      conditions.push(eq(zuvyCodingQuestions.orgId, orgId));
       let resourceId = 2;
       let tagIds;
 
@@ -2562,7 +2593,7 @@ export class ContentService {
           tagId: true,
           createdAt: true,
           usage: true,
-        },
+        } as any,
         with: {
           testCases: {
             columns: {
@@ -2631,15 +2662,33 @@ export class ContentService {
     }
   }
 
-  async editQuizQuestion(quizUpdates: EditQuizBatchDto): Promise<any> {
+  async editQuizQuestion(
+    quizUpdates: EditQuizBatchDto,
+    orgId: number,
+  ): Promise<any> {
     try {
       // Snapshot before state for diff
       const beforeRows = await db
         .select()
         .from(zuvyModuleQuiz)
-        .where(eq(zuvyModuleQuiz.id, quizUpdates.id))
+        .where(
+          and(
+            eq(zuvyModuleQuiz.id, quizUpdates.id),
+            eq(zuvyModuleQuiz.orgId, orgId),
+          ),
+        )
         .limit(1);
       const before = beforeRows[0] || null;
+
+      if (!before) {
+        return [
+          {
+            message: 'Quiz not found or unauthorized',
+            statusCode: STATUS_CODES.NOT_FOUND,
+          },
+          null,
+        ];
+      }
 
       // Prepare an object to store updated data to return in response
       const resultData: any = {
@@ -2663,7 +2712,12 @@ export class ContentService {
         await db
           .update(zuvyModuleQuiz)
           .set(updateData)
-          .where(eq(zuvyModuleQuiz.id, quizUpdates.id));
+          .where(
+            and(
+              eq(zuvyModuleQuiz.id, quizUpdates.id),
+              eq(zuvyModuleQuiz.orgId, orgId),
+            ),
+          );
         resultData.quizDetails = updateData; // Store updated quiz details
       }
 
@@ -2718,19 +2772,38 @@ export class ContentService {
   async updateOpenEndedQuestion(
     questionId: number,
     openEndedBody: UpdateOpenEndedDto,
+    orgId: number,
   ) {
     try {
       const beforeRows = await db
         .select()
         .from(zuvyOpenEndedQuestions)
-        .where(eq(zuvyOpenEndedQuestions.id, questionId))
+        .where(
+          and(
+            eq(zuvyOpenEndedQuestions.id, questionId),
+            eq(zuvyOpenEndedQuestions.orgId, orgId),
+          ),
+        )
         .limit(1);
       const before = beforeRows[0] || null;
+
+      if (!before) {
+        return {
+          status: 'error',
+          code: 404,
+          message: 'Open ended question not found or unauthorized',
+        };
+      }
 
       const updatedQuestion = await db
         .update(zuvyOpenEndedQuestions)
         .set(openEndedBody)
-        .where(eq(zuvyOpenEndedQuestions.id, questionId))
+        .where(
+          and(
+            eq(zuvyOpenEndedQuestions.id, questionId),
+            eq(zuvyOpenEndedQuestions.orgId, orgId),
+          ),
+        )
         .returning();
       if (updatedQuestion.length > 0) {
         return {
@@ -2752,13 +2825,17 @@ export class ContentService {
     }
   }
 
-  async deleteQuiz(id: deleteQuestionDto) {
+  async deleteQuiz(id: deleteQuestionDto, orgId: number) {
     try {
       const usedQuiz = await db
         .select()
         .from(zuvyModuleQuiz)
         .where(
-          sql`${inArray(zuvyModuleQuiz.id, id.questionIds)} and ${zuvyModuleQuiz.usage} > 0`,
+          and(
+            inArray(zuvyModuleQuiz.id, id.questionIds),
+            gt((zuvyModuleQuiz as any).usage, 0),
+            eq(zuvyModuleQuiz.orgId, orgId),
+          ),
         );
       let deletedQuestions;
       if (usedQuiz.length > 0) {
@@ -2770,7 +2847,12 @@ export class ContentService {
           remainingIds.length > 0
             ? await db
                 .delete(zuvyModuleQuiz)
-                .where(sql`${inArray(zuvyModuleQuiz.id, remainingIds)}`)
+                .where(
+                  and(
+                    inArray(zuvyModuleQuiz.id, remainingIds),
+                    eq(zuvyModuleQuiz.orgId, orgId),
+                  ),
+                )
                 .returning()
             : [];
         if (deletedQuestions.length > 0) {
@@ -2789,7 +2871,12 @@ export class ContentService {
       }
       deletedQuestions = await db
         .delete(zuvyModuleQuiz)
-        .where(sql`${inArray(zuvyModuleQuiz.id, id.questionIds)}`)
+        .where(
+          and(
+            inArray(zuvyModuleQuiz.id, id.questionIds),
+            eq(zuvyModuleQuiz.orgId, orgId),
+          ),
+        )
         .returning();
       if (deletedQuestions.length > 0) {
         return {
@@ -2809,13 +2896,17 @@ export class ContentService {
     }
   }
 
-  async deleteCodingProblem(id: deleteQuestionDto) {
+  async deleteCodingProblem(id: deleteQuestionDto, orgId: number) {
     try {
       const usedCodingQuestions = await db
         .select()
         .from(zuvyCodingQuestions)
         .where(
-          sql`${inArray(zuvyCodingQuestions.id, id.questionIds)} and ${zuvyCodingQuestions.usage} > 0`,
+          and(
+            inArray(zuvyCodingQuestions.id, id.questionIds),
+            gt((zuvyCodingQuestions as any).usage, 0),
+            eq(zuvyCodingQuestions.orgId, orgId),
+          ),
         );
       let deletedQuestions;
       if (usedCodingQuestions.length > 0) {
@@ -2827,7 +2918,12 @@ export class ContentService {
           remainingIds.length > 0
             ? await db
                 .delete(zuvyCodingQuestions)
-                .where(sql`${inArray(zuvyCodingQuestions.id, remainingIds)}`)
+                .where(
+                  and(
+                    inArray(zuvyCodingQuestions.id, remainingIds),
+                    eq(zuvyCodingQuestions.orgId, orgId),
+                  ),
+                )
                 .returning()
             : [];
         if (deletedQuestions.length > 0) {
@@ -2846,7 +2942,12 @@ export class ContentService {
       }
       deletedQuestions = await db
         .delete(zuvyCodingQuestions)
-        .where(sql`${inArray(zuvyCodingQuestions.id, id.questionIds)}`)
+        .where(
+          and(
+            inArray(zuvyCodingQuestions.id, id.questionIds),
+            eq(zuvyCodingQuestions.orgId, orgId),
+          ),
+        )
         .returning();
       if (deletedQuestions.length > 0) {
         return {
@@ -2866,19 +2967,28 @@ export class ContentService {
     }
   }
 
-  async deleteOpenEndedQuestion(id: deleteQuestionDto) {
+  async deleteOpenEndedQuestion(id: deleteQuestionDto, orgId: number) {
     try {
       const firstQ = await db
         .select({ question: zuvyOpenEndedQuestions.question })
         .from(zuvyOpenEndedQuestions)
-        .where(sql`${zuvyOpenEndedQuestions.id} = ${id.questionIds[0]}`)
+        .where(
+          and(
+            eq(zuvyOpenEndedQuestions.id, id.questionIds[0]),
+            eq(zuvyOpenEndedQuestions.orgId, orgId),
+          ),
+        )
         .limit(1);
       const questionText = firstQ[0]?.question || '';
       const usedOpenEndedQuestions = await db
         .select()
         .from(zuvyOpenEndedQuestions)
         .where(
-          sql`${inArray(zuvyOpenEndedQuestions.id, id.questionIds)} and ${zuvyOpenEndedQuestions.usage} > 0`,
+          and(
+            inArray(zuvyOpenEndedQuestions.id, id.questionIds),
+            gt((zuvyOpenEndedQuestions as any).usage, 0),
+            eq(zuvyOpenEndedQuestions.orgId, orgId),
+          ),
         );
       let deletedQuestions;
       if (usedOpenEndedQuestions.length > 0) {
@@ -2893,7 +3003,12 @@ export class ContentService {
           remainingIds.length > 0
             ? await db
                 .delete(zuvyOpenEndedQuestions)
-                .where(sql`${inArray(zuvyOpenEndedQuestions.id, remainingIds)}`)
+                .where(
+                  and(
+                    inArray(zuvyOpenEndedQuestions.id, remainingIds),
+                    eq(zuvyOpenEndedQuestions.orgId, orgId),
+                  ),
+                )
                 .returning()
             : [];
         if (deletedQuestions.length > 0) {
@@ -2913,7 +3028,12 @@ export class ContentService {
       }
       deletedQuestions = await db
         .delete(zuvyOpenEndedQuestions)
-        .where(sql`${inArray(zuvyOpenEndedQuestions.id, id.questionIds)}`)
+        .where(
+          and(
+            inArray(zuvyOpenEndedQuestions.id, id.questionIds),
+            eq(zuvyOpenEndedQuestions.orgId, orgId),
+          ),
+        )
         .returning();
       if (deletedQuestions.length > 0) {
         return {
@@ -3093,10 +3213,11 @@ export class ContentService {
     limit: number,
     offset: number,
     userId: bigint,
-    orgId?: number,
+    orgId: number,
   ) {
     try {
       let conditions = [];
+      conditions.push(eq(zuvyOpenEndedQuestions.orgId, orgId));
       let resourceId = 2;
       let tagIdsArray;
 
@@ -4363,12 +4484,17 @@ export class ContentService {
     }
   }
 
-  async getOpenendedQuestionDetails(id: number): Promise<any> {
+  async getOpenendedQuestionDetails(id: number, orgId: number): Promise<any> {
     try {
       const openEnded = await db
         .select()
         .from(zuvyOpenEndedQuestions)
-        .where(eq(zuvyOpenEndedQuestions.id, id));
+        .where(
+          and(
+            eq(zuvyOpenEndedQuestions.id, id),
+            eq(zuvyOpenEndedQuestions.orgId, orgId),
+          ),
+        );
       if (openEnded.length > 0) {
         return [null, { data: openEnded }];
       }
@@ -4383,12 +4509,17 @@ export class ContentService {
     }
   }
 
-  async getCodingQuestionDetails(id: number): Promise<any> {
+  async getCodingQuestionDetails(id: number, orgId: number): Promise<any> {
     try {
       const codingQuestion = await db
         .select()
         .from(zuvyCodingQuestions)
-        .where(eq(zuvyCodingQuestions.id, id));
+        .where(
+          and(
+            eq(zuvyCodingQuestions.id, id),
+            eq(zuvyCodingQuestions.orgId, orgId),
+          ),
+        );
       if (codingQuestion.length > 0) {
         return [null, { data: codingQuestion }];
       }
@@ -4403,12 +4534,12 @@ export class ContentService {
     }
   }
 
-  async getQuizQuestionDetails(id: number): Promise<any> {
+  async getQuizQuestionDetails(id: number, orgId: number): Promise<any> {
     try {
       const quizQuestion = await db
         .select()
         .from(zuvyModuleQuiz)
-        .where(eq(zuvyModuleQuiz.id, id));
+        .where(and(eq(zuvyModuleQuiz.id, id), eq(zuvyModuleQuiz.orgId, orgId)));
       if (quizQuestion.length > 0) {
         return [null, { data: quizQuestion }];
       }
@@ -4423,11 +4554,12 @@ export class ContentService {
     }
   }
 
-  async getAllQuizVariants(quizId: number): Promise<any> {
+  async getAllQuizVariants(quizId: number, orgId: number): Promise<any> {
     try {
       const result = await db.query.zuvyModuleQuiz
         .findMany({
-          where: (zuvyModuleQuiz, { eq }) => eq(zuvyModuleQuiz.id, quizId),
+          where: (zuvyModuleQuiz, { eq, and }) =>
+            and(eq(zuvyModuleQuiz.id, quizId), eq(zuvyModuleQuiz.orgId, orgId)),
           with: {
             quizVariants: {
               where: (zuvyModuleQuizVariants, { eq }) =>
@@ -4465,15 +4597,20 @@ export class ContentService {
     }
   }
 
-  async addQuizVariants(addQuizVariantsDto: AddQuizVariantsDto): Promise<any> {
+  async addQuizVariants(
+    addQuizVariantsDto: AddQuizVariantsDto,
+    orgId: number,
+  ): Promise<any> {
     const { quizId, variantMCQs } = addQuizVariantsDto;
 
     try {
-      // Check if quizId exists in the main quiz table
+      // Check if quizId exists in the main quiz table and belongs to the orgId
       const mainQuizExists = await db
         .select({ id: zuvyModuleQuiz.id })
         .from(zuvyModuleQuiz)
-        .where(eq(zuvyModuleQuiz.id, quizId));
+        .where(
+          and(eq(zuvyModuleQuiz.id, quizId), eq(zuvyModuleQuiz.orgId, orgId)),
+        );
 
       if (mainQuizExists.length === 0) {
         return [
@@ -4527,6 +4664,7 @@ export class ContentService {
 
   async deleteQuizOrVariant(
     deleteDto: deleteQuestionOrVariantDto,
+    orgId: number,
   ): Promise<any> {
     try {
       let mainQuizIds: number[] = [];
@@ -4542,20 +4680,39 @@ export class ContentService {
         const titleRes = await db
           .select({ title: zuvyModuleQuiz.title })
           .from(zuvyModuleQuiz)
-          .where(sql`${zuvyModuleQuiz.id} = ${firstMainId}`)
+          .where(
+            and(
+              eq(zuvyModuleQuiz.id, firstMainId),
+              eq(zuvyModuleQuiz.orgId, orgId),
+            ),
+          )
           .limit(1);
         quizTitle = titleRes[0]?.title || '';
       } else if (firstVariantId) {
         const variantRes = await db
           .select({ quizId: zuvyModuleQuizVariants.quizId })
           .from(zuvyModuleQuizVariants)
-          .where(sql`${zuvyModuleQuizVariants.id} = ${firstVariantId}`)
+          .innerJoin(
+            zuvyModuleQuiz,
+            eq(zuvyModuleQuiz.id, zuvyModuleQuizVariants.quizId),
+          )
+          .where(
+            and(
+              eq(zuvyModuleQuizVariants.id, firstVariantId),
+              eq(zuvyModuleQuiz.orgId, orgId),
+            ),
+          )
           .limit(1);
         if (variantRes[0]?.quizId) {
           const titleRes = await db
             .select({ title: zuvyModuleQuiz.title })
             .from(zuvyModuleQuiz)
-            .where(sql`${zuvyModuleQuiz.id} = ${variantRes[0].quizId}`)
+            .where(
+              and(
+                eq(zuvyModuleQuiz.id, variantRes[0].quizId),
+                eq(zuvyModuleQuiz.orgId, orgId),
+              ),
+            )
             .limit(1);
           quizTitle = titleRes[0]?.title || '';
         }
@@ -4569,7 +4726,16 @@ export class ContentService {
           const variant = await db
             .select({ quizId: zuvyModuleQuizVariants.quizId })
             .from(zuvyModuleQuizVariants)
-            .where(sql`${zuvyModuleQuizVariants.id} = ${item.id}`)
+            .innerJoin(
+              zuvyModuleQuiz,
+              eq(zuvyModuleQuiz.id, zuvyModuleQuizVariants.quizId),
+            )
+            .where(
+              and(
+                eq(zuvyModuleQuizVariants.id, item.id),
+                eq(zuvyModuleQuiz.orgId, orgId),
+              ),
+            )
             .limit(1);
 
           if (variant.length) {
@@ -4584,7 +4750,11 @@ export class ContentService {
           .select()
           .from(zuvyModuleQuiz)
           .where(
-            sql`${inArray(zuvyModuleQuiz.id, mainQuizIds)} AND ${zuvyModuleQuiz.usage} > 0`,
+            and(
+              inArray(zuvyModuleQuiz.id, mainQuizIds),
+              gt((zuvyModuleQuiz as any).usage, 0),
+              eq(zuvyModuleQuiz.orgId, orgId),
+            ),
           );
 
         const usedQuizIds = usedQuizzes.map((quiz) => quiz.id);
@@ -4593,15 +4763,32 @@ export class ContentService {
         );
 
         if (deletableQuizIds.length > 0) {
-          await db
-            .delete(zuvyModuleQuizVariants)
+          // Verify that all deletableQuizIds belong to the orgId
+          const orgQuizzes = await db
+            .select({ id: zuvyModuleQuiz.id })
+            .from(zuvyModuleQuiz)
             .where(
-              sql`${inArray(zuvyModuleQuizVariants.quizId, deletableQuizIds)}`,
+              and(
+                inArray(zuvyModuleQuiz.id, deletableQuizIds),
+                eq(zuvyModuleQuiz.orgId, orgId),
+              ),
             );
-          await db
-            .delete(zuvyModuleQuiz)
-            .where(sql`${inArray(zuvyModuleQuiz.id, deletableQuizIds)}`)
-            .returning();
+          const authorizedIds = orgQuizzes.map((q) => q.id);
+
+          if (authorizedIds.length > 0) {
+            await db
+              .delete(zuvyModuleQuizVariants)
+              .where(inArray(zuvyModuleQuizVariants.quizId, authorizedIds));
+            await db
+              .delete(zuvyModuleQuiz)
+              .where(
+                and(
+                  inArray(zuvyModuleQuiz.id, authorizedIds),
+                  eq(zuvyModuleQuiz.orgId, orgId),
+                ),
+              )
+              .returning();
+          }
         }
 
         if (usedQuizIds.length > 0) {
@@ -4620,7 +4807,7 @@ export class ContentService {
         const variantCount = await db
           .select()
           .from(zuvyModuleQuizVariants)
-          .where(sql`${zuvyModuleQuizVariants.quizId} = ${quizId}`);
+          .where(eq(zuvyModuleQuizVariants.quizId, quizId));
 
         if (variantCount.length <= 1) {
           return [
@@ -4634,12 +4821,14 @@ export class ContentService {
 
         // Check if the main quiz of this variant has `usage` > 0
         const mainQuizUsage = await db
-          .select({ usage: zuvyModuleQuiz.usage })
+          .select({ usage: (zuvyModuleQuiz as any).usage })
           .from(zuvyModuleQuiz)
-          .where(sql`${zuvyModuleQuiz.id} = ${quizId}`)
+          .where(
+            and(eq(zuvyModuleQuiz.id, quizId), eq(zuvyModuleQuiz.orgId, orgId)),
+          )
           .limit(1);
 
-        if (mainQuizUsage.length && mainQuizUsage[0].usage > 0) {
+        if (mainQuizUsage.length && (mainQuizUsage[0] as any).usage > 0) {
           return [
             {
               message: `Variant with ID ${variantId} cannot be deleted as its main quiz with ID ${quizId} is in use.`,
@@ -4652,12 +4841,21 @@ export class ContentService {
         const variantToDelete = await db
           .select({ variantNumber: zuvyModuleQuizVariants.variantNumber })
           .from(zuvyModuleQuizVariants)
-          .where(sql`${zuvyModuleQuizVariants.id} = ${variantId}`);
+          .innerJoin(
+            zuvyModuleQuiz,
+            eq(zuvyModuleQuiz.id, zuvyModuleQuizVariants.quizId),
+          )
+          .where(
+            and(
+              eq(zuvyModuleQuizVariants.id, variantId),
+              eq(zuvyModuleQuiz.orgId, orgId),
+            ),
+          );
 
         if (!variantToDelete.length) {
           return [
             {
-              message: `Variant with ID ${variantId} not found.`,
+              message: `Variant with ID ${variantId} not found or unauthorized.`,
               statusCode: STATUS_CODES.NOT_FOUND,
             },
             null,
@@ -4667,7 +4865,7 @@ export class ContentService {
         const { variantNumber } = variantToDelete[0];
         await db
           .delete(zuvyModuleQuizVariants)
-          .where(sql`${zuvyModuleQuizVariants.id} = ${variantId}`)
+          .where(eq(zuvyModuleQuizVariants.id, variantId))
           .returning();
 
         // Update the variant numbers for remaining variants

@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable prettier/prettier */
 import {
   BadRequestException,
@@ -21,7 +22,10 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { LearnerProfileService } from './learner.profile.service';
-import { SaveCompleteProfileDto } from './dto/learner.dto';
+import {
+  SaveCompleteProfileDto,
+  ProfileStrengthResponseDto,
+} from './dto/learner.dto';
 import { ValidationError } from 'class-validator';
 
 function flattenErrors(errors: ValidationError[]): string[] {
@@ -90,7 +94,7 @@ export class LearnerProfileController {
 
   @Get('strength')
   @ApiOperation({
-    summary: 'Get profile strength percentage',
+    summary: 'Get profile strength percentage with level and message',
   })
   async getProfileStrength(@Req() req) {
     const userId = req.user[0]?.id;

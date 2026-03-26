@@ -168,10 +168,13 @@ export class ClassesController {
       orgId: Number(req.user[0].orgId),
     };
     // Delegate all validation & batch combination logic to service
-    const result = await this.classesService.createSession(
+    const result: any = await this.classesService.createSession(
       classData as any,
       userInfo,
     );
+    if (result.status === 'error') {
+      throw new BadRequestException(result.error || result.message);
+    }
     return result;
   }
 
@@ -456,7 +459,10 @@ export class ClassesController {
     };
 
     // Route to appropriate service method based on user role
-    if (userInfo.roles?.includes('admin')) {
+    if (
+      userInfo.roles?.includes('admin') ||
+      userInfo.roles?.includes('super_admin')
+    ) {
       return this.classesService.getSessionForAdmin(sessionId, userInfo);
     } else {
       return this.classesService.getSessionForStudent(sessionId, userInfo);
@@ -491,7 +497,15 @@ export class ClassesController {
       roles: req.user[0].roles || [],
       orgId: Number(req.user[0].orgId),
     };
-    return this.classesService.updateSession(sessionId, updateData, userInfo);
+    const result: any = await this.classesService.updateSession(
+      sessionId,
+      updateData,
+      userInfo,
+    );
+    if (result.success === false) {
+      throw new BadRequestException(result.error || result.message);
+    }
+    return result;
   }
 
   @Delete('/sessions/:id')
@@ -526,9 +540,17 @@ export class ClassesController {
     const shouldDeleteChapter = ['true', '1', 'yes'].includes(
       String(deleteChapter ?? '').toLowerCase(),
     );
-    return this.classesService.deleteSession(sessionId, userInfo, {
-      deleteChapter: shouldDeleteChapter,
-    });
+    const result: any = await this.classesService.deleteSession(
+      sessionId,
+      userInfo,
+      {
+        deleteChapter: shouldDeleteChapter,
+      },
+    );
+    if (result.success === false) {
+      throw new BadRequestException(result.error || result.message);
+    }
+    return result;
   }
 
   // New endpoints operating via meeting identifier (Google or Zoom meeting id)
@@ -560,14 +582,14 @@ export class ClassesController {
       roles: req.user[0].roles || [],
       orgId: Number(req.user[0].orgId),
     };
-    const result = await this.classesService.updateSessionByMeetingId(
+    const result: any = await this.classesService.updateSessionByMeetingId(
       meetingId,
       updateData,
       userInfo,
     );
     if (!result.success) {
       throw new BadRequestException(
-        result.message || 'Failed to update session',
+        result.error || result.message || 'Failed to update session',
       );
     }
     return result;
@@ -611,14 +633,14 @@ export class ClassesController {
     const shouldDeleteChapter = ['true', '1', 'yes'].includes(
       String(deleteChapter ?? '').toLowerCase(),
     );
-    const result = await this.classesService.deleteSessionByMeetingId(
+    const result: any = await this.classesService.deleteSessionByMeetingId(
       meetingId,
       userInfo,
       { deleteChapter: shouldDeleteChapter },
     );
     if (!result.success) {
       throw new BadRequestException(
-        result.message || 'Failed to delete session',
+        result.error || result.message || 'Failed to delete session',
       );
     }
     return result;
@@ -672,25 +694,24 @@ export class ClassesController {
     };
 
     // Check admin access
-    if (!userInfo.roles?.includes('admin')) {
-      throw new BadRequestException('Only admins can merge classes');
+    if (
+      !userInfo.roles?.includes('admin') &&
+      !userInfo.roles?.includes('super_admin')
+    ) {
+      throw new BadRequestException(
+        'Only admins or super admins can merge classes',
+      );
     }
 
-    const result = await this.classesService.mergeClasses(
+    const result: any = await this.classesService.mergeClasses(
       mergeData.childSessionId,
       mergeData.parentSessionId,
       userInfo,
     );
-
-    if (result.success) {
-      return new SuccessResponse(
-        'Classes merged successfully',
-        200,
-        result.data,
-      );
-    } else {
-      throw new BadRequestException(result.message);
+    if (!result.success) {
+      throw new BadRequestException(result.error || result.message);
     }
+    return result;
   }
 
   @Post('/attendance/by-bootcamp/:bootcampId')

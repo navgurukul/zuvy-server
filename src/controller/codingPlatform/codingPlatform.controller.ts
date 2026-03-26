@@ -172,7 +172,7 @@ export class CodingPlatformController {
     }
   }
 
-  @Post('create-question')
+  @Post('/:orgId/create-question')
   @ApiOperation({ summary: 'Create coding question with test cases' })
   @ApiBearerAuth('JWT-auth')
   @TrackAction({
@@ -189,6 +189,7 @@ export class CodingPlatformController {
     },
   })
   async createCodingQuestion(
+    @Param('orgId') orgId: number,
     @Body() createCodingQuestionDto: CreateProblemDto,
     @Res() res: Response,
   ): Promise<any> {
@@ -196,6 +197,7 @@ export class CodingPlatformController {
       const [err, success] =
         await this.codingPlatformService.createCodingQuestion(
           createCodingQuestionDto,
+          orgId,
         );
       if (err) {
         return ErrorResponse.BadRequestException(err.message).send(res);
@@ -210,7 +212,7 @@ export class CodingPlatformController {
     }
   }
 
-  @Put('update-question/:id')
+  @Put('/:orgId/update-question/:id')
   @ApiOperation({ summary: 'Update coding question' })
   @ApiBearerAuth('JWT-auth')
   @TrackAction({
@@ -225,6 +227,7 @@ export class CodingPlatformController {
       (params?.id ? `Question #${params.id}` : 'Coding Question'),
   })
   async updateCodingQuestion(
+    @Param('orgId') orgId: number,
     @Param('id') id: number,
     @Body() updateCodingQuestionDto: updateProblemDto,
     @Res() res: Response,
@@ -234,6 +237,7 @@ export class CodingPlatformController {
         await this.codingPlatformService.updateCodingQuestion(
           id,
           updateCodingQuestionDto,
+          orgId,
         );
       if (err) {
         return ErrorResponse.BadRequestException(err.message).send(res);
@@ -248,7 +252,7 @@ export class CodingPlatformController {
     }
   }
 
-  @Delete('delete-question/:id')
+  @Delete('/:orgId/delete-question/:id')
   @ApiOperation({ summary: 'Delete coding question' })
   @ApiBearerAuth('JWT-auth')
   @TrackAction({
@@ -263,13 +267,14 @@ export class CodingPlatformController {
       (params?.id ? `Question #${params.id}` : 'Coding Question'),
   })
   async deleteCodingQuestion(
+    @Param('orgId') orgId: number,
     @Param('id') id: number,
     @Req() req,
     @Res() res: Response,
   ): Promise<any> {
     try {
       const [err, success] =
-        await this.codingPlatformService.deleteCodingQuestion(id);
+        await this.codingPlatformService.deleteCodingQuestion(id, orgId);
       if (err) {
         return ErrorResponse.BadRequestException(err.message).send(res);
       }
@@ -313,16 +318,19 @@ export class CodingPlatformController {
     }
   }
 
-  @Get('get-coding-question/:id')
+  @Get('/:orgId/get-coding-question/:id')
   @ApiOperation({ summary: 'Get coding question' })
   @ApiBearerAuth('JWT-auth')
   async getCodingQuestion(
+    @Param('orgId') orgId: number,
     @Param('id') id: number,
     @Res() res: Response,
   ): Promise<any> {
     try {
-      const [err, success] =
-        await this.codingPlatformService.getCodingQuestion(id);
+      const [err, success] = await this.codingPlatformService.getCodingQuestion(
+        id,
+        orgId,
+      );
       if (err) {
         return ErrorResponse.BadRequestException(err.message).send(res);
       }

@@ -189,6 +189,29 @@ const EDUCATION_KEYWORDS = [
   'Software Engineering',
 ];
 
+const PREDEFINED_ROLES = [
+  'Software Development Engineer (SDE)',
+  'Software Engineer',
+  'Full Stack Developer',
+  'Frontend Developer',
+  'Backend Developer',
+  'Web Developer',
+  'Mobile App Developer',
+  'Android Developer',
+  'iOS Developer',
+  'DevOps Engineer',
+  'Cloud Engineer',
+  'Data Analyst',
+  'Data Scientist',
+  'Machine Learning Engineer',
+  'QA Engineer',
+  'Automation Test Engineer',
+  'UI UX Designer',
+  'Product Manager',
+  'Business Analyst',
+  'Cybersecurity Analyst',
+];
+
 const COMMON_LOCATIONS = new Set([
   'udaipur',
   'jaipur',
@@ -314,6 +337,8 @@ export class LearnerResumeService {
       github: this.extractGithub(textForUrls),
       skills: this.extractSkills(resumeText),
       education: this.extractEducation(resumeText),
+      roles: this.extractRoles(resumeText),
+      locations: this.extractLocations(resumeText),
       projects: this.extractProjects(resumeText),
     };
 
@@ -326,6 +351,8 @@ export class LearnerResumeService {
         github: '',
         skills: [],
         education: [],
+        roles: [],
+        locations: [],
         projects: [],
       };
     }
@@ -1148,6 +1175,80 @@ export class LearnerResumeService {
     }
 
     return Array.from(deduped.values()).slice(0, 10);
+  }
+
+  private extractRoles(text: string): string[] {
+    const matchedRoles = PREDEFINED_ROLES.filter((role) => {
+      const escapedRole = role.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const roleRegex = new RegExp(
+        `(?<![A-Za-z])${escapedRole}(?![A-Za-z])`,
+        'i',
+      );
+      return roleRegex.test(text);
+    });
+
+    const sectionRoles = this.extractRolesFromSection(text);
+
+    return Array.from(new Set([...matchedRoles, ...sectionRoles])).slice(0, 10);
+  }
+
+  private extractRolesFromSection(text: string): string[] {
+    const sectionPattern =
+      /(?:^|\n)\s*(?:target\s+)?roles?|position\s+applied\s+for|job\s+role\s*[:\-|\n]/i;
+    const sectionMatch = sectionPattern.exec(text);
+    if (!sectionMatch) return [];
+
+    const startIdx = sectionMatch.index + sectionMatch[0].length;
+    const restText = text.slice(startIdx);
+
+    const nextSectionPattern =
+      /\n\s*(?:education|experience|work\s*experience|employment|projects?|skills?|certifications?|achievements?|awards?|publications?|languages?|hobbies|interests|references?|objective|summary|profile|about\s*me|volunteering|volunteer)\s*[:\-|\n]/i;
+    const nextMatch = nextSectionPattern.exec(restText);
+    const sectionText = nextMatch
+      ? restText.slice(0, nextMatch.index)
+      : restText.slice(0, 600);
+
+    const items = sectionText
+      .split(/[\n,;|]+/)
+      .map((item) =>
+        item
+          .trim()
+          .replace(
+            /^[\u2022\-*\u25E6\u25AA\u25BA\u27A4\u27A2\u2713\u2714\u2192\d.)\s]+/,
+            '',
+          ),
+      )
+      .map((item) => item.replace(/\s+/g, ' ').trim())
+      .filter((item) => item.length >= 3 && item.length <= 80)
+      .filter((item) =>
+        /(engineer|developer|analyst|designer|manager|tester|architect|scientist)/i.test(
+          item,
+        ),
+      );
+
+    return Array.from(new Set(items.map((item) => this.toTitleCase(item))));
+  }
+
+  private extractLocations(text: string): string[] {
+    const normalizedText = text.toLowerCase();
+    const locations = new Set<string>();
+
+    for (const location of COMMON_LOCATIONS) {
+      const escapedLocation = location.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const locationRegex = new RegExp(
+        `(?<![a-z])${escapedLocation}(?![a-z])`,
+        'i',
+      );
+      if (locationRegex.test(normalizedText)) {
+        locations.add(this.toTitleCase(location));
+      }
+    }
+
+    if (/\b(remote|work\s*from\s*home|wfh)\b/i.test(text)) {
+      locations.add('Work From Home');
+    }
+
+    return Array.from(locations).slice(0, 10);
   }
 
   private normalizeContactText(text: string): string {

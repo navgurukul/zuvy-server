@@ -2628,6 +2628,10 @@ export const zuvyModuleQuiz = main.table('zuvy_module_quiz', {
   createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
   version: varchar('version', { length: 10 }),
+  orgId: integer('org_id').references(() => zuvyOrganizations.id, {
+    onUpdate: 'cascade',
+    onDelete: 'cascade'
+  }).notNull(),
 });
 
 export const zuvyModuleQuizRelations = relations(zuvyModuleQuiz, ({ one, many }) => ({
@@ -3347,6 +3351,10 @@ export const zuvyOpenEndedQuestions = main.table('zuvy_openEnded_questions', {
   tagId: integer('tag_id').references(() => zuvyTags.id),
   marks: integer('marks'),
   usage: integer('usage').default(0),
+  orgId: integer('org_id').references(() => zuvyOrganizations.id, {
+    onUpdate: 'cascade',
+    onDelete: 'cascade'
+  }).notNull(),
 });
 
 
@@ -3817,7 +3825,11 @@ export const zuvyCodingQuestions = main.table("zuvy_coding_questions", {
   tagId: integer("tag_id").references(() => zuvyTags.id),
   createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
-  version: varchar('version', { length: 10 })
+  version: varchar('version', { length: 10 }),
+  orgId: integer('org_id').references(() => zuvyOrganizations.id, {
+    onUpdate: 'cascade',
+    onDelete: 'cascade'
+  }).notNull(),
 })
 
 export const codingQuestionRelations = relations(zuvyCodingQuestions, ({ one, many }) => ({

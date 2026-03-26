@@ -1,4 +1,9 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+/* eslint-disable prettier/prettier */
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { eq, sql } from 'drizzle-orm';
 import {
   pgSchema,
@@ -59,6 +64,7 @@ const zuvyLearnersCompleteProfileTable = learnerMainSchema.table(
     targetRoles: jsonb('target_roles').default([]),
     preferredLocations: jsonb('preferred_locations').default([]),
     openToRemote: boolean('open_to_remote').default(false),
+    termsAndCondition: boolean('terms_and_condition').default(false),
     internshipStipend: varchar('internship_stipend', { length: 50 }),
     fullTimeCtc: varchar('full_time_ctc', { length: 50 }),
     preferredContactMethods: jsonb('preferred_contact_methods').default([]),
@@ -141,6 +147,7 @@ CREATE TABLE IF NOT EXISTS main.zuvy_learners_complete_profile (
   target_roles jsonb DEFAULT '[]'::jsonb,
   preferred_locations jsonb DEFAULT '[]'::jsonb,
   open_to_remote boolean DEFAULT false,
+  terms_and_condition boolean DEFAULT false,
   internship_stipend varchar(50),
   full_time_ctc varchar(50),
   preferred_contact_methods jsonb DEFAULT '[]'::jsonb,
@@ -176,6 +183,9 @@ ALTER TABLE IF EXISTS main.zuvy_learners_complete_profile
 ADD COLUMN IF NOT EXISTS codeforces_profiles jsonb DEFAULT '[]'::jsonb;
 
 ALTER TABLE IF EXISTS main.zuvy_learners_complete_profile
+ADD COLUMN IF NOT EXISTS terms_and_condition boolean DEFAULT false;
+
+ALTER TABLE IF EXISTS main.zuvy_learners_complete_profile
 DROP COLUMN IF EXISTS leetcode_username;
 
 ALTER TABLE IF EXISTS main.zuvy_learners_complete_profile
@@ -188,7 +198,116 @@ DROP COLUMN IF EXISTS codeforces_username;
   }
 
   private normalizeCodingPlatformFields(payload: SaveCompleteProfileDto) {
-    return { ...payload };
+    const normalizedPayload: SaveCompleteProfileDto = { ...payload };
+
+    const normalizeProjects = (projects: unknown) => {
+      if (!Array.isArray(projects)) return projects;
+
+      return projects.map((project) => {
+        if (!project || typeof project !== 'object') {
+          return project;
+        }
+
+        const projectData = {
+          ...(project as Record<string, unknown>),
+        } as Record<string, unknown>;
+
+        const githubUrlValue = projectData.githubUrl;
+        const demoUrlValue = projectData.demoUrl;
+
+        return {
+          ...projectData,
+          githubUrl:
+            githubUrlValue === undefined ||
+            githubUrlValue === null ||
+            (typeof githubUrlValue === 'string' &&
+              githubUrlValue.trim().length === 0)
+              ? null
+              : githubUrlValue,
+          demoUrl:
+            demoUrlValue === undefined ||
+            demoUrlValue === null ||
+            (typeof demoUrlValue === 'string' &&
+              demoUrlValue.trim().length === 0)
+              ? null
+              : demoUrlValue,
+        };
+      });
+    };
+
+    const normalizeProfiles = (profiles: unknown) => {
+      if (!Array.isArray(profiles)) return profiles;
+
+      return profiles.map((profile) => {
+        if (!profile || typeof profile !== 'object') {
+          return profile;
+        }
+
+        const profileData = {
+          ...(profile as Record<string, unknown>),
+        } as Record<string, unknown>;
+
+        if (profileData.rating !== undefined && profileData.rating !== null) {
+          const parsedRating = Number(profileData.rating);
+          if (!Number.isNaN(parsedRating)) {
+            profileData.rating = parsedRating;
+          }
+        }
+
+        if (profileData.rank !== undefined && profileData.rank !== null) {
+          const parsedRank = Number(profileData.rank);
+          if (!Number.isNaN(parsedRank)) {
+            profileData.rank = parsedRank;
+          }
+        }
+
+        return profileData;
+      });
+    };
+
+    if (payload.hasWorkExperience === false) {
+      normalizedPayload.workExperiences = [];
+    }
+
+    if (payload.hasWorkExperience === true) {
+      if (
+        !Array.isArray(payload.workExperiences) ||
+        payload.workExperiences.length === 0
+      ) {
+        throw new BadRequestException(
+          'workExperiences must have at least one item when hasWorkExperience is true',
+        );
+      }
+
+      normalizedPayload.workExperiences = payload.workExperiences;
+    }
+
+    if (
+      payload.hasWorkExperience === undefined &&
+      Array.isArray(payload.workExperiences)
+    ) {
+      if (payload.workExperiences.length > 0) {
+        normalizedPayload.hasWorkExperience = true;
+      } else {
+        normalizedPayload.hasWorkExperience = false;
+        normalizedPayload.workExperiences = [];
+      }
+    }
+
+    normalizedPayload.leetcodeProfiles = normalizeProfiles(
+      payload.leetcodeProfiles,
+    ) as SaveCompleteProfileDto['leetcodeProfiles'];
+    normalizedPayload.codechefProfiles = normalizeProfiles(
+      payload.codechefProfiles,
+    ) as SaveCompleteProfileDto['codechefProfiles'];
+    normalizedPayload.codeforcesProfiles = normalizeProfiles(
+      payload.codeforcesProfiles,
+    ) as SaveCompleteProfileDto['codeforcesProfiles'];
+    normalizedPayload.projects = normalizeProjects(
+      payload.projects,
+    ) as SaveCompleteProfileDto['projects'];
+
+    return normalizedPayload;
   }
 
   private async getOrCreateProfile(userId: number) {
@@ -236,10 +355,15 @@ DROP COLUMN IF EXISTS codeforces_username;
       .where(eq(zuvyLearnersCompleteProfileTable.userId, userId))
       .returning();
 
+    const responseData = {
+      ...updatedProfile,
+      termsAndCondition: updatedProfile?.termsAndCondition ?? false,
+    };
+
     return {
       success: true,
       message: 'Profile saved successfully',
-      data: updatedProfile,
+      data: responseData,
     };
   }
 
@@ -261,9 +385,14 @@ DROP COLUMN IF EXISTS codeforces_username;
       };
     }
 
+    const responseData = {
+      ...rows[0],
+      termsAndCondition: rows[0]?.termsAndCondition ?? false,
+    };
+
     return {
       success: true,
-      data: rows[0],
+      data: responseData,
     };
   }
 
@@ -302,10 +431,15 @@ DROP COLUMN IF EXISTS codeforces_username;
       .where(eq(zuvyLearnersCompleteProfileTable.userId, userId))
       .returning();
 
+    const responseData = {
+      ...updatedProfile,
+      termsAndCondition: updatedProfile?.termsAndCondition ?? false,
+    };
+
     return {
       success: true,
       message: 'Profile updated successfully',
-      data: updatedProfile,
+      data: responseData,
     };
   }
 
@@ -333,13 +467,72 @@ DROP COLUMN IF EXISTS codeforces_username;
       message: 'Profile deleted successfully',
     };
   }
+  private getProfileStrengthDetails(percentage: number): {
+    level: string;
+    message: string;
+  } {
+    if (percentage === 0) {
+      return {
+        level: 'Not Started',
+        message:
+          'Start by filling in your basic information to begin building your profile.',
+      };
+    } else if (percentage <= 20) {
+      return {
+        level: 'Beginner',
+        message:
+          'Good start! Just a few quick additions to boost your profile.',
+      };
+    } else if (percentage <= 40) {
+      return {
+        level: 'Basic',
+        message:
+          'You are halfway there! Keep going to unlock job opportunities.',
+      };
+    } else if (percentage <= 60) {
+      return {
+        level: 'Intermediate',
+        message: 'Great progress! A few more clicks to become job ready.',
+      };
+    } else if (percentage <= 80) {
+      return {
+        level: 'Job Ready',
+        message: 'You can now apply for jobs! Add more details to stand out.',
+      };
+    } else if (percentage <= 90) {
+      return {
+        level: 'Job Ready',
+        message:
+          'You are so close! Complete your profile to unlock opportunities.',
+      };
+    } else if (percentage <= 99) {
+      return {
+        level: 'Job Ready',
+        message: 'Almost there! One step away from being job ready.',
+      };
+    } else {
+      return {
+        level: 'Complete',
+        message: 'Congratulations! Your profile is now complete and job ready.',
+      };
+    }
+  }
 
-  async calculateProfileStrengthNew(userId: number): Promise<number> {
+  async calculateProfileStrengthNew(
+    userId: number,
+  ): Promise<{ percentage: number; level: string; message: string }> {
     const profile = await db.query.zuvyLearnersCompleteProfile.findFirst({
       where: (table, { eq }) => eq(table.userId, userId),
     });
 
-    if (!profile) return 0;
+    if (!profile) {
+      const details = this.getProfileStrengthDetails(0);
+      return {
+        percentage: 0,
+        level: details.level,
+        message: details.message,
+      };
+    }
 
     const hasCodingPlatformData = (profiles: unknown) => {
       const hasProfiles =
@@ -384,9 +577,9 @@ DROP COLUMN IF EXISTS codeforces_username;
       !!profile.class10Board,
       !!profile.class10Score,
       !!profile.class10ScoreType,
-      profile.hasWorkExperience === false ||
-        (Array.isArray(profile.workExperiences) &&
-          (profile.workExperiences as any[]).length > 0),
+      profile.hasWorkExperience === true &&
+        Array.isArray(profile.workExperiences) &&
+        (profile.workExperiences as any[]).length > 0,
       hasCodingPlatformData(profile.leetcodeProfiles) ||
         hasCodingPlatformData(profile.codechefProfiles) ||
         hasCodingPlatformData(profile.codeforcesProfiles),
@@ -396,7 +589,7 @@ DROP COLUMN IF EXISTS codeforces_username;
         (profile.targetRoles as any[]).length > 0,
       Array.isArray(profile.preferredLocations) &&
         (profile.preferredLocations as any[]).length > 0,
-      profile.openToRemote !== null && profile.openToRemote !== undefined,
+      profile.openToRemote === true,
       !!profile.internshipStipend,
       !!profile.fullTimeCtc,
       Array.isArray(profile.preferredContactMethods) &&
@@ -404,6 +597,13 @@ DROP COLUMN IF EXISTS codeforces_username;
     ];
 
     const filled = checks.filter(Boolean).length;
-    return Math.round((filled / checks.length) * 100);
+    const percentage = Math.round((filled / checks.length) * 100);
+    const details = this.getProfileStrengthDetails(percentage);
+
+    return {
+      percentage,
+      level: details.level,
+      message: details.message,
+    };
   }
 }
