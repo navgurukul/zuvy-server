@@ -346,6 +346,7 @@ ON main.zuvy_learners_techinal_skills (name);
       })
       .from(zuvyTechnicalSkillsTable)
       .orderBy(
+        sql`CASE WHEN LOWER(TRIM(${zuvyTechnicalSkillsTable.name})) = 'other' THEN 1 ELSE 0 END`,
         sql`LOWER(${zuvyTechnicalSkillsTable.name})`,
         zuvyTechnicalSkillsTable.id,
       );
@@ -580,6 +581,7 @@ ON main.zuvy_learners_degree_details (name);
       })
       .from(zuvyLearnerDegreesTable)
       .orderBy(
+        sql`CASE WHEN LOWER(TRIM(${zuvyLearnerDegreesTable.name})) = 'other' THEN 1 ELSE 0 END`,
         sql`LOWER(${zuvyLearnerDegreesTable.name})`,
         zuvyLearnerDegreesTable.id,
       );
@@ -816,6 +818,7 @@ ON main.zuvy_learner_education_branch_details (name);
       })
       .from(zuvyLearnerEducationBranchesTable)
       .orderBy(
+        sql`CASE WHEN LOWER(TRIM(${zuvyLearnerEducationBranchesTable.name})) = 'other' THEN 1 ELSE 0 END`,
         sql`LOWER(${zuvyLearnerEducationBranchesTable.name})`,
         zuvyLearnerEducationBranchesTable.id,
       );
@@ -1057,6 +1060,7 @@ ON main.zuvy_learners_boards (name);
       })
       .from(zuvyLearnerBoardsTable)
       .orderBy(
+        sql`CASE WHEN LOWER(TRIM(${zuvyLearnerBoardsTable.name})) = 'other' THEN 1 ELSE 0 END`,
         sql`LOWER(${zuvyLearnerBoardsTable.name})`,
         zuvyLearnerBoardsTable.id,
       );
@@ -1291,6 +1295,7 @@ ON main.zuvy_learnes_roles (name);
       })
       .from(zuvyLearnerRolesTable)
       .orderBy(
+        sql`CASE WHEN LOWER(TRIM(${zuvyLearnerRolesTable.name})) = 'other' THEN 1 ELSE 0 END`,
         sql`LOWER(${zuvyLearnerRolesTable.name})`,
         zuvyLearnerRolesTable.id,
       );
@@ -1527,6 +1532,7 @@ ON main.zuvy_learners_remote_location (name);
       })
       .from(zuvyLearnerRemoteLocationTable)
       .orderBy(
+        sql`CASE WHEN LOWER(TRIM(${zuvyLearnerRemoteLocationTable.name})) = 'other' THEN 1 ELSE 0 END`,
         sql`LOWER(${zuvyLearnerRemoteLocationTable.name})`,
         zuvyLearnerRemoteLocationTable.id,
       );
