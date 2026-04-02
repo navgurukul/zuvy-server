@@ -772,6 +772,16 @@ FOR UPDATE
 
     const mentorProfile = await this.getMentorProfile(userId);
 
+    /* ================================
+    GOOGLE CALENDAR CONNECTION CHECK
+ ================================= */
+
+    if (!mentorProfile.googleRefreshToken) {
+      throw new BadRequestException(
+        'Please connect your Google Calendar before creating sessions.',
+      );
+    }
+
     const start = new Date(dto.slotStartDateTime);
     const end = new Date(dto.slotEndDateTime);
 
