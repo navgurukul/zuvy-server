@@ -143,7 +143,7 @@ FOR UPDATE
       if (slot.status !== 'available')
         throw new BadRequestException('Slot not available.');
 
-      this.enforceMinimumNotice(new Date(slot.slotStartDateTime));
+      // this.enforceMinimumNotice(new Date(slot.slotStartDateTime));
 
       // Fetch mentor buffer settings
       const [mentorProfile] = await trx
