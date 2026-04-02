@@ -183,27 +183,45 @@ export class AuthService {
         expiresIn: '7d',
       });
 
-      // Store tokens in database for the specific organization (or null orgId for superadmin)
-      let setTokenData = {
+      // Store tokens in database for the specific organization (or null orgId for superadmin/student)
+      const setTokenData = {
         accessToken: access_token,
         refreshToken: refresh_token,
       } as any;
-      await db
-        .insert(zuvyUserOrganizations)
-        .values({
-          userId: Number(user.id),
-          organizationId: selectedOrg?.orgId || null,
-          userEmail: user.email,
-          accessToken: access_token,
-          refreshToken: refresh_token,
-        } as any)
-        .onConflictDoUpdate({
-          target: [
-            zuvyUserOrganizations.userId,
-            zuvyUserOrganizations.organizationId,
-          ],
-          set: setTokenData,
-        });
+
+      // Roles that legitimately have NULL organizationId.
+      // - super_admin: global role, intentionally org-less.
+      // - student: no zuvyUserRolesAssigned row; getUserRoles returns ['student'] by default.
+      // All other org-scoped roles (admin, instructor, ops, poc, etc.) MUST have a valid org.
+      const NULL_ORG_ROLES = ['super_admin', 'student'];
+      const isNullOrgAllowed = roles.some((r) => NULL_ORG_ROLES.includes(r));
+
+      if (selectedOrg || isNullOrgAllowed) {
+        await db
+          .insert(zuvyUserOrganizations)
+          .values({
+            userId: Number(user.id),
+            organizationId: selectedOrg?.orgId || null,
+            userEmail: user.email,
+            accessToken: access_token,
+            refreshToken: refresh_token,
+          } as any)
+          .onConflictDoUpdate({
+            target: [
+              zuvyUserOrganizations.userId,
+              zuvyUserOrganizations.organizationId,
+            ],
+            set: setTokenData,
+          });
+      } else {
+        // Org-scoped role found but no organization attached — data inconsistency.
+        // Skip token storage rather than persisting a bad NULL row.
+        this.logger.warn(
+          `[Login Warning] User "${user.email}" (ID: ${user.id}) has the role(s) "${roles.join(', ')}" ` +
+            `but is not linked to any organization. Session token was not saved. ` +
+            `Please assign this user to a valid organization to allow proper login.`,
+        );
+      }
 
       // Legacy userTokens table update removed/commented out as per requirement
       /*
@@ -237,6 +255,7 @@ export class AuthService {
           rolesList: roles,
           orgId: selectedOrg?.orgId || null,
           orgName: selectedOrg?.orgName || null,
+          isPoc: roles.includes('poc'),
         },
       };
     } catch (error) {
@@ -594,6 +613,7 @@ export class AuthService {
         rolesList: roles,
         orgId: targetOrgId,
         orgName: org?.displayName,
+        isPoc: roles.includes('poc'),
       },
     };
   }
