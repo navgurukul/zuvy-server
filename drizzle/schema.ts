@@ -4447,14 +4447,15 @@ export const zuvySessionRecordings = main.table(
       .notNull()
       .default('DISCOVERED'),
     /*
-      DISCOVERED
-      METADATA_READY
-      PROCESSING_DOWNLOAD
-      DOWNLOADING
-      MERGING
-      PROCESSING_UPLOAD
-      COMPLETED
-      FAILED
+    → DISCOVERED
+    → PROCESSING_METADATA
+    → METADATA_READY
+    → PROCESSING_DOWNLOAD
+    → DOWNLOADED
+    → MERGING
+    → MERGED
+    → PROCESSING_UPLOAD
+    → COMPLETED
     */
 
     retryCount: integer('retry_count').default(0),
@@ -4469,13 +4470,13 @@ export const zuvySessionRecordings = main.table(
 
 
     recordingStart: timestamp('recording_start', {
-    withTimezone: true,
-    mode: 'string',
+      withTimezone: true,
+      mode: 'string',
     }),
 
     recordingEnd: timestamp('recording_end', {
-    withTimezone: true,
-    mode: 'string',
+      withTimezone: true,
+      mode: 'string',
     }),
 
     isFinalMerged: boolean('is_final_merged').default(false),
@@ -4492,8 +4493,8 @@ export const zuvySessionRecordings = main.table(
   (table) => ({
     uniqSessionUuid: unique('uniq_session_uuid')
       .on(table.sessionId, table.zoomMeetingUuid),
-    })
-  );
+  })
+);
 
 export const zuvyZoomWebhookEvents = main.table(
   'zuvy_zoom_webhook_events',
