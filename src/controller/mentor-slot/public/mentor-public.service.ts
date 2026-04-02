@@ -66,16 +66,37 @@ export class MentorPublicService {
         bio: zuvyMentorSlotManagement.bio,
         expertise: zuvyMentorSlotManagement.expertise,
         title: zuvyMentorSlotManagement.title,
+
+        availableSlots: sql<number>`
+        COUNT(*) FILTER (
+          WHERE ${zuvyMentorSlotAvailability.status} = 'available'
+        )
+      `,
+
+        fullSlots: sql<number>`
+        COUNT(*) FILTER (
+          WHERE ${zuvyMentorSlotAvailability.status} = 'full'
+        )
+      `,
       })
       .from(users)
 
-      // Only mentors with mentor profile
+      // mentor profile
       .innerJoin(
         zuvyMentorSlotManagement,
         eq(zuvyMentorSlotManagement.mentorUserId, users.id),
       )
 
-      // Roles
+      // slots
+      .leftJoin(
+        zuvyMentorSlotAvailability,
+        eq(
+          zuvyMentorSlotAvailability.mentorSlotManagementId,
+          zuvyMentorSlotManagement.id,
+        ),
+      )
+
+      // roles
       .leftJoin(
         zuvyUserRolesAssigned,
         eq(zuvyUserRolesAssigned.userId, users.id),
@@ -100,6 +121,33 @@ export class MentorPublicService {
 
       .limit(limit)
       .offset(offset);
+
+    /*
+    ==========================================
+    DETERMINE AVAILABILITY STATUS
+    ==========================================
+    */
+
+    const mentorsWithStatus = mentors.map((m) => {
+      let availabilityStatus = 'Unavailable';
+
+      if (Number(m.availableSlots) > 0) {
+        availabilityStatus = 'Available';
+      } else if (Number(m.fullSlots) > 0) {
+        availabilityStatus = 'Slots Full';
+      }
+
+      return {
+        ...m,
+        availabilityStatus,
+      };
+    });
+
+    /*
+    ==========================================
+    TOTAL COUNT
+    ==========================================
+    */
 
     const totalCount = await db
       .select({
@@ -127,7 +175,7 @@ export class MentorPublicService {
       offset,
       total,
       hasMore: offset + limit < total,
-      data: mentors,
+      data: mentorsWithStatus,
     };
   }
 

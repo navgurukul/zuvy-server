@@ -11,8 +11,7 @@ import {
   zuvyMentorSlotBooking,
 } from '../../../../drizzle/schema';
 
-import { and, eq, desc } from 'drizzle-orm';
-import { sl } from 'zod/v4/locales';
+import { and, eq, desc, sql } from 'drizzle-orm';
 
 @Injectable()
 export class SessionService {
@@ -68,7 +67,17 @@ export class SessionService {
       .limit(limit)
       .offset(offset);
 
-    return data;
+    const [counts] = await db
+      .select({
+        total: sql<number>`COUNT(*)`,
+        upcoming: sql<number>`COUNT(*) FILTER (WHERE session_lifecycle_state = 'SCHEDULED')`,
+        completed: sql<number>`COUNT(*) FILTER (WHERE session_lifecycle_state = 'COMPLETED')`,
+        cancelled: sql<number>`COUNT(*) FILTER (WHERE status = 'cancelled')`,
+      })
+      .from(zuvyMentorSlotBooking)
+      .where(eq(zuvyMentorSlotBooking.studentUserId, userId));
+
+    return { data, counts };
   }
 
   /* ==========================================================================
@@ -80,6 +89,7 @@ export class SessionService {
     filter = 'all',
     limit = 10,
     offset = 0,
+    sort: 'asc' | 'desc' = 'desc',
   ) {
     const conditions = [eq(zuvyMentorSlotBooking.mentorUserId, userId)];
 
@@ -119,11 +129,25 @@ export class SessionService {
       )
 
       .where(and(...conditions))
-      .orderBy(desc(zuvyMentorSlotBooking.bookedAt))
+      .orderBy(
+        sort === 'asc'
+          ? zuvyMentorSlotBooking.bookedAt
+          : desc(zuvyMentorSlotBooking.bookedAt),
+      )
       .limit(limit)
       .offset(offset);
 
-    return data;
+    const [counts] = await db
+      .select({
+        total: sql<number>`COUNT(*)`,
+        upcoming: sql<number>`COUNT(*) FILTER (WHERE session_lifecycle_state = 'SCHEDULED')`,
+        completed: sql<number>`COUNT(*) FILTER (WHERE session_lifecycle_state = 'COMPLETED')`,
+        reschedule: sql<number>`COUNT(*) FILTER (WHERE reschedule_status = 'pending')`,
+      })
+      .from(zuvyMentorSlotBooking)
+      .where(eq(zuvyMentorSlotBooking.mentorUserId, userId));
+
+    return { data, counts };
   }
 
   /* ==========================================================================
