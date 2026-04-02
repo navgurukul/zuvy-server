@@ -173,6 +173,7 @@ export class AuthService {
         rolesList: roles,
         orgId: selectedOrg?.orgId || null,
         orgName: selectedOrg?.orgName || null,
+        isPoc: roles.includes('poc'),
       };
 
       const access_token = this.jwtService.sign(jwtPayload, {
@@ -436,6 +437,7 @@ export class AuthService {
         rolesList: roles,
         orgId: orgId,
         orgName: orgName,
+        isPoc: roles.includes('poc'),
       };
 
       const newAccessToken = this.jwtService.sign(newPayload, {
@@ -552,6 +554,7 @@ export class AuthService {
       rolesList: roles,
       orgId: targetOrgId,
       orgName: org?.displayName,
+      isPoc: roles.includes('poc'),
     };
 
     const access_token = this.jwtService.sign(payload, { expiresIn: '24h' });
