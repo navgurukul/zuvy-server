@@ -19,7 +19,6 @@ export class MentorPublicService {
   ========================================================= */
 
   async getAllMentors(
-    organizationId: number,
     limit = 10,
     offset = 0,
     role?: string,
@@ -30,9 +29,7 @@ export class MentorPublicService {
     limit = Number(limit);
     offset = Number(offset);
 
-    const filters = [
-      eq(zuvyMentorSlotManagement.organizationId, organizationId),
-    ];
+    const filters = [];
 
     if (role && role !== 'all') {
       filters.push(eq(zuvyUserRoles.name, role));

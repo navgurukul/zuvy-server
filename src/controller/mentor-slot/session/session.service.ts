@@ -16,20 +16,33 @@ import { and, eq, desc, sql } from 'drizzle-orm';
 @Injectable()
 export class SessionService {
   /* ==========================================================================
+     BACKGROUND JOB TO AUTO-CLOSE EXPIRED SESSIONS
+  ========================================================================== */
+  async autoCloseExpiredSessions() {
+    await db.execute(sql`
+    UPDATE zuvy_mentor_slot_booking b
+    SET session_lifecycle_state = 'COMPLETED'
+    FROM zuvy_mentor_slot_availability s
+    WHERE b.slot_availability_id = s.id
+      AND b.session_lifecycle_state = 'SCHEDULED'
+      AND s.slot_end_date_time < NOW()
+  `);
+  }
+
+  /* ==========================================================================
      STUDENT SESSIONS
   ========================================================================== */
 
   async getStudentSessions(
     userId: bigint,
-    organizationId: number,
     filter = 'all',
     limit = 10,
     offset = 0,
+    sort: 'asc' | 'desc' = 'desc',
   ) {
-    const conditions = [
-      eq(zuvyMentorSlotBooking.studentUserId, userId),
-      eq(zuvyMentorSlotBooking.organizationId, organizationId),
-    ];
+    await this.autoCloseExpiredSessions(); // Ensure expired sessions are closed before fetching
+
+    const conditions = [eq(zuvyMentorSlotBooking.studentUserId, userId)];
 
     if (filter === 'upcoming') {
       conditions.push(
@@ -79,12 +92,7 @@ export class SessionService {
         cancelled: sql<number>`COUNT(*) FILTER (WHERE status = 'cancelled')`,
       })
       .from(zuvyMentorSlotBooking)
-      .where(
-        and(
-          eq(zuvyMentorSlotBooking.studentUserId, userId),
-          eq(zuvyMentorSlotBooking.organizationId, organizationId),
-        ),
-      );
+      .where(and(eq(zuvyMentorSlotBooking.studentUserId, userId)));
 
     return { data, counts };
   }
@@ -101,6 +109,8 @@ export class SessionService {
     offset = 0,
     sort: 'asc' | 'desc' = 'desc',
   ) {
+    await this.autoCloseExpiredSessions(); // Ensure expired sessions are closed before fetching
+
     const conditions = [
       eq(zuvyMentorSlotBooking.mentorUserId, userId),
       eq(zuvyMentorSlotBooking.organizationId, organizationId),
@@ -160,7 +170,7 @@ export class SessionService {
       .from(zuvyMentorSlotBooking)
       .where(
         and(
-          eq(zuvyMentorSlotBooking.studentUserId, userId),
+          eq(zuvyMentorSlotBooking.mentorUserId, userId),
           eq(zuvyMentorSlotBooking.organizationId, organizationId),
         ),
       );
