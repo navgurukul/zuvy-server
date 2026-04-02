@@ -2626,7 +2626,6 @@ export class ContentService {
       });
 
       let userPermissions = {};
-
       try {
         // Get user permissions for coding questions resource
         const targetPermissions = [

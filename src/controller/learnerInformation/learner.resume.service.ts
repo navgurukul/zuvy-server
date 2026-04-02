@@ -642,7 +642,6 @@ export class LearnerResumeService {
         }
       }
     }
-
     const normalized = this.normalizeForPatternMatching(topBlock);
     const nameMatch = normalized.match(
       /\b([A-Za-z][A-Za-z'\-]{1,20}\s+[A-Za-z][A-Za-z'\-]{1,20}(?:\s+[A-Za-z][A-Za-z'\-]{1,20})?)\b/,
