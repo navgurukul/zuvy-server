@@ -480,6 +480,24 @@ export class UsersService {
         // ✅ Assign default permissions for new role
         await this.assignDefaultPermissionsToRole(roleId, roleName, orgId);
 
+        // ✅ Sync zuvyUserOrganizations so the user has a valid org link
+        const [existingUserOrgUpdate] = await db
+          .select()
+          .from(zuvyUserOrganizations)
+          .where(
+            and(
+              eq(zuvyUserOrganizations.userId, Number(userId)),
+              eq(zuvyUserOrganizations.organizationId, orgId),
+            ),
+          );
+        if (!existingUserOrgUpdate) {
+          await db.insert(zuvyUserOrganizations).values({
+            userId: Number(userId),
+            userEmail: targetEmail,
+            organizationId: orgId,
+          } as unknown as typeof zuvyUserOrganizations.$inferInsert);
+        }
+
         const currentRoleDetails = await this.roleCheck(currentRoleId);
         const currentRoleName = (currentRoleDetails as any).rows?.[0]?.name;
         const actionUpdate = `${actorName} updated ${targetName}'s role from ${currentRoleName} to ${roleName}`;
@@ -528,6 +546,24 @@ export class UsersService {
 
       // ✅ Assign default permissions for new role
       await this.assignDefaultPermissionsToRole(roleId, roleName, orgId);
+
+      // ✅ Sync zuvyUserOrganizations so the user has a valid org link
+      const [existingUserOrgInsert] = await db
+        .select()
+        .from(zuvyUserOrganizations)
+        .where(
+          and(
+            eq(zuvyUserOrganizations.userId, Number(userId)),
+            eq(zuvyUserOrganizations.organizationId, orgId),
+          ),
+        );
+      if (!existingUserOrgInsert) {
+        await db.insert(zuvyUserOrganizations).values({
+          userId: Number(userId),
+          userEmail: targetEmail,
+          organizationId: orgId,
+        } as unknown as typeof zuvyUserOrganizations.$inferInsert);
+      }
 
       const action = `${actorName} assigned role ${roleName} to ${targetName}`;
 
