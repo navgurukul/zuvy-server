@@ -7,6 +7,7 @@ import {
   zuvyUserRoles,
   zuvyMentorSlotManagement,
   zuvyMentorSlotAvailability,
+  organizationsRelations,
 } from '../../../../drizzle/schema';
 
 import { and, eq, sql } from 'drizzle-orm';
@@ -18,6 +19,7 @@ export class MentorPublicService {
   ========================================================= */
 
   async getAllMentors(
+    organizationId: number,
     limit = 10,
     offset = 0,
     role?: string,
@@ -28,7 +30,9 @@ export class MentorPublicService {
     limit = Number(limit);
     offset = Number(offset);
 
-    const filters = [];
+    const filters = [
+      eq(zuvyMentorSlotManagement.organizationId, organizationId),
+    ];
 
     if (role && role !== 'all') {
       filters.push(eq(zuvyUserRoles.name, role));

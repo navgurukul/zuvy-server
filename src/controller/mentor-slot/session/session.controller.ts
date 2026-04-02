@@ -57,6 +57,7 @@ export class SessionController {
   ) {
     return this.sessionService.getStudentSessions(
       BigInt(req.user[0].id),
+      req.user[0].orgId,
       filter,
       Number(limit),
       Number(offset),
@@ -104,6 +105,7 @@ export class SessionController {
   ) {
     return this.sessionService.getMentorSessions(
       BigInt(req.user[0].id),
+      req.user[0].orgId,
       filter,
       Number(limit),
       Number(offset),

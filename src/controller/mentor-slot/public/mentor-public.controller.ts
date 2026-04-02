@@ -1,4 +1,11 @@
-import { Controller, Get, Param, ParseIntPipe, Query } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Param,
+  ParseIntPipe,
+  Query,
+  Req,
+} from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { MentorPublicService } from './mentor-public.service';
 import { MentorSearchDto } from './dto/mentor-search.dto';
@@ -9,8 +16,9 @@ export class MentorPublicController {
   constructor(private readonly service: MentorPublicService) {}
 
   @Get()
-  async getMentors(@Query() query: MentorSearchDto) {
+  async getMentors(@Req() req: any, @Query() query: MentorSearchDto) {
     return this.service.getAllMentors(
+      req.user[0].orgId,
       query.limit,
       query.offset,
       query.role,

@@ -21,11 +21,15 @@ export class SessionService {
 
   async getStudentSessions(
     userId: bigint,
+    organizationId: number,
     filter = 'all',
     limit = 10,
     offset = 0,
   ) {
-    const conditions = [eq(zuvyMentorSlotBooking.studentUserId, userId)];
+    const conditions = [
+      eq(zuvyMentorSlotBooking.studentUserId, userId),
+      eq(zuvyMentorSlotBooking.organizationId, organizationId),
+    ];
 
     if (filter === 'upcoming') {
       conditions.push(
@@ -75,7 +79,12 @@ export class SessionService {
         cancelled: sql<number>`COUNT(*) FILTER (WHERE status = 'cancelled')`,
       })
       .from(zuvyMentorSlotBooking)
-      .where(eq(zuvyMentorSlotBooking.studentUserId, userId));
+      .where(
+        and(
+          eq(zuvyMentorSlotBooking.studentUserId, userId),
+          eq(zuvyMentorSlotBooking.organizationId, organizationId),
+        ),
+      );
 
     return { data, counts };
   }
@@ -86,12 +95,16 @@ export class SessionService {
 
   async getMentorSessions(
     userId: bigint,
+    organizationId: number,
     filter = 'all',
     limit = 10,
     offset = 0,
     sort: 'asc' | 'desc' = 'desc',
   ) {
-    const conditions = [eq(zuvyMentorSlotBooking.mentorUserId, userId)];
+    const conditions = [
+      eq(zuvyMentorSlotBooking.mentorUserId, userId),
+      eq(zuvyMentorSlotBooking.organizationId, organizationId),
+    ];
 
     if (filter === 'upcoming') {
       conditions.push(
@@ -145,7 +158,12 @@ export class SessionService {
         reschedule: sql<number>`COUNT(*) FILTER (WHERE reschedule_status = 'pending')`,
       })
       .from(zuvyMentorSlotBooking)
-      .where(eq(zuvyMentorSlotBooking.mentorUserId, userId));
+      .where(
+        and(
+          eq(zuvyMentorSlotBooking.studentUserId, userId),
+          eq(zuvyMentorSlotBooking.organizationId, organizationId),
+        ),
+      );
 
     return { data, counts };
   }
