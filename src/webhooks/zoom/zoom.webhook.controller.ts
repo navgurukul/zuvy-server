@@ -197,7 +197,11 @@ export class ZoomWebhookController {
       0
     )
     ON CONFLICT (session_id, zoom_meeting_uuid)
-    DO NOTHING
+    DO UPDATE SET
+    status = 'DISCOVERED',
+    retry_count = 0,
+    next_retry_at = NULL,
+    last_error = NULL
   `);
 
         this.recordingWorkerTrigger.triggerNow();
