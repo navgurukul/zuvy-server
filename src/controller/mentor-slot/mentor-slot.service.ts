@@ -845,19 +845,110 @@ FOR UPDATE
       .returning();
   }
 
-  async getMySlots(userId: number) {
+  async getMySlots(userId: number, weekOffset = 0) {
     const mentorProfile = await this.getMentorProfile(userId);
 
     if (!mentorProfile) {
       throw new NotFoundException('Mentor profile not found.');
     }
 
-    return db
+    const now = new Date();
+
+    /* ============================
+       WEEK RANGE (MONDAY → SUNDAY)
+    ============================ */
+
+    const today = new Date();
+    const day = today.getDay();
+
+    const diffToMonday = day === 0 ? -6 : 1 - day;
+
+    const startOfWeek = new Date(today);
+    startOfWeek.setDate(today.getDate() + diffToMonday + weekOffset * 7);
+    startOfWeek.setHours(0, 0, 0, 0);
+
+    const endOfWeek = new Date(startOfWeek);
+    endOfWeek.setDate(startOfWeek.getDate() + 7);
+
+    /* ============================
+       FETCH SLOTS
+    ============================ */
+
+    const slots = await db
       .select()
       .from(zuvyMentorSlotAvailability)
       .where(
-        eq(zuvyMentorSlotAvailability.mentorSlotManagementId, mentorProfile.id),
-      );
+        and(
+          eq(
+            zuvyMentorSlotAvailability.mentorSlotManagementId,
+            mentorProfile.id,
+          ),
+          sql`${zuvyMentorSlotAvailability.slotStartDateTime} >= ${startOfWeek}`,
+          sql`${zuvyMentorSlotAvailability.slotStartDateTime} < ${endOfWeek}`,
+        ),
+      )
+      .orderBy(zuvyMentorSlotAvailability.slotStartDateTime);
+
+    /* ============================
+       PROCESS STATUS + METRICS
+    ============================ */
+
+    let available = 0;
+    let full = 0;
+    let completed = 0;
+    let closed = 0;
+    let totalMinutes = 0;
+
+    const processedSlots = slots.map((slot) => {
+      const slotStart = new Date(slot.slotStartDateTime);
+
+      let status: 'available' | 'full' | 'completed' | 'closed';
+
+      if (slotStart < now) {
+        if (slot.currentBookedCount > 0) {
+          status = 'completed';
+          completed++;
+        } else {
+          status = 'closed';
+          closed++;
+        }
+      } else {
+        if (slot.currentBookedCount >= slot.maxCapacity) {
+          status = 'full';
+          full++;
+        } else {
+          status = 'available';
+          available++;
+        }
+      }
+
+      totalMinutes += slot.durationMinutes;
+
+      return {
+        ...slot,
+        status,
+      };
+    });
+
+    /* ============================
+       METRICS
+    ============================ */
+
+    const metrics = {
+      totalSlots: slots.length,
+      available,
+      full,
+      completed,
+      closed,
+      hours: Number((totalMinutes / 60).toFixed(2)),
+    };
+
+    return {
+      weekStart: startOfWeek,
+      weekEnd: endOfWeek,
+      metrics,
+      slots: processedSlots,
+    };
   }
 
   async getSlotDetails(userId: number, slotId: number) {
