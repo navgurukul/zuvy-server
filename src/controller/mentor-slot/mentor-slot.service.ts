@@ -143,7 +143,7 @@ FOR UPDATE
       if (slot.status !== 'available')
         throw new BadRequestException('Slot not available.');
 
-      this.enforceMinimumNotice(new Date(slot.slotStartDateTime));
+      // this.enforceMinimumNotice(new Date(slot.slotStartDateTime));
 
       // Fetch mentor buffer settings
       const [mentorProfile] = await trx
@@ -437,14 +437,15 @@ FOR UPDATE
     newSlotId: number,
     reason: string,
   ) {
-    if (!reason || reason.length < 10)
+    if (!reason || reason.length < 10) {
       throw new BadRequestException(
         'Reschedule reason must be at least 10 characters.',
       );
+    }
 
     /* ================================
-     FETCH BOOKING
-  ================================= */
+       FETCH BOOKING
+    ================================= */
 
     const [booking] = await db
       .select()
@@ -456,9 +457,21 @@ FOR UPDATE
       throw new NotFoundException('Booking not found.');
     }
 
+    if (booking.status === 'cancelled') {
+      throw new BadRequestException('Cancelled booking cannot be rescheduled.');
+    }
+
+    if (booking.rescheduleStatus === 'pending') {
+      throw new BadRequestException('Reschedule already requested.');
+    }
+
+    if (booking.slotAvailabilityId === newSlotId) {
+      throw new BadRequestException('Cannot reschedule to the same slot.');
+    }
+
     /* ================================
-    VALIDATE NEW SLOT
-  ================================= */
+       FETCH SLOT
+    ================================= */
 
     const [slot] = await db
       .select()
@@ -470,6 +483,10 @@ FOR UPDATE
       throw new BadRequestException('Proposed slot not found.');
     }
 
+    /* ================================
+    SLOT VALIDATIONS
+    ================================= */
+
     if (slot.status !== 'available') {
       throw new BadRequestException('Proposed slot is not available.');
     }
@@ -478,13 +495,45 @@ FOR UPDATE
       throw new BadRequestException('Proposed slot is full.');
     }
 
+    this.enforceMinimumNotice(new Date(slot.slotStartDateTime));
+
     if (new Date(slot.slotStartDateTime) <= new Date()) {
       throw new BadRequestException('Cannot reschedule to past slot.');
     }
 
     /* ================================
-     SEND NOTIFICATION
-  ================================= */
+       ENSURE SAME MENTOR
+    ================================= */
+
+    const [mentorProfile] = await db
+      .select()
+      .from(zuvyMentorSlotManagement)
+      .where(eq(zuvyMentorSlotManagement.mentorUserId, booking.mentorUserId))
+      .limit(1);
+
+    if (!mentorProfile || slot.mentorSlotManagementId !== mentorProfile.id) {
+      throw new BadRequestException(
+        'Cannot reschedule to a slot belonging to another mentor.',
+      );
+    }
+
+    /* ================================
+       UPDATE BOOKING
+    ================================= */
+
+    await db
+      .update(zuvyMentorSlotBooking)
+      .set({
+        rescheduleStatus: 'pending',
+        rescheduleRequestedAt: new Date(),
+        rescheduleProposedSlotId: newSlotId,
+        sessionLifecycleState: 'RESCHEDULE_PENDING',
+      } as Partial<typeof zuvyMentorSlotBooking.$inferInsert>)
+      .where(eq(zuvyMentorSlotBooking.id, bookingId));
+
+    /* ================================
+       SEND NOTIFICATION
+    ================================= */
 
     await this.notificationService.createNotification({
       userId: booking.mentorUserId,
@@ -495,19 +544,9 @@ FOR UPDATE
       referenceType: 'booking',
     });
 
-    /* ================================
-     UPDATE BOOKING
-  ================================= */
-
-    return db
-      .update(zuvyMentorSlotBooking)
-      .set({
-        rescheduleStatus: 'pending',
-        rescheduleRequestedAt: new Date(),
-        rescheduleProposedSlotId: newSlotId,
-        sessionLifecycleState: 'RESCHEDULE_PENDING',
-      } as Partial<typeof zuvyMentorSlotBooking.$inferInsert>)
-      .where(eq(zuvyMentorSlotBooking.id, bookingId));
+    return {
+      message: 'Reschedule request submitted successfully.',
+    };
   }
 
   /* ==========================================================================
@@ -733,6 +772,16 @@ FOR UPDATE
 
     const mentorProfile = await this.getMentorProfile(userId);
 
+    /* ================================
+    GOOGLE CALENDAR CONNECTION CHECK
+ ================================= */
+
+    if (!mentorProfile.googleRefreshToken) {
+      throw new BadRequestException(
+        'Please connect your Google Calendar before creating sessions.',
+      );
+    }
+
     const start = new Date(dto.slotStartDateTime);
     const end = new Date(dto.slotEndDateTime);
 
@@ -796,19 +845,110 @@ FOR UPDATE
       .returning();
   }
 
-  async getMySlots(userId: number) {
+  async getMySlots(userId: number, weekOffset = 0) {
     const mentorProfile = await this.getMentorProfile(userId);
 
     if (!mentorProfile) {
       throw new NotFoundException('Mentor profile not found.');
     }
 
-    return db
+    const now = new Date();
+
+    /* ============================
+       WEEK RANGE (MONDAY → SUNDAY)
+    ============================ */
+
+    const today = new Date();
+    const day = today.getDay();
+
+    const diffToMonday = day === 0 ? -6 : 1 - day;
+
+    const startOfWeek = new Date(today);
+    startOfWeek.setDate(today.getDate() + diffToMonday + weekOffset * 7);
+    startOfWeek.setHours(0, 0, 0, 0);
+
+    const endOfWeek = new Date(startOfWeek);
+    endOfWeek.setDate(startOfWeek.getDate() + 7);
+
+    /* ============================
+       FETCH SLOTS
+    ============================ */
+
+    const slots = await db
       .select()
       .from(zuvyMentorSlotAvailability)
       .where(
-        eq(zuvyMentorSlotAvailability.mentorSlotManagementId, mentorProfile.id),
-      );
+        and(
+          eq(
+            zuvyMentorSlotAvailability.mentorSlotManagementId,
+            mentorProfile.id,
+          ),
+          sql`${zuvyMentorSlotAvailability.slotStartDateTime} >= ${startOfWeek}`,
+          sql`${zuvyMentorSlotAvailability.slotStartDateTime} < ${endOfWeek}`,
+        ),
+      )
+      .orderBy(zuvyMentorSlotAvailability.slotStartDateTime);
+
+    /* ============================
+       PROCESS STATUS + METRICS
+    ============================ */
+
+    let available = 0;
+    let full = 0;
+    let completed = 0;
+    let closed = 0;
+    let totalMinutes = 0;
+
+    const processedSlots = slots.map((slot) => {
+      const slotStart = new Date(slot.slotStartDateTime);
+
+      let status: 'available' | 'full' | 'completed' | 'closed';
+
+      if (slotStart < now) {
+        if (slot.currentBookedCount > 0) {
+          status = 'completed';
+          completed++;
+        } else {
+          status = 'closed';
+          closed++;
+        }
+      } else {
+        if (slot.currentBookedCount >= slot.maxCapacity) {
+          status = 'full';
+          full++;
+        } else {
+          status = 'available';
+          available++;
+        }
+      }
+
+      totalMinutes += slot.durationMinutes;
+
+      return {
+        ...slot,
+        status,
+      };
+    });
+
+    /* ============================
+       METRICS
+    ============================ */
+
+    const metrics = {
+      totalSlots: slots.length,
+      available,
+      full,
+      completed,
+      closed,
+      hours: Number((totalMinutes / 60).toFixed(2)),
+    };
+
+    return {
+      weekStart: startOfWeek,
+      weekEnd: endOfWeek,
+      metrics,
+      slots: processedSlots,
+    };
   }
 
   async getSlotDetails(userId: number, slotId: number) {

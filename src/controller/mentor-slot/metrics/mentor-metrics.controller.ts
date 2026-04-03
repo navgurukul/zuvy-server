@@ -12,6 +12,6 @@ export class MentorMetricsController {
 
   @Get('me')
   async getMyMetrics(@Req() req) {
-    return this.metricsService.getMentorMetrics(BigInt(req.user.id));
+    return this.metricsService.getMentorMetrics(BigInt(req.user[0].id));
   }
 }

@@ -61,11 +61,9 @@ export class GoogleController {
   ) {
     const result = await this.googleService.handleCallback(code, state);
 
-    let redirectUrl = result.redirectUrl;
-
-    if (!redirectUrl?.startsWith(process.env.ZUVY_BASH_URL)) {
-      redirectUrl = `${process.env.ZUVY_BASH_URL}/dashboard`;
-    }
+    const redirectUrl = result.redirectUrl
+      ? `${result.redirectUrl}?success=true`
+      : `${process.env.ZUVY_BASH_URL}/dashboard?success=true`;
 
     return res.redirect(redirectUrl);
   }
