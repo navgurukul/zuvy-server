@@ -145,6 +145,7 @@ export class AuthService {
         .select({
           orgId: zuvyOrganizations.id,
           orgName: zuvyOrganizations.displayName,
+          pocEmail: zuvyOrganizations.pocEmail,
         })
         .from(zuvyUserRolesAssigned)
         .innerJoin(
@@ -173,7 +174,7 @@ export class AuthService {
         rolesList: roles,
         orgId: selectedOrg?.orgId || null,
         orgName: selectedOrg?.orgName || null,
-        isPoc: roles.includes('poc'),
+        isPoc: selectedOrg?.pocEmail === user.email,
       };
 
       const access_token = this.jwtService.sign(jwtPayload, {
@@ -255,7 +256,7 @@ export class AuthService {
           rolesList: roles,
           orgId: selectedOrg?.orgId || null,
           orgName: selectedOrg?.orgName || null,
-          isPoc: roles.includes('poc'),
+          isPoc: selectedOrg?.pocEmail === user.email,
         },
       };
     } catch (error) {
@@ -438,13 +439,18 @@ export class AuthService {
       const roles = await this.getUserRoles(Number(user.id), orgId);
 
       let orgName = payload.orgName;
+      let pocEmail = null;
       // Refresh org details if needed
       if (orgId) {
         const [org] = await db
-          .select()
+          .select({
+            displayName: zuvyOrganizations.displayName,
+            pocEmail: zuvyOrganizations.pocEmail,
+          })
           .from(zuvyOrganizations)
           .where(eq(zuvyOrganizations.id, orgId));
         orgName = org?.displayName;
+        pocEmail = org?.pocEmail;
       }
 
       // Generate new tokens
@@ -456,7 +462,7 @@ export class AuthService {
         rolesList: roles,
         orgId: orgId,
         orgName: orgName,
-        isPoc: roles.includes('poc'),
+        isPoc: pocEmail === user.email,
       };
 
       const newAccessToken = this.jwtService.sign(newPayload, {
@@ -573,7 +579,7 @@ export class AuthService {
       rolesList: roles,
       orgId: targetOrgId,
       orgName: org?.displayName,
-      isPoc: roles.includes('poc'),
+      isPoc: org?.pocEmail === user.email,
     };
 
     const access_token = this.jwtService.sign(payload, { expiresIn: '24h' });
@@ -613,7 +619,7 @@ export class AuthService {
         rolesList: roles,
         orgId: targetOrgId,
         orgName: org?.displayName,
-        isPoc: roles.includes('poc'),
+        isPoc: org?.pocEmail === user.email,
       },
     };
   }
