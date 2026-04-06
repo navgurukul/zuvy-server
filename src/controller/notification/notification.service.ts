@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { db } from '../../db';
 import { zuvyNotifications } from '../../../drizzle/schema';
-import { eq, desc } from 'drizzle-orm';
+import { eq, desc, sql } from 'drizzle-orm';
 
 @Injectable()
 export class NotificationService {
@@ -32,10 +32,25 @@ export class NotificationService {
   }
 
   async getUserNotifications(userId: bigint) {
-    return db
+    const notifications = await db
       .select()
       .from(zuvyNotifications)
       .where(eq(zuvyNotifications.userId, userId))
       .orderBy(desc(zuvyNotifications.createdAt));
+
+    const unreadResult = await db
+      .select({
+        unread: sql<number>`
+        COUNT(*) FILTER (WHERE ${zuvyNotifications.isRead} = false)
+      `,
+      })
+      .from(zuvyNotifications)
+      .where(eq(zuvyNotifications.userId, userId));
+
+    return {
+      unreadCount: Number(unreadResult[0].unread),
+      total: notifications.length,
+      data: notifications,
+    };
   }
 }
