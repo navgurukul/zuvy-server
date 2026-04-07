@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { db } from '../../db/index';
 import { licenses, licenseAssignments, users } from '../../../drizzle/schema';
-import { eq, and, sql, lt, gt } from 'drizzle-orm';
+import { eq, and, sql, lt, gt, notExists } from 'drizzle-orm';
 import { ZoomService } from '../../services/zoom/zoom.service';
 
 @Injectable()
@@ -32,6 +32,8 @@ export class ZoomLicenseService {
           eq(licenseAssignments.instructorId, dto.instructorId),
           sql`${licenseAssignments.startTime} < ${dto.endTime}`,
           sql`${licenseAssignments.endTime} > ${dto.startTime}`,
+          // lt(licenseAssignments.startTime, dto.endTime),
+          // gt(licenseAssignments.endTime, dto.startTime),
         ),
       )
       .limit(1);
@@ -45,52 +47,71 @@ export class ZoomLicenseService {
     }
 
     // 2. Find a free license among the 6 total licenses
-    const availableLicenses = await trx.execute(sql`
-      SELECT l.id 
-      FROM licenses l
-      WHERE l.status = 'active'
-      AND NOT EXISTS (
-        SELECT 1 FROM license_assignments la
-        WHERE la.license_id = l.id
-        AND la.start_time < ${dto.endTime}
-        AND la.end_time > ${dto.startTime}
+    const availableLicenses = await trx
+      .select({ id: licenses.id })
+      .from(licenses)
+      .where(
+        and(
+          eq(licenses.status, 'active'),
+          notExists(
+            db
+              .select({ one: sql`1` })
+              .from(licenseAssignments)
+              .where(
+                and(
+                  eq(licenseAssignments.licenseId, licenses.id),
+                  sql`${licenseAssignments.startTime} < ${dto.endTime}`,
+                  sql`${licenseAssignments.endTime} > ${dto.startTime}`,
+                ),
+              ),
+          ),
+        ),
       )
-      LIMIT 1
-      FOR UPDATE OF l
-    `);
+      .limit(1)
+      .for('update');
 
-    if (availableLicenses.rows.length === 0) {
+    if (availableLicenses.length === 0) {
       throw new BadRequestException(
         'No Zoom licenses available for this time period.',
       );
     }
 
-    console.log('Available licenses:', availableLicenses.rows);
-    const assignedLicenseId = availableLicenses.rows[0].id as number;
+    console.log('Available licenses:', availableLicenses);
+    const assignedLicenseId = availableLicenses[0].id as number;
 
     console.log('Available licenses ID:', assignedLicenseId);
     // Log current license usage and availability
     const totalCount = 6;
-    const activeAssignments = await trx.execute(sql`
-      SELECT count(*) as count FROM license_assignments la
-      WHERE la.start_time < ${dto.endTime}
-      AND la.end_time > ${dto.startTime}
-    `);
-    console.log('Active assignments:', activeAssignments.rows);
-    const usedCount = Number(activeAssignments.rows[0].count);
+    const activeAssignments = await trx
+      .select({ count: sql<number>`count(*)` })
+      .from(licenseAssignments)
+      .where(
+        and(
+          lt(licenseAssignments.startTime, dto.endTime),
+          gt(licenseAssignments.endTime, dto.startTime),
+        ),
+      );
+    console.log('Active assignments:', activeAssignments);
+    const usedCount = Number(activeAssignments[0].count);
     const availableCount = totalCount - usedCount - 1; // -1 for the one we just assigned if not yet in DB
 
     console.log('availableCount', availableCount);
 
-    const currentUsers = await trx.execute(sql`
-      SELECT u.name, u.email 
-      FROM license_assignments la
-      JOIN users u ON la.instructor_id = u.id
-      WHERE la.start_time < ${dto.endTime}
-      AND la.end_time > ${dto.startTime}
-    `);
+    const currentUsers = await trx
+      .select({
+        name: users.name,
+        email: users.email,
+      })
+      .from(licenseAssignments)
+      .innerJoin(users, eq(licenseAssignments.instructorId, users.id))
+      .where(
+        and(
+          lt(licenseAssignments.startTime, dto.endTime),
+          gt(licenseAssignments.endTime, dto.startTime),
+        ),
+      );
 
-    const userList = currentUsers.rows
+    const userList = currentUsers
       .map((r) => `${r.name} (${r.email})`)
       .join(', ');
     this.logger.log(`dto.instructorId: ${dto.instructorId}`);
