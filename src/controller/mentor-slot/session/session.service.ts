@@ -11,11 +11,24 @@ import {
   zuvyMentorSlotBooking,
 } from '../../../../drizzle/schema';
 
-import { and, eq, desc } from 'drizzle-orm';
-import { sl } from 'zod/v4/locales';
+import { and, eq, desc, sql } from 'drizzle-orm';
 
 @Injectable()
 export class SessionService {
+  /* ==========================================================================
+     BACKGROUND JOB TO AUTO-CLOSE EXPIRED SESSIONS
+  ========================================================================== */
+  async autoCloseExpiredSessions() {
+    await db.execute(sql`
+    UPDATE zuvy_mentor_slot_booking b
+    SET session_lifecycle_state = 'COMPLETED'
+    FROM zuvy_mentor_slot_availability s
+    WHERE b.slot_availability_id = s.id
+      AND b.session_lifecycle_state = 'SCHEDULED'
+      AND s.slot_end_date_time < NOW()
+  `);
+  }
+
   /* ==========================================================================
      STUDENT SESSIONS
   ========================================================================== */
@@ -25,7 +38,10 @@ export class SessionService {
     filter = 'all',
     limit = 10,
     offset = 0,
+    sort: 'asc' | 'desc' = 'desc',
   ) {
+    await this.autoCloseExpiredSessions(); // Ensure expired sessions are closed before fetching
+
     const conditions = [eq(zuvyMentorSlotBooking.studentUserId, userId)];
 
     if (filter === 'upcoming') {
@@ -68,7 +84,17 @@ export class SessionService {
       .limit(limit)
       .offset(offset);
 
-    return data;
+    const [counts] = await db
+      .select({
+        total: sql<number>`COUNT(*)`,
+        upcoming: sql<number>`COUNT(*) FILTER (WHERE session_lifecycle_state = 'SCHEDULED')`,
+        completed: sql<number>`COUNT(*) FILTER (WHERE session_lifecycle_state = 'COMPLETED')`,
+        cancelled: sql<number>`COUNT(*) FILTER (WHERE status = 'cancelled')`,
+      })
+      .from(zuvyMentorSlotBooking)
+      .where(and(eq(zuvyMentorSlotBooking.studentUserId, userId)));
+
+    return { data, counts };
   }
 
   /* ==========================================================================
@@ -77,11 +103,18 @@ export class SessionService {
 
   async getMentorSessions(
     userId: bigint,
+    organizationId: number,
     filter = 'all',
     limit = 10,
     offset = 0,
+    sort: 'asc' | 'desc' = 'desc',
   ) {
-    const conditions = [eq(zuvyMentorSlotBooking.mentorUserId, userId)];
+    await this.autoCloseExpiredSessions(); // Ensure expired sessions are closed before fetching
+
+    const conditions = [
+      eq(zuvyMentorSlotBooking.mentorUserId, userId),
+      eq(zuvyMentorSlotBooking.organizationId, organizationId),
+    ];
 
     if (filter === 'upcoming') {
       conditions.push(
@@ -119,11 +152,30 @@ export class SessionService {
       )
 
       .where(and(...conditions))
-      .orderBy(desc(zuvyMentorSlotBooking.bookedAt))
+      .orderBy(
+        sort === 'asc'
+          ? zuvyMentorSlotBooking.bookedAt
+          : desc(zuvyMentorSlotBooking.bookedAt),
+      )
       .limit(limit)
       .offset(offset);
 
-    return data;
+    const [counts] = await db
+      .select({
+        total: sql<number>`COUNT(*)`,
+        upcoming: sql<number>`COUNT(*) FILTER (WHERE session_lifecycle_state = 'SCHEDULED')`,
+        completed: sql<number>`COUNT(*) FILTER (WHERE session_lifecycle_state = 'COMPLETED')`,
+        reschedule: sql<number>`COUNT(*) FILTER (WHERE reschedule_status = 'pending')`,
+      })
+      .from(zuvyMentorSlotBooking)
+      .where(
+        and(
+          eq(zuvyMentorSlotBooking.mentorUserId, userId),
+          eq(zuvyMentorSlotBooking.organizationId, organizationId),
+        ),
+      );
+
+    return { data, counts };
   }
 
   /* ==========================================================================

@@ -80,6 +80,11 @@ export class SessionController {
     enum: ['all', 'upcoming', 'reschedule', 'completed'],
   })
   @ApiQuery({
+    name: 'sort',
+    required: false,
+    enum: ['asc', 'desc'],
+  })
+  @ApiQuery({
     name: 'limit',
     required: false,
     type: Number,
@@ -95,12 +100,15 @@ export class SessionController {
     @Query('filter') filter?: string,
     @Query('limit') limit = 10,
     @Query('offset') offset = 0,
+    @Query('sort') sort: 'asc' | 'desc' = 'desc',
   ) {
     return this.sessionService.getMentorSessions(
       BigInt(req.user[0].id),
+      req.user[0].orgId,
       filter,
       Number(limit),
       Number(offset),
+      sort,
     );
   }
 
