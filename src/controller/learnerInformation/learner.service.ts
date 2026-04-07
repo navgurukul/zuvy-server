@@ -154,7 +154,6 @@ export class LearnerService {
       if (error instanceof BadRequestException) {
         throw error;
       }
-
       if (error instanceof InternalServerErrorException) {
         throw error;
       }
