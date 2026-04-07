@@ -15,6 +15,7 @@ import {
   users,
   zuvySessionMerge,
   zuvySessionRecordings,
+  licenseAssignments,
 } from '../../../drizzle/schema';
 import {
   eq,
@@ -33,13 +34,17 @@ import { Response } from 'express';
 import { S3 } from 'aws-sdk';
 import { v4 as uuid } from 'uuid';
 import { ZoomService } from '../../services/zoom/zoom.service';
+import { ZoomLicenseService } from '../zoom-license/zoom-license.service';
 import { Console } from 'console';
 
 @Injectable()
 export class ClassesService {
   private readonly logger = new Logger(ClassesService.name);
 
-  constructor(private readonly zoomService: ZoomService) {}
+  constructor(
+    private readonly zoomService: ZoomService,
+    private readonly zoomLicenseService: ZoomLicenseService,
+  ) {}
 
   async accessOfCalendar(creatorInfo) {
     try {
@@ -170,27 +175,18 @@ export class ClassesService {
       bootcampId: number;
       moduleId: number;
       isZoomMeet?: boolean;
-      coHostEmails?: string[]; // Optional additional co-hosts who should see meeting in their Zoom client
+      coHostEmails?: string[];
     },
     creatorInfo: any,
   ) {
     try {
-      // Check if user has permissions
-      if (
-        !creatorInfo.roles?.includes('admin') &&
-        !creatorInfo.roles?.includes('super_admin')
-      ) {
-        return {
-          status: 'error',
-          message: 'Only admins or super admins can create sessions',
-        };
-      }
+      // [Relaxed restriction: Instructors can now create sessions using Zoom licenses]
+      console.log('creatorInfo', creatorInfo);
       // Prevent creating sessions in the past
       const parsedStart = new Date(eventDetails.startDateTime);
       if (isNaN(parsedStart.getTime())) {
         return { status: 'error', message: 'Invalid startDateTime', code: 400 };
       }
-      console.log({ startDate: parsedStart.getTime(), now: Date.now() });
       if (parsedStart.getTime() < Date.now()) {
         return {
           status: 'error',
@@ -372,19 +368,44 @@ export class ClassesService {
         .from(zuvyBatches)
         .where(eq(zuvyBatches.id, eventDetails.batchId))
         .limit(1);
-      const instructorEmail = batch[0]?.instructorId
-        ? await db
-            .select({ email: users.email })
-            .from(users)
-            .where(eq(users.id, BigInt(batch[0].instructorId)))
-            .limit(1)
-        : null;
+
+      const instructorId = batch[0]?.instructorId;
+      if (!instructorId) {
+        throw new Error('Instructor not found for this batch');
+      }
+
+      const instructorEmailRes = await db
+        .select({ email: users.email })
+        .from(users)
+        .where(eq(users.id, BigInt(instructorId)))
+        .limit(1);
+
+      const instructorEmail = instructorEmailRes[0]?.email;
+      if (!instructorEmail) {
+        throw new Error('Instructor email not found');
+      }
+
+      // 1. Assign Zoom License (6 concurrent limit)
+      let assignedLicenseId: number | null = null;
+      try {
+        assignedLicenseId = await db.transaction(async (trx) => {
+          return await this.zoomLicenseService.assignLicense(trx, {
+            instructorId: Number(instructorId),
+            startTime: startDate,
+            endTime: endDate,
+          });
+        });
+      } catch (e) {
+        this.logger.error(`License assignment failed: ${e.message}`);
+        return {
+          status: 'error',
+          message: e.message || 'No Zoom licenses available',
+        };
+      }
+
       // Create Zoom meeting
       // Always host under the team account so recordings live centrally there; instructor & others become alternative hosts.
-      const teamAccountEmail = instructorEmail
-        ? instructorEmail[0].email
-        : creatorInfo.email;
-      const hostEmail = teamAccountEmail;
+      const hostEmail = instructorEmail; // Use instructor email as host
       try {
         // Ensure team account is licensed (host must be able to cloud record)
         await this.zoomService.ensureLicensedUser(hostEmail, 'Team', '');
@@ -580,6 +601,7 @@ export class ClassesService {
 
       session['chapterId'] = chapterResult.chapter.id;
       session['bootcampId'] = chapterResult.bootcampId;
+      session['licenseId'] = assignedLicenseId;
       // Redundant safety: if moduleId somehow absent, copy from chapter
       session['moduleId'] = chapterResult.chapter.moduleId;
 
@@ -1074,14 +1096,41 @@ export class ClassesService {
         googleCalendarEventId: session.googleCalendarEventId, // Add Google Calendar event ID
         invitedStudents: session.invitedStudents || [],
         youtubeVideoId: session.youtubeVideoId || null, // Ensure required field is present
-        recurringId: session.recurringId || null, // Add other required fields if needed
+        recurringId: session.recurringId || null,
+        licenseId: session.licenseId || null,
       }));
 
       this.logger.log(`Saving ${sessionData.length} sessions to the database.`);
-      const savedSessions = await db
-        .insert(zuvySessions)
-        .values(sessionData)
-        .returning();
+      const savedSessions = await db.transaction(async (trx) => {
+        const results = await trx
+          .insert(zuvySessions)
+          .values(sessionData)
+          .returning();
+
+        // Register license assignments for any Zoom session that has a licenseId
+        for (let i = 0; i < results.length; i++) {
+          const original = sessionData[i];
+          if (original.licenseId && original.startTime && original.endTime) {
+            // Get instructorId from the batch (assuming each batch has a designated instructor)
+            const batch = await trx
+              .select({ instructorId: zuvyBatches.instructorId })
+              .from(zuvyBatches)
+              .where(eq(zuvyBatches.id, original.batchId))
+              .limit(1);
+
+            if (batch[0]?.instructorId) {
+              await trx.insert(licenseAssignments).values({
+                licenseId: original.licenseId,
+                instructorId: batch[0].instructorId,
+                sessionId: BigInt(results[i].id),
+                startTime: new Date(original.startTime),
+                endTime: new Date(original.endTime),
+              } as any);
+            }
+          }
+        }
+        return results;
+      });
 
       return {
         status: 'success',

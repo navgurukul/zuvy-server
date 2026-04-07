@@ -167,6 +167,7 @@ export class ClassesController {
       roles: req.user[0].roles || [],
       orgId: Number(req.user[0].orgId),
     };
+    console.log('req', req.user);
     // Delegate all validation & batch combination logic to service
     const result: any = await this.classesService.createSession(
       classData as any,

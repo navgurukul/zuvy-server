@@ -2,6 +2,11 @@ import { Injectable, Logger, ForbiddenException } from '@nestjs/common';
 import * as crypto from 'crypto';
 import { db } from '../../db';
 import { sql } from 'drizzle-orm';
+import {
+  zuvySessions,
+  zuvyBatches,
+  licenseAssignments,
+} from '../../../drizzle/schema';
 
 @Injectable()
 export class ZoomWebhookService {
@@ -44,11 +49,51 @@ export class ZoomWebhookService {
       case 'recording.completed':
         return this.handleRecordingCompleted(event);
 
+      case 'meeting.started':
+        return this.handleMeetingStarted(event);
+
       case 'meeting.ended':
         return this.handleMeetingEnded(event);
 
       default:
         this.logger.debug(`Ignoring Zoom event: ${type}`);
+    }
+  }
+
+  // ==============================
+  // meeting.started
+  // ==============================
+  private async handleMeetingStarted(event: any) {
+    const meetingId = event.payload?.object?.id.toString();
+    const hostEmail = event.payload?.object?.host_id; // zoom user id or email
+
+    if (!meetingId) return;
+
+    this.logger.log(`Meeting started: ${meetingId}`);
+
+    // Validate that this session has a license assignment
+    const result = await db.execute(sql`
+      SELECT s.id, b.instructor_id, s.start_time, s.end_time, la.license_id
+      FROM ${zuvySessions} s
+      JOIN ${zuvyBatches} b ON s.batch_id = b.id
+      LEFT JOIN ${licenseAssignments} la ON s.id = la.session_id
+      WHERE s.zoom_meeting_id = ${meetingId}
+      LIMIT 1
+    `);
+
+    const session: any = result.rows[0];
+
+    if (!session) {
+      this.logger.warn(
+        `Started meeting ${meetingId} not found in zuvy_sessions or linked batch`,
+      );
+      return;
+    }
+
+    if (!session.license_id) {
+      this.logger.error(
+        `No license assigned for started meeting ${meetingId}. Instructor: ${session.instructor_id}`,
+      );
     }
   }
 
