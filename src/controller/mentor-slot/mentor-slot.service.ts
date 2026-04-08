@@ -122,6 +122,82 @@ export class MentorSlotService {
   }
 
   /* ==========================================================================
+   QUOTA YEAR WINDOW (APRIL 15 → APRIL 14)
+========================================================================== */
+
+  private getQuotaWindow() {
+    const now = new Date();
+    const year = now.getUTCFullYear();
+
+    let quotaStart = new Date(Date.UTC(year, 3, 15)); // April 15
+    let quotaEnd = new Date(Date.UTC(year + 1, 3, 14, 23, 59, 59));
+
+    if (now < quotaStart) {
+      quotaStart = new Date(Date.UTC(year - 1, 3, 15));
+      quotaEnd = new Date(Date.UTC(year, 3, 14, 23, 59, 59));
+    }
+
+    return { quotaStart, quotaEnd };
+  }
+
+  /* ==========================================================================
+     VALIDATE LEARNER QUOTA + COOLDOWN
+  ========================================================================== */
+
+  private async validateLearnerBookingEligibility(studentUserId: bigint) {
+    const { quotaStart, quotaEnd } = this.getQuotaWindow();
+
+    /* ===============================
+       ANNUAL QUOTA CHECK
+    =============================== */
+
+    const [{ count }] = await db
+      .select({
+        count: sql<number>`COUNT(*)`,
+      })
+      .from(zuvyMentorSlotBooking)
+      .where(
+        and(
+          eq(zuvyMentorSlotBooking.studentUserId, studentUserId),
+          sql`${zuvyMentorSlotBooking.confirmedAt} >= ${quotaStart}`,
+          sql`${zuvyMentorSlotBooking.confirmedAt} <= ${quotaEnd}`,
+        ),
+      );
+
+    if (count >= 3) {
+      const resetYear = quotaEnd.getUTCFullYear();
+
+      throw new ForbiddenException(
+        `You have used all 3 sessions for this year. Your quota resets on April 15, ${resetYear}.`,
+      );
+    }
+
+    /* ===============================
+       COOLDOWN CHECK (21 DAYS)
+    =============================== */
+
+    const [lastBooking] = await db
+      .select({
+        confirmedAt: zuvyMentorSlotBooking.confirmedAt,
+      })
+      .from(zuvyMentorSlotBooking)
+      .where(eq(zuvyMentorSlotBooking.studentUserId, studentUserId))
+      .orderBy(desc(zuvyMentorSlotBooking.confirmedAt))
+      .limit(1);
+
+    if (lastBooking?.confirmedAt) {
+      const cooldownEnd = new Date(lastBooking.confirmedAt);
+      cooldownEnd.setDate(cooldownEnd.getDate() + 21);
+
+      if (new Date() < cooldownEnd) {
+        throw new ForbiddenException(
+          `You can book your next session from ${cooldownEnd.toDateString()}.`,
+        );
+      }
+    }
+  }
+
+  /* ==========================================================================
      DERIVE SESSION LIFECYCLE STATE
   ========================================================================== */
 
@@ -151,6 +227,8 @@ export class MentorSlotService {
   ========================================================================== */
 
   async bookSlot(studentId: number, slotId: number) {
+    await this.validateLearnerBookingEligibility(BigInt(studentId));
+
     return db.transaction(async (trx) => {
       const result = await trx.execute(sql`
 SELECT
