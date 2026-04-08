@@ -13,7 +13,7 @@ import {
   zuvyUserRolesAssigned,
 } from '../../../drizzle/schema';
 
-import { and, eq, lt, sql } from 'drizzle-orm';
+import { and, eq, lt, sql, desc } from 'drizzle-orm';
 import { CreateSlotDto } from './dto/create-slot.dto';
 import { GoogleCalendarService } from 'src/integrations/google/google-calendar.service';
 import { NotificationService } from '../notification/notification.service';
@@ -845,7 +845,11 @@ FOR UPDATE
       .returning();
   }
 
-  async getMySlots(userId: number, weekOffset = 0) {
+  async getMySlots(
+    userId: number,
+    weekOffset = 0,
+    sort: 'asc' | 'desc' = 'desc',
+  ) {
     const mentorProfile = await this.getMentorProfile(userId);
 
     if (!mentorProfile) {
@@ -887,7 +891,11 @@ FOR UPDATE
           sql`${zuvyMentorSlotAvailability.slotStartDateTime} < ${endOfWeek}`,
         ),
       )
-      .orderBy(zuvyMentorSlotAvailability.slotStartDateTime);
+      .orderBy(
+        sort === 'asc'
+          ? zuvyMentorSlotAvailability.slotStartDateTime
+          : desc(zuvyMentorSlotAvailability.slotStartDateTime),
+      );
 
     /* ============================
        PROCESS STATUS + METRICS

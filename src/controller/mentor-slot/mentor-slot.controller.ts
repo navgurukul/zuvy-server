@@ -129,10 +129,15 @@ export class MentorSlotController {
 ========================================================================== */
 
   @Get('my')
-  async getMySlots(@Req() req, @Query('weekOffset') weekOffset: number = 0) {
+  async getMySlots(
+    @Req() req,
+    @Query('weekOffset') weekOffset = 0,
+    @Query('sort') sort: 'asc' | 'desc' = 'desc',
+  ) {
     return this.mentorSlotService.getMySlots(
       Number(req.user[0].id),
       Number(weekOffset),
+      sort,
     );
   }
 
