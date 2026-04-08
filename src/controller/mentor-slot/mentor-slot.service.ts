@@ -69,6 +69,42 @@ export class MentorSlotService {
     }
   }
 
+  private async validateMentorProfileComplete(userId: number) {
+    const [profile] = await db
+      .select({
+        bio: zuvyMentorSlotManagement.bio,
+        expertise: zuvyMentorSlotManagement.expertise,
+        pastExperiences: zuvyMentorSlotManagement.pastExperiences,
+      })
+      .from(zuvyMentorSlotManagement)
+      .where(eq(zuvyMentorSlotManagement.mentorUserId, BigInt(userId)))
+      .limit(1);
+
+    if (!profile) {
+      throw new NotFoundException('Mentor profile not found.');
+    }
+
+    if (!profile.bio || !profile.expertise || !profile.pastExperiences) {
+      throw new ForbiddenException(
+        'Complete your mentor profile (bio, skills, experiences) before creating slots.',
+      );
+    }
+
+    if (Array.isArray(profile.expertise) && profile.expertise.length === 0) {
+      throw new ForbiddenException('Add at least one skill in expertise.');
+    }
+
+    if (
+      Array.isArray(profile.pastExperiences) &&
+      profile.pastExperiences.length === 0
+    ) {
+      throw new ForbiddenException(
+        'Add past experiences before creating slots.',
+      );
+    }
+
+    return true;
+  }
   /* ==========================================================================
      UTILITY — 12 HOUR RULE ENFORCER
   ========================================================================== */
@@ -769,6 +805,7 @@ FOR UPDATE
 
   async createSlot(userId: number, dto: any) {
     await this.ensureUserIsMentor(userId);
+    await this.validateMentorProfileComplete(userId);
 
     const mentorProfile = await this.getMentorProfile(userId);
 
@@ -1038,15 +1075,56 @@ FOR UPDATE
     if (dto.bio !== undefined) updatePayload.bio = dto.bio;
     if (dto.expertise !== undefined) updatePayload.expertise = dto.expertise;
     if (dto.title !== undefined) updatePayload.title = dto.title;
+    if (dto.pastExperiences !== undefined)
+      updatePayload.pastExperiences = dto.pastExperiences;
 
     // prevent empty update
     if (Object.keys(updatePayload).length === 0) {
       throw new BadRequestException('No fields provided for update');
     }
 
-    return db
+    await db
       .update(zuvyMentorSlotManagement)
-      .set(updatePayload)
+      .set({
+        ...updatePayload,
+        updatedAt: new Date(),
+      } as Partial<typeof zuvyMentorSlotManagement.$inferInsert>)
       .where(eq(zuvyMentorSlotManagement.mentorUserId, userIdBigInt));
+    return { message: ' Mentor profile updated successfully' };
+  }
+
+  async getMyMentorProfile(userId: number) {
+    const userIdBigInt = BigInt(userId);
+
+    const [profile] = await db
+      .select({
+        mentorProfileId: zuvyMentorSlotManagement.id,
+        mentorUserId: zuvyMentorSlotManagement.mentorUserId,
+        organizationId: zuvyMentorSlotManagement.organizationId,
+
+        mentorType: zuvyMentorSlotManagement.mentorType,
+        timezone: zuvyMentorSlotManagement.timezone,
+
+        title: zuvyMentorSlotManagement.title,
+        bio: zuvyMentorSlotManagement.bio,
+        expertise: zuvyMentorSlotManagement.expertise,
+        pastExperiences: zuvyMentorSlotManagement.pastExperiences,
+
+        status: zuvyMentorSlotManagement.status,
+        isVerified: zuvyMentorSlotManagement.isVerified,
+        acceptsNewMentees: zuvyMentorSlotManagement.acceptsNewMentees,
+
+        createdAt: zuvyMentorSlotManagement.createdAt,
+        updatedAt: zuvyMentorSlotManagement.updatedAt,
+      })
+      .from(zuvyMentorSlotManagement)
+      .where(eq(zuvyMentorSlotManagement.mentorUserId, userIdBigInt))
+      .limit(1);
+
+    if (!profile) {
+      throw new NotFoundException('Mentor profile not found');
+    }
+
+    return profile;
   }
 }

@@ -4596,6 +4596,7 @@ export const zuvyMentorSlotManagement = pgTable(
     title: varchar('title', { length: 255 }),
     bio: text('bio'),
     expertise: jsonb('expertise'),
+    pastExperiences: jsonb('past_experiences'),
 
     status: varchar('status', { length: 50 }).default('active'),
     isVerified: boolean('is_verified').default(false),

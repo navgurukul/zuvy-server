@@ -11,7 +11,7 @@ import {
   UseGuards,
   Query,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiBody, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiBody, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { MentorSlotService } from './mentor-slot.service';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 import { BookSlotDto } from './dto/book-slot.dto';
@@ -195,5 +195,15 @@ export class MentorSlotController {
       Number(req.user[0].id),
       dto,
     );
+  }
+
+  /* ==========================================================================  
+   GET MY MENTOR PROFILE
+========================================================================== */
+
+  @Get('mentor/profile')
+  @ApiOperation({ summary: 'Get logged-in mentor profile' })
+  async getMyProfile(@Req() req) {
+    return this.mentorSlotService.getMyMentorProfile(Number(req.user[0].id));
   }
 }

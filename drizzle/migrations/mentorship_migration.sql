@@ -374,3 +374,6 @@ WHERE table_name = 'zuvy_mentor_slot_booking';
 SELECT column_name
 FROM information_schema.columns
 WHERE table_name = 'zuvy_mentor_slot_management';
+
+ALTER TABLE zuvy_mentor_slot_management
+ADD COLUMN past_experiences JSONB;
