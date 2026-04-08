@@ -69,15 +69,24 @@ export class MentorPublicService {
         title: zuvyMentorSlotManagement.title,
 
         availableSlots: sql<number>`
-        COUNT(*) FILTER (
-          WHERE ${zuvyMentorSlotAvailability.status} = 'available'
-        )
-      `,
+          COUNT(*) FILTER (
+          WHERE ${zuvyMentorSlotAvailability.slotStartDateTime} > NOW()
+          AND ${zuvyMentorSlotAvailability.currentBookedCount} < ${zuvyMentorSlotAvailability.maxCapacity}
+          )
+        `,
 
         fullSlots: sql<number>`
+          COUNT(*) FILTER (
+          WHERE ${zuvyMentorSlotAvailability.slotStartDateTime} > NOW()
+          AND ${zuvyMentorSlotAvailability.currentBookedCount} >= ${zuvyMentorSlotAvailability.maxCapacity}
+          )
+      `,
+
+        completedSlots: sql<number>`
         COUNT(*) FILTER (
-          WHERE ${zuvyMentorSlotAvailability.status} = 'full'
-        )
+        WHERE ${zuvyMentorSlotAvailability.slotStartDateTime} <= NOW()
+        AND ${zuvyMentorSlotAvailability.currentBookedCount} > 0
+          )
       `,
       })
       .from(users)
