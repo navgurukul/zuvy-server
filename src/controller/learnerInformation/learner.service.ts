@@ -143,7 +143,6 @@ export class LearnerService {
           `Failed to search colleges. API responded with ${response.status}.`,
         );
       }
-
       const data = (await response.json()) as Record<string, unknown>[];
 
       return {
