@@ -2464,6 +2464,7 @@ export const zuvyBootcampType = main.table('zuvy_bootcamp_type', {
   }),
   type: text('type').notNull(), // Type of bootcamp (Public, Private, etc.)
   isModuleLocked: boolean('is_module_locked').default(false),
+  mentorshipEnabled: boolean('mentorship_enabled').default(false),
   createdAt: timestamp('created_at', {
     withTimezone: true,
     mode: 'string',
@@ -2663,7 +2664,7 @@ export const zuvyCourseModules = main.table("zuvy_course_modules", {
   projectId: integer("project_id").references(() => zuvyCourseProjects.id),
   order: integer("order"),
   timeAlloted: bigint("time_alloted", { mode: "number" }),
-  version: varchar('version', { length: 10 }),
+  mentorshipEnabled: boolean('mentorship_enabled').default(false),
 })
 
 export const zuvyModuleData = relations(zuvyBootcamps, ({ one, many }) => ({

@@ -11,6 +11,8 @@ import {
   zuvyMentorSlotBooking,
   zuvyMentorSlotManagement,
   zuvyUserRolesAssigned,
+  zuvyBatchEnrollments,
+  zuvyBootcampType,
 } from '../../../drizzle/schema';
 
 import { and, eq, lt, sql, desc } from 'drizzle-orm';
@@ -198,6 +200,38 @@ export class MentorSlotService {
   }
 
   /* ==========================================================================
+     ENSURE MENTORSHIP IS ENABLED
+  ========================================================================== */
+  private async ensureMentorshipEnabled(studentUserId: bigint) {
+    const [bootcamp] = await db
+      .select({
+        mentorshipEnabled: zuvyBootcampType.mentorshipEnabled,
+      })
+      .from(zuvyBatchEnrollments)
+      .innerJoin(
+        zuvyBootcampType,
+        eq(zuvyBatchEnrollments.bootcampId, zuvyBootcampType.bootcampId),
+      )
+      .where(
+        and(
+          eq(zuvyBatchEnrollments.userId, studentUserId),
+          eq(zuvyBatchEnrollments.status, 'active'),
+        ),
+      )
+      .limit(1);
+
+    if (!bootcamp) {
+      throw new ForbiddenException(
+        'You are not enrolled in a course with mentorship access.',
+      );
+    }
+
+    if (!bootcamp.mentorshipEnabled) {
+      throw new ForbiddenException('Mentorship is disabled for your course.');
+    }
+  }
+
+  /* ==========================================================================
      DERIVE SESSION LIFECYCLE STATE
   ========================================================================== */
 
@@ -227,6 +261,7 @@ export class MentorSlotService {
   ========================================================================== */
 
   async bookSlot(studentId: number, slotId: number) {
+    await this.ensureMentorshipEnabled(BigInt(studentId));
     await this.validateLearnerBookingEligibility(BigInt(studentId));
 
     return db.transaction(async (trx) => {

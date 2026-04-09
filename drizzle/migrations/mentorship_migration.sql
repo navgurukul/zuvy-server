@@ -377,3 +377,6 @@ WHERE table_name = 'zuvy_mentor_slot_management';
 
 ALTER TABLE zuvy_mentor_slot_management
 ADD COLUMN past_experiences JSONB;
+
+ALTER TABLE zuvy_bootcamp_type
+ADD COLUMN mentorship_enabled BOOLEAN DEFAULT FALSE;
