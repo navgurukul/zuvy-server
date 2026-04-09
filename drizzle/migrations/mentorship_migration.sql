@@ -380,3 +380,12 @@ ADD COLUMN past_experiences JSONB;
 
 ALTER TABLE zuvy_bootcamp_type
 ADD COLUMN mentorship_enabled BOOLEAN DEFAULT FALSE;
+
+ALTER TABLE zuvy_mentor_slot_management
+ADD COLUMN bootcamp_id INTEGER;
+
+ALTER TABLE zuvy_mentor_slot_management
+ADD CONSTRAINT mentor_bootcamp_fk
+FOREIGN KEY (bootcamp_id)
+REFERENCES zuvy_bootcamps(id)
+ON DELETE CASCADE;

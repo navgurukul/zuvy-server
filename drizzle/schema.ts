@@ -4580,6 +4580,10 @@ export const zuvyMentorSlotManagement = pgTable(
       .notNull()
       .references(() => zuvyOrganizations.id, { onDelete: 'cascade' }),
 
+    bootcampId: integer('bootcamp_id').references(() => zuvyBootcamps.id, {
+      onDelete: 'cascade',
+    }),
+
     mentorType: varchar('mentor_type', { length: 50 })
       .notNull()
       .default('instructor'),

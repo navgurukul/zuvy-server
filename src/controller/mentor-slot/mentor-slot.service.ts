@@ -13,6 +13,7 @@ import {
   zuvyUserRolesAssigned,
   zuvyBatchEnrollments,
   zuvyBootcampType,
+  zuvyBootcamps,
 } from '../../../drizzle/schema';
 
 import { and, eq, lt, sql, desc } from 'drizzle-orm';
@@ -203,7 +204,7 @@ export class MentorSlotService {
      ENSURE MENTORSHIP IS ENABLED
   ========================================================================== */
   private async ensureMentorshipEnabled(studentUserId: bigint) {
-    const [bootcamp] = await db
+    const enrollments = await db
       .select({
         mentorshipEnabled: zuvyBootcampType.mentorshipEnabled,
       })
@@ -217,17 +218,20 @@ export class MentorSlotService {
           eq(zuvyBatchEnrollments.userId, studentUserId),
           eq(zuvyBatchEnrollments.status, 'active'),
         ),
-      )
-      .limit(1);
+      );
 
-    if (!bootcamp) {
+    if (enrollments.length === 0) {
       throw new ForbiddenException(
         'You are not enrolled in a course with mentorship access.',
       );
     }
 
-    if (!bootcamp.mentorshipEnabled) {
-      throw new ForbiddenException('Mentorship is disabled for your course.');
+    const hasMentorship = enrollments.some((e) => e.mentorshipEnabled === true);
+
+    if (!hasMentorship) {
+      throw new ForbiddenException(
+        'One-on-one mentorship is not available for your current programme.',
+      );
     }
   }
 
@@ -1190,6 +1194,20 @@ FOR UPDATE
     if (dto.title !== undefined) updatePayload.title = dto.title;
     if (dto.pastExperiences !== undefined)
       updatePayload.pastExperiences = dto.pastExperiences;
+
+    if (dto.bootcampId !== undefined) {
+      const [bootcamp] = await db
+        .select()
+        .from(zuvyBootcamps)
+        .where(eq(zuvyBootcamps.id, dto.bootcampId))
+        .limit(1);
+
+      if (!bootcamp) {
+        throw new BadRequestException('Invalid bootcampId');
+      }
+
+      updatePayload.bootcampId = dto.bootcampId;
+    }
 
     // prevent empty update
     if (Object.keys(updatePayload).length === 0) {

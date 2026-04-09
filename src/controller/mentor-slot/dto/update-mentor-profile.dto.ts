@@ -12,4 +12,7 @@ export class UpdateMentorProfileDto {
 
   @ApiProperty()
   title: string;
+
+  @ApiProperty()
+  bootcampId: number;
 }
