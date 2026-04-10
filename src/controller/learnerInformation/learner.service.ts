@@ -123,6 +123,44 @@ export class LearnerService {
     return ['42P01', '42703', '42704'].includes(String(error?.code || ''));
   }
 
+  async searchColleges(name: string): Promise<{
+    success: boolean;
+    data: Record<string, unknown>[];
+  }> {
+    const searchName = name?.trim();
+
+    if (!searchName) {
+      throw new BadRequestException('name query parameter is required.');
+    }
+
+    const url = `http://universities.hipolabs.com/search?country=India&name=${encodeURIComponent(searchName)}`;
+
+    try {
+      const response = await fetch(url);
+
+      if (!response.ok) {
+        throw new InternalServerErrorException(
+          `Failed to search colleges. API responded with ${response.status}.`,
+        );
+      }
+      const data = (await response.json()) as Record<string, unknown>[];
+
+      return {
+        success: true,
+        data,
+      };
+    } catch (error) {
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
+      if (error instanceof InternalServerErrorException) {
+        throw error;
+      }
+
+      throw new InternalServerErrorException('Failed to search colleges.');
+    }
+  }
+
   private async ensureLearnerInformationIndexes(): Promise<void> {
     await db.execute(
       sql.raw(`
