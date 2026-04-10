@@ -11,6 +11,9 @@ import {
   zuvyMentorSlotBooking,
   zuvyMentorSlotManagement,
   zuvyUserRolesAssigned,
+  zuvyBatchEnrollments,
+  zuvyBootcampType,
+  zuvyBootcamps,
 } from '../../../drizzle/schema';
 
 import { and, eq, lt, sql, desc } from 'drizzle-orm';
@@ -69,6 +72,42 @@ export class MentorSlotService {
     }
   }
 
+  private async validateMentorProfileComplete(userId: number) {
+    const [profile] = await db
+      .select({
+        bio: zuvyMentorSlotManagement.bio,
+        expertise: zuvyMentorSlotManagement.expertise,
+        pastExperiences: zuvyMentorSlotManagement.pastExperiences,
+      })
+      .from(zuvyMentorSlotManagement)
+      .where(eq(zuvyMentorSlotManagement.mentorUserId, BigInt(userId)))
+      .limit(1);
+
+    if (!profile) {
+      throw new NotFoundException('Mentor profile not found.');
+    }
+
+    if (!profile.bio || !profile.expertise || !profile.pastExperiences) {
+      throw new ForbiddenException(
+        'Complete your mentor profile (bio, skills, experiences) before creating slots.',
+      );
+    }
+
+    if (Array.isArray(profile.expertise) && profile.expertise.length === 0) {
+      throw new ForbiddenException('Add at least one skill in expertise.');
+    }
+
+    if (
+      Array.isArray(profile.pastExperiences) &&
+      profile.pastExperiences.length === 0
+    ) {
+      throw new ForbiddenException(
+        'Add past experiences before creating slots.',
+      );
+    }
+
+    return true;
+  }
   /* ==========================================================================
      UTILITY — 12 HOUR RULE ENFORCER
   ========================================================================== */
@@ -81,6 +120,117 @@ export class MentorSlotService {
     if (diffHours < 12) {
       throw new BadRequestException(
         'Booking must be made at least 12 hours in advance.',
+      );
+    }
+  }
+
+  /* ==========================================================================
+   QUOTA YEAR WINDOW (APRIL 15 → APRIL 14)
+========================================================================== */
+
+  private getQuotaWindow() {
+    const now = new Date();
+    const year = now.getUTCFullYear();
+
+    let quotaStart = new Date(Date.UTC(year, 3, 15)); // April 15
+    let quotaEnd = new Date(Date.UTC(year + 1, 3, 14, 23, 59, 59));
+
+    if (now < quotaStart) {
+      quotaStart = new Date(Date.UTC(year - 1, 3, 15));
+      quotaEnd = new Date(Date.UTC(year, 3, 14, 23, 59, 59));
+    }
+
+    return { quotaStart, quotaEnd };
+  }
+
+  /* ==========================================================================
+     VALIDATE LEARNER QUOTA + COOLDOWN
+  ========================================================================== */
+
+  private async validateLearnerBookingEligibility(studentUserId: bigint) {
+    const { quotaStart, quotaEnd } = this.getQuotaWindow();
+
+    /* ===============================
+       ANNUAL QUOTA CHECK
+    =============================== */
+
+    const [{ count }] = await db
+      .select({
+        count: sql<number>`COUNT(*)`,
+      })
+      .from(zuvyMentorSlotBooking)
+      .where(
+        and(
+          eq(zuvyMentorSlotBooking.studentUserId, studentUserId),
+          sql`${zuvyMentorSlotBooking.confirmedAt} >= ${quotaStart}`,
+          sql`${zuvyMentorSlotBooking.confirmedAt} <= ${quotaEnd}`,
+        ),
+      );
+
+    if (count >= 3) {
+      const resetYear = quotaEnd.getUTCFullYear();
+
+      throw new ForbiddenException(
+        `You have used all 3 sessions for this year. Your quota resets on April 15, ${resetYear}.`,
+      );
+    }
+
+    /* ===============================
+       COOLDOWN CHECK (21 DAYS)
+    =============================== */
+
+    const [lastBooking] = await db
+      .select({
+        confirmedAt: zuvyMentorSlotBooking.confirmedAt,
+      })
+      .from(zuvyMentorSlotBooking)
+      .where(eq(zuvyMentorSlotBooking.studentUserId, studentUserId))
+      .orderBy(desc(zuvyMentorSlotBooking.confirmedAt))
+      .limit(1);
+
+    if (lastBooking?.confirmedAt) {
+      const cooldownEnd = new Date(lastBooking.confirmedAt);
+      cooldownEnd.setDate(cooldownEnd.getDate() + 21);
+
+      if (new Date() < cooldownEnd) {
+        throw new ForbiddenException(
+          `You can book your next session from ${cooldownEnd.toDateString()}.`,
+        );
+      }
+    }
+  }
+
+  /* ==========================================================================
+     ENSURE MENTORSHIP IS ENABLED
+  ========================================================================== */
+  private async ensureMentorshipEnabled(studentUserId: bigint) {
+    const enrollments = await db
+      .select({
+        mentorshipEnabled: zuvyBootcampType.mentorshipEnabled,
+      })
+      .from(zuvyBatchEnrollments)
+      .innerJoin(
+        zuvyBootcampType,
+        eq(zuvyBatchEnrollments.bootcampId, zuvyBootcampType.bootcampId),
+      )
+      .where(
+        and(
+          eq(zuvyBatchEnrollments.userId, studentUserId),
+          eq(zuvyBatchEnrollments.status, 'active'),
+        ),
+      );
+
+    if (enrollments.length === 0) {
+      throw new ForbiddenException(
+        'You are not enrolled in a course with mentorship access.',
+      );
+    }
+
+    const hasMentorship = enrollments.some((e) => e.mentorshipEnabled === true);
+
+    if (!hasMentorship) {
+      throw new ForbiddenException(
+        'One-on-one mentorship is not available for your current programme.',
       );
     }
   }
@@ -115,6 +265,9 @@ export class MentorSlotService {
   ========================================================================== */
 
   async bookSlot(studentId: number, slotId: number) {
+    await this.ensureMentorshipEnabled(BigInt(studentId));
+    await this.validateLearnerBookingEligibility(BigInt(studentId));
+
     return db.transaction(async (trx) => {
       const result = await trx.execute(sql`
 SELECT
@@ -769,6 +922,7 @@ FOR UPDATE
 
   async createSlot(userId: number, dto: any) {
     await this.ensureUserIsMentor(userId);
+    await this.validateMentorProfileComplete(userId);
 
     const mentorProfile = await this.getMentorProfile(userId);
 
@@ -1038,15 +1192,70 @@ FOR UPDATE
     if (dto.bio !== undefined) updatePayload.bio = dto.bio;
     if (dto.expertise !== undefined) updatePayload.expertise = dto.expertise;
     if (dto.title !== undefined) updatePayload.title = dto.title;
+    if (dto.pastExperiences !== undefined)
+      updatePayload.pastExperiences = dto.pastExperiences;
+
+    if (dto.bootcampId !== undefined) {
+      const [bootcamp] = await db
+        .select()
+        .from(zuvyBootcamps)
+        .where(eq(zuvyBootcamps.id, dto.bootcampId))
+        .limit(1);
+
+      if (!bootcamp) {
+        throw new BadRequestException('Invalid bootcampId');
+      }
+
+      updatePayload.bootcampId = dto.bootcampId;
+    }
 
     // prevent empty update
     if (Object.keys(updatePayload).length === 0) {
       throw new BadRequestException('No fields provided for update');
     }
 
-    return db
+    await db
       .update(zuvyMentorSlotManagement)
-      .set(updatePayload)
+      .set({
+        ...updatePayload,
+        updatedAt: new Date(),
+      } as Partial<typeof zuvyMentorSlotManagement.$inferInsert>)
       .where(eq(zuvyMentorSlotManagement.mentorUserId, userIdBigInt));
+    return { message: ' Mentor profile updated successfully' };
+  }
+
+  async getMyMentorProfile(userId: number) {
+    const userIdBigInt = BigInt(userId);
+
+    const [profile] = await db
+      .select({
+        mentorProfileId: zuvyMentorSlotManagement.id,
+        mentorUserId: zuvyMentorSlotManagement.mentorUserId,
+        organizationId: zuvyMentorSlotManagement.organizationId,
+
+        mentorType: zuvyMentorSlotManagement.mentorType,
+        timezone: zuvyMentorSlotManagement.timezone,
+
+        title: zuvyMentorSlotManagement.title,
+        bio: zuvyMentorSlotManagement.bio,
+        expertise: zuvyMentorSlotManagement.expertise,
+        pastExperiences: zuvyMentorSlotManagement.pastExperiences,
+
+        status: zuvyMentorSlotManagement.status,
+        isVerified: zuvyMentorSlotManagement.isVerified,
+        acceptsNewMentees: zuvyMentorSlotManagement.acceptsNewMentees,
+
+        createdAt: zuvyMentorSlotManagement.createdAt,
+        updatedAt: zuvyMentorSlotManagement.updatedAt,
+      })
+      .from(zuvyMentorSlotManagement)
+      .where(eq(zuvyMentorSlotManagement.mentorUserId, userIdBigInt))
+      .limit(1);
+
+    if (!profile) {
+      throw new NotFoundException('Mentor profile not found');
+    }
+
+    return profile;
   }
 }

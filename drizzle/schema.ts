@@ -2464,6 +2464,7 @@ export const zuvyBootcampType = main.table('zuvy_bootcamp_type', {
   }),
   type: text('type').notNull(), // Type of bootcamp (Public, Private, etc.)
   isModuleLocked: boolean('is_module_locked').default(false),
+  mentorshipEnabled: boolean('mentorship_enabled').default(false),
   createdAt: timestamp('created_at', {
     withTimezone: true,
     mode: 'string',
@@ -2663,7 +2664,7 @@ export const zuvyCourseModules = main.table("zuvy_course_modules", {
   projectId: integer("project_id").references(() => zuvyCourseProjects.id),
   order: integer("order"),
   timeAlloted: bigint("time_alloted", { mode: "number" }),
-  version: varchar('version', { length: 10 }),
+  mentorshipEnabled: boolean('mentorship_enabled').default(false),
 })
 
 export const zuvyModuleData = relations(zuvyBootcamps, ({ one, many }) => ({
@@ -4579,6 +4580,10 @@ export const zuvyMentorSlotManagement = pgTable(
       .notNull()
       .references(() => zuvyOrganizations.id, { onDelete: 'cascade' }),
 
+    bootcampId: integer('bootcamp_id').references(() => zuvyBootcamps.id, {
+      onDelete: 'cascade',
+    }),
+
     mentorType: varchar('mentor_type', { length: 50 })
       .notNull()
       .default('instructor'),
@@ -4596,6 +4601,7 @@ export const zuvyMentorSlotManagement = pgTable(
     title: varchar('title', { length: 255 }),
     bio: text('bio'),
     expertise: jsonb('expertise'),
+    pastExperiences: jsonb('past_experiences'),
 
     status: varchar('status', { length: 50 }).default('active'),
     isVerified: boolean('is_verified').default(false),
