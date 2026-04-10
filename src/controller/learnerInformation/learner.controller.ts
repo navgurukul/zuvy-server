@@ -7,12 +7,14 @@ import {
   ParseIntPipe,
   Post,
   Put,
+  Query,
   UsePipes,
   ValidationPipe,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
   ApiBody,
+  ApiQuery,
   // ApiOkResponse,
   ApiOperation,
   ApiTags,
@@ -50,6 +52,21 @@ import {
 @ApiBearerAuth('JWT-auth')
 export class LearnerController {
   constructor(private readonly learnerService: LearnerService) {}
+
+  @Get('colleges-name')
+  @ApiOperation({ summary: 'Search colleges by name' })
+  @ApiQuery({
+    name: 'name',
+    required: true,
+    type: String,
+    description: 'College name search term',
+  })
+  async searchColleges(@Query('name') name: string): Promise<{
+    success: boolean;
+    data: Record<string, unknown>[];
+  }> {
+    return this.learnerService.searchColleges(name);
+  }
 
   @Get('learner-technical-skills')
   @ApiOperation({ summary: 'Get technical skills list' })
