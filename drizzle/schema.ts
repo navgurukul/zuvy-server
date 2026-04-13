@@ -4863,3 +4863,18 @@ export const zuvyNotifications = pgTable(
   },
 );
 
+// Zoom license pool (the 6 service accounts that host meetings)
+export const zuvyUserLicenses = main.table('zuvy_user_licenses', {
+  id: serial('id').primaryKey().notNull(),
+  zoomEmail: varchar('zoom_email', { length: 255 }).notNull(),
+  zoomUserId: varchar('zoom_user_id', { length: 128 }),
+  userName: varchar('user_name', { length: 255 }),
+  licenseType: integer('license_type').notNull().default(2),
+  status: varchar('status', { length: 30 }).notNull().default('active'),
+  createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).notNull().defaultNow(),
+}, (table) => {
+  return {
+    zoomUserLicensesPoolEmailUnique: uniqueIndex('zoom_user_licenses_email_pool_key').on(table.zoomEmail)
+  };
+});
