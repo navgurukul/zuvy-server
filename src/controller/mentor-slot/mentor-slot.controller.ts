@@ -155,12 +155,31 @@ export class MentorSlotController {
     );
   }
 
+  @Get(':bookingId/recordings')
+  @ApiOperation({
+    summary: 'Get YouTube recordings and session info for a mentor booking',
+  })
+  async getBookingRecordings(
+    @Req() req,
+    @Param('bookingId', ParseIntPipe) bookingId: number,
+  ) {
+    return this.mentorSlotService.getBookingRecordings(
+      Number(req.user[0].id),
+      bookingId,
+    );
+  }
+
   /* ==========================================================================  
       GET STUDENT BOOKINGS (for student) 
   ========================================================================== */
   @Get('student/my')
   async getStudentBookings(@Req() req) {
     return this.mentorSlotService.getStudentBookings(Number(req.user[0].id));
+  }
+
+  @Get('student/metrics')
+  async getStudentMetrics(@Req() req) {
+    return this.mentorSlotService.getStudentMetrics(Number(req.user[0].id));
   }
 
   /* ==========================================================================  

@@ -7,7 +7,16 @@ export class UpdateMentorProfileDto {
   @ApiProperty({ type: [String] })
   expertise: string[];
 
-  @ApiProperty({ type: 'array' })
+  @ApiProperty({
+    type: [Object],
+    example: [
+      {
+        company: 'Google',
+        role: 'Software Engineer',
+        duration: '2 years',
+      },
+    ],
+  })
   pastExperiences: any[];
 
   @ApiProperty()

@@ -20,13 +20,15 @@ const MAX_RETRIES = 5;
 
 type RecordingJob = {
   id: number;
-  session_id: number;
+  session_id?: number;
+  mentor_booking_id?: number;
   zoom_meeting_id: string;
   zoom_meeting_uuid?: string | null;
   zoom_recording_id?: string | null;
   status: string;
   retry_count: number;
   drive_link?: string | null;
+  table: 'session' | 'mentor';
 };
 
 @Injectable()
@@ -64,6 +66,13 @@ export class RecordingWorkerService implements OnModuleInit {
       auth: oAuth2Client,
     });
   }
+
+  private getTableName(job: RecordingJob): string {
+    return job.table === 'mentor'
+      ? 'zuvy_mentor_session_recordings'
+      : 'zuvy_session_recordings';
+  }
+
   /////////////helper function for logging job details/////////////
   private logJob(
     level: 'log' | 'warn' | 'error' | 'debug',
@@ -75,6 +84,8 @@ export class RecordingWorkerService implements OnModuleInit {
       msg: message,
       jobId: job.id,
       sessionId: job.session_id,
+      mentorBookingId: job.mentor_booking_id,
+      table: job.table,
       status: job.status,
       retry: job.retry_count,
       ...extra,
@@ -107,7 +118,8 @@ export class RecordingWorkerService implements OnModuleInit {
   // PICK ONE JOB (ROW-LOCKED, SAFE FOR MULTI-INSTANCE)
   // =====================================================
   private async pickJob(): Promise<RecordingJob | null> {
-    const result = await db.execute(sql`
+    // First try session recordings
+    let result = await db.execute(sql`
     UPDATE zuvy_session_recordings
     SET
       status = CASE
@@ -129,10 +141,44 @@ export class RecordingWorkerService implements OnModuleInit {
       FOR UPDATE SKIP LOCKED
       LIMIT 1
     )
-    RETURNING *
+    RETURNING *, 'session' as table
   `);
 
-    return (result.rows?.[0] as RecordingJob) ?? null;
+    if (result.rows?.[0]) {
+      return { ...result.rows[0], table: 'session' } as RecordingJob;
+    }
+
+    // Then try mentor recordings
+    result = await db.execute(sql`
+    UPDATE zuvy_mentor_session_recordings
+    SET
+      status = CASE
+        WHEN status IN ('DISCOVERED', 'FAILED') THEN 'PROCESSING_METADATA'
+        WHEN status = 'METADATA_READY' THEN 'PROCESSING_DOWNLOAD'
+        WHEN status = 'DOWNLOADING' THEN 'PROCESSING_UPLOAD'
+        ELSE status
+      END,
+      updated_at = NOW()
+    WHERE id = (
+      SELECT id
+      FROM zuvy_mentor_session_recordings
+      WHERE status IN ('DISCOVERED', 'FAILED', 'METADATA_READY', 'DOWNLOADING')
+        AND status NOT LIKE 'PROCESSING_%'
+        AND status != 'PERMANENT_FAILED'
+        AND retry_count < ${MAX_RETRIES}
+        AND (next_retry_at IS NULL OR next_retry_at <= NOW())
+      ORDER BY created_at ASC
+      FOR UPDATE SKIP LOCKED
+      LIMIT 1
+    )
+    RETURNING *, 'mentor' as table
+  `);
+
+    if (result.rows?.[0]) {
+      return { ...result.rows[0], table: 'mentor' } as RecordingJob;
+    }
+
+    return null;
   }
 
   // =====================================================
@@ -228,13 +274,23 @@ export class RecordingWorkerService implements OnModuleInit {
           `Recording not available yet for job ${job.id} (meeting likely not ended). Deferring without retry penalty.`,
         );
 
-        await db.execute(sql`
-        UPDATE zuvy_session_recordings
-        SET
-          status = 'DISCOVERED',
-          next_retry_at = NOW() + INTERVAL '10 minutes'
-        WHERE id = ${job.id}
-      `);
+        if (job.table === 'mentor') {
+          await db.execute(sql`
+            UPDATE zuvy_mentor_session_recordings
+            SET
+              status = 'DISCOVERED',
+              next_retry_at = NOW() + INTERVAL '10 minutes'
+            WHERE id = ${job.id}
+          `);
+        } else {
+          await db.execute(sql`
+            UPDATE zuvy_session_recordings
+            SET
+              status = 'DISCOVERED',
+              next_retry_at = NOW() + INTERVAL '10 minutes'
+            WHERE id = ${job.id}
+          `);
+        }
 
         return;
       }
@@ -261,14 +317,25 @@ export class RecordingWorkerService implements OnModuleInit {
           `Recording permanently failed for job ${job.id} after ${nextRetryCount} attempts`,
         );
 
-        await db.execute(sql`
-          UPDATE zuvy_session_recordings
-          SET
-            status = 'PERMANENT_FAILED',
-            retry_count = ${nextRetryCount},
-            last_error = 'Recording never became available on Zoom'
-          WHERE id = ${job.id}
-        `);
+        if (job.table === 'mentor') {
+          await db.execute(sql`
+            UPDATE zuvy_mentor_session_recordings
+            SET
+              status = 'PERMANENT_FAILED',
+              retry_count = ${nextRetryCount},
+              last_error = 'Recording never became available on Zoom'
+            WHERE id = ${job.id}
+          `);
+        } else {
+          await db.execute(sql`
+            UPDATE zuvy_session_recordings
+            SET
+              status = 'PERMANENT_FAILED',
+              retry_count = ${nextRetryCount},
+              last_error = 'Recording never became available on Zoom'
+            WHERE id = ${job.id}
+          `);
+        }
 
         return;
       }
@@ -278,14 +345,25 @@ export class RecordingWorkerService implements OnModuleInit {
 
       this.logJob('warn', job, 'Recording not ready yet; deferring');
 
-      await db.execute(sql`
-        UPDATE zuvy_session_recordings
-        SET
-          status = 'FAILED',
-          retry_count = retry_count + 1,
-          next_retry_at = ${nextRetry}
-        WHERE id = ${job.id}
-      `);
+      if (job.table === 'mentor') {
+        await db.execute(sql`
+          UPDATE zuvy_mentor_session_recordings
+          SET
+            status = 'FAILED',
+            retry_count = retry_count + 1,
+            next_retry_at = ${nextRetry}
+          WHERE id = ${job.id}
+        `);
+      } else {
+        await db.execute(sql`
+          UPDATE zuvy_session_recordings
+          SET
+            status = 'FAILED',
+            retry_count = retry_count + 1,
+            next_retry_at = ${nextRetry}
+          WHERE id = ${job.id}
+        `);
+      }
 
       return;
     }
@@ -295,28 +373,43 @@ export class RecordingWorkerService implements OnModuleInit {
       source: recResp.source,
     });
 
-    await db.execute(sql`
-    UPDATE zuvy_session_recordings
-    SET
-      zoom_recording_id = ${mp4.id},
-      status = 'METADATA_READY'
-    WHERE id = ${job.id}
-  `);
+    if (job.table === 'mentor') {
+      await db.execute(sql`
+        UPDATE zuvy_mentor_session_recordings
+        SET
+          zoom_recording_id = ${mp4.id},
+          status = 'METADATA_READY'
+        WHERE id = ${job.id}
+      `);
+    } else {
+      await db.execute(sql`
+        UPDATE zuvy_session_recordings
+        SET
+          zoom_recording_id = ${mp4.id},
+          status = 'METADATA_READY'
+        WHERE id = ${job.id}
+      `);
+    }
   }
 
   // =====================================================
   // STEP 2 — DOWNLOAD TO TEMP (NO ZoomService CHANGE)
   // =====================================================
+  private getRecordingFileName(job: any): string {
+    const prefix =
+      job.table === 'mentor'
+        ? `mentor-${job.mentor_booking_id}`
+        : `${job.session_id}`;
+    return `${prefix}-${job.zoom_recording_id}.mp4`;
+  }
+
   private async downloadRecording(job: any) {
     const tempDir = path.join(process.cwd(), 'temp-recordings');
     if (!fs.existsSync(tempDir)) {
       fs.mkdirSync(tempDir, { recursive: true });
     }
 
-    const finalPath = path.join(
-      tempDir,
-      `${job.session_id}-${job.zoom_recording_id}.mp4`,
-    );
+    const finalPath = path.join(tempDir, this.getRecordingFileName(job));
 
     const lockPath = `${finalPath}.lock`;
 
@@ -337,11 +430,19 @@ export class RecordingWorkerService implements OnModuleInit {
         );
       }
 
-      await db.execute(sql`
-      UPDATE zuvy_session_recordings
-      SET status = 'DOWNLOADING'
-      WHERE id = ${job.id}
-    `);
+      if (job.table === 'mentor') {
+        await db.execute(sql`
+          UPDATE zuvy_mentor_session_recordings
+          SET status = 'DOWNLOADING'
+          WHERE id = ${job.id}
+        `);
+      } else {
+        await db.execute(sql`
+          UPDATE zuvy_session_recordings
+          SET status = 'DOWNLOADING'
+          WHERE id = ${job.id}
+        `);
+      }
     } finally {
       try {
         fs.unlinkSync(lockPath);
@@ -426,7 +527,7 @@ export class RecordingWorkerService implements OnModuleInit {
     const filePath = path.join(
       process.cwd(),
       'temp-recordings',
-      `${job.session_id}-${job.zoom_recording_id}.mp4`,
+      this.getRecordingFileName(job),
     );
 
     if (!fs.existsSync(filePath)) {
@@ -440,7 +541,10 @@ export class RecordingWorkerService implements OnModuleInit {
         part: ['snippet', 'status'],
         requestBody: {
           snippet: {
-            title: `Session ${job.session_id}`,
+            title:
+              job.table === 'mentor'
+                ? `Mentor session ${job.mentor_booking_id}`
+                : `Session ${job.session_id}`,
             description: 'Automated session recording upload',
           },
           status: { privacyStatus: 'unlisted' },
@@ -458,13 +562,25 @@ export class RecordingWorkerService implements OnModuleInit {
     const videoId = res.data.id;
     const videoUrl = `https://www.youtube.com/watch?v=${videoId}`;
 
-    await db.execute(sql`
-      UPDATE zuvy_session_recordings
-      SET
-        status = 'COMPLETED',
-        drive_link = ${videoUrl}
-      WHERE id = ${job.id}
-    `);
+    if (job.table === 'mentor') {
+      await db.execute(sql`
+        UPDATE zuvy_mentor_session_recordings
+        SET
+          status = 'COMPLETED',
+          drive_file_id = ${videoId},
+          drive_link = ${videoUrl}
+        WHERE id = ${job.id}
+      `);
+    } else {
+      await db.execute(sql`
+        UPDATE zuvy_session_recordings
+        SET
+          status = 'COMPLETED',
+          drive_file_id = ${videoId},
+          drive_link = ${videoUrl}
+        WHERE id = ${job.id}
+      `);
+    }
 
     fs.unlinkSync(filePath); // cleanup
   }

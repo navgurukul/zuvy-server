@@ -389,3 +389,75 @@ ADD CONSTRAINT mentor_bootcamp_fk
 FOREIGN KEY (bootcamp_id)
 REFERENCES zuvy_bootcamps(id)
 ON DELETE CASCADE;
+
+ALTER TABLE zuvy_mentor_slot_booking
+ADD COLUMN IF NOT EXISTS is_zoom_meet BOOLEAN DEFAULT TRUE,
+ADD COLUMN IF NOT EXISTS zoom_start_url TEXT,
+ADD COLUMN IF NOT EXISTS zoom_password TEXT,
+ADD COLUMN IF NOT EXISTS zoom_meeting_id TEXT,
+ADD COLUMN IF NOT EXISTS zoom_meeting_uuid TEXT;
+
+CREATE TABLE IF NOT EXISTS zuvy_mentor_session_recordings (
+
+    id SERIAL PRIMARY KEY,
+
+    mentor_booking_id INTEGER NOT NULL
+        REFERENCES zuvy_mentor_slot_booking(id)
+        ON DELETE CASCADE,
+
+    zoom_meeting_id TEXT NOT NULL,
+
+    zoom_meeting_uuid TEXT DEFAULT NULL,
+
+    zoom_recording_id TEXT,
+
+    status VARCHAR(32) NOT NULL DEFAULT 'DISCOVERED',
+
+    retry_count INTEGER DEFAULT 0,
+
+    next_retry_at TIMESTAMPTZ,
+
+    last_error TEXT,
+
+    drive_file_id TEXT,
+
+    drive_link TEXT,
+
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_mentor_recording_booking
+ON zuvy_mentor_session_recordings (mentor_booking_id);
+
+CREATE INDEX IF NOT EXISTS idx_mentor_recording_status
+ON zuvy_mentor_session_recordings (status);
+
+SELECT column_name
+FROM information_schema.columns
+WHERE table_name = 'zuvy_mentor_slot_booking';
+
+SELECT *
+FROM zuvy_mentor_session_recordings
+LIMIT 5;
+
+-- Create the zuvy_student_booking_metrics table
+CREATE TABLE IF NOT EXISTS "zuvy_student_booking_metrics" (
+	"id" serial PRIMARY KEY NOT NULL,
+	"user_id" bigint NOT NULL,
+	"total_bookings" integer DEFAULT 0,
+	"quota_used" integer DEFAULT 0,
+	"last_booking_date" timestamp,
+	"quota_reset_date" timestamp NOT NULL,
+	"cooldown_end_date" timestamp,
+	"is_quota_exhausted" boolean DEFAULT false,
+	"created_at" timestamp DEFAULT now(),
+	"updated_at" timestamp DEFAULT now()
+);
+
+-- Add unique index on user_id
+CREATE UNIQUE INDEX IF NOT EXISTS "idx_student_metrics_user" ON "zuvy_student_booking_metrics"("user_id");
+
+-- Add foreign key constraint
+ALTER TABLE "zuvy_student_booking_metrics" ADD CONSTRAINT "zuvy_student_booking_metrics_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE cascade ON UPDATE no action;
