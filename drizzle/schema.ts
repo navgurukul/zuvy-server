@@ -4462,6 +4462,48 @@ export const zuvySessionRecordings = main.table(
   })
 );
 
+export const zuvyMentorSessionRecordings = main.table(
+  'zuvy_mentor_session_recordings',
+  {
+    id: serial('id').primaryKey().notNull(),
+
+    mentorBookingId: integer('mentor_booking_id')
+      .notNull()
+      .references(() => zuvyMentorSlotBooking.id, { onDelete: 'cascade' }),
+
+    zoomMeetingId: text('zoom_meeting_id').notNull(),
+    zoomMeetingUuid: text('zoom_meeting_uuid').default(null),
+    zoomRecordingId: text('zoom_recording_id'),
+
+    status: varchar('status', { length: 32 })
+      .notNull()
+      .default('DISCOVERED'),
+
+    retryCount: integer('retry_count').default(0),
+    nextRetryAt: timestamp('next_retry_at', {
+      withTimezone: true,
+      mode: 'string',
+    }),
+    lastError: text('last_error'),
+
+    driveFileId: text('drive_file_id'),
+    driveLink: text('drive_link'),
+
+    createdAt: timestamp('created_at', {
+      withTimezone: true,
+      mode: 'string',
+    }).defaultNow(),
+    updatedAt: timestamp('updated_at', {
+      withTimezone: true,
+      mode: 'string',
+    }).defaultNow(),
+  },
+  (table) => ({
+    mentorBookingIdx: index('idx_mentor_recording_booking').on(table.mentorBookingId),
+    statusIdx: index('idx_mentor_recording_status').on(table.status),
+  }),
+);
+
 export const zuvyZoomWebhookEvents = main.table(
   'zuvy_zoom_webhook_events',
   {
@@ -4721,6 +4763,13 @@ export const zuvyMentorSlotBooking = pgTable(
     /*Google Calendar Integration  */
     googleEventId: varchar('google_event_id', { length: 255 }),
     meetingLink: varchar('meeting_link', { length: 500 }),
+
+    /* Zoom Integration */
+    isZoomMeet: boolean('is_zoom_meet').default(true),
+    zoomStartUrl: text('zoom_start_url'),
+    zoomPassword: text('zoom_password'),
+    zoomMeetingId: text('zoom_meeting_id'),
+    zoomMeetingUuid: text('zoom_meeting_uuid'),
 
 
     /* Reschedule workflow */

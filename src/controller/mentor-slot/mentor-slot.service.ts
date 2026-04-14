@@ -14,6 +14,8 @@ import {
   zuvyBatchEnrollments,
   zuvyBootcampType,
   zuvyBootcamps,
+  zuvyMentorSessionRecordings,
+  users,
 } from '../../../drizzle/schema';
 
 import { and, eq, lt, sql, desc } from 'drizzle-orm';
@@ -21,12 +23,14 @@ import { CreateSlotDto } from './dto/create-slot.dto';
 import { GoogleCalendarService } from 'src/integrations/google/google-calendar.service';
 import { NotificationService } from '../notification/notification.service';
 import { NotificationType } from '../notification/notification.types';
+import { ZoomService } from 'src/services/zoom/zoom.service';
 
 @Injectable()
 export class MentorSlotService {
   constructor(
     private readonly googleCalendarService: GoogleCalendarService,
     private readonly notificationService: NotificationService,
+    private readonly zoomService: ZoomService,
   ) {}
 
   private async getMentorProfile(userId: number) {
@@ -72,6 +76,48 @@ export class MentorSlotService {
     }
   }
 
+  private async ensureMentorZoomVerified(userId: number) {
+    const mentorProfile = await this.getMentorProfile(userId);
+    if (mentorProfile?.isVerified) {
+      return true;
+    }
+
+    const [userRow] = await db
+      .select({ email: users.email })
+      .from(users)
+      .where(eq(users.id, BigInt(userId)))
+      .limit(1);
+
+    if (!userRow) {
+      throw new NotFoundException('Mentor user not found');
+    }
+
+    const zoomResponse = await this.zoomService.getUser(userRow.email);
+    if (!zoomResponse.success) {
+      throw new BadRequestException(
+        'Mentor Zoom account is not available or not licensed',
+      );
+    }
+
+    const userType = zoomResponse.data.type;
+    const userStatus = zoomResponse.data.status;
+    if (userType !== 2 || userStatus !== 'active') {
+      throw new BadRequestException(
+        'Mentor Zoom account must be an active licensed Zoom user',
+      );
+    }
+
+    await db
+      .update(zuvyMentorSlotManagement)
+      .set({
+        isVerified: true,
+        updatedAt: new Date(),
+      } as Partial<typeof zuvyMentorSlotManagement.$inferInsert>)
+      .where(eq(zuvyMentorSlotManagement.mentorUserId, BigInt(userId)));
+
+    return true;
+  }
+
   private async validateMentorProfileComplete(userId: number) {
     const [profile] = await db
       .select({
@@ -89,7 +135,7 @@ export class MentorSlotService {
 
     if (!profile.bio || !profile.expertise || !profile.pastExperiences) {
       throw new ForbiddenException(
-        'Complete your mentor profile (bio, skills, experiences) before creating slots.',
+        'Complete your mentor profile (bio, expertise, past experiences) before creating slots.',
       );
     }
 
@@ -426,63 +472,99 @@ FOR UPDATE
 
       const refreshToken = mentorProfile.googleRefreshToken;
 
-      // if (!refreshToken) {
-      //   throw new BadRequestException(
-      //     'Mentor has not connected Google Calendar',
-      //   );
-      // }
+      const slotStartDateTime = new Date(slot.slotStartDateTime);
+      const slotEndDateTime = new Date(slot.slotEndDateTime);
 
-      let meeting: { meetLink?: string; eventId?: string } = {};
+      let meeting: {
+        joinUrl?: string;
+        startUrl?: string;
+        password?: string;
+        meetingId?: string;
+        uuid?: string;
+      } = {};
 
-      if (refreshToken) {
-        /* Check mentor Google Calendar conflicts */
+      /* Create Zoom Meeting */
+      try {
+        const zoomMeetingData = {
+          topic: `Mentorship Session: ${mentorEmail} & ${studentEmail}`,
+          type: 2, // Scheduled meeting
+          start_time: slotStartDateTime.toISOString(),
+          duration: slot.durationMinutes,
+          timezone: 'UTC', // Adjust as needed
+          password: Math.random().toString(36).substring(2, 8), // Generate random password
+          agenda: 'One-on-one mentorship session',
+          settings: {
+            host_video: true,
+            participant_video: true,
+            join_before_host: false,
+            mute_upon_entry: true,
+            watermark: false,
+            use_pmi: false,
+            approval_type: 0,
+            audio: 'both',
+            auto_recording: 'cloud',
+            waiting_room: false,
+          },
+        };
 
-        const hasConflict =
-          await this.googleCalendarService.checkCalendarConflict(
-            slot.slotStartDateTime,
-            slot.slotEndDateTime,
-            refreshToken,
-          );
+        const zoomResponse = await this.zoomService.createMeetingForUser(
+          mentorEmail,
+          zoomMeetingData,
+        );
 
-        if (hasConflict) {
-          throw new BadRequestException(
-            'Mentor already has a meeting scheduled during this time.',
+        if (!zoomResponse.success) {
+          throw new Error(
+            `Failed to create Zoom meeting: ${zoomResponse.error}`,
           );
         }
 
-        /* Create Google Meet */
-        try {
-          meeting = await this.googleCalendarService.createMeeting(
-            slot.slotStartDateTime,
-            slot.slotEndDateTime,
-            mentorEmail,
-            studentEmail,
-            refreshToken,
-          );
-        } catch (error) {
-          console.error(
-            'Google Meet creation failed:',
-            error.response?.data || error.message,
-          );
+        // Fetch UUID explicitly
+        const meetingDetails = await this.zoomService.getMeeting(
+          zoomResponse.data.id.toString(),
+        );
 
-          throw new BadRequestException(
-            'Failed to create Google Meet. Please reconnect Google account.',
-          );
+        if (!meetingDetails.success || !meetingDetails.data?.uuid) {
+          throw new Error('Failed to fetch Zoom meeting UUID');
         }
+
+        meeting = {
+          joinUrl: zoomResponse.data.join_url,
+          startUrl: zoomResponse.data.start_url,
+          password: zoomResponse.data.password,
+          meetingId: zoomResponse.data.id.toString(),
+          uuid: meetingDetails.data.uuid,
+        };
+      } catch (error) {
+        console.error('Zoom meeting creation failed:', error.message);
+        throw new BadRequestException(
+          'Failed to create Zoom meeting. Please check Zoom integration.',
+        );
       }
       /* Save meeting info */
 
       await trx
         .update(zuvyMentorSlotBooking)
         .set({
-          meetingLink: meeting?.meetLink ?? null,
-          googleEventId: meeting?.eventId ?? null,
+          meetingLink: meeting?.joinUrl ?? null,
+          isZoomMeet: true,
+          zoomStartUrl: meeting?.startUrl ?? null,
+          zoomPassword: meeting?.password ?? null,
+          zoomMeetingId: meeting?.meetingId ?? null,
+          zoomMeetingUuid: meeting?.uuid ?? null,
         } as Partial<typeof zuvyMentorSlotBooking.$inferInsert>)
         .where(eq(zuvyMentorSlotBooking.id, createdBooking.id));
 
+      // Enqueue recording job
+      await this.enqueueMentorRecordingJob({
+        id: createdBooking.id,
+        zoomMeetingId: meeting?.meetingId ?? null,
+        zoomMeetingUuid: meeting?.uuid ?? null,
+        isZoomMeet: true,
+      });
+
       return {
         ...createdBooking,
-        meetingLink: meeting.meetLink,
+        meetingLink: meeting.joinUrl,
       };
     });
   }
@@ -923,6 +1005,7 @@ FOR UPDATE
   async createSlot(userId: number, dto: any) {
     await this.ensureUserIsMentor(userId);
     await this.validateMentorProfileComplete(userId);
+    await this.ensureMentorZoomVerified(userId);
 
     const mentorProfile = await this.getMentorProfile(userId);
 
@@ -1257,5 +1340,36 @@ FOR UPDATE
     }
 
     return profile;
+  }
+
+  private async enqueueMentorRecordingJob(booking: {
+    id: number;
+    zoomMeetingId: string | null;
+    zoomMeetingUuid?: string | null;
+    isZoomMeet: boolean;
+  }) {
+    if (!booking.isZoomMeet || !booking.zoomMeetingId) return;
+
+    try {
+      const recordingData = {
+        mentorBookingId: booking.id,
+        zoomMeetingId: booking.zoomMeetingId,
+        zoomMeetingUuid: booking.zoomMeetingUuid ?? null,
+        status: 'DISCOVERED',
+      } as const;
+
+      await db
+        .insert(zuvyMentorSessionRecordings)
+        .values(recordingData)
+        .onConflictDoNothing();
+
+      console.log(
+        `Recording job enqueued for mentor booking ${booking.id}, meetingId: ${booking.zoomMeetingId}`,
+      );
+    } catch (error) {
+      console.error(
+        `Failed to enqueue recording job for mentor booking ${booking.id}: ${error.message}`,
+      );
+    }
   }
 }

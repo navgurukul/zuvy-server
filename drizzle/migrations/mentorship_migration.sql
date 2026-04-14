@@ -389,3 +389,55 @@ ADD CONSTRAINT mentor_bootcamp_fk
 FOREIGN KEY (bootcamp_id)
 REFERENCES zuvy_bootcamps(id)
 ON DELETE CASCADE;
+
+ALTER TABLE zuvy_mentor_slot_booking
+ADD COLUMN IF NOT EXISTS is_zoom_meet BOOLEAN DEFAULT TRUE,
+ADD COLUMN IF NOT EXISTS zoom_start_url TEXT,
+ADD COLUMN IF NOT EXISTS zoom_password TEXT,
+ADD COLUMN IF NOT EXISTS zoom_meeting_id TEXT,
+ADD COLUMN IF NOT EXISTS zoom_meeting_uuid TEXT;
+
+CREATE TABLE IF NOT EXISTS zuvy_mentor_session_recordings (
+
+    id SERIAL PRIMARY KEY,
+
+    mentor_booking_id INTEGER NOT NULL
+        REFERENCES zuvy_mentor_slot_booking(id)
+        ON DELETE CASCADE,
+
+    zoom_meeting_id TEXT NOT NULL,
+
+    zoom_meeting_uuid TEXT DEFAULT NULL,
+
+    zoom_recording_id TEXT,
+
+    status VARCHAR(32) NOT NULL DEFAULT 'DISCOVERED',
+
+    retry_count INTEGER DEFAULT 0,
+
+    next_retry_at TIMESTAMPTZ,
+
+    last_error TEXT,
+
+    drive_file_id TEXT,
+
+    drive_link TEXT,
+
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_mentor_recording_booking
+ON zuvy_mentor_session_recordings (mentor_booking_id);
+
+CREATE INDEX IF NOT EXISTS idx_mentor_recording_status
+ON zuvy_mentor_session_recordings (status);
+
+SELECT column_name
+FROM information_schema.columns
+WHERE table_name = 'zuvy_mentor_slot_booking';
+
+SELECT *
+FROM zuvy_mentor_session_recordings
+LIMIT 5;
