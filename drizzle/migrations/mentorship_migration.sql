@@ -441,3 +441,23 @@ WHERE table_name = 'zuvy_mentor_slot_booking';
 SELECT *
 FROM zuvy_mentor_session_recordings
 LIMIT 5;
+
+-- Create the zuvy_student_booking_metrics table
+CREATE TABLE IF NOT EXISTS "zuvy_student_booking_metrics" (
+	"id" serial PRIMARY KEY NOT NULL,
+	"user_id" bigint NOT NULL,
+	"total_bookings" integer DEFAULT 0,
+	"quota_used" integer DEFAULT 0,
+	"last_booking_date" timestamp,
+	"quota_reset_date" timestamp NOT NULL,
+	"cooldown_end_date" timestamp,
+	"is_quota_exhausted" boolean DEFAULT false,
+	"created_at" timestamp DEFAULT now(),
+	"updated_at" timestamp DEFAULT now()
+);
+
+-- Add unique index on user_id
+CREATE UNIQUE INDEX IF NOT EXISTS "idx_student_metrics_user" ON "zuvy_student_booking_metrics"("user_id");
+
+-- Add foreign key constraint
+ALTER TABLE "zuvy_student_booking_metrics" ADD CONSTRAINT "zuvy_student_booking_metrics_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE cascade ON UPDATE no action;

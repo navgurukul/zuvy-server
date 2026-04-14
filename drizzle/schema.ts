@@ -4853,6 +4853,25 @@ export const zuvyMentorSlotBookingRelations = relations(
   }),
 );
 
+export const zuvyStudentBookingMetrics = pgTable(
+  'zuvy_student_booking_metrics',
+  {
+    id: serial('id').primaryKey(),
+    userId: bigserial('user_id', { mode: 'bigint' }).notNull().references(() => users.id),
+    totalBookings: integer('total_bookings').default(0),
+    quotaUsed: integer('quota_used').default(0), // Bookings in current quota window
+    lastBookingDate: timestamp('last_booking_date'),
+    quotaResetDate: timestamp('quota_reset_date').notNull(), // Next reset (e.g., April 15)
+    cooldownEndDate: timestamp('cooldown_end_date'), // 21 days after last booking
+    isQuotaExhausted: boolean('is_quota_exhausted').default(false),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
+  },
+  (table) => ({
+    userIdx: uniqueIndex('idx_student_metrics_user').on(table.userId),
+  }),
+);
+
 export const zuvyNotifications = pgTable(
   'zuvy_notifications',
   {
@@ -4879,3 +4898,9 @@ export const zuvyNotifications = pgTable(
   },
 );
 
+export const zuvyStudentBookingMetricsRelations = relations(zuvyStudentBookingMetrics, ({ one }) => ({
+  user: one(users, {
+    fields: [zuvyStudentBookingMetrics.userId],
+    references: [users.id],
+  }),
+}));
