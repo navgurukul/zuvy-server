@@ -31,9 +31,8 @@ export class MentorPublicService {
 
     const filters = [];
 
-    if (role && role !== 'all') {
-      filters.push(eq(zuvyUserRoles.name, role));
-    }
+    // Always filter for instructors only
+    filters.push(eq(zuvyUserRoles.name, 'instructor'));
 
     if (expertise && expertise !== 'all') {
       filters.push(
