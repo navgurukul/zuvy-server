@@ -26,6 +26,7 @@ import { GoogleCalendarService } from 'src/integrations/google/google-calendar.s
 import { NotificationService } from '../notification/notification.service';
 import { NotificationType } from '../notification/notification.types';
 import { ZoomService } from 'src/services/zoom/zoom.service';
+import { NotificationEmailService } from 'src/notification/email/email.service';
 
 @Injectable()
 export class MentorSlotService {
@@ -33,6 +34,7 @@ export class MentorSlotService {
     private readonly googleCalendarService: GoogleCalendarService,
     private readonly notificationService: NotificationService,
     private readonly zoomService: ZoomService,
+    private readonly emailService: NotificationEmailService,
   ) {}
 
   private async getMentorProfile(userId: number) {
@@ -636,12 +638,86 @@ FOR UPDATE
         .where(eq(zuvyStudentBookingMetrics.userId, BigInt(studentId)))
         .limit(1);
 
-      return {
+      const bookingResponse = {
         ...createdBooking,
         meetingLink: meeting.joinUrl,
         remainingCredits: updatedMetrics ? 3 - updatedMetrics.quotaUsed : 2,
         nextEligible: updatedMetrics?.cooldownEndDate,
       };
+
+      // Send notification email to team@zuvy after successful booking
+      const slotDateOptions: Intl.DateTimeFormatOptions = {
+        timeZone: 'Asia/Kolkata',
+        day: 'numeric',
+        month: 'short',
+        year: 'numeric',
+      };
+      const slotTimeOptions: Intl.DateTimeFormatOptions = {
+        timeZone: 'Asia/Kolkata',
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true,
+      };
+      const slotDate =
+        new Date(slot.slotStartDateTime).toLocaleDateString(
+          'en-IN',
+          slotDateOptions,
+        ) +
+        ', ' +
+        new Date(slot.slotStartDateTime).toLocaleTimeString(
+          'en-IN',
+          slotTimeOptions,
+        ) +
+        ' - ' +
+        new Date(slot.slotEndDateTime).toLocaleTimeString(
+          'en-IN',
+          slotTimeOptions,
+        );
+
+      this.emailService
+        .sendEmail(
+          'team@zuvy.org',
+          '📅 New Mentorship Session Booked',
+          `<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #f4f4f4; padding: 24px; border-radius: 8px;">
+            <div style="background: #ffffff; padding: 16px 24px; border-radius: 6px 6px 0 0; border-bottom: 3px solid #4ade80;">
+              <img src="https://dev.app.zuvy.org/_next/image?url=%2Fzuvy-logo-horizontal.png&w=256&q=75" alt="Zuvy" style="height: 40px; display: block;" />
+            </div>
+            <div style="background: #ffffff; padding: 28px 24px; border-radius: 0 0 6px 6px; border: 1px solid #e5e7eb;">
+              <h3 style="color: #1a1a2e; margin: 0 0 6px;">New Session Booked</h3>
+              <p style="color: #6B7280; margin: 0 0 24px; font-size: 14px;">A mentorship session has been confirmed. Here are the details:</p>
+              <table style="width: 100%; border-collapse: collapse;">
+                <tr style="border-bottom: 1px solid #f3f4f6;">
+                  <td style="padding: 12px 8px; color: #6B7280; font-size: 14px; width: 130px;">Student</td>
+                  <td style="padding: 12px 8px; color: #1a1a2e; font-weight: 600; font-size: 14px;">{{studentEmail}}</td>
+                </tr>
+                <tr style="border-bottom: 1px solid #f3f4f6;">
+                  <td style="padding: 12px 8px; color: #6B7280; font-size: 14px;">Mentor</td>
+                  <td style="padding: 12px 8px; color: #1a1a2e; font-weight: 600; font-size: 14px;">{{mentorEmail}}</td>
+                </tr>
+                <tr style="border-bottom: 1px solid #f3f4f6;">
+                  <td style="padding: 12px 8px; color: #6B7280; font-size: 14px;">Session Time</td>
+                  <td style="padding: 12px 8px; color: #1a1a2e; font-weight: 600; font-size: 14px;">{{slotDate}}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 12px 8px; color: #6B7280; font-size: 14px;">Meeting Link</td>
+                  <td style="padding: 12px 8px;">
+                    <a href="{{meetingLink}}" style="background: #4ade80; color: #1a1a2e; padding: 8px 18px; border-radius: 4px; text-decoration: none; font-size: 14px; font-weight: 700;">Join Zoom Meeting</a>
+                  </td>
+                </tr>
+              </table>
+            </div>
+            <p style="text-align: center; color: #9CA3AF; font-size: 12px; margin-top: 16px;">© Zuvy by NavGurukul</p>
+          </div>`,
+          {
+            studentEmail,
+            mentorEmail,
+            slotDate,
+            meetingLink: meeting.joinUrl ?? 'N/A',
+          },
+        )
+        .catch((err) => console.error(`team email failed: ${err.message}`));
+
+      return bookingResponse;
     });
   }
 
