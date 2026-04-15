@@ -646,23 +646,41 @@ FOR UPDATE
       };
 
       // Send notification email to team@zuvy after successful booking
-      const slotDate = new Date(slot.slotStartDateTime).toLocaleString(
-        'en-IN',
-        {
-          timeZone: 'Asia/Kolkata',
-          dateStyle: 'medium',
-          timeStyle: 'short',
-        },
-      );
+      const slotDateOptions: Intl.DateTimeFormatOptions = {
+        timeZone: 'Asia/Kolkata',
+        day: 'numeric',
+        month: 'short',
+        year: 'numeric',
+      };
+      const slotTimeOptions: Intl.DateTimeFormatOptions = {
+        timeZone: 'Asia/Kolkata',
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true,
+      };
+      const slotDate =
+        new Date(slot.slotStartDateTime).toLocaleDateString(
+          'en-IN',
+          slotDateOptions,
+        ) +
+        ', ' +
+        new Date(slot.slotStartDateTime).toLocaleTimeString(
+          'en-IN',
+          slotTimeOptions,
+        ) +
+        ' - ' +
+        new Date(slot.slotEndDateTime).toLocaleTimeString(
+          'en-IN',
+          slotTimeOptions,
+        );
 
       this.emailService
         .sendEmail(
           'team@zuvy.org',
           '📅 New Mentorship Session Booked',
           `<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #f4f4f4; padding: 24px; border-radius: 8px;">
-            <div style="background: #1a1a2e; padding: 16px 24px; border-radius: 6px 6px 0 0; display: flex; align-items: center;">
-              <span style="color: #4ade80; font-size: 22px; font-weight: 800; letter-spacing: 1px;">zuvy</span>
-              <span style="color: #ffffff; font-size: 15px; margin-left: 12px; opacity: 0.7;">Mentorship</span>
+            <div style="background: #ffffff; padding: 16px 24px; border-radius: 6px 6px 0 0; border-bottom: 3px solid #4ade80;">
+              <img src="https://dev.app.zuvy.org/_next/image?url=%2Fzuvy-logo-horizontal.png&w=256&q=75" alt="Zuvy" style="height: 40px; display: block;" />
             </div>
             <div style="background: #ffffff; padding: 28px 24px; border-radius: 0 0 6px 6px; border: 1px solid #e5e7eb;">
               <h3 style="color: #1a1a2e; margin: 0 0 6px;">New Session Booked</h3>
