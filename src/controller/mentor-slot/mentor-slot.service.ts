@@ -733,6 +733,76 @@ FOR UPDATE
         );
       }
 
+      const { quotaStart, quotaEnd } = this.getQuotaWindow();
+
+      const [{ count: totalBookings }] = await trx
+        .select({ count: sql<number>`COUNT(*)` })
+        .from(zuvyMentorSlotBooking)
+        .where(
+          and(
+            eq(zuvyMentorSlotBooking.studentUserId, booking.studentUserId),
+            sql`${zuvyMentorSlotBooking.status} != 'cancelled'`,
+          ),
+        );
+
+      if (Number(totalBookings) === 0) {
+        await trx
+          .delete(zuvyStudentBookingMetrics)
+          .where(eq(zuvyStudentBookingMetrics.userId, booking.studentUserId));
+      } else {
+        const [{ count: quotaUsed }] = await trx
+          .select({ count: sql<number>`COUNT(*)` })
+          .from(zuvyMentorSlotBooking)
+          .where(
+            and(
+              eq(zuvyMentorSlotBooking.studentUserId, booking.studentUserId),
+              sql`${zuvyMentorSlotBooking.status} != 'cancelled'`,
+              sql`${zuvyMentorSlotBooking.confirmedAt} >= ${quotaStart}`,
+              sql`${zuvyMentorSlotBooking.confirmedAt} <= ${quotaEnd}`,
+            ),
+          );
+
+        const [lastBooking] = await trx
+          .select({ confirmedAt: zuvyMentorSlotBooking.confirmedAt })
+          .from(zuvyMentorSlotBooking)
+          .where(
+            and(
+              eq(zuvyMentorSlotBooking.studentUserId, booking.studentUserId),
+              sql`${zuvyMentorSlotBooking.status} != 'cancelled'`,
+            ),
+          )
+          .orderBy(sql`${zuvyMentorSlotBooking.confirmedAt} DESC`)
+          .limit(1);
+
+        const lastBookingDate = lastBooking?.confirmedAt;
+        const cooldownEndDate = lastBookingDate
+          ? new Date(lastBookingDate.getTime() + 21 * 24 * 60 * 60 * 1000)
+          : null;
+
+        await trx
+          .insert(zuvyStudentBookingMetrics)
+          .values({
+            userId: booking.studentUserId,
+            totalBookings: Number(totalBookings),
+            quotaUsed: Number(quotaUsed),
+            lastBookingDate,
+            cooldownEndDate,
+            quotaResetDate: this.getQuotaResetDate(),
+            isQuotaExhausted: Number(quotaUsed) >= 3,
+          } as typeof zuvyStudentBookingMetrics.$inferInsert)
+          .onConflictDoUpdate({
+            target: zuvyStudentBookingMetrics.userId,
+            set: {
+              totalBookings: Number(totalBookings),
+              quotaUsed: Number(quotaUsed),
+              lastBookingDate,
+              cooldownEndDate,
+              isQuotaExhausted: Number(quotaUsed) >= 3,
+              updatedAt: new Date(),
+            } as Partial<typeof zuvyStudentBookingMetrics.$inferInsert>,
+          });
+      }
+
       return {
         message: 'Booking cancelled successfully.',
       };
