@@ -31,7 +31,8 @@
     "migration": "npm run migration:generate && npm run migration:push",
     "format:check": "prettier --check .",
     "prepare": "husky",
-    "lint-staged": "lint-staged"
+    "lint-staged": "lint-staged",
+    "seed:licenses": "ts-node ./src/services/zoom/seed-zuvy-user-licenses.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.812.0",

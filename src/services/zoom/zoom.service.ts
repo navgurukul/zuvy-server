@@ -6,8 +6,9 @@ import {
   AttendanceStatus,
   zuvyBatches,
   users,
+  zuvyUserLicenses,
 } from '../../../drizzle/schema';
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 
 export interface ZoomMeetingRequest {
   topic: string;

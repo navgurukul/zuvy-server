@@ -4864,26 +4864,18 @@ export const zuvyNotifications = pgTable(
   },
 );
 
-export const licenses = main.table('licenses', {
+// Zoom license pool (the 6 service accounts that host meetings)
+export const zuvyUserLicenses = main.table('zuvy_user_licenses', {
   id: serial('id').primaryKey().notNull(),
-  zoomId: varchar('zoom_id', { length: 255 }).unique().notNull(),
-  name: varchar('name', { length: 255 }).notNull(),
-  status: varchar('status', { length: 20 }).default('active').notNull(),
+  zoomEmail: varchar('zoom_email', { length: 255 }).notNull(),
+  zoomUserId: varchar('zoom_user_id', { length: 128 }),
+  userName: varchar('user_name', { length: 255 }),
+  licenseType: integer('license_type').notNull().default(2),
+  status: varchar('status', { length: 30 }).notNull().default('active'),
+  createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).notNull().defaultNow(),
+}, (table) => {
+  return {
+    zoomUserLicensesPoolEmailUnique: uniqueIndex('zoom_user_licenses_email_pool_key').on(table.zoomEmail)
+  };
 });
-
-export const licenseAssignments = main.table('license_assignments', {
-  id: bigserial('id', { mode: 'bigint' }).primaryKey().notNull(),
-  licenseId: integer('license_id')
-    .references(() => licenses.id)
-    .notNull(),
-  instructorId: bigint('instructor_id', { mode: 'number' })
-    .references(() => users.id)
-    .notNull(),
-  sessionId: integer('session_id')
-    .references(() => zuvySessions.id)
-    .notNull(),
-  startTime: timestamp('start_time', { withTimezone: true }).notNull(),
-  endTime: timestamp('end_time', { withTimezone: true }).notNull(),
-});
-
-
