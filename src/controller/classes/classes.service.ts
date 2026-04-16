@@ -46,6 +46,166 @@ export class ClassesService {
     private readonly zoomLicenseService: ZoomLicenseService,
   ) {}
 
+  private async isInstructorFreeForTimeRange(
+    email: string,
+    startTime: Date,
+    endTime: Date,
+  ): Promise<boolean> {
+    const overlapping = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(licenseAssignments)
+      .innerJoin(users, eq(licenseAssignments.instructorId, users.id))
+      .where(
+        and(
+          eq(users.email, email),
+          sql`${licenseAssignments.startTime} < ${endTime}`,
+          sql`${licenseAssignments.endTime} > ${startTime}`,
+        ),
+      );
+
+    return Number(overlapping[0]?.count || 0) === 0;
+  }
+
+  private buildZoomScopeError(
+    action: 'list' | 'transfer',
+    sourceEmail?: string,
+    targetEmail?: string,
+  ) {
+    if (action === 'list') {
+      return 'Cannot inspect currently licensed Zoom users because the configured Zoom access token is missing the required admin read scope (user:read:list_users:admin). Please reconnect Zoom with admin permissions or update the OAuth app scopes.';
+    }
+
+    return `Cannot transfer the Zoom license from ${sourceEmail} to ${targetEmail} because the configured Zoom access token is missing the required admin scopes (user:update:user and user:update:user:admin). Please reconnect Zoom with admin permissions or update the OAuth app scopes.`;
+  }
+
+  private async findAvailableLicensedDonor(
+    instructorEmail: string,
+    startTime: Date,
+    endTime: Date,
+  ): Promise<string | null> {
+    const licensedUsers = await this.zoomService.listAuthorizedUsers({
+      status: 'active',
+      hostType: 'licensed',
+      page_size: 300,
+    });
+
+    if (!licensedUsers.success) {
+      if (
+        /does not contain scopes/i.test(licensedUsers.error || '') &&
+        /user:read:list_users:admin/i.test(licensedUsers.error || '')
+      ) {
+        throw new Error(this.buildZoomScopeError('list'));
+      }
+
+      throw new Error(
+        `Failed to inspect Zoom licensed users: ${licensedUsers.error || 'Unknown Zoom error'}`,
+      );
+    }
+
+    const preferredTeamEmail = process.env.TEAM_EMAIL || '';
+    const donors = (licensedUsers.data?.users || [])
+      .filter((user) => user.email !== instructorEmail)
+      .sort((a, b) => {
+        if (a.email === preferredTeamEmail) return -1;
+        if (b.email === preferredTeamEmail) return 1;
+        return 0;
+      });
+
+    for (const donor of donors) {
+      const donorIsFree = await this.isInstructorFreeForTimeRange(
+        donor.email,
+        startTime,
+        endTime,
+      );
+
+      if (donorIsFree) {
+        return donor.email;
+      }
+    }
+
+    return null;
+  }
+
+  private async ensureInstructorHasZoomLicenseForSession(
+    instructorEmail: string,
+    startTime: Date,
+    endTime: Date,
+  ) {
+    let licenseResult = await this.zoomService.ensureLicensedUser(
+      instructorEmail,
+      '',
+      '',
+    );
+
+    if (licenseResult.success && licenseResult.licensed) {
+      return;
+    }
+
+    const needsSeatTransfer =
+      licenseResult.step === 'license' ||
+      /license/i.test(licenseResult.error || '') ||
+      /maximum number of .* paying users/i.test(licenseResult.error || '');
+
+    if (needsSeatTransfer) {
+      const donorEmail = await this.findAvailableLicensedDonor(
+        instructorEmail,
+        startTime,
+        endTime,
+      );
+
+      if (!donorEmail) {
+        throw new Error(
+          `No free licensed Zoom user is available to transfer a seat to ${instructorEmail} for ${startTime.toISOString()} - ${endTime.toISOString()}.`,
+        );
+      }
+
+      const downgradeResult = await this.zoomService.downgradeUser(donorEmail);
+      if (!downgradeResult.success) {
+        if (
+          /does not contain scopes/i.test(downgradeResult.error || '') &&
+          /user:update:user(?::admin)?/i.test(downgradeResult.error || '')
+        ) {
+          throw new Error(
+            this.buildZoomScopeError('transfer', donorEmail, instructorEmail),
+          );
+        }
+
+        throw new Error(
+          `Failed to transfer Zoom license from ${donorEmail} to ${instructorEmail}: ${downgradeResult.error}`,
+        );
+      }
+
+      licenseResult = await this.zoomService.ensureLicensedUser(
+        instructorEmail,
+        '',
+        '',
+      );
+
+      if (licenseResult.success && licenseResult.licensed) {
+        this.logger.log(
+          `Transferred Zoom license from ${donorEmail} to ${instructorEmail} for ${startTime.toISOString()} - ${endTime.toISOString()}.`,
+        );
+        return;
+      }
+
+      // Best-effort rollback to avoid losing the donor seat if re-licensing target fails.
+      const rollbackResult = await this.zoomService.ensureLicensedUser(
+        donorEmail,
+        '',
+        '',
+      );
+      if (!rollbackResult.success || !rollbackResult.licensed) {
+        this.logger.error(
+          `Failed to restore Zoom license to donor ${donorEmail} after unsuccessful transfer to ${instructorEmail}.`,
+        );
+      }
+    }
+
+    throw new Error(
+      `Failed to assign Zoom license to ${instructorEmail}: ${licenseResult.error || 'Unknown Zoom licensing error'}`,
+    );
+  }
+
   async accessOfCalendar(creatorInfo) {
     try {
       const userTokenData = await this.getUserTokens(
@@ -328,6 +488,7 @@ export class ClassesService {
     },
     creatorInfo: any,
   ) {
+    let createdZoomMeetingId: string | null = null;
     try {
       // Guard again in case this method is called directly
 
@@ -403,17 +564,14 @@ export class ClassesService {
         };
       }
 
-      // Create Zoom meeting
-      // Always host under the team account so recordings live centrally there; instructor & others become alternative hosts.
-      const hostEmail = instructorEmail; // Use instructor email as host
-      try {
-        // Ensure team account is licensed (host must be able to cloud record)
-        await this.zoomService.ensureLicensedUser(hostEmail, 'Team', '');
-      } catch (e) {
-        this.logger.warn(
-          `Could not ensure license for team host ${hostEmail}: ${e.message}`,
-        );
-      }
+      // Create Zoom meeting under the batch instructor. If the instructor is not
+      // currently licensed in Zoom, transfer a free license before meeting creation.
+      const hostEmail = instructorEmail;
+      await this.ensureInstructorHasZoomLicenseForSession(
+        hostEmail,
+        startDate,
+        endDate,
+      );
       const candidateAltHosts: string[] = [];
       const verifiedAltHosts: string[] = [];
       if (
@@ -526,6 +684,7 @@ export class ClassesService {
       if (!zoomResponse.success) {
         throw new Error(`Failed to create Zoom meeting: ${zoomResponse.error}`);
       }
+      createdZoomMeetingId = zoomResponse.data.id.toString();
 
       // FETCH UUID EXPLICITLY (Zoom does NOT always return it on create)
       const meetingDetails = await this.zoomService.getMeeting(
@@ -610,6 +769,10 @@ export class ClassesService {
       // Save sessions to database
       const saveResult = await this.saveSessionsToDatabase(sessionsToCreate);
 
+      if (saveResult.status === 'error') {
+        throw new Error(saveResult.message);
+      }
+
       // Enqueue recording job AFTER session is saved
       for (const saved of saveResult.data) {
         await this.enqueueRecordingJob({
@@ -618,10 +781,6 @@ export class ClassesService {
           zoomMeetingUuid: saved.zoomMeetingUuid,
           isZoomMeet: saved.isZoomMeet,
         });
-      }
-
-      if (saveResult.status === 'error') {
-        throw new Error(saveResult.message);
       }
 
       const courseRes = await db
@@ -641,7 +800,23 @@ export class ClassesService {
         descriptionSuffix,
       };
     } catch (error) {
+      if (
+        typeof error?.message === 'string' &&
+        error.message.includes('No Zoom licenses available')
+      ) {
+        this.logger.warn('Zoom session creation blocked by license cap.');
+      }
       this.logger.error(`Error creating Zoom session: ${error.message}`);
+      // Best-effort cleanup if we created a Zoom meeting but failed before persisting the session.
+      try {
+        if (createdZoomMeetingId) {
+          await this.zoomService.deleteMeeting(createdZoomMeetingId);
+        }
+      } catch (cleanupError) {
+        this.logger.warn(
+          `Failed to rollback Zoom meeting after session creation error: ${cleanupError.message}`,
+        );
+      }
       return {
         status: 'error',
         message: 'Failed to create Zoom session',
@@ -1111,6 +1286,22 @@ export class ClassesService {
         for (let i = 0; i < results.length; i++) {
           const original = sessionData[i];
           if (original.licenseId && original.startTime && original.endTime) {
+            const overlappingAssignments = await trx
+              .select({ count: sql<number>`count(*)` })
+              .from(licenseAssignments)
+              .where(
+                and(
+                  sql`${licenseAssignments.startTime} < ${new Date(original.endTime)}`,
+                  sql`${licenseAssignments.endTime} > ${new Date(original.startTime)}`,
+                ),
+              );
+
+            if (Number(overlappingAssignments[0]?.count || 0) >= 6) {
+              throw new Error(
+                'No Zoom licenses available for this time period.',
+              );
+            }
+
             // Get instructorId from the batch (assuming each batch has a designated instructor)
             const batch = await trx
               .select({ instructorId: zuvyBatches.instructorId })
@@ -1119,13 +1310,13 @@ export class ClassesService {
               .limit(1);
 
             if (batch[0]?.instructorId) {
-              await trx.insert(licenseAssignments).values({
+              await this.zoomLicenseService.createLicenseAssignment(trx, {
                 licenseId: original.licenseId,
-                instructorId: batch[0].instructorId,
-                sessionId: BigInt(results[i].id),
+                instructorId: Number(batch[0].instructorId),
+                sessionId: Number(results[i].id),
                 startTime: new Date(original.startTime),
                 endTime: new Date(original.endTime),
-              } as any);
+              });
             }
           }
         }
@@ -1141,7 +1332,7 @@ export class ClassesService {
       this.logger.error(`Error saving sessions to database: ${error.message}`);
       return {
         status: 'error',
-        message: 'Failed to save sessions',
+        message: error.message || 'Failed to save sessions',
         error: error.message,
       };
     }

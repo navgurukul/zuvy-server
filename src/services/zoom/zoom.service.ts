@@ -180,6 +180,30 @@ export interface ZoomRecordingResponse {
   recording_files: ZoomRecordingFile[];
 }
 
+interface ZoomUserListItem {
+  id: string;
+  first_name?: string;
+  last_name?: string;
+  display_name?: string;
+  email: string;
+  type: number;
+  status: string;
+  role_name?: string;
+  timezone?: string;
+  verified?: number;
+  created_at?: string;
+  last_login_time?: string;
+}
+
+interface ZoomUsersListResponse {
+  page_count?: number;
+  page_number?: number;
+  page_size?: number;
+  total_records?: number;
+  next_page_token?: string;
+  users?: ZoomUserListItem[];
+}
+
 @Injectable()
 export class ZoomService {
   private readonly logger = new Logger(ZoomService.name);
@@ -432,6 +456,102 @@ export class ZoomService {
       return { success: true };
     } catch (e: any) {
       return { success: false, error: e.response?.data?.message || e.message };
+    }
+  }
+
+  async listAuthorizedUsers(query?: {
+    page_size?: number;
+    status?: string;
+    hostType?: 'licensed' | 'basic' | 'all';
+    search?: string;
+  }) {
+    try {
+      const headers = await this.getHeaders();
+      const pageSize = Math.min(query?.page_size || 100, 300);
+      const status = query?.status?.trim() || 'active';
+      const hostType = query?.hostType || 'all';
+      const normalizedSearch = query?.search?.trim().toLowerCase() || '';
+
+      let nextPageToken = '';
+      const users: ZoomUserListItem[] = [];
+
+      do {
+        const response: AxiosResponse<ZoomUsersListResponse> = await axios.get(
+          `${this.baseUrl}/users`,
+          {
+            headers,
+            params: {
+              page_size: pageSize,
+              status,
+              next_page_token: nextPageToken || undefined,
+            },
+          },
+        );
+
+        users.push(...(response.data.users || []));
+        nextPageToken = response.data.next_page_token || '';
+      } while (nextPageToken);
+
+      let filteredUsers = users.map((user) => {
+        const fullName =
+          `${user.first_name || ''} ${user.last_name || ''}`.trim() ||
+          user.display_name ||
+          user.email;
+
+        return {
+          id: user.id,
+          email: user.email,
+          name: fullName,
+          firstName: user.first_name || '',
+          lastName: user.last_name || '',
+          displayName: user.display_name || fullName,
+          status: user.status,
+          roleName: user.role_name || null,
+          timezone: user.timezone || null,
+          userType: user.type,
+          isLicensed: user.type === 2,
+          canHostSessions: user.status === 'active',
+          verified: user.verified,
+          createdAt: user.created_at || null,
+          lastLoginTime: user.last_login_time || null,
+        };
+      });
+
+      if (hostType === 'licensed') {
+        filteredUsers = filteredUsers.filter((user) => user.isLicensed);
+      } else if (hostType === 'basic') {
+        filteredUsers = filteredUsers.filter((user) => !user.isLicensed);
+      }
+
+      if (normalizedSearch) {
+        filteredUsers = filteredUsers.filter((user) =>
+          [user.email, user.name, user.displayName]
+            .filter(Boolean)
+            .some((value) => value.toLowerCase().includes(normalizedSearch)),
+        );
+      }
+
+      return {
+        success: true,
+        data: {
+          total: filteredUsers.length,
+          filters: {
+            status,
+            hostType,
+            search: query?.search || null,
+          },
+          users: filteredUsers,
+        },
+      };
+    } catch (e: any) {
+      this.logger.error(
+        `Error listing Zoom authorized users: ${e.response?.data?.message || e.message}`,
+      );
+      return {
+        success: false,
+        error:
+          e.response?.data?.message || e.message || 'Failed to list Zoom users',
+      };
     }
   }
 

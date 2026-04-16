@@ -1,9 +1,4 @@
-import {
-  Injectable,
-  BadRequestException,
-  NotFoundException,
-  Logger,
-} from '@nestjs/common';
+import { Injectable, BadRequestException, Logger } from '@nestjs/common';
 import { db } from '../../db/index';
 import { licenses, licenseAssignments, users } from '../../../drizzle/schema';
 import { eq, and, sql, lt, gt, notExists } from 'drizzle-orm';
@@ -23,30 +18,9 @@ export class ZoomLicenseService {
     trx: any,
     dto: { instructorId: number; startTime: Date; endTime: Date },
   ): Promise<number> {
-    // 1. Check if instructor already has a license assigned for this time period
-    const existingAssignment = await trx
-      .select({ licenseId: licenseAssignments.licenseId })
-      .from(licenseAssignments)
-      .where(
-        and(
-          eq(licenseAssignments.instructorId, dto.instructorId),
-          sql`${licenseAssignments.startTime} < ${dto.endTime}`,
-          sql`${licenseAssignments.endTime} > ${dto.startTime}`,
-          // lt(licenseAssignments.startTime, dto.endTime),
-          // gt(licenseAssignments.endTime, dto.startTime),
-        ),
-      )
-      .limit(1);
-
-    if (existingAssignment.length > 0) {
-      const assignedLicenseId = existingAssignment[0].licenseId;
-      this.logger.log(
-        `Instructor ${dto.instructorId} already has license ${assignedLicenseId} for this time.`,
-      );
-      return assignedLicenseId;
-    }
-
-    // 2. Find a free license among the 6 total licenses
+    // Each overlapping Zoom session consumes one license. Even if the same
+    // instructor already has another overlapping session, we must allocate a
+    // distinct free license or reject the new session once the pool is exhausted.
     const availableLicenses = await trx
       .select({ id: licenses.id })
       .from(licenses)
@@ -76,11 +50,8 @@ export class ZoomLicenseService {
       );
     }
 
-    console.log('Available licenses:', availableLicenses);
     const assignedLicenseId = availableLicenses[0].id as number;
 
-    console.log('Available licenses ID:', assignedLicenseId);
-    // Log current license usage and availability
     const totalCount = 6;
     const activeAssignments = await trx
       .select({ count: sql<number>`count(*)` })
@@ -91,11 +62,8 @@ export class ZoomLicenseService {
           gt(licenseAssignments.endTime, dto.startTime),
         ),
       );
-    console.log('Active assignments:', activeAssignments);
-    const usedCount = Number(activeAssignments[0].count);
-    const availableCount = totalCount - usedCount - 1; // -1 for the one we just assigned if not yet in DB
-
-    console.log('availableCount', availableCount);
+    const usedCount = Number(activeAssignments[0]?.count || 0);
+    const availableCount = totalCount - usedCount - 1;
 
     const currentUsers = await trx
       .select({
@@ -114,14 +82,8 @@ export class ZoomLicenseService {
     const userList = currentUsers
       .map((r) => `${r.name} (${r.email})`)
       .join(', ');
-    this.logger.log(`dto.instructorId: ${dto.instructorId}`);
-    this.logger.log(`currentUsers: ${currentUsers}`);
-    this.logger.log(`userList: ${userList}`);
-    this.logger.log(`totalCount: ${totalCount}`);
-    this.logger.log(`usedCount: ${usedCount}`);
-    this.logger.log(`availableCount: ${availableCount}`);
     this.logger.log(
-      `License ${assignedLicenseId} assigned to instructor ${dto.instructorId}.`,
+      `Assigned license ${assignedLicenseId} to instructor ${dto.instructorId} for ${dto.startTime.toISOString()} - ${dto.endTime.toISOString()}.`,
     );
     this.logger.log(
       `Active licensed users for this period: ${userList || 'None'}`,
