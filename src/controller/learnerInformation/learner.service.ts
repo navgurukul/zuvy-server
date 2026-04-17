@@ -6,9 +6,16 @@ import {
   InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
-import { desc, eq, sql } from 'drizzle-orm';
-import { pgSchema, serial, timestamp, varchar } from 'drizzle-orm/pg-core';
-import { zuvyLearnerInformation } from '../../../drizzle/schema';
+import { count, desc, eq } from 'drizzle-orm';
+import {
+  zuvyLearnerEducationBranchDetails,
+  zuvyLearnerInformation,
+  zuvyLearnersBoards,
+  zuvyLearnersDegreeDetails,
+  zuvyLearnersRemoteLocation,
+  zuvyLearnersRoles,
+  zuvyTechnicalSkills,
+} from '../../../drizzle/schema';
 import { db } from '../../db/index';
 import {
   UpdateLearnerBoardByIdDto,
@@ -26,96 +33,34 @@ import {
   UpsertLearnerInformationDto,
 } from './dto/learner.dto';
 
-const learnerMainSchema = pgSchema('main');
+const zuvyTechnicalSkillsTable = zuvyTechnicalSkills;
+const zuvyLearnerDegreesTable = zuvyLearnersDegreeDetails;
+const zuvyLearnerEducationBranchesTable = zuvyLearnerEducationBranchDetails;
+const zuvyLearnerBoardsTable = zuvyLearnersBoards;
+const zuvyLearnerRolesTable = zuvyLearnersRoles;
+const zuvyLearnerRemoteLocationTable = zuvyLearnersRemoteLocation;
 
-const zuvyTechnicalSkillsTable = learnerMainSchema.table(
-  'zuvy_learners_techinal_skills',
-  {
-    id: serial('id').primaryKey().notNull(),
-    name: varchar('name', { length: 100 }).notNull(),
-    createdAt: timestamp('created_at', {
-      withTimezone: true,
-      mode: 'string',
-    }).defaultNow(),
-    updatedAt: timestamp('updated_at', {
-      withTimezone: true,
-      mode: 'string',
-    }).defaultNow(),
-  },
-);
-const zuvyLearnerDegreesTable = learnerMainSchema.table(
-  'zuvy_learners_degree_details',
-  {
-    id: serial('id').primaryKey().notNull(),
-    name: varchar('name', { length: 100 }).notNull(),
-    createdAt: timestamp('created_at', {
-      withTimezone: true,
-      mode: 'string',
-    }).defaultNow(),
-    updatedAt: timestamp('updated_at', {
-      withTimezone: true,
-      mode: 'string',
-    }).defaultNow(),
-  },
-);
+const sortByNameWithOtherLast = <T extends { id: number; name: string }>(
+  rows: T[],
+): T[] =>
+  [...rows].sort((left, right) => {
+    const leftIsOther = left.name.trim().toLowerCase() === 'other';
+    const rightIsOther = right.name.trim().toLowerCase() === 'other';
 
-const zuvyLearnerEducationBranchesTable = learnerMainSchema.table(
-  'zuvy_learner_education_branch_details',
-  {
-    id: serial('id').primaryKey().notNull(),
-    name: varchar('name', { length: 100 }).notNull(),
-    createdAt: timestamp('created_at', {
-      withTimezone: true,
-      mode: 'string',
-    }).defaultNow(),
-    updatedAt: timestamp('updated_at', {
-      withTimezone: true,
-      mode: 'string',
-    }).defaultNow(),
-  },
-);
+    if (leftIsOther !== rightIsOther) {
+      return leftIsOther ? 1 : -1;
+    }
 
-const zuvyLearnerBoardsTable = learnerMainSchema.table('zuvy_learners_boards', {
-  id: serial('id').primaryKey().notNull(),
-  name: varchar('name', { length: 100 }).notNull(),
-  createdAt: timestamp('created_at', {
-    withTimezone: true,
-    mode: 'string',
-  }).defaultNow(),
-  updatedAt: timestamp('updated_at', {
-    withTimezone: true,
-    mode: 'string',
-  }).defaultNow(),
-});
+    const nameComparison = left.name.localeCompare(right.name, undefined, {
+      sensitivity: 'base',
+    });
 
-const zuvyLearnerRolesTable = learnerMainSchema.table('zuvy_learnes_roles', {
-  id: serial('id').primaryKey().notNull(),
-  name: varchar('name', { length: 100 }).notNull(),
-  createdAt: timestamp('created_at', {
-    withTimezone: true,
-    mode: 'string',
-  }).defaultNow(),
-  updatedAt: timestamp('updated_at', {
-    withTimezone: true,
-    mode: 'string',
-  }).defaultNow(),
-});
+    if (nameComparison !== 0) {
+      return nameComparison;
+    }
 
-const zuvyLearnerRemoteLocationTable = learnerMainSchema.table(
-  'zuvy_learners_remote_location',
-  {
-    id: serial('id').primaryKey().notNull(),
-    name: varchar('name', { length: 100 }).notNull(),
-    createdAt: timestamp('created_at', {
-      withTimezone: true,
-      mode: 'string',
-    }).defaultNow(),
-    updatedAt: timestamp('updated_at', {
-      withTimezone: true,
-      mode: 'string',
-    }).defaultNow(),
-  },
-);
+    return left.id - right.id;
+  });
 
 @Injectable()
 export class LearnerService {
@@ -162,204 +107,15 @@ export class LearnerService {
   }
 
   private async ensureLearnerInformationIndexes(): Promise<void> {
-    await db.execute(
-      sql.raw(`
-DROP INDEX IF EXISTS main.zuvy_learner_information_user_id_unique;
-`),
-    );
-
-    await db.execute(
-      sql.raw(`
-DROP INDEX IF EXISTS main.zuvy_learner_information_email_unique;
-`),
-    );
-
-    await db.execute(
-      sql.raw(`
-DO $$
-BEGIN
-  IF EXISTS (
-    SELECT 1 FROM information_schema.columns
-    WHERE table_schema = 'main'
-      AND table_name = 'zuvy_learner_information'
-      AND column_name = 'full_name'
-  ) THEN
-    ALTER TABLE main.zuvy_learner_information ALTER COLUMN full_name DROP NOT NULL;
-  END IF;
-
-  IF EXISTS (
-    SELECT 1 FROM information_schema.columns
-    WHERE table_schema = 'main'
-      AND table_name = 'zuvy_learner_information'
-      AND column_name = 'email'
-  ) THEN
-    ALTER TABLE main.zuvy_learner_information ALTER COLUMN email DROP NOT NULL;
-  END IF;
-
-  IF EXISTS (
-    SELECT 1 FROM information_schema.columns
-    WHERE table_schema = 'main'
-      AND table_name = 'zuvy_learner_information'
-      AND column_name = 'phone_number'
-  ) THEN
-    ALTER TABLE main.zuvy_learner_information ALTER COLUMN phone_number DROP NOT NULL;
-  END IF;
-END $$;
-`),
-    );
+    return;
   }
 
   private async ensureLearnerInformationStorageReady(): Promise<void> {
-    await db.execute(
-      sql.raw(`
-DO $$
-BEGIN
-	IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'learner_year_of_study') THEN
-		CREATE TYPE learner_year_of_study AS ENUM ('1st', '2nd', '3rd', '4th');
-	END IF;
-END $$;
-`),
-    );
-
-    await db.execute(
-      sql.raw(`
-DO $$
-BEGIN
-	IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'learner_current_status') THEN
-		CREATE TYPE learner_current_status AS ENUM ('Learning', 'Looking for Job', 'Working');
-	END IF;
-END $$;
-`),
-    );
-
-    await db.execute(
-      sql.raw(`
-CREATE TABLE IF NOT EXISTS main.zuvy_learner_information (
-	id serial PRIMARY KEY,
-	user_id bigint NOT NULL REFERENCES main.users(id) ON UPDATE CASCADE ON DELETE CASCADE,
-  first_name varchar(100),
-  last_name varchar(100),
-  full_name varchar(255),
-  email varchar(255),
-  phone_number varchar(20),
-  college_name varchar(255),
-	other_college_name varchar(100),
-	degree_program varchar(100),
-  branch_specialisation varchar(100),
-  year_of_study learner_year_of_study,
-  expected_graduation_month integer,
-  expected_graduation_year integer,
-  current_status learner_current_status,
-	created_at timestamptz NOT NULL DEFAULT now(),
-	updated_at timestamptz NOT NULL DEFAULT now()
-);
-`),
-    );
-
-    await db.execute(
-      sql.raw(`
-ALTER TABLE main.zuvy_learner_information
-ADD COLUMN IF NOT EXISTS first_name varchar(100);
-`),
-    );
-
-    await db.execute(
-      sql.raw(`
-ALTER TABLE main.zuvy_learner_information
-ADD COLUMN IF NOT EXISTS last_name varchar(100);
-`),
-    );
-
     await this.ensureLearnerInformationIndexes();
   }
 
   private async ensureTechnicalSkillsStorageReady(): Promise<void> {
-    await db.execute(
-      sql.raw(`
-DO $$
-BEGIN
-  CREATE TABLE IF NOT EXISTS main.zuvy_learners_techinal_skills (
-    id serial PRIMARY KEY,
-    name varchar(100) NOT NULL,
-    created_at timestamptz NOT NULL DEFAULT now(),
-    updated_at timestamptz NOT NULL DEFAULT now()
-  );
-
-  IF EXISTS (
-    SELECT 1
-    FROM information_schema.tables
-    WHERE table_schema = 'main'
-      AND table_name = 'zuvy_technical_skills'
-  ) AND EXISTS (
-    SELECT 1
-    FROM information_schema.columns
-    WHERE table_schema = 'main'
-      AND table_name = 'zuvy_technical_skills'
-      AND column_name = 'name'
-  ) THEN
-    INSERT INTO main.zuvy_learners_techinal_skills (name)
-    SELECT DISTINCT TRIM(CAST(name AS text))
-    FROM main.zuvy_technical_skills
-    WHERE name IS NOT NULL
-      AND TRIM(CAST(name AS text)) <> ''
-    ON CONFLICT DO NOTHING;
-  END IF;
-
-  IF EXISTS (
-    SELECT 1
-    FROM information_schema.tables
-    WHERE table_schema = 'main'
-      AND table_name = 'zuvy_learner_technical_skills'
-  ) AND EXISTS (
-    SELECT 1
-    FROM information_schema.columns
-    WHERE table_schema = 'main'
-      AND table_name = 'zuvy_learner_technical_skills'
-      AND column_name = 'name'
-  ) THEN
-    INSERT INTO main.zuvy_learners_techinal_skills (name)
-    SELECT DISTINCT TRIM(CAST(name AS text))
-    FROM main.zuvy_learner_technical_skills
-    WHERE name IS NOT NULL
-      AND TRIM(CAST(name AS text)) <> ''
-    ON CONFLICT DO NOTHING;
-  END IF;
-END $$;
-`),
-    );
-
-    await db.execute(
-      sql.raw(`
-UPDATE main.zuvy_learners_techinal_skills
-SET name = TRIM(name)
-WHERE name IS NOT NULL;
-
-DELETE FROM main.zuvy_learners_techinal_skills
-WHERE name IS NULL OR name = '';
-
-WITH ranked AS (
-  SELECT
-    id,
-    ROW_NUMBER() OVER (PARTITION BY name ORDER BY id) AS row_num
-  FROM main.zuvy_learners_techinal_skills
-)
-DELETE FROM main.zuvy_learners_techinal_skills current_row
-USING ranked
-WHERE current_row.id = ranked.id
-  AND ranked.row_num > 1;
-`),
-    );
-
-    await db.execute(
-      sql.raw(`
-DROP INDEX IF EXISTS main.zuvy_technical_skills_name_unique;
-DROP INDEX IF EXISTS main.zuvy_learner_technical_skills_name_unique;
-DROP INDEX IF EXISTS main.zuvy_learners_techinal_skills_name_unique;
-
-CREATE UNIQUE INDEX zuvy_learners_techinal_skills_name_unique
-ON main.zuvy_learners_techinal_skills (name);
-`),
-    );
+    return;
   }
 
   private normalizeTechnicalSkills(values: string[]): string[] {
@@ -377,17 +133,14 @@ ON main.zuvy_learners_techinal_skills (name);
   }
 
   private async fetchTechnicalSkills() {
-    const skills = await db
-      .select({
-        id: zuvyTechnicalSkillsTable.id,
-        name: zuvyTechnicalSkillsTable.name,
-      })
-      .from(zuvyTechnicalSkillsTable)
-      .orderBy(
-        sql`CASE WHEN LOWER(TRIM(${zuvyTechnicalSkillsTable.name})) = 'other' THEN 1 ELSE 0 END`,
-        sql`LOWER(${zuvyTechnicalSkillsTable.name})`,
-        zuvyTechnicalSkillsTable.id,
-      );
+    const skills = sortByNameWithOtherLast(
+      await db
+        .select({
+          id: zuvyTechnicalSkillsTable.id,
+          name: zuvyTechnicalSkillsTable.name,
+        })
+        .from(zuvyTechnicalSkillsTable),
+    );
 
     return { skills };
   }
@@ -563,38 +316,7 @@ ON main.zuvy_learners_techinal_skills (name);
   }
 
   private async ensureLearnerDegreesStorageReady(): Promise<void> {
-    await db.execute(
-      sql.raw(`
-CREATE TABLE IF NOT EXISTS main.zuvy_learners_degree_details (
-  id serial PRIMARY KEY,
-  name varchar(100) NOT NULL,
-  created_at timestamptz NOT NULL DEFAULT now(),
-  updated_at timestamptz NOT NULL DEFAULT now()
-);
-
-UPDATE main.zuvy_learners_degree_details
-SET name = TRIM(name)
-WHERE name IS NOT NULL;
-
-DELETE FROM main.zuvy_learners_degree_details
-WHERE name IS NULL OR name = '';
-
-WITH ranked AS (
-  SELECT
-    id,
-    ROW_NUMBER() OVER (PARTITION BY name ORDER BY id) AS row_num
-  FROM main.zuvy_learners_degree_details
-)
-DELETE FROM main.zuvy_learners_degree_details current_row
-USING ranked
-WHERE current_row.id = ranked.id
-  AND ranked.row_num > 1;
-
-DROP INDEX IF EXISTS main.zuvy_learners_degree_details_name_unique;
-CREATE UNIQUE INDEX zuvy_learners_degree_details_name_unique
-ON main.zuvy_learners_degree_details (name);
-`),
-    );
+    return;
   }
 
   private normalizeLearnerDegrees(values: string[]): string[] {
@@ -612,17 +334,14 @@ ON main.zuvy_learners_degree_details (name);
   }
 
   private async fetchLearnerDegrees() {
-    const degrees = await db
-      .select({
-        id: zuvyLearnerDegreesTable.id,
-        name: zuvyLearnerDegreesTable.name,
-      })
-      .from(zuvyLearnerDegreesTable)
-      .orderBy(
-        sql`CASE WHEN LOWER(TRIM(${zuvyLearnerDegreesTable.name})) = 'other' THEN 1 ELSE 0 END`,
-        sql`LOWER(${zuvyLearnerDegreesTable.name})`,
-        zuvyLearnerDegreesTable.id,
-      );
+    const degrees = sortByNameWithOtherLast(
+      await db
+        .select({
+          id: zuvyLearnerDegreesTable.id,
+          name: zuvyLearnerDegreesTable.name,
+        })
+        .from(zuvyLearnerDegreesTable),
+    );
 
     return { degrees };
   }
@@ -798,38 +517,7 @@ ON main.zuvy_learners_degree_details (name);
   }
 
   private async ensureLearnerEducationBranchesStorageReady(): Promise<void> {
-    await db.execute(
-      sql.raw(`
-CREATE TABLE IF NOT EXISTS main.zuvy_learner_education_branch_details (
-  id serial PRIMARY KEY,
-  name varchar(100) NOT NULL,
-  created_at timestamptz NOT NULL DEFAULT now(),
-  updated_at timestamptz NOT NULL DEFAULT now()
-);
-
-UPDATE main.zuvy_learner_education_branch_details
-SET name = TRIM(name)
-WHERE name IS NOT NULL;
-
-DELETE FROM main.zuvy_learner_education_branch_details
-WHERE name IS NULL OR name = '';
-
-WITH ranked AS (
-  SELECT
-    id,
-    ROW_NUMBER() OVER (PARTITION BY name ORDER BY id) AS row_num
-  FROM main.zuvy_learner_education_branch_details
-)
-DELETE FROM main.zuvy_learner_education_branch_details current_row
-USING ranked
-WHERE current_row.id = ranked.id
-  AND ranked.row_num > 1;
-
-DROP INDEX IF EXISTS main.zuvy_learner_education_branch_details_name_unique;
-CREATE UNIQUE INDEX zuvy_learner_education_branch_details_name_unique
-ON main.zuvy_learner_education_branch_details (name);
-`),
-    );
+    return;
   }
 
   private normalizeLearnerEducationBranches(values: string[]): string[] {
@@ -849,17 +537,14 @@ ON main.zuvy_learner_education_branch_details (name);
   }
 
   private async fetchLearnerEducationBranches() {
-    const branches = await db
-      .select({
-        id: zuvyLearnerEducationBranchesTable.id,
-        name: zuvyLearnerEducationBranchesTable.name,
-      })
-      .from(zuvyLearnerEducationBranchesTable)
-      .orderBy(
-        sql`CASE WHEN LOWER(TRIM(${zuvyLearnerEducationBranchesTable.name})) = 'other' THEN 1 ELSE 0 END`,
-        sql`LOWER(${zuvyLearnerEducationBranchesTable.name})`,
-        zuvyLearnerEducationBranchesTable.id,
-      );
+    const branches = sortByNameWithOtherLast(
+      await db
+        .select({
+          id: zuvyLearnerEducationBranchesTable.id,
+          name: zuvyLearnerEducationBranchesTable.name,
+        })
+        .from(zuvyLearnerEducationBranchesTable),
+    );
 
     return { branches };
   }
@@ -1042,38 +727,7 @@ ON main.zuvy_learner_education_branch_details (name);
   }
 
   private async ensureLearnerBoardsStorageReady(): Promise<void> {
-    await db.execute(
-      sql.raw(`
-CREATE TABLE IF NOT EXISTS main.zuvy_learners_boards (
-  id serial PRIMARY KEY,
-  name varchar(100) NOT NULL,
-  created_at timestamptz NOT NULL DEFAULT now(),
-  updated_at timestamptz NOT NULL DEFAULT now()
-);
-
-UPDATE main.zuvy_learners_boards
-SET name = TRIM(name)
-WHERE name IS NOT NULL;
-
-DELETE FROM main.zuvy_learners_boards
-WHERE name IS NULL OR name = '';
-
-WITH ranked AS (
-  SELECT
-    id,
-    ROW_NUMBER() OVER (PARTITION BY name ORDER BY id) AS row_num
-  FROM main.zuvy_learners_boards
-)
-DELETE FROM main.zuvy_learners_boards current_row
-USING ranked
-WHERE current_row.id = ranked.id
-  AND ranked.row_num > 1;
-
-DROP INDEX IF EXISTS main.zuvy_learners_boards_name_unique;
-CREATE UNIQUE INDEX zuvy_learners_boards_name_unique
-ON main.zuvy_learners_boards (name);
-`),
-    );
+    return;
   }
 
   private normalizeLearnerBoards(values: string[]): string[] {
@@ -1091,17 +745,14 @@ ON main.zuvy_learners_boards (name);
   }
 
   private async fetchLearnerBoards() {
-    const boards = await db
-      .select({
-        id: zuvyLearnerBoardsTable.id,
-        name: zuvyLearnerBoardsTable.name,
-      })
-      .from(zuvyLearnerBoardsTable)
-      .orderBy(
-        sql`CASE WHEN LOWER(TRIM(${zuvyLearnerBoardsTable.name})) = 'other' THEN 1 ELSE 0 END`,
-        sql`LOWER(${zuvyLearnerBoardsTable.name})`,
-        zuvyLearnerBoardsTable.id,
-      );
+    const boards = sortByNameWithOtherLast(
+      await db
+        .select({
+          id: zuvyLearnerBoardsTable.id,
+          name: zuvyLearnerBoardsTable.name,
+        })
+        .from(zuvyLearnerBoardsTable),
+    );
 
     return { boards };
   }
@@ -1277,38 +928,7 @@ ON main.zuvy_learners_boards (name);
   }
 
   private async ensureLearnerRolesStorageReady(): Promise<void> {
-    await db.execute(
-      sql.raw(`
-CREATE TABLE IF NOT EXISTS main.zuvy_learnes_roles (
-  id serial PRIMARY KEY,
-  name varchar(100) NOT NULL,
-  created_at timestamptz NOT NULL DEFAULT now(),
-  updated_at timestamptz NOT NULL DEFAULT now()
-);
-
-UPDATE main.zuvy_learnes_roles
-SET name = TRIM(name)
-WHERE name IS NOT NULL;
-
-DELETE FROM main.zuvy_learnes_roles
-WHERE name IS NULL OR name = '';
-
-WITH ranked AS (
-  SELECT
-    id,
-    ROW_NUMBER() OVER (PARTITION BY name ORDER BY id) AS row_num
-  FROM main.zuvy_learnes_roles
-)
-DELETE FROM main.zuvy_learnes_roles current_row
-USING ranked
-WHERE current_row.id = ranked.id
-  AND ranked.row_num > 1;
-
-DROP INDEX IF EXISTS main.zuvy_learnes_roles_name_unique;
-CREATE UNIQUE INDEX zuvy_learnes_roles_name_unique
-ON main.zuvy_learnes_roles (name);
-`),
-    );
+    return;
   }
 
   private normalizeLearnerRoles(values: string[]): string[] {
@@ -1326,17 +946,14 @@ ON main.zuvy_learnes_roles (name);
   }
 
   private async fetchLearnerRoles() {
-    const roles = await db
-      .select({
-        id: zuvyLearnerRolesTable.id,
-        name: zuvyLearnerRolesTable.name,
-      })
-      .from(zuvyLearnerRolesTable)
-      .orderBy(
-        sql`CASE WHEN LOWER(TRIM(${zuvyLearnerRolesTable.name})) = 'other' THEN 1 ELSE 0 END`,
-        sql`LOWER(${zuvyLearnerRolesTable.name})`,
-        zuvyLearnerRolesTable.id,
-      );
+    const roles = sortByNameWithOtherLast(
+      await db
+        .select({
+          id: zuvyLearnerRolesTable.id,
+          name: zuvyLearnerRolesTable.name,
+        })
+        .from(zuvyLearnerRolesTable),
+    );
 
     return { roles };
   }
@@ -1512,38 +1129,7 @@ ON main.zuvy_learnes_roles (name);
   }
 
   private async ensureLearnerRemoteLocationsStorageReady(): Promise<void> {
-    await db.execute(
-      sql.raw(`
-CREATE TABLE IF NOT EXISTS main.zuvy_learners_remote_location (
-  id serial PRIMARY KEY,
-  name varchar(100) NOT NULL,
-  created_at timestamptz NOT NULL DEFAULT now(),
-  updated_at timestamptz NOT NULL DEFAULT now()
-);
-
-UPDATE main.zuvy_learners_remote_location
-SET name = TRIM(name)
-WHERE name IS NOT NULL;
-
-DELETE FROM main.zuvy_learners_remote_location
-WHERE name IS NULL OR name = '';
-
-WITH ranked AS (
-  SELECT
-    id,
-    ROW_NUMBER() OVER (PARTITION BY name ORDER BY id) AS row_num
-  FROM main.zuvy_learners_remote_location
-)
-DELETE FROM main.zuvy_learners_remote_location current_row
-USING ranked
-WHERE current_row.id = ranked.id
-  AND ranked.row_num > 1;
-
-DROP INDEX IF EXISTS main.zuvy_learners_remote_location_name_unique;
-CREATE UNIQUE INDEX zuvy_learners_remote_location_name_unique
-ON main.zuvy_learners_remote_location (name);
-`),
-    );
+    return;
   }
 
   private normalizeLearnerRemoteLocations(values: string[]): string[] {
@@ -1563,17 +1149,14 @@ ON main.zuvy_learners_remote_location (name);
   }
 
   private async fetchLearnerRemoteLocations() {
-    const remoteLocations = await db
-      .select({
-        id: zuvyLearnerRemoteLocationTable.id,
-        name: zuvyLearnerRemoteLocationTable.name,
-      })
-      .from(zuvyLearnerRemoteLocationTable)
-      .orderBy(
-        sql`CASE WHEN LOWER(TRIM(${zuvyLearnerRemoteLocationTable.name})) = 'other' THEN 1 ELSE 0 END`,
-        sql`LOWER(${zuvyLearnerRemoteLocationTable.name})`,
-        zuvyLearnerRemoteLocationTable.id,
-      );
+    const remoteLocations = sortByNameWithOtherLast(
+      await db
+        .select({
+          id: zuvyLearnerRemoteLocationTable.id,
+          name: zuvyLearnerRemoteLocationTable.name,
+        })
+        .from(zuvyLearnerRemoteLocationTable),
+    );
 
     return { remoteLocations };
   }
@@ -1781,7 +1364,7 @@ ON main.zuvy_learners_remote_location (name);
 
     try {
       const [totalResult] = await db
-        .select({ count: sql<number>`count(*)` })
+        .select({ count: count() })
         .from(zuvyLearnerInformation);
 
       const total = Number(totalResult?.count || 0);
@@ -1852,7 +1435,7 @@ ON main.zuvy_learners_remote_location (name);
       const [created] = await db
         .insert(zuvyLearnerInformation)
         .values({
-          userId: sql`${userId}::bigint`,
+          userId,
           ...dataToPersist,
         })
         .returning();
