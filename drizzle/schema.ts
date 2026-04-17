@@ -3061,7 +3061,7 @@ export const zuvyTechnicalSkills = main.table(
 );
 
 export const zuvyLearnersDegreeDetails = main.table(
-  'zuvy_learners_education_degree_details',
+  'zuvy_learners_degree_details',
   {
     id: serial('id').primaryKey().notNull(),
     name: varchar('name', { length: 100 }).notNull(),
@@ -3079,7 +3079,7 @@ export const zuvyLearnersDegreeDetails = main.table(
       .notNull(),
   },
   (table) => ({
-    nameUnique: uniqueIndex('zuvy_learners_education_degree_details_name_unique').on(
+    nameUnique: uniqueIndex('zuvy_learners_degree_details_name_unique').on(
       table.name,
     ),
   }),

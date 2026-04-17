@@ -269,7 +269,7 @@ export class UsersService {
       if (duplicate) {
         try {
           const result = await db.execute(
-            sql`SELECT * FROM main.zuvy_user_roles WHERE org_id = ${orgId}`,
+            sql`SELECT * FROM zuvy_user_roles WHERE org_id = ${orgId}`,
           );
           return {
             status: 'success',
@@ -285,7 +285,7 @@ export class UsersService {
       let query;
 
       if (roleName[0] === 'super admin') {
-        query = sql`SELECT * FROM main.zuvy_user_roles WHERE name != 'super_admin' AND org_id = ${orgId}`;
+        query = sql`SELECT * FROM zuvy_user_roles WHERE name != 'super_admin' AND org_id = ${orgId}`;
       } else if (roleName[0] === 'admin') {
         query = sql`SELECT * FROM main.zuvy_user_roles WHERE name NOT IN ('admin', 'super_admin') AND org_id = ${orgId}`;
       } else {
@@ -307,7 +307,7 @@ export class UsersService {
 
   async roleCheck(roleId: number) {
     const roleDetails = await db.execute(
-      sql`SELECT id, name FROM main.zuvy_user_roles WHERE id = ${roleId} LIMIT 1`,
+      sql`SELECT id, name FROM zuvy_user_roles WHERE id = ${roleId} LIMIT 1`,
     );
     if (!(roleDetails as any).rows?.length) {
       return {
@@ -329,7 +329,7 @@ export class UsersService {
     try {
       // 🔍 Step 1: Check if role already has any permissions
       const existingPermissions = await db.execute(
-        sql`SELECT COUNT(*) AS count FROM main.zuvy_permissions_roles WHERE role_id = ${roleId} AND org_id = ${orgId}`,
+        sql`SELECT COUNT(*) AS count FROM zuvy_permissions_roles WHERE role_id = ${roleId} AND org_id = ${orgId}`,
       );
 
       const alreadyAssigned = Number(
@@ -374,7 +374,7 @@ export class UsersService {
       // 🏗️ Step 3: Insert missing permissions
       for (const permission of defaultPermissions) {
         const permissionDetails = await db.execute(
-          sql`SELECT id FROM main.zuvy_permissions WHERE name = ${permission} LIMIT 1`,
+          sql`SELECT id FROM zuvy_permissions WHERE name = ${permission} LIMIT 1`,
         );
 
         if (!(permissionDetails as any).rows?.length) {
@@ -387,7 +387,7 @@ export class UsersService {
         const permissionId = (permissionDetails as any).rows[0].id;
 
         await db.execute(
-          sql`INSERT INTO main.zuvy_permissions_roles (role_id, permission_id, org_id)
+          sql`INSERT INTO zuvy_permissions_roles (role_id, permission_id, org_id)
             VALUES (${roleId}, ${permissionId}, ${orgId})
             ON CONFLICT DO NOTHING`,
         );
@@ -415,7 +415,7 @@ export class UsersService {
     try {
       const actorUserId = Number(actorUserIdString);
       const userCheck = await db.execute(
-        sql`SELECT id, name, email FROM main.users WHERE id = ${userId} LIMIT 1`,
+        sql`SELECT id, name, email FROM users WHERE id = ${userId} LIMIT 1`,
       );
 
       if (!(userCheck as any).rows?.length) {
@@ -428,7 +428,7 @@ export class UsersService {
       }
 
       const actorUserCheck = await db.execute(
-        sql`SELECT id, name FROM main.users WHERE id = ${actorUserId} LIMIT 1`,
+        sql`SELECT id, name FROM users WHERE id = ${actorUserId} LIMIT 1`,
       );
       if (!(actorUserCheck as any).rows?.length) {
         return {
@@ -451,7 +451,7 @@ export class UsersService {
       }
 
       const existing = await db.execute(
-        sql`SELECT role_id FROM main.zuvy_user_roles_assigned WHERE user_id = ${userId} AND organization_id = ${orgId} LIMIT 1`,
+        sql`SELECT role_id FROM zuvy_user_roles_assigned WHERE user_id = ${userId} AND organization_id = ${orgId} LIMIT 1`,
       );
 
       const targetUserId = userId;
@@ -471,10 +471,10 @@ export class UsersService {
           };
         }
         await db.execute(
-          sql`DELETE FROM main.zuvy_user_roles_assigned WHERE user_id = ${userId} AND organization_id = ${orgId}`,
+          sql`DELETE FROM zuvy_user_roles_assigned WHERE user_id = ${userId} AND organization_id = ${orgId}`,
         );
         const updated = await db.execute(sql`
-          INSERT INTO main.zuvy_user_roles_assigned (user_id, role_id, organization_id)
+          INSERT INTO zuvy_user_roles_assigned (user_id, role_id, organization_id)
           VALUES (${userId}, ${roleId}, ${orgId})
           RETURNING *`);
         // ✅ Assign default permissions for new role
@@ -958,7 +958,7 @@ export class UsersService {
           roleName: zuvyUserRoles.name,
           roleDescription: zuvyUserRoles.description,
           orgId: zuvyUserRolesAssigned.organizationId,
-          orgName: sql`(SELECT title FROM main.zuvy_organizations WHERE id = ${zuvyUserRolesAssigned.organizationId})`,
+          orgName: sql`(SELECT title FROM zuvy_organizations WHERE id = ${zuvyUserRolesAssigned.organizationId})`,
           createdAt: zuvyUserRolesAssigned.createdAt,
           updatedAt: zuvyUserRolesAssigned.updatedAt,
         })
