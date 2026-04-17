@@ -11,7 +11,7 @@ import {
   UseGuards,
   Query,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiBody, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiBody, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { MentorSlotService } from './mentor-slot.service';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 import { BookSlotDto } from './dto/book-slot.dto';
@@ -155,12 +155,31 @@ export class MentorSlotController {
     );
   }
 
+  @Get(':bookingId/recordings')
+  @ApiOperation({
+    summary: 'Get YouTube recordings and session info for a mentor booking',
+  })
+  async getBookingRecordings(
+    @Req() req,
+    @Param('bookingId', ParseIntPipe) bookingId: number,
+  ) {
+    return this.mentorSlotService.getBookingRecordings(
+      Number(req.user[0].id),
+      bookingId,
+    );
+  }
+
   /* ==========================================================================  
       GET STUDENT BOOKINGS (for student) 
   ========================================================================== */
   @Get('student/my')
   async getStudentBookings(@Req() req) {
     return this.mentorSlotService.getStudentBookings(Number(req.user[0].id));
+  }
+
+  @Get('student/metrics')
+  async getStudentMetrics(@Req() req) {
+    return this.mentorSlotService.getStudentMetrics(Number(req.user[0].id));
   }
 
   /* ==========================================================================  
@@ -195,5 +214,15 @@ export class MentorSlotController {
       Number(req.user[0].id),
       dto,
     );
+  }
+
+  /* ==========================================================================  
+   GET MY MENTOR PROFILE
+========================================================================== */
+
+  @Get('mentor/profile')
+  @ApiOperation({ summary: 'Get logged-in mentor profile' })
+  async getMyProfile(@Req() req) {
+    return this.mentorSlotService.getMyMentorProfile(Number(req.user[0].id));
   }
 }

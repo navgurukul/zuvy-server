@@ -20,13 +20,15 @@ const MAX_RETRIES = 5;
 
 type RecordingJob = {
   id: number;
-  session_id: number;
+  session_id?: number;
+  mentor_booking_id?: number;
   zoom_meeting_id: string;
   zoom_meeting_uuid?: string | null;
   zoom_recording_id?: string | null;
   status: string;
   retry_count: number;
   drive_link?: string | null;
+  table: 'session' | 'mentor';
 };
 
 @Injectable()
@@ -43,6 +45,16 @@ export class RecordingWorkerService implements OnModuleInit {
         this.logger.error('Triggered worker execution failed', err);
       }
     });
+
+    if (RECORDING_WORKER_ENABLED) {
+      setInterval(async () => {
+        try {
+          await this.runWorkerOnce();
+        } catch (err) {
+          this.logger.error('Scheduled recording worker execution failed', err);
+        }
+      }, 5000);
+    }
   }
 
   constructor(
@@ -64,6 +76,13 @@ export class RecordingWorkerService implements OnModuleInit {
       auth: oAuth2Client,
     });
   }
+
+  private getTableName(job: RecordingJob): string {
+    return job.table === 'mentor'
+      ? 'zuvy_mentor_session_recordings'
+      : 'zuvy_session_recordings';
+  }
+
   /////////////helper function for logging job details/////////////
   private logJob(
     level: 'log' | 'warn' | 'error' | 'debug',
@@ -75,6 +94,8 @@ export class RecordingWorkerService implements OnModuleInit {
       msg: message,
       jobId: job.id,
       sessionId: job.session_id,
+      mentorBookingId: job.mentor_booking_id,
+      table: job.table,
       status: job.status,
       retry: job.retry_count,
       ...extra,
@@ -84,7 +105,6 @@ export class RecordingWorkerService implements OnModuleInit {
   // =====================================================
   // WORKER LOOP (FEATURE-FLAG PROTECTED)
   // =====================================================
-  @Interval(5000)
   async runWorkerOnce() {
     // this.logger.debug('⏱ Recording worker tick');
 
@@ -107,7 +127,8 @@ export class RecordingWorkerService implements OnModuleInit {
   // PICK ONE JOB (ROW-LOCKED, SAFE FOR MULTI-INSTANCE)
   // =====================================================
   private async pickJob(): Promise<RecordingJob | null> {
-    const result = await db.execute(sql`
+    // First try session recordings
+    let result = await db.execute(sql`
     UPDATE zuvy_session_recordings
     SET
       status = CASE
@@ -129,10 +150,44 @@ export class RecordingWorkerService implements OnModuleInit {
       FOR UPDATE SKIP LOCKED
       LIMIT 1
     )
-    RETURNING *
+    RETURNING *, 'session' as table
   `);
 
-    return (result.rows?.[0] as RecordingJob) ?? null;
+    if (result.rows?.[0]) {
+      return { ...result.rows[0], table: 'session' } as RecordingJob;
+    }
+
+    // Then try mentor recordings
+    result = await db.execute(sql`
+    UPDATE zuvy_mentor_session_recordings
+    SET
+      status = CASE
+        WHEN status IN ('DISCOVERED', 'FAILED') THEN 'PROCESSING_METADATA'
+        WHEN status = 'METADATA_READY' THEN 'PROCESSING_DOWNLOAD'
+        WHEN status = 'DOWNLOADING' THEN 'PROCESSING_UPLOAD'
+        ELSE status
+      END,
+      updated_at = NOW()
+    WHERE id = (
+      SELECT id
+      FROM zuvy_mentor_session_recordings
+      WHERE status IN ('DISCOVERED', 'FAILED', 'METADATA_READY', 'DOWNLOADING')
+        AND status NOT LIKE 'PROCESSING_%'
+        AND status != 'PERMANENT_FAILED'
+        AND retry_count < ${MAX_RETRIES}
+        AND (next_retry_at IS NULL OR next_retry_at <= NOW())
+      ORDER BY created_at ASC
+      FOR UPDATE SKIP LOCKED
+      LIMIT 1
+    )
+    RETURNING *, 'mentor' as table
+  `);
+
+    if (result.rows?.[0]) {
+      return { ...result.rows[0], table: 'mentor' } as RecordingJob;
+    }
+
+    return null;
   }
 
   // =====================================================
@@ -228,13 +283,23 @@ export class RecordingWorkerService implements OnModuleInit {
           `Recording not available yet for job ${job.id} (meeting likely not ended). Deferring without retry penalty.`,
         );
 
-        await db.execute(sql`
-        UPDATE zuvy_session_recordings
-        SET
-          status = 'DISCOVERED',
-          next_retry_at = NOW() + INTERVAL '10 minutes'
-        WHERE id = ${job.id}
-      `);
+        if (job.table === 'mentor') {
+          await db.execute(sql`
+            UPDATE zuvy_mentor_session_recordings
+            SET
+              status = 'DISCOVERED',
+              next_retry_at = NOW() + INTERVAL '10 minutes'
+            WHERE id = ${job.id}
+          `);
+        } else {
+          await db.execute(sql`
+            UPDATE zuvy_session_recordings
+            SET
+              status = 'DISCOVERED',
+              next_retry_at = NOW() + INTERVAL '10 minutes'
+            WHERE id = ${job.id}
+          `);
+        }
 
         return;
       }
@@ -243,13 +308,48 @@ export class RecordingWorkerService implements OnModuleInit {
       throw err;
     }
 
-    const mp4 = recResp?.recording_files
-      ?.filter((f: any) => f.file_type === 'MP4')
-      ?.sort(
-        (a: any, b: any) =>
+    // Log all available recording files for debugging
+    const allMp4Files =
+      recResp?.recording_files?.filter((f: any) => f.file_type === 'MP4') || [];
+    this.logJob('log', job, 'Available MP4 recording files', {
+      count: allMp4Files.length,
+      types: allMp4Files.map((f: any) => ({
+        id: f.id,
+        recordingType: f.recording_type,
+        fileSize: f.file_size,
+        recordingEnd: f.recording_end,
+      })),
+    });
+
+    // Prioritize recording selection: prefer speaker views over shared screen
+    // This ensures we get complete, properly encoded videos
+    let mp4 = allMp4Files
+      ?.filter((f: any) => !f.recording_type.includes('chat'))
+      ?.sort((a: any, b: any) => {
+        // Priority order: speaker_view > shared_screen_with_speaker_view > others
+        const getTypePriority = (type: string): number => {
+          if (type === 'speaker_view') return 0;
+          if (type.includes('shared_screen_with_speaker')) return 1;
+          if (type === 'gallery_view') return 2;
+          return 3;
+        };
+
+        const priorityDiff =
+          getTypePriority(a.recording_type) - getTypePriority(b.recording_type);
+        if (priorityDiff !== 0) return priorityDiff;
+
+        // Secondary sort: latest recording first
+        return (
           new Date(b.recording_end).getTime() -
-          new Date(a.recording_end).getTime(),
-      )?.[0];
+          new Date(a.recording_end).getTime()
+        );
+      })?.[0];
+
+    this.logJob('log', job, 'Selected MP4 recording', {
+      recordingType: mp4?.recording_type,
+      fileSize: mp4?.file_size,
+      recordingId: mp4?.id,
+    });
 
     // Zoom responded, but recording not ready yet
     if (!mp4) {
@@ -261,14 +361,25 @@ export class RecordingWorkerService implements OnModuleInit {
           `Recording permanently failed for job ${job.id} after ${nextRetryCount} attempts`,
         );
 
-        await db.execute(sql`
-          UPDATE zuvy_session_recordings
-          SET
-            status = 'PERMANENT_FAILED',
-            retry_count = ${nextRetryCount},
-            last_error = 'Recording never became available on Zoom'
-          WHERE id = ${job.id}
-        `);
+        if (job.table === 'mentor') {
+          await db.execute(sql`
+            UPDATE zuvy_mentor_session_recordings
+            SET
+              status = 'PERMANENT_FAILED',
+              retry_count = ${nextRetryCount},
+              last_error = 'Recording never became available on Zoom'
+            WHERE id = ${job.id}
+          `);
+        } else {
+          await db.execute(sql`
+            UPDATE zuvy_session_recordings
+            SET
+              status = 'PERMANENT_FAILED',
+              retry_count = ${nextRetryCount},
+              last_error = 'Recording never became available on Zoom'
+            WHERE id = ${job.id}
+          `);
+        }
 
         return;
       }
@@ -278,14 +389,25 @@ export class RecordingWorkerService implements OnModuleInit {
 
       this.logJob('warn', job, 'Recording not ready yet; deferring');
 
-      await db.execute(sql`
-        UPDATE zuvy_session_recordings
-        SET
-          status = 'FAILED',
-          retry_count = retry_count + 1,
-          next_retry_at = ${nextRetry}
-        WHERE id = ${job.id}
-      `);
+      if (job.table === 'mentor') {
+        await db.execute(sql`
+          UPDATE zuvy_mentor_session_recordings
+          SET
+            status = 'FAILED',
+            retry_count = retry_count + 1,
+            next_retry_at = ${nextRetry}
+          WHERE id = ${job.id}
+        `);
+      } else {
+        await db.execute(sql`
+          UPDATE zuvy_session_recordings
+          SET
+            status = 'FAILED',
+            retry_count = retry_count + 1,
+            next_retry_at = ${nextRetry}
+          WHERE id = ${job.id}
+        `);
+      }
 
       return;
     }
@@ -295,28 +417,43 @@ export class RecordingWorkerService implements OnModuleInit {
       source: recResp.source,
     });
 
-    await db.execute(sql`
-    UPDATE zuvy_session_recordings
-    SET
-      zoom_recording_id = ${mp4.id},
-      status = 'METADATA_READY'
-    WHERE id = ${job.id}
-  `);
+    if (job.table === 'mentor') {
+      await db.execute(sql`
+        UPDATE zuvy_mentor_session_recordings
+        SET
+          zoom_recording_id = ${mp4.id},
+          status = 'METADATA_READY'
+        WHERE id = ${job.id}
+      `);
+    } else {
+      await db.execute(sql`
+        UPDATE zuvy_session_recordings
+        SET
+          zoom_recording_id = ${mp4.id},
+          status = 'METADATA_READY'
+        WHERE id = ${job.id}
+      `);
+    }
   }
 
   // =====================================================
   // STEP 2 — DOWNLOAD TO TEMP (NO ZoomService CHANGE)
   // =====================================================
+  private getRecordingFileName(job: any): string {
+    const prefix =
+      job.table === 'mentor'
+        ? `mentor-${job.mentor_booking_id}`
+        : `${job.session_id}`;
+    return `${prefix}-${job.zoom_recording_id}.mp4`;
+  }
+
   private async downloadRecording(job: any) {
     const tempDir = path.join(process.cwd(), 'temp-recordings');
     if (!fs.existsSync(tempDir)) {
       fs.mkdirSync(tempDir, { recursive: true });
     }
 
-    const finalPath = path.join(
-      tempDir,
-      `${job.session_id}-${job.zoom_recording_id}.mp4`,
-    );
+    const finalPath = path.join(tempDir, this.getRecordingFileName(job));
 
     const lockPath = `${finalPath}.lock`;
 
@@ -337,11 +474,19 @@ export class RecordingWorkerService implements OnModuleInit {
         );
       }
 
-      await db.execute(sql`
-      UPDATE zuvy_session_recordings
-      SET status = 'DOWNLOADING'
-      WHERE id = ${job.id}
-    `);
+      if (job.table === 'mentor') {
+        await db.execute(sql`
+          UPDATE zuvy_mentor_session_recordings
+          SET status = 'DOWNLOADING'
+          WHERE id = ${job.id}
+        `);
+      } else {
+        await db.execute(sql`
+          UPDATE zuvy_session_recordings
+          SET status = 'DOWNLOADING'
+          WHERE id = ${job.id}
+        `);
+      }
     } finally {
       try {
         fs.unlinkSync(lockPath);
@@ -376,12 +521,16 @@ export class RecordingWorkerService implements OnModuleInit {
       throw new Error('Zoom download URL not found');
     }
 
+    // Append access token to download URL for authentication
+    const accessToken = await this.zoomService.getAccessToken();
+    const downloadUrl = `${file.download_url}?access_token=${accessToken}`;
+
     const tempPath = `${finalPath}.part`;
     const writer = fs.createWriteStream(tempPath);
 
     const response = await axios({
       method: 'get',
-      url: file.download_url,
+      url: downloadUrl,
       responseType: 'stream',
       maxRedirects: 5,
       timeout: 0,
@@ -389,12 +538,68 @@ export class RecordingWorkerService implements OnModuleInit {
       maxBodyLength: Infinity,
     });
 
+    // Validate response before piping
+    if (response.status !== 200) {
+      throw new Error(`Zoom download returned status ${response.status}`);
+    }
+
+    const contentType = response.headers['content-type'] || '';
+    if (
+      !contentType.includes('video') &&
+      !contentType.includes('octet-stream')
+    ) {
+      throw new Error(`Invalid content-type for download: ${contentType}`);
+    }
+
     return new Promise<void>((resolve, reject) => {
       response.data.pipe(writer);
 
       writer.on('finish', () => {
-        fs.renameSync(tempPath, finalPath);
-        resolve();
+        // Validate downloaded file
+        try {
+          const stats = fs.statSync(tempPath);
+          const expectedSize = parseInt(file.file_size || '0');
+
+          this.logJob('log', job, 'Download complete - validating file', {
+            downloadedSize: stats.size,
+            expectedSize: expectedSize,
+            filePath: finalPath,
+            recordingType: file.recording_type,
+          });
+
+          // Check minimum file size (anything under 100KB is suspicious for a video)
+          if (stats.size < 102400) {
+            fs.unlinkSync(tempPath);
+            reject(
+              new Error(
+                `Downloaded file too small (${stats.size} bytes) - likely error response or incomplete download`,
+              ),
+            );
+            return;
+          }
+
+          // Allow 5% tolerance for file size variance
+          if (expectedSize > 0) {
+            const tolerance = expectedSize * 0.05;
+            const minSize = expectedSize - tolerance;
+            const maxSize = expectedSize + tolerance;
+
+            if (stats.size < minSize || stats.size > maxSize) {
+              this.logger.warn(
+                `File size variance detected: expected ~${expectedSize}, got ${stats.size} (tolerance: ±5%)`,
+              );
+              // Continue anyway since video might have been re-encoded or metadata varies
+            }
+          }
+
+          fs.renameSync(tempPath, finalPath);
+          resolve();
+        } catch (err) {
+          try {
+            fs.unlinkSync(tempPath);
+          } catch {}
+          reject(err);
+        }
       });
 
       writer.on('error', (err) => {
@@ -406,6 +611,80 @@ export class RecordingWorkerService implements OnModuleInit {
 
       response.data.on('error', reject);
     });
+  }
+
+  // =====================================================
+  // VIDEO FILE VALIDATION (FFPROBE-BASED)
+  // =====================================================
+  private async validateVideoFile(filePath: string): Promise<void> {
+    try {
+      const { execSync } = require('child_process');
+
+      try {
+        // Check if ffprobe is available
+        execSync('ffprobe -version', { stdio: 'ignore' });
+      } catch {
+        this.logger.warn(
+          'ffprobe not available, skipping detailed video validation',
+        );
+        return; // Skip validation if ffprobe not available
+      }
+
+      // Use ffprobe to extract video metadata
+      const ffprobeCmd = `ffprobe -v error -select_streams v:0 -show_entries stream=codec_type,codec_name,width,height,r_frame_rate,duration -of default=noprint_wrappers=1 "${filePath}"`;
+
+      let output: string;
+      try {
+        output = execSync(ffprobeCmd, { encoding: 'utf-8' }).toString();
+      } catch (err: any) {
+        throw new Error(`ffprobe failed to read file: ${err.message}`);
+      }
+
+      if (!output.includes('codec_type=v')) {
+        throw new Error('No video stream detected in file');
+      }
+
+      if (!output.includes('codec_name')) {
+        throw new Error(
+          'Video codec information missing - file may be corrupted',
+        );
+      }
+
+      // Parse basic info
+      const lines = output.split('\n');
+      let hasValidCodec = false;
+      let duration = 0;
+
+      for (const line of lines) {
+        if (line.includes('codec_name')) {
+          hasValidCodec = true;
+        }
+        if (line.startsWith('duration=')) {
+          try {
+            duration = parseFloat(line.split('=')[1]) || 0;
+          } catch {}
+        }
+      }
+
+      if (!hasValidCodec) {
+        throw new Error(
+          'Video codec not detected - file may be corrupted or incomplete',
+        );
+      }
+
+      // For Zoom recordings, minimum duration should be > 5 seconds
+      if (duration > 0 && duration < 5) {
+        throw new Error(
+          `Video duration too short (${duration.toFixed(2)}s) - file may be incomplete or corrupted`,
+        );
+      }
+
+      this.logger.debug(
+        `Video validation passed for ${filePath}: duration=${duration.toFixed(2)}s`,
+      );
+    } catch (err: any) {
+      throw new Error(`Video validation error: ${err.message}`);
+    }
   }
 
   // =====================================================
@@ -426,7 +705,7 @@ export class RecordingWorkerService implements OnModuleInit {
     const filePath = path.join(
       process.cwd(),
       'temp-recordings',
-      `${job.session_id}-${job.zoom_recording_id}.mp4`,
+      this.getRecordingFileName(job),
     );
 
     if (!fs.existsSync(filePath)) {
@@ -435,38 +714,112 @@ export class RecordingWorkerService implements OnModuleInit {
 
     const fileSize = fs.statSync(filePath).size;
 
-    const res = await this.youtube.videos.insert(
-      {
-        part: ['snippet', 'status'],
-        requestBody: {
-          snippet: {
-            title: `Session ${job.session_id}`,
-            description: 'Automated session recording upload',
+    // Validate file size (YouTube minimum is 0 bytes, but let's check for reasonable size)
+    if (fileSize < 1024) {
+      // Less than 1KB is suspicious
+      throw new Error(`File too small (${fileSize} bytes), likely corrupted`);
+    }
+
+    // Validate file extension
+    if (!filePath.toLowerCase().endsWith('.mp4')) {
+      throw new Error('File is not MP4 format');
+    }
+
+    // Validate file integrity with ffprobe if available
+    try {
+      await this.validateVideoFile(filePath);
+    } catch (validationError: any) {
+      this.logJob('error', job, 'Video file validation failed', {
+        error: validationError.message,
+        filePath,
+        fileSize,
+      });
+      throw new Error(
+        `Video file validation failed: ${validationError.message}. This file likely cannot be processed by YouTube.`,
+      );
+    }
+
+    this.logJob('log', job, 'Starting YouTube upload', {
+      fileSize: fileSize,
+      filePath: filePath,
+    });
+
+    try {
+      const res = await this.youtube.videos.insert(
+        {
+          part: ['snippet', 'status'],
+          requestBody: {
+            snippet: {
+              title:
+                job.table === 'mentor'
+                  ? `Mentor session ${job.mentor_booking_id}`
+                  : `Session ${job.session_id}`,
+              description: 'Automated session recording upload',
+            },
+            status: { privacyStatus: 'unlisted' },
           },
-          status: { privacyStatus: 'unlisted' },
+          media: { body: fs.createReadStream(filePath) },
         },
-        media: { body: fs.createReadStream(filePath) },
-      },
-      {
-        onUploadProgress: (evt: any) => {
-          const progress = Math.round((evt.bytesRead / fileSize) * 100);
-          this.logger.log(`YouTube upload ${progress}%`);
+        {
+          onUploadProgress: (evt: any) => {
+            const progress = Math.round((evt.bytesRead / fileSize) * 100);
+            this.logger.log(`YouTube upload ${progress}% for job ${job.id}`);
+          },
         },
-      },
-    );
+      );
 
-    const videoId = res.data.id;
-    const videoUrl = `https://www.youtube.com/watch?v=${videoId}`;
+      const videoId = res.data.id;
+      const videoUrl = `https://www.youtube.com/watch?v=${videoId}`;
 
-    await db.execute(sql`
-      UPDATE zuvy_session_recordings
-      SET
-        status = 'COMPLETED',
-        drive_link = ${videoUrl}
-      WHERE id = ${job.id}
-    `);
+      this.logJob('log', job, 'YouTube upload completed successfully', {
+        videoId: videoId,
+        videoUrl: videoUrl,
+      });
 
-    fs.unlinkSync(filePath); // cleanup
+      if (job.table === 'mentor') {
+        await db.execute(sql`
+          UPDATE zuvy_mentor_session_recordings
+          SET
+            status = 'COMPLETED',
+            drive_file_id = ${videoId},
+            drive_link = ${videoUrl}
+          WHERE id = ${job.id}
+        `);
+      } else {
+        await db.execute(sql`
+          UPDATE zuvy_session_recordings
+          SET
+            status = 'COMPLETED',
+            drive_file_id = ${videoId},
+            drive_link = ${videoUrl}
+          WHERE id = ${job.id}
+        `);
+      }
+
+      fs.unlinkSync(filePath); // cleanup
+    } catch (error: any) {
+      this.logJob('error', job, 'YouTube upload failed', {
+        error: error.message,
+        code: error.code,
+        response: error.response?.data,
+      });
+
+      // Check for specific YouTube errors
+      if (error.code === 403) {
+        throw new Error('YouTube quota exceeded or access denied');
+      } else if (error.code === 400) {
+        throw new Error(
+          'Invalid request to YouTube API - possibly corrupted file',
+        );
+      } else if (error.message?.includes('Processing abandoned')) {
+        throw new Error(
+          'YouTube processing abandoned - file may be corrupted or violate policies',
+        );
+      }
+
+      // Re-throw the error to be handled by the failure logic
+      throw error;
+    }
   }
 
   // =====================================================
@@ -475,21 +828,56 @@ export class RecordingWorkerService implements OnModuleInit {
   private async markFailed(job: RecordingJob, error: Error) {
     const nextRetryCount = job.retry_count + 1;
     const isTerminal = nextRetryCount >= MAX_RETRIES;
+    const nextRetry = this.computeNextRetry(job.retry_count);
 
     this.logJob('error', job, 'Recording job failed', {
       error: error.message,
       terminal: isTerminal,
+      retryCount: nextRetryCount,
     });
 
-    await db.execute(sql`
-    UPDATE zuvy_session_recordings
-    SET
-      status = ${isTerminal ? 'PERMANENT_FAILED' : 'FAILED'},
-      retry_count = ${nextRetryCount},
-      last_error = ${error.message},
-      next_retry_at = ${isTerminal ? null : this.computeNextRetry(job.retry_count)},
-      updated_at = NOW()
-    WHERE id = ${job.id}
-  `);
+    if (job.table === 'mentor') {
+      await db.execute(
+        isTerminal
+          ? sql`
+              UPDATE zuvy_mentor_session_recordings
+              SET
+                status = 'PERMANENT_FAILED',
+                retry_count = ${nextRetryCount},
+                last_error = ${error.message}
+              WHERE id = ${job.id}
+            `
+          : sql`
+              UPDATE zuvy_mentor_session_recordings
+              SET
+                status = 'FAILED',
+                retry_count = ${nextRetryCount},
+                next_retry_at = ${nextRetry},
+                last_error = ${error.message}
+              WHERE id = ${job.id}
+            `,
+      );
+    } else {
+      await db.execute(
+        isTerminal
+          ? sql`
+              UPDATE zuvy_session_recordings
+              SET
+                status = 'PERMANENT_FAILED',
+                retry_count = ${nextRetryCount},
+                last_error = ${error.message}
+              WHERE id = ${job.id}
+            `
+          : sql`
+              UPDATE zuvy_session_recordings
+              SET
+                status = 'FAILED',
+                retry_count = ${nextRetryCount},
+                next_retry_at = ${nextRetry},
+                last_error = ${error.message}
+              WHERE id = ${job.id}
+            `,
+      );
+    }
   }
 }

@@ -385,13 +385,25 @@ export class ClassesService {
         ? instructorEmail[0].email
         : creatorInfo.email;
       const hostEmail = teamAccountEmail;
-      try {
-        // Ensure team account is licensed (host must be able to cloud record)
-        await this.zoomService.ensureLicensedUser(hostEmail, 'Team', '');
-      } catch (e) {
-        this.logger.warn(
-          `Could not ensure license for team host ${hostEmail}: ${e.message}`,
-        );
+      // Use getUser (read-only check) — do NOT auto-create or auto-license
+      const zoomUserCheck = await this.zoomService.getUser(hostEmail);
+      if (!zoomUserCheck.success) {
+        return {
+          status: 'error',
+          message:
+            'This instructor does not have zoom license you are not authorize',
+          code: 400,
+        };
+      }
+      const zoomUserType = zoomUserCheck.data?.type;
+      const zoomUserStatus = zoomUserCheck.data?.status;
+      if (zoomUserType !== 2 || zoomUserStatus !== 'active') {
+        return {
+          status: 'error',
+          message:
+            'This instructor does not have zoom license you are not authorize',
+          code: 400,
+        };
       }
       const candidateAltHosts: string[] = [];
       const verifiedAltHosts: string[] = [];
