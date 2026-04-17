@@ -3332,7 +3332,7 @@ export const zuvyOpenEndedQuestionSubmissionRelation = relations(zuvyOpenEndedQu
 }))
 
 export const assessmentData = relations(zuvyCourseModules, ({ one, many }) => ({
-  moduleAssessments: many(zuvyModuleAssessment),
+  moduleAssessments: many(zuvyOutsourseAssessments, { relationName: 'moduleToOutsourseAssessments' }),
   moduleChapterData: many(zuvyModuleChapter),
   chapterTrackingData: many(zuvyChapterTracking),
 }))
@@ -3522,6 +3522,7 @@ export const zuvyOutsourseAssessmentsRelations = relations(zuvyOutsourseAssessme
   Module: one(zuvyCourseModules, {
     fields: [zuvyOutsourseAssessments.moduleId],
     references: [zuvyCourseModules.id],
+    relationName: 'moduleToOutsourseAssessments',
   }),
   Quizzes: many(zuvyOutsourseQuizzes),
   OpenEndedQuestions: many(zuvyOutsourseOpenEndedQuestions),
