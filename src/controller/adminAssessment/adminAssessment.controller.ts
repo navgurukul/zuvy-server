@@ -452,6 +452,32 @@ export class AdminAssessmentController {
     }
   }
 
+  @Get('/overall-analysis/:bootcampId')
+  @ApiOperation({
+    summary:
+      'Get overall analysis of all students in a bootcamp — attendance, assessment scores, mentor, college, degree, LinkedIn',
+  })
+  @ApiBearerAuth('JWT-auth')
+  async getOverallAnalysis(
+    @Param('bootcampId', ParseIntPipe) bootcampId: number,
+    @Res() res,
+  ) {
+    try {
+      const result =
+        await this.adminAssessmentService.getOverallAnalysis(bootcampId);
+      if (result.statusCode === STATUS_CODES.NOT_FOUND) {
+        return ErrorResponse.BadRequestException(result.message).send(res);
+      }
+      return new SuccessResponse(
+        result.message,
+        result.statusCode,
+        result.data,
+      ).send(res);
+    } catch (error) {
+      return ErrorResponse.BadRequestException(error.message).send(res);
+    }
+  }
+
   @Get('/assessment-performance/:bootcampId')
   @ApiOperation({ summary: 'Get assessment performance' })
   @ApiBearerAuth('JWT-auth')

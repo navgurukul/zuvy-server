@@ -7,7 +7,16 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { db } from '../../db/index';
-import { count, eq, inArray, SQL, sql, desc } from 'drizzle-orm';
+import {
+  count,
+  eq,
+  inArray,
+  SQL,
+  sql,
+  desc,
+  and,
+  isNotNull,
+} from 'drizzle-orm';
 import * as _ from 'lodash';
 import {
   zuvyBatchEnrollments,
@@ -26,6 +35,10 @@ import {
   zuvyOutsourseOpenEndedQuestions,
   zuvyOutsourseCodingQuestions,
   zuvyTags,
+  zuvyBatches,
+  zuvyLearnersCompleteProfile,
+  zuvyBootcamps,
+  zuvyMentorSlotBooking,
 } from '../../../drizzle/schema';
 import { STATUS_CODES } from 'src/helpers';
 import { helperVariable } from 'src/constants/helper';
@@ -2106,10 +2119,205 @@ Team Zuvy`;
       );
     }
   }
-}
-function and(
-  arg0: SQL<unknown>,
-  arg1: SQL<unknown>,
-): import('drizzle-orm').SQL<unknown> {
-  throw new Error('Function not implemented.');
+
+  async getOverallAnalysis(bootcampId: number): Promise<any> {
+    try {
+      // 1. Fetch course name
+      const course = await db
+        .select({ name: zuvyBootcamps.name })
+        .from(zuvyBootcamps)
+        .where(eq(zuvyBootcamps.id, bootcampId))
+        .limit(1);
+
+      const courseName = course[0]?.name || null;
+
+      // 2. Fetch all enrolled students (in a batch) with user info, attendance and batch name
+      const enrollments = await db
+        .select({
+          userId: zuvyBatchEnrollments.userId,
+          attendance: zuvyBatchEnrollments.attendance,
+          batchId: zuvyBatchEnrollments.batchId,
+          batchName: zuvyBatches.name,
+          name: users.name,
+          email: users.email,
+        })
+        .from(zuvyBatchEnrollments)
+        .leftJoin(users, eq(users.id, zuvyBatchEnrollments.userId))
+        .leftJoin(zuvyBatches, eq(zuvyBatches.id, zuvyBatchEnrollments.batchId))
+        .where(
+          and(
+            eq(zuvyBatchEnrollments.bootcampId, bootcampId),
+            isNotNull(zuvyBatchEnrollments.batchId),
+          ),
+        );
+
+      if (!enrollments.length) {
+        return {
+          statusCode: STATUS_CODES.NOT_FOUND,
+          message: 'No enrolled students found for this bootcamp',
+          data: [],
+        };
+      }
+
+      const enrolledUserIds = enrollments.map((e) => Number(e.userId));
+
+      // 3. Fetch all assessments for this bootcamp ordered by 'order'
+      const assessments = await db
+        .select({
+          id: zuvyOutsourseAssessments.id,
+          order: zuvyOutsourseAssessments.order,
+          assessmentId: zuvyOutsourseAssessments.assessmentId,
+        })
+        .from(zuvyOutsourseAssessments)
+        .where(eq(zuvyOutsourseAssessments.bootcampId, bootcampId))
+        .orderBy(zuvyOutsourseAssessments.order);
+
+      // 4. Fetch assessment titles
+      const assessmentTitles: Record<number, string> = {};
+      if (assessments.length) {
+        const titles = await db
+          .select({
+            id: zuvyModuleAssessment.id,
+            title: zuvyModuleAssessment.title,
+          })
+          .from(zuvyModuleAssessment)
+          .where(
+            inArray(
+              zuvyModuleAssessment.id,
+              assessments.map((a) => a.assessmentId),
+            ),
+          );
+        titles.forEach((t) => {
+          assessmentTitles[t.id] = t.title;
+        });
+      }
+
+      // 5. Fetch all active, submitted assessments for enrolled users
+      const assessmentIds = assessments.map((a) => a.id);
+      let submissions: {
+        userId: number;
+        assessmentOutsourseId: number;
+        percentage: number | null;
+      }[] = [];
+      if (assessmentIds.length && enrolledUserIds.length) {
+        submissions = await db
+          .select({
+            userId: zuvyAssessmentSubmission.userId,
+            assessmentOutsourseId:
+              zuvyAssessmentSubmission.assessmentOutsourseId,
+            percentage: zuvyAssessmentSubmission.percentage,
+          })
+          .from(zuvyAssessmentSubmission)
+          .where(
+            and(
+              and(
+                inArray(
+                  zuvyAssessmentSubmission.assessmentOutsourseId,
+                  assessmentIds,
+                ),
+                inArray(zuvyAssessmentSubmission.userId, enrolledUserIds),
+              ),
+              and(
+                eq(zuvyAssessmentSubmission.active, true),
+                isNotNull(zuvyAssessmentSubmission.submitedAt),
+              ),
+            ),
+          );
+      }
+
+      // Map: userId -> assessmentOutsourseId -> percentage
+      const submissionMap: Record<number, Record<number, number | null>> = {};
+      for (const sub of submissions) {
+        if (!submissionMap[sub.userId]) submissionMap[sub.userId] = {};
+        submissionMap[sub.userId][sub.assessmentOutsourseId] = sub.percentage;
+      }
+
+      // 6. Fetch completed one-on-one sessions count per student
+      const sessionCountMap: Record<number, number> = {};
+      if (enrolledUserIds.length) {
+        const sessions = await db
+          .select({
+            studentUserId: zuvyMentorSlotBooking.studentUserId,
+            sessionCount: count(zuvyMentorSlotBooking.id),
+          })
+          .from(zuvyMentorSlotBooking)
+          .where(
+            and(
+              inArray(zuvyMentorSlotBooking.studentUserId, enrolledUserIds),
+              eq(zuvyMentorSlotBooking.sessionLifecycleState, 'COMPLETED'),
+            ),
+          )
+          .groupBy(zuvyMentorSlotBooking.studentUserId);
+        sessions.forEach((s) => {
+          sessionCountMap[Number(s.studentUserId)] = Number(s.sessionCount);
+        });
+      }
+
+      // 7. Fetch full learner profiles
+      const profileMap: Record<number, any> = {};
+      if (enrolledUserIds.length) {
+        const profiles = await db
+          .select()
+          .from(zuvyLearnersCompleteProfile)
+          .where(inArray(zuvyLearnersCompleteProfile.userId, enrolledUserIds));
+        profiles.forEach((p) => {
+          profileMap[p.userId] = p;
+        });
+      }
+
+      // 8. Build final result
+      const batchName = enrollments[0]?.batchName || null;
+
+      const students = enrollments.map((enrollment) => {
+        const userId = Number(enrollment.userId);
+        const userSubs = submissionMap[userId] || {};
+        const numberOfAssessmentsAttempted = Object.keys(userSubs).length;
+
+        const assessmentScores = assessments.map((assessment, idx) => {
+          const percentage = userSubs[assessment.id] ?? null;
+          return {
+            title:
+              assessmentTitles[assessment.assessmentId] ||
+              `Assessment ${idx + 1}`,
+            status: percentage !== null ? 'present' : 'absent',
+            percentage,
+          };
+        });
+
+        const attemptedPercentages = assessmentScores
+          .map((a) => a.percentage)
+          .filter((p) => p !== null) as number[];
+
+        const averageAssessmentPercentage =
+          attemptedPercentages.length > 0
+            ? Math.round(
+                attemptedPercentages.reduce((sum, p) => sum + p, 0) /
+                  attemptedPercentages.length,
+              )
+            : null;
+
+        return {
+          name: enrollment.name,
+          email: enrollment.email,
+          overAllAttendance: enrollment.attendance ?? null,
+          numberOfAssessmentsAttempted,
+          averageAssessmentPercentage,
+          assessments: assessmentScores,
+          oneOnOneSessionsCompleted: sessionCountMap[userId] ?? 0,
+          profile: profileMap[userId] || null,
+        };
+      });
+
+      return {
+        statusCode: STATUS_CODES.OK,
+        message: 'Overall analysis fetched successfully',
+        data: { courseName, batchName, students },
+      };
+    } catch (error) {
+      this.logger.error('Error fetching overall analysis:', error);
+      throw new BadRequestException(
+        error.message || 'Failed to fetch overall analysis',
+      );
+    }
+  }
 }
