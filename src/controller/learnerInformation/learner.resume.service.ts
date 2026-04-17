@@ -14,7 +14,7 @@ import {
 import * as mammoth from 'mammoth';
 import pdfParse from 'pdf-parse';
 import { inflateSync } from 'zlib';
-import { eq, sql } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { db } from '../../db/index';
 import { zuvyLearnersCompleteProfile } from '../../../drizzle/schema';
 import { ResumeResponseDto } from './dto/learner.dto';
@@ -279,21 +279,6 @@ const COMMON_LOCATIONS = new Set([
   'melbourne',
 ]);
 
-const PDF_INTERNAL_WORDS = new Set([
-  'pdf',
-  'obj',
-  'endobj',
-  'stream',
-  'endstream',
-  'xref',
-  'trailer',
-  'startxref',
-  'catalog',
-  'filter',
-  'flatedecode',
-  'length',
-]);
-
 type ExtractedProject = {
   title: string;
   description?: string;
@@ -532,7 +517,7 @@ export class LearnerResumeService {
 
       try {
         decodedStreamCandidates.push(
-          inflateSync(streamData).toString('latin1'),
+          inflateSync(Uint8Array.from(streamData)).toString('latin1'),
         );
       } catch {
         decodedStreamCandidates.push(streamData.toString('latin1'));
@@ -1363,18 +1348,7 @@ export class LearnerResumeService {
   }
 
   private async ensureCompleteProfileResumeColumnsReady(): Promise<void> {
-    await db.execute(
-      sql.raw(`
-        ALTER TABLE IF EXISTS main.zuvy_learners_complete_profile
-        ADD COLUMN IF NOT EXISTS resume_url VARCHAR(1024);
-
-        ALTER TABLE IF EXISTS main.zuvy_learners_complete_profile
-        ADD COLUMN IF NOT EXISTS original_filename VARCHAR(255);
-
-        ALTER TABLE IF EXISTS main.zuvy_learners_complete_profile
-        ADD COLUMN IF NOT EXISTS projects JSONB DEFAULT '[]'::jsonb;
-      `),
-    );
+    return;
   }
 
   async uploadResumeAndSave(
@@ -1438,12 +1412,12 @@ export class LearnerResumeService {
         .set(updatePayload)
         .where(eq(zuvyLearnersCompleteProfile.userId, userId));
     } else {
-      await db.insert(zuvyLearnersCompleteProfile).values({
+      await db.insert(zuvyLearnersCompleteProfile as any).values({
         userId,
         resumeUrl,
         originalFilename,
         projects: extractedProjects,
-      });
+      } as any);
     }
   }
 
@@ -1483,11 +1457,11 @@ export class LearnerResumeService {
       }),
     );
 
-    const chunks: Buffer[] = [];
+    const chunks: Uint8Array[] = [];
     for await (const chunk of response.Body as any) {
-      chunks.push(Buffer.from(chunk));
+      chunks.push(Buffer.from(chunk) as Uint8Array);
     }
-    const buffer = Buffer.concat(chunks);
+    const buffer = Buffer.from(chunks.flatMap((chunk) => Array.from(chunk)));
 
     const mimetype = originalFilename?.toLowerCase().endsWith('.docx')
       ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
