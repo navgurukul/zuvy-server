@@ -199,7 +199,7 @@ export class UsersController {
     }
   }
 
-  @Post('assign-role-to-user')
+  @Post('users/assign-role')
   @ApiOperation({
     summary: 'Assign a role to a user',
     description:
