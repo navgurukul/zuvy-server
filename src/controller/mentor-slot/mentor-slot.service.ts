@@ -11,19 +11,30 @@ import {
   zuvyMentorSlotBooking,
   zuvyMentorSlotManagement,
   zuvyUserRolesAssigned,
+  zuvyUserRoles,
+  zuvyBatchEnrollments,
+  zuvyBootcampType,
+  zuvyBootcamps,
+  zuvyMentorSessionRecordings,
+  users,
+  zuvyStudentBookingMetrics,
 } from '../../../drizzle/schema';
 
-import { and, eq, lt, sql } from 'drizzle-orm';
+import { and, eq, lt, sql, desc } from 'drizzle-orm';
 import { CreateSlotDto } from './dto/create-slot.dto';
 import { GoogleCalendarService } from 'src/integrations/google/google-calendar.service';
 import { NotificationService } from '../notification/notification.service';
 import { NotificationType } from '../notification/notification.types';
+import { ZoomService } from 'src/services/zoom/zoom.service';
+import { NotificationEmailService } from 'src/notification/email/email.service';
 
 @Injectable()
 export class MentorSlotService {
   constructor(
     private readonly googleCalendarService: GoogleCalendarService,
     private readonly notificationService: NotificationService,
+    private readonly zoomService: ZoomService,
+    private readonly emailService: NotificationEmailService,
   ) {}
 
   private async getMentorProfile(userId: number) {
@@ -61,14 +72,126 @@ export class MentorSlotService {
     const [role] = await db
       .select()
       .from(zuvyUserRolesAssigned)
-      .where(eq(zuvyUserRolesAssigned.userId, userIdBigInt))
+      .innerJoin(
+        zuvyUserRoles,
+        eq(zuvyUserRolesAssigned.roleId, zuvyUserRoles.id),
+      )
+      .where(
+        and(
+          eq(zuvyUserRolesAssigned.userId, userIdBigInt),
+          eq(zuvyUserRoles.name, 'instructor'),
+        ),
+      )
       .limit(1);
 
     if (!role) {
-      throw new ForbiddenException('User is not allowed to act as mentor');
+      throw new ForbiddenException(
+        'User is not allowed to act as mentor. Only instructors can create mentor slots.',
+      );
     }
   }
 
+  private async ensureMentorZoomVerified(userId: number) {
+    const mentorProfile = await this.getMentorProfile(userId);
+    console.log(
+      `Mentor profile for user ${userId}: isVerified=${mentorProfile?.isVerified}`,
+    );
+
+    if (mentorProfile?.isVerified) {
+      console.log(`Mentor ${userId} already verified, skipping Zoom check`);
+      return true;
+    }
+
+    const [userRow] = await db
+      .select({ email: users.email })
+      .from(users)
+      .where(eq(users.id, BigInt(userId)))
+      .limit(1);
+
+    if (!userRow) {
+      throw new NotFoundException('Mentor user not found');
+    }
+
+    console.log(`Checking Zoom user for email: ${userRow.email}`);
+
+    const zoomResponse = await this.zoomService.getUser(userRow.email);
+    console.log(
+      `Zoom getUser response: success=${zoomResponse.success}, error=${zoomResponse.error}`,
+    );
+
+    if (!zoomResponse.success) {
+      console.error(
+        `Zoom user check failed for ${userRow.email}: ${zoomResponse.error}`,
+      );
+      throw new BadRequestException(
+        'Mentor Zoom account is not available or not licensed',
+      );
+    }
+
+    const userType = zoomResponse.data.type;
+    const userStatus = zoomResponse.data.status;
+    console.log(`Zoom user type=${userType}, status=${userStatus}`);
+
+    if (userType !== 2 || userStatus !== 'active') {
+      console.error(
+        `Zoom user not licensed/active: type=${userType}, status=${userStatus}`,
+      );
+      throw new BadRequestException(
+        'Mentor Zoom account must be an active licensed Zoom user',
+      );
+    }
+
+    console.log(
+      `Zoom verification successful for user ${userId}, updating profile`,
+    );
+
+    await db
+      .update(zuvyMentorSlotManagement)
+      .set({
+        isVerified: true,
+        updatedAt: new Date(),
+      } as Partial<typeof zuvyMentorSlotManagement.$inferInsert>)
+      .where(eq(zuvyMentorSlotManagement.mentorUserId, BigInt(userId)));
+
+    return true;
+  }
+
+  private async validateMentorProfileComplete(userId: number) {
+    const [profile] = await db
+      .select({
+        bio: zuvyMentorSlotManagement.bio,
+        expertise: zuvyMentorSlotManagement.expertise,
+        pastExperiences: zuvyMentorSlotManagement.pastExperiences,
+      })
+      .from(zuvyMentorSlotManagement)
+      .where(eq(zuvyMentorSlotManagement.mentorUserId, BigInt(userId)))
+      .limit(1);
+
+    if (!profile) {
+      throw new NotFoundException('Mentor profile not found.');
+    }
+
+    if (!profile.bio || !profile.expertise || !profile.pastExperiences) {
+      throw new ForbiddenException(
+        'Complete your mentor profile (bio, expertise, past experiences) before creating slots.',
+      );
+    }
+
+    if (Array.isArray(profile.expertise) && profile.expertise.length === 0) {
+      throw new ForbiddenException('Add at least one skill in expertise.');
+    }
+
+    if (
+      Array.isArray(profile.pastExperiences) &&
+      profile.pastExperiences.length === 0
+    ) {
+      throw new ForbiddenException(
+        'Add past experiences before creating slots.',
+      );
+    }
+
+    return true;
+  }
   /* ==========================================================================
      UTILITY — 12 HOUR RULE ENFORCER
   ========================================================================== */
@@ -81,6 +204,124 @@ export class MentorSlotService {
     if (diffHours < 12) {
       throw new BadRequestException(
         'Booking must be made at least 12 hours in advance.',
+      );
+    }
+  }
+
+  /* ==========================================================================
+   QUOTA YEAR WINDOW (APRIL 15 → APRIL 14)
+========================================================================== */
+
+  private getQuotaWindow() {
+    const now = new Date();
+    const year = now.getUTCFullYear();
+
+    let quotaStart = new Date(Date.UTC(year, 3, 15)); // April 15
+    let quotaEnd = new Date(Date.UTC(year + 1, 3, 14, 23, 59, 59));
+
+    if (now < quotaStart) {
+      quotaStart = new Date(Date.UTC(year - 1, 3, 15));
+      quotaEnd = new Date(Date.UTC(year, 3, 14, 23, 59, 59));
+    }
+
+    return { quotaStart, quotaEnd };
+  }
+
+  private getQuotaResetDate() {
+    const { quotaEnd } = this.getQuotaWindow();
+    return new Date(Date.UTC(quotaEnd.getUTCFullYear(), 3, 15));
+  }
+
+  private async resetStudentMetrics(studentUserId: bigint) {
+    const resetDate = this.getQuotaResetDate();
+    await db
+      .update(zuvyStudentBookingMetrics)
+      .set({
+        quotaUsed: 0,
+        isQuotaExhausted: false,
+        quotaResetDate: resetDate,
+        updatedAt: new Date(),
+      } as Partial<typeof zuvyStudentBookingMetrics.$inferInsert>)
+      .where(eq(zuvyStudentBookingMetrics.userId, studentUserId));
+  }
+
+  /* ==========================================================================
+     VALIDATE LEARNER QUOTA + COOLDOWN
+  ========================================================================== */
+
+  private async validateLearnerBookingEligibility(studentUserId: bigint) {
+    const [metrics] = await db
+      .select()
+      .from(zuvyStudentBookingMetrics)
+      .where(eq(zuvyStudentBookingMetrics.userId, studentUserId))
+      .limit(1);
+
+    if (!metrics) {
+      // Initialize if missing
+      await this.initializeStudentMetrics(studentUserId);
+      return; // Allow first booking
+    }
+
+    const now = new Date();
+    if (metrics.quotaResetDate && now >= metrics.quotaResetDate) {
+      await this.resetStudentMetrics(studentUserId);
+      return;
+    }
+
+    // Check quota
+    if (metrics.isQuotaExhausted || metrics.quotaUsed >= 3) {
+      throw new ForbiddenException(
+        `You have used all 3 sessions for this year. Your quota resets on ${metrics.quotaResetDate.toDateString()}.`,
+      );
+    }
+
+    // Check cooldown
+    if (metrics.cooldownEndDate && now < metrics.cooldownEndDate) {
+      throw new ForbiddenException(
+        `You can book your next session from ${metrics.cooldownEndDate.toDateString()}.`,
+      );
+    }
+  }
+
+  private async initializeStudentMetrics(userId: bigint) {
+    const quotaResetDate = this.getQuotaResetDate();
+    await db.insert(zuvyStudentBookingMetrics).values({
+      userId,
+      quotaResetDate,
+    } as typeof zuvyStudentBookingMetrics.$inferInsert);
+  }
+
+  /* ==========================================================================
+     ENSURE MENTORSHIP IS ENABLED
+  ========================================================================== */
+  private async ensureMentorshipEnabled(studentUserId: bigint) {
+    const enrollments = await db
+      .select({
+        mentorshipEnabled: zuvyBootcampType.mentorshipEnabled,
+      })
+      .from(zuvyBatchEnrollments)
+      .innerJoin(
+        zuvyBootcampType,
+        eq(zuvyBatchEnrollments.bootcampId, zuvyBootcampType.bootcampId),
+      )
+      .where(
+        and(
+          eq(zuvyBatchEnrollments.userId, studentUserId),
+          eq(zuvyBatchEnrollments.status, 'active'),
+        ),
+      );
+
+    if (enrollments.length === 0) {
+      throw new ForbiddenException(
+        'You are not enrolled in a course with mentorship access.',
+      );
+    }
+
+    const hasMentorship = enrollments.some((e) => e.mentorshipEnabled === true);
+
+    if (!hasMentorship) {
+      throw new ForbiddenException(
+        'One-on-one mentorship is not available for your current programme.',
       );
     }
   }
@@ -115,6 +356,9 @@ export class MentorSlotService {
   ========================================================================== */
 
   async bookSlot(studentId: number, slotId: number) {
+    await this.ensureMentorshipEnabled(BigInt(studentId));
+    await this.validateLearnerBookingEligibility(BigInt(studentId));
+
     return db.transaction(async (trx) => {
       const result = await trx.execute(sql`
 SELECT
@@ -240,6 +484,30 @@ FOR UPDATE
 
       const createdBooking = booking[0];
 
+      // Update student booking metrics
+      await trx
+        .insert(zuvyStudentBookingMetrics)
+        .values({
+          userId: BigInt(studentId),
+          totalBookings: 1,
+          quotaUsed: 1,
+          lastBookingDate: new Date(),
+          cooldownEndDate: new Date(Date.now() + 21 * 24 * 60 * 60 * 1000), // 21 days
+          quotaResetDate: this.getQuotaResetDate(),
+          isQuotaExhausted: false,
+        } as typeof zuvyStudentBookingMetrics.$inferInsert)
+        .onConflictDoUpdate({
+          target: zuvyStudentBookingMetrics.userId,
+          set: {
+            totalBookings: sql`COALESCE(zuvy_student_booking_metrics.total_bookings, 0) + 1`,
+            quotaUsed: sql`COALESCE(zuvy_student_booking_metrics.quota_used, 0) + 1`,
+            lastBookingDate: new Date(),
+            cooldownEndDate: new Date(Date.now() + 21 * 24 * 60 * 60 * 1000),
+            quotaResetDate: this.getQuotaResetDate(),
+            isQuotaExhausted: sql`CASE WHEN COALESCE(zuvy_student_booking_metrics.quota_used, 0) + 1 >= 3 THEN true ELSE false END`,
+          } as Partial<typeof zuvyStudentBookingMetrics.$inferInsert>,
+        });
+
       await this.notificationService.createNotification({
         userId: mentorProfile.mentorUserId,
         type: NotificationType.BOOKING_CREATED,
@@ -273,64 +541,183 @@ FOR UPDATE
 
       const refreshToken = mentorProfile.googleRefreshToken;
 
-      // if (!refreshToken) {
-      //   throw new BadRequestException(
-      //     'Mentor has not connected Google Calendar',
-      //   );
-      // }
+      const slotStartDateTime = new Date(slot.slotStartDateTime);
+      const slotEndDateTime = new Date(slot.slotEndDateTime);
 
-      let meeting: { meetLink?: string; eventId?: string } = {};
+      let meeting: {
+        joinUrl?: string;
+        startUrl?: string;
+        password?: string;
+        meetingId?: string;
+        uuid?: string;
+      } = {};
 
-      if (refreshToken) {
-        /* Check mentor Google Calendar conflicts */
+      /* Create Zoom Meeting */
+      try {
+        const zoomMeetingData = {
+          topic: `Mentorship Session: ${mentorEmail} & ${studentEmail}`,
+          type: 2, // Scheduled meeting
+          start_time: slotStartDateTime.toISOString(),
+          duration: slot.durationMinutes,
+          timezone: 'UTC', // Adjust as needed
+          password: Math.random().toString(36).substring(2, 8), // Generate random password
+          agenda: 'One-on-one mentorship session',
+          settings: {
+            host_video: true,
+            participant_video: true,
+            join_before_host: false,
+            mute_upon_entry: true,
+            watermark: false,
+            use_pmi: false,
+            approval_type: 0,
+            audio: 'both',
+            auto_recording: 'cloud',
+            waiting_room: false,
+          },
+        };
 
-        const hasConflict =
-          await this.googleCalendarService.checkCalendarConflict(
-            slot.slotStartDateTime,
-            slot.slotEndDateTime,
-            refreshToken,
-          );
+        const zoomResponse = await this.zoomService.createMeetingForUser(
+          mentorEmail,
+          zoomMeetingData,
+        );
 
-        if (hasConflict) {
-          throw new BadRequestException(
-            'Mentor already has a meeting scheduled during this time.',
+        if (!zoomResponse.success) {
+          throw new Error(
+            `Failed to create Zoom meeting: ${zoomResponse.error}`,
           );
         }
 
-        /* Create Google Meet */
-        try {
-          meeting = await this.googleCalendarService.createMeeting(
-            slot.slotStartDateTime,
-            slot.slotEndDateTime,
-            mentorEmail,
-            studentEmail,
-            refreshToken,
-          );
-        } catch (error) {
-          console.error(
-            'Google Meet creation failed:',
-            error.response?.data || error.message,
-          );
+        // Fetch UUID explicitly
+        const meetingDetails = await this.zoomService.getMeeting(
+          zoomResponse.data.id.toString(),
+        );
 
-          throw new BadRequestException(
-            'Failed to create Google Meet. Please reconnect Google account.',
-          );
+        if (!meetingDetails.success || !meetingDetails.data?.uuid) {
+          throw new Error('Failed to fetch Zoom meeting UUID');
         }
+
+        meeting = {
+          joinUrl: zoomResponse.data.join_url,
+          startUrl: zoomResponse.data.start_url,
+          password: zoomResponse.data.password,
+          meetingId: zoomResponse.data.id.toString(),
+          uuid: meetingDetails.data.uuid,
+        };
+      } catch (error) {
+        console.error('Zoom meeting creation failed:', error.message);
+        throw new BadRequestException(
+          'Failed to create Zoom meeting. Please check Zoom integration.',
+        );
       }
       /* Save meeting info */
 
       await trx
         .update(zuvyMentorSlotBooking)
         .set({
-          meetingLink: meeting?.meetLink ?? null,
-          googleEventId: meeting?.eventId ?? null,
+          meetingLink: meeting?.joinUrl ?? null,
+          isZoomMeet: true,
+          zoomStartUrl: meeting?.startUrl ?? null,
+          zoomPassword: meeting?.password ?? null,
+          zoomMeetingId: meeting?.meetingId ?? null,
+          zoomMeetingUuid: meeting?.uuid ?? null,
         } as Partial<typeof zuvyMentorSlotBooking.$inferInsert>)
         .where(eq(zuvyMentorSlotBooking.id, createdBooking.id));
 
-      return {
+      // Enqueue recording job
+      await this.enqueueMentorRecordingJob({
+        id: createdBooking.id,
+        zoomMeetingId: meeting?.meetingId ?? null,
+        zoomMeetingUuid: meeting?.uuid ?? null,
+        isZoomMeet: true,
+      });
+
+      // Fetch updated metrics for response
+      const [updatedMetrics] = await trx
+        .select()
+        .from(zuvyStudentBookingMetrics)
+        .where(eq(zuvyStudentBookingMetrics.userId, BigInt(studentId)))
+        .limit(1);
+
+      const bookingResponse = {
         ...createdBooking,
-        meetingLink: meeting.meetLink,
+        meetingLink: meeting.joinUrl,
+        remainingCredits: updatedMetrics ? 3 - updatedMetrics.quotaUsed : 2,
+        nextEligible: updatedMetrics?.cooldownEndDate,
       };
+
+      // Send notification email to team@zuvy after successful booking
+      const slotDateOptions: Intl.DateTimeFormatOptions = {
+        timeZone: 'Asia/Kolkata',
+        day: 'numeric',
+        month: 'short',
+        year: 'numeric',
+      };
+      const slotTimeOptions: Intl.DateTimeFormatOptions = {
+        timeZone: 'Asia/Kolkata',
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true,
+      };
+      const slotDate =
+        new Date(slot.slotStartDateTime).toLocaleDateString(
+          'en-IN',
+          slotDateOptions,
+        ) +
+        ', ' +
+        new Date(slot.slotStartDateTime).toLocaleTimeString(
+          'en-IN',
+          slotTimeOptions,
+        ) +
+        ' - ' +
+        new Date(slot.slotEndDateTime).toLocaleTimeString(
+          'en-IN',
+          slotTimeOptions,
+        );
+
+      this.emailService
+        .sendEmail(
+          'team@zuvy.org',
+          '📅 New Mentorship Session Booked',
+          `<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #f4f4f4; padding: 24px; border-radius: 8px;">
+            <div style="background: #ffffff; padding: 16px 24px; border-radius: 6px 6px 0 0; border-bottom: 3px solid #4ade80;">
+              <img src="https://dev.app.zuvy.org/_next/image?url=%2Fzuvy-logo-horizontal.png&w=256&q=75" alt="Zuvy" style="height: 40px; display: block;" />
+            </div>
+            <div style="background: #ffffff; padding: 28px 24px; border-radius: 0 0 6px 6px; border: 1px solid #e5e7eb;">
+              <h3 style="color: #1a1a2e; margin: 0 0 6px;">New Session Booked</h3>
+              <p style="color: #6B7280; margin: 0 0 24px; font-size: 14px;">A mentorship session has been confirmed. Here are the details:</p>
+              <table style="width: 100%; border-collapse: collapse;">
+                <tr style="border-bottom: 1px solid #f3f4f6;">
+                  <td style="padding: 12px 8px; color: #6B7280; font-size: 14px; width: 130px;">Student</td>
+                  <td style="padding: 12px 8px; color: #1a1a2e; font-weight: 600; font-size: 14px;">{{studentEmail}}</td>
+                </tr>
+                <tr style="border-bottom: 1px solid #f3f4f6;">
+                  <td style="padding: 12px 8px; color: #6B7280; font-size: 14px;">Mentor</td>
+                  <td style="padding: 12px 8px; color: #1a1a2e; font-weight: 600; font-size: 14px;">{{mentorEmail}}</td>
+                </tr>
+                <tr style="border-bottom: 1px solid #f3f4f6;">
+                  <td style="padding: 12px 8px; color: #6B7280; font-size: 14px;">Session Time</td>
+                  <td style="padding: 12px 8px; color: #1a1a2e; font-weight: 600; font-size: 14px;">{{slotDate}}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 12px 8px; color: #6B7280; font-size: 14px;">Meeting Link</td>
+                  <td style="padding: 12px 8px;">
+                    <a href="{{meetingLink}}" style="background: #4ade80; color: #1a1a2e; padding: 8px 18px; border-radius: 4px; text-decoration: none; font-size: 14px; font-weight: 700;">Join Zoom Meeting</a>
+                  </td>
+                </tr>
+              </table>
+            </div>
+            <p style="text-align: center; color: #9CA3AF; font-size: 12px; margin-top: 16px;">© Zuvy by NavGurukul</p>
+          </div>`,
+          {
+            studentEmail,
+            mentorEmail,
+            slotDate,
+            meetingLink: meeting.joinUrl ?? 'N/A',
+          },
+        )
+        .catch((err) => console.error(`team email failed: ${err.message}`));
+
+      return bookingResponse;
     });
   }
 
@@ -420,6 +807,76 @@ FOR UPDATE
           booking.googleEventId,
           refreshToken,
         );
+      }
+
+      const { quotaStart, quotaEnd } = this.getQuotaWindow();
+
+      const [{ count: totalBookings }] = await trx
+        .select({ count: sql<number>`COUNT(*)` })
+        .from(zuvyMentorSlotBooking)
+        .where(
+          and(
+            eq(zuvyMentorSlotBooking.studentUserId, booking.studentUserId),
+            sql`${zuvyMentorSlotBooking.status} != 'cancelled'`,
+          ),
+        );
+
+      if (Number(totalBookings) === 0) {
+        await trx
+          .delete(zuvyStudentBookingMetrics)
+          .where(eq(zuvyStudentBookingMetrics.userId, booking.studentUserId));
+      } else {
+        const [{ count: quotaUsed }] = await trx
+          .select({ count: sql<number>`COUNT(*)` })
+          .from(zuvyMentorSlotBooking)
+          .where(
+            and(
+              eq(zuvyMentorSlotBooking.studentUserId, booking.studentUserId),
+              sql`${zuvyMentorSlotBooking.status} != 'cancelled'`,
+              sql`${zuvyMentorSlotBooking.confirmedAt} >= ${quotaStart}`,
+              sql`${zuvyMentorSlotBooking.confirmedAt} <= ${quotaEnd}`,
+            ),
+          );
+
+        const [lastBooking] = await trx
+          .select({ confirmedAt: zuvyMentorSlotBooking.confirmedAt })
+          .from(zuvyMentorSlotBooking)
+          .where(
+            and(
+              eq(zuvyMentorSlotBooking.studentUserId, booking.studentUserId),
+              sql`${zuvyMentorSlotBooking.status} != 'cancelled'`,
+            ),
+          )
+          .orderBy(sql`${zuvyMentorSlotBooking.confirmedAt} DESC`)
+          .limit(1);
+
+        const lastBookingDate = lastBooking?.confirmedAt;
+        const cooldownEndDate = lastBookingDate
+          ? new Date(lastBookingDate.getTime() + 21 * 24 * 60 * 60 * 1000)
+          : null;
+
+        await trx
+          .insert(zuvyStudentBookingMetrics)
+          .values({
+            userId: booking.studentUserId,
+            totalBookings: Number(totalBookings),
+            quotaUsed: Number(quotaUsed),
+            lastBookingDate,
+            cooldownEndDate,
+            quotaResetDate: this.getQuotaResetDate(),
+            isQuotaExhausted: Number(quotaUsed) >= 3,
+          } as typeof zuvyStudentBookingMetrics.$inferInsert)
+          .onConflictDoUpdate({
+            target: zuvyStudentBookingMetrics.userId,
+            set: {
+              totalBookings: Number(totalBookings),
+              quotaUsed: Number(quotaUsed),
+              lastBookingDate,
+              cooldownEndDate,
+              isQuotaExhausted: Number(quotaUsed) >= 3,
+              updatedAt: new Date(),
+            } as Partial<typeof zuvyStudentBookingMetrics.$inferInsert>,
+          });
       }
 
       return {
@@ -605,6 +1062,8 @@ FOR UPDATE
   ========================================================================== */
 
   async removeSlot(userId: number, slotId: number) {
+    await this.ensureUserIsMentor(userId);
+
     const mentorProfile = await this.getMentorProfile(userId);
 
     const [slot] = await db
@@ -769,6 +1228,8 @@ FOR UPDATE
 
   async createSlot(userId: number, dto: any) {
     await this.ensureUserIsMentor(userId);
+    await this.validateMentorProfileComplete(userId);
+    await this.ensureMentorZoomVerified(userId);
 
     const mentorProfile = await this.getMentorProfile(userId);
 
@@ -845,7 +1306,13 @@ FOR UPDATE
       .returning();
   }
 
-  async getMySlots(userId: number, weekOffset = 0) {
+  async getMySlots(
+    userId: number,
+    weekOffset = 0,
+    sort: 'asc' | 'desc' = 'desc',
+  ) {
+    await this.ensureUserIsMentor(userId);
+
     const mentorProfile = await this.getMentorProfile(userId);
 
     if (!mentorProfile) {
@@ -887,7 +1354,11 @@ FOR UPDATE
           sql`${zuvyMentorSlotAvailability.slotStartDateTime} < ${endOfWeek}`,
         ),
       )
-      .orderBy(zuvyMentorSlotAvailability.slotStartDateTime);
+      .orderBy(
+        sort === 'asc'
+          ? zuvyMentorSlotAvailability.slotStartDateTime
+          : desc(zuvyMentorSlotAvailability.slotStartDateTime),
+      );
 
     /* ============================
        PROCESS STATUS + METRICS
@@ -952,6 +1423,8 @@ FOR UPDATE
   }
 
   async getSlotDetails(userId: number, slotId: number) {
+    await this.ensureUserIsMentor(userId);
+
     const mentorProfile = await this.getMentorProfile(userId);
 
     const [slot] = await db
@@ -977,6 +1450,51 @@ FOR UPDATE
     };
   }
 
+  async getBookingRecordings(userId: number, bookingId: number) {
+    const [booking] = await db
+      .select()
+      .from(zuvyMentorSlotBooking)
+      .where(eq(zuvyMentorSlotBooking.id, bookingId))
+      .limit(1);
+
+    if (!booking) {
+      throw new NotFoundException('Booking not found');
+    }
+
+    const userIdBigInt = BigInt(userId);
+
+    if (
+      booking.mentorUserId !== userIdBigInt &&
+      booking.studentUserId !== userIdBigInt
+    ) {
+      throw new ForbiddenException(
+        'You do not have permission to view recordings for this booking.',
+      );
+    }
+
+    const [slot] = await db
+      .select()
+      .from(zuvyMentorSlotAvailability)
+      .where(eq(zuvyMentorSlotAvailability.id, booking.slotAvailabilityId))
+      .limit(1);
+
+    const recordings = await db
+      .select()
+      .from(zuvyMentorSessionRecordings)
+      .where(eq(zuvyMentorSessionRecordings.mentorBookingId, bookingId))
+      .orderBy(desc(zuvyMentorSessionRecordings.createdAt));
+
+    return {
+      booking,
+      slot,
+      recordings: recordings.map((recording) => ({
+        ...recording,
+        youtubeVideoId: recording.driveFileId,
+        youtubeUrl: recording.driveLink,
+      })),
+    };
+  }
+
   async getStudentBookings(userId: number) {
     const userIdBigInt = BigInt(userId);
 
@@ -984,6 +1502,37 @@ FOR UPDATE
       .select()
       .from(zuvyMentorSlotBooking)
       .where(eq(zuvyMentorSlotBooking.studentUserId, userIdBigInt));
+  }
+
+  async getStudentMetrics(userId: number) {
+    const userIdBigInt = BigInt(userId);
+    let [metrics] = await db
+      .select()
+      .from(zuvyStudentBookingMetrics)
+      .where(eq(zuvyStudentBookingMetrics.userId, userIdBigInt))
+      .limit(1);
+
+    if (!metrics) {
+      await this.initializeStudentMetrics(userIdBigInt);
+      [metrics] = await db
+        .select()
+        .from(zuvyStudentBookingMetrics)
+        .where(eq(zuvyStudentBookingMetrics.userId, userIdBigInt))
+        .limit(1);
+    }
+
+    const remainingCredits = Math.max(0, 3 - (metrics?.quotaUsed ?? 0));
+    const now = new Date();
+    const canBook =
+      !metrics?.isQuotaExhausted &&
+      (!metrics?.cooldownEndDate || now >= metrics.cooldownEndDate);
+
+    return {
+      ...metrics,
+      remainingCredits,
+      canBook,
+      nextEligible: metrics?.cooldownEndDate || null,
+    };
   }
 
   async markAttendance(
@@ -1023,6 +1572,8 @@ FOR UPDATE
   }
 
   async updateMentorProfile(userId: number, dto: any) {
+    await this.ensureUserIsMentor(userId);
+
     const userIdBigInt = BigInt(userId);
     const updatePayload: Partial<typeof zuvyMentorSlotManagement.$inferSelect> =
       {};
@@ -1030,15 +1581,103 @@ FOR UPDATE
     if (dto.bio !== undefined) updatePayload.bio = dto.bio;
     if (dto.expertise !== undefined) updatePayload.expertise = dto.expertise;
     if (dto.title !== undefined) updatePayload.title = dto.title;
+    if (dto.pastExperiences !== undefined)
+      updatePayload.pastExperiences = dto.pastExperiences;
+
+    if (dto.bootcampId !== undefined) {
+      const [bootcamp] = await db
+        .select()
+        .from(zuvyBootcamps)
+        .where(eq(zuvyBootcamps.id, dto.bootcampId))
+        .limit(1);
+
+      if (!bootcamp) {
+        throw new BadRequestException('Invalid bootcampId');
+      }
+
+      updatePayload.bootcampId = dto.bootcampId;
+    }
 
     // prevent empty update
     if (Object.keys(updatePayload).length === 0) {
       throw new BadRequestException('No fields provided for update');
     }
 
-    return db
+    await db
       .update(zuvyMentorSlotManagement)
-      .set(updatePayload)
+      .set({
+        ...updatePayload,
+        updatedAt: new Date(),
+      } as Partial<typeof zuvyMentorSlotManagement.$inferInsert>)
       .where(eq(zuvyMentorSlotManagement.mentorUserId, userIdBigInt));
+    return { message: ' Mentor profile updated successfully' };
+  }
+
+  async getMyMentorProfile(userId: number) {
+    await this.ensureUserIsMentor(userId);
+
+    const userIdBigInt = BigInt(userId);
+
+    const [profile] = await db
+      .select({
+        mentorProfileId: zuvyMentorSlotManagement.id,
+        mentorUserId: zuvyMentorSlotManagement.mentorUserId,
+        organizationId: zuvyMentorSlotManagement.organizationId,
+
+        mentorType: zuvyMentorSlotManagement.mentorType,
+        timezone: zuvyMentorSlotManagement.timezone,
+
+        title: zuvyMentorSlotManagement.title,
+        bio: zuvyMentorSlotManagement.bio,
+        expertise: zuvyMentorSlotManagement.expertise,
+        pastExperiences: zuvyMentorSlotManagement.pastExperiences,
+
+        status: zuvyMentorSlotManagement.status,
+        isVerified: zuvyMentorSlotManagement.isVerified,
+        acceptsNewMentees: zuvyMentorSlotManagement.acceptsNewMentees,
+
+        createdAt: zuvyMentorSlotManagement.createdAt,
+        updatedAt: zuvyMentorSlotManagement.updatedAt,
+      })
+      .from(zuvyMentorSlotManagement)
+      .where(eq(zuvyMentorSlotManagement.mentorUserId, userIdBigInt))
+      .limit(1);
+
+    if (!profile) {
+      throw new NotFoundException('Mentor profile not found');
+    }
+
+    return profile;
+  }
+
+  private async enqueueMentorRecordingJob(booking: {
+    id: number;
+    zoomMeetingId: string | null;
+    zoomMeetingUuid?: string | null;
+    isZoomMeet: boolean;
+  }) {
+    if (!booking.isZoomMeet || !booking.zoomMeetingId) return;
+
+    try {
+      const recordingData = {
+        mentorBookingId: booking.id,
+        zoomMeetingId: booking.zoomMeetingId,
+        zoomMeetingUuid: booking.zoomMeetingUuid ?? null,
+        status: 'DISCOVERED',
+      } as const;
+
+      await db
+        .insert(zuvyMentorSessionRecordings)
+        .values(recordingData)
+        .onConflictDoNothing();
+
+      console.log(
+        `Recording job enqueued for mentor booking ${booking.id}, meetingId: ${booking.zoomMeetingId}`,
+      );
+    } catch (error) {
+      console.error(
+        `Failed to enqueue recording job for mentor booking ${booking.id}: ${error.message}`,
+      );
+    }
   }
 }

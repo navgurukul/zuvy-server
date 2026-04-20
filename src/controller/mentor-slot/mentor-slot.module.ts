@@ -12,9 +12,16 @@ import { MentorPublicController } from './public/mentor-public.controller';
 import { MentorPublicService } from './public/mentor-public.service';
 import { GoogleModule } from 'src/integrations/google/google.module';
 import { NewNotificationModule } from '../notification/notification.module';
+import { ZoomModule } from 'src/services/zoom/zoom.module';
+import { NotificationModule } from 'src/notification/notification.module';
 
 @Module({
-  imports: [GoogleModule, NewNotificationModule],
+  imports: [
+    GoogleModule,
+    NewNotificationModule,
+    ZoomModule,
+    NotificationModule,
+  ],
   controllers: [
     MentorSlotController,
     MentorRecurrenceController,

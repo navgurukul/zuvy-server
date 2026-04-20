@@ -280,6 +280,11 @@ export class ZoomService {
     }
   }
 
+  public async getAccessToken(): Promise<string> {
+    const headers = await this.getHeaders();
+    return headers.Authorization.replace('Bearer ', '');
+  }
+
   /**
    * Create a new Zoom meeting
    */
