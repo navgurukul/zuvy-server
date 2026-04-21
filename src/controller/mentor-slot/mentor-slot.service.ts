@@ -250,8 +250,8 @@ export class MentorSlotService {
     }
 
     if (
-      Array.isArray(profile.pastExperiences) &&
-      profile.pastExperiences.length === 0
+      !profile.pastExperiences ||
+      profile.pastExperiences.trim().length === 0
     ) {
       throw new ForbiddenException(
         'Add past experiences before creating slots.',
