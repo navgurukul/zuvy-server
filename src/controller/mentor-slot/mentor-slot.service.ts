@@ -37,6 +37,74 @@ export class MentorSlotService {
     private readonly emailService: NotificationEmailService,
   ) {}
 
+  async getOrCreateMentorProfile(userId: number) {
+    const userIdBigInt = BigInt(userId);
+
+    /* ========================================
+       1. FETCH INSTRUCTOR ROLE + ORG
+    ======================================== */
+
+    const roleAssignment = await db
+      .select({
+        organizationId: zuvyUserRolesAssigned.organizationId,
+      })
+      .from(zuvyUserRolesAssigned)
+      .innerJoin(
+        zuvyUserRoles,
+        eq(zuvyUserRolesAssigned.roleId, zuvyUserRoles.id),
+      )
+      .where(
+        and(
+          eq(zuvyUserRolesAssigned.userId, userIdBigInt),
+          eq(zuvyUserRoles.name, 'instructor'),
+        ),
+      )
+      .limit(1);
+
+    if (!roleAssignment.length || !roleAssignment[0].organizationId) {
+      throw new BadRequestException(
+        'User is not an instructor or organization not assigned.',
+      );
+    }
+
+    const organizationId = roleAssignment[0].organizationId;
+
+    /* ========================================
+       2. CHECK IF MENTOR EXISTS
+    ======================================== */
+
+    let mentor = await db.query.zuvyMentorSlotManagement.findFirst({
+      where: and(
+        eq(zuvyMentorSlotManagement.mentorUserId, userIdBigInt),
+        eq(zuvyMentorSlotManagement.organizationId, organizationId),
+      ),
+    });
+
+    /* ========================================
+       3. CREATE IF NOT EXISTS
+    ======================================== */
+
+    if (!mentor) {
+      const [created] = await db
+        .insert(zuvyMentorSlotManagement)
+        .values({
+          mentorUserId: userIdBigInt,
+          organizationId,
+          mentorType: 'instructor',
+          status: 'active',
+          isVerified: false,
+          acceptsNewMentees: true,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        } as typeof zuvyMentorSlotManagement.$inferInsert)
+        .returning();
+
+      mentor = created;
+    }
+
+    return mentor;
+  }
+
   private async getMentorProfile(userId: number) {
     const userIdBigInt = BigInt(userId);
 
@@ -92,7 +160,7 @@ export class MentorSlotService {
   }
 
   private async ensureMentorZoomVerified(userId: number) {
-    const mentorProfile = await this.getMentorProfile(userId);
+    const mentorProfile = await this.getOrCreateMentorProfile(userId);
     console.log(
       `Mentor profile for user ${userId}: isVerified=${mentorProfile?.isVerified}`,
     );
@@ -1064,7 +1132,7 @@ FOR UPDATE
   async removeSlot(userId: number, slotId: number) {
     await this.ensureUserIsMentor(userId);
 
-    const mentorProfile = await this.getMentorProfile(userId);
+    const mentorProfile = await this.getOrCreateMentorProfile(userId);
 
     const [slot] = await db
       .select()
@@ -1231,17 +1299,7 @@ FOR UPDATE
     await this.validateMentorProfileComplete(userId);
     await this.ensureMentorZoomVerified(userId);
 
-    const mentorProfile = await this.getMentorProfile(userId);
-
-    /* ================================
-    GOOGLE CALENDAR CONNECTION CHECK
- ================================= */
-
-    if (!mentorProfile.googleRefreshToken) {
-      throw new BadRequestException(
-        'Please connect your Google Calendar before creating sessions.',
-      );
-    }
+    const mentorProfile = await this.getOrCreateMentorProfile(userId);
 
     const start = new Date(dto.slotStartDateTime);
     const end = new Date(dto.slotEndDateTime);
@@ -1252,25 +1310,6 @@ FOR UPDATE
 
     if (start.getTime() <= Date.now()) {
       throw new BadRequestException('Cannot create past slot.');
-    }
-
-    /* ================================
-        GOOGLE CALENDAR CONFLICT CHECK
-     ================================= */
-
-    if (mentorProfile.googleRefreshToken) {
-      const hasConflict =
-        await this.googleCalendarService.checkCalendarConflict(
-          start,
-          end,
-          mentorProfile.googleRefreshToken,
-        );
-
-      if (hasConflict) {
-        throw new BadRequestException(
-          'You already have a Google Calendar event during this time.',
-        );
-      }
     }
 
     /* ================================
@@ -1313,7 +1352,7 @@ FOR UPDATE
   ) {
     await this.ensureUserIsMentor(userId);
 
-    const mentorProfile = await this.getMentorProfile(userId);
+    const mentorProfile = await this.getOrCreateMentorProfile(userId);
 
     if (!mentorProfile) {
       throw new NotFoundException('Mentor profile not found.');
@@ -1425,7 +1464,7 @@ FOR UPDATE
   async getSlotDetails(userId: number, slotId: number) {
     await this.ensureUserIsMentor(userId);
 
-    const mentorProfile = await this.getMentorProfile(userId);
+    const mentorProfile = await this.getOrCreateMentorProfile(userId);
 
     const [slot] = await db
       .select()
