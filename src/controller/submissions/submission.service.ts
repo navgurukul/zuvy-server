@@ -6,11 +6,17 @@ import {
   sql,
   count,
   lte,
+  gte,
+  between,
   inArray,
   and,
   isNotNull,
+  isNull,
   ilike,
   or,
+  exists,
+  desc,
+  asc,
   SQLWrapper,
 } from 'drizzle-orm';
 import * as _ from 'lodash';
@@ -29,6 +35,7 @@ import {
   zuvyOutsourseAssessments,
   users,
   zuvyBatches,
+  zuvyCodingQuestions,
 } from '../../../drizzle/schema';
 import {
   InstructorFeedbackDto,
@@ -91,32 +98,36 @@ export class SubmissionService {
             columns: { id: true, codingQuestions: true },
 
             // TITLE-BASED SORTING (if orderDirection not provided, default asc)
-            orderBy: (chapter, { asc, desc, sql }) => {
-              const titleColumn = sql`
-              (SELECT cq.title 
-               FROM main.zuvy_coding_questions AS cq
-               WHERE cq.id = ${chapter.codingQuestions})
-            `;
+            orderBy: (chapter, { asc, desc }) => {
+              const titleColumn = sql`(SELECT ${zuvyCodingQuestions.title} FROM ${zuvyCodingQuestions} WHERE ${zuvyCodingQuestions.id} = ${chapter.codingQuestions})`;
               return [
                 orderDirection === 'desc'
                   ? desc(titleColumn)
                   : asc(titleColumn),
               ];
             },
-            where: (moduleChapter, { eq, and, sql }) =>
-              and(
-                eq(moduleChapter.topicId, topicId),
-                searchProblem
-                  ? sql`
-                    EXISTS (
-                      SELECT 1
-                      FROM main.zuvy_coding_questions AS cq
-                      WHERE cq.id = ${moduleChapter.codingQuestions}
-                      AND cq.title ILIKE ${searchProblem + '%'}
-                    )
-                  `
-                  : sql`TRUE`,
-              ),
+            where: (moduleChapter, { eq, and }) => {
+              const conditions: any[] = [eq(moduleChapter.topicId, topicId)];
+              if (searchProblem) {
+                conditions.push(
+                  exists(
+                    db
+                      .select({ _: zuvyCodingQuestions.id })
+                      .from(zuvyCodingQuestions)
+                      .where(
+                        and(
+                          eq(
+                            zuvyCodingQuestions.id,
+                            moduleChapter.codingQuestions,
+                          ),
+                          ilike(zuvyCodingQuestions.title, searchProblem + '%'),
+                        ),
+                      ),
+                  ),
+                );
+              }
+              return and(...conditions);
+            },
             with: {
               chapterTrackingDetails: {
                 columns: { userId: true, completedAt: true },
@@ -142,13 +153,13 @@ export class SubmissionService {
       }
       // Count students
       const zuvyBatchEnrollmentsCount = await db
-        .select({
-          count: sql<number>`cast(count(${zuvyBatchEnrollments.id}) as int)`,
-        })
+        .select({ count: count(zuvyBatchEnrollments.id) })
         .from(zuvyBatchEnrollments)
         .where(
-          sql`${zuvyBatchEnrollments.bootcampId} = ${bootcampId} 
-          AND ${zuvyBatchEnrollments.batchId} IS NOT NULL`,
+          and(
+            eq(zuvyBatchEnrollments.bootcampId, bootcampId),
+            isNotNull(zuvyBatchEnrollments.batchId),
+          ),
         );
       // Add submission count & submissions list
       trackingData.forEach((course: any) => {
@@ -241,25 +252,42 @@ export class SubmissionService {
           : undefined;
 
       const statusOfStudentCode = await db.query.zuvyChapterTracking.findMany({
-        where: (chapterTracking, { sql, and }) => {
+        where: (chapterTracking, { and, eq }) => {
           // Ensure chapter/module/date match and that the user is enrolled
-          const conditions = [
-            sql`${chapterTracking.chapterId} = ${chapterId}`,
-            sql`${chapterTracking.moduleId} = ${moduleId}`,
-            sql`EXISTS (
-              SELECT 1
-              FROM main.zuvy_batch_enrollments AS be
-              WHERE be.user_id = ${chapterTracking.userId}
-              ${batchId ? sql`AND be.batch_id = ${batchId}` : sql``}
-            )`,
+          const conditions: any[] = [
+            eq(chapterTracking.chapterId, chapterId),
+            eq(chapterTracking.moduleId, moduleId),
+            exists(
+              db
+                .select({ _: zuvyBatchEnrollments.userId })
+                .from(zuvyBatchEnrollments)
+                .where(
+                  and(
+                    eq(zuvyBatchEnrollments.userId, chapterTracking.userId),
+                    ...(batchId
+                      ? [eq(zuvyBatchEnrollments.batchId, batchId)]
+                      : []),
+                  ),
+                ),
+            ),
           ];
           if (searchStudent) {
-            conditions.push(sql`EXISTS (
-              SELECT 1
-              FROM main.users AS u
-              WHERE u.id = ${chapterTracking.userId}
-              AND (u.name ILIKE ${searchStudent + '%'} OR u.email ILIKE ${searchStudent + '%'})
-            )`);
+            conditions.push(
+              exists(
+                db
+                  .select({ _: users.id })
+                  .from(users)
+                  .where(
+                    and(
+                      eq(users.id, chapterTracking.userId),
+                      or(
+                        ilike(users.name, searchStudent + '%'),
+                        ilike(users.email, searchStudent + '%'),
+                      ),
+                    ),
+                  ),
+              ),
+            );
           }
           return and(...conditions);
         },
@@ -272,11 +300,11 @@ export class SubmissionService {
             },
             with: {
               studentCodeDetails: {
-                where: (
-                  practiceCode: { action: any; submissionId: any },
-                  { sql }: any,
-                ) =>
-                  sql`${practiceCode.action} = 'submit' AND ${practiceCode.submissionId} IS NULL`,
+                where: (practiceCode, { and, eq, isNull }) =>
+                  and(
+                    eq(practiceCode.action, 'submit'),
+                    isNull(practiceCode.submissionId),
+                  ),
               },
             },
           },
@@ -288,30 +316,46 @@ export class SubmissionService {
       // Get the total number of students matching the chapter, module, batch, and search criteria
       const totalStudentsRes = await db
         .select({
-          count: sql<number>`cast(count(${zuvyChapterTracking.id}) as int)`,
+          count: count(zuvyChapterTracking.id),
         })
         .from(zuvyChapterTracking)
-        .where(() => {
-          const conditions = [
-            sql`${zuvyChapterTracking.chapterId} = ${chapterId}`,
-            sql`${zuvyChapterTracking.moduleId} = ${moduleId}`,
-            sql`EXISTS (
-              SELECT 1
-              FROM main.zuvy_batch_enrollments AS be
-              WHERE be.user_id = ${zuvyChapterTracking.userId}
-              ${batchId ? sql`AND be.batch_id = ${batchId}` : sql``}
-            )`,
-          ];
-          if (searchStudent) {
-            conditions.push(sql`EXISTS (
-              SELECT 1
-              FROM main.users AS u
-              WHERE u.id = ${zuvyChapterTracking.userId}
-              AND (u.name ILIKE ${searchStudent + '%'} OR u.email ILIKE ${searchStudent + '%'})
-            )`);
-          }
-          return and(...conditions);
-        });
+        .where(
+          and(
+            eq(zuvyChapterTracking.chapterId, chapterId),
+            eq(zuvyChapterTracking.moduleId, moduleId),
+            exists(
+              db
+                .select({ _: zuvyBatchEnrollments.userId })
+                .from(zuvyBatchEnrollments)
+                .where(
+                  and(
+                    eq(zuvyBatchEnrollments.userId, zuvyChapterTracking.userId),
+                    ...(batchId
+                      ? [eq(zuvyBatchEnrollments.batchId, batchId)]
+                      : []),
+                  ),
+                ),
+            ),
+            ...(searchStudent
+              ? [
+                  exists(
+                    db
+                      .select({ _: users.id })
+                      .from(users)
+                      .where(
+                        and(
+                          eq(users.id, zuvyChapterTracking.userId),
+                          or(
+                            ilike(users.name, searchStudent + '%'),
+                            ilike(users.email, searchStudent + '%'),
+                          ),
+                        ),
+                      ),
+                  ),
+                ]
+              : []),
+          ),
+        );
       const totalStudentsCount = totalStudentsRes[0]?.count ?? 0;
       const totalPages = safeLimit
         ? Math.ceil(totalStudentsCount / safeLimit)
@@ -333,9 +377,9 @@ export class SubmissionService {
           .from(zuvyBatchEnrollments)
           .leftJoin(
             zuvyBatches,
-            sql`${zuvyBatches.id} = ${zuvyBatchEnrollments.batchId}`,
+            eq(zuvyBatches.id, zuvyBatchEnrollments.batchId),
           )
-          .where(sql`${zuvyBatchEnrollments.userId} in ${userIds}`);
+          .where(inArray(zuvyBatchEnrollments.userId, userIds.map(BigInt)));
 
         enrollments.forEach((e: any) => {
           if (!enrollmentMap[String(e.userId)]) {
@@ -444,16 +488,6 @@ export class SubmissionService {
     submittedDateEnd?: string,
   ) {
     try {
-      // Build date filter for submittedDate
-      let dateFilter = sql`TRUE`;
-      if (submittedDateStart && submittedDateEnd) {
-        dateFilter = sql`zuvyCourseModules.submitted_date BETWEEN ${submittedDateStart} AND ${submittedDateEnd}`;
-      } else if (submittedDateStart) {
-        dateFilter = sql`zuvyCourseModules.submitted_date >= ${submittedDateStart}`;
-      } else if (submittedDateEnd) {
-        dateFilter = sql`zuvyCourseModules.submitted_date <= ${submittedDateEnd}`;
-      }
-
       // Build order clause
       let orderClause = undefined;
       if (orderBy) {
@@ -466,7 +500,6 @@ export class SubmissionService {
             id: any;
           },
           helpers: { desc: any; asc: (arg0: any) => any },
-          { sql }: any,
         ) => {
           const dir =
             orderDirection && orderDirection.toLowerCase() === 'desc'
@@ -477,39 +510,51 @@ export class SubmissionService {
           // Order by related user fields via subselects if requested
           if (orderBy === 'name')
             return dir(
-              sql`(SELECT name FROM main.users AS u WHERE u.id = ${zuvyCourseModules.id}) order by name ${dir === helpers.desc ? 'desc' : 'asc'}`,
+              sql`(SELECT ${users.name} FROM ${users} WHERE ${users.id} = ${zuvyCourseModules.id})`,
             );
           if (orderBy === 'email')
             return dir(
-              sql`(SELECT email FROM main.users AS u WHERE u.id = ${zuvyCourseModules.id}) order by email ${dir === helpers.desc ? 'desc' : 'asc'}`,
+              sql`(SELECT ${users.email} FROM ${users} WHERE ${users.id} = ${zuvyCourseModules.id})`,
             );
           return helpers.asc(zuvyCourseModules.id);
         };
       }
 
       const statusOfStudentCode = await db.query.zuvyCourseModules.findMany({
-        where: (zuvyCourseModules, { sql }) =>
-          sql`${zuvyCourseModules.bootcampId} = ${bootcamp_id} AND ${dateFilter}`,
+        where: (zuvyCourseModules, { and, eq, between, gte, lte }) => {
+          const conditions: any[] = [
+            eq(zuvyCourseModules.bootcampId, bootcamp_id),
+          ];
+          if (submittedDateStart && submittedDateEnd)
+            conditions.push(
+              between(
+                zuvyCourseModules.submitted_date,
+                submittedDateStart,
+                submittedDateEnd,
+              ),
+            );
+          else if (submittedDateStart)
+            conditions.push(
+              gte(zuvyCourseModules.submitted_date, submittedDateStart),
+            );
+          else if (submittedDateEnd)
+            conditions.push(
+              lte(zuvyCourseModules.submitted_date, submittedDateEnd),
+            );
+          return and(...conditions);
+        },
         with: {
           moduleAssessments: {
             columns: {
-              moduleId: true,
-              title: true,
-              codingProblems: true,
-              mcq: true,
-              openEndedQuestions: true,
               id: true,
+              moduleId: true,
+              assessmentId: true,
             },
             with: {
-              assessmentSubmissions: {
-                where: (
-                  zuvyAssessmentSubmission: { bootcampId: any },
-                  { sql }: any,
-                ) =>
-                  sql`${zuvyAssessmentSubmission.bootcampId} = ${bootcamp_id}`,
+              submitedOutsourseAssessments: {
                 columns: {
                   userId: true,
-                  assessmentId: true,
+                  assessmentOutsourseId: true,
                 },
               },
             },
@@ -524,7 +569,10 @@ export class SubmissionService {
         .select()
         .from(zuvyBatchEnrollments)
         .where(
-          sql` ${zuvyBatchEnrollments.bootcampId} = ${bootcamp_id} AND${zuvyBatchEnrollments.batchId} IS NOT NULL  `,
+          and(
+            eq(zuvyBatchEnrollments.bootcampId, bootcamp_id),
+            isNotNull(zuvyBatchEnrollments.batchId),
+          ),
         );
 
       return {
@@ -925,16 +973,6 @@ export class SubmissionService {
     orgId?: number,
   ) {
     try {
-      // ===== DATE FILTER =====
-      let dateFilter = sql`TRUE`;
-      if (submittedDateStart && submittedDateEnd) {
-        dateFilter = sql`projectData.submitted_date BETWEEN ${submittedDateStart} AND ${submittedDateEnd}`;
-      } else if (submittedDateStart) {
-        dateFilter = sql`projectData.submitted_date >= ${submittedDateStart}`;
-      } else if (submittedDateEnd) {
-        dateFilter = sql`projectData.submitted_date <= ${submittedDateEnd}`;
-      }
-
       // ===== SORT VALIDATION =====
       if (!orderBy && orderDirection) {
         return {
@@ -963,8 +1001,7 @@ export class SubmissionService {
         with: {
           bootcampModules: {
             columns: { id: true },
-            where: (courseModule: { typeId: any }, { sql }: any) =>
-              sql`${courseModule.typeId} = 2`,
+            where: (courseModule, { eq }) => eq(courseModule.typeId, 2),
 
             // Module sorting remains same
             orderBy: (courseModule, { asc }) => asc(courseModule.order),
@@ -977,13 +1014,30 @@ export class SubmissionService {
                   submitted_date: true,
                 },
 
-                where: (projectData: { title: any }, { sql }: any) =>
-                  and(
-                    searchProject
-                      ? sql`${projectData.title} ILIKE ${'%' + searchProject + '%'}`
-                      : sql`TRUE`,
-                    dateFilter,
-                  ),
+                where: (projectData, { and, ilike, between, gte, lte }) => {
+                  const conditions: any[] = [];
+                  if (searchProject)
+                    conditions.push(
+                      ilike(projectData.title, `%${searchProject}%`),
+                    );
+                  if (submittedDateStart && submittedDateEnd)
+                    conditions.push(
+                      between(
+                        projectData.submitted_date,
+                        submittedDateStart,
+                        submittedDateEnd,
+                      ),
+                    );
+                  else if (submittedDateStart)
+                    conditions.push(
+                      gte(projectData.submitted_date, submittedDateStart),
+                    );
+                  else if (submittedDateEnd)
+                    conditions.push(
+                      lte(projectData.submitted_date, submittedDateEnd),
+                    );
+                  return conditions.length > 0 ? and(...conditions) : undefined;
+                },
 
                 // ⭐⭐⭐ DRIZZLE ORDER BY TITLE (ALPHABETICAL SORTING)
                 orderBy: (projectData, { asc, desc }) =>
@@ -1005,7 +1059,7 @@ export class SubmissionService {
       // ===== STUDENT COUNT =====
       const zuvyBatchEnrollmentsCount = await db
         .select({
-          count: sql<number>`cast(count(${zuvyBatchEnrollments.id}) as int)`,
+          count: count(zuvyBatchEnrollments.id),
         })
         .from(zuvyBatchEnrollments)
         .where(eq(zuvyBatchEnrollments.bootcampId, bootcampId));
@@ -1075,9 +1129,6 @@ export class SubmissionService {
         typeof limit === 'number' && !isNaN(limit) ? limit : undefined;
       const safeOffset =
         typeof offset === 'number' && !isNaN(offset) ? offset : undefined;
-      // No date filtering — keep dateFilter TRUE
-      let dateFilter = sql`TRUE`;
-
       // Prepare ordering: prefer DB-side ordering for name/email (via subselects) and percentage (grades)
       const requestedOrder = orderBy
         ? {
@@ -1092,17 +1143,17 @@ export class SubmissionService {
       if (requestedOrder) {
         const field = requestedOrder.field;
         const dirIsDesc = requestedOrder.dir === 'desc';
-        orderClause = (projectTracking: any, helpers: any, { sql }: any) => {
+        orderClause = (projectTracking: any, helpers: any) => {
           const dir = dirIsDesc ? helpers.desc : helpers.asc;
           if (field === 'submittedDate')
             return dir(projectTracking.submitted_date);
           if (field === 'name')
             return dir(
-              sql`(SELECT name FROM main.users AS u WHERE u.id = ${projectTracking.userId})`,
+              sql`(SELECT ${users.name} FROM ${users} WHERE ${users.id} = ${projectTracking.userId})`,
             );
           if (field === 'email')
             return dir(
-              sql`(SELECT email FROM main.users AS u WHERE u.id = ${projectTracking.userId})`,
+              sql`(SELECT ${users.email} FROM ${users} WHERE ${users.id} = ${projectTracking.userId})`,
             );
           return dir(projectTracking.id);
         };
@@ -1110,8 +1161,7 @@ export class SubmissionService {
 
       const projectSubmissionData = await db.query.zuvyCourseProjects.findFirst(
         {
-          where: (zuvyProject, { sql }) =>
-            sql`${zuvyProject.id} = ${projectId}`,
+          where: (zuvyProject, { eq }) => eq(zuvyProject.id, projectId),
           columns: {
             id: true,
             title: true,
@@ -1120,29 +1170,53 @@ export class SubmissionService {
             projectTrackingData: {
               where: (
                 projectTracking: { bootcampId: any; userId: any },
-                { and, eq, sql }: any,
+                { and, eq }: any,
               ) => {
                 // Ensure projectTracking belongs to the bootcamp and (optionally) the batch by validating enrollment
                 const conditions: any[] = [
                   eq(projectTracking.bootcampId, bootcampId),
-                  dateFilter,
                 ];
 
                 if (searchStudent) {
                   // Add a LIKE/ILIKE filter on users table
-                  conditions.push(sql`EXISTS (
-                      SELECT 1
-                      FROM main.users AS u
-                      WHERE u.id = ${projectTracking.userId}
-                      AND (u.name ILIKE ${searchStudent + '%'} OR u.email ILIKE ${searchStudent + '%'})
-                    )`);
+                  conditions.push(
+                    exists(
+                      db
+                        .select({ _: users.id })
+                        .from(users)
+                        .where(
+                          and(
+                            eq(users.id, projectTracking.userId),
+                            or(
+                              ilike(users.name, searchStudent + '%'),
+                              ilike(users.email, searchStudent + '%'),
+                            ),
+                          ),
+                        ),
+                    ),
+                  );
                 }
 
                 // Enforce that the user is enrolled in the bootcamp and matches batchId when provided
-                conditions.push(sql`EXISTS (
-                  SELECT 1 FROM main.zuvy_batch_enrollments AS be
-                  WHERE be.user_id = ${projectTracking.userId} AND be.bootcamp_id = ${bootcampId} ${safeBatchId ? sql`AND be.batch_id = ${safeBatchId}` : sql``}
-                )`);
+                conditions.push(
+                  exists(
+                    db
+                      .select({ _: zuvyBatchEnrollments.userId })
+                      .from(zuvyBatchEnrollments)
+                      .where(
+                        and(
+                          eq(
+                            zuvyBatchEnrollments.userId,
+                            projectTracking.userId,
+                          ),
+                          eq(zuvyBatchEnrollments.bootcampId, bootcampId),
+                          ...(safeBatchId
+                            ? [eq(zuvyBatchEnrollments.batchId, safeBatchId)]
+                            : []),
+                        ),
+                      ),
+                  ),
+                );
 
                 return and(...conditions);
               },
@@ -1178,30 +1252,48 @@ export class SubmissionService {
         },
       );
 
-      // Get total count of students for pagination with search filter
-      // Build a date filter for counting that references the zuvyProjectTracking alias
-      let dateFilterForCount = sql`TRUE`;
-
       // Count total project tracking rows that match the filters and whose users are enrolled
       const totalStudentsCountRes = await db
-        .select({
-          count: sql<number>`cast(count(${zuvyProjectTracking.id}) as int)`,
-        })
-        .from(zuvyProjectTracking).where(sql`
-          ${zuvyProjectTracking.projectId} = ${projectId}
-          AND ${zuvyProjectTracking.bootcampId} = ${bootcampId}
-          ${
-            searchStudent
-              ? sql`AND EXISTS (
-                SELECT 1 FROM main.users AS u WHERE u.id = ${zuvyProjectTracking.userId} AND (u.name ILIKE ${searchStudent + '%'} OR u.email ILIKE ${searchStudent + '%'})
-              )`
-              : sql``
-          }
-          AND EXISTS (
-            SELECT 1 FROM main.zuvy_batch_enrollments AS be
-            WHERE be.user_id = ${zuvyProjectTracking.userId} AND be.bootcamp_id = ${bootcampId} ${safeBatchId ? sql`AND be.batch_id = ${safeBatchId}` : sql``}
-          )
-        `);
+        .select({ count: count(zuvyProjectTracking.id) })
+        .from(zuvyProjectTracking)
+        .where(
+          and(
+            eq(zuvyProjectTracking.projectId, projectId),
+            eq(zuvyProjectTracking.bootcampId, bootcampId),
+            ...(searchStudent
+              ? [
+                  exists(
+                    db
+                      .select({ _: users.id })
+                      .from(users)
+                      .where(
+                        and(
+                          eq(users.id, zuvyProjectTracking.userId),
+                          or(
+                            ilike(users.name, searchStudent + '%'),
+                            ilike(users.email, searchStudent + '%'),
+                          ),
+                        ),
+                      ),
+                  ),
+                ]
+              : []),
+            exists(
+              db
+                .select({ _: zuvyBatchEnrollments.userId })
+                .from(zuvyBatchEnrollments)
+                .where(
+                  and(
+                    eq(zuvyBatchEnrollments.userId, zuvyProjectTracking.userId),
+                    eq(zuvyBatchEnrollments.bootcampId, bootcampId),
+                    ...(safeBatchId
+                      ? [eq(zuvyBatchEnrollments.batchId, safeBatchId)]
+                      : []),
+                  ),
+                ),
+            ),
+          ),
+        );
 
       const totalStudentsCount = totalStudentsCountRes[0]?.count ?? 0;
       const totalPages = limit
@@ -1233,7 +1325,13 @@ export class SubmissionService {
               eq(zuvyBatches.id, zuvyBatchEnrollments.batchId),
             )
             .where(
-              sql`${zuvyBatchEnrollments.bootcampId} = ${bootcampId} AND ${zuvyBatchEnrollments.userId} in ${userIds} ${safeBatchId ? sql`AND ${zuvyBatchEnrollments.batchId} = ${safeBatchId}` : sql``}`,
+              and(
+                eq(zuvyBatchEnrollments.bootcampId, bootcampId),
+                inArray(zuvyBatchEnrollments.userId, userIds.map(BigInt)),
+                ...(safeBatchId
+                  ? [eq(zuvyBatchEnrollments.batchId, safeBatchId)]
+                  : []),
+              ),
             );
 
           enrollments.forEach((e: any) => {
@@ -1368,15 +1466,14 @@ export class SubmissionService {
     try {
       const projectSubmissionDetails =
         await db.query.zuvyCourseProjects.findFirst({
-          where: (zuvyProject, { sql }) =>
-            sql`${zuvyProject.id} = ${projectId}`,
+          where: (zuvyProject, { eq }) => eq(zuvyProject.id, projectId),
           with: {
             projectTrackingData: {
-              where: (
-                projectTracking: { bootcampId: any; userId: any },
-                { sql }: any,
-              ) =>
-                sql`${projectTracking.bootcampId} = ${bootcampId} and ${projectTracking.userId} = ${userId}`,
+              where: (projectTracking, { and, eq }) =>
+                and(
+                  eq(projectTracking.bootcampId, bootcampId),
+                  eq(projectTracking.userId, userId),
+                ),
               columns: {
                 id: true,
                 userId: true,
@@ -1449,8 +1546,11 @@ export class SubmissionService {
 
       // Fetch quiz master data if applicable
       const quizMasterData = await db.query.zuvyModuleQuizVariants.findMany({
-        where: (zuvyModuleQuizVariants, { sql }) =>
-          sql`${zuvyModuleQuizVariants.id} in ${[...filterQuestionIds, ...filterAnswersQuestionIds]}`,
+        where: (zuvyModuleQuizVariants, { inArray }) =>
+          inArray(zuvyModuleQuizVariants.id, [
+            ...filterQuestionIds,
+            ...filterAnswersQuestionIds,
+          ]),
         with: {
           quiz: {
             columns: { difficulty: true, id: true },
@@ -1486,9 +1586,14 @@ export class SubmissionService {
               .update(zuvyQuizTracking)
               .set({ ...answer })
               .where(
-                sql`${zuvyQuizTracking.questionId} = ${answer.questionId} 
-                AND ${zuvyQuizTracking.assessmentSubmissionId} = ${assessmentSubmissionId} 
-                AND ${zuvyQuizTracking.userId} = ${userId}`,
+                and(
+                  eq(zuvyQuizTracking.questionId, answer.questionId),
+                  eq(
+                    zuvyQuizTracking.assessmentSubmissionId,
+                    assessmentSubmissionId,
+                  ),
+                  eq(zuvyQuizTracking.userId, userId),
+                ),
               )
               .returning(),
           );
@@ -1518,7 +1623,7 @@ export class SubmissionService {
       await db
         .update(zuvyAssessmentSubmission)
         .set(updateAssessmentMcqInfo)
-        .where(sql`${zuvyAssessmentSubmission.id} = ${assessmentSubmissionId}`)
+        .where(eq(zuvyAssessmentSubmission.id, assessmentSubmissionId))
         .returning();
 
       // Return combined data
@@ -1540,7 +1645,10 @@ export class SubmissionService {
         .select()
         .from(zuvyQuizTracking)
         .where(
-          sql`${zuvyQuizTracking.assessmentSubmissionId} = ${assessmentSubmissionId} and ${zuvyQuizTracking.userId} = ${userId}`,
+          and(
+            eq(zuvyQuizTracking.assessmentSubmissionId, assessmentSubmissionId),
+            eq(zuvyQuizTracking.userId, userId),
+          ),
         );
       return submissionQuiz;
     } catch (err) {
@@ -1575,7 +1683,17 @@ export class SubmissionService {
               .update(zuvyOpenEndedQuestionSubmission)
               .set({ ...answer })
               .where(
-                sql`${zuvyOpenEndedQuestionSubmission.questionId} = ${answer.questionId} and ${zuvyOpenEndedQuestionSubmission.userId} = ${userId} and ${zuvyOpenEndedQuestionSubmission.assessmentSubmissionId} = ${assessmentSubmissionId}`,
+                and(
+                  eq(
+                    zuvyOpenEndedQuestionSubmission.questionId,
+                    answer.questionId,
+                  ),
+                  eq(zuvyOpenEndedQuestionSubmission.userId, userId),
+                  eq(
+                    zuvyOpenEndedQuestionSubmission.assessmentSubmissionId,
+                    assessmentSubmissionId,
+                  ),
+                ),
               )
               .returning();
             updatePromises.push(updatePromise);
@@ -1632,7 +1750,13 @@ export class SubmissionService {
         .select()
         .from(zuvyOpenEndedQuestionSubmission)
         .where(
-          sql`${zuvyOpenEndedQuestionSubmission.assessmentSubmissionId} = ${assessmentSubmissionId} and ${zuvyOpenEndedQuestionSubmission.userId} = ${userId}`,
+          and(
+            eq(
+              zuvyOpenEndedQuestionSubmission.assessmentSubmissionId,
+              assessmentSubmissionId,
+            ),
+            eq(zuvyOpenEndedQuestionSubmission.userId, userId),
+          ),
         );
       return submissionOpenEnded;
     } catch (err) {
@@ -1687,12 +1811,12 @@ export class SubmissionService {
             // APPLY ORDER BY title inside chapters
             orderBy: chapterOrderClause,
 
-            where: (moduleChapter, { eq, sql, and }) =>
+            where: (moduleChapter, { eq, and, ilike }) =>
               and(
                 eq(moduleChapter.topicId, topicId),
                 searchForm
-                  ? sql`${moduleChapter.title} ILIKE ${searchForm + '%'}`
-                  : sql`TRUE`,
+                  ? ilike(moduleChapter.title, searchForm + '%')
+                  : undefined,
               ),
 
             with: {
@@ -1732,7 +1856,7 @@ export class SubmissionService {
 
       const zuvyBatchEnrollmentsCount = await db
         .select({
-          count: sql<number>`cast(count(${zuvyBatchEnrollments.id}) as int)`,
+          count: count(zuvyBatchEnrollments.id),
         })
         .from(zuvyBatchEnrollments)
         .where(eq(zuvyBatchEnrollments.bootcampId, bootcampId));
@@ -1798,13 +1922,16 @@ export class SubmissionService {
 
       const zuvyBatchEnrollmentsCount = await db
         .select({
-          count: sql<number>`cast(count(${zuvyBatchEnrollments.id}) as int)`,
+          count: count(zuvyBatchEnrollments.id),
         })
         .from(zuvyBatchEnrollments)
         .where(
-          hasBatchFilter
-            ? sql`${zuvyBatchEnrollments.bootcampId} = ${bootcampId} AND ${zuvyBatchEnrollments.batchId} = ${hasBatchFilter}`
-            : sql`${zuvyBatchEnrollments.bootcampId} = ${bootcampId} AND ${zuvyBatchEnrollments.batchId} IS NOT NULL`,
+          and(
+            eq(zuvyBatchEnrollments.bootcampId, bootcampId),
+            hasBatchFilter
+              ? eq(zuvyBatchEnrollments.batchId, hasBatchFilter)
+              : isNotNull(zuvyBatchEnrollments.batchId),
+          ),
         );
 
       const totalAllStudents = zuvyBatchEnrollmentsCount[0]?.count ?? 0;
@@ -1812,20 +1939,31 @@ export class SubmissionService {
       //INCOMPLETE STUDENTS (ENROLLMENTS)//
       const statusOfIncompletedStudentFormRaw =
         await db.query.zuvyBatchEnrollments.findMany({
-          where: (be, { sql, and }) => {
+          where: (be, { and, eq, isNotNull }) => {
             const conditions: any[] = [
-              sql`${be.bootcampId} = ${bootcampId}`,
+              eq(be.bootcampId, bootcampId),
               hasBatchFilter
-                ? sql`${be.batchId} = ${hasBatchFilter}`
-                : sql`${be.batchId} IS NOT NULL`,
+                ? eq(be.batchId, hasBatchFilter)
+                : isNotNull(be.batchId),
             ];
 
             if (searchStudent) {
-              conditions.push(sql`EXISTS (
-              SELECT 1 FROM main.users AS u
-              WHERE u.id = ${be.userId}
-              AND (u.name ILIKE ${searchStudent + '%'} OR u.email ILIKE ${searchStudent + '%'})
-            )`);
+              conditions.push(
+                exists(
+                  db
+                    .select({ _: users.id })
+                    .from(users)
+                    .where(
+                      and(
+                        eq(users.id, be.userId),
+                        or(
+                          ilike(users.name, searchStudent + '%'),
+                          ilike(users.email, searchStudent + '%'),
+                        ),
+                      ),
+                    ),
+                ),
+              );
             }
             return and(...conditions);
           },
@@ -1851,24 +1989,43 @@ export class SubmissionService {
 
       const statusOfCompletedStudentFormRaw =
         await db.query.zuvyChapterTracking.findMany({
-          where: (ct, { sql, and }) => {
+          where: (ct, { and, eq }) => {
             const conditions: any[] = [
-              sql`${ct.chapterId} = ${chapterId}`,
-              sql`${ct.moduleId} = ${moduleId}`,
-              sql`EXISTS (
-              SELECT 1 FROM main.zuvy_batch_enrollments AS be
-              WHERE be.user_id = ${ct.userId}
-              AND be.bootcamp_id = ${bootcampId}
-              ${hasBatchFilter ? sql`AND be.batch_id = ${hasBatchFilter}` : sql``}
-            )`,
+              eq(ct.chapterId, chapterId),
+              eq(ct.moduleId, moduleId),
+              exists(
+                db
+                  .select({ _: zuvyBatchEnrollments.userId })
+                  .from(zuvyBatchEnrollments)
+                  .where(
+                    and(
+                      eq(zuvyBatchEnrollments.userId, ct.userId),
+                      eq(zuvyBatchEnrollments.bootcampId, bootcampId),
+                      ...(hasBatchFilter
+                        ? [eq(zuvyBatchEnrollments.batchId, hasBatchFilter)]
+                        : []),
+                    ),
+                  ),
+              ),
             ];
 
             if (searchStudent) {
-              conditions.push(sql`EXISTS (
-              SELECT 1 FROM main.users AS u
-              WHERE u.id = ${ct.userId}
-              AND (u.name ILIKE ${searchStudent + '%'} OR u.email ILIKE ${searchStudent + '%'})
-            )`);
+              conditions.push(
+                exists(
+                  db
+                    .select({ _: users.id })
+                    .from(users)
+                    .where(
+                      and(
+                        eq(users.id, ct.userId),
+                        or(
+                          ilike(users.name, searchStudent + '%'),
+                          ilike(users.email, searchStudent + '%'),
+                        ),
+                      ),
+                    ),
+                ),
+              );
             }
 
             return and(...conditions);
@@ -1907,11 +2064,19 @@ export class SubmissionService {
           .leftJoin(
             zuvyBatches,
             eq(zuvyBatches.id, zuvyBatchEnrollments.batchId),
-          ).where(sql`
-          ${zuvyBatchEnrollments.bootcampId} = ${bootcampId}
-          AND ${zuvyBatchEnrollments.userId} IN ${completedUserIds}
-          ${hasBatchFilter ? sql`AND ${zuvyBatchEnrollments.batchId} = ${hasBatchFilter}` : sql``}
-        `);
+          )
+          .where(
+            and(
+              eq(zuvyBatchEnrollments.bootcampId, bootcampId),
+              inArray(
+                zuvyBatchEnrollments.userId,
+                completedUserIds.map(BigInt),
+              ),
+              ...(hasBatchFilter
+                ? [eq(zuvyBatchEnrollments.batchId, hasBatchFilter)]
+                : []),
+            ),
+          );
 
         enrollments.forEach((e: any) => {
           if (!completedEnrollmentMap[String(e.userId)]) {
@@ -2022,14 +2187,22 @@ export class SubmissionService {
         .select()
         .from(zuvyFormTracking)
         .where(
-          sql`${zuvyFormTracking.userId} = ${userId} and ${zuvyFormTracking.chapterId} = ${chapterId} and ${zuvyFormTracking.moduleId} = ${moduleId}`,
+          and(
+            eq(zuvyFormTracking.userId, userId),
+            eq(zuvyFormTracking.chapterId, chapterId),
+            eq(zuvyFormTracking.moduleId, moduleId),
+          ),
         );
 
       const ChapterTracking = await db
         .select()
         .from(zuvyChapterTracking)
         .where(
-          sql`${zuvyChapterTracking.userId} = ${userId} and ${zuvyChapterTracking.chapterId} = ${chapterId} and ${zuvyChapterTracking.moduleId} = ${moduleId}`,
+          and(
+            eq(zuvyChapterTracking.userId, userId),
+            eq(zuvyChapterTracking.chapterId, chapterId),
+            eq(zuvyChapterTracking.moduleId, moduleId),
+          ),
         );
 
       if (chapterDetails.length > 0) {
@@ -2060,8 +2233,11 @@ export class SubmissionService {
               };
             } else {
               const trackedData = await db.query.zuvyModuleForm.findMany({
-                where: (moduleForm, { sql }) =>
-                  sql`${inArray(moduleForm.id, Object.values(chapterDetails[0].formQuestions))}`,
+                where: (moduleForm, { inArray }) =>
+                  inArray(
+                    moduleForm.id,
+                    Object.values(chapterDetails[0].formQuestions),
+                  ),
                 with: {
                   formTrackingData: {
                     columns: {
@@ -2070,8 +2246,12 @@ export class SubmissionService {
                       status: true,
                       updatedAt: true,
                     },
-                    where: (formTracking, { sql }) =>
-                      sql`${formTracking.userId} = ${userId} and ${formTracking.chapterId} = ${chapterId} and ${formTracking.moduleId} = ${moduleId}`,
+                    where: (formTracking, { and, eq }) =>
+                      and(
+                        eq(formTracking.userId, userId),
+                        eq(formTracking.chapterId, chapterId),
+                        eq(formTracking.moduleId, moduleId),
+                      ),
                   },
                 },
               });
@@ -2153,15 +2333,12 @@ export class SubmissionService {
             },
             // APPLY ORDER BY TITLE HERE
             orderBy: chapterOrderClause,
-            where: (
-              moduleChapter: { topicId: any; title: any },
-              { and, eq, sql }: any,
-            ) =>
+            where: (moduleChapter, { and, eq, ilike }) =>
               and(
                 eq(moduleChapter.topicId, topicId),
                 assignmentName
-                  ? sql`${moduleChapter.title} ILIKE ${assignmentName + '%'}`
-                  : sql`TRUE`,
+                  ? ilike(moduleChapter.title, assignmentName + '%')
+                  : undefined,
               ),
             with: {
               chapterTrackingDetails: {
@@ -2187,11 +2364,14 @@ export class SubmissionService {
       // Fetch the total student count for the bootcamp
       const zuvyBatchEnrollmentsCount = await db
         .select({
-          count: sql<number>`cast(count(${zuvyBatchEnrollments.id}) as int)`,
+          count: count(zuvyBatchEnrollments.id),
         })
         .from(zuvyBatchEnrollments)
         .where(
-          sql`(${zuvyBatchEnrollments.bootcampId} = ${bootcampId} AND ${zuvyBatchEnrollments.batchId} IS NOT NULL)`,
+          and(
+            eq(zuvyBatchEnrollments.bootcampId, bootcampId),
+            isNotNull(zuvyBatchEnrollments.batchId),
+          ),
         );
 
       // Process tracking data, count submitted students, and filter out empty moduleChapterData
@@ -2278,7 +2458,6 @@ export class SubmissionService {
               id: any;
             },
             helpers: { desc: any; asc: (arg0: any) => any },
-            { sql }: any,
           ) => {
             const dir =
               orderDirection &&
@@ -2290,33 +2469,51 @@ export class SubmissionService {
             // Order by related user fields using a sub-select. This avoids fetching all rows and sorting in JS
             if (orderBy === 'name')
               return dir(
-                sql`(SELECT name FROM main.users AS u WHERE u.id = ${chapterTracking.userId})`,
+                sql`(SELECT ${users.name} FROM ${users} WHERE ${users.id} = ${chapterTracking.userId})`,
               );
             if (orderBy === 'email')
               return dir(
-                sql`(SELECT email FROM main.users AS u WHERE u.id = ${chapterTracking.userId})`,
+                sql`(SELECT ${users.email} FROM ${users} WHERE ${users.id} = ${chapterTracking.userId})`,
               );
             return helpers.asc(chapterTracking.id);
           };
         }
         const statusOfStudentCode = await db.query.zuvyChapterTracking.findMany(
           {
-            where: (chapterTracking, { sql, and }) => {
-              const conditions = [
-                sql`${chapterTracking.chapterId} = ${chapterId}`,
-                sql`EXISTS (
-                SELECT 1
-                FROM main.zuvy_batch_enrollments AS be
-                WHERE be.user_id = ${chapterTracking.userId}
-                ${batchId ? sql`AND be.batch_id = ${batchId}` : sql``}
-              )`,
+            where: (chapterTracking, { and, eq }) => {
+              const conditions: any[] = [
+                eq(chapterTracking.chapterId, chapterId),
+                exists(
+                  db
+                    .select({ _: zuvyBatchEnrollments.userId })
+                    .from(zuvyBatchEnrollments)
+                    .where(
+                      and(
+                        eq(zuvyBatchEnrollments.userId, chapterTracking.userId),
+                        ...(batchId
+                          ? [eq(zuvyBatchEnrollments.batchId, batchId)]
+                          : []),
+                      ),
+                    ),
+                ),
               ];
               if (searchStudent) {
-                conditions.push(sql`EXISTS (
-                  SELECT 1 FROM main.users AS u
-                  WHERE u.id = ${chapterTracking.userId}
-                  AND (u.name ILIKE ${searchStudent + '%'} OR u.email ILIKE ${searchStudent + '%'})
-                )`);
+                conditions.push(
+                  exists(
+                    db
+                      .select({ _: users.id })
+                      .from(users)
+                      .where(
+                        and(
+                          eq(users.id, chapterTracking.userId),
+                          or(
+                            ilike(users.name, searchStudent + '%'),
+                            ilike(users.email, searchStudent + '%'),
+                          ),
+                        ),
+                      ),
+                  ),
+                );
               }
               return and(...conditions);
             },
@@ -2352,19 +2549,13 @@ export class SubmissionService {
         > = {};
         if (userIdsBigint.length > 0) {
           const enrollmentRows = (await db.query.zuvyBatchEnrollments.findMany({
-            where: (enrollment, { and, inArray, sql }) => {
+            where: (enrollment, { and, inArray, eq, isNotNull }) => {
               const enrollmentConditions: any[] = [
                 inArray(enrollment.userId, userIdsBigint),
+                batchId
+                  ? eq(enrollment.batchId, batchId)
+                  : isNotNull(enrollment.batchId),
               ];
-              if (batchId) {
-                enrollmentConditions.push(
-                  sql`${enrollment.batchId} = ${batchId}`,
-                );
-              } else {
-                enrollmentConditions.push(
-                  sql`${enrollment.batchId} IS NOT NULL`,
-                );
-              }
               return and(...enrollmentConditions);
             },
             columns: {
@@ -2404,21 +2595,48 @@ export class SubmissionService {
         // Get the total student count for pagination using enrollment table to respect batch filtering
         const totalStudentsRes = await db
           .select({
-            count: sql<number>`cast(count(${zuvyChapterTracking.id}) as int)`,
+            count: count(zuvyChapterTracking.id),
           })
-          .from(zuvyChapterTracking).where(sql`
-            ${zuvyChapterTracking.chapterId} = ${chapterId}
-            ${
-              batchId
-                ? sql`AND EXISTS (SELECT 1 FROM main.zuvy_batch_enrollments AS be WHERE be.user_id = ${zuvyChapterTracking.userId} AND be.batch_id = ${batchId})`
-                : sql`AND EXISTS (SELECT 1 FROM main.zuvy_batch_enrollments AS be WHERE be.user_id = ${zuvyChapterTracking.userId})`
-            }
-            ${
-              searchStudent
-                ? sql`AND EXISTS (SELECT 1 FROM main.users AS u WHERE u.id = ${zuvyChapterTracking.userId} AND (u.name ILIKE ${searchStudent + '%'} OR u.email ILIKE ${searchStudent + '%'}))`
-                : sql``
-            }
-          `);
+          .from(zuvyChapterTracking)
+          .where(
+            and(
+              eq(zuvyChapterTracking.chapterId, chapterId),
+              exists(
+                db
+                  .select({ _: zuvyBatchEnrollments.userId })
+                  .from(zuvyBatchEnrollments)
+                  .where(
+                    and(
+                      eq(
+                        zuvyBatchEnrollments.userId,
+                        zuvyChapterTracking.userId,
+                      ),
+                      ...(batchId
+                        ? [eq(zuvyBatchEnrollments.batchId, batchId)]
+                        : []),
+                    ),
+                  ),
+              ),
+              ...(searchStudent
+                ? [
+                    exists(
+                      db
+                        .select({ _: users.id })
+                        .from(users)
+                        .where(
+                          and(
+                            eq(users.id, zuvyChapterTracking.userId),
+                            or(
+                              ilike(users.name, searchStudent + '%'),
+                              ilike(users.email, searchStudent + '%'),
+                            ),
+                          ),
+                        ),
+                    ),
+                  ]
+                : []),
+            ),
+          );
         const totalStudentsCount = totalStudentsRes[0]?.count ?? 0;
         // Normalize pagination inputs: treat non-positive/invalid limits as undefined
         const safeLimit =
@@ -2792,8 +3010,8 @@ export class SubmissionService {
           const variantIds = quizAnswers.map((q) => q.variantId);
           const quizMasterData = await db.query.zuvyModuleQuizVariants.findMany(
             {
-              where: (zuvyModuleQuizVariants, { sql }) =>
-                sql`${zuvyModuleQuizVariants.id} in ${variantIds}`,
+              where: (zuvyModuleQuizVariants, { inArray }) =>
+                inArray(zuvyModuleQuizVariants.id, variantIds),
               with: {
                 quiz: {
                   columns: {
@@ -2993,22 +3211,20 @@ Zuvy LMS Team
             },
             // APPLY ORDER BY TITLE HERE
             orderBy: chapterOrderClause,
-            where: (moduleChapter: any, { eq, and, ilike, sql }: any) =>
+            where: (moduleChapter: any, { eq, and, ilike }: any) =>
               and(
                 eq(moduleChapter.topicId, topicId),
                 searchTerm
-                  ? sql`
-                      (
-                        ${ilike(moduleChapter.title, `%${searchTerm}%`)}
-                        OR EXISTS (
-                          SELECT 1 FROM main.zuvy_chapter_tracking AS ct
-                          JOIN main.users AS u ON u.id = ct.user_id
-                          WHERE ct.chapter_id = ${moduleChapter.id}
-                            AND (u.name ILIKE ${searchTerm + '%'} OR u.email ILIKE ${searchTerm + '%'})
-                        )
+                  ? sql`(
+                      ${ilike(moduleChapter.title, `%${searchTerm}%`)}
+                      OR EXISTS (
+                        SELECT 1 FROM ${zuvyChapterTracking}
+                        JOIN ${users} ON ${users.id} = ${zuvyChapterTracking.userId}
+                        WHERE ${zuvyChapterTracking.chapterId} = ${moduleChapter.id}
+                          AND (${ilike(users.name, searchTerm + '%')} OR ${ilike(users.email, searchTerm + '%')})
                       )
-                    `
-                  : sql`TRUE`,
+                    )`
+                  : undefined,
               ),
             with: {
               chapterTrackingDetails: {
@@ -3035,11 +3251,14 @@ Zuvy LMS Team
       // Get total students for bootcamp
       const zuvyBatchEnrollmentsCount = await db
         .select({
-          count: sql<number>`cast(count(${zuvyBatchEnrollments.id}) as int)`,
+          count: count(zuvyBatchEnrollments.id),
         })
         .from(zuvyBatchEnrollments)
         .where(
-          sql`${zuvyBatchEnrollments.bootcampId} = ${bootcampId} AND ${zuvyBatchEnrollments.batchId} IS NOT NULL`,
+          and(
+            eq(zuvyBatchEnrollments.bootcampId, bootcampId),
+            isNotNull(zuvyBatchEnrollments.batchId),
+          ),
         );
       // Add submitStudents field and expose submissions for each chapter
       trackingData.forEach((course: any) => {

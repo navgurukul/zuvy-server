@@ -22,6 +22,7 @@ import {
   zuvyUserPermissions,
   zuvyUserRoles,
   zuvyUserRolesAssigned,
+  zuvyAuditLogs,
 } from 'drizzle/schema';
 import { AuditlogService } from 'src/auditlog/auditlog.service';
 import { alias } from 'drizzle-orm/pg-core';
@@ -37,65 +38,79 @@ export class PermissionsService {
     try {
       const { name, resourceId, description } = createPermissionDto;
 
-      // Check if resource exists
-      const resourceCheck = await db.execute(
-        sql`SELECT id FROM main.zuvy_resources WHERE id = ${resourceId} LIMIT 1`,
-      );
-      if (!(resourceCheck as any).rows?.length) {
+      // ✅ Check if resource exists
+      const resourceCheck = await db
+        .select({ id: zuvyResources.id })
+        .from(zuvyResources)
+        .where(eq(zuvyResources.id, resourceId))
+        .limit(1);
+
+      if (!resourceCheck.length) {
         throw new NotFoundException('Resource not found');
       }
 
-      // Check if permission with the same name already exists for this resource
-      const permissionCheck = await db.execute(
-        sql`SELECT id FROM main.zuvy_permissions WHERE name = ${name} AND resource_id = ${resourceId} LIMIT 1`,
-      );
-      if ((permissionCheck as any).rows?.length) {
+      // ✅ Check duplicate permission
+      const permissionCheck = await db
+        .select({ id: zuvyPermissions.id })
+        .from(zuvyPermissions)
+        .where(
+          and(
+            eq(zuvyPermissions.name, name),
+            eq(zuvyPermissions.resourcesId, resourceId),
+          ),
+        )
+        .limit(1);
+
+      if (permissionCheck.length) {
         throw new BadRequestException(
           'Permission with this name already exists for the specified resource',
         );
       }
-      // Create new permission
-      const result = await db.execute(
-        sql`INSERT INTO main.zuvy_permissions (name, resource_id, description) VALUES (${name}, ${resourceId}, ${description ?? null}) RETURNING *`,
-      );
 
-      if ((result as any).rows.length > 0) {
-        // Get all permissions for this resource (including the newly created one)
+      // ✅ Insert new permission
+      const insertedPermission = await db
+        .insert(zuvyPermissions)
+        .values({
+          name,
+          resourcesId: resourceId,
+          description: description ?? null,
+        } as unknown as typeof zuvyPermissions.$inferInsert)
+        .returning();
 
-        const allPermissions = await db
-          .select({
-            id: zuvyPermissions.id,
-            name: zuvyPermissions.name,
-            resourceId: zuvyPermissions.resourcesId,
-            description: zuvyPermissions.description,
-            resourceName: zuvyResources.name,
-          })
-          .from(zuvyPermissions)
-          .leftJoin(
-            zuvyResources,
-            eq(zuvyPermissions.resourcesId, zuvyResources.id),
-          )
-          .where(eq(zuvyPermissions.resourcesId, resourceId))
-          .orderBy(asc(zuvyPermissions.id));
-
-        const allPermissionsResult = {
-          rows: allPermissions,
-          rowCount: allPermissions.length,
-        };
-
-        return {
-          status: 'success',
-          message: 'Permission created successfully',
-          code: 200,
-          data: allPermissionsResult,
-        };
-      } else {
+      if (!insertedPermission.length) {
         return {
           status: 'error',
           code: 400,
           message: 'Permission creation failed. Please try again',
         };
       }
+
+      // ✅ Fetch all permissions for this resource
+      const allPermissions = await db
+        .select({
+          id: zuvyPermissions.id,
+          name: zuvyPermissions.name,
+          resourceId: zuvyPermissions.resourcesId,
+          description: zuvyPermissions.description,
+          resourceName: zuvyResources.name,
+        })
+        .from(zuvyPermissions)
+        .leftJoin(
+          zuvyResources,
+          eq(zuvyPermissions.resourcesId, zuvyResources.id),
+        )
+        .where(eq(zuvyPermissions.resourcesId, resourceId))
+        .orderBy(asc(zuvyPermissions.id));
+
+      return {
+        status: 'success',
+        message: 'Permission created successfully',
+        code: 200,
+        data: {
+          rows: allPermissions,
+          rowCount: allPermissions.length,
+        },
+      };
     } catch (err) {
       this.logger.error('Error creating permission:', err);
       if (err instanceof NotFoundException) throw err;
@@ -207,18 +222,33 @@ export class PermissionsService {
 
   async getUserPermissions(userId: number, orgId: number): Promise<string[]> {
     try {
-      const result = await db.execute(sql`
-        SELECT DISTINCT p.name 
-        FROM main.zuvy_permissions p
-        INNER JOIN main.zuvy_permissions_roles pr ON p.id = pr.permission_id
-        INNER JOIN main.zuvy_user_roles ur ON pr.role_id = ur.id
-        INNER JOIN main.zuvy_user_roles_assigned ura ON ura.role_id = ur.id
-        WHERE ura.user_id = ${userId} AND ura.organization_id = ${orgId}
-          AND pr.org_id = ${orgId}
-      `);
+      const result = await db
+        .selectDistinct({
+          name: zuvyPermissions.name,
+        })
+        .from(zuvyPermissions)
+        .innerJoin(
+          zuvyPermissionsRoles,
+          eq(zuvyPermissions.id, zuvyPermissionsRoles.permissionId),
+        )
+        .innerJoin(
+          zuvyUserRoles,
+          eq(zuvyPermissionsRoles.roleId, zuvyUserRoles.id),
+        )
+        .innerJoin(
+          zuvyUserRolesAssigned,
+          eq(zuvyUserRolesAssigned.roleId, zuvyUserRoles.id),
+        )
+        .where(
+          and(
+            eq(zuvyUserRolesAssigned.userId, BigInt(userId)),
+            eq(zuvyUserRolesAssigned.organizationId, orgId),
+            eq(zuvyPermissionsRoles.orgId, orgId),
+          ),
+        );
 
-      const permissions = (result as any).rows.map((row) => row.name);
-      return permissions;
+      // ✅ Drizzle returns array directly
+      return result.map((row) => row.name);
     } catch (err) {
       this.logger.error(
         `Error getting user permissions for user ${userId}:`,
@@ -256,41 +286,60 @@ export class PermissionsService {
     payload: AssignUserPermissionDto,
   ): Promise<any> {
     const { actorUserId, targetUserId, permissionId, scopeId } = payload;
+
     try {
-      const userCheck = await db.execute(
-        sql`SELECT id FROM main.users WHERE id = ${targetUserId} LIMIT 1`,
-      );
-      if (!(userCheck as any).rows?.length) {
+      // ✅ Check target user
+      const targetUser = await db
+        .select({ id: users.id })
+        .from(users)
+        .where(eq(users.id, BigInt(targetUserId)))
+        .limit(1);
+
+      if (!targetUser.length) {
         throw new NotFoundException('Target user not found');
       }
 
+      // ✅ Check actor user (if provided)
       if (actorUserId) {
-        const actorCheck = await db.execute(
-          sql`SELECT id FROM main.users WHERE id = ${actorUserId} LIMIT 1`,
-        );
-        if (!(actorCheck as any).rows?.length) {
+        const actorUser = await db
+          .select({ id: users.id })
+          .from(users)
+          .where(eq(users.id, BigInt(actorUserId)))
+          .limit(1);
+
+        if (!actorUser.length) {
           throw new NotFoundException('Actor user not found');
         }
       }
 
-      const permCheck = await db.execute(
-        sql`SELECT id FROM main.zuvy_permissions WHERE id = ${permissionId} LIMIT 1`,
-      );
-      if (!(permCheck as any).rows?.length) {
+      // ✅ Check permission
+      const permission = await db
+        .select({ id: zuvyPermissions.id })
+        .from(zuvyPermissions)
+        .where(eq(zuvyPermissions.id, permissionId))
+        .limit(1);
+
+      if (!permission.length) {
         throw new NotFoundException('Permission not found');
       }
 
-      const insertAudit = await db.execute(sql`
-        INSERT INTO main.zuvy_audit_logs (user_id, target_user_id, action, permission_id, scope_id)
-        VALUES (${actorUserId ?? null}, ${targetUserId}, ${'assign_extra_permission'}, ${permissionId}, ${scopeId ?? null})
-        RETURNING *
-      `);
+      // ✅ Insert audit log
+      const insertAudit = await db
+        .insert(zuvyAuditLogs)
+        .values({
+          userId: actorUserId ?? null,
+          targetUserId,
+          action: 'assign_extra_permission',
+          permissionId,
+          scopeId: scopeId ?? null,
+        } as unknown as typeof zuvyAuditLogs.$inferInsert)
+        .returning();
 
       return {
         status: 'success',
         code: 200,
         message: 'Extra permission assignment recorded in audit log',
-        data: (insertAudit as any).rows[0],
+        data: insertAudit[0], // ✅ no .rows
       };
     } catch (err) {
       this.logger.error(
@@ -309,60 +358,61 @@ export class PermissionsService {
   ): Promise<any> {
     try {
       const { userId, permissions } = assignPermissionsDto;
-      console.log('Assigning permissions:', assignPermissionsDto);
-      let insertUserPermission;
-      // Check if user exists
-      const userExists = await db.execute(
-        sql`SELECT id FROM main.users WHERE id = ${userId} LIMIT 1`,
-      );
-      if (!(userExists as any).rows?.length) {
+
+      // ✅ Check if user exists
+      const userExists = await db
+        .select({ id: users.id })
+        .from(users)
+        .where(eq(users.id, BigInt(userId)))
+        .limit(1);
+
+      if (!userExists.length) {
         throw new NotFoundException('User not found');
       }
 
-      const permissionsExists = await db.execute(
-        sql`SELECT id FROM main.zuvy_permissions WHERE id IN (${permissions.map((permission) => permission).join(',')}) LIMIT 1`,
-      );
-      if (!(permissionsExists as any).rows?.length) {
+      // ✅ Check permissions exist
+      const permissionsExists = await db
+        .select({ id: zuvyPermissions.id })
+        .from(zuvyPermissions)
+        .where(inArray(zuvyPermissions.id, permissions));
+
+      if (!permissionsExists.length) {
         throw new NotFoundException('Permissions not found');
       }
 
-      // const insertAudit = await db.execute(sql`
-      //   INSERT INTO main.zuvy_audit_logs (user_id, target_user_id, action, permission_id, scope_id)
-      //   VALUES (${userId}, ${userId}, ${'assign_permissions'}, ${permissions.map(permission => permission.id).join(',')}, ${scopeId ?? null})
-      //   RETURNING *
-      // `);
-      const alreadyAssignedPermissions = await db.execute(
-        sql`SELECT id FROM main.zuvy_user_permissions WHERE user_id = ${userId} AND permission_id IN (${permissions.map((permission) => permission).join(',')}) LIMIT 1`,
-      );
-      if ((alreadyAssignedPermissions as any).rows?.length) {
-        throw new BadRequestException('Permissions already assigned to user');
+      // ✅ Check already assigned permissions
+      const alreadyAssigned = await db
+        .select({ permissionId: zuvyUserPermissions.permissionId })
+        .from(zuvyUserPermissions)
+        .where(
+          and(
+            eq(zuvyUserPermissions.userId, BigInt(userId)),
+            inArray(zuvyUserPermissions.permissionId, permissions),
+          ),
+        );
+
+      if (alreadyAssigned.length) {
+        throw new BadRequestException(
+          'Some permissions are already assigned to user',
+        );
       }
 
-      for (const permissionId of assignPermissionsDto.permissions) {
-        const exists = await db.query.zuvyUserPermissions.findFirst({
-          where: (u, { eq, and }) =>
-            and(
-              eq(u.userId, BigInt(assignPermissionsDto.userId)),
-              eq(u.permissionId, permissionId),
-            ),
-        });
+      // ✅ Bulk insert (no loop 🚀)
+      const insertData = permissions.map((permissionId) => ({
+        userId,
+        permissionId,
+      }));
 
-        if (!exists) {
-          const insertData = {
-            userId: assignPermissionsDto.userId,
-            permissionId,
-          };
-          insertUserPermission = await db
-            .insert(zuvyUserPermissions)
-            .values(insertData)
-            .returning();
-        }
-      }
+      const insertedPermissions = await db
+        .insert(zuvyUserPermissions)
+        .values(insertData)
+        .returning();
+
       return {
         status: 'success',
         code: 200,
         message: 'Permissions assigned successfully',
-        data: insertUserPermission,
+        data: insertedPermissions,
       };
     } catch (error) {
       this.logger.error('Error assigning permissions to user role:', error);

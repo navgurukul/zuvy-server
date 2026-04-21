@@ -10,10 +10,14 @@ import {
   userTokens,
   zuvyOrganizations,
   zuvyUserOrganizations,
+  zuvyPermissions,
+  zuvyResources,
+  zuvyPermissionsRoles,
 } from '../../drizzle/schema';
 import { eq, inArray, and, isNull, or } from 'drizzle-orm';
 import { OAuth2Client } from 'google-auth-library';
 import { UserTokensService } from 'src/user-tokens/user-tokens.service';
+import { ResourceList } from 'src/rbac/utility';
 let { GOOGLE_CLIENT_ID, GOOGLE_SECRET, GOOGLE_REDIRECT_URI, JWT_SECRET_KEY } =
   process.env;
 // import { Role } from '../rbac/utility';
@@ -72,6 +76,85 @@ export class AuthService {
     } catch (error) {
       this.logger.error('Error fetching user roles:', error);
       return ['student'];
+    }
+  }
+
+  async getFormattedPermissions(
+    userId: number,
+    orgId: number | null,
+    roles: string[],
+  ): Promise<Record<string, boolean>> {
+    try {
+      const permissionsMap: Record<string, boolean> = {};
+
+      // Initialize all possible permissions to false or just omit them?
+      // The user wants a map of available permissions.
+
+      // Check if user is super_admin
+      if (roles.includes('super_admin')) {
+        Object.values(ResourceList).forEach((resource) => {
+          Object.values(resource).forEach((permissionName) => {
+            permissionsMap[permissionName] = true;
+          });
+        });
+        return permissionsMap;
+      }
+
+      // Fetch permissions from DB
+      const userPermissions = await db
+        .selectDistinct({
+          permission: zuvyPermissions.name,
+          resource: zuvyResources.key, // Use key for mapping
+        })
+        .from(zuvyPermissions)
+        .innerJoin(
+          zuvyResources,
+          eq(zuvyPermissions.resourcesId, zuvyResources.id),
+        )
+        .innerJoin(
+          zuvyPermissionsRoles,
+          eq(zuvyPermissions.id, zuvyPermissionsRoles.permissionId),
+        )
+        .innerJoin(
+          zuvyUserRoles,
+          eq(zuvyPermissionsRoles.roleId, zuvyUserRoles.id),
+        )
+        .innerJoin(
+          zuvyUserRolesAssigned,
+          eq(zuvyUserRoles.id, zuvyUserRolesAssigned.roleId),
+        )
+        .where(
+          and(
+            eq(zuvyUserRolesAssigned.userId, BigInt(userId)),
+            orgId !== null
+              ? eq(zuvyUserRolesAssigned.organizationId, orgId)
+              : isNull(zuvyUserRolesAssigned.organizationId),
+            orgId !== null
+              ? eq(zuvyPermissionsRoles.orgId, orgId)
+              : isNull(zuvyPermissionsRoles.orgId),
+          ),
+        );
+
+      // Map DB permissions to formatted names
+      userPermissions.forEach((p) => {
+        const resourceKey = p.resource.toLowerCase();
+        let action = p.permission.toLowerCase();
+
+        // Database uses 'view' for readability permissions, but ResourceList uses 'read' key
+        if (action === 'view') {
+          action = 'read';
+        }
+
+        if (ResourceList[resourceKey] && ResourceList[resourceKey][action]) {
+          const formattedName = ResourceList[resourceKey][action];
+          permissionsMap[formattedName] = true;
+        }
+      });
+
+      return permissionsMap;
+    } catch (error) {
+      this.logger.error('Error fetching formatted permissions:', error);
+      return {};
     }
   }
 
@@ -166,12 +249,20 @@ export class AuthService {
         selectedOrg?.orgId,
       );
 
+      // Get formatted permissions
+      const permissions = await this.getFormattedPermissions(
+        Number(user.id),
+        selectedOrg?.orgId,
+        roles,
+      );
+
       const jwtPayload = {
         sub: user.id.toString(),
         email: user.email,
         googleUserId: user.googleUserId,
         role: user.mode,
         rolesList: roles,
+        permissions: permissions,
         orgId: selectedOrg?.orgId || null,
         orgName: selectedOrg?.orgName || null,
         isPoc: selectedOrg?.pocEmail === user.email,
@@ -257,6 +348,7 @@ export class AuthService {
           orgId: selectedOrg?.orgId || null,
           orgName: selectedOrg?.orgName || null,
           isPoc: selectedOrg?.pocEmail === user.email,
+          permissions: permissions,
         },
       };
     } catch (error) {
@@ -438,6 +530,13 @@ export class AuthService {
       // Get user roles
       const roles = await this.getUserRoles(Number(user.id), orgId);
 
+      // Get formatted permissions
+      const permissions = await this.getFormattedPermissions(
+        Number(user.id),
+        orgId,
+        roles,
+      );
+
       let orgName = payload.orgName;
       let pocEmail = null;
       // Refresh org details if needed
@@ -460,6 +559,7 @@ export class AuthService {
         googleUserId: user.googleUserId,
         role: user.mode,
         rolesList: roles,
+        permissions: permissions,
         orgId: orgId,
         orgName: orgName,
         isPoc: pocEmail === user.email,
@@ -571,12 +671,20 @@ export class AuthService {
       roles = [...roles, 'super_admin'];
     }
 
+    // Get formatted permissions
+    const permissions = await this.getFormattedPermissions(
+      Number(userId),
+      targetOrgId,
+      roles,
+    );
+
     const payload = {
       sub: user.id.toString(),
       email: user.email,
       googleUserId: user.googleUserId,
       role: user.mode,
       rolesList: roles,
+      permissions: permissions,
       orgId: targetOrgId,
       orgName: org?.displayName,
       isPoc: org?.pocEmail === user.email,
@@ -620,6 +728,7 @@ export class AuthService {
         orgId: targetOrgId,
         orgName: org?.displayName,
         isPoc: org?.pocEmail === user.email,
+        permissions: permissions,
       },
     };
   }
