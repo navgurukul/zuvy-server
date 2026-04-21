@@ -20,7 +20,7 @@ import {
   zuvyStudentBookingMetrics,
 } from '../../../drizzle/schema';
 
-import { and, eq, lt, sql, desc } from 'drizzle-orm';
+import { and, eq, lt, gt, sql, desc, count, ne, gte, lte } from 'drizzle-orm';
 import { CreateSlotDto } from './dto/create-slot.dto';
 import { GoogleCalendarService } from 'src/integrations/google/google-calendar.service';
 import { NotificationService } from '../notification/notification.service';
@@ -428,23 +428,15 @@ export class MentorSlotService {
     await this.validateLearnerBookingEligibility(BigInt(studentId));
 
     return db.transaction(async (trx) => {
-      const result = await trx.execute(sql`
-SELECT
-  id,
-  mentor_slot_management_id AS "mentorSlotManagementId",
-  slot_start_date_time AS "slotStartDateTime",
-  slot_end_date_time AS "slotEndDateTime",
-  duration_minutes AS "durationMinutes",
-  max_capacity AS "maxCapacity",
-  current_booked_count AS "currentBookedCount",
-  status
-FROM zuvy_mentor_slot_availability
-WHERE id = ${slotId}
-FOR UPDATE
-`);
+      /* ========================================
+     LOCK SLOT (FOR UPDATE)
+  ======================================== */
 
-      const slot = result
-        .rows[0] as typeof zuvyMentorSlotAvailability.$inferSelect;
+      const [slot] = await trx
+        .select()
+        .from(zuvyMentorSlotAvailability)
+        .where(eq(zuvyMentorSlotAvailability.id, slotId))
+        .for('update');
 
       if (!slot) throw new NotFoundException('Slot not found.');
 
@@ -455,14 +447,28 @@ FOR UPDATE
       if (slot.status !== 'available')
         throw new BadRequestException('Slot not available.');
 
+      if (slot.currentBookedCount >= slot.maxCapacity) {
+        throw new BadRequestException('Slot is full.');
+      }
+
       // this.enforceMinimumNotice(new Date(slot.slotStartDateTime));
 
-      // Fetch mentor buffer settings
+      /* ========================================
+       FETCH MENTOR PROFILE
+    ======================================== */
       const [mentorProfile] = await trx
         .select()
         .from(zuvyMentorSlotManagement)
         .where(eq(zuvyMentorSlotManagement.id, slot.mentorSlotManagementId))
         .limit(1);
+
+      if (!mentorProfile) {
+        throw new NotFoundException('Mentor not found.');
+      }
+
+      /* ========================================
+         BUFFER CHECK
+      ======================================== */
 
       if (mentorProfile?.isBufferEnabled && mentorProfile.bufferMinutes > 0) {
         const bufferMs = mentorProfile.bufferMinutes * 60 * 1000;
@@ -492,8 +498,8 @@ FOR UPDATE
                 mentorProfile.mentorUserId,
               ),
               eq(zuvyMentorSlotBooking.sessionLifecycleState, 'SCHEDULED'),
-              sql`${zuvyMentorSlotAvailability.slotStartDateTime} < ${bufferedEnd}`,
-              sql`${zuvyMentorSlotAvailability.slotEndDateTime} > ${bufferedStart}`,
+              lt(zuvyMentorSlotAvailability.slotStartDateTime, bufferedEnd),
+              gt(zuvyMentorSlotAvailability.slotEndDateTime, bufferedStart),
             ),
           );
 
@@ -503,6 +509,10 @@ FOR UPDATE
           );
         }
       }
+
+      /* ========================================
+           DUPLICATE BOOKING CHECK
+        ======================================== */
 
       const existingBooking = await trx
         .select()
@@ -520,22 +530,27 @@ FOR UPDATE
         throw new BadRequestException('You already booked this slot.');
       }
 
+      /* ========================================
+         UPDATE SLOT CAPACITY (NO SQL)
+      ======================================== */
+
       if (slot.currentBookedCount >= slot.maxCapacity)
         throw new BadRequestException('Slot is full.');
+
+      const newCount = slot.currentBookedCount + 1;
+      const newStatus = newCount >= slot.maxCapacity ? 'full' : 'available';
 
       await trx
         .update(zuvyMentorSlotAvailability)
         .set({
-          currentBookedCount: sql`${zuvyMentorSlotAvailability.currentBookedCount} + 1`,
-          status: sql`
-      CASE
-        WHEN ${zuvyMentorSlotAvailability.currentBookedCount} + 1 >= ${zuvyMentorSlotAvailability.maxCapacity}
-        THEN 'full'
-        ELSE 'available'
-      END
-    `,
+          currentBookedCount: newCount,
+          status: newStatus,
         } as Partial<typeof zuvyMentorSlotAvailability.$inferInsert>)
         .where(eq(zuvyMentorSlotAvailability.id, slotId));
+
+      /* ========================================
+         CREATE BOOKING
+      ======================================== */
 
       const booking = await trx
         .insert(zuvyMentorSlotBooking)
@@ -552,7 +567,9 @@ FOR UPDATE
 
       const createdBooking = booking[0];
 
-      // Update student booking metrics
+      /* ========================================
+     UPDATE STUDENT METRICS
+  ======================================== */
       await trx
         .insert(zuvyStudentBookingMetrics)
         .values({
@@ -594,23 +611,33 @@ FOR UPDATE
         referenceType: 'booking',
       });
 
-      /* Fetch mentor + student emails */
+      /* ========================================
+   FETCH EMAILS (FIXED)
+======================================== */
 
-      const mentorResult = await trx.execute(
-        sql`SELECT email FROM users WHERE id = ${mentorProfile.mentorUserId}`,
-      );
+      const [mentorUser] = await trx
+        .select({ email: users.email })
+        .from(users)
+        .where(eq(users.id, mentorProfile.mentorUserId))
+        .limit(1);
 
-      const studentResult = await trx.execute(
-        sql`SELECT email FROM users WHERE id = ${studentId}`,
-      );
+      const [studentUser] = await trx
+        .select({ email: users.email })
+        .from(users)
+        .where(eq(users.id, BigInt(studentId)))
+        .limit(1);
 
-      const mentorEmail = mentorResult.rows[0].email as string;
-      const studentEmail = studentResult.rows[0].email as string;
+      const mentorEmail = mentorUser?.email;
+      const studentEmail = studentUser?.email;
 
       const refreshToken = mentorProfile.googleRefreshToken;
 
       const slotStartDateTime = new Date(slot.slotStartDateTime);
       const slotEndDateTime = new Date(slot.slotEndDateTime);
+
+      /* ========================================
+   CREATE ZOOM MEETING
+======================================== */
 
       let meeting: {
         joinUrl?: string;
@@ -673,11 +700,42 @@ FOR UPDATE
         };
       } catch (error) {
         console.error('Zoom meeting creation failed:', error.message);
+
+        const errMsg = error?.message || '';
+
+        /* ========================================
+           HANDLE ZOOM USER NOT FOUND / NOT LICENSED
+        ======================================== */
+
+        if (
+          errMsg.includes('User does not exist') ||
+          errMsg.includes('does not exist')
+        ) {
+          throw new BadRequestException(
+            'This mentor is not available for booking right now. Please try another mentor.',
+          );
+        }
+
+        if (
+          errMsg.includes('not licensed') ||
+          errMsg.includes('No permission')
+        ) {
+          throw new BadRequestException(
+            'This mentor is not fully set up for sessions yet. Please choose another mentor.',
+          );
+        }
+
+        /* ========================================
+           FALLBACK ERROR
+        ======================================== */
+
         throw new BadRequestException(
-          'Failed to create Zoom meeting. Please check Zoom integration.',
+          'Unable to schedule session at the moment. Please try again later.',
         );
       }
-      /* Save meeting info */
+      /* ========================================
+    SAVE MEETING DATA
+ ======================================== */
 
       await trx
         .update(zuvyMentorSlotBooking)
@@ -822,7 +880,6 @@ FOR UPDATE
       }
 
       /* Release slot capacity */
-
       await trx
         .update(zuvyMentorSlotAvailability)
         .set({
@@ -880,12 +937,12 @@ FOR UPDATE
       const { quotaStart, quotaEnd } = this.getQuotaWindow();
 
       const [{ count: totalBookings }] = await trx
-        .select({ count: sql<number>`COUNT(*)` })
+        .select({ count: count() })
         .from(zuvyMentorSlotBooking)
         .where(
           and(
             eq(zuvyMentorSlotBooking.studentUserId, booking.studentUserId),
-            sql`${zuvyMentorSlotBooking.status} != 'cancelled'`,
+            ne(zuvyMentorSlotBooking.status, 'cancelled'),
           ),
         );
 
@@ -895,14 +952,14 @@ FOR UPDATE
           .where(eq(zuvyStudentBookingMetrics.userId, booking.studentUserId));
       } else {
         const [{ count: quotaUsed }] = await trx
-          .select({ count: sql<number>`COUNT(*)` })
+          .select({ count: count() })
           .from(zuvyMentorSlotBooking)
           .where(
             and(
               eq(zuvyMentorSlotBooking.studentUserId, booking.studentUserId),
-              sql`${zuvyMentorSlotBooking.status} != 'cancelled'`,
-              sql`${zuvyMentorSlotBooking.confirmedAt} >= ${quotaStart}`,
-              sql`${zuvyMentorSlotBooking.confirmedAt} <= ${quotaEnd}`,
+              ne(zuvyMentorSlotBooking.status, 'cancelled'),
+              gte(zuvyMentorSlotBooking.confirmedAt, quotaStart),
+              lte(zuvyMentorSlotBooking.confirmedAt, quotaEnd),
             ),
           );
 
@@ -912,10 +969,10 @@ FOR UPDATE
           .where(
             and(
               eq(zuvyMentorSlotBooking.studentUserId, booking.studentUserId),
-              sql`${zuvyMentorSlotBooking.status} != 'cancelled'`,
+              ne(zuvyMentorSlotBooking.status, 'cancelled'),
             ),
           )
-          .orderBy(sql`${zuvyMentorSlotBooking.confirmedAt} DESC`)
+          .orderBy(desc(zuvyMentorSlotBooking.confirmedAt))
           .limit(1);
 
         const lastBookingDate = lastBooking?.confirmedAt;
@@ -1325,8 +1382,8 @@ FOR UPDATE
             zuvyMentorSlotAvailability.mentorSlotManagementId,
             mentorProfile.id,
           ),
-          sql`${start} < ${zuvyMentorSlotAvailability.slotEndDateTime}`,
-          sql`${end} > ${zuvyMentorSlotAvailability.slotStartDateTime}`,
+          lt(zuvyMentorSlotAvailability.slotEndDateTime, start),
+          gt(zuvyMentorSlotAvailability.slotStartDateTime, end),
         ),
       );
 
@@ -1357,6 +1414,7 @@ FOR UPDATE
     if (!mentorProfile) {
       throw new NotFoundException('Mentor profile not found.');
     }
+    await this.ensureMentorZoomVerified(userId);
 
     const now = new Date();
 
@@ -1389,8 +1447,8 @@ FOR UPDATE
             zuvyMentorSlotAvailability.mentorSlotManagementId,
             mentorProfile.id,
           ),
-          sql`${zuvyMentorSlotAvailability.slotStartDateTime} >= ${startOfWeek}`,
-          sql`${zuvyMentorSlotAvailability.slotStartDateTime} < ${endOfWeek}`,
+          gte(zuvyMentorSlotAvailability.slotStartDateTime, startOfWeek),
+          lt(zuvyMentorSlotAvailability.slotStartDateTime, endOfWeek),
         ),
       )
       .orderBy(
