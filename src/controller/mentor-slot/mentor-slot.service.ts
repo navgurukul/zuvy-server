@@ -1670,7 +1670,7 @@ export class MentorSlotService {
 
   async updateMentorProfile(userId: number, dto: any) {
     await this.ensureUserIsMentor(userId);
-
+    await this.getOrCreateMentorProfile(userId);
     const userIdBigInt = BigInt(userId);
     const updatePayload: Partial<typeof zuvyMentorSlotManagement.$inferSelect> =
       {};
