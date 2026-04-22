@@ -4,42 +4,20 @@ import {
   zuvyUserRolesAssigned,
   zuvyUserRoles,
 } from '../drizzle/schema';
-import { eq, and } from 'drizzle-orm';
-
-/**
- * Script to identify and handle mentor profiles for users who are not instructors.
- * Going forward, only instructors should have mentor access.
- *
- * Run with: npx ts-node scripts/validate-mentor-roles.ts [deactivate]
- * If 'deactivate' is passed as argument, it will deactivate non-instructor mentor profiles.
- */
+import { eq, inArray } from 'drizzle-orm';
 
 async function main() {
-  const shouldDeactivate = process.argv[2] === 'deactivate';
-
-  console.log('Starting mentor role validation script...');
-  if (shouldDeactivate) {
-    console.log(
-      'DEACTIVATE MODE: Will deactivate non-instructor mentor profiles',
-    );
-  }
+  console.log('🔍 Syncing mentor table with instructor roles...');
 
   try {
-    // Get all mentor profiles
-    const mentorProfiles = await db
-      .select({
-        mentorUserId: zuvyMentorSlotManagement.mentorUserId,
-        isVerified: zuvyMentorSlotManagement.isVerified,
-        status: zuvyMentorSlotManagement.status,
-      })
-      .from(zuvyMentorSlotManagement);
+    /* ========================================
+1. GET ALL INSTRUCTORS (WITH ORG)
+======================================== */
 
-    console.log(`Found ${mentorProfiles.length} mentor profiles`);
-
-    // Get all instructor role assignments
-    const instructorAssignments = await db
+    const instructors = await db
       .select({
         userId: zuvyUserRolesAssigned.userId,
+        organizationId: zuvyUserRolesAssigned.organizationId,
       })
       .from(zuvyUserRolesAssigned)
       .innerJoin(
@@ -48,69 +26,92 @@ async function main() {
       )
       .where(eq(zuvyUserRoles.name, 'instructor'));
 
-    const instructorUserIds = new Set(
-      instructorAssignments.map((a) => a.userId),
+    console.log(`✅ Found ${instructors.length} instructor role assignments`);
+
+    /* ========================================
+   2. FILTER VALID INSTRUCTORS (WITH ORG)
+======================================== */
+
+    const validInstructors = instructors.filter(
+      (i) => i.organizationId !== null,
     );
 
-    console.log(`Found ${instructorUserIds.size} users with instructor role`);
+    /* Deduplicate (userId -> organizationId) */
+    const instructorMap = new Map<bigint, number>();
 
-    // Find mentors who are not instructors
-    const nonInstructorMentors = mentorProfiles.filter(
-      (profile) => !instructorUserIds.has(profile.mentorUserId),
-    );
+    for (const i of validInstructors) {
+      if (!instructorMap.has(i.userId)) {
+        instructorMap.set(i.userId, i.organizationId!);
+      }
+    }
 
     console.log(
-      `Found ${nonInstructorMentors.length} mentor profiles for non-instructor users:`,
+      `✅ Valid instructors with organization: ${instructorMap.size}`,
     );
 
-    for (const mentor of nonInstructorMentors) {
-      console.log(
-        `- User ID: ${mentor.mentorUserId}, Verified: ${mentor.isVerified}, Status: ${mentor.status}`,
+    const instructorIds = new Set(instructorMap.keys());
+
+    /* ========================================
+   3. GET EXISTING MENTORS
+======================================== */
+
+    const existingMentors = await db
+      .select({
+        mentorUserId: zuvyMentorSlotManagement.mentorUserId,
+      })
+      .from(zuvyMentorSlotManagement);
+
+    const existingMentorIds = new Set(
+      existingMentors.map((m) => m.mentorUserId),
+    );
+
+    /* ========================================
+   4. INSERT MISSING INSTRUCTORS
+======================================== */
+
+    const missingMentors = [...instructorIds].filter(
+      (id) => !existingMentorIds.has(id),
+    );
+
+    console.log(`➕ Adding ${missingMentors.length} missing mentors`);
+
+    if (missingMentors.length > 0) {
+      await db.insert(zuvyMentorSlotManagement).values(
+        missingMentors.map((userId) => ({
+          mentorUserId: userId,
+          organizationId: instructorMap.get(userId)!, // ✅ guaranteed
+          bio: null,
+          expertise: [],
+          title: null,
+          isVerified: false,
+          status: 'active',
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        })),
       );
     }
+
+    /* ========================================
+   5. DELETE NON-INSTRUCTOR MENTORS
+======================================== */
+
+    const nonInstructorMentors = existingMentors
+      .map((m) => m.mentorUserId)
+      .filter((id) => !instructorIds.has(id));
+
+    console.log(`🗑 Removing ${nonInstructorMentors.length} invalid mentors`);
 
     if (nonInstructorMentors.length > 0) {
-      console.log(
-        '\nThese mentor profiles belong to users without instructor role.',
-      );
-      console.log('Please review and take appropriate action:');
-      console.log(
-        '1. Assign instructor role to these users if they should remain mentors',
-      );
-      console.log(
-        '2. Or run this script with "deactivate" argument to deactivate their profiles',
-      );
-
-      if (shouldDeactivate) {
-        console.log(
-          '\nDeactivating mentor profiles for non-instructor users...',
+      await db
+        .delete(zuvyMentorSlotManagement)
+        .where(
+          inArray(zuvyMentorSlotManagement.mentorUserId, nonInstructorMentors),
         );
-
-        for (const mentor of nonInstructorMentors) {
-          await db
-            .update(zuvyMentorSlotManagement)
-            .set({
-              status: 'inactive',
-              updatedAt: new Date(),
-            } as Partial<typeof zuvyMentorSlotManagement.$inferInsert>)
-            .where(
-              eq(zuvyMentorSlotManagement.mentorUserId, mentor.mentorUserId),
-            );
-
-          console.log(
-            `Deactivated mentor profile for user ${mentor.mentorUserId}`,
-          );
-        }
-
-        console.log('Deactivation complete.');
-      }
-    } else {
-      console.log(
-        'All mentor profiles belong to instructor users. No action needed.',
-      );
     }
+
+    console.log('🎉 Mentor table successfully synced with instructors');
   } catch (error) {
-    console.error('Error running script:', error);
+    console.error('❌ Error:', error);
   } finally {
     process.exit(0);
   }

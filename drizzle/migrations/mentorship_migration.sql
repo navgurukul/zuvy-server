@@ -461,3 +461,39 @@ CREATE UNIQUE INDEX IF NOT EXISTS "idx_student_metrics_user" ON "zuvy_student_bo
 
 -- Add foreign key constraint
 ALTER TABLE "zuvy_student_booking_metrics" ADD CONSTRAINT "zuvy_student_booking_metrics_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE cascade ON UPDATE no action;
+
+
+
+
+zuvy_mentor_slot_management 
+zuvy_student_booking_metrics
+zuvy_mentor_slot_booking
+zuvy_mentor_session_recordings
+zuvy_course_modules
+zuvy_bootcamp_type
+
+
+
+
+SELECT
+    current_database() AS database_name,
+    schemaname,
+    tablename,
+    indexname,
+    indexdef
+FROM pg_indexes
+WHERE tablename = 'zuvy_mentor_slot_booking';
+
+SELECT
+    current_database() AS database_name,
+    t.relname AS table_name,
+    c.conname AS constraint_name,
+    c.contype AS constraint_type,
+    pg_get_constraintdef(c.oid) AS definition
+FROM pg_constraint c
+JOIN pg_class t ON c.conrelid = t.oid
+WHERE t.relname = 'zuvy_mentor_slot_booking';
+
+ALTER TABLE main.zuvy_mentor_slot_management
+ALTER COLUMN past_experiences TYPE text
+USING past_experiences::text;
