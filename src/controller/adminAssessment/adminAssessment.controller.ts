@@ -452,19 +452,26 @@ export class AdminAssessmentController {
     }
   }
 
-  @Get('/overall-analysis/:bootcampId')
+  @Get('/overall-analysis')
   @ApiOperation({
     summary:
-      'Get overall analysis of all students in a bootcamp — attendance, assessment scores, mentor, college, degree, LinkedIn',
+      'Get overall analysis of all students in a batch — attendance, assessment scores, mentor, college, degree, LinkedIn',
   })
   @ApiBearerAuth('JWT-auth')
+  @ApiQuery({ name: 'batchId', required: true, type: Number })
+  @ApiQuery({ name: 'userId', required: false, type: Number })
   async getOverallAnalysis(
-    @Param('bootcampId', ParseIntPipe) bootcampId: number,
+    @Query('batchId') batchId: string,
+    @Query('userId') userId: string,
     @Res() res,
   ) {
     try {
-      const result =
-        await this.adminAssessmentService.getOverallAnalysis(bootcampId);
+      const parsedBatchId = parseInt(batchId, 10);
+      const parsedUserId = userId ? parseInt(userId, 10) : undefined;
+      const result = await this.adminAssessmentService.getOverallAnalysis(
+        parsedBatchId,
+        parsedUserId,
+      );
       if (result.statusCode === STATUS_CODES.NOT_FOUND) {
         return ErrorResponse.BadRequestException(result.message).send(res);
       }
