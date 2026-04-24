@@ -667,7 +667,8 @@ export class MentorSlotService {
             approval_type: 0,
             audio: 'both',
             auto_recording: 'cloud',
-            waiting_room: false,
+            waiting_room: true,
+            alternative_hosts: mentorEmail,
           },
         };
 
@@ -1776,5 +1777,98 @@ export class MentorSlotService {
         `Failed to enqueue recording job for mentor booking ${booking.id}: ${error.message}`,
       );
     }
+  }
+
+  async createOrUpdateMentorProfile(
+    userId: number,
+    organizationId: number,
+    dto: any,
+  ) {
+    await this.ensureUserIsMentor(userId);
+
+    const userIdBigInt = BigInt(userId);
+
+    /* =========================================================
+       FETCH EXISTING PROFILE
+    ========================================================= */
+    const [existingProfile] = await db
+      .select()
+      .from(zuvyMentorSlotManagement)
+      .where(eq(zuvyMentorSlotManagement.mentorUserId, userIdBigInt))
+      .limit(1);
+
+    /* =========================================================
+       VALIDATE BOOTCAMP (if provided)
+    ========================================================= */
+    if (dto.bootcampId !== undefined) {
+      const [bootcamp] = await db
+        .select()
+        .from(zuvyBootcamps)
+        .where(eq(zuvyBootcamps.id, dto.bootcampId))
+        .limit(1);
+
+      if (!bootcamp) {
+        throw new BadRequestException('Invalid bootcampId');
+      }
+    }
+
+    /* =========================================================
+       PREPARE PAYLOAD
+    ========================================================= */
+    const payload = {
+      ...(dto.bio !== undefined && { bio: dto.bio }),
+      ...(dto.expertise !== undefined && { expertise: dto.expertise }),
+      ...(dto.title !== undefined && { title: dto.title }),
+      ...(dto.pastExperiences !== undefined && {
+        pastExperiences: dto.pastExperiences,
+      }),
+      ...(dto.bootcampId !== undefined && { bootcampId: dto.bootcampId }),
+    };
+
+    /* =========================================================
+       CREATE FLOW
+    ========================================================= */
+    if (!existingProfile) {
+      const [newProfile] = await db
+        .insert(zuvyMentorSlotManagement)
+        .values({
+          mentorUserId: userIdBigInt,
+          organizationId: organizationId,
+          mentorType: 'instructor',
+          bio: dto.bio ?? null,
+          expertise: dto.expertise ?? [],
+          title: dto.title ?? null,
+          pastExperiences: dto.pastExperiences ?? null,
+          status: 'active',
+          isVerified: false,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        } as typeof zuvyMentorSlotManagement.$inferInsert)
+        .returning();
+
+      return {
+        message: 'Mentor profile created successfully',
+        data: newProfile,
+      };
+    }
+
+    /* =========================================================
+       UPDATE FLOW
+    ========================================================= */
+    if (Object.keys(payload).length === 0) {
+      throw new BadRequestException('No fields provided for update');
+    }
+
+    await db
+      .update(zuvyMentorSlotManagement)
+      .set({
+        ...payload,
+        updatedAt: new Date(),
+      } as Partial<typeof zuvyMentorSlotManagement.$inferInsert>)
+      .where(eq(zuvyMentorSlotManagement.mentorUserId, userIdBigInt));
+
+    return {
+      message: 'Mentor profile updated successfully',
+    };
   }
 }

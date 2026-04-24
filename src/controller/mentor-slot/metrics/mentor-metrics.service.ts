@@ -4,7 +4,7 @@ import {
   zuvyMentorSlotBooking,
   zuvyMentorSlotAvailability,
 } from '../../../../drizzle/schema';
-import { eq, sql } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 
 @Injectable()
 export class MentorMetricsService {
@@ -54,12 +54,15 @@ export class MentorMetricsService {
       })
       .from(zuvyMentorSlotBooking)
       .where(
-        sql`mentor_user_id = ${mentorUserId}
-            AND session_lifecycle_state = 'SCHEDULED'
-            AND slot_availability_id IN (
-              SELECT id FROM zuvy_mentor_slot_availability
-              WHERE slot_start_date_time > NOW()
-            )`,
+        and(
+          eq(zuvyMentorSlotBooking.mentorUserId, mentorUserId),
+          eq(zuvyMentorSlotBooking.sessionLifecycleState, 'SCHEDULED'),
+          sql`${zuvyMentorSlotBooking.slotAvailabilityId} IN (
+        SELECT ${zuvyMentorSlotAvailability.id}
+        FROM ${zuvyMentorSlotAvailability}
+        WHERE ${zuvyMentorSlotAvailability.slotStartDateTime} > NOW()
+      )`,
+        ),
       );
 
     /* ==========================================================
@@ -73,10 +76,10 @@ export class MentorMetricsService {
       })
       .from(zuvyMentorSlotAvailability)
       .where(
-        sql`mentor_slot_management_id IN (
-          SELECT id FROM zuvy_mentor_slot_management
-          WHERE mentor_user_id = ${mentorUserId}
-        )`,
+        sql`${zuvyMentorSlotAvailability.mentorSlotManagementId} IN (
+    SELECT id FROM zuvy_mentor_slot_management
+    WHERE mentor_user_id = ${mentorUserId}
+  )`,
       );
 
     const utilizationRate =
