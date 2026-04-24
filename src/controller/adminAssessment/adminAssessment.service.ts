@@ -2226,9 +2226,28 @@ Team Zuvy`;
     }
   }
 
-  async getOverallAnalysis(bootcampId: number): Promise<any> {
+  async getOverallAnalysis(batchId: number, userId?: number): Promise<any> {
     try {
-      // 1. Fetch course name
+      // 1. Fetch bootcampId and course name from batchId
+      const batch = await db
+        .select({
+          bootcampId: zuvyBatches.bootcampId,
+          batchName: zuvyBatches.name,
+        })
+        .from(zuvyBatches)
+        .where(eq(zuvyBatches.id, batchId))
+        .limit(1);
+
+      if (!batch.length) {
+        return {
+          statusCode: STATUS_CODES.NOT_FOUND,
+          message: 'Batch not found',
+          data: [],
+        };
+      }
+
+      const bootcampId = batch[0].bootcampId;
+
       const course = await db
         .select({ name: zuvyBootcamps.name })
         .from(zuvyBootcamps)
@@ -2237,7 +2256,7 @@ Team Zuvy`;
 
       const courseName = course[0]?.name || null;
 
-      // 2. Fetch all enrolled students (in a batch) with user info, attendance and batch name
+      // 2. Fetch enrolled students for this batch with user info and attendance
       const enrollments = await db
         .select({
           userId: zuvyBatchEnrollments.userId,
@@ -2252,8 +2271,8 @@ Team Zuvy`;
         .leftJoin(zuvyBatches, eq(zuvyBatches.id, zuvyBatchEnrollments.batchId))
         .where(
           and(
-            eq(zuvyBatchEnrollments.bootcampId, bootcampId),
-            isNotNull(zuvyBatchEnrollments.batchId),
+            eq(zuvyBatchEnrollments.batchId, batchId),
+            userId ? eq(zuvyBatchEnrollments.userId, userId) : undefined,
           ),
         );
 
