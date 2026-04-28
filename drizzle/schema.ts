@@ -4258,7 +4258,7 @@ export const zuvyUserOrganizations = main.table('zuvy_user_organizations', {
   id: serial('id').primaryKey().notNull(),
   userId: integer('user_id').notNull().references(() => users.id),
   userEmail: varchar('user_email', { length: 255 }).notNull(),
-  accessToken: text('access_token',),
+  accessToken: text('access_token'),
   refreshToken: text('refresh_token'),
   organizationId: integer('organization_id').default(null).references(() => zuvyOrganizations.id, {
     onDelete: 'cascade'

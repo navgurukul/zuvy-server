@@ -45,6 +45,7 @@ import { NotificationJob } from './controller/notification/notification.job';
 import { NotificationService } from './controller/notification/notification.service';
 import { GoogleModule } from './integrations/google/google.module';
 import { NewNotificationModule } from './controller/notification/notification.module';
+import { SuperAdminModule } from './super-admin/super-admin.module';
 
 let { GOOGLE_CLIENT_ID, GOOGLE_SECRET, GOOGLE_REDIRECT_URI, JWT_SECRET_KEY } =
   process.env;
@@ -90,6 +91,7 @@ let { GOOGLE_CLIENT_ID, GOOGLE_SECRET, GOOGLE_REDIRECT_URI, JWT_SECRET_KEY } =
     MentorSlotModule,
     GoogleModule,
     NewNotificationModule,
+    SuperAdminModule,
   ],
   providers: [
     {
