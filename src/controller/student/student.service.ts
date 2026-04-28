@@ -1014,7 +1014,7 @@ export class StudentService {
           slotStart: zuvyMentorSlotAvailability.slotStartDateTime,
           slotEnd: zuvyMentorSlotAvailability.slotEndDateTime,
           topic: zuvyMentorSlotAvailability.topic,
-          meetingLink: zuvyMentorSlotAvailability.meetingLink,
+          meetingLink: zuvyMentorSlotBooking.meetingLink,
           meetingType: zuvyMentorSlotAvailability.meetingType,
           slotType: zuvyMentorSlotAvailability.slotType,
           sessionStatus: zuvyMentorSlotBooking.sessionLifecycleState,
