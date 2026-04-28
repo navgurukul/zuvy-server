@@ -225,4 +225,17 @@ export class MentorSlotController {
   async getMyProfile(@Req() req) {
     return this.mentorSlotService.getMyMentorProfile(Number(req.user[0].id));
   }
+
+  /* ==========================================================================  
+   CREATE OR UPDATE MENTOR PROFILE
+========================================================================== */
+
+  @Post('mentor/profile')
+  async createOrUpdateProfile(@Req() req, @Body() dto: UpdateMentorProfileDto) {
+    return this.mentorSlotService.createOrUpdateMentorProfile(
+      Number(req.user[0].id),
+      Number(req.user[0].organization_id),
+      dto,
+    );
+  }
 }

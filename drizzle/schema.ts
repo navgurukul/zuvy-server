@@ -4258,7 +4258,7 @@ export const zuvyUserOrganizations = main.table('zuvy_user_organizations', {
   id: serial('id').primaryKey().notNull(),
   userId: integer('user_id').notNull().references(() => users.id),
   userEmail: varchar('user_email', { length: 255 }).notNull(),
-  accessToken: text('access_token',),
+  accessToken: text('access_token'),
   refreshToken: text('refresh_token'),
   organizationId: integer('organization_id').default(null).references(() => zuvyOrganizations.id, {
     onDelete: 'cascade'
@@ -4610,7 +4610,7 @@ export const RESCHEDULE_STATUSES = [
    MENTOR SLOT MANAGEMENT PROFILE
 ============================================================================ */
 
-export const zuvyMentorSlotManagement = pgTable(
+export const zuvyMentorSlotManagement = main.table(
   'zuvy_mentor_slot_management',
   {
     id: serial('id').primaryKey().notNull(),
@@ -4670,7 +4670,7 @@ export const zuvyMentorSlotManagement = pgTable(
    SLOT AVAILABILITY
 ============================================================================ */
 
-export const zuvyMentorSlotAvailability = pgTable(
+export const zuvyMentorSlotAvailability = main.table(
   'zuvy_mentor_slot_availability',
   {
     id: serial('id').primaryKey().notNull(),
@@ -4730,7 +4730,7 @@ export const zuvyMentorSlotAvailability = pgTable(
    SLOT BOOKING (CORE SESSION ENGINE)
 ============================================================================ */
 
-export const zuvyMentorSlotBooking = pgTable(
+export const zuvyMentorSlotBooking = main.table(
   'zuvy_mentor_slot_booking',
   {
     id: serial('id').primaryKey().notNull(),
@@ -4854,7 +4854,7 @@ export const zuvyMentorSlotBookingRelations = relations(
   }),
 );
 
-export const zuvyStudentBookingMetrics = pgTable(
+export const zuvyStudentBookingMetrics = main.table(
   'zuvy_student_booking_metrics',
   {
     id: serial('id').primaryKey(),
@@ -4873,7 +4873,7 @@ export const zuvyStudentBookingMetrics = pgTable(
   }),
 );
 
-export const zuvyNotifications = pgTable(
+export const zuvyNotifications = main.table(
   'zuvy_notifications',
   {
     id: serial('id').primaryKey(),
