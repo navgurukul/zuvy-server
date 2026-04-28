@@ -5,7 +5,11 @@ import {
   Logger,
 } from '@nestjs/common';
 import { eq, and } from 'drizzle-orm';
-import { zuvyUserOrganizations } from 'drizzle/schema';
+import {
+  zuvyUserOrganizations,
+  zuvyUserRolesAssigned,
+  zuvyUserRoles,
+} from 'drizzle/schema';
 import { db } from 'src/db';
 
 type UpsertParams = {
@@ -28,6 +32,58 @@ export class UserTokensService {
     const { userId, organizationId, userEmail, accessToken, refreshToken } =
       params;
     try {
+      // 🚀 Check if user is Super Admin by checking roles
+      const [superAdminRole] = await db
+        .select({ id: zuvyUserRoles.id })
+        .from(zuvyUserRoles)
+        .where(eq(zuvyUserRoles.name, 'super_admin'))
+        .limit(1);
+
+      let superAdmin = null;
+      if (superAdminRole) {
+        [superAdmin] = await db
+          .select()
+          .from(zuvyUserRolesAssigned)
+          .where(
+            and(
+              eq(zuvyUserRolesAssigned.userId, BigInt(userId)),
+              eq(zuvyUserRolesAssigned.roleId, superAdminRole.id),
+            ),
+          )
+          .limit(1);
+      }
+
+      if (superAdmin) {
+        // Super Admin: Find if *any* row exists for this user
+        const [existingRow] = await db
+          .select()
+          .from(zuvyUserOrganizations)
+          .where(eq(zuvyUserOrganizations.userId, userId))
+          .limit(1);
+
+        if (existingRow) {
+          // Update the existing row (even if organizationId is different)
+          const [updated] = await db
+            .update(zuvyUserOrganizations)
+            .set({
+              accessToken,
+              refreshToken,
+              userEmail,
+              // Optional: Update organizationId to current one if you want to track where they are
+              organizationId: organizationId,
+            } as unknown as typeof zuvyUserOrganizations.$inferInsert) // Type assertion to bypass strict type checks for dynamic fields
+            .where(eq(zuvyUserOrganizations.id, existingRow.id))
+            .returning();
+
+          return {
+            success: true,
+            message: 'UPSERT_OK (Super Admin)',
+            data: updated,
+          };
+        }
+      }
+
+      // Standard logic for non-super admins (or new super admin)
       let setData = { userEmail, accessToken, refreshToken };
       const [row] = await db
         .insert(zuvyUserOrganizations)
