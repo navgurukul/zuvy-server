@@ -11,7 +11,13 @@ import {
   UseGuards,
   Query,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiBody, ApiOperation, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiBody,
+  ApiOperation,
+  ApiQuery,
+  ApiTags,
+} from '@nestjs/swagger';
 import { MentorSlotService } from './mentor-slot.service';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 import { BookSlotDto } from './dto/book-slot.dto';
@@ -127,7 +133,11 @@ export class MentorSlotController {
   /* ==========================================================================  
     GET MY SLOTS (for mentor) 
 ========================================================================== */
-
+  @ApiQuery({
+    name: 'sort',
+    required: false,
+    enum: ['asc', 'desc'],
+  })
   @Get('my')
   async getMySlots(
     @Req() req,
