@@ -37,6 +37,13 @@ export class MentorSlotService {
     private readonly emailService: NotificationEmailService,
   ) {}
 
+  private mapMeetingLink(booking: any, userId: bigint) {
+    if (booking.mentorUserId === userId) {
+      return booking.zoomStartUrl;
+    }
+    return booking.meetingLink;
+  }
+
   async getOrCreateMentorProfile(userId: number) {
     const userIdBigInt = BigInt(userId);
 
@@ -667,7 +674,8 @@ export class MentorSlotService {
             approval_type: 0,
             audio: 'both',
             auto_recording: 'cloud',
-            waiting_room: false,
+            waiting_room: true,
+            alternative_hosts: mentorEmail,
           },
         };
 
@@ -766,7 +774,10 @@ export class MentorSlotService {
 
       const bookingResponse = {
         ...createdBooking,
+        // student-safe link
         meetingLink: meeting.joinUrl,
+        // mentor-only link
+        mentorJoinLink: meeting.startUrl,
         remainingCredits: updatedMetrics ? 3 - updatedMetrics.quotaUsed : 2,
         nextEligible: updatedMetrics?.cooldownEndDate,
       };
@@ -1541,9 +1552,14 @@ export class MentorSlotService {
       .from(zuvyMentorSlotBooking)
       .where(eq(zuvyMentorSlotBooking.slotAvailabilityId, slotId));
 
+    const userIdBigInt = BigInt(userId);
+
     return {
       slot,
-      bookings,
+      bookings: bookings.map((b) => ({
+        ...b,
+        meetingLink: this.mapMeetingLink(b, userIdBigInt),
+      })),
     };
   }
 
@@ -1582,7 +1598,10 @@ export class MentorSlotService {
       .orderBy(desc(zuvyMentorSessionRecordings.createdAt));
 
     return {
-      booking,
+      booking: {
+        ...booking,
+        meetingLink: this.mapMeetingLink(booking, userIdBigInt),
+      },
       slot,
       recordings: recordings.map((recording) => ({
         ...recording,
@@ -1595,10 +1614,15 @@ export class MentorSlotService {
   async getStudentBookings(userId: number) {
     const userIdBigInt = BigInt(userId);
 
-    return db
+    const bookings = await db
       .select()
       .from(zuvyMentorSlotBooking)
       .where(eq(zuvyMentorSlotBooking.studentUserId, userIdBigInt));
+
+    return bookings.map((b) => ({
+      ...b,
+      meetingLink: b.meetingLink,
+    }));
   }
 
   async getStudentMetrics(userId: number) {
@@ -1776,5 +1800,98 @@ export class MentorSlotService {
         `Failed to enqueue recording job for mentor booking ${booking.id}: ${error.message}`,
       );
     }
+  }
+
+  async createOrUpdateMentorProfile(
+    userId: number,
+    organizationId: number,
+    dto: any,
+  ) {
+    await this.ensureUserIsMentor(userId);
+
+    const userIdBigInt = BigInt(userId);
+
+    /* =========================================================
+       FETCH EXISTING PROFILE
+    ========================================================= */
+    const [existingProfile] = await db
+      .select()
+      .from(zuvyMentorSlotManagement)
+      .where(eq(zuvyMentorSlotManagement.mentorUserId, userIdBigInt))
+      .limit(1);
+
+    /* =========================================================
+       VALIDATE BOOTCAMP (if provided)
+    ========================================================= */
+    if (dto.bootcampId !== undefined) {
+      const [bootcamp] = await db
+        .select()
+        .from(zuvyBootcamps)
+        .where(eq(zuvyBootcamps.id, dto.bootcampId))
+        .limit(1);
+
+      if (!bootcamp) {
+        throw new BadRequestException('Invalid bootcampId');
+      }
+    }
+
+    /* =========================================================
+       PREPARE PAYLOAD
+    ========================================================= */
+    const payload = {
+      ...(dto.bio !== undefined && { bio: dto.bio }),
+      ...(dto.expertise !== undefined && { expertise: dto.expertise }),
+      ...(dto.title !== undefined && { title: dto.title }),
+      ...(dto.pastExperiences !== undefined && {
+        pastExperiences: dto.pastExperiences,
+      }),
+      ...(dto.bootcampId !== undefined && { bootcampId: dto.bootcampId }),
+    };
+
+    /* =========================================================
+       CREATE FLOW
+    ========================================================= */
+    if (!existingProfile) {
+      const [newProfile] = await db
+        .insert(zuvyMentorSlotManagement)
+        .values({
+          mentorUserId: userIdBigInt,
+          organizationId: organizationId,
+          mentorType: 'instructor',
+          bio: dto.bio ?? null,
+          expertise: dto.expertise ?? [],
+          title: dto.title ?? null,
+          pastExperiences: dto.pastExperiences ?? null,
+          status: 'active',
+          isVerified: false,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        } as typeof zuvyMentorSlotManagement.$inferInsert)
+        .returning();
+
+      return {
+        message: 'Mentor profile created successfully',
+        data: newProfile,
+      };
+    }
+
+    /* =========================================================
+       UPDATE FLOW
+    ========================================================= */
+    if (Object.keys(payload).length === 0) {
+      throw new BadRequestException('No fields provided for update');
+    }
+
+    await db
+      .update(zuvyMentorSlotManagement)
+      .set({
+        ...payload,
+        updatedAt: new Date(),
+      } as Partial<typeof zuvyMentorSlotManagement.$inferInsert>)
+      .where(eq(zuvyMentorSlotManagement.mentorUserId, userIdBigInt));
+
+    return {
+      message: 'Mentor profile updated successfully',
+    };
   }
 }

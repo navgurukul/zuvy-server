@@ -208,6 +208,7 @@ export class MentorPublicService {
         bio: zuvyMentorSlotManagement.bio,
         expertise: zuvyMentorSlotManagement.expertise,
         title: zuvyMentorSlotManagement.title,
+        pastExperiences: zuvyMentorSlotManagement.pastExperiences,
 
         status: zuvyMentorSlotManagement.status,
         isVerified: zuvyMentorSlotManagement.isVerified,
