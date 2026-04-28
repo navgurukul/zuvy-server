@@ -3200,11 +3200,11 @@ export const zuvyLearnersCompleteProfile = main.table(
     linkedinProfile: varchar('linkedin_profile', { length: 500 }),
     collegeName: varchar('college_name', { length: 255 }),
     otherCollegeName: varchar('other_college_name', { length: 100 }),
-    degree: varchar('degree', { length: 100 }).notNull(),
-    branch: varchar('branch', { length: 100 }).notNull(),
-    yearOfStudy: learnerYearOfStudy('year_of_study').notNull(),
-    graduationMonth: integer('graduation_month').notNull(),
-    graduationYear: integer('graduation_year').notNull(),
+    degree: varchar('degree', { length: 100 }),
+    branch: varchar('branch', { length: 100 }),
+    yearOfStudy: learnerYearOfStudy('year_of_study'),
+    graduationMonth: integer('graduation_month'),
+    graduationYear: integer('graduation_year'),
     currentStatus: learnerCurrentStatus('current_status'),
 
     // PAGE 2: SKILLS & PROJECTS
