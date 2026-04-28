@@ -36,6 +36,9 @@ import {
   users,
   zuvyBatches,
   zuvyCodingQuestions,
+  zuvySessions,
+  zuvySessionRecordViews,
+  zuvyStudentAttendanceRecords,
 } from '../../../drizzle/schema';
 import {
   InstructorFeedbackDto,
@@ -3228,6 +3231,22 @@ Zuvy LMS Team
               ),
             with: {
               chapterTrackingDetails: {
+                where: (details, { and, exists, eq }) =>
+                  exists(
+                    db
+                      .select({ id: zuvySessionRecordViews.id })
+                      .from(zuvySessionRecordViews)
+                      .innerJoin(
+                        zuvySessions,
+                        eq(zuvySessions.id, zuvySessionRecordViews.sessionId),
+                      )
+                      .where(
+                        and(
+                          eq(zuvySessionRecordViews.userId, details.userId),
+                          eq(zuvySessions.chapterId, details.chapterId),
+                        ),
+                      ),
+                  ),
                 columns: {
                   userId: true,
                   completedAt: true,
@@ -3380,8 +3399,22 @@ Zuvy LMS Team
         },
         with: {
           studentAttendanceRecords: {
-            where: (record: { userId: any; status: any }) =>
+            where: (
+              record,
+              { and, exists, eq, inArray, isNotNull, ilike, or },
+            ) =>
               and(
+                exists(
+                  db
+                    .select({ id: zuvySessionRecordViews.id })
+                    .from(zuvySessionRecordViews)
+                    .where(
+                      and(
+                        eq(zuvySessionRecordViews.userId, record.userId),
+                        eq(zuvySessionRecordViews.sessionId, record.sessionId),
+                      ),
+                    ),
+                ),
                 inArray(
                   record.userId,
                   db
