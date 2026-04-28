@@ -65,7 +65,15 @@ export class TrackinglogController {
     required: false,
     type: String,
     description: 'Filter by user role',
-    enum: ['', 'admin', 'instructor', 'ops_team', 'support', 'content'],
+    enum: [
+      '',
+      'admin',
+      'super_admin',
+      'instructor',
+      'ops_team',
+      'support',
+      'content',
+    ],
   })
   @ApiQuery({
     name: 'status',
