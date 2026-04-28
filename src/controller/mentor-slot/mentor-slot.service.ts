@@ -37,6 +37,13 @@ export class MentorSlotService {
     private readonly emailService: NotificationEmailService,
   ) {}
 
+  private mapMeetingLink(booking: any, userId: bigint) {
+    if (booking.mentorUserId === userId) {
+      return booking.zoomStartUrl;
+    }
+    return booking.meetingLink;
+  }
+
   async getOrCreateMentorProfile(userId: number) {
     const userIdBigInt = BigInt(userId);
 
@@ -767,7 +774,10 @@ export class MentorSlotService {
 
       const bookingResponse = {
         ...createdBooking,
+        // student-safe link
         meetingLink: meeting.joinUrl,
+        // mentor-only link
+        mentorJoinLink: meeting.startUrl,
         remainingCredits: updatedMetrics ? 3 - updatedMetrics.quotaUsed : 2,
         nextEligible: updatedMetrics?.cooldownEndDate,
       };
@@ -1542,9 +1552,14 @@ export class MentorSlotService {
       .from(zuvyMentorSlotBooking)
       .where(eq(zuvyMentorSlotBooking.slotAvailabilityId, slotId));
 
+    const userIdBigInt = BigInt(userId);
+
     return {
       slot,
-      bookings,
+      bookings: bookings.map((b) => ({
+        ...b,
+        meetingLink: this.mapMeetingLink(b, userIdBigInt),
+      })),
     };
   }
 
@@ -1583,7 +1598,10 @@ export class MentorSlotService {
       .orderBy(desc(zuvyMentorSessionRecordings.createdAt));
 
     return {
-      booking,
+      booking: {
+        ...booking,
+        meetingLink: this.mapMeetingLink(booking, userIdBigInt),
+      },
       slot,
       recordings: recordings.map((recording) => ({
         ...recording,
@@ -1596,10 +1614,15 @@ export class MentorSlotService {
   async getStudentBookings(userId: number) {
     const userIdBigInt = BigInt(userId);
 
-    return db
+    const bookings = await db
       .select()
       .from(zuvyMentorSlotBooking)
       .where(eq(zuvyMentorSlotBooking.studentUserId, userIdBigInt));
+
+    return bookings.map((b) => ({
+      ...b,
+      meetingLink: b.meetingLink,
+    }));
   }
 
   async getStudentMetrics(userId: number) {

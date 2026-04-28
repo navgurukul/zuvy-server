@@ -34,6 +34,13 @@ export class SessionService {
       );
   }
 
+  private mapMeetingLink(booking: any, userId: bigint) {
+    if (booking.mentorUserId === userId) {
+      return booking.zoomStartUrl; // mentor
+    }
+    return booking.meetingLink; // student
+  }
+
   /* ==========================================================================
      STUDENT SESSIONS
   ========================================================================== */
@@ -99,7 +106,15 @@ export class SessionService {
       .from(zuvyMentorSlotBooking)
       .where(and(eq(zuvyMentorSlotBooking.studentUserId, userId)));
 
-    return { data, counts };
+    const mappedData = data.map((item) => ({
+      ...item,
+      booking: {
+        ...item.booking,
+        meetingLink: item.booking.meetingLink,
+      },
+    }));
+
+    return { data: mappedData, counts };
   }
 
   /* ==========================================================================
@@ -180,7 +195,15 @@ export class SessionService {
         ),
       );
 
-    return { data, counts };
+    const mappedData = data.map((item) => ({
+      ...item,
+      booking: {
+        ...item.booking,
+        meetingLink: item.booking.zoomStartUrl,
+      },
+    }));
+
+    return { data: mappedData, counts };
   }
 
   /* ==========================================================================
@@ -204,6 +227,9 @@ export class SessionService {
       );
     }
 
-    return session;
+    return {
+      ...session,
+      meetingLink: this.mapMeetingLink(session, userId),
+    };
   }
 }
