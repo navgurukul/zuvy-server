@@ -1,6 +1,11 @@
 import { Injectable, BadRequestException, Logger } from '@nestjs/common';
 import { db } from '../../db/index';
-import { licenses, licenseAssignments, users } from '../../../drizzle/schema';
+import {
+  zuvyUserLicenses,
+  licenses,
+  licenseAssignments,
+  users,
+} from '../../../drizzle/schema';
 import { eq, and, sql, lt, gt, notExists } from 'drizzle-orm';
 import { ZoomService } from '../../services/zoom/zoom.service';
 
@@ -10,22 +15,18 @@ export class ZoomLicenseService {
 
   constructor(private readonly zoomService: ZoomService) {}
 
-  /**
-   * Internal method to find and reserve a license for a specific time range.
-   * Should be called within a transaction.
-   */
-  async assignLicense(
+  private async fetchAvailableLicenseIds(
     trx: any,
     dto: { instructorId: number; startTime: Date; endTime: Date },
-  ): Promise<number> {
-    // Each overlapping Zoom session consumes one license. Even if the same
-    // instructor already has another overlapping session, we must allocate a
-    // distinct free license or reject the new session once the pool is exhausted.
-    const availableLicenses = await trx
+  ) {
+    return await trx
       .select({ id: licenses.id })
-      .from(licenses)
+      .from(zuvyUserLicenses)
+      .innerJoin(licenses, eq(licenses.zoomId, zuvyUserLicenses.zoomEmail))
       .where(
         and(
+          eq(zuvyUserLicenses.status, 'active'),
+          eq(zuvyUserLicenses.licenseType, 2),
           eq(licenses.status, 'active'),
           notExists(
             db
@@ -43,16 +44,102 @@ export class ZoomLicenseService {
       )
       .limit(1)
       .for('update');
+  }
+
+  async getActiveLicensePoolCount(trx: any = db): Promise<number> {
+    const totalLicenseCount = await trx
+      .select({ count: sql<number>`count(*)` })
+      .from(zuvyUserLicenses)
+      .innerJoin(licenses, eq(licenses.zoomId, zuvyUserLicenses.zoomEmail))
+      .where(
+        and(
+          eq(zuvyUserLicenses.status, 'active'),
+          eq(zuvyUserLicenses.licenseType, 2),
+          eq(licenses.status, 'active'),
+        ),
+      );
+
+    return Number(totalLicenseCount[0]?.count || 0);
+  }
+
+  async syncLicensedUsersFromZoom() {
+    const zoomUsers = await this.zoomService.listAuthorizedUsers({
+      status: 'active',
+      hostType: 'licensed',
+      page_size: 300,
+    });
+
+    if (!zoomUsers.success) {
+      throw new BadRequestException(
+        zoomUsers.error || 'Failed to fetch licensed Zoom users.',
+      );
+    }
+
+    const licensedUsers = zoomUsers.data?.users || [];
+    for (const user of licensedUsers) {
+      await this.zoomService.syncZoomLicenseUser({
+        email: user.email,
+        zoomUserId: user.id,
+        userName: user.displayName || user.name || user.email,
+        licenseType: user.userType,
+        status: user.status,
+      });
+    }
+
+    return licensedUsers.length;
+  }
+
+  /**
+   * Internal method to find and reserve a license for a specific time range.
+   * Should be called within a transaction.
+   */
+  async assignLicense(
+    trx: any,
+    dto: { instructorId: number; startTime: Date; endTime: Date },
+  ): Promise<number> {
+    // Each overlapping Zoom session consumes one license. Even if the same
+    // instructor already has another overlapping session, we must allocate a
+    // distinct free license or reject the new session once the pool is exhausted.
+    let availableLicenses = await this.fetchAvailableLicenseIds(trx, dto);
 
     if (availableLicenses.length === 0) {
+      let totalCount = await this.getActiveLicensePoolCount(trx);
+      if (totalCount === 0) {
+        this.logger.warn(
+          'Active Zoom license pool is empty in DB. Attempting one-time sync from Zoom before rejecting allocation.',
+        );
+        await this.syncLicensedUsersFromZoom();
+        availableLicenses = await this.fetchAvailableLicenseIds(trx, dto);
+        totalCount = await this.getActiveLicensePoolCount(trx);
+      }
+
+      if (availableLicenses.length > 0) {
+        const assignedLicenseId = availableLicenses[0].id as number;
+        this.logger.log(
+          `Recovered Zoom license allocation after pool sync. Assigned license ${assignedLicenseId} to instructor ${dto.instructorId}.`,
+        );
+        return assignedLicenseId;
+      }
+
+      const overlappingCount = await trx
+        .select({ count: sql<number>`count(*)` })
+        .from(licenseAssignments)
+        .where(
+          and(
+            lt(licenseAssignments.startTime, dto.endTime),
+            gt(licenseAssignments.endTime, dto.startTime),
+          ),
+        );
+      const usedCount = Number(overlappingCount[0]?.count || 0);
+
       throw new BadRequestException(
-        'No Zoom licenses available for this time period.',
+        `No Zoom licenses available for this time period. Active licensed pool: ${totalCount}, overlapping assignments: ${usedCount}.`,
       );
     }
 
     const assignedLicenseId = availableLicenses[0].id as number;
 
-    const totalCount = 6;
+    const totalCount = await this.getActiveLicensePoolCount(trx);
     const activeAssignments = await trx
       .select({ count: sql<number>`count(*)` })
       .from(licenseAssignments)
@@ -126,17 +213,22 @@ export class ZoomLicenseService {
         sessionId: licenseAssignments.sessionId,
         startTime: licenseAssignments.startTime,
         endTime: licenseAssignments.endTime,
-        licenseName: licenses.name,
+        licenseName: zuvyUserLicenses.userName,
+        zoomEmail: zuvyUserLicenses.zoomEmail,
       })
       .from(licenseAssignments)
-      .innerJoin(licenses, eq(licenseAssignments.licenseId, licenses.id))
+      .innerJoin(
+        zuvyUserLicenses,
+        eq(licenseAssignments.licenseId, zuvyUserLicenses.id),
+      )
       .where(eq(licenseAssignments.instructorId, instructorId))
       .orderBy(sql`${licenseAssignments.startTime} DESC`);
   }
 
   async getDashboard() {
-    const totalLicenses = 6;
     const now = new Date();
+
+    const totalLicenses = await this.getActiveLicensePoolCount();
 
     const activeAssignments = await db
       .select({ count: sql<number>`count(*)` })
@@ -159,19 +251,10 @@ export class ZoomLicenseService {
   }
 
   async seedLicenses() {
-    const existing = await db.select().from(licenses);
-    if (existing.length > 0) return { message: 'Licenses already exist' };
+    const syncedCount = await this.syncLicensedUsersFromZoom();
 
-    const initialLicenses = [
-      { zoomId: 'zoom_lic_1', name: 'Zoom License 1' },
-      { zoomId: 'zoom_lic_2', name: 'Zoom License 2' },
-      { zoomId: 'zoom_lic_3', name: 'Zoom License 3' },
-      { zoomId: 'zoom_lic_4', name: 'Zoom License 4' },
-      { zoomId: 'zoom_lic_5', name: 'Zoom License 5' },
-      { zoomId: 'zoom_lic_6', name: 'Zoom License 6' },
-    ];
-
-    await db.insert(licenses).values(initialLicenses);
-    return { message: '6 licenses seeded successfully.' };
+    return {
+      message: `Synced ${syncedCount} licensed Zoom users to zuvy_user_licenses.`,
+    };
   }
 }

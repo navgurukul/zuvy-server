@@ -7,6 +7,7 @@ import {
   zuvyBatches,
   users,
   zuvyUserLicenses,
+  licenses,
 } from '../../../drizzle/schema';
 import { eq, sql } from 'drizzle-orm';
 
@@ -213,6 +214,56 @@ export class ZoomService {
   private tokenCache: { accessToken: string; expiresAt: number } | null = null;
   private tokenRefreshPromise: Promise<string> | null = null;
 
+  async syncZoomLicenseUser(input: {
+    email: string;
+    zoomUserId?: string | null;
+    userName?: string | null;
+    licenseType: number;
+    status?: string | null;
+  }) {
+    await db
+      .insert(zuvyUserLicenses)
+      .values({
+        zoomEmail: input.email,
+        zoomUserId: input.zoomUserId || null,
+        userName: input.userName || input.email,
+        licenseType: input.licenseType,
+        status: input.status || 'active',
+        updatedAt: sql`NOW()`,
+      } as any)
+      .onConflictDoUpdate({
+        target: zuvyUserLicenses.zoomEmail,
+        set: {
+          zoomUserId: input.zoomUserId || null,
+          userName: input.userName || input.email,
+          licenseType: input.licenseType,
+          status: input.status || 'active',
+          updatedAt: sql`NOW()`,
+        } as any,
+      });
+
+    await db
+      .insert(licenses)
+      .values({
+        zoomId: input.email,
+        name: input.userName || input.email,
+        status:
+          input.status === 'active' && input.licenseType === 2
+            ? 'active'
+            : 'inactive',
+      } as any)
+      .onConflictDoUpdate({
+        target: licenses.zoomId,
+        set: {
+          name: input.userName || input.email,
+          status:
+            input.status === 'active' && input.licenseType === 2
+              ? 'active'
+              : 'inactive',
+        } as any,
+      });
+  }
+
   private async generateAccessToken(): Promise<{
     accessToken: string;
     expiresIn: number;
@@ -366,6 +417,16 @@ export class ZoomService {
       const res = await axios.post(url, payload, {
         headers: await this.getHeaders(),
       });
+      await this.syncZoomLicenseUser({
+        email,
+        zoomUserId: res.data?.id || null,
+        userName:
+          `${firstName || ''} ${lastName || ''}`.trim() ||
+          res.data?.display_name ||
+          email,
+        licenseType: 1,
+        status: res.data?.status || 'pending',
+      });
       return { success: true, data: res.data };
     } catch (e: any) {
       return { success: false, error: e.response?.data?.message || e.message };
@@ -376,6 +437,25 @@ export class ZoomService {
     try {
       const url = `${this.baseUrl}/users/${encodeURIComponent(email)}`;
       await axios.patch(url, { type }, { headers: await this.getHeaders() });
+      const user = await this.getUser(email);
+      if (user.success) {
+        await this.syncZoomLicenseUser({
+          email,
+          zoomUserId: user.data?.id || null,
+          userName:
+            `${user.data?.first_name || ''} ${user.data?.last_name || ''}`.trim() ||
+            user.data?.display_name ||
+            email,
+          licenseType: user.data?.type ?? type,
+          status: user.data?.status || 'active',
+        });
+      } else {
+        await this.syncZoomLicenseUser({
+          email,
+          licenseType: type,
+          status: type === 2 ? 'active' : 'downgraded',
+        });
+      }
       return { success: true };
     } catch (e: any) {
       return { success: false, error: e.response?.data?.message || e.message };
@@ -427,7 +507,34 @@ export class ZoomService {
       return { success: false, step: 'verify', error: finalUser.error };
     const userType = finalUser.data.type;
     const userStatus = finalUser.data.status; // expect 'active'
+    await this.syncZoomLicenseUser({
+      email,
+      zoomUserId: finalUser.data?.id || null,
+      userName:
+        `${finalUser.data?.first_name || ''} ${finalUser.data?.last_name || ''}`.trim() ||
+        finalUser.data?.display_name ||
+        email,
+      licenseType: userType,
+      status: userStatus,
+    });
     const licensed = userType === 2 && userStatus === 'active';
+    if (!licensed) {
+      const typeLabel =
+        userType === 2
+          ? 'licensed'
+          : userType === 1
+            ? 'basic'
+            : `type ${userType}`;
+      return {
+        success: false,
+        step: 'verify',
+        error: `Zoom user ${email} is currently ${typeLabel} with status '${userStatus}'. The user must be licensed and active before a session can be created.`,
+        userType,
+        userStatus,
+        licensed,
+      };
+    }
+
     return { success: true, userType, userStatus, licensed };
   }
 

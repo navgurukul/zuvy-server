@@ -1296,9 +1296,14 @@ export class ClassesService {
                 ),
               );
 
-            if (Number(overlappingAssignments[0]?.count || 0) >= 6) {
+            const activePoolCount =
+              await this.zoomLicenseService.getActiveLicensePoolCount(trx);
+
+            if (
+              Number(overlappingAssignments[0]?.count || 0) >= activePoolCount
+            ) {
               throw new Error(
-                'No Zoom licenses available for this time period.',
+                `No Zoom licenses available for this time period. Active licensed pool: ${activePoolCount}, overlapping assignments: ${Number(overlappingAssignments[0]?.count || 0)}.`,
               );
             }
 
