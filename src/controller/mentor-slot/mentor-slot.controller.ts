@@ -12,7 +12,13 @@ import {
   UseInterceptors,
   Query,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiBody, ApiOperation, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiBody,
+  ApiOperation,
+  ApiQuery,
+  ApiTags,
+} from '@nestjs/swagger';
 import { MentorSlotService } from './mentor-slot.service';
 import { TrackAction } from 'src/trackinglog/decorators/track-action.decorator';
 import { TrackActionInterceptor } from 'src/trackinglog/interceptors/track-action.interceptor';
@@ -185,7 +191,11 @@ export class MentorSlotController {
   /* ==========================================================================  
     GET MY SLOTS (for mentor) 
 ========================================================================== */
-
+  @ApiQuery({
+    name: 'sort',
+    required: false,
+    enum: ['asc', 'desc'],
+  })
   @Get('my')
   async getMySlots(
     @Req() req,
