@@ -17,7 +17,7 @@ import {
   zuvyUserOrganizations,
   zuvyBatches,
 } from '../../drizzle/schema';
-import { eq, and, desc, sql, lt } from 'drizzle-orm';
+import { eq, and, desc, sql, lt, isNull, or } from 'drizzle-orm';
 
 @Injectable()
 export class TrackinglogService {
@@ -40,14 +40,21 @@ export class TrackinglogService {
       const [, actionRaw, resourceName] = match;
       const action = actionRaw.toLowerCase(); // Normalize action to lowercase
       const resourceKey = resourceName.toLowerCase(); // "chapter", "course", "bootcamp", etc.
+      // Convert camelCase to space-separated for keys like "mentor dashboard"
+      const resourceKeySpaced = resourceName
+        .replace(/([A-Z])/g, ' $1')
+        .trim()
+        .toLowerCase();
 
       // First, find the resource by key (e.g., "chapter")
-      // Try both lowercase and capitalized versions since DB might store with different casing
+      // Try both lowercase and space-separated camelCase versions (e.g. "mentordashboard" and "mentor dashboard")
       // Note: only select 'id' to avoid selecting columns (like org_id) that may not exist in the DB
       const resource = await db
         .select({ id: zuvyResources.id })
         .from(zuvyResources)
-        .where(sql`LOWER(${zuvyResources.key}) = ${resourceKey}`)
+        .where(
+          sql`LOWER(${zuvyResources.key}) = ${resourceKey} OR LOWER(${zuvyResources.key}) = ${resourceKeySpaced}`,
+        )
         .limit(1);
 
       if (resource.length === 0) {
@@ -184,7 +191,13 @@ export class TrackinglogService {
 
       if (orgId !== undefined && orgId !== null) {
         const numericOrgId = Number(orgId);
-        conditions.push(eq(zuvyTrackingLogs.orgId, numericOrgId));
+        // Also include logs where orgId is NULL (super_admin actions stored without org context)
+        conditions.push(
+          or(
+            eq(zuvyTrackingLogs.orgId, numericOrgId),
+            isNull(zuvyTrackingLogs.orgId),
+          ),
+        );
       }
 
       if (actorUserId !== undefined && actorUserId !== null) {

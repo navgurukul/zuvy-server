@@ -19,14 +19,26 @@ export class SessionService {
      BACKGROUND JOB TO AUTO-CLOSE EXPIRED SESSIONS
   ========================================================================== */
   async autoCloseExpiredSessions() {
-    await db.execute(sql`
-    UPDATE zuvy_mentor_slot_booking b
-    SET session_lifecycle_state = 'COMPLETED'
-    FROM zuvy_mentor_slot_availability s
-    WHERE b.slot_availability_id = s.id
-      AND b.session_lifecycle_state = 'SCHEDULED'
-      AND s.slot_end_date_time < NOW()
-  `);
+    await db
+      .update(zuvyMentorSlotBooking)
+      .set({ sessionLifecycleState: 'COMPLETED' } as Partial<
+        typeof zuvyMentorSlotBooking.$inferInsert
+      >)
+      .where(
+        sql`${zuvyMentorSlotBooking.slotAvailabilityId} IN (
+      SELECT ${zuvyMentorSlotAvailability.id}
+      FROM ${zuvyMentorSlotAvailability}
+      WHERE ${zuvyMentorSlotAvailability.slotEndDateTime} < NOW()
+    )
+    AND ${zuvyMentorSlotBooking.sessionLifecycleState} = 'SCHEDULED'`,
+      );
+  }
+
+  private mapMeetingLink(booking: any, userId: bigint) {
+    if (booking.mentorUserId === userId) {
+      return booking.zoomStartUrl; // mentor
+    }
+    return booking.meetingLink; // student
   }
 
   /* ==========================================================================
@@ -94,7 +106,15 @@ export class SessionService {
       .from(zuvyMentorSlotBooking)
       .where(and(eq(zuvyMentorSlotBooking.studentUserId, userId)));
 
-    return { data, counts };
+    const mappedData = data.map((item) => ({
+      ...item,
+      booking: {
+        ...item.booking,
+        meetingLink: item.booking.meetingLink,
+      },
+    }));
+
+    return { data: mappedData, counts };
   }
 
   /* ==========================================================================
@@ -175,7 +195,15 @@ export class SessionService {
         ),
       );
 
-    return { data, counts };
+    const mappedData = data.map((item) => ({
+      ...item,
+      booking: {
+        ...item.booking,
+        meetingLink: item.booking.zoomStartUrl,
+      },
+    }));
+
+    return { data: mappedData, counts };
   }
 
   /* ==========================================================================
@@ -199,6 +227,9 @@ export class SessionService {
       );
     }
 
-    return session;
+    return {
+      ...session,
+      meetingLink: this.mapMeetingLink(session, userId),
+    };
   }
 }

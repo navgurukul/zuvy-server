@@ -31,9 +31,8 @@ export class MentorPublicService {
 
     const filters = [];
 
-    if (role && role !== 'all') {
-      filters.push(eq(zuvyUserRoles.name, role));
-    }
+    // Always filter for instructors only
+    filters.push(eq(zuvyUserRoles.name, 'instructor'));
 
     if (expertise && expertise !== 'all') {
       filters.push(
@@ -69,15 +68,24 @@ export class MentorPublicService {
         title: zuvyMentorSlotManagement.title,
 
         availableSlots: sql<number>`
-        COUNT(*) FILTER (
-          WHERE ${zuvyMentorSlotAvailability.status} = 'available'
-        )
-      `,
+          COUNT(*) FILTER (
+          WHERE ${zuvyMentorSlotAvailability.slotStartDateTime} > NOW()
+          AND ${zuvyMentorSlotAvailability.currentBookedCount} < ${zuvyMentorSlotAvailability.maxCapacity}
+          )
+        `,
 
         fullSlots: sql<number>`
+          COUNT(*) FILTER (
+          WHERE ${zuvyMentorSlotAvailability.slotStartDateTime} > NOW()
+          AND ${zuvyMentorSlotAvailability.currentBookedCount} >= ${zuvyMentorSlotAvailability.maxCapacity}
+          )
+      `,
+
+        completedSlots: sql<number>`
         COUNT(*) FILTER (
-          WHERE ${zuvyMentorSlotAvailability.status} = 'full'
-        )
+        WHERE ${zuvyMentorSlotAvailability.slotStartDateTime} <= NOW()
+        AND ${zuvyMentorSlotAvailability.currentBookedCount} > 0
+          )
       `,
       })
       .from(users)
@@ -200,6 +208,7 @@ export class MentorPublicService {
         bio: zuvyMentorSlotManagement.bio,
         expertise: zuvyMentorSlotManagement.expertise,
         title: zuvyMentorSlotManagement.title,
+        pastExperiences: zuvyMentorSlotManagement.pastExperiences,
 
         status: zuvyMentorSlotManagement.status,
         isVerified: zuvyMentorSlotManagement.isVerified,
