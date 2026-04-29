@@ -134,14 +134,16 @@ export class RecordingWorkerService implements OnModuleInit {
       status = CASE
         WHEN status IN ('DISCOVERED', 'FAILED') THEN 'PROCESSING_METADATA'
         WHEN status = 'METADATA_READY' THEN 'PROCESSING_DOWNLOAD'
-        WHEN status = 'DOWNLOADING' THEN 'PROCESSING_UPLOAD'
+        WHEN status = 'DOWNLOADING' THEN 'DOWNLOADED'
+        WHEN status = 'DOWNLOADED' THEN 'MERGING'
+        WHEN status = 'MERGED' THEN 'PROCESSING_UPLOAD'
         ELSE status
       END,
       updated_at = NOW()
     WHERE id = (
       SELECT id
       FROM zuvy_session_recordings
-      WHERE status IN ('DISCOVERED', 'FAILED', 'METADATA_READY', 'DOWNLOADING')
+      WHERE status IN ('DISCOVERED', 'FAILED', 'METADATA_READY', 'DOWNLOADING', 'DOWNLOADED', 'MERGED')
         AND status NOT LIKE 'PROCESSING_%'
         AND status != 'PERMANENT_FAILED'
         AND retry_count < ${MAX_RETRIES}
@@ -206,6 +208,14 @@ export class RecordingWorkerService implements OnModuleInit {
 
         case 'PROCESSING_DOWNLOAD':
           await this.downloadRecording(job);
+          break;
+
+        case 'DOWNLOADED':
+          await this.mergeRecording(job);
+          break;
+
+        case 'MERGED':
+          await this.uploadToYoutube(job);
           break;
 
         case 'PROCESSING_UPLOAD':
@@ -687,6 +697,57 @@ export class RecordingWorkerService implements OnModuleInit {
     }
   }
 
+  private async mergeRecording(job: any) {
+    this.logJob('log', job, 'Starting merge step');
+
+    const tempDir = path.join(process.cwd(), 'temp-recordings');
+
+    const inputPath = path.join(tempDir, this.getRecordingFileName(job));
+
+    if (!fs.existsSync(inputPath)) {
+      throw new Error('Recording file missing for merge');
+    }
+
+    const mergedPath = inputPath.replace('.mp4', '-merged.mp4');
+
+    // If already merged, skip
+    if (fs.existsSync(mergedPath)) {
+      this.logJob('log', job, 'Merged file already exists');
+    } else {
+      const { execSync } = require('child_process');
+
+      try {
+        execSync(`ffmpeg -y -i "${inputPath}" -c copy "${mergedPath}"`, {
+          stdio: 'ignore',
+        });
+      } catch (err: any) {
+        throw new Error(`FFmpeg merge failed: ${err.message}`);
+      }
+    }
+
+    // Update DB
+    if (job.table === 'mentor') {
+      await db.execute(sql`
+      UPDATE zuvy_mentor_session_recordings
+      SET
+        merged_file_path = ${mergedPath},
+        status = 'MERGED'
+      WHERE id = ${job.id}
+    `);
+    } else {
+      await db.execute(sql`
+      UPDATE zuvy_session_recordings
+      SET
+        merged_file_path = ${mergedPath},
+        status = 'MERGED'
+      WHERE id = ${job.id}
+    `);
+    }
+
+    this.logJob('log', job, 'Merge completed', {
+      mergedPath,
+    });
+  }
   // =====================================================
   // STEP 3 — UPLOAD TO YOUTUBE (IDEMPOTENT)
   // =====================================================
@@ -702,14 +763,24 @@ export class RecordingWorkerService implements OnModuleInit {
       return;
     }
 
-    const filePath = path.join(
-      process.cwd(),
-      'temp-recordings',
-      this.getRecordingFileName(job),
-    );
+    const rec = await db.execute(sql`
+  SELECT merged_file_path
+  FROM ${sql.raw(this.getTableName(job))}
+  WHERE id = ${job.id}
+`);
+
+    const mergedPath = rec.rows?.[0]?.merged_file_path as string | null;
+
+    const filePath: string =
+      mergedPath ||
+      path.join(
+        process.cwd(),
+        'temp-recordings',
+        this.getRecordingFileName(job),
+      );
 
     if (!fs.existsSync(filePath)) {
-      throw new Error('Downloaded file not found');
+      throw new Error('Merged file not found for upload');
     }
 
     const fileSize = fs.statSync(filePath).size;
