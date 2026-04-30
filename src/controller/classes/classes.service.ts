@@ -102,15 +102,15 @@ export class ClassesService {
       );
     }
 
-    const preferredTeamEmail = process.env.TEAM_EMAIL || '';
+    const protectedEmails = new Set(
+      [process.env.TEAM_EMAIL]
+        .filter(Boolean)
+        .map((email) => String(email).trim().toLowerCase()),
+    );
     const donors = (licensedUsers.data?.users || [])
       .filter((user) => user.email !== instructorEmail)
-      .sort((a, b) => {
-        if (a.email === preferredTeamEmail) return -1;
-        if (b.email === preferredTeamEmail) return 1;
-        return 0;
-      });
-
+      .filter((user) => !protectedEmails.has(user.email.toLowerCase()));
+    console.log('donors', donors);
     for (const donor of donors) {
       const donorIsFree = await this.isInstructorFreeForTimeRange(
         donor.email,
@@ -614,7 +614,8 @@ export class ClassesService {
         type: 2, // Scheduled meeting
         start_time: zoomStartDate.toISOString(), // Use adjusted start time for Zoom
         duration: duration,
-        timezone: eventDetails.timeZone || 'Asia/Kolkata',
+        // timezone: eventDetails.timeZone || 'Asia/Kolkata',
+        timezone: 'UTC',
         agenda: eventDetails.description || 'Live class session',
         settings: {
           host_video: true,
@@ -721,11 +722,11 @@ export class ClassesService {
       //   // Continue without failing the entire process
       // }
 
-      zoomStartDate.setHours(zoomStartDate.getHours() - 5);
-      zoomStartDate.setMinutes(zoomStartDate.getMinutes() - 30);
+      // zoomStartDate.setHours(zoomStartDate.getHours() - 5);
+      // zoomStartDate.setMinutes(zoomStartDate.getMinutes() - 30);
 
-      zoomEndDate.setHours(zoomEndDate.getHours() - 5);
-      zoomEndDate.setMinutes(zoomEndDate.getMinutes() - 30);
+      // zoomEndDate.setHours(zoomEndDate.getHours() - 5);
+      // zoomEndDate.setMinutes(zoomEndDate.getMinutes() - 30);
 
       const session = {
         meetingId: zoomResponse.data.id.toString(), // Use Zoom meeting ID if Google Calendar fails
