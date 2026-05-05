@@ -46,6 +46,7 @@ import { NotificationService } from './controller/notification/notification.serv
 import { GoogleModule } from './integrations/google/google.module';
 import { NewNotificationModule } from './controller/notification/notification.module';
 import { SuperAdminModule } from './super-admin/super-admin.module';
+import { PermissionsGuard } from './rbac/guards/permissions.guard';
 
 let { GOOGLE_CLIENT_ID, GOOGLE_SECRET, GOOGLE_REDIRECT_URI, JWT_SECRET_KEY } =
   process.env;
@@ -105,6 +106,10 @@ let { GOOGLE_CLIENT_ID, GOOGLE_SECRET, GOOGLE_REDIRECT_URI, JWT_SECRET_KEY } =
     {
       provide: APP_GUARD,
       useClass: OrgAuthorizationGuard,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: PermissionsGuard,
     },
     JwtMiddleware,
     Reflector,

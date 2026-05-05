@@ -17,6 +17,7 @@ import {
 } from './dto/permission.dto';
 import {
   users,
+  blacklistedTokens,
   zuvyPermissions,
   zuvyResources,
   zuvyPermissionsRoles,
@@ -24,11 +25,18 @@ import {
   zuvyUserRoles,
   zuvyUserRolesAssigned,
   zuvyAuditLogs,
+  zuvyUserOrganizations,
+  zuvyBatches,
+  zuvyBootcamps,
 } from 'drizzle/schema';
+import { JwtService } from '@nestjs/jwt';
+import { ResourceList } from './utility';
 
 @Injectable()
 export class RbacPermissionService {
   private readonly logger = new Logger(RbacPermissionService.name);
+
+  constructor(private readonly jwtService: JwtService) {}
 
   async createPermission(
     createPermissionDto: CreatePermissionDto,
@@ -219,13 +227,14 @@ export class RbacPermissionService {
   async getUserPermissions(
     userId: number,
     orgId: number | null,
-  ): Promise<{ permission: string; resource: string }[]> {
+  ): Promise<{ permission: string; resource: string; resourceKey?: string }[]> {
     try {
       // Drizzle ORM equivalent for the above SQL
-      const result = await db
+      const rolePermissions = await db
         .selectDistinct({
           permission: zuvyPermissions.name,
           resource: zuvyResources.name,
+          resourceKey: zuvyResources.key,
         })
         .from(zuvyPermissions)
         .innerJoin(
@@ -246,7 +255,7 @@ export class RbacPermissionService {
         )
         .where(
           and(
-            eq(zuvyUserRolesAssigned.userId, userId),
+            eq(zuvyUserRolesAssigned.userId, BigInt(userId)),
             orgId !== null
               ? eq(zuvyUserRolesAssigned.organizationId, orgId)
               : isNull(zuvyUserRolesAssigned.organizationId),
@@ -256,7 +265,30 @@ export class RbacPermissionService {
           ),
         );
 
-      return result;
+      const directPermissions = await db
+        .selectDistinct({
+          permission: zuvyPermissions.name,
+          resource: zuvyResources.name,
+          resourceKey: zuvyResources.key,
+        })
+        .from(zuvyUserPermissions)
+        .innerJoin(
+          zuvyPermissions,
+          eq(zuvyUserPermissions.permissionId, zuvyPermissions.id),
+        )
+        .innerJoin(
+          zuvyResources,
+          eq(zuvyPermissions.resourcesId, zuvyResources.id),
+        )
+        .where(eq(zuvyUserPermissions.userId, BigInt(userId)));
+
+      const seen = new Set<string>();
+      return [...rolePermissions, ...directPermissions].filter((permission) => {
+        const key = `${permission.resourceKey}:${permission.permission}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
     } catch (err) {
       this.logger.error(
         `Error getting user permissions for user ${userId}:`,
@@ -298,8 +330,29 @@ export class RbacPermissionService {
       }
 
       const userPermissions = await this.getUserPermissions(userId, orgId);
+      const permissionSet = new Set<string>();
+
+      userPermissions.forEach((userPermission) => {
+        permissionSet.add(userPermission.permission);
+        permissionSet.add(
+          `${userPermission.resourceKey}:${userPermission.permission}`,
+        );
+
+        const resourceKey = userPermission.resourceKey?.toLowerCase();
+        let action = userPermission.permission.toLowerCase();
+        if (action === 'view') action = 'read';
+
+        const formattedPermission =
+          resourceKey && ResourceList[resourceKey]
+            ? ResourceList[resourceKey][action]
+            : undefined;
+        if (formattedPermission) {
+          permissionSet.add(formattedPermission);
+        }
+      });
+
       const hasAllPermissions = requiredPermissions.every((requiredPerm) =>
-        userPermissions.some((up) => up.permission === requiredPerm),
+        permissionSet.has(requiredPerm),
       );
 
       return hasAllPermissions;
@@ -307,6 +360,151 @@ export class RbacPermissionService {
       this.logger.error(`Error checking permissions for user ${userId}:`, err);
       return false;
     }
+  }
+
+  private async invalidateStoredTokens(
+    sessions: { accessToken: string | null; refreshToken: string | null }[],
+    userId: number,
+  ) {
+    const tokens = sessions
+      .flatMap((session) => [session.accessToken, session.refreshToken])
+      .filter(Boolean) as string[];
+
+    for (const token of tokens) {
+      try {
+        const decoded = this.jwtService.decode(token) as { exp?: number };
+        const expiresAt = decoded?.exp
+          ? new Date(decoded.exp * 1000)
+          : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+
+        await db
+          .insert(blacklistedTokens)
+          .values({
+            token,
+            userId: BigInt(userId),
+            expiresAt,
+          } as typeof blacklistedTokens.$inferInsert)
+          .onConflictDoNothing();
+      } catch (error: any) {
+        this.logger.warn(
+          `Failed to blacklist token for user ${userId}: ${error?.message ?? error}`,
+        );
+      }
+    }
+  }
+
+  private async invalidateSessionRows(userId: number, orgId?: number | null) {
+    const conditions = [eq(zuvyUserOrganizations.userId, userId)];
+    if (orgId !== undefined) {
+      conditions.push(
+        orgId === null
+          ? isNull(zuvyUserOrganizations.organizationId)
+          : eq(zuvyUserOrganizations.organizationId, orgId),
+      );
+    }
+
+    const sessions = await db
+      .select({
+        accessToken: zuvyUserOrganizations.accessToken,
+        refreshToken: zuvyUserOrganizations.refreshToken,
+      })
+      .from(zuvyUserOrganizations)
+      .where(and(...conditions));
+
+    if (sessions.length) {
+      await this.invalidateStoredTokens(sessions, userId);
+    }
+
+    await db
+      .update(zuvyUserOrganizations)
+      .set({ accessToken: null, refreshToken: null } as any)
+      .where(and(...conditions));
+  }
+
+  private async invalidateSpecificUserSession(userId: number) {
+    await this.invalidateSessionRows(userId);
+  }
+
+  private async invalidateSessionsForRoleUsers(roleId: number, orgId: number) {
+    const assignedUsers = await db
+      .selectDistinct({ userId: zuvyUserRolesAssigned.userId })
+      .from(zuvyUserRolesAssigned)
+      .where(
+        and(
+          eq(zuvyUserRolesAssigned.roleId, roleId),
+          eq(zuvyUserRolesAssigned.organizationId, orgId),
+        ),
+      );
+
+    for (const assignedUser of assignedUsers) {
+      await this.invalidateSessionRows(Number(assignedUser.userId), orgId);
+    }
+  }
+
+  async validateAssignedResourceAccess(
+    user: { id: number | string; roles?: string[]; orgId?: number | string },
+    resourceIds: {
+      orgId?: number | null;
+      bootcampId?: number;
+      batchId?: number;
+    },
+  ): Promise<boolean> {
+    const roles = user.roles || [];
+    if (
+      roles.includes('super_admin') ||
+      roles.includes('admin') ||
+      (!roles.includes('instructor') && !roles.includes('ops'))
+    ) {
+      return true;
+    }
+
+    const tokenOrgId = user.orgId ? Number(user.orgId) : null;
+    if (
+      resourceIds.orgId !== undefined &&
+      resourceIds.orgId !== null &&
+      tokenOrgId !== Number(resourceIds.orgId)
+    ) {
+      return false;
+    }
+
+    let bootcampId = resourceIds.bootcampId;
+    if (!bootcampId && resourceIds.batchId) {
+      const [batch] = await db
+        .select({ bootcampId: zuvyBatches.bootcampId })
+        .from(zuvyBatches)
+        .where(eq(zuvyBatches.id, resourceIds.batchId))
+        .limit(1);
+      bootcampId = batch?.bootcampId ? Number(batch.bootcampId) : undefined;
+    }
+
+    if (!bootcampId) return true;
+
+    const [bootcamp] = await db
+      .select({ organizationId: zuvyBootcamps.organizationId })
+      .from(zuvyBootcamps)
+      .where(eq(zuvyBootcamps.id, bootcampId))
+      .limit(1);
+
+    if (
+      bootcamp?.organizationId &&
+      tokenOrgId &&
+      Number(bootcamp.organizationId) !== tokenOrgId
+    ) {
+      return false;
+    }
+
+    const assignedBatches = await db
+      .select({ id: zuvyBatches.id })
+      .from(zuvyBatches)
+      .where(
+        and(
+          eq(zuvyBatches.bootcampId, bootcampId),
+          eq(zuvyBatches.instructorId, Number(user.id)),
+        ),
+      )
+      .limit(1);
+
+    return assignedBatches.length > 0;
   }
 
   async assignExtraPermissionToUser(
@@ -384,7 +582,7 @@ export class RbacPermissionService {
       const userExists = await db
         .select({ id: users.id })
         .from(users)
-        .where(eq(users.id, userId))
+        .where(eq(users.id, BigInt(userId)))
         .limit(1);
       if (!userExists.length) {
         throw new NotFoundException('User not found');
@@ -414,17 +612,23 @@ export class RbacPermissionService {
       }
 
       for (const permissionId of assignPermissionsDto.permissions) {
-        const exists = await db.query.zuvyUserPermissions.findFirst({
-          where: (u, { eq, and }) =>
+        const [exists] = await db
+          .select({ id: zuvyUserPermissions.id })
+          .from(zuvyUserPermissions)
+          .where(
             and(
-              eq(u.userId, BigInt(assignPermissionsDto.userId)),
-              eq(u.permissionId, permissionId),
+              eq(
+                zuvyUserPermissions.userId,
+                BigInt(assignPermissionsDto.userId),
+              ),
+              eq(zuvyUserPermissions.permissionId, permissionId),
             ),
-        });
+          )
+          .limit(1);
 
         if (!exists) {
           const insertData = {
-            userId: assignPermissionsDto.userId,
+            userId: BigInt(assignPermissionsDto.userId),
             permissionId,
           };
           insertUserPermission = await db
@@ -433,6 +637,8 @@ export class RbacPermissionService {
             .returning();
         }
       }
+      await this.invalidateSpecificUserSession(userId);
+
       return {
         status: 'success',
         code: 200,
@@ -451,8 +657,15 @@ export class RbacPermissionService {
   ) {
     try {
       const { resourceId, roleId, permissions } = dto;
+      if (
+        orgId === undefined ||
+        orgId === null ||
+        Number.isNaN(Number(orgId))
+      ) {
+        throw new BadRequestException('Organization context missing');
+      }
 
-      return await db.transaction(async (tx) => {
+      const response = await db.transaction(async (tx) => {
         const [resource] = await tx
           .select()
           .from(zuvyResources)
@@ -510,6 +723,7 @@ export class RbacPermissionService {
               and(
                 eq(zuvyPermissionsRoles.roleId, roleId),
                 inArray(zuvyPermissionsRoles.permissionId, disableIds),
+                eq(zuvyPermissionsRoles.orgId, orgId),
               ),
             );
         }
@@ -517,7 +731,12 @@ export class RbacPermissionService {
         const assigned = await tx
           .select({ permissionId: zuvyPermissionsRoles.permissionId })
           .from(zuvyPermissionsRoles)
-          .where(eq(zuvyPermissionsRoles.roleId, roleId));
+          .where(
+            and(
+              eq(zuvyPermissionsRoles.roleId, roleId),
+              eq(zuvyPermissionsRoles.orgId, orgId),
+            ),
+          );
 
         return {
           status: 'success',
@@ -529,6 +748,8 @@ export class RbacPermissionService {
           },
         };
       });
+      await this.invalidateSessionsForRoleUsers(roleId, orgId);
+      return response;
     } catch (error) {
       this.logger.error('Error in assignPermissionsToRole:', error);
       if (error instanceof HttpException) throw error;
