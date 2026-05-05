@@ -112,31 +112,6 @@ export class MentorSlotService {
     return mentor;
   }
 
-  private async getMentorProfile(userId: number) {
-    const userIdBigInt = BigInt(userId);
-
-    let [mentorProfile] = await db
-      .select()
-      .from(zuvyMentorSlotManagement)
-      .where(eq(zuvyMentorSlotManagement.mentorUserId, userIdBigInt))
-      .limit(1);
-
-    if (!mentorProfile) {
-      const inserted = await db
-        .insert(zuvyMentorSlotManagement)
-        .values({
-          mentorUserId: userIdBigInt,
-          organizationId: 1,
-          mentorType: 'mentor',
-        } as typeof zuvyMentorSlotManagement.$inferInsert)
-        .returning();
-
-      mentorProfile = inserted[0];
-    }
-
-    return mentorProfile;
-  }
-
   private async ensureUserIsMentor(userId: number) {
     if (!userId || Number.isNaN(userId)) {
       throw new ForbiddenException('Invalid user');
@@ -161,9 +136,17 @@ export class MentorSlotService {
 
     if (!role) {
       throw new ForbiddenException(
-        'User is not allowed to act as mentor. Only instructors can create mentor slots.',
+        'User has no role assigned. Cannot create mentor profile.',
       );
     }
+
+    if (role.zuvy_user_roles.name !== 'instructor') {
+      throw new ForbiddenException(
+        'Only instructors can create mentor profiles.',
+      );
+    }
+
+    return true;
   }
 
   private async ensureMentorZoomVerified(userId: number) {
@@ -1802,26 +1785,49 @@ export class MentorSlotService {
     }
   }
 
-  async createOrUpdateMentorProfile(
-    userId: number,
-    organizationId: number,
-    dto: any,
-  ) {
+  async createOrUpdateMentorProfile(userId: number, dto: any) {
     await this.ensureUserIsMentor(userId);
 
     const userIdBigInt = BigInt(userId);
 
     /* =========================================================
-       FETCH EXISTING PROFILE
+    FETCH ORGANIZATION FROM DB TO ENSURE USER IS INSTRUCTOR IN AN ORG
     ========================================================= */
-    const [existingProfile] = await db
-      .select()
-      .from(zuvyMentorSlotManagement)
-      .where(eq(zuvyMentorSlotManagement.mentorUserId, userIdBigInt))
+    const roleAssignment = await db
+      .select({
+        organizationId: zuvyUserRolesAssigned.organizationId,
+      })
+      .from(zuvyUserRolesAssigned)
+      .innerJoin(
+        zuvyUserRoles,
+        eq(zuvyUserRolesAssigned.roleId, zuvyUserRoles.id),
+      )
+      .where(
+        and(
+          eq(zuvyUserRolesAssigned.userId, userIdBigInt),
+          eq(zuvyUserRoles.name, 'instructor'),
+        ),
+      )
       .limit(1);
 
+    if (!roleAssignment.length || !roleAssignment[0].organizationId) {
+      throw new BadRequestException('Organization not found for instructor');
+    }
+
+    const organizationId = roleAssignment[0].organizationId;
+
     /* =========================================================
-       VALIDATE BOOTCAMP (if provided)
+    FETCH EXISTING PROFILE
+    ========================================================= */
+    const existingProfile = await db.query.zuvyMentorSlotManagement.findFirst({
+      where: and(
+        eq(zuvyMentorSlotManagement.mentorUserId, userIdBigInt),
+        eq(zuvyMentorSlotManagement.organizationId, organizationId),
+      ),
+    });
+
+    /* =========================================================
+    VALIDATE BOOTCAMP
     ========================================================= */
     if (dto.bootcampId !== undefined) {
       const [bootcamp] = await db
@@ -1836,7 +1842,7 @@ export class MentorSlotService {
     }
 
     /* =========================================================
-       PREPARE PAYLOAD
+    PREPARE PAYLOAD
     ========================================================= */
     const payload = {
       ...(dto.bio !== undefined && { bio: dto.bio }),
@@ -1849,21 +1855,35 @@ export class MentorSlotService {
     };
 
     /* =========================================================
-       CREATE FLOW
+    CREATE FLOW
     ========================================================= */
     if (!existingProfile) {
       const [newProfile] = await db
         .insert(zuvyMentorSlotManagement)
         .values({
           mentorUserId: userIdBigInt,
-          organizationId: organizationId,
+          organizationId,
+
           mentorType: 'instructor',
+
           bio: dto.bio ?? null,
           expertise: dto.expertise ?? [],
           title: dto.title ?? null,
           pastExperiences: dto.pastExperiences ?? null,
+          bootcampId: dto.bootcampId ?? null,
+
+          isBufferEnabled: false,
+          bufferMinutes: 0,
+          timezone: 'UTC',
+
+          totalAvailableSlots: 0,
+          totalBookedSlots: 0,
+          totalCancelledSlots: 0,
+
           status: 'active',
           isVerified: false,
+          acceptsNewMentees: true,
+
           createdAt: new Date(),
           updatedAt: new Date(),
         } as typeof zuvyMentorSlotManagement.$inferInsert)
@@ -1876,19 +1896,31 @@ export class MentorSlotService {
     }
 
     /* =========================================================
-       UPDATE FLOW
+    UPDATE FLOW
     ========================================================= */
     if (Object.keys(payload).length === 0) {
       throw new BadRequestException('No fields provided for update');
     }
 
-    await db
+    const result = await db
       .update(zuvyMentorSlotManagement)
       .set({
         ...payload,
         updatedAt: new Date(),
       } as Partial<typeof zuvyMentorSlotManagement.$inferInsert>)
-      .where(eq(zuvyMentorSlotManagement.mentorUserId, userIdBigInt));
+      .where(
+        and(
+          eq(zuvyMentorSlotManagement.mentorUserId, userIdBigInt),
+          eq(zuvyMentorSlotManagement.organizationId, organizationId),
+        ),
+      )
+      .returning();
+
+    if (!result.length) {
+      throw new NotFoundException(
+        'Mentor profile not found for this organization',
+      );
+    }
 
     return {
       message: 'Mentor profile updated successfully',
