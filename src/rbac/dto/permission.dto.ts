@@ -230,10 +230,21 @@ export class AssignPermissionsToRoleDto {
   @ApiProperty({
     description: 'Organization ID',
     example: 1,
+    required: false,
   })
   @IsNumber()
   @IsOptional()
   orgId?: number;
+
+  @ApiProperty({
+    description:
+      'Organization ID used for organization-scoped role permissions',
+    example: 1,
+    required: false,
+  })
+  @IsNumber()
+  @IsOptional()
+  organizationId?: number;
 
   @ApiProperty({
     description: 'Resource ID to assign the permissions to',
