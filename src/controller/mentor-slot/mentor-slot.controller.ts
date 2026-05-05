@@ -11,6 +11,7 @@ import {
   UseGuards,
   UseInterceptors,
   Query,
+  BadRequestException,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
@@ -320,10 +321,18 @@ export class MentorSlotController {
 
   @Post('mentor/profile')
   async createOrUpdateProfile(@Req() req, @Body() dto: UpdateMentorProfileDto) {
-    return this.mentorSlotService.createOrUpdateMentorProfile(
-      Number(req.user[0].id),
-      Number(req.user[0].organization_id),
-      dto,
-    );
+    const user = req.user?.[0];
+
+    if (!user?.id) {
+      throw new BadRequestException('Invalid user in token');
+    }
+
+    const userId = Number(user.id);
+
+    if (Number.isNaN(userId)) {
+      throw new BadRequestException('Invalid userId');
+    }
+
+    return this.mentorSlotService.createOrUpdateMentorProfile(userId, dto);
   }
 }

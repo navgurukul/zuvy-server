@@ -212,6 +212,7 @@ export class BootcampService {
             version: zuvyBootcamps.version,
             code: zuvyOrganizations.displayName,
             bootcampType: zuvyBootcampType.type,
+            mentorshipEnabled: zuvyBootcampType.mentorshipEnabled,
           })
           .from(zuvyBootcamps)
           .leftJoin(
@@ -263,6 +264,7 @@ export class BootcampService {
             version: zuvyBootcamps.version,
             code: zuvyOrganizations.displayName,
             bootcampType: zuvyBootcampType.type,
+            mentorshipEnabled: zuvyBootcampType.mentorshipEnabled,
           })
           .from(zuvyBootcamps)
           .leftJoin(
@@ -332,6 +334,7 @@ export class BootcampService {
             version: zuvyBootcamps.version,
             code: zuvyOrganizations.displayName,
             bootcampType: zuvyBootcampType.type,
+            mentorshipEnabled: zuvyBootcampType.mentorshipEnabled,
           })
           .from(zuvyBootcamps)
           .leftJoin(
@@ -373,6 +376,7 @@ export class BootcampService {
             version: zuvyBootcamps.version,
             code: zuvyOrganizations.displayName,
             bootcampType: zuvyBootcampType.type,
+            mentorshipEnabled: zuvyBootcampType.mentorshipEnabled,
           })
           .from(zuvyBootcamps)
           .leftJoin(
@@ -434,7 +438,11 @@ export class BootcampService {
             return [err, null];
           }
 
-          return { ...bootcamp, ...res };
+          return {
+            ...bootcamp,
+            mentorshipEnabled: bootcamp.mentorshipEnabled ?? false,
+            ...res,
+          };
         }),
       );
 
