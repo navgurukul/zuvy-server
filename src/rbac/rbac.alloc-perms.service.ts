@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { db } from 'src/db/index';
-import { inArray, sql, eq, and } from 'drizzle-orm';
+import { inArray, sql, eq, and, isNull, or } from 'drizzle-orm';
 import {
   users,
   userRoles,
@@ -126,8 +126,18 @@ export class RbacAllocPermsService {
         .where(
           and(
             eq(zuvyUserRolesAssigned.userId, BigInt(userId)),
-            sql`${zuvyUserRolesAssigned.organizationId} IS NOT DISTINCT FROM ${orgId}`,
-            sql`${zuvyPermissionsRoles.orgId} IS NOT DISTINCT FROM ${orgId}`,
+            orgId !== null
+              ? or(
+                  eq(zuvyUserRolesAssigned.organizationId, orgId),
+                  isNull(zuvyUserRolesAssigned.organizationId),
+                )
+              : isNull(zuvyUserRolesAssigned.organizationId),
+            orgId !== null
+              ? or(
+                  eq(zuvyPermissionsRoles.orgId, orgId),
+                  isNull(zuvyPermissionsRoles.orgId),
+                )
+              : isNull(zuvyPermissionsRoles.orgId),
             eq(zuvyResources.id, Number(resourceId)),
             eq(zuvyPermissions.name, permissionName),
           ),

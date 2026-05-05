@@ -127,10 +127,16 @@ export class AuthService {
           and(
             eq(zuvyUserRolesAssigned.userId, BigInt(userId)),
             orgId !== null
-              ? eq(zuvyUserRolesAssigned.organizationId, orgId)
+              ? or(
+                  eq(zuvyUserRolesAssigned.organizationId, orgId),
+                  isNull(zuvyUserRolesAssigned.organizationId),
+                )
               : isNull(zuvyUserRolesAssigned.organizationId),
             orgId !== null
-              ? eq(zuvyPermissionsRoles.orgId, orgId)
+              ? or(
+                  eq(zuvyPermissionsRoles.orgId, orgId),
+                  isNull(zuvyPermissionsRoles.orgId),
+                )
               : isNull(zuvyPermissionsRoles.orgId),
           ),
         );
