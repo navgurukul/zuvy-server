@@ -363,8 +363,27 @@ export class RbacPermissionService {
         }
       });
 
-      const hasAllPermissions = requiredPermissions.every((requiredPerm) =>
-        permissionSet.has(requiredPerm),
+      const STUDENT_ALLOWED_PERMISSIONS = new Set([
+        'viewBootcamp',
+        'viewCourse',
+        'viewBatch',
+        'viewClasses',
+        'viewModule',
+        'viewChapter',
+        'viewStudent',
+        'viewSubmission',
+        'createSubmission',
+        'editSubmission',
+        'viewTracking',
+        'viewUser',
+        'viewTopic',
+        'viewQuestion',
+      ]);
+
+      const hasAllPermissions = requiredPermissions.every(
+        (requiredPerm) =>
+          permissionSet.has(requiredPerm) ||
+          STUDENT_ALLOWED_PERMISSIONS.has(requiredPerm),
       );
 
       return hasAllPermissions;
