@@ -127,10 +127,16 @@ export class AuthService {
           and(
             eq(zuvyUserRolesAssigned.userId, BigInt(userId)),
             orgId !== null
-              ? eq(zuvyUserRolesAssigned.organizationId, orgId)
+              ? or(
+                  eq(zuvyUserRolesAssigned.organizationId, orgId),
+                  isNull(zuvyUserRolesAssigned.organizationId),
+                )
               : isNull(zuvyUserRolesAssigned.organizationId),
             orgId !== null
-              ? eq(zuvyPermissionsRoles.orgId, orgId)
+              ? or(
+                  eq(zuvyPermissionsRoles.orgId, orgId),
+                  isNull(zuvyPermissionsRoles.orgId),
+                )
               : isNull(zuvyPermissionsRoles.orgId),
           ),
         );
@@ -289,6 +295,19 @@ export class AuthService {
       const isNullOrgAllowed = roles.some((r) => NULL_ORG_ROLES.includes(r));
 
       if (selectedOrg || isNullOrgAllowed) {
+        if (!selectedOrg) {
+          // PostgreSQL treats NULLs as distinct in unique constraints, so
+          // onConflictDoUpdate won't fire for null-org rows. Delete stale
+          // rows first to prevent accumulation of orphaned session rows.
+          await db
+            .delete(zuvyUserOrganizations)
+            .where(
+              and(
+                eq(zuvyUserOrganizations.userId, Number(user.id)),
+                isNull(zuvyUserOrganizations.organizationId),
+              ),
+            );
+        }
         await db
           .insert(zuvyUserOrganizations)
           .values({
@@ -471,7 +490,9 @@ export class AuthService {
 
   async validateToken(token: string) {
     try {
-      // Check if token is blacklisted
+      // Step 1: Check blacklist — applies to ALL users including students.
+      // invalidateUserSessionLogic() always blacklists a token before clearing
+      // the session row, so this alone is sufficient to reject invalidated tokens.
       const [blacklistedToken] = await db
         .select()
         .from(blacklistedTokens)
@@ -481,26 +502,29 @@ export class AuthService {
         throw new UnauthorizedException('Token has been invalidated');
       }
 
+      // Step 2: Verify JWT signature and expiry.
       const payload = await this.jwtService.verifyAsync(token);
-      const sessionConditions = [
-        eq(zuvyUserOrganizations.userId, Number(payload.sub)),
-      ];
 
+      // Step 3: Session-store check — enforces single-session per org.
+      // Skipped for null-org users (students) because:
+      //   a) Students are not stored in zuvyUserOrganizations.
+      //   b) Token invalidation for students is handled entirely via the blacklist (Step 1).
+      // Org-scoped users (orgId present) still get strict session matching.
       if (payload.orgId) {
-        sessionConditions.push(
-          eq(zuvyUserOrganizations.organizationId, Number(payload.orgId)),
-        );
-      } else {
-        sessionConditions.push(isNull(zuvyUserOrganizations.organizationId));
-      }
+        const [storedSession] = await db
+          .select({ accessToken: zuvyUserOrganizations.accessToken })
+          .from(zuvyUserOrganizations)
+          .where(
+            and(
+              eq(zuvyUserOrganizations.userId, Number(payload.sub)),
+              eq(zuvyUserOrganizations.organizationId, Number(payload.orgId)),
+              eq(zuvyUserOrganizations.accessToken, token),
+            ),
+          );
 
-      const [storedSession] = await db
-        .select({ accessToken: zuvyUserOrganizations.accessToken })
-        .from(zuvyUserOrganizations)
-        .where(and(...sessionConditions));
-
-      if (!storedSession || storedSession.accessToken !== token) {
-        throw new UnauthorizedException('Token has been invalidated');
+        if (!storedSession) {
+          throw new UnauthorizedException('Token has been invalidated');
+        }
       }
 
       return payload;

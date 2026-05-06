@@ -94,7 +94,18 @@ export class PermissionsGuard implements CanActivate {
       return true;
     }
 
-    const orgId = user.orgId;
+    // Allow users to see their own organizations
+    const path = String(request.originalUrl || request.url || '').toLowerCase();
+    if (
+      path.includes('getorgbyuserid') &&
+      request.params.userId &&
+      Number(request.params.userId) === Number(user.id)
+    ) {
+      return true;
+    }
+
+    const requestOrgId = this.extractOrgId(request);
+    const orgId = requestOrgId !== null ? requestOrgId : user.orgId;
 
     try {
       // Check if user has all required permissions
@@ -111,26 +122,12 @@ export class PermissionsGuard implements CanActivate {
         );
       }
 
-      const hasResourceAccess =
-        await this.rbacPermissionService.validateAssignedResourceAccess(
-          user,
-          this.extractResourceIds(request),
-        );
-
-      if (!hasResourceAccess) {
-        throw new ForbiddenException(
-          'You are not allowed to access this resource',
-        );
-      }
-
       return true;
     } catch (error) {
       if (error instanceof ForbiddenException) {
         throw error;
       }
-      throw new ForbiddenException(
-        'You do not have permission to perform this action',
-      );
+      throw error;
     }
   }
 
@@ -179,48 +176,19 @@ export class PermissionsGuard implements CanActivate {
     return 'create';
   }
 
-  private extractResourceIds(request: any): {
-    orgId?: number | null;
-    bootcampId?: number;
-    batchId?: number;
-  } {
-    const source = {
-      ...(request.params || {}),
-      ...(request.query || {}),
-      ...(request.body || {}),
-    };
-
-    const controller = this.getControllerName(request);
-    const canUseGenericIdAsBootcampId = [
-      'bootcamp',
-      'classes',
-      'content',
-      'instructor',
-      'tracking',
-    ].includes(controller);
-
-    return {
-      orgId: this.toNumber(source.orgId ?? source.organizationId),
-      bootcampId: this.toNumber(
-        source.bootcampId ??
-          source.bootcamp_id ??
-          (canUseGenericIdAsBootcampId ? source.id : undefined) ??
-          source.bootcamp_id,
-      ),
-      batchId: this.toNumber(source.batchId ?? source.batch_id),
-    };
-  }
-
-  private getControllerName(request: any): string {
-    const path = String(request.route?.path || request.path || '')
-      .replace(/^\/+/, '')
-      .split('/')[0];
-    return String(request.baseUrl || '').replace(/^\/+/, '') || path;
-  }
-
-  private toNumber(value: any): number | undefined {
-    if (value === undefined || value === null || value === '') return undefined;
-    const numericValue = Number(value);
-    return Number.isNaN(numericValue) ? undefined : numericValue;
+  private extractOrgId(request: any): number | null {
+    if (request.params?.orgId) {
+      return Number(request.params.orgId);
+    }
+    if (request.query?.orgId) {
+      return Number(request.query.orgId);
+    }
+    if (request.body?.organizationId) {
+      return Number(request.body.organizationId);
+    }
+    if (request.body?.orgId) {
+      return Number(request.body.orgId);
+    }
+    return null;
   }
 }

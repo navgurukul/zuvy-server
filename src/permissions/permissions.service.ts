@@ -242,8 +242,14 @@ export class PermissionsService {
         .where(
           and(
             eq(zuvyUserRolesAssigned.userId, BigInt(userId)),
-            eq(zuvyUserRolesAssigned.organizationId, orgId),
-            eq(zuvyPermissionsRoles.orgId, orgId),
+            or(
+              eq(zuvyUserRolesAssigned.organizationId, orgId),
+              isNull(zuvyUserRolesAssigned.organizationId),
+            ),
+            or(
+              eq(zuvyPermissionsRoles.orgId, orgId),
+              isNull(zuvyPermissionsRoles.orgId),
+            ),
           ),
         );
 
