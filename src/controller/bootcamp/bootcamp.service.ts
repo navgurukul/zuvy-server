@@ -353,36 +353,66 @@ export class BootcampService {
     }
   }
 
-  async getBulkEnrollData(bootcampIds: number[]): Promise<any> {
+  async getBulkEnrollData(bootcampIds: number[]) {
     try {
       if (!bootcampIds || bootcampIds.length === 0) return [null, {}];
 
-      // Example: Replace this with whatever tables `this.enrollData()` was querying.
-      // Use `inArray(yourTable.bootcampId, bootcampIds)` to get all records at once.
-      const enrollments = await db
+      // 1. Fetch ALL enrollments for the requested bootcamps in ONE query
+      const allEnrollments = await db
         .select({
-          bootcampId: zuvyEnrollments.bootcampId,
-          enrolledCount: count(zuvyEnrollments.id), // Example metric
-          // ... whatever else you are pulling in this.enrollData()
+          bootcampId: zuvyBatchEnrollments.bootcampId,
+          batchId: zuvyBatchEnrollments.batchId,
         })
-        .from(zuvyEnrollments)
-        .where(inArray(zuvyEnrollments.bootcampId, bootcampIds))
-        .groupBy(zuvyEnrollments.bootcampId);
+        .from(zuvyBatchEnrollments)
+        .where(inArray(zuvyBatchEnrollments.bootcampId, bootcampIds));
 
-      // Transform the array into an object keyed by bootcampId for O(1) instantaneous lookup
-      // e.g., { 51: { enrolledCount: 20 }, 52: { enrolledCount: 15 } }
-      const mappedData = enrollments.reduce((acc, curr) => {
-        acc[curr.bootcampId] = {
-          // map your response fields here
-          enrolledCount: curr.enrolledCount,
-        };
-        return acc;
-      }, {});
+      // 2. Fetch ALL batches for the requested bootcamps in ONE query
+      const allBatches = await db
+        .select({
+          id: zuvyBatches.id,
+          bootcampId: zuvyBatches.bootcampId,
+        })
+        .from(zuvyBatches)
+        .where(inArray(zuvyBatches.bootcampId, bootcampIds));
 
-      return [null, mappedData];
-    } catch (e) {
-      log(`error in getBulkEnrollData: ${e.message}`);
-      return [{ status: 'error', message: e.message, code: 500 }, null];
+      // 3. Organize batches by bootcampId for O(1) instantaneous lookup
+      const validBatchesByBootcamp = {};
+      allBatches.forEach((batch) => {
+        if (!validBatchesByBootcamp[batch.bootcampId]) {
+          validBatchesByBootcamp[batch.bootcampId] = new Set();
+        }
+        validBatchesByBootcamp[batch.bootcampId].add(batch.id);
+      });
+
+      // 4. Calculate stats mathematically identical to your original logic
+      const result = {};
+
+      // Initialize the default response structure for every ID
+      bootcampIds.forEach((id) => {
+        result[id] = { students_in_bootcamp: 0, unassigned_students: 0 };
+      });
+
+      // Tally the counts entirely in memory (lightning fast)
+      allEnrollments.forEach((enrollment) => {
+        const { bootcampId, batchId } = enrollment;
+
+        // Increment total students for this bootcamp
+        result[bootcampId].students_in_bootcamp += 1;
+
+        // Check if this student is inside a valid batch for this bootcamp
+        const validBatches = validBatchesByBootcamp[bootcampId];
+        const isAssigned = validBatches && validBatches.has(batchId);
+
+        // If they are not assigned to a valid batch, count them as unassigned
+        if (!isAssigned) {
+          result[bootcampId].unassigned_students += 1;
+        }
+      });
+
+      return [null, result];
+    } catch (error) {
+      log(`error in getBulkEnrollData: ${error.message}`);
+      return [{ status: 'error', message: error.message, code: 500 }, null];
     }
   }
 
