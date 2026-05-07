@@ -98,18 +98,47 @@ export class BootcampService {
     filter?: string,
   ): Promise<any> {
     try {
-      let query;
-      let countQuery;
-
       if (!orgId || isNaN(Number(orgId))) {
         return [{ status: 'error', message: 'invalid orgId', code: 400 }, null];
       }
 
-      const orgInfo = await db
-        .select()
-        .from(zuvyOrganizations)
-        .where(eq(zuvyOrganizations.id, Number(orgId)));
+      const filterOrgId = Number(orgId);
+      const isAdmin =
+        roleName.includes('admin') || roleName.includes('super_admin');
 
+      // 1. Determine query branches early to avoid redundant queries
+      const isSearchAsNumber =
+        typeof searchTermAsNumber === 'number' ||
+        (typeof searchTermAsNumber === 'string' &&
+          searchTermAsNumber.trim() !== '' &&
+          !isNaN(Number(searchTermAsNumber)));
+      const isSearchAsString = !!searchTermAsString;
+      const isInstructorRoute =
+        !isSearchAsNumber &&
+        !isSearchAsString &&
+        roleName.includes('instructor');
+
+      // 🚀 OPTIMIZATION 1: Parallelize initial validation and prerequisite data checks
+      const [orgInfo, userOrgs, batches] = await Promise.all([
+        db
+          .select()
+          .from(zuvyOrganizations)
+          .where(eq(zuvyOrganizations.id, filterOrgId)),
+        isAdmin
+          ? Promise.resolve([])
+          : db
+              .select()
+              .from(zuvyUserRolesAssigned)
+              .where(eq(zuvyUserRolesAssigned.userId, userId)),
+        isInstructorRoute
+          ? db
+              .select()
+              .from(zuvyBatches)
+              .where(eq(zuvyBatches.instructorId, userId))
+          : Promise.resolve([]),
+      ]);
+
+      // Validation
       if (orgInfo.length === 0) {
         return [
           {
@@ -121,18 +150,7 @@ export class BootcampService {
         ];
       }
 
-      let filterOrgId = Number(orgId);
-
-      // Fetch user's organizations
-      const userOrgs = await db
-        .select()
-        .from(zuvyUserRolesAssigned)
-        .where(eq(zuvyUserRolesAssigned.userId, userId));
-
-      // Verify user belongs to the requested organization
-      if (roleName.includes('admin') || roleName.includes('super_admin')) {
-        // Admins can see any org's bootcamps
-      } else {
+      if (!isAdmin) {
         const belongsToOrg = userOrgs.some(
           (org) => org.organizationId == filterOrgId,
         );
@@ -148,152 +166,51 @@ export class BootcampService {
         }
       }
 
+      // Build Organization Conditions
       let orgCondition;
       const lowerFilter = filter ? filter.toLowerCase() : 'all';
 
       if (lowerFilter === 'public') {
-        if (filterOrgId) {
-          orgCondition = and(
-            eq(zuvyBootcampType.type, 'Public'),
-            or(
-              eq(zuvyBootcamps.organizationId, filterOrgId),
-              isNull(zuvyBootcamps.organizationId),
-            ),
-          );
-        } else {
-          orgCondition = eq(zuvyBootcampType.type, 'Public');
-        }
+        orgCondition = filterOrgId
+          ? and(
+              eq(zuvyBootcampType.type, 'Public'),
+              or(
+                eq(zuvyBootcamps.organizationId, filterOrgId),
+                isNull(zuvyBootcamps.organizationId),
+              ),
+            )
+          : eq(zuvyBootcampType.type, 'Public');
       } else if (lowerFilter === 'private') {
-        if (filterOrgId) {
-          orgCondition = and(
-            eq(zuvyBootcampType.type, 'Private'),
-            eq(zuvyBootcamps.organizationId, filterOrgId),
-          );
-        } else {
-          // If no org allowed, return no private bootcamps
-          orgCondition = sql`1=0`;
-        }
+        orgCondition = filterOrgId
+          ? and(
+              eq(zuvyBootcampType.type, 'Private'),
+              eq(zuvyBootcamps.organizationId, filterOrgId),
+            )
+          : sql`1=0`;
       } else {
-        // 'all' or default
-        orgCondition = isNull(zuvyBootcamps.organizationId);
-        if (filterOrgId) {
-          orgCondition = or(
-            orgCondition,
-            eq(zuvyBootcamps.organizationId, filterOrgId),
-          );
-        }
+        orgCondition = filterOrgId
+          ? or(
+              isNull(zuvyBootcamps.organizationId),
+              eq(zuvyBootcamps.organizationId, filterOrgId),
+            )
+          : isNull(zuvyBootcamps.organizationId);
       }
 
-      const isSearchAsNumber =
-        typeof searchTermAsNumber === 'number' ||
-        (typeof searchTermAsNumber === 'string' &&
-          searchTermAsNumber.trim() !== '' &&
-          !isNaN(Number(searchTermAsNumber)));
+      // Build Final Search/Filter Conditions
+      let finalCondition;
 
       if (isSearchAsNumber) {
-        let searchCondition = sql`${zuvyBootcamps.id} = ${Number(searchTermAsNumber)}`;
-        if (orgCondition) {
-          searchCondition = and(searchCondition, orgCondition);
-        }
-        query = db
-          .select({
-            id: zuvyBootcamps.id,
-            name: zuvyBootcamps.name,
-            description: zuvyBootcamps.description,
-            collaborator: zuvyBootcamps.collaborator,
-            coverImage: zuvyBootcamps.coverImage,
-            bootcampTopic: zuvyBootcamps.bootcampTopic,
-            startTime: zuvyBootcamps.startTime,
-            duration: zuvyBootcamps.duration,
-            language: zuvyBootcamps.language,
-            organizationId: zuvyBootcamps.organizationId,
-            createdAt: zuvyBootcamps.createdAt,
-            updatedAt: zuvyBootcamps.updatedAt,
-            version: zuvyBootcamps.version,
-            code: zuvyOrganizations.displayName,
-            bootcampType: zuvyBootcampType.type,
-            mentorshipEnabled: zuvyBootcampType.mentorshipEnabled,
-          })
-          .from(zuvyBootcamps)
-          .leftJoin(
-            zuvyOrganizations,
-            eq(zuvyBootcamps.organizationId, zuvyOrganizations.id),
-          )
-          .leftJoin(
-            zuvyBootcampType,
-            eq(zuvyBootcamps.id, zuvyBootcampType.bootcampId),
-          )
-          .where(searchCondition)
-          .orderBy(desc(zuvyBootcamps.updatedAt))
-          .limit(limit)
-          .offset(offset);
-        countQuery = db
-          .select({ count: count(zuvyBootcamps.id) })
-          .from(zuvyBootcamps)
-          .leftJoin(
-            zuvyBootcampType,
-            eq(zuvyBootcamps.id, zuvyBootcampType.bootcampId),
-          )
-          .where(searchCondition);
-      } else if (searchTermAsString) {
-        const searchTokens = searchTermAsString.split(/\s+/); // Split by whitespace
+        finalCondition = sql`${zuvyBootcamps.id} = ${Number(searchTermAsNumber)}`;
+        if (orgCondition) finalCondition = and(finalCondition, orgCondition);
+      } else if (isSearchAsString) {
+        const searchTokens = searchTermAsString.split(/\s+/);
         const searchConditions = searchTokens.map(
           (token) =>
             sql`LOWER(${zuvyBootcamps.name}) LIKE ${'%' + token.toLowerCase() + '%'}`,
         );
-
-        let finalSearchCondition = and(...searchConditions);
-        if (orgCondition) {
-          finalSearchCondition = and(finalSearchCondition, orgCondition);
-        }
-
-        query = db
-          .select({
-            id: zuvyBootcamps.id,
-            name: zuvyBootcamps.name,
-            description: zuvyBootcamps.description,
-            collaborator: zuvyBootcamps.collaborator,
-            coverImage: zuvyBootcamps.coverImage,
-            bootcampTopic: zuvyBootcamps.bootcampTopic,
-            startTime: zuvyBootcamps.startTime,
-            duration: zuvyBootcamps.duration,
-            language: zuvyBootcamps.language,
-            organizationId: zuvyBootcamps.organizationId,
-            createdAt: zuvyBootcamps.createdAt,
-            updatedAt: zuvyBootcamps.updatedAt,
-            version: zuvyBootcamps.version,
-            code: zuvyOrganizations.displayName,
-            bootcampType: zuvyBootcampType.type,
-            mentorshipEnabled: zuvyBootcampType.mentorshipEnabled,
-          })
-          .from(zuvyBootcamps)
-          .leftJoin(
-            zuvyOrganizations,
-            eq(zuvyBootcamps.organizationId, zuvyOrganizations.id),
-          )
-          .leftJoin(
-            zuvyBootcampType,
-            eq(zuvyBootcamps.id, zuvyBootcampType.bootcampId),
-          )
-          .where(finalSearchCondition)
-          .orderBy(desc(zuvyBootcamps.updatedAt))
-          .limit(limit)
-          .offset(offset);
-
-        countQuery = db
-          .select({ count: count(zuvyBootcamps.id) })
-          .from(zuvyBootcamps)
-          .leftJoin(
-            zuvyBootcampType,
-            eq(zuvyBootcamps.id, zuvyBootcampType.bootcampId),
-          )
-          .where(finalSearchCondition);
-      } else if (roleName.includes('instructor')) {
-        //first get all batches assigned to the instructor in zuvyBatches table then get all bootcampas from zuvyBootcamps table
-        const batches = await db
-          .select()
-          .from(zuvyBatches)
-          .where(eq(zuvyBatches.instructorId, userId));
+        finalCondition = and(...searchConditions);
+        if (orgCondition) finalCondition = and(finalCondition, orgCondition);
+      } else if (isInstructorRoute) {
         const bootcampIds = batches.map((batch) => batch.bootcampId);
         if (bootcampIds.length === 0) {
           return [
@@ -307,112 +224,65 @@ export class BootcampService {
             },
           ];
         }
-
         let condition = or(
           isNull(zuvyBootcamps.organizationId),
           eq(zuvyBootcampType.type, 'Public'),
           inArray(zuvyBootcamps.id, bootcampIds),
         );
-        if (orgCondition) {
-          condition = and(condition, orgCondition);
-        }
-
-        query = db
-          .select({
-            id: zuvyBootcamps.id,
-            name: zuvyBootcamps.name,
-            description: zuvyBootcamps.description,
-            collaborator: zuvyBootcamps.collaborator,
-            coverImage: zuvyBootcamps.coverImage,
-            bootcampTopic: zuvyBootcamps.bootcampTopic,
-            startTime: zuvyBootcamps.startTime,
-            duration: zuvyBootcamps.duration,
-            language: zuvyBootcamps.language,
-            organizationId: zuvyBootcamps.organizationId,
-            createdAt: zuvyBootcamps.createdAt,
-            updatedAt: zuvyBootcamps.updatedAt,
-            version: zuvyBootcamps.version,
-            code: zuvyOrganizations.displayName,
-            bootcampType: zuvyBootcampType.type,
-            mentorshipEnabled: zuvyBootcampType.mentorshipEnabled,
-          })
-          .from(zuvyBootcamps)
-          .leftJoin(
-            zuvyOrganizations,
-            eq(zuvyBootcamps.organizationId, zuvyOrganizations.id),
-          )
-          .leftJoin(
-            zuvyBootcampType,
-            eq(zuvyBootcamps.id, zuvyBootcampType.bootcampId),
-          )
-          .where(condition)
-          .orderBy(desc(zuvyBootcamps.updatedAt))
-          .limit(limit)
-          .offset(offset);
-
-        countQuery = db
-          .select({ count: count(zuvyBootcamps.id) })
-          .from(zuvyBootcamps)
-          .leftJoin(
-            zuvyBootcampType,
-            eq(zuvyBootcamps.id, zuvyBootcampType.bootcampId),
-          )
-          .where(condition);
+        finalCondition = orgCondition
+          ? and(condition, orgCondition)
+          : condition;
       } else {
-        query = db
-          .select({
-            id: zuvyBootcamps.id,
-            name: zuvyBootcamps.name,
-            description: zuvyBootcamps.description,
-            collaborator: zuvyBootcamps.collaborator,
-            coverImage: zuvyBootcamps.coverImage,
-            bootcampTopic: zuvyBootcamps.bootcampTopic,
-            startTime: zuvyBootcamps.startTime,
-            duration: zuvyBootcamps.duration,
-            language: zuvyBootcamps.language,
-            organizationId: zuvyBootcamps.organizationId,
-            createdAt: zuvyBootcamps.createdAt,
-            updatedAt: zuvyBootcamps.updatedAt,
-            version: zuvyBootcamps.version,
-            code: zuvyOrganizations.displayName,
-            bootcampType: zuvyBootcampType.type,
-            mentorshipEnabled: zuvyBootcampType.mentorshipEnabled,
-          })
-          .from(zuvyBootcamps)
-          .leftJoin(
-            zuvyOrganizations,
-            eq(zuvyBootcamps.organizationId, zuvyOrganizations.id),
-          )
-          .leftJoin(
-            zuvyBootcampType,
-            eq(zuvyBootcamps.id, zuvyBootcampType.bootcampId),
-          );
-        if (orgCondition) {
-          query = query.where(orgCondition);
-        }
-        query = query
-          .orderBy(desc(zuvyBootcamps.updatedAt))
-          .limit(limit)
-          .offset(offset);
-
-        countQuery = db
-          .select({ count: count(zuvyBootcamps.id) })
-          .from(zuvyBootcamps)
-          .leftJoin(
-            zuvyBootcampType,
-            eq(zuvyBootcamps.id, zuvyBootcampType.bootcampId),
-          );
-        if (orgCondition) {
-          countQuery = countQuery.where(orgCondition);
-        }
+        finalCondition = orgCondition;
       }
 
-      const getBootcamps = await query;
+      // 🚀 OPTIMIZATION 2: D.R.Y Query Definition (Define once, append conditions)
+      let baseQuery = db
+        .select({
+          id: zuvyBootcamps.id,
+          name: zuvyBootcamps.name,
+          description: zuvyBootcamps.description,
+          collaborator: zuvyBootcamps.collaborator,
+          coverImage: zuvyBootcamps.coverImage,
+          bootcampTopic: zuvyBootcamps.bootcampTopic,
+          startTime: zuvyBootcamps.startTime,
+          duration: zuvyBootcamps.duration,
+          language: zuvyBootcamps.language,
+          organizationId: zuvyBootcamps.organizationId,
+          createdAt: zuvyBootcamps.createdAt,
+          updatedAt: zuvyBootcamps.updatedAt,
+          version: zuvyBootcamps.version,
+          code: zuvyOrganizations.displayName,
+          bootcampType: zuvyBootcampType.type,
+          mentorshipEnabled: zuvyBootcampType.mentorshipEnabled,
+        })
+        .from(zuvyBootcamps)
+        .leftJoin(
+          zuvyOrganizations,
+          eq(zuvyBootcamps.organizationId, zuvyOrganizations.id),
+        )
+        .leftJoin(
+          zuvyBootcampType,
+          eq(zuvyBootcamps.id, zuvyBootcampType.bootcampId),
+        );
 
-      const totalCountQuery = await countQuery;
-      const totalCount = totalCountQuery[0].count;
+      let countQuery = db
+        .select({ count: count(zuvyBootcamps.id) })
+        .from(zuvyBootcamps)
+        .leftJoin(
+          zuvyBootcampType,
+          eq(zuvyBootcamps.id, zuvyBootcampType.bootcampId),
+        );
 
-      const totalPages = Math.ceil(totalCount / limit);
+      if (finalCondition) {
+        baseQuery = baseQuery.where(finalCondition);
+        countQuery = countQuery.where(finalCondition);
+      }
+
+      baseQuery = baseQuery
+        .orderBy(desc(zuvyBootcamps.updatedAt))
+        .limit(limit)
+        .offset(offset);
 
       const targetPermissions = [
         ResourceList.course.create,
@@ -422,18 +292,26 @@ export class BootcampService {
         ResourceList.question.read,
         ResourceList.rolesandpermission.read,
       ];
-      // Get permissions for all resources if userId is provided
-      let allPermissions = {};
-      const permissionResult = await this.rbacService.getAllPermissions(
-        roleName,
-        targetPermissions,
-        orgId,
-      );
-      allPermissions = permissionResult.permissions || {};
+
+      // 🚀 OPTIMIZATION 3: Fire query, count query, and RBAC permissions concurrently
+      const [getBootcamps, totalCountQuery, permissionResult] =
+        await Promise.all([
+          baseQuery,
+          countQuery,
+          this.rbacService.getAllPermissions(
+            roleName,
+            targetPermissions,
+            orgId,
+          ),
+        ]);
+
+      const totalCount = totalCountQuery[0].count;
+      const totalPages = Math.ceil(totalCount / limit);
+      const allPermissions = permissionResult?.permissions || {};
 
       const data = await Promise.all(
         getBootcamps.map(async (bootcamp) => {
-          let [err, res] = await this.enrollData(bootcamp.id);
+          const [err, res] = await this.enrollData(bootcamp.id);
           if (err) {
             return [err, null];
           }
