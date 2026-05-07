@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { db } from 'src/db/index';
-import { inArray, sql, eq, and, isNull, or } from 'drizzle-orm';
+import { inArray, sql, eq, and, isNull } from 'drizzle-orm';
 import {
   userRoles,
   users,
@@ -47,10 +47,7 @@ export class PermissionsAllocationService {
           and(
             eq(zuvyUserRolesAssigned.userId, userId),
             orgId !== null
-              ? or(
-                  eq(zuvyUserRolesAssigned.organizationId, orgId),
-                  isNull(zuvyUserRolesAssigned.organizationId),
-                )
+              ? eq(zuvyUserRolesAssigned.organizationId, orgId)
               : isNull(zuvyUserRolesAssigned.organizationId),
           ),
         )
@@ -81,12 +78,7 @@ export class PermissionsAllocationService {
         .where(
           and(
             eq(zuvyPermissionsRoles.roleId, userRoleId),
-            orgId !== null
-              ? or(
-                  eq(zuvyPermissionsRoles.orgId, orgId),
-                  isNull(zuvyPermissionsRoles.orgId),
-                )
-              : isNull(zuvyPermissionsRoles.orgId),
+            sql`${zuvyPermissionsRoles.orgId} IS NOT DISTINCT FROM ${orgId}`, // ✅ better handling
             eq(zuvyPermissions.resourcesId, resourceId),
           ),
         );
@@ -150,10 +142,7 @@ export class PermissionsAllocationService {
           and(
             eq(zuvyUserRolesAssigned.userId, userId),
             orgId !== null
-              ? or(
-                  eq(zuvyUserRolesAssigned.organizationId, orgId),
-                  isNull(zuvyUserRolesAssigned.organizationId),
-                )
+              ? eq(zuvyUserRolesAssigned.organizationId, orgId)
               : isNull(zuvyUserRolesAssigned.organizationId),
           ),
         )
@@ -183,12 +172,7 @@ export class PermissionsAllocationService {
         .where(
           and(
             eq(zuvyPermissionsRoles.roleId, userRoleId),
-            orgId !== null
-              ? or(
-                  eq(zuvyPermissionsRoles.orgId, orgId),
-                  isNull(zuvyPermissionsRoles.orgId),
-                )
-              : isNull(zuvyPermissionsRoles.orgId),
+            sql`${zuvyPermissionsRoles.orgId} IS NOT DISTINCT FROM ${orgId}`,
             inArray(zuvyPermissions.resourcesId, [1, 2, 3]),
           ),
         );
@@ -282,16 +266,10 @@ export class PermissionsAllocationService {
           and(
             eq(zuvyUserRolesAssigned.userId, BigInt(userId)),
             orgId !== null
-              ? or(
-                  eq(zuvyUserRolesAssigned.organizationId, orgId),
-                  isNull(zuvyUserRolesAssigned.organizationId),
-                )
+              ? eq(zuvyUserRolesAssigned.organizationId, orgId)
               : isNull(zuvyUserRolesAssigned.organizationId),
             orgId !== null
-              ? or(
-                  eq(zuvyPermissionsRoles.orgId, orgId),
-                  isNull(zuvyPermissionsRoles.orgId),
-                )
+              ? eq(zuvyPermissionsRoles.orgId, orgId)
               : isNull(zuvyPermissionsRoles.orgId),
             eq(zuvyResources.id, resourceId),
             eq(zuvyPermissions.name, permissionName),
@@ -409,7 +387,7 @@ export class PermissionsAllocationService {
           and(
             inArray(zuvyUserRoles.name, roleNames),
             orgId !== null
-              ? or(eq(zuvyUserRoles.orgId, orgId), isNull(zuvyUserRoles.orgId))
+              ? eq(zuvyUserRoles.orgId, orgId)
               : isNull(zuvyUserRoles.orgId),
           ),
         );
@@ -445,10 +423,7 @@ export class PermissionsAllocationService {
           and(
             inArray(zuvyPermissionsRoles.roleId, roleIds),
             orgId !== null
-              ? or(
-                  eq(zuvyPermissionsRoles.orgId, orgId),
-                  isNull(zuvyPermissionsRoles.orgId),
-                )
+              ? eq(zuvyPermissionsRoles.orgId, orgId)
               : isNull(zuvyPermissionsRoles.orgId),
           ),
         );
