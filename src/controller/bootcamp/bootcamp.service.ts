@@ -106,7 +106,6 @@ export class BootcampService {
       const isAdmin =
         roleName.includes('admin') || roleName.includes('super_admin');
 
-      // 1. Determine query branches early to avoid redundant queries
       const isSearchAsNumber =
         typeof searchTermAsNumber === 'number' ||
         (typeof searchTermAsNumber === 'string' &&
@@ -118,7 +117,7 @@ export class BootcampService {
         !isSearchAsString &&
         roleName.includes('instructor');
 
-      // 🚀 OPTIMIZATION 1: Parallelize initial validation and prerequisite data checks
+      // 🚀 1. Parallelize initial validation and prerequisite data checks
       const [orgInfo, userOrgs, batches] = await Promise.all([
         db
           .select()
@@ -138,7 +137,6 @@ export class BootcampService {
           : Promise.resolve([]),
       ]);
 
-      // Validation
       if (orgInfo.length === 0) {
         return [
           {
@@ -166,7 +164,6 @@ export class BootcampService {
         }
       }
 
-      // Build Organization Conditions
       let orgCondition;
       const lowerFilter = filter ? filter.toLowerCase() : 'all';
 
@@ -196,7 +193,6 @@ export class BootcampService {
           : isNull(zuvyBootcamps.organizationId);
       }
 
-      // Build Final Search/Filter Conditions
       let finalCondition;
 
       if (isSearchAsNumber) {
@@ -236,7 +232,7 @@ export class BootcampService {
         finalCondition = orgCondition;
       }
 
-      // 🚀 OPTIMIZATION 2: D.R.Y Query Definition (Define once, append conditions)
+      // 🚀 2. D.R.Y Query Definition
       let baseQuery = db
         .select({
           id: zuvyBootcamps.id,
@@ -293,7 +289,7 @@ export class BootcampService {
         ResourceList.rolesandpermission.read,
       ];
 
-      // 🚀 OPTIMIZATION 3: Fire query, count query, and RBAC permissions concurrently
+      // 🚀 3. Fire base query, count query, and RBAC permissions concurrently
       const [getBootcamps, totalCountQuery, permissionResult] =
         await Promise.all([
           baseQuery,
@@ -309,20 +305,38 @@ export class BootcampService {
       const totalPages = Math.ceil(totalCount / limit);
       const allPermissions = permissionResult?.permissions || {};
 
-      const data = await Promise.all(
-        getBootcamps.map(async (bootcamp) => {
-          const [err, res] = await this.enrollData(bootcamp.id);
-          if (err) {
-            return [err, null];
-          }
+      // 🚀 4. THE N+1 FIX: Fetch all enroll data in ONE query instead of looping
+      if (getBootcamps.length === 0) {
+        return [
+          null,
+          {
+            data: [],
+            permissions: allPermissions,
+            totalBootcamps: totalCount,
+            totalPages,
+          },
+        ];
+      }
 
-          return {
-            ...bootcamp,
-            mentorshipEnabled: bootcamp.mentorshipEnabled ?? false,
-            ...res,
-          };
-        }),
-      );
+      const bootcampIds = getBootcamps.map((b) => b.id);
+      const [enrollErr, bulkEnrollData] =
+        await this.getBulkEnrollData(bootcampIds); // Look at the helper below
+
+      if (enrollErr) {
+        return [enrollErr, null];
+      }
+
+      // Merge the data entirely in memory (Instantaneous)
+      const data = getBootcamps.map((bootcamp) => {
+        // Find the specific enroll data for this bootcamp using the ID key
+        const res = bulkEnrollData[bootcamp.id] || {};
+
+        return {
+          ...bootcamp,
+          mentorshipEnabled: bootcamp.mentorshipEnabled ?? false,
+          ...res,
+        };
+      });
 
       return [
         null,
@@ -335,6 +349,39 @@ export class BootcampService {
       ];
     } catch (e) {
       log(`error: ${e.message}`);
+      return [{ status: 'error', message: e.message, code: 500 }, null];
+    }
+  }
+
+  async getBulkEnrollData(bootcampIds: number[]): Promise<any> {
+    try {
+      if (!bootcampIds || bootcampIds.length === 0) return [null, {}];
+
+      // Example: Replace this with whatever tables `this.enrollData()` was querying.
+      // Use `inArray(yourTable.bootcampId, bootcampIds)` to get all records at once.
+      const enrollments = await db
+        .select({
+          bootcampId: zuvyEnrollments.bootcampId,
+          enrolledCount: count(zuvyEnrollments.id), // Example metric
+          // ... whatever else you are pulling in this.enrollData()
+        })
+        .from(zuvyEnrollments)
+        .where(inArray(zuvyEnrollments.bootcampId, bootcampIds))
+        .groupBy(zuvyEnrollments.bootcampId);
+
+      // Transform the array into an object keyed by bootcampId for O(1) instantaneous lookup
+      // e.g., { 51: { enrolledCount: 20 }, 52: { enrolledCount: 15 } }
+      const mappedData = enrollments.reduce((acc, curr) => {
+        acc[curr.bootcampId] = {
+          // map your response fields here
+          enrolledCount: curr.enrolledCount,
+        };
+        return acc;
+      }, {});
+
+      return [null, mappedData];
+    } catch (e) {
+      log(`error in getBulkEnrollData: ${e.message}`);
       return [{ status: 'error', message: e.message, code: 500 }, null];
     }
   }
