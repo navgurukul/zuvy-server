@@ -21,7 +21,7 @@ jobs:
             cd /home/zuvy-server
 
             # Pull the latest code
-            git pull origin main
+            git pull
 
             # Stop current containers
             docker compose -f compose.yaml down
