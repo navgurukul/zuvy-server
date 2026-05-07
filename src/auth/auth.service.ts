@@ -482,27 +482,6 @@ export class AuthService {
       }
 
       const payload = await this.jwtService.verifyAsync(token);
-      const sessionConditions = [
-        eq(zuvyUserOrganizations.userId, Number(payload.sub)),
-      ];
-
-      if (payload.orgId) {
-        sessionConditions.push(
-          eq(zuvyUserOrganizations.organizationId, Number(payload.orgId)),
-        );
-      } else {
-        sessionConditions.push(isNull(zuvyUserOrganizations.organizationId));
-      }
-
-      const [storedSession] = await db
-        .select({ accessToken: zuvyUserOrganizations.accessToken })
-        .from(zuvyUserOrganizations)
-        .where(and(...sessionConditions));
-
-      if (!storedSession || storedSession.accessToken !== token) {
-        throw new UnauthorizedException('Token has been invalidated');
-      }
-
       return payload;
     } catch (error) {
       throw new UnauthorizedException('Invalid token');
