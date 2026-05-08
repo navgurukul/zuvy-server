@@ -149,6 +149,48 @@ export class MentorSlotService {
     return true;
   }
 
+  private async ensureMentorOwnsBooking(userId: number, bookingId: number) {
+    await this.ensureUserIsMentor(userId);
+
+    const [booking] = await db
+      .select()
+      .from(zuvyMentorSlotBooking)
+      .where(eq(zuvyMentorSlotBooking.id, bookingId))
+      .limit(1);
+
+    if (!booking) {
+      throw new NotFoundException('Booking not found.');
+    }
+
+    if (booking.mentorUserId !== BigInt(userId)) {
+      throw new ForbiddenException('You do not own this booking.');
+    }
+
+    return booking;
+  }
+
+  private async ensureUserOwnsBooking(userId: number, bookingId: number) {
+    const [booking] = await db
+      .select()
+      .from(zuvyMentorSlotBooking)
+      .where(eq(zuvyMentorSlotBooking.id, bookingId))
+      .limit(1);
+
+    if (!booking) {
+      throw new NotFoundException('Booking not found.');
+    }
+
+    const userIdBigInt = BigInt(userId);
+    if (
+      booking.mentorUserId !== userIdBigInt &&
+      booking.studentUserId !== userIdBigInt
+    ) {
+      throw new ForbiddenException('You do not own this booking.');
+    }
+
+    return booking;
+  }
+
   private async ensureMentorZoomVerified(userId: number) {
     const mentorProfile = await this.getOrCreateMentorProfile(userId);
     console.log(
@@ -849,11 +891,28 @@ export class MentorSlotService {
     bookingId: number,
     reason: string,
     cancelledBy: 'mentor' | 'student',
+    actorUserId?: number,
   ) {
     if (!reason || reason.length < 10) {
       throw new BadRequestException(
         'Cancellation reason must be at least 10 characters.',
       );
+    }
+
+    if (actorUserId) {
+      const booking = await this.ensureUserOwnsBooking(actorUserId, bookingId);
+      const actorUserIdBigInt = BigInt(actorUserId);
+
+      if (
+        (cancelledBy === 'mentor' &&
+          booking.mentorUserId !== actorUserIdBigInt) ||
+        (cancelledBy === 'student' &&
+          booking.studentUserId !== actorUserIdBigInt)
+      ) {
+        throw new ForbiddenException(
+          `Only the ${cancelledBy} can cancel as ${cancelledBy}.`,
+        );
+      }
     }
 
     return db.transaction(async (trx) => {
@@ -1012,6 +1071,7 @@ export class MentorSlotService {
     bookingId: number,
     newSlotId: number,
     reason: string,
+    studentUserId?: number,
   ) {
     if (!reason || reason.length < 10) {
       throw new BadRequestException(
@@ -1031,6 +1091,10 @@ export class MentorSlotService {
 
     if (!booking) {
       throw new NotFoundException('Booking not found.');
+    }
+
+    if (studentUserId && booking.studentUserId !== BigInt(studentUserId)) {
+      throw new ForbiddenException('You do not own this booking.');
     }
 
     if (booking.status === 'cancelled') {
@@ -1133,7 +1197,12 @@ export class MentorSlotService {
     bookingId: number,
     feedback: any,
     rating?: number,
+    mentorUserId?: number,
   ) {
+    if (mentorUserId) {
+      await this.ensureMentorOwnsBooking(mentorUserId, bookingId);
+    }
+
     const [booking] = await db
       .select()
       .from(zuvyMentorSlotBooking)
@@ -1206,7 +1275,11 @@ export class MentorSlotService {
       .where(eq(zuvyMentorSlotAvailability.id, slotId));
   }
 
-  async acceptReschedule(bookingId: number) {
+  async acceptReschedule(bookingId: number, mentorUserId?: number) {
+    if (mentorUserId) {
+      await this.ensureMentorOwnsBooking(mentorUserId, bookingId);
+    }
+
     return db.transaction(async (trx) => {
       const [booking] = await trx
         .select()
@@ -1311,7 +1384,11 @@ export class MentorSlotService {
     });
   }
 
-  async declineReschedule(bookingId: number) {
+  async declineReschedule(bookingId: number, mentorUserId?: number) {
+    if (mentorUserId) {
+      await this.ensureMentorOwnsBooking(mentorUserId, bookingId);
+    }
+
     const [booking] = await db
       .select()
       .from(zuvyMentorSlotBooking)
@@ -1643,7 +1720,12 @@ export class MentorSlotService {
     bookingId: number,
     joinedAtStr: string,
     leftAtStr: string,
+    mentorUserId?: number,
   ) {
+    if (mentorUserId) {
+      await this.ensureMentorOwnsBooking(mentorUserId, bookingId);
+    }
+
     const joinedAt = new Date(joinedAtStr);
     const leftAt = new Date(leftAtStr);
 
@@ -1665,7 +1747,11 @@ export class MentorSlotService {
       .where(eq(zuvyMentorSlotBooking.id, bookingId));
   }
 
-  async completeSession(bookingId: number) {
+  async completeSession(bookingId: number, mentorUserId?: number) {
+    if (mentorUserId) {
+      await this.ensureMentorOwnsBooking(mentorUserId, bookingId);
+    }
+
     return db
       .update(zuvyMentorSlotBooking)
       .set({

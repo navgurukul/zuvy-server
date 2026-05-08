@@ -10,6 +10,8 @@ import { SessionController } from './session/session.controller';
 import { SessionService } from './session/session.service';
 import { MentorPublicController } from './public/mentor-public.controller';
 import { MentorPublicService } from './public/mentor-public.service';
+import { StudentMentorSlotController } from './student-mentor-slot.controller';
+import { InstructorMentorSlotController } from './instructor-mentor-slot.controller';
 import { GoogleModule } from 'src/integrations/google/google.module';
 import { NewNotificationModule } from '../notification/notification.module';
 import { ZoomModule } from 'src/services/zoom/zoom.module';
@@ -30,6 +32,8 @@ import { TrackinglogModule } from 'src/trackinglog/trackinglog.module';
     MentorMetricsController,
     MentorPublicController,
     SessionController,
+    StudentMentorSlotController,
+    InstructorMentorSlotController,
   ],
   providers: [
     MentorSlotService,
