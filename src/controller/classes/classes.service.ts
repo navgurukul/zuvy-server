@@ -16,6 +16,7 @@ import {
   zuvySessionMerge,
   zuvySessionRecordings,
   licenseAssignments,
+  licenses,
 } from '../../../drizzle/schema';
 import {
   eq,
@@ -28,6 +29,7 @@ import {
   gte,
   lt,
   count,
+  notInArray,
 } from 'drizzle-orm';
 import { Res, Req } from '@nestjs/common';
 import { Response } from 'express';
@@ -40,6 +42,7 @@ import { Console } from 'console';
 @Injectable()
 export class ClassesService {
   private readonly logger = new Logger(ClassesService.name);
+  private readonly pendingZoomMeetingPrefix = 'pending-zoom-session-';
 
   constructor(
     private readonly zoomService: ZoomService,
@@ -78,6 +81,20 @@ export class ClassesService {
     return `Cannot transfer the Zoom license from ${sourceEmail} to ${targetEmail} because the configured Zoom access token is missing the required admin scopes (user:update:user and user:update:user:admin). Please reconnect Zoom with admin permissions or update the OAuth app scopes.`;
   }
 
+  private getProtectedLicenseEmails() {
+    return new Set(
+      [
+        process.env.TEAM_EMAIL,
+        'Laasya@navgurukul.org',
+        'Vinit@navgurukul.org',
+        'dutta.aniket1399@gmail.com',
+        'poonam@navgurukul.org',
+      ]
+        .filter(Boolean)
+        .map((email) => String(email).trim().toLowerCase()),
+    );
+  }
+
   private async findAvailableLicensedDonor(
     instructorEmail: string,
     startTime: Date,
@@ -102,11 +119,7 @@ export class ClassesService {
       );
     }
 
-    const protectedEmails = new Set(
-      [process.env.TEAM_EMAIL]
-        .filter(Boolean)
-        .map((email) => String(email).trim().toLowerCase()),
-    );
+    const protectedEmails = this.getProtectedLicenseEmails();
     const donors = (licensedUsers.data?.users || [])
       .filter((user) => user.email !== instructorEmail)
       .filter((user) => !protectedEmails.has(user.email.toLowerCase()));
@@ -204,6 +217,235 @@ export class ClassesService {
     throw new Error(
       `Failed to assign Zoom license to ${instructorEmail}: ${licenseResult.error || 'Unknown Zoom licensing error'}`,
     );
+  }
+
+  private createPendingZoomMeetingId() {
+    return `${this.pendingZoomMeetingPrefix}${uuid()}`;
+  }
+
+  private isPendingZoomMeetingId(meetingId?: string | null) {
+    return Boolean(
+      meetingId && meetingId.startsWith(this.pendingZoomMeetingPrefix),
+    );
+  }
+
+  private async activateZoomSession(sessionId: number) {
+    const session = await db.query.zuvySessions.findFirst({
+      where: eq(zuvySessions.id, sessionId),
+    });
+
+    if (!session) {
+      throw new Error(`Zoom session ${sessionId} not found.`);
+    }
+
+    if (!session.isZoomMeet) {
+      return session;
+    }
+
+    if (!this.isPendingZoomMeetingId(session.meetingId)) {
+      return session;
+    }
+
+    const startTime = new Date(session.startTime);
+    const endTime = new Date(session.endTime);
+    const instructorResult = await this.getInstructorDetails(session.batchId);
+    const instructorEmail = instructorResult.instructor?.email;
+
+    if (!instructorEmail) {
+      throw new Error(
+        `Instructor email not found for Zoom session ${sessionId}.`,
+      );
+    }
+
+    const hostEmail = instructorEmail;
+    await this.ensureInstructorHasZoomLicenseForSession(
+      hostEmail,
+      startTime,
+      endTime,
+    );
+
+    const invitedStudents = Array.isArray(session.invitedStudents)
+      ? (session.invitedStudents as { email: string; name?: string }[])
+      : [];
+
+    const meetingInvitees = invitedStudents
+      .filter((student) => student?.email)
+      .map((student) => ({
+        email: student.email,
+        name: student.name || student.email.split('@')[0],
+      }));
+
+    const duration = Math.floor(
+      (endTime.getTime() - startTime.getTime()) / (1000 * 60),
+    );
+
+    const candidateAltHosts: string[] = [];
+    if (session.creator && session.creator !== hostEmail) {
+      candidateAltHosts.push(session.creator);
+    }
+
+    const verifiedAltHosts: string[] = [];
+    for (const email of candidateAltHosts) {
+      try {
+        const res = await this.zoomService.ensureLicensedUser(email, '', '');
+        if (res.success && res.licensed) {
+          verifiedAltHosts.push(email);
+        } else {
+          this.logger.warn(
+            `Skipping deferred alternative host ${email} for session ${sessionId} (not licensed or inactive)`,
+          );
+        }
+      } catch (error) {
+        this.logger.warn(
+          `Failed verifying deferred alternative host ${email} for session ${sessionId}: ${error.message}`,
+        );
+      }
+    }
+
+    const zoomMeetingData = {
+      topic: session.title,
+      type: 2,
+      start_time: startTime.toISOString(),
+      duration,
+      timezone: 'UTC',
+      agenda: 'Live class session',
+      settings: {
+        host_video: true,
+        participant_video: true,
+        join_before_host: false,
+        mute_upon_entry: true,
+        waiting_room: false,
+        alternative_hosts_email_notification: true,
+        audio: 'both',
+        close_registration: true,
+        cn_meeting: false,
+        enforce_login: false,
+        in_meeting: false,
+        jbh_time: 0,
+        meeting_authentication: true,
+        registrants_confirmation_email: true,
+        registrants_email_notification: true,
+        registration_type: 1,
+        show_share_button: true,
+        attendance_reporting: true,
+        end_on_auto_off: true,
+        allow_multiple_devices: true,
+        breakout_room: {
+          enable: true,
+        },
+        focus_mode: false,
+        meeting_invitees: meetingInvitees,
+        watermark: false,
+        calendar_type: 1,
+        auto_recording: 'cloud',
+        recording: {
+          recording_authentication: false,
+        },
+      },
+    };
+
+    let zoomResponse = await this.zoomService.createMeetingForUser(
+      hostEmail,
+      zoomMeetingData as any,
+    );
+
+    if (
+      !zoomResponse.success &&
+      zoomResponse.error &&
+      /alternative host/i.test(zoomResponse.error)
+    ) {
+      this.logger.warn(
+        `Retrying deferred Zoom meeting creation for session ${sessionId} without alternative hosts.`,
+      );
+      const cloneNoAlt = {
+        ...zoomMeetingData,
+        settings: { ...zoomMeetingData.settings },
+      };
+      delete (cloneNoAlt.settings as any).alternative_hosts;
+      delete (cloneNoAlt.settings as any).alternative_hosts_email_notification;
+      zoomResponse = await this.zoomService.createMeetingForUser(
+        hostEmail,
+        cloneNoAlt as any,
+      );
+    }
+
+    if (!zoomResponse.success) {
+      throw new Error(`Failed to create Zoom meeting: ${zoomResponse.error}`);
+    }
+
+    const createdMeetingId = zoomResponse.data.id.toString();
+
+    try {
+      const meetingDetails =
+        await this.zoomService.getMeeting(createdMeetingId);
+      if (!meetingDetails.success || !meetingDetails.data?.uuid) {
+        throw new Error('Failed to fetch Zoom meeting UUID');
+      }
+
+      const zoomSessionUpdate: any = {
+        meetingId: createdMeetingId,
+        hangoutLink: zoomResponse.data.join_url,
+        zoomStartUrl: zoomResponse.data.start_url,
+        zoomPassword: zoomResponse.data.password,
+        zoomMeetingId: createdMeetingId,
+        zoomMeetingUuid: meetingDetails.data.uuid,
+        status: 'ongoing',
+      };
+
+      const [updatedSession] = await db
+        .update(zuvySessions)
+        .set(zoomSessionUpdate)
+        .where(eq(zuvySessions.id, sessionId))
+        .returning();
+
+      this.logger.log(
+        `Activated deferred Zoom session ${sessionId} for ${hostEmail}.`,
+      );
+
+      return updatedSession;
+    } catch (error) {
+      try {
+        await this.zoomService.deleteMeeting(createdMeetingId);
+      } catch (cleanupError) {
+        this.logger.warn(
+          `Failed to rollback Zoom meeting ${createdMeetingId} after activation error for session ${sessionId}: ${cleanupError.message}`,
+        );
+      }
+      throw error;
+    }
+  }
+
+  async activateScheduledZoomSessions() {
+    const nowIso = new Date().toISOString();
+
+    const dueSessions = await db
+      .select({
+        id: zuvySessions.id,
+        meetingId: zuvySessions.meetingId,
+      })
+      .from(zuvySessions)
+      .where(
+        and(
+          eq(zuvySessions.isZoomMeet, true),
+          eq(zuvySessions.status, 'upcoming'),
+          sql`${zuvySessions.startTime} <= ${nowIso}`,
+          sql`${zuvySessions.endTime} > ${nowIso}`,
+        ),
+      );
+
+    for (const session of dueSessions) {
+      if (!this.isPendingZoomMeetingId(session.meetingId)) {
+        continue;
+      }
+
+      try {
+        await this.activateZoomSession(session.id);
+      } catch (error) {
+        this.logger.error(
+          `Failed to activate scheduled Zoom session ${session.id}: ${error.message}`,
+        );
+      }
+    }
   }
 
   async accessOfCalendar(creatorInfo) {
@@ -488,21 +730,12 @@ export class ClassesService {
     },
     creatorInfo: any,
   ) {
-    let createdZoomMeetingId: string | null = null;
     try {
       // Guard again in case this method is called directly
 
       const sessionsToCreate = [];
       const startDate = new Date(eventDetails.startDateTime);
       const endDate = new Date(eventDetails.endDateTime);
-
-      // Create adjusted dates for Zoom meeting (subtract 30 minutes)
-      const zoomStartDate = new Date(startDate);
-      const zoomEndDate = new Date(endDate);
-
-      const duration = Math.floor(
-        (zoomEndDate.getTime() - zoomStartDate.getTime()) / (1000 * 60),
-      ); // Duration in minutes
 
       // Get student emails for the primary batch to add as meeting invitees (legacy fallback)
       const studentsResult = await this.getStudentsEmails(eventDetails.batchId);
@@ -517,12 +750,6 @@ export class ClassesService {
         studentsResult.students
           .map((s) => ({ userId: s.id, email: s.email, name: s.name }))
           .filter((s) => s.email);
-
-      // Prepare meeting invitees from batch students (including instructor)
-      const meetingInvitees = invitedStudents.map((student) => ({
-        email: student.email,
-        name: student.email.split('@')[0],
-      }));
 
       const batch = await db
         .select({ instructorId: zuvyBatches.instructorId })
@@ -564,138 +791,6 @@ export class ClassesService {
         };
       }
 
-      // Create Zoom meeting under the batch instructor. If the instructor is not
-      // currently licensed in Zoom, transfer a free license before meeting creation.
-      const hostEmail = instructorEmail;
-      await this.ensureInstructorHasZoomLicenseForSession(
-        hostEmail,
-        startDate,
-        endDate,
-      );
-      const candidateAltHosts: string[] = [];
-      const verifiedAltHosts: string[] = [];
-      if (
-        studentsResult.instructor?.email &&
-        studentsResult.instructor.email !== hostEmail
-      ) {
-        candidateAltHosts.push(studentsResult.instructor.email);
-      }
-      if (creatorInfo?.email && creatorInfo.email !== hostEmail) {
-        candidateAltHosts.push(creatorInfo.email);
-      }
-      if (Array.isArray(eventDetails.coHostEmails)) {
-        for (const email of eventDetails.coHostEmails) {
-          if (
-            email &&
-            email !== hostEmail &&
-            !candidateAltHosts.includes(email)
-          )
-            candidateAltHosts.push(email);
-        }
-      }
-      // Verify candidate alternative hosts are licensed & active; only then include
-      for (const email of candidateAltHosts) {
-        try {
-          const res = await this.zoomService.ensureLicensedUser(email, '', '');
-          if (res.success && res.licensed) {
-            verifiedAltHosts.push(email);
-          } else {
-            this.logger.warn(
-              `Skipping alternative host ${email} (not licensed or inactive)`,
-            );
-          }
-        } catch (e) {
-          this.logger.warn(`Failed licensing alt host ${email}: ${e.message}`);
-        }
-      }
-      const alternativeHosts = verifiedAltHosts.join(',');
-      const zoomMeetingData = {
-        topic: eventDetails.title,
-        type: 2, // Scheduled meeting
-        start_time: zoomStartDate.toISOString(), // Use adjusted start time for Zoom
-        duration: duration,
-        // timezone: eventDetails.timeZone || 'Asia/Kolkata',
-        timezone: 'UTC',
-        agenda: eventDetails.description || 'Live class session',
-        settings: {
-          host_video: true,
-          participant_video: true,
-          join_before_host: false,
-          mute_upon_entry: true,
-          // Disable waiting room so invited participants can join without manual admit
-          waiting_room: false,
-          alternative_hosts_email_notification: true,
-          audio: 'both', // Both telephony and voip
-          close_registration: true,
-          cn_meeting: false,
-          // Allow external students without Zoom org SSO requirement
-          enforce_login: false,
-          in_meeting: false,
-          jbh_time: 0,
-          // Do not require authenticated Zoom profile (some students might be guests)
-          meeting_authentication: true,
-          registrants_confirmation_email: true,
-          registrants_email_notification: true,
-          registration_type: 1,
-          show_share_button: true,
-          // Attendance and End Meeting Settings
-          attendance_reporting: true, // Enable attendance tracking
-          end_on_auto_off: true, // End meeting when host leaves
-          // Additional required attributes
-          allow_multiple_devices: true,
-          breakout_room: {
-            enable: true,
-          },
-          focus_mode: false,
-          meeting_invitees: meetingInvitees,
-          watermark: false,
-          calendar_type: 1, // Google Calendar
-          auto_recording: 'cloud',
-          recording: {
-            // Do not require users to be logged in to view cloud recordings.
-            recording_authentication: false,
-          },
-        },
-      };
-      let zoomResponse = await this.zoomService.createMeetingForUser(
-        hostEmail,
-        zoomMeetingData as any,
-      );
-      // Fallback: if alternative host error occurs, retry without them
-      if (
-        !zoomResponse.success &&
-        zoomResponse.error &&
-        /alternative host/i.test(zoomResponse.error)
-      ) {
-        this.logger.warn(
-          'Retrying Zoom meeting creation without alternative hosts due to Zoom error.',
-        );
-        const cloneNoAlt = {
-          ...zoomMeetingData,
-          settings: { ...zoomMeetingData.settings },
-        };
-        delete (cloneNoAlt.settings as any).alternative_hosts;
-        delete (cloneNoAlt.settings as any)
-          .alternative_hosts_email_notification;
-        zoomResponse = await this.zoomService.createMeetingForUser(
-          hostEmail,
-          cloneNoAlt as any,
-        );
-      }
-      if (!zoomResponse.success) {
-        throw new Error(`Failed to create Zoom meeting: ${zoomResponse.error}`);
-      }
-      createdZoomMeetingId = zoomResponse.data.id.toString();
-
-      // FETCH UUID EXPLICITLY (Zoom does NOT always return it on create)
-      const meetingDetails = await this.zoomService.getMeeting(
-        zoomResponse.data.id.toString(),
-      );
-
-      if (!meetingDetails.success || !meetingDetails.data?.uuid) {
-        throw new Error('Failed to fetch Zoom meeting UUID');
-      }
-
       // Create corresponding Google Calendar event for Zoom meeting
       let calendarEventId = null;
       // try {
@@ -728,17 +823,19 @@ export class ClassesService {
       // zoomEndDate.setHours(zoomEndDate.getHours() - 5);
       // zoomEndDate.setMinutes(zoomEndDate.getMinutes() - 30);
 
+      const pendingMeetingId = this.createPendingZoomMeetingId();
       const session = {
-        meetingId: zoomResponse.data.id.toString(), // Use Zoom meeting ID if Google Calendar fails
-        zoomJoinUrl: zoomResponse.data.join_url,
-        zoomStartUrl: zoomResponse.data.start_url,
-        zoomPassword: zoomResponse.data.password,
-        zoomMeetingId: zoomResponse.data.id.toString(),
-        zoomMeetingUuid: meetingDetails.data.uuid,
+        meetingId: pendingMeetingId,
+        hangoutLink: `pending://zoom/${pendingMeetingId}`,
+        zoomJoinUrl: `pending://zoom/${pendingMeetingId}`,
+        zoomStartUrl: null,
+        zoomPassword: null,
+        zoomMeetingId: null,
+        zoomMeetingUuid: null,
         googleCalendarEventId: calendarEventId, // Store Google Calendar event ID
         creator: creatorInfo.email,
-        startTime: zoomStartDate.toISOString(), // Use original start time for database
-        endTime: zoomEndDate.toISOString(), // Use original end time for database
+        startTime: startDate.toISOString(),
+        endTime: endDate.toISOString(),
         batchId: eventDetails.batchId,
         secondBatchId: eventDetails.secondBatchId,
         bootcampId: eventDetails.bootcampId,
@@ -774,14 +871,14 @@ export class ClassesService {
         throw new Error(saveResult.message);
       }
 
-      // Enqueue recording job AFTER session is saved
-      for (const saved of saveResult.data) {
-        await this.enqueueRecordingJob({
-          id: saved.id,
-          zoomMeetingId: saved.zoomMeetingId,
-          zoomMeetingUuid: saved.zoomMeetingUuid,
-          isZoomMeet: saved.isZoomMeet,
-        });
+      let responseSessions = saveResult.data;
+      const startsNow =
+        startDate.getTime() <= Date.now() && endDate.getTime() > Date.now();
+      if (startsNow && saveResult.data?.[0]?.id) {
+        const activatedSession = await this.activateZoomSession(
+          saveResult.data[0].id,
+        );
+        responseSessions = [activatedSession];
       }
 
       const courseRes = await db
@@ -796,8 +893,10 @@ export class ClassesService {
 
       return {
         status: 'success',
-        message: 'Zoom session created successfully',
-        data: saveResult.data,
+        message: startsNow
+          ? 'Zoom session created and activated successfully'
+          : 'Zoom session scheduled successfully. Zoom license transfer will happen when the class starts.',
+        data: responseSessions,
         descriptionSuffix,
       };
     } catch (error) {
@@ -808,16 +907,6 @@ export class ClassesService {
         this.logger.warn('Zoom session creation blocked by license cap.');
       }
       this.logger.error(`Error creating Zoom session: ${error.message}`);
-      // Best-effort cleanup if we created a Zoom meeting but failed before persisting the session.
-      try {
-        if (createdZoomMeetingId) {
-          await this.zoomService.deleteMeeting(createdZoomMeetingId);
-        }
-      } catch (cleanupError) {
-        this.logger.warn(
-          `Failed to rollback Zoom meeting after session creation error: ${cleanupError.message}`,
-        );
-      }
       return {
         status: 'error',
         message: 'Failed to create Zoom session',
@@ -1287,18 +1376,46 @@ export class ClassesService {
         for (let i = 0; i < results.length; i++) {
           const original = sessionData[i];
           if (original.licenseId && original.startTime && original.endTime) {
+            const protectedEmails = this.getProtectedLicenseEmails();
+            const batch = await trx
+              .select({
+                instructorId: zuvyBatches.instructorId,
+                instructorEmail: users.email,
+              })
+              .from(zuvyBatches)
+              .innerJoin(users, eq(zuvyBatches.instructorId, users.id))
+              .where(eq(zuvyBatches.id, original.batchId))
+              .limit(1);
+
+            const instructorEmail = batch[0]?.instructorEmail
+              ? String(batch[0].instructorEmail).toLowerCase()
+              : null;
+            const usingProtectedSeat = instructorEmail
+              ? protectedEmails.has(instructorEmail)
+              : false;
+
             const overlappingAssignments = await trx
               .select({ count: sql<number>`count(*)` })
               .from(licenseAssignments)
+              .innerJoin(users, eq(licenseAssignments.instructorId, users.id))
               .where(
                 and(
                   sql`${licenseAssignments.startTime} < ${new Date(original.endTime)}`,
                   sql`${licenseAssignments.endTime} > ${new Date(original.startTime)}`,
+                  usingProtectedSeat
+                    ? eq(sql<string>`lower(${users.email})`, instructorEmail!)
+                    : notInArray(
+                        sql<string>`lower(${users.email})`,
+                        Array.from(protectedEmails),
+                      ),
                 ),
               );
 
-            const activePoolCount =
-              await this.zoomLicenseService.getActiveLicensePoolCount(trx);
+            const activePoolCount = usingProtectedSeat
+              ? 1
+              : await this.zoomLicenseService.getTransferableLicensePoolCount(
+                  trx,
+                );
 
             if (
               Number(overlappingAssignments[0]?.count || 0) >= activePoolCount
@@ -1307,13 +1424,6 @@ export class ClassesService {
                 `No Zoom licenses available for this time period. Active licensed pool: ${activePoolCount}, overlapping assignments: ${Number(overlappingAssignments[0]?.count || 0)}.`,
               );
             }
-
-            // Get instructorId from the batch (assuming each batch has a designated instructor)
-            const batch = await trx
-              .select({ instructorId: zuvyBatches.instructorId })
-              .from(zuvyBatches)
-              .where(eq(zuvyBatches.id, original.batchId))
-              .limit(1);
 
             if (batch[0]?.instructorId) {
               await this.zoomLicenseService.createLicenseAssignment(trx, {
@@ -1878,6 +1988,22 @@ export class ClassesService {
         } else if (currentTime >= startTime && currentTime <= endTime)
           newStatus = 'ongoing';
         else newStatus = 'upcoming';
+        if (
+          newStatus === 'ongoing' &&
+          this.isPendingZoomMeetingId(classObj.meetingId)
+        ) {
+          try {
+            const activatedSession = await this.activateZoomSession(
+              classObj.id,
+            );
+            classObj = activatedSession;
+          } catch (error) {
+            this.logger.error(
+              `Failed to activate Zoom session ${classObj.id} during status update: ${error.message}`,
+            );
+            continue;
+          }
+        }
         if (newStatus !== classObj.status) {
           classesToUpdate.push({
             id: classObj.id,
