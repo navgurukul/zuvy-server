@@ -483,6 +483,7 @@ export class MentorSlotService {
         throw new BadRequestException('Slot is full.');
       }
 
+      // 12-hour booking notice is temporarily disabled for short-notice sessions.
       // this.enforceMinimumNotice(new Date(slot.slotStartDateTime));
 
       /* ========================================
@@ -1135,7 +1136,8 @@ export class MentorSlotService {
       throw new BadRequestException('Proposed slot is full.');
     }
 
-    this.enforceMinimumNotice(new Date(slot.slotStartDateTime));
+    // 12-hour reschedule notice is temporarily disabled for short-notice sessions.
+    // this.enforceMinimumNotice(new Date(slot.slotStartDateTime));
 
     if (new Date(slot.slotStartDateTime) <= new Date()) {
       throw new BadRequestException('Cannot reschedule to past slot.');
@@ -1246,7 +1248,7 @@ export class MentorSlotService {
   }
 
   /* ==========================================================================
-     ENFORCE 12-HOUR SLOT DELETION RULE
+     DELETE EMPTY UPCOMING SLOT
   ========================================================================== */
 
   async removeSlot(userId: number, slotId: number) {
@@ -1268,11 +1270,43 @@ export class MentorSlotService {
       throw new ForbiddenException('You do not own this slot.');
     }
 
-    this.enforceMinimumNotice(slot.slotStartDateTime);
+    if (new Date(slot.slotStartDateTime) <= new Date()) {
+      throw new BadRequestException('Only upcoming slots can be deleted.');
+    }
 
-    return db
+    if (slot.currentBookedCount > 0) {
+      throw new BadRequestException('Booked slots cannot be deleted.');
+    }
+
+    const [{ count: bookingCount }] = await db
+      .select({ count: count() })
+      .from(zuvyMentorSlotBooking)
+      .where(
+        and(
+          eq(zuvyMentorSlotBooking.slotAvailabilityId, slotId),
+          ne(zuvyMentorSlotBooking.status, 'cancelled'),
+        ),
+      );
+
+    if (Number(bookingCount) > 0) {
+      throw new BadRequestException('Booked slots cannot be deleted.');
+    }
+
+    // 12-hour deletion notice is temporarily disabled for short-notice slots.
+    // this.enforceMinimumNotice(slot.slotStartDateTime);
+
+    const result = await db
       .delete(zuvyMentorSlotAvailability)
-      .where(eq(zuvyMentorSlotAvailability.id, slotId));
+      .where(eq(zuvyMentorSlotAvailability.id, slotId))
+      .returning();
+
+    if (!result.length) {
+      throw new NotFoundException('Slot not found or already deleted');
+    }
+
+    return {
+      message: 'Slot deleted successfully',
+    };
   }
 
   async acceptReschedule(bookingId: number, mentorUserId?: number) {
@@ -1440,6 +1474,14 @@ export class MentorSlotService {
       throw new BadRequestException('Cannot create past slot.');
     }
 
+    const durationMinutes = Math.round(
+      (end.getTime() - start.getTime()) / (1000 * 60),
+    );
+
+    if (durationMinutes <= 0) {
+      throw new BadRequestException('Invalid slot duration.');
+    }
+
     /* ================================
        PLATFORM SLOT OVERLAP CHECK
     ================================= */
@@ -1453,8 +1495,8 @@ export class MentorSlotService {
             zuvyMentorSlotAvailability.mentorSlotManagementId,
             mentorProfile.id,
           ),
-          lt(zuvyMentorSlotAvailability.slotEndDateTime, start),
-          gt(zuvyMentorSlotAvailability.slotStartDateTime, end),
+          lt(zuvyMentorSlotAvailability.slotStartDateTime, end),
+          gt(zuvyMentorSlotAvailability.slotEndDateTime, start),
         ),
       );
 
@@ -1468,7 +1510,11 @@ export class MentorSlotService {
         mentorSlotManagementId: mentorProfile.id,
         slotStartDateTime: start,
         slotEndDateTime: end,
-        durationMinutes: dto.durationMinutes,
+        durationMinutes,
+        maxCapacity: dto.maxCapacity ?? 1,
+        topic: dto.topic ?? null,
+        status: 'available',
+        isPublic: true,
       } as typeof zuvyMentorSlotAvailability.$inferInsert)
       .returning();
   }
