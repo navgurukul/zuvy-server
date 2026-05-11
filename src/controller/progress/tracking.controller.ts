@@ -39,7 +39,9 @@ import { SubmitFormBodyDto } from './dto/form.dto';
 import { ErrorResponse, SuccessResponse } from 'src/errorHandler/handler';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 import { TrackAction } from 'src/trackinglog/decorators/track-action.decorator';
+import { SkipOrgCheck } from 'src/rbac/decorators/skip-org-check.decorator';
 
+@SkipOrgCheck()
 @Controller('tracking')
 @ApiTags('tracking')
 @UseGuards(JwtAuthGuard)
