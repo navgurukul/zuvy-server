@@ -89,7 +89,7 @@ export class PermissionsGuard implements CanActivate {
       return true;
     }
 
-    const orgId = user.orgId;
+    const orgId = requestOrgId || user.orgId;
     if (!orgId) {
       throw new ForbiddenException('Organization context missing');
     }
