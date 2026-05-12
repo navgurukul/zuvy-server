@@ -7,7 +7,7 @@ import {
 import { Reflector } from '@nestjs/core';
 import { db } from '../db/index';
 import { eq, and } from 'drizzle-orm';
-import { zuvyUserOrganizations, zuvyOrganizations } from '../../drizzle/schema';
+import { zuvyUserRolesAssigned, zuvyOrganizations } from '../../drizzle/schema';
 
 @Injectable()
 export class OrgAuthorizationGuard implements CanActivate {
@@ -49,12 +49,12 @@ export class OrgAuthorizationGuard implements CanActivate {
     // Check: Verify user actually belongs to the target org in the database
     const userId = Number(user.id);
     const membership = await db
-      .select({ id: zuvyUserOrganizations.id })
-      .from(zuvyUserOrganizations)
+      .select({ id: zuvyUserRolesAssigned.id })
+      .from(zuvyUserRolesAssigned)
       .where(
         and(
-          eq(zuvyUserOrganizations.userId, userId),
-          eq(zuvyUserOrganizations.organizationId, requestOrgId),
+          eq(zuvyUserRolesAssigned.userId, BigInt(userId)),
+          eq(zuvyUserRolesAssigned.organizationId, requestOrgId),
         ),
       )
       .limit(1);

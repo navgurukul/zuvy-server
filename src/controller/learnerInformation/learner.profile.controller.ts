@@ -27,6 +27,7 @@ import {
   ProfileStrengthResponseDto,
 } from './dto/learner.dto';
 import { ValidationError } from 'class-validator';
+import { SkipOrgCheck } from 'src/rbac/decorators/skip-org-check.decorator';
 
 function flattenErrors(errors: ValidationError[]): string[] {
   const messages: string[] = [];
@@ -42,6 +43,7 @@ function flattenErrors(errors: ValidationError[]): string[] {
 }
 
 @ApiTags('Learner Complete Profile')
+@SkipOrgCheck()
 @Controller('learner-profile')
 @UsePipes(
   new ValidationPipe({

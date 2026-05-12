@@ -4,15 +4,16 @@ import { InstructorService } from './instructor.service';
 import { JwtModule, JwtService } from '@nestjs/jwt';
 import { JwtMiddleware } from 'src/middleware/jwt.middleware';
 import { AuthModule } from 'src/auth/auth.module';
+import { RbacModule } from 'src/rbac/rbac.module';
 
 @Module({
-    imports: [AuthModule],
-    controllers: [InstructorController],
-    providers: [InstructorService, JwtService],
-    exports: [InstructorService]
+  imports: [AuthModule, RbacModule],
+  controllers: [InstructorController],
+  providers: [InstructorService, JwtService],
+  exports: [InstructorService],
 })
 export class InstructorModule implements NestModule {
-    configure(consumer: MiddlewareConsumer) {
-        consumer.apply(JwtMiddleware).forRoutes('*');
-    }
+  configure(consumer: MiddlewareConsumer) {
+    consumer.apply(JwtMiddleware).forRoutes('*');
+  }
 }

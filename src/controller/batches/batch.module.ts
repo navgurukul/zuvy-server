@@ -5,8 +5,9 @@ import { JwtModule, JwtService } from '@nestjs/jwt';
 import { JwtMiddleware } from 'src/middleware/jwt.middleware';
 import { AuthModule } from 'src/auth/auth.module';
 import { TrackinglogModule } from '../../trackinglog/trackinglog.module';
+import { RbacModule } from 'src/rbac/rbac.module';
 @Module({
-  imports: [AuthModule, TrackinglogModule],
+  imports: [AuthModule, TrackinglogModule, RbacModule],
   controllers: [BatchesController],
   providers: [BatchesService, JwtService],
   exports: [BatchesService],

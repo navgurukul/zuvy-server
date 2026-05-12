@@ -11,9 +11,15 @@ import {
   zuvyUserOrganizations,
 } from 'drizzle/schema';
 import { eq, and, isNull } from 'drizzle-orm';
+import { AuthService } from 'src/auth/auth.service';
+import { UserTokensService } from 'src/user-tokens/user-tokens.service';
 
 @Injectable()
 export class SuperAdminService {
+  constructor(
+    private readonly authService: AuthService,
+    private readonly userTokensService: UserTokensService,
+  ) {}
   async addSuperAdmin(email: string) {
     // 1. Find or Create user by email
     let [user] = await db
@@ -60,10 +66,8 @@ export class SuperAdminService {
         .delete(zuvyUserRolesAssigned)
         .where(eq(zuvyUserRolesAssigned.userId, user.id));
 
-      // Delete from zuvyUserOrganizations (all orgs)
-      await tx
-        .delete(zuvyUserOrganizations)
-        .where(eq(zuvyUserOrganizations.userId, Number(user.id)));
+      // Global Logout: Invalidate all existing sessions
+      await this.authService.logout(user.id);
 
       // 4. Assign role to user in zuvyUserRolesAssigned (orgId: null)
       await tx.insert(zuvyUserRolesAssigned).values({
@@ -111,6 +115,11 @@ export class SuperAdminService {
       )
       .returning();
 
+    // Fetch tokens before deletion (since they have no orgId)
+    const { data: existingTokens } = await this.userTokensService.getUserTokens(
+      BigInt(userId),
+    );
+
     // 3. Delete from zuvyUserOrganizations where orgId is null
     const deletedOrg = await db
       .delete(zuvyUserOrganizations)
@@ -126,6 +135,18 @@ export class SuperAdminService {
       throw new NotFoundException(
         `Super Admin with user ID ${userId} not found`,
       );
+    }
+
+    // Invalidate session
+    try {
+      await this.authService.logout(
+        BigInt(userId),
+        existingTokens?.accessToken,
+        existingTokens?.refreshToken,
+      );
+    } catch (error) {
+      // Log but don't fail the request
+      console.error('Failed to logout super admin:', error);
     }
 
     return {

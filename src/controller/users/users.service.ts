@@ -690,18 +690,6 @@ export class UsersService {
         error,
       );
     }
-
-    try {
-      await this.userTokenService.deleteToken({
-        userId: targetUserId,
-        organizationId: orgId,
-      });
-    } catch (error) {
-      this.logger.warn(
-        `Failed to delete token for user ${targetUserId} during role assignment. Continuing without failing.`,
-        error,
-      );
-    }
   }
 
   async getAllUsersWithRoles(
@@ -1291,16 +1279,7 @@ export class UsersService {
       );
 
       if (success && data?.accessToken) {
-        await this.authService.updateUserlogout(
-          Number(targetUserId),
-          data.accessToken,
-          data.refreshToken,
-        );
-
-        await this.userTokenService.deleteToken({
-          userId: Number(targetUserId),
-          organizationId: updateUserDto.orgId,
-        });
+        await this.authService.logout(BigInt(targetUserId), data.accessToken);
       }
 
       // Return the final response
