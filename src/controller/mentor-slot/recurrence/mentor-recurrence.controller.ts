@@ -32,13 +32,16 @@ export class MentorRecurrenceController {
     displayType: 'recurring mentor slots',
   })
   async generateRecurringSlots(@Req() req, @Body() dto: RecurrenceDto) {
-    return this.recurrenceService.generateRecurringSlots({
-      mentorSlotManagementId: dto.mentorSlotManagementId,
-      slotStart: new Date(dto.slotStart),
-      slotEnd: new Date(dto.slotEnd),
-      recurrenceRule: dto.recurrenceRule,
-      recurrenceEndDate: new Date(dto.recurrenceEndDate),
-      previewOnly: dto.previewOnly,
-    });
+    return this.recurrenceService.generateRecurringSlots(
+      {
+        mentorSlotManagementId: dto.mentorSlotManagementId,
+        slotStart: new Date(dto.slotStart),
+        slotEnd: new Date(dto.slotEnd),
+        recurrenceRule: dto.recurrenceRule,
+        recurrenceEndDate: new Date(dto.recurrenceEndDate),
+        previewOnly: dto.previewOnly,
+      },
+      Number(req.user[0].id),
+    );
   }
 }

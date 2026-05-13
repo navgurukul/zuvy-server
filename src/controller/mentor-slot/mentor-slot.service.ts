@@ -149,6 +149,48 @@ export class MentorSlotService {
     return true;
   }
 
+  private async ensureMentorOwnsBooking(userId: number, bookingId: number) {
+    await this.ensureUserIsMentor(userId);
+
+    const [booking] = await db
+      .select()
+      .from(zuvyMentorSlotBooking)
+      .where(eq(zuvyMentorSlotBooking.id, bookingId))
+      .limit(1);
+
+    if (!booking) {
+      throw new NotFoundException('Booking not found.');
+    }
+
+    if (booking.mentorUserId !== BigInt(userId)) {
+      throw new ForbiddenException('You do not own this booking.');
+    }
+
+    return booking;
+  }
+
+  private async ensureUserOwnsBooking(userId: number, bookingId: number) {
+    const [booking] = await db
+      .select()
+      .from(zuvyMentorSlotBooking)
+      .where(eq(zuvyMentorSlotBooking.id, bookingId))
+      .limit(1);
+
+    if (!booking) {
+      throw new NotFoundException('Booking not found.');
+    }
+
+    const userIdBigInt = BigInt(userId);
+    if (
+      booking.mentorUserId !== userIdBigInt &&
+      booking.studentUserId !== userIdBigInt
+    ) {
+      throw new ForbiddenException('You do not own this booking.');
+    }
+
+    return booking;
+  }
+
   private async ensureMentorZoomVerified(userId: number) {
     const mentorProfile = await this.getOrCreateMentorProfile(userId);
     console.log(
@@ -441,6 +483,7 @@ export class MentorSlotService {
         throw new BadRequestException('Slot is full.');
       }
 
+      // 12-hour booking notice is temporarily disabled for short-notice sessions.
       // this.enforceMinimumNotice(new Date(slot.slotStartDateTime));
 
       /* ========================================
@@ -849,11 +892,28 @@ export class MentorSlotService {
     bookingId: number,
     reason: string,
     cancelledBy: 'mentor' | 'student',
+    actorUserId?: number,
   ) {
     if (!reason || reason.length < 10) {
       throw new BadRequestException(
         'Cancellation reason must be at least 10 characters.',
       );
+    }
+
+    if (actorUserId) {
+      const booking = await this.ensureUserOwnsBooking(actorUserId, bookingId);
+      const actorUserIdBigInt = BigInt(actorUserId);
+
+      if (
+        (cancelledBy === 'mentor' &&
+          booking.mentorUserId !== actorUserIdBigInt) ||
+        (cancelledBy === 'student' &&
+          booking.studentUserId !== actorUserIdBigInt)
+      ) {
+        throw new ForbiddenException(
+          `Only the ${cancelledBy} can cancel as ${cancelledBy}.`,
+        );
+      }
     }
 
     return db.transaction(async (trx) => {
@@ -1012,6 +1072,7 @@ export class MentorSlotService {
     bookingId: number,
     newSlotId: number,
     reason: string,
+    studentUserId?: number,
   ) {
     if (!reason || reason.length < 10) {
       throw new BadRequestException(
@@ -1031,6 +1092,10 @@ export class MentorSlotService {
 
     if (!booking) {
       throw new NotFoundException('Booking not found.');
+    }
+
+    if (studentUserId && booking.studentUserId !== BigInt(studentUserId)) {
+      throw new ForbiddenException('You do not own this booking.');
     }
 
     if (booking.status === 'cancelled') {
@@ -1071,7 +1136,8 @@ export class MentorSlotService {
       throw new BadRequestException('Proposed slot is full.');
     }
 
-    this.enforceMinimumNotice(new Date(slot.slotStartDateTime));
+    // 12-hour reschedule notice is temporarily disabled for short-notice sessions.
+    // this.enforceMinimumNotice(new Date(slot.slotStartDateTime));
 
     if (new Date(slot.slotStartDateTime) <= new Date()) {
       throw new BadRequestException('Cannot reschedule to past slot.');
@@ -1133,7 +1199,12 @@ export class MentorSlotService {
     bookingId: number,
     feedback: any,
     rating?: number,
+    mentorUserId?: number,
   ) {
+    if (mentorUserId) {
+      await this.ensureMentorOwnsBooking(mentorUserId, bookingId);
+    }
+
     const [booking] = await db
       .select()
       .from(zuvyMentorSlotBooking)
@@ -1177,7 +1248,7 @@ export class MentorSlotService {
   }
 
   /* ==========================================================================
-     ENFORCE 12-HOUR SLOT DELETION RULE
+     DELETE EMPTY UPCOMING SLOT
   ========================================================================== */
 
   async removeSlot(userId: number, slotId: number) {
@@ -1199,14 +1270,50 @@ export class MentorSlotService {
       throw new ForbiddenException('You do not own this slot.');
     }
 
-    this.enforceMinimumNotice(slot.slotStartDateTime);
+    if (new Date(slot.slotStartDateTime) <= new Date()) {
+      throw new BadRequestException('Only upcoming slots can be deleted.');
+    }
 
-    return db
+    if (slot.currentBookedCount > 0) {
+      throw new BadRequestException('Booked slots cannot be deleted.');
+    }
+
+    const [{ count: bookingCount }] = await db
+      .select({ count: count() })
+      .from(zuvyMentorSlotBooking)
+      .where(
+        and(
+          eq(zuvyMentorSlotBooking.slotAvailabilityId, slotId),
+          ne(zuvyMentorSlotBooking.status, 'cancelled'),
+        ),
+      );
+
+    if (Number(bookingCount) > 0) {
+      throw new BadRequestException('Booked slots cannot be deleted.');
+    }
+
+    // 12-hour deletion notice is temporarily disabled for short-notice slots.
+    // this.enforceMinimumNotice(slot.slotStartDateTime);
+
+    const result = await db
       .delete(zuvyMentorSlotAvailability)
-      .where(eq(zuvyMentorSlotAvailability.id, slotId));
+      .where(eq(zuvyMentorSlotAvailability.id, slotId))
+      .returning();
+
+    if (!result.length) {
+      throw new NotFoundException('Slot not found or already deleted');
+    }
+
+    return {
+      message: 'Slot deleted successfully',
+    };
   }
 
-  async acceptReschedule(bookingId: number) {
+  async acceptReschedule(bookingId: number, mentorUserId?: number) {
+    if (mentorUserId) {
+      await this.ensureMentorOwnsBooking(mentorUserId, bookingId);
+    }
+
     return db.transaction(async (trx) => {
       const [booking] = await trx
         .select()
@@ -1311,7 +1418,11 @@ export class MentorSlotService {
     });
   }
 
-  async declineReschedule(bookingId: number) {
+  async declineReschedule(bookingId: number, mentorUserId?: number) {
+    if (mentorUserId) {
+      await this.ensureMentorOwnsBooking(mentorUserId, bookingId);
+    }
+
     const [booking] = await db
       .select()
       .from(zuvyMentorSlotBooking)
@@ -1363,6 +1474,14 @@ export class MentorSlotService {
       throw new BadRequestException('Cannot create past slot.');
     }
 
+    const durationMinutes = Math.round(
+      (end.getTime() - start.getTime()) / (1000 * 60),
+    );
+
+    if (durationMinutes <= 0) {
+      throw new BadRequestException('Invalid slot duration.');
+    }
+
     /* ================================
        PLATFORM SLOT OVERLAP CHECK
     ================================= */
@@ -1376,8 +1495,8 @@ export class MentorSlotService {
             zuvyMentorSlotAvailability.mentorSlotManagementId,
             mentorProfile.id,
           ),
-          lt(zuvyMentorSlotAvailability.slotEndDateTime, start),
-          gt(zuvyMentorSlotAvailability.slotStartDateTime, end),
+          lt(zuvyMentorSlotAvailability.slotStartDateTime, end),
+          gt(zuvyMentorSlotAvailability.slotEndDateTime, start),
         ),
       );
 
@@ -1391,7 +1510,11 @@ export class MentorSlotService {
         mentorSlotManagementId: mentorProfile.id,
         slotStartDateTime: start,
         slotEndDateTime: end,
-        durationMinutes: dto.durationMinutes,
+        durationMinutes,
+        maxCapacity: dto.maxCapacity ?? 1,
+        topic: dto.topic ?? null,
+        status: 'available',
+        isPublic: true,
       } as typeof zuvyMentorSlotAvailability.$inferInsert)
       .returning();
   }
@@ -1643,7 +1766,12 @@ export class MentorSlotService {
     bookingId: number,
     joinedAtStr: string,
     leftAtStr: string,
+    mentorUserId?: number,
   ) {
+    if (mentorUserId) {
+      await this.ensureMentorOwnsBooking(mentorUserId, bookingId);
+    }
+
     const joinedAt = new Date(joinedAtStr);
     const leftAt = new Date(leftAtStr);
 
@@ -1665,7 +1793,11 @@ export class MentorSlotService {
       .where(eq(zuvyMentorSlotBooking.id, bookingId));
   }
 
-  async completeSession(bookingId: number) {
+  async completeSession(bookingId: number, mentorUserId?: number) {
+    if (mentorUserId) {
+      await this.ensureMentorOwnsBooking(mentorUserId, bookingId);
+    }
+
     return db
       .update(zuvyMentorSlotBooking)
       .set({

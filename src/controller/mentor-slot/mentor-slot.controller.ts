@@ -77,6 +77,7 @@ export class MentorSlotController {
       bookingId,
       dto.reason,
       dto.cancelledBy,
+      Number(req.user[0].id),
     );
   }
 
@@ -94,6 +95,7 @@ export class MentorSlotController {
     permissionName: 'editMentorDashboard',
   })
   async proposeReschedule(
+    @Req() req,
     @Param('bookingId', ParseIntPipe) bookingId: number,
     @Query('slotId') slotId: number,
     @Body() body: ProposeRescheduleDto,
@@ -102,6 +104,7 @@ export class MentorSlotController {
       bookingId,
       slotId,
       body.reason,
+      Number(req.user[0].id),
     );
   }
 
@@ -117,8 +120,14 @@ export class MentorSlotController {
     displayType: 'mentor booking reschedule',
     permissionName: 'editMentorDashboard',
   })
-  async acceptReschedule(@Param('bookingId', ParseIntPipe) bookingId: number) {
-    return this.mentorSlotService.acceptReschedule(bookingId);
+  async acceptReschedule(
+    @Req() req,
+    @Param('bookingId', ParseIntPipe) bookingId: number,
+  ) {
+    return this.mentorSlotService.acceptReschedule(
+      bookingId,
+      Number(req.user[0].id),
+    );
   }
 
   /* ==========================================================================
@@ -133,8 +142,14 @@ export class MentorSlotController {
     displayType: 'mentor booking reschedule',
     permissionName: 'editMentorDashboard',
   })
-  async declineReschedule(@Param('bookingId', ParseIntPipe) bookingId: number) {
-    return this.mentorSlotService.declineReschedule(bookingId);
+  async declineReschedule(
+    @Req() req,
+    @Param('bookingId', ParseIntPipe) bookingId: number,
+  ) {
+    return this.mentorSlotService.declineReschedule(
+      bookingId,
+      Number(req.user[0].id),
+    );
   }
 
   /* ==========================================================================
@@ -150,6 +165,7 @@ export class MentorSlotController {
     permissionName: 'editMentorDashboard',
   })
   async submitMentorFeedback(
+    @Req() req,
     @Param('bookingId', ParseIntPipe) bookingId: number,
     @Body() dto: FeedbackDto,
   ) {
@@ -157,6 +173,7 @@ export class MentorSlotController {
       bookingId,
       dto.feedback,
       dto.rating,
+      Number(req.user[0].id),
     );
   }
 
@@ -263,6 +280,7 @@ export class MentorSlotController {
     permissionName: 'editMentorDashboard',
   })
   async markAttendance(
+    @Req() req,
     @Param('bookingId', ParseIntPipe) bookingId: number,
     @Body() dto: AttendanceDto,
   ) {
@@ -270,6 +288,7 @@ export class MentorSlotController {
       bookingId,
       dto.joinedAt,
       dto.leftAt,
+      Number(req.user[0].id),
     );
   }
 
@@ -284,8 +303,14 @@ export class MentorSlotController {
     displayType: 'mentor session',
     permissionName: 'editMentorDashboard',
   })
-  async completeSession(@Param('bookingId', ParseIntPipe) bookingId: number) {
-    return this.mentorSlotService.completeSession(bookingId);
+  async completeSession(
+    @Req() req,
+    @Param('bookingId', ParseIntPipe) bookingId: number,
+  ) {
+    return this.mentorSlotService.completeSession(
+      bookingId,
+      Number(req.user[0].id),
+    );
   }
 
   /* ==========================================================================  
