@@ -23,10 +23,12 @@ import { BookSlotDto } from './dto/book-slot.dto';
 import { CancelBookingDto } from './dto/cancel-booking.dto';
 import { ProposeRescheduleDto } from './dto/reschedule.dto';
 import { MentorSearchDto } from './public/dto/mentor-search.dto';
+import { SkipOrgCheck } from 'src/rbac/decorators/skip-org-check.decorator';
 
 @ApiTags('Student Mentor APIs')
 @ApiBearerAuth('JWT-auth')
 @UseGuards(JwtAuthGuard)
+@SkipOrgCheck()
 @Controller('student')
 export class StudentMentorSlotController {
   constructor(

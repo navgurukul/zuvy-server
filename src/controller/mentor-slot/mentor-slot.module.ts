@@ -17,6 +17,7 @@ import { NewNotificationModule } from '../notification/notification.module';
 import { ZoomModule } from 'src/services/zoom/zoom.module';
 import { NotificationModule } from 'src/notification/notification.module';
 import { TrackinglogModule } from 'src/trackinglog/trackinglog.module';
+import { RbacModule } from '../../rbac/rbac.module';
 
 @Module({
   imports: [
@@ -25,6 +26,7 @@ import { TrackinglogModule } from 'src/trackinglog/trackinglog.module';
     ZoomModule,
     NotificationModule,
     TrackinglogModule,
+    RbacModule,
   ],
   controllers: [
     MentorSlotController,

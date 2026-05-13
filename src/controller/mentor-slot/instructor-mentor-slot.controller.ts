@@ -28,10 +28,11 @@ import { CreateSlotDto } from './dto/create-slot.dto';
 import { AttendanceDto } from './dto/attendance.dto';
 import { UpdateMentorProfileDto } from './dto/update-mentor-profile.dto';
 import { RecurrenceDto } from './recurrence/dto/recurrence.dto';
+import { PermissionsGuard } from 'src/rbac/guards/permissions.guard';
 
 @ApiTags('Instructor Mentor APIs')
 @ApiBearerAuth('JWT-auth')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 @Controller('instructor')
 export class InstructorMentorSlotController {
   constructor(
