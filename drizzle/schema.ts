@@ -3914,7 +3914,7 @@ export const zuvyStudentApplicationRecord = main.table('zuvy_student_application
 });
 export const blacklistedTokens = main.table('blacklisted_tokens', {
   id: bigserial('id', { mode: 'bigint' }).primaryKey().notNull(),
-  token: varchar('token', { length: 500 }).notNull(),
+  token: varchar('token', { length: 10000 }).notNull(),
   userId: bigint('user_id', { mode: 'bigint' }).notNull().references(() => users.id),
   expiresAt: timestamp('expires_at').notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),

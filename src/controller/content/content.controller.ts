@@ -72,7 +72,8 @@ import {
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 import { TrackAction } from 'src/trackinglog/decorators/track-action.decorator';
 import { TrackActionInterceptor } from 'src/trackinglog/interceptors/track-action.interceptor';
-
+import { PermissionsGuard } from 'src/rbac/guards/permissions.guard';
+import { SkipOrgCheck } from 'src/rbac/decorators/skip-org-check.decorator';
 @Controller('content')
 @ApiTags('content')
 @UsePipes(
@@ -82,7 +83,7 @@ import { TrackActionInterceptor } from 'src/trackinglog/interceptors/track-actio
     forbidNonWhitelisted: true,
   }),
 )
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard, RolesGuard)
 @UseInterceptors(TrackActionInterceptor)
 @ApiBearerAuth('JWT-auth')
 export class ContentController {
@@ -152,6 +153,7 @@ export class ContentController {
     return res;
   }
 
+  @SkipOrgCheck()
   @Get('/project/:id')
   @ApiOperation({ summary: 'Get the project details of a particular bootcamp' })
   @ApiQuery({
@@ -312,6 +314,7 @@ export class ContentController {
     return res;
   }
 
+  @SkipOrgCheck()
   @Get('/allModules/:bootcampId')
   @ApiOperation({ summary: 'Get all modules of a course' })
   @ApiBearerAuth('JWT-auth')
@@ -326,6 +329,7 @@ export class ContentController {
     return res;
   }
 
+  @SkipOrgCheck()
   @Get('/allChaptersOfModule/:moduleId')
   @ApiOperation({ summary: 'Get all the chapters of a module' })
   @ApiBearerAuth('JWT-auth')
@@ -343,6 +347,7 @@ export class ContentController {
     return res;
   }
 
+  @SkipOrgCheck()
   @Get('/chapterDetailsById/:chapterId')
   @ApiOperation({ summary: 'Get chapter details by id' })
   @ApiQuery({

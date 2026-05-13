@@ -40,7 +40,9 @@ import {
   UpsertLearnerRolesDto,
   UpsertTechnicalSkillsDto,
 } from './dto/learner.dto';
+import { SkipOrgCheck } from 'src/rbac/decorators/skip-org-check.decorator';
 @ApiTags('Learner Information')
+@SkipOrgCheck()
 @Controller('besic')
 @UsePipes(
   new ValidationPipe({
