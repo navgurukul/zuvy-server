@@ -1551,6 +1551,13 @@ export class MentorSlotService {
     const endOfWeek = new Date(startOfWeek);
     endOfWeek.setDate(startOfWeek.getDate() + 7);
 
+    /* ==================================================
+      DISPLAY END OF WEEK (SUNDAY 23:59:59)
+    ================================================== */
+
+    const displayWeekEnd = new Date(endOfWeek);
+    displayWeekEnd.setMilliseconds(displayWeekEnd.getMilliseconds() - 1);
+
     /* ============================
        FETCH SLOTS
     ============================ */
@@ -1630,7 +1637,7 @@ export class MentorSlotService {
 
     return {
       weekStart: startOfWeek,
-      weekEnd: endOfWeek,
+      weekEnd: displayWeekEnd,
       metrics,
       slots: processedSlots,
     };
