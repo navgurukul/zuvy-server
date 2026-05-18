@@ -206,6 +206,14 @@ interface ZoomUsersListResponse {
   users?: ZoomUserListItem[];
 }
 
+type ZoomUserSettingsPayload = {
+  scheduled_meeting?: Record<string, unknown>;
+  in_meeting?: Record<string, unknown>;
+  email_notification?: Record<string, unknown>;
+  recording?: Record<string, unknown>;
+  feature?: Record<string, unknown>;
+};
+
 @Injectable()
 export class ZoomService {
   private readonly logger = new Logger(ZoomService.name);
@@ -214,30 +222,118 @@ export class ZoomService {
   private tokenCache: { accessToken: string; expiresAt: number } | null = null;
   private tokenRefreshPromise: Promise<string> | null = null;
 
+  private buildLicensedUserSettingsPayload(): ZoomUserSettingsPayload {
+    return {
+      scheduled_meeting: {
+        host_video: true,
+        participants_video: true,
+        audio_type: 'both',
+        join_before_host: false,
+        force_pmi_jbh_password: false,
+        pstn_password_protected: false,
+      },
+      in_meeting: {
+        e2e_encryption: true,
+        chat: true,
+        private_chat: true,
+        auto_saving_chat: false,
+        entry_exit_chime: 'all',
+        record_play_voice: false,
+        file_transfer: true,
+        feedback: false,
+        co_host: true,
+        polling: true,
+        attendee_on_hold: false,
+        annotation: true,
+        remote_control: false,
+        non_verbal_feedback: true,
+        breakout_room: true,
+        remote_support: false,
+        closed_caption: false,
+        group_hd: false,
+        virtual_background: true,
+        far_end_camera_control: false,
+        waiting_room: true,
+      },
+      email_notification: {
+        jbh_reminder: false,
+        cancel_meeting_reminder: true,
+        alternative_host_reminder: true,
+      },
+      recording: {
+        local_recording: true,
+        cloud_recording: true,
+        record_speaker_view: true,
+        record_gallery_view: false,
+        record_audio_file: true,
+        save_chat_text: true,
+        show_timestamp: false,
+        recording_audio_transcript: true,
+        auto_recording: 'cloud',
+      },
+    };
+  }
+
+  async applyLicensedUserSettings(email: string) {
+    const url = `${this.baseUrl}/users/${encodeURIComponent(email)}/settings`;
+    const payload = this.buildLicensedUserSettingsPayload();
+
+    try {
+      await axios.patch(url, payload, {
+        headers: await this.getHeaders(),
+      });
+      this.logger.log(
+        `Applied Zoom licensed-user settings for ${email} successfully.`,
+      );
+      return { success: true };
+    } catch (e: any) {
+      const errorMessage = e.response?.data?.message || e.message;
+      this.logger.warn(
+        `Failed to apply Zoom licensed-user settings for ${email}: ${errorMessage}`,
+      );
+      return { success: false, error: errorMessage };
+    }
+  }
+
   async syncZoomLicenseUser(input: {
     email: string;
     zoomUserId?: string | null;
     userName?: string | null;
     licenseType: number;
     status?: string | null;
+    isProtected?: boolean;
   }) {
+    const normalizedEmail = input.email.trim().toLowerCase();
+    const existingRows = await db
+      .select({
+        isProtected: zuvyUserLicenses.isProtected,
+      })
+      .from(zuvyUserLicenses)
+      .where(eq(zuvyUserLicenses.zoomEmail, normalizedEmail))
+      .limit(1);
+
+    const resolvedIsProtected =
+      input.isProtected ?? existingRows[0]?.isProtected ?? false;
+
     await db
       .insert(zuvyUserLicenses)
       .values({
-        zoomEmail: input.email,
+        zoomEmail: normalizedEmail,
         zoomUserId: input.zoomUserId || null,
-        userName: input.userName || input.email,
+        userName: input.userName || normalizedEmail,
         licenseType: input.licenseType,
         status: input.status || 'active',
+        isProtected: resolvedIsProtected,
         updatedAt: sql`NOW()`,
       } as any)
       .onConflictDoUpdate({
         target: zuvyUserLicenses.zoomEmail,
         set: {
           zoomUserId: input.zoomUserId || null,
-          userName: input.userName || input.email,
+          userName: input.userName || normalizedEmail,
           licenseType: input.licenseType,
           status: input.status || 'active',
+          isProtected: resolvedIsProtected,
           updatedAt: sql`NOW()`,
         } as any,
       });
@@ -245,8 +341,8 @@ export class ZoomService {
     await db
       .insert(licenses)
       .values({
-        zoomId: input.email,
-        name: input.userName || input.email,
+        zoomId: normalizedEmail,
+        name: input.userName || normalizedEmail,
         status:
           input.status === 'active' && input.licenseType === 2
             ? 'active'
@@ -255,13 +351,26 @@ export class ZoomService {
       .onConflictDoUpdate({
         target: licenses.zoomId,
         set: {
-          name: input.userName || input.email,
+          name: input.userName || normalizedEmail,
           status:
             input.status === 'active' && input.licenseType === 2
               ? 'active'
               : 'inactive',
         } as any,
       });
+  }
+
+  async getProtectedZoomEmails() {
+    const rows = await db
+      .select({ email: zuvyUserLicenses.zoomEmail })
+      .from(zuvyUserLicenses)
+      .where(eq(zuvyUserLicenses.isProtected, true));
+
+    return new Set(
+      rows
+        .map((row) => row.email?.trim().toLowerCase())
+        .filter((email): email is string => Boolean(email)),
+    );
   }
 
   private async generateAccessToken(): Promise<{
@@ -456,6 +565,11 @@ export class ZoomService {
           status: type === 2 ? 'active' : 'downgraded',
         });
       }
+
+      if (type === 2) {
+        await this.applyLicensedUserSettings(email);
+      }
+
       return { success: true };
     } catch (e: any) {
       return { success: false, error: e.response?.data?.message || e.message };
@@ -535,6 +649,8 @@ export class ZoomService {
       };
     }
 
+    await this.applyLicensedUserSettings(email);
+
     return { success: true, userType, userStatus, licensed };
   }
 
@@ -554,9 +670,11 @@ export class ZoomService {
     phoneNumber?: string;
     timezone?: string;
     type?: 1 | 2 | 3;
+    isProtected?: boolean;
   }) {
     try {
-      const url = `${this.baseUrl}/users/${encodeURIComponent(update.email)}`;
+      const normalizedEmail = update.email.trim().toLowerCase();
+      const url = `${this.baseUrl}/users/${encodeURIComponent(normalizedEmail)}`;
       const body: any = {};
       if (update.firstName) body.first_name = update.firstName;
       if (update.lastName) body.last_name = update.lastName;
@@ -565,7 +683,31 @@ export class ZoomService {
       // displayName / phoneNumber not always supported; include if provided
       if (update.displayName) body.display_name = update.displayName;
       if (update.phoneNumber) body.phone_number = update.phoneNumber;
-      await axios.patch(url, body, { headers: await this.getHeaders() });
+      if (Object.keys(body).length > 0) {
+        await axios.patch(url, body, { headers: await this.getHeaders() });
+      }
+
+      const user = await this.getUser(normalizedEmail);
+      if (!user.success) {
+        return { success: false, error: user.error };
+      }
+
+      await this.syncZoomLicenseUser({
+        email: normalizedEmail,
+        zoomUserId: user.data?.id || null,
+        userName:
+          `${user.data?.first_name || ''} ${user.data?.last_name || ''}`.trim() ||
+          user.data?.display_name ||
+          normalizedEmail,
+        licenseType: user.data?.type ?? update.type ?? 1,
+        status: user.data?.status || 'active',
+        isProtected: update.isProtected,
+      });
+
+      if ((user.data?.type ?? update.type) === 2) {
+        await this.applyLicensedUserSettings(normalizedEmail);
+      }
+
       return { success: true };
     } catch (e: any) {
       return { success: false, error: e.response?.data?.message || e.message };
@@ -584,6 +726,17 @@ export class ZoomService {
       const status = query?.status?.trim() || 'active';
       const hostType = query?.hostType || 'all';
       const normalizedSearch = query?.search?.trim().toLowerCase() || '';
+      const localUsers = await db
+        .select({
+          zoomEmail: zuvyUserLicenses.zoomEmail,
+          isProtected: zuvyUserLicenses.isProtected,
+          licenseType: zuvyUserLicenses.licenseType,
+          localStatus: zuvyUserLicenses.status,
+        })
+        .from(zuvyUserLicenses);
+      const localUserMap = new Map(
+        localUsers.map((row) => [row.zoomEmail.trim().toLowerCase(), row]),
+      );
 
       let nextPageToken = '';
       const users: ZoomUserListItem[] = [];
@@ -627,6 +780,15 @@ export class ZoomService {
           verified: user.verified,
           createdAt: user.created_at || null,
           lastLoginTime: user.last_login_time || null,
+          isProtected:
+            localUserMap.get(user.email.trim().toLowerCase())?.isProtected ||
+            false,
+          localLicenseType:
+            localUserMap.get(user.email.trim().toLowerCase())?.licenseType ??
+            null,
+          localStatus:
+            localUserMap.get(user.email.trim().toLowerCase())?.localStatus ??
+            null,
         };
       });
 

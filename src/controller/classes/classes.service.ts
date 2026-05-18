@@ -23,6 +23,8 @@ import {
   desc,
   and,
   or,
+  ne,
+  isNull,
   sql,
   ilike,
   inArray,
@@ -43,26 +45,40 @@ import { Console } from 'console';
 export class ClassesService {
   private readonly logger = new Logger(ClassesService.name);
   private readonly pendingZoomMeetingPrefix = 'pending-zoom-session-';
+  private readonly licenseCooldownMs = 60 * 60 * 1000;
 
   constructor(
     private readonly zoomService: ZoomService,
     private readonly zoomLicenseService: ZoomLicenseService,
   ) {}
 
+  private blockingZoomSessionCondition() {
+    return and(
+      or(isNull(zuvySessions.status), ne(zuvySessions.status, 'merged')),
+      eq(zuvySessions.isZoomMeet, true),
+    );
+  }
+
   private async isInstructorFreeForTimeRange(
     email: string,
     startTime: Date,
     endTime: Date,
   ): Promise<boolean> {
+    const bufferedStartTime = startTime;
     const overlapping = await db
       .select({ count: sql<number>`count(*)` })
       .from(licenseAssignments)
+      .innerJoin(
+        zuvySessions,
+        eq(licenseAssignments.sessionId, zuvySessions.id),
+      )
       .innerJoin(users, eq(licenseAssignments.instructorId, users.id))
       .where(
         and(
+          this.blockingZoomSessionCondition(),
           eq(users.email, email),
           sql`${licenseAssignments.startTime} < ${endTime}`,
-          sql`${licenseAssignments.endTime} > ${startTime}`,
+          sql`${licenseAssignments.endTime} + interval '1 hour' > ${bufferedStartTime}`,
         ),
       );
 
@@ -79,20 +95,6 @@ export class ClassesService {
     }
 
     return `Cannot transfer the Zoom license from ${sourceEmail} to ${targetEmail} because the configured Zoom access token is missing the required admin scopes (user:update:user and user:update:user:admin). Please reconnect Zoom with admin permissions or update the OAuth app scopes.`;
-  }
-
-  private getProtectedLicenseEmails() {
-    return new Set(
-      [
-        process.env.TEAM_EMAIL,
-        'Laasya@navgurukul.org',
-        'Vinit@navgurukul.org',
-        'dutta.aniket1399@gmail.com',
-        'poonam@navgurukul.org',
-      ]
-        .filter(Boolean)
-        .map((email) => String(email).trim().toLowerCase()),
-    );
   }
 
   private async findAvailableLicensedDonor(
@@ -119,7 +121,8 @@ export class ClassesService {
       );
     }
 
-    const protectedEmails = this.getProtectedLicenseEmails();
+    const protectedEmails =
+      await this.zoomLicenseService.getProtectedLicenseEmails();
     const donors = (licensedUsers.data?.users || [])
       .filter((user) => user.email !== instructorEmail)
       .filter((user) => !protectedEmails.has(user.email.toLowerCase()));
@@ -227,6 +230,35 @@ export class ClassesService {
     return Boolean(
       meetingId && meetingId.startsWith(this.pendingZoomMeetingPrefix),
     );
+  }
+
+  private shouldActivateZoomSessionNow(session: {
+    meetingId?: string | null;
+    startTime?: string | Date | null;
+    endTime?: string | Date | null;
+    isZoomMeet?: boolean | null;
+  }) {
+    if (
+      !session?.isZoomMeet ||
+      !this.isPendingZoomMeetingId(session.meetingId)
+    ) {
+      return false;
+    }
+
+    const startTime = session.startTime ? new Date(session.startTime) : null;
+    const endTime = session.endTime ? new Date(session.endTime) : null;
+
+    if (
+      !startTime ||
+      !endTime ||
+      Number.isNaN(startTime.getTime()) ||
+      Number.isNaN(endTime.getTime())
+    ) {
+      return false;
+    }
+
+    const now = Date.now();
+    return startTime.getTime() <= now && endTime.getTime() > now;
   }
 
   private async activateZoomSession(sessionId: number) {
@@ -873,7 +905,8 @@ export class ClassesService {
 
       let responseSessions = saveResult.data;
       const startsNow =
-        startDate.getTime() <= Date.now() && endDate.getTime() > Date.now();
+        saveResult.data?.[0] &&
+        this.shouldActivateZoomSessionNow(saveResult.data[0]);
       if (startsNow && saveResult.data?.[0]?.id) {
         const activatedSession = await this.activateZoomSession(
           saveResult.data[0].id,
@@ -1376,7 +1409,8 @@ export class ClassesService {
         for (let i = 0; i < results.length; i++) {
           const original = sessionData[i];
           if (original.licenseId && original.startTime && original.endTime) {
-            const protectedEmails = this.getProtectedLicenseEmails();
+            const protectedEmails =
+              await this.zoomLicenseService.getProtectedLicenseEmails(trx);
             const batch = await trx
               .select({
                 instructorId: zuvyBatches.instructorId,
@@ -1397,17 +1431,24 @@ export class ClassesService {
             const overlappingAssignments = await trx
               .select({ count: sql<number>`count(*)` })
               .from(licenseAssignments)
+              .innerJoin(
+                zuvySessions,
+                eq(licenseAssignments.sessionId, zuvySessions.id),
+              )
               .innerJoin(users, eq(licenseAssignments.instructorId, users.id))
               .where(
                 and(
+                  this.blockingZoomSessionCondition(),
                   sql`${licenseAssignments.startTime} < ${new Date(original.endTime)}`,
-                  sql`${licenseAssignments.endTime} > ${new Date(original.startTime)}`,
+                  sql`${licenseAssignments.endTime} + interval '1 hour' > ${new Date(original.startTime)}`,
                   usingProtectedSeat
                     ? eq(sql<string>`lower(${users.email})`, instructorEmail!)
-                    : notInArray(
-                        sql<string>`lower(${users.email})`,
-                        Array.from(protectedEmails),
-                      ),
+                    : Array.from(protectedEmails).length
+                      ? notInArray(
+                          sql<string>`lower(${users.email})`,
+                          Array.from(protectedEmails),
+                        )
+                      : sql.raw('1 = 1'),
                 ),
               );
 
@@ -1420,8 +1461,22 @@ export class ClassesService {
             if (
               Number(overlappingAssignments[0]?.count || 0) >= activePoolCount
             ) {
+              const nextAvailableAt =
+                await this.zoomLicenseService.getNextAvailableLicenseTimeForInstructor(
+                  trx,
+                  {
+                    startTime: new Date(original.startTime),
+                    endTime: new Date(original.endTime),
+                  },
+                  instructorEmail,
+                );
+
               throw new Error(
-                `No Zoom licenses available for this time period. Active licensed pool: ${activePoolCount}, overlapping assignments: ${Number(overlappingAssignments[0]?.count || 0)}.`,
+                nextAvailableAt &&
+                  nextAvailableAt.getTime() >
+                    new Date(original.startTime).getTime()
+                  ? `No Zoom licenses available for this time period. You can create session after ${this.zoomLicenseService.formatAvailabilityMessage(nextAvailableAt)}.`
+                  : `No Zoom licenses available for this time period. Active licensed pool: ${activePoolCount}, overlapping assignments: ${Number(overlappingAssignments[0]?.count || 0)}.`,
               );
             }
 
@@ -2041,6 +2096,10 @@ export class ClassesService {
               .where(
                 inArray(zuvyStudentAttendanceRecords.sessionId, sessionIds),
               );
+
+            await tx
+              .delete(licenseAssignments)
+              .where(inArray(licenseAssignments.sessionId, sessionIds));
           }
 
           // Then delete sessions
@@ -3429,6 +3488,10 @@ export class ClassesService {
         await tx
           .delete(zuvyStudentAttendanceRecords)
           .where(eq(zuvyStudentAttendanceRecords.sessionId, sessionId));
+
+        await tx
+          .delete(licenseAssignments)
+          .where(eq(licenseAssignments.sessionId, sessionId));
 
         // Then delete from zuvy_student_attendance (old attendance table)
         await tx

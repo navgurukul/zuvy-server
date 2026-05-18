@@ -4976,6 +4976,7 @@ export const zuvyUserLicenses = main.table('zuvy_user_licenses', {
   userName: varchar('user_name', { length: 255 }),
   licenseType: integer('license_type').notNull().default(2),
   status: varchar('status', { length: 30 }).notNull().default('active'),
+  isProtected: boolean('is_protected').notNull().default(false),
   createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).notNull().defaultNow(),
 }, (table) => {
