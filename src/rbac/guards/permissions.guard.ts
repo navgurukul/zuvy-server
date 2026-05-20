@@ -13,6 +13,12 @@ import {
   zuvyBatches,
   zuvyBootcamps,
   zuvyUserRolesAssigned,
+  zuvyCourseModules,
+  zuvyModuleChapter,
+  zuvyOutsourseAssessments,
+  zuvyOutsourseQuizzes,
+  zuvyOutsourseCodingQuestions,
+  zuvyOutsourseOpenEndedQuestions,
 } from 'drizzle/schema';
 import { and, eq } from 'drizzle-orm';
 
@@ -24,6 +30,8 @@ export class PermissionsGuard implements CanActivate {
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
+    const request = context.switchToHttp().getRequest();
+
     // Public routes skip JWT entirely — request.user is never set, so exit early
     const isPublic = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [
       context.getHandler(),
@@ -33,7 +41,6 @@ export class PermissionsGuard implements CanActivate {
       return true;
     }
 
-    const request = context.switchToHttp().getRequest();
     const user = request.user?.[0] || request.user;
 
     if (!user || !user.id) {
@@ -45,9 +52,28 @@ export class PermissionsGuard implements CanActivate {
       return true;
     }
 
-    const requestOrgId = await this.resolveRequestOrgId(request);
-    const bootcampId = this.extractBootcampId(request);
-    const batchId = this.extractBatchId(request);
+    const privilegedRoles = ['admin', 'ops', 'super_admin'];
+    const isInstructor =
+      user.roles?.includes('instructor') &&
+      !user.roles?.some((r) => privilegedRoles.includes(r));
+
+    // 0. Instructor Global Course Restriction
+    if (isInstructor && request.url.includes('/student/bootcamp/global')) {
+      throw new ForbiddenException(
+        'Instructors cannot access global student courses',
+      );
+    }
+
+    let bootcampId = this.extractBootcampId(request);
+    let batchId = this.extractBatchId(request);
+    const orgIdFromRequest = this.extractOrgId(request);
+
+    // Context resolution for ALL roles (Modules, Chapters, Assessments, Questions, Batches)
+    if (!bootcampId) {
+      bootcampId = await this.resolveBootcampContext(request, batchId);
+    }
+
+    const requestOrgId = await this.resolveRequestOrgId(request, bootcampId);
 
     // Check whether this handler/controller opted out of the org check
     const skipOrgCheck = this.reflector.getAllAndOverride<boolean>(
@@ -55,27 +81,30 @@ export class PermissionsGuard implements CanActivate {
       [context.getHandler(), context.getClass()],
     );
 
-    const isInstructor =
-      user.roles?.includes('instructor') &&
-      !user.roles?.includes('admin') &&
-      !user.roles?.includes('ops');
-
-    // 1. Org-level check — applies to ALL roles except on @SkipOrgCheck() routes
-    if (!skipOrgCheck && requestOrgId) {
+    // 1. Authorization Split
+    if (isInstructor) {
+      // Course-level check for Instructor
+      if (bootcampId || batchId) {
+        await this.ensureInstructorHasBootcampAccess(
+          user.id,
+          bootcampId,
+          requestOrgId,
+          batchId,
+        );
+      } else if (requestOrgId) {
+        // Fallback to Org check if no specific course is requested
+        await this.ensureUserBelongsToOrg(
+          user.id,
+          requestOrgId,
+          'No permission to access this organization',
+        );
+      }
+    } else if (!skipOrgCheck && requestOrgId) {
+      // Org-level check for all other roles (Admin, Ops, etc.)
       await this.ensureUserBelongsToOrg(
         user.id,
         requestOrgId,
         'No permission to access this organization',
-      );
-    }
-
-    // 2. Course-level check for Instructor
-    if (isInstructor && (bootcampId || batchId)) {
-      await this.ensureInstructorHasBootcampAccess(
-        user.id,
-        bootcampId,
-        requestOrgId,
-        batchId,
       );
     }
 
@@ -116,13 +145,103 @@ export class PermissionsGuard implements CanActivate {
     }
   }
 
-  private async resolveRequestOrgId(request: any): Promise<number | null> {
+  private async resolveBootcampContext(
+    request: any,
+    batchId?: number | null,
+  ): Promise<number | null> {
+    if (batchId) {
+      const [batch] = await db
+        .select({ bootcampId: zuvyBatches.bootcampId })
+        .from(zuvyBatches)
+        .where(eq(zuvyBatches.id, batchId))
+        .limit(1);
+      if (batch?.bootcampId) return batch.bootcampId;
+    }
+
+    const moduleId = this.extractId(request, ['moduleId', 'module_id']);
+    const chapterId = this.extractId(request, ['chapterId', 'chapter_id']);
+    const assessmentId = this.extractId(request, [
+      'assessmentOutsourseId',
+      'assessment_id',
+    ]);
+    const questionId = this.extractId(request, ['questionId', 'question_id']);
+
+    if (chapterId) {
+      const [chapter] = await db
+        .select({ bootcampId: zuvyModuleChapter.bootcampId })
+        .from(zuvyModuleChapter)
+        .where(eq(zuvyModuleChapter.id, chapterId))
+        .limit(1);
+      if (chapter?.bootcampId) return chapter.bootcampId;
+    }
+
+    if (moduleId) {
+      const [module] = await db
+        .select({ bootcampId: zuvyCourseModules.bootcampId })
+        .from(zuvyCourseModules)
+        .where(eq(zuvyCourseModules.id, moduleId))
+        .limit(1);
+      if (module?.bootcampId) return module.bootcampId;
+    }
+
+    if (assessmentId) {
+      const [assessment] = await db
+        .select({ bootcampId: zuvyOutsourseAssessments.bootcampId })
+        .from(zuvyOutsourseAssessments)
+        .where(eq(zuvyOutsourseAssessments.id, assessmentId))
+        .limit(1);
+      if (assessment?.bootcampId) return assessment.bootcampId;
+    }
+
+    if (questionId) {
+      // Try resolving from various outsource question tables
+      const [qQuiz] = await db
+        .select({ bootcampId: zuvyOutsourseQuizzes.bootcampId })
+        .from(zuvyOutsourseQuizzes)
+        .where(eq(zuvyOutsourseQuizzes.quiz_id, questionId))
+        .limit(1);
+      if (qQuiz?.bootcampId) return qQuiz.bootcampId;
+
+      const [qCoding] = await db
+        .select({ bootcampId: zuvyOutsourseCodingQuestions.bootcampId })
+        .from(zuvyOutsourseCodingQuestions)
+        .where(eq(zuvyOutsourseCodingQuestions.codingQuestionId, questionId))
+        .limit(1);
+      if (qCoding?.bootcampId) return qCoding.bootcampId;
+
+      const [qOpen] = await db
+        .select({ bootcampId: zuvyOutsourseOpenEndedQuestions.bootcampId })
+        .from(zuvyOutsourseOpenEndedQuestions)
+        .where(
+          eq(zuvyOutsourseOpenEndedQuestions.openEndedQuestionId, questionId),
+        )
+        .limit(1);
+      if (qOpen?.bootcampId) return qOpen.bootcampId;
+    }
+
+    return null;
+  }
+
+  private extractId(request: any, keys: string[]): number | null {
+    for (const key of keys) {
+      const val =
+        request.params?.[key] ?? request.query?.[key] ?? request.body?.[key];
+      const id = Number(val);
+      if (Number.isFinite(id) && id > 0) return id;
+    }
+    return null;
+  }
+
+  private async resolveRequestOrgId(
+    request: any,
+    resolvedBootcampId?: number | null,
+  ): Promise<number | null> {
     const explicitOrgId = this.extractOrgId(request);
     if (explicitOrgId) {
       return explicitOrgId;
     }
 
-    const bootcampId = this.extractBootcampId(request);
+    const bootcampId = resolvedBootcampId || this.extractBootcampId(request);
     if (!bootcampId) {
       return null;
     }
@@ -174,10 +293,15 @@ export class PermissionsGuard implements CanActivate {
       request.query?.batchId ??
       request.query?.batch_id ??
       request.body?.batchId ??
-      request.body?.batch_id;
+      request.body?.batch_id ??
+      (this.isBatchRoute(request) ? request.params?.id : undefined);
 
     const batchId = Number(rawBatchId);
     return Number.isFinite(batchId) && batchId > 0 ? batchId : null;
+  }
+
+  private isBatchRoute(request: any): boolean {
+    return request.baseUrl?.split('/').includes('batch');
   }
 
   private async ensureUserBelongsToOrg(
@@ -240,7 +364,7 @@ export class PermissionsGuard implements CanActivate {
 
       // Check: is this instructor assigned to this specific batch?
       if (Number(batch.instructorId) !== Number(userId)) {
-        throw new ForbiddenException('Unauthorized access');
+        throw new ForbiddenException('Unauthorized access to this batch');
       }
     }
 
@@ -289,7 +413,9 @@ export class PermissionsGuard implements CanActivate {
         .limit(1);
 
       if (!assignedBatch) {
-        throw new ForbiddenException('Unauthorized access');
+        throw new ForbiddenException(
+          'Unauthorized access: You are not assigned to any batch in this course',
+        );
       }
     }
   }
