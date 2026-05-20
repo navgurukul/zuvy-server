@@ -350,7 +350,7 @@ export class ClassesService {
         participant_video: true,
         join_before_host: false,
         mute_upon_entry: true,
-        waiting_room: false,
+        waiting_room: true,
         alternative_hosts_email_notification: true,
         audio: 'both',
         close_registration: true,
@@ -380,10 +380,20 @@ export class ClassesService {
       },
     };
 
+    this.logger.log(
+      `Creating Zoom meeting with settings: ${JSON.stringify(zoomMeetingData.settings)}`,
+    );
+
     let zoomResponse = await this.zoomService.createMeetingForUser(
       hostEmail,
       zoomMeetingData as any,
     );
+
+    if (zoomResponse.success) {
+      this.logger.log(
+        `Zoom meeting created: ${JSON.stringify(zoomResponse.data)}`,
+      );
+    }
 
     if (
       !zoomResponse.success &&

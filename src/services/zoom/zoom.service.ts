@@ -233,6 +233,7 @@ export class ZoomService {
         participants_video: true,
         audio_type: 'both',
         join_before_host: false,
+        waiting_room: true,
         force_pmi_jbh_password: false,
         pstn_password_protected: false,
       },
