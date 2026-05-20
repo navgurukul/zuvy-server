@@ -207,6 +207,7 @@ interface ZoomUsersListResponse {
 }
 
 type ZoomUserSettingsPayload = {
+  security?: Record<string, unknown>;
   scheduled_meeting?: Record<string, unknown>;
   in_meeting?: Record<string, unknown>;
   email_notification?: Record<string, unknown>;
@@ -224,6 +225,9 @@ export class ZoomService {
 
   private buildLicensedUserSettingsPayload(): ZoomUserSettingsPayload {
     return {
+      security: {
+        waiting_room: true,
+      },
       scheduled_meeting: {
         host_video: true,
         participants_video: true,
@@ -253,7 +257,6 @@ export class ZoomService {
         group_hd: false,
         virtual_background: true,
         far_end_camera_control: false,
-        waiting_room: true,
       },
       email_notification: {
         jbh_reminder: false,
@@ -270,6 +273,7 @@ export class ZoomService {
         show_timestamp: false,
         recording_audio_transcript: true,
         auto_recording: 'cloud',
+        host_pause_stop_recording: true,
       },
     };
   }

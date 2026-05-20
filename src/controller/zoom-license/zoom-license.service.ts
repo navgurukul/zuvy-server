@@ -20,11 +20,15 @@ import {
   notInArray,
 } from 'drizzle-orm';
 import { ZoomService } from '../../services/zoom/zoom.service';
+import {
+  ZOOM_LICENSE_COOLDOWN_MS,
+  buildZoomLicenseCooldownIntervalSql,
+} from '../../common/constants/zoom-license.constants';
 
 @Injectable()
 export class ZoomLicenseService {
   private readonly logger = new Logger(ZoomLicenseService.name);
-  private readonly licenseCooldownMs = 60 * 60 * 1000;
+  private readonly licenseCooldownMs = ZOOM_LICENSE_COOLDOWN_MS;
 
   constructor(private readonly zoomService: ZoomService) {}
 
@@ -156,13 +160,40 @@ export class ZoomLicenseService {
     return Math.max(total - protectedSeats, 0);
   }
 
+  private async logLicensePoolSnapshot(
+    trx: any,
+    dto: { startTime: Date; endTime: Date },
+    instructorEmail: string | null,
+    context: string,
+  ) {
+    const totalLicenses = this.getConfiguredTotalLicenseCount();
+    const protectedLicenses = await this.getProtectedSeatReservationCount(trx);
+    const transferableLicenses = Math.max(totalLicenses - protectedLicenses, 0);
+    const usedLicenses = await this.getOverlappingAssignmentCountForPool(
+      trx,
+      dto,
+      instructorEmail,
+    );
+    const protectedEmails = await this.getProtectedLicenseEmails(trx);
+    const instructorIsProtected = instructorEmail
+      ? protectedEmails.has(instructorEmail)
+      : false;
+    const availableLicenses = instructorIsProtected
+      ? Math.max(1 - usedLicenses, 0)
+      : Math.max(transferableLicenses - usedLicenses, 0);
+
+    const message = `[Zoom License Pool][${context}] total=${totalLicenses}, protected=${protectedLicenses}, transferable=${transferableLicenses}, reserved=${usedLicenses}, available=${availableLicenses}, instructor=${instructorEmail || 'unknown'}, window=${dto.startTime.toISOString()} -> ${dto.endTime.toISOString()}`;
+    this.logger.log(message);
+    console.log(message);
+  }
+
   private async getNextPoolAvailabilityTime(
     trx: any,
     dto: { startTime: Date; endTime: Date },
     instructorEmail: string | null,
   ): Promise<Date | null> {
     const protectedEmails = await this.getProtectedLicenseEmails(trx);
-    const protectedEmailList = Array.from(protectedEmails);
+    const protectedEmailList = Array.from(protectedEmails) as string[];
     const instructorIsProtected = instructorEmail
       ? protectedEmails.has(instructorEmail)
       : false;
@@ -249,7 +280,7 @@ export class ZoomLicenseService {
     instructorEmail: string | null,
   ): Promise<number> {
     const protectedEmails = await this.getProtectedLicenseEmails(trx);
-    const protectedEmailList = Array.from(protectedEmails);
+    const protectedEmailList = Array.from(protectedEmails) as string[];
     const overlappingCount = await trx
       .select({ count: sql<number>`count(*)` })
       .from(licenseAssignments)
@@ -262,7 +293,7 @@ export class ZoomLicenseService {
         and(
           this.blockingSessionCondition(),
           lt(licenseAssignments.startTime, dto.endTime),
-          sql`${licenseAssignments.endTime} + interval '1 hour' > ${dto.startTime}`,
+          sql`${licenseAssignments.endTime} + ${buildZoomLicenseCooldownIntervalSql()} > ${dto.startTime}`,
           this.buildInstructorPoolCondition(
             protectedEmailList,
             instructorEmail,
@@ -319,7 +350,7 @@ export class ZoomLicenseService {
                   this.blockingSessionCondition(),
                   eq(licenseAssignments.licenseId, licenses.id),
                   sql`${licenseAssignments.startTime} < ${dto.endTime}`,
-                  sql`${licenseAssignments.endTime} + interval '1 hour' > ${dto.startTime}`,
+                  sql`${licenseAssignments.endTime} + ${buildZoomLicenseCooldownIntervalSql()} > ${dto.startTime}`,
                 ),
               ),
           ),
@@ -410,6 +441,13 @@ export class ZoomLicenseService {
       ? protectedEmails.has(instructorEmail)
       : false;
 
+    await this.logLicensePoolSnapshot(
+      trx,
+      dto,
+      instructorEmail,
+      'before-allocation',
+    );
+
     // Each overlapping Zoom session consumes one license. Even if the same
     // instructor already has another overlapping session, we must allocate a
     // distinct free license or reject the new session once the pool is exhausted.
@@ -447,6 +485,12 @@ export class ZoomLicenseService {
         const assignedLicenseId = availableLicenses[0].id as number;
         this.logger.log(
           `Recovered Zoom license allocation after pool sync. Assigned license ${assignedLicenseId} to instructor ${dto.instructorId}.`,
+        );
+        await this.logLicensePoolSnapshot(
+          trx,
+          dto,
+          instructorEmail,
+          'after-sync-recovery',
         );
         return assignedLicenseId;
       }
@@ -512,9 +556,9 @@ export class ZoomLicenseService {
         and(
           this.blockingSessionCondition(),
           lt(licenseAssignments.startTime, dto.endTime),
-          sql`${licenseAssignments.endTime} + interval '1 hour' > ${dto.startTime}`,
+          sql`${licenseAssignments.endTime} + ${buildZoomLicenseCooldownIntervalSql()} > ${dto.startTime}`,
           this.buildInstructorPoolCondition(
-            Array.from(protectedEmails),
+            Array.from(protectedEmails) as string[],
             instructorEmail,
           ),
         ),
@@ -531,6 +575,12 @@ export class ZoomLicenseService {
     );
     this.logger.log(
       `Available licenses for this period: ${totalCount - usedCount} active, ${availableCount} remaining in pool.`,
+    );
+    await this.logLicensePoolSnapshot(
+      trx,
+      dto,
+      instructorEmail,
+      'allocation-success',
     );
 
     return assignedLicenseId;

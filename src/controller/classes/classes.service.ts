@@ -40,12 +40,16 @@ import { v4 as uuid } from 'uuid';
 import { ZoomService } from '../../services/zoom/zoom.service';
 import { ZoomLicenseService } from '../zoom-license/zoom-license.service';
 import { Console } from 'console';
+import {
+  ZOOM_LICENSE_COOLDOWN_MS,
+  buildZoomLicenseCooldownIntervalSql,
+} from '../../common/constants/zoom-license.constants';
 
 @Injectable()
 export class ClassesService {
   private readonly logger = new Logger(ClassesService.name);
   private readonly pendingZoomMeetingPrefix = 'pending-zoom-session-';
-  private readonly licenseCooldownMs = 60 * 60 * 1000;
+  private readonly licenseCooldownMs = ZOOM_LICENSE_COOLDOWN_MS;
 
   constructor(
     private readonly zoomService: ZoomService,
@@ -78,7 +82,7 @@ export class ClassesService {
           this.blockingZoomSessionCondition(),
           eq(users.email, email),
           sql`${licenseAssignments.startTime} < ${endTime}`,
-          sql`${licenseAssignments.endTime} + interval '1 hour' > ${bufferedStartTime}`,
+          sql`${licenseAssignments.endTime} + ${buildZoomLicenseCooldownIntervalSql()} > ${bufferedStartTime}`,
         ),
       );
 
@@ -1440,7 +1444,7 @@ export class ClassesService {
                 and(
                   this.blockingZoomSessionCondition(),
                   sql`${licenseAssignments.startTime} < ${new Date(original.endTime)}`,
-                  sql`${licenseAssignments.endTime} + interval '1 hour' > ${new Date(original.startTime)}`,
+                  sql`${licenseAssignments.endTime} + ${buildZoomLicenseCooldownIntervalSql()} > ${new Date(original.startTime)}`,
                   usingProtectedSeat
                     ? eq(sql<string>`lower(${users.email})`, instructorEmail!)
                     : Array.from(protectedEmails).length
