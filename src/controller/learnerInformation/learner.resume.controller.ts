@@ -18,9 +18,11 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { LearnerResumeService } from './learner.resume.service';
 import { ResumeResponseDto } from './dto/learner.dto';
+import { SkipOrgCheck } from 'src/rbac/decorators/skip-org-check.decorator';
 
 @ApiTags('Resume')
 @ApiBearerAuth('JWT-auth')
+@SkipOrgCheck()
 @Controller('resume')
 export class LearnerResumeController {
   constructor(private readonly learnerResumeService: LearnerResumeService) {}

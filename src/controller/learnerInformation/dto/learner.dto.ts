@@ -454,7 +454,7 @@ export class WorkExperienceDto {
   @Length(1, 100)
   @Matches(/^[a-zA-Z0-9\s\-.,()&]+$/, {
     message:
-      'company must contain only letters, numbers, spaces, and basic punctuation',
+      'company name must contain only letters, numbers, spaces, and basic punctuation',
   })
   company?: string;
 
@@ -635,13 +635,13 @@ export class SaveCompleteProfileDto {
   @ApiPropertyOptional({ example: 'B.Tech' })
   @IsOptional()
   @IsString()
-  @Length(1, 100)
+  @Length(1, 100, { message: 'Please select your degree name' })
   degree?: string;
 
   @ApiPropertyOptional({ example: 'Computer Science' })
   @IsOptional()
   @IsString()
-  @Length(1, 100)
+  @Length(1, 100, { message: 'Please select your branch name' })
   branch?: string;
 
   @ApiPropertyOptional({ example: '1st', enum: ['1st', '2nd', '3rd', '4th'] })
@@ -652,14 +652,14 @@ export class SaveCompleteProfileDto {
 
   @ApiPropertyOptional({ example: 6 })
   @IsOptional()
-  @IsInt()
+  @IsInt({ message: 'Please select graduation month' })
   @Min(1)
   @Max(12)
   graduationMonth?: number;
 
   @ApiPropertyOptional({ example: 2026 })
   @IsOptional()
-  @IsInt()
+  @IsInt({ message: 'Please select graduation year' })
   @Min(2000)
   @Max(2050)
   graduationYear?: number;
@@ -670,7 +670,9 @@ export class SaveCompleteProfileDto {
   })
   @IsOptional()
   @IsString()
-  @IsEnum(['Learning', 'Looking for Job', 'Working'])
+  @IsEnum(['Learning', 'Looking for Job', 'Working'], {
+    message: 'Please select a current status',
+  })
   currentStatus?: string;
 
   // ─── PAGE 2: SKILLS & PROJECTS ──────────────────────────────────

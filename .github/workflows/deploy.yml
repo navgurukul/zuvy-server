@@ -1,0 +1,36 @@
+name: Deploy to EC2
+
+# This triggers the workflow when code is pushed or a PR is merged to the main branch
+on:
+  push:
+    branches:
+      - chore/development_server_new # Change this to 'master' if that is your default branch name
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Deploy to EC2 via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USERNAME }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            cd /home/zuvy-server
+
+            # Pull the latest code
+            git pull
+
+            # Stop current containers
+            docker compose -f compose.yaml down
+
+            # Build the new image
+            docker compose -f compose.yaml build
+
+            # Start the containers in the background
+            docker compose -f compose.yaml up -d
+
+            # Clean up old/dangling images to free up space
+            docker image prune -f

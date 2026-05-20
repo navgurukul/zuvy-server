@@ -37,6 +37,13 @@ export class MentorSlotService {
     private readonly emailService: NotificationEmailService,
   ) {}
 
+  private mapMeetingLink(booking: any, userId: bigint) {
+    if (booking.mentorUserId === userId) {
+      return booking.zoomStartUrl;
+    }
+    return booking.meetingLink;
+  }
+
   async getOrCreateMentorProfile(userId: number) {
     const userIdBigInt = BigInt(userId);
 
@@ -105,31 +112,6 @@ export class MentorSlotService {
     return mentor;
   }
 
-  private async getMentorProfile(userId: number) {
-    const userIdBigInt = BigInt(userId);
-
-    let [mentorProfile] = await db
-      .select()
-      .from(zuvyMentorSlotManagement)
-      .where(eq(zuvyMentorSlotManagement.mentorUserId, userIdBigInt))
-      .limit(1);
-
-    if (!mentorProfile) {
-      const inserted = await db
-        .insert(zuvyMentorSlotManagement)
-        .values({
-          mentorUserId: userIdBigInt,
-          organizationId: 1,
-          mentorType: 'mentor',
-        } as typeof zuvyMentorSlotManagement.$inferInsert)
-        .returning();
-
-      mentorProfile = inserted[0];
-    }
-
-    return mentorProfile;
-  }
-
   private async ensureUserIsMentor(userId: number) {
     if (!userId || Number.isNaN(userId)) {
       throw new ForbiddenException('Invalid user');
@@ -154,9 +136,59 @@ export class MentorSlotService {
 
     if (!role) {
       throw new ForbiddenException(
-        'User is not allowed to act as mentor. Only instructors can create mentor slots.',
+        'User has no role assigned. Cannot create mentor profile.',
       );
     }
+
+    if (role.zuvy_user_roles.name !== 'instructor') {
+      throw new ForbiddenException(
+        'Only instructors can create mentor profiles.',
+      );
+    }
+
+    return true;
+  }
+
+  private async ensureMentorOwnsBooking(userId: number, bookingId: number) {
+    await this.ensureUserIsMentor(userId);
+
+    const [booking] = await db
+      .select()
+      .from(zuvyMentorSlotBooking)
+      .where(eq(zuvyMentorSlotBooking.id, bookingId))
+      .limit(1);
+
+    if (!booking) {
+      throw new NotFoundException('Booking not found.');
+    }
+
+    if (booking.mentorUserId !== BigInt(userId)) {
+      throw new ForbiddenException('You do not own this booking.');
+    }
+
+    return booking;
+  }
+
+  private async ensureUserOwnsBooking(userId: number, bookingId: number) {
+    const [booking] = await db
+      .select()
+      .from(zuvyMentorSlotBooking)
+      .where(eq(zuvyMentorSlotBooking.id, bookingId))
+      .limit(1);
+
+    if (!booking) {
+      throw new NotFoundException('Booking not found.');
+    }
+
+    const userIdBigInt = BigInt(userId);
+    if (
+      booking.mentorUserId !== userIdBigInt &&
+      booking.studentUserId !== userIdBigInt
+    ) {
+      throw new ForbiddenException('You do not own this booking.');
+    }
+
+    return booking;
   }
 
   private async ensureMentorZoomVerified(userId: number) {
@@ -451,6 +483,7 @@ export class MentorSlotService {
         throw new BadRequestException('Slot is full.');
       }
 
+      // 12-hour booking notice is temporarily disabled for short-notice sessions.
       // this.enforceMinimumNotice(new Date(slot.slotStartDateTime));
 
       /* ========================================
@@ -667,7 +700,8 @@ export class MentorSlotService {
             approval_type: 0,
             audio: 'both',
             auto_recording: 'cloud',
-            waiting_room: false,
+            waiting_room: true,
+            alternative_hosts: mentorEmail,
           },
         };
 
@@ -766,7 +800,10 @@ export class MentorSlotService {
 
       const bookingResponse = {
         ...createdBooking,
+        // student-safe link
         meetingLink: meeting.joinUrl,
+        // mentor-only link
+        mentorJoinLink: meeting.startUrl,
         remainingCredits: updatedMetrics ? 3 - updatedMetrics.quotaUsed : 2,
         nextEligible: updatedMetrics?.cooldownEndDate,
       };
@@ -855,11 +892,28 @@ export class MentorSlotService {
     bookingId: number,
     reason: string,
     cancelledBy: 'mentor' | 'student',
+    actorUserId?: number,
   ) {
     if (!reason || reason.length < 10) {
       throw new BadRequestException(
         'Cancellation reason must be at least 10 characters.',
       );
+    }
+
+    if (actorUserId) {
+      const booking = await this.ensureUserOwnsBooking(actorUserId, bookingId);
+      const actorUserIdBigInt = BigInt(actorUserId);
+
+      if (
+        (cancelledBy === 'mentor' &&
+          booking.mentorUserId !== actorUserIdBigInt) ||
+        (cancelledBy === 'student' &&
+          booking.studentUserId !== actorUserIdBigInt)
+      ) {
+        throw new ForbiddenException(
+          `Only the ${cancelledBy} can cancel as ${cancelledBy}.`,
+        );
+      }
     }
 
     return db.transaction(async (trx) => {
@@ -1018,6 +1072,7 @@ export class MentorSlotService {
     bookingId: number,
     newSlotId: number,
     reason: string,
+    studentUserId?: number,
   ) {
     if (!reason || reason.length < 10) {
       throw new BadRequestException(
@@ -1037,6 +1092,10 @@ export class MentorSlotService {
 
     if (!booking) {
       throw new NotFoundException('Booking not found.');
+    }
+
+    if (studentUserId && booking.studentUserId !== BigInt(studentUserId)) {
+      throw new ForbiddenException('You do not own this booking.');
     }
 
     if (booking.status === 'cancelled') {
@@ -1077,7 +1136,8 @@ export class MentorSlotService {
       throw new BadRequestException('Proposed slot is full.');
     }
 
-    this.enforceMinimumNotice(new Date(slot.slotStartDateTime));
+    // 12-hour reschedule notice is temporarily disabled for short-notice sessions.
+    // this.enforceMinimumNotice(new Date(slot.slotStartDateTime));
 
     if (new Date(slot.slotStartDateTime) <= new Date()) {
       throw new BadRequestException('Cannot reschedule to past slot.');
@@ -1139,7 +1199,12 @@ export class MentorSlotService {
     bookingId: number,
     feedback: any,
     rating?: number,
+    mentorUserId?: number,
   ) {
+    if (mentorUserId) {
+      await this.ensureMentorOwnsBooking(mentorUserId, bookingId);
+    }
+
     const [booking] = await db
       .select()
       .from(zuvyMentorSlotBooking)
@@ -1183,7 +1248,7 @@ export class MentorSlotService {
   }
 
   /* ==========================================================================
-     ENFORCE 12-HOUR SLOT DELETION RULE
+     DELETE EMPTY UPCOMING SLOT
   ========================================================================== */
 
   async removeSlot(userId: number, slotId: number) {
@@ -1205,14 +1270,50 @@ export class MentorSlotService {
       throw new ForbiddenException('You do not own this slot.');
     }
 
-    this.enforceMinimumNotice(slot.slotStartDateTime);
+    if (new Date(slot.slotStartDateTime) <= new Date()) {
+      throw new BadRequestException('Only upcoming slots can be deleted.');
+    }
 
-    return db
+    if (slot.currentBookedCount > 0) {
+      throw new BadRequestException('Booked slots cannot be deleted.');
+    }
+
+    const [{ count: bookingCount }] = await db
+      .select({ count: count() })
+      .from(zuvyMentorSlotBooking)
+      .where(
+        and(
+          eq(zuvyMentorSlotBooking.slotAvailabilityId, slotId),
+          ne(zuvyMentorSlotBooking.status, 'cancelled'),
+        ),
+      );
+
+    if (Number(bookingCount) > 0) {
+      throw new BadRequestException('Booked slots cannot be deleted.');
+    }
+
+    // 12-hour deletion notice is temporarily disabled for short-notice slots.
+    // this.enforceMinimumNotice(slot.slotStartDateTime);
+
+    const result = await db
       .delete(zuvyMentorSlotAvailability)
-      .where(eq(zuvyMentorSlotAvailability.id, slotId));
+      .where(eq(zuvyMentorSlotAvailability.id, slotId))
+      .returning();
+
+    if (!result.length) {
+      throw new NotFoundException('Slot not found or already deleted');
+    }
+
+    return {
+      message: 'Slot deleted successfully',
+    };
   }
 
-  async acceptReschedule(bookingId: number) {
+  async acceptReschedule(bookingId: number, mentorUserId?: number) {
+    if (mentorUserId) {
+      await this.ensureMentorOwnsBooking(mentorUserId, bookingId);
+    }
+
     return db.transaction(async (trx) => {
       const [booking] = await trx
         .select()
@@ -1317,7 +1418,11 @@ export class MentorSlotService {
     });
   }
 
-  async declineReschedule(bookingId: number) {
+  async declineReschedule(bookingId: number, mentorUserId?: number) {
+    if (mentorUserId) {
+      await this.ensureMentorOwnsBooking(mentorUserId, bookingId);
+    }
+
     const [booking] = await db
       .select()
       .from(zuvyMentorSlotBooking)
@@ -1369,6 +1474,14 @@ export class MentorSlotService {
       throw new BadRequestException('Cannot create past slot.');
     }
 
+    const durationMinutes = Math.round(
+      (end.getTime() - start.getTime()) / (1000 * 60),
+    );
+
+    if (durationMinutes <= 0) {
+      throw new BadRequestException('Invalid slot duration.');
+    }
+
     /* ================================
        PLATFORM SLOT OVERLAP CHECK
     ================================= */
@@ -1382,8 +1495,8 @@ export class MentorSlotService {
             zuvyMentorSlotAvailability.mentorSlotManagementId,
             mentorProfile.id,
           ),
-          lt(zuvyMentorSlotAvailability.slotEndDateTime, start),
-          gt(zuvyMentorSlotAvailability.slotStartDateTime, end),
+          lt(zuvyMentorSlotAvailability.slotStartDateTime, end),
+          gt(zuvyMentorSlotAvailability.slotEndDateTime, start),
         ),
       );
 
@@ -1397,7 +1510,11 @@ export class MentorSlotService {
         mentorSlotManagementId: mentorProfile.id,
         slotStartDateTime: start,
         slotEndDateTime: end,
-        durationMinutes: dto.durationMinutes,
+        durationMinutes,
+        maxCapacity: dto.maxCapacity ?? 1,
+        topic: dto.topic ?? null,
+        status: 'available',
+        isPublic: true,
       } as typeof zuvyMentorSlotAvailability.$inferInsert)
       .returning();
   }
@@ -1541,9 +1658,14 @@ export class MentorSlotService {
       .from(zuvyMentorSlotBooking)
       .where(eq(zuvyMentorSlotBooking.slotAvailabilityId, slotId));
 
+    const userIdBigInt = BigInt(userId);
+
     return {
       slot,
-      bookings,
+      bookings: bookings.map((b) => ({
+        ...b,
+        meetingLink: this.mapMeetingLink(b, userIdBigInt),
+      })),
     };
   }
 
@@ -1582,7 +1704,10 @@ export class MentorSlotService {
       .orderBy(desc(zuvyMentorSessionRecordings.createdAt));
 
     return {
-      booking,
+      booking: {
+        ...booking,
+        meetingLink: this.mapMeetingLink(booking, userIdBigInt),
+      },
       slot,
       recordings: recordings.map((recording) => ({
         ...recording,
@@ -1595,10 +1720,15 @@ export class MentorSlotService {
   async getStudentBookings(userId: number) {
     const userIdBigInt = BigInt(userId);
 
-    return db
+    const bookings = await db
       .select()
       .from(zuvyMentorSlotBooking)
       .where(eq(zuvyMentorSlotBooking.studentUserId, userIdBigInt));
+
+    return bookings.map((b) => ({
+      ...b,
+      meetingLink: b.meetingLink,
+    }));
   }
 
   async getStudentMetrics(userId: number) {
@@ -1636,7 +1766,12 @@ export class MentorSlotService {
     bookingId: number,
     joinedAtStr: string,
     leftAtStr: string,
+    mentorUserId?: number,
   ) {
+    if (mentorUserId) {
+      await this.ensureMentorOwnsBooking(mentorUserId, bookingId);
+    }
+
     const joinedAt = new Date(joinedAtStr);
     const leftAt = new Date(leftAtStr);
 
@@ -1658,7 +1793,11 @@ export class MentorSlotService {
       .where(eq(zuvyMentorSlotBooking.id, bookingId));
   }
 
-  async completeSession(bookingId: number) {
+  async completeSession(bookingId: number, mentorUserId?: number) {
+    if (mentorUserId) {
+      await this.ensureMentorOwnsBooking(mentorUserId, bookingId);
+    }
+
     return db
       .update(zuvyMentorSlotBooking)
       .set({
@@ -1776,5 +1915,147 @@ export class MentorSlotService {
         `Failed to enqueue recording job for mentor booking ${booking.id}: ${error.message}`,
       );
     }
+  }
+
+  async createOrUpdateMentorProfile(userId: number, dto: any) {
+    await this.ensureUserIsMentor(userId);
+
+    const userIdBigInt = BigInt(userId);
+
+    /* =========================================================
+    FETCH ORGANIZATION FROM DB TO ENSURE USER IS INSTRUCTOR IN AN ORG
+    ========================================================= */
+    const roleAssignment = await db
+      .select({
+        organizationId: zuvyUserRolesAssigned.organizationId,
+      })
+      .from(zuvyUserRolesAssigned)
+      .innerJoin(
+        zuvyUserRoles,
+        eq(zuvyUserRolesAssigned.roleId, zuvyUserRoles.id),
+      )
+      .where(
+        and(
+          eq(zuvyUserRolesAssigned.userId, userIdBigInt),
+          eq(zuvyUserRoles.name, 'instructor'),
+        ),
+      )
+      .limit(1);
+
+    if (!roleAssignment.length || !roleAssignment[0].organizationId) {
+      throw new BadRequestException('Organization not found for instructor');
+    }
+
+    const organizationId = roleAssignment[0].organizationId;
+
+    /* =========================================================
+    FETCH EXISTING PROFILE
+    ========================================================= */
+    const existingProfile = await db.query.zuvyMentorSlotManagement.findFirst({
+      where: and(
+        eq(zuvyMentorSlotManagement.mentorUserId, userIdBigInt),
+        eq(zuvyMentorSlotManagement.organizationId, organizationId),
+      ),
+    });
+
+    /* =========================================================
+    VALIDATE BOOTCAMP
+    ========================================================= */
+    if (dto.bootcampId !== undefined) {
+      const [bootcamp] = await db
+        .select()
+        .from(zuvyBootcamps)
+        .where(eq(zuvyBootcamps.id, dto.bootcampId))
+        .limit(1);
+
+      if (!bootcamp) {
+        throw new BadRequestException('Invalid bootcampId');
+      }
+    }
+
+    /* =========================================================
+    PREPARE PAYLOAD
+    ========================================================= */
+    const payload = {
+      ...(dto.bio !== undefined && { bio: dto.bio }),
+      ...(dto.expertise !== undefined && { expertise: dto.expertise }),
+      ...(dto.title !== undefined && { title: dto.title }),
+      ...(dto.pastExperiences !== undefined && {
+        pastExperiences: dto.pastExperiences,
+      }),
+      ...(dto.bootcampId !== undefined && { bootcampId: dto.bootcampId }),
+    };
+
+    /* =========================================================
+    CREATE FLOW
+    ========================================================= */
+    if (!existingProfile) {
+      const [newProfile] = await db
+        .insert(zuvyMentorSlotManagement)
+        .values({
+          mentorUserId: userIdBigInt,
+          organizationId,
+
+          mentorType: 'instructor',
+
+          bio: dto.bio ?? null,
+          expertise: dto.expertise ?? [],
+          title: dto.title ?? null,
+          pastExperiences: dto.pastExperiences ?? null,
+          bootcampId: dto.bootcampId ?? null,
+
+          isBufferEnabled: false,
+          bufferMinutes: 0,
+          timezone: 'UTC',
+
+          totalAvailableSlots: 0,
+          totalBookedSlots: 0,
+          totalCancelledSlots: 0,
+
+          status: 'active',
+          isVerified: false,
+          acceptsNewMentees: true,
+
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        } as typeof zuvyMentorSlotManagement.$inferInsert)
+        .returning();
+
+      return {
+        message: 'Mentor profile created successfully',
+        data: newProfile,
+      };
+    }
+
+    /* =========================================================
+    UPDATE FLOW
+    ========================================================= */
+    if (Object.keys(payload).length === 0) {
+      throw new BadRequestException('No fields provided for update');
+    }
+
+    const result = await db
+      .update(zuvyMentorSlotManagement)
+      .set({
+        ...payload,
+        updatedAt: new Date(),
+      } as Partial<typeof zuvyMentorSlotManagement.$inferInsert>)
+      .where(
+        and(
+          eq(zuvyMentorSlotManagement.mentorUserId, userIdBigInt),
+          eq(zuvyMentorSlotManagement.organizationId, organizationId),
+        ),
+      )
+      .returning();
+
+    if (!result.length) {
+      throw new NotFoundException(
+        'Mentor profile not found for this organization',
+      );
+    }
+
+    return {
+      message: 'Mentor profile updated successfully',
+    };
   }
 }

@@ -29,6 +29,8 @@ import { RolesGuard } from 'src/guards/roles.guard';
 import { Roles } from 'src/decorators/roles.decorator';
 import { TrackAction } from 'src/trackinglog/decorators/track-action.decorator';
 import { TrackActionInterceptor } from 'src/trackinglog/interceptors/track-action.interceptor';
+import { PermissionsGuard } from 'src/rbac/guards/permissions.guard';
+import { SkipOrgCheck } from 'src/rbac/decorators/skip-org-check.decorator';
 
 // swagger body schema for batch
 @Controller('batch')
@@ -41,11 +43,12 @@ import { TrackActionInterceptor } from 'src/trackinglog/interceptors/track-actio
     forbidNonWhitelisted: true,
   }),
 )
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard, RolesGuard)
 @ApiBearerAuth('JWT-auth')
 export class BatchesController {
   constructor(private batchService: BatchesService) {}
 
+  @SkipOrgCheck()
   @Get('/:id')
   @ApiOperation({ summary: 'Get the batch by id' })
   @ApiBearerAuth('JWT-auth')
