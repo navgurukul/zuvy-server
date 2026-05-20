@@ -10,12 +10,15 @@ import {
   zuvyMentorSlotAvailability,
   zuvyMentorSlotBooking,
   zuvyMentorSlotManagement,
+  zuvyMentorProfile,
   zuvyUserRolesAssigned,
   zuvyUserRoles,
+  zuvyBatches,
   zuvyBatchEnrollments,
   zuvyBootcampType,
   zuvyBootcamps,
   zuvyMentorSessionRecordings,
+  zuvyOrganizations,
   users,
   zuvyStudentBookingMetrics,
 } from '../../../drizzle/schema';
@@ -44,14 +47,12 @@ export class MentorSlotService {
     return booking.meetingLink;
   }
 
-  async getOrCreateMentorProfile(userId: number) {
+  private async resolveInstructorOrganization(
+    userId: number,
+    preferredOrganizationId?: number,
+  ) {
     const userIdBigInt = BigInt(userId);
-
-    /* ========================================
-       1. FETCH INSTRUCTOR ROLE + ORG
-    ======================================== */
-
-    const roleAssignment = await db
+    const roleAssignments = await db
       .select({
         organizationId: zuvyUserRolesAssigned.organizationId,
       })
@@ -65,16 +66,82 @@ export class MentorSlotService {
           eq(zuvyUserRolesAssigned.userId, userIdBigInt),
           eq(zuvyUserRoles.name, 'instructor'),
         ),
-      )
-      .limit(1);
+      );
 
-    if (!roleAssignment.length || !roleAssignment[0].organizationId) {
+    const validOrganizationIds = roleAssignments
+      .map((assignment) => assignment.organizationId)
+      .filter((organizationId): organizationId is number => !!organizationId);
+
+    if (!validOrganizationIds.length) {
       throw new BadRequestException(
         'User is not an instructor or organization not assigned.',
       );
     }
 
-    const organizationId = roleAssignment[0].organizationId;
+    if (preferredOrganizationId !== undefined) {
+      if (!validOrganizationIds.includes(preferredOrganizationId)) {
+        throw new ForbiddenException(
+          'Instructor is not assigned to the selected organization.',
+        );
+      }
+
+      return preferredOrganizationId;
+    }
+
+    return validOrganizationIds[0];
+  }
+
+  private async getOrCreateSharedMentorProfile(userId: number) {
+    const userIdBigInt = BigInt(userId);
+    const [userRow] = await db
+      .select({ email: users.email })
+      .from(users)
+      .where(eq(users.id, userIdBigInt))
+      .limit(1);
+
+    if (!userRow) {
+      throw new NotFoundException('Mentor user not found');
+    }
+
+    let profile = await db.query.zuvyMentorProfile.findFirst({
+      where: eq(zuvyMentorProfile.mentorUserId, userIdBigInt),
+    });
+
+    if (!profile) {
+      const [createdProfile] = await db
+        .insert(zuvyMentorProfile)
+        .values({
+          mentorUserId: userIdBigInt,
+          email: userRow.email,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        } as typeof zuvyMentorProfile.$inferInsert)
+        .returning();
+
+      profile = createdProfile;
+    } else if (profile.email !== userRow.email) {
+      const [updatedProfile] = await db
+        .update(zuvyMentorProfile)
+        .set({
+          email: userRow.email,
+          updatedAt: new Date(),
+        } as Partial<typeof zuvyMentorProfile.$inferInsert>)
+        .where(eq(zuvyMentorProfile.id, profile.id))
+        .returning();
+
+      profile = updatedProfile;
+    }
+
+    return profile;
+  }
+
+  async getOrCreateMentorProfile(userId: number, organizationId?: number) {
+    const userIdBigInt = BigInt(userId);
+    await this.getOrCreateSharedMentorProfile(userId);
+    const resolvedOrganizationId = await this.resolveInstructorOrganization(
+      userId,
+      organizationId,
+    );
 
     /* ========================================
        2. CHECK IF MENTOR EXISTS
@@ -83,7 +150,7 @@ export class MentorSlotService {
     let mentor = await db.query.zuvyMentorSlotManagement.findFirst({
       where: and(
         eq(zuvyMentorSlotManagement.mentorUserId, userIdBigInt),
-        eq(zuvyMentorSlotManagement.organizationId, organizationId),
+        eq(zuvyMentorSlotManagement.organizationId, resolvedOrganizationId),
       ),
     });
 
@@ -96,7 +163,7 @@ export class MentorSlotService {
         .insert(zuvyMentorSlotManagement)
         .values({
           mentorUserId: userIdBigInt,
-          organizationId,
+          organizationId: resolvedOrganizationId,
           mentorType: 'instructor',
           status: 'active',
           isVerified: false,
@@ -191,16 +258,17 @@ export class MentorSlotService {
     return booking;
   }
 
-  private async ensureMentorZoomVerified(userId: number) {
-    const mentorProfile = await this.getOrCreateMentorProfile(userId);
+  private async ensureMentorZoomVerified(
+    userId: number,
+    organizationId?: number,
+  ) {
+    const mentorProfile = await this.getOrCreateMentorProfile(
+      userId,
+      organizationId,
+    );
     console.log(
       `Mentor profile for user ${userId}: isVerified=${mentorProfile?.isVerified}`,
     );
-
-    if (mentorProfile?.isVerified) {
-      console.log(`Mentor ${userId} already verified, skipping Zoom check`);
-      return true;
-    }
 
     const [userRow] = await db
       .select({ email: users.email })
@@ -220,6 +288,14 @@ export class MentorSlotService {
     );
 
     if (!zoomResponse.success) {
+      await db
+        .update(zuvyMentorSlotManagement)
+        .set({
+          isVerified: false,
+          updatedAt: new Date(),
+        } as Partial<typeof zuvyMentorSlotManagement.$inferInsert>)
+        .where(eq(zuvyMentorSlotManagement.id, mentorProfile.id));
+
       console.error(
         `Zoom user check failed for ${userRow.email}: ${zoomResponse.error}`,
       );
@@ -233,6 +309,14 @@ export class MentorSlotService {
     console.log(`Zoom user type=${userType}, status=${userStatus}`);
 
     if (userType !== 2 || userStatus !== 'active') {
+      await db
+        .update(zuvyMentorSlotManagement)
+        .set({
+          isVerified: false,
+          updatedAt: new Date(),
+        } as Partial<typeof zuvyMentorSlotManagement.$inferInsert>)
+        .where(eq(zuvyMentorSlotManagement.id, mentorProfile.id));
+
       console.error(
         `Zoom user not licensed/active: type=${userType}, status=${userStatus}`,
       );
@@ -251,20 +335,41 @@ export class MentorSlotService {
         isVerified: true,
         updatedAt: new Date(),
       } as Partial<typeof zuvyMentorSlotManagement.$inferInsert>)
-      .where(eq(zuvyMentorSlotManagement.mentorUserId, BigInt(userId)));
+      .where(eq(zuvyMentorSlotManagement.id, mentorProfile.id));
 
     return true;
   }
 
-  private async validateMentorProfileComplete(userId: number) {
+  private async validateMentorProfileComplete(
+    userId: number,
+    organizationId?: number,
+  ) {
+    const mentorProfile = await this.getOrCreateMentorProfile(
+      userId,
+      organizationId,
+    );
+    const sharedProfile = await this.getOrCreateSharedMentorProfile(userId);
+
     const [profile] = await db
       .select({
-        bio: zuvyMentorSlotManagement.bio,
-        expertise: zuvyMentorSlotManagement.expertise,
-        pastExperiences: zuvyMentorSlotManagement.pastExperiences,
+        bio: zuvyMentorProfile.bio,
+        expertise: zuvyMentorProfile.expertise,
+        pastExperiences: zuvyMentorProfile.pastExperiences,
       })
-      .from(zuvyMentorSlotManagement)
-      .where(eq(zuvyMentorSlotManagement.mentorUserId, BigInt(userId)))
+      .from(zuvyMentorProfile)
+      .innerJoin(
+        zuvyMentorSlotManagement,
+        eq(
+          zuvyMentorSlotManagement.mentorUserId,
+          zuvyMentorProfile.mentorUserId,
+        ),
+      )
+      .where(
+        and(
+          eq(zuvyMentorProfile.id, sharedProfile.id),
+          eq(zuvyMentorSlotManagement.id, mentorProfile.id),
+        ),
+      )
       .limit(1);
 
     if (!profile) {
@@ -291,6 +396,58 @@ export class MentorSlotService {
     }
 
     return true;
+  }
+
+  private async ensureMentorHasMentorshipEnabledBootcamp(
+    userId: number,
+    organizationId?: number,
+  ) {
+    const resolvedOrganizationId = await this.resolveInstructorOrganization(
+      userId,
+      organizationId,
+    );
+
+    const eligibleBootcamps = await db
+      .select({
+        bootcampId: zuvyBatches.bootcampId,
+      })
+      .from(zuvyBatches)
+      .innerJoin(zuvyBootcamps, eq(zuvyBatches.bootcampId, zuvyBootcamps.id))
+      .innerJoin(
+        zuvyBootcampType,
+        eq(zuvyBootcampType.bootcampId, zuvyBootcamps.id),
+      )
+      .where(
+        and(
+          eq(zuvyBatches.instructorId, userId),
+          eq(zuvyBootcamps.organizationId, resolvedOrganizationId),
+          eq(zuvyBootcampType.mentorshipEnabled, true),
+        ),
+      )
+      .limit(1);
+
+    if (!eligibleBootcamps.length || !eligibleBootcamps[0].bootcampId) {
+      throw new ForbiddenException(
+        'You are not assigned to any mentorship-enabled bootcamp in this organization.',
+      );
+    }
+
+    const mentorProfile = await this.getOrCreateMentorProfile(
+      userId,
+      resolvedOrganizationId,
+    );
+
+    if (!mentorProfile.bootcampId) {
+      await db
+        .update(zuvyMentorSlotManagement)
+        .set({
+          bootcampId: eligibleBootcamps[0].bootcampId,
+          updatedAt: new Date(),
+        } as Partial<typeof zuvyMentorSlotManagement.$inferInsert>)
+        .where(eq(zuvyMentorSlotManagement.id, mentorProfile.id));
+    }
+
+    return eligibleBootcamps[0].bootcampId;
   }
   /* ==========================================================================
      UTILITY — 12 HOUR RULE ENFORCER
@@ -1251,10 +1408,13 @@ export class MentorSlotService {
      DELETE EMPTY UPCOMING SLOT
   ========================================================================== */
 
-  async removeSlot(userId: number, slotId: number) {
+  async removeSlot(userId: number, slotId: number, organizationId?: number) {
     await this.ensureUserIsMentor(userId);
 
-    const mentorProfile = await this.getOrCreateMentorProfile(userId);
+    const mentorProfile = await this.getOrCreateMentorProfile(
+      userId,
+      organizationId,
+    );
 
     const [slot] = await db
       .select()
@@ -1456,12 +1616,16 @@ export class MentorSlotService {
     return { message: 'Reschedule declined.' };
   }
 
-  async createSlot(userId: number, dto: any) {
+  async createSlot(userId: number, dto: any, organizationId?: number) {
     await this.ensureUserIsMentor(userId);
-    await this.validateMentorProfileComplete(userId);
-    await this.ensureMentorZoomVerified(userId);
+    await this.validateMentorProfileComplete(userId, organizationId);
+    await this.ensureMentorHasMentorshipEnabledBootcamp(userId, organizationId);
+    await this.ensureMentorZoomVerified(userId, organizationId);
 
-    const mentorProfile = await this.getOrCreateMentorProfile(userId);
+    const mentorProfile = await this.getOrCreateMentorProfile(
+      userId,
+      organizationId,
+    );
 
     const start = new Date(dto.slotStartDateTime);
     const end = new Date(dto.slotEndDateTime);
@@ -1523,15 +1687,19 @@ export class MentorSlotService {
     userId: number,
     weekOffset = 0,
     sort: 'asc' | 'desc' = 'desc',
+    organizationId?: number,
   ) {
     await this.ensureUserIsMentor(userId);
 
-    const mentorProfile = await this.getOrCreateMentorProfile(userId);
+    const mentorProfile = await this.getOrCreateMentorProfile(
+      userId,
+      organizationId,
+    );
 
     if (!mentorProfile) {
       throw new NotFoundException('Mentor profile not found.');
     }
-    await this.ensureMentorZoomVerified(userId);
+    await this.ensureMentorZoomVerified(userId, organizationId);
 
     const now = new Date();
 
@@ -1550,6 +1718,13 @@ export class MentorSlotService {
 
     const endOfWeek = new Date(startOfWeek);
     endOfWeek.setDate(startOfWeek.getDate() + 7);
+
+    /* ==================================================
+      DISPLAY END OF WEEK (SUNDAY 23:59:59)
+    ================================================== */
+
+    const displayWeekEnd = new Date(endOfWeek);
+    displayWeekEnd.setMilliseconds(displayWeekEnd.getMilliseconds() - 1);
 
     /* ============================
        FETCH SLOTS
@@ -1630,16 +1805,23 @@ export class MentorSlotService {
 
     return {
       weekStart: startOfWeek,
-      weekEnd: endOfWeek,
+      weekEnd: displayWeekEnd,
       metrics,
       slots: processedSlots,
     };
   }
 
-  async getSlotDetails(userId: number, slotId: number) {
+  async getSlotDetails(
+    userId: number,
+    slotId: number,
+    organizationId?: number,
+  ) {
     await this.ensureUserIsMentor(userId);
 
-    const mentorProfile = await this.getOrCreateMentorProfile(userId);
+    const mentorProfile = await this.getOrCreateMentorProfile(
+      userId,
+      organizationId,
+    );
 
     const [slot] = await db
       .select()
@@ -1807,12 +1989,13 @@ export class MentorSlotService {
       .where(eq(zuvyMentorSlotBooking.id, bookingId));
   }
 
-  async updateMentorProfile(userId: number, dto: any) {
+  async updateMentorProfile(userId: number, dto: any, organizationId?: number) {
     await this.ensureUserIsMentor(userId);
 
-    const userIdBigInt = BigInt(userId);
-    const updatePayload: Partial<typeof zuvyMentorSlotManagement.$inferSelect> =
-      {};
+    await this.resolveInstructorOrganization(userId, organizationId);
+    const sharedProfile = await this.getOrCreateSharedMentorProfile(userId);
+
+    const updatePayload: Partial<typeof zuvyMentorProfile.$inferSelect> = {};
 
     if (dto.bio !== undefined) updatePayload.bio = dto.bio;
     if (dto.expertise !== undefined) updatePayload.expertise = dto.expertise;
@@ -1820,53 +2003,46 @@ export class MentorSlotService {
     if (dto.pastExperiences !== undefined)
       updatePayload.pastExperiences = dto.pastExperiences;
 
-    if (dto.bootcampId !== undefined) {
-      const [bootcamp] = await db
-        .select()
-        .from(zuvyBootcamps)
-        .where(eq(zuvyBootcamps.id, dto.bootcampId))
-        .limit(1);
-
-      if (!bootcamp) {
-        throw new BadRequestException('Invalid bootcampId');
-      }
-
-      updatePayload.bootcampId = dto.bootcampId;
-    }
-
     // prevent empty update
     if (Object.keys(updatePayload).length === 0) {
       throw new BadRequestException('No fields provided for update');
     }
 
     await db
-      .update(zuvyMentorSlotManagement)
+      .update(zuvyMentorProfile)
       .set({
         ...updatePayload,
         updatedAt: new Date(),
-      } as Partial<typeof zuvyMentorSlotManagement.$inferInsert>)
-      .where(eq(zuvyMentorSlotManagement.mentorUserId, userIdBigInt));
+      } as Partial<typeof zuvyMentorProfile.$inferInsert>)
+      .where(eq(zuvyMentorProfile.id, sharedProfile.id));
     return { message: ' Mentor profile updated successfully' };
   }
 
-  async getMyMentorProfile(userId: number) {
+  async getMyMentorProfile(userId: number, organizationId?: number) {
     await this.ensureUserIsMentor(userId);
+    await this.getOrCreateSharedMentorProfile(userId);
 
     const userIdBigInt = BigInt(userId);
+    const resolvedOrganizationId = await this.resolveInstructorOrganization(
+      userId,
+      organizationId,
+    );
 
     const [profile] = await db
       .select({
         mentorProfileId: zuvyMentorSlotManagement.id,
         mentorUserId: zuvyMentorSlotManagement.mentorUserId,
         organizationId: zuvyMentorSlotManagement.organizationId,
+        orgName: zuvyOrganizations.displayName,
 
         mentorType: zuvyMentorSlotManagement.mentorType,
         timezone: zuvyMentorSlotManagement.timezone,
 
-        title: zuvyMentorSlotManagement.title,
-        bio: zuvyMentorSlotManagement.bio,
-        expertise: zuvyMentorSlotManagement.expertise,
-        pastExperiences: zuvyMentorSlotManagement.pastExperiences,
+        title: zuvyMentorProfile.title,
+        bio: zuvyMentorProfile.bio,
+        expertise: zuvyMentorProfile.expertise,
+        pastExperiences: zuvyMentorProfile.pastExperiences,
+        bootcampId: zuvyMentorSlotManagement.bootcampId,
 
         status: zuvyMentorSlotManagement.status,
         isVerified: zuvyMentorSlotManagement.isVerified,
@@ -1876,7 +2052,23 @@ export class MentorSlotService {
         updatedAt: zuvyMentorSlotManagement.updatedAt,
       })
       .from(zuvyMentorSlotManagement)
-      .where(eq(zuvyMentorSlotManagement.mentorUserId, userIdBigInt))
+      .innerJoin(
+        zuvyMentorProfile,
+        eq(
+          zuvyMentorProfile.mentorUserId,
+          zuvyMentorSlotManagement.mentorUserId,
+        ),
+      )
+      .innerJoin(
+        zuvyOrganizations,
+        eq(zuvyOrganizations.id, zuvyMentorSlotManagement.organizationId),
+      )
+      .where(
+        and(
+          eq(zuvyMentorSlotManagement.mentorUserId, userIdBigInt),
+          eq(zuvyMentorSlotManagement.organizationId, resolvedOrganizationId),
+        ),
+      )
       .limit(1);
 
     if (!profile) {
@@ -1917,36 +2109,18 @@ export class MentorSlotService {
     }
   }
 
-  async createOrUpdateMentorProfile(userId: number, dto: any) {
+  async createOrUpdateMentorProfile(
+    userId: number,
+    dto: any,
+    organizationId?: number,
+  ) {
     await this.ensureUserIsMentor(userId);
 
     const userIdBigInt = BigInt(userId);
-
-    /* =========================================================
-    FETCH ORGANIZATION FROM DB TO ENSURE USER IS INSTRUCTOR IN AN ORG
-    ========================================================= */
-    const roleAssignment = await db
-      .select({
-        organizationId: zuvyUserRolesAssigned.organizationId,
-      })
-      .from(zuvyUserRolesAssigned)
-      .innerJoin(
-        zuvyUserRoles,
-        eq(zuvyUserRolesAssigned.roleId, zuvyUserRoles.id),
-      )
-      .where(
-        and(
-          eq(zuvyUserRolesAssigned.userId, userIdBigInt),
-          eq(zuvyUserRoles.name, 'instructor'),
-        ),
-      )
-      .limit(1);
-
-    if (!roleAssignment.length || !roleAssignment[0].organizationId) {
-      throw new BadRequestException('Organization not found for instructor');
-    }
-
-    const organizationId = roleAssignment[0].organizationId;
+    const resolvedOrganizationId = await this.resolveInstructorOrganization(
+      userId,
+      organizationId,
+    );
 
     /* =========================================================
     FETCH EXISTING PROFILE
@@ -1954,24 +2128,10 @@ export class MentorSlotService {
     const existingProfile = await db.query.zuvyMentorSlotManagement.findFirst({
       where: and(
         eq(zuvyMentorSlotManagement.mentorUserId, userIdBigInt),
-        eq(zuvyMentorSlotManagement.organizationId, organizationId),
+        eq(zuvyMentorSlotManagement.organizationId, resolvedOrganizationId),
       ),
     });
-
-    /* =========================================================
-    VALIDATE BOOTCAMP
-    ========================================================= */
-    if (dto.bootcampId !== undefined) {
-      const [bootcamp] = await db
-        .select()
-        .from(zuvyBootcamps)
-        .where(eq(zuvyBootcamps.id, dto.bootcampId))
-        .limit(1);
-
-      if (!bootcamp) {
-        throw new BadRequestException('Invalid bootcampId');
-      }
-    }
+    const sharedProfile = await this.getOrCreateSharedMentorProfile(userId);
 
     /* =========================================================
     PREPARE PAYLOAD
@@ -1983,7 +2143,6 @@ export class MentorSlotService {
       ...(dto.pastExperiences !== undefined && {
         pastExperiences: dto.pastExperiences,
       }),
-      ...(dto.bootcampId !== undefined && { bootcampId: dto.bootcampId }),
     };
 
     /* =========================================================
@@ -1994,15 +2153,9 @@ export class MentorSlotService {
         .insert(zuvyMentorSlotManagement)
         .values({
           mentorUserId: userIdBigInt,
-          organizationId,
+          organizationId: resolvedOrganizationId,
 
           mentorType: 'instructor',
-
-          bio: dto.bio ?? null,
-          expertise: dto.expertise ?? [],
-          title: dto.title ?? null,
-          pastExperiences: dto.pastExperiences ?? null,
-          bootcampId: dto.bootcampId ?? null,
 
           isBufferEnabled: false,
           bufferMinutes: 0,
@@ -2021,6 +2174,16 @@ export class MentorSlotService {
         } as typeof zuvyMentorSlotManagement.$inferInsert)
         .returning();
 
+      if (Object.keys(payload).length > 0) {
+        await db
+          .update(zuvyMentorProfile)
+          .set({
+            ...payload,
+            updatedAt: new Date(),
+          } as Partial<typeof zuvyMentorProfile.$inferInsert>)
+          .where(eq(zuvyMentorProfile.id, sharedProfile.id));
+      }
+
       return {
         message: 'Mentor profile created successfully',
         data: newProfile,
@@ -2035,17 +2198,12 @@ export class MentorSlotService {
     }
 
     const result = await db
-      .update(zuvyMentorSlotManagement)
+      .update(zuvyMentorProfile)
       .set({
         ...payload,
         updatedAt: new Date(),
-      } as Partial<typeof zuvyMentorSlotManagement.$inferInsert>)
-      .where(
-        and(
-          eq(zuvyMentorSlotManagement.mentorUserId, userIdBigInt),
-          eq(zuvyMentorSlotManagement.organizationId, organizationId),
-        ),
-      )
+      } as Partial<typeof zuvyMentorProfile.$inferInsert>)
+      .where(eq(zuvyMentorProfile.id, sharedProfile.id))
       .returning();
 
     if (!result.length) {

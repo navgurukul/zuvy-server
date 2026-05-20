@@ -45,13 +45,21 @@ export class InstructorMentorSlotController {
   @Post('mentor-slots/create')
   @ApiOperation({ summary: 'Create a mentor availability slot as instructor' })
   async createSlot(@Req() req, @Body() dto: CreateSlotDto) {
-    return this.mentorSlotService.createSlot(Number(req.user[0].id), dto);
+    return this.mentorSlotService.createSlot(
+      Number(req.user[0].id),
+      dto,
+      Number(req.user[0].orgId),
+    );
   }
 
   @Delete('mentor-slots/:slotId')
   @ApiOperation({ summary: 'Delete an instructor-owned mentor slot' })
   async removeSlot(@Req() req, @Param('slotId', ParseIntPipe) slotId: number) {
-    return this.mentorSlotService.removeSlot(Number(req.user[0].id), slotId);
+    return this.mentorSlotService.removeSlot(
+      Number(req.user[0].id),
+      slotId,
+      Number(req.user[0].orgId),
+    );
   }
 
   @Get('mentor-slots/my')
@@ -70,6 +78,7 @@ export class InstructorMentorSlotController {
       Number(req.user[0].id),
       Number(weekOffset),
       sort,
+      Number(req.user[0].orgId),
     );
   }
 
@@ -82,6 +91,7 @@ export class InstructorMentorSlotController {
     return this.mentorSlotService.getSlotDetails(
       Number(req.user[0].id),
       slotId,
+      Number(req.user[0].orgId),
     );
   }
 
@@ -188,13 +198,17 @@ export class InstructorMentorSlotController {
     return this.mentorSlotService.updateMentorProfile(
       Number(req.user[0].id),
       dto,
+      Number(req.user[0].orgId),
     );
   }
 
   @Get('mentor-slots/profile')
   @ApiOperation({ summary: 'Get the instructor mentor profile' })
   async getMyProfile(@Req() req) {
-    return this.mentorSlotService.getMyMentorProfile(Number(req.user[0].id));
+    return this.mentorSlotService.getMyMentorProfile(
+      Number(req.user[0].id),
+      Number(req.user[0].orgId),
+    );
   }
 
   @Post('mentor-slots/profile')
@@ -203,13 +217,17 @@ export class InstructorMentorSlotController {
     return this.mentorSlotService.createOrUpdateMentorProfile(
       Number(req.user[0].id),
       dto,
+      Number(req.user[0].orgId),
     );
   }
 
   @Get('mentor-slots/metrics')
   @ApiOperation({ summary: 'Get mentor metrics for the instructor' })
   async getMyMetrics(@Req() req) {
-    return this.metricsService.getMentorMetrics(BigInt(req.user[0].id));
+    return this.metricsService.getMentorMetrics(
+      BigInt(req.user[0].id),
+      Number(req.user[0].orgId),
+    );
   }
 
   @Post('mentor-slots/recurrence')

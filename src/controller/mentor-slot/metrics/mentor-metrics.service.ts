@@ -8,7 +8,17 @@ import { and, eq, sql } from 'drizzle-orm';
 
 @Injectable()
 export class MentorMetricsService {
-  async getMentorMetrics(mentorUserId: bigint) {
+  async getMentorMetrics(mentorUserId: bigint, organizationId?: number) {
+    const bookingConditions = [
+      eq(zuvyMentorSlotBooking.mentorUserId, mentorUserId),
+    ];
+
+    if (organizationId !== undefined) {
+      bookingConditions.push(
+        eq(zuvyMentorSlotBooking.organizationId, organizationId),
+      );
+    }
+
     /* ==========================================================
        SESSION COUNTS
     ========================================================== */
@@ -21,7 +31,7 @@ export class MentorMetricsService {
         missed: sql<number>`COUNT(*) FILTER (WHERE session_lifecycle_state = 'MISSED')`,
       })
       .from(zuvyMentorSlotBooking)
-      .where(eq(zuvyMentorSlotBooking.mentorUserId, mentorUserId));
+      .where(and(...bookingConditions));
 
     const total = sessionCounts.total || 0;
     const completed = sessionCounts.completed || 0;
@@ -42,7 +52,7 @@ export class MentorMetricsService {
         ratingCount: sql<number>`COUNT(mentor_rating)`,
       })
       .from(zuvyMentorSlotBooking)
-      .where(eq(zuvyMentorSlotBooking.mentorUserId, mentorUserId));
+      .where(and(...bookingConditions));
 
     /* ==========================================================
        UPCOMING SESSIONS
@@ -55,7 +65,7 @@ export class MentorMetricsService {
       .from(zuvyMentorSlotBooking)
       .where(
         and(
-          eq(zuvyMentorSlotBooking.mentorUserId, mentorUserId),
+          ...bookingConditions,
           eq(zuvyMentorSlotBooking.sessionLifecycleState, 'SCHEDULED'),
           sql`${zuvyMentorSlotBooking.slotAvailabilityId} IN (
         SELECT ${zuvyMentorSlotAvailability.id}
@@ -76,7 +86,13 @@ export class MentorMetricsService {
       })
       .from(zuvyMentorSlotAvailability)
       .where(
-        sql`${zuvyMentorSlotAvailability.mentorSlotManagementId} IN (
+        organizationId !== undefined
+          ? sql`${zuvyMentorSlotAvailability.mentorSlotManagementId} IN (
+    SELECT id FROM zuvy_mentor_slot_management
+    WHERE mentor_user_id = ${mentorUserId}
+      AND organization_id = ${organizationId}
+  )`
+          : sql`${zuvyMentorSlotAvailability.mentorSlotManagementId} IN (
     SELECT id FROM zuvy_mentor_slot_management
     WHERE mentor_user_id = ${mentorUserId}
   )`,
