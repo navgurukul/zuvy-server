@@ -220,11 +220,7 @@ export class BootcampService {
             },
           ];
         }
-        let condition = or(
-          isNull(zuvyBootcamps.organizationId),
-          eq(zuvyBootcampType.type, 'Public'),
-          inArray(zuvyBootcamps.id, bootcampIds),
-        );
+        let condition = inArray(zuvyBootcamps.id, bootcampIds);
         finalCondition = orgCondition
           ? and(condition, orgCondition)
           : condition;
