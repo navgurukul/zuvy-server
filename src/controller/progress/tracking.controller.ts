@@ -185,11 +185,13 @@ export class TrackingController {
           err.statusCode,
         ).send(res);
       }
-      return new SuccessResponse(
-        success.message,
-        success.statusCode,
-        success.data,
-      ).send(res);
+      return res.status(success.statusCode).json({
+        message: success.message,
+        code: success.statusCode,
+        isSuccess: true,
+        mentorshipEnabled: success.mentorshipEnabled ?? false,
+        data: success.data,
+      });
     } catch (error) {
       return ErrorResponse.BadRequestException(error.message).send(res);
     }
@@ -247,11 +249,13 @@ export class TrackingController {
           err.statusCode,
         ).send(res);
       }
-      return new SuccessResponse(
-        success.message,
-        success.statusCode,
-        success.data,
-      ).send(res);
+      return res.status(success.statusCode).json({
+        message: success.message,
+        code: success.statusCode,
+        isSuccess: true,
+        mentorshipEnabled: success.mentorshipEnabled ?? false,
+        data: success.data,
+      });
     } catch (error) {
       return ErrorResponse.BadRequestException(error.message).send(res);
     }
@@ -363,11 +367,13 @@ export class TrackingController {
           err.statusCode,
         ).send(res);
       }
-      return new SuccessResponse(
-        success.message,
-        success.statusCode,
-        success.data,
-      ).send(res);
+      return res.status(success.statusCode).json({
+        message: success.message,
+        code: success.statusCode,
+        isSuccess: true,
+        mentorshipEnabled: success.mentorshipEnabled ?? false,
+        data: success.data,
+      });
     } catch (error) {
       return ErrorResponse.BadRequestException(error.message).send(res);
     }

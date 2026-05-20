@@ -29,10 +29,4 @@ export class UpdateMentorProfileDto {
     example: 'Full Stack Developer',
   })
   title: string;
-
-  @ApiProperty({
-    example: 1,
-    required: false,
-  })
-  bootcampId?: number;
 }

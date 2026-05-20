@@ -188,7 +188,11 @@ export class MentorSlotController {
     displayType: 'mentor slot',
   })
   async createSlot(@Req() req, @Body() dto: CreateSlotDto) {
-    return this.mentorSlotService.createSlot(Number(req.user[0].id), dto);
+    return this.mentorSlotService.createSlot(
+      Number(req.user[0].id),
+      dto,
+      Number(req.user[0].orgId),
+    );
   }
 
   /* ==========================================================================
@@ -203,7 +207,11 @@ export class MentorSlotController {
     displayType: 'mentor slot',
   })
   async removeSlot(@Req() req, @Param('slotId', ParseIntPipe) slotId: number) {
-    return this.mentorSlotService.removeSlot(Number(req.user[0].id), slotId);
+    return this.mentorSlotService.removeSlot(
+      Number(req.user[0].id),
+      slotId,
+      Number(req.user[0].orgId),
+    );
   }
 
   /* ==========================================================================  
@@ -224,6 +232,7 @@ export class MentorSlotController {
       Number(req.user[0].id),
       Number(weekOffset),
       sort,
+      Number(req.user[0].orgId),
     );
   }
 
@@ -238,6 +247,7 @@ export class MentorSlotController {
     return this.mentorSlotService.getSlotDetails(
       Number(req.user[0].id),
       slotId,
+      Number(req.user[0].orgId),
     );
   }
 
@@ -327,6 +337,7 @@ export class MentorSlotController {
     return this.mentorSlotService.updateMentorProfile(
       Number(req.user[0].id),
       dto,
+      Number(req.user[0].orgId),
     );
   }
 
@@ -337,7 +348,10 @@ export class MentorSlotController {
   @Get('mentor/profile')
   @ApiOperation({ summary: 'Get logged-in mentor profile' })
   async getMyProfile(@Req() req) {
-    return this.mentorSlotService.getMyMentorProfile(Number(req.user[0].id));
+    return this.mentorSlotService.getMyMentorProfile(
+      Number(req.user[0].id),
+      Number(req.user[0].orgId),
+    );
   }
 
   /* ==========================================================================  
@@ -358,6 +372,10 @@ export class MentorSlotController {
       throw new BadRequestException('Invalid userId');
     }
 
-    return this.mentorSlotService.createOrUpdateMentorProfile(userId, dto);
+    return this.mentorSlotService.createOrUpdateMentorProfile(
+      userId,
+      dto,
+      Number(req.user[0].orgId),
+    );
   }
 }

@@ -24,16 +24,29 @@ export class MentorPublicController {
       query.expertise,
       query.title,
       query.search,
+      query.organizationId ? Number(query.organizationId) : undefined,
     );
   }
 
   @Get(':mentorUserId')
-  getMentorProfile(@Param('mentorUserId') mentorUserId: number) {
-    return this.service.getMentorProfile(mentorUserId);
+  getMentorProfile(
+    @Param('mentorUserId') mentorUserId: number,
+    @Query('organizationId') organizationId?: number,
+  ) {
+    return this.service.getMentorProfile(
+      mentorUserId,
+      organizationId ? Number(organizationId) : undefined,
+    );
   }
 
   @Get(':mentorId/availability')
-  getAvailableSlots(@Param('mentorId', ParseIntPipe) mentorId: number) {
-    return this.service.getAvailableSlots(mentorId);
+  getAvailableSlots(
+    @Param('mentorId', ParseIntPipe) mentorId: number,
+    @Query('organizationId') organizationId?: number,
+  ) {
+    return this.service.getAvailableSlots(
+      mentorId,
+      organizationId ? Number(organizationId) : undefined,
+    );
   }
 }
