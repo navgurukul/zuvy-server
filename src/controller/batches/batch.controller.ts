@@ -32,9 +32,6 @@ import { TrackActionInterceptor } from 'src/trackinglog/interceptors/track-actio
 import { PermissionsGuard } from 'src/rbac/guards/permissions.guard';
 import { SkipOrgCheck } from 'src/rbac/decorators/skip-org-check.decorator';
 
-import { RequirePermissions } from 'src/rbac/decorators/require-permissions.decorator';
-import { ResourceList } from 'src/rbac/utility';
-
 // swagger body schema for batch
 @Controller('batch')
 @ApiTags('batch')
@@ -51,10 +48,10 @@ import { ResourceList } from 'src/rbac/utility';
 export class BatchesController {
   constructor(private batchService: BatchesService) {}
 
+  @SkipOrgCheck()
   @Get('/:id')
   @ApiOperation({ summary: 'Get the batch by id' })
   @ApiBearerAuth('JWT-auth')
-  @RequirePermissions(ResourceList.batch.read)
   // @ApiQuery({ name: 'students', required: false, type: Boolean, description: 'Optional content flag' })
   async getBatchById(
     @Param('id') id: number,
@@ -65,13 +62,24 @@ export class BatchesController {
       throw new BadRequestException(err);
     }
 
+    const user = req.user;
+    const isInstructor = user?.roles?.includes('instructor');
+    const isAdmin =
+      user?.roles?.includes('admin') || user?.roles?.includes('super_admin');
+
+    if (isInstructor && !isAdmin) {
+      if (res['batch'].instructorId !== Number(user.id)) {
+        throw new ForbiddenException(
+          'You are not authorized to view this batch',
+        );
+      }
+    }
     return res;
   }
 
   @Post('/')
   @ApiOperation({ summary: 'Create the new batch' })
   @ApiBearerAuth('JWT-auth')
-  @RequirePermissions(ResourceList.batch.create)
   @TrackAction({
     action: 'create_batch',
     resourceType: 'batch',
@@ -95,7 +103,6 @@ export class BatchesController {
   @Put('/:id')
   @ApiOperation({ summary: 'Put the batch by id' })
   @ApiBearerAuth('JWT-auth')
-  @RequirePermissions(ResourceList.batch.edit)
   @TrackAction({
     action: 'edit_batch',
     resourceType: 'batch',
@@ -122,7 +129,6 @@ export class BatchesController {
   @Delete('/:id')
   @ApiOperation({ summary: 'Delete the batch by id' })
   @ApiBearerAuth('JWT-auth')
-  @RequirePermissions(ResourceList.batch.delete)
   @TrackAction({
     action: 'delete_batch',
     resourceType: 'batch',
@@ -140,7 +146,6 @@ export class BatchesController {
   @Patch('/:id')
   @ApiOperation({ summary: 'Update the Batch partially' })
   @ApiBearerAuth('JWT-auth')
-  @RequirePermissions(ResourceList.batch.edit)
   @TrackAction({
     action: 'edit_batch',
     resourceType: 'batch',
