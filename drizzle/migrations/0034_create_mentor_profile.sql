@@ -11,11 +11,8 @@ CREATE TABLE IF NOT EXISTS "zuvy_mentor_profile" (
   "created_at" timestamp with time zone DEFAULT now(),
   "updated_at" timestamp with time zone DEFAULT now(),
   CONSTRAINT "zuvy_mentor_profile_mentor_user_id_users_id_fk"
-    FOREIGN KEY ("mentor_user_id") REFERENCES "public"."users"("id") ON DELETE cascade
+    FOREIGN KEY ("mentor_user_id") REFERENCES "main"."users"("id") ON DELETE cascade
 );
-
-ALTER TABLE "zuvy_mentor_profile"
-DROP CONSTRAINT IF EXISTS "zuvy_mentor_profile_mentor_user_id_users_id_fk";
 
 CREATE UNIQUE INDEX IF NOT EXISTS "idx_mentor_profile_user"
   ON "zuvy_mentor_profile" USING btree ("mentor_user_id");
@@ -69,6 +66,8 @@ SET
   updated_at = now()
 FROM main.zuvy_mentor_profile p
 WHERE p.mentor_user_id = m.mentor_user_id;
+
+--------------test------------------------
 
 SELECT mentor_user_id, email, title, bio, expertise, past_experiences
 FROM main.zuvy_mentor_profile
