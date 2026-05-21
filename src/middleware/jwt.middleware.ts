@@ -8,26 +8,16 @@ import {
   CallHandler,
 } from '@nestjs/common';
 import { Request, Response, NextFunction } from 'express';
-import { JwtService } from '@nestjs/jwt';
 import { db } from '../db/index';
-import { eq, sql, count } from 'drizzle-orm';
-import {
-  users,
-  zuvyUserRolesAssigned,
-  zuvyUserRoles,
-} from '../../drizzle/schema';
+import { sql } from 'drizzle-orm';
+import { users } from '../../drizzle/schema';
 import { helperVariable } from 'src/constants/helper';
 import { AuthService } from '../auth/auth.service';
 import { Observable } from 'rxjs';
-let { GOOGLE_CLIENT_ID, GOOGLE_SECRET, GOOGLE_REDIRECT_URI, JWT_SECRET_KEY } =
-  process.env;
 
 @Injectable()
 export class JwtMiddleware implements NestMiddleware {
-  constructor(
-    private readonly jwtService: JwtService,
-    private readonly authService: AuthService,
-  ) {}
+  constructor(private readonly authService: AuthService) {}
 
   async use(req, res: Response, next: NextFunction) {
     // ABSOLUTE BYPASS FOR ZOOM WEBHOOKS (BEFORE ANY AUTH LOGIC)
@@ -85,10 +75,7 @@ export class JwtMiddleware implements NestMiddleware {
     }
 
     try {
-      // Check if token is blacklisted
-      const decoded: any = await this.jwtService.verifyAsync(token, {
-        secret: JWT_SECRET_KEY,
-      });
+      const decoded: any = await this.authService.validateToken(token);
 
       if (!decoded) {
         throw new UnauthorizedException('Invalid token');
@@ -104,27 +91,12 @@ export class JwtMiddleware implements NestMiddleware {
         throw new UnauthorizedException('User is not authorized');
       }
 
-      // Fetch user roles with role names using proper join
-      let rolesArray = [];
-      try {
-        rolesArray = await db
-          .select({
-            roleId: zuvyUserRolesAssigned.roleId,
-            roleName: zuvyUserRoles.name,
-          })
-          .from(zuvyUserRolesAssigned)
-          .innerJoin(
-            zuvyUserRoles,
-            eq(zuvyUserRolesAssigned.roleId, zuvyUserRoles.id),
-          )
-          .where(eq(zuvyUserRolesAssigned.userId, user[0].id));
-      } catch (roleError) {
-        console.error('Error fetching user roles:', roleError);
-        // If role fetching fails, set empty roles array but don't block the request
-        rolesArray = [];
-      }
-
-      user[0].roles = rolesArray.map((role) => role.roleName);
+      user[0].roles = await this.authService.getUserRoles(
+        Number(decoded.sub),
+        decoded.orgId ?? null,
+      );
+      user[0].orgId = decoded.orgId ?? null;
+      user[0].orgName = decoded.orgName ?? null;
 
       // Initialize req.user as an array if it doesn't exist
       if (!req.user) {
