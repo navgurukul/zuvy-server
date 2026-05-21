@@ -127,6 +127,7 @@ export class MentorSlotController {
     return this.mentorSlotService.acceptReschedule(
       bookingId,
       Number(req.user[0].id),
+      Number(req.user[0].orgId),
     );
   }
 
@@ -149,6 +150,7 @@ export class MentorSlotController {
     return this.mentorSlotService.declineReschedule(
       bookingId,
       Number(req.user[0].id),
+      Number(req.user[0].orgId),
     );
   }
 

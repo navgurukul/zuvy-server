@@ -119,6 +119,21 @@ export class StudentMentorSlotController {
     );
   }
 
+  @Get('mentor-slots/bookings/:bookingId/reschedule/slots')
+  @ApiOperation({
+    summary:
+      'Get valid replacement slots for a student booking from the same mentor and organization',
+  })
+  async getRescheduleSlots(
+    @Req() req,
+    @Param('bookingId', ParseIntPipe) bookingId: number,
+  ) {
+    return this.mentorSlotService.getRescheduleSlotsForBooking(
+      Number(req.user[0].id),
+      bookingId,
+    );
+  }
+
   @Post('mentor-slots/bookings/:bookingId/cancel')
   @ApiOperation({ summary: 'Cancel a student mentor booking' })
   async cancelBooking(
