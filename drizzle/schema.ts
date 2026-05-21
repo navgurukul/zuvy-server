@@ -4666,6 +4666,31 @@ export const zuvyMentorSlotManagement = main.table(
   }),
 );
 
+export const zuvyMentorProfile = main.table(
+  'zuvy_mentor_profile',
+  {
+    id: serial('id').primaryKey().notNull(),
+
+    mentorUserId: bigserial('mentor_user_id', { mode: 'bigint' })
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+
+    email: varchar('email', { length: 255 }),
+    title: varchar('title', { length: 255 }),
+    bio: text('bio'),
+    expertise: jsonb('expertise'),
+    pastExperiences: text('past_experiences'),
+
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
+  },
+  (table) => ({
+    mentorUserUniqueIdx: uniqueIndex('idx_mentor_profile_user').on(
+      table.mentorUserId,
+    ),
+  }),
+);
+
 /* ============================================================================
    SLOT AVAILABILITY
 ============================================================================ */

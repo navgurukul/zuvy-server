@@ -26,6 +26,7 @@ export class NotificationController {
   async getMyNotifications(@Req() req) {
     return this.notificationService.getUserNotifications(
       BigInt(req.user[0].id),
+      req.user[0].orgId ? Number(req.user[0].orgId) : undefined,
     );
   }
 

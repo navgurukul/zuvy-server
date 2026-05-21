@@ -39,7 +39,7 @@ export class StudentMentorSlotController {
 
   @Get('mentors')
   @ApiOperation({ summary: 'Search mentors available to students' })
-  async getMentors(@Req() req: any, @Query() query: MentorSearchDto) {
+  async getMentors(@Query() query: MentorSearchDto) {
     return this.mentorPublicService.getAllMentors(
       query.limit,
       query.offset,
@@ -47,19 +47,42 @@ export class StudentMentorSlotController {
       query.expertise,
       query.title,
       query.search,
+      query.organizationId ? Number(query.organizationId) : undefined,
     );
   }
 
   @Get('mentors/:mentorUserId')
   @ApiOperation({ summary: 'Get a mentor profile for students' })
-  getMentorProfile(@Param('mentorUserId') mentorUserId: number) {
-    return this.mentorPublicService.getMentorProfile(mentorUserId);
+  @ApiQuery({
+    name: 'organizationId',
+    required: false,
+    type: Number,
+  })
+  getMentorProfile(
+    @Param('mentorUserId') mentorUserId: number,
+    @Query('organizationId') organizationId?: number,
+  ) {
+    return this.mentorPublicService.getMentorProfile(
+      mentorUserId,
+      organizationId ? Number(organizationId) : undefined,
+    );
   }
 
   @Get('mentors/:mentorId/availability')
   @ApiOperation({ summary: 'Get available slots for a mentor' })
-  getAvailableSlots(@Param('mentorId', ParseIntPipe) mentorId: number) {
-    return this.mentorPublicService.getAvailableSlots(mentorId);
+  @ApiQuery({
+    name: 'organizationId',
+    required: false,
+    type: Number,
+  })
+  getAvailableSlots(
+    @Param('mentorId', ParseIntPipe) mentorId: number,
+    @Query('organizationId') organizationId?: number,
+  ) {
+    return this.mentorPublicService.getAvailableSlots(
+      mentorId,
+      organizationId ? Number(organizationId) : undefined,
+    );
   }
 
   @Post('mentor-slots/book')
@@ -93,6 +116,21 @@ export class StudentMentorSlotController {
       slotId,
       body.reason,
       Number(req.user[0].id),
+    );
+  }
+
+  @Get('mentor-slots/bookings/:bookingId/reschedule/slots')
+  @ApiOperation({
+    summary:
+      'Get valid replacement slots for a student booking from the same mentor and organization',
+  })
+  async getRescheduleSlots(
+    @Req() req,
+    @Param('bookingId', ParseIntPipe) bookingId: number,
+  ) {
+    return this.mentorSlotService.getRescheduleSlotsForBooking(
+      Number(req.user[0].id),
+      bookingId,
     );
   }
 
