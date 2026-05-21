@@ -216,7 +216,11 @@ export class MentorSlotService {
     return true;
   }
 
-  private async ensureMentorOwnsBooking(userId: number, bookingId: number) {
+  private async ensureMentorOwnsBooking(
+    userId: number,
+    bookingId: number,
+    organizationId?: number,
+  ) {
     await this.ensureUserIsMentor(userId);
 
     const [booking] = await db
@@ -231,6 +235,15 @@ export class MentorSlotService {
 
     if (booking.mentorUserId !== BigInt(userId)) {
       throw new ForbiddenException('You do not own this booking.');
+    }
+
+    if (
+      organizationId !== undefined &&
+      booking.organizationId !== organizationId
+    ) {
+      throw new ForbiddenException(
+        'You do not own this booking in the selected organization.',
+      );
     }
 
     return booking;
@@ -1307,12 +1320,23 @@ export class MentorSlotService {
     const [mentorProfile] = await db
       .select()
       .from(zuvyMentorSlotManagement)
-      .where(eq(zuvyMentorSlotManagement.mentorUserId, booking.mentorUserId))
+      .where(
+        and(
+          eq(zuvyMentorSlotManagement.mentorUserId, booking.mentorUserId),
+          eq(zuvyMentorSlotManagement.organizationId, booking.organizationId),
+        ),
+      )
       .limit(1);
 
     if (!mentorProfile || slot.mentorSlotManagementId !== mentorProfile.id) {
       throw new BadRequestException(
         'Cannot reschedule to a slot belonging to another mentor.',
+      );
+    }
+
+    if (booking.organizationId !== mentorProfile.organizationId) {
+      throw new BadRequestException(
+        'Cannot reschedule outside the original booking organization.',
       );
     }
 
@@ -1346,6 +1370,68 @@ export class MentorSlotService {
     return {
       message: 'Reschedule request submitted successfully.',
     };
+  }
+
+  async getRescheduleSlotsForBooking(studentUserId: number, bookingId: number) {
+    const [booking] = await db
+      .select()
+      .from(zuvyMentorSlotBooking)
+      .where(eq(zuvyMentorSlotBooking.id, bookingId))
+      .limit(1);
+
+    if (!booking) {
+      throw new NotFoundException('Booking not found.');
+    }
+
+    if (booking.studentUserId !== BigInt(studentUserId)) {
+      throw new ForbiddenException('You do not own this booking.');
+    }
+
+    if (booking.status === 'cancelled') {
+      throw new BadRequestException('Cancelled booking cannot be rescheduled.');
+    }
+
+    const [mentorProfile] = await db
+      .select({
+        id: zuvyMentorSlotManagement.id,
+        organizationId: zuvyMentorSlotManagement.organizationId,
+      })
+      .from(zuvyMentorSlotManagement)
+      .where(
+        and(
+          eq(zuvyMentorSlotManagement.mentorUserId, booking.mentorUserId),
+          eq(zuvyMentorSlotManagement.organizationId, booking.organizationId),
+        ),
+      )
+      .limit(1);
+
+    if (!mentorProfile) {
+      throw new NotFoundException(
+        'Mentor profile not found for the booking organization.',
+      );
+    }
+
+    const slots = await db
+      .select()
+      .from(zuvyMentorSlotAvailability)
+      .where(
+        and(
+          eq(
+            zuvyMentorSlotAvailability.mentorSlotManagementId,
+            mentorProfile.id,
+          ),
+          eq(zuvyMentorSlotAvailability.status, 'available'),
+          eq(zuvyMentorSlotAvailability.isPublic, true),
+          sql`${zuvyMentorSlotAvailability.slotStartDateTime} > NOW()`,
+          sql`${zuvyMentorSlotAvailability.currentBookedCount} < ${zuvyMentorSlotAvailability.maxCapacity}`,
+          ne(zuvyMentorSlotAvailability.id, booking.slotAvailabilityId),
+        ),
+      );
+
+    return slots.map((slot) => ({
+      ...slot,
+      organizationId: mentorProfile.organizationId,
+    }));
   }
 
   /* ==========================================================================
@@ -1469,9 +1555,17 @@ export class MentorSlotService {
     };
   }
 
-  async acceptReschedule(bookingId: number, mentorUserId?: number) {
+  async acceptReschedule(
+    bookingId: number,
+    mentorUserId?: number,
+    organizationId?: number,
+  ) {
     if (mentorUserId) {
-      await this.ensureMentorOwnsBooking(mentorUserId, bookingId);
+      await this.ensureMentorOwnsBooking(
+        mentorUserId,
+        bookingId,
+        organizationId,
+      );
     }
 
     return db.transaction(async (trx) => {
@@ -1493,6 +1587,26 @@ export class MentorSlotService {
         throw new BadRequestException('Invalid proposed slot.');
       }
 
+      const [mentorProfile] = await trx
+        .select({
+          id: zuvyMentorSlotManagement.id,
+          googleRefreshToken: zuvyMentorSlotManagement.googleRefreshToken,
+        })
+        .from(zuvyMentorSlotManagement)
+        .where(
+          and(
+            eq(zuvyMentorSlotManagement.mentorUserId, booking.mentorUserId),
+            eq(zuvyMentorSlotManagement.organizationId, booking.organizationId),
+          ),
+        )
+        .limit(1);
+
+      if (!mentorProfile) {
+        throw new NotFoundException(
+          'Mentor profile not found for the booking organization.',
+        );
+      }
+
       /* Atomic capacity check + increment */
 
       const updated = await trx
@@ -1503,6 +1617,10 @@ export class MentorSlotService {
         .where(
           and(
             eq(zuvyMentorSlotAvailability.id, booking.rescheduleProposedSlotId),
+            eq(
+              zuvyMentorSlotAvailability.mentorSlotManagementId,
+              mentorProfile.id,
+            ),
             sql`${zuvyMentorSlotAvailability.currentBookedCount} < ${zuvyMentorSlotAvailability.maxCapacity}`,
           ),
         )
@@ -1555,14 +1673,6 @@ export class MentorSlotService {
           )
           .limit(1);
 
-        const [mentorProfile] = await trx
-          .select()
-          .from(zuvyMentorSlotManagement)
-          .where(
-            eq(zuvyMentorSlotManagement.mentorUserId, booking.mentorUserId),
-          )
-          .limit(1);
-
         const refreshToken = mentorProfile?.googleRefreshToken;
 
         if (booking.googleEventId && refreshToken) {
@@ -1578,9 +1688,17 @@ export class MentorSlotService {
     });
   }
 
-  async declineReschedule(bookingId: number, mentorUserId?: number) {
+  async declineReschedule(
+    bookingId: number,
+    mentorUserId?: number,
+    organizationId?: number,
+  ) {
     if (mentorUserId) {
-      await this.ensureMentorOwnsBooking(mentorUserId, bookingId);
+      await this.ensureMentorOwnsBooking(
+        mentorUserId,
+        bookingId,
+        organizationId,
+      );
     }
 
     const [booking] = await db
