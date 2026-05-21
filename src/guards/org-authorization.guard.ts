@@ -7,13 +7,27 @@ import {
 import { Reflector } from '@nestjs/core';
 import { db } from '../db/index';
 import { eq, and } from 'drizzle-orm';
-import { zuvyUserRolesAssigned, zuvyOrganizations } from '../../drizzle/schema';
+import {
+  zuvyBatchEnrollments,
+  zuvyBootcamps,
+  zuvyUserRolesAssigned,
+  zuvyOrganizations,
+} from '../../drizzle/schema';
+import { SKIP_ORG_CHECK_KEY } from 'src/rbac/decorators/skip-org-check.decorator';
 
 @Injectable()
 export class OrgAuthorizationGuard implements CanActivate {
   constructor(private reflector: Reflector) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
+    const skipOrgCheck = this.reflector.getAllAndOverride<boolean>(
+      SKIP_ORG_CHECK_KEY,
+      [context.getHandler(), context.getClass()],
+    );
+    if (skipOrgCheck) {
+      return true;
+    }
+
     const request = context.switchToHttp().getRequest();
     const user = request.user?.[0] || request.user;
 
@@ -24,6 +38,10 @@ export class OrgAuthorizationGuard implements CanActivate {
 
     // Super Admin bypass - super admins can access any org
     if (user.roles && user.roles.includes('super_admin')) {
+      return true;
+    }
+
+    if (this.isStudentAssessmentRequest(user, request)) {
       return true;
     }
 
@@ -60,6 +78,10 @@ export class OrgAuthorizationGuard implements CanActivate {
       .limit(1);
 
     if (membership.length === 0) {
+      if (await this.isStudentEnrolledInOrg(user, requestOrgId)) {
+        return true;
+      }
+
       throw new ForbiddenException(
         `This page is accessible only to ${targetOrgName}. You are currently associated with the ${userOrgName} and do not have permission to view this page.`,
       );
@@ -94,5 +116,57 @@ export class OrgAuthorizationGuard implements CanActivate {
     }
 
     return null;
+  }
+
+  private async isStudentEnrolledInOrg(
+    user: any,
+    orgId: number,
+  ): Promise<boolean> {
+    const roles = user.roles || [];
+    const isStudent = roles.length === 0 || roles.includes('student');
+    const hasOrgRole = roles.some((role: string) => role !== 'student');
+
+    if (!isStudent || hasOrgRole) {
+      return false;
+    }
+
+    const [enrollment] = await db
+      .select({ id: zuvyBatchEnrollments.id })
+      .from(zuvyBatchEnrollments)
+      .innerJoin(
+        zuvyBootcamps,
+        eq(zuvyBatchEnrollments.bootcampId, zuvyBootcamps.id),
+      )
+      .where(
+        and(
+          eq(zuvyBatchEnrollments.userId, BigInt(user.id)),
+          eq(zuvyBootcamps.organizationId, orgId),
+        ),
+      )
+      .limit(1);
+
+    return Boolean(enrollment);
+  }
+
+  private isStudentAssessmentRequest(user: any, request: any): boolean {
+    const roles = user.roles || [];
+    const isStudent = roles.length === 0 || roles.includes('student');
+    const hasOrgRole = roles.some((role: string) => role !== 'student');
+
+    if (!isStudent || hasOrgRole) {
+      return false;
+    }
+
+    const path = String(request.originalUrl || request.url || '').split('?')[0];
+    return (
+      path.startsWith('/student/assessment/') ||
+      path.startsWith('/content/startAssessmentForStudent/') ||
+      path.startsWith('/content/assessmentDetailsOfQuiz/') ||
+      path.startsWith('/content/assessmentDetailsOfOpenEnded/') ||
+      path.startsWith('/submission/assessment/submit') ||
+      path.startsWith('/submission/quiz/assessmentSubmissionId=') ||
+      path.startsWith('/submission/openended/assessmentSubmissionId=') ||
+      path.startsWith('/submission/assessment/properting')
+    );
   }
 }

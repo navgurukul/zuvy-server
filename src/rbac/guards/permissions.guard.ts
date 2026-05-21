@@ -10,6 +10,7 @@ import { SKIP_ORG_CHECK_KEY } from '../decorators/skip-org-check.decorator';
 import { IS_PUBLIC_KEY } from 'src/auth/decorators/public.decorator';
 import { db } from 'src/db/index';
 import {
+  zuvyBatchEnrollments,
   zuvyBatches,
   zuvyBootcamps,
   zuvyUserRolesAssigned,
@@ -47,7 +48,7 @@ export class PermissionsGuard implements CanActivate {
 
     const requestOrgId = await this.resolveRequestOrgId(request);
     const bootcampId = this.extractBootcampId(request);
-    const batchId = this.extractBatchId(request);
+    const batchIds = this.extractBatchIds(request);
 
     // Check whether this handler/controller opted out of the org check
     const skipOrgCheck = this.reflector.getAllAndOverride<boolean>(
@@ -59,23 +60,38 @@ export class PermissionsGuard implements CanActivate {
       user.roles?.includes('instructor') &&
       !user.roles?.includes('admin') &&
       !user.roles?.includes('ops');
+    const isStudent =
+      !isInstructor &&
+      (user.roles?.length === 0 || user.roles?.includes('student'));
+    const isStudentCourseRead =
+      isStudent &&
+      request.method === 'GET' &&
+      bootcampId &&
+      this.isStudentReadableCourseRequest(request) &&
+      (await this.isStudentEnrolledInBootcamp(user.id, bootcampId));
+    const isStudentAssessmentAccess =
+      isStudent && this.isStudentAssessmentRequest(request);
 
     // 1. Org-level check — applies to ALL roles except on @SkipOrgCheck() routes
     if (!skipOrgCheck && requestOrgId) {
-      await this.ensureUserBelongsToOrg(
-        user.id,
-        requestOrgId,
-        'No permission to access this organization',
-      );
+      if (isStudentCourseRead || isStudentAssessmentAccess) {
+        // Enrolled students can read their course content without an org role.
+      } else {
+        await this.ensureUserBelongsToOrg(
+          user.id,
+          requestOrgId,
+          'No permission to access this organization',
+        );
+      }
     }
 
     // 2. Course-level check for Instructor
-    if (isInstructor && (bootcampId || batchId)) {
+    if (isInstructor && (bootcampId || batchIds.length > 0)) {
       await this.ensureInstructorHasBootcampAccess(
         user.id,
         bootcampId,
         requestOrgId,
-        batchId,
+        batchIds,
       );
     }
 
@@ -164,20 +180,80 @@ export class PermissionsGuard implements CanActivate {
   }
 
   private isBootcampRoute(request: any): boolean {
-    return request.baseUrl?.split('/').includes('bootcamp');
+    return this.requestPathIncludes(request, 'bootcamp');
   }
 
-  private extractBatchId(request: any): number | null {
-    const rawBatchId =
-      request.params?.batchId ??
-      request.params?.batch_id ??
-      request.query?.batchId ??
-      request.query?.batch_id ??
-      request.body?.batchId ??
-      request.body?.batch_id;
+  private extractBatchIds(request: any): number[] {
+    const rawBatchIds = [
+      request.params?.batchId,
+      request.params?.batch_id,
+      request.params?.newBatchId,
+      request.params?.new_batch_id,
+      request.params?.oldBatchId,
+      request.params?.old_batch_id,
+      request.query?.batchId,
+      request.query?.batch_id,
+      request.query?.newBatchId,
+      request.query?.new_batch_id,
+      request.query?.oldBatchId,
+      request.query?.old_batch_id,
+      request.body?.batchId,
+      request.body?.batch_id,
+      request.body?.newBatchId,
+      request.body?.new_batch_id,
+      request.body?.oldBatchId,
+      request.body?.old_batch_id,
+      this.isBatchRoute(request) ? request.params?.id : undefined,
+    ];
 
-    const batchId = Number(rawBatchId);
-    return Number.isFinite(batchId) && batchId > 0 ? batchId : null;
+    return [
+      ...new Set(
+        rawBatchIds
+          .map((rawBatchId) => Number(rawBatchId))
+          .filter((batchId) => Number.isFinite(batchId) && batchId > 0),
+      ),
+    ];
+  }
+
+  private isBatchRoute(request: any): boolean {
+    return this.requestPathIncludes(request, 'batch');
+  }
+
+  private requestPathIncludes(request: any, segment: string): boolean {
+    const path =
+      request.baseUrl ||
+      request.route?.path ||
+      request.originalUrl ||
+      request.url ||
+      '';
+    return path.split(/[/?#]/).includes(segment);
+  }
+
+  private isStudentReadableCourseRequest(request: any): boolean {
+    const path = String(request.originalUrl || request.url || '');
+    const baseUrl = String(request.baseUrl || '');
+
+    return (
+      path.startsWith('/student/') ||
+      baseUrl === '/student' ||
+      baseUrl === '/content' ||
+      baseUrl === '/submission'
+    );
+  }
+
+  private isStudentAssessmentRequest(request: any): boolean {
+    const path = String(request.originalUrl || request.url || '').split('?')[0];
+
+    return (
+      path.startsWith('/student/assessment/') ||
+      path.startsWith('/content/startAssessmentForStudent/') ||
+      path.startsWith('/content/assessmentDetailsOfQuiz/') ||
+      path.startsWith('/content/assessmentDetailsOfOpenEnded/') ||
+      path.startsWith('/submission/assessment/submit') ||
+      path.startsWith('/submission/quiz/assessmentSubmissionId=') ||
+      path.startsWith('/submission/openended/assessmentSubmissionId=') ||
+      path.startsWith('/submission/assessment/properting')
+    );
   }
 
   private async ensureUserBelongsToOrg(
@@ -201,6 +277,24 @@ export class PermissionsGuard implements CanActivate {
     }
   }
 
+  private async isStudentEnrolledInBootcamp(
+    userId: number | string | bigint,
+    bootcampId: number,
+  ): Promise<boolean> {
+    const [enrollment] = await db
+      .select({ id: zuvyBatchEnrollments.id })
+      .from(zuvyBatchEnrollments)
+      .where(
+        and(
+          eq(zuvyBatchEnrollments.userId, this.toBigIntId(userId)),
+          eq(zuvyBatchEnrollments.bootcampId, bootcampId),
+        ),
+      )
+      .limit(1);
+
+    return Boolean(enrollment);
+  }
+
   private toBigIntId(userId: number | string | bigint): bigint {
     return typeof userId === 'bigint' ? userId : BigInt(userId);
   }
@@ -209,12 +303,12 @@ export class PermissionsGuard implements CanActivate {
     userId: number | string | bigint,
     bootcampId: number | null,
     requestOrgId: number | null,
-    batchId: number | null = null,
+    batchIds: number[] = [],
   ): Promise<void> {
     let resolvedBootcampId = bootcampId;
     let resolvedOrgId: number | null = null;
 
-    if (batchId) {
+    for (const batchId of batchIds) {
       // Resolve bootcampId and instructorId directly from the batch
       const [batch] = await db
         .select({
@@ -232,11 +326,14 @@ export class PermissionsGuard implements CanActivate {
       }
 
       // If a bootcampId is also in the request, make sure it matches the batch's bootcamp
-      if (resolvedBootcampId && batch.bootcampId !== resolvedBootcampId) {
+      if (
+        resolvedBootcampId &&
+        Number(batch.bootcampId) !== Number(resolvedBootcampId)
+      ) {
         throw new ForbiddenException('Unauthorized access');
       }
 
-      resolvedBootcampId = batch.bootcampId;
+      resolvedBootcampId = Number(batch.bootcampId);
 
       // Check: is this instructor assigned to this specific batch?
       if (Number(batch.instructorId) !== Number(userId)) {
@@ -276,7 +373,7 @@ export class PermissionsGuard implements CanActivate {
     );
 
     // Step 2: if no specific batchId was given, verify instructor has at least one batch in this bootcamp
-    if (!batchId) {
+    if (batchIds.length === 0) {
       const [assignedBatch] = await db
         .select({ id: zuvyBatches.id })
         .from(zuvyBatches)
