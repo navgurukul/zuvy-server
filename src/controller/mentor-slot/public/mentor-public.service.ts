@@ -74,21 +74,21 @@ export class MentorPublicService {
         title: zuvyMentorProfile.title,
 
         availableSlots: sql<number>`
-          COUNT(*) FILTER (
+          COUNT(DISTINCT ${zuvyMentorSlotAvailability.id}) FILTER (
           WHERE ${zuvyMentorSlotAvailability.slotStartDateTime} > NOW()
           AND ${zuvyMentorSlotAvailability.currentBookedCount} < ${zuvyMentorSlotAvailability.maxCapacity}
           )
         `,
 
         fullSlots: sql<number>`
-          COUNT(*) FILTER (
+          COUNT(DISTINCT ${zuvyMentorSlotAvailability.id}) FILTER (
           WHERE ${zuvyMentorSlotAvailability.slotStartDateTime} > NOW()
           AND ${zuvyMentorSlotAvailability.currentBookedCount} >= ${zuvyMentorSlotAvailability.maxCapacity}
           )
       `,
 
         completedSlots: sql<number>`
-        COUNT(*) FILTER (
+        COUNT(DISTINCT ${zuvyMentorSlotAvailability.id}) FILTER (
         WHERE ${zuvyMentorSlotAvailability.slotStartDateTime} <= NOW()
         AND ${zuvyMentorSlotAvailability.currentBookedCount} > 0
           )
@@ -123,7 +123,13 @@ export class MentorPublicService {
       // roles
       .leftJoin(
         zuvyUserRolesAssigned,
-        eq(zuvyUserRolesAssigned.userId, users.id),
+        and(
+          eq(zuvyUserRolesAssigned.userId, users.id),
+          eq(
+            zuvyUserRolesAssigned.organizationId,
+            zuvyMentorSlotManagement.organizationId,
+          ),
+        ),
       )
 
       .leftJoin(
@@ -194,7 +200,13 @@ export class MentorPublicService {
       )
       .leftJoin(
         zuvyUserRolesAssigned,
-        eq(zuvyUserRolesAssigned.userId, users.id),
+        and(
+          eq(zuvyUserRolesAssigned.userId, users.id),
+          eq(
+            zuvyUserRolesAssigned.organizationId,
+            zuvyMentorSlotManagement.organizationId,
+          ),
+        ),
       )
       .leftJoin(
         zuvyUserRoles,
