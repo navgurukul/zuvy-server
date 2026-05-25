@@ -1769,21 +1769,42 @@ export class MentorSlotService {
     ================================= */
 
     const overlap = await db
-      .select()
+      .select({
+        slotId: zuvyMentorSlotAvailability.id,
+        organizationId: zuvyMentorSlotManagement.organizationId,
+        orgName: zuvyOrganizations.displayName,
+      })
       .from(zuvyMentorSlotAvailability)
+      .innerJoin(
+        zuvyMentorSlotManagement,
+        eq(
+          zuvyMentorSlotAvailability.mentorSlotManagementId,
+          zuvyMentorSlotManagement.id,
+        ),
+      )
+      .innerJoin(
+        zuvyOrganizations,
+        eq(zuvyOrganizations.id, zuvyMentorSlotManagement.organizationId),
+      )
       .where(
         and(
-          eq(
-            zuvyMentorSlotAvailability.mentorSlotManagementId,
-            mentorProfile.id,
-          ),
+          eq(zuvyMentorSlotManagement.mentorUserId, BigInt(userId)),
           lt(zuvyMentorSlotAvailability.slotStartDateTime, end),
           gt(zuvyMentorSlotAvailability.slotEndDateTime, start),
         ),
       );
 
     if (overlap.length > 0) {
-      throw new BadRequestException('Slot overlaps existing slot.');
+      const conflictingOrg = overlap[0].orgName;
+      const orgMessage =
+        conflictingOrg &&
+        overlap[0].organizationId !== mentorProfile.organizationId
+          ? ` in ${conflictingOrg}`
+          : '';
+
+      throw new BadRequestException(
+        `This time overlaps with another mentor slot${orgMessage}. Please choose a different time.`,
+      );
     }
 
     return db
