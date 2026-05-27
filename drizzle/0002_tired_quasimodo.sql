@@ -621,3 +621,57 @@ FOREIGN KEY ("org_id")
 REFERENCES "zuvy_organizations"("id")
 ON UPDATE CASCADE
 ON DELETE CASCADE;
+
+
+
+
+
+-- Create zuvy_learner_leaderboard table
+-- 
+-- This table stores calculated leaderboard points for each learner per bootcamp.
+-- Points are aggregated from multiple submission and tracking tables:
+-- - zuvy_assessment_submission (assessment_points)
+-- - zuvy_quiz_tracking (quiz_points)
+-- - zuvy_practice_code (coding_points)
+-- - zuvy_test_cases_submission (coding_points validation)
+-- - zuvy_student_attendance_records (attendance_points)
+-- - zuvy_session_record_views (recording_points)
+-- - zuvy_open_ended_question_submission (open_ended_points)
+
+CREATE TABLE IF NOT EXISTS "zuvy_learner_leaderboard" (
+  "id" serial PRIMARY KEY NOT NULL,
+  "learner_id" integer NOT NULL,
+  "bootcamp_id" integer NOT NULL,
+  "assessment_points" integer DEFAULT 0,
+  "coding_points" integer DEFAULT 0,
+  "quiz_points" integer DEFAULT 0,
+  "attendance_points" integer DEFAULT 0,
+  "recording_points" integer DEFAULT 0,
+  "open_ended_points" integer DEFAULT 0,
+  "total_points" integer DEFAULT 0,
+  "rank" integer,
+  "last_activity_at" timestamp with time zone,
+  "created_at" timestamp with time zone DEFAULT now(),
+  "updated_at" timestamp with time zone DEFAULT now(),
+  CONSTRAINT "zuvy_learner_leaderboard_learner_id_users_id_fk"
+    FOREIGN KEY ("learner_id") REFERENCES "main"."users"("id") ON DELETE cascade,
+  CONSTRAINT "zuvy_learner_leaderboard_bootcamp_id_zuvybootcamps_id_fk"
+    FOREIGN KEY ("bootcamp_id") REFERENCES "main"."zuvy_bootcamps"("id") ON DELETE cascade
+);
+
+-- Create indexes for efficient querying
+CREATE INDEX IF NOT EXISTS "idx_zuvy_leaderboard_learner_id"
+  ON "zuvy_learner_leaderboard" USING btree ("learner_id");
+
+CREATE INDEX IF NOT EXISTS "idx_zuvy_leaderboard_bootcamp_id"
+  ON "zuvy_learner_leaderboard" USING btree ("bootcamp_id");
+
+CREATE INDEX IF NOT EXISTS "idx_zuvy_leaderboard_total_points"
+  ON "zuvy_learner_leaderboard" USING btree ("total_points");
+
+CREATE INDEX IF NOT EXISTS "idx_zuvy_leaderboard_rank"
+  ON "zuvy_learner_leaderboard" USING btree ("rank");
+
+-- Create unique constraint: one leaderboard entry per learner per bootcamp
+CREATE UNIQUE INDEX IF NOT EXISTS "uniq_zuvy_leaderboard_learner_bootcamp"
+  ON "zuvy_learner_leaderboard" USING btree ("learner_id", "bootcamp_id");
