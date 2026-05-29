@@ -536,24 +536,34 @@ export class LearnerService {
     return uniqueBranches;
   }
 
-  private async fetchLearnerEducationBranches() {
-    const branches = sortByNameWithOtherLast(
-      await db
-        .select({
-          id: zuvyLearnerEducationBranchesTable.id,
-          name: zuvyLearnerEducationBranchesTable.name,
-        })
-        .from(zuvyLearnerEducationBranchesTable),
-    );
+  private async fetchLearnerEducationBranches(degreeId?: number) {
+    let query = db
+      .select({
+        id: zuvyLearnerEducationBranchesTable.id,
+        name: zuvyLearnerEducationBranchesTable.name,
+        degreeId: zuvyLearnerEducationBranchesTable.degreeId,
+      })
+      .from(zuvyLearnerEducationBranchesTable);
+
+    if (degreeId !== undefined && degreeId !== null) {
+      query = query.where(
+        eq(zuvyLearnerEducationBranchesTable.degreeId, degreeId),
+      );
+    }
+
+    const branches = sortByNameWithOtherLast(await query);
 
     return { branches };
   }
 
-  async getLearnerEducationBranches(retryOnMissingTable = true) {
+  async getLearnerEducationBranches(
+    degreeId?: number,
+    retryOnMissingTable = true,
+  ) {
     try {
       await this.ensureLearnerEducationBranchesStorageReady();
 
-      const data = await this.fetchLearnerEducationBranches();
+      const data = await this.fetchLearnerEducationBranches(degreeId);
 
       return {
         success: true,
@@ -562,7 +572,7 @@ export class LearnerService {
     } catch (error) {
       if (this.isLearnerSchemaMissingError(error) && retryOnMissingTable) {
         await this.ensureLearnerEducationBranchesStorageReady();
-        return this.getLearnerEducationBranches(false);
+        return this.getLearnerEducationBranches(degreeId, false);
       }
 
       if (this.isLearnerSchemaMissingError(error)) {
@@ -636,11 +646,17 @@ export class LearnerService {
     try {
       await this.ensureLearnerEducationBranchesStorageReady();
 
+      const updateData: any = {
+        name: normalizedName,
+      };
+
+      if (payload.degreeId !== undefined) {
+        updateData.degreeId = payload.degreeId;
+      }
+
       const [updated] = await db
         .update(zuvyLearnerEducationBranchesTable)
-        .set({
-          name: normalizedName,
-        })
+        .set(updateData)
         .where(eq(zuvyLearnerEducationBranchesTable.id, id))
         .returning({ id: zuvyLearnerEducationBranchesTable.id });
 

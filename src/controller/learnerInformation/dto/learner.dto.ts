@@ -188,6 +188,11 @@ export class UpdateLearnerEducationBranchByIdDto {
   @IsString()
   @Length(1, 100)
   name: string;
+
+  @ApiPropertyOptional({ type: Number, example: 1 })
+  @IsOptional()
+  @IsInt({ message: 'degreeId must be a valid integer' })
+  degreeId?: number;
 }
 
 export class LearnerEducationBranchItemDto {
@@ -196,6 +201,9 @@ export class LearnerEducationBranchItemDto {
 
   @ApiProperty({ type: String, example: 'Computer Science' })
   name: string;
+
+  @ApiPropertyOptional({ type: Number, example: 1 })
+  degreeId?: number | null;
 }
 
 export class LearnerEducationBranchesResponseDto {
@@ -303,8 +311,12 @@ export class ResumeResponseDto {
   @ApiProperty({ type: String, example: 'john.doe@example.com' })
   email: string;
 
-  @ApiProperty({ type: String, example: '+91 9876543210' })
-  phone: string;
+  @ApiProperty({
+    type: Number,
+    example: 9876543210,
+    description: 'Phone number',
+  })
+  phone: number;
 
   @ApiProperty({
     type: String,
@@ -595,11 +607,6 @@ export class SaveCompleteProfileDto {
 
   @ApiPropertyOptional({ example: '9999999999' })
   @IsOptional()
-  @IsString()
-  @Matches(/^(\+91)?[6-9]\d{9}$/, {
-    message:
-      'phoneNumber must be a valid 10-digit Indian number starting with 6-9 (optional +91 prefix)',
-  })
   phoneNumber?: string;
 
   @ApiPropertyOptional({ example: 'aditya.student@zuvy.org' })

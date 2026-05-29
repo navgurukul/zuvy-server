@@ -162,11 +162,20 @@ export class LearnerController {
 
   @Get('learner-education-branch-details')
   @ApiOperation({ summary: 'Get learner education branch list' })
-  async getLearnerEducationBranches(): Promise<{
+  @ApiQuery({
+    name: 'degreeId',
+    required: false,
+    type: Number,
+    description: 'Optional degree ID to filter branches',
+  })
+  async getLearnerEducationBranches(
+    @Query('degreeId') degreeId?: string,
+  ): Promise<{
     success: boolean;
     data: LearnerEducationBranchesResponseDto;
   }> {
-    return this.learnerService.getLearnerEducationBranches();
+    const parsedDegreeId = degreeId ? parseInt(degreeId, 10) : undefined;
+    return this.learnerService.getLearnerEducationBranches(parsedDegreeId);
   }
 
   @Post('learner-education-branch-details')
