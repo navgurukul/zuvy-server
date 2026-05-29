@@ -2,341 +2,512 @@
 
 ## Purpose
 
-This document captures the current Zoom license allocation system in the codebase, including:
+This document explains the current Zoom license allocation flow end to end: what data comes from Zoom, what is stored in the DB, how protected and transferable seats are counted, when a user becomes inactive locally, and how a scheduled session receives a real Zoom meeting.
 
-- dynamic license transfer
-- protected license seats
-- scheduling rules
-- Zoom user requirements
-- current APIs
-- database tables involved
-- migration required for `is_protected`
+## Core Idea
 
-## Current Business Model
+Zoom is the source of truth for which users currently exist and whether each user is Basic or Licensed.
 
-The system supports a mixed Zoom seat model:
+Our DB adds one local concept that Zoom does not manage for us:
 
-- some Zoom users have protected seats
-- remaining seats form a transferable pool
-- non-protected instructors compete only for the transferable pool
-- a transferable seat remains blocked until:
-  - session end time
-  - plus a 1-hour cooldown buffer
-
-The cooldown exists to reduce recording-loss issues after class completion.
-
-## Protected vs Transferable Seats
-
-Protected users keep a dedicated seat and are not used as donors.
-
-Transferable seats are shared among non-protected instructors.
-
-Current protection is now DB-driven through:
-
-- `main.zuvy_user_licenses.is_protected`
-
-This replaces the older hardcoded-email protection approach in the allocator.
-
-## Core Scheduling Rules
-
-### 1. Protected instructor
-
-If the instructor is protected:
-
-- they are checked only against their own protected seat
-- they do not consume the shared transferable pool
-
-### 2. Non-protected instructor
-
-If the instructor is not protected:
-
-- they can use only the transferable pool
-- protected seats are excluded from their capacity calculation
-
-### 3. Cooldown rule
-
-A seat is not reusable immediately after class end.
-
-If a session runs from `6:00 PM` to `7:00 PM`, that seat stays blocked until:
-
-- `8:00 PM`
-
-That means a new class using the same pool cannot start before `8:00 PM`.
-
-### 4. Helpful rejection message
-
-If the requested slot cannot fit, the API returns:
-
-- `No Zoom licenses available for this time period. You can create session after ...`
-
-The suggested time is computed as the earliest start where the full requested duration can fit.
-
-## Deferred License Assignment
-
-The system does not immediately transfer a Zoom seat for future sessions.
-
-### Current behavior
-
-When a future Zoom class is created:
-
-1. the backend checks whether the requested slot is feasible
-2. it reserves internal assignment capacity
-3. it stores the session as `upcoming`
-4. it does **not** immediately downgrade/upgrade Zoom users
-
-### When the real Zoom transfer happens
-
-The actual Zoom seat transfer happens:
-
-- when the session enters its live window
-- or when the session is transitioned to `ongoing`
-
-At that point the backend:
-
-1. ensures the instructor is a Zoom user
-2. checks whether the instructor is already licensed
-3. if not, finds a free non-protected donor
-4. downgrades the donor
-5. upgrades the instructor
-6. applies Zoom host settings
-7. creates the real Zoom meeting
-
-## Zoom User Preconditions
-
-For an instructor to host a Zoom class dynamically, they must:
-
-- exist in the connected Zoom account
-- be accepted/activated in Zoom
-- be `active`, not `pending`
-
-If the user is:
-
-- missing: session creation/license activation fails
-- pending: session creation/license activation fails
-
-## Zoom Settings Applied on License Upgrade
-
-When a user becomes licensed, the backend now applies a best-effort Zoom user settings payload.
-
-This runs from:
-
-- [zoom.service.ts](/C:/Users/SAMA/Documents/Work/zuvy-server/src/services/zoom/zoom.service.ts)
-
-It currently applies API-supported settings in these areas:
-
-- `scheduled_meeting`
-- `in_meeting`
-- `email_notification`
-- `recording`
-
-Important:
-
-- settings are best-effort
-- if Zoom locks a setting at the account/group level, license assignment still succeeds
-- unsupported or locked settings are logged, not used to fail the transfer
-
-## Database Tables
-
-### 1. `zuvy_user_licenses`
-
-Primary local table for Zoom user seat state.
-
-Important fields:
-
-- `zoom_email`
-- `zoom_user_id`
-- `user_name`
-- `license_type`
-- `status`
 - `is_protected`
 
-This table is now the source of truth for:
+Protected means the user owns a dedicated seat in our allocation logic and must not be used as a donor for someone else.
 
-- who is protected
-- which Zoom users are currently licensed/basic locally
-- local pool synchronization
+## Current Example
 
-### 2. `licenses`
+If Zoom currently has 11 active users:
 
-Legacy compatibility table.
+- 7 users are Zoom Business/Licensed users
+- 4 users are Basic users
+- among the 7 licensed users, 4 are protected
+- the remaining 3 licensed users are transferable
 
-Still used because:
+Then `zuvy_user_licenses` should contain 11 active rows:
 
-- `zuvy_sessions.license_id` points to `licenses.id`
-- `license_assignments.license_id` points to `licenses.id`
+```text
+4 rows -> status = active, license_type = 2, is_protected = true
+3 rows -> status = active, license_type = 2, is_protected = false
+4 rows -> status = active, license_type = 1, is_protected = false
+```
+
+The active licensed pool is not all rows in the table. It is:
+
+```sql
+SELECT *
+FROM main.zuvy_user_licenses
+WHERE status = 'active'
+  AND license_type = 2;
+```
+
+## Important Tables
+
+### `zuvy_user_licenses`
+
+This is the current Zoom user mirror plus our local protection flag.
+
+Important columns:
+
+- `zoom_email`: Zoom account email.
+- `zoom_user_id`: Zoom internal user id.
+- `user_name`: display name from Zoom.
+- `license_type`: Zoom user type. `1` means Basic, `2` means Licensed.
+- `status`: local copy of the Zoom status, usually `active`, or `inactive` when the user is no longer active in Zoom.
+- `is_protected`: local flag for dedicated protected seats.
+
+This table should be read as:
+
+```text
+All current active Zoom users are active rows here.
+Licensed users are active rows where license_type = 2.
+Basic users are active rows where license_type = 1.
+Removed/deactivated/missing Zoom users become inactive locally.
+```
+
+Useful checks:
+
+```sql
+-- All current active Zoom users
+SELECT zoom_email, user_name, license_type, status, is_protected
+FROM main.zuvy_user_licenses
+WHERE status = 'active'
+ORDER BY license_type DESC, is_protected DESC, zoom_email;
+```
+
+```sql
+-- Current active licensed users
+SELECT zoom_email, user_name, is_protected
+FROM main.zuvy_user_licenses
+WHERE status = 'active'
+  AND license_type = 2
+ORDER BY is_protected DESC, zoom_email;
+```
+
+```sql
+-- Protected licensed users
+SELECT zoom_email, user_name
+FROM main.zuvy_user_licenses
+WHERE status = 'active'
+  AND license_type = 2
+  AND is_protected = true;
+```
+
+```sql
+-- Transferable licensed users
+SELECT zoom_email, user_name
+FROM main.zuvy_user_licenses
+WHERE status = 'active'
+  AND license_type = 2
+  AND is_protected = false;
+```
+
+```sql
+-- Active Basic users
+SELECT zoom_email, user_name
+FROM main.zuvy_user_licenses
+WHERE status = 'active'
+  AND license_type = 1;
+```
+
+### `licenses`
+
+This is the legacy compatibility table.
+
+It is still used because these columns still point to `licenses.id`:
+
+- `zuvy_sessions.license_id`
+- `license_assignments.license_id`
 
 Current behavior:
 
-- Zoom users are mirrored into `licenses`
-- session and assignment foreign keys still use `licenses.id`
+- every Zoom user sync also mirrors a row into `licenses`
+- `licenses.status = active` only when the Zoom user is active and licensed
+- Basic, inactive, removed, or downgraded users are mirrored as `inactive`
 
-### 3. `license_assignments`
+This table is not the best table for understanding the full current Zoom user list. Use `zuvy_user_licenses` for that.
 
-Tracks reserved/used license windows.
+### `license_assignments`
 
-Used for:
+This table stores which license row is reserved for which session window.
 
-- overlap validation
-- cooldown enforcement
-- donor free/busy checks
-- final transactional capacity guard
+Important columns:
 
-## APIs
+- `license_id`: points to `licenses.id`
+- `instructor_id`: platform instructor user id
+- `session_id`: points to `zuvy_sessions.id`
+- `start_time`
+- `end_time`
 
-### Zoom user APIs
+This table is used to answer:
 
-#### `GET /zoom/users/authorized`
+```text
+Which seats are already reserved for this time range?
+```
 
-Returns all Zoom users from the connected Zoom account.
+The system also applies the configured cooldown after `end_time`.
 
-Optional query params:
+### `zuvy_sessions`
 
+This table stores class/session records.
+
+For Zoom sessions, important fields are:
+
+- `is_zoom_meet`
+- `status`
+- `meeting_id`
+- `zoom_meeting_id`
+- `zoom_meeting_uuid`
+- `zoom_start_url`
+- `hangout_link`
+- `license_id`
+- `start_time`
+- `end_time`
+
+Future Zoom sessions are first saved with a pending meeting id. The real Zoom meeting is created later when the session starts.
+
+## Zoom APIs Used
+
+### Generate token
+
+`ZoomService.generateAccessToken()` calls:
+
+```text
+POST https://zoom.us/oauth/token
+```
+
+It uses the server-to-server OAuth account credentials and caches the token.
+
+### List Zoom users
+
+`ZoomService.listAuthorizedUsers()` calls:
+
+```text
+GET https://api.zoom.us/v2/users
+```
+
+It supports:
+
+- `status=active`
+- `hostType=all`
 - `hostType=licensed`
 - `hostType=basic`
-- `status=active`
-- `page_size=100`
-- `search=...`
+- pagination through `next_page_token`
 
-Response now includes local metadata too:
+This is the main API used to refresh local Zoom user state.
 
-- `isProtected`
-- `localLicenseType`
-- `localStatus`
+### Get one Zoom user
 
-Examples:
+`ZoomService.getUser(email)` calls:
 
-- `GET /zoom/users/authorized`
-- `GET /zoom/users/authorized?hostType=licensed`
-
-#### `PATCH /zoom/user`
-
-Updates a Zoom user and local protection metadata.
-
-Supported inputs:
-
-- `email`
-- `firstName`
-- `lastName`
-- `displayName`
-- `phoneNumber`
-- `timezone`
-- `type`
-- `isProtected`
-
-Examples:
-
-```json
-{
-  "email": "user@example.com",
-  "isProtected": true
-}
+```text
+GET https://api.zoom.us/v2/users/{email}
 ```
 
-```json
-{
-  "email": "user@example.com",
-  "type": 2,
-  "isProtected": false
-}
+This verifies whether a user exists, their status, and their current Zoom type.
+
+### Change user license
+
+`ZoomService.setUserLicense(email, type)` calls:
+
+```text
+PATCH https://api.zoom.us/v2/users/{email}
 ```
 
-`type` values:
+with:
+
+```json
+{ "type": 1 }
+```
+
+or:
+
+```json
+{ "type": 2 }
+```
+
+Meaning:
 
 - `1` = Basic
 - `2` = Licensed
-- `3` = On-Prem
 
-### Zoom license APIs
+### Apply host settings
 
-#### `POST /zoom-license/seed`
+`ZoomService.applyLicensedUserSettings(email)` calls:
 
-Syncs currently licensed active Zoom users into the local pool tables.
+```text
+PATCH https://api.zoom.us/v2/users/{email}/settings
+```
 
-#### `GET /zoom-license/dashboard`
+This applies best-effort user settings, including waiting room. If Zoom locks a setting at account/group level, the license flow should still continue and log the warning.
 
-Returns:
+### Create meeting for instructor
 
-- total licensed pool count
-- used seats
+`ZoomService.createMeetingForUser(email, meetingData)` calls:
+
+```text
+POST https://api.zoom.us/v2/users/{email}/meetings
+```
+
+The meeting is created under the actual instructor after the instructor has an active licensed Zoom account.
+
+The session activation payload sets:
+
+```json
+{
+  "settings": {
+    "waiting_room": true,
+    "join_before_host": false,
+    "auto_recording": "cloud"
+  }
+}
+```
+
+## Sync Flow
+
+The sync entry point is:
+
+```text
+ZoomLicenseService.syncLicensedUsersFromZoom()
+```
+
+Despite the method name, it now syncs all active Zoom users, not only licensed users.
+
+Step by step:
+
+1. Call `ZoomService.listAuthorizedUsers({ status: 'active', hostType: 'all', page_size: 300 })`.
+2. Build `activeZoomEmails` from every active Zoom user returned.
+3. Build `activeLicensedZoomEmails` from active Zoom users where `userType === 2`.
+4. For every active Zoom user, call `ZoomService.syncZoomLicenseUser(...)`.
+5. `syncZoomLicenseUser(...)` upserts into `zuvy_user_licenses`.
+6. The same user is mirrored into `licenses`.
+7. Any local `zuvy_user_licenses` row whose email is not in `activeZoomEmails` becomes inactive.
+8. Any local row whose email is not in `activeLicensedZoomEmails` has `is_protected` cleared.
+9. Any `licenses` row whose email is not in `activeLicensedZoomEmails` becomes inactive.
+
+## When Does An Active User Become Inactive?
+
+An active local user becomes inactive when a sync runs and Zoom no longer returns that email in the active user list.
+
+That happens when the user is no longer considered active in Zoom, for example:
+
+- removed from the Zoom account
+- deactivated in Zoom
+- moved out of the connected account
+- pending/not accepted and not returned by `status=active`
+
+The local update is:
+
+```text
+status = inactive
+license_type = 1
+is_protected = false
+updated_at = now()
+```
+
+The matching legacy `licenses` row also becomes:
+
+```text
+status = inactive
+```
+
+Important distinction:
+
+If Zoom still returns the user as active but the user is now Basic, the local row should not become inactive. It stays:
+
+```text
+status = active
+license_type = 1
+is_protected = false
+```
+
+So:
+
+- missing from active Zoom list -> inactive locally
+- present in Zoom as active Basic -> active locally but not licensed and not protected
+- present in Zoom as active Licensed -> active locally and license_type `2`
+
+## Seat Counting Rules
+
+Configured total seat count comes from:
+
+```text
+ZOOM_TOTAL_LICENSES
+```
+
+If missing, the code defaults to `7`.
+
+Protected seat count:
+
+```sql
+SELECT count(*)
+FROM main.zuvy_user_licenses
+WHERE status = 'active'
+  AND license_type = 2
+  AND is_protected = true;
+```
+
+Transferable seat capacity:
+
+```text
+configured total seats - protected licensed users
+```
+
+With 7 total seats and 4 protected users:
+
+```text
+7 - 4 = 3 transferable seats
+```
+
+Transferable DB rows are the currently licensed, non-protected Zoom users:
+
+```sql
+SELECT zoom_email
+FROM main.zuvy_user_licenses
+WHERE status = 'active'
+  AND license_type = 2
+  AND is_protected = false;
+```
+
+Basic users are not counted as available licensed seats. They can only receive a transferred seat when a transferable seat is available.
+
+## Scheduling Flow
+
+When a Zoom session is created from `ClassesService`:
+
+1. The instructor email is loaded from the batch/instructor relation.
+2. `ZoomLicenseService.assignLicense(...)` runs inside a DB transaction.
+3. It checks protected emails from `zuvy_user_licenses`.
+4. It decides whether the instructor is protected.
+5. It checks existing `license_assignments` that overlap the requested time range.
+6. The overlap check includes session end time plus the Zoom license cooldown.
+7. If the instructor is protected, only that instructor's own protected seat is considered.
+8. If the instructor is not protected, protected users are excluded and only the transferable pool is considered.
+9. One available `licenses.id` is selected and returned.
+10. The session is saved in `zuvy_sessions` as `upcoming` with a pending Zoom meeting id.
+11. `license_assignments` receives the reservation row for the session time window.
+
+The real Zoom meeting is not created immediately for future sessions.
+
+## Activation Flow
+
+The actual Zoom transfer happens when the session reaches its start time.
+
+The entry points are:
+
+- `ClassesService.activateScheduledZoomSessions()`
+- `ClassesService.activateZoomSession(sessionId)`
+
+Step by step:
+
+1. Find upcoming Zoom sessions where `start_time <= now` and `end_time > now`.
+2. Skip sessions that already have a real Zoom meeting id.
+3. Load the instructor email.
+4. Call `ensureInstructorHasZoomLicenseForSession(...)`.
+5. If the instructor is already active and licensed in Zoom, continue.
+6. If the instructor is Basic and needs a seat, find a free donor.
+7. Donor search calls Zoom for active licensed users.
+8. Protected users are excluded from donors.
+9. Donors that have overlapping sessions are excluded.
+10. The selected donor is downgraded to Basic through Zoom API.
+11. The instructor is upgraded to Licensed through Zoom API.
+12. Licensed-user settings are applied.
+13. The Zoom meeting is created under the instructor.
+14. `zuvy_sessions` is updated with real Zoom ids, URLs, password, UUID, and status `ongoing`.
+
+## Donor Rules
+
+A donor must be:
+
+- active in Zoom
+- licensed in Zoom
+- not the same as the instructor
+- not protected
+- free for the requested session time range
+
+Protected users are never donors.
+
+## Cooldown Rule
+
+A license is not reusable immediately at session end.
+
+The overlap check uses:
+
+```text
+assignment.end_time + cooldown > requested.start_time
+```
+
+The cooldown constant is currently defined in:
+
+- [zoom-license.constants.ts](/C:/Users/SAMA/Documents/Work/zuvy-server/src/common/constants/zoom-license.constants.ts)
+
+This prevents the system from taking the license too quickly after a session, which helps avoid recording/reporting issues.
+
+## Logs
+
+### `logLicensePoolSnapshot(...)`
+
+This log is used during allocation and shows:
+
+- configured total seats
+- protected seat count
+- transferable capacity
+- reserved seats for the requested window
 - available seats
+- protected user emails/names
+- reserved license transfer details
 
-## Migration Required
+### `logLicenseStatus(...)`
 
-The protection flag requires a DB migration.
+This log first runs `syncLicensedUsersFromZoom()`, then prints:
 
-Migration file:
+- configured total seats
+- active licensed rows in DB
+- protected licenses with email/name
+- transferable capacity
+- transferable DB rows with email/name
+- currently reserved protected seats
+- currently reserved transferable seats
+- available protected seats
+- available transferable seats
+- available total seats
 
-- [0034_add_zoom_user_protection.sql](/C:/Users/SAMA/Documents/Work/zuvy-server/drizzle/migrations/0034_add_zoom_user_protection.sql)
+This is the best debug log when checking whether DB and Zoom are aligned.
 
-This adds:
+## Current Known Limitations
 
-- `main.zuvy_user_licenses.is_protected boolean not null default false`
+### Legacy table bridge
 
-### How to apply
+The system still uses both:
 
-Run from repo root:
+- `zuvy_user_licenses`
+- `licenses`
 
-```powershell
-npm run migration:up
-```
+The real current Zoom user state lives in `zuvy_user_licenses`, but session foreign keys still use `licenses.id`.
 
-If your setup needs schema sync instead of SQL migration replay:
+### Protection is local
 
-```powershell
-npm run migration:push
-```
+Zoom tells us whether a user is Basic or Licensed. Zoom does not own our `is_protected` business rule.
 
-Then restart the backend.
+So if a user should be protected, `is_protected` must be set locally through DB/admin/API flow.
+
+### Sync is not continuous
+
+Manual Zoom changes are reflected after sync runs. Current sync happens during license status logging and allocation recovery paths, and through the seed/sync endpoint.
 
 ## Main Code Files
 
-Core files involved in this system:
-
-- [classes.service.ts](/C:/Users/SAMA/Documents/Work/zuvy-server/src/controller/classes/classes.service.ts)
 - [zoom-license.service.ts](/C:/Users/SAMA/Documents/Work/zuvy-server/src/controller/zoom-license/zoom-license.service.ts)
+- [classes.service.ts](/C:/Users/SAMA/Documents/Work/zuvy-server/src/controller/classes/classes.service.ts)
 - [zoom.service.ts](/C:/Users/SAMA/Documents/Work/zuvy-server/src/services/zoom/zoom.service.ts)
 - [zoom.controller.ts](/C:/Users/SAMA/Documents/Work/zuvy-server/src/services/zoom/zoom.controller.ts)
 - [zoom.dto.ts](/C:/Users/SAMA/Documents/Work/zuvy-server/src/services/zoom/dto/zoom.dto.ts)
 - [schema.ts](/C:/Users/SAMA/Documents/Work/zuvy-server/drizzle/schema.ts)
 
-## Current Known Limitations
-
-### 1. Legacy table bridge still exists
-
-The system still mirrors Zoom users into `licenses` for foreign-key compatibility.
-
-### 2. Some Zoom settings are account-level
-
-Not every screenshot-level setting can always be overridden at user level through API.
-
-### 3. Zoom provisioning is still a prerequisite
-
-Dynamic transfer cannot work for a user who:
-
-- does not exist in Zoom
-- is still pending
-- cannot be updated due to missing Zoom scopes
-
 ## Recommended Next Cleanup
 
-Future cleanup can simplify the system further by:
-
-1. migrating `zuvy_sessions.license_id` to `zuvy_user_licenses.id`
-2. migrating `license_assignments.license_id` to `zuvy_user_licenses.id`
-3. removing the legacy `licenses` bridge
-4. adding a dedicated admin API for listing only protected users
-5. optionally storing configurable seat totals instead of relying on env/default
-
-## Current Outcome
-
-The current implementation now supports:
-
-- dynamic Zoom instructor hosting
-- protected seat reservation
-- transferable seat pooling
-- 1-hour post-session cooldown
-- deferred transfer at session start time
-- donor downgrade / instructor upgrade flow
-- Zoom host settings sync on license upgrade
-- API-based protection management through `PATCH /zoom/user`
-- visibility of `isProtected` in `GET /zoom/users/authorized`
+1. Rename `syncLicensedUsersFromZoom()` to `syncZoomUsersFromZoom()` because it now syncs all active Zoom users.
+2. Add a scheduled sync job so manual Zoom admin changes are reflected even without a log/status call.
+3. Migrate `zuvy_sessions.license_id` from `licenses.id` to `zuvy_user_licenses.id`.
+4. Migrate `license_assignments.license_id` from `licenses.id` to `zuvy_user_licenses.id`.
+5. Remove the legacy `licenses` bridge after the foreign keys are migrated.
+6. Add a dedicated admin API to list and update protected users.

@@ -2,152 +2,345 @@
 
 ## Purpose
 
-This document records the decisions taken while implementing dynamic Zoom license allocation for live class scheduling.
+This document records the decisions behind the current Zoom license allocation design so the flow can be explained clearly to product, operations, and engineering managers.
 
 ## Problem Statement
 
-The system needs to let instructors host Zoom sessions even when they do not permanently own a licensed Zoom seat.
+The system needs to create Zoom sessions for instructors without permanently giving every instructor a paid Zoom license.
 
 The required behavior is:
 
-- use Zoom dynamically
-- move a paid Zoom seat from one user to another when needed
-- create meetings under the actual instructor email
-- avoid exceeding the real paid-seat count in Zoom
+- keep the real paid-seat count within Zoom limits
+- allow Basic instructors to host when a transferable paid seat is available
+- keep protected users permanently licensed
+- avoid using protected users as donors
+- create the real Zoom meeting under the actual instructor email
+- keep local DB state aligned with manual Zoom admin changes
 
-## Final Direction Chosen
+## Final Decision
 
-We chose a dynamic transfer model instead of a permanent-seat or team-host-only model.
+We use a dynamic transfer model.
 
 That means:
 
-- meetings are hosted by the instructor
-- basic users can be upgraded when a seat is available
-- currently licensed users can be downgraded if they are free and not protected
+- Zoom remains the source of truth for active users and user license type
+- `zuvy_user_licenses` mirrors current active Zoom users
+- `is_protected` is our local business flag
+- protected licensed users keep dedicated seats
+- non-protected licensed users form the transferable pool
+- Basic users can receive a transferable seat when their session starts
 
-## Why Team-Hosted Meetings Were Rejected
+## Why `zuvy_user_licenses` Should Have 11 Rows In The Current Example
 
-An early workaround created meetings under `team@zuvy.org`.
+If Zoom has 11 active users, `zuvy_user_licenses` should have 11 active rows.
 
-That was rejected because:
+Example:
 
-- it does not reflect the product requirement
-- it does not actually transfer the seat to the instructor
-- it hides real Zoom licensing problems instead of solving them
+```text
+11 active Zoom users total
+7 licensed users
+4 basic users
+```
 
-## Why We Needed Zoom User Provisioning
+The 7 licensed users split into:
 
-Dynamic licensing only works if the instructor:
+```text
+4 protected licensed users
+3 transferable licensed users
+```
 
-- exists in Zoom
-- belongs to the Zoom account
-- is active
+So the table should contain:
 
-So the system now treats Zoom user existence and activation as prerequisites.
+```text
+4 active rows with license_type = 2 and is_protected = true
+3 active rows with license_type = 2 and is_protected = false
+4 active rows with license_type = 1 and is_protected = false
+```
 
-## Why We Use Donor Downgrade Before Upgrade
+The table is not only for licensed users. It is the current active Zoom user mirror.
 
-Zoom enforces a real paid-user limit.
+## Why We Do Not Trust All Rows Blindly
 
-So when a basic instructor needs a seat:
+Old rows can exist from previous syncs or previous bugs.
 
-- the system cannot just promote them blindly
-- it must first free a paid seat by downgrading a currently licensed donor who is free in that session window
+So every license query must filter by:
 
-## Why We Use `zuvy_user_licenses`
+```sql
+status = 'active'
+```
 
-`zuvy_user_licenses` represents the actual Zoom-side host pool:
+and every licensed-seat query must also filter by:
 
-- Zoom email
-- Zoom user id
-- license type
-- status
+```sql
+license_type = 2
+```
 
-This is the right place to track the current licensed seat holders.
+Correct licensed pool query:
+
+```sql
+SELECT *
+FROM main.zuvy_user_licenses
+WHERE status = 'active'
+  AND license_type = 2;
+```
+
+## Why We Keep Basic Users In The Table
+
+Basic users matter because they are the users who may need a transferable license later.
+
+Keeping them in `zuvy_user_licenses` lets us see:
+
+- who exists in Zoom
+- who is active
+- who is Basic
+- who can potentially be upgraded during session activation
+
+Without Basic users in the mirror, the DB would only show paid users and would hide part of the actual Zoom account state.
 
 ## Why We Still Use `licenses`
 
-The old schema still has foreign keys pointing to `licenses.id`:
+The old schema still points session data to `licenses.id`.
+
+Existing foreign keys:
 
 - `zuvy_sessions.license_id`
 - `license_assignments.license_id`
 
-So we kept `licenses` as a compatibility mirror while moving the real pool logic to `zuvy_user_licenses`.
+Because of that, we still mirror Zoom users into `licenses`.
 
-Current rule:
+Decision:
 
-- read the real pool from `zuvy_user_licenses`
-- mirror the same users into `licenses`
-- save `licenses.id` into session/assignment rows
+```text
+Use zuvy_user_licenses for real Zoom user state.
+Use licenses only as a compatibility bridge for existing session foreign keys.
+```
 
-## Why Auto-Sync Was Added
+## Why Protected Users Are Local DB State
 
-We observed cases where:
+Zoom tells us:
 
-- local pool count was zero
-- Zoom still had active licensed users
+- user exists or not
+- user status
+- user type: Basic or Licensed
 
-To recover from stale local state, the allocator now:
+Zoom does not tell us:
 
-- syncs currently licensed active users from Zoom
-- updates `zuvy_user_licenses`
-- mirrors them into `licenses`
-- retries allocation once
+- whether this user is protected in Zuvy's license allocation rules
 
-## Protected Accounts Decision
+So `is_protected` belongs in our DB.
 
-Some licensed users must never be used as donors.
+Protection rule:
 
-Protected accounts:
+```text
+Protected users cannot be donors.
+Protected users reserve dedicated seats.
+```
 
-- `team@zuvy.org`
-- `laasya@navgurukul.org`
-- `vinit@navgurukul.org`
+## Seat Count Decision
+
+Configured total seats come from:
+
+```text
+ZOOM_TOTAL_LICENSES
+```
+
+If missing, the code defaults to `7`.
+
+Transferable capacity is calculated as:
+
+```text
+configured total seats - active protected licensed users
+```
+
+Example:
+
+```text
+configured total seats = 7
+protected licensed users = 4
+transferable capacity = 3
+```
+
+The 4 Basic users do not increase capacity. They can consume one of the 3 transferable seats only when assigned.
+
+## Why We Sync From Zoom Before Trusting Logs
+
+Manual changes can happen directly in Zoom.
+
+Examples:
+
+- Prashant removes a paid license from one user
+- Prashant grants a paid license to another user
+- a user is deactivated or removed in Zoom
+
+If the app only trusts old DB data, the allocator can use stale users.
+
+Decision:
+
+```text
+Before detailed license status logging, sync from Zoom first.
+```
+
+This is why `logLicenseStatus(...)` calls `syncLicensedUsersFromZoom()` before printing counts.
+
+## Active To Inactive Decision
+
+A local user becomes inactive when Zoom no longer returns them in the active user list during sync.
+
+This includes cases like:
+
+- removed from Zoom account
+- deactivated in Zoom
+- no longer active
+- pending/not accepted and not returned by `status=active`
+
+When that happens locally:
+
+```text
+status = inactive
+license_type = 1
+is_protected = false
+```
+
+The matching legacy `licenses` row becomes:
+
+```text
+status = inactive
+```
+
+Important:
+
+If Zoom still returns the user as active but with Basic license type, they are not inactive. They remain:
+
+```text
+status = active
+license_type = 1
+is_protected = false
+```
+
+So the rule is:
+
+```text
+Missing from active Zoom list -> inactive locally.
+Present as active Basic -> active locally, not licensed.
+Present as active Licensed -> active locally, licensed.
+```
+
+## Scheduling Decision
+
+Future sessions should not immediately move Zoom licenses.
+
+When a future session is created:
+
+1. validate that capacity exists for the requested time
+2. reserve the internal seat window in `license_assignments`
+3. save the session as `upcoming`
+4. save a pending Zoom meeting id
+5. wait until session start time to do real Zoom transfer
 
 Reason:
 
-- these users must retain their seat even if they are free
-- system should not downgrade them for another instructor
+If a session is tomorrow, moving the license today would unnecessarily disturb current Zoom users.
 
-## Error Handling Decision
+## Activation Decision
 
-We intentionally changed generic failures into actionable messages.
+The real Zoom license transfer happens when the session reaches its start window.
 
-Important examples:
+At activation:
 
-- missing Zoom scopes
-- user does not exist
-- user pending instead of active
-- no active licensed pool
-- overlapping assignments already consuming the pool
+1. verify instructor exists in Zoom
+2. verify instructor is active
+3. if instructor is already licensed, create meeting directly
+4. if instructor is Basic, find a free transferable donor
+5. downgrade donor to Basic
+6. upgrade instructor to Licensed
+7. apply Zoom host settings
+8. create meeting under instructor
+9. update `zuvy_sessions` with real Zoom meeting data
+
+## Why Donor Downgrade Happens Before Instructor Upgrade
+
+Zoom enforces the paid-user limit.
+
+If all paid seats are already used, upgrading an instructor first can fail.
+
+So the system frees a transferable paid seat by downgrading a non-protected donor first, then upgrades the instructor.
+
+## Donor Selection Decision
+
+A donor must be:
+
+- active in Zoom
+- licensed in Zoom
+- non-protected
+- not the same email as the target instructor
+- free for the requested time window
+
+This prevents stealing a seat from:
+
+- a protected user
+- an instructor who already has an overlapping session
+
+## Cooldown Decision
+
+A license stays blocked after session end for the cooldown window.
 
 Reason:
 
-- operations users need to know whether the fix is in Zoom admin, account activation, or scheduling data
+Zoom recordings/reports may still need the host license shortly after the session ends.
 
-## Current Known Tradeoff
+The overlap check is:
 
-The architecture is correct functionally but still transitional technically because both `zuvy_user_licenses` and `licenses` are used.
+```text
+existing start < requested end
+existing end + cooldown > requested start
+```
 
-This is acceptable short-term because it preserves compatibility with existing foreign keys.
+So a session ending at `1:00 PM` may continue blocking the seat until the cooldown finishes.
 
-## Recommended Next Cleanup
+## Why Team-Hosted Meetings Were Rejected
 
-Future cleanup should:
+Creating every meeting under `team@zuvy.org` was rejected.
 
-1. move `zuvy_sessions.license_id` to `zuvy_user_licenses.id`
-2. move `license_assignments.license_id` to `zuvy_user_licenses.id`
-3. remove legacy dependence on `licenses`
-4. make protected donor accounts configurable through environment or admin settings
+Reason:
 
-## Current Outcome
+- it does not satisfy the requirement that the real instructor hosts
+- it hides license problems instead of solving them
+- it makes Zoom ownership, recordings, and host controls less accurate
 
-The current system now supports:
+## Current Debugging Rule
 
-- dynamic instructor-hosted Zoom scheduling
-- donor downgrade before upgrade
-- Zoom pool sync from live Zoom state
-- protected donor accounts
-- meaningful operational errors
+When checking the license pool, use:
 
-That is the current accepted behavior of dynamic Zoom license allocation in this codebase.
+```text
+logLicenseStatus(...)
+```
+
+because it syncs from Zoom first.
+
+When checking allocation for a specific session window, use:
+
+```text
+logLicensePoolSnapshot(...)
+```
+
+because it shows protected users, reserved users, transfer direction, and availability for that requested window.
+
+## Current Accepted Behavior
+
+The accepted behavior is:
+
+- `zuvy_user_licenses` contains all active Zoom users after sync
+- only active licensed rows count as licensed pool
+- protected active licensed rows reserve dedicated seats
+- non-protected active licensed rows represent transferable users
+- Basic active users can receive transferable seats
+- removed/deactivated/missing Zoom users become inactive locally
+- actual Zoom transfer happens at session start, not at future session creation
+
+## Recommended Follow-Up Decisions
+
+1. Rename `syncLicensedUsersFromZoom()` to `syncZoomUsersFromZoom()`.
+2. Add scheduled sync so manual Zoom admin changes reflect without waiting for logs or allocation.
+3. Move session foreign keys from `licenses.id` to `zuvy_user_licenses.id`.
+4. Remove the legacy `licenses` table from the allocation flow after migration.
+5. Add a clear admin screen/API for protected license management.
