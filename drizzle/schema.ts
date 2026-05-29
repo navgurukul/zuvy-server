@@ -4891,7 +4891,7 @@ export const zuvyLearnerLeaderboard = main.table(
     quizPoints: integer('quiz_points').default(0),
     attendancePoints: integer('attendance_points').default(0),
     recordingPoints: integer('recording_points').default(0),
-    openEndedPoints: integer('open_ended_points').default(0),
+    assignmentPoints: integer('assignment_points').default(0),
     
     // Aggregated points
     totalPoints: integer('total_points').default(0),

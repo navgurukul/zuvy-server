@@ -636,7 +636,7 @@ ON DELETE CASCADE;
 -- - zuvy_test_cases_submission (coding_points validation)
 -- - zuvy_student_attendance_records (attendance_points)
 -- - zuvy_session_record_views (recording_points)
--- - zuvy_open_ended_question_submission (open_ended_points)
+-- - zuvy_assignment_submission (assignment_points)
 
 CREATE TABLE IF NOT EXISTS "zuvy_learner_leaderboard" (
   "id" serial PRIMARY KEY NOT NULL,
@@ -647,7 +647,7 @@ CREATE TABLE IF NOT EXISTS "zuvy_learner_leaderboard" (
   "quiz_points" integer DEFAULT 0,
   "attendance_points" integer DEFAULT 0,
   "recording_points" integer DEFAULT 0,
-  "open_ended_points" integer DEFAULT 0,
+  "assignment_points" integer DEFAULT 0,
   "total_points" integer DEFAULT 0,
   "rank" integer,
   "last_activity_at" timestamp with time zone,
