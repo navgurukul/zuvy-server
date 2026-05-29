@@ -39,6 +39,8 @@ import { Roles } from 'src/decorators/roles.decorator';
 import { TrackAction } from 'src/trackinglog/decorators/track-action.decorator';
 import { TrackActionInterceptor } from 'src/trackinglog/interceptors/track-action.interceptor';
 import { get } from 'http';
+import { PermissionsGuard } from 'src/rbac/guards/permissions.guard';
+import { SkipOrgCheck } from 'src/rbac/decorators/skip-org-check.decorator';
 
 @Controller('bootcamp')
 @ApiTags('bootcamp')
@@ -49,7 +51,7 @@ import { get } from 'http';
     forbidNonWhitelisted: true,
   }),
 )
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard, RolesGuard)
 @UseInterceptors(TrackActionInterceptor)
 @ApiBearerAuth('JWT-auth')
 export class BootcampController {
@@ -117,6 +119,7 @@ export class BootcampController {
     return res;
   }
 
+  @SkipOrgCheck()
   @Get('/:id')
   @ApiOperation({ summary: 'Get the bootcamp by id' })
   @ApiQuery({
@@ -196,6 +199,7 @@ export class BootcampController {
     return res;
   }
 
+  @SkipOrgCheck()
   @Get('bootcampSetting/:id')
   @ApiOperation({ summary: 'Get the bootcamp setting by id' })
   @ApiBearerAuth('JWT-auth')
@@ -262,6 +266,7 @@ export class BootcampController {
     return res;
   }
 
+  @SkipOrgCheck()
   @Get('/batches/:bootcamp_id')
   @ApiOperation({ summary: 'Get the batches by bootcamp_id' })
   @ApiQuery({
@@ -555,6 +560,7 @@ export class BootcampController {
     return res;
   }
 
+  @SkipOrgCheck()
   @Get('/:user_id/progress')
   @ApiOperation({ summary: 'Get the progress of students in a bootcamp' })
   @ApiQuery({

@@ -18,4 +18,7 @@ export class MentorSearchDto {
 
   @ApiPropertyOptional()
   search?: string;
+
+  @ApiPropertyOptional({ example: 12 })
+  organizationId?: number;
 }

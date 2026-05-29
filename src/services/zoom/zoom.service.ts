@@ -485,22 +485,89 @@ export class ZoomService {
   ): Promise<{ success: boolean; data?: ZoomMeetingResponse; error?: string }> {
     try {
       const url = `${this.baseUrl}/users/${encodeURIComponent(userEmailOrId)}/meetings`;
+
+      const headers = await this.getHeaders();
+
+      // Log request intent (helps debug wrong-host issues)
+      this.logger.log(`Creating Zoom meeting for user: ${userEmailOrId}`);
+
       const response: AxiosResponse<ZoomMeetingResponse> = await axios.post(
         url,
         meetingData,
-        { headers: await this.getHeaders() },
+        { headers },
       );
-      this.logger.log(
-        `Zoom meeting (host=${userEmailOrId}) created: ${response.data.id}`,
-      );
-      return { success: true, data: response.data };
+
+      const meeting = response.data;
+
+      // Strong logging for debugging
+      this.logger.log(`Zoom meeting created successfully: ${meeting.id}`);
+      this.logger.log(`Expected host: ${userEmailOrId}`);
+      this.logger.log(`Actual host: ${meeting.host_email}`);
+      this.logger.log(`Account ID: ${meeting.host_id}`);
+
+      // CRITICAL VALIDATION — prevent wrong host assignment
+      if (
+        meeting.host_email &&
+        meeting.host_email.toLowerCase() !== userEmailOrId.toLowerCase()
+      ) {
+        this.logger.error(
+          `HOST MISMATCH: Expected ${userEmailOrId}, got ${meeting.host_email}`,
+        );
+
+        // Fail fast — don't allow incorrect meeting to propagate
+        return {
+          success: false,
+          error: `Zoom host mismatch. Expected ${userEmailOrId}, got ${meeting.host_email}`,
+        };
+      }
+
+      // Additional safeguard: ensure join URL exists
+      if (!meeting.join_url || !meeting.start_url) {
+        this.logger.error(
+          ` Invalid Zoom response: missing join_url or start_url`,
+        );
+
+        return {
+          success: false,
+          error: 'Invalid Zoom meeting response: missing URLs',
+        };
+      }
+
+      return { success: true, data: meeting };
     } catch (error: any) {
+      const zoomError = error?.response?.data;
+
       this.logger.error(
-        `Error creating Zoom meeting for ${userEmailOrId}: ${error.response?.data || error.message}`,
+        `Error creating Zoom meeting for ${userEmailOrId}: ${
+          zoomError?.message || error.message
+        }`,
       );
+
+      // More granular error handling
+      if (zoomError?.message?.includes('User does not exist')) {
+        return {
+          success: false,
+          error: 'Zoom user does not exist or is not activated',
+        };
+      }
+
+      if (zoomError?.message?.includes('not licensed')) {
+        return {
+          success: false,
+          error: 'Zoom user is not a licensed (paid) account',
+        };
+      }
+
+      if (zoomError?.code === 429) {
+        return {
+          success: false,
+          error: 'Zoom rate limit exceeded. Please retry.',
+        };
+      }
+
       return {
         success: false,
-        error: error.response?.data?.message || error.message,
+        error: zoomError?.message || error.message,
       };
     }
   }

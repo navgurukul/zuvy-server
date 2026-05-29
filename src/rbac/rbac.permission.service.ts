@@ -25,9 +25,16 @@ import {
   zuvyUserRolesAssigned,
   zuvyAuditLogs,
 } from 'drizzle/schema';
+import { AuthService } from 'src/auth/auth.service';
+import { UserTokensService } from 'src/user-tokens/user-tokens.service';
 
 @Injectable()
 export class RbacPermissionService {
+  constructor(
+    private authService: AuthService,
+    private userTokenService: UserTokensService,
+  ) {}
+
   private readonly logger = new Logger(RbacPermissionService.name);
 
   async createPermission(
@@ -452,7 +459,7 @@ export class RbacPermissionService {
     try {
       const { resourceId, roleId, permissions } = dto;
 
-      return await db.transaction(async (tx) => {
+      const result = await db.transaction(async (tx) => {
         const [resource] = await tx
           .select()
           .from(zuvyResources)
@@ -484,6 +491,10 @@ export class RbacPermissionService {
         const disableIds = incomingIds.filter(
           (id) => permissions[id] === false,
         );
+        const permissionRoleOrgCondition =
+          orgId !== undefined && orgId !== null
+            ? eq(zuvyPermissionsRoles.orgId, orgId)
+            : isNull(zuvyPermissionsRoles.orgId);
 
         if (enableIds.length) {
           await tx
@@ -509,6 +520,7 @@ export class RbacPermissionService {
             .where(
               and(
                 eq(zuvyPermissionsRoles.roleId, roleId),
+                permissionRoleOrgCondition,
                 inArray(zuvyPermissionsRoles.permissionId, disableIds),
               ),
             );
@@ -517,7 +529,12 @@ export class RbacPermissionService {
         const assigned = await tx
           .select({ permissionId: zuvyPermissionsRoles.permissionId })
           .from(zuvyPermissionsRoles)
-          .where(eq(zuvyPermissionsRoles.roleId, roleId));
+          .where(
+            and(
+              eq(zuvyPermissionsRoles.roleId, roleId),
+              permissionRoleOrgCondition,
+            ),
+          );
 
         return {
           status: 'success',
@@ -529,10 +546,72 @@ export class RbacPermissionService {
           },
         };
       });
+
+      const invalidatedSessions = await this.invalidateRoleMemberSessions(
+        roleId,
+        orgId,
+      );
+
+      return {
+        ...result,
+        data: {
+          ...result.data,
+          invalidatedSessions,
+        },
+      };
     } catch (error) {
       this.logger.error('Error in assignPermissionsToRole:', error);
       if (error instanceof HttpException) throw error;
       throw new InternalServerErrorException('Failed to assign permissions');
     }
+  }
+
+  private async invalidateRoleMemberSessions(
+    roleId: number,
+    orgId?: number,
+  ): Promise<number> {
+    const orgCondition =
+      orgId !== undefined && orgId !== null
+        ? eq(zuvyUserRolesAssigned.organizationId, orgId)
+        : isNull(zuvyUserRolesAssigned.organizationId);
+
+    const members = await db
+      .select({ userId: zuvyUserRolesAssigned.userId })
+      .from(zuvyUserRolesAssigned)
+      .where(and(eq(zuvyUserRolesAssigned.roleId, roleId), orgCondition));
+
+    const uniqueUserIds = Array.from(new Set(members.map((m) => m.userId)));
+    let invalidated = 0;
+
+    for (const userId of uniqueUserIds) {
+      try {
+        const { data, success } = await this.userTokenService.getUserTokens(
+          userId,
+          orgId,
+        );
+
+        if (!success || !data?.accessToken || !data?.refreshToken) {
+          continue;
+        }
+
+        await this.authService.updateUserlogout(
+          Number(userId),
+          data.accessToken,
+          data.refreshToken,
+        );
+        await this.userTokenService.deleteToken({
+          userId: Number(userId),
+          organizationId: orgId,
+        });
+        invalidated += 1;
+      } catch (error) {
+        this.logger.warn(
+          `Failed to invalidate session for user ${userId.toString()} after role permission update.`,
+          error,
+        );
+      }
+    }
+
+    return invalidated;
   }
 }

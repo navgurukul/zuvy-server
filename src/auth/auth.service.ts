@@ -14,7 +14,7 @@ import {
   zuvyResources,
   zuvyPermissionsRoles,
 } from '../../drizzle/schema';
-import { eq, inArray, and, isNull, or } from 'drizzle-orm';
+import { eq, inArray, and, isNull, or, isNotNull } from 'drizzle-orm';
 import { OAuth2Client } from 'google-auth-library';
 import { UserTokensService } from 'src/user-tokens/user-tokens.service';
 import { ResourceList } from 'src/rbac/utility';
@@ -482,9 +482,78 @@ export class AuthService {
       }
 
       const payload = await this.jwtService.verifyAsync(token);
+      await this.ensureTokenSessionIsCurrent(token, payload, 'accessToken');
       return payload;
     } catch (error) {
       throw new UnauthorizedException('Invalid token');
+    }
+  }
+
+  private async ensureTokenSessionIsCurrent(
+    token: string,
+    payload: any,
+    tokenColumn: 'accessToken' | 'refreshToken',
+  ) {
+    const userId = Number(payload.sub);
+    const orgId = payload.orgId ?? null;
+    const tokenRoles = Array.isArray(payload.rolesList)
+      ? payload.rolesList
+      : [];
+
+    if (orgId) {
+      const [storedSession] = await db
+        .select({
+          token: zuvyUserOrganizations[tokenColumn],
+        })
+        .from(zuvyUserOrganizations)
+        .where(
+          and(
+            eq(zuvyUserOrganizations.userId, userId),
+            eq(zuvyUserOrganizations.organizationId, orgId),
+          ),
+        )
+        .limit(1);
+
+      if (!storedSession || storedSession.token !== token) {
+        throw new UnauthorizedException('Token is no longer valid');
+      }
+      return;
+    }
+
+    if (tokenRoles.includes('super_admin')) {
+      return;
+    }
+
+    const [orgScopedRole] = await db
+      .select({ id: zuvyUserRolesAssigned.id })
+      .from(zuvyUserRolesAssigned)
+      .where(
+        and(
+          eq(zuvyUserRolesAssigned.userId, BigInt(userId)),
+          isNotNull(zuvyUserRolesAssigned.organizationId),
+        ),
+      )
+      .limit(1);
+
+    if (orgScopedRole) {
+      throw new UnauthorizedException('Session context is no longer valid');
+    }
+
+    const [storedSession] = await db
+      .select({
+        token: zuvyUserOrganizations[tokenColumn],
+      })
+      .from(zuvyUserOrganizations)
+      .where(
+        and(
+          eq(zuvyUserOrganizations.userId, userId),
+          isNull(zuvyUserOrganizations.organizationId),
+        ),
+      )
+      .limit(1);
+
+    if (storedSession?.token && storedSession.token !== token) {
+      throw new UnauthorizedException('Token is no longer valid');
     }
   }
 
@@ -503,6 +572,11 @@ export class AuthService {
       const payload = await this.jwtService.verifyAsync(refreshToken);
       const userId = payload.sub;
       const orgId = payload.orgId;
+      await this.ensureTokenSessionIsCurrent(
+        refreshToken,
+        payload,
+        'refreshToken',
+      );
 
       // 3. Verify against DB (Strict One Session Per Org)
       if (orgId) {

@@ -33,7 +33,9 @@ import { ApplyFormData } from './dto/student.dto';
 import { Public } from '../../auth/decorators/public.decorator';
 import { UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
+import { SkipOrgCheck } from 'src/rbac/decorators/skip-org-check.decorator';
 
+@SkipOrgCheck()
 @Controller('student')
 @ApiTags('student')
 @UseInterceptors(TrackActionInterceptor)

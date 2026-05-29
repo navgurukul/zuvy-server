@@ -46,6 +46,7 @@ import { NotificationService } from './controller/notification/notification.serv
 import { GoogleModule } from './integrations/google/google.module';
 import { NewNotificationModule } from './controller/notification/notification.module';
 import { ZoomLicenseModule } from './controller/zoom-license/zoom-license.module';
+import { SuperAdminModule } from './super-admin/super-admin.module';
 
 let { GOOGLE_CLIENT_ID, GOOGLE_SECRET, GOOGLE_REDIRECT_URI, JWT_SECRET_KEY } =
   process.env;
@@ -92,6 +93,7 @@ let { GOOGLE_CLIENT_ID, GOOGLE_SECRET, GOOGLE_REDIRECT_URI, JWT_SECRET_KEY } =
     GoogleModule,
     NewNotificationModule,
     ZoomLicenseModule,
+    SuperAdminModule,
   ],
 
   providers: [

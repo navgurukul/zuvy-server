@@ -9,6 +9,7 @@ import {
   zuvyStudentAttendanceRecords,
   zuvySessions,
   zuvyBootcamps,
+  zuvyUserOrganizations,
 } from '../../../drizzle/schema';
 import { db } from '../../db/index';
 import { eq, ilike, inArray, or, sql, and, not, isNull } from 'drizzle-orm';
@@ -143,6 +144,24 @@ export class BatchesService {
               organizationId: orgId || null,
             };
             await db.insert(zuvyUserRolesAssigned).values(userData);
+          }
+
+          if (orgId) {
+            const existingOrgMembership =
+              await db.query.zuvyUserOrganizations.findFirst({
+                where: and(
+                  eq(zuvyUserOrganizations.userId, Number(instructorUserId)),
+                  eq(zuvyUserOrganizations.organizationId, orgId),
+                ),
+              });
+
+            if (!existingOrgMembership) {
+              await db.insert(zuvyUserOrganizations).values({
+                userId: instructorUserId,
+                userEmail: batch.instructorEmail,
+                organizationId: orgId,
+              } as any);
+            }
           }
         }
       } catch (err) {
@@ -501,6 +520,24 @@ export class BatchesService {
                 organizationId: orgId || null,
               };
               await db.insert(zuvyUserRolesAssigned).values(userData);
+            }
+
+            if (orgId) {
+              const existingOrgMembership =
+                await db.query.zuvyUserOrganizations.findFirst({
+                  where: and(
+                    eq(zuvyUserOrganizations.userId, Number(instructorUserId)),
+                    eq(zuvyUserOrganizations.organizationId, orgId),
+                  ),
+                });
+
+              if (!existingOrgMembership) {
+                await db.insert(zuvyUserOrganizations).values({
+                  userId: instructorUserId,
+                  userEmail: batch.instructorEmail,
+                  organizationId: orgId,
+                } as any);
+              }
             }
           }
         } catch (roleErr) {

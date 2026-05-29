@@ -348,10 +348,12 @@ export class UsersService {
     roleId: number,
     roleName: string,
     orgId: number,
+    tx?: any,
   ): Promise<any> {
     try {
-      // 🔍 Step 1: Check if role already has any permissions
-      const [existingPermissions] = await db
+      const executor = tx ?? db;
+
+      const [existingPermissions] = await executor
         .select({ count: sql<number>`count(*)` })
         .from(zuvyPermissionsRoles)
         .where(
@@ -374,16 +376,13 @@ export class UsersService {
         };
       }
 
-      // 🧩 Step 2: Build list of default permissions
       let defaultPermissions: string[] = [];
 
-      // ✅ Assign view/create for all resources only if role is 'admin'
       if (roleName?.toLowerCase() === 'admin') {
         for (const resource of Object.values(ResourceList)) {
           defaultPermissions.push(resource.read, resource.create);
         }
       } else {
-        // Assign limited defaults for non-admin roles
         defaultPermissions = [
           ResourceList.course.read,
           ResourceList.batch.read,
@@ -398,9 +397,8 @@ export class UsersService {
         ];
       }
 
-      // 🏗️ Step 3: Insert missing permissions
       for (const permission of defaultPermissions) {
-        const [permissionDetails] = await db
+        const [permissionDetails] = await executor
           .select({ id: zuvyPermissions.id })
           .from(zuvyPermissions)
           .where(eq(zuvyPermissions.name, permission))
@@ -413,19 +411,16 @@ export class UsersService {
           continue;
         }
 
-        const permissionId = permissionDetails.id;
-
-        await db
+        await executor
           .insert(zuvyPermissionsRoles)
           .values({
             roleId,
-            permissionId,
+            permissionId: permissionDetails.id,
             orgId,
           } as unknown as typeof zuvyPermissionsRoles.$inferInsert)
           .onConflictDoNothing();
       }
 
-      // ✅ Step 4: Return success
       return {
         status: 'success',
         message: `Default permissions assigned successfully for role: ${roleName}`,
@@ -521,43 +516,52 @@ export class UsersService {
             data: { userId, roleId },
           };
         }
-        await db
-          .delete(zuvyUserRolesAssigned)
-          .where(
-            and(
-              eq(zuvyUserRolesAssigned.userId, BigInt(userId)),
-              eq(zuvyUserRolesAssigned.organizationId, orgId),
-            ),
-          );
 
-        const updated = await db
-          .insert(zuvyUserRolesAssigned)
-          .values({
-            userId: BigInt(userId),
+        const updatedAssignment = await db.transaction(async (tx) => {
+          await tx
+            .delete(zuvyUserRolesAssigned)
+            .where(
+              and(
+                eq(zuvyUserRolesAssigned.userId, BigInt(userId)),
+                eq(zuvyUserRolesAssigned.organizationId, orgId),
+              ),
+            );
+
+          const [updated] = await tx
+            .insert(zuvyUserRolesAssigned)
+            .values({
+              userId: BigInt(userId),
+              roleId,
+              organizationId: orgId,
+            } as any)
+            .returning();
+
+          await this.assignDefaultPermissionsToRole(
             roleId,
-            organizationId: orgId,
-          } as any)
-          .returning();
-        // ✅ Assign default permissions for new role
-        await this.assignDefaultPermissionsToRole(roleId, roleName, orgId);
-
-        // ✅ Sync zuvyUserOrganizations so the user has a valid org link
-        const [existingUserOrgUpdate] = await db
-          .select()
-          .from(zuvyUserOrganizations)
-          .where(
-            and(
-              eq(zuvyUserOrganizations.userId, Number(userId)),
-              eq(zuvyUserOrganizations.organizationId, orgId),
-            ),
+            roleName,
+            orgId,
+            tx,
           );
-        if (!existingUserOrgUpdate) {
-          await db.insert(zuvyUserOrganizations).values({
-            userId: Number(userId),
-            userEmail: targetEmail,
-            organizationId: orgId,
-          } as unknown as typeof zuvyUserOrganizations.$inferInsert);
-        }
+
+          const [existingUserOrgUpdate] = await tx
+            .select()
+            .from(zuvyUserOrganizations)
+            .where(
+              and(
+                eq(zuvyUserOrganizations.userId, Number(userId)),
+                eq(zuvyUserOrganizations.organizationId, orgId),
+              ),
+            );
+          if (!existingUserOrgUpdate) {
+            await tx.insert(zuvyUserOrganizations).values({
+              userId: Number(userId),
+              userEmail: targetEmail,
+              organizationId: orgId,
+            } as unknown as typeof zuvyUserOrganizations.$inferInsert);
+          }
+
+          return updated;
+        });
 
         const currentRoleDetails = await this.roleCheck(currentRoleId);
         const currentRoleName = currentRoleDetails
@@ -569,24 +573,16 @@ export class UsersService {
           BigInt(targetUserId),
           orgId,
         );
-        if (!success) {
-          return {
-            success: true,
-            message:
-              'User role updated. User did not login after role update. No tokens found, skipping logout and delete',
-          };
-        }
-        await this.authService.updateUserlogout(
-          targetUserId,
-          data['accessToken'],
-          data['refreshToken'],
-        );
-        const deletedResponse = await this.userTokenService.deleteToken({
-          userId: targetUserId,
-          organizationId: orgId,
-        });
 
-        const auditLog = await this.auditlogService.log('role_to_user', {
+        if (!success) {
+          this.logger.warn(
+            `No tokens found for user ${targetUserId} after role update; skipping logout/delete.`,
+          );
+        }
+
+        await this.logoutAndDeleteUserTokens(targetUserId, data, orgId);
+
+        await this.auditlogService.log('role_to_user', {
           actorUserId,
           targetUserId,
           roleId,
@@ -596,41 +592,43 @@ export class UsersService {
           status: 'success',
           code: 200,
           message: 'Role updated for user',
-          data: updated[0],
+          data: updatedAssignment,
           descriptionPrefix: 'a role to a user',
           userEmail: targetEmail,
         };
       }
 
-      const inserted = await db
-        .insert(zuvyUserRolesAssigned)
-        .values({
-          userId: BigInt(userId),
-          roleId,
-          organizationId: orgId,
-        } as unknown as typeof zuvyUserRolesAssigned.$inferInsert)
-        .returning();
+      const insertedAssignment = await db.transaction(async (tx) => {
+        const [inserted] = await tx
+          .insert(zuvyUserRolesAssigned)
+          .values({
+            userId: BigInt(userId),
+            roleId,
+            organizationId: orgId,
+          } as unknown as typeof zuvyUserRolesAssigned.$inferInsert)
+          .returning();
 
-      // ✅ Assign default permissions for new role
-      await this.assignDefaultPermissionsToRole(roleId, roleName, orgId);
+        await this.assignDefaultPermissionsToRole(roleId, roleName, orgId, tx);
 
-      // ✅ Sync zuvyUserOrganizations so the user has a valid org link
-      const [existingUserOrgInsert] = await db
-        .select()
-        .from(zuvyUserOrganizations)
-        .where(
-          and(
-            eq(zuvyUserOrganizations.userId, Number(userId)),
-            eq(zuvyUserOrganizations.organizationId, orgId),
-          ),
-        );
-      if (!existingUserOrgInsert) {
-        await db.insert(zuvyUserOrganizations).values({
-          userId: Number(userId),
-          userEmail: targetEmail,
-          organizationId: orgId,
-        } as unknown as typeof zuvyUserOrganizations.$inferInsert);
-      }
+        const [existingUserOrgInsert] = await tx
+          .select()
+          .from(zuvyUserOrganizations)
+          .where(
+            and(
+              eq(zuvyUserOrganizations.userId, Number(userId)),
+              eq(zuvyUserOrganizations.organizationId, orgId),
+            ),
+          );
+        if (!existingUserOrgInsert) {
+          await tx.insert(zuvyUserOrganizations).values({
+            userId: Number(userId),
+            userEmail: targetEmail,
+            organizationId: orgId,
+          } as unknown as typeof zuvyUserOrganizations.$inferInsert);
+        }
+
+        return inserted;
+      });
 
       const action = `${actorName} assigned role ${roleName} to ${targetName}`;
 
@@ -639,20 +637,15 @@ export class UsersService {
         orgId,
       );
 
-      if (success && data?.accessToken) {
-        await this.authService.updateUserlogout(
-          targetUserId,
-          data.accessToken,
-          data.refreshToken,
+      if (!success) {
+        this.logger.warn(
+          `No tokens found for user ${targetUserId} after role assignment; skipping logout/delete.`,
         );
-
-        await this.userTokenService.deleteToken({
-          userId: targetUserId,
-          organizationId: orgId,
-        });
       }
 
-      const auditLog = await this.auditlogService.log('role_to_user', {
+      await this.logoutAndDeleteUserTokens(targetUserId, data, orgId);
+
+      await this.auditlogService.log('role_to_user', {
         actorUserId,
         targetUserId,
         roleId,
@@ -663,13 +656,39 @@ export class UsersService {
         status: 'success',
         code: 200,
         message: 'Role assigned to user successfully',
-        data: inserted[0] ?? null,
+        data: insertedAssignment ?? null,
         descriptionPrefix: 'a role to a user',
         userEmail: targetEmail,
       };
     } catch (err) {
       this.logger.error('Failed to assign role to user', err as any);
       throw err;
+    }
+  }
+
+  private async logoutAndDeleteUserTokens(
+    targetUserId: number,
+    tokenData: any,
+    orgId: number,
+  ): Promise<void> {
+    if (!tokenData?.accessToken || !tokenData?.refreshToken) {
+      this.logger.warn(
+        `Skipping logout for user ${targetUserId}; accessToken or refreshToken missing.`,
+      );
+      return;
+    }
+
+    try {
+      await this.authService.updateUserlogout(
+        targetUserId,
+        tokenData.accessToken,
+        tokenData.refreshToken,
+      );
+    } catch (error) {
+      this.logger.warn(
+        `Failed to logout user ${targetUserId} during role assignment. Continuing without failing.`,
+        error,
+      );
     }
   }
 
@@ -1260,16 +1279,7 @@ export class UsersService {
       );
 
       if (success && data?.accessToken) {
-        await this.authService.updateUserlogout(
-          Number(targetUserId),
-          data.accessToken,
-          data.refreshToken,
-        );
-
-        await this.userTokenService.deleteToken({
-          userId: Number(targetUserId),
-          organizationId: updateUserDto.orgId,
-        });
+        await this.authService.logout(BigInt(targetUserId), data.accessToken);
       }
 
       // Return the final response
