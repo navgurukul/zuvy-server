@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -24,6 +25,8 @@ import {
   LearnerBoardsResponseDto,
   LearnerEducationBranchesResponseDto,
   LearnerDegreesResponseDto,
+  LearnerDegreesWithBranchesResponseDto,
+  BranchesForDegreeResponseDto,
   LearnerRemoteLocationsResponseDto,
   LearnerRolesResponseDto,
   TechnicalSkillsResponseDto,
@@ -122,6 +125,36 @@ export class LearnerController {
     data: LearnerDegreesResponseDto;
   }> {
     return this.learnerService.getLearnerDegrees();
+  }
+
+  @Get('learner-degree-details-with-branches')
+  @ApiOperation({
+    summary: 'Get learner degree list with branches for dependent dropdown',
+  })
+  @ApiQuery({
+    name: 'degreeId',
+    required: false,
+    type: Number,
+    description:
+      'Optional degree ID to fetch branches for specific degree. If provided, returns branches for that degree. If not provided, returns all degrees with their branches.',
+  })
+  async getLearnerDegreesWithBranches(
+    @Query('degreeId') degreeId?: string,
+  ): Promise<{
+    success: boolean;
+    data: LearnerDegreesWithBranchesResponseDto | BranchesForDegreeResponseDto;
+  }> {
+    const parsedDegreeId = degreeId ? parseInt(degreeId, 10) : undefined;
+
+    if (degreeId && Number.isNaN(parsedDegreeId)) {
+      throw new BadRequestException('degreeId must be a valid number');
+    }
+
+    if (parsedDegreeId !== undefined) {
+      return this.learnerService.getLearnerBranchesForDegree(parsedDegreeId);
+    }
+
+    return this.learnerService.getLearnerDegreesWithBranches();
   }
 
   @Post('learner-degree-details')

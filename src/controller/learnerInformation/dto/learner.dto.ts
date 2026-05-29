@@ -172,6 +172,35 @@ export class LearnerDegreesResponseDto {
   degrees: LearnerDegreeItemDto[];
 }
 
+export class BranchInDegreeDto {
+  @ApiProperty({ type: Number, example: 1 })
+  id: number;
+
+  @ApiProperty({ type: String, example: 'Computer Science' })
+  name: string;
+}
+
+export class LearnerDegreeWithBranchesItemDto {
+  @ApiProperty({ type: Number, example: 1 })
+  id: number;
+
+  @ApiProperty({ type: String, example: 'B.Tech' })
+  name: string;
+
+  @ApiProperty({ type: [BranchInDegreeDto] })
+  branches: BranchInDegreeDto[];
+}
+
+export class LearnerDegreesWithBranchesResponseDto {
+  @ApiProperty({ type: [LearnerDegreeWithBranchesItemDto] })
+  degrees: LearnerDegreeWithBranchesItemDto[];
+}
+
+export class BranchesForDegreeResponseDto {
+  @ApiProperty({ type: [BranchInDegreeDto] })
+  branches: BranchInDegreeDto[];
+}
+
 export class UpsertLearnerEducationBranchesDto {
   @ApiProperty({
     type: [String],

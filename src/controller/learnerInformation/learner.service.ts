@@ -346,6 +346,95 @@ export class LearnerService {
     return { degrees };
   }
 
+  private async fetchLearnerDegreesWithBranches() {
+    const degrees = await db
+      .select({
+        id: zuvyLearnerDegreesTable.id,
+        name: zuvyLearnerDegreesTable.name,
+      })
+      .from(zuvyLearnerDegreesTable);
+
+    const degreesWithBranches = await Promise.all(
+      degrees.map(async (degree) => {
+        const branches = sortByNameWithOtherLast(
+          await db
+            .select({
+              id: zuvyLearnerEducationBranchesTable.id,
+              name: zuvyLearnerEducationBranchesTable.name,
+            })
+            .from(zuvyLearnerEducationBranchesTable)
+            .where(eq(zuvyLearnerEducationBranchesTable.degreeId, degree.id)),
+        );
+
+        return {
+          ...degree,
+          branches,
+        };
+      }),
+    );
+
+    return { degrees: sortByNameWithOtherLast(degreesWithBranches) };
+  }
+
+  async getLearnerDegreesWithBranches(retryOnMissingTable = true) {
+    try {
+      await this.ensureLearnerDegreesStorageReady();
+
+      const data = await this.fetchLearnerDegreesWithBranches();
+
+      return {
+        success: true,
+        data,
+      };
+    } catch (error) {
+      if (this.isLearnerSchemaMissingError(error) && retryOnMissingTable) {
+        await this.ensureLearnerDegreesStorageReady();
+        return this.getLearnerDegreesWithBranches(false);
+      }
+
+      if (this.isLearnerSchemaMissingError(error)) {
+        throw new InternalServerErrorException(
+          'Learner degrees schema is out of sync. Please run migrations and retry.',
+        );
+      }
+
+      throw error;
+    }
+  }
+
+  async getLearnerBranchesForDegree(
+    degreeId?: number,
+    retryOnMissingTable = true,
+  ) {
+    if (degreeId === undefined || degreeId === null) {
+      throw new BadRequestException('degreeId is required as query parameter');
+    }
+
+    try {
+      await this.ensureLearnerEducationBranchesStorageReady();
+
+      const data = await this.fetchLearnerEducationBranches(degreeId);
+
+      return {
+        success: true,
+        data,
+      };
+    } catch (error) {
+      if (this.isLearnerSchemaMissingError(error) && retryOnMissingTable) {
+        await this.ensureLearnerEducationBranchesStorageReady();
+        return this.getLearnerBranchesForDegree(degreeId, false);
+      }
+
+      if (this.isLearnerSchemaMissingError(error)) {
+        throw new InternalServerErrorException(
+          'Learner education branches schema is out of sync. Please run migrations and retry.',
+        );
+      }
+
+      throw error;
+    }
+  }
+
   async getLearnerDegrees(retryOnMissingTable = true) {
     try {
       await this.ensureLearnerDegreesStorageReady();
