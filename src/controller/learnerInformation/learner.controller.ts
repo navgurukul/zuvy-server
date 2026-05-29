@@ -46,7 +46,7 @@ import {
 import { SkipOrgCheck } from 'src/rbac/decorators/skip-org-check.decorator';
 @ApiTags('Learner Information')
 @SkipOrgCheck()
-@Controller('besic')
+@Controller('basic')
 @UsePipes(
   new ValidationPipe({
     whitelist: true,
