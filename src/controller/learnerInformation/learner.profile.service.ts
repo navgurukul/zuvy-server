@@ -395,9 +395,13 @@ export class LearnerProfileService {
       !!profile.class10Board,
       !!profile.class10Score,
       !!profile.class10ScoreType,
-      profile.hasWorkExperience === true &&
-        Array.isArray(profile.workExperiences) &&
-        (profile.workExperiences as any[]).length > 0,
+      // Only require work experience for experienced users (not for freshers)
+      ...(profile.hasWorkExperience === true
+        ? [
+            Array.isArray(profile.workExperiences) &&
+              (profile.workExperiences as any[]).length > 0,
+          ]
+        : []),
       hasCodingPlatformData(profile.leetcodeProfiles) ||
         hasCodingPlatformData(profile.codechefProfiles) ||
         hasCodingPlatformData(profile.codeforcesProfiles),
