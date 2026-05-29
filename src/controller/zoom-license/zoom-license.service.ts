@@ -160,6 +160,7 @@ export class ZoomLicenseService {
     return Math.max(total - protectedSeats, 0);
   }
 
+  // Remove the codesnippet later - For debugging and monitoring purposes, not meant for regular use
   private async logLicensePoolSnapshot(
     trx: any,
     dto: { startTime: Date; endTime: Date },
@@ -178,13 +179,86 @@ export class ZoomLicenseService {
     const instructorIsProtected = instructorEmail
       ? protectedEmails.has(instructorEmail)
       : false;
+    const protectedEmailList = Array.from(protectedEmails) as string[];
     const availableLicenses = instructorIsProtected
       ? Math.max(1 - usedLicenses, 0)
       : Math.max(transferableLicenses - usedLicenses, 0);
 
+    const protectedLicenseUsers = await trx
+      .select({
+        email: zuvyUserLicenses.zoomEmail,
+        name: zuvyUserLicenses.userName,
+      })
+      .from(zuvyUserLicenses)
+      .where(
+        and(
+          eq(zuvyUserLicenses.isProtected, true),
+          eq(zuvyUserLicenses.status, 'active'),
+          eq(zuvyUserLicenses.licenseType, 2),
+        ),
+      );
+
+    const reservedLicenseUsers = await trx
+      .select({
+        licenseEmail: licenses.zoomId,
+        licenseName: licenses.name,
+        instructorEmail: users.email,
+        instructorName: users.name,
+        sessionId: zuvySessions.id,
+        sessionTitle: zuvySessions.title,
+        startTime: licenseAssignments.startTime,
+        endTime: licenseAssignments.endTime,
+      })
+      .from(licenseAssignments)
+      .innerJoin(licenses, eq(licenseAssignments.licenseId, licenses.id))
+      .innerJoin(
+        zuvySessions,
+        eq(licenseAssignments.sessionId, zuvySessions.id),
+      )
+      .innerJoin(users, eq(licenseAssignments.instructorId, users.id))
+      .where(
+        and(
+          this.blockingSessionCondition(),
+          lt(licenseAssignments.startTime, dto.endTime),
+          sql`${licenseAssignments.endTime} + ${buildZoomLicenseCooldownIntervalSql()} > ${dto.startTime}`,
+          this.buildInstructorPoolCondition(
+            protectedEmailList,
+            instructorEmail,
+          ),
+        ),
+      );
+
+    const formatUsers = (
+      rows: Array<{ email?: string | null; name?: string | null }>,
+    ) =>
+      rows
+        .map((row) =>
+          row.name && row.name !== row.email
+            ? `${row.email} (${row.name})`
+            : row.email,
+        )
+        .filter(Boolean)
+        .join(', ') || 'none';
+
+    const reservedDetails =
+      reservedLicenseUsers
+        .map((row) => {
+          const transferLabel =
+            row.licenseEmail?.toLowerCase() ===
+            row.instructorEmail?.toLowerCase()
+              ? 'self'
+              : 'transfer';
+
+          return `${row.licenseEmail} (${row.licenseName || 'license'}) -> ${row.instructorEmail} (${row.instructorName || 'instructor'}) [${transferLabel}] | session ${row.sessionId}: "${row.sessionTitle}" | ${row.startTime.toISOString()} -> ${row.endTime.toISOString()}`;
+        })
+        .join('; ') || 'none';
+
     const message = `[Zoom License Pool][${context}] total=${totalLicenses}, protected=${protectedLicenses}, transferable=${transferableLicenses}, reserved=${usedLicenses}, available=${availableLicenses}, instructor=${instructorEmail || 'unknown'}, window=${dto.startTime.toISOString()} -> ${dto.endTime.toISOString()}`;
+    const detailMessage = `[Zoom License Pool][${context}] protectedUsers=${formatUsers(protectedLicenseUsers)}, reservedUsers=${reservedDetails}`;
     this.logger.log(message);
+    this.logger.log(detailMessage);
     console.log(message);
+    console.log(detailMessage);
   }
 
   private async getNextPoolAvailabilityTime(
@@ -400,7 +474,7 @@ export class ZoomLicenseService {
   async syncLicensedUsersFromZoom() {
     const zoomUsers = await this.zoomService.listAuthorizedUsers({
       status: 'active',
-      hostType: 'licensed',
+      hostType: 'all',
       page_size: 300,
     });
 
@@ -410,8 +484,16 @@ export class ZoomLicenseService {
       );
     }
 
-    const licensedUsers = zoomUsers.data?.users || [];
-    for (const user of licensedUsers) {
+    const activeZoomUsers = zoomUsers.data?.users || [];
+    const activeZoomEmails = activeZoomUsers
+      .map((user) => user.email?.trim().toLowerCase())
+      .filter((email): email is string => Boolean(email));
+    const activeLicensedZoomEmails = activeZoomUsers
+      .filter((user) => user.userType === 2)
+      .map((user) => user.email?.trim().toLowerCase())
+      .filter((email): email is string => Boolean(email));
+
+    for (const user of activeZoomUsers) {
       await this.zoomService.syncZoomLicenseUser({
         email: user.email,
         zoomUserId: user.id,
@@ -421,7 +503,53 @@ export class ZoomLicenseService {
       });
     }
 
-    return licensedUsers.length;
+    const staleUserCondition = activeZoomEmails.length
+      ? notInArray(
+          sql<string>`lower(${zuvyUserLicenses.zoomEmail})`,
+          activeZoomEmails,
+        )
+      : this.alwaysTrueCondition();
+    const notActiveLicensedUserCondition = activeLicensedZoomEmails.length
+      ? notInArray(
+          sql<string>`lower(${zuvyUserLicenses.zoomEmail})`,
+          activeLicensedZoomEmails,
+        )
+      : this.alwaysTrueCondition();
+    const staleLegacyLicenseCondition = activeLicensedZoomEmails.length
+      ? notInArray(
+          sql<string>`lower(${licenses.zoomId})`,
+          activeLicensedZoomEmails,
+        )
+      : this.alwaysTrueCondition();
+
+    await db
+      .update(zuvyUserLicenses)
+      .set({
+        licenseType: 1,
+        status: 'inactive',
+        isProtected: false,
+        updatedAt: sql`NOW()`,
+      } as any)
+      .where(staleUserCondition);
+
+    await db
+      .update(zuvyUserLicenses)
+      .set({
+        isProtected: false,
+        updatedAt: sql`NOW()`,
+      } as any)
+      .where(notActiveLicensedUserCondition);
+
+    await db
+      .update(licenses)
+      .set({ status: 'inactive' } as any)
+      .where(staleLegacyLicenseCondition);
+
+    this.logger.log(
+      `Synced Zoom users. Active licensed emails: ${activeLicensedZoomEmails.join(', ') || 'none'}. Active non-licensed or missing Zoom users are no longer protected/active licensed locally.`,
+    );
+
+    return activeLicensedZoomEmails.length;
   }
 
   /**
@@ -665,5 +793,135 @@ export class ZoomLicenseService {
     return {
       message: `Synced ${syncedCount} licensed Zoom users to zuvy_user_licenses.`,
     };
+  }
+
+  // Remove the codesnippet later - For debugging and monitoring purposes, not meant for regular use
+  async logLicenseStatus(context: string) {
+    try {
+      await this.syncLicensedUsersFromZoom();
+      const now = new Date();
+
+      const activeLicensePool = await db
+        .select({
+          licenseId: zuvyUserLicenses.id,
+          zoomEmail: zuvyUserLicenses.zoomEmail,
+          userName: zuvyUserLicenses.userName,
+          zoomUserId: zuvyUserLicenses.zoomUserId,
+          isProtected: zuvyUserLicenses.isProtected,
+        })
+        .from(zuvyUserLicenses)
+        .where(
+          and(
+            eq(zuvyUserLicenses.status, 'active'),
+            eq(zuvyUserLicenses.licenseType, 2),
+          ),
+        );
+
+      // Currently active assignments (sessions happening right now)
+      const activeAssignments = await db
+        .select({
+          licenseId: licenseAssignments.licenseId,
+          licenseEmail: licenses.zoomId,
+          instructorEmail: users.email,
+          instructorName: users.name,
+          startTime: licenseAssignments.startTime,
+          endTime: licenseAssignments.endTime,
+          sessionId: zuvySessions.id,
+          sessionTitle: zuvySessions.title,
+          sessionStatus: zuvySessions.status,
+        })
+        .from(licenseAssignments)
+        .innerJoin(licenses, eq(licenseAssignments.licenseId, licenses.id))
+        .innerJoin(users, eq(licenseAssignments.instructorId, users.id))
+        .innerJoin(
+          zuvySessions,
+          eq(licenseAssignments.sessionId, zuvySessions.id),
+        )
+        .where(
+          and(
+            lt(licenseAssignments.startTime, now),
+            sql`${licenseAssignments.endTime} + ${buildZoomLicenseCooldownIntervalSql()} > ${now}`,
+            or(isNull(zuvySessions.status), ne(zuvySessions.status, 'merged')),
+            eq(zuvySessions.isZoomMeet, true),
+          ),
+        );
+
+      const protectedLicenses = activeLicensePool.filter(
+        (license) => license.isProtected,
+      );
+      const transferableLicenses = activeLicensePool.filter(
+        (license) => !license.isProtected,
+      );
+      const protectedEmailSet = new Set(
+        protectedLicenses
+          .map((license) => license.zoomEmail?.trim().toLowerCase())
+          .filter((email): email is string => Boolean(email)),
+      );
+      const transferableCapacity = Math.max(
+        this.getConfiguredTotalLicenseCount() - protectedLicenses.length,
+        0,
+      );
+      const reservedProtectedAssignments = activeAssignments.filter(
+        (assignment) =>
+          protectedEmailSet.has(assignment.licenseEmail?.toLowerCase() || ''),
+      );
+      const reservedTransferableAssignments = activeAssignments.filter(
+        (assignment) =>
+          !protectedEmailSet.has(assignment.licenseEmail?.toLowerCase() || ''),
+      );
+      const availableProtectedSeats = Math.max(
+        protectedLicenses.length - reservedProtectedAssignments.length,
+        0,
+      );
+      const availableTransferableSeats = Math.max(
+        transferableCapacity - reservedTransferableAssignments.length,
+        0,
+      );
+      const availableTotalSeats =
+        availableProtectedSeats + availableTransferableSeats;
+      const formatEmails = (
+        rows: Array<{ zoomEmail?: string | null; userName?: string | null }>,
+      ) =>
+        rows
+          .map((row) =>
+            row.userName && row.userName !== row.zoomEmail
+              ? `${row.zoomEmail} (${row.userName})`
+              : row.zoomEmail,
+          )
+          .filter(Boolean)
+          .join(', ') || 'none';
+      const formatAssignments = (assignments: typeof activeAssignments) =>
+        assignments
+          .map(
+            (assignment) =>
+              `${assignment.licenseEmail} -> ${assignment.instructorEmail} (${assignment.instructorName || 'unknown'}) | session ${assignment.sessionId}: "${assignment.sessionTitle}" | ${assignment.startTime} -> ${assignment.endTime}`,
+          )
+          .join('\n') || 'none';
+
+      this.logger.log(`
+  === LICENSE STATUS DETAIL [${context}] ===
+  Configured total seats       : ${this.getConfiguredTotalLicenseCount()}
+  Active licensed rows in DB   : ${activeLicensePool.length}
+  Protected licenses           : ${protectedLicenses.length} -> ${formatEmails(protectedLicenses)}
+  Transferable seat capacity   : ${transferableCapacity}
+  Transferable DB rows         : ${transferableLicenses.length} -> ${formatEmails(transferableLicenses)}
+  Reserved protected seats     : ${reservedProtectedAssignments.length}
+${formatAssignments(reservedProtectedAssignments)
+  .split('\n')
+  .map((line) => `    ${line}`)
+  .join('\n')}
+  Reserved transferable seats  : ${reservedTransferableAssignments.length}
+${formatAssignments(reservedTransferableAssignments)
+  .split('\n')
+  .map((line) => `    ${line}`)
+  .join('\n')}
+  Available protected seats    : ${availableProtectedSeats}
+  Available transferable seats : ${availableTransferableSeats}
+  Available total seats        : ${availableTotalSeats}
+  =========================================
+      `);
+    } catch (error: any) {
+      this.logger.error(`Failed to log license status: ${error.message}`);
+    }
   }
 }

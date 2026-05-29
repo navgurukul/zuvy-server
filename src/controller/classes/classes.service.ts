@@ -331,7 +331,7 @@ export class ClassesService {
             `Skipping deferred alternative host ${email} for session ${sessionId} (not licensed or inactive)`,
           );
         }
-      } catch (error) {
+      } catch (error: any) {
         this.logger.warn(
           `Failed verifying deferred alternative host ${email} for session ${sessionId}: ${error.message}`,
         );
@@ -449,10 +449,10 @@ export class ClassesService {
       );
 
       return updatedSession;
-    } catch (error) {
+    } catch (error: any) {
       try {
         await this.zoomService.deleteMeeting(createdMeetingId);
-      } catch (cleanupError) {
+      } catch (cleanupError: any) {
         this.logger.warn(
           `Failed to rollback Zoom meeting ${createdMeetingId} after activation error for session ${sessionId}: ${cleanupError.message}`,
         );
@@ -486,7 +486,7 @@ export class ClassesService {
 
       try {
         await this.activateZoomSession(session.id);
-      } catch (error) {
+      } catch (error: any) {
         this.logger.error(
           `Failed to activate scheduled Zoom session ${session.id}: ${error.message}`,
         );
@@ -536,7 +536,7 @@ export class ClassesService {
         status: 'success',
         message: 'Calendar access verified',
       };
-    } catch (error) {
+    } catch (error: any) {
       this.logger.error(`Error accessing calendar: ${error.message}`);
       return {
         status: 'error',
@@ -560,7 +560,7 @@ export class ClassesService {
       });
 
       return res.redirect(authUrl);
-    } catch (error) {
+    } catch (error: any) {
       this.logger.error(`Error in Google authentication: ${error.message}`);
       return {
         status: 'error',
@@ -601,7 +601,7 @@ export class ClassesService {
         status: 'success',
         message: 'Tokens saved successfully',
       });
-    } catch (error) {
+    } catch (error: any) {
       this.logger.error(`Error saving tokens: ${error.message}`);
       return res.status(500).json({
         status: 'error',
@@ -750,7 +750,7 @@ export class ClassesService {
         this.logger.log('Creating Google Meet session (multi-batch aware)');
         return this.createGoogleMeetSession(eventData, creatorInfo);
       }
-    } catch (error) {
+    } catch (error: any) {
       this.logger.error(`Error creating session: ${error.message}`);
       return {
         status: 'error',
@@ -829,8 +829,18 @@ export class ClassesService {
             endTime: endDate,
           });
         });
-      } catch (e) {
+        // Remove the codesnippet later - For debugging and monitoring purposes, not meant for regular use
+        await this.zoomLicenseService.logLicenseStatus(
+          `After assigning license for ${instructorEmail}`,
+        );
+      } catch (e: any) {
         this.logger.error(`License assignment failed: ${e.message}`);
+
+        // Remove the codesnippet later - For debugging and monitoring purposes, not meant for regular use
+        await this.zoomLicenseService.logLicenseStatus(
+          `After failed license assignment for ${instructorEmail}`,
+        );
+
         return {
           status: 'error',
           message: e.message || 'No Zoom licenses available',
@@ -858,7 +868,7 @@ export class ClassesService {
       //     this.logger.warn(`Failed to create Google Calendar event: ${calendarResult.error}`);
 
       //   }
-      // } catch (calendarError) {
+      // } catch (calendarError: any) {
       //   this.logger.warn(`Google Calendar integration failed: ${calendarError.message}`);
       //   // Continue without failing the entire process
       // }
@@ -892,7 +902,18 @@ export class ClassesService {
         invitedStudents: invitedStudents,
       };
 
-      // Validate and create chapter
+      // Push session without chapterId first
+      session['licenseId'] = assignedLicenseId;
+      sessionsToCreate.push(session);
+
+      // Save sessions to database FIRST — this runs the license cap check
+      const saveResult = await this.saveSessionsToDatabase(sessionsToCreate);
+
+      if (saveResult.status === 'error') {
+        throw new Error(saveResult.message);
+      }
+
+      // Validate and create chapter ← CHAPTER ONLY CREATED IF SAVE SUCCEEDED
       const chapterResult = await this.validateAndCreateChapter({
         ...eventDetails,
         bootcampId: eventDetails.bootcampId, // Will be set from batch validation
@@ -902,20 +923,20 @@ export class ClassesService {
         throw new Error(chapterResult.message);
       }
 
-      session['chapterId'] = chapterResult.chapter.id;
-      session['bootcampId'] = chapterResult.bootcampId;
-      session['licenseId'] = assignedLicenseId;
-      // Redundant safety: if moduleId somehow absent, copy from chapter
-      session['moduleId'] = chapterResult.chapter.moduleId;
+      // Update the saved session with chapter info
+      await db
+        .update(zuvySessions)
+        .set({
+          chapterId: chapterResult.chapter.id,
+          bootcampId: chapterResult.bootcampId,
+          moduleId: chapterResult.chapter.moduleId,
+        })
+        .where(eq(zuvySessions.id, saveResult.data[0].id));
 
-      sessionsToCreate.push(session);
-
-      // Save sessions to database
-      const saveResult = await this.saveSessionsToDatabase(sessionsToCreate);
-
-      if (saveResult.status === 'error') {
-        throw new Error(saveResult.message);
-      }
+      // Update the in-memory object too so responseSessions has correct data
+      saveResult.data[0].chapterId = chapterResult.chapter.id;
+      saveResult.data[0].bootcampId = chapterResult.bootcampId;
+      saveResult.data[0].moduleId = chapterResult.chapter.moduleId;
 
       let responseSessions = saveResult.data;
       const startsNow =
@@ -946,7 +967,7 @@ export class ClassesService {
         data: responseSessions,
         descriptionSuffix,
       };
-    } catch (error) {
+    } catch (error: any) {
       if (
         typeof error?.message === 'string' &&
         error.message.includes('No Zoom licenses available')
@@ -1058,7 +1079,7 @@ export class ClassesService {
         data: saveResult.data,
         descriptionSuffix,
       };
-    } catch (error) {
+    } catch (error: any) {
       this.logger.error(`Error creating Google Meet session: ${error.message}`);
       return {
         status: 'error',
@@ -1114,7 +1135,7 @@ export class ClassesService {
         message: 'Instructor details fetched successfully',
         instructor: instructorDetails,
       };
-    } catch (error) {
+    } catch (error: any) {
       this.logger.error(
         `Error fetching instructor details for batch ${batchId}: ${error.message}`,
       );
@@ -1173,7 +1194,7 @@ export class ClassesService {
         students: allParticipants,
         instructor: instructorDetails,
       };
-    } catch (error) {
+    } catch (error: any) {
       this.logger.error(`Error fetching student emails: ${error.message}`);
       return {
         success: false,
@@ -1223,7 +1244,7 @@ export class ClassesService {
         }
         return { success: false, error: result.error };
       }
-    } catch (error) {
+    } catch (error: any) {
       this.logger.error(`Error creating Zoom meeting: ${error.message}`);
       return {
         success: false,
@@ -1260,7 +1281,7 @@ export class ClassesService {
 
       this.logger.log(`Google Calendar event ${eventId} deleted successfully`);
       return { success: true };
-    } catch (error) {
+    } catch (error: any) {
       this.logger.error(
         `Error deleting Google Calendar event ${eventId}: ${error.message}`,
       );
@@ -1317,7 +1338,7 @@ export class ClassesService {
 
       this.logger.log(`Google Calendar event ${eventId} updated successfully`);
       return { success: true };
-    } catch (error) {
+    } catch (error: any) {
       this.logger.error(
         `Error updating Google Calendar event ${eventId}: ${error.message}`,
       );
@@ -1373,7 +1394,7 @@ export class ClassesService {
         success: true,
         data: response.data,
       };
-    } catch (error) {
+    } catch (error: any) {
       this.logger.error(
         `Error creating Google Calendar event: ${error.message}`,
       );
@@ -1513,7 +1534,7 @@ export class ClassesService {
         message: 'Sessions saved successfully',
         data: savedSessions,
       };
-    } catch (error) {
+    } catch (error: any) {
       this.logger.error(`Error saving sessions to database: ${error.message}`);
       return {
         status: 'error',
@@ -1588,7 +1609,7 @@ export class ClassesService {
       );
 
       return newS3Link;
-    } catch (err) {
+    } catch (err: any) {
       this.logger.error(
         `Error fetching recording for meeting ${meetingId}: ${err.message}`,
       );
@@ -1737,7 +1758,7 @@ export class ClassesService {
       }
 
       return arrayOfAttendanceStudents;
-    } catch (err) {
+    } catch (err: any) {
       this.logger.error(
         `Error fetching attendance for meeting ${meetingId}: ${err.message}`,
       );
@@ -1808,7 +1829,7 @@ export class ClassesService {
   //       message: 'Attendance fetched successfully',
   //       data: attendance[0],
   //     }];
-  //   } catch (error) {
+  //   } catch (error: any) {
   //     this.logger.error(`Error fetching attendance: ${error.message}`);
   //     return [{ status: 'error', message: 'Failed to fetch attendance', code: 500 }, null];
   //   }
@@ -1829,7 +1850,7 @@ export class ClassesService {
           sessionData,
         },
       ];
-    } catch (error) {
+    } catch (error: any) {
       this.logger.error(
         `Error getting session attendance and S3 link: ${error.message}`,
       );
@@ -1880,7 +1901,7 @@ export class ClassesService {
         total_items: totalCount,
         total_pages: Math.ceil(totalCount / (limit || 50)),
       };
-    } catch (error) {
+    } catch (error: any) {
       this.logger.error(`Error fetching classes by batch ID: ${error.message}`);
       return {
         status: 'error',
@@ -1935,7 +1956,7 @@ export class ClassesService {
           sessions: sessionsWithoutAttendance,
         },
       };
-    } catch (error) {
+    } catch (error: any) {
       this.logger.error(`Error fetching unattended classes: ${error.message}`);
       return {
         status: 'error',
@@ -2028,7 +2049,7 @@ export class ClassesService {
               },
             });
           }
-        } catch (error) {
+        } catch (error: any) {
           if (error.code === 404 || error.code === 410) {
             deleteClassIds.push(classObj.meetingId);
             Logger.log(
@@ -2066,7 +2087,7 @@ export class ClassesService {
               classObj.id,
             );
             classObj = activatedSession;
-          } catch (error) {
+          } catch (error: any) {
             this.logger.error(
               `Failed to activate Zoom session ${classObj.id} during status update: ${error.message}`,
             );
@@ -2136,7 +2157,7 @@ export class ClassesService {
       Logger.log(
         `${classesToUpdate.length} class statuses updated successfully.`,
       );
-    } catch (error) {
+    } catch (error: any) {
       Logger.log(`Error: ${error.message}`);
       return {
         success: 'not success',
@@ -2172,7 +2193,7 @@ export class ClassesService {
         .promise();
       const s3Url = `https://${bucketName}.s3.amazonaws.com/${s3Key}`;
       return s3Url;
-    } catch (error) {
+    } catch (error: any) {
       throw new Error('Error uploading video to S3');
     }
   }
@@ -2492,7 +2513,7 @@ export class ClassesService {
         total_items: totalClasses,
         total_pages: Math.ceil(totalClasses / limit) || 1,
       };
-    } catch (err) {
+    } catch (err: any) {
       return { status: 'error', message: err.message, code: 500 };
     }
   }
@@ -2611,7 +2632,7 @@ export class ClassesService {
           descriptionSuffix,
         },
       ];
-    } catch (error) {
+    } catch (error: any) {
       return [
         {
           status: 'error',
@@ -2688,7 +2709,7 @@ export class ClassesService {
           total_sessions: sessions.length,
         },
       };
-    } catch (error) {
+    } catch (error: any) {
       this.logger.error(`Error fetching batch attendance: ${error.message}`);
       return {
         status: 'error',
@@ -2761,7 +2782,7 @@ export class ClassesService {
         chapter: chapter[0],
         bootcampId: batch[0].bootcampId,
       };
-    } catch (error) {
+    } catch (error: any) {
       this.logger.error(
         `Error validating and creating chapter: ${error.message}`,
       );
@@ -2900,7 +2921,7 @@ export class ClassesService {
         },
         message: 'Session fetched successfully',
       };
-    } catch (error) {
+    } catch (error: any) {
       this.logger.error(
         `Error fetching session for student ${sessionId}: ${error.message}`,
       );
@@ -3017,7 +3038,7 @@ export class ClassesService {
         data: response,
         message: 'Session fetched successfully for admin',
       };
-    } catch (error) {
+    } catch (error: any) {
       this.logger.error(
         `Error fetching session for admin ${sessionId}: ${error.message}`,
       );
@@ -3238,7 +3259,7 @@ export class ClassesService {
             this.logger.log(
               `Zoom meeting ${session.zoomMeetingId} updated successfully`,
             );
-          } catch (error) {
+          } catch (error: any) {
             this.logger.error(
               `Failed to update Zoom meeting: ${error.message}`,
             );
@@ -3267,7 +3288,7 @@ export class ClassesService {
             this.logger.log(
               `Google Calendar event ${session.meetingId} updated successfully`,
             );
-          } catch (error) {
+          } catch (error: any) {
             this.logger.error(
               `Failed to update Google Calendar: ${error.message}`,
             );
@@ -3351,7 +3372,7 @@ export class ClassesService {
         message: 'Session updated successfully',
         descriptionSuffix,
       };
-    } catch (error) {
+    } catch (error: any) {
       this.logger.error(
         `Error updating session ${sessionId}: ${error.message}`,
       );
@@ -3427,7 +3448,7 @@ export class ClassesService {
               message: 'Chapter not found',
             };
           }
-        } catch (chapterErr) {
+        } catch (chapterErr: any) {
           this.logger.error(
             `Failed to delete chapter ${sessionData.chapterId}: ${chapterErr.message}`,
           );
@@ -3449,7 +3470,7 @@ export class ClassesService {
             this.logger.log(
               `Zoom meeting ${sessionData.zoomMeetingId} deleted`,
             );
-          } catch (error) {
+          } catch (error: any) {
             this.logger.error(
               `Failed to delete Zoom meeting: ${error.message}`,
             );
@@ -3467,7 +3488,7 @@ export class ClassesService {
             this.logger.log(
               `Google Calendar event ${sessionData.meetingId} deleted`,
             );
-          } catch (error) {
+          } catch (error: any) {
             this.logger.error(
               `Failed to delete Google Calendar event: ${error.message}`,
             );
@@ -3488,7 +3509,7 @@ export class ClassesService {
             this.logger.log(
               `Google Calendar event ${sessionData.meetingId} deleted`,
             );
-          } catch (error) {
+          } catch (error: any) {
             this.logger.error(
               `Failed to delete Google Calendar event: ${error.message}`,
             );
@@ -3532,7 +3553,7 @@ export class ClassesService {
               .where(eq(zuvyModuleChapter.id, sessionData.chapterId));
             chapterDeleted = true;
           }
-        } catch (chapterErr) {
+        } catch (chapterErr: any) {
           this.logger.error(
             `Failed to delete chapter ${sessionData.chapterId}: ${chapterErr.message}`,
           );
@@ -3558,7 +3579,7 @@ export class ClassesService {
           ? `from the course name ${courseName}`
           : '',
       };
-    } catch (error) {
+    } catch (error: any) {
       this.logger.error(
         `Error deleting session ${sessionId}: ${error.message}`,
       );
@@ -3641,7 +3662,7 @@ export class ClassesService {
       }
 
       return this.updateSession(session.id, updateData, userInfo);
-    } catch (error) {
+    } catch (error: any) {
       this.logger.error(
         `Error updating session by meeting identifier ${meetingIdentifier}: ${error.message}`,
       );
@@ -3703,7 +3724,7 @@ export class ClassesService {
       }
 
       return this.deleteSession(session.id, userInfo, options);
-    } catch (error) {
+    } catch (error: any) {
       this.logger.error(
         `Error deleting session by meeting identifier ${meetingIdentifier}: ${error.message}`,
       );
@@ -3943,7 +3964,7 @@ export class ClassesService {
   //         message: 'Zoom attendance fetched and saved successfully'
   //       };
 
-  //     } catch (zoomError) {
+  //     } catch (zoomError: any) {
   //       this.logger.error(`Error fetching from Zoom API: ${zoomError.message}`);
   //       return {
   //         success: false,
@@ -3952,7 +3973,7 @@ export class ClassesService {
   //       };
   //     }
 
-  //   } catch (error) {
+  //   } catch (error: any) {
   //     this.logger.error(`Error fetching Zoom attendance for session ${sessionId}: ${error.message}`);
   //     return {
   //       success: false,
@@ -3973,7 +3994,7 @@ export class ClassesService {
         recording_start: f.recording_start,
         recording_end: f.recording_end,
       }));
-    } catch (e) {
+    } catch (e: any) {
       this.logger.warn(`Recording fetch failed for ${meetingId}: ${e.message}`);
       return [];
     }
@@ -4181,7 +4202,7 @@ export class ClassesService {
           },
           message: 'Google Meet attendance fetched and saved successfully',
         };
-      } catch (googleMeetError) {
+      } catch (googleMeetError: any) {
         this.logger.error(
           `Error fetching from Google Meet API: ${googleMeetError.message}`,
         );
@@ -4191,7 +4212,7 @@ export class ClassesService {
           message: 'Failed to fetch attendance from Google Meet',
         };
       }
-    } catch (error) {
+    } catch (error: any) {
       this.logger.error(
         `Error fetching Google Meet attendance for session ${sessionId}: ${error.message}`,
       );
@@ -4206,8 +4227,8 @@ export class ClassesService {
   async meetingAttendanceAnalytics(sessionId: number, userInfo: any) {
     try {
       // i want to fetch the zuvySessions and zuvyStudentAttendanceRecords relation name studentAttendanceRecords with relations
-      let sessionInfo = await db.query.zuvySessions.findMany({
-        where: (zs, { eq }) => eq(zs.id, sessionId),
+      const sessionInfo = await db.query.zuvySessions.findMany({
+        where: eq(zuvySessions.id, sessionId),
         with: {
           studentAttendanceRecords: true,
         },
@@ -4315,7 +4336,7 @@ export class ClassesService {
           message: 'Meeting attendance analytics processed successfully',
         },
       ];
-    } catch (error) {
+    } catch (error: any) {
       this.logger.error(
         `Error processing meeting attendance analytics: ${error.message}`,
       );
@@ -4405,7 +4426,7 @@ export class ClassesService {
             session.zoomMeetingId,
           );
           zoomParticipants = zoomResp?.participants || [];
-        } catch (err) {
+        } catch (err: any) {
           this.logger.warn(
             `Zoom participants fetch failed for session ${session.id}: ${err.message}`,
           );
@@ -4494,7 +4515,7 @@ export class ClassesService {
         message: 'Backfill complete',
         data: { processedSessions, createdRecords },
       };
-    } catch (error) {
+    } catch (error: any) {
       this.logger.error(
         `Error in backfillAttendanceFromInvitedStudentsDaily: ${error.message}`,
       );
@@ -4633,7 +4654,7 @@ export class ClassesService {
           this.logger.log(
             'Successfully added child session students to parent session Google Calendar event',
           );
-        } catch (calendarError) {
+        } catch (calendarError: any) {
           this.logger.error(
             `Failed to update Google Calendar: ${calendarError.message}`,
           );
@@ -4651,7 +4672,7 @@ export class ClassesService {
           this.logger.log(
             'Successfully updated parent session Zoom meeting with child session students',
           );
-        } catch (zoomError) {
+        } catch (zoomError: any) {
           this.logger.error(
             `Failed to update Zoom meeting: ${zoomError.message}`,
           );
@@ -4723,7 +4744,7 @@ export class ClassesService {
         descriptionSuffix:
           'combines students from both sessions into parent session',
       };
-    } catch (error) {
+    } catch (error: any) {
       this.logger.error(`Error merging classes: ${error.message}`);
       return {
         success: false,
@@ -4792,7 +4813,7 @@ export class ClassesService {
       this.logger.log(
         `Added ${newAttendees.length} new attendees to Google Calendar event ${eventId}`,
       );
-    } catch (error) {
+    } catch (error: any) {
       this.logger.error(
         `Error adding attendees to Google Calendar: ${error.message}`,
       );
@@ -4839,13 +4860,13 @@ export class ClassesService {
         this.logger.log(
           `Added ${newInvitees.length} invitees to Zoom meeting ${zoomMeetingId}`,
         );
-      } catch (updateError) {
+      } catch (updateError: any) {
         this.logger.error(
           `Failed to update Zoom meeting invitees: ${updateError.message}`,
         );
         throw updateError;
       }
-    } catch (error) {
+    } catch (error: any) {
       this.logger.error(
         `Error updating Zoom meeting invitees: ${error.message}`,
       );
@@ -4994,7 +5015,7 @@ export class ClassesService {
       console.log(
         `✅ Successfully migrated ${recordsToInsert.length} attendance records for meetingId: ${meetingId}.`,
       );
-    } catch (error) {
+    } catch (error: any) {
       console.error(
         `Failed to migrate attendance for meetingId "${meetingId}". Error:`,
         error,
@@ -5026,7 +5047,7 @@ export class ClassesService {
       this.logger.log(
         `Recording job enqueued for session ${session.id}, meetingId: ${session.zoomMeetingId}`,
       );
-    } catch (error) {
+    } catch (error: any) {
       this.logger.error(
         `Failed to enqueue recording job for session ${session.id}: ${error.message}`,
       );

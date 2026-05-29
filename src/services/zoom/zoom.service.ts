@@ -409,7 +409,7 @@ export class ZoomService {
         `Zoom access token generated successfully (expires in ${expiresIn}s).`,
       );
       return { accessToken, expiresIn };
-    } catch (error) {
+    } catch (error: any) {
       this.logger.error(
         `Error generating Zoom access token: ${error.response?.data || error.message}`,
       );
@@ -439,7 +439,7 @@ export class ZoomService {
         Authorization: `Bearer ${newToken}`,
         'Content-Type': 'application/json',
       };
-    } catch (e) {
+    } catch (e: any) {
       this.logger.error(`Failed to obtain Zoom headers: ${e.message}`);
       throw e;
     }
@@ -467,7 +467,7 @@ export class ZoomService {
 
       this.logger.log(`Zoom meeting created successfully: ${response.data.id}`);
       return { success: true, data: response.data };
-    } catch (error) {
+    } catch (error: any) {
       this.logger.error(
         `Error creating Zoom meeting: ${error.response?.data || error.message}`,
       );
@@ -859,7 +859,7 @@ export class ZoomService {
       await axios.patch(url, meetingData, { headers: await this.getHeaders() });
 
       this.logger.log(`Zoom meeting updated successfully: ${meetingId}`);
-    } catch (error) {
+    } catch (error: any) {
       this.logger.error(
         `Error updating Zoom meeting: ${error.response?.data || error.message}`,
       );
@@ -879,7 +879,7 @@ export class ZoomService {
       await axios.delete(url, { headers: await this.getHeaders() });
 
       this.logger.log(`Zoom meeting deleted successfully: ${meetingId}`);
-    } catch (error) {
+    } catch (error: any) {
       this.logger.error(
         `Error deleting Zoom meeting: ${error.response?.data || error.message}`,
       );
@@ -904,7 +904,7 @@ export class ZoomService {
       );
 
       return { success: true, data: response.data };
-    } catch (error) {
+    } catch (error: any) {
       this.logger.error(
         `Error fetching Zoom meeting: ${error.response?.data || error.message}`,
       );
@@ -926,7 +926,7 @@ export class ZoomService {
         params: { type: 'live' },
       });
       return true; // 200 OK -> live right now
-    } catch (e) {
+    } catch (e: any) {
       const err = e as AxiosError<any>;
       const status = err.response?.status;
       const code = err.response?.data?.code;
@@ -979,7 +979,7 @@ export class ZoomService {
 
       // Return the complete list of participants from all pages
       return { participants: allParticipants };
-    } catch (error) {
+    } catch (error: any) {
       this.logger.error(
         `Error fetching Zoom meeting participants for UUID ${meetingUuid}: ${error.response?.data?.message || error.message}`,
       );
@@ -998,7 +998,7 @@ export class ZoomService {
         headers: await this.getHeaders(),
       });
       return response.data.share_url;
-    } catch (error) {
+    } catch (error: any) {
       this.logger.error(
         `Error fetching Zoom meeting recordings: ${error.response?.data || error.message}`,
       );
@@ -1306,7 +1306,7 @@ export class ZoomService {
       }
 
       return Array.from(finalParticipantsMap.values());
-    } catch (error) {
+    } catch (error: any) {
       this.logger.error(
         `Failed to get all participants for meeting ID ${meetingId}: ${error.message}`,
       );
@@ -1358,7 +1358,7 @@ export class ZoomService {
       }
 
       return meetings;
-    } catch (error) {
+    } catch (error: any) {
       this.logger.error(
         `Error creating recurring Zoom meetings: ${error.message}`,
       );
