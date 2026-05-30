@@ -4857,89 +4857,6 @@ export const zuvyMentorSlotBooking = main.table(
   }),
 );
 
-/**
- * Learner Leaderboard Table
- * 
- * Stores calculated leaderboard points for each learner per course.
- * This table aggregates performance metrics from multiple submission and tracking tables.
- * 
- * Related tables used for leaderboard calculation:
- * - zuvy_assessment_submission (assessment_points)
- * - zuvy_quiz_tracking (quiz_points)
- * - zuvy_practice_code (coding_points)
- * - zuvy_test_cases_submission (coding_points)
- * - zuvy_student_attendance_records (attendance_points)
- * - zuvy_session_record_views (recording_points)
- * - zuvy_open_ended_question_submission (open_ended_points)
- */
-export const zuvyLearnerLeaderboard = main.table(
-  'zuvy_learner_leaderboard',
-  {
-    id: serial('id').primaryKey().notNull(),
-    
-    // Foreign keys
-    learnerId: integer('learner_id')
-      .notNull()
-      .references(() => users.id, { onDelete: 'cascade' }),
-    bootcampId: integer('bootcamp_id')
-      .notNull()
-      .references(() => zuvyBootcamps.id, { onDelete: 'cascade' }),
-    
-    // Points from different categories
-    assessmentPoints: integer('assessment_points').default(0),
-    codingPoints: integer('coding_points').default(0),
-    quizPoints: integer('quiz_points').default(0),
-    attendancePoints: integer('attendance_points').default(0),
-    recordingPoints: integer('recording_points').default(0),
-    assignmentPoints: integer('assignment_points').default(0),
-    
-    // Aggregated points
-    totalPoints: integer('total_points').default(0),
-    
-    // Ranking
-    rank: integer('rank'),
-    
-    // Activity tracking
-    lastActivityAt: timestamp('last_activity_at', {
-      withTimezone: true,
-      mode: 'string',
-    }),
-    
-    // Timestamps
-    createdAt: timestamp('created_at', {
-      withTimezone: true,
-      mode: 'string',
-    }).defaultNow(),
-    updatedAt: timestamp('updated_at', {
-      withTimezone: true,
-      mode: 'string',
-    }).defaultNow(),
-  },
-  (table) => {
-    return {
-      // Index for efficient queries by learner
-      idxLearnerId: index('idx_zuvy_leaderboard_learner_id').on(
-        table.learnerId,
-      ),
-      // Index for efficient queries by bootcamp
-      idxBootcampId: index('idx_zuvy_leaderboard_bootcamp_id').on(
-        table.bootcampId,
-      ),
-      // Index for ranking queries
-      idxTotalPoints: index('idx_zuvy_leaderboard_total_points').on(
-        table.totalPoints,
-      ),
-      // Index for rank queries
-      idxRank: index('idx_zuvy_leaderboard_rank').on(table.rank),
-      // Unique constraint: one leaderboard entry per learner per bootcamp
-      uniqLearnerBootcamp: unique('uniq_zuvy_leaderboard_learner_bootcamp').on(
-        table.learnerId,
-        table.bootcampId,
-      ),
-    };
-  },
-);
-
 /* ============================================================================
    RELATIONS
 ============================================================================ */
@@ -4959,6 +4876,51 @@ export const zuvyMentorSlotBookingRelations = relations(
       fields: [zuvyMentorSlotBooking.studentUserId],
       references: [users.id],
     }),
+  }),
+);
+
+export const zuvyLearnerLeaderboard = main.table(
+  'zuvy_learner_leaderboard',
+  {
+    id: serial('id').primaryKey().notNull(),
+    learnerId: integer('learner_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    bootcampId: integer('bootcamp_id')
+      .notNull()
+      .references(() => zuvyBootcamps.id, { onDelete: 'cascade' }),
+    assessmentPoints: integer('assessment_points').default(0),
+    codingPoints: integer('coding_points').default(0),
+    quizPoints: integer('quiz_points').default(0),
+    attendancePoints: integer('attendance_points').default(0),
+    recordingPoints: integer('recording_points').default(0),
+    assignmentPoints: integer('assignment_points').default(0),
+    totalPoints: integer('total_points').default(0),
+    lastActivityAt: timestamp('last_activity_at', {
+      withTimezone: true,
+      mode: 'string',
+    }),
+    createdAt: timestamp('created_at', {
+      withTimezone: true,
+      mode: 'string',
+    }).defaultNow(),
+    updatedAt: timestamp('updated_at', {
+      withTimezone: true,
+      mode: 'string',
+    }).defaultNow(),
+  },
+  (table) => ({
+    idxLearnerId: index('idx_zuvy_leaderboard_learner_id').on(table.learnerId),
+    idxBootcampId: index('idx_zuvy_leaderboard_bootcamp_id').on(
+      table.bootcampId,
+    ),
+    idxTotalPoints: index('idx_zuvy_leaderboard_total_points').on(
+      table.totalPoints,
+    ),
+    uniqLearnerBootcamp: unique('uniq_zuvy_leaderboard_learner_bootcamp').on(
+      table.learnerId,
+      table.bootcampId,
+    ),
   }),
 );
 
@@ -5014,13 +4976,6 @@ export const zuvyStudentBookingMetricsRelations = relations(zuvyStudentBookingMe
   }),
 }));
 
-/**
- * Leaderboard Relations
- * 
- * Defines relationships between the leaderboard table and users/courses tables.
- * - learner: relationship to the user who earned the points
- * - course: relationship to the course the leaderboard is for
- */
 export const zuvyLearnerLeaderboardRelations = relations(zuvyLearnerLeaderboard, ({ one }) => ({
   learner: one(users, {
     fields: [zuvyLearnerLeaderboard.learnerId],

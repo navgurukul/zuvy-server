@@ -20,19 +20,10 @@ import { eq, and, sql, count, countDistinct } from 'drizzle-orm';
 @Injectable()
 export class LeaderboardService {
   private logger = new Logger(LeaderboardService.name);
+  private getErrorMessage(error: unknown, fallback: string): string {
+    return error instanceof Error ? error.message : fallback;
+  }
 
-  /**
-   * Calculate percentage-based points
-   *
-   * Scoring system:
-   * - 90-100 => 30 points
-   * - 70-89 => 20 points
-   * - 40-69 => 10 points
-   * - below 40 => 0 points
-   *
-   * @param percentage The assessment percentage score
-   * @returns Points awarded based on the percentage range
-   */
   private calculatePercentagePoints(percentage: number): number {
     if (percentage >= 90) {
       return 30;
@@ -45,32 +36,14 @@ export class LeaderboardService {
     }
   }
 
-  /**
-   * Calculate submission attempt points
-   *
-   * Every submission attempt gets fixed 10 points
-   *
-   * @returns 10 points for every submission
-   */
   private calculateSubmissionAttemptPoints(): number {
     return 10;
   }
 
-  /**
-   * Calculate on-time submission bonus points
-   *
-   * If submission is before deadline: +5 points
-   * If submission is after deadline or no deadline: 0 points
-   *
-   * @param submittedAt Timestamp when submission was made
-   * @param deadline Deadline string (ISO format or text)
-   * @returns 5 points if on-time, 0 points otherwise
-   */
   private calculateOnTimeBonusPoints(
     submittedAt: string | null,
     deadline: string | null,
   ): number {
-    // If no deadline or submission time, no bonus
     if (!submittedAt || !deadline) {
       return 0;
     }
@@ -79,29 +52,21 @@ export class LeaderboardService {
       const submissionTime = new Date(submittedAt).getTime();
       const deadlineTime = new Date(deadline).getTime();
 
-      // If submitted before deadline, award bonus
       if (submissionTime <= deadlineTime) {
         return 5;
       }
     } catch (error) {
-      this.logger.warn(`Failed to parse deadline dates: ${error.message}`);
+      this.logger.warn(
+        `Failed to parse deadline dates: ${this.getErrorMessage(
+          error,
+          'unknown error',
+        )}`,
+      );
     }
 
     return 0;
   }
 
-  /**
-   * Calculate total assessment points
-   *
-   * Formula:
-   * totalPoints = submissionAttemptPoints + onTimeBonusPoints + percentagePoints
-   * totalPoints = 10 + (0 or 5) + (0, 10, 20, or 30)
-   *
-   * @param percentage Assessment percentage score
-   * @param submittedAt Submission timestamp
-   * @param deadline Assessment deadline
-   * @returns Object with breakdown of all point types
-   */
   private calculateTotalAssessmentPoints(
     percentage: number,
     submittedAt: string | null,
@@ -124,13 +89,6 @@ export class LeaderboardService {
     };
   }
 
-  /**
-   * Calculate assessment points for all learners
-   *
-   * Returns a map of learner-bootcamp combinations with their assessment points
-   *
-   * @returns Map with key "learnerId-bootcampId" and assessment points
-   */
   private async calculateAssessmentPoints(): Promise<
     Map<
       string,
@@ -149,7 +107,6 @@ export class LeaderboardService {
     >();
 
     try {
-      // Fetch all assessment submissions with deadline information
       const assessmentSubmissions = await db
         .select({
           userId: zuvyAssessmentSubmission.userId,
@@ -184,7 +141,6 @@ export class LeaderboardService {
 
         const key = `${submission.userId}-${submission.bootcampId}`;
 
-        // Calculate points breakdown
         const pointsBreakdown = this.calculateTotalAssessmentPoints(
           submission.percentage || 0,
           submission.submittedAt,
@@ -204,20 +160,16 @@ export class LeaderboardService {
       }
     } catch (error) {
       this.logger.error(
-        `Error calculating assessment points: ${error.message}`,
+        `Error calculating assessment points: ${this.getErrorMessage(
+          error,
+          'unknown error',
+        )}`,
       );
     }
 
     return assessmentMap;
   }
 
-  /**
-   * Calculate coding points for all learners
-   *
-   * Returns a map of learner-bootcamp combinations with their coding points
-   *
-   * @returns Map with key "learnerId-bootcampId" and coding points
-   */
   private async calculateCodingPoints(): Promise<
     Map<
       string,
@@ -236,7 +188,6 @@ export class LeaderboardService {
     >();
 
     try {
-      // Fetch all coding submissions
       const codingSubmissions = await db
         .select({
           userId: zuvyPracticeCode.userId,
@@ -277,7 +228,6 @@ export class LeaderboardService {
           continue;
         }
 
-        // Check if all test cases for this submission passed
         const failedTestCases = await db
           .select()
           .from(zuvyTestCasesSubmission)
@@ -293,7 +243,6 @@ export class LeaderboardService {
 
         const allTestCasesPassed = failedTestCases.length === 0;
 
-        // Calculate points breakdown
         const pointsBreakdown = this.calculateTotalCodingPoints(
           submission.submittedAt,
           submission.deadline,
@@ -313,19 +262,17 @@ export class LeaderboardService {
         codingMap.set(key, entry);
       }
     } catch (error) {
-      this.logger.error(`Error calculating coding points: ${error.message}`);
+      this.logger.error(
+        `Error calculating coding points: ${this.getErrorMessage(
+          error,
+          'unknown error',
+        )}`,
+      );
     }
 
     return codingMap;
   }
 
-  /**
-   * Calculate quiz points for all learners
-   *
-   * Placeholder for future implementation
-   *
-   * @returns Empty map (not yet implemented)
-   */
   private async calculateQuizPoints(): Promise<
     Map<
       string,
@@ -338,7 +285,6 @@ export class LeaderboardService {
     try {
       this.logger.log('Calculating quiz points...');
 
-      // Fetch all quiz submissions with assessment details and bootcamp info
       const quizSubmissions = await db
         .select({
           userId: zuvyQuizTracking.userId,
@@ -378,7 +324,6 @@ export class LeaderboardService {
 
       this.logger.log(`Found ${quizSubmissions.length} quiz submissions`);
 
-      // Group by learner-bootcamp and calculate points
       const quizMap = new Map<
         string,
         {
@@ -394,7 +339,6 @@ export class LeaderboardService {
 
         const key = `${submission.userId}-${submission.bootcampId}`;
 
-        // Calculate quiz percentage if we have scores
         let quizPercentage = 0;
         if (
           submission.mcqScore !== null &&
@@ -405,8 +349,7 @@ export class LeaderboardService {
             (submission.mcqScore / submission.requiredMCQScore) * 100;
         }
 
-        // Calculate points for this quiz submission
-        const attemptPoints = 5; // Fixed points for submission attempt
+        const attemptPoints = 5;
         const bonusPoints = this.calculateQuizOnTimeBonusPoints(
           submission.submittedAt,
           submission.deadline,
@@ -415,7 +358,6 @@ export class LeaderboardService {
 
         const totalQuizPoints = attemptPoints + bonusPoints + scorePoints;
 
-        // Merge with existing entry or create new
         const entry = quizMap.get(key) || {
           quizPoints: 0,
           lastActivityAt: new Date().toISOString(),
@@ -435,21 +377,16 @@ export class LeaderboardService {
       );
       return quizMap;
     } catch (error) {
-      this.logger.error(`Error calculating quiz points: ${error.message}`);
+      this.logger.error(
+        `Error calculating quiz points: ${this.getErrorMessage(
+          error,
+          'unknown error',
+        )}`,
+      );
       return new Map();
     }
   }
 
-  /**
-   * Calculate quiz on-time submission bonus points
-   *
-   * If quiz submitted before deadline: +3 points
-   * Otherwise: 0 points
-   *
-   * @param submittedAt Timestamp when submitted
-   * @param deadline Deadline timestamp
-   * @returns 3 points if on-time, 0 otherwise
-   */
   private calculateQuizOnTimeBonusPoints(
     submittedAt: string | null,
     deadline: string | null,
@@ -466,24 +403,17 @@ export class LeaderboardService {
         return 3;
       }
     } catch (error) {
-      this.logger.warn(`Failed to parse quiz deadline: ${error.message}`);
+      this.logger.warn(
+        `Failed to parse quiz deadline: ${this.getErrorMessage(
+          error,
+          'unknown error',
+        )}`,
+      );
     }
 
     return 0;
   }
 
-  /**
-   * Calculate quiz score-based points
-   *
-   * Scoring system:
-   * - 90-100% => 15 points
-   * - 70-89% => 10 points
-   * - 40-69% => 5 points
-   * - below 40% => 0 points
-   *
-   * @param percentage Quiz percentage score
-   * @returns Points based on percentage range
-   */
   private calculateQuizScorePoints(percentage: number): number {
     if (percentage >= 90) {
       return 15;
@@ -496,16 +426,6 @@ export class LeaderboardService {
     }
   }
 
-  /**
-   * Calculate attendance points for all learners
-   *
-   * Attendance:
-   * - Live session attended (system-marked PRESENT) = 10 points per session
-   *
-   * Fetches attendance records and counts total attended sessions per learner-bootcamp
-   *
-   * @returns Map with key "learnerId-bootcampId" and attendance points
-   */
   private async calculateAttendancePoints(): Promise<
     Map<
       string,
@@ -524,7 +444,6 @@ export class LeaderboardService {
     >();
 
     try {
-      // Fetch all attendance records where learner was marked PRESENT
       const attendanceRecords = await db
         .select({
           userId: zuvyStudentAttendanceRecords.userId,
@@ -548,7 +467,6 @@ export class LeaderboardService {
 
       this.logger.log(`Found ${attendanceRecords.length} attendance records`);
 
-      // Group by learner-bootcamp and count attended sessions
       for (const record of attendanceRecords) {
         if (!record.userId || !record.bootcampId) {
           continue;
@@ -556,7 +474,6 @@ export class LeaderboardService {
 
         const key = `${record.userId}-${record.bootcampId}`;
 
-        // 10 points per attended session
         const pointsPerSession = 10;
 
         const entry = attendanceMap.get(key) || {
@@ -576,23 +493,15 @@ export class LeaderboardService {
       return attendanceMap;
     } catch (error) {
       this.logger.error(
-        `Error calculating attendance points: ${error.message}`,
+        `Error calculating attendance points: ${this.getErrorMessage(
+          error,
+          'unknown error',
+        )}`,
       );
       return attendanceMap;
     }
   }
 
-  /**
-   * Calculate recording points for all learners
-   *
-   * Recording:
-   * - Recorded session watched (system-marked) = 5 points per session
-   *
-   * Fetches record views and counts total watched recordings per learner
-   * Joined with sessions table to get bootcamp information
-   *
-   * @returns Map with key "learnerId-bootcampId" and recording points
-   */
   private async calculateRecordingPoints(): Promise<
     Map<
       string,
@@ -611,7 +520,6 @@ export class LeaderboardService {
     >();
 
     try {
-      // Fetch all recording views with session details and bootcamp info
       const recordingViews = await db
         .select({
           userId: zuvySessionRecordViews.userId,
@@ -633,7 +541,6 @@ export class LeaderboardService {
 
       this.logger.log(`Found ${recordingViews.length} recording view records`);
 
-      // Group by learner-bootcamp and session, then count distinct sessions
       const viewsByLearnerBootcampSession = new Map<string, Set<number>>();
 
       for (const view of recordingViews) {
@@ -647,11 +554,9 @@ export class LeaderboardService {
           viewsByLearnerBootcampSession.set(key, new Set());
         }
 
-        // Add session ID to set (automatically deduplicates)
         const sessionSet = viewsByLearnerBootcampSession.get(key);
         sessionSet.add(view.sessionId);
 
-        // Update last activity
         if (!recordingMap.has(key)) {
           recordingMap.set(key, {
             recordingPoints: 0,
@@ -663,7 +568,6 @@ export class LeaderboardService {
         }
       }
 
-      // Calculate points based on distinct sessions watched
       for (const [key, sessionSet] of viewsByLearnerBootcampSession.entries()) {
         const distinctSessionCount = sessionSet.size;
         const pointsPerSession = 5;
@@ -678,23 +582,16 @@ export class LeaderboardService {
       );
       return recordingMap;
     } catch (error) {
-      this.logger.error(`Error calculating recording points: ${error.message}`);
+      this.logger.error(
+        `Error calculating recording points: ${this.getErrorMessage(
+          error,
+          'unknown error',
+        )}`,
+      );
       return recordingMap;
     }
   }
 
-  /**
-   * Calculate assignment points for all learners
-   *
-   * Assignment:
-   * - Submission attempt = 5 points per assignment
-   * - On-time submission = 3 points bonus
-   * - Score-based points = 0-12 points based on grade percentage
-   *
-   * Fetches project tracking data and calculates total points per learner-bootcamp
-   *
-   * @returns Map with key "learnerId-bootcampId" and assignment points
-   */
   private async calculateAssignmentPoints(): Promise<
     Map<
       string,
@@ -713,7 +610,6 @@ export class LeaderboardService {
     >();
 
     try {
-      // Fetch project tracking records with submission status
       const projectSubmissions = await db
         .select({
           userId: zuvyProjectTracking.userId,
@@ -733,7 +629,6 @@ export class LeaderboardService {
 
       this.logger.log(`Found ${projectSubmissions.length} project submissions`);
 
-      // Group by learner-bootcamp and calculate points
       for (const submission of projectSubmissions) {
         if (!submission.userId || !submission.bootcampId) {
           continue;
@@ -741,16 +636,13 @@ export class LeaderboardService {
 
         const key = `${submission.userId}-${submission.bootcampId}`;
 
-        // 5 points for submission attempt
         const attemptPoints = 5;
 
-        // 3 points bonus if submitted (isChecked indicates it was graded/submitted)
         const submissionBonus = submission.isChecked ? 3 : 0;
 
-        // Calculate score-based points (0-12) based on grade percentage
         let scorePoints = 0;
         if (submission.grades !== null && submission.grades !== undefined) {
-          const gradePercentage = submission.grades; // Assuming grades is percentage (0-100)
+          const gradePercentage = submission.grades;
           if (gradePercentage >= 90) {
             scorePoints = 12;
           } else if (gradePercentage >= 75) {
@@ -767,7 +659,6 @@ export class LeaderboardService {
         const totalAssignmentPoints =
           attemptPoints + submissionBonus + scorePoints;
 
-        // Merge with existing entry or create new
         const entry = assignmentMap.get(key) || {
           assignmentPoints: 0,
           lastActivityAt: new Date().toISOString(),
@@ -788,28 +679,15 @@ export class LeaderboardService {
       return assignmentMap;
     } catch (error) {
       this.logger.error(
-        `Error calculating assignment points: ${error.message}`,
+        `Error calculating assignment points: ${this.getErrorMessage(
+          error,
+          'unknown error',
+        )}`,
       );
       return assignmentMap;
     }
   }
 
-  /**
-   * Update the main leaderboard with all point types
-   *
-   * This function orchestrates the calculation of all point types:
-   * 1. Assessment points (submission attempt + on-time bonus + percentage-based)
-   * 2. Coding points (submission attempt + on-time bonus + test cases)
-   * 3. Quiz points (submission attempt + on-time bonus + score-based)
-   * 4. Attendance points (10 points per live session attended)
-   * 5. Recording points (5 points per recorded session watched)
-   * 6. Assignment points (attempt + submission bonus + grade-based)
-   *
-   * Then merges all results and updates leaderboard table once per learner-bootcamp.
-   * Preserves existing points if they're not recalculated in current run.
-   *
-   * totalPoints = assessmentPoints + codingPoints + quizPoints + attendancePoints + recordingPoints + assignmentPoints
-   */
   async updateLeaderboard(): Promise<{
     success: boolean;
     message: string;
@@ -819,7 +697,6 @@ export class LeaderboardService {
     try {
       this.logger.log('Starting main leaderboard update...');
 
-      // Calculate points from all sources in parallel
       const [
         assessmentMap,
         codingMap,
@@ -836,7 +713,6 @@ export class LeaderboardService {
         this.calculateAssignmentPoints(),
       ]);
 
-      // Merge all maps into one master map
       const leaderboardMap = new Map<
         string,
         {
@@ -853,7 +729,6 @@ export class LeaderboardService {
         }
       >();
 
-      // Collect all unique learner-bootcamp keys
       const allKeys = new Set<string>();
       assessmentMap.forEach((_, key) => allKeys.add(key));
       codingMap.forEach((_, key) => allKeys.add(key));
@@ -862,7 +737,6 @@ export class LeaderboardService {
       recordingMap.forEach((_, key) => allKeys.add(key));
       assignmentMap.forEach((_, key) => allKeys.add(key));
 
-      // Build merged leaderboard map
       for (const key of allKeys) {
         const [learnerId, bootcampId] = key.split('-').map(Number);
 
@@ -924,12 +798,10 @@ export class LeaderboardService {
         `Processing ${leaderboardMap.size} unique learner-bootcamp combinations`,
       );
 
-      // Step 2: Update or create leaderboard entries
       let updatedCount = 0;
 
       for (const entry of leaderboardMap.values()) {
         try {
-          // Check if leaderboard entry exists
           const existingEntry = await db
             .select()
             .from(zuvyLearnerLeaderboard)
@@ -943,8 +815,6 @@ export class LeaderboardService {
           if (existingEntry.length > 0) {
             const existing = existingEntry[0];
 
-            // Merge with existing values: only update points that have new data
-            // This preserves existing points that weren't recalculated in this run
             const assessmentEntry = assessmentMap.get(
               `${entry.learnerId}-${entry.bootcampId}`,
             );
@@ -964,7 +834,6 @@ export class LeaderboardService {
               `${entry.learnerId}-${entry.bootcampId}`,
             );
 
-            // Only update point fields that have new data, keep existing values otherwise
             const updateData: any = {
               lastActivityAt: entry.lastActivityAt,
               updatedAt: new Date().toISOString(),
@@ -981,7 +850,6 @@ export class LeaderboardService {
             if (assignmentEntry)
               updateData.assignmentPoints = assignmentEntry.assignmentPoints;
 
-            // Recalculate total points based on all values (existing + updated)
             const newAssessmentPoints =
               assessmentEntry?.assessmentPoints ?? existing.assessmentPoints;
             const newCodingPoints =
@@ -1002,7 +870,6 @@ export class LeaderboardService {
               newRecordingPoints +
               newAssignmentPoints;
 
-            // Update existing leaderboard entry
             await db
               .update(zuvyLearnerLeaderboard)
               .set(updateData)
@@ -1012,8 +879,7 @@ export class LeaderboardService {
               `Updated leaderboard for learner ${entry.learnerId}, bootcamp ${entry.bootcampId}`,
             );
           } else {
-            // Create new leaderboard entry
-            await db.insert(zuvyLearnerLeaderboard).values({
+            await db.insert(zuvyLearnerLeaderboard as any).values({
               learnerId: entry.learnerId,
               bootcampId: entry.bootcampId,
               assessmentPoints: entry.assessmentPoints,
@@ -1036,7 +902,10 @@ export class LeaderboardService {
           updatedCount++;
         } catch (error) {
           this.logger.error(
-            `Failed to update leaderboard for learner ${entry.learnerId}, bootcamp ${entry.bootcampId}: ${error.message}`,
+            `Failed to update leaderboard for learner ${entry.learnerId}, bootcamp ${entry.bootcampId}: ${this.getErrorMessage(
+              error,
+              'unknown error',
+            )}`,
           );
         }
       }
@@ -1051,30 +920,26 @@ export class LeaderboardService {
         updated: updatedCount,
       };
     } catch (error) {
-      this.logger.error(`Error updating leaderboard: ${error.message}`);
+      this.logger.error(
+        `Error updating leaderboard: ${this.getErrorMessage(
+          error,
+          'unknown error',
+        )}`,
+      );
       return {
         success: false,
         message: 'Failed to update leaderboard',
         updated: 0,
-        error: error.message,
+        error: this.getErrorMessage(error, 'Failed to update leaderboard'),
       };
     }
   }
 
-  /**
-   * Get leaderboard for a specific bootcamp
-   * Sorted by total points in descending order with rank
-   *
-   * @param bootcampId The bootcamp ID to fetch leaderboard for
-   * @param limit Number of top learners to return (default: 100)
-   * @returns Array of learners sorted by points and ranks
-   */
   async getBootcampLeaderboard(
     bootcampId: number,
     limit: number = 100,
   ): Promise<
     Array<{
-      rank: number;
       learnerId: number;
       assessmentPoints: number;
       codingPoints: number;
@@ -1104,37 +969,22 @@ export class LeaderboardService {
         .orderBy(sql`${zuvyLearnerLeaderboard.totalPoints} DESC`)
         .limit(limit);
 
-      // Add rank based on order
-      return leaderboard.map((entry, index) => ({
-        rank: index + 1,
-        learnerId: entry.learnerId,
-        assessmentPoints: entry.assessmentPoints,
-        codingPoints: entry.codingPoints,
-        quizPoints: entry.quizPoints,
-        attendancePoints: entry.attendancePoints,
-        recordingPoints: entry.recordingPoints,
-        assignmentPoints: entry.assignmentPoints,
-        totalPoints: entry.totalPoints,
-        lastActivityAt: entry.lastActivityAt,
-      }));
+      return leaderboard;
     } catch (error) {
-      this.logger.error(`Error fetching course leaderboard: ${error.message}`);
+      this.logger.error(
+        `Error fetching course leaderboard: ${this.getErrorMessage(
+          error,
+          'unknown error',
+        )}`,
+      );
       return [];
     }
   }
 
-  /**
-   * Get leaderboard position for a specific learner in a bootcamp
-   *
-   * @param learnerId The learner ID
-   * @param bootcampId The bootcamp ID
-   * @returns Learner's leaderboard information including rank and all point types
-   */
   async getLearnerPosition(
     learnerId: number,
     bootcampId: number,
   ): Promise<{
-    rank: number | null;
     assessmentPoints: number;
     codingPoints: number;
     quizPoints: number;
@@ -1159,22 +1009,7 @@ export class LeaderboardService {
         return null;
       }
 
-      // Count how many learners have higher points
-      const higherScoresCount = await db
-        .select({ count: sql`COUNT(*)` })
-        .from(zuvyLearnerLeaderboard)
-        .where(
-          and(
-            eq(zuvyLearnerLeaderboard.bootcampId, bootcampId),
-            sql`${zuvyLearnerLeaderboard.totalPoints} > ${learnerEntry[0].totalPoints}`,
-          ),
-        );
-
-      const rank =
-        (higherScoresCount[0]?.count as number) + 1 || learnerEntry[0].rank;
-
       return {
-        rank,
         assessmentPoints: learnerEntry[0].assessmentPoints,
         codingPoints: learnerEntry[0].codingPoints,
         quizPoints: learnerEntry[0].quizPoints,
@@ -1185,37 +1020,24 @@ export class LeaderboardService {
         lastActivityAt: learnerEntry[0].lastActivityAt,
       };
     } catch (error) {
-      this.logger.error(`Error fetching learner position: ${error.message}`);
+      this.logger.error(
+        `Error fetching learner position: ${this.getErrorMessage(
+          error,
+          'unknown error',
+        )}`,
+      );
       return null;
     }
   }
 
-  /**
-   * Calculate coding submission attempt points
-   *
-   * Every coding submission attempt gets fixed 5 points
-   *
-   * @returns 5 points for every coding submission
-   */
   private calculateCodingAttemptPoints(): number {
     return 5;
   }
 
-  /**
-   * Calculate coding on-time submission bonus points
-   *
-   * If coding submission is before deadline: +3 points
-   * If submission is after deadline or no deadline: 0 points
-   *
-   * @param submittedAt Timestamp when submission was made
-   * @param deadline Deadline string (ISO format or text)
-   * @returns 3 points if on-time, 0 points otherwise
-   */
   private calculateCodingOnTimeBonusPoints(
     submittedAt: string | null,
     deadline: string | null,
   ): number {
-    // If no deadline or submission time, no bonus
     if (!submittedAt || !deadline) {
       return 0;
     }
@@ -1224,44 +1046,25 @@ export class LeaderboardService {
       const submissionTime = new Date(submittedAt).getTime();
       const deadlineTime = new Date(deadline).getTime();
 
-      // If submitted before deadline, award bonus
       if (submissionTime <= deadlineTime) {
         return 3;
       }
     } catch (error) {
       this.logger.warn(
-        `Failed to parse coding deadline dates: ${error.message}`,
+        `Failed to parse coding deadline dates: ${this.getErrorMessage(
+          error,
+          'unknown error',
+        )}`,
       );
     }
 
     return 0;
   }
 
-  /**
-   * Calculate test cases passed bonus points
-   *
-   * If ALL test cases passed: +15 points
-   * If ANY test case failed: 0 points
-   *
-   * @param allTestCasesPassed Boolean indicating if all test cases passed
-   * @returns 15 points if all passed, 0 points if any failed
-   */
   private calculateTestCasesPassedPoints(allTestCasesPassed: boolean): number {
     return allTestCasesPassed ? 15 : 0;
   }
 
-  /**
-   * Calculate total coding points
-   *
-   * Formula:
-   * codingPoints = submissionAttemptPoints + onTimeBonusPoints + testCasesPassedPoints
-   * codingPoints = 5 + (0 or 3) + (0 or 15)
-   *
-   * @param submittedAt Submission timestamp
-   * @param deadline Coding deadline
-   * @param allTestCasesPassed Whether all test cases passed
-   * @returns Object with breakdown of all coding point types
-   */
   private calculateTotalCodingPoints(
     submittedAt: string | null,
     deadline: string | null,

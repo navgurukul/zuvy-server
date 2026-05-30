@@ -649,7 +649,6 @@ CREATE TABLE IF NOT EXISTS "zuvy_learner_leaderboard" (
   "recording_points" integer DEFAULT 0,
   "assignment_points" integer DEFAULT 0,
   "total_points" integer DEFAULT 0,
-  "rank" integer,
   "last_activity_at" timestamp with time zone,
   "created_at" timestamp with time zone DEFAULT now(),
   "updated_at" timestamp with time zone DEFAULT now(),
@@ -669,9 +668,25 @@ CREATE INDEX IF NOT EXISTS "idx_zuvy_leaderboard_bootcamp_id"
 CREATE INDEX IF NOT EXISTS "idx_zuvy_leaderboard_total_points"
   ON "zuvy_learner_leaderboard" USING btree ("total_points");
 
-CREATE INDEX IF NOT EXISTS "idx_zuvy_leaderboard_rank"
-  ON "zuvy_learner_leaderboard" USING btree ("rank");
-
 -- Create unique constraint: one leaderboard entry per learner per bootcamp
 CREATE UNIQUE INDEX IF NOT EXISTS "uniq_zuvy_leaderboard_learner_bootcamp"
   ON "zuvy_learner_leaderboard" USING btree ("learner_id", "bootcamp_id");
+
+
+
+SELECT total_points
+FROM zuvy_learner_leaderboard
+ORDER BY total_points DESC
+LIMIT 50;
+
+
+
+SELECT learner_id,
+       recording_points,
+       assignment_points,
+       attendance_points,
+       total_points
+FROM zuvy_learner_leaderboard
+LIMIT 50;
+
+

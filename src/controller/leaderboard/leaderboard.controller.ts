@@ -15,35 +15,11 @@ import {
   ApiResponse,
 } from '@nestjs/swagger';
 import { LeaderboardService } from './leaderboard.service';
-
-/**
- * Leaderboard Controller
- *
- * Handles all leaderboard-related endpoints for bootcamp learners.
- * Leaderboard is bootcamp-based and stores aggregated performance points.
- */
 @Controller('leaderboard')
 @ApiTags('leaderboard')
 export class LeaderboardController {
   constructor(private readonly leaderboardService: LeaderboardService) {}
 
-  /**
-   * Update Main Leaderboard
-   *
-   * Processes all submissions (assessments, coding, quiz, etc.) and updates leaderboard points.
-   * Calculates and combines all point types for each learner-bootcamp combination.
-   * Then updates the leaderboard table once with combined totalPoints.
-   * This endpoint should typically be called periodically (e.g., via cron job).
-   *
-   * POST /leaderboard/update
-   *
-   * @returns {
-   *   success: boolean,
-   *   message: string,
-   *   updated: number,
-   *   error?: string
-   * }
-   */
   @Post('update')
   @ApiOperation({
     summary: 'Update main leaderboard with all point types',
@@ -80,27 +56,15 @@ export class LeaderboardController {
       };
     } catch (error) {
       throw new InternalServerErrorException(
-        error?.message || 'Failed to update leaderboard',
+        error instanceof Error ? error.message : 'Failed to update leaderboard',
       );
     }
   }
 
-  /**
-   * Get Bootcamp Leaderboard
-   *
-   * Retrieves the ranked leaderboard for a specific bootcamp.
-   * Learners are sorted by total points in descending order.
-   *
-   * GET /leaderboard/bootcamp/:bootcampId?limit=100
-   *
-   * @param bootcampId - The ID of the bootcamp
-   * @param limit - Maximum number of learners to return (default: 100)
-   * @returns Array of ranked learners with their points
-   */
   @Get('bootcamp/:bootcampId')
   @ApiOperation({
     summary: 'Get bootcamp leaderboard',
-    description: 'Retrieves the ranked leaderboard for a specific bootcamp',
+    description: 'Retrieves the leaderboard for a specific bootcamp',
   })
   @ApiParam({
     name: 'bootcampId',
@@ -119,7 +83,6 @@ export class LeaderboardController {
     schema: {
       example: [
         {
-          rank: 1,
           learnerId: 101,
           assessmentPoints: 30,
           codingPoints: 20,
@@ -131,7 +94,6 @@ export class LeaderboardController {
           lastActivityAt: '2026-05-23T10:30:00Z',
         },
         {
-          rank: 2,
           learnerId: 102,
           assessmentPoints: 20,
           codingPoints: 15,
@@ -154,7 +116,6 @@ export class LeaderboardController {
     @Query('limit') limitParam?: string,
   ) {
     try {
-      // Validate and parse bootcampId
       const bootcampId = parseInt(bootcampIdParam, 10);
       if (isNaN(bootcampId) || bootcampId <= 0) {
         throw new BadRequestException(
@@ -162,8 +123,7 @@ export class LeaderboardController {
         );
       }
 
-      // Validate and parse limit (if provided)
-      let limit = 100; // Default limit
+      let limit = 100;
       if (limitParam) {
         limit = parseInt(limitParam, 10);
         if (isNaN(limit) || limit <= 0) {
@@ -189,27 +149,18 @@ export class LeaderboardController {
         throw error;
       }
       throw new InternalServerErrorException(
-        error?.message || 'Failed to fetch bootcamp leaderboard',
+        error instanceof Error
+          ? error.message
+          : 'Failed to fetch bootcamp leaderboard',
       );
     }
   }
 
-  /**
-   * Get Learner Position in Bootcamp
-   *
-   * Retrieves a specific learner's rank and points in a bootcamp leaderboard.
-   *
-   * GET /leaderboard/bootcamp/:bootcampId/learner/:learnerId
-   *
-   * @param bootcampId - The ID of the bootcamp
-   * @param learnerId - The ID of the learner
-   * @returns Learner's position, rank, and points
-   */
   @Get('bootcamp/:bootcampId/learner/:learnerId')
   @ApiOperation({
     summary: "Get learner's leaderboard position",
     description:
-      'Retrieves a specific learner rank and points in a bootcamp leaderboard',
+      'Retrieves a specific learner points in a bootcamp leaderboard',
   })
   @ApiParam({
     name: 'bootcampId',
@@ -228,7 +179,6 @@ export class LeaderboardController {
       example: {
         success: true,
         data: {
-          rank: 1,
           assessmentPoints: 30,
           codingPoints: 20,
           quizPoints: 10,
@@ -254,7 +204,6 @@ export class LeaderboardController {
     @Param('learnerId') learnerIdParam: string,
   ) {
     try {
-      // Validate and parse bootcampId
       const bootcampId = parseInt(bootcampIdParam, 10);
       if (isNaN(bootcampId) || bootcampId <= 0) {
         throw new BadRequestException(
@@ -262,7 +211,6 @@ export class LeaderboardController {
         );
       }
 
-      // Validate and parse learnerId
       const learnerId = parseInt(learnerIdParam, 10);
       if (isNaN(learnerId) || learnerId <= 0) {
         throw new BadRequestException(
@@ -294,7 +242,9 @@ export class LeaderboardController {
         throw error;
       }
       throw new InternalServerErrorException(
-        error?.message || 'Failed to fetch learner position',
+        error instanceof Error
+          ? error.message
+          : 'Failed to fetch learner position',
       );
     }
   }
