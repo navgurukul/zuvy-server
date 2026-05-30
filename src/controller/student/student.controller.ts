@@ -14,6 +14,7 @@ import {
   Req,
   Res,
   UseInterceptors,
+  ForbiddenException,
 } from '@nestjs/common';
 import { StudentService } from './student.service';
 import {
@@ -93,7 +94,11 @@ export class StudentController {
   })
   async getPublicBootcamp(
     @Query('searchTerm') searchTerm: string,
+    @Req() req,
   ): Promise<object> {
+    if (this.isInstructorOnly(req.user[0])) {
+      return [];
+    }
     const [err, res] =
       await this.studentService.searchPublicBootcampByStudent(searchTerm);
     if (err) {
@@ -105,7 +110,10 @@ export class StudentController {
   @Get('/bootcamp/public')
   @ApiOperation({ summary: 'Get all Public Bootcamp' })
   @ApiBearerAuth('JWT-auth')
-  async getPublicBootcamps(): Promise<object> {
+  async getPublicBootcamps(@Req() req): Promise<object> {
+    if (this.isInstructorOnly(req.user[0])) {
+      return [];
+    }
     const [err, res] = await this.studentService.getPublicBootcamp();
     if (err) {
       throw new BadRequestException(err);
@@ -117,12 +125,25 @@ export class StudentController {
   @ApiOperation({ summary: 'Get all global public Bootcamps with details' })
   @ApiBearerAuth('JWT-auth')
   async getGlobalCourses(@Req() req): Promise<object> {
+    if (this.isInstructorOnly(req.user[0])) {
+      return [];
+    }
     const userId = req.user ? req.user[0].id : undefined;
     const [err, res] = await this.studentService.fetchGlobalCourses(userId);
     if (err) {
       throw new BadRequestException(err);
     }
     return res;
+  }
+
+  private isInstructorOnly(user: any): boolean {
+    const roles = user?.roles || [];
+    return (
+      roles.includes('instructor') &&
+      !roles.some((role: string) =>
+        ['admin', 'ops', 'super_admin'].includes(role),
+      )
+    );
   }
 
   @Post('/bootcamp/enroll')
@@ -177,13 +198,18 @@ export class StudentController {
   async removingStudents(
     @Query('userId') userId: number | number[],
     @Param('bootcampId') bootcampId: number,
+    @Req() req,
   ): Promise<object> {
     const userIds = Array.isArray(userId) ? userId : [userId]; // Ensure userIds is always an array of numbers
     const [err, res] = await this.studentService.removingStudent(
       userIds,
       bootcampId,
+      req.user[0],
     );
     if (err) {
+      if (err.code === 403) {
+        throw new ForbiddenException(err);
+      }
       throw new BadRequestException(err);
     }
     return res;

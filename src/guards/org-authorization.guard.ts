@@ -41,7 +41,12 @@ export class OrgAuthorizationGuard implements CanActivate {
       return true;
     }
 
-    if (this.isStudentAssessmentRequest(user, request)) {
+    const assessmentBootcampId = this.extractBootcampId(request);
+    if (
+      this.isStudentAssessmentRequest(user, request) &&
+      (!assessmentBootcampId ||
+        (await this.isStudentEnrolledInBootcamp(user, assessmentBootcampId)))
+    ) {
       return true;
     }
 
@@ -118,6 +123,19 @@ export class OrgAuthorizationGuard implements CanActivate {
     return null;
   }
 
+  private extractBootcampId(request: any): number | null {
+    const rawBootcampId =
+      request.params?.bootcampId ??
+      request.params?.bootcamp_id ??
+      request.query?.bootcampId ??
+      request.query?.bootcamp_id ??
+      request.body?.bootcampId ??
+      request.body?.bootcamp_id;
+
+    const bootcampId = Number(rawBootcampId);
+    return Number.isFinite(bootcampId) && bootcampId > 0 ? bootcampId : null;
+  }
+
   private async isStudentEnrolledInOrg(
     user: any,
     orgId: number,
@@ -148,6 +166,24 @@ export class OrgAuthorizationGuard implements CanActivate {
     return Boolean(enrollment);
   }
 
+  private async isStudentEnrolledInBootcamp(
+    user: any,
+    bootcampId: number,
+  ): Promise<boolean> {
+    const [enrollment] = await db
+      .select({ id: zuvyBatchEnrollments.id })
+      .from(zuvyBatchEnrollments)
+      .where(
+        and(
+          eq(zuvyBatchEnrollments.userId, BigInt(user.id)),
+          eq(zuvyBatchEnrollments.bootcampId, bootcampId),
+        ),
+      )
+      .limit(1);
+
+    return Boolean(enrollment);
+  }
+
   private isStudentAssessmentRequest(user: any, request: any): boolean {
     const roles = user.roles || [];
     const isStudent = roles.length === 0 || roles.includes('student');
@@ -157,15 +193,19 @@ export class OrgAuthorizationGuard implements CanActivate {
       return false;
     }
 
-    const path = String(request.originalUrl || request.url || '').split('?')[0];
+    const path = String(request.originalUrl || request.url || '')
+      .split('?')[0]
+      .toLowerCase();
     return (
       path.startsWith('/student/assessment/') ||
+      path.startsWith('/content/students/assessmentid=') ||
       path.startsWith('/content/startAssessmentForStudent/') ||
-      path.startsWith('/content/assessmentDetailsOfQuiz/') ||
-      path.startsWith('/content/assessmentDetailsOfOpenEnded/') ||
+      path.startsWith('/content/startassessmentforstudent/') ||
+      path.startsWith('/content/assessmentdetailsofquiz/') ||
+      path.startsWith('/content/assessmentdetailsofopenended/') ||
       path.startsWith('/submission/assessment/submit') ||
-      path.startsWith('/submission/quiz/assessmentSubmissionId=') ||
-      path.startsWith('/submission/openended/assessmentSubmissionId=') ||
+      path.startsWith('/submission/quiz/assessmentsubmissionid=') ||
+      path.startsWith('/submission/openended/assessmentsubmissionid=') ||
       path.startsWith('/submission/assessment/properting')
     );
   }
