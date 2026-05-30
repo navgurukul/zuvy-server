@@ -136,7 +136,7 @@ export class LearnerController {
     required: false,
     type: Number,
     description:
-      'Optional degree ID to fetch branches for specific degree. If provided, returns branches for that degree. If not provided, returns all degrees with their branches.',
+      'Optional Degree ID to fetch branches for specific degree. If provided, returns branches for that degree. If not provided, returns all degrees with their branches.',
   })
   async getLearnerDegreesWithBranches(
     @Query('degreeId') degreeId?: string,
