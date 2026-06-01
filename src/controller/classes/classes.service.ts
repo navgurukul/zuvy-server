@@ -819,6 +819,28 @@ export class ClassesService {
         throw new Error('Instructor email not found');
       }
 
+      // Pre-flight: verify instructor Zoom account is active before reserving a license
+      const instructorZoomCheck =
+        await this.zoomService.getUser(instructorEmail);
+      if (instructorZoomCheck.success) {
+        const { type, status } = instructorZoomCheck.data;
+        if (status !== 'active') {
+          const typeLabel =
+            type === 2 ? 'licensed' : type === 1 ? 'basic' : `type ${type}`;
+          return {
+            status: 'error',
+            message: `Zoom user ${instructorEmail} is currently ${typeLabel} with status '${status}'. The user must be licensed and active before a session can be created.`,
+          };
+        }
+      }
+      // If getUser fails entirely (user doesn't exist in Zoom yet)
+      else {
+        return {
+          status: 'error',
+          message: `Zoom user ${instructorEmail} was not found in Zoom. The user must accept their Zoom invitation before a session can be created.`,
+        };
+      }
+
       // 1. Assign Zoom License (6 concurrent limit)
       let assignedLicenseId: number | null = null;
       try {
