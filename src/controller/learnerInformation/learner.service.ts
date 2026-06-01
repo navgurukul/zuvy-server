@@ -1444,22 +1444,6 @@ export class LearnerService {
       throw error;
     }
   }
-  private validateOtherCollegeInput(
-    collegeName?: string,
-    otherCollegeName?: string,
-  ): void {
-    if (!collegeName?.trim()) {
-      return;
-    }
-
-    const isOtherSelected = collegeName.trim().toLowerCase() === 'other';
-    if (isOtherSelected && !otherCollegeName?.trim()) {
-      throw new BadRequestException(
-        'otherCollegeName is required when collegeName is Other.',
-      );
-    }
-  }
-
   async getAllBasicInformation(
     page = 1,
     limit = 10,
@@ -1517,19 +1501,10 @@ export class LearnerService {
       throw new BadRequestException('Invalid authenticated user details.');
     }
 
-    this.validateOtherCollegeInput(
-      payload.collegeName,
-      payload.otherCollegeName,
-    );
-
     const normalizedCollegeName = payload.collegeName?.trim();
-    const isOtherCollege = normalizedCollegeName?.toLowerCase() === 'other';
 
     const dataToPersist = {
       collegeName: normalizedCollegeName || null,
-      otherCollegeName: isOtherCollege
-        ? payload.otherCollegeName?.trim() || null
-        : null,
       degreeProgram: payload.degreeProgram?.trim() || null,
       branchSpecialisation: payload.branchSpecialisation?.trim() || null,
     };

@@ -3206,7 +3206,6 @@ export const zuvyLearnersCompleteProfile = main.table(
     email: varchar('email', { length: 255 }),
     linkedinProfile: varchar('linkedin_profile', { length: 500 }),
     collegeName: varchar('college_name', { length: 255 }),
-    otherCollegeName: varchar('other_college_name', { length: 100 }),
     degree: varchar('degree', { length: 100 }),
     branch: varchar('branch', { length: 100 }),
     yearOfStudy: learnerYearOfStudy('year_of_study'),

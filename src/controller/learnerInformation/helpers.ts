@@ -4,7 +4,6 @@ export const PROFILE_STRENGTH_FIELDS = [
   'email',
   'linkedinProfile',
   'collegeName',
-  'otherCollegeName',
   'degree',
   'branch',
   'yearOfStudy',

@@ -16,7 +16,6 @@ import {
   Max,
   Min,
   Validate,
-  ValidateIf,
   ValidateNested,
   ValidatorConstraint,
   ValidatorConstraintInterface,
@@ -28,28 +27,12 @@ export class UpsertLearnerInformationDto {
   @ApiPropertyOptional({
     type: String,
     example: 'IIT Bombay',
-    description:
-      'College name (select from dropdown, use Other for manual entry)',
+    description: 'College name (select from dropdown)',
   })
   @IsOptional()
   @IsString()
   @Length(2, 255)
   collegeName?: string;
-
-  @ApiPropertyOptional({
-    type: String,
-    example: 'My Custom College Name',
-    description: 'Required when collegeName is Other',
-  })
-  @ValidateIf(
-    (o) =>
-      typeof o.collegeName === 'string' &&
-      o.collegeName.trim().toLowerCase() === 'other',
-  )
-  @IsOptional()
-  @IsString()
-  @Length(3, 100)
-  otherCollegeName?: string;
 
   @ApiPropertyOptional({
     type: String,
@@ -77,9 +60,6 @@ export class LearnerInformationResponseDto {
 
   @ApiPropertyOptional({ type: String, example: 'IIT Bombay' })
   collegeName?: string | null;
-
-  @ApiPropertyOptional({ type: String, example: null })
-  otherCollegeName?: string | null;
 
   @ApiPropertyOptional({ type: String, example: 'B.Tech' })
   degreeProgram?: string | null;
@@ -658,16 +638,6 @@ export class SaveCompleteProfileDto {
   })
   collegeName?: string;
 
-  @ApiPropertyOptional({ example: 'My Custom College' })
-  @IsOptional()
-  @IsString()
-  @Length(3, 100)
-  @Matches(/^[a-zA-Z0-9\s\-.,()&']+$/, {
-    message:
-      'otherCollegeName must contain only letters, numbers, spaces, and basic punctuation',
-  })
-  otherCollegeName?: string;
-
   @ApiPropertyOptional({ example: 'B.Tech' })
   @IsOptional()
   @IsString()
@@ -923,15 +893,31 @@ export class SaveCompleteProfileDto {
 }
 
 export class ProfileStrengthResponseDto {
-  @ApiProperty({ type: Number, example: 60 })
-  percentage: number;
+  @ApiProperty({ type: Number, example: 65 })
+  profileCompletion: number;
 
-  @ApiProperty({ type: String, example: 'Intermediate' })
-  level: string;
+  @ApiProperty({ type: Boolean, example: false })
+  isProfileComplete: boolean;
 
   @ApiProperty({
+    type: Object,
+    additionalProperties: { type: 'null', nullable: true },
+    example: {
+      class12Score: null,
+      class12ScoreType: null,
+      class10Board: null,
+      class10Score: null,
+      class10ScoreType: null,
+    },
+  })
+  missingFields: Record<string, null>;
+
+  @ApiPropertyOptional({ type: String, example: 'Intermediate' })
+  level?: string;
+
+  @ApiPropertyOptional({
     type: String,
     example: 'Great progress! A few more clicks to become job ready.',
   })
-  message: string;
+  message?: string;
 }
