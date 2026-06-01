@@ -105,6 +105,7 @@ export class BootcampService {
       const filterOrgId = Number(orgId);
       const isAdmin =
         roleName.includes('admin') || roleName.includes('super_admin');
+      const isInstructor = roleName.includes('instructor') && !isAdmin;
 
       const isSearchAsNumber =
         typeof searchTermAsNumber === 'number' ||
@@ -112,11 +113,6 @@ export class BootcampService {
           searchTermAsNumber.trim() !== '' &&
           !isNaN(Number(searchTermAsNumber)));
       const isSearchAsString = !!searchTermAsString;
-      const isInstructorRoute =
-        !isSearchAsNumber &&
-        !isSearchAsString &&
-        roleName.includes('instructor');
-
       // 🚀 1. Parallelize initial validation and prerequisite data checks
       const [orgInfo, userOrgs, batches] = await Promise.all([
         db
@@ -129,7 +125,7 @@ export class BootcampService {
               .select()
               .from(zuvyUserRolesAssigned)
               .where(eq(zuvyUserRolesAssigned.userId, userId)),
-        isInstructorRoute
+        isInstructor
           ? db
               .select()
               .from(zuvyBatches)
@@ -206,8 +202,18 @@ export class BootcampService {
         );
         finalCondition = and(...searchConditions);
         if (orgCondition) finalCondition = and(finalCondition, orgCondition);
-      } else if (isInstructorRoute) {
-        const bootcampIds = batches.map((batch) => batch.bootcampId);
+      } else {
+        finalCondition = orgCondition;
+      }
+
+      if (isInstructor) {
+        const bootcampIds = [
+          ...new Set(
+            batches
+              .map((batch) => Number(batch.bootcampId))
+              .filter((bootcampId) => Number.isFinite(bootcampId)),
+          ),
+        ];
         if (bootcampIds.length === 0) {
           return [
             null,
@@ -220,20 +226,18 @@ export class BootcampService {
             },
           ];
         }
-        let condition = or(
-          isNull(zuvyBootcamps.organizationId),
-          eq(zuvyBootcampType.type, 'Public'),
-          inArray(zuvyBootcamps.id, bootcampIds),
+
+        const instructorCourseCondition = inArray(
+          zuvyBootcamps.id,
+          bootcampIds,
         );
-        finalCondition = orgCondition
-          ? and(condition, orgCondition)
-          : condition;
-      } else {
-        finalCondition = orgCondition;
+        finalCondition = finalCondition
+          ? and(finalCondition, instructorCourseCondition)
+          : instructorCourseCondition;
       }
 
       // 🚀 2. D.R.Y Query Definition
-      let baseQuery = db
+      let baseQuery: any = db
         .select({
           id: zuvyBootcamps.id,
           name: zuvyBootcamps.name,
@@ -262,7 +266,7 @@ export class BootcampService {
           eq(zuvyBootcamps.id, zuvyBootcampType.bootcampId),
         );
 
-      let countQuery = db
+      let countQuery: any = db
         .select({ count: count(zuvyBootcamps.id) })
         .from(zuvyBootcamps)
         .leftJoin(
