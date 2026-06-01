@@ -625,19 +625,6 @@ ON DELETE CASCADE;
 
 
 
-
--- Create zuvy_learner_leaderboard table
--- 
--- This table stores calculated leaderboard points for each learner per bootcamp.
--- Points are aggregated from multiple submission and tracking tables:
--- - zuvy_assessment_submission (assessment_points)
--- - zuvy_quiz_tracking (quiz_points)
--- - zuvy_practice_code (coding_points)
--- - zuvy_test_cases_submission (coding_points validation)
--- - zuvy_student_attendance_records (attendance_points)
--- - zuvy_session_record_views (recording_points)
--- - zuvy_assignment_submission (assignment_points)
-
 CREATE TABLE IF NOT EXISTS "zuvy_learner_leaderboard" (
   "id" serial PRIMARY KEY NOT NULL,
   "learner_id" integer NOT NULL,
