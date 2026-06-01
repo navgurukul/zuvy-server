@@ -17,6 +17,7 @@ import {
 import {
   ApiBearerAuth,
   ApiBody,
+  ApiOkResponse,
   ApiOperation,
   ApiParam,
   ApiTags,
@@ -96,8 +97,9 @@ export class LearnerProfileController {
 
   @Get('strength')
   @ApiOperation({
-    summary: 'Get profile strength percentage with level and message',
+    summary: 'Get profile strength and missing fields',
   })
+  @ApiOkResponse({ type: ProfileStrengthResponseDto })
   async getProfileStrength(@Req() req) {
     const userId = req.user[0]?.id;
     return this.learnerProfileService.calculateProfileStrengthNew(userId);
