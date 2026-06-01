@@ -635,3 +635,134 @@ CREATE TABLE "zuvy_user_licenses" (
 
 CREATE UNIQUE INDEX "zoom_user_licenses_email_pool_key"
 ON "zuvy_user_licenses" ("zoom_email");
+
+ALTER TABLE zuvy_learner_education_branch_details
+ADD COLUMN degree_id INTEGER;
+
+ALTER TABLE zuvy_learner_education_branch_details
+ADD CONSTRAINT zuvy_learner_education_branch_details_degree_id_fk
+FOREIGN KEY (degree_id)
+REFERENCES zuvy_learners_degree_details(id)
+ON DELETE CASCADE;
+
+DROP INDEX IF EXISTS zuvy_learner_education_branch_details_name_unique;
+
+
+
+INSERT INTO zuvy_learner_education_branch_details (name, degree_id)
+VALUES
+('Computer Science Engineering', 1),
+('Information Technology', 1),
+('Electronics and Communication', 1),
+('Electrical Engineering', 1),
+('Mechanical Engineering', 1),
+('Civil Engineering', 1),
+('Chemical Engineering', 1),
+('AI and Data Science', 1),
+
+('Computer Engineering', 2),
+('Mechanical Engineering', 2),
+('Civil Engineering', 2),
+('Electronics Engineering', 2),
+
+('Physics', 3),
+('Chemistry', 3),
+('Mathematics', 3),
+('Computer Science', 3),
+('Biotechnology', 3),
+('Microbiology', 3),
+
+('Computer Applications', 4),
+('Software Development', 4),
+('Data Science Basics', 4),
+
+('Marketing', 5),
+('Finance', 5),
+('Human Resource Management', 5),
+('International Business', 5),
+
+('General Commerce', 6),
+('Accounting and Finance', 6),
+('Banking and Insurance', 6),
+
+('English', 7),
+('History', 7),
+('Political Science', 7),
+('Sociology', 7),
+('Psychology', 7),
+
+('Architecture Design', 8),
+
+('Fashion Design', 9),
+('Interior Design', 9),
+('Product Design', 9),
+
+('Pharmacy', 10),
+
+('Education', 11),
+
+('Law', 12),
+
+('Medicine', 13),
+
+('Dental Surgery', 14),
+
+('Hotel Management', 15),
+
+('Physiotherapy', 16),
+
+('Computer Science Engineering', 17),
+('Mechanical Engineering', 17),
+('Civil Engineering', 17),
+
+('Engineering', 18),
+
+('Physics', 19),
+('Chemistry', 19),
+('Mathematics', 19),
+('Computer Science', 19),
+
+('Computer Applications', 20),
+
+('Marketing', 21),
+('Finance', 21),
+('Human Resource', 21),
+('Operations', 21),
+
+('English', 22),
+('History', 22),
+('Political Science', 22),
+
+('Commerce', 23),
+
+('Pharmacy', 24),
+
+('Education', 25),
+
+('Law', 26),
+
+('Medicine Specialization', 27),
+
+('Surgery', 28),
+
+('Research', 29),
+
+('Engineering Diploma', 30),
+('Pharmacy Diploma', 30),
+
+('Advanced Technical Studies', 31),
+
+('Management', 32),
+('Computer Applications', 32),
+
+('Engineering Diploma', 33),
+
+('IT Certification', 34),
+('Skill Development', 34),
+
+('Other Specialization', 35);
+
+
+
+ALTER TABLE main.zuvy_learners_complete_profile
+  DROP COLUMN IF EXISTS other_college_name;

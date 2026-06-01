@@ -346,6 +346,95 @@ export class LearnerService {
     return { degrees };
   }
 
+  private async fetchLearnerDegreesWithBranches() {
+    const degrees = await db
+      .select({
+        id: zuvyLearnerDegreesTable.id,
+        name: zuvyLearnerDegreesTable.name,
+      })
+      .from(zuvyLearnerDegreesTable);
+
+    const degreesWithBranches = await Promise.all(
+      degrees.map(async (degree) => {
+        const branches = sortByNameWithOtherLast(
+          await db
+            .select({
+              id: zuvyLearnerEducationBranchesTable.id,
+              name: zuvyLearnerEducationBranchesTable.name,
+            })
+            .from(zuvyLearnerEducationBranchesTable)
+            .where(eq(zuvyLearnerEducationBranchesTable.degreeId, degree.id)),
+        );
+
+        return {
+          ...degree,
+          branches,
+        };
+      }),
+    );
+
+    return { degrees: sortByNameWithOtherLast(degreesWithBranches) };
+  }
+
+  async getLearnerDegreesWithBranches(retryOnMissingTable = true) {
+    try {
+      await this.ensureLearnerDegreesStorageReady();
+
+      const data = await this.fetchLearnerDegreesWithBranches();
+
+      return {
+        success: true,
+        data,
+      };
+    } catch (error) {
+      if (this.isLearnerSchemaMissingError(error) && retryOnMissingTable) {
+        await this.ensureLearnerDegreesStorageReady();
+        return this.getLearnerDegreesWithBranches(false);
+      }
+
+      if (this.isLearnerSchemaMissingError(error)) {
+        throw new InternalServerErrorException(
+          'Learner degrees schema is out of sync. Please run migrations and retry.',
+        );
+      }
+
+      throw error;
+    }
+  }
+
+  async getLearnerBranchesForDegree(
+    degreeId?: number,
+    retryOnMissingTable = true,
+  ) {
+    if (degreeId === undefined || degreeId === null) {
+      throw new BadRequestException('degreeId is required as query parameter');
+    }
+
+    try {
+      await this.ensureLearnerEducationBranchesStorageReady();
+
+      const data = await this.fetchLearnerEducationBranches(degreeId);
+
+      return {
+        success: true,
+        data,
+      };
+    } catch (error) {
+      if (this.isLearnerSchemaMissingError(error) && retryOnMissingTable) {
+        await this.ensureLearnerEducationBranchesStorageReady();
+        return this.getLearnerBranchesForDegree(degreeId, false);
+      }
+
+      if (this.isLearnerSchemaMissingError(error)) {
+        throw new InternalServerErrorException(
+          'Learner education branches schema is out of sync. Please run migrations and retry.',
+        );
+      }
+
+      throw error;
+    }
+  }
+
   async getLearnerDegrees(retryOnMissingTable = true) {
     try {
       await this.ensureLearnerDegreesStorageReady();
@@ -536,24 +625,34 @@ export class LearnerService {
     return uniqueBranches;
   }
 
-  private async fetchLearnerEducationBranches() {
-    const branches = sortByNameWithOtherLast(
-      await db
-        .select({
-          id: zuvyLearnerEducationBranchesTable.id,
-          name: zuvyLearnerEducationBranchesTable.name,
-        })
-        .from(zuvyLearnerEducationBranchesTable),
-    );
+  private async fetchLearnerEducationBranches(degreeId?: number) {
+    let query = db
+      .select({
+        id: zuvyLearnerEducationBranchesTable.id,
+        name: zuvyLearnerEducationBranchesTable.name,
+        degreeId: zuvyLearnerEducationBranchesTable.degreeId,
+      })
+      .from(zuvyLearnerEducationBranchesTable);
+
+    if (degreeId !== undefined && degreeId !== null) {
+      query = query.where(
+        eq(zuvyLearnerEducationBranchesTable.degreeId, degreeId),
+      );
+    }
+
+    const branches = sortByNameWithOtherLast(await query);
 
     return { branches };
   }
 
-  async getLearnerEducationBranches(retryOnMissingTable = true) {
+  async getLearnerEducationBranches(
+    degreeId?: number,
+    retryOnMissingTable = true,
+  ) {
     try {
       await this.ensureLearnerEducationBranchesStorageReady();
 
-      const data = await this.fetchLearnerEducationBranches();
+      const data = await this.fetchLearnerEducationBranches(degreeId);
 
       return {
         success: true,
@@ -562,7 +661,7 @@ export class LearnerService {
     } catch (error) {
       if (this.isLearnerSchemaMissingError(error) && retryOnMissingTable) {
         await this.ensureLearnerEducationBranchesStorageReady();
-        return this.getLearnerEducationBranches(false);
+        return this.getLearnerEducationBranches(degreeId, false);
       }
 
       if (this.isLearnerSchemaMissingError(error)) {
@@ -636,11 +735,17 @@ export class LearnerService {
     try {
       await this.ensureLearnerEducationBranchesStorageReady();
 
+      const updateData: any = {
+        name: normalizedName,
+      };
+
+      if (payload.degreeId !== undefined) {
+        updateData.degreeId = payload.degreeId;
+      }
+
       const [updated] = await db
         .update(zuvyLearnerEducationBranchesTable)
-        .set({
-          name: normalizedName,
-        })
+        .set(updateData)
         .where(eq(zuvyLearnerEducationBranchesTable.id, id))
         .returning({ id: zuvyLearnerEducationBranchesTable.id });
 
@@ -1339,22 +1444,6 @@ export class LearnerService {
       throw error;
     }
   }
-  private validateOtherCollegeInput(
-    collegeName?: string,
-    otherCollegeName?: string,
-  ): void {
-    if (!collegeName?.trim()) {
-      return;
-    }
-
-    const isOtherSelected = collegeName.trim().toLowerCase() === 'other';
-    if (isOtherSelected && !otherCollegeName?.trim()) {
-      throw new BadRequestException(
-        'otherCollegeName is required when collegeName is Other.',
-      );
-    }
-  }
-
   async getAllBasicInformation(
     page = 1,
     limit = 10,
@@ -1412,19 +1501,10 @@ export class LearnerService {
       throw new BadRequestException('Invalid authenticated user details.');
     }
 
-    this.validateOtherCollegeInput(
-      payload.collegeName,
-      payload.otherCollegeName,
-    );
-
     const normalizedCollegeName = payload.collegeName?.trim();
-    const isOtherCollege = normalizedCollegeName?.toLowerCase() === 'other';
 
     const dataToPersist = {
       collegeName: normalizedCollegeName || null,
-      otherCollegeName: isOtherCollege
-        ? payload.otherCollegeName?.trim() || null
-        : null,
       degreeProgram: payload.degreeProgram?.trim() || null,
       branchSpecialisation: payload.branchSpecialisation?.trim() || null,
     };
