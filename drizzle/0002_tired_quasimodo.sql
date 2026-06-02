@@ -753,3 +753,7 @@ VALUES
 
 ALTER TABLE main.zuvy_learners_complete_profile
   DROP COLUMN IF EXISTS other_college_name;
+
+
+
+

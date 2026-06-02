@@ -61,6 +61,53 @@ export class LeaderboardController {
     }
   }
 
+  @Get('bootcamp')
+  @ApiOperation({
+    summary: 'Get leaderboard across all bootcamps',
+    description: 'Retrieves the leaderboard without filtering by bootcamp',
+  })
+  @ApiQuery({
+    name: 'limit',
+    type: Number,
+    description: 'Maximum number of learners to return',
+    required: false,
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Leaderboard retrieved successfully',
+  })
+  async getAllBootcampLeaderboard(@Query('limit') limitParam?: string) {
+    try {
+      let limit = 100;
+      if (limitParam) {
+        limit = parseInt(limitParam, 10);
+        if (isNaN(limit) || limit <= 0) {
+          throw new BadRequestException(
+            'Invalid limit. Must be a positive number.',
+          );
+        }
+      }
+
+      const leaderboard = await this.leaderboardService.getBootcampLeaderboard(
+        undefined,
+        limit,
+      );
+
+      return {
+        success: true,
+        count: leaderboard.length,
+        data: leaderboard,
+      };
+    } catch (error) {
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
+      throw new InternalServerErrorException(
+        error instanceof Error ? error.message : 'Failed to fetch leaderboard',
+      );
+    }
+  }
+
   @Get('bootcamp/:bootcampId')
   @ApiOperation({
     summary: 'Get bootcamp leaderboard',

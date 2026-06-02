@@ -936,7 +936,7 @@ export class LeaderboardService {
   }
 
   async getBootcampLeaderboard(
-    bootcampId: number,
+    bootcampId?: number,
     limit: number = 100,
   ): Promise<
     Array<{
@@ -952,7 +952,7 @@ export class LeaderboardService {
     }>
   > {
     try {
-      const leaderboard = await db
+      const leaderboardQuery = db
         .select({
           learnerId: zuvyLearnerLeaderboard.learnerId,
           assessmentPoints: zuvyLearnerLeaderboard.assessmentPoints,
@@ -965,9 +965,14 @@ export class LeaderboardService {
           lastActivityAt: zuvyLearnerLeaderboard.lastActivityAt,
         })
         .from(zuvyLearnerLeaderboard)
-        .where(eq(zuvyLearnerLeaderboard.bootcampId, bootcampId))
         .orderBy(sql`${zuvyLearnerLeaderboard.totalPoints} DESC`)
         .limit(limit);
+
+      const leaderboard = bootcampId
+        ? await leaderboardQuery.where(
+            eq(zuvyLearnerLeaderboard.bootcampId, bootcampId),
+          )
+        : await leaderboardQuery;
 
       return leaderboard;
     } catch (error) {
