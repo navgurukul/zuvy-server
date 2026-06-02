@@ -61,7 +61,7 @@ export class LeaderboardController {
     }
   }
 
-  @Get('bootcamp')
+  @Get('learners/data')
   @ApiOperation({
     summary: 'Get leaderboard across all bootcamps',
     description: 'Retrieves the leaderboard without filtering by bootcamp',
