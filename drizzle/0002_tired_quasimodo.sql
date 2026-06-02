@@ -623,57 +623,133 @@ ON UPDATE CASCADE
 ON DELETE CASCADE;
 
 
+ALTER TABLE zuvy_learner_education_branch_details
+ADD COLUMN degree_id INTEGER;
 
+ALTER TABLE zuvy_learner_education_branch_details
+ADD CONSTRAINT zuvy_learner_education_branch_details_degree_id_fk
+FOREIGN KEY (degree_id)
+REFERENCES zuvy_learners_degree_details(id)
+ON DELETE CASCADE;
 
-CREATE TABLE IF NOT EXISTS "zuvy_learner_leaderboard" (
-  "id" serial PRIMARY KEY NOT NULL,
-  "learner_id" integer NOT NULL,
-  "bootcamp_id" integer NOT NULL,
-  "assessment_points" integer DEFAULT 0,
-  "coding_points" integer DEFAULT 0,
-  "quiz_points" integer DEFAULT 0,
-  "attendance_points" integer DEFAULT 0,
-  "recording_points" integer DEFAULT 0,
-  "assignment_points" integer DEFAULT 0,
-  "total_points" integer DEFAULT 0,
-  "last_activity_at" timestamp with time zone,
-  "created_at" timestamp with time zone DEFAULT now(),
-  "updated_at" timestamp with time zone DEFAULT now(),
-  CONSTRAINT "zuvy_learner_leaderboard_learner_id_users_id_fk"
-    FOREIGN KEY ("learner_id") REFERENCES "main"."users"("id") ON DELETE cascade,
-  CONSTRAINT "zuvy_learner_leaderboard_bootcamp_id_zuvybootcamps_id_fk"
-    FOREIGN KEY ("bootcamp_id") REFERENCES "main"."zuvy_bootcamps"("id") ON DELETE cascade
-);
-
--- Create indexes for efficient querying
-CREATE INDEX IF NOT EXISTS "idx_zuvy_leaderboard_learner_id"
-  ON "zuvy_learner_leaderboard" USING btree ("learner_id");
-
-CREATE INDEX IF NOT EXISTS "idx_zuvy_leaderboard_bootcamp_id"
-  ON "zuvy_learner_leaderboard" USING btree ("bootcamp_id");
-
-CREATE INDEX IF NOT EXISTS "idx_zuvy_leaderboard_total_points"
-  ON "zuvy_learner_leaderboard" USING btree ("total_points");
-
--- Create unique constraint: one leaderboard entry per learner per bootcamp
-CREATE UNIQUE INDEX IF NOT EXISTS "uniq_zuvy_leaderboard_learner_bootcamp"
-  ON "zuvy_learner_leaderboard" USING btree ("learner_id", "bootcamp_id");
+DROP INDEX IF EXISTS zuvy_learner_education_branch_details_name_unique;
 
 
 
-SELECT total_points
-FROM zuvy_learner_leaderboard
-ORDER BY total_points DESC
-LIMIT 50;
+INSERT INTO zuvy_learner_education_branch_details (name, degree_id)
+VALUES
+('Computer Science Engineering', 1),
+('Information Technology', 1),
+('Electronics and Communication', 1),
+('Electrical Engineering', 1),
+('Mechanical Engineering', 1),
+('Civil Engineering', 1),
+('Chemical Engineering', 1),
+('AI and Data Science', 1),
+
+('Computer Engineering', 2),
+('Mechanical Engineering', 2),
+('Civil Engineering', 2),
+('Electronics Engineering', 2),
+
+('Physics', 3),
+('Chemistry', 3),
+('Mathematics', 3),
+('Computer Science', 3),
+('Biotechnology', 3),
+('Microbiology', 3),
+
+('Computer Applications', 4),
+('Software Development', 4),
+('Data Science Basics', 4),
+
+('Marketing', 5),
+('Finance', 5),
+('Human Resource Management', 5),
+('International Business', 5),
+
+('General Commerce', 6),
+('Accounting and Finance', 6),
+('Banking and Insurance', 6),
+
+('English', 7),
+('History', 7),
+('Political Science', 7),
+('Sociology', 7),
+('Psychology', 7),
+
+('Architecture Design', 8),
+
+('Fashion Design', 9),
+('Interior Design', 9),
+('Product Design', 9),
+
+('Pharmacy', 10),
+
+('Education', 11),
+
+('Law', 12),
+
+('Medicine', 13),
+
+('Dental Surgery', 14),
+
+('Hotel Management', 15),
+
+('Physiotherapy', 16),
+
+('Computer Science Engineering', 17),
+('Mechanical Engineering', 17),
+('Civil Engineering', 17),
+
+('Engineering', 18),
+
+('Physics', 19),
+('Chemistry', 19),
+('Mathematics', 19),
+('Computer Science', 19),
+
+('Computer Applications', 20),
+
+('Marketing', 21),
+('Finance', 21),
+('Human Resource', 21),
+('Operations', 21),
+
+('English', 22),
+('History', 22),
+('Political Science', 22),
+
+('Commerce', 23),
+
+('Pharmacy', 24),
+
+('Education', 25),
+
+('Law', 26),
+
+('Medicine Specialization', 27),
+
+('Surgery', 28),
+
+('Research', 29),
+
+('Engineering Diploma', 30),
+('Pharmacy Diploma', 30),
+
+('Advanced Technical Studies', 31),
+
+('Management', 32),
+('Computer Applications', 32),
+
+('Engineering Diploma', 33),
+
+('IT Certification', 34),
+('Skill Development', 34),
+
+('Other Specialization', 35);
 
 
 
-SELECT learner_id,
-       recording_points,
-       assignment_points,
-       attendance_points,
-       total_points
-FROM zuvy_learner_leaderboard
-LIMIT 50;
-
-
+ALTER TABLE main.zuvy_learners_complete_profile
+  DROP COLUMN IF EXISTS other_college_name;

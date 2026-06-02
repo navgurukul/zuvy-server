@@ -636,9 +636,63 @@ export class StudentService {
     }
   }
 
-  async removingStudent(user_id: number | number[], bootcamp_id: number) {
+  async removingStudent(
+    user_id: number | number[],
+    bootcamp_id: number,
+    requester?: any,
+  ) {
     try {
       const userIdsArray = Array.isArray(user_id) ? user_id : [user_id];
+      const requesterRoles = requester?.roles || [];
+      const isInstructorOnly =
+        requesterRoles.includes('instructor') &&
+        !requesterRoles.some((role: string) =>
+          ['admin', 'ops', 'super_admin'].includes(role),
+        );
+
+      if (isInstructorOnly) {
+        const targetEnrollments = await db
+          .select({
+            userId: zuvyBatchEnrollments.userId,
+            batchId: zuvyBatchEnrollments.batchId,
+            instructorId: zuvyBatches.instructorId,
+          })
+          .from(zuvyBatchEnrollments)
+          .leftJoin(
+            zuvyBatches,
+            eq(zuvyBatchEnrollments.batchId, zuvyBatches.id),
+          )
+          .where(
+            and(
+              inArray(zuvyBatchEnrollments.userId, userIdsArray.map(BigInt)),
+              eq(zuvyBatchEnrollments.bootcampId, bootcamp_id),
+            ),
+          );
+
+        if (targetEnrollments.length === 0) {
+          return [
+            { status: 'error', message: 'ID not found', code: 404 },
+            null,
+          ];
+        }
+
+        const canManageAllTargets = targetEnrollments.every(
+          (enrollment) =>
+            enrollment.batchId !== null &&
+            Number(enrollment.instructorId) === Number(requester.id),
+        );
+
+        if (!canManageAllTargets) {
+          return [
+            {
+              status: 'error',
+              message: 'Unauthorized access',
+              code: 403,
+            },
+            null,
+          ];
+        }
+      }
 
       // Fetch user details before deletion so tracking log can show real names
       const removedUsers = await db

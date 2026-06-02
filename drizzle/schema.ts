@@ -3091,6 +3091,7 @@ export const zuvyLearnerEducationBranchDetails = main.table(
   {
     id: serial('id').primaryKey().notNull(),
     name: varchar('name', { length: 100 }).notNull(),
+    degreeId: integer('degree_id'),
     createdAt: timestamp('created_at', {
       withTimezone: true,
       mode: 'string',
@@ -3108,6 +3109,12 @@ export const zuvyLearnerEducationBranchDetails = main.table(
     nameUnique: uniqueIndex(
       'zuvy_learner_education_branch_details_name_unique',
     ).on(table.name),
+    degreeIdFk: foreignKey({
+      columns: [table.degreeId],
+      foreignColumns: [zuvyLearnersDegreeDetails.id],
+      name: 'zuvy_learner_education_branch_details_degree_id_fk',
+    })
+      .onDelete('cascade'),
   }),
 );
 
@@ -3199,7 +3206,6 @@ export const zuvyLearnersCompleteProfile = main.table(
     email: varchar('email', { length: 255 }),
     linkedinProfile: varchar('linkedin_profile', { length: 500 }),
     collegeName: varchar('college_name', { length: 255 }),
-    otherCollegeName: varchar('other_college_name', { length: 100 }),
     degree: varchar('degree', { length: 100 }),
     branch: varchar('branch', { length: 100 }),
     yearOfStudy: learnerYearOfStudy('year_of_study'),
