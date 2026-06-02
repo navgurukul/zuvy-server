@@ -124,6 +124,13 @@ export class LeaderboardController {
     description: 'Maximum number of learners to return',
     required: false,
   })
+  @ApiQuery({
+    name: 'learnerId',
+    type: Number,
+    description:
+      'Optional learner ID to filter the leaderboard to a single learner',
+    required: false,
+  })
   @ApiResponse({
     status: 200,
     description: 'Bootcamp leaderboard retrieved successfully',
@@ -161,6 +168,7 @@ export class LeaderboardController {
   async getBootcampLeaderboard(
     @Param('bootcampId') bootcampIdParam: string,
     @Query('limit') limitParam?: string,
+    @Query('learnerId') learnerIdParam?: string,
   ) {
     try {
       const bootcampId = parseInt(bootcampIdParam, 10);
@@ -178,6 +186,37 @@ export class LeaderboardController {
             'Invalid limit. Must be a positive number.',
           );
         }
+      }
+
+      // If a learnerId is provided, reuse existing learner-specific logic
+      if (learnerIdParam) {
+        const learnerId = parseInt(learnerIdParam, 10);
+        if (isNaN(learnerId) || learnerId <= 0) {
+          throw new BadRequestException(
+            'Invalid learner ID. Must be a positive number.',
+          );
+        }
+
+        const learnerPosition =
+          await this.leaderboardService.getLearnerPosition(
+            learnerId,
+            bootcampId,
+          );
+
+        if (!learnerPosition) {
+          return {
+            success: false,
+            message: `Learner ${learnerId} not found in bootcamp ${bootcampId} leaderboard`,
+            data: null,
+          };
+        }
+
+        return {
+          success: true,
+          bootcampId,
+          learnerId,
+          data: learnerPosition,
+        };
       }
 
       const leaderboard = await this.leaderboardService.getBootcampLeaderboard(
@@ -199,99 +238,6 @@ export class LeaderboardController {
         error instanceof Error
           ? error.message
           : 'Failed to fetch bootcamp leaderboard',
-      );
-    }
-  }
-
-  @Get('bootcamp/:bootcampId/learner/:learnerId')
-  @ApiOperation({
-    summary: "Get learner's leaderboard position",
-    description:
-      'Retrieves a specific learner points in a bootcamp leaderboard',
-  })
-  @ApiParam({
-    name: 'bootcampId',
-    type: Number,
-    description: 'The bootcamp ID',
-  })
-  @ApiParam({
-    name: 'learnerId',
-    type: Number,
-    description: 'The learner ID',
-  })
-  @ApiResponse({
-    status: 200,
-    description: 'Learner position retrieved successfully',
-    schema: {
-      example: {
-        success: true,
-        data: {
-          assessmentPoints: 30,
-          codingPoints: 20,
-          quizPoints: 10,
-          attendancePoints: 5,
-          recordingPoints: 0,
-          assignmentPoints: 0,
-          totalPoints: 65,
-          lastActivityAt: '2026-05-23T10:30:00Z',
-        },
-      },
-    },
-  })
-  @ApiResponse({
-    status: 400,
-    description: 'Invalid bootcamp ID or learner ID',
-  })
-  @ApiResponse({
-    status: 404,
-    description: 'Learner not found in bootcamp leaderboard',
-  })
-  async getLearnerPosition(
-    @Param('bootcampId') bootcampIdParam: string,
-    @Param('learnerId') learnerIdParam: string,
-  ) {
-    try {
-      const bootcampId = parseInt(bootcampIdParam, 10);
-      if (isNaN(bootcampId) || bootcampId <= 0) {
-        throw new BadRequestException(
-          'Invalid bootcamp ID. Must be a positive number.',
-        );
-      }
-
-      const learnerId = parseInt(learnerIdParam, 10);
-      if (isNaN(learnerId) || learnerId <= 0) {
-        throw new BadRequestException(
-          'Invalid learner ID. Must be a positive number.',
-        );
-      }
-
-      const learnerPosition = await this.leaderboardService.getLearnerPosition(
-        learnerId,
-        bootcampId,
-      );
-
-      if (!learnerPosition) {
-        return {
-          success: false,
-          message: `Learner ${learnerId} not found in bootcamp ${bootcampId} leaderboard`,
-          data: null,
-        };
-      }
-
-      return {
-        success: true,
-        bootcampId,
-        learnerId,
-        data: learnerPosition,
-      };
-    } catch (error) {
-      if (error instanceof BadRequestException) {
-        throw error;
-      }
-      throw new InternalServerErrorException(
-        error instanceof Error
-          ? error.message
-          : 'Failed to fetch learner position',
       );
     }
   }

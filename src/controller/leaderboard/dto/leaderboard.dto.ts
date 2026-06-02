@@ -17,6 +17,15 @@ export class GetBootcampLeaderboardDto {
   @Type(() => Number)
   @IsNumber(
     { allowNaN: false, allowInfinity: false },
+    { message: 'learnerId must be a valid number' },
+  )
+  @Min(1, { message: 'learnerId must be at least 1' })
+  learnerId?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber(
+    { allowNaN: false, allowInfinity: false },
     { message: 'limit must be a valid number' },
   )
   @Min(1, { message: 'limit must be at least 1' })
