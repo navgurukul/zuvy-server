@@ -1,13 +1,24 @@
 import {
   BadRequestException,
   ConflictException,
+  HttpException,
   Injectable,
   InternalServerErrorException,
   Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { db } from 'src/db/index';
-import { sql, eq, and, asc, ilike, or, inArray } from 'drizzle-orm';
+import {
+  sql,
+  eq,
+  and,
+  asc,
+  ilike,
+  or,
+  inArray,
+  isNull,
+  exists,
+} from 'drizzle-orm';
 import {
   CreatePermissionDto,
   AssignPermissionsToRoleDto,
@@ -26,10 +37,16 @@ import {
 } from 'drizzle/schema';
 import { AuditlogService } from 'src/auditlog/auditlog.service';
 import { alias } from 'drizzle-orm/pg-core';
+import { AuthService } from 'src/auth/auth.service';
+import { UserTokensService } from 'src/user-tokens/user-tokens.service';
 
 @Injectable()
 export class PermissionsService {
-  constructor(private auditLogService: AuditlogService) {}
+  constructor(
+    private auditLogService: AuditlogService,
+    private authService: AuthService,
+    private userTokenService: UserTokensService,
+  ) {}
   private readonly logger = new Logger(PermissionsService.name);
 
   async createPermission(
@@ -428,7 +445,7 @@ export class PermissionsService {
     try {
       const { resourceId, roleId, permissions } = dto;
       const actorUserId = Number(userIdString);
-      return await db.transaction(async (tx) => {
+      const result = await db.transaction(async (tx) => {
         const [resource] = await tx
           .select()
           .from(zuvyResources)
@@ -470,6 +487,10 @@ export class PermissionsService {
         const disableIds = incomingIds.filter(
           (id) => permissions[id] === false,
         );
+        const permissionRoleOrgCondition =
+          orgId !== undefined && orgId !== null
+            ? eq(zuvyPermissionsRoles.orgId, orgId)
+            : isNull(zuvyPermissionsRoles.orgId);
 
         if (enableIds.length) {
           await tx
@@ -495,6 +516,7 @@ export class PermissionsService {
             .where(
               and(
                 eq(zuvyPermissionsRoles.roleId, roleId),
+                permissionRoleOrgCondition,
                 inArray(zuvyPermissionsRoles.permissionId, disableIds),
               ),
             );
@@ -503,7 +525,12 @@ export class PermissionsService {
         const assigned = await tx
           .select({ permissionId: zuvyPermissionsRoles.permissionId })
           .from(zuvyPermissionsRoles)
-          .where(eq(zuvyPermissionsRoles.roleId, roleId));
+          .where(
+            and(
+              eq(zuvyPermissionsRoles.roleId, roleId),
+              permissionRoleOrgCondition,
+            ),
+          );
 
         const auditLog = await this.auditLogService.log('perm_to_role', {
           actorUserId,
@@ -521,10 +548,73 @@ export class PermissionsService {
           },
         };
       });
+
+      const invalidatedSessions = await this.invalidateRoleMemberSessions(
+        roleId,
+        orgId,
+      );
+
+      return {
+        ...result,
+        data: {
+          ...result.data,
+          invalidatedSessions,
+        },
+      };
     } catch (error) {
       this.logger.error('Error in assignPermissionsToRole:', error);
+      if (error instanceof HttpException) throw error;
       throw new InternalServerErrorException('Failed to assign permissions');
     }
+  }
+
+  private async invalidateRoleMemberSessions(
+    roleId: number,
+    orgId?: number,
+  ): Promise<number> {
+    const orgCondition =
+      orgId !== undefined && orgId !== null
+        ? eq(zuvyUserRolesAssigned.organizationId, orgId)
+        : isNull(zuvyUserRolesAssigned.organizationId);
+
+    const members = await db
+      .select({ userId: zuvyUserRolesAssigned.userId })
+      .from(zuvyUserRolesAssigned)
+      .where(and(eq(zuvyUserRolesAssigned.roleId, roleId), orgCondition));
+
+    const uniqueUserIds = Array.from(new Set(members.map((m) => m.userId)));
+    let invalidated = 0;
+
+    for (const userId of uniqueUserIds) {
+      try {
+        const { data, success } = await this.userTokenService.getUserTokens(
+          userId,
+          orgId,
+        );
+
+        if (!success || !data?.accessToken || !data?.refreshToken) {
+          continue;
+        }
+
+        await this.authService.updateUserlogout(
+          Number(userId),
+          data.accessToken,
+          data.refreshToken,
+        );
+        await this.userTokenService.deleteToken({
+          userId: Number(userId),
+          organizationId: orgId,
+        });
+        invalidated += 1;
+      } catch (error) {
+        this.logger.warn(
+          `Failed to invalidate session for user ${userId.toString()} after role permission update.`,
+          error,
+        );
+      }
+    }
+
+    return invalidated;
   }
 
   async ensureExists(id: number) {
@@ -550,7 +640,6 @@ export class PermissionsService {
         .then((res) => res[0]);
       if (!resource) throw new NotFoundException('Resource not found');
 
-      const pr = alias(zuvyPermissionsRoles, 'pr');
       const permissions = await db
         .select({
           id: zuvyPermissions.id,
@@ -559,13 +648,19 @@ export class PermissionsService {
           resourceId: zuvyPermissions.resourcesId,
           createdAt: zuvyPermissions.createdAt,
           updatedAt: zuvyPermissions.updatedAt,
-          granted: sql<boolean>`(${pr.permissionId} IS NOT NULL)`.as('granted'),
+          granted: exists(
+            db
+              .select()
+              .from(zuvyPermissionsRoles)
+              .where(
+                and(
+                  eq(zuvyPermissionsRoles.permissionId, zuvyPermissions.id),
+                  eq(zuvyPermissionsRoles.roleId, roleId),
+                ),
+              ),
+          ),
         })
         .from(zuvyPermissions)
-        .leftJoin(
-          pr,
-          and(eq(pr.permissionId, zuvyPermissions.id), eq(pr.roleId, roleId)),
-        )
         .where(eq(zuvyPermissions.resourcesId, resourceId))
         .orderBy(zuvyPermissions.id);
 

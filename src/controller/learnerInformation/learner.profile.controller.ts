@@ -17,6 +17,7 @@ import {
 import {
   ApiBearerAuth,
   ApiBody,
+  ApiOkResponse,
   ApiOperation,
   ApiParam,
   ApiTags,
@@ -27,6 +28,7 @@ import {
   ProfileStrengthResponseDto,
 } from './dto/learner.dto';
 import { ValidationError } from 'class-validator';
+import { SkipOrgCheck } from 'src/rbac/decorators/skip-org-check.decorator';
 
 function flattenErrors(errors: ValidationError[]): string[] {
   const messages: string[] = [];
@@ -42,6 +44,7 @@ function flattenErrors(errors: ValidationError[]): string[] {
 }
 
 @ApiTags('Learner Complete Profile')
+@SkipOrgCheck()
 @Controller('learner-profile')
 @UsePipes(
   new ValidationPipe({
@@ -94,8 +97,9 @@ export class LearnerProfileController {
 
   @Get('strength')
   @ApiOperation({
-    summary: 'Get profile strength percentage with level and message',
+    summary: 'Get profile strength and missing fields',
   })
+  @ApiOkResponse({ type: ProfileStrengthResponseDto })
   async getProfileStrength(@Req() req) {
     const userId = req.user[0]?.id;
     return this.learnerProfileService.calculateProfileStrengthNew(userId);

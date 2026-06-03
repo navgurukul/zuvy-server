@@ -7,13 +7,27 @@ import {
 import { Reflector } from '@nestjs/core';
 import { db } from '../db/index';
 import { eq, and } from 'drizzle-orm';
-import { zuvyUserOrganizations, zuvyOrganizations } from '../../drizzle/schema';
+import {
+  zuvyBatchEnrollments,
+  zuvyBootcamps,
+  zuvyUserRolesAssigned,
+  zuvyOrganizations,
+} from '../../drizzle/schema';
+import { SKIP_ORG_CHECK_KEY } from 'src/rbac/decorators/skip-org-check.decorator';
 
 @Injectable()
 export class OrgAuthorizationGuard implements CanActivate {
   constructor(private reflector: Reflector) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
+    const skipOrgCheck = this.reflector.getAllAndOverride<boolean>(
+      SKIP_ORG_CHECK_KEY,
+      [context.getHandler(), context.getClass()],
+    );
+    if (skipOrgCheck) {
+      return true;
+    }
+
     const request = context.switchToHttp().getRequest();
     const user = request.user?.[0] || request.user;
 
@@ -24,6 +38,15 @@ export class OrgAuthorizationGuard implements CanActivate {
 
     // Super Admin bypass - super admins can access any org
     if (user.roles && user.roles.includes('super_admin')) {
+      return true;
+    }
+
+    const assessmentBootcampId = this.extractBootcampId(request);
+    if (
+      this.isStudentAssessmentRequest(user, request) &&
+      (!assessmentBootcampId ||
+        (await this.isStudentEnrolledInBootcamp(user, assessmentBootcampId)))
+    ) {
       return true;
     }
 
@@ -49,17 +72,21 @@ export class OrgAuthorizationGuard implements CanActivate {
     // Check: Verify user actually belongs to the target org in the database
     const userId = Number(user.id);
     const membership = await db
-      .select({ id: zuvyUserOrganizations.id })
-      .from(zuvyUserOrganizations)
+      .select({ id: zuvyUserRolesAssigned.id })
+      .from(zuvyUserRolesAssigned)
       .where(
         and(
-          eq(zuvyUserOrganizations.userId, userId),
-          eq(zuvyUserOrganizations.organizationId, requestOrgId),
+          eq(zuvyUserRolesAssigned.userId, BigInt(userId)),
+          eq(zuvyUserRolesAssigned.organizationId, requestOrgId),
         ),
       )
       .limit(1);
 
     if (membership.length === 0) {
+      if (await this.isStudentEnrolledInOrg(user, requestOrgId)) {
+        return true;
+      }
+
       throw new ForbiddenException(
         `This page is accessible only to ${targetOrgName}. You are currently associated with the ${userOrgName} and do not have permission to view this page.`,
       );
@@ -94,5 +121,92 @@ export class OrgAuthorizationGuard implements CanActivate {
     }
 
     return null;
+  }
+
+  private extractBootcampId(request: any): number | null {
+    const rawBootcampId =
+      request.params?.bootcampId ??
+      request.params?.bootcamp_id ??
+      request.query?.bootcampId ??
+      request.query?.bootcamp_id ??
+      request.body?.bootcampId ??
+      request.body?.bootcamp_id;
+
+    const bootcampId = Number(rawBootcampId);
+    return Number.isFinite(bootcampId) && bootcampId > 0 ? bootcampId : null;
+  }
+
+  private async isStudentEnrolledInOrg(
+    user: any,
+    orgId: number,
+  ): Promise<boolean> {
+    const roles = user.roles || [];
+    const isStudent = roles.length === 0 || roles.includes('student');
+    const hasOrgRole = roles.some((role: string) => role !== 'student');
+
+    if (!isStudent || hasOrgRole) {
+      return false;
+    }
+
+    const [enrollment] = await db
+      .select({ id: zuvyBatchEnrollments.id })
+      .from(zuvyBatchEnrollments)
+      .innerJoin(
+        zuvyBootcamps,
+        eq(zuvyBatchEnrollments.bootcampId, zuvyBootcamps.id),
+      )
+      .where(
+        and(
+          eq(zuvyBatchEnrollments.userId, BigInt(user.id)),
+          eq(zuvyBootcamps.organizationId, orgId),
+        ),
+      )
+      .limit(1);
+
+    return Boolean(enrollment);
+  }
+
+  private async isStudentEnrolledInBootcamp(
+    user: any,
+    bootcampId: number,
+  ): Promise<boolean> {
+    const [enrollment] = await db
+      .select({ id: zuvyBatchEnrollments.id })
+      .from(zuvyBatchEnrollments)
+      .where(
+        and(
+          eq(zuvyBatchEnrollments.userId, BigInt(user.id)),
+          eq(zuvyBatchEnrollments.bootcampId, bootcampId),
+        ),
+      )
+      .limit(1);
+
+    return Boolean(enrollment);
+  }
+
+  private isStudentAssessmentRequest(user: any, request: any): boolean {
+    const roles = user.roles || [];
+    const isStudent = roles.length === 0 || roles.includes('student');
+    const hasOrgRole = roles.some((role: string) => role !== 'student');
+
+    if (!isStudent || hasOrgRole) {
+      return false;
+    }
+
+    const path = String(request.originalUrl || request.url || '')
+      .split('?')[0]
+      .toLowerCase();
+    return (
+      path.startsWith('/student/assessment/') ||
+      path.startsWith('/content/students/assessmentid=') ||
+      path.startsWith('/content/startAssessmentForStudent/') ||
+      path.startsWith('/content/startassessmentforstudent/') ||
+      path.startsWith('/content/assessmentdetailsofquiz/') ||
+      path.startsWith('/content/assessmentdetailsofopenended/') ||
+      path.startsWith('/submission/assessment/submit') ||
+      path.startsWith('/submission/quiz/assessmentsubmissionid=') ||
+      path.startsWith('/submission/openended/assessmentsubmissionid=') ||
+      path.startsWith('/submission/assessment/properting')
+    );
   }
 }

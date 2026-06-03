@@ -36,7 +36,7 @@ import { STATUS_CODES } from 'src/helpers';
 import { ErrorResponse, SuccessResponse } from 'src/errorHandler/handler';
 import { TrackAction } from 'src/trackinglog/decorators/track-action.decorator';
 import { TrackActionInterceptor } from 'src/trackinglog/interceptors/track-action.interceptor';
-
+import { PermissionsGuard } from 'src/rbac/guards/permissions.guard';
 @Controller('admin')
 @ApiTags('admin')
 @UsePipes(
@@ -46,7 +46,7 @@ import { TrackActionInterceptor } from 'src/trackinglog/interceptors/track-actio
     forbidNonWhitelisted: true,
   }),
 )
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard, RolesGuard)
 @ApiBearerAuth('JWT-auth')
 @UseInterceptors(TrackActionInterceptor)
 export class AdminAssessmentController {

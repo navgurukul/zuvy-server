@@ -11,8 +11,15 @@ import {
   UseGuards,
   UseInterceptors,
   Query,
+  BadRequestException,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiBody, ApiOperation, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiBody,
+  ApiOperation,
+  ApiQuery,
+  ApiTags,
+} from '@nestjs/swagger';
 import { MentorSlotService } from './mentor-slot.service';
 import { TrackAction } from 'src/trackinglog/decorators/track-action.decorator';
 import { TrackActionInterceptor } from 'src/trackinglog/interceptors/track-action.interceptor';
@@ -70,6 +77,7 @@ export class MentorSlotController {
       bookingId,
       dto.reason,
       dto.cancelledBy,
+      Number(req.user[0].id),
     );
   }
 
@@ -87,6 +95,7 @@ export class MentorSlotController {
     permissionName: 'editMentorDashboard',
   })
   async proposeReschedule(
+    @Req() req,
     @Param('bookingId', ParseIntPipe) bookingId: number,
     @Query('slotId') slotId: number,
     @Body() body: ProposeRescheduleDto,
@@ -95,6 +104,7 @@ export class MentorSlotController {
       bookingId,
       slotId,
       body.reason,
+      Number(req.user[0].id),
     );
   }
 
@@ -110,8 +120,15 @@ export class MentorSlotController {
     displayType: 'mentor booking reschedule',
     permissionName: 'editMentorDashboard',
   })
-  async acceptReschedule(@Param('bookingId', ParseIntPipe) bookingId: number) {
-    return this.mentorSlotService.acceptReschedule(bookingId);
+  async acceptReschedule(
+    @Req() req,
+    @Param('bookingId', ParseIntPipe) bookingId: number,
+  ) {
+    return this.mentorSlotService.acceptReschedule(
+      bookingId,
+      Number(req.user[0].id),
+      Number(req.user[0].orgId),
+    );
   }
 
   /* ==========================================================================
@@ -126,8 +143,15 @@ export class MentorSlotController {
     displayType: 'mentor booking reschedule',
     permissionName: 'editMentorDashboard',
   })
-  async declineReschedule(@Param('bookingId', ParseIntPipe) bookingId: number) {
-    return this.mentorSlotService.declineReschedule(bookingId);
+  async declineReschedule(
+    @Req() req,
+    @Param('bookingId', ParseIntPipe) bookingId: number,
+  ) {
+    return this.mentorSlotService.declineReschedule(
+      bookingId,
+      Number(req.user[0].id),
+      Number(req.user[0].orgId),
+    );
   }
 
   /* ==========================================================================
@@ -143,6 +167,7 @@ export class MentorSlotController {
     permissionName: 'editMentorDashboard',
   })
   async submitMentorFeedback(
+    @Req() req,
     @Param('bookingId', ParseIntPipe) bookingId: number,
     @Body() dto: FeedbackDto,
   ) {
@@ -150,6 +175,7 @@ export class MentorSlotController {
       bookingId,
       dto.feedback,
       dto.rating,
+      Number(req.user[0].id),
     );
   }
 
@@ -164,7 +190,11 @@ export class MentorSlotController {
     displayType: 'mentor slot',
   })
   async createSlot(@Req() req, @Body() dto: CreateSlotDto) {
-    return this.mentorSlotService.createSlot(Number(req.user[0].id), dto);
+    return this.mentorSlotService.createSlot(
+      Number(req.user[0].id),
+      dto,
+      Number(req.user[0].orgId),
+    );
   }
 
   /* ==========================================================================
@@ -179,13 +209,21 @@ export class MentorSlotController {
     displayType: 'mentor slot',
   })
   async removeSlot(@Req() req, @Param('slotId', ParseIntPipe) slotId: number) {
-    return this.mentorSlotService.removeSlot(Number(req.user[0].id), slotId);
+    return this.mentorSlotService.removeSlot(
+      Number(req.user[0].id),
+      slotId,
+      Number(req.user[0].orgId),
+    );
   }
 
   /* ==========================================================================  
     GET MY SLOTS (for mentor) 
 ========================================================================== */
-
+  @ApiQuery({
+    name: 'sort',
+    required: false,
+    enum: ['asc', 'desc'],
+  })
   @Get('my')
   async getMySlots(
     @Req() req,
@@ -196,6 +234,7 @@ export class MentorSlotController {
       Number(req.user[0].id),
       Number(weekOffset),
       sort,
+      Number(req.user[0].orgId),
     );
   }
 
@@ -210,6 +249,7 @@ export class MentorSlotController {
     return this.mentorSlotService.getSlotDetails(
       Number(req.user[0].id),
       slotId,
+      Number(req.user[0].orgId),
     );
   }
 
@@ -252,6 +292,7 @@ export class MentorSlotController {
     permissionName: 'editMentorDashboard',
   })
   async markAttendance(
+    @Req() req,
     @Param('bookingId', ParseIntPipe) bookingId: number,
     @Body() dto: AttendanceDto,
   ) {
@@ -259,6 +300,7 @@ export class MentorSlotController {
       bookingId,
       dto.joinedAt,
       dto.leftAt,
+      Number(req.user[0].id),
     );
   }
 
@@ -273,8 +315,14 @@ export class MentorSlotController {
     displayType: 'mentor session',
     permissionName: 'editMentorDashboard',
   })
-  async completeSession(@Param('bookingId', ParseIntPipe) bookingId: number) {
-    return this.mentorSlotService.completeSession(bookingId);
+  async completeSession(
+    @Req() req,
+    @Param('bookingId', ParseIntPipe) bookingId: number,
+  ) {
+    return this.mentorSlotService.completeSession(
+      bookingId,
+      Number(req.user[0].id),
+    );
   }
 
   /* ==========================================================================  
@@ -291,6 +339,7 @@ export class MentorSlotController {
     return this.mentorSlotService.updateMentorProfile(
       Number(req.user[0].id),
       dto,
+      Number(req.user[0].orgId),
     );
   }
 
@@ -301,7 +350,10 @@ export class MentorSlotController {
   @Get('mentor/profile')
   @ApiOperation({ summary: 'Get logged-in mentor profile' })
   async getMyProfile(@Req() req) {
-    return this.mentorSlotService.getMyMentorProfile(Number(req.user[0].id));
+    return this.mentorSlotService.getMyMentorProfile(
+      Number(req.user[0].id),
+      Number(req.user[0].orgId),
+    );
   }
 
   /* ==========================================================================  
@@ -310,10 +362,22 @@ export class MentorSlotController {
 
   @Post('mentor/profile')
   async createOrUpdateProfile(@Req() req, @Body() dto: UpdateMentorProfileDto) {
+    const user = req.user?.[0];
+
+    if (!user?.id) {
+      throw new BadRequestException('Invalid user in token');
+    }
+
+    const userId = Number(user.id);
+
+    if (Number.isNaN(userId)) {
+      throw new BadRequestException('Invalid userId');
+    }
+
     return this.mentorSlotService.createOrUpdateMentorProfile(
-      Number(req.user[0].id),
-      Number(req.user[0].organization_id),
+      userId,
       dto,
+      Number(req.user[0].orgId),
     );
   }
 }

@@ -3095,6 +3095,7 @@ export const zuvyLearnerEducationBranchDetails = main.table(
   {
     id: serial('id').primaryKey().notNull(),
     name: varchar('name', { length: 100 }).notNull(),
+    degreeId: integer('degree_id'),
     createdAt: timestamp('created_at', {
       withTimezone: true,
       mode: 'string',
@@ -3112,6 +3113,12 @@ export const zuvyLearnerEducationBranchDetails = main.table(
     nameUnique: uniqueIndex(
       'zuvy_learner_education_branch_details_name_unique',
     ).on(table.name),
+    degreeIdFk: foreignKey({
+      columns: [table.degreeId],
+      foreignColumns: [zuvyLearnersDegreeDetails.id],
+      name: 'zuvy_learner_education_branch_details_degree_id_fk',
+    })
+      .onDelete('cascade'),
   }),
 );
 
@@ -3203,12 +3210,11 @@ export const zuvyLearnersCompleteProfile = main.table(
     email: varchar('email', { length: 255 }),
     linkedinProfile: varchar('linkedin_profile', { length: 500 }),
     collegeName: varchar('college_name', { length: 255 }),
-    otherCollegeName: varchar('other_college_name', { length: 100 }),
-    degree: varchar('degree', { length: 100 }).notNull(),
-    branch: varchar('branch', { length: 100 }).notNull(),
-    yearOfStudy: learnerYearOfStudy('year_of_study').notNull(),
-    graduationMonth: integer('graduation_month').notNull(),
-    graduationYear: integer('graduation_year').notNull(),
+    degree: varchar('degree', { length: 100 }),
+    branch: varchar('branch', { length: 100 }),
+    yearOfStudy: learnerYearOfStudy('year_of_study'),
+    graduationMonth: integer('graduation_month'),
+    graduationYear: integer('graduation_year'),
     currentStatus: learnerCurrentStatus('current_status'),
 
     // PAGE 2: SKILLS & PROJECTS
@@ -3918,7 +3924,7 @@ export const zuvyStudentApplicationRecord = main.table('zuvy_student_application
 });
 export const blacklistedTokens = main.table('blacklisted_tokens', {
   id: bigserial('id', { mode: 'bigint' }).primaryKey().notNull(),
-  token: varchar('token', { length: 500 }).notNull(),
+  token: varchar('token', { length: 10000 }).notNull(),
   userId: bigint('user_id', { mode: 'bigint' }).notNull().references(() => users.id),
   expiresAt: timestamp('expires_at').notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
@@ -4702,6 +4708,31 @@ export const zuvyMentorSlotManagement = main.table(
     ),
     mentorIdx: index('idx_mgmt_mentor').on(table.mentorUserId),
     orgIdx: index('idx_mgmt_org').on(table.organizationId),
+  }),
+);
+
+export const zuvyMentorProfile = main.table(
+  'zuvy_mentor_profile',
+  {
+    id: serial('id').primaryKey().notNull(),
+
+    mentorUserId: bigserial('mentor_user_id', { mode: 'bigint' })
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+
+    email: varchar('email', { length: 255 }),
+    title: varchar('title', { length: 255 }),
+    bio: text('bio'),
+    expertise: jsonb('expertise'),
+    pastExperiences: text('past_experiences'),
+
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
+  },
+  (table) => ({
+    mentorUserUniqueIdx: uniqueIndex('idx_mentor_profile_user').on(
+      table.mentorUserId,
+    ),
   }),
 );
 

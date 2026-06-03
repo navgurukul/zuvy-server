@@ -1,7 +1,15 @@
-import { Injectable, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  BadRequestException,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
 import { RRule } from 'rrule';
 import { db } from '../../../db';
-import { zuvyMentorSlotAvailability } from '../../../../drizzle/schema';
+import {
+  zuvyMentorSlotAvailability,
+  zuvyMentorSlotManagement,
+} from '../../../../drizzle/schema';
 import { and, eq, sql } from 'drizzle-orm';
 
 @Injectable()
@@ -10,14 +18,17 @@ export class MentorRecurrenceService {
      GENERATE RECURRING SLOTS
   ========================================================================== */
 
-  async generateRecurringSlots(params: {
-    mentorSlotManagementId: number;
-    slotStart: Date;
-    slotEnd: Date;
-    recurrenceRule: string;
-    recurrenceEndDate: Date;
-    previewOnly?: boolean;
-  }) {
+  async generateRecurringSlots(
+    params: {
+      mentorSlotManagementId: number;
+      slotStart: Date;
+      slotEnd: Date;
+      recurrenceRule: string;
+      recurrenceEndDate: Date;
+      previewOnly?: boolean;
+    },
+    mentorUserId?: number,
+  ) {
     const {
       mentorSlotManagementId,
       slotStart,
@@ -28,6 +39,22 @@ export class MentorRecurrenceService {
     } = params;
 
     if (!recurrenceRule) throw new BadRequestException('RRULE is required');
+
+    if (mentorUserId) {
+      const [mentorProfile] = await db
+        .select()
+        .from(zuvyMentorSlotManagement)
+        .where(eq(zuvyMentorSlotManagement.id, mentorSlotManagementId))
+        .limit(1);
+
+      if (!mentorProfile) {
+        throw new NotFoundException('Mentor profile not found.');
+      }
+
+      if (mentorProfile.mentorUserId !== BigInt(mentorUserId)) {
+        throw new ForbiddenException('You do not own this mentor profile.');
+      }
+    }
 
     const rule = RRule.fromString(recurrenceRule);
 

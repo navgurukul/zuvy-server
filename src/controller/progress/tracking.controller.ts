@@ -39,7 +39,9 @@ import { SubmitFormBodyDto } from './dto/form.dto';
 import { ErrorResponse, SuccessResponse } from 'src/errorHandler/handler';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 import { TrackAction } from 'src/trackinglog/decorators/track-action.decorator';
+import { SkipOrgCheck } from 'src/rbac/decorators/skip-org-check.decorator';
 
+@SkipOrgCheck()
 @Controller('tracking')
 @ApiTags('tracking')
 @UseGuards(JwtAuthGuard)
@@ -183,11 +185,13 @@ export class TrackingController {
           err.statusCode,
         ).send(res);
       }
-      return new SuccessResponse(
-        success.message,
-        success.statusCode,
-        success.data,
-      ).send(res);
+      return res.status(success.statusCode).json({
+        message: success.message,
+        code: success.statusCode,
+        isSuccess: true,
+        mentorshipEnabled: success.mentorshipEnabled ?? false,
+        data: success.data,
+      });
     } catch (error) {
       return ErrorResponse.BadRequestException(error.message).send(res);
     }
@@ -245,11 +249,13 @@ export class TrackingController {
           err.statusCode,
         ).send(res);
       }
-      return new SuccessResponse(
-        success.message,
-        success.statusCode,
-        success.data,
-      ).send(res);
+      return res.status(success.statusCode).json({
+        message: success.message,
+        code: success.statusCode,
+        isSuccess: true,
+        mentorshipEnabled: success.mentorshipEnabled ?? false,
+        data: success.data,
+      });
     } catch (error) {
       return ErrorResponse.BadRequestException(error.message).send(res);
     }
@@ -361,11 +367,13 @@ export class TrackingController {
           err.statusCode,
         ).send(res);
       }
-      return new SuccessResponse(
-        success.message,
-        success.statusCode,
-        success.data,
-      ).send(res);
+      return res.status(success.statusCode).json({
+        message: success.message,
+        code: success.statusCode,
+        isSuccess: true,
+        mentorshipEnabled: success.mentorshipEnabled ?? false,
+        data: success.data,
+      });
     } catch (error) {
       return ErrorResponse.BadRequestException(error.message).send(res);
     }
