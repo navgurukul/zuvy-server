@@ -914,11 +914,13 @@ export class RecordingWorkerService implements OnModuleInit {
   // STEP 3 — UPLOAD TO YOUTUBE (IDEMPOTENT)
   // =====================================================
   private async getYoutubeUploadTitle(job: RecordingJob): Promise<string> {
-    if (job.table === 'session' && job.session_id) {
+    if (job.table === 'session') {
       const result = await db.execute(sql`
         SELECT title
         FROM zuvy_sessions
         WHERE id = ${job.session_id}
+           OR zoom_meeting_id = ${job.zoom_meeting_id}
+           OR meeting_id = ${job.zoom_meeting_id}
         LIMIT 1
       `);
 
@@ -931,6 +933,44 @@ export class RecordingWorkerService implements OnModuleInit {
       : `Session ${job.session_id}`;
   }
 
+  private extractYoutubeVideoId(job: RecordingJob): string | null {
+    if ((job as any).drive_file_id) return String((job as any).drive_file_id);
+    if (!job.drive_link) return null;
+
+    try {
+      const url = new URL(job.drive_link);
+      return url.searchParams.get('v');
+    } catch {
+      const match = job.drive_link.match(/[?&]v=([^&]+)/);
+      return match?.[1] || null;
+    }
+  }
+
+  private async updateYoutubeTitleIfNeeded(job: RecordingJob) {
+    const videoId = this.extractYoutubeVideoId(job);
+    if (!videoId) return;
+
+    const videoTitle = await this.getYoutubeUploadTitle(job);
+    if (!videoTitle || videoTitle === `Session ${job.session_id}`) return;
+
+    await this.youtube.videos.update({
+      part: ['snippet'],
+      requestBody: {
+        id: videoId,
+        snippet: {
+          title: videoTitle,
+          description: 'Automated session recording upload',
+          categoryId: '27',
+        },
+      },
+    });
+
+    this.logJob('log', job, 'YouTube title synchronized', {
+      videoId,
+      videoTitle,
+    });
+  }
+
   private async uploadToYoutube(job: any) {
     if (!YOUTUBE_UPLOAD_ENABLED) {
       this.logJob('warn', job, 'YouTube upload disabled by env flag');
@@ -939,6 +979,7 @@ export class RecordingWorkerService implements OnModuleInit {
 
     // Idempotency guard
     if (job.drive_link) {
+      await this.updateYoutubeTitleIfNeeded(job);
       this.logger.log(`Job ${job.id} already uploaded, skipping`);
       return;
     }
@@ -997,6 +1038,10 @@ export class RecordingWorkerService implements OnModuleInit {
 
     try {
       const videoTitle = await this.getYoutubeUploadTitle(job);
+
+      this.logJob('log', job, 'Resolved YouTube upload title', {
+        videoTitle,
+      });
 
       const res = await this.youtube.videos.insert(
         {
