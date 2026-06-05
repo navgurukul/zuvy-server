@@ -104,8 +104,12 @@ export class LearnerProfileService {
           );
         }
       }
-
-      normalizedPayload.workExperiences = payload.workExperiences;
+      normalizedPayload.workExperiences = payload.workExperiences.map(
+        (exp) => ({
+          ...exp,
+          endDate: exp.isCurrentlyWorking ? null : exp.endDate,
+        }),
+      );
     }
 
     if (
