@@ -3189,6 +3189,7 @@ export const zuvyLearnersRemoteLocation = main.table(
   }),
 );
 
+
 export const zuvyLearnersCompleteProfile = main.table(
   'zuvy_learners_complete_profile',
   {

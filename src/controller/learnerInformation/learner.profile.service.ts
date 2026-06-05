@@ -97,6 +97,14 @@ export class LearnerProfileService {
         );
       }
 
+      for (const exp of payload.workExperiences) {
+        if (!exp.isCurrentlyWorking && !exp.endDate) {
+          throw new BadRequestException(
+            'endDate is required when isCurrentlyWorking is false',
+          );
+        }
+      }
+
       normalizedPayload.workExperiences = payload.workExperiences;
     }
 
