@@ -25,10 +25,23 @@ type RecordingJob = {
   zoom_meeting_id: string;
   zoom_meeting_uuid?: string | null;
   zoom_recording_id?: string | null;
+  zoom_recording_manifest?: RecordingSegment[] | string | null;
+  local_segment_paths?: string[] | string | null;
   status: string;
   retry_count: number;
   drive_link?: string | null;
   table: 'session' | 'mentor';
+};
+
+type RecordingSegment = {
+  id: string;
+  download_url?: string;
+  recording_type?: string;
+  file_type?: string;
+  file_size?: number;
+  recording_start?: string;
+  recording_end?: string;
+  meeting_uuid?: string;
 };
 
 @Injectable()
@@ -81,6 +94,93 @@ export class RecordingWorkerService implements OnModuleInit {
     return job.table === 'mentor'
       ? 'zuvy_mentor_session_recordings'
       : 'zuvy_session_recordings';
+  }
+
+  private parseJsonArray<T>(value: T[] | string | null | undefined): T[] {
+    if (!value) return [];
+    if (Array.isArray(value)) return value;
+
+    try {
+      const parsed = JSON.parse(value);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+
+  private getRecordingPrefix(job: any): string {
+    return job.table === 'mentor'
+      ? `mentor-${job.mentor_booking_id}`
+      : `${job.session_id}`;
+  }
+
+  private getSegmentFileName(
+    job: any,
+    segment: RecordingSegment,
+    index: number,
+  ) {
+    const safeId = String(segment.id || `segment-${index + 1}`).replace(
+      /[^a-zA-Z0-9_-]/g,
+      '_',
+    );
+
+    return `${this.getRecordingPrefix(job)}-${String(index + 1).padStart(
+      2,
+      '0',
+    )}-${safeId}.mp4`;
+  }
+
+  private getMergedFileName(job: any): string {
+    return `${this.getRecordingPrefix(job)}-merged.mp4`;
+  }
+
+  private getTypePriority(type = ''): number {
+    if (type === 'speaker_view') return 0;
+    if (type.includes('shared_screen_with_speaker')) return 1;
+    if (type === 'gallery_view') return 2;
+    return 3;
+  }
+
+  private buildSegmentManifest(files: any[], meetingUuid?: string | null) {
+    const mp4Files = (files || [])
+      .filter((f: any) => f.file_type === 'MP4')
+      .filter((f: any) => !String(f.recording_type || '').includes('chat'));
+
+    const grouped = new Map<string, any[]>();
+    for (const file of mp4Files) {
+      const key = `${file.recording_start || ''}|${file.recording_end || ''}`;
+      const existing = grouped.get(key) || [];
+      existing.push(file);
+      grouped.set(key, existing);
+    }
+
+    return Array.from(grouped.values())
+      .map(
+        (group) =>
+          group.sort((a, b) => {
+            const priority =
+              this.getTypePriority(a.recording_type) -
+              this.getTypePriority(b.recording_type);
+
+            if (priority !== 0) return priority;
+            return Number(b.file_size || 0) - Number(a.file_size || 0);
+          })[0],
+      )
+      .sort(
+        (a, b) =>
+          new Date(a.recording_start || 0).getTime() -
+          new Date(b.recording_start || 0).getTime(),
+      )
+      .map((f) => ({
+        id: f.id,
+        download_url: f.download_url,
+        recording_type: f.recording_type,
+        file_type: f.file_type,
+        file_size: f.file_size,
+        recording_start: f.recording_start,
+        recording_end: f.recording_end,
+        meeting_uuid: meetingUuid || f.meeting_id,
+      }));
   }
 
   /////////////helper function for logging job details/////////////
@@ -211,6 +311,7 @@ export class RecordingWorkerService implements OnModuleInit {
           break;
 
         case 'DOWNLOADED':
+        case 'MERGING':
           await this.mergeRecording(job);
           break;
 
@@ -318,51 +419,34 @@ export class RecordingWorkerService implements OnModuleInit {
       throw err;
     }
 
-    // Log all available recording files for debugging
-    const allMp4Files =
-      recResp?.recording_files?.filter((f: any) => f.file_type === 'MP4') || [];
+    const manifest = this.buildSegmentManifest(
+      recResp?.recording_files || [],
+      job.zoom_meeting_uuid,
+    );
+
     this.logJob('log', job, 'Available MP4 recording files', {
-      count: allMp4Files.length,
-      types: allMp4Files.map((f: any) => ({
+      count:
+        recResp?.recording_files?.filter((f: any) => f.file_type === 'MP4')
+          ?.length || 0,
+      selectedSegments: manifest.length,
+      types: manifest.map((f: any) => ({
         id: f.id,
         recordingType: f.recording_type,
         fileSize: f.file_size,
+        recordingStart: f.recording_start,
         recordingEnd: f.recording_end,
       })),
     });
 
-    // Prioritize recording selection: prefer speaker views over shared screen
-    // This ensures we get complete, properly encoded videos
-    let mp4 = allMp4Files
-      ?.filter((f: any) => !f.recording_type.includes('chat'))
-      ?.sort((a: any, b: any) => {
-        // Priority order: speaker_view > shared_screen_with_speaker_view > others
-        const getTypePriority = (type: string): number => {
-          if (type === 'speaker_view') return 0;
-          if (type.includes('shared_screen_with_speaker')) return 1;
-          if (type === 'gallery_view') return 2;
-          return 3;
-        };
+    const primaryMp4 = manifest[0];
 
-        const priorityDiff =
-          getTypePriority(a.recording_type) - getTypePriority(b.recording_type);
-        if (priorityDiff !== 0) return priorityDiff;
-
-        // Secondary sort: latest recording first
-        return (
-          new Date(b.recording_end).getTime() -
-          new Date(a.recording_end).getTime()
-        );
-      })?.[0];
-
-    this.logJob('log', job, 'Selected MP4 recording', {
-      recordingType: mp4?.recording_type,
-      fileSize: mp4?.file_size,
-      recordingId: mp4?.id,
+    this.logJob('log', job, 'Selected MP4 recording segments', {
+      segmentCount: manifest.length,
+      recordingIds: manifest.map((segment) => segment.id),
     });
 
     // Zoom responded, but recording not ready yet
-    if (!mp4) {
+    if (!manifest.length) {
       const nextRetryCount = job.retry_count + 1;
 
       // TERMINAL FAILURE (real retries only)
@@ -431,7 +515,7 @@ export class RecordingWorkerService implements OnModuleInit {
       await db.execute(sql`
         UPDATE zuvy_mentor_session_recordings
         SET
-          zoom_recording_id = ${mp4.id},
+          zoom_recording_id = ${primaryMp4.id},
           status = 'METADATA_READY'
         WHERE id = ${job.id}
       `);
@@ -439,7 +523,12 @@ export class RecordingWorkerService implements OnModuleInit {
       await db.execute(sql`
         UPDATE zuvy_session_recordings
         SET
-          zoom_recording_id = ${mp4.id},
+          zoom_recording_id = ${primaryMp4.id},
+          zoom_recording_manifest = ${JSON.stringify(manifest)},
+          segments_count = ${manifest.length},
+          metadata_verified = TRUE,
+          recording_start = ${manifest[0]?.recording_start || null},
+          recording_end = ${manifest[manifest.length - 1]?.recording_end || null},
           status = 'METADATA_READY'
         WHERE id = ${job.id}
       `);
@@ -450,11 +539,7 @@ export class RecordingWorkerService implements OnModuleInit {
   // STEP 2 — DOWNLOAD TO TEMP (NO ZoomService CHANGE)
   // =====================================================
   private getRecordingFileName(job: any): string {
-    const prefix =
-      job.table === 'mentor'
-        ? `mentor-${job.mentor_booking_id}`
-        : `${job.session_id}`;
-    return `${prefix}-${job.zoom_recording_id}.mp4`;
+    return `${this.getRecordingPrefix(job)}-${job.zoom_recording_id}.mp4`;
   }
 
   private async downloadRecording(job: any) {
@@ -463,9 +548,23 @@ export class RecordingWorkerService implements OnModuleInit {
       fs.mkdirSync(tempDir, { recursive: true });
     }
 
-    const finalPath = path.join(tempDir, this.getRecordingFileName(job));
+    const manifest = this.parseJsonArray<RecordingSegment>(
+      job.zoom_recording_manifest,
+    );
+    const segments = manifest.length
+      ? manifest
+      : job.zoom_recording_id
+        ? [{ id: job.zoom_recording_id }]
+        : [];
 
-    const lockPath = `${finalPath}.lock`;
+    if (!segments.length) {
+      throw new Error('No Zoom recording segments found for download');
+    }
+
+    const lockPath = path.join(
+      tempDir,
+      `${this.getRecordingPrefix(job)}.download.lock`,
+    );
 
     if (fs.existsSync(lockPath)) {
       this.logger.warn(`Download already in progress for job ${job.id}`);
@@ -475,13 +574,24 @@ export class RecordingWorkerService implements OnModuleInit {
     fs.writeFileSync(lockPath, process.pid.toString());
 
     try {
-      if (!fs.existsSync(finalPath)) {
-        await this.downloadRecordingToFile(
-          job.zoom_meeting_id,
-          job.zoom_recording_id,
-          finalPath,
-          job,
+      const downloadedPaths: string[] = [];
+
+      for (const [index, segment] of segments.entries()) {
+        const finalPath = path.join(
+          tempDir,
+          this.getSegmentFileName(job, segment, index),
         );
+
+        if (!fs.existsSync(finalPath)) {
+          await this.downloadRecordingToFile(
+            job.zoom_meeting_id,
+            segment.id,
+            finalPath,
+            job,
+          );
+        }
+
+        downloadedPaths.push(finalPath);
       }
 
       if (job.table === 'mentor') {
@@ -493,7 +603,10 @@ export class RecordingWorkerService implements OnModuleInit {
       } else {
         await db.execute(sql`
           UPDATE zuvy_session_recordings
-          SET status = 'DOWNLOADING'
+          SET
+            local_segment_paths = ${JSON.stringify(downloadedPaths)},
+            segments_count = ${downloadedPaths.length},
+            status = 'DOWNLOADING'
           WHERE id = ${job.id}
         `);
       }
@@ -701,25 +814,72 @@ export class RecordingWorkerService implements OnModuleInit {
     this.logJob('log', job, 'Starting merge step');
 
     const tempDir = path.join(process.cwd(), 'temp-recordings');
+    const localSegmentPaths = this.parseJsonArray<string>(
+      job.local_segment_paths,
+    );
+    const inputPaths = localSegmentPaths.length
+      ? localSegmentPaths
+      : [path.join(tempDir, this.getRecordingFileName(job))];
 
-    const inputPath = path.join(tempDir, this.getRecordingFileName(job));
-
-    if (!fs.existsSync(inputPath)) {
-      throw new Error('Recording file missing for merge');
+    const missingPath = inputPaths.find(
+      (inputPath) => !fs.existsSync(inputPath),
+    );
+    if (missingPath) {
+      throw new Error(`Recording segment missing for merge: ${missingPath}`);
     }
 
-    const mergedPath = inputPath.replace('.mp4', '-merged.mp4');
+    const mergedPath = path.join(tempDir, this.getMergedFileName(job));
 
     // If already merged, skip
     if (fs.existsSync(mergedPath)) {
       this.logJob('log', job, 'Merged file already exists');
     } else {
-      const { execSync } = require('child_process');
+      const { execFileSync } = require('child_process');
 
       try {
-        execSync(`ffmpeg -y -i "${inputPath}" -c copy "${mergedPath}"`, {
-          stdio: 'ignore',
-        });
+        if (inputPaths.length === 1) {
+          execFileSync(
+            'ffmpeg',
+            ['-y', '-i', inputPaths[0], '-c', 'copy', mergedPath],
+            { stdio: 'ignore' },
+          );
+        } else {
+          const concatListPath = path.join(
+            tempDir,
+            `${this.getRecordingPrefix(job)}-concat.txt`,
+          );
+          const concatList = inputPaths
+            .map(
+              (inputPath) =>
+                `file '${inputPath.replace(/\\/g, '/').replace(/'/g, "'\\''")}'`,
+            )
+            .join('\n');
+
+          fs.writeFileSync(concatListPath, concatList);
+
+          try {
+            execFileSync(
+              'ffmpeg',
+              [
+                '-y',
+                '-f',
+                'concat',
+                '-safe',
+                '0',
+                '-i',
+                concatListPath,
+                '-c',
+                'copy',
+                mergedPath,
+              ],
+              { stdio: 'ignore' },
+            );
+          } finally {
+            try {
+              fs.unlinkSync(concatListPath);
+            } catch {}
+          }
+        }
       } catch (err: any) {
         throw new Error(`FFmpeg merge failed: ${err.message}`);
       }
@@ -739,6 +899,7 @@ export class RecordingWorkerService implements OnModuleInit {
       UPDATE zuvy_session_recordings
       SET
         merged_file_path = ${mergedPath},
+        is_final_merged = TRUE,
         status = 'MERGED'
       WHERE id = ${job.id}
     `);
@@ -746,11 +907,30 @@ export class RecordingWorkerService implements OnModuleInit {
 
     this.logJob('log', job, 'Merge completed', {
       mergedPath,
+      segmentCount: inputPaths.length,
     });
   }
   // =====================================================
   // STEP 3 — UPLOAD TO YOUTUBE (IDEMPOTENT)
   // =====================================================
+  private async getYoutubeUploadTitle(job: RecordingJob): Promise<string> {
+    if (job.table === 'session' && job.session_id) {
+      const result = await db.execute(sql`
+        SELECT title
+        FROM zuvy_sessions
+        WHERE id = ${job.session_id}
+        LIMIT 1
+      `);
+
+      const title = String(result.rows?.[0]?.title || '').trim();
+      if (title) return title;
+    }
+
+    return job.table === 'mentor'
+      ? `Mentor session ${job.mentor_booking_id}`
+      : `Session ${job.session_id}`;
+  }
+
   private async uploadToYoutube(job: any) {
     if (!YOUTUBE_UPLOAD_ENABLED) {
       this.logJob('warn', job, 'YouTube upload disabled by env flag');
@@ -816,15 +996,14 @@ export class RecordingWorkerService implements OnModuleInit {
     });
 
     try {
+      const videoTitle = await this.getYoutubeUploadTitle(job);
+
       const res = await this.youtube.videos.insert(
         {
           part: ['snippet', 'status'],
           requestBody: {
             snippet: {
-              title:
-                job.table === 'mentor'
-                  ? `Mentor session ${job.mentor_booking_id}`
-                  : `Session ${job.session_id}`,
+              title: videoTitle,
               description: 'Automated session recording upload',
             },
             status: { privacyStatus: 'unlisted' },
@@ -864,6 +1043,15 @@ export class RecordingWorkerService implements OnModuleInit {
             drive_file_id = ${videoId},
             drive_link = ${videoUrl}
           WHERE id = ${job.id}
+        `);
+
+        await db.execute(sql`
+          UPDATE zuvy_sessions
+          SET
+            youtube_video_id = ${videoId},
+            s3link = ${videoUrl},
+            final_uploaded = TRUE
+          WHERE id = ${job.session_id}
         `);
       }
 

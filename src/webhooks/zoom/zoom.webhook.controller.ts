@@ -193,37 +193,65 @@ export class ZoomWebhookController {
           .map((f: any) => ({
             id: f.id,
             download_url: f.download_url,
+            file_type: f.file_type,
+            file_size: f.file_size,
+            recording_type: f.recording_type,
             recording_start: f.recording_start,
             recording_end: f.recording_end,
             meeting_uuid: meetingUuid,
           }));
 
         await db.execute(sql`
-INSERT INTO zuvy_session_recordings (
-  session_id,
-  zoom_meeting_id,
-  zoom_meeting_uuid,
-  zoom_recording_manifest,
-  status,
-  recording_start,
-  recording_end,
-  segments_count,
-  retry_count
-)
-VALUES (
-  ${session.id},
-  ${meetingId},
-  ${meetingUuid},
-  ${JSON.stringify(manifest)},
-  'METADATA_READY',
-  ${payload.object.start_time},
-  ${payload.object.recording_files?.[0]?.recording_end},
-  ${manifest.length},
-  0
-)
-ON CONFLICT (session_id, zoom_meeting_uuid)
-DO NOTHING
-`);
+          UPDATE zuvy_session_recordings
+          SET
+            zoom_recording_manifest = ${JSON.stringify(manifest)},
+            status = 'DISCOVERED',
+            recording_start = ${payload.object.start_time},
+            recording_end = ${payload.object.recording_files?.[0]?.recording_end},
+            segments_count = ${manifest.length},
+            retry_count = 0,
+            last_error = NULL,
+            next_retry_at = NULL,
+            updated_at = NOW()
+          WHERE session_id = ${session.id}
+            AND (
+              zoom_meeting_id = ${meetingId}
+              OR zoom_meeting_uuid = ${meetingUuid}
+            )
+        `);
+
+        await db.execute(sql`
+          INSERT INTO zuvy_session_recordings (
+            session_id,
+            zoom_meeting_id,
+            zoom_meeting_uuid,
+            zoom_recording_manifest,
+            status,
+            recording_start,
+            recording_end,
+            segments_count,
+            retry_count
+          )
+          SELECT
+            ${session.id},
+            ${meetingId},
+            ${meetingUuid},
+            ${JSON.stringify(manifest)},
+            'DISCOVERED',
+            ${payload.object.start_time},
+            ${payload.object.recording_files?.[0]?.recording_end},
+            ${manifest.length},
+            0
+          WHERE NOT EXISTS (
+            SELECT 1
+            FROM zuvy_session_recordings
+            WHERE session_id = ${session.id}
+              AND (
+                zoom_meeting_id = ${meetingId}
+                OR zoom_meeting_uuid = ${meetingUuid}
+              )
+          )
+        `);
 
         // Also update mentor session recordings
         await db.execute(sql`
@@ -259,23 +287,31 @@ DO NOTHING
 
         // Optional: ensure recording job exists
         await db.execute(sql`
-      INSERT INTO zuvy_session_recordings (
-        session_id,
-        zoom_meeting_id,
-        zoom_meeting_uuid,
-        status,
-        retry_count
-      )
-      SELECT
-        s.id,
-        ${meetingId},
-        ${meetingUuid},
-        'DISCOVERED',
-        0
-      FROM zuvy_sessions s
-      WHERE s.zoom_meeting_id = ${meetingId}
-      ON CONFLICT (session_id, zoom_meeting_uuid) DO NOTHING
-    `);
+          INSERT INTO zuvy_session_recordings (
+            session_id,
+            zoom_meeting_id,
+            zoom_meeting_uuid,
+            status,
+            retry_count
+          )
+          SELECT
+            s.id,
+            ${meetingId},
+            ${meetingUuid},
+            'DISCOVERED',
+            0
+          FROM zuvy_sessions s
+          WHERE s.zoom_meeting_id = ${meetingId}
+            AND NOT EXISTS (
+              SELECT 1
+              FROM zuvy_session_recordings r
+              WHERE r.session_id = s.id
+                AND (
+                  r.zoom_meeting_id = ${meetingId}
+                  OR r.zoom_meeting_uuid = ${meetingUuid}
+                )
+            )
+        `);
 
         this.recordingWorkerTrigger.triggerNow();
 
