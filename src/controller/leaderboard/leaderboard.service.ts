@@ -942,7 +942,7 @@ export class LeaderboardService {
   ): Promise<
     Array<{
       learnerId: number;
-      name: string; // 👈 add this
+      name: string;
       assessmentPoints: number;
       codingPoints: number;
       quizPoints: number;
@@ -957,7 +957,7 @@ export class LeaderboardService {
       const leaderboardQuery = db
         .select({
           learnerId: zuvyLearnerLeaderboard.learnerId,
-          name: users.name, // 👈 ADD
+          name: users.name,
           assessmentPoints: zuvyLearnerLeaderboard.assessmentPoints,
           codingPoints: zuvyLearnerLeaderboard.codingPoints,
           quizPoints: zuvyLearnerLeaderboard.quizPoints,
@@ -968,10 +968,7 @@ export class LeaderboardService {
           lastActivityAt: zuvyLearnerLeaderboard.lastActivityAt,
         })
         .from(zuvyLearnerLeaderboard)
-        .leftJoin(
-          users,
-          eq(users.id, zuvyLearnerLeaderboard.learnerId), // 👈 JOIN HERE
-        )
+        .leftJoin(users, eq(users.id, zuvyLearnerLeaderboard.learnerId))
 
         .orderBy(sql`${zuvyLearnerLeaderboard.totalPoints} DESC`)
         .limit(limit);
