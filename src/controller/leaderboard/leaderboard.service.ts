@@ -15,6 +15,9 @@ import {
   zuvySessions,
   zuvyProjectTracking,
   AttendanceStatus,
+  zuvyChapterTracking,
+  zuvyModuleChapter,
+  zuvyCourseModules,
 } from '../../../drizzle/schema';
 import { eq, and, sql } from 'drizzle-orm';
 
@@ -521,65 +524,81 @@ export class LeaderboardService {
     >();
 
     try {
-      const recordingViews = await db
+      const recordingCompletions = await db
         .select({
-          userId: zuvySessionRecordViews.userId,
-          sessionId: zuvySessionRecordViews.sessionId,
-          bootcampId: zuvySessions.bootcampId,
-          viewedAt: zuvySessionRecordViews.viewedAt,
+          userId: zuvyChapterTracking.userId,
+          chapterId: zuvyChapterTracking.chapterId,
+          bootcampId: zuvyCourseModules.bootcampId,
+          completedAt: zuvyChapterTracking.completedAt,
         })
-        .from(zuvySessionRecordViews)
+        .from(zuvyChapterTracking)
         .leftJoin(
-          zuvySessions,
-          eq(zuvySessionRecordViews.sessionId, zuvySessions.id),
+          zuvyModuleChapter,
+          eq(zuvyChapterTracking.chapterId, zuvyModuleChapter.id),
         )
-        .where(sql`${zuvySessions.bootcampId} IS NOT NULL`);
+        .leftJoin(
+          zuvyCourseModules,
+          eq(zuvyChapterTracking.moduleId, zuvyCourseModules.id),
+        )
+        .where(
+          and(
+            sql`${zuvyModuleChapter.topicId} = 8`, // Filter for recording chapters (topic_id = 8)
+            sql`${zuvyCourseModules.bootcampId} IS NOT NULL`,
+            sql`${zuvyChapterTracking.completedAt} IS NOT NULL`, // Only completed chapters
+          ),
+        );
 
-      if (recordingViews.length === 0) {
-        this.logger.log('No recording views found');
+      if (recordingCompletions.length === 0) {
+        this.logger.log('No recording completions found');
         return recordingMap;
       }
 
-      this.logger.log(`Found ${recordingViews.length} recording view records`);
+      this.logger.log(
+        `Found ${recordingCompletions.length} recording completion records`,
+      );
 
-      const viewsByLearnerBootcampSession = new Map<string, Set<number>>();
+      const completionsByLearnerBootcamp = new Map<string, Set<number>>();
 
-      for (const view of recordingViews) {
-        if (!view.userId || !view.bootcampId || !view.sessionId) {
+      for (const completion of recordingCompletions) {
+        if (
+          !completion.userId ||
+          !completion.bootcampId ||
+          !completion.chapterId
+        ) {
           continue;
         }
 
-        const key = `${view.userId}-${view.bootcampId}`;
+        const key = `${completion.userId}-${completion.bootcampId}`;
 
-        if (!viewsByLearnerBootcampSession.has(key)) {
-          viewsByLearnerBootcampSession.set(key, new Set());
+        if (!completionsByLearnerBootcamp.has(key)) {
+          completionsByLearnerBootcamp.set(key, new Set());
         }
 
-        const sessionSet = viewsByLearnerBootcampSession.get(key);
-        sessionSet.add(view.sessionId);
+        const chapterSet = completionsByLearnerBootcamp.get(key);
+        chapterSet.add(completion.chapterId);
 
         if (!recordingMap.has(key)) {
           recordingMap.set(key, {
             recordingPoints: 0,
-            lastActivityAt: view.viewedAt || new Date().toISOString(),
+            lastActivityAt: completion.completedAt || new Date().toISOString(),
           });
         } else {
           const entry = recordingMap.get(key);
-          entry.lastActivityAt = view.viewedAt || entry.lastActivityAt;
+          entry.lastActivityAt = completion.completedAt || entry.lastActivityAt;
         }
       }
 
-      for (const [key, sessionSet] of viewsByLearnerBootcampSession.entries()) {
-        const distinctSessionCount = sessionSet.size;
-        const pointsPerSession = 5;
-        const totalRecordingPoints = distinctSessionCount * pointsPerSession;
+      for (const [key, chapterSet] of completionsByLearnerBootcamp.entries()) {
+        const distinctChapterCount = chapterSet.size;
+        const pointsPerRecording = 5;
+        const totalRecordingPoints = distinctChapterCount * pointsPerRecording;
 
         const entry = recordingMap.get(key);
         entry.recordingPoints = totalRecordingPoints;
       }
 
       this.logger.log(
-        `Processed recording views for ${recordingMap.size} learner-bootcamp combinations`,
+        `Processed recording completions for ${recordingMap.size} learner-bootcamp combinations`,
       );
       return recordingMap;
     } catch (error) {
