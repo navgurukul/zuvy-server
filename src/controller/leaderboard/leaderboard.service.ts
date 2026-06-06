@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { users } from '../../../drizzle/schema';
 import { db } from '../../db/index';
 import {
   zuvyAssessmentSubmission,
@@ -15,7 +16,7 @@ import {
   zuvyProjectTracking,
   AttendanceStatus,
 } from '../../../drizzle/schema';
-import { eq, and, sql, count, countDistinct } from 'drizzle-orm';
+import { eq, and, sql } from 'drizzle-orm';
 
 @Injectable()
 export class LeaderboardService {
@@ -941,6 +942,7 @@ export class LeaderboardService {
   ): Promise<
     Array<{
       learnerId: number;
+      name: string; // 👈 add this
       assessmentPoints: number;
       codingPoints: number;
       quizPoints: number;
@@ -955,6 +957,7 @@ export class LeaderboardService {
       const leaderboardQuery = db
         .select({
           learnerId: zuvyLearnerLeaderboard.learnerId,
+          name: users.name, // 👈 ADD
           assessmentPoints: zuvyLearnerLeaderboard.assessmentPoints,
           codingPoints: zuvyLearnerLeaderboard.codingPoints,
           quizPoints: zuvyLearnerLeaderboard.quizPoints,
@@ -965,9 +968,13 @@ export class LeaderboardService {
           lastActivityAt: zuvyLearnerLeaderboard.lastActivityAt,
         })
         .from(zuvyLearnerLeaderboard)
+        .leftJoin(
+          users,
+          eq(users.id, zuvyLearnerLeaderboard.learnerId), // 👈 JOIN HERE
+        )
+
         .orderBy(sql`${zuvyLearnerLeaderboard.totalPoints} DESC`)
         .limit(limit);
-
       const leaderboard = bootcampId
         ? await leaderboardQuery.where(
             eq(zuvyLearnerLeaderboard.bootcampId, bootcampId),
@@ -990,6 +997,8 @@ export class LeaderboardService {
     learnerId: number,
     bootcampId: number,
   ): Promise<{
+    learnerId: number;
+    name: string;
     assessmentPoints: number;
     codingPoints: number;
     quizPoints: number;
@@ -1001,8 +1010,20 @@ export class LeaderboardService {
   } | null> {
     try {
       const learnerEntry = await db
-        .select()
+        .select({
+          learnerId: zuvyLearnerLeaderboard.learnerId,
+          name: users.name,
+          assessmentPoints: zuvyLearnerLeaderboard.assessmentPoints,
+          codingPoints: zuvyLearnerLeaderboard.codingPoints,
+          quizPoints: zuvyLearnerLeaderboard.quizPoints,
+          attendancePoints: zuvyLearnerLeaderboard.attendancePoints,
+          recordingPoints: zuvyLearnerLeaderboard.recordingPoints,
+          assignmentPoints: zuvyLearnerLeaderboard.assignmentPoints,
+          totalPoints: zuvyLearnerLeaderboard.totalPoints,
+          lastActivityAt: zuvyLearnerLeaderboard.lastActivityAt,
+        })
         .from(zuvyLearnerLeaderboard)
+        .leftJoin(users, eq(users.id, zuvyLearnerLeaderboard.learnerId))
         .where(
           and(
             eq(zuvyLearnerLeaderboard.learnerId, learnerId),
@@ -1015,6 +1036,8 @@ export class LeaderboardService {
       }
 
       return {
+        learnerId: learnerEntry[0].learnerId,
+        name: learnerEntry[0].name || '',
         assessmentPoints: learnerEntry[0].assessmentPoints,
         codingPoints: learnerEntry[0].codingPoints,
         quizPoints: learnerEntry[0].quizPoints,
