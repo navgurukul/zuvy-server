@@ -921,6 +921,7 @@ export class RecordingWorkerService implements OnModuleInit {
         WHERE id = ${job.session_id}
            OR zoom_meeting_id = ${job.zoom_meeting_id}
            OR meeting_id = ${job.zoom_meeting_id}
+           OR zoom_meeting_uuid = ${job.zoom_meeting_uuid}
         LIMIT 1
       `);
 
