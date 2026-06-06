@@ -16,7 +16,6 @@ import {
   zuvySessionMerge,
   zuvySessionRecordings,
   licenseAssignments,
-  licenses,
 } from '../../../drizzle/schema';
 import {
   eq,

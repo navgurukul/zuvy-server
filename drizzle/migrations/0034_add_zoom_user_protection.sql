@@ -9,7 +9,7 @@ WHERE lower(zoom_email) IN (
   'vinit@navgurukul.org',
   'dutta.aniket1399@gmail.com',
   'poonam@navgurukul.org',
-  'mentorszuvy@gmail.com'
+  'ujala@navgurukul.org'
 );
 
 SELECT current_database();

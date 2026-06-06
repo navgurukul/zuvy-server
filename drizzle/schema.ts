@@ -2280,7 +2280,7 @@ export const zuvySessions = main.table('zuvy_sessions', {
 
   finalVideoPath: text('final_video_path'),
   finalUploaded: boolean('final_uploaded').default(false),
-  licenseId: integer('license_id').references(() => licenses.id),
+  licenseId: integer('license_id').references(() => zuvyUserLicenses.id),
 });
 
 
@@ -3977,7 +3977,7 @@ export const licenses = main.table('licenses', {
 export const licenseAssignments = main.table('license_assignments', {
   id: bigserial('id', { mode: 'bigint' }).primaryKey().notNull(),
   licenseId: integer('license_id')
-    .references(() => licenses.id)
+    .references(() => zuvyUserLicenses.id)
     .notNull(),
   instructorId: bigint('instructor_id', { mode: 'number' })
     .references(() => users.id)

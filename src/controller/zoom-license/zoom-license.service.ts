@@ -2,7 +2,6 @@ import { Injectable, BadRequestException, Logger } from '@nestjs/common';
 import { db } from '../../db/index';
 import {
   zuvyUserLicenses,
-  licenses,
   licenseAssignments,
   users,
   zuvySessions,
@@ -61,7 +60,7 @@ export class ZoomLicenseService {
   }
 
   private normalizedLicenseEmail() {
-    return sql<string>`lower(${licenses.zoomId})`;
+    return sql<string>`lower(${zuvyUserLicenses.zoomEmail})`;
   }
 
   private normalizedUserEmail() {
@@ -89,9 +88,9 @@ export class ZoomLicenseService {
   ): Promise<number> {
     const normalizedEmail = instructorEmail.trim().toLowerCase();
     const existing = await trx
-      .select({ id: licenses.id })
-      .from(licenses)
-      .where(eq(licenses.zoomId, normalizedEmail))
+      .select({ id: zuvyUserLicenses.id })
+      .from(zuvyUserLicenses)
+      .where(eq(zuvyUserLicenses.zoomEmail, normalizedEmail))
       .limit(1);
 
     if (existing.length > 0) {
@@ -99,13 +98,15 @@ export class ZoomLicenseService {
     }
 
     const inserted = await trx
-      .insert(licenses)
+      .insert(zuvyUserLicenses)
       .values({
-        zoomId: normalizedEmail,
-        name: normalizedEmail,
-        status: 'inactive',
+        zoomEmail: normalizedEmail,
+        userName: normalizedEmail,
+        licenseType: 1,
+        status: 'active',
+        isProtected: false,
       } as any)
-      .returning({ id: licenses.id });
+      .returning({ id: zuvyUserLicenses.id });
 
     return Number(inserted[0].id);
   }
@@ -200,8 +201,8 @@ export class ZoomLicenseService {
 
     const reservedLicenseUsers = await trx
       .select({
-        licenseEmail: licenses.zoomId,
-        licenseName: licenses.name,
+        licenseEmail: zuvyUserLicenses.zoomEmail,
+        licenseName: zuvyUserLicenses.userName,
         instructorEmail: users.email,
         instructorName: users.name,
         sessionId: zuvySessions.id,
@@ -210,7 +211,10 @@ export class ZoomLicenseService {
         endTime: licenseAssignments.endTime,
       })
       .from(licenseAssignments)
-      .innerJoin(licenses, eq(licenseAssignments.licenseId, licenses.id))
+      .innerJoin(
+        zuvyUserLicenses,
+        eq(licenseAssignments.licenseId, zuvyUserLicenses.id),
+      )
       .innerJoin(
         zuvySessions,
         eq(licenseAssignments.sessionId, zuvySessions.id),
@@ -398,14 +402,12 @@ export class ZoomLicenseService {
     const normalizedLicenseEmail = this.normalizedLicenseEmail();
 
     return await trx
-      .select({ id: licenses.id, zoomId: licenses.zoomId })
+      .select({ id: zuvyUserLicenses.id, zoomId: zuvyUserLicenses.zoomEmail })
       .from(zuvyUserLicenses)
-      .innerJoin(licenses, eq(licenses.zoomId, zuvyUserLicenses.zoomEmail))
       .where(
         and(
           eq(zuvyUserLicenses.status, 'active'),
           eq(zuvyUserLicenses.licenseType, 2),
-          eq(licenses.status, 'active'),
           instructorIsProtected
             ? eq(normalizedLicenseEmail, instructorEmail!)
             : protectedEmailList.length
@@ -422,7 +424,7 @@ export class ZoomLicenseService {
               .where(
                 and(
                   this.blockingSessionCondition(),
-                  eq(licenseAssignments.licenseId, licenses.id),
+                  eq(licenseAssignments.licenseId, zuvyUserLicenses.id),
                   sql`${licenseAssignments.startTime} < ${dto.endTime}`,
                   sql`${licenseAssignments.endTime} + ${buildZoomLicenseCooldownIntervalSql()} > ${dto.startTime}`,
                 ),
@@ -452,12 +454,10 @@ export class ZoomLicenseService {
     const totalLicenseCount = await trx
       .select({ count: sql<number>`count(*)` })
       .from(zuvyUserLicenses)
-      .innerJoin(licenses, eq(licenses.zoomId, zuvyUserLicenses.zoomEmail))
       .where(
         and(
           eq(zuvyUserLicenses.status, 'active'),
           eq(zuvyUserLicenses.licenseType, 2),
-          eq(licenses.status, 'active'),
           hasInstructorEmail
             ? instructorIsProtected
               ? eq(normalizedLicenseEmail, instructorEmail!)
@@ -517,7 +517,7 @@ export class ZoomLicenseService {
       : this.alwaysTrueCondition();
     const staleLegacyLicenseCondition = activeLicensedZoomEmails.length
       ? notInArray(
-          sql<string>`lower(${licenses.zoomId})`,
+          sql<string>`lower(${zuvyUserLicenses.zoomEmail})`,
           activeLicensedZoomEmails,
         )
       : this.alwaysTrueCondition();
@@ -539,11 +539,6 @@ export class ZoomLicenseService {
         updatedAt: sql`NOW()`,
       } as any)
       .where(notActiveLicensedUserCondition);
-
-    await db
-      .update(licenses)
-      .set({ status: 'inactive' } as any)
-      .where(staleLegacyLicenseCondition);
 
     this.logger.log(
       `Synced Zoom users. Active licensed emails: ${activeLicensedZoomEmails.join(', ') || 'none'}. Active non-licensed or missing Zoom users are no longer protected/active licensed locally.`,
@@ -821,7 +816,7 @@ export class ZoomLicenseService {
       const activeAssignments = await db
         .select({
           licenseId: licenseAssignments.licenseId,
-          licenseEmail: licenses.zoomId,
+          licenseEmail: zuvyUserLicenses.zoomEmail,
           instructorEmail: users.email,
           instructorName: users.name,
           startTime: licenseAssignments.startTime,
@@ -831,7 +826,10 @@ export class ZoomLicenseService {
           sessionStatus: zuvySessions.status,
         })
         .from(licenseAssignments)
-        .innerJoin(licenses, eq(licenseAssignments.licenseId, licenses.id))
+        .innerJoin(
+          zuvyUserLicenses,
+          eq(licenseAssignments.licenseId, zuvyUserLicenses.id),
+        )
         .innerJoin(users, eq(licenseAssignments.instructorId, users.id))
         .innerJoin(
           zuvySessions,

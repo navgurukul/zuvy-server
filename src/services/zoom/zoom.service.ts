@@ -7,7 +7,6 @@ import {
   zuvyBatches,
   users,
   zuvyUserLicenses,
-  licenses,
 } from '../../../drizzle/schema';
 import { eq, sql } from 'drizzle-orm';
 
@@ -340,27 +339,6 @@ export class ZoomService {
           status: input.status || 'active',
           isProtected: resolvedIsProtected,
           updatedAt: sql`NOW()`,
-        } as any,
-      });
-
-    await db
-      .insert(licenses)
-      .values({
-        zoomId: normalizedEmail,
-        name: input.userName || normalizedEmail,
-        status:
-          input.status === 'active' && input.licenseType === 2
-            ? 'active'
-            : 'inactive',
-      } as any)
-      .onConflictDoUpdate({
-        target: licenses.zoomId,
-        set: {
-          name: input.userName || normalizedEmail,
-          status:
-            input.status === 'active' && input.licenseType === 2
-              ? 'active'
-              : 'inactive',
         } as any,
       });
   }
