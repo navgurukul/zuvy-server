@@ -10,10 +10,14 @@ import {
   userTokens,
   zuvyOrganizations,
   zuvyUserOrganizations,
+  zuvyPermissions,
+  zuvyResources,
+  zuvyPermissionsRoles,
 } from '../../drizzle/schema';
-import { eq, inArray, and, isNull, or } from 'drizzle-orm';
+import { eq, inArray, and, isNull, or, isNotNull } from 'drizzle-orm';
 import { OAuth2Client } from 'google-auth-library';
 import { UserTokensService } from 'src/user-tokens/user-tokens.service';
+import { ResourceList } from 'src/rbac/utility';
 let { GOOGLE_CLIENT_ID, GOOGLE_SECRET, GOOGLE_REDIRECT_URI, JWT_SECRET_KEY } =
   process.env;
 // import { Role } from '../rbac/utility';
@@ -72,6 +76,85 @@ export class AuthService {
     } catch (error) {
       this.logger.error('Error fetching user roles:', error);
       return ['student'];
+    }
+  }
+
+  async getFormattedPermissions(
+    userId: number,
+    orgId: number | null,
+    roles: string[],
+  ): Promise<Record<string, boolean>> {
+    try {
+      const permissionsMap: Record<string, boolean> = {};
+
+      // Initialize all possible permissions to false or just omit them?
+      // The user wants a map of available permissions.
+
+      // Check if user is super_admin
+      if (roles.includes('super_admin')) {
+        Object.values(ResourceList).forEach((resource) => {
+          Object.values(resource).forEach((permissionName) => {
+            permissionsMap[permissionName] = true;
+          });
+        });
+        return permissionsMap;
+      }
+
+      // Fetch permissions from DB
+      const userPermissions = await db
+        .selectDistinct({
+          permission: zuvyPermissions.name,
+          resource: zuvyResources.key, // Use key for mapping
+        })
+        .from(zuvyPermissions)
+        .innerJoin(
+          zuvyResources,
+          eq(zuvyPermissions.resourcesId, zuvyResources.id),
+        )
+        .innerJoin(
+          zuvyPermissionsRoles,
+          eq(zuvyPermissions.id, zuvyPermissionsRoles.permissionId),
+        )
+        .innerJoin(
+          zuvyUserRoles,
+          eq(zuvyPermissionsRoles.roleId, zuvyUserRoles.id),
+        )
+        .innerJoin(
+          zuvyUserRolesAssigned,
+          eq(zuvyUserRoles.id, zuvyUserRolesAssigned.roleId),
+        )
+        .where(
+          and(
+            eq(zuvyUserRolesAssigned.userId, BigInt(userId)),
+            orgId !== null
+              ? eq(zuvyUserRolesAssigned.organizationId, orgId)
+              : isNull(zuvyUserRolesAssigned.organizationId),
+            orgId !== null
+              ? eq(zuvyPermissionsRoles.orgId, orgId)
+              : isNull(zuvyPermissionsRoles.orgId),
+          ),
+        );
+
+      // Map DB permissions to formatted names
+      userPermissions.forEach((p) => {
+        const resourceKey = p.resource.toLowerCase();
+        let action = p.permission.toLowerCase();
+
+        // Database uses 'view' for readability permissions, but ResourceList uses 'read' key
+        if (action === 'view') {
+          action = 'read';
+        }
+
+        if (ResourceList[resourceKey] && ResourceList[resourceKey][action]) {
+          const formattedName = ResourceList[resourceKey][action];
+          permissionsMap[formattedName] = true;
+        }
+      });
+
+      return permissionsMap;
+    } catch (error) {
+      this.logger.error('Error fetching formatted permissions:', error);
+      return {};
     }
   }
 
@@ -166,12 +249,20 @@ export class AuthService {
         selectedOrg?.orgId,
       );
 
+      // Get formatted permissions
+      const permissions = await this.getFormattedPermissions(
+        Number(user.id),
+        selectedOrg?.orgId,
+        roles,
+      );
+
       const jwtPayload = {
         sub: user.id.toString(),
         email: user.email,
         googleUserId: user.googleUserId,
         role: user.mode,
         rolesList: roles,
+        permissions: permissions,
         orgId: selectedOrg?.orgId || null,
         orgName: selectedOrg?.orgName || null,
         isPoc: selectedOrg?.pocEmail === user.email,
@@ -184,20 +275,20 @@ export class AuthService {
         expiresIn: '7d',
       });
 
-      // Store tokens in database for the specific organization (or null orgId for superadmin/student)
+      // Store tokens only for organization-scoped users. Student tokens are
+      // deliberately not persisted in zuvyUserOrganizations.
       const setTokenData = {
         accessToken: access_token,
         refreshToken: refresh_token,
       } as any;
 
-      // Roles that legitimately have NULL organizationId.
-      // - super_admin: global role, intentionally org-less.
-      // - student: no zuvyUserRolesAssigned row; getUserRoles returns ['student'] by default.
-      // All other org-scoped roles (admin, instructor, ops, poc, etc.) MUST have a valid org.
-      const NULL_ORG_ROLES = ['super_admin', 'student'];
-      const isNullOrgAllowed = roles.some((r) => NULL_ORG_ROLES.includes(r));
+      const isStudentOnly =
+        roles.length > 0 && roles.every((role) => role === 'student');
 
-      if (selectedOrg || isNullOrgAllowed) {
+      const isSuperAdmin = roles.includes('super_admin');
+
+      // Store tokens only for non-student users
+      if (!isStudentOnly && (selectedOrg || isSuperAdmin)) {
         await db
           .insert(zuvyUserOrganizations)
           .values({
@@ -214,9 +305,7 @@ export class AuthService {
             ],
             set: setTokenData,
           });
-      } else {
-        // Org-scoped role found but no organization attached — data inconsistency.
-        // Skip token storage rather than persisting a bad NULL row.
+      } else if (!isStudentOnly && roles.length > 0) {
         this.logger.warn(
           `[Login Warning] User "${user.email}" (ID: ${user.id}) has the role(s) "${roles.join(', ')}" ` +
             `but is not linked to any organization. Session token was not saved. ` +
@@ -257,6 +346,7 @@ export class AuthService {
           orgId: selectedOrg?.orgId || null,
           orgName: selectedOrg?.orgName || null,
           isPoc: selectedOrg?.pocEmail === user.email,
+          permissions: permissions,
         },
       };
     } catch (error) {
@@ -390,9 +480,82 @@ export class AuthService {
       }
 
       const payload = await this.jwtService.verifyAsync(token);
+      await this.ensureTokenSessionIsCurrent(token, payload, 'accessToken');
       return payload;
     } catch (error) {
       throw new UnauthorizedException('Invalid token');
+    }
+  }
+
+  private async ensureTokenSessionIsCurrent(
+    token: string,
+    payload: any,
+    tokenColumn: 'accessToken' | 'refreshToken',
+  ) {
+    const userId = Number(payload.sub);
+    const orgId = payload.orgId ?? null;
+    const tokenRoles = Array.isArray(payload.rolesList)
+      ? payload.rolesList
+      : [];
+
+    if (orgId) {
+      const [storedSession] = await db
+        .select({
+          token: zuvyUserOrganizations[tokenColumn],
+        })
+        .from(zuvyUserOrganizations)
+        .where(
+          and(
+            eq(zuvyUserOrganizations.userId, userId),
+            eq(zuvyUserOrganizations.organizationId, orgId),
+          ),
+        )
+        .limit(1);
+
+      if (!storedSession || storedSession.token !== token) {
+        throw new UnauthorizedException('Token is no longer valid');
+      }
+      return;
+    }
+
+    if (tokenRoles.includes('super_admin')) {
+      return;
+    }
+
+    const [orgScopedRole] = await db
+      .select({ id: zuvyUserRolesAssigned.id })
+      .from(zuvyUserRolesAssigned)
+      .where(
+        and(
+          eq(zuvyUserRolesAssigned.userId, BigInt(userId)),
+          isNotNull(zuvyUserRolesAssigned.organizationId),
+        ),
+      )
+      .limit(1);
+
+    if (orgScopedRole) {
+      throw new UnauthorizedException('Session context is no longer valid');
+    }
+
+    if (tokenRoles.includes('student') || tokenRoles.length === 0) {
+      return;
+    }
+
+    const [storedSession] = await db
+      .select({
+        token: zuvyUserOrganizations[tokenColumn],
+      })
+      .from(zuvyUserOrganizations)
+      .where(
+        and(
+          eq(zuvyUserOrganizations.userId, userId),
+          isNull(zuvyUserOrganizations.organizationId),
+        ),
+      )
+      .limit(1);
+
+    if (!storedSession || storedSession.token !== token) {
+      throw new UnauthorizedException('Token is no longer valid');
     }
   }
 
@@ -411,6 +574,11 @@ export class AuthService {
       const payload = await this.jwtService.verifyAsync(refreshToken);
       const userId = payload.sub;
       const orgId = payload.orgId;
+      await this.ensureTokenSessionIsCurrent(
+        refreshToken,
+        payload,
+        'refreshToken',
+      );
 
       // 3. Verify against DB (Strict One Session Per Org)
       if (orgId) {
@@ -438,6 +606,13 @@ export class AuthService {
       // Get user roles
       const roles = await this.getUserRoles(Number(user.id), orgId);
 
+      // Get formatted permissions
+      const permissions = await this.getFormattedPermissions(
+        Number(user.id),
+        orgId,
+        roles,
+      );
+
       let orgName = payload.orgName;
       let pocEmail = null;
       // Refresh org details if needed
@@ -460,6 +635,7 @@ export class AuthService {
         googleUserId: user.googleUserId,
         role: user.mode,
         rolesList: roles,
+        permissions: permissions,
         orgId: orgId,
         orgName: orgName,
         isPoc: pocEmail === user.email,
@@ -571,12 +747,20 @@ export class AuthService {
       roles = [...roles, 'super_admin'];
     }
 
+    // Get formatted permissions
+    const permissions = await this.getFormattedPermissions(
+      Number(userId),
+      targetOrgId,
+      roles,
+    );
+
     const payload = {
       sub: user.id.toString(),
       email: user.email,
       googleUserId: user.googleUserId,
       role: user.mode,
       rolesList: roles,
+      permissions: permissions,
       orgId: targetOrgId,
       orgName: org?.displayName,
       isPoc: org?.pocEmail === user.email,
@@ -620,6 +804,7 @@ export class AuthService {
         orgId: targetOrgId,
         orgName: org?.displayName,
         isPoc: org?.pocEmail === user.email,
+        permissions: permissions,
       },
     };
   }

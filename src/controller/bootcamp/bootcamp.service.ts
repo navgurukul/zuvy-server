@@ -98,17 +98,40 @@ export class BootcampService {
     filter?: string,
   ): Promise<any> {
     try {
-      let query;
-      let countQuery;
-
       if (!orgId || isNaN(Number(orgId))) {
         return [{ status: 'error', message: 'invalid orgId', code: 400 }, null];
       }
 
-      const orgInfo = await db
-        .select()
-        .from(zuvyOrganizations)
-        .where(eq(zuvyOrganizations.id, Number(orgId)));
+      const filterOrgId = Number(orgId);
+      const isAdmin =
+        roleName.includes('admin') || roleName.includes('super_admin');
+      const isInstructor = roleName.includes('instructor') && !isAdmin;
+
+      const isSearchAsNumber =
+        typeof searchTermAsNumber === 'number' ||
+        (typeof searchTermAsNumber === 'string' &&
+          searchTermAsNumber.trim() !== '' &&
+          !isNaN(Number(searchTermAsNumber)));
+      const isSearchAsString = !!searchTermAsString;
+      // 🚀 1. Parallelize initial validation and prerequisite data checks
+      const [orgInfo, userOrgs, batches] = await Promise.all([
+        db
+          .select()
+          .from(zuvyOrganizations)
+          .where(eq(zuvyOrganizations.id, filterOrgId)),
+        isAdmin
+          ? Promise.resolve([])
+          : db
+              .select()
+              .from(zuvyUserRolesAssigned)
+              .where(eq(zuvyUserRolesAssigned.userId, userId)),
+        isInstructor
+          ? db
+              .select()
+              .from(zuvyBatches)
+              .where(eq(zuvyBatches.instructorId, userId))
+          : Promise.resolve([]),
+      ]);
 
       if (orgInfo.length === 0) {
         return [
@@ -121,18 +144,7 @@ export class BootcampService {
         ];
       }
 
-      let filterOrgId = Number(orgId);
-
-      // Fetch user's organizations
-      const userOrgs = await db
-        .select()
-        .from(zuvyUserRolesAssigned)
-        .where(eq(zuvyUserRolesAssigned.userId, userId));
-
-      // Verify user belongs to the requested organization
-      if (roleName.includes('admin') || roleName.includes('super_admin')) {
-        // Admins can see any org's bootcamps
-      } else {
+      if (!isAdmin) {
         const belongsToOrg = userOrgs.some(
           (org) => org.organizationId == filterOrgId,
         );
@@ -152,147 +164,56 @@ export class BootcampService {
       const lowerFilter = filter ? filter.toLowerCase() : 'all';
 
       if (lowerFilter === 'public') {
-        if (filterOrgId) {
-          orgCondition = and(
-            eq(zuvyBootcampType.type, 'Public'),
-            or(
-              eq(zuvyBootcamps.organizationId, filterOrgId),
-              isNull(zuvyBootcamps.organizationId),
-            ),
-          );
-        } else {
-          orgCondition = eq(zuvyBootcampType.type, 'Public');
-        }
+        orgCondition = filterOrgId
+          ? and(
+              eq(zuvyBootcampType.type, 'Public'),
+              or(
+                eq(zuvyBootcamps.organizationId, filterOrgId),
+                isNull(zuvyBootcamps.organizationId),
+              ),
+            )
+          : eq(zuvyBootcampType.type, 'Public');
       } else if (lowerFilter === 'private') {
-        if (filterOrgId) {
-          orgCondition = and(
-            eq(zuvyBootcampType.type, 'Private'),
-            eq(zuvyBootcamps.organizationId, filterOrgId),
-          );
-        } else {
-          // If no org allowed, return no private bootcamps
-          orgCondition = sql`1=0`;
-        }
+        orgCondition = filterOrgId
+          ? and(
+              eq(zuvyBootcampType.type, 'Private'),
+              eq(zuvyBootcamps.organizationId, filterOrgId),
+            )
+          : sql`1=0`;
       } else {
-        // 'all' or default
-        orgCondition = isNull(zuvyBootcamps.organizationId);
-        if (filterOrgId) {
-          orgCondition = or(
-            orgCondition,
-            eq(zuvyBootcamps.organizationId, filterOrgId),
-          );
-        }
+        orgCondition = filterOrgId
+          ? or(
+              isNull(zuvyBootcamps.organizationId),
+              eq(zuvyBootcamps.organizationId, filterOrgId),
+            )
+          : isNull(zuvyBootcamps.organizationId);
       }
 
-      const isSearchAsNumber =
-        typeof searchTermAsNumber === 'number' ||
-        (typeof searchTermAsNumber === 'string' &&
-          searchTermAsNumber.trim() !== '' &&
-          !isNaN(Number(searchTermAsNumber)));
+      let finalCondition;
 
       if (isSearchAsNumber) {
-        let searchCondition = sql`${zuvyBootcamps.id} = ${Number(searchTermAsNumber)}`;
-        if (orgCondition) {
-          searchCondition = and(searchCondition, orgCondition);
-        }
-        query = db
-          .select({
-            id: zuvyBootcamps.id,
-            name: zuvyBootcamps.name,
-            description: zuvyBootcamps.description,
-            collaborator: zuvyBootcamps.collaborator,
-            coverImage: zuvyBootcamps.coverImage,
-            bootcampTopic: zuvyBootcamps.bootcampTopic,
-            startTime: zuvyBootcamps.startTime,
-            duration: zuvyBootcamps.duration,
-            language: zuvyBootcamps.language,
-            organizationId: zuvyBootcamps.organizationId,
-            createdAt: zuvyBootcamps.createdAt,
-            updatedAt: zuvyBootcamps.updatedAt,
-            version: zuvyBootcamps.version,
-            code: zuvyOrganizations.displayName,
-            bootcampType: zuvyBootcampType.type,
-          })
-          .from(zuvyBootcamps)
-          .leftJoin(
-            zuvyOrganizations,
-            eq(zuvyBootcamps.organizationId, zuvyOrganizations.id),
-          )
-          .leftJoin(
-            zuvyBootcampType,
-            eq(zuvyBootcamps.id, zuvyBootcampType.bootcampId),
-          )
-          .where(searchCondition)
-          .orderBy(desc(zuvyBootcamps.updatedAt))
-          .limit(limit)
-          .offset(offset);
-        countQuery = db
-          .select({ count: count(zuvyBootcamps.id) })
-          .from(zuvyBootcamps)
-          .leftJoin(
-            zuvyBootcampType,
-            eq(zuvyBootcamps.id, zuvyBootcampType.bootcampId),
-          )
-          .where(searchCondition);
-      } else if (searchTermAsString) {
-        const searchTokens = searchTermAsString.split(/\s+/); // Split by whitespace
+        finalCondition = sql`${zuvyBootcamps.id} = ${Number(searchTermAsNumber)}`;
+        if (orgCondition) finalCondition = and(finalCondition, orgCondition);
+      } else if (isSearchAsString) {
+        const searchTokens = searchTermAsString.split(/\s+/);
         const searchConditions = searchTokens.map(
           (token) =>
             sql`LOWER(${zuvyBootcamps.name}) LIKE ${'%' + token.toLowerCase() + '%'}`,
         );
+        finalCondition = and(...searchConditions);
+        if (orgCondition) finalCondition = and(finalCondition, orgCondition);
+      } else {
+        finalCondition = orgCondition;
+      }
 
-        let finalSearchCondition = and(...searchConditions);
-        if (orgCondition) {
-          finalSearchCondition = and(finalSearchCondition, orgCondition);
-        }
-
-        query = db
-          .select({
-            id: zuvyBootcamps.id,
-            name: zuvyBootcamps.name,
-            description: zuvyBootcamps.description,
-            collaborator: zuvyBootcamps.collaborator,
-            coverImage: zuvyBootcamps.coverImage,
-            bootcampTopic: zuvyBootcamps.bootcampTopic,
-            startTime: zuvyBootcamps.startTime,
-            duration: zuvyBootcamps.duration,
-            language: zuvyBootcamps.language,
-            organizationId: zuvyBootcamps.organizationId,
-            createdAt: zuvyBootcamps.createdAt,
-            updatedAt: zuvyBootcamps.updatedAt,
-            version: zuvyBootcamps.version,
-            code: zuvyOrganizations.displayName,
-            bootcampType: zuvyBootcampType.type,
-          })
-          .from(zuvyBootcamps)
-          .leftJoin(
-            zuvyOrganizations,
-            eq(zuvyBootcamps.organizationId, zuvyOrganizations.id),
-          )
-          .leftJoin(
-            zuvyBootcampType,
-            eq(zuvyBootcamps.id, zuvyBootcampType.bootcampId),
-          )
-          .where(finalSearchCondition)
-          .orderBy(desc(zuvyBootcamps.updatedAt))
-          .limit(limit)
-          .offset(offset);
-
-        countQuery = db
-          .select({ count: count(zuvyBootcamps.id) })
-          .from(zuvyBootcamps)
-          .leftJoin(
-            zuvyBootcampType,
-            eq(zuvyBootcamps.id, zuvyBootcampType.bootcampId),
-          )
-          .where(finalSearchCondition);
-      } else if (roleName.includes('instructor')) {
-        //first get all batches assigned to the instructor in zuvyBatches table then get all bootcampas from zuvyBootcamps table
-        const batches = await db
-          .select()
-          .from(zuvyBatches)
-          .where(eq(zuvyBatches.instructorId, userId));
-        const bootcampIds = batches.map((batch) => batch.bootcampId);
+      if (isInstructor) {
+        const bootcampIds = [
+          ...new Set(
+            batches
+              .map((batch) => Number(batch.bootcampId))
+              .filter((bootcampId) => Number.isFinite(bootcampId)),
+          ),
+        ];
         if (bootcampIds.length === 0) {
           return [
             null,
@@ -306,109 +227,62 @@ export class BootcampService {
           ];
         }
 
-        let condition = or(
-          isNull(zuvyBootcamps.organizationId),
-          eq(zuvyBootcampType.type, 'Public'),
-          inArray(zuvyBootcamps.id, bootcampIds),
+        const instructorCourseCondition = inArray(
+          zuvyBootcamps.id,
+          bootcampIds,
         );
-        if (orgCondition) {
-          condition = and(condition, orgCondition);
-        }
-
-        query = db
-          .select({
-            id: zuvyBootcamps.id,
-            name: zuvyBootcamps.name,
-            description: zuvyBootcamps.description,
-            collaborator: zuvyBootcamps.collaborator,
-            coverImage: zuvyBootcamps.coverImage,
-            bootcampTopic: zuvyBootcamps.bootcampTopic,
-            startTime: zuvyBootcamps.startTime,
-            duration: zuvyBootcamps.duration,
-            language: zuvyBootcamps.language,
-            organizationId: zuvyBootcamps.organizationId,
-            createdAt: zuvyBootcamps.createdAt,
-            updatedAt: zuvyBootcamps.updatedAt,
-            version: zuvyBootcamps.version,
-            code: zuvyOrganizations.displayName,
-            bootcampType: zuvyBootcampType.type,
-          })
-          .from(zuvyBootcamps)
-          .leftJoin(
-            zuvyOrganizations,
-            eq(zuvyBootcamps.organizationId, zuvyOrganizations.id),
-          )
-          .leftJoin(
-            zuvyBootcampType,
-            eq(zuvyBootcamps.id, zuvyBootcampType.bootcampId),
-          )
-          .where(condition)
-          .orderBy(desc(zuvyBootcamps.updatedAt))
-          .limit(limit)
-          .offset(offset);
-
-        countQuery = db
-          .select({ count: count(zuvyBootcamps.id) })
-          .from(zuvyBootcamps)
-          .leftJoin(
-            zuvyBootcampType,
-            eq(zuvyBootcamps.id, zuvyBootcampType.bootcampId),
-          )
-          .where(condition);
-      } else {
-        query = db
-          .select({
-            id: zuvyBootcamps.id,
-            name: zuvyBootcamps.name,
-            description: zuvyBootcamps.description,
-            collaborator: zuvyBootcamps.collaborator,
-            coverImage: zuvyBootcamps.coverImage,
-            bootcampTopic: zuvyBootcamps.bootcampTopic,
-            startTime: zuvyBootcamps.startTime,
-            duration: zuvyBootcamps.duration,
-            language: zuvyBootcamps.language,
-            organizationId: zuvyBootcamps.organizationId,
-            createdAt: zuvyBootcamps.createdAt,
-            updatedAt: zuvyBootcamps.updatedAt,
-            version: zuvyBootcamps.version,
-            code: zuvyOrganizations.displayName,
-            bootcampType: zuvyBootcampType.type,
-          })
-          .from(zuvyBootcamps)
-          .leftJoin(
-            zuvyOrganizations,
-            eq(zuvyBootcamps.organizationId, zuvyOrganizations.id),
-          )
-          .leftJoin(
-            zuvyBootcampType,
-            eq(zuvyBootcamps.id, zuvyBootcampType.bootcampId),
-          );
-        if (orgCondition) {
-          query = query.where(orgCondition);
-        }
-        query = query
-          .orderBy(desc(zuvyBootcamps.updatedAt))
-          .limit(limit)
-          .offset(offset);
-
-        countQuery = db
-          .select({ count: count(zuvyBootcamps.id) })
-          .from(zuvyBootcamps)
-          .leftJoin(
-            zuvyBootcampType,
-            eq(zuvyBootcamps.id, zuvyBootcampType.bootcampId),
-          );
-        if (orgCondition) {
-          countQuery = countQuery.where(orgCondition);
-        }
+        finalCondition = finalCondition
+          ? and(finalCondition, instructorCourseCondition)
+          : instructorCourseCondition;
       }
 
-      const getBootcamps = await query;
+      // 🚀 2. D.R.Y Query Definition
+      let baseQuery: any = db
+        .select({
+          id: zuvyBootcamps.id,
+          name: zuvyBootcamps.name,
+          description: zuvyBootcamps.description,
+          collaborator: zuvyBootcamps.collaborator,
+          coverImage: zuvyBootcamps.coverImage,
+          bootcampTopic: zuvyBootcamps.bootcampTopic,
+          startTime: zuvyBootcamps.startTime,
+          duration: zuvyBootcamps.duration,
+          language: zuvyBootcamps.language,
+          organizationId: zuvyBootcamps.organizationId,
+          createdAt: zuvyBootcamps.createdAt,
+          updatedAt: zuvyBootcamps.updatedAt,
+          version: zuvyBootcamps.version,
+          code: zuvyOrganizations.displayName,
+          bootcampType: zuvyBootcampType.type,
+          mentorshipEnabled: zuvyBootcampType.mentorshipEnabled,
+        })
+        .from(zuvyBootcamps)
+        .leftJoin(
+          zuvyOrganizations,
+          eq(zuvyBootcamps.organizationId, zuvyOrganizations.id),
+        )
+        .leftJoin(
+          zuvyBootcampType,
+          eq(zuvyBootcamps.id, zuvyBootcampType.bootcampId),
+        );
 
-      const totalCountQuery = await countQuery;
-      const totalCount = totalCountQuery[0].count;
+      let countQuery: any = db
+        .select({ count: count(zuvyBootcamps.id) })
+        .from(zuvyBootcamps)
+        .leftJoin(
+          zuvyBootcampType,
+          eq(zuvyBootcamps.id, zuvyBootcampType.bootcampId),
+        );
 
-      const totalPages = Math.ceil(totalCount / limit);
+      if (finalCondition) {
+        baseQuery = baseQuery.where(finalCondition);
+        countQuery = countQuery.where(finalCondition);
+      }
+
+      baseQuery = baseQuery
+        .orderBy(desc(zuvyBootcamps.updatedAt))
+        .limit(limit)
+        .offset(offset);
 
       const targetPermissions = [
         ResourceList.course.create,
@@ -418,25 +292,55 @@ export class BootcampService {
         ResourceList.question.read,
         ResourceList.rolesandpermission.read,
       ];
-      // Get permissions for all resources if userId is provided
-      let allPermissions = {};
-      const permissionResult = await this.rbacService.getAllPermissions(
-        roleName,
-        targetPermissions,
-        orgId,
-      );
-      allPermissions = permissionResult.permissions || {};
 
-      const data = await Promise.all(
-        getBootcamps.map(async (bootcamp) => {
-          let [err, res] = await this.enrollData(bootcamp.id);
-          if (err) {
-            return [err, null];
-          }
+      // 🚀 3. Fire base query, count query, and RBAC permissions concurrently
+      const [getBootcamps, totalCountQuery, permissionResult] =
+        await Promise.all([
+          baseQuery,
+          countQuery,
+          this.rbacService.getAllPermissions(
+            roleName,
+            targetPermissions,
+            orgId,
+          ),
+        ]);
 
-          return { ...bootcamp, ...res };
-        }),
-      );
+      const totalCount = totalCountQuery[0].count;
+      const totalPages = Math.ceil(totalCount / limit);
+      const allPermissions = permissionResult?.permissions || {};
+
+      // 🚀 4. THE N+1 FIX: Fetch all enroll data in ONE query instead of looping
+      if (getBootcamps.length === 0) {
+        return [
+          null,
+          {
+            data: [],
+            permissions: allPermissions,
+            totalBootcamps: totalCount,
+            totalPages,
+          },
+        ];
+      }
+
+      const bootcampIds = getBootcamps.map((b) => b.id);
+      const [enrollErr, bulkEnrollData] =
+        await this.getBulkEnrollData(bootcampIds); // Look at the helper below
+
+      if (enrollErr) {
+        return [enrollErr, null];
+      }
+
+      // Merge the data entirely in memory (Instantaneous)
+      const data = getBootcamps.map((bootcamp) => {
+        // Find the specific enroll data for this bootcamp using the ID key
+        const res = bulkEnrollData[bootcamp.id] || {};
+
+        return {
+          ...bootcamp,
+          mentorshipEnabled: bootcamp.mentorshipEnabled ?? false,
+          ...res,
+        };
+      });
 
       return [
         null,
@@ -450,6 +354,69 @@ export class BootcampService {
     } catch (e) {
       log(`error: ${e.message}`);
       return [{ status: 'error', message: e.message, code: 500 }, null];
+    }
+  }
+
+  async getBulkEnrollData(bootcampIds: number[]) {
+    try {
+      if (!bootcampIds || bootcampIds.length === 0) return [null, {}];
+
+      // 1. Fetch ALL enrollments for the requested bootcamps in ONE query
+      const allEnrollments = await db
+        .select({
+          bootcampId: zuvyBatchEnrollments.bootcampId,
+          batchId: zuvyBatchEnrollments.batchId,
+        })
+        .from(zuvyBatchEnrollments)
+        .where(inArray(zuvyBatchEnrollments.bootcampId, bootcampIds));
+
+      // 2. Fetch ALL batches for the requested bootcamps in ONE query
+      const allBatches = await db
+        .select({
+          id: zuvyBatches.id,
+          bootcampId: zuvyBatches.bootcampId,
+        })
+        .from(zuvyBatches)
+        .where(inArray(zuvyBatches.bootcampId, bootcampIds));
+
+      // 3. Organize batches by bootcampId for O(1) instantaneous lookup
+      const validBatchesByBootcamp = {};
+      allBatches.forEach((batch) => {
+        if (!validBatchesByBootcamp[batch.bootcampId]) {
+          validBatchesByBootcamp[batch.bootcampId] = new Set();
+        }
+        validBatchesByBootcamp[batch.bootcampId].add(batch.id);
+      });
+
+      // 4. Calculate stats mathematically identical to your original logic
+      const result = {};
+
+      // Initialize the default response structure for every ID
+      bootcampIds.forEach((id) => {
+        result[id] = { students_in_bootcamp: 0, unassigned_students: 0 };
+      });
+
+      // Tally the counts entirely in memory (lightning fast)
+      allEnrollments.forEach((enrollment) => {
+        const { bootcampId, batchId } = enrollment;
+
+        // Increment total students for this bootcamp
+        result[bootcampId].students_in_bootcamp += 1;
+
+        // Check if this student is inside a valid batch for this bootcamp
+        const validBatches = validBatchesByBootcamp[bootcampId];
+        const isAssigned = validBatches && validBatches.has(batchId);
+
+        // If they are not assigned to a valid batch, count them as unassigned
+        if (!isAssigned) {
+          result[bootcampId].unassigned_students += 1;
+        }
+      });
+
+      return [null, result];
+    } catch (error) {
+      log(`error in getBulkEnrollData: ${error.message}`);
+      return [{ status: 'error', message: error.message, code: 500 }, null];
     }
   }
 

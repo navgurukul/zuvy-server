@@ -225,6 +225,18 @@ ON CONFLICT (session_id, zoom_meeting_uuid)
 DO NOTHING
 `);
 
+        // Also update mentor session recordings
+        await db.execute(sql`
+      UPDATE zuvy_mentor_session_recordings
+      SET
+        status = 'DISCOVERED',
+        retry_count = 0,
+        last_error = NULL,
+        next_retry_at = NULL
+      WHERE zoom_meeting_id = ${meetingId}
+         OR zoom_meeting_uuid = ${meetingUuid}
+    `);
+
         this.recordingWorkerTrigger.triggerNow();
 
         await db.execute(sql`

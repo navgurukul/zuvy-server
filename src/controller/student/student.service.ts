@@ -20,6 +20,8 @@ import {
   zuvyAssignmentSubmission,
   zuvyOrganizations,
   zuvyStudentAttendanceRecords,
+  zuvyMentorSlotBooking,
+  zuvyMentorSlotAvailability,
 } from '../../../drizzle/schema';
 import { db } from '../../db/index';
 import {
@@ -634,9 +636,63 @@ export class StudentService {
     }
   }
 
-  async removingStudent(user_id: number | number[], bootcamp_id: number) {
+  async removingStudent(
+    user_id: number | number[],
+    bootcamp_id: number,
+    requester?: any,
+  ) {
     try {
       const userIdsArray = Array.isArray(user_id) ? user_id : [user_id];
+      const requesterRoles = requester?.roles || [];
+      const isInstructorOnly =
+        requesterRoles.includes('instructor') &&
+        !requesterRoles.some((role: string) =>
+          ['admin', 'ops', 'super_admin'].includes(role),
+        );
+
+      if (isInstructorOnly) {
+        const targetEnrollments = await db
+          .select({
+            userId: zuvyBatchEnrollments.userId,
+            batchId: zuvyBatchEnrollments.batchId,
+            instructorId: zuvyBatches.instructorId,
+          })
+          .from(zuvyBatchEnrollments)
+          .leftJoin(
+            zuvyBatches,
+            eq(zuvyBatchEnrollments.batchId, zuvyBatches.id),
+          )
+          .where(
+            and(
+              inArray(zuvyBatchEnrollments.userId, userIdsArray.map(BigInt)),
+              eq(zuvyBatchEnrollments.bootcampId, bootcamp_id),
+            ),
+          );
+
+        if (targetEnrollments.length === 0) {
+          return [
+            { status: 'error', message: 'ID not found', code: 404 },
+            null,
+          ];
+        }
+
+        const canManageAllTargets = targetEnrollments.every(
+          (enrollment) =>
+            enrollment.batchId !== null &&
+            Number(enrollment.instructorId) === Number(requester.id),
+        );
+
+        if (!canManageAllTargets) {
+          return [
+            {
+              status: 'error',
+              message: 'Unauthorized access',
+              code: 403,
+            },
+            null,
+          ];
+        }
+      }
 
       // Fetch user details before deletion so tracking log can show real names
       const removedUsers = await db
@@ -1005,6 +1061,36 @@ export class StudentService {
           upcomingAssignmentsPromise,
         ]);
 
+      const upcomingMentorSessions = await db
+        .select({
+          id: zuvyMentorSlotBooking.id,
+          mentorName: users.name,
+          slotStart: zuvyMentorSlotAvailability.slotStartDateTime,
+          slotEnd: zuvyMentorSlotAvailability.slotEndDateTime,
+          topic: zuvyMentorSlotAvailability.topic,
+          meetingLink: zuvyMentorSlotBooking.meetingLink,
+          meetingType: zuvyMentorSlotAvailability.meetingType,
+          slotType: zuvyMentorSlotAvailability.slotType,
+          sessionStatus: zuvyMentorSlotBooking.sessionLifecycleState,
+          bookingStatus: zuvyMentorSlotBooking.status,
+        })
+        .from(zuvyMentorSlotBooking)
+        .leftJoin(users, eq(users.id, zuvyMentorSlotBooking.mentorUserId))
+        .leftJoin(
+          zuvyMentorSlotAvailability,
+          eq(
+            zuvyMentorSlotAvailability.id,
+            zuvyMentorSlotBooking.slotAvailabilityId,
+          ),
+        )
+        .where(
+          and(
+            eq(zuvyMentorSlotBooking.studentUserId, BigInt(student_id)),
+            eq(zuvyMentorSlotBooking.sessionLifecycleState, 'SCHEDULED'),
+          ),
+        )
+        .orderBy(asc(zuvyMentorSlotAvailability.slotStartDateTime));
+
       const formattedClasses = (upcomingClasses as any[]).map((c) => ({
         type: 'Live Class' as const,
         id: Number(c.id),
@@ -1051,6 +1137,21 @@ export class StudentService {
         eventDate: a.completionDate,
       }));
 
+      const formattedMentorSessions = upcomingMentorSessions.map((s) => ({
+        type: 'Mentor Session' as const,
+        id: Number(s.id),
+        mentorName: s.mentorName || 'Mentor',
+        title: s.topic || 'Mentor Session',
+        startTime: s.slotStart,
+        endTime: s.slotEnd,
+        sessionStatus: s.sessionStatus,
+        bookingStatus: s.bookingStatus,
+        meetingLink: s.meetingLink,
+        meetingType: s.meetingType,
+        slotType: s.slotType,
+        eventDate: s.slotStart,
+      }));
+
       const allEvents = [
         ...formattedClasses,
         ...formattedAssessments,
@@ -1076,6 +1177,7 @@ export class StudentService {
             events: paginatedEvents,
             totalEvents,
             totalPages,
+            mentorSessions: formattedMentorSessions,
           },
         },
       ];

@@ -152,6 +152,15 @@ export class PatchBootcampSettingDto {
   @IsOptional()
   @IsBoolean()
   isModuleLocked?: boolean;
+
+  @ApiProperty({
+    type: Boolean,
+    example: false,
+    required: false,
+  })
+  @IsOptional()
+  @IsBoolean()
+  mentorshipEnabled?: boolean;
 }
 
 export class PatchBootcampDto {

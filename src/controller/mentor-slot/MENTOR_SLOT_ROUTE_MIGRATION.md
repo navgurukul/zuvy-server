@@ -1,0 +1,67 @@
+# Mentor Slot API Route Migration
+
+This document maps the old mentor-slot APIs to the new role-separated APIs.
+
+Old APIs are still present for backward compatibility. Frontend can migrate by replacing the route path with the matching new route below.
+
+## Student Routes
+
+| Feature                       | Old Route                                                 | New Route                                                                  | Definition Change                                                                                                                                                                         |
+| ----------------------------- | --------------------------------------------------------- | -------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| List/search mentors           | `GET /mentors`                                            | `GET /student/mentors`                                                     | No request definition change. Same query DTO: `limit`, `offset`, `role`, `expertise`, `title`, `search`. New route is JWT-protected because it is inside the student controller.          |
+| Get mentor profile            | `GET /mentors/:mentorUserId`                              | `GET /student/mentors/:mentorUserId`                                       | No parameter definition change. New route is JWT-protected.                                                                                                                               |
+| Get mentor availability       | `GET /mentors/:mentorId/availability`                     | `GET /student/mentors/:mentorId/availability`                              | No parameter definition change. New route is JWT-protected.                                                                                                                               |
+| Book mentor slot              | `POST /mentor-slots/book`                                 | `POST /student/mentor-slots/book`                                          | No body change. Uses `BookSlotDto` with `slotId`.                                                                                                                                         |
+| Student bookings              | `GET /mentor-slots/student/my`                            | `GET /student/mentor-slots/my`                                             | No request definition change.                                                                                                                                                             |
+| Student booking metrics       | `GET /mentor-slots/student/metrics`                       | `GET /student/mentor-slots/metrics`                                        | No request definition change.                                                                                                                                                             |
+| Request reschedule            | `POST /mentor-slots/:bookingId/reschedule?slotId=:slotId` | `POST /student/mentor-slots/bookings/:bookingId/reschedule?slotId=:slotId` | No body/query definition change. Uses `ProposeRescheduleDto` body with `reason`; `slotId` remains query param. New service check requires the booking to belong to the logged-in student. |
+| Cancel booking as student     | `POST /mentor-slots/:bookingId/cancel`                    | `POST /student/mentor-slots/bookings/:bookingId/cancel`                    | No body change. Uses `CancelBookingDto` with `reason`, `cancelledBy`. New service check requires logged-in user to own the booking and match `cancelledBy`.                               |
+| Booking recordings as student | `GET /mentor-slots/:bookingId/recordings`                 | `GET /student/mentor-slots/bookings/:bookingId/recordings`                 | No parameter definition change.                                                                                                                                                           |
+| Student session list          | `GET /mentor-sessions/my`                                 | `GET /student/mentor-sessions/my`                                          | No query definition change. Optional query params: `filter`, `limit`, `offset`.                                                                                                           |
+| Student session detail        | `GET /mentor-sessions/:sessionId`                         | `GET /student/mentor-sessions/:sessionId`                                  | No parameter definition change.                                                                                                                                                           |
+
+## Instructor Routes
+
+| Feature                          | Old Route                                          | New Route                                                              | Definition Change                                                                                                                                           |
+| -------------------------------- | -------------------------------------------------- | ---------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Create mentor slot               | `POST /mentor-slots/create`                        | `POST /instructor/mentor-slots/create`                                 | No body change. Uses `CreateSlotDto`.                                                                                                                       |
+| Delete mentor slot               | `DELETE /mentor-slots/:slotId`                     | `DELETE /instructor/mentor-slots/:slotId`                              | No parameter definition change.                                                                                                                             |
+| Instructor weekly slots          | `GET /mentor-slots/my`                             | `GET /instructor/mentor-slots/my`                                      | No query definition change. `sort` remains optional and supports `asc`, `desc`. `weekOffset` remains optional.                                              |
+| Slot details                     | `GET /mentor-slots/:slotId/details`                | `GET /instructor/mentor-slots/:slotId/details`                         | No parameter definition change. This is instructor-owned only in service behavior.                                                                          |
+| Accept reschedule                | `POST /mentor-slots/:bookingId/reschedule/accept`  | `POST /instructor/mentor-slots/bookings/:bookingId/reschedule/accept`  | No body change. New service check requires the booking to belong to the logged-in instructor.                                                               |
+| Decline reschedule               | `POST /mentor-slots/:bookingId/reschedule/decline` | `POST /instructor/mentor-slots/bookings/:bookingId/reschedule/decline` | No body change. New service check requires the booking to belong to the logged-in instructor.                                                               |
+| Submit mentor feedback           | `POST /mentor-slots/:bookingId/feedback`           | `POST /instructor/mentor-slots/bookings/:bookingId/feedback`           | No body change. Uses `FeedbackDto`. New service check requires the booking to belong to the logged-in instructor.                                           |
+| Mark attendance                  | `POST /mentor-slots/:bookingId/attendance`         | `POST /instructor/mentor-slots/bookings/:bookingId/attendance`         | No body change. Uses `AttendanceDto`. New service check requires the booking to belong to the logged-in instructor.                                         |
+| Complete session                 | `POST /mentor-slots/:bookingId/complete`           | `POST /instructor/mentor-slots/bookings/:bookingId/complete`           | No body change. New service check requires the booking to belong to the logged-in instructor.                                                               |
+| Cancel booking as instructor     | `POST /mentor-slots/:bookingId/cancel`             | `POST /instructor/mentor-slots/bookings/:bookingId/cancel`             | No body change. Uses `CancelBookingDto` with `reason`, `cancelledBy`. New service check requires logged-in user to own the booking and match `cancelledBy`. |
+| Booking recordings as instructor | `GET /mentor-slots/:bookingId/recordings`          | `GET /instructor/mentor-slots/bookings/:bookingId/recordings`          | No parameter definition change.                                                                                                                             |
+| Update mentor profile            | `PATCH /mentor-slots/mentor/profile`               | `PATCH /instructor/mentor-slots/profile`                               | No body change. Uses `UpdateMentorProfileDto`.                                                                                                              |
+| Get own mentor profile           | `GET /mentor-slots/mentor/profile`                 | `GET /instructor/mentor-slots/profile`                                 | No request definition change.                                                                                                                               |
+| Create/update mentor profile     | `POST /mentor-slots/mentor/profile`                | `POST /instructor/mentor-slots/profile`                                | No body change. Uses `UpdateMentorProfileDto`.                                                                                                              |
+| Mentor metrics                   | `GET /mentor-slots/metrics/me`                     | `GET /instructor/mentor-slots/metrics`                                 | No request definition change.                                                                                                                               |
+| Generate recurring slots         | `POST /mentor-slots/recurrence`                    | `POST /instructor/mentor-slots/recurrence`                             | No body change. Uses `RecurrenceDto`. New service check requires the `mentorSlotManagementId` to belong to the logged-in instructor.                        |
+| Instructor session list          | `GET /mentor-sessions/mentor/my`                   | `GET /instructor/mentor-sessions/my`                                   | No query definition change. Optional query params: `filter`, `sort`, `limit`, `offset`.                                                                     |
+| Instructor session detail        | `GET /mentor-sessions/:sessionId`                  | `GET /instructor/mentor-sessions/:sessionId`                           | No parameter definition change.                                                                                                                             |
+
+## APIs With New Authorization Behavior
+
+The request definitions are unchanged, but these APIs now enforce ownership using the logged-in JWT user:
+
+| API Area                             | New Behavior                                                                                                   |
+| ------------------------------------ | -------------------------------------------------------------------------------------------------------------- |
+| Student reschedule request           | Only the student who owns the booking can request reschedule.                                                  |
+| Instructor accept/decline reschedule | Only the instructor who owns the booking can accept or decline.                                                |
+| Instructor feedback                  | Only the instructor who owns the booking can submit feedback.                                                  |
+| Instructor attendance                | Only the instructor who owns the booking can mark attendance.                                                  |
+| Instructor complete session          | Only the instructor who owns the booking can complete it.                                                      |
+| Recurring slots                      | Instructor can generate recurrence only for their own mentor profile.                                          |
+| Cancel booking                       | Logged-in user must be either the booking student or mentor, and must match the submitted `cancelledBy` value. |
+
+## Notes For Frontend Migration
+
+- Prefer the new role-separated routes for all new frontend work.
+- Existing old routes remain available for now, but should be treated as legacy aliases.
+- Student-facing routes are under `/student`.
+- Instructor-facing routes are under `/instructor`.
+- Public mentor discovery is now also available under `/student/mentors`, but the original `/mentors` routes still exist.
+- The biggest path shape change is that booking-specific actions now include `/bookings/:bookingId/...` in the new role routes.

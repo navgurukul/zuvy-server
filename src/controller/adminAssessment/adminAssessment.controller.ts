@@ -36,7 +36,7 @@ import { STATUS_CODES } from 'src/helpers';
 import { ErrorResponse, SuccessResponse } from 'src/errorHandler/handler';
 import { TrackAction } from 'src/trackinglog/decorators/track-action.decorator';
 import { TrackActionInterceptor } from 'src/trackinglog/interceptors/track-action.interceptor';
-
+import { PermissionsGuard } from 'src/rbac/guards/permissions.guard';
 @Controller('admin')
 @ApiTags('admin')
 @UsePipes(
@@ -46,7 +46,7 @@ import { TrackActionInterceptor } from 'src/trackinglog/interceptors/track-actio
     forbidNonWhitelisted: true,
   }),
 )
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard, RolesGuard)
 @ApiBearerAuth('JWT-auth')
 @UseInterceptors(TrackActionInterceptor)
 export class AdminAssessmentController {
@@ -446,6 +446,39 @@ export class AdminAssessmentController {
         success.message,
         success.statusCode,
         'data' in success ? success.data : undefined,
+      ).send(res);
+    } catch (error) {
+      return ErrorResponse.BadRequestException(error.message).send(res);
+    }
+  }
+
+  @Get('/overall-analysis')
+  @ApiOperation({
+    summary:
+      'Get overall analysis of all students in a batch — attendance, assessment scores, mentor, college, degree, LinkedIn',
+  })
+  @ApiBearerAuth('JWT-auth')
+  @ApiQuery({ name: 'batchId', required: true, type: Number })
+  @ApiQuery({ name: 'userId', required: false, type: Number })
+  async getOverallAnalysis(
+    @Query('batchId') batchId: string,
+    @Query('userId') userId: string,
+    @Res() res,
+  ) {
+    try {
+      const parsedBatchId = parseInt(batchId, 10);
+      const parsedUserId = userId ? parseInt(userId, 10) : undefined;
+      const result = await this.adminAssessmentService.getOverallAnalysis(
+        parsedBatchId,
+        parsedUserId,
+      );
+      if (result.statusCode === STATUS_CODES.NOT_FOUND) {
+        return ErrorResponse.BadRequestException(result.message).send(res);
+      }
+      return new SuccessResponse(
+        result.message,
+        result.statusCode,
+        result.data,
       ).send(res);
     } catch (error) {
       return ErrorResponse.BadRequestException(error.message).send(res);

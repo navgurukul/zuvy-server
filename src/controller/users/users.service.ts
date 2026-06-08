@@ -14,10 +14,12 @@ import {
   zuvyUserRolesAssigned,
   zuvyUserOrganizations,
   zuvyOrganizations,
+  zuvyPermissions,
+  zuvyPermissionsRoles,
   blacklistedTokens,
 } from '../../../drizzle/schema';
 import { db } from '../../db/index';
-import { and, eq, ilike, inArray, or, sql, asc } from 'drizzle-orm';
+import { and, eq, ilike, inArray, or, sql, asc, not } from 'drizzle-orm';
 import * as fs from 'fs';
 import * as path from 'path';
 import { JwtService } from '@nestjs/jwt';
@@ -268,37 +270,51 @@ export class UsersService {
     try {
       if (duplicate) {
         try {
-          const result = await db.execute(
-            sql`SELECT * FROM main.zuvy_user_roles WHERE org_id = ${orgId}`,
-          );
+          const result = await db
+            .select()
+            .from(zuvyUserRoles)
+            .where(eq(zuvyUserRoles.orgId, orgId));
+
           return {
             status: 'success',
             message: 'User roles retrieved successfully',
             code: 200,
-            data: (result as any).rows,
+            data: result,
           };
         } catch (err) {
           throw err;
         }
       }
 
-      let query;
+      let result;
 
       if (roleName[0] === 'super admin') {
-        query = sql`SELECT * FROM main.zuvy_user_roles WHERE name != 'super_admin' AND org_id = ${orgId}`;
-      } else if (roleName[0] === 'admin') {
-        query = sql`SELECT * FROM main.zuvy_user_roles WHERE name NOT IN ('admin', 'super_admin') AND org_id = ${orgId}`;
+        result = await db
+          .select()
+          .from(zuvyUserRoles)
+          .where(
+            and(
+              not(eq(zuvyUserRoles.name, 'super_admin')),
+              eq(zuvyUserRoles.orgId, orgId),
+            ),
+          );
       } else {
-        query = sql`SELECT * FROM main.zuvy_user_roles WHERE name NOT IN ('admin', 'super_admin') AND org_id = ${orgId}`;
+        result = await db
+          .select()
+          .from(zuvyUserRoles)
+          .where(
+            and(
+              not(inArray(zuvyUserRoles.name, ['admin', 'super_admin'])),
+              eq(zuvyUserRoles.orgId, orgId),
+            ),
+          );
       }
-
-      const result = await db.execute(query);
 
       return {
         status: 'success',
         message: 'User roles retrieved successfully',
         code: 200,
-        data: (result as any).rows,
+        data: result,
       };
     } catch (err) {
       throw err;
@@ -306,10 +322,16 @@ export class UsersService {
   }
 
   async roleCheck(roleId: number) {
-    const roleDetails = await db.execute(
-      sql`SELECT id, name FROM main.zuvy_user_roles WHERE id = ${roleId} LIMIT 1`,
-    );
-    if (!(roleDetails as any).rows?.length) {
+    const [roleDetails] = await db
+      .select({
+        id: zuvyUserRoles.id,
+        name: zuvyUserRoles.name,
+      })
+      .from(zuvyUserRoles)
+      .where(eq(zuvyUserRoles.id, roleId))
+      .limit(1);
+
+    if (!roleDetails) {
       return {
         status: 'error',
         code: 404,
@@ -317,6 +339,7 @@ export class UsersService {
         data: null,
       };
     }
+
     return roleDetails;
   }
 
@@ -325,16 +348,22 @@ export class UsersService {
     roleId: number,
     roleName: string,
     orgId: number,
+    tx?: any,
   ): Promise<any> {
     try {
-      // 🔍 Step 1: Check if role already has any permissions
-      const existingPermissions = await db.execute(
-        sql`SELECT COUNT(*) AS count FROM main.zuvy_permissions_roles WHERE role_id = ${roleId} AND org_id = ${orgId}`,
-      );
+      const executor = tx ?? db;
 
-      const alreadyAssigned = Number(
-        (existingPermissions as any).rows?.[0]?.count ?? 0,
-      );
+      const [existingPermissions] = await executor
+        .select({ count: sql<number>`count(*)` })
+        .from(zuvyPermissionsRoles)
+        .where(
+          and(
+            eq(zuvyPermissionsRoles.roleId, roleId),
+            eq(zuvyPermissionsRoles.orgId, orgId),
+          ),
+        );
+
+      const alreadyAssigned = Number(existingPermissions?.count ?? 0);
 
       if (alreadyAssigned > 0) {
         this.logger.log(
@@ -347,16 +376,13 @@ export class UsersService {
         };
       }
 
-      // 🧩 Step 2: Build list of default permissions
       let defaultPermissions: string[] = [];
 
-      // ✅ Assign view/create for all resources only if role is 'admin'
       if (roleName?.toLowerCase() === 'admin') {
         for (const resource of Object.values(ResourceList)) {
           defaultPermissions.push(resource.read, resource.create);
         }
       } else {
-        // Assign limited defaults for non-admin roles
         defaultPermissions = [
           ResourceList.course.read,
           ResourceList.batch.read,
@@ -371,29 +397,30 @@ export class UsersService {
         ];
       }
 
-      // 🏗️ Step 3: Insert missing permissions
       for (const permission of defaultPermissions) {
-        const permissionDetails = await db.execute(
-          sql`SELECT id FROM main.zuvy_permissions WHERE name = ${permission} LIMIT 1`,
-        );
+        const [permissionDetails] = await executor
+          .select({ id: zuvyPermissions.id })
+          .from(zuvyPermissions)
+          .where(eq(zuvyPermissions.name, permission))
+          .limit(1);
 
-        if (!(permissionDetails as any).rows?.length) {
+        if (!permissionDetails) {
           this.logger.warn(
             `Permission not found in DB, skipping: ${permission}`,
           );
           continue;
         }
 
-        const permissionId = (permissionDetails as any).rows[0].id;
-
-        await db.execute(
-          sql`INSERT INTO main.zuvy_permissions_roles (role_id, permission_id, org_id)
-            VALUES (${roleId}, ${permissionId}, ${orgId})
-            ON CONFLICT DO NOTHING`,
-        );
+        await executor
+          .insert(zuvyPermissionsRoles)
+          .values({
+            roleId,
+            permissionId: permissionDetails.id,
+            orgId,
+          } as unknown as typeof zuvyPermissionsRoles.$inferInsert)
+          .onConflictDoNothing();
       }
 
-      // ✅ Step 4: Return success
       return {
         status: 'success',
         message: `Default permissions assigned successfully for role: ${roleName}`,
@@ -414,11 +441,17 @@ export class UsersService {
     const { userId, roleId, orgId } = payload;
     try {
       const actorUserId = Number(actorUserIdString);
-      const userCheck = await db.execute(
-        sql`SELECT id, name, email FROM main.users WHERE id = ${userId} LIMIT 1`,
-      );
+      const [userCheck] = await db
+        .select({
+          id: users.id,
+          name: users.name,
+          email: users.email,
+        })
+        .from(users)
+        .where(eq(users.id, BigInt(userId)))
+        .limit(1);
 
-      if (!(userCheck as any).rows?.length) {
+      if (!userCheck) {
         return {
           status: 'error',
           code: 404,
@@ -427,10 +460,16 @@ export class UsersService {
         };
       }
 
-      const actorUserCheck = await db.execute(
-        sql`SELECT id, name FROM main.users WHERE id = ${actorUserId} LIMIT 1`,
-      );
-      if (!(actorUserCheck as any).rows?.length) {
+      const [actorUserCheck] = await db
+        .select({
+          id: users.id,
+          name: users.name,
+        })
+        .from(users)
+        .where(eq(users.id, BigInt(actorUserId)))
+        .limit(1);
+
+      if (!actorUserCheck) {
         return {
           status: 'error',
           code: 404,
@@ -441,7 +480,7 @@ export class UsersService {
 
       const roleCheck = await this.roleCheck(roleId);
 
-      if ((roleCheck as any).status === 'error') {
+      if (!roleCheck) {
         return {
           status: 'error',
           code: 404,
@@ -450,18 +489,25 @@ export class UsersService {
         };
       }
 
-      const existing = await db.execute(
-        sql`SELECT role_id FROM main.zuvy_user_roles_assigned WHERE user_id = ${userId} AND organization_id = ${orgId} LIMIT 1`,
-      );
+      const [existing] = await db
+        .select({ roleId: zuvyUserRolesAssigned.roleId })
+        .from(zuvyUserRolesAssigned)
+        .where(
+          and(
+            eq(zuvyUserRolesAssigned.userId, BigInt(userId)),
+            eq(zuvyUserRolesAssigned.organizationId, orgId),
+          ),
+        )
+        .limit(1);
 
       const targetUserId = userId;
-      const actorName = (actorUserCheck as any).rows?.[0]?.name;
-      const targetName = (userCheck as any).rows?.[0]?.name;
-      const targetEmail = (userCheck as any).rows?.[0]?.email || '';
-      const roleName = (roleCheck as any).rows?.[0]?.name;
+      const actorName = actorUserCheck.name;
+      const targetName = userCheck.name;
+      const targetEmail = userCheck.email || '';
+      const roleName = roleCheck['name'];
 
-      if ((existing as any).rows?.length) {
-        const currentRoleId = (existing as any).rows[0].role_id;
+      if (existing) {
+        const currentRoleId = existing.roleId;
         if (Number(currentRoleId) === Number(roleId)) {
           return {
             status: 'success',
@@ -470,60 +516,73 @@ export class UsersService {
             data: { userId, roleId },
           };
         }
-        await db.execute(
-          sql`DELETE FROM main.zuvy_user_roles_assigned WHERE user_id = ${userId} AND organization_id = ${orgId}`,
-        );
-        const updated = await db.execute(sql`
-          INSERT INTO main.zuvy_user_roles_assigned (user_id, role_id, organization_id)
-          VALUES (${userId}, ${roleId}, ${orgId})
-          RETURNING *`);
-        // ✅ Assign default permissions for new role
-        await this.assignDefaultPermissionsToRole(roleId, roleName, orgId);
 
-        // ✅ Sync zuvyUserOrganizations so the user has a valid org link
-        const [existingUserOrgUpdate] = await db
-          .select()
-          .from(zuvyUserOrganizations)
-          .where(
-            and(
-              eq(zuvyUserOrganizations.userId, Number(userId)),
-              eq(zuvyUserOrganizations.organizationId, orgId),
-            ),
+        const updatedAssignment = await db.transaction(async (tx) => {
+          await tx
+            .delete(zuvyUserRolesAssigned)
+            .where(
+              and(
+                eq(zuvyUserRolesAssigned.userId, BigInt(userId)),
+                eq(zuvyUserRolesAssigned.organizationId, orgId),
+              ),
+            );
+
+          const [updated] = await tx
+            .insert(zuvyUserRolesAssigned)
+            .values({
+              userId: BigInt(userId),
+              roleId,
+              organizationId: orgId,
+            } as any)
+            .returning();
+
+          await this.assignDefaultPermissionsToRole(
+            roleId,
+            roleName,
+            orgId,
+            tx,
           );
-        if (!existingUserOrgUpdate) {
-          await db.insert(zuvyUserOrganizations).values({
-            userId: Number(userId),
-            userEmail: targetEmail,
-            organizationId: orgId,
-          } as unknown as typeof zuvyUserOrganizations.$inferInsert);
-        }
+
+          const [existingUserOrgUpdate] = await tx
+            .select()
+            .from(zuvyUserOrganizations)
+            .where(
+              and(
+                eq(zuvyUserOrganizations.userId, Number(userId)),
+                eq(zuvyUserOrganizations.organizationId, orgId),
+              ),
+            );
+          if (!existingUserOrgUpdate) {
+            await tx.insert(zuvyUserOrganizations).values({
+              userId: Number(userId),
+              userEmail: targetEmail,
+              organizationId: orgId,
+            } as unknown as typeof zuvyUserOrganizations.$inferInsert);
+          }
+
+          return updated;
+        });
 
         const currentRoleDetails = await this.roleCheck(currentRoleId);
-        const currentRoleName = (currentRoleDetails as any).rows?.[0]?.name;
+        const currentRoleName = currentRoleDetails
+          ? currentRoleDetails['name']
+          : 'Unknown';
         const actionUpdate = `${actorName} updated ${targetName}'s role from ${currentRoleName} to ${roleName}`;
 
         const { data, success } = await this.userTokenService.getUserTokens(
           BigInt(targetUserId),
           orgId,
         );
-        if (!success) {
-          return {
-            success: true,
-            message:
-              'User role updated. User did not login after role update. No tokens found, skipping logout and delete',
-          };
-        }
-        await this.authService.updateUserlogout(
-          targetUserId,
-          data['accessToken'],
-          data['refreshToken'],
-        );
-        const deletedResponse = await this.userTokenService.deleteToken({
-          userId: targetUserId,
-          organizationId: orgId,
-        });
 
-        const auditLog = await this.auditlogService.log('role_to_user', {
+        if (!success) {
+          this.logger.warn(
+            `No tokens found for user ${targetUserId} after role update; skipping logout/delete.`,
+          );
+        }
+
+        await this.logoutAndDeleteUserTokens(targetUserId, data, orgId);
+
+        await this.auditlogService.log('role_to_user', {
           actorUserId,
           targetUserId,
           roleId,
@@ -533,37 +592,43 @@ export class UsersService {
           status: 'success',
           code: 200,
           message: 'Role updated for user',
-          data: (updated as any).rows[0],
+          data: updatedAssignment,
           descriptionPrefix: 'a role to a user',
           userEmail: targetEmail,
         };
       }
 
-      const inserted = await db.execute(sql`
-        INSERT INTO main.zuvy_user_roles_assigned (user_id, role_id, organization_id)
-        VALUES (${userId}, ${roleId}, ${orgId})
-        RETURNING *`);
+      const insertedAssignment = await db.transaction(async (tx) => {
+        const [inserted] = await tx
+          .insert(zuvyUserRolesAssigned)
+          .values({
+            userId: BigInt(userId),
+            roleId,
+            organizationId: orgId,
+          } as unknown as typeof zuvyUserRolesAssigned.$inferInsert)
+          .returning();
 
-      // ✅ Assign default permissions for new role
-      await this.assignDefaultPermissionsToRole(roleId, roleName, orgId);
+        await this.assignDefaultPermissionsToRole(roleId, roleName, orgId, tx);
 
-      // ✅ Sync zuvyUserOrganizations so the user has a valid org link
-      const [existingUserOrgInsert] = await db
-        .select()
-        .from(zuvyUserOrganizations)
-        .where(
-          and(
-            eq(zuvyUserOrganizations.userId, Number(userId)),
-            eq(zuvyUserOrganizations.organizationId, orgId),
-          ),
-        );
-      if (!existingUserOrgInsert) {
-        await db.insert(zuvyUserOrganizations).values({
-          userId: Number(userId),
-          userEmail: targetEmail,
-          organizationId: orgId,
-        } as unknown as typeof zuvyUserOrganizations.$inferInsert);
-      }
+        const [existingUserOrgInsert] = await tx
+          .select()
+          .from(zuvyUserOrganizations)
+          .where(
+            and(
+              eq(zuvyUserOrganizations.userId, Number(userId)),
+              eq(zuvyUserOrganizations.organizationId, orgId),
+            ),
+          );
+        if (!existingUserOrgInsert) {
+          await tx.insert(zuvyUserOrganizations).values({
+            userId: Number(userId),
+            userEmail: targetEmail,
+            organizationId: orgId,
+          } as unknown as typeof zuvyUserOrganizations.$inferInsert);
+        }
+
+        return inserted;
+      });
 
       const action = `${actorName} assigned role ${roleName} to ${targetName}`;
 
@@ -572,20 +637,15 @@ export class UsersService {
         orgId,
       );
 
-      if (success && data?.accessToken) {
-        await this.authService.updateUserlogout(
-          targetUserId,
-          data.accessToken,
-          data.refreshToken,
+      if (!success) {
+        this.logger.warn(
+          `No tokens found for user ${targetUserId} after role assignment; skipping logout/delete.`,
         );
-
-        await this.userTokenService.deleteToken({
-          userId: targetUserId,
-          organizationId: orgId,
-        });
       }
 
-      const auditLog = await this.auditlogService.log('role_to_user', {
+      await this.logoutAndDeleteUserTokens(targetUserId, data, orgId);
+
+      await this.auditlogService.log('role_to_user', {
         actorUserId,
         targetUserId,
         roleId,
@@ -596,13 +656,39 @@ export class UsersService {
         status: 'success',
         code: 200,
         message: 'Role assigned to user successfully',
-        data: (inserted as any).rows[0] ?? null,
+        data: insertedAssignment ?? null,
         descriptionPrefix: 'a role to a user',
         userEmail: targetEmail,
       };
     } catch (err) {
       this.logger.error('Failed to assign role to user', err as any);
       throw err;
+    }
+  }
+
+  private async logoutAndDeleteUserTokens(
+    targetUserId: number,
+    tokenData: any,
+    orgId: number,
+  ): Promise<void> {
+    if (!tokenData?.accessToken || !tokenData?.refreshToken) {
+      this.logger.warn(
+        `Skipping logout for user ${targetUserId}; accessToken or refreshToken missing.`,
+      );
+      return;
+    }
+
+    try {
+      await this.authService.updateUserlogout(
+        targetUserId,
+        tokenData.accessToken,
+        tokenData.refreshToken,
+      );
+    } catch (error) {
+      this.logger.warn(
+        `Failed to logout user ${targetUserId} during role assignment. Continuing without failing.`,
+        error,
+      );
     }
   }
 
@@ -958,7 +1044,7 @@ export class UsersService {
           roleName: zuvyUserRoles.name,
           roleDescription: zuvyUserRoles.description,
           orgId: zuvyUserRolesAssigned.organizationId,
-          orgName: sql`(SELECT title FROM main.zuvy_organizations WHERE id = ${zuvyUserRolesAssigned.organizationId})`,
+          orgName: zuvyOrganizations.title,
           createdAt: zuvyUserRolesAssigned.createdAt,
           updatedAt: zuvyUserRolesAssigned.updatedAt,
         })
@@ -970,6 +1056,10 @@ export class UsersService {
         .leftJoin(
           zuvyUserRoles,
           eq(zuvyUserRolesAssigned.roleId, zuvyUserRoles.id),
+        )
+        .leftJoin(
+          zuvyOrganizations,
+          eq(zuvyUserRolesAssigned.organizationId, zuvyOrganizations.id),
         )
         .where(eq(users.id, id));
 
@@ -1189,16 +1279,7 @@ export class UsersService {
       );
 
       if (success && data?.accessToken) {
-        await this.authService.updateUserlogout(
-          Number(targetUserId),
-          data.accessToken,
-          data.refreshToken,
-        );
-
-        await this.userTokenService.deleteToken({
-          userId: Number(targetUserId),
-          organizationId: updateUserDto.orgId,
-        });
+        await this.authService.logout(BigInt(targetUserId), data.accessToken);
       }
 
       // Return the final response

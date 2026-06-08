@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -7,12 +8,14 @@ import {
   ParseIntPipe,
   Post,
   Put,
+  Query,
   UsePipes,
   ValidationPipe,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
   ApiBody,
+  ApiQuery,
   // ApiOkResponse,
   ApiOperation,
   ApiTags,
@@ -22,6 +25,8 @@ import {
   LearnerBoardsResponseDto,
   LearnerEducationBranchesResponseDto,
   LearnerDegreesResponseDto,
+  LearnerDegreesWithBranchesResponseDto,
+  BranchesForDegreeResponseDto,
   LearnerRemoteLocationsResponseDto,
   LearnerRolesResponseDto,
   TechnicalSkillsResponseDto,
@@ -38,8 +43,10 @@ import {
   UpsertLearnerRolesDto,
   UpsertTechnicalSkillsDto,
 } from './dto/learner.dto';
+import { SkipOrgCheck } from 'src/rbac/decorators/skip-org-check.decorator';
 @ApiTags('Learner Information')
-@Controller('besic')
+@SkipOrgCheck()
+@Controller('basic')
 @UsePipes(
   new ValidationPipe({
     whitelist: true,
@@ -50,6 +57,21 @@ import {
 @ApiBearerAuth('JWT-auth')
 export class LearnerController {
   constructor(private readonly learnerService: LearnerService) {}
+
+  @Get('colleges-name')
+  @ApiOperation({ summary: 'Search colleges by name' })
+  @ApiQuery({
+    name: 'name',
+    required: true,
+    type: String,
+    description: 'College name search term',
+  })
+  async searchColleges(@Query('name') name: string): Promise<{
+    success: boolean;
+    data: Record<string, unknown>[];
+  }> {
+    return this.learnerService.searchColleges(name);
+  }
 
   @Get('learner-technical-skills')
   @ApiOperation({ summary: 'Get technical skills list' })
@@ -105,6 +127,36 @@ export class LearnerController {
     return this.learnerService.getLearnerDegrees();
   }
 
+  @Get('learner-degree-details-with-branches')
+  @ApiOperation({
+    summary: 'Get learner degree list with branches for dependent dropdown',
+  })
+  @ApiQuery({
+    name: 'degreeId',
+    required: false,
+    type: Number,
+    description:
+      'Optional Degree ID to fetch branches for specific degree. If provided, returns branches for that degree. If not provided, returns all degrees with their branches.',
+  })
+  async getLearnerDegreesWithBranches(
+    @Query('degreeId') degreeId?: string,
+  ): Promise<{
+    success: boolean;
+    data: LearnerDegreesWithBranchesResponseDto | BranchesForDegreeResponseDto;
+  }> {
+    const parsedDegreeId = degreeId ? parseInt(degreeId, 10) : undefined;
+
+    if (degreeId && Number.isNaN(parsedDegreeId)) {
+      throw new BadRequestException('degreeId must be a valid number');
+    }
+
+    if (parsedDegreeId !== undefined) {
+      return this.learnerService.getLearnerBranchesForDegree(parsedDegreeId);
+    }
+
+    return this.learnerService.getLearnerDegreesWithBranches();
+  }
+
   @Post('learner-degree-details')
   @ApiOperation({ summary: 'Create learner degree list' })
   @ApiBody({ type: UpsertLearnerDegreesDto })
@@ -143,11 +195,20 @@ export class LearnerController {
 
   @Get('learner-education-branch-details')
   @ApiOperation({ summary: 'Get learner education branch list' })
-  async getLearnerEducationBranches(): Promise<{
+  @ApiQuery({
+    name: 'degreeId',
+    required: false,
+    type: Number,
+    description: 'Optional degree ID to filter branches',
+  })
+  async getLearnerEducationBranches(
+    @Query('degreeId') degreeId?: string,
+  ): Promise<{
     success: boolean;
     data: LearnerEducationBranchesResponseDto;
   }> {
-    return this.learnerService.getLearnerEducationBranches();
+    const parsedDegreeId = degreeId ? parseInt(degreeId, 10) : undefined;
+    return this.learnerService.getLearnerEducationBranches(parsedDegreeId);
   }
 
   @Post('learner-education-branch-details')

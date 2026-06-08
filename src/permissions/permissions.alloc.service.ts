@@ -8,6 +8,8 @@ import { db } from 'src/db/index';
 import { inArray, sql, eq, and, isNull } from 'drizzle-orm';
 import {
   userRoles,
+  users,
+  zuvyExtraPermissions,
   zuvyPermissions,
   zuvyPermissionsRoles,
   zuvyResources,
@@ -26,14 +28,18 @@ export class PermissionsAllocationService {
     orgId: number | null,
   ): Promise<any> {
     try {
-      // Check if user exists
-      const userCheck = await db.execute(
-        sql`SELECT id FROM main.users WHERE id = ${userId} LIMIT 1`,
-      );
-      if (!(userCheck as any).rows?.length) {
+      // ✅ Check if user exists (replace raw SQL)
+      const userCheck = await db
+        .select({ id: users.id })
+        .from(users)
+        .where(eq(users.id, userId))
+        .limit(1);
+
+      if (!userCheck.length) {
         throw new NotFoundException('User not found');
       }
-      // Get user's role for this org
+
+      // ✅ Get user's role
       const userRoleResult = await db
         .select({ roleId: zuvyUserRolesAssigned.roleId })
         .from(zuvyUserRolesAssigned)
@@ -46,12 +52,14 @@ export class PermissionsAllocationService {
           ),
         )
         .limit(1);
+
       if (!userRoleResult.length) {
-        // Return empty permissions if user has no role assigned
         return { userId, roleId: null, permissions: {} };
       }
+
       const userRoleId = userRoleResult[0].roleId;
-      // Get user's permissions for this org
+
+      // ✅ Fetch permissions
       const userPermissionsResult = await db
         .select({
           permissionName: zuvyPermissions.name,
@@ -70,13 +78,14 @@ export class PermissionsAllocationService {
         .where(
           and(
             eq(zuvyPermissionsRoles.roleId, userRoleId),
-            orgId !== null
-              ? eq(zuvyPermissionsRoles.orgId, orgId)
-              : isNull(zuvyPermissionsRoles.orgId),
+            sql`${zuvyPermissionsRoles.orgId} IS NOT DISTINCT FROM ${orgId}`, // ✅ better handling
             eq(zuvyPermissions.resourcesId, resourceId),
           ),
         );
-      const permissions = {};
+
+      // ✅ Build permissions object
+      const permissions: Record<string, boolean> = {};
+
       userPermissionsResult.forEach((perm) => {
         const resourceName =
           perm.resourceName === 'course'
@@ -84,9 +93,12 @@ export class PermissionsAllocationService {
             : perm.resourceName === 'contentBank'
               ? 'ContentBank'
               : perm.resourceName;
-        const permissionKey = `${perm.permissionName}${resourceName.charAt(0).toUpperCase() + resourceName.slice(1)}`;
+
+        const permissionKey = `${perm.permissionName}${resourceName.charAt(0).toUpperCase()}${resourceName.slice(1)}`;
+
         permissions[permissionKey] = true;
       });
+
       return {
         userId,
         roleId: userRoleId,
@@ -97,7 +109,9 @@ export class PermissionsAllocationService {
         `Error getting user permissions for user ${userId} and resource ${resourceId}:`,
         err,
       );
+
       if (err instanceof NotFoundException) throw err;
+
       throw new InternalServerErrorException(
         'Failed to retrieve user permissions',
       );
@@ -109,15 +123,18 @@ export class PermissionsAllocationService {
     orgId: number | null,
   ): Promise<any> {
     try {
-      // Check if user exists
-      const userCheck = await db.execute(
-        sql`SELECT id FROM main.users WHERE id = ${userId} LIMIT 1`,
-      );
-      if (!(userCheck as any).rows?.length) {
+      // ✅ Check if user exists (Drizzle way)
+      const userCheck = await db
+        .select({ id: users.id })
+        .from(users)
+        .where(eq(users.id, userId))
+        .limit(1);
+
+      if (!userCheck.length) {
         throw new NotFoundException('User not found');
       }
 
-      // Get user's role for this org
+      // ✅ Get user's role
       const userRoleResult = await db
         .select({ roleId: zuvyUserRolesAssigned.roleId })
         .from(zuvyUserRolesAssigned)
@@ -137,36 +154,44 @@ export class PermissionsAllocationService {
 
       const userRoleId = userRoleResult[0].roleId;
 
-      // Fetch permissions directly from zuvy_permissions_roles for this role and org
-      const userPermissionsResult = await db.execute(sql`
-      SELECT 
-        p.name AS "permissionName",
-        r.name AS "resourceName"
-      FROM main.zuvy_permissions p
-      INNER JOIN main.zuvy_resources r ON p.resource_id = r.id
-      INNER JOIN main.zuvy_permissions_roles pr ON p.id = pr.permission_id
-      WHERE pr.role_id = ${userRoleId}
-        AND pr.org_id IS NOT DISTINCT FROM ${orgId}
-        AND p.resource_id IN (1, 2, 3)
-    `);
+      // ✅ Fetch permissions (Drizzle returns array directly)
+      const userPermissionsResult = await db
+        .select({
+          permissionName: zuvyPermissions.name,
+          resourceName: zuvyResources.name,
+        })
+        .from(zuvyPermissions)
+        .innerJoin(
+          zuvyResources,
+          eq(zuvyPermissions.resourcesId, zuvyResources.id),
+        )
+        .innerJoin(
+          zuvyPermissionsRoles,
+          eq(zuvyPermissions.id, zuvyPermissionsRoles.permissionId),
+        )
+        .where(
+          and(
+            eq(zuvyPermissionsRoles.roleId, userRoleId),
+            sql`${zuvyPermissionsRoles.orgId} IS NOT DISTINCT FROM ${orgId}`,
+            inArray(zuvyPermissions.resourcesId, [1, 2, 3]),
+          ),
+        );
 
-      // Build permissions object
+      // ✅ Build permissions object
       const permissions: Record<string, boolean> = {};
 
-      if (userPermissionsResult.rows?.length) {
-        (userPermissionsResult.rows as any[]).forEach((perm) => {
-          const resourceName =
-            perm.resourceName === 'course'
-              ? 'Bootcamp'
-              : perm.resourceName === 'contentBank'
-                ? 'ContentBank'
-                : perm.resourceName;
+      userPermissionsResult.forEach((perm) => {
+        const resourceName =
+          perm.resourceName === 'course'
+            ? 'Bootcamp'
+            : perm.resourceName === 'contentBank'
+              ? 'ContentBank'
+              : perm.resourceName;
 
-          const key = `${perm.permissionName}${resourceName.charAt(0).toUpperCase()}${resourceName.slice(1)}`;
+        const key = `${perm.permissionName}${resourceName.charAt(0).toUpperCase()}${resourceName.slice(1)}`;
 
-          permissions[key] = true; // only granted permissions
-        });
-      }
+        permissions[key] = true;
+      });
 
       return { userId, roleId: userRoleId, permissions };
     } catch (err) {
@@ -174,7 +199,9 @@ export class PermissionsAllocationService {
         `Error in getUserPermissionsForMultipleResources for user ${userId}:`,
         err,
       );
+
       if (err instanceof NotFoundException) throw err;
+
       throw new InternalServerErrorException(
         'Failed to retrieve user permissions',
       );
@@ -189,64 +216,97 @@ export class PermissionsAllocationService {
   ): Promise<any> {
     try {
       // First check if user exists
-      const userCheck = await db.execute(
-        sql`SELECT id FROM main.users WHERE id = ${userId} LIMIT 1`,
-      );
-      if (!(userCheck as any).rows?.length) {
+      const userCheck = await db
+        .select({ id: users.id })
+        .from(users)
+        .where(eq(users.id, BigInt(userId)))
+        .limit(1);
+      if (!userCheck.length) {
         throw new NotFoundException('User not found');
       }
 
       // Check if resource exists
-      const resourceCheck = await db.execute(
-        sql`SELECT id, name FROM main.zuvy_resources WHERE id = ${resourceId} LIMIT 1`,
-      );
-      if (!(resourceCheck as any).rows?.length) {
+      // Resource check
+      const resourceCheck = await db
+        .select({ id: zuvyResources.id, name: zuvyResources.name })
+        .from(zuvyResources)
+        .where(eq(zuvyResources.id, resourceId))
+        .limit(1);
+      if (!resourceCheck.length) {
         throw new NotFoundException('Resource not found');
       }
 
-      // Check role-based permission (scoped to org)
-      const rolePermission = await db.execute(sql`
-        SELECT DISTINCT 
-          p.id as permission_id,
-          p.name as permission_name,
-          r.name as resource_name,
-          ur.name as role_name,
-          'role_based' as permission_type
-        FROM main.zuvy_permissions p
-        INNER JOIN main.zuvy_resources r ON p.resources_id = r.id
-        INNER JOIN main.zuvy_permissions_roles pr ON p.id = pr.permission_id
-        INNER JOIN main.zuvy_user_roles ur ON pr.role_id = ur.id
-        INNER JOIN main.zuvy_user_roles_assigned ura ON ura.role_id = ur.id
-        WHERE ura.user_id = ${userId} 
-          AND ura.organization_id IS NOT DISTINCT FROM ${orgId} 
-          AND pr.org_id IS NOT DISTINCT FROM ${orgId}
-          AND r.id = ${resourceId} AND p.name = ${permissionName}
-      `);
-      // Note: raw SQL above might still fail if orgId is null because of = null.
-      // However, most drivers handle it if passed as null, but ura.organization_id = null is wrong in valid SQL.
-      // I should ideally use sql`ura.organization_id IS NOT DISTINCT FROM ${orgId}` or similar if supported.
-      // For now, I'll stick to drizzle if possible or refine the raw query.
-      // Actually, for checkUserPermission, it's raw SQL. I should probably use a safer condition.
+      // Role-based permission check
+      const rolePermission = await db
+        .select({
+          permissionId: zuvyPermissions.id,
+          permissionName: zuvyPermissions.name,
+          resourceName: zuvyResources.name,
+          roleName: zuvyUserRoles.name,
+          permissionType: sql<string>`'role_based'`,
+        })
+        .from(zuvyPermissions)
+        .innerJoin(
+          zuvyResources,
+          eq(zuvyPermissions.resourcesId, zuvyResources.id),
+        )
+        .innerJoin(
+          zuvyPermissionsRoles,
+          eq(zuvyPermissions.id, zuvyPermissionsRoles.permissionId),
+        )
+        .innerJoin(
+          zuvyUserRoles,
+          eq(zuvyPermissionsRoles.roleId, zuvyUserRoles.id),
+        )
+        .innerJoin(
+          zuvyUserRolesAssigned,
+          eq(zuvyUserRoles.id, zuvyUserRolesAssigned.roleId),
+        )
+        .where(
+          and(
+            eq(zuvyUserRolesAssigned.userId, BigInt(userId)),
+            orgId !== null
+              ? eq(zuvyUserRolesAssigned.organizationId, orgId)
+              : isNull(zuvyUserRolesAssigned.organizationId),
+            orgId !== null
+              ? eq(zuvyPermissionsRoles.orgId, orgId)
+              : isNull(zuvyPermissionsRoles.orgId),
+            eq(zuvyResources.id, resourceId),
+            eq(zuvyPermissions.name, permissionName),
+          ),
+        );
 
-      // Check extra permission
-      const extraPermission = await db.execute(sql`
-        SELECT DISTINCT 
-          ep.id as extra_permission_id,
-          p.name as permission_name,
-          r.name as resource_name,
-          ep.action,
-          ep.course_name,
-          'extra' as permission_type,
-          u2.email as granted_by_email
-        FROM main.zuvy_extra_permissions ep
-        INNER JOIN main.zuvy_permissions p ON ep.permission_id = p.id
-        INNER JOIN main.zuvy_resources r ON ep.resource_id = r.id
-        INNER JOIN main.users u2 ON ep.granted_by = u2.id
-        WHERE ep.user_id = ${userId} AND ep.resource_id = ${resourceId} AND p.name = ${permissionName}
-      `);
+      // Extra permission check
+      const extraPermission = await db
+        .select({
+          extraPermissionId: zuvyExtraPermissions.id,
+          permissionName: zuvyPermissions.name,
+          resourceName: zuvyResources.name,
+          action: zuvyExtraPermissions.action,
+          courseName: zuvyExtraPermissions.courseName,
+          permissionType: sql<string>`'extra'`,
+          grantedByEmail: users.email,
+        })
+        .from(zuvyExtraPermissions)
+        .innerJoin(
+          zuvyPermissions,
+          eq(zuvyExtraPermissions.permissionId, zuvyPermissions.id),
+        )
+        .innerJoin(
+          zuvyResources,
+          eq(zuvyExtraPermissions.resourceId, zuvyResources.id),
+        )
+        .innerJoin(users, eq(zuvyExtraPermissions.grantedBy, users.id))
+        .where(
+          and(
+            eq(zuvyExtraPermissions.userId, BigInt(userId)),
+            eq(zuvyExtraPermissions.resourceId, resourceId),
+            eq(zuvyPermissions.name, permissionName),
+          ),
+        );
 
-      const hasRolePermission = (rolePermission as any).rows?.length > 0;
-      const hasExtraPermission = (extraPermission as any).rows?.length > 0;
+      const hasRolePermission = rolePermission.length > 0;
+      const hasExtraPermission = extraPermission.length > 0;
       const hasPermission = hasRolePermission || hasExtraPermission;
 
       return {
@@ -256,7 +316,7 @@ export class PermissionsAllocationService {
         data: {
           userId,
           resourceId,
-          resourceName: (resourceCheck as any).rows[0].name,
+          resourceName: resourceCheck[0].name,
           permissionName,
           hasPermission,
           permissionSources: {
@@ -264,8 +324,8 @@ export class PermissionsAllocationService {
             extra: hasExtraPermission,
           },
           details: {
-            roleBased: hasRolePermission ? (rolePermission as any).rows : [],
-            extra: hasExtraPermission ? (extraPermission as any).rows : [],
+            roleBased: hasRolePermission ? rolePermission : [],
+            extra: hasExtraPermission ? extraPermission : [],
           },
         },
       };

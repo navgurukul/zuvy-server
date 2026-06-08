@@ -16,7 +16,6 @@ import {
   Max,
   Min,
   Validate,
-  ValidateIf,
   ValidateNested,
   ValidatorConstraint,
   ValidatorConstraintInterface,
@@ -28,28 +27,12 @@ export class UpsertLearnerInformationDto {
   @ApiPropertyOptional({
     type: String,
     example: 'IIT Bombay',
-    description:
-      'College name (select from dropdown, use Other for manual entry)',
+    description: 'College name (select from dropdown)',
   })
   @IsOptional()
   @IsString()
   @Length(2, 255)
   collegeName?: string;
-
-  @ApiPropertyOptional({
-    type: String,
-    example: 'My Custom College Name',
-    description: 'Required when collegeName is Other',
-  })
-  @ValidateIf(
-    (o) =>
-      typeof o.collegeName === 'string' &&
-      o.collegeName.trim().toLowerCase() === 'other',
-  )
-  @IsOptional()
-  @IsString()
-  @Length(3, 100)
-  otherCollegeName?: string;
 
   @ApiPropertyOptional({
     type: String,
@@ -77,9 +60,6 @@ export class LearnerInformationResponseDto {
 
   @ApiPropertyOptional({ type: String, example: 'IIT Bombay' })
   collegeName?: string | null;
-
-  @ApiPropertyOptional({ type: String, example: null })
-  otherCollegeName?: string | null;
 
   @ApiPropertyOptional({ type: String, example: 'B.Tech' })
   degreeProgram?: string | null;
@@ -172,6 +152,35 @@ export class LearnerDegreesResponseDto {
   degrees: LearnerDegreeItemDto[];
 }
 
+export class BranchInDegreeDto {
+  @ApiProperty({ type: Number, example: 1 })
+  id: number;
+
+  @ApiProperty({ type: String, example: 'Computer Science' })
+  name: string;
+}
+
+export class LearnerDegreeWithBranchesItemDto {
+  @ApiProperty({ type: Number, example: 1 })
+  id: number;
+
+  @ApiProperty({ type: String, example: 'B.Tech' })
+  name: string;
+
+  @ApiProperty({ type: [BranchInDegreeDto] })
+  branches: BranchInDegreeDto[];
+}
+
+export class LearnerDegreesWithBranchesResponseDto {
+  @ApiProperty({ type: [LearnerDegreeWithBranchesItemDto] })
+  degrees: LearnerDegreeWithBranchesItemDto[];
+}
+
+export class BranchesForDegreeResponseDto {
+  @ApiProperty({ type: [BranchInDegreeDto] })
+  branches: BranchInDegreeDto[];
+}
+
 export class UpsertLearnerEducationBranchesDto {
   @ApiProperty({
     type: [String],
@@ -188,6 +197,11 @@ export class UpdateLearnerEducationBranchByIdDto {
   @IsString()
   @Length(1, 100)
   name: string;
+
+  @ApiPropertyOptional({ type: Number, example: 1 })
+  @IsOptional()
+  @IsInt({ message: 'degreeId must be a valid integer' })
+  degreeId?: number;
 }
 
 export class LearnerEducationBranchItemDto {
@@ -196,6 +210,9 @@ export class LearnerEducationBranchItemDto {
 
   @ApiProperty({ type: String, example: 'Computer Science' })
   name: string;
+
+  @ApiPropertyOptional({ type: Number, example: 1 })
+  degreeId?: number | null;
 }
 
 export class LearnerEducationBranchesResponseDto {
@@ -303,8 +320,12 @@ export class ResumeResponseDto {
   @ApiProperty({ type: String, example: 'john.doe@example.com' })
   email: string;
 
-  @ApiProperty({ type: String, example: '+91 9876543210' })
-  phone: string;
+  @ApiProperty({
+    type: Number,
+    example: 9876543210,
+    description: 'Phone number',
+  })
+  phone: number;
 
   @ApiProperty({
     type: String,
@@ -454,7 +475,7 @@ export class WorkExperienceDto {
   @Length(1, 100)
   @Matches(/^[a-zA-Z0-9\s\-.,()&]+$/, {
     message:
-      'company must contain only letters, numbers, spaces, and basic punctuation',
+      'company name must contain only letters, numbers, spaces, and basic punctuation',
   })
   company?: string;
 
@@ -474,6 +495,11 @@ export class WorkExperienceDto {
   })
   @Validate(EndDateAfterStartDate)
   endDate?: string;
+
+  @ApiPropertyOptional({ example: true })
+  @IsOptional()
+  @IsBoolean()
+  isCurrentlyWorking?: boolean;
 
   @ApiPropertyOptional({ example: 'Worked on search optimization' })
   @IsOptional()
@@ -595,11 +621,6 @@ export class SaveCompleteProfileDto {
 
   @ApiPropertyOptional({ example: '9999999999' })
   @IsOptional()
-  @IsString()
-  @Matches(/^(\+91)?[6-9]\d{9}$/, {
-    message:
-      'phoneNumber must be a valid 10-digit Indian number starting with 6-9 (optional +91 prefix)',
-  })
   phoneNumber?: string;
 
   @ApiPropertyOptional({ example: 'aditya.student@zuvy.org' })
@@ -622,26 +643,16 @@ export class SaveCompleteProfileDto {
   })
   collegeName?: string;
 
-  @ApiPropertyOptional({ example: 'My Custom College' })
-  @IsOptional()
-  @IsString()
-  @Length(3, 100)
-  @Matches(/^[a-zA-Z0-9\s\-.,()&']+$/, {
-    message:
-      'otherCollegeName must contain only letters, numbers, spaces, and basic punctuation',
-  })
-  otherCollegeName?: string;
-
   @ApiPropertyOptional({ example: 'B.Tech' })
   @IsOptional()
   @IsString()
-  @Length(1, 100)
+  @Length(1, 100, { message: 'Please select your degree name' })
   degree?: string;
 
   @ApiPropertyOptional({ example: 'Computer Science' })
   @IsOptional()
   @IsString()
-  @Length(1, 100)
+  @Length(1, 100, { message: 'Please select your branch name' })
   branch?: string;
 
   @ApiPropertyOptional({ example: '1st', enum: ['1st', '2nd', '3rd', '4th'] })
@@ -652,14 +663,14 @@ export class SaveCompleteProfileDto {
 
   @ApiPropertyOptional({ example: 6 })
   @IsOptional()
-  @IsInt()
+  @IsInt({ message: 'Please select graduation month' })
   @Min(1)
   @Max(12)
   graduationMonth?: number;
 
   @ApiPropertyOptional({ example: 2026 })
   @IsOptional()
-  @IsInt()
+  @IsInt({ message: 'Please select graduation year' })
   @Min(2000)
   @Max(2050)
   graduationYear?: number;
@@ -670,7 +681,9 @@ export class SaveCompleteProfileDto {
   })
   @IsOptional()
   @IsString()
-  @IsEnum(['Learning', 'Looking for Job', 'Working'])
+  @IsEnum(['Learning', 'Looking for Job', 'Working'], {
+    message: 'Please select a current status',
+  })
   currentStatus?: string;
 
   // ─── PAGE 2: SKILLS & PROJECTS ──────────────────────────────────
@@ -885,15 +898,31 @@ export class SaveCompleteProfileDto {
 }
 
 export class ProfileStrengthResponseDto {
-  @ApiProperty({ type: Number, example: 60 })
-  percentage: number;
+  @ApiProperty({ type: Number, example: 65 })
+  profileCompletion: number;
 
-  @ApiProperty({ type: String, example: 'Intermediate' })
-  level: string;
+  @ApiProperty({ type: Boolean, example: false })
+  isProfileComplete: boolean;
 
   @ApiProperty({
+    type: Object,
+    additionalProperties: { type: 'null', nullable: true },
+    example: {
+      class12Score: null,
+      class12ScoreType: null,
+      class10Board: null,
+      class10Score: null,
+      class10ScoreType: null,
+    },
+  })
+  missingFields: Record<string, null>;
+
+  @ApiPropertyOptional({ type: String, example: 'Intermediate' })
+  level?: string;
+
+  @ApiPropertyOptional({
     type: String,
     example: 'Great progress! A few more clicks to become job ready.',
   })
-  message: string;
+  message?: string;
 }

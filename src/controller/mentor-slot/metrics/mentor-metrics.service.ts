@@ -4,11 +4,21 @@ import {
   zuvyMentorSlotBooking,
   zuvyMentorSlotAvailability,
 } from '../../../../drizzle/schema';
-import { eq, sql } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 
 @Injectable()
 export class MentorMetricsService {
-  async getMentorMetrics(mentorUserId: bigint) {
+  async getMentorMetrics(mentorUserId: bigint, organizationId?: number) {
+    const bookingConditions = [
+      eq(zuvyMentorSlotBooking.mentorUserId, mentorUserId),
+    ];
+
+    if (organizationId !== undefined) {
+      bookingConditions.push(
+        eq(zuvyMentorSlotBooking.organizationId, organizationId),
+      );
+    }
+
     /* ==========================================================
        SESSION COUNTS
     ========================================================== */
@@ -21,7 +31,7 @@ export class MentorMetricsService {
         missed: sql<number>`COUNT(*) FILTER (WHERE session_lifecycle_state = 'MISSED')`,
       })
       .from(zuvyMentorSlotBooking)
-      .where(eq(zuvyMentorSlotBooking.mentorUserId, mentorUserId));
+      .where(and(...bookingConditions));
 
     const total = sessionCounts.total || 0;
     const completed = sessionCounts.completed || 0;
@@ -42,7 +52,7 @@ export class MentorMetricsService {
         ratingCount: sql<number>`COUNT(mentor_rating)`,
       })
       .from(zuvyMentorSlotBooking)
-      .where(eq(zuvyMentorSlotBooking.mentorUserId, mentorUserId));
+      .where(and(...bookingConditions));
 
     /* ==========================================================
        UPCOMING SESSIONS
@@ -54,12 +64,15 @@ export class MentorMetricsService {
       })
       .from(zuvyMentorSlotBooking)
       .where(
-        sql`mentor_user_id = ${mentorUserId}
-            AND session_lifecycle_state = 'SCHEDULED'
-            AND slot_availability_id IN (
-              SELECT id FROM zuvy_mentor_slot_availability
-              WHERE slot_start_date_time > NOW()
-            )`,
+        and(
+          ...bookingConditions,
+          eq(zuvyMentorSlotBooking.sessionLifecycleState, 'SCHEDULED'),
+          sql`${zuvyMentorSlotBooking.slotAvailabilityId} IN (
+        SELECT ${zuvyMentorSlotAvailability.id}
+        FROM ${zuvyMentorSlotAvailability}
+        WHERE ${zuvyMentorSlotAvailability.slotStartDateTime} > NOW()
+      )`,
+        ),
       );
 
     /* ==========================================================
@@ -73,10 +86,16 @@ export class MentorMetricsService {
       })
       .from(zuvyMentorSlotAvailability)
       .where(
-        sql`mentor_slot_management_id IN (
-          SELECT id FROM zuvy_mentor_slot_management
-          WHERE mentor_user_id = ${mentorUserId}
-        )`,
+        organizationId !== undefined
+          ? sql`${zuvyMentorSlotAvailability.mentorSlotManagementId} IN (
+    SELECT id FROM zuvy_mentor_slot_management
+    WHERE mentor_user_id = ${mentorUserId}
+      AND organization_id = ${organizationId}
+  )`
+          : sql`${zuvyMentorSlotAvailability.mentorSlotManagementId} IN (
+    SELECT id FROM zuvy_mentor_slot_management
+    WHERE mentor_user_id = ${mentorUserId}
+  )`,
       );
 
     const utilizationRate =

@@ -115,19 +115,15 @@ export class TrackActionInterceptor implements NestInterceptor {
                   }
                 }
 
-                // Auto-generate permissionName from action if not provided
-                // action format: "create_bootcamp" -> permissionName: "createBootcamp"
+                // Auto-generate permissionName from action verb + resourceType (camelCased)
+                // e.g. action="create_slot", resourceType="mentor_dashboard" → "createMentorDashboard"
                 if (!permissionName && action && resourceType) {
-                  const actionParts = action.split('_');
-                  if (actionParts.length >= 2) {
-                    const verb = actionParts[0]; // create, edit, delete
-                    const resource = actionParts.slice(1).join('_'); // bootcamp, class, etc.
-
-                    // Capitalize first letter of resource: bootcamp -> Bootcamp
-                    const capitalizedResource =
-                      resource.charAt(0).toUpperCase() + resource.slice(1);
-                    permissionName = verb + capitalizedResource; // createBootcamp
-                  }
+                  const verb = action.split('_')[0]; // create, edit, delete, view
+                  const resourceCamel = resourceType
+                    .split('_')
+                    .map((s) => s.charAt(0).toUpperCase() + s.slice(1))
+                    .join('');
+                  permissionName = verb + resourceCamel; // createMentorDashboard
                 }
 
                 // Handle array result format [error, data] or [data, null]
@@ -193,7 +189,15 @@ export class TrackActionInterceptor implements NestInterceptor {
 
                 const orgId = (() => {
                   const raw = userData?.orgId ?? resultUser?.orgId;
-                  return typeof raw === 'string' ? parseInt(raw) : raw;
+                  const fromUser =
+                    typeof raw === 'string' ? parseInt(raw) : raw;
+                  if (fromUser != null) return fromUser;
+                  // super_admin has no orgId in JWT — fall back to request context
+                  const fromReq =
+                    request.params?.orgId ??
+                    request.query?.orgId ??
+                    request.body?.orgId;
+                  return fromReq != null ? Number(fromReq) : null;
                 })();
 
                 // Extract resource name from result if function provided
@@ -381,18 +385,14 @@ export class TrackActionInterceptor implements NestInterceptor {
                     : baseAction;
                 }
 
-                // Auto-generate permissionName from action if not provided
+                // Auto-generate permissionName from action verb + resourceType (camelCased)
                 if (!permissionName && action && resourceType) {
-                  const actionParts = action.split('_');
-                  if (actionParts.length >= 2) {
-                    const verb = actionParts[0]; // create, edit, delete
-                    const resource = actionParts.slice(1).join('_'); // chapter, bootcamp, etc.
-
-                    // Capitalize first letter of resource: chapter -> Chapter
-                    const capitalizedResource =
-                      resource.charAt(0).toUpperCase() + resource.slice(1);
-                    permissionName = verb + capitalizedResource; // createChapter
-                  }
+                  const verb = action.split('_')[0];
+                  const resourceCamel = resourceType
+                    .split('_')
+                    .map((s) => s.charAt(0).toUpperCase() + s.slice(1))
+                    .join('');
+                  permissionName = verb + resourceCamel;
                 }
 
                 const userData = Array.isArray(user) ? user[0] : user;

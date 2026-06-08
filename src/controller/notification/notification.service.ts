@@ -1,7 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { db } from '../../db';
-import { zuvyNotifications } from '../../../drizzle/schema';
-import { eq, desc } from 'drizzle-orm';
+import {
+  zuvyMentorSlotBooking,
+  zuvyNotifications,
+} from '../../../drizzle/schema';
+import { and, desc, eq, sql } from 'drizzle-orm';
 
 @Injectable()
 export class NotificationService {
@@ -31,11 +34,39 @@ export class NotificationService {
       .where(eq(zuvyNotifications.id, notificationId));
   }
 
-  async getUserNotifications(userId: bigint) {
-    return db
+  async getUserNotifications(userId: bigint, organizationId?: number) {
+    const filters = [eq(zuvyNotifications.userId, userId)];
+
+    if (organizationId !== undefined) {
+      filters.push(sql`(
+        ${zuvyNotifications.referenceType} IS DISTINCT FROM 'booking'
+        OR ${zuvyNotifications.referenceId} IN (
+          SELECT ${zuvyMentorSlotBooking.id}
+          FROM ${zuvyMentorSlotBooking}
+          WHERE ${zuvyMentorSlotBooking.organizationId} = ${organizationId}
+        )
+      )`);
+    }
+
+    const notifications = await db
       .select()
       .from(zuvyNotifications)
-      .where(eq(zuvyNotifications.userId, userId))
+      .where(and(...filters))
       .orderBy(desc(zuvyNotifications.createdAt));
+
+    const unreadResult = await db
+      .select({
+        unread: sql<number>`
+        COUNT(*) FILTER (WHERE ${zuvyNotifications.isRead} = false)
+      `,
+      })
+      .from(zuvyNotifications)
+      .where(and(...filters));
+
+    return {
+      unreadCount: Number(unreadResult[0].unread),
+      total: notifications.length,
+      data: notifications,
+    };
   }
 }

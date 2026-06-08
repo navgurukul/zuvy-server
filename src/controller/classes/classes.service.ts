@@ -34,12 +34,31 @@ import { S3 } from 'aws-sdk';
 import { v4 as uuid } from 'uuid';
 import { ZoomService } from '../../services/zoom/zoom.service';
 import { Console } from 'console';
+import moment = require('moment-timezone');
 
 @Injectable()
 export class ClassesService {
   private readonly logger = new Logger(ClassesService.name);
 
   constructor(private readonly zoomService: ZoomService) {}
+
+  private normalizeSessionDateTime(
+    dateTime: string,
+    timeZone = 'Asia/Kolkata',
+  ): string {
+    if (!dateTime) return dateTime;
+
+    const hasExplicitOffset = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(dateTime);
+    const parsedDate = hasExplicitOffset
+      ? moment(dateTime)
+      : moment.tz(dateTime, timeZone);
+
+    if (!parsedDate.isValid()) {
+      throw new Error(`Invalid session date-time: ${dateTime}`);
+    }
+
+    return parsedDate.toDate().toISOString();
+  }
 
   async accessOfCalendar(creatorInfo) {
     try {
@@ -186,7 +205,12 @@ export class ClassesService {
         };
       }
       // Prevent creating sessions in the past
-      const parsedStart = new Date(eventDetails.startDateTime);
+      const parsedStart = new Date(
+        this.normalizeSessionDateTime(
+          eventDetails.startDateTime,
+          eventDetails.timeZone,
+        ),
+      );
       if (isNaN(parsedStart.getTime())) {
         return { status: 'error', message: 'Invalid startDateTime', code: 400 };
       }
@@ -295,6 +319,14 @@ export class ClassesService {
       }
       let eventData = {
         ...eventDetails,
+        startDateTime: this.normalizeSessionDateTime(
+          eventDetails.startDateTime,
+          eventDetails.timeZone,
+        ),
+        endDateTime: this.normalizeSessionDateTime(
+          eventDetails.endDateTime,
+          eventDetails.timeZone,
+        ),
         invitedStudents,
         bootcampId: primaryBatchInfo.bootcampId,
       };
@@ -385,13 +417,25 @@ export class ClassesService {
         ? instructorEmail[0].email
         : creatorInfo.email;
       const hostEmail = teamAccountEmail;
-      try {
-        // Ensure team account is licensed (host must be able to cloud record)
-        await this.zoomService.ensureLicensedUser(hostEmail, 'Team', '');
-      } catch (e) {
-        this.logger.warn(
-          `Could not ensure license for team host ${hostEmail}: ${e.message}`,
-        );
+      // Use getUser (read-only check) — do NOT auto-create or auto-license
+      const zoomUserCheck = await this.zoomService.getUser(hostEmail);
+      if (!zoomUserCheck.success) {
+        return {
+          status: 'error',
+          message:
+            'This instructor does not have zoom license you are not authorize',
+          code: 400,
+        };
+      }
+      const zoomUserType = zoomUserCheck.data?.type;
+      const zoomUserStatus = zoomUserCheck.data?.status;
+      if (zoomUserType !== 2 || zoomUserStatus !== 'active') {
+        return {
+          status: 'error',
+          message:
+            'This instructor does not have zoom license you are not authorize',
+          code: 400,
+        };
       }
       const candidateAltHosts: string[] = [];
       const verifiedAltHosts: string[] = [];
@@ -435,7 +479,8 @@ export class ClassesService {
         type: 2, // Scheduled meeting
         start_time: zoomStartDate.toISOString(), // Use adjusted start time for Zoom
         duration: duration,
-        timezone: eventDetails.timeZone || 'Asia/Kolkata',
+        // timezone: eventDetails.timeZone || 'Asia/Kolkata',
+        timezone: 'UTC',
         agenda: eventDetails.description || 'Live class session',
         settings: {
           host_video: true,
@@ -541,11 +586,11 @@ export class ClassesService {
       //   // Continue without failing the entire process
       // }
 
-      zoomStartDate.setHours(zoomStartDate.getHours() - 5);
-      zoomStartDate.setMinutes(zoomStartDate.getMinutes() - 30);
+      // zoomStartDate.setHours(zoomStartDate.getHours() - 5);
+      // zoomStartDate.setMinutes(zoomStartDate.getMinutes() - 30);
 
-      zoomEndDate.setHours(zoomEndDate.getHours() - 5);
-      zoomEndDate.setMinutes(zoomEndDate.getMinutes() - 30);
+      // zoomEndDate.setHours(zoomEndDate.getHours() - 5);
+      // zoomEndDate.setMinutes(zoomEndDate.getMinutes() - 30);
 
       const session = {
         meetingId: zoomResponse.data.id.toString(), // Use Zoom meeting ID if Google Calendar fails
@@ -2616,6 +2661,7 @@ export class ClassesService {
       // Normalise incoming DTO fields
       const normalizedStart = updateData.startTime || updateData.startDateTime;
       const normalizedEnd = updateData.endTime || updateData.endDateTime;
+      const requestTimeZone = updateData.timeZone || 'Asia/Kolkata';
 
       // Validation: Check if session has already started
       const now = new Date();
@@ -2644,32 +2690,21 @@ export class ClassesService {
         }
       }
 
-      // Convert IST to GMT for database storage (same as createZoomSession)
-      // Frontend sends IST time, we need to store as GMT
-      // IST is GMT+5:30, so to convert IST to GMT we subtract 5:30
-      let gmtStartTime = normalizedStart;
-      let gmtEndTime = normalizedEnd;
+      let updatedStartTime = normalizedStart
+        ? this.normalizeSessionDateTime(normalizedStart, requestTimeZone)
+        : undefined;
+      let updatedEndTime = normalizedEnd
+        ? this.normalizeSessionDateTime(normalizedEnd, requestTimeZone)
+        : undefined;
+
       if (normalizedStart) {
-        const requestedStart = new Date(normalizedStart);
+        const requestedStart = new Date(updatedStartTime);
         if (requestedStart.getTime() <= now.getTime()) {
           return {
             success: false,
             message: 'Cannot update to a start time in the past',
           };
         }
-      }
-      if (normalizedStart) {
-        gmtStartTime = new Date(normalizedStart);
-        gmtStartTime.setHours(gmtStartTime.getHours() - 5);
-        gmtStartTime.setMinutes(gmtStartTime.getMinutes() - 30);
-        gmtStartTime = gmtStartTime.toISOString();
-      }
-
-      if (normalizedEnd) {
-        gmtEndTime = new Date(normalizedEnd);
-        gmtEndTime.setHours(gmtEndTime.getHours() - 5);
-        gmtEndTime.setMinutes(gmtEndTime.getMinutes() - 30);
-        gmtEndTime = gmtEndTime.toISOString();
       }
       // Prevent platform toggle via update
       if (
@@ -2681,8 +2716,8 @@ export class ClassesService {
 
       const sessionUpdateData: any = {
         title: updateData.title || session.title,
-        startTime: gmtStartTime || session.startTime,
-        endTime: gmtEndTime || session.endTime,
+        startTime: updatedStartTime || session.startTime,
+        endTime: updatedEndTime || session.endTime,
       };
 
       // Add all optional fields if provided
@@ -2769,8 +2804,8 @@ export class ClassesService {
           try {
             // Calculate duration if start/end times are provided
             let duration;
-            const startTime = normalizedStart || session.startTime;
-            const endTime = normalizedEnd || session.endTime;
+            const startTime = updatedStartTime || session.startTime;
+            const endTime = updatedEndTime || session.endTime;
             if (startTime && endTime) {
               duration = Math.floor(
                 (new Date(endTime).getTime() - new Date(startTime).getTime()) /
@@ -2782,8 +2817,7 @@ export class ClassesService {
             if (updateData.title) zoomUpdateData.topic = updateData.title;
             if (updateData.description)
               zoomUpdateData.description = updateData.description;
-            // Use original IST time for Zoom API (not the GMT converted time)
-            if (normalizedStart) zoomUpdateData.start_time = normalizedStart;
+            if (updatedStartTime) zoomUpdateData.start_time = updatedStartTime;
             if (duration) zoomUpdateData.duration = duration;
 
             await this.zoomService.updateMeeting(
@@ -2813,9 +2847,10 @@ export class ClassesService {
               session.meetingId,
               {
                 title: updateData.title,
-                startTime: normalizedStart,
-                endTime: normalizedEnd,
+                startTime: updatedStartTime,
+                endTime: updatedEndTime,
                 description: updateData.description,
+                timeZone: requestTimeZone,
               },
               userInfo,
             );
@@ -2845,8 +2880,8 @@ export class ClassesService {
       const responseData: any = {
         sessionId,
         ...updateData,
-        startTime: gmtStartTime || session.startTime,
-        endTime: gmtEndTime || session.endTime,
+        startTime: updatedStartTime || session.startTime,
+        endTime: updatedEndTime || session.endTime,
       };
 
       // Add batch names if batchId was updated or exists
