@@ -496,6 +496,11 @@ export class WorkExperienceDto {
   @Validate(EndDateAfterStartDate)
   endDate?: string;
 
+  @ApiPropertyOptional({ example: true })
+  @IsOptional()
+  @IsBoolean()
+  isCurrentlyWorking?: boolean;
+
   @ApiPropertyOptional({ example: 'Worked on search optimization' })
   @IsOptional()
   @IsString()
