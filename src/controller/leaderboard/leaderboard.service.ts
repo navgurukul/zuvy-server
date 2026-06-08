@@ -19,7 +19,6 @@ import {
   zuvyModuleChapter,
   zuvyCourseModules,
   zuvyBootcamps,
-  zuvyLeaderboardSettings,
 } from '../../../drizzle/schema';
 import { eq, and, sql } from 'drizzle-orm';
 
@@ -976,15 +975,6 @@ export class LeaderboardService {
   > {
     try {
       if (bootcampId) {
-        const isEnabled = await this.isLeaderboardEnabled(bootcampId);
-        if (!isEnabled) {
-          throw new BadRequestException(
-            'Leaderboard is disabled for this bootcamp',
-          );
-        }
-      }
-
-      if (bootcampId) {
         const leaderboard = await db
           .select({
             learnerId: zuvyLearnerLeaderboard.learnerId,
@@ -1021,14 +1011,6 @@ export class LeaderboardService {
           })
           .from(zuvyLearnerLeaderboard)
           .leftJoin(users, eq(users.id, zuvyLearnerLeaderboard.learnerId))
-          .innerJoin(
-            zuvyLeaderboardSettings,
-            eq(
-              zuvyLeaderboardSettings.bootcampId,
-              zuvyLearnerLeaderboard.bootcampId,
-            ),
-          )
-          .where(eq(zuvyLeaderboardSettings.leaderboardEnabled, true))
           .orderBy(sql`${zuvyLearnerLeaderboard.totalPoints} DESC`)
           .limit(limit);
 
@@ -1064,13 +1046,6 @@ export class LeaderboardService {
     lastActivityAt: string;
   } | null> {
     try {
-      const isEnabled = await this.isLeaderboardEnabled(bootcampId);
-      if (!isEnabled) {
-        throw new BadRequestException(
-          'Leaderboard is disabled for this bootcamp',
-        );
-      }
-
       const learnerEntry = await db
         .select({
           learnerId: zuvyLearnerLeaderboard.learnerId,
@@ -1182,64 +1157,5 @@ export class LeaderboardService {
       testCasesPoints,
       totalCodingPoints: attemptPoints + bonusPoints + testCasesPoints,
     };
-  }
-
-  async updateSettings(dto: {
-    bootcampId: number;
-    leaderboardEnabled: boolean;
-  }): Promise<{ success: boolean; message: string }> {
-    const bootcamp = await db
-      .select({ id: zuvyBootcamps.id })
-      .from(zuvyBootcamps)
-      .where(eq(zuvyBootcamps.id, dto.bootcampId))
-      .limit(1);
-
-    if (bootcamp.length === 0) {
-      throw new BadRequestException(
-        `Bootcamp with ID ${dto.bootcampId} does not exist`,
-      );
-    }
-
-    const existingSettings = await db
-      .select()
-      .from(zuvyLeaderboardSettings)
-      .where(eq(zuvyLeaderboardSettings.bootcampId, dto.bootcampId))
-      .limit(1);
-
-    if (existingSettings.length > 0) {
-      await db
-        .update(zuvyLeaderboardSettings)
-        .set({
-          leaderboardEnabled: dto.leaderboardEnabled,
-          updatedAt: new Date().toISOString(),
-        })
-        .where(eq(zuvyLeaderboardSettings.bootcampId, dto.bootcampId));
-    } else {
-      await db.insert(zuvyLeaderboardSettings).values({
-        bootcampId: dto.bootcampId,
-        leaderboardEnabled: dto.leaderboardEnabled,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      });
-    }
-
-    return {
-      success: true,
-      message: `Leaderboard ${
-        dto.leaderboardEnabled ? 'enabled' : 'disabled'
-      } successfully`,
-    };
-  }
-
-  async isLeaderboardEnabled(bootcampId: number): Promise<boolean> {
-    const settings = await db
-      .select({
-        leaderboardEnabled: zuvyLeaderboardSettings.leaderboardEnabled,
-      })
-      .from(zuvyLeaderboardSettings)
-      .where(eq(zuvyLeaderboardSettings.bootcampId, bootcampId))
-      .limit(1);
-
-    return settings.length > 0 ? settings[0].leaderboardEnabled : false;
   }
 }

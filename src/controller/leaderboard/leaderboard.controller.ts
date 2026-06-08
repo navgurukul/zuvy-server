@@ -17,7 +17,7 @@ import {
   ApiResponse,
 } from '@nestjs/swagger';
 import { LeaderboardService } from './leaderboard.service';
-import { UpdateLeaderboardSettingsDto } from './dto';
+
 @Controller('leaderboard')
 @ApiTags('leaderboard')
 export class LeaderboardController {
@@ -60,35 +60,6 @@ export class LeaderboardController {
     } catch (error) {
       throw new InternalServerErrorException(
         error instanceof Error ? error.message : 'Failed to update leaderboard',
-      );
-    }
-  }
-
-  @Post('settings')
-  @ApiOperation({
-    summary: 'Enable or disable leaderboard for a bootcamp',
-    description:
-      'Creates or updates the leaderboard settings for a specific bootcamp',
-  })
-  @ApiBody({ type: UpdateLeaderboardSettingsDto })
-  @ApiResponse({
-    status: 200,
-    description: 'Leaderboard settings updated successfully',
-  })
-  @ApiResponse({
-    status: 400,
-    description: 'Invalid input or bootcamp does not exist',
-  })
-  async updateSettings(@Body() dto: UpdateLeaderboardSettingsDto) {
-    try {
-      const result = await this.leaderboardService.updateSettings(dto);
-      return result;
-    } catch (error) {
-      if (error instanceof BadRequestException) {
-        throw error;
-      }
-      throw new InternalServerErrorException(
-        error instanceof Error ? error.message : 'Failed to update settings',
       );
     }
   }

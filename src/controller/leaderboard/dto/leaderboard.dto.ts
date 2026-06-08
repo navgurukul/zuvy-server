@@ -50,24 +50,3 @@ export class GetLearnerPositionDto {
   @Min(1, { message: 'learnerId must be at least 1' })
   learnerId: number;
 }
-
-export class UpdateLeaderboardSettingsDto {
-  @ApiProperty({
-    description: 'The bootcamp ID',
-    example: 925,
-  })
-  @Type(() => Number)
-  @IsNumber(
-    { allowNaN: false, allowInfinity: false },
-    { message: 'bootcampId must be a valid number' },
-  )
-  @Min(1, { message: 'bootcampId must be at least 1' })
-  bootcampId: number;
-
-  @ApiProperty({
-    description: 'Whether the leaderboard is enabled for the bootcamp',
-    example: true,
-  })
-  @IsBoolean({ message: 'leaderboardEnabled must be a boolean' })
-  leaderboardEnabled: boolean;
-}
