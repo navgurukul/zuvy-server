@@ -765,6 +765,7 @@ export const questionBucketChoices = main.table(
   },
 );
 
+
 export const questionSets = main.table(
   'question_sets',
   {
@@ -3188,6 +3189,7 @@ export const zuvyLearnersRemoteLocation = main.table(
     ),
   }),
 );
+
 
 export const zuvyLearnersCompleteProfile = main.table(
   'zuvy_learners_complete_profile',
