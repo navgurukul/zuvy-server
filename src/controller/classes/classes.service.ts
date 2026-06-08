@@ -165,6 +165,20 @@ export class ClassesService {
       /license/i.test(licenseResult.error || '') ||
       /maximum number of .* paying users/i.test(licenseResult.error || '');
 
+    // The real signal when Zoom's license pool is full: setUserLicense returned
+    // HTTP 200 (no error thrown) but the user is still basic after the attempt.
+    // step === 'verify' + "currently basic" means the upgrade silently did nothing.
+    const isZoomLicensePoolFull =
+      licenseResult.step === 'verify' &&
+      /currently basic/i.test(licenseResult.error || '');
+
+    if (isZoomLicensePoolFull) {
+      throw new Error(
+        `Cannot assign a Zoom Business license to ${instructorEmail}: your Zoom account has reached the Business license limit. ` +
+          `Please free up a Business license in the Zoom admin panel before creating this session.`,
+      );
+    }
+
     if (needsSeatTransfer) {
       const donorEmail = await this.findAvailableLicensedDonor(
         instructorEmail,
@@ -830,6 +844,36 @@ export class ClassesService {
             status: 'error',
             message: `Zoom user ${instructorEmail} is currently ${typeLabel} with status '${status}'. The user must be licensed and active before a session can be created.`,
           };
+        }
+        // if instructor is basic (type 1), attempt a trial license
+        // upgrade now to detect whether Zoom's license pool is full before
+        // reserving a DB license slot.
+        else if (type !== 2) {
+          // await this.zoomService.setUserLicense(instructorEmail, 2);
+          // const afterUpgrade = await this.zoomService.getUser(instructorEmail);
+          // console.log('afterUpgrade', afterUpgrade);
+          // if (afterUpgrade.success && afterUpgrade.data.type !== 2) {
+          //   // Zoom accepted the PATCH but didn't change the type — pool is full
+          //   return {
+          //     status: 'error',
+          //     message: `Cannot create session for ${instructorEmail}: your Zoom account has reached the limit for both Business and Basic licenses. Please free up a license in the Zoom admin panel before creating a session.`,
+          //   };
+          // }
+          try {
+            await this.ensureInstructorHasZoomLicenseForSession(
+              instructorEmail,
+              startDate,
+              endDate,
+            );
+            // Success — revert back to basic since actual upgrade happens at class start
+            await this.zoomService.downgradeUser(instructorEmail);
+          } catch (e: any) {
+            // License acquisition failed — block session creation with the real reason
+            return {
+              status: 'error',
+              message: e.message,
+            };
+          }
         }
       }
       // If getUser fails entirely (user doesn't exist in Zoom yet)
