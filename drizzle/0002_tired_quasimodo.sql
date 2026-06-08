@@ -755,48 +755,4 @@ ALTER TABLE main.zuvy_learners_complete_profile
   DROP COLUMN IF EXISTS other_college_name;
 
 
-
-
-CREATE TABLE IF NOT EXISTS zuvy_leaderboard_settings (
-  id SERIAL PRIMARY KEY,
-  bootcamp_id INT
-);
-
-
-ALTER TABLE zuvy_leaderboard_settings
-ADD COLUMN leaderboard_enabled BOOLEAN NOT NULL DEFAULT false;
-
-ALTER TABLE zuvy_leaderboard_settings
-ADD COLUMN created_at TIMESTAMP WITH TIME ZONE DEFAULT now();
-
-ALTER TABLE zuvy_leaderboard_settings
-ADD COLUMN updated_at TIMESTAMP WITH TIME ZONE DEFAULT now();
-
-
-
-ALTER TABLE zuvy_leaderboard_settings
-ADD COLUMN leaderboard_enabled BOOLEAN NOT NULL DEFAULT false;
-
-ALTER TABLE zuvy_leaderboard_settings
-ADD COLUMN created_at TIMESTAMPTZ DEFAULT now();
-
-ALTER TABLE zuvy_leaderboard_settings
-ADD COLUMN updated_at TIMESTAMPTZ DEFAULT now();
-
-
-
-SELECT
-    constraint_name,
-    constraint_type
-FROM information_schema.table_constraints
-WHERE table_name = 'zuvy_leaderboard_settings';
-
-
-
-ALTER TABLE zuvy_leaderboard_settings
-ALTER COLUMN bootcamp_id SET NOT NULL;
-
-
-ALTER TABLE zuvy_leaderboard_settings
-ADD CONSTRAINT zuvy_leaderboard_settings_bootcamp_id_unique
-UNIQUE (bootcamp_id);
+DROP TABLE IF EXISTS zuvy_leaderboard_settings
