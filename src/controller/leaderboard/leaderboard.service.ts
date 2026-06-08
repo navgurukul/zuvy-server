@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { users } from '../../../drizzle/schema';
 import { db } from '../../db/index';
 import {
@@ -18,6 +18,8 @@ import {
   zuvyChapterTracking,
   zuvyModuleChapter,
   zuvyCourseModules,
+  zuvyBootcamps,
+  zuvyLeaderboardSettings,
 } from '../../../drizzle/schema';
 import { eq, and, sql } from 'drizzle-orm';
 
@@ -973,31 +975,65 @@ export class LeaderboardService {
     }>
   > {
     try {
-      const leaderboardQuery = db
-        .select({
-          learnerId: zuvyLearnerLeaderboard.learnerId,
-          name: users.name,
-          assessmentPoints: zuvyLearnerLeaderboard.assessmentPoints,
-          codingPoints: zuvyLearnerLeaderboard.codingPoints,
-          quizPoints: zuvyLearnerLeaderboard.quizPoints,
-          attendancePoints: zuvyLearnerLeaderboard.attendancePoints,
-          recordingPoints: zuvyLearnerLeaderboard.recordingPoints,
-          assignmentPoints: zuvyLearnerLeaderboard.assignmentPoints,
-          totalPoints: zuvyLearnerLeaderboard.totalPoints,
-          lastActivityAt: zuvyLearnerLeaderboard.lastActivityAt,
-        })
-        .from(zuvyLearnerLeaderboard)
-        .leftJoin(users, eq(users.id, zuvyLearnerLeaderboard.learnerId))
+      if (bootcampId) {
+        const isEnabled = await this.isLeaderboardEnabled(bootcampId);
+        if (!isEnabled) {
+          throw new BadRequestException(
+            'Leaderboard is disabled for this bootcamp',
+          );
+        }
+      }
 
-        .orderBy(sql`${zuvyLearnerLeaderboard.totalPoints} DESC`)
-        .limit(limit);
-      const leaderboard = bootcampId
-        ? await leaderboardQuery.where(
-            eq(zuvyLearnerLeaderboard.bootcampId, bootcampId),
+      if (bootcampId) {
+        const leaderboard = await db
+          .select({
+            learnerId: zuvyLearnerLeaderboard.learnerId,
+            name: users.name,
+            assessmentPoints: zuvyLearnerLeaderboard.assessmentPoints,
+            codingPoints: zuvyLearnerLeaderboard.codingPoints,
+            quizPoints: zuvyLearnerLeaderboard.quizPoints,
+            attendancePoints: zuvyLearnerLeaderboard.attendancePoints,
+            recordingPoints: zuvyLearnerLeaderboard.recordingPoints,
+            assignmentPoints: zuvyLearnerLeaderboard.assignmentPoints,
+            totalPoints: zuvyLearnerLeaderboard.totalPoints,
+            lastActivityAt: zuvyLearnerLeaderboard.lastActivityAt,
+          })
+          .from(zuvyLearnerLeaderboard)
+          .leftJoin(users, eq(users.id, zuvyLearnerLeaderboard.learnerId))
+          .where(eq(zuvyLearnerLeaderboard.bootcampId, bootcampId))
+          .orderBy(sql`${zuvyLearnerLeaderboard.totalPoints} DESC`)
+          .limit(limit);
+
+        return leaderboard;
+      } else {
+        const leaderboard = await db
+          .select({
+            learnerId: zuvyLearnerLeaderboard.learnerId,
+            name: users.name,
+            assessmentPoints: zuvyLearnerLeaderboard.assessmentPoints,
+            codingPoints: zuvyLearnerLeaderboard.codingPoints,
+            quizPoints: zuvyLearnerLeaderboard.quizPoints,
+            attendancePoints: zuvyLearnerLeaderboard.attendancePoints,
+            recordingPoints: zuvyLearnerLeaderboard.recordingPoints,
+            assignmentPoints: zuvyLearnerLeaderboard.assignmentPoints,
+            totalPoints: zuvyLearnerLeaderboard.totalPoints,
+            lastActivityAt: zuvyLearnerLeaderboard.lastActivityAt,
+          })
+          .from(zuvyLearnerLeaderboard)
+          .leftJoin(users, eq(users.id, zuvyLearnerLeaderboard.learnerId))
+          .innerJoin(
+            zuvyLeaderboardSettings,
+            eq(
+              zuvyLeaderboardSettings.bootcampId,
+              zuvyLearnerLeaderboard.bootcampId,
+            ),
           )
-        : await leaderboardQuery;
+          .where(eq(zuvyLeaderboardSettings.leaderboardEnabled, true))
+          .orderBy(sql`${zuvyLearnerLeaderboard.totalPoints} DESC`)
+          .limit(limit);
 
-      return leaderboard;
+        return leaderboard;
+      }
     } catch (error) {
       this.logger.error(
         `Error fetching course leaderboard: ${this.getErrorMessage(
@@ -1005,6 +1041,9 @@ export class LeaderboardService {
           'unknown error',
         )}`,
       );
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
       return [];
     }
   }
@@ -1025,6 +1064,13 @@ export class LeaderboardService {
     lastActivityAt: string;
   } | null> {
     try {
+      const isEnabled = await this.isLeaderboardEnabled(bootcampId);
+      if (!isEnabled) {
+        throw new BadRequestException(
+          'Leaderboard is disabled for this bootcamp',
+        );
+      }
+
       const learnerEntry = await db
         .select({
           learnerId: zuvyLearnerLeaderboard.learnerId,
@@ -1070,6 +1116,9 @@ export class LeaderboardService {
           'unknown error',
         )}`,
       );
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
       return null;
     }
   }
@@ -1133,5 +1182,64 @@ export class LeaderboardService {
       testCasesPoints,
       totalCodingPoints: attemptPoints + bonusPoints + testCasesPoints,
     };
+  }
+
+  async updateSettings(dto: {
+    bootcampId: number;
+    leaderboardEnabled: boolean;
+  }): Promise<{ success: boolean; message: string }> {
+    const bootcamp = await db
+      .select({ id: zuvyBootcamps.id })
+      .from(zuvyBootcamps)
+      .where(eq(zuvyBootcamps.id, dto.bootcampId))
+      .limit(1);
+
+    if (bootcamp.length === 0) {
+      throw new BadRequestException(
+        `Bootcamp with ID ${dto.bootcampId} does not exist`,
+      );
+    }
+
+    const existingSettings = await db
+      .select()
+      .from(zuvyLeaderboardSettings)
+      .where(eq(zuvyLeaderboardSettings.bootcampId, dto.bootcampId))
+      .limit(1);
+
+    if (existingSettings.length > 0) {
+      await db
+        .update(zuvyLeaderboardSettings)
+        .set({
+          leaderboardEnabled: dto.leaderboardEnabled,
+          updatedAt: new Date().toISOString(),
+        })
+        .where(eq(zuvyLeaderboardSettings.bootcampId, dto.bootcampId));
+    } else {
+      await db.insert(zuvyLeaderboardSettings).values({
+        bootcampId: dto.bootcampId,
+        leaderboardEnabled: dto.leaderboardEnabled,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      });
+    }
+
+    return {
+      success: true,
+      message: `Leaderboard ${
+        dto.leaderboardEnabled ? 'enabled' : 'disabled'
+      } successfully`,
+    };
+  }
+
+  async isLeaderboardEnabled(bootcampId: number): Promise<boolean> {
+    const settings = await db
+      .select({
+        leaderboardEnabled: zuvyLeaderboardSettings.leaderboardEnabled,
+      })
+      .from(zuvyLeaderboardSettings)
+      .where(eq(zuvyLeaderboardSettings.bootcampId, bootcampId))
+      .limit(1);
+
+    return settings.length > 0 ? settings[0].leaderboardEnabled : false;
   }
 }

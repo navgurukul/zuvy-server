@@ -4992,3 +4992,40 @@ export const zuvyLearnerLeaderboardRelations = relations(zuvyLearnerLeaderboard,
     references: [zuvyBootcamps.id],
   }),
 }));
+
+export const zuvyLeaderboardSettings = main.table(
+  'zuvy_leaderboard_settings',
+  {
+    id: serial('id').primaryKey().notNull(),
+    bootcampId: integer('bootcamp_id')
+      .notNull()
+      .references(() => zuvyBootcamps.id, { onDelete: 'cascade' }),
+    leaderboardEnabled: boolean('leaderboard_enabled').default(false).notNull(),
+    createdAt: timestamp('created_at', {
+      withTimezone: true,
+      mode: 'string',
+    }).defaultNow(),
+    updatedAt: timestamp('updated_at', {
+      withTimezone: true,
+      mode: 'string',
+    }).defaultNow(),
+  },
+  (table) => {
+    return {
+      zuvyLeaderboardSettingsBootcampIdUnique: unique(
+        'zuvy_leaderboard_settings_bootcamp_id_unique',
+      ).on(table.bootcampId),
+    };
+  },
+);
+
+export const zuvyLeaderboardSettingsRelations = relations(
+  zuvyLeaderboardSettings,
+  ({ one }) => ({
+    bootcamp: one(zuvyBootcamps, {
+      fields: [zuvyLeaderboardSettings.bootcampId],
+      references: [zuvyBootcamps.id],
+    }),
+  }),
+);
+
