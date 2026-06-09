@@ -255,6 +255,7 @@ export class BootcampService {
           code: zuvyOrganizations.displayName,
           bootcampType: zuvyBootcampType.type,
           mentorshipEnabled: zuvyBootcampType.mentorshipEnabled,
+          leaderboardEnabled: zuvyBootcampType.leaderboardEnabled,
         })
         .from(zuvyBootcamps)
         .leftJoin(
@@ -431,6 +432,7 @@ export class BootcampService {
         .select()
         .from(zuvyBootcamps)
         .where(sql`${zuvyBootcamps.id} = ${id}`);
+
       let [err, res] = await this.enrollData(id);
 
       if (!bootcamp.length) {
@@ -459,6 +461,9 @@ export class BootcampService {
           message: 'Bootcamp fetched successfully',
           code: 200,
           bootcamp: { ...bootcamp[0], ...res },
+
+          leaderboardEnabled: (bootcamp[0] as any)?.leaderboardEnabled ?? false,
+
           ...grantedPermissions,
         },
       ];

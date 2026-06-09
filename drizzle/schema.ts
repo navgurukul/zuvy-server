@@ -2466,6 +2466,11 @@ export const zuvyBootcampType = main.table('zuvy_bootcamp_type', {
   type: text('type').notNull(), // Type of bootcamp (Public, Private, etc.)
   isModuleLocked: boolean('is_module_locked').default(false),
   mentorshipEnabled: boolean('mentorship_enabled').default(false),
+
+    leaderboardEnabled: boolean('leaderboard_enabled')
+    .default(false)
+    .notNull(),
+    
   createdAt: timestamp('created_at', {
     withTimezone: true,
     mode: 'string',

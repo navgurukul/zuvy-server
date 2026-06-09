@@ -756,3 +756,13 @@ ALTER TABLE main.zuvy_learners_complete_profile
 
 
 DROP TABLE IF EXISTS zuvy_leaderboard_settings
+
+
+
+SELECT column_name
+FROM information_schema.columns
+WHERE table_name = 'zuvy_bootcamp_type';
+
+
+ALTER TABLE zuvy_bootcamp_type
+ADD COLUMN leaderboard_enabled BOOLEAN DEFAULT FALSE;
