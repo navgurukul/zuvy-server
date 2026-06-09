@@ -1158,4 +1158,99 @@ export class LeaderboardService {
       totalCodingPoints: attemptPoints + bonusPoints + testCasesPoints,
     };
   }
+
+  async getStudentLeaderboard(
+    learnerId: number | string,
+    limit: number = 100,
+  ): Promise<{
+    leaderboard: Array<{
+      learnerId: number;
+      name: string;
+      rank: number;
+      totalPoints: number;
+    }>;
+    currentLearner: {
+      learnerId: number;
+      name: string;
+      rank: number;
+      totalPoints: number;
+    } | null;
+  }> {
+    try {
+      const normalizedLearnerId = Number(learnerId);
+
+      if (Number.isNaN(normalizedLearnerId)) {
+        throw new BadRequestException('Invalid learner ID');
+      }
+
+      // Get all learners sorted by totalPoints DESC
+      const allLearners = await db
+        .select({
+          learnerId: zuvyLearnerLeaderboard.learnerId,
+          name: users.name,
+          totalPoints: zuvyLearnerLeaderboard.totalPoints,
+        })
+        .from(zuvyLearnerLeaderboard)
+        .leftJoin(users, eq(users.id, zuvyLearnerLeaderboard.learnerId))
+        .orderBy(sql`${zuvyLearnerLeaderboard.totalPoints} DESC`);
+
+      // Add ranks to all learners
+      const learnersWithRanks = allLearners.map((learner, index) => ({
+        ...learner,
+        rank: index + 1,
+      }));
+
+      // Get top learners based on limit
+      const topLearners = learnersWithRanks.slice(0, limit);
+
+      // Find current learner in all learners
+      const currentLearnerData = learnersWithRanks.find(
+        (learner) => Number(learner.learnerId) === normalizedLearnerId,
+      );
+
+      if (currentLearnerData) {
+        return {
+          leaderboard: topLearners,
+          currentLearner: currentLearnerData,
+        };
+      }
+
+      const currentUser = await db
+        .select({
+          id: users.id,
+          name: users.name,
+        })
+        .from(users)
+        .where(eq(users.id, normalizedLearnerId))
+        .limit(1);
+
+      if (currentUser.length > 0) {
+        return {
+          leaderboard: topLearners,
+          currentLearner: {
+            learnerId: Number(currentUser[0].id),
+            name: currentUser[0].name,
+            rank: learnersWithRanks.length + 1,
+            totalPoints: 0,
+          },
+        };
+      }
+
+      return {
+        leaderboard: topLearners,
+        currentLearner: null,
+      };
+    } catch (error) {
+      this.logger.error(
+        `Error fetching student leaderboard: ${this.getErrorMessage(
+          error,
+          'unknown error',
+        )}`,
+      );
+      return {
+        leaderboard: [],
+        currentLearner: null,
+      };
+    }
+  }
 }

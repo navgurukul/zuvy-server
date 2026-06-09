@@ -7,6 +7,7 @@ import {
   Body,
   BadRequestException,
   InternalServerErrorException,
+  Req,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -241,6 +242,92 @@ export class LeaderboardController {
         error instanceof Error
           ? error.message
           : 'Failed to fetch bootcamp leaderboard',
+      );
+    }
+  }
+
+  @Get('student/data')
+  @ApiOperation({
+    summary: 'Get student leaderboard with current learner',
+    description:
+      'Retrieves the top learners leaderboard and includes current learner information',
+  })
+  @ApiQuery({
+    name: 'limit',
+    type: Number,
+    description: 'Maximum number of learners to return',
+    required: false,
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Student leaderboard retrieved successfully',
+    schema: {
+      example: {
+        success: true,
+        leaderboard: [
+          {
+            learnerId: 101,
+            name: 'John Doe',
+            rank: 1,
+            totalPoints: 250,
+          },
+          {
+            learnerId: 102,
+            name: 'Jane Smith',
+            rank: 2,
+            totalPoints: 230,
+          },
+        ],
+        currentLearner: {
+          learnerId: 103,
+          name: 'Alice Johnson',
+          rank: 5,
+          totalPoints: 200,
+        },
+      },
+    },
+  })
+  async getStudentLeaderboard(
+    @Query('limit') limitParam?: string,
+    @Req() req?: any,
+  ) {
+    try {
+      let limit = 100;
+      if (limitParam) {
+        limit = parseInt(limitParam, 10);
+        if (isNaN(limit) || limit <= 0) {
+          throw new BadRequestException(
+            'Invalid limit. Must be a positive number.',
+          );
+        }
+      }
+
+      // Get current learner ID from JWT middleware
+      const learnerId = Number(req.user?.[0]?.id ?? req.user?.id);
+      if (Number.isNaN(learnerId)) {
+        throw new BadRequestException(
+          'Unable to identify current learner. Please ensure you are logged in.',
+        );
+      }
+
+      const result = await this.leaderboardService.getStudentLeaderboard(
+        learnerId,
+        limit,
+      );
+
+      return {
+        success: true,
+        leaderboard: result.leaderboard,
+        currentLearner: result.currentLearner,
+      };
+    } catch (error) {
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
+      throw new InternalServerErrorException(
+        error instanceof Error
+          ? error.message
+          : 'Failed to fetch student leaderboard',
       );
     }
   }
