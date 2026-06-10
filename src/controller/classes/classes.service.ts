@@ -3870,6 +3870,24 @@ export class ClassesService {
       });
       session.studentAttendanceRecords = updatedAttendanceRecords;
 
+      const recordingResult = await db.execute(sql`
+        SELECT drive_file_id, drive_link
+        FROM zuvy_session_recordings
+        WHERE session_id = ${session.id}
+          AND status = 'COMPLETED'
+          AND drive_file_id IS NOT NULL
+        ORDER BY updated_at DESC, created_at DESC
+        LIMIT 1
+      `);
+
+      const latestRecording = recordingResult.rows?.[0] as any;
+      if (latestRecording?.drive_file_id) {
+        session.youtubeVideoId =
+          session.youtubeVideoId || latestRecording.drive_file_id;
+        session.s3link = session.s3link || latestRecording.drive_link || null;
+        session.finalUploaded = true;
+      }
+
       // Counts (case-insensitive comparison of status)
       const presentCount = attendanceRecords.filter(
         (r) => (r.status || '').toString().toLowerCase() === 'present',
