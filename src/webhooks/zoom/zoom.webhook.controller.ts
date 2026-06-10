@@ -162,18 +162,96 @@ export class ZoomWebhookController {
         const payload = body.payload;
         const { meetingId, meetingUuid } = extractMeetingIdentifiers(payload);
 
-        this.logger.log(`🎥 Recording completed for meeting ${meetingId}`);
+        this.logger.log(` Recording completed for meeting ${meetingId}`);
+
+        // 1️ Find session
+        const session = await db.query.zuvySessions.findFirst({
+          where: (s, { eq }) => eq(s.zoomMeetingId, meetingId),
+          columns: { id: true },
+        });
+
+        if (!session) {
+          this.logger.warn(`Session not found for meeting ${meetingId}`);
+          return res.status(200).send();
+        }
+
+        this.logger.log({
+          msg: 'Creating recording job',
+          meetingId,
+          meetingUuid,
+          mp4Segments: payload.object.recording_files?.filter(
+            (f: any) => f.file_type === 'MP4',
+          ).length,
+        });
+
+        // 2️ Insert NEW recording row per UUID (restart-safe)
+        const recordingFiles = payload.object.recording_files || [];
+
+        // keep only mp4 recordings
+        const manifest = recordingFiles
+          .filter((f: any) => f.file_type === 'MP4')
+          .map((f: any) => ({
+            id: f.id,
+            download_url: f.download_url,
+            file_type: f.file_type,
+            file_size: f.file_size,
+            recording_type: f.recording_type,
+            recording_start: f.recording_start,
+            recording_end: f.recording_end,
+            meeting_uuid: meetingUuid,
+          }));
 
         await db.execute(sql`
-      UPDATE zuvy_session_recordings
-      SET
-        status = 'DISCOVERED',
-        retry_count = 0,
-        last_error = NULL,
-        next_retry_at = NULL
-      WHERE zoom_meeting_id = ${meetingId}
-         OR zoom_meeting_uuid = ${meetingUuid}
-    `);
+          UPDATE zuvy_session_recordings
+          SET
+            zoom_recording_manifest = ${JSON.stringify(manifest)},
+            status = 'DISCOVERED',
+            recording_start = ${payload.object.start_time},
+            recording_end = ${payload.object.recording_files?.[0]?.recording_end},
+            segments_count = ${manifest.length},
+            retry_count = 0,
+            last_error = NULL,
+            next_retry_at = NULL,
+            updated_at = NOW()
+          WHERE session_id = ${session.id}
+            AND (
+              zoom_meeting_id = ${meetingId}
+              OR zoom_meeting_uuid = ${meetingUuid}
+            )
+        `);
+
+        await db.execute(sql`
+          INSERT INTO zuvy_session_recordings (
+            session_id,
+            zoom_meeting_id,
+            zoom_meeting_uuid,
+            zoom_recording_manifest,
+            status,
+            recording_start,
+            recording_end,
+            segments_count,
+            retry_count
+          )
+          SELECT
+            ${session.id},
+            ${meetingId},
+            ${meetingUuid},
+            ${JSON.stringify(manifest)},
+            'DISCOVERED',
+            ${payload.object.start_time},
+            ${payload.object.recording_files?.[0]?.recording_end},
+            ${manifest.length},
+            0
+          WHERE NOT EXISTS (
+            SELECT 1
+            FROM zuvy_session_recordings
+            WHERE session_id = ${session.id}
+              AND (
+                zoom_meeting_id = ${meetingId}
+                OR zoom_meeting_uuid = ${meetingUuid}
+              )
+          )
+        `);
 
         // Also update mentor session recordings
         await db.execute(sql`
@@ -205,25 +283,35 @@ export class ZoomWebhookController {
         const payload = body.payload;
         const { meetingId, meetingUuid } = extractMeetingIdentifiers(payload);
 
-        this.logger.log(`🛑 Meeting ended: ${meetingId}`);
+        this.logger.log(` Meeting ended: ${meetingId}`);
 
         // Optional: ensure recording job exists
         await db.execute(sql`
-      INSERT INTO zuvy_session_recordings (
-        session_id,
-        zoom_meeting_id,
-        zoom_meeting_uuid,
-        status
-      )
-      SELECT
-        s.id,
-        ${meetingId},
-        ${meetingUuid},
-        'DISCOVERED'
-      FROM zuvy_sessions s
-      WHERE s.zoom_meeting_id = ${meetingId}
-      ON CONFLICT (session_id) DO NOTHING
-    `);
+          INSERT INTO zuvy_session_recordings (
+            session_id,
+            zoom_meeting_id,
+            zoom_meeting_uuid,
+            status,
+            retry_count
+          )
+          SELECT
+            s.id,
+            ${meetingId},
+            ${meetingUuid},
+            'DISCOVERED',
+            0
+          FROM zuvy_sessions s
+          WHERE s.zoom_meeting_id = ${meetingId}
+            AND NOT EXISTS (
+              SELECT 1
+              FROM zuvy_session_recordings r
+              WHERE r.session_id = s.id
+                AND (
+                  r.zoom_meeting_id = ${meetingId}
+                  OR r.zoom_meeting_uuid = ${meetingUuid}
+                )
+            )
+        `);
 
         this.recordingWorkerTrigger.triggerNow();
 
