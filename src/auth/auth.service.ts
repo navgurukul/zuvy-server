@@ -275,20 +275,20 @@ export class AuthService {
         expiresIn: '7d',
       });
 
-      // Store tokens in database for the specific organization (or null orgId for superadmin/student)
+      // Store tokens only for organization-scoped users. Student tokens are
+      // deliberately not persisted in zuvyUserOrganizations.
       const setTokenData = {
         accessToken: access_token,
         refreshToken: refresh_token,
       } as any;
 
-      // Roles that legitimately have NULL organizationId.
-      // - super_admin: global role, intentionally org-less.
-      // - student: no zuvyUserRolesAssigned row; getUserRoles returns ['student'] by default.
-      // All other org-scoped roles (admin, instructor, ops, poc, etc.) MUST have a valid org.
-      const NULL_ORG_ROLES = ['super_admin', 'student'];
-      const isNullOrgAllowed = roles.some((r) => NULL_ORG_ROLES.includes(r));
+      const isStudentOnly =
+        roles.length > 0 && roles.every((role) => role === 'student');
 
-      if (selectedOrg || isNullOrgAllowed) {
+      const isSuperAdmin = roles.includes('super_admin');
+
+      // Store tokens only for non-student users
+      if (!isStudentOnly && (selectedOrg || isSuperAdmin)) {
         await db
           .insert(zuvyUserOrganizations)
           .values({
@@ -305,9 +305,7 @@ export class AuthService {
             ],
             set: setTokenData,
           });
-      } else {
-        // Org-scoped role found but no organization attached — data inconsistency.
-        // Skip token storage rather than persisting a bad NULL row.
+      } else if (!isStudentOnly && roles.length > 0) {
         this.logger.warn(
           `[Login Warning] User "${user.email}" (ID: ${user.id}) has the role(s) "${roles.join(', ')}" ` +
             `but is not linked to any organization. Session token was not saved. ` +
@@ -539,6 +537,10 @@ export class AuthService {
       throw new UnauthorizedException('Session context is no longer valid');
     }
 
+    if (tokenRoles.includes('student') || tokenRoles.length === 0) {
+      return;
+    }
+
     const [storedSession] = await db
       .select({
         token: zuvyUserOrganizations[tokenColumn],
@@ -552,7 +554,7 @@ export class AuthService {
       )
       .limit(1);
 
-    if (storedSession?.token && storedSession.token !== token) {
+    if (!storedSession || storedSession.token !== token) {
       throw new UnauthorizedException('Token is no longer valid');
     }
   }

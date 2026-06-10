@@ -97,7 +97,19 @@ export class LearnerProfileService {
         );
       }
 
-      normalizedPayload.workExperiences = payload.workExperiences;
+      for (const exp of payload.workExperiences) {
+        if (!exp.isCurrentlyWorking && !exp.endDate) {
+          throw new BadRequestException(
+            'endDate is required when isCurrentlyWorking is false',
+          );
+        }
+      }
+      normalizedPayload.workExperiences = payload.workExperiences.map(
+        (exp) => ({
+          ...exp,
+          endDate: exp.isCurrentlyWorking ? null : exp.endDate,
+        }),
+      );
     }
 
     if (
@@ -336,21 +348,16 @@ export class LearnerProfileService {
     }
   }
 
-  async calculateProfileStrengthNew(
-    userId: number,
-  ): Promise<{ percentage: number; level: string; message: string }> {
+  async calculateProfileStrengthNew(userId: number): Promise<{
+    profileCompletion: number;
+    isProfileComplete: boolean;
+    missingFields: Record<string, null>;
+    level: string;
+    message: string;
+  }> {
     const profile = await db.query.zuvyLearnersCompleteProfile.findFirst({
       where: (table, { eq }) => eq(table.userId, userId),
     });
-
-    if (!profile) {
-      const details = this.getProfileStrengthDetails(0);
-      return {
-        percentage: 0,
-        level: details.level,
-        message: details.message,
-      };
-    }
 
     const hasCodingPlatformData = (profiles: unknown) => {
       const hasProfiles =
@@ -368,58 +375,115 @@ export class LearnerProfileService {
 
     const checks = [
       // PAGE 1: BASICS
-      !!profile.fullName,
-      !!profile.phoneNumber,
-      !!profile.email,
-      !!profile.linkedinProfile,
-      !!(profile.collegeName || profile.otherCollegeName),
-      !!profile.degree,
-      !!profile.branch,
-      !!profile.yearOfStudy,
-      !!profile.graduationMonth,
-      !!profile.graduationYear,
-      !!profile.currentStatus,
+      { key: 'fullName', isFilled: !!profile?.fullName },
+      { key: 'phoneNumber', isFilled: !!profile?.phoneNumber },
+      { key: 'email', isFilled: !!profile?.email },
+      { key: 'linkedinProfile', isFilled: !!profile?.linkedinProfile },
+      { key: 'collegeName', isFilled: !!profile?.collegeName },
+      { key: 'degree', isFilled: !!profile?.degree },
+      { key: 'branch', isFilled: !!profile?.branch },
+      { key: 'yearOfStudy', isFilled: !!profile?.yearOfStudy },
+      {
+        key: 'graduationMonth',
+        isFilled: !!profile?.graduationMonth,
+      },
+      { key: 'graduationYear', isFilled: !!profile?.graduationYear },
+      { key: 'currentStatus', isFilled: !!profile?.currentStatus },
 
       // PAGE 2: SKILLS & PROJECTS
-      Array.isArray(profile.technicalSkills) &&
-        (profile.technicalSkills as any[]).length > 0,
-      Array.isArray(profile.projects) && (profile.projects as any[]).length > 0,
+      {
+        key: 'technicalSkills',
+        isFilled:
+          Array.isArray(profile?.technicalSkills) &&
+          (profile.technicalSkills as any[]).length > 0,
+      },
+      {
+        key: 'projects',
+        isFilled:
+          Array.isArray(profile?.projects) &&
+          (profile.projects as any[]).length > 0,
+      },
 
       // PAGE 3: EDUCATION & EXPERIENCE
-      !!profile.collegeStream,
-      !!profile.collegeScore,
-      !!profile.collegeScoreType,
-      !!profile.class12Board,
-      !!profile.class12Score,
-      !!profile.class12ScoreType,
-      !!profile.class10Board,
-      !!profile.class10Score,
-      !!profile.class10ScoreType,
-      profile.hasWorkExperience === true &&
-        Array.isArray(profile.workExperiences) &&
-        (profile.workExperiences as any[]).length > 0,
-      hasCodingPlatformData(profile.leetcodeProfiles) ||
-        hasCodingPlatformData(profile.codechefProfiles) ||
-        hasCodingPlatformData(profile.codeforcesProfiles),
+      { key: 'collegeStream', isFilled: !!profile?.collegeStream },
+      { key: 'collegeScore', isFilled: !!profile?.collegeScore },
+      { key: 'collegeScoreType', isFilled: !!profile?.collegeScoreType },
+      { key: 'class12Board', isFilled: !!profile?.class12Board },
+      { key: 'class12Score', isFilled: !!profile?.class12Score },
+      {
+        key: 'class12ScoreType',
+        isFilled: !!profile?.class12ScoreType,
+      },
+      { key: 'class10Board', isFilled: !!profile?.class10Board },
+      { key: 'class10Score', isFilled: !!profile?.class10Score },
+      {
+        key: 'class10ScoreType',
+        isFilled: !!profile?.class10ScoreType,
+      },
+      // Only require work experience for experienced users (not for freshers)
+      ...(profile?.hasWorkExperience === true
+        ? [
+            {
+              key: 'workExperiences',
+              isFilled:
+                Array.isArray(profile?.workExperiences) &&
+                (profile.workExperiences as any[]).length > 0,
+            },
+          ]
+        : []),
+      {
+        key: 'codingPlatformProfile',
+        isFilled:
+          hasCodingPlatformData(profile?.leetcodeProfiles) ||
+          hasCodingPlatformData(profile?.codechefProfiles) ||
+          hasCodingPlatformData(profile?.codeforcesProfiles),
+      },
 
       // PAGE 4: PREFERENCES
-      Array.isArray(profile.targetRoles) &&
-        (profile.targetRoles as any[]).length > 0,
-      Array.isArray(profile.preferredLocations) &&
-        (profile.preferredLocations as any[]).length > 0,
-      profile.openToRemote === true,
-      !!profile.internshipStipend,
-      !!profile.fullTimeCtc,
-      Array.isArray(profile.preferredContactMethods) &&
-        (profile.preferredContactMethods as any[]).length > 0,
+      {
+        key: 'targetRoles',
+        isFilled:
+          Array.isArray(profile?.targetRoles) &&
+          (profile.targetRoles as any[]).length > 0,
+      },
+      {
+        key: 'preferredLocations',
+        isFilled:
+          Array.isArray(profile?.preferredLocations) &&
+          (profile.preferredLocations as any[]).length > 0,
+      },
+      { key: 'openToRemote', isFilled: profile?.openToRemote === true },
+      { key: 'internshipStipend', isFilled: !!profile?.internshipStipend },
+      { key: 'fullTimeCtc', isFilled: !!profile?.fullTimeCtc },
+      {
+        key: 'preferredContactMethods',
+        isFilled:
+          Array.isArray(profile?.preferredContactMethods) &&
+          (profile.preferredContactMethods as any[]).length > 0,
+      },
     ];
 
-    const filled = checks.filter(Boolean).length;
+    const missingFields = checks.reduce(
+      (acc, check) => {
+        if (!check.isFilled) {
+          acc[check.key] = null;
+        }
+
+        return acc;
+      },
+      {} as Record<string, null>,
+    );
+
+    const missingCount = Object.keys(missingFields).length;
+    const filled = checks.length - missingCount;
     const percentage = Math.round((filled / checks.length) * 100);
+    const isProfileComplete = missingCount === 0;
     const details = this.getProfileStrengthDetails(percentage);
 
     return {
-      percentage,
+      profileCompletion: percentage,
+      isProfileComplete,
+      missingFields: isProfileComplete ? {} : missingFields,
       level: details.level,
       message: details.message,
     };

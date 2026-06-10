@@ -56,13 +56,15 @@ export class PermissionsGuard implements CanActivate {
       [context.getHandler(), context.getClass()],
     );
 
+    const normalizedRoles = Array.isArray(user.roles) ? user.roles : [];
+    const hasStudentRole = normalizedRoles.includes('student');
     const isInstructor =
-      user.roles?.includes('instructor') &&
-      !user.roles?.includes('admin') &&
-      !user.roles?.includes('ops');
+      normalizedRoles.includes('instructor') &&
+      !normalizedRoles.includes('admin') &&
+      !normalizedRoles.includes('ops') &&
+      !hasStudentRole;
     const isStudent =
-      !isInstructor &&
-      (user.roles?.length === 0 || user.roles?.includes('student'));
+      hasStudentRole || normalizedRoles.length === 0 || user.roles == null;
     const isStudentCourseRead =
       isStudent &&
       request.method === 'GET' &&
@@ -70,7 +72,10 @@ export class PermissionsGuard implements CanActivate {
       this.isStudentReadableCourseRequest(request) &&
       (await this.isStudentEnrolledInBootcamp(user.id, bootcampId));
     const isStudentAssessmentAccess =
-      isStudent && this.isStudentAssessmentRequest(request);
+      isStudent &&
+      this.isStudentAssessmentRequest(request) &&
+      (!bootcampId ||
+        (await this.isStudentEnrolledInBootcamp(user.id, bootcampId)));
 
     // 1. Org-level check — applies to ALL roles except on @SkipOrgCheck() routes
     if (!skipOrgCheck && requestOrgId) {
@@ -230,11 +235,12 @@ export class PermissionsGuard implements CanActivate {
   }
 
   private isStudentReadableCourseRequest(request: any): boolean {
-    const path = String(request.originalUrl || request.url || '');
-    const baseUrl = String(request.baseUrl || '');
+    const path = String(request.originalUrl || request.url || '').toLowerCase();
+    const baseUrl = String(request.baseUrl || '').toLowerCase();
 
     return (
       path.startsWith('/student/') ||
+      path.startsWith('/content/') ||
       baseUrl === '/student' ||
       baseUrl === '/content' ||
       baseUrl === '/submission'
@@ -242,16 +248,19 @@ export class PermissionsGuard implements CanActivate {
   }
 
   private isStudentAssessmentRequest(request: any): boolean {
-    const path = String(request.originalUrl || request.url || '').split('?')[0];
+    const path = String(request.originalUrl || request.url || '')
+      .split('?')[0]
+      .toLowerCase();
 
     return (
       path.startsWith('/student/assessment/') ||
-      path.startsWith('/content/startAssessmentForStudent/') ||
-      path.startsWith('/content/assessmentDetailsOfQuiz/') ||
-      path.startsWith('/content/assessmentDetailsOfOpenEnded/') ||
+      path.startsWith('/content/students/assessmentid=') ||
+      path.startsWith('/content/startassessmentforstudent/') ||
+      path.startsWith('/content/assessmentdetailsofquiz/') ||
+      path.startsWith('/content/assessmentdetailsofopenended/') ||
       path.startsWith('/submission/assessment/submit') ||
-      path.startsWith('/submission/quiz/assessmentSubmissionId=') ||
-      path.startsWith('/submission/openended/assessmentSubmissionId=') ||
+      path.startsWith('/submission/quiz/assessmentsubmissionid=') ||
+      path.startsWith('/submission/openended/assessmentsubmissionid=') ||
       path.startsWith('/submission/assessment/properting')
     );
   }

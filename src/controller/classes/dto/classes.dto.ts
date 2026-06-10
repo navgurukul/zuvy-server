@@ -235,6 +235,16 @@ export class updateSessionDto {
   endDateTime?: string;
 
   @ApiProperty({
+    description: 'The timezone for the live event',
+    type: String,
+    example: 'Asia/Kolkata',
+    required: false,
+  })
+  @IsOptional()
+  @IsString()
+  timeZone?: string;
+
+  @ApiProperty({
     description:
       'Whether this session uses Zoom (cannot be toggled after creation; included to avoid validation error)',
     type: Boolean,
