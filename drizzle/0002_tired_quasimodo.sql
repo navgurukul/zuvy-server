@@ -766,3 +766,9 @@ WHERE table_name = 'zuvy_bootcamp_type';
 
 ALTER TABLE zuvy_bootcamp_type
 ADD COLUMN leaderboard_enabled BOOLEAN DEFAULT FALSE;
+
+
+
+SELECT id, name
+FROM zuvy_bootcamps
+WHERE id IN (1046, 1047);
