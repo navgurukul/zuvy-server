@@ -24,6 +24,7 @@ import { CancelBookingDto } from './dto/cancel-booking.dto';
 import { ProposeRescheduleDto } from './dto/reschedule.dto';
 import { MentorSearchDto } from './public/dto/mentor-search.dto';
 import { SkipOrgCheck } from 'src/rbac/decorators/skip-org-check.decorator';
+import { FeedbackDto } from './dto/feedback.dto';
 
 @ApiTags('Student Mentor APIs')
 @ApiBearerAuth('JWT-auth')
@@ -158,6 +159,52 @@ export class StudentMentorSlotController {
     return this.mentorSlotService.getBookingRecordings(
       Number(req.user[0].id),
       bookingId,
+    );
+  }
+
+  @Post('mentor-slots/bookings/:bookingId/feedback')
+  @ApiOperation({ summary: 'Submit student feedback for a mentor session' })
+  async submitStudentFeedback(
+    @Req() req,
+    @Param('bookingId', ParseIntPipe) bookingId: number,
+    @Body() dto: FeedbackDto,
+  ) {
+    return this.mentorSlotService.submitStudentFeedback(
+      bookingId,
+      dto.feedback,
+      dto.rating,
+      Number(req.user[0].id),
+    );
+  }
+
+  @Get('mentor-slots/bookings/:bookingId/mentor-feedback')
+  @ApiOperation({ summary: 'Get mentor feedback for a student booking' })
+  async getMentorFeedback(
+    @Req() req,
+    @Param('bookingId', ParseIntPipe) bookingId: number,
+  ) {
+    return this.sessionService.getStudentFeedback(
+      bookingId,
+      BigInt(req.user[0].id),
+    );
+  }
+
+  @Get('mentor-slots/feedbacks')
+  @ApiOperation({
+    summary: 'Get all mentor feedback received by the student',
+  })
+  @ApiQuery({
+    name: 'filter',
+    required: false,
+    enum: ['30days', '3months', 'all'],
+  })
+  async getReceivedFeedbacks(
+    @Req() req,
+    @Query('filter') filter: '30days' | '3months' | 'all' = 'all',
+  ) {
+    return this.mentorSlotService.getStudentReceivedFeedbacks(
+      Number(req.user[0].id),
+      filter,
     );
   }
 

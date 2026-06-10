@@ -152,6 +152,10 @@ export class SessionService {
       conditions.push(eq(zuvyMentorSlotBooking.rescheduleStatus, 'pending'));
     }
 
+    if (filter === 'cancelled') {
+      conditions.push(eq(zuvyMentorSlotBooking.status, 'cancelled'));
+    }
+
     const data = await db
       .select({
         booking: zuvyMentorSlotBooking,
@@ -185,6 +189,7 @@ export class SessionService {
         total: sql<number>`COUNT(*)`,
         upcoming: sql<number>`COUNT(*) FILTER (WHERE session_lifecycle_state = 'SCHEDULED')`,
         completed: sql<number>`COUNT(*) FILTER (WHERE session_lifecycle_state = 'COMPLETED')`,
+        cancelled: sql<number>`COUNT(*) FILTER (WHERE status = 'cancelled')`,
         reschedule: sql<number>`COUNT(*) FILTER (WHERE reschedule_status = 'pending')`,
       })
       .from(zuvyMentorSlotBooking)
@@ -204,6 +209,93 @@ export class SessionService {
     }));
 
     return { data: mappedData, counts };
+  }
+
+  async getStudentFeedback(bookingId: number, userId: bigint) {
+    const [booking] = await db
+      .select({
+        mentorName: users.name,
+        mentorFeedback: zuvyMentorSlotBooking.mentorFeedback,
+        mentorRating: zuvyMentorSlotBooking.mentorRating,
+        mentorFeedbackSubmittedAt:
+          zuvyMentorSlotBooking.mentorFeedbackSubmittedAt,
+        slotStart: zuvyMentorSlotAvailability.slotStartDateTime,
+        slotEnd: zuvyMentorSlotAvailability.slotEndDateTime,
+        studentUserId: zuvyMentorSlotBooking.studentUserId,
+      })
+      .from(zuvyMentorSlotBooking)
+      .leftJoin(users, eq(users.id, zuvyMentorSlotBooking.mentorUserId))
+      .leftJoin(
+        zuvyMentorSlotAvailability,
+        eq(
+          zuvyMentorSlotAvailability.id,
+          zuvyMentorSlotBooking.slotAvailabilityId,
+        ),
+      )
+      .where(eq(zuvyMentorSlotBooking.id, bookingId))
+      .limit(1);
+
+    if (!booking) {
+      throw new NotFoundException('Booking not found');
+    }
+
+    if (booking.studentUserId !== userId) {
+      throw new ForbiddenException(
+        'You do not have permission to access this feedback.',
+      );
+    }
+
+    return {
+      bookingId,
+      mentorName: booking.mentorName,
+      mentorFeedback: booking.mentorFeedback,
+      mentorRating: booking.mentorRating,
+      mentorFeedbackSubmittedAt: booking.mentorFeedbackSubmittedAt,
+      sessionStart: booking.slotStart,
+      sessionEnd: booking.slotEnd,
+    };
+  }
+
+  async getMentorFeedback(bookingId: number, userId: bigint) {
+    const [booking] = await db
+      .select({
+        studentName: users.name,
+        studentFeedback: zuvyMentorSlotBooking.studentFeedback,
+        studentRating: zuvyMentorSlotBooking.studentRating,
+        slotStart: zuvyMentorSlotAvailability.slotStartDateTime,
+        slotEnd: zuvyMentorSlotAvailability.slotEndDateTime,
+        mentorUserId: zuvyMentorSlotBooking.mentorUserId,
+      })
+      .from(zuvyMentorSlotBooking)
+      .leftJoin(users, eq(users.id, zuvyMentorSlotBooking.studentUserId))
+      .leftJoin(
+        zuvyMentorSlotAvailability,
+        eq(
+          zuvyMentorSlotAvailability.id,
+          zuvyMentorSlotBooking.slotAvailabilityId,
+        ),
+      )
+      .where(eq(zuvyMentorSlotBooking.id, bookingId))
+      .limit(1);
+
+    if (!booking) {
+      throw new NotFoundException('Booking not found');
+    }
+
+    if (booking.mentorUserId !== userId) {
+      throw new ForbiddenException(
+        'You do not have permission to access this feedback.',
+      );
+    }
+
+    return {
+      bookingId,
+      studentName: booking.studentName,
+      studentFeedback: booking.studentFeedback,
+      studentRating: booking.studentRating,
+      sessionStart: booking.slotStart,
+      sessionEnd: booking.slotEnd,
+    };
   }
 
   /* ==========================================================================

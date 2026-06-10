@@ -4831,6 +4831,15 @@ export const zuvyMentorSlotBooking = main.table(
     studentFeedback: jsonb('student_feedback'),
     studentRating: integer('student_rating'),
 
+    studentFeedbackSubmittedAt: timestamp(
+      'student_feedback_submitted_at',
+      { withTimezone: true },
+    ),
+
+    studentFeedbackLocked: boolean(
+      'student_feedback_locked',
+    ).default(false),
+
     bookedAt: timestamp('booked_at', { withTimezone: true }).defaultNow(),
     confirmedAt: timestamp('confirmed_at', { withTimezone: true }),
     completedAt: timestamp('completed_at', { withTimezone: true }),
