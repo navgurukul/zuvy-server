@@ -190,6 +190,8 @@ export class TrackingController {
         code: success.statusCode,
         isSuccess: true,
         mentorshipEnabled: success.mentorshipEnabled ?? false,
+        leaderboardEnabled: success.leaderboardEnabled ?? false,
+
         data: success.data,
       });
     } catch (error) {
@@ -254,6 +256,8 @@ export class TrackingController {
         code: success.statusCode,
         isSuccess: true,
         mentorshipEnabled: success.mentorshipEnabled ?? false,
+        leaderboardEnabled: success.leaderboardEnabled ?? false,
+
         data: success.data,
       });
     } catch (error) {
@@ -372,6 +376,7 @@ export class TrackingController {
         code: success.statusCode,
         isSuccess: true,
         mentorshipEnabled: success.mentorshipEnabled ?? false,
+        leaderboardEnabled: success.leaderboardEnabled ?? false,
         data: success.data,
       });
     } catch (error) {
