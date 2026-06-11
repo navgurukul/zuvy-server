@@ -478,6 +478,24 @@ export class MentorSlotService {
     }
   }
 
+  /* ========================================================================== 
+        UTILITY - FEEDBACK DATE FILTER
+  ========================================================================== */
+  private getFeedbackDateFilter(filter: '30days' | '3months' | 'all') {
+    const now = new Date();
+
+    switch (filter) {
+      case '30days':
+        return new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+      case '3months':
+        return new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
+
+      default:
+        return null;
+    }
+  }
+
   /* ==========================================================================
    QUOTA YEAR WINDOW (APRIL 15 → APRIL 14)
 ========================================================================== */
@@ -800,7 +818,7 @@ export class MentorSlotService {
         userId: mentorProfile.mentorUserId,
         type: NotificationType.BOOKING_CREATED,
         title: 'New mentorship booking',
-        message: `A student booked your session.`,
+        message: ``,
         referenceId: createdBooking.id,
         referenceType: 'booking',
       });
@@ -809,7 +827,7 @@ export class MentorSlotService {
         userId: BigInt(studentId),
         type: NotificationType.BOOKING_CONFIRMED,
         title: 'Session confirmed',
-        message: `Your mentorship session has been scheduled.`,
+        message: ``,
         referenceId: createdBooking.id,
         referenceType: 'booking',
       });
@@ -1129,7 +1147,7 @@ export class MentorSlotService {
         userId: booking.studentUserId,
         type: NotificationType.BOOKING_CANCELLED,
         title: 'Session cancelled',
-        message: `Your mentorship session was cancelled.`,
+        message: ``,
         referenceId: bookingId,
         referenceType: 'booking',
       });
@@ -1138,7 +1156,7 @@ export class MentorSlotService {
         userId: booking.mentorUserId,
         type: NotificationType.BOOKING_CANCELLED,
         title: 'Session cancelled',
-        message: `A mentorship session was cancelled.`,
+        message: ``,
         referenceId: bookingId,
         referenceType: 'booking',
       });
@@ -1362,7 +1380,7 @@ export class MentorSlotService {
       userId: booking.mentorUserId,
       type: NotificationType.RESCHEDULE_REQUEST,
       title: 'Reschedule request',
-      message: 'A student requested to reschedule the session.',
+      message: '',
       referenceId: bookingId,
       referenceType: 'booking',
     });
@@ -1435,6 +1453,166 @@ export class MentorSlotService {
   }
 
   /* ==========================================================================
+     MENTOR RECEIVED FEEDBACKS
+  ========================================================================== */
+
+  async getMentorReceivedFeedbacks(
+    mentorUserId: number,
+    filter: '30days' | '3months' | 'all' = 'all',
+    organizationId?: number,
+  ) {
+    await this.ensureUserIsMentor(mentorUserId);
+
+    const conditions = [
+      eq(zuvyMentorSlotBooking.mentorUserId, BigInt(mentorUserId)),
+      sql`${zuvyMentorSlotBooking.studentFeedback} IS NOT NULL`,
+    ];
+
+    const since = this.getFeedbackDateFilter(filter);
+
+    if (since) {
+      conditions.push(
+        gte(zuvyMentorSlotBooking.studentFeedbackSubmittedAt, since),
+      );
+    }
+
+    const feedbacks = await db
+      .select({
+        bookingId: zuvyMentorSlotBooking.id,
+
+        studentUserId: zuvyMentorSlotBooking.studentUserId,
+
+        studentFeedback: zuvyMentorSlotBooking.studentFeedback,
+
+        studentRating: zuvyMentorSlotBooking.studentRating,
+
+        submittedAt: zuvyMentorSlotBooking.studentFeedbackSubmittedAt,
+
+        sessionStatus: zuvyMentorSlotBooking.status,
+
+        sessionLifecycle: zuvyMentorSlotBooking.sessionLifecycleState,
+
+        slotStart: zuvyMentorSlotAvailability.slotStartDateTime,
+
+        slotEnd: zuvyMentorSlotAvailability.slotEndDateTime,
+
+        topic: zuvyMentorSlotAvailability.topic,
+
+        durationMinutes: zuvyMentorSlotAvailability.durationMinutes,
+
+        studentName: users.name,
+        studentEmail: users.email,
+      })
+      .from(zuvyMentorSlotBooking)
+      .leftJoin(
+        zuvyMentorSlotAvailability,
+        eq(
+          zuvyMentorSlotAvailability.id,
+          zuvyMentorSlotBooking.slotAvailabilityId,
+        ),
+      )
+      .leftJoin(users, eq(users.id, zuvyMentorSlotBooking.studentUserId))
+      .where(and(...conditions))
+      .orderBy(desc(zuvyMentorSlotBooking.studentFeedbackSubmittedAt));
+
+    return {
+      total: feedbacks.length,
+
+      averageRating:
+        feedbacks.length > 0
+          ? Number(
+              (
+                feedbacks.reduce(
+                  (sum, item) => sum + (item.studentRating ?? 0),
+                  0,
+                ) / feedbacks.length
+              ).toFixed(2),
+            )
+          : 0,
+
+      data: feedbacks,
+    };
+  }
+
+  /* ==========================================================================
+     STUDENT RECEIVED FEEDBACKS
+    ========================================================================== */
+  async getStudentReceivedFeedbacks(
+    studentUserId: number,
+    filter: '30days' | '3months' | 'all' = 'all',
+  ) {
+    const conditions = [
+      eq(zuvyMentorSlotBooking.studentUserId, BigInt(studentUserId)),
+      sql`${zuvyMentorSlotBooking.mentorFeedback} IS NOT NULL`,
+    ];
+
+    const since = this.getFeedbackDateFilter(filter);
+
+    if (since) {
+      conditions.push(
+        gte(zuvyMentorSlotBooking.mentorFeedbackSubmittedAt, since),
+      );
+    }
+
+    const feedbacks = await db
+      .select({
+        bookingId: zuvyMentorSlotBooking.id,
+
+        mentorUserId: zuvyMentorSlotBooking.mentorUserId,
+
+        mentorFeedback: zuvyMentorSlotBooking.mentorFeedback,
+
+        mentorRating: zuvyMentorSlotBooking.mentorRating,
+
+        submittedAt: zuvyMentorSlotBooking.mentorFeedbackSubmittedAt,
+
+        sessionStatus: zuvyMentorSlotBooking.status,
+
+        sessionLifecycle: zuvyMentorSlotBooking.sessionLifecycleState,
+
+        slotStart: zuvyMentorSlotAvailability.slotStartDateTime,
+
+        slotEnd: zuvyMentorSlotAvailability.slotEndDateTime,
+
+        topic: zuvyMentorSlotAvailability.topic,
+
+        durationMinutes: zuvyMentorSlotAvailability.durationMinutes,
+
+        mentorName: users.name,
+        mentorEmail: users.email,
+      })
+      .from(zuvyMentorSlotBooking)
+      .leftJoin(
+        zuvyMentorSlotAvailability,
+        eq(
+          zuvyMentorSlotAvailability.id,
+          zuvyMentorSlotBooking.slotAvailabilityId,
+        ),
+      )
+      .leftJoin(users, eq(users.id, zuvyMentorSlotBooking.mentorUserId))
+      .where(and(...conditions))
+      .orderBy(desc(zuvyMentorSlotBooking.mentorFeedbackSubmittedAt));
+
+    return {
+      total: feedbacks.length,
+
+      averageRating:
+        feedbacks.length > 0
+          ? Number(
+              (
+                feedbacks.reduce(
+                  (sum, item) => sum + (item.mentorRating ?? 0),
+                  0,
+                ) / feedbacks.length
+              ).toFixed(2),
+            )
+          : 0,
+
+      data: feedbacks,
+    };
+  }
+
+  /* ==========================================================================
      SUBMIT MENTOR FEEDBACK (PRD COMPLIANT)
   ========================================================================== */
 
@@ -1467,6 +1645,57 @@ export class MentorSlotService {
         mentorFeedbackSubmittedAt: new Date(),
       } as Partial<typeof zuvyMentorSlotBooking.$inferInsert>)
       .where(eq(zuvyMentorSlotBooking.id, bookingId));
+  }
+
+  /* ==========================================================================
+     STUDENT FEEDBACK (PRD COMPLIANT)
+  ========================================================================== */
+
+  async submitStudentFeedback(
+    bookingId: number,
+    feedback: any,
+    rating?: number,
+    studentUserId?: number,
+  ) {
+    const [booking] = await db
+      .select()
+      .from(zuvyMentorSlotBooking)
+      .where(eq(zuvyMentorSlotBooking.id, bookingId))
+      .limit(1);
+
+    if (!booking) {
+      throw new NotFoundException('Booking not found.');
+    }
+
+    if (studentUserId && booking.studentUserId !== BigInt(studentUserId)) {
+      throw new ForbiddenException('You do not own this booking.');
+    }
+
+    if (booking.studentFeedback) {
+      throw new ForbiddenException('Feedback is locked after 24 hours.');
+    }
+
+    await db
+      .update(zuvyMentorSlotBooking)
+      .set({
+        studentFeedback: feedback,
+        studentRating: rating,
+        studentFeedbackSubmittedAt: new Date(),
+      } as Partial<typeof zuvyMentorSlotBooking.$inferInsert>)
+      .where(eq(zuvyMentorSlotBooking.id, bookingId));
+
+    await this.notificationService.createNotification({
+      userId: booking.mentorUserId,
+      type: NotificationType.FEEDBACK_SUBMITTED,
+      title: '',
+      message: '',
+      referenceId: bookingId,
+      referenceType: 'booking',
+    });
+
+    return {
+      message: 'Student feedback submitted successfully.',
+    };
   }
 
   /* ==========================================================================
@@ -1657,7 +1886,7 @@ export class MentorSlotService {
         userId: booking.studentUserId,
         type: NotificationType.RESCHEDULE_ACCEPTED,
         title: 'Reschedule accepted',
-        message: 'Your session reschedule request was accepted.',
+        message: '',
         referenceId: bookingId,
         referenceType: 'booking',
       });
@@ -1726,7 +1955,7 @@ export class MentorSlotService {
       userId: booking.studentUserId,
       type: NotificationType.RESCHEDULE_DECLINED,
       title: 'Reschedule declined',
-      message: 'Your session reschedule request was declined.',
+      message: '',
       referenceId: bookingId,
       referenceType: 'booking',
     });
