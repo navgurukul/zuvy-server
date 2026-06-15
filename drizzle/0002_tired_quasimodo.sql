@@ -772,3 +772,9 @@ ADD COLUMN leaderboard_enabled BOOLEAN DEFAULT FALSE;
 SELECT id, name
 FROM zuvy_bootcamps
 WHERE id IN (1046, 1047);
+
+
+
+
+ALTER TABLE zuvy_learners_complete_profile
+ADD COLUMN profile_visibility BOOLEAN DEFAULT TRUE;
