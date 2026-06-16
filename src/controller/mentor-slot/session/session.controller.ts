@@ -77,7 +77,7 @@ export class SessionController {
   @ApiQuery({
     name: 'filter',
     required: false,
-    enum: ['all', 'upcoming', 'reschedule', 'completed'],
+    enum: ['all', 'upcoming', 'reschedule', 'completed', 'cancelled'],
   })
   @ApiQuery({
     name: 'sort',

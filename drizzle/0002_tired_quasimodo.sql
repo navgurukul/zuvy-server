@@ -622,6 +622,19 @@ REFERENCES "zuvy_organizations"("id")
 ON UPDATE CASCADE
 ON DELETE CASCADE;
 
+CREATE TABLE "zuvy_user_licenses" (
+    "id" SERIAL PRIMARY KEY NOT NULL,
+    "zoom_email" VARCHAR(255) NOT NULL,
+    "zoom_user_id" VARCHAR(128),
+    "user_name" VARCHAR(255),
+    "license_type" INTEGER NOT NULL DEFAULT 2,
+    "status" VARCHAR(30) NOT NULL DEFAULT 'active',
+    "created_at" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    "updated_at" TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE UNIQUE INDEX "zoom_user_licenses_email_pool_key"
+ON "zuvy_user_licenses" ("zoom_email");
 
 ALTER TABLE zuvy_learner_education_branch_details
 ADD COLUMN degree_id INTEGER;
@@ -753,3 +766,28 @@ VALUES
 
 ALTER TABLE main.zuvy_learners_complete_profile
   DROP COLUMN IF EXISTS other_college_name;
+
+
+DROP TABLE IF EXISTS zuvy_leaderboard_settings
+
+
+
+SELECT column_name
+FROM information_schema.columns
+WHERE table_name = 'zuvy_bootcamp_type';
+
+
+ALTER TABLE zuvy_bootcamp_type
+ADD COLUMN leaderboard_enabled BOOLEAN DEFAULT FALSE;
+
+
+
+SELECT id, name
+FROM zuvy_bootcamps
+WHERE id IN (1046, 1047);
+
+
+
+
+ALTER TABLE zuvy_learners_complete_profile
+ADD COLUMN profile_visibility BOOLEAN DEFAULT TRUE;

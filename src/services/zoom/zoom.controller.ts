@@ -1,10 +1,30 @@
-import { Body, Controller, Post, Get, Param, UseGuards, UsePipes, ValidationPipe, Patch, Delete, Query } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Post,
+  Get,
+  Param,
+  UseGuards,
+  UsePipes,
+  ValidationPipe,
+  Patch,
+  Delete,
+  Query,
+} from '@nestjs/common';
 import { ZoomService } from './zoom.service';
 import { Roles } from '../../decorators/roles.decorator';
 import { RolesGuard } from '../../guards/roles.guard';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
-import { CreateZoomUserDto, SetZoomLicenseDto, UpdateZoomUserDto, CreateZoomMeetingDto, UpdateZoomMeetingDto, ZoomEmailDto } from './dto/zoom.dto';
+import {
+  CreateZoomUserDto,
+  SetZoomLicenseDto,
+  UpdateZoomUserDto,
+  CreateZoomMeetingDto,
+  UpdateZoomMeetingDto,
+  ZoomAuthorizedUsersQueryDto,
+  ZoomEmailDto,
+} from './dto/zoom.dto';
 
 @Controller('zoom')
 @ApiTags('zoom')
@@ -33,11 +53,26 @@ export class ZoomController {
     return this.zoomService.getUser(email);
   }
 
+  @Get('users/authorized')
+  @Roles('admin')
+  @UsePipes(new ValidationPipe({ whitelist: true, transform: true }))
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({
+    summary:
+      'List Zoom users in the connected account. Use hostType=licensed to get only currently licensed users.',
+  })
+  async listAuthorizedUsers(@Query() query: ZoomAuthorizedUsersQueryDto) {
+    return this.zoomService.listAuthorizedUsers(query);
+  }
+
   @Post('user/license')
   @Roles('admin')
   @UsePipes(new ValidationPipe({ whitelist: true, transform: true }))
   @ApiBearerAuth('JWT-auth')
-  @ApiOperation({ summary: 'Set/Update a Zoom user license type (1=Basic 2=Licensed 3=On-Prem)' })
+  @ApiOperation({
+    summary:
+      'Set/Update a Zoom user license type (1=Basic 2=Licensed 3=On-Prem)',
+  })
   async setLicense(@Body() body: SetZoomLicenseDto) {
     return this.zoomService.setUserLicense(body.email, body.type);
   }
@@ -83,9 +118,10 @@ export class ZoomController {
         waiting_room: body.settings?.waiting_room ?? false,
         audio: body.settings?.audio || 'both',
         attendance_reporting: body.settings?.attendance_reporting ?? true,
-        alternative_hosts_email_notification: body.settings?.alternative_hosts_email_notification ?? false,
+        alternative_hosts_email_notification:
+          body.settings?.alternative_hosts_email_notification ?? false,
         alternative_hosts: body.settings?.alternative_hosts || undefined,
-      }
+      },
     };
     return this.zoomService.createMeeting(meetingReq as any);
   }
@@ -93,7 +129,10 @@ export class ZoomController {
   @Get('meetings')
   @Roles('admin')
   @ApiBearerAuth('JWT-auth')
-  @ApiOperation({ summary: 'List meetings for team host (type param: upcoming, live, scheduled, previous, etc.)' })
+  @ApiOperation({
+    summary:
+      'List meetings for team host (type param: upcoming, live, scheduled, previous, etc.)',
+  })
   async listMeetings(@Query('type') type = 'upcoming') {
     return this.zoomService.listUserMeetings(type);
   }
@@ -111,7 +150,10 @@ export class ZoomController {
   @UsePipes(new ValidationPipe({ whitelist: true, transform: true }))
   @ApiBearerAuth('JWT-auth')
   @ApiOperation({ summary: 'Update a meeting' })
-  async updateMeeting(@Param('id') id: string, @Body() body: UpdateZoomMeetingDto) {
+  async updateMeeting(
+    @Param('id') id: string,
+    @Body() body: UpdateZoomMeetingDto,
+  ) {
     await this.zoomService.updateMeeting(id, body as any);
     return { success: true };
   }
@@ -128,10 +170,16 @@ export class ZoomController {
   @Get('meetings/:id/attendance-75')
   @Roles('admin')
   @ApiBearerAuth('JWT-auth')
-  @ApiOperation({ summary: 'Compute attendance (75% rule) & recordings for one or multiple Zoom meetings (comma-separated IDs, no DB write)' })
+  @ApiOperation({
+    summary:
+      'Compute attendance (75% rule) & recordings for one or multiple Zoom meetings (comma-separated IDs, no DB write)',
+  })
   async attendance75(@Param('id') meetingIdParam: string) {
     const ids = meetingIdParam.includes(',')
-      ? meetingIdParam.split(',').map(s => s.trim()).filter(Boolean)
+      ? meetingIdParam
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean)
       : meetingIdParam;
     // Attendance-only
     return this.zoomService.computeAttendance75(ids as any);
@@ -140,10 +188,16 @@ export class ZoomController {
   @Get('meetings/:id/recordings')
   @Roles('admin')
   @ApiBearerAuth('JWT-auth')
-  @ApiOperation({ summary: 'Fetch recording share links for one or multiple Zoom meetings (comma-separated IDs)' })
+  @ApiOperation({
+    summary:
+      'Fetch recording share links for one or multiple Zoom meetings (comma-separated IDs)',
+  })
   async recordings(@Param('id') meetingIdParam: string) {
     const ids = meetingIdParam.includes(',')
-      ? meetingIdParam.split(',').map(s => s.trim()).filter(Boolean)
+      ? meetingIdParam
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean)
       : meetingIdParam;
     return this.zoomService.getMeetingRecordingsBatch(ids as any);
   }
