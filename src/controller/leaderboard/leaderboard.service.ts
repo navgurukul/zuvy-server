@@ -1161,6 +1161,7 @@ export class LeaderboardService {
 
   async getStudentLeaderboard(
     learnerId: number | string,
+    bootcampId: number,
     limit: number = 100,
   ): Promise<{
     leaderboard: Array<{

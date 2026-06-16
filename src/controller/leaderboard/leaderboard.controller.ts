@@ -289,6 +289,7 @@ export class LeaderboardController {
   })
   async getStudentLeaderboard(
     @Query('limit') limitParam?: string,
+    @Query('bootcampId') bootcampIdParam?: string, // 👈 ADD THIS HERE
     @Req() req?: any,
   ) {
     try {
@@ -310,8 +311,19 @@ export class LeaderboardController {
         );
       }
 
+      let bootcampId: number | undefined;
+
+      if (bootcampIdParam) {
+        bootcampId = parseInt(bootcampIdParam, 10);
+
+        if (isNaN(bootcampId) || bootcampId <= 0) {
+          throw new BadRequestException('Invalid bootcampId');
+        }
+      }
+
       const result = await this.leaderboardService.getStudentLeaderboard(
         learnerId,
+        bootcampId,
         limit,
       );
 

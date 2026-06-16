@@ -772,3 +772,6 @@ ADD COLUMN leaderboard_enabled BOOLEAN DEFAULT FALSE;
 SELECT id, name
 FROM zuvy_bootcamps
 WHERE id IN (1046, 1047);
+
+
+
