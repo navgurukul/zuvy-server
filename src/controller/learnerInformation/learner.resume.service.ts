@@ -311,6 +311,7 @@ export class LearnerResumeService {
     const resumeText = this.cleanExtractedText(
       await this.extractResumeText(file),
     );
+
     // Join broken URLs across lines before extraction
     const textForUrls = this.joinBrokenUrls(resumeText);
 
@@ -423,7 +424,6 @@ export class LearnerResumeService {
     for (let i = 1; i <= doc.numPages; i++) {
       const page = await doc.getPage(i);
       const content = await page.getTextContent();
-
       // Extract link annotations (GitHub, LinkedIn URLs stored as hyperlinks)
       try {
         const annotations = await page.getAnnotations();
@@ -574,6 +574,12 @@ export class LearnerResumeService {
   }
 
   private extractName(text: string): string {
+    const explicitNameMatch = text.match(
+      /^name\s*:\s*([A-Za-z][A-Za-z' -]{2,50})$/im,
+    );
+    if (explicitNameMatch?.[1]) {
+      return explicitNameMatch[1].trim();
+    }
     // Priority 1: Use largest-font text from pdfjs (most reliable for PDF resumes)
     if (this.pdfJsLargestFontText) {
       const candidate = this.toTitleCase(this.pdfJsLargestFontText);
@@ -627,6 +633,7 @@ export class LearnerResumeService {
         }
       }
     }
+
     const normalized = this.normalizeForPatternMatching(topBlock);
     const nameMatch = normalized.match(
       /\b([A-Za-z][A-Za-z'\-]{1,20}\s+[A-Za-z][A-Za-z'\-]{1,20}(?:\s+[A-Za-z][A-Za-z'\-]{1,20})?)\b/,
@@ -1327,15 +1334,18 @@ export class LearnerResumeService {
       return false;
     }
 
+    // const likelyResumeMarkers =
+    //   /@|linkedin\.com|github\.com|education|experience|skills|objective/i;
+
     const likelyResumeMarkers =
-      /@|linkedin\.com|github\.com|education|experience|skills|objective/i;
+      /@|linkedin|github|education|experience|skills|objective|project|projects|internship|college|university|phone|mobile/i;
 
     return likelyResumeMarkers.test(text);
   }
 
   private isLowConfidenceExtraction(data: ResumeResponseDto): boolean {
     const hasStrongSignal = Boolean(
-      data.email || data.linkedin || data.github || data.phone,
+      data.name || data.email || data.linkedin || data.github || data.phone,
     );
 
     if (hasStrongSignal) {

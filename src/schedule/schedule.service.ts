@@ -179,10 +179,15 @@ export class ScheduleService {
           if (!session?.zoomMeetingId) continue;
 
           await db.execute(sql`
-      INSERT INTO zuvy_session_recordings (session_id, zoom_meeting_id)
-      VALUES (${session.id}, ${session.zoomMeetingId})
-      ON CONFLICT (session_id) DO NOTHING
-    `);
+            INSERT INTO zuvy_session_recordings (session_id, zoom_meeting_id)
+            SELECT ${session.id}, ${session.zoomMeetingId}
+            WHERE NOT EXISTS (
+              SELECT 1
+              FROM zuvy_session_recordings
+              WHERE session_id = ${session.id}
+                AND zoom_meeting_id = ${session.zoomMeetingId}
+            )
+          `);
         }
         this.logger.log(
           `Discovered ${sessionS3linkNullArray.length} recording jobs`,

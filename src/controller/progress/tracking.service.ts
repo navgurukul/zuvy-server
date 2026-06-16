@@ -1829,11 +1829,17 @@ export class TrackingService {
       const bootcampTypes = await db
         .select({
           mentorshipEnabled: zuvyBootcampType.mentorshipEnabled,
+
+          leaderboardEnabled: zuvyBootcampType.leaderboardEnabled,
         })
         .from(zuvyBootcampType)
         .where(eq(zuvyBootcampType.bootcampId, bootcampId));
       const mentorshipEnabled = bootcampTypes.some(
         (bootcampType) => bootcampType.mentorshipEnabled === true,
+      );
+
+      const leaderboardEnabled = bootcampTypes.some(
+        (bootcampType) => bootcampType.leaderboardEnabled === true,
       );
 
       // 1. Load modules in order (removed early bootcamp completion check)
@@ -1850,6 +1856,7 @@ export class TrackingService {
             message: 'No modules found for this bootcamp',
             statusCode: STATUS_CODES.OK,
             mentorshipEnabled,
+            leaderboardEnabled,
             data: [],
           },
         ];
@@ -2067,6 +2074,8 @@ export class TrackingService {
               message: 'You have completed this course. Well done!!',
               statusCode: STATUS_CODES.OK,
               mentorshipEnabled,
+              leaderboardEnabled,
+
               data: [],
             },
           ];
@@ -2078,6 +2087,8 @@ export class TrackingService {
               message: 'No available content found',
               statusCode: STATUS_CODES.OK,
               mentorshipEnabled,
+              // leaderboardEnabled,
+
               data: [],
             },
           ];
@@ -2098,6 +2109,8 @@ export class TrackingService {
               message: 'Your latest updated course',
               statusCode: STATUS_CODES.OK,
               mentorshipEnabled,
+              leaderboardEnabled,
+
               data: {
                 moduleId: currentModule.id,
                 moduleName: currentModule.name,
@@ -2144,6 +2157,8 @@ export class TrackingService {
                   message: 'Your latest updated course',
                   statusCode: STATUS_CODES.OK,
                   mentorshipEnabled,
+                  leaderboardEnabled,
+
                   data: {
                     moduleId: module.id,
                     moduleName: module.name,
@@ -2181,6 +2196,8 @@ export class TrackingService {
               message: 'No available content found in any module',
               statusCode: STATUS_CODES.OK,
               mentorshipEnabled,
+              leaderboardEnabled,
+
               data: [],
             },
           ];
@@ -2317,6 +2334,8 @@ export class TrackingService {
             message: 'Your latest updated course',
             statusCode: STATUS_CODES.OK,
             mentorshipEnabled,
+            leaderboardEnabled,
+
             data: {
               moduleId: currentModule.id,
               moduleName: currentModule.name,
@@ -2336,6 +2355,8 @@ export class TrackingService {
           message: 'You have completed this course. Well done!!',
           statusCode: STATUS_CODES.OK,
           mentorshipEnabled,
+          leaderboardEnabled,
+
           data: [],
         },
       ];
