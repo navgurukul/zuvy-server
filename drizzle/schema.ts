@@ -2470,6 +2470,11 @@ export const zuvyBootcampType = main.table('zuvy_bootcamp_type', {
   type: text('type').notNull(), // Type of bootcamp (Public, Private, etc.)
   isModuleLocked: boolean('is_module_locked').default(false),
   mentorshipEnabled: boolean('mentorship_enabled').default(false),
+
+    leaderboardEnabled: boolean('leaderboard_enabled')
+    .default(false)
+    .notNull(),
+    
   createdAt: timestamp('created_at', {
     withTimezone: true,
     mode: 'string',
@@ -3246,6 +3251,8 @@ export const zuvyLearnersCompleteProfile = main.table(
     internshipStipend: varchar('internship_stipend', { length: 50 }),
     fullTimeCtc: varchar('full_time_ctc', { length: 50 }),
     preferredContactMethods: jsonb('preferred_contact_methods').default([]),
+    profileVisibility: boolean('profile_visibility').default(true),
+    termsAndCondition: boolean('terms_and_condition').default(false).notNull(),
     resumeUrl: varchar('resume_url', { length: 1024 }),
     originalFilename: varchar('original_filename', { length: 255 }),
 
@@ -4878,6 +4885,15 @@ export const zuvyMentorSlotBooking = main.table(
     studentFeedback: jsonb('student_feedback'),
     studentRating: integer('student_rating'),
 
+    studentFeedbackSubmittedAt: timestamp(
+      'student_feedback_submitted_at',
+      { withTimezone: true },
+    ),
+
+    studentFeedbackLocked: boolean(
+      'student_feedback_locked',
+    ).default(false),
+
     bookedAt: timestamp('booked_at', { withTimezone: true }).defaultNow(),
     confirmedAt: timestamp('confirmed_at', { withTimezone: true }),
     completedAt: timestamp('completed_at', { withTimezone: true }),
@@ -4923,6 +4939,51 @@ export const zuvyMentorSlotBookingRelations = relations(
       fields: [zuvyMentorSlotBooking.studentUserId],
       references: [users.id],
     }),
+  }),
+);
+
+export const zuvyLearnerLeaderboard = main.table(
+  'zuvy_learner_leaderboard',
+  {
+    id: serial('id').primaryKey().notNull(),
+    learnerId: integer('learner_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    bootcampId: integer('bootcamp_id')
+      .notNull()
+      .references(() => zuvyBootcamps.id, { onDelete: 'cascade' }),
+    assessmentPoints: integer('assessment_points').default(0),
+    codingPoints: integer('coding_points').default(0),
+    quizPoints: integer('quiz_points').default(0),
+    attendancePoints: integer('attendance_points').default(0),
+    recordingPoints: integer('recording_points').default(0),
+    assignmentPoints: integer('assignment_points').default(0),
+    totalPoints: integer('total_points').default(0),
+    lastActivityAt: timestamp('last_activity_at', {
+      withTimezone: true,
+      mode: 'string',
+    }),
+    createdAt: timestamp('created_at', {
+      withTimezone: true,
+      mode: 'string',
+    }).defaultNow(),
+    updatedAt: timestamp('updated_at', {
+      withTimezone: true,
+      mode: 'string',
+    }).defaultNow(),
+  },
+  (table) => ({
+    idxLearnerId: index('idx_zuvy_leaderboard_learner_id').on(table.learnerId),
+    idxBootcampId: index('idx_zuvy_leaderboard_bootcamp_id').on(
+      table.bootcampId,
+    ),
+    idxTotalPoints: index('idx_zuvy_leaderboard_total_points').on(
+      table.totalPoints,
+    ),
+    uniqLearnerBootcamp: unique('uniq_zuvy_leaderboard_learner_bootcamp').on(
+      table.learnerId,
+      table.bootcampId,
+    ),
   }),
 );
 
@@ -4977,3 +5038,16 @@ export const zuvyStudentBookingMetricsRelations = relations(zuvyStudentBookingMe
     references: [users.id],
   }),
 }));
+
+export const zuvyLearnerLeaderboardRelations = relations(zuvyLearnerLeaderboard, ({ one }) => ({
+  learner: one(users, {
+    fields: [zuvyLearnerLeaderboard.learnerId],
+    references: [users.id],
+  }),
+  bootcamp: one(zuvyBootcamps, {
+    fields: [zuvyLearnerLeaderboard.bootcampId],
+    references: [zuvyBootcamps.id],
+  }),
+}));
+
+
