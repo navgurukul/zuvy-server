@@ -891,6 +891,14 @@ export class SaveCompleteProfileDto {
   @IsString({ each: true })
   preferredContactMethods?: string[];
 
+  @ApiPropertyOptional({
+    example: true,
+    description: 'Controls whether the learner profile is visible or hidden',
+  })
+  @IsOptional()
+  @IsBoolean()
+  profileVisibility?: boolean;
+
   @ApiPropertyOptional({ example: true, default: false })
   @IsOptional()
   @IsBoolean()

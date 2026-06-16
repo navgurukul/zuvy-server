@@ -92,7 +92,7 @@ export class LearnerService {
 
       return {
         success: true,
-        data,
+        data: data.map((college) => college.name as string),
       };
     } catch (error) {
       if (error instanceof BadRequestException) {

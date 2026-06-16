@@ -408,18 +408,7 @@ export class LearnerProfileService {
       { key: 'collegeStream', isFilled: !!profile?.collegeStream },
       { key: 'collegeScore', isFilled: !!profile?.collegeScore },
       { key: 'collegeScoreType', isFilled: !!profile?.collegeScoreType },
-      { key: 'class12Board', isFilled: !!profile?.class12Board },
-      { key: 'class12Score', isFilled: !!profile?.class12Score },
-      {
-        key: 'class12ScoreType',
-        isFilled: !!profile?.class12ScoreType,
-      },
-      { key: 'class10Board', isFilled: !!profile?.class10Board },
-      { key: 'class10Score', isFilled: !!profile?.class10Score },
-      {
-        key: 'class10ScoreType',
-        isFilled: !!profile?.class10ScoreType,
-      },
+
       // Only require work experience for experienced users (not for freshers)
       ...(profile?.hasWorkExperience === true
         ? [
@@ -431,13 +420,6 @@ export class LearnerProfileService {
             },
           ]
         : []),
-      {
-        key: 'codingPlatformProfile',
-        isFilled:
-          hasCodingPlatformData(profile?.leetcodeProfiles) ||
-          hasCodingPlatformData(profile?.codechefProfiles) ||
-          hasCodingPlatformData(profile?.codeforcesProfiles),
-      },
 
       // PAGE 4: PREFERENCES
       {
@@ -453,8 +435,6 @@ export class LearnerProfileService {
           (profile.preferredLocations as any[]).length > 0,
       },
       { key: 'openToRemote', isFilled: profile?.openToRemote === true },
-      { key: 'internshipStipend', isFilled: !!profile?.internshipStipend },
-      { key: 'fullTimeCtc', isFilled: !!profile?.fullTimeCtc },
       {
         key: 'preferredContactMethods',
         isFilled:

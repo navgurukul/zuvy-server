@@ -3251,6 +3251,8 @@ export const zuvyLearnersCompleteProfile = main.table(
     internshipStipend: varchar('internship_stipend', { length: 50 }),
     fullTimeCtc: varchar('full_time_ctc', { length: 50 }),
     preferredContactMethods: jsonb('preferred_contact_methods').default([]),
+    profileVisibility: boolean('profile_visibility').default(true),
+    termsAndCondition: boolean('terms_and_condition').default(false).notNull(),
     resumeUrl: varchar('resume_url', { length: 1024 }),
     originalFilename: varchar('original_filename', { length: 255 }),
 
