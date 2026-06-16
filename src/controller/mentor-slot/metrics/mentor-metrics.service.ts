@@ -4,11 +4,30 @@ import {
   zuvyMentorSlotBooking,
   zuvyMentorSlotAvailability,
 } from '../../../../drizzle/schema';
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq, sql, gte } from 'drizzle-orm';
 
 @Injectable()
 export class MentorMetricsService {
-  async getMentorMetrics(mentorUserId: bigint, organizationId?: number) {
+  private getDateFilter(filter: '30days' | '3months' | 'all') {
+    const now = new Date();
+
+    switch (filter) {
+      case '30days':
+        return new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+      case '3months':
+        return new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
+
+      default:
+        return null;
+    }
+  }
+
+  async getMentorMetrics(
+    mentorUserId: bigint,
+    organizationId?: number,
+    filter: '30days' | '3months' | 'all' = 'all',
+  ) {
     const bookingConditions = [
       eq(zuvyMentorSlotBooking.mentorUserId, mentorUserId),
     ];
@@ -17,6 +36,11 @@ export class MentorMetricsService {
       bookingConditions.push(
         eq(zuvyMentorSlotBooking.organizationId, organizationId),
       );
+    }
+
+    const since = this.getDateFilter(filter);
+    if (since) {
+      bookingConditions.push(gte(zuvyMentorSlotBooking.confirmedAt, since));
     }
 
     /* ==========================================================
@@ -104,6 +128,7 @@ export class MentorMetricsService {
         : 0;
 
     return {
+      filter,
       sessions: {
         total,
         completed,

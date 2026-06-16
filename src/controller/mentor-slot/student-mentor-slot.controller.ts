@@ -100,8 +100,20 @@ export class StudentMentorSlotController {
 
   @Get('mentor-slots/metrics')
   @ApiOperation({ summary: 'Get student mentor booking quota and eligibility' })
-  async getStudentMetrics(@Req() req) {
-    return this.mentorSlotService.getStudentMetrics(Number(req.user[0].id));
+  @ApiQuery({
+    name: 'filter',
+    required: false,
+    enum: ['30days', '3months', 'all'],
+    description: 'Time range filter for metrics',
+  })
+  async getStudentMetrics(
+    @Req() req,
+    @Query('filter') filter: '30days' | '3months' | 'all' = 'all',
+  ) {
+    return this.mentorSlotService.getStudentMetrics(
+      Number(req.user[0].id),
+      filter,
+    );
   }
 
   @Post('mentor-slots/bookings/:bookingId/reschedule')

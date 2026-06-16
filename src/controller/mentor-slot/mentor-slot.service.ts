@@ -2281,8 +2281,39 @@ export class MentorSlotService {
     }));
   }
 
-  async getStudentMetrics(userId: number) {
+  async getStudentMetrics(
+    userId: number,
+    filter: '30days' | '3months' | 'all' = 'all',
+  ) {
     const userIdBigInt = BigInt(userId);
+    const since = this.getFeedbackDateFilter(filter);
+
+    // Fetch bookings for the filtered period
+    const conditions = [
+      eq(zuvyMentorSlotBooking.studentUserId, userIdBigInt),
+      ne(zuvyMentorSlotBooking.status, 'cancelled'),
+    ];
+
+    if (since) {
+      conditions.push(gte(zuvyMentorSlotBooking.confirmedAt, since));
+    }
+
+    const [{ count: totalBookings }] = await db
+      .select({ count: count() })
+      .from(zuvyMentorSlotBooking)
+      .where(and(...conditions));
+
+    const [{ count: completedBookings }] = await db
+      .select({ count: count() })
+      .from(zuvyMentorSlotBooking)
+      .where(
+        and(
+          ...conditions,
+          eq(zuvyMentorSlotBooking.sessionLifecycleState, 'COMPLETED'),
+        ),
+      );
+
+    // Fetch overall quota info from metrics table (always all-time for quota)
     let [metrics] = await db
       .select()
       .from(zuvyStudentBookingMetrics)
@@ -2305,10 +2336,18 @@ export class MentorSlotService {
       (!metrics?.cooldownEndDate || now >= metrics.cooldownEndDate);
 
     return {
+      // Overall quota info
       ...metrics,
       remainingCredits,
       canBook,
       nextEligible: metrics?.cooldownEndDate || null,
+      // Filtered metrics
+      filter,
+      filteredMetrics: {
+        totalBookings: Number(totalBookings),
+        completedBookings: Number(completedBookings),
+        pendingBookings: Number(totalBookings) - Number(completedBookings),
+      },
     };
   }
 
