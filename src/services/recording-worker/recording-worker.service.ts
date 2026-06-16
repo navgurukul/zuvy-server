@@ -183,14 +183,13 @@ export class RecordingWorkerService implements OnModuleInit {
       }));
   }
 
-  /////////////helper function for logging job details/////////////
   private logJob(
     level: 'log' | 'warn' | 'error' | 'debug',
     job: RecordingJob,
     message: string,
     extra?: Record<string, any>,
   ) {
-    this.logger[level]({
+    const logObj = {
       msg: message,
       jobId: job.id,
       sessionId: job.session_id,
@@ -199,28 +198,90 @@ export class RecordingWorkerService implements OnModuleInit {
       status: job.status,
       retry: job.retry_count,
       ...extra,
-    });
+    };
+
+    if (level === 'debug') {
+      this.logger.debug(logObj);
+    } else if (level === 'warn') {
+      this.logger.warn(logObj);
+    } else if (level === 'error') {
+      this.logger.error(logObj);
+    } else {
+      this.logger.log(logObj);
+    }
+
+    try {
+      const timestamp = new Date().toISOString();
+      const logDir = path.join(process.cwd(), 'temp-recordings');
+      if (!fs.existsSync(logDir)) {
+        fs.mkdirSync(logDir, { recursive: true });
+      }
+      fs.appendFileSync(
+        path.join(logDir, 'worker.log'),
+        `[${timestamp}] [JOB-${job.id}] [${level.toUpperCase()}] ${message} ${JSON.stringify(logObj)}\n`,
+        'utf8',
+      );
+    } catch (err: any) {
+      this.logger.error(`Failed to write to worker.log: ${err.message}`);
+    }
+  }
+
+  private logEvent(
+    level: 'log' | 'warn' | 'error',
+    message: string,
+    extra?: any,
+  ) {
+    const timestamp = new Date().toISOString();
+    const cleanMsg = `[${timestamp}] [SYSTEM] [${level.toUpperCase()}] ${message} ${extra ? JSON.stringify(extra) : ''}`;
+
+    if (level === 'error') {
+      this.logger.error(message, extra);
+    } else if (level === 'warn') {
+      this.logger.warn(message, extra);
+    } else {
+      this.logger.log(message, extra);
+    }
+
+    try {
+      const logDir = path.join(process.cwd(), 'temp-recordings');
+      if (!fs.existsSync(logDir)) {
+        fs.mkdirSync(logDir, { recursive: true });
+      }
+      fs.appendFileSync(
+        path.join(logDir, 'worker.log'),
+        cleanMsg + '\n',
+        'utf8',
+      );
+    } catch (err: any) {
+      this.logger.error(`Failed to write to worker.log: ${err.message}`);
+    }
   }
 
   // =====================================================
   // WORKER LOOP (FEATURE-FLAG PROTECTED)
   // =====================================================
   async runWorkerOnce() {
-    // this.logger.debug('⏱ Recording worker tick');
-
     if (!RECORDING_WORKER_ENABLED) {
-      this.logger.debug('Recording worker disabled by env flag');
       return;
     }
+
+    this.logEvent('log', '⏱ Recording worker tick started');
 
     const job = await this.pickJob();
-    if (!job) {
-      // this.logger.debug('No recording jobs found');
-      return;
+    if (job) {
+      this.logEvent('log', `Picked individual recording job for processing`, {
+        jobId: job.id,
+        status: job.status,
+        table: job.table,
+      });
+      await this.processJob(job);
+    } else {
+      this.logEvent(
+        'log',
+        'No individual recording jobs picked. Checking session-level merges/uploads.',
+      );
+      await this.processSessionMergesAndUploads();
     }
-
-    this.logger.log(`Picked recording job ${job.id}`);
-    await this.processJob(job);
   }
 
   // =====================================================
@@ -243,7 +304,7 @@ export class RecordingWorkerService implements OnModuleInit {
     WHERE id = (
       SELECT id
       FROM zuvy_session_recordings
-      WHERE status IN ('DISCOVERED', 'FAILED', 'METADATA_READY', 'DOWNLOADING', 'DOWNLOADED', 'MERGED')
+      WHERE status IN ('DISCOVERED', 'FAILED', 'METADATA_READY', 'DOWNLOADING', 'DOWNLOADED')
         AND status NOT LIKE 'PROCESSING_%'
         AND status != 'PERMANENT_FAILED'
         AND retry_count < ${MAX_RETRIES}
@@ -256,7 +317,12 @@ export class RecordingWorkerService implements OnModuleInit {
   `);
 
     if (result.rows?.[0]) {
-      return { ...result.rows[0], table: 'session' } as RecordingJob;
+      const job = { ...result.rows[0], table: 'session' } as RecordingJob;
+      this.logEvent('log', `pickJob: Picked session recording job ${job.id}`, {
+        jobId: job.id,
+        status: job.status,
+      });
+      return job;
     }
 
     // Then try mentor recordings
@@ -286,7 +352,12 @@ export class RecordingWorkerService implements OnModuleInit {
   `);
 
     if (result.rows?.[0]) {
-      return { ...result.rows[0], table: 'mentor' } as RecordingJob;
+      const job = { ...result.rows[0], table: 'mentor' } as RecordingJob;
+      this.logEvent('log', `pickJob: Picked mentor recording job ${job.id}`, {
+        jobId: job.id,
+        status: job.status,
+      });
+      return job;
     }
 
     return null;
@@ -1125,6 +1196,318 @@ export class RecordingWorkerService implements OnModuleInit {
       // Re-throw the error to be handled by the failure logic
       throw error;
     }
+  }
+
+  // =====================================================
+  // SESSION-LEVEL MERGES AND UPLOADS
+  // =====================================================
+  private async processSessionMergesAndUploads() {
+    // 1. Pick one session that is ready for final merge and upload
+    const sessionResult = await db.execute(sql`
+      SELECT s.id, s.title, s.zoom_meeting_id, s.zoom_meeting_uuid, s.end_time
+      FROM zuvy_sessions s
+      WHERE (s.final_uploaded = FALSE OR s.s3link IS NULL)
+        AND s.is_zoom_meet = TRUE
+        AND s.end_time::timestamptz + INTERVAL '10 minutes' <= NOW()
+        AND EXISTS (
+          SELECT 1 FROM zuvy_session_recordings r WHERE r.session_id = s.id
+        )
+        AND NOT EXISTS (
+          SELECT 1 FROM zuvy_session_recordings r
+          WHERE r.session_id = s.id
+            AND r.status NOT IN ('MERGED', 'PERMANENT_FAILED', 'COMPLETED')
+        )
+        AND EXISTS (
+          SELECT 1 FROM zuvy_session_recordings r
+          WHERE r.session_id = s.id
+            AND r.status = 'MERGED'
+        )
+      LIMIT 1
+      FOR UPDATE SKIP LOCKED
+    `);
+
+    const session = sessionResult.rows?.[0] as any;
+    if (!session) {
+      return;
+    }
+
+    const sessionId = Number(session.id);
+    this.logger.log(
+      `Session ${sessionId} is ready for final merge and upload.`,
+    );
+
+    // 2. Atomic lock acquisition: Transition 'MERGED' jobs to 'PROCESSING_UPLOAD'
+    const updatedJobsResult = await db.execute(sql`
+      UPDATE zuvy_session_recordings
+      SET status = 'PROCESSING_UPLOAD', updated_at = NOW()
+      WHERE session_id = ${sessionId}
+        AND status = 'MERGED'
+      RETURNING *
+    `);
+
+    const jobs = (updatedJobsResult.rows as any[]) || [];
+    if (!jobs.length) {
+      this.logger.log(
+        `No 'MERGED' recording jobs found for session ${sessionId} to process.`,
+      );
+      return;
+    }
+
+    // Sort jobs by recording_start ascending
+    const sortedJobs = jobs.sort((a: any, b: any) => {
+      const timeA = a.recording_start
+        ? new Date(a.recording_start).getTime()
+        : 0;
+      const timeB = b.recording_start
+        ? new Date(b.recording_start).getTime()
+        : 0;
+      return timeA - timeB;
+    });
+
+    const tempDir = path.join(process.cwd(), 'temp-recordings');
+    if (!fs.existsSync(tempDir)) {
+      fs.mkdirSync(tempDir, { recursive: true });
+    }
+
+    const finalMergedPath = path.join(
+      tempDir,
+      `session-${sessionId}-final.mp4`,
+    );
+
+    try {
+      // Check if all intermediate merged files exist
+      const missingFile = sortedJobs.find(
+        (job: any) =>
+          !job.merged_file_path || !fs.existsSync(job.merged_file_path),
+      );
+
+      if (missingFile) {
+        throw new Error(
+          `Intermediate merged recording file missing for job ${missingFile.id}: ${missingFile.merged_file_path}`,
+        );
+      }
+
+      const { execFileSync } = require('child_process');
+
+      // Merge files
+      if (sortedJobs.length === 1) {
+        this.logger.log(
+          `Only 1 recording job found for session ${sessionId}. Stream copying to final path.`,
+        );
+        execFileSync(
+          'ffmpeg',
+          [
+            '-y',
+            '-i',
+            sortedJobs[0].merged_file_path,
+            '-c',
+            'copy',
+            finalMergedPath,
+          ],
+          { stdio: 'ignore' },
+        );
+      } else {
+        this.logger.log(
+          `Merging ${sortedJobs.length} recording files for session ${sessionId}.`,
+        );
+        const concatListPath = path.join(
+          tempDir,
+          `session-${sessionId}-concat.txt`,
+        );
+        const concatList = sortedJobs
+          .map(
+            (job: any) =>
+              `file '${job.merged_file_path.replace(/\\/g, '/').replace(/'/g, "'\\''")}'`,
+          )
+          .join('\n');
+
+        fs.writeFileSync(concatListPath, concatList);
+
+        try {
+          execFileSync(
+            'ffmpeg',
+            [
+              '-y',
+              '-f',
+              'concat',
+              '-safe',
+              '0',
+              '-i',
+              concatListPath,
+              '-c',
+              'copy',
+              finalMergedPath,
+            ],
+            { stdio: 'ignore' },
+          );
+        } finally {
+          try {
+            fs.unlinkSync(concatListPath);
+          } catch {}
+        }
+      }
+
+      // Validate merged video
+      try {
+        await this.validateVideoFile(finalMergedPath);
+      } catch (validationError: any) {
+        throw new Error(
+          `Final merged video validation failed: ${validationError.message}`,
+        );
+      }
+
+      // Check YouTube upload enabled
+      if (!YOUTUBE_UPLOAD_ENABLED) {
+        this.logger.warn(
+          `YouTube upload disabled by env flag. Merged file saved at ${finalMergedPath}`,
+        );
+
+        await db.execute(sql`
+          UPDATE zuvy_sessions
+          SET
+            final_video_path = ${finalMergedPath},
+            final_uploaded = TRUE
+          WHERE id = ${sessionId}
+        `);
+
+        await db.execute(sql`
+          UPDATE zuvy_session_recordings
+          SET
+            status = 'COMPLETED',
+            updated_at = NOW()
+          WHERE session_id = ${sessionId}
+            AND status = 'PROCESSING_UPLOAD'
+        `);
+        return;
+      }
+
+      // Upload to YouTube
+      const fileSize = fs.statSync(finalMergedPath).size;
+      if (fileSize < 1024) {
+        throw new Error(
+          `Final merged file too small (${fileSize} bytes), likely corrupted`,
+        );
+      }
+
+      const videoTitle = await this.getYoutubeUploadTitleForSession(
+        sessionId,
+        session.title,
+      );
+
+      this.logger.log(
+        `Uploading final merged video to YouTube for session ${sessionId}`,
+      );
+      const res = await this.youtube.videos.insert(
+        {
+          part: ['snippet', 'status'],
+          requestBody: {
+            snippet: {
+              title: videoTitle,
+              description: 'Automated session recording upload',
+            },
+            status: { privacyStatus: 'unlisted' },
+          },
+          media: { body: fs.createReadStream(finalMergedPath) },
+        },
+        {
+          onUploadProgress: (evt: any) => {
+            const progress = Math.round((evt.bytesRead / fileSize) * 100);
+            this.logger.log(
+              `YouTube upload ${progress}% for session ${sessionId}`,
+            );
+          },
+        },
+      );
+
+      const videoId = res.data.id;
+      const videoUrl = `https://www.youtube.com/watch?v=${videoId}`;
+
+      this.logger.log(
+        `YouTube upload completed successfully for session ${sessionId}: ${videoUrl}`,
+      );
+
+      // Update zuvy_sessions
+      await db.execute(sql`
+        UPDATE zuvy_sessions
+        SET
+          youtube_video_id = ${videoId},
+          s3link = ${videoUrl},
+          final_video_path = ${finalMergedPath},
+          final_uploaded = TRUE
+        WHERE id = ${sessionId}
+      `);
+
+      // Update all processed recording jobs
+      await db.execute(sql`
+        UPDATE zuvy_session_recordings
+        SET
+          status = 'COMPLETED',
+          drive_file_id = ${videoId},
+          drive_link = ${videoUrl},
+          updated_at = NOW()
+        WHERE session_id = ${sessionId}
+          AND status = 'PROCESSING_UPLOAD'
+      `);
+
+      // Cleanup files
+      try {
+        if (fs.existsSync(finalMergedPath)) {
+          fs.unlinkSync(finalMergedPath);
+        }
+      } catch (err: any) {
+        this.logger.warn(`Failed to delete final merged file: ${err.message}`);
+      }
+
+      for (const job of sortedJobs) {
+        const localPaths = this.parseJsonArray<string>(job.local_segment_paths);
+        for (const localPath of localPaths) {
+          try {
+            if (fs.existsSync(localPath)) {
+              fs.unlinkSync(localPath);
+            }
+          } catch (err: any) {
+            this.logger.warn(
+              `Failed to delete segment file ${localPath}: ${err.message}`,
+            );
+          }
+        }
+        try {
+          if (job.merged_file_path && fs.existsSync(job.merged_file_path)) {
+            fs.unlinkSync(job.merged_file_path);
+          }
+        } catch (err: any) {
+          this.logger.warn(
+            `Failed to delete intermediate merged file ${job.merged_file_path}: ${err.message}`,
+          );
+        }
+      }
+    } catch (error: any) {
+      this.logger.error(
+        `Session merge and upload failed for session ${sessionId}`,
+        error,
+      );
+
+      // Revert jobs back to FAILED so they retry
+      for (const job of sortedJobs) {
+        await this.markFailed({ ...job, table: 'session' } as any, error);
+      }
+
+      // Cleanup final merged file if exists
+      try {
+        if (fs.existsSync(finalMergedPath)) {
+          fs.unlinkSync(finalMergedPath);
+        }
+      } catch {}
+    }
+  }
+
+  private async getYoutubeUploadTitleForSession(
+    sessionId: number,
+    sessionTitle?: string,
+  ): Promise<string> {
+    const title = String(sessionTitle || '').trim();
+    if (title) return title;
+    return `Session ${sessionId}`;
   }
 
   // =====================================================
