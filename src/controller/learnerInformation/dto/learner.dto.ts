@@ -496,6 +496,11 @@ export class WorkExperienceDto {
   @Validate(EndDateAfterStartDate)
   endDate?: string;
 
+  @ApiPropertyOptional({ example: true })
+  @IsOptional()
+  @IsBoolean()
+  isCurrentlyWorking?: boolean;
+
   @ApiPropertyOptional({ example: 'Worked on search optimization' })
   @IsOptional()
   @IsString()
@@ -885,6 +890,14 @@ export class SaveCompleteProfileDto {
   @IsArray()
   @IsString({ each: true })
   preferredContactMethods?: string[];
+
+  @ApiPropertyOptional({
+    example: true,
+    description: 'Controls whether the learner profile is visible or hidden',
+  })
+  @IsOptional()
+  @IsBoolean()
+  profileVisibility?: boolean;
 
   @ApiPropertyOptional({ example: true, default: false })
   @IsOptional()

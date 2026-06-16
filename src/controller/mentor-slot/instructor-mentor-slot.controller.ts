@@ -140,6 +140,38 @@ export class InstructorMentorSlotController {
     );
   }
 
+  @Get('mentor-slots/bookings/:bookingId/student-feedback')
+  @ApiOperation({ summary: 'Get student feedback for an instructor session' })
+  async getStudentFeedback(
+    @Req() req,
+    @Param('bookingId', ParseIntPipe) bookingId: number,
+  ) {
+    return this.sessionService.getMentorFeedback(
+      bookingId,
+      BigInt(req.user[0].id),
+    );
+  }
+
+  @Get('mentor-slots/feedbacks')
+  @ApiOperation({
+    summary: 'Get all feedback received by the mentor',
+  })
+  @ApiQuery({
+    name: 'filter',
+    required: false,
+    enum: ['30days', '3months', 'all'],
+  })
+  async getReceivedFeedbacks(
+    @Req() req,
+    @Query('filter') filter: '30days' | '3months' | 'all' = 'all',
+  ) {
+    return this.mentorSlotService.getMentorReceivedFeedbacks(
+      Number(req.user[0].id),
+      filter,
+      Number(req.user[0].orgId),
+    );
+  }
+
   @Post('mentor-slots/bookings/:bookingId/attendance')
   @ApiOperation({ summary: 'Mark attendance for an instructor session' })
   async markAttendance(
@@ -253,7 +285,7 @@ export class InstructorMentorSlotController {
   @ApiQuery({
     name: 'filter',
     required: false,
-    enum: ['all', 'upcoming', 'reschedule', 'completed'],
+    enum: ['all', 'upcoming', 'reschedule', 'completed', 'cancelled'],
   })
   @ApiQuery({
     name: 'sort',

@@ -44,6 +44,7 @@ import {
   ZOOM_LICENSE_COOLDOWN_MS,
   buildZoomLicenseCooldownIntervalSql,
 } from '../../common/constants/zoom-license.constants';
+import moment = require('moment-timezone');
 
 @Injectable()
 export class ClassesService {
@@ -494,6 +495,24 @@ export class ClassesService {
     }
   }
 
+  private normalizeSessionDateTime(
+    dateTime: string,
+    timeZone = 'Asia/Kolkata',
+  ): string {
+    if (!dateTime) return dateTime;
+
+    const hasExplicitOffset = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(dateTime);
+    const parsedDate = hasExplicitOffset
+      ? moment(dateTime)
+      : moment.tz(dateTime, timeZone);
+
+    if (!parsedDate.isValid()) {
+      throw new Error(`Invalid session date-time: ${dateTime}`);
+    }
+
+    return parsedDate.toDate().toISOString();
+  }
+
   async accessOfCalendar(creatorInfo) {
     try {
       const userTokenData = await this.getUserTokens(
@@ -631,7 +650,12 @@ export class ClassesService {
       // [Relaxed restriction: Instructors can now create sessions using Zoom licenses]
       console.log('creatorInfo', creatorInfo);
       // Prevent creating sessions in the past
-      const parsedStart = new Date(eventDetails.startDateTime);
+      const parsedStart = new Date(
+        this.normalizeSessionDateTime(
+          eventDetails.startDateTime,
+          eventDetails.timeZone,
+        ),
+      );
       if (isNaN(parsedStart.getTime())) {
         return { status: 'error', message: 'Invalid startDateTime', code: 400 };
       }
@@ -739,6 +763,14 @@ export class ClassesService {
       }
       let eventData = {
         ...eventDetails,
+        startDateTime: this.normalizeSessionDateTime(
+          eventDetails.startDateTime,
+          eventDetails.timeZone,
+        ),
+        endDateTime: this.normalizeSessionDateTime(
+          eventDetails.endDateTime,
+          eventDetails.timeZone,
+        ),
         invitedStudents,
         bootcampId: primaryBatchInfo.bootcampId,
       };
@@ -1530,8 +1562,8 @@ export class ClassesService {
 
               throw new Error(
                 nextAvailableAt &&
-                  nextAvailableAt.getTime() >
-                    new Date(original.startTime).getTime()
+                nextAvailableAt.getTime() >
+                  new Date(original.startTime).getTime()
                   ? `No Zoom licenses available for this time period. You can create session after ${this.zoomLicenseService.formatAvailabilityMessage(nextAvailableAt)}.`
                   : `No Zoom licenses available for this time period. Active licensed pool: ${activePoolCount}, overlapping assignments: ${Number(overlappingAssignments[0]?.count || 0)}.`,
               );
@@ -3104,6 +3136,7 @@ export class ClassesService {
       // Normalise incoming DTO fields
       const normalizedStart = updateData.startTime || updateData.startDateTime;
       const normalizedEnd = updateData.endTime || updateData.endDateTime;
+      const requestTimeZone = updateData.timeZone || 'Asia/Kolkata';
 
       // Validation: Check if session has already started
       const now = new Date();
@@ -3132,32 +3165,21 @@ export class ClassesService {
         }
       }
 
-      // Convert IST to GMT for database storage (same as createZoomSession)
-      // Frontend sends IST time, we need to store as GMT
-      // IST is GMT+5:30, so to convert IST to GMT we subtract 5:30
-      let gmtStartTime = normalizedStart;
-      let gmtEndTime = normalizedEnd;
+      let updatedStartTime = normalizedStart
+        ? this.normalizeSessionDateTime(normalizedStart, requestTimeZone)
+        : undefined;
+      let updatedEndTime = normalizedEnd
+        ? this.normalizeSessionDateTime(normalizedEnd, requestTimeZone)
+        : undefined;
+
       if (normalizedStart) {
-        const requestedStart = new Date(normalizedStart);
+        const requestedStart = new Date(updatedStartTime);
         if (requestedStart.getTime() <= now.getTime()) {
           return {
             success: false,
             message: 'Cannot update to a start time in the past',
           };
         }
-      }
-      if (normalizedStart) {
-        gmtStartTime = new Date(normalizedStart);
-        gmtStartTime.setHours(gmtStartTime.getHours() - 5);
-        gmtStartTime.setMinutes(gmtStartTime.getMinutes() - 30);
-        gmtStartTime = gmtStartTime.toISOString();
-      }
-
-      if (normalizedEnd) {
-        gmtEndTime = new Date(normalizedEnd);
-        gmtEndTime.setHours(gmtEndTime.getHours() - 5);
-        gmtEndTime.setMinutes(gmtEndTime.getMinutes() - 30);
-        gmtEndTime = gmtEndTime.toISOString();
       }
       // Prevent platform toggle via update
       if (
@@ -3169,8 +3191,8 @@ export class ClassesService {
 
       const sessionUpdateData: any = {
         title: updateData.title || session.title,
-        startTime: gmtStartTime || session.startTime,
-        endTime: gmtEndTime || session.endTime,
+        startTime: updatedStartTime || session.startTime,
+        endTime: updatedEndTime || session.endTime,
       };
 
       // Add all optional fields if provided
@@ -3257,8 +3279,8 @@ export class ClassesService {
           try {
             // Calculate duration if start/end times are provided
             let duration;
-            const startTime = normalizedStart || session.startTime;
-            const endTime = normalizedEnd || session.endTime;
+            const startTime = updatedStartTime || session.startTime;
+            const endTime = updatedEndTime || session.endTime;
             if (startTime && endTime) {
               duration = Math.floor(
                 (new Date(endTime).getTime() - new Date(startTime).getTime()) /
@@ -3270,8 +3292,7 @@ export class ClassesService {
             if (updateData.title) zoomUpdateData.topic = updateData.title;
             if (updateData.description)
               zoomUpdateData.description = updateData.description;
-            // Use original IST time for Zoom API (not the GMT converted time)
-            if (normalizedStart) zoomUpdateData.start_time = normalizedStart;
+            if (updatedStartTime) zoomUpdateData.start_time = updatedStartTime;
             if (duration) zoomUpdateData.duration = duration;
 
             await this.zoomService.updateMeeting(
@@ -3301,9 +3322,10 @@ export class ClassesService {
               session.meetingId,
               {
                 title: updateData.title,
-                startTime: normalizedStart,
-                endTime: normalizedEnd,
+                startTime: updatedStartTime,
+                endTime: updatedEndTime,
                 description: updateData.description,
+                timeZone: requestTimeZone,
               },
               userInfo,
             );
@@ -3333,8 +3355,8 @@ export class ClassesService {
       const responseData: any = {
         sessionId,
         ...updateData,
-        startTime: gmtStartTime || session.startTime,
-        endTime: gmtEndTime || session.endTime,
+        startTime: updatedStartTime || session.startTime,
+        endTime: updatedEndTime || session.endTime,
       };
 
       // Add batch names if batchId was updated or exists
@@ -4326,6 +4348,24 @@ export class ClassesService {
         };
       });
       session.studentAttendanceRecords = updatedAttendanceRecords;
+
+      const recordingResult = await db.execute(sql`
+        SELECT drive_file_id, drive_link
+        FROM zuvy_session_recordings
+        WHERE session_id = ${session.id}
+          AND status = 'COMPLETED'
+          AND drive_file_id IS NOT NULL
+        ORDER BY updated_at DESC, created_at DESC
+        LIMIT 1
+      `);
+
+      const latestRecording = recordingResult.rows?.[0] as any;
+      if (latestRecording?.drive_file_id) {
+        session.youtubeVideoId =
+          session.youtubeVideoId || latestRecording.drive_file_id;
+        session.s3link = session.s3link || latestRecording.drive_link || null;
+        session.finalUploaded = true;
+      }
 
       // Counts (case-insensitive comparison of status)
       const presentCount = attendanceRecords.filter(
