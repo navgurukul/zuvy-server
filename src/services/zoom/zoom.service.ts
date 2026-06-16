@@ -6,8 +6,10 @@ import {
   AttendanceStatus,
   zuvyBatches,
   users,
+  zuvyUserLicenses,
+  licenses,
 } from '../../../drizzle/schema';
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 
 export interface ZoomMeetingRequest {
   topic: string;
@@ -180,6 +182,39 @@ export interface ZoomRecordingResponse {
   recording_files: ZoomRecordingFile[];
 }
 
+interface ZoomUserListItem {
+  id: string;
+  first_name?: string;
+  last_name?: string;
+  display_name?: string;
+  email: string;
+  type: number;
+  status: string;
+  role_name?: string;
+  timezone?: string;
+  verified?: number;
+  created_at?: string;
+  last_login_time?: string;
+}
+
+interface ZoomUsersListResponse {
+  page_count?: number;
+  page_number?: number;
+  page_size?: number;
+  total_records?: number;
+  next_page_token?: string;
+  users?: ZoomUserListItem[];
+}
+
+type ZoomUserSettingsPayload = {
+  security?: Record<string, unknown>;
+  scheduled_meeting?: Record<string, unknown>;
+  in_meeting?: Record<string, unknown>;
+  email_notification?: Record<string, unknown>;
+  recording?: Record<string, unknown>;
+  feature?: Record<string, unknown>;
+};
+
 @Injectable()
 export class ZoomService {
   private readonly logger = new Logger(ZoomService.name);
@@ -187,6 +222,161 @@ export class ZoomService {
   // Simple in-memory token cache (process lifetime). Avoids generating a new token for every request.
   private tokenCache: { accessToken: string; expiresAt: number } | null = null;
   private tokenRefreshPromise: Promise<string> | null = null;
+
+  private buildLicensedUserSettingsPayload(): ZoomUserSettingsPayload {
+    return {
+      security: {
+        waiting_room: true,
+      },
+      scheduled_meeting: {
+        host_video: true,
+        participants_video: true,
+        audio_type: 'both',
+        join_before_host: false,
+        waiting_room: true,
+        force_pmi_jbh_password: false,
+        pstn_password_protected: false,
+      },
+      in_meeting: {
+        e2e_encryption: true,
+        chat: true,
+        private_chat: true,
+        auto_saving_chat: false,
+        entry_exit_chime: 'all',
+        record_play_voice: false,
+        file_transfer: true,
+        feedback: false,
+        co_host: true,
+        polling: true,
+        attendee_on_hold: false,
+        annotation: true,
+        remote_control: false,
+        non_verbal_feedback: true,
+        breakout_room: true,
+        remote_support: false,
+        closed_caption: false,
+        group_hd: false,
+        virtual_background: true,
+        far_end_camera_control: false,
+      },
+      email_notification: {
+        jbh_reminder: false,
+        cancel_meeting_reminder: true,
+        alternative_host_reminder: true,
+      },
+      recording: {
+        local_recording: true,
+        cloud_recording: true,
+        record_speaker_view: true,
+        record_gallery_view: false,
+        record_audio_file: true,
+        save_chat_text: true,
+        show_timestamp: false,
+        recording_audio_transcript: true,
+        auto_recording: 'cloud',
+        host_pause_stop_recording: true,
+      },
+    };
+  }
+
+  async applyLicensedUserSettings(email: string) {
+    const url = `${this.baseUrl}/users/${encodeURIComponent(email)}/settings`;
+    const payload = this.buildLicensedUserSettingsPayload();
+
+    try {
+      await axios.patch(url, payload, {
+        headers: await this.getHeaders(),
+      });
+      this.logger.log(
+        `Applied Zoom licensed-user settings for ${email} successfully.`,
+      );
+      return { success: true };
+    } catch (e: any) {
+      const errorMessage = e.response?.data?.message || e.message;
+      this.logger.warn(
+        `Failed to apply Zoom licensed-user settings for ${email}: ${errorMessage}`,
+      );
+      return { success: false, error: errorMessage };
+    }
+  }
+
+  async syncZoomLicenseUser(input: {
+    email: string;
+    zoomUserId?: string | null;
+    userName?: string | null;
+    licenseType: number;
+    status?: string | null;
+    isProtected?: boolean;
+  }) {
+    const normalizedEmail = input.email.trim().toLowerCase();
+    const existingRows = await db
+      .select({
+        isProtected: zuvyUserLicenses.isProtected,
+      })
+      .from(zuvyUserLicenses)
+      .where(eq(zuvyUserLicenses.zoomEmail, normalizedEmail))
+      .limit(1);
+
+    const resolvedIsProtected =
+      input.isProtected ?? existingRows[0]?.isProtected ?? false;
+
+    await db
+      .insert(zuvyUserLicenses)
+      .values({
+        zoomEmail: normalizedEmail,
+        zoomUserId: input.zoomUserId || null,
+        userName: input.userName || normalizedEmail,
+        licenseType: input.licenseType,
+        status: input.status || 'active',
+        isProtected: resolvedIsProtected,
+        updatedAt: sql`NOW()`,
+      } as any)
+      .onConflictDoUpdate({
+        target: zuvyUserLicenses.zoomEmail,
+        set: {
+          zoomUserId: input.zoomUserId || null,
+          userName: input.userName || normalizedEmail,
+          licenseType: input.licenseType,
+          status: input.status || 'active',
+          isProtected: resolvedIsProtected,
+          updatedAt: sql`NOW()`,
+        } as any,
+      });
+
+    await db
+      .insert(licenses)
+      .values({
+        zoomId: normalizedEmail,
+        name: input.userName || normalizedEmail,
+        status:
+          input.status === 'active' && input.licenseType === 2
+            ? 'active'
+            : 'inactive',
+      } as any)
+      .onConflictDoUpdate({
+        target: licenses.zoomId,
+        set: {
+          name: input.userName || normalizedEmail,
+          status:
+            input.status === 'active' && input.licenseType === 2
+              ? 'active'
+              : 'inactive',
+        } as any,
+      });
+  }
+
+  async getProtectedZoomEmails() {
+    const rows = await db
+      .select({ email: zuvyUserLicenses.zoomEmail })
+      .from(zuvyUserLicenses)
+      .where(eq(zuvyUserLicenses.isProtected, true));
+
+    return new Set(
+      rows
+        .map((row) => row.email?.trim().toLowerCase())
+        .filter((email): email is string => Boolean(email)),
+    );
+  }
 
   private async generateAccessToken(): Promise<{
     accessToken: string;
@@ -219,7 +409,7 @@ export class ZoomService {
         `Zoom access token generated successfully (expires in ${expiresIn}s).`,
       );
       return { accessToken, expiresIn };
-    } catch (error) {
+    } catch (error: any) {
       this.logger.error(
         `Error generating Zoom access token: ${error.response?.data || error.message}`,
       );
@@ -249,7 +439,7 @@ export class ZoomService {
         Authorization: `Bearer ${newToken}`,
         'Content-Type': 'application/json',
       };
-    } catch (e) {
+    } catch (e: any) {
       this.logger.error(`Failed to obtain Zoom headers: ${e.message}`);
       throw e;
     }
@@ -277,7 +467,7 @@ export class ZoomService {
 
       this.logger.log(`Zoom meeting created successfully: ${response.data.id}`);
       return { success: true, data: response.data };
-    } catch (error) {
+    } catch (error: any) {
       this.logger.error(
         `Error creating Zoom meeting: ${error.response?.data || error.message}`,
       );
@@ -408,6 +598,16 @@ export class ZoomService {
       const res = await axios.post(url, payload, {
         headers: await this.getHeaders(),
       });
+      await this.syncZoomLicenseUser({
+        email,
+        zoomUserId: res.data?.id || null,
+        userName:
+          `${firstName || ''} ${lastName || ''}`.trim() ||
+          res.data?.display_name ||
+          email,
+        licenseType: 1,
+        status: res.data?.status || 'pending',
+      });
       return { success: true, data: res.data };
     } catch (e: any) {
       return { success: false, error: e.response?.data?.message || e.message };
@@ -418,6 +618,30 @@ export class ZoomService {
     try {
       const url = `${this.baseUrl}/users/${encodeURIComponent(email)}`;
       await axios.patch(url, { type }, { headers: await this.getHeaders() });
+      const user = await this.getUser(email);
+      if (user.success) {
+        await this.syncZoomLicenseUser({
+          email,
+          zoomUserId: user.data?.id || null,
+          userName:
+            `${user.data?.first_name || ''} ${user.data?.last_name || ''}`.trim() ||
+            user.data?.display_name ||
+            email,
+          licenseType: user.data?.type ?? type,
+          status: user.data?.status || 'active',
+        });
+      } else {
+        await this.syncZoomLicenseUser({
+          email,
+          licenseType: type,
+          status: type === 2 ? 'active' : 'downgraded',
+        });
+      }
+
+      if (type === 2) {
+        await this.applyLicensedUserSettings(email);
+      }
+
       return { success: true };
     } catch (e: any) {
       return { success: false, error: e.response?.data?.message || e.message };
@@ -469,7 +693,36 @@ export class ZoomService {
       return { success: false, step: 'verify', error: finalUser.error };
     const userType = finalUser.data.type;
     const userStatus = finalUser.data.status; // expect 'active'
+    await this.syncZoomLicenseUser({
+      email,
+      zoomUserId: finalUser.data?.id || null,
+      userName:
+        `${finalUser.data?.first_name || ''} ${finalUser.data?.last_name || ''}`.trim() ||
+        finalUser.data?.display_name ||
+        email,
+      licenseType: userType,
+      status: userStatus,
+    });
     const licensed = userType === 2 && userStatus === 'active';
+    if (!licensed) {
+      const typeLabel =
+        userType === 2
+          ? 'licensed'
+          : userType === 1
+            ? 'basic'
+            : `type ${userType}`;
+      return {
+        success: false,
+        step: 'verify',
+        error: `Zoom user ${email} is currently ${typeLabel} with status '${userStatus}'. The user must be licensed and active before a session can be created.`,
+        userType,
+        userStatus,
+        licensed,
+      };
+    }
+
+    await this.applyLicensedUserSettings(email);
+
     return { success: true, userType, userStatus, licensed };
   }
 
@@ -489,9 +742,11 @@ export class ZoomService {
     phoneNumber?: string;
     timezone?: string;
     type?: 1 | 2 | 3;
+    isProtected?: boolean;
   }) {
     try {
-      const url = `${this.baseUrl}/users/${encodeURIComponent(update.email)}`;
+      const normalizedEmail = update.email.trim().toLowerCase();
+      const url = `${this.baseUrl}/users/${encodeURIComponent(normalizedEmail)}`;
       const body: any = {};
       if (update.firstName) body.first_name = update.firstName;
       if (update.lastName) body.last_name = update.lastName;
@@ -500,10 +755,150 @@ export class ZoomService {
       // displayName / phoneNumber not always supported; include if provided
       if (update.displayName) body.display_name = update.displayName;
       if (update.phoneNumber) body.phone_number = update.phoneNumber;
-      await axios.patch(url, body, { headers: await this.getHeaders() });
+      if (Object.keys(body).length > 0) {
+        await axios.patch(url, body, { headers: await this.getHeaders() });
+      }
+
+      const user = await this.getUser(normalizedEmail);
+      if (!user.success) {
+        return { success: false, error: user.error };
+      }
+
+      await this.syncZoomLicenseUser({
+        email: normalizedEmail,
+        zoomUserId: user.data?.id || null,
+        userName:
+          `${user.data?.first_name || ''} ${user.data?.last_name || ''}`.trim() ||
+          user.data?.display_name ||
+          normalizedEmail,
+        licenseType: user.data?.type ?? update.type ?? 1,
+        status: user.data?.status || 'active',
+        isProtected: update.isProtected,
+      });
+
+      if ((user.data?.type ?? update.type) === 2) {
+        await this.applyLicensedUserSettings(normalizedEmail);
+      }
+
       return { success: true };
     } catch (e: any) {
       return { success: false, error: e.response?.data?.message || e.message };
+    }
+  }
+
+  async listAuthorizedUsers(query?: {
+    page_size?: number;
+    status?: string;
+    hostType?: 'licensed' | 'basic' | 'all';
+    search?: string;
+  }) {
+    try {
+      const headers = await this.getHeaders();
+      const pageSize = Math.min(query?.page_size || 100, 300);
+      const status = query?.status?.trim() || 'active';
+      const hostType = query?.hostType || 'all';
+      const normalizedSearch = query?.search?.trim().toLowerCase() || '';
+      const localUsers = await db
+        .select({
+          zoomEmail: zuvyUserLicenses.zoomEmail,
+          isProtected: zuvyUserLicenses.isProtected,
+          licenseType: zuvyUserLicenses.licenseType,
+          localStatus: zuvyUserLicenses.status,
+        })
+        .from(zuvyUserLicenses);
+      const localUserMap = new Map(
+        localUsers.map((row) => [row.zoomEmail.trim().toLowerCase(), row]),
+      );
+
+      let nextPageToken = '';
+      const users: ZoomUserListItem[] = [];
+
+      do {
+        const response: AxiosResponse<ZoomUsersListResponse> = await axios.get(
+          `${this.baseUrl}/users`,
+          {
+            headers,
+            params: {
+              page_size: pageSize,
+              status,
+              next_page_token: nextPageToken || undefined,
+            },
+          },
+        );
+
+        users.push(...(response.data.users || []));
+        nextPageToken = response.data.next_page_token || '';
+      } while (nextPageToken);
+
+      let filteredUsers = users.map((user) => {
+        const fullName =
+          `${user.first_name || ''} ${user.last_name || ''}`.trim() ||
+          user.display_name ||
+          user.email;
+
+        return {
+          id: user.id,
+          email: user.email,
+          name: fullName,
+          firstName: user.first_name || '',
+          lastName: user.last_name || '',
+          displayName: user.display_name || fullName,
+          status: user.status,
+          roleName: user.role_name || null,
+          timezone: user.timezone || null,
+          userType: user.type,
+          isLicensed: user.type === 2,
+          canHostSessions: user.status === 'active',
+          verified: user.verified,
+          createdAt: user.created_at || null,
+          lastLoginTime: user.last_login_time || null,
+          isProtected:
+            localUserMap.get(user.email.trim().toLowerCase())?.isProtected ||
+            false,
+          localLicenseType:
+            localUserMap.get(user.email.trim().toLowerCase())?.licenseType ??
+            null,
+          localStatus:
+            localUserMap.get(user.email.trim().toLowerCase())?.localStatus ??
+            null,
+        };
+      });
+
+      if (hostType === 'licensed') {
+        filteredUsers = filteredUsers.filter((user) => user.isLicensed);
+      } else if (hostType === 'basic') {
+        filteredUsers = filteredUsers.filter((user) => !user.isLicensed);
+      }
+
+      if (normalizedSearch) {
+        filteredUsers = filteredUsers.filter((user) =>
+          [user.email, user.name, user.displayName]
+            .filter(Boolean)
+            .some((value) => value.toLowerCase().includes(normalizedSearch)),
+        );
+      }
+
+      return {
+        success: true,
+        data: {
+          total: filteredUsers.length,
+          filters: {
+            status,
+            hostType,
+            search: query?.search || null,
+          },
+          users: filteredUsers,
+        },
+      };
+    } catch (e: any) {
+      this.logger.error(
+        `Error listing Zoom authorized users: ${e.response?.data?.message || e.message}`,
+      );
+      return {
+        success: false,
+        error:
+          e.response?.data?.message || e.message || 'Failed to list Zoom users',
+      };
     }
   }
 
@@ -531,7 +926,7 @@ export class ZoomService {
       await axios.patch(url, meetingData, { headers: await this.getHeaders() });
 
       this.logger.log(`Zoom meeting updated successfully: ${meetingId}`);
-    } catch (error) {
+    } catch (error: any) {
       this.logger.error(
         `Error updating Zoom meeting: ${error.response?.data || error.message}`,
       );
@@ -551,7 +946,7 @@ export class ZoomService {
       await axios.delete(url, { headers: await this.getHeaders() });
 
       this.logger.log(`Zoom meeting deleted successfully: ${meetingId}`);
-    } catch (error) {
+    } catch (error: any) {
       this.logger.error(
         `Error deleting Zoom meeting: ${error.response?.data || error.message}`,
       );
@@ -576,7 +971,7 @@ export class ZoomService {
       );
 
       return { success: true, data: response.data };
-    } catch (error) {
+    } catch (error: any) {
       this.logger.error(
         `Error fetching Zoom meeting: ${error.response?.data || error.message}`,
       );
@@ -598,7 +993,7 @@ export class ZoomService {
         params: { type: 'live' },
       });
       return true; // 200 OK -> live right now
-    } catch (e) {
+    } catch (e: any) {
       const err = e as AxiosError<any>;
       const status = err.response?.status;
       const code = err.response?.data?.code;
@@ -651,7 +1046,7 @@ export class ZoomService {
 
       // Return the complete list of participants from all pages
       return { participants: allParticipants };
-    } catch (error) {
+    } catch (error: any) {
       this.logger.error(
         `Error fetching Zoom meeting participants for UUID ${meetingUuid}: ${error.response?.data?.message || error.message}`,
       );
@@ -670,7 +1065,7 @@ export class ZoomService {
         headers: await this.getHeaders(),
       });
       return response.data.share_url;
-    } catch (error) {
+    } catch (error: any) {
       this.logger.error(
         `Error fetching Zoom meeting recordings: ${error.response?.data || error.message}`,
       );
@@ -978,7 +1373,7 @@ export class ZoomService {
       }
 
       return Array.from(finalParticipantsMap.values());
-    } catch (error) {
+    } catch (error: any) {
       this.logger.error(
         `Failed to get all participants for meeting ID ${meetingId}: ${error.message}`,
       );
@@ -1030,7 +1425,7 @@ export class ZoomService {
       }
 
       return meetings;
-    } catch (error) {
+    } catch (error: any) {
       this.logger.error(
         `Error creating recurring Zoom meetings: ${error.message}`,
       );
