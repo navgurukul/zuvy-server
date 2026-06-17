@@ -328,6 +328,7 @@ export class LeaderboardController {
         success: true,
         leaderboard: result.leaderboard,
         currentLearner: result.currentLearner,
+        totalLearners: result.totalLearners,
       };
     } catch (error) {
       if (error instanceof BadRequestException) {

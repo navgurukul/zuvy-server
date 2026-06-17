@@ -497,3 +497,9 @@ WHERE t.relname = 'zuvy_mentor_slot_booking';
 ALTER TABLE main.zuvy_mentor_slot_management
 ALTER COLUMN past_experiences TYPE text
 USING past_experiences::text;
+
+ALTER TABLE zuvy_mentor_slot_booking
+ADD COLUMN IF NOT EXISTS student_feedback_submitted_at TIMESTAMPTZ;
+
+ALTER TABLE zuvy_mentor_slot_booking
+ADD COLUMN IF NOT EXISTS student_feedback_locked BOOLEAN DEFAULT FALSE;

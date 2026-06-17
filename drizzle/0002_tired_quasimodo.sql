@@ -622,6 +622,19 @@ REFERENCES "zuvy_organizations"("id")
 ON UPDATE CASCADE
 ON DELETE CASCADE;
 
+CREATE TABLE "zuvy_user_licenses" (
+    "id" SERIAL PRIMARY KEY NOT NULL,
+    "zoom_email" VARCHAR(255) NOT NULL,
+    "zoom_user_id" VARCHAR(128),
+    "user_name" VARCHAR(255),
+    "license_type" INTEGER NOT NULL DEFAULT 2,
+    "status" VARCHAR(30) NOT NULL DEFAULT 'active',
+    "created_at" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    "updated_at" TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE UNIQUE INDEX "zoom_user_licenses_email_pool_key"
+ON "zuvy_user_licenses" ("zoom_email");
 
 ALTER TABLE zuvy_learner_education_branch_details
 ADD COLUMN degree_id INTEGER;

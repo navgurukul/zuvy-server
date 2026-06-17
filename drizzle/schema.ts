@@ -88,7 +88,7 @@ export const learnerProjectType = pgEnum('learner_project_type', [
   'Team',
 ]);
 import { helperVariable } from '../src/constants/helper';
-import { table } from 'console';
+
 let schName;
 if (process.env.ENV_NOTE == helperVariable.schemaName) {
   schName = helperVariable.schemaName;
@@ -2281,8 +2281,9 @@ export const zuvySessions = main.table('zuvy_sessions', {
 
   finalVideoPath: text('final_video_path'),
   finalUploaded: boolean('final_uploaded').default(false),
-
+  licenseId: integer('license_id').references(() => zuvyUserLicenses.id),
 });
+
 
 export const zuvySessionMerge = main.table('zuvy_session_merge', {
   id: serial("id").primaryKey().notNull(),
@@ -3251,6 +3252,8 @@ export const zuvyLearnersCompleteProfile = main.table(
     internshipStipend: varchar('internship_stipend', { length: 50 }),
     fullTimeCtc: varchar('full_time_ctc', { length: 50 }),
     preferredContactMethods: jsonb('preferred_contact_methods').default([]),
+    profileVisibility: boolean('profile_visibility').default(true),
+    termsAndCondition: boolean('terms_and_condition').default(false).notNull(),
     resumeUrl: varchar('resume_url', { length: 1024 }),
     originalFilename: varchar('original_filename', { length: 255 }),
 
@@ -3970,6 +3973,35 @@ export const zuvyZoomLicenses = main.table('zuvy_zoom_licenses', {
     }).onUpdate('cascade').onDelete('set null'),
     zoomLicensesUserUniqueIdx: uniqueIndex('zoom_licenses_user_id_key').on(table.userId)
   };
+});
+
+// Legacy Zoom license pool tables still referenced by scheduling services.
+export const licenses = main.table('licenses', {
+  id: serial('id').primaryKey().notNull(),
+  zoomId: varchar('zoom_id', { length: 255 }).unique().notNull(),
+  name: varchar('name', { length: 255 }).notNull(),
+  status: varchar('status', { length: 20 }).default('active').notNull(),
+});
+
+export const licenseAssignments = main.table('license_assignments', {
+  id: bigserial('id', { mode: 'bigint' }).primaryKey().notNull(),
+  licenseId: integer('license_id')
+    .references(() => zuvyUserLicenses.id)
+    .notNull(),
+  instructorId: bigint('instructor_id', { mode: 'number' })
+    .references(() => users.id)
+    .notNull(),
+  sessionId: integer('session_id')
+    .references(() => zuvySessions.id)
+    .notNull(),
+  startTime: timestamp('start_time', {
+    withTimezone: true,
+    mode: 'date',
+  }).notNull(),
+  endTime: timestamp('end_time', {
+    withTimezone: true,
+    mode: 'date',
+  }).notNull(),
 });
 
 // Zoom users table (tracks provisioned Zoom accounts mapped to platform users)
@@ -4883,6 +4915,15 @@ export const zuvyMentorSlotBooking = main.table(
     studentFeedback: jsonb('student_feedback'),
     studentRating: integer('student_rating'),
 
+    studentFeedbackSubmittedAt: timestamp(
+      'student_feedback_submitted_at',
+      { withTimezone: true },
+    ),
+
+    studentFeedbackLocked: boolean(
+      'student_feedback_locked',
+    ).default(false),
+
     bookedAt: timestamp('booked_at', { withTimezone: true }).defaultNow(),
     confirmedAt: timestamp('confirmed_at', { withTimezone: true }),
     completedAt: timestamp('completed_at', { withTimezone: true }),
@@ -5020,6 +5061,23 @@ export const zuvyNotifications = main.table(
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
   },
 );
+
+// Zoom license pool (the 6 service accounts that host meetings)
+export const zuvyUserLicenses = main.table('zuvy_user_licenses', {
+  id: serial('id').primaryKey().notNull(),
+  zoomEmail: varchar('zoom_email', { length: 255 }).notNull(),
+  zoomUserId: varchar('zoom_user_id', { length: 128 }),
+  userName: varchar('user_name', { length: 255 }),
+  licenseType: integer('license_type').notNull().default(2),
+  status: varchar('status', { length: 30 }).notNull().default('active'),
+  isProtected: boolean('is_protected').notNull().default(false),
+  createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).notNull().defaultNow(),
+}, (table) => {
+  return {
+    zoomUserLicensesPoolEmailUnique: uniqueIndex('zoom_user_licenses_email_pool_key').on(table.zoomEmail)
+  };
+});
 
 export const zuvyStudentBookingMetricsRelations = relations(zuvyStudentBookingMetrics, ({ one }) => ({
   user: one(users, {

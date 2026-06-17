@@ -974,62 +974,6 @@ export class LeaderboardService {
       lastActivityAt: string;
     }>
   > {
-    //   try {
-    //     if (bootcampId) {
-    //       const leaderboard = await db
-    //         .select({
-    //           learnerId: zuvyLearnerLeaderboard.learnerId,
-    //           name: users.name,
-    //           assessmentPoints: zuvyLearnerLeaderboard.assessmentPoints,
-    //           codingPoints: zuvyLearnerLeaderboard.codingPoints,
-    //           quizPoints: zuvyLearnerLeaderboard.quizPoints,
-    //           attendancePoints: zuvyLearnerLeaderboard.attendancePoints,
-    //           recordingPoints: zuvyLearnerLeaderboard.recordingPoints,
-    //           assignmentPoints: zuvyLearnerLeaderboard.assignmentPoints,
-    //           totalPoints: zuvyLearnerLeaderboard.totalPoints,
-    //           lastActivityAt: zuvyLearnerLeaderboard.lastActivityAt,
-    //         })
-    //         .from(zuvyLearnerLeaderboard)
-    //         .leftJoin(users, eq(users.id, zuvyLearnerLeaderboard.learnerId))
-    //         .where(eq(zuvyLearnerLeaderboard.bootcampId, bootcampId))
-    //         .orderBy(sql`${zuvyLearnerLeaderboard.totalPoints} DESC`)
-    //         .limit(limit);
-    //       return leaderboard;
-    //     } else {
-    //       const leaderboard = await db
-    //         .select({
-    //           learnerId: zuvyLearnerLeaderboard.learnerId,
-    //           name: users.name,
-    //           assessmentPoints: zuvyLearnerLeaderboard.assessmentPoints,
-    //           codingPoints: zuvyLearnerLeaderboard.codingPoints,
-    //           quizPoints: zuvyLearnerLeaderboard.quizPoints,
-    //           attendancePoints: zuvyLearnerLeaderboard.attendancePoints,
-    //           recordingPoints: zuvyLearnerLeaderboard.recordingPoints,
-    //           assignmentPoints: zuvyLearnerLeaderboard.assignmentPoints,
-    //           totalPoints: zuvyLearnerLeaderboard.totalPoints,
-    //           lastActivityAt: zuvyLearnerLeaderboard.lastActivityAt,
-    //         })
-    //         .from(zuvyLearnerLeaderboard)
-    //         .leftJoin(users, eq(users.id, zuvyLearnerLeaderboard.learnerId))
-    //         .orderBy(sql`${zuvyLearnerLeaderboard.totalPoints} DESC`)
-    //         .limit(limit);
-
-    //       return leaderboard;
-    //     }
-    //   } catch (error) {
-    //     this.logger.error(
-    //       `Error fetching course leaderboard: ${this.getErrorMessage(
-    //         error,
-    //         'unknown error',
-    //       )}`,
-    //     );
-    //     if (error instanceof BadRequestException) {
-    //       throw error;
-    //     }
-    //     return [];
-    //   }
-    // }
-
     try {
       if (bootcampId) {
         const leaderboard = await db
@@ -1111,28 +1055,6 @@ export class LeaderboardService {
     lastActivityAt: string;
   } | null> {
     try {
-      // const learnerEntry = await db
-      //   .select({
-      //     learnerId: zuvyLearnerLeaderboard.learnerId,
-      //     name: users.name,
-      //     assessmentPoints: zuvyLearnerLeaderboard.assessmentPoints,
-      //     codingPoints: zuvyLearnerLeaderboard.codingPoints,
-      //     quizPoints: zuvyLearnerLeaderboard.quizPoints,
-      //     attendancePoints: zuvyLearnerLeaderboard.attendancePoints,
-      //     recordingPoints: zuvyLearnerLeaderboard.recordingPoints,
-      //     assignmentPoints: zuvyLearnerLeaderboard.assignmentPoints,
-      //     totalPoints: zuvyLearnerLeaderboard.totalPoints,
-      //     lastActivityAt: zuvyLearnerLeaderboard.lastActivityAt,
-      //   })
-      //   .from(zuvyLearnerLeaderboard)
-      //   .leftJoin(users, eq(users.id, zuvyLearnerLeaderboard.learnerId))
-      //   .where(
-      //     and(
-      //       eq(zuvyLearnerLeaderboard.learnerId, learnerId),
-      //       eq(zuvyLearnerLeaderboard.bootcampId, bootcampId),
-      //     ),
-      //   );
-
       const learnerEntry = await db
         .select({
           learnerId: zuvyBatchEnrollments.userId,
@@ -1169,7 +1091,8 @@ export class LeaderboardService {
       }
 
       return {
-        learnerId: learnerEntry[0].learnerId,
+        // learnerId: learnerEntry[0].learnerId,
+        learnerId: Number(learnerEntry[0].learnerId),
         name: learnerEntry[0].name || '',
         assessmentPoints: learnerEntry[0].assessmentPoints,
         codingPoints: learnerEntry[0].codingPoints,
@@ -1272,6 +1195,7 @@ export class LeaderboardService {
       rank: number;
       totalPoints: number;
     } | null;
+    totalLearners: number;
   }> {
     try {
       const normalizedLearnerId = Number(learnerId);
@@ -1280,17 +1204,13 @@ export class LeaderboardService {
         throw new BadRequestException('Invalid learner ID');
       }
 
-      // Get all learners sorted by totalPoints DESC
-      // const allLearners = await db
-      //   .select({
-      //     learnerId: zuvyLearnerLeaderboard.learnerId,
-      //     name: users.name,
-      //     totalPoints: zuvyLearnerLeaderboard.totalPoints,
-      //   })
-      //   .from(zuvyLearnerLeaderboard)
-      //   .leftJoin(users, eq(users.id, zuvyLearnerLeaderboard.learnerId))
-      //     .where(eq(zuvyLearnerLeaderboard.bootcampId, bootcampId))
-      //   .orderBy(sql`${zuvyLearnerLeaderboard.totalPoints} DESC`);
+      const totalLearnersResult = await db
+        .select({
+          count: sql<number>`COUNT(*)`,
+        })
+        .from(zuvyBatchEnrollments)
+        .where(eq(zuvyBatchEnrollments.bootcampId, bootcampId));
+      const totalLearners = Number(totalLearnersResult[0]?.count || 0);
 
       const allLearners = await db
         .select({
@@ -1311,8 +1231,15 @@ export class LeaderboardService {
         .orderBy(sql`COALESCE(${zuvyLearnerLeaderboard.totalPoints}, 0) DESC`);
 
       // Add ranks to all learners
+      // const learnersWithRanks = allLearners.map((learner, index) => ({
+      //   ...learner,
+      //   rank: index + 1,
+      // }));
+
       const learnersWithRanks = allLearners.map((learner, index) => ({
-        ...learner,
+        learnerId: Number(learner.learnerId),
+        name: learner.name,
+        totalPoints: learner.totalPoints,
         rank: index + 1,
       }));
 
@@ -1328,33 +1255,13 @@ export class LeaderboardService {
         return {
           leaderboard: topLearners,
           currentLearner: currentLearnerData,
+          totalLearners,
         };
       }
-
-      // const currentUser = await db
-      //   .select({
-      //     id: users.id,
-      //     name: users.name,
-      //   })
-      //   .from(users)
-      //   .where(eq(users.id, normalizedLearnerId))
-      //   .limit(1);
-
-      // if (currentUser.length > 0) {
-      //   return {
-      //     leaderboard: topLearners,
-      //     currentLearner: {
-      //       learnerId: Number(currentUser[0].id),
-      //       name: currentUser[0].name,
-      //       rank: learnersWithRanks.length + 1,
-      //       totalPoints: 0,
-      //     },
-      //   };
-      // }
-
       return {
         leaderboard: topLearners,
         currentLearner: null,
+        totalLearners,
       };
     } catch (error) {
       this.logger.error(
@@ -1366,6 +1273,7 @@ export class LeaderboardService {
       return {
         leaderboard: [],
         currentLearner: null,
+        totalLearners: 0,
       };
     }
   }
