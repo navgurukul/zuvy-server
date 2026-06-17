@@ -775,3 +775,61 @@ WHERE id IN (1046, 1047);
 
 
 
+
+ALTER TABLE zuvy_learner_leaderboard
+ADD CONSTRAINT unique_learner_bootcamp
+UNIQUE (learner_id, bootcamp_id);
+
+
+
+
+
+SELECT learner_id, bootcamp_id, total_points
+FROM zuvy_learner_leaderboard;
+
+
+
+SELECT bootcamp_id, COUNT(*)
+FROM zuvy_learner_leaderboard
+GROUP BY bootcamp_id;
+
+
+SELECT user_id
+FROM zuvy_batch_enrollments
+WHERE bootcamp_id = 1047;
+
+
+
+SELECT learner_id
+FROM zuvy_learner_leaderboard
+WHERE bootcamp_id = 1047;
+
+
+
+SELECT *
+FROM zuvy_student_attendance_records
+WHERE user_id = 58083;
+
+
+
+SELECT *
+FROM zuvy_chapter_tracking
+WHERE user_id = 58083;
+
+
+
+SELECT *
+FROM zuvy_batch_enrollments
+WHERE user_id = 58083;
+
+
+
+
+SELECT *
+FROM zuvy_learner_leaderboard ll
+WHERE NOT EXISTS (
+  SELECT 1
+  FROM zuvy_batch_enrollments be
+  WHERE be.user_id = ll.learner_id
+    AND be.bootcamp_id = ll.bootcamp_id
+);

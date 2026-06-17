@@ -19,6 +19,7 @@ import {
   zuvyModuleChapter,
   zuvyCourseModules,
   zuvyBootcamps,
+  zuvyBatchEnrollments,
 } from '../../../drizzle/schema';
 import { eq, and, sql } from 'drizzle-orm';
 
@@ -973,27 +974,90 @@ export class LeaderboardService {
       lastActivityAt: string;
     }>
   > {
+    //   try {
+    //     if (bootcampId) {
+    //       const leaderboard = await db
+    //         .select({
+    //           learnerId: zuvyLearnerLeaderboard.learnerId,
+    //           name: users.name,
+    //           assessmentPoints: zuvyLearnerLeaderboard.assessmentPoints,
+    //           codingPoints: zuvyLearnerLeaderboard.codingPoints,
+    //           quizPoints: zuvyLearnerLeaderboard.quizPoints,
+    //           attendancePoints: zuvyLearnerLeaderboard.attendancePoints,
+    //           recordingPoints: zuvyLearnerLeaderboard.recordingPoints,
+    //           assignmentPoints: zuvyLearnerLeaderboard.assignmentPoints,
+    //           totalPoints: zuvyLearnerLeaderboard.totalPoints,
+    //           lastActivityAt: zuvyLearnerLeaderboard.lastActivityAt,
+    //         })
+    //         .from(zuvyLearnerLeaderboard)
+    //         .leftJoin(users, eq(users.id, zuvyLearnerLeaderboard.learnerId))
+    //         .where(eq(zuvyLearnerLeaderboard.bootcampId, bootcampId))
+    //         .orderBy(sql`${zuvyLearnerLeaderboard.totalPoints} DESC`)
+    //         .limit(limit);
+    //       return leaderboard;
+    //     } else {
+    //       const leaderboard = await db
+    //         .select({
+    //           learnerId: zuvyLearnerLeaderboard.learnerId,
+    //           name: users.name,
+    //           assessmentPoints: zuvyLearnerLeaderboard.assessmentPoints,
+    //           codingPoints: zuvyLearnerLeaderboard.codingPoints,
+    //           quizPoints: zuvyLearnerLeaderboard.quizPoints,
+    //           attendancePoints: zuvyLearnerLeaderboard.attendancePoints,
+    //           recordingPoints: zuvyLearnerLeaderboard.recordingPoints,
+    //           assignmentPoints: zuvyLearnerLeaderboard.assignmentPoints,
+    //           totalPoints: zuvyLearnerLeaderboard.totalPoints,
+    //           lastActivityAt: zuvyLearnerLeaderboard.lastActivityAt,
+    //         })
+    //         .from(zuvyLearnerLeaderboard)
+    //         .leftJoin(users, eq(users.id, zuvyLearnerLeaderboard.learnerId))
+    //         .orderBy(sql`${zuvyLearnerLeaderboard.totalPoints} DESC`)
+    //         .limit(limit);
+
+    //       return leaderboard;
+    //     }
+    //   } catch (error) {
+    //     this.logger.error(
+    //       `Error fetching course leaderboard: ${this.getErrorMessage(
+    //         error,
+    //         'unknown error',
+    //       )}`,
+    //     );
+    //     if (error instanceof BadRequestException) {
+    //       throw error;
+    //     }
+    //     return [];
+    //   }
+    // }
+
     try {
       if (bootcampId) {
         const leaderboard = await db
           .select({
-            learnerId: zuvyLearnerLeaderboard.learnerId,
+            learnerId: zuvyBatchEnrollments.userId,
             name: users.name,
-            assessmentPoints: zuvyLearnerLeaderboard.assessmentPoints,
-            codingPoints: zuvyLearnerLeaderboard.codingPoints,
-            quizPoints: zuvyLearnerLeaderboard.quizPoints,
-            attendancePoints: zuvyLearnerLeaderboard.attendancePoints,
-            recordingPoints: zuvyLearnerLeaderboard.recordingPoints,
-            assignmentPoints: zuvyLearnerLeaderboard.assignmentPoints,
-            totalPoints: zuvyLearnerLeaderboard.totalPoints,
+
+            assessmentPoints: sql<number>`COALESCE(${zuvyLearnerLeaderboard.assessmentPoints}, 0)`,
+            codingPoints: sql<number>`COALESCE(${zuvyLearnerLeaderboard.codingPoints}, 0)`,
+            quizPoints: sql<number>`COALESCE(${zuvyLearnerLeaderboard.quizPoints}, 0)`,
+            attendancePoints: sql<number>`COALESCE(${zuvyLearnerLeaderboard.attendancePoints}, 0)`,
+            recordingPoints: sql<number>`COALESCE(${zuvyLearnerLeaderboard.recordingPoints}, 0)`,
+            assignmentPoints: sql<number>`COALESCE(${zuvyLearnerLeaderboard.assignmentPoints}, 0)`,
+            totalPoints: sql<number>`COALESCE(${zuvyLearnerLeaderboard.totalPoints}, 0)`,
             lastActivityAt: zuvyLearnerLeaderboard.lastActivityAt,
           })
-          .from(zuvyLearnerLeaderboard)
-          .leftJoin(users, eq(users.id, zuvyLearnerLeaderboard.learnerId))
-          .where(eq(zuvyLearnerLeaderboard.bootcampId, bootcampId))
-          .orderBy(sql`${zuvyLearnerLeaderboard.totalPoints} DESC`)
+          .from(zuvyBatchEnrollments)
+          .leftJoin(users, eq(users.id, zuvyBatchEnrollments.userId))
+          .leftJoin(
+            zuvyLearnerLeaderboard,
+            and(
+              eq(zuvyLearnerLeaderboard.learnerId, zuvyBatchEnrollments.userId),
+              eq(zuvyLearnerLeaderboard.bootcampId, bootcampId),
+            ),
+          )
+          .where(eq(zuvyBatchEnrollments.bootcampId, bootcampId))
+          .orderBy(sql`COALESCE(${zuvyLearnerLeaderboard.totalPoints}, 0) DESC`)
           .limit(limit);
-
         return leaderboard;
       } else {
         const leaderboard = await db
@@ -1023,6 +1087,7 @@ export class LeaderboardService {
           'unknown error',
         )}`,
       );
+
       if (error instanceof BadRequestException) {
         throw error;
       }
@@ -1046,27 +1111,58 @@ export class LeaderboardService {
     lastActivityAt: string;
   } | null> {
     try {
+      // const learnerEntry = await db
+      //   .select({
+      //     learnerId: zuvyLearnerLeaderboard.learnerId,
+      //     name: users.name,
+      //     assessmentPoints: zuvyLearnerLeaderboard.assessmentPoints,
+      //     codingPoints: zuvyLearnerLeaderboard.codingPoints,
+      //     quizPoints: zuvyLearnerLeaderboard.quizPoints,
+      //     attendancePoints: zuvyLearnerLeaderboard.attendancePoints,
+      //     recordingPoints: zuvyLearnerLeaderboard.recordingPoints,
+      //     assignmentPoints: zuvyLearnerLeaderboard.assignmentPoints,
+      //     totalPoints: zuvyLearnerLeaderboard.totalPoints,
+      //     lastActivityAt: zuvyLearnerLeaderboard.lastActivityAt,
+      //   })
+      //   .from(zuvyLearnerLeaderboard)
+      //   .leftJoin(users, eq(users.id, zuvyLearnerLeaderboard.learnerId))
+      //   .where(
+      //     and(
+      //       eq(zuvyLearnerLeaderboard.learnerId, learnerId),
+      //       eq(zuvyLearnerLeaderboard.bootcampId, bootcampId),
+      //     ),
+      //   );
+
       const learnerEntry = await db
         .select({
-          learnerId: zuvyLearnerLeaderboard.learnerId,
+          learnerId: zuvyBatchEnrollments.userId,
           name: users.name,
-          assessmentPoints: zuvyLearnerLeaderboard.assessmentPoints,
-          codingPoints: zuvyLearnerLeaderboard.codingPoints,
-          quizPoints: zuvyLearnerLeaderboard.quizPoints,
-          attendancePoints: zuvyLearnerLeaderboard.attendancePoints,
-          recordingPoints: zuvyLearnerLeaderboard.recordingPoints,
-          assignmentPoints: zuvyLearnerLeaderboard.assignmentPoints,
-          totalPoints: zuvyLearnerLeaderboard.totalPoints,
+
+          assessmentPoints: sql<number>`COALESCE(${zuvyLearnerLeaderboard.assessmentPoints}, 0)`,
+          codingPoints: sql<number>`COALESCE(${zuvyLearnerLeaderboard.codingPoints}, 0)`,
+          quizPoints: sql<number>`COALESCE(${zuvyLearnerLeaderboard.quizPoints}, 0)`,
+          attendancePoints: sql<number>`COALESCE(${zuvyLearnerLeaderboard.attendancePoints}, 0)`,
+          recordingPoints: sql<number>`COALESCE(${zuvyLearnerLeaderboard.recordingPoints}, 0)`,
+          assignmentPoints: sql<number>`COALESCE(${zuvyLearnerLeaderboard.assignmentPoints}, 0)`,
+          totalPoints: sql<number>`COALESCE(${zuvyLearnerLeaderboard.totalPoints}, 0)`,
           lastActivityAt: zuvyLearnerLeaderboard.lastActivityAt,
         })
-        .from(zuvyLearnerLeaderboard)
-        .leftJoin(users, eq(users.id, zuvyLearnerLeaderboard.learnerId))
-        .where(
+        .from(zuvyBatchEnrollments)
+        .leftJoin(users, eq(users.id, zuvyBatchEnrollments.userId))
+        .leftJoin(
+          zuvyLearnerLeaderboard,
           and(
-            eq(zuvyLearnerLeaderboard.learnerId, learnerId),
+            eq(zuvyLearnerLeaderboard.learnerId, zuvyBatchEnrollments.userId),
             eq(zuvyLearnerLeaderboard.bootcampId, bootcampId),
           ),
-        );
+        )
+        .where(
+          and(
+            eq(zuvyBatchEnrollments.userId, learnerId),
+            eq(zuvyBatchEnrollments.bootcampId, bootcampId),
+          ),
+        )
+        .limit(1);
 
       if (learnerEntry.length === 0) {
         return null;
@@ -1185,15 +1281,34 @@ export class LeaderboardService {
       }
 
       // Get all learners sorted by totalPoints DESC
+      // const allLearners = await db
+      //   .select({
+      //     learnerId: zuvyLearnerLeaderboard.learnerId,
+      //     name: users.name,
+      //     totalPoints: zuvyLearnerLeaderboard.totalPoints,
+      //   })
+      //   .from(zuvyLearnerLeaderboard)
+      //   .leftJoin(users, eq(users.id, zuvyLearnerLeaderboard.learnerId))
+      //     .where(eq(zuvyLearnerLeaderboard.bootcampId, bootcampId))
+      //   .orderBy(sql`${zuvyLearnerLeaderboard.totalPoints} DESC`);
+
       const allLearners = await db
         .select({
-          learnerId: zuvyLearnerLeaderboard.learnerId,
+          learnerId: zuvyBatchEnrollments.userId,
           name: users.name,
-          totalPoints: zuvyLearnerLeaderboard.totalPoints,
+          totalPoints: sql<number>`COALESCE(${zuvyLearnerLeaderboard.totalPoints}, 0)`,
         })
-        .from(zuvyLearnerLeaderboard)
-        .leftJoin(users, eq(users.id, zuvyLearnerLeaderboard.learnerId))
-        .orderBy(sql`${zuvyLearnerLeaderboard.totalPoints} DESC`);
+        .from(zuvyBatchEnrollments)
+        .leftJoin(users, eq(users.id, zuvyBatchEnrollments.userId))
+        .leftJoin(
+          zuvyLearnerLeaderboard,
+          and(
+            eq(zuvyLearnerLeaderboard.learnerId, zuvyBatchEnrollments.userId),
+            eq(zuvyLearnerLeaderboard.bootcampId, bootcampId),
+          ),
+        )
+        .where(eq(zuvyBatchEnrollments.bootcampId, bootcampId))
+        .orderBy(sql`COALESCE(${zuvyLearnerLeaderboard.totalPoints}, 0) DESC`);
 
       // Add ranks to all learners
       const learnersWithRanks = allLearners.map((learner, index) => ({
@@ -1216,26 +1331,26 @@ export class LeaderboardService {
         };
       }
 
-      const currentUser = await db
-        .select({
-          id: users.id,
-          name: users.name,
-        })
-        .from(users)
-        .where(eq(users.id, normalizedLearnerId))
-        .limit(1);
+      // const currentUser = await db
+      //   .select({
+      //     id: users.id,
+      //     name: users.name,
+      //   })
+      //   .from(users)
+      //   .where(eq(users.id, normalizedLearnerId))
+      //   .limit(1);
 
-      if (currentUser.length > 0) {
-        return {
-          leaderboard: topLearners,
-          currentLearner: {
-            learnerId: Number(currentUser[0].id),
-            name: currentUser[0].name,
-            rank: learnersWithRanks.length + 1,
-            totalPoints: 0,
-          },
-        };
-      }
+      // if (currentUser.length > 0) {
+      //   return {
+      //     leaderboard: topLearners,
+      //     currentLearner: {
+      //       learnerId: Number(currentUser[0].id),
+      //       name: currentUser[0].name,
+      //       rank: learnersWithRanks.length + 1,
+      //       totalPoints: 0,
+      //     },
+      //   };
+      // }
 
       return {
         leaderboard: topLearners,

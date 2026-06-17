@@ -288,8 +288,8 @@ export class LeaderboardController {
     },
   })
   async getStudentLeaderboard(
+    @Query('bootcampId') bootcampIdParam: string,
     @Query('limit') limitParam?: string,
-    @Query('bootcampId') bootcampIdParam?: string, // 👈 ADD THIS HERE
     @Req() req?: any,
   ) {
     try {
@@ -311,15 +311,12 @@ export class LeaderboardController {
         );
       }
 
-      let bootcampId: number | undefined;
+      const bootcampId = parseInt(bootcampIdParam, 10);
 
-      if (bootcampIdParam) {
-        bootcampId = parseInt(bootcampIdParam, 10);
-
-        if (isNaN(bootcampId) || bootcampId <= 0) {
-          throw new BadRequestException('Invalid bootcampId');
-        }
+      if (isNaN(bootcampId) || bootcampId <= 0) {
+        throw new BadRequestException('Invalid bootcampId');
       }
+      console.log('BOOTCAMP FILTER:', bootcampId);
 
       const result = await this.leaderboardService.getStudentLeaderboard(
         learnerId,

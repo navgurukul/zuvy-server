@@ -4969,7 +4969,7 @@ export const zuvyLearnerLeaderboard = main.table(
     idxTotalPoints: index('idx_zuvy_leaderboard_total_points').on(
       table.totalPoints,
     ),
-    uniqLearnerBootcamp: unique('uniq_zuvy_leaderboard_learner_bootcamp').on(
+    uniqLearnerBootcamp: uniqueIndex('uniq_zuvy_leaderboard_learner_bootcamp').on(
       table.learnerId,
       table.bootcampId,
     ),
