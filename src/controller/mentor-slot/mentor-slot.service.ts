@@ -2288,7 +2288,7 @@ export class MentorSlotService {
     const userIdBigInt = BigInt(userId);
     const since = this.getFeedbackDateFilter(filter);
 
-    // Fetch bookings for the filtered period
+    // Fetch bookings for the filtered period (by confirmed date)
     const conditions = [
       eq(zuvyMentorSlotBooking.studentUserId, userIdBigInt),
       ne(zuvyMentorSlotBooking.status, 'cancelled'),
@@ -2312,6 +2312,37 @@ export class MentorSlotService {
           eq(zuvyMentorSlotBooking.sessionLifecycleState, 'COMPLETED'),
         ),
       );
+
+    // Fetch upcoming sessions (filter by slot schedule date, not confirmed date)
+    const upcomingConditions = [
+      eq(zuvyMentorSlotBooking.studentUserId, userIdBigInt),
+      ne(zuvyMentorSlotBooking.status, 'cancelled'),
+      eq(zuvyMentorSlotBooking.sessionLifecycleState, 'SCHEDULED'),
+    ];
+
+    if (since) {
+      upcomingConditions.push(
+        sql`${zuvyMentorSlotBooking.slotAvailabilityId} IN (
+        SELECT ${zuvyMentorSlotAvailability.id}
+        FROM ${zuvyMentorSlotAvailability}
+        WHERE ${zuvyMentorSlotAvailability.slotStartDateTime} > NOW()
+          AND ${zuvyMentorSlotAvailability.slotStartDateTime} >= ${since}
+      )`,
+      );
+    } else {
+      upcomingConditions.push(
+        sql`${zuvyMentorSlotBooking.slotAvailabilityId} IN (
+        SELECT ${zuvyMentorSlotAvailability.id}
+        FROM ${zuvyMentorSlotAvailability}
+        WHERE ${zuvyMentorSlotAvailability.slotStartDateTime} > NOW()
+      )`,
+      );
+    }
+
+    const [{ count: upcomingBookings }] = await db
+      .select({ count: count() })
+      .from(zuvyMentorSlotBooking)
+      .where(and(...upcomingConditions));
 
     // Fetch overall quota info from metrics table (always all-time for quota)
     let [metrics] = await db
@@ -2347,6 +2378,7 @@ export class MentorSlotService {
         totalBookings: Number(totalBookings),
         completedBookings: Number(completedBookings),
         pendingBookings: Number(totalBookings) - Number(completedBookings),
+        upcomingBookings: Number(upcomingBookings),
       },
     };
   }
