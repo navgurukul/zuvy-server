@@ -21,12 +21,14 @@ export class RolesGuard implements CanActivate {
       return false;
     }
 
+    const userRolesSet = new Set(user.roles);
+
     // Super Admin bypass
-    if (user.roles.includes('super_admin')) {
+    if (userRolesSet.has('super_admin')) {
       return true;
     }
 
     // Check if user has any of the required roles
-    return requiredRoles.some((role) => user.roles.includes(role));
+    return requiredRoles.some((role) => userRolesSet.has(role));
   }
 }

@@ -36,14 +36,17 @@ export class OrgAuthorizationGuard implements CanActivate {
       return true;
     }
 
+    const userRoles = Array.isArray(user.roles) ? user.roles : [];
+    const userRolesSet = new Set<string>(userRoles);
+
     // Super Admin bypass - super admins can access any org
-    if (user.roles && user.roles.includes('super_admin')) {
+    if (userRolesSet.has('super_admin')) {
       return true;
     }
 
     const assessmentBootcampId = this.extractBootcampId(request);
     if (
-      this.isStudentAssessmentRequest(user, request) &&
+      this.isStudentAssessmentRequest(userRolesSet, request) &&
       (!assessmentBootcampId ||
         (await this.isStudentEnrolledInBootcamp(user, assessmentBootcampId)))
     ) {
@@ -83,7 +86,7 @@ export class OrgAuthorizationGuard implements CanActivate {
       .limit(1);
 
     if (membership.length === 0) {
-      if (await this.isStudentEnrolledInOrg(user, requestOrgId)) {
+      if (await this.isStudentEnrolledInOrg(user, userRolesSet, requestOrgId)) {
         return true;
       }
 
@@ -138,11 +141,13 @@ export class OrgAuthorizationGuard implements CanActivate {
 
   private async isStudentEnrolledInOrg(
     user: any,
+    userRolesSet: Set<string>,
     orgId: number,
   ): Promise<boolean> {
-    const roles = user.roles || [];
-    const isStudent = roles.length === 0 || roles.includes('student');
-    const hasOrgRole = roles.some((role: string) => role !== 'student');
+    const isStudent = userRolesSet.size === 0 || userRolesSet.has('student');
+    const hasOrgRole = userRolesSet.has('student')
+      ? userRolesSet.size > 1
+      : userRolesSet.size > 0;
 
     if (!isStudent || hasOrgRole) {
       return false;
@@ -184,10 +189,14 @@ export class OrgAuthorizationGuard implements CanActivate {
     return Boolean(enrollment);
   }
 
-  private isStudentAssessmentRequest(user: any, request: any): boolean {
-    const roles = user.roles || [];
-    const isStudent = roles.length === 0 || roles.includes('student');
-    const hasOrgRole = roles.some((role: string) => role !== 'student');
+  private isStudentAssessmentRequest(
+    userRolesSet: Set<string>,
+    request: any,
+  ): boolean {
+    const isStudent = userRolesSet.size === 0 || userRolesSet.has('student');
+    const hasOrgRole = userRolesSet.has('student')
+      ? userRolesSet.size > 1
+      : userRolesSet.size > 0;
 
     if (!isStudent || hasOrgRole) {
       return false;
@@ -196,17 +205,26 @@ export class OrgAuthorizationGuard implements CanActivate {
     const path = String(request.originalUrl || request.url || '')
       .split('?')[0]
       .toLowerCase();
-    return (
-      path.startsWith('/student/assessment/') ||
-      path.startsWith('/content/students/assessmentid=') ||
-      path.startsWith('/content/startAssessmentForStudent/') ||
-      path.startsWith('/content/startassessmentforstudent/') ||
-      path.startsWith('/content/assessmentdetailsofquiz/') ||
-      path.startsWith('/content/assessmentdetailsofopenended/') ||
-      path.startsWith('/submission/assessment/submit') ||
-      path.startsWith('/submission/quiz/assessmentsubmissionid=') ||
-      path.startsWith('/submission/openended/assessmentsubmissionid=') ||
-      path.startsWith('/submission/assessment/properting')
-    );
+
+    if (path.startsWith('/student/')) {
+      return path.startsWith('/student/assessment/');
+    }
+    if (path.startsWith('/content/')) {
+      return (
+        path.startsWith('/content/students/assessmentid=') ||
+        path.startsWith('/content/startassessmentforstudent/') ||
+        path.startsWith('/content/assessmentdetailsofquiz/') ||
+        path.startsWith('/content/assessmentdetailsofopenended/')
+      );
+    }
+    if (path.startsWith('/submission/')) {
+      return (
+        path.startsWith('/submission/assessment/submit') ||
+        path.startsWith('/submission/quiz/assessmentsubmissionid=') ||
+        path.startsWith('/submission/openended/assessmentsubmissionid=') ||
+        path.startsWith('/submission/assessment/properting')
+      );
+    }
+    return false;
   }
 }

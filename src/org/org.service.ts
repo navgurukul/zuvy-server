@@ -175,10 +175,24 @@ export class OrgService {
         );
       }
 
-      const existingPoc = await db
-        .select()
-        .from(zuvyOrganizations)
-        .where(ilike(zuvyOrganizations.pocEmail, createOrgDto.pocEmail));
+      const normalizedTitle = createOrgDto.title
+        .replace(/\s+/g, '')
+        .toLowerCase();
+
+      const [existingPoc, existingName] = await Promise.all([
+        db
+          .select({ id: zuvyOrganizations.id })
+          .from(zuvyOrganizations)
+          .where(ilike(zuvyOrganizations.pocEmail, createOrgDto.pocEmail))
+          .limit(1),
+        db
+          .select({ id: zuvyOrganizations.id })
+          .from(zuvyOrganizations)
+          .where(
+            sql`LOWER(REPLACE(${zuvyOrganizations.title}, ' ', '')) = ${normalizedTitle}`,
+          )
+          .limit(1),
+      ]);
 
       if (existingPoc.length > 0) {
         throw new BadRequestException(
@@ -186,27 +200,18 @@ export class OrgService {
         );
       }
 
-      const normalizedTitle = createOrgDto.title
-        .replace(/\s+/g, '')
-        .toLowerCase();
-
-      const existingName = await db
-        .select()
-        .from(zuvyOrganizations)
-        .where(
-          sql`LOWER(REPLACE(${zuvyOrganizations.title}, ' ', '')) = ${normalizedTitle}`,
-        );
-
       if (existingName.length > 0) {
         throw new BadRequestException(
           'An organization with this name already exists',
         );
       }
 
-      await this.checkRoleConflict(createOrgDto.pocEmail, 'poc');
-      if (createOrgDto.zuvyPocEmail) {
-        await this.checkRoleConflict(createOrgDto.zuvyPocEmail, 'zuvyPoc');
-      }
+      await Promise.all([
+        this.checkRoleConflict(createOrgDto.pocEmail, 'poc'),
+        createOrgDto.zuvyPocEmail
+          ? this.checkRoleConflict(createOrgDto.zuvyPocEmail, 'zuvyPoc')
+          : Promise.resolve(),
+      ]);
 
       const displayName = await this.generateCode(createOrgDto.title);
 
@@ -600,22 +605,24 @@ export class OrgService {
         );
       }
 
-      if (updateOrgDto.pocEmail && updateOrgDto.pocEmail !== org.pocEmail) {
-        const existingPoc = await db
-          .select()
-          .from(zuvyOrganizations)
-          .where(
-            and(
-              ilike(zuvyOrganizations.pocEmail, updateOrgDto.pocEmail),
-              ne(zuvyOrganizations.id, id),
-            ),
-          );
+      const existingChecksPromises: Promise<any>[] = [];
+      let checkPocIndex = -1;
+      let checkNameIndex = -1;
 
-        if (existingPoc.length > 0) {
-          throw new BadRequestException(
-            'An organization with this POC email already exists',
-          );
-        }
+      if (updateOrgDto.pocEmail && updateOrgDto.pocEmail !== org.pocEmail) {
+        checkPocIndex = existingChecksPromises.length;
+        existingChecksPromises.push(
+          db
+            .select({ id: zuvyOrganizations.id })
+            .from(zuvyOrganizations)
+            .where(
+              and(
+                ilike(zuvyOrganizations.pocEmail, updateOrgDto.pocEmail),
+                ne(zuvyOrganizations.id, id),
+              ),
+            )
+            .limit(1),
+        );
       }
 
       if (
@@ -626,21 +633,39 @@ export class OrgService {
           .replace(/\s+/g, '')
           .toLowerCase();
 
-        const existingName = await db
-          .select()
-          .from(zuvyOrganizations)
-          .where(
-            and(
-              sql`LOWER(REPLACE(${zuvyOrganizations.title}, ' ', '')) = ${normalizedTitle}`,
-              ne(zuvyOrganizations.id, id),
-            ),
-          );
+        checkNameIndex = existingChecksPromises.length;
+        existingChecksPromises.push(
+          db
+            .select({ id: zuvyOrganizations.id })
+            .from(zuvyOrganizations)
+            .where(
+              and(
+                sql`LOWER(REPLACE(${zuvyOrganizations.title}, ' ', '')) = ${normalizedTitle}`,
+                ne(zuvyOrganizations.id, id),
+              ),
+            )
+            .limit(1),
+        );
+      }
 
-        if (existingName.length > 0) {
-          throw new BadRequestException(
-            'An organization with this name already exists',
-          );
-        }
+      const existingChecksResults = await Promise.all(existingChecksPromises);
+
+      if (
+        checkPocIndex !== -1 &&
+        existingChecksResults[checkPocIndex].length > 0
+      ) {
+        throw new BadRequestException(
+          'An organization with this POC email already exists',
+        );
+      }
+
+      if (
+        checkNameIndex !== -1 &&
+        existingChecksResults[checkNameIndex].length > 0
+      ) {
+        throw new BadRequestException(
+          'An organization with this name already exists',
+        );
       }
 
       const updateData: any = {
@@ -652,12 +677,14 @@ export class OrgService {
         updateData.displayName = await this.generateCode(updateOrgDto.title);
       }
 
-      if (updateOrgDto.pocEmail) {
-        await this.checkRoleConflict(updateOrgDto.pocEmail, 'poc', id);
-      }
-      if (updateOrgDto.zuvyPocEmail) {
-        await this.checkRoleConflict(updateOrgDto.zuvyPocEmail, 'zuvyPoc', id);
-      }
+      await Promise.all([
+        updateOrgDto.pocEmail
+          ? this.checkRoleConflict(updateOrgDto.pocEmail, 'poc', id)
+          : Promise.resolve(),
+        updateOrgDto.zuvyPocEmail
+          ? this.checkRoleConflict(updateOrgDto.zuvyPocEmail, 'zuvyPoc', id)
+          : Promise.resolve(),
+      ]);
 
       // 1. Check if management type is changing from Zuvy Managed to Self Managed
       if (org.isManagedByZuvy && updateOrgDto.isManagedByZuvy === false) {
@@ -903,14 +930,15 @@ export class OrgService {
     if (roleType === 'poc') {
       // Check if this email is already a zuvyPoc in ANY OTHER org
       const existingZuvyPoc = await db
-        .select()
+        .select({ id: zuvyOrganizations.id })
         .from(zuvyOrganizations)
         .where(
           and(
             ilike(zuvyOrganizations.zuvyPocEmail, email),
             excludeOrgId ? ne(zuvyOrganizations.id, excludeOrgId) : sql`TRUE`,
           ),
-        );
+        )
+        .limit(1);
       if (existingZuvyPoc.length > 0) {
         throw new BadRequestException(
           `User ${email} is already a Zuvy Assignee (ZA) in another organization`,
@@ -920,14 +948,15 @@ export class OrgService {
       // roleType === 'zuvyPoc'
       // Check if this email is already a poc in ANY OTHER org
       const existingPoc = await db
-        .select()
+        .select({ id: zuvyOrganizations.id })
         .from(zuvyOrganizations)
         .where(
           and(
             ilike(zuvyOrganizations.pocEmail, email),
             excludeOrgId ? ne(zuvyOrganizations.id, excludeOrgId) : sql`TRUE`,
           ),
-        );
+        )
+        .limit(1);
       if (existingPoc.length > 0) {
         throw new BadRequestException(
           `User ${email} is already a Point of Contact (POC) in another organization`,
