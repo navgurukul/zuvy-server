@@ -1,4 +1,10 @@
-import { Injectable, Logger, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  BadRequestException,
+  ForbiddenException,
+  HttpException,
+} from '@nestjs/common';
 import { users } from '../../../drizzle/schema';
 import { db } from '../../db/index';
 import {
@@ -1203,7 +1209,22 @@ export class LeaderboardService {
       if (Number.isNaN(normalizedLearnerId)) {
         throw new BadRequestException('Invalid learner ID');
       }
+      const enrollment = await db
+        .select({
+          id: zuvyBatchEnrollments.id,
+        })
+        .from(zuvyBatchEnrollments)
+        .where(
+          and(
+            eq(zuvyBatchEnrollments.userId, normalizedLearnerId),
+            eq(zuvyBatchEnrollments.bootcampId, bootcampId),
+          ),
+        )
+        .limit(1);
 
+      if (enrollment.length === 0) {
+        throw new ForbiddenException('You are not enrolled in this bootcamp.');
+      }
       const totalLearnersResult = await db
         .select({
           count: sql<number>`COUNT(*)`,
@@ -1270,6 +1291,9 @@ export class LeaderboardService {
           'unknown error',
         )}`,
       );
+      if (error instanceof HttpException) {
+        throw error;
+      }
       return {
         leaderboard: [],
         currentLearner: null,

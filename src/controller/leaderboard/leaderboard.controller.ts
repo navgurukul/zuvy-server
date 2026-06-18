@@ -7,6 +7,7 @@ import {
   Body,
   BadRequestException,
   InternalServerErrorException,
+  HttpException,
   Req,
 } from '@nestjs/common';
 import {
@@ -331,13 +332,11 @@ export class LeaderboardController {
         totalLearners: result.totalLearners,
       };
     } catch (error) {
-      if (error instanceof BadRequestException) {
+      if (error instanceof HttpException) {
         throw error;
       }
       throw new InternalServerErrorException(
-        error instanceof Error
-          ? error.message
-          : 'Failed to fetch student leaderboard',
+        'Failed to fetch student leaderboard',
       );
     }
   }
