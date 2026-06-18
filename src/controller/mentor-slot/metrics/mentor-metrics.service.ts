@@ -79,7 +79,7 @@ export class MentorMetricsService {
       .where(and(...bookingConditions));
 
     /* ==========================================================
-       UPCOMING SESSIONS - Filter by schedule date, not confirmed date
+       UPCOMING SESSIONS - Show ALL future sessions (no date filter)
     ========================================================== */
 
     const upcomingConditions = [
@@ -94,27 +94,12 @@ export class MentorMetricsService {
 
     upcomingConditions.push(
       eq(zuvyMentorSlotBooking.sessionLifecycleState, 'SCHEDULED'),
+      sql`${zuvyMentorSlotBooking.slotAvailabilityId} IN (
+        SELECT ${zuvyMentorSlotAvailability.id}
+        FROM ${zuvyMentorSlotAvailability}
+        WHERE ${zuvyMentorSlotAvailability.slotStartDateTime} > NOW()
+      )`,
     );
-
-    // For upcoming: filter by slot start time, not confirmed time
-    if (since) {
-      upcomingConditions.push(
-        sql`${zuvyMentorSlotBooking.slotAvailabilityId} IN (
-        SELECT ${zuvyMentorSlotAvailability.id}
-        FROM ${zuvyMentorSlotAvailability}
-        WHERE ${zuvyMentorSlotAvailability.slotStartDateTime} > NOW()
-          AND ${zuvyMentorSlotAvailability.slotStartDateTime} >= ${since}
-      )`,
-      );
-    } else {
-      upcomingConditions.push(
-        sql`${zuvyMentorSlotBooking.slotAvailabilityId} IN (
-        SELECT ${zuvyMentorSlotAvailability.id}
-        FROM ${zuvyMentorSlotAvailability}
-        WHERE ${zuvyMentorSlotAvailability.slotStartDateTime} > NOW()
-      )`,
-      );
-    }
 
     const [upcoming] = await db
       .select({
