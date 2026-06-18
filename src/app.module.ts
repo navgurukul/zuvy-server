@@ -45,6 +45,7 @@ import { NotificationJob } from './controller/notification/notification.job';
 import { NotificationService } from './controller/notification/notification.service';
 import { GoogleModule } from './integrations/google/google.module';
 import { NewNotificationModule } from './controller/notification/notification.module';
+import { ZoomLicenseModule } from './controller/zoom-license/zoom-license.module';
 import { SuperAdminModule } from './super-admin/super-admin.module';
 import { LeaderboardModule } from './controller/leaderboard/leaderboard.module';
 
@@ -92,9 +93,11 @@ let { GOOGLE_CLIENT_ID, GOOGLE_SECRET, GOOGLE_REDIRECT_URI, JWT_SECRET_KEY } =
     MentorSlotModule,
     GoogleModule,
     NewNotificationModule,
+    ZoomLicenseModule,
     SuperAdminModule,
     LeaderboardModule,
   ],
+
   providers: [
     {
       provide: APP_INTERCEPTOR,
