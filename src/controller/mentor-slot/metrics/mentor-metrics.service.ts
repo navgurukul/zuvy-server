@@ -79,25 +79,34 @@ export class MentorMetricsService {
       .where(and(...bookingConditions));
 
     /* ==========================================================
-       UPCOMING SESSIONS
+       UPCOMING SESSIONS - Show ALL future sessions (no date filter)
     ========================================================== */
+
+    const upcomingConditions = [
+      eq(zuvyMentorSlotBooking.mentorUserId, mentorUserId),
+    ];
+
+    if (organizationId !== undefined) {
+      upcomingConditions.push(
+        eq(zuvyMentorSlotBooking.organizationId, organizationId),
+      );
+    }
+
+    upcomingConditions.push(
+      eq(zuvyMentorSlotBooking.sessionLifecycleState, 'SCHEDULED'),
+      sql`${zuvyMentorSlotBooking.slotAvailabilityId} IN (
+        SELECT ${zuvyMentorSlotAvailability.id}
+        FROM ${zuvyMentorSlotAvailability}
+        WHERE ${zuvyMentorSlotAvailability.slotStartDateTime} > NOW()
+      )`,
+    );
 
     const [upcoming] = await db
       .select({
         upcomingCount: sql<number>`COUNT(*)`,
       })
       .from(zuvyMentorSlotBooking)
-      .where(
-        and(
-          ...bookingConditions,
-          eq(zuvyMentorSlotBooking.sessionLifecycleState, 'SCHEDULED'),
-          sql`${zuvyMentorSlotBooking.slotAvailabilityId} IN (
-        SELECT ${zuvyMentorSlotAvailability.id}
-        FROM ${zuvyMentorSlotAvailability}
-        WHERE ${zuvyMentorSlotAvailability.slotStartDateTime} > NOW()
-      )`,
-        ),
-      );
+      .where(and(...upcomingConditions));
 
     /* ==========================================================
        SLOT UTILIZATION
