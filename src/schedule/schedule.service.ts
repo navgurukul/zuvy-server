@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { Cron } from '@nestjs/schedule';
+import { Cron, CronExpression } from '@nestjs/schedule';
 import {
   userTokens,
   zuvySessions,
@@ -64,6 +64,17 @@ export class ScheduleService {
       this.logger.log('YouTube client initialized');
     } catch (e: any) {
       this.logger.warn(`Failed to initialize YouTube client: ${e.message}`);
+    }
+  }
+
+  @Cron(CronExpression.EVERY_MINUTE)
+  async activateDueZoomSessions() {
+    try {
+      await this.classesService.activateScheduledZoomSessions();
+    } catch (error: any) {
+      this.logger.error(
+        `Failed to activate due Zoom sessions: ${error.message}`,
+      );
     }
   }
 

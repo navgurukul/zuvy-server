@@ -15,7 +15,7 @@ import {
   zuvyBootcamps,
   zuvyUserRolesAssigned,
 } from 'drizzle/schema';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 
 @Injectable()
 export class PermissionsGuard implements CanActivate {
@@ -41,8 +41,11 @@ export class PermissionsGuard implements CanActivate {
       throw new ForbiddenException('User not authenticated');
     }
 
+    const userRoles = Array.isArray(user.roles) ? user.roles : [];
+    const roleSet = new Set<string>(userRoles);
+
     // Super Admin bypass
-    if (user.roles && user.roles.includes('super_admin')) {
+    if (roleSet.has('super_admin')) {
       return true;
     }
 
@@ -56,15 +59,14 @@ export class PermissionsGuard implements CanActivate {
       [context.getHandler(), context.getClass()],
     );
 
-    const normalizedRoles = Array.isArray(user.roles) ? user.roles : [];
-    const hasStudentRole = normalizedRoles.includes('student');
+    const hasStudentRole = roleSet.has('student');
     const isInstructor =
-      normalizedRoles.includes('instructor') &&
-      !normalizedRoles.includes('admin') &&
-      !normalizedRoles.includes('ops') &&
+      roleSet.has('instructor') &&
+      !roleSet.has('admin') &&
+      !roleSet.has('ops') &&
       !hasStudentRole;
     const isStudent =
-      hasStudentRole || normalizedRoles.length === 0 || user.roles == null;
+      hasStudentRole || roleSet.size === 0 || user.roles == null;
     const isStudentCourseRead =
       isStudent &&
       request.method === 'GET' &&
@@ -252,17 +254,26 @@ export class PermissionsGuard implements CanActivate {
       .split('?')[0]
       .toLowerCase();
 
-    return (
-      path.startsWith('/student/assessment/') ||
-      path.startsWith('/content/students/assessmentid=') ||
-      path.startsWith('/content/startassessmentforstudent/') ||
-      path.startsWith('/content/assessmentdetailsofquiz/') ||
-      path.startsWith('/content/assessmentdetailsofopenended/') ||
-      path.startsWith('/submission/assessment/submit') ||
-      path.startsWith('/submission/quiz/assessmentsubmissionid=') ||
-      path.startsWith('/submission/openended/assessmentsubmissionid=') ||
-      path.startsWith('/submission/assessment/properting')
-    );
+    if (path.startsWith('/student/')) {
+      return path.startsWith('/student/assessment/');
+    }
+    if (path.startsWith('/content/')) {
+      return (
+        path.startsWith('/content/students/assessmentid=') ||
+        path.startsWith('/content/startassessmentforstudent/') ||
+        path.startsWith('/content/assessmentdetailsofquiz/') ||
+        path.startsWith('/content/assessmentdetailsofopenended/')
+      );
+    }
+    if (path.startsWith('/submission/')) {
+      return (
+        path.startsWith('/submission/assessment/submit') ||
+        path.startsWith('/submission/quiz/assessmentsubmissionid=') ||
+        path.startsWith('/submission/openended/assessmentsubmissionid=') ||
+        path.startsWith('/submission/assessment/properting')
+      );
+    }
+    return false;
   }
 
   private async ensureUserBelongsToOrg(
@@ -317,36 +328,36 @@ export class PermissionsGuard implements CanActivate {
     let resolvedBootcampId = bootcampId;
     let resolvedOrgId: number | null = null;
 
-    for (const batchId of batchIds) {
-      // Resolve bootcampId and instructorId directly from the batch
-      const [batch] = await db
+    if (batchIds.length > 0) {
+      const batches = await db
         .select({
           id: zuvyBatches.id,
           bootcampId: zuvyBatches.bootcampId,
           instructorId: zuvyBatches.instructorId,
         })
         .from(zuvyBatches)
-        .where(eq(zuvyBatches.id, batchId))
-        .limit(1);
+        .where(inArray(zuvyBatches.id, batchIds));
 
-      if (!batch) {
+      if (batches.length < batchIds.length) {
         // Batch not found — nothing to enforce
         return;
       }
 
-      // If a bootcampId is also in the request, make sure it matches the batch's bootcamp
-      if (
-        resolvedBootcampId &&
-        Number(batch.bootcampId) !== Number(resolvedBootcampId)
-      ) {
-        throw new ForbiddenException('Unauthorized access');
-      }
+      for (const batch of batches) {
+        // If a bootcampId is also in the request, make sure it matches the batch's bootcamp
+        if (
+          resolvedBootcampId &&
+          Number(batch.bootcampId) !== Number(resolvedBootcampId)
+        ) {
+          throw new ForbiddenException('Unauthorized access');
+        }
 
-      resolvedBootcampId = Number(batch.bootcampId);
+        resolvedBootcampId = Number(batch.bootcampId);
 
-      // Check: is this instructor assigned to this specific batch?
-      if (Number(batch.instructorId) !== Number(userId)) {
-        throw new ForbiddenException('Unauthorized access');
+        // Check: is this instructor assigned to this specific batch?
+        if (Number(batch.instructorId) !== Number(userId)) {
+          throw new ForbiddenException('Unauthorized access');
+        }
       }
     }
 

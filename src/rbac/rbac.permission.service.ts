@@ -305,8 +305,11 @@ export class RbacPermissionService {
       }
 
       const userPermissions = await this.getUserPermissions(userId, orgId);
+      const userPermissionsSet = new Set(
+        userPermissions.map((up) => up.permission),
+      );
       const hasAllPermissions = requiredPermissions.every((requiredPerm) =>
-        userPermissions.some((up) => up.permission === requiredPerm),
+        userPermissionsSet.has(requiredPerm),
       );
 
       return hasAllPermissions;
