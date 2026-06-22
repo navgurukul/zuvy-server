@@ -11,7 +11,7 @@ import {
   Query,
   Req,
   Res,
-  UseGuards
+  UseGuards,
 } from '@nestjs/common';
 import { TrackingService } from './tracking.service';
 import {
@@ -38,7 +38,10 @@ import { quizBatchDto } from '../content/dto/content.dto';
 import { SubmitFormBodyDto } from './dto/form.dto';
 import { ErrorResponse, SuccessResponse } from 'src/errorHandler/handler';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
+import { TrackAction } from 'src/trackinglog/decorators/track-action.decorator';
+import { SkipOrgCheck } from 'src/rbac/decorators/skip-org-check.decorator';
 
+@SkipOrgCheck()
 @Controller('tracking')
 @ApiTags('tracking')
 @UseGuards(JwtAuthGuard)
@@ -49,6 +52,14 @@ export class TrackingController {
   @Post('updateChapterStatus/:bootcampId/:moduleId')
   @ApiOperation({ summary: 'Update Chapter status' })
   @ApiBearerAuth('JWT-auth')
+  @TrackAction({
+    action: 'edit_chapter',
+    resourceType: 'chapter',
+    permissionName: 'editChapter',
+    getResourceName: (_result) => {
+      return 'Chapter';
+    },
+  })
   async updateChapterStatus(
     @Param('bootcampId') bootcampId: number,
     @Req() req,
@@ -59,7 +70,7 @@ export class TrackingController {
       bootcampId,
       req.user[0].id,
       moduleId,
-      chapterId
+      chapterId,
     );
     return res;
   }
@@ -69,10 +80,7 @@ export class TrackingController {
     summary: 'Get all chapters with status for a user by bootcampId',
   })
   @ApiBearerAuth('JWT-auth')
-  async getAllChapterForUser(
-    @Param('moduleId') moduleId: number,
-    @Req() req
-  ) {
+  async getAllChapterForUser(@Param('moduleId') moduleId: number, @Req() req) {
     const res = await this.TrackingService.getAllChapterWithStatus(
       moduleId,
       req.user[0].id,
@@ -81,12 +89,14 @@ export class TrackingController {
   }
 
   @Post('/recomputeAttendance/:batchId')
-  @ApiOperation({ summary: 'Recompute attendance percentage for a batch (testing)' })
+  @ApiOperation({
+    summary: 'Recompute attendance percentage for a batch (testing)',
+  })
   @ApiBearerAuth('JWT-auth')
-  async recomputeAttendance(
-    @Param('batchId') batchId: number,
-  ) {
-    const res = await this.TrackingService.recomputeBatchAttendancePercentages(Number(batchId));
+  async recomputeAttendance(@Param('batchId') batchId: number) {
+    const res = await this.TrackingService.recomputeBatchAttendancePercentages(
+      Number(batchId),
+    );
     return res;
   }
 
@@ -114,10 +124,7 @@ export class TrackingController {
   @Get('/allModulesForStudents/:bootcampId')
   @ApiOperation({ summary: 'Get all modules of a course' })
   @ApiBearerAuth('JWT-auth')
-  async getAllModules(
-    @Param('bootcampId') bootcampId: number,
-    @Req() req,
-  ) {
+  async getAllModules(@Param('bootcampId') bootcampId: number, @Req() req) {
     const res = await this.TrackingService.getAllModuleByBootcampIdForStudent(
       bootcampId,
       req.user[0].id,
@@ -148,7 +155,7 @@ export class TrackingController {
   ) {
     const res = await this.TrackingService.getPendingAssignmentForStudent(
       bootcampId,
-      req.user[0].id
+      req.user[0].id,
     );
     return res;
   }
@@ -160,24 +167,36 @@ export class TrackingController {
     name: 'bootcampId',
     type: Number,
     description: 'bootcampId',
-    required:false
+    required: false,
   })
   async getAllUpcomingAssignment(
     @Req() req,
     @Query('bootcampId') bootcampId: number,
-    @Res() res
+    @Res() res,
   ) {
-      try {
-        let [err, success] =await this.TrackingService.getAllUpcomingSubmission(
-            req.user[0].id,bootcampId
-          );
-        if (err) {
-          return ErrorResponse.BadRequestException(err.message, err.statusCode).send(res)
-        }
-        return new SuccessResponse(success.message, success.statusCode, success.data).send(res);
-      } catch (error) {
-        return ErrorResponse.BadRequestException(error.message).send(res);
-      }  
+    try {
+      let [err, success] = await this.TrackingService.getAllUpcomingSubmission(
+        req.user[0].id,
+        bootcampId,
+      );
+      if (err) {
+        return ErrorResponse.BadRequestException(
+          err.message,
+          err.statusCode,
+        ).send(res);
+      }
+      return res.status(success.statusCode).json({
+        message: success.message,
+        code: success.statusCode,
+        isSuccess: true,
+        mentorshipEnabled: success.mentorshipEnabled ?? false,
+        leaderboardEnabled: success.leaderboardEnabled ?? false,
+
+        data: success.data,
+      });
+    } catch (error) {
+      return ErrorResponse.BadRequestException(error.message).send(res);
+    }
   }
 
   @Get('/getChapterDetailsWithStatus/:chapterId')
@@ -211,24 +230,36 @@ export class TrackingController {
     );
     return res;
   }
-  
+
   @Get('getQuizAndAssignmentWithStatus')
   @ApiOperation({ summary: 'get Quiz And Assignment With Status' })
   @ApiBearerAuth('JWT-auth')
   async getQuizAndAssignmentWithStatus(
     @Req() req,
     @Query('chapterId') chapterId: number,
-    @Res() res
+    @Res() res,
   ) {
     try {
-      let [err, success] = await this.TrackingService.getQuizAndAssignmentWithStatus(
-        req.user[0].id,
-        chapterId,
-      );
+      let [err, success] =
+        await this.TrackingService.getQuizAndAssignmentWithStatus(
+          req.user[0].id,
+          chapterId,
+        );
       if (err) {
-        return ErrorResponse.BadRequestException(err.message, err.statusCode).send(res)
+        return ErrorResponse.BadRequestException(
+          err.message,
+          err.statusCode,
+        ).send(res);
       }
-      return new SuccessResponse(success.message, success.statusCode, success.data).send(res);
+      return res.status(success.statusCode).json({
+        message: success.message,
+        code: success.statusCode,
+        isSuccess: true,
+        mentorshipEnabled: success.mentorshipEnabled ?? false,
+        leaderboardEnabled: success.leaderboardEnabled ?? false,
+
+        data: success.data,
+      });
     } catch (error) {
       return ErrorResponse.BadRequestException(error.message).send(res);
     }
@@ -254,14 +285,14 @@ export class TrackingController {
     @Req() req,
     @Query('moduleId') moduleId: number,
     @Query('bootcampId') bootcampId: number,
-    @Body() submitProject:UpdateProjectDto
+    @Body() submitProject: UpdateProjectDto,
   ) {
     const res = await this.TrackingService.submitProjectForAUser(
       req.user[0].id,
       bootcampId,
       moduleId,
       projectId,
-      submitProject
+      submitProject,
     );
     return res;
   }
@@ -275,21 +306,29 @@ export class TrackingController {
     @Param('projectId') projectId: number,
     @Param('moduleId') moduleId: number,
     @Req() req,
-    @Res() res
+    @Res() res,
   ) {
     try {
-      let [err, success] = await this.TrackingService.getProjectDetailsWithStatus(
+      let [err, success] =
+        await this.TrackingService.getProjectDetailsWithStatus(
           projectId,
           moduleId,
-          req.user[0].id
+          req.user[0].id,
         );
       if (err) {
-        return ErrorResponse.BadRequestException(err.message, err.statusCode).send(res)
+        return ErrorResponse.BadRequestException(
+          err.message,
+          err.statusCode,
+        ).send(res);
       }
-      return new SuccessResponse(success.message, success.statusCode, success.data).send(res);
+      return new SuccessResponse(
+        success.message,
+        success.statusCode,
+        success.data,
+      ).send(res);
     } catch (error) {
       return ErrorResponse.BadRequestException(error.message).send(res);
-    }  
+    }
   }
 
   @Get('/allBootcampProgress')
@@ -297,11 +336,9 @@ export class TrackingController {
     summary: 'Get all bootcamp progress for a particular student',
   })
   @ApiBearerAuth('JWT-auth')
-  async getAllBootcampProgressForStudents(
-    @Req() req,
-  ) {
+  async getAllBootcampProgressForStudents(@Req() req) {
     const res = await this.TrackingService.allBootcampProgressForStudents(
-      req.user[0].id
+      req.user[0].id,
     );
     return res;
   }
@@ -320,20 +357,31 @@ export class TrackingController {
   async getLatestUpdatedCourseForStudent(
     @Req() req,
     @Res() res,
-    @Query('bootcampId') bootcampId: number
+    @Query('bootcampId') bootcampId: number,
   ) {
     try {
-      let [err, success] = await this.TrackingService.getLatestUpdatedCourseForStudents(
-        req.user[0].id,
-        bootcampId
-      );
+      let [err, success] =
+        await this.TrackingService.getLatestUpdatedCourseForStudents(
+          req.user[0].id,
+          bootcampId,
+        );
       if (err) {
-        return ErrorResponse.BadRequestException(err.message, err.statusCode).send(res)
+        return ErrorResponse.BadRequestException(
+          err.message,
+          err.statusCode,
+        ).send(res);
       }
-      return new SuccessResponse(success.message, success.statusCode, success.data).send(res);
+      return res.status(success.statusCode).json({
+        message: success.message,
+        code: success.statusCode,
+        isSuccess: true,
+        mentorshipEnabled: success.mentorshipEnabled ?? false,
+        leaderboardEnabled: success.leaderboardEnabled ?? false,
+        data: success.data,
+      });
     } catch (error) {
       return ErrorResponse.BadRequestException(error.message).send(res);
-    }  
+    }
   }
 
   @Get('assessment/submissionId=:submissionId')
@@ -346,14 +394,20 @@ export class TrackingController {
     description: 'studentId of the assessment',
   })
   async getAssessmentSubmission(
-    @Param('submissionId') submissionId: number, @Req() req, @Query('studentId') userId:number ) {
+    @Param('submissionId') submissionId: number,
+    @Req() req,
+    @Query('studentId') userId: number,
+  ) {
     if (!userId) {
-        userId = req.user[0].id;
+      userId = req.user[0].id;
     }
-    const res = await this.TrackingService.getAssessmentSubmission(submissionId, userId);
+    const res = await this.TrackingService.getAssessmentSubmission(
+      submissionId,
+      userId,
+    );
     return res;
-  }   
-  
+  }
+
   @Post('updateFormStatus/:bootcampId/:moduleId')
   @ApiOperation({ summary: 'Update Chapter status' })
   @ApiBody({ type: SubmitFormBodyDto, required: false })
@@ -390,16 +444,28 @@ export class TrackingController {
     );
     return res;
   }
-  
+
   @Get('/assessment/properting/:assessment_submission_id')
   @ApiBearerAuth('JWT-auth')
-  async getProperting(@Param('assessment_submission_id') assessmentSubmissionId: number, @Res() res) {
+  async getProperting(
+    @Param('assessment_submission_id') assessmentSubmissionId: number,
+    @Res() res,
+  ) {
     try {
-      let [err, success] = await this.TrackingService.getProperting(assessmentSubmissionId);
+      let [err, success] = await this.TrackingService.getProperting(
+        assessmentSubmissionId,
+      );
       if (err) {
-        return ErrorResponse.BadRequestException(err.message, err.statusCode).send(res)
+        return ErrorResponse.BadRequestException(
+          err.message,
+          err.statusCode,
+        ).send(res);
       }
-      return new SuccessResponse(success.message, success.statusCode, success.data).send(res);
+      return new SuccessResponse(
+        success.message,
+        success.statusCode,
+        success.data,
+      ).send(res);
     } catch (error) {
       return ErrorResponse.BadRequestException(error.message).send(res);
     }

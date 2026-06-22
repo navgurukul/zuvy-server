@@ -4,9 +4,9 @@ import { ExtractJwt, Strategy } from 'passport-jwt';
 import { AuthService } from '../auth.service';
 import { Request } from 'express';
 import { db } from 'src/db';
-import { sansaarUserRoles } from '../../../drizzle/schema';
 import { eq } from 'drizzle-orm';
-let { GOOGLE_CLIENT_ID, GOOGLE_SECRET, GOOGLE_REDIRECT,JWT_SECRET_KEY } = process.env;
+let { GOOGLE_CLIENT_ID, GOOGLE_SECRET, GOOGLE_REDIRECT_URI, JWT_SECRET_KEY } =
+  process.env;
 
 // Extend Express Request type to include user property
 interface RequestWithUser extends Request {
@@ -34,16 +34,21 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     await this.authService.validateToken(token);
 
     // Get user roles
-    const roles = await this.authService.getUserRoles(payload.sub);
+    const roles = await this.authService.getUserRoles(
+      payload.sub,
+      payload.orgId,
+    );
 
     // Create user data object
     const userData = {
       id: payload.sub,
       email: payload.email,
-      roles: roles
+      roles: roles,
+      orgId: payload.orgId,
+      orgName: payload.orgName,
     };
     const arr = [userData];
-req.user = arr;            // still fine to do, but optional now
-return arr;
+    req.user = arr; // still fine to do, but optional now
+    return arr;
   }
-} 
+}

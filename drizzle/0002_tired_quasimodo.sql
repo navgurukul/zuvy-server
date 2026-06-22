@@ -505,3 +505,289 @@ CREATE TABLE "student_assessment" (
     UNIQUE ("student_id", "ai_assessment_id")
 );
 
+
+
+-- orgnization: zuvy
+CREATE TABLE "zuvy_organizations" (
+    "id" SERIAL PRIMARY KEY NOT NULL,
+    "title" VARCHAR(255) NOT NULL,
+    "display_name" VARCHAR(255) NOT NULL,
+    "is_managed_by_zuvy" BOOLEAN NOT NULL DEFAULT false,
+    "logo_url" VARCHAR(500),
+    "poc_name" VARCHAR(255),
+    "poc_email" VARCHAR(255),
+    "zuvy_poc_name" VARCHAR(255),
+    "zuvy_poc_email" VARCHAR(255),
+    "is_verified" BOOLEAN NOT NULL DEFAULT false,
+    "created_at" TIMESTAMPTZ DEFAULT NOW(),
+    "updated_at" TIMESTAMPTZ DEFAULT NOW(),
+    "version" VARCHAR(10)
+);
+
+-- Create indexes
+CREATE INDEX "zuvy_organizations_title_idx" ON "zuvy_organizations" ("title");
+CREATE INDEX "zuvy_organizations_is_verified_idx" ON "zuvy_organizations" ("is_verified");
+CREATE INDEX "zuvy_organizations_created_at_idx" ON "zuvy_organizations" ("created_at");
+ALTER TABLE "zuvy_organizations" ADD CONSTRAINT "zuvy_organizations_title_unique" UNIQUE("title");
+
+-- Create user_organizations table
+CREATE TABLE "zuvy_user_organizations" (
+    "id" SERIAL PRIMARY KEY,
+    
+    "user_id" BIGINT NOT NULL,
+    "organization_id" INTEGER NOT NULL,
+    "user_email" VARCHAR(255) NOT NULL,
+    
+    "access_token" TEXT,
+    "refresh_token" TEXT,
+    
+    "joined_at" TIMESTAMPTZ DEFAULT NOW(),
+
+    CONSTRAINT "zuvy_user_organizations_user_id_fkey"
+        FOREIGN KEY ("user_id")
+        REFERENCES "users"("id"),
+
+    CONSTRAINT "zuvy_user_organizations_organization_id_fkey"
+        FOREIGN KEY ("organization_id")
+        REFERENCES "zuvy_organizations"("id")
+        ON DELETE CASCADE,
+
+    CONSTRAINT "zuvy_user_organizations_uniq_user_organization"
+        UNIQUE ("user_id", "organization_id")
+);
+
+
+CREATE INDEX "zuvy_user_organizations_user_id_idx"
+    ON "zuvy_user_organizations" ("user_id");
+
+CREATE INDEX "zuvy_user_organizations_organization_id_idx"
+    ON "zuvy_user_organizations" ("organization_id");
+
+CREATE INDEX "zuvy_user_organizations_joined_at_idx"
+    ON "zuvy_user_organizations" ("joined_at");
+
+ALTER TABLE "zuvy_permissions_roles" 
+ADD COLUMN IF NOT EXISTS "org_id" INTEGER NOT NULL 
+REFERENCES "zuvy_organizations"("id") DEFAULT 1;
+
+-- mapping orgid in questions bank tables
+-- For MCQ
+ALTER TABLE "zuvy_module_quiz"
+ADD COLUMN "org_id" INTEGER;
+
+UPDATE "zuvy_module_quiz"
+SET "org_id" = 1;
+
+ALTER TABLE "zuvy_module_quiz"
+ALTER COLUMN "org_id" SET NOT NULL;
+
+ALTER TABLE "zuvy_module_quiz"
+ADD CONSTRAINT "fk_module_quiz_org"
+FOREIGN KEY ("org_id")
+REFERENCES "zuvy_organizations"("id")
+ON UPDATE CASCADE
+ON DELETE CASCADE;
+
+-- For Open Ended Questions
+ALTER TABLE "zuvy_openEnded_questions"
+ADD COLUMN "org_id" INTEGER;
+
+UPDATE "zuvy_openEnded_questions"
+SET "org_id" = 1;
+
+ALTER TABLE "zuvy_openEnded_questions"
+ALTER COLUMN "org_id" SET NOT NULL;
+
+ALTER TABLE "zuvy_openEnded_questions"
+ADD CONSTRAINT "fk_openended_org"
+FOREIGN KEY ("org_id")
+REFERENCES "zuvy_organizations"("id")
+ON UPDATE CASCADE
+ON DELETE CASCADE;
+
+-- For Coding Questions
+ALTER TABLE "zuvy_coding_questions"
+ADD COLUMN "org_id" INTEGER;
+
+UPDATE "zuvy_coding_questions"
+SET "org_id" = 1;
+
+ALTER TABLE "zuvy_coding_questions"
+ALTER COLUMN "org_id" SET NOT NULL;
+
+ALTER TABLE "zuvy_coding_questions"
+ADD CONSTRAINT "fk_coding_questions_org"
+FOREIGN KEY ("org_id")
+REFERENCES "zuvy_organizations"("id")
+ON UPDATE CASCADE
+ON DELETE CASCADE;
+
+CREATE TABLE "zuvy_user_licenses" (
+    "id" SERIAL PRIMARY KEY NOT NULL,
+    "zoom_email" VARCHAR(255) NOT NULL,
+    "zoom_user_id" VARCHAR(128),
+    "user_name" VARCHAR(255),
+    "license_type" INTEGER NOT NULL DEFAULT 2,
+    "status" VARCHAR(30) NOT NULL DEFAULT 'active',
+    "created_at" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    "updated_at" TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE UNIQUE INDEX "zoom_user_licenses_email_pool_key"
+ON "zuvy_user_licenses" ("zoom_email");
+
+ALTER TABLE zuvy_learner_education_branch_details
+ADD COLUMN degree_id INTEGER;
+
+ALTER TABLE zuvy_learner_education_branch_details
+ADD CONSTRAINT zuvy_learner_education_branch_details_degree_id_fk
+FOREIGN KEY (degree_id)
+REFERENCES zuvy_learners_degree_details(id)
+ON DELETE CASCADE;
+
+DROP INDEX IF EXISTS zuvy_learner_education_branch_details_name_unique;
+
+
+
+INSERT INTO zuvy_learner_education_branch_details (name, degree_id)
+VALUES
+('Computer Science Engineering', 1),
+('Information Technology', 1),
+('Electronics and Communication', 1),
+('Electrical Engineering', 1),
+('Mechanical Engineering', 1),
+('Civil Engineering', 1),
+('Chemical Engineering', 1),
+('AI and Data Science', 1),
+
+('Computer Engineering', 2),
+('Mechanical Engineering', 2),
+('Civil Engineering', 2),
+('Electronics Engineering', 2),
+
+('Physics', 3),
+('Chemistry', 3),
+('Mathematics', 3),
+('Computer Science', 3),
+('Biotechnology', 3),
+('Microbiology', 3),
+
+('Computer Applications', 4),
+('Software Development', 4),
+('Data Science Basics', 4),
+
+('Marketing', 5),
+('Finance', 5),
+('Human Resource Management', 5),
+('International Business', 5),
+
+('General Commerce', 6),
+('Accounting and Finance', 6),
+('Banking and Insurance', 6),
+
+('English', 7),
+('History', 7),
+('Political Science', 7),
+('Sociology', 7),
+('Psychology', 7),
+
+('Architecture Design', 8),
+
+('Fashion Design', 9),
+('Interior Design', 9),
+('Product Design', 9),
+
+('Pharmacy', 10),
+
+('Education', 11),
+
+('Law', 12),
+
+('Medicine', 13),
+
+('Dental Surgery', 14),
+
+('Hotel Management', 15),
+
+('Physiotherapy', 16),
+
+('Computer Science Engineering', 17),
+('Mechanical Engineering', 17),
+('Civil Engineering', 17),
+
+('Engineering', 18),
+
+('Physics', 19),
+('Chemistry', 19),
+('Mathematics', 19),
+('Computer Science', 19),
+
+('Computer Applications', 20),
+
+('Marketing', 21),
+('Finance', 21),
+('Human Resource', 21),
+('Operations', 21),
+
+('English', 22),
+('History', 22),
+('Political Science', 22),
+
+('Commerce', 23),
+
+('Pharmacy', 24),
+
+('Education', 25),
+
+('Law', 26),
+
+('Medicine Specialization', 27),
+
+('Surgery', 28),
+
+('Research', 29),
+
+('Engineering Diploma', 30),
+('Pharmacy Diploma', 30),
+
+('Advanced Technical Studies', 31),
+
+('Management', 32),
+('Computer Applications', 32),
+
+('Engineering Diploma', 33),
+
+('IT Certification', 34),
+('Skill Development', 34),
+
+('Other Specialization', 35);
+
+
+
+ALTER TABLE main.zuvy_learners_complete_profile
+  DROP COLUMN IF EXISTS other_college_name;
+
+
+DROP TABLE IF EXISTS zuvy_leaderboard_settings
+
+
+
+SELECT column_name
+FROM information_schema.columns
+WHERE table_name = 'zuvy_bootcamp_type';
+
+
+ALTER TABLE zuvy_bootcamp_type
+ADD COLUMN leaderboard_enabled BOOLEAN DEFAULT FALSE;
+
+
+
+SELECT id, name
+FROM zuvy_bootcamps
+WHERE id IN (1046, 1047);
+
+
+
+
+ALTER TABLE zuvy_learners_complete_profile
+ADD COLUMN profile_visibility BOOLEAN DEFAULT TRUE;

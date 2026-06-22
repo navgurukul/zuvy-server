@@ -1,4 +1,15 @@
-import { IsString, IsNotEmpty, IsOptional, IsArray, ValidateNested, IsEmail, IsNumber, IsBoolean, ArrayNotEmpty, IsDateString } from 'class-validator';
+import {
+  IsString,
+  IsNotEmpty,
+  IsOptional,
+  IsArray,
+  ValidateNested,
+  IsEmail,
+  IsNumber,
+  IsBoolean,
+  ArrayNotEmpty,
+  IsDateString,
+} from 'class-validator';
 import { ApiProperty, ApiResponseProperty, ApiResponse } from '@nestjs/swagger';
 
 export class BatchDto {
@@ -42,7 +53,7 @@ export class BatchDto {
     type: String,
     example: '2025-09-20',
     required: false,
-    description: 'Optional start date for the batch (ISO date string)'
+    description: 'Optional start date for the batch (ISO date string)',
   })
   @IsOptional()
   @IsDateString()
@@ -52,7 +63,7 @@ export class BatchDto {
     type: String,
     example: '2025-12-20',
     required: false,
-    description: 'Optional end date for the batch (ISO date string)'
+    description: 'Optional end date for the batch (ISO date string)',
   })
   @IsOptional()
   @IsDateString()
@@ -71,7 +82,7 @@ export class BatchDto {
     type: String,
     example: 'Ongoing',
     required: false,
-    description: 'Optional status of the batch (e.g. Ongoing, Completed)'
+    description: 'Optional status of the batch (e.g. Ongoing, Completed)',
   })
   @IsOptional()
   @IsString()
@@ -118,7 +129,7 @@ export class PatchBatchDto {
     type: String,
     example: '2025-09-20',
     required: false,
-    description: 'Optional start date for the batch (ISO date string)'
+    description: 'Optional start date for the batch (ISO date string)',
   })
   @IsOptional()
   @IsDateString()
@@ -128,7 +139,7 @@ export class PatchBatchDto {
     type: String,
     example: '2025-12-20',
     required: false,
-    description: 'Optional end date for the batch (ISO date string)'
+    description: 'Optional end date for the batch (ISO date string)',
   })
   @IsOptional()
   @IsDateString()
@@ -138,9 +149,19 @@ export class PatchBatchDto {
     type: String,
     example: 'Ongoing',
     required: false,
-    description: 'Optional status of the batch (e.g. Ongoing, Completed)'
+    description: 'Optional status of the batch (e.g. Ongoing, Completed)',
   })
   @IsOptional()
   @IsString()
   status?: string;
+
+  @ApiProperty({
+    type: String,
+    example: 'oldinstructor@gmail.com',
+    required: false,
+    description: 'Optional previous instructor email for role management',
+  })
+  @IsOptional()
+  @IsEmail()
+  previousInstructorEmail?: string;
 }

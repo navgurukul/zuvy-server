@@ -1,15 +1,18 @@
 import { Injectable } from '@nestjs/common';
 import {
-  zuvyBatches,
   users,
-  sansaarUserRoles,
+  zuvyBatches,
+  zuvyUserRoles,
+  zuvyUserRolesAssigned,
   zuvyBatchEnrollments,
   zuvyStudentAttendance,
   zuvyStudentAttendanceRecords,
   zuvySessions,
+  zuvyBootcamps,
+  zuvyUserOrganizations,
 } from '../../../drizzle/schema';
 import { db } from '../../db/index';
-import { eq, ilike, inArray, or, sql, and } from 'drizzle-orm';
+import { eq, ilike, inArray, or, sql, and, not, isNull } from 'drizzle-orm';
 import { log } from 'console';
 import { PatchBatchDto, BatchDto } from './dto/batch.dto';
 import { helperVariable } from 'src/constants/helper';
@@ -101,34 +104,68 @@ export class BatchesService {
         ];
       }
 
-      // Try to ensure instructor role exists but do not block on failure
+      // RBAC role assignment for the instructor
       try {
-        const instructorRoles = await db
-          .select({ role: sansaarUserRoles.role })
-          .from(sansaarUserRoles)
-          .where(eq(sansaarUserRoles.userId, Number(user[0].id)));
-        const hasInstructorRole = instructorRoles.some(
-          (r) => r.role === helperVariable.instructor,
-        );
-        if (!hasInstructorRole) {
-          try {
-            await db
-              .insert(sansaarUserRoles)
-              .values({
-                userId: Number(user[0].id),
-                role: helperVariable.instructor,
-                createdAt: new Date().toISOString(),
-              } as any)
-              .returning();
-          } catch (err) {
-            console.log(
-              'Failed to assign instructor role:',
-              err?.message || err,
-            );
+        const bootcamp = await db.query.zuvyBootcamps.findFirst({
+          where: eq(zuvyBootcamps.id, batch.bootcampId),
+        });
+        const orgId = bootcamp?.organizationId;
+
+        const instructorRole = await db
+          .select({ id: zuvyUserRoles.id })
+          .from(zuvyUserRoles)
+          .where(
+            and(
+              eq(sql`lower(${zuvyUserRoles.name})`, 'instructor'),
+              isNull(zuvyUserRoles.orgId),
+            ),
+          )
+          .limit(1);
+
+        const instructorRoleId = instructorRole[0]?.id;
+
+        if (instructorRoleId && user[0]?.id) {
+          const instructorUserId = BigInt(user[0].id);
+          const existingAssignment =
+            await db.query.zuvyUserRolesAssigned.findFirst({
+              where: and(
+                eq(zuvyUserRolesAssigned.userId, instructorUserId),
+                eq(zuvyUserRolesAssigned.roleId, instructorRoleId),
+                orgId
+                  ? eq(zuvyUserRolesAssigned.organizationId, orgId)
+                  : isNull(zuvyUserRolesAssigned.organizationId),
+              ),
+            });
+
+          if (!existingAssignment) {
+            let userData = {
+              userId: instructorUserId,
+              roleId: instructorRoleId,
+              organizationId: orgId || null,
+            };
+            await db.insert(zuvyUserRolesAssigned).values(userData);
+          }
+
+          if (orgId) {
+            const existingOrgMembership =
+              await db.query.zuvyUserOrganizations.findFirst({
+                where: and(
+                  eq(zuvyUserOrganizations.userId, Number(instructorUserId)),
+                  eq(zuvyUserOrganizations.organizationId, orgId),
+                ),
+              });
+
+            if (!existingOrgMembership) {
+              await db.insert(zuvyUserOrganizations).values({
+                userId: instructorUserId,
+                userEmail: batch.instructorEmail,
+                organizationId: orgId,
+              } as any);
+            }
           }
         }
       } catch (err) {
-        console.log('Error checking instructor role:', err?.message || err);
+        console.error('Failed to assign instructor role:', err);
       }
 
       // Build batch object
@@ -141,6 +178,14 @@ export class BatchesService {
       if (batch.startDate) batchValue.startDate = new Date(batch.startDate);
       if (batch.endDate) batchValue.endDate = new Date(batch.endDate);
       if (batch.status) batchValue.status = batch.status;
+
+      // Fetch bootcamp name for audit log
+      const courseRes = await db
+        .select({ name: zuvyBootcamps.name })
+        .from(zuvyBootcamps)
+        .where(eq(zuvyBootcamps.id, batch.bootcampId))
+        .limit(1);
+      const bootcampName = courseRes[0]?.name || '';
 
       // If not assignAll: validate provided studentIds and enroll them
       if (!batch.assignAll) {
@@ -232,6 +277,7 @@ export class BatchesService {
             message: 'Batch created successfully',
             code: 200,
             batch: createdBatchWithStatus,
+            bootcampName,
           },
         ];
       }
@@ -275,6 +321,7 @@ export class BatchesService {
             message: 'Batch created successfully',
             code: 200,
             batch: createdBatchWithStatus,
+            bootcampName,
           },
         ];
       }
@@ -310,15 +357,21 @@ export class BatchesService {
         .from(zuvyBatchEnrollments)
         .where(eq(zuvyBatchEnrollments.batchId, id));
 
-      const batchInstructor = await db
-        .select({ id: users.id, email: users.email, name: users.name })
-        .from(users)
-        .where(eq(users.id, BigInt(data[0].instructorId)))
-        .limit(1);
-      const instructorName =
-        batchInstructor.length > 0 ? batchInstructor[0].name : null;
-      const instructorEmail =
-        batchInstructor.length > 0 ? batchInstructor[0].email : null;
+      const instructorId = data[0].instructorId;
+      let instructorName = null;
+      let instructorEmail = null;
+
+      if (instructorId) {
+        const batchInstructor = await db
+          .select({ id: users.id, email: users.email, name: users.name })
+          .from(users)
+          .where(eq(users.id, BigInt(instructorId)))
+          .limit(1);
+        if (batchInstructor.length > 0) {
+          instructorName = batchInstructor[0].name;
+          instructorEmail = batchInstructor[0].email;
+        }
+      }
       data[0]['instructorName'] = instructorName;
       data[0]['instructorEmail'] = instructorEmail;
       // Ensure start/end dates are present in returned batch object and normalized
@@ -427,40 +480,73 @@ export class BatchesService {
         const userObj = userRes[0];
         instructorEmailToReturn = userObj.email;
 
+        // RBAC role assignment for the NEW instructor
         try {
-          const instructorRoles = await db
-            .select({ role: sansaarUserRoles.role })
-            .from(sansaarUserRoles)
-            .where(eq(sansaarUserRoles.userId, Number(userObj.id)));
-          const hasInstructorRole = instructorRoles.some(
-            (r) => r.role === helperVariable.instructor,
-          );
-          if (!hasInstructorRole) {
-            // attempt assigning role but do not block update if this fails
-            try {
-              await db
-                .insert(sansaarUserRoles)
-                .values({
-                  userId: Number(userObj.id),
-                  role: helperVariable.instructor,
-                  createdAt: new Date().toISOString(),
-                } as any)
-                .returning();
-            } catch (roleErr) {
-              console.log(
-                'Failed to assign instructor role:',
-                roleErr?.message || roleErr,
-              );
+          const bootcamp = await db.query.zuvyBootcamps.findFirst({
+            where: eq(zuvyBootcamps.id, batchOld[0].bootcampId),
+          });
+          const orgId = bootcamp?.organizationId;
+
+          const instructorRole = await db
+            .select({ id: zuvyUserRoles.id })
+            .from(zuvyUserRoles)
+            .where(
+              and(
+                eq(sql`lower(${zuvyUserRoles.name})`, 'instructor'),
+                isNull(zuvyUserRoles.orgId),
+              ),
+            )
+            .limit(1);
+
+          const instructorRoleId = instructorRole[0]?.id;
+
+          if (instructorRoleId && userObj?.id) {
+            const instructorUserId = BigInt(userObj.id);
+            const existingAssignment =
+              await db.query.zuvyUserRolesAssigned.findFirst({
+                where: and(
+                  eq(zuvyUserRolesAssigned.userId, instructorUserId),
+                  eq(zuvyUserRolesAssigned.roleId, instructorRoleId),
+                  orgId
+                    ? eq(zuvyUserRolesAssigned.organizationId, orgId)
+                    : isNull(zuvyUserRolesAssigned.organizationId),
+                ),
+              });
+
+            if (!existingAssignment) {
+              let userData = {
+                userId: instructorUserId,
+                roleId: instructorRoleId,
+                organizationId: orgId || null,
+              };
+              await db.insert(zuvyUserRolesAssigned).values(userData);
+            }
+
+            if (orgId) {
+              const existingOrgMembership =
+                await db.query.zuvyUserOrganizations.findFirst({
+                  where: and(
+                    eq(zuvyUserOrganizations.userId, Number(instructorUserId)),
+                    eq(zuvyUserOrganizations.organizationId, orgId),
+                  ),
+                });
+
+              if (!existingOrgMembership) {
+                await db.insert(zuvyUserOrganizations).values({
+                  userId: instructorUserId,
+                  userEmail: batch.instructorEmail,
+                  organizationId: orgId,
+                } as any);
+              }
             }
           }
-        } catch (roleCheckErr) {
-          console.log(
-            'Error checking/assigning instructor role:',
-            roleCheckErr?.message || roleCheckErr,
-          );
+        } catch (roleErr) {
+          console.error('Failed to assign new instructor role:', roleErr);
         }
 
-        batchValue.instructorId = Number(userObj.id);
+        if (userObj?.id) {
+          batchValue.instructorId = Number(userObj.id);
+        }
       }
 
       // If instructorEmail wasn't provided, keep existing instructorId unchanged by not including it in batchValue
@@ -512,6 +598,113 @@ export class BatchesService {
             : 'Ongoing',
       } as any;
 
+      const courseRes = await db
+        .select({ name: zuvyBootcamps.name })
+        .from(zuvyBootcamps)
+        .where(eq(zuvyBootcamps.id, updated.bootcampId))
+        .limit(1);
+      const bootcampName = courseRes[0]?.name || '';
+
+      // Role removal logic for previous instructor(s) using RBAC
+      if (
+        batch.instructorEmail &&
+        batchOld[0].instructorId !== batchValue.instructorId
+      ) {
+        const potentialPrevIds = new Set<number>();
+        if (batchOld[0].instructorId) {
+          potentialPrevIds.add(batchOld[0].instructorId);
+        }
+
+        // If previousInstructorEmail is explicitly provided, include that user for role check
+        if (batch.previousInstructorEmail) {
+          try {
+            const prevUser = await db
+              .select({ id: users.id })
+              .from(users)
+              .where(eq(users.email, batch.previousInstructorEmail))
+              .limit(1);
+            if (prevUser.length > 0) {
+              potentialPrevIds.add(Number(prevUser[0].id));
+            }
+          } catch (err) {
+            console.error('Failed to find previous instructor by email:', err);
+          }
+        }
+
+        // Don't remove role from the NEW instructor if they were somehow in the previous set
+        if (batchValue.instructorId) {
+          potentialPrevIds.delete(batchValue.instructorId);
+        }
+
+        for (const previousInstructorId of potentialPrevIds) {
+          try {
+            const bootcampRefId = batchOld[0].bootcampId;
+            const bootcamp = await db.query.zuvyBootcamps.findFirst({
+              where: eq(zuvyBootcamps.id, bootcampRefId),
+            });
+            const orgId = bootcamp?.organizationId;
+
+            // Count how many other batches this user has in this organization
+            const otherBatchesInOrg = await db
+              .select({ count: sql`count(*)` })
+              .from(zuvyBatches)
+              .innerJoin(
+                zuvyBootcamps,
+                eq(zuvyBatches.bootcampId, zuvyBootcamps.id),
+              )
+              .where(
+                and(
+                  eq(zuvyBatches.instructorId, previousInstructorId),
+                  orgId
+                    ? eq(zuvyBootcamps.organizationId, orgId)
+                    : isNull(zuvyBootcamps.organizationId),
+                  not(eq(zuvyBatches.id, id)),
+                ),
+              );
+
+            const otherBatchesCount = Number(otherBatchesInOrg[0].count);
+
+            if (otherBatchesCount === 0) {
+              const instructorRole = await db
+                .select({ id: zuvyUserRoles.id })
+                .from(zuvyUserRoles)
+                .where(
+                  and(
+                    eq(sql`lower(${zuvyUserRoles.name})`, 'instructor'),
+                    isNull(zuvyUserRoles.orgId),
+                  ),
+                )
+                .limit(1);
+
+              const instructorRoleId = instructorRole[0]?.id;
+
+              if (instructorRoleId) {
+                const prevInstructorUserId = BigInt(previousInstructorId);
+                console.log(
+                  `Removing instructor role for user ID: ${previousInstructorId} in Org: ${orgId}`,
+                );
+                await db
+                  .delete(zuvyUserRolesAssigned)
+                  .where(
+                    and(
+                      eq(zuvyUserRolesAssigned.userId, prevInstructorUserId),
+                      eq(zuvyUserRolesAssigned.roleId, instructorRoleId),
+                      orgId
+                        ? eq(zuvyUserRolesAssigned.organizationId, orgId)
+                        : isNull(zuvyUserRolesAssigned.organizationId),
+                    ),
+                  );
+              }
+            }
+          } catch (removeErr) {
+            console.error(
+              `Failed to remove instructor role for User ${previousInstructorId}:`,
+              removeErr,
+            );
+          }
+        }
+      }
+
       return [
         null,
         {
@@ -519,6 +712,16 @@ export class BatchesService {
           message: 'Batch updated successfully',
           code: 200,
           batch: updatedResp,
+          bootcampName,
+          before: {
+            name: batchOld[0].name,
+            capEnrollment: batchOld[0].capEnrollment,
+            status: batchOld[0].status,
+            startDate: batchOld[0].startDate,
+            endDate: batchOld[0].endDate,
+            instructorId: batchOld[0].instructorId,
+          },
+          data: updatedResp,
         },
       ];
     } catch (e) {
@@ -529,6 +732,13 @@ export class BatchesService {
 
   async deleteBatch(id: number) {
     try {
+      // Fetch batch details before deletion for tracking log
+      const batchToDelete = await db
+        .select({ name: zuvyBatches.name, bootcampId: zuvyBatches.bootcampId })
+        .from(zuvyBatches)
+        .where(eq(zuvyBatches.id, id))
+        .limit(1);
+
       await db
         .update(zuvyBatchEnrollments)
         .set({ batchId: null })
@@ -557,9 +767,23 @@ export class BatchesService {
           null,
         ];
       }
+      const courseRes = await db
+        .select({ name: zuvyBootcamps.name })
+        .from(zuvyBootcamps)
+        .where(eq(zuvyBootcamps.id, batchToDelete[0]?.bootcampId))
+        .limit(1);
+      const bootcampName = courseRes[0]?.name || '';
+
       return [
         null,
-        { status: 'success', message: 'Batch deleted successfully', code: 200 },
+        {
+          status: 'success',
+          message: 'Batch deleted successfully',
+          code: 200,
+          batchName: batchToDelete[0]?.name || null,
+          bootcampId: batchToDelete[0]?.bootcampId || null,
+          descriptionSuffix: bootcampName ? `from course ${bootcampName}` : '',
+        },
       ];
     } catch (e) {
       log(`error: ${e.message}`);

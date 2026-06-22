@@ -1,66 +1,69 @@
 import {
-    Controller,
-    Get,
-    Post,
-    Put,
-    Patch,
-    Delete,
-    Body,
-    Param,
-    ValidationPipe,
-    UsePipes,
-    Optional,
-    Query,
-    BadRequestException,
-    Req,
-    Res,
-    ParseArrayPipe,
-    UseGuards
-  } from '@nestjs/common';
-  import { InstructorService } from './instructor.service';
-  import {
-    ApiTags,
-    ApiBody,
-    ApiOperation,
-    ApiQuery,
-  } from '@nestjs/swagger';
-  import { ApiBearerAuth } from '@nestjs/swagger';
-  import { difficulty, questionType } from 'drizzle/schema';
-  import { ClassesService } from '../classes/classes.service';
+  Controller,
+  Get,
+  Post,
+  Put,
+  Patch,
+  Delete,
+  Body,
+  Param,
+  ValidationPipe,
+  UsePipes,
+  Optional,
+  Query,
+  BadRequestException,
+  Req,
+  Res,
+  ParseArrayPipe,
+  UseGuards,
+} from '@nestjs/common';
+import { InstructorService } from './instructor.service';
+import { ApiTags, ApiBody, ApiOperation, ApiQuery } from '@nestjs/swagger';
+import { ApiBearerAuth } from '@nestjs/swagger';
+import { difficulty, questionType } from 'drizzle/schema';
+import { ClassesService } from '../classes/classes.service';
 import { ErrorResponse, SuccessResponse } from 'src/errorHandler/handler';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
-  
-  @Controller('instructor')
-  @ApiTags('instructor')
-  @UsePipes(
-    new ValidationPipe({
-      whitelist: true,
-      transform: true,
-      forbidNonWhitelisted: true,
-    }),
-  )
-  @UseGuards(JwtAuthGuard)
+import { PermissionsGuard } from 'src/rbac/guards/permissions.guard';
+@Controller('instructor')
+@ApiTags('instructor')
+@UsePipes(
+  new ValidationPipe({
+    whitelist: true,
+    transform: true,
+    forbidNonWhitelisted: true,
+  }),
+)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
+@ApiBearerAuth('JWT-auth')
+export class InstructorController {
+  constructor(private instructorService: InstructorService) {}
+
+  @Get('/allCourses')
+  @ApiOperation({ summary: 'Get all courses of a particular instructor' })
   @ApiBearerAuth('JWT-auth')
-  export class InstructorController {
-    constructor(private instructorService: InstructorService) { }
-
-    @Get('/allCourses')
-    @ApiOperation({ summary: 'Get all courses of a particular instructor' })
-    @ApiBearerAuth('JWT-auth')
-    async getAllCoursesOfInstructor(@Req() req,@Res() res) {
-      try {
-        let [err, success] =await this.instructorService.allCourses(req.user[0].id);
-        if (err) {
-          return ErrorResponse.BadRequestException(err.message, err.statusCode).send(res)
-        }
-        return new SuccessResponse(success.message, success.statusCode, success.data).send(res);
-      } catch (error) {
-        return ErrorResponse.BadRequestException(error.message).send(res);
-      }    
+  async getAllCoursesOfInstructor(@Req() req, @Res() res) {
+    try {
+      let [err, success] = await this.instructorService.allCourses(
+        req.user[0].id,
+      );
+      if (err) {
+        return ErrorResponse.BadRequestException(
+          err.message,
+          err.statusCode,
+        ).send(res);
+      }
+      return new SuccessResponse(
+        success.message,
+        success.statusCode,
+        success.data,
+      ).send(res);
+    } catch (error) {
+      return ErrorResponse.BadRequestException(error.message).send(res);
     }
+  }
 
-
-    @Get('/getAllUpcomingClasses')
+  @Get('/getAllUpcomingClasses')
   @ApiOperation({ summary: 'Get all upcoming classes by instructorId' })
   @ApiQuery({
     name: 'limit',
@@ -86,42 +89,59 @@ import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
     @Query('limit') limit: number,
     @Query('offset') offset: number,
     @Query('timeFrame') timeFrame: string,
-    @Query('batchId', new ParseArrayPipe({ items: Number, optional: true })) batchId: number[] = [],
+    @Query('batchId', new ParseArrayPipe({ items: Number, optional: true }))
+    batchId: number[] = [],
     @Req() req,
-    @Res() res
-  ){
-      try {
-        let [err, success] =await this.instructorService.getAllUpcomingClasses(
-          req.user[0].id,
-          limit,
-          offset,
-          timeFrame,
-          batchId
-        );
-        if (err) {
-          return ErrorResponse.BadRequestException(err.message, err.statusCode).send(res)
-        }
-        return new SuccessResponse(success.message, success.statusCode, success.data).send(res);
-      } catch (error) {
-        return ErrorResponse.BadRequestException(error.message).send(res);
-      }    
-  }
-    @Get('/batchOfInstructor')
-    @ApiOperation({ summary: 'Get all batches of a particular instructor' })
-    @ApiBearerAuth('JWT-auth')
-    async getBatchOfInstructor(@Req() req,@Res() res) {
+    @Res() res,
+  ) {
     try {
-      let [err, success] =await this.instructorService.getBatchOfInstructor(req.user[0].id);
+      let [err, success] = await this.instructorService.getAllUpcomingClasses(
+        req.user[0].id,
+        limit,
+        offset,
+        timeFrame,
+        batchId,
+      );
       if (err) {
-        return ErrorResponse.BadRequestException(err.message, err.statusCode).send(res)
+        return ErrorResponse.BadRequestException(
+          err.message,
+          err.statusCode,
+        ).send(res);
       }
-      return new SuccessResponse(success.message, success.statusCode, success.data).send(res);
+      return new SuccessResponse(
+        success.message,
+        success.statusCode,
+        success.data,
+      ).send(res);
     } catch (error) {
       return ErrorResponse.BadRequestException(error.message).send(res);
-    }  
     }
+  }
+  @Get('/batchOfInstructor')
+  @ApiOperation({ summary: 'Get all batches of a particular instructor' })
+  @ApiBearerAuth('JWT-auth')
+  async getBatchOfInstructor(@Req() req, @Res() res) {
+    try {
+      let [err, success] = await this.instructorService.getBatchOfInstructor(
+        req.user[0].id,
+      );
+      if (err) {
+        return ErrorResponse.BadRequestException(
+          err.message,
+          err.statusCode,
+        ).send(res);
+      }
+      return new SuccessResponse(
+        success.message,
+        success.statusCode,
+        success.data,
+      ).send(res);
+    } catch (error) {
+      return ErrorResponse.BadRequestException(error.message).send(res);
+    }
+  }
 
-    @Get('/getAllCompletedClasses')
+  @Get('/getAllCompletedClasses')
   @ApiOperation({ summary: 'Get all completed classes by instructorId' })
   @ApiQuery({
     name: 'limit',
@@ -166,27 +186,35 @@ import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
     @Query('offset') offset: number,
     @Query('weeks') weeks: number,
     @Query('sortBy') sortBy: string,
-    @Query('batchId', new ParseArrayPipe({ items: Number, optional: true })) batchId: number[] = [],
+    @Query('batchId', new ParseArrayPipe({ items: Number, optional: true }))
+    batchId: number[] = [],
     @Query('searchTitle') searchTitle: string,
     @Req() req,
-    @Res() res
-  ){
-      try {
-        let [err, success] =await this.instructorService.getAllCompletedClasses(
-          req.user[0].id,
-          limit,
-          offset,
-          weeks,
-          sortBy,
-          batchId,
-          searchTitle
-        );
-        if (err) {
-          return ErrorResponse.BadRequestException(err.message, err.statusCode).send(res)
-        }
-        return new SuccessResponse(success.message, success.statusCode, success.data).send(res);
-      } catch (error) {
-         return ErrorResponse.BadRequestException(error.message).send(res);
-      }    
+    @Res() res,
+  ) {
+    try {
+      let [err, success] = await this.instructorService.getAllCompletedClasses(
+        req.user[0].id,
+        limit,
+        offset,
+        weeks,
+        sortBy,
+        batchId,
+        searchTitle,
+      );
+      if (err) {
+        return ErrorResponse.BadRequestException(
+          err.message,
+          err.statusCode,
+        ).send(res);
+      }
+      return new SuccessResponse(
+        success.message,
+        success.statusCode,
+        success.data,
+      ).send(res);
+    } catch (error) {
+      return ErrorResponse.BadRequestException(error.message).send(res);
+    }
   }
-  }
+}

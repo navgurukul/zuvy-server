@@ -13,6 +13,8 @@ import {
   BadRequestException,
   Req,
   UseGuards,
+  UseInterceptors,
+  ParseIntPipe,
 } from '@nestjs/common';
 import { BootcampService } from './bootcamp.service';
 import {
@@ -34,6 +36,11 @@ import {
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 import { RolesGuard } from 'src/guards/roles.guard';
 import { Roles } from 'src/decorators/roles.decorator';
+import { TrackAction } from 'src/trackinglog/decorators/track-action.decorator';
+import { TrackActionInterceptor } from 'src/trackinglog/interceptors/track-action.interceptor';
+import { get } from 'http';
+import { PermissionsGuard } from 'src/rbac/guards/permissions.guard';
+import { SkipOrgCheck } from 'src/rbac/decorators/skip-org-check.decorator';
 
 @Controller('bootcamp')
 @ApiTags('bootcamp')
@@ -44,12 +51,13 @@ import { Roles } from 'src/decorators/roles.decorator';
     forbidNonWhitelisted: true,
   }),
 )
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard, RolesGuard)
+@UseInterceptors(TrackActionInterceptor)
 @ApiBearerAuth('JWT-auth')
 export class BootcampController {
   constructor(private bootcampService: BootcampService) {}
 
-  @Get('/')
+  @Get('/all/:orgId')
   //
   @ApiOperation({ summary: 'Get all bootcamps' })
   @ApiQuery({
@@ -70,24 +78,39 @@ export class BootcampController {
     type: String,
     description: 'Search by name or id in bootcamps',
   })
+  @ApiQuery({
+    name: 'filter',
+    required: false,
+    type: String,
+    description: 'Filter bootcamps by type: All, Public, or Private',
+    enum: ['All', 'Public', 'Private'],
+  })
   @ApiBearerAuth('JWT-auth')
   async getAllBootcamps(
+    @Param('orgId') orgId: number,
     @Query('limit') limit: number,
     @Query('offset') offset: number,
     @Query('searchTerm') searchTerm: string,
+    @Query('filter') filter: string,
     @Req() req,
   ): Promise<object> {
     const searchTermAsNumber = !isNaN(Number(searchTerm))
       ? Number(searchTerm)
       : searchTerm;
+    const searchTermAsString = searchTerm
+      ? String(searchTerm).trim()
+      : undefined;
     const roleName = req.user[0]?.roles;
     const userId = req.user[0]?.id;
     const [err, res] = await this.bootcampService.getAllBootcamps(
+      orgId,
       roleName,
       userId,
       limit,
       offset,
       searchTermAsNumber,
+      searchTermAsString,
+      filter,
     );
 
     if (err) {
@@ -96,6 +119,7 @@ export class BootcampController {
     return res;
   }
 
+  @SkipOrgCheck()
   @Get('/:id')
   @ApiOperation({ summary: 'Get the bootcamp by id' })
   @ApiQuery({
@@ -111,10 +135,12 @@ export class BootcampController {
     @Req() req,
   ): Promise<object> {
     const roleName = req.user[0]?.roles;
+    const orgId = req.user[0]?.orgId;
     const [err, res] = await this.bootcampService.getBootcampById(
       id,
       isContent,
       roleName,
+      orgId,
     );
     if (err) {
       throw new BadRequestException(err);
@@ -125,6 +151,13 @@ export class BootcampController {
   @Post('/')
   @ApiOperation({ summary: 'Create the new bootcamp' })
   @ApiBearerAuth('JWT-auth')
+  @TrackAction({
+    action: 'create_course',
+    resourceType: 'Course',
+    permissionName: 'Createcourse',
+    getResourceName: (result) =>
+      result?.bootcamp?.name || result?.data?.name || 'Course',
+  })
   async create(@Body() bootcampsEntry: CreateBootcampDto) {
     const [err, res] =
       await this.bootcampService.createBootcamp(bootcampsEntry);
@@ -137,16 +170,28 @@ export class BootcampController {
   @Put('/bootcampSetting/:bootcampId')
   @ApiOperation({ summary: 'Update the bootcamp setting' })
   @ApiBearerAuth('JWT-auth')
+  @TrackAction({
+    action: 'edit_course',
+    resourceType: 'Course',
+    permissionName: 'editcourse',
+    getResourceName: (result) => {
+      const resourceName =
+        result?.bootcampName || result?.data?.name || 'Course';
+      return `updated Course type for "${resourceName}"`;
+    },
+  })
   async updateBootcampSetting(
     @Body() bootcampSetting: PatchBootcampSettingDto,
     @Param('bootcampId') bootcampId: number,
     @Req() req,
   ) {
     const roleName = req.user[0]?.roles;
+    const orgId = req.user[0]?.orgId;
     const [err, res] = await this.bootcampService.updateBootcampSetting(
       bootcampId,
       bootcampSetting,
       roleName,
+      orgId,
     );
     if (err) {
       throw new BadRequestException(err);
@@ -154,6 +199,7 @@ export class BootcampController {
     return res;
   }
 
+  @SkipOrgCheck()
   @Get('bootcampSetting/:id')
   @ApiOperation({ summary: 'Get the bootcamp setting by id' })
   @ApiBearerAuth('JWT-auth')
@@ -162,9 +208,11 @@ export class BootcampController {
     @Req() req,
   ): Promise<object> {
     const roleName = req.user[0]?.roles;
+    const orgId = req.user[0]?.orgId;
     const [err, res] = await this.bootcampService.getBootcampSettingById(
       roleName,
       id,
+      orgId,
     );
     if (err) {
       throw new BadRequestException(err);
@@ -172,15 +220,26 @@ export class BootcampController {
     return res;
   }
 
-  @Put('/:id')
+  @Put('/:id/:orgId')
   @ApiOperation({ summary: 'Update the bootcamp' })
   @ApiBearerAuth('JWT-auth')
+  @TrackAction({
+    action: 'edit_bootcamp',
+    resourceType: 'bootcamp',
+    permissionName: 'editBootcamp',
+    getResourceName: (result) =>
+      result?.data?.name || result?.updatedBootcamp?.[0]?.name || 'Bootcamp',
+    getBootcampId: (result, params) =>
+      result?.data?.id || (params?.id ? Number(params.id) : null),
+  })
   async updateBootcamp(
-    @Param('id') id: number,
+    @Param('id', ParseIntPipe) id: number,
+    @Param('orgId', ParseIntPipe) orgId: number,
     @Body() editBootcampDto: EditBootcampDto,
   ) {
     const [err, res] = await this.bootcampService.updateBootcamp(
       id,
+      orgId,
       editBootcampDto,
     );
     if (err) {
@@ -192,6 +251,13 @@ export class BootcampController {
   @Delete('/:id')
   @ApiOperation({ summary: 'Delete the bootcamp' })
   @ApiBearerAuth('JWT-auth')
+  @TrackAction({
+    action: 'delete_course',
+    resourceType: 'course',
+    permissionName: 'Deletecourse',
+    getResourceName: (result) => result?.bootcampName || 'Bootcamp',
+    getBootcampId: () => null,
+  })
   async deleteBootcamp(@Param('id') id: number): Promise<object> {
     const [err, res] = await this.bootcampService.deleteBootcamp(id);
     if (err) {
@@ -200,6 +266,7 @@ export class BootcampController {
     return res;
   }
 
+  @SkipOrgCheck()
   @Get('/batches/:bootcamp_id')
   @ApiOperation({ summary: 'Get the batches by bootcamp_id' })
   @ApiQuery({
@@ -222,11 +289,15 @@ export class BootcampController {
     @Req() req,
   ): Promise<object> {
     const roleName = req.user[0]?.roles;
+    const orgId = req.user[0]?.orgId;
+    const userId = req.user[0]?.id;
     const [err, res] = await this.bootcampService.getBatchByIdBootcamp(
       bootcamp_id,
       roleName,
       limit,
       offset,
+      orgId,
+      userId,
     );
     if (err) {
       throw new BadRequestException(err);
@@ -246,10 +317,15 @@ export class BootcampController {
   async searchBatchesByName(
     @Param('bootcamp_id') bootcamp_id: number,
     @Query('searchTerm') searchTerm: string,
+    @Req() req,
   ): Promise<object> {
+    const roleName = req.user[0]?.roles;
+    const userId = req.user[0]?.id;
     const [err, res] = await this.bootcampService.searchBatchByIdBootcamp(
       bootcamp_id,
       searchTerm,
+      roleName,
+      userId,
     );
     if (err) {
       throw new BadRequestException(err);
@@ -257,15 +333,51 @@ export class BootcampController {
     return res;
   }
 
-  @Patch('/:id')
+  @Patch('updateUserDetails/:userId')
+  @ApiOperation({ summary: 'Update user name and mail Id by userId' })
+  @ApiBearerAuth('JWT-auth')
+  @TrackAction({
+    action: 'edit_user',
+    resourceType: 'user',
+    permissionName: 'editUser',
+    getResourceName: (result) => {
+      return result?.data?.name || result?.data?.email || 'User';
+    },
+  })
+  async updateUserDetails(
+    @Param('userId') userId: number,
+    @Body() editUserDetailsDto: editUserDetailsDto,
+  ): Promise<any> {
+    const [err, res] = await this.bootcampService.updateUserDetails(
+      userId,
+      editUserDetailsDto,
+    );
+    if (err) {
+      throw new BadRequestException(err);
+    }
+    return res;
+  }
+
+  @Patch('/:id/:orgId')
   @ApiOperation({ summary: 'Update the bootcamp partially' })
   @ApiBearerAuth('JWT-auth')
+  @TrackAction({
+    action: 'edit_bootcamp',
+    resourceType: 'bootcamp',
+    permissionName: 'editBootcamp',
+    getResourceName: (result) =>
+      result?.data?.name || result?.updatedBootcamp?.[0]?.name || 'Bootcamp',
+    getBootcampId: (result, params) =>
+      result?.data?.id || (params?.id ? Number(params.id) : null),
+  })
   async updatePartialBootcamp(
-    @Param('id') id: number,
+    @Param('id', ParseIntPipe) id: number,
+    @Param('orgId', ParseIntPipe) orgId: number,
     @Body() patchBootcampDto: PatchBootcampDto,
   ) {
     const [err, res] = await this.bootcampService.updateBootcamp(
       id,
+      orgId,
       patchBootcampDto,
     );
     if (err) {
@@ -283,6 +395,23 @@ export class BootcampController {
     description: 'batch id',
   })
   @ApiBearerAuth('JWT-auth')
+  @TrackAction({
+    action: 'enroll_student',
+    resourceType: 'bootcamp',
+    permissionName: 'createStudent',
+    getResourceName: (result) => {
+      const enrolled = result?.students_enrolled;
+      const bootcampName = result?.bootcampName || '';
+      const suffix = bootcampName ? ` in the bootcamp ${bootcampName}` : '';
+      if (Array.isArray(enrolled) && enrolled.length === 1) {
+        return `${enrolled[0].email || 'student'}${suffix}`;
+      }
+      if (Array.isArray(enrolled) && enrolled.length > 1) {
+        return `${enrolled.length} students${suffix}`;
+      }
+      return 'student';
+    },
+  })
   async addStudentToBootcamp(
     @Param('bootcamp_id') bootcamp_id: number,
     @Query('batch_id') batch_id: number,
@@ -290,11 +419,13 @@ export class BootcampController {
     @Req() req,
   ) {
     const roleName = req.user[0]?.roles;
+    const orgId = req.user[0]?.orgId;
     const [err, res] = await this.bootcampService.addStudentToBootcamp(
       bootcamp_id,
       batch_id,
       studentData.students,
       roleName,
+      orgId,
     );
     if (err) {
       throw new BadRequestException(err);
@@ -384,6 +515,7 @@ export class BootcampController {
   ) {
     const roleName = req.user[0]?.roles;
     const userId = req.user[0]?.id;
+    const orgId = req.user[0]?.orgId;
     const searchTermAsNumber = !isNaN(Number(searchTerm))
       ? BigInt(searchTerm)
       : searchTerm;
@@ -423,10 +555,12 @@ export class BootcampController {
       orderBy,
       orderDirection,
       userId,
+      orgId,
     );
     return res;
   }
 
+  @SkipOrgCheck()
   @Get('/:user_id/progress')
   @ApiOperation({ summary: 'Get the progress of students in a bootcamp' })
   @ApiQuery({
@@ -469,6 +603,13 @@ export class BootcampController {
     },
   })
   @ApiBearerAuth('JWT-auth')
+  @TrackAction({
+    action: 'mark_attendance',
+    resourceType: 'bootcamp',
+    displayType: 'attendance for session',
+    permissionName: 'editStudent',
+    getResourceName: (result) => result?.sessionTitle || 'Session',
+  })
   async markStudentAttendance(
     @Param('bootcamp_id') bootcamp_id: number,
     @Param('session_id') session_id: number,
@@ -483,26 +624,16 @@ export class BootcampController {
     return res;
   }
 
-  @Patch('updateUserDetails/:userId')
-  @ApiOperation({ summary: 'Update user name and mail Id by userId' })
-  @ApiBearerAuth('JWT-auth')
-  async updateUserDetails(
-    @Param('userId') userId: number,
-    @Body() editUserDetailsDto: editUserDetailsDto,
-  ): Promise<any> {
-    const [err, res] = await this.bootcampService.updateUserDetails(
-      userId,
-      editUserDetailsDto,
-    );
-    if (err) {
-      throw new BadRequestException(err);
-    }
-    return res;
-  }
-
   @Post('/attendance/mark')
   @ApiOperation({ summary: 'Mark attendance for a session (admin)' })
   @ApiBearerAuth('JWT-auth')
+  @TrackAction({
+    action: 'mark_attendance',
+    resourceType: 'bootcamp',
+    permissionName: 'editStudent',
+    getResourceName: (result) =>
+      result?.data?.sessionTitle || result?.data?.session || 'Session',
+  })
   async markAttendance(
     @Body() attendanceMarkDto: AttendanceMarkDtoArray[],
   ): Promise<any> {

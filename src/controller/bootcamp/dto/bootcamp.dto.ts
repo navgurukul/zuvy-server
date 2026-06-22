@@ -22,6 +22,15 @@ export class CreateBootcampDto {
   name: string;
 
   @ApiProperty({
+    type: Number,
+    example: 123,
+    required: true,
+  })
+  @IsNotEmpty()
+  @IsNumber()
+  organizationId: number;
+
+  @ApiProperty({
     type: String,
     example: 'Collaboration Name or https://example.com/logo.png',
     required: false,
@@ -143,6 +152,25 @@ export class PatchBootcampSettingDto {
   @IsOptional()
   @IsBoolean()
   isModuleLocked?: boolean;
+
+  @ApiProperty({
+    type: Boolean,
+    example: false,
+    required: false,
+  })
+  @IsOptional()
+  @IsBoolean()
+  mentorshipEnabled?: boolean;
+
+  @ApiProperty({
+    type: Boolean,
+    example: false,
+    required: false,
+    description: 'Enable or disable leaderboard for bootcamp',
+  })
+  @IsOptional()
+  @IsBoolean()
+  leaderboardEnabled?: boolean;
 }
 
 export class PatchBootcampDto {

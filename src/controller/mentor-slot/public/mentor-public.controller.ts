@@ -1,0 +1,52 @@
+import {
+  Controller,
+  Get,
+  Param,
+  ParseIntPipe,
+  Query,
+  Req,
+} from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
+import { MentorPublicService } from './mentor-public.service';
+import { MentorSearchDto } from './dto/mentor-search.dto';
+
+@ApiTags('Public Mentors')
+@Controller('mentors')
+export class MentorPublicController {
+  constructor(private readonly service: MentorPublicService) {}
+
+  @Get()
+  async getMentors(@Req() req: any, @Query() query: MentorSearchDto) {
+    return this.service.getAllMentors(
+      query.limit,
+      query.offset,
+      query.role,
+      query.expertise,
+      query.title,
+      query.search,
+      query.organizationId ? Number(query.organizationId) : undefined,
+    );
+  }
+
+  @Get(':mentorUserId')
+  getMentorProfile(
+    @Param('mentorUserId') mentorUserId: number,
+    @Query('organizationId') organizationId?: number,
+  ) {
+    return this.service.getMentorProfile(
+      mentorUserId,
+      organizationId ? Number(organizationId) : undefined,
+    );
+  }
+
+  @Get(':mentorId/availability')
+  getAvailableSlots(
+    @Param('mentorId', ParseIntPipe) mentorId: number,
+    @Query('organizationId') organizationId?: number,
+  ) {
+    return this.service.getAvailableSlots(
+      mentorId,
+      organizationId ? Number(organizationId) : undefined,
+    );
+  }
+}

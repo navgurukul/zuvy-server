@@ -7,13 +7,18 @@ import {
   blacklistedTokens,
   zuvyUserRolesAssigned,
   zuvyUserRoles,
-  sansaarUserRoles,
   userTokens,
+  zuvyOrganizations,
+  zuvyUserOrganizations,
+  zuvyPermissions,
+  zuvyResources,
+  zuvyPermissionsRoles,
 } from '../../drizzle/schema';
-import { eq, inArray } from 'drizzle-orm';
+import { eq, inArray, and, isNull, or, isNotNull } from 'drizzle-orm';
 import { OAuth2Client } from 'google-auth-library';
 import { UserTokensService } from 'src/user-tokens/user-tokens.service';
-let { GOOGLE_CLIENT_ID, GOOGLE_SECRET, GOOGLE_REDIRECT, JWT_SECRET_KEY } =
+import { ResourceList } from 'src/rbac/utility';
+let { GOOGLE_CLIENT_ID, GOOGLE_SECRET, GOOGLE_REDIRECT_URI, JWT_SECRET_KEY } =
   process.env;
 // import { Role } from '../rbac/utility';
 
@@ -39,8 +44,16 @@ export class AuthService {
     return null;
   }
 
-  async getUserRoles(userId: bigint): Promise<string[]> {
+  async getUserRoles(userId: number, orgId: number | null): Promise<string[]> {
     try {
+      const orgFilter =
+        orgId !== null
+          ? or(
+              eq(zuvyUserRolesAssigned.organizationId, orgId),
+              isNull(zuvyUserRolesAssigned.organizationId),
+            )
+          : isNull(zuvyUserRolesAssigned.organizationId);
+
       // 🔹 Step 1: Try new role system first
       let userRoles = await db
         .select({
@@ -52,96 +65,96 @@ export class AuthService {
           zuvyUserRoles,
           eq(zuvyUserRolesAssigned.roleId, zuvyUserRoles.id),
         )
-        .where(eq(zuvyUserRolesAssigned.userId, userId));
+        .where(
+          and(eq(zuvyUserRolesAssigned.userId, BigInt(userId)), orgFilter),
+        );
 
-      // 🔹 Step 2: If no roles found, fallback to legacy system
-      if (userRoles.length === 0) {
-        const oldUserRoles = await db
-          .select()
-          .from(sansaarUserRoles)
-          .where(eq(sansaarUserRoles.userId, Number(userId)));
-
-        if (oldUserRoles.length > 0) {
-          const legacyRoleName = oldUserRoles[0].role;
-          const normalizedRoleName = legacyRoleName.trim().toLowerCase();
-
-          // 🔹 Step 3: Check if role already exists (case-insensitive handled)
-          const existingRole = await db
-            .select()
-            .from(zuvyUserRoles)
-            .where(eq(zuvyUserRoles.name, normalizedRoleName))
-            .limit(1);
-
-          let roleId: number;
-
-          if (existingRole.length > 0) {
-            // Role already exists
-            roleId = existingRole[0].id;
-          } else {
-            // 🔹 Step 4: Create role safely (normalized)
-            try {
-              const addNewRole = {
-                name: normalizedRoleName,
-                description: `Migrated role: ${legacyRoleName}`,
-              };
-
-              const newRole = await db
-                .insert(zuvyUserRoles)
-                .values(addNewRole)
-                .returning();
-
-              roleId =
-                newRole.length > 0
-                  ? newRole[0].id
-                  : normalizedRoleName === 'admin'
-                    ? 2
-                    : normalizedRoleName === 'instructor'
-                      ? 3
-                      : 4;
-            } catch (error) {
-              this.logger.error(
-                `Error creating role ${legacyRoleName}:`,
-                error,
-              );
-
-              // 🔹 Safe fallback mapping
-              roleId =
-                normalizedRoleName === 'admin'
-                  ? 2
-                  : normalizedRoleName === 'instructor'
-                    ? 3
-                    : 4;
-            }
-          }
-
-          // 🔹 Step 5: Assign role to user
-          const assignRole = {
-            userId: userId,
-            roleId: roleId,
-          };
-          await db.insert(zuvyUserRolesAssigned).values(assignRole);
-
-          // 🔹 Step 6: Cleanup legacy role entry
-          await db
-            .delete(sansaarUserRoles)
-            .where(eq(sansaarUserRoles.userId, Number(userId)));
-
-          userRoles = [
-            {
-              roleId: roleId,
-              roleName: normalizedRoleName,
-            },
-          ];
-        }
-      }
-
-      // 🔹 Step 7: Return roles or default
+      // 🔹 Step 2: Return roles or default
       return userRoles.length > 0
         ? userRoles.map((role) => role.roleName)
         : ['student'];
     } catch (error) {
       this.logger.error('Error fetching user roles:', error);
       return ['student'];
+    }
+  }
+
+  async getFormattedPermissions(
+    userId: number,
+    orgId: number | null,
+    roles: string[],
+  ): Promise<Record<string, boolean>> {
+    try {
+      const permissionsMap: Record<string, boolean> = {};
+
+      // Initialize all possible permissions to false or just omit them?
+      // The user wants a map of available permissions.
+
+      // Check if user is super_admin
+      if (roles.includes('super_admin')) {
+        Object.values(ResourceList).forEach((resource) => {
+          Object.values(resource).forEach((permissionName) => {
+            permissionsMap[permissionName] = true;
+          });
+        });
+        return permissionsMap;
+      }
+
+      // Fetch permissions from DB
+      const userPermissions = await db
+        .selectDistinct({
+          permission: zuvyPermissions.name,
+          resource: zuvyResources.key, // Use key for mapping
+        })
+        .from(zuvyPermissions)
+        .innerJoin(
+          zuvyResources,
+          eq(zuvyPermissions.resourcesId, zuvyResources.id),
+        )
+        .innerJoin(
+          zuvyPermissionsRoles,
+          eq(zuvyPermissions.id, zuvyPermissionsRoles.permissionId),
+        )
+        .innerJoin(
+          zuvyUserRoles,
+          eq(zuvyPermissionsRoles.roleId, zuvyUserRoles.id),
+        )
+        .innerJoin(
+          zuvyUserRolesAssigned,
+          eq(zuvyUserRoles.id, zuvyUserRolesAssigned.roleId),
+        )
+        .where(
+          and(
+            eq(zuvyUserRolesAssigned.userId, BigInt(userId)),
+            orgId !== null
+              ? eq(zuvyUserRolesAssigned.organizationId, orgId)
+              : isNull(zuvyUserRolesAssigned.organizationId),
+            orgId !== null
+              ? eq(zuvyPermissionsRoles.orgId, orgId)
+              : isNull(zuvyPermissionsRoles.orgId),
+          ),
+        );
+
+      // Map DB permissions to formatted names
+      userPermissions.forEach((p) => {
+        const resourceKey = p.resource.toLowerCase();
+        let action = p.permission.toLowerCase();
+
+        // Database uses 'view' for readability permissions, but ResourceList uses 'read' key
+        if (action === 'view') {
+          action = 'read';
+        }
+
+        if (ResourceList[resourceKey] && ResourceList[resourceKey][action]) {
+          const formattedName = ResourceList[resourceKey][action];
+          permissionsMap[formattedName] = true;
+        }
+      });
+
+      return permissionsMap;
+    } catch (error) {
+      this.logger.error('Error fetching formatted permissions:', error);
+      return {};
     }
   }
 
@@ -209,8 +222,39 @@ export class AuthService {
           .where(eq(users.id, user.id));
       }
 
-      // Get user roles
-      const roles = await this.getUserRoles(user.id);
+      // Get User Org
+      // Fetch user's organizations
+      const userOrgs = await db
+        .select({
+          orgId: zuvyOrganizations.id,
+          orgName: zuvyOrganizations.displayName,
+          pocEmail: zuvyOrganizations.pocEmail,
+        })
+        .from(zuvyUserRolesAssigned)
+        .innerJoin(
+          zuvyOrganizations,
+          eq(zuvyUserRolesAssigned.organizationId, zuvyOrganizations.id),
+        )
+        .where(eq(zuvyUserRolesAssigned.userId, user.id));
+
+      let selectedOrg = null;
+      if (userOrgs.length > 0) {
+        // Default to first one or use logic to pick preferred
+        selectedOrg = userOrgs[0];
+      }
+
+      // Get user roles (scoped to org)
+      const roles = await this.getUserRoles(
+        Number(user.id),
+        selectedOrg?.orgId,
+      );
+
+      // Get formatted permissions
+      const permissions = await this.getFormattedPermissions(
+        Number(user.id),
+        selectedOrg?.orgId,
+        roles,
+      );
 
       const jwtPayload = {
         sub: user.id.toString(),
@@ -218,14 +262,59 @@ export class AuthService {
         googleUserId: user.googleUserId,
         role: user.mode,
         rolesList: roles,
+        permissions: permissions,
+        orgId: selectedOrg?.orgId || null,
+        orgName: selectedOrg?.orgName || null,
+        isPoc: selectedOrg?.pocEmail === user.email,
       };
 
-      const access_token = this.jwtService.sign(jwtPayload);
+      const access_token = this.jwtService.sign(jwtPayload, {
+        expiresIn: '24h',
+      });
       const refresh_token = this.jwtService.sign(jwtPayload, {
         expiresIn: '7d',
       });
 
-      // Store tokens in database so they can be blacklisted when user info is updated
+      // Store tokens only for organization-scoped users. Student tokens are
+      // deliberately not persisted in zuvyUserOrganizations.
+      const setTokenData = {
+        accessToken: access_token,
+        refreshToken: refresh_token,
+      } as any;
+
+      const isStudentOnly =
+        roles.length > 0 && roles.every((role) => role === 'student');
+
+      const isSuperAdmin = roles.includes('super_admin');
+
+      // Store tokens only for non-student users
+      if (!isStudentOnly && (selectedOrg || isSuperAdmin)) {
+        await db
+          .insert(zuvyUserOrganizations)
+          .values({
+            userId: Number(user.id),
+            organizationId: selectedOrg?.orgId || null,
+            userEmail: user.email,
+            accessToken: access_token,
+            refreshToken: refresh_token,
+          } as any)
+          .onConflictDoUpdate({
+            target: [
+              zuvyUserOrganizations.userId,
+              zuvyUserOrganizations.organizationId,
+            ],
+            set: setTokenData,
+          });
+      } else if (!isStudentOnly && roles.length > 0) {
+        this.logger.warn(
+          `[Login Warning] User "${user.email}" (ID: ${user.id}) has the role(s) "${roles.join(', ')}" ` +
+            `but is not linked to any organization. Session token was not saved. ` +
+            `Please assign this user to a valid organization to allow proper login.`,
+        );
+      }
+
+      // Legacy userTokens table update removed/commented out as per requirement
+      /*
       await db
         .insert(userTokens)
         .values({
@@ -241,6 +330,7 @@ export class AuthService {
             refreshToken: refresh_token,
           },
         });
+      */
 
       return {
         access_token,
@@ -253,6 +343,10 @@ export class AuthService {
           role: user.mode,
           center: user.center,
           rolesList: roles,
+          orgId: selectedOrg?.orgId || null,
+          orgName: selectedOrg?.orgName || null,
+          isPoc: selectedOrg?.pocEmail === user.email,
+          permissions: permissions,
         },
       };
     } catch (error) {
@@ -274,24 +368,69 @@ export class AuthService {
 
   async logout(userId: bigint, token: string) {
     try {
-      // Decode token to get expiration
-      const decoded = this.jwtService.decode(token) as { exp: number };
-      const expiresAt = new Date(decoded.exp * 1000).toISOString();
+      // Global Logout: Invalidate all tokens for the user across all organizations
 
-      // Add token to blacklist
-      await db.insert(blacklistedTokens).values({
-        token,
-        userId: BigInt(userId),
-        expiresAt: new Date(expiresAt),
-      });
+      // 1. Fetch all active tokens from zuvyUserOrganizations for this user
+      const activeSessions = await db
+        .select({
+          accessToken: zuvyUserOrganizations.accessToken,
+          refreshToken: zuvyUserOrganizations.refreshToken,
+        })
+        .from(zuvyUserOrganizations)
+        .where(eq(zuvyUserOrganizations.userId, Number(userId)));
 
-      return { message: 'Successfully logged out' };
+      const tokensToBlacklist = [];
+
+      // Add the current token just in case
+      tokensToBlacklist.push(token);
+
+      for (const session of activeSessions) {
+        if (session.accessToken) tokensToBlacklist.push(session.accessToken);
+        if (session.refreshToken) tokensToBlacklist.push(session.refreshToken);
+      }
+
+      // 2. Insert into blacklist
+      const now = new Date();
+      // Default expiry if we can't decode, or 7 days from now
+      const defaultExpiry = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+
+      for (const t of tokensToBlacklist) {
+        try {
+          // Try decode to get exp
+          const decoded = this.jwtService.decode(t) as { exp: number };
+          const expiresAt = decoded?.exp
+            ? new Date(decoded.exp * 1000)
+            : defaultExpiry;
+
+          await db
+            .insert(blacklistedTokens)
+            .values({
+              token: t,
+              userId: BigInt(userId),
+              expiresAt: expiresAt,
+            })
+            .onConflictDoNothing();
+        } catch (e) {
+          // Ignore decode errors
+        }
+      }
+
+      // 3. Clear tokens from zuvyUserOrganizations
+      await db
+        .update(zuvyUserOrganizations)
+        .set({
+          accessToken: null,
+          refreshToken: null,
+        } as any)
+        .where(eq(zuvyUserOrganizations.userId, Number(userId)));
+
+      return { message: 'Successfully logged out from all organizations' };
     } catch (error) {
       throw new UnauthorizedException('Invalid token');
     }
   }
 
-  async updateUserlogout(userId: bigint, accToken: string, refToken: string) {
+  async updateUserlogout(userId: number, accToken: string, refToken: string) {
     try {
       // Decode access token
       const decodedAcc = this.jwtService.decode(accToken) as { exp: number };
@@ -341,14 +480,88 @@ export class AuthService {
       }
 
       const payload = await this.jwtService.verifyAsync(token);
+      await this.ensureTokenSessionIsCurrent(token, payload, 'accessToken');
       return payload;
     } catch (error) {
       throw new UnauthorizedException('Invalid token');
     }
   }
 
+  private async ensureTokenSessionIsCurrent(
+    token: string,
+    payload: any,
+    tokenColumn: 'accessToken' | 'refreshToken',
+  ) {
+    const userId = Number(payload.sub);
+    const orgId = payload.orgId ?? null;
+    const tokenRoles = Array.isArray(payload.rolesList)
+      ? payload.rolesList
+      : [];
+
+    if (orgId) {
+      const [storedSession] = await db
+        .select({
+          token: zuvyUserOrganizations[tokenColumn],
+        })
+        .from(zuvyUserOrganizations)
+        .where(
+          and(
+            eq(zuvyUserOrganizations.userId, userId),
+            eq(zuvyUserOrganizations.organizationId, orgId),
+          ),
+        )
+        .limit(1);
+
+      if (!storedSession || storedSession.token !== token) {
+        throw new UnauthorizedException('Token is no longer valid');
+      }
+      return;
+    }
+
+    if (tokenRoles.includes('super_admin')) {
+      return;
+    }
+
+    const [orgScopedRole] = await db
+      .select({ id: zuvyUserRolesAssigned.id })
+      .from(zuvyUserRolesAssigned)
+      .where(
+        and(
+          eq(zuvyUserRolesAssigned.userId, BigInt(userId)),
+          isNotNull(zuvyUserRolesAssigned.organizationId),
+        ),
+      )
+      .limit(1);
+
+    if (orgScopedRole) {
+      throw new UnauthorizedException('Session context is no longer valid');
+    }
+
+    if (tokenRoles.includes('student') || tokenRoles.length === 0) {
+      return;
+    }
+
+    const [storedSession] = await db
+      .select({
+        token: zuvyUserOrganizations[tokenColumn],
+      })
+      .from(zuvyUserOrganizations)
+      .where(
+        and(
+          eq(zuvyUserOrganizations.userId, userId),
+          isNull(zuvyUserOrganizations.organizationId),
+        ),
+      )
+      .limit(1);
+
+    if (!storedSession || storedSession.token !== token) {
+      throw new UnauthorizedException('Token is no longer valid');
+    }
+  }
+
   async refreshToken(refreshToken: string) {
     try {
+      // 1. Check blacklist
       const [blacklistedToken] = await db
         .select()
         .from(blacklistedTokens)
@@ -356,17 +569,64 @@ export class AuthService {
       if (blacklistedToken) {
         throw new UnauthorizedException('Refresh token has been invalidated');
       }
+
+      // 2. Verify and decode
       const payload = await this.jwtService.verifyAsync(refreshToken);
-      const [user] = await db
-        .select()
-        .from(users)
-        .where(eq(users.id, payload.sub));
+      const userId = payload.sub;
+      const orgId = payload.orgId;
+      await this.ensureTokenSessionIsCurrent(
+        refreshToken,
+        payload,
+        'refreshToken',
+      );
+
+      // 3. Verify against DB (Strict One Session Per Org)
+      if (orgId) {
+        const [storedSession] = await db
+          .select()
+          .from(zuvyUserOrganizations)
+          .where(
+            and(
+              eq(zuvyUserOrganizations.userId, userId),
+              eq(zuvyUserOrganizations.organizationId, orgId),
+            ),
+          );
+
+        if (!storedSession || storedSession.refreshToken !== refreshToken) {
+          // Token rotation mismatch or invalid session
+          throw new UnauthorizedException('Refresh token is no longer valid');
+        }
+      }
+
+      const [user] = await db.select().from(users).where(eq(users.id, userId));
       if (!user) {
         throw new UnauthorizedException('User not found');
       }
 
-      // Get user roles for the new token
-      const roles = await this.getUserRoles(user.id);
+      // Get user roles
+      const roles = await this.getUserRoles(Number(user.id), orgId);
+
+      // Get formatted permissions
+      const permissions = await this.getFormattedPermissions(
+        Number(user.id),
+        orgId,
+        roles,
+      );
+
+      let orgName = payload.orgName;
+      let pocEmail = null;
+      // Refresh org details if needed
+      if (orgId) {
+        const [org] = await db
+          .select({
+            displayName: zuvyOrganizations.displayName,
+            pocEmail: zuvyOrganizations.pocEmail,
+          })
+          .from(zuvyOrganizations)
+          .where(eq(zuvyOrganizations.id, orgId));
+        orgName = org?.displayName;
+        pocEmail = org?.pocEmail;
+      }
 
       // Generate new tokens
       const newPayload = {
@@ -375,36 +635,178 @@ export class AuthService {
         googleUserId: user.googleUserId,
         role: user.mode,
         rolesList: roles,
+        permissions: permissions,
+        orgId: orgId,
+        orgName: orgName,
+        isPoc: pocEmail === user.email,
       };
 
-      const newAccessToken = this.jwtService.sign(newPayload);
+      const newAccessToken = this.jwtService.sign(newPayload, {
+        expiresIn: '24h',
+      });
       const newRefreshToken = this.jwtService.sign(newPayload, {
         expiresIn: '7d',
       });
+
       // Blacklist the old refresh token
       const decoded = this.jwtService.decode(refreshToken) as { exp: number };
       const expiresAt = new Date(decoded.exp * 1000).toISOString();
 
-      await db.insert(blacklistedTokens).values({
-        token: refreshToken,
-        expiresAt: new Date(expiresAt),
-        userId: payload.sub,
-      });
+      await db
+        .insert(blacklistedTokens)
+        .values({
+          token: refreshToken,
+          expiresAt: new Date(expiresAt),
+          userId: payload.sub,
+        })
+        .onConflictDoNothing();
 
-      await this.userTokenService.upsertToken({
-        userId: Number(user.id),
-        userEmail: user.email,
-        accessToken: newAccessToken,
-        refreshToken: newRefreshToken,
-      });
+      // Update zuvyUserOrganizations
+      if (orgId) {
+        await db
+          .update(zuvyUserOrganizations)
+          .set({
+            accessToken: newAccessToken,
+            refreshToken: newRefreshToken,
+          } as any)
+          .where(
+            and(
+              eq(zuvyUserOrganizations.userId, userId),
+              eq(zuvyUserOrganizations.organizationId, orgId),
+            ),
+          );
+      } else {
+        // Legacy path update?
+        // Fetch user's organizations to get an orgId for upsertToken
+        const userOrgs = await db
+          .select({
+            orgId: zuvyUserOrganizations.organizationId,
+          })
+          .from(zuvyUserOrganizations)
+          .where(eq(zuvyUserOrganizations.userId, Number(user.id)))
+          .limit(1);
+
+        if (userOrgs.length > 0) {
+          await this.userTokenService.upsertToken({
+            userId: Number(user.id),
+            organizationId: userOrgs[0].orgId,
+            userEmail: user.email,
+            accessToken: newAccessToken,
+            refreshToken: newRefreshToken,
+          });
+        }
+      }
 
       return {
         access_token: newAccessToken,
         refresh_token: newRefreshToken,
       };
-    } catch {
+    } catch (e) {
+      this.logger.error('Refresh token error', e);
       throw new UnauthorizedException('Invalid refresh token');
     }
+  }
+
+  // Method to generate tokens for switching organization
+  async generateTokensForSwitch(userId: bigint, targetOrgId: number) {
+    const [user] = await db.select().from(users).where(eq(users.id, userId));
+    if (!user) throw new UnauthorizedException('User not found');
+
+    // Check for super_admin role globally
+    const globalRoles = await this.getUserRoles(Number(userId), null);
+    const isSuperAdmin = globalRoles.includes('super_admin');
+
+    if (!isSuperAdmin) {
+      // Verify membership for non-super_admins
+      const [membership] = await db
+        .select()
+        .from(zuvyUserRolesAssigned)
+        .where(
+          and(
+            eq(zuvyUserRolesAssigned.userId, userId),
+            eq(zuvyUserRolesAssigned.organizationId, targetOrgId),
+          ),
+        );
+
+      if (!membership) {
+        throw new UnauthorizedException(
+          'User is not a member of this organization',
+        );
+      }
+    }
+
+    const [org] = await db
+      .select()
+      .from(zuvyOrganizations)
+      .where(eq(zuvyOrganizations.id, targetOrgId));
+
+    let roles = await this.getUserRoles(Number(userId), targetOrgId);
+
+    // If super admin, ensure they keep their super_admin role even when switched
+    if (isSuperAdmin && !roles.includes('super_admin')) {
+      roles = [...roles, 'super_admin'];
+    }
+
+    // Get formatted permissions
+    const permissions = await this.getFormattedPermissions(
+      Number(userId),
+      targetOrgId,
+      roles,
+    );
+
+    const payload = {
+      sub: user.id.toString(),
+      email: user.email,
+      googleUserId: user.googleUserId,
+      role: user.mode,
+      rolesList: roles,
+      permissions: permissions,
+      orgId: targetOrgId,
+      orgName: org?.displayName,
+      isPoc: org?.pocEmail === user.email,
+    };
+
+    const access_token = this.jwtService.sign(payload, { expiresIn: '24h' });
+    const refresh_token = this.jwtService.sign(payload, { expiresIn: '7d' });
+
+    // Update DB
+    let setTokenData = {
+      accessToken: access_token,
+      refreshToken: refresh_token,
+    } as any;
+    await db
+      .insert(zuvyUserOrganizations)
+      .values({
+        userId: Number(userId),
+        organizationId: targetOrgId,
+        userEmail: user.email,
+        accessToken: access_token,
+        refreshToken: refresh_token,
+      } as any)
+      .onConflictDoUpdate({
+        target: [
+          zuvyUserOrganizations.userId,
+          zuvyUserOrganizations.organizationId,
+        ],
+        set: setTokenData,
+      });
+
+    return {
+      access_token,
+      refresh_token,
+      user: {
+        id: user.id.toString(),
+        email: user.email,
+        name: user.name,
+        profilePicture: user.profilePicture,
+        role: user.mode,
+        rolesList: roles,
+        orgId: targetOrgId,
+        orgName: org?.displayName,
+        isPoc: org?.pocEmail === user.email,
+        permissions: permissions,
+      },
+    };
   }
 
   // Cleanup expired blacklisted tokens (can be called by a scheduled task)

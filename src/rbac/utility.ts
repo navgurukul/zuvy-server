@@ -66,6 +66,7 @@ export const ResourceKeys = [
   'Setting',
   'Chapter',
   'RolesAndPermission',
+  'organization',
 ] as const;
 export type ResourceKey = (typeof ResourceKeys)[number];
 
@@ -167,5 +168,11 @@ export const ResourceList = {
     create: 'createTopic',
     edit: 'editTopic',
     delete: 'deleteTopic',
+  },
+  organization: {
+    read: 'viewOrg',
+    create: 'createOrg',
+    edit: 'editOrg',
+    delete: 'deleteOrg',
   },
 } as const;

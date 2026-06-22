@@ -11,19 +11,27 @@ import {
   Query,
   Req,
   Res,
-  UseGuards
+  UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
 import { CodingPlatformService } from './codingPlatform.service';
 import {
   ApiTags,
   ApiOperation,
   ApiQuery,
-  ApiBearerAuth
+  ApiBearerAuth,
 } from '@nestjs/swagger';
-import { SubmitCodeDto, CreateProblemDto, updateProblemDto, TestCaseDto } from './dto/codingPlatform.dto';
+import {
+  SubmitCodeDto,
+  CreateProblemDto,
+  updateProblemDto,
+  TestCaseDto,
+} from './dto/codingPlatform.dto';
 import { ErrorResponse, SuccessResponse } from 'src/errorHandler/handler';
 import { Response } from 'express';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
+import { TrackAction } from 'src/trackinglog/decorators/track-action.decorator';
+import { TrackActionInterceptor } from 'src/trackinglog/interceptors/track-action.interceptor';
 
 @Controller('codingPlatform')
 @ApiTags('codingPlatform')
@@ -36,8 +44,9 @@ import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 )
 @UseGuards(JwtAuthGuard)
 @ApiBearerAuth('JWT-auth')
+@UseInterceptors(TrackActionInterceptor)
 export class CodingPlatformController {
-  constructor(private codingPlatformService: CodingPlatformService) { }
+  constructor(private codingPlatformService: CodingPlatformService) {}
 
   @Post('/practicecode/questionId=:questionId')
   @ApiOperation({ summary: 'Submiting the coding question' })
@@ -46,13 +55,15 @@ export class CodingPlatformController {
     name: 'submissionId',
     required: false,
     type: Number,
-    description: 'if you give the submissionId it for assessment code submission',
+    description:
+      'if you give the submissionId it for assessment code submission',
   })
   @ApiQuery({
     name: 'codingOutsourseId',
     required: false,
     type: Number,
-    description: 'if you give the codingOutsourseId it for assessment code submission',
+    description:
+      'if you give the codingOutsourseId it for assessment code submission',
   })
   @ApiQuery({
     name: 'chapter_id',
@@ -60,40 +71,55 @@ export class CodingPlatformController {
     type: Number,
     description: 'chapter_id for tracking which chapter this code belongs to',
   })
-  async submitCode(@Param('questionId') questionId: number,
+  async submitCode(
+    @Param('questionId') questionId: number,
     @Body() sourceCode: SubmitCodeDto,
     @Query('action') action: string,
     @Query('submissionId') submissionId: number,
     @Query('codingOutsourseId') codingOutsourseId: number,
     @Query('chapter_id') chapterId: number,
     @Req() req,
-    @Res() res: Response
+    @Res() res: Response,
   ) {
     try {
-      let [err, success] = await this.codingPlatformService.submitPracticeCode(questionId, sourceCode, action, req.user[0].id, submissionId, codingOutsourseId, chapterId);
+      let [err, success] = await this.codingPlatformService.submitPracticeCode(
+        questionId,
+        sourceCode,
+        action,
+        req.user[0].id,
+        submissionId,
+        codingOutsourseId,
+        chapterId,
+      );
       if (err) {
         return ErrorResponse.BadRequestException(err.message).send(res);
       }
-      return new SuccessResponse(success.message, success.statusCode, success.data).send(res);
+      return new SuccessResponse(
+        success.message,
+        success.statusCode,
+        success.data,
+      ).send(res);
     } catch (error) {
       return ErrorResponse.BadRequestException(error.message).send(res);
     }
   }
 
- @Get('/submissions/questionId=:questionId')
+  @Get('/submissions/questionId=:questionId')
   @ApiOperation({ summary: 'Get the question AND submissions by question id ' })
   @ApiBearerAuth('JWT-auth')
   @ApiQuery({
     name: 'assessmentSubmissionId',
     required: false,
     type: Number,
-    description: 'if you give the assessmentSubmissionId it for assessment code submission ',
+    description:
+      'if you give the assessmentSubmissionId it for assessment code submission ',
   })
   @ApiQuery({
     name: 'codingOutsourseId',
     required: false,
     type: Number,
-    description: 'if you give the codingOutsourseId it for assessment code submission ',
+    description:
+      'if you give the codingOutsourseId it for assessment code submission ',
   })
   @ApiQuery({
     name: 'studentId',
@@ -108,71 +134,156 @@ export class CodingPlatformController {
     description: 'Filter submissions by chapter_id',
   })
   async getPracticeCodeById(
-    @Param('questionId') questionId: number, 
-    @Req() req, 
-    @Query('assessmentSubmissionId') submissionId: number, 
-    @Query('studentId') studentId: number, 
+    @Param('questionId') questionId: number,
+    @Req() req,
+    @Query('assessmentSubmissionId') submissionId: number,
+    @Query('studentId') studentId: number,
     @Query('codingOutsourseId') codingOutsourseId: number,
-    @Query('chapter_id') chapterId: number, 
-    @Res() res: Response
+    @Query('chapter_id') chapterId: number,
+    @Res() res: Response,
   ) {
     try {
       let student_id;
-      if (!isNaN(studentId)){
+      if (!isNaN(studentId)) {
         student_id = studentId;
       } else {
         student_id = req.user[0].id;
       }
-      let [err, success] = await this.codingPlatformService.getPracticeCode(questionId, student_id, submissionId, codingOutsourseId, chapterId);
+      let [err, success] = await this.codingPlatformService.getPracticeCode(
+        questionId,
+        student_id,
+        submissionId,
+        codingOutsourseId,
+        chapterId,
+      );
       if (err) {
-        return ErrorResponse.BadRequestException(err.message, err.statusCode).send(res);
+        return ErrorResponse.BadRequestException(
+          err.message,
+          err.statusCode,
+        ).send(res);
       }
-      return new SuccessResponse(success.message, success.statusCode, success.data).send(res);
+      return new SuccessResponse(
+        success.message,
+        success.statusCode,
+        success.data,
+      ).send(res);
     } catch (error) {
       return ErrorResponse.BadRequestException(error.message).send(res);
     }
   }
 
-  @Post('create-question')
+  @Post('/:orgId/create-question')
   @ApiOperation({ summary: 'Create coding question with test cases' })
   @ApiBearerAuth('JWT-auth')
-  async createCodingQuestion(@Body() createCodingQuestionDto: CreateProblemDto, @Res() res: Response): Promise<any> {
+  @TrackAction({
+    action: 'create_codingquestion',
+    resourceType: 'codingQuestion',
+    displayType: 'a coding problem',
+    permissionName: 'createCodingQuestion',
+    getResourceName: (_result, params) => {
+      const title = params?.title || 'Coding Question';
+      const difficulty = params?.difficulty || '';
+      return difficulty
+        ? `${title} with difficulty level ${difficulty}`
+        : title;
+    },
+  })
+  async createCodingQuestion(
+    @Param('orgId') orgId: number,
+    @Body() createCodingQuestionDto: CreateProblemDto,
+    @Res() res: Response,
+  ): Promise<any> {
     try {
-      const [err, success] = await this.codingPlatformService.createCodingQuestion(createCodingQuestionDto);
+      const [err, success] =
+        await this.codingPlatformService.createCodingQuestion(
+          createCodingQuestionDto,
+          orgId,
+        );
       if (err) {
         return ErrorResponse.BadRequestException(err.message).send(res);
       }
-      return new SuccessResponse(success.message, success.statusCode, success.data).send(res);
+      return new SuccessResponse(
+        success.message,
+        success.statusCode,
+        success.data,
+      ).send(res);
     } catch (error) {
       return ErrorResponse.BadRequestException(error.message).send(res);
     }
   }
 
-  @Put('update-question/:id')
+  @Put('/:orgId/update-question/:id')
   @ApiOperation({ summary: 'Update coding question' })
   @ApiBearerAuth('JWT-auth')
-  async updateCodingQuestion(@Param('id') id: number, @Body() updateCodingQuestionDto: updateProblemDto, @Res() res: Response) {
+  @TrackAction({
+    action: 'edit_codingquestion',
+    resourceType: 'codingQuestion',
+    displayType: 'a coding problem',
+    permissionName: 'editCodingQuestion',
+    getResourceName: (result, params) =>
+      result?.data?.title ||
+      result?.data?.name ||
+      params?.title ||
+      (params?.id ? `Question #${params.id}` : 'Coding Question'),
+  })
+  async updateCodingQuestion(
+    @Param('orgId') orgId: number,
+    @Param('id') id: number,
+    @Body() updateCodingQuestionDto: updateProblemDto,
+    @Res() res: Response,
+  ) {
     try {
-      const [err, success] = await this.codingPlatformService.updateCodingQuestion(id, updateCodingQuestionDto);
+      const [err, success] =
+        await this.codingPlatformService.updateCodingQuestion(
+          id,
+          updateCodingQuestionDto,
+          orgId,
+        );
       if (err) {
         return ErrorResponse.BadRequestException(err.message).send(res);
       }
-      return new SuccessResponse(success.message, success.statusCode, success.data).send(res);
+      return new SuccessResponse(
+        success.message,
+        success.statusCode,
+        success.data,
+      ).send(res);
     } catch (error) {
       return ErrorResponse.BadRequestException(error.message).send(res);
     }
   }
 
-  @Delete('delete-question/:id')
+  @Delete('/:orgId/delete-question/:id')
   @ApiOperation({ summary: 'Delete coding question' })
   @ApiBearerAuth('JWT-auth')
-  async deleteCodingQuestion(@Param('id') id: number, @Res() res: Response): Promise<any> {
+  @TrackAction({
+    action: 'delete_codingquestion',
+    resourceType: 'codingQuestion',
+    displayType: 'a coding problem',
+    permissionName: 'deleteCodingQuestion',
+    getResourceName: (result, params) =>
+      result?.data?.title ||
+      result?.data?.name ||
+      params?.questionTitle ||
+      (params?.id ? `Question #${params.id}` : 'Coding Question'),
+  })
+  async deleteCodingQuestion(
+    @Param('orgId') orgId: number,
+    @Param('id') id: number,
+    @Req() req,
+    @Res() res: Response,
+  ): Promise<any> {
     try {
-      const [err, success] = await this.codingPlatformService.deleteCodingQuestion(id);
+      const [err, success] =
+        await this.codingPlatformService.deleteCodingQuestion(id, orgId);
       if (err) {
         return ErrorResponse.BadRequestException(err.message).send(res);
       }
-      return new SuccessResponse(success.message, success.statusCode, success).send(res);
+      req['trackingData'] = { questionTitle: success?.questionTitle };
+      return new SuccessResponse(
+        success.message,
+        success.statusCode,
+        success,
+      ).send(res);
     } catch (error) {
       return ErrorResponse.BadRequestException(error.message).send(res);
     }
@@ -181,28 +292,53 @@ export class CodingPlatformController {
   @Delete('delete-testcase/:id')
   @ApiOperation({ summary: 'Delete coding Testcase' })
   @ApiBearerAuth('JWT-auth')
-  async deleteCodingTestcase(@Param('id') id: number, @Res() res: Response): Promise<any> {
+  @TrackAction({
+    action: 'delete_testcase',
+    resourceType: 'codingQuestion',
+    permissionName: 'deleteCodingQuestion',
+    getResourceName: (result) => result?.data?.title || 'Test Case',
+  })
+  async deleteCodingTestcase(
+    @Param('id') id: number,
+    @Res() res: Response,
+  ): Promise<any> {
     try {
-      const [err, success] = await this.codingPlatformService.deleteCodingTestcase(id);
+      const [err, success] =
+        await this.codingPlatformService.deleteCodingTestcase(id);
       if (err) {
         return ErrorResponse.BadRequestException(err.message).send(res);
       }
-      return new SuccessResponse(success.message, success.statusCode, success).send(res);
+      return new SuccessResponse(
+        success.message,
+        success.statusCode,
+        success,
+      ).send(res);
     } catch (error) {
       return ErrorResponse.BadRequestException(error.message).send(res);
     }
   }
 
-  @Get('get-coding-question/:id')
+  @Get('/:orgId/get-coding-question/:id')
   @ApiOperation({ summary: 'Get coding question' })
   @ApiBearerAuth('JWT-auth')
-  async getCodingQuestion(@Param('id') id: number, @Res() res: Response): Promise<any> {
+  async getCodingQuestion(
+    @Param('orgId') orgId: number,
+    @Param('id') id: number,
+    @Res() res: Response,
+  ): Promise<any> {
     try {
-      const [err, success] = await this.codingPlatformService.getCodingQuestion(id);
+      const [err, success] = await this.codingPlatformService.getCodingQuestion(
+        id,
+        orgId,
+      );
       if (err) {
         return ErrorResponse.BadRequestException(err.message).send(res);
       }
-      return new SuccessResponse(success.message, success.statusCode, success.data).send(res);
+      return new SuccessResponse(
+        success.message,
+        success.statusCode,
+        success.data,
+      ).send(res);
     } catch (error) {
       return ErrorResponse.BadRequestException(error.message).send(res);
     }
@@ -211,13 +347,30 @@ export class CodingPlatformController {
   @Post('add-test-case/:question_id')
   @ApiOperation({ summary: 'Add test case to coding question' })
   @ApiBearerAuth('JWT-auth')
-  async addTestCase(@Param('question_id') question_id: number, @Body() updateTestCaseDto: TestCaseDto, @Res() res: Response): Promise<any> {
+  @TrackAction({
+    action: 'create_testcase',
+    resourceType: 'codingQuestion',
+    permissionName: 'editCodingQuestion',
+    getResourceName: (result) => result?.data?.title || 'Test Case',
+  })
+  async addTestCase(
+    @Param('question_id') question_id: number,
+    @Body() updateTestCaseDto: TestCaseDto,
+    @Res() res: Response,
+  ): Promise<any> {
     try {
-      const [err, success] = await this.codingPlatformService.addTestCase(question_id, updateTestCaseDto);
+      const [err, success] = await this.codingPlatformService.addTestCase(
+        question_id,
+        updateTestCaseDto,
+      );
       if (err) {
         return ErrorResponse.BadRequestException(err.message).send(res);
       }
-      return new SuccessResponse(success.message, success.statusCode, success.data).send(res);
+      return new SuccessResponse(
+        success.message,
+        success.statusCode,
+        success.data,
+      ).send(res);
     } catch (error) {
       return ErrorResponse.BadRequestException(error.message).send(res);
     }
@@ -227,13 +380,21 @@ export class CodingPlatformController {
   @Get('submissions/:questionId')
   @ApiOperation({ summary: 'Get all submissions of the question.' })
   @ApiBearerAuth('JWT-auth')
-  async getSubmissionsId(@Param('questionId') questionId: number, @Res() res: Response): Promise<any> {
+  async getSubmissionsId(
+    @Param('questionId') questionId: number,
+    @Res() res: Response,
+  ): Promise<any> {
     try {
-      const [err, success] = await this.codingPlatformService.getSubmissionsId(questionId);
+      const [err, success] =
+        await this.codingPlatformService.getSubmissionsId(questionId);
       if (err) {
         return ErrorResponse.BadRequestException(err.message).send(res);
       }
-      return new SuccessResponse(success.message, success.statusCode, success.data).send(res);
+      return new SuccessResponse(
+        success.message,
+        success.statusCode,
+        success.data,
+      ).send(res);
     } catch (error) {
       return ErrorResponse.BadRequestException(error.message).send(res);
     }
@@ -241,15 +402,27 @@ export class CodingPlatformController {
 
   // get api practice code id bye submission test cases id
   @Get('testcases/submission/:practiceSubmissionId')
-  @ApiOperation({ summary: 'Get practice code Test cases Submission By submission id' })
+  @ApiOperation({
+    summary: 'Get practice code Test cases Submission By submission id',
+  })
   @ApiBearerAuth('JWT-auth')
-  async getPracticeCodeBySubmissionId(@Param('practiceSubmissionId') practiceSubmissionId: number, @Res() res: Response): Promise<any> {
+  async getPracticeCodeBySubmissionId(
+    @Param('practiceSubmissionId') practiceSubmissionId: number,
+    @Res() res: Response,
+  ): Promise<any> {
     try {
-      const [err, success] = await this.codingPlatformService.getTestcasesSubmissionBySubmissionId(practiceSubmissionId);
+      const [err, success] =
+        await this.codingPlatformService.getTestcasesSubmissionBySubmissionId(
+          practiceSubmissionId,
+        );
       if (err) {
         return ErrorResponse.BadRequestException(err.message).send(res);
       }
-      return new SuccessResponse(success.message, success.statusCode, success.data).send(res);
+      return new SuccessResponse(
+        success.message,
+        success.statusCode,
+        success.data,
+      ).send(res);
     } catch (error) {
       return ErrorResponse.BadRequestException(error.message).send(res);
     }

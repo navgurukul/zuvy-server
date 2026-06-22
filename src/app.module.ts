@@ -19,6 +19,7 @@ import { RbacModule } from './rbac/rbac.module';
 import { AuthModule } from './auth/auth.module';
 import { JwtMiddleware } from './middleware/jwt.middleware';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
+import { OrgAuthorizationGuard } from './guards/org-authorization.guard';
 import { Reflector } from '@nestjs/core';
 import { AuthService } from './auth/auth.service';
 import { UsersModule } from './controller/users/users.module';
@@ -31,7 +32,24 @@ import { LlmModule } from './llm/llm.module';
 import { QuestionsByLlmModule } from './questions-by-llm/questions-by-llm.module';
 import { LevelModule } from './level/level.module';
 import { AiAssessmentModule } from './ai-assessment/ai-assessment.module';
-let { GOOGLE_CLIENT_ID, GOOGLE_SECRET, GOOGLE_REDIRECT, JWT_SECRET_KEY } =
+import { OrgModule } from './org/org.module';
+import { NotificationModule } from './notification/notification.module';
+import { LearnerModule } from './controller/learnerInformation/learner.module';
+import { ZoomService } from './services/zoom/zoom.service';
+import { RecordingWorkerService } from './services/recording-worker/recording-worker.service';
+import { ZoomWebhookModule } from './webhooks/zoom/zoom.webhook.module';
+import { RecordingWorkerTriggerService } from './services/recording-worker/recording-worker-trigger.service';
+import { RecordingWorkerModule } from './services/recording-worker/recording-worker.module';
+import { MentorSlotModule } from './controller/mentor-slot/mentor-slot.module';
+import { NotificationJob } from './controller/notification/notification.job';
+import { NotificationService } from './controller/notification/notification.service';
+import { GoogleModule } from './integrations/google/google.module';
+import { NewNotificationModule } from './controller/notification/notification.module';
+import { ZoomLicenseModule } from './controller/zoom-license/zoom-license.module';
+import { SuperAdminModule } from './super-admin/super-admin.module';
+import { LeaderboardModule } from './controller/leaderboard/leaderboard.module';
+
+let { GOOGLE_CLIENT_ID, GOOGLE_SECRET, GOOGLE_REDIRECT_URI, JWT_SECRET_KEY } =
   process.env;
 @Module({
   imports: [
@@ -67,7 +85,19 @@ let { GOOGLE_CLIENT_ID, GOOGLE_SECRET, GOOGLE_REDIRECT, JWT_SECRET_KEY } =
     QuestionsByLlmModule,
     LevelModule,
     AiAssessmentModule,
+    OrgModule,
+    NotificationModule,
+    LearnerModule,
+    RecordingWorkerModule,
+    ZoomWebhookModule,
+    MentorSlotModule,
+    GoogleModule,
+    NewNotificationModule,
+    ZoomLicenseModule,
+    SuperAdminModule,
+    LeaderboardModule,
   ],
+
   providers: [
     {
       provide: APP_INTERCEPTOR,
@@ -77,9 +107,18 @@ let { GOOGLE_CLIENT_ID, GOOGLE_SECRET, GOOGLE_REDIRECT, JWT_SECRET_KEY } =
       provide: APP_GUARD,
       useClass: JwtAuthGuard,
     },
+    {
+      provide: APP_GUARD,
+      useClass: OrgAuthorizationGuard,
+    },
     JwtMiddleware,
     Reflector,
     AuthService,
+    ZoomService,
+    RecordingWorkerService,
+    RecordingWorkerTriggerService,
+    NotificationService,
+    NotificationJob,
   ],
 })
 export class AppModule implements NestModule {

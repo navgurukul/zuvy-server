@@ -70,7 +70,10 @@ import {
   FilesInterceptor,
 } from '@nestjs/platform-express/multer';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
-
+import { TrackAction } from 'src/trackinglog/decorators/track-action.decorator';
+import { TrackActionInterceptor } from 'src/trackinglog/interceptors/track-action.interceptor';
+import { PermissionsGuard } from 'src/rbac/guards/permissions.guard';
+import { SkipOrgCheck } from 'src/rbac/decorators/skip-org-check.decorator';
 @Controller('content')
 @ApiTags('content')
 @UsePipes(
@@ -80,7 +83,8 @@ import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
     forbidNonWhitelisted: true,
   }),
 )
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard, RolesGuard)
+@UseInterceptors(TrackActionInterceptor)
 @ApiBearerAuth('JWT-auth')
 export class ContentController {
   constructor(private contentService: ContentService) {}
@@ -94,6 +98,19 @@ export class ContentController {
     description: 'type id',
   })
   @ApiBearerAuth('JWT-auth')
+  @TrackAction({
+    action: 'create_module',
+    resourceType: 'module',
+    permissionName: 'createModule',
+    getResourceName: (result) => {
+      const moduleName =
+        result?.module?.[0]?.name || result?.module?.name || 'Module';
+      const courseName = result?.courseName || '';
+      return courseName
+        ? `${moduleName} for course name ${courseName}`
+        : moduleName;
+    },
+  })
   async createModule(
     @Body() moduleData: moduleDto,
     @Param('bootcampId') bootcampId: number,
@@ -116,6 +133,13 @@ export class ContentController {
     description: 'type id',
   })
   @ApiBearerAuth('JWT-auth')
+  @TrackAction({
+    action: 'create_project',
+    resourceType: 'project',
+    permissionName: 'createProject',
+    getResourceName: (result, params) =>
+      params?.title || result?.data?.title || 'Project',
+  })
   async createProject(
     @Body() projectData: projectDto,
     @Param('bootcampId') bootcampId: number,
@@ -129,6 +153,7 @@ export class ContentController {
     return res;
   }
 
+  @SkipOrgCheck()
   @Get('/project/:id')
   @ApiOperation({ summary: 'Get the project details of a particular bootcamp' })
   @ApiQuery({
@@ -149,6 +174,13 @@ export class ContentController {
   @Patch('/updateProjects/:projectId')
   @ApiOperation({ summary: 'Update the project' })
   @ApiBearerAuth('JWT-auth')
+  @TrackAction({
+    action: 'edit_project',
+    resourceType: 'project',
+    permissionName: 'editProject',
+    getResourceName: (result, params) =>
+      params?.title || result?.data?.title || 'Project',
+  })
   async updateProject(
     @Body() projectData: projectDto,
     @Param('projectId') projectId: number,
@@ -175,6 +207,12 @@ export class ContentController {
     description: 'module id',
   })
   @ApiBearerAuth('JWT-auth')
+  @TrackAction({
+    action: 'delete_project',
+    resourceType: 'project',
+    permissionName: 'deleteProject',
+    getResourceName: (result) => result?.data?.title || 'Project',
+  })
   async deleteProject(
     @Param('projectId') projectId: number,
     @Query('bootcampId') bootcampId: number,
@@ -191,6 +229,18 @@ export class ContentController {
   @Post('/chapter')
   @ApiOperation({ summary: 'Create a chapter for this module' })
   @ApiBearerAuth('JWT-auth')
+  @TrackAction({
+    action: 'create_chapter',
+    resourceType: 'chapter',
+    permissionName: 'createChapter',
+    getResourceName: (result) => {
+      const chapterTitle = result?.module?.[0]?.title || 'Chapter';
+      const courseName = result?.courseName || '';
+      return courseName
+        ? `${chapterTitle} for course name ${courseName}`
+        : chapterTitle;
+    },
+  })
   async createChapter(@Body() chapterData: CreateChapterDto) {
     return this.contentService.createChapterForModule(
       chapterData.moduleId,
@@ -199,16 +249,34 @@ export class ContentController {
     );
   }
 
-  @Post('/quiz')
+  @Post('/:orgId/quiz')
   @ApiOperation({ summary: 'Create a quiz' })
   @ApiBearerAuth('JWT-auth')
+  @TrackAction({
+    action: 'create_quiz',
+    resourceType: 'quiz',
+    displayType: 'a mcq question',
+    permissionName: 'createMcq',
+    getResourceName: (result, params) => {
+      const quizzes = params?.quizzes;
+      if (Array.isArray(quizzes) && quizzes.length > 0) {
+        const title = quizzes[0]?.title || 'Quiz';
+        const count = quizzes.length;
+        return count > 1 ? `${title} (+${count - 1} more)` : title;
+      }
+      return result?.data?.title || result?.data?.name || 'Quiz';
+    },
+  })
   async createQuizForModule(
+    @Param('orgId') orgId: number,
     @Body() quizQuestions: CreateQuizzesDto,
     @Res() res,
   ): Promise<object> {
     try {
-      let [err, success] =
-        await this.contentService.createQuizForModule(quizQuestions);
+      let [err, success] = await this.contentService.createQuizForModule({
+        orgId,
+        ...quizQuestions,
+      });
       if (err) {
         return ErrorResponse.BadRequestException(err.message).send(res);
       }
@@ -225,6 +293,14 @@ export class ContentController {
   @Put('/editAssessment/:assessmentOutsourseId/:chapterId')
   @ApiOperation({ summary: 'Edit the assessment for this module' })
   @ApiBearerAuth('JWT-auth')
+  @TrackAction({
+    action: 'edit_chapter',
+    resourceType: 'chapter',
+    permissionName: 'editChapter',
+    getResourceName: (result) => {
+      return result?.data?.title || result?.before?.title || 'Assessment';
+    },
+  })
   async editAssessment(
     @Body() assessmentBody: CreateAssessmentBody,
     @Param('assessmentOutsourseId') assessmentOutsourseId: number,
@@ -238,18 +314,22 @@ export class ContentController {
     return res;
   }
 
+  @SkipOrgCheck()
   @Get('/allModules/:bootcampId')
   @ApiOperation({ summary: 'Get all modules of a course' })
   @ApiBearerAuth('JWT-auth')
   async getAllModules(@Param('bootcampId') bootcampId: number, @Req() req) {
     const roleName = req.user[0]?.roles;
+    const orgId = req.user[0]?.orgId;
     const res = await this.contentService.getAllModuleByBootcampId(
       bootcampId,
       roleName,
+      orgId,
     );
     return res;
   }
 
+  @SkipOrgCheck()
   @Get('/allChaptersOfModule/:moduleId')
   @ApiOperation({ summary: 'Get all the chapters of a module' })
   @ApiBearerAuth('JWT-auth')
@@ -258,13 +338,16 @@ export class ContentController {
     @Req() req,
   ) {
     const roleName = req.user[0]?.roles;
+    const orgId = req.user[0]?.orgId;
     const res = await this.contentService.getAllChaptersOfModule(
       roleName,
       moduleId,
+      orgId,
     );
     return res;
   }
 
+  @SkipOrgCheck()
   @Get('/chapterDetailsById/:chapterId')
   @ApiOperation({ summary: 'Get chapter details by id' })
   @ApiQuery({
@@ -285,12 +368,19 @@ export class ContentController {
     type: Number,
     description: 'topic Id',
   })
+  @ApiQuery({
+    name: 'batchId',
+    required: false,
+    type: Number,
+    description: 'batch Id',
+  })
   @ApiBearerAuth('JWT-auth')
   async getChapterDetailsById(
     @Param('chapterId') chapterId: number,
     @Query('bootcampId') bootcampId: number,
     @Query('moduleId') moduleId: number,
     @Query('topicId') topicId: number,
+    @Query('batchId') batchId: number,
     @Req() req,
   ) {
     const userRole = req.user[0]?.roles;
@@ -300,6 +390,7 @@ export class ContentController {
       moduleId,
       topicId,
       userRole,
+      batchId,
     );
   }
 
@@ -312,6 +403,15 @@ export class ContentController {
     description: 'module Id',
   })
   @ApiBearerAuth('JWT-auth')
+  @TrackAction({
+    action: 'edit_module',
+    resourceType: 'module',
+    displayType: 'chapter',
+    permissionName: 'editModule',
+    getResourceName: (result) => {
+      return result?.data?.name || result?.module?.name || 'Module';
+    },
+  })
   async reOrderModules(
     @Body() reOrder: ReOrderModuleBody,
     @Param('bootcampId') bootcampId: number,
@@ -334,6 +434,25 @@ export class ContentController {
     description: 'module Id',
   })
   @ApiBearerAuth('JWT-auth')
+  @TrackAction({
+    action: 'delete_module',
+    resourceType: 'module',
+    permissionName: 'deleteModule',
+    getResourceName: (result) => {
+      const moduleName =
+        result?.moduleName ||
+        result?.data?.name ||
+        result?.module?.name ||
+        'Module';
+      const batchName = result?.batchName || result?.data?.batchName || '';
+      let courseName = result?.courseName || result?.data?.courseName || '';
+      if (!courseName) courseName = 'Unknown';
+      let desc = moduleName;
+      if (batchName) desc += ` for Batch ${batchName}`;
+      desc += ` for course name ${courseName}`;
+      return desc;
+    },
+  })
   async deleteModule(
     @Param('bootcampId') bootcampId: number,
     @Query('moduleId') moduleId: number,
@@ -351,6 +470,14 @@ export class ContentController {
     description: 'chapter id',
   })
   @ApiBearerAuth('JWT-auth')
+  @TrackAction({
+    action: 'edit_chapter',
+    resourceType: 'chapter',
+    permissionName: 'editChapter',
+    getResourceName: (result) => {
+      return result?.chapter?.[0]?.title || 'Chapter';
+    },
+  })
   async editChapter(
     @Body() reOrder: EditChapterDto,
     @Param('moduleId') moduleId: number,
@@ -373,6 +500,14 @@ export class ContentController {
     description: 'chapter Id',
   })
   @ApiBearerAuth('JWT-auth')
+  @TrackAction({
+    action: 'delete_chapter',
+    resourceType: 'chapter',
+    permissionName: 'deleteChapter',
+    getResourceName: (result) => {
+      return result?.chapter?.title || 'Chapter';
+    },
+  })
   async deleteChapter(
     @Param('moduleId') moduleId: number,
     @Query('chapterId') chapterId: number,
@@ -381,40 +516,43 @@ export class ContentController {
     return res;
   }
 
-  @Get('/allQuizQuestions')
+  @Get('/:orgId/allQuizQuestions')
   @ApiOperation({ summary: 'Get all quiz Questions' })
   @ApiQuery({
     name: 'tagId',
     required: false,
-    type: [Number],
-    description: 'tagId',
+    type: Number,
+    isArray: true,
+    description: 'Filter by tag IDs',
   })
   @ApiQuery({
     name: 'difficulty',
     required: false,
-    type: [String],
-    description: 'difficulty',
+    enum: ['Easy', 'Medium', 'Hard'],
+    isArray: true,
+    description: 'Filter by difficulty',
   })
   @ApiQuery({
     name: 'searchTerm',
     required: false,
     type: String,
-    description: 'Search by name or email',
+    description: 'Search by question title or content',
   })
   @ApiQuery({
     name: 'limit',
     required: false,
     type: Number,
-    description: 'limit',
+    description: 'Number of records to fetch',
   })
   @ApiQuery({
     name: 'offset',
     required: false,
     type: Number,
-    description: 'offset',
+    description: 'Number of records to skip',
   })
   @ApiBearerAuth('JWT-auth')
   async getAllQuizQuestions(
+    @Param('orgId') orgId: number,
     @Query('tagId') tagId: number[],
     @Query('difficulty')
     difficulty: ('Easy' | 'Medium' | 'Hard') | ('Easy' | 'Medium' | 'Hard')[],
@@ -423,8 +561,8 @@ export class ContentController {
     @Query('offset') offSet: number,
     @Req() req,
   ): Promise<object> {
-    const userId = req.user[0]?.id;
     const roleName = req.user[0]?.roles;
+    const userId = req.user[0]?.id;
     const res = await this.contentService.getAllQuizQuestions(
       roleName,
       tagId,
@@ -433,58 +571,71 @@ export class ContentController {
       limit,
       offSet,
       userId,
+      orgId,
     );
     return res;
   }
 
-  @Patch('/updateCodingQuestion/:questionId')
+  @Patch('/:orgId/updateCodingQuestion/:questionId')
   @ApiOperation({ summary: 'Update the coding question for this module' })
   @ApiBearerAuth('JWT-auth')
+  @TrackAction({
+    action: 'edit_coding_question',
+    resourceType: 'codingQuestion',
+    permissionName: 'editCodingQuestion',
+    getResourceName: (result, params) =>
+      params?.title || result?.data?.title || 'Coding Question',
+  })
   async updateCodingQuestionForModule(
+    @Param('orgId') orgId: number,
     @Body() codingQuestions: UpdateProblemDto,
     @Param('questionId') questionId: number,
   ) {
     const res = await this.contentService.updateCodingProblemForModule(
       questionId,
       codingQuestions,
+      orgId,
     );
     return res;
   }
 
-  @Get('/allCodingQuestions')
+  @Get('/:orgId/allCodingQuestions')
   @ApiOperation({ summary: 'Get all coding Questions' })
   @ApiQuery({
     name: 'tagId',
     required: false,
-    type: [Number],
-    description: 'tagId',
+    type: Number,
+    isArray: true,
+    description: 'Filter by tag IDs',
   })
   @ApiQuery({
     name: 'difficulty',
     required: false,
-    type: [String],
-    description: 'difficulty',
+    enum: ['Easy', 'Medium', 'Hard'],
+    isArray: true,
+    description: 'Filter by difficulty',
   })
   @ApiQuery({
     name: 'searchTerm',
     required: false,
     type: String,
-    description: 'Search by name or email',
+    description: 'Search by question title or content',
   })
   @ApiQuery({
     name: 'limit',
     required: false,
     type: Number,
-    description: 'limit',
+    description: 'Number of records to fetch',
   })
   @ApiQuery({
     name: 'offset',
     required: false,
     type: Number,
-    description: 'offset',
+    description: 'Number of records to skip',
   })
   @ApiBearerAuth('JWT-auth')
   async getAllCodingQuestions(
+    @Param('orgId') orgId: number,
     @Query('tagId') tagId: number[],
     @Query('difficulty')
     difficulty: ('Easy' | 'Medium' | 'Hard') | ('Easy' | 'Medium' | 'Hard')[],
@@ -493,8 +644,8 @@ export class ContentController {
     @Query('offset') offSet: number,
     @Req() req,
   ): Promise<object> {
-    const userId = req.user[0]?.id;
     const roleName = req.user[0]?.roles;
+    const userId = req.user[0]?.id;
     const res = await this.contentService.getAllCodingQuestions(
       roleName,
       tagId,
@@ -503,25 +654,56 @@ export class ContentController {
       limit,
       offSet,
       userId,
+      orgId,
     );
     return res;
   }
 
-  @Delete('/deleteCodingQuestion')
+  @Delete('/:orgId/deleteCodingQuestion')
   @ApiOperation({ summary: 'Delete coding question' })
   @ApiBearerAuth('JWT-auth')
-  async deleteCodingQuestion(@Body() questionIds: deleteQuestionDto) {
-    const res = await this.contentService.deleteCodingProblem(questionIds);
+  @TrackAction({
+    action: 'delete_coding_question',
+    resourceType: 'codingQuestion',
+    permissionName: 'deleteCodingQuestion',
+    getResourceName: (result, params) => {
+      const ids = params?.questionIds;
+      const count = Array.isArray(ids) ? ids.length : 1;
+      return `${count} Coding Question${count > 1 ? 's' : ''}`;
+    },
+  })
+  async deleteCodingQuestion(
+    @Param('orgId') orgId: number,
+    @Body() questionIds: deleteQuestionDto,
+  ) {
+    const res = await this.contentService.deleteCodingProblem(
+      questionIds,
+      orgId,
+    );
     return res;
   }
 
-  @Post('/editquiz')
+  @Post('/:orgId/editquiz')
   @ApiOperation({ summary: 'Edit a quiz' })
   @ApiBearerAuth('JWT-auth')
-  async editQuizForModule(@Body() quizUpdates: EditQuizBatchDto, @Res() res) {
+  @TrackAction({
+    action: 'edit_quiz',
+    resourceType: 'quiz',
+    displayType: 'the mcq question',
+    permissionName: 'editMcq',
+    getResourceName: (result, params) =>
+      params?.title || result?.data?.title || result?.data?.name || 'Quiz',
+  })
+  async editQuizForModule(
+    @Param('orgId') orgId: number,
+    @Body() quizUpdates: EditQuizBatchDto,
+    @Res() res,
+  ) {
     try {
-      let [err, success] =
-        await this.contentService.editQuizQuestion(quizUpdates);
+      let [err, success] = await this.contentService.editQuizQuestion(
+        quizUpdates,
+        orgId,
+      );
       if (err) {
         return ErrorResponse.BadRequestException(err.message).send(res);
       }
@@ -535,11 +717,24 @@ export class ContentController {
     }
   }
 
-  @Delete('/deleteQuizQuestion')
+  @Delete('/:orgId/deleteQuizQuestion')
   @ApiOperation({ summary: 'Delete quiz question' })
   @ApiBearerAuth('JWT-auth')
-  async deleteQuizQuestion(@Body() questionIds: deleteQuestionDto) {
-    const res = await this.contentService.deleteQuiz(questionIds);
+  @TrackAction({
+    action: 'delete_quiz_question',
+    resourceType: 'quiz',
+    permissionName: 'deleteMcq',
+    getResourceName: (result, params) => {
+      const ids = params?.questionIds;
+      const count = Array.isArray(ids) ? ids.length : 1;
+      return `${count} Quiz Question${count > 1 ? 's' : ''}`;
+    },
+  })
+  async deleteQuizQuestion(
+    @Param('orgId') orgId: number,
+    @Body() questionIds: deleteQuestionDto,
+  ) {
+    const res = await this.contentService.deleteQuiz(questionIds, orgId);
     return res;
   }
 
@@ -548,6 +743,13 @@ export class ContentController {
     summary: 'Create single or multiple tags for the curriculum',
   })
   @ApiBearerAuth('JWT-auth')
+  @TrackAction({
+    action: 'create_tag',
+    resourceType: 'tag',
+    permissionName: 'createCodingQuestion',
+    getResourceName: (result) =>
+      result?.data?.name || result?.tag?.name || 'Tag',
+  })
   async createTag(@Body() tagData: CreateTagDto) {
     const res = await this.contentService.createTag(tagData);
     return res;
@@ -575,44 +777,54 @@ export class ContentController {
     description: 'ID of the tag to delete',
   })
   @ApiBearerAuth('JWT-auth')
+  @TrackAction({
+    action: 'delete_tag',
+    resourceType: 'tag',
+    permissionName: 'deleteCodingQuestion',
+    getResourceName: (result) =>
+      result?.data?.name || result?.tag?.name || 'Question Tag',
+  })
   async deleteQuestionTag(@Param('tagId') tagId: number) {
     return this.contentService.deleteQuestionTag(tagId);
   }
 
-  @Get('/openEndedQuestions')
+  @Get('/:orgId/openEndedQuestions')
   @ApiOperation({ summary: 'Get all open ended Questions' })
   @ApiQuery({
     name: 'tagId',
     required: false,
-    type: [Number],
-    description: 'tagId',
+    type: Number,
+    isArray: true,
+    description: 'Filter by tag IDs',
   })
   @ApiQuery({
     name: 'difficulty',
     required: false,
-    type: [String],
-    description: 'difficulty',
+    enum: ['Easy', 'Medium', 'Hard'],
+    isArray: true,
+    description: 'Filter by difficulty',
   })
   @ApiQuery({
     name: 'searchTerm',
     required: false,
     type: String,
-    description: 'Search by name or email',
+    description: 'Search by question title or content',
   })
   @ApiQuery({
     name: 'limit',
     required: false,
     type: Number,
-    description: 'limit',
+    description: 'Number of records to fetch',
   })
   @ApiQuery({
     name: 'offset',
     required: false,
     type: Number,
-    description: 'offset',
+    description: 'Number of records to skip',
   })
   @ApiBearerAuth('JWT-auth')
   async getAllOpenEndedQuestions(
+    @Param('orgId') orgId: number,
     @Query('tagId') tagId: number[],
     @Query('difficulty')
     difficulty: ('Easy' | 'Medium' | 'Hard') | ('Easy' | 'Medium' | 'Hard')[],
@@ -621,8 +833,8 @@ export class ContentController {
     @Query('offset') offset: number,
     @Req() req,
   ): Promise<object> {
-    const userId = req.user[0]?.id;
     const roleName = req.user[0]?.roles;
+    const userId = req.user[0]?.id;
     const res = await this.contentService.getAllOpenEndedQuestions(
       roleName,
       tagId,
@@ -631,36 +843,68 @@ export class ContentController {
       limit,
       offset,
       userId,
+      orgId,
     );
     return res;
   }
 
-  @Patch('/updateOpenEndedQuestion/:questionId')
+  @Patch('/:orgId/updateOpenEndedQuestion/:questionId')
   @ApiOperation({ summary: 'Update the open ended question for this module' })
   @ApiBearerAuth('JWT-auth')
+  @TrackAction({
+    action: 'edit_openended',
+    resourceType: 'openEndedQuestion',
+    displayType: 'the openEnded Coding question for module',
+    permissionName: 'editOpendEnded',
+    getResourceName: (result, params) =>
+      params?.question || result?.data?.question || 'Open Ended Question',
+  })
   async updateOpenEndedQuestionForModule(
+    @Param('orgId') orgId: number,
     @Body() openEndedQuestions: UpdateOpenEndedDto,
     @Param('questionId') questionId: number,
   ) {
     const res = await this.contentService.updateOpenEndedQuestion(
       questionId,
       openEndedQuestions,
+      orgId,
     );
     return res;
   }
 
-  @Post('/createOpenEndedQuestion')
+  @Post('/:orgId/createOpenEndedQuestion')
   @ApiOperation({ summary: 'Create a open ended question' })
   @ApiBearerAuth('JWT-auth')
-  async createOpenEndedQuestion(@Body() oEndedQuestions: openEndedDto) {
-    return this.contentService.createOpenEndedQuestions(oEndedQuestions);
+  @TrackAction({
+    action: 'create_openended',
+    resourceType: 'openEndedQuestion',
+    displayType: 'an openEnded question',
+    permissionName: 'createOpendEnded',
+    getResourceName: (result, params) =>
+      params?.question || result?.data?.question || 'Open Ended Question',
+  })
+  async createOpenEndedQuestion(
+    @Param('orgId') orgId: number,
+    @Body() oEndedQuestions: openEndedDto,
+  ) {
+    return this.contentService.createOpenEndedQuestions(oEndedQuestions, orgId);
   }
 
-  @Delete('/deleteOpenEndedQuestion')
+  @Delete('/:orgId/deleteOpenEndedQuestion')
   @ApiOperation({ summary: 'Delete openended question' })
   @ApiBearerAuth('JWT-auth')
-  async deleteOpenEndedQuestion(@Body() questionIds: deleteQuestionDto) {
-    return this.contentService.deleteOpenEndedQuestion(questionIds);
+  @TrackAction({
+    action: 'delete_openended',
+    resourceType: 'openEndedQuestion',
+    displayType: 'the openEnded Coding question for module',
+    permissionName: 'deleteOpendEnded',
+    getResourceName: (result) => result?.questionText || 'Open Ended Question',
+  })
+  async deleteOpenEndedQuestion(
+    @Param('orgId') orgId: number,
+    @Body() questionIds: deleteQuestionDto,
+  ) {
+    return this.contentService.deleteOpenEndedQuestion(questionIds, orgId);
   }
 
   @Get('/students/assessmentId=:assessmentId')
@@ -779,6 +1023,13 @@ export class ContentController {
   @Post('/createQuestionType')
   @ApiOperation({ summary: 'Create a Question Type for the form' })
   @ApiBearerAuth('JWT-auth')
+  @TrackAction({
+    action: 'create_question_type',
+    resourceType: 'questionType',
+    permissionName: 'createQuestionType',
+    getResourceName: (result, params) =>
+      params?.type || result?.data?.type || 'Question Type',
+  })
   async createQuestionType(@Body() questionType: CreateTypeDto) {
     const res = await this.contentService.createQuestionType(questionType);
     return res;
@@ -795,6 +1046,14 @@ export class ContentController {
   @Post('/form')
   @ApiOperation({ summary: 'Create a form' })
   @ApiBearerAuth('JWT-auth')
+  @TrackAction({
+    action: 'edit_chapter',
+    resourceType: 'chapter',
+    permissionName: 'editChapter',
+    getResourceName: (result) => {
+      return result?.updatedChapter?.[0]?.title || 'Chapter';
+    },
+  })
   async createFormForModule(
     @Query('chapterId') chapterId: number,
     @Body() formQuestion: formBatchDto,
@@ -837,6 +1096,14 @@ export class ContentController {
   @Post('/editform')
   @ApiOperation({ summary: 'Create a form' })
   @ApiBearerAuth('JWT-auth')
+  @TrackAction({
+    action: 'edit_chapter',
+    resourceType: 'chapter',
+    permissionName: 'editChapter',
+    getResourceName: (result) => {
+      return result?.updatedChapter?.[0]?.title || 'Chapter';
+    },
+  })
   async editFormForModule(
     @Query('chapterId') chapterId: number,
     @Body() formQuestions: editFormBatchDto,
@@ -851,6 +1118,14 @@ export class ContentController {
   @Post('/createAndEditForm/:chapterId')
   @ApiOperation({ summary: 'Create a form' })
   @ApiBearerAuth('JWT-auth')
+  @TrackAction({
+    action: 'edit_chapter',
+    resourceType: 'chapter',
+    permissionName: 'editChapter',
+    getResourceName: (result) => {
+      return result?.res2?.[0]?.title || 'Chapter';
+    },
+  })
   async createAndEditForm(
     @Param('chapterId') chapterId: number,
     @Body() formQuestions: CreateAndEditFormBody,
@@ -862,13 +1137,17 @@ export class ContentController {
     return res;
   }
 
-  @Get('/GetOpenendedQuestionById/:id')
+  @Get('/:orgId/GetOpenendedQuestionById/:id')
   @ApiOperation({ summary: 'Get the openended question by id' })
   @ApiBearerAuth('JWT-auth')
-  async getOpenendedQuestionDetails(@Param('id') id: number, @Res() res) {
+  async getOpenendedQuestionDetails(
+    @Param('orgId') orgId: number,
+    @Param('id') id: number,
+    @Res() res,
+  ) {
     try {
       let [err, success] =
-        await this.contentService.getOpenendedQuestionDetails(id);
+        await this.contentService.getOpenendedQuestionDetails(id, orgId);
       if (err) {
         return ErrorResponse.BadRequestException(err.message).send(res);
       }
@@ -882,13 +1161,19 @@ export class ContentController {
     }
   }
 
-  @Get('/GetCodingQuestionById/:id')
+  @Get('/:orgId/GetCodingQuestionById/:id')
   @ApiOperation({ summary: 'Get the openended question by id' })
   @ApiBearerAuth('JWT-auth')
-  async getCodingQuestionDetails(@Param('id') id: number, @Res() res) {
+  async getCodingQuestionDetails(
+    @Param('orgId') orgId: number,
+    @Param('id') id: number,
+    @Res() res,
+  ) {
     try {
-      let [err, success] =
-        await this.contentService.getCodingQuestionDetails(id);
+      let [err, success] = await this.contentService.getCodingQuestionDetails(
+        id,
+        orgId,
+      );
       if (err) {
         return ErrorResponse.BadRequestException(err.message).send(res);
       }
@@ -902,12 +1187,19 @@ export class ContentController {
     }
   }
 
-  @Get('/GetQuizQuestionById/:id')
+  @Get('/:orgId/GetQuizQuestionById/:id')
   @ApiOperation({ summary: 'Get the openended question by id' })
   @ApiBearerAuth('JWT-auth')
-  async getQuizQuestionDetails(@Param('id') id: number, @Res() res) {
+  async getQuizQuestionDetails(
+    @Param('orgId') orgId: number,
+    @Param('id') id: number,
+    @Res() res,
+  ) {
     try {
-      let [err, success] = await this.contentService.getQuizQuestionDetails(id);
+      let [err, success] = await this.contentService.getQuizQuestionDetails(
+        id,
+        orgId,
+      );
       if (err) {
         return ErrorResponse.BadRequestException(err.message).send(res);
       }
@@ -921,13 +1213,19 @@ export class ContentController {
     }
   }
 
-  @Get('/quiz/:quizId')
+  @Get('/:orgId/quiz/:quizId')
   @ApiOperation({ summary: 'Get all variants by quizId' })
   @ApiBearerAuth('JWT-auth')
-  async getAllQuizVariants(@Param('quizId') quizId: number, @Res() res) {
+  async getAllQuizVariants(
+    @Param('orgId') orgId: number,
+    @Param('quizId') quizId: number,
+    @Res() res,
+  ) {
     try {
-      const [err, success] =
-        await this.contentService.getAllQuizVariants(quizId);
+      const [err, success] = await this.contentService.getAllQuizVariants(
+        quizId,
+        orgId,
+      );
       if (err) {
         return ErrorResponse.BadRequestException(err.message).send(res);
       }
@@ -941,16 +1239,26 @@ export class ContentController {
     }
   }
 
-  @Post('/quiz/add/variants')
+  @Post('/:orgId/quiz/add/variants')
   @ApiOperation({ summary: 'Add variants to a quiz' })
   @ApiBearerAuth('JWT-auth')
+  @TrackAction({
+    action: 'create_quiz_variant',
+    resourceType: 'quiz',
+    permissionName: 'editMcq',
+    getResourceName: (result) =>
+      result?.data?.title || result?.data?.name || 'Quiz',
+  })
   async addQuizVariants(
+    @Param('orgId') orgId: number,
     @Body() addQuizVariantsDto: AddQuizVariantsDto,
     @Res() res,
   ) {
     try {
-      const [err, success] =
-        await this.contentService.addQuizVariants(addQuizVariantsDto);
+      const [err, success] = await this.contentService.addQuizVariants(
+        addQuizVariantsDto,
+        orgId,
+      );
 
       if (err) {
         return ErrorResponse.BadRequestException(err.message).send(res);
@@ -966,21 +1274,37 @@ export class ContentController {
     }
   }
 
-  @Delete('/deleteMainQuizOrVariant')
+  @Delete('/:orgId/deleteMainQuizOrVariant')
   @ApiOperation({ summary: 'Delete main quiz or variant' })
   @ApiBearerAuth('JWT-auth')
+  @TrackAction({
+    action: 'delete_quiz',
+    resourceType: 'quiz',
+    displayType: 'the mcq question',
+    permissionName: 'deleteMcq',
+    getResourceName: (result, params) =>
+      result?.data?.title ||
+      result?.data?.name ||
+      params?.questionTitle ||
+      'Quiz',
+  })
   async deleteMainQuizOrVariant(
+    @Param('orgId') orgId: number,
     @Body() deleteDto: deleteQuestionOrVariantDto,
+    @Req() req,
     @Res() res,
   ) {
-    const [err, success] =
-      await this.contentService.deleteQuizOrVariant(deleteDto);
+    const [err, success] = await this.contentService.deleteQuizOrVariant(
+      deleteDto,
+      orgId,
+    );
     if (err) {
       return ErrorResponse.BadRequestException(
         err.message,
         err.statusCode,
       ).send(res);
     }
+    req['trackingData'] = { questionTitle: success?.quizTitle };
     return new SuccessResponse(success.message, success.statusCode, null).send(
       res,
     );
@@ -1019,6 +1343,14 @@ export class ContentController {
   @ApiConsumes('multipart/form-data')
   @ApiBody({ type: UpdateChapterDto })
   @UseInterceptors(FileInterceptor('pdf'))
+  @TrackAction({
+    action: 'edit_chapter',
+    resourceType: 'chapter',
+    permissionName: 'editChapter',
+    getResourceName: (result) => {
+      return result?.chapter?.[0]?.title || 'Chapter PDF';
+    },
+  })
   async uploadPdf(
     @UploadedFile() file: Express.Multer.File,
     @Query('moduleId') moduleId: number,

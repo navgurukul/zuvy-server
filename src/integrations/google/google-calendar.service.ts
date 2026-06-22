@@ -1,0 +1,146 @@
+import { ne } from 'drizzle-orm';
+import { google } from 'googleapis';
+
+export class GoogleCalendarService {
+  private createAuth(refreshToken: string) {
+    const auth = new google.auth.OAuth2(
+      process.env.GOOGLE_CLIENT_ID,
+      process.env.GOOGLE_CLIENT_SECRET,
+      process.env.GOOGLE_REDIRECT_URI,
+    );
+
+    auth.setCredentials({
+      refresh_token: refreshToken,
+    });
+
+    return auth;
+  }
+
+  async createMeeting(
+    start: Date | string,
+    end: Date | string,
+    mentorEmail: string,
+    studentEmail: string,
+    refreshToken: string,
+  ) {
+    const auth = this.createAuth(refreshToken);
+
+    const calendar = google.calendar({
+      version: 'v3',
+      auth,
+    });
+
+    const startDate = new Date(start);
+    const endDate = new Date(end);
+
+    const event = await calendar.events.insert({
+      calendarId: 'primary',
+      conferenceDataVersion: 1,
+      requestBody: {
+        summary: 'Mentorship Session',
+
+        start: {
+          dateTime: startDate.toISOString(),
+          timeZone: 'UTC',
+        },
+        end: {
+          dateTime: endDate.toISOString(),
+          timeZone: 'UTC',
+        },
+
+        attendees: [{ email: mentorEmail }, { email: studentEmail }],
+
+        conferenceData: {
+          createRequest: {
+            requestId: Date.now().toString(),
+            conferenceSolutionKey: {
+              type: 'hangoutsMeet',
+            },
+          },
+        },
+      },
+    });
+
+    const meetLink = event.data.conferenceData?.entryPoints?.find(
+      (e) => e.entryPointType === 'video',
+    )?.uri;
+
+    return {
+      eventId: event.data.id,
+      meetLink,
+    };
+  }
+
+  async deleteMeeting(eventId: string, refreshToken: string) {
+    const auth = this.createAuth(refreshToken);
+
+    const calendar = google.calendar({
+      version: 'v3',
+      auth,
+    });
+
+    await calendar.events.delete({
+      calendarId: 'primary',
+      eventId,
+    });
+  }
+
+  async updateMeeting(
+    eventId: string,
+    start: Date,
+    end: Date,
+    refreshToken: string,
+  ) {
+    const auth = this.createAuth(refreshToken);
+
+    const calendar = google.calendar({
+      version: 'v3',
+      auth,
+    });
+
+    await calendar.events.update({
+      calendarId: 'primary',
+      eventId,
+      requestBody: {
+        start: {
+          dateTime: start.toISOString(),
+          timeZone: 'UTC',
+        },
+        end: {
+          dateTime: end.toISOString(),
+          timeZone: 'UTC',
+        },
+      },
+    });
+  }
+
+  async checkCalendarConflict(start: Date, end: Date, refreshToken: string) {
+    try {
+      const auth = this.createAuth(refreshToken);
+
+      const calendar = google.calendar({
+        version: 'v3',
+        auth,
+      });
+
+      const startDate = new Date(start);
+      const endDate = new Date(end);
+
+      const response = await calendar.freebusy.query({
+        requestBody: {
+          timeMin: startDate.toISOString(),
+          timeMax: endDate.toISOString(),
+          items: [{ id: 'primary' }],
+        },
+      });
+
+      const busySlots = response.data.calendars?.primary?.busy ?? [];
+
+      return busySlots.length > 0;
+    } catch (error) {
+      console.error('Google calendar conflict check failed:', error);
+      // throw new Error('Unable to verify mentor calendar availability');
+      return false;
+    }
+  }
+}

@@ -14,7 +14,9 @@ import {
   Query,
   BadRequestException,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
+import { TrackActionInterceptor } from 'src/trackinglog/interceptors/track-action.interceptor';
 import { ClassesService } from './classes.service';
 import {
   ApiTags,
@@ -40,11 +42,15 @@ import { Response } from 'express';
 import { ErrorResponse, SuccessResponse } from 'src/errorHandler/handler';
 import { Public } from '../../auth/decorators/public.decorator';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
+import { TrackAction } from 'src/trackinglog/decorators/track-action.decorator';
 import { auth2Client } from '../../auth/google-auth';
 import { db } from '../../db/index';
 import {
   userTokens,
-  zuvyBatches
+  zuvyBatches,
+  zuvyUserOrganizations,
+  zuvyUserRolesAssigned,
+  zuvyBootcamps,
 } from '../../../drizzle/schema';
 import { eq, desc, and, sql, ilike } from 'drizzle-orm';
 
@@ -54,6 +60,7 @@ let configUser = { id: process.env.ID, email: process.env.TEAM_EMAIL };
 @Controller('classes')
 @ApiTags('classes')
 @UseGuards(JwtAuthGuard)
+@UseInterceptors(TrackActionInterceptor)
 @ApiBearerAuth('JWT-auth')
 @UsePipes(
   new ValidationPipe({
@@ -63,7 +70,7 @@ let configUser = { id: process.env.ID, email: process.env.TEAM_EMAIL };
   }),
 )
 export class ClassesController {
-  constructor(private classesService: ClassesService) { }
+  constructor(private classesService: ClassesService) {}
 
   @Public()
   @Get('/')
@@ -75,7 +82,6 @@ export class ClassesController {
   ) {
     return this.classesService.googleAuthentication(res, email, userId);
   }
-
 
   @Public()
   @Get('/redirect')
@@ -98,31 +104,40 @@ export class ClassesController {
       // Parse state to get user info
       const userInfo = JSON.parse(state);
 
+      let userData = {
+        userId: userInfo.id,
+        userEmail: userInfo.email,
+        organizationId: userInfo.orgId,
+        accessToken: tokens.access_token,
+        refreshToken: tokens.refresh_token,
+      };
+
+      let setData = {
+        userEmail: userInfo.email,
+        accessToken: tokens.access_token,
+        refreshToken: tokens.refresh_token,
+      };
+
       // Store tokens in database
       await db
-        .insert(userTokens)
-        .values({
-          userId: userInfo.id,
-          userEmail: userInfo.email,
-          accessToken: tokens.access_token,
-          refreshToken: tokens.refresh_token
-        })
+        .insert(zuvyUserOrganizations)
+        .values(userData)
         .onConflictDoUpdate({
-          target: [userTokens.userId],
-          set: {
-            accessToken: tokens.access_token,
-            refreshToken: tokens.refresh_token
-          }
+          target: [
+            zuvyUserOrganizations.userId,
+            zuvyUserOrganizations.organizationId,
+          ],
+          set: setData,
         });
 
       return {
         status: 'success',
-        message: 'Calendar access granted successfully'
+        message: 'Calendar access granted successfully',
       };
     } catch (error) {
       return {
         status: 'error',
-        message: 'Failed to authenticate with Google Calendar'
+        message: 'Failed to authenticate with Google Calendar',
       };
     }
   }
@@ -131,14 +146,36 @@ export class ClassesController {
   @ApiOperation({ summary: 'Create the new class' })
   @ApiBearerAuth('JWT-auth')
   @Public()
+  @TrackAction({
+    action: 'create_classes',
+    resourceType: 'class',
+    displayType: 'class name',
+    permissionName: 'createClass',
+    getResourceName: (result) => {
+      return (
+        result?.data?.[0]?.title ||
+        result?.data?.title ||
+        result?.title ||
+        'Live Session'
+      );
+    },
+  })
   async create(@Body() classData: CreateSessionDto, @Req() req) {
     const userInfo = {
       id: Number(req.user[0].id),
       email: req.user[0].email,
-      roles: req.user[0].roles || []
+      roles: req.user[0].roles || [],
+      orgId: Number(req.user[0].orgId),
     };
+    console.log('req', req.user);
     // Delegate all validation & batch combination logic to service
-    const result = await this.classesService.createSession(classData as any, userInfo);
+    const result: any = await this.classesService.createSession(
+      classData as any,
+      userInfo,
+    );
+    if (result.status === 'error') {
+      throw new BadRequestException(result.error || result.message);
+    }
     return result;
   }
 
@@ -171,10 +208,12 @@ export class ClassesController {
     const userInfo = {
       id: Number(req.user[0].id),
       email: req.user[0].email,
-      roles: req.user[0].roles || []
+      roles: req.user[0].roles || [],
+      orgId: Number(req.user[0].orgId),
     };
     const [err, values] = await this.classesService.meetingAttendanceAnalytics(
-      sessionId, userInfo
+      sessionId,
+      userInfo,
     );
     if (err) {
       throw new BadRequestException(err);
@@ -260,7 +299,10 @@ export class ClassesController {
   }
 
   @Get('/bootcamp/:bootcampId/classes')
-  @ApiOperation({ summary: 'Get the students classes by bootcamp and batch (alternative route)' })
+  @ApiOperation({
+    summary:
+      'Get the students classes by bootcamp and batch (alternative route)',
+  })
   @ApiQuery({
     name: 'offset',
     required: false,
@@ -330,33 +372,52 @@ export class ClassesController {
       const userInfo = {
         id: Number(req.user[0].id),
         email: req.user[0].email,
-        roles: req.user[0].roles || []
+        roles: req.user[0].roles || [],
+        orgId: Number(req.user[0].orgId),
       };
 
       const calendar = await this.classesService.accessOfCalendar(userInfo);
       if ('status' in calendar && calendar.status === 'error') {
         return {
           status: 'not success',
-          message: calendar.message
+          message: calendar.message,
         };
       }
       return {
         status: 'success',
-        message: 'Calendar access verified'
+        message: 'Calendar access verified',
       };
     } catch (error) {
       return {
         status: 'not success',
         message: 'Failed to verify calendar access',
-        error: error.message
+        error: error.message,
       };
     }
   }
 
-
   @Post('/addliveClassesAsChapters')
-  @ApiOperation({ summary: 'Add existing live classes as chapters to a module' })
+  @ApiOperation({
+    summary: 'Add existing live classes as chapters to a module',
+  })
   @ApiBearerAuth()
+  @TrackAction({
+    action: 'create_chapter',
+    resourceType: 'chapter',
+    displayType: 'a chapter for existing live classes as chapters to a module',
+    permissionName: 'createChapter',
+    getResourceName: (result, params) => {
+      const chapters = result?.data?.chapters || result?.chapters;
+      if (chapters?.length) {
+        const titles = chapters
+          .map((ch) => ch.title)
+          .filter((t) => t)
+          .join(', ');
+        return titles || 'Live Sessions';
+      }
+      return 'Live Sessions';
+    },
+  })
   async addLiveClassesAsChapters(
     @Body() data: AddLiveClassesAsChaptersDto,
     @Req() req,
@@ -366,11 +427,14 @@ export class ClassesController {
       const [err, success] = await this.classesService.addLiveClassesAsChapters(
         data.sessionIds,
         data.moduleId,
-        req.user[0]
+        req.user[0],
       );
       if (err) {
         return ErrorResponse.BadRequestException(err.message).send(res);
       }
+      req['trackingData'] = {
+        descriptionSuffix: success.descriptionSuffix || '',
+      };
       return new SuccessResponse(
         success.message,
         success.statusCode,
@@ -382,17 +446,24 @@ export class ClassesController {
   }
 
   @Get('/sessions/:id')
-  @ApiOperation({ summary: 'Get individual session by ID with role-based access and merge handling' })
+  @ApiOperation({
+    summary:
+      'Get individual session by ID with role-based access and merge handling',
+  })
   @ApiBearerAuth('JWT-auth')
   async getSession(@Param('id') sessionId: number, @Req() req) {
     const userInfo = {
       id: Number(req.user[0].id),
       email: req.user[0].email,
-      roles: req.user[0].roles || []
+      roles: req.user[0].roles || [],
+      orgId: Number(req.user[0].orgId),
     };
 
     // Route to appropriate service method based on user role
-    if (userInfo.roles?.includes('admin')) {
+    if (
+      userInfo.roles?.includes('admin') ||
+      userInfo.roles?.includes('super_admin')
+    ) {
       return this.classesService.getSessionForAdmin(sessionId, userInfo);
     } else {
       return this.classesService.getSessionForStudent(sessionId, userInfo);
@@ -402,69 +473,176 @@ export class ClassesController {
   @Put('/sessions/:id')
   @ApiOperation({ summary: 'Update session by ID' })
   @ApiBearerAuth('JWT-auth')
+  @TrackAction({
+    action: 'edit_class',
+    resourceType: 'class',
+    displayType: 'class details for',
+    permissionName: 'editClass',
+    getResourceName: (result) => {
+      return (
+        result?.data?.title ||
+        result?.before?.title ||
+        result?.title ||
+        'Session'
+      );
+    },
+  })
   async updateSession(
     @Param('id') sessionId: number,
     @Body() updateData: updateSessionDto,
-    @Req() req
+    @Req() req,
   ) {
     const userInfo = {
       id: Number(req.user[0].id),
       email: req.user[0].email,
-      roles: req.user[0].roles || []
+      roles: req.user[0].roles || [],
+      orgId: Number(req.user[0].orgId),
     };
-    return this.classesService.updateSession(sessionId, updateData, userInfo);
+    const result: any = await this.classesService.updateSession(
+      sessionId,
+      updateData,
+      userInfo,
+    );
+    if (result.success === false) {
+      throw new BadRequestException(result.error || result.message);
+    }
+    return result;
   }
 
   @Delete('/sessions/:id')
   @ApiOperation({ summary: 'Delete session by ID' })
+  @ApiQuery({
+    name: 'deleteChapter',
+    required: false,
+    type: Boolean,
+    description: 'Also delete linked chapter when true',
+  })
   @ApiBearerAuth('JWT-auth')
-  async deleteSession(@Param('id') sessionId: number, @Req() req) {
-    const userInfo = {
-      id: Number(req.user[0].id),
-      email: req.user[0].email,
-      roles: req.user[0].roles || []
-    };
-    return this.classesService.deleteSession(sessionId, userInfo);
-  }
-
-  // New endpoints operating via meeting identifier (Google or Zoom meeting id)
-  @Patch('/update/:meetingId')
-  @ApiOperation({ summary: 'Update session by meeting identifier (Google meetingId or Zoom meetingId)' })
-  @ApiParam({ name: 'meetingId', description: 'Google meetingId, calendar event id, or Zoom meeting id' })
-  @ApiBearerAuth('JWT-auth')
-  async patchByMeetingId(
-    @Param('meetingId') meetingId: string,
-    @Body() updateData: updateSessionDto,
-    @Req() req
+  @TrackAction({
+    action: 'delete_class',
+    resourceType: 'class',
+    displayType: 'session',
+    permissionName: 'deleteClass',
+    getResourceName: (result) => {
+      return result?.sessionTitle || 'Session';
+    },
+  })
+  async deleteSession(
+    @Param('id') sessionId: number,
+    @Query('deleteChapter') deleteChapter: string,
+    @Req() req,
   ) {
     const userInfo = {
       id: Number(req.user[0].id),
       email: req.user[0].email,
-      roles: req.user[0].roles || []
+      roles: req.user[0].roles || [],
+      orgId: Number(req.user[0].orgId),
     };
-    const result = await this.classesService.updateSessionByMeetingId(meetingId, updateData, userInfo);
+    const shouldDeleteChapter = ['true', '1', 'yes'].includes(
+      String(deleteChapter ?? '').toLowerCase(),
+    );
+    const result: any = await this.classesService.deleteSession(
+      sessionId,
+      userInfo,
+      {
+        deleteChapter: shouldDeleteChapter,
+      },
+    );
+    if (result.success === false) {
+      throw new BadRequestException(result.error || result.message);
+    }
+    return result;
+  }
+
+  // New endpoints operating via meeting identifier (Google or Zoom meeting id)
+  @Patch('/update/:meetingId')
+  @ApiOperation({
+    summary:
+      'Update session by meeting identifier (Google meetingId or Zoom meetingId)',
+  })
+  @ApiParam({
+    name: 'meetingId',
+    description: 'Google meetingId, calendar event id, or Zoom meeting id',
+  })
+  @ApiBearerAuth('JWT-auth')
+  @TrackAction({
+    action: 'edit_session',
+    resourceType: 'session',
+    permissionName: 'editClass',
+    getResourceName: (result) =>
+      result?.data?.title || result?.data?.topic || 'Session',
+  })
+  async patchByMeetingId(
+    @Param('meetingId') meetingId: string,
+    @Body() updateData: updateSessionDto,
+    @Req() req,
+  ) {
+    const userInfo = {
+      id: Number(req.user[0].id),
+      email: req.user[0].email,
+      roles: req.user[0].roles || [],
+      orgId: Number(req.user[0].orgId),
+    };
+    const result: any = await this.classesService.updateSessionByMeetingId(
+      meetingId,
+      updateData,
+      userInfo,
+    );
     if (!result.success) {
-      throw new BadRequestException(result.message || 'Failed to update session');
+      throw new BadRequestException(
+        result.error || result.message || 'Failed to update session',
+      );
     }
     return result;
   }
 
   @Delete('/delete/:meetingId')
-  @ApiOperation({ summary: 'Delete session by meeting identifier (Google meetingId or Zoom meetingId)' })
-  @ApiParam({ name: 'meetingId', description: 'meetingId it can be Google meetingId or calendar event id as per the class' })
+  @ApiOperation({
+    summary:
+      'Delete session by meeting identifier (Google meetingId or Zoom meetingId)',
+  })
+  @ApiParam({
+    name: 'meetingId',
+    description:
+      'meetingId it can be Google meetingId or calendar event id as per the class',
+  })
+  @ApiQuery({
+    name: 'deleteChapter',
+    required: false,
+    type: Boolean,
+    description: 'Also delete linked chapter when true',
+  })
   @ApiBearerAuth('JWT-auth')
+  @TrackAction({
+    action: 'delete_session',
+    resourceType: 'session',
+    permissionName: 'deleteClass',
+    getResourceName: (result) =>
+      result?.data?.title || result?.data?.topic || 'Session',
+  })
   async deleteByMeetingId(
     @Param('meetingId') meetingId: string,
-    @Req() req
+    @Query('deleteChapter') deleteChapter: string,
+    @Req() req,
   ) {
     const userInfo = {
       id: Number(req.user[0].id),
       email: req.user[0].email,
-      roles: req.user[0].roles || []
+      roles: req.user[0].roles || [],
+      orgId: Number(req.user[0].orgId),
     };
-    const result = await this.classesService.deleteSessionByMeetingId(meetingId, userInfo);
+    const shouldDeleteChapter = ['true', '1', 'yes'].includes(
+      String(deleteChapter ?? '').toLowerCase(),
+    );
+    const result: any = await this.classesService.deleteSessionByMeetingId(
+      meetingId,
+      userInfo,
+      { deleteChapter: shouldDeleteChapter },
+    );
     if (!result.success) {
-      throw new BadRequestException(result.message || 'Failed to delete session');
+      throw new BadRequestException(
+        result.error || result.message || 'Failed to delete session',
+      );
     }
     return result;
   }
@@ -489,55 +667,84 @@ export class ClassesController {
 
   @Post('/merge')
   @ApiOperation({
-    summary: 'Merge two classes - combines students from both sessions into parent session',
-    description: 'Merges classes by adding students from both child and parent session batches to the parent session (which becomes the main session). Updates Google Calendar and Zoom meeting invitees. Sets hasBeenMerged=true for both sessions.'
+    summary:
+      'Merge two classes - combines students from both sessions into parent session',
+    description:
+      'Merges classes by adding students from both child and parent session batches to the parent session (which becomes the main session). Updates Google Calendar and Zoom meeting invitees. Sets hasBeenMerged=true for both sessions.',
   })
   @ApiBody({ type: MergeClassesDto })
   @ApiBearerAuth('JWT-auth')
+  @TrackAction({
+    action: 'merge_class',
+    resourceType: 'class',
+    displayType: 'two classs',
+    permissionName: 'editClass',
+    getResourceName: (result) => {
+      const parent = result?.data?.parentSession?.title || '';
+      const child = result?.data?.childSession?.title || '';
+      if (parent && child) return `${parent} & ${child}`;
+      return parent || child || 'Class';
+    },
+  })
   async mergeClasses(@Body() mergeData: MergeClassesDto, @Req() req) {
     const userInfo = {
       id: Number(req.user[0].id),
       email: req.user[0].email,
-      roles: req.user[0].roles || []
+      roles: req.user[0].roles || [],
+      orgId: Number(req.user[0].orgId),
     };
 
     // Check admin access
-    if (!userInfo.roles?.includes('admin')) {
-      throw new BadRequestException('Only admins can merge classes');
+    if (
+      !userInfo.roles?.includes('admin') &&
+      !userInfo.roles?.includes('super_admin')
+    ) {
+      throw new BadRequestException(
+        'Only admins or super admins can merge classes',
+      );
     }
 
-    const result = await this.classesService.mergeClasses(
+    const result: any = await this.classesService.mergeClasses(
       mergeData.childSessionId,
       mergeData.parentSessionId,
-      userInfo
+      userInfo,
     );
-
-    if (result.success) {
-      return new SuccessResponse('Classes merged successfully', 200, result.data);
-    } else {
-      throw new BadRequestException(result.message);
+    if (!result.success) {
+      throw new BadRequestException(result.error || result.message);
     }
+    return result;
   }
-
 
   @Post('/attendance/by-bootcamp/:bootcampId')
   @ApiOperation({
     summary: 'Migrate old attendance data for a specific bootcamp',
-    description: 'Triggers a background process to migrate attendance records from the old JSON format to the new normalized table for all completed classes within a given bootcamp.'
+    description:
+      'Triggers a background process to migrate attendance records from the old JSON format to the new normalized table for all completed classes within a given bootcamp.',
   })
-  @ApiBearerAuth('JWT-auth') // Protect the endpoint
+  @ApiBearerAuth('JWT-auth')
+  @TrackAction({
+    action: 'migrate_attendance',
+    resourceType: 'class',
+    displayType: 'old attendance data for a specific bootcamp name',
+    permissionName: 'editClass',
+    getResourceName: (result) => result?.bootcampName || 'Bootcamp',
+  })
   async migrateAttendanceByBootcamp(
     @Param('bootcampId') bootcampId: number,
   ): Promise<object> {
-    // We don't await the service call here.
-    // This allows the server to respond immediately while the migration
-    // runs as a background task.
+    const courseRes = await db
+      .select({ name: zuvyBootcamps.name })
+      .from(zuvyBootcamps)
+      .where(eq(zuvyBootcamps.id, bootcampId))
+      .limit(1);
+    const bootcampName = courseRes[0]?.name || '';
+
     this.classesService.migrateCompletedAttendancesByBootcamp(bootcampId);
 
-    // Return an immediate success response to the client
     return {
       statusCode: 200,
       message: `Attendance migration started for bootcampId: ${bootcampId}. This process will run in the background.`,
+      bootcampName,
     };
   }
 }
