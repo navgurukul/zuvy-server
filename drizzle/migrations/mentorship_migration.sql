@@ -503,3 +503,53 @@ ADD COLUMN IF NOT EXISTS student_feedback_submitted_at TIMESTAMPTZ;
 
 ALTER TABLE zuvy_mentor_slot_booking
 ADD COLUMN IF NOT EXISTS student_feedback_locked BOOLEAN DEFAULT FALSE;
+
+SELECT current_database() AS current_database;
+
+SELECT current_schema() AS current_schema;
+
+SHOW search_path;
+
+SELECT
+    table_catalog,
+    table_schema,
+    table_name
+FROM information_schema.tables
+WHERE table_name = 'zuvy_mentor_slot_booking';
+
+SELECT
+    table_schema,
+    column_name,
+    data_type
+FROM information_schema.columns
+WHERE table_name = 'zuvy_mentor_slot_booking'
+AND column_name IN (
+    'student_feedback_submitted_at',
+    'student_feedback_locked'
+)
+ORDER BY table_schema, column_name;
+
+ALTER TABLE main.zuvy_mentor_slot_booking
+ADD COLUMN IF NOT EXISTS student_feedback_submitted_at TIMESTAMPTZ;
+
+ALTER TABLE main.zuvy_mentor_slot_booking
+ADD COLUMN IF NOT EXISTS student_feedback_locked BOOLEAN DEFAULT FALSE;
+
+ALTER TABLE stage_template.zuvy_mentor_slot_booking
+ADD COLUMN IF NOT EXISTS student_feedback_submitted_at TIMESTAMPTZ;
+
+ALTER TABLE stage_template.zuvy_mentor_slot_booking
+ADD COLUMN IF NOT EXISTS student_feedback_locked BOOLEAN DEFAULT FALSE;
+
+SELECT
+    table_schema,
+    column_name,
+    data_type
+FROM information_schema.columns
+WHERE table_name = 'zuvy_mentor_slot_booking'
+AND column_name IN (
+    'student_feedback_submitted_at',
+    'student_feedback_locked'
+)
+ORDER BY table_schema, column_name;
+

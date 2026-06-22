@@ -29,12 +29,14 @@ MMS Learning is a comprehensive learning management system built with NestJS and
 #### Servers
 
 1. **Application Server (NestJS)**
+
    - Handles API requests and business logic
    - Manages user authentication and authorization
    - Processes assessment submissions and grading
    - Runs on port 3000 by default
 
 2. **Database Server (PostgreSQL)**
+
    - Stores all application data including users, courses, assessments
    - Manages relationships between entities
    - Handles transactions for data integrity
@@ -68,6 +70,7 @@ MMS Learning is a comprehensive learning management system built with NestJS and
    ```
 
 3. **Set Up Environment Variables**
+
    - Copy `.env.example` to `.env`
    - Configure database connection details
    - Set up authentication keys
@@ -273,6 +276,7 @@ This guide will help you set up Zoom API access for the LMS backend to create an
 1. **App Information**: Fill in required details
 2. **Feature**: No additional features needed for basic meeting creation
 3. **Scopes**: Add the following **NEW GRANULAR SCOPES** (required as of 2024):
+
    - `meeting:read:meeting:admin` - Read meeting details
    - `meeting:write:meeting:admin` - Create meetings
    - `meeting:update:meeting:admin` - Update meetings
@@ -378,6 +382,7 @@ Zoom has transitioned to **granular scopes** as of 2024. If you're experiencing 
 1. Go to your Zoom app in Marketplace
 2. Navigate to **Scopes** tab
 3. **Remove old scopes** (if any):
+
    - ❌ `meeting:write:admin`
    - ❌ `meeting:read:admin`
    - ❌ `recording:read:admin`
@@ -982,12 +987,15 @@ The final overlap check now uses the real active licensed pool count from the da
 Relevant existing endpoints:
 
 - `POST /zoom-license/seed`
+
   - sync currently licensed Zoom users into the local pool tables
 
 - `GET /zoom-license/dashboard`
+
   - shows active pool size and current overlapping assignment usage
 
 - `GET /zoom/user/:email`
+
   - fetches the live Zoom user state
 
 - `GET /zoom/users/authorized`

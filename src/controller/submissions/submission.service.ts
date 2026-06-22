@@ -3491,18 +3491,18 @@ Zuvy LMS Team
         if (session.studentAttendanceRecords?.length) {
           session.studentAttendanceRecords.forEach((record: any) => {
             const resolvedBatchId = uniqueBatchFilterIds.length
-              ? ([session.batchId, session.secondBatchId].find((id: any) =>
+              ? [session.batchId, session.secondBatchId].find((id: any) =>
                   id !== null && id !== undefined
                     ? uniqueBatchFilterIds.includes(Number(id))
                     : false,
                 ) ??
                 session.batchId ??
                 session.secondBatchId ??
-                null)
-              : (session.batchId ?? session.secondBatchId ?? null);
+                null
+              : session.batchId ?? session.secondBatchId ?? null;
             const resolvedBatchName =
               resolvedBatchId !== null && resolvedBatchId !== undefined
-                ? (batchMap[Number(resolvedBatchId)] ?? null)
+                ? batchMap[Number(resolvedBatchId)] ?? null
                 : null;
             allRecords.push({
               ...record,
