@@ -7,6 +7,7 @@ import {
   Body,
   BadRequestException,
   InternalServerErrorException,
+  HttpException,
   Req,
 } from '@nestjs/common';
 import {
@@ -288,6 +289,7 @@ export class LeaderboardController {
     },
   })
   async getStudentLeaderboard(
+    @Query('bootcampId') bootcampIdParam: string,
     @Query('limit') limitParam?: string,
     @Req() req?: any,
   ) {
@@ -310,8 +312,16 @@ export class LeaderboardController {
         );
       }
 
+      const bootcampId = parseInt(bootcampIdParam, 10);
+
+      if (isNaN(bootcampId) || bootcampId <= 0) {
+        throw new BadRequestException('Invalid bootcampId');
+      }
+      console.log('BOOTCAMP FILTER:', bootcampId);
+
       const result = await this.leaderboardService.getStudentLeaderboard(
         learnerId,
+        bootcampId,
         limit,
       );
 
@@ -319,15 +329,14 @@ export class LeaderboardController {
         success: true,
         leaderboard: result.leaderboard,
         currentLearner: result.currentLearner,
+        totalLearners: result.totalLearners,
       };
     } catch (error) {
-      if (error instanceof BadRequestException) {
+      if (error instanceof HttpException) {
         throw error;
       }
       throw new InternalServerErrorException(
-        error instanceof Error
-          ? error.message
-          : 'Failed to fetch student leaderboard',
+        'Failed to fetch student leaderboard',
       );
     }
   }

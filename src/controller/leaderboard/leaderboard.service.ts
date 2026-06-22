@@ -1,4 +1,10 @@
-import { Injectable, Logger, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  BadRequestException,
+  ForbiddenException,
+  HttpException,
+} from '@nestjs/common';
 import { users } from '../../../drizzle/schema';
 import { db } from '../../db/index';
 import {
@@ -19,6 +25,7 @@ import {
   zuvyModuleChapter,
   zuvyCourseModules,
   zuvyBootcamps,
+  zuvyBatchEnrollments,
 } from '../../../drizzle/schema';
 import { eq, and, sql } from 'drizzle-orm';
 
@@ -977,23 +984,30 @@ export class LeaderboardService {
       if (bootcampId) {
         const leaderboard = await db
           .select({
-            learnerId: zuvyLearnerLeaderboard.learnerId,
+            learnerId: zuvyBatchEnrollments.userId,
             name: users.name,
-            assessmentPoints: zuvyLearnerLeaderboard.assessmentPoints,
-            codingPoints: zuvyLearnerLeaderboard.codingPoints,
-            quizPoints: zuvyLearnerLeaderboard.quizPoints,
-            attendancePoints: zuvyLearnerLeaderboard.attendancePoints,
-            recordingPoints: zuvyLearnerLeaderboard.recordingPoints,
-            assignmentPoints: zuvyLearnerLeaderboard.assignmentPoints,
-            totalPoints: zuvyLearnerLeaderboard.totalPoints,
+
+            assessmentPoints: sql<number>`COALESCE(${zuvyLearnerLeaderboard.assessmentPoints}, 0)`,
+            codingPoints: sql<number>`COALESCE(${zuvyLearnerLeaderboard.codingPoints}, 0)`,
+            quizPoints: sql<number>`COALESCE(${zuvyLearnerLeaderboard.quizPoints}, 0)`,
+            attendancePoints: sql<number>`COALESCE(${zuvyLearnerLeaderboard.attendancePoints}, 0)`,
+            recordingPoints: sql<number>`COALESCE(${zuvyLearnerLeaderboard.recordingPoints}, 0)`,
+            assignmentPoints: sql<number>`COALESCE(${zuvyLearnerLeaderboard.assignmentPoints}, 0)`,
+            totalPoints: sql<number>`COALESCE(${zuvyLearnerLeaderboard.totalPoints}, 0)`,
             lastActivityAt: zuvyLearnerLeaderboard.lastActivityAt,
           })
-          .from(zuvyLearnerLeaderboard)
-          .leftJoin(users, eq(users.id, zuvyLearnerLeaderboard.learnerId))
-          .where(eq(zuvyLearnerLeaderboard.bootcampId, bootcampId))
-          .orderBy(sql`${zuvyLearnerLeaderboard.totalPoints} DESC`)
+          .from(zuvyBatchEnrollments)
+          .leftJoin(users, eq(users.id, zuvyBatchEnrollments.userId))
+          .leftJoin(
+            zuvyLearnerLeaderboard,
+            and(
+              eq(zuvyLearnerLeaderboard.learnerId, zuvyBatchEnrollments.userId),
+              eq(zuvyLearnerLeaderboard.bootcampId, bootcampId),
+            ),
+          )
+          .where(eq(zuvyBatchEnrollments.bootcampId, bootcampId))
+          .orderBy(sql`COALESCE(${zuvyLearnerLeaderboard.totalPoints}, 0) DESC`)
           .limit(limit);
-
         return leaderboard;
       } else {
         const leaderboard = await db
@@ -1023,6 +1037,7 @@ export class LeaderboardService {
           'unknown error',
         )}`,
       );
+
       if (error instanceof BadRequestException) {
         throw error;
       }
@@ -1048,32 +1063,42 @@ export class LeaderboardService {
     try {
       const learnerEntry = await db
         .select({
-          learnerId: zuvyLearnerLeaderboard.learnerId,
+          learnerId: zuvyBatchEnrollments.userId,
           name: users.name,
-          assessmentPoints: zuvyLearnerLeaderboard.assessmentPoints,
-          codingPoints: zuvyLearnerLeaderboard.codingPoints,
-          quizPoints: zuvyLearnerLeaderboard.quizPoints,
-          attendancePoints: zuvyLearnerLeaderboard.attendancePoints,
-          recordingPoints: zuvyLearnerLeaderboard.recordingPoints,
-          assignmentPoints: zuvyLearnerLeaderboard.assignmentPoints,
-          totalPoints: zuvyLearnerLeaderboard.totalPoints,
+
+          assessmentPoints: sql<number>`COALESCE(${zuvyLearnerLeaderboard.assessmentPoints}, 0)`,
+          codingPoints: sql<number>`COALESCE(${zuvyLearnerLeaderboard.codingPoints}, 0)`,
+          quizPoints: sql<number>`COALESCE(${zuvyLearnerLeaderboard.quizPoints}, 0)`,
+          attendancePoints: sql<number>`COALESCE(${zuvyLearnerLeaderboard.attendancePoints}, 0)`,
+          recordingPoints: sql<number>`COALESCE(${zuvyLearnerLeaderboard.recordingPoints}, 0)`,
+          assignmentPoints: sql<number>`COALESCE(${zuvyLearnerLeaderboard.assignmentPoints}, 0)`,
+          totalPoints: sql<number>`COALESCE(${zuvyLearnerLeaderboard.totalPoints}, 0)`,
           lastActivityAt: zuvyLearnerLeaderboard.lastActivityAt,
         })
-        .from(zuvyLearnerLeaderboard)
-        .leftJoin(users, eq(users.id, zuvyLearnerLeaderboard.learnerId))
-        .where(
+        .from(zuvyBatchEnrollments)
+        .leftJoin(users, eq(users.id, zuvyBatchEnrollments.userId))
+        .leftJoin(
+          zuvyLearnerLeaderboard,
           and(
-            eq(zuvyLearnerLeaderboard.learnerId, learnerId),
+            eq(zuvyLearnerLeaderboard.learnerId, zuvyBatchEnrollments.userId),
             eq(zuvyLearnerLeaderboard.bootcampId, bootcampId),
           ),
-        );
+        )
+        .where(
+          and(
+            eq(zuvyBatchEnrollments.userId, learnerId),
+            eq(zuvyBatchEnrollments.bootcampId, bootcampId),
+          ),
+        )
+        .limit(1);
 
       if (learnerEntry.length === 0) {
         return null;
       }
 
       return {
-        learnerId: learnerEntry[0].learnerId,
+        // learnerId: learnerEntry[0].learnerId,
+        learnerId: Number(learnerEntry[0].learnerId),
         name: learnerEntry[0].name || '',
         assessmentPoints: learnerEntry[0].assessmentPoints,
         codingPoints: learnerEntry[0].codingPoints,
@@ -1161,6 +1186,7 @@ export class LeaderboardService {
 
   async getStudentLeaderboard(
     learnerId: number | string,
+    bootcampId: number,
     limit: number = 100,
   ): Promise<{
     leaderboard: Array<{
@@ -1175,6 +1201,7 @@ export class LeaderboardService {
       rank: number;
       totalPoints: number;
     } | null;
+    totalLearners: number;
   }> {
     try {
       const normalizedLearnerId = Number(learnerId);
@@ -1182,21 +1209,58 @@ export class LeaderboardService {
       if (Number.isNaN(normalizedLearnerId)) {
         throw new BadRequestException('Invalid learner ID');
       }
+      const enrollment = await db
+        .select({
+          id: zuvyBatchEnrollments.id,
+        })
+        .from(zuvyBatchEnrollments)
+        .where(
+          and(
+            eq(zuvyBatchEnrollments.userId, normalizedLearnerId),
+            eq(zuvyBatchEnrollments.bootcampId, bootcampId),
+          ),
+        )
+        .limit(1);
 
-      // Get all learners sorted by totalPoints DESC
+      if (enrollment.length === 0) {
+        throw new ForbiddenException('You are not enrolled in this bootcamp.');
+      }
+      const totalLearnersResult = await db
+        .select({
+          count: sql<number>`COUNT(*)`,
+        })
+        .from(zuvyBatchEnrollments)
+        .where(eq(zuvyBatchEnrollments.bootcampId, bootcampId));
+      const totalLearners = Number(totalLearnersResult[0]?.count || 0);
+
       const allLearners = await db
         .select({
-          learnerId: zuvyLearnerLeaderboard.learnerId,
+          learnerId: zuvyBatchEnrollments.userId,
           name: users.name,
-          totalPoints: zuvyLearnerLeaderboard.totalPoints,
+          totalPoints: sql<number>`COALESCE(${zuvyLearnerLeaderboard.totalPoints}, 0)`,
         })
-        .from(zuvyLearnerLeaderboard)
-        .leftJoin(users, eq(users.id, zuvyLearnerLeaderboard.learnerId))
-        .orderBy(sql`${zuvyLearnerLeaderboard.totalPoints} DESC`);
+        .from(zuvyBatchEnrollments)
+        .leftJoin(users, eq(users.id, zuvyBatchEnrollments.userId))
+        .leftJoin(
+          zuvyLearnerLeaderboard,
+          and(
+            eq(zuvyLearnerLeaderboard.learnerId, zuvyBatchEnrollments.userId),
+            eq(zuvyLearnerLeaderboard.bootcampId, bootcampId),
+          ),
+        )
+        .where(eq(zuvyBatchEnrollments.bootcampId, bootcampId))
+        .orderBy(sql`COALESCE(${zuvyLearnerLeaderboard.totalPoints}, 0) DESC`);
 
       // Add ranks to all learners
+      // const learnersWithRanks = allLearners.map((learner, index) => ({
+      //   ...learner,
+      //   rank: index + 1,
+      // }));
+
       const learnersWithRanks = allLearners.map((learner, index) => ({
-        ...learner,
+        learnerId: Number(learner.learnerId),
+        name: learner.name,
+        totalPoints: learner.totalPoints,
         rank: index + 1,
       }));
 
@@ -1212,33 +1276,13 @@ export class LeaderboardService {
         return {
           leaderboard: topLearners,
           currentLearner: currentLearnerData,
+          totalLearners,
         };
       }
-
-      const currentUser = await db
-        .select({
-          id: users.id,
-          name: users.name,
-        })
-        .from(users)
-        .where(eq(users.id, normalizedLearnerId))
-        .limit(1);
-
-      if (currentUser.length > 0) {
-        return {
-          leaderboard: topLearners,
-          currentLearner: {
-            learnerId: Number(currentUser[0].id),
-            name: currentUser[0].name,
-            rank: learnersWithRanks.length + 1,
-            totalPoints: 0,
-          },
-        };
-      }
-
       return {
         leaderboard: topLearners,
         currentLearner: null,
+        totalLearners,
       };
     } catch (error) {
       this.logger.error(
@@ -1247,9 +1291,13 @@ export class LeaderboardService {
           'unknown error',
         )}`,
       );
+      if (error instanceof HttpException) {
+        throw error;
+      }
       return {
         leaderboard: [],
         currentLearner: null,
+        totalLearners: 0,
       };
     }
   }
