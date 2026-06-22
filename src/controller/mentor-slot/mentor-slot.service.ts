@@ -23,7 +23,19 @@ import {
   zuvyStudentBookingMetrics,
 } from '../../../drizzle/schema';
 
-import { and, eq, lt, gt, sql, desc, count, ne, gte, lte } from 'drizzle-orm';
+import {
+  and,
+  eq,
+  lt,
+  gt,
+  sql,
+  desc,
+  count,
+  ne,
+  gte,
+  lte,
+  inArray,
+} from 'drizzle-orm';
 import { CreateSlotDto } from './dto/create-slot.dto';
 import { GoogleCalendarService } from 'src/integrations/google/google-calendar.service';
 import { NotificationService } from '../notification/notification.service';
@@ -2281,8 +2293,12 @@ export class MentorSlotService {
     }));
   }
 
-  async getStudentMetrics(userId: number) {
+  async getStudentMetrics(
+    userId: number,
+    filter: 'all' | '30d' | '3m' = 'all',
+  ) {
     const userIdBigInt = BigInt(userId);
+
     let [metrics] = await db
       .select()
       .from(zuvyStudentBookingMetrics)
@@ -2291,6 +2307,7 @@ export class MentorSlotService {
 
     if (!metrics) {
       await this.initializeStudentMetrics(userIdBigInt);
+
       [metrics] = await db
         .select()
         .from(zuvyStudentBookingMetrics)
@@ -2298,17 +2315,147 @@ export class MentorSlotService {
         .limit(1);
     }
 
-    const remainingCredits = Math.max(0, 3 - (metrics?.quotaUsed ?? 0));
     const now = new Date();
+
+    const endOfToday = new Date();
+    endOfToday.setHours(23, 59, 59, 999);
+
+    let fromDate: Date | null = null;
+
+    if (filter === '30d') {
+      fromDate = new Date();
+      fromDate.setDate(fromDate.getDate() - 30);
+    }
+
+    if (filter === '3m') {
+      fromDate = new Date();
+      fromDate.setMonth(fromDate.getMonth() - 3);
+    }
+
+    /* ==========================================
+       GET SLOT IDS FOR FILTER WINDOW
+    ========================================== */
+
+    let filteredSlotIds: number[] = [];
+
+    if (fromDate) {
+      const upperBound = filter === 'all' ? null : endOfToday;
+
+      const slots = await db
+        .select({
+          id: zuvyMentorSlotAvailability.id,
+        })
+        .from(zuvyMentorSlotAvailability)
+        .where(
+          upperBound
+            ? and(
+                gte(zuvyMentorSlotAvailability.slotStartDateTime, fromDate),
+                lte(zuvyMentorSlotAvailability.slotStartDateTime, upperBound),
+              )
+            : gte(zuvyMentorSlotAvailability.slotStartDateTime, fromDate),
+        );
+
+      filteredSlotIds = slots.map((s) => s.id);
+    }
+
+    /* ==========================================
+       SESSION COUNTS
+    ========================================== */
+
+    const bookingConditions: any[] = [
+      eq(zuvyMentorSlotBooking.studentUserId, userIdBigInt),
+    ];
+
+    if (filteredSlotIds.length > 0) {
+      bookingConditions.push(
+        inArray(zuvyMentorSlotBooking.slotAvailabilityId, filteredSlotIds),
+      );
+    }
+
+    const [sessionStats] = await db
+      .select({
+        totalSessions: sql<number>`COUNT(*)`,
+        completedSessions: sql<number>`
+        COUNT(*) FILTER (
+          WHERE session_lifecycle_state = 'COMPLETED'
+        )
+      `,
+        upcomingSessions: sql<number>`
+        COUNT(*) FILTER (
+          WHERE session_lifecycle_state = 'SCHEDULED'
+        )
+      `,
+        cancelledSessions: sql<number>`
+        COUNT(*) FILTER (
+          WHERE session_lifecycle_state = 'CANCELLED'
+        )
+      `,
+      })
+      .from(zuvyMentorSlotBooking)
+      .where(and(...bookingConditions));
+
+    /* ==========================================
+       UPCOMING SESSIONS
+    ========================================== */
+
+    const upcomingSlots = await db
+      .select({
+        id: zuvyMentorSlotAvailability.id,
+      })
+      .from(zuvyMentorSlotAvailability)
+      .where(
+        filter === 'all'
+          ? gte(zuvyMentorSlotAvailability.slotStartDateTime, now)
+          : and(
+              gte(zuvyMentorSlotAvailability.slotStartDateTime, now),
+              lte(zuvyMentorSlotAvailability.slotStartDateTime, endOfToday),
+            ),
+      );
+
+    const upcomingSlotIds = upcomingSlots.map((slot) => slot.id);
+
+    let upcomingCount = 0;
+
+    if (upcomingSlotIds.length > 0) {
+      const [upcoming] = await db
+        .select({
+          count: sql<number>`COUNT(*)`,
+        })
+        .from(zuvyMentorSlotBooking)
+        .where(
+          and(
+            eq(zuvyMentorSlotBooking.studentUserId, userIdBigInt),
+            eq(zuvyMentorSlotBooking.sessionLifecycleState, 'SCHEDULED'),
+            inArray(zuvyMentorSlotBooking.slotAvailabilityId, upcomingSlotIds),
+          ),
+        );
+
+      upcomingCount = Number(upcoming.count || 0);
+    }
+
+    const remainingCredits = Math.max(0, 3 - (metrics?.quotaUsed ?? 0));
+
     const canBook =
       !metrics?.isQuotaExhausted &&
       (!metrics?.cooldownEndDate || now >= metrics.cooldownEndDate);
 
     return {
       ...metrics,
+
       remainingCredits,
+
       canBook,
+
       nextEligible: metrics?.cooldownEndDate || null,
+
+      sessions: {
+        total: Number(sessionStats.totalSessions || 0),
+        completed: Number(sessionStats.completedSessions || 0),
+        cancelled: Number(sessionStats.cancelledSessions || 0),
+        upcoming: upcomingCount,
+      },
+
+      filter,
     };
   }
 
