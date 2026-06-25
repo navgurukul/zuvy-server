@@ -1,6 +1,6 @@
 import { sql } from 'drizzle-orm';
 
-const DEFAULT_ZOOM_LICENSE_COOLDOWN_MINUTES = 2; //60
+const DEFAULT_ZOOM_LICENSE_COOLDOWN_MINUTES = 60; //60
 
 const parsedCooldownMinutes = Number(
   process.env.ZOOM_LICENSE_COOLDOWN_MINUTES ||
