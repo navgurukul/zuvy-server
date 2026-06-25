@@ -1548,8 +1548,8 @@ export class ZoomService {
   async getZoomRecordingFilesByUuid(
     uuid: string,
   ): Promise<ZoomRecordingDetails> {
-    // Zoom UUIDs can contain / + = so MUST be encoded
-    const encodedUuid = encodeURIComponent(uuid);
+    // Zoom recording UUIDs can contain / + = and Zoom expects double encoding.
+    const encodedUuid = encodeURIComponent(encodeURIComponent(uuid));
     const url = `${this.baseUrl}/meetings/${encodedUuid}/recordings`;
 
     const response = await axios.get(url, {
@@ -1571,8 +1571,9 @@ export class ZoomService {
     // Try UUID first (Zoom best practice)
     if (params.meetingUuid) {
       try {
-        // Zoom requires UUID to be URL-encoded (base64 safe)
-        const encodedUuid = encodeURIComponent(params.meetingUuid);
+        const encodedUuid = encodeURIComponent(
+          encodeURIComponent(params.meetingUuid),
+        );
 
         const uuidUrl = `${this.baseUrl}/meetings/${encodedUuid}/recordings`;
         const uuidResp = await axios.get(uuidUrl, { headers });

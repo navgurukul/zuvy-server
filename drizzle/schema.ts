@@ -4538,9 +4538,70 @@ export const zuvySessionRecordings = main.table(
     }).defaultNow(),
   },
   (table) => ({
-    uniqSessionUuid: unique('uniq_session_uuid')
-      .on(table.sessionId, table.zoomMeetingUuid),
+    uniqSessionRecordingMeeting: uniqueIndex(
+      'uniq_session_recording_meeting',
+    ).on(table.sessionId, table.zoomMeetingId),
+    uniqSessionRecordingUuidNotNull: uniqueIndex(
+      'uniq_session_recording_uuid_not_null',
+    )
+      .on(table.sessionId, table.zoomMeetingUuid)
+      .where(sql`${table.zoomMeetingUuid} IS NOT NULL`),
   })
+);
+
+export const zuvySessionRecordingParts = main.table(
+  'zuvy_session_recording_parts',
+  {
+    id: serial('id').primaryKey().notNull(),
+
+    sessionRecordingId: integer('session_recording_id').references(
+      () => zuvySessionRecordings.id,
+      { onDelete: 'cascade' },
+    ),
+
+    sessionId: integer('session_id')
+      .notNull()
+      .references(() => zuvySessions.id, { onDelete: 'cascade' }),
+
+    zoomMeetingId: text('zoom_meeting_id').notNull(),
+    zoomMeetingUuid: text('zoom_meeting_uuid').notNull(),
+    zoomRecordingId: text('zoom_recording_id'),
+    zoomRecordingManifest: jsonb('zoom_recording_manifest').default([]),
+    localSegmentPaths: jsonb('local_segment_paths'),
+    mergedFilePath: text('merged_file_path'),
+    status: varchar('status', { length: 32 })
+      .notNull()
+      .default('DISCOVERED'),
+
+    recordingStart: timestamp('recording_start', {
+      withTimezone: true,
+      mode: 'string',
+    }),
+    recordingEnd: timestamp('recording_end', {
+      withTimezone: true,
+      mode: 'string',
+    }),
+
+    createdAt: timestamp('created_at', {
+      withTimezone: true,
+      mode: 'string',
+    }).defaultNow(),
+    updatedAt: timestamp('updated_at', {
+      withTimezone: true,
+      mode: 'string',
+    }).defaultNow(),
+  },
+  (table) => ({
+    uniqSessionRecordingPartUuid: uniqueIndex(
+      'uniq_session_recording_part_uuid',
+    ).on(table.sessionId, table.zoomMeetingUuid),
+    parentIdx: index('idx_session_recording_parts_parent').on(
+      table.sessionRecordingId,
+    ),
+    sessionMeetingIdx: index(
+      'idx_session_recording_parts_session_meeting',
+    ).on(table.sessionId, table.zoomMeetingId),
+  }),
 );
 
 export const zuvyMentorSessionRecordings = main.table(
@@ -5096,5 +5157,3 @@ export const zuvyLearnerLeaderboardRelations = relations(zuvyLearnerLeaderboard,
     references: [zuvyBootcamps.id],
   }),
 }));
-
-

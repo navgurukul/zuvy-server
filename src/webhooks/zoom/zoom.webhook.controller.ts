@@ -202,25 +202,6 @@ export class ZoomWebhookController {
           }));
 
         await db.execute(sql`
-          UPDATE zuvy_session_recordings
-          SET
-            zoom_recording_manifest = ${JSON.stringify(manifest)},
-            status = 'DISCOVERED',
-            recording_start = ${payload.object.start_time},
-            recording_end = ${payload.object.recording_files?.[0]?.recording_end},
-            segments_count = ${manifest.length},
-            retry_count = 0,
-            last_error = NULL,
-            next_retry_at = NULL,
-            updated_at = NOW()
-          WHERE session_id = ${session.id}
-            AND (
-              zoom_meeting_id = ${meetingId}
-              OR zoom_meeting_uuid = ${meetingUuid}
-            )
-        `);
-
-        await db.execute(sql`
           INSERT INTO zuvy_session_recordings (
             session_id,
             zoom_meeting_id,
@@ -232,7 +213,7 @@ export class ZoomWebhookController {
             segments_count,
             retry_count
           )
-          SELECT
+          VALUES (
             ${session.id},
             ${meetingId},
             ${meetingUuid},
@@ -242,15 +223,119 @@ export class ZoomWebhookController {
             ${payload.object.recording_files?.[0]?.recording_end},
             ${manifest.length},
             0
-          WHERE NOT EXISTS (
-            SELECT 1
-            FROM zuvy_session_recordings
-            WHERE session_id = ${session.id}
-              AND (
-                zoom_meeting_id = ${meetingId}
-                OR zoom_meeting_uuid = ${meetingUuid}
-              )
           )
+          ON CONFLICT (session_id, zoom_meeting_id)
+          DO UPDATE SET
+            status = CASE
+              WHEN zuvy_session_recordings.status IN ('COMPLETED', 'PROCESSING_UPLOAD')
+                THEN zuvy_session_recordings.status
+              ELSE 'DISCOVERED'
+            END,
+            retry_count = CASE
+              WHEN zuvy_session_recordings.status IN ('COMPLETED', 'PROCESSING_UPLOAD')
+                THEN zuvy_session_recordings.retry_count
+              ELSE 0
+            END,
+            last_error = CASE
+              WHEN zuvy_session_recordings.status IN ('COMPLETED', 'PROCESSING_UPLOAD')
+                THEN zuvy_session_recordings.last_error
+              ELSE NULL
+            END,
+            next_retry_at = CASE
+              WHEN zuvy_session_recordings.status IN ('COMPLETED', 'PROCESSING_UPLOAD')
+                THEN zuvy_session_recordings.next_retry_at
+              ELSE NULL
+            END,
+            updated_at = NOW()
+        `);
+
+        const parentResult = await db.execute(sql`
+          SELECT id
+          FROM zuvy_session_recordings
+          WHERE session_id = ${session.id}
+            AND zoom_meeting_id = ${meetingId}
+          LIMIT 1
+        `);
+        const parentId = parentResult.rows?.[0]?.id;
+
+        if (!parentId) {
+          throw new Error(
+            `Recording parent row not found for session ${session.id}, meeting ${meetingId}`,
+          );
+        }
+
+        if (meetingUuid) {
+          await db.execute(sql`
+            INSERT INTO zuvy_session_recording_parts (
+              session_recording_id,
+              session_id,
+              zoom_meeting_id,
+              zoom_meeting_uuid,
+              zoom_recording_id,
+              zoom_recording_manifest,
+              status,
+              recording_start,
+              recording_end
+            )
+            VALUES (
+              ${parentId},
+              ${session.id},
+              ${meetingId},
+              ${meetingUuid},
+              ${manifest[0]?.id || null},
+              ${JSON.stringify(manifest)},
+              'DISCOVERED',
+              ${manifest[0]?.recording_start || payload.object.start_time},
+              ${manifest[manifest.length - 1]?.recording_end || payload.object.recording_files?.[0]?.recording_end}
+            )
+            ON CONFLICT (session_id, zoom_meeting_uuid)
+            DO UPDATE SET
+              session_recording_id = EXCLUDED.session_recording_id,
+              zoom_recording_id = EXCLUDED.zoom_recording_id,
+              zoom_recording_manifest = EXCLUDED.zoom_recording_manifest,
+              status = 'DISCOVERED',
+              recording_start = EXCLUDED.recording_start,
+              recording_end = EXCLUDED.recording_end,
+              updated_at = NOW()
+          `);
+        }
+
+        await db.execute(sql`
+          WITH part_segments AS (
+            SELECT
+              p.session_recording_id,
+              segment.value AS segment
+            FROM zuvy_session_recording_parts p
+            CROSS JOIN LATERAL jsonb_array_elements(p.zoom_recording_manifest) AS segment(value)
+            WHERE p.session_recording_id = ${parentId}
+          ),
+          aggregate_manifest AS (
+            SELECT
+              session_recording_id,
+              jsonb_agg(
+                segment
+                ORDER BY
+                  segment->>'recording_start',
+                  segment->>'recording_end',
+                  segment->>'id'
+              ) AS manifest,
+              MIN((segment->>'recording_start')::timestamptz) AS recording_start,
+              MAX((segment->>'recording_end')::timestamptz) AS recording_end,
+              COUNT(*) AS segments_count
+            FROM part_segments
+            GROUP BY session_recording_id
+          )
+          UPDATE zuvy_session_recordings r
+          SET
+            zoom_recording_id = aggregate_manifest.manifest->0->>'id',
+            zoom_recording_manifest = aggregate_manifest.manifest,
+            segments_count = aggregate_manifest.segments_count,
+            recording_start = aggregate_manifest.recording_start,
+            recording_end = aggregate_manifest.recording_end,
+            metadata_verified = TRUE,
+            updated_at = NOW()
+          FROM aggregate_manifest
+          WHERE r.id = aggregate_manifest.session_recording_id
         `);
 
         // Also update mentor session recordings
@@ -303,13 +388,10 @@ export class ZoomWebhookController {
           FROM zuvy_sessions s
           WHERE s.zoom_meeting_id = ${meetingId}
             AND NOT EXISTS (
-              SELECT 1
-              FROM zuvy_session_recordings r
-              WHERE r.session_id = s.id
-                AND (
-                  r.zoom_meeting_id = ${meetingId}
-                  OR r.zoom_meeting_uuid = ${meetingUuid}
-                )
+            SELECT 1
+            FROM zuvy_session_recordings r
+            WHERE r.session_id = s.id
+              AND r.zoom_meeting_id = ${meetingId}
             )
         `);
 

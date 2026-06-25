@@ -17,6 +17,9 @@ const RECORDING_WORKER_ENABLED =
 const YOUTUBE_UPLOAD_ENABLED = process.env.YOUTUBE_UPLOAD_ENABLED === 'true';
 
 const MAX_RETRIES = 5;
+const FINAL_UPLOAD_GRACE_MINUTES = Number(
+  process.env.RECORDING_FINAL_UPLOAD_GRACE_MINUTES || 5,
+);
 
 type RecordingJob = {
   id: number;
@@ -43,6 +46,13 @@ type RecordingSegment = {
   recording_end?: string;
   meeting_uuid?: string;
 };
+
+class RecordingDeferredError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'RecordingDeferredError';
+  }
+}
 
 @Injectable()
 export class RecordingWorkerService implements OnModuleInit {
@@ -243,8 +253,16 @@ export class RecordingWorkerService implements OnModuleInit {
     WHERE id = (
       SELECT id
       FROM zuvy_session_recordings
-      WHERE status IN ('DISCOVERED', 'FAILED', 'METADATA_READY', 'DOWNLOADING', 'DOWNLOADED', 'MERGED')
-        AND status NOT LIKE 'PROCESSING_%'
+      WHERE (
+          (
+            status IN ('DISCOVERED', 'FAILED', 'METADATA_READY', 'DOWNLOADING', 'DOWNLOADED', 'MERGED')
+            AND status NOT LIKE 'PROCESSING_%'
+          )
+          OR (
+            status IN ('PROCESSING_METADATA', 'PROCESSING_DOWNLOAD', 'MERGING', 'PROCESSING_UPLOAD')
+            AND updated_at < NOW() - INTERVAL '15 minutes'
+          )
+        )
         AND status != 'PERMANENT_FAILED'
         AND retry_count < ${MAX_RETRIES}
         AND (next_retry_at IS NULL OR next_retry_at <= NOW())
@@ -273,8 +291,16 @@ export class RecordingWorkerService implements OnModuleInit {
     WHERE id = (
       SELECT id
       FROM zuvy_mentor_session_recordings
-      WHERE status IN ('DISCOVERED', 'FAILED', 'METADATA_READY', 'DOWNLOADING')
-        AND status NOT LIKE 'PROCESSING_%'
+      WHERE (
+          (
+            status IN ('DISCOVERED', 'FAILED', 'METADATA_READY', 'DOWNLOADING')
+            AND status NOT LIKE 'PROCESSING_%'
+          )
+          OR (
+            status IN ('PROCESSING_METADATA', 'PROCESSING_DOWNLOAD', 'PROCESSING_UPLOAD')
+            AND updated_at < NOW() - INTERVAL '15 minutes'
+          )
+        )
         AND status != 'PERMANENT_FAILED'
         AND retry_count < ${MAX_RETRIES}
         AND (next_retry_at IS NULL OR next_retry_at <= NOW())
@@ -336,6 +362,11 @@ export class RecordingWorkerService implements OnModuleInit {
           return;
       }
     } catch (error: any) {
+      if (error?.name === 'RecordingDeferredError') {
+        this.logJob('log', job, error.message);
+        return;
+      }
+
       await this.markFailed(job, error);
     }
   }
@@ -357,6 +388,34 @@ export class RecordingWorkerService implements OnModuleInit {
   // STEP 1 — FETCH ZOOM METADATA
   // =====================================================
   private async fetchZoomMetadata(job: any) {
+    const existingManifest = this.parseJsonArray<RecordingSegment>(
+      job.zoom_recording_manifest,
+    );
+
+    if (job.table === 'session' && existingManifest.length) {
+      const primaryMp4 = existingManifest[0];
+
+      await db.execute(sql`
+        UPDATE zuvy_session_recordings
+        SET
+          zoom_recording_id = ${primaryMp4.id},
+          segments_count = ${existingManifest.length},
+          metadata_verified = TRUE,
+          recording_start = ${existingManifest[0]?.recording_start || null},
+          recording_end = ${existingManifest[existingManifest.length - 1]?.recording_end || null},
+          status = 'METADATA_READY',
+          updated_at = NOW()
+        WHERE id = ${job.id}
+      `);
+
+      this.logJob('log', job, 'Using stored Zoom recording manifest', {
+        segmentCount: existingManifest.length,
+        recordingIds: existingManifest.map((segment) => segment.id),
+      });
+
+      return;
+    }
+
     let recResp: any;
 
     try {
@@ -585,7 +644,7 @@ export class RecordingWorkerService implements OnModuleInit {
         if (!fs.existsSync(finalPath)) {
           await this.downloadRecordingToFile(
             job.zoom_meeting_id,
-            segment.id,
+            segment,
             finalPath,
             job,
           );
@@ -622,13 +681,22 @@ export class RecordingWorkerService implements OnModuleInit {
   // =====================================================
   private async downloadRecordingToFile(
     meetingId: string | number,
-    recordingFileId: string,
+    recordingSegmentOrId: RecordingSegment | string,
     finalPath: string,
     job?: any,
   ) {
     let recResp;
+    const recordingSegment =
+      typeof recordingSegmentOrId === 'string'
+        ? ({ id: recordingSegmentOrId } as RecordingSegment)
+        : recordingSegmentOrId;
+    const recordingFileId = recordingSegment.id;
 
-    if (job?.zoom_meeting_uuid) {
+    if (recordingSegment.meeting_uuid) {
+      recResp = await this.zoomService.getZoomRecordingFilesByUuid(
+        recordingSegment.meeting_uuid,
+      );
+    } else if (job?.zoom_meeting_uuid) {
       recResp = await this.zoomService.getZoomRecordingFilesByUuid(
         job.zoom_meeting_uuid,
       );
@@ -858,22 +926,45 @@ export class RecordingWorkerService implements OnModuleInit {
           fs.writeFileSync(concatListPath, concatList);
 
           try {
-            execFileSync(
-              'ffmpeg',
-              [
-                '-y',
-                '-f',
-                'concat',
-                '-safe',
-                '0',
-                '-i',
-                concatListPath,
-                '-c',
-                'copy',
-                mergedPath,
-              ],
-              { stdio: 'ignore' },
-            );
+            try {
+              execFileSync(
+                'ffmpeg',
+                [
+                  '-y',
+                  '-f',
+                  'concat',
+                  '-safe',
+                  '0',
+                  '-i',
+                  concatListPath,
+                  '-c',
+                  'copy',
+                  mergedPath,
+                ],
+                { stdio: 'ignore' },
+              );
+            } catch {
+              execFileSync(
+                'ffmpeg',
+                [
+                  '-y',
+                  '-f',
+                  'concat',
+                  '-safe',
+                  '0',
+                  '-i',
+                  concatListPath,
+                  '-c:v',
+                  'libx264',
+                  '-preset',
+                  'veryfast',
+                  '-c:a',
+                  'aac',
+                  mergedPath,
+                ],
+                { stdio: 'ignore' },
+              );
+            }
           } finally {
             try {
               fs.unlinkSync(concatListPath);
@@ -899,7 +990,7 @@ export class RecordingWorkerService implements OnModuleInit {
       UPDATE zuvy_session_recordings
       SET
         merged_file_path = ${mergedPath},
-        is_final_merged = TRUE,
+        is_final_merged = FALSE,
         status = 'MERGED'
       WHERE id = ${job.id}
     `);
@@ -913,6 +1004,175 @@ export class RecordingWorkerService implements OnModuleInit {
   // =====================================================
   // STEP 3 — UPLOAD TO YOUTUBE (IDEMPOTENT)
   // =====================================================
+  private async getSingleJobUploadPath(job: any): Promise<string> {
+    const rec = await db.execute(sql`
+      SELECT merged_file_path
+      FROM ${sql.raw(this.getTableName(job))}
+      WHERE id = ${job.id}
+    `);
+
+    const mergedPath = rec.rows?.[0]?.merged_file_path as string | null;
+
+    return (
+      mergedPath ||
+      path.join(
+        process.cwd(),
+        'temp-recordings',
+        this.getRecordingFileName(job),
+      )
+    );
+  }
+
+  private async deferSessionUpload(
+    job: RecordingJob,
+    reason: string,
+    minutes = 5,
+  ): Promise<never> {
+    await db.execute(sql`
+      UPDATE zuvy_session_recordings
+      SET
+        status = 'MERGED',
+        next_retry_at = NOW() + (${minutes} || ' minutes')::interval,
+        last_error = ${reason},
+        updated_at = NOW()
+      WHERE id = ${job.id}
+    `);
+
+    throw new RecordingDeferredError(reason);
+  }
+
+  private async assertSessionReadyForFinalUpload(job: RecordingJob) {
+    const sessionResult = await db.execute(sql`
+      SELECT id, end_time, status, youtube_video_id, s3link, final_uploaded
+      FROM zuvy_sessions
+      WHERE id = ${job.session_id}
+      LIMIT 1
+    `);
+
+    const session = sessionResult.rows?.[0] as any;
+    if (!session) {
+      throw new Error(`Session ${job.session_id} not found`);
+    }
+
+    if (session.final_uploaded && session.youtube_video_id) {
+      await db.execute(sql`
+        UPDATE zuvy_session_recordings
+        SET
+          status = 'COMPLETED',
+          drive_file_id = ${session.youtube_video_id},
+          drive_link = ${session.s3link},
+          updated_at = NOW()
+        WHERE session_id = ${job.session_id}
+          AND status IN ('MERGED', 'PROCESSING_UPLOAD')
+      `);
+
+      this.logJob('log', job, 'Session already has final YouTube upload', {
+        videoId: session.youtube_video_id,
+      });
+      throw new RecordingDeferredError(
+        `Session ${job.session_id} is already uploaded`,
+      );
+    }
+
+    const readiness = await db.execute(sql`
+      SELECT (
+        CASE
+          WHEN ${session.end_time} IS NOT NULL THEN
+            ${session.end_time}::timestamptz
+              + (${FINAL_UPLOAD_GRACE_MINUTES} || ' minutes')::interval <= NOW()
+          ELSE
+            ${session.status} = 'completed'
+        END
+      ) AS ready
+    `);
+
+    if (!readiness.rows?.[0]?.ready) {
+      await this.deferSessionUpload(
+        job,
+        `Session ${job.session_id} has not ended yet; final upload deferred`,
+        FINAL_UPLOAD_GRACE_MINUTES,
+      );
+    }
+
+    return;
+  }
+
+  private async getSessionUploadPath(job: RecordingJob): Promise<string> {
+    await this.assertSessionReadyForFinalUpload(job);
+
+    const rec = await db.execute(sql`
+      SELECT merged_file_path
+      FROM zuvy_session_recordings
+      WHERE id = ${job.id}
+      LIMIT 1
+    `);
+
+    const mergedPath = rec.rows?.[0]?.merged_file_path as string | null;
+
+    if (!mergedPath) {
+      throw new Error(`Merged file path missing for job ${job.id}`);
+    }
+
+    await db.execute(sql`
+      UPDATE zuvy_session_recordings
+      SET is_final_merged = TRUE, updated_at = NOW()
+      WHERE id = ${job.id}
+    `);
+
+    return mergedPath;
+  }
+
+  private async concatRecordings(
+    inputPaths: string[],
+    outputPath: string,
+    prefix: string,
+  ) {
+    const { execFileSync } = require('child_process');
+
+    if (inputPaths.length === 1) {
+      execFileSync(
+        'ffmpeg',
+        ['-y', '-i', inputPaths[0], '-c', 'copy', outputPath],
+        { stdio: 'ignore' },
+      );
+      return;
+    }
+
+    const tempDir = path.dirname(outputPath);
+    const concatListPath = path.join(tempDir, `${prefix}-final-concat.txt`);
+    const concatList = inputPaths
+      .map(
+        (inputPath) =>
+          `file '${inputPath.replace(/\\/g, '/').replace(/'/g, "'\\''")}'`,
+      )
+      .join('\n');
+
+    fs.writeFileSync(concatListPath, concatList);
+
+    try {
+      execFileSync(
+        'ffmpeg',
+        [
+          '-y',
+          '-f',
+          'concat',
+          '-safe',
+          '0',
+          '-i',
+          concatListPath,
+          '-c',
+          'copy',
+          outputPath,
+        ],
+        { stdio: 'ignore' },
+      );
+    } finally {
+      try {
+        fs.unlinkSync(concatListPath);
+      } catch {}
+    }
+  }
+
   private async getYoutubeUploadTitle(job: RecordingJob): Promise<string> {
     if (job.table === 'session') {
       const result = await db.execute(sql`
@@ -985,21 +1245,10 @@ export class RecordingWorkerService implements OnModuleInit {
       return;
     }
 
-    const rec = await db.execute(sql`
-  SELECT merged_file_path
-  FROM ${sql.raw(this.getTableName(job))}
-  WHERE id = ${job.id}
-`);
-
-    const mergedPath = rec.rows?.[0]?.merged_file_path as string | null;
-
-    const filePath: string =
-      mergedPath ||
-      path.join(
-        process.cwd(),
-        'temp-recordings',
-        this.getRecordingFileName(job),
-      );
+    const filePath =
+      job.table === 'session'
+        ? await this.getSessionUploadPath(job)
+        : await this.getSingleJobUploadPath(job);
 
     if (!fs.existsSync(filePath)) {
       throw new Error('Merged file not found for upload');
@@ -1088,7 +1337,8 @@ export class RecordingWorkerService implements OnModuleInit {
             status = 'COMPLETED',
             drive_file_id = ${videoId},
             drive_link = ${videoUrl}
-          WHERE id = ${job.id}
+          WHERE session_id = ${job.session_id}
+            AND status IN ('MERGED', 'PROCESSING_UPLOAD', 'COMPLETED')
         `);
 
         await db.execute(sql`
@@ -1096,6 +1346,7 @@ export class RecordingWorkerService implements OnModuleInit {
           SET
             youtube_video_id = ${videoId},
             s3link = ${videoUrl},
+            final_video_path = ${filePath},
             final_uploaded = TRUE
           WHERE id = ${job.session_id}
         `);
