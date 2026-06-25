@@ -4561,6 +4561,22 @@ export const zuvyMentorSessionRecordings = main.table(
     zoomMeetingUuid: text('zoom_meeting_uuid').default(null),
     zoomRecordingId: text('zoom_recording_id'),
 
+    // stores ALL MP4 segments from Zoom
+    zoomRecordingManifest: jsonb('zoom_recording_manifest'),
+    // stores local temp paths before merge
+    localSegmentPaths: jsonb('local_segment_paths'),
+    // final merged file path
+    mergedFilePath: text('merged_file_path'),
+    // metadata verification flag
+    metadataVerified: boolean('metadata_verified').default(false),
+    // number of segments detected
+    segmentsCount: integer('segments_count').default(0),
+
+    liveCheckedAt: timestamp('live_checked_at', {
+      withTimezone: true,
+      mode: 'string',
+    }),
+
     status: varchar('status', { length: 32 })
       .notNull()
       .default('DISCOVERED'),
@@ -4574,6 +4590,17 @@ export const zuvyMentorSessionRecordings = main.table(
 
     driveFileId: text('drive_file_id'),
     driveLink: text('drive_link'),
+
+    recordingStart: timestamp('recording_start', {
+      withTimezone: true,
+      mode: 'string',
+    }),
+    recordingEnd: timestamp('recording_end', {
+      withTimezone: true,
+      mode: 'string',
+    }),
+
+    isFinalMerged: boolean('is_final_merged').default(false),
 
     createdAt: timestamp('created_at', {
       withTimezone: true,
