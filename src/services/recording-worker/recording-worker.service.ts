@@ -266,14 +266,16 @@ export class RecordingWorkerService implements OnModuleInit {
       status = CASE
         WHEN status IN ('DISCOVERED', 'FAILED') THEN 'PROCESSING_METADATA'
         WHEN status = 'METADATA_READY' THEN 'PROCESSING_DOWNLOAD'
-        WHEN status = 'DOWNLOADING' THEN 'PROCESSING_UPLOAD'
+        WHEN status = 'DOWNLOADING' THEN 'DOWNLOADED'
+        WHEN status = 'DOWNLOADED' THEN 'MERGING'
+        WHEN status = 'MERGED' THEN 'PROCESSING_UPLOAD'
         ELSE status
       END,
       updated_at = NOW()
     WHERE id = (
       SELECT id
       FROM zuvy_mentor_session_recordings
-      WHERE status IN ('DISCOVERED', 'FAILED', 'METADATA_READY', 'DOWNLOADING')
+      WHERE status IN ('DISCOVERED', 'FAILED', 'METADATA_READY', 'DOWNLOADING', 'DOWNLOADED', 'MERGED')
         AND status NOT LIKE 'PROCESSING_%'
         AND status != 'PERMANENT_FAILED'
         AND retry_count < ${MAX_RETRIES}
@@ -516,6 +518,11 @@ export class RecordingWorkerService implements OnModuleInit {
         UPDATE zuvy_mentor_session_recordings
         SET
           zoom_recording_id = ${primaryMp4.id},
+          zoom_recording_manifest = ${JSON.stringify(manifest)},
+          segments_count = ${manifest.length},
+          metadata_verified = TRUE,
+          recording_start = ${manifest[0]?.recording_start || null},
+          recording_end = ${manifest[manifest.length - 1]?.recording_end || null},
           status = 'METADATA_READY'
         WHERE id = ${job.id}
       `);
@@ -597,7 +604,10 @@ export class RecordingWorkerService implements OnModuleInit {
       if (job.table === 'mentor') {
         await db.execute(sql`
           UPDATE zuvy_mentor_session_recordings
-          SET status = 'DOWNLOADING'
+          SET
+            local_segment_paths = ${JSON.stringify(downloadedPaths)},
+            segments_count = ${downloadedPaths.length},
+            status = 'DOWNLOADING'
           WHERE id = ${job.id}
         `);
       } else {
@@ -891,6 +901,7 @@ export class RecordingWorkerService implements OnModuleInit {
       UPDATE zuvy_mentor_session_recordings
       SET
         merged_file_path = ${mergedPath},
+        is_final_merged = TRUE,
         status = 'MERGED'
       WHERE id = ${job.id}
     `);

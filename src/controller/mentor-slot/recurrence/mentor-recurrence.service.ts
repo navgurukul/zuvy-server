@@ -11,9 +11,12 @@ import {
   zuvyMentorSlotManagement,
 } from '../../../../drizzle/schema';
 import { and, eq, sql } from 'drizzle-orm';
+import { ZoomLicenseService } from '../../zoom-license/zoom-license.service';
 
 @Injectable()
 export class MentorRecurrenceService {
+  constructor(private readonly zoomLicenseService: ZoomLicenseService) {}
+
   /* ==========================================================================
      GENERATE RECURRING SLOTS
   ========================================================================== */
@@ -40,17 +43,19 @@ export class MentorRecurrenceService {
 
     if (!recurrenceRule) throw new BadRequestException('RRULE is required');
 
+    await this.zoomLicenseService.syncLicensedUsersFromZoom();
+
+    const [mentorProfile] = await db
+      .select()
+      .from(zuvyMentorSlotManagement)
+      .where(eq(zuvyMentorSlotManagement.id, mentorSlotManagementId))
+      .limit(1);
+
+    if (!mentorProfile) {
+      throw new NotFoundException('Mentor profile not found.');
+    }
+
     if (mentorUserId) {
-      const [mentorProfile] = await db
-        .select()
-        .from(zuvyMentorSlotManagement)
-        .where(eq(zuvyMentorSlotManagement.id, mentorSlotManagementId))
-        .limit(1);
-
-      if (!mentorProfile) {
-        throw new NotFoundException('Mentor profile not found.');
-      }
-
       if (mentorProfile.mentorUserId !== BigInt(mentorUserId)) {
         throw new ForbiddenException('You do not own this mentor profile.');
       }
@@ -80,34 +85,69 @@ export class MentorRecurrenceService {
       return generatedSlots;
     }
 
-    /* Conflict Detection */
-    for (const slot of generatedSlots) {
-      const conflicts = await db
-        .select({ id: zuvyMentorSlotAvailability.id })
-        .from(zuvyMentorSlotAvailability)
-        .where(
-          and(
+    await db.transaction(async (trx) => {
+      /* Conflict Detection */
+      for (const slot of generatedSlots) {
+        const conflicts = await trx
+          .select({ id: zuvyMentorSlotAvailability.id })
+          .from(zuvyMentorSlotAvailability)
+          .innerJoin(
+            zuvyMentorSlotManagement,
             eq(
               zuvyMentorSlotAvailability.mentorSlotManagementId,
-              mentorSlotManagementId,
+              zuvyMentorSlotManagement.id,
             ),
-            sql`${zuvyMentorSlotAvailability.slotStartDateTime} < ${slot.slotEndDateTime}`,
-            sql`${zuvyMentorSlotAvailability.slotEndDateTime} > ${slot.slotStartDateTime}`,
-          ),
-        );
+          )
+          .where(
+            and(
+              eq(
+                zuvyMentorSlotManagement.mentorUserId,
+                mentorProfile.mentorUserId,
+              ),
+              sql`${zuvyMentorSlotAvailability.slotStartDateTime} < ${slot.slotEndDateTime}`,
+              sql`${zuvyMentorSlotAvailability.slotEndDateTime} > ${slot.slotStartDateTime}`,
+            ),
+          );
 
-      if (conflicts.length > 0) {
-        throw new BadRequestException(
-          'Recurring slot conflicts with existing availability.',
-        );
+        if (conflicts.length > 0) {
+          throw new BadRequestException(
+            'Recurring slot conflicts with existing mentor availability.',
+          );
+        }
       }
-    }
 
-    await db
-      .insert(zuvyMentorSlotAvailability)
-      .values(
-        generatedSlots as (typeof zuvyMentorSlotAvailability.$inferInsert)[],
-      );
+      const licenseIds: number[] = [];
+
+      for (const slot of generatedSlots) {
+        const licenseId = await this.zoomLicenseService.assignLicense(trx, {
+          instructorId: Number(mentorProfile.mentorUserId),
+          startTime: slot.slotStartDateTime,
+          endTime: slot.slotEndDateTime,
+        });
+
+        licenseIds.push(licenseId);
+      }
+
+      const createdSlots = await trx
+        .insert(zuvyMentorSlotAvailability)
+        .values(
+          generatedSlots as (typeof zuvyMentorSlotAvailability.$inferInsert)[],
+        )
+        .returning();
+
+      for (let index = 0; index < createdSlots.length; index += 1) {
+        const createdSlot = createdSlots[index];
+
+        await this.zoomLicenseService.createLicenseAssignment(trx, {
+          licenseId: licenseIds[index],
+          instructorId: Number(mentorProfile.mentorUserId),
+          mentorSlotAvailabilityId: createdSlot.id,
+          sourceType: 'mentor_slot',
+          startTime: new Date(createdSlot.slotStartDateTime),
+          endTime: new Date(createdSlot.slotEndDateTime),
+        });
+      }
+    });
 
     return { message: 'Recurring slots created successfully.' };
   }
