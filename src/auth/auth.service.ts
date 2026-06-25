@@ -13,6 +13,7 @@ import {
   zuvyPermissions,
   zuvyResources,
   zuvyPermissionsRoles,
+  zuvyUserFeatureFlags,
 } from '../../drizzle/schema';
 import { eq, inArray, and, isNull, or, isNotNull } from 'drizzle-orm';
 import { OAuth2Client } from 'google-auth-library';
@@ -33,6 +34,34 @@ export class AuthService {
   ) {
     const clientId = process.env.GOOGLE_CLIENT_ID;
     this.googleAuthClient = new OAuth2Client(clientId);
+  }
+
+  /**
+   * Checks whether the one-time tooltip should be shown for the given user.
+   * On the first call for a user it inserts a record (loginTooltip = true)
+   * and returns true. Every subsequent call finds the existing record and
+   * returns false. The UNIQUE constraint + onConflictDoNothing is race-safe.
+   */
+  private async resolveTooltipFlag(userId: bigint): Promise<boolean> {
+    const [existing] = await db
+      .select({ id: zuvyUserFeatureFlags.id })
+      .from(zuvyUserFeatureFlags)
+      .where(eq(zuvyUserFeatureFlags.userId, userId))
+      .limit(1);
+
+    if (existing) {
+      return false;
+    }
+
+    await db
+      .insert(zuvyUserFeatureFlags)
+      .values({
+        userId,
+        loginTooltip: true,
+      } as any)
+      .onConflictDoNothing();
+
+    return true;
   }
 
   async validateUser(email: string, googleUserId: string): Promise<any> {
@@ -332,9 +361,12 @@ export class AuthService {
         });
       */
 
+      const showTooltip = await this.resolveTooltipFlag(user.id);
+
       return {
         access_token,
         refresh_token,
+        showTooltip,
         user: {
           id: user.id.toString(),
           email: user.email,
