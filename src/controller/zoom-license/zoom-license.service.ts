@@ -78,6 +78,16 @@ export class ZoomLicenseService {
     );
   }
 
+  private blockingAssignmentCondition() {
+    return or(
+      and(
+        eq(licenseAssignments.sourceType, 'class_session'),
+        this.blockingSessionCondition(),
+      ),
+      eq(licenseAssignments.sourceType, 'mentor_slot'),
+    );
+  }
+
   private getBufferedEndTime(date: Date) {
     return new Date(date.getTime() + this.licenseCooldownMs);
   }
@@ -207,6 +217,8 @@ export class ZoomLicenseService {
         instructorName: users.name,
         sessionId: zuvySessions.id,
         sessionTitle: zuvySessions.title,
+        mentorSlotAvailabilityId: licenseAssignments.mentorSlotAvailabilityId,
+        sourceType: licenseAssignments.sourceType,
         startTime: licenseAssignments.startTime,
         endTime: licenseAssignments.endTime,
       })
@@ -215,14 +227,11 @@ export class ZoomLicenseService {
         zuvyUserLicenses,
         eq(licenseAssignments.licenseId, zuvyUserLicenses.id),
       )
-      .innerJoin(
-        zuvySessions,
-        eq(licenseAssignments.sessionId, zuvySessions.id),
-      )
+      .leftJoin(zuvySessions, eq(licenseAssignments.sessionId, zuvySessions.id))
       .innerJoin(users, eq(licenseAssignments.instructorId, users.id))
       .where(
         and(
-          this.blockingSessionCondition(),
+          this.blockingAssignmentCondition(),
           lt(licenseAssignments.startTime, dto.endTime),
           sql`${licenseAssignments.endTime} + ${buildZoomLicenseCooldownIntervalSql()} > ${dto.startTime}`,
           this.buildInstructorPoolCondition(
@@ -253,7 +262,12 @@ export class ZoomLicenseService {
               ? 'self'
               : 'transfer';
 
-          return `${row.licenseEmail} (${row.licenseName || 'license'}) -> ${row.instructorEmail} (${row.instructorName || 'instructor'}) [${transferLabel}] | session ${row.sessionId}: "${row.sessionTitle}" | ${row.startTime.toISOString()} -> ${row.endTime.toISOString()}`;
+          const resourceLabel =
+            row.sourceType === 'mentor_slot'
+              ? `mentor slot ${row.mentorSlotAvailabilityId}`
+              : `session ${row.sessionId}: "${row.sessionTitle}"`;
+
+          return `${row.licenseEmail} (${row.licenseName || 'license'}) -> ${row.instructorEmail} (${row.instructorName || 'instructor'}) [${transferLabel}] | ${resourceLabel} | ${row.startTime.toISOString()} -> ${row.endTime.toISOString()}`;
         })
         .join('; ') || 'none';
 
@@ -286,14 +300,11 @@ export class ZoomLicenseService {
         endTime: licenseAssignments.endTime,
       })
       .from(licenseAssignments)
-      .innerJoin(
-        zuvySessions,
-        eq(licenseAssignments.sessionId, zuvySessions.id),
-      )
+      .leftJoin(zuvySessions, eq(licenseAssignments.sessionId, zuvySessions.id))
       .innerJoin(users, eq(licenseAssignments.instructorId, users.id))
       .where(
         and(
-          this.blockingSessionCondition(),
+          this.blockingAssignmentCondition(),
           this.buildInstructorPoolCondition(
             protectedEmailList,
             instructorEmail,
@@ -362,14 +373,11 @@ export class ZoomLicenseService {
     const overlappingCount = await trx
       .select({ count: sql<number>`count(*)` })
       .from(licenseAssignments)
-      .innerJoin(
-        zuvySessions,
-        eq(licenseAssignments.sessionId, zuvySessions.id),
-      )
+      .leftJoin(zuvySessions, eq(licenseAssignments.sessionId, zuvySessions.id))
       .innerJoin(users, eq(licenseAssignments.instructorId, users.id))
       .where(
         and(
-          this.blockingSessionCondition(),
+          this.blockingAssignmentCondition(),
           lt(licenseAssignments.startTime, dto.endTime),
           sql`${licenseAssignments.endTime} + ${buildZoomLicenseCooldownIntervalSql()} > ${dto.startTime}`,
           this.buildInstructorPoolCondition(
@@ -417,13 +425,13 @@ export class ZoomLicenseService {
             db
               .select({ one: sql`1` })
               .from(licenseAssignments)
-              .innerJoin(
+              .leftJoin(
                 zuvySessions,
                 eq(licenseAssignments.sessionId, zuvySessions.id),
               )
               .where(
                 and(
-                  this.blockingSessionCondition(),
+                  this.blockingAssignmentCondition(),
                   eq(licenseAssignments.licenseId, zuvyUserLicenses.id),
                   sql`${licenseAssignments.startTime} < ${dto.endTime}`,
                   sql`${licenseAssignments.endTime} + ${buildZoomLicenseCooldownIntervalSql()} > ${dto.startTime}`,
@@ -563,6 +571,15 @@ export class ZoomLicenseService {
     const instructorIsProtected = instructorEmail
       ? protectedEmails.has(instructorEmail)
       : false;
+    const transferablePoolCapacity = instructorIsProtected
+      ? 1
+      : await this.getTransferableLicensePoolCount(trx);
+
+    if (!instructorIsProtected && transferablePoolCapacity <= 0) {
+      throw new BadRequestException(
+        'No transferable Zoom Business licenses are available. All Business licenses are protected.',
+      );
+    }
 
     await this.logLicensePoolSnapshot(
       trx,
@@ -580,9 +597,7 @@ export class ZoomLicenseService {
     });
 
     if (availableLicenses.length === 0) {
-      const poolCapacity = instructorIsProtected
-        ? 1
-        : await this.getTransferableLicensePoolCount(trx);
+      let poolCapacity = transferablePoolCapacity;
       let totalCount = instructorIsProtected
         ? await this.getActiveLicensePoolCount(trx, {
             instructorEmail,
@@ -601,7 +616,14 @@ export class ZoomLicenseService {
           ? await this.getActiveLicensePoolCount(trx, {
               instructorEmail,
             })
-          : poolCapacity;
+          : await this.getTransferableLicensePoolCount(trx);
+        poolCapacity = instructorIsProtected ? 1 : Number(totalCount);
+
+        if (!instructorIsProtected && poolCapacity <= 0) {
+          throw new BadRequestException(
+            'No transferable Zoom Business licenses are available. All Business licenses are protected.',
+          );
+        }
       }
 
       if (availableLicenses.length > 0) {
@@ -670,14 +692,11 @@ export class ZoomLicenseService {
         email: users.email,
       })
       .from(licenseAssignments)
-      .innerJoin(
-        zuvySessions,
-        eq(licenseAssignments.sessionId, zuvySessions.id),
-      )
+      .leftJoin(zuvySessions, eq(licenseAssignments.sessionId, zuvySessions.id))
       .innerJoin(users, eq(licenseAssignments.instructorId, users.id))
       .where(
         and(
-          this.blockingSessionCondition(),
+          this.blockingAssignmentCondition(),
           lt(licenseAssignments.startTime, dto.endTime),
           sql`${licenseAssignments.endTime} + ${buildZoomLicenseCooldownIntervalSql()} > ${dto.startTime}`,
           this.buildInstructorPoolCondition(
@@ -709,6 +728,177 @@ export class ZoomLicenseService {
     return assignedLicenseId;
   }
 
+  private buildZoomScopeError(
+    action: 'list' | 'transfer',
+    sourceEmail?: string,
+    targetEmail?: string,
+  ) {
+    if (action === 'list') {
+      return 'Cannot inspect currently licensed Zoom users because the configured Zoom access token is missing the required admin read scope (user:read:list_users:admin). Please reconnect Zoom with admin permissions or update the OAuth app scopes.';
+    }
+
+    return `Cannot transfer the Zoom license from ${sourceEmail} to ${targetEmail} because the configured Zoom access token is missing the required admin scopes (user:update:user and user:update:user:admin). Please reconnect Zoom with admin permissions or update the OAuth app scopes.`;
+  }
+
+  private async isZoomEmailFreeForTimeRange(
+    email: string,
+    startTime: Date,
+    endTime: Date,
+  ) {
+    const overlapping = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(licenseAssignments)
+      .leftJoin(zuvySessions, eq(licenseAssignments.sessionId, zuvySessions.id))
+      .innerJoin(users, eq(licenseAssignments.instructorId, users.id))
+      .where(
+        and(
+          this.blockingAssignmentCondition(),
+          eq(sql<string>`lower(${users.email})`, email.toLowerCase()),
+          sql`${licenseAssignments.startTime} < ${endTime}`,
+          sql`${licenseAssignments.endTime} + ${buildZoomLicenseCooldownIntervalSql()} > ${startTime}`,
+        ),
+      );
+
+    return Number(overlapping[0]?.count || 0) === 0;
+  }
+
+  private async findAvailableLicensedDonor(
+    instructorEmail: string,
+    startTime: Date,
+    endTime: Date,
+  ) {
+    const licensedUsers = await this.zoomService.listAuthorizedUsers({
+      status: 'active',
+      hostType: 'licensed',
+      page_size: 300,
+    });
+
+    if (!licensedUsers.success) {
+      if (
+        /does not contain scopes/i.test(licensedUsers.error || '') &&
+        /user:read:list_users:admin/i.test(licensedUsers.error || '')
+      ) {
+        throw new BadRequestException(this.buildZoomScopeError('list'));
+      }
+
+      throw new BadRequestException(
+        `Failed to inspect Zoom licensed users: ${licensedUsers.error || 'Unknown Zoom error'}`,
+      );
+    }
+
+    const protectedEmails = await this.getProtectedLicenseEmails();
+    const donors = (licensedUsers.data?.users || [])
+      .filter(
+        (user) =>
+          user.email?.trim().toLowerCase() !== instructorEmail.toLowerCase(),
+      )
+      .filter(
+        (user) => !protectedEmails.has(user.email?.trim().toLowerCase() || ''),
+      );
+
+    for (const donor of donors) {
+      const donorEmail = donor.email?.trim().toLowerCase();
+
+      if (
+        donorEmail &&
+        (await this.isZoomEmailFreeForTimeRange(donorEmail, startTime, endTime))
+      ) {
+        return donorEmail;
+      }
+    }
+
+    return null;
+  }
+
+  async ensureHostLicensedForWindow(
+    hostEmail: string,
+    startTime: Date,
+    endTime: Date,
+  ) {
+    let licenseResult = await this.zoomService.ensureLicensedUser(
+      hostEmail,
+      '',
+      '',
+    );
+
+    if (licenseResult.success && licenseResult.licensed) {
+      return;
+    }
+
+    const needsSeatTransfer =
+      licenseResult.step === 'license' ||
+      /license/i.test(licenseResult.error || '') ||
+      /maximum number of .* paying users/i.test(licenseResult.error || '');
+
+    const isZoomLicensePoolFull =
+      licenseResult.step === 'verify' &&
+      /currently basic/i.test(licenseResult.error || '');
+
+    if (!needsSeatTransfer && !isZoomLicensePoolFull) {
+      throw new BadRequestException(
+        `Failed to assign Zoom license to ${hostEmail}: ${licenseResult.error || 'Unknown Zoom licensing error'}`,
+      );
+    }
+
+    const donorEmail = await this.findAvailableLicensedDonor(
+      hostEmail,
+      startTime,
+      endTime,
+    );
+
+    if (!donorEmail) {
+      throw new BadRequestException(
+        `No free licensed Zoom user is available to transfer a seat to ${hostEmail} for this session time.`,
+      );
+    }
+
+    const downgradeResult = await this.zoomService.downgradeUser(donorEmail);
+
+    if (!downgradeResult.success) {
+      if (
+        /does not contain scopes/i.test(downgradeResult.error || '') &&
+        /user:update:user(?::admin)?/i.test(downgradeResult.error || '')
+      ) {
+        throw new BadRequestException(
+          this.buildZoomScopeError('transfer', donorEmail, hostEmail),
+        );
+      }
+
+      throw new BadRequestException(
+        `Failed to transfer Zoom license from ${donorEmail} to ${hostEmail}: ${downgradeResult.error}`,
+      );
+    }
+
+    licenseResult = await this.zoomService.ensureLicensedUser(
+      hostEmail,
+      '',
+      '',
+    );
+
+    if (licenseResult.success && licenseResult.licensed) {
+      this.logger.log(
+        `Transferred Zoom license from ${donorEmail} to ${hostEmail} for ${startTime.toISOString()} - ${endTime.toISOString()}.`,
+      );
+      return;
+    }
+
+    const rollbackResult = await this.zoomService.ensureLicensedUser(
+      donorEmail,
+      '',
+      '',
+    );
+
+    if (!rollbackResult.success || !rollbackResult.licensed) {
+      this.logger.error(
+        `Failed to restore Zoom license to donor ${donorEmail} after unsuccessful transfer to ${hostEmail}.`,
+      );
+    }
+
+    throw new BadRequestException(
+      `Failed to assign Zoom license to ${hostEmail}: ${licenseResult.error || 'Unknown Zoom licensing error'}`,
+    );
+  }
+
   /**
    * Internal method to finalize a license assignment record.
    * Should be called within a transaction after the session is saved.
@@ -718,18 +908,55 @@ export class ZoomLicenseService {
     dto: {
       licenseId: number;
       instructorId: number;
-      sessionId: number;
+      sessionId?: number;
+      mentorSlotAvailabilityId?: number;
+      sourceType?: 'class_session' | 'mentor_slot';
       startTime: Date;
       endTime: Date;
     },
   ) {
+    const sourceType =
+      dto.sourceType ??
+      (dto.mentorSlotAvailabilityId ? 'mentor_slot' : 'class_session');
+
+    if (sourceType === 'class_session' && !dto.sessionId) {
+      throw new BadRequestException(
+        'sessionId is required for class license assignment.',
+      );
+    }
+
+    if (sourceType === 'mentor_slot' && !dto.mentorSlotAvailabilityId) {
+      throw new BadRequestException(
+        'mentorSlotAvailabilityId is required for mentor slot license assignment.',
+      );
+    }
+
     await trx.insert(licenseAssignments).values({
       licenseId: dto.licenseId,
       instructorId: dto.instructorId,
-      sessionId: dto.sessionId,
+      sessionId: dto.sessionId ?? null,
+      mentorSlotAvailabilityId: dto.mentorSlotAvailabilityId ?? null,
+      sourceType,
       startTime: dto.startTime,
       endTime: dto.endTime,
     } as any);
+  }
+
+  async releaseMentorSlotAssignment(
+    trx: any,
+    mentorSlotAvailabilityId: number,
+  ) {
+    await trx
+      .delete(licenseAssignments)
+      .where(
+        and(
+          eq(licenseAssignments.sourceType, 'mentor_slot'),
+          eq(
+            licenseAssignments.mentorSlotAvailabilityId,
+            mentorSlotAvailabilityId,
+          ),
+        ),
+      );
   }
 
   async getInstructorLicenses(instructorId: number) {
@@ -753,6 +980,7 @@ export class ZoomLicenseService {
   }
 
   async getDashboard() {
+    const syncedLicensedUsers = await this.syncLicensedUsersFromZoom();
     const now = new Date();
 
     const totalLicenses = await this.getActiveLicensePoolCount();
@@ -760,13 +988,10 @@ export class ZoomLicenseService {
     const activeAssignments = await db
       .select({ count: sql<number>`count(*)` })
       .from(licenseAssignments)
-      .innerJoin(
-        zuvySessions,
-        eq(licenseAssignments.sessionId, zuvySessions.id),
-      )
+      .leftJoin(zuvySessions, eq(licenseAssignments.sessionId, zuvySessions.id))
       .where(
         and(
-          this.blockingSessionCondition(),
+          this.blockingAssignmentCondition(),
           lt(licenseAssignments.startTime, now),
           gt(licenseAssignments.endTime, now),
         ),
@@ -778,6 +1003,7 @@ export class ZoomLicenseService {
       totalLicenses,
       usedLicenses: usedCount,
       availableLicenses: totalLicenses - usedCount,
+      syncedLicensedUsers,
       timestamp: now,
     };
   }
@@ -824,6 +1050,8 @@ export class ZoomLicenseService {
           sessionId: zuvySessions.id,
           sessionTitle: zuvySessions.title,
           sessionStatus: zuvySessions.status,
+          mentorSlotAvailabilityId: licenseAssignments.mentorSlotAvailabilityId,
+          sourceType: licenseAssignments.sourceType,
         })
         .from(licenseAssignments)
         .innerJoin(
@@ -831,7 +1059,7 @@ export class ZoomLicenseService {
           eq(licenseAssignments.licenseId, zuvyUserLicenses.id),
         )
         .innerJoin(users, eq(licenseAssignments.instructorId, users.id))
-        .innerJoin(
+        .leftJoin(
           zuvySessions,
           eq(licenseAssignments.sessionId, zuvySessions.id),
         )
@@ -839,8 +1067,7 @@ export class ZoomLicenseService {
           and(
             lt(licenseAssignments.startTime, now),
             sql`${licenseAssignments.endTime} + ${buildZoomLicenseCooldownIntervalSql()} > ${now}`,
-            or(isNull(zuvySessions.status), ne(zuvySessions.status, 'merged')),
-            eq(zuvySessions.isZoomMeet, true),
+            this.blockingAssignmentCondition(),
           ),
         );
 
@@ -892,7 +1119,11 @@ export class ZoomLicenseService {
         assignments
           .map(
             (assignment) =>
-              `${assignment.licenseEmail} -> ${assignment.instructorEmail} (${assignment.instructorName || 'unknown'}) | session ${assignment.sessionId}: "${assignment.sessionTitle}" | ${assignment.startTime} -> ${assignment.endTime}`,
+              `${assignment.licenseEmail} -> ${assignment.instructorEmail} (${assignment.instructorName || 'unknown'}) | ${
+                assignment.sourceType === 'mentor_slot'
+                  ? `mentor slot ${assignment.mentorSlotAvailabilityId}`
+                  : `session ${assignment.sessionId}: "${assignment.sessionTitle}"`
+              } | ${assignment.startTime} -> ${assignment.endTime}`,
           )
           .join('\n') || 'none';
 

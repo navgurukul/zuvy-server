@@ -3991,9 +3991,14 @@ export const licenseAssignments = main.table('license_assignments', {
   instructorId: bigint('instructor_id', { mode: 'number' })
     .references(() => users.id)
     .notNull(),
-  sessionId: integer('session_id')
-    .references(() => zuvySessions.id)
-    .notNull(),
+  sessionId: integer('session_id').references(() => zuvySessions.id),
+  mentorSlotAvailabilityId: integer('mentor_slot_availability_id').references(
+    () => zuvyMentorSlotAvailability.id,
+    { onDelete: 'cascade' },
+  ),
+  sourceType: varchar('source_type', { length: 50 })
+    .notNull()
+    .default('class_session'),
   startTime: timestamp('start_time', {
     withTimezone: true,
     mode: 'date',
@@ -5096,5 +5101,4 @@ export const zuvyLearnerLeaderboardRelations = relations(zuvyLearnerLeaderboard,
     references: [zuvyBootcamps.id],
   }),
 }));
-
 

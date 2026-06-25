@@ -63,6 +63,16 @@ export class ClassesService {
     );
   }
 
+  private blockingZoomAssignmentCondition() {
+    return or(
+      and(
+        eq(licenseAssignments.sourceType, 'class_session'),
+        this.blockingZoomSessionCondition(),
+      ),
+      eq(licenseAssignments.sourceType, 'mentor_slot'),
+    );
+  }
+
   private async isInstructorFreeForTimeRange(
     email: string,
     startTime: Date,
@@ -72,14 +82,11 @@ export class ClassesService {
     const overlapping = await db
       .select({ count: sql<number>`count(*)` })
       .from(licenseAssignments)
-      .innerJoin(
-        zuvySessions,
-        eq(licenseAssignments.sessionId, zuvySessions.id),
-      )
+      .leftJoin(zuvySessions, eq(licenseAssignments.sessionId, zuvySessions.id))
       .innerJoin(users, eq(licenseAssignments.instructorId, users.id))
       .where(
         and(
-          this.blockingZoomSessionCondition(),
+          this.blockingZoomAssignmentCondition(),
           eq(users.email, email),
           sql`${licenseAssignments.startTime} < ${endTime}`,
           sql`${licenseAssignments.endTime} + ${buildZoomLicenseCooldownIntervalSql()} > ${bufferedStartTime}`,
@@ -1563,14 +1570,14 @@ export class ClassesService {
             const overlappingAssignments = await trx
               .select({ count: sql<number>`count(*)` })
               .from(licenseAssignments)
-              .innerJoin(
+              .leftJoin(
                 zuvySessions,
                 eq(licenseAssignments.sessionId, zuvySessions.id),
               )
               .innerJoin(users, eq(licenseAssignments.instructorId, users.id))
               .where(
                 and(
-                  this.blockingZoomSessionCondition(),
+                  this.blockingZoomAssignmentCondition(),
                   sql`${licenseAssignments.startTime} < ${new Date(original.endTime)}`,
                   sql`${licenseAssignments.endTime} + ${buildZoomLicenseCooldownIntervalSql()} > ${new Date(original.startTime)}`,
                   usingProtectedSeat
