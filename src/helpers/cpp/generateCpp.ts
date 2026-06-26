@@ -98,9 +98,15 @@ export async function generateCppTemplate(
       .map((p, index) => {
         // STRING WITH SPACES
         if (p.parameterType === 'str') {
+          const previous =
+            index > 0 ? parameters[index - 1].parameterType : null;
+
+          const needsIgnore = previous && previous !== 'str';
+
           return `
-  string ${p.parameterName};
-  ${index === 0 ? '' : "cin.ignore(numeric_limits<streamsize>::max(), '\\n');"}
+string ${p.parameterName};
+
+${needsIgnore ? "cin.ignore(numeric_limits<streamsize>::max(), '\\n');" : ''}
   getline(cin, ${p.parameterName});
 
   // Judge0 normalization for quoted strings

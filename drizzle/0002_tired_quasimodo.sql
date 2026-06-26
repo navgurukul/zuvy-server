@@ -789,5 +789,77 @@ WHERE id IN (1046, 1047);
 
 
 
-ALTER TABLE zuvy_learners_complete_profile
-ADD COLUMN profile_visibility BOOLEAN DEFAULT TRUE;
+ALTER TABLE zuvy_learner_leaderboard
+ADD CONSTRAINT unique_learner_bootcamp
+UNIQUE (learner_id, bootcamp_id);
+
+
+
+
+
+SELECT learner_id, bootcamp_id, total_points
+FROM zuvy_learner_leaderboard;
+
+
+
+SELECT bootcamp_id, COUNT(*)
+FROM zuvy_learner_leaderboard
+GROUP BY bootcamp_id;
+
+
+SELECT user_id
+FROM zuvy_batch_enrollments
+WHERE bootcamp_id = 1047;
+
+
+
+SELECT learner_id
+FROM zuvy_learner_leaderboard
+WHERE bootcamp_id = 1047;
+
+
+
+SELECT *
+FROM zuvy_student_attendance_records
+WHERE user_id = 58083;
+
+
+
+SELECT *
+FROM zuvy_chapter_tracking
+WHERE user_id = 58083;
+
+
+
+SELECT *
+FROM zuvy_batch_enrollments
+WHERE user_id = 58083;
+
+
+
+
+SELECT *
+FROM zuvy_learner_leaderboard ll
+WHERE NOT EXISTS (
+  SELECT 1
+  FROM zuvy_batch_enrollments be
+  WHERE be.user_id = ll.learner_id
+    AND be.bootcamp_id = ll.bootcamp_id
+);
+
+CREATE TABLE "zuvy_user_feature_flags" (
+    "id" SERIAL PRIMARY KEY NOT NULL,
+    "user_id" BIGINT NOT NULL,
+    "login_tooltip" BOOLEAN NOT NULL DEFAULT FALSE,
+    "shown_at" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+    CONSTRAINT "zuvy_user_feature_flags_user_id_unique" UNIQUE ("user_id"),
+
+    CONSTRAINT "zuvy_user_feature_flags_user_id_fkey"
+        FOREIGN KEY ("user_id")
+        REFERENCES "users"("id")
+        ON DELETE CASCADE
+);
+
+CREATE INDEX "zuvy_user_feature_flags_user_id_idx"
+ON "zuvy_user_feature_flags" ("user_id");

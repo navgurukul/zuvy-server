@@ -3991,9 +3991,14 @@ export const licenseAssignments = main.table('license_assignments', {
   instructorId: bigint('instructor_id', { mode: 'number' })
     .references(() => users.id)
     .notNull(),
-  sessionId: integer('session_id')
-    .references(() => zuvySessions.id)
-    .notNull(),
+  sessionId: integer('session_id').references(() => zuvySessions.id),
+  mentorSlotAvailabilityId: integer('mentor_slot_availability_id').references(
+    () => zuvyMentorSlotAvailability.id,
+    { onDelete: 'cascade' },
+  ),
+  sourceType: varchar('source_type', { length: 50 })
+    .notNull()
+    .default('class_session'),
   startTime: timestamp('start_time', {
     withTimezone: true,
     mode: 'date',
@@ -4556,6 +4561,22 @@ export const zuvyMentorSessionRecordings = main.table(
     zoomMeetingUuid: text('zoom_meeting_uuid').default(null),
     zoomRecordingId: text('zoom_recording_id'),
 
+    // stores ALL MP4 segments from Zoom
+    zoomRecordingManifest: jsonb('zoom_recording_manifest'),
+    // stores local temp paths before merge
+    localSegmentPaths: jsonb('local_segment_paths'),
+    // final merged file path
+    mergedFilePath: text('merged_file_path'),
+    // metadata verification flag
+    metadataVerified: boolean('metadata_verified').default(false),
+    // number of segments detected
+    segmentsCount: integer('segments_count').default(0),
+
+    liveCheckedAt: timestamp('live_checked_at', {
+      withTimezone: true,
+      mode: 'string',
+    }),
+
     status: varchar('status', { length: 32 })
       .notNull()
       .default('DISCOVERED'),
@@ -4569,6 +4590,17 @@ export const zuvyMentorSessionRecordings = main.table(
 
     driveFileId: text('drive_file_id'),
     driveLink: text('drive_link'),
+
+    recordingStart: timestamp('recording_start', {
+      withTimezone: true,
+      mode: 'string',
+    }),
+    recordingEnd: timestamp('recording_end', {
+      withTimezone: true,
+      mode: 'string',
+    }),
+
+    isFinalMerged: boolean('is_final_merged').default(false),
 
     createdAt: timestamp('created_at', {
       withTimezone: true,
@@ -5010,7 +5042,7 @@ export const zuvyLearnerLeaderboard = main.table(
     idxTotalPoints: index('idx_zuvy_leaderboard_total_points').on(
       table.totalPoints,
     ),
-    uniqLearnerBootcamp: unique('uniq_zuvy_leaderboard_learner_bootcamp').on(
+    uniqLearnerBootcamp: uniqueIndex('uniq_zuvy_leaderboard_learner_bootcamp').on(
       table.learnerId,
       table.bootcampId,
     ),
@@ -5097,4 +5129,35 @@ export const zuvyLearnerLeaderboardRelations = relations(zuvyLearnerLeaderboard,
   }),
 }));
 
+// ---------------------------------------------------------------------------
+// One-time feature flags per user (e.g. onboarding tooltip)
+// ---------------------------------------------------------------------------
+// A row is inserted the first time a flag is resolved for a user.
+// The UNIQUE constraint on (user_id, feature_key) guarantees idempotency.
+export const zuvyUserFeatureFlags = main.table(
+  'zuvy_user_feature_flags',
+  {
+    id: serial('id').primaryKey().notNull(),
+    userId: bigint('user_id', { mode: 'bigint' })
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    loginTooltip: boolean('login_tooltip').notNull().default(false),
+    shownAt: timestamp('shown_at', { withTimezone: true, mode: 'string' })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => ({
+    uniqUserId: unique('zuvy_user_feature_flags_user_id_unique').on(table.userId),
+    userIdIdx: index('zuvy_user_feature_flags_user_id_idx').on(table.userId),
+  }),
+);
 
+export const zuvyUserFeatureFlagsRelations = relations(
+  zuvyUserFeatureFlags,
+  ({ one }) => ({
+    user: one(users, {
+      fields: [zuvyUserFeatureFlags.userId],
+      references: [users.id],
+    }),
+  }),
+);

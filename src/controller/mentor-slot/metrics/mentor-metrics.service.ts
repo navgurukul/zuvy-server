@@ -4,43 +4,93 @@ import {
   zuvyMentorSlotBooking,
   zuvyMentorSlotAvailability,
 } from '../../../../drizzle/schema';
-import { and, eq, sql, gte } from 'drizzle-orm';
+import { and, eq, sql, gte, lte, inArray } from 'drizzle-orm';
 
 @Injectable()
 export class MentorMetricsService {
-  private getDateFilter(filter: '30days' | '3months' | 'all') {
-    const now = new Date();
-
-    switch (filter) {
-      case '30days':
-        return new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-
-      case '3months':
-        return new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
-
-      default:
-        return null;
-    }
-  }
-
   async getMentorMetrics(
     mentorUserId: bigint,
     organizationId?: number,
-    filter: '30days' | '3months' | 'all' = 'all',
+    filter: 'all' | '30d' | '3m' = 'all',
   ) {
-    const bookingConditions = [
+    const now = new Date();
+
+    let fromDate: Date | null = null;
+
+    const endOfToday = new Date();
+    endOfToday.setHours(23, 59, 59, 999);
+
+    if (filter === '30d') {
+      fromDate = new Date();
+      fromDate.setDate(fromDate.getDate() - 30);
+    }
+
+    if (filter === '3m') {
+      fromDate = new Date();
+      fromDate.setMonth(fromDate.getMonth() - 3);
+    }
+
+    /* ==========================================================
+       SESSION FILTERING (ACTUAL SESSION DATE)
+    ========================================================== */
+
+    const sessionConditions: any[] = [
       eq(zuvyMentorSlotBooking.mentorUserId, mentorUserId),
     ];
 
     if (organizationId !== undefined) {
-      bookingConditions.push(
+      sessionConditions.push(
         eq(zuvyMentorSlotBooking.organizationId, organizationId),
       );
     }
 
-    const since = this.getDateFilter(filter);
-    if (since) {
-      bookingConditions.push(gte(zuvyMentorSlotBooking.confirmedAt, since));
+    let filteredSlotIds: number[] = [];
+
+    if (fromDate) {
+      const upperBound = filter === 'all' ? null : endOfToday;
+
+      const filteredSlots = await db
+        .select({
+          id: zuvyMentorSlotAvailability.id,
+        })
+        .from(zuvyMentorSlotAvailability)
+        .where(
+          upperBound
+            ? and(
+                gte(zuvyMentorSlotAvailability.slotStartDateTime, fromDate),
+                lte(zuvyMentorSlotAvailability.slotStartDateTime, upperBound),
+              )
+            : gte(zuvyMentorSlotAvailability.slotStartDateTime, fromDate),
+        );
+
+      filteredSlotIds = filteredSlots.map((slot) => slot.id);
+
+      if (filteredSlotIds.length === 0) {
+        return {
+          sessions: {
+            total: 0,
+            completed: 0,
+            cancelled: 0,
+            missed: 0,
+            completionRate: '0.00',
+            cancellationRate: '0.00',
+          },
+          ratings: {
+            averageRating: '0.00',
+            totalRatings: 0,
+          },
+          upcomingSessions: 0,
+          utilization: {
+            totalSlots: 0,
+            usedSlots: 0,
+            utilizationRate: '0.00',
+          },
+        };
+      }
+
+      sessionConditions.push(
+        inArray(zuvyMentorSlotBooking.slotAvailabilityId, filteredSlotIds),
+      );
     }
 
     /* ==========================================================
@@ -50,24 +100,36 @@ export class MentorMetricsService {
     const [sessionCounts] = await db
       .select({
         total: sql<number>`COUNT(*)`,
-        completed: sql<number>`COUNT(*) FILTER (WHERE session_lifecycle_state = 'COMPLETED')`,
-        cancelled: sql<number>`COUNT(*) FILTER (WHERE session_lifecycle_state = 'CANCELLED')`,
-        missed: sql<number>`COUNT(*) FILTER (WHERE session_lifecycle_state = 'MISSED')`,
+        completed: sql<number>`
+          COUNT(*) FILTER (
+            WHERE session_lifecycle_state = 'COMPLETED'
+          )
+        `,
+        cancelled: sql<number>`
+          COUNT(*) FILTER (
+            WHERE session_lifecycle_state = 'CANCELLED'
+          )
+        `,
+        missed: sql<number>`
+          COUNT(*) FILTER (
+            WHERE session_lifecycle_state = 'MISSED'
+          )
+        `,
       })
       .from(zuvyMentorSlotBooking)
-      .where(and(...bookingConditions));
+      .where(and(...sessionConditions));
 
-    const total = sessionCounts.total || 0;
-    const completed = sessionCounts.completed || 0;
-    const cancelled = sessionCounts.cancelled || 0;
-    const missed = sessionCounts.missed || 0;
+    const total = Number(sessionCounts.total || 0);
+    const completed = Number(sessionCounts.completed || 0);
+    const cancelled = Number(sessionCounts.cancelled || 0);
+    const missed = Number(sessionCounts.missed || 0);
 
     const completionRate = total > 0 ? (completed / total) * 100 : 0;
 
     const cancellationRate = total > 0 ? (cancelled / total) * 100 : 0;
 
     /* ==========================================================
-       AVERAGE RATING
+       RATINGS
     ========================================================== */
 
     const [ratingData] = await db
@@ -76,65 +138,94 @@ export class MentorMetricsService {
         ratingCount: sql<number>`COUNT(mentor_rating)`,
       })
       .from(zuvyMentorSlotBooking)
-      .where(and(...bookingConditions));
+      .where(and(...sessionConditions));
 
     /* ==========================================================
        UPCOMING SESSIONS - Show ALL future sessions (no date filter)
     ========================================================== */
 
-    const upcomingConditions = [
-      eq(zuvyMentorSlotBooking.mentorUserId, mentorUserId),
-    ];
-
-    if (organizationId !== undefined) {
-      upcomingConditions.push(
-        eq(zuvyMentorSlotBooking.organizationId, organizationId),
-      );
-    }
-
-    upcomingConditions.push(
-      eq(zuvyMentorSlotBooking.sessionLifecycleState, 'SCHEDULED'),
-      sql`${zuvyMentorSlotBooking.slotAvailabilityId} IN (
-        SELECT ${zuvyMentorSlotAvailability.id}
-        FROM ${zuvyMentorSlotAvailability}
-        WHERE ${zuvyMentorSlotAvailability.slotStartDateTime} > NOW()
-      )`,
-    );
-
-    const [upcoming] = await db
+    const upcomingSlots = await db
       .select({
-        upcomingCount: sql<number>`COUNT(*)`,
+        id: zuvyMentorSlotAvailability.id,
       })
-      .from(zuvyMentorSlotBooking)
-      .where(and(...upcomingConditions));
+      .from(zuvyMentorSlotAvailability)
+      .where(
+        filter === 'all'
+          ? gte(zuvyMentorSlotAvailability.slotStartDateTime, now)
+          : and(
+              gte(zuvyMentorSlotAvailability.slotStartDateTime, now),
+              lte(zuvyMentorSlotAvailability.slotStartDateTime, endOfToday),
+            ),
+      );
+
+    const upcomingSlotIds = upcomingSlots.map((slot) => slot.id);
+
+    let upcomingCount = 0;
+
+    if (upcomingSlotIds.length > 0) {
+      const [upcoming] = await db
+        .select({
+          upcomingCount: sql<number>`COUNT(*)`,
+        })
+        .from(zuvyMentorSlotBooking)
+        .where(
+          and(
+            ...sessionConditions.filter(
+              (c) => !(typeof c === 'object' && filteredSlotIds.length > 0),
+            ),
+            eq(zuvyMentorSlotBooking.sessionLifecycleState, 'SCHEDULED'),
+            inArray(zuvyMentorSlotBooking.slotAvailabilityId, upcomingSlotIds),
+          ),
+        );
+
+      upcomingCount = Number(upcoming?.upcomingCount || 0);
+    }
 
     /* ==========================================================
        SLOT UTILIZATION
     ========================================================== */
 
+    const utilizationConditions: any[] = [];
+
+    if (fromDate) {
+      utilizationConditions.push(
+        gte(zuvyMentorSlotAvailability.slotStartDateTime, fromDate),
+      );
+    }
+
     const [slotUtilization] = await db
       .select({
         totalSlots: sql<number>`COUNT(*)`,
-        usedSlots: sql<number>`COUNT(*) FILTER (WHERE current_booked_count > 0)`,
+        usedSlots: sql<number>`
+          COUNT(*) FILTER (
+            WHERE current_booked_count > 0
+          )
+        `,
       })
       .from(zuvyMentorSlotAvailability)
       .where(
-        organizationId !== undefined
-          ? sql`${zuvyMentorSlotAvailability.mentorSlotManagementId} IN (
-    SELECT id FROM zuvy_mentor_slot_management
-    WHERE mentor_user_id = ${mentorUserId}
-      AND organization_id = ${organizationId}
-  )`
-          : sql`${zuvyMentorSlotAvailability.mentorSlotManagementId} IN (
-    SELECT id FROM zuvy_mentor_slot_management
-    WHERE mentor_user_id = ${mentorUserId}
-  )`,
+        and(
+          ...utilizationConditions,
+          organizationId !== undefined
+            ? sql`${zuvyMentorSlotAvailability.mentorSlotManagementId} IN (
+                SELECT id
+                FROM zuvy_mentor_slot_management
+                WHERE mentor_user_id = ${mentorUserId}
+                  AND organization_id = ${organizationId}
+              )`
+            : sql`${zuvyMentorSlotAvailability.mentorSlotManagementId} IN (
+                SELECT id
+                FROM zuvy_mentor_slot_management
+                WHERE mentor_user_id = ${mentorUserId}
+              )`,
+        ),
       );
 
-    const utilizationRate =
-      slotUtilization.totalSlots > 0
-        ? (slotUtilization.usedSlots / slotUtilization.totalSlots) * 100
-        : 0;
+    const totalSlots = Number(slotUtilization.totalSlots || 0);
+
+    const usedSlots = Number(slotUtilization.usedSlots || 0);
+
+    const utilizationRate = totalSlots > 0 ? (usedSlots / totalSlots) * 100 : 0;
 
     return {
       filter,
@@ -143,17 +234,17 @@ export class MentorMetricsService {
         completed,
         cancelled,
         missed,
+        upcoming: upcomingCount,
         completionRate: completionRate.toFixed(2),
         cancellationRate: cancellationRate.toFixed(2),
       },
       ratings: {
         averageRating: Number(ratingData.avgRating || 0).toFixed(2),
-        totalRatings: ratingData.ratingCount || 0,
+        totalRatings: Number(ratingData.ratingCount || 0),
       },
-      upcomingSessions: upcoming.upcomingCount || 0,
       utilization: {
-        totalSlots: slotUtilization.totalSlots || 0,
-        usedSlots: slotUtilization.usedSlots || 0,
+        totalSlots,
+        usedSlots,
         utilizationRate: utilizationRate.toFixed(2),
       },
     };

@@ -256,16 +256,14 @@ export class InstructorMentorSlotController {
   }
 
   @Get('mentor-slots/metrics')
-  @ApiOperation({ summary: 'Get mentor metrics for the instructor' })
   @ApiQuery({
     name: 'filter',
     required: false,
-    enum: ['30days', '3months', 'all'],
-    description: 'Time range filter for metrics',
+    enum: ['all', '30d', '3m'],
   })
   async getMyMetrics(
     @Req() req,
-    @Query('filter') filter: '30days' | '3months' | 'all' = 'all',
+    @Query('filter') filter: 'all' | '30d' | '3m' = 'all',
   ) {
     return this.metricsService.getMentorMetrics(
       BigInt(req.user[0].id),

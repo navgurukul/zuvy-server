@@ -21,15 +21,29 @@ import {
   zuvyOrganizations,
   users,
   zuvyStudentBookingMetrics,
+  licenseAssignments,
 } from '../../../drizzle/schema';
 
-import { and, eq, lt, gt, sql, desc, count, ne, gte, lte } from 'drizzle-orm';
+import {
+  and,
+  eq,
+  lt,
+  gt,
+  sql,
+  desc,
+  count,
+  ne,
+  gte,
+  lte,
+  inArray,
+} from 'drizzle-orm';
 import { CreateSlotDto } from './dto/create-slot.dto';
 import { GoogleCalendarService } from 'src/integrations/google/google-calendar.service';
 import { NotificationService } from '../notification/notification.service';
 import { NotificationType } from '../notification/notification.types';
 import { ZoomService } from 'src/services/zoom/zoom.service';
 import { NotificationEmailService } from 'src/notification/email/email.service';
+import { ZoomLicenseService } from '../zoom-license/zoom-license.service';
 
 @Injectable()
 export class MentorSlotService {
@@ -38,6 +52,7 @@ export class MentorSlotService {
     private readonly notificationService: NotificationService,
     private readonly zoomService: ZoomService,
     private readonly emailService: NotificationEmailService,
+    private readonly zoomLicenseService: ZoomLicenseService,
   ) {}
 
   private mapMeetingLink(booking: any, userId: bigint) {
@@ -45,6 +60,10 @@ export class MentorSlotService {
       return booking.zoomStartUrl;
     }
     return booking.meetingLink;
+  }
+
+  private async syncZoomLicenseState() {
+    await this.zoomLicenseService.syncLicensedUsersFromZoom();
   }
 
   private async resolveInstructorOrganization(
@@ -353,6 +372,94 @@ export class MentorSlotService {
     return true;
   }
 
+  private async ensureMentorZoomAccountActive(
+    userId: number,
+    organizationId?: number,
+  ) {
+    const mentorProfile = await this.getOrCreateMentorProfile(
+      userId,
+      organizationId,
+    );
+
+    const [userRow] = await db
+      .select({ email: users.email })
+      .from(users)
+      .where(eq(users.id, BigInt(userId)))
+      .limit(1);
+
+    if (!userRow?.email) {
+      throw new NotFoundException('Mentor user not found');
+    }
+
+    const zoomResponse = await this.zoomService.getUser(userRow.email);
+
+    if (!zoomResponse.success || zoomResponse.data?.status !== 'active') {
+      await db
+        .update(zuvyMentorSlotManagement)
+        .set({
+          isVerified: false,
+          updatedAt: new Date(),
+        } as Partial<typeof zuvyMentorSlotManagement.$inferInsert>)
+        .where(eq(zuvyMentorSlotManagement.id, mentorProfile.id));
+
+      throw new BadRequestException(
+        'Mentor Zoom account is disconnected or inactive. Please reconnect Zoom before creating mentor slots.',
+      );
+    }
+
+    await db
+      .update(zuvyMentorSlotManagement)
+      .set({
+        isVerified: true,
+        updatedAt: new Date(),
+      } as Partial<typeof zuvyMentorSlotManagement.$inferInsert>)
+      .where(eq(zuvyMentorSlotManagement.id, mentorProfile.id));
+
+    return {
+      email: userRow.email,
+      zoomUser: zoomResponse.data,
+    };
+  }
+
+  private async ensureMentorSlotLicenseAssignment(
+    trx: any,
+    slot: any,
+    mentorProfile: any,
+  ) {
+    const [existingAssignment] = await trx
+      .select({ id: licenseAssignments.id })
+      .from(licenseAssignments)
+      .where(
+        and(
+          eq(licenseAssignments.sourceType, 'mentor_slot'),
+          eq(licenseAssignments.mentorSlotAvailabilityId, slot.id),
+        ),
+      )
+      .limit(1);
+
+    if (existingAssignment) {
+      return;
+    }
+
+    const start = new Date(slot.slotStartDateTime);
+    const end = new Date(slot.slotEndDateTime);
+
+    const licenseId = await this.zoomLicenseService.assignLicense(trx, {
+      instructorId: Number(mentorProfile.mentorUserId),
+      startTime: start,
+      endTime: end,
+    });
+
+    await this.zoomLicenseService.createLicenseAssignment(trx, {
+      licenseId,
+      instructorId: Number(mentorProfile.mentorUserId),
+      mentorSlotAvailabilityId: slot.id,
+      sourceType: 'mentor_slot',
+      startTime: start,
+      endTime: end,
+    });
+  }
+
   private async validateMentorProfileComplete(
     userId: number,
     organizationId?: number,
@@ -646,6 +753,7 @@ export class MentorSlotService {
   async bookSlot(studentId: number, slotId: number) {
     await this.ensureMentorshipEnabled(BigInt(studentId));
     await this.validateLearnerBookingEligibility(BigInt(studentId));
+    await this.syncZoomLicenseState();
 
     return db.transaction(async (trx) => {
       /* ========================================
@@ -751,6 +859,8 @@ export class MentorSlotService {
         throw new BadRequestException('You already booked this slot.');
       }
 
+      await this.ensureMentorSlotLicenseAssignment(trx, slot, mentorProfile);
+
       /* ========================================
          UPDATE SLOT CAPACITY (NO SQL)
       ======================================== */
@@ -851,6 +961,10 @@ export class MentorSlotService {
       const mentorEmail = mentorUser?.email;
       const studentEmail = studentUser?.email;
 
+      if (!mentorEmail) {
+        throw new BadRequestException('Mentor email not found.');
+      }
+
       const refreshToken = mentorProfile.googleRefreshToken;
 
       const slotStartDateTime = new Date(slot.slotStartDateTime);
@@ -870,6 +984,12 @@ export class MentorSlotService {
 
       /* Create Zoom Meeting */
       try {
+        await this.zoomLicenseService.ensureHostLicensedForWindow(
+          mentorEmail,
+          slotStartDateTime,
+          slotEndDateTime,
+        );
+
         const zoomMeetingData = {
           topic: `Mentorship Session: ${mentorEmail} & ${studentEmail}`,
           type: 2, // Scheduled meeting
@@ -924,6 +1044,10 @@ export class MentorSlotService {
         console.error('Zoom meeting creation failed:', error.message);
 
         const errMsg = error?.message || '';
+
+        if (error instanceof BadRequestException) {
+          throw error;
+        }
 
         /* ========================================
            HANDLE ZOOM USER NOT FOUND / NOT LICENSED
@@ -1082,6 +1206,8 @@ export class MentorSlotService {
     cancelledBy: 'mentor' | 'student',
     actorUserId?: number,
   ) {
+    await this.syncZoomLicenseState();
+
     if (!reason || reason.length < 10) {
       throw new BadRequestException(
         'Cancellation reason must be at least 10 characters.',
@@ -1262,6 +1388,8 @@ export class MentorSlotService {
     reason: string,
     studentUserId?: number,
   ) {
+    await this.syncZoomLicenseState();
+
     if (!reason || reason.length < 10) {
       throw new BadRequestException(
         'Reschedule reason must be at least 10 characters.',
@@ -1391,6 +1519,8 @@ export class MentorSlotService {
   }
 
   async getRescheduleSlotsForBooking(studentUserId: number, bookingId: number) {
+    await this.syncZoomLicenseState();
+
     const [booking] = await db
       .select()
       .from(zuvyMentorSlotBooking)
@@ -1724,6 +1854,7 @@ export class MentorSlotService {
   ========================================================================== */
 
   async removeSlot(userId: number, slotId: number, organizationId?: number) {
+    await this.syncZoomLicenseState();
     await this.ensureUserIsMentor(userId);
 
     const mentorProfile = await this.getOrCreateMentorProfile(
@@ -1770,10 +1901,14 @@ export class MentorSlotService {
     // 12-hour deletion notice is temporarily disabled for short-notice slots.
     // this.enforceMinimumNotice(slot.slotStartDateTime);
 
-    const result = await db
-      .delete(zuvyMentorSlotAvailability)
-      .where(eq(zuvyMentorSlotAvailability.id, slotId))
-      .returning();
+    const result = await db.transaction(async (trx) => {
+      await this.zoomLicenseService.releaseMentorSlotAssignment(trx, slotId);
+
+      return trx
+        .delete(zuvyMentorSlotAvailability)
+        .where(eq(zuvyMentorSlotAvailability.id, slotId))
+        .returning();
+    });
 
     if (!result.length) {
       throw new NotFoundException('Slot not found or already deleted');
@@ -1789,6 +1924,8 @@ export class MentorSlotService {
     mentorUserId?: number,
     organizationId?: number,
   ) {
+    await this.syncZoomLicenseState();
+
     if (mentorUserId) {
       await this.ensureMentorOwnsBooking(
         mentorUserId,
@@ -1819,6 +1956,8 @@ export class MentorSlotService {
       const [mentorProfile] = await trx
         .select({
           id: zuvyMentorSlotManagement.id,
+          mentorUserId: zuvyMentorSlotManagement.mentorUserId,
+          organizationId: zuvyMentorSlotManagement.organizationId,
           googleRefreshToken: zuvyMentorSlotManagement.googleRefreshToken,
         })
         .from(zuvyMentorSlotManagement)
@@ -1835,6 +1974,30 @@ export class MentorSlotService {
           'Mentor profile not found for the booking organization.',
         );
       }
+
+      const [proposedSlot] = await trx
+        .select()
+        .from(zuvyMentorSlotAvailability)
+        .where(
+          and(
+            eq(zuvyMentorSlotAvailability.id, booking.rescheduleProposedSlotId),
+            eq(
+              zuvyMentorSlotAvailability.mentorSlotManagementId,
+              mentorProfile.id,
+            ),
+          ),
+        )
+        .for('update');
+
+      if (!proposedSlot) {
+        throw new BadRequestException('Invalid proposed slot.');
+      }
+
+      await this.ensureMentorSlotLicenseAssignment(
+        trx,
+        proposedSlot,
+        mentorProfile,
+      );
 
       /* Atomic capacity check + increment */
 
@@ -1922,6 +2085,8 @@ export class MentorSlotService {
     mentorUserId?: number,
     organizationId?: number,
   ) {
+    await this.syncZoomLicenseState();
+
     if (mentorUserId) {
       await this.ensureMentorOwnsBooking(
         mentorUserId,
@@ -1964,10 +2129,11 @@ export class MentorSlotService {
   }
 
   async createSlot(userId: number, dto: any, organizationId?: number) {
+    await this.syncZoomLicenseState();
     await this.ensureUserIsMentor(userId);
     await this.validateMentorProfileComplete(userId, organizationId);
     await this.ensureMentorHasMentorshipEnabledBootcamp(userId, organizationId);
-    await this.ensureMentorZoomVerified(userId, organizationId);
+    await this.ensureMentorZoomAccountActive(userId, organizationId);
 
     const mentorProfile = await this.getOrCreateMentorProfile(
       userId,
@@ -2036,19 +2202,38 @@ export class MentorSlotService {
       );
     }
 
-    return db
-      .insert(zuvyMentorSlotAvailability)
-      .values({
-        mentorSlotManagementId: mentorProfile.id,
-        slotStartDateTime: start,
-        slotEndDateTime: end,
-        durationMinutes,
-        maxCapacity: dto.maxCapacity ?? 1,
-        topic: dto.topic ?? null,
-        status: 'available',
-        isPublic: true,
-      } as typeof zuvyMentorSlotAvailability.$inferInsert)
-      .returning();
+    return db.transaction(async (trx) => {
+      const licenseId = await this.zoomLicenseService.assignLicense(trx, {
+        instructorId: userId,
+        startTime: start,
+        endTime: end,
+      });
+
+      const createdSlots = await trx
+        .insert(zuvyMentorSlotAvailability)
+        .values({
+          mentorSlotManagementId: mentorProfile.id,
+          slotStartDateTime: start,
+          slotEndDateTime: end,
+          durationMinutes,
+          maxCapacity: dto.maxCapacity ?? 1,
+          topic: dto.topic ?? null,
+          status: 'available',
+          isPublic: true,
+        } as typeof zuvyMentorSlotAvailability.$inferInsert)
+        .returning();
+
+      await this.zoomLicenseService.createLicenseAssignment(trx, {
+        licenseId,
+        instructorId: userId,
+        mentorSlotAvailabilityId: createdSlots[0].id,
+        sourceType: 'mentor_slot',
+        startTime: start,
+        endTime: end,
+      });
+
+      return createdSlots;
+    });
   }
 
   async getMySlots(
@@ -2067,7 +2252,7 @@ export class MentorSlotService {
     if (!mentorProfile) {
       throw new NotFoundException('Mentor profile not found.');
     }
-    await this.ensureMentorZoomVerified(userId, organizationId);
+    await this.ensureMentorZoomAccountActive(userId, organizationId);
 
     const now = new Date();
 
@@ -2283,54 +2468,10 @@ export class MentorSlotService {
 
   async getStudentMetrics(
     userId: number,
-    filter: '30days' | '3months' | 'all' = 'all',
+    filter: 'all' | '30d' | '3m' = 'all',
   ) {
     const userIdBigInt = BigInt(userId);
-    const since = this.getFeedbackDateFilter(filter);
 
-    // Fetch bookings for the filtered period (by confirmed date)
-    const conditions = [
-      eq(zuvyMentorSlotBooking.studentUserId, userIdBigInt),
-      ne(zuvyMentorSlotBooking.status, 'cancelled'),
-    ];
-
-    if (since) {
-      conditions.push(gte(zuvyMentorSlotBooking.confirmedAt, since));
-    }
-
-    const [{ count: totalBookings }] = await db
-      .select({ count: count() })
-      .from(zuvyMentorSlotBooking)
-      .where(and(...conditions));
-
-    const [{ count: completedBookings }] = await db
-      .select({ count: count() })
-      .from(zuvyMentorSlotBooking)
-      .where(
-        and(
-          ...conditions,
-          eq(zuvyMentorSlotBooking.sessionLifecycleState, 'COMPLETED'),
-        ),
-      );
-
-    // Fetch upcoming sessions (NO date filter - show all future sessions)
-    const upcomingConditions = [
-      eq(zuvyMentorSlotBooking.studentUserId, userIdBigInt),
-      ne(zuvyMentorSlotBooking.status, 'cancelled'),
-      eq(zuvyMentorSlotBooking.sessionLifecycleState, 'SCHEDULED'),
-      sql`${zuvyMentorSlotBooking.slotAvailabilityId} IN (
-        SELECT ${zuvyMentorSlotAvailability.id}
-        FROM ${zuvyMentorSlotAvailability}
-        WHERE ${zuvyMentorSlotAvailability.slotStartDateTime} > NOW()
-      )`,
-    ];
-
-    const [{ count: upcomingBookings }] = await db
-      .select({ count: count() })
-      .from(zuvyMentorSlotBooking)
-      .where(and(...upcomingConditions));
-
-    // Fetch overall quota info from metrics table (always all-time for quota)
     let [metrics] = await db
       .select()
       .from(zuvyStudentBookingMetrics)
@@ -2339,6 +2480,7 @@ export class MentorSlotService {
 
     if (!metrics) {
       await this.initializeStudentMetrics(userIdBigInt);
+
       [metrics] = await db
         .select()
         .from(zuvyStudentBookingMetrics)
@@ -2346,8 +2488,126 @@ export class MentorSlotService {
         .limit(1);
     }
 
-    const remainingCredits = Math.max(0, 3 - (metrics?.quotaUsed ?? 0));
     const now = new Date();
+
+    const endOfToday = new Date();
+    endOfToday.setHours(23, 59, 59, 999);
+
+    let fromDate: Date | null = null;
+
+    if (filter === '30d') {
+      fromDate = new Date();
+      fromDate.setDate(fromDate.getDate() - 30);
+    }
+
+    if (filter === '3m') {
+      fromDate = new Date();
+      fromDate.setMonth(fromDate.getMonth() - 3);
+    }
+
+    /* ==========================================
+       GET SLOT IDS FOR FILTER WINDOW
+    ========================================== */
+
+    let filteredSlotIds: number[] = [];
+
+    if (fromDate) {
+      const upperBound = filter === 'all' ? null : endOfToday;
+
+      const slots = await db
+        .select({
+          id: zuvyMentorSlotAvailability.id,
+        })
+        .from(zuvyMentorSlotAvailability)
+        .where(
+          upperBound
+            ? and(
+                gte(zuvyMentorSlotAvailability.slotStartDateTime, fromDate),
+                lte(zuvyMentorSlotAvailability.slotStartDateTime, upperBound),
+              )
+            : gte(zuvyMentorSlotAvailability.slotStartDateTime, fromDate),
+        );
+
+      filteredSlotIds = slots.map((s) => s.id);
+    }
+
+    /* ==========================================
+       SESSION COUNTS
+    ========================================== */
+
+    const bookingConditions: any[] = [
+      eq(zuvyMentorSlotBooking.studentUserId, userIdBigInt),
+    ];
+
+    if (filteredSlotIds.length > 0) {
+      bookingConditions.push(
+        inArray(zuvyMentorSlotBooking.slotAvailabilityId, filteredSlotIds),
+      );
+    }
+
+    const [sessionStats] = await db
+      .select({
+        totalSessions: sql<number>`COUNT(*)`,
+        completedSessions: sql<number>`
+        COUNT(*) FILTER (
+          WHERE session_lifecycle_state = 'COMPLETED'
+        )
+      `,
+        upcomingSessions: sql<number>`
+        COUNT(*) FILTER (
+          WHERE session_lifecycle_state = 'SCHEDULED'
+        )
+      `,
+        cancelledSessions: sql<number>`
+        COUNT(*) FILTER (
+          WHERE session_lifecycle_state = 'CANCELLED'
+        )
+      `,
+      })
+      .from(zuvyMentorSlotBooking)
+      .where(and(...bookingConditions));
+
+    /* ==========================================
+       UPCOMING SESSIONS
+    ========================================== */
+
+    const upcomingSlots = await db
+      .select({
+        id: zuvyMentorSlotAvailability.id,
+      })
+      .from(zuvyMentorSlotAvailability)
+      .where(
+        filter === 'all'
+          ? gte(zuvyMentorSlotAvailability.slotStartDateTime, now)
+          : and(
+              gte(zuvyMentorSlotAvailability.slotStartDateTime, now),
+              lte(zuvyMentorSlotAvailability.slotStartDateTime, endOfToday),
+            ),
+      );
+
+    const upcomingSlotIds = upcomingSlots.map((slot) => slot.id);
+
+    let upcomingCount = 0;
+
+    if (upcomingSlotIds.length > 0) {
+      const [upcoming] = await db
+        .select({
+          count: sql<number>`COUNT(*)`,
+        })
+        .from(zuvyMentorSlotBooking)
+        .where(
+          and(
+            eq(zuvyMentorSlotBooking.studentUserId, userIdBigInt),
+            eq(zuvyMentorSlotBooking.sessionLifecycleState, 'SCHEDULED'),
+            inArray(zuvyMentorSlotBooking.slotAvailabilityId, upcomingSlotIds),
+          ),
+        );
+
+      upcomingCount = Number(upcoming.count || 0);
+    }
+
+    const remainingCredits = Math.max(0, 3 - (metrics?.quotaUsed ?? 0));
+
     const canBook =
       !metrics?.isQuotaExhausted &&
       (!metrics?.cooldownEndDate || now >= metrics.cooldownEndDate);
@@ -2355,17 +2615,21 @@ export class MentorSlotService {
     return {
       // Overall quota info
       ...metrics,
+
       remainingCredits,
+
       canBook,
+
       nextEligible: metrics?.cooldownEndDate || null,
-      // Filtered metrics
-      filter,
-      filteredMetrics: {
-        totalBookings: Number(totalBookings),
-        completedBookings: Number(completedBookings),
-        pendingBookings: Number(totalBookings) - Number(completedBookings),
-        upcomingBookings: Number(upcomingBookings),
+
+      sessions: {
+        total: Number(sessionStats.totalSessions || 0),
+        completed: Number(sessionStats.completedSessions || 0),
+        cancelled: Number(sessionStats.cancelledSessions || 0),
+        upcoming: upcomingCount,
       },
+
+      filter,
     };
   }
 
@@ -2375,6 +2639,8 @@ export class MentorSlotService {
     leftAtStr: string,
     mentorUserId?: number,
   ) {
+    await this.syncZoomLicenseState();
+
     if (mentorUserId) {
       await this.ensureMentorOwnsBooking(mentorUserId, bookingId);
     }
@@ -2401,6 +2667,8 @@ export class MentorSlotService {
   }
 
   async completeSession(bookingId: number, mentorUserId?: number) {
+    await this.syncZoomLicenseState();
+
     if (mentorUserId) {
       await this.ensureMentorOwnsBooking(mentorUserId, bookingId);
     }

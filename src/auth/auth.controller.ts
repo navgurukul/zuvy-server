@@ -37,6 +37,11 @@ export class AuthController {
       properties: {
         access_token: { type: 'string', description: 'JWT access token' },
         refresh_token: { type: 'string', description: 'JWT refresh token' },
+        showTooltip: {
+          type: 'boolean',
+          description:
+            'True only on the first login after the tooltip feature was introduced. Clients should display the onboarding tooltip when this is true.',
+        },
         user: {
           type: 'object',
           properties: {
