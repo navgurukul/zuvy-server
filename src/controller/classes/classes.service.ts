@@ -287,6 +287,27 @@ export class ClassesService {
   }
 
   private async activateZoomSession(sessionId: number) {
+    const claimed = await db
+      .update(zuvySessions)
+      .set({ meetingId: `activating-${sessionId}` })
+      .where(
+        and(
+          eq(zuvySessions.id, sessionId),
+          ilike(zuvySessions.meetingId, 'pending-zoom-session-%'),
+        ),
+      )
+      .returning();
+
+    // If no rows updated, another process already claimed it
+    if (!claimed.length) {
+      this.logger.warn(
+        `Session ${sessionId} already being activated, skipping.`,
+      );
+      return await db.query.zuvySessions.findFirst({
+        where: eq(zuvySessions.id, sessionId),
+      });
+    }
+
     const session = await db.query.zuvySessions.findFirst({
       where: eq(zuvySessions.id, sessionId),
     });
@@ -486,10 +507,7 @@ export class ClassesService {
     const nowIso = new Date().toISOString();
 
     const dueSessions = await db
-      .select({
-        id: zuvySessions.id,
-        meetingId: zuvySessions.meetingId,
-      })
+      .select({ id: zuvySessions.id, meetingId: zuvySessions.meetingId })
       .from(zuvySessions)
       .where(
         and(
@@ -497,6 +515,7 @@ export class ClassesService {
           eq(zuvySessions.status, 'upcoming'),
           sql`${zuvySessions.startTime} <= ${nowIso}`,
           sql`${zuvySessions.endTime} > ${nowIso}`,
+          ilike(zuvySessions.meetingId, 'pending-zoom-session-%'),
         ),
       );
 
