@@ -2613,6 +2613,7 @@ export class MentorSlotService {
       (!metrics?.cooldownEndDate || now >= metrics.cooldownEndDate);
 
     return {
+      // Overall quota info
       ...metrics,
 
       remainingCredits,
