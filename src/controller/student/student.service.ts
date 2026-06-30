@@ -256,15 +256,17 @@ export class StudentService {
 
   async enrollData(userId: number, limit?: number, offset?: number) {
     try {
-      // Get enrolled bootcamps
+      // Get enrolled bootcamps — include enrollments with OR without a batch assignment
+      // so courses like Cohort 5 (enrolled but not yet batch-assigned) are still shown.
       let enrolled = await db.query.zuvyBatchEnrollments.findMany({
         orderBy: (zuvyBatchEnrollments, { desc }) => [
           desc(zuvyBatchEnrollments.createdAt),
         ],
         where: (zuvyBatchEnrollments, { sql }) =>
-          sql`${zuvyBatchEnrollments.userId} = ${userId} AND ${zuvyBatchEnrollments.batchId} IS NOT NULL`,
+          sql`${zuvyBatchEnrollments.userId} = ${userId}`,
         columns: {
           id: true,
+          bootcampId: true,
         },
         with: {
           bootcamp: {
@@ -295,12 +297,31 @@ export class StudentService {
               },
             },
           },
-          tracking: {
-            where: (bootcampTracking, { sql }) =>
-              sql`${bootcampTracking.userId} = ${userId}`,
-          },
         },
       });
+
+      // Fetch all tracking records for this user in one query to avoid N+1 queries
+      // and to guarantee we always use the correct user's own progress (not another user's).
+      const bootcampIds = enrolled
+        .map((e: any) => e.bootcamp?.id)
+        .filter(Boolean)
+        .map(Number);
+
+      const trackingRecords =
+        bootcampIds.length > 0
+          ? await db
+              .select()
+              .from(zuvyBootcampTracking)
+              .where(
+                sql`${zuvyBootcampTracking.userId} = ${userId} AND ${zuvyBootcampTracking.bootcampId} IN ${sql.raw(`(${bootcampIds.join(',')})`)}`,
+              )
+          : [];
+
+      // Build a map of bootcampId -> progress for fast lookup
+      const progressMap: Record<number, number> = {};
+      for (const record of trackingRecords) {
+        progressMap[Number(record.bootcampId)] = record.progress ?? 0;
+      }
 
       // Fetch upcoming events once for all bootcamps
       let allOrgs = await db.select().from(zuvyOrganizations);
@@ -312,8 +333,9 @@ export class StudentService {
       // Process each enrollment and attach upcoming events
       const totalData = await Promise.all(
         enrolled.map(async (e: any) => {
-          const { batchInfo, tracking, bootcamp } = e;
-          const progress = tracking?.progress || 0;
+          const { batchInfo, bootcamp } = e;
+          // Use the directly queried progress to avoid cross-user contamination
+          const progress = progressMap[Number(bootcamp?.id)] ?? 0;
 
           return {
             ...bootcamp,
