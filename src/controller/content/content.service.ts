@@ -1325,7 +1325,7 @@ export class ContentService {
         .limit(1);
       const courseName = courseRes[0]?.name || '';
       const descriptionSuffix = courseName
-        ? `for class name ${courseName}`
+        ? `for course name ${courseName}`
         : '';
       return {
         message: 'Modified successfully',
@@ -2273,6 +2273,28 @@ export class ContentService {
   }
 
   async deleteChapter(chapterId: number, moduleId: number): Promise<any> {
+    const moduleInfo = await db
+      .select({
+        name: zuvyCourseModules.name,
+        bootcampId: zuvyCourseModules.bootcampId,
+      })
+      .from(zuvyCourseModules)
+      .where(eq(zuvyCourseModules.id, moduleId))
+      .limit(1);
+
+    let courseName = '';
+    const bootcampId = moduleInfo[0]?.bootcampId;
+    if (bootcampId) {
+      try {
+        const courseRes = await db
+          .select({ name: zuvyBootcamps.name })
+          .from(zuvyBootcamps)
+          .where(eq(zuvyBootcamps.id, bootcampId))
+          .limit(1);
+        courseName = courseRes[0]?.name || '';
+      } catch (_) {}
+    }
+
     // Cascade delete all related records for this chapter
     const cascadeChapterTables = [
       {
@@ -2341,6 +2363,7 @@ export class ContentService {
         null,
       ];
     }
+    const chapterRecord = chapterInfo[0];
     if (chapterInfo[0].topicId == 8) {
       await db
         .update(zuvySessions)
@@ -2406,6 +2429,8 @@ export class ContentService {
       status: 'success',
       message: 'Chapter and all related data deleted successfully',
       code: 200,
+      chapter: chapterRecord,
+      courseName,
     };
   }
 
@@ -2949,10 +2974,15 @@ export class ContentService {
         )
         .returning();
       if (deletedQuestions.length > 0) {
+        const deletedTitles = deletedQuestions.map(
+          (question) => question.title,
+        );
         return {
           status: 'success',
           code: 200,
           message: 'The coding question has been deleted successfully',
+          questionTitle:
+            deletedTitles.length === 1 ? deletedTitles[0] : deletedTitles,
         };
       } else {
         return {
@@ -4668,7 +4698,7 @@ export class ContentService {
     try {
       let mainQuizIds: number[] = [];
       let variantDeletions: { id: number; quizId: number }[] = [];
-      let quizTitle = '';
+      const deletedQuizTitles = new Set<string>();
       const firstMainId = deleteDto.questionIds.find(
         (q) => q.type === 'main',
       )?.id;
@@ -4686,7 +4716,8 @@ export class ContentService {
             ),
           )
           .limit(1);
-        quizTitle = titleRes[0]?.title || '';
+        const mainQuizTitle = titleRes[0]?.title || '';
+        if (mainQuizTitle) deletedQuizTitles.add(mainQuizTitle);
       } else if (firstVariantId) {
         const variantRes = await db
           .select({ quizId: zuvyModuleQuizVariants.quizId })
@@ -4713,7 +4744,8 @@ export class ContentService {
               ),
             )
             .limit(1);
-          quizTitle = titleRes[0]?.title || '';
+          const variantParentTitle = titleRes[0]?.title || '';
+          if (variantParentTitle) deletedQuizTitles.add(variantParentTitle);
         }
       }
 
@@ -4743,6 +4775,8 @@ export class ContentService {
         }
       }
 
+      const quizTitle = Array.from(deletedQuizTitles).join(', ');
+
       // Deletion logic for main quizzes
       if (mainQuizIds.length > 0) {
         const usedQuizzes = await db
@@ -4764,7 +4798,7 @@ export class ContentService {
         if (deletableQuizIds.length > 0) {
           // Verify that all deletableQuizIds belong to the orgId
           const orgQuizzes = await db
-            .select({ id: zuvyModuleQuiz.id })
+            .select({ id: zuvyModuleQuiz.id, title: zuvyModuleQuiz.title })
             .from(zuvyModuleQuiz)
             .where(
               and(
@@ -4773,6 +4807,10 @@ export class ContentService {
               ),
             );
           const authorizedIds = orgQuizzes.map((q) => q.id);
+
+          orgQuizzes.forEach((quiz) => {
+            if (quiz.title) deletedQuizTitles.add(quiz.title);
+          });
 
           if (authorizedIds.length > 0) {
             await db
@@ -4838,7 +4876,10 @@ export class ContentService {
         }
 
         const variantToDelete = await db
-          .select({ variantNumber: zuvyModuleQuizVariants.variantNumber })
+          .select({
+            variantNumber: zuvyModuleQuizVariants.variantNumber,
+            quizTitle: zuvyModuleQuiz.title,
+          })
           .from(zuvyModuleQuizVariants)
           .innerJoin(
             zuvyModuleQuiz,
@@ -4861,7 +4902,12 @@ export class ContentService {
           ];
         }
 
-        const { variantNumber } = variantToDelete[0];
+        const { variantNumber, quizTitle: variantParentTitle } =
+          variantToDelete[0];
+        if (variantParentTitle) {
+          deletedQuizTitles.add(variantParentTitle);
+        }
+
         await db
           .delete(zuvyModuleQuizVariants)
           .where(eq(zuvyModuleQuizVariants.id, variantId))

@@ -260,7 +260,17 @@ export class ContentController {
     getResourceName: (result, params) => {
       const quizzes = params?.quizzes;
       if (Array.isArray(quizzes) && quizzes.length > 0) {
-        const title = quizzes[0]?.title || 'Quiz';
+        // Prefer an explicit variant question text when variants are provided
+        const firstQuiz = quizzes[0] || {};
+        const firstVariant =
+          Array.isArray(firstQuiz.variantMCQs) &&
+          firstQuiz.variantMCQs.length > 0
+            ? firstQuiz.variantMCQs[0]?.question
+            : null;
+
+        if (firstVariant) return firstVariant;
+
+        const title = firstQuiz?.title || 'Quiz';
         const count = quizzes.length;
         return count > 1 ? `${title} (+${count - 1} more)` : title;
       }
@@ -499,20 +509,37 @@ export class ContentController {
     type: Number,
     description: 'chapter Id',
   })
+  @ApiQuery({
+    name: 'assignmentId',
+    required: false,
+    type: Number,
+    description: 'assignment id alias for chapter id',
+  })
   @ApiBearerAuth('JWT-auth')
   @TrackAction({
     action: 'delete_chapter',
     resourceType: 'chapter',
     permissionName: 'deleteChapter',
     getResourceName: (result) => {
-      return result?.chapter?.title || 'Chapter';
+      const chapterTitle =
+        result?.chapter?.title || result?.chapter?.[0]?.title || 'Chapter';
+      const courseName = result?.courseName || '';
+
+      return courseName
+        ? `${chapterTitle} for course name ${courseName}`
+        : chapterTitle;
     },
   })
   async deleteChapter(
     @Param('moduleId') moduleId: number,
     @Query('chapterId') chapterId: number,
+    @Query('assignmentId') assignmentId?: number,
   ): Promise<object> {
-    const res = await this.contentService.deleteChapter(chapterId, moduleId);
+    const resolvedChapterId = Number(chapterId ?? assignmentId);
+    const res = await this.contentService.deleteChapter(
+      resolvedChapterId,
+      moduleId,
+    );
     return res;
   }
 
@@ -667,6 +694,13 @@ export class ContentController {
     resourceType: 'codingQuestion',
     permissionName: 'deleteCodingQuestion',
     getResourceName: (result, params) => {
+      const titles = result?.questionTitles || result?.questionTitle;
+      if (Array.isArray(titles)) {
+        if (titles.length === 1) return titles[0];
+        return titles.join(', ');
+      }
+      if (titles) return titles;
+
       const ids = params?.questionIds;
       const count = Array.isArray(ids) ? ids.length : 1;
       return `${count} Coding Question${count > 1 ? 's' : ''}`;
@@ -675,12 +709,23 @@ export class ContentController {
   async deleteCodingQuestion(
     @Param('orgId') orgId: number,
     @Body() questionIds: deleteQuestionDto,
+    @Res() res: Response,
   ) {
-    const res = await this.contentService.deleteCodingProblem(
-      questionIds,
-      orgId,
-    );
-    return res;
+    try {
+      const result = await this.contentService.deleteCodingProblem(
+        questionIds,
+        orgId,
+      );
+      if (result.status && result.status === 'error') {
+        return ErrorResponse.BadRequestException(
+          result.message,
+          result.code,
+        ).send(res);
+      }
+      return new SuccessResponse(result.message, result.code, result).send(res);
+    } catch (error) {
+      return ErrorResponse.BadRequestException(error.message).send(res);
+    }
   }
 
   @Post('/:orgId/editquiz')
@@ -733,9 +778,20 @@ export class ContentController {
   async deleteQuizQuestion(
     @Param('orgId') orgId: number,
     @Body() questionIds: deleteQuestionDto,
+    @Res() res: Response,
   ) {
-    const res = await this.contentService.deleteQuiz(questionIds, orgId);
-    return res;
+    try {
+      const result = await this.contentService.deleteQuiz(questionIds, orgId);
+      if (result.status && result.status === 'error') {
+        return ErrorResponse.BadRequestException(
+          result.message,
+          result.code,
+        ).send(res);
+      }
+      return new SuccessResponse(result.message, result.code, result).send(res);
+    } catch (error) {
+      return ErrorResponse.BadRequestException(error.message).send(res);
+    }
   }
 
   @Post('/createTag')
@@ -903,8 +959,23 @@ export class ContentController {
   async deleteOpenEndedQuestion(
     @Param('orgId') orgId: number,
     @Body() questionIds: deleteQuestionDto,
+    @Res() res: Response,
   ) {
-    return this.contentService.deleteOpenEndedQuestion(questionIds, orgId);
+    try {
+      const result = await this.contentService.deleteOpenEndedQuestion(
+        questionIds,
+        orgId,
+      );
+      if (result.status && result.status === 'error') {
+        return ErrorResponse.BadRequestException(
+          result.message,
+          result.code,
+        ).send(res);
+      }
+      return new SuccessResponse(result.message, result.code, result).send(res);
+    } catch (error) {
+      return ErrorResponse.BadRequestException(error.message).send(res);
+    }
   }
 
   @Get('/students/assessmentId=:assessmentId')
@@ -1286,6 +1357,8 @@ export class ContentController {
       result?.data?.title ||
       result?.data?.name ||
       params?.questionTitle ||
+      params?.quizTitle ||
+      params?.variantTitle ||
       'Quiz',
   })
   async deleteMainQuizOrVariant(
@@ -1304,7 +1377,11 @@ export class ContentController {
         err.statusCode,
       ).send(res);
     }
-    req['trackingData'] = { questionTitle: success?.quizTitle };
+    req['trackingData'] = {
+      questionTitle: success?.quizTitle,
+      quizTitle: success?.quizTitle,
+      variantTitle: success?.variantTitle,
+    };
     return new SuccessResponse(success.message, success.statusCode, null).send(
       res,
     );
