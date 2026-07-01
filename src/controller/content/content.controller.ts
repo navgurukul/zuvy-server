@@ -694,6 +694,9 @@ export class ContentController {
     resourceType: 'codingQuestion',
     permissionName: 'deleteCodingQuestion',
     getResourceName: (result, params) => {
+      const titleFromParams = params?.questionTitle;
+      if (titleFromParams) return titleFromParams;
+
       const titles = result?.questionTitles || result?.questionTitle;
       if (Array.isArray(titles)) {
         if (titles.length === 1) return titles[0];
@@ -709,6 +712,7 @@ export class ContentController {
   async deleteCodingQuestion(
     @Param('orgId') orgId: number,
     @Body() questionIds: deleteQuestionDto,
+    @Req() req,
     @Res() res: Response,
   ) {
     try {
@@ -722,6 +726,7 @@ export class ContentController {
           result.code,
         ).send(res);
       }
+      req['trackingData'] = { questionTitle: result?.questionTitle };
       return new SuccessResponse(result.message, result.code, result).send(res);
     } catch (error) {
       return ErrorResponse.BadRequestException(error.message).send(res);
