@@ -202,68 +202,143 @@ export class ZoomWebhookController {
           }));
 
         await db.execute(sql`
-          UPDATE zuvy_session_recordings
-          SET
-            zoom_recording_manifest = ${JSON.stringify(manifest)},
-            status = 'DISCOVERED',
-            recording_start = ${payload.object.start_time},
-            recording_end = ${payload.object.recording_files?.[0]?.recording_end},
-            segments_count = ${manifest.length},
-            retry_count = 0,
-            last_error = NULL,
-            next_retry_at = NULL,
-            updated_at = NOW()
-          WHERE session_id = ${session.id}
-            AND (
-              zoom_meeting_id = ${meetingId}
-              OR zoom_meeting_uuid = ${meetingUuid}
-            )
-        `);
+  UPDATE zuvy_session_recordings
+  SET
+    zoom_recording_id = ${manifest[0]?.id ?? null},
+          zoom_recording_manifest = ${JSON.stringify(manifest)},
+          metadata_verified = TRUE,
+          recording_start = ${manifest[0]?.recording_start ?? payload.object.start_time},
+          recording_end = ${manifest[manifest.length - 1]?.recording_end ?? payload.object.recording_files?.[0]?.recording_end},
+          segments_count = ${manifest.length},
+
+          status = CASE
+      WHEN status IN(
+            'PROCESSING_METADATA',
+            'METADATA_READY',
+            'PROCESSING_DOWNLOAD',
+            'DOWNLOADED',
+            'MERGING',
+            'MERGED',
+            'PROCESSING_UPLOAD',
+            'COMPLETED'
+          )
+      THEN status
+      ELSE 'DISCOVERED'
+    END,
+
+          retry_count = CASE
+      WHEN status IN('FAILED', 'PERMANENT_FAILED')
+      THEN 0
+      ELSE retry_count
+    END,
+
+          last_error = CASE
+      WHEN status IN('FAILED', 'PERMANENT_FAILED')
+      THEN NULL
+      ELSE last_error
+    END,
+
+          next_retry_at = CASE
+      WHEN status IN('FAILED', 'PERMANENT_FAILED')
+      THEN NULL
+      ELSE next_retry_at
+    END,
+
+          updated_at = NOW()
+
+  WHERE session_id = ${session.id}
+    AND(
+            zoom_meeting_id = ${meetingId}
+      OR zoom_meeting_uuid = ${meetingUuid}
+          )
+            `);
 
         await db.execute(sql`
           INSERT INTO zuvy_session_recordings (
-            session_id,
-            zoom_meeting_id,
-            zoom_meeting_uuid,
-            zoom_recording_manifest,
-            status,
-            recording_start,
-            recording_end,
-            segments_count,
-            retry_count
-          )
+    session_id,
+    zoom_meeting_id,
+    zoom_meeting_uuid,
+    zoom_recording_id,
+    zoom_recording_manifest,
+    metadata_verified,
+    status,
+    recording_start,
+    recording_end,
+    segments_count,
+    retry_count
+)
           SELECT
-            ${session.id},
-            ${meetingId},
-            ${meetingUuid},
-            ${JSON.stringify(manifest)},
-            'DISCOVERED',
-            ${payload.object.start_time},
-            ${payload.object.recording_files?.[0]?.recording_end},
-            ${manifest.length},
-            0
-          WHERE NOT EXISTS (
+    ${session.id},
+    ${meetingId},
+    ${meetingUuid},
+    ${manifest[0]?.id ?? null},
+    ${JSON.stringify(manifest)},
+    TRUE,
+    'DISCOVERED',
+    ${manifest[0]?.recording_start ?? payload.object.start_time},
+    ${manifest[manifest.length - 1]?.recording_end ?? payload.object.recording_files?.[0]?.recording_end},
+    ${manifest.length},
+    0
+          WHERE NOT EXISTS(
             SELECT 1
             FROM zuvy_session_recordings
             WHERE session_id = ${session.id}
-              AND (
-                zoom_meeting_id = ${meetingId}
+              AND(
+              zoom_meeting_id = ${meetingId}
                 OR zoom_meeting_uuid = ${meetingUuid}
-              )
+            )
           )
-        `);
+          `);
 
         // Also update mentor session recordings
         await db.execute(sql`
-      UPDATE zuvy_mentor_session_recordings
-      SET
-        status = 'DISCOVERED',
-        retry_count = 0,
-        last_error = NULL,
-        next_retry_at = NULL
-      WHERE zoom_meeting_id = ${meetingId}
-         OR zoom_meeting_uuid = ${meetingUuid}
-    `);
+  UPDATE zuvy_mentor_session_recordings
+  SET
+    zoom_recording_id = ${manifest[0]?.id ?? null},
+    zoom_recording_manifest = ${JSON.stringify(manifest)},
+    metadata_verified = TRUE,
+    recording_start = ${manifest[0]?.recording_start ?? payload.object.start_time},
+    recording_end = ${manifest[manifest.length - 1]?.recording_end ?? payload.object.recording_files?.[0]?.recording_end},
+    segments_count = ${manifest.length},
+
+    status = CASE
+      WHEN status IN (
+        'PROCESSING_METADATA',
+        'METADATA_READY',
+        'PROCESSING_DOWNLOAD',
+        'DOWNLOADED',
+        'MERGING',
+        'MERGED',
+        'PROCESSING_UPLOAD',
+        'COMPLETED'
+      )
+      THEN status
+      ELSE 'DISCOVERED'
+    END,
+
+    retry_count = CASE
+      WHEN status IN ('FAILED','PERMANENT_FAILED')
+      THEN 0
+      ELSE retry_count
+    END,
+
+    last_error = CASE
+      WHEN status IN ('FAILED','PERMANENT_FAILED')
+      THEN NULL
+      ELSE last_error
+    END,
+
+    next_retry_at = CASE
+      WHEN status IN ('FAILED','PERMANENT_FAILED')
+      THEN NULL
+      ELSE next_retry_at
+    END,
+
+    updated_at = NOW()
+
+WHERE zoom_meeting_id = ${meetingId}
+   OR zoom_meeting_uuid = ${meetingUuid}
+`);
 
         this.recordingWorkerTrigger.triggerNow();
 
@@ -271,7 +346,7 @@ export class ZoomWebhookController {
         UPDATE zuvy_zoom_webhook_events
         SET processing_status = 'PROCESSED'
         WHERE event_id = ${eventId}
-      `);
+          `);
 
         return res.status(200).send();
       }
@@ -296,22 +371,22 @@ export class ZoomWebhookController {
           )
           SELECT
             s.id,
-            ${meetingId},
-            ${meetingUuid},
-            'DISCOVERED',
-            0
+          ${meetingId},
+          ${meetingUuid},
+          'DISCOVERED',
+          0
           FROM zuvy_sessions s
           WHERE s.zoom_meeting_id = ${meetingId}
             AND NOT EXISTS (
-              SELECT 1
+            SELECT 1
               FROM zuvy_session_recordings r
               WHERE r.session_id = s.id
                 AND (
-                  r.zoom_meeting_id = ${meetingId}
+              r.zoom_meeting_id = ${meetingId}
                   OR r.zoom_meeting_uuid = ${meetingUuid}
-                )
             )
-        `);
+          )
+          `);
 
         this.recordingWorkerTrigger.triggerNow();
 
@@ -319,7 +394,7 @@ export class ZoomWebhookController {
         UPDATE zuvy_zoom_webhook_events
         SET processing_status = 'PROCESSED'
         WHERE event_id = ${eventId}
-      `);
+          `);
 
         return res.status(200).send();
       }
@@ -330,7 +405,7 @@ export class ZoomWebhookController {
           processing_status = 'FAILED',
           processing_error = ${error.message}
         WHERE event_id = ${eventId}
-      `);
+          `);
       throw error; // let Nest log it
     }
 

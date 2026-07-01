@@ -287,6 +287,15 @@ export class ClassesService {
   }
 
   private async activateZoomSession(sessionId: number) {
+    const current = await db.query.zuvySessions.findFirst({
+      where: eq(zuvySessions.id, sessionId),
+      columns: {
+        meetingId: true,
+      },
+    });
+
+    const originalPendingMeetingId = current?.meetingId;
+
     const claimed = await db
       .update(zuvySessions)
       .set({ meetingId: `activating-${sessionId}` })
@@ -320,185 +329,195 @@ export class ClassesService {
       return session;
     }
 
-    if (!this.isPendingZoomMeetingId(session.meetingId)) {
-      return session;
-    }
-
     const startTime = new Date(session.startTime);
     const endTime = new Date(session.endTime);
-    const instructorResult = await this.getInstructorDetails(session.batchId);
-    const instructorEmail = instructorResult.instructor?.email;
-
-    if (!instructorEmail) {
-      throw new Error(
-        `Instructor email not found for Zoom session ${sessionId}.`,
-      );
-    }
-
-    const hostEmail = instructorEmail;
-    await this.ensureInstructorHasZoomLicenseForSession(
-      hostEmail,
-      startTime,
-      endTime,
-    );
-
-    const invitedStudents = Array.isArray(session.invitedStudents)
-      ? (session.invitedStudents as { email: string; name?: string }[])
-      : [];
-
-    const meetingInvitees = invitedStudents
-      .filter((student) => student?.email)
-      .map((student) => ({
-        email: student.email,
-        name: student.name || student.email.split('@')[0],
-      }));
-
-    const duration = Math.floor(
-      (endTime.getTime() - startTime.getTime()) / (1000 * 60),
-    );
-
-    const candidateAltHosts: string[] = [];
-    if (session.creator && session.creator !== hostEmail) {
-      candidateAltHosts.push(session.creator);
-    }
-
-    const verifiedAltHosts: string[] = [];
-    for (const email of candidateAltHosts) {
-      try {
-        const res = await this.zoomService.ensureLicensedUser(email, '', '');
-        if (res.success && res.licensed) {
-          verifiedAltHosts.push(email);
-        } else {
-          this.logger.warn(
-            `Skipping deferred alternative host ${email} for session ${sessionId} (not licensed or inactive)`,
-          );
-        }
-      } catch (error: any) {
-        this.logger.warn(
-          `Failed verifying deferred alternative host ${email} for session ${sessionId}: ${error.message}`,
-        );
-      }
-    }
-
-    const zoomMeetingData = {
-      topic: session.title,
-      type: 2,
-      start_time: startTime.toISOString(),
-      duration,
-      timezone: 'UTC',
-      agenda: 'Live class session',
-      settings: {
-        host_video: true,
-        participant_video: true,
-        join_before_host: false,
-        mute_upon_entry: true,
-        waiting_room: true,
-        alternative_hosts_email_notification: true,
-        audio: 'both',
-        close_registration: true,
-        cn_meeting: false,
-        enforce_login: false,
-        in_meeting: false,
-        jbh_time: 0,
-        meeting_authentication: true,
-        registrants_confirmation_email: true,
-        registrants_email_notification: true,
-        registration_type: 1,
-        show_share_button: true,
-        attendance_reporting: true,
-        end_on_auto_off: true,
-        allow_multiple_devices: true,
-        breakout_room: {
-          enable: true,
-        },
-        focus_mode: false,
-        meeting_invitees: meetingInvitees,
-        watermark: false,
-        calendar_type: 1,
-        auto_recording: 'cloud',
-        recording: {
-          recording_authentication: false,
-        },
-      },
-    };
-
-    this.logger.log(
-      `Creating Zoom meeting with settings: ${JSON.stringify(zoomMeetingData.settings)}`,
-    );
-
-    let zoomResponse = await this.zoomService.createMeetingForUser(
-      hostEmail,
-      zoomMeetingData as any,
-    );
-
-    if (zoomResponse.success) {
-      this.logger.log(
-        `Zoom meeting created: ${JSON.stringify(zoomResponse.data)}`,
-      );
-    }
-
-    if (
-      !zoomResponse.success &&
-      zoomResponse.error &&
-      /alternative host/i.test(zoomResponse.error)
-    ) {
-      this.logger.warn(
-        `Retrying deferred Zoom meeting creation for session ${sessionId} without alternative hosts.`,
-      );
-      const cloneNoAlt = {
-        ...zoomMeetingData,
-        settings: { ...zoomMeetingData.settings },
-      };
-      delete (cloneNoAlt.settings as any).alternative_hosts;
-      delete (cloneNoAlt.settings as any).alternative_hosts_email_notification;
-      zoomResponse = await this.zoomService.createMeetingForUser(
-        hostEmail,
-        cloneNoAlt as any,
-      );
-    }
-
-    if (!zoomResponse.success) {
-      throw new Error(`Failed to create Zoom meeting: ${zoomResponse.error}`);
-    }
-
-    const createdMeetingId = zoomResponse.data.id.toString();
 
     try {
-      const meetingDetails =
-        await this.zoomService.getMeeting(createdMeetingId);
-      if (!meetingDetails.success || !meetingDetails.data?.uuid) {
-        throw new Error('Failed to fetch Zoom meeting UUID');
-      }
+      const instructorResult = await this.getInstructorDetails(session.batchId);
+      const instructorEmail = instructorResult.instructor?.email;
 
-      const zoomSessionUpdate: any = {
-        meetingId: createdMeetingId,
-        hangoutLink: zoomResponse.data.join_url,
-        zoomStartUrl: zoomResponse.data.start_url,
-        zoomPassword: zoomResponse.data.password,
-        zoomMeetingId: createdMeetingId,
-        zoomMeetingUuid: meetingDetails.data.uuid,
-        status: 'ongoing',
-      };
-
-      const [updatedSession] = await db
-        .update(zuvySessions)
-        .set(zoomSessionUpdate)
-        .where(eq(zuvySessions.id, sessionId))
-        .returning();
-
-      this.logger.log(
-        `Activated deferred Zoom session ${sessionId} for ${hostEmail}.`,
-      );
-
-      return updatedSession;
-    } catch (error: any) {
-      try {
-        await this.zoomService.deleteMeeting(createdMeetingId);
-      } catch (cleanupError: any) {
-        this.logger.warn(
-          `Failed to rollback Zoom meeting ${createdMeetingId} after activation error for session ${sessionId}: ${cleanupError.message}`,
+      if (!instructorEmail) {
+        throw new Error(
+          `Instructor email not found for Zoom session ${sessionId}.`,
         );
       }
+
+      const hostEmail = instructorEmail;
+      await this.ensureInstructorHasZoomLicenseForSession(
+        hostEmail,
+        startTime,
+        endTime,
+      );
+
+      const invitedStudents = Array.isArray(session.invitedStudents)
+        ? (session.invitedStudents as { email: string; name?: string }[])
+        : [];
+
+      const meetingInvitees = invitedStudents
+        .filter((student) => student?.email)
+        .map((student) => ({
+          email: student.email,
+          name: student.name || student.email.split('@')[0],
+        }));
+
+      const duration = Math.floor(
+        (endTime.getTime() - startTime.getTime()) / (1000 * 60),
+      );
+
+      const candidateAltHosts: string[] = [];
+      if (session.creator && session.creator !== hostEmail) {
+        candidateAltHosts.push(session.creator);
+      }
+
+      const verifiedAltHosts: string[] = [];
+      for (const email of candidateAltHosts) {
+        try {
+          const res = await this.zoomService.ensureLicensedUser(email, '', '');
+          if (res.success && res.licensed) {
+            verifiedAltHosts.push(email);
+          } else {
+            this.logger.warn(
+              `Skipping deferred alternative host ${email} for session ${sessionId} (not licensed or inactive)`,
+            );
+          }
+        } catch (error: any) {
+          this.logger.warn(
+            `Failed verifying deferred alternative host ${email} for session ${sessionId}: ${error.message}`,
+          );
+        }
+      }
+
+      const zoomMeetingData = {
+        topic: session.title,
+        type: 2,
+        start_time: startTime.toISOString(),
+        duration,
+        timezone: 'UTC',
+        agenda: 'Live class session',
+        settings: {
+          host_video: true,
+          participant_video: true,
+          join_before_host: false,
+          mute_upon_entry: true,
+          waiting_room: true,
+          alternative_hosts_email_notification: true,
+          audio: 'both',
+          close_registration: true,
+          cn_meeting: false,
+          enforce_login: false,
+          in_meeting: false,
+          jbh_time: 0,
+          meeting_authentication: true,
+          registrants_confirmation_email: true,
+          registrants_email_notification: true,
+          registration_type: 1,
+          show_share_button: true,
+          attendance_reporting: true,
+          end_on_auto_off: true,
+          allow_multiple_devices: true,
+          breakout_room: {
+            enable: true,
+          },
+          focus_mode: false,
+          meeting_invitees: meetingInvitees,
+          watermark: false,
+          calendar_type: 1,
+          auto_recording: 'cloud',
+          recording: {
+            recording_authentication: false,
+          },
+        },
+      };
+
+      this.logger.log(
+        `Creating Zoom meeting with settings: ${JSON.stringify(zoomMeetingData.settings)}`,
+      );
+
+      let zoomResponse = await this.zoomService.createMeetingForUser(
+        hostEmail,
+        zoomMeetingData as any,
+      );
+
+      if (zoomResponse.success) {
+        this.logger.log(
+          `Zoom meeting created: ${JSON.stringify(zoomResponse.data)}`,
+        );
+      }
+
+      if (
+        !zoomResponse.success &&
+        zoomResponse.error &&
+        /alternative host/i.test(zoomResponse.error)
+      ) {
+        this.logger.warn(
+          `Retrying deferred Zoom meeting creation for session ${sessionId} without alternative hosts.`,
+        );
+        const cloneNoAlt = {
+          ...zoomMeetingData,
+          settings: { ...zoomMeetingData.settings },
+        };
+        delete (cloneNoAlt.settings as any).alternative_hosts;
+        delete (cloneNoAlt.settings as any)
+          .alternative_hosts_email_notification;
+        zoomResponse = await this.zoomService.createMeetingForUser(
+          hostEmail,
+          cloneNoAlt as any,
+        );
+      }
+
+      if (!zoomResponse.success) {
+        throw new Error(`Failed to create Zoom meeting: ${zoomResponse.error}`);
+      }
+
+      const createdMeetingId = zoomResponse.data.id.toString();
+
+      try {
+        const meetingDetails =
+          await this.zoomService.getMeeting(createdMeetingId);
+        if (!meetingDetails.success || !meetingDetails.data?.uuid) {
+          throw new Error('Failed to fetch Zoom meeting UUID');
+        }
+
+        const zoomSessionUpdate: any = {
+          meetingId: createdMeetingId,
+          hangoutLink: zoomResponse.data.join_url,
+          zoomStartUrl: zoomResponse.data.start_url,
+          zoomPassword: zoomResponse.data.password,
+          zoomMeetingId: createdMeetingId,
+          zoomMeetingUuid: meetingDetails.data.uuid,
+          status: 'ongoing',
+        };
+
+        const [updatedSession] = await db
+          .update(zuvySessions)
+          .set(zoomSessionUpdate)
+          .where(eq(zuvySessions.id, sessionId))
+          .returning();
+
+        this.logger.log(
+          `Activated deferred Zoom session ${sessionId} for ${hostEmail}.`,
+        );
+
+        return updatedSession;
+      } catch (error: any) {
+        try {
+          await this.zoomService.deleteMeeting(createdMeetingId);
+        } catch (cleanupError: any) {
+          this.logger.warn(
+            `Failed to rollback Zoom meeting ${createdMeetingId} after activation error for session ${sessionId}: ${cleanupError.message}`,
+          );
+        }
+        throw error;
+      }
+    } catch (error) {
+      await db
+        .update(zuvySessions)
+        .set({
+          meetingId:
+            originalPendingMeetingId ?? this.createPendingZoomMeetingId(),
+        })
+        .where(eq(zuvySessions.id, sessionId));
+
       throw error;
     }
   }
