@@ -4878,6 +4878,7 @@ export class ContentService {
         const variantToDelete = await db
           .select({
             variantNumber: zuvyModuleQuizVariants.variantNumber,
+            variantQuestion: zuvyModuleQuizVariants.question,
             quizTitle: zuvyModuleQuiz.title,
           })
           .from(zuvyModuleQuizVariants)
@@ -4902,10 +4903,18 @@ export class ContentService {
           ];
         }
 
-        const { variantNumber, quizTitle: variantParentTitle } =
-          variantToDelete[0];
+        const {
+          variantNumber,
+          variantQuestion,
+          quizTitle: variantParentTitle,
+        } = variantToDelete[0];
+
         if (variantParentTitle) {
           deletedQuizTitles.add(variantParentTitle);
+        }
+
+        if (variantQuestion) {
+          deletedVariantTitles.add(variantQuestion);
         }
 
         await db
@@ -4931,7 +4940,8 @@ export class ContentService {
           message:
             'Selected quizzes and/or variants have been deleted and renumbered successfully where applicable.',
           statusCode: STATUS_CODES.OK,
-          quizTitle,
+          quizTitle: Array.from(deletedQuizTitles).join(', '),
+          variantTitle: Array.from(deletedVariantTitles).join(', '),
         },
       ];
     } catch (error) {
