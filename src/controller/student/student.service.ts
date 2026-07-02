@@ -456,9 +456,14 @@ export class StudentService {
           completedItems: 0,
         };
         if (progData.totalItems > 0) {
-          progress = Math.ceil(
-            (progData.completedItems / progData.totalItems) * 100,
+          const completed = Math.min(
+            progData.completedItems,
+            progData.totalItems,
           );
+          progress =
+            completed >= progData.totalItems
+              ? 100
+              : Math.floor((completed / progData.totalItems) * 100);
         } else {
           progress = tracking?.progress || 0;
         }
