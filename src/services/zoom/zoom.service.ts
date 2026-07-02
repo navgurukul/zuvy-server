@@ -225,14 +225,14 @@ export class ZoomService {
   private buildLicensedUserSettingsPayload(): ZoomUserSettingsPayload {
     return {
       security: {
-        waiting_room: true,
+        waiting_room: false,
       },
       scheduled_meeting: {
         host_video: true,
         participants_video: true,
         audio_type: 'both',
         join_before_host: false,
-        waiting_room: true,
+        waiting_room: false,
         force_pmi_jbh_password: false,
         pstn_password_protected: false,
       },
@@ -241,14 +241,14 @@ export class ZoomService {
         chat: true,
         private_chat: true,
         auto_saving_chat: false,
-        entry_exit_chime: 'all',
+        entry_exit_chime: 'none',
         record_play_voice: false,
         file_transfer: true,
         feedback: false,
         co_host: true,
         polling: true,
         attendee_on_hold: false,
-        annotation: true,
+        annotation: false,
         remote_control: false,
         non_verbal_feedback: true,
         breakout_room: true,

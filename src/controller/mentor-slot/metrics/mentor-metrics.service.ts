@@ -141,7 +141,7 @@ export class MentorMetricsService {
       .where(and(...sessionConditions));
 
     /* ==========================================================
-       UPCOMING SESSIONS - Show ALL future sessions (no date filter)
+       UPCOMING SESSIONS
     ========================================================== */
 
     const upcomingSlots = await db
