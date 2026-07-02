@@ -1008,7 +1008,7 @@ export class MentorSlotService {
             approval_type: 0,
             audio: 'both',
             auto_recording: 'cloud',
-            waiting_room: true,
+            waiting_room: false,
             alternative_hosts: mentorEmail,
           },
         };
