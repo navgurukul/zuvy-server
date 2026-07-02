@@ -253,7 +253,9 @@ export class ClassesService {
 
   private isPendingZoomMeetingId(meetingId?: string | null) {
     return Boolean(
-      meetingId && meetingId.startsWith(this.pendingZoomMeetingPrefix),
+      meetingId &&
+        (meetingId.startsWith(this.pendingZoomMeetingPrefix) ||
+          meetingId.startsWith('activating-')),
     );
   }
 
@@ -287,27 +289,6 @@ export class ClassesService {
   }
 
   private async activateZoomSession(sessionId: number) {
-    const claimed = await db
-      .update(zuvySessions)
-      .set({ meetingId: `activating-${sessionId}` })
-      .where(
-        and(
-          eq(zuvySessions.id, sessionId),
-          ilike(zuvySessions.meetingId, 'pending-zoom-session-%'),
-        ),
-      )
-      .returning();
-
-    // If no rows updated, another process already claimed it
-    if (!claimed.length) {
-      this.logger.warn(
-        `Session ${sessionId} already being activated, skipping.`,
-      );
-      return await db.query.zuvySessions.findFirst({
-        where: eq(zuvySessions.id, sessionId),
-      });
-    }
-
     const session = await db.query.zuvySessions.findFirst({
       where: eq(zuvySessions.id, sessionId),
     });
@@ -320,7 +301,34 @@ export class ClassesService {
       return session;
     }
 
+    // Already being activated by another process — skip
+    if (session.meetingId?.startsWith('activating-')) {
+      this.logger.warn(
+        `Session ${sessionId} is already being activated, skipping`,
+      );
+      return session;
+    }
+
     if (!this.isPendingZoomMeetingId(session.meetingId)) {
+      return session;
+    }
+
+    // Claim the session atomically
+    const claimed = await db
+      .update(zuvySessions)
+      .set({ meetingId: `activating-${sessionId}` })
+      .where(
+        and(
+          eq(zuvySessions.id, sessionId),
+          ilike(zuvySessions.meetingId, 'pending-zoom-session-%'),
+        ),
+      )
+      .returning();
+
+    if (!claimed.length) {
+      this.logger.warn(
+        `Session ${sessionId} already claimed by another process, skipping`,
+      );
       return session;
     }
 
@@ -392,7 +400,7 @@ export class ClassesService {
         participant_video: true,
         join_before_host: false,
         mute_upon_entry: true,
-        waiting_room: true,
+        waiting_room: false,
         alternative_hosts_email_notification: true,
         audio: 'both',
         close_registration: true,
@@ -2209,7 +2217,17 @@ export class ClassesService {
             const activatedSession = await this.activateZoomSession(
               classObj.id,
             );
-            classObj = activatedSession;
+            // activateZoomSession returns the session — check if it actually got a real meetingId
+            if (
+              activatedSession &&
+              !this.isPendingZoomMeetingId(activatedSession.meetingId)
+            ) {
+              classObj = activatedSession;
+            } else {
+              this.logger.warn(
+                `Session ${classObj.id} activation deferred to another process`,
+              );
+            }
           } catch (error: any) {
             this.logger.error(
               `Failed to activate Zoom session ${classObj.id} during status update: ${error.message}`,
@@ -4980,7 +4998,7 @@ export class ClassesService {
           participant_video: true,
           join_before_host: false,
           mute_upon_entry: true,
-          waiting_room: true,
+          waiting_room: false,
           attendance_reporting: true,
         },
       };

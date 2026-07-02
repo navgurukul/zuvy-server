@@ -48,6 +48,7 @@ type RecordingSegment = {
 export class RecordingWorkerService implements OnModuleInit {
   private readonly logger = new Logger(RecordingWorkerService.name);
   private youtube: any;
+  private isWorkerRunning = false;
 
   onModuleInit() {
     this.trigger.onTrigger().subscribe(async () => {
@@ -206,21 +207,32 @@ export class RecordingWorkerService implements OnModuleInit {
   // WORKER LOOP (FEATURE-FLAG PROTECTED)
   // =====================================================
   async runWorkerOnce() {
-    // this.logger.debug('⏱ Recording worker tick');
-
     if (!RECORDING_WORKER_ENABLED) {
-      this.logger.debug('Recording worker disabled by env flag');
+      // this.logger.debug('Recording worker disabled by env flag');
       return;
     }
 
-    const job = await this.pickJob();
-    if (!job) {
-      // this.logger.debug('No recording jobs found');
+    if (this.isWorkerRunning) {
+      // this.logger.debug('Recording worker already running, skipping tick.');
       return;
     }
 
-    this.logger.log(`Picked recording job ${job.id}`);
-    await this.processJob(job);
+    this.isWorkerRunning = true;
+
+    try {
+      while (true) {
+        const job = await this.pickJob();
+
+        if (!job) {
+          break;
+        }
+
+        // this.logger.log(`Picked recording job ${job.id}`);
+        await this.processJob(job);
+      }
+    } finally {
+      this.isWorkerRunning = false;
+    }
   }
 
   // =====================================================
@@ -246,6 +258,7 @@ export class RecordingWorkerService implements OnModuleInit {
       WHERE status IN ('DISCOVERED', 'FAILED', 'METADATA_READY', 'DOWNLOADING', 'DOWNLOADED', 'MERGED')
         AND status NOT LIKE 'PROCESSING_%'
         AND status != 'PERMANENT_FAILED'
+        AND drive_link IS NULL
         AND retry_count < ${MAX_RETRIES}
         AND (next_retry_at IS NULL OR next_retry_at <= NOW())
       ORDER BY created_at ASC
@@ -278,6 +291,7 @@ export class RecordingWorkerService implements OnModuleInit {
       WHERE status IN ('DISCOVERED', 'FAILED', 'METADATA_READY', 'DOWNLOADING', 'DOWNLOADED', 'MERGED')
         AND status NOT LIKE 'PROCESSING_%'
         AND status != 'PERMANENT_FAILED'
+        AND drive_link IS NULL
         AND retry_count < ${MAX_RETRIES}
         AND (next_retry_at IS NULL OR next_retry_at <= NOW())
       ORDER BY created_at ASC
@@ -359,6 +373,42 @@ export class RecordingWorkerService implements OnModuleInit {
   // STEP 1 — FETCH ZOOM METADATA
   // =====================================================
   private async fetchZoomMetadata(job: any) {
+    // ---------------------------------------------------
+    // Metadata already provided by webhook
+    // ---------------------------------------------------
+    if (
+      job.metadata_verified === true &&
+      job.zoom_recording_id &&
+      job.zoom_recording_manifest &&
+      job.segments_count > 0
+    ) {
+      this.logJob(
+        'log',
+        job,
+        'Metadata already present from webhook. Skipping Zoom API.',
+      );
+
+      if (job.table === 'mentor') {
+        await db.execute(sql`
+        UPDATE zuvy_mentor_session_recordings
+        SET
+          status = 'METADATA_READY'
+        WHERE id = ${job.id}
+          AND status = 'PROCESSING_METADATA'
+      `);
+      } else {
+        await db.execute(sql`
+        UPDATE zuvy_session_recordings
+        SET
+          status = 'METADATA_READY'
+        WHERE id = ${job.id}
+          AND status = 'PROCESSING_METADATA'
+      `);
+      }
+
+      return;
+    }
+
     let recResp: any;
 
     try {
@@ -598,7 +648,7 @@ export class RecordingWorkerService implements OnModuleInit {
           );
         }
 
-        downloadedPaths.push(finalPath);
+        downloadedPaths.push(path.basename(finalPath));
       }
 
       if (job.table === 'mentor') {
@@ -823,12 +873,41 @@ export class RecordingWorkerService implements OnModuleInit {
   private async mergeRecording(job: any) {
     this.logJob('log', job, 'Starting merge step');
 
+    const table =
+      job.table === 'mentor'
+        ? sql.raw('zuvy_mentor_session_recordings')
+        : sql.raw('zuvy_session_recordings');
+
+    const rec = await db.execute(sql`
+    SELECT *
+    FROM ${table}
+    WHERE id = ${job.id}
+  `);
+
+    if (!rec.rows?.length) {
+      throw new Error(`Recording job ${job.id} not found`);
+    }
+
+    // Always use fresh DB state
+    job = {
+      ...job,
+      ...rec.rows[0],
+    };
+
     const tempDir = path.join(process.cwd(), 'temp-recordings');
     const localSegmentPaths = this.parseJsonArray<string>(
       job.local_segment_paths,
     );
     const inputPaths = localSegmentPaths.length
-      ? localSegmentPaths
+      ? localSegmentPaths.map((storedPath) => {
+          // If the stored absolute path already exists, use it.
+          if (path.isAbsolute(storedPath) && fs.existsSync(storedPath)) {
+            return storedPath;
+          }
+
+          // Otherwise rebuild it using the current runtime temp directory.
+          return path.join(tempDir, path.basename(storedPath));
+        })
       : [path.join(tempDir, this.getRecordingFileName(job))];
 
     const missingPath = inputPaths.find(
@@ -848,11 +927,7 @@ export class RecordingWorkerService implements OnModuleInit {
 
       try {
         if (inputPaths.length === 1) {
-          execFileSync(
-            'ffmpeg',
-            ['-y', '-i', inputPaths[0], '-c', 'copy', mergedPath],
-            { stdio: 'ignore' },
-          );
+          fs.copyFileSync(inputPaths[0], mergedPath);
         } else {
           const concatListPath = path.join(
             tempDir,
@@ -997,20 +1072,32 @@ export class RecordingWorkerService implements OnModuleInit {
     }
 
     const rec = await db.execute(sql`
-  SELECT merged_file_path
+  SELECT *
   FROM ${sql.raw(this.getTableName(job))}
   WHERE id = ${job.id}
 `);
+    job = {
+      ...job,
+      ...rec.rows[0],
+    };
 
     const mergedPath = rec.rows?.[0]?.merged_file_path as string | null;
 
-    const filePath: string =
-      mergedPath ||
-      path.join(
-        process.cwd(),
-        'temp-recordings',
-        this.getRecordingFileName(job),
-      );
+    const fallbackMerged = path.join(
+      process.cwd(),
+      'temp-recordings',
+      this.getMergedFileName(job),
+    );
+
+    let filePath = mergedPath;
+
+    if (!filePath || !fs.existsSync(filePath)) {
+      filePath = fallbackMerged;
+    }
+
+    if (!fs.existsSync(filePath)) {
+      throw new Error(`Merged file not found: ${filePath}`);
+    }
 
     if (!fs.existsSync(filePath)) {
       throw new Error('Merged file not found for upload');
@@ -1111,13 +1198,22 @@ export class RecordingWorkerService implements OnModuleInit {
           WHERE id = ${job.session_id}
         `);
       }
-
-      fs.unlinkSync(filePath); // cleanup
+      try {
+        fs.unlinkSync(filePath);
+      } catch (err: any) {
+        this.logger.warn(
+          `Unable to delete merged file ${filePath}: ${err?.message ?? String(err)}`,
+        );
+      } // cleanup
     } catch (error: any) {
-      this.logJob('error', job, 'YouTube upload failed', {
-        error: error.message,
+      this.logJob('error', job, '[YOUTUBE_UPLOAD_FAILED]', {
+        message: error.message,
         code: error.code,
+        status: error.response?.status,
+        statusText: error.response?.statusText,
         response: error.response?.data,
+        errors: error.response?.data?.error?.errors,
+        stack: error.stack,
       });
 
       // Check for specific YouTube errors
@@ -1162,6 +1258,7 @@ export class RecordingWorkerService implements OnModuleInit {
                 retry_count = ${nextRetryCount},
                 last_error = ${error.message}
               WHERE id = ${job.id}
+              AND status = ${job.status}
             `
           : sql`
               UPDATE zuvy_mentor_session_recordings
@@ -1171,6 +1268,7 @@ export class RecordingWorkerService implements OnModuleInit {
                 next_retry_at = ${nextRetry},
                 last_error = ${error.message}
               WHERE id = ${job.id}
+              AND status = ${job.status}
             `,
       );
     } else {
