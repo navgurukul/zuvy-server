@@ -472,21 +472,14 @@ export class StudentService {
         // Determine course ending conditions
         let hasCourseEnded = false;
 
-        if (batchInfo) {
-          let baseDate = bootcamp.createdAt;
-          if (baseDate) {
-            let weeks = 0;
-            if (bootcamp.duration) {
-              const match = bootcamp.duration
-                .toString()
-                .match(/(\d+)\s*weeks?/i);
-              if (match) weeks = parseInt(match[1]);
-            }
+        const baseDate =
+          batchInfo?.startDate ?? batchInfo?.createdAt ?? bootcamp.createdAt;
+        const durationWeeks = Number(bootcamp.duration ?? 0);
 
-            const endDate = new Date(baseDate);
-            endDate.setDate(endDate.getDate() + weeks * 7);
-            hasCourseEnded = endDate <= new Date();
-          }
+        if (baseDate && Number.isFinite(durationWeeks) && durationWeeks > 0) {
+          const endDate = new Date(baseDate);
+          endDate.setDate(endDate.getDate() + durationWeeks * 7);
+          hasCourseEnded = endDate <= new Date();
         }
 
         let isCompletedStatus = false;
