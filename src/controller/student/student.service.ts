@@ -362,7 +362,7 @@ export class StudentService {
               .where(
                 and(
                   inArray(zuvyProjectTracking.bootcampId, bootcampIds),
-                  eq(zuvyProjectTracking.userId, BigInt(userId)),
+                  eq(zuvyProjectTracking.userId, userId),
                 ),
               )
               .then((res) => {
