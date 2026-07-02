@@ -4685,7 +4685,17 @@ export class ContentService {
       }));
 
       // Insert new variants into the variants table
-      await db.insert(zuvyModuleQuizVariants).values(variantData);
+      const insertedVariants = await db
+        .insert(zuvyModuleQuizVariants)
+        .values(variantData)
+        .returning();
+
+      const variantsWithIds = insertedVariants.map(
+        (insertedVariant, index) => ({
+          ...variantData[index],
+          id: insertedVariant.id,
+        }),
+      );
 
       return [
         null,

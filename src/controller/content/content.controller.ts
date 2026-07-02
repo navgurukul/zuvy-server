@@ -1334,16 +1334,29 @@ export class ContentController {
   @TrackAction({
     action: 'create_quiz_variant',
     resourceType: 'quiz',
+    displayType: 'quiz variant',
     permissionName: 'editMcq',
-    getResourceName: (result) =>
-      result?.data?.title || result?.data?.name || 'Quiz',
+    getResourceName: (result, params) =>
+      params?.variantQuestion ||
+      result?.data?.[0]?.question ||
+      result?.data?.question ||
+      'Quiz',
   })
   async addQuizVariants(
     @Param('orgId') orgId: number,
     @Body() addQuizVariantsDto: AddQuizVariantsDto,
+    @Req() req,
     @Res() res,
   ) {
     try {
+      const firstVariantQuestion =
+        addQuizVariantsDto?.variantMCQs?.[0]?.question || '';
+      if (firstVariantQuestion) {
+        req['trackingData'] = {
+          variantQuestion: firstVariantQuestion,
+        };
+      }
+
       const [err, success] = await this.contentService.addQuizVariants(
         addQuizVariantsDto,
         orgId,
