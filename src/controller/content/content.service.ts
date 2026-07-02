@@ -4699,6 +4699,7 @@ export class ContentService {
       let mainQuizIds: number[] = [];
       let variantDeletions: { id: number; quizId: number }[] = [];
       const deletedQuizTitles = new Set<string>();
+      const deletedVariantTitles = new Set<string>();
       const firstMainId = deleteDto.questionIds.find(
         (q) => q.type === 'main',
       )?.id;
