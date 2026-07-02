@@ -263,6 +263,12 @@ export class TrackActionInterceptor implements NestInterceptor {
 
                 // ─── Description ─────────────────────────────────────────────────────
                 let description: string;
+                const variantTitle = this.stripHtmlTags(
+                  allParamsFull?.variantTitle || '',
+                );
+                const questionText = this.stripHtmlTags(
+                  allParamsFull?.questionText || allParamsFull?.question || '',
+                );
 
                 if (logStatus === 'failed') {
                   // For failed actions, describe the attempt + reason
@@ -270,16 +276,31 @@ export class TrackActionInterceptor implements NestInterceptor {
                   const actionVerb = action.replace(/_/g, ' ');
                   description = `${actorName} attempted to ${actionVerb} but failed: ${errorMsg}`;
                 } else {
-                  description = this.buildSmartDescription(
-                    actorName,
-                    action,
-                    resourceType,
-                    resourceName,
-                    targetUser,
-                    actualResult,
-                    staticDisplayType,
-                    allParamsFull,
-                  );
+                  if (action === 'delete_quiz' && variantTitle) {
+                    const variantLabel = variantTitle.includes(',')
+                      ? 'variants'
+                      : 'variant';
+                    const displayType =
+                      staticDisplayType ?? resourceType ?? 'quiz';
+                    description = `${actorName} ${this.toPastTense('delete')} ${displayType} ${variantLabel} "${variantTitle}"`;
+                  } else if (action === 'delete_openended' && questionText) {
+                    const displayType =
+                      staticDisplayType ??
+                      resourceType ??
+                      'open ended question';
+                    description = `${actorName} ${this.toPastTense('delete')} ${displayType} "${questionText}"`;
+                  } else {
+                    description = this.buildSmartDescription(
+                      actorName,
+                      action,
+                      resourceType,
+                      resourceName,
+                      targetUser,
+                      actualResult,
+                      staticDisplayType,
+                      allParamsFull,
+                    );
+                  }
                 }
 
                 const logPayload = {
@@ -513,6 +534,16 @@ export class TrackActionInterceptor implements NestInterceptor {
     }
 
     return desc;
+  }
+
+  private stripHtmlTags(value: string): string {
+    if (!value) return '';
+
+    return value
+      .replace(/<[^>]*>/g, ' ')
+      .replace(/&nbsp;/gi, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
   }
 
   private toPastTense(verb: string): string {
