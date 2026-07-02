@@ -22,6 +22,8 @@ import {
   zuvyStudentAttendanceRecords,
   zuvyMentorSlotBooking,
   zuvyMentorSlotAvailability,
+  zuvyChapterTracking,
+  zuvyProjectTracking,
 } from '../../../drizzle/schema';
 import { db } from '../../db/index';
 import {
@@ -277,6 +279,7 @@ export class StudentService {
               bootcampTopic: true,
               description: true,
               organizationId: true,
+              createdAt: true,
             },
           },
           batchInfo: {
@@ -284,6 +287,8 @@ export class StudentService {
               id: true,
               name: true,
               instructorId: true,
+              startDate: true,
+              createdAt: true,
             },
             with: {
               instructorDetails: {
@@ -302,46 +307,213 @@ export class StudentService {
         },
       });
 
-      // Fetch upcoming events once for all bootcamps
-      let allOrgs = await db.select().from(zuvyOrganizations);
+      // Extract unique orgIds and bootcampIds
+      const orgIds = Array.from(
+        new Set(
+          enrolled.map((e: any) => e.bootcamp.organizationId).filter(Boolean),
+        ),
+      );
+      const bootcampIds = Array.from(
+        new Set(enrolled.map((e: any) => e.bootcamp.id).filter(Boolean)),
+      );
+
+      let allOrgs: any[] = [];
+      let allModules: any[] = [];
+      let allUserCompletedProjects: any[] = [];
+
+      // Fetch orgs, modules, and project tracking in parallel
+      if (bootcampIds.length > 0 || orgIds.length > 0) {
+        const promises: any[] = [];
+
+        if (orgIds.length > 0) {
+          promises.push(
+            db
+              .select({
+                id: zuvyOrganizations.id,
+                title: zuvyOrganizations.title,
+              })
+              .from(zuvyOrganizations)
+              .where(inArray(zuvyOrganizations.id, orgIds))
+              .then((res) => {
+                allOrgs = res;
+              }),
+          );
+        }
+
+        if (bootcampIds.length > 0) {
+          promises.push(
+            db
+              .select({
+                id: zuvyCourseModules.id,
+                bootcampId: zuvyCourseModules.bootcampId,
+                projectId: zuvyCourseModules.projectId,
+              })
+              .from(zuvyCourseModules)
+              .where(inArray(zuvyCourseModules.bootcampId, bootcampIds))
+              .then((res) => {
+                allModules = res;
+              }),
+          );
+
+          promises.push(
+            db
+              .select({ bootcampId: zuvyProjectTracking.bootcampId })
+              .from(zuvyProjectTracking)
+              .where(
+                and(
+                  inArray(zuvyProjectTracking.bootcampId, bootcampIds),
+                  eq(zuvyProjectTracking.userId, BigInt(userId)),
+                ),
+              )
+              .then((res) => {
+                allUserCompletedProjects = res;
+              }),
+          );
+        }
+
+        await Promise.all(promises);
+      }
+
       const orgMap = {};
       allOrgs.forEach((org) => {
         orgMap[org.id] = org.title;
       });
 
-      // Process each enrollment and attach upcoming events
-      const totalData = await Promise.all(
-        enrolled.map(async (e: any) => {
-          const { batchInfo, tracking, bootcamp } = e;
-          const progress = tracking?.progress || 0;
+      let allChapters: any[] = [];
+      let allUserCompletedChapters: any[] = [];
 
-          return {
-            ...bootcamp,
-            id: Number(bootcamp.id),
-            courseOrgId: bootcamp.organizationId || null,
-            courseOrgName: bootcamp.organizationId
-              ? orgMap[bootcamp.organizationId]
-              : null,
-            batchId: batchInfo?.id ? Number(batchInfo.id) : null,
-            batchName: batchInfo?.name,
-            progress,
-            instructorDetails: batchInfo?.instructorDetails
-              ? {
-                  ...batchInfo.instructorDetails,
-                  id: Number(batchInfo.instructorDetails.id),
-                }
-              : { name: 'Not Assigned', profilePicture: null },
-          };
-        }),
-      );
+      const moduleIds = allModules.map((m) => m.id);
 
-      // Split bootcamps by progress
-      const completedBootcamps = totalData.filter(
-        (bootcamp) => bootcamp.progress === 100,
-      );
-      const inProgressBootcamps = totalData.filter(
-        (bootcamp) => bootcamp.progress < 100,
-      );
+      // Fetch chapters and chapter tracking in parallel
+      if (moduleIds.length > 0) {
+        await Promise.all([
+          db
+            .select({ moduleId: zuvyModuleChapter.moduleId })
+            .from(zuvyModuleChapter)
+            .where(inArray(zuvyModuleChapter.moduleId, moduleIds))
+            .then((res) => {
+              allChapters = res;
+            }),
+          db
+            .select({ moduleId: zuvyChapterTracking.moduleId })
+            .from(zuvyChapterTracking)
+            .where(
+              and(
+                inArray(zuvyChapterTracking.moduleId, moduleIds),
+                eq(zuvyChapterTracking.userId, BigInt(userId)),
+              ),
+            )
+            .then((res) => {
+              allUserCompletedChapters = res;
+            }),
+        ]);
+      }
+
+      const moduleIdToBootcampId = new Map();
+      allModules.forEach((m) => moduleIdToBootcampId.set(m.id, m.bootcampId));
+
+      const bootcampProgressData: Record<
+        number,
+        { totalItems: number; completedItems: number }
+      > = {};
+      bootcampIds.forEach((id) => {
+        bootcampProgressData[id] = { totalItems: 0, completedItems: 0 };
+      });
+
+      // Projects are counted by modules having a non-null projectId
+      allModules.forEach((m) => {
+        if (m.projectId !== null && bootcampProgressData[m.bootcampId]) {
+          bootcampProgressData[m.bootcampId].totalItems++;
+        }
+      });
+
+      allChapters.forEach((c) => {
+        const bId = moduleIdToBootcampId.get(c.moduleId);
+        if (bId && bootcampProgressData[bId])
+          bootcampProgressData[bId].totalItems++;
+      });
+      allUserCompletedChapters.forEach((c) => {
+        const bId = moduleIdToBootcampId.get(c.moduleId);
+        if (bId && bootcampProgressData[bId])
+          bootcampProgressData[bId].completedItems++;
+      });
+      allUserCompletedProjects.forEach((p) => {
+        if (bootcampProgressData[p.bootcampId])
+          bootcampProgressData[p.bootcampId].completedItems++;
+      });
+
+      // Process each enrollment, calculate status, and split by progress in a single O(N) pass
+      const completedBootcamps: any[] = [];
+      const inProgressBootcamps: any[] = [];
+
+      enrolled.forEach((e: any) => {
+        const { batchInfo, tracking, bootcamp } = e;
+        let progress = tracking?.progress || 0;
+
+        // Recompute progress dynamically using pre-fetched data
+        const progData = bootcampProgressData[bootcamp.id] || {
+          totalItems: 0,
+          completedItems: 0,
+        };
+        if (progData.totalItems > 0) {
+          progress = Math.ceil(
+            (progData.completedItems / progData.totalItems) * 100,
+          );
+        } else {
+          progress = tracking?.progress || 0;
+        }
+        progress = Math.min(100, Math.max(0, progress));
+
+        // Determine course ending conditions
+        let hasCourseEnded = false;
+
+        if (batchInfo) {
+          let baseDate = bootcamp.createdAt;
+          if (baseDate) {
+            let weeks = 0;
+            if (bootcamp.duration) {
+              const match = bootcamp.duration
+                .toString()
+                .match(/(\d+)\s*weeks?/i);
+              if (match) weeks = parseInt(match[1]);
+            }
+
+            const endDate = new Date(baseDate);
+            endDate.setDate(endDate.getDate() + weeks * 7);
+            hasCourseEnded = endDate <= new Date();
+          }
+        }
+
+        let isCompletedStatus = false;
+        if (progress === 100 && hasCourseEnded) {
+          isCompletedStatus = true;
+        }
+
+        const formattedData = {
+          ...bootcamp,
+          id: Number(bootcamp.id),
+          courseOrgId: bootcamp.organizationId || null,
+          courseOrgName: bootcamp.organizationId
+            ? orgMap[bootcamp.organizationId]
+            : null,
+          batchId: batchInfo?.id ? Number(batchInfo.id) : null,
+          batchName: batchInfo?.name,
+          progress,
+          isCompletedStatus,
+          instructorDetails: batchInfo?.instructorDetails
+            ? {
+                ...batchInfo.instructorDetails,
+                id: Number(batchInfo.instructorDetails.id),
+              }
+            : { name: 'Not Assigned', profilePicture: null },
+        };
+
+        if (isCompletedStatus) {
+          completedBootcamps.push(formattedData);
+        } else {
+          inProgressBootcamps.push(formattedData);
+        }
+      });
 
       // Apply pagination if limit and offset are provided
       const paginateArray = (arr: any[], limit?: number, offset?: number) => {
