@@ -22,6 +22,9 @@ import {
   zuvyStudentAttendanceRecords,
   zuvyMentorSlotBooking,
   zuvyMentorSlotAvailability,
+  zuvyChapterTracking,
+  zuvyCourseProjects,
+  zuvyProjectTracking,
 } from '../../../drizzle/schema';
 import { db } from '../../db/index';
 import {
@@ -36,6 +39,7 @@ import {
   isNull,
   gte,
   lte,
+  not,
 } from 'drizzle-orm';
 import { ClassesService } from '../classes/classes.service';
 import { helperVariable } from 'src/constants/helper';
@@ -277,6 +281,7 @@ export class StudentService {
               bootcampTopic: true,
               description: true,
               organizationId: true,
+              createdAt: true,
             },
           },
           batchInfo: {
@@ -284,6 +289,8 @@ export class StudentService {
               id: true,
               name: true,
               instructorId: true,
+              startDate: true,
+              createdAt: true,
             },
             with: {
               instructorDetails: {
@@ -309,11 +316,127 @@ export class StudentService {
         orgMap[org.id] = org.title;
       });
 
+      // Optimize progress calculation by batch fetching tracking data
+      const bootcampIds = enrolled
+        .map((e: any) => e.bootcamp.id)
+        .filter(Boolean);
+
+      let allModules: any[] = [];
+      let allChapters: any[] = [];
+      let allUserCompletedChapters: any[] = [];
+      let allUserCompletedProjects: any[] = [];
+
+      if (bootcampIds.length > 0) {
+        allModules = await db
+          .select()
+          .from(zuvyCourseModules)
+          .where(inArray(zuvyCourseModules.bootcampId, bootcampIds));
+        const moduleIds = allModules.map((m) => m.id);
+
+        if (moduleIds.length > 0) {
+          allChapters = await db
+            .select()
+            .from(zuvyModuleChapter)
+            .where(inArray(zuvyModuleChapter.moduleId, moduleIds));
+          allUserCompletedChapters = await db
+            .select()
+            .from(zuvyChapterTracking)
+            .where(
+              and(
+                inArray(zuvyChapterTracking.moduleId, moduleIds),
+                eq(zuvyChapterTracking.userId, BigInt(userId)),
+              ),
+            );
+        }
+
+        allUserCompletedProjects = await db
+          .select()
+          .from(zuvyProjectTracking)
+          .where(
+            and(
+              inArray(zuvyProjectTracking.bootcampId, bootcampIds),
+              eq(zuvyProjectTracking.userId, BigInt(userId)),
+            ),
+          );
+      }
+
+      const moduleIdToBootcampId = new Map();
+      allModules.forEach((m) => moduleIdToBootcampId.set(m.id, m.bootcampId));
+
+      const bootcampProgressData: Record<
+        number,
+        { totalItems: number; completedItems: number }
+      > = {};
+      bootcampIds.forEach((id) => {
+        bootcampProgressData[id] = { totalItems: 0, completedItems: 0 };
+      });
+
+      // Projects are counted by modules having a non-null projectId
+      allModules.forEach((m) => {
+        if (m.projectId !== null && bootcampProgressData[m.bootcampId]) {
+          bootcampProgressData[m.bootcampId].totalItems++;
+        }
+      });
+
+      allChapters.forEach((c) => {
+        const bId = moduleIdToBootcampId.get(c.moduleId);
+        if (bId && bootcampProgressData[bId])
+          bootcampProgressData[bId].totalItems++;
+      });
+      allUserCompletedChapters.forEach((c) => {
+        const bId = moduleIdToBootcampId.get(c.moduleId);
+        if (bId && bootcampProgressData[bId])
+          bootcampProgressData[bId].completedItems++;
+      });
+      allUserCompletedProjects.forEach((p) => {
+        if (bootcampProgressData[p.bootcampId])
+          bootcampProgressData[p.bootcampId].completedItems++;
+      });
+
       // Process each enrollment and attach upcoming events
       const totalData = await Promise.all(
         enrolled.map(async (e: any) => {
           const { batchInfo, tracking, bootcamp } = e;
-          const progress = tracking?.progress || 0;
+          let progress = tracking?.progress || 0;
+
+          // Recompute progress dynamically using pre-fetched data
+          const progData = bootcampProgressData[bootcamp.id] || {
+            totalItems: 0,
+            completedItems: 0,
+          };
+          if (progData.totalItems > 0) {
+            progress = Math.ceil(
+              (progData.completedItems / progData.totalItems) * 100,
+            );
+          } else {
+            progress = tracking?.progress || 0;
+          }
+          progress = Math.min(100, Math.max(0, progress));
+
+          // Determine course ending conditions
+          let hasCourseEnded = false;
+
+          if (batchInfo) {
+            let baseDate = bootcamp.createdAt;
+            if (baseDate) {
+              let weeks = 0;
+              if (bootcamp.duration) {
+                const match = bootcamp.duration
+                  .toString()
+                  .match(/(\d+)\s*weeks?/i);
+                if (match) weeks = parseInt(match[1]);
+              }
+
+              const endDate = new Date(baseDate);
+              endDate.setDate(endDate.getDate() + weeks * 7);
+              hasCourseEnded = endDate <= new Date();
+            }
+          }
+
+          let isCompletedStatus = false;
+          if (progress === 100 && hasCourseEnded) {
+            isCompletedStatus = true;
+          }
 
           return {
             ...bootcamp,
@@ -325,6 +448,7 @@ export class StudentService {
             batchId: batchInfo?.id ? Number(batchInfo.id) : null,
             batchName: batchInfo?.name,
             progress,
+            isCompletedStatus,
             instructorDetails: batchInfo?.instructorDetails
               ? {
                   ...batchInfo.instructorDetails,
@@ -335,12 +459,12 @@ export class StudentService {
         }),
       );
 
-      // Split bootcamps by progress
+      // Split bootcamps by progress and completion status
       const completedBootcamps = totalData.filter(
-        (bootcamp) => bootcamp.progress === 100,
+        (bootcamp) => bootcamp.isCompletedStatus,
       );
       const inProgressBootcamps = totalData.filter(
-        (bootcamp) => bootcamp.progress < 100,
+        (bootcamp) => !bootcamp.isCompletedStatus,
       );
 
       // Apply pagination if limit and offset are provided
