@@ -957,13 +957,18 @@ export class ContentController {
   @TrackAction({
     action: 'delete_openended',
     resourceType: 'openEndedQuestion',
-    displayType: 'the openEnded Coding question for module',
+    displayType: 'the openEnded Coding question',
     permissionName: 'deleteOpendEnded',
-    getResourceName: (result) => result?.questionText || 'Open Ended Question',
+    getResourceName: (result, params) =>
+      params?.questionText ||
+      result?.questionText ||
+      result?.data?.question ||
+      'Open Ended Question',
   })
   async deleteOpenEndedQuestion(
     @Param('orgId') orgId: number,
     @Body() questionIds: deleteQuestionDto,
+    @Req() req,
     @Res() res: Response,
   ) {
     try {
@@ -976,6 +981,14 @@ export class ContentController {
           result.message,
           result.code,
         ).send(res);
+      }
+      // Provide tracking data for interceptor to build descriptive audit logs
+      try {
+        req['trackingData'] = {
+          questionText: result?.questionText || '',
+        };
+      } catch (e) {
+        // ignore if req is not writable
       }
       return new SuccessResponse(result.message, result.code, result).send(res);
     } catch (error) {
@@ -1321,16 +1334,29 @@ export class ContentController {
   @TrackAction({
     action: 'create_quiz_variant',
     resourceType: 'quiz',
+    displayType: 'quiz variant',
     permissionName: 'editMcq',
-    getResourceName: (result) =>
-      result?.data?.title || result?.data?.name || 'Quiz',
+    getResourceName: (result, params) =>
+      params?.variantQuestion ||
+      result?.data?.[0]?.question ||
+      result?.data?.question ||
+      'Quiz',
   })
   async addQuizVariants(
     @Param('orgId') orgId: number,
     @Body() addQuizVariantsDto: AddQuizVariantsDto,
+    @Req() req,
     @Res() res,
   ) {
     try {
+      const firstVariantQuestion =
+        addQuizVariantsDto?.variantMCQs?.[0]?.question || '';
+      if (firstVariantQuestion) {
+        req['trackingData'] = {
+          variantQuestion: firstVariantQuestion,
+        };
+      }
+
       const [err, success] = await this.contentService.addQuizVariants(
         addQuizVariantsDto,
         orgId,
@@ -1383,13 +1409,15 @@ export class ContentController {
       ).send(res);
     }
     req['trackingData'] = {
-      questionTitle: success?.quizTitle,
+      questionTitle: success?.variantTitle || success?.quizTitle,
       quizTitle: success?.quizTitle,
       variantTitle: success?.variantTitle,
     };
-    return new SuccessResponse(success.message, success.statusCode, null).send(
-      res,
-    );
+    return new SuccessResponse(
+      success.message,
+      success.statusCode,
+      success.data,
+    ).send(res);
   }
 
   @Get('/getCompilerTypes')

@@ -537,11 +537,23 @@ export class ContentService {
           allVariantsData.push(...variants);
         });
 
-        // Insert all variants in batch
-        await db
+        // Insert all variants in batch and keep the generated ids in the response
+        const insertedVariants = await db
           .insert(zuvyModuleQuizVariants)
           .values(allVariantsData)
           .returning();
+
+        let variantOffset = 0;
+        quizUploadResults.forEach((quizResult) => {
+          const variantCount = quizResult.variantMCQs?.length || 0;
+          quizResult.variantMCQs = (quizResult.variantMCQs || []).map(
+            (variant, index) => ({
+              ...variant,
+              id: insertedVariants[variantOffset + index]?.id,
+            }),
+          );
+          variantOffset += variantCount;
+        });
 
         return [
           null,
@@ -4673,14 +4685,24 @@ export class ContentService {
       }));
 
       // Insert new variants into the variants table
-      await db.insert(zuvyModuleQuizVariants).values(variantData);
+      const insertedVariants = await db
+        .insert(zuvyModuleQuizVariants)
+        .values(variantData)
+        .returning();
+
+      const variantsWithIds = insertedVariants.map(
+        (insertedVariant, index) => ({
+          ...variantData[index],
+          id: insertedVariant.id,
+        }),
+      );
 
       return [
         null,
         {
           message: 'Variants added successfully.',
           statusCode: STATUS_CODES.CREATED,
-          data: variantData,
+          data: variantsWithIds,
         },
       ];
     } catch (err) {
@@ -4698,6 +4720,8 @@ export class ContentService {
     try {
       let mainQuizIds: number[] = [];
       let variantDeletions: { id: number; quizId: number }[] = [];
+      let deletedQuizIds: number[] = [];
+      let deletedVariantIds: number[] = [];
       const deletedQuizTitles = new Set<string>();
       const deletedVariantTitles = new Set<string>();
       const firstMainId = deleteDto.questionIds.find(
@@ -4826,6 +4850,7 @@ export class ContentService {
                 ),
               )
               .returning();
+            deletedQuizIds = authorizedIds;
           }
         }
 
@@ -4922,6 +4947,7 @@ export class ContentService {
           .delete(zuvyModuleQuizVariants)
           .where(eq(zuvyModuleQuizVariants.id, variantId))
           .returning();
+        deletedVariantIds.push(variantId);
 
         // Update the variant numbers for remaining variants
         await db
@@ -4943,6 +4969,11 @@ export class ContentService {
           statusCode: STATUS_CODES.OK,
           quizTitle: Array.from(deletedQuizTitles).join(', '),
           variantTitle: Array.from(deletedVariantTitles).join(', '),
+          data: {
+            deletedQuizIds:
+              deletedQuizIds.length > 0 ? deletedQuizIds : mainQuizIds,
+            deletedVariantIds,
+          },
         },
       ];
     } catch (error) {
