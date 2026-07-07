@@ -38,6 +38,16 @@ export interface ZoomMeetingRequest {
     auto_recording?: string; // local, cloud, none
     enforce_login?: boolean;
     waiting_room?: boolean;
+    waiting_room_options?: {
+      enable_waiting_room_on_participant_network_identity?: boolean;
+      participants_to_place_in_waiting_room?: number;
+      // 0 = Everyone
+      // 1 = Users not in your account
+      // 2 = Users not in your account and not part of whitelisted domains
+      // 3 = Users not on the meeting invite  ← what you want
+      // 4 = Users not in your organization
+      whitelisted_domains_of_participants?: string;
+    };
     // New attendance and meeting control settings
     attendance_reporting?: boolean; // Enable attendance tracking
     end_on_auto_off?: boolean; // End meeting when host leaves
@@ -278,6 +288,33 @@ export class ZoomService {
     };
   }
 
+  async applyAccountWaitingRoomSettings() {
+    try {
+      const url = `${this.baseUrl}/accounts/me/settings`;
+      await axios.patch(
+        url,
+        {
+          in_meeting: {
+            waiting_room: true,
+            waiting_room_options: {
+              participants_to_place_in_waiting_room: 3, // Users not on the meeting invite
+            },
+          },
+        },
+        { headers: await this.getHeaders() },
+      );
+      this.logger.log(
+        'Account-level waiting room settings applied successfully',
+      );
+      return { success: true };
+    } catch (e: any) {
+      this.logger.error(
+        `Failed to apply account waiting room settings: ${e.response?.data?.message || e.message}`,
+      );
+      return { success: false, error: e.response?.data?.message || e.message };
+    }
+  }
+
   async applyLicensedUserSettings(email: string) {
     const url = `${this.baseUrl}/users/${encodeURIComponent(email)}/settings`;
     const payload = this.buildLicensedUserSettingsPayload();
@@ -289,6 +326,7 @@ export class ZoomService {
       this.logger.log(
         `Applied Zoom licensed-user settings for ${email} successfully.`,
       );
+      await this.applyAccountWaitingRoomSettings();
       return { success: true };
     } catch (e: any) {
       const errorMessage = e.response?.data?.message || e.message;

@@ -400,7 +400,12 @@ export class ClassesService {
         participant_video: true,
         join_before_host: false,
         mute_upon_entry: true,
-        waiting_room: false,
+        waiting_room: true,
+        waiting_room_options: {
+          enable_waiting_room_on_participant_network_identity: false,
+          participants_to_place_in_waiting_room: 3, // 3 = Users not on the meeting invite
+          whitelisted_domains_of_participants: '',
+        },
         alternative_hosts_email_notification: true,
         audio: 'both',
         close_registration: true,
