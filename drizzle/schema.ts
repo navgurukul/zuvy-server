@@ -4656,6 +4656,9 @@ export const zuvyTrackingLogs = main.table('zuvy_tracking_logs', {
   id: serial('id').primaryKey().notNull(),
   orgId: integer('org_id').default(null), // Organization ID for multi-tenant isolation
   bootcampId: integer('bootcamp_id').references(() => zuvyBootcamps.id).default(null), // Bootcamp ID for tracking bootcamp-specific actions
+  chapterId: integer('chapter_id').default(null), // Chapter ID for chapter-related actions
+  moduleId: integer('module_id').default(null), // Module ID for module-related actions
+  moduleName: varchar('module_name', { length: 255 }).default(null), // Module name for better audit context
   actorUserId: bigint('actor_user_id', { mode: 'number' }).notNull().references(() => users.id), // User who performed the action
   permissionId: integer('permission_id').references(() => zuvyPermissions.id).default(null), // Associated permission if applicable
   resourceId: integer('resource_id').references(() => zuvyResources.id).default(null), // Associated resource ID from zuvy_resources table
