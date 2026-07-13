@@ -6,7 +6,6 @@ import {
   zuvyBatchEnrollments,
   users,
   zuvyStudentAttendance,
-  zuvyStudentAttendanceRecords,
   zuvyOutsourseAssessments,
 } from '../../drizzle/schema';
 import { db } from '../db/index';
@@ -25,7 +24,7 @@ import {
 import { google } from 'googleapis';
 import { ClassesService } from '../controller/classes/classes.service';
 import { ZoomService } from '../services/zoom/zoom.service';
-import { TrackingService } from '../controller/progress/tracking.service';
+import { AttendanceWorkerTriggerService } from '../services/attendance-worker/attendance-worker-trigger.service';
 import axios from 'axios';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -40,7 +39,7 @@ export class ScheduleService {
   constructor(
     private readonly classesService: ClassesService,
     private readonly zoomService: ZoomService,
-    private readonly trackingService: TrackingService,
+    private readonly attendanceWorkerTrigger: AttendanceWorkerTriggerService,
   ) {
     this.logger.log('ScheduleService initialized');
     try {
@@ -78,6 +77,7 @@ export class ScheduleService {
     }
   }
 
+  // @Cron('*/5 * * * *')
   @Cron('0 */6 * * *')
   async backfillInvitedStudentsAttendanceMidnight() {
     this.logger.log(
@@ -135,9 +135,30 @@ export class ScheduleService {
           (s) => !existingSet.has(s.meetingId),
         );
 
-        // Step 1: backfill attendance for sessionsMissingAttendance
+        // Step 1: DISCOVER attendance jobs (do NOT compute here).
+        // Actual computation happens in AttendanceWorkerService, triggered
+        // instantly by the Zoom meeting.ended webhook; this cron is only a
+        // safety net for sessions whose webhook was missed.
         if (sessionsMissingAttendance.length) {
-          await this.backfillAttendanceForSessions(sessionsMissingAttendance);
+          for (const session of sessionsMissingAttendance) {
+            if (!session.zoomMeetingId) continue;
+            await db.execute(sql`
+              INSERT INTO zuvy_session_attendance_jobs (
+                session_id, zoom_meeting_id, batch_id, bootcamp_id
+              )
+              SELECT ${session.id}, ${session.zoomMeetingId}, ${session.batchId}, ${session.bootcampId}
+              WHERE NOT EXISTS (
+                SELECT 1
+                FROM zuvy_session_attendance_jobs
+                WHERE session_id = ${session.id}
+                  AND zoom_meeting_id = ${session.zoomMeetingId}
+              )
+            `);
+          }
+          this.attendanceWorkerTrigger.triggerNow();
+          this.logger.log(
+            `Discovered ${sessionsMissingAttendance.length} attendance jobs`,
+          );
         } else {
           this.logger.log('No sessions missing attendance');
         }
@@ -198,161 +219,6 @@ export class ScheduleService {
     } catch (error: any) {
       this.logger.error(
         `Unexpected error in backfillInvitedStudentsAttendanceMidnight: ${error.message}`,
-      );
-    }
-  }
-
-  // Helper: compute attendance and insert aggregated + per-student records for provided sessions
-  private async backfillAttendanceForSessions(
-    sessionsMissingAttendance: any[],
-  ) {
-    try {
-      const zoomIds = sessionsMissingAttendance
-        .map((s) => s.zoomMeetingId)
-        .filter(Boolean);
-      if (!zoomIds.length) {
-        this.logger.log('No zoomMeetingIds to backfill for attendance');
-        return;
-      }
-      this.logger.log(
-        `Backfilling attendance for ${zoomIds.length} Zoom meetings`,
-      );
-      const compute = await this.zoomService.computeAttendance75(
-        zoomIds as any,
-      );
-      const computeAny: any = compute;
-      if (!computeAny.success) {
-        this.logger.error(
-          `computeAttendance75 failed (batch): ${computeAny.error}`,
-        );
-        return;
-      }
-
-      // Normalize compute results
-      let resultsArray: any[] = [];
-      if (Array.isArray(computeAny.data)) resultsArray = computeAny.data;
-      else if (computeAny.data && Array.isArray((computeAny.data as any).data))
-        resultsArray = (computeAny.data as any).data;
-      else if (computeAny.data) resultsArray = [computeAny.data];
-
-      // Pre-build map
-      const sessionsByZoomId = new Map<string | number, any>();
-      for (const s of sessionsMissingAttendance)
-        sessionsByZoomId.set(s.zoomMeetingId as any, s);
-
-      // Prefetch existing per-session student records
-      const sessionIdList = sessionsMissingAttendance.map((s) => s.id);
-      const existingRecordsRaw = sessionIdList.length
-        ? await db
-            .select({
-              sessionId: zuvyStudentAttendanceRecords.sessionId,
-              userId: zuvyStudentAttendanceRecords.userId,
-            })
-            .from(zuvyStudentAttendanceRecords)
-            .where(
-              inArray(zuvyStudentAttendanceRecords.sessionId, sessionIdList),
-            )
-        : [];
-      const existingRecordsMap = new Map<number, Set<any>>();
-      for (const r of existingRecordsRaw) {
-        const sid = Number((r as any).sessionId);
-        const set = existingRecordsMap.get(sid) ?? new Set<number>();
-        set.add((r as any).userId as any);
-        existingRecordsMap.set(sid, set);
-      }
-
-      const perStudentRecords: any[] = [];
-
-      for (const result of resultsArray) {
-        const meetingKey = result?.data?.meetingId ?? result.meetingId;
-        const meetingIdMatch = sessionsByZoomId.get(meetingKey);
-        if (!meetingIdMatch) continue;
-        try {
-          await db
-            .insert(zuvyStudentAttendance)
-            .values({
-              meetingId: meetingIdMatch.meetingId,
-              attendance: result.data.attendance,
-              batchId: meetingIdMatch.batchId,
-              bootcampId: meetingIdMatch.bootcampId,
-            })
-            .catch(() => null);
-
-          const invited = Array.isArray(meetingIdMatch.invitedStudents)
-            ? meetingIdMatch.invitedStudents
-            : [];
-          const invitedByEmail = new Map(
-            invited.map((i: any) => [(i.email || '').toLowerCase(), i]),
-          );
-          const attendanceArray = Array.isArray(result.data.attendance)
-            ? result.data.attendance
-            : [];
-          const sessionDate = meetingIdMatch.startTime
-            ? new Date(meetingIdMatch.startTime)
-            : new Date();
-
-          const existingUserSet =
-            existingRecordsMap.get(meetingIdMatch.id) ?? new Set<any>();
-          const addedUserSet = new Set<any>();
-
-          for (const att of attendanceArray) {
-            const email = (att.email || '').toLowerCase();
-            const invitedInfo: any = invitedByEmail.get(email);
-            if (!invitedInfo || !invitedInfo.userId) continue;
-            const uid = invitedInfo.userId;
-            if (existingUserSet.has(uid) || addedUserSet.has(uid)) continue;
-            addedUserSet.add(uid);
-            perStudentRecords.push({
-              userId: uid,
-              batchId: meetingIdMatch.batchId,
-              bootcampId: meetingIdMatch.bootcampId,
-              sessionId: meetingIdMatch.id,
-              attendanceDate: sessionDate,
-              status: att.attendance === 'present' ? 'present' : 'absent',
-              duration: att.duration || 0,
-            });
-          }
-        } catch (innerErr: any) {
-          this.logger.warn(
-            `Failed to process attendance for meeting ${meetingKey}: ${innerErr?.message ?? innerErr}`,
-          );
-        }
-      }
-
-      // Bulk insert per-student records
-      if (perStudentRecords.length) {
-        const CHUNK_SIZE = 1000;
-        for (let i = 0; i < perStudentRecords.length; i += CHUNK_SIZE) {
-          const slice = perStudentRecords.slice(i, i + CHUNK_SIZE);
-          try {
-            await db.insert(zuvyStudentAttendanceRecords).values(slice);
-          } catch (bulkErr: any) {
-            this.logger.error(
-              `Bulk insert failure for records ${i}-${i + slice.length - 1}: ${bulkErr.message}`,
-            );
-          }
-        }
-        this.logger.log(
-          `Inserted ${perStudentRecords.length} per-student attendance records.`,
-        );
-        try {
-          const affectedBatchIds = Array.from(
-            new Set(perStudentRecords.map((r) => r.batchId).filter(Boolean)),
-          );
-          for (const bid of affectedBatchIds) {
-            await this.trackingService.recomputeBatchAttendancePercentages(
-              bid as number,
-            );
-          }
-        } catch (recErr: any) {
-          this.logger.warn(
-            `Failed to recompute attendance percentages after backfill: ${recErr.message}`,
-          );
-        }
-      }
-    } catch (err: any) {
-      this.logger.error(
-        `Error in backfillAttendanceForSessions: ${err.message}`,
       );
     }
   }

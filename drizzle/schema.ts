@@ -4617,6 +4617,62 @@ export const zuvyMentorSessionRecordings = main.table(
   }),
 );
 
+// Zoom Session Attendance Job Queue (webhook-driven, mirrors zuvySessionRecordings)
+export const zuvySessionAttendanceJobs = main.table(
+  'zuvy_session_attendance_jobs',
+  {
+    id: serial('id').primaryKey().notNull(),
+
+    sessionId: integer('session_id')
+      .notNull()
+      .references(() => zuvySessions.id, { onDelete: 'cascade' }),
+
+    zoomMeetingId: text('zoom_meeting_id').notNull(),
+    zoomMeetingUuid: text('zoom_meeting_uuid').default(null),
+
+    batchId: integer('batch_id'),
+    bootcampId: integer('bootcamp_id'),
+
+    status: varchar('status', { length: 32 })
+      .notNull()
+      .default('DISCOVERED'),
+    /*
+    → DISCOVERED
+    → PROCESSING
+    → COMPLETED
+    → FAILED
+    → PERMANENT_FAILED
+    */
+
+    retryCount: integer('retry_count').default(0),
+    nextRetryAt: timestamp('next_retry_at', {
+      withTimezone: true,
+      mode: 'string',
+    }),
+    lastError: text('last_error'),
+
+    attendanceComputedAt: timestamp('attendance_computed_at', {
+      withTimezone: true,
+      mode: 'string',
+    }),
+
+    createdAt: timestamp('created_at', {
+      withTimezone: true,
+      mode: 'string',
+    }).defaultNow(),
+    updatedAt: timestamp('updated_at', {
+      withTimezone: true,
+      mode: 'string',
+    }).defaultNow(),
+  },
+  (table) => ({
+    uniqSessionAttendanceUuid: unique('uniq_session_attendance_uuid')
+      .on(table.sessionId, table.zoomMeetingUuid),
+    statusIdx: index('idx_session_attendance_job_status').on(table.status),
+    meetingIdIdx: index('idx_session_attendance_job_meeting_id').on(table.zoomMeetingId),
+  }),
+);
+
 export const zuvyZoomWebhookEvents = main.table(
   'zuvy_zoom_webhook_events',
   {
@@ -4656,6 +4712,9 @@ export const zuvyTrackingLogs = main.table('zuvy_tracking_logs', {
   id: serial('id').primaryKey().notNull(),
   orgId: integer('org_id').default(null), // Organization ID for multi-tenant isolation
   bootcampId: integer('bootcamp_id').references(() => zuvyBootcamps.id).default(null), // Bootcamp ID for tracking bootcamp-specific actions
+  chapterId: integer('chapter_id').default(null), // Chapter ID for chapter-related actions
+  moduleId: integer('module_id').default(null), // Module ID for module-related actions
+  moduleName: varchar('module_name', { length: 255 }).default(null), // Module name for better audit context
   actorUserId: bigint('actor_user_id', { mode: 'number' }).notNull().references(() => users.id), // User who performed the action
   permissionId: integer('permission_id').references(() => zuvyPermissions.id).default(null), // Associated permission if applicable
   resourceId: integer('resource_id').references(() => zuvyResources.id).default(null), // Associated resource ID from zuvy_resources table

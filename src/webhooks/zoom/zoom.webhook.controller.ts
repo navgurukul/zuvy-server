@@ -7,6 +7,7 @@ import { Public } from 'src/auth/decorators/public.decorator';
 import { sql } from 'drizzle-orm';
 import { db } from '../../db';
 import { RecordingWorkerTriggerService } from '../../services/recording-worker/recording-worker-trigger.service';
+import { AttendanceWorkerTriggerService } from '../../services/attendance-worker/attendance-worker-trigger.service';
 
 function extractMeetingIdentifiers(payload: any) {
   const meeting = payload?.object || {};
@@ -57,6 +58,7 @@ export class ZoomWebhookController {
 
   constructor(
     private readonly recordingWorkerTrigger: RecordingWorkerTriggerService,
+    private readonly attendanceWorkerTrigger: AttendanceWorkerTriggerService,
   ) {}
 
   @Public()
@@ -389,6 +391,43 @@ WHERE zoom_meeting_id = ${meetingId}
           `);
 
         this.recordingWorkerTrigger.triggerNow();
+
+        // Ensure attendance job exists — deferred a few minutes so Zoom's
+        // participant report has time to finish populating after the meeting ends.
+        await db.execute(sql`
+          INSERT INTO zuvy_session_attendance_jobs (
+            session_id,
+            zoom_meeting_id,
+            zoom_meeting_uuid,
+            batch_id,
+            bootcamp_id,
+            status,
+            next_retry_at,
+            retry_count
+          )
+          SELECT
+            s.id,
+          ${meetingId},
+          ${meetingUuid},
+          s.batch_id,
+          s.bootcamp_id,
+          'DISCOVERED',
+          NOW() + INTERVAL '3 minutes',
+          0
+          FROM zuvy_sessions s
+          WHERE s.zoom_meeting_id = ${meetingId}
+            AND NOT EXISTS (
+            SELECT 1
+              FROM zuvy_session_attendance_jobs a
+              WHERE a.session_id = s.id
+                AND (
+              a.zoom_meeting_id = ${meetingId}
+                  OR a.zoom_meeting_uuid = ${meetingUuid}
+            )
+          )
+          `);
+
+        this.attendanceWorkerTrigger.triggerNow();
 
         await db.execute(sql`
         UPDATE zuvy_zoom_webhook_events

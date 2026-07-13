@@ -240,6 +240,24 @@ export class ContentController {
         ? `${chapterTitle} for course name ${courseName}`
         : chapterTitle;
     },
+    getTrackingContext: (result, params) => ({
+      chapterId:
+        (result?.chapterId ??
+          result?.module?.[0]?.id ??
+          Number(params?.chapterId)) ||
+        null,
+      moduleId:
+        (result?.moduleId ??
+          result?.module?.[0]?.moduleId ??
+          Number(params?.moduleId)) ||
+        null,
+      bootcampId: (result?.bootcampId ?? Number(params?.bootcampId)) || null,
+      moduleName:
+        (result?.moduleName ??
+          result?.module?.[0]?.name ??
+          params?.moduleName) ||
+        null,
+    }),
   })
   async createChapter(@Body() chapterData: CreateChapterDto) {
     return this.contentService.createChapterForModule(
@@ -310,6 +328,12 @@ export class ContentController {
     getResourceName: (result) => {
       return result?.data?.title || result?.before?.title || 'Assessment';
     },
+    getTrackingContext: (result, params) => ({
+      chapterId: (result?.chapterId ?? Number(params?.chapterId)) || null,
+      moduleId: (result?.moduleId ?? Number(params?.moduleId)) || null,
+      bootcampId: (result?.bootcampId ?? Number(params?.bootcampId)) || null,
+      moduleName: (result?.moduleName ?? params?.moduleName) || null,
+    }),
   })
   async editAssessment(
     @Body() assessmentBody: CreateAssessmentBody,
@@ -487,6 +511,18 @@ export class ContentController {
     getResourceName: (result) => {
       return result?.chapter?.[0]?.title || 'Chapter';
     },
+    getTrackingContext: (result, params) => ({
+      chapterId:
+        (result?.chapterId ??
+          result?.chapter?.[0]?.id ??
+          Number(params?.chapterId)) ||
+        null,
+      moduleId: (result?.moduleId ?? Number(params?.moduleId)) || null,
+      bootcampId: (result?.bootcampId ?? Number(params?.bootcampId)) || null,
+      moduleName:
+        (result?.moduleName ?? result?.module?.name ?? params?.moduleName) ||
+        null,
+    }),
   })
   async editChapter(
     @Body() reOrder: EditChapterDto,
@@ -529,6 +565,17 @@ export class ContentController {
         ? `${chapterTitle} for course name ${courseName}`
         : chapterTitle;
     },
+    getTrackingContext: (result, params) => ({
+      chapterId:
+        (result?.chapterId ??
+          result?.chapter?.id ??
+          result?.chapter?.[0]?.id ??
+          Number(params?.chapterId)) ||
+        null,
+      moduleId: (result?.moduleId ?? Number(params?.moduleId)) || null,
+      bootcampId: (result?.bootcampId ?? Number(params?.bootcampId)) || null,
+      moduleName: (result?.moduleName ?? params?.moduleName) || null,
+    }),
   })
   async deleteChapter(
     @Param('moduleId') moduleId: number,
@@ -1142,6 +1189,12 @@ export class ContentController {
     getResourceName: (result) => {
       return result?.updatedChapter?.[0]?.title || 'Chapter';
     },
+    getTrackingContext: (result, params) => ({
+      chapterId: result?.chapterId ?? Number(params?.chapterId) ?? null,
+      moduleId: result?.moduleId ?? Number(params?.moduleId) ?? null,
+      moduleName: result?.moduleName ?? params?.moduleName ?? null,
+      bootcampId: result?.bootcampId ?? Number(params?.bootcampId) ?? null,
+    }),
   })
   async createFormForModule(
     @Query('chapterId') chapterId: number,
@@ -1192,6 +1245,12 @@ export class ContentController {
     getResourceName: (result) => {
       return result?.updatedChapter?.[0]?.title || 'Chapter';
     },
+    getTrackingContext: (result, params) => ({
+      chapterId: result?.chapterId ?? Number(params?.chapterId) ?? null,
+      moduleId: result?.moduleId ?? Number(params?.moduleId) ?? null,
+      moduleName: result?.moduleName ?? params?.moduleName ?? null,
+      bootcampId: result?.bootcampId ?? Number(params?.bootcampId) ?? null,
+    }),
   })
   async editFormForModule(
     @Query('chapterId') chapterId: number,
@@ -1214,6 +1273,12 @@ export class ContentController {
     getResourceName: (result) => {
       return result?.res2?.[0]?.title || 'Chapter';
     },
+    getTrackingContext: (result, params) => ({
+      chapterId: result?.chapterId ?? Number(params?.chapterId) ?? null,
+      moduleId: result?.moduleId ?? Number(params?.moduleId) ?? null,
+      moduleName: result?.moduleName ?? params?.moduleName ?? null,
+      bootcampId: result?.bootcampId ?? Number(params?.bootcampId) ?? null,
+    }),
   })
   async createAndEditForm(
     @Param('chapterId') chapterId: number,
@@ -1460,6 +1525,12 @@ export class ContentController {
     getResourceName: (result) => {
       return result?.chapter?.[0]?.title || 'Chapter PDF';
     },
+    getTrackingContext: (result, params) => ({
+      chapterId: result?.chapterId ?? Number(params?.chapterId) ?? null,
+      moduleId: result?.moduleId ?? Number(params?.moduleId) ?? null,
+      moduleName: result?.moduleName ?? params?.moduleName ?? null,
+      bootcampId: result?.bootcampId ?? Number(params?.bootcampId) ?? null,
+    }),
   })
   async uploadPdf(
     @UploadedFile() file: Express.Multer.File,
