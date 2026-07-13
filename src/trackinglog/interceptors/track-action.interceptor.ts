@@ -50,6 +50,7 @@ export class TrackActionInterceptor implements NestInterceptor {
                   permissionName,
                   getResourceName,
                   getBootcampId,
+                  getTrackingContext,
                   getTargetUser,
                 } = metadataValues as any;
 
@@ -236,6 +237,64 @@ export class TrackActionInterceptor implements NestInterceptor {
                                   : null;
                 }
 
+                const trackingContext = getTrackingContext
+                  ? getTrackingContext(actualResult, allParamsFull)
+                  : null;
+                const chapterId =
+                  trackingContext?.chapterId ??
+                  (typeof allParamsFull?.chapterId === 'string'
+                    ? Number(allParamsFull.chapterId)
+                    : allParamsFull?.chapterId) ??
+                  (typeof request.params?.chapterId === 'string'
+                    ? Number(request.params.chapterId)
+                    : request.params?.chapterId) ??
+                  (typeof request.query?.chapterId === 'string'
+                    ? Number(request.query.chapterId)
+                    : request.query?.chapterId) ??
+                  (typeof request.body?.chapterId === 'string'
+                    ? Number(request.body.chapterId)
+                    : request.body?.chapterId) ??
+                  actualResult?.chapterId ??
+                  actualResult?.data?.chapterId ??
+                  actualResult?.chapter?.id ??
+                  actualResult?.chapter?.[0]?.id ??
+                  actualResult?.module?.id ??
+                  actualResult?.module?.[0]?.id ??
+                  actualResult?.updatedChapter?.[0]?.id ??
+                  null;
+                const moduleId =
+                  trackingContext?.moduleId ??
+                  (typeof allParamsFull?.moduleId === 'string'
+                    ? Number(allParamsFull.moduleId)
+                    : allParamsFull?.moduleId) ??
+                  (typeof request.params?.moduleId === 'string'
+                    ? Number(request.params.moduleId)
+                    : request.params?.moduleId) ??
+                  (typeof request.query?.moduleId === 'string'
+                    ? Number(request.query.moduleId)
+                    : request.query?.moduleId) ??
+                  (typeof request.body?.moduleId === 'string'
+                    ? Number(request.body.moduleId)
+                    : request.body?.moduleId) ??
+                  actualResult?.moduleId ??
+                  actualResult?.data?.moduleId ??
+                  actualResult?.module?.moduleId ??
+                  actualResult?.module?.[0]?.moduleId ??
+                  actualResult?.module?.id ??
+                  actualResult?.module?.[0]?.id ??
+                  null;
+                const moduleName =
+                  trackingContext?.moduleName ??
+                  actualResult?.moduleName ??
+                  actualResult?.data?.moduleName ??
+                  actualResult?.moduleName ??
+                  actualResult?.module?.name ??
+                  actualResult?.module?.[0]?.name ??
+                  actualResult?.module?.[0]?.moduleName ??
+                  actualResult?.chapter?.[0]?.moduleName ??
+                  actualResult?.updatedChapter?.[0]?.moduleName ??
+                  null;
+
                 // Extract target user info if function provided
                 const targetUser = getTargetUser
                   ? getTargetUser(actualResult)
@@ -306,6 +365,9 @@ export class TrackActionInterceptor implements NestInterceptor {
                 const logPayload = {
                   orgId: orgId,
                   bootcampId: bootcampId,
+                  chapterId,
+                  moduleId,
+                  moduleName,
                   batchId: request.body?.batchId
                     ? Number(request.body.batchId)
                     : undefined,
@@ -452,6 +514,21 @@ export class TrackActionInterceptor implements NestInterceptor {
                 // Create description for failed action
                 const errorMessage = error?.message || 'Unknown error';
                 const description = `${actorName} attempted to ${action.replace('_', ' ')} but failed: ${errorMessage}`;
+                const chapterId =
+                  request.params?.chapterId ||
+                  request.query?.chapterId ||
+                  request.body?.chapterId ||
+                  null;
+                const moduleId =
+                  request.params?.moduleId ||
+                  request.query?.moduleId ||
+                  request.body?.moduleId ||
+                  null;
+                const moduleName =
+                  request.body?.moduleName ||
+                  request.query?.moduleName ||
+                  request.params?.moduleName ||
+                  null;
 
                 // Log the failed action with timeout protection
                 const logWithTimeout = async () => {
@@ -461,6 +538,9 @@ export class TrackActionInterceptor implements NestInterceptor {
                   const logPromise = this.trackinglogService.logAction({
                     orgId: orgId,
                     bootcampId: bootcampId,
+                    chapterId: chapterId ? Number(chapterId) : undefined,
+                    moduleId: moduleId ? Number(moduleId) : undefined,
+                    moduleName,
                     actorUserId: actorUserId,
                     action,
                     resourceType: resourceType || 'unknown',

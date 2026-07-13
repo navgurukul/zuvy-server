@@ -16,6 +16,7 @@ import {
   zuvyUserRoles,
   zuvyUserOrganizations,
   zuvyBatches,
+  zuvyCourseModules,
 } from '../../drizzle/schema';
 import { eq, and, desc, sql, lt, isNull, or } from 'drizzle-orm';
 
@@ -141,6 +142,9 @@ export class TrackinglogService {
           description: createTrackinglogDto.description,
           orgId: createTrackinglogDto.orgId,
           bootcampId: createTrackinglogDto.bootcampId,
+          chapterId: createTrackinglogDto.chapterId,
+          moduleId: createTrackinglogDto.moduleId,
+          moduleName: createTrackinglogDto.moduleName,
           permissionId: createTrackinglogDto.permissionId,
           resourceId: createTrackinglogDto.resourceId,
           status: createTrackinglogDto.status || 'success', // Default to 'success' if not provided
@@ -155,7 +159,7 @@ export class TrackinglogService {
     } catch (error) {
       throw new InternalServerErrorException(
         'Failed to create tracking log',
-        error.message,
+        (error as Error).message,
       );
     }
   }
@@ -351,6 +355,10 @@ export class TrackinglogService {
             actorUserId: zuvyTrackingLogs.actorUserId,
             actorName: users.name,
             actorEmail: users.email,
+            bootcampId: zuvyTrackingLogs.bootcampId,
+            chapterId: zuvyTrackingLogs.chapterId,
+            moduleId: zuvyTrackingLogs.moduleId,
+            moduleName: zuvyTrackingLogs.moduleName,
             permissionId: zuvyTrackingLogs.permissionId,
             resourceId: zuvyTrackingLogs.resourceId,
             action: zuvyTrackingLogs.action,
@@ -414,7 +422,7 @@ export class TrackinglogService {
       }
       throw new InternalServerErrorException(
         'Failed to fetch tracking logs',
-        error.message,
+        (error as Error).message,
       );
     }
   }
@@ -437,6 +445,9 @@ export class TrackinglogService {
     batchId?: number;
     permissionId?: number;
     permissionName?: string;
+    chapterId?: number;
+    moduleId?: number;
+    moduleName?: string;
     customDescription?: string;
     status?: string;
   }): Promise<void> {
@@ -481,6 +492,9 @@ export class TrackinglogService {
     batchId?: number;
     permissionId?: number;
     permissionName?: string;
+    chapterId?: number;
+    moduleId?: number;
+    moduleName?: string;
     customDescription?: string;
     status?: string;
   }): Promise<void> {
@@ -497,6 +511,9 @@ export class TrackinglogService {
         batchId,
         permissionId,
         permissionName,
+        chapterId,
+        moduleId,
+        moduleName,
         customDescription,
         status,
       } = params;
@@ -555,11 +572,31 @@ export class TrackinglogService {
         finalResourceId = result.resourceId;
       }
 
+      let resolvedModuleName = moduleName;
+      if (!resolvedModuleName && moduleId) {
+        try {
+          const moduleRow = await db
+            .select({ name: zuvyCourseModules.name })
+            .from(zuvyCourseModules)
+            .where(eq(zuvyCourseModules.id, moduleId))
+            .limit(1);
+          if (moduleRow.length > 0) {
+            resolvedModuleName = moduleRow[0].name;
+          }
+        } catch {
+          // ignore — moduleName stays null
+        }
+      }
+
       // Use custom description if provided (always sent by TrackActionInterceptor via buildSmartDescription)
       // Fallback is a simple generic sentence for direct service calls (rare edge case)
-      const description =
+      const baseDescription =
         customDescription ||
         `${actorName} performed ${action} on ${resourceType}${resourceName ? ': ' + resourceName : ''}`;
+      const description =
+        resolvedModuleName && resourceType?.toLowerCase() === 'chapter'
+          ? `${baseDescription} | Module: ${resolvedModuleName}`
+          : baseDescription;
 
       const createDto: CreateTrackinglogDto = {
         actorUserId,
@@ -568,6 +605,9 @@ export class TrackinglogService {
         description,
         orgId: resolvedOrgId,
         bootcampId: resolvedBootcampId,
+        chapterId,
+        moduleId,
+        moduleName: resolvedModuleName,
         permissionId: finalPermissionId,
         resourceId: finalResourceId,
         status: status || 'success',
@@ -607,7 +647,7 @@ export class TrackinglogService {
     } catch (error) {
       throw new InternalServerErrorException(
         'Failed to delete old tracking logs',
-        error.message,
+        (error as Error).message,
       );
     }
   }

@@ -9,6 +9,15 @@ export interface TrackActionMetadata {
   permissionName?: string;
   getResourceName?: (result: any, params?: any) => string;
   getBootcampId?: (result: any, params: any) => number | null;
+  getTrackingContext?: (
+    result: any,
+    params?: any,
+  ) => {
+    chapterId?: number | null;
+    moduleId?: number | null;
+    bootcampId?: number | null;
+    moduleName?: string | null;
+  } | null;
   getTargetUser?: (result: any) => {
     status: string;
     name?: string;

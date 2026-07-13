@@ -122,6 +122,26 @@ export class ContentService {
     });
   }
 
+  private async getChapterTrackingContext(chapterId: number, moduleId: number) {
+    const resolvedModuleId = Number(moduleId);
+    const module = await db
+      .select({
+        moduleId: zuvyCourseModules.id,
+        moduleName: zuvyCourseModules.name,
+        bootcampId: zuvyCourseModules.bootcampId,
+      })
+      .from(zuvyCourseModules)
+      .where(eq(zuvyCourseModules.id, resolvedModuleId))
+      .limit(1);
+
+    return {
+      chapterId: Number(chapterId),
+      moduleId: resolvedModuleId,
+      moduleName: module[0]?.moduleName || '',
+      bootcampId: module[0]?.bootcampId ?? null,
+    };
+  }
+
   async uploadPdfToS3(fileBuffer: Buffer, fileName: string): Promise<string> {
     try {
       const key = `zuvy_curriculum/${Date.now()}_${fileName}`;
@@ -452,12 +472,17 @@ export class ContentService {
         .where(eq(zuvyBootcamps.id, bootcampId))
         .limit(1);
       const courseName = courseRes[0]?.name || '';
+      const moduleName = moduleInfo[0]?.name || '';
       return {
         status: 'success',
         message: 'Chapter created successfully for this module',
         code: 200,
         module: chapter,
         courseName,
+        moduleName,
+        moduleId,
+        bootcampId,
+        chapterId: chapter[0]?.id ?? null,
       };
     } catch (err) {
       Logger.error({ err });
@@ -1611,6 +1636,9 @@ export class ContentService {
         message: 'Modified successfully',
         chapter: updatedChapter,
         bootcampId: moduleInfo[0].bootcampId,
+        moduleId,
+        moduleName: moduleInfo[0]?.name || '',
+        chapterId,
         descriptionSuffix,
       };
     } catch (err) {
@@ -1667,6 +1695,7 @@ export class ContentService {
     chapterId: number,
   ) {
     try {
+      let moduleInfo: any[] = [];
       const chapterInfo = await db
         .select()
         .from(zuvyModuleChapter)
@@ -1674,7 +1703,7 @@ export class ContentService {
       if (chapterInfo.length == 0) {
         throw new NotFoundException('Assessment not found or deleted!');
       } else {
-        const moduleInfo = await db
+        moduleInfo = await db
           .select()
           .from(zuvyCourseModules)
           .where(eq(zuvyCourseModules.id, chapterInfo[0].moduleId));
@@ -2063,6 +2092,10 @@ export class ContentService {
         message: 'Updated successfully',
         before: { title: chapterInfo[0]?.title },
         data: { title: assessmentBody.title || chapterInfo[0]?.title },
+        chapterId,
+        moduleId: chapterInfo[0]?.moduleId,
+        moduleName: moduleInfo[0]?.name || '',
+        bootcampId: moduleInfo[0]?.bootcampId || null,
       };
     } catch (err) {
       throw err;
@@ -2442,6 +2475,10 @@ export class ContentService {
       message: 'Chapter and all related data deleted successfully',
       code: 200,
       chapter: chapterRecord,
+      chapterId,
+      moduleId,
+      moduleName: moduleInfo[0]?.name || '',
+      bootcampId,
       courseName,
     };
   }
@@ -4205,11 +4242,16 @@ export class ContentService {
         .returning();
 
       if (result.length > 0 || updatedChapter.length > 0) {
+        const trackingContext = await this.getChapterTrackingContext(
+          chapterId,
+          updatedChapter[0].moduleId,
+        );
         return {
           status: 'success',
           code: 200,
           result,
           updatedChapter,
+          ...trackingContext,
         };
       } else {
         return {
@@ -4346,6 +4388,11 @@ export class ContentService {
         .where(eq(zuvyModuleChapter.id, chapterId))
         .returning();
 
+      const trackingContext = await this.getChapterTrackingContext(
+        chapterId,
+        updatedChapter[0].moduleId,
+      );
+
       return {
         status: 'success',
         code: 200,
@@ -4354,6 +4401,7 @@ export class ContentService {
         updatedChapter,
         before: { formQuestions: existingFormIds },
         data: updatedChapter[0],
+        ...trackingContext,
       };
     } catch (error) {
       throw error;
@@ -4511,6 +4559,11 @@ export class ContentService {
         .from(zuvyModuleChapter)
         .where(eq(zuvyModuleChapter.id, chapterId));
 
+      const trackingContext = await this.getChapterTrackingContext(
+        chapterId,
+        res2[0].moduleId,
+      );
+
       return {
         status: 'success',
         code: 200,
@@ -4519,6 +4572,7 @@ export class ContentService {
         res2,
         before: { formQuestions: existingFormIds },
         data: res2[0],
+        ...trackingContext,
       };
     } catch (err) {
       throw err;
@@ -4838,6 +4892,34 @@ export class ContentService {
           });
 
           if (authorizedIds.length > 0) {
+            const variants = await db
+              .select({
+                quizId: zuvyModuleQuizVariants.quizId,
+                question: zuvyModuleQuizVariants.question,
+              })
+              .from(zuvyModuleQuizVariants)
+              .where(inArray(zuvyModuleQuizVariants.quizId, authorizedIds))
+              .orderBy(
+                asc(zuvyModuleQuizVariants.quizId),
+                asc(zuvyModuleQuizVariants.variantNumber),
+              );
+
+            const firstVariantQuestionByQuiz = new Map<number, string>();
+            for (const variant of variants) {
+              if (
+                variant.question &&
+                !firstVariantQuestionByQuiz.has(variant.quizId)
+              ) {
+                firstVariantQuestionByQuiz.set(
+                  variant.quizId,
+                  variant.question,
+                );
+              }
+            }
+            firstVariantQuestionByQuiz.forEach((question) =>
+              deletedVariantTitles.add(question),
+            );
+
             await db
               .delete(zuvyModuleQuizVariants)
               .where(inArray(zuvyModuleQuizVariants.quizId, authorizedIds));

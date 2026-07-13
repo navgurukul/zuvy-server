@@ -24,6 +24,30 @@ export class CreateTrackinglogDto {
   @IsNumber()
   bootcampId?: number;
 
+  @ApiPropertyOptional({
+    description: 'Chapter ID for chapter-related tracking logs',
+    example: 12,
+  })
+  @IsOptional()
+  @IsNumber()
+  chapterId?: number;
+
+  @ApiPropertyOptional({
+    description: 'Module ID for module-related tracking logs',
+    example: 7,
+  })
+  @IsOptional()
+  @IsNumber()
+  moduleId?: number;
+
+  @ApiPropertyOptional({
+    description: 'Module name for chapter/module tracking logs',
+    example: 'React Basics',
+  })
+  @IsOptional()
+  @IsString()
+  moduleName?: string;
+
   @ApiProperty({
     description: 'User ID who performed the action',
     example: 123,
