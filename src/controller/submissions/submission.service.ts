@@ -3231,22 +3231,6 @@ Zuvy LMS Team
               ),
             with: {
               chapterTrackingDetails: {
-                where: (details, { and, exists, eq }) =>
-                  exists(
-                    db
-                      .select({ id: zuvySessionRecordViews.id })
-                      .from(zuvySessionRecordViews)
-                      .innerJoin(
-                        zuvySessions,
-                        eq(zuvySessions.id, zuvySessionRecordViews.sessionId),
-                      )
-                      .where(
-                        and(
-                          eq(zuvySessionRecordViews.userId, details.userId),
-                          eq(zuvySessions.chapterId, details.chapterId),
-                        ),
-                      ),
-                  ),
                 columns: {
                   userId: true,
                   completedAt: true,
@@ -3399,34 +3383,8 @@ Zuvy LMS Team
         },
         with: {
           studentAttendanceRecords: {
-            where: (
-              record,
-              { and, exists, eq, inArray, isNotNull, ilike, or },
-            ) =>
+            where: (record, { and, eq, inArray, ilike, or }) =>
               and(
-                exists(
-                  db
-                    .select({ id: zuvySessionRecordViews.id })
-                    .from(zuvySessionRecordViews)
-                    .where(
-                      and(
-                        eq(zuvySessionRecordViews.userId, record.userId),
-                        eq(zuvySessionRecordViews.sessionId, record.sessionId),
-                      ),
-                    ),
-                ),
-                inArray(
-                  record.userId,
-                  db
-                    .select({ userId: zuvyChapterTracking.userId })
-                    .from(zuvyChapterTracking)
-                    .where(
-                      and(
-                        eq(zuvyChapterTracking.chapterId, moduleChapterId),
-                        isNotNull(zuvyChapterTracking.completedAt),
-                      ),
-                    ),
-                ),
                 name || email
                   ? inArray(
                       record.userId,
@@ -3485,6 +3443,20 @@ Zuvy LMS Team
         });
       }
 
+      // Fetch all completed student tracking records for this chapter to compute submission status dynamically
+      const completedTracking = await db
+        .select({ userId: zuvyChapterTracking.userId })
+        .from(zuvyChapterTracking)
+        .where(
+          and(
+            eq(zuvyChapterTracking.chapterId, moduleChapterId),
+            isNotNull(zuvyChapterTracking.completedAt),
+          ),
+        );
+      const completedUserIdsSet = new Set(
+        completedTracking.map((ct) => Number(ct.userId)),
+      );
+
       // Process and flatten data
       let allRecords: any[] = [];
       submissions.forEach((session: any) => {
@@ -3504,6 +3476,7 @@ Zuvy LMS Team
               resolvedBatchId !== null && resolvedBatchId !== undefined
                 ? batchMap[Number(resolvedBatchId)] ?? null
                 : null;
+            const isCompleted = completedUserIdsSet.has(Number(record.userId));
             allRecords.push({
               ...record,
               sessionId: session.id,
@@ -3512,6 +3485,7 @@ Zuvy LMS Team
               hangoutLink: session.hangoutLink,
               batchId: resolvedBatchId,
               batchName: resolvedBatchName,
+              submissionStatus: isCompleted ? 1 : 0,
             });
           });
         }
