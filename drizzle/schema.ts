@@ -76,6 +76,8 @@ export const learnerYearOfStudy = pgEnum('learner_year_of_study', [
   '2nd',
   '3rd',
   '4th',
+  "Passed Out",
+
 ]);
 export const learnerCurrentStatus = pgEnum('learner_current_status', [
   'Learning',
