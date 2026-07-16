@@ -208,7 +208,6 @@ export const studentDonor = main.table('student_donor', {
   studentId: integer('student_id').references(() => students.id),
   donorId: text('donor_id').array(),
 });
-
 export const feedbacks = main.table(
   'feedbacks',
   {
