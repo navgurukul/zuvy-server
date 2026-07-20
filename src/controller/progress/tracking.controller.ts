@@ -8,6 +8,7 @@ import {
   Body,
   Param,
   BadRequestException,
+  ForbiddenException,
   Query,
   Req,
   Res,
@@ -40,6 +41,7 @@ import { ErrorResponse, SuccessResponse } from 'src/errorHandler/handler';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 import { TrackAction } from 'src/trackinglog/decorators/track-action.decorator';
 import { SkipOrgCheck } from 'src/rbac/decorators/skip-org-check.decorator';
+import { helperVariable } from 'src/constants/helper';
 
 @SkipOrgCheck()
 @Controller('tracking')
@@ -103,10 +105,22 @@ export class TrackingController {
   @Post('/reclassifyAttendance/:batchId')
   @ApiOperation({
     summary:
-      'Re-derive present/absent for every completed Zoom session in a batch using the current 75%-of-instructor-duration rule, replacing stale records, then refresh the cached percentage. Use once to correct data written before that rule was made consistent across writers.',
+      'Admin-only. Re-derive present/absent for every completed Zoom session in a batch using the current 75%-of-instructor-duration rule, replacing stale records, then refresh the cached percentage. Use once to correct data written before that rule was made consistent across writers.',
   })
   @ApiBearerAuth('JWT-auth')
-  async reclassifyAttendance(@Param('batchId') batchId: number) {
+  async reclassifyAttendance(@Param('batchId') batchId: number, @Req() req) {
+    // Deletes and re-derives attendance data for a whole batch — restrict to
+    // admins. Checked inline rather than via RolesGuard: this controller's
+    // req.user is the array shape set by JwtStrategy ([{ roles, ... }]), not
+    // the plain-object shape RolesGuard expects, so RolesGuard would silently
+    // deny every caller (including real admins) if applied here.
+    const roles = req.user?.[0]?.roles || [];
+    if (!roles.includes(helperVariable.admin)) {
+      throw new ForbiddenException(
+        'Only admins can reclassify attendance for a batch',
+      );
+    }
+
     const res =
       await this.TrackingService.reclassifyAndRecomputeBatchAttendance(
         Number(batchId),

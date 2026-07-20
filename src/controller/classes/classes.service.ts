@@ -4799,20 +4799,27 @@ export class ClassesService {
           continue;
         }
 
-        // Only now that a verified replacement exists do we discard the old data.
-        await db
-          .delete(zuvyStudentAttendanceRecords)
-          .where(eq(zuvyStudentAttendanceRecords.sessionId, session.id));
-        await db
-          .delete(zuvyStudentAttendance)
-          .where(eq(zuvyStudentAttendance.meetingId, session.meetingId));
+        // Only now that a verified replacement exists do we discard the old
+        // data — delete+insert as one transaction per session, so a failure
+        // between the delete and the insert can't leave a session with zero
+        // attendance records instead of just its old (stale) ones.
+        await db.transaction(async (tx) => {
+          await tx
+            .delete(zuvyStudentAttendanceRecords)
+            .where(eq(zuvyStudentAttendanceRecords.sessionId, session.id));
+          await tx
+            .delete(zuvyStudentAttendance)
+            .where(eq(zuvyStudentAttendance.meetingId, session.meetingId));
 
-        await db.insert(zuvyStudentAttendanceRecords).values(individualRecords);
-        await db.insert(zuvyStudentAttendance).values({
-          meetingId: session.meetingId,
-          attendance: aggregateAttendance,
-          batchId: session.batchId,
-          bootcampId: session.bootcampId,
+          await tx
+            .insert(zuvyStudentAttendanceRecords)
+            .values(individualRecords);
+          await tx.insert(zuvyStudentAttendance).values({
+            meetingId: session.meetingId,
+            attendance: aggregateAttendance,
+            batchId: session.batchId,
+            bootcampId: session.bootcampId,
+          });
         });
 
         updatedSessions++;
