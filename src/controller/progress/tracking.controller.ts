@@ -100,6 +100,20 @@ export class TrackingController {
     return res;
   }
 
+  @Post('/reclassifyAttendance/:batchId')
+  @ApiOperation({
+    summary:
+      'Re-derive present/absent for every completed Zoom session in a batch using the current 75%-of-instructor-duration rule, replacing stale records, then refresh the cached percentage. Use once to correct data written before that rule was made consistent across writers.',
+  })
+  @ApiBearerAuth('JWT-auth')
+  async reclassifyAttendance(@Param('batchId') batchId: number) {
+    const res =
+      await this.TrackingService.reclassifyAndRecomputeBatchAttendance(
+        Number(batchId),
+      );
+    return res;
+  }
+
   @Post('updateQuizAndAssignmentStatus/:bootcampId/:moduleId')
   @ApiOperation({ summary: 'Update Chapter status' })
   @ApiBody({ type: SubmitBodyDto, required: false })
