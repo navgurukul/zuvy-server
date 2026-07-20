@@ -38,6 +38,7 @@ import { ContentService } from '../content/content.service';
 import { ClassesService } from '../classes/classes.service';
 import { ZoomService } from 'src/services/zoom/zoom.service';
 import { courseEnrolments } from 'drizzle/tables';
+import { AttendanceCalculationService } from 'src/services/attendance/attendance-calculation.service';
 
 // Difficulty Points Mapping
 let { ACCEPTED, SUBMIT } = helperVariable;
@@ -49,29 +50,28 @@ export class TrackingService {
     private contentService: ContentService,
     private classesService: ClassesService,
     private readonly zoomService: ZoomService,
+    private readonly attendanceCalc: AttendanceCalculationService,
   ) {}
 
   /**
    * Recompute attendance percentage for all students in a batch and persist
    * it to `zuvy_batch_enrollments.attendance`.
-   * Counts sessions where the batch appears as `batchId` OR `secondBatchId`.
+   *
+   * Uses the same session-filtering and Zoom+legacy-Google-Meet merge logic
+   * as the live per-student report (AttendanceCalculationService) so the
+   * cached list-view percentage and the live detail-view percentage can only
+   * differ due to cache staleness, never due to divergent calculation logic.
    */
   async recomputeBatchAttendancePercentages(batchId: number) {
     try {
       // ensure we have a logger
       if (!this.logger) this.logger = console;
 
-      // 1. Fetch all session ids where this batch participated (primary or secondary)
-      const sessions = await db
-        .select({ id: zuvySessions.id })
-        .from(zuvySessions)
-        .where(
-          sql`${zuvySessions.batchId} = ${batchId} OR ${zuvySessions.secondBatchId} = ${batchId} AND ${zuvySessions.status} = 'completed'`,
-        );
+      // 1. Fetch all completed sessions where this batch participated (primary or secondary)
+      const sessions =
+        await this.attendanceCalc.getCompletedSessionsForBatch(batchId);
 
-      const sessionIds = sessions.map((s) => s.id);
-      // If there are no sessions, set attendance to 0 for enrolled students and return
-      if (sessionIds.length === 0) {
+      if (sessions.length === 0) {
         await db
           .update(zuvyBatchEnrollments)
           .set({ attendance: 0 })
@@ -87,29 +87,15 @@ export class TrackingService {
         })
         .from(zuvyBatchEnrollments)
         .where(eq(zuvyBatchEnrollments.batchId, batchId));
-      console.log('Enrollments for batch:', enrollments);
       if (!enrollments || enrollments.length === 0) {
         return { success: true, updated: 0, reason: 'no_enrollments' };
       }
 
-      // 3. Fetch present counts for all users in one grouped query (count distinct sessionId to avoid duplicates)
-      const presentCountsRaw = await db
-        .select({
-          userId: zuvyStudentAttendanceRecords.userId,
-          cnt: sql<number>`cast(count(DISTINCT ${zuvyStudentAttendanceRecords.sessionId}) as int)`,
-        })
-        .from(zuvyStudentAttendanceRecords)
-        .where(
-          sql`${inArray(zuvyStudentAttendanceRecords.sessionId, sessionIds)} AND lower(${zuvyStudentAttendanceRecords.status}) = ${'present'}`,
-        )
-        .groupBy(zuvyStudentAttendanceRecords.userId);
-
-      // map userId -> presentCount (string keys to support BigInt)
-      const presentMap = new Map<string, number>();
-      for (const r of presentCountsRaw) {
-        const key = String((r as any).userId);
-        presentMap.set(key, Number((r as any).cnt ?? 0));
-      }
+      // 3. Build the unified (Zoom + legacy Google Meet) attendance map for every enrolled student
+      const attendanceMap = await this.attendanceCalc.getUnifiedAttendanceMap(
+        sessions,
+        { batchId },
+      );
 
       // 4. Build a CASE expression to batch update attendance in a single query
       const sqlChunks: SQL[] = [];
@@ -117,16 +103,16 @@ export class TrackingService {
 
       sqlChunks.push(sql`(case`);
 
-      const totalClasses = sessionIds.length;
-
       for (const enroll of enrollments) {
-        const key = String(enroll.userId);
-        const presentCount = presentMap.get(key) ?? 0;
-        const rawPercentage =
-          totalClasses > 0
-            ? Math.round((presentCount / totalClasses) * 100)
-            : 0;
-        const percentage = Math.max(0, Math.min(100, rawPercentage));
+        const { attendancePercentage } = this.attendanceCalc.aggregateForUser(
+          sessions,
+          attendanceMap,
+          Number(enroll.userId),
+        );
+        const percentage = Math.max(
+          0,
+          Math.min(100, Math.round(attendancePercentage)),
+        );
 
         sqlChunks.push(
           sql`when ${zuvyBatchEnrollments.id} = ${enroll.id} then ${sql.raw(`CAST(${percentage} AS INTEGER)`)}`,
@@ -152,6 +138,29 @@ export class TrackingService {
         );
       return { success: false, error: err?.message ?? String(err) };
     }
+  }
+
+  /**
+   * Corrects historical attendance for a batch: re-derives present/absent for
+   * every completed Zoom session using the current computeAttendance75 rule
+   * (see ClassesService.reclassifyBatchAttendance), then refreshes the
+   * cached batch percentage from the corrected data. Use this once for a
+   * batch that has records written before the presence-threshold fix;
+   * routine attendance stays correct going forward without needing this.
+   */
+  async reclassifyAndRecomputeBatchAttendance(batchId: number) {
+    const reclassifyResult =
+      await this.classesService.reclassifyBatchAttendance(batchId);
+    if (!reclassifyResult.success) {
+      return { success: false, reclassify: reclassifyResult };
+    }
+    const recomputeResult =
+      await this.recomputeBatchAttendancePercentages(batchId);
+    return {
+      success: true,
+      reclassify: reclassifyResult,
+      recompute: recomputeResult,
+    };
   }
 
   async updateChapterStatus(

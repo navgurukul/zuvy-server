@@ -13,13 +13,11 @@ import {
   zuvyOutsourseAssessments,
   zuvyModuleAssessment,
   zuvyBatches,
-  zuvyStudentAttendance,
   zuvyModuleChapter,
   zuvyCourseModules,
   zuvyModuleTopics,
   zuvyAssignmentSubmission,
   zuvyOrganizations,
-  zuvyStudentAttendanceRecords,
   zuvyMentorSlotBooking,
   zuvyMentorSlotAvailability,
   zuvyChapterTracking,
@@ -40,6 +38,7 @@ import {
   lte,
 } from 'drizzle-orm';
 import { ClassesService } from '../classes/classes.service';
+import { AttendanceCalculationService } from 'src/services/attendance/attendance-calculation.service';
 import { helperVariable } from 'src/constants/helper';
 import { STATUS_CODES } from '../../helpers/index';
 const { PENDING } = helperVariable.REATTMEPT_STATUS; // Importing helper variables
@@ -88,16 +87,14 @@ interface AssessmentEvent extends BaseEvent {
   endDatetime: string;
 }
 
-interface UserAttendanceRecord {
-  status: string;
-  duration: number;
-}
-
 type Event = ClassEvent | AssessmentEvent;
 
 @Injectable()
 export class StudentService {
-  constructor(private ClassesService: ClassesService) {}
+  constructor(
+    private ClassesService: ClassesService,
+    private readonly attendanceCalc: AttendanceCalculationService,
+  ) {}
   private logger = new Logger(StudentService.name);
   private SCOPES = ['https://www.googleapis.com/auth/spreadsheets'];
 
@@ -1487,32 +1484,16 @@ export class StudentService {
 
       const batchId = batchData[0].batchId as number;
 
-      // 1. Fetch all completed sessions for the batch
-      const allSessions = await db.query.zuvySessions.findMany({
-        where: (session, { and, eq, or, ilike, gte, lte }) =>
-          and(
-            eq(session.bootcampId, bootcampId),
-            or(
-              eq(session.batchId, batchId),
-              eq(session.secondBatchId, batchId),
-            ),
-            eq(session.status, helperVariable.completed),
-            searchTerm ? ilike(session.title, `%${searchTerm}%`) : undefined,
-            fromDate && toDate
-              ? and(
-                  gte(session.startTime, fromDate.toISOString()),
-                  lte(session.startTime, toDate.toISOString()),
-                )
-              : undefined,
-          ),
-        with: {
-          batches: { columns: { id: true, name: true } },
-        },
-        orderBy: (session, { asc, desc }) =>
-          fromDate && toDate ? asc(session.startTime) : desc(session.id),
-        limit,
-        offset,
-      });
+      // 1. Fetch all completed sessions for the batch (unfiltered by
+      // pagination — limit/offset must never shrink the set the stats are
+      // computed from, only the class list returned for display).
+      const allSessions =
+        await this.attendanceCalc.getCompletedSessionsForBatch(batchId, {
+          bootcampId,
+          searchTerm,
+          fromDate,
+          toDate,
+        });
       const totalClasses = allSessions.length;
       if (totalClasses === 0) {
         return [
@@ -1536,96 +1517,23 @@ export class StudentService {
         ];
       }
 
-      const batchName = (allSessions[0] as any)?.batches?.name || null;
+      const batchName = allSessions[0]?.batchName ?? null;
 
-      // 2. Partition sessions into Zoom and Google Meet categories
-      const zoomSessions = allSessions.filter(
-        (session) => session.isZoomMeet === true,
-      );
-      const googleMeetSessions = allSessions.filter(
-        (session) => !session.isZoomMeet,
-      );
-
-      const zoomSessionIds = zoomSessions.map((session) => session.id);
-      const googleMeetMeetingIds = googleMeetSessions.map(
-        (session) => session.meetingId,
-      );
-
-      // 3. Create a unified map to store attendance for the specific user
-      const unifiedAttendanceMap = new Map<number, UserAttendanceRecord>();
-
-      // 4. Fetch attendance for Zoom sessions from the new table
-      if (zoomSessionIds.length > 0) {
-        const zoomAttendanceRecords = await db
-          .select({
-            sessionId: zuvyStudentAttendanceRecords.sessionId,
-            status: zuvyStudentAttendanceRecords.status,
-            duration: zuvyStudentAttendanceRecords.duration,
-          })
-          .from(zuvyStudentAttendanceRecords)
-          .where(
-            and(
-              eq(zuvyStudentAttendanceRecords.userId, userId),
-              inArray(zuvyStudentAttendanceRecords.sessionId, zoomSessionIds),
-            ),
-          );
-
-        zoomAttendanceRecords.forEach((record) => {
-          unifiedAttendanceMap.set(record.sessionId, {
-            status: record.status,
-            duration: record.duration ?? 0,
-          });
+      // 2. Build the unified (Zoom + legacy Google Meet) attendance map for this student
+      const unifiedAttendanceMap =
+        await this.attendanceCalc.getUnifiedAttendanceMap(allSessions, {
+          userId,
+          userEmail,
         });
-      }
 
-      // 5. Fetch attendance for Google Meet sessions from the old table
-      if (googleMeetMeetingIds.length > 0) {
-        const googleMeetAttendanceRecords = await db
-          .select({
-            meetingId: zuvyStudentAttendance.meetingId,
-            attendance: zuvyStudentAttendance.attendance,
-          })
-          .from(zuvyStudentAttendance)
-          .where(
-            inArray(zuvyStudentAttendance.meetingId, googleMeetMeetingIds),
-          );
-
-        const meetingIdToSessionIdMap = new Map(
-          googleMeetSessions.map((s) => [s.meetingId, s.id]),
-        );
-
-        googleMeetAttendanceRecords.forEach((record) => {
-          let students: any[] = [];
-          if (Array.isArray(record.attendance)) {
-            students = record.attendance as any[];
-          } else if (typeof record.attendance === 'string') {
-            try {
-              students = JSON.parse(record.attendance);
-            } catch {}
-          }
-
-          const studentRecord = students.find(
-            (s: any) => s.email?.toLowerCase() === userEmail,
-          );
-          const sessionId = meetingIdToSessionIdMap.get(record.meetingId);
-
-          if (studentRecord && sessionId) {
-            unifiedAttendanceMap.set(sessionId, {
-              status: studentRecord.attendance || 'absent',
-              duration: studentRecord.duration ?? 0,
-            });
-          }
-        });
-      }
-
-      // 6. Map paginated classes to the final result structure using the unified map
+      // 3. Map classes to the final result structure using the unified map
       const result = allSessions.map((cls) => {
-        const userAttendance = unifiedAttendanceMap.get(cls.id);
+        const userAttendance = unifiedAttendanceMap.get(cls.id)?.get(userId);
         const status = userAttendance?.status || 'absent';
         const duration = userAttendance?.duration || 0;
 
         return {
-          id: Number(cls.id),
+          id: cls.id,
           title: cls.title,
           startTime: cls.startTime,
           endTime: cls.endTime,
@@ -1637,30 +1545,28 @@ export class StudentService {
         };
       });
 
-      // Filter results by attendance status if specified
+      // 4. Overall attendance stats are computed off the FULL completed-class
+      // set, before the attendanceStatus filter or pagination below are
+      // applied — those only affect which rows are returned for display.
+      const { presentCount, absentCount, attendancePercentage } =
+        this.attendanceCalc.aggregateForUser(
+          allSessions,
+          unifiedAttendanceMap,
+          userId,
+        );
+
+      // Filter results by attendance status if specified (display only)
       const filteredResults = attendanceStatus
         ? result.filter((cls) => cls.attendanceStatus === attendanceStatus)
         : result;
 
-      // Recalculate pagination after filtering
+      // Recalculate pagination after filtering (display only)
       const totalFilteredClasses = filteredResults.length;
       const paginatedFilteredResults = limit
         ? filteredResults.slice(offset || 0, (offset || 0) + limit)
         : filteredResults;
 
-      // 7. Calculate overall attendance statistics using filtered results
-      const presentCount = filteredResults.filter(
-        (cls) => cls.attendanceStatus === 'present',
-      ).length;
-      const absentCount = filteredResults.filter(
-        (cls) => cls.attendanceStatus === 'absent',
-      ).length;
-      const attendancePercentage =
-        totalFilteredClasses > 0
-          ? Number(((presentCount / totalFilteredClasses) * 100).toFixed(2))
-          : 0;
-
-      // 8. Return the final, consistently structured response
+      // 5. Return the final, consistently structured response
       return [
         null,
         {
