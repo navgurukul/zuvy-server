@@ -4497,8 +4497,11 @@ export class ClassesService {
    * Backfill attendance records based on the snapshot stored in zuvy_sessions.invited_students.
    * Runs daily at midnight via a cron in ScheduleService. For each completed session that ended
    * yesterday (local server time) and has no existing attendance records, we:
-   *  - Create ABSENT records for every invited student (default baseline).
-   *  - Also insert an aggregate row in zuvy_student_attendance with duration=0 & attendance=absent.
+   *  - Call computeAttendance75 (the same 75%-of-host-duration rule the Zoom-webhook pipeline
+   *    uses) to classify each invited student present/absent.
+   *  - Create an individual record for every invited student, and an aggregate row in
+   *    zuvy_student_attendance, from that same classification (falls back to an ABSENT baseline
+   *    if Zoom data can't be fetched).
    * We DO NOT modify sessions which already have any attendance (aggregate or individual) to respect
    * the requirement: "don't do any changes once identify the changes in the attendance".
    */
@@ -4568,40 +4571,52 @@ export class ClassesService {
           .limit(1);
         if (existingAgg.length) continue;
 
-        // Fetch Zoom participants (using existing Zoom service)
-        let zoomParticipants: any[] = [];
+        // Determine present/absent using the SAME 75%-of-host-duration rule
+        // as the primary Zoom-webhook pipeline (computeAttendance75), instead
+        // of a separate "attended for any duration > 0" threshold. Two
+        // different presence rules for the same decision is exactly the kind
+        // of drift that caused this backfill to disagree with the accurate
+        // pipeline's numbers — delegate instead of re-deriving.
+        const attendanceByEmail = new Map<
+          string,
+          { duration: number; attendance: string }
+        >();
         try {
-          const zoomResp = await this.zoomService.getMeetingParticipants(
+          const computed: any = await this.zoomService.computeAttendance75(
             session.zoomMeetingId,
           );
-          zoomParticipants = zoomResp?.participants || [];
+          if (computed?.success && Array.isArray(computed.data?.attendance)) {
+            for (const a of computed.data.attendance) {
+              if (a?.email) {
+                attendanceByEmail.set(a.email.toLowerCase(), {
+                  duration: a.duration || 0,
+                  attendance: a.attendance || 'absent',
+                });
+              }
+            }
+          } else if (computed?.data?.live || computed?.data?.skipped) {
+            this.logger.log(
+              `Session ${session.id} meeting still live per Zoom dashboard; skipping backfill for now`,
+            );
+            continue;
+          } else {
+            this.logger.warn(
+              `computeAttendance75 failed for session ${session.id}: ${computed?.error}`,
+            );
+            // fall through with an empty map -> everyone defaults to the
+            // ABSENT baseline below (same fallback the original code used
+            // when the Zoom participants fetch failed)
+          }
         } catch (err: any) {
           this.logger.warn(
-            `Zoom participants fetch failed for session ${session.id}: ${err.message}`,
+            `computeAttendance75 threw for session ${session.id}: ${err.message}`,
           );
-          // If Zoom failed, we still create ABSENT baseline (no modification rule still satisfied since none existed)
-        }
-
-        // Aggregate durations per email from Zoom data
-        const durationByEmail: Record<string, number> = {};
-        for (const p of zoomParticipants) {
-          const email = (p.user_email || '').toLowerCase();
-          if (!email) continue;
-          durationByEmail[email] =
-            (durationByEmail[email] || 0) + (p.duration || 0);
         }
 
         const invited = session.invitedStudents as {
           userId: number;
           email: string;
         }[];
-        const invitedByEmail: Record<
-          string,
-          { userId: number; email: string }
-        > = {};
-        for (const inv of invited) {
-          if (inv?.email) invitedByEmail[inv.email.toLowerCase()] = inv;
-        }
 
         const individualRecords: any[] = [];
         const aggregateAttendance: any[] = [];
@@ -4612,25 +4627,13 @@ export class ClassesService {
         for (const inv of invited) {
           if (!inv?.userId || !inv?.email) continue;
           const emailKey = inv.email.toLowerCase();
-          const totalDuration = durationByEmail[emailKey] || 0;
-          const present = totalDuration > 0; // Mark present if appeared at all
-
-          // Resolve correct batch (primary vs second) if user enrolled in secondBatchId
-          let effectiveBatchId = session.batchId;
-          // if (session.secondBatchId) {
-          //   const enrollment = await db.select({ batchId: zuvyBatchEnrollments.batchId })
-          //     .from(zuvyBatchEnrollments)
-          //     .where(and(
-          //       eq(zuvyBatchEnrollments.userId, inv.userId as any),
-          //       inArray(zuvyBatchEnrollments.batchId, [session.batchId, session.secondBatchId])
-          //     ))
-          //     .limit(1);
-          //   if (enrollment.length) effectiveBatchId = enrollment[0].batchId;
-          // }
+          const resolved = attendanceByEmail.get(emailKey);
+          const present = resolved?.attendance === 'present';
+          const totalDuration = resolved?.duration ?? 0;
 
           individualRecords.push({
             userId: Number(inv.userId),
-            batchId: effectiveBatchId,
+            batchId: session.batchId,
             bootcampId: session.bootcampId,
             sessionId: session.id,
             attendanceDate,
@@ -4673,6 +4676,171 @@ export class ClassesService {
         message: 'Backfill failed',
         error: error.message,
       };
+    }
+  }
+
+  /**
+   * Re-derives present/absent for every completed Zoom session in a batch
+   * using the current computeAttendance75 rule (75% of the instructor's
+   * duration), and replaces whatever is currently stored — correcting
+   * records written before this rule was made consistent across all writers
+   * (see backfillAttendanceFromInvitedStudentsDaily above).
+   *
+   * Safe by construction: a session's existing records are only deleted
+   * AFTER a fresh computeAttendance75 result for it has been fetched
+   * successfully. If Zoom data can't be fetched (meeting still live,
+   * Zoom API error, or the meeting's report has expired on Zoom's side),
+   * that session is skipped and its existing data is left untouched rather
+   * than risking data loss.
+   */
+  async reclassifyBatchAttendance(batchId: number) {
+    try {
+      const sessions = await db
+        .select({
+          id: zuvySessions.id,
+          meetingId: zuvySessions.meetingId,
+          zoomMeetingId: zuvySessions.zoomMeetingId,
+          bootcampId: zuvySessions.bootcampId,
+          batchId: zuvySessions.batchId,
+          invitedStudents: zuvySessions.invitedStudents,
+          startTime: zuvySessions.startTime,
+        })
+        .from(zuvySessions)
+        .where(
+          and(
+            eq(zuvySessions.status, 'completed'),
+            eq(zuvySessions.isZoomMeet, true),
+            or(
+              eq(zuvySessions.batchId, batchId),
+              eq(zuvySessions.secondBatchId, batchId),
+            ),
+          ),
+        );
+
+      let updatedSessions = 0;
+      let skippedSessions = 0;
+      const errors: string[] = [];
+
+      for (const session of sessions) {
+        if (!session.zoomMeetingId) {
+          skippedSessions++;
+          continue;
+        }
+
+        let computed: any;
+        try {
+          computed = await this.zoomService.computeAttendance75(
+            session.zoomMeetingId,
+          );
+        } catch (err: any) {
+          errors.push(`session ${session.id}: ${err.message}`);
+          skippedSessions++;
+          continue;
+        }
+
+        if (computed?.data?.live || computed?.data?.skipped) {
+          skippedSessions++;
+          continue;
+        }
+        if (!computed?.success || !Array.isArray(computed.data?.attendance)) {
+          errors.push(
+            `session ${session.id}: ${computed?.error || 'computeAttendance75 returned no attendance data'}`,
+          );
+          skippedSessions++;
+          continue; // leave existing data untouched — don't delete without a verified replacement
+        }
+
+        const attendanceByEmail = new Map<
+          string,
+          { duration: number; attendance: string }
+        >();
+        for (const a of computed.data.attendance) {
+          if (a?.email) {
+            attendanceByEmail.set(a.email.toLowerCase(), {
+              duration: a.duration || 0,
+              attendance: a.attendance || 'absent',
+            });
+          }
+        }
+
+        const invited = Array.isArray(session.invitedStudents)
+          ? (session.invitedStudents as { userId: number; email: string }[])
+          : [];
+        const attendanceDate = new Date(session.startTime)
+          .toISOString()
+          .split('T')[0];
+
+        const individualRecords: any[] = [];
+        const aggregateAttendance: any[] = [];
+        for (const inv of invited) {
+          if (!inv?.userId || !inv?.email) continue;
+          const resolved = attendanceByEmail.get(inv.email.toLowerCase());
+          const present = resolved?.attendance === 'present';
+
+          individualRecords.push({
+            userId: Number(inv.userId),
+            batchId: session.batchId,
+            bootcampId: session.bootcampId,
+            sessionId: session.id,
+            attendanceDate,
+            status: present ? 'present' : 'absent',
+            version: 'v1',
+            duration: resolved?.duration ?? 0,
+          });
+          aggregateAttendance.push({
+            email: inv.email,
+            duration: resolved?.duration ?? 0,
+            attendance: present ? 'present' : 'absent',
+          });
+        }
+
+        if (!individualRecords.length) {
+          skippedSessions++;
+          continue;
+        }
+
+        // Only now that a verified replacement exists do we discard the old
+        // data — delete+insert as one transaction per session, so a failure
+        // between the delete and the insert can't leave a session with zero
+        // attendance records instead of just its old (stale) ones.
+        await db.transaction(async (tx) => {
+          await tx
+            .delete(zuvyStudentAttendanceRecords)
+            .where(eq(zuvyStudentAttendanceRecords.sessionId, session.id));
+          await tx
+            .delete(zuvyStudentAttendance)
+            .where(eq(zuvyStudentAttendance.meetingId, session.meetingId));
+
+          await tx
+            .insert(zuvyStudentAttendanceRecords)
+            .values(individualRecords);
+          await tx.insert(zuvyStudentAttendance).values({
+            meetingId: session.meetingId,
+            attendance: aggregateAttendance,
+            batchId: session.batchId,
+            bootcampId: session.bootcampId,
+          });
+        });
+
+        updatedSessions++;
+      }
+
+      this.logger.log(
+        `Reclassified attendance for batch ${batchId}: ${updatedSessions} sessions updated, ${skippedSessions} skipped`,
+      );
+
+      return {
+        success: true,
+        updatedSessions,
+        skippedSessions,
+        totalSessions: sessions.length,
+        errors,
+      };
+    } catch (error: any) {
+      this.logger.error(
+        `Error in reclassifyBatchAttendance for batch ${batchId}: ${error.message}`,
+      );
+      return { success: false, error: error.message };
     }
   }
 

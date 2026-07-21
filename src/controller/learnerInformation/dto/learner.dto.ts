@@ -655,10 +655,13 @@ export class SaveCompleteProfileDto {
   @Length(1, 100, { message: 'Please select your branch name' })
   branch?: string;
 
-  @ApiPropertyOptional({ example: '1st', enum: ['1st', '2nd', '3rd', '4th'] })
+  @ApiPropertyOptional({
+    example: '1st',
+    enum: ['1st', '2nd', '3rd', '4th', 'passed_out'],
+  })
   @IsOptional()
   @IsString()
-  @IsEnum(['1st', '2nd', '3rd', '4th'])
+  @IsEnum(['1st', '2nd', '3rd', '4th', 'passed_out'])
   yearOfStudy?: string;
 
   @ApiPropertyOptional({ example: 6 })

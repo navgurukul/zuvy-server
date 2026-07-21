@@ -275,17 +275,21 @@ export class AttendanceWorkerService implements OnModuleInit {
 
     if (perStudentRecords.length) {
       await db.insert(zuvyStudentAttendanceRecords).values(perStudentRecords);
+    }
 
-      if (batchId) {
-        try {
-          await this.trackingService.recomputeBatchAttendancePercentages(
-            batchId,
-          );
-        } catch (recErr: any) {
-          this.logger.warn(
-            `Failed to recompute attendance percentages for batch ${batchId}: ${recErr.message}`,
-          );
-        }
+    // Recompute unconditionally once this session finishes processing: a
+    // newly-completed session grows the denominator (total completed
+    // classes) for every enrolled student even when nobody's individual
+    // attendance record changed (e.g. nobody who joined was new, or nobody
+    // joined at all) — gating this on perStudentRecords.length left the
+    // cached percentage frozen at its pre-session value in that case.
+    if (batchId) {
+      try {
+        await this.trackingService.recomputeBatchAttendancePercentages(batchId);
+      } catch (recErr: any) {
+        this.logger.warn(
+          `Failed to recompute attendance percentages for batch ${batchId}: ${recErr.message}`,
+        );
       }
     }
 
