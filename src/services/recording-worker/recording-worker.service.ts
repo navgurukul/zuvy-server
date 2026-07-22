@@ -586,10 +586,25 @@ export class RecordingWorkerService implements OnModuleInit {
   // STEP 1 — FETCH ZOOM METADATA
   // =====================================================
   private async fetchZoomMetadata(job: any) {
+    // pickJob()'s snapshot can be stale by the time this actually runs (e.g.
+    // picked right after a bootstrap insert, before any webhook landed) — a
+    // slow in-flight call here must not blind-overwrite a manifest that
+    // ingestRecordingCompleted() has since merged from multiple instances.
+    // Re-read fresh, same discipline mergeRecording() already follows.
+    const freshTable =
+      job.table === 'mentor'
+        ? sql.raw('zuvy_mentor_session_recordings')
+        : sql.raw('zuvy_session_recordings');
+    const fresh = await db.execute(sql`
+      SELECT * FROM ${freshTable} WHERE id = ${job.id}
+    `);
+    if (fresh.rows?.[0]) {
+      job = { ...job, ...fresh.rows[0] };
+    }
+
     // ---------------------------------------------------
     // Metadata already provided by webhook
     // ---------------------------------------------------
-    console.log('Metadata already present from webhook. Skipping Zoom API.');
     if (
       job.metadata_verified === true &&
       job.zoom_recording_id &&
@@ -777,6 +792,10 @@ export class RecordingWorkerService implements OnModuleInit {
       source: recResp.source,
     });
 
+    // Guarded on metadata_verified = FALSE: the Zoom API round-trip above
+    // takes real time, and a webhook can land and merge in the meantime —
+    // this write must not clobber that. If it already flipped to verified,
+    // this becomes a no-op instead of overwriting a merged manifest.
     if (job.table === 'mentor') {
       await db.execute(sql`
         UPDATE zuvy_mentor_session_recordings
@@ -789,6 +808,7 @@ export class RecordingWorkerService implements OnModuleInit {
           recording_end = ${manifest[manifest.length - 1]?.recording_end || null},
           status = 'METADATA_READY'
         WHERE id = ${job.id}
+          AND metadata_verified IS NOT TRUE
       `);
     } else {
       await db.execute(sql`
@@ -802,6 +822,7 @@ export class RecordingWorkerService implements OnModuleInit {
           recording_end = ${manifest[manifest.length - 1]?.recording_end || null},
           status = 'METADATA_READY'
         WHERE id = ${job.id}
+          AND metadata_verified IS NOT TRUE
       `);
     }
   }
