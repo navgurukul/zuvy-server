@@ -213,77 +213,169 @@ export class RecordingWorkerService implements OnModuleInit {
       params.meetingUuid,
     );
 
-    const existing = await db.execute(sql`
-      SELECT * FROM ${sql.raw(tableName)}
-      WHERE ${sql.raw(ownerColumn)} = ${params.ownerId}
-      ORDER BY created_at DESC
-      LIMIT 1
-    `);
+    this.logger.log({
+      msg: 'ingestRecordingCompleted: instance received',
+      table: params.table,
+      ownerId: params.ownerId,
+      meetingId: params.meetingId,
+      meetingUuid: params.meetingUuid,
+      newSegmentIds: newManifest.map((s) => s.id),
+    });
 
-    const row: any = existing.rows?.[0];
-
-    // No row yet for this owner — plain first-instance insert.
-    if (!row) {
-      await db.execute(sql`
-        INSERT INTO ${sql.raw(tableName)} (
-          ${sql.raw(ownerColumn)},
-          zoom_meeting_id,
-          zoom_meeting_uuid,
-          zoom_recording_id,
-          zoom_recording_manifest,
-          ingested_meeting_uuids,
-          metadata_verified,
-          status,
-          recording_start,
-          recording_end,
-          segments_count,
-          retry_count
-        ) VALUES (
-          ${params.ownerId},
-          ${params.meetingId},
-          ${params.meetingUuid},
-          ${newManifest[0]?.id ?? null},
-          ${JSON.stringify(newManifest)},
-          ${JSON.stringify(params.meetingUuid ? [params.meetingUuid] : [])},
-          TRUE,
-          'DISCOVERED',
-          ${newManifest[0]?.recording_start ?? params.fallbackStartTime ?? null},
-          ${newManifest[newManifest.length - 1]?.recording_end ?? null},
-          ${newManifest.length},
-          0
-        )
+    // Wrapped in a transaction with a row lock (SELECT ... FOR UPDATE) so two
+    // instances of the same meeting arriving close together — or a webhook
+    // landing while the worker is mid-pipeline on this same row — can't race:
+    // without this, a plain read-then-write here can lose one side's merge
+    // (this is what happened for session 1928 / meeting 85638002558 — the
+    // second instance's segment silently replaced the first's instead of
+    // being combined with it).
+    await db.transaction(async (tx) => {
+      const existing = await tx.execute(sql`
+        SELECT * FROM ${sql.raw(tableName)}
+        WHERE ${sql.raw(ownerColumn)} = ${params.ownerId}
+        ORDER BY created_at DESC
+        LIMIT 1
+        FOR UPDATE
       `);
-      return;
-    }
 
-    const ingestedUuids = this.parseJsonArray<string>(
-      row.ingested_meeting_uuids,
-    );
+      const row: any = existing.rows?.[0];
 
-    // Idempotent: this exact instance was already folded in (webhook redelivery).
-    if (params.meetingUuid && ingestedUuids.includes(params.meetingUuid)) {
-      return;
-    }
+      // No row yet for this owner — plain first-instance insert.
+      if (!row) {
+        this.logger.log({
+          msg: 'ingestRecordingCompleted: no existing row, inserting fresh',
+          table: params.table,
+          ownerId: params.ownerId,
+          meetingUuid: params.meetingUuid,
+          segmentCount: newManifest.length,
+        });
 
-    const existingManifest = this.parseJsonArray<RecordingSegment>(
-      row.zoom_recording_manifest,
-    );
-    const combinedManifest = [...existingManifest, ...newManifest].sort(
-      (a, b) =>
-        new Date(a.recording_start || 0).getTime() -
-        new Date(b.recording_start || 0).getTime(),
-    );
-    const updatedIngestedUuids = params.meetingUuid
-      ? [...ingestedUuids, params.meetingUuid]
-      : ingestedUuids;
+        await tx.execute(sql`
+          INSERT INTO ${sql.raw(tableName)} (
+            ${sql.raw(ownerColumn)},
+            zoom_meeting_id,
+            zoom_meeting_uuid,
+            zoom_recording_id,
+            zoom_recording_manifest,
+            ingested_meeting_uuids,
+            metadata_verified,
+            status,
+            recording_start,
+            recording_end,
+            segments_count,
+            retry_count
+          ) VALUES (
+            ${params.ownerId},
+            ${params.meetingId},
+            ${params.meetingUuid},
+            ${newManifest[0]?.id ?? null},
+            ${JSON.stringify(newManifest)},
+            ${JSON.stringify(params.meetingUuid ? [params.meetingUuid] : [])},
+            TRUE,
+            'DISCOVERED',
+            ${newManifest[0]?.recording_start ?? params.fallbackStartTime ?? null},
+            ${newManifest[newManifest.length - 1]?.recording_end ?? null},
+            ${newManifest.length},
+            0
+          )
+        `);
+        return;
+      }
 
-    const currentStatus = String(row.status || '').toUpperCase();
+      const ingestedUuids = this.parseJsonArray<string>(
+        row.ingested_meeting_uuids,
+      );
 
-    if (currentStatus === 'COMPLETED') {
-      // New segments arrived after this session was already uploaded —
-      // reopen it, send it back through download/merge/upload with the
-      // full combined segment set, and queue the old video for deletion.
-      await db.execute(sql`
+      // Idempotent: this exact instance was already folded in (webhook redelivery).
+      if (params.meetingUuid && ingestedUuids.includes(params.meetingUuid)) {
+        this.logger.log({
+          msg: 'ingestRecordingCompleted: instance already ingested, no-op',
+          rowId: row.id,
+          meetingUuid: params.meetingUuid,
+        });
+        return;
+      }
+
+      const existingManifest = this.parseJsonArray<RecordingSegment>(
+        row.zoom_recording_manifest,
+      );
+      const combinedManifest = [...existingManifest, ...newManifest].sort(
+        (a, b) =>
+          new Date(a.recording_start || 0).getTime() -
+          new Date(b.recording_start || 0).getTime(),
+      );
+      const updatedIngestedUuids = params.meetingUuid
+        ? [...ingestedUuids, params.meetingUuid]
+        : ingestedUuids;
+
+      const currentStatus = String(row.status || '').toUpperCase();
+
+      this.logger.log({
+        msg: 'ingestRecordingCompleted: merging into existing row',
+        rowId: row.id,
+        currentStatus,
+        existingSegmentIds: existingManifest.map((s) => s.id),
+        newSegmentIds: newManifest.map((s) => s.id),
+        combinedSegmentCount: combinedManifest.length,
+        ingestedUuidsBefore: ingestedUuids,
+        ingestedUuidsAfter: updatedIngestedUuids,
+      });
+
+      if (currentStatus === 'COMPLETED') {
+        // New segments arrived after this session was already uploaded —
+        // reopen it, send it back through download/merge/upload with the
+        // full combined segment set, and queue the old video for deletion.
+        await tx.execute(sql`
+          UPDATE ${sql.raw(tableName)}
+          SET
+            zoom_meeting_id = ${params.meetingId},
+            zoom_meeting_uuid = ${params.meetingUuid},
+            zoom_recording_id = ${combinedManifest[0]?.id ?? null},
+            zoom_recording_manifest = ${JSON.stringify(combinedManifest)},
+            ingested_meeting_uuids = ${JSON.stringify(updatedIngestedUuids)},
+            metadata_verified = TRUE,
+            segments_count = ${combinedManifest.length},
+            recording_start = ${combinedManifest[0]?.recording_start ?? row.recording_start},
+            recording_end = ${combinedManifest[combinedManifest.length - 1]?.recording_end ?? row.recording_end},
+            status = 'METADATA_READY',
+            merged_file_path = NULL,
+            is_final_merged = FALSE,
+            previous_drive_file_id = ${row.drive_file_id ?? row.previous_drive_file_id ?? null},
+            drive_file_id = NULL,
+            drive_link = NULL,
+            updated_at = NOW()
+          WHERE id = ${row.id}
+        `);
+        return;
+      }
+
+      if (currentStatus === 'FAILED' || currentStatus === 'PERMANENT_FAILED') {
+        // New data arrived for a job that had given up — worth a fresh attempt.
+        await tx.execute(sql`
+          UPDATE ${sql.raw(tableName)}
+          SET
+            zoom_meeting_id = ${params.meetingId},
+            zoom_meeting_uuid = ${params.meetingUuid},
+            zoom_recording_id = ${combinedManifest[0]?.id ?? null},
+            zoom_recording_manifest = ${JSON.stringify(combinedManifest)},
+            ingested_meeting_uuids = ${JSON.stringify(updatedIngestedUuids)},
+            metadata_verified = TRUE,
+            segments_count = ${combinedManifest.length},
+            recording_start = ${combinedManifest[0]?.recording_start ?? row.recording_start},
+            recording_end = ${combinedManifest[combinedManifest.length - 1]?.recording_end ?? row.recording_end},
+            status = 'METADATA_READY',
+            retry_count = 0,
+            last_error = NULL,
+            updated_at = NOW()
+          WHERE id = ${row.id}
+        `);
+        return;
+      }
+
+      // Still mid-pipeline / not yet processed — just fold the new segments in.
+      // mergeRecording() re-reads the row fresh before merging, so an in-flight
+      // job naturally picks up the fuller manifest on its current or next pass.
+      await tx.execute(sql`
         UPDATE ${sql.raw(tableName)}
         SET
           zoom_meeting_id = ${params.meetingId},
@@ -295,59 +387,10 @@ export class RecordingWorkerService implements OnModuleInit {
           segments_count = ${combinedManifest.length},
           recording_start = ${combinedManifest[0]?.recording_start ?? row.recording_start},
           recording_end = ${combinedManifest[combinedManifest.length - 1]?.recording_end ?? row.recording_end},
-          status = 'METADATA_READY',
-          merged_file_path = NULL,
-          is_final_merged = FALSE,
-          previous_drive_file_id = ${row.drive_file_id ?? row.previous_drive_file_id ?? null},
-          drive_file_id = NULL,
-          drive_link = NULL,
           updated_at = NOW()
         WHERE id = ${row.id}
       `);
-      return;
-    }
-
-    if (currentStatus === 'FAILED' || currentStatus === 'PERMANENT_FAILED') {
-      // New data arrived for a job that had given up — worth a fresh attempt.
-      await db.execute(sql`
-        UPDATE ${sql.raw(tableName)}
-        SET
-          zoom_meeting_id = ${params.meetingId},
-          zoom_meeting_uuid = ${params.meetingUuid},
-          zoom_recording_id = ${combinedManifest[0]?.id ?? null},
-          zoom_recording_manifest = ${JSON.stringify(combinedManifest)},
-          ingested_meeting_uuids = ${JSON.stringify(updatedIngestedUuids)},
-          metadata_verified = TRUE,
-          segments_count = ${combinedManifest.length},
-          recording_start = ${combinedManifest[0]?.recording_start ?? row.recording_start},
-          recording_end = ${combinedManifest[combinedManifest.length - 1]?.recording_end ?? row.recording_end},
-          status = 'METADATA_READY',
-          retry_count = 0,
-          last_error = NULL,
-          updated_at = NOW()
-        WHERE id = ${row.id}
-      `);
-      return;
-    }
-
-    // Still mid-pipeline / not yet processed — just fold the new segments in.
-    // mergeRecording() re-reads the row fresh before merging, so an in-flight
-    // job naturally picks up the fuller manifest on its current or next pass.
-    await db.execute(sql`
-      UPDATE ${sql.raw(tableName)}
-      SET
-        zoom_meeting_id = ${params.meetingId},
-        zoom_meeting_uuid = ${params.meetingUuid},
-        zoom_recording_id = ${combinedManifest[0]?.id ?? null},
-        zoom_recording_manifest = ${JSON.stringify(combinedManifest)},
-        ingested_meeting_uuids = ${JSON.stringify(updatedIngestedUuids)},
-        metadata_verified = TRUE,
-        segments_count = ${combinedManifest.length},
-        recording_start = ${combinedManifest[0]?.recording_start ?? row.recording_start},
-        recording_end = ${combinedManifest[combinedManifest.length - 1]?.recording_end ?? row.recording_end},
-        updated_at = NOW()
-      WHERE id = ${row.id}
-    `);
+    });
   }
 
   /////////////helper function for logging job details/////////////
@@ -406,6 +449,7 @@ export class RecordingWorkerService implements OnModuleInit {
   // =====================================================
   private async pickJob(): Promise<RecordingJob | null> {
     // First try session recordings
+    console.log('pickJob:-Picking a recording job');
     let result = await db.execute(sql`
     UPDATE zuvy_session_recordings
     SET
@@ -479,6 +523,9 @@ export class RecordingWorkerService implements OnModuleInit {
   // =====================================================
   private async processJob(job: any) {
     try {
+      console.log(
+        `processJob:-Processing recording job ${job.id} with status ${job.status}`,
+      );
       const status = String(job.status).trim().toUpperCase();
 
       this.logJob('log', job, 'Processing recording job');
@@ -542,6 +589,7 @@ export class RecordingWorkerService implements OnModuleInit {
     // ---------------------------------------------------
     // Metadata already provided by webhook
     // ---------------------------------------------------
+    console.log('Metadata already present from webhook. Skipping Zoom API.');
     if (
       job.metadata_verified === true &&
       job.zoom_recording_id &&
@@ -767,6 +815,7 @@ export class RecordingWorkerService implements OnModuleInit {
 
   private async downloadRecording(job: any) {
     const tempDir = path.join(process.cwd(), 'temp-recordings');
+    console.log(`Downloading recording for job ${job}...`);
     if (!fs.existsSync(tempDir)) {
       fs.mkdirSync(tempDir, { recursive: true });
     }
@@ -774,10 +823,10 @@ export class RecordingWorkerService implements OnModuleInit {
     const manifest = this.parseJsonArray<RecordingSegment>(
       job.zoom_recording_manifest,
     );
-    const segments = manifest.length
+    const segments: RecordingSegment[] = manifest.length
       ? manifest
       : job.zoom_recording_id
-        ? [{ id: job.zoom_recording_id }]
+        ? [{ id: job.zoom_recording_id, meeting_uuid: job.zoom_meeting_uuid }]
         : [];
 
     if (!segments.length) {
@@ -811,6 +860,7 @@ export class RecordingWorkerService implements OnModuleInit {
             segment.id,
             finalPath,
             job,
+            segment.meeting_uuid,
           );
         }
 
@@ -851,13 +901,26 @@ export class RecordingWorkerService implements OnModuleInit {
     recordingFileId: string,
     finalPath: string,
     job?: any,
+    segmentMeetingUuid?: string | null,
   ) {
     let recResp;
 
-    if (job?.zoom_meeting_uuid) {
-      recResp = await this.zoomService.getZoomRecordingFilesByUuid(
-        job.zoom_meeting_uuid,
-      );
+    console.log(
+      `Downloading recording file ${recordingFileId} for job ${job?.id || 'unknown'}...`,
+    );
+
+    // A merged job's manifest can span multiple Zoom recording instances
+    // (different UUIDs). Zoom's recordings endpoint only returns files for
+    // the single instance UUID you query it with, so each segment MUST be
+    // looked up via its own meeting_uuid — not the row's single, most-recently
+    // ingested zoom_meeting_uuid, which only matches the latest instance.
+    const uuidToUse = segmentMeetingUuid || job?.zoom_meeting_uuid;
+    console.log('uuidToUse', uuidToUse);
+    console.log('segmentMeetingUuid', segmentMeetingUuid);
+    console.log('job?.zoom_meeting_uuid', job?.zoom_meeting_uuid);
+
+    if (uuidToUse) {
+      recResp = await this.zoomService.getZoomRecordingFilesByUuid(uuidToUse);
     } else {
       recResp = await this.zoomService.getZoomRecordingFiles(meetingId);
     }
@@ -866,8 +929,14 @@ export class RecordingWorkerService implements OnModuleInit {
       (f: any) => f.id === recordingFileId,
     );
 
+    console.log('recordingFileId', recordingFileId);
+    console.log('recResp', recResp);
+    console.log('filesssss', file);
+
     if (!file?.download_url) {
-      throw new Error('Zoom download URL not found');
+      throw new Error(
+        `Zoom download URL not found (segment ${recordingFileId}, uuid ${uuidToUse || 'none'})`,
+      );
     }
 
     // Append access token to download URL for authentication
@@ -967,6 +1036,7 @@ export class RecordingWorkerService implements OnModuleInit {
   // =====================================================
   private async validateVideoFile(filePath: string): Promise<void> {
     try {
+      console.log(`Validating video file ${filePath} with ffprobe...`);
       const { execSync } = require('child_process');
 
       try {
@@ -1038,6 +1108,7 @@ export class RecordingWorkerService implements OnModuleInit {
 
   private async mergeRecording(job: any) {
     this.logJob('log', job, 'Starting merge step');
+    console.log(`Merging recording for job ${job.id}...`);
 
     const table =
       job.table === 'mentor'
@@ -1225,6 +1296,7 @@ export class RecordingWorkerService implements OnModuleInit {
   }
 
   private async uploadToYoutube(job: any) {
+    console.log(`Uploading recording for job ${job.id} to YouTube...`);
     if (!YOUTUBE_UPLOAD_ENABLED) {
       this.logJob('warn', job, 'YouTube upload disabled by env flag');
       return;
