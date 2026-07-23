@@ -3214,21 +3214,35 @@ Zuvy LMS Team
             },
             // APPLY ORDER BY TITLE HERE
             orderBy: chapterOrderClause,
-            where: (moduleChapter: any, { eq, and, ilike }: any) =>
-              and(
-                eq(moduleChapter.topicId, topicId),
-                searchTerm
-                  ? sql`(
-                      ${ilike(moduleChapter.title, `%${searchTerm}%`)}
-                      OR EXISTS (
-                        SELECT 1 FROM ${zuvyChapterTracking}
-                        JOIN ${users} ON ${users.id} = ${zuvyChapterTracking.userId}
-                        WHERE ${zuvyChapterTracking.chapterId} = ${moduleChapter.id}
-                          AND (${ilike(users.name, searchTerm + '%')} OR ${ilike(users.email, searchTerm + '%')})
-                      )
-                    )`
-                  : undefined,
-              ),
+            where: (moduleChapter: any, { eq, and, or, ilike }: any) => {
+              const conditions: any[] = [eq(moduleChapter.topicId, topicId)];
+              if (searchTerm) {
+                conditions.push(
+                  or(
+                    ilike(moduleChapter.title, `%${searchTerm}%`),
+                    exists(
+                      db
+                        .select({ _: users.id })
+                        .from(zuvyChapterTracking)
+                        .innerJoin(
+                          users,
+                          eq(users.id, zuvyChapterTracking.userId),
+                        )
+                        .where(
+                          and(
+                            eq(zuvyChapterTracking.chapterId, moduleChapter.id),
+                            or(
+                              ilike(users.name, `%${searchTerm}%`),
+                              ilike(users.email, `%${searchTerm}%`),
+                            ),
+                          ),
+                        ),
+                    ),
+                  ),
+                );
+              }
+              return and(...conditions);
+            },
             with: {
               chapterTrackingDetails: {
                 columns: {
