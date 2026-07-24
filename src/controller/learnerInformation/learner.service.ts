@@ -6,7 +6,7 @@ import {
   InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
-import { count, desc, eq } from 'drizzle-orm';
+import { count, desc, eq, inArray } from 'drizzle-orm';
 import {
   zuvyLearnerEducationBranchDetails,
   zuvyLearnerInformation,
@@ -354,24 +354,43 @@ export class LearnerService {
       })
       .from(zuvyLearnerDegreesTable);
 
-    const degreesWithBranches = await Promise.all(
-      degrees.map(async (degree) => {
-        const branches = sortByNameWithOtherLast(
-          await db
-            .select({
-              id: zuvyLearnerEducationBranchesTable.id,
-              name: zuvyLearnerEducationBranchesTable.name,
-            })
-            .from(zuvyLearnerEducationBranchesTable)
-            .where(eq(zuvyLearnerEducationBranchesTable.degreeId, degree.id)),
-        );
+    const degreeIds = degrees.map((degree) => degree.id);
 
-        return {
-          ...degree,
-          branches,
-        };
-      }),
-    );
+    // Fetch all branches for every degree in one query and group them by
+    // degreeId in memory, instead of running one query per degree (N+1).
+    const allBranches = degreeIds.length
+      ? await db
+          .select({
+            id: zuvyLearnerEducationBranchesTable.id,
+            name: zuvyLearnerEducationBranchesTable.name,
+            degreeId: zuvyLearnerEducationBranchesTable.degreeId,
+          })
+          .from(zuvyLearnerEducationBranchesTable)
+          .where(inArray(zuvyLearnerEducationBranchesTable.degreeId, degreeIds))
+      : [];
+
+    const branchesByDegreeId = new Map<
+      number,
+      { id: number; name: string }[]
+    >();
+
+    for (const branch of allBranches) {
+      const existing = branchesByDegreeId.get(branch.degreeId);
+      const branchEntry = { id: branch.id, name: branch.name };
+
+      if (existing) {
+        existing.push(branchEntry);
+      } else {
+        branchesByDegreeId.set(branch.degreeId, [branchEntry]);
+      }
+    }
+
+    const degreesWithBranches = degrees.map((degree) => ({
+      ...degree,
+      branches: sortByNameWithOtherLast(
+        branchesByDegreeId.get(degree.id) ?? [],
+      ),
+    }));
 
     return { degrees: sortByNameWithOtherLast(degreesWithBranches) };
   }

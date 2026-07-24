@@ -1400,43 +1400,41 @@ export class LearnerResumeService {
     originalFilename: string,
     extractedProjects: ExtractedProject[],
   ): Promise<void> {
-    const existing = await db
-      .select()
-      .from(zuvyLearnersCompleteProfile)
-      .where(eq(zuvyLearnersCompleteProfile.userId, userId))
-      .limit(1);
+    const updatePayload: any = {
+      resumeUrl,
+      originalFilename,
+      updatedAt: new Date().toISOString(),
+    };
 
-    if (existing.length > 0) {
-      const updatePayload: any = {
-        resumeUrl,
-        originalFilename,
-        updatedAt: new Date().toISOString(),
-      };
+    if (extractedProjects.length > 0) {
+      updatePayload.projects = extractedProjects;
+    }
 
-      if (extractedProjects.length > 0) {
-        updatePayload.projects = extractedProjects;
-      }
-
-      await db
-        .update(zuvyLearnersCompleteProfile)
-        .set(updatePayload)
-        .where(eq(zuvyLearnersCompleteProfile.userId, userId));
-    } else {
-      await db.insert(zuvyLearnersCompleteProfile as any).values({
+    // single upsert instead of select-then-branch-to-insert-or-update
+    await db
+      .insert(zuvyLearnersCompleteProfile as any)
+      .values({
         userId,
         resumeUrl,
         originalFilename,
         projects: extractedProjects,
-      } as any);
-    }
+      } as any)
+      .onConflictDoUpdate({
+        target: zuvyLearnersCompleteProfile.userId,
+        set: updatePayload,
+      });
   }
 
   async getResumeByUserId(
     userId: number,
   ): Promise<{ resumeUrl: string; originalFilename: string }> {
     await this.ensureCompleteProfileResumeColumnsReady();
+    // only select the columns actually read below
     const result = await db
-      .select()
+      .select({
+        resumeUrl: zuvyLearnersCompleteProfile.resumeUrl,
+        originalFilename: zuvyLearnersCompleteProfile.originalFilename,
+      })
       .from(zuvyLearnersCompleteProfile)
       .where(eq(zuvyLearnersCompleteProfile.userId, userId))
       .limit(1);
