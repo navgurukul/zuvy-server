@@ -15,6 +15,7 @@ import {
   users,
   zuvySessionMerge,
   zuvySessionRecordings,
+  zuvySessionAttendanceJobs,
   licenseAssignments,
 } from '../../../drizzle/schema';
 import {
@@ -44,6 +45,11 @@ import {
   buildZoomLicenseCooldownIntervalSql,
 } from '../../common/constants/zoom-license.constants';
 import moment = require('moment-timezone');
+import { AttendanceCalculationService } from 'src/services/attendance/attendance-calculation.service';
+import {
+  resolveZoomAttendanceReadiness,
+  resolveGoogleMeetAttendanceReadiness,
+} from 'src/services/attendance/attendance-readiness';
 
 @Injectable()
 export class ClassesService {
@@ -54,6 +60,7 @@ export class ClassesService {
   constructor(
     private readonly zoomService: ZoomService,
     private readonly zoomLicenseService: ZoomLicenseService,
+    private readonly attendanceCalc: AttendanceCalculationService,
   ) {}
 
   private blockingZoomSessionCondition() {
@@ -4490,6 +4497,223 @@ export class ClassesService {
         `Error processing meeting attendance analytics: ${error.message}`,
       );
       return [error, null];
+    }
+  }
+
+  /**
+   * Attendance for a single session, decoupled from recording upload state.
+   *
+   * meetingAttendanceAnalytics() (above) bundles attendance with recording
+   * info, and the frontend currently gates its "Download Attendance" button
+   * on the recording link (`session.s3link`) being present — a separate,
+   * independent pipeline from attendance. That means attendance which is
+   * already computed and correct stays hidden from admins whenever the
+   * recording is slow, fails, or is skipped. This endpoint reports
+   * attendance readiness purely from the attendance pipeline itself
+   * (zuvy_session_attendance_jobs for Zoom, or presence of attendance data
+   * for legacy Google Meet sessions), so the frontend can show attendance
+   * as soon as it's genuinely ready — recording or not.
+   */
+  async getSessionAttendanceStatus(sessionId: number) {
+    try {
+      const sessionRows = await db
+        .select({
+          id: zuvySessions.id,
+          title: zuvySessions.title,
+          startTime: zuvySessions.startTime,
+          endTime: zuvySessions.endTime,
+          s3link: zuvySessions.s3link,
+          moduleId: zuvySessions.moduleId,
+          chapterId: zuvySessions.chapterId,
+          meetingId: zuvySessions.meetingId,
+          isZoomMeet: zuvySessions.isZoomMeet,
+          status: zuvySessions.status,
+          batchId: zuvySessions.batchId,
+          secondBatchId: zuvySessions.secondBatchId,
+          invitedStudents: zuvySessions.invitedStudents,
+        })
+        .from(zuvySessions)
+        .where(eq(zuvySessions.id, sessionId))
+        .limit(1);
+
+      if (!sessionRows.length) {
+        return [{ message: 'Session not found', statusCode: 404 }, null];
+      }
+
+      const session = sessionRows[0];
+      const isZoomMeet = session.isZoomMeet !== false;
+      const now = new Date();
+      const sessionEndTime = new Date(session.endTime);
+
+      let readiness: {
+        ready: boolean;
+        state: string;
+        reason: string | null;
+      };
+
+      if (isZoomMeet) {
+        const latestJobRows = await db
+          .select({
+            status: zuvySessionAttendanceJobs.status,
+            lastError: zuvySessionAttendanceJobs.lastError,
+          })
+          .from(zuvySessionAttendanceJobs)
+          .where(eq(zuvySessionAttendanceJobs.sessionId, sessionId))
+          .orderBy(desc(zuvySessionAttendanceJobs.id))
+          .limit(1);
+
+        // Deliberately NOT gated on session.status — that column is only
+        // refreshed as a side effect of unrelated endpoints
+        // (updatingStatusOfClass) and can stay stale at 'ongoing' long
+        // after the class, and its attendance, are actually done. The job
+        // row's existence/status is authoritative and always current.
+        readiness = resolveZoomAttendanceReadiness(
+          now,
+          sessionEndTime,
+          latestJobRows[0] || null,
+        );
+      } else {
+        const existingRecord = await db
+          .select({ id: zuvyStudentAttendanceRecords.id })
+          .from(zuvyStudentAttendanceRecords)
+          .where(eq(zuvyStudentAttendanceRecords.sessionId, sessionId))
+          .limit(1);
+        const existingAggregate = session.meetingId
+          ? await db
+              .select({ id: zuvyStudentAttendance.id })
+              .from(zuvyStudentAttendance)
+              .where(eq(zuvyStudentAttendance.meetingId, session.meetingId))
+              .limit(1)
+          : [];
+
+        readiness = resolveGoogleMeetAttendanceReadiness(
+          now,
+          sessionEndTime,
+          existingRecord.length > 0 || existingAggregate.length > 0,
+        );
+      }
+
+      const emptyResult = {
+        sessionId: session.id,
+        sessionStatus: session.status,
+        isZoomMeet,
+        ...readiness,
+        totalStudents: 0,
+        presentCount: 0,
+        absentCount: 0,
+        attendancePercentage: 0,
+        records: [] as Array<{
+          userId: number;
+          name: string | null;
+          email: string | null;
+          status: string;
+          duration: number;
+        }>,
+      };
+
+      if (!readiness.ready) {
+        return [
+          null,
+          {
+            success: true,
+            data: emptyResult,
+            message: 'Attendance not ready yet',
+          },
+        ];
+      }
+
+      // Resolve the invited-student roster the same way meetingAttendanceAnalytics
+      // does: prefer the session's own snapshot, fall back to current batch
+      // enrollment so the two endpoints never disagree on "who counts."
+      let invitedStudents: { userId: number; email: string; name?: string }[] =
+        Array.isArray(session.invitedStudents) ? session.invitedStudents : [];
+
+      if (invitedStudents.length === 0) {
+        const enrolled = await db
+          .select({
+            userId: users.id,
+            name: users.name,
+            email: users.email,
+          })
+          .from(zuvyBatchEnrollments)
+          .leftJoin(users, eq(zuvyBatchEnrollments.userId, users.id))
+          .where(
+            or(
+              session.batchId
+                ? eq(zuvyBatchEnrollments.batchId, session.batchId)
+                : undefined,
+              session.secondBatchId
+                ? eq(zuvyBatchEnrollments.batchId, session.secondBatchId)
+                : undefined,
+            ),
+          )
+          .orderBy(users.name);
+
+        invitedStudents = enrolled.map((s) => ({
+          userId: Number(s.userId),
+          email: s.email,
+          name: s.name || undefined,
+        }));
+      }
+
+      const sessionRowForCalc = {
+        id: session.id,
+        title: session.title,
+        startTime: session.startTime,
+        endTime: session.endTime,
+        s3link: session.s3link,
+        moduleId: session.moduleId,
+        chapterId: session.chapterId,
+        meetingId: session.meetingId,
+        isZoomMeet,
+        batchName: null,
+      };
+
+      const attendanceMap = await this.attendanceCalc.getUnifiedAttendanceMap(
+        [sessionRowForCalc],
+        { batchId: session.batchId },
+      );
+      const perUserMap = attendanceMap.get(session.id) ?? new Map();
+
+      const records = invitedStudents.map((student) => {
+        const entry = perUserMap.get(Number(student.userId));
+        return {
+          userId: Number(student.userId),
+          name: student.name || null,
+          email: student.email || null,
+          status: entry?.status || 'absent',
+          duration: entry?.duration ?? 0,
+        };
+      });
+
+      const totalStudents = records.length;
+      const presentCount = records.filter((r) => r.status === 'present').length;
+      const absentCount = totalStudents - presentCount;
+      const attendancePercentage =
+        totalStudents > 0
+          ? Number(((presentCount / totalStudents) * 100).toFixed(2))
+          : 0;
+
+      return [
+        null,
+        {
+          success: true,
+          data: {
+            ...emptyResult,
+            totalStudents,
+            presentCount,
+            absentCount,
+            attendancePercentage,
+            records,
+          },
+          message: 'Session attendance status fetched successfully',
+        },
+      ];
+    } catch (error: any) {
+      this.logger.error(
+        `Error fetching session attendance status for session ${sessionId}: ${error.message}`,
+      );
+      return [{ message: error.message, statusCode: 500 }, null];
     }
   }
 
