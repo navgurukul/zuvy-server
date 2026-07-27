@@ -517,12 +517,20 @@ export class SubmissionService {
           // directly against the course module's own id (which was the bug:
           // it compared two unrelated id sequences and never matched the
           // actual submitting user).
+          // fix: a module can have many submissions (one per student), so
+          // this LIMIT 1 is inherently picking one arbitrary submitter out of
+          // many, not "the" submitter — there is no single correct answer
+          // here. Without ORDER BY, Postgres doesn't even guarantee *which*
+          // row LIMIT 1 returns (it can vary across query plans), so add a
+          // deterministic tie-break (earliest submission id) purely so the
+          // sort is at least stable/reproducible, not to claim correctness.
           if (orderBy === 'name')
             return dir(
               sql`(SELECT ${users.name} FROM ${users} WHERE ${users.id} = (
                 SELECT ${zuvyAssessmentSubmission.userId} FROM ${zuvyAssessmentSubmission}
                 INNER JOIN ${zuvyOutsourseAssessments} ON ${zuvyOutsourseAssessments.id} = ${zuvyAssessmentSubmission.assessmentOutsourseId}
                 WHERE ${zuvyOutsourseAssessments.moduleId} = ${zuvyCourseModules.id}
+                ORDER BY ${zuvyAssessmentSubmission.id} ASC
                 LIMIT 1
               ))`,
             );
@@ -532,6 +540,7 @@ export class SubmissionService {
                 SELECT ${zuvyAssessmentSubmission.userId} FROM ${zuvyAssessmentSubmission}
                 INNER JOIN ${zuvyOutsourseAssessments} ON ${zuvyOutsourseAssessments.id} = ${zuvyAssessmentSubmission.assessmentOutsourseId}
                 WHERE ${zuvyOutsourseAssessments.moduleId} = ${zuvyCourseModules.id}
+                ORDER BY ${zuvyAssessmentSubmission.id} ASC
                 LIMIT 1
               ))`,
             );
@@ -3133,8 +3142,20 @@ export class SubmissionService {
               `Updated submission ${sub.id} with new marks: ${newMarks}, percentage: ${percentage}, isPassed: ${isPassed} for userId: ${sub.userId}`,
             );
 
-            // ✉️ Send email after update
-            await this.sendScoreUpdateEmailToStudent(sub.userId, percentage);
+            // fix: the DB update above already succeeded, so this submission
+            // counts as updated regardless of what happens next — isolate the
+            // email send in its own try/catch (log-only) so a failure there
+            // (e.g. SES throttling) can't make this function return null and
+            // silently drop a genuinely successful score update from the
+            // returned/logged list of updated user ids.
+            try {
+              await this.sendScoreUpdateEmailToStudent(sub.userId, percentage);
+            } catch (emailErr) {
+              console.error(
+                `⚠️ Score updated for submission ${sub.id}, but the notification email failed:`,
+                emailErr,
+              );
+            }
             return sub.userId;
           }
           return null;

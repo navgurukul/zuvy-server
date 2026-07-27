@@ -2844,8 +2844,13 @@ export const zuvyBootcampTracking = main.table("zuvy_bootcamp_tracking", {
   updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
   version: varchar('version', { length: 10 })
 }, (table) => ({
-  // perf: bootcamp progress is always read/updated by userId+bootcampId together.
-  userIdBootcampIdIdx: index('zuvy_bootcamp_tracking_user_id_bootcamp_id_idx').on(table.userId, table.bootcampId),
+  // perf + correctness: bootcamp progress is always read/updated by
+  // userId+bootcampId together. This must be UNIQUE, not just indexed - the
+  // app writes this table via insert-or-update logic, and without a unique
+  // constraint two concurrent requests for the same user+bootcamp can both
+  // insert, creating duplicate rows that fan out joins elsewhere (see
+  // student.service.ts's leaderboard query).
+  userIdBootcampIdUnique: uniqueIndex('zuvy_bootcamp_tracking_user_id_bootcamp_id_idx').on(table.userId, table.bootcampId),
 }));
 
 

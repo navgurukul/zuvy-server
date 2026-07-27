@@ -1673,14 +1673,23 @@ export class StudentService {
     offset: number,
   ) {
     try {
+      // fix: zuvyBootcampTracking has no unique constraint on
+      // (userId, bootcampId) — the app writes it via a non-atomic
+      // select-then-insert-or-update, so duplicate rows for the same user
+      // are possible. The old relational `one()` fetch could only ever
+      // return one nested tracking object per student; a plain leftJoin can
+      // fan out and duplicate a student's whole row if duplicates exist. Use
+      // max()/GROUP BY so the join always collapses back to one row per
+      // enrollment regardless of how many tracking rows match.
+      const progressExpr = sql`coalesce(max(${zuvyBootcampTracking.progress}), 0)`;
+      const updatedAtExpr = sql`coalesce(max(${zuvyBootcampTracking.updatedAt}), now())`;
       // averageScore = (attendance + progress) / 2, computed in SQL so the
       // sort + pagination can happen at the DB level instead of pulling
       // every enrolled student's full nested tracking data into memory.
       // (division by 2.0 forces float math in Postgres, matching the
       // original JS `(attendance + progress) / 2` — plain integer division
       // would silently truncate e.g. 4.5 to 4 and change the response value.)
-      const averageScoreExpr = sql`(coalesce(${zuvyBatchEnrollments.attendance}, 0) + coalesce(${zuvyBootcampTracking.progress}, 0)) / 2.0`;
-      const updatedAtExpr = sql`coalesce(${zuvyBootcampTracking.updatedAt}, now())`;
+      const averageScoreExpr = sql`(coalesce(${zuvyBatchEnrollments.attendance}, 0) + ${progressExpr}) / 2.0`;
 
       const studentsWhere = and(
         eq(zuvyBatchEnrollments.bootcampId, bootcampId),
@@ -1693,8 +1702,8 @@ export class StudentService {
           userId: users.id,
           userName: users.name,
           userEmail: users.email,
-          progress: zuvyBootcampTracking.progress,
-          updatedAt: zuvyBootcampTracking.updatedAt,
+          progress: progressExpr,
+          updatedAt: updatedAtExpr,
           averageScore: averageScoreExpr,
         })
         .from(zuvyBatchEnrollments)
@@ -1707,6 +1716,13 @@ export class StudentService {
           ),
         )
         .where(studentsWhere)
+        .groupBy(
+          zuvyBatchEnrollments.id,
+          users.id,
+          users.name,
+          users.email,
+          zuvyBatchEnrollments.attendance,
+        )
         .orderBy(desc(averageScoreExpr), asc(updatedAtExpr));
 
       const hasPagination = !isNaN(limit) && !isNaN(offset);

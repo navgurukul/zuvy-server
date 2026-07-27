@@ -201,7 +201,7 @@ export class TrackingService {
             userId: BigInt(userId),
             chapterId,
             moduleId,
-            completedAt: new Date().toISOString(),
+            completedAt: sql`NOW()`,
           };
           const chapterTracked = await db
             .insert(zuvyChapterTracking)
@@ -255,14 +255,14 @@ export class TrackingService {
                     bootcampId,
                     moduleId,
                     progress: moduleProgress,
-                    updatedAt: new Date().toISOString(),
+                    updatedAt: sql`NOW()`,
                   } as any)
                   .returning()
               : db
                   .update(zuvyModuleTracking)
                   .set({
                     progress: moduleProgress,
-                    updatedAt: new Date().toISOString(),
+                    updatedAt: sql`NOW()`,
                   } as any)
                   .where(eq(zuvyModuleTracking.id, moduleTracking[0].id))
                   .returning();
@@ -303,7 +303,7 @@ export class TrackingService {
                   progress: moduleProgress,
                   bootcampId,
                   chapterId: chapterTracked[0].chapterId,
-                  updatedAt: new Date().toISOString(),
+                  updatedAt: sql`NOW()`,
                 } as any)
               : db
                   .update(zuvyRecentBootcamp)
@@ -312,18 +312,17 @@ export class TrackingService {
                     progress: moduleProgress,
                     bootcampId,
                     chapterId: chapterTracked[0].chapterId,
-                    updatedAt: new Date().toISOString(),
+                    updatedAt: sql`NOW()`,
                   } as any)
                   .where(eq(zuvyRecentBootcamp.userId, BigInt(userId)));
 
-          // The recent-bootcamp upsert and these three lookups are all
+          // The recent-bootcamp upsert and these two lookups are all
           // independent of each other - run them together.
           const [
             ,
             completedProjectForAUserCount,
             allChapterTrackingCount,
             allChaptersCount,
-            userBootcampTrackingExists,
           ] = await Promise.all([
             recentBootcampUpsert,
             projectModuleIds.length > 0
@@ -353,15 +352,6 @@ export class TrackingService {
               .from(zuvyModuleChapter)
               .where(inArray(zuvyModuleChapter.moduleId, moduleIds))
               .then((rows) => rows[0].count),
-            db
-              .select({ id: zuvyBootcampTracking.id })
-              .from(zuvyBootcampTracking)
-              .where(
-                and(
-                  eq(zuvyBootcampTracking.userId, userId),
-                  eq(zuvyBootcampTracking.bootcampId, bootcampId),
-                ),
-              ),
           ]);
 
           const bootcampProgress = Math.ceil(
@@ -370,31 +360,29 @@ export class TrackingService {
               100,
           );
 
-          if (userBootcampTrackingExists.length > 0) {
-            await db
-              .update(zuvyBootcampTracking)
-              .set({
+          // fix: single upsert against the (userId, bootcampId) unique
+          // constraint instead of select-then-insert-or-update — removes
+          // both the extra existence-check round trip and the race window
+          // where two concurrent requests for the same user+bootcamp could
+          // each see "no row" and both attempt an insert.
+          await db
+            .insert(zuvyBootcampTracking)
+            .values({
+              userId,
+              bootcampId,
+              progress: bootcampProgress,
+              updatedAt: sql`NOW()`,
+            } as any)
+            .onConflictDoUpdate({
+              target: [
+                zuvyBootcampTracking.userId,
+                zuvyBootcampTracking.bootcampId,
+              ],
+              set: {
                 progress: bootcampProgress,
-                updatedAt: new Date().toISOString(),
-              })
-              .where(
-                and(
-                  eq(zuvyBootcampTracking.userId, userId),
-                  eq(zuvyBootcampTracking.bootcampId, bootcampId),
-                ),
-              )
-              .returning();
-          } else {
-            await db
-              .insert(zuvyBootcampTracking)
-              .values({
-                userId,
-                bootcampId,
-                progress: bootcampProgress,
-                updatedAt: new Date().toISOString(),
-              } as any)
-              .returning();
-          }
+                updatedAt: sql`NOW()`,
+              } as any,
+            });
 
           return {
             status: 'success',
@@ -534,7 +522,7 @@ export class TrackingService {
           chapterId,
           bootcampId,
           ...SubmitBody.submitAssignment,
-          updatedAt: new Date().toISOString(),
+          updatedAt: sql`NOW()`,
         };
         result = await db
           .insert(zuvyAssignmentSubmission)
@@ -585,8 +573,8 @@ export class TrackingService {
             userId,
             chapterId,
             moduleId,
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
+            createdAt: sql`NOW()`,
+            updatedAt: sql`NOW()`,
           };
         });
 
@@ -648,7 +636,13 @@ export class TrackingService {
           ? await db
               .select({
                 moduleId: zuvyModuleChapter.moduleId,
-                count: sql<number>`count(*)::int`,
+                // fix: count(*) counted tracking ROWS, not distinct chapters —
+                // zuvyChapterTracking has no unique constraint on
+                // (userId, chapterId), so a duplicate row would inflate this
+                // past the chapter count and push progress over 100%. The
+                // original code counted chapters with >=1 tracking row, which
+                // count(DISTINCT chapterId) reproduces exactly.
+                count: sql<number>`count(distinct ${zuvyChapterTracking.chapterId})::int`,
               })
               .from(zuvyChapterTracking)
               .innerJoin(
@@ -866,12 +860,11 @@ export class TrackingService {
           : [];
       const moduleIds = moduleDetails.map((module) => module.id);
 
-      // None of these four depend on each other's results.
+      // None of these three depend on each other's results.
       const [
         totalChapterCount,
         completedProjectForAUserCount,
         allChapterTrackingCount,
-        userBootcampTrackingExists,
       ] = await Promise.all([
         moduleIds.length > 0
           ? db
@@ -904,15 +897,6 @@ export class TrackingService {
               )
               .then((rows) => rows[0].count)
           : Promise.resolve(0),
-        db
-          .select({ id: zuvyBootcampTracking.id })
-          .from(zuvyBootcampTracking)
-          .where(
-            and(
-              eq(zuvyBootcampTracking.userId, userId),
-              eq(zuvyBootcampTracking.bootcampId, bootcampId),
-            ),
-          ),
       ]);
 
       const allChapters = moduleIds.length > 0 ? totalChapterCount : 0;
@@ -924,29 +908,27 @@ export class TrackingService {
             100,
         );
       }
-      if (userBootcampTrackingExists.length > 0) {
-        await db
-          .update(zuvyBootcampTracking)
-          .set({
+      // fix: single upsert against the (userId, bootcampId) unique
+      // constraint instead of select-then-insert-or-update — removes both
+      // the extra existence-check round trip and the race window where two
+      // concurrent requests for the same user+bootcamp could each see
+      // "no row" and both attempt an insert.
+      await db
+        .insert(zuvyBootcampTracking)
+        .values({
+          userId,
+          bootcampId,
+          progress: initialProgress,
+        })
+        .onConflictDoUpdate({
+          target: [
+            zuvyBootcampTracking.userId,
+            zuvyBootcampTracking.bootcampId,
+          ],
+          set: {
             progress: initialProgress,
-          })
-          .where(
-            and(
-              eq(zuvyBootcampTracking.userId, userId),
-              eq(zuvyBootcampTracking.bootcampId, bootcampId),
-            ),
-          )
-          .returning();
-      } else {
-        await db
-          .insert(zuvyBootcampTracking)
-          .values({
-            userId,
-            bootcampId,
-            progress: initialProgress,
-          })
-          .returning();
-      }
+          },
+        });
 
       // perf: batchDetailsPromise was already kicked off earlier and doesn't
       // depend on this lookup - await both together instead of sequentially.
@@ -1852,7 +1834,7 @@ export class TrackingService {
         projectId,
         userId,
         ...projectBody,
-        updatedAt: new Date().toISOString(),
+        updatedAt: sql`NOW()`,
       };
       if (projectTrackingForUser.length > 0) {
         let updateProject = await db
@@ -1882,8 +1864,8 @@ export class TrackingService {
           moduleId,
           bootcampId,
           progress: 100,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
+          createdAt: sql`NOW()`,
+          updatedAt: sql`NOW()`,
         };
         // These three are independent of each other's results.
         const [recentBootcampForUser, projectTracked, moduleTracked] =
@@ -1904,7 +1886,7 @@ export class TrackingService {
             moduleId,
             progress: 100,
             bootcampId,
-            updatedAt: new Date().toISOString(),
+            updatedAt: sql`NOW()`,
           };
           await db.insert(zuvyRecentBootcamp).values(updatedRecentBootcamp);
         } else {
@@ -1913,7 +1895,7 @@ export class TrackingService {
             progress: 100,
             bootcampId,
             chapterId: null,
-            updatedAt: new Date().toISOString(),
+            updatedAt: sql`NOW()`,
           };
           const updatedRecentBootcamp = await db
             .update(zuvyRecentBootcamp)
@@ -2873,7 +2855,7 @@ export class TrackingService {
             answer: answer,
             questionId: submitFormBody.submitForm[i].questionId,
             attemptCount: 1,
-            updatedAt: new Date().toISOString(),
+            updatedAt: sql`NOW()`,
             status,
           };
         }

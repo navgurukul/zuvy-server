@@ -49,8 +49,6 @@ import {
   asc,
   ne,
   gt,
-  gte,
-  lte,
   SQL,
   desc,
 } from 'drizzle-orm';
@@ -957,9 +955,11 @@ export class ContentService {
 
         // Update assessment state using AssessmentStateService; it now
         // returns the up-to-date assessment row, avoiding a redundant re-fetch.
-        const updatedAssessment = await this.handleAssessmentUpdate(
-          chapterDetails[0].id,
-        );
+        // fix: guard against a null return (assessment genuinely missing, or
+        // both the fetch and the state-write failed) so this read path
+        // degrades to the default state below instead of throwing.
+        const updatedAssessment =
+          (await this.handleAssessmentUpdate(chapterDetails[0].id)) ?? {};
 
         const stateMap = {
           0: 'DRAFT',
@@ -1304,45 +1304,64 @@ export class ContentService {
         throw new NotFoundException('Module not found or deleted!');
       }
 
-      // ── Snapshot BEFORE state for diff ────────────────────────────────
-      const oldModule = moduleInfo[0];
       let newModule = null;
 
       if (reorderData.moduleDto == undefined) {
         const { newOrder } = reorderData.reOrderDto;
-        const oldOrder = oldModule.order;
 
-        // perf: single bulk range UPDATE for the shifted modules instead of one UPDATE per row
-        if (oldOrder > newOrder) {
-          // Moving the module earlier: shift everything in [newOrder, oldOrder - 1] down by +1
-          await db
-            .update(zuvyCourseModules)
-            .set({ order: sql`${zuvyCourseModules.order}::numeric + 1` })
-            .where(
-              and(
-                eq(zuvyCourseModules.bootcampId, bootcampId),
-                gte(zuvyCourseModules.order, newOrder),
-                lte(zuvyCourseModules.order, oldOrder - 1),
-              ),
-            );
-          const updated = await db
-            .update(zuvyCourseModules)
-            .set({ order: newOrder })
-            .where(eq(zuvyCourseModules.id, moduleId))
-            .returning();
-          newModule = updated[0] || null;
-        } else if (oldOrder < newOrder) {
-          // Moving the module later: shift everything in (oldOrder, newOrder] up by -1
-          await db
-            .update(zuvyCourseModules)
-            .set({ order: sql`${zuvyCourseModules.order}::numeric - 1` })
-            .where(
-              and(
-                eq(zuvyCourseModules.bootcampId, bootcampId),
-                gt(zuvyCourseModules.order, oldOrder),
-                lte(zuvyCourseModules.order, newOrder),
-              ),
-            );
+        // fix: don't assume `order` values are a dense, gap-free 1..N
+        // sequence per bootcamp (a range filter like `order BETWEEN x AND y`
+        // only shifts the right rows under that assumption, which nothing
+        // enforces at the DB level). Fetch the actual sorted list once and
+        // compute shifts by ARRAY POSITION — the same approach the original
+        // per-row-loop code used, so it's correct regardless of gaps or
+        // duplicate order values — then apply them all in a single bulk
+        // CASE-based UPDATE instead of one UPDATE per shifted row.
+        const modules = await db
+          .select({ id: zuvyCourseModules.id, order: zuvyCourseModules.order })
+          .from(zuvyCourseModules)
+          .where(eq(zuvyCourseModules.bootcampId, bootcampId))
+          .orderBy(zuvyCourseModules.order);
+        const draggedIndex = modules.findIndex((m) => m.id === moduleId);
+
+        if (draggedIndex !== -1) {
+          const shifts: { id: number; order: number }[] = [];
+          if (draggedIndex + 1 > newOrder) {
+            for (let i = newOrder - 1; i <= draggedIndex - 1; i++) {
+              shifts.push({ id: modules[i].id, order: modules[i].order + 1 });
+            }
+          } else if (draggedIndex + 1 < newOrder) {
+            let counting = newOrder - (draggedIndex + 1);
+            let ordering = newOrder - 1;
+            while (counting > 0) {
+              shifts.push({
+                id: modules[ordering].id,
+                order: modules[ordering].order - 1,
+              });
+              counting -= 1;
+              ordering -= 1;
+            }
+          }
+
+          if (shifts.length > 0) {
+            const sqlChunks: SQL[] = [sql`(case`];
+            for (const shift of shifts) {
+              sqlChunks.push(
+                sql`when ${zuvyCourseModules.id} = ${shift.id} then ${shift.order}`,
+              );
+            }
+            sqlChunks.push(sql`else ${zuvyCourseModules.order} end)`);
+            await db
+              .update(zuvyCourseModules)
+              .set({ order: sql.join(sqlChunks, sql.raw(' ')) })
+              .where(
+                inArray(
+                  zuvyCourseModules.id,
+                  shifts.map((shift) => shift.id),
+                ),
+              );
+          }
+
           const updated = await db
             .update(zuvyCourseModules)
             .set({ order: newOrder })
@@ -1485,37 +1504,60 @@ export class ContentService {
       }
       if (editData.newOrder != undefined) {
         const { newOrder } = editData;
-        const oldOrder = chapterInfo[0].order;
 
-        // perf: single bulk range UPDATE for the shifted chapters instead of one UPDATE per row
-        if (oldOrder > newOrder) {
-          // Moving the chapter earlier: shift everything in [newOrder, oldOrder - 1] down by +1
-          await db
-            .update(zuvyModuleChapter)
-            .set({ order: sql`${zuvyModuleChapter.order}::numeric + 1` })
-            .where(
-              and(
-                eq(zuvyModuleChapter.moduleId, moduleId),
-                gte(zuvyModuleChapter.order, newOrder),
-                lte(zuvyModuleChapter.order, oldOrder - 1),
-              ),
-            );
-          await db
-            .update(zuvyModuleChapter)
-            .set({ order: newOrder })
-            .where(eq(zuvyModuleChapter.id, chapterId));
-        } else if (oldOrder < newOrder) {
-          // Moving the chapter later: shift everything in (oldOrder, newOrder] up by -1
-          await db
-            .update(zuvyModuleChapter)
-            .set({ order: sql`${zuvyModuleChapter.order}::numeric - 1` })
-            .where(
-              and(
-                eq(zuvyModuleChapter.moduleId, moduleId),
-                gt(zuvyModuleChapter.order, oldOrder),
-                lte(zuvyModuleChapter.order, newOrder),
-              ),
-            );
+        // fix: don't assume `order` values are a dense, gap-free 1..N
+        // sequence per module (a range filter like `order BETWEEN x AND y`
+        // only shifts the right rows under that assumption, which nothing
+        // enforces at the DB level). Fetch the actual sorted list once and
+        // compute shifts by ARRAY POSITION — the same approach the original
+        // per-row-loop code used, so it's correct regardless of gaps or
+        // duplicate order values — then apply them all in a single bulk
+        // CASE-based UPDATE instead of one UPDATE per shifted row.
+        const chapters = await db
+          .select({ id: zuvyModuleChapter.id, order: zuvyModuleChapter.order })
+          .from(zuvyModuleChapter)
+          .where(eq(zuvyModuleChapter.moduleId, moduleId))
+          .orderBy(zuvyModuleChapter.order);
+        const draggedIndex = chapters.findIndex((c) => c.id === chapterId);
+
+        if (draggedIndex !== -1) {
+          const shifts: { id: number; order: number }[] = [];
+          if (draggedIndex + 1 > newOrder) {
+            for (let i = newOrder - 1; i <= draggedIndex - 1; i++) {
+              shifts.push({ id: chapters[i].id, order: chapters[i].order + 1 });
+            }
+          } else if (draggedIndex + 1 < newOrder) {
+            let counting = newOrder - (draggedIndex + 1);
+            let ordering = newOrder - 1;
+            while (counting > 0) {
+              shifts.push({
+                id: chapters[ordering].id,
+                order: chapters[ordering].order - 1,
+              });
+              counting -= 1;
+              ordering -= 1;
+            }
+          }
+
+          if (shifts.length > 0) {
+            const sqlChunks: SQL[] = [sql`(case`];
+            for (const shift of shifts) {
+              sqlChunks.push(
+                sql`when ${zuvyModuleChapter.id} = ${shift.id} then ${shift.order}`,
+              );
+            }
+            sqlChunks.push(sql`else ${zuvyModuleChapter.order} end)`);
+            await db
+              .update(zuvyModuleChapter)
+              .set({ order: sql.join(sqlChunks, sql.raw(' ')) })
+              .where(
+                inArray(
+                  zuvyModuleChapter.id,
+                  shifts.map((shift) => shift.id),
+                ),
+              );
+          }
+
           await db
             .update(zuvyModuleChapter)
             .set({ order: newOrder })
@@ -3499,8 +3541,12 @@ export class ContentService {
             ),
           ),
       ]);
-      if (updatedAssessment.currentState === null) {
-        updatedAssessment.currentState = 2;
+      // fix: guard against a null return (assessment genuinely missing, or
+      // both the fetch and the state-write failed) so this falls back to the
+      // default ACTIVE state below instead of throwing on a null dereference.
+      const safeUpdatedAssessment = updatedAssessment ?? { currentState: null };
+      if (safeUpdatedAssessment.currentState === null) {
+        safeUpdatedAssessment.currentState = 2;
       }
 
       assessment[0]['totalQuizzes'] = quizzesCountRes[0]?.count || 0;
@@ -3572,23 +3618,37 @@ export class ContentService {
   }
 
   async handleAssessmentUpdate(assessmentId: number) {
+    let assessment;
     try {
-      const assessment = await db.query.zuvyOutsourseAssessments.findFirst({
+      assessment = await db.query.zuvyOutsourseAssessments.findFirst({
         where: eq(zuvyOutsourseAssessments.id, assessmentId),
       });
-
-      if (!assessment) {
-        this.logger.warn(`Assessment ${assessmentId} not found`);
-        return null;
-      }
-
-      return await this.updateAssessmentState(assessment);
     } catch (error) {
       this.logger.error(
-        `Error handling assessment update for ${assessmentId}:`,
+        `Error fetching assessment ${assessmentId} for state update:`,
         error,
       );
       return null;
+    }
+
+    if (!assessment) {
+      this.logger.warn(`Assessment ${assessmentId} not found`);
+      return null;
+    }
+
+    try {
+      return await this.updateAssessmentState(assessment);
+    } catch (error) {
+      // fix: a failed state-write used to be invisible to callers because
+      // they re-fetched the (unmodified) row themselves afterwards. Now that
+      // callers use this return value directly, fall back to the
+      // already-fetched row instead of null so a transient write failure on
+      // this side-effect doesn't crash an otherwise-successful read request.
+      this.logger.error(
+        `Error updating assessment state for ${assessmentId}:`,
+        error,
+      );
+      return assessment;
     }
   }
 
