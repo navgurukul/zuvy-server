@@ -9,6 +9,8 @@ import { db } from '../../db';
 import { RecordingWorkerTriggerService } from '../../services/recording-worker/recording-worker-trigger.service';
 import { AttendanceWorkerTriggerService } from '../../services/attendance-worker/attendance-worker-trigger.service';
 
+const ATTENDANCE_JOB_INITIAL_DELAY_MS = 3 * 60 * 1000;
+
 function extractMeetingIdentifiers(payload: any) {
   const meeting = payload?.object || {};
 
@@ -412,7 +414,7 @@ WHERE zoom_meeting_id = ${meetingId}
           s.batch_id,
           s.bootcamp_id,
           'DISCOVERED',
-          NOW() + INTERVAL '3 minutes',
+          NOW() + (${`${ATTENDANCE_JOB_INITIAL_DELAY_MS} milliseconds`})::interval,
           0
           FROM zuvy_sessions s
           WHERE s.zoom_meeting_id = ${meetingId}
@@ -428,6 +430,10 @@ WHERE zoom_meeting_id = ${meetingId}
           `);
 
         this.attendanceWorkerTrigger.triggerNow();
+        setTimeout(
+          () => this.attendanceWorkerTrigger.triggerNow(),
+          ATTENDANCE_JOB_INITIAL_DELAY_MS + 10_000,
+        );
 
         await db.execute(sql`
         UPDATE zuvy_zoom_webhook_events

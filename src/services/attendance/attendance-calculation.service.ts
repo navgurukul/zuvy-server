@@ -21,6 +21,8 @@ type AttendanceScope =
   | { userId: number; userEmail: string }
   | { batchId: number };
 
+const ATTENDANCE_COMPLETION_GRACE_MS = 5 * 60 * 1000;
+
 /**
  * Single source of truth for "how many completed classes did this student
  * attend, and what %". Both the live per-student report and the cached
@@ -44,14 +46,24 @@ export class AttendanceCalculationService {
       toDate?: Date;
     },
   ): Promise<CompletedSessionRow[]> {
+    const completedCutoffIso = new Date(
+      Date.now() - ATTENDANCE_COMPLETION_GRACE_MS,
+    ).toISOString();
+
     const sessions = await db.query.zuvySessions.findMany({
-      where: (session, { and, eq, or, ilike, gte, lte }) =>
+      where: (session, { and, eq, ne, or, ilike, gte, lte, isNull }) =>
         and(
           options?.bootcampId
             ? eq(session.bootcampId, options.bootcampId)
             : undefined,
           or(eq(session.batchId, batchId), eq(session.secondBatchId, batchId)),
-          eq(session.status, helperVariable.completed),
+          or(
+            eq(session.status, helperVariable.completed),
+            and(
+              or(isNull(session.status), ne(session.status, 'cancelled')),
+              lte(session.endTime, completedCutoffIso),
+            ),
+          ),
           options?.searchTerm
             ? ilike(session.title, `%${options.searchTerm}%`)
             : undefined,

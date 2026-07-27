@@ -42,6 +42,7 @@ import { ContentService } from '../content/content.service';
 import { RbacAllocPermsService } from '../../rbac/rbac.alloc-perms.service';
 import { ResourceList } from 'src/rbac/utility';
 import { RbacService } from 'src/rbac/rbac.service';
+import { AttendanceCalculationService } from 'src/services/attendance/attendance-calculation.service';
 
 const { ZUVY_CONTENT_URL } = process.env; // INPORTING env VALUSE ZUVY_CONTENT
 
@@ -51,6 +52,7 @@ export class BootcampService {
     private contentService: ContentService,
     private rbacAllocPermsService: RbacAllocPermsService,
     private rbacService: RbacService,
+    private readonly attendanceCalc: AttendanceCalculationService,
   ) {}
   async enrollData(bootcampId: number) {
     try {
@@ -1419,7 +1421,34 @@ export class BootcampService {
           ? eq(zuvyBatches.instructorId, instructorId)
           : undefined;
 
-      const query = db
+      const whereClause = and(
+        eq(zuvyBatchEnrollments.bootcampId, bootcampId),
+        batchFilter,
+        searchFilter,
+        enrolledDateFilter,
+        lastActiveDateFilter,
+        statusFilter,
+        attendanceFilter,
+        instructorBatchFilter, // Add instructor filter to WHERE clause
+      );
+
+      const hasPagination =
+        Number.isFinite(limitNum) && Number.isFinite(offsetNum);
+
+      // Count against the same filters/joins as the main query, but without
+      // zuvyBootcampTracking (not referenced by any filter) — avoids
+      // fetching every matching row just to read mapData.length, which
+      // previously meant loading the entire filtered roster into memory on
+      // every page load regardless of page size.
+      const countResult = await db
+        .select({ count: sql<number>`cast(count(*) as int)` })
+        .from(zuvyBatchEnrollments)
+        .leftJoin(users, eq(zuvyBatchEnrollments.userId, users.id))
+        .leftJoin(zuvyBatches, eq(zuvyBatchEnrollments.batchId, zuvyBatches.id))
+        .where(whereClause);
+      const totalNumberOfStudents = countResult[0]?.count ?? 0;
+
+      const baseQuery = db
         .select({
           userId: users.id,
           name: users.name,
@@ -1449,35 +1478,67 @@ export class BootcampService {
             ),
           ),
         )
-        .where(
-          and(
-            eq(zuvyBatchEnrollments.bootcampId, bootcampId),
-            batchFilter,
-            searchFilter,
-            enrolledDateFilter,
-            lastActiveDateFilter,
-            statusFilter,
-            attendanceFilter,
-            instructorBatchFilter, // Add instructor filter to WHERE clause
-          ),
-        )
+        .where(whereClause)
         .orderBy(direction);
 
-      const mapData = await query;
-      const totalNumberOfStudents = mapData.length;
-      const hasPagination =
-        Number.isFinite(limitNum) && Number.isFinite(offsetNum);
       const studentsInfo = hasPagination
-        ? mapData.slice(offsetNum, offsetNum + limitNum)
-        : mapData;
+        ? await baseQuery.limit(limitNum).offset(offsetNum)
+        : await baseQuery;
+
+      // The `attendance` column above is a periodically-refreshed cache
+      // (zuvy_batch_enrollments.attendance) — used here only to power the
+      // attendanceFilter/orderBy('percentage') query above, which need a
+      // DB-level value across the *whole* filtered roster. It can lag
+      // reality by however long it's been since the batch was last
+      // recomputed. For the page actually being returned, replace it with a
+      // live value computed the same way the per-student report does
+      // (AttendanceCalculationService), so what's displayed is always
+      // correct regardless of cache freshness. Batched per distinct
+      // batchId on this page (not per student), so cost stays bounded by
+      // how many different batches are represented on one page, not by
+      // page size.
+      const batchIdsOnPage = Array.from(
+        new Set(
+          studentsInfo
+            .map((item) => item.batchId)
+            .filter((id): id is number => id != null),
+        ),
+      );
+      const liveAttendanceByBatch = new Map<
+        number,
+        { sessions: any[]; map: Map<number, Map<number, any>> }
+      >();
+      await Promise.all(
+        batchIdsOnPage.map(async (bId) => {
+          const sessions =
+            await this.attendanceCalc.getCompletedSessionsForBatch(bId);
+          const map = await this.attendanceCalc.getUnifiedAttendanceMap(
+            sessions,
+            { batchId: bId },
+          );
+          liveAttendanceByBatch.set(bId, { sessions, map });
+        }),
+      );
 
       // For each student, fetch their attendance records
       const modifiedStudentInfo = await Promise.all(
         studentsInfo.map(async (item) => {
+          const live =
+            item.batchId != null
+              ? liveAttendanceByBatch.get(item.batchId)
+              : undefined;
+          const liveAttendance = live
+            ? this.attendanceCalc.aggregateForUser(
+                live.sessions,
+                live.map,
+                Number(item.userId),
+              ).attendancePercentage
+            : item.attendance;
+
           return {
             ...item,
             userId: Number(item.userId),
-            attendance: item.attendance,
+            attendance: liveAttendance,
             batchName: item.batchId != null ? item.batchName : 'unassigned',
             progress: item.progress != null ? item.progress : 0,
             enrolledDate: item.enrolledDate
