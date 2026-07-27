@@ -1597,4 +1597,75 @@ export class ZoomService {
       ...idResp.data,
     };
   }
+
+  /**
+   * Fetch ALL recording files across ALL past instances of a meeting ID from Zoom.
+   * When an instructor leaves and re-enters a meeting multiple times, Zoom creates
+   * separate meeting instances (each with a unique UUID) under the same meeting ID.
+   * This method queries all past instance UUIDs via GET /past_meetings/{meetingId}/instances
+   * and aggregates all MP4 recording files into one complete list.
+   */
+  async getAllMeetingRecordings(meetingId: string | number): Promise<{
+    recording_files: any[];
+    instances_found: number;
+  }> {
+    const headers = await this.getHeaders();
+    const allFiles: any[] = [];
+    const seenFileIds = new Set<string>();
+    const uuidsProcessed = new Set<string>();
+
+    // Step 1: Query Zoom for all past instance UUIDs of this meeting ID
+    try {
+      const instancesUrl = `${this.baseUrl}/past_meetings/${encodeURIComponent(meetingId)}/instances`;
+      const instancesRes = await axios.get(instancesUrl, { headers });
+      const meetings = instancesRes.data?.meetings || [];
+
+      for (const meetingInstance of meetings) {
+        const uuid = meetingInstance.uuid;
+        if (uuid && !uuidsProcessed.has(uuid)) {
+          uuidsProcessed.add(uuid);
+          try {
+            const encodedUuid = encodeURIComponent(encodeURIComponent(uuid));
+            const recUrl = `${this.baseUrl}/meetings/${encodedUuid}/recordings`;
+            const recRes = await axios.get(recUrl, { headers });
+            const files = recRes.data?.recording_files || [];
+            for (const f of files) {
+              if (f.id && !seenFileIds.has(f.id)) {
+                seenFileIds.add(f.id);
+                allFiles.push({ ...f, meeting_uuid: uuid });
+              }
+            }
+          } catch (instanceErr: any) {
+            this.logger.warn(
+              `Failed to fetch recording files for past instance UUID ${uuid}: ${instanceErr.message}`,
+            );
+          }
+        }
+      }
+    } catch (instancesErr: any) {
+      this.logger.warn(
+        `Failed to fetch past instances for meeting ${meetingId}: ${instancesErr.message}`,
+      );
+    }
+
+    // Step 2: Fallback / additional check directly by meetingId
+    try {
+      const directUrl = `${this.baseUrl}/meetings/${encodeURIComponent(meetingId)}/recordings`;
+      const directRes = await axios.get(directUrl, { headers });
+      const files = directRes.data?.recording_files || [];
+      for (const f of files) {
+        if (f.id && !seenFileIds.has(f.id)) {
+          seenFileIds.add(f.id);
+          allFiles.push(f);
+        }
+      }
+    } catch (directErr: any) {
+      // Direct fetch may return 404 if meeting has ended and only accessible via UUIDs
+    }
+
+    return {
+      recording_files: allFiles,
+      instances_found: uuidsProcessed.size,
+    };
+  }
 }

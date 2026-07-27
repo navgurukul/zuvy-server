@@ -180,8 +180,16 @@ export class ZoomWebhookController {
         // owns it. ingestRecordingCompleted() merges this instance's
         // segments into any prior instances for the same owner instead of
         // overwriting them (see RecordingWorkerService.ingestRecordingCompleted).
+        const cleanId = String(meetingId || '').replace(/\D/g, '');
+
         const session = await db.query.zuvySessions.findFirst({
-          where: (s, { eq }) => eq(s.zoomMeetingId, meetingId),
+          where: (s, { or, eq, sql: dSql }) =>
+            or(
+              eq(s.zoomMeetingId, meetingId),
+              eq(s.meetingId, meetingId),
+              dSql`REPLACE(${s.zoomMeetingId}, ' ', '') = ${cleanId}`,
+              dSql`REPLACE(${s.meetingId}, ' ', '') = ${cleanId}`,
+            ),
           columns: { id: true },
         });
 
@@ -198,7 +206,11 @@ export class ZoomWebhookController {
         }
 
         const mentorBooking = await db.query.zuvyMentorSlotBooking.findFirst({
-          where: (b, { eq }) => eq(b.zoomMeetingId, meetingId),
+          where: (b, { or, eq, sql: dSql }) =>
+            or(
+              eq(b.zoomMeetingId, meetingId),
+              dSql`REPLACE(${b.zoomMeetingId}, ' ', '') = ${cleanId}`,
+            ),
           columns: { id: true },
         });
 

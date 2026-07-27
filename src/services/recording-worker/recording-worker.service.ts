@@ -185,7 +185,7 @@ export class RecordingWorkerService implements OnModuleInit {
         file_size: f.file_size,
         recording_start: f.recording_start,
         recording_end: f.recording_end,
-        meeting_uuid: meetingUuid || f.meeting_id,
+        meeting_uuid: f.meeting_uuid || meetingUuid || f.meeting_id,
       }));
   }
 
@@ -299,13 +299,20 @@ export class RecordingWorkerService implements OnModuleInit {
       const existingManifest = this.parseJsonArray<RecordingSegment>(
         row.zoom_recording_manifest,
       );
-      const combinedManifest = [...existingManifest, ...newManifest].sort(
+      const segmentMap = new Map<string, RecordingSegment>();
+      for (const seg of existingManifest) {
+        if (seg?.id) segmentMap.set(seg.id, seg);
+      }
+      for (const seg of newManifest) {
+        if (seg?.id) segmentMap.set(seg.id, seg);
+      }
+      const combinedManifest = Array.from(segmentMap.values()).sort(
         (a, b) =>
           new Date(a.recording_start || 0).getTime() -
           new Date(b.recording_start || 0).getTime(),
       );
       const updatedIngestedUuids = params.meetingUuid
-        ? [...ingestedUuids, params.meetingUuid]
+        ? Array.from(new Set([...ingestedUuids, params.meetingUuid]))
         : ingestedUuids;
 
       const currentStatus = String(row.status || '').toUpperCase();
@@ -641,26 +648,19 @@ export class RecordingWorkerService implements OnModuleInit {
     let recResp: any;
 
     try {
-      // Prefer UUID (production-grade, Zoom-safe)
-      if (job.zoom_meeting_uuid) {
-        this.logJob('debug', job, 'Fetching Zoom recordings via UUID');
-
-        recResp = await this.zoomService.getZoomRecordingFilesByUuid(
-          job.zoom_meeting_uuid,
-        );
-        recResp.source = 'uuid';
-      } else {
-        // Fallback for old sessions
-        this.logger.warn(
-          `UUID missing for job ${job.id}, falling back to meetingId`,
-        );
-
-        recResp = await this.zoomService.getZoomRecordingFilesSafe({
+      this.logJob(
+        'debug',
+        job,
+        'Fetching all Zoom meeting instances and recordings',
+        {
           meetingId: job.zoom_meeting_id,
-          meetingUuid: job.zoom_meeting_uuid,
-        });
-        recResp.source = 'meetingId';
-      }
+        },
+      );
+
+      recResp = await this.zoomService.getAllMeetingRecordings(
+        job.zoom_meeting_id,
+      );
+      recResp.source = 'allInstances';
     } catch (err: any) {
       /**
        * CRITICAL FIX
@@ -700,9 +700,26 @@ export class RecordingWorkerService implements OnModuleInit {
       throw err;
     }
 
-    const manifest = this.buildSegmentManifest(
+    const fetchedManifest = this.buildSegmentManifest(
       recResp?.recording_files || [],
       job.zoom_meeting_uuid,
+    );
+
+    const existingManifest = this.parseJsonArray<RecordingSegment>(
+      job.zoom_recording_manifest,
+    );
+    const segmentMap = new Map<string, RecordingSegment>();
+    for (const seg of existingManifest) {
+      if (seg?.id) segmentMap.set(seg.id, seg);
+    }
+    for (const seg of fetchedManifest) {
+      if (seg?.id) segmentMap.set(seg.id, seg);
+    }
+
+    const manifest = Array.from(segmentMap.values()).sort(
+      (a, b) =>
+        new Date(a.recording_start || 0).getTime() -
+        new Date(b.recording_start || 0).getTime(),
     );
 
     this.logJob('log', job, 'Available MP4 recording files', {
@@ -808,7 +825,6 @@ export class RecordingWorkerService implements OnModuleInit {
           recording_end = ${manifest[manifest.length - 1]?.recording_end || null},
           status = 'METADATA_READY'
         WHERE id = ${job.id}
-          AND metadata_verified IS NOT TRUE
       `);
     } else {
       await db.execute(sql`
@@ -822,7 +838,6 @@ export class RecordingWorkerService implements OnModuleInit {
           recording_end = ${manifest[manifest.length - 1]?.recording_end || null},
           status = 'METADATA_READY'
         WHERE id = ${job.id}
-          AND metadata_verified IS NOT TRUE
       `);
     }
   }
@@ -882,6 +897,7 @@ export class RecordingWorkerService implements OnModuleInit {
             finalPath,
             job,
             segment.meeting_uuid,
+            segment,
           );
         }
 
@@ -923,38 +939,35 @@ export class RecordingWorkerService implements OnModuleInit {
     finalPath: string,
     job?: any,
     segmentMeetingUuid?: string | null,
+    segmentObj?: RecordingSegment | null,
   ) {
     let recResp;
 
-    console.log(
-      `Downloading recording file ${recordingFileId} for job ${job?.id || 'unknown'}...`,
+    this.logger.log(
+      `Downloading recording file ${recordingFileId} for job ${job?.id || 'unknown'} (UUID: ${segmentMeetingUuid || job?.zoom_meeting_uuid})...`,
     );
 
-    // A merged job's manifest can span multiple Zoom recording instances
-    // (different UUIDs). Zoom's recordings endpoint only returns files for
-    // the single instance UUID you query it with, so each segment MUST be
-    // looked up via its own meeting_uuid — not the row's single, most-recently
-    // ingested zoom_meeting_uuid, which only matches the latest instance.
     const uuidToUse = segmentMeetingUuid || job?.zoom_meeting_uuid;
-    console.log('uuidToUse', uuidToUse);
-    console.log('segmentMeetingUuid', segmentMeetingUuid);
-    console.log('job?.zoom_meeting_uuid', job?.zoom_meeting_uuid);
 
-    if (uuidToUse) {
-      recResp = await this.zoomService.getZoomRecordingFilesByUuid(uuidToUse);
-    } else {
-      recResp = await this.zoomService.getZoomRecordingFiles(meetingId);
+    try {
+      if (uuidToUse) {
+        recResp = await this.zoomService.getZoomRecordingFilesByUuid(uuidToUse);
+      } else {
+        recResp = await this.zoomService.getZoomRecordingFiles(meetingId);
+      }
+    } catch (err: any) {
+      this.logger.warn(
+        `Zoom API recording lookup failed for UUID ${uuidToUse}: ${err.message}`,
+      );
     }
 
     const file = recResp?.recording_files?.find(
       (f: any) => f.id === recordingFileId,
     );
 
-    console.log('recordingFileId', recordingFileId);
-    console.log('recResp', recResp);
-    console.log('filesssss', file);
+    const rawDownloadUrl = file?.download_url || segmentObj?.download_url;
 
-    if (!file?.download_url) {
+    if (!rawDownloadUrl) {
       throw new Error(
         `Zoom download URL not found (segment ${recordingFileId}, uuid ${uuidToUse || 'none'})`,
       );
@@ -962,7 +975,9 @@ export class RecordingWorkerService implements OnModuleInit {
 
     // Append access token to download URL for authentication
     const accessToken = await this.zoomService.getAccessToken();
-    const downloadUrl = `${file.download_url}?access_token=${accessToken}`;
+    const downloadUrl = rawDownloadUrl.includes('access_token=')
+      ? rawDownloadUrl
+      : `${rawDownloadUrl}?access_token=${accessToken}`;
 
     const tempPath = `${finalPath}.part`;
     const writer = fs.createWriteStream(tempPath);
@@ -1201,22 +1216,50 @@ export class RecordingWorkerService implements OnModuleInit {
           fs.writeFileSync(concatListPath, concatList);
 
           try {
-            execFileSync(
-              'ffmpeg',
-              [
-                '-y',
-                '-f',
-                'concat',
-                '-safe',
-                '0',
-                '-i',
-                concatListPath,
-                '-c',
-                'copy',
-                mergedPath,
-              ],
-              { stdio: 'ignore' },
-            );
+            try {
+              execFileSync(
+                'ffmpeg',
+                [
+                  '-y',
+                  '-f',
+                  'concat',
+                  '-safe',
+                  '0',
+                  '-i',
+                  concatListPath,
+                  '-c',
+                  'copy',
+                  mergedPath,
+                ],
+                { stdio: 'ignore' },
+              );
+            } catch (copyErr: any) {
+              this.logger.warn(
+                `FFmpeg stream copy concat failed for job ${job.id}, falling back to re-encoding concat: ${copyErr.message}`,
+              );
+              execFileSync(
+                'ffmpeg',
+                [
+                  '-y',
+                  '-f',
+                  'concat',
+                  '-safe',
+                  '0',
+                  '-i',
+                  concatListPath,
+                  '-c:v',
+                  'libx264',
+                  '-preset',
+                  'fast',
+                  '-crf',
+                  '23',
+                  '-c:a',
+                  'aac',
+                  mergedPath,
+                ],
+                { stdio: 'ignore' },
+              );
+            }
           } finally {
             try {
               fs.unlinkSync(concatListPath);
@@ -1226,6 +1269,16 @@ export class RecordingWorkerService implements OnModuleInit {
       } catch (err: any) {
         throw new Error(`FFmpeg merge failed: ${err.message}`);
       }
+    }
+
+    // Validate the merged video file output before declaring MERGED status
+    try {
+      await this.validateVideoFile(mergedPath);
+    } catch (valErr: any) {
+      this.logger.error(
+        `Merged video validation failed for job ${job.id}: ${valErr.message}`,
+      );
+      throw new Error(`Merged video file is invalid: ${valErr.message}`);
     }
 
     // Update DB
@@ -1249,7 +1302,7 @@ export class RecordingWorkerService implements OnModuleInit {
     `);
     }
 
-    this.logJob('log', job, 'Merge completed', {
+    this.logJob('log', job, 'Merge completed and verified', {
       mergedPath,
       segmentCount: inputPaths.length,
     });
@@ -1339,6 +1392,109 @@ export class RecordingWorkerService implements OnModuleInit {
       ...job,
       ...rec.rows[0],
     };
+
+    // Strict Guard: Until recordings are merged into 1 video, upload to YouTube is blocked
+    const currentStatus = String(job.status || '').toUpperCase();
+    if (currentStatus !== 'MERGED' && currentStatus !== 'PROCESSING_UPLOAD') {
+      throw new Error(
+        `Cannot upload job ${job.id} to YouTube until recordings are merged into 1 video (current status: ${job.status})`,
+      );
+    }
+
+    if (job.is_final_merged !== true) {
+      throw new Error(
+        `Cannot upload job ${job.id} to YouTube until all recordings are merged into a single video file`,
+      );
+    }
+
+    // Live Meeting Guard: Defer upload if meeting is currently live on Zoom
+    try {
+      const isLive = await this.zoomService.isMeetingLiveViaDashboard(
+        job.zoom_meeting_id,
+      );
+      if (isLive) {
+        this.logJob(
+          'warn',
+          job,
+          'Meeting is currently live on Zoom. Deferring YouTube upload until session ends.',
+        );
+        const deferTime = new Date(Date.now() + 3 * 60 * 1000);
+        if (job.table === 'mentor') {
+          await db.execute(sql`
+            UPDATE zuvy_mentor_session_recordings
+            SET status = 'METADATA_READY', next_retry_at = ${deferTime}
+            WHERE id = ${job.id}
+          `);
+        } else {
+          await db.execute(sql`
+            UPDATE zuvy_session_recordings
+            SET status = 'METADATA_READY', next_retry_at = ${deferTime}
+            WHERE id = ${job.id}
+          `);
+        }
+        return;
+      }
+    } catch (liveErr: any) {
+      this.logger.warn(
+        `Live meeting check error for job ${job.id}: ${liveErr.message}`,
+      );
+    }
+
+    // Final Instance Sync: Re-check Zoom API to capture all past meeting instances
+    try {
+      const allRecs = await this.zoomService.getAllMeetingRecordings(
+        job.zoom_meeting_id,
+      );
+      const latestManifest = this.buildSegmentManifest(
+        allRecs?.recording_files || [],
+        job.zoom_meeting_uuid,
+      );
+      const currentManifest = this.parseJsonArray<RecordingSegment>(
+        job.zoom_recording_manifest,
+      );
+
+      const segmentMap = new Map<string, RecordingSegment>();
+      for (const seg of currentManifest) {
+        if (seg?.id) segmentMap.set(seg.id, seg);
+      }
+      for (const seg of latestManifest) {
+        if (seg?.id) segmentMap.set(seg.id, seg);
+      }
+      const combinedManifest = Array.from(segmentMap.values()).sort(
+        (a, b) =>
+          new Date(a.recording_start || 0).getTime() -
+          new Date(b.recording_start || 0).getTime(),
+      );
+
+      if (combinedManifest.length > currentManifest.length) {
+        this.logJob(
+          'log',
+          job,
+          'Discovered new recording segments during pre-upload check. Re-opening job to download and merge all segments into 1 video.',
+          {
+            oldCount: currentManifest.length,
+            newCount: combinedManifest.length,
+          },
+        );
+
+        const tableName = this.getTableName(job);
+        await db.execute(sql`
+          UPDATE ${sql.raw(tableName)}
+          SET
+            zoom_recording_manifest = ${JSON.stringify(combinedManifest)},
+            segments_count = ${combinedManifest.length},
+            status = 'METADATA_READY',
+            merged_file_path = NULL,
+            is_final_merged = FALSE
+          WHERE id = ${job.id}
+        `);
+        return;
+      }
+    } catch (syncErr: any) {
+      this.logger.warn(
+        `Final instance sync warning for job ${job.id}: ${syncErr.message}`,
+      );
+    }
 
     const mergedPath = rec.rows?.[0]?.merged_file_path as string | null;
 
