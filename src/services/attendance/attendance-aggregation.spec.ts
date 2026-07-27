@@ -89,6 +89,29 @@ describe('aggregateForUser', () => {
     expect(result.attendancePercentage).toBe(100);
   });
 
+  it('matches correctly when userId arrives as a string (e.g. straight from a JWT sub claim)', () => {
+    // JWT `sub` claims are always strings (auth.service.ts does `sub: user.id.toString()`),
+    // so a caller resolving userId from the token — not from an admin-supplied numeric
+    // query param — will pass a string here. Map.get() uses strict equality, so if this
+    // isn't normalized, a string userId silently matches nothing and every session comes
+    // back "absent" regardless of actual attendance.
+    const sessions = [makeSession(1), makeSession(2)];
+    const map = new Map<number, Map<number, AttendanceStatusEntry>>([
+      [1, new Map([[userId, { status: 'present', duration: 60 }]])],
+      [2, new Map([[userId, { status: 'present', duration: 60 }]])],
+    ]);
+
+    const resultFromString = aggregateForUser(
+      sessions,
+      map,
+      String(userId) as unknown as number,
+    );
+    const resultFromNumber = aggregateForUser(sessions, map, userId);
+
+    expect(resultFromString).toEqual(resultFromNumber);
+    expect(resultFromString.attendancePercentage).toBe(100);
+  });
+
   it('is invariant to the caller: a cache-job-style bulk map and a live single-user map agree for the same underlying data', () => {
     const sessions = [makeSession(1), makeSession(2), makeSession(3)];
 

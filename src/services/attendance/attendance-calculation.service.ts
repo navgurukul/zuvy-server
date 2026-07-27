@@ -96,8 +96,17 @@ export class AttendanceCalculationService {
    */
   async getUnifiedAttendanceMap(
     sessions: CompletedSessionRow[],
-    scope: AttendanceScope,
+    rawScope: AttendanceScope,
   ): Promise<Map<number, Map<number, AttendanceStatusEntry>>> {
+    // Normalize userId to a number once, here, regardless of what the caller
+    // passed in (e.g. a JWT's `sub` claim is always a string). Every map key
+    // and lookup below assumes a numeric userId — a stray string would
+    // silently miss every entry via Map's strict-equality key comparison.
+    const scope: AttendanceScope =
+      'userId' in rawScope
+        ? { ...rawScope, userId: Number(rawScope.userId) }
+        : rawScope;
+
     const map = new Map<number, Map<number, AttendanceStatusEntry>>();
     const setEntry = (
       sessionId: number,
