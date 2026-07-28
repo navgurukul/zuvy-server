@@ -7,9 +7,16 @@ import { AuthModule } from 'src/auth/auth.module';
 import { ZoomModule } from '../../services/zoom/zoom.module';
 import { TrackinglogModule } from 'src/trackinglog/trackinglog.module';
 import { ZoomLicenseModule } from '../zoom-license/zoom-license.module';
+import { AttendanceCalculationModule } from 'src/services/attendance/attendance-calculation.module';
 
 @Module({
-  imports: [AuthModule, ZoomModule, TrackinglogModule, ZoomLicenseModule],
+  imports: [
+    AuthModule,
+    ZoomModule,
+    TrackinglogModule,
+    ZoomLicenseModule,
+    AttendanceCalculationModule,
+  ],
   controllers: [ClassesController],
   providers: [ClassesService, JwtService],
   exports: [ClassesService],

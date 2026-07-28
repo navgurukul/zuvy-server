@@ -38,9 +38,15 @@ export function aggregateForUser(
   let presentCount = 0;
   let absentCount = 0;
 
+  // Map.get() uses strict equality — a userId that arrives as a string (e.g.
+  // straight from a JWT's `sub` claim, which is always a string) would never
+  // match the numeric keys the map is built with, silently returning
+  // "absent" for every session. Normalize once, here, so no caller can
+  // reintroduce this by passing a string/bigint/etc.
+  const uid = Number(userId);
+
   for (const session of sessions) {
-    const status =
-      attendanceMap.get(session.id)?.get(userId)?.status ?? 'absent';
+    const status = attendanceMap.get(session.id)?.get(uid)?.status ?? 'absent';
     if (status === 'present') presentCount++;
     else absentCount++;
   }
