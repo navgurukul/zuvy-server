@@ -14,6 +14,8 @@ import {
   Query,
   BadRequestException,
   ForbiddenException,
+  NotFoundException,
+  InternalServerErrorException,
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
@@ -248,10 +250,13 @@ export class ClassesController {
       );
     }
 
-    const [err, result] = await this.classesService.getSessionAttendanceStatus(
+    const [err, result] = (await this.classesService.getSessionAttendanceStatus(
       Number(sessionId),
-    );
+    )) as any;
     if (err) {
+      if (err.statusCode === 404) throw new NotFoundException(err.message);
+      if (err.statusCode === 500)
+        throw new InternalServerErrorException(err.message);
       throw new BadRequestException(err.message || err);
     }
     return result;

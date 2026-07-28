@@ -1369,6 +1369,22 @@ export class BootcampService {
         batchIdNum !== undefined
           ? eq(zuvyBatchEnrollments.batchId, batchIdNum)
           : undefined;
+      // KNOWN LIMITATION: this filters/sorts against the cached
+      // zuvy_batch_enrollments.attendance column (needed here because it
+      // must apply across the whole roster before pagination — computing
+      // live attendance for every matching student up front would be much
+      // more expensive). Further down, the value actually *displayed* for
+      // the page returned is overwritten with a freshly computed live
+      // percentage. Because the cache can lag the live value by however
+      // long it's been since the batch was last recomputed, a student can
+      // display a percentage that would technically place them on the
+      // other side of `attendanceFilter`, or appear out of order relative
+      // to the live numbers shown on the same page. Real fix is one of:
+      // (a) compute live attendance for the whole filtered set before
+      // sorting/filtering (expensive), or (b) shorten the cache-refresh
+      // interval so the drift window is small enough not to matter in
+      // practice. No action taken here beyond documenting it — picking
+      // between (a)/(b) is a product/cost tradeoff, not a code fix.
       const attendanceFilter =
         attendanceNum !== undefined
           ? eq(zuvyBatchEnrollments.attendance, attendanceNum)
@@ -1479,7 +1495,12 @@ export class BootcampService {
           ),
         )
         .where(whereClause)
-        .orderBy(direction);
+        // Secondary sort key: without it, rows tying on `direction` (e.g.
+        // several students with the same name/progress/attendance) have no
+        // guaranteed order across pages — Postgres can return them in a
+        // different relative order per query, so a student can shuffle
+        // between pages or be skipped/duplicated as offset changes.
+        .orderBy(direction, asc(zuvyBatchEnrollments.id));
 
       const studentsInfo = hasPagination
         ? await baseQuery.limit(limitNum).offset(offsetNum)
