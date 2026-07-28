@@ -35,6 +35,8 @@ import { Public } from '../../auth/decorators/public.decorator';
 import { UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { SkipOrgCheck } from 'src/rbac/decorators/skip-org-check.decorator';
+import { STATUS_CODES } from 'src/helpers';
+import { Role } from 'src/rbac/utility';
 
 @SkipOrgCheck()
 @Controller('student')
@@ -428,14 +430,135 @@ export class StudentController {
     try {
       const parsedLimit = limit ? Number(limit) : null;
       const parsedOffset = offset ? Number(offset) : null;
+      // req.user[0].id comes from the JWT `sub` claim, which is always a
+      // string (auth.service.ts signs it via `.toString()`) — normalize to
+      // a real number so it behaves identically to the admin-supplied
+      // `userId` query param everywhere downstream (DB comparisons, map
+      // lookups in the shared attendance calculators).
+      const selfId = Number(req.user[0].id);
       const parsedUserId = userId ? Number(userId) : null;
       const searchTerm = search ? String(search) : null;
       const parsedAttendanceStatus = attendanceStatus
         ? String(attendanceStatus)
         : null;
+
+      // Viewing someone else's attendance requires an elevated role — this
+      // endpoint previously let ANY authenticated user pull ANY other
+      // student's attendance just by passing their userId, with no
+      // ownership or role check at all. super_admin/ops/admin/instructor
+      // matches the elevated-role set already used elsewhere in this
+      // controller (see isInstructorOnly above) plus instructor, since
+      // instructors also need to view their own students' attendance.
+      if (parsedUserId !== null && parsedUserId !== selfId) {
+        const roles: string[] = req.user[0]?.roles || [];
+        const elevatedRoles: string[] = [
+          Role.ADMIN,
+          Role.INSTRUCTOR,
+          Role.OPS,
+          Role.SUPER_ADMIN,
+        ];
+        const isElevated = roles.some((role) => elevatedRoles.includes(role));
+        if (!isElevated) {
+          return ErrorResponse.BadRequestException(
+            "You are not allowed to view another student's attendance",
+            STATUS_CODES.FORBIDDEN,
+          ).send(res);
+        }
+      }
+
+      const targetUserId = parsedUserId ?? selfId;
+
       const [err, success] =
         await this.studentService.getCompletedClassesWithAttendance(
-          parsedUserId || req.user[0].id,
+          targetUserId,
+          bootcampId,
+          parsedLimit,
+          parsedOffset,
+          searchTerm,
+          parsedAttendanceStatus,
+          fromDate ? new Date(fromDate) : null,
+          toDate ? new Date(toDate) : null,
+        );
+      if (err) {
+        return ErrorResponse.BadRequestException(err.message).send(res);
+      }
+      const result: any = success;
+      return new SuccessResponse(
+        result.message,
+        result.statusCode,
+        result.data,
+      ).send(res);
+    } catch (error) {
+      return ErrorResponse.BadRequestException(error.message).send(res);
+    }
+  }
+
+  @Public()
+  @Get('/bootcamp/:bootcampId/completed-classes/me')
+  @ApiOperation({
+    summary:
+      "Get the logged-in student's own completed classes with attendance for a bootcamp. Identity always comes from the JWT — there is no userId parameter, so a student can never view another student's data through this endpoint.",
+  })
+  @ApiBearerAuth('JWT-auth')
+  @ApiQuery({
+    name: 'limit',
+    type: Number,
+    description: 'Number of items per page',
+    required: false,
+  })
+  @ApiQuery({
+    name: 'offset',
+    type: Number,
+    description: 'Offset for pagination',
+    required: false,
+  })
+  @ApiQuery({
+    name: 'searchTerm',
+    type: String,
+    description: 'Search by class name',
+    required: false,
+  })
+  @ApiQuery({
+    name: 'attendanceStatus',
+    type: String,
+    description: 'Filter by attendance status: present or absent',
+    required: false,
+  })
+  @ApiQuery({
+    name: 'fromDate',
+    type: String,
+    description: 'Filter by start date (ISO format)',
+    required: false,
+  })
+  @ApiQuery({
+    name: 'toDate',
+    type: String,
+    description: 'Filter by end date (ISO format)',
+    required: false,
+  })
+  async getMyCompletedClassesWithAttendance(
+    @Req() req,
+    @Param('bootcampId') bootcampId: number,
+    @Query('limit') limit: number,
+    @Query('offset') offset: number,
+    @Res() res: Response,
+    @Query('searchTerm') search?: string,
+    @Query('attendanceStatus') attendanceStatus?: 'present' | 'absent',
+    @Query('fromDate') fromDate?: Date,
+    @Query('toDate') toDate?: Date,
+  ) {
+    try {
+      const selfId = Number(req.user[0].id);
+      const parsedLimit = limit ? Number(limit) : null;
+      const parsedOffset = offset ? Number(offset) : null;
+      const searchTerm = search ? String(search) : null;
+      const parsedAttendanceStatus = attendanceStatus
+        ? String(attendanceStatus)
+        : null;
+
+      const [err, success] =
+        await this.studentService.getCompletedClassesWithAttendance(
+          selfId,
           bootcampId,
           parsedLimit,
           parsedOffset,
