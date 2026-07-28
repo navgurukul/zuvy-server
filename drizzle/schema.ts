@@ -2282,7 +2282,12 @@ export const zuvySessions = main.table('zuvy_sessions', {
   finalVideoPath: text('final_video_path'),
   finalUploaded: boolean('final_uploaded').default(false),
   licenseId: integer('license_id').references(() => zuvyUserLicenses.id),
-});
+}, (table) => ({
+  // perf: chapterId/batchId are the primary filters for fetching a chapter's
+  // or a batch's sessions (attendance, live-chapter lookups); no index existed.
+  chapterIdIdx: index('zuvy_sessions_chapter_id_idx').on(table.chapterId),
+  batchIdIdx: index('zuvy_sessions_batch_id_idx').on(table.batchId),
+}));
 
 
 export const zuvySessionMerge = main.table('zuvy_session_merge', {
@@ -2583,7 +2588,13 @@ export const zuvyBatchEnrollments = main.table('zuvy_batch_enrollments', {
     .defaultNow()
     .notNull(),
   version: varchar('version', { length: 10 }),
-});
+}, (table) => ({
+  // perf: this table is filtered by userId/bootcampId/batchId in nearly
+  // every enrollment/progress lookup across student & tracking services.
+  userIdIdx: index('zuvy_batch_enrollments_user_id_idx').on(table.userId),
+  bootcampIdIdx: index('zuvy_batch_enrollments_bootcamp_id_idx').on(table.bootcampId),
+  batchIdIdx: index('zuvy_batch_enrollments_batch_id_idx').on(table.batchId),
+}));
 
 export const classesInTheBatch = relations(
   zuvyBatchEnrollments,
@@ -2640,7 +2651,11 @@ export const zuvyModuleQuiz = main.table('zuvy_module_quiz', {
     onUpdate: 'cascade',
     onDelete: 'cascade'
   }).notNull(),
-});
+}, (table) => ({
+  // perf: quiz list/search endpoints filter by orgId and tagId.
+  orgIdIdx: index('zuvy_module_quiz_org_id_idx').on(table.orgId),
+  tagIdIdx: index('zuvy_module_quiz_tag_id_idx').on(table.tagId),
+}));
 
 export const zuvyModuleQuizRelations = relations(zuvyModuleQuiz, ({ one, many }) => ({
   quizVariants: many(zuvyModuleQuizVariants), // One quiz can have many variants
@@ -2656,7 +2671,10 @@ export const zuvyModuleQuizVariants = main.table('zuvy_module_quiz_variants', {
   createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
   version: varchar('version', { length: 10 }),
-});
+}, (table) => ({
+  // perf: variants are looked up per-quiz constantly (quiz editing, MCQ recompute).
+  quizIdIdx: index('zuvy_module_quiz_variants_quiz_id_idx').on(table.quizId),
+}));
 
 export const zuvyModuleQuizVariantsRelations = relations(zuvyModuleQuizVariants, ({ one }) => ({
   quiz: one(zuvyModuleQuiz, {
@@ -2676,7 +2694,11 @@ export const zuvyCourseModules = main.table("zuvy_course_modules", {
   order: integer("order"),
   timeAlloted: bigint("time_alloted", { mode: "number" }),
   mentorshipEnabled: boolean('mentorship_enabled').default(false),
-})
+}, (table) => ({
+  // perf: modules are always fetched/reordered by bootcampId, often sorted by order.
+  bootcampIdIdx: index('zuvy_course_modules_bootcamp_id_idx').on(table.bootcampId),
+  bootcampIdOrderIdx: index('zuvy_course_modules_bootcamp_id_order_idx').on(table.bootcampId, table.order),
+}))
 
 export const zuvyModuleData = relations(zuvyBootcamps, ({ one, many }) => ({
   bootcampModulesData: one(zuvyCourseModules, {
@@ -2760,7 +2782,10 @@ export const zuvyAssignmentSubmission = main.table("zuvy_assignment_submission",
   createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
   version: varchar('version', { length: 10 })
-});
+}, (table) => ({
+  // perf: assignment status lookups filter by userId+chapterId together.
+  userIdChapterIdIdx: index('zuvy_assignment_submission_user_id_chapter_id_idx').on(table.userId, table.chapterId),
+}));
 
 export const zuvyCourseProjects = main.table("zuvy_course_projects", {
   id: serial("id").primaryKey().notNull(),
@@ -2795,7 +2820,10 @@ export const zuvyProjectTracking = main.table("zuvy_project_tracking", {
   createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
   version: varchar('version', { length: 10 })
-})
+}, (table) => ({
+  // perf: project tracking is always looked up by userId+moduleId together.
+  userIdModuleIdIdx: index('zuvy_project_tracking_user_id_module_id_idx').on(table.userId, table.moduleId),
+}))
 
 export const projectTrackingModuleRelation = relations(zuvyProjectTracking, ({ one, many }) => ({
   projectTrackingData: one(zuvyCourseProjects, {
@@ -2815,7 +2843,15 @@ export const zuvyBootcampTracking = main.table("zuvy_bootcamp_tracking", {
   createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
   version: varchar('version', { length: 10 })
-});
+}, (table) => ({
+  // perf + correctness: bootcamp progress is always read/updated by
+  // userId+bootcampId together. This must be UNIQUE, not just indexed - the
+  // app writes this table via insert-or-update logic, and without a unique
+  // constraint two concurrent requests for the same user+bootcamp can both
+  // insert, creating duplicate rows that fan out joins elsewhere (see
+  // student.service.ts's leaderboard query).
+  userIdBootcampIdUnique: uniqueIndex('zuvy_bootcamp_tracking_user_id_bootcamp_id_idx').on(table.userId, table.bootcampId),
+}));
 
 
 export const zuvyQuizTracking = main.table("zuvy_quiz_tracking", {
@@ -2836,7 +2872,12 @@ export const zuvyQuizTracking = main.table("zuvy_quiz_tracking", {
   createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
   version: varchar('version', { length: 10 })
-});
+}, (table) => ({
+  // perf: quiz answers are read by userId+chapterId, and MCQ recompute
+  // batches updates by assessmentSubmissionId.
+  userIdChapterIdIdx: index('zuvy_quiz_tracking_user_id_chapter_id_idx').on(table.userId, table.chapterId),
+  assessmentSubmissionIdIdx: index('zuvy_quiz_tracking_assessment_submission_id_idx').on(table.assessmentSubmissionId),
+}));
 
 export const zuvyQuizTrackingRelations = relations(zuvyQuizTracking, ({ one }) => ({
   quizSubmissions: one(zuvyAssessmentSubmission, {
@@ -2859,7 +2900,12 @@ export const zuvyModuleTracking = main.table("zuvy_module_tracking", {
   createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
   version: varchar('version', { length: 10 })
-});
+}, (table) => ({
+  // perf: module progress is read/updated by userId+moduleId; bootcamp-wide
+  // progress rollups filter by bootcampId.
+  userIdModuleIdIdx: index('zuvy_module_tracking_user_id_module_id_idx').on(table.userId, table.moduleId),
+  bootcampIdIdx: index('zuvy_module_tracking_bootcamp_id_idx').on(table.bootcampId),
+}));
 
 export const zuvyModuleChapter = main.table('zuvy_module_chapter', {
   id: serial('id').primaryKey().notNull(),
@@ -2883,7 +2929,11 @@ export const zuvyModuleChapter = main.table('zuvy_module_chapter', {
   }),
   order: integer('order'),
   version: varchar('version', { length: 10 })
-});
+}, (table) => ({
+  // perf: chapters are always listed/reordered by moduleId, often sorted by order.
+  moduleIdIdx: index('zuvy_module_chapter_module_id_idx').on(table.moduleId),
+  moduleIdOrderIdx: index('zuvy_module_chapter_module_id_order_idx').on(table.moduleId, table.order),
+}));
 export const postsRelations = relations(zuvyModuleChapter, ({ one, many }) => ({
   courseModulesData: one(zuvyCourseModules, {
     fields: [zuvyModuleChapter.moduleId],
@@ -3006,7 +3056,10 @@ export const zuvyAssessmentSubmission = main.table("zuvy_assessment_submission",
   active: boolean('active').default(true).notNull(),
   reattemptApproved: boolean('reattempt_approved').default(false).notNull(),
   reattemptRequested: boolean('reattempt_requested').default(false).notNull(),
-});
+}, (table) => ({
+  // perf: submissions are fetched/recomputed per assessment via this FK.
+  assessmentOutsourseIdIdx: index('zuvy_assessment_submission_assessment_outsourse_id_idx').on(table.assessmentOutsourseId),
+}));
 
 export const zuvyAssessmentSubmissionRelation = relations(zuvyAssessmentSubmission, ({ one, many }) => ({
   user: one(users, {
@@ -3126,6 +3179,8 @@ export const zuvyLearnerEducationBranchDetails = main.table(
       name: 'zuvy_learner_education_branch_details_degree_id_fk',
     })
       .onDelete('cascade'),
+    // perf: branches are fetched per-degree; FK columns aren't auto-indexed by Postgres.
+    degreeIdIdx: index('zuvy_learner_education_branch_details_degree_id_idx').on(table.degreeId),
   }),
 );
 
@@ -3372,7 +3427,11 @@ export const zuvyOpenEndedQuestions = main.table('zuvy_openEnded_questions', {
     onUpdate: 'cascade',
     onDelete: 'cascade'
   }).notNull(),
-});
+}, (table) => ({
+  // perf: question list/search endpoints filter by orgId and tagId.
+  orgIdIdx: index('zuvy_openEnded_questions_org_id_idx').on(table.orgId),
+  tagIdIdx: index('zuvy_openEnded_questions_tag_id_idx').on(table.tagId),
+}));
 
 
 export const zuvyChapterTracking = main.table('zuvy_chapter_tracking', {
@@ -3398,7 +3457,12 @@ export const zuvyChapterTracking = main.table('zuvy_chapter_tracking', {
   }),
   answerDetails: text('answer_Details'),
   version: varchar('version', { length: 10 })
-});
+}, (table) => ({
+  // perf: chapter completion is checked/written by userId+chapterId on every
+  // progress update; module-wide rollups filter by moduleId.
+  userIdChapterIdIdx: index('zuvy_chapter_tracking_user_id_chapter_id_idx').on(table.userId, table.chapterId),
+  moduleIdIdx: index('zuvy_chapter_tracking_module_id_idx').on(table.moduleId),
+}));
 
 export const chapterTrackingRelations = relations(
   zuvyChapterTracking,
@@ -3521,7 +3585,10 @@ export const zuvyOutsourseAssessments = main.table('zuvy_outsourse_assessments',
   createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow(),
   version: varchar('version', { length: 10 })
-});
+}, (table) => ({
+  // perf: assessment state/existence checks filter by chapterId on nearly every chapter load.
+  chapterIdIdx: index('zuvy_outsourse_assessments_chapter_id_idx').on(table.chapterId),
+}));
 
 export const zuvyOutsourseAssessmentsRelations = relations(zuvyOutsourseAssessments, ({ one, many }) => ({
   ModuleAssessment: one(zuvyModuleAssessment, {
@@ -3787,7 +3854,10 @@ export const zuvyFormTracking = main.table("zuvy_form_tracking", {
   status: varchar("status", { length: 255 }),
   updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
   version: varchar('version', { length: 10 })
-});
+}, (table) => ({
+  // perf: form completion is checked/written by userId+chapterId together.
+  userIdChapterIdIdx: index('zuvy_form_tracking_user_id_chapter_id_idx').on(table.userId, table.chapterId),
+}));
 
 
 export const formModuleRelation = relations(
@@ -3848,7 +3918,11 @@ export const zuvyCodingQuestions = main.table("zuvy_coding_questions", {
     onUpdate: 'cascade',
     onDelete: 'cascade'
   }).notNull(),
-})
+}, (table) => ({
+  // perf: question list/search endpoints filter by orgId and tagId.
+  orgIdIdx: index('zuvy_coding_questions_org_id_idx').on(table.orgId),
+  tagIdIdx: index('zuvy_coding_questions_tag_id_idx').on(table.tagId),
+}))
 
 export const codingQuestionRelations = relations(zuvyCodingQuestions, ({ one, many }) => ({
   submissions: many(zuvyPracticeCode),

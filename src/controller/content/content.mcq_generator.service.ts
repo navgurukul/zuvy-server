@@ -151,8 +151,6 @@ export class MCQGeneratorService {
     const rawOutput = await this.sendToLLM(prompt);
     const mcqs = await this.parseJson(rawOutput);
 
-    console.log(JSON.stringify(mcqs, null, 2));
-
     // ✅ STORE MCQs IN DATABASE
     await this.storeMCQsInDatabase(
       mcqs,
@@ -193,7 +191,7 @@ export class MCQGeneratorService {
           throw new Error('Failed to create question set');
         }
 
-        // 2. Insert questions one by one ya batch mein
+        // 2. Build the batch payload for a single bulk insert
         const questionsData = mcqs.map((mcq) => ({
           questionSetId: questionSet.id,
           topic: mcq.topic,

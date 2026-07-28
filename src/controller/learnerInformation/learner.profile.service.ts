@@ -140,32 +140,10 @@ export class LearnerProfileService {
     return normalizedPayload;
   }
 
-  private async getOrCreateProfile(userId: number) {
-    await this.ensureCompleteProfileTableReady();
-
-    const existing = await db
-      .select()
-      .from(zuvyLearnersCompleteProfile)
-      .where(eq(zuvyLearnersCompleteProfile.userId, userId))
-      .limit(1);
-
-    if (existing.length > 0) {
-      return existing[0];
-    }
-
-    const inserted = await db
-      .insert(zuvyLearnersCompleteProfile)
-      .values({ userId })
-      .returning();
-
-    return inserted[0];
-  }
-
   // ─── SINGLE POST API: Save Complete Profile ──────────────────────
 
   async saveCompleteProfile(userId: number, payload: SaveCompleteProfileDto) {
     await this.ensureCompleteProfileTableReady();
-    await this.getOrCreateProfile(userId);
 
     const data = this.normalizeCodingPlatformFields(payload);
 
@@ -179,10 +157,14 @@ export class LearnerProfileService {
       }
     }
 
+    // single upsert instead of select-then-insert-or-update
     const [updatedProfile] = await db
-      .update(zuvyLearnersCompleteProfile)
-      .set(updateData)
-      .where(eq(zuvyLearnersCompleteProfile.userId, userId))
+      .insert(zuvyLearnersCompleteProfile)
+      .values({ userId, ...updateData })
+      .onConflictDoUpdate({
+        target: zuvyLearnersCompleteProfile.userId,
+        set: updateData,
+      })
       .returning();
 
     const responseData = {
@@ -231,18 +213,6 @@ export class LearnerProfileService {
   async updateProfile(userId: number, payload: SaveCompleteProfileDto) {
     await this.ensureCompleteProfileTableReady();
 
-    const existing = await db
-      .select()
-      .from(zuvyLearnersCompleteProfile)
-      .where(eq(zuvyLearnersCompleteProfile.userId, userId))
-      .limit(1);
-
-    if (existing.length === 0) {
-      throw new NotFoundException(
-        'Profile not found. Please create a profile first.',
-      );
-    }
-
     const updateData: any = {
       updatedAt: new Date().toISOString(),
     };
@@ -255,11 +225,20 @@ export class LearnerProfileService {
       }
     }
 
-    const [updatedProfile] = await db
+    // RETURNING lets us check existence without a separate SELECT
+    const updatedRows = await db
       .update(zuvyLearnersCompleteProfile)
       .set(updateData)
       .where(eq(zuvyLearnersCompleteProfile.userId, userId))
       .returning();
+
+    if (updatedRows.length === 0) {
+      throw new NotFoundException(
+        'Profile not found. Please create a profile first.',
+      );
+    }
+
+    const [updatedProfile] = updatedRows;
 
     const responseData = {
       ...updatedProfile,
@@ -278,19 +257,15 @@ export class LearnerProfileService {
   async deleteProfile(userId: number) {
     await this.ensureCompleteProfileTableReady();
 
-    const existing = await db
-      .select()
-      .from(zuvyLearnersCompleteProfile)
+    // single DELETE ... RETURNING instead of select-then-delete
+    const deletedRows = await db
+      .delete(zuvyLearnersCompleteProfile)
       .where(eq(zuvyLearnersCompleteProfile.userId, userId))
-      .limit(1);
+      .returning({ id: zuvyLearnersCompleteProfile.id });
 
-    if (existing.length === 0) {
+    if (deletedRows.length === 0) {
       throw new NotFoundException('Profile not found.');
     }
-
-    await db
-      .delete(zuvyLearnersCompleteProfile)
-      .where(eq(zuvyLearnersCompleteProfile.userId, userId));
 
     return {
       success: true,
