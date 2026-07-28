@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, asc, eq, inArray } from 'drizzle-orm';
 import { db } from '../../db/index';
 import {
   zuvyBatchEnrollments,
@@ -139,6 +139,15 @@ export class AttendanceCalculationService {
     );
 
     if (zoomSessionIds.length > 0) {
+      // zuvy_student_attendance_records has no unique constraint on
+      // (session_id, user_id), so duplicate rows for the same student+
+      // session are possible. Ordered ascending by id so the forEach below
+      // — which lets the last-processed row win via Map.set — always
+      // prefers the most recently inserted row, deterministically. Any
+      // other reader of this table for the same session+user (e.g. the raw
+      // fields read directly in ClassesService.getSessionAttendanceStatus)
+      // must use this same "latest row wins" rule or the two can disagree
+      // about which row is authoritative for a given student.
       const rows = await db
         .select({
           sessionId: zuvyStudentAttendanceRecords.sessionId,
@@ -157,7 +166,8 @@ export class AttendanceCalculationService {
                 inArray(zuvyStudentAttendanceRecords.sessionId, zoomSessionIds),
               )
             : inArray(zuvyStudentAttendanceRecords.sessionId, zoomSessionIds),
-        );
+        )
+        .orderBy(asc(zuvyStudentAttendanceRecords.id));
 
       rows.forEach((r) => {
         setEntry(r.sessionId, Number(r.userId), {

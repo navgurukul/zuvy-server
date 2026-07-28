@@ -45,7 +45,19 @@ export function resolveZoomAttendanceReadiness(
   now: Date,
   sessionEndTime: Date,
   latestJob: AttendanceJobSnapshot | null,
+  hasExistingRecords: boolean,
 ): AttendanceReadiness {
+  // The job queue only reflects sessions processed by the webhook-driven
+  // pipeline. Older sessions (predating that system), or ones populated by
+  // the daily backfill cron or the manual reclassify tool, get real
+  // zuvy_student_attendance_records rows without ever having a job row at
+  // all. Checking this first, before the job, means those sessions don't
+  // get permanently stuck reporting "not started" despite already having
+  // correct data.
+  if (hasExistingRecords) {
+    return { ready: true, state: 'ready', reason: null };
+  }
+
   if (!latestJob) {
     if (now < sessionEndTime) {
       return {
