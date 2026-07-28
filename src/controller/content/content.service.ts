@@ -3554,7 +3554,7 @@ export class ContentService {
         openEndedCountRes[0]?.count || 0;
       assessment[0]['totalCodingQuestions'] = codingCountRes[0]?.count || 0;
       // Check currentState and enforce rules
-      if (updatedAssessment.currentState === 0) {
+      if (safeUpdatedAssessment.currentState === 0) {
         // DRAFT
         return {
           status: 'success',
@@ -3563,7 +3563,7 @@ export class ContentService {
           message: 'Assessment is not available yet.',
         };
       }
-      if (updatedAssessment.currentState === 1) {
+      if (safeUpdatedAssessment.currentState === 1) {
         // PUBLISHED
         const startTime = assessment[0].startDatetime
           ? new Date(assessment[0].startDatetime).toLocaleString('en-US', {
@@ -3584,7 +3584,7 @@ export class ContentService {
           ...assessment[0],
         };
       }
-      if (updatedAssessment.currentState === 2) {
+      if (safeUpdatedAssessment.currentState === 2) {
         // ACTIVE
         return {
           status: 'success',
@@ -3595,7 +3595,7 @@ export class ContentService {
           ...assessment[0],
         };
       }
-      if (updatedAssessment.currentState === 3) {
+      if (safeUpdatedAssessment.currentState === 3) {
         // CLOSED
         return {
           status: 'success',
