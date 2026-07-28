@@ -908,66 +908,91 @@ export class TrackingService {
             100,
         );
       }
-      // fix: single upsert against the (userId, bootcampId) unique
-      // constraint instead of select-then-insert-or-update — removes both
-      // the extra existence-check round trip and the race window where two
-      // concurrent requests for the same user+bootcamp could each see
-      // "no row" and both attempt an insert.
-      await db
-        .insert(zuvyBootcampTracking)
-        .values({
-          userId,
-          bootcampId,
-          progress: initialProgress,
-        })
-        .onConflictDoUpdate({
-          target: [
-            zuvyBootcampTracking.userId,
-            zuvyBootcampTracking.bootcampId,
-          ],
-          set: {
+      // Single upsert against the (userId, bootcampId) unique constraint
+      // added by migration 0039_add_performance_indexes.sql. That migration
+      // must be applied manually (CREATE INDEX CONCURRENTLY can't run inside
+      // the transaction the regular migration runner uses) - until it has
+      // been, Postgres rejects this ON CONFLICT with error 42P10. Fall back
+      // to a plain select-then-insert-or-update in that case so the endpoint
+      // keeps working either way.
+      let trackingRow;
+      try {
+        [trackingRow] = await db
+          .insert(zuvyBootcampTracking)
+          .values({
+            userId,
+            bootcampId,
             progress: initialProgress,
-          },
-        });
-
-      // perf: batchDetailsPromise was already kicked off earlier and doesn't
-      // depend on this lookup - await both together instead of sequentially.
-      const [data, batchDetails] = await Promise.all([
-        db.query.zuvyBootcampTracking.findFirst({
+          })
+          .onConflictDoUpdate({
+            target: [
+              zuvyBootcampTracking.userId,
+              zuvyBootcampTracking.bootcampId,
+            ],
+            set: {
+              progress: initialProgress,
+            },
+          })
+          .returning();
+      } catch (err) {
+        if (err.code !== '42P10') {
+          throw err;
+        }
+        const existingTracking = await db.query.zuvyBootcampTracking.findFirst({
           where: (bootcampTracking, { and, eq }) =>
             and(
-              eq(bootcampTracking.bootcampId, bootcampId),
               eq(bootcampTracking.userId, userId),
+              eq(bootcampTracking.bootcampId, bootcampId),
             ),
-          with: {
-            bootcampTracking: true,
-          },
-        }),
-        batchDetailsPromise,
-      ]);
+        });
+        if (existingTracking) {
+          [trackingRow] = await db
+            .update(zuvyBootcampTracking)
+            .set({ progress: initialProgress })
+            .where(eq(zuvyBootcampTracking.id, existingTracking.id))
+            .returning();
+        } else {
+          [trackingRow] = await db
+            .insert(zuvyBootcampTracking)
+            .values({
+              userId,
+              bootcampId,
+              progress: initialProgress,
+            })
+            .returning();
+        }
+      }
+
+      // perf: the upsert above already returns the tracking row, and
+      // bootcampInfo (fetched up top) already has the joined zuvyBootcamps
+      // row - build `data` from those instead of re-querying both via a
+      // relational join, and await batchDetailsPromise (kicked off earlier)
+      // instead of sequentially.
+      const data = { ...trackingRow, bootcampTracking: bootcampInfo[0] };
+      const batchDetails = await batchDetailsPromise;
 
       // Get total enrolled students in the batch
+      // fix: batchDetails is undefined when the user has no enrollment row
+      // for this bootcamp, and batchInfo can be null for a dangling/removed
+      // batch - guard both instead of indexing straight into them.
+      const batchInfo = batchDetails?.['batchInfo'] ?? null;
+
       // perf: count() aggregate instead of fetching every row just to take its length
-      const totalEnrolledStudents = batchDetails['batchInfo'].id
+      const totalEnrolledStudents = batchInfo?.id
         ? await db
             .select({ count: sql<number>`count(*)::int` })
             .from(zuvyBatchEnrollments)
-            .where(
-              eq(zuvyBatchEnrollments.batchId, batchDetails['batchInfo'].id),
-            )
+            .where(eq(zuvyBatchEnrollments.batchId, batchInfo.id))
             .then((rows) => rows[0].count)
         : 0;
 
       let instructorDetails = {};
-      if (batchDetails['batchInfo'] != null) {
+      if (batchInfo?.instructorDetails != null) {
         instructorDetails = {
-          instructorId: Number(
-            batchDetails['batchInfo']['instructorDetails']['id'],
-          ),
-          instructorName:
-            batchDetails['batchInfo']['instructorDetails']['name'],
+          instructorId: Number(batchInfo['instructorDetails']['id']),
+          instructorName: batchInfo['instructorDetails']['name'],
           instructorProfilePicture:
-            batchDetails['batchInfo']['instructorDetails']['profilePicture'],
+            batchInfo['instructorDetails']['profilePicture'],
         };
       }
 
@@ -976,9 +1001,9 @@ export class TrackingService {
         message: 'Bootcamp progress fetched successfully',
         data,
         instructorDetails,
-        batchInfo: batchDetails['batchInfo']
+        batchInfo: batchInfo
           ? {
-              batchName: batchDetails['batchInfo'].name,
+              batchName: batchInfo.name,
               totalEnrolledStudents,
             }
           : null,
