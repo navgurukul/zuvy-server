@@ -510,14 +510,39 @@ export class SubmissionService {
               : helpers.asc;
           if (orderBy === 'submittedDate')
             return dir(zuvyCourseModules.submitted_date);
-          // Order by related user fields via subselects if requested
+          // Order by related user fields via subselects if requested.
+          // The submitting user's id lives two hops away from a course
+          // module (module -> zuvyOutsourseAssessments -> zuvyAssessmentSubmission.userId),
+          // so correlate through that chain instead of comparing users.id
+          // directly against the course module's own id (which was the bug:
+          // it compared two unrelated id sequences and never matched the
+          // actual submitting user).
+          // fix: a module can have many submissions (one per student), so
+          // this LIMIT 1 is inherently picking one arbitrary submitter out of
+          // many, not "the" submitter — there is no single correct answer
+          // here. Without ORDER BY, Postgres doesn't even guarantee *which*
+          // row LIMIT 1 returns (it can vary across query plans), so add a
+          // deterministic tie-break (earliest submission id) purely so the
+          // sort is at least stable/reproducible, not to claim correctness.
           if (orderBy === 'name')
             return dir(
-              sql`(SELECT ${users.name} FROM ${users} WHERE ${users.id} = ${zuvyCourseModules.id})`,
+              sql`(SELECT ${users.name} FROM ${users} WHERE ${users.id} = (
+                SELECT ${zuvyAssessmentSubmission.userId} FROM ${zuvyAssessmentSubmission}
+                INNER JOIN ${zuvyOutsourseAssessments} ON ${zuvyOutsourseAssessments.id} = ${zuvyAssessmentSubmission.assessmentOutsourseId}
+                WHERE ${zuvyOutsourseAssessments.moduleId} = ${zuvyCourseModules.id}
+                ORDER BY ${zuvyAssessmentSubmission.id} ASC
+                LIMIT 1
+              ))`,
             );
           if (orderBy === 'email')
             return dir(
-              sql`(SELECT ${users.email} FROM ${users} WHERE ${users.id} = ${zuvyCourseModules.id})`,
+              sql`(SELECT ${users.email} FROM ${users} WHERE ${users.id} = (
+                SELECT ${zuvyAssessmentSubmission.userId} FROM ${zuvyAssessmentSubmission}
+                INNER JOIN ${zuvyOutsourseAssessments} ON ${zuvyOutsourseAssessments.id} = ${zuvyAssessmentSubmission.assessmentOutsourseId}
+                WHERE ${zuvyOutsourseAssessments.moduleId} = ${zuvyCourseModules.id}
+                ORDER BY ${zuvyAssessmentSubmission.id} ASC
+                LIMIT 1
+              ))`,
             );
           return helpers.asc(zuvyCourseModules.id);
         };
@@ -568,8 +593,9 @@ export class SubmissionService {
         ...(orderClause ? { orderBy: orderClause } : {}),
       });
 
-      let bootcampStudents = await db
-        .select()
+      // count() instead of full-row fetch just for .length
+      const bootcampStudentsCount = await db
+        .select({ count: count(zuvyBatchEnrollments.id) })
         .from(zuvyBatchEnrollments)
         .where(
           and(
@@ -580,7 +606,7 @@ export class SubmissionService {
 
       return {
         data: statusOfStudentCode,
-        totalstudents: bootcampStudents.length,
+        totalstudents: bootcampStudentsCount[0]?.count ?? 0,
       };
     } catch (error) {
       console.error('Error fetching assessment info:', error);
@@ -668,8 +694,23 @@ export class SubmissionService {
     mcqScore: number,
   ) {
     try {
+      // only the mark/question-count/pass-percentage columns are used below
       let assessment: any = await db
-        .select()
+        .select({
+          easyCodingMark: zuvyOutsourseAssessments.easyCodingMark,
+          mediumCodingMark: zuvyOutsourseAssessments.mediumCodingMark,
+          hardCodingMark: zuvyOutsourseAssessments.hardCodingMark,
+          easyCodingQuestions: zuvyOutsourseAssessments.easyCodingQuestions,
+          mediumCodingQuestions: zuvyOutsourseAssessments.mediumCodingQuestions,
+          hardCodingQuestions: zuvyOutsourseAssessments.hardCodingQuestions,
+          easyMcqQuestions: zuvyOutsourseAssessments.easyMcqQuestions,
+          mediumMcqQuestions: zuvyOutsourseAssessments.mediumMcqQuestions,
+          hardMcqQuestions: zuvyOutsourseAssessments.hardMcqQuestions,
+          easyMcqMark: zuvyOutsourseAssessments.easyMcqMark,
+          mediumMcqMark: zuvyOutsourseAssessments.mediumMcqMark,
+          hardMcqMark: zuvyOutsourseAssessments.hardMcqMark,
+          passPercentage: zuvyOutsourseAssessments.passPercentage,
+        })
         .from(zuvyOutsourseAssessments)
         .where(eq(zuvyOutsourseAssessments.id, assessmentOutsourseId));
 
@@ -757,7 +798,9 @@ export class SubmissionService {
               id: true,
             },
           },
-          submitedOutsourseAssessment: true,
+          // NOTE: `submitedOutsourseAssessment` was previously fetched here
+          // in full but never read anywhere below or by the only caller
+          // (assessmentSubmission), so it's dropped rather than narrowed.
           PracticeCode: {
             where: (
               zuvyPracticeCode: { status: any; action: any; userId: any },
@@ -1244,12 +1287,14 @@ export class SubmissionService {
                   },
                 },
               },
-              // attach DB-side limit/offset at the relation level (use safe values)
-              // NOTE: we intentionally avoid DB-side `orderBy` here and perform
-              // ordering in JS below to reliably support sorting by related
-              // fields like `name`/`email` (via localeCompare) and `percentage`.
-              ...(typeof safeLimit === 'number' ? { limit: safeLimit } : {}),
-              ...(typeof safeOffset === 'number' ? { offset: safeOffset } : {}),
+              // NOTE: we intentionally avoid DB-side `limit`/`offset` and
+              // `orderBy` here. Sorting on related fields like `name`/`email`
+              // (via localeCompare) and the computed `percentage` field must
+              // happen in JS below, across the FULL candidate set, before any
+              // pagination is applied — otherwise slicing to a page here
+              // would truncate the data before it's sorted, producing a
+              // wrong/incomplete page. The full set is paginated (via
+              // `pagedData` below) only after the JS sort completes.
             },
           },
         },
@@ -2181,54 +2226,51 @@ export class SubmissionService {
     userId: number,
   ) {
     try {
-      const chapterDetails = await db
-        .select()
-        .from(zuvyModuleChapter)
-        .where(eq(zuvyModuleChapter.id, chapterId));
-
-      const FormTracking = await db
-        .select()
-        .from(zuvyFormTracking)
-        .where(
-          and(
-            eq(zuvyFormTracking.userId, userId),
-            eq(zuvyFormTracking.chapterId, chapterId),
-            eq(zuvyFormTracking.moduleId, moduleId),
-          ),
-        );
-
-      const ChapterTracking = await db
-        .select()
-        .from(zuvyChapterTracking)
-        .where(
-          and(
-            eq(zuvyChapterTracking.userId, userId),
-            eq(zuvyChapterTracking.chapterId, chapterId),
-            eq(zuvyChapterTracking.moduleId, moduleId),
-          ),
-        );
+      // These three queries don't depend on each other's results (all are
+      // keyed off the chapterId/userId/moduleId params directly), and only
+      // a handful of fields/the row count are used below, so fetch them
+      // concurrently with narrowed column selections instead of full rows.
+      const [chapterDetails, FormTracking, ChapterTracking] = await Promise.all(
+        [
+          db
+            .select({
+              topicId: zuvyModuleChapter.topicId,
+              formQuestions: zuvyModuleChapter.formQuestions,
+              title: zuvyModuleChapter.title,
+              description: zuvyModuleChapter.description,
+              links: zuvyModuleChapter.links,
+              file: zuvyModuleChapter.file,
+              articleContent: zuvyModuleChapter.articleContent,
+            })
+            .from(zuvyModuleChapter)
+            .where(eq(zuvyModuleChapter.id, chapterId)),
+          db
+            .select({ id: zuvyFormTracking.id })
+            .from(zuvyFormTracking)
+            .where(
+              and(
+                eq(zuvyFormTracking.userId, userId),
+                eq(zuvyFormTracking.chapterId, chapterId),
+                eq(zuvyFormTracking.moduleId, moduleId),
+              ),
+            ),
+          db
+            .select({ id: zuvyChapterTracking.id })
+            .from(zuvyChapterTracking)
+            .where(
+              and(
+                eq(zuvyChapterTracking.userId, userId),
+                eq(zuvyChapterTracking.chapterId, chapterId),
+                eq(zuvyChapterTracking.moduleId, moduleId),
+              ),
+            ),
+        ],
+      );
 
       if (chapterDetails.length > 0) {
         if (chapterDetails[0].topicId == 7) {
           if (chapterDetails[0].formQuestions !== null) {
             if (FormTracking.length == 0) {
-              // const questions = await db
-              //   .select({
-              //     id: zuvyModuleForm.id,
-              //     question: zuvyModuleForm.question,
-              //     options: zuvyModuleForm.options,
-              //     typeId: zuvyModuleForm.typeId,
-              //     isRequired: zuvyModuleForm.isRequired
-              //   })
-              //   .from(zuvyModuleForm)
-              //   .where(
-              //     sql`${inArray(zuvyModuleForm.id, Object.values(chapterDetails[0].formQuestions))}`,
-              //   );
-              // questions['status'] =
-              //   ChapterTracking.length != 0
-              //     ? 'Completed'
-              //     : 'Pending';
-
               return {
                 status: 'success',
                 code: 200,
@@ -2442,20 +2484,41 @@ export class SubmissionService {
     orderDirection?: any,
   ): Promise<any> {
     try {
-      // Get chapter details
+      // Get chapter details (only the columns actually used below)
       const chapterDeadline = await db
-        .select()
+        .select({
+          id: zuvyModuleChapter.id,
+          title: zuvyModuleChapter.title,
+          completionDate: zuvyModuleChapter.completionDate,
+        })
         .from(zuvyModuleChapter)
         .where(eq(zuvyModuleChapter.id, chapterId));
       if (chapterDeadline.length > 0) {
-        // Build order clause (support submittedDate, name, email)
+        // Normalize pagination inputs up-front so they can be pushed down to
+        // the DB query below. Non-positive/invalid limits are treated as
+        // "no limit".
+        const safeLimit =
+          Number.isFinite(Number(limit)) && Number(limit) > 0
+            ? Number(limit)
+            : undefined;
+        const safeOffset =
+          Number.isFinite(Number(offset)) && Number(offset) >= 0
+            ? Number(offset)
+            : 0;
+        // Build order clause (support submittedDate, name, email) and push it
+        // down to the DB query instead of sorting in JS after fetching every
+        // matching row. name/email are related-user fields ordered via a
+        // correlated subselect (Drizzle's query builder can't easily order
+        // by a joined column here without restructuring the join), and
+        // submittedDate maps to the tracking row's own completedAt column
+        // (zuvyChapterTracking has no submitted_date column; the JS-side
+        // code below falls back to completedAt for the same reason).
         let orderClause = undefined;
         if (orderBy) {
           orderClause = (
             chapterTracking: {
               userId: any;
-              submitted_date: any;
-              percentage: any;
+              completedAt: any;
               name: any;
               email: any;
               id: any;
@@ -2468,7 +2531,7 @@ export class SubmissionService {
                 ? helpers.desc
                 : helpers.asc;
             if (orderBy === 'submittedDate')
-              return dir(chapterTracking.submitted_date);
+              return dir(chapterTracking.completedAt);
             // Order by related user fields using a sub-select. This avoids fetching all rows and sorting in JS
             if (orderBy === 'name')
               return dir(
@@ -2536,6 +2599,10 @@ export class SubmissionService {
                 },
               },
             },
+            // perf: push ordering/pagination down to the DB query (orderClause/safeLimit/safeOffset built above) instead of sorting the full result set in JS
+            ...(orderClause ? { orderBy: orderClause } : {}),
+            ...(typeof safeLimit === 'number' ? { limit: safeLimit } : {}),
+            offset: safeOffset,
           },
         );
         // Pre-fetch batch enrollment info for all matched users so we can attach batchId/name in the response
@@ -2641,15 +2708,6 @@ export class SubmissionService {
             ),
           );
         const totalStudentsCount = totalStudentsRes[0]?.count ?? 0;
-        // Normalize pagination inputs: treat non-positive/invalid limits as undefined
-        const safeLimit =
-          Number.isFinite(Number(limit)) && Number(limit) > 0
-            ? Number(limit)
-            : undefined;
-        const safeOffset =
-          Number.isFinite(Number(offset)) && Number(offset) >= 0
-            ? Number(offset)
-            : 0;
         const totalPages = safeLimit
           ? Math.ceil(totalStudentsCount / safeLimit)
           : 1;
@@ -2677,7 +2735,9 @@ export class SubmissionService {
                 isLate = true;
               }
             }
-            // Expose submitted_date so we can sort by it on the JS side if requested
+            // Expose submitted_date for parity with the response shape
+            // (name/email/submittedDate ordering is now done at the DB
+            // level via `orderClause` above, not in JS).
             const submittedDate =
               statusCode['submitted_date'] ?? statusCode['completedAt'] ?? null;
             // Return properties without null or unknown
@@ -2693,42 +2753,8 @@ export class SubmissionService {
               submitted_date: submittedDate,
             };
           });
-        // Sort in JS to support ordering by related user fields (name/email) as well as submittedDate
-        let sortedData = data;
-        if (orderBy) {
-          const dir =
-            orderDirection && orderDirection.toString().toLowerCase() === 'desc'
-              ? -1
-              : 1;
-          if (orderBy === 'name') {
-            sortedData = sortedData.sort((a: any, b: any) => {
-              const an = (a.name || '').toString();
-              const bn = (b.name || '').toString();
-              return an.localeCompare(bn) * dir;
-            });
-          } else if (orderBy === 'email') {
-            sortedData = sortedData.sort((a: any, b: any) => {
-              const ae = (a.emailId || '').toString();
-              const be = (b.emailId || '').toString();
-              return ae.localeCompare(be) * dir;
-            });
-          } else if (orderBy === 'submittedDate') {
-            sortedData = sortedData.sort((a: any, b: any) => {
-              const at = a.submitted_date
-                ? new Date(a.submitted_date).getTime()
-                : 0;
-              const bt = b.submitted_date
-                ? new Date(b.submitted_date).getTime()
-                : 0;
-              return (at - bt) * dir;
-            });
-          }
-        }
-        // Apply pagination in JS after sorting so ordering by name/email works correctly
-        const paginatedData =
-          typeof safeLimit === 'number'
-            ? sortedData.slice(safeOffset, safeOffset + safeLimit)
-            : sortedData;
+        // `data` is already ordered and paginated by the DB query above.
+        const paginatedData = data;
         // Calculate the current page based on limit and offset
         const currentPage =
           typeof safeLimit === 'number'
@@ -2994,12 +3020,19 @@ export class SubmissionService {
         [DIFFICULTY.HARD]: assessmentMeta.hard || 0,
       };
 
-      const updatedUserIds: number[] = [];
       let correctOptions = {
         119: [1, 3, 4],
         132: [1, 3],
       };
-      for (const sub of submissions) {
+
+      // Recompute + persist one submission's MCQ score/status. Returns the
+      // userId if the submission changed (so it can be collected by the
+      // caller), or null otherwise. Errors are caught here (matching the
+      // original per-submission try/catch) so one bad submission doesn't
+      // abort the rest of the batch.
+      const processSubmission = async (
+        sub: (typeof submissions)[number],
+      ): Promise<number | null> => {
         try {
           const quizAnswers = await db
             .select({
@@ -3027,7 +3060,10 @@ export class SubmissionService {
 
           let mcqScore = 0;
           let requiredMCQScore = 0;
-          const attemptedMCQs = quizAnswers.length;
+          // Per-answer status updates, applied as a single bulk UPDATE below
+          // instead of one UPDATE per answer.
+          const statusUpdates: { id: number; status: 'passed' | 'failed' }[] =
+            [];
 
           for (const answer of quizAnswers) {
             const matched: any = quizMasterData.find(
@@ -3048,11 +3084,32 @@ export class SubmissionService {
                 : false;
             }
             if (isCorrect) mcqScore += weight;
-            // Update quiz tracking status
+            statusUpdates.push({
+              id: answer.id,
+              status: isCorrect ? 'passed' : 'failed',
+            });
+          }
+
+          // Bulk-update all of this submission's zuvyQuizTracking rows in a
+          // single round trip via a CASE expression (same pattern as
+          // recomputeBatchAttendancePercentages in tracking.service.ts),
+          // instead of one UPDATE per answer.
+          if (statusUpdates.length > 0) {
+            const sqlChunks = [sql`(case`];
+            const ids: number[] = [];
+            for (const update of statusUpdates) {
+              sqlChunks.push(
+                sql`when ${zuvyQuizTracking.id} = ${update.id} then ${update.status}`,
+              );
+              ids.push(update.id);
+            }
+            sqlChunks.push(sql`end)`);
+            const finalSql = sql.join(sqlChunks, sql.raw(' '));
+
             await db
               .update(zuvyQuizTracking)
-              .set({ status: isCorrect ? 'passed' : 'failed' })
-              .where(eq(zuvyQuizTracking.id, answer.id));
+              .set({ status: finalSql })
+              .where(inArray(zuvyQuizTracking.id, ids));
           }
 
           const safeCodingScore = Number(sub.codingScore) || 0;
@@ -3084,13 +3141,43 @@ export class SubmissionService {
             this.logger.log(
               `Updated submission ${sub.id} with new marks: ${newMarks}, percentage: ${percentage}, isPassed: ${isPassed} for userId: ${sub.userId}`,
             );
-            updatedUserIds.push(sub.userId);
 
-            // ✉️ Send email after update
-            await this.sendScoreUpdateEmailToStudent(sub.userId, percentage);
+            // fix: the DB update above already succeeded, so this submission
+            // counts as updated regardless of what happens next — isolate the
+            // email send in its own try/catch (log-only) so a failure there
+            // (e.g. SES throttling) can't make this function return null and
+            // silently drop a genuinely successful score update from the
+            // returned/logged list of updated user ids.
+            try {
+              await this.sendScoreUpdateEmailToStudent(sub.userId, percentage);
+            } catch (emailErr) {
+              console.error(
+                `⚠️ Score updated for submission ${sub.id}, but the notification email failed:`,
+                emailErr,
+              );
+            }
+            return sub.userId;
           }
+          return null;
         } catch (err) {
           console.error(`❌ Error in submission ${sub.id}:`, err);
+          return null;
+        }
+      };
+
+      // Process submissions concurrently, but in bounded batches so a large
+      // assessment (potentially hundreds of submissions) can't fire an
+      // unbounded number of concurrent DB round trips and exhaust the
+      // connection pool.
+      const BATCH_SIZE = 20;
+      const updatedUserIds: number[] = [];
+      for (let i = 0; i < submissions.length; i += BATCH_SIZE) {
+        const batch = submissions.slice(i, i + BATCH_SIZE);
+        const results = await Promise.all(
+          batch.map((sub) => processSubmission(sub)),
+        );
+        for (const userId of results) {
+          if (userId !== null) updatedUserIds.push(userId);
         }
       }
 
