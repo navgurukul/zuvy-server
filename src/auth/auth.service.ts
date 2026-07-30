@@ -1,4 +1,11 @@
-import { Injectable, UnauthorizedException, Logger } from '@nestjs/common';
+import {
+  Inject,
+  Injectable,
+  UnauthorizedException,
+  Logger,
+} from '@nestjs/common';
+import { CACHE_MANAGER } from '@nestjs/cache-manager';
+import { Cache } from 'cache-manager';
 import { JwtService } from '@nestjs/jwt';
 import { LoginDto } from './dto/login.dto';
 import { db } from '../db';
@@ -31,6 +38,7 @@ export class AuthService {
   constructor(
     private jwtService: JwtService,
     private readonly userTokenService: UserTokensService,
+    @Inject(CACHE_MANAGER) private readonly cacheManager: Cache,
   ) {
     const clientId = process.env.GOOGLE_CLIENT_ID;
     this.googleAuthClient = new OAuth2Client(clientId);
@@ -501,13 +509,26 @@ export class AuthService {
 
   async validateToken(token: string) {
     try {
-      // Check if token is blacklisted
-      const [blacklistedToken] = await db
-        .select()
-        .from(blacklistedTokens)
-        .where(eq(blacklistedTokens.token, token));
+      // Check if token is blacklisted. Cache the boolean result in Redis for
+      // 30s so this doesn't hit Postgres on every single authenticated
+      // request; falls back to the original query on a cache miss.
+      const cacheKey = `blacklist:${token}`;
+      const cached = await this.cacheManager.get<boolean>(cacheKey);
+      let isBlacklisted: boolean;
 
-      if (blacklistedToken) {
+      if (typeof cached === 'boolean') {
+        isBlacklisted = cached;
+      } else {
+        const [blacklistedToken] = await db
+          .select()
+          .from(blacklistedTokens)
+          .where(eq(blacklistedTokens.token, token));
+
+        isBlacklisted = !!blacklistedToken;
+        await this.cacheManager.set(cacheKey, isBlacklisted, 30000);
+      }
+
+      if (isBlacklisted) {
         throw new UnauthorizedException('Token has been invalidated');
       }
 
